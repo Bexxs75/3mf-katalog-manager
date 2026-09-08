@@ -8,7 +8,8 @@ use std::fs::File;
 use std::path::Path;
 
 pub use error::ThreeMfError;
-use geometry::{BoundingBox, Matrix3x4};
+use crate::geometry::BoundingBox;
+use geometry::Matrix3x4;
 use model_xml::{Object, ParsedModel};
 
 #[derive(Debug, Clone)]
@@ -109,7 +110,7 @@ fn accumulate_object(
             for v in &world_vertices {
                 bbox.extend(*v);
             }
-            *volume_mm3 += geometry::signed_volume(&world_vertices, &mesh.triangles).abs();
+            *volume_mm3 += crate::geometry::signed_volume(&world_vertices, &mesh.triangles).abs();
         }
     }
 
