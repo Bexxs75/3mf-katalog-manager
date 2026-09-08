@@ -1,0 +1,86 @@
+use std::collections::BTreeMap;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileType {
+    ThreeMf,
+    Stl,
+}
+
+impl FileType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            FileType::ThreeMf => "3mf",
+            FileType::Stl => "stl",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "3mf" => Some(FileType::ThreeMf),
+            "stl" => Some(FileType::Stl),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MaterialRecord {
+    pub name: String,
+    pub display_color: Option<String>,
+}
+
+/// Data needed to catalog a newly imported file. `origin` defaults to
+/// `"local"` and `sync_status` to `"local-only"` at the database level for
+/// files created outside the (not yet implemented) cloud-provider flow.
+#[derive(Debug, Clone)]
+pub struct NewFile {
+    pub name: String,
+    pub path: String,
+    pub file_type: FileType,
+    pub folder_id: Option<i64>,
+    pub file_size_bytes: i64,
+    pub dimensions_mm: Option<[f64; 3]>,
+    pub volume_cm3: Option<f64>,
+    pub object_count: Option<i64>,
+    pub thumbnail_png: Option<Vec<u8>>,
+    pub imported_at: String,
+    pub file_modified_at: Option<String>,
+    pub materials: Vec<MaterialRecord>,
+    pub metadata: BTreeMap<String, String>,
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FileRecord {
+    pub id: i64,
+    pub name: String,
+    pub path: String,
+    pub file_type: FileType,
+    pub folder_id: Option<i64>,
+    pub origin: String,
+    pub sync_status: String,
+    pub cloud_id: Option<String>,
+    pub file_size_bytes: i64,
+    pub dimensions_mm: Option<[f64; 3]>,
+    pub volume_cm3: Option<f64>,
+    pub object_count: Option<i64>,
+    pub thumbnail_png: Option<Vec<u8>>,
+    pub imported_at: String,
+    pub file_modified_at: Option<String>,
+    pub materials: Vec<MaterialRecord>,
+    pub metadata: BTreeMap<String, String>,
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FolderRecord {
+    pub id: i64,
+    pub name: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct TagCount {
+    pub name: String,
+    pub color_hue: i64,
+    pub count: i64,
+}

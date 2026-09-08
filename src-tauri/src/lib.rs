@@ -1,3 +1,4 @@
+mod db;
 mod geometry;
 mod stl;
 mod threemf;
