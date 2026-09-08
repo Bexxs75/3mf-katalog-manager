@@ -3,8 +3,8 @@ pub mod models;
 mod repository;
 
 pub use repository::{
-    add_tag_to_file, connect, get_file, insert_file, insert_folder, list_files, list_folders,
-    list_tag_counts, remove_tag_from_file,
+    add_tag_to_file, connect, file_exists_by_path, get_file, insert_file, insert_folder,
+    list_files, list_folders, list_tag_counts, remove_tag_from_file,
 };
 
 #[cfg(test)]
@@ -118,6 +118,16 @@ mod tests {
             .expect("cube tag after");
         assert_eq!(cube_tag_after.count, 2);
         assert_eq!(cube_tag_after.color_hue, cube_tag.color_hue);
+    }
+
+    #[test]
+    fn file_exists_by_path_reflects_current_db_state() {
+        let mut conn = connect_in_memory().expect("connect");
+        assert!(!file_exists_by_path(&conn, "/tmp/cube.3mf").expect("check"));
+
+        insert_file(&mut conn, &sample_file()).expect("insert");
+        assert!(file_exists_by_path(&conn, "/tmp/cube.3mf").expect("check"));
+        assert!(!file_exists_by_path(&conn, "/tmp/other.3mf").expect("check"));
     }
 
     #[test]

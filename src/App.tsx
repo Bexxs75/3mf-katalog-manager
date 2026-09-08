@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { ModelGrid } from './components/ModelGrid';
@@ -31,6 +32,14 @@ export default function App() {
   const refreshFolders = () => invoke<Folder[]>('list_folders').then(setFolders);
   const refreshTags = () => invoke<TagCount[]>('list_tag_counts').then(setTags);
 
+  const mergeImported = (files: ModelFile[]) => {
+    if (!files.length) return;
+    setModels((prev) => [...prev, ...files]);
+    setSelectedId(files[files.length - 1].id);
+    refreshFolders();
+    refreshTags();
+  };
+
   useEffect(() => {
     invoke<ModelFile[]>('list_files').then((files) => {
       setModels(files);
@@ -38,6 +47,16 @@ export default function App() {
     });
     refreshFolders();
     refreshTags();
+  }, []);
+
+  useEffect(() => {
+    const unlisten = getCurrentWebview().onDragDropEvent((event) => {
+      if (event.payload.type !== 'drop') return;
+      invoke<ModelFile[]>('import_dropped', { paths: event.payload.paths }).then(mergeImported);
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
   }, []);
 
   const filtered = useMemo(() => {
@@ -72,14 +91,9 @@ export default function App() {
     invoke('remove_tag', { fileId: id, tag }).then(refreshTags);
   };
 
-  const handleImport = () => {
-    invoke<ModelFile | null>('import_file').then((file) => {
-      if (!file) return;
-      setModels((prev) => [...prev, file]);
-      setSelectedId(file.id);
-      refreshFolders();
-      refreshTags();
-    });
+  const handleImport = (e: MouseEvent<HTMLButtonElement>) => {
+    const command = e.shiftKey ? 'import_folder' : 'import_files';
+    invoke<ModelFile[]>(command).then(mergeImported);
   };
 
   return (

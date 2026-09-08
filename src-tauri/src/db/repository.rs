@@ -168,6 +168,15 @@ pub fn insert_file(conn: &mut Connection, file: &NewFile) -> Result<i64, DbError
     Ok(file_id)
 }
 
+pub fn file_exists_by_path(conn: &Connection, path: &str) -> Result<bool, DbError> {
+    let exists: Option<i64> = conn
+        .query_row("SELECT 1 FROM files WHERE path = ?1", params![path], |row| {
+            row.get(0)
+        })
+        .optional()?;
+    Ok(exists.is_some())
+}
+
 pub fn get_file(conn: &Connection, id: i64) -> Result<Option<FileRecord>, DbError> {
     let row = conn
         .query_row(

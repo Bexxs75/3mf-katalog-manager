@@ -1,4 +1,5 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use rusqlite::Connection;
@@ -186,28 +187,36 @@ pub fn remove_tag(state: State<AppState>, file_id: String, tag: String) -> CmdRe
     db::remove_tag_from_file(&conn, id, &tag).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub async fn import_file(
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-) -> CmdResult<Option<ModelFileDto>> {
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter("3D-Modelle", &["3mf", "stl"])
-        .blocking_pick_file();
+fn is_supported_extension(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| matches!(e.to_lowercase().as_str(), "3mf" | "stl"))
+        .unwrap_or(false)
+}
 
-    let Some(picked) = picked else {
-        return Ok(None);
-    };
-    let path = picked.into_path().map_err(|e| e.to_string())?;
+/// Recursively walks `path`, collecting every supported model file found.
+/// A plain file is included as-is if its extension matches; unreadable
+/// directories are skipped rather than failing the whole scan.
+fn collect_supported_files(path: &Path, out: &mut Vec<PathBuf>) {
+    if path.is_dir() {
+        let Ok(entries) = std::fs::read_dir(path) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            collect_supported_files(&entry.path(), out);
+        }
+    } else if is_supported_extension(path) {
+        out.push(path.to_path_buf());
+    }
+}
 
+fn import_one(conn: &mut Connection, path: &Path) -> CmdResult<ModelFileDto> {
     let file_name = path
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("unbenannt")
         .to_string();
-    let file_size_bytes = std::fs::metadata(&path).map_err(|e| e.to_string())?.len() as i64;
+    let file_size_bytes = std::fs::metadata(path).map_err(|e| e.to_string())?.len() as i64;
     let extension = path
         .extension()
         .and_then(|e| e.to_str())
@@ -216,7 +225,7 @@ pub async fn import_file(
     let (file_type, dimensions_mm, volume_cm3, object_count, materials, metadata, thumbnail_png) =
         match extension.as_deref() {
             Some("3mf") => {
-                let doc = threemf::parse_3mf_file(&path).map_err(|e| e.to_string())?;
+                let doc = threemf::parse_3mf_file(path).map_err(|e| e.to_string())?;
                 (
                     FileType::ThreeMf,
                     doc.dimensions_mm,
@@ -234,7 +243,7 @@ pub async fn import_file(
                 )
             }
             Some("stl") => {
-                let doc = stl::parse_stl_file(&path).map_err(|e| e.to_string())?;
+                let doc = stl::parse_stl_file(path).map_err(|e| e.to_string())?;
                 (
                     FileType::Stl,
                     doc.dimensions_mm,
@@ -272,12 +281,88 @@ pub async fn import_file(
         tags,
     };
 
-    let mut conn = lock_db(&state)?;
-    let id = db::insert_file(&mut conn, &new_file).map_err(|e| e.to_string())?;
-    let file = db::get_file(&conn, id)
+    let id = db::insert_file(conn, &new_file).map_err(|e| e.to_string())?;
+    let file = db::get_file(conn, id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "imported file not found after insert".to_string())?;
-    Ok(Some(to_dto(file)))
+    Ok(to_dto(file))
+}
+
+/// Expands `roots` (files and/or directories) into the supported model files
+/// they contain, skips paths already present in the catalog, and imports the
+/// rest. A single unreadable/unparsable file is logged and skipped rather
+/// than aborting the whole batch.
+fn import_many(state: &State<AppState>, roots: Vec<PathBuf>) -> CmdResult<Vec<ModelFileDto>> {
+    let mut candidates = Vec::new();
+    for root in roots {
+        collect_supported_files(&root, &mut candidates);
+    }
+
+    let mut conn = lock_db(state)?;
+    let mut seen = HashSet::new();
+    let mut imported = Vec::new();
+
+    for path in candidates {
+        let path_str = path.to_string_lossy().to_string();
+        if !seen.insert(path_str.clone()) {
+            continue;
+        }
+        match db::file_exists_by_path(&conn, &path_str) {
+            Ok(true) => continue,
+            Ok(false) => {}
+            Err(e) => {
+                eprintln!("[import] Duplikatprüfung fehlgeschlagen für {path_str}: {e}");
+                continue;
+            }
+        }
+
+        match import_one(&mut conn, &path) {
+            Ok(dto) => imported.push(dto),
+            Err(e) => eprintln!("[import] Import fehlgeschlagen für {path_str}: {e}"),
+        }
+    }
+
+    Ok(imported)
+}
+
+#[tauri::command]
+pub async fn import_files(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> CmdResult<Vec<ModelFileDto>> {
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("3D-Modelle", &["3mf", "stl"])
+        .blocking_pick_files();
+
+    let Some(picked) = picked else {
+        return Ok(Vec::new());
+    };
+    let paths = picked
+        .into_iter()
+        .filter_map(|p| p.into_path().ok())
+        .collect();
+    import_many(&state, paths)
+}
+
+#[tauri::command]
+pub async fn import_folder(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> CmdResult<Vec<ModelFileDto>> {
+    let picked = app.dialog().file().blocking_pick_folder();
+
+    let Some(picked) = picked else {
+        return Ok(Vec::new());
+    };
+    let path = picked.into_path().map_err(|e| e.to_string())?;
+    import_many(&state, vec![path])
+}
+
+#[tauri::command]
+pub fn import_dropped(state: State<AppState>, paths: Vec<String>) -> CmdResult<Vec<ModelFileDto>> {
+    import_many(&state, paths.into_iter().map(PathBuf::from).collect())
 }
 
 #[tauri::command]

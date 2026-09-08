@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type MouseEvent } from 'react';
 import type { ViewMode, SortKey } from '../types';
 import type { ThemeSetting } from '../hooks/useTheme';
 
@@ -10,7 +10,7 @@ interface Props {
   count: number;
   themeSetting: ThemeSetting;
   onThemeChange: (t: ThemeSetting) => void;
-  onImport: () => void;
+  onImport: (e: MouseEvent<HTMLButtonElement>) => void;
 }
 
 const segBase =
@@ -43,6 +43,7 @@ export function Header({
 
       <button
         onClick={onImport}
+        title="Klick: Dateien auswählen · Umschalt+Klick: Ordner importieren"
         className="flex items-center gap-2 h-8 px-[13px] rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[13px] font-semibold cursor-pointer hover:brightness-110"
       >
         <span className="font-mono-ui text-sm leading-none">+</span>
