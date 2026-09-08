@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+html, body { margin: 0; padding: 0; }
+body { font-family: 'Barlow', Helvetica, sans-serif; }
+* { box-sizing: border-box; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* Helles Theme (Standard) */
+[data-app] {
+  --bg: oklch(0.965 0.004 60);
+  --panel: oklch(1 0 0);
+  --panel-2: oklch(0.985 0.003 60);
+  --line: oklch(0.895 0.006 60);
+  --line-strong: oklch(0.82 0.008 60);
+  --ink: oklch(0.245 0.01 45);
+  --ink-2: oklch(0.505 0.01 50);
+  --ink-3: oklch(0.645 0.008 50);
+  --accent: oklch(0.565 0.165 30);
+  --accent-ink: oklch(0.99 0.01 30);
+  --accent-soft: oklch(0.945 0.03 30);
+  --plate: oklch(0.915 0.006 60);
+  --plate-2: oklch(0.955 0.004 60);
+  --hatch: rgba(40, 28, 24, 0.09);
+  --shadow: 0 1px 2px rgba(40, 28, 24, 0.06), 0 8px 24px rgba(40, 28, 24, 0.05);
+}
+
+/* Dunkles Theme */
+[data-app="dark"] {
+  --bg: oklch(0.165 0.005 60);
+  --panel: oklch(0.205 0.006 60);
+  --panel-2: oklch(0.235 0.006 60);
+  --line: oklch(0.295 0.008 60);
+  --line-strong: oklch(0.375 0.01 60);
+  --ink: oklch(0.945 0.005 60);
+  --ink-2: oklch(0.715 0.008 60);
+  --ink-3: oklch(0.555 0.01 60);
+  --accent: oklch(0.735 0.155 34);
+  --accent-ink: oklch(0.17 0.03 30);
+  --accent-soft: oklch(0.285 0.05 32);
+  --plate: oklch(0.115 0.006 60);
+  --plate-2: oklch(0.155 0.006 60);
+  --hatch: rgba(0, 0, 0, 0.28);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.font-mono-ui { font-family: 'IBM Plex Mono', monospace; }
