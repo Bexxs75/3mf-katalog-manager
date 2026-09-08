@@ -41,6 +41,13 @@ pub struct MetaRow {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeometryPayloadDto {
+    pub extension: String,
+    pub data_base64: String,
+}
+
+#[derive(Debug, Serialize)]
 pub struct FolderDto {
     pub id: String,
     pub name: String,
@@ -271,4 +278,28 @@ pub async fn import_file(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "imported file not found after insert".to_string())?;
     Ok(Some(to_dto(file)))
+}
+
+#[tauri::command]
+pub fn get_model_geometry(state: State<AppState>, file_id: String) -> CmdResult<GeometryPayloadDto> {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let conn = lock_db(&state)?;
+    let file = db::get_file(&conn, id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "file not found".to_string())?;
+
+    let extension = std::path::Path::new(&file.path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .ok_or_else(|| "file has no extension".to_string())?;
+
+    let bytes = std::fs::read(&file.path).map_err(|e| e.to_string())?;
+
+    Ok(GeometryPayloadDto {
+        extension,
+        data_base64: STANDARD.encode(bytes),
+    })
 }

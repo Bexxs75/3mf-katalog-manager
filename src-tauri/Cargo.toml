@@ -27,6 +27,7 @@ zip = "2"
 quick-xml = "0.36"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+base64 = "0.22"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

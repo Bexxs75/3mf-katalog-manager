@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { ModelFile } from '../types';
+import { ModelViewer } from './ModelViewer';
 
 interface Props {
   model: ModelFile | null;
@@ -40,8 +41,7 @@ export function DetailPanel({ model, onAddTag, onRemoveTag, onOpenInSlicer }: Pr
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {/* 3D Vorschau Platzhalter, in der App via three.js gerendert */}
-        <div className="relative aspect-[4/3] bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden grid place-items-center">
+        <div className="relative aspect-[4/3] bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
           <div
             className="absolute inset-0"
             style={{
@@ -49,8 +49,8 @@ export function DetailPanel({ model, onAddTag, onRemoveTag, onOpenInSlicer }: Pr
                 'repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 11px)',
             }}
           />
-          <div className="relative w-16 h-16 border border-[var(--accent)] bg-[var(--accent-soft)] rotate-45" />
-          <div className="absolute left-2.5 bottom-2 font-mono-ui text-[9.5px] tracking-[0.08em] uppercase text-[var(--ink-3)]">
+          <ModelViewer key={model.id} fileId={model.id} />
+          <div className="absolute left-2.5 bottom-2 font-mono-ui text-[9.5px] tracking-[0.08em] uppercase text-[var(--ink-3)] pointer-events-none">
             Ziehen zum Drehen
           </div>
         </div>

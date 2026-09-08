@@ -39,6 +39,7 @@ pub fn run() {
             commands::add_tag,
             commands::remove_tag,
             commands::import_file,
+            commands::get_model_geometry,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
