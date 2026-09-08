@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { Header } from './components/Header';
@@ -91,10 +91,8 @@ export default function App() {
     invoke('remove_tag', { fileId: id, tag }).then(refreshTags);
   };
 
-  const handleImport = (e: MouseEvent<HTMLButtonElement>) => {
-    const command = e.shiftKey ? 'import_folder' : 'import_files';
-    invoke<ModelFile[]>(command).then(mergeImported);
-  };
+  const importFiles = () => invoke<ModelFile[]>('import_files').then(mergeImported);
+  const importFolder = () => invoke<ModelFile[]>('import_folder').then(mergeImported);
 
   return (
     <div
@@ -109,7 +107,8 @@ export default function App() {
         count={filtered.length}
         themeSetting={setting}
         onThemeChange={setTheme}
-        onImport={handleImport}
+        onImportFiles={importFiles}
+        onImportFolder={importFolder}
       />
 
       <div className="flex-1 flex min-h-0">

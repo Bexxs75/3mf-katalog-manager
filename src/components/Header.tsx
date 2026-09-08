@@ -1,4 +1,4 @@
-import { useState, type MouseEvent } from 'react';
+import { useState } from 'react';
 import type { ViewMode, SortKey } from '../types';
 import type { ThemeSetting } from '../hooks/useTheme';
 
@@ -10,7 +10,8 @@ interface Props {
   count: number;
   themeSetting: ThemeSetting;
   onThemeChange: (t: ThemeSetting) => void;
-  onImport: (e: MouseEvent<HTMLButtonElement>) => void;
+  onImportFiles: () => void;
+  onImportFolder: () => void;
 }
 
 const segBase =
@@ -26,9 +27,11 @@ export function Header({
   count,
   themeSetting,
   onThemeChange,
-  onImport,
+  onImportFiles,
+  onImportFolder,
 }: Props) {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [importMenuOpen, setImportMenuOpen] = useState(false);
 
   return (
     <header className="flex-none h-[54px] flex items-center gap-[18px] px-[14px] bg-[var(--panel)] border-b border-[var(--line)]">
@@ -41,14 +44,48 @@ export function Header({
         </span>
       </div>
 
-      <button
-        onClick={onImport}
-        title="Klick: Dateien auswählen · Umschalt+Klick: Ordner importieren"
-        className="flex items-center gap-2 h-8 px-[13px] rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[13px] font-semibold cursor-pointer hover:brightness-110"
-      >
-        <span className="font-mono-ui text-sm leading-none">+</span>
-        <span>Importieren</span>
-      </button>
+      <div className="relative flex">
+        <button
+          onClick={() => {
+            setImportMenuOpen(false);
+            onImportFiles();
+          }}
+          className="flex items-center gap-2 h-8 pl-[13px] pr-3 rounded-l-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[13px] font-semibold cursor-pointer hover:brightness-110"
+        >
+          <span className="font-mono-ui text-sm leading-none">+</span>
+          <span>Importieren</span>
+        </button>
+        <button
+          onClick={() => setImportMenuOpen((o) => !o)}
+          aria-label="Weitere Import-Optionen"
+          className="flex items-center justify-center w-6 h-8 rounded-r-[3px] border border-l-0 border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] cursor-pointer hover:brightness-110"
+        >
+          <span className="text-[9px] leading-none">▾</span>
+        </button>
+
+        {importMenuOpen && (
+          <div className="absolute top-10 left-0 w-[176px] py-1 bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)] z-40">
+            <button
+              onClick={() => {
+                setImportMenuOpen(false);
+                onImportFiles();
+              }}
+              className="w-full text-left px-3 py-1.5 text-[13px] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
+            >
+              Dateien...
+            </button>
+            <button
+              onClick={() => {
+                setImportMenuOpen(false);
+                onImportFolder();
+              }}
+              className="w-full text-left px-3 py-1.5 text-[13px] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
+            >
+              Ordner...
+            </button>
+          </div>
+        )}
+      </div>
 
       <div className="flex items-center gap-1.5">
         <span className="font-mono-ui text-[10px] tracking-[0.1em] uppercase text-[var(--ink-3)]">
