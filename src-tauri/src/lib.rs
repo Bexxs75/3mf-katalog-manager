@@ -38,6 +38,7 @@ pub fn run() {
             commands::list_tag_counts,
             commands::add_tag,
             commands::remove_tag,
+            commands::delete_file,
             commands::import_files,
             commands::import_folder,
             commands::import_dropped,

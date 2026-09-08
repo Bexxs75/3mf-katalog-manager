@@ -187,6 +187,25 @@ pub fn remove_tag(state: State<AppState>, file_id: String, tag: String) -> CmdRe
     db::remove_tag_from_file(&conn, id, &tag).map_err(|e| e.to_string())
 }
 
+// Cloud-Löschung ist noch nicht möglich, da es keine Cloud-Anbindung gibt;
+// gelöscht werden nur der DB-Eintrag und die lokale Datei.
+#[tauri::command]
+pub fn delete_file(state: State<AppState>, file_id: String) -> CmdResult<()> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let conn = lock_db(&state)?;
+    let file = db::get_file(&conn, id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "file not found".to_string())?;
+
+    if let Err(e) = std::fs::remove_file(&file.path) {
+        if e.kind() != std::io::ErrorKind::NotFound {
+            return Err(e.to_string());
+        }
+    }
+
+    db::delete_file(&conn, id).map_err(|e| e.to_string())
+}
+
 fn is_supported_extension(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())

@@ -168,6 +168,11 @@ pub fn insert_file(conn: &mut Connection, file: &NewFile) -> Result<i64, DbError
     Ok(file_id)
 }
 
+pub fn delete_file(conn: &Connection, id: i64) -> Result<(), DbError> {
+    conn.execute("DELETE FROM files WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
 pub fn file_exists_by_path(conn: &Connection, path: &str) -> Result<bool, DbError> {
     let exists: Option<i64> = conn
         .query_row("SELECT 1 FROM files WHERE path = ?1", params![path], |row| {

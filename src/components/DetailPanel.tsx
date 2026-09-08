@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ModelFile } from '../types';
 import { ModelViewer } from './ModelViewer';
 
@@ -6,6 +6,7 @@ interface Props {
   model: ModelFile | null;
   onAddTag: (tag: string) => void;
   onRemoveTag: (tag: string) => void;
+  onDelete: () => void;
   onOpenInSlicer: () => void;
 }
 
@@ -16,8 +17,11 @@ const syncLabel: Record<string, string> = {
   'cloud-only': 'Nur Cloud',
 };
 
-export function DetailPanel({ model, onAddTag, onRemoveTag, onOpenInSlicer }: Props) {
+export function DetailPanel({ model, onAddTag, onRemoveTag, onDelete, onOpenInSlicer }: Props) {
   const [draft, setDraft] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  useEffect(() => setConfirmDelete(false), [model?.id]);
 
   if (!model) {
     return (
@@ -113,15 +117,47 @@ export function DetailPanel({ model, onAddTag, onRemoveTag, onOpenInSlicer }: Pr
       </div>
 
       <div className="flex-none flex gap-2 px-4 py-3 border-t border-[var(--line)] bg-[var(--panel-2)]">
-        <button
-          onClick={onOpenInSlicer}
-          className="flex-1 h-8 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
-        >
-          In Slicer öffnen
-        </button>
-        <button className="flex-none w-[34px] h-8 grid place-items-center rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] font-mono-ui cursor-pointer">
-          ↻
-        </button>
+        {confirmDelete ? (
+          <>
+            <span className="flex-1 flex items-center text-[12.5px] font-medium text-[var(--ink)]">
+              Eintrag löschen?
+            </span>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="flex-none h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            >
+              Abbrechen
+            </button>
+            <button
+              onClick={() => {
+                setConfirmDelete(false);
+                onDelete();
+              }}
+              className="flex-none h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
+            >
+              Löschen
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              onClick={onOpenInSlicer}
+              className="flex-1 h-8 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            >
+              In Slicer öffnen
+            </button>
+            <button className="flex-none w-[34px] h-8 grid place-items-center rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] font-mono-ui cursor-pointer">
+              ↻
+            </button>
+            <button
+              onClick={() => setConfirmDelete(true)}
+              aria-label="Eintrag löschen"
+              className="flex-none w-[34px] h-8 grid place-items-center rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] font-mono-ui cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            >
+              ✕
+            </button>
+          </>
+        )}
       </div>
     </aside>
   );

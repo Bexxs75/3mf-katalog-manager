@@ -4,6 +4,7 @@ interface Props {
   models: ModelFile[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onContextMenu: (id: string, x: number, y: number) => void;
 }
 
 const originAbbr: Record<string, string> = {
@@ -14,13 +15,18 @@ const originAbbr: Record<string, string> = {
   proton: 'PD',
 };
 
-export function ModelGrid({ models, selectedId, onSelect }: Props) {
+export function ModelGrid({ models, selectedId, onSelect, onContextMenu }: Props) {
   return (
     <div className="grid gap-3.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(178px, 1fr))' }}>
       {models.map((m) => (
         <div
           key={m.id}
           onClick={() => onSelect(m.id)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            onSelect(m.id);
+            onContextMenu(m.id, e.clientX, e.clientY);
+          }}
           className={`rounded-[4px] overflow-hidden border cursor-pointer ${
             m.id === selectedId ? 'border-[var(--accent)]' : 'border-[var(--line)]'
           }`}

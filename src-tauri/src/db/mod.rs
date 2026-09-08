@@ -3,8 +3,8 @@ pub mod models;
 mod repository;
 
 pub use repository::{
-    add_tag_to_file, connect, file_exists_by_path, get_file, insert_file, insert_folder,
-    list_files, list_folders, list_tag_counts, remove_tag_from_file,
+    add_tag_to_file, connect, delete_file, file_exists_by_path, get_file, insert_file,
+    insert_folder, list_files, list_folders, list_tag_counts, remove_tag_from_file,
 };
 
 #[cfg(test)]
@@ -128,6 +128,18 @@ mod tests {
         insert_file(&mut conn, &sample_file()).expect("insert");
         assert!(file_exists_by_path(&conn, "/tmp/cube.3mf").expect("check"));
         assert!(!file_exists_by_path(&conn, "/tmp/other.3mf").expect("check"));
+    }
+
+    #[test]
+    fn deletes_a_file_and_cascades_tags() {
+        let mut conn = connect_in_memory().expect("connect");
+        let id = insert_file(&mut conn, &sample_file()).expect("insert");
+
+        delete_file(&conn, id).expect("delete");
+
+        assert!(get_file(&conn, id).expect("query").is_none());
+        let counts = list_tag_counts(&conn).expect("tag counts");
+        assert!(counts.iter().all(|t| t.count == 0));
     }
 
     #[test]

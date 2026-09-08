@@ -4,6 +4,7 @@ interface Props {
   models: ModelFile[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onContextMenu: (id: string, x: number, y: number) => void;
 }
 
 const syncLabel: Record<string, string> = {
@@ -13,7 +14,7 @@ const syncLabel: Record<string, string> = {
   'cloud-only': 'nur Cloud',
 };
 
-export function ModelList({ models, selectedId, onSelect }: Props) {
+export function ModelList({ models, selectedId, onSelect, onContextMenu }: Props) {
   return (
     <div className="border border-[var(--line)] rounded overflow-x-auto bg-[var(--panel)]">
       <div
@@ -31,6 +32,11 @@ export function ModelList({ models, selectedId, onSelect }: Props) {
         <div
           key={m.id}
           onClick={() => onSelect(m.id)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            onSelect(m.id);
+            onContextMenu(m.id, e.clientX, e.clientY);
+          }}
           className={`min-w-[680px] grid gap-2.5 items-center px-3 py-2 border-b border-[var(--line)] cursor-pointer ${
             m.id === selectedId ? 'bg-[var(--accent-soft)]' : 'hover:bg-[var(--panel-2)]'
           }`}

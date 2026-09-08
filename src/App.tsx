@@ -6,6 +6,7 @@ import { Sidebar } from './components/Sidebar';
 import { ModelGrid } from './components/ModelGrid';
 import { ModelList } from './components/ModelList';
 import { DetailPanel } from './components/DetailPanel';
+import { ContextMenu } from './components/ContextMenu';
 import { useTheme } from './hooks/useTheme';
 import type { ModelFile, Folder, TagCount, CloudAccount, ViewMode, SortKey } from './types';
 
@@ -28,6 +29,7 @@ export default function App() {
   const [models, setModels] = useState<ModelFile[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [tags, setTags] = useState<TagCount[]>([]);
+  const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number } | null>(null);
 
   const refreshFolders = () => invoke<Folder[]>('list_folders').then(setFolders);
   const refreshTags = () => invoke<TagCount[]>('list_tag_counts').then(setTags);
@@ -94,6 +96,19 @@ export default function App() {
   const importFiles = () => invoke<ModelFile[]>('import_files').then(mergeImported);
   const importFolder = () => invoke<ModelFile[]>('import_folder').then(mergeImported);
 
+  const openInSlicer = (_id: string) => {
+    // Tauri: Pfad an registrierten Slicer übergeben
+  };
+
+  const deleteModel = (id: string) => {
+    invoke('delete_file', { fileId: id }).then(() => {
+      setModels((prev) => prev.filter((m) => m.id !== id));
+      setSelectedId((prev) => (prev === id ? null : prev));
+      refreshFolders();
+      refreshTags();
+    });
+  };
+
   return (
     <div
       className="h-screen min-h-[620px] flex flex-col bg-[var(--bg)] text-[var(--ink)] overflow-hidden"
@@ -144,9 +159,19 @@ export default function App() {
 
           <div className="flex-1 overflow-y-auto p-4">
             {view === 'grid' ? (
-              <ModelGrid models={filtered} selectedId={selectedId} onSelect={setSelectedId} />
+              <ModelGrid
+                models={filtered}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                onContextMenu={(id, x, y) => setContextMenu({ modelId: id, x, y })}
+              />
             ) : (
-              <ModelList models={filtered} selectedId={selectedId} onSelect={setSelectedId} />
+              <ModelList
+                models={filtered}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                onContextMenu={(id, x, y) => setContextMenu({ modelId: id, x, y })}
+              />
             )}
           </div>
         </main>
@@ -155,11 +180,20 @@ export default function App() {
           model={selected}
           onAddTag={(t) => selected && addTag(selected.id, t)}
           onRemoveTag={(t) => selected && removeTag(selected.id, t)}
-          onOpenInSlicer={() => {
-            // Tauri: Pfad an registrierten Slicer übergeben
-          }}
+          onDelete={() => selected && deleteModel(selected.id)}
+          onOpenInSlicer={() => selected && openInSlicer(selected.id)}
         />
       </div>
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          onOpenInSlicer={() => openInSlicer(contextMenu.modelId)}
+          onDelete={() => deleteModel(contextMenu.modelId)}
+        />
+      )}
     </div>
   );
 }
