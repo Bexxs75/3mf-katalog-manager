@@ -13,6 +13,8 @@ export interface ModelFile {
   syncTimeLabel: string;
   volumeLabel: string;
   filesizeLabel: string;
+  fileSizeBytes: number;
+  importedAt: string;
   meta: { label: string; value: string }[];
 }
 

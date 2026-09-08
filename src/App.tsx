@@ -68,7 +68,8 @@ export default function App() {
       .filter((m) => !query || m.name.toLowerCase().includes(query.toLowerCase()))
       .sort((a, b) => {
         if (sort === 'name') return a.name.localeCompare(b.name);
-        if (sort === 'size') return a.filesizeLabel.localeCompare(b.filesizeLabel);
+        if (sort === 'size') return a.fileSizeBytes - b.fileSizeBytes;
+        if (sort === 'date') return b.importedAt.localeCompare(a.importedAt);
         return 0;
       });
   }, [models, activeFolderId, activeTag, query, sort]);

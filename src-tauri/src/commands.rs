@@ -32,6 +32,8 @@ pub struct ModelFileDto {
     pub sync_time_label: String,
     pub volume_label: String,
     pub filesize_label: String,
+    pub file_size_bytes: i64,
+    pub imported_at: String,
     pub meta: Vec<MetaRow>,
 }
 
@@ -92,6 +94,8 @@ fn to_dto(file: FileRecord) -> ModelFileDto {
         sync_time_label: format::format_relative_time_de(&file.imported_at),
         volume_label: format::format_volume_cm3(file.volume_cm3),
         filesize_label: format::format_bytes(file.file_size_bytes),
+        file_size_bytes: file.file_size_bytes,
+        imported_at: file.imported_at.clone(),
         meta: vec![
             MetaRow {
                 label: "Größe".to_string(),
