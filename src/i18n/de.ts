@@ -1,0 +1,72 @@
+import type { Translations } from './types';
+
+export const de: Translations = {
+  import: 'Importieren',
+  importMoreOptionsAria: 'Weitere Import-Optionen',
+  importFilesOption: 'Dateien...',
+  importFolderOption: 'Ordner...',
+
+  sortLabel: 'Sortieren',
+  sortName: 'Name',
+  sortDate: 'Datum',
+  sortSize: 'Dateigröße',
+  sortVolume: 'Volumen',
+
+  viewGrid: 'Raster',
+  viewList: 'Liste',
+
+  filesCount: { one: '{count} Datei', other: '{count} Dateien' },
+
+  settingsTitle: 'Einstellungen',
+  appearanceTitle: 'Erscheinungsbild',
+  themeSystem: 'System',
+  themeLight: 'Hell',
+  themeDark: 'Dunkel',
+  themeDescriptionSystem: 'Folgt automatisch der Systemeinstellung.',
+  themeDescriptionManual: 'Manuell auf {mode} festgelegt.',
+  languageTitle: 'Sprache',
+
+  searchPlaceholder: 'Name oder Tag suchen …',
+  foldersHeading: 'Ordner',
+  tagsHeading: 'Tags',
+  cloudAccountsHeading: 'Cloud-Konten',
+  cloudConnected: 'verbunden',
+  cloudError: 'Fehler',
+  cloudDisconnected: 'getrennt',
+
+  previewLabel3d: '3D Vorschau',
+
+  columnOrigin: 'Herkunft',
+  columnName: 'Name',
+  columnTags: 'Tags',
+  columnVolume: 'Volumen',
+  columnSize: 'Größe',
+  columnSync: 'Sync',
+
+  syncSynced: 'Aktuell',
+  syncOutdated: 'Veraltet',
+  syncLocalOnly: 'Nur lokal',
+  syncCloudOnly: 'Nur Cloud',
+
+  cancel: 'Abbrechen',
+  delete: 'Löschen',
+  openInSlicer: 'In Slicer öffnen',
+  deleteConfirmQuestion: 'Eintrag löschen?',
+  deleteAriaLabel: 'Eintrag löschen',
+
+  emptyStateText: 'Wähle ein Modell aus, um Details, Vorschau und Tags zu sehen.',
+  dragToRotate: 'Ziehen zum Drehen',
+  metadataHeading: 'Metadaten',
+  metaDimensions: 'Größe',
+  metaVolume: 'Volumen',
+  metaObjectCount: 'Objekte',
+  metaMaterial: 'Material',
+  metaFileSize: 'Dateigröße',
+  metaImported: 'Importiert',
+  noValue: '–',
+  hashtagsHeading: 'Hashtags',
+  addTagPlaceholder: 'Tag hinzufügen',
+
+  loadingPreview: 'Lädt Vorschau …',
+  previewUnavailable: 'Vorschau nicht verfügbar',
+};
