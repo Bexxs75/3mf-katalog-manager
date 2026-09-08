@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { ModelGrid } from './components/ModelGrid';
@@ -7,71 +8,12 @@ import { DetailPanel } from './components/DetailPanel';
 import { useTheme } from './hooks/useTheme';
 import type { ModelFile, Folder, TagCount, CloudAccount, ViewMode, SortKey } from './types';
 
-// Beispieldaten. In der echten Anwendung ersetzt durch Daten aus SQLite via Tauri Commands.
-const FOLDERS: Folder[] = [
-  { id: 'all', name: 'Alle Modelle', count: 128 },
-  { id: 'funktionsteile', name: 'Funktionsteile', count: 41 },
-  { id: 'ersatzteile', name: 'Ersatzteile', count: 19 },
-  { id: 'deko', name: 'Deko & Figuren', count: 33 },
-  { id: 'werkzeuge', name: 'Werkzeuge', count: 22 },
-];
-
-const TAGS: TagCount[] = [
-  { label: 'halterung', count: 14, colorHue: 30 },
-  { label: 'ersatzteil', count: 19, colorHue: 150 },
-  { label: 'mehrteilig', count: 8, colorHue: 210 },
-  { label: 'vase-mode', count: 6, colorHue: 280 },
-  { label: 'funktional', count: 22, colorHue: 30 },
-  { label: 'miniatur', count: 11, colorHue: 340 },
-];
-
+// Cloud-Anbindung ist noch nicht implementiert (spätere Phase) – Beispieldaten bleiben bis dahin.
 const CLOUDS: CloudAccount[] = [
   { id: 'gdrive', abbr: 'GD', name: 'Google Drive', status: 'connected', usedPercent: 38, quotaLabel: '5,7/15 GB' },
   { id: 'onedrive', abbr: 'OD', name: 'OneDrive', status: 'connected', usedPercent: 62, quotaLabel: '3,1/5 GB' },
   { id: 'dropbox', abbr: 'DB', name: 'Dropbox', status: 'disconnected', usedPercent: 0, quotaLabel: '—' },
   { id: 'proton', abbr: 'PD', name: 'Proton Drive', status: 'connected', usedPercent: 15, quotaLabel: '0,8/5 GB' },
-];
-
-const MODELS: ModelFile[] = [
-  {
-    id: '1', name: 'kabelhalter_v3.3mf', path: 'Funktionsteile / Halterungen', folderId: 'funktionsteile',
-    tags: ['halterung', 'funktional', 'petg', 'kabelmanagement'], origin: 'local', sync: 'synced',
-    syncTimeLabel: 'vor 2 Std.', volumeLabel: '6,4 cm³', filesizeLabel: '312 KB',
-    meta: [
-      { label: 'Größe', value: '42 × 38 × 16 mm' },
-      { label: 'Volumen', value: '6,4 cm³' },
-      { label: 'Objekte', value: '1' },
-      { label: 'Material', value: 'PETG' },
-      { label: 'Dateigröße', value: '312 KB' },
-      { label: 'Importiert', value: '03.09.2026' },
-    ],
-  },
-  {
-    id: '2', name: 'zahnrad_modul2.3mf', path: 'Ersatzteile', folderId: 'ersatzteile',
-    tags: ['ersatzteil'], origin: 'gdrive', sync: 'synced', syncTimeLabel: 'vor 1 Tag',
-    volumeLabel: '2,1 cm³', filesizeLabel: '198 KB',
-    meta: [
-      { label: 'Größe', value: '28 × 28 × 8 mm' },
-      { label: 'Volumen', value: '2,1 cm³' },
-      { label: 'Objekte', value: '1' },
-      { label: 'Material', value: 'PLA' },
-      { label: 'Dateigröße', value: '198 KB' },
-      { label: 'Importiert', value: '01.09.2026' },
-    ],
-  },
-  {
-    id: '3', name: 'vase_wellenform.3mf', path: 'Deko & Figuren', folderId: 'deko',
-    tags: ['vase-mode', 'deko'], origin: 'onedrive', sync: 'outdated', syncTimeLabel: 'vor 5 Tagen',
-    volumeLabel: '38,0 cm³', filesizeLabel: '540 KB',
-    meta: [
-      { label: 'Größe', value: '80 × 80 × 140 mm' },
-      { label: 'Volumen', value: '38,0 cm³' },
-      { label: 'Objekte', value: '1' },
-      { label: 'Material', value: 'PLA Silk' },
-      { label: 'Dateigröße', value: '540 KB' },
-      { label: 'Importiert', value: '28.08.2026' },
-    ],
-  },
 ];
 
 export default function App() {
@@ -81,8 +23,22 @@ export default function App() {
   const [query, setQuery] = useState('');
   const [activeFolderId, setActiveFolderId] = useState('all');
   const [activeTag, setActiveTag] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(MODELS[0]?.id ?? null);
-  const [models, setModels] = useState<ModelFile[]>(MODELS);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [models, setModels] = useState<ModelFile[]>([]);
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [tags, setTags] = useState<TagCount[]>([]);
+
+  const refreshFolders = () => invoke<Folder[]>('list_folders').then(setFolders);
+  const refreshTags = () => invoke<TagCount[]>('list_tag_counts').then(setTags);
+
+  useEffect(() => {
+    invoke<ModelFile[]>('list_files').then((files) => {
+      setModels(files);
+      setSelectedId((prev) => prev ?? files[0]?.id ?? null);
+    });
+    refreshFolders();
+    refreshTags();
+  }, []);
 
   const filtered = useMemo(() => {
     return models
@@ -98,8 +54,32 @@ export default function App() {
 
   const selected = models.find((m) => m.id === selectedId) ?? null;
 
-  const updateTags = (id: string, next: string[]) => {
+  const setLocalTags = (id: string, next: string[]) => {
     setModels((prev) => prev.map((m) => (m.id === id ? { ...m, tags: next } : m)));
+  };
+
+  const addTag = (id: string, tag: string) => {
+    const current = models.find((m) => m.id === id);
+    if (!current || current.tags.includes(tag)) return;
+    setLocalTags(id, [...current.tags, tag]);
+    invoke('add_tag', { fileId: id, tag }).then(refreshTags);
+  };
+
+  const removeTag = (id: string, tag: string) => {
+    const current = models.find((m) => m.id === id);
+    if (!current) return;
+    setLocalTags(id, current.tags.filter((t) => t !== tag));
+    invoke('remove_tag', { fileId: id, tag }).then(refreshTags);
+  };
+
+  const handleImport = () => {
+    invoke<ModelFile | null>('import_file').then((file) => {
+      if (!file) return;
+      setModels((prev) => [...prev, file]);
+      setSelectedId(file.id);
+      refreshFolders();
+      refreshTags();
+    });
   };
 
   return (
@@ -115,19 +95,17 @@ export default function App() {
         count={filtered.length}
         themeSetting={setting}
         onThemeChange={setTheme}
-        onImport={() => {
-          // Tauri: Datei-/Ordner-Dialog öffnen, anschließend 3MF Parsing anstoßen
-        }}
+        onImport={handleImport}
       />
 
       <div className="flex-1 flex min-h-0">
         <Sidebar
           query={query}
           onQueryChange={setQuery}
-          folders={FOLDERS}
+          folders={folders}
           activeFolderId={activeFolderId}
           onFolderSelect={setActiveFolderId}
-          tags={TAGS}
+          tags={tags}
           activeTag={activeTag}
           onTagSelect={setActiveTag}
           clouds={CLOUDS}
@@ -139,7 +117,7 @@ export default function App() {
         <main className="flex-1 min-w-0 flex flex-col min-h-0">
           <div className="flex-none h-[38px] flex items-center gap-2.5 px-4 border-b border-[var(--line)] bg-[var(--bg)]">
             <span className="font-mono-ui text-[11px] text-[var(--ink-2)]">
-              {FOLDERS.find((f) => f.id === activeFolderId)?.name}
+              {folders.find((f) => f.id === activeFolderId)?.name}
             </span>
             {activeTag && (
               <span
@@ -162,8 +140,8 @@ export default function App() {
 
         <DetailPanel
           model={selected}
-          onAddTag={(t) => selected && updateTags(selected.id, [...selected.tags, t])}
-          onRemoveTag={(t) => selected && updateTags(selected.id, selected.tags.filter((x) => x !== t))}
+          onAddTag={(t) => selected && addTag(selected.id, t)}
+          onRemoveTag={(t) => selected && removeTag(selected.id, t)}
           onOpenInSlicer={() => {
             // Tauri: Pfad an registrierten Slicer übergeben
           }}

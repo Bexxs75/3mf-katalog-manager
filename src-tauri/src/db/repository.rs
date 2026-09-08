@@ -72,6 +72,24 @@ fn get_or_create_tag(conn: &Connection, name: &str) -> Result<i64, DbError> {
     Ok(conn.last_insert_rowid())
 }
 
+pub fn add_tag_to_file(conn: &Connection, file_id: i64, tag_name: &str) -> Result<(), DbError> {
+    let tag_id = get_or_create_tag(conn, tag_name)?;
+    conn.execute(
+        "INSERT OR IGNORE INTO file_tags (file_id, tag_id) VALUES (?1, ?2)",
+        params![file_id, tag_id],
+    )?;
+    Ok(())
+}
+
+pub fn remove_tag_from_file(conn: &Connection, file_id: i64, tag_name: &str) -> Result<(), DbError> {
+    conn.execute(
+        "DELETE FROM file_tags
+         WHERE file_id = ?1 AND tag_id = (SELECT id FROM tags WHERE name = ?2)",
+        params![file_id, tag_name],
+    )?;
+    Ok(())
+}
+
 pub fn list_tag_counts(conn: &Connection) -> Result<Vec<TagCount>, DbError> {
     let mut stmt = conn.prepare(
         "SELECT t.name, t.color_hue, COUNT(ft.file_id)

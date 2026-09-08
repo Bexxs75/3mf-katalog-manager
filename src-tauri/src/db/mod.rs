@@ -3,7 +3,8 @@ pub mod models;
 mod repository;
 
 pub use repository::{
-    connect, get_file, insert_file, insert_folder, list_files, list_folders, list_tag_counts,
+    add_tag_to_file, connect, get_file, insert_file, insert_folder, list_files, list_folders,
+    list_tag_counts, remove_tag_from_file,
 };
 
 #[cfg(test)]
@@ -117,5 +118,20 @@ mod tests {
             .expect("cube tag after");
         assert_eq!(cube_tag_after.count, 2);
         assert_eq!(cube_tag_after.color_hue, cube_tag.color_hue);
+    }
+
+    #[test]
+    fn adds_and_removes_tags_on_a_file() {
+        let mut conn = connect_in_memory().expect("connect");
+        let id = insert_file(&mut conn, &sample_file()).expect("insert");
+
+        add_tag_to_file(&conn, id, "neu-hinzugefuegt").expect("add tag");
+        let file = get_file(&conn, id).expect("query").expect("present");
+        assert!(file.tags.contains(&"neu-hinzugefuegt".to_string()));
+
+        remove_tag_from_file(&conn, id, "cube").expect("remove tag");
+        let file = get_file(&conn, id).expect("query").expect("present");
+        assert!(!file.tags.contains(&"cube".to_string()));
+        assert!(file.tags.contains(&"neu-hinzugefuegt".to_string()));
     }
 }
