@@ -1,6 +1,7 @@
 mod db;
 mod geometry;
 mod stl;
+mod tagging;
 mod threemf;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
