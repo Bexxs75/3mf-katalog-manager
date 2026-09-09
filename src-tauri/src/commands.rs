@@ -9,6 +9,7 @@ use tauri_plugin_dialog::DialogExt;
 
 use crate::db::models::{FileType, MaterialRecord, NewFile};
 use crate::db::{self, models::FileRecord};
+use crate::geometry::RenderMesh;
 use crate::tagging::{self, TaggingContext};
 use crate::{stl, threemf};
 
@@ -372,18 +373,204 @@ pub fn import_dropped(state: State<AppState>, paths: Vec<String>) -> CmdResult<V
 // (Rust-seitig `STANDARD.encode`, JS-seitig `atob` + Byte-fuer-Byte-Kopie)
 // eine spuerbare Verzoegerung beim Laden der 3D-Vorschau. Das Frontend
 // bestimmt die Dateiendung selbst aus dem bereits bekannten Dateinamen.
+// Encodiert die extrahierte Geometrie als einzelnen Binaerstrom fuer
+// tauri::ipc::Response: 4 Bytes Headerlaenge (u32 LE), dann ein mit
+// Leerzeichen auf ein Vielfaches von 4 Bytes aufgepolsterter JSON-Header,
+// gefolgt von den rohen Float32/Uint32-Puffern je Mesh in Header-
+// Reihenfolge. Jeder Abschnitt (Position/Normale/Index) besteht
+// ausschliesslich aus 4-Byte-Elementen, daher bleibt der laufende Offset
+// nach jedem Mesh automatisch ein Vielfaches von 4 - keine zusaetzliche
+// Ausrichtungs-Behandlung noetig (siehe auch die Wire-Format-Beschreibung
+// in src/lib/parseModelGeometry.ts auf der Frontend-Seite).
+fn encode_render_meshes(meshes: &[RenderMesh]) -> Vec<u8> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct MeshHeaderEntry {
+        vertex_count: usize,
+        has_normal: bool,
+        index_count: usize,
+    }
+
+    let headers: Vec<MeshHeaderEntry> = meshes
+        .iter()
+        .map(|m| MeshHeaderEntry {
+            vertex_count: m.positions.len(),
+            has_normal: m.normals.is_some(),
+            index_count: m.indices.len() * 3,
+        })
+        .collect();
+
+    let mut header_json =
+        serde_json::to_vec(&headers).expect("mesh header serialization cannot fail");
+    while (4 + header_json.len()) % 4 != 0 {
+        header_json.push(b' ');
+    }
+
+    let mut out = Vec::with_capacity(4 + header_json.len());
+    out.extend_from_slice(&(header_json.len() as u32).to_le_bytes());
+    out.extend_from_slice(&header_json);
+
+    for mesh in meshes {
+        for p in &mesh.positions {
+            for &c in p {
+                out.extend_from_slice(&c.to_le_bytes());
+            }
+        }
+        if let Some(normals) = &mesh.normals {
+            for n in normals {
+                for &c in n {
+                    out.extend_from_slice(&c.to_le_bytes());
+                }
+            }
+        }
+        for tri in &mesh.indices {
+            for &idx in tri {
+                out.extend_from_slice(&idx.to_le_bytes());
+            }
+        }
+    }
+
+    out
+}
+
 #[tauri::command]
-pub fn get_model_geometry(
-    state: State<AppState>,
+pub async fn get_model_geometry(
+    state: State<'_, AppState>,
     file_id: String,
 ) -> Result<tauri::ipc::Response, String> {
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
-    let conn = lock_db(&state)?;
-    let file = db::get_file(&conn, id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "file not found".to_string())?;
 
-    let bytes = std::fs::read(&file.path).map_err(|e| e.to_string())?;
+    // Der MutexGuard aus lock_db muss vor dem .await unten aus dem Scope
+    // laufen (nicht nur per drop()): std::sync::MutexGuard ist nicht Send,
+    // und der Compiler haelt ihn sonst faelschlich fuer potenziell ueber die
+    // .await-Grenze hinweg lebendig, was den Command-Handler nicht mehr
+    // Send-kompatibel macht (siehe rust-lang/rust#57478 - ein expliziter
+    // drop()-Aufruf allein genuegt dafuer nicht).
+    let file = {
+        let conn = lock_db(&state)?;
+        db::get_file(&conn, id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "file not found".to_string())?
+    };
 
-    Ok(tauri::ipc::Response::new(bytes))
+    let path = PathBuf::from(file.path);
+    let extension = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .ok_or_else(|| "file has no extension".to_string())?;
+
+    let meshes = tauri::async_runtime::spawn_blocking(move || -> CmdResult<Vec<RenderMesh>> {
+        match extension.as_str() {
+            "stl" => {
+                let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+                let mesh = stl::parse_stl_geometry(&bytes).map_err(|e| e.to_string())?;
+                Ok(vec![mesh])
+            }
+            "3mf" => threemf::extract_render_meshes_from_path(&path).map_err(|e| e.to_string()),
+            other => Err(format!("nicht unterstütztes Dateiformat: {other}")),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    Ok(tauri::ipc::Response::new(encode_render_meshes(&meshes)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::geometry::RenderMesh;
+
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct HeaderEntryForTest {
+        vertex_count: usize,
+        has_normal: bool,
+        index_count: usize,
+    }
+
+    fn decode_for_test(bytes: &[u8]) -> Vec<(Vec<[f32; 3]>, Option<Vec<[f32; 3]>>, Vec<u32>)> {
+        let header_len = u32::from_le_bytes(bytes[0..4].try_into().unwrap()) as usize;
+        let header_json = std::str::from_utf8(&bytes[4..4 + header_len]).unwrap();
+        let headers: Vec<HeaderEntryForTest> = serde_json::from_str(header_json).unwrap();
+
+        let mut offset = 4 + header_len;
+        let mut result = Vec::new();
+        for h in headers {
+            let mut positions = Vec::with_capacity(h.vertex_count);
+            for _ in 0..h.vertex_count {
+                let x = f32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
+                let y = f32::from_le_bytes(bytes[offset + 4..offset + 8].try_into().unwrap());
+                let z = f32::from_le_bytes(bytes[offset + 8..offset + 12].try_into().unwrap());
+                positions.push([x, y, z]);
+                offset += 12;
+            }
+
+            let normals = if h.has_normal {
+                let mut ns = Vec::with_capacity(h.vertex_count);
+                for _ in 0..h.vertex_count {
+                    let x = f32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
+                    let y = f32::from_le_bytes(bytes[offset + 4..offset + 8].try_into().unwrap());
+                    let z = f32::from_le_bytes(bytes[offset + 8..offset + 12].try_into().unwrap());
+                    ns.push([x, y, z]);
+                    offset += 12;
+                }
+                Some(ns)
+            } else {
+                None
+            };
+
+            let mut indices = Vec::with_capacity(h.index_count);
+            for _ in 0..h.index_count {
+                let idx = u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
+                indices.push(idx);
+                offset += 4;
+            }
+
+            result.push((positions, normals, indices));
+        }
+        assert_eq!(offset, bytes.len(), "encoder should not leave trailing bytes");
+        result
+    }
+
+    #[test]
+    fn encode_render_meshes_roundtrips_positions_normals_and_indices() {
+        let meshes = vec![
+            RenderMesh {
+                positions: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+                indices: vec![[0, 1, 2]],
+                normals: Some(vec![[0.0, 0.0, 1.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0]]),
+            },
+            RenderMesh {
+                positions: vec![
+                    [5.0, 5.0, 5.0],
+                    [6.0, 5.0, 5.0],
+                    [5.0, 6.0, 5.0],
+                    [5.0, 5.0, 6.0],
+                ],
+                indices: vec![[0, 1, 2], [0, 1, 3]],
+                normals: None,
+            },
+        ];
+
+        let bytes = encode_render_meshes(&meshes);
+        let decoded = decode_for_test(&bytes);
+
+        assert_eq!(decoded.len(), 2);
+        assert_eq!(decoded[0].0, meshes[0].positions);
+        assert_eq!(decoded[0].1, meshes[0].normals);
+        assert_eq!(decoded[0].2, vec![0, 1, 2]);
+
+        assert_eq!(decoded[1].0, meshes[1].positions);
+        assert_eq!(decoded[1].1, None);
+        assert_eq!(decoded[1].2, vec![0, 1, 2, 0, 1, 3]);
+    }
+
+    #[test]
+    fn encode_render_meshes_handles_empty_mesh_list() {
+        let bytes = encode_render_meshes(&[]);
+        let decoded = decode_for_test(&bytes);
+        assert!(decoded.is_empty());
+    }
 }
