@@ -6,20 +6,9 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { ThreeMFLoader } from 'three/examples/jsm/loaders/3MFLoader.js';
 
-interface GeometryPayload {
-  extension: string;
-  dataBase64: string;
-}
-
 interface Props {
   fileId: string;
-}
-
-function base64ToArrayBuffer(base64: string): ArrayBuffer {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes.buffer;
+  extension: string;
 }
 
 function frameObject(object: THREE.Object3D, camera: THREE.PerspectiveCamera, controls: OrbitControls) {
@@ -58,7 +47,7 @@ interface ViewerContext {
   currentObject: THREE.Object3D | null;
 }
 
-export function ModelViewer({ fileId }: Props) {
+export function ModelViewer({ fileId, extension }: Props) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const ctxRef = useRef<ViewerContext | null>(null);
@@ -142,17 +131,16 @@ export function ModelViewer({ fileId }: Props) {
     let cancelled = false;
     setStatus('loading');
 
-    invoke<GeometryPayload>('get_model_geometry', { fileId })
-      .then((payload) => {
+    invoke<ArrayBuffer>('get_model_geometry', { fileId })
+      .then((buffer) => {
         if (cancelled) return;
-        const buffer = base64ToArrayBuffer(payload.dataBase64);
 
         let object: THREE.Object3D;
-        if (payload.extension === 'stl') {
+        if (extension === 'stl') {
           const geometry = new STLLoader().parse(buffer);
           geometry.computeVertexNormals();
           object = new THREE.Mesh(geometry, ctx.material);
-        } else if (payload.extension === '3mf') {
+        } else if (extension === '3mf') {
           const group = new ThreeMFLoader().parse(buffer);
           group.traverse((child) => {
             if (child instanceof THREE.Mesh) {
@@ -161,7 +149,7 @@ export function ModelViewer({ fileId }: Props) {
           });
           object = group;
         } else {
-          throw new Error(`nicht unterstütztes Format: ${payload.extension}`);
+          throw new Error(`nicht unterstütztes Format: ${extension}`);
         }
 
         if (ctx.currentObject) {
@@ -188,7 +176,7 @@ export function ModelViewer({ fileId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [fileId]);
+  }, [fileId, extension]);
 
   return (
     <div className="relative w-full h-full">

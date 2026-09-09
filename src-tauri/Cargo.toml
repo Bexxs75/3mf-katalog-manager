@@ -27,7 +27,6 @@ zip = "2"
 quick-xml = "0.36"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
-base64 = "0.22"
 oauth2 = "5.0.0"
 keyring = "4.2.0"
 reqwest = { version = "0.13.5", features = ["json", "query"] }
