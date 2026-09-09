@@ -258,7 +258,13 @@ export function Header({
                 <input
                   value={pendingSlicerName}
                   onChange={(e) => setPendingSlicerName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && confirmAddSlicer()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') confirmAddSlicer();
+                    if (e.key === 'Escape') {
+                      setPendingSlicerPath(null);
+                      setPendingSlicerName('');
+                    }
+                  }}
                   autoFocus
                   className="flex-1 h-7 px-2 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-[12.5px]"
                 />
@@ -267,6 +273,16 @@ export function Header({
                   className="h-7 px-2.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[11.5px] font-semibold cursor-pointer"
                 >
                   {t('confirmSlicerName')}
+                </button>
+                <button
+                  onClick={() => {
+                    setPendingSlicerPath(null);
+                    setPendingSlicerName('');
+                  }}
+                  aria-label={t('cancel')}
+                  className="flex-none w-7 h-7 grid place-items-center rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-[11px] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                >
+                  ✕
                 </button>
               </div>
             ) : (
