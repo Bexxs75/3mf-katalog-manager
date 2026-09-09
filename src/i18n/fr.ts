@@ -54,6 +54,13 @@ export const fr: Translations = {
   openInSlicer: 'Ouvrir dans le slicer',
   deleteConfirmQuestion: "Supprimer l'entrée ?",
   deleteAriaLabel: "Supprimer l'entrée",
+  slicerSectionTitle: 'Slicer',
+  noSlicersConfigured: 'Aucun slicer configuré.',
+  addSlicer: 'Ajouter',
+  confirmSlicerName: 'Confirmer',
+  removeSlicerAria: 'Supprimer le slicer',
+  chooseSlicerAria: 'Choisir un autre slicer',
+  slicerLaunchError: 'Impossible de démarrer le slicer :',
 
   emptyStateText: "Sélectionnez un modèle pour voir les détails, l'aperçu et les tags.",
   dragToRotate: 'Glisser pour faire pivoter',

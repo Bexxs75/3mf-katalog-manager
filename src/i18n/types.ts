@@ -59,6 +59,13 @@ export interface Translations {
   openInSlicer: string;
   deleteConfirmQuestion: string;
   deleteAriaLabel: string;
+  slicerSectionTitle: string;
+  noSlicersConfigured: string;
+  addSlicer: string;
+  confirmSlicerName: string;
+  removeSlicerAria: string;
+  chooseSlicerAria: string;
+  slicerLaunchError: string;
 
   emptyStateText: string;
   dragToRotate: string;
