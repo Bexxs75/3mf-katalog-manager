@@ -9,6 +9,7 @@ import { DetailPanel } from './components/DetailPanel';
 import { ContextMenu } from './components/ContextMenu';
 import { CloudBrowserDialog } from './components/CloudBrowserDialog';
 import { useTheme } from './hooks/useTheme';
+import { useSlicers } from './hooks/useSlicers';
 import type { ModelFile, Folder, TagCount, CloudAccount, Origin, ViewMode, SortKey } from './types';
 
 interface CloudAccountDto {
@@ -31,6 +32,9 @@ const toCloudAccount = (dto: CloudAccountDto): CloudAccount => ({
 
 export default function App() {
   const { setting, setTheme } = useTheme();
+  const { slicers, lastUsedId, addSlicer, removeSlicer, setLastUsed } = useSlicers();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [slicerError, setSlicerError] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>('grid');
   const [sort, setSort] = useState<SortKey>('name');
   const [query, setQuery] = useState('');
@@ -158,8 +162,26 @@ export default function App() {
   const importFiles = () => invoke<ModelFile[]>('import_files').then(mergeImported);
   const importFolder = () => invoke<ModelFile[]>('import_folder').then(mergeImported);
 
-  const openInSlicer = (_id: string) => {
-    // Tauri: Pfad an registrierten Slicer übergeben
+  const openInSlicer = (id: string, slicerId?: string) => {
+    const model = models.find((m) => m.id === id);
+    if (!model) return;
+    if (slicers.length === 0) {
+      setSettingsOpen(true);
+      return;
+    }
+    const target = slicerId
+      ? slicers.find((s) => s.id === slicerId)
+      : slicers.find((s) => s.id === lastUsedId) ?? slicers[0];
+    if (!target) {
+      setSettingsOpen(true);
+      return;
+    }
+    setLastUsed(target.id);
+    setSlicerError(null);
+    invoke('open_in_slicer', { slicerPath: target.path, filePath: model.path }).catch((e) => {
+      console.error('[slicer] Start fehlgeschlagen:', e);
+      setSlicerError(String(e));
+    });
   };
 
   const deleteModel = (id: string) => {
@@ -188,6 +210,11 @@ export default function App() {
         onImportFolder={importFolder}
         cloudDriveConnected={clouds.some((c) => c.id === 'gdrive' && c.status === 'connected')}
         onImportFromCloud={() => setCloudBrowserOpen(true)}
+        settingsOpen={settingsOpen}
+        onSettingsOpenChange={setSettingsOpen}
+        slicers={slicers}
+        onAddSlicer={addSlicer}
+        onRemoveSlicer={removeSlicer}
       />
 
       <div className="flex-1 flex min-h-0">
@@ -256,7 +283,9 @@ export default function App() {
           onAddTag={(t) => selected && addTag(selected.id, t)}
           onRemoveTag={(t) => selected && removeTag(selected.id, t)}
           onDelete={() => selected && deleteModel(selected.id)}
-          onOpenInSlicer={() => selected && openInSlicer(selected.id)}
+          onOpenInSlicer={(slicerId) => selected && openInSlicer(selected.id, slicerId)}
+          slicers={slicers}
+          slicerError={slicerError}
         />
       </div>
 
