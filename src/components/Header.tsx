@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import type { ViewMode, SortKey } from '../types';
+import { invoke } from '@tauri-apps/api/core';
+import type { ViewMode, SortKey, SlicerConfig } from '../types';
 import type { ThemeSetting } from '../hooks/useTheme';
 import type { Language } from '../i18n/types';
 import { formatCount } from '../i18n/types';
@@ -17,6 +18,11 @@ interface Props {
   onImportFolder: () => void;
   cloudDriveConnected: boolean;
   onImportFromCloud: () => void;
+  settingsOpen: boolean;
+  onSettingsOpenChange: (open: boolean) => void;
+  slicers: SlicerConfig[];
+  onAddSlicer: (name: string, path: string) => void;
+  onRemoveSlicer: (id: string) => void;
 }
 
 const segBase =
@@ -43,11 +49,34 @@ export function Header({
   onImportFolder,
   cloudDriveConnected,
   onImportFromCloud,
+  settingsOpen,
+  onSettingsOpenChange,
+  slicers,
+  onAddSlicer,
+  onRemoveSlicer,
 }: Props) {
   const t = useT();
   const { language, setLanguage } = useLanguage();
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [importMenuOpen, setImportMenuOpen] = useState(false);
+  const [pendingSlicerPath, setPendingSlicerPath] = useState<string | null>(null);
+  const [pendingSlicerName, setPendingSlicerName] = useState('');
+
+  const handlePickSlicer = () => {
+    invoke<string | null>('pick_slicer_executable').then((path) => {
+      if (!path) return;
+      const fileName = path.split(/[/\\]/).pop() ?? path;
+      const suggested = fileName.replace(/\.[^./\\]+$/, '');
+      setPendingSlicerPath(path);
+      setPendingSlicerName(suggested);
+    });
+  };
+
+  const confirmAddSlicer = () => {
+    if (!pendingSlicerPath || !pendingSlicerName.trim()) return;
+    onAddSlicer(pendingSlicerName.trim(), pendingSlicerPath);
+    setPendingSlicerPath(null);
+    setPendingSlicerName('');
+  };
 
   return (
     <header className="flex-none h-[54px] flex items-center gap-[18px] px-[14px] bg-[var(--panel)] border-b border-[var(--line)]">
@@ -153,7 +182,7 @@ export function Header({
 
       <div className="relative shrink-0">
         <button
-          onClick={() => setSettingsOpen((o) => !o)}
+          onClick={() => onSettingsOpenChange(!settingsOpen)}
           className="w-8 h-8 grid place-items-center rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink-2)] text-[15px] cursor-pointer hover:text-[var(--ink)] hover:border-[var(--line-strong)]"
         >
           ⚙
@@ -197,6 +226,57 @@ export function Header({
                 </button>
               ))}
             </div>
+
+            <div className="text-[13px] font-semibold mt-4 mb-2">{t('slicerSectionTitle')}</div>
+            {slicers.length === 0 ? (
+              <div className="font-mono-ui text-[10.5px] text-[var(--ink-3)]">
+                {t('noSlicersConfigured')}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {slicers.map((s) => (
+                  <div key={s.id} className="flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[12.5px] text-[var(--ink)] truncate">{s.name}</div>
+                      <div className="font-mono-ui text-[10px] text-[var(--ink-3)] truncate">
+                        {s.path}
+                      </div>
+                    </div>
+                    <span
+                      onClick={() => onRemoveSlicer(s.id)}
+                      aria-label={t('removeSlicerAria')}
+                      className="w-4 h-4 grid place-items-center rounded-full cursor-pointer text-[10px] text-[var(--ink-3)] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
+                    >
+                      ✕
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {pendingSlicerPath ? (
+              <div className="flex items-center gap-1.5 mt-2">
+                <input
+                  value={pendingSlicerName}
+                  onChange={(e) => setPendingSlicerName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && confirmAddSlicer()}
+                  autoFocus
+                  className="flex-1 h-7 px-2 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-[12.5px]"
+                />
+                <button
+                  onClick={confirmAddSlicer}
+                  className="h-7 px-2.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[11.5px] font-semibold cursor-pointer"
+                >
+                  {t('confirmSlicerName')}
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handlePickSlicer}
+                className="mt-2 h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              >
+                + {t('addSlicer')}
+              </button>
+            )}
           </div>
         )}
       </div>
