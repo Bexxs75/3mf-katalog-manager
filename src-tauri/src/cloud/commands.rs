@@ -216,3 +216,42 @@ pub async fn import_from_cloud(
 
     Ok(imported)
 }
+
+#[tauri::command]
+pub async fn check_cloud_sync_status(state: State<'_, AppState>, file_id: String) -> CmdResult<String> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+
+    let (cloud_id, last_known_modified, current_status) = {
+        let conn = lock_db(&state)?;
+        let file = db::get_file(&conn, id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "file not found".to_string())?;
+        (file.cloud_id, file.file_modified_at, file.sync_status)
+    };
+
+    let Some(cloud_id) = cloud_id else {
+        return Ok(current_status);
+    };
+
+    let metadata = with_gdrive_provider(&state, {
+        let cloud_id = cloud_id.clone();
+        move |provider| {
+            let cloud_id = cloud_id.clone();
+            async move { provider.get_metadata(&cloud_id).await }
+        }
+    })
+    .await?;
+
+    let new_status = if last_known_modified.as_deref() == Some(metadata.modified_time.as_str()) {
+        "synced"
+    } else {
+        "outdated"
+    };
+
+    {
+        let conn = lock_db(&state)?;
+        db::set_file_sync_status(&conn, id, new_status).map_err(|e| e.to_string())?;
+    }
+
+    Ok(new_status.to_string())
+}

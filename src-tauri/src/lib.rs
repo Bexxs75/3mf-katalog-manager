@@ -48,6 +48,7 @@ pub fn run() {
             cloud::commands::list_cloud_accounts,
             cloud::commands::browse_cloud_folder,
             cloud::commands::import_from_cloud,
+            cloud::commands::check_cloud_sync_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
