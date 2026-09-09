@@ -9,7 +9,6 @@ use tauri_plugin_dialog::DialogExt;
 
 use crate::db::models::{FileType, MaterialRecord, NewFile};
 use crate::db::{self, models::FileRecord};
-use crate::format;
 use crate::tagging::{self, TaggingContext};
 use crate::{stl, threemf};
 
@@ -29,18 +28,19 @@ pub struct ModelFileDto {
     pub tags: Vec<String>,
     pub origin: String,
     pub sync: String,
-    pub sync_time_label: String,
-    pub volume_label: String,
-    pub filesize_label: String,
+    pub dimensions_mm: Option<[f64; 3]>,
+    pub volume_cm3: Option<f64>,
+    pub object_count: Option<i64>,
+    pub materials: Vec<MaterialDto>,
     pub file_size_bytes: i64,
     pub imported_at: String,
-    pub meta: Vec<MetaRow>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct MetaRow {
-    pub label: String,
-    pub value: String,
+#[serde(rename_all = "camelCase")]
+pub struct MaterialDto {
+    pub name: String,
+    pub display_color: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -66,20 +66,6 @@ pub struct TagCountDto {
 }
 
 fn to_dto(file: FileRecord) -> ModelFileDto {
-    let materials_label = if file.materials.is_empty() {
-        "–".to_string()
-    } else {
-        file.materials
-            .iter()
-            .map(|m| m.name.as_str())
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
-    let object_count_label = file
-        .object_count
-        .map(|c| c.to_string())
-        .unwrap_or_else(|| "–".to_string());
-
     ModelFileDto {
         id: file.id.to_string(),
         name: file.name,
@@ -91,37 +77,19 @@ fn to_dto(file: FileRecord) -> ModelFileDto {
         tags: file.tags,
         origin: file.origin,
         sync: file.sync_status,
-        sync_time_label: format::format_relative_time_de(&file.imported_at),
-        volume_label: format::format_volume_cm3(file.volume_cm3),
-        filesize_label: format::format_bytes(file.file_size_bytes),
+        dimensions_mm: file.dimensions_mm,
+        volume_cm3: file.volume_cm3,
+        object_count: file.object_count,
+        materials: file
+            .materials
+            .into_iter()
+            .map(|m| MaterialDto {
+                name: m.name,
+                display_color: m.display_color,
+            })
+            .collect(),
         file_size_bytes: file.file_size_bytes,
-        imported_at: file.imported_at.clone(),
-        meta: vec![
-            MetaRow {
-                label: "Größe".to_string(),
-                value: format::format_dimensions(file.dimensions_mm),
-            },
-            MetaRow {
-                label: "Volumen".to_string(),
-                value: format::format_volume_cm3(file.volume_cm3),
-            },
-            MetaRow {
-                label: "Objekte".to_string(),
-                value: object_count_label,
-            },
-            MetaRow {
-                label: "Material".to_string(),
-                value: materials_label,
-            },
-            MetaRow {
-                label: "Dateigröße".to_string(),
-                value: format::format_bytes(file.file_size_bytes),
-            },
-            MetaRow {
-                label: "Importiert".to_string(),
-                value: format::format_date_de(&file.imported_at),
-            },
-        ],
+        imported_at: file.imported_at,
     }
 }
 
