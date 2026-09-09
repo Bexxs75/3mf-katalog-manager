@@ -41,17 +41,37 @@ function frameObject(object: THREE.Object3D, camera: THREE.PerspectiveCamera, co
   controls.update();
 }
 
+function disposeObject(object: THREE.Object3D) {
+  object.traverse((child) => {
+    if (child instanceof THREE.Mesh) {
+      child.geometry.dispose();
+    }
+  });
+}
+
+interface ViewerContext {
+  scene: THREE.Scene;
+  camera: THREE.PerspectiveCamera;
+  renderer: THREE.WebGLRenderer;
+  controls: OrbitControls;
+  material: THREE.MeshStandardMaterial;
+  currentObject: THREE.Object3D | null;
+}
+
 export function ModelViewer({ fileId }: Props) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
+  const ctxRef = useRef<ViewerContext | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
 
+  // Renderer/Szene/Kamera/Controls/Licht werden nur einmal beim Mounten
+  // aufgebaut und beim Unmounten freigegeben - ein WebGL-Kontext-Neuaufbau
+  // ist teuer und bremste bei jedem Modellwechsel spuerbar die ganze App
+  // aus. Modellwechsel (zweiter Effekt unten) tauschen nur das angezeigte
+  // Objekt in dieser bestehenden Szene aus.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-
-    let disposed = false;
-    let frameHandle = 0;
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 1000);
@@ -89,6 +109,7 @@ export function ModelViewer({ fileId }: Props) {
     resizeObserver.observe(container);
     resize();
 
+    let frameHandle = 0;
     const animate = () => {
       frameHandle = requestAnimationFrame(animate);
       controls.update();
@@ -96,22 +117,46 @@ export function ModelViewer({ fileId }: Props) {
     };
     animate();
 
+    ctxRef.current = { scene, camera, renderer, controls, material, currentObject: null };
+
+    return () => {
+      cancelAnimationFrame(frameHandle);
+      resizeObserver.disconnect();
+      controls.dispose();
+      if (ctxRef.current?.currentObject) {
+        disposeObject(ctxRef.current.currentObject);
+      }
+      material.dispose();
+      renderer.dispose();
+      container.removeChild(renderer.domElement);
+      ctxRef.current = null;
+    };
+  }, []);
+
+  // Modellwechsel: laedt die neue Geometrie und ersetzt nur das Objekt in
+  // der bereits bestehenden Szene, statt den ganzen Viewer neu aufzubauen.
+  useEffect(() => {
+    const ctx = ctxRef.current;
+    if (!ctx) return;
+
+    let cancelled = false;
     setStatus('loading');
+
     invoke<GeometryPayload>('get_model_geometry', { fileId })
       .then((payload) => {
-        if (disposed) return;
+        if (cancelled) return;
         const buffer = base64ToArrayBuffer(payload.dataBase64);
 
         let object: THREE.Object3D;
         if (payload.extension === 'stl') {
           const geometry = new STLLoader().parse(buffer);
           geometry.computeVertexNormals();
-          object = new THREE.Mesh(geometry, material);
+          object = new THREE.Mesh(geometry, ctx.material);
         } else if (payload.extension === '3mf') {
           const group = new ThreeMFLoader().parse(buffer);
           group.traverse((child) => {
             if (child instanceof THREE.Mesh) {
-              child.material = material;
+              child.material = ctx.material;
             }
           });
           object = group;
@@ -119,29 +164,29 @@ export function ModelViewer({ fileId }: Props) {
           throw new Error(`nicht unterstütztes Format: ${payload.extension}`);
         }
 
-        scene.add(object);
-        resize();
-        frameObject(object, camera, controls);
+        if (ctx.currentObject) {
+          ctx.scene.remove(ctx.currentObject);
+          disposeObject(ctx.currentObject);
+        }
+        ctx.currentObject = object;
+        ctx.scene.add(object);
+
+        const container = containerRef.current;
+        if (container && container.clientWidth && container.clientHeight) {
+          ctx.camera.aspect = container.clientWidth / container.clientHeight;
+          ctx.camera.updateProjectionMatrix();
+          ctx.renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+        frameObject(object, ctx.camera, ctx.controls);
         setStatus('ready');
       })
       .catch((err) => {
         console.error('[ModelViewer] Laden fehlgeschlagen:', err);
-        if (!disposed) setStatus('error');
+        if (!cancelled) setStatus('error');
       });
 
     return () => {
-      disposed = true;
-      cancelAnimationFrame(frameHandle);
-      resizeObserver.disconnect();
-      controls.dispose();
-      scene.traverse((child) => {
-        if (child instanceof THREE.Mesh) {
-          child.geometry.dispose();
-        }
-      });
-      material.dispose();
-      renderer.dispose();
-      container.removeChild(renderer.domElement);
+      cancelled = true;
     };
   }, [fileId]);
 
