@@ -49,6 +49,24 @@ export default function App() {
   const refreshClouds = () =>
     invoke<CloudAccountDto[]>('list_cloud_accounts').then((accounts) => setClouds(accounts.map(toCloudAccount)));
 
+  // Weitere Anbieter (OneDrive/Dropbox/Proton) haben noch keinen eigenen
+  // Connect-Command im Backend - bis dahin verbindet dieser Handler nur
+  // Google Drive, unabhaengig von welcher Zeile/welchem "+" er ausgeloest wird.
+  const connectCloud = (id: string) => {
+    if (connectingCloud || id !== 'gdrive') return;
+    setConnectingCloud(true);
+    invoke('connect_google_drive')
+      .then(() => {
+        setCloudError(null);
+        refreshClouds();
+      })
+      .catch((e) => {
+        console.error('[cloud] Google Drive verbinden fehlgeschlagen:', e);
+        setCloudError(String(e));
+      })
+      .finally(() => setConnectingCloud(false));
+  };
+
   const mergeImported = (files: ModelFile[]) => {
     if (!files.length) return;
     setModels((prev) => [...prev, ...files]);
@@ -155,20 +173,8 @@ export default function App() {
           onTagSelect={setActiveTag}
           clouds={clouds}
           cloudError={cloudError}
-          onAddCloud={() => {
-            if (connectingCloud) return;
-            setConnectingCloud(true);
-            invoke('connect_google_drive')
-              .then(() => {
-                setCloudError(null);
-                refreshClouds();
-              })
-              .catch((e) => {
-                console.error('[cloud] Google Drive verbinden fehlgeschlagen:', e);
-                setCloudError(String(e));
-              })
-              .finally(() => setConnectingCloud(false));
-          }}
+          onAddCloud={() => connectCloud('gdrive')}
+          onConnectCloud={connectCloud}
           onDisconnectCloud={(id) => {
             invoke('disconnect_cloud_account', { provider: id })
               .then(() => {

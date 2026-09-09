@@ -13,6 +13,7 @@ interface Props {
   clouds: CloudAccount[];
   cloudError: string | null;
   onAddCloud: () => void;
+  onConnectCloud: (id: string) => void;
   onDisconnectCloud: (id: string) => void;
 }
 
@@ -45,6 +46,7 @@ export function Sidebar({
   clouds,
   cloudError,
   onAddCloud,
+  onConnectCloud,
   onDisconnectCloud,
 }: Props) {
   const t = useT();
@@ -134,13 +136,13 @@ export function Sidebar({
                 {providerName[c.id] ?? c.name}
               </span>
               <span
-                onClick={() => c.status !== 'disconnected' && onDisconnectCloud(c.id)}
-                className={`font-mono-ui text-[10px] ${
+                onClick={() =>
+                  c.status === 'disconnected' ? onConnectCloud(c.id) : onDisconnectCloud(c.id)
+                }
+                className={`font-mono-ui text-[10px] cursor-pointer ${
                   c.status === 'connected'
-                    ? 'text-[var(--ink-3)] cursor-pointer hover:text-[var(--accent)]'
-                    : c.status === 'error'
-                    ? 'text-[var(--accent)] cursor-pointer hover:opacity-70'
-                    : 'text-[var(--accent)]'
+                    ? 'text-[var(--ink-3)] hover:text-[var(--accent)]'
+                    : 'text-[var(--accent)] hover:opacity-70'
                 }`}
               >
                 {c.status === 'connected'
