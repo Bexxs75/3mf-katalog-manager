@@ -30,7 +30,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 base64 = "0.22"
 oauth2 = "5.0.0"
 keyring = "4.2.0"
-reqwest = { version = "0.13.5", features = ["json"] }
+reqwest = { version = "0.13.5", features = ["json", "query"] }
 async-trait = "0.1.92"
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "time"] }
 
