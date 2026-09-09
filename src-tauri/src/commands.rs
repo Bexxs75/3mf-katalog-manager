@@ -387,7 +387,7 @@ pub fn open_in_slicer(slicer_path: String, file_path: String) -> CmdResult<()> {
     std::process::Command::new(&slicer_path)
         .arg(&file_path)
         .spawn()
-        .map_err(|e| format!("Slicer konnte nicht gestartet werden: {e}"))?;
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -610,10 +610,13 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn open_in_slicer_spawns_successfully_for_a_real_executable() {
         // "/usr/bin/true" ist auf jedem Unix-System vorhanden und beendet
         // sich sofort mit Exit-Code 0 - deterministischer Erfolgstest ohne
-        // einen echten Slicer zu benoetigen.
+        // einen echten Slicer zu benoetigen. Unter Windows existiert dieser
+        // Pfad nicht, daher hier per #[cfg(unix)] komplett ausgeklammert
+        // statt eines fragilen plattformabhaengigen Ersatzpfads.
         let result = open_in_slicer("/usr/bin/true".to_string(), "/tmp/model.3mf".to_string());
         assert!(result.is_ok());
     }
