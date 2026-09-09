@@ -1,7 +1,6 @@
-import type { ModelFile } from '../types';
+import type { ModelFile, SyncStatus } from '../types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatBytes, formatVolumeCm3 } from '../i18n/format';
-import type { Translations } from '../i18n/types';
 
 interface Props {
   models: ModelFile[];
@@ -10,7 +9,7 @@ interface Props {
   onContextMenu: (id: string, x: number, y: number) => void;
 }
 
-const SYNC_KEYS: Record<string, keyof Translations> = {
+const SYNC_KEYS: Record<SyncStatus, 'syncSynced' | 'syncOutdated' | 'syncLocalOnly' | 'syncCloudOnly'> = {
   synced: 'syncSynced',
   outdated: 'syncOutdated',
   'local-only': 'syncLocalOnly',
@@ -69,7 +68,7 @@ export function ModelList({ models, selectedId, onSelect, onContextMenu }: Props
             {formatBytes(m.fileSizeBytes, language)}
           </span>
           <span className="font-mono-ui text-[10.5px] text-[var(--ink-2)]">
-            {t(SYNC_KEYS[m.sync]) as string}
+            {t(SYNC_KEYS[m.sync])}
           </span>
         </div>
       ))}
