@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import type { ViewMode, SortKey } from '../types';
 import type { ThemeSetting } from '../hooks/useTheme';
+import type { Language } from '../i18n/types';
+import { formatCount } from '../i18n/types';
+import { useLanguage, useT } from '../i18n/LanguageContext';
 
 interface Props {
   view: ViewMode;
@@ -19,6 +22,13 @@ const segBase =
 const segActive = 'bg-[var(--accent)] text-[var(--accent-ink)]';
 const segInactive = 'text-[var(--ink-2)] hover:text-[var(--ink)]';
 
+const LANGUAGE_LABELS: Record<Language, string> = {
+  de: 'Deutsch',
+  en: 'English',
+  es: 'Español',
+  fr: 'Français',
+};
+
 export function Header({
   view,
   onViewChange,
@@ -30,6 +40,8 @@ export function Header({
   onImportFiles,
   onImportFolder,
 }: Props) {
+  const t = useT();
+  const { language, setLanguage } = useLanguage();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [importMenuOpen, setImportMenuOpen] = useState(false);
 
@@ -53,11 +65,11 @@ export function Header({
           className="flex items-center gap-2 h-8 pl-[13px] pr-3 rounded-l-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[13px] font-semibold cursor-pointer hover:brightness-110"
         >
           <span className="font-mono-ui text-sm leading-none">+</span>
-          <span>Importieren</span>
+          <span>{t('import')}</span>
         </button>
         <button
           onClick={() => setImportMenuOpen((o) => !o)}
-          aria-label="Weitere Import-Optionen"
+          aria-label={t('importMoreOptionsAria')}
           className="flex items-center justify-center w-6 h-8 rounded-r-[3px] border border-l-0 border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] cursor-pointer hover:brightness-110"
         >
           <span className="text-[9px] leading-none">▾</span>
@@ -72,7 +84,7 @@ export function Header({
               }}
               className="w-full text-left px-3 py-1.5 text-[13px] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
             >
-              Dateien...
+              {t('importFilesOption')}
             </button>
             <button
               onClick={() => {
@@ -81,7 +93,7 @@ export function Header({
               }}
               className="w-full text-left px-3 py-1.5 text-[13px] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
             >
-              Ordner...
+              {t('importFolderOption')}
             </button>
           </div>
         )}
@@ -89,17 +101,17 @@ export function Header({
 
       <div className="flex items-center gap-1.5">
         <span className="font-mono-ui text-[10px] tracking-[0.1em] uppercase text-[var(--ink-3)]">
-          Sortieren
+          {t('sortLabel')}
         </span>
         <select
           value={sort}
           onChange={(e) => onSortChange(e.target.value as SortKey)}
           className="h-[30px] px-2 rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink)] text-[13px] cursor-pointer"
         >
-          <option value="name">Name</option>
-          <option value="date">Datum</option>
-          <option value="size">Dateigröße</option>
-          <option value="vol">Volumen</option>
+          <option value="name">{t('sortName')}</option>
+          <option value="date">{t('sortDate')}</option>
+          <option value="size">{t('sortSize')}</option>
+          <option value="vol">{t('sortVolume')}</option>
         </select>
       </div>
 
@@ -108,20 +120,20 @@ export function Header({
           onClick={() => onViewChange('grid')}
           className={`${segBase} ${view === 'grid' ? segActive : segInactive}`}
         >
-          Raster
+          {t('viewGrid')}
         </button>
         <button
           onClick={() => onViewChange('list')}
           className={`${segBase} ${view === 'list' ? segActive : segInactive}`}
         >
-          Liste
+          {t('viewList')}
         </button>
       </div>
 
       <div className="flex-1" />
 
       <span className="font-mono-ui text-[11px] text-[var(--ink-3)]">
-        {count} Dateien
+        {formatCount(t('filesCount'), count)}
       </span>
 
       <div className="relative">
@@ -135,24 +147,40 @@ export function Header({
         {settingsOpen && (
           <div className="absolute top-10 right-0 w-[268px] p-[14px] bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
             <div className="font-mono-ui text-[10px] tracking-[0.12em] uppercase text-[var(--ink-3)] mb-2.5">
-              Einstellungen
+              {t('settingsTitle')}
             </div>
-            <div className="text-[13px] font-semibold mb-2">Erscheinungsbild</div>
+            <div className="text-[13px] font-semibold mb-2">{t('appearanceTitle')}</div>
             <div className="flex p-0.5 gap-0.5 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)]">
-              {(['system', 'light', 'dark'] as ThemeSetting[]).map((t) => (
+              {(['system', 'light', 'dark'] as ThemeSetting[]).map((opt) => (
                 <button
-                  key={t}
-                  onClick={() => onThemeChange(t)}
-                  className={`${segBase} flex-1 ${themeSetting === t ? segActive : segInactive}`}
+                  key={opt}
+                  onClick={() => onThemeChange(opt)}
+                  className={`${segBase} flex-1 ${themeSetting === opt ? segActive : segInactive}`}
                 >
-                  {t === 'system' ? 'System' : t === 'light' ? 'Hell' : 'Dunkel'}
+                  {opt === 'system' ? t('themeSystem') : opt === 'light' ? t('themeLight') : t('themeDark')}
                 </button>
               ))}
             </div>
             <div className="mt-2 font-mono-ui text-[10.5px] leading-relaxed text-[var(--ink-3)]">
               {themeSetting === 'system'
-                ? 'Folgt automatisch der Systemeinstellung.'
-                : `Manuell auf ${themeSetting === 'light' ? 'Hell' : 'Dunkel'} festgelegt.`}
+                ? t('themeDescriptionSystem')
+                : t('themeDescriptionManual').replace(
+                    '{mode}',
+                    themeSetting === 'light' ? t('themeLight') : t('themeDark'),
+                  )}
+            </div>
+
+            <div className="text-[13px] font-semibold mt-4 mb-2">{t('languageTitle')}</div>
+            <div className="grid grid-cols-2 gap-0.5 p-0.5 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)]">
+              {(['de', 'en', 'es', 'fr'] as Language[]).map((lang) => (
+                <button
+                  key={lang}
+                  onClick={() => setLanguage(lang)}
+                  className={`${segBase} ${language === lang ? segActive : segInactive}`}
+                >
+                  {LANGUAGE_LABELS[lang]}
+                </button>
+              ))}
             </div>
           </div>
         )}
