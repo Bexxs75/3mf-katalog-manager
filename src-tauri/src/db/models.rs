@@ -29,15 +29,15 @@ pub struct MaterialRecord {
     pub display_color: Option<String>,
 }
 
-/// Data needed to catalog a newly imported file. `origin` defaults to
-/// `"local"` and `sync_status` to `"local-only"` at the database level for
-/// files created outside the (not yet implemented) cloud-provider flow.
 #[derive(Debug, Clone)]
 pub struct NewFile {
     pub name: String,
     pub path: String,
     pub file_type: FileType,
     pub folder_id: Option<i64>,
+    pub origin: String,
+    pub cloud_id: Option<String>,
+    pub sync_status: String,
     pub file_size_bytes: i64,
     pub dimensions_mm: Option<[f64; 3]>,
     pub volume_cm3: Option<f64>,

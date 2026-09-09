@@ -120,15 +120,18 @@ pub fn insert_file(conn: &mut Connection, file: &NewFile) -> Result<i64, DbError
 
     tx.execute(
         "INSERT INTO files (
-            name, path, file_type, folder_id, file_size_bytes,
-            dimension_x_mm, dimension_y_mm, dimension_z_mm,
+            name, path, file_type, folder_id, origin, cloud_id, sync_status,
+            file_size_bytes, dimension_x_mm, dimension_y_mm, dimension_z_mm,
             volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
         params![
             file.name,
             file.path,
             file.file_type.as_str(),
             file.folder_id,
+            file.origin,
+            file.cloud_id,
+            file.sync_status,
             file.file_size_bytes,
             dim_x,
             dim_y,
@@ -333,6 +336,14 @@ pub fn set_cloud_account_status(conn: &Connection, provider: &str, status: &str)
     conn.execute(
         "UPDATE cloud_accounts SET status = ?1 WHERE provider = ?2",
         params![status, provider],
+    )?;
+    Ok(())
+}
+
+pub fn set_file_sync_status(conn: &Connection, file_id: i64, status: &str) -> Result<(), DbError> {
+    conn.execute(
+        "UPDATE files SET sync_status = ?1 WHERE id = ?2",
+        params![status, file_id],
     )?;
     Ok(())
 }

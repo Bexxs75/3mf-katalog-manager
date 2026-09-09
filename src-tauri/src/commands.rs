@@ -201,7 +201,12 @@ fn collect_supported_files(path: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-fn import_one(conn: &mut Connection, path: &Path) -> CmdResult<ModelFileDto> {
+pub(crate) fn import_one(
+    conn: &mut Connection,
+    path: &Path,
+    origin: &str,
+    cloud_id: Option<String>,
+) -> CmdResult<ModelFileDto> {
     let file_name = path
         .file_name()
         .and_then(|n| n.to_str())
@@ -255,11 +260,16 @@ fn import_one(conn: &mut Connection, path: &Path) -> CmdResult<ModelFileDto> {
         materials: &materials,
     });
 
+    let sync_status = if origin == "local" { "local-only" } else { "synced" };
+
     let new_file = NewFile {
         name: file_name,
         path: path.to_string_lossy().to_string(),
         file_type,
         folder_id: None,
+        origin: origin.to_string(),
+        cloud_id,
+        sync_status: sync_status.to_string(),
         file_size_bytes,
         dimensions_mm,
         volume_cm3,
@@ -307,7 +317,7 @@ fn import_many(state: &State<AppState>, roots: Vec<PathBuf>) -> CmdResult<Vec<Mo
             }
         }
 
-        match import_one(&mut conn, &path) {
+        match import_one(&mut conn, &path, "local", None) {
             Ok(dto) => imported.push(dto),
             Err(e) => eprintln!("[import] Import fehlgeschlagen für {path_str}: {e}"),
         }
