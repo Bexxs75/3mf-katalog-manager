@@ -158,3 +158,37 @@ fn wait_for_redirect(listener: TcpListener) -> CloudResult<(String, CsrfToken)> 
 
     Ok((code, state))
 }
+
+/// Tauscht einen gespeicherten Refresh-Token gegen einen neuen Access-Token
+/// (RFC 6749 Abschnitt 6). Google gibt bei einem Refresh in der Regel
+/// keinen neuen Refresh-Token zurueck (dieser bleibt gueltig) - der
+/// `refresh_token` im Ergebnis ist dann `None`; der Aufrufer behaelt in
+/// diesem Fall den bisherigen Refresh-Token.
+pub async fn refresh_access_token(
+    client_id: &str,
+    client_secret: &str,
+    refresh_token: &str,
+) -> CloudResult<OAuthTokens> {
+    let client = BasicClient::new(ClientId::new(client_id.to_string()))
+        .set_client_secret(ClientSecret::new(client_secret.to_string()))
+        .set_token_uri(
+            TokenUrl::new("https://www.googleapis.com/oauth2/v3/token".to_string())
+                .map_err(|e| CloudError::Auth(e.to_string()))?,
+        );
+
+    let http_client = oauth2::reqwest::ClientBuilder::new()
+        .redirect(oauth2::reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|e| CloudError::Network(e.to_string()))?;
+
+    let token_result = client
+        .exchange_refresh_token(&oauth2::RefreshToken::new(refresh_token.to_string()))
+        .request_async(&http_client)
+        .await
+        .map_err(|e| CloudError::Auth(format!("Token-Refresh fehlgeschlagen: {e}")))?;
+
+    Ok(OAuthTokens {
+        access_token: token_result.access_token().secret().clone(),
+        refresh_token: token_result.refresh_token().map(|t| t.secret().clone()),
+    })
+}
