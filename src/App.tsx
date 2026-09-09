@@ -7,6 +7,7 @@ import { ModelGrid } from './components/ModelGrid';
 import { ModelList } from './components/ModelList';
 import { DetailPanel } from './components/DetailPanel';
 import { ContextMenu } from './components/ContextMenu';
+import { CloudBrowserDialog } from './components/CloudBrowserDialog';
 import { useTheme } from './hooks/useTheme';
 import type { ModelFile, Folder, TagCount, CloudAccount, Origin, ViewMode, SortKey } from './types';
 
@@ -43,6 +44,7 @@ export default function App() {
   const [connectingCloud, setConnectingCloud] = useState(false);
   const [cloudError, setCloudError] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number } | null>(null);
+  const [cloudBrowserOpen, setCloudBrowserOpen] = useState(false);
 
   const refreshFolders = () => invoke<Folder[]>('list_folders').then(setFolders);
   const refreshTags = () => invoke<TagCount[]>('list_tag_counts').then(setTags);
@@ -65,6 +67,16 @@ export default function App() {
         setCloudError(String(e));
       })
       .finally(() => setConnectingCloud(false));
+  };
+
+  const handleCloudImport = (fileIds: string[]) => {
+    setCloudBrowserOpen(false);
+    invoke<ModelFile[]>('import_from_cloud', { fileIds })
+      .then(mergeImported)
+      .catch((e) => {
+        console.error('[cloud] Import aus Google Drive fehlgeschlagen:', e);
+        setCloudError(String(e));
+      });
   };
 
   const mergeImported = (files: ModelFile[]) => {
@@ -94,6 +106,18 @@ export default function App() {
       unlisten.then((fn) => fn());
     };
   }, []);
+
+  useEffect(() => {
+    const model = models.find((m) => m.id === selectedId);
+    if (!model || model.origin === 'local') return;
+    invoke<string>('check_cloud_sync_status', { fileId: model.id })
+      .then((status) => {
+        setModels((prev) =>
+          prev.map((m) => (m.id === model.id ? { ...m, sync: status as ModelFile['sync'] } : m)),
+        );
+      })
+      .catch((e) => console.error('[cloud] Sync-Check fehlgeschlagen:', e));
+  }, [selectedId]);
 
   const filtered = useMemo(() => {
     return models
@@ -159,6 +183,8 @@ export default function App() {
         onThemeChange={setTheme}
         onImportFiles={importFiles}
         onImportFolder={importFolder}
+        cloudDriveConnected={clouds.some((c) => c.id === 'gdrive' && c.status === 'connected')}
+        onImportFromCloud={() => setCloudBrowserOpen(true)}
       />
 
       <div className="flex-1 flex min-h-0">
@@ -239,6 +265,10 @@ export default function App() {
           onOpenInSlicer={() => openInSlicer(contextMenu.modelId)}
           onDelete={() => deleteModel(contextMenu.modelId)}
         />
+      )}
+
+      {cloudBrowserOpen && (
+        <CloudBrowserDialog onClose={() => setCloudBrowserOpen(false)} onImport={handleCloudImport} />
       )}
     </div>
   );

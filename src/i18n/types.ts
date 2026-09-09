@@ -80,6 +80,7 @@ export interface Translations {
   cloudBrowserLoading: string;
   cloudBrowserEmpty: string;
   cloudBrowserImportButton: string;
+  importFromCloudOption: string;
 }
 
 export function formatCount(forms: PluralForms, n: number): string {

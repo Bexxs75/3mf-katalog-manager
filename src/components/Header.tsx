@@ -15,6 +15,8 @@ interface Props {
   onThemeChange: (t: ThemeSetting) => void;
   onImportFiles: () => void;
   onImportFolder: () => void;
+  cloudDriveConnected: boolean;
+  onImportFromCloud: () => void;
 }
 
 const segBase =
@@ -39,6 +41,8 @@ export function Header({
   onThemeChange,
   onImportFiles,
   onImportFolder,
+  cloudDriveConnected,
+  onImportFromCloud,
 }: Props) {
   const t = useT();
   const { language, setLanguage } = useLanguage();
@@ -95,6 +99,17 @@ export function Header({
             >
               {t('importFolderOption')}
             </button>
+            {cloudDriveConnected && (
+              <button
+                onClick={() => {
+                  setImportMenuOpen(false);
+                  onImportFromCloud();
+                }}
+                className="w-full text-left px-3 py-1.5 text-[13px] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
+              >
+                {t('importFromCloudOption')}
+              </button>
+            )}
           </div>
         )}
       </div>
