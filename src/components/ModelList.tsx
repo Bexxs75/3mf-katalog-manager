@@ -1,6 +1,7 @@
 import type { ModelFile } from '../types';
-import { useLanguage } from '../i18n/LanguageContext';
+import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatBytes, formatVolumeCm3 } from '../i18n/format';
+import type { Translations } from '../i18n/types';
 
 interface Props {
   models: ModelFile[];
@@ -9,27 +10,29 @@ interface Props {
   onContextMenu: (id: string, x: number, y: number) => void;
 }
 
-const syncLabel: Record<string, string> = {
-  synced: 'aktuell',
-  outdated: 'veraltet',
-  'local-only': 'nur lokal',
-  'cloud-only': 'nur Cloud',
+const SYNC_KEYS: Record<string, keyof Translations> = {
+  synced: 'syncSynced',
+  outdated: 'syncOutdated',
+  'local-only': 'syncLocalOnly',
+  'cloud-only': 'syncCloudOnly',
 };
 
 export function ModelList({ models, selectedId, onSelect, onContextMenu }: Props) {
   const { language } = useLanguage();
+  const t = useT();
+
   return (
     <div className="border border-[var(--line)] rounded overflow-x-auto bg-[var(--panel)]">
       <div
         className="min-w-[680px] grid gap-2.5 items-center px-3 py-2 bg-[var(--panel-2)] border-b border-[var(--line)] font-mono-ui text-[10px] tracking-[0.1em] uppercase text-[var(--ink-3)]"
         style={{ gridTemplateColumns: '62px minmax(150px,2.2fr) minmax(110px,1.6fr) 92px 82px 74px' }}
       >
-        <span>Herkunft</span>
-        <span>Name</span>
-        <span>Tags</span>
-        <span>Volumen</span>
-        <span>Größe</span>
-        <span>Sync</span>
+        <span>{t('columnOrigin')}</span>
+        <span>{t('columnName')}</span>
+        <span>{t('columnTags')}</span>
+        <span>{t('columnVolume')}</span>
+        <span>{t('columnSize')}</span>
+        <span>{t('columnSync')}</span>
       </div>
       {models.map((m) => (
         <div
@@ -50,12 +53,12 @@ export function ModelList({ models, selectedId, onSelect, onContextMenu }: Props
             {m.name}
           </span>
           <span className="flex gap-1 overflow-hidden">
-            {m.tags.map((t) => (
+            {m.tags.map((tag) => (
               <span
-                key={t}
+                key={tag}
                 className="font-mono-ui text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)] whitespace-nowrap"
               >
-                #{t}
+                #{tag}
               </span>
             ))}
           </span>
@@ -65,7 +68,9 @@ export function ModelList({ models, selectedId, onSelect, onContextMenu }: Props
           <span className="font-mono-ui text-[11.5px] text-[var(--ink-2)]">
             {formatBytes(m.fileSizeBytes, language)}
           </span>
-          <span className="font-mono-ui text-[10.5px] text-[var(--ink-2)]">{syncLabel[m.sync]}</span>
+          <span className="font-mono-ui text-[10.5px] text-[var(--ink-2)]">
+            {t(SYNC_KEYS[m.sync]) as string}
+          </span>
         </div>
       ))}
     </div>
