@@ -3,6 +3,8 @@ use tauri::State;
 use crate::cloud::config::{default_config_path, load_cloud_config};
 use crate::cloud::gdrive::fetch_google_account_email;
 use crate::cloud::oauth::run_google_oauth_flow;
+use crate::cloud::provider::{CloudEntry, StorageProvider};
+use crate::cloud::session::with_gdrive_provider;
 use crate::cloud::tokens::{KeyringTokenStore, StoredTokens, TokenStore};
 use crate::commands::{lock_db, AppState};
 use crate::db;
@@ -128,4 +130,40 @@ pub fn list_cloud_accounts(state: State<AppState>) -> CmdResult<Vec<CloudAccount
             status: a.status,
         })
         .collect())
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudEntryDto {
+    pub id: String,
+    pub name: String,
+    pub is_folder: bool,
+    pub modified_time: String,
+    pub size_bytes: Option<i64>,
+}
+
+impl From<CloudEntry> for CloudEntryDto {
+    fn from(e: CloudEntry) -> Self {
+        CloudEntryDto {
+            id: e.id,
+            name: e.name,
+            is_folder: e.is_folder,
+            modified_time: e.modified_time,
+            size_bytes: e.size_bytes,
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn browse_cloud_folder(
+    state: State<'_, AppState>,
+    folder_id: Option<String>,
+) -> CmdResult<Vec<CloudEntryDto>> {
+    let entries = with_gdrive_provider(&state, |provider| {
+        let folder_id = folder_id.clone();
+        async move { provider.list_folder(folder_id.as_deref()).await }
+    })
+    .await?;
+
+    Ok(entries.into_iter().map(CloudEntryDto::from).collect())
 }
