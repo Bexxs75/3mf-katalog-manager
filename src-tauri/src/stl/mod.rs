@@ -39,6 +39,20 @@ pub fn parse_stl_bytes(bytes: &[u8]) -> Result<StlDocument, StlError> {
     })
 }
 
+pub fn parse_stl_geometry(bytes: &[u8]) -> Result<crate::geometry::RenderMesh, StlError> {
+    let (vertices, triangles) = parser::parse(bytes)?;
+    let normals = crate::geometry::compute_flat_normals(&vertices, &triangles);
+    let positions: Vec<[f32; 3]> = vertices
+        .iter()
+        .map(|v| [v[0] as f32, v[1] as f32, v[2] as f32])
+        .collect();
+    Ok(crate::geometry::RenderMesh {
+        positions,
+        indices: triangles,
+        normals: Some(normals),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -144,5 +158,33 @@ mod tests {
         let bytes = b"solid broken\n  facet normal 0 0 0\n    outer loop\n      vertex 0 0\n    endloop\n  endfacet\nendsolid broken\n".to_vec();
         let result = parse_stl_bytes(&bytes);
         assert!(matches!(result, Err(StlError::Parse(_))));
+    }
+
+    #[test]
+    fn computes_flat_outward_normals_for_ascii_cube() {
+        let bytes = build_ascii_cube();
+        let mesh = parse_stl_geometry(&bytes).expect("geometry parse should succeed");
+
+        assert_eq!(mesh.positions.len(), 36);
+        assert_eq!(mesh.indices.len(), 12);
+        let normals = mesh.normals.expect("stl geometry always has normals");
+        assert_eq!(normals.len(), 36);
+
+        for n in &normals {
+            let len = ((n[0] * n[0] + n[1] * n[1] + n[2] * n[2]) as f64).sqrt();
+            assert!((len - 1.0).abs() < 1e-4, "normal not unit length: {n:?}");
+        }
+
+        // Dreieck 2 (0-indiziert) ist CUBE_TRIANGLES[2] = [4,5,6], die
+        // Deckflaeche bei z=10 - von Hand nachgerechnet
+        // (cb=(C-B)=[0,10,0], ab=(A-B)=[-10,0,0], cb x ab = [0,0,100])
+        // muss die Normale nach [0,0,1] zeigen.
+        let top_face_normal = normals[6];
+        assert!(top_face_normal[0].abs() < 1e-4, "unexpected: {top_face_normal:?}");
+        assert!(top_face_normal[1].abs() < 1e-4, "unexpected: {top_face_normal:?}");
+        assert!(
+            (top_face_normal[2] - 1.0).abs() < 1e-4,
+            "unexpected: {top_face_normal:?}"
+        );
     }
 }
