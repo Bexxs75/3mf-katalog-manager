@@ -15,6 +15,7 @@ pub struct Mesh {
 #[derive(Debug, Clone)]
 pub struct Component {
     pub object_id: String,
+    pub path: Option<String>,
     pub transform: Option<Matrix3x4>,
 }
 
@@ -28,6 +29,7 @@ pub struct Object {
 #[derive(Debug, Clone)]
 pub struct BuildItem {
     pub object_id: String,
+    pub path: Option<String>,
     pub transform: Option<Matrix3x4>,
 }
 
@@ -117,22 +119,26 @@ fn handle_start(ctx: &mut ParseCtx, name: &str, e: &BytesStart) -> Result<(), Th
         "component" => {
             if let Some((_, obj)) = ctx.current_object.as_mut() {
                 let object_id = get_attr(e, "objectid").unwrap_or_default();
+                let path = get_attr(e, "path").map(|p| p.trim_start_matches('/').to_string());
                 let transform = get_attr(e, "transform")
                     .map(|t| Matrix3x4::parse(&t))
                     .transpose()?;
                 obj.components.push(Component {
                     object_id,
+                    path,
                     transform,
                 });
             }
         }
         "item" => {
             let object_id = get_attr(e, "objectid").unwrap_or_default();
+            let path = get_attr(e, "path").map(|p| p.trim_start_matches('/').to_string());
             let transform = get_attr(e, "transform")
                 .map(|t| Matrix3x4::parse(&t))
                 .transpose()?;
             ctx.model.build_items.push(BuildItem {
                 object_id,
+                path,
                 transform,
             });
         }
@@ -218,4 +224,42 @@ pub fn parse_model_xml(xml: &str) -> Result<ParsedModel, ThreeMfError> {
     }
 
     Ok(ctx.model)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_p_path_on_component_and_item_and_normalizes_leading_slash() {
+        let xml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06">
+  <resources>
+    <object id="1" type="model">
+      <components>
+        <component p:path="/3D/Objects/object_2.model" objectid="2"/>
+      </components>
+    </object>
+  </resources>
+  <build>
+    <item p:path="/3D/Objects/object_1.model" objectid="5"/>
+    <item objectid="1"/>
+  </build>
+</model>"##;
+
+        let model = parse_model_xml(xml).expect("parse should succeed");
+
+        let component = &model.objects.get("1").expect("object 1 present").components[0];
+        assert_eq!(component.object_id, "2");
+        assert_eq!(
+            component.path.as_deref(),
+            Some("3D/Objects/object_2.model")
+        );
+
+        assert_eq!(
+            model.build_items[0].path.as_deref(),
+            Some("3D/Objects/object_1.model")
+        );
+        assert_eq!(model.build_items[1].path, None);
+    }
 }
