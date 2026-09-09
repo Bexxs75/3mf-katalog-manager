@@ -168,6 +168,18 @@ pub async fn browse_cloud_folder(
     Ok(entries.into_iter().map(CloudEntryDto::from).collect())
 }
 
+/// Importiert die uebergebenen Google-Drive-Datei-IDs in den Katalog.
+///
+/// Analog zu `import_many` (lokaler Import, `commands.rs`) ist diese
+/// Funktion pro Datei fehlertolerant: ein einzelner Fehlschlag (Metadaten,
+/// Download, nicht unterstuetztes Format, bereits importiert, Parse-/
+/// Insert-Fehler) wird geloggt und ueberspringt nur diese eine Datei -
+/// er bricht NICHT den ganzen Batch per `?` ab. Andernfalls wuerden bereits
+/// erfolgreich importierte (und in SQLite committete) Dateien aus dem
+/// zurueckgegebenen `Vec` verschwinden, weil die Funktion stattdessen
+/// `Err` liefert und das Frontend seinen `.catch`-Pfad statt `mergeImported`
+/// nimmt (Finding 3 der Abschluss-Review). Nur der einmalige Setup-Schritt
+/// (Cache-Verzeichnis anlegen) darf den ganzen Command scheitern lassen.
 #[tauri::command]
 pub async fn import_from_cloud(
     app: tauri::AppHandle,
@@ -179,35 +191,110 @@ pub async fn import_from_cloud(
 
     let mut imported = Vec::new();
     for file_id in file_ids {
-        let metadata = with_gdrive_provider(&state, {
+        let metadata = match with_gdrive_provider(&state, {
             let file_id = file_id.clone();
             move |provider| {
                 let file_id = file_id.clone();
                 async move { provider.get_metadata(&file_id).await }
             }
         })
-        .await?;
+        .await
+        {
+            Ok(metadata) => metadata,
+            Err(e) => {
+                eprintln!("[cloud-import] Metadaten fehlgeschlagen fuer {file_id}: {e}");
+                continue;
+            }
+        };
 
-        let data = with_gdrive_provider(&state, {
+        // Finding 2 (Path-Traversal): `metadata.name` kommt von Drive und
+        // ist nicht vertrauenswuerdig - Drive erlaubt "/" und ".." in
+        // Dateinamen, die dort keine Pfad-Komponenten sind. Der Cache-Pfad
+        // wird daher NIE aus dem Remote-Namen abgeleitet, sondern aus der
+        // bereits bekannten, opaken und dateisystemsicheren `file_id` plus
+        // einer validierten Erweiterung.
+        let extension = match std::path::Path::new(&metadata.name)
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_lowercase())
+            .filter(|e| e == "3mf" || e == "stl")
+        {
+            Some(ext) => ext,
+            None => {
+                eprintln!(
+                    "[cloud-import] nicht unterstuetztes Dateiformat fuer {file_id} ({}): uebersprungen",
+                    metadata.name
+                );
+                continue;
+            }
+        };
+        let cache_path = cache_dir.join(format!("{file_id}.{extension}"));
+        let cache_path_str = cache_path.to_string_lossy().to_string();
+
+        // Finding 3 (Kollisionen): erneuter Import einer bereits
+        // importierten Drive-Datei wuerde denselben Cache-Pfad treffen und
+        // damit gegen den `UNIQUE(path)`-Constraint laufen. Vor dem
+        // (teuren) Download pruefen und einfach ueberspringen - gleiches
+        // Verhalten wie beim lokalen Import in `import_many`. Kurzer,
+        // synchroner Lock-Scope ohne .await, analog zur bestehenden
+        // Lock-Disziplin dieser Funktion.
+        let already_imported = {
+            let conn = lock_db(&state)?;
+            match db::file_exists_by_path(&conn, &cache_path_str) {
+                Ok(exists) => exists,
+                Err(e) => {
+                    eprintln!("[cloud-import] Duplikatpruefung fehlgeschlagen fuer {file_id}: {e}");
+                    continue;
+                }
+            }
+        };
+        if already_imported {
+            continue;
+        }
+
+        let data = match with_gdrive_provider(&state, {
             let file_id = file_id.clone();
             move |provider| {
                 let file_id = file_id.clone();
                 async move { provider.download(&file_id).await }
             }
         })
-        .await?;
+        .await
+        {
+            Ok(data) => data,
+            Err(e) => {
+                eprintln!("[cloud-import] Download fehlgeschlagen fuer {file_id}: {e}");
+                continue;
+            }
+        };
 
-        let cache_path = cache_dir.join(&metadata.name);
-        std::fs::write(&cache_path, &data).map_err(|e| e.to_string())?;
+        if let Err(e) = std::fs::write(&cache_path, &data) {
+            eprintln!("[cloud-import] Schreiben in Cache fehlgeschlagen fuer {file_id}: {e}");
+            continue;
+        }
 
         // Ein durchgehender Lock-Scope genuegt hier: zwischen den beiden
         // DB-Aufrufen liegt kein .await, daher kein Konflikt mit der
         // "nie ueber .await halten"-Regel aus den Global Constraints.
         let dto = {
             let mut conn = lock_db(&state)?;
-            let dto = import_one(&mut conn, &cache_path, "gdrive", Some(file_id))?;
-            let id: i64 = dto.id.parse().map_err(|_| "invalid file id".to_string())?;
-            db::set_file_modified_at(&conn, id, &metadata.modified_time).map_err(|e| e.to_string())?;
+            let dto = match import_one(&mut conn, &cache_path, "gdrive", Some(file_id.clone())) {
+                Ok(dto) => dto,
+                Err(e) => {
+                    eprintln!("[cloud-import] Import fehlgeschlagen fuer {file_id}: {e}");
+                    continue;
+                }
+            };
+            let id: i64 = match dto.id.parse() {
+                Ok(id) => id,
+                Err(_) => {
+                    eprintln!("[cloud-import] ungueltige Datei-ID nach Import fuer {file_id}");
+                    continue;
+                }
+            };
+            if let Err(e) = db::set_file_modified_at(&conn, id, &metadata.modified_time) {
+                eprintln!("[cloud-import] file_modified_at fehlgeschlagen fuer {file_id}: {e}");
+            }
             dto
         };
 
