@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { ModelFile, SyncStatus } from '../types';
+import type { ModelFile, SlicerConfig, SyncStatus } from '../types';
 import type { Language, Translations } from '../i18n/types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatBytes, formatDate, formatDimensions, formatRelativeTime, formatVolumeCm3 } from '../i18n/format';
@@ -10,7 +10,9 @@ interface Props {
   onAddTag: (tag: string) => void;
   onRemoveTag: (tag: string) => void;
   onDelete: () => void;
-  onOpenInSlicer: () => void;
+  onOpenInSlicer: (slicerId?: string) => void;
+  slicers: SlicerConfig[];
+  slicerError: string | null;
 }
 
 type TFunction = <K extends keyof Translations>(key: K) => Translations[K];
@@ -39,13 +41,25 @@ function buildMetaRows(model: ModelFile, t: TFunction, language: Language): { la
   ];
 }
 
-export function DetailPanel({ model, onAddTag, onRemoveTag, onDelete, onOpenInSlicer }: Props) {
+export function DetailPanel({
+  model,
+  onAddTag,
+  onRemoveTag,
+  onDelete,
+  onOpenInSlicer,
+  slicers,
+  slicerError,
+}: Props) {
   const { language } = useLanguage();
   const t = useT();
   const [draft, setDraft] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [slicerMenuOpen, setSlicerMenuOpen] = useState(false);
 
-  useEffect(() => setConfirmDelete(false), [model?.id]);
+  useEffect(() => {
+    setConfirmDelete(false);
+    setSlicerMenuOpen(false);
+  }, [model?.id]);
 
   if (!model) {
     return (
@@ -60,6 +74,8 @@ export function DetailPanel({ model, onAddTag, onRemoveTag, onDelete, onOpenInSl
     if (value) onAddTag(value);
     setDraft('');
   };
+
+  const hasSlicers = slicers.length > 0;
 
   return (
     <aside className="flex-none w-[336px] flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]">
@@ -142,48 +158,84 @@ export function DetailPanel({ model, onAddTag, onRemoveTag, onDelete, onOpenInSl
         </div>
       </div>
 
-      <div className="flex-none flex gap-2 px-4 py-3 border-t border-[var(--line)] bg-[var(--panel-2)]">
-        {confirmDelete ? (
-          <>
-            <span className="flex-1 flex items-center text-[12.5px] font-medium text-[var(--ink)]">
-              {t('deleteConfirmQuestion')}
-            </span>
-            <button
-              onClick={() => setConfirmDelete(false)}
-              className="flex-none h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
-            >
-              {t('cancel')}
-            </button>
-            <button
-              onClick={() => {
-                setConfirmDelete(false);
-                onDelete();
-              }}
-              className="flex-none h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
-            >
-              {t('delete')}
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              onClick={onOpenInSlicer}
-              className="flex-1 h-8 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
-            >
-              {t('openInSlicer')}
-            </button>
-            <button className="flex-none w-[34px] h-8 grid place-items-center rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] font-mono-ui cursor-pointer">
-              ↻
-            </button>
-            <button
-              onClick={() => setConfirmDelete(true)}
-              aria-label={t('deleteAriaLabel')}
-              className="flex-none w-[34px] h-8 grid place-items-center rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] font-mono-ui cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
-            >
-              ✕
-            </button>
-          </>
+      <div className="flex-none px-4 py-3 border-t border-[var(--line)] bg-[var(--panel-2)]">
+        {slicerError && (
+          <div className="pb-2 font-mono-ui text-[10px] text-[var(--accent)] break-words">
+            {t('slicerLaunchError')} {slicerError}
+          </div>
         )}
+        <div className="flex gap-2">
+          {confirmDelete ? (
+            <>
+              <span className="flex-1 flex items-center text-[12.5px] font-medium text-[var(--ink)]">
+                {t('deleteConfirmQuestion')}
+              </span>
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="flex-none h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              >
+                {t('cancel')}
+              </button>
+              <button
+                onClick={() => {
+                  setConfirmDelete(false);
+                  onDelete();
+                }}
+                className="flex-none h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
+              >
+                {t('delete')}
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="relative flex flex-1">
+                <button
+                  onClick={() => onOpenInSlicer()}
+                  className={`flex-1 h-8 border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] ${
+                    hasSlicers ? 'rounded-l-[3px] border-r-0' : 'rounded-[3px]'
+                  }`}
+                >
+                  {t('openInSlicer')}
+                </button>
+                {hasSlicers && (
+                  <button
+                    onClick={() => setSlicerMenuOpen((o) => !o)}
+                    aria-label={t('chooseSlicerAria')}
+                    className="flex items-center justify-center w-6 h-8 rounded-r-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                  >
+                    <span className="text-[9px] leading-none">▾</span>
+                  </button>
+                )}
+                {slicerMenuOpen && (
+                  <div className="absolute bottom-10 left-0 w-[176px] py-1 bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)] z-40">
+                    {slicers.map((s) => (
+                      <button
+                        key={s.id}
+                        onClick={() => {
+                          setSlicerMenuOpen(false);
+                          onOpenInSlicer(s.id);
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-[13px] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
+                      >
+                        {s.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button className="flex-none w-[34px] h-8 grid place-items-center rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] font-mono-ui cursor-pointer">
+                ↻
+              </button>
+              <button
+                onClick={() => setConfirmDelete(true)}
+                aria-label={t('deleteAriaLabel')}
+                className="flex-none w-[34px] h-8 grid place-items-center rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] font-mono-ui cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              >
+                ✕
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </aside>
   );
