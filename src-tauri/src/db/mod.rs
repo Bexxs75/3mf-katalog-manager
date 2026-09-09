@@ -5,7 +5,7 @@ mod repository;
 pub use repository::{
     add_tag_to_file, connect, delete_file, file_exists_by_path, get_file, insert_file,
     insert_folder, list_cloud_accounts, list_files, list_folders, list_tag_counts,
-    remove_tag_from_file, set_cloud_account_status, upsert_cloud_account,
+    remove_tag_from_file, set_cloud_account_status, set_file_sync_status, upsert_cloud_account,
 };
 
 #[cfg(test)]
@@ -26,6 +26,9 @@ mod tests {
             path: "/tmp/cube.3mf".to_string(),
             file_type: FileType::ThreeMf,
             folder_id: None,
+            origin: "local".to_string(),
+            cloud_id: None,
+            sync_status: "local-only".to_string(),
             file_size_bytes: 1024,
             dimensions_mm: Some([10.0, 10.0, 10.0]),
             volume_cm3: Some(1.0),
