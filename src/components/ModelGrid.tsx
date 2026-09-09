@@ -1,4 +1,5 @@
 import type { ModelFile } from '../types';
+import { useT } from '../i18n/LanguageContext';
 
 interface Props {
   models: ModelFile[];
@@ -16,6 +17,8 @@ const originAbbr: Record<string, string> = {
 };
 
 export function ModelGrid({ models, selectedId, onSelect, onContextMenu }: Props) {
+  const t = useT();
+
   return (
     <div className="grid gap-3.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(178px, 1fr))' }}>
       {models.map((m) => (
@@ -43,7 +46,7 @@ export function ModelGrid({ models, selectedId, onSelect, onContextMenu }: Props
               <div className="w-[52px] h-[52px] border border-dashed border-[var(--line-strong)] rotate-45" />
             </div>
             <div className="absolute left-2 bottom-[7px] font-mono-ui text-[9px] tracking-[0.08em] uppercase text-[var(--ink-3)]">
-              3D Vorschau
+              {t('previewLabel3d')}
             </div>
             {originAbbr[m.origin] && (
               <div className="absolute right-[7px] top-[7px] font-mono-ui text-[9px] px-1 py-0.5 rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]">
@@ -56,12 +59,12 @@ export function ModelGrid({ models, selectedId, onSelect, onContextMenu }: Props
               {m.name}
             </div>
             <div className="flex flex-wrap gap-1">
-              {m.tags.map((t) => (
+              {m.tags.map((tag) => (
                 <span
-                  key={t}
+                  key={tag}
                   className="font-mono-ui text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)]"
                 >
-                  #{t}
+                  #{tag}
                 </span>
               ))}
             </div>
