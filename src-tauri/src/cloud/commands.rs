@@ -44,6 +44,28 @@ pub async fn connect_google_drive(
         .map_err(|e| e.to_string())?;
 
     let token_store = KeyringTokenStore;
+
+    // Falls bereits ein anderes Google-Konto verbunden war (die
+    // `UNIQUE(provider)`-Zeile wird beim Upsert unten ueberschrieben),
+    // muss dessen Schluesselbund-Eintrag hier explizit geloescht werden -
+    // sonst bleibt das alte Refresh-Token unerreichbar im OS-Schluesselbund
+    // liegen. Eigener, kurzlebiger Lock-Scope, getrennt vom Upsert unten.
+    let previous_label = {
+        let conn = lock_db(&state)?;
+        db::list_cloud_accounts(&conn)
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .find(|a| a.provider == "gdrive")
+            .map(|a| a.account_label)
+    };
+    if let Some(old_label) = previous_label {
+        if old_label != email {
+            token_store
+                .delete(&format!("gdrive:{old_label}"))
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
     token_store
         .save(
             &format!("gdrive:{email}"),
@@ -69,18 +91,28 @@ pub async fn connect_google_drive(
 
 #[tauri::command]
 pub fn disconnect_cloud_account(state: State<AppState>, provider: String) -> CmdResult<()> {
-    let conn = lock_db(&state)?;
-    let accounts = db::list_cloud_accounts(&conn).map_err(|e| e.to_string())?;
-    let account = accounts
-        .into_iter()
-        .find(|a| a.provider == provider)
-        .ok_or_else(|| "Konto nicht gefunden".to_string())?;
+    // Der DB-Lock wird bewusst vor dem Schluesselbund-Zugriff wieder
+    // freigegeben: `token_store.delete` macht blockierendes D-Bus-IPC zum
+    // Secret Service (kann auf einen Keyring-Entsperr-Dialog warten), und
+    // dieser Command laeuft synchron auf Tauris Main/IPC-Thread. Ein
+    // gehaltener MutexGuard wuerde in dieser Zeit jeden anderen Command mit
+    // DB-Zugriff blockieren.
+    let account_label = {
+        let conn = lock_db(&state)?;
+        let accounts = db::list_cloud_accounts(&conn).map_err(|e| e.to_string())?;
+        accounts
+            .into_iter()
+            .find(|a| a.provider == provider)
+            .ok_or_else(|| "Konto nicht gefunden".to_string())?
+            .account_label
+    };
 
     let token_store = KeyringTokenStore;
     token_store
-        .delete(&format!("{provider}:{}", account.account_label))
+        .delete(&format!("{provider}:{account_label}"))
         .map_err(|e| e.to_string())?;
 
+    let conn = lock_db(&state)?;
     db::set_cloud_account_status(&conn, &provider, "disconnected").map_err(|e| e.to_string())
 }
 

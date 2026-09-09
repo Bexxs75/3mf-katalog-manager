@@ -32,9 +32,7 @@ oauth2 = "5.0.0"
 keyring = "4.2.0"
 reqwest = { version = "0.13.5", features = ["json"] }
 async-trait = "0.1.92"
-
-[dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "time"] }
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

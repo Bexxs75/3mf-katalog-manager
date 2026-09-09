@@ -53,7 +53,9 @@ pub async fn run_google_oauth_flow(
 
     let mut auth_request = client
         .authorize_url(CsrfToken::new_random)
-        .set_pkce_challenge(pkce_challenge);
+        .set_pkce_challenge(pkce_challenge)
+        .add_extra_param("access_type", "offline")
+        .add_extra_param("prompt", "consent");
     for scope in scopes {
         auth_request = auth_request.add_scope(Scope::new(scope.to_string()));
     }
@@ -63,7 +65,26 @@ pub async fn run_google_oauth_flow(
         .open_url(authorize_url.to_string(), None::<&str>)
         .map_err(|e| CloudError::Network(format!("Browser konnte nicht geoeffnet werden: {e}")))?;
 
-    let (code, returned_state) = wait_for_redirect(&listener)?;
+    let redirect_result = tokio::time::timeout(
+        std::time::Duration::from_secs(300),
+        tokio::task::spawn_blocking(move || wait_for_redirect(listener)),
+    )
+    .await;
+
+    let (code, returned_state) = match redirect_result {
+        Ok(Ok(inner)) => inner?,
+        Ok(Err(join_err)) => {
+            return Err(CloudError::Network(format!(
+                "Interner Fehler beim Warten auf die Google-Anmeldung: {join_err}"
+            )))
+        }
+        Err(_elapsed) => {
+            return Err(CloudError::Network(
+                "Zeitüberschreitung beim Warten auf die Google-Anmeldung — bitte erneut versuchen."
+                    .to_string(),
+            ))
+        }
+    };
     if returned_state.secret() != csrf_state.secret() {
         return Err(CloudError::Auth("CSRF-Status stimmt nicht ueberein".to_string()));
     }
@@ -90,7 +111,14 @@ pub async fn run_google_oauth_flow(
 /// extrahiert `code`/`state` aus der Redirect-URL. Sendet eine einfache
 /// HTML-Antwort zurueck, damit der Browser-Tab dem Nutzer signalisiert,
 /// dass er das Fenster schliessen kann.
-fn wait_for_redirect(listener: &TcpListener) -> CloudResult<(String, CsrfToken)> {
+///
+/// Nimmt den `TcpListener` bewusst per Value entgegen (statt per Referenz):
+/// der Aufrufer verschiebt ihn in `tokio::task::spawn_blocking`, damit das
+/// unbegrenzt blockierende `accept()` nicht einen Tokio-Worker-Thread
+/// dauerhaft belegt, falls der Nutzer den Browser-Tab ohne Abschluss des
+/// Logins schliesst. Ein `tokio::time::timeout` um den Aufruf herum sorgt
+/// zusaetzlich dafuer, dass das Promise auf JS-Seite in jedem Fall settled.
+fn wait_for_redirect(listener: TcpListener) -> CloudResult<(String, CsrfToken)> {
     let (mut stream, _) = listener
         .accept()
         .map_err(|e| CloudError::Network(format!("Redirect nicht empfangen: {e}")))?;
