@@ -41,3 +41,9 @@ export interface CloudAccount {
 
 export type ViewMode = 'grid' | 'list';
 export type SortKey = 'name' | 'date' | 'size' | 'vol';
+
+export interface SlicerConfig {
+  id: string;
+  name: string;
+  path: string;
+}
