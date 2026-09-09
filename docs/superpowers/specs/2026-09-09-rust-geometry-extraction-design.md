@@ -135,18 +135,28 @@ Die Antwort bleibt ein einzelner `tauri::ipc::Response`-Rohbyte-Stream:
 1. 4 Bytes: Länge des JSON-Headers, Little-Endian `u32`
 2. JSON-Header (UTF-8, mit Leerzeichen auf ein Vielfaches von 4 Bytes
    aufgepolstert): Array von
-   `{ vertexCount: number, hasNormal: boolean, indexCount: number,
-   indexType: "u16" | "u32" }`, ein Eintrag pro Mesh, in der Reihenfolge,
-   in der die Binärdaten folgen. Ein Indexbuffer ist immer vorhanden (bei
-   STL die triviale fortlaufende Zuordnung, bei 3MF die echten, aus der
-   Quelle übernommenen Dreiecks-Indizes) - das vereinfacht sowohl das
-   Wire-Format (keine Sonderfall-Behandlung "kein Index") als auch den
-   Frontend-Decoder.
+   `{ vertexCount: number, hasNormal: boolean, indexCount: number }`, ein
+   Eintrag pro Mesh, in der Reihenfolge, in der die Binärdaten folgen. Ein
+   Indexbuffer ist immer vorhanden (bei STL die triviale fortlaufende
+   Zuordnung, bei 3MF die echten, aus der Quelle übernommenen Dreiecks-
+   Indizes) - das vereinfacht sowohl das Wire-Format (keine Sonderfall-
+   Behandlung "kein Index") als auch den Frontend-Decoder.
 3. Pro Mesh, in Header-Reihenfolge: `Float32`-Positionsdaten
    (`vertexCount * 3` Werte), optional `Float32`-Normalen (nur wenn
    `hasNormal`: STL berechnet sie nach, 3MF liefert wie bisher keine -
-   siehe Abschnitt 2/3), dann `Uint16`- oder `Uint32`-Indexdaten je nach
-   `indexType` (`indexCount` Werte, `indexCount = 3 * Dreieckszahl`)
+   siehe Abschnitt 2/3), dann `Uint32`-Indexdaten (`indexCount` Werte,
+   `indexCount = 3 * Dreieckszahl`)
+
+**Verfeinerung gegenüber der ursprünglichen Skizze:** Indizes werden immer
+als `Uint32` übertragen, nicht wahlweise `Uint16`/`Uint32`. Das erspart eine
+Typ-Fallunterscheidung UND ein sonst nötiges Padding zwischen den Mesh-
+Abschnitten: Da Position (`Float32`), Normale (`Float32`) und Index
+(`Uint32`) jetzt ausschließlich aus 4-Byte-Elementen bestehen, ist die pro
+Mesh geschriebene Byte-Zahl immer ein Vielfaches von 4 - der laufende Offset
+bleibt dadurch für die nächste `Float32Array`-Sicht automatisch
+ausgerichtet, ohne das explizit behandeln zu müssen. Der Mehrverbrauch
+gegenüber `Uint16` (2 statt 4 Byte pro Index bei kleinen Meshes) ist
+gegenüber der ohnehin übertragenen Positionsdatenmenge vernachlässigbar.
 
 Die Ausrichtung auf 4-Byte-Grenzen stellt sicher, dass das Frontend direkt
 typed-array-"Views" auf den empfangenen `ArrayBuffer` legen kann, ohne die
@@ -161,7 +171,7 @@ three.js-Loader-Abhängigkeit:
 export interface ParsedMesh {
   position: Float32Array;
   normal: Float32Array | null;
-  index: Uint32Array | Uint16Array;
+  index: Uint32Array;
 }
 
 export function decodeModelGeometry(buffer: ArrayBuffer): ParsedMesh[]
@@ -208,7 +218,9 @@ befüllt, ohne dass dafür zusätzlicher Code nötig ist.
   gegen Handrechnung geprüft.
 - Rust: Wire-Format-Roundtrip (Bytes schreiben, wieder einlesen, mit
   Original vergleichen), inklusive Padding-Korrektheit.
-- Frontend: `decodeModelGeometry` gegen von Hand konstruierte
-  `ArrayBuffer`-Fixtures (kleine, bekannte Byte-Layouts).
+- Frontend: kein neues JS-Test-Framework (Projekt hat aktuell keins) - der
+  Binär-Decoder wird über TypeScript-Kompilierung (`tsc --noEmit`) und den
+  abschließenden manuellen Live-Test abgesichert, nicht über von Hand
+  gebaute `ArrayBuffer`-Fixtures.
 - Manueller Live-Test mit der ursprünglichen 204-MB-Datei aus diesem
   Bug-Report als Abschlusskriterium.
