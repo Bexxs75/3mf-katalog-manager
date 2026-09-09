@@ -80,6 +80,7 @@ export interface Translations {
   cloudBrowserLoading: string;
   cloudBrowserEmpty: string;
   cloudBrowserImportButton: string;
+  cloudBrowserError: string;
   importFromCloudOption: string;
 }
 
