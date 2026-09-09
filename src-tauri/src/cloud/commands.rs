@@ -278,7 +278,13 @@ pub async fn import_from_cloud(
         // "nie ueber .await halten"-Regel aus den Global Constraints.
         let dto = {
             let mut conn = lock_db(&state)?;
-            let dto = match import_one(&mut conn, &cache_path, "gdrive", Some(file_id.clone())) {
+            let dto = match import_one(
+                &mut conn,
+                &cache_path,
+                "gdrive",
+                Some(file_id.clone()),
+                Some(&metadata.name),
+            ) {
                 Ok(dto) => dto,
                 Err(e) => {
                     eprintln!("[cloud-import] Import fehlgeschlagen fuer {file_id}: {e}");
