@@ -5,7 +5,8 @@ mod repository;
 pub use repository::{
     add_tag_to_file, connect, delete_file, file_exists_by_path, get_file, insert_file,
     insert_folder, list_cloud_accounts, list_files, list_folders, list_tag_counts,
-    remove_tag_from_file, set_cloud_account_status, set_file_sync_status, upsert_cloud_account,
+    remove_tag_from_file, set_cloud_account_status, set_file_modified_at, set_file_sync_status,
+    upsert_cloud_account,
 };
 
 #[cfg(test)]
