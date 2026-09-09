@@ -4,7 +4,7 @@ use std::path::Path;
 use rusqlite::{params, Connection, OptionalExtension};
 
 use super::error::DbError;
-use super::models::{FileRecord, FileType, FolderRecord, MaterialRecord, NewFile, TagCount};
+use super::models::{CloudAccountRecord, FileRecord, FileType, FolderRecord, MaterialRecord, NewFile, TagCount};
 
 const SCHEMA_SQL: &str = include_str!("schema.sql");
 
@@ -289,4 +289,50 @@ fn load_tags(conn: &Connection, file_id: i64) -> Result<Vec<String>, DbError> {
         .query_map(params![file_id], |row| row.get(0))?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rows)
+}
+
+pub fn upsert_cloud_account(
+    conn: &Connection,
+    provider: &str,
+    account_label: &str,
+    connected_at: &str,
+) -> Result<i64, DbError> {
+    conn.execute(
+        "INSERT INTO cloud_accounts (provider, account_label, status, connected_at)
+         VALUES (?1, ?2, 'connected', ?3)
+         ON CONFLICT(provider) DO UPDATE SET
+             account_label = excluded.account_label,
+             status = 'connected',
+             connected_at = excluded.connected_at",
+        params![provider, account_label, connected_at],
+    )?;
+    Ok(conn.query_row(
+        "SELECT id FROM cloud_accounts WHERE provider = ?1",
+        params![provider],
+        |row| row.get(0),
+    )?)
+}
+
+pub fn list_cloud_accounts(conn: &Connection) -> Result<Vec<CloudAccountRecord>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, provider, account_label, status, connected_at FROM cloud_accounts ORDER BY provider",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(CloudAccountRecord {
+            id: row.get(0)?,
+            provider: row.get(1)?,
+            account_label: row.get(2)?,
+            status: row.get(3)?,
+            connected_at: row.get(4)?,
+        })
+    })?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
+pub fn set_cloud_account_status(conn: &Connection, provider: &str, status: &str) -> Result<(), DbError> {
+    conn.execute(
+        "UPDATE cloud_accounts SET status = ?1 WHERE provider = ?2",
+        params![status, provider],
+    )?;
+    Ok(())
 }

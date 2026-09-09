@@ -57,3 +57,12 @@ CREATE TABLE IF NOT EXISTS file_materials (
 );
 
 CREATE INDEX IF NOT EXISTS idx_file_materials_file_id ON file_materials (file_id);
+
+CREATE TABLE IF NOT EXISTS cloud_accounts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider TEXT NOT NULL CHECK (provider IN ('gdrive', 'onedrive', 'dropbox', 'proton')),
+    account_label TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'connected' CHECK (status IN ('connected', 'error', 'disconnected')),
+    connected_at TEXT NOT NULL,
+    UNIQUE (provider)
+);

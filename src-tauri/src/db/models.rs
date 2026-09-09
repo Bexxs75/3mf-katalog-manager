@@ -84,3 +84,12 @@ pub struct TagCount {
     pub color_hue: i64,
     pub count: i64,
 }
+
+#[derive(Debug, Clone)]
+pub struct CloudAccountRecord {
+    pub id: i64,
+    pub provider: String,
+    pub account_label: String,
+    pub status: String,
+    pub connected_at: String,
+}

@@ -4,7 +4,8 @@ mod repository;
 
 pub use repository::{
     add_tag_to_file, connect, delete_file, file_exists_by_path, get_file, insert_file,
-    insert_folder, list_files, list_folders, list_tag_counts, remove_tag_from_file,
+    insert_folder, list_cloud_accounts, list_files, list_folders, list_tag_counts,
+    remove_tag_from_file, set_cloud_account_status, upsert_cloud_account,
 };
 
 #[cfg(test)]
@@ -155,5 +156,43 @@ mod tests {
         let file = get_file(&conn, id).expect("query").expect("present");
         assert!(!file.tags.contains(&"cube".to_string()));
         assert!(file.tags.contains(&"neu-hinzugefuegt".to_string()));
+    }
+
+    #[test]
+    fn upserts_and_lists_cloud_accounts() {
+        let conn = connect_in_memory().expect("connect");
+        let id = upsert_cloud_account(&conn, "gdrive", "user@example.com", "2026-09-09T12:00:00Z")
+            .expect("upsert");
+        assert!(id > 0);
+
+        let accounts = list_cloud_accounts(&conn).expect("list");
+        assert_eq!(accounts.len(), 1);
+        assert_eq!(accounts[0].provider, "gdrive");
+        assert_eq!(accounts[0].account_label, "user@example.com");
+        assert_eq!(accounts[0].status, "connected");
+    }
+
+    #[test]
+    fn upsert_cloud_account_updates_existing_row_for_same_provider() {
+        let conn = connect_in_memory().expect("connect");
+        upsert_cloud_account(&conn, "gdrive", "first@example.com", "2026-09-09T12:00:00Z")
+            .expect("first upsert");
+        upsert_cloud_account(&conn, "gdrive", "second@example.com", "2026-09-09T13:00:00Z")
+            .expect("second upsert");
+
+        let accounts = list_cloud_accounts(&conn).expect("list");
+        assert_eq!(accounts.len(), 1);
+        assert_eq!(accounts[0].account_label, "second@example.com");
+    }
+
+    #[test]
+    fn sets_cloud_account_status() {
+        let conn = connect_in_memory().expect("connect");
+        upsert_cloud_account(&conn, "gdrive", "user@example.com", "2026-09-09T12:00:00Z")
+            .expect("upsert");
+        set_cloud_account_status(&conn, "gdrive", "disconnected").expect("set status");
+
+        let accounts = list_cloud_accounts(&conn).expect("list");
+        assert_eq!(accounts[0].status, "disconnected");
     }
 }
