@@ -75,4 +75,5 @@ export const en: Translations = {
   cloudBrowserLoading: 'Loading …',
   cloudBrowserEmpty: 'No files in this folder',
   cloudBrowserImportButton: 'Import ({count})',
+  importFromCloudOption: 'Import from Google Drive…',
 };
