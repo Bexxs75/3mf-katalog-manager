@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useT } from '../i18n/LanguageContext';
 
 interface Props {
   x: number;
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export function ContextMenu({ x, y, onClose, onOpenInSlicer, onDelete }: Props) {
+  const t = useT();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -35,13 +37,13 @@ export function ContextMenu({ x, y, onClose, onOpenInSlicer, onDelete }: Props) 
     >
       {confirmDelete ? (
         <div className="px-3 py-2.5">
-          <div className="text-[12px] font-medium text-[var(--ink)] pb-2">Eintrag löschen?</div>
+          <div className="text-[12px] font-medium text-[var(--ink)] pb-2">{t('deleteConfirmQuestion')}</div>
           <div className="flex gap-1.5">
             <button
               onClick={() => setConfirmDelete(false)}
               className="flex-1 h-7 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[11.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
             >
-              Abbrechen
+              {t('cancel')}
             </button>
             <button
               onClick={() => {
@@ -50,7 +52,7 @@ export function ContextMenu({ x, y, onClose, onOpenInSlicer, onDelete }: Props) 
               }}
               className="flex-1 h-7 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[11.5px] font-semibold cursor-pointer"
             >
-              Löschen
+              {t('delete')}
             </button>
           </div>
         </div>
@@ -63,13 +65,13 @@ export function ContextMenu({ x, y, onClose, onOpenInSlicer, onDelete }: Props) 
             }}
             className="w-full text-left px-3 py-2 text-[12.5px] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]"
           >
-            In Slicer öffnen
+            {t('openInSlicer')}
           </button>
           <button
             onClick={() => setConfirmDelete(true)}
             className="w-full text-left px-3 py-2 text-[12.5px] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]"
           >
-            Löschen
+            {t('delete')}
           </button>
         </>
       )}
