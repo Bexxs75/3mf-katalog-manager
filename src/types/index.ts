@@ -10,12 +10,12 @@ export interface ModelFile {
   tags: string[];
   origin: Origin;
   sync: SyncStatus;
-  syncTimeLabel: string;
-  volumeLabel: string;
-  filesizeLabel: string;
+  dimensionsMm: [number, number, number] | null;
+  volumeCm3: number | null;
+  objectCount: number | null;
+  materials: { name: string; displayColor: string | null }[];
   fileSizeBytes: number;
   importedAt: string;
-  meta: { label: string; value: string }[];
 }
 
 export interface Folder {

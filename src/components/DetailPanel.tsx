@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { ModelFile } from '../types';
+import type { Language } from '../i18n/types';
+import { useLanguage } from '../i18n/LanguageContext';
+import { formatBytes, formatDate, formatDimensions, formatRelativeTime, formatVolumeCm3 } from '../i18n/format';
 import { ModelViewer } from './ModelViewer';
 
 interface Props {
@@ -17,7 +20,25 @@ const syncLabel: Record<string, string> = {
   'cloud-only': 'Nur Cloud',
 };
 
+function buildMetaRows(model: ModelFile, language: Language): { label: string; value: string }[] {
+  const materialsValue =
+    model.materials.length === 0
+      ? '–'
+      : model.materials.map((m) => m.name).join(', ');
+  const objectCountValue = model.objectCount === null ? '–' : String(model.objectCount);
+
+  return [
+    { label: 'Größe', value: formatDimensions(model.dimensionsMm, language) },
+    { label: 'Volumen', value: formatVolumeCm3(model.volumeCm3, language) },
+    { label: 'Objekte', value: objectCountValue },
+    { label: 'Material', value: materialsValue },
+    { label: 'Dateigröße', value: formatBytes(model.fileSizeBytes, language) },
+    { label: 'Importiert', value: formatDate(model.importedAt, language) },
+  ];
+}
+
 export function DetailPanel({ model, onAddTag, onRemoveTag, onDelete, onOpenInSlicer }: Props) {
+  const { language } = useLanguage();
   const [draft, setDraft] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -66,14 +87,16 @@ export function DetailPanel({ model, onAddTag, onRemoveTag, onDelete, onOpenInSl
             }`}
           />
           <span className="flex-1 text-[12.5px] font-medium">{syncLabel[model.sync]}</span>
-          <span className="font-mono-ui text-[10.5px] text-[var(--ink-3)]">{model.syncTimeLabel}</span>
+          <span className="font-mono-ui text-[10.5px] text-[var(--ink-3)]">
+            {formatRelativeTime(model.importedAt, language)}
+          </span>
         </div>
 
         <div className="px-4 pt-3.5 pb-1">
           <div className="font-mono-ui text-[10px] tracking-[0.12em] uppercase text-[var(--ink-3)] pb-2">
             Metadaten
           </div>
-          {model.meta.map((row) => (
+          {buildMetaRows(model, language).map((row) => (
             <div
               key={row.label}
               className="flex items-baseline gap-3 py-1.5 border-b border-[var(--line)]"
