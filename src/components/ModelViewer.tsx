@@ -3,12 +3,11 @@ import { useT } from '../i18n/LanguageContext';
 import { invoke } from '@tauri-apps/api/core';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { parseModelGeometry } from '../lib/parseModelGeometry';
+import { decodeModelGeometry } from '../lib/parseModelGeometry';
 import type { ParsedMesh } from '../lib/parseModelGeometry';
 
 interface Props {
   fileId: string;
-  extension: string;
 }
 
 function frameObject(object: THREE.Object3D, camera: THREE.PerspectiveCamera, controls: OrbitControls) {
@@ -38,10 +37,12 @@ function disposeObject(object: THREE.Object3D) {
   });
 }
 
-// Baut aus den von parseModelGeometry gelieferten Rohdaten wieder eine
-// THREE-Objekthierarchie auf. Jede Teilgeometrie bringt bereits ihre
-// kumulierte Welt-Transformation mit, daher genuegt eine flache Gruppe
-// direkter Meshes.
+// Baut aus den von decodeModelGeometry gelieferten Rohdaten eine
+// THREE-Objekthierarchie auf. Die Positionen sind bereits weltraum-
+// transformiert (Rust liefert sie so) - anders als vor der Umstellung auf
+// die native Geometrie-Extraktion ist daher keine Matrix-Handhabung pro
+// Mesh mehr noetig, eine flache Gruppe aus Meshes mit Identitaets-
+// Transformation genuegt.
 function buildGroup(meshes: ParsedMesh[], material: THREE.MeshStandardMaterial): THREE.Group {
   const group = new THREE.Group();
   for (const mesh of meshes) {
@@ -50,15 +51,9 @@ function buildGroup(meshes: ParsedMesh[], material: THREE.MeshStandardMaterial):
     if (mesh.normal) {
       geometry.setAttribute('normal', new THREE.BufferAttribute(mesh.normal, 3));
     }
-    if (mesh.index) {
-      geometry.setIndex(new THREE.BufferAttribute(mesh.index, 1));
-    }
-    const object = new THREE.Mesh(geometry, material);
-    object.matrix.fromArray(mesh.matrix);
-    object.matrixAutoUpdate = false;
-    group.add(object);
+    geometry.setIndex(new THREE.BufferAttribute(mesh.index, 1));
+    group.add(new THREE.Mesh(geometry, material));
   }
-  group.updateMatrixWorld(true);
   return group;
 }
 
@@ -71,7 +66,7 @@ interface ViewerContext {
   currentObject: THREE.Object3D | null;
 }
 
-export function ModelViewer({ fileId, extension }: Props) {
+export function ModelViewer({ fileId }: Props) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const ctxRef = useRef<ViewerContext | null>(null);
@@ -158,7 +153,7 @@ export function ModelViewer({ fileId, extension }: Props) {
     invoke<ArrayBuffer>('get_model_geometry', { fileId })
       .then((buffer) => {
         if (cancelled) return;
-        const meshes = parseModelGeometry(extension, buffer);
+        const meshes = decodeModelGeometry(buffer);
         const object = buildGroup(meshes, ctx.material);
 
         if (ctx.currentObject) {
@@ -185,7 +180,7 @@ export function ModelViewer({ fileId, extension }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [fileId, extension]);
+  }, [fileId]);
 
   return (
     <div className="relative w-full h-full">
