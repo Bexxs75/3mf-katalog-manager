@@ -12,6 +12,7 @@ interface Props {
   onTagSelect: (label: string | null) => void;
   clouds: CloudAccount[];
   onAddCloud: () => void;
+  onDisconnectCloud: (id: string) => void;
 }
 
 const originAbbr: Record<string, string> = {
@@ -32,6 +33,7 @@ export function Sidebar({
   onTagSelect,
   clouds,
   onAddCloud,
+  onDisconnectCloud,
 }: Props) {
   const t = useT();
 
@@ -117,8 +119,13 @@ export function Sidebar({
                 {c.name}
               </span>
               <span
+                onClick={() => c.status !== 'disconnected' && onDisconnectCloud(c.id)}
                 className={`font-mono-ui text-[10px] ${
-                  c.status === 'connected' ? 'text-[var(--ink-3)]' : 'text-[var(--accent)]'
+                  c.status === 'connected'
+                    ? 'text-[var(--ink-3)] cursor-pointer hover:text-[var(--accent)]'
+                    : c.status === 'error'
+                    ? 'text-[var(--accent)] cursor-pointer hover:opacity-70'
+                    : 'text-[var(--accent)]'
                 }`}
               >
                 {c.status === 'connected'

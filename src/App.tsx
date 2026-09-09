@@ -8,15 +8,25 @@ import { ModelList } from './components/ModelList';
 import { DetailPanel } from './components/DetailPanel';
 import { ContextMenu } from './components/ContextMenu';
 import { useTheme } from './hooks/useTheme';
-import type { ModelFile, Folder, TagCount, CloudAccount, ViewMode, SortKey } from './types';
+import type { ModelFile, Folder, TagCount, CloudAccount, Origin, ViewMode, SortKey } from './types';
 
-// Cloud-Anbindung ist noch nicht implementiert (spätere Phase) – Beispieldaten bleiben bis dahin.
-const CLOUDS: CloudAccount[] = [
-  { id: 'gdrive', abbr: 'GD', name: 'Google Drive', status: 'connected', usedPercent: 38, quotaLabel: '5,7/15 GB' },
-  { id: 'onedrive', abbr: 'OD', name: 'OneDrive', status: 'connected', usedPercent: 62, quotaLabel: '3,1/5 GB' },
-  { id: 'dropbox', abbr: 'DB', name: 'Dropbox', status: 'disconnected', usedPercent: 0, quotaLabel: '—' },
-  { id: 'proton', abbr: 'PD', name: 'Proton Drive', status: 'connected', usedPercent: 15, quotaLabel: '0,8/5 GB' },
-];
+interface CloudAccountDto {
+  id: string;
+  name: string;
+  status: 'connected' | 'error' | 'disconnected';
+}
+
+// usedPercent/quotaLabel sind noch nicht Teil dieses Backends (echte
+// Speicherplatz-Abfrage folgt bei Bedarf spaeter) - "–" statt erfundener
+// Zahlen.
+const toCloudAccount = (dto: CloudAccountDto): CloudAccount => ({
+  id: dto.id as Origin,
+  abbr: '',
+  name: dto.name,
+  status: dto.status,
+  usedPercent: 0,
+  quotaLabel: '—',
+});
 
 export default function App() {
   const { setting, setTheme } = useTheme();
@@ -29,10 +39,14 @@ export default function App() {
   const [models, setModels] = useState<ModelFile[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [tags, setTags] = useState<TagCount[]>([]);
+  const [clouds, setClouds] = useState<CloudAccount[]>([]);
+  const [connectingCloud, setConnectingCloud] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number } | null>(null);
 
   const refreshFolders = () => invoke<Folder[]>('list_folders').then(setFolders);
   const refreshTags = () => invoke<TagCount[]>('list_tag_counts').then(setTags);
+  const refreshClouds = () =>
+    invoke<CloudAccountDto[]>('list_cloud_accounts').then((accounts) => setClouds(accounts.map(toCloudAccount)));
 
   const mergeImported = (files: ModelFile[]) => {
     if (!files.length) return;
@@ -49,6 +63,7 @@ export default function App() {
     });
     refreshFolders();
     refreshTags();
+    refreshClouds();
   }, []);
 
   useEffect(() => {
@@ -137,9 +152,19 @@ export default function App() {
           tags={tags}
           activeTag={activeTag}
           onTagSelect={setActiveTag}
-          clouds={CLOUDS}
+          clouds={clouds}
           onAddCloud={() => {
-            // OAuth2 Flow für weiteren Cloud-Anbieter starten
+            if (connectingCloud) return;
+            setConnectingCloud(true);
+            invoke('connect_google_drive')
+              .then(refreshClouds)
+              .catch((e) => console.error('[cloud] Google Drive verbinden fehlgeschlagen:', e))
+              .finally(() => setConnectingCloud(false));
+          }}
+          onDisconnectCloud={(id) => {
+            invoke('disconnect_cloud_account', { provider: id })
+              .then(refreshClouds)
+              .catch((e) => console.error('[cloud] Trennen fehlgeschlagen:', e));
           }}
         />
 
