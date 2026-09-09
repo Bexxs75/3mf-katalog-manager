@@ -17,7 +17,7 @@ interface Crumb {
 
 interface Props {
   onClose: () => void;
-  onImport: (fileIds: string[]) => void;
+  onImport: (fileIds: string[]) => Promise<void>;
 }
 
 export function CloudBrowserDialog({ onClose, onImport }: Props) {
@@ -27,6 +27,7 @@ export function CloudBrowserDialog({ onClose, onImport }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const currentFolderId = crumbs[crumbs.length - 1].id;
 
@@ -61,6 +62,29 @@ export function CloudBrowserDialog({ onClose, onImport }: Props) {
     });
   };
 
+  // Bezieht sich nur auf die aktuell sichtbaren Dateien im Ordner - Auswahl
+  // aus anderen, bereits verlassenen Ordnern bleibt beim Umschalten erhalten.
+  const currentFileIds = entries.filter((e) => !e.isFolder).map((e) => e.id);
+  const allCurrentSelected =
+    currentFileIds.length > 0 && currentFileIds.every((id) => selected.has(id));
+
+  const toggleSelectAll = () => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allCurrentSelected) {
+        currentFileIds.forEach((id) => next.delete(id));
+      } else {
+        currentFileIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const handleImportClick = () => {
+    setImporting(true);
+    onImport(Array.from(selected)).finally(() => setImporting(false));
+  };
+
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/50">
       <div className="w-[480px] max-h-[560px] flex flex-col bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)]">
@@ -83,6 +107,20 @@ export function CloudBrowserDialog({ onClose, onImport }: Props) {
             </span>
           ))}
         </div>
+
+        {!loading && !error && currentFileIds.length > 0 && (
+          <div className="flex-none flex items-center gap-2 px-4 py-1.5 border-b border-[var(--line)] text-[11px] text-[var(--ink-2)]">
+            <input
+              type="checkbox"
+              checked={allCurrentSelected}
+              onChange={toggleSelectAll}
+              className="cursor-pointer"
+            />
+            <span className="cursor-pointer" onClick={toggleSelectAll}>
+              {t('cloudBrowserSelectAll')}
+            </span>
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto px-2 py-2">
           {error ? (
@@ -121,16 +159,19 @@ export function CloudBrowserDialog({ onClose, onImport }: Props) {
         <div className="flex-none flex gap-2 px-4 py-3 border-t border-[var(--line)] bg-[var(--panel-2)]">
           <button
             onClick={onClose}
-            className="flex-1 h-8 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            disabled={importing}
+            className="flex-1 h-8 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {t('cancel')}
           </button>
           <button
-            onClick={() => onImport(Array.from(selected))}
-            disabled={selected.size === 0}
+            onClick={handleImportClick}
+            disabled={selected.size === 0 || importing}
             className="flex-1 h-8 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {t('cloudBrowserImportButton').replace('{count}', String(selected.size))}
+            {importing
+              ? t('cloudBrowserImporting')
+              : t('cloudBrowserImportButton').replace('{count}', String(selected.size))}
           </button>
         </div>
       </div>

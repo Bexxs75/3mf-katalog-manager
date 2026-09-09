@@ -70,12 +70,15 @@ export default function App() {
   };
 
   const handleCloudImport = (fileIds: string[]) => {
-    setCloudBrowserOpen(false);
-    invoke<ModelFile[]>('import_from_cloud', { fileIds })
-      .then(mergeImported)
+    return invoke<ModelFile[]>('import_from_cloud', { fileIds })
+      .then((files) => {
+        mergeImported(files);
+        setCloudBrowserOpen(false);
+      })
       .catch((e) => {
         console.error('[cloud] Import aus Google Drive fehlgeschlagen:', e);
         setCloudError(String(e));
+        setCloudBrowserOpen(false);
       });
   };
 

@@ -81,6 +81,8 @@ export interface Translations {
   cloudBrowserEmpty: string;
   cloudBrowserImportButton: string;
   cloudBrowserError: string;
+  cloudBrowserSelectAll: string;
+  cloudBrowserImporting: string;
   importFromCloudOption: string;
 }
 
