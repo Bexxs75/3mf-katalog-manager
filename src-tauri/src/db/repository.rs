@@ -82,12 +82,47 @@ pub fn add_tag_to_file(conn: &Connection, file_id: i64, tag_name: &str) -> Resul
 }
 
 pub fn remove_tag_from_file(conn: &Connection, file_id: i64, tag_name: &str) -> Result<(), DbError> {
+    let tag_id: Option<i64> = conn
+        .query_row("SELECT id FROM tags WHERE name = ?1", params![tag_name], |row| {
+            row.get(0)
+        })
+        .optional()?;
+
     conn.execute(
         "DELETE FROM file_tags
          WHERE file_id = ?1 AND tag_id = (SELECT id FROM tags WHERE name = ?2)",
         params![file_id, tag_name],
     )?;
+
+    if let Some(tag_id) = tag_id {
+        delete_tag_if_unused(conn, tag_id)?;
+    }
     Ok(())
+}
+
+/// Loescht einen Tag, wenn ihm nach einer Aenderung keine Datei mehr
+/// zugeordnet ist - verhindert verwaiste, sinnfreie Tags (z.B. aus geloeschten
+/// Dateien) im Sidebar-Tag-Filter.
+fn delete_tag_if_unused(conn: &Connection, tag_id: i64) -> Result<(), DbError> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM file_tags WHERE tag_id = ?1",
+        params![tag_id],
+        |row| row.get(0),
+    )?;
+    if count == 0 {
+        conn.execute("DELETE FROM tags WHERE id = ?1", params![tag_id])?;
+    }
+    Ok(())
+}
+
+/// Entfernt alle Tags, die aktuell keiner Datei zugeordnet sind. Wird beim
+/// App-Start aufgerufen, um bereits vorhandene verwaiste Tags aus frueheren
+/// Sitzungen (vor dieser Aufraeum-Logik) zu bereinigen.
+pub fn delete_unused_tags(conn: &Connection) -> Result<usize, DbError> {
+    Ok(conn.execute(
+        "DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM file_tags)",
+        [],
+    )?)
 }
 
 pub fn list_tag_counts(conn: &Connection) -> Result<Vec<TagCount>, DbError> {
@@ -172,7 +207,19 @@ pub fn insert_file(conn: &mut Connection, file: &NewFile) -> Result<i64, DbError
 }
 
 pub fn delete_file(conn: &Connection, id: i64) -> Result<(), DbError> {
+    // Tag-IDs vorher merken, da file_tags per ON DELETE CASCADE mitgeloescht
+    // wird und danach nicht mehr bekannt ist, welche Tags betroffen waren.
+    let mut stmt = conn.prepare("SELECT tag_id FROM file_tags WHERE file_id = ?1")?;
+    let tag_ids: Vec<i64> = stmt
+        .query_map(params![id], |row| row.get(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(stmt);
+
     conn.execute("DELETE FROM files WHERE id = ?1", params![id])?;
+
+    for tag_id in tag_ids {
+        delete_tag_if_unused(conn, tag_id)?;
+    }
     Ok(())
 }
 

@@ -26,6 +26,9 @@ pub fn run() {
             std::fs::create_dir_all(&app_data_dir)?;
             let db_path = app_data_dir.join("catalog.db");
             let conn = db::connect(&db_path)?;
+            if let Err(e) = db::delete_unused_tags(&conn) {
+                eprintln!("[startup] Aufraeumen verwaister Tags fehlgeschlagen: {e}");
+            }
             app.manage(commands::AppState {
                 db: Mutex::new(conn),
             });
