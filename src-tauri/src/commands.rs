@@ -367,6 +367,30 @@ pub fn import_dropped(state: State<AppState>, paths: Vec<String>) -> CmdResult<V
     import_many(&state, paths.into_iter().map(PathBuf::from).collect())
 }
 
+#[tauri::command]
+pub fn pick_slicer_executable(app: tauri::AppHandle) -> CmdResult<Option<String>> {
+    let dialog = app.dialog().file();
+    // #[cfg] direkt auf dem let-Statement (Shadowing) statt "let mut" +
+    // bedingter Neuzuweisung: unter Linux faellt diese Zeile komplett weg,
+    // ein "mut"-Binding waere dort nie mutiert und wuerde eine
+    // unused_mut-Warnung ausloesen.
+    #[cfg(target_os = "windows")]
+    let dialog = dialog.add_filter("Programme", &["exe"]);
+    let picked = dialog.blocking_pick_file();
+    Ok(picked
+        .and_then(|p| p.into_path().ok())
+        .map(|p| p.to_string_lossy().to_string()))
+}
+
+#[tauri::command]
+pub fn open_in_slicer(slicer_path: String, file_path: String) -> CmdResult<()> {
+    std::process::Command::new(&slicer_path)
+        .arg(&file_path)
+        .spawn()
+        .map_err(|e| format!("Slicer konnte nicht gestartet werden: {e}"))?;
+    Ok(())
+}
+
 // Encodiert die extrahierte Geometrie als einzelnen Binaerstrom fuer
 // tauri::ipc::Response: 4 Bytes Headerlaenge (u32 LE), dann ein mit
 // Leerzeichen auf ein Vielfaches von 4 Bytes aufgepolsterter JSON-Header,
@@ -574,5 +598,23 @@ mod tests {
         let bytes = encode_render_meshes(&[]);
         let decoded = decode_for_test(&bytes);
         assert!(decoded.is_empty());
+    }
+
+    #[test]
+    fn open_in_slicer_returns_error_for_nonexistent_executable() {
+        let result = open_in_slicer(
+            "/definitely/does/not/exist/xyz123".to_string(),
+            "/tmp/model.3mf".to_string(),
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn open_in_slicer_spawns_successfully_for_a_real_executable() {
+        // "/usr/bin/true" ist auf jedem Unix-System vorhanden und beendet
+        // sich sofort mit Exit-Code 0 - deterministischer Erfolgstest ohne
+        // einen echten Slicer zu benoetigen.
+        let result = open_in_slicer("/usr/bin/true".to_string(), "/tmp/model.3mf".to_string());
+        assert!(result.is_ok());
     }
 }
