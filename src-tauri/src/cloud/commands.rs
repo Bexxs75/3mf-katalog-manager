@@ -1,4 +1,4 @@
-use tauri::State;
+use tauri::{Manager, State};
 
 use crate::cloud::config::{default_config_path, load_cloud_config};
 use crate::cloud::gdrive::fetch_google_account_email;
@@ -6,7 +6,7 @@ use crate::cloud::oauth::run_google_oauth_flow;
 use crate::cloud::provider::{CloudEntry, StorageProvider};
 use crate::cloud::session::with_gdrive_provider;
 use crate::cloud::tokens::{KeyringTokenStore, StoredTokens, TokenStore};
-use crate::commands::{lock_db, AppState};
+use crate::commands::{import_one, lock_db, AppState, ModelFileDto};
 use crate::db;
 
 type CmdResult<T> = Result<T, String>;
@@ -166,4 +166,53 @@ pub async fn browse_cloud_folder(
     .await?;
 
     Ok(entries.into_iter().map(CloudEntryDto::from).collect())
+}
+
+#[tauri::command]
+pub async fn import_from_cloud(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    file_ids: Vec<String>,
+) -> CmdResult<Vec<ModelFileDto>> {
+    let cache_dir = app.path().app_cache_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&cache_dir).map_err(|e| e.to_string())?;
+
+    let mut imported = Vec::new();
+    for file_id in file_ids {
+        let metadata = with_gdrive_provider(&state, {
+            let file_id = file_id.clone();
+            move |provider| {
+                let file_id = file_id.clone();
+                async move { provider.get_metadata(&file_id).await }
+            }
+        })
+        .await?;
+
+        let data = with_gdrive_provider(&state, {
+            let file_id = file_id.clone();
+            move |provider| {
+                let file_id = file_id.clone();
+                async move { provider.download(&file_id).await }
+            }
+        })
+        .await?;
+
+        let cache_path = cache_dir.join(&metadata.name);
+        std::fs::write(&cache_path, &data).map_err(|e| e.to_string())?;
+
+        // Ein durchgehender Lock-Scope genuegt hier: zwischen den beiden
+        // DB-Aufrufen liegt kein .await, daher kein Konflikt mit der
+        // "nie ueber .await halten"-Regel aus den Global Constraints.
+        let dto = {
+            let mut conn = lock_db(&state)?;
+            let dto = import_one(&mut conn, &cache_path, "gdrive", Some(file_id))?;
+            let id: i64 = dto.id.parse().map_err(|_| "invalid file id".to_string())?;
+            db::set_file_modified_at(&conn, id, &metadata.modified_time).map_err(|e| e.to_string())?;
+            dto
+        };
+
+        imported.push(dto);
+    }
+
+    Ok(imported)
 }
