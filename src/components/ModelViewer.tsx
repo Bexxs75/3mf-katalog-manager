@@ -3,8 +3,8 @@ import { useT } from '../i18n/LanguageContext';
 import { invoke } from '@tauri-apps/api/core';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
-import { ThreeMFLoader } from 'three/examples/jsm/loaders/3MFLoader.js';
+import { parseModelGeometry } from '../lib/parseModelGeometry';
+import type { ParsedMesh } from '../lib/parseModelGeometry';
 
 interface Props {
   fileId: string;
@@ -36,6 +36,30 @@ function disposeObject(object: THREE.Object3D) {
       child.geometry.dispose();
     }
   });
+}
+
+// Baut aus den von parseModelGeometry gelieferten Rohdaten wieder eine
+// THREE-Objekthierarchie auf. Jede Teilgeometrie bringt bereits ihre
+// kumulierte Welt-Transformation mit, daher genuegt eine flache Gruppe
+// direkter Meshes.
+function buildGroup(meshes: ParsedMesh[], material: THREE.MeshStandardMaterial): THREE.Group {
+  const group = new THREE.Group();
+  for (const mesh of meshes) {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(mesh.position, 3));
+    if (mesh.normal) {
+      geometry.setAttribute('normal', new THREE.BufferAttribute(mesh.normal, 3));
+    }
+    if (mesh.index) {
+      geometry.setIndex(new THREE.BufferAttribute(mesh.index, 1));
+    }
+    const object = new THREE.Mesh(geometry, material);
+    object.matrix.fromArray(mesh.matrix);
+    object.matrixAutoUpdate = false;
+    group.add(object);
+  }
+  group.updateMatrixWorld(true);
+  return group;
 }
 
 interface ViewerContext {
@@ -134,23 +158,8 @@ export function ModelViewer({ fileId, extension }: Props) {
     invoke<ArrayBuffer>('get_model_geometry', { fileId })
       .then((buffer) => {
         if (cancelled) return;
-
-        let object: THREE.Object3D;
-        if (extension === 'stl') {
-          const geometry = new STLLoader().parse(buffer);
-          geometry.computeVertexNormals();
-          object = new THREE.Mesh(geometry, ctx.material);
-        } else if (extension === '3mf') {
-          const group = new ThreeMFLoader().parse(buffer);
-          group.traverse((child) => {
-            if (child instanceof THREE.Mesh) {
-              child.material = ctx.material;
-            }
-          });
-          object = group;
-        } else {
-          throw new Error(`nicht unterstütztes Format: ${extension}`);
-        }
+        const meshes = parseModelGeometry(extension, buffer);
+        const object = buildGroup(meshes, ctx.material);
 
         if (ctx.currentObject) {
           ctx.scene.remove(ctx.currentObject);
