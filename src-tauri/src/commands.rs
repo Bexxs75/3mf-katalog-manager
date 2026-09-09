@@ -93,7 +93,7 @@ fn to_dto(file: FileRecord) -> ModelFileDto {
     }
 }
 
-fn lock_db<'a>(state: &'a State<AppState>) -> CmdResult<std::sync::MutexGuard<'a, Connection>> {
+pub(crate) fn lock_db<'a>(state: &'a State<AppState>) -> CmdResult<std::sync::MutexGuard<'a, Connection>> {
     state.db.lock().map_err(|_| "database lock poisoned".to_string())
 }
 
