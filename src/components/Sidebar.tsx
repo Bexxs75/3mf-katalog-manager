@@ -1,4 +1,5 @@
 import type { Folder, TagCount, CloudAccount } from '../types';
+import { useT } from '../i18n/LanguageContext';
 
 interface Props {
   query: string;
@@ -32,6 +33,8 @@ export function Sidebar({
   clouds,
   onAddCloud,
 }: Props) {
+  const t = useT();
+
   return (
     <aside className="flex-none w-[242px] flex flex-col min-h-0 bg-[var(--panel)] border-r border-[var(--line)]">
       <div className="p-3 pb-2.5 border-b border-[var(--line)]">
@@ -40,7 +43,7 @@ export function Sidebar({
           <input
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
-            placeholder="Name oder Tag suchen …"
+            placeholder={t('searchPlaceholder')}
             className="flex-1 min-w-0 border-0 outline-0 bg-transparent text-[var(--ink)] text-[13px]"
           />
         </div>
@@ -48,7 +51,7 @@ export function Sidebar({
 
       <div className="flex-1 overflow-y-auto px-2 py-3">
         <div className="font-mono-ui text-[10px] tracking-[0.12em] uppercase text-[var(--ink-3)] px-1.5 pb-2">
-          Ordner
+          {t('foldersHeading')}
         </div>
         {folders.map((f) => (
           <div
@@ -68,26 +71,26 @@ export function Sidebar({
         ))}
 
         <div className="font-mono-ui text-[10px] tracking-[0.12em] uppercase text-[var(--ink-3)] px-1.5 pt-[18px] pb-2">
-          Tags
+          {t('tagsHeading')}
         </div>
-        {tags.map((t) => (
+        {tags.map((tag) => (
           <div
-            key={t.label}
-            onClick={() => onTagSelect(activeTag === t.label ? null : t.label)}
+            key={tag.label}
+            onClick={() => onTagSelect(activeTag === tag.label ? null : tag.label)}
             className={`flex items-center gap-2 h-7 px-1.5 rounded-[3px] cursor-pointer ${
-              activeTag === t.label
+              activeTag === tag.label
                 ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
                 : 'text-[var(--ink-2)] hover:text-[var(--ink)]'
             }`}
           >
             <span
               className="w-[7px] h-[7px] rounded-full"
-              style={{ background: `oklch(0.62 0.14 ${t.colorHue})` }}
+              style={{ background: `oklch(0.62 0.14 ${tag.colorHue})` }}
             />
             <span className="flex-1 font-mono-ui text-xs overflow-hidden text-ellipsis whitespace-nowrap">
-              #{t.label}
+              #{tag.label}
             </span>
-            <span className="font-mono-ui text-[11px] text-[var(--ink-3)]">{t.count}</span>
+            <span className="font-mono-ui text-[11px] text-[var(--ink-3)]">{tag.count}</span>
           </div>
         ))}
       </div>
@@ -95,7 +98,7 @@ export function Sidebar({
       <div className="flex-none border-t border-[var(--line)] px-3.5 pt-3 pb-3.5">
         <div className="flex items-center justify-between pb-2.5">
           <span className="font-mono-ui text-[10px] tracking-[0.12em] uppercase text-[var(--ink-3)]">
-            Cloud-Konten
+            {t('cloudAccountsHeading')}
           </span>
           <span
             onClick={onAddCloud}
@@ -119,10 +122,10 @@ export function Sidebar({
                 }`}
               >
                 {c.status === 'connected'
-                  ? 'verbunden'
+                  ? t('cloudConnected')
                   : c.status === 'error'
-                  ? 'Fehler'
-                  : 'getrennt'}
+                  ? t('cloudError')
+                  : t('cloudDisconnected')}
               </span>
             </div>
             <div className="flex items-center gap-2 pl-[26px]">
