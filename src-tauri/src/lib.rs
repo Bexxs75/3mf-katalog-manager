@@ -43,6 +43,9 @@ pub fn run() {
             commands::import_folder,
             commands::import_dropped,
             commands::get_model_geometry,
+            cloud::commands::connect_google_drive,
+            cloud::commands::disconnect_cloud_account,
+            cloud::commands::list_cloud_accounts,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
