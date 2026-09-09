@@ -33,6 +33,7 @@ export const fr: Translations = {
   cloudConnected: 'connecté',
   cloudError: 'erreur',
   cloudDisconnected: 'déconnecté',
+  cloudConnectionError: 'Erreur de connexion :',
 
   previewLabel3d: 'Aperçu 3D',
 

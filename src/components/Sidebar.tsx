@@ -11,6 +11,7 @@ interface Props {
   activeTag: string | null;
   onTagSelect: (label: string | null) => void;
   clouds: CloudAccount[];
+  cloudError: string | null;
   onAddCloud: () => void;
   onDisconnectCloud: (id: string) => void;
 }
@@ -32,6 +33,7 @@ export function Sidebar({
   activeTag,
   onTagSelect,
   clouds,
+  cloudError,
   onAddCloud,
   onDisconnectCloud,
 }: Props) {
@@ -148,6 +150,11 @@ export function Sidebar({
             </div>
           </div>
         ))}
+        {cloudError && (
+          <div className="pt-1.5 font-mono-ui text-[10px] text-[var(--accent)] break-words">
+            {t('cloudConnectionError')} {cloudError}
+          </div>
+        )}
       </div>
     </aside>
   );

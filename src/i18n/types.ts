@@ -38,6 +38,7 @@ export interface Translations {
   cloudConnected: string;
   cloudError: string;
   cloudDisconnected: string;
+  cloudConnectionError: string;
 
   previewLabel3d: string;
 
