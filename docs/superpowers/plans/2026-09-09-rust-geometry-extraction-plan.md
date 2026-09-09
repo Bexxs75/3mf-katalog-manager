@@ -1358,11 +1358,18 @@ pub async fn get_model_geometry(
 ) -> Result<tauri::ipc::Response, String> {
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
 
-    let conn = lock_db(&state)?;
-    let file = db::get_file(&conn, id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "file not found".to_string())?;
-    drop(conn);
+    // Der MutexGuard aus lock_db muss vor dem .await unten aus dem Scope
+    // laufen (nicht nur per drop()): std::sync::MutexGuard ist nicht Send,
+    // und der Compiler haelt ihn sonst faelschlich fuer potenziell ueber die
+    // .await-Grenze hinweg lebendig, was den Command-Handler nicht mehr
+    // Send-kompatibel macht (rust-lang/rust#57478 - ein expliziter
+    // drop()-Aufruf allein genuegt dafuer nicht, ein Block-Scope schon).
+    let file = {
+        let conn = lock_db(&state)?;
+        db::get_file(&conn, id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "file not found".to_string())?
+    };
 
     let path = PathBuf::from(file.path);
     let extension = path
