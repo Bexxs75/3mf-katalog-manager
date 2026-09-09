@@ -54,6 +54,13 @@ export const es: Translations = {
   openInSlicer: 'Abrir en el laminador',
   deleteConfirmQuestion: '¿Eliminar entrada?',
   deleteAriaLabel: 'Eliminar entrada',
+  slicerSectionTitle: 'Laminador',
+  noSlicersConfigured: 'Ningún laminador configurado.',
+  addSlicer: 'Añadir',
+  confirmSlicerName: 'Confirmar',
+  removeSlicerAria: 'Eliminar laminador',
+  chooseSlicerAria: 'Elegir otro laminador',
+  slicerLaunchError: 'No se pudo iniciar el laminador:',
 
   emptyStateText: 'Selecciona un modelo para ver detalles, vista previa y etiquetas.',
   dragToRotate: 'Arrastra para girar',
