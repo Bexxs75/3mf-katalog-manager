@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import type { ModelFile } from '../types';
-import type { Language } from '../i18n/types';
-import { useLanguage } from '../i18n/LanguageContext';
+import type { ModelFile, SyncStatus } from '../types';
+import type { Language, Translations } from '../i18n/types';
+import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatBytes, formatDate, formatDimensions, formatRelativeTime, formatVolumeCm3 } from '../i18n/format';
 import { ModelViewer } from './ModelViewer';
 
@@ -13,32 +13,35 @@ interface Props {
   onOpenInSlicer: () => void;
 }
 
-const syncLabel: Record<string, string> = {
-  synced: 'Aktuell',
-  outdated: 'Veraltet',
-  'local-only': 'Nur lokal',
-  'cloud-only': 'Nur Cloud',
+type TFunction = <K extends keyof Translations>(key: K) => Translations[K];
+
+const SYNC_KEYS: Record<SyncStatus, 'syncSynced' | 'syncOutdated' | 'syncLocalOnly' | 'syncCloudOnly'> = {
+  synced: 'syncSynced',
+  outdated: 'syncOutdated',
+  'local-only': 'syncLocalOnly',
+  'cloud-only': 'syncCloudOnly',
 };
 
-function buildMetaRows(model: ModelFile, language: Language): { label: string; value: string }[] {
+function buildMetaRows(model: ModelFile, t: TFunction, language: Language): { label: string; value: string }[] {
   const materialsValue =
     model.materials.length === 0
-      ? '–'
+      ? t('noValue')
       : model.materials.map((m) => m.name).join(', ');
-  const objectCountValue = model.objectCount === null ? '–' : String(model.objectCount);
+  const objectCountValue = model.objectCount === null ? t('noValue') : String(model.objectCount);
 
   return [
-    { label: 'Größe', value: formatDimensions(model.dimensionsMm, language) },
-    { label: 'Volumen', value: formatVolumeCm3(model.volumeCm3, language) },
-    { label: 'Objekte', value: objectCountValue },
-    { label: 'Material', value: materialsValue },
-    { label: 'Dateigröße', value: formatBytes(model.fileSizeBytes, language) },
-    { label: 'Importiert', value: formatDate(model.importedAt, language) },
+    { label: t('metaDimensions'), value: formatDimensions(model.dimensionsMm, language) },
+    { label: t('metaVolume'), value: formatVolumeCm3(model.volumeCm3, language) },
+    { label: t('metaObjectCount'), value: objectCountValue },
+    { label: t('metaMaterial'), value: materialsValue },
+    { label: t('metaFileSize'), value: formatBytes(model.fileSizeBytes, language) },
+    { label: t('metaImported'), value: formatDate(model.importedAt, language) },
   ];
 }
 
 export function DetailPanel({ model, onAddTag, onRemoveTag, onDelete, onOpenInSlicer }: Props) {
   const { language } = useLanguage();
+  const t = useT();
   const [draft, setDraft] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -47,14 +50,14 @@ export function DetailPanel({ model, onAddTag, onRemoveTag, onDelete, onOpenInSl
   if (!model) {
     return (
       <aside className="flex-none w-[336px] flex items-center justify-center bg-[var(--panel)] border-l border-[var(--line)] text-[var(--ink-3)] text-[13px] px-6 text-center">
-        Wähle ein Modell aus, um Details, Vorschau und Tags zu sehen.
+        {t('emptyStateText')}
       </aside>
     );
   }
 
   const submitDraft = () => {
-    const t = draft.trim().replace(/^#/, '');
-    if (t) onAddTag(t);
+    const value = draft.trim().replace(/^#/, '');
+    if (value) onAddTag(value);
     setDraft('');
   };
 
@@ -76,7 +79,7 @@ export function DetailPanel({ model, onAddTag, onRemoveTag, onDelete, onOpenInSl
           />
           <ModelViewer key={model.id} fileId={model.id} />
           <div className="absolute left-2.5 bottom-2 font-mono-ui text-[9.5px] tracking-[0.08em] uppercase text-[var(--ink-3)] pointer-events-none">
-            Ziehen zum Drehen
+            {t('dragToRotate')}
           </div>
         </div>
 
@@ -86,7 +89,7 @@ export function DetailPanel({ model, onAddTag, onRemoveTag, onDelete, onOpenInSl
               model.sync === 'synced' ? 'bg-[var(--accent)]' : 'bg-[var(--ink-3)]'
             }`}
           />
-          <span className="flex-1 text-[12.5px] font-medium">{syncLabel[model.sync]}</span>
+          <span className="flex-1 text-[12.5px] font-medium">{t(SYNC_KEYS[model.sync])}</span>
           <span className="font-mono-ui text-[10.5px] text-[var(--ink-3)]">
             {formatRelativeTime(model.importedAt, language)}
           </span>
@@ -94,9 +97,9 @@ export function DetailPanel({ model, onAddTag, onRemoveTag, onDelete, onOpenInSl
 
         <div className="px-4 pt-3.5 pb-1">
           <div className="font-mono-ui text-[10px] tracking-[0.12em] uppercase text-[var(--ink-3)] pb-2">
-            Metadaten
+            {t('metadataHeading')}
           </div>
-          {buildMetaRows(model, language).map((row) => (
+          {buildMetaRows(model, t, language).map((row) => (
             <div
               key={row.label}
               className="flex items-baseline gap-3 py-1.5 border-b border-[var(--line)]"
@@ -111,17 +114,17 @@ export function DetailPanel({ model, onAddTag, onRemoveTag, onDelete, onOpenInSl
 
         <div className="px-4 pt-[18px] pb-5">
           <div className="font-mono-ui text-[10px] tracking-[0.12em] uppercase text-[var(--ink-3)] pb-2.5">
-            Hashtags
+            {t('hashtagsHeading')}
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {model.tags.map((t) => (
+            {model.tags.map((tag) => (
               <span
-                key={t}
+                key={tag}
                 className="inline-flex items-center gap-1.5 h-6 pl-2.5 pr-1 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] font-mono-ui text-[11.5px]"
               >
-                #{t}
+                #{tag}
                 <span
-                  onClick={() => onRemoveTag(t)}
+                  onClick={() => onRemoveTag(tag)}
                   className="w-4 h-4 grid place-items-center rounded-full cursor-pointer text-[10px] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
                 >
                   ✕
@@ -132,7 +135,7 @@ export function DetailPanel({ model, onAddTag, onRemoveTag, onDelete, onOpenInSl
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && submitDraft()}
-              placeholder="Tag hinzufügen"
+              placeholder={t('addTagPlaceholder')}
               className="h-6 w-[118px] px-2.5 rounded-full border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 font-mono-ui text-[11.5px]"
             />
           </div>
@@ -143,13 +146,13 @@ export function DetailPanel({ model, onAddTag, onRemoveTag, onDelete, onOpenInSl
         {confirmDelete ? (
           <>
             <span className="flex-1 flex items-center text-[12.5px] font-medium text-[var(--ink)]">
-              Eintrag löschen?
+              {t('deleteConfirmQuestion')}
             </span>
             <button
               onClick={() => setConfirmDelete(false)}
               className="flex-none h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
             >
-              Abbrechen
+              {t('cancel')}
             </button>
             <button
               onClick={() => {
@@ -158,7 +161,7 @@ export function DetailPanel({ model, onAddTag, onRemoveTag, onDelete, onOpenInSl
               }}
               className="flex-none h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
             >
-              Löschen
+              {t('delete')}
             </button>
           </>
         ) : (
@@ -167,14 +170,14 @@ export function DetailPanel({ model, onAddTag, onRemoveTag, onDelete, onOpenInSl
               onClick={onOpenInSlicer}
               className="flex-1 h-8 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
             >
-              In Slicer öffnen
+              {t('openInSlicer')}
             </button>
             <button className="flex-none w-[34px] h-8 grid place-items-center rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] font-mono-ui cursor-pointer">
               ↻
             </button>
             <button
               onClick={() => setConfirmDelete(true)}
-              aria-label="Eintrag löschen"
+              aria-label={t('deleteAriaLabel')}
               className="flex-none w-[34px] h-8 grid place-items-center rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] font-mono-ui cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
             >
               ✕
