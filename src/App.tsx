@@ -41,6 +41,7 @@ export default function App() {
   const [tags, setTags] = useState<TagCount[]>([]);
   const [clouds, setClouds] = useState<CloudAccount[]>([]);
   const [connectingCloud, setConnectingCloud] = useState(false);
+  const [cloudError, setCloudError] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number } | null>(null);
 
   const refreshFolders = () => invoke<Folder[]>('list_folders').then(setFolders);
@@ -153,18 +154,31 @@ export default function App() {
           activeTag={activeTag}
           onTagSelect={setActiveTag}
           clouds={clouds}
+          cloudError={cloudError}
           onAddCloud={() => {
             if (connectingCloud) return;
             setConnectingCloud(true);
             invoke('connect_google_drive')
-              .then(refreshClouds)
-              .catch((e) => console.error('[cloud] Google Drive verbinden fehlgeschlagen:', e))
+              .then(() => {
+                setCloudError(null);
+                refreshClouds();
+              })
+              .catch((e) => {
+                console.error('[cloud] Google Drive verbinden fehlgeschlagen:', e);
+                setCloudError(String(e));
+              })
               .finally(() => setConnectingCloud(false));
           }}
           onDisconnectCloud={(id) => {
             invoke('disconnect_cloud_account', { provider: id })
-              .then(refreshClouds)
-              .catch((e) => console.error('[cloud] Trennen fehlgeschlagen:', e));
+              .then(() => {
+                setCloudError(null);
+                refreshClouds();
+              })
+              .catch((e) => {
+                console.error('[cloud] Trennen fehlgeschlagen:', e);
+                setCloudError(String(e));
+              });
           }}
         />
 
