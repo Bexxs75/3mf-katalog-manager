@@ -24,10 +24,8 @@ impl StorageProvider for GoogleDriveProvider {
         list_folder_from(DRIVE_API_BASE, &self.client, &self.access_token, folder_id).await
     }
 
-    async fn download(&self, _file_id: &str) -> CloudResult<Vec<u8>> {
-        Err(CloudError::Network(
-            "download() wird in einem spaeteren Task implementiert".to_string(),
-        ))
+    async fn download(&self, file_id: &str) -> CloudResult<Vec<u8>> {
+        download_from(DRIVE_API_BASE, &self.client, &self.access_token, file_id).await
     }
 
     async fn upload(&self, _folder_id: Option<&str>, _file_name: &str, _data: &[u8]) -> CloudResult<CloudEntry> {
@@ -145,6 +143,40 @@ async fn get_metadata_from(
         .map_err(|e| CloudError::Network(format!("Antwort konnte nicht gelesen werden: {e}")))?;
 
     Ok(CloudEntry::from(parsed))
+}
+
+async fn download_from(
+    base_url: &str,
+    client: &reqwest::Client,
+    access_token: &str,
+    file_id: &str,
+) -> CloudResult<Vec<u8>> {
+    let response = client
+        .get(format!("{base_url}/files/{file_id}"))
+        .bearer_auth(access_token)
+        .query(&[("alt", "media")])
+        .send()
+        .await
+        .map_err(|e| CloudError::Network(e.to_string()))?;
+
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Err(CloudError::NotFound(file_id.to_string()));
+    }
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err(CloudError::Auth("Zugriffstoken abgelaufen".to_string()));
+    }
+    if !response.status().is_success() {
+        return Err(CloudError::Network(format!(
+            "Google-Drive-Download fehlgeschlagen: HTTP {}",
+            response.status()
+        )));
+    }
+
+    response
+        .bytes()
+        .await
+        .map(|b| b.to_vec())
+        .map_err(|e| CloudError::Network(e.to_string()))
 }
 
 const USERINFO_URL: &str = "https://www.googleapis.com/oauth2/v3/userinfo";
@@ -269,5 +301,13 @@ mod tests {
         let client = reqwest::Client::new();
         let result = get_metadata_from(&url, &client, "fake-token", "missing-file").await;
         assert!(matches!(result, Err(CloudError::NotFound(_))));
+    }
+
+    #[tokio::test]
+    async fn download_returns_raw_bytes() {
+        let url = spawn_mock_userinfo_server("raw-file-content", "HTTP/1.1 200 OK");
+        let client = reqwest::Client::new();
+        let data = download_from(&url, &client, "fake-token", "file-1").await.expect("download");
+        assert_eq!(data, b"raw-file-content");
     }
 }
