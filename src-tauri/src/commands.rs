@@ -367,12 +367,6 @@ pub fn import_dropped(state: State<AppState>, paths: Vec<String>) -> CmdResult<V
     import_many(&state, paths.into_iter().map(PathBuf::from).collect())
 }
 
-// Liefert die rohen Dateibytes ueber `tauri::ipc::Response` statt als
-// base64-codiertes JSON-Feld: bei grossen Dateien (mehrere hundert MB)
-// verursachte die JSON/Base64-Umkodierung auf beiden Seiten der IPC-Bruecke
-// (Rust-seitig `STANDARD.encode`, JS-seitig `atob` + Byte-fuer-Byte-Kopie)
-// eine spuerbare Verzoegerung beim Laden der 3D-Vorschau. Das Frontend
-// bestimmt die Dateiendung selbst aus dem bereits bekannten Dateinamen.
 // Encodiert die extrahierte Geometrie als einzelnen Binaerstrom fuer
 // tauri::ipc::Response: 4 Bytes Headerlaenge (u32 LE), dann ein mit
 // Leerzeichen auf ein Vielfaches von 4 Bytes aufgepolsterter JSON-Header,
@@ -406,7 +400,15 @@ fn encode_render_meshes(meshes: &[RenderMesh]) -> Vec<u8> {
         header_json.push(b' ');
     }
 
-    let mut out = Vec::with_capacity(4 + header_json.len());
+    let payload: usize = meshes
+        .iter()
+        .map(|m| {
+            m.positions.len() * 12
+                + m.normals.as_ref().map_or(0, |n| n.len() * 12)
+                + m.indices.len() * 12
+        })
+        .sum();
+    let mut out = Vec::with_capacity(4 + header_json.len() + payload);
     out.extend_from_slice(&(header_json.len() as u32).to_le_bytes());
     out.extend_from_slice(&header_json);
 
