@@ -132,11 +132,11 @@ export function Header({
 
       <div className="flex-1" />
 
-      <span className="font-mono-ui text-[11px] text-[var(--ink-3)]">
+      <span className="shrink-0 font-mono-ui text-[11px] text-[var(--ink-3)]">
         {formatCount(t('filesCount'), count)}
       </span>
 
-      <div className="relative">
+      <div className="relative shrink-0">
         <button
           onClick={() => setSettingsOpen((o) => !o)}
           className="w-8 h-8 grid place-items-center rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink-2)] text-[15px] cursor-pointer hover:text-[var(--ink)] hover:border-[var(--line-strong)]"
