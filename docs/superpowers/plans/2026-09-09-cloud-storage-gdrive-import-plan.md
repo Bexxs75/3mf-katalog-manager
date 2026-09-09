@@ -581,6 +581,16 @@ EOF
 
 ## Task 4: `GoogleDriveProvider` — `list_folder` und `get_metadata`
 
+**Nachtrag (bei Ausführung entdeckt):** `reqwest 0.13.5`s `RequestBuilder::query(...)`-Methode ist hinter dem Cargo-Feature `"query"` versteckt, das Plan 1s Task 1 nicht aktiviert hat (dort wurde nur `json` gebraucht). Vor Step 1 dieses Tasks muss `src-tauri/Cargo.toml`s `reqwest`-Zeile von
+```toml
+reqwest = { version = "0.13.5", features = ["json"] }
+```
+zu
+```toml
+reqwest = { version = "0.13.5", features = ["json", "query"] }
+```
+geändert werden (rein additiv, keine andere Zeile in `Cargo.toml` betroffen).
+
 **Files:**
 - Modify: `src-tauri/src/cloud/gdrive.rs`
 
