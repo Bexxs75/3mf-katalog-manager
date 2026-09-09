@@ -77,7 +77,10 @@ export function DetailPanel({ model, onAddTag, onRemoveTag, onDelete, onOpenInSl
                 'repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 11px)',
             }}
           />
-          <ModelViewer fileId={model.id} />
+          <ModelViewer
+            fileId={model.id}
+            extension={model.name.split('.').pop()?.toLowerCase() ?? ''}
+          />
           <div className="absolute left-2.5 bottom-2 font-mono-ui text-[9.5px] tracking-[0.08em] uppercase text-[var(--ink-3)] pointer-events-none">
             {t('dragToRotate')}
           </div>
