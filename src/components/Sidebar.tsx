@@ -23,6 +23,16 @@ const originAbbr: Record<string, string> = {
   proton: 'PD',
 };
 
+// Anbieternamen bleiben immer im Original (Markenname), unabhängig von der
+// aktiven UI-Sprache — nicht über t() übersetzt, analog zu den
+// Sprachnamen im Sprache-Umschalter.
+const providerName: Record<string, string> = {
+  gdrive: 'Google Drive',
+  onedrive: 'OneDrive',
+  dropbox: 'Dropbox',
+  proton: 'Proton Drive',
+};
+
 export function Sidebar({
   query,
   onQueryChange,
@@ -117,8 +127,11 @@ export function Sidebar({
               <span className="font-mono-ui text-[10px] px-1 py-0.5 rounded border border-[var(--line-strong)] text-[var(--ink-2)]">
                 {originAbbr[c.id] ?? c.abbr}
               </span>
-              <span className="flex-1 text-[12.5px] font-medium overflow-hidden text-ellipsis whitespace-nowrap">
-                {c.name}
+              <span
+                className="flex-1 text-[12.5px] font-medium overflow-hidden text-ellipsis whitespace-nowrap"
+                title={c.name}
+              >
+                {providerName[c.id] ?? c.name}
               </span>
               <span
                 onClick={() => c.status !== 'disconnected' && onDisconnectCloud(c.id)}
