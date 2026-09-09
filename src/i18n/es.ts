@@ -1,0 +1,72 @@
+import type { Translations } from './types';
+
+export const es: Translations = {
+  import: 'Importar',
+  importMoreOptionsAria: 'Más opciones de importación',
+  importFilesOption: 'Archivos...',
+  importFolderOption: 'Carpeta...',
+
+  sortLabel: 'Ordenar',
+  sortName: 'Nombre',
+  sortDate: 'Fecha',
+  sortSize: 'Tamaño de archivo',
+  sortVolume: 'Volumen',
+
+  viewGrid: 'Cuadrícula',
+  viewList: 'Lista',
+
+  filesCount: { one: '{count} archivo', other: '{count} archivos' },
+
+  settingsTitle: 'Ajustes',
+  appearanceTitle: 'Apariencia',
+  themeSystem: 'Sistema',
+  themeLight: 'Claro',
+  themeDark: 'Oscuro',
+  themeDescriptionSystem: 'Sigue automáticamente la configuración del sistema.',
+  themeDescriptionManual: 'Fijado manualmente en {mode}.',
+  languageTitle: 'Idioma',
+
+  searchPlaceholder: 'Buscar nombre o etiqueta …',
+  foldersHeading: 'Carpetas',
+  tagsHeading: 'Etiquetas',
+  cloudAccountsHeading: 'Cuentas en la nube',
+  cloudConnected: 'conectado',
+  cloudError: 'error',
+  cloudDisconnected: 'desconectado',
+
+  previewLabel3d: 'Vista previa 3D',
+
+  columnOrigin: 'Origen',
+  columnName: 'Nombre',
+  columnTags: 'Etiquetas',
+  columnVolume: 'Volumen',
+  columnSize: 'Tamaño',
+  columnSync: 'Sincro',
+
+  syncSynced: 'Actualizado',
+  syncOutdated: 'Desactualizado',
+  syncLocalOnly: 'Solo local',
+  syncCloudOnly: 'Solo nube',
+
+  cancel: 'Cancelar',
+  delete: 'Eliminar',
+  openInSlicer: 'Abrir en el laminador',
+  deleteConfirmQuestion: '¿Eliminar entrada?',
+  deleteAriaLabel: 'Eliminar entrada',
+
+  emptyStateText: 'Selecciona un modelo para ver detalles, vista previa y etiquetas.',
+  dragToRotate: 'Arrastra para girar',
+  metadataHeading: 'Metadatos',
+  metaDimensions: 'Tamaño',
+  metaVolume: 'Volumen',
+  metaObjectCount: 'Objetos',
+  metaMaterial: 'Material',
+  metaFileSize: 'Tamaño de archivo',
+  metaImported: 'Importado',
+  noValue: '–',
+  hashtagsHeading: 'Hashtags',
+  addTagPlaceholder: 'Añadir etiqueta',
+
+  loadingPreview: 'Cargando vista previa …',
+  previewUnavailable: 'Vista previa no disponible',
+};
