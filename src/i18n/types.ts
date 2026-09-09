@@ -75,6 +75,11 @@ export interface Translations {
 
   loadingPreview: string;
   previewUnavailable: string;
+
+  cloudBrowserTitle: string;
+  cloudBrowserLoading: string;
+  cloudBrowserEmpty: string;
+  cloudBrowserImportButton: string;
 }
 
 export function formatCount(forms: PluralForms, n: number): string {

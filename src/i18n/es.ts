@@ -70,4 +70,9 @@ export const es: Translations = {
 
   loadingPreview: 'Cargando vista previa …',
   previewUnavailable: 'Vista previa no disponible',
+
+  cloudBrowserTitle: 'Importar desde Google Drive',
+  cloudBrowserLoading: 'Cargando …',
+  cloudBrowserEmpty: 'No hay archivos en esta carpeta',
+  cloudBrowserImportButton: 'Importar ({count})',
 };
