@@ -3,8 +3,8 @@ pub mod models;
 mod repository;
 
 pub use repository::{
-    add_tag_to_file, connect, delete_file, file_exists_by_path, get_file, insert_file,
-    insert_folder, list_cloud_accounts, list_files, list_folders, list_tag_counts,
+    add_tag_to_file, connect, delete_file, delete_unused_tags, file_exists_by_path, get_file,
+    insert_file, insert_folder, list_cloud_accounts, list_files, list_folders, list_tag_counts,
     remove_tag_from_file, set_cloud_account_status, set_file_modified_at, set_file_sync_status,
     upsert_cloud_account,
 };
@@ -160,6 +160,69 @@ mod tests {
         let file = get_file(&conn, id).expect("query").expect("present");
         assert!(!file.tags.contains(&"cube".to_string()));
         assert!(file.tags.contains(&"neu-hinzugefuegt".to_string()));
+    }
+
+    #[test]
+    fn removing_the_last_use_of_a_tag_deletes_it() {
+        let mut conn = connect_in_memory().expect("connect");
+        let id = insert_file(&mut conn, &sample_file()).expect("insert");
+
+        // "cube" haengt nur an dieser einen Datei (siehe sample_file()).
+        remove_tag_from_file(&conn, id, "cube").expect("remove tag");
+
+        let tags = list_tag_counts(&conn).expect("list tags");
+        assert!(!tags.iter().any(|t| t.name == "cube"));
+    }
+
+    #[test]
+    fn deleting_a_file_deletes_its_now_unused_tags() {
+        let mut conn = connect_in_memory().expect("connect");
+        let id = insert_file(&mut conn, &sample_file()).expect("insert");
+
+        delete_file(&conn, id).expect("delete file");
+
+        let tags = list_tag_counts(&conn).expect("list tags");
+        assert!(!tags.iter().any(|t| t.name == "cube" || t.name == "test"));
+    }
+
+    #[test]
+    fn deleting_a_file_keeps_tags_still_used_elsewhere() {
+        let mut conn = connect_in_memory().expect("connect");
+        let id_a = insert_file(&mut conn, &sample_file()).expect("insert a");
+        let mut other = sample_file();
+        other.name = "other.3mf".to_string();
+        other.path = "/tmp/other.3mf".to_string();
+        let _id_b = insert_file(&mut conn, &other).expect("insert b");
+
+        delete_file(&conn, id_a).expect("delete file a");
+
+        // "cube"/"test" haengen noch an der zweiten Datei und duerfen nicht
+        // mitgeloescht werden.
+        let tags = list_tag_counts(&conn).expect("list tags");
+        assert!(tags.iter().any(|t| t.name == "cube"));
+        assert!(tags.iter().any(|t| t.name == "test"));
+    }
+
+    #[test]
+    fn delete_unused_tags_removes_orphans_but_keeps_used_tags() {
+        let mut conn = connect_in_memory().expect("connect");
+        insert_file(&mut conn, &sample_file()).expect("insert");
+        // Verwaisten Tag simulieren, wie er vor dieser Aufraeum-Logik
+        // entstehen konnte (z.B. durch das direkte DELETE FROM files vor
+        // dem Fix, das file_tags per Cascade mitloeschte, den Tag selbst
+        // aber stehen liess).
+        conn.execute(
+            "INSERT INTO tags (name, color_hue) VALUES ('verwaist', 10)",
+            [],
+        )
+        .expect("insert orphan tag");
+
+        let removed = delete_unused_tags(&conn).expect("cleanup");
+        assert_eq!(removed, 1);
+
+        let tags = list_tag_counts(&conn).expect("list tags");
+        assert!(!tags.iter().any(|t| t.name == "verwaist"));
+        assert!(tags.iter().any(|t| t.name == "cube"));
     }
 
     #[test]
