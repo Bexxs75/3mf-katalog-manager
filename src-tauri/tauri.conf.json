@@ -15,7 +15,8 @@
         "title": "mf-katalog-manager",
         "width": 1000,
         "height": 600,
-        "minWidth": 900
+        "minWidth": 900,
+        "maximized": true
       }
     ],
     "security": {
