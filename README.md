@@ -10,15 +10,19 @@ Plattformunabhängige Desktop-Anwendung zur Katalogisierung und Verwaltung von 3
 - **3D-Live-Vorschau** — three.js-Rendering direkt aus der Mesh-Geometrie, wenn kein eingebettetes Thumbnail vorhanden ist
 - **Tag- und Ordnerverwaltung**, Suche und Filterung
 - **Import** einzelner Dateien oder ganzer Ordner per Dialog oder Drag & Drop
+- **Google-Drive-Import** — OAuth2-Verbindung, Datei-Browser mit Ordner-Navigation, Import mit Duplikat-Erkennung und Sync-Status je Datei
+- **In Slicer öffnen** — beliebig viele selbst hinterlegte Slicer-Programme (herstellerunabhängig) direkt aus dem Katalog heraus starten (Windows/Linux)
 - **Mehrsprachige Oberfläche** — Deutsch, Englisch, Spanisch, Französisch, umschaltbar zur Laufzeit
 - **Hell-/Dunkel-Theme** mit System-Erkennung und manueller Auswahl, persistiert lokal
 
 ## Status
 
-Dieses Projekt befindet sich in aktiver Entwicklung. Der lokale Katalog (Import, Parsing, Tagging, Suche, 3D-Vorschau, Mehrsprachigkeit, Theming) ist funktionsfähig. Folgendes ist noch **nicht** umgesetzt:
+Dieses Projekt befindet sich in aktiver Entwicklung. Der lokale Katalog (Import, Parsing, Tagging, Suche, 3D-Vorschau, Mehrsprachigkeit, Theming), der Google-Drive-Import und "In Slicer öffnen" sind funktionsfähig. Folgendes ist noch **nicht** umgesetzt:
 
-- **Cloud-Speicher-Anbindung** (Google Drive, OneDrive, Dropbox, Proton Drive): in der Oberfläche als Platzhalter vorbereitet, aber noch ohne echte OAuth2-Anbindung oder Backend-Logik
-- **Plattformübergreifende Release-Builds**: bisher nur unter Linux entwickelt und getestet; Windows-/macOS-Pakete (msi/dmg) sowie Code-Signing stehen noch aus
+- **Weitere Cloud-Anbieter** (OneDrive, Dropbox, Proton Drive): nur in der Oberfläche als Platzhalter vorbereitet, keine echte Anbindung. Hochladen zu Google Drive ist ebenfalls noch nicht implementiert (nur Import)
+- **Google-Drive-Nutzung durch andere Nutzer nach einem Release**: OAuth-Client-Konfiguration ist aktuell nur auf der Entwicklungsmaschine hinterlegt, die App läuft im Google-Cloud-Testmodus
+- **macOS**: bisher nur unter Linux entwickelt und getestet; "In Slicer öffnen" unterstützt macOS gezielt nicht (`.app`-Bundles brauchen einen eigenen Start-Mechanismus)
+- **Plattformübergreifende Release-Builds**: Windows-/macOS-Pakete (msi/dmg) sowie Code-Signing stehen noch aus
 - **CI/CD-Pipeline**: noch nicht eingerichtet
 
 ## Tech-Stack

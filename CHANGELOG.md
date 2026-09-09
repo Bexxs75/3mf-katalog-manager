@@ -20,6 +20,9 @@ Noch kein Release getaggt — dieser Abschnitt fasst die bisherige Entwicklung s
 - Löschfunktion für Modelle mit Bestätigungsdialog und Kontextmenü
 - Vollständige Mehrsprachigkeit (Deutsch/Englisch/Spanisch/Französisch): eigenes Context-basiertes i18n-System ohne externe Bibliothek, `Translations`-Interface erzwingt Vollständigkeit der Wörterbücher zur Compile-Zeit, Sprachumschalter im Einstellungen-Panel, Persistenz in localStorage
 - Lokalisierte Formatierung (Datum, Uhrzeit relativ, Dateigröße, Volumen, Abmessungen) über `Intl`-APIs im Frontend
+- Google-Drive-Anbindung: OAuth2-PKCE-Verbindung (Verbinden/Trennen per Klick auf die jeweilige Zeile), Token-Speicherung im OS-Schlüsselbund, Datei-Browser mit Ordner-Navigation, Import mit Duplikat-Erkennung und Sync-Status-Anzeige je Datei
+- Native Rust-seitige Geometrie-Extraktion für die 3D-Vorschau: ZIP-Entpacken und Mesh-Parsing (3MF inkl. Multi-Part-"Production Extension"-Dateien mit `p:path`-Referenzen, STL) laufen jetzt vollständig im Backend statt im Frontend über three.js-Loader/`DOMParser`
+- "In Slicer öffnen": Nutzer hinterlegt beliebig viele eigene Slicer-Programmpfade (statt fest codierter Einzelintegrationen für Bambu Studio, PrusaSlicer, OrcaSlicer, ...), Split-Button für Hauptauswahl/Wechsel, Kontextmenü-Eintrag für den zuletzt genutzten Slicer
 
 ### Changed
 
@@ -32,9 +35,16 @@ Noch kein Release getaggt — dieser Abschnitt fasst die bisherige Entwicklung s
 - Lesbarkeit des Sortieren-Dropdowns im dunklen Theme behoben
 - Typfehler bei der Sync-Status-Übersetzung (`SYNC_KEYS`) durch präzisere Typisierung statt Type-Cast behoben
 - Überlaufender Header in spanischer Sprache (Einstellungen-Zahnrad wurde abgeschnitten) durch vergrößertes Standardfenster behoben
+- 3D-Vorschau blockierte bei großen Multi-Part-3MF-Dateien (mehrere hundert MB) die komplette Oberfläche für mehrere Minuten — behoben durch native Geometrie-Extraktion (siehe oben)
+- Größe/Volumen/Material wurden bei Multi-Part-3MF-Dateien nicht angezeigt ("–"), weil der Metadaten-Parser referenzierte Objekt-Dateien nicht auflöste
+- WebGL-Kontext der 3D-Vorschau wurde bei jedem Modellwechsel komplett neu aufgebaut statt nur das angezeigte Objekt in der bestehenden Szene auszutauschen (spürbare Verzögerung)
+- Verwaiste Tags (letzte Datei mit diesem Tag gelöscht) blieben in Datenbank und Sidebar stehen, statt automatisch entfernt zu werden
+- Aus Google Drive importierte Dateien übernahmen den internen Cache-Dateinamen statt des echten Drive-Dateinamens (dadurch auch sinnfreie automatische Hashtags)
 
 ### Known Limitations
 
-- Cloud-Speicher-Integration (Google Drive, OneDrive, Dropbox, Proton Drive) ist im UI nur als Platzhalter vorhanden, ohne echte OAuth2-Anbindung oder Backend-Implementierung
-- Plattformübergreifende Release-Builds (Windows `.msi`, macOS `.dmg`) sowie Code-Signing noch nicht eingerichtet
+- Cloud-Speicher: nur Google Drive implementiert (Verbinden/Trennen, Datei-Browser, Import); OneDrive, Dropbox und Proton Drive sind im UI weiterhin nur als Platzhalter vorhanden. Hochladen zu Google Drive ist noch nicht implementiert (nur Import)
+- Google-Drive-Anbindung funktioniert aktuell nur auf der Entwicklungsmaschine (OAuth-Client-Konfiguration ist lokal, App im Google-Cloud-Testmodus) — für andere Nutzer nach einem Release noch nicht nutzbar
+- "In Slicer öffnen" unterstützt macOS nicht (`.app`-Bundles benötigen einen anderen Start-Mechanismus als Windows/Linux-Executables)
+- Plattformübergreifende Release-Builds (Windows `.msi`, macOS `.dmg`) sowie Code-Signing noch nicht eingerichtet — bisher nur unter Linux entwickelt und getestet
 - CI/CD-Pipeline (GitHub Actions) noch nicht eingerichtet
