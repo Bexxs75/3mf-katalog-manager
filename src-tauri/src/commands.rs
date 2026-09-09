@@ -367,8 +367,17 @@ pub fn import_dropped(state: State<AppState>, paths: Vec<String>) -> CmdResult<V
     import_many(&state, paths.into_iter().map(PathBuf::from).collect())
 }
 
+// Muss async sein, obwohl kein .await im Rumpf steht: eine synchrone
+// Tauri-Command-Funktion laeuft direkt auf dem IPC-Dispatch-Thread (siehe
+// import_files/import_folder, die aus demselben Grund schon async sind).
+// blocking_pick_file() blockiert diesen Thread, bis der native Dialog
+// geschlossen wird - lief die Funktion synchron, waere das genau der
+// Thread, den GTK fuer die eigene Fensterschleife (und damit fuer den
+// Dialog selbst) braucht: ein Deadlock, der die App komplett einfrieren
+// liess. Als async fn dispatcht Tauri sie stattdessen auf den
+// Async-Runtime-Thread-Pool.
 #[tauri::command]
-pub fn pick_slicer_executable(app: tauri::AppHandle) -> CmdResult<Option<String>> {
+pub async fn pick_slicer_executable(app: tauri::AppHandle) -> CmdResult<Option<String>> {
     let dialog = app.dialog().file();
     // #[cfg] direkt auf dem let-Statement (Shadowing) statt "let mut" +
     // bedingter Neuzuweisung: unter Linux faellt diese Zeile komplett weg,
