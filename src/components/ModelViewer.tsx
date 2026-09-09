@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useT } from '../i18n/LanguageContext';
 import { invoke } from '@tauri-apps/api/core';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -41,6 +42,7 @@ function frameObject(object: THREE.Object3D, camera: THREE.PerspectiveCamera, co
 }
 
 export function ModelViewer({ fileId }: Props) {
+  const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
 
@@ -148,12 +150,12 @@ export function ModelViewer({ fileId }: Props) {
       <div ref={containerRef} className="absolute inset-0" />
       {status === 'loading' && (
         <div className="absolute inset-0 grid place-items-center font-mono-ui text-[11px] text-[var(--ink-3)] pointer-events-none">
-          Lädt Vorschau …
+          {t('loadingPreview')}
         </div>
       )}
       {status === 'error' && (
         <div className="absolute inset-0 grid place-items-center font-mono-ui text-[11px] text-[var(--ink-3)] pointer-events-none px-4 text-center">
-          Vorschau nicht verfügbar
+          {t('previewUnavailable')}
         </div>
       )}
     </div>
