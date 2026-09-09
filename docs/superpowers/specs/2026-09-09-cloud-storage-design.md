@@ -20,7 +20,7 @@ Dies ist die **erste** von vier im Original-Projektauftrag genannten Cloud-Anbin
 
 ## Bekannte externe Abhängigkeit
 
-Für echtes OAuth2 wird eine OAuth-Client-ID (Typ "Desktop-App") aus der Google Cloud Console benötigt. Dies erfordert ein Google-Konto und die manuelle Einrichtung eines Cloud-Projekts durch den Nutzer — kann nicht durch Claude Code automatisiert werden. Die Client-ID wird als Konfigurationswert (z. B. `src-tauri/cloud.config.json`, git-ignored, mit Beispieldatei `cloud.config.example.json`) erwartet; ohne sie kompiliert und läuft die App weiterhin, aber "Google Drive verbinden" schlägt mit einer klaren Fehlermeldung fehl.
+Für echtes OAuth2 werden eine OAuth-Client-ID **und** ein Client-Secret (Typ "Desktop-App") aus der Google Cloud Console benötigt — Google gibt bei diesem Client-Typ beide zusammen aus und verlangt das Secret trotz PKCE am Token-Endpoint (es gilt dort als nicht-vertraulich, ist aber technisch erforderlich, kein Widerspruch zum PKCE-Flow aus Abschnitt 2). Dies erfordert ein Google-Konto und die manuelle Einrichtung eines Cloud-Projekts durch den Nutzer — kann nicht durch Claude Code automatisiert werden. Beide Werte werden als Konfigurationswerte (`src-tauri/cloud.config.json`, git-ignored, mit Beispieldatei `cloud.config.example.json`) erwartet; ohne sie kompiliert und läuft die App weiterhin, aber "Google Drive verbinden" schlägt mit einer klaren Fehlermeldung fehl.
 
 ## Abschnitt 1 — Architektur & Komponenten
 
@@ -31,7 +31,7 @@ src-tauri/src/cloud/
   mod.rs        // öffentliche API des Moduls
   provider.rs   // StorageProvider-Trait + CloudEntry-Typ (anbieterunabhängig)
   gdrive.rs     // GoogleDriveProvider: StorageProvider-Impl gegen Drive REST API v3
-  oauth.rs      // PKCE-Loopback-Redirect-Helfer (anbieterunabhängig, spätere Provider nutzen ihn mit)
+  oauth.rs      // PKCE-Loopback-Redirect-Helfer (std::net::TcpListener, anbieterunabhängig)
   tokens.rs     // Token-Ablage/-Abruf über das keyring-Crate
 ```
 
@@ -56,7 +56,7 @@ pub struct CloudEntry {
 Neue Tauri-Commands (in `src-tauri/src/commands.rs` oder neuem `cloud_commands.rs`):
 `connect_google_drive`, `disconnect_cloud_account`, `list_cloud_accounts`, `browse_cloud_folder`, `import_from_cloud`, `upload_to_cloud`, `check_cloud_sync_status`.
 
-**Neue Rust-Abhängigkeiten** (keine davon bisher in `Cargo.toml` vorhanden): `oauth2` (PKCE-Flow), `tiny_http` (kurzlebiger Loopback-Server), `keyring` (Token-Ablage), `reqwest` (Drive-API-Calls), `async-trait` (für den `StorageProvider`-Trait mit `async fn`).
+**Neue Rust-Abhängigkeiten** (keine davon bisher in `Cargo.toml` vorhanden): `oauth2` (PKCE-Flow), `keyring` (Token-Ablage), `reqwest` (Drive-API-Calls), `async-trait` (für den `StorageProvider`-Trait mit `async fn`, da native `async fn` in Traits nicht objektsicher ist und `Box<dyn StorageProvider>` gebraucht wird). Der Loopback-Server nutzt `std::net::TcpListener` aus der Standardbibliothek (kein `tiny_http` nötig) — dieses Muster stammt direkt aus dem offiziellen Google-Beispiel des `oauth2`-Crates.
 
 ## Abschnitt 2 — OAuth2-Flow
 
@@ -116,7 +116,7 @@ Neue Aktion in `DetailPanel.tsx`/`ContextMenu.tsx` für Dateien mit `origin='loc
 
 ## Global Constraints (für die Implementierungsplanung)
 
-- Neue Rust-Abhängigkeiten (`oauth2`, `tiny_http`, `keyring`, `reqwest`, `async-trait`) sind für dieses Feature ausdrücklich erlaubt (anders als beim i18n-Feature, das explizit ohne neue Bibliotheken auskommen sollte).
+- Neue Rust-Abhängigkeiten (`oauth2`, `keyring`, `reqwest`, `async-trait`) sind für dieses Feature ausdrücklich erlaubt (anders als beim i18n-Feature, das explizit ohne neue Bibliotheken auskommen sollte).
 - Keine Token/Secrets in SQLite oder Git — Tokens ausschließlich über `keyring`, OAuth-Client-ID ausschließlich über eine git-ignored Konfigurationsdatei mit Beispieldatei.
 - `files`-Tabellenschema bleibt unverändert; nur die neue `cloud_accounts`-Tabelle kommt hinzu.
 - Ein verbundenes Konto pro Anbieter (v1-Einschränkung, technisch über `UNIQUE(provider)` erzwungen).
