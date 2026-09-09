@@ -1,4 +1,6 @@
 import type { ModelFile } from '../types';
+import { useLanguage } from '../i18n/LanguageContext';
+import { formatBytes, formatVolumeCm3 } from '../i18n/format';
 
 interface Props {
   models: ModelFile[];
@@ -15,6 +17,7 @@ const syncLabel: Record<string, string> = {
 };
 
 export function ModelList({ models, selectedId, onSelect, onContextMenu }: Props) {
+  const { language } = useLanguage();
   return (
     <div className="border border-[var(--line)] rounded overflow-x-auto bg-[var(--panel)]">
       <div
@@ -56,8 +59,12 @@ export function ModelList({ models, selectedId, onSelect, onContextMenu }: Props
               </span>
             ))}
           </span>
-          <span className="font-mono-ui text-[11.5px] text-[var(--ink-2)]">{m.volumeLabel}</span>
-          <span className="font-mono-ui text-[11.5px] text-[var(--ink-2)]">{m.filesizeLabel}</span>
+          <span className="font-mono-ui text-[11.5px] text-[var(--ink-2)]">
+            {formatVolumeCm3(m.volumeCm3, language)}
+          </span>
+          <span className="font-mono-ui text-[11.5px] text-[var(--ink-2)]">
+            {formatBytes(m.fileSizeBytes, language)}
+          </span>
           <span className="font-mono-ui text-[10.5px] text-[var(--ink-2)]">{syncLabel[m.sync]}</span>
         </div>
       ))}
