@@ -206,12 +206,18 @@ pub(crate) fn import_one(
     path: &Path,
     origin: &str,
     cloud_id: Option<String>,
+    display_name: Option<&str>,
 ) -> CmdResult<ModelFileDto> {
-    let file_name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("unbenannt")
-        .to_string();
+    // Bei Cloud-Importen ist `path` aus Sicherheitsgruenden (kein Path
+    // Traversal ueber den Drive-Dateinamen) ein von der Datei-ID abgeleiteter
+    // Cache-Pfad, nicht der echte Dateiname - display_name liefert dann den
+    // tatsaechlichen Namen fuer Katalog-Anzeige UND Auto-Tagging.
+    let file_name = display_name.map(|n| n.to_string()).unwrap_or_else(|| {
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unbenannt")
+            .to_string()
+    });
     let file_size_bytes = std::fs::metadata(path).map_err(|e| e.to_string())?.len() as i64;
     let extension = path
         .extension()
@@ -317,7 +323,7 @@ fn import_many(state: &State<AppState>, roots: Vec<PathBuf>) -> CmdResult<Vec<Mo
             }
         }
 
-        match import_one(&mut conn, &path, "local", None) {
+        match import_one(&mut conn, &path, "local", None, None) {
             Ok(dto) => imported.push(dto),
             Err(e) => eprintln!("[import] Import fehlgeschlagen für {path_str}: {e}"),
         }
