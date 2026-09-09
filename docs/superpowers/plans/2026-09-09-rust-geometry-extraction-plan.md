@@ -614,8 +614,9 @@ Die restlichen Funktionen (`resolve_relationships`, `read_entry_to_string`, `rea
 
 - [ ] **Step 4: Tests laufen lassen, Erfolg verifizieren**
 
-Run: `cd src-tauri && cargo test --no-default-features container:: -- --nocapture`
-Expected: PASS (5 Tests)
+**Korrektur (Plan-Fehler, beim Ausführen entdeckt):** `cargo test` kompiliert immer die gesamte Crate, unabhängig vom Test-Filter - da `threemf/mod.rs` an dieser Stelle noch die alte `PackageParts`-Form referenziert (wird erst in Task 4 angepasst), schlägt `cargo test --no-default-features container::` an diesem Commit zwangsläufig mit einem Kompilierfehler in `mod.rs` fehl, nicht mit einem Testergebnis. Um die 4 neuen Tests trotzdem zu verifizieren, `threemf/mod.rs`s `parse_3mf_reader` **temporär und uncommitted** so anpassen, dass sie kompiliert (z.B. `let model = model_xml::parse_model_xml(&package.root_model_xml_placeholder)?;` durch einen validen Platzhalter-Zugriff ersetzen, egal wie unsauber - Hauptsache es kompiliert), `cargo test --no-default-features container:: -- --nocapture` laufen lassen, Ergebnis dokumentieren, dann die temporäre Änderung an `mod.rs` per `git checkout -- src-tauri/src/threemf/mod.rs` wieder verwerfen, bevor committet wird.
+
+Expected: PASS (4 Tests: `resolves_a_single_p_path_reference`, `skips_missing_referenced_file_without_failing`, `resolves_transitive_p_path_references_to_a_fixpoint`, `lookup_object_resolves_root_and_referenced_files`)
 
 - [ ] **Step 5: Commit**
 
