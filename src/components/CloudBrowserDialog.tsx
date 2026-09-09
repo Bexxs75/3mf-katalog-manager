@@ -35,7 +35,11 @@ export function CloudBrowserDialog({ onClose, onImport }: Props) {
     setLoading(true);
     invoke<CloudEntryDto[]>('browse_cloud_folder', { folderId: currentFolderId })
       .then((result) => {
-        setEntries(result);
+        const sorted = [...result].sort((a, b) => {
+          if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1;
+          return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+        });
+        setEntries(sorted);
         setError(null);
       })
       .catch((e) => {
