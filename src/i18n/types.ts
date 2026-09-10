@@ -119,6 +119,8 @@ export interface Translations {
   markAsPrinted: string;
   markAsNotPrinted: string;
   metaWeight: string;
+
+  creatorsHeading: string;
 }
 
 export function formatCount(forms: PluralForms, n: number): string {

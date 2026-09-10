@@ -94,6 +94,12 @@ pub struct TagCount {
 }
 
 #[derive(Debug, Clone)]
+pub struct CreatorCount {
+    pub name: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone)]
 pub struct CloudAccountRecord {
     pub id: i64,
     pub provider: String,

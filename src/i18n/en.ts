@@ -114,4 +114,6 @@ export const en: Translations = {
 
   sortLastViewed: 'Last viewed',
   newBadge: 'NEW',
+
+  creatorsHeading: 'Creators',
 };

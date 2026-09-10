@@ -10,7 +10,7 @@ import { ContextMenu } from './components/ContextMenu';
 import { FilamentView } from './components/FilamentView';
 import { useTheme } from './hooks/useTheme';
 import { useSlicers } from './hooks/useSlicers';
-import type { ModelFile, Folder, TagCount, CloudAccount, Origin, ViewMode, SortKey } from './types';
+import type { ModelFile, Folder, TagCount, CreatorCount, CloudAccount, Origin, ViewMode, SortKey } from './types';
 
 interface CloudAccountDto {
   id: string;
@@ -45,6 +45,8 @@ export default function App() {
   const [query, setQuery] = useState('');
   const [activeFolderId, setActiveFolderId] = useState('all');
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [creators, setCreators] = useState<CreatorCount[]>([]);
+  const [activeCreator, setActiveCreator] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [models, setModels] = useState<ModelFile[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -59,6 +61,7 @@ export default function App() {
 
   const refreshFolders = () => invoke<Folder[]>('list_folders').then(setFolders);
   const refreshTags = () => invoke<TagCount[]>('list_tag_counts').then(setTags);
+  const refreshCreators = () => invoke<CreatorCount[]>('list_creators').then(setCreators);
   const refreshClouds = () =>
     invoke<CloudAccountDto[]>('list_cloud_accounts').then((accounts) => setClouds(accounts.map(toCloudAccount)));
 
@@ -128,6 +131,7 @@ export default function App() {
     setSelectedId(files[files.length - 1].id);
     refreshFolders();
     refreshTags();
+    refreshCreators();
   };
 
   const selectModel = (id: string) => {
@@ -146,6 +150,7 @@ export default function App() {
     });
     refreshFolders();
     refreshTags();
+    refreshCreators();
     refreshClouds();
   }, []);
 
@@ -176,6 +181,7 @@ export default function App() {
     return models
       .filter((m) => activeFolderId === 'all' || m.folderId === activeFolderId)
       .filter((m) => !activeTag || m.tags.includes(activeTag))
+      .filter((m) => !activeCreator || m.creator === activeCreator)
       .filter((m) => !query || m.name.toLowerCase().includes(query.toLowerCase()))
       .sort((a, b) => {
         if (sort === 'name') return a.name.localeCompare(b.name);
@@ -184,7 +190,7 @@ export default function App() {
         if (sort === 'viewed') return (b.lastViewedAt ?? '').localeCompare(a.lastViewedAt ?? '');
         return 0;
       });
-  }, [models, activeFolderId, activeTag, query, sort]);
+  }, [models, activeFolderId, activeTag, activeCreator, query, sort]);
 
   const selected = models.find((m) => m.id === selectedId) ?? null;
 
@@ -252,6 +258,7 @@ export default function App() {
       setSelectedId((prev) => (prev === id ? null : prev));
       refreshFolders();
       refreshTags();
+      refreshCreators();
     });
   };
 
@@ -302,6 +309,9 @@ export default function App() {
             tags={tags}
             activeTag={activeTag}
             onTagSelect={setActiveTag}
+            creators={creators}
+            activeCreator={activeCreator}
+            onCreatorSelect={setActiveCreator}
             clouds={clouds}
             cloudError={cloudError}
             onAddCloud={() => connectCloud('gdrive')}
@@ -330,6 +340,14 @@ export default function App() {
                   className="flex items-center gap-1.5 h-[22px] px-2 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] font-mono-ui text-[11px] cursor-pointer"
                 >
                   #{activeTag} ✕
+                </span>
+              )}
+              {activeCreator && (
+                <span
+                  onClick={() => setActiveCreator(null)}
+                  className="flex items-center gap-1.5 h-[22px] px-2 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] font-mono-ui text-[11px] cursor-pointer"
+                >
+                  {activeCreator} ✕
                 </span>
               )}
             </div>

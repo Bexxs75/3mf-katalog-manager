@@ -19,6 +19,7 @@ export interface ModelFile {
   printStatus: 'not_printed' | 'printed';
   estimatedWeightG: number | null;
   lastViewedAt: string | null;
+  creator: string | null;
 }
 
 export interface Folder {
@@ -31,6 +32,11 @@ export interface TagCount {
   label: string;
   count: number;
   colorHue: number;
+}
+
+export interface CreatorCount {
+  label: string;
+  count: number;
 }
 
 export interface CloudAccount {
