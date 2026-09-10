@@ -50,6 +50,9 @@ mod tests {
             last_viewed_at: None,
             creator: None,
             content_hash: None,
+            render_snapshot_png: None,
+            custom_image_png: None,
+            source_url: None,
         }
     }
 
@@ -459,6 +462,21 @@ mod tests {
 
         let stored = get_file(&conn, id).expect("query").expect("present");
         assert_eq!(stored.content_hash, Some("computed-hash".to_string()));
+    }
+
+    #[test]
+    fn stores_and_lists_the_image_and_source_url_columns() {
+        let mut conn = connect_in_memory().expect("connect");
+        let mut file = sample_file();
+        file.render_snapshot_png = Some(vec![1, 2, 3]);
+        file.custom_image_png = Some(vec![4, 5, 6]);
+        file.source_url = Some("https://example.com/model".to_string());
+        let id = insert_file(&mut conn, &file).expect("insert");
+
+        let stored = get_file(&conn, id).expect("query").expect("present");
+        assert_eq!(stored.render_snapshot_png, Some(vec![1, 2, 3]));
+        assert_eq!(stored.custom_image_png, Some(vec![4, 5, 6]));
+        assert_eq!(stored.source_url, Some("https://example.com/model".to_string()));
     }
 
     #[test]

@@ -39,6 +39,8 @@ pub struct ModelFileDto {
     pub estimated_weight_g: Option<f64>,
     pub last_viewed_at: Option<String>,
     pub creator: Option<String>,
+    pub display_image: Option<String>,
+    pub source_url: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -103,9 +105,31 @@ pub(crate) fn estimate_weight_g(volume_cm3: Option<f64>, material_name: Option<&
     Some(volume * density)
 }
 
+pub(crate) fn resolve_display_image(
+    custom_image_png: Option<Vec<u8>>,
+    thumbnail_png: Option<Vec<u8>>,
+    render_snapshot_png: Option<Vec<u8>>,
+) -> Option<String> {
+    use base64::Engine;
+    custom_image_png
+        .or(thumbnail_png)
+        .or(render_snapshot_png)
+        .map(|bytes| {
+            format!(
+                "data:image/png;base64,{}",
+                base64::engine::general_purpose::STANDARD.encode(bytes)
+            )
+        })
+}
+
 pub(crate) fn to_dto(file: FileRecord) -> ModelFileDto {
     let estimated_weight_g =
         estimate_weight_g(file.volume_cm3, file.materials.first().map(|m| m.name.as_str()));
+    let display_image = resolve_display_image(
+        file.custom_image_png,
+        file.thumbnail_png,
+        file.render_snapshot_png,
+    );
     ModelFileDto {
         id: file.id.to_string(),
         name: file.name,
@@ -134,6 +158,8 @@ pub(crate) fn to_dto(file: FileRecord) -> ModelFileDto {
         estimated_weight_g,
         last_viewed_at: file.last_viewed_at,
         creator: file.creator,
+        display_image,
+        source_url: file.source_url,
     }
 }
 
@@ -498,6 +524,9 @@ pub(crate) fn import_one(
         last_viewed_at: None,
         creator: metadata.get("Designer").cloned(),
         content_hash,
+        render_snapshot_png: None,
+        custom_image_png: None,
+        source_url: None,
     };
 
     let id = db::insert_file(conn, &new_file).map_err(|e| e.to_string())?;
@@ -882,5 +911,37 @@ mod tests {
     #[test]
     fn estimate_weight_g_returns_none_without_volume() {
         assert_eq!(estimate_weight_g(None, Some("PLA")), None);
+    }
+
+    #[test]
+    fn resolve_display_image_prefers_custom_over_embedded_over_snapshot() {
+        use base64::Engine;
+        let result = resolve_display_image(Some(vec![1]), Some(vec![2]), Some(vec![3])).expect("some image");
+        let b64 = result.strip_prefix("data:image/png;base64,").expect("data url prefix");
+        let decoded = base64::engine::general_purpose::STANDARD.decode(b64).expect("valid base64");
+        assert_eq!(decoded, vec![1]);
+    }
+
+    #[test]
+    fn resolve_display_image_falls_back_to_embedded_thumbnail() {
+        use base64::Engine;
+        let result = resolve_display_image(None, Some(vec![2]), Some(vec![3])).expect("some image");
+        let b64 = result.strip_prefix("data:image/png;base64,").expect("data url prefix");
+        let decoded = base64::engine::general_purpose::STANDARD.decode(b64).expect("valid base64");
+        assert_eq!(decoded, vec![2]);
+    }
+
+    #[test]
+    fn resolve_display_image_falls_back_to_render_snapshot() {
+        use base64::Engine;
+        let result = resolve_display_image(None, None, Some(vec![3])).expect("some image");
+        let b64 = result.strip_prefix("data:image/png;base64,").expect("data url prefix");
+        let decoded = base64::engine::general_purpose::STANDARD.decode(b64).expect("valid base64");
+        assert_eq!(decoded, vec![3]);
+    }
+
+    #[test]
+    fn resolve_display_image_returns_none_without_any_source() {
+        assert_eq!(resolve_display_image(None, None, None), None);
     }
 }
