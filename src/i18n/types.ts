@@ -137,6 +137,17 @@ export interface Translations {
   removeFromQueue: string;
   savedFiltersHeading: string;
   savedFilterNamePlaceholder: string;
+
+  catalogCleanupTitle: string;
+  catalogCleanupScanButton: string;
+  catalogCleanupScanning: string;
+  catalogCleanupError: string;
+  cleanupDialogTitle: string;
+  cleanupNoIssues: string;
+  cleanupOrphanedHeading: string;
+  cleanupDuplicateGroupHeading: string;
+  cleanupKeepOldest: string;
+  cleanupDeleteSelected: string;
 }
 
 export function formatCount(forms: PluralForms, n: number): string {

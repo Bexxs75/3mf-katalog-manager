@@ -9,9 +9,10 @@ import { DetailPanel } from './components/DetailPanel';
 import { ContextMenu } from './components/ContextMenu';
 import { FilamentView } from './components/FilamentView';
 import { ImportSummaryBanner } from './components/ImportSummaryBanner';
+import { CatalogCleanupDialog } from './components/CatalogCleanupDialog';
 import { useTheme } from './hooks/useTheme';
 import { useSlicers } from './hooks/useSlicers';
-import type { ModelFile, Folder, TagCount, CreatorCount, CloudAccount, Origin, ViewMode, SortKey, SavedFilter } from './types';
+import type { ModelFile, Folder, TagCount, CreatorCount, CloudAccount, Origin, ViewMode, SortKey, SavedFilter, CatalogIssues } from './types';
 
 interface CloudAccountDto {
   id: string;
@@ -66,6 +67,10 @@ export default function App() {
   const [mainView, setMainView] = useState<'catalog' | 'filament'>('catalog');
   const [importBanner, setImportBanner] = useState<{ imported: number; duplicates: number } | null>(null);
   const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([]);
+  const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false);
+  const [cleanupIssues, setCleanupIssues] = useState<CatalogIssues | null>(null);
+  const [cleanupScanning, setCleanupScanning] = useState(false);
+  const [cleanupError, setCleanupError] = useState<string | null>(null);
 
   const refreshFolders = () => invoke<Folder[]>('list_folders').then(setFolders);
   const refreshTags = () => invoke<TagCount[]>('list_tag_counts').then(setTags);
@@ -393,6 +398,38 @@ export default function App() {
     });
   };
 
+  const scanCatalogIssues = () => {
+    setCleanupScanning(true);
+    setCleanupError(null);
+    invoke<CatalogIssues>('scan_catalog_issues')
+      .then((issues) => {
+        setCleanupIssues(issues);
+        setCleanupDialogOpen(true);
+      })
+      .catch((e) => {
+        console.error('[cleanup] Scan fehlgeschlagen:', e);
+        setCleanupError(String(e));
+      })
+      .finally(() => setCleanupScanning(false));
+  };
+
+  const deleteSelectedCleanupFiles = (fileIds: string[]) => {
+    invoke('delete_files', { fileIds })
+      .then(() => {
+        setModels((prev) => prev.filter((m) => !fileIds.includes(m.id)));
+        setSelectedId((prev) => (prev && fileIds.includes(prev) ? null : prev));
+        setCleanupDialogOpen(false);
+        setCleanupIssues(null);
+        refreshFolders();
+        refreshTags();
+        refreshCreators();
+      })
+      .catch((e) => {
+        console.error('[cleanup] Löschen fehlgeschlagen:', e);
+        setCleanupError(String(e));
+      });
+  };
+
   return (
     <div
       className="h-screen min-h-[620px] flex flex-col bg-[var(--bg)] text-[var(--ink)] overflow-hidden"
@@ -415,6 +452,9 @@ export default function App() {
         slicers={slicers}
         onAddSlicer={addSlicer}
         onRemoveSlicer={removeSlicer}
+        onScanCatalogIssues={scanCatalogIssues}
+        cleanupScanning={cleanupScanning}
+        cleanupError={cleanupError}
         mainView={mainView}
         onMainViewChange={setMainView}
       />
@@ -544,6 +584,14 @@ export default function App() {
           imported={importBanner.imported}
           duplicates={importBanner.duplicates}
           onClose={() => setImportBanner(null)}
+        />
+      )}
+
+      {cleanupDialogOpen && cleanupIssues && (
+        <CatalogCleanupDialog
+          issues={cleanupIssues}
+          onClose={() => setCleanupDialogOpen(false)}
+          onDelete={deleteSelectedCleanupFiles}
         />
       )}
     </div>

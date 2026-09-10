@@ -66,6 +66,8 @@ pub fn run() {
             commands::get_model_geometry,
             commands::pick_slicer_executable,
             commands::open_in_slicer,
+            commands::scan_catalog_issues,
+            commands::delete_files,
             cloud::commands::connect_google_drive,
             cloud::commands::disconnect_cloud_account,
             cloud::commands::list_cloud_accounts,

@@ -23,6 +23,9 @@ interface Props {
   slicers: SlicerConfig[];
   onAddSlicer: (name: string, path: string) => void;
   onRemoveSlicer: (id: string) => void;
+  onScanCatalogIssues: () => void;
+  cleanupScanning: boolean;
+  cleanupError: string | null;
   mainView: 'catalog' | 'filament';
   onMainViewChange: (view: 'catalog' | 'filament') => void;
 }
@@ -56,6 +59,9 @@ export function Header({
   slicers,
   onAddSlicer,
   onRemoveSlicer,
+  onScanCatalogIssues,
+  cleanupScanning,
+  cleanupError,
   mainView,
   onMainViewChange,
 }: Props) {
@@ -311,6 +317,24 @@ export function Header({
               >
                 + {t('addSlicer')}
               </button>
+            )}
+
+            <div className="text-[13px] font-semibold mt-4 mb-2">{t('catalogCleanupTitle')}</div>
+            <button
+              onClick={onScanCatalogIssues}
+              disabled={cleanupScanning}
+              className={`h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] ${
+                cleanupScanning
+                  ? 'opacity-40 cursor-not-allowed'
+                  : 'cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]'
+              }`}
+            >
+              {cleanupScanning ? t('catalogCleanupScanning') : t('catalogCleanupScanButton')}
+            </button>
+            {cleanupError && (
+              <div className="mt-1.5 font-mono-ui text-[10px] text-[var(--accent)] break-words">
+                {t('catalogCleanupError')} {cleanupError}
+              </div>
             )}
           </div>
         )}

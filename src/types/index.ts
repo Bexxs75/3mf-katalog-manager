@@ -81,3 +81,8 @@ export interface FilamentSpool {
   price: number | null;
   imagePng: string | null;
 }
+
+export interface CatalogIssues {
+  orphaned: ModelFile[];
+  duplicateGroups: ModelFile[][];
+}
