@@ -180,12 +180,15 @@ export function Header({
         </button>
       </div>
 
+      </>
+      )}
+
       <div className="flex-1" />
 
-      <span className="shrink-0 font-mono-ui text-[11px] text-[var(--ink-3)]">
-        {formatCount(t('filesCount'), count)}
-      </span>
-      </>
+      {mainView === 'catalog' && (
+        <span className="shrink-0 font-mono-ui text-[11px] text-[var(--ink-3)]">
+          {formatCount(t('filesCount'), count)}
+        </span>
       )}
 
       <button
