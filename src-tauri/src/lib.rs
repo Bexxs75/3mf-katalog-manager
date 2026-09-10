@@ -29,6 +29,7 @@ pub fn run() {
             if let Err(e) = db::delete_unused_tags(&conn) {
                 eprintln!("[startup] Aufraeumen verwaister Tags fehlgeschlagen: {e}");
             }
+            commands::backfill_content_hashes(&conn);
             app.manage(commands::AppState {
                 db: Mutex::new(conn),
             });

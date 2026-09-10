@@ -5,9 +5,11 @@ mod repository;
 pub use repository::{
     add_tag_to_file, connect, delete_file, delete_filament_spool, delete_unused_tags,
     file_exists_by_hash, file_exists_by_path, get_file, insert_file, insert_filament_spool, insert_folder,
-    list_cloud_accounts, list_creator_counts, list_filament_spools, list_files, list_folders, list_tag_counts,
-    mark_file_viewed, remove_tag_from_file, set_cloud_account_status, set_file_cloud_link, set_file_modified_at,
-    set_file_sync_status, set_print_status, update_filament_spool, upsert_cloud_account,
+    list_cloud_accounts, list_creator_counts, list_filament_spools, list_files,
+    list_files_missing_content_hash, list_folders, list_tag_counts, mark_file_viewed,
+    remove_tag_from_file, set_cloud_account_status, set_content_hash, set_file_cloud_link,
+    set_file_modified_at, set_file_sync_status, set_print_status, update_filament_spool,
+    upsert_cloud_account,
 };
 
 #[cfg(test)]
@@ -424,5 +426,75 @@ mod tests {
         let spools = list_filament_spools(&conn).expect("list");
         assert_eq!(spools.len(), 1);
         assert_eq!(spools[0].image_png, Some(vec![137, 80, 78, 71]));
+    }
+
+    #[test]
+    fn list_files_missing_content_hash_returns_only_files_without_a_hash() {
+        let mut conn = connect_in_memory().expect("connect");
+
+        let mut without_hash = sample_file();
+        without_hash.content_hash = None;
+        let id_without = insert_file(&mut conn, &without_hash).expect("insert without hash");
+
+        let mut with_hash = sample_file();
+        with_hash.name = "hashed.3mf".to_string();
+        with_hash.path = "/tmp/hashed.3mf".to_string();
+        with_hash.content_hash = Some("already-hashed".to_string());
+        insert_file(&mut conn, &with_hash).expect("insert with hash");
+
+        let missing = list_files_missing_content_hash(&conn).expect("list missing");
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].0, id_without);
+        assert_eq!(missing[0].1, "/tmp/cube.3mf");
+    }
+
+    #[test]
+    fn set_content_hash_stores_the_hash() {
+        let mut conn = connect_in_memory().expect("connect");
+        let mut file = sample_file();
+        file.content_hash = None;
+        let id = insert_file(&mut conn, &file).expect("insert");
+
+        set_content_hash(&conn, id, "computed-hash").expect("set hash");
+
+        let stored = get_file(&conn, id).expect("query").expect("present");
+        assert_eq!(stored.content_hash, Some("computed-hash".to_string()));
+    }
+
+    #[test]
+    fn init_migrates_a_pre_existing_database_missing_the_new_columns() {
+        let conn = rusqlite::Connection::open_in_memory().expect("open");
+        conn.execute_batch(
+            "CREATE TABLE files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                path TEXT NOT NULL UNIQUE,
+                file_type TEXT NOT NULL CHECK (file_type IN ('3mf', 'stl')),
+                folder_id INTEGER,
+                origin TEXT NOT NULL DEFAULT 'local',
+                sync_status TEXT NOT NULL DEFAULT 'local-only',
+                cloud_id TEXT,
+                file_size_bytes INTEGER NOT NULL,
+                dimension_x_mm REAL,
+                dimension_y_mm REAL,
+                dimension_z_mm REAL,
+                volume_cm3 REAL,
+                object_count INTEGER,
+                thumbnail_png BLOB,
+                imported_at TEXT NOT NULL,
+                file_modified_at TEXT
+            );
+            INSERT INTO files (name, path, file_type, file_size_bytes, imported_at)
+            VALUES ('old.3mf', '/tmp/old.3mf', '3mf', 100, '2020-01-01T00:00:00Z');",
+        )
+        .expect("seed old schema");
+
+        repository::init(&conn).expect("init should migrate, not fail");
+
+        let file = get_file(&conn, 1).expect("query").expect("present");
+        assert_eq!(file.print_status, "not_printed");
+        assert_eq!(file.last_viewed_at, None);
+        assert_eq!(file.creator, None);
+        assert_eq!(file.content_hash, None);
     }
 }

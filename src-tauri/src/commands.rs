@@ -359,6 +359,39 @@ pub(crate) fn compute_content_hash(path: &Path) -> CmdResult<String> {
     Ok(format!("{:x}", Sha256::digest(&bytes)))
 }
 
+/// Einmaliger Startup-Backfill fuer content_hash: die Spalte wurde erst mit
+/// dieser Version eingefuehrt und ist sonst nur fuer neu importierte Dateien
+/// gesetzt (import_one) - fuer den kompletten Bestand vor diesem Upgrade
+/// bliebe die Duplikaterkennung sonst dauerhaft blind. Anders als der
+/// creator-Backfill in db::repository::init() braucht dieser Schritt echten
+/// Datei-Zugriff (Hash ueber die tatsaechlichen Bytes), laeuft deshalb hier
+/// statt dort und wird beim Start aus lib.rs aufgerufen, nachdem die
+/// Connection steht. Eine seit dem Import verschobene/geloeschte Datei
+/// (compute_content_hash schlaegt fehl) wird geloggt und uebersprungen, nicht
+/// abgebrochen - gleiche Fehlerbehandlung wie in import_one/import_many.
+pub(crate) fn backfill_content_hashes(conn: &Connection) {
+    let missing = match db::list_files_missing_content_hash(conn) {
+        Ok(rows) => rows,
+        Err(e) => {
+            eprintln!("[startup] content_hash-Backfill: Abfrage fehlgeschlagen: {e}");
+            return;
+        }
+    };
+
+    for (id, path) in missing {
+        match compute_content_hash(Path::new(&path)) {
+            Ok(hash) => {
+                if let Err(e) = db::set_content_hash(conn, id, &hash) {
+                    eprintln!("[startup] content_hash-Backfill: Speichern fehlgeschlagen fuer {path}: {e}");
+                }
+            }
+            Err(e) => {
+                eprintln!("[startup] content_hash-Backfill: Hash fehlgeschlagen fuer {path}: {e}");
+            }
+        }
+    }
+}
+
 /// Recursively walks `path`, collecting every supported model file found.
 /// A plain file is included as-is if its extension matches; unreadable
 /// directories are skipped rather than failing the whole scan.
