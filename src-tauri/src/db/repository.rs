@@ -45,6 +45,14 @@ fn init(conn: &Connection) -> Result<(), DbError> {
     let _ = conn.execute("ALTER TABLE files ADD COLUMN last_viewed_at TEXT", []);
     let _ = conn.execute("ALTER TABLE files ADD COLUMN creator TEXT", []);
     let _ = conn.execute("ALTER TABLE files ADD COLUMN content_hash TEXT", []);
+    // Index fuer content_hash wird hier ebenfalls als Migrations-Zeile hinzugefuegt,
+    // NACH der ALTER TABLE, da es von der Spalte abhaengt. Auf frischen DBs ist die
+    // Spalte bereits vorhanden (via CREATE TABLE), also ist diese Zeile hier auch auf
+    // frischen DBs ein no-op.
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_files_content_hash ON files (content_hash)",
+        [],
+    );
     Ok(())
 }
 

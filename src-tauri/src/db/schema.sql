@@ -38,7 +38,6 @@ CREATE TABLE IF NOT EXISTS files (
 
 CREATE INDEX IF NOT EXISTS idx_files_folder_id ON files (folder_id);
 CREATE INDEX IF NOT EXISTS idx_files_file_type ON files (file_type);
-CREATE INDEX IF NOT EXISTS idx_files_content_hash ON files (content_hash);
 
 CREATE TABLE IF NOT EXISTS file_tags (
     file_id INTEGER NOT NULL REFERENCES files (id) ON DELETE CASCADE,
