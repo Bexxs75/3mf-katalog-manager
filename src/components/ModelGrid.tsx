@@ -35,19 +35,29 @@ export function ModelGrid({ models, selectedId, onSelect, onContextMenu }: Props
           }`}
         >
           <div className="relative aspect-square bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
-            <div
-              className="absolute inset-0 opacity-90"
-              style={{
-                backgroundImage:
-                  'repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 9px)',
-              }}
-            />
-            <div className="absolute inset-0 grid place-items-center">
-              <div className="w-[52px] h-[52px] border border-dashed border-[var(--line-strong)] rotate-45" />
-            </div>
-            <div className="absolute left-2 bottom-[7px] font-mono-ui text-[9px] tracking-[0.08em] uppercase text-[var(--ink-3)]">
-              {t('previewLabel3d')}
-            </div>
+            {m.displayImage ? (
+              <img
+                src={m.displayImage}
+                alt=""
+                className="absolute inset-0 w-full h-full object-cover"
+              />
+            ) : (
+              <>
+                <div
+                  className="absolute inset-0 opacity-90"
+                  style={{
+                    backgroundImage:
+                      'repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 9px)',
+                  }}
+                />
+                <div className="absolute inset-0 grid place-items-center">
+                  <div className="w-[52px] h-[52px] border border-dashed border-[var(--line-strong)] rotate-45" />
+                </div>
+                <div className="absolute left-2 bottom-[7px] font-mono-ui text-[9px] tracking-[0.08em] uppercase text-[var(--ink-3)]">
+                  {t('previewLabel3d')}
+                </div>
+              </>
+            )}
             {Date.now() - new Date(m.importedAt).getTime() < 24 * 60 * 60 * 1000 && (
               <div className="absolute left-[7px] top-[7px] font-mono-ui text-[9px] px-1 py-0.5 rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]">
                 {t('newBadge')}

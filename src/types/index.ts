@@ -20,6 +20,7 @@ export interface ModelFile {
   estimatedWeightG: number | null;
   lastViewedAt: string | null;
   creator: string | null;
+  displayImage: string | null;
 }
 
 export interface Folder {
