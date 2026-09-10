@@ -4,7 +4,7 @@ use crate::cloud::config::{default_config_path, load_cloud_config};
 use crate::cloud::gdrive::GoogleDriveProvider;
 use crate::cloud::oauth::refresh_access_token;
 use crate::cloud::provider::CloudError;
-use crate::cloud::tokens::{KeyringTokenStore, StoredTokens, TokenStore};
+use crate::cloud::tokens::{KeyringTokenStore, StoredTokens};
 use crate::commands::{lock_db, AppState};
 use crate::db;
 
@@ -36,7 +36,8 @@ where
     let account_key = format!("gdrive:{account_label}");
     let token_store = KeyringTokenStore;
     let stored = token_store
-        .load(&account_key)
+        .load_async(&account_key)
+        .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "Kein Token im Schluesselbund gefunden - bitte erneut verbinden".to_string())?;
 
@@ -77,13 +78,14 @@ async fn refresh_and_store(
 
     let token_store = KeyringTokenStore;
     token_store
-        .save(
+        .save_async(
             account_key,
             &StoredTokens {
                 access_token: new_tokens.access_token.clone(),
                 refresh_token: new_tokens.refresh_token.or(Some(refresh_token)),
             },
         )
+        .await
         .map_err(CloudError::Auth)?;
 
     Ok(new_tokens.access_token)
