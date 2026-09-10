@@ -288,6 +288,7 @@ mod tests {
             original_weight_g: 1000,
             remaining_weight_g: 620,
             price: Some(19.99),
+            image_png: None,
         }
     }
 
@@ -332,5 +333,17 @@ mod tests {
 
         let spools = list_filament_spools(&conn).expect("list");
         assert!(spools.is_empty());
+    }
+
+    #[test]
+    fn stores_and_lists_a_filament_spool_image() {
+        let conn = connect_in_memory().expect("connect");
+        let mut with_image = sample_filament_spool();
+        with_image.image_png = Some(vec![137, 80, 78, 71]); // PNG-Magic-Bytes als Platzhalter-Daten
+        insert_filament_spool(&conn, &with_image).expect("insert");
+
+        let spools = list_filament_spools(&conn).expect("list");
+        assert_eq!(spools.len(), 1);
+        assert_eq!(spools[0].image_png, Some(vec![137, 80, 78, 71]));
     }
 }

@@ -76,5 +76,6 @@ CREATE TABLE IF NOT EXISTS filament_spools (
     original_weight_g INTEGER NOT NULL,
     remaining_weight_g INTEGER NOT NULL,
     price REAL,
+    image_png BLOB,
     created_at TEXT NOT NULL
 );

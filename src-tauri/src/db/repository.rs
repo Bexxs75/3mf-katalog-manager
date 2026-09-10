@@ -428,8 +428,8 @@ pub fn set_file_cloud_link(
 pub fn insert_filament_spool(conn: &Connection, spool: &NewFilamentSpool) -> Result<i64, DbError> {
     conn.execute(
         "INSERT INTO filament_spools
-            (material, manufacturer, color, diameter_mm, original_weight_g, remaining_weight_g, price, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            (material, manufacturer, color, diameter_mm, original_weight_g, remaining_weight_g, price, image_png, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         params![
             spool.material,
             spool.manufacturer,
@@ -438,6 +438,7 @@ pub fn insert_filament_spool(conn: &Connection, spool: &NewFilamentSpool) -> Res
             spool.original_weight_g,
             spool.remaining_weight_g,
             spool.price,
+            spool.image_png,
             chrono::Utc::now().to_rfc3339(),
         ],
     )?;
@@ -446,7 +447,7 @@ pub fn insert_filament_spool(conn: &Connection, spool: &NewFilamentSpool) -> Res
 
 pub fn list_filament_spools(conn: &Connection) -> Result<Vec<FilamentSpoolRecord>, DbError> {
     let mut stmt = conn.prepare(
-        "SELECT id, material, manufacturer, color, diameter_mm, original_weight_g, remaining_weight_g, price
+        "SELECT id, material, manufacturer, color, diameter_mm, original_weight_g, remaining_weight_g, price, image_png
          FROM filament_spools ORDER BY material, manufacturer",
     )?;
     let rows = stmt
@@ -460,6 +461,7 @@ pub fn list_filament_spools(conn: &Connection) -> Result<Vec<FilamentSpoolRecord
                 original_weight_g: row.get(5)?,
                 remaining_weight_g: row.get(6)?,
                 price: row.get(7)?,
+                image_png: row.get(8)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -470,8 +472,8 @@ pub fn update_filament_spool(conn: &Connection, id: i64, spool: &NewFilamentSpoo
     conn.execute(
         "UPDATE filament_spools
          SET material = ?1, manufacturer = ?2, color = ?3, diameter_mm = ?4,
-             original_weight_g = ?5, remaining_weight_g = ?6, price = ?7
-         WHERE id = ?8",
+             original_weight_g = ?5, remaining_weight_g = ?6, price = ?7, image_png = ?8
+         WHERE id = ?9",
         params![
             spool.material,
             spool.manufacturer,
@@ -480,6 +482,7 @@ pub fn update_filament_spool(conn: &Connection, id: i64, spool: &NewFilamentSpoo
             spool.original_weight_g,
             spool.remaining_weight_g,
             spool.price,
+            spool.image_png,
             id,
         ],
     )?;

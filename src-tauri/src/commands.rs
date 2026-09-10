@@ -162,6 +162,7 @@ fn filament_dto_to_record(spool: &FilamentSpoolDto) -> db::models::NewFilamentSp
         original_weight_g: spool.original_weight_g,
         remaining_weight_g: spool.remaining_weight_g,
         price: spool.price,
+        image_png: None,
     }
 }
 
