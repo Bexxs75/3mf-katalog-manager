@@ -416,7 +416,13 @@ export default function App() {
   const deleteSelectedCleanupFiles = (fileIds: string[]) => {
     invoke('delete_files', { fileIds })
       .then(() => {
-        setModels((prev) => prev.filter((m) => !fileIds.includes(m.id)));
+        // delete_files verarbeitet jede ID einzeln und kann einzelne
+        // Eintraege uebersprungen haben (siehe Finding 2 im finalen Review
+        // vom 2026-09-10) - daher hier die Modell-Liste komplett neu vom
+        // Backend laden statt lokal anhand von fileIds zu filtern, damit die
+        // UI auch bei einem teilweise fehlgeschlagenen Batch den wahren
+        // DB-Zustand zeigt.
+        invoke<ModelFile[]>('list_files').then(setModels);
         setSelectedId((prev) => (prev && fileIds.includes(prev) ? null : prev));
         setCleanupDialogOpen(false);
         setCleanupIssues(null);
