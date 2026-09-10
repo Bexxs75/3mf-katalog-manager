@@ -123,4 +123,11 @@ export const es: Translations = {
 
   metaSourceUrl: 'Fuente',
   sourceUrlPlaceholder: 'https://…',
+
+  queueHeading: 'Cola de impresión',
+  queueEmptyState: 'No hay modelos en la cola',
+  inQueueLabel: 'En cola',
+  notInQueueLabel: 'No está en cola',
+  addToQueue: 'Añadir a la cola',
+  removeFromQueue: 'Quitar de la cola',
 };

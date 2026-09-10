@@ -128,6 +128,13 @@ export interface Translations {
 
   metaSourceUrl: string;
   sourceUrlPlaceholder: string;
+
+  queueHeading: string;
+  queueEmptyState: string;
+  inQueueLabel: string;
+  notInQueueLabel: string;
+  addToQueue: string;
+  removeFromQueue: string;
 }
 
 export function formatCount(forms: PluralForms, n: number): string {

@@ -123,4 +123,11 @@ export const fr: Translations = {
 
   metaSourceUrl: 'Source',
   sourceUrlPlaceholder: 'https://…',
+
+  queueHeading: "File d'impression",
+  queueEmptyState: 'Aucun modèle dans la file',
+  inQueueLabel: 'Dans la file',
+  notInQueueLabel: "Pas dans la file",
+  addToQueue: "Ajouter à la file",
+  removeFromQueue: 'Retirer de la file',
 };
