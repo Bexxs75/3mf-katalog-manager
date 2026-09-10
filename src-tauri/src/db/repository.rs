@@ -6,7 +6,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use super::error::DbError;
 use super::models::{
     CloudAccountRecord, FileRecord, FileType, FilamentSpoolRecord, FolderRecord, MaterialRecord,
-    NewFile, NewFilamentSpool, TagCount, CreatorCount,
+    NewFile, NewFilamentSpool, NewSavedFilter, SavedFilterRecord, TagCount, CreatorCount,
 };
 
 const SCHEMA_SQL: &str = include_str!("schema.sql");
@@ -70,6 +70,7 @@ pub(crate) fn init(conn: &Connection) -> Result<(), DbError> {
     let _ = conn.execute("ALTER TABLE files ADD COLUMN render_snapshot_png BLOB", []);
     let _ = conn.execute("ALTER TABLE files ADD COLUMN custom_image_png BLOB", []);
     let _ = conn.execute("ALTER TABLE files ADD COLUMN source_url TEXT", []);
+    let _ = conn.execute("ALTER TABLE files ADD COLUMN queue_position INTEGER", []);
     Ok(())
 }
 
@@ -220,8 +221,8 @@ pub fn insert_file(conn: &mut Connection, file: &NewFile) -> Result<i64, DbError
             file_size_bytes, dimension_x_mm, dimension_y_mm, dimension_z_mm,
             volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
             print_status, last_viewed_at, creator, content_hash,
-            render_snapshot_png, custom_image_png, source_url
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
+            render_snapshot_png, custom_image_png, source_url, queue_position
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
         params![
             file.name,
             file.path,
@@ -246,6 +247,7 @@ pub fn insert_file(conn: &mut Connection, file: &NewFile) -> Result<i64, DbError
             file.render_snapshot_png,
             file.custom_image_png,
             file.source_url,
+            file.queue_position,
         ],
     )?;
     let file_id = tx.last_insert_rowid();
@@ -320,7 +322,7 @@ pub fn get_file(conn: &Connection, id: i64) -> Result<Option<FileRecord>, DbErro
                     file_size_bytes, dimension_x_mm, dimension_y_mm, dimension_z_mm,
                     volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
                     print_status, last_viewed_at, creator, content_hash,
-                    render_snapshot_png, custom_image_png, source_url
+                    render_snapshot_png, custom_image_png, source_url, queue_position
              FROM files WHERE id = ?1",
             params![id],
             row_to_file,
@@ -342,7 +344,7 @@ pub fn list_files(conn: &Connection) -> Result<Vec<FileRecord>, DbError> {
                 file_size_bytes, dimension_x_mm, dimension_y_mm, dimension_z_mm,
                 volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
                 print_status, last_viewed_at, creator, content_hash,
-                render_snapshot_png, custom_image_png, source_url
+                render_snapshot_png, custom_image_png, source_url, queue_position
          FROM files ORDER BY name",
     )?;
     let mut files = stmt
@@ -393,6 +395,7 @@ fn row_to_file(row: &rusqlite::Row) -> rusqlite::Result<FileRecord> {
         render_snapshot_png: row.get(21)?,
         custom_image_png: row.get(22)?,
         source_url: row.get(23)?,
+        queue_position: row.get(24)?,
     })
 }
 
@@ -489,10 +492,24 @@ pub fn set_file_sync_status(conn: &Connection, file_id: i64, status: &str) -> Re
 
 pub fn set_print_status(conn: &Connection, file_id: i64, status: &str) -> Result<(), DbError> {
     conn.execute(
-        "UPDATE files SET print_status = ?1 WHERE id = ?2",
+        "UPDATE files SET print_status = ?1,
+                queue_position = CASE WHEN ?1 = 'printed' THEN NULL ELSE queue_position END
+         WHERE id = ?2",
         params![status, file_id],
     )?;
     Ok(())
+}
+
+pub fn set_queue_position(conn: &Connection, file_id: i64, position: Option<i64>) -> Result<(), DbError> {
+    conn.execute(
+        "UPDATE files SET queue_position = ?1 WHERE id = ?2",
+        params![position, file_id],
+    )?;
+    Ok(())
+}
+
+pub fn max_queue_position(conn: &Connection) -> Result<Option<i64>, DbError> {
+    Ok(conn.query_row("SELECT MAX(queue_position) FROM files", [], |row| row.get(0))?)
 }
 
 /// Liefert (id, path) fuer alle Dateien ohne content_hash - Grundlage fuer
@@ -641,5 +658,49 @@ pub fn update_filament_spool(conn: &Connection, id: i64, spool: &NewFilamentSpoo
 
 pub fn delete_filament_spool(conn: &Connection, id: i64) -> Result<(), DbError> {
     conn.execute("DELETE FROM filament_spools WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+pub fn insert_saved_filter(conn: &Connection, filter: &NewSavedFilter) -> Result<i64, DbError> {
+    conn.execute(
+        "INSERT INTO saved_filters (name, folder_id, tag, creator, query, sort, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            filter.name,
+            filter.folder_id,
+            filter.tag,
+            filter.creator,
+            filter.query,
+            filter.sort,
+            chrono::Utc::now().to_rfc3339(),
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn list_saved_filters(conn: &Connection) -> Result<Vec<SavedFilterRecord>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, folder_id, tag, creator, query, sort, created_at
+         FROM saved_filters ORDER BY created_at",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(SavedFilterRecord {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                folder_id: row.get(2)?,
+                tag: row.get(3)?,
+                creator: row.get(4)?,
+                query: row.get(5)?,
+                sort: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+pub fn delete_saved_filter(conn: &Connection, id: i64) -> Result<(), DbError> {
+    conn.execute("DELETE FROM saved_filters WHERE id = ?1", params![id])?;
     Ok(())
 }

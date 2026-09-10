@@ -582,6 +582,7 @@ pub(crate) fn import_one(
         render_snapshot_png: None,
         custom_image_png: None,
         source_url: None,
+        queue_position: None,
     };
 
     let id = db::insert_file(conn, &new_file).map_err(|e| e.to_string())?;
