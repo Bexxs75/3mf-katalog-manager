@@ -48,6 +48,10 @@ pub struct NewFile {
     pub materials: Vec<MaterialRecord>,
     pub metadata: BTreeMap<String, String>,
     pub tags: Vec<String>,
+    pub print_status: String,
+    pub last_viewed_at: Option<String>,
+    pub creator: Option<String>,
+    pub content_hash: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -70,6 +74,10 @@ pub struct FileRecord {
     pub materials: Vec<MaterialRecord>,
     pub metadata: BTreeMap<String, String>,
     pub tags: Vec<String>,
+    pub print_status: String,
+    pub last_viewed_at: Option<String>,
+    pub creator: Option<String>,
+    pub content_hash: Option<String>,
 }
 
 #[derive(Debug, Clone)]

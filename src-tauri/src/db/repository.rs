@@ -34,6 +34,17 @@ fn init(conn: &Connection) -> Result<(), DbError> {
     // falls die Spalte (auf einer frisch angelegten DB, wo CREATE TABLE sie
     // schon mitbringt) bereits existiert.
     let _ = conn.execute("ALTER TABLE filament_spools ADD COLUMN image_png BLOB", []);
+    // Gleiches Muster fuer vier neue files-Spalten (Druckstatus, Zuletzt-
+    // angesehen, Creator, Inhalts-Hash) auf einer bereits befuellten
+    // Produktions-DB.
+    let _ = conn.execute(
+        "ALTER TABLE files ADD COLUMN print_status TEXT NOT NULL DEFAULT 'not_printed'
+            CHECK (print_status IN ('not_printed', 'printed'))",
+        [],
+    );
+    let _ = conn.execute("ALTER TABLE files ADD COLUMN last_viewed_at TEXT", []);
+    let _ = conn.execute("ALTER TABLE files ADD COLUMN creator TEXT", []);
+    let _ = conn.execute("ALTER TABLE files ADD COLUMN content_hash TEXT", []);
     Ok(())
 }
 
@@ -167,8 +178,9 @@ pub fn insert_file(conn: &mut Connection, file: &NewFile) -> Result<i64, DbError
         "INSERT INTO files (
             name, path, file_type, folder_id, origin, cloud_id, sync_status,
             file_size_bytes, dimension_x_mm, dimension_y_mm, dimension_z_mm,
-            volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+            volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
+            print_status, last_viewed_at, creator, content_hash
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
         params![
             file.name,
             file.path,
@@ -186,6 +198,10 @@ pub fn insert_file(conn: &mut Connection, file: &NewFile) -> Result<i64, DbError
             file.thumbnail_png,
             file.imported_at,
             file.file_modified_at,
+            file.print_status,
+            file.last_viewed_at,
+            file.creator,
+            file.content_hash,
         ],
     )?;
     let file_id = tx.last_insert_rowid();
@@ -247,7 +263,8 @@ pub fn get_file(conn: &Connection, id: i64) -> Result<Option<FileRecord>, DbErro
         .query_row(
             "SELECT id, name, path, file_type, folder_id, origin, sync_status, cloud_id,
                     file_size_bytes, dimension_x_mm, dimension_y_mm, dimension_z_mm,
-                    volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at
+                    volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
+                    print_status, last_viewed_at, creator, content_hash
              FROM files WHERE id = ?1",
             params![id],
             row_to_file,
@@ -267,7 +284,8 @@ pub fn list_files(conn: &Connection) -> Result<Vec<FileRecord>, DbError> {
     let mut stmt = conn.prepare(
         "SELECT id, name, path, file_type, folder_id, origin, sync_status, cloud_id,
                 file_size_bytes, dimension_x_mm, dimension_y_mm, dimension_z_mm,
-                volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at
+                volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
+                print_status, last_viewed_at, creator, content_hash
          FROM files ORDER BY name",
     )?;
     let mut files = stmt
@@ -311,6 +329,10 @@ fn row_to_file(row: &rusqlite::Row) -> rusqlite::Result<FileRecord> {
         materials: Vec::new(),
         metadata: BTreeMap::new(),
         tags: Vec::new(),
+        print_status: row.get(17)?,
+        last_viewed_at: row.get(18)?,
+        creator: row.get(19)?,
+        content_hash: row.get(20)?,
     })
 }
 

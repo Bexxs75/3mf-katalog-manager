@@ -28,11 +28,17 @@ CREATE TABLE IF NOT EXISTS files (
     object_count INTEGER,
     thumbnail_png BLOB,
     imported_at TEXT NOT NULL,
-    file_modified_at TEXT
+    file_modified_at TEXT,
+    print_status TEXT NOT NULL DEFAULT 'not_printed'
+        CHECK (print_status IN ('not_printed', 'printed')),
+    last_viewed_at TEXT,
+    creator TEXT,
+    content_hash TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_files_folder_id ON files (folder_id);
 CREATE INDEX IF NOT EXISTS idx_files_file_type ON files (file_type);
+CREATE INDEX IF NOT EXISTS idx_files_content_hash ON files (content_hash);
 
 CREATE TABLE IF NOT EXISTS file_tags (
     file_id INTEGER NOT NULL REFERENCES files (id) ON DELETE CASCADE,
