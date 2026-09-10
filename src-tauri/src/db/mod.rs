@@ -5,8 +5,8 @@ mod repository;
 pub use repository::{
     add_tag_to_file, connect, delete_file, delete_unused_tags, file_exists_by_path, get_file,
     insert_file, insert_folder, list_cloud_accounts, list_files, list_folders, list_tag_counts,
-    remove_tag_from_file, set_cloud_account_status, set_file_modified_at, set_file_sync_status,
-    upsert_cloud_account,
+    remove_tag_from_file, set_cloud_account_status, set_file_cloud_link, set_file_modified_at,
+    set_file_sync_status, upsert_cloud_account,
 };
 
 #[cfg(test)]
@@ -250,6 +250,21 @@ mod tests {
         let accounts = list_cloud_accounts(&conn).expect("list");
         assert_eq!(accounts.len(), 1);
         assert_eq!(accounts[0].account_label, "second@example.com");
+    }
+
+    #[test]
+    fn set_file_cloud_link_updates_origin_cloud_id_sync_status_and_modified_at() {
+        let mut conn = connect_in_memory().expect("connect");
+        let id = insert_file(&mut conn, &sample_file()).expect("insert");
+
+        set_file_cloud_link(&conn, id, "gdrive", "drive-file-1", "synced", "2026-09-10T08:00:00Z")
+            .expect("set cloud link");
+
+        let file = get_file(&conn, id).expect("query").expect("present");
+        assert_eq!(file.origin, "gdrive");
+        assert_eq!(file.sync_status, "synced");
+        assert_eq!(file.cloud_id, Some("drive-file-1".to_string()));
+        assert_eq!(file.file_modified_at, Some("2026-09-10T08:00:00Z".to_string()));
     }
 
     #[test]

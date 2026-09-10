@@ -6,7 +6,7 @@ use crate::cloud::oauth::run_google_oauth_flow;
 use crate::cloud::provider::{CloudEntry, StorageProvider};
 use crate::cloud::session::with_gdrive_provider;
 use crate::cloud::tokens::{KeyringTokenStore, StoredTokens};
-use crate::commands::{import_one, lock_db, AppState, ModelFileDto};
+use crate::commands::{import_one, lock_db, to_dto, AppState, ModelFileDto};
 use crate::db;
 
 type CmdResult<T> = Result<T, String>;
@@ -350,4 +350,52 @@ pub async fn check_cloud_sync_status(state: State<'_, AppState>, file_id: String
     }
 
     Ok(new_status.to_string())
+}
+
+/// Laedt eine bisher rein lokale Katalogdatei zu Google Drive hoch und
+/// verknuepft sie danach mit dem entstandenen Drive-Eintrag. Bereits mit
+/// einem Cloud-Konto verknuepfte Dateien (origin != "local") werden
+/// zurueckgewiesen - ein erneuter Upload/Ueberschreiben-Fluss ist nicht
+/// Teil dieser MVP-Funktion; Aktualisierungen laufen weiterhin ueber
+/// check_cloud_sync_status.
+#[tauri::command]
+pub async fn upload_file_to_cloud(state: State<'_, AppState>, file_id: String) -> CmdResult<ModelFileDto> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+
+    let file = {
+        let conn = lock_db(&state)?;
+        db::get_file(&conn, id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "Datei nicht gefunden".to_string())?
+    };
+
+    if file.origin != "local" {
+        return Err("Datei ist bereits mit einem Cloud-Konto verknuepft".to_string());
+    }
+
+    let data = std::fs::read(&file.path).map_err(|e| e.to_string())?;
+
+    let entry = with_gdrive_provider(&state, {
+        let file_name = file.name.clone();
+        move |provider| {
+            let file_name = file_name.clone();
+            let data = data.clone();
+            async move { provider.upload(None, &file_name, &data).await }
+        }
+    })
+    .await?;
+
+    {
+        let conn = lock_db(&state)?;
+        db::set_file_cloud_link(&conn, id, "gdrive", &entry.id, "synced", &entry.modified_time)
+            .map_err(|e| e.to_string())?;
+    }
+
+    let updated = {
+        let conn = lock_db(&state)?;
+        db::get_file(&conn, id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "Datei nach Upload nicht gefunden".to_string())?
+    };
+    Ok(to_dto(updated))
 }

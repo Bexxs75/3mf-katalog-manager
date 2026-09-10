@@ -60,7 +60,7 @@ pub struct TagCountDto {
     pub color_hue: i64,
 }
 
-fn to_dto(file: FileRecord) -> ModelFileDto {
+pub(crate) fn to_dto(file: FileRecord) -> ModelFileDto {
     ModelFileDto {
         id: file.id.to_string(),
         name: file.name,

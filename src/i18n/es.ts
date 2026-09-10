@@ -61,6 +61,11 @@ export const es: Translations = {
   removeSlicerAria: 'Eliminar laminador',
   chooseSlicerAria: 'Elegir otro laminador',
   slicerLaunchError: 'No se pudo iniciar el laminador:',
+  uploadToCloudAria: 'Subir a Google Drive',
+  uploadingToCloudAria: 'Subiendo a Google Drive …',
+  alreadyInCloudAria: 'Ya vinculado con la nube',
+  connectCloudToUploadAria: 'Conectar Google Drive para subir',
+  cloudUploadError: 'Error al subir:',
 
   emptyStateText: 'Selecciona un modelo para ver detalles, vista previa y etiquetas.',
   dragToRotate: 'Arrastra para girar',

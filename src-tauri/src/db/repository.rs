@@ -402,3 +402,22 @@ pub fn set_file_modified_at(conn: &Connection, file_id: i64, modified_at: &str) 
     )?;
     Ok(())
 }
+
+/// Verknuepft eine bisher rein lokale Datei nach einem erfolgreichen Upload
+/// mit ihrem Cloud-Gegenstueck - setzt origin/cloud_id/sync_status/
+/// file_modified_at in einem Schritt, statt vier einzelne UPDATEs
+/// auszufuehren.
+pub fn set_file_cloud_link(
+    conn: &Connection,
+    file_id: i64,
+    origin: &str,
+    cloud_id: &str,
+    sync_status: &str,
+    modified_at: &str,
+) -> Result<(), DbError> {
+    conn.execute(
+        "UPDATE files SET origin = ?1, cloud_id = ?2, sync_status = ?3, file_modified_at = ?4 WHERE id = ?5",
+        params![origin, cloud_id, sync_status, modified_at, file_id],
+    )?;
+    Ok(())
+}

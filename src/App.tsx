@@ -49,6 +49,8 @@ export default function App() {
   const [cloudError, setCloudError] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number } | null>(null);
   const [cloudBrowserOpen, setCloudBrowserOpen] = useState(false);
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [cloudUploadError, setCloudUploadError] = useState<string | null>(null);
 
   const refreshFolders = () => invoke<Folder[]>('list_folders').then(setFolders);
   const refreshTags = () => invoke<TagCount[]>('list_tag_counts').then(setTags);
@@ -184,6 +186,21 @@ export default function App() {
     });
   };
 
+  const uploadToCloud = (id: string) => {
+    if (uploadingId) return;
+    setUploadingId(id);
+    setCloudUploadError(null);
+    invoke<ModelFile>('upload_file_to_cloud', { fileId: id })
+      .then((updated) => {
+        setModels((prev) => prev.map((m) => (m.id === id ? updated : m)));
+      })
+      .catch((e) => {
+        console.error('[cloud] Hochladen fehlgeschlagen:', e);
+        setCloudUploadError(String(e));
+      })
+      .finally(() => setUploadingId(null));
+  };
+
   const deleteModel = (id: string) => {
     invoke('delete_file', { fileId: id }).then(() => {
       setModels((prev) => prev.filter((m) => m.id !== id));
@@ -286,6 +303,10 @@ export default function App() {
           onOpenInSlicer={(slicerId) => selected && openInSlicer(selected.id, slicerId)}
           slicers={slicers}
           slicerError={slicerError}
+          onUploadToCloud={() => selected && uploadToCloud(selected.id)}
+          cloudUploadAvailable={clouds.some((c) => c.id === 'gdrive' && c.status === 'connected')}
+          uploading={uploadingId !== null && uploadingId === selected?.id}
+          cloudUploadError={cloudUploadError}
         />
       </div>
 
