@@ -66,6 +66,9 @@ export const en: Translations = {
   alreadyInCloudAria: 'Already linked to the cloud',
   connectCloudToUploadAria: 'Connect Google Drive to upload',
   cloudUploadError: 'Upload failed:',
+  uploadButtonLabel: 'Upload',
+  uploadButtonLabelInProgress: 'Uploading …',
+  uploadButtonLabelDone: 'Uploaded',
 
   emptyStateText: 'Select a model to see details, preview, and tags.',
   dragToRotate: 'Drag to rotate',
@@ -91,4 +94,8 @@ export const en: Translations = {
   cloudBrowserSelectAll: 'Select all',
   cloudBrowserImporting: 'Importing …',
   importFromCloudOption: 'Import from Google Drive…',
+
+  cloudFolderPickerTitle: 'Choose a destination folder for "{name}"',
+  cloudFolderPickerUploadHereButton: 'Upload here',
+  cloudFolderPickerUploading: 'Uploading …',
 };

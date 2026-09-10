@@ -8,6 +8,7 @@ import { ModelList } from './components/ModelList';
 import { DetailPanel } from './components/DetailPanel';
 import { ContextMenu } from './components/ContextMenu';
 import { CloudBrowserDialog } from './components/CloudBrowserDialog';
+import { CloudFolderPickerDialog } from './components/CloudFolderPickerDialog';
 import { useTheme } from './hooks/useTheme';
 import { useSlicers } from './hooks/useSlicers';
 import type { ModelFile, Folder, TagCount, CloudAccount, Origin, ViewMode, SortKey } from './types';
@@ -51,6 +52,7 @@ export default function App() {
   const [cloudBrowserOpen, setCloudBrowserOpen] = useState(false);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [cloudUploadError, setCloudUploadError] = useState<string | null>(null);
+  const [folderPickerFileId, setFolderPickerFileId] = useState<string | null>(null);
 
   const refreshFolders = () => invoke<Folder[]>('list_folders').then(setFolders);
   const refreshTags = () => invoke<TagCount[]>('list_tag_counts').then(setTags);
@@ -186,11 +188,11 @@ export default function App() {
     });
   };
 
-  const uploadToCloud = (id: string) => {
-    if (uploadingId) return;
+  const uploadToCloud = (id: string, folderId: string | null) => {
+    if (uploadingId) return Promise.resolve();
     setUploadingId(id);
     setCloudUploadError(null);
-    invoke<ModelFile>('upload_file_to_cloud', { fileId: id })
+    return invoke<ModelFile>('upload_file_to_cloud', { fileId: id, folderId })
       .then((updated) => {
         setModels((prev) => prev.map((m) => (m.id === id ? updated : m)));
       })
@@ -303,7 +305,7 @@ export default function App() {
           onOpenInSlicer={(slicerId) => selected && openInSlicer(selected.id, slicerId)}
           slicers={slicers}
           slicerError={slicerError}
-          onUploadToCloud={() => selected && uploadToCloud(selected.id)}
+          onUploadToCloud={() => selected && setFolderPickerFileId(selected.id)}
           cloudUploadAvailable={clouds.some((c) => c.id === 'gdrive' && c.status === 'connected')}
           uploading={uploadingId !== null && uploadingId === selected?.id}
           cloudUploadError={cloudUploadError}
@@ -322,6 +324,16 @@ export default function App() {
 
       {cloudBrowserOpen && (
         <CloudBrowserDialog onClose={() => setCloudBrowserOpen(false)} onImport={handleCloudImport} />
+      )}
+
+      {folderPickerFileId && (
+        <CloudFolderPickerDialog
+          fileName={models.find((m) => m.id === folderPickerFileId)?.name ?? ''}
+          onClose={() => setFolderPickerFileId(null)}
+          onConfirm={(folderId) =>
+            uploadToCloud(folderPickerFileId, folderId).then(() => setFolderPickerFileId(null))
+          }
+        />
       )}
     </div>
   );

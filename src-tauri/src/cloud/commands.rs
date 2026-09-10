@@ -357,9 +357,14 @@ pub async fn check_cloud_sync_status(state: State<'_, AppState>, file_id: String
 /// einem Cloud-Konto verknuepfte Dateien (origin != "local") werden
 /// zurueckgewiesen - ein erneuter Upload/Ueberschreiben-Fluss ist nicht
 /// Teil dieser MVP-Funktion; Aktualisierungen laufen weiterhin ueber
-/// check_cloud_sync_status.
+/// check_cloud_sync_status. `folder_id` ist die Drive-Ordner-ID aus dem
+/// Zielordner-Dialog im Frontend (None = Drive-Wurzelverzeichnis).
 #[tauri::command]
-pub async fn upload_file_to_cloud(state: State<'_, AppState>, file_id: String) -> CmdResult<ModelFileDto> {
+pub async fn upload_file_to_cloud(
+    state: State<'_, AppState>,
+    file_id: String,
+    folder_id: Option<String>,
+) -> CmdResult<ModelFileDto> {
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
 
     let file = {
@@ -377,10 +382,12 @@ pub async fn upload_file_to_cloud(state: State<'_, AppState>, file_id: String) -
 
     let entry = with_gdrive_provider(&state, {
         let file_name = file.name.clone();
+        let folder_id = folder_id.clone();
         move |provider| {
             let file_name = file_name.clone();
+            let folder_id = folder_id.clone();
             let data = data.clone();
-            async move { provider.upload(None, &file_name, &data).await }
+            async move { provider.upload(folder_id.as_deref(), &file_name, &data).await }
         }
     })
     .await?;

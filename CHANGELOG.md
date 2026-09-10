@@ -23,7 +23,7 @@ Noch kein Release getaggt — dieser Abschnitt fasst die bisherige Entwicklung s
 - Google-Drive-Anbindung: OAuth2-PKCE-Verbindung (Verbinden/Trennen per Klick auf die jeweilige Zeile), Token-Speicherung im OS-Schlüsselbund, Datei-Browser mit Ordner-Navigation, Import mit Duplikat-Erkennung und Sync-Status-Anzeige je Datei
 - Native Rust-seitige Geometrie-Extraktion für die 3D-Vorschau: ZIP-Entpacken und Mesh-Parsing (3MF inkl. Multi-Part-"Production Extension"-Dateien mit `p:path`-Referenzen, STL) laufen jetzt vollständig im Backend statt im Frontend über three.js-Loader/`DOMParser`
 - "In Slicer öffnen": Nutzer hinterlegt beliebig viele eigene Slicer-Programmpfade (statt fest codierter Einzelintegrationen für Bambu Studio, PrusaSlicer, OrcaSlicer, ...), Split-Button für Hauptauswahl/Wechsel, Kontextmenü-Eintrag für den zuletzt genutzten Slicer
-- Hochladen zu Google Drive: bisher rein lokale Dateien lassen sich per Klick auf die Sync-Schaltfläche im Detailbereich zu Google Drive hochladen (multipart/related-Upload mit Name/Inhalt in einer Anfrage); die Datei wird danach automatisch mit dem entstandenen Drive-Eintrag verknüpft (Herkunft/Sync-Status/Cloud-ID) und über den bestehenden Sync-Check aktuell gehalten
+- Hochladen zu Google Drive: bisher rein lokale Dateien lassen sich über die beschriftete "↑ Hochladen"-Schaltfläche im Detailbereich zu Google Drive hochladen (multipart/related-Upload mit Name/Inhalt in einer Anfrage); ein Zielordner-Dialog (gleiche Ordner-Navigation wie beim Import) lässt den Nutzer vor dem Hochladen einen Drive-Ordner auswählen statt immer ins Wurzelverzeichnis zu laden; die Datei wird danach automatisch mit dem entstandenen Drive-Eintrag verknüpft (Herkunft/Sync-Status/Cloud-ID) und über den bestehenden Sync-Check aktuell gehalten
 
 ### Changed
 
@@ -45,7 +45,7 @@ Noch kein Release getaggt — dieser Abschnitt fasst die bisherige Entwicklung s
 
 ### Known Limitations
 
-- Cloud-Speicher: nur Google Drive implementiert (Verbinden/Trennen, Datei-Browser, Import, Upload); OneDrive, Dropbox und Proton Drive sind im UI weiterhin nur als Platzhalter vorhanden. Upload lädt immer ins Wurzelverzeichnis von Drive hoch (keine Ordnerauswahl) und deckt keinen erneuten Upload/Konfliktauflösung bereits verknüpfter Dateien ab
+- Cloud-Speicher: nur Google Drive implementiert (Verbinden/Trennen, Datei-Browser, Import, Upload inkl. Zielordner-Auswahl); OneDrive, Dropbox und Proton Drive sind im UI weiterhin nur als Platzhalter vorhanden. Upload deckt keinen erneuten Upload/keine Konfliktauflösung bereits verknüpfter Dateien ab
 - Google-Drive-Anbindung funktioniert aktuell nur auf der Entwicklungsmaschine (OAuth-Client-Konfiguration ist lokal, App im Google-Cloud-Testmodus) — für andere Nutzer nach einem Release noch nicht nutzbar
 - "In Slicer öffnen" unterstützt macOS nicht (`.app`-Bundles benötigen einen anderen Start-Mechanismus als Windows/Linux-Executables)
 - Plattformübergreifende Release-Builds (Windows `.msi`, macOS `.dmg`) sowie Code-Signing noch nicht eingerichtet — bisher nur unter Linux entwickelt und getestet
