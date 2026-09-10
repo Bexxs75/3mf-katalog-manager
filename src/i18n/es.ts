@@ -86,16 +86,5 @@ export const es: Translations = {
   loadingPreview: 'Cargando vista previa …',
   previewUnavailable: 'Vista previa no disponible',
 
-  cloudBrowserTitle: 'Importar desde Google Drive',
-  cloudBrowserLoading: 'Cargando …',
-  cloudBrowserEmpty: 'No hay archivos en esta carpeta',
-  cloudBrowserImportButton: 'Importar ({count})',
-  cloudBrowserError: 'Error al cargar:',
-  cloudBrowserSelectAll: 'Seleccionar todo',
-  cloudBrowserImporting: 'Importando …',
   importFromCloudOption: 'Importar desde Google Drive…',
-
-  cloudFolderPickerTitle: 'Elige una carpeta de destino para «{name}»',
-  cloudFolderPickerUploadHereButton: 'Subir aquí',
-  cloudFolderPickerUploading: 'Subiendo …',
 };
