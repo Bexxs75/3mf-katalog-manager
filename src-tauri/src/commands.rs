@@ -299,6 +299,7 @@ pub(crate) fn import_one(
     origin: &str,
     cloud_id: Option<String>,
     display_name: Option<&str>,
+    content_hash: Option<String>,
 ) -> CmdResult<ModelFileDto> {
     // Bei Cloud-Importen ist `path` aus Sicherheitsgruenden (kein Path
     // Traversal ueber den Drive-Dateinamen) ein von der Datei-ID abgeleiteter
@@ -376,8 +377,12 @@ pub(crate) fn import_one(
         imported_at: chrono::Utc::now().to_rfc3339(),
         file_modified_at: None,
         materials,
-        metadata,
+        metadata: metadata.clone(),
         tags,
+        print_status: "not_printed".to_string(),
+        last_viewed_at: None,
+        creator: metadata.get("Designer").cloned(),
+        content_hash,
     };
 
     let id = db::insert_file(conn, &new_file).map_err(|e| e.to_string())?;
@@ -415,7 +420,7 @@ fn import_many(state: &State<AppState>, roots: Vec<PathBuf>) -> CmdResult<Vec<Mo
             }
         }
 
-        match import_one(&mut conn, &path, "local", None, None) {
+        match import_one(&mut conn, &path, "local", None, None, None) {
             Ok(dto) => imported.push(dto),
             Err(e) => eprintln!("[import] Import fehlgeschlagen für {path_str}: {e}"),
         }

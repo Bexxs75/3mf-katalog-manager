@@ -44,7 +44,27 @@ mod tests {
             }],
             metadata,
             tags: vec!["cube".to_string(), "test".to_string()],
+            print_status: "not_printed".to_string(),
+            last_viewed_at: None,
+            creator: None,
+            content_hash: None,
         }
+    }
+
+    #[test]
+    fn stores_and_lists_the_new_file_columns() {
+        let mut conn = connect_in_memory().expect("connect");
+        let mut file = sample_file();
+        file.print_status = "printed".to_string();
+        file.creator = Some("Jane".to_string());
+        file.content_hash = Some("abc123".to_string());
+        let id = insert_file(&mut conn, &file).expect("insert");
+
+        let stored = get_file(&conn, id).expect("query").expect("present");
+        assert_eq!(stored.print_status, "printed");
+        assert_eq!(stored.last_viewed_at, None);
+        assert_eq!(stored.creator, Some("Jane".to_string()));
+        assert_eq!(stored.content_hash, Some("abc123".to_string()));
     }
 
     #[test]
