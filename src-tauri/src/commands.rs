@@ -946,6 +946,66 @@ pub fn delete_saved_filter(state: State<AppState>, filter_id: String) -> CmdResu
     db::delete_saved_filter(&conn, id).map_err(|e| e.to_string())
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogIssuesDto {
+    pub orphaned: Vec<ModelFileDto>,
+    pub duplicate_groups: Vec<Vec<ModelFileDto>>,
+}
+
+#[tauri::command]
+pub fn scan_catalog_issues(state: State<AppState>) -> CmdResult<CatalogIssuesDto> {
+    let conn = lock_db(&state)?;
+    let files = db::list_files(&conn).map_err(|e| e.to_string())?;
+
+    let orphaned: Vec<ModelFileDto> = files
+        .iter()
+        .filter(|f| std::fs::metadata(&f.path).is_err())
+        .cloned()
+        .map(to_dto)
+        .collect();
+
+    let mut by_hash: BTreeMap<String, Vec<FileRecord>> = BTreeMap::new();
+    for file in files {
+        if let Some(hash) = file.content_hash.clone() {
+            by_hash.entry(hash).or_default().push(file);
+        }
+    }
+
+    let mut duplicate_groups: Vec<Vec<ModelFileDto>> = by_hash
+        .into_values()
+        .filter(|group| group.len() >= 2)
+        .map(|mut group| {
+            group.sort_by(|a, b| a.imported_at.cmp(&b.imported_at));
+            group.into_iter().map(to_dto).collect()
+        })
+        .collect();
+    duplicate_groups.sort_by(|a, b| a[0].imported_at.cmp(&b[0].imported_at));
+
+    Ok(CatalogIssuesDto { orphaned, duplicate_groups })
+}
+
+#[tauri::command]
+pub fn delete_files(state: State<AppState>, file_ids: Vec<String>) -> CmdResult<()> {
+    let conn = lock_db(&state)?;
+    for file_id in file_ids {
+        let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+        // Bereinigungs-Batch: eine zwischenzeitlich bereits geloeschte Datei
+        // (z.B. doppelt in der Auswahl) wird uebersprungen statt den ganzen
+        // Batch abzubrechen.
+        let Some(file) = db::get_file(&conn, id).map_err(|e| e.to_string())? else {
+            continue;
+        };
+        if let Err(e) = std::fs::remove_file(&file.path) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                return Err(e.to_string());
+            }
+        }
+        db::delete_file(&conn, id).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

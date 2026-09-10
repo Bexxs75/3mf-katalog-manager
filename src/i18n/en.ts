@@ -132,4 +132,15 @@ export const en: Translations = {
   removeFromQueue: 'Remove from queue',
   savedFiltersHeading: 'Saved Filters',
   savedFilterNamePlaceholder: 'Name…',
+
+  catalogCleanupTitle: 'Check catalog',
+  catalogCleanupScanButton: 'Scan catalog for issues',
+  catalogCleanupScanning: 'Scanning…',
+  catalogCleanupError: 'Scan failed:',
+  cleanupDialogTitle: 'Cleanup suggestions',
+  cleanupNoIssues: 'No issues found.',
+  cleanupOrphanedHeading: 'Orphaned entries',
+  cleanupDuplicateGroupHeading: 'Duplicate group',
+  cleanupKeepOldest: 'kept',
+  cleanupDeleteSelected: 'Delete selection',
 };

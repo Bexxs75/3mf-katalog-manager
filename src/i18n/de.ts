@@ -132,4 +132,15 @@ export const de: Translations = {
   removeFromQueue: 'Aus Warteschlange entfernen',
   savedFiltersHeading: 'Gespeicherte Filter',
   savedFilterNamePlaceholder: 'Name…',
+
+  catalogCleanupTitle: 'Katalog prüfen',
+  catalogCleanupScanButton: 'Katalog auf Probleme prüfen',
+  catalogCleanupScanning: 'Prüfe…',
+  catalogCleanupError: 'Prüfung fehlgeschlagen:',
+  cleanupDialogTitle: 'Aufräum-Vorschläge',
+  cleanupNoIssues: 'Keine Probleme gefunden.',
+  cleanupOrphanedHeading: 'Verwaiste Einträge',
+  cleanupDuplicateGroupHeading: 'Duplikat-Gruppe',
+  cleanupKeepOldest: 'wird behalten',
+  cleanupDeleteSelected: 'Auswahl löschen',
 };
