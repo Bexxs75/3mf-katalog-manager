@@ -8,7 +8,7 @@ pub use repository::{
     list_cloud_accounts, list_creator_counts, list_filament_spools, list_files,
     list_files_missing_content_hash, list_folders, list_tag_counts, mark_file_viewed,
     remove_tag_from_file, set_cloud_account_status, set_content_hash, set_custom_image_png, set_file_cloud_link,
-    set_file_modified_at, set_file_sync_status, set_print_status, update_filament_spool,
+    set_file_modified_at, set_file_sync_status, set_print_status, set_render_snapshot_png, update_filament_spool,
     upsert_cloud_account,
 };
 
@@ -524,5 +524,15 @@ mod tests {
         set_custom_image_png(&conn, id, &[9, 9, 9]).expect("update");
         let file = get_file(&conn, id).expect("query").expect("present");
         assert_eq!(file.custom_image_png, Some(vec![9, 9, 9]));
+    }
+
+    #[test]
+    fn set_render_snapshot_png_updates_the_image() {
+        let mut conn = connect_in_memory().expect("connect");
+        let id = insert_file(&mut conn, &sample_file()).expect("insert");
+
+        set_render_snapshot_png(&conn, id, &[7, 7, 7]).expect("update");
+        let file = get_file(&conn, id).expect("query").expect("present");
+        assert_eq!(file.render_snapshot_png, Some(vec![7, 7, 7]));
     }
 }

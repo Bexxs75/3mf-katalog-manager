@@ -523,6 +523,14 @@ pub fn set_custom_image_png(conn: &Connection, file_id: i64, png: &[u8]) -> Resu
     Ok(())
 }
 
+pub fn set_render_snapshot_png(conn: &Connection, file_id: i64, png: &[u8]) -> Result<(), DbError> {
+    conn.execute(
+        "UPDATE files SET render_snapshot_png = ?1 WHERE id = ?2",
+        params![png, file_id],
+    )?;
+    Ok(())
+}
+
 pub fn mark_file_viewed(conn: &Connection, file_id: i64) -> Result<(), DbError> {
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(

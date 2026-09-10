@@ -401,6 +401,17 @@ pub async fn upload_custom_image(
     )))
 }
 
+#[tauri::command]
+pub fn set_render_snapshot(state: State<AppState>, file_id: String, image_base64: String) -> CmdResult<()> {
+    use base64::Engine;
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&image_base64)
+        .map_err(|e| e.to_string())?;
+    let conn = lock_db(&state)?;
+    db::set_render_snapshot_png(&conn, id, &bytes).map_err(|e| e.to_string())
+}
+
 fn is_supported_extension(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
