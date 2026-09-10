@@ -24,7 +24,7 @@ pub fn connect_in_memory() -> Result<Connection, DbError> {
     Ok(conn)
 }
 
-fn init(conn: &Connection) -> Result<(), DbError> {
+pub(crate) fn init(conn: &Connection) -> Result<(), DbError> {
     conn.pragma_update(None, "foreign_keys", true)?;
     conn.execute_batch(SCHEMA_SQL)?;
     // filament_spools.image_png wurde nachtraeglich zur bereits bestehenden
@@ -44,6 +44,20 @@ fn init(conn: &Connection) -> Result<(), DbError> {
     );
     let _ = conn.execute("ALTER TABLE files ADD COLUMN last_viewed_at TEXT", []);
     let _ = conn.execute("ALTER TABLE files ADD COLUMN creator TEXT", []);
+    // Backfill fuer Bestandsdaten: 'creator' wurde erst mit obiger ALTER TABLE
+    // eingefuehrt und wird sonst nur beim Import gesetzt (import_one). Ohne
+    // diesen Backfill bleibt 'creator' fuer jede vor diesem Upgrade bereits
+    // importierte Datei fuer immer NULL, obwohl der Designer-Wert laengst in
+    // file_metadata steht. Laeuft bei jedem Start, ist aber billig und
+    // idempotent: WHERE creator IS NULL schliesst bereits befuellte Zeilen
+    // bei kuenftigen Starts automatisch aus.
+    let _ = conn.execute(
+        "UPDATE files SET creator = (
+             SELECT value FROM file_metadata
+             WHERE file_id = files.id AND label = 'Designer'
+         ) WHERE creator IS NULL",
+        [],
+    );
     let _ = conn.execute("ALTER TABLE files ADD COLUMN content_hash TEXT", []);
     // Index fuer content_hash wird hier ebenfalls als Migrations-Zeile hinzugefuegt,
     // NACH der ALTER TABLE, da es von der Spalte abhaengt. Auf frischen DBs ist die
@@ -465,6 +479,26 @@ pub fn set_print_status(conn: &Connection, file_id: i64, status: &str) -> Result
     conn.execute(
         "UPDATE files SET print_status = ?1 WHERE id = ?2",
         params![status, file_id],
+    )?;
+    Ok(())
+}
+
+/// Liefert (id, path) fuer alle Dateien ohne content_hash - Grundlage fuer
+/// den einmaligen Startup-Backfill in commands::backfill_content_hashes, der
+/// fuer Bestandsdaten den Hash nachtraeglich per Datei-I/O berechnet. Bewusst
+/// minimal (kein FileRecord), da nur diese zwei Felder gebraucht werden.
+pub fn list_files_missing_content_hash(conn: &Connection) -> Result<Vec<(i64, String)>, DbError> {
+    let mut stmt = conn.prepare("SELECT id, path FROM files WHERE content_hash IS NULL")?;
+    let rows = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+pub fn set_content_hash(conn: &Connection, file_id: i64, hash: &str) -> Result<(), DbError> {
+    conn.execute(
+        "UPDATE files SET content_hash = ?1 WHERE id = ?2",
+        params![hash, file_id],
     )?;
     Ok(())
 }
