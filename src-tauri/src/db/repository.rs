@@ -27,6 +27,13 @@ pub fn connect_in_memory() -> Result<Connection, DbError> {
 fn init(conn: &Connection) -> Result<(), DbError> {
     conn.pragma_update(None, "foreign_keys", true)?;
     conn.execute_batch(SCHEMA_SQL)?;
+    // filament_spools.image_png wurde nachtraeglich zur bereits bestehenden
+    // Tabelle hinzugefuegt (kein Migrations-Framework in diesem Projekt) -
+    // CREATE TABLE IF NOT EXISTS aendert eine schon vorhandene Tabelle nicht.
+    // ALTER TABLE laeuft daher hier zusaetzlich und wird bewusst ignoriert,
+    // falls die Spalte (auf einer frisch angelegten DB, wo CREATE TABLE sie
+    // schon mitbringt) bereits existiert.
+    let _ = conn.execute("ALTER TABLE filament_spools ADD COLUMN image_png BLOB", []);
     Ok(())
 }
 
