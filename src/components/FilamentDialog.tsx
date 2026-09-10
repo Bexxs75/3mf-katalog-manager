@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { useT } from '../i18n/LanguageContext';
+import { useLanguage, useT } from '../i18n/LanguageContext';
+import { formatWeightG, formatDiameterMm, formatPrice } from '../i18n/format';
 import type { FilamentSpool } from '../types';
 
 interface Props {
@@ -32,6 +33,7 @@ const fieldClass =
 
 export function FilamentDialog({ onClose }: Props) {
   const t = useT();
+  const { language } = useLanguage();
   const [spools, setSpools] = useState<FilamentSpool[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -93,6 +95,7 @@ export function FilamentDialog({ onClose }: Props) {
     invoke('delete_filament_spool', { spoolId: id })
       .then(() => {
         setConfirmDeleteId(null);
+        if (editingId === id) cancelForm();
         refresh();
       })
       .catch((e) => setError(String(e)));
@@ -134,8 +137,8 @@ export function FilamentDialog({ onClose }: Props) {
                       {spool.manufacturer ? ` · ${spool.manufacturer}` : ''}
                     </div>
                     <div className="font-mono-ui text-[10.5px] text-[var(--ink-3)]">
-                      {spool.remainingWeightG} g / {spool.originalWeightG} g · {spool.diameterMm} mm
-                      {spool.price !== null ? ` · ${spool.price}` : ''}
+                      {formatWeightG(spool.remainingWeightG, language)} / {formatWeightG(spool.originalWeightG, language)} · {formatDiameterMm(spool.diameterMm, language)}
+                      {spool.price !== null ? ` · ${formatPrice(spool.price, language)}` : ''}
                     </div>
                   </div>
                   {confirmDeleteId === spool.id ? (
