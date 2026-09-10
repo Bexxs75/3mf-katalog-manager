@@ -151,9 +151,11 @@ pub struct FilamentSpoolDto {
     pub original_weight_g: i64,
     pub remaining_weight_g: i64,
     pub price: Option<f64>,
+    pub image_png: Option<String>,
 }
 
 fn filament_dto_to_record(spool: &FilamentSpoolDto) -> db::models::NewFilamentSpool {
+    use base64::Engine;
     db::models::NewFilamentSpool {
         material: spool.material.clone(),
         manufacturer: spool.manufacturer.clone(),
@@ -162,7 +164,10 @@ fn filament_dto_to_record(spool: &FilamentSpoolDto) -> db::models::NewFilamentSp
         original_weight_g: spool.original_weight_g,
         remaining_weight_g: spool.remaining_weight_g,
         price: spool.price,
-        image_png: None,
+        image_png: spool
+            .image_png
+            .as_ref()
+            .and_then(|b64| base64::engine::general_purpose::STANDARD.decode(b64).ok()),
     }
 }
 
@@ -172,15 +177,21 @@ pub fn list_filament_spools(state: State<AppState>) -> CmdResult<Vec<FilamentSpo
     let spools = db::list_filament_spools(&conn).map_err(|e| e.to_string())?;
     Ok(spools
         .into_iter()
-        .map(|s| FilamentSpoolDto {
-            id: s.id.to_string(),
-            material: s.material,
-            manufacturer: s.manufacturer,
-            color: s.color,
-            diameter_mm: s.diameter_mm,
-            original_weight_g: s.original_weight_g,
-            remaining_weight_g: s.remaining_weight_g,
-            price: s.price,
+        .map(|s| {
+            use base64::Engine;
+            FilamentSpoolDto {
+                id: s.id.to_string(),
+                material: s.material,
+                manufacturer: s.manufacturer,
+                color: s.color,
+                diameter_mm: s.diameter_mm,
+                original_weight_g: s.original_weight_g,
+                remaining_weight_g: s.remaining_weight_g,
+                price: s.price,
+                image_png: s
+                    .image_png
+                    .map(|bytes| base64::engine::general_purpose::STANDARD.encode(bytes)),
+            }
         })
         .collect())
 }
@@ -207,6 +218,23 @@ pub fn delete_filament_spool(state: State<AppState>, spool_id: String) -> CmdRes
     let id: i64 = spool_id.parse().map_err(|_| "invalid spool id".to_string())?;
     let conn = lock_db(&state)?;
     db::delete_filament_spool(&conn, id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn pick_and_read_image(app: tauri::AppHandle) -> CmdResult<Option<String>> {
+    use base64::Engine;
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("Bilder", &["png", "jpg", "jpeg", "webp"])
+        .blocking_pick_file();
+
+    let Some(picked) = picked else {
+        return Ok(None);
+    };
+    let path = picked.into_path().map_err(|e| e.to_string())?;
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    Ok(Some(base64::engine::general_purpose::STANDARD.encode(bytes)))
 }
 
 #[tauri::command]
