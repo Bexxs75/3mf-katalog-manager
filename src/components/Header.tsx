@@ -23,7 +23,8 @@ interface Props {
   slicers: SlicerConfig[];
   onAddSlicer: (name: string, path: string) => void;
   onRemoveSlicer: (id: string) => void;
-  onOpenFilamentCatalog: () => void;
+  mainView: 'catalog' | 'filament';
+  onMainViewChange: (view: 'catalog' | 'filament') => void;
 }
 
 const segBase =
@@ -55,7 +56,8 @@ export function Header({
   slicers,
   onAddSlicer,
   onRemoveSlicer,
-  onOpenFilamentCatalog,
+  mainView,
+  onMainViewChange,
 }: Props) {
   const t = useT();
   const { language, setLanguage } = useLanguage();
@@ -91,6 +93,8 @@ export function Header({
         </span>
       </div>
 
+      {mainView === 'catalog' && (
+      <>
       <div className="relative flex">
         <button
           onClick={() => {
@@ -181,14 +185,14 @@ export function Header({
       <span className="shrink-0 font-mono-ui text-[11px] text-[var(--ink-3)]">
         {formatCount(t('filesCount'), count)}
       </span>
+      </>
+      )}
 
       <button
-        onClick={onOpenFilamentCatalog}
-        aria-label={t('filamentCatalogAria')}
-        title={t('filamentCatalogAria')}
-        className="shrink-0 w-8 h-8 grid place-items-center rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink-2)] text-[15px] cursor-pointer hover:text-[var(--ink)] hover:border-[var(--line-strong)]"
+        onClick={() => onMainViewChange(mainView === 'catalog' ? 'filament' : 'catalog')}
+        className="shrink-0 h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink-2)] text-[13px] font-semibold cursor-pointer hover:text-[var(--ink)] hover:border-[var(--line-strong)]"
       >
-        ⊙
+        {mainView === 'catalog' ? t('filamentNavButton') : t('filamentBackToCatalogButton')}
       </button>
 
       <div className="relative shrink-0">
