@@ -48,6 +48,25 @@ export function formatDimensions(
   return `${nf.format(x)} × ${nf.format(y)} × ${nf.format(z)} mm`;
 }
 
+export function formatWeightG(grams: number, language: Language): string {
+  return `${new Intl.NumberFormat(localeFor(language)).format(grams)} g`;
+}
+
+export function formatDiameterMm(diameterMm: number, language: Language): string {
+  const formatted = new Intl.NumberFormat(localeFor(language), {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(diameterMm);
+  return `${formatted} mm`;
+}
+
+export function formatPrice(price: number, language: Language): string {
+  return new Intl.NumberFormat(localeFor(language), {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(price);
+}
+
 export function formatDate(rfc3339: string, language: Language): string {
   const date = new Date(rfc3339);
   if (Number.isNaN(date.getTime())) return '–';
