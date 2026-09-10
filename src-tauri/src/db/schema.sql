@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS files (
     content_hash TEXT,
     render_snapshot_png BLOB,
     custom_image_png BLOB,
-    source_url TEXT
+    source_url TEXT,
+    queue_position INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_files_folder_id ON files (folder_id);
@@ -85,5 +86,16 @@ CREATE TABLE IF NOT EXISTS filament_spools (
     remaining_weight_g INTEGER NOT NULL,
     price REAL,
     image_png BLOB,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS saved_filters (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    folder_id INTEGER,
+    tag TEXT,
+    creator TEXT,
+    query TEXT,
+    sort TEXT NOT NULL,
     created_at TEXT NOT NULL
 );

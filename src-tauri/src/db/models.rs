@@ -55,6 +55,7 @@ pub struct NewFile {
     pub render_snapshot_png: Option<Vec<u8>>,
     pub custom_image_png: Option<Vec<u8>>,
     pub source_url: Option<String>,
+    pub queue_position: Option<i64>,
 }
 
 #[derive(Debug, Clone)]
@@ -84,6 +85,7 @@ pub struct FileRecord {
     pub render_snapshot_png: Option<Vec<u8>>,
     pub custom_image_png: Option<Vec<u8>>,
     pub source_url: Option<String>,
+    pub queue_position: Option<i64>,
 }
 
 #[derive(Debug, Clone)]
@@ -137,4 +139,26 @@ pub struct NewFilamentSpool {
     pub remaining_weight_g: i64,
     pub price: Option<f64>,
     pub image_png: Option<Vec<u8>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SavedFilterRecord {
+    pub id: i64,
+    pub name: String,
+    pub folder_id: Option<i64>,
+    pub tag: Option<String>,
+    pub creator: Option<String>,
+    pub query: Option<String>,
+    pub sort: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewSavedFilter {
+    pub name: String,
+    pub folder_id: Option<i64>,
+    pub tag: Option<String>,
+    pub creator: Option<String>,
+    pub query: Option<String>,
+    pub sort: String,
 }

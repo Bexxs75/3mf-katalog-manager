@@ -3,13 +3,13 @@ pub mod models;
 mod repository;
 
 pub use repository::{
-    add_tag_to_file, connect, delete_file, delete_filament_spool, delete_unused_tags,
+    add_tag_to_file, connect, delete_file, delete_filament_spool, delete_saved_filter, delete_unused_tags,
     file_exists_by_hash, file_exists_by_path, get_file, insert_file, insert_filament_spool, insert_folder,
-    list_cloud_accounts, list_creator_counts, list_filament_spools, list_files,
-    list_files_missing_content_hash, list_folders, list_tag_counts, mark_file_viewed,
-    remove_tag_from_file, set_cloud_account_status, set_content_hash, set_custom_image_png, set_file_cloud_link,
-    set_file_modified_at, set_file_sync_status, set_print_status, set_render_snapshot_png, set_source_url, update_filament_spool,
-    upsert_cloud_account,
+    insert_saved_filter, list_cloud_accounts, list_creator_counts, list_filament_spools, list_files,
+    list_files_missing_content_hash, list_folders, list_saved_filters, list_tag_counts, mark_file_viewed,
+    max_queue_position, remove_tag_from_file, set_cloud_account_status, set_content_hash, set_custom_image_png,
+    set_file_cloud_link, set_file_modified_at, set_file_sync_status, set_print_status, set_queue_position,
+    set_render_snapshot_png, set_source_url, update_filament_spool, upsert_cloud_account,
 };
 
 #[cfg(test)]
@@ -18,7 +18,7 @@ pub use repository::connect_in_memory;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use models::{FileType, MaterialRecord, NewFile, NewFilamentSpool};
+    use models::{FileType, MaterialRecord, NewFile, NewFilamentSpool, NewSavedFilter};
     use std::collections::BTreeMap;
 
     fn sample_file() -> NewFile {
@@ -53,6 +53,7 @@ mod tests {
             render_snapshot_png: None,
             custom_image_png: None,
             source_url: None,
+            queue_position: None,
         }
     }
 
@@ -514,6 +515,7 @@ mod tests {
         assert_eq!(file.last_viewed_at, None);
         assert_eq!(file.creator, None);
         assert_eq!(file.content_hash, None);
+        assert_eq!(file.queue_position, None);
     }
 
     #[test]
@@ -548,5 +550,94 @@ mod tests {
         set_source_url(&conn, id, None).expect("clear");
         let file = get_file(&conn, id).expect("query").expect("present");
         assert_eq!(file.source_url, None);
+    }
+
+    #[test]
+    fn set_queue_position_stores_and_clears_the_position() {
+        let mut conn = connect_in_memory().expect("connect");
+        let id = insert_file(&mut conn, &sample_file()).expect("insert");
+
+        set_queue_position(&conn, id, Some(3)).expect("set position");
+        let file = get_file(&conn, id).expect("query").expect("present");
+        assert_eq!(file.queue_position, Some(3));
+
+        set_queue_position(&conn, id, None).expect("clear position");
+        let file = get_file(&conn, id).expect("query").expect("present");
+        assert_eq!(file.queue_position, None);
+    }
+
+    #[test]
+    fn max_queue_position_returns_the_highest_value_or_none() {
+        let mut conn = connect_in_memory().expect("connect");
+        assert_eq!(max_queue_position(&conn).expect("query"), None);
+
+        let id_a = insert_file(&mut conn, &sample_file()).expect("insert a");
+        let mut b = sample_file();
+        b.name = "second.3mf".to_string();
+        b.path = "/tmp/second.3mf".to_string();
+        let id_b = insert_file(&mut conn, &b).expect("insert b");
+
+        set_queue_position(&conn, id_a, Some(1)).expect("set a");
+        set_queue_position(&conn, id_b, Some(5)).expect("set b");
+
+        assert_eq!(max_queue_position(&conn).expect("query"), Some(5));
+    }
+
+    #[test]
+    fn set_print_status_to_printed_clears_the_queue_position() {
+        let mut conn = connect_in_memory().expect("connect");
+        let id = insert_file(&mut conn, &sample_file()).expect("insert");
+        set_queue_position(&conn, id, Some(2)).expect("set position");
+
+        set_print_status(&conn, id, "printed").expect("mark printed");
+        let file = get_file(&conn, id).expect("query").expect("present");
+        assert_eq!(file.print_status, "printed");
+        assert_eq!(file.queue_position, None);
+    }
+
+    #[test]
+    fn set_print_status_to_not_printed_keeps_the_queue_position() {
+        let mut conn = connect_in_memory().expect("connect");
+        let id = insert_file(&mut conn, &sample_file()).expect("insert");
+        set_queue_position(&conn, id, Some(2)).expect("set position");
+
+        set_print_status(&conn, id, "not_printed").expect("mark not printed");
+        let file = get_file(&conn, id).expect("query").expect("present");
+        assert_eq!(file.queue_position, Some(2));
+    }
+
+    fn sample_saved_filter() -> NewSavedFilter {
+        NewSavedFilter {
+            name: "Meine Vasen".to_string(),
+            folder_id: None,
+            tag: Some("vase".to_string()),
+            creator: None,
+            query: None,
+            sort: "name".to_string(),
+        }
+    }
+
+    #[test]
+    fn saved_filters_round_trip() {
+        let conn = connect_in_memory().expect("connect");
+        let id = insert_saved_filter(&conn, &sample_saved_filter()).expect("insert");
+        assert!(id > 0);
+
+        let filters = list_saved_filters(&conn).expect("list");
+        assert_eq!(filters.len(), 1);
+        assert_eq!(filters[0].name, "Meine Vasen");
+        assert_eq!(filters[0].tag, Some("vase".to_string()));
+        assert_eq!(filters[0].sort, "name");
+    }
+
+    #[test]
+    fn delete_saved_filter_removes_it() {
+        let conn = connect_in_memory().expect("connect");
+        let id = insert_saved_filter(&conn, &sample_saved_filter()).expect("insert");
+
+        delete_saved_filter(&conn, id).expect("delete");
+
+        let filters = list_saved_filters(&conn).expect("list");
+        assert!(filters.is_empty());
     }
 }
