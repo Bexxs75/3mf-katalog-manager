@@ -47,3 +47,14 @@ export interface SlicerConfig {
   name: string;
   path: string;
 }
+
+export interface FilamentSpool {
+  id: string;
+  material: string;
+  manufacturer: string | null;
+  color: string | null;
+  diameterMm: number;
+  originalWeightG: number;
+  remainingWeightG: number;
+  price: number | null;
+}
