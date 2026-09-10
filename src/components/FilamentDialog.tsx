@@ -81,6 +81,7 @@ export function FilamentDialog({ onClose }: Props) {
       originalWeightG: parseInt(form.originalWeightG, 10) || 0,
       remainingWeightG: parseInt(form.remainingWeightG, 10) || 0,
       price: form.price.trim() === '' ? null : parseFloat(form.price),
+      imagePng: null,
     };
     const command = editingId ? 'update_filament_spool' : 'add_filament_spool';
     invoke(command, { spool: payload })
