@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Folder, TagCount, CreatorCount, CloudAccount, ModelFile } from '../types';
+import type { Folder, TagCount, CreatorCount, CloudAccount, ModelFile, SavedFilter } from '../types';
 import { useT } from '../i18n/LanguageContext';
 
 interface Props {
@@ -18,6 +18,10 @@ interface Props {
   creators: CreatorCount[];
   activeCreator: string | null;
   onCreatorSelect: (label: string | null) => void;
+  savedFilters: SavedFilter[];
+  onSaveFilter: (name: string) => void;
+  onApplyFilter: (filter: SavedFilter) => void;
+  onDeleteFilter: (id: string) => void;
   clouds: CloudAccount[];
   cloudError: string | null;
   onAddCloud: () => void;
@@ -58,6 +62,10 @@ export function Sidebar({
   creators,
   activeCreator,
   onCreatorSelect,
+  savedFilters,
+  onSaveFilter,
+  onApplyFilter,
+  onDeleteFilter,
   clouds,
   cloudError,
   onAddCloud,
@@ -67,6 +75,9 @@ export function Sidebar({
   const t = useT();
   const [tagsCollapsed, setTagsCollapsed] = useState(false);
   const [creatorsCollapsed, setCreatorsCollapsed] = useState(false);
+  const [filtersCollapsed, setFiltersCollapsed] = useState(false);
+  const [savingFilter, setSavingFilter] = useState(false);
+  const [filterNameDraft, setFilterNameDraft] = useState('');
   const [queueCollapsed, setQueueCollapsed] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
 
@@ -212,6 +223,78 @@ export function Sidebar({
               {creator.label}
             </span>
             <span className="font-mono-ui text-[11px] text-[var(--ink-3)]">{creator.count}</span>
+          </div>
+        ))}
+
+        <div className="flex items-center justify-between px-1.5 pt-[18px] pb-2">
+          <span className="font-mono-ui text-[10px] tracking-[0.12em] uppercase text-[var(--ink-3)]">
+            {t('savedFiltersHeading')}
+          </span>
+          <div className="flex items-center gap-2">
+            <span
+              onClick={() => {
+                setSavingFilter(true);
+                setFilterNameDraft('');
+              }}
+              className="font-mono-ui text-sm leading-none text-[var(--ink-3)] cursor-pointer hover:text-[var(--accent)]"
+            >
+              +
+            </span>
+            <span
+              onClick={() => setFiltersCollapsed((c) => !c)}
+              className="font-mono-ui text-[9px] leading-none text-[var(--ink-3)] cursor-pointer"
+            >
+              {filtersCollapsed ? '▾' : '▴'}
+            </span>
+          </div>
+        </div>
+        {!filtersCollapsed && savingFilter && (
+          <div className="flex items-center gap-1.5 px-1.5 pb-2">
+            <input
+              value={filterNameDraft}
+              onChange={(e) => setFilterNameDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const name = filterNameDraft.trim();
+                  if (name) onSaveFilter(name);
+                  setSavingFilter(false);
+                }
+                if (e.key === 'Escape') setSavingFilter(false);
+              }}
+              autoFocus
+              placeholder={t('savedFilterNamePlaceholder')}
+              className="flex-1 min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-[11.5px]"
+            />
+            <span
+              onClick={() => {
+                const name = filterNameDraft.trim();
+                if (name) onSaveFilter(name);
+                setSavingFilter(false);
+              }}
+              className="font-mono-ui text-[11px] text-[var(--accent)] cursor-pointer"
+            >
+              ✓
+            </span>
+          </div>
+        )}
+        {!filtersCollapsed && savedFilters.map((filter) => (
+          <div
+            key={filter.id}
+            onClick={() => onApplyFilter(filter)}
+            className="flex items-center gap-2 h-7 px-1.5 rounded-[3px] cursor-pointer text-[var(--ink-2)] hover:text-[var(--ink)]"
+          >
+            <span className="flex-1 text-xs overflow-hidden text-ellipsis whitespace-nowrap">
+              {filter.name}
+            </span>
+            <span
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteFilter(filter.id);
+              }}
+              className="font-mono-ui text-[10px] text-[var(--ink-3)] cursor-pointer hover:text-[var(--accent)]"
+            >
+              ✕
+            </span>
           </div>
         ))}
       </div>

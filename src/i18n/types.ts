@@ -135,6 +135,8 @@ export interface Translations {
   notInQueueLabel: string;
   addToQueue: string;
   removeFromQueue: string;
+  savedFiltersHeading: string;
+  savedFilterNamePlaceholder: string;
 }
 
 export function formatCount(forms: PluralForms, n: number): string {

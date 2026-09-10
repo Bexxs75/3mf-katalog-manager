@@ -130,4 +130,6 @@ export const en: Translations = {
   notInQueueLabel: 'Not in queue',
   addToQueue: 'Add to queue',
   removeFromQueue: 'Remove from queue',
+  savedFiltersHeading: 'Saved Filters',
+  savedFilterNamePlaceholder: 'Name…',
 };
