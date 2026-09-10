@@ -8,6 +8,7 @@ import { ModelList } from './components/ModelList';
 import { DetailPanel } from './components/DetailPanel';
 import { ContextMenu } from './components/ContextMenu';
 import { FilamentView } from './components/FilamentView';
+import { ImportSummaryBanner } from './components/ImportSummaryBanner';
 import { useTheme } from './hooks/useTheme';
 import { useSlicers } from './hooks/useSlicers';
 import type { ModelFile, Folder, TagCount, CreatorCount, CloudAccount, Origin, ViewMode, SortKey } from './types';
@@ -21,6 +22,11 @@ interface CloudAccountDto {
 interface PickerResultDto {
   cancelled: boolean;
   items: { id: string; name: string; isFolder: boolean }[];
+}
+
+interface ImportResultDto {
+  imported: ModelFile[];
+  duplicateCount: number;
 }
 
 // usedPercent/quotaLabel sind noch nicht Teil dieses Backends (echte
@@ -58,6 +64,7 @@ export default function App() {
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [cloudUploadError, setCloudUploadError] = useState<string | null>(null);
   const [mainView, setMainView] = useState<'catalog' | 'filament'>('catalog');
+  const [importBanner, setImportBanner] = useState<{ imported: number; duplicates: number } | null>(null);
 
   const refreshFolders = () => invoke<Folder[]>('list_folders').then(setFolders);
   const refreshTags = () => invoke<TagCount[]>('list_tag_counts').then(setTags);
@@ -84,10 +91,8 @@ export default function App() {
   };
 
   const handleCloudImport = (fileIds: string[]) => {
-    return invoke<ModelFile[]>('import_from_cloud', { fileIds })
-      .then((files) => {
-        mergeImported(files);
-      })
+    return invoke<ImportResultDto>('import_from_cloud', { fileIds })
+      .then(mergeImported)
       .catch((e) => {
         console.error('[cloud] Import aus Google Drive fehlgeschlagen:', e);
         setCloudError(String(e));
@@ -125,13 +130,17 @@ export default function App() {
       });
   };
 
-  const mergeImported = (files: ModelFile[]) => {
-    if (!files.length) return;
-    setModels((prev) => [...prev, ...files]);
-    setSelectedId(files[files.length - 1].id);
-    refreshFolders();
-    refreshTags();
-    refreshCreators();
+  const mergeImported = (result: ImportResultDto) => {
+    if (result.imported.length) {
+      setModels((prev) => [...prev, ...result.imported]);
+      setSelectedId(result.imported[result.imported.length - 1].id);
+      refreshFolders();
+      refreshTags();
+      refreshCreators();
+    }
+    if (result.duplicateCount > 0) {
+      setImportBanner({ imported: result.imported.length, duplicates: result.duplicateCount });
+    }
   };
 
   const selectModel = (id: string) => {
@@ -158,7 +167,7 @@ export default function App() {
     const unlisten = getCurrentWebview().onDragDropEvent((event) => {
       if (event.payload.type !== 'drop') return;
       if (mainView !== 'catalog') return;
-      invoke<ModelFile[]>('import_dropped', { paths: event.payload.paths }).then(mergeImported);
+      invoke<ImportResultDto>('import_dropped', { paths: event.payload.paths }).then(mergeImported);
     });
     return () => {
       unlisten.then((fn) => fn());
@@ -212,8 +221,8 @@ export default function App() {
     invoke('remove_tag', { fileId: id, tag }).then(refreshTags);
   };
 
-  const importFiles = () => invoke<ModelFile[]>('import_files').then(mergeImported);
-  const importFolder = () => invoke<ModelFile[]>('import_folder').then(mergeImported);
+  const importFiles = () => invoke<ImportResultDto>('import_files').then(mergeImported);
+  const importFolder = () => invoke<ImportResultDto>('import_folder').then(mergeImported);
 
   const openInSlicer = (id: string, slicerId?: string) => {
     const model = models.find((m) => m.id === id);
@@ -397,6 +406,14 @@ export default function App() {
           onClose={() => setContextMenu(null)}
           onOpenInSlicer={() => openInSlicer(contextMenu.modelId)}
           onDelete={() => deleteModel(contextMenu.modelId)}
+        />
+      )}
+
+      {importBanner && (
+        <ImportSummaryBanner
+          imported={importBanner.imported}
+          duplicates={importBanner.duplicates}
+          onClose={() => setImportBanner(null)}
         />
       )}
     </div>

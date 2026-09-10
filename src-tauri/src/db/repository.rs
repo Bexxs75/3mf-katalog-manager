@@ -281,6 +281,17 @@ pub fn file_exists_by_path(conn: &Connection, path: &str) -> Result<bool, DbErro
     Ok(exists.is_some())
 }
 
+pub fn file_exists_by_hash(conn: &Connection, hash: &str) -> Result<bool, DbError> {
+    let exists: Option<i64> = conn
+        .query_row(
+            "SELECT 1 FROM files WHERE content_hash = ?1",
+            params![hash],
+            |row| row.get(0),
+        )
+        .optional()?;
+    Ok(exists.is_some())
+}
+
 pub fn get_file(conn: &Connection, id: i64) -> Result<Option<FileRecord>, DbError> {
     let row = conn
         .query_row(

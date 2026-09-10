@@ -25,6 +25,7 @@ Noch kein Release getaggt — dieser Abschnitt fasst die bisherige Entwicklung s
 - "In Slicer öffnen": Nutzer hinterlegt beliebig viele eigene Slicer-Programmpfade (statt fest codierter Einzelintegrationen für Bambu Studio, PrusaSlicer, OrcaSlicer, ...), Split-Button für Hauptauswahl/Wechsel, Kontextmenü-Eintrag für den zuletzt genutzten Slicer
 - Hochladen zu Google Drive: bisher rein lokale Dateien lassen sich über die beschriftete "↑ Hochladen"-Schaltfläche im Detailbereich zu Google Drive hochladen (multipart/related-Upload mit Name/Inhalt in einer Anfrage); Googles Picker-Widget lässt den Nutzer vor dem Hochladen einen Drive-Zielordner auswählen statt immer ins Wurzelverzeichnis zu laden; die Datei wird danach automatisch mit dem entstandenen Drive-Eintrag verknüpft (Herkunft/Sync-Status/Cloud-ID) und über den bestehenden Sync-Check aktuell gehalten
 - Filament-Lager: eigenständige Spulenverwaltung (Material, Hersteller, Farbe, Durchmesser, Ursprungs-/Restgewicht, Preis) über ein neues Header-Icon erreichbar, unabhängig vom Modell-Katalog - Verbrauchstracking pro Druck ist bewusst nicht Teil dieser Ausbaustufe
+- Vier kleine Katalog-Erweiterungen: Druckstatus-Toggle + aus Volumen/Material geschätztes Gewicht pro Modell, Sortierung nach "Zuletzt angesehen" + NEU-Badge für kürzlich importierte Modelle, Creators als eigene Sidebar-Filterkategorie (aus dem beim 3MF-Import bereits geparsten Designer-Metadatum), automatische Erkennung exakter Datei-Duplikate beim Import (SHA-256-Inhalts-Hash) mit kurzer Zusammenfassungsmeldung
 
 ### Changed
 
