@@ -92,6 +92,21 @@ export interface Translations {
   previewUnavailable: string;
 
   importFromCloudOption: string;
+
+  filamentCatalogAria: string;
+  filamentDialogTitle: string;
+  filamentEmptyState: string;
+  filamentMaterialLabel: string;
+  filamentManufacturerLabel: string;
+  filamentColorLabel: string;
+  filamentDiameterLabel: string;
+  filamentOriginalWeightLabel: string;
+  filamentRemainingWeightLabel: string;
+  filamentPriceLabel: string;
+  filamentAddButton: string;
+  filamentSaveButton: string;
+  filamentEditAria: string;
+  filamentError: string;
 }
 
 export function formatCount(forms: PluralForms, n: number): string {

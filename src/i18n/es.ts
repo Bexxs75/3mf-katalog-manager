@@ -87,4 +87,19 @@ export const es: Translations = {
   previewUnavailable: 'Vista previa no disponible',
 
   importFromCloudOption: 'Importar desde Google Drive…',
+
+  filamentCatalogAria: 'Inventario de filamento',
+  filamentDialogTitle: 'Inventario de Filamento',
+  filamentEmptyState: 'Aún no hay bobinas registradas.',
+  filamentMaterialLabel: 'Material',
+  filamentManufacturerLabel: 'Fabricante',
+  filamentColorLabel: 'Color',
+  filamentDiameterLabel: 'Diámetro (mm)',
+  filamentOriginalWeightLabel: 'Peso original (g)',
+  filamentRemainingWeightLabel: 'Peso restante (g)',
+  filamentPriceLabel: 'Precio',
+  filamentAddButton: 'Añadir',
+  filamentSaveButton: 'Guardar',
+  filamentEditAria: 'Editar bobina',
+  filamentError: 'Error:',
 };

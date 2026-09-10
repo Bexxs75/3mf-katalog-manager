@@ -87,4 +87,19 @@ export const en: Translations = {
   previewUnavailable: 'Preview unavailable',
 
   importFromCloudOption: 'Import from Google Drive…',
+
+  filamentCatalogAria: 'Filament inventory',
+  filamentDialogTitle: 'Filament Inventory',
+  filamentEmptyState: 'No spools recorded yet.',
+  filamentMaterialLabel: 'Material',
+  filamentManufacturerLabel: 'Manufacturer',
+  filamentColorLabel: 'Color',
+  filamentDiameterLabel: 'Diameter (mm)',
+  filamentOriginalWeightLabel: 'Original weight (g)',
+  filamentRemainingWeightLabel: 'Remaining weight (g)',
+  filamentPriceLabel: 'Price',
+  filamentAddButton: 'Add',
+  filamentSaveButton: 'Save',
+  filamentEditAria: 'Edit spool',
+  filamentError: 'Error:',
 };
