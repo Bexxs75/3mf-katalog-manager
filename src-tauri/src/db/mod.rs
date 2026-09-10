@@ -3,10 +3,11 @@ pub mod models;
 mod repository;
 
 pub use repository::{
-    add_tag_to_file, connect, delete_file, delete_unused_tags, file_exists_by_path, get_file,
-    insert_file, insert_folder, list_cloud_accounts, list_files, list_folders, list_tag_counts,
+    add_tag_to_file, connect, delete_file, delete_filament_spool, delete_unused_tags,
+    file_exists_by_path, get_file, insert_file, insert_filament_spool, insert_folder,
+    list_cloud_accounts, list_filament_spools, list_files, list_folders, list_tag_counts,
     remove_tag_from_file, set_cloud_account_status, set_file_cloud_link, set_file_modified_at,
-    set_file_sync_status, upsert_cloud_account,
+    set_file_sync_status, update_filament_spool, upsert_cloud_account,
 };
 
 #[cfg(test)]
@@ -15,7 +16,7 @@ pub use repository::connect_in_memory;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use models::{FileType, MaterialRecord, NewFile};
+    use models::{FileType, MaterialRecord, NewFile, NewFilamentSpool};
     use std::collections::BTreeMap;
 
     fn sample_file() -> NewFile {
@@ -276,5 +277,60 @@ mod tests {
 
         let accounts = list_cloud_accounts(&conn).expect("list");
         assert_eq!(accounts[0].status, "disconnected");
+    }
+
+    fn sample_filament_spool() -> NewFilamentSpool {
+        NewFilamentSpool {
+            material: "PLA".to_string(),
+            manufacturer: Some("Bambu Lab".to_string()),
+            color: Some("Schwarz".to_string()),
+            diameter_mm: 1.75,
+            original_weight_g: 1000,
+            remaining_weight_g: 620,
+            price: Some(19.99),
+        }
+    }
+
+    #[test]
+    fn inserts_and_lists_a_filament_spool() {
+        let conn = connect_in_memory().expect("connect");
+        insert_filament_spool(&conn, &sample_filament_spool()).expect("insert");
+
+        let spools = list_filament_spools(&conn).expect("list");
+        assert_eq!(spools.len(), 1);
+        assert_eq!(spools[0].material, "PLA");
+        assert_eq!(spools[0].manufacturer, Some("Bambu Lab".to_string()));
+        assert_eq!(spools[0].color, Some("Schwarz".to_string()));
+        assert_eq!(spools[0].diameter_mm, 1.75);
+        assert_eq!(spools[0].original_weight_g, 1000);
+        assert_eq!(spools[0].remaining_weight_g, 620);
+        assert_eq!(spools[0].price, Some(19.99));
+    }
+
+    #[test]
+    fn updates_a_filament_spool() {
+        let conn = connect_in_memory().expect("connect");
+        let id = insert_filament_spool(&conn, &sample_filament_spool()).expect("insert");
+
+        let mut updated = sample_filament_spool();
+        updated.remaining_weight_g = 450;
+        updated.color = None;
+        update_filament_spool(&conn, id, &updated).expect("update");
+
+        let spools = list_filament_spools(&conn).expect("list");
+        assert_eq!(spools.len(), 1);
+        assert_eq!(spools[0].remaining_weight_g, 450);
+        assert_eq!(spools[0].color, None);
+    }
+
+    #[test]
+    fn deletes_a_filament_spool() {
+        let conn = connect_in_memory().expect("connect");
+        let id = insert_filament_spool(&conn, &sample_filament_spool()).expect("insert");
+
+        delete_filament_spool(&conn, id).expect("delete");
+
+        let spools = list_filament_spools(&conn).expect("list");
+        assert!(spools.is_empty());
     }
 }

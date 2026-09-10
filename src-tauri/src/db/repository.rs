@@ -4,7 +4,10 @@ use std::path::Path;
 use rusqlite::{params, Connection, OptionalExtension};
 
 use super::error::DbError;
-use super::models::{CloudAccountRecord, FileRecord, FileType, FolderRecord, MaterialRecord, NewFile, TagCount};
+use super::models::{
+    CloudAccountRecord, FileRecord, FileType, FilamentSpoolRecord, FolderRecord, MaterialRecord,
+    NewFile, NewFilamentSpool, TagCount,
+};
 
 const SCHEMA_SQL: &str = include_str!("schema.sql");
 
@@ -419,5 +422,71 @@ pub fn set_file_cloud_link(
         "UPDATE files SET origin = ?1, cloud_id = ?2, sync_status = ?3, file_modified_at = ?4 WHERE id = ?5",
         params![origin, cloud_id, sync_status, modified_at, file_id],
     )?;
+    Ok(())
+}
+
+pub fn insert_filament_spool(conn: &Connection, spool: &NewFilamentSpool) -> Result<i64, DbError> {
+    conn.execute(
+        "INSERT INTO filament_spools
+            (material, manufacturer, color, diameter_mm, original_weight_g, remaining_weight_g, price, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![
+            spool.material,
+            spool.manufacturer,
+            spool.color,
+            spool.diameter_mm,
+            spool.original_weight_g,
+            spool.remaining_weight_g,
+            spool.price,
+            chrono::Utc::now().to_rfc3339(),
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn list_filament_spools(conn: &Connection) -> Result<Vec<FilamentSpoolRecord>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, material, manufacturer, color, diameter_mm, original_weight_g, remaining_weight_g, price
+         FROM filament_spools ORDER BY material, manufacturer",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(FilamentSpoolRecord {
+                id: row.get(0)?,
+                material: row.get(1)?,
+                manufacturer: row.get(2)?,
+                color: row.get(3)?,
+                diameter_mm: row.get(4)?,
+                original_weight_g: row.get(5)?,
+                remaining_weight_g: row.get(6)?,
+                price: row.get(7)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+pub fn update_filament_spool(conn: &Connection, id: i64, spool: &NewFilamentSpool) -> Result<(), DbError> {
+    conn.execute(
+        "UPDATE filament_spools
+         SET material = ?1, manufacturer = ?2, color = ?3, diameter_mm = ?4,
+             original_weight_g = ?5, remaining_weight_g = ?6, price = ?7
+         WHERE id = ?8",
+        params![
+            spool.material,
+            spool.manufacturer,
+            spool.color,
+            spool.diameter_mm,
+            spool.original_weight_g,
+            spool.remaining_weight_g,
+            spool.price,
+            id,
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn delete_filament_spool(conn: &Connection, id: i64) -> Result<(), DbError> {
+    conn.execute("DELETE FROM filament_spools WHERE id = ?1", params![id])?;
     Ok(())
 }

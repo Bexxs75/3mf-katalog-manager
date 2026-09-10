@@ -93,3 +93,26 @@ pub struct CloudAccountRecord {
     pub status: String,
     pub connected_at: String,
 }
+
+#[derive(Debug, Clone)]
+pub struct FilamentSpoolRecord {
+    pub id: i64,
+    pub material: String,
+    pub manufacturer: Option<String>,
+    pub color: Option<String>,
+    pub diameter_mm: f64,
+    pub original_weight_g: i64,
+    pub remaining_weight_g: i64,
+    pub price: Option<f64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewFilamentSpool {
+    pub material: String,
+    pub manufacturer: Option<String>,
+    pub color: Option<String>,
+    pub diameter_mm: f64,
+    pub original_weight_g: i64,
+    pub remaining_weight_g: i64,
+    pub price: Option<f64>,
+}
