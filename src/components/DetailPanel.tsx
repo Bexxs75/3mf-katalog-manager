@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ModelFile, SlicerConfig, SyncStatus } from '../types';
 import type { Language, Translations } from '../i18n/types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
@@ -76,6 +76,7 @@ export function DetailPanel({
   const [slicerMenuOpen, setSlicerMenuOpen] = useState(false);
   const [editingSourceUrl, setEditingSourceUrl] = useState(false);
   const [sourceUrlDraft, setSourceUrlDraft] = useState('');
+  const cancelingSourceUrlRef = useRef(false);
 
   useEffect(() => {
     setConfirmDelete(false);
@@ -207,9 +208,18 @@ export function DetailPanel({
                   onChange={(e) => setSourceUrlDraft(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') submitSourceUrl();
-                    if (e.key === 'Escape') setEditingSourceUrl(false);
+                    if (e.key === 'Escape') {
+                      cancelingSourceUrlRef.current = true;
+                      setEditingSourceUrl(false);
+                    }
                   }}
-                  onBlur={submitSourceUrl}
+                  onBlur={() => {
+                    if (cancelingSourceUrlRef.current) {
+                      cancelingSourceUrlRef.current = false;
+                      return;
+                    }
+                    submitSourceUrl();
+                  }}
                   autoFocus
                   placeholder={t('sourceUrlPlaceholder')}
                   className="flex-1 min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 font-mono-ui text-xs"
