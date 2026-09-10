@@ -42,6 +42,16 @@ export interface CreatorCount {
   count: number;
 }
 
+export interface SavedFilter {
+  id: string;
+  name: string;
+  folderId: string | null;
+  tag: string | null;
+  creator: string | null;
+  query: string | null;
+  sort: SortKey;
+}
+
 export interface CloudAccount {
   id: Origin;
   abbr: string;

@@ -130,4 +130,6 @@ export const de: Translations = {
   notInQueueLabel: 'Nicht in Warteschlange',
   addToQueue: 'Zur Warteschlange hinzufügen',
   removeFromQueue: 'Aus Warteschlange entfernen',
+  savedFiltersHeading: 'Gespeicherte Filter',
+  savedFilterNamePlaceholder: 'Name…',
 };

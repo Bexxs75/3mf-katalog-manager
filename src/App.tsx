@@ -11,7 +11,7 @@ import { FilamentView } from './components/FilamentView';
 import { ImportSummaryBanner } from './components/ImportSummaryBanner';
 import { useTheme } from './hooks/useTheme';
 import { useSlicers } from './hooks/useSlicers';
-import type { ModelFile, Folder, TagCount, CreatorCount, CloudAccount, Origin, ViewMode, SortKey } from './types';
+import type { ModelFile, Folder, TagCount, CreatorCount, CloudAccount, Origin, ViewMode, SortKey, SavedFilter } from './types';
 
 interface CloudAccountDto {
   id: string;
@@ -65,10 +65,12 @@ export default function App() {
   const [cloudUploadError, setCloudUploadError] = useState<string | null>(null);
   const [mainView, setMainView] = useState<'catalog' | 'filament'>('catalog');
   const [importBanner, setImportBanner] = useState<{ imported: number; duplicates: number } | null>(null);
+  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([]);
 
   const refreshFolders = () => invoke<Folder[]>('list_folders').then(setFolders);
   const refreshTags = () => invoke<TagCount[]>('list_tag_counts').then(setTags);
   const refreshCreators = () => invoke<CreatorCount[]>('list_creators').then(setCreators);
+  const refreshSavedFilters = () => invoke<SavedFilter[]>('list_saved_filters').then(setSavedFilters);
   const refreshClouds = () =>
     invoke<CloudAccountDto[]>('list_cloud_accounts').then((accounts) => setClouds(accounts.map(toCloudAccount)));
 
@@ -160,6 +162,7 @@ export default function App() {
     refreshFolders();
     refreshTags();
     refreshCreators();
+    refreshSavedFilters();
     refreshClouds();
   }, []);
 
@@ -360,6 +363,36 @@ export default function App() {
     });
   };
 
+  const saveCurrentFilter = (name: string) => {
+    invoke<SavedFilter>('save_filter', {
+      filter: {
+        name,
+        folderId: activeFolderId === 'all' ? null : activeFolderId,
+        tag: activeTag,
+        creator: activeCreator,
+        query: query || null,
+        sort,
+      },
+    })
+      .then((saved) => setSavedFilters((prev) => [...prev, saved]))
+      .catch((e) => console.error('[saved-filter] Speichern fehlgeschlagen:', e));
+  };
+
+  const applySavedFilter = (filter: SavedFilter) => {
+    setActiveFolderId(filter.folderId ?? 'all');
+    setActiveTag(filter.tag);
+    setActiveCreator(filter.creator);
+    setQuery(filter.query ?? '');
+    setSort(filter.sort);
+  };
+
+  const deleteSavedFilter = (id: string) => {
+    setSavedFilters((prev) => prev.filter((f) => f.id !== id));
+    invoke('delete_saved_filter', { filterId: id }).catch((e) => {
+      console.error('[saved-filter] Löschen fehlgeschlagen:', e);
+    });
+  };
+
   return (
     <div
       className="h-screen min-h-[620px] flex flex-col bg-[var(--bg)] text-[var(--ink)] overflow-hidden"
@@ -404,6 +437,10 @@ export default function App() {
             creators={creators}
             activeCreator={activeCreator}
             onCreatorSelect={setActiveCreator}
+            savedFilters={savedFilters}
+            onSaveFilter={saveCurrentFilter}
+            onApplyFilter={applySavedFilter}
+            onDeleteFilter={deleteSavedFilter}
             clouds={clouds}
             cloudError={cloudError}
             onAddCloud={() => connectCloud('gdrive')}

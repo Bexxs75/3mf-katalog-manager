@@ -130,4 +130,6 @@ export const es: Translations = {
   notInQueueLabel: 'No está en cola',
   addToQueue: 'Añadir a la cola',
   removeFromQueue: 'Quitar de la cola',
+  savedFiltersHeading: 'Filtros guardados',
+  savedFilterNamePlaceholder: 'Nombre…',
 };
