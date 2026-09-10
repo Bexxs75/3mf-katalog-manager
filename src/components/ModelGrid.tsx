@@ -53,6 +53,11 @@ export function ModelGrid({ models, selectedId, onSelect, onContextMenu }: Props
                 {originAbbr[m.origin]}
               </div>
             )}
+            {m.printStatus === 'printed' && (
+              <div className="absolute right-[7px] bottom-[7px] font-mono-ui text-[9px] px-1 py-0.5 rounded border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]">
+                ✓ {t('printedBadge')}
+              </div>
+            )}
           </div>
           <div className="flex flex-col gap-1.5 px-2.5 py-2.5 bg-[var(--panel)]">
             <div className="text-[12.5px] font-semibold overflow-hidden text-ellipsis whitespace-nowrap">

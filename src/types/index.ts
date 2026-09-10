@@ -16,6 +16,8 @@ export interface ModelFile {
   materials: { name: string; displayColor: string | null }[];
   fileSizeBytes: number;
   importedAt: string;
+  printStatus: 'not_printed' | 'printed';
+  estimatedWeightG: number | null;
 }
 
 export interface Folder {

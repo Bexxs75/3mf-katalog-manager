@@ -245,6 +245,16 @@ export default function App() {
     });
   };
 
+  const togglePrintStatus = (id: string) => {
+    const current = models.find((m) => m.id === id);
+    if (!current) return;
+    const next = current.printStatus === 'printed' ? 'not_printed' : 'printed';
+    setModels((prev) => prev.map((m) => (m.id === id ? { ...m, printStatus: next } : m)));
+    invoke('set_print_status', { fileId: id, status: next }).catch((e) => {
+      console.error('[print-status] Aktualisieren fehlgeschlagen:', e);
+    });
+  };
+
   return (
     <div
       className="h-screen min-h-[620px] flex flex-col bg-[var(--bg)] text-[var(--ink)] overflow-hidden"
@@ -338,6 +348,7 @@ export default function App() {
             onAddTag={(t) => selected && addTag(selected.id, t)}
             onRemoveTag={(t) => selected && removeTag(selected.id, t)}
             onDelete={() => selected && deleteModel(selected.id)}
+            onTogglePrintStatus={() => selected && togglePrintStatus(selected.id)}
             onOpenInSlicer={(slicerId) => selected && openInSlicer(selected.id, slicerId)}
             slicers={slicers}
             slicerError={slicerError}

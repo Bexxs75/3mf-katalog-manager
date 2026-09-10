@@ -435,6 +435,14 @@ pub fn set_file_sync_status(conn: &Connection, file_id: i64, status: &str) -> Re
     Ok(())
 }
 
+pub fn set_print_status(conn: &Connection, file_id: i64, status: &str) -> Result<(), DbError> {
+    conn.execute(
+        "UPDATE files SET print_status = ?1 WHERE id = ?2",
+        params![status, file_id],
+    )?;
+    Ok(())
+}
+
 pub fn set_file_modified_at(conn: &Connection, file_id: i64, modified_at: &str) -> Result<(), DbError> {
     conn.execute(
         "UPDATE files SET file_modified_at = ?1 WHERE id = ?2",
