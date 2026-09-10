@@ -12,6 +12,7 @@ interface Props {
   onDelete: () => void;
   onTogglePrintStatus: () => void;
   onUploadImage: () => void;
+  onSnapshotCaptured: (base64: string) => void;
   onOpenInSlicer: (slicerId?: string) => void;
   slicers: SlicerConfig[];
   slicerError: string | null;
@@ -57,6 +58,7 @@ export function DetailPanel({
   onDelete,
   onTogglePrintStatus,
   onUploadImage,
+  onSnapshotCaptured,
   onOpenInSlicer,
   slicers,
   slicerError,
@@ -123,7 +125,11 @@ export function DetailPanel({
                 'repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 11px)',
             }}
           />
-          <ModelViewer fileId={model.id} />
+          <ModelViewer
+            fileId={model.id}
+            needsSnapshot={model.displayImage === null}
+            onSnapshotCaptured={onSnapshotCaptured}
+          />
           <div className="absolute left-2.5 bottom-2 font-mono-ui text-[9.5px] tracking-[0.08em] uppercase text-[var(--ink-3)] pointer-events-none">
             {t('dragToRotate')}
           </div>

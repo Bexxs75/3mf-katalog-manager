@@ -8,6 +8,8 @@ import type { ParsedMesh } from '../lib/parseModelGeometry';
 
 interface Props {
   fileId: string;
+  needsSnapshot: boolean;
+  onSnapshotCaptured: (base64: string) => void;
 }
 
 function frameObject(object: THREE.Object3D, camera: THREE.PerspectiveCamera, controls: OrbitControls) {
@@ -66,7 +68,7 @@ interface ViewerContext {
   currentObject: THREE.Object3D | null;
 }
 
-export function ModelViewer({ fileId }: Props) {
+export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured }: Props) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const ctxRef = useRef<ViewerContext | null>(null);
@@ -83,7 +85,7 @@ export function ModelViewer({ fileId }: Props) {
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(window.devicePixelRatio);
     container.appendChild(renderer.domElement);
 
@@ -171,6 +173,21 @@ export function ModelViewer({ fileId }: Props) {
         }
         frameObject(object, ctx.camera, ctx.controls);
         setStatus('ready');
+
+        if (needsSnapshot) {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              if (cancelled) return;
+              try {
+                const dataUrl = ctx.renderer.domElement.toDataURL('image/png');
+                const base64 = dataUrl.split(',')[1];
+                if (base64) onSnapshotCaptured(base64);
+              } catch (err) {
+                console.error('[ModelViewer] Snapshot fehlgeschlagen:', err);
+              }
+            });
+          });
+        }
       })
       .catch((err) => {
         console.error('[ModelViewer] Laden fehlgeschlagen:', err);
