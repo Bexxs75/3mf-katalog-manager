@@ -118,4 +118,6 @@ export const es: Translations = {
   creatorsHeading: 'Creators',
 
   importSummaryText: '{imported} importados, {duplicates} duplicados omitidos',
+
+  uploadModelImageLabel: 'Subir imagen',
 };

@@ -281,6 +281,17 @@ export default function App() {
     });
   };
 
+  const uploadCustomImage = (id: string) => {
+    invoke<string | null>('upload_custom_image', { fileId: id })
+      .then((displayImage) => {
+        if (displayImage === null) return;
+        setModels((prev) => prev.map((m) => (m.id === id ? { ...m, displayImage } : m)));
+      })
+      .catch((e) => {
+        console.error('[custom-image] Hochladen fehlgeschlagen:', e);
+      });
+  };
+
   return (
     <div
       className="h-screen min-h-[620px] flex flex-col bg-[var(--bg)] text-[var(--ink)] overflow-hidden"
@@ -386,6 +397,7 @@ export default function App() {
             onRemoveTag={(t) => selected && removeTag(selected.id, t)}
             onDelete={() => selected && deleteModel(selected.id)}
             onTogglePrintStatus={() => selected && togglePrintStatus(selected.id)}
+            onUploadImage={() => selected && uploadCustomImage(selected.id)}
             onOpenInSlicer={(slicerId) => selected && openInSlicer(selected.id, slicerId)}
             slicers={slicers}
             slicerError={slicerError}

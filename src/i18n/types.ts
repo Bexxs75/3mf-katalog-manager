@@ -123,6 +123,8 @@ export interface Translations {
   creatorsHeading: string;
 
   importSummaryText: string;
+
+  uploadModelImageLabel: string;
 }
 
 export function formatCount(forms: PluralForms, n: number): string {

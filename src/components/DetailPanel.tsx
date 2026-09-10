@@ -11,6 +11,7 @@ interface Props {
   onRemoveTag: (tag: string) => void;
   onDelete: () => void;
   onTogglePrintStatus: () => void;
+  onUploadImage: () => void;
   onOpenInSlicer: (slicerId?: string) => void;
   slicers: SlicerConfig[];
   slicerError: string | null;
@@ -55,6 +56,7 @@ export function DetailPanel({
   onRemoveTag,
   onDelete,
   onTogglePrintStatus,
+  onUploadImage,
   onOpenInSlicer,
   slicers,
   slicerError,
@@ -125,6 +127,12 @@ export function DetailPanel({
           <div className="absolute left-2.5 bottom-2 font-mono-ui text-[9.5px] tracking-[0.08em] uppercase text-[var(--ink-3)] pointer-events-none">
             {t('dragToRotate')}
           </div>
+          <button
+            onClick={onUploadImage}
+            className="absolute right-2.5 top-2.5 h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-[11.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+          >
+            {t('uploadModelImageLabel')}
+          </button>
         </div>
 
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--line)]">

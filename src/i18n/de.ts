@@ -118,4 +118,6 @@ export const de: Translations = {
   creatorsHeading: 'Creators',
 
   importSummaryText: '{imported} importiert, {duplicates} Duplikate übersprungen',
+
+  uploadModelImageLabel: 'Bild hochladen',
 };

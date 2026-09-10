@@ -7,7 +7,7 @@ pub use repository::{
     file_exists_by_hash, file_exists_by_path, get_file, insert_file, insert_filament_spool, insert_folder,
     list_cloud_accounts, list_creator_counts, list_filament_spools, list_files,
     list_files_missing_content_hash, list_folders, list_tag_counts, mark_file_viewed,
-    remove_tag_from_file, set_cloud_account_status, set_content_hash, set_file_cloud_link,
+    remove_tag_from_file, set_cloud_account_status, set_content_hash, set_custom_image_png, set_file_cloud_link,
     set_file_modified_at, set_file_sync_status, set_print_status, update_filament_spool,
     upsert_cloud_account,
 };
@@ -514,5 +514,15 @@ mod tests {
         assert_eq!(file.last_viewed_at, None);
         assert_eq!(file.creator, None);
         assert_eq!(file.content_hash, None);
+    }
+
+    #[test]
+    fn set_custom_image_png_updates_the_image() {
+        let mut conn = connect_in_memory().expect("connect");
+        let id = insert_file(&mut conn, &sample_file()).expect("insert");
+
+        set_custom_image_png(&conn, id, &[9, 9, 9]).expect("update");
+        let file = get_file(&conn, id).expect("query").expect("present");
+        assert_eq!(file.custom_image_png, Some(vec![9, 9, 9]));
     }
 }

@@ -372,6 +372,35 @@ pub fn mark_file_viewed(state: State<AppState>, file_id: String) -> CmdResult<()
     db::mark_file_viewed(&conn, id).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn upload_custom_image(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    file_id: String,
+) -> CmdResult<Option<String>> {
+    use base64::Engine;
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("Bilder", &["png", "jpg", "jpeg", "webp"])
+        .blocking_pick_file();
+
+    let Some(picked) = picked else {
+        return Ok(None);
+    };
+    let path = picked.into_path().map_err(|e| e.to_string())?;
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let conn = lock_db(&state)?;
+    db::set_custom_image_png(&conn, id, &bytes).map_err(|e| e.to_string())?;
+
+    Ok(Some(format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(&bytes)
+    )))
+}
+
 fn is_supported_extension(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
