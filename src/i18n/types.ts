@@ -93,6 +93,9 @@ export interface Translations {
 
   importFromCloudOption: string;
 
+  sortLastViewed: string;
+  newBadge: string;
+
   filamentCatalogAria: string;
   filamentDialogTitle: string;
   filamentEmptyState: string;

@@ -162,6 +162,7 @@ export function Header({
           <option value="date">{t('sortDate')}</option>
           <option value="size">{t('sortSize')}</option>
           <option value="vol">{t('sortVolume')}</option>
+          <option value="viewed">{t('sortLastViewed')}</option>
         </select>
       </div>
 

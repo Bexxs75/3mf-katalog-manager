@@ -37,6 +37,7 @@ pub struct ModelFileDto {
     pub imported_at: String,
     pub print_status: String,
     pub estimated_weight_g: Option<f64>,
+    pub last_viewed_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -116,6 +117,7 @@ pub(crate) fn to_dto(file: FileRecord) -> ModelFileDto {
         imported_at: file.imported_at,
         print_status: file.print_status,
         estimated_weight_g,
+        last_viewed_at: file.last_viewed_at,
     }
 }
 
@@ -306,6 +308,13 @@ pub fn set_print_status(state: State<AppState>, file_id: String, status: String)
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
     db::set_print_status(&conn, id, &status).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn mark_file_viewed(state: State<AppState>, file_id: String) -> CmdResult<()> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let conn = lock_db(&state)?;
+    db::mark_file_viewed(&conn, id).map_err(|e| e.to_string())
 }
 
 fn is_supported_extension(path: &Path) -> bool {

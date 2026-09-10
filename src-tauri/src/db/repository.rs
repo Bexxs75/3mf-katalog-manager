@@ -443,6 +443,15 @@ pub fn set_print_status(conn: &Connection, file_id: i64, status: &str) -> Result
     Ok(())
 }
 
+pub fn mark_file_viewed(conn: &Connection, file_id: i64) -> Result<(), DbError> {
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "UPDATE files SET last_viewed_at = ?1 WHERE id = ?2",
+        params![now, file_id],
+    )?;
+    Ok(())
+}
+
 pub fn set_file_modified_at(conn: &Connection, file_id: i64, modified_at: &str) -> Result<(), DbError> {
     conn.execute(
         "UPDATE files SET file_modified_at = ?1 WHERE id = ?2",
