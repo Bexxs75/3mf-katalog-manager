@@ -28,6 +28,9 @@ Noch kein Release getaggt — dieser Abschnitt fasst die bisherige Entwicklung s
 - Vier kleine Katalog-Erweiterungen: Druckstatus-Toggle + aus Volumen/Material geschätztes Gewicht pro Modell, Sortierung nach "Zuletzt angesehen" + NEU-Badge für kürzlich importierte Modelle, Creators als eigene Sidebar-Filterkategorie (aus dem beim 3MF-Import bereits geparsten Designer-Metadatum), automatische Erkennung exakter Datei-Duplikate beim Import (SHA-256-Inhalts-Hash) mit kurzer Zusammenfassungsmeldung
 - Modell-Thumbnails im Raster: Bild-Priorität eigenes Upload > eingebettetes 3MF-Thumbnail > automatisch erzeugter 3D-Snapshot (einmalig beim ersten Ansehen im Detailbereich, client-seitig aus der bestehenden Live-Vorschau erzeugt) > Platzhalter; zusätzlich pro Modell eine Quelle als Link hinterlegbar
 - Tags- und Creators-Sektionen in der Sidebar sind einzeln einklappbar
+- Warteschlange ("als Nächstes drucken"): geordnete, per Drag & Drop sortierbare Liste in eigener einklappbarer Sidebar-Sektion; Hinzufügen/Entfernen über Detailbereich oder Kartei-Kontextmenü, automatisches Entfernen beim Markieren als gedruckt
+- Gespeicherte Filter: aktuelle Kombination aus Ordner/Tag/Creator/Suche/Sortierung unter einem Namen speichern, per Klick wieder anwenden, in eigener einklappbarer Sidebar-Sektion verwalten
+- Aufräum-Vorschläge: manuell auslösbarer Katalog-Scan (Einstellungen-Panel) findet verwaiste Dateipfade und Bestands-Duplikate (gleicher Inhalts-Hash, bereits im Katalog vorhanden); Ergebnis-Dialog mit Einzelauswahl, ältestes Duplikat je Gruppe bleibt vorausgewählt erhalten
 
 ### Changed
 
@@ -47,6 +50,8 @@ Noch kein Release getaggt — dieser Abschnitt fasst die bisherige Entwicklung s
 - Verwaiste Tags (letzte Datei mit diesem Tag gelöscht) blieben in Datenbank und Sidebar stehen, statt automatisch entfernt zu werden
 - Aus Google Drive importierte Dateien übernahmen den internen Cache-Dateinamen statt des echten Drive-Dateinamens (dadurch auch sinnfreie automatische Hashtags)
 - Google-Drive-Konto verbinden/trennen und jeder authentifizierte Cloud-Aufruf blockierten kurzzeitig den Tokio-Worker- bzw. IPC-Dispatch-Thread durch synchrones D-Bus-IPC zum Schlüsselbund — jetzt über `spawn_blocking` entkoppelt (gleiche Fehlerklasse wie das bereits gefixte `accept()` beim OAuth-Login)
+- Aufräum-Vorschläge: eine Datei, die gleichzeitig verwaist UND Teil einer Duplikat-Gruppe war, konnte im Auswahl-Dialog als "wird behalten" markiert und trotzdem gelöscht werden (die einzige noch vorhandene Kopie ging dadurch verloren) — verwaiste Dateien werden jetzt vor der Duplikat-Gruppierung ausgeschlossen; zusätzlich brach das Löschen bei einem Dateisystemfehler die ganze Auswahl vorzeitig ab statt einzelne Fehler zu überspringen, und ein blockiertes/nicht eingehängtes Laufwerk markierte fälschlich den gesamten Katalog als verwaist statt nur wirklich fehlende Dateien
+- Warteschlange: Drag & Drop zum Neusortieren reagierte nicht — natives HTML5-Drag&Drop kollidierte unter WebKitGTK mit Tauris für den Datei-Import per OS-Drop aktivierter Fenster-Ebene-Erkennung; auf reine Maus-Events umgestellt
 
 ### Known Limitations
 
