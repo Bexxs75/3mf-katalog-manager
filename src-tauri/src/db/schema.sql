@@ -33,7 +33,10 @@ CREATE TABLE IF NOT EXISTS files (
         CHECK (print_status IN ('not_printed', 'printed')),
     last_viewed_at TEXT,
     creator TEXT,
-    content_hash TEXT
+    content_hash TEXT,
+    render_snapshot_png BLOB,
+    custom_image_png BLOB,
+    source_url TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_files_folder_id ON files (folder_id);

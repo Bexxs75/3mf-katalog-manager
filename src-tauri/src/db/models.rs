@@ -52,6 +52,9 @@ pub struct NewFile {
     pub last_viewed_at: Option<String>,
     pub creator: Option<String>,
     pub content_hash: Option<String>,
+    pub render_snapshot_png: Option<Vec<u8>>,
+    pub custom_image_png: Option<Vec<u8>>,
+    pub source_url: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -78,6 +81,9 @@ pub struct FileRecord {
     pub last_viewed_at: Option<String>,
     pub creator: Option<String>,
     pub content_hash: Option<String>,
+    pub render_snapshot_png: Option<Vec<u8>>,
+    pub custom_image_png: Option<Vec<u8>>,
+    pub source_url: Option<String>,
 }
 
 #[derive(Debug, Clone)]
