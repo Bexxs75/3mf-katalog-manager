@@ -66,6 +66,11 @@ export interface Translations {
   removeSlicerAria: string;
   chooseSlicerAria: string;
   slicerLaunchError: string;
+  uploadToCloudAria: string;
+  uploadingToCloudAria: string;
+  alreadyInCloudAria: string;
+  connectCloudToUploadAria: string;
+  cloudUploadError: string;
 
   emptyStateText: string;
   dragToRotate: string;

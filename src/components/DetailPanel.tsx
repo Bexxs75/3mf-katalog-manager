@@ -13,6 +13,10 @@ interface Props {
   onOpenInSlicer: (slicerId?: string) => void;
   slicers: SlicerConfig[];
   slicerError: string | null;
+  onUploadToCloud: () => void;
+  cloudUploadAvailable: boolean;
+  uploading: boolean;
+  cloudUploadError: string | null;
 }
 
 type TFunction = <K extends keyof Translations>(key: K) => Translations[K];
@@ -49,6 +53,10 @@ export function DetailPanel({
   onOpenInSlicer,
   slicers,
   slicerError,
+  onUploadToCloud,
+  cloudUploadAvailable,
+  uploading,
+  cloudUploadError,
 }: Props) {
   const { language } = useLanguage();
   const t = useT();
@@ -76,6 +84,16 @@ export function DetailPanel({
   };
 
   const hasSlicers = slicers.length > 0;
+
+  const canUpload = model.origin === 'local';
+  const uploadDisabled = uploading || !canUpload || !cloudUploadAvailable;
+  const uploadAria = uploading
+    ? t('uploadingToCloudAria')
+    : !canUpload
+      ? t('alreadyInCloudAria')
+      : !cloudUploadAvailable
+        ? t('connectCloudToUploadAria')
+        : t('uploadToCloudAria');
 
   return (
     <aside className="flex-none w-[336px] flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]">
@@ -164,6 +182,11 @@ export function DetailPanel({
             {t('slicerLaunchError')} {slicerError}
           </div>
         )}
+        {cloudUploadError && (
+          <div className="pb-2 font-mono-ui text-[10px] text-[var(--accent)] break-words">
+            {t('cloudUploadError')} {cloudUploadError}
+          </div>
+        )}
         <div className="flex gap-2">
           {confirmDelete ? (
             <>
@@ -223,8 +246,18 @@ export function DetailPanel({
                   </div>
                 )}
               </div>
-              <button className="flex-none w-[34px] h-8 grid place-items-center rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] font-mono-ui cursor-pointer">
-                ↻
+              <button
+                onClick={() => !uploadDisabled && onUploadToCloud()}
+                disabled={uploadDisabled}
+                aria-label={uploadAria}
+                title={uploadAria}
+                className={`flex-none w-[34px] h-8 grid place-items-center rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] font-mono-ui ${
+                  uploadDisabled
+                    ? 'opacity-40 cursor-not-allowed'
+                    : 'cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]'
+                }`}
+              >
+                <span className={uploading ? 'inline-block animate-spin' : 'inline-block'}>↻</span>
               </button>
               <button
                 onClick={() => setConfirmDelete(true)}

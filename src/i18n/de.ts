@@ -61,6 +61,11 @@ export const de: Translations = {
   removeSlicerAria: 'Slicer entfernen',
   chooseSlicerAria: 'Anderen Slicer wählen',
   slicerLaunchError: 'Slicer konnte nicht gestartet werden:',
+  uploadToCloudAria: 'Zu Google Drive hochladen',
+  uploadingToCloudAria: 'Wird zu Google Drive hochgeladen …',
+  alreadyInCloudAria: 'Bereits mit der Cloud verknüpft',
+  connectCloudToUploadAria: 'Google Drive verbinden, um hochzuladen',
+  cloudUploadError: 'Hochladen fehlgeschlagen:',
 
   emptyStateText: 'Wähle ein Modell aus, um Details, Vorschau und Tags zu sehen.',
   dragToRotate: 'Ziehen zum Drehen',

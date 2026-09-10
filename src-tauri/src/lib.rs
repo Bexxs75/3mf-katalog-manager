@@ -54,6 +54,7 @@ pub fn run() {
             cloud::commands::browse_cloud_folder,
             cloud::commands::import_from_cloud,
             cloud::commands::check_cloud_sync_status,
+            cloud::commands::upload_file_to_cloud,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

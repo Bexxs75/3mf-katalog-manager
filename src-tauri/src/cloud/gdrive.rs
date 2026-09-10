@@ -3,6 +3,10 @@ use async_trait::async_trait;
 use crate::cloud::provider::{CloudEntry, CloudError, CloudResult, StorageProvider};
 
 const DRIVE_API_BASE: &str = "https://www.googleapis.com/drive/v3";
+// Content-Uploads laufen bei Google Drive ueber einen eigenen Host-Praefix
+// (`/upload/drive/v3` statt `/drive/v3`) - reine Metadaten-Endpunkte (Liste/
+// Download/Metadaten) bleiben auf DRIVE_API_BASE.
+const DRIVE_UPLOAD_API_BASE: &str = "https://www.googleapis.com/upload/drive/v3";
 
 pub struct GoogleDriveProvider {
     access_token: String,
@@ -28,10 +32,16 @@ impl StorageProvider for GoogleDriveProvider {
         download_from(DRIVE_API_BASE, &self.client, &self.access_token, file_id).await
     }
 
-    async fn upload(&self, _folder_id: Option<&str>, _file_name: &str, _data: &[u8]) -> CloudResult<CloudEntry> {
-        Err(CloudError::Network(
-            "Hochladen zu Google Drive ist noch nicht implementiert".to_string(),
-        ))
+    async fn upload(&self, folder_id: Option<&str>, file_name: &str, data: &[u8]) -> CloudResult<CloudEntry> {
+        upload_to(
+            DRIVE_UPLOAD_API_BASE,
+            &self.client,
+            &self.access_token,
+            folder_id,
+            file_name,
+            data,
+        )
+        .await
     }
 
     async fn get_metadata(&self, file_id: &str) -> CloudResult<CloudEntry> {
@@ -208,6 +218,94 @@ async fn download_from(
         .await
         .map(|b| b.to_vec())
         .map_err(|e| CloudError::Network(e.to_string()))
+}
+
+/// Grobe MIME-Typ-Schaetzung anhand der Dateiendung, nur fuer die Anzeige in
+/// Drive selbst relevant (Vorschau-Icon) - der eigentliche Katalog-Import
+/// verlaesst sich nirgends auf diesen Wert.
+fn guess_mime_type(file_name: &str) -> &'static str {
+    match std::path::Path::new(file_name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .as_deref()
+    {
+        Some("3mf") => "model/3mf",
+        Some("stl") => "model/stl",
+        _ => "application/octet-stream",
+    }
+}
+
+/// Multipart/related-Upload (RFC 2387) mit Metadaten- und Inhalts-Teil in
+/// einer Anfrage - Googles einfachster Weg, in einem Schritt sowohl Name
+/// und optionalen Ziel-Ordner als auch die Bytes zu setzen. `reqwest::multipart`
+/// baut stattdessen multipart/form-data (falscher RFC), daher wird der Body
+/// hier von Hand zusammengesetzt.
+async fn upload_to(
+    base_url: &str,
+    client: &reqwest::Client,
+    access_token: &str,
+    folder_id: Option<&str>,
+    file_name: &str,
+    data: &[u8],
+) -> CloudResult<CloudEntry> {
+    const BOUNDARY: &str = "3mf_katalog_manager_upload_boundary";
+
+    let mut metadata = serde_json::Map::new();
+    metadata.insert(
+        "name".to_string(),
+        serde_json::Value::String(file_name.to_string()),
+    );
+    if let Some(parent) = folder_id {
+        metadata.insert(
+            "parents".to_string(),
+            serde_json::Value::Array(vec![serde_json::Value::String(parent.to_string())]),
+        );
+    }
+    let metadata_json = serde_json::Value::Object(metadata).to_string();
+    let mime_type = guess_mime_type(file_name);
+
+    let mut body = Vec::with_capacity(metadata_json.len() + data.len() + 256);
+    body.extend_from_slice(
+        format!("--{BOUNDARY}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n").as_bytes(),
+    );
+    body.extend_from_slice(metadata_json.as_bytes());
+    body.extend_from_slice(format!("\r\n--{BOUNDARY}\r\nContent-Type: {mime_type}\r\n\r\n").as_bytes());
+    body.extend_from_slice(data);
+    body.extend_from_slice(format!("\r\n--{BOUNDARY}--").as_bytes());
+
+    let response = client
+        .post(format!("{base_url}/files"))
+        .bearer_auth(access_token)
+        .query(&[
+            ("uploadType", "multipart"),
+            ("fields", "id,name,mimeType,modifiedTime,size"),
+        ])
+        .header(
+            reqwest::header::CONTENT_TYPE,
+            format!("multipart/related; boundary={BOUNDARY}"),
+        )
+        .body(body)
+        .send()
+        .await
+        .map_err(|e| CloudError::Network(e.to_string()))?;
+
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err(CloudError::Auth("Zugriffstoken abgelaufen".to_string()));
+    }
+    if !response.status().is_success() {
+        return Err(CloudError::Network(format!(
+            "Google-Drive-Upload fehlgeschlagen: HTTP {}",
+            response.status()
+        )));
+    }
+
+    let parsed: DriveFile = response
+        .json()
+        .await
+        .map_err(|e| CloudError::Network(format!("Antwort konnte nicht gelesen werden: {e}")))?;
+
+    Ok(CloudEntry::from(parsed))
 }
 
 const USERINFO_URL: &str = "https://www.googleapis.com/oauth2/v3/userinfo";
@@ -478,5 +576,84 @@ mod tests {
         let client = reqwest::Client::new();
         let data = download_from(&url, &client, "fake-token", "file-1").await.expect("download");
         assert_eq!(data, b"raw-file-content");
+    }
+
+    #[tokio::test]
+    async fn upload_parses_the_created_file_from_the_response() {
+        let url = spawn_mock_userinfo_server(
+            r#"{"id": "new-file-1", "name": "cube.3mf", "mimeType": "model/3mf", "modifiedTime": "2026-09-10T08:00:00Z", "size": "4096"}"#,
+            "HTTP/1.1 200 OK",
+        );
+        let client = reqwest::Client::new();
+        let entry = upload_to(&url, &client, "fake-token", None, "cube.3mf", b"fake-3mf-bytes")
+            .await
+            .expect("upload");
+
+        assert_eq!(entry.id, "new-file-1");
+        assert_eq!(entry.name, "cube.3mf");
+        assert_eq!(entry.size_bytes, Some(4096));
+        assert!(!entry.is_folder);
+    }
+
+    #[tokio::test]
+    async fn upload_returns_auth_error_for_401() {
+        let url = spawn_mock_userinfo_server("", "HTTP/1.1 401 Unauthorized");
+        let client = reqwest::Client::new();
+        let result = upload_to(&url, &client, "expired-token", None, "cube.3mf", b"data").await;
+        assert!(matches!(result, Err(CloudError::Auth(_))));
+    }
+
+    #[tokio::test]
+    async fn upload_request_sends_multipart_body_with_name_content_type_and_data() {
+        let (url, captured) = spawn_mock_capture_server(
+            r#"{"id": "f1", "name": "cube.3mf", "mimeType": "model/3mf", "modifiedTime": "2026-09-10T08:00:00Z", "size": "4"}"#,
+            "HTTP/1.1 200 OK",
+        );
+        let client = reqwest::Client::new();
+        let _ = upload_to(&url, &client, "fake-token", None, "cube.3mf", b"data")
+            .await
+            .expect("upload");
+
+        let request = captured.lock().expect("lock captured request").clone();
+        let request_line = request.lines().next().unwrap_or_default();
+
+        assert!(
+            request_line.starts_with("POST /files?"),
+            "unerwartete Request-Zeile: {request_line}"
+        );
+        assert!(
+            request_line.contains("uploadType=multipart"),
+            "erwartete uploadType=multipart im Query-String: {request_line}"
+        );
+        assert!(
+            request
+                .to_lowercase()
+                .contains("content-type: multipart/related; boundary="),
+            "erwarteter multipart/related-Header fehlt: {request}"
+        );
+        assert!(
+            request.contains(r#""name":"cube.3mf""#),
+            "JSON-Metadatenteil ohne erwarteten Dateinamen: {request}"
+        );
+        assert!(!request.contains("\"parents\""), "kein Ordner uebergeben, aber 'parents' im Body: {request}");
+        assert!(request.contains("data"), "Dateiinhalt fehlt im Body: {request}");
+    }
+
+    #[tokio::test]
+    async fn upload_request_includes_parents_when_folder_id_given() {
+        let (url, captured) = spawn_mock_capture_server(
+            r#"{"id": "f1", "name": "cube.3mf", "mimeType": "model/3mf", "modifiedTime": "2026-09-10T08:00:00Z", "size": "4"}"#,
+            "HTTP/1.1 200 OK",
+        );
+        let client = reqwest::Client::new();
+        let _ = upload_to(&url, &client, "fake-token", Some("folder-42"), "cube.3mf", b"data")
+            .await
+            .expect("upload");
+
+        let request = captured.lock().expect("lock captured request").clone();
+        assert!(
+            request.contains(r#""parents":["folder-42"]"#),
+            "erwartete 'parents':['folder-42'] im Metadaten-JSON: {request}"
+        );
     }
 }
