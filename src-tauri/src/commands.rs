@@ -953,34 +953,62 @@ pub struct CatalogIssuesDto {
     pub duplicate_groups: Vec<Vec<ModelFileDto>>,
 }
 
-#[tauri::command]
-pub fn scan_catalog_issues(state: State<AppState>) -> CmdResult<CatalogIssuesDto> {
-    let conn = lock_db(&state)?;
-    let files = db::list_files(&conn).map_err(|e| e.to_string())?;
-
-    let orphaned: Vec<ModelFileDto> = files
-        .iter()
-        .filter(|f| std::fs::metadata(&f.path).is_err())
-        .cloned()
-        .map(to_dto)
-        .collect();
-
+/// Groups `files` by `content_hash`, excluding any file whose id is in
+/// `orphaned_ids` (a file confirmed missing on disk has nothing worth
+/// "keeping" - see Finding 1 of the 2026-09-10 final review: without this
+/// exclusion, an orphaned file could end up as a duplicate group's
+/// index-0 "keep the oldest" anchor even though it has no surviving copy
+/// on disk). Only groups with 2+ remaining members are returned, each
+/// sorted oldest-first by `imported_at`, and the groups themselves are
+/// sorted by their first (oldest) member's `imported_at`.
+fn group_duplicates(files: Vec<FileRecord>, orphaned_ids: &HashSet<i64>) -> Vec<Vec<FileRecord>> {
     let mut by_hash: BTreeMap<String, Vec<FileRecord>> = BTreeMap::new();
     for file in files {
+        if orphaned_ids.contains(&file.id) {
+            continue;
+        }
         if let Some(hash) = file.content_hash.clone() {
             by_hash.entry(hash).or_default().push(file);
         }
     }
 
-    let mut duplicate_groups: Vec<Vec<ModelFileDto>> = by_hash
+    let mut groups: Vec<Vec<FileRecord>> = by_hash
         .into_values()
         .filter(|group| group.len() >= 2)
         .map(|mut group| {
             group.sort_by(|a, b| a.imported_at.cmp(&b.imported_at));
-            group.into_iter().map(to_dto).collect()
+            group
         })
         .collect();
-    duplicate_groups.sort_by(|a, b| a[0].imported_at.cmp(&b[0].imported_at));
+    groups.sort_by(|a, b| a[0].imported_at.cmp(&b[0].imported_at));
+    groups
+}
+
+#[tauri::command]
+pub fn scan_catalog_issues(state: State<AppState>) -> CmdResult<CatalogIssuesDto> {
+    let conn = lock_db(&state)?;
+    let files = db::list_files(&conn).map_err(|e| e.to_string())?;
+
+    // Nur ein fs::metadata-Fehler vom Typ NotFound bedeutet wirklich "Datei
+    // fehlt" - PermissionDenied/IO-Fehler auf einem (noch) nicht
+    // eingehaengten Netzlaufwerk sollen nicht als verwaist gelten (Finding 3
+    // im finalen Review vom 2026-09-10: sonst wuerden dort liegende, aber
+    // gerade nicht erreichbare Dateien faelschlich zum Loeschen markiert).
+    let mut orphaned_ids: HashSet<i64> = HashSet::new();
+    let mut orphaned: Vec<ModelFileDto> = Vec::new();
+    for file in &files {
+        if let Err(e) = std::fs::metadata(&file.path) {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                orphaned_ids.insert(file.id);
+                orphaned.push(to_dto(file.clone()));
+            }
+        }
+    }
+
+    let duplicate_groups: Vec<Vec<ModelFileDto>> = group_duplicates(files, &orphaned_ids)
+        .into_iter()
+        .map(|group| group.into_iter().map(to_dto).collect())
+        .collect();
 
     Ok(CatalogIssuesDto { orphaned, duplicate_groups })
 }
@@ -989,19 +1017,39 @@ pub fn scan_catalog_issues(state: State<AppState>) -> CmdResult<CatalogIssuesDto
 pub fn delete_files(state: State<AppState>, file_ids: Vec<String>) -> CmdResult<()> {
     let conn = lock_db(&state)?;
     for file_id in file_ids {
-        let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+        let id: i64 = match file_id.parse() {
+            Ok(id) => id,
+            Err(_) => {
+                eprintln!("[cleanup] Ungueltige Datei-ID uebersprungen: {file_id}");
+                continue;
+            }
+        };
         // Bereinigungs-Batch: eine zwischenzeitlich bereits geloeschte Datei
         // (z.B. doppelt in der Auswahl) wird uebersprungen statt den ganzen
         // Batch abzubrechen.
-        let Some(file) = db::get_file(&conn, id).map_err(|e| e.to_string())? else {
-            continue;
+        let file = match db::get_file(&conn, id) {
+            Ok(Some(file)) => file,
+            Ok(None) => continue,
+            Err(e) => {
+                eprintln!("[cleanup] Datei-ID {id} konnte nicht geladen werden: {e}");
+                continue;
+            }
         };
         if let Err(e) = std::fs::remove_file(&file.path) {
             if e.kind() != std::io::ErrorKind::NotFound {
-                return Err(e.to_string());
+                // Batch nicht abbrechen (Finding 2 im finalen Review vom
+                // 2026-09-10): jede ID wird einzeln versucht, ein
+                // fehlgeschlagener Einzelfall wird geloggt und uebersprungen,
+                // damit das Frontend am Ende zuverlaessig resyncen kann statt
+                // auf einem abgebrochenen Batch mit veraltetem Zustand zu
+                // stehen.
+                eprintln!("[cleanup] Loeschen fehlgeschlagen fuer Datei-ID {id}: {e}");
+                continue;
             }
         }
-        db::delete_file(&conn, id).map_err(|e| e.to_string())?;
+        if let Err(e) = db::delete_file(&conn, id) {
+            eprintln!("[cleanup] DB-Eintrag konnte nicht geloescht werden fuer Datei-ID {id}: {e}");
+        }
     }
     Ok(())
 }
@@ -1171,5 +1219,100 @@ mod tests {
     #[test]
     fn resolve_display_image_returns_none_without_any_source() {
         assert_eq!(resolve_display_image(None, None, None), None);
+    }
+
+    /// Minimal `FileRecord` for `group_duplicates` tests: only `id`,
+    /// `content_hash` and `imported_at` are read by that function, so
+    /// everything else is filled with cheap placeholder values.
+    fn sample_file_record(id: i64, content_hash: Option<&str>, imported_at: &str) -> FileRecord {
+        FileRecord {
+            id,
+            name: format!("file-{id}.3mf"),
+            path: format!("/tmp/file-{id}.3mf"),
+            file_type: FileType::ThreeMf,
+            folder_id: None,
+            origin: "local".to_string(),
+            sync_status: "local-only".to_string(),
+            cloud_id: None,
+            file_size_bytes: 1024,
+            dimensions_mm: None,
+            volume_cm3: None,
+            object_count: None,
+            thumbnail_png: None,
+            imported_at: imported_at.to_string(),
+            file_modified_at: None,
+            materials: Vec::new(),
+            metadata: BTreeMap::new(),
+            tags: Vec::new(),
+            print_status: "not_printed".to_string(),
+            last_viewed_at: None,
+            creator: None,
+            content_hash: content_hash.map(|s| s.to_string()),
+            render_snapshot_png: None,
+            custom_image_png: None,
+            source_url: None,
+            queue_position: None,
+        }
+    }
+
+    #[test]
+    fn group_duplicates_groups_two_matching_hashes_oldest_first() {
+        let older = sample_file_record(1, Some("hash-a"), "2026-09-01T00:00:00Z");
+        let newer = sample_file_record(2, Some("hash-a"), "2026-09-05T00:00:00Z");
+        let files = vec![newer.clone(), older.clone()];
+
+        let groups = group_duplicates(files, &HashSet::new());
+
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].len(), 2);
+        assert_eq!(groups[0][0].id, older.id);
+        assert_eq!(groups[0][1].id, newer.id);
+    }
+
+    #[test]
+    fn group_duplicates_excludes_orphaned_member_leaving_no_group() {
+        // Regression test for Finding 1 (final review, 2026-09-10): if one
+        // of two same-hash files is orphaned (its file is confirmed gone),
+        // it must be excluded from grouping entirely - leaving only one
+        // surviving file, which is below the size-2 duplicate threshold and
+        // therefore must NOT form a group. Previously the orphaned file
+        // could be selected as the group's "keep the oldest" anchor while
+        // also being pre-checked for deletion via the orphaned list, which
+        // could wipe the last surviving copy.
+        let orphaned = sample_file_record(1, Some("hash-a"), "2026-09-01T00:00:00Z");
+        let surviving = sample_file_record(2, Some("hash-a"), "2026-09-05T00:00:00Z");
+        let files = vec![orphaned.clone(), surviving.clone()];
+        let mut orphaned_ids = HashSet::new();
+        orphaned_ids.insert(orphaned.id);
+
+        let groups = group_duplicates(files, &orphaned_ids);
+
+        assert!(groups.is_empty());
+    }
+
+    #[test]
+    fn group_duplicates_ignores_files_without_content_hash() {
+        let a = sample_file_record(1, None, "2026-09-01T00:00:00Z");
+        let b = sample_file_record(2, None, "2026-09-02T00:00:00Z");
+
+        let groups = group_duplicates(vec![a, b], &HashSet::new());
+
+        assert!(groups.is_empty());
+    }
+
+    #[test]
+    fn group_duplicates_groups_three_matching_hashes_sorted() {
+        let a = sample_file_record(1, Some("hash-a"), "2026-09-03T00:00:00Z");
+        let b = sample_file_record(2, Some("hash-a"), "2026-09-01T00:00:00Z");
+        let c = sample_file_record(3, Some("hash-a"), "2026-09-02T00:00:00Z");
+
+        let groups = group_duplicates(vec![a, b, c], &HashSet::new());
+
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].len(), 3);
+        assert_eq!(
+            groups[0].iter().map(|f| f.id).collect::<Vec<_>>(),
+            vec![2, 3, 1]
+        );
     }
 }
