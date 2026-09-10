@@ -125,6 +125,9 @@ export interface Translations {
   importSummaryText: string;
 
   uploadModelImageLabel: string;
+
+  metaSourceUrl: string;
+  sourceUrlPlaceholder: string;
 }
 
 export function formatCount(forms: PluralForms, n: number): string {

@@ -53,6 +53,7 @@ pub fn run() {
             commands::mark_file_viewed,
             commands::upload_custom_image,
             commands::set_render_snapshot,
+            commands::set_source_url,
             commands::import_files,
             commands::import_folder,
             commands::import_dropped,

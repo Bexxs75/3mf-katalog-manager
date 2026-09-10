@@ -120,4 +120,7 @@ export const fr: Translations = {
   importSummaryText: '{imported} importés, {duplicates} doublons ignorés',
 
   uploadModelImageLabel: 'Envoyer une image',
+
+  metaSourceUrl: 'Source',
+  sourceUrlPlaceholder: 'https://…',
 };

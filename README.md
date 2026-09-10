@@ -16,6 +16,7 @@ Plattformunabhängige Desktop-Anwendung zur Katalogisierung und Verwaltung von 3
 - **Hell-/Dunkel-Theme** mit System-Erkennung und manueller Auswahl, persistiert lokal
 - **Filament-Lager** - eigenständige Verwaltung deiner Filamentspulen (Material, Hersteller, Farbe, Durchmesser, Ursprungs-/Restgewicht, Preis), unabhängig vom Modell-Katalog
 - **Katalog-Erweiterungen** — Druckstatus-Toggle + geschätztes Gewicht (aus Volumen × Materialdichte) pro Modell, Sortierung nach "Zuletzt angesehen", NEU-Badge für kürzlich importierte Modelle, Creators-Filter (aus 3MF-Designer-Metadatum), automatische Erkennung exakter Datei-Duplikate beim Import per Inhalts-Hash
+- **Modell-Thumbnails** — Raster-Ansicht zeigt ein echtes Bild pro Modell (eigenes Upload, eingebettetes 3MF-Thumbnail oder automatisch aus der 3D-Live-Vorschau erzeugter Snapshot), zusätzlich pro Modell eine Quelle als Link hinterlegbar
 
 ## Status
 
