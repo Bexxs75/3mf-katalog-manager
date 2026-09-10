@@ -118,4 +118,6 @@ export const fr: Translations = {
   creatorsHeading: 'Creators',
 
   importSummaryText: '{imported} importés, {duplicates} doublons ignorés',
+
+  uploadModelImageLabel: 'Envoyer une image',
 };
