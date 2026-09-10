@@ -27,6 +27,7 @@ Noch kein Release getaggt — dieser Abschnitt fasst die bisherige Entwicklung s
 - Filament-Lager: eigenständige Spulenverwaltung (Material, Hersteller, Farbe, Durchmesser, Ursprungs-/Restgewicht, Preis) über ein neues Header-Icon erreichbar, unabhängig vom Modell-Katalog - Verbrauchstracking pro Druck ist bewusst nicht Teil dieser Ausbaustufe
 - Vier kleine Katalog-Erweiterungen: Druckstatus-Toggle + aus Volumen/Material geschätztes Gewicht pro Modell, Sortierung nach "Zuletzt angesehen" + NEU-Badge für kürzlich importierte Modelle, Creators als eigene Sidebar-Filterkategorie (aus dem beim 3MF-Import bereits geparsten Designer-Metadatum), automatische Erkennung exakter Datei-Duplikate beim Import (SHA-256-Inhalts-Hash) mit kurzer Zusammenfassungsmeldung
 - Modell-Thumbnails im Raster: Bild-Priorität eigenes Upload > eingebettetes 3MF-Thumbnail > automatisch erzeugter 3D-Snapshot (einmalig beim ersten Ansehen im Detailbereich, client-seitig aus der bestehenden Live-Vorschau erzeugt) > Platzhalter; zusätzlich pro Modell eine Quelle als Link hinterlegbar
+- Tags- und Creators-Sektionen in der Sidebar sind einzeln einklappbar
 
 ### Changed
 
