@@ -294,7 +294,9 @@ export default function App() {
 
   const captureRenderSnapshot = (id: string, base64: string) => {
     const displayImage = `data:image/png;base64,${base64}`;
-    setModels((prev) => prev.map((m) => (m.id === id ? { ...m, displayImage } : m)));
+    setModels((prev) =>
+      prev.map((m) => (m.id === id && m.displayImage === null ? { ...m, displayImage } : m)),
+    );
     invoke('set_render_snapshot', { fileId: id, imageBase64: base64 }).catch((e) => {
       console.error('[render-snapshot] Speichern fehlgeschlagen:', e);
     });
@@ -414,7 +416,7 @@ export default function App() {
             onTogglePrintStatus={() => selected && togglePrintStatus(selected.id)}
             onUploadImage={() => selected && uploadCustomImage(selected.id)}
             onSnapshotCaptured={(base64) => selected && captureRenderSnapshot(selected.id, base64)}
-            onSetSourceUrl={(url) => selected && setModelSourceUrl(selected.id, url)}
+            onSetSourceUrl={(fileId, url) => setModelSourceUrl(fileId, url)}
             onOpenInSlicer={(slicerId) => selected && openInSlicer(selected.id, slicerId)}
             slicers={slicers}
             slicerError={slicerError}

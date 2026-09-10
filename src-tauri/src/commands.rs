@@ -90,6 +90,7 @@ const MATERIAL_DENSITY_G_CM3: &[(&str, f64)] = &[
     ("nylon", 1.14),
 ];
 const DEFAULT_DENSITY_G_CM3: f64 = 1.24;
+const MAX_CUSTOM_IMAGE_BYTES: usize = 5 * 1024 * 1024; // 5 MB
 
 pub(crate) fn estimate_weight_g(volume_cm3: Option<f64>, material_name: Option<&str>) -> Option<f64> {
     let volume = volume_cm3?;
@@ -390,6 +391,13 @@ pub async fn upload_custom_image(
     };
     let path = picked.into_path().map_err(|e| e.to_string())?;
     let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    if bytes.len() > MAX_CUSTOM_IMAGE_BYTES {
+        return Err(format!(
+            "Bild ist zu groß ({:.1} MB) - maximal {} MB erlaubt",
+            bytes.len() as f64 / (1024.0 * 1024.0),
+            MAX_CUSTOM_IMAGE_BYTES / (1024 * 1024)
+        ));
+    }
 
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
