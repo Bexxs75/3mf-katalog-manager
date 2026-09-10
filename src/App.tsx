@@ -201,7 +201,16 @@ export default function App() {
       });
   }, [models, activeFolderId, activeTag, activeCreator, query, sort]);
 
+  const queue = useMemo(
+    () =>
+      models
+        .filter((m) => m.queuePosition !== null)
+        .sort((a, b) => (a.queuePosition ?? 0) - (b.queuePosition ?? 0)),
+    [models],
+  );
+
   const selected = models.find((m) => m.id === selectedId) ?? null;
+  const contextModel = contextMenu ? models.find((m) => m.id === contextMenu.modelId) ?? null : null;
 
   const setLocalTags = (id: string, next: string[]) => {
     setModels((prev) => prev.map((m) => (m.id === id ? { ...m, tags: next } : m)));
@@ -275,9 +284,51 @@ export default function App() {
     const current = models.find((m) => m.id === id);
     if (!current) return;
     const next = current.printStatus === 'printed' ? 'not_printed' : 'printed';
-    setModels((prev) => prev.map((m) => (m.id === id ? { ...m, printStatus: next } : m)));
+    setModels((prev) =>
+      prev.map((m) =>
+        m.id === id
+          ? { ...m, printStatus: next, queuePosition: next === 'printed' ? null : m.queuePosition }
+          : m,
+      ),
+    );
     invoke('set_print_status', { fileId: id, status: next }).catch((e) => {
       console.error('[print-status] Aktualisieren fehlgeschlagen:', e);
+    });
+  };
+
+  const addToQueue = (id: string) => {
+    invoke<number>('add_to_queue', { fileId: id })
+      .then((position) => {
+        setModels((prev) => prev.map((m) => (m.id === id ? { ...m, queuePosition: position } : m)));
+      })
+      .catch((e) => console.error('[queue] Hinzufügen fehlgeschlagen:', e));
+  };
+
+  const removeFromQueue = (id: string) => {
+    setModels((prev) => prev.map((m) => (m.id === id ? { ...m, queuePosition: null } : m)));
+    invoke('remove_from_queue', { fileId: id }).catch((e) => {
+      console.error('[queue] Entfernen fehlgeschlagen:', e);
+    });
+  };
+
+  const reorderQueue = (orderedIds: string[]) => {
+    const updates: { fileId: string; position: number }[] = [];
+    orderedIds.forEach((id, index) => {
+      const position = index + 1;
+      const current = models.find((m) => m.id === id);
+      if (current && current.queuePosition !== position) {
+        updates.push({ fileId: id, position });
+      }
+    });
+    if (updates.length === 0) return;
+    setModels((prev) =>
+      prev.map((m) => {
+        const index = orderedIds.indexOf(m.id);
+        return index === -1 ? m : { ...m, queuePosition: index + 1 };
+      }),
+    );
+    invoke('reorder_queue', { updates }).catch((e) => {
+      console.error('[queue] Neusortierung fehlgeschlagen:', e);
     });
   };
 
@@ -340,6 +391,10 @@ export default function App() {
           <Sidebar
             query={query}
             onQueryChange={setQuery}
+            queue={queue}
+            onQueueReorder={reorderQueue}
+            onQueueRemove={removeFromQueue}
+            onQueueSelect={selectModel}
             folders={folders}
             activeFolderId={activeFolderId}
             onFolderSelect={setActiveFolderId}
@@ -414,6 +469,9 @@ export default function App() {
             onRemoveTag={(t) => selected && removeTag(selected.id, t)}
             onDelete={() => selected && deleteModel(selected.id)}
             onTogglePrintStatus={() => selected && togglePrintStatus(selected.id)}
+            onToggleQueue={() =>
+              selected && (selected.queuePosition !== null ? removeFromQueue(selected.id) : addToQueue(selected.id))
+            }
             onUploadImage={() => selected && uploadCustomImage(selected.id)}
             onSnapshotCaptured={(base64) => selected && captureRenderSnapshot(selected.id, base64)}
             onSetSourceUrl={(fileId, url) => setModelSourceUrl(fileId, url)}
@@ -430,13 +488,17 @@ export default function App() {
         <FilamentView />
       )}
 
-      {contextMenu && (
+      {contextMenu && contextModel && (
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
           onClose={() => setContextMenu(null)}
           onOpenInSlicer={() => openInSlicer(contextMenu.modelId)}
           onDelete={() => deleteModel(contextMenu.modelId)}
+          inQueue={contextModel.queuePosition !== null}
+          onToggleQueue={() =>
+            contextModel.queuePosition !== null ? removeFromQueue(contextModel.id) : addToQueue(contextModel.id)
+          }
         />
       )}
 

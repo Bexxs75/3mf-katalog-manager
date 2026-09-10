@@ -41,6 +41,7 @@ pub struct ModelFileDto {
     pub creator: Option<String>,
     pub display_image: Option<String>,
     pub source_url: Option<String>,
+    pub queue_position: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -161,6 +162,7 @@ pub(crate) fn to_dto(file: FileRecord) -> ModelFileDto {
         creator: file.creator,
         display_image,
         source_url: file.source_url,
+        queue_position: file.queue_position,
     }
 }
 
@@ -371,6 +373,39 @@ pub fn mark_file_viewed(state: State<AppState>, file_id: String) -> CmdResult<()
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
     db::mark_file_viewed(&conn, id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn add_to_queue(state: State<AppState>, file_id: String) -> CmdResult<i64> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let conn = lock_db(&state)?;
+    let next = db::max_queue_position(&conn).map_err(|e| e.to_string())?.unwrap_or(0) + 1;
+    db::set_queue_position(&conn, id, Some(next)).map_err(|e| e.to_string())?;
+    Ok(next)
+}
+
+#[tauri::command]
+pub fn remove_from_queue(state: State<AppState>, file_id: String) -> CmdResult<()> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let conn = lock_db(&state)?;
+    db::set_queue_position(&conn, id, None).map_err(|e| e.to_string())
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueuePositionUpdate {
+    pub file_id: String,
+    pub position: i64,
+}
+
+#[tauri::command]
+pub fn reorder_queue(state: State<AppState>, updates: Vec<QueuePositionUpdate>) -> CmdResult<()> {
+    let conn = lock_db(&state)?;
+    for update in updates {
+        let id: i64 = update.file_id.parse().map_err(|_| "invalid file id".to_string())?;
+        db::set_queue_position(&conn, id, Some(update.position)).map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 #[tauri::command]

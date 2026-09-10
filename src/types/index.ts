@@ -22,6 +22,7 @@ export interface ModelFile {
   creator: string | null;
   displayImage: string | null;
   sourceUrl: string | null;
+  queuePosition: number | null;
 }
 
 export interface Folder {

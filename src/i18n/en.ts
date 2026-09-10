@@ -123,4 +123,11 @@ export const en: Translations = {
 
   metaSourceUrl: 'Source',
   sourceUrlPlaceholder: 'https://…',
+
+  queueHeading: 'Print Queue',
+  queueEmptyState: 'No models in the queue',
+  inQueueLabel: 'In queue',
+  notInQueueLabel: 'Not in queue',
+  addToQueue: 'Add to queue',
+  removeFromQueue: 'Remove from queue',
 };

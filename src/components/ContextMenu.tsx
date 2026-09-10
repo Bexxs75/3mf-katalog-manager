@@ -7,9 +7,11 @@ interface Props {
   onClose: () => void;
   onOpenInSlicer: () => void;
   onDelete: () => void;
+  inQueue: boolean;
+  onToggleQueue: () => void;
 }
 
-export function ContextMenu({ x, y, onClose, onOpenInSlicer, onDelete }: Props) {
+export function ContextMenu({ x, y, onClose, onOpenInSlicer, onDelete, inQueue, onToggleQueue }: Props) {
   const t = useT();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -66,6 +68,15 @@ export function ContextMenu({ x, y, onClose, onOpenInSlicer, onDelete }: Props) 
             className="w-full text-left px-3 py-2 text-[12.5px] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]"
           >
             {t('openInSlicer')}
+          </button>
+          <button
+            onClick={() => {
+              onToggleQueue();
+              onClose();
+            }}
+            className="w-full text-left px-3 py-2 text-[12.5px] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]"
+          >
+            {inQueue ? t('removeFromQueue') : t('addToQueue')}
           </button>
           <button
             onClick={() => setConfirmDelete(true)}

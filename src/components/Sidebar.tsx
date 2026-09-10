@@ -1,10 +1,14 @@
 import { useState } from 'react';
-import type { Folder, TagCount, CreatorCount, CloudAccount } from '../types';
+import type { Folder, TagCount, CreatorCount, CloudAccount, ModelFile } from '../types';
 import { useT } from '../i18n/LanguageContext';
 
 interface Props {
   query: string;
   onQueryChange: (q: string) => void;
+  queue: ModelFile[];
+  onQueueReorder: (orderedIds: string[]) => void;
+  onQueueRemove: (id: string) => void;
+  onQueueSelect: (id: string) => void;
   folders: Folder[];
   activeFolderId: string;
   onFolderSelect: (id: string) => void;
@@ -41,6 +45,10 @@ const providerName: Record<string, string> = {
 export function Sidebar({
   query,
   onQueryChange,
+  queue,
+  onQueueReorder,
+  onQueueRemove,
+  onQueueSelect,
   folders,
   activeFolderId,
   onFolderSelect,
@@ -59,6 +67,8 @@ export function Sidebar({
   const t = useT();
   const [tagsCollapsed, setTagsCollapsed] = useState(false);
   const [creatorsCollapsed, setCreatorsCollapsed] = useState(false);
+  const [queueCollapsed, setQueueCollapsed] = useState(false);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   return (
     <aside className="flex-none w-[242px] flex flex-col min-h-0 bg-[var(--panel)] border-r border-[var(--line)]">
@@ -92,6 +102,56 @@ export function Sidebar({
               {f.name}
             </span>
             <span className="font-mono-ui text-[11px] text-[var(--ink-3)]">{f.count}</span>
+          </div>
+        ))}
+
+        <div
+          onClick={() => setQueueCollapsed((c) => !c)}
+          className="flex items-center justify-between px-1.5 pt-[18px] pb-2 cursor-pointer"
+        >
+          <span className="font-mono-ui text-[10px] tracking-[0.12em] uppercase text-[var(--ink-3)]">
+            {t('queueHeading')}
+          </span>
+          <span className="font-mono-ui text-[9px] leading-none text-[var(--ink-3)]">
+            {queueCollapsed ? '▾' : '▴'}
+          </span>
+        </div>
+        {!queueCollapsed && queue.length === 0 && (
+          <div className="px-1.5 pb-2 font-mono-ui text-[10.5px] text-[var(--ink-3)]">
+            {t('queueEmptyState')}
+          </div>
+        )}
+        {!queueCollapsed && queue.map((model, index) => (
+          <div
+            key={model.id}
+            draggable
+            onDragStart={() => setDragIndex(index)}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => {
+              if (dragIndex === null || dragIndex === index) return;
+              const ids = queue.map((m) => m.id);
+              const [moved] = ids.splice(dragIndex, 1);
+              ids.splice(index, 0, moved);
+              onQueueReorder(ids);
+              setDragIndex(null);
+            }}
+            onDragEnd={() => setDragIndex(null)}
+            onClick={() => onQueueSelect(model.id)}
+            className="flex items-center gap-2 h-7 px-1.5 rounded-[3px] cursor-grab text-[var(--ink-2)] hover:text-[var(--ink)]"
+          >
+            <span className="font-mono-ui text-[10px] text-[var(--ink-3)] w-3.5">{index + 1}</span>
+            <span className="flex-1 text-xs overflow-hidden text-ellipsis whitespace-nowrap">
+              {model.name}
+            </span>
+            <span
+              onClick={(e) => {
+                e.stopPropagation();
+                onQueueRemove(model.id);
+              }}
+              className="font-mono-ui text-[10px] text-[var(--ink-3)] cursor-pointer hover:text-[var(--accent)]"
+            >
+              ✕
+            </span>
           </div>
         ))}
 

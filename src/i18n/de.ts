@@ -123,4 +123,11 @@ export const de: Translations = {
 
   metaSourceUrl: 'Quelle',
   sourceUrlPlaceholder: 'https://…',
+
+  queueHeading: 'Warteschlange',
+  queueEmptyState: 'Keine Modelle in der Warteschlange',
+  inQueueLabel: 'In Warteschlange',
+  notInQueueLabel: 'Nicht in Warteschlange',
+  addToQueue: 'Zur Warteschlange hinzufügen',
+  removeFromQueue: 'Aus Warteschlange entfernen',
 };
