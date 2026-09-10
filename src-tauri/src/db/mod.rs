@@ -4,7 +4,7 @@ mod repository;
 
 pub use repository::{
     add_tag_to_file, connect, delete_file, delete_filament_spool, delete_unused_tags,
-    file_exists_by_path, get_file, insert_file, insert_filament_spool, insert_folder,
+    file_exists_by_hash, file_exists_by_path, get_file, insert_file, insert_filament_spool, insert_folder,
     list_cloud_accounts, list_creator_counts, list_filament_spools, list_files, list_folders, list_tag_counts,
     mark_file_viewed, remove_tag_from_file, set_cloud_account_status, set_file_cloud_link, set_file_modified_at,
     set_file_sync_status, set_print_status, update_filament_spool, upsert_cloud_account,
@@ -113,6 +113,17 @@ mod tests {
         assert_eq!(counts.len(), 1);
         assert_eq!(counts[0].name, "Jane");
         assert_eq!(counts[0].count, 2);
+    }
+
+    #[test]
+    fn file_exists_by_hash_finds_only_matching_hash() {
+        let mut conn = connect_in_memory().expect("connect");
+        let mut file = sample_file();
+        file.content_hash = Some("hash-a".to_string());
+        insert_file(&mut conn, &file).expect("insert");
+
+        assert!(file_exists_by_hash(&conn, "hash-a").expect("query"));
+        assert!(!file_exists_by_hash(&conn, "hash-b").expect("query"));
     }
 
     #[test]

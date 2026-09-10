@@ -15,6 +15,7 @@ Plattformunabhängige Desktop-Anwendung zur Katalogisierung und Verwaltung von 3
 - **Mehrsprachige Oberfläche** — Deutsch, Englisch, Spanisch, Französisch, umschaltbar zur Laufzeit
 - **Hell-/Dunkel-Theme** mit System-Erkennung und manueller Auswahl, persistiert lokal
 - **Filament-Lager** - eigenständige Verwaltung deiner Filamentspulen (Material, Hersteller, Farbe, Durchmesser, Ursprungs-/Restgewicht, Preis), unabhängig vom Modell-Katalog
+- **Katalog-Erweiterungen** — Druckstatus-Toggle + geschätztes Gewicht (aus Volumen × Materialdichte) pro Modell, Sortierung nach "Zuletzt angesehen", NEU-Badge für kürzlich importierte Modelle, Creators-Filter (aus 3MF-Designer-Metadatum), automatische Erkennung exakter Datei-Duplikate beim Import per Inhalts-Hash
 
 ## Status
 

@@ -7,7 +7,7 @@ use crate::cloud::picker::{self, PickerMode, PickerOutcome};
 use crate::cloud::provider::StorageProvider;
 use crate::cloud::session::{get_fresh_access_token, with_gdrive_provider};
 use crate::cloud::tokens::{KeyringTokenStore, StoredTokens};
-use crate::commands::{import_one, lock_db, to_dto, AppState, ModelFileDto};
+use crate::commands::{compute_content_hash, import_one, lock_db, to_dto, AppState, ImportResultDto, ModelFileDto};
 use crate::db;
 
 type CmdResult<T> = Result<T, String>;
@@ -216,11 +216,12 @@ pub async fn import_from_cloud(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     file_ids: Vec<String>,
-) -> CmdResult<Vec<ModelFileDto>> {
+) -> CmdResult<ImportResultDto> {
     let cache_dir = app.path().app_cache_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&cache_dir).map_err(|e| e.to_string())?;
 
     let mut imported = Vec::new();
+    let mut duplicate_count = 0i64;
     for file_id in file_ids {
         let metadata = match with_gdrive_provider(&state, {
             let file_id = file_id.clone();
@@ -304,6 +305,31 @@ pub async fn import_from_cloud(
             continue;
         }
 
+        // Hash erst NACH dem Schreiben moeglich (die Bytes liegen vorher nur
+        // im RAM, nicht unter cache_path) - anders als beim lokalen Import in
+        // import_many, wo die Quelldatei schon vor dem Import existiert.
+        let content_hash = match compute_content_hash(&cache_path) {
+            Ok(h) => h,
+            Err(e) => {
+                eprintln!("[cloud-import] Hash fehlgeschlagen fuer {file_id}: {e}");
+                continue;
+            }
+        };
+        let is_duplicate = {
+            let conn = lock_db(&state)?;
+            match db::file_exists_by_hash(&conn, &content_hash) {
+                Ok(exists) => exists,
+                Err(e) => {
+                    eprintln!("[cloud-import] Duplikatpruefung (Hash) fehlgeschlagen fuer {file_id}: {e}");
+                    continue;
+                }
+            }
+        };
+        if is_duplicate {
+            duplicate_count += 1;
+            continue;
+        }
+
         // Ein durchgehender Lock-Scope genuegt hier: zwischen den beiden
         // DB-Aufrufen liegt kein .await, daher kein Konflikt mit der
         // "nie ueber .await halten"-Regel aus den Global Constraints.
@@ -315,7 +341,7 @@ pub async fn import_from_cloud(
                 "gdrive",
                 Some(file_id.clone()),
                 Some(&metadata.name),
-                None,
+                Some(content_hash),
             ) {
                 Ok(dto) => dto,
                 Err(e) => {
@@ -339,7 +365,7 @@ pub async fn import_from_cloud(
         imported.push(dto);
     }
 
-    Ok(imported)
+    Ok(ImportResultDto { imported, duplicate_count })
 }
 
 #[tauri::command]

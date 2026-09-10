@@ -66,6 +66,13 @@ pub struct TagCountDto {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ImportResultDto {
+    pub imported: Vec<ModelFileDto>,
+    pub duplicate_count: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreatorCountDto {
     pub label: String,
     pub count: i64,
@@ -346,6 +353,12 @@ fn is_supported_extension(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+pub(crate) fn compute_content_hash(path: &Path) -> CmdResult<String> {
+    use sha2::{Digest, Sha256};
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    Ok(format!("{:x}", Sha256::digest(&bytes)))
+}
+
 /// Recursively walks `path`, collecting every supported model file found.
 /// A plain file is included as-is if its extension matches; unreadable
 /// directories are skipped rather than failing the whole scan.
@@ -465,7 +478,7 @@ pub(crate) fn import_one(
 /// they contain, skips paths already present in the catalog, and imports the
 /// rest. A single unreadable/unparsable file is logged and skipped rather
 /// than aborting the whole batch.
-fn import_many(state: &State<AppState>, roots: Vec<PathBuf>) -> CmdResult<Vec<ModelFileDto>> {
+fn import_many(state: &State<AppState>, roots: Vec<PathBuf>) -> CmdResult<ImportResultDto> {
     let mut candidates = Vec::new();
     for root in roots {
         collect_supported_files(&root, &mut candidates);
@@ -474,6 +487,7 @@ fn import_many(state: &State<AppState>, roots: Vec<PathBuf>) -> CmdResult<Vec<Mo
     let mut conn = lock_db(state)?;
     let mut seen = HashSet::new();
     let mut imported = Vec::new();
+    let mut duplicate_count = 0i64;
 
     for path in candidates {
         let path_str = path.to_string_lossy().to_string();
@@ -489,20 +503,39 @@ fn import_many(state: &State<AppState>, roots: Vec<PathBuf>) -> CmdResult<Vec<Mo
             }
         }
 
-        match import_one(&mut conn, &path, "local", None, None, None) {
+        let content_hash = match compute_content_hash(&path) {
+            Ok(h) => h,
+            Err(e) => {
+                eprintln!("[import] Hash fehlgeschlagen für {path_str}: {e}");
+                continue;
+            }
+        };
+        match db::file_exists_by_hash(&conn, &content_hash) {
+            Ok(true) => {
+                duplicate_count += 1;
+                continue;
+            }
+            Ok(false) => {}
+            Err(e) => {
+                eprintln!("[import] Duplikatprüfung (Hash) fehlgeschlagen für {path_str}: {e}");
+                continue;
+            }
+        }
+
+        match import_one(&mut conn, &path, "local", None, None, Some(content_hash)) {
             Ok(dto) => imported.push(dto),
             Err(e) => eprintln!("[import] Import fehlgeschlagen für {path_str}: {e}"),
         }
     }
 
-    Ok(imported)
+    Ok(ImportResultDto { imported, duplicate_count })
 }
 
 #[tauri::command]
 pub async fn import_files(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
-) -> CmdResult<Vec<ModelFileDto>> {
+) -> CmdResult<ImportResultDto> {
     let picked = app
         .dialog()
         .file()
@@ -510,7 +543,7 @@ pub async fn import_files(
         .blocking_pick_files();
 
     let Some(picked) = picked else {
-        return Ok(Vec::new());
+        return Ok(ImportResultDto { imported: Vec::new(), duplicate_count: 0 });
     };
     let paths = picked
         .into_iter()
@@ -523,18 +556,18 @@ pub async fn import_files(
 pub async fn import_folder(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
-) -> CmdResult<Vec<ModelFileDto>> {
+) -> CmdResult<ImportResultDto> {
     let picked = app.dialog().file().blocking_pick_folder();
 
     let Some(picked) = picked else {
-        return Ok(Vec::new());
+        return Ok(ImportResultDto { imported: Vec::new(), duplicate_count: 0 });
     };
     let path = picked.into_path().map_err(|e| e.to_string())?;
     import_many(&state, vec![path])
 }
 
 #[tauri::command]
-pub fn import_dropped(state: State<AppState>, paths: Vec<String>) -> CmdResult<Vec<ModelFileDto>> {
+pub fn import_dropped(state: State<AppState>, paths: Vec<String>) -> CmdResult<ImportResultDto> {
     import_many(&state, paths.into_iter().map(PathBuf::from).collect())
 }
 

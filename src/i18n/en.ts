@@ -116,4 +116,6 @@ export const en: Translations = {
   newBadge: 'NEW',
 
   creatorsHeading: 'Creators',
+
+  importSummaryText: '{imported} imported, {duplicates} duplicates skipped',
 };

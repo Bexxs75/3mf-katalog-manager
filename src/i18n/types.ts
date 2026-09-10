@@ -121,6 +121,8 @@ export interface Translations {
   metaWeight: string;
 
   creatorsHeading: string;
+
+  importSummaryText: string;
 }
 
 export function formatCount(forms: PluralForms, n: number): string {
