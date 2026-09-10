@@ -13,6 +13,7 @@ interface Props {
   onTogglePrintStatus: () => void;
   onUploadImage: () => void;
   onSnapshotCaptured: (base64: string) => void;
+  onSetSourceUrl: (url: string | null) => void;
   onOpenInSlicer: (slicerId?: string) => void;
   slicers: SlicerConfig[];
   slicerError: string | null;
@@ -59,6 +60,7 @@ export function DetailPanel({
   onTogglePrintStatus,
   onUploadImage,
   onSnapshotCaptured,
+  onSetSourceUrl,
   onOpenInSlicer,
   slicers,
   slicerError,
@@ -72,10 +74,13 @@ export function DetailPanel({
   const [draft, setDraft] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [slicerMenuOpen, setSlicerMenuOpen] = useState(false);
+  const [editingSourceUrl, setEditingSourceUrl] = useState(false);
+  const [sourceUrlDraft, setSourceUrlDraft] = useState('');
 
   useEffect(() => {
     setConfirmDelete(false);
     setSlicerMenuOpen(false);
+    setEditingSourceUrl(false);
   }, [model?.id]);
 
   if (!model) {
@@ -90,6 +95,17 @@ export function DetailPanel({
     const value = draft.trim().replace(/^#/, '');
     if (value) onAddTag(value);
     setDraft('');
+  };
+
+  const startEditingSourceUrl = () => {
+    setSourceUrlDraft(model.sourceUrl ?? '');
+    setEditingSourceUrl(true);
+  };
+
+  const submitSourceUrl = () => {
+    const value = sourceUrlDraft.trim();
+    onSetSourceUrl(value || null);
+    setEditingSourceUrl(false);
   };
 
   const hasSlicers = slicers.length > 0;
@@ -180,6 +196,44 @@ export function DetailPanel({
               <span className="flex-1 font-mono-ui text-xs text-right">{row.value}</span>
             </div>
           ))}
+          <div className="flex items-baseline gap-3 py-1.5 border-b border-[var(--line)]">
+            <span className="flex-none w-[108px] text-[12.5px] text-[var(--ink-2)]">
+              {t('metaSourceUrl')}
+            </span>
+            <span className="flex-1 flex items-center justify-end gap-1.5 min-w-0 font-mono-ui text-xs">
+              {editingSourceUrl ? (
+                <input
+                  value={sourceUrlDraft}
+                  onChange={(e) => setSourceUrlDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') submitSourceUrl();
+                    if (e.key === 'Escape') setEditingSourceUrl(false);
+                  }}
+                  onBlur={submitSourceUrl}
+                  autoFocus
+                  placeholder={t('sourceUrlPlaceholder')}
+                  className="flex-1 min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 font-mono-ui text-xs"
+                />
+              ) : model.sourceUrl ? (
+                <a
+                  href={model.sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-1 min-w-0 truncate text-right text-[var(--accent)] hover:underline"
+                >
+                  {model.sourceUrl}
+                </a>
+              ) : (
+                <span className="flex-1 text-right text-[var(--ink-3)]">{t('noValue')}</span>
+              )}
+              <span
+                onClick={startEditingSourceUrl}
+                className="flex-none w-4 h-4 grid place-items-center rounded-full cursor-pointer text-[10px] text-[var(--ink-3)] hover:bg-[var(--panel-2)]"
+              >
+                ✎
+              </span>
+            </span>
+          </div>
         </div>
 
         <div className="px-4 pt-[18px] pb-5">

@@ -412,6 +412,13 @@ pub fn set_render_snapshot(state: State<AppState>, file_id: String, image_base64
     db::set_render_snapshot_png(&conn, id, &bytes).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub fn set_source_url(state: State<AppState>, file_id: String, url: Option<String>) -> CmdResult<()> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let conn = lock_db(&state)?;
+    db::set_source_url(&conn, id, url.as_deref()).map_err(|e| e.to_string())
+}
+
 fn is_supported_extension(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())

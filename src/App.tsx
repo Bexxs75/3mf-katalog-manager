@@ -300,6 +300,13 @@ export default function App() {
     });
   };
 
+  const setModelSourceUrl = (id: string, url: string | null) => {
+    setModels((prev) => prev.map((m) => (m.id === id ? { ...m, sourceUrl: url } : m)));
+    invoke('set_source_url', { fileId: id, url }).catch((e) => {
+      console.error('[source-url] Speichern fehlgeschlagen:', e);
+    });
+  };
+
   return (
     <div
       className="h-screen min-h-[620px] flex flex-col bg-[var(--bg)] text-[var(--ink)] overflow-hidden"
@@ -407,6 +414,7 @@ export default function App() {
             onTogglePrintStatus={() => selected && togglePrintStatus(selected.id)}
             onUploadImage={() => selected && uploadCustomImage(selected.id)}
             onSnapshotCaptured={(base64) => selected && captureRenderSnapshot(selected.id, base64)}
+            onSetSourceUrl={(url) => selected && setModelSourceUrl(selected.id, url)}
             onOpenInSlicer={(slicerId) => selected && openInSlicer(selected.id, slicerId)}
             slicers={slicers}
             slicerError={slicerError}

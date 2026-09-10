@@ -21,6 +21,7 @@ export interface ModelFile {
   lastViewedAt: string | null;
   creator: string | null;
   displayImage: string | null;
+  sourceUrl: string | null;
 }
 
 export interface Folder {

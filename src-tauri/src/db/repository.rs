@@ -531,6 +531,14 @@ pub fn set_render_snapshot_png(conn: &Connection, file_id: i64, png: &[u8]) -> R
     Ok(())
 }
 
+pub fn set_source_url(conn: &Connection, file_id: i64, url: Option<&str>) -> Result<(), DbError> {
+    conn.execute(
+        "UPDATE files SET source_url = ?1 WHERE id = ?2",
+        params![url, file_id],
+    )?;
+    Ok(())
+}
+
 pub fn mark_file_viewed(conn: &Connection, file_id: i64) -> Result<(), DbError> {
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
