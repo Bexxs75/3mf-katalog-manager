@@ -20,15 +20,16 @@ Noch kein Release getaggt — dieser Abschnitt fasst die bisherige Entwicklung s
 - Löschfunktion für Modelle mit Bestätigungsdialog und Kontextmenü
 - Vollständige Mehrsprachigkeit (Deutsch/Englisch/Spanisch/Französisch): eigenes Context-basiertes i18n-System ohne externe Bibliothek, `Translations`-Interface erzwingt Vollständigkeit der Wörterbücher zur Compile-Zeit, Sprachumschalter im Einstellungen-Panel, Persistenz in localStorage
 - Lokalisierte Formatierung (Datum, Uhrzeit relativ, Dateigröße, Volumen, Abmessungen) über `Intl`-APIs im Frontend
-- Google-Drive-Anbindung: OAuth2-PKCE-Verbindung (Verbinden/Trennen per Klick auf die jeweilige Zeile), Token-Speicherung im OS-Schlüsselbund, Datei-Browser mit Ordner-Navigation, Import mit Duplikat-Erkennung und Sync-Status-Anzeige je Datei
+- Google-Drive-Anbindung: OAuth2-PKCE-Verbindung (Verbinden/Trennen per Klick auf die jeweilige Zeile), Token-Speicherung im OS-Schlüsselbund, Datei-/Ordnerauswahl über Googles offizielles Picker-Widget (im System-Browser), Import mit Duplikat-Erkennung und Sync-Status-Anzeige je Datei
 - Native Rust-seitige Geometrie-Extraktion für die 3D-Vorschau: ZIP-Entpacken und Mesh-Parsing (3MF inkl. Multi-Part-"Production Extension"-Dateien mit `p:path`-Referenzen, STL) laufen jetzt vollständig im Backend statt im Frontend über three.js-Loader/`DOMParser`
 - "In Slicer öffnen": Nutzer hinterlegt beliebig viele eigene Slicer-Programmpfade (statt fest codierter Einzelintegrationen für Bambu Studio, PrusaSlicer, OrcaSlicer, ...), Split-Button für Hauptauswahl/Wechsel, Kontextmenü-Eintrag für den zuletzt genutzten Slicer
-- Hochladen zu Google Drive: bisher rein lokale Dateien lassen sich über die beschriftete "↑ Hochladen"-Schaltfläche im Detailbereich zu Google Drive hochladen (multipart/related-Upload mit Name/Inhalt in einer Anfrage); ein Zielordner-Dialog (gleiche Ordner-Navigation wie beim Import) lässt den Nutzer vor dem Hochladen einen Drive-Ordner auswählen statt immer ins Wurzelverzeichnis zu laden; die Datei wird danach automatisch mit dem entstandenen Drive-Eintrag verknüpft (Herkunft/Sync-Status/Cloud-ID) und über den bestehenden Sync-Check aktuell gehalten
+- Hochladen zu Google Drive: bisher rein lokale Dateien lassen sich über die beschriftete "↑ Hochladen"-Schaltfläche im Detailbereich zu Google Drive hochladen (multipart/related-Upload mit Name/Inhalt in einer Anfrage); Googles Picker-Widget lässt den Nutzer vor dem Hochladen einen Drive-Zielordner auswählen statt immer ins Wurzelverzeichnis zu laden; die Datei wird danach automatisch mit dem entstandenen Drive-Eintrag verknüpft (Herkunft/Sync-Status/Cloud-ID) und über den bestehenden Sync-Check aktuell gehalten
 
 ### Changed
 
 - Backend liefert nur noch rohe, unformatierte Modelldaten (`ModelFileDto`); serverseitige, deutsch-only Formatierung (`format.rs`) entfernt und durch frontendseitige, sprachabhängige Formatierung ersetzt
 - Sortierung nach Datum und Dateigröße korrigiert
+- Google-Drive-OAuth-Scope `drive.readonly` entfernt, nur noch `drive.file` + `userinfo.email`: `drive.readonly` ist ein "restricted scope" und würde für die Google-Verifizierung ein kostenpflichtiges, jährlich zu wiederholendes CASA-Sicherheitsaudit erfordern, `drive.file` (nicht sensibel) nicht. Die eigenen In-App-Dialoge zum Durchstöbern des gesamten Drives (`CloudBrowserDialog`, `CloudFolderPickerDialog`) sind dafür entfallen — Datei-Import und Upload-Zielordner laufen jetzt über Googles offizielles Picker-Widget (öffnet sich im System-Browser, analog zum bestehenden OAuth-Login-Flow, da Google eingebettete WebViews auch hierfür nicht zuverlässig unterstützt)
 
 ### Fixed
 
@@ -45,8 +46,9 @@ Noch kein Release getaggt — dieser Abschnitt fasst die bisherige Entwicklung s
 
 ### Known Limitations
 
-- Cloud-Speicher: nur Google Drive implementiert (Verbinden/Trennen, Datei-Browser, Import, Upload inkl. Zielordner-Auswahl); OneDrive, Dropbox und Proton Drive sind im UI weiterhin nur als Platzhalter vorhanden. Upload deckt keinen erneuten Upload/keine Konfliktauflösung bereits verknüpfter Dateien ab
+- Cloud-Speicher: nur Google Drive implementiert (Verbinden/Trennen, Picker-basierter Import/Upload inkl. Zielordner-Auswahl); OneDrive, Dropbox und Proton Drive sind im UI weiterhin nur als Platzhalter vorhanden. Upload deckt keinen erneuten Upload/keine Konfliktauflösung bereits verknüpfter Dateien ab
 - Google-Drive-Anbindung funktioniert aktuell nur auf der Entwicklungsmaschine (OAuth-Client-Konfiguration ist lokal, App im Google-Cloud-Testmodus) — für andere Nutzer nach einem Release noch nicht nutzbar
+- `google_picker_api_key` in `cloud.config.json` muss manuell in der Google Cloud Console erzeugt werden (Picker API aktivieren, API-Key ohne HTTP-Referrer-Einschränkung anlegen) — noch nicht live gegen einen echten Key getestet
 - "In Slicer öffnen" unterstützt macOS nicht (`.app`-Bundles benötigen einen anderen Start-Mechanismus als Windows/Linux-Executables)
 - Plattformübergreifende Release-Builds (Windows `.msi`, macOS `.dmg`) sowie Code-Signing noch nicht eingerichtet — bisher nur unter Linux entwickelt und getestet
 - CI/CD-Pipeline (GitHub Actions) noch nicht eingerichtet

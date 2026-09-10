@@ -7,8 +7,6 @@ import { ModelGrid } from './components/ModelGrid';
 import { ModelList } from './components/ModelList';
 import { DetailPanel } from './components/DetailPanel';
 import { ContextMenu } from './components/ContextMenu';
-import { CloudBrowserDialog } from './components/CloudBrowserDialog';
-import { CloudFolderPickerDialog } from './components/CloudFolderPickerDialog';
 import { useTheme } from './hooks/useTheme';
 import { useSlicers } from './hooks/useSlicers';
 import type { ModelFile, Folder, TagCount, CloudAccount, Origin, ViewMode, SortKey } from './types';
@@ -17,6 +15,11 @@ interface CloudAccountDto {
   id: string;
   name: string;
   status: 'connected' | 'error' | 'disconnected';
+}
+
+interface PickerResultDto {
+  cancelled: boolean;
+  items: { id: string; name: string; isFolder: boolean }[];
 }
 
 // usedPercent/quotaLabel sind noch nicht Teil dieses Backends (echte
@@ -49,10 +52,8 @@ export default function App() {
   const [connectingCloud, setConnectingCloud] = useState(false);
   const [cloudError, setCloudError] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number } | null>(null);
-  const [cloudBrowserOpen, setCloudBrowserOpen] = useState(false);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [cloudUploadError, setCloudUploadError] = useState<string | null>(null);
-  const [folderPickerFileId, setFolderPickerFileId] = useState<string | null>(null);
 
   const refreshFolders = () => invoke<Folder[]>('list_folders').then(setFolders);
   const refreshTags = () => invoke<TagCount[]>('list_tag_counts').then(setTags);
@@ -81,12 +82,41 @@ export default function App() {
     return invoke<ModelFile[]>('import_from_cloud', { fileIds })
       .then((files) => {
         mergeImported(files);
-        setCloudBrowserOpen(false);
       })
       .catch((e) => {
         console.error('[cloud] Import aus Google Drive fehlgeschlagen:', e);
         setCloudError(String(e));
-        setCloudBrowserOpen(false);
+      });
+  };
+
+  // Datei-/Ordnerauswahl laeuft ueber Googles eigenes Picker-Widget (im
+  // System-Browser, siehe cloud::picker im Backend) statt eines eigenen
+  // In-App-Dialogs - dafuer genuegt der nicht-sensible drive.file-Scope statt
+  // des kostenpflichtige CASA-Audits erfordernden drive.readonly-Scopes.
+  const importFromCloud = () => {
+    invoke<PickerResultDto>('open_drive_picker', { mode: 'files' })
+      .then((result) => {
+        if (result.cancelled) return;
+        const fileIds = result.items.filter((i) => !i.isFolder).map((i) => i.id);
+        if (fileIds.length === 0) return;
+        return handleCloudImport(fileIds);
+      })
+      .catch((e) => {
+        console.error('[cloud] Drive-Dateiauswahl fehlgeschlagen:', e);
+        setCloudError(String(e));
+      });
+  };
+
+  const uploadWithFolderPicker = (id: string) => {
+    invoke<PickerResultDto>('open_drive_picker', { mode: 'folder' })
+      .then((result) => {
+        if (result.cancelled) return;
+        const folderId = result.items[0]?.id ?? null;
+        return uploadToCloud(id, folderId);
+      })
+      .catch((e) => {
+        console.error('[cloud] Drive-Ordnerauswahl fehlgeschlagen:', e);
+        setCloudUploadError(String(e));
       });
   };
 
@@ -228,7 +258,7 @@ export default function App() {
         onImportFiles={importFiles}
         onImportFolder={importFolder}
         cloudDriveConnected={clouds.some((c) => c.id === 'gdrive' && c.status === 'connected')}
-        onImportFromCloud={() => setCloudBrowserOpen(true)}
+        onImportFromCloud={importFromCloud}
         settingsOpen={settingsOpen}
         onSettingsOpenChange={setSettingsOpen}
         slicers={slicers}
@@ -305,7 +335,7 @@ export default function App() {
           onOpenInSlicer={(slicerId) => selected && openInSlicer(selected.id, slicerId)}
           slicers={slicers}
           slicerError={slicerError}
-          onUploadToCloud={() => selected && setFolderPickerFileId(selected.id)}
+          onUploadToCloud={() => selected && uploadWithFolderPicker(selected.id)}
           cloudUploadAvailable={clouds.some((c) => c.id === 'gdrive' && c.status === 'connected')}
           uploading={uploadingId !== null && uploadingId === selected?.id}
           cloudUploadError={cloudUploadError}
@@ -319,20 +349,6 @@ export default function App() {
           onClose={() => setContextMenu(null)}
           onOpenInSlicer={() => openInSlicer(contextMenu.modelId)}
           onDelete={() => deleteModel(contextMenu.modelId)}
-        />
-      )}
-
-      {cloudBrowserOpen && (
-        <CloudBrowserDialog onClose={() => setCloudBrowserOpen(false)} onImport={handleCloudImport} />
-      )}
-
-      {folderPickerFileId && (
-        <CloudFolderPickerDialog
-          fileName={models.find((m) => m.id === folderPickerFileId)?.name ?? ''}
-          onClose={() => setFolderPickerFileId(null)}
-          onConfirm={(folderId) =>
-            uploadToCloud(folderPickerFileId, folderId).then(() => setFolderPickerFileId(null))
-          }
         />
       )}
     </div>

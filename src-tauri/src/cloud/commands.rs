@@ -3,16 +3,24 @@ use tauri::{Manager, State};
 use crate::cloud::config::{default_config_path, load_cloud_config};
 use crate::cloud::gdrive::fetch_google_account_email;
 use crate::cloud::oauth::run_google_oauth_flow;
-use crate::cloud::provider::{CloudEntry, StorageProvider};
-use crate::cloud::session::with_gdrive_provider;
+use crate::cloud::picker::{self, PickerMode, PickerOutcome};
+use crate::cloud::provider::StorageProvider;
+use crate::cloud::session::{get_fresh_access_token, with_gdrive_provider};
 use crate::cloud::tokens::{KeyringTokenStore, StoredTokens};
 use crate::commands::{import_one, lock_db, to_dto, AppState, ModelFileDto};
 use crate::db;
 
 type CmdResult<T> = Result<T, String>;
 
+// drive.readonly wurde bewusst entfernt: als "restricted scope" verlangt es
+// Googles kostenpflichtiges, jaehrlich zu wiederholendes CASA-Sicherheitsaudit
+// fuer die OAuth-Verifizierung. drive.file (nicht sensibel, kein Audit noetig)
+// genuegt fuer Import/Upload/Sync-Check, solange die Datei-/Ordnerauswahl
+// selbst ueber Googles eigenes Picker-Widget laeuft (siehe cloud::picker) statt
+// ueber einen frei im gesamten Drive navigierenden eigenen Browser-Dialog -
+// drive.file gewaehrt nur Zugriff auf Dateien/Ordner, die der Nutzer der App
+// ueber den Picker explizit gezeigt oder die die App selbst erstellt hat.
 const GOOGLE_SCOPES: &[&str] = &[
-    "https://www.googleapis.com/auth/drive.readonly",
     "https://www.googleapis.com/auth/drive.file",
     "https://www.googleapis.com/auth/userinfo.email",
 ];
@@ -137,38 +145,58 @@ pub fn list_cloud_accounts(state: State<AppState>) -> CmdResult<Vec<CloudAccount
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CloudEntryDto {
+pub struct PickedItemDto {
     pub id: String,
     pub name: String,
     pub is_folder: bool,
-    pub modified_time: String,
-    pub size_bytes: Option<i64>,
 }
 
-impl From<CloudEntry> for CloudEntryDto {
-    fn from(e: CloudEntry) -> Self {
-        CloudEntryDto {
-            id: e.id,
-            name: e.name,
-            is_folder: e.is_folder,
-            modified_time: e.modified_time,
-            size_bytes: e.size_bytes,
-        }
-    }
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PickerResultDto {
+    pub cancelled: bool,
+    pub items: Vec<PickedItemDto>,
 }
 
+/// Zeigt Googles Picker-Widget (siehe `cloud::picker`) zur Datei- oder
+/// Ordnerauswahl an. `mode` ist `"files"` (Mehrfachauswahl fuer den Import)
+/// oder `"folder"` (Einzelauswahl als Upload-Zielordner) - jeder andere Wert
+/// faellt auf `"files"` zurueck.
 #[tauri::command]
-pub async fn browse_cloud_folder(
+pub async fn open_drive_picker(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
-    folder_id: Option<String>,
-) -> CmdResult<Vec<CloudEntryDto>> {
-    let entries = with_gdrive_provider(&state, |provider| {
-        let folder_id = folder_id.clone();
-        async move { provider.list_folder(folder_id.as_deref()).await }
-    })
-    .await?;
+    mode: String,
+) -> CmdResult<PickerResultDto> {
+    let config = load_cloud_config(&default_config_path()).map_err(|e| e.to_string())?;
+    let access_token = get_fresh_access_token(&state).await?;
 
-    Ok(entries.into_iter().map(CloudEntryDto::from).collect())
+    let picker_mode = match mode.as_str() {
+        "folder" => PickerMode::Folder,
+        _ => PickerMode::Files,
+    };
+
+    let outcome = picker::run_picker_flow(&app, &config.google_picker_api_key, &access_token, picker_mode)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(match outcome {
+        PickerOutcome::Cancelled => PickerResultDto {
+            cancelled: true,
+            items: Vec::new(),
+        },
+        PickerOutcome::Picked(items) => PickerResultDto {
+            cancelled: false,
+            items: items
+                .into_iter()
+                .map(|i| PickedItemDto {
+                    id: i.id,
+                    name: i.name,
+                    is_folder: i.is_folder,
+                })
+                .collect(),
+        },
+    })
 }
 
 /// Importiert die uebergebenen Google-Drive-Datei-IDs in den Katalog.

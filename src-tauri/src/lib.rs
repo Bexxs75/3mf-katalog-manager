@@ -51,7 +51,7 @@ pub fn run() {
             cloud::commands::connect_google_drive,
             cloud::commands::disconnect_cloud_account,
             cloud::commands::list_cloud_accounts,
-            cloud::commands::browse_cloud_folder,
+            cloud::commands::open_drive_picker,
             cloud::commands::import_from_cloud,
             cloud::commands::check_cloud_sync_status,
             cloud::commands::upload_file_to_cloud,

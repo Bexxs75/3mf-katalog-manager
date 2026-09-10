@@ -60,6 +60,42 @@ where
     }
 }
 
+/// Liefert einen garantiert frischen Access-Token fuer das verbundene
+/// Google-Drive-Konto - anders als `with_gdrive_provider` (das den
+/// gespeicherten Token optimistisch verwendet und nur bei einem
+/// Auth-Fehler reaktiv refresht) wird hier IMMER per Refresh-Token
+/// erneuert. Grund: der Token wird an die im System-Browser laufende
+/// Picker-Seite weitergereicht (siehe cloud::picker), deren Sitzung laenger
+/// offen bleiben kann als ein einzelner API-Aufruf - ein frisch geholter
+/// Token minimiert das Risiko, dass er waehrend der Auswahl ablaeuft.
+pub(crate) async fn get_fresh_access_token(state: &State<'_, AppState>) -> CmdResult<String> {
+    let account_label = {
+        let conn = lock_db(state)?;
+        let accounts = db::list_cloud_accounts(&conn).map_err(|e| e.to_string())?;
+        accounts
+            .into_iter()
+            .find(|a| a.provider == "gdrive" && a.status != "disconnected")
+            .map(|a| a.account_label)
+            .ok_or_else(|| "Kein verbundenes Google-Drive-Konto".to_string())?
+    };
+
+    let account_key = format!("gdrive:{account_label}");
+    let stored = KeyringTokenStore
+        .load_async(&account_key)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Kein Token im Schluesselbund gefunden - bitte erneut verbinden".to_string())?;
+
+    match refresh_and_store(&account_key, stored.refresh_token).await {
+        Ok(new_access_token) => Ok(new_access_token),
+        Err(e) => {
+            let conn = lock_db(state)?;
+            let _ = db::set_cloud_account_status(&conn, "gdrive", "error");
+            Err(e.to_string())
+        }
+    }
+}
+
 async fn refresh_and_store(
     account_key: &str,
     refresh_token: Option<String>,

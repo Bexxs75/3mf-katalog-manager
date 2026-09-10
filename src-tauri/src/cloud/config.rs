@@ -4,6 +4,10 @@ use std::path::Path;
 pub struct CloudConfig {
     pub google_client_id: String,
     pub google_client_secret: String,
+    /// API-Key fuer Googles Picker-Widget (separat vom OAuth-Client, ueber
+    /// die Google Cloud Console angelegt). Nur fuer den Picker-Datei-/
+    /// Ordnerauswahl-Dialog noetig, nicht fuer den OAuth-Login selbst.
+    pub google_picker_api_key: String,
 }
 
 #[derive(Debug)]
@@ -63,13 +67,14 @@ mod tests {
         let path = dir.join("cloud.config.json");
         std::fs::write(
             &path,
-            r#"{"google_client_id": "test-id", "google_client_secret": "test-secret"}"#,
+            r#"{"google_client_id": "test-id", "google_client_secret": "test-secret", "google_picker_api_key": "test-picker-key"}"#,
         )
         .expect("write config");
 
         let config = load_cloud_config(&path).expect("load");
         assert_eq!(config.google_client_id, "test-id");
         assert_eq!(config.google_client_secret, "test-secret");
+        assert_eq!(config.google_picker_api_key, "test-picker-key");
 
         std::fs::remove_dir_all(&dir).ok();
     }

@@ -91,18 +91,7 @@ export interface Translations {
   loadingPreview: string;
   previewUnavailable: string;
 
-  cloudBrowserTitle: string;
-  cloudBrowserLoading: string;
-  cloudBrowserEmpty: string;
-  cloudBrowserImportButton: string;
-  cloudBrowserError: string;
-  cloudBrowserSelectAll: string;
-  cloudBrowserImporting: string;
   importFromCloudOption: string;
-
-  cloudFolderPickerTitle: string;
-  cloudFolderPickerUploadHereButton: string;
-  cloudFolderPickerUploading: string;
 }
 
 export function formatCount(forms: PluralForms, n: number): string {
