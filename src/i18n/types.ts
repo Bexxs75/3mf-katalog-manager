@@ -71,6 +71,9 @@ export interface Translations {
   alreadyInCloudAria: string;
   connectCloudToUploadAria: string;
   cloudUploadError: string;
+  uploadButtonLabel: string;
+  uploadButtonLabelInProgress: string;
+  uploadButtonLabelDone: string;
 
   emptyStateText: string;
   dragToRotate: string;
@@ -96,6 +99,10 @@ export interface Translations {
   cloudBrowserSelectAll: string;
   cloudBrowserImporting: string;
   importFromCloudOption: string;
+
+  cloudFolderPickerTitle: string;
+  cloudFolderPickerUploadHereButton: string;
+  cloudFolderPickerUploading: string;
 }
 
 export function formatCount(forms: PluralForms, n: number): string {

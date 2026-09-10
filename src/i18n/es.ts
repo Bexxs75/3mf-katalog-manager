@@ -66,6 +66,9 @@ export const es: Translations = {
   alreadyInCloudAria: 'Ya vinculado con la nube',
   connectCloudToUploadAria: 'Conectar Google Drive para subir',
   cloudUploadError: 'Error al subir:',
+  uploadButtonLabel: 'Subir',
+  uploadButtonLabelInProgress: 'Subiendo …',
+  uploadButtonLabelDone: 'Subido',
 
   emptyStateText: 'Selecciona un modelo para ver detalles, vista previa y etiquetas.',
   dragToRotate: 'Arrastra para girar',
@@ -91,4 +94,8 @@ export const es: Translations = {
   cloudBrowserSelectAll: 'Seleccionar todo',
   cloudBrowserImporting: 'Importando …',
   importFromCloudOption: 'Importar desde Google Drive…',
+
+  cloudFolderPickerTitle: 'Elige una carpeta de destino para «{name}»',
+  cloudFolderPickerUploadHereButton: 'Subir aquí',
+  cloudFolderPickerUploading: 'Subiendo …',
 };

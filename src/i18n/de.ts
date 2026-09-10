@@ -66,6 +66,9 @@ export const de: Translations = {
   alreadyInCloudAria: 'Bereits mit der Cloud verknüpft',
   connectCloudToUploadAria: 'Google Drive verbinden, um hochzuladen',
   cloudUploadError: 'Hochladen fehlgeschlagen:',
+  uploadButtonLabel: 'Hochladen',
+  uploadButtonLabelInProgress: 'Lädt hoch …',
+  uploadButtonLabelDone: 'Hochgeladen',
 
   emptyStateText: 'Wähle ein Modell aus, um Details, Vorschau und Tags zu sehen.',
   dragToRotate: 'Ziehen zum Drehen',
@@ -91,4 +94,8 @@ export const de: Translations = {
   cloudBrowserSelectAll: 'Alle auswählen',
   cloudBrowserImporting: 'Importiere …',
   importFromCloudOption: 'Aus Google Drive importieren…',
+
+  cloudFolderPickerTitle: 'Zielordner für „{name}" wählen',
+  cloudFolderPickerUploadHereButton: 'Hier hochladen',
+  cloudFolderPickerUploading: 'Lädt hoch …',
 };

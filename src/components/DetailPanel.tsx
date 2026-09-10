@@ -94,6 +94,11 @@ export function DetailPanel({
       : !cloudUploadAvailable
         ? t('connectCloudToUploadAria')
         : t('uploadToCloudAria');
+  const uploadLabel = uploading
+    ? t('uploadButtonLabelInProgress')
+    : !canUpload
+      ? t('uploadButtonLabelDone')
+      : t('uploadButtonLabel');
 
   return (
     <aside className="flex-none w-[336px] flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]">
@@ -211,10 +216,10 @@ export function DetailPanel({
             </>
           ) : (
             <>
-              <div className="relative flex flex-1">
+              <div className="relative flex flex-1 min-w-0">
                 <button
                   onClick={() => onOpenInSlicer()}
-                  className={`flex-1 h-8 border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] ${
+                  className={`flex-1 min-w-0 h-8 px-2 truncate border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] ${
                     hasSlicers ? 'rounded-l-[3px] border-r-0' : 'rounded-[3px]'
                   }`}
                 >
@@ -251,13 +256,14 @@ export function DetailPanel({
                 disabled={uploadDisabled}
                 aria-label={uploadAria}
                 title={uploadAria}
-                className={`flex-none w-[34px] h-8 grid place-items-center rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] font-mono-ui ${
+                className={`flex-none h-8 px-2.5 flex items-center gap-1.5 whitespace-nowrap rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold ${
                   uploadDisabled
                     ? 'opacity-40 cursor-not-allowed'
                     : 'cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]'
                 }`}
               >
-                <span className={uploading ? 'inline-block animate-spin' : 'inline-block'}>↻</span>
+                <span className={`font-mono-ui ${uploading ? 'inline-block animate-spin' : 'inline-block'}`}>↑</span>
+                {uploadLabel}
               </button>
               <button
                 onClick={() => setConfirmDelete(true)}

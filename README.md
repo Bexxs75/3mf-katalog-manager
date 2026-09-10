@@ -10,7 +10,7 @@ Plattformunabhängige Desktop-Anwendung zur Katalogisierung und Verwaltung von 3
 - **3D-Live-Vorschau** — three.js-Rendering direkt aus der Mesh-Geometrie, wenn kein eingebettetes Thumbnail vorhanden ist
 - **Tag- und Ordnerverwaltung**, Suche und Filterung
 - **Import** einzelner Dateien oder ganzer Ordner per Dialog oder Drag & Drop
-- **Google-Drive-Import und -Upload** — OAuth2-Verbindung, Datei-Browser mit Ordner-Navigation, Import mit Duplikat-Erkennung und Sync-Status je Datei; bisher rein lokale Dateien lassen sich per Klick zu Google Drive hochladen
+- **Google-Drive-Import und -Upload** — OAuth2-Verbindung, Datei-Browser mit Ordner-Navigation, Import mit Duplikat-Erkennung und Sync-Status je Datei; bisher rein lokale Dateien lassen sich mit Zielordner-Auswahl zu Google Drive hochladen
 - **In Slicer öffnen** — beliebig viele selbst hinterlegte Slicer-Programme (herstellerunabhängig) direkt aus dem Katalog heraus starten (Windows/Linux)
 - **Mehrsprachige Oberfläche** — Deutsch, Englisch, Spanisch, Französisch, umschaltbar zur Laufzeit
 - **Hell-/Dunkel-Theme** mit System-Erkennung und manueller Auswahl, persistiert lokal
@@ -19,7 +19,7 @@ Plattformunabhängige Desktop-Anwendung zur Katalogisierung und Verwaltung von 3
 
 Dieses Projekt befindet sich in aktiver Entwicklung. Der lokale Katalog (Import, Parsing, Tagging, Suche, 3D-Vorschau, Mehrsprachigkeit, Theming), Google-Drive-Import/-Upload und "In Slicer öffnen" sind funktionsfähig. Folgendes ist noch **nicht** umgesetzt:
 
-- **Weitere Cloud-Anbieter** (OneDrive, Dropbox, Proton Drive): nur in der Oberfläche als Platzhalter vorbereitet, keine echte Anbindung. Der Google-Drive-Upload lädt immer ins Wurzelverzeichnis hoch (keine Ordnerauswahl) und unterstützt keinen erneuten Upload/keine Konfliktauflösung bereits verknüpfter Dateien
+- **Weitere Cloud-Anbieter** (OneDrive, Dropbox, Proton Drive): nur in der Oberfläche als Platzhalter vorbereitet, keine echte Anbindung. Der Google-Drive-Upload unterstützt keinen erneuten Upload/keine Konfliktauflösung bereits verknüpfter Dateien
 - **Google-Drive-Nutzung durch andere Nutzer nach einem Release**: OAuth-Client-Konfiguration ist aktuell nur auf der Entwicklungsmaschine hinterlegt, die App läuft im Google-Cloud-Testmodus
 - **macOS**: bisher nur unter Linux entwickelt und getestet; "In Slicer öffnen" unterstützt macOS gezielt nicht (`.app`-Bundles brauchen einen eigenen Start-Mechanismus)
 - **Plattformübergreifende Release-Builds**: Windows-/macOS-Pakete (msi/dmg) sowie Code-Signing stehen noch aus
