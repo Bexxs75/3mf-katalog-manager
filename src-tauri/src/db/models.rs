@@ -104,6 +104,7 @@ pub struct FilamentSpoolRecord {
     pub original_weight_g: i64,
     pub remaining_weight_g: i64,
     pub price: Option<f64>,
+    pub image_png: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone)]
@@ -115,4 +116,5 @@ pub struct NewFilamentSpool {
     pub original_weight_g: i64,
     pub remaining_weight_g: i64,
     pub price: Option<f64>,
+    pub image_png: Option<Vec<u8>>,
 }
