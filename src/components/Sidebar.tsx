@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { Folder, TagCount, CreatorCount, CloudAccount } from '../types';
 import { useT } from '../i18n/LanguageContext';
 
@@ -56,6 +57,8 @@ export function Sidebar({
   onDisconnectCloud,
 }: Props) {
   const t = useT();
+  const [tagsCollapsed, setTagsCollapsed] = useState(false);
+  const [creatorsCollapsed, setCreatorsCollapsed] = useState(false);
 
   return (
     <aside className="flex-none w-[242px] flex flex-col min-h-0 bg-[var(--panel)] border-r border-[var(--line)]">
@@ -92,10 +95,18 @@ export function Sidebar({
           </div>
         ))}
 
-        <div className="font-mono-ui text-[10px] tracking-[0.12em] uppercase text-[var(--ink-3)] px-1.5 pt-[18px] pb-2">
-          {t('tagsHeading')}
+        <div
+          onClick={() => setTagsCollapsed((c) => !c)}
+          className="flex items-center justify-between px-1.5 pt-[18px] pb-2 cursor-pointer"
+        >
+          <span className="font-mono-ui text-[10px] tracking-[0.12em] uppercase text-[var(--ink-3)]">
+            {t('tagsHeading')}
+          </span>
+          <span className="font-mono-ui text-[9px] leading-none text-[var(--ink-3)]">
+            {tagsCollapsed ? '▾' : '▴'}
+          </span>
         </div>
-        {tags.map((tag) => (
+        {!tagsCollapsed && tags.map((tag) => (
           <div
             key={tag.label}
             onClick={() => onTagSelect(activeTag === tag.label ? null : tag.label)}
@@ -116,10 +127,18 @@ export function Sidebar({
           </div>
         ))}
 
-        <div className="font-mono-ui text-[10px] tracking-[0.12em] uppercase text-[var(--ink-3)] px-1.5 pt-[18px] pb-2">
-          {t('creatorsHeading')}
+        <div
+          onClick={() => setCreatorsCollapsed((c) => !c)}
+          className="flex items-center justify-between px-1.5 pt-[18px] pb-2 cursor-pointer"
+        >
+          <span className="font-mono-ui text-[10px] tracking-[0.12em] uppercase text-[var(--ink-3)]">
+            {t('creatorsHeading')}
+          </span>
+          <span className="font-mono-ui text-[9px] leading-none text-[var(--ink-3)]">
+            {creatorsCollapsed ? '▾' : '▴'}
+          </span>
         </div>
-        {creators.map((creator) => (
+        {!creatorsCollapsed && creators.map((creator) => (
           <div
             key={creator.label}
             onClick={() => onCreatorSelect(activeCreator === creator.label ? null : creator.label)}
