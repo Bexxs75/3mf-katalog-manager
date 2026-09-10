@@ -7,6 +7,7 @@ import { ModelGrid } from './components/ModelGrid';
 import { ModelList } from './components/ModelList';
 import { DetailPanel } from './components/DetailPanel';
 import { ContextMenu } from './components/ContextMenu';
+import { FilamentDialog } from './components/FilamentDialog';
 import { useTheme } from './hooks/useTheme';
 import { useSlicers } from './hooks/useSlicers';
 import type { ModelFile, Folder, TagCount, CloudAccount, Origin, ViewMode, SortKey } from './types';
@@ -54,6 +55,7 @@ export default function App() {
   const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number } | null>(null);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [cloudUploadError, setCloudUploadError] = useState<string | null>(null);
+  const [filamentDialogOpen, setFilamentDialogOpen] = useState(false);
 
   const refreshFolders = () => invoke<Folder[]>('list_folders').then(setFolders);
   const refreshTags = () => invoke<TagCount[]>('list_tag_counts').then(setTags);
@@ -264,6 +266,7 @@ export default function App() {
         slicers={slicers}
         onAddSlicer={addSlicer}
         onRemoveSlicer={removeSlicer}
+        onOpenFilamentCatalog={() => setFilamentDialogOpen(true)}
       />
 
       <div className="flex-1 flex min-h-0">
@@ -351,6 +354,8 @@ export default function App() {
           onDelete={() => deleteModel(contextMenu.modelId)}
         />
       )}
+
+      {filamentDialogOpen && <FilamentDialog onClose={() => setFilamentDialogOpen(false)} />}
     </div>
   );
 }
