@@ -7,7 +7,7 @@ pub use repository::{
     file_exists_by_path, get_file, insert_file, insert_filament_spool, insert_folder,
     list_cloud_accounts, list_filament_spools, list_files, list_folders, list_tag_counts,
     remove_tag_from_file, set_cloud_account_status, set_file_cloud_link, set_file_modified_at,
-    set_file_sync_status, update_filament_spool, upsert_cloud_account,
+    set_file_sync_status, set_print_status, update_filament_spool, upsert_cloud_account,
 };
 
 #[cfg(test)]
@@ -65,6 +65,16 @@ mod tests {
         assert_eq!(stored.last_viewed_at, None);
         assert_eq!(stored.creator, Some("Jane".to_string()));
         assert_eq!(stored.content_hash, Some("abc123".to_string()));
+    }
+
+    #[test]
+    fn set_print_status_updates_the_status() {
+        let mut conn = connect_in_memory().expect("connect");
+        let id = insert_file(&mut conn, &sample_file()).expect("insert");
+
+        set_print_status(&conn, id, "printed").expect("update");
+        let file = get_file(&conn, id).expect("query").expect("present");
+        assert_eq!(file.print_status, "printed");
     }
 
     #[test]

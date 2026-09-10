@@ -110,6 +110,12 @@ export interface Translations {
   filamentNavButton: string;
   filamentBackToCatalogButton: string;
   filamentUploadImageLabel: string;
+
+  printedBadge: string;
+  notPrintedLabel: string;
+  markAsPrinted: string;
+  markAsNotPrinted: string;
+  metaWeight: string;
 }
 
 export function formatCount(forms: PluralForms, n: number): string {

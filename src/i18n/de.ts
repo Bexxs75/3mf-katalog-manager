@@ -105,4 +105,10 @@ export const de: Translations = {
   filamentNavButton: 'Filament',
   filamentBackToCatalogButton: 'Katalog',
   filamentUploadImageLabel: 'Bild hochladen',
+
+  printedBadge: 'Gedruckt',
+  notPrintedLabel: 'Nicht gedruckt',
+  markAsPrinted: 'Als gedruckt markieren',
+  markAsNotPrinted: 'Als nicht gedruckt markieren',
+  metaWeight: 'Gewicht (geschätzt)',
 };

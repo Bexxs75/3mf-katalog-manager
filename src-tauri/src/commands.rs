@@ -35,6 +35,8 @@ pub struct ModelFileDto {
     pub materials: Vec<MaterialDto>,
     pub file_size_bytes: i64,
     pub imported_at: String,
+    pub print_status: String,
+    pub estimated_weight_g: Option<f64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -60,7 +62,34 @@ pub struct TagCountDto {
     pub color_hue: i64,
 }
 
+const MATERIAL_DENSITY_G_CM3: &[(&str, f64)] = &[
+    ("pla", 1.24),
+    ("petg", 1.27),
+    ("abs", 1.04),
+    ("tpu", 1.21),
+    ("asa", 1.05),
+    ("pc", 1.20),
+    ("nylon", 1.14),
+];
+const DEFAULT_DENSITY_G_CM3: f64 = 1.24;
+
+pub(crate) fn estimate_weight_g(volume_cm3: Option<f64>, material_name: Option<&str>) -> Option<f64> {
+    let volume = volume_cm3?;
+    let density = material_name
+        .and_then(|name| {
+            let lower = name.to_lowercase();
+            MATERIAL_DENSITY_G_CM3
+                .iter()
+                .find(|(key, _)| lower.contains(key))
+                .map(|(_, d)| *d)
+        })
+        .unwrap_or(DEFAULT_DENSITY_G_CM3);
+    Some(volume * density)
+}
+
 pub(crate) fn to_dto(file: FileRecord) -> ModelFileDto {
+    let estimated_weight_g =
+        estimate_weight_g(file.volume_cm3, file.materials.first().map(|m| m.name.as_str()));
     ModelFileDto {
         id: file.id.to_string(),
         name: file.name,
@@ -85,6 +114,8 @@ pub(crate) fn to_dto(file: FileRecord) -> ModelFileDto {
             .collect(),
         file_size_bytes: file.file_size_bytes,
         imported_at: file.imported_at,
+        print_status: file.print_status,
+        estimated_weight_g,
     }
 }
 
@@ -268,6 +299,13 @@ pub fn delete_file(state: State<AppState>, file_id: String) -> CmdResult<()> {
     }
 
     db::delete_file(&conn, id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_print_status(state: State<AppState>, file_id: String, status: String) -> CmdResult<()> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let conn = lock_db(&state)?;
+    db::set_print_status(&conn, id, &status).map_err(|e| e.to_string())
 }
 
 fn is_supported_extension(path: &Path) -> bool {
@@ -730,5 +768,22 @@ mod tests {
         // statt eines fragilen plattformabhaengigen Ersatzpfads.
         let result = open_in_slicer("/usr/bin/true".to_string(), "/tmp/model.3mf".to_string());
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn estimate_weight_g_uses_known_material_density() {
+        let grams = estimate_weight_g(Some(10.0), Some("Generic PLA")).expect("weight");
+        assert!((grams - 12.4).abs() < 0.001);
+    }
+
+    #[test]
+    fn estimate_weight_g_falls_back_to_default_density_for_unknown_material() {
+        let grams = estimate_weight_g(Some(10.0), Some("Mystery-Filament")).expect("weight");
+        assert!((grams - 12.4).abs() < 0.001);
+    }
+
+    #[test]
+    fn estimate_weight_g_returns_none_without_volume() {
+        assert_eq!(estimate_weight_g(None, Some("PLA")), None);
     }
 }

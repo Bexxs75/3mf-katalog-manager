@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ModelFile, SlicerConfig, SyncStatus } from '../types';
 import type { Language, Translations } from '../i18n/types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
-import { formatBytes, formatDate, formatDimensions, formatRelativeTime, formatVolumeCm3 } from '../i18n/format';
+import { formatBytes, formatDate, formatDimensions, formatRelativeTime, formatVolumeCm3, formatWeightG } from '../i18n/format';
 import { ModelViewer } from './ModelViewer';
 
 interface Props {
@@ -10,6 +10,7 @@ interface Props {
   onAddTag: (tag: string) => void;
   onRemoveTag: (tag: string) => void;
   onDelete: () => void;
+  onTogglePrintStatus: () => void;
   onOpenInSlicer: (slicerId?: string) => void;
   slicers: SlicerConfig[];
   slicerError: string | null;
@@ -34,10 +35,13 @@ function buildMetaRows(model: ModelFile, t: TFunction, language: Language): { la
       ? t('noValue')
       : model.materials.map((m) => m.name).join(', ');
   const objectCountValue = model.objectCount === null ? t('noValue') : String(model.objectCount);
+  const weightValue =
+    model.estimatedWeightG === null ? t('noValue') : `≈ ${formatWeightG(model.estimatedWeightG, language)}`;
 
   return [
     { label: t('metaDimensions'), value: formatDimensions(model.dimensionsMm, language) },
     { label: t('metaVolume'), value: formatVolumeCm3(model.volumeCm3, language) },
+    { label: t('metaWeight'), value: weightValue },
     { label: t('metaObjectCount'), value: objectCountValue },
     { label: t('metaMaterial'), value: materialsValue },
     { label: t('metaFileSize'), value: formatBytes(model.fileSizeBytes, language) },
@@ -50,6 +54,7 @@ export function DetailPanel({
   onAddTag,
   onRemoveTag,
   onDelete,
+  onTogglePrintStatus,
   onOpenInSlicer,
   slicers,
   slicerError,
@@ -132,6 +137,18 @@ export function DetailPanel({
           <span className="font-mono-ui text-[10.5px] text-[var(--ink-3)]">
             {formatRelativeTime(model.importedAt, language)}
           </span>
+        </div>
+
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--line)]">
+          <span className="flex-1 text-[12.5px] font-medium">
+            {model.printStatus === 'printed' ? t('printedBadge') : t('notPrintedLabel')}
+          </span>
+          <button
+            onClick={onTogglePrintStatus}
+            className="h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-[11.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+          >
+            {model.printStatus === 'printed' ? t('markAsNotPrinted') : t('markAsPrinted')}
+          </button>
         </div>
 
         <div className="px-4 pt-3.5 pb-1">
