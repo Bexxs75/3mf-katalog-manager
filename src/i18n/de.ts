@@ -111,4 +111,7 @@ export const de: Translations = {
   markAsPrinted: 'Als gedruckt markieren',
   markAsNotPrinted: 'Als nicht gedruckt markieren',
   metaWeight: 'Gewicht (geschätzt)',
+
+  sortLastViewed: 'Zuletzt angesehen',
+  newBadge: 'NEU',
 };

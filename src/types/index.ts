@@ -18,6 +18,7 @@ export interface ModelFile {
   importedAt: string;
   printStatus: 'not_printed' | 'printed';
   estimatedWeightG: number | null;
+  lastViewedAt: string | null;
 }
 
 export interface Folder {
@@ -42,7 +43,7 @@ export interface CloudAccount {
 }
 
 export type ViewMode = 'grid' | 'list';
-export type SortKey = 'name' | 'date' | 'size' | 'vol';
+export type SortKey = 'name' | 'date' | 'size' | 'vol' | 'viewed';
 
 export interface SlicerConfig {
   id: string;

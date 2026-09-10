@@ -48,6 +48,11 @@ export function ModelGrid({ models, selectedId, onSelect, onContextMenu }: Props
             <div className="absolute left-2 bottom-[7px] font-mono-ui text-[9px] tracking-[0.08em] uppercase text-[var(--ink-3)]">
               {t('previewLabel3d')}
             </div>
+            {Date.now() - new Date(m.importedAt).getTime() < 24 * 60 * 60 * 1000 && (
+              <div className="absolute left-[7px] top-[7px] font-mono-ui text-[9px] px-1 py-0.5 rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]">
+                {t('newBadge')}
+              </div>
+            )}
             {originAbbr[m.origin] && (
               <div className="absolute right-[7px] top-[7px] font-mono-ui text-[9px] px-1 py-0.5 rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]">
                 {originAbbr[m.origin]}

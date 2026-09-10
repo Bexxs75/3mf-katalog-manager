@@ -6,7 +6,7 @@ pub use repository::{
     add_tag_to_file, connect, delete_file, delete_filament_spool, delete_unused_tags,
     file_exists_by_path, get_file, insert_file, insert_filament_spool, insert_folder,
     list_cloud_accounts, list_filament_spools, list_files, list_folders, list_tag_counts,
-    remove_tag_from_file, set_cloud_account_status, set_file_cloud_link, set_file_modified_at,
+    mark_file_viewed, remove_tag_from_file, set_cloud_account_status, set_file_cloud_link, set_file_modified_at,
     set_file_sync_status, set_print_status, update_filament_spool, upsert_cloud_account,
 };
 
@@ -75,6 +75,18 @@ mod tests {
         set_print_status(&conn, id, "printed").expect("update");
         let file = get_file(&conn, id).expect("query").expect("present");
         assert_eq!(file.print_status, "printed");
+    }
+
+    #[test]
+    fn mark_file_viewed_sets_a_timestamp() {
+        let mut conn = connect_in_memory().expect("connect");
+        let id = insert_file(&mut conn, &sample_file()).expect("insert");
+        let before = get_file(&conn, id).expect("query").expect("present");
+        assert_eq!(before.last_viewed_at, None);
+
+        mark_file_viewed(&conn, id).expect("mark viewed");
+        let after = get_file(&conn, id).expect("query").expect("present");
+        assert!(after.last_viewed_at.is_some());
     }
 
     #[test]

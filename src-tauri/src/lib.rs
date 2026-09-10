@@ -48,6 +48,7 @@ pub fn run() {
             commands::remove_tag,
             commands::delete_file,
             commands::set_print_status,
+            commands::mark_file_viewed,
             commands::import_files,
             commands::import_folder,
             commands::import_dropped,

@@ -130,6 +130,15 @@ export default function App() {
     refreshTags();
   };
 
+  const selectModel = (id: string) => {
+    setSelectedId(id);
+    const now = new Date().toISOString();
+    setModels((prev) => prev.map((m) => (m.id === id ? { ...m, lastViewedAt: now } : m)));
+    invoke('mark_file_viewed', { fileId: id }).catch((e) => {
+      console.error('[last-viewed] Aktualisieren fehlgeschlagen:', e);
+    });
+  };
+
   useEffect(() => {
     invoke<ModelFile[]>('list_files').then((files) => {
       setModels(files);
@@ -172,6 +181,7 @@ export default function App() {
         if (sort === 'name') return a.name.localeCompare(b.name);
         if (sort === 'size') return a.fileSizeBytes - b.fileSizeBytes;
         if (sort === 'date') return b.importedAt.localeCompare(a.importedAt);
+        if (sort === 'viewed') return (b.lastViewedAt ?? '').localeCompare(a.lastViewedAt ?? '');
         return 0;
       });
   }, [models, activeFolderId, activeTag, query, sort]);
@@ -329,14 +339,14 @@ export default function App() {
                 <ModelGrid
                   models={filtered}
                   selectedId={selectedId}
-                  onSelect={setSelectedId}
+                  onSelect={selectModel}
                   onContextMenu={(id, x, y) => setContextMenu({ modelId: id, x, y })}
                 />
               ) : (
                 <ModelList
                   models={filtered}
                   selectedId={selectedId}
-                  onSelect={setSelectedId}
+                  onSelect={selectModel}
                   onContextMenu={(id, x, y) => setContextMenu({ modelId: id, x, y })}
                 />
               )}
