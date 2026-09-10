@@ -23,6 +23,7 @@ interface Props {
   slicers: SlicerConfig[];
   onAddSlicer: (name: string, path: string) => void;
   onRemoveSlicer: (id: string) => void;
+  onOpenFilamentCatalog: () => void;
 }
 
 const segBase =
@@ -54,6 +55,7 @@ export function Header({
   slicers,
   onAddSlicer,
   onRemoveSlicer,
+  onOpenFilamentCatalog,
 }: Props) {
   const t = useT();
   const { language, setLanguage } = useLanguage();
@@ -179,6 +181,15 @@ export function Header({
       <span className="shrink-0 font-mono-ui text-[11px] text-[var(--ink-3)]">
         {formatCount(t('filesCount'), count)}
       </span>
+
+      <button
+        onClick={onOpenFilamentCatalog}
+        aria-label={t('filamentCatalogAria')}
+        title={t('filamentCatalogAria')}
+        className="shrink-0 w-8 h-8 grid place-items-center rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink-2)] text-[15px] cursor-pointer hover:text-[var(--ink)] hover:border-[var(--line-strong)]"
+      >
+        ⊙
+      </button>
 
       <div className="relative shrink-0">
         <button
