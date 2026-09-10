@@ -43,6 +43,7 @@ pub fn run() {
             commands::add_filament_spool,
             commands::update_filament_spool,
             commands::delete_filament_spool,
+            commands::pick_and_read_image,
             commands::add_tag,
             commands::remove_tag,
             commands::delete_file,
