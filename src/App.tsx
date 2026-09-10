@@ -143,12 +143,13 @@ export default function App() {
   useEffect(() => {
     const unlisten = getCurrentWebview().onDragDropEvent((event) => {
       if (event.payload.type !== 'drop') return;
+      if (mainView !== 'catalog') return;
       invoke<ModelFile[]>('import_dropped', { paths: event.payload.paths }).then(mergeImported);
     });
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, []);
+  }, [mainView]);
 
   useEffect(() => {
     const model = models.find((m) => m.id === selectedId);
