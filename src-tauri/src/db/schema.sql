@@ -66,3 +66,15 @@ CREATE TABLE IF NOT EXISTS cloud_accounts (
     connected_at TEXT NOT NULL,
     UNIQUE (provider)
 );
+
+CREATE TABLE IF NOT EXISTS filament_spools (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    material TEXT NOT NULL,
+    manufacturer TEXT,
+    color TEXT,
+    diameter_mm REAL NOT NULL,
+    original_weight_g INTEGER NOT NULL,
+    remaining_weight_g INTEGER NOT NULL,
+    price REAL,
+    created_at TEXT NOT NULL
+);
