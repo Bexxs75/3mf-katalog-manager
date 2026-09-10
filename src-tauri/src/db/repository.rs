@@ -6,7 +6,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use super::error::DbError;
 use super::models::{
     CloudAccountRecord, FileRecord, FileType, FilamentSpoolRecord, FolderRecord, MaterialRecord,
-    NewFile, NewFilamentSpool, TagCount,
+    NewFile, NewFilamentSpool, TagCount, CreatorCount,
 };
 
 const SCHEMA_SQL: &str = include_str!("schema.sql");
@@ -168,6 +168,21 @@ pub fn list_tag_counts(conn: &Connection) -> Result<Vec<TagCount>, DbError> {
                 name: row.get(0)?,
                 color_hue: row.get(1)?,
                 count: row.get(2)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+pub fn list_creator_counts(conn: &Connection) -> Result<Vec<CreatorCount>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT creator, COUNT(*) FROM files WHERE creator IS NOT NULL GROUP BY creator ORDER BY creator",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(CreatorCount {
+                name: row.get(0)?,
+                count: row.get(1)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;

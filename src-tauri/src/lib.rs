@@ -39,6 +39,7 @@ pub fn run() {
             commands::list_files,
             commands::list_folders,
             commands::list_tag_counts,
+            commands::list_creators,
             commands::list_filament_spools,
             commands::add_filament_spool,
             commands::update_filament_spool,

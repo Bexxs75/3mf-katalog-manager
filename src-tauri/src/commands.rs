@@ -38,6 +38,7 @@ pub struct ModelFileDto {
     pub print_status: String,
     pub estimated_weight_g: Option<f64>,
     pub last_viewed_at: Option<String>,
+    pub creator: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -61,6 +62,13 @@ pub struct TagCountDto {
     pub label: String,
     pub count: i64,
     pub color_hue: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatorCountDto {
+    pub label: String,
+    pub count: i64,
 }
 
 const MATERIAL_DENSITY_G_CM3: &[(&str, f64)] = &[
@@ -118,6 +126,7 @@ pub(crate) fn to_dto(file: FileRecord) -> ModelFileDto {
         print_status: file.print_status,
         estimated_weight_g,
         last_viewed_at: file.last_viewed_at,
+        creator: file.creator,
     }
 }
 
@@ -169,6 +178,19 @@ pub fn list_tag_counts(state: State<AppState>) -> CmdResult<Vec<TagCountDto>> {
             label: t.name,
             count: t.count,
             color_hue: t.color_hue,
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub fn list_creators(state: State<AppState>) -> CmdResult<Vec<CreatorCountDto>> {
+    let conn = lock_db(&state)?;
+    let creators = db::list_creator_counts(&conn).map_err(|e| e.to_string())?;
+    Ok(creators
+        .into_iter()
+        .map(|c| CreatorCountDto {
+            label: c.name,
+            count: c.count,
         })
         .collect())
 }

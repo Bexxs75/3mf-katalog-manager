@@ -5,7 +5,7 @@ mod repository;
 pub use repository::{
     add_tag_to_file, connect, delete_file, delete_filament_spool, delete_unused_tags,
     file_exists_by_path, get_file, insert_file, insert_filament_spool, insert_folder,
-    list_cloud_accounts, list_filament_spools, list_files, list_folders, list_tag_counts,
+    list_cloud_accounts, list_creator_counts, list_filament_spools, list_files, list_folders, list_tag_counts,
     mark_file_viewed, remove_tag_from_file, set_cloud_account_status, set_file_cloud_link, set_file_modified_at,
     set_file_sync_status, set_print_status, update_filament_spool, upsert_cloud_account,
 };
@@ -87,6 +87,32 @@ mod tests {
         mark_file_viewed(&conn, id).expect("mark viewed");
         let after = get_file(&conn, id).expect("query").expect("present");
         assert!(after.last_viewed_at.is_some());
+    }
+
+    #[test]
+    fn list_creator_counts_groups_by_creator_and_excludes_missing() {
+        let mut conn = connect_in_memory().expect("connect");
+
+        let mut a = sample_file();
+        a.creator = Some("Jane".to_string());
+        insert_file(&mut conn, &a).expect("insert 1");
+
+        let mut b = sample_file();
+        b.name = "second.3mf".to_string();
+        b.path = "/tmp/second.3mf".to_string();
+        b.creator = Some("Jane".to_string());
+        insert_file(&mut conn, &b).expect("insert 2");
+
+        let mut c = sample_file();
+        c.name = "third.stl".to_string();
+        c.path = "/tmp/third.stl".to_string();
+        c.creator = None;
+        insert_file(&mut conn, &c).expect("insert 3");
+
+        let counts = list_creator_counts(&conn).expect("list");
+        assert_eq!(counts.len(), 1);
+        assert_eq!(counts[0].name, "Jane");
+        assert_eq!(counts[0].count, 2);
     }
 
     #[test]

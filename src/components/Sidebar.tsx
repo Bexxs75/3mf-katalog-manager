@@ -1,4 +1,4 @@
-import type { Folder, TagCount, CloudAccount } from '../types';
+import type { Folder, TagCount, CreatorCount, CloudAccount } from '../types';
 import { useT } from '../i18n/LanguageContext';
 
 interface Props {
@@ -10,6 +10,9 @@ interface Props {
   tags: TagCount[];
   activeTag: string | null;
   onTagSelect: (label: string | null) => void;
+  creators: CreatorCount[];
+  activeCreator: string | null;
+  onCreatorSelect: (label: string | null) => void;
   clouds: CloudAccount[];
   cloudError: string | null;
   onAddCloud: () => void;
@@ -43,6 +46,9 @@ export function Sidebar({
   tags,
   activeTag,
   onTagSelect,
+  creators,
+  activeCreator,
+  onCreatorSelect,
   clouds,
   cloudError,
   onAddCloud,
@@ -107,6 +113,26 @@ export function Sidebar({
               #{tag.label}
             </span>
             <span className="font-mono-ui text-[11px] text-[var(--ink-3)]">{tag.count}</span>
+          </div>
+        ))}
+
+        <div className="font-mono-ui text-[10px] tracking-[0.12em] uppercase text-[var(--ink-3)] px-1.5 pt-[18px] pb-2">
+          {t('creatorsHeading')}
+        </div>
+        {creators.map((creator) => (
+          <div
+            key={creator.label}
+            onClick={() => onCreatorSelect(activeCreator === creator.label ? null : creator.label)}
+            className={`flex items-center gap-2 h-7 px-1.5 rounded-[3px] cursor-pointer ${
+              activeCreator === creator.label
+                ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                : 'text-[var(--ink-2)] hover:text-[var(--ink)]'
+            }`}
+          >
+            <span className="flex-1 font-mono-ui text-xs overflow-hidden text-ellipsis whitespace-nowrap">
+              {creator.label}
+            </span>
+            <span className="font-mono-ui text-[11px] text-[var(--ink-3)]">{creator.count}</span>
           </div>
         ))}
       </div>
