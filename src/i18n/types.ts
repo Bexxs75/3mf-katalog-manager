@@ -107,6 +107,9 @@ export interface Translations {
   filamentSaveButton: string;
   filamentEditAria: string;
   filamentError: string;
+  filamentNavButton: string;
+  filamentBackToCatalogButton: string;
+  filamentUploadImageLabel: string;
 }
 
 export function formatCount(forms: PluralForms, n: number): string {

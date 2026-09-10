@@ -57,4 +57,5 @@ export interface FilamentSpool {
   originalWeightG: number;
   remainingWeightG: number;
   price: number | null;
+  imagePng: string | null;
 }

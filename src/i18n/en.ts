@@ -102,4 +102,7 @@ export const en: Translations = {
   filamentSaveButton: 'Save',
   filamentEditAria: 'Edit spool',
   filamentError: 'Error:',
+  filamentNavButton: 'Filament',
+  filamentBackToCatalogButton: 'Catalog',
+  filamentUploadImageLabel: 'Upload image',
 };
