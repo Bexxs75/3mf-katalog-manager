@@ -13,7 +13,7 @@ interface Props {
   onTogglePrintStatus: () => void;
   onUploadImage: () => void;
   onSnapshotCaptured: (base64: string) => void;
-  onSetSourceUrl: (url: string | null) => void;
+  onSetSourceUrl: (fileId: string, url: string | null) => void;
   onOpenInSlicer: (slicerId?: string) => void;
   slicers: SlicerConfig[];
   slicerError: string | null;
@@ -77,11 +77,13 @@ export function DetailPanel({
   const [editingSourceUrl, setEditingSourceUrl] = useState(false);
   const [sourceUrlDraft, setSourceUrlDraft] = useState('');
   const cancelingSourceUrlRef = useRef(false);
+  const editingModelIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     setConfirmDelete(false);
     setSlicerMenuOpen(false);
     setEditingSourceUrl(false);
+    cancelingSourceUrlRef.current = false;
   }, [model?.id]);
 
   if (!model) {
@@ -99,13 +101,17 @@ export function DetailPanel({
   };
 
   const startEditingSourceUrl = () => {
+    cancelingSourceUrlRef.current = false;
+    editingModelIdRef.current = model.id;
     setSourceUrlDraft(model.sourceUrl ?? '');
     setEditingSourceUrl(true);
   };
 
   const submitSourceUrl = () => {
+    const fileId = editingModelIdRef.current;
+    if (!fileId) return;
     const value = sourceUrlDraft.trim();
-    onSetSourceUrl(value || null);
+    onSetSourceUrl(fileId, value || null);
     setEditingSourceUrl(false);
   };
 
