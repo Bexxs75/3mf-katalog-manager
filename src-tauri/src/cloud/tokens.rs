@@ -25,7 +25,42 @@ pub trait TokenStore: Send + Sync {
 /// automatisiert getestet - ein Test wuerde den echten System-Schluesselbund
 /// beruehren, der in CI/Sandbox-Umgebungen nicht garantiert verfuegbar ist.
 /// Fuer Tests siehe `InMemoryTokenStore` unten.
+#[derive(Clone, Copy)]
 pub struct KeyringTokenStore;
+
+impl KeyringTokenStore {
+    /// Async-Wrapper um die synchronen `TokenStore`-Methoden: `keyring`
+    /// spricht blockierend per D-Bus mit dem Secret Service (kann auf einen
+    /// Entsperr-Dialog warten). Direkt aus einem `async fn`-Tauri-Command
+    /// aufgerufen wuerde das den Tokio-Worker-Thread blockieren und damit
+    /// andere gleichzeitig laufende Commands verzoegern - derselbe
+    /// Fehlerklasse wie das unbegrenzt blockierende `accept()` in
+    /// `oauth::wait_for_redirect`, dort bereits per `spawn_blocking` geloest.
+    pub async fn save_async(&self, account_key: &str, tokens: &StoredTokens) -> Result<(), String> {
+        let this = *self;
+        let account_key = account_key.to_string();
+        let tokens = tokens.clone();
+        tokio::task::spawn_blocking(move || this.save(&account_key, &tokens))
+            .await
+            .map_err(|e| e.to_string())?
+    }
+
+    pub async fn load_async(&self, account_key: &str) -> Result<Option<StoredTokens>, String> {
+        let this = *self;
+        let account_key = account_key.to_string();
+        tokio::task::spawn_blocking(move || this.load(&account_key))
+            .await
+            .map_err(|e| e.to_string())?
+    }
+
+    pub async fn delete_async(&self, account_key: &str) -> Result<(), String> {
+        let this = *self;
+        let account_key = account_key.to_string();
+        tokio::task::spawn_blocking(move || this.delete(&account_key))
+            .await
+            .map_err(|e| e.to_string())?
+    }
+}
 
 impl TokenStore for KeyringTokenStore {
     fn save(&self, account_key: &str, tokens: &StoredTokens) -> Result<(), String> {

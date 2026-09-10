@@ -5,7 +5,7 @@ use crate::cloud::gdrive::fetch_google_account_email;
 use crate::cloud::oauth::run_google_oauth_flow;
 use crate::cloud::provider::{CloudEntry, StorageProvider};
 use crate::cloud::session::with_gdrive_provider;
-use crate::cloud::tokens::{KeyringTokenStore, StoredTokens, TokenStore};
+use crate::cloud::tokens::{KeyringTokenStore, StoredTokens};
 use crate::commands::{import_one, lock_db, AppState, ModelFileDto};
 use crate::db;
 
@@ -63,19 +63,21 @@ pub async fn connect_google_drive(
     if let Some(old_label) = previous_label {
         if old_label != email {
             token_store
-                .delete(&format!("gdrive:{old_label}"))
+                .delete_async(&format!("gdrive:{old_label}"))
+                .await
                 .map_err(|e| e.to_string())?;
         }
     }
 
     token_store
-        .save(
+        .save_async(
             &format!("gdrive:{email}"),
             &StoredTokens {
                 access_token: tokens.access_token,
                 refresh_token: tokens.refresh_token,
             },
         )
+        .await
         .map_err(|e| e.to_string())?;
 
     let connected_at = chrono::Utc::now().to_rfc3339();
@@ -92,13 +94,13 @@ pub async fn connect_google_drive(
 }
 
 #[tauri::command]
-pub fn disconnect_cloud_account(state: State<AppState>, provider: String) -> CmdResult<()> {
+pub async fn disconnect_cloud_account(state: State<'_, AppState>, provider: String) -> CmdResult<()> {
     // Der DB-Lock wird bewusst vor dem Schluesselbund-Zugriff wieder
-    // freigegeben: `token_store.delete` macht blockierendes D-Bus-IPC zum
-    // Secret Service (kann auf einen Keyring-Entsperr-Dialog warten), und
-    // dieser Command laeuft synchron auf Tauris Main/IPC-Thread. Ein
+    // freigegeben: `token_store.delete_async` macht blockierendes D-Bus-IPC
+    // zum Secret Service (kann auf einen Keyring-Entsperr-Dialog warten), das
+    // ueber `spawn_blocking` vom Tokio-Worker-Thread ferngehalten wird. Ein
     // gehaltener MutexGuard wuerde in dieser Zeit jeden anderen Command mit
-    // DB-Zugriff blockieren.
+    // DB-Zugriff blockieren, daher bleibt der Lock-Scope trotzdem kurz.
     let account_label = {
         let conn = lock_db(&state)?;
         let accounts = db::list_cloud_accounts(&conn).map_err(|e| e.to_string())?;
@@ -111,7 +113,8 @@ pub fn disconnect_cloud_account(state: State<AppState>, provider: String) -> Cmd
 
     let token_store = KeyringTokenStore;
     token_store
-        .delete(&format!("{provider}:{account_label}"))
+        .delete_async(&format!("{provider}:{account_label}"))
+        .await
         .map_err(|e| e.to_string())?;
 
     let conn = lock_db(&state)?;
