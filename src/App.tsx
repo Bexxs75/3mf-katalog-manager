@@ -7,7 +7,7 @@ import { ModelGrid } from './components/ModelGrid';
 import { ModelList } from './components/ModelList';
 import { DetailPanel } from './components/DetailPanel';
 import { ContextMenu } from './components/ContextMenu';
-import { FilamentDialog } from './components/FilamentDialog';
+import { FilamentView } from './components/FilamentView';
 import { useTheme } from './hooks/useTheme';
 import { useSlicers } from './hooks/useSlicers';
 import type { ModelFile, Folder, TagCount, CloudAccount, Origin, ViewMode, SortKey } from './types';
@@ -55,7 +55,7 @@ export default function App() {
   const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number } | null>(null);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [cloudUploadError, setCloudUploadError] = useState<string | null>(null);
-  const [filamentDialogOpen, setFilamentDialogOpen] = useState(false);
+  const [mainView, setMainView] = useState<'catalog' | 'filament'>('catalog');
 
   const refreshFolders = () => invoke<Folder[]>('list_folders').then(setFolders);
   const refreshTags = () => invoke<TagCount[]>('list_tag_counts').then(setTags);
@@ -266,84 +266,89 @@ export default function App() {
         slicers={slicers}
         onAddSlicer={addSlicer}
         onRemoveSlicer={removeSlicer}
-        onOpenFilamentCatalog={() => setFilamentDialogOpen(true)}
+        mainView={mainView}
+        onMainViewChange={setMainView}
       />
 
-      <div className="flex-1 flex min-h-0">
-        <Sidebar
-          query={query}
-          onQueryChange={setQuery}
-          folders={folders}
-          activeFolderId={activeFolderId}
-          onFolderSelect={setActiveFolderId}
-          tags={tags}
-          activeTag={activeTag}
-          onTagSelect={setActiveTag}
-          clouds={clouds}
-          cloudError={cloudError}
-          onAddCloud={() => connectCloud('gdrive')}
-          onConnectCloud={connectCloud}
-          onDisconnectCloud={(id) => {
-            invoke('disconnect_cloud_account', { provider: id })
-              .then(() => {
-                setCloudError(null);
-                refreshClouds();
-              })
-              .catch((e) => {
-                console.error('[cloud] Trennen fehlgeschlagen:', e);
-                setCloudError(String(e));
-              });
-          }}
-        />
+      {mainView === 'catalog' ? (
+        <div className="flex-1 flex min-h-0">
+          <Sidebar
+            query={query}
+            onQueryChange={setQuery}
+            folders={folders}
+            activeFolderId={activeFolderId}
+            onFolderSelect={setActiveFolderId}
+            tags={tags}
+            activeTag={activeTag}
+            onTagSelect={setActiveTag}
+            clouds={clouds}
+            cloudError={cloudError}
+            onAddCloud={() => connectCloud('gdrive')}
+            onConnectCloud={connectCloud}
+            onDisconnectCloud={(id) => {
+              invoke('disconnect_cloud_account', { provider: id })
+                .then(() => {
+                  setCloudError(null);
+                  refreshClouds();
+                })
+                .catch((e) => {
+                  console.error('[cloud] Trennen fehlgeschlagen:', e);
+                  setCloudError(String(e));
+                });
+            }}
+          />
 
-        <main className="flex-1 min-w-0 flex flex-col min-h-0">
-          <div className="flex-none h-[38px] flex items-center gap-2.5 px-4 border-b border-[var(--line)] bg-[var(--bg)]">
-            <span className="font-mono-ui text-[11px] text-[var(--ink-2)]">
-              {folders.find((f) => f.id === activeFolderId)?.name}
-            </span>
-            {activeTag && (
-              <span
-                onClick={() => setActiveTag(null)}
-                className="flex items-center gap-1.5 h-[22px] px-2 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] font-mono-ui text-[11px] cursor-pointer"
-              >
-                #{activeTag} ✕
+          <main className="flex-1 min-w-0 flex flex-col min-h-0">
+            <div className="flex-none h-[38px] flex items-center gap-2.5 px-4 border-b border-[var(--line)] bg-[var(--bg)]">
+              <span className="font-mono-ui text-[11px] text-[var(--ink-2)]">
+                {folders.find((f) => f.id === activeFolderId)?.name}
               </span>
-            )}
-          </div>
+              {activeTag && (
+                <span
+                  onClick={() => setActiveTag(null)}
+                  className="flex items-center gap-1.5 h-[22px] px-2 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] font-mono-ui text-[11px] cursor-pointer"
+                >
+                  #{activeTag} ✕
+                </span>
+              )}
+            </div>
 
-          <div className="flex-1 overflow-y-auto p-4">
-            {view === 'grid' ? (
-              <ModelGrid
-                models={filtered}
-                selectedId={selectedId}
-                onSelect={setSelectedId}
-                onContextMenu={(id, x, y) => setContextMenu({ modelId: id, x, y })}
-              />
-            ) : (
-              <ModelList
-                models={filtered}
-                selectedId={selectedId}
-                onSelect={setSelectedId}
-                onContextMenu={(id, x, y) => setContextMenu({ modelId: id, x, y })}
-              />
-            )}
-          </div>
-        </main>
+            <div className="flex-1 overflow-y-auto p-4">
+              {view === 'grid' ? (
+                <ModelGrid
+                  models={filtered}
+                  selectedId={selectedId}
+                  onSelect={setSelectedId}
+                  onContextMenu={(id, x, y) => setContextMenu({ modelId: id, x, y })}
+                />
+              ) : (
+                <ModelList
+                  models={filtered}
+                  selectedId={selectedId}
+                  onSelect={setSelectedId}
+                  onContextMenu={(id, x, y) => setContextMenu({ modelId: id, x, y })}
+                />
+              )}
+            </div>
+          </main>
 
-        <DetailPanel
-          model={selected}
-          onAddTag={(t) => selected && addTag(selected.id, t)}
-          onRemoveTag={(t) => selected && removeTag(selected.id, t)}
-          onDelete={() => selected && deleteModel(selected.id)}
-          onOpenInSlicer={(slicerId) => selected && openInSlicer(selected.id, slicerId)}
-          slicers={slicers}
-          slicerError={slicerError}
-          onUploadToCloud={() => selected && uploadWithFolderPicker(selected.id)}
-          cloudUploadAvailable={clouds.some((c) => c.id === 'gdrive' && c.status === 'connected')}
-          uploading={uploadingId !== null && uploadingId === selected?.id}
-          cloudUploadError={cloudUploadError}
-        />
-      </div>
+          <DetailPanel
+            model={selected}
+            onAddTag={(t) => selected && addTag(selected.id, t)}
+            onRemoveTag={(t) => selected && removeTag(selected.id, t)}
+            onDelete={() => selected && deleteModel(selected.id)}
+            onOpenInSlicer={(slicerId) => selected && openInSlicer(selected.id, slicerId)}
+            slicers={slicers}
+            slicerError={slicerError}
+            onUploadToCloud={() => selected && uploadWithFolderPicker(selected.id)}
+            cloudUploadAvailable={clouds.some((c) => c.id === 'gdrive' && c.status === 'connected')}
+            uploading={uploadingId !== null && uploadingId === selected?.id}
+            cloudUploadError={cloudUploadError}
+          />
+        </div>
+      ) : (
+        <FilamentView />
+      )}
 
       {contextMenu && (
         <ContextMenu
@@ -354,8 +359,6 @@ export default function App() {
           onDelete={() => deleteModel(contextMenu.modelId)}
         />
       )}
-
-      {filamentDialogOpen && <FilamentDialog onClose={() => setFilamentDialogOpen(false)} />}
     </div>
   );
 }
