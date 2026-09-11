@@ -8,7 +8,7 @@ pub use repository::{
     insert_saved_filter, list_cloud_accounts, list_creator_counts, list_filament_spools, list_files,
     list_files_missing_content_hash, list_folders, list_saved_filters, list_tag_counts, mark_file_viewed,
     max_queue_position, remove_tag_from_file, set_cloud_account_status, set_content_hash, set_custom_image_png,
-    set_file_cloud_link, set_file_modified_at, set_file_sync_status, set_print_status, set_queue_position,
+    set_favorite, set_file_cloud_link, set_file_modified_at, set_file_sync_status, set_print_status, set_queue_position,
     set_render_snapshot_png, set_source_url, update_filament_spool, upsert_cloud_account,
 };
 
@@ -54,6 +54,7 @@ mod tests {
             custom_image_png: None,
             source_url: None,
             queue_position: None,
+            favorite: false,
         }
     }
 
@@ -81,6 +82,23 @@ mod tests {
         set_print_status(&conn, id, "printed").expect("update");
         let file = get_file(&conn, id).expect("query").expect("present");
         assert_eq!(file.print_status, "printed");
+    }
+
+    #[test]
+    fn set_favorite_toggles_the_flag() {
+        let mut conn = connect_in_memory().expect("connect");
+        let id = insert_file(&mut conn, &sample_file()).expect("insert");
+
+        let before = get_file(&conn, id).expect("query").expect("present");
+        assert_eq!(before.favorite, false);
+
+        set_favorite(&conn, id, true).expect("set favorite");
+        let after = get_file(&conn, id).expect("query").expect("present");
+        assert_eq!(after.favorite, true);
+
+        set_favorite(&conn, id, false).expect("unset favorite");
+        let reverted = get_file(&conn, id).expect("query").expect("present");
+        assert_eq!(reverted.favorite, false);
     }
 
     #[test]

@@ -42,6 +42,7 @@ pub struct ModelFileDto {
     pub display_image: Option<String>,
     pub source_url: Option<String>,
     pub queue_position: Option<i64>,
+    pub favorite: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -198,6 +199,7 @@ pub(crate) fn to_dto(file: FileRecord) -> ModelFileDto {
         display_image,
         source_url: file.source_url,
         queue_position: file.queue_position,
+        favorite: file.favorite,
     }
 }
 
@@ -401,6 +403,13 @@ pub fn set_print_status(state: State<AppState>, file_id: String, status: String)
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
     db::set_print_status(&conn, id, &status).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_favorite(state: State<AppState>, file_id: String, favorite: bool) -> CmdResult<()> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let conn = lock_db(&state)?;
+    db::set_favorite(&conn, id, favorite).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -653,6 +662,7 @@ pub(crate) fn import_one(
         custom_image_png: None,
         source_url: None,
         queue_position: None,
+        favorite: false,
     };
 
     let id = db::insert_file(conn, &new_file).map_err(|e| e.to_string())?;
@@ -1252,6 +1262,7 @@ mod tests {
             custom_image_png: None,
             source_url: None,
             queue_position: None,
+            favorite: false,
         }
     }
 

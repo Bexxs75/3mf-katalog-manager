@@ -71,6 +71,10 @@ pub(crate) fn init(conn: &Connection) -> Result<(), DbError> {
     let _ = conn.execute("ALTER TABLE files ADD COLUMN custom_image_png BLOB", []);
     let _ = conn.execute("ALTER TABLE files ADD COLUMN source_url TEXT", []);
     let _ = conn.execute("ALTER TABLE files ADD COLUMN queue_position INTEGER", []);
+    let _ = conn.execute(
+        "ALTER TABLE files ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0",
+        [],
+    );
     Ok(())
 }
 
@@ -221,8 +225,8 @@ pub fn insert_file(conn: &mut Connection, file: &NewFile) -> Result<i64, DbError
             file_size_bytes, dimension_x_mm, dimension_y_mm, dimension_z_mm,
             volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
             print_status, last_viewed_at, creator, content_hash,
-            render_snapshot_png, custom_image_png, source_url, queue_position
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
+            render_snapshot_png, custom_image_png, source_url, queue_position, favorite
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)",
         params![
             file.name,
             file.path,
@@ -248,6 +252,7 @@ pub fn insert_file(conn: &mut Connection, file: &NewFile) -> Result<i64, DbError
             file.custom_image_png,
             file.source_url,
             file.queue_position,
+            file.favorite,
         ],
     )?;
     let file_id = tx.last_insert_rowid();
@@ -322,7 +327,7 @@ pub fn get_file(conn: &Connection, id: i64) -> Result<Option<FileRecord>, DbErro
                     file_size_bytes, dimension_x_mm, dimension_y_mm, dimension_z_mm,
                     volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
                     print_status, last_viewed_at, creator, content_hash,
-                    render_snapshot_png, custom_image_png, source_url, queue_position
+                    render_snapshot_png, custom_image_png, source_url, queue_position, favorite
              FROM files WHERE id = ?1",
             params![id],
             row_to_file,
@@ -344,7 +349,7 @@ pub fn list_files(conn: &Connection) -> Result<Vec<FileRecord>, DbError> {
                 file_size_bytes, dimension_x_mm, dimension_y_mm, dimension_z_mm,
                 volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
                 print_status, last_viewed_at, creator, content_hash,
-                render_snapshot_png, custom_image_png, source_url, queue_position
+                render_snapshot_png, custom_image_png, source_url, queue_position, favorite
          FROM files ORDER BY name",
     )?;
     let mut files = stmt
@@ -396,6 +401,7 @@ fn row_to_file(row: &rusqlite::Row) -> rusqlite::Result<FileRecord> {
         custom_image_png: row.get(22)?,
         source_url: row.get(23)?,
         queue_position: row.get(24)?,
+        favorite: row.get(25)?,
     })
 }
 
@@ -496,6 +502,14 @@ pub fn set_print_status(conn: &Connection, file_id: i64, status: &str) -> Result
                 queue_position = CASE WHEN ?1 = 'printed' THEN NULL ELSE queue_position END
          WHERE id = ?2",
         params![status, file_id],
+    )?;
+    Ok(())
+}
+
+pub fn set_favorite(conn: &Connection, file_id: i64, favorite: bool) -> Result<(), DbError> {
+    conn.execute(
+        "UPDATE files SET favorite = ?1 WHERE id = ?2",
+        params![favorite, file_id],
     )?;
     Ok(())
 }

@@ -56,6 +56,7 @@ pub struct NewFile {
     pub custom_image_png: Option<Vec<u8>>,
     pub source_url: Option<String>,
     pub queue_position: Option<i64>,
+    pub favorite: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -86,6 +87,7 @@ pub struct FileRecord {
     pub custom_image_png: Option<Vec<u8>>,
     pub source_url: Option<String>,
     pub queue_position: Option<i64>,
+    pub favorite: bool,
 }
 
 #[derive(Debug, Clone)]
