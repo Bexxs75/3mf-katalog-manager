@@ -11,7 +11,7 @@ import { FilamentView } from './components/FilamentView';
 import { ImportSummaryBanner } from './components/ImportSummaryBanner';
 import { CatalogCleanupDialog } from './components/CatalogCleanupDialog';
 import { useTheme } from './hooks/useTheme';
-import { useUiDensity } from './hooks/useUiDensity';
+import { useUiDensity } from './hooks/UiDensityContext';
 import { useSlicers } from './hooks/useSlicers';
 import type { ModelFile, Folder, TagCount, CreatorCount, CloudAccount, Origin, ViewMode, SortKey, SavedFilter, CatalogIssues } from './types';
 
