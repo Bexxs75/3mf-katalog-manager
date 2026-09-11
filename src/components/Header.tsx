@@ -34,7 +34,7 @@ interface Props {
 }
 
 const segBase =
-  'h-[26px] px-3 rounded-[2px] text-[var(--font-size-control)] font-medium cursor-pointer transition-colors';
+  'h-[26px] px-3 rounded-[2px] text-[length:var(--font-size-control)] font-medium cursor-pointer transition-colors';
 const segActive = 'bg-[var(--accent)] text-[var(--accent-ink)]';
 const segInactive = 'text-[var(--ink-2)] hover:text-[var(--ink)]';
 
@@ -109,11 +109,11 @@ export function Header({
       <div className="relative flex">
         <button
           onClick={() => setImportMenuOpen((o) => !o)}
-          className="flex items-center gap-2 h-8 pl-[13px] pr-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[var(--font-size-body)] font-semibold cursor-pointer hover:brightness-110"
+          className="flex items-center gap-2 h-8 pl-[13px] pr-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[length:var(--font-size-body)] font-semibold cursor-pointer hover:brightness-110"
         >
           <span className="font-mono-ui text-sm leading-none">+</span>
           <span>{t('import')}</span>
-          <span className="text-[var(--font-size-label)] leading-none">▾</span>
+          <span className="text-[length:var(--font-size-label)] leading-none">▾</span>
         </button>
 
         {importMenuOpen && (
@@ -123,7 +123,7 @@ export function Header({
                 setImportMenuOpen(false);
                 onImportFiles();
               }}
-              className="w-full text-left px-3 py-1.5 text-[var(--font-size-body)] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
+              className="w-full text-left px-3 py-1.5 text-[length:var(--font-size-body)] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
             >
               {t('importFilesOption')}
             </button>
@@ -132,7 +132,7 @@ export function Header({
                 setImportMenuOpen(false);
                 onImportFolder();
               }}
-              className="w-full text-left px-3 py-1.5 text-[var(--font-size-body)] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
+              className="w-full text-left px-3 py-1.5 text-[length:var(--font-size-body)] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
             >
               {t('importFolderOption')}
             </button>
@@ -142,7 +142,7 @@ export function Header({
                   setImportMenuOpen(false);
                   onImportFromCloud();
                 }}
-                className="w-full text-left px-3 py-1.5 text-[var(--font-size-body)] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
+                className="w-full text-left px-3 py-1.5 text-[length:var(--font-size-body)] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
               >
                 {t('importFromCloudOption')}
               </button>
@@ -152,13 +152,13 @@ export function Header({
       </div>
 
       <div className="flex items-center gap-1.5">
-        <span className="font-mono-ui text-[var(--font-size-meta)] tracking-[0.1em] uppercase text-[var(--ink-3)]">
+        <span className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.1em] uppercase text-[var(--ink-3)]">
           {t('sortLabel')}
         </span>
         <select
           value={sort}
           onChange={(e) => onSortChange(e.target.value as SortKey)}
-          className="h-[30px] px-2 rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink)] text-[var(--font-size-body)] cursor-pointer"
+          className="h-[30px] px-2 rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink)] text-[length:var(--font-size-body)] cursor-pointer"
         >
           <option value="name">{t('sortName')}</option>
           <option value="date">{t('sortDate')}</option>
@@ -196,7 +196,7 @@ export function Header({
 
       <button
         onClick={() => onMainViewChange(mainView === 'catalog' ? 'filament' : 'catalog')}
-        className="shrink-0 h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink-2)] text-[var(--font-size-body)] font-semibold cursor-pointer hover:text-[var(--ink)] hover:border-[var(--line-strong)]"
+        className="shrink-0 h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink-2)] text-[length:var(--font-size-body)] font-semibold cursor-pointer hover:text-[var(--ink)] hover:border-[var(--line-strong)]"
       >
         {mainView === 'catalog' ? t('filamentNavButton') : t('filamentBackToCatalogButton')}
       </button>
@@ -211,10 +211,10 @@ export function Header({
 
         {settingsOpen && (
           <div className="absolute top-10 right-0 w-[268px] p-[14px] bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
-            <div className="font-mono-ui text-[var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)] mb-2.5">
+            <div className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)] mb-2.5">
               {t('settingsTitle')}
             </div>
-            <div className="text-[var(--font-size-body)] font-semibold mb-2">{t('appearanceTitle')}</div>
+            <div className="text-[length:var(--font-size-body)] font-semibold mb-2">{t('appearanceTitle')}</div>
             <div className="flex p-0.5 gap-0.5 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)]">
               {(['system', 'light', 'dark'] as ThemeSetting[]).map((opt) => (
                 <button
@@ -235,7 +235,7 @@ export function Header({
                   )}
             </div>
 
-            <div className="text-[var(--font-size-body)] font-semibold mt-4 mb-2">{t('densityTitle')}</div>
+            <div className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-2">{t('densityTitle')}</div>
             <div className="flex p-0.5 gap-0.5 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)]">
               {(['compact', 'comfort'] as UiDensity[]).map((opt) => (
                 <button
@@ -251,7 +251,7 @@ export function Header({
               {uiDensity === 'compact' ? t('densityDescriptionCompact') : t('densityDescriptionComfort')}
             </div>
 
-            <div className="text-[var(--font-size-body)] font-semibold mt-4 mb-2">{t('languageTitle')}</div>
+            <div className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-2">{t('languageTitle')}</div>
             <div className="grid grid-cols-2 gap-0.5 p-0.5 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)]">
               {(['de', 'en', 'es', 'fr'] as Language[]).map((lang) => (
                 <button
@@ -264,7 +264,7 @@ export function Header({
               ))}
             </div>
 
-            <div className="text-[var(--font-size-body)] font-semibold mt-4 mb-2">{t('slicerSectionTitle')}</div>
+            <div className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-2">{t('slicerSectionTitle')}</div>
             {slicers.length === 0 ? (
               <div className="font-mono-ui text-[10.5px] text-[var(--ink-3)]">
                 {t('noSlicersConfigured')}
@@ -274,15 +274,15 @@ export function Header({
                 {slicers.map((s) => (
                   <div key={s.id} className="flex items-center gap-2">
                     <div className="flex-1 min-w-0">
-                      <div className="text-[var(--font-size-title)] text-[var(--ink)] truncate">{s.name}</div>
-                      <div className="font-mono-ui text-[var(--font-size-meta)] text-[var(--ink-3)] truncate">
+                      <div className="text-[length:var(--font-size-title)] text-[var(--ink)] truncate">{s.name}</div>
+                      <div className="font-mono-ui text-[length:var(--font-size-meta)] text-[var(--ink-3)] truncate">
                         {s.path}
                       </div>
                     </div>
                     <span
                       onClick={() => onRemoveSlicer(s.id)}
                       aria-label={t('removeSlicerAria')}
-                      className="w-4 h-4 grid place-items-center rounded-full cursor-pointer text-[var(--font-size-meta)] text-[var(--ink-3)] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
+                      className="w-4 h-4 grid place-items-center rounded-full cursor-pointer text-[length:var(--font-size-meta)] text-[var(--ink-3)] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
                     >
                       ✕
                     </span>
@@ -303,7 +303,7 @@ export function Header({
                     }
                   }}
                   autoFocus
-                  className="flex-1 h-7 px-2 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-[var(--font-size-title)]"
+                  className="flex-1 h-7 px-2 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-[length:var(--font-size-title)]"
                 />
                 <button
                   onClick={confirmAddSlicer}
@@ -331,7 +331,7 @@ export function Header({
               </button>
             )}
 
-            <div className="text-[var(--font-size-body)] font-semibold mt-4 mb-2">{t('catalogCleanupTitle')}</div>
+            <div className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-2">{t('catalogCleanupTitle')}</div>
             <button
               onClick={onScanCatalogIssues}
               disabled={cleanupScanning}
@@ -344,7 +344,7 @@ export function Header({
               {cleanupScanning ? t('catalogCleanupScanning') : t('catalogCleanupScanButton')}
             </button>
             {cleanupError && (
-              <div className="mt-1.5 font-mono-ui text-[var(--font-size-meta)] text-[var(--accent)] break-words">
+              <div className="mt-1.5 font-mono-ui text-[length:var(--font-size-meta)] text-[var(--accent)] break-words">
                 {t('catalogCleanupError')} {cleanupError}
               </div>
             )}
