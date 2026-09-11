@@ -50,6 +50,7 @@ pub fn run() {
             commands::remove_tag,
             commands::delete_file,
             commands::set_print_status,
+            commands::set_favorite,
             commands::mark_file_viewed,
             commands::add_to_queue,
             commands::remove_from_queue,
