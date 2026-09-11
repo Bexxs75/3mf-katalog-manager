@@ -8,6 +8,18 @@ pub struct CloudConfig {
     /// die Google Cloud Console angelegt). Nur fuer den Picker-Datei-/
     /// Ordnerauswahl-Dialog noetig, nicht fuer den OAuth-Login selbst.
     pub google_picker_api_key: String,
+    /// Google-Cloud-Projektnummer (IAM & Verwaltung -> Einstellungen,
+    /// NICHT die OAuth-Client-ID). Fuer PickerBuilder.setAppId() noetig:
+    /// ohne diesen Aufruf registriert Google fuer den drive.file-Scope
+    /// keine Zugriffsfreigabe auf per Picker ausgewaehlte, nicht von dieser
+    /// App selbst erstellte Dateien - jeder spaetere files.get/download
+    /// dafuer schlaegt dann mit HTTP 404 fehl, unabhaengig von Dateianzahl
+    /// oder Dateigroesse. #[serde(default)], damit bestehende
+    /// cloud.config.json-Dateien ohne dieses Feld weiterhin laden (der
+    /// Picker faellt dann auf das bisherige, fuer Fremd-Dateien defekte
+    /// Verhalten zurueck statt beim Start zu scheitern).
+    #[serde(default)]
+    pub google_cloud_project_number: String,
 }
 
 #[derive(Debug)]

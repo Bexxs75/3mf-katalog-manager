@@ -176,7 +176,13 @@ pub async fn open_drive_picker(
         _ => PickerMode::Files,
     };
 
-    let outcome = picker::run_picker_flow(&app, &config.google_picker_api_key, &access_token, picker_mode)
+    let outcome = picker::run_picker_flow(
+        &app,
+        &config.google_picker_api_key,
+        &access_token,
+        &config.google_cloud_project_number,
+        picker_mode,
+    )
         .await
         .map_err(|e| e.to_string())?;
 
