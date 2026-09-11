@@ -4,6 +4,7 @@ import type { Language, Translations } from '../i18n/types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatBytes, formatDate, formatDimensions, formatRelativeTime, formatVolumeCm3, formatWeightG } from '../i18n/format';
 import { ModelViewer } from './ModelViewer';
+import { useUiDensity } from '../hooks/useUiDensity';
 
 interface Props {
   model: ModelFile | null;
@@ -75,6 +76,7 @@ export function DetailPanel({
 }: Props) {
   const { language } = useLanguage();
   const t = useT();
+  const { density } = useUiDensity();
   const [draft, setDraft] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [slicerMenuOpen, setSlicerMenuOpen] = useState(false);
@@ -136,7 +138,8 @@ export function DetailPanel({
       ? t('uploadButtonLabelDone')
       : t('uploadButtonLabel');
 
-  return (
+  if (density === 'compact') {
+    return (
     <aside className="flex-none w-[336px] flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]">
       <div className="flex-none px-4 pt-3.5 pb-3 border-b border-[var(--line)]">
         <div className="text-[14.5px] font-semibold leading-tight break-words">{model.name}</div>
@@ -404,6 +407,252 @@ export function DetailPanel({
             </>
           )}
         </div>
+      </div>
+    </aside>
+    );
+  }
+
+  return (
+    <aside
+      className="flex-none flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]"
+      style={{ width: '380px' }}
+    >
+      <div className="flex-1 overflow-y-auto">
+        <div className="relative aspect-[4/3] bg-[var(--plate)] overflow-hidden">
+          <div
+            className="absolute inset-0"
+            style={{
+              backgroundImage:
+                'repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 12px)',
+            }}
+          />
+          <ModelViewer
+            fileId={model.id}
+            needsSnapshot={model.displayImage === null}
+            onSnapshotCaptured={onSnapshotCaptured}
+          />
+          <button
+            onClick={onUploadImage}
+            className="absolute right-3 top-3 h-9 px-3.5 rounded-lg bg-[var(--panel)] shadow-[var(--shadow)] text-[var(--ink-2)] font-semibold cursor-pointer hover:text-[var(--accent)]"
+            style={{ fontSize: 'var(--font-size-meta)' }}
+          >
+            {t('uploadModelImageLabel')}
+          </button>
+        </div>
+
+        <div className="px-[18px] pt-4 pb-1 flex items-start justify-between gap-3">
+          <div className="font-extrabold leading-tight break-words" style={{ fontSize: 'var(--font-size-title)' }}>
+            {model.name}
+          </div>
+          <button
+            onClick={onToggleFavorite}
+            aria-label={model.favorite ? t('favoriteRemove') : t('favoriteAdd')}
+            className={`flex-none text-[19px] ${model.favorite ? 'text-[var(--accent)]' : 'text-[var(--ink-3)]'}`}
+          >
+            {model.favorite ? '♥' : '♡'}
+          </button>
+        </div>
+        <div className="px-[18px] pb-3.5 flex flex-wrap gap-1.5">
+          {model.tags.map((tag) => (
+            <span
+              key={tag}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]"
+              style={{ fontSize: 'var(--font-size-meta)' }}
+            >
+              #{tag}
+              <span
+                onClick={() => onRemoveTag(tag)}
+                className="w-4 h-4 grid place-items-center rounded-full cursor-pointer hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
+                style={{ fontSize: 'var(--font-size-label)' }}
+              >
+                ✕
+              </span>
+            </span>
+          ))}
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && submitDraft()}
+            placeholder={t('addTagPlaceholder')}
+            className="px-2.5 py-1 rounded-full border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0"
+            style={{ fontSize: 'var(--font-size-meta)' }}
+          />
+        </div>
+
+        <div className="px-[18px] pb-4 border-t border-[var(--line)] pt-3.5">
+          <div
+            className="font-bold uppercase tracking-wide text-[var(--ink-3)] mb-2.5"
+            style={{ fontSize: 'var(--font-size-label)' }}
+          >
+            {t('metadataHeading')}
+          </div>
+          {buildMetaRows(model, t, language).map((row) => (
+            <div
+              key={row.label}
+              className="flex justify-between py-2 border-b border-[var(--line)]"
+              style={{ fontSize: 'var(--font-size-body)' }}
+            >
+              <span className="text-[var(--ink-2)]">{row.label}</span>
+              <span className="font-semibold">{row.value}</span>
+            </div>
+          ))}
+          <div className="flex justify-between py-2 border-b border-[var(--line)]" style={{ fontSize: 'var(--font-size-body)' }}>
+            <span className="text-[var(--ink-2)]">{t(SYNC_KEYS[model.sync])}</span>
+            <span className="font-semibold">{formatRelativeTime(model.importedAt, language)}</span>
+          </div>
+          <div className="flex justify-between items-center gap-2 py-2" style={{ fontSize: 'var(--font-size-body)' }}>
+            <span className="text-[var(--ink-2)]">{t('metaSourceUrl')}</span>
+            {editingSourceUrl ? (
+              <input
+                value={sourceUrlDraft}
+                onChange={(e) => setSourceUrlDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') submitSourceUrl();
+                  if (e.key === 'Escape') {
+                    cancelingSourceUrlRef.current = true;
+                    setEditingSourceUrl(false);
+                  }
+                }}
+                onBlur={() => {
+                  if (cancelingSourceUrlRef.current) {
+                    cancelingSourceUrlRef.current = false;
+                    return;
+                  }
+                  submitSourceUrl();
+                }}
+                autoFocus
+                placeholder={t('sourceUrlPlaceholder')}
+                className="flex-1 min-w-0 px-2 py-1 rounded-md border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0"
+              />
+            ) : model.sourceUrl ? (
+              <a
+                href={model.sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => startEditingSourceUrl()}
+                className="flex-1 min-w-0 truncate text-right text-[var(--accent)] hover:underline"
+              >
+                {model.sourceUrl}
+              </a>
+            ) : (
+              <span onClick={startEditingSourceUrl} className="flex-1 text-right text-[var(--ink-3)] cursor-pointer">
+                {t('noValue')}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-none px-[18px] py-4 border-t border-[var(--line)] bg-[var(--panel-2)] flex flex-col gap-2">
+        {slicerError && (
+          <div className="text-[var(--accent)] break-words" style={{ fontSize: 'var(--font-size-meta)' }}>
+            {t('slicerLaunchError')} {slicerError}
+          </div>
+        )}
+        {cloudUploadError && (
+          <div className="text-[var(--accent)] break-words" style={{ fontSize: 'var(--font-size-meta)' }}>
+            {t('cloudUploadError')} {cloudUploadError}
+          </div>
+        )}
+        {confirmDelete ? (
+          <div className="flex items-center gap-2">
+            <span className="flex-1 font-medium" style={{ fontSize: 'var(--font-size-body)' }}>
+              {t('deleteConfirmQuestion')}
+            </span>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="h-10 px-4 rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] font-semibold cursor-pointer"
+              style={{ fontSize: 'var(--font-size-body)' }}
+            >
+              {t('cancel')}
+            </button>
+            <button
+              onClick={() => {
+                setConfirmDelete(false);
+                onDelete();
+              }}
+              className="h-10 px-4 rounded-lg bg-[var(--accent)] text-[var(--accent-ink)] font-semibold cursor-pointer"
+              style={{ fontSize: 'var(--font-size-body)' }}
+            >
+              {t('delete')}
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="relative flex">
+              <button
+                onClick={() => onOpenInSlicer()}
+                className={`flex-1 h-11 px-4 flex items-center gap-2.5 justify-center font-bold cursor-pointer bg-[var(--accent)] text-[var(--accent-ink)] ${
+                  hasSlicers ? 'rounded-l-lg' : 'rounded-lg'
+                }`}
+                style={{ fontSize: 'var(--font-size-body)' }}
+              >
+                🖨 {t('openInSlicer')}
+              </button>
+              {hasSlicers && (
+                <button
+                  onClick={() => setSlicerMenuOpen((o) => !o)}
+                  aria-label={t('chooseSlicerAria')}
+                  className="w-11 h-11 grid place-items-center rounded-r-lg bg-[var(--accent)] text-[var(--accent-ink)] cursor-pointer border-l border-[var(--accent-ink)]/20"
+                >
+                  ▾
+                </button>
+              )}
+              {slicerMenuOpen && (
+                <div className="absolute bottom-12 left-0 right-0 py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded-lg shadow-[var(--shadow)] z-40">
+                  {slicers.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => {
+                        setSlicerMenuOpen(false);
+                        onOpenInSlicer(s.id);
+                      }}
+                      className="w-full text-left px-4 py-2 hover:bg-[var(--panel-2)] cursor-pointer"
+                      style={{ fontSize: 'var(--font-size-body)' }}
+                    >
+                      {s.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => !uploadDisabled && onUploadToCloud()}
+              disabled={uploadDisabled}
+              aria-label={uploadAria}
+              title={uploadAria}
+              className={`h-11 px-4 flex items-center justify-center gap-2.5 rounded-lg bg-[var(--panel-2)] font-semibold ${
+                uploadDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:text-[var(--accent)]'
+              }`}
+              style={{ fontSize: 'var(--font-size-body)' }}
+            >
+              <span className={uploading ? 'inline-block animate-spin' : 'inline-block'}>☁</span>
+              {uploadLabel}
+            </button>
+            <button
+              onClick={onToggleQueue}
+              className="h-11 px-4 flex items-center justify-center gap-2.5 rounded-lg bg-[var(--panel-2)] font-semibold cursor-pointer hover:text-[var(--accent)]"
+              style={{ fontSize: 'var(--font-size-body)' }}
+            >
+              🎞 {model.queuePosition !== null ? t('removeFromQueue') : t('addToQueue')}
+            </button>
+            <button
+              onClick={onTogglePrintStatus}
+              className="h-11 px-4 flex items-center justify-center gap-2.5 rounded-lg bg-[var(--panel-2)] font-semibold cursor-pointer hover:text-[var(--accent)]"
+              style={{ fontSize: 'var(--font-size-body)' }}
+            >
+              {model.printStatus === 'printed' ? `✓ ${t('markAsNotPrinted')}` : `${t('markAsPrinted')}`}
+            </button>
+            <button
+              onClick={() => setConfirmDelete(true)}
+              aria-label={t('deleteAriaLabel')}
+              className="h-9 rounded-lg text-[var(--ink-3)] hover:text-[var(--accent)] cursor-pointer"
+              style={{ fontSize: 'var(--font-size-meta)' }}
+            >
+              {t('deleteAriaLabel')}
+            </button>
+          </>
+        )}
       </div>
     </aside>
   );
