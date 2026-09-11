@@ -126,6 +126,20 @@ export default function App() {
       });
   };
 
+  const importFolderFromCloud = () => {
+    invoke<PickerResultDto>('open_drive_picker', { mode: 'folder' })
+      .then((result) => {
+        if (result.cancelled) return;
+        const folderId = result.items[0]?.id;
+        if (!folderId) return;
+        return invoke<ImportResultDto>('import_folder_from_cloud', { folderId }).then(mergeImported);
+      })
+      .catch((e) => {
+        console.error('[cloud] Ordner-Import aus Google Drive fehlgeschlagen:', e);
+        setCloudError(String(e));
+      });
+  };
+
   const uploadWithFolderPicker = (id: string) => {
     invoke<PickerResultDto>('open_drive_picker', { mode: 'folder' })
       .then((result) => {
@@ -467,6 +481,7 @@ export default function App() {
         onImportFolder={importFolder}
         cloudDriveConnected={clouds.some((c) => c.id === 'gdrive' && c.status === 'connected')}
         onImportFromCloud={importFromCloud}
+        onImportFolderFromCloud={importFolderFromCloud}
         settingsOpen={settingsOpen}
         onSettingsOpenChange={setSettingsOpen}
         slicers={slicers}

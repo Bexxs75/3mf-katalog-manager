@@ -91,6 +91,7 @@ export const fr: Translations = {
   previewUnavailable: 'Aperçu indisponible',
 
   importFromCloudOption: 'Importer depuis Google Drive…',
+  importCloudFolderOption: 'Importer un dossier depuis Drive…',
 
   filamentCatalogAria: 'Stock de filament',
   filamentDialogTitle: 'Stock de Filament',
