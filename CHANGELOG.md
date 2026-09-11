@@ -38,6 +38,10 @@ Noch kein Release getaggt — dieser Abschnitt fasst die bisherige Entwicklung s
 - Sortierung nach Datum und Dateigröße korrigiert
 - Google-Drive-OAuth-Scope `drive.readonly` entfernt, nur noch `drive.file` + `userinfo.email`: `drive.readonly` ist ein "restricted scope" und würde für die Google-Verifizierung ein kostenpflichtiges, jährlich zu wiederholendes CASA-Sicherheitsaudit erfordern, `drive.file` (nicht sensibel) nicht. Die eigenen In-App-Dialoge zum Durchstöbern des gesamten Drives (`CloudBrowserDialog`, `CloudFolderPickerDialog`) sind dafür entfallen — Datei-Import und Upload-Zielordner laufen jetzt über Googles offizielles Picker-Widget (öffnet sich im System-Browser, analog zum bestehenden OAuth-Login-Flow, da Google eingebettete WebViews auch hierfür nicht zuverlässig unterstützt)
 
+### Security
+
+- `quick-xml` von 0.36.2 auf 0.41.0 angehoben: schließt zwei Denial-of-Service-Schwachstellen (RUSTSEC-2026-0194, RUSTSEC-2026-0195, je CVSS 7.5/Hoch — quadratische Laufzeit bei doppelten Attributnamen bzw. unbegrenzte Speicherallokation bei Namespace-Deklarationen), erreichbar über eine präparierte `.3mf`-Datei beim normalen Import. Gefunden im Security-Review vom 2026-09-11 (`docs/security/security-review-2026-09-11.md`), per `cargo audit` bestätigt behoben; alle 106 Backend-Tests weiterhin grün
+
 ### Fixed
 
 - CSS-`@import`-Reihenfolge und Rust-Abhängigkeiten fixiert

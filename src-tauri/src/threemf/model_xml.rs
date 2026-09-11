@@ -212,7 +212,7 @@ pub fn parse_model_xml(xml: &str) -> Result<ParsedModel, ThreeMfError> {
             }
             Event::Text(t) => {
                 if ctx.pending_metadata_name.is_some() {
-                    ctx.metadata_text.push_str(&t.unescape()?);
+                    ctx.metadata_text.push_str(&t.decode().map_err(quick_xml::Error::from)?);
                 }
             }
             Event::End(e) => {
