@@ -96,6 +96,7 @@ export interface Translations {
   previewUnavailable: string;
 
   importFromCloudOption: string;
+  importCloudFolderOption: string;
 
   sortLastViewed: string;
   newBadge: string;
