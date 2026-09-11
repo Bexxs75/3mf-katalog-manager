@@ -108,20 +108,11 @@ export function Header({
       <>
       <div className="relative flex">
         <button
-          onClick={() => {
-            setImportMenuOpen(false);
-            onImportFiles();
-          }}
-          className="flex items-center gap-2 h-8 pl-[13px] pr-3 rounded-l-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[var(--font-size-body)] font-semibold cursor-pointer hover:brightness-110"
+          onClick={() => setImportMenuOpen((o) => !o)}
+          className="flex items-center gap-2 h-8 pl-[13px] pr-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[var(--font-size-body)] font-semibold cursor-pointer hover:brightness-110"
         >
           <span className="font-mono-ui text-sm leading-none">+</span>
           <span>{t('import')}</span>
-        </button>
-        <button
-          onClick={() => setImportMenuOpen((o) => !o)}
-          aria-label={t('importMoreOptionsAria')}
-          className="flex items-center justify-center w-6 h-8 rounded-r-[3px] border border-l-0 border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] cursor-pointer hover:brightness-110"
-        >
           <span className="text-[var(--font-size-label)] leading-none">▾</span>
         </button>
 
