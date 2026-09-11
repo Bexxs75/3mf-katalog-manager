@@ -32,8 +32,6 @@ Noch kein Release getaggt — dieser Abschnitt fasst die bisherige Entwicklung s
 - Gespeicherte Filter: aktuelle Kombination aus Ordner/Tag/Creator/Suche/Sortierung unter einem Namen speichern, per Klick wieder anwenden, in eigener einklappbarer Sidebar-Sektion verwalten
 - Aufräum-Vorschläge: manuell auslösbarer Katalog-Scan (Einstellungen-Panel) findet verwaiste Dateipfade und Bestands-Duplikate (gleicher Inhalts-Hash, bereits im Katalog vorhanden); Ergebnis-Dialog mit Einzelauswahl, ältestes Duplikat je Gruppe bleibt vorausgewählt erhalten
 - Komfort-Ansicht als Alternative zur bestehenden kompakten Oberfläche: deutlich größere Schrift, Grafiken und Bedienelemente (Karten-Layout angelehnt an printables.com/model), umschaltbar im Einstellungen-Panel unter "Ansicht", Standard bleibt die kompakte Ansicht. Neues Favorit-Merkmal je Modell (Herz-Icon), in beiden Ansichten sichtbar
-- Import-Button in der Kopfzeile öffnet jetzt immer direkt das Dropdown-Menü (Dateien/Ordner/Cloud) statt eines Split-Buttons mit Sofort-Aktion — macht die bereits vorhandene, rekursive Ordner-Import-Option leichter auffindbar
-- Ordner-Import auch aus Google Drive: neuer Menüpunkt "Ordner aus Drive importieren...", durchsucht den per Picker gewählten Ordner rekursiv nach `.3mf`/`.stl`-Dateien (inkl. aller Unterordner) und importiert sie wie beim Einzeldatei-Import
 
 ### Changed
 
@@ -59,7 +57,6 @@ Noch kein Release getaggt — dieser Abschnitt fasst die bisherige Entwicklung s
 - Google-Drive-Konto verbinden/trennen und jeder authentifizierte Cloud-Aufruf blockierten kurzzeitig den Tokio-Worker- bzw. IPC-Dispatch-Thread durch synchrones D-Bus-IPC zum Schlüsselbund — jetzt über `spawn_blocking` entkoppelt (gleiche Fehlerklasse wie das bereits gefixte `accept()` beim OAuth-Login)
 - Aufräum-Vorschläge: eine Datei, die gleichzeitig verwaist UND Teil einer Duplikat-Gruppe war, konnte im Auswahl-Dialog als "wird behalten" markiert und trotzdem gelöscht werden (die einzige noch vorhandene Kopie ging dadurch verloren) — verwaiste Dateien werden jetzt vor der Duplikat-Gruppierung ausgeschlossen; zusätzlich brach das Löschen bei einem Dateisystemfehler die ganze Auswahl vorzeitig ab statt einzelne Fehler zu überspringen, und ein blockiertes/nicht eingehängtes Laufwerk markierte fälschlich den gesamten Katalog als verwaist statt nur wirklich fehlende Dateien
 - Warteschlange: Drag & Drop zum Neusortieren reagierte nicht — natives HTML5-Drag&Drop kollidierte unter WebKitGTK mit Tauris für den Datei-Import per OS-Drop aktivierter Fenster-Ebene-Erkennung; auf reine Maus-Events umgestellt
-- Import aus Google Drive schlug für jede ausgewählte Datei mit HTTP 404 fehl — dem Picker-Widget fehlte `setAppId()` (Google-Cloud-Projektnummer), ohne den Google für den `drive.file`-Scope keine Zugriffsfreigabe auf per Picker ausgewählte, nicht von der App selbst erstellte Dateien registriert; neues Config-Feld `google_cloud_project_number` in `cloud.config.json`
 
 ### Known Limitations
 

@@ -4,7 +4,7 @@ use crate::cloud::config::{default_config_path, load_cloud_config};
 use crate::cloud::gdrive::fetch_google_account_email;
 use crate::cloud::oauth::run_google_oauth_flow;
 use crate::cloud::picker::{self, PickerMode, PickerOutcome};
-use crate::cloud::provider::{CloudEntry, StorageProvider};
+use crate::cloud::provider::StorageProvider;
 use crate::cloud::session::{get_fresh_access_token, with_gdrive_provider};
 use crate::cloud::tokens::{KeyringTokenStore, StoredTokens};
 use crate::commands::{compute_content_hash, import_one, lock_db, to_dto, AppState, ImportResultDto, ModelFileDto};
@@ -206,11 +206,6 @@ pub async fn open_drive_picker(
 }
 
 /// Importiert die uebergebenen Google-Drive-Datei-IDs in den Katalog.
-/// Gemeinsam genutzt von `import_from_cloud` (Nutzer waehlt Dateien direkt
-/// per Picker) und `import_folder_from_cloud` (IDs kommen aus
-/// `collect_cloud_files`, das einen per Picker gewaehlten Ordner rekursiv
-/// nach Dateien durchsucht) - beide reichen ihre IDs unveraendert hier
-/// durch, damit Download/Import-Logik nur einmal existiert.
 ///
 /// Analog zu `import_many` (lokaler Import, `commands.rs`) ist diese
 /// Funktion pro Datei fehlertolerant: ein einzelner Fehlschlag (Metadaten,
@@ -222,7 +217,8 @@ pub async fn open_drive_picker(
 /// `Err` liefert und das Frontend seinen `.catch`-Pfad statt `mergeImported`
 /// nimmt (Finding 3 der Abschluss-Review). Nur der einmalige Setup-Schritt
 /// (Cache-Verzeichnis anlegen) darf den ganzen Command scheitern lassen.
-async fn import_cloud_file_ids(
+#[tauri::command]
+pub async fn import_from_cloud(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     file_ids: Vec<String>,
@@ -379,77 +375,6 @@ async fn import_cloud_file_ids(
 }
 
 #[tauri::command]
-pub async fn import_from_cloud(
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-    file_ids: Vec<String>,
-) -> CmdResult<ImportResultDto> {
-    import_cloud_file_ids(app, state, file_ids).await
-}
-
-/// Sammelt iterativ (Warteschlange statt echter Rekursion - async fn kann
-/// sich in Rust nicht ohne `Box::pin`-Indirektion selbst aufrufen) alle
-/// Datei-IDs unterhalb von `root_folder_id`, inklusive aller Unterordner.
-/// Ein fehlschlagender `list_folder`-Aufruf bricht die gesamte Sammlung ab
-/// (anders als der anschliessende Download/Import in
-/// `import_cloud_file_ids`, der bewusst pro Datei fehlertolerant bleibt):
-/// ein Teilergebnis waere hier fuer den Nutzer nicht als unvollstaendig
-/// erkennbar, ein klarer Fehler mit Wiederholungsmoeglichkeit ist die
-/// sicherere Wahl.
-async fn collect_cloud_files(state: &State<'_, AppState>, root_folder_id: &str) -> CmdResult<Vec<String>> {
-    let mut file_ids = Vec::new();
-    let mut queue: std::collections::VecDeque<String> = std::collections::VecDeque::new();
-    queue.push_back(root_folder_id.to_string());
-
-    while let Some(folder_id) = queue.pop_front() {
-        let entries = with_gdrive_provider(state, {
-            let folder_id = folder_id.clone();
-            move |provider| {
-                let folder_id = folder_id.clone();
-                async move { provider.list_folder(Some(&folder_id)).await }
-            }
-        })
-        .await?;
-
-        let (subfolder_ids, mut found_file_ids) = partition_cloud_entries(entries);
-        queue.extend(subfolder_ids);
-        file_ids.append(&mut found_file_ids);
-    }
-
-    Ok(file_ids)
-}
-
-/// Teilt eine Drive-Ordner-Auflistung in Unterordner-IDs (zum
-/// Weiterdurchsuchen in `collect_cloud_files`) und Datei-IDs (zum
-/// Importieren) auf. Eigene, von der Tauri-`State`/Auth-Infrastruktur
-/// entkoppelte Funktion, damit die Verzweigungslogik ohne Google-Konto
-/// testbar ist.
-fn partition_cloud_entries(entries: Vec<CloudEntry>) -> (Vec<String>, Vec<String>) {
-    let mut folder_ids = Vec::new();
-    let mut file_ids = Vec::new();
-    for entry in entries {
-        if entry.is_folder {
-            folder_ids.push(entry.id);
-        } else {
-            file_ids.push(entry.id);
-        }
-    }
-    (folder_ids, file_ids)
-}
-
-/// Importiert alle Dateien eines per Picker gewaehlten Google-Drive-Ordners,
-/// inklusive aller Unterordner (siehe `collect_cloud_files`).
-#[tauri::command]
-pub async fn import_folder_from_cloud(
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-    folder_id: String,
-) -> CmdResult<ImportResultDto> {
-    let file_ids = collect_cloud_files(&state, &folder_id).await?;
-    import_cloud_file_ids(app, state, file_ids).await
-}
-
-#[tauri::command]
 pub async fn check_cloud_sync_status(state: State<'_, AppState>, file_id: String) -> CmdResult<String> {
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
 
@@ -541,52 +466,4 @@ pub async fn upload_file_to_cloud(
             .ok_or_else(|| "Datei nach Upload nicht gefunden".to_string())?
     };
     Ok(to_dto(updated))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn entry(id: &str, is_folder: bool) -> CloudEntry {
-        CloudEntry {
-            id: id.to_string(),
-            name: id.to_string(),
-            is_folder,
-            modified_time: "2026-09-11T12:00:00Z".to_string(),
-            size_bytes: if is_folder { None } else { Some(1024) },
-        }
-    }
-
-    #[test]
-    fn partition_cloud_entries_splits_folders_from_files() {
-        let entries = vec![
-            entry("folder-a", true),
-            entry("file-1", false),
-            entry("folder-b", true),
-            entry("file-2", false),
-        ];
-
-        let (folder_ids, file_ids) = partition_cloud_entries(entries);
-
-        assert_eq!(folder_ids, vec!["folder-a".to_string(), "folder-b".to_string()]);
-        assert_eq!(file_ids, vec!["file-1".to_string(), "file-2".to_string()]);
-    }
-
-    #[test]
-    fn partition_cloud_entries_handles_only_files_or_only_folders() {
-        let (folder_ids, file_ids) = partition_cloud_entries(vec![entry("file-1", false)]);
-        assert!(folder_ids.is_empty());
-        assert_eq!(file_ids, vec!["file-1".to_string()]);
-
-        let (folder_ids, file_ids) = partition_cloud_entries(vec![entry("folder-a", true)]);
-        assert_eq!(folder_ids, vec!["folder-a".to_string()]);
-        assert!(file_ids.is_empty());
-    }
-
-    #[test]
-    fn partition_cloud_entries_returns_empty_for_empty_input() {
-        let (folder_ids, file_ids) = partition_cloud_entries(vec![]);
-        assert!(folder_ids.is_empty());
-        assert!(file_ids.is_empty());
-    }
 }

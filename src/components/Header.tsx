@@ -21,7 +21,6 @@ interface Props {
   onImportFolder: () => void;
   cloudDriveConnected: boolean;
   onImportFromCloud: () => void;
-  onImportFolderFromCloud: () => void;
   settingsOpen: boolean;
   onSettingsOpenChange: (open: boolean) => void;
   slicers: SlicerConfig[];
@@ -60,7 +59,6 @@ export function Header({
   onImportFolder,
   cloudDriveConnected,
   onImportFromCloud,
-  onImportFolderFromCloud,
   settingsOpen,
   onSettingsOpenChange,
   slicers,
@@ -147,17 +145,6 @@ export function Header({
                 className="w-full text-left px-3 py-1.5 text-[var(--font-size-body)] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
               >
                 {t('importFromCloudOption')}
-              </button>
-            )}
-            {cloudDriveConnected && (
-              <button
-                onClick={() => {
-                  setImportMenuOpen(false);
-                  onImportFolderFromCloud();
-                }}
-                className="w-full text-left px-3 py-1.5 text-[var(--font-size-body)] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
-              >
-                {t('importCloudFolderOption')}
               </button>
             )}
           </div>

@@ -74,7 +74,6 @@ pub fn run() {
             cloud::commands::list_cloud_accounts,
             cloud::commands::open_drive_picker,
             cloud::commands::import_from_cloud,
-            cloud::commands::import_folder_from_cloud,
             cloud::commands::check_cloud_sync_status,
             cloud::commands::upload_file_to_cloud,
         ])
