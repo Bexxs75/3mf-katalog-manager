@@ -32,6 +32,7 @@ pub async fn run_picker_flow(
     app: &tauri::AppHandle,
     api_key: &str,
     access_token: &str,
+    app_id: &str,
     mode: PickerMode,
 ) -> CloudResult<PickerOutcome> {
     let listener = TcpListener::bind("127.0.0.1:0")
@@ -41,7 +42,7 @@ pub async fn run_picker_flow(
         .map_err(|e| CloudError::Network(e.to_string()))?
         .port();
 
-    let page = render_picker_page(api_key, access_token, &mode);
+    let page = render_picker_page(api_key, access_token, app_id, &mode);
 
     app.opener()
         .open_url(format!("http://127.0.0.1:{port}/"), None::<&str>)
@@ -64,13 +65,15 @@ pub async fn run_picker_flow(
     }
 }
 
-/// Baut die lokale HTML-Seite, die Googles Picker-JS laedt. `access_token`
-/// und `api_key` werden ueber `serde_json::to_string` als JS-String-Literale
-/// eingebettet, statt sie manuell in Anfuehrungszeichen zu setzen - das
-/// escaped zuverlaessig, falls einer der Werte je ein Sonderzeichen enthaelt.
-fn render_picker_page(api_key: &str, access_token: &str, mode: &PickerMode) -> String {
+/// Baut die lokale HTML-Seite, die Googles Picker-JS laedt. `access_token`,
+/// `api_key` und `app_id` werden ueber `serde_json::to_string` als
+/// JS-String-Literale eingebettet, statt sie manuell in Anfuehrungszeichen
+/// zu setzen - das escaped zuverlaessig, falls einer der Werte je ein
+/// Sonderzeichen enthaelt.
+fn render_picker_page(api_key: &str, access_token: &str, app_id: &str, mode: &PickerMode) -> String {
     let api_key_js = serde_json::to_string(api_key).unwrap_or_else(|_| "\"\"".to_string());
     let token_js = serde_json::to_string(access_token).unwrap_or_else(|_| "\"\"".to_string());
+    let app_id_js = serde_json::to_string(app_id).unwrap_or_else(|_| "\"\"".to_string());
     let mode_js = match mode {
         PickerMode::Files => "\"files\"",
         PickerMode::Folder => "\"folder\"",
@@ -86,6 +89,7 @@ fn render_picker_page(api_key: &str, access_token: &str, mode: &PickerMode) -> S
 <script>
   const ACCESS_TOKEN = {token_js};
   const API_KEY = {api_key_js};
+  const APP_ID = {app_id_js};
   const MODE = {mode_js};
 
   function post(payload) {{
@@ -103,6 +107,15 @@ fn render_picker_page(api_key: &str, access_token: &str, mode: &PickerMode) -> S
       .setOAuthToken(ACCESS_TOKEN)
       .setDeveloperKey(API_KEY)
       .setCallback(pickerCallback);
+
+    // Ohne setAppId() registriert Google fuer den drive.file-Scope keine
+    // Zugriffsfreigabe auf hier ausgewaehlte, nicht von dieser App selbst
+    // erstellte Dateien - jeder spaetere files.get/download dafuer schlaegt
+    // sonst mit HTTP 404 fehl. APP_ID ist die Google-Cloud-Projektnummer,
+    // nicht die OAuth-Client-ID (siehe CloudConfig::google_cloud_project_number).
+    if (APP_ID) {{
+      builder.setAppId(APP_ID);
+    }}
 
     if (MODE === 'folder') {{
       const view = new google.picker.DocsView(google.picker.ViewId.FOLDERS)
@@ -296,9 +309,30 @@ mod tests {
 
     #[test]
     fn render_picker_page_embeds_token_and_key_as_escaped_js_string_literals() {
-        let page = render_picker_page(r#"key-"with-quote"#, "token-value", &PickerMode::Folder);
+        let page = render_picker_page(
+            r#"key-"with-quote"#,
+            "token-value",
+            "123456789",
+            &PickerMode::Folder,
+        );
         assert!(page.contains(r#"key-\"with-quote"#));
         assert!(page.contains("token-value"));
         assert!(page.contains(r#"const MODE = "folder";"#));
+    }
+
+    #[test]
+    fn render_picker_page_embeds_app_id_and_calls_set_app_id() {
+        let page = render_picker_page("api-key", "token-value", "123456789", &PickerMode::Files);
+        assert!(page.contains(r#"const APP_ID = "123456789";"#));
+        assert!(page.contains("builder.setAppId(APP_ID);"));
+    }
+
+    #[test]
+    fn render_picker_page_skips_set_app_id_call_when_app_id_is_empty() {
+        // Bestehende cloud.config.json-Dateien ohne das neue Feld duerfen den
+        // Picker nicht kaputt machen - siehe CloudConfig::google_cloud_project_number.
+        let page = render_picker_page("api-key", "token-value", "", &PickerMode::Files);
+        assert!(page.contains(r#"const APP_ID = "";"#));
+        assert!(page.contains("if (APP_ID) {"));
     }
 }
