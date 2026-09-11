@@ -23,7 +23,7 @@ export function ModelList({ models, selectedId, onSelect, onContextMenu }: Props
   return (
     <div className="border border-[var(--line)] rounded overflow-x-auto bg-[var(--panel)]">
       <div
-        className="min-w-[680px] grid gap-2.5 items-center px-3 py-2 bg-[var(--panel-2)] border-b border-[var(--line)] font-mono-ui text-[var(--font-size-meta)] tracking-[0.1em] uppercase text-[var(--ink-3)]"
+        className="min-w-[680px] grid gap-2.5 items-center px-3 py-2 bg-[var(--panel-2)] border-b border-[var(--line)] font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.1em] uppercase text-[var(--ink-3)]"
         style={{ gridTemplateColumns: '62px minmax(150px,2.2fr) minmax(110px,1.6fr) 92px 82px 74px' }}
       >
         <span>{t('columnOrigin')}</span>
@@ -47,15 +47,15 @@ export function ModelList({ models, selectedId, onSelect, onContextMenu }: Props
           }`}
           style={{ gridTemplateColumns: '62px minmax(150px,2.2fr) minmax(110px,1.6fr) 92px 82px 74px' }}
         >
-          <span className="font-mono-ui text-[var(--font-size-meta)] text-[var(--ink-3)]">{m.origin}</span>
-          <span className="text-[var(--font-size-body)] font-medium overflow-hidden text-ellipsis whitespace-nowrap">
+          <span className="font-mono-ui text-[length:var(--font-size-meta)] text-[var(--ink-3)]">{m.origin}</span>
+          <span className="text-[length:var(--font-size-body)] font-medium overflow-hidden text-ellipsis whitespace-nowrap">
             {m.name}
           </span>
           <span className="flex gap-1 overflow-hidden">
             {m.tags.map((tag) => (
               <span
                 key={tag}
-                className="font-mono-ui text-[var(--font-size-meta)] px-1.5 py-0.5 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)] whitespace-nowrap"
+                className="font-mono-ui text-[length:var(--font-size-meta)] px-1.5 py-0.5 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)] whitespace-nowrap"
               >
                 #{tag}
               </span>
