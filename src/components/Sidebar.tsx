@@ -180,7 +180,7 @@ export function Sidebar({
             } text-[var(--ink-2)] hover:text-[var(--ink)]`}
           >
             <span className="font-mono-ui text-[var(--font-size-meta)] text-[var(--ink-3)] w-3.5">{index + 1}</span>
-            <span className="flex-1 text-xs overflow-hidden text-ellipsis whitespace-nowrap">
+            <span className="flex-1 text-[var(--font-size-item)] overflow-hidden text-ellipsis whitespace-nowrap">
               {model.name}
             </span>
             <span
@@ -221,7 +221,7 @@ export function Sidebar({
               className="w-[7px] h-[7px] rounded-full"
               style={{ background: `oklch(0.62 0.14 ${tag.colorHue})` }}
             />
-            <span className="flex-1 font-mono-ui text-xs overflow-hidden text-ellipsis whitespace-nowrap">
+            <span className="flex-1 font-mono-ui text-[var(--font-size-item)] overflow-hidden text-ellipsis whitespace-nowrap">
               #{tag.label}
             </span>
             <span className="font-mono-ui text-[11px] text-[var(--ink-3)]">{tag.count}</span>
@@ -249,7 +249,7 @@ export function Sidebar({
                 : 'text-[var(--ink-2)] hover:text-[var(--ink)]'
             }`}
           >
-            <span className="flex-1 font-mono-ui text-xs overflow-hidden text-ellipsis whitespace-nowrap">
+            <span className="flex-1 font-mono-ui text-[var(--font-size-item)] overflow-hidden text-ellipsis whitespace-nowrap">
               {creator.label}
             </span>
             <span className="font-mono-ui text-[11px] text-[var(--ink-3)]">{creator.count}</span>
@@ -314,7 +314,7 @@ export function Sidebar({
             onClick={() => onApplyFilter(filter)}
             className="flex items-center gap-2 h-7 px-1.5 rounded-[3px] cursor-pointer text-[var(--ink-2)] hover:text-[var(--ink)]"
           >
-            <span className="flex-1 text-xs overflow-hidden text-ellipsis whitespace-nowrap">
+            <span className="flex-1 text-[var(--font-size-item)] overflow-hidden text-ellipsis whitespace-nowrap">
               {filter.name}
             </span>
             <span

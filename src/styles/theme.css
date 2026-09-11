@@ -60,6 +60,7 @@ body { font-family: 'Barlow', Helvetica, sans-serif; }
   --font-size-meta: 10px;
   --font-size-label: 9px;
   --font-size-control: 12.5px;
+  --font-size-item: 12px;
   --space-card-pad: 0.625rem;
   --radius-card: 4px;
   --icon-badge-size: 1.125rem;
@@ -71,6 +72,7 @@ body { font-family: 'Barlow', Helvetica, sans-serif; }
   --font-size-meta: 13px;
   --font-size-label: 11px;
   --font-size-control: 14px;
+  --font-size-item: 14.5px;
   --space-card-pad: 1rem;
   --radius-card: 14px;
   --icon-badge-size: 2.375rem;
