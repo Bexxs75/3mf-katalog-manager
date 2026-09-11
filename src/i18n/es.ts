@@ -143,4 +143,7 @@ export const es: Translations = {
   cleanupDuplicateGroupHeading: 'Grupo de duplicados',
   cleanupKeepOldest: 'se conserva',
   cleanupDeleteSelected: 'Eliminar selección',
+
+  favoriteAdd: 'Añadir a favoritos',
+  favoriteRemove: 'Quitar de favoritos',
 };

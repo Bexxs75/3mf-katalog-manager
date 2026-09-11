@@ -143,4 +143,7 @@ export const fr: Translations = {
   cleanupDuplicateGroupHeading: 'Groupe de doublons',
   cleanupKeepOldest: 'conservé',
   cleanupDeleteSelected: 'Supprimer la sélection',
+
+  favoriteAdd: 'Ajouter aux favoris',
+  favoriteRemove: 'Retirer des favoris',
 };

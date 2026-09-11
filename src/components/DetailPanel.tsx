@@ -11,6 +11,7 @@ interface Props {
   onRemoveTag: (tag: string) => void;
   onDelete: () => void;
   onTogglePrintStatus: () => void;
+  onToggleFavorite: () => void;
   onToggleQueue: () => void;
   onUploadImage: () => void;
   onSnapshotCaptured: (base64: string) => void;
@@ -59,6 +60,7 @@ export function DetailPanel({
   onRemoveTag,
   onDelete,
   onTogglePrintStatus,
+  onToggleFavorite,
   onToggleQueue,
   onUploadImage,
   onSnapshotCaptured,
@@ -187,6 +189,18 @@ export function DetailPanel({
             className="h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-[11.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
             {model.printStatus === 'printed' ? t('markAsNotPrinted') : t('markAsPrinted')}
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--line)]">
+          <span className="flex-1 text-[12.5px] font-medium">
+            {model.favorite ? t('favoriteRemove') : t('favoriteAdd')}
+          </span>
+          <button
+            onClick={onToggleFavorite}
+            className="h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-[11.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+          >
+            {model.favorite ? '♥' : '♡'}
           </button>
         </div>
 
