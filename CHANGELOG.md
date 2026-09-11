@@ -31,6 +31,7 @@ Noch kein Release getaggt — dieser Abschnitt fasst die bisherige Entwicklung s
 - Warteschlange ("als Nächstes drucken"): geordnete, per Drag & Drop sortierbare Liste in eigener einklappbarer Sidebar-Sektion; Hinzufügen/Entfernen über Detailbereich oder Kartei-Kontextmenü, automatisches Entfernen beim Markieren als gedruckt
 - Gespeicherte Filter: aktuelle Kombination aus Ordner/Tag/Creator/Suche/Sortierung unter einem Namen speichern, per Klick wieder anwenden, in eigener einklappbarer Sidebar-Sektion verwalten
 - Aufräum-Vorschläge: manuell auslösbarer Katalog-Scan (Einstellungen-Panel) findet verwaiste Dateipfade und Bestands-Duplikate (gleicher Inhalts-Hash, bereits im Katalog vorhanden); Ergebnis-Dialog mit Einzelauswahl, ältestes Duplikat je Gruppe bleibt vorausgewählt erhalten
+- Komfort-Ansicht als Alternative zur bestehenden kompakten Oberfläche: deutlich größere Schrift, Grafiken und Bedienelemente (Karten-Layout angelehnt an printables.com/model), umschaltbar im Einstellungen-Panel unter "Ansicht", Standard bleibt die kompakte Ansicht. Neues Favorit-Merkmal je Modell (Herz-Icon), in beiden Ansichten sichtbar
 
 ### Changed
 
