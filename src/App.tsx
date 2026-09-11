@@ -11,6 +11,7 @@ import { FilamentView } from './components/FilamentView';
 import { ImportSummaryBanner } from './components/ImportSummaryBanner';
 import { CatalogCleanupDialog } from './components/CatalogCleanupDialog';
 import { useTheme } from './hooks/useTheme';
+import { useUiDensity } from './hooks/useUiDensity';
 import { useSlicers } from './hooks/useSlicers';
 import type { ModelFile, Folder, TagCount, CreatorCount, CloudAccount, Origin, ViewMode, SortKey, SavedFilter, CatalogIssues } from './types';
 
@@ -44,6 +45,7 @@ const toCloudAccount = (dto: CloudAccountDto): CloudAccount => ({
 
 export default function App() {
   const { setting, setTheme } = useTheme();
+  const { density, setDensity } = useUiDensity();
   const { slicers, lastUsedId, addSlicer, removeSlicer, setLastUsed } = useSlicers();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [slicerError, setSlicerError] = useState<string | null>(null);
@@ -459,6 +461,8 @@ export default function App() {
         count={filtered.length}
         themeSetting={setting}
         onThemeChange={setTheme}
+        uiDensity={density}
+        onUiDensityChange={setDensity}
         onImportFiles={importFiles}
         onImportFolder={importFolder}
         cloudDriveConnected={clouds.some((c) => c.id === 'gdrive' && c.status === 'connected')}

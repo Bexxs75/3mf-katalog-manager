@@ -25,6 +25,11 @@ export const en: Translations = {
   themeDescriptionSystem: 'Follows the system setting automatically.',
   themeDescriptionManual: 'Manually set to {mode}.',
   languageTitle: 'Language',
+  densityTitle: 'View',
+  densityCompact: 'Compact',
+  densityComfort: 'Comfort',
+  densityDescriptionCompact: 'Dense, small text — fits as much as possible on screen.',
+  densityDescriptionComfort: 'Larger text and graphics — easier to read.',
 
   searchPlaceholder: 'Search name or tag …',
   foldersHeading: 'Folders',
