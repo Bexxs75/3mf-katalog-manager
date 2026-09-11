@@ -148,6 +148,9 @@ export interface Translations {
   cleanupDuplicateGroupHeading: string;
   cleanupKeepOldest: string;
   cleanupDeleteSelected: string;
+
+  favoriteAdd: string;
+  favoriteRemove: string;
 }
 
 export function formatCount(forms: PluralForms, n: number): string {

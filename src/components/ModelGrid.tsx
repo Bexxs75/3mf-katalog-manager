@@ -6,6 +6,7 @@ interface Props {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onContextMenu: (id: string, x: number, y: number) => void;
+  onToggleFavorite: (id: string) => void;
 }
 
 const originAbbr: Record<string, string> = {
@@ -16,7 +17,7 @@ const originAbbr: Record<string, string> = {
   proton: 'PD',
 };
 
-export function ModelGrid({ models, selectedId, onSelect, onContextMenu }: Props) {
+export function ModelGrid({ models, selectedId, onSelect, onContextMenu, onToggleFavorite }: Props) {
   const t = useT();
 
   return (
@@ -73,6 +74,20 @@ export function ModelGrid({ models, selectedId, onSelect, onContextMenu }: Props
                 ✓ {t('printedBadge')}
               </div>
             )}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleFavorite(m.id);
+              }}
+              aria-label={m.favorite ? t('favoriteRemove') : t('favoriteAdd')}
+              className={`absolute left-[7px] bottom-[7px] font-mono-ui text-[9px] px-1 py-0.5 rounded border cursor-pointer ${
+                m.favorite
+                  ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
+                  : 'border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]'
+              }`}
+            >
+              {m.favorite ? '♥' : '♡'}
+            </button>
           </div>
           <div className="flex flex-col gap-1.5 px-2.5 py-2.5 bg-[var(--panel)]">
             <div className="text-[12.5px] font-semibold overflow-hidden text-ellipsis whitespace-nowrap">

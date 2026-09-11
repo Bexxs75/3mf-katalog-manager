@@ -23,6 +23,7 @@ export interface ModelFile {
   displayImage: string | null;
   sourceUrl: string | null;
   queuePosition: number | null;
+  favorite: boolean;
 }
 
 export interface Folder {

@@ -304,6 +304,16 @@ export default function App() {
     });
   };
 
+  const toggleFavorite = (id: string) => {
+    const current = models.find((m) => m.id === id);
+    if (!current) return;
+    const next = !current.favorite;
+    setModels((prev) => prev.map((m) => (m.id === id ? { ...m, favorite: next } : m)));
+    invoke('set_favorite', { fileId: id, favorite: next }).catch((e) => {
+      console.error('[favorite] Aktualisieren fehlgeschlagen:', e);
+    });
+  };
+
   const addToQueue = (id: string) => {
     invoke<number>('add_to_queue', { fileId: id })
       .then((position) => {
@@ -534,6 +544,7 @@ export default function App() {
                   selectedId={selectedId}
                   onSelect={selectModel}
                   onContextMenu={(id, x, y) => setContextMenu({ modelId: id, x, y })}
+                  onToggleFavorite={toggleFavorite}
                 />
               ) : (
                 <ModelList
@@ -552,6 +563,7 @@ export default function App() {
             onRemoveTag={(t) => selected && removeTag(selected.id, t)}
             onDelete={() => selected && deleteModel(selected.id)}
             onTogglePrintStatus={() => selected && togglePrintStatus(selected.id)}
+            onToggleFavorite={() => selected && toggleFavorite(selected.id)}
             onToggleQueue={() =>
               selected && (selected.queuePosition !== null ? removeFromQueue(selected.id) : addToQueue(selected.id))
             }
