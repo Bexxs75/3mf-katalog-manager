@@ -27,7 +27,7 @@ const EMPTY_FORM: FormState = {
 };
 
 const fieldClass =
-  'h-8 px-2 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-[12.5px]';
+  'h-8 px-2 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-[var(--font-size-title)]';
 
 export function FilamentView() {
   const t = useT();
@@ -112,18 +112,18 @@ export function FilamentView() {
 
   return (
     <div className="flex-1 min-w-0 flex flex-col min-h-0">
-      <div className="flex-none px-4 py-3 border-b border-[var(--line)] text-[13px] font-semibold">
+      <div className="flex-none px-4 py-3 border-b border-[var(--line)] text-[var(--font-size-body)] font-semibold">
         {t('filamentDialogTitle')}
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
         {error && (
-          <div className="pb-2 text-[12.5px] text-[var(--accent)] break-words">
+          <div className="pb-2 text-[var(--font-size-title)] text-[var(--accent)] break-words">
             {t('filamentError')} {error}
           </div>
         )}
         {spools.length === 0 ? (
-          <div className="text-[12.5px] text-[var(--ink-3)]">{t('filamentEmptyState')}</div>
+          <div className="text-[var(--font-size-title)] text-[var(--ink-3)]">{t('filamentEmptyState')}</div>
         ) : (
           <div className="grid gap-3.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(178px, 1fr))' }}>
             {spools.map((spool) => (
@@ -144,7 +144,7 @@ export function FilamentView() {
                         }}
                       />
                       <div className="absolute inset-0 grid place-items-center px-2">
-                        <span className="text-[13px] font-semibold text-center truncate">{spool.material}</span>
+                        <span className="text-[var(--font-size-body)] font-semibold text-center truncate">{spool.material}</span>
                       </div>
                     </>
                   )}
@@ -153,10 +153,10 @@ export function FilamentView() {
                   <div className="text-[11.5px] text-[var(--ink-2)] truncate">
                     {[spool.manufacturer, spool.color].filter(Boolean).join(' · ') || t('noValue')}
                   </div>
-                  <div className="font-mono-ui text-[10px] text-[var(--ink-3)]">
+                  <div className="font-mono-ui text-[var(--font-size-meta)] text-[var(--ink-3)]">
                     {formatWeightG(spool.remainingWeightG, language)} / {formatWeightG(spool.originalWeightG, language)}
                   </div>
-                  <div className="font-mono-ui text-[10px] text-[var(--ink-3)]">
+                  <div className="font-mono-ui text-[var(--font-size-meta)] text-[var(--ink-3)]">
                     {formatDiameterMm(spool.diameterMm, language)}
                     {spool.price !== null ? ` · ${formatPrice(spool.price, language)}` : ''}
                   </div>
@@ -166,13 +166,13 @@ export function FilamentView() {
                       <span className="flex-1 text-[10.5px] text-[var(--ink)]">{t('deleteConfirmQuestion')}</span>
                       <button
                         onClick={() => setConfirmDeleteId(null)}
-                        className="h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[10px] cursor-pointer"
+                        className="h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[var(--font-size-meta)] cursor-pointer"
                       >
                         {t('cancel')}
                       </button>
                       <button
                         onClick={() => deleteSpool(spool.id)}
-                        className="h-6 px-1.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[10px] cursor-pointer"
+                        className="h-6 px-1.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[var(--font-size-meta)] cursor-pointer"
                       >
                         {t('delete')}
                       </button>
@@ -272,7 +272,7 @@ export function FilamentView() {
           {editingId && (
             <button
               onClick={cancelForm}
-              className="flex-1 h-8 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              className="flex-1 h-8 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[var(--font-size-title)] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
             >
               {t('cancel')}
             </button>
@@ -280,7 +280,7 @@ export function FilamentView() {
           <button
             onClick={submitForm}
             disabled={!form.material.trim()}
-            className="flex-1 h-8 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex-1 h-8 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[var(--font-size-title)] font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {editingId ? t('filamentSaveButton') : t('filamentAddButton')}
           </button>

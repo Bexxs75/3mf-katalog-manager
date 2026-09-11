@@ -43,15 +43,15 @@ export function CatalogCleanupDialog({ issues, onClose, onDelete }: Props) {
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-3">
-          {!hasIssues && <div className="text-[12.5px] text-[var(--ink-3)]">{t('cleanupNoIssues')}</div>}
+          {!hasIssues && <div className="text-[var(--font-size-title)] text-[var(--ink-3)]">{t('cleanupNoIssues')}</div>}
 
           {issues.orphaned.length > 0 && (
             <div className="pb-4">
-              <div className="font-mono-ui text-[10px] tracking-[0.12em] uppercase text-[var(--ink-3)] pb-2">
+              <div className="font-mono-ui text-[var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)] pb-2">
                 {t('cleanupOrphanedHeading')}
               </div>
               {issues.orphaned.map((model) => (
-                <label key={model.id} className="flex items-center gap-2 py-1 text-[12.5px] cursor-pointer">
+                <label key={model.id} className="flex items-center gap-2 py-1 text-[var(--font-size-title)] cursor-pointer">
                   <input type="checkbox" checked={checked.has(model.id)} onChange={() => toggle(model.id)} />
                   <span className="flex-1 truncate">{model.name}</span>
                   <span className="font-mono-ui text-[10.5px] text-[var(--ink-3)] truncate max-w-[160px]">
@@ -64,13 +64,13 @@ export function CatalogCleanupDialog({ issues, onClose, onDelete }: Props) {
 
           {issues.duplicateGroups.map((group, groupIndex) => (
             <div key={groupIndex} className="pb-4">
-              <div className="font-mono-ui text-[10px] tracking-[0.12em] uppercase text-[var(--ink-3)] pb-2">
+              <div className="font-mono-ui text-[var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)] pb-2">
                 {t('cleanupDuplicateGroupHeading')} {groupIndex + 1}
               </div>
               {group.map((model, index) => (
                 <label
                   key={model.id}
-                  className={`flex items-center gap-2 py-1 text-[12.5px] ${index === 0 ? 'opacity-60' : 'cursor-pointer'}`}
+                  className={`flex items-center gap-2 py-1 text-[var(--font-size-title)] ${index === 0 ? 'opacity-60' : 'cursor-pointer'}`}
                 >
                   <input
                     type="checkbox"
@@ -80,7 +80,7 @@ export function CatalogCleanupDialog({ issues, onClose, onDelete }: Props) {
                   />
                   <span className="flex-1 truncate">{model.name}</span>
                   {index === 0 && (
-                    <span className="font-mono-ui text-[10px] text-[var(--ink-3)]">{t('cleanupKeepOldest')}</span>
+                    <span className="font-mono-ui text-[var(--font-size-meta)] text-[var(--ink-3)]">{t('cleanupKeepOldest')}</span>
                   )}
                 </label>
               ))}
@@ -91,14 +91,14 @@ export function CatalogCleanupDialog({ issues, onClose, onDelete }: Props) {
         <div className="flex-none px-4 py-3 border-t border-[var(--line)] flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[var(--font-size-title)] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
             {t('cancel')}
           </button>
           <button
             onClick={() => onDelete(Array.from(checked))}
             disabled={checked.size === 0}
-            className={`h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold ${
+            className={`h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[var(--font-size-title)] font-semibold ${
               checked.size === 0 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
             }`}
           >

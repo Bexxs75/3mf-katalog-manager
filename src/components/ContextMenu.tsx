@@ -65,7 +65,7 @@ export function ContextMenu({ x, y, onClose, onOpenInSlicer, onDelete, inQueue, 
               onOpenInSlicer();
               onClose();
             }}
-            className="w-full text-left px-3 py-2 text-[12.5px] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]"
+            className="w-full text-left px-3 py-2 text-[var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]"
           >
             {t('openInSlicer')}
           </button>
@@ -74,13 +74,13 @@ export function ContextMenu({ x, y, onClose, onOpenInSlicer, onDelete, inQueue, 
               onToggleQueue();
               onClose();
             }}
-            className="w-full text-left px-3 py-2 text-[12.5px] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]"
+            className="w-full text-left px-3 py-2 text-[var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]"
           >
             {inQueue ? t('removeFromQueue') : t('addToQueue')}
           </button>
           <button
             onClick={() => setConfirmDelete(true)}
-            className="w-full text-left px-3 py-2 text-[12.5px] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]"
+            className="w-full text-left px-3 py-2 text-[var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]"
           >
             {t('delete')}
           </button>
