@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { ViewMode, SortKey, SlicerConfig } from '../types';
 import type { ThemeSetting } from '../hooks/useTheme';
-import type { UiDensity } from '../hooks/useUiDensity';
+import type { UiDensity } from '../hooks/UiDensityContext';
 import type { Language } from '../i18n/types';
 import { formatCount } from '../i18n/types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
@@ -34,7 +34,7 @@ interface Props {
 }
 
 const segBase =
-  'h-[26px] px-3 rounded-[2px] text-[var(--font-size-title)] font-medium cursor-pointer transition-colors';
+  'h-[26px] px-3 rounded-[2px] text-[var(--font-size-control)] font-medium cursor-pointer transition-colors';
 const segActive = 'bg-[var(--accent)] text-[var(--accent-ink)]';
 const segInactive = 'text-[var(--ink-2)] hover:text-[var(--ink)]';
 

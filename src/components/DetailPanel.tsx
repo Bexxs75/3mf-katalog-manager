@@ -4,7 +4,7 @@ import type { Language, Translations } from '../i18n/types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatBytes, formatDate, formatDimensions, formatRelativeTime, formatVolumeCm3, formatWeightG } from '../i18n/format';
 import { ModelViewer } from './ModelViewer';
-import { useUiDensity } from '../hooks/useUiDensity';
+import { useUiDensity } from '../hooks/UiDensityContext';
 
 interface Props {
   model: ModelFile | null;
@@ -201,6 +201,7 @@ export function DetailPanel({
           </span>
           <button
             onClick={onToggleFavorite}
+            aria-label={model.favorite ? t('favoriteRemove') : t('favoriteAdd')}
             className="h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-[11.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
             {model.favorite ? '♥' : '♡'}
@@ -524,19 +525,27 @@ export function DetailPanel({
                 placeholder={t('sourceUrlPlaceholder')}
                 className="flex-1 min-w-0 px-2 py-1 rounded-md border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0"
               />
-            ) : model.sourceUrl ? (
-              <a
-                href={model.sourceUrl}
-                target="_blank"
-                rel="noreferrer"
-                onClick={() => startEditingSourceUrl()}
-                className="flex-1 min-w-0 truncate text-right text-[var(--accent)] hover:underline"
-              >
-                {model.sourceUrl}
-              </a>
             ) : (
-              <span onClick={startEditingSourceUrl} className="flex-1 text-right text-[var(--ink-3)] cursor-pointer">
-                {t('noValue')}
+              <span className="flex-1 flex items-center justify-end gap-1.5 min-w-0">
+                {model.sourceUrl ? (
+                  <a
+                    href={model.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex-1 min-w-0 truncate text-right text-[var(--accent)] hover:underline"
+                  >
+                    {model.sourceUrl}
+                  </a>
+                ) : (
+                  <span className="flex-1 text-right text-[var(--ink-3)]">{t('noValue')}</span>
+                )}
+                <span
+                  onClick={startEditingSourceUrl}
+                  className="flex-none w-5 h-5 grid place-items-center rounded-full cursor-pointer text-[var(--ink-3)] hover:bg-[var(--panel-2)]"
+                  style={{ fontSize: 'var(--font-size-label)' }}
+                >
+                  ✎
+                </span>
               </span>
             )}
           </div>

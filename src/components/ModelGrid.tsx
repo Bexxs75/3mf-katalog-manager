@@ -1,6 +1,6 @@
 import type { ModelFile } from '../types';
 import { useT, useLanguage } from '../i18n/LanguageContext';
-import { useUiDensity } from '../hooks/useUiDensity';
+import { useUiDensity } from '../hooks/UiDensityContext';
 import { formatWeightG } from '../i18n/format';
 
 interface Props {
@@ -55,10 +55,12 @@ export function ModelGrid({ models, selectedId, onSelect, onContextMenu, onToggl
                 }}
               />
               <div className="absolute inset-0 grid place-items-center">
-                <div className="w-[52px] h-[52px] border border-dashed border-[var(--line-strong)] rotate-45" />
-              </div>
-              <div className="absolute left-2 bottom-[7px] font-mono-ui text-[9px] tracking-[0.08em] uppercase text-[var(--ink-3)]">
-                {t('previewLabel3d')}
+                <div className="flex flex-col items-center gap-1.5">
+                  <div className="w-[52px] h-[52px] border border-dashed border-[var(--line-strong)] rotate-45" />
+                  <div className="font-mono-ui text-[9px] tracking-[0.08em] uppercase text-[var(--ink-3)]">
+                    {t('previewLabel3d')}
+                  </div>
+                </div>
               </div>
             </>
           )}
@@ -112,7 +114,10 @@ export function ModelGrid({ models, selectedId, onSelect, onContextMenu, onToggl
   }
 
   return (
-    <div className="grid gap-3.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(178px, 1fr))' }}>
+    <div
+      className="grid gap-3.5"
+      style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${density === 'comfort' ? 220 : 178}px, 1fr))` }}
+    >
       {models.map((m) =>
         density === 'comfort' ? (
           <div
