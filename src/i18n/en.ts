@@ -2,7 +2,6 @@ import type { Translations } from './types';
 
 export const en: Translations = {
   import: 'Import',
-  importMoreOptionsAria: 'More import options',
   importFilesOption: 'Files...',
   importFolderOption: 'Folder...',
 

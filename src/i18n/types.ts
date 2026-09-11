@@ -7,7 +7,6 @@ export interface PluralForms {
 
 export interface Translations {
   import: string;
-  importMoreOptionsAria: string;
   importFilesOption: string;
   importFolderOption: string;
 
