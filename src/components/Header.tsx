@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { ViewMode, SortKey, SlicerConfig } from '../types';
 import type { ThemeSetting } from '../hooks/useTheme';
+import type { UiDensity } from '../hooks/useUiDensity';
 import type { Language } from '../i18n/types';
 import { formatCount } from '../i18n/types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
@@ -14,6 +15,8 @@ interface Props {
   count: number;
   themeSetting: ThemeSetting;
   onThemeChange: (t: ThemeSetting) => void;
+  uiDensity: UiDensity;
+  onUiDensityChange: (d: UiDensity) => void;
   onImportFiles: () => void;
   onImportFolder: () => void;
   cloudDriveConnected: boolean;
@@ -50,6 +53,8 @@ export function Header({
   count,
   themeSetting,
   onThemeChange,
+  uiDensity,
+  onUiDensityChange,
   onImportFiles,
   onImportFolder,
   cloudDriveConnected,
@@ -237,6 +242,22 @@ export function Header({
                     '{mode}',
                     themeSetting === 'light' ? t('themeLight') : t('themeDark'),
                   )}
+            </div>
+
+            <div className="text-[13px] font-semibold mt-4 mb-2">{t('densityTitle')}</div>
+            <div className="flex p-0.5 gap-0.5 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)]">
+              {(['compact', 'comfort'] as UiDensity[]).map((opt) => (
+                <button
+                  key={opt}
+                  onClick={() => onUiDensityChange(opt)}
+                  className={`${segBase} flex-1 ${uiDensity === opt ? segActive : segInactive}`}
+                >
+                  {opt === 'compact' ? t('densityCompact') : t('densityComfort')}
+                </button>
+              ))}
+            </div>
+            <div className="mt-2 font-mono-ui text-[10.5px] leading-relaxed text-[var(--ink-3)]">
+              {uiDensity === 'compact' ? t('densityDescriptionCompact') : t('densityDescriptionComfort')}
             </div>
 
             <div className="text-[13px] font-semibold mt-4 mb-2">{t('languageTitle')}</div>

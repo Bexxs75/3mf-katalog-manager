@@ -25,6 +25,11 @@ export const es: Translations = {
   themeDescriptionSystem: 'Sigue automáticamente la configuración del sistema.',
   themeDescriptionManual: 'Fijado manualmente en {mode}.',
   languageTitle: 'Idioma',
+  densityTitle: 'Vista',
+  densityCompact: 'Compacta',
+  densityComfort: 'Confort',
+  densityDescriptionCompact: 'Densa, texto pequeño — muestra lo máximo posible.',
+  densityDescriptionComfort: 'Texto y gráficos más grandes — más fácil de leer.',
 
   searchPlaceholder: 'Buscar nombre o etiqueta …',
   foldersHeading: 'Carpetas',

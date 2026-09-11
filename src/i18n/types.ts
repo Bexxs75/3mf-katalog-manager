@@ -30,6 +30,11 @@ export interface Translations {
   themeDescriptionSystem: string;
   themeDescriptionManual: string;
   languageTitle: string;
+  densityTitle: string;
+  densityCompact: string;
+  densityComfort: string;
+  densityDescriptionCompact: string;
+  densityDescriptionComfort: string;
 
   searchPlaceholder: string;
   foldersHeading: string;

@@ -53,3 +53,23 @@ body { font-family: 'Barlow', Helvetica, sans-serif; }
 }
 
 .font-mono-ui { font-family: 'IBM Plex Mono', monospace; }
+
+:root {
+  --font-size-title: 12.5px;
+  --font-size-body: 13px;
+  --font-size-meta: 10px;
+  --font-size-label: 9px;
+  --space-card-pad: 0.625rem;
+  --radius-card: 4px;
+  --icon-badge-size: 1.125rem;
+}
+
+[data-density="comfort"] {
+  --font-size-title: 17px;
+  --font-size-body: 14.5px;
+  --font-size-meta: 13px;
+  --font-size-label: 11px;
+  --space-card-pad: 1rem;
+  --radius-card: 14px;
+  --icon-badge-size: 2.375rem;
+}
