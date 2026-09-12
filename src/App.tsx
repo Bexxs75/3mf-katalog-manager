@@ -26,7 +26,7 @@ export default function App() {
   const { setting, setTheme } = useTheme();
   const t = useT();
   const { density, setDensity } = useUiDensity();
-  const { slicers, lastUsedId, addSlicer, removeSlicer, setLastUsed } = useSlicers();
+  const { slicers, lastUsedId, addSlicer, removeSlicer, setLastUsed, mergeDetected } = useSlicers();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [slicerError, setSlicerError] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>('grid');
@@ -117,6 +117,14 @@ export default function App() {
     refreshCreators();
     refreshSavedFilters();
     refreshTrash();
+    invoke<{ name: string; path: string }[]>('scan_installed_slicers')
+      .then(mergeDetected)
+      .catch((e) => {
+        // Rein komfortsteigerndes Feature - ein Fehlschlag (z.B. Command
+        // aus irgendeinem Grund nicht verfuegbar) darf die App nicht
+        // beeintraechtigen, nur geloggt werden.
+        console.warn('[slicer-scan] Automatische Slicer-Erkennung fehlgeschlagen:', e);
+      });
   }, []);
 
   useEffect(() => {
