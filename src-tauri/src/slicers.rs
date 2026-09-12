@@ -199,6 +199,7 @@ fn detect_windows_cura() -> Vec<DetectedSlicer> {
     results
 }
 
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 fn is_cura_folder_name(name: &str) -> bool {
     name.starts_with("Ultimaker Cura") || name.starts_with("UltiMaker Cura")
 }
@@ -208,6 +209,17 @@ fn dedupe_by_path(items: Vec<DetectedSlicer>) -> Vec<DetectedSlicer> {
     let mut result = Vec::new();
     for item in items {
         if seen.insert(item.path.clone()) {
+            result.push(item);
+        }
+    }
+    result
+}
+
+fn dedupe_by_name(items: Vec<DetectedSlicer>) -> Vec<DetectedSlicer> {
+    let mut seen = HashSet::new();
+    let mut result = Vec::new();
+    for item in items {
+        if seen.insert(item.name.clone()) {
             result.push(item);
         }
     }
@@ -235,7 +247,7 @@ pub fn detect_slicers() -> Vec<DetectedSlicer> {
         results.extend(detect_windows_cura());
     }
 
-    dedupe_by_path(results)
+    dedupe_by_name(dedupe_by_path(results))
 }
 
 #[cfg(test)]
@@ -297,6 +309,31 @@ mod tests {
         assert!(!is_cura_folder_name("Bambu Studio"));
         assert!(!is_cura_folder_name("Cura"));
         assert!(!is_cura_folder_name("Some Other App"));
+    }
+
+    #[test]
+    fn dedupe_by_name_keeps_first_occurrence_per_display_name() {
+        let items = vec![
+            DetectedSlicer {
+                name: "OrcaSlicer".to_string(),
+                path: "/usr/bin/orca-slicer".to_string(),
+            },
+            DetectedSlicer {
+                name: "OrcaSlicer".to_string(),
+                path: "/home/user/Applications/OrcaSlicer.AppImage".to_string(),
+            },
+            DetectedSlicer {
+                name: "Bambu Studio".to_string(),
+                path: "/usr/bin/bambu-studio".to_string(),
+            },
+        ];
+
+        let result = dedupe_by_name(items);
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].name, "OrcaSlicer");
+        assert_eq!(result[0].path, "/usr/bin/orca-slicer");
+        assert_eq!(result[1].name, "Bambu Studio");
     }
 
     #[test]
