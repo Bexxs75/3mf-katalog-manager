@@ -121,6 +121,8 @@ export const es: Translations = {
   filamentNoResults: 'Sin resultados.',
   filamentColumnStock: 'Existencias',
   filamentColumnStatus: 'Estado',
+  filamentQuantityLabel: 'Número de bobinas',
+  filamentQuantityHint: 'Crea varias bobinas idénticas, cada una con su propio inventario (p. ej. 3× PLA negro)',
 
   printedBadge: 'Impreso',
   notPrintedLabel: 'No impreso',

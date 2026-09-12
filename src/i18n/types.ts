@@ -128,6 +128,8 @@ export interface Translations {
   filamentNoResults: string;
   filamentColumnStock: string;
   filamentColumnStatus: string;
+  filamentQuantityLabel: string;
+  filamentQuantityHint: string;
 
   printedBadge: string;
   notPrintedLabel: string;
