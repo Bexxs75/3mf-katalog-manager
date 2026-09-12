@@ -539,11 +539,10 @@ pub fn delete_collection(state: State<AppState>, collection_id: String) -> CmdRe
 pub fn add_files_to_collection(state: State<AppState>, collection_id: String, file_ids: Vec<String>) -> CmdResult<()> {
     let cid: i64 = collection_id.parse().map_err(|_| "invalid collection id".to_string())?;
     let conn = lock_db(&state)?;
-    let mut next = db::max_collection_position(&conn, cid).map_err(|e| e.to_string())?.unwrap_or(-1) + 1;
-    for file_id in file_ids {
+    let start = db::max_collection_position(&conn, cid).map_err(|e| e.to_string())?.unwrap_or(-1) + 1;
+    for (next, file_id) in (start..).zip(file_ids) {
         let fid: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
         db::add_file_to_collection(&conn, cid, fid, next).map_err(|e| e.to_string())?;
-        next += 1;
     }
     Ok(())
 }
@@ -1120,7 +1119,7 @@ fn encode_render_meshes(meshes: &[RenderMesh]) -> Vec<u8> {
 
     let mut header_json =
         serde_json::to_vec(&headers).expect("mesh header serialization cannot fail");
-    while (4 + header_json.len()) % 4 != 0 {
+    while !(4 + header_json.len()).is_multiple_of(4) {
         header_json.push(b' ');
     }
 

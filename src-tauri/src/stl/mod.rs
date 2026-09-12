@@ -9,7 +9,6 @@ use crate::geometry::{signed_volume, BoundingBox};
 
 #[derive(Debug, Clone)]
 pub struct StlDocument {
-    pub triangle_count: usize,
     pub dimensions_mm: Option<[f64; 3]>,
     pub volume_cm3: Option<f64>,
 }
@@ -33,7 +32,6 @@ pub fn parse_stl_bytes(bytes: &[u8]) -> Result<StlDocument, StlError> {
     let volume_cm3 = bbox.is_valid().then_some(volume_mm3 / 1000.0);
 
     Ok(StlDocument {
-        triangle_count: triangles.len(),
         dimensions_mm,
         volume_cm3,
     })
@@ -130,7 +128,6 @@ mod tests {
         let bytes = build_ascii_cube();
         let doc = parse_stl_bytes(&bytes).expect("ascii parse should succeed");
 
-        assert_eq!(doc.triangle_count, 12);
         let dims = doc.dimensions_mm.expect("dimensions present");
         for d in dims {
             assert!((d - 10.0).abs() < 1e-6, "unexpected dimension: {d}");
@@ -144,7 +141,6 @@ mod tests {
         let bytes = build_binary_cube();
         let doc = parse_stl_bytes(&bytes).expect("binary parse should succeed");
 
-        assert_eq!(doc.triangle_count, 12);
         let dims = doc.dimensions_mm.expect("dimensions present");
         for d in dims {
             assert!((d - 10.0).abs() < 1e-4, "unexpected dimension: {d}");

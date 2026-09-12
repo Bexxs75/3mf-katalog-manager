@@ -30,12 +30,14 @@ pub struct ThreeMfDocument {
     pub plate_count: Option<u32>,
 }
 
-#[allow(dead_code)]
 pub fn parse_3mf_file(path: &Path) -> Result<ThreeMfDocument, ThreeMfError> {
     let file = File::open(path)?;
     parse_3mf_reader(file)
 }
 
+// Nur von Tests genutzt (Produktivcode liest ausschliesslich von Datei-Pfaden
+// ueber parse_3mf_file), aber praktisch fuer In-Memory-Testfixtures.
+#[cfg(test)]
 pub fn parse_3mf_bytes(bytes: &[u8]) -> Result<ThreeMfDocument, ThreeMfError> {
     parse_3mf_reader(std::io::Cursor::new(bytes))
 }

@@ -10,11 +10,21 @@ use std::sync::Mutex;
 
 use tauri::Manager;
 
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
+// App-Datenverzeichnis (enthaelt catalog.db, Thumbnails, Papierkorb) nur
+// fuer den eigenen Benutzer lesbar/schreibbar machen. Auf Single-User-
+// Desktops schon durch die Home-Verzeichnis-Rechte geschuetzt, aber auf
+// Mehrbenutzer-Systemen relevant (ISO 27002 A.8.28).
+#[cfg(unix)]
+fn harden_permissions(path: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let mode = if path.is_dir() { 0o700 } else { 0o600 };
+    if let Err(e) = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)) {
+        eprintln!("[startup] Dateirechte konnten nicht gehaertet werden fuer {path:?}: {e}");
+    }
 }
+
+#[cfg(not(unix))]
+fn harden_permissions(_path: &std::path::Path) {}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -23,8 +33,10 @@ pub fn run() {
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&app_data_dir)?;
+            harden_permissions(&app_data_dir);
             let db_path = app_data_dir.join("catalog.db");
             let conn = db::connect(&db_path)?;
+            harden_permissions(&db_path);
             if let Err(e) = db::delete_unused_tags(&conn) {
                 eprintln!("[startup] Aufraeumen verwaister Tags fehlgeschlagen: {e}");
             }
@@ -39,7 +51,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            greet,
             commands::list_files,
             commands::list_folders,
             commands::list_tag_counts,

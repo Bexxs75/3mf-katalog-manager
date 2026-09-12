@@ -3,7 +3,9 @@ use super::error::StlError;
 const BINARY_HEADER_LEN: usize = 80;
 const BINARY_FACET_LEN: usize = 50;
 
-pub fn parse(bytes: &[u8]) -> Result<(Vec<[f64; 3]>, Vec<[u32; 3]>), StlError> {
+type StlGeometry = (Vec<[f64; 3]>, Vec<[u32; 3]>);
+
+pub fn parse(bytes: &[u8]) -> Result<StlGeometry, StlError> {
     if is_binary(bytes) {
         parse_binary(bytes)
     } else {
@@ -17,15 +19,25 @@ pub fn parse(bytes: &[u8]) -> Result<(Vec<[f64; 3]>, Vec<[u32; 3]>), StlError> {
 // that exactly is a more reliable format check than the conventional (but
 // non-mandatory) "solid" text prefix, which some binary exporters also emit.
 fn is_binary(bytes: &[u8]) -> bool {
-    if bytes.len() < BINARY_HEADER_LEN + 4 {
+    let Some(count) = read_facet_count(bytes) else {
         return false;
-    }
-    let count = u32::from_le_bytes(bytes[80..84].try_into().unwrap()) as usize;
+    };
     bytes.len() == BINARY_HEADER_LEN + 4 + count * BINARY_FACET_LEN
 }
 
-fn parse_binary(bytes: &[u8]) -> Result<(Vec<[f64; 3]>, Vec<[u32; 3]>), StlError> {
-    let count = u32::from_le_bytes(bytes[80..84].try_into().unwrap()) as usize;
+// Bounds-geprueft statt bytes[80..84] + unwrap(): is_binary() prueft die
+// Laenge zwar bereits vor jedem Aufruf, aber parse_binary() haengt sonst
+// implizit davon ab, immer NACH is_binary() aufgerufen zu werden - ein
+// Refactor, der das nicht mehr garantiert, wuerde sonst bei kurzen Dateien
+// paniken statt einen Parse-Fehler zurueckzugeben.
+fn read_facet_count(bytes: &[u8]) -> Option<usize> {
+    let slice = bytes.get(BINARY_HEADER_LEN..BINARY_HEADER_LEN + 4)?;
+    Some(u32::from_le_bytes(slice.try_into().unwrap()) as usize)
+}
+
+fn parse_binary(bytes: &[u8]) -> Result<StlGeometry, StlError> {
+    let count = read_facet_count(bytes)
+        .ok_or_else(|| StlError::Parse("unexpected end of binary STL data".to_string()))?;
     let mut vertices = Vec::with_capacity(count * 3);
 
     let mut offset = BINARY_HEADER_LEN + 4;
@@ -51,7 +63,7 @@ fn read_f32(bytes: &[u8], offset: usize) -> Result<f32, StlError> {
     Ok(f32::from_le_bytes(slice.try_into().unwrap()))
 }
 
-fn parse_ascii(text: &str) -> Result<(Vec<[f64; 3]>, Vec<[u32; 3]>), StlError> {
+fn parse_ascii(text: &str) -> Result<StlGeometry, StlError> {
     let mut vertices = Vec::new();
 
     for line in text.lines() {
