@@ -135,4 +135,12 @@ export const fr: Translations = {
 
   favoriteAdd: 'Ajouter aux favoris',
   favoriteRemove: 'Retirer des favoris',
+
+  trashHeading: 'Corbeille',
+  trashEmptyState: 'La corbeille est vide.',
+  emptyTrashButton: 'Vider la corbeille',
+  emptyTrashConfirmQuestion: 'Vider définitivement la corbeille ?',
+  restoreLabel: 'Restaurer',
+  deletePermanentlyLabel: 'Supprimer définitivement',
+  trashExpiryHint: 'Suppression automatique le {date}',
 };

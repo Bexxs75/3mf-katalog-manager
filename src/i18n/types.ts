@@ -139,6 +139,14 @@ export interface Translations {
 
   favoriteAdd: string;
   favoriteRemove: string;
+
+  trashHeading: string;
+  trashEmptyState: string;
+  emptyTrashButton: string;
+  emptyTrashConfirmQuestion: string;
+  restoreLabel: string;
+  deletePermanentlyLabel: string;
+  trashExpiryHint: string;
 }
 
 export function formatCount(forms: PluralForms, n: number): string {

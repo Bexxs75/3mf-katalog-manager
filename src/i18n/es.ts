@@ -135,4 +135,12 @@ export const es: Translations = {
 
   favoriteAdd: 'Añadir a favoritos',
   favoriteRemove: 'Quitar de favoritos',
+
+  trashHeading: 'Papelera',
+  trashEmptyState: 'La papelera está vacía.',
+  emptyTrashButton: 'Vaciar papelera',
+  emptyTrashConfirmQuestion: '¿Vaciar la papelera definitivamente?',
+  restoreLabel: 'Restaurar',
+  deletePermanentlyLabel: 'Eliminar definitivamente',
+  trashExpiryHint: 'Se elimina automáticamente el {date}',
 };

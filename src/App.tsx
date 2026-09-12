@@ -40,7 +40,10 @@ export default function App() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [tags, setTags] = useState<TagCount[]>([]);
   const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number } | null>(null);
-  const [mainView, setMainView] = useState<'catalog' | 'filament'>('catalog');
+  const [mainView, setMainView] = useState<'catalog' | 'filament' | 'trash'>('catalog');
+  const [trashModels, setTrashModels] = useState<ModelFile[]>([]);
+  // @ts-expect-error confirmEmptyTrash is read starting in Task 4's trash view
+  const [confirmEmptyTrash, setConfirmEmptyTrash] = useState(false);
   const [importBanner, setImportBanner] = useState<{ imported: number; duplicates: number } | null>(null);
   const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([]);
   const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false);
@@ -52,6 +55,33 @@ export default function App() {
   const refreshTags = () => invoke<TagCount[]>('list_tag_counts').then(setTags);
   const refreshCreators = () => invoke<CreatorCount[]>('list_creators').then(setCreators);
   const refreshSavedFilters = () => invoke<SavedFilter[]>('list_saved_filters').then(setSavedFilters);
+  const refreshTrash = () => invoke<ModelFile[]>('list_trash').then(setTrashModels);
+
+  // @ts-expect-error restoreModel is wired into the UI starting in Task 4's trash view
+  const restoreModel = (id: string) => {
+    invoke('restore_file', { fileId: id }).then(() => {
+      setTrashModels((prev) => prev.filter((m) => m.id !== id));
+      invoke<ModelFile[]>('list_files').then(setModels);
+      refreshFolders();
+      refreshTags();
+      refreshCreators();
+    });
+  };
+
+  // @ts-expect-error deleteModelPermanently is wired into the UI starting in Task 4's trash view
+  const deleteModelPermanently = (id: string) => {
+    invoke('delete_file_permanently', { fileId: id }).then(() => {
+      setTrashModels((prev) => prev.filter((m) => m.id !== id));
+    });
+  };
+
+  // @ts-expect-error emptyTrash is wired into the UI starting in Task 4's trash view
+  const emptyTrash = () => {
+    invoke('empty_trash').then(() => {
+      setTrashModels([]);
+      setConfirmEmptyTrash(false);
+    });
+  };
 
   const mergeImported = (result: ImportResultDto) => {
     if (result.imported.length) {
@@ -186,6 +216,7 @@ export default function App() {
       refreshFolders();
       refreshTags();
       refreshCreators();
+      refreshTrash();
     });
   };
 
@@ -373,7 +404,11 @@ export default function App() {
         cleanupScanning={cleanupScanning}
         cleanupError={cleanupError}
         mainView={mainView}
-        onMainViewChange={setMainView}
+        onMainViewChange={(v) => {
+          setMainView(v);
+          if (v === 'trash') refreshTrash();
+        }}
+        trashCount={trashModels.length}
       />
 
       {mainView === 'catalog' ? (
