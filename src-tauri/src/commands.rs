@@ -43,6 +43,7 @@ pub struct ModelFileDto {
     pub source_url: Option<String>,
     pub queue_position: Option<i64>,
     pub favorite: bool,
+    pub plate_count: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -200,6 +201,7 @@ pub(crate) fn to_dto(file: FileRecord) -> ModelFileDto {
         source_url: file.source_url,
         queue_position: file.queue_position,
         favorite: file.favorite,
+        plate_count: file.plate_count,
     }
 }
 
@@ -586,40 +588,50 @@ pub(crate) fn import_one(
         .and_then(|e| e.to_str())
         .map(|e| e.to_lowercase());
 
-    let (file_type, dimensions_mm, volume_cm3, object_count, materials, metadata, thumbnail_png) =
-        match extension.as_deref() {
-            Some("3mf") => {
-                let doc = threemf::parse_3mf_file(path).map_err(|e| e.to_string())?;
-                (
-                    FileType::ThreeMf,
-                    doc.dimensions_mm,
-                    doc.volume_cm3,
-                    Some(doc.object_count as i64),
-                    doc.materials
-                        .into_iter()
-                        .map(|m| MaterialRecord {
-                            name: m.name,
-                            display_color: m.display_color,
-                        })
-                        .collect::<Vec<_>>(),
-                    doc.metadata,
-                    doc.thumbnail_png,
-                )
-            }
-            Some("stl") => {
-                let doc = stl::parse_stl_file(path).map_err(|e| e.to_string())?;
-                (
-                    FileType::Stl,
-                    doc.dimensions_mm,
-                    doc.volume_cm3,
-                    None,
-                    Vec::new(),
-                    BTreeMap::new(),
-                    None,
-                )
-            }
-            _ => return Err("nicht unterstütztes Dateiformat".to_string()),
-        };
+    let (
+        file_type,
+        dimensions_mm,
+        volume_cm3,
+        object_count,
+        materials,
+        metadata,
+        thumbnail_png,
+        plate_count,
+    ) = match extension.as_deref() {
+        Some("3mf") => {
+            let doc = threemf::parse_3mf_file(path).map_err(|e| e.to_string())?;
+            (
+                FileType::ThreeMf,
+                doc.dimensions_mm,
+                doc.volume_cm3,
+                Some(doc.object_count as i64),
+                doc.materials
+                    .into_iter()
+                    .map(|m| MaterialRecord {
+                        name: m.name,
+                        display_color: m.display_color,
+                    })
+                    .collect::<Vec<_>>(),
+                doc.metadata,
+                doc.thumbnail_png,
+                doc.plate_count.map(|c| c as i64),
+            )
+        }
+        Some("stl") => {
+            let doc = stl::parse_stl_file(path).map_err(|e| e.to_string())?;
+            (
+                FileType::Stl,
+                doc.dimensions_mm,
+                doc.volume_cm3,
+                None,
+                Vec::new(),
+                BTreeMap::new(),
+                None,
+                None,
+            )
+        }
+        _ => return Err("nicht unterstütztes Dateiformat".to_string()),
+    };
 
     let tags = tagging::suggest_tags(&TaggingContext {
         file_name: &file_name,
@@ -655,6 +667,7 @@ pub(crate) fn import_one(
         source_url: None,
         queue_position: None,
         favorite: false,
+        plate_count,
     };
 
     let id = db::insert_file(conn, &new_file).map_err(|e| e.to_string())?;
@@ -1255,6 +1268,7 @@ mod tests {
             source_url: None,
             queue_position: None,
             favorite: false,
+            plate_count: None,
         }
     }
 

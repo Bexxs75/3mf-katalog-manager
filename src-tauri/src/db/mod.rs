@@ -55,6 +55,7 @@ mod tests {
             source_url: None,
             queue_position: None,
             favorite: false,
+            plate_count: None,
         }
     }
 
@@ -72,6 +73,16 @@ mod tests {
         assert_eq!(stored.last_viewed_at, None);
         assert_eq!(stored.creator, Some("Jane".to_string()));
         assert_eq!(stored.content_hash, Some("abc123".to_string()));
+    }
+
+    #[test]
+    fn insert_and_get_file_roundtrips_plate_count() {
+        let mut conn = connect_in_memory().expect("connect");
+        let mut file = sample_file();
+        file.plate_count = Some(2);
+        let id = insert_file(&mut conn, &file).expect("insert");
+        let fetched = get_file(&conn, id).expect("query").expect("present");
+        assert_eq!(fetched.plate_count, Some(2));
     }
 
     #[test]

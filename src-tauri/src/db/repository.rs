@@ -75,6 +75,7 @@ pub(crate) fn init(conn: &Connection) -> Result<(), DbError> {
         "ALTER TABLE files ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0",
         [],
     );
+    let _ = conn.execute("ALTER TABLE files ADD COLUMN plate_count INTEGER", []);
     Ok(())
 }
 
@@ -225,8 +226,9 @@ pub fn insert_file(conn: &mut Connection, file: &NewFile) -> Result<i64, DbError
             file_size_bytes, dimension_x_mm, dimension_y_mm, dimension_z_mm,
             volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
             print_status, last_viewed_at, creator, content_hash,
-            render_snapshot_png, custom_image_png, source_url, queue_position, favorite
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)",
+            render_snapshot_png, custom_image_png, source_url, queue_position, favorite,
+            plate_count
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)",
         params![
             file.name,
             file.path,
@@ -253,6 +255,7 @@ pub fn insert_file(conn: &mut Connection, file: &NewFile) -> Result<i64, DbError
             file.source_url,
             file.queue_position,
             file.favorite,
+            file.plate_count,
         ],
     )?;
     let file_id = tx.last_insert_rowid();
@@ -327,7 +330,8 @@ pub fn get_file(conn: &Connection, id: i64) -> Result<Option<FileRecord>, DbErro
                     file_size_bytes, dimension_x_mm, dimension_y_mm, dimension_z_mm,
                     volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
                     print_status, last_viewed_at, creator, content_hash,
-                    render_snapshot_png, custom_image_png, source_url, queue_position, favorite
+                    render_snapshot_png, custom_image_png, source_url, queue_position, favorite,
+                    plate_count
              FROM files WHERE id = ?1",
             params![id],
             row_to_file,
@@ -349,7 +353,8 @@ pub fn list_files(conn: &Connection) -> Result<Vec<FileRecord>, DbError> {
                 file_size_bytes, dimension_x_mm, dimension_y_mm, dimension_z_mm,
                 volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
                 print_status, last_viewed_at, creator, content_hash,
-                render_snapshot_png, custom_image_png, source_url, queue_position, favorite
+                render_snapshot_png, custom_image_png, source_url, queue_position, favorite,
+                plate_count
          FROM files ORDER BY name",
     )?;
     let mut files = stmt
@@ -402,6 +407,7 @@ fn row_to_file(row: &rusqlite::Row) -> rusqlite::Result<FileRecord> {
         source_url: row.get(23)?,
         queue_position: row.get(24)?,
         favorite: row.get(25)?,
+        plate_count: row.get(26)?,
     })
 }
 

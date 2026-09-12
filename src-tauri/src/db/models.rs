@@ -57,6 +57,7 @@ pub struct NewFile {
     pub source_url: Option<String>,
     pub queue_position: Option<i64>,
     pub favorite: bool,
+    pub plate_count: Option<i64>,
 }
 
 #[derive(Debug, Clone)]
@@ -88,6 +89,7 @@ pub struct FileRecord {
     pub source_url: Option<String>,
     pub queue_position: Option<i64>,
     pub favorite: bool,
+    pub plate_count: Option<i64>,
 }
 
 #[derive(Debug, Clone)]
