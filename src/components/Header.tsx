@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { ViewMode, SortKey, SlicerConfig } from '../types';
 import type { ThemeSetting } from '../hooks/useTheme';
 import type { UiDensity } from '../hooks/UiDensityContext';
+import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import type { Language } from '../i18n/types';
 import { formatCount } from '../i18n/types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
@@ -17,6 +18,8 @@ interface Props {
   onThemeChange: (t: ThemeSetting) => void;
   uiDensity: UiDensity;
   onUiDensityChange: (d: UiDensity) => void;
+  displayPreference: DisplayPreference;
+  onDisplayPreferenceChange: (p: DisplayPreference) => void;
   onImportFiles: () => void;
   onImportFolder: () => void;
   settingsOpen: boolean;
@@ -54,6 +57,8 @@ export function Header({
   onThemeChange,
   uiDensity,
   onUiDensityChange,
+  displayPreference,
+  onDisplayPreferenceChange,
   onImportFiles,
   onImportFolder,
   settingsOpen,
@@ -277,6 +282,24 @@ export function Header({
             </div>
             <div className="mt-2 font-mono-ui text-[10.5px] leading-relaxed text-[var(--ink-3)]">
               {uiDensity === 'compact' ? t('densityDescriptionCompact') : t('densityDescriptionComfort')}
+            </div>
+
+            <div className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-2">{t('displayPreferenceTitle')}</div>
+            <div className="flex p-0.5 gap-0.5 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)]">
+              {(['thumbnail', 'render'] as DisplayPreference[]).map((opt) => (
+                <button
+                  key={opt}
+                  onClick={() => onDisplayPreferenceChange(opt)}
+                  className={`${segBase} flex-1 ${displayPreference === opt ? segActive : segInactive}`}
+                >
+                  {opt === 'thumbnail' ? t('displayPreferenceThumbnail') : t('displayPreferenceRender')}
+                </button>
+              ))}
+            </div>
+            <div className="mt-2 font-mono-ui text-[10.5px] leading-relaxed text-[var(--ink-3)]">
+              {displayPreference === 'thumbnail'
+                ? t('displayPreferenceDescriptionThumbnail')
+                : t('displayPreferenceDescriptionRender')}
             </div>
 
             <div className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-2">{t('languageTitle')}</div>
