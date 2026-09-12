@@ -1,6 +1,6 @@
-export type Origin = 'local' | 'gdrive' | 'onedrive' | 'dropbox' | 'proton';
+export type Origin = 'local';
 
-export type SyncStatus = 'synced' | 'outdated' | 'local-only' | 'cloud-only';
+export type SyncStatus = 'local-only';
 
 export interface ModelFile {
   id: string;
@@ -51,15 +51,6 @@ export interface SavedFilter {
   creator: string | null;
   query: string | null;
   sort: SortKey;
-}
-
-export interface CloudAccount {
-  id: Origin;
-  abbr: string;
-  name: string;
-  status: 'connected' | 'error' | 'disconnected';
-  usedPercent: number;
-  quotaLabel: string;
 }
 
 export type ViewMode = 'grid' | 'list';

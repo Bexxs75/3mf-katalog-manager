@@ -33,25 +33,13 @@ export const fr: Translations = {
   searchPlaceholder: 'Rechercher un nom ou un tag …',
   foldersHeading: 'Dossiers',
   tagsHeading: 'Tags',
-  cloudAccountsHeading: 'Comptes cloud',
-  cloudConnected: 'connecté',
-  cloudError: 'erreur',
-  cloudDisconnected: 'déconnecté',
-  cloudConnectionError: 'Erreur de connexion :',
 
   previewLabel3d: 'Aperçu 3D',
 
-  columnOrigin: 'Origine',
   columnName: 'Nom',
   columnTags: 'Tags',
   columnVolume: 'Volume',
   columnSize: 'Taille',
-  columnSync: 'Sync',
-
-  syncSynced: 'À jour',
-  syncOutdated: 'Obsolète',
-  syncLocalOnly: 'Local uniquement',
-  syncCloudOnly: 'Cloud uniquement',
 
   cancel: 'Annuler',
   delete: 'Supprimer',
@@ -65,14 +53,6 @@ export const fr: Translations = {
   removeSlicerAria: 'Supprimer le slicer',
   chooseSlicerAria: 'Choisir un autre slicer',
   slicerLaunchError: 'Impossible de démarrer le slicer :',
-  uploadToCloudAria: 'Envoyer vers Google Drive',
-  uploadingToCloudAria: 'Envoi vers Google Drive …',
-  alreadyInCloudAria: 'Déjà lié au cloud',
-  connectCloudToUploadAria: 'Connecter Google Drive pour envoyer',
-  cloudUploadError: 'Échec de l’envoi :',
-  uploadButtonLabel: 'Envoyer',
-  uploadButtonLabelInProgress: 'Envoi …',
-  uploadButtonLabelDone: 'Envoyé',
 
   emptyStateText: "Sélectionnez un modèle pour voir les détails, l'aperçu et les tags.",
   dragToRotate: 'Glisser pour faire pivoter',
@@ -90,7 +70,6 @@ export const fr: Translations = {
   loadingPreview: "Chargement de l'aperçu …",
   previewUnavailable: 'Aperçu indisponible',
 
-  importFromCloudOption: 'Importer depuis Google Drive…',
 
   filamentCatalogAria: 'Stock de filament',
   filamentDialogTitle: 'Stock de Filament',

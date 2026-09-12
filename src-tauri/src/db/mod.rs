@@ -5,11 +5,11 @@ mod repository;
 pub use repository::{
     add_tag_to_file, connect, delete_file, delete_filament_spool, delete_saved_filter, delete_unused_tags,
     file_exists_by_hash, file_exists_by_path, get_file, insert_file, insert_filament_spool, insert_folder,
-    insert_saved_filter, list_cloud_accounts, list_creator_counts, list_filament_spools, list_files,
+    insert_saved_filter, list_creator_counts, list_filament_spools, list_files,
     list_files_missing_content_hash, list_folders, list_saved_filters, list_tag_counts, mark_file_viewed,
-    max_queue_position, remove_tag_from_file, set_cloud_account_status, set_content_hash, set_custom_image_png,
-    set_favorite, set_file_cloud_link, set_file_modified_at, set_file_sync_status, set_print_status, set_queue_position,
-    set_render_snapshot_png, set_source_url, update_filament_spool, upsert_cloud_account,
+    max_queue_position, remove_tag_from_file, set_content_hash, set_custom_image_png,
+    set_favorite, set_print_status, set_queue_position,
+    set_render_snapshot_png, set_source_url, update_filament_spool,
 };
 
 #[cfg(test)]
@@ -327,59 +327,6 @@ mod tests {
         let tags = list_tag_counts(&conn).expect("list tags");
         assert!(!tags.iter().any(|t| t.name == "verwaist"));
         assert!(tags.iter().any(|t| t.name == "cube"));
-    }
-
-    #[test]
-    fn upserts_and_lists_cloud_accounts() {
-        let conn = connect_in_memory().expect("connect");
-        let id = upsert_cloud_account(&conn, "gdrive", "user@example.com", "2026-09-09T12:00:00Z")
-            .expect("upsert");
-        assert!(id > 0);
-
-        let accounts = list_cloud_accounts(&conn).expect("list");
-        assert_eq!(accounts.len(), 1);
-        assert_eq!(accounts[0].provider, "gdrive");
-        assert_eq!(accounts[0].account_label, "user@example.com");
-        assert_eq!(accounts[0].status, "connected");
-    }
-
-    #[test]
-    fn upsert_cloud_account_updates_existing_row_for_same_provider() {
-        let conn = connect_in_memory().expect("connect");
-        upsert_cloud_account(&conn, "gdrive", "first@example.com", "2026-09-09T12:00:00Z")
-            .expect("first upsert");
-        upsert_cloud_account(&conn, "gdrive", "second@example.com", "2026-09-09T13:00:00Z")
-            .expect("second upsert");
-
-        let accounts = list_cloud_accounts(&conn).expect("list");
-        assert_eq!(accounts.len(), 1);
-        assert_eq!(accounts[0].account_label, "second@example.com");
-    }
-
-    #[test]
-    fn set_file_cloud_link_updates_origin_cloud_id_sync_status_and_modified_at() {
-        let mut conn = connect_in_memory().expect("connect");
-        let id = insert_file(&mut conn, &sample_file()).expect("insert");
-
-        set_file_cloud_link(&conn, id, "gdrive", "drive-file-1", "synced", "2026-09-10T08:00:00Z")
-            .expect("set cloud link");
-
-        let file = get_file(&conn, id).expect("query").expect("present");
-        assert_eq!(file.origin, "gdrive");
-        assert_eq!(file.sync_status, "synced");
-        assert_eq!(file.cloud_id, Some("drive-file-1".to_string()));
-        assert_eq!(file.file_modified_at, Some("2026-09-10T08:00:00Z".to_string()));
-    }
-
-    #[test]
-    fn sets_cloud_account_status() {
-        let conn = connect_in_memory().expect("connect");
-        upsert_cloud_account(&conn, "gdrive", "user@example.com", "2026-09-09T12:00:00Z")
-            .expect("upsert");
-        set_cloud_account_status(&conn, "gdrive", "disconnected").expect("set status");
-
-        let accounts = list_cloud_accounts(&conn).expect("list");
-        assert_eq!(accounts[0].status, "disconnected");
     }
 
     fn sample_filament_spool() -> NewFilamentSpool {

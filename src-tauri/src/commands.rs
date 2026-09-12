@@ -571,15 +571,9 @@ fn collect_supported_files(path: &Path, out: &mut Vec<PathBuf>) {
 pub(crate) fn import_one(
     conn: &mut Connection,
     path: &Path,
-    origin: &str,
-    cloud_id: Option<String>,
     display_name: Option<&str>,
     content_hash: Option<String>,
 ) -> CmdResult<ModelFileDto> {
-    // Bei Cloud-Importen ist `path` aus Sicherheitsgruenden (kein Path
-    // Traversal ueber den Drive-Dateinamen) ein von der Datei-ID abgeleiteter
-    // Cache-Pfad, nicht der echte Dateiname - display_name liefert dann den
-    // tatsaechlichen Namen fuer Katalog-Anzeige UND Auto-Tagging.
     let file_name = display_name.map(|n| n.to_string()).unwrap_or_else(|| {
         path.file_name()
             .and_then(|n| n.to_str())
@@ -634,16 +628,14 @@ pub(crate) fn import_one(
         materials: &materials,
     });
 
-    let sync_status = if origin == "local" { "local-only" } else { "synced" };
-
     let new_file = NewFile {
         name: file_name,
         path: path.to_string_lossy().to_string(),
         file_type,
         folder_id: None,
-        origin: origin.to_string(),
-        cloud_id,
-        sync_status: sync_status.to_string(),
+        origin: "local".to_string(),
+        cloud_id: None,
+        sync_status: "local-only".to_string(),
         file_size_bytes,
         dimensions_mm,
         volume_cm3,
@@ -720,7 +712,7 @@ fn import_many(state: &State<AppState>, roots: Vec<PathBuf>) -> CmdResult<Import
             }
         }
 
-        match import_one(&mut conn, &path, "local", None, None, Some(content_hash)) {
+        match import_one(&mut conn, &path, None, Some(content_hash)) {
             Ok(dto) => imported.push(dto),
             Err(e) => eprintln!("[import] Import fehlgeschlagen für {path_str}: {e}"),
         }

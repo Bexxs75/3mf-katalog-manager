@@ -5,7 +5,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use super::error::DbError;
 use super::models::{
-    CloudAccountRecord, FileRecord, FileType, FilamentSpoolRecord, FolderRecord, MaterialRecord,
+    FileRecord, FileType, FilamentSpoolRecord, FolderRecord, MaterialRecord,
     NewFile, NewFilamentSpool, NewSavedFilter, SavedFilterRecord, TagCount, CreatorCount,
 };
 
@@ -442,60 +442,6 @@ fn load_tags(conn: &Connection, file_id: i64) -> Result<Vec<String>, DbError> {
     Ok(rows)
 }
 
-pub fn upsert_cloud_account(
-    conn: &Connection,
-    provider: &str,
-    account_label: &str,
-    connected_at: &str,
-) -> Result<i64, DbError> {
-    conn.execute(
-        "INSERT INTO cloud_accounts (provider, account_label, status, connected_at)
-         VALUES (?1, ?2, 'connected', ?3)
-         ON CONFLICT(provider) DO UPDATE SET
-             account_label = excluded.account_label,
-             status = 'connected',
-             connected_at = excluded.connected_at",
-        params![provider, account_label, connected_at],
-    )?;
-    Ok(conn.query_row(
-        "SELECT id FROM cloud_accounts WHERE provider = ?1",
-        params![provider],
-        |row| row.get(0),
-    )?)
-}
-
-pub fn list_cloud_accounts(conn: &Connection) -> Result<Vec<CloudAccountRecord>, DbError> {
-    let mut stmt = conn.prepare(
-        "SELECT id, provider, account_label, status, connected_at FROM cloud_accounts ORDER BY provider",
-    )?;
-    let rows = stmt.query_map([], |row| {
-        Ok(CloudAccountRecord {
-            id: row.get(0)?,
-            provider: row.get(1)?,
-            account_label: row.get(2)?,
-            status: row.get(3)?,
-            connected_at: row.get(4)?,
-        })
-    })?;
-    Ok(rows.collect::<Result<Vec<_>, _>>()?)
-}
-
-pub fn set_cloud_account_status(conn: &Connection, provider: &str, status: &str) -> Result<(), DbError> {
-    conn.execute(
-        "UPDATE cloud_accounts SET status = ?1 WHERE provider = ?2",
-        params![status, provider],
-    )?;
-    Ok(())
-}
-
-pub fn set_file_sync_status(conn: &Connection, file_id: i64, status: &str) -> Result<(), DbError> {
-    conn.execute(
-        "UPDATE files SET sync_status = ?1 WHERE id = ?2",
-        params![status, file_id],
-    )?;
-    Ok(())
-}
-
 pub fn set_print_status(conn: &Connection, file_id: i64, status: &str) -> Result<(), DbError> {
     conn.execute(
         "UPDATE files SET print_status = ?1,
@@ -575,33 +521,6 @@ pub fn mark_file_viewed(conn: &Connection, file_id: i64) -> Result<(), DbError> 
     conn.execute(
         "UPDATE files SET last_viewed_at = ?1 WHERE id = ?2",
         params![now, file_id],
-    )?;
-    Ok(())
-}
-
-pub fn set_file_modified_at(conn: &Connection, file_id: i64, modified_at: &str) -> Result<(), DbError> {
-    conn.execute(
-        "UPDATE files SET file_modified_at = ?1 WHERE id = ?2",
-        params![modified_at, file_id],
-    )?;
-    Ok(())
-}
-
-/// Verknuepft eine bisher rein lokale Datei nach einem erfolgreichen Upload
-/// mit ihrem Cloud-Gegenstueck - setzt origin/cloud_id/sync_status/
-/// file_modified_at in einem Schritt, statt vier einzelne UPDATEs
-/// auszufuehren.
-pub fn set_file_cloud_link(
-    conn: &Connection,
-    file_id: i64,
-    origin: &str,
-    cloud_id: &str,
-    sync_status: &str,
-    modified_at: &str,
-) -> Result<(), DbError> {
-    conn.execute(
-        "UPDATE files SET origin = ?1, cloud_id = ?2, sync_status = ?3, file_modified_at = ?4 WHERE id = ?5",
-        params![origin, cloud_id, sync_status, modified_at, file_id],
     )?;
     Ok(())
 }

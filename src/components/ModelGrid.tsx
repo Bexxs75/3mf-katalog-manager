@@ -11,14 +11,6 @@ interface Props {
   onToggleFavorite: (id: string) => void;
 }
 
-const originAbbr: Record<string, string> = {
-  local: '',
-  gdrive: 'GD',
-  onedrive: 'OD',
-  dropbox: 'DB',
-  proton: 'PD',
-};
-
 export function ModelGrid({ models, selectedId, onSelect, onContextMenu, onToggleFavorite }: Props) {
   const t = useT();
   const { density } = useUiDensity();
@@ -67,11 +59,6 @@ export function ModelGrid({ models, selectedId, onSelect, onContextMenu, onToggl
           {Date.now() - new Date(m.importedAt).getTime() < 24 * 60 * 60 * 1000 && (
             <div className="absolute left-[7px] top-[7px] font-mono-ui text-[9px] px-1 py-0.5 rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]">
               {t('newBadge')}
-            </div>
-          )}
-          {originAbbr[m.origin] && (
-            <div className="absolute right-[7px] top-[7px] font-mono-ui text-[9px] px-1 py-0.5 rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]">
-              {originAbbr[m.origin]}
             </div>
           )}
           {m.printStatus === 'printed' && (
@@ -153,11 +140,6 @@ export function ModelGrid({ models, selectedId, onSelect, onContextMenu, onToggl
               {Date.now() - new Date(m.importedAt).getTime() < 24 * 60 * 60 * 1000 && (
                 <div className="absolute left-2.5 top-2.5 font-semibold text-[11px] px-2.5 py-1 rounded-lg bg-[var(--panel)] text-[var(--accent)] shadow-[var(--shadow)]">
                   {t('newBadge')}
-                </div>
-              )}
-              {originAbbr[m.origin] && (
-                <div className="absolute right-2.5 top-2.5 font-semibold text-[10px] px-2 py-1 rounded-md bg-[var(--panel)]/90 text-[var(--ink-2)]">
-                  {originAbbr[m.origin]}
                 </div>
               )}
               {m.printStatus === 'printed' && (
