@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ModelFile, SlicerConfig } from '../types';
-import type { Language, Translations } from '../i18n/types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
-import { formatBytes, formatDate, formatDimensions, formatVolumeCm3, formatWeightG } from '../i18n/format';
 import { ModelViewer } from './ModelViewer';
 import { useUiDensity } from '../hooks/UiDensityContext';
+import { buildMetaRows } from '../lib/modelMetadata';
 
 interface Props {
   model: ModelFile | null;
@@ -20,28 +19,6 @@ interface Props {
   onOpenInSlicer: (slicerId?: string) => void;
   slicers: SlicerConfig[];
   slicerError: string | null;
-}
-
-type TFunction = <K extends keyof Translations>(key: K) => Translations[K];
-
-function buildMetaRows(model: ModelFile, t: TFunction, language: Language): { label: string; value: string }[] {
-  const materialsValue =
-    model.materials.length === 0
-      ? t('noValue')
-      : model.materials.map((m) => m.name).join(', ');
-  const objectCountValue = model.objectCount === null ? t('noValue') : String(model.objectCount);
-  const weightValue =
-    model.estimatedWeightG === null ? t('noValue') : `≈ ${formatWeightG(model.estimatedWeightG, language)}`;
-
-  return [
-    { label: t('metaDimensions'), value: formatDimensions(model.dimensionsMm, language) },
-    { label: t('metaVolume'), value: formatVolumeCm3(model.volumeCm3, language) },
-    { label: t('metaWeight'), value: weightValue },
-    { label: t('metaObjectCount'), value: objectCountValue },
-    { label: t('metaMaterial'), value: materialsValue },
-    { label: t('metaFileSize'), value: formatBytes(model.fileSizeBytes, language) },
-    { label: t('metaImported'), value: formatDate(model.importedAt, language) },
-  ];
 }
 
 export function DetailPanel({

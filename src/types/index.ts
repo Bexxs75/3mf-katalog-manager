@@ -13,6 +13,7 @@ export interface ModelFile {
   dimensionsMm: [number, number, number] | null;
   volumeCm3: number | null;
   objectCount: number | null;
+  plateCount: number | null;
   materials: { name: string; displayColor: string | null }[];
   fileSizeBytes: number;
   importedAt: string;

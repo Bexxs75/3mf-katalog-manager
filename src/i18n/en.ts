@@ -60,6 +60,7 @@ export const en: Translations = {
   metaDimensions: 'Size',
   metaVolume: 'Volume',
   metaObjectCount: 'Objects',
+  metaPlateCount: 'Build plates',
   metaMaterial: 'Material',
   metaFileSize: 'File size',
   metaImported: 'Imported',
