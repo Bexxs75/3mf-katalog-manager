@@ -6,10 +6,10 @@ pub use repository::{
     add_tag_to_file, connect, delete_file, delete_filament_spool, delete_saved_filter, delete_unused_tags,
     file_exists_by_hash, file_exists_by_path, get_file, insert_file, insert_filament_spool, insert_folder,
     insert_saved_filter, list_creator_counts, list_filament_spools, list_files,
-    list_files_missing_content_hash, list_folders, list_saved_filters, list_tag_counts, mark_file_viewed,
-    max_queue_position, remove_tag_from_file, set_content_hash, set_custom_image_png,
-    set_favorite, set_print_status, set_queue_position,
-    set_render_snapshot_png, set_source_url, update_filament_spool,
+    list_files_missing_content_hash, list_folders, list_saved_filters, list_tag_counts, list_trash,
+    mark_file_viewed, max_queue_position, purge_expired_trash, remove_tag_from_file, restore_file,
+    set_content_hash, set_custom_image_png, set_favorite, set_print_status, set_queue_position,
+    set_render_snapshot_png, set_source_url, soft_delete_file, update_filament_spool,
 };
 
 #[cfg(test)]
