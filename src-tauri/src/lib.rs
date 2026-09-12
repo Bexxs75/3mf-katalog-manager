@@ -28,8 +28,11 @@ pub fn run() {
                 eprintln!("[startup] Aufraeumen verwaister Tags fehlgeschlagen: {e}");
             }
             commands::backfill_content_hashes(&conn);
+            let trash_dir = app_data_dir.join("trash");
+            std::fs::create_dir_all(&trash_dir)?;
             app.manage(commands::AppState {
                 db: Mutex::new(conn),
+                trash_dir,
             });
             Ok(())
         })

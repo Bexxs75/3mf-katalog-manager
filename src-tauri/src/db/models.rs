@@ -90,6 +90,8 @@ pub struct FileRecord {
     pub queue_position: Option<i64>,
     pub favorite: bool,
     pub plate_count: Option<i64>,
+    pub deleted_at: Option<String>,
+    pub trash_path: Option<String>,
 }
 
 #[derive(Debug, Clone)]

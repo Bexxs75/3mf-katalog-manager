@@ -76,6 +76,8 @@ pub(crate) fn init(conn: &Connection) -> Result<(), DbError> {
         [],
     );
     let _ = conn.execute("ALTER TABLE files ADD COLUMN plate_count INTEGER", []);
+    let _ = conn.execute("ALTER TABLE files ADD COLUMN deleted_at TEXT", []);
+    let _ = conn.execute("ALTER TABLE files ADD COLUMN trash_path TEXT", []);
     Ok(())
 }
 
@@ -179,9 +181,10 @@ pub fn delete_unused_tags(conn: &Connection) -> Result<usize, DbError> {
 
 pub fn list_tag_counts(conn: &Connection) -> Result<Vec<TagCount>, DbError> {
     let mut stmt = conn.prepare(
-        "SELECT t.name, t.color_hue, COUNT(ft.file_id)
+        "SELECT t.name, t.color_hue, COUNT(f.id)
          FROM tags t
          LEFT JOIN file_tags ft ON ft.tag_id = t.id
+         LEFT JOIN files f ON f.id = ft.file_id AND f.deleted_at IS NULL
          GROUP BY t.id
          ORDER BY t.name",
     )?;
@@ -199,7 +202,7 @@ pub fn list_tag_counts(conn: &Connection) -> Result<Vec<TagCount>, DbError> {
 
 pub fn list_creator_counts(conn: &Connection) -> Result<Vec<CreatorCount>, DbError> {
     let mut stmt = conn.prepare(
-        "SELECT creator, COUNT(*) FROM files WHERE creator IS NOT NULL GROUP BY creator ORDER BY creator",
+        "SELECT creator, COUNT(*) FROM files WHERE creator IS NOT NULL AND deleted_at IS NULL GROUP BY creator ORDER BY creator",
     )?;
     let rows = stmt
         .query_map([], |row| {
@@ -303,9 +306,61 @@ pub fn delete_file(conn: &Connection, id: i64) -> Result<(), DbError> {
     Ok(())
 }
 
+pub fn soft_delete_file(conn: &Connection, id: i64, trash_path: &str, deleted_at: &str) -> Result<(), DbError> {
+    conn.execute(
+        "UPDATE files SET deleted_at = ?1, trash_path = ?2 WHERE id = ?3",
+        params![deleted_at, trash_path, id],
+    )?;
+    Ok(())
+}
+
+pub fn restore_file(conn: &Connection, id: i64, new_path: Option<&str>) -> Result<(), DbError> {
+    match new_path {
+        Some(path) => {
+            conn.execute(
+                "UPDATE files SET deleted_at = NULL, trash_path = NULL, path = ?1 WHERE id = ?2",
+                params![path, id],
+            )?;
+        }
+        None => {
+            conn.execute(
+                "UPDATE files SET deleted_at = NULL, trash_path = NULL WHERE id = ?1",
+                params![id],
+            )?;
+        }
+    }
+    Ok(())
+}
+
+const TRASH_SELECT_COLUMNS: &str = "id, name, path, file_type, folder_id, origin, sync_status, cloud_id,
+     file_size_bytes, dimension_x_mm, dimension_y_mm, dimension_z_mm,
+     volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
+     print_status, last_viewed_at, creator, content_hash,
+     render_snapshot_png, custom_image_png, source_url, queue_position, favorite,
+     plate_count, deleted_at, trash_path";
+
+pub fn list_trash(conn: &Connection) -> Result<Vec<FileRecord>, DbError> {
+    let sql = format!("SELECT {TRASH_SELECT_COLUMNS} FROM files WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC");
+    let mut stmt = conn.prepare(&sql)?;
+    let mut files = stmt.query_map([], row_to_file)?.collect::<Result<Vec<_>, _>>()?;
+    for file in &mut files {
+        file.materials = load_materials(conn, file.id)?;
+        file.metadata = load_metadata(conn, file.id)?;
+        file.tags = load_tags(conn, file.id)?;
+    }
+    Ok(files)
+}
+
+pub fn purge_expired_trash(conn: &Connection, older_than: &str) -> Result<Vec<FileRecord>, DbError> {
+    let sql = format!("SELECT {TRASH_SELECT_COLUMNS} FROM files WHERE deleted_at IS NOT NULL AND deleted_at < ?1");
+    let mut stmt = conn.prepare(&sql)?;
+    let files = stmt.query_map(params![older_than], row_to_file)?.collect::<Result<Vec<_>, _>>()?;
+    Ok(files)
+}
+
 pub fn file_exists_by_path(conn: &Connection, path: &str) -> Result<bool, DbError> {
     let exists: Option<i64> = conn
-        .query_row("SELECT 1 FROM files WHERE path = ?1", params![path], |row| {
+        .query_row("SELECT 1 FROM files WHERE path = ?1 AND deleted_at IS NULL", params![path], |row| {
             row.get(0)
         })
         .optional()?;
@@ -315,7 +370,7 @@ pub fn file_exists_by_path(conn: &Connection, path: &str) -> Result<bool, DbErro
 pub fn file_exists_by_hash(conn: &Connection, hash: &str) -> Result<bool, DbError> {
     let exists: Option<i64> = conn
         .query_row(
-            "SELECT 1 FROM files WHERE content_hash = ?1",
+            "SELECT 1 FROM files WHERE content_hash = ?1 AND deleted_at IS NULL",
             params![hash],
             |row| row.get(0),
         )
@@ -331,7 +386,7 @@ pub fn get_file(conn: &Connection, id: i64) -> Result<Option<FileRecord>, DbErro
                     volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
                     print_status, last_viewed_at, creator, content_hash,
                     render_snapshot_png, custom_image_png, source_url, queue_position, favorite,
-                    plate_count
+                    plate_count, deleted_at, trash_path
              FROM files WHERE id = ?1",
             params![id],
             row_to_file,
@@ -354,8 +409,8 @@ pub fn list_files(conn: &Connection) -> Result<Vec<FileRecord>, DbError> {
                 volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
                 print_status, last_viewed_at, creator, content_hash,
                 render_snapshot_png, custom_image_png, source_url, queue_position, favorite,
-                plate_count
-         FROM files ORDER BY name",
+                plate_count, deleted_at, trash_path
+         FROM files WHERE deleted_at IS NULL ORDER BY name",
     )?;
     let mut files = stmt
         .query_map([], row_to_file)?
@@ -408,6 +463,8 @@ fn row_to_file(row: &rusqlite::Row) -> rusqlite::Result<FileRecord> {
         queue_position: row.get(24)?,
         favorite: row.get(25)?,
         plate_count: row.get(26)?,
+        deleted_at: row.get(27)?,
+        trash_path: row.get(28)?,
     })
 }
 
@@ -475,7 +532,7 @@ pub fn set_queue_position(conn: &Connection, file_id: i64, position: Option<i64>
 }
 
 pub fn max_queue_position(conn: &Connection) -> Result<Option<i64>, DbError> {
-    Ok(conn.query_row("SELECT MAX(queue_position) FROM files", [], |row| row.get(0))?)
+    Ok(conn.query_row("SELECT MAX(queue_position) FROM files WHERE deleted_at IS NULL", [], |row| row.get(0))?)
 }
 
 /// Liefert (id, path) fuer alle Dateien ohne content_hash - Grundlage fuer
@@ -483,7 +540,7 @@ pub fn max_queue_position(conn: &Connection) -> Result<Option<i64>, DbError> {
 /// fuer Bestandsdaten den Hash nachtraeglich per Datei-I/O berechnet. Bewusst
 /// minimal (kein FileRecord), da nur diese zwei Felder gebraucht werden.
 pub fn list_files_missing_content_hash(conn: &Connection) -> Result<Vec<(i64, String)>, DbError> {
-    let mut stmt = conn.prepare("SELECT id, path FROM files WHERE content_hash IS NULL")?;
+    let mut stmt = conn.prepare("SELECT id, path FROM files WHERE content_hash IS NULL AND deleted_at IS NULL")?;
     let rows = stmt
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
         .collect::<Result<Vec<_>, _>>()?;
