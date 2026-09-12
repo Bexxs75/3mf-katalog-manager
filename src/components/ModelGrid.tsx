@@ -7,11 +7,12 @@ interface Props {
   models: ModelFile[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onOpenDetail: (id: string) => void;
   onContextMenu: (id: string, x: number, y: number) => void;
   onToggleFavorite: (id: string) => void;
 }
 
-export function ModelGrid({ models, selectedId, onSelect, onContextMenu, onToggleFavorite }: Props) {
+export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContextMenu, onToggleFavorite }: Props) {
   const t = useT();
   const { density } = useUiDensity();
   const { language } = useLanguage();
@@ -21,6 +22,7 @@ export function ModelGrid({ models, selectedId, onSelect, onContextMenu, onToggl
       <div
         key={m.id}
         onClick={() => onSelect(m.id)}
+        onDoubleClick={() => onOpenDetail(m.id)}
         onContextMenu={(e) => {
           e.preventDefault();
           onSelect(m.id);
@@ -110,6 +112,7 @@ export function ModelGrid({ models, selectedId, onSelect, onContextMenu, onToggl
           <div
             key={m.id}
             onClick={() => onSelect(m.id)}
+            onDoubleClick={() => onOpenDetail(m.id)}
             onContextMenu={(e) => {
               e.preventDefault();
               onSelect(m.id);
