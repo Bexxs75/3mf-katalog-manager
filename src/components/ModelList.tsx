@@ -1,6 +1,7 @@
 import type { ModelFile } from '../types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatBytes, formatVolumeCm3 } from '../i18n/format';
+import { BulkCheckbox } from './BulkCheckbox';
 
 interface Props {
   models: ModelFile[];
@@ -44,13 +45,13 @@ export function ModelList({ models, selectedId, onSelect, onOpenDetail, onContex
           }`}
           style={{ gridTemplateColumns: '24px minmax(150px,2.2fr) minmax(110px,1.6fr) 92px 82px' }}
         >
-          {!readOnly && (
-            <input
-              type="checkbox"
+          {readOnly ? (
+            <span />
+          ) : (
+            <BulkCheckbox
               checked={selectedForBulk.has(m.id)}
-              onClick={(e) => e.stopPropagation()}
-              onChange={() => onToggleBulkSelect(m.id)}
-              className="w-4 h-4 cursor-pointer justify-self-center"
+              onToggle={() => onToggleBulkSelect(m.id)}
+              className="justify-self-center"
             />
           )}
           <span className="text-[length:var(--font-size-body)] font-medium overflow-hidden text-ellipsis whitespace-nowrap">
