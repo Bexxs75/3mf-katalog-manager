@@ -229,6 +229,8 @@ export default function App() {
 
   const importFiles = () => invoke<ImportResultDto>('import_files').then(mergeImported);
   const importFolder = () => invoke<ImportResultDto>('import_folder').then(mergeImported);
+  const importFolderAsCollection = () =>
+    invoke<ImportResultDto>('import_folder_as_collection').then(mergeImported).then(() => refreshCollections());
 
   const openInSlicer = (id: string, slicerId?: string) => {
     const model = models.find((m) => m.id === id);
@@ -349,6 +351,30 @@ export default function App() {
     invoke('add_files_to_collection', { collectionId, fileIds: Array.from(selectedForBulk) }).then(() => {
       refreshCollections();
       if (activeCollection === collectionId) refreshCollectionModels(collectionId);
+      clearBulkSelection();
+    });
+  };
+
+  const reorderCollection = (orderedIds: string[]) => {
+    if (!activeCollection) return;
+    const updates = orderedIds.map((fileId, position) => ({ fileId, position }));
+    setCollectionModels((prev) => {
+      const byId = new Map(prev.map((m) => [m.id, m]));
+      return orderedIds.map((id) => byId.get(id)).filter((m): m is ModelFile => m !== undefined);
+    });
+    invoke('reorder_collection', { collectionId: activeCollection, updates }).catch((e) => {
+      console.error('[collections] Umsortieren fehlgeschlagen:', e);
+    });
+  };
+
+  const bulkRemoveFromCollection = () => {
+    if (!activeCollection) return;
+    const ids = Array.from(selectedForBulk);
+    Promise.all(
+      ids.map((fileId) => invoke('remove_file_from_collection', { collectionId: activeCollection, fileId })),
+    ).then(() => {
+      refreshCollections();
+      refreshCollectionModels(activeCollection);
       clearBulkSelection();
     });
   };
@@ -504,6 +530,7 @@ export default function App() {
         onDisplayPreferenceChange={setDisplayPreference}
         onImportFiles={importFiles}
         onImportFolder={importFolder}
+        onImportFolderAsCollection={importFolderAsCollection}
         settingsOpen={settingsOpen}
         onSettingsOpenChange={setSettingsOpen}
         slicers={slicers}
@@ -733,6 +760,14 @@ export default function App() {
                         </div>
                       )}
                     </div>
+                    {activeCollection && (
+                      <button
+                        onClick={bulkRemoveFromCollection}
+                        className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]"
+                      >
+                        {t('removeFromCollectionLabel')}
+                      </button>
+                    )}
                     <button onClick={() => bulkSetPrintStatus('printed')} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]">
                       {t('printedBadge')}
                     </button>
@@ -799,6 +834,8 @@ export default function App() {
                     selectedForBulk={selectedForBulk}
                     onToggleBulkSelect={toggleBulkSelect}
                     displayPreference={displayPreference}
+                    reorderable={activeCollection !== null}
+                    onReorder={reorderCollection}
                   />
                 ) : (
                   <ModelList

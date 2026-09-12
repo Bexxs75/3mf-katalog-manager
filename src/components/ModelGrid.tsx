@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { ModelFile } from '../types';
 import { useT, useLanguage } from '../i18n/LanguageContext';
 import { useUiDensity } from '../hooks/UiDensityContext';
@@ -17,12 +18,39 @@ interface Props {
   selectedForBulk: Set<string>;
   onToggleBulkSelect: (id: string) => void;
   displayPreference: DisplayPreference;
+  reorderable?: boolean;
+  onReorder?: (orderedIds: string[]) => void;
 }
 
-export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContextMenu, onToggleFavorite, readOnly, selectedForBulk, onToggleBulkSelect, displayPreference }: Props) {
+export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContextMenu, onToggleFavorite, readOnly, selectedForBulk, onToggleBulkSelect, displayPreference, reorderable, onReorder }: Props) {
   const t = useT();
   const { density } = useUiDensity();
   const { language } = useLanguage();
+
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
+
+  // Reihenfolge-Aenderung per Maus-Events statt nativem HTML5-Drag&Drop -
+  // identisches Muster wie die Warteschlange in Sidebar.tsx. Natives
+  // draggable/onDragStart/onDragOver/onDrop funktioniert unter Tauri/
+  // WebKitGTK nicht zuverlaessig, da dragDropEnabled native Drag-Sessions
+  // auf Fensterebene abfaengt.
+  useEffect(() => {
+    if (!reorderable || dragIndex === null) return;
+    const handleMouseUp = () => {
+      const from = dragIndex;
+      const to = overIndex;
+      setDragIndex(null);
+      setOverIndex(null);
+      if (from === null || to === null || to === from) return;
+      const ids = models.map((m) => m.id);
+      const [moved] = ids.splice(from, 1);
+      ids.splice(to, 0, moved);
+      onReorder?.(ids);
+    };
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => document.removeEventListener('mouseup', handleMouseUp);
+  }, [reorderable, dragIndex, overIndex, models, onReorder]);
 
   function renderCompactCard(m: ModelFile) {
     return (
@@ -35,6 +63,8 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
           onSelect(m.id);
           onContextMenu(m.id, e.clientX, e.clientY);
         }}
+        onMouseDown={() => reorderable && setDragIndex(models.findIndex((x) => x.id === m.id))}
+        onMouseEnter={() => reorderable && dragIndex !== null && setOverIndex(models.findIndex((x) => x.id === m.id))}
         className={`rounded-[4px] overflow-hidden border cursor-pointer ${
           m.id === selectedId ? 'border-[var(--accent)]' : 'border-[var(--line)]'
         }`}
@@ -134,6 +164,8 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
               onSelect(m.id);
               onContextMenu(m.id, e.clientX, e.clientY);
             }}
+            onMouseDown={() => reorderable && setDragIndex(models.findIndex((x) => x.id === m.id))}
+            onMouseEnter={() => reorderable && dragIndex !== null && setOverIndex(models.findIndex((x) => x.id === m.id))}
             className={`rounded-[var(--radius-card)] overflow-hidden cursor-pointer bg-[var(--panel)] shadow-[var(--shadow)] border-2 ${
               m.id === selectedId ? 'border-[var(--accent)]' : 'border-transparent'
             }`}

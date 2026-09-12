@@ -23,6 +23,7 @@ interface Props {
   onDisplayPreferenceChange: (p: DisplayPreference) => void;
   onImportFiles: () => void;
   onImportFolder: () => void;
+  onImportFolderAsCollection: () => void;
   settingsOpen: boolean;
   onSettingsOpenChange: (open: boolean) => void;
   slicers: SlicerConfig[];
@@ -63,6 +64,7 @@ export function Header({
   onDisplayPreferenceChange,
   onImportFiles,
   onImportFolder,
+  onImportFolderAsCollection,
   settingsOpen,
   onSettingsOpenChange,
   slicers,
@@ -149,6 +151,15 @@ export function Header({
               className="w-full text-left px-3 py-1.5 text-[length:var(--font-size-body)] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
             >
               {t('importFolderOption')}
+            </button>
+            <button
+              onClick={() => {
+                setImportMenuOpen(false);
+                onImportFolderAsCollection();
+              }}
+              className="w-full text-left px-3 py-1.5 text-[length:var(--font-size-body)] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
+            >
+              {t('importFolderAsCollectionOption')}
             </button>
           </div>
         )}
