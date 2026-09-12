@@ -394,10 +394,19 @@ pub fn delete_file(state: State<AppState>, file_id: String) -> CmdResult<()> {
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "file not found".to_string())?;
 
-    if std::fs::metadata(&file.path).is_err() {
-        // Datei existiert schon nicht mehr (z.B. bereinigter verwaister
-        // Pfad) - nichts zu verschieben, Katalog-Eintrag direkt hart loeschen.
-        return db::delete_file(&conn, id).map_err(|e| e.to_string());
+    match std::fs::metadata(&file.path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // Datei existiert schon wirklich nicht mehr (z.B. bereinigter
+            // verwaister Pfad) - nichts zu verschieben, Katalog-Eintrag
+            // direkt hart loeschen. Andere Fehlerarten (z.B.
+            // PermissionDenied oder ein temporär nicht eingehängtes
+            // Netzlaufwerk) duerfen NICHT wie "fehlt wirklich" behandelt
+            // werden, siehe Finding 3 im Review vom 2026-09-10
+            // (scan_catalog_issues).
+            return db::delete_file(&conn, id).map_err(|e| e.to_string());
+        }
+        Err(e) => return Err(e.to_string()),
+        Ok(_) => {}
     }
 
     let trash_path = state.trash_dir.join(format!("{id}-{}", file.name));
@@ -415,7 +424,11 @@ fn move_file(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::CrossesDevices => {
             std::fs::copy(from, to)?;
-            std::fs::remove_file(from)
+            if let Err(remove_err) = std::fs::remove_file(from) {
+                let _ = std::fs::remove_file(to); // Kopie aufraeumen, kein verwaister Papierkorb-Eintrag
+                return Err(remove_err);
+            }
+            Ok(())
         }
         Err(e) => Err(e),
     }
@@ -748,6 +761,14 @@ fn import_many(state: &State<AppState>, roots: Vec<PathBuf>) -> CmdResult<Import
 
         match import_one(&mut conn, &path, None, Some(content_hash)) {
             Ok(dto) => imported.push(dto),
+            Err(e) if e.contains("UNIQUE constraint failed") => {
+                // Pfad gehoert noch einer Papierkorb-Zeile (files.path ist
+                // weiterhin UNIQUE, file_exists_by_path sieht geloeschte
+                // Zeilen aber nicht mehr) - fuer den Nutzer ist das ein
+                // Duplikat, kein stiller Fehlschlag (Finding 3, Review
+                // 2026-09-12).
+                duplicate_count += 1;
+            }
             Err(e) => eprintln!("[import] Import fehlgeschlagen für {path_str}: {e}"),
         }
     }
@@ -916,7 +937,7 @@ pub async fn get_model_geometry(
             .ok_or_else(|| "file not found".to_string())?
     };
 
-    let path = PathBuf::from(file.path);
+    let path = PathBuf::from(file.trash_path.as_deref().unwrap_or(&file.path));
     let extension = path
         .extension()
         .and_then(|e| e.to_str())
@@ -1076,11 +1097,23 @@ pub fn delete_files(state: State<AppState>, file_ids: Vec<String>) -> CmdResult<
         // Einzelfall wird geloggt und uebersprungen, damit das Frontend am
         // Ende zuverlaessig resyncen kann statt auf einem abgebrochenen
         // Batch mit veraltetem Zustand zu stehen.
-        if std::fs::metadata(&file.path).is_err() {
-            if let Err(e) = db::delete_file(&conn, id) {
-                eprintln!("[cleanup] DB-Eintrag konnte nicht geloescht werden fuer Datei-ID {id}: {e}");
+        match std::fs::metadata(&file.path) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                if let Err(e) = db::delete_file(&conn, id) {
+                    eprintln!("[cleanup] DB-Eintrag konnte nicht geloescht werden fuer Datei-ID {id}: {e}");
+                }
+                continue;
             }
-            continue;
+            Err(e) => {
+                // Andere Fehlerarten als NotFound (z.B. PermissionDenied
+                // oder ein temporär nicht eingehängtes Netzlaufwerk) sind
+                // KEIN "Datei fehlt wirklich" - siehe Finding 3 im Review
+                // vom 2026-09-10 (scan_catalog_issues). Log-and-continue
+                // wie die anderen Fehlerpfade in diesem Batch.
+                eprintln!("[cleanup] Datei-Metadaten konnten nicht gelesen werden fuer Datei-ID {id}: {e}");
+                continue;
+            }
+            Ok(_) => {}
         }
         let trash_path = state.trash_dir.join(format!("{id}-{}", file.name));
         if let Err(e) = move_file(std::path::Path::new(&file.path), &trash_path) {
@@ -1142,6 +1175,9 @@ pub fn delete_file_permanently(state: State<AppState>, file_id: String) -> CmdRe
     let file = db::get_file(&conn, id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "file not found".to_string())?;
+    if file.deleted_at.is_none() {
+        return Err("file is not in trash".to_string());
+    }
     if let Some(trash_path) = &file.trash_path {
         if let Err(e) = std::fs::remove_file(trash_path) {
             if e.kind() != std::io::ErrorKind::NotFound {
