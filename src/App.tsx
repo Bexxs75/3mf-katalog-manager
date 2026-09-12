@@ -43,6 +43,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedForBulk, setSelectedForBulk] = useState<Set<string>>(new Set());
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [addToCollectionMenuOpen, setAddToCollectionMenuOpen] = useState(false);
   const [detailModelId, setDetailModelId] = useState<string | null>(null);
   const [models, setModels] = useState<ModelFile[]>([]);
   const [skippedSnapshotIds, setSkippedSnapshotIds] = useState<Set<string>>(new Set());
@@ -65,6 +66,10 @@ export default function App() {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [activeCollection, setActiveCollection] = useState<string | null>(null);
   const [collectionsGalleryOpen, setCollectionsGalleryOpen] = useState(false);
+  const [collectionModels, setCollectionModels] = useState<ModelFile[]>([]);
+
+  const refreshCollectionModels = (collectionId: string) =>
+    invoke<ModelFile[]>('list_collection_files', { collectionId }).then(setCollectionModels);
 
   const refreshFolders = () => invoke<Folder[]>('list_folders').then(setFolders);
   const refreshTags = () => invoke<TagCount[]>('list_tag_counts').then(setTags);
@@ -140,6 +145,14 @@ export default function App() {
         console.warn('[slicer-scan] Automatische Slicer-Erkennung fehlgeschlagen:', e);
       });
   }, []);
+
+  useEffect(() => {
+    if (activeCollection) {
+      refreshCollectionModels(activeCollection);
+    } else {
+      setCollectionModels([]);
+    }
+  }, [activeCollection]);
 
   useEffect(() => {
     if (!detailModelId) return;
@@ -332,6 +345,14 @@ export default function App() {
     });
   };
 
+  const bulkAddToCollection = (collectionId: string) => {
+    invoke('add_files_to_collection', { collectionId, fileIds: Array.from(selectedForBulk) }).then(() => {
+      refreshCollections();
+      if (activeCollection === collectionId) refreshCollectionModels(collectionId);
+      clearBulkSelection();
+    });
+  };
+
   const removeFromQueue = (id: string) => {
     setModels((prev) => prev.map((m) => (m.id === id ? { ...m, queuePosition: null } : m)));
     invoke('remove_from_queue', { fileId: id }).catch((e) => {
@@ -473,6 +494,7 @@ export default function App() {
         onViewChange={setView}
         sort={sort}
         onSortChange={setSort}
+        hideSortControl={activeCollection !== null}
         count={filtered.length}
         themeSetting={setting}
         onThemeChange={setTheme}
@@ -682,6 +704,35 @@ export default function App() {
                     <button onClick={bulkAddToQueue} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]">
                       {t('addToQueue')}
                     </button>
+                    <div className="relative">
+                      <button
+                        onClick={() => setAddToCollectionMenuOpen((prev) => !prev)}
+                        className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]"
+                      >
+                        {t('addToCollectionLabel')}
+                      </button>
+                      {addToCollectionMenuOpen && (
+                        <div className="absolute top-9 left-0 w-[220px] py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
+                          {collections.map((c) => (
+                            <button
+                              key={c.id}
+                              onClick={() => {
+                                bulkAddToCollection(c.id);
+                                setAddToCollectionMenuOpen(false);
+                              }}
+                              className="w-full text-left px-3 py-1.5 text-[13px] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
+                            >
+                              {c.name}
+                            </button>
+                          ))}
+                          {collections.length === 0 && (
+                            <div className="px-3 py-1.5 font-mono-ui text-[11px] text-[var(--ink-3)]">
+                              {t('noCollectionsEmptyState')}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                     <button onClick={() => bulkSetPrintStatus('printed')} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]">
                       {t('printedBadge')}
                     </button>
@@ -739,7 +790,7 @@ export default function App() {
               <div className="flex-1 overflow-y-auto p-4">
                 {view === 'grid' ? (
                   <ModelGrid
-                    models={filtered}
+                    models={activeCollection ? collectionModels : filtered}
                     selectedId={selectedId}
                     onSelect={selectModel}
                     onOpenDetail={setDetailModelId}
