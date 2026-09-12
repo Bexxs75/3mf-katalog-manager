@@ -53,6 +53,7 @@ export const es: Translations = {
   removeSlicerAria: 'Eliminar laminador',
   chooseSlicerAria: 'Elegir otro laminador',
   slicerLaunchError: 'No se pudo iniciar el laminador:',
+  slicerAutoDetectedLabel: 'detectado automáticamente',
 
   emptyStateText: 'Selecciona un modelo para ver detalles, vista previa y etiquetas.',
   dragToRotate: 'Arrastra para girar',

@@ -62,6 +62,7 @@ export interface SlicerConfig {
   id: string;
   name: string;
   path: string;
+  source: 'manual' | 'auto';
 }
 
 export interface FilamentSpool {

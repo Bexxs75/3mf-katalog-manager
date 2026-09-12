@@ -53,6 +53,7 @@ export const de: Translations = {
   removeSlicerAria: 'Slicer entfernen',
   chooseSlicerAria: 'Anderen Slicer wählen',
   slicerLaunchError: 'Slicer konnte nicht gestartet werden:',
+  slicerAutoDetectedLabel: 'automatisch erkannt',
 
   emptyStateText: 'Wähle ein Modell aus, um Details, Vorschau und Tags zu sehen.',
   dragToRotate: 'Ziehen zum Drehen',
