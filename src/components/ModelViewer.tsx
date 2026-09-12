@@ -11,6 +11,7 @@ interface Props {
   needsSnapshot: boolean;
   onSnapshotCaptured: (base64: string) => void;
   onError?: () => void;
+  showRotationControls?: boolean;
 }
 
 function frameObject(object: THREE.Object3D, camera: THREE.PerspectiveCamera, controls: OrbitControls) {
@@ -69,11 +70,12 @@ interface ViewerContext {
   currentObject: THREE.Object3D | null;
 }
 
-export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError }: Props) {
+export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError, showRotationControls }: Props) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const ctxRef = useRef<ViewerContext | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [autoRotating, setAutoRotating] = useState(false);
 
   // Renderer/Szene/Kamera/Controls/Licht werden nur einmal beim Mounten
   // aufgebaut und beim Unmounten freigegeben - ein WebGL-Kontext-Neuaufbau
@@ -205,6 +207,33 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
     };
   }, [fileId]);
 
+  // Synchronisiert den Auto-Rotation-Button-Zustand mit OrbitControls'
+  // eingebauter autoRotate-Funktion. OrbitControls pausiert autoRotate
+  // intern automatisch, sobald der Nutzer selbst per Maus zieht, und setzt
+  // sie danach von selbst fort - kein eigener Rotations-Loop noetig.
+  useEffect(() => {
+    if (ctxRef.current) {
+      ctxRef.current.controls.autoRotate = autoRotating;
+    }
+  }, [autoRotating]);
+
+  // Dreht die Kamera um einen festen Schritt (15 Grad) um die vertikale
+  // Achse, unabhaengig vom Auto-Rotation-Zustand. Reine oeffentliche
+  // three.js-API (THREE.Spherical) - OrbitControls' interne
+  // rotateLeft/rotateRight-Methoden sind private Closures, nicht von
+  // aussen ansprechbar.
+  const rotateStep = (direction: 1 | -1) => {
+    const ctx = ctxRef.current;
+    if (!ctx) return;
+    const offset = ctx.camera.position.clone().sub(ctx.controls.target);
+    const spherical = new THREE.Spherical().setFromVector3(offset);
+    spherical.theta += direction * (Math.PI / 12);
+    const newOffset = new THREE.Vector3().setFromSpherical(spherical);
+    ctx.camera.position.copy(ctx.controls.target).add(newOffset);
+    ctx.camera.lookAt(ctx.controls.target);
+    ctx.controls.update();
+  };
+
   return (
     <div className="relative w-full h-full">
       <div ref={containerRef} className="absolute inset-0" />
@@ -216,6 +245,50 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
       {status === 'error' && (
         <div className="absolute inset-0 grid place-items-center font-mono-ui text-[11px] text-[var(--ink-3)] pointer-events-none px-4 text-center">
           {t('previewUnavailable')}
+        </div>
+      )}
+      {showRotationControls && status === 'ready' && (
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[var(--panel-2)] border border-[var(--line)] rounded-full p-1 shadow-[var(--shadow)]">
+          <button
+            onClick={() => rotateStep(-1)}
+            title={t('rotateLeftAria')}
+            className="w-7 h-7 grid place-items-center rounded-full text-[var(--ink-2)] hover:bg-white/10 hover:text-[var(--ink)]"
+          >
+            <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+          </button>
+          <div className="w-px h-4 bg-[var(--line-strong)]" />
+          <button
+            onClick={() => setAutoRotating((prev) => !prev)}
+            title={autoRotating ? t('pauseRotationAria') : t('playRotationAria')}
+            className={`w-7 h-7 grid place-items-center rounded-full ${
+              autoRotating
+                ? 'bg-[var(--accent)] text-[var(--accent-ink)]'
+                : 'text-[var(--ink-2)] hover:bg-white/10 hover:text-[var(--ink)]'
+            }`}
+          >
+            {autoRotating ? (
+              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="currentColor">
+                <rect x="6" y="5" width="4" height="14" />
+                <rect x="14" y="5" width="4" height="14" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="currentColor">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            )}
+          </button>
+          <div className="w-px h-4 bg-[var(--line-strong)]" />
+          <button
+            onClick={() => rotateStep(1)}
+            title={t('rotateRightAria')}
+            className="w-7 h-7 grid place-items-center rounded-full text-[var(--ink-2)] hover:bg-white/10 hover:text-[var(--ink)]"
+          >
+            <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+          </button>
         </div>
       )}
     </div>

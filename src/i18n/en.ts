@@ -34,6 +34,10 @@ export const en: Translations = {
   displayPreferenceRender: '3D view',
   displayPreferenceDescriptionThumbnail: 'Prefers the thumbnail image stored inside the file.',
   displayPreferenceDescriptionRender: 'Prefers a rendered 3D view; missing snapshots are rendered automatically in the background.',
+  rotateLeftAria: 'Rotate left',
+  rotateRightAria: 'Rotate right',
+  playRotationAria: 'Start auto-rotation',
+  pauseRotationAria: 'Pause auto-rotation',
 
   searchPlaceholder: 'Search name or tag …',
   foldersHeading: 'Folders',

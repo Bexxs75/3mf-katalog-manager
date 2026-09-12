@@ -34,6 +34,10 @@ export const de: Translations = {
   displayPreferenceRender: '3D-Ansicht',
   displayPreferenceDescriptionThumbnail: 'Zeigt bevorzugt das in der Datei hinterlegte Vorschaubild.',
   displayPreferenceDescriptionRender: 'Zeigt bevorzugt eine gerenderte 3D-Ansicht; fehlende Schnappschüsse werden automatisch im Hintergrund nachgerendert.',
+  rotateLeftAria: 'Nach links drehen',
+  rotateRightAria: 'Nach rechts drehen',
+  playRotationAria: 'Automatische Drehung starten',
+  pauseRotationAria: 'Automatische Drehung pausieren',
 
   searchPlaceholder: 'Name oder Tag suchen …',
   foldersHeading: 'Ordner',
