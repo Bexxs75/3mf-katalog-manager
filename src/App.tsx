@@ -11,6 +11,7 @@ import { ContextMenu } from './components/ContextMenu';
 import { FilamentView } from './components/FilamentView';
 import { ImportSummaryBanner } from './components/ImportSummaryBanner';
 import { CatalogCleanupDialog } from './components/CatalogCleanupDialog';
+import { BackgroundSnapshotRenderer } from './components/BackgroundSnapshotRenderer';
 import { useTheme } from './hooks/useTheme';
 import { useUiDensity } from './hooks/UiDensityContext';
 import { useSlicers } from './hooks/useSlicers';
@@ -43,6 +44,10 @@ export default function App() {
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [detailModelId, setDetailModelId] = useState<string | null>(null);
   const [models, setModels] = useState<ModelFile[]>([]);
+  const pendingSnapshotIds = useMemo(
+    () => models.filter((m) => m.renderSnapshotImage === null).map((m) => m.id),
+    [models],
+  );
   const [folders, setFolders] = useState<Folder[]>([]);
   const [tags, setTags] = useState<TagCount[]>([]);
   const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number } | null>(null);
@@ -448,6 +453,13 @@ export default function App() {
       className="h-screen min-h-[620px] flex flex-col bg-[var(--bg)] text-[var(--ink)] overflow-hidden"
       style={{ fontSize: 14 }}
     >
+      {displayPreference === 'render' && pendingSnapshotIds.length > 0 && (
+        <BackgroundSnapshotRenderer
+          key={pendingSnapshotIds[0]}
+          fileId={pendingSnapshotIds[0]}
+          onSnapshotCaptured={(base64) => captureRenderSnapshot(pendingSnapshotIds[0], base64)}
+        />
+      )}
       <Header
         view={view}
         onViewChange={setView}
