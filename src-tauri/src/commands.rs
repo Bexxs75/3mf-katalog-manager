@@ -846,12 +846,54 @@ pub async fn pick_slicer_executable(app: tauri::AppHandle) -> CmdResult<Option<S
         .map(|p| p.to_string_lossy().to_string()))
 }
 
+// Wird beim Start unseres eigenen AppImage vom AppImage-Runtime bzw. dem
+// linuxdeploy-Gtk-Hook gesetzt und zeigt auf unser eigenes, temporaeres
+// Mount-Verzeichnis. std::process::Command vererbt per Default die
+// komplette Prozessumgebung an Kindprozesse - startet der Nutzer einen
+// Slicer, der selbst ueber ein AppRun-Skript laeuft (z.B. eine ebenfalls
+// als AppImage vertriebene Bambu-Studio-/OrcaSlicer-Installation), nutzt
+// dessen Skript oft denselben "${APPDIR:-$(dirname ...)}"-Fallback-Trick.
+// Da APPDIR durch unsere Vererbung bereits gesetzt ist, uebernimmt der
+// Slicer faelschlich UNSER Mount-Verzeichnis statt sein eigenes zu
+// berechnen, und sucht eigene Bibliotheken/Hilfsprozesse (z.B. seinen
+// WebKit-Netzwerkprozess) an falschen, gebrochenen Pfaden - beobachtet als
+// "Unable to spawn a new child process" bei OrcaSlicer. Diese Variablen
+// sind ausschliesslich fuer unsere eigene, eingebettete WebView/AppImage-
+// Laufzeit gedacht und duerfen nicht an unabhaengig gestartete externe
+// Programme weitergegeben werden.
+const APPIMAGE_ENV_VARS_TO_STRIP: &[&str] = &[
+    "APPDIR",
+    "APPIMAGE",
+    "OWD",
+    "ARGV0",
+    "LD_LIBRARY_PATH",
+    "GTK_EXE_PREFIX",
+    "GTK_DATA_PREFIX",
+    "GTK_THEME",
+    "GTK_PATH",
+    "GTK_IM_MODULE_FILE",
+    "GDK_PIXBUF_MODULE_FILE",
+    "GDK_BACKEND",
+    "GIO_EXTRA_MODULES",
+    "GSETTINGS_SCHEMA_DIR",
+    "XDG_DATA_DIRS",
+    "PYTHONPATH",
+    "QT_PLUGIN_PATH",
+    "GST_PLUGIN_SYSTEM_PATH",
+    "WEBKIT_DISABLE_DMABUF_RENDERER",
+];
+
 #[tauri::command]
 pub fn open_in_slicer(slicer_path: String, file_path: String) -> CmdResult<()> {
-    std::process::Command::new(&slicer_path)
-        .arg(&file_path)
-        .spawn()
-        .map_err(|e| e.to_string())?;
+    let mut cmd = std::process::Command::new(&slicer_path);
+    cmd.arg(&file_path);
+    for var in APPIMAGE_ENV_VARS_TO_STRIP {
+        cmd.env_remove(var);
+    }
+    if let Some(parent) = std::path::Path::new(&slicer_path).parent() {
+        cmd.current_dir(parent);
+    }
+    cmd.spawn().map_err(|e| e.to_string())?;
     Ok(())
 }
 
