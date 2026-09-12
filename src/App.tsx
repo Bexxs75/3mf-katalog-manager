@@ -677,8 +677,10 @@ export default function App() {
                   setCollectionsGalleryOpen(false);
                   setActiveCollection(null);
                 }}
-                className={`font-mono-ui text-[11px] cursor-pointer ${
-                  !collectionsGalleryOpen && !activeCollection ? 'text-[var(--ink)]' : 'text-[var(--ink-2)] hover:text-[var(--ink)]'
+                className={`font-mono-ui cursor-pointer h-[26px] px-2.5 rounded-full flex items-center ${
+                  !collectionsGalleryOpen && !activeCollection
+                    ? 'text-[13px] font-semibold bg-[var(--accent)] text-[var(--accent-ink)]'
+                    : 'text-[11px] text-[var(--ink-2)] hover:text-[var(--ink)]'
                 }`}
               >
                 {folders.find((f) => f.id === activeFolderId)?.name}
@@ -688,8 +690,10 @@ export default function App() {
                   setCollectionsGalleryOpen(true);
                   setActiveCollection(null);
                 }}
-                className={`font-mono-ui text-[11px] cursor-pointer ${
-                  collectionsGalleryOpen || activeCollection ? 'text-[var(--accent)] font-semibold' : 'text-[var(--ink-2)] hover:text-[var(--ink)]'
+                className={`font-mono-ui cursor-pointer h-[26px] px-2.5 rounded-full flex items-center ${
+                  collectionsGalleryOpen || activeCollection
+                    ? 'text-[13px] font-semibold bg-[var(--accent)] text-[var(--accent-ink)]'
+                    : 'text-[11px] text-[var(--ink-2)] hover:text-[var(--ink)]'
                 }`}
               >
                 {t('collectionsTab')}
