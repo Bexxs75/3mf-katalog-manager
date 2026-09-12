@@ -182,7 +182,9 @@ export function Sidebar({
         </div>
         {!tagsCollapsed && (
           <div className="flex flex-wrap gap-1.5 px-1.5 pb-1">
-            {tags.map((tag) => (
+            {tags
+              .filter((tag) => tag.count >= 2 || tag.label === activeTag)
+              .map((tag) => (
               <span
                 key={tag.label}
                 onClick={() => onTagSelect(activeTag === tag.label ? null : tag.label)}
