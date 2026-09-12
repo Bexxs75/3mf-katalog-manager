@@ -64,7 +64,7 @@ export function ModelDetailPage({
         <button
           onClick={onClose}
           title={t('backToCatalog')}
-          className="flex-none w-9 h-9 rounded-md border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] grid place-items-center hover:border-[var(--line-strong)] hover:text-[var(--ink)]"
+          className="flex-none w-11 h-11 rounded-md border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[1.4rem] leading-none grid place-items-center hover:border-[var(--line-strong)] hover:text-[var(--ink)]"
         >
           ←
         </button>
