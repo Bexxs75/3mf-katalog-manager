@@ -3,6 +3,8 @@ import type { ModelFile, SlicerConfig } from '../types';
 import { useT, useLanguage } from '../i18n/LanguageContext';
 import { buildMetaRows } from '../lib/modelMetadata';
 import { ModelViewer } from './ModelViewer';
+import { resolveDisplayImage } from '../lib/resolveDisplayImage';
+import type { DisplayPreference } from '../hooks/useDisplayPreference';
 
 interface Props {
   model: ModelFile;
@@ -19,6 +21,7 @@ interface Props {
   onOpenInSlicer: (slicerId?: string) => void;
   slicers: SlicerConfig[];
   slicerError: string | null;
+  displayPreference: DisplayPreference;
 }
 
 export function ModelDetailPage({
@@ -36,13 +39,17 @@ export function ModelDetailPage({
   onOpenInSlicer,
   slicers,
   slicerError,
+  displayPreference,
 }: Props) {
   const t = useT();
   const { language } = useLanguage();
   const [tagDraft, setTagDraft] = useState('');
   const [sourceDraft, setSourceDraft] = useState(model.sourceUrl ?? '');
   const [editingSource, setEditingSource] = useState(false);
-  const [showCustomImage, setShowCustomImage] = useState(false);
+  const resolvedImage = resolveDisplayImage(model, displayPreference);
+  const [showCustomImage, setShowCustomImage] = useState(
+    () => displayPreference === 'thumbnail' && resolvedImage !== null,
+  );
 
   const rows = buildMetaRows(model, t, language);
 
@@ -78,16 +85,16 @@ export function ModelDetailPage({
       <div className="flex gap-7 flex-wrap items-start">
         <div className="flex-1 min-w-[320px]">
           <div className="relative aspect-[4/3] rounded-[10px] border border-[var(--line)] bg-[var(--plate)] overflow-hidden">
-            {showCustomImage && model.displayImage ? (
-              <img src={model.displayImage} alt={model.name} className="absolute inset-0 w-full h-full object-contain" />
+            {showCustomImage && resolvedImage ? (
+              <img src={resolvedImage} alt={model.name} className="absolute inset-0 w-full h-full object-contain" />
             ) : (
               <ModelViewer
                 fileId={model.id}
-                needsSnapshot={model.displayImage === null}
+                needsSnapshot={model.renderSnapshotImage === null}
                 onSnapshotCaptured={onSnapshotCaptured}
               />
             )}
-            {model.displayImage && (
+            {resolvedImage && (
               <div className="absolute top-3 right-3 flex bg-[var(--panel-2)] border border-[var(--line)] rounded-full overflow-hidden font-mono-ui text-[11.5px]">
                 <button
                   onClick={() => setShowCustomImage(false)}

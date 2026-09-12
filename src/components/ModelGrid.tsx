@@ -3,6 +3,8 @@ import { useT, useLanguage } from '../i18n/LanguageContext';
 import { useUiDensity } from '../hooks/UiDensityContext';
 import { formatWeightG } from '../i18n/format';
 import { BulkCheckbox } from './BulkCheckbox';
+import { resolveDisplayImage } from '../lib/resolveDisplayImage';
+import type { DisplayPreference } from '../hooks/useDisplayPreference';
 
 interface Props {
   models: ModelFile[];
@@ -14,9 +16,10 @@ interface Props {
   readOnly?: boolean;
   selectedForBulk: Set<string>;
   onToggleBulkSelect: (id: string) => void;
+  displayPreference: DisplayPreference;
 }
 
-export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContextMenu, onToggleFavorite, readOnly, selectedForBulk, onToggleBulkSelect }: Props) {
+export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContextMenu, onToggleFavorite, readOnly, selectedForBulk, onToggleBulkSelect, displayPreference }: Props) {
   const t = useT();
   const { density } = useUiDensity();
   const { language } = useLanguage();
@@ -44,9 +47,9 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
               className="absolute top-1.5 right-1.5 z-10"
             />
           )}
-          {m.displayImage ? (
+          {resolveDisplayImage(m, displayPreference) ? (
             <img
-              src={m.displayImage}
+              src={resolveDisplayImage(m, displayPreference) ?? undefined}
               alt=""
               className="absolute inset-0 w-full h-full object-cover"
             />
@@ -144,8 +147,8 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
                   className="absolute top-1.5 right-1.5 z-10"
                 />
               )}
-              {m.displayImage ? (
-                <img src={m.displayImage} alt="" className="absolute inset-0 w-full h-full object-cover" />
+              {resolveDisplayImage(m, displayPreference) ? (
+                <img src={resolveDisplayImage(m, displayPreference) ?? undefined} alt="" className="absolute inset-0 w-full h-full object-cover" />
               ) : (
                 <>
                   <div
