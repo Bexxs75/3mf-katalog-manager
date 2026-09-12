@@ -490,6 +490,104 @@ pub fn reorder_queue(state: State<AppState>, updates: Vec<QueuePositionUpdate>) 
     Ok(())
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionDto {
+    pub id: String,
+    pub name: String,
+    pub model_count: i64,
+}
+
+fn to_collection_dto(record: db::models::CollectionRecord) -> CollectionDto {
+    CollectionDto {
+        id: record.id.to_string(),
+        name: record.name,
+        model_count: record.model_count,
+    }
+}
+
+#[tauri::command]
+pub fn list_collections(state: State<AppState>) -> CmdResult<Vec<CollectionDto>> {
+    let conn = lock_db(&state)?;
+    let collections = db::list_collections(&conn).map_err(|e| e.to_string())?;
+    Ok(collections.into_iter().map(to_collection_dto).collect())
+}
+
+#[tauri::command]
+pub fn create_collection(state: State<AppState>, name: String) -> CmdResult<CollectionDto> {
+    let conn = lock_db(&state)?;
+    let created_at = chrono::Utc::now().to_rfc3339();
+    let id = db::create_collection(&conn, &name, &created_at).map_err(|e| e.to_string())?;
+    Ok(CollectionDto { id: id.to_string(), name, model_count: 0 })
+}
+
+#[tauri::command]
+pub fn rename_collection(state: State<AppState>, collection_id: String, name: String) -> CmdResult<()> {
+    let id: i64 = collection_id.parse().map_err(|_| "invalid collection id".to_string())?;
+    let conn = lock_db(&state)?;
+    db::rename_collection(&conn, id, &name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_collection(state: State<AppState>, collection_id: String) -> CmdResult<()> {
+    let id: i64 = collection_id.parse().map_err(|_| "invalid collection id".to_string())?;
+    let conn = lock_db(&state)?;
+    db::delete_collection(&conn, id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn add_files_to_collection(state: State<AppState>, collection_id: String, file_ids: Vec<String>) -> CmdResult<()> {
+    let cid: i64 = collection_id.parse().map_err(|_| "invalid collection id".to_string())?;
+    let conn = lock_db(&state)?;
+    let mut next = db::max_collection_position(&conn, cid).map_err(|e| e.to_string())?.unwrap_or(-1) + 1;
+    for file_id in file_ids {
+        let fid: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+        db::add_file_to_collection(&conn, cid, fid, next).map_err(|e| e.to_string())?;
+        next += 1;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn remove_file_from_collection(state: State<AppState>, collection_id: String, file_id: String) -> CmdResult<()> {
+    let cid: i64 = collection_id.parse().map_err(|_| "invalid collection id".to_string())?;
+    let fid: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let conn = lock_db(&state)?;
+    db::remove_file_from_collection(&conn, cid, fid).map_err(|e| e.to_string())
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionPositionUpdate {
+    pub file_id: String,
+    pub position: i64,
+}
+
+#[tauri::command]
+pub fn reorder_collection(state: State<AppState>, collection_id: String, updates: Vec<CollectionPositionUpdate>) -> CmdResult<()> {
+    let cid: i64 = collection_id.parse().map_err(|_| "invalid collection id".to_string())?;
+    let conn = lock_db(&state)?;
+    for update in updates {
+        let fid: i64 = update.file_id.parse().map_err(|_| "invalid file id".to_string())?;
+        db::set_collection_position(&conn, cid, fid, update.position).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn list_collection_files(state: State<AppState>, collection_id: String) -> CmdResult<Vec<ModelFileDto>> {
+    let cid: i64 = collection_id.parse().map_err(|_| "invalid collection id".to_string())?;
+    let conn = lock_db(&state)?;
+    let ids = db::list_collection_file_ids(&conn, cid).map_err(|e| e.to_string())?;
+    let mut dtos = Vec::with_capacity(ids.len());
+    for id in ids {
+        if let Some(file) = db::get_file(&conn, id).map_err(|e| e.to_string())? {
+            dtos.push(to_dto(file));
+        }
+    }
+    Ok(dtos)
+}
+
 #[tauri::command]
 pub async fn upload_custom_image(
     app: tauri::AppHandle,
@@ -811,6 +909,43 @@ pub async fn import_folder(
     };
     let path = picked.into_path().map_err(|e| e.to_string())?;
     import_many(&state, vec![path])
+}
+
+#[tauri::command]
+pub async fn import_folder_as_collection(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> CmdResult<ImportResultDto> {
+    let picked = app.dialog().file().blocking_pick_folder();
+
+    let Some(picked) = picked else {
+        return Ok(ImportResultDto { imported: Vec::new(), duplicate_count: 0 });
+    };
+    let path = picked.into_path().map_err(|e| e.to_string())?;
+    let folder_name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Sammlung".to_string());
+
+    let mut candidates = Vec::new();
+    collect_supported_files(&path, &mut candidates);
+
+    let result = import_many(&state, vec![path])?;
+
+    let conn = lock_db(&state)?;
+    let created_at = chrono::Utc::now().to_rfc3339();
+    let collection_id = db::create_collection(&conn, &folder_name, &created_at).map_err(|e| e.to_string())?;
+
+    let mut position = 0i64;
+    for candidate in &candidates {
+        let path_str = candidate.to_string_lossy().to_string();
+        if let Some(file_id) = db::get_file_id_by_path(&conn, &path_str).map_err(|e| e.to_string())? {
+            db::add_file_to_collection(&conn, collection_id, file_id, position).map_err(|e| e.to_string())?;
+            position += 1;
+        }
+    }
+
+    Ok(result)
 }
 
 #[tauri::command]

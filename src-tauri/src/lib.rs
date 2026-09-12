@@ -77,6 +77,15 @@ pub fn run() {
             commands::restore_file,
             commands::delete_file_permanently,
             commands::empty_trash,
+            commands::list_collections,
+            commands::create_collection,
+            commands::rename_collection,
+            commands::delete_collection,
+            commands::add_files_to_collection,
+            commands::remove_file_from_collection,
+            commands::reorder_collection,
+            commands::list_collection_files,
+            commands::import_folder_as_collection,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
