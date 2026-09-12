@@ -61,6 +61,7 @@ export default function App() {
   const restoreModel = (id: string) => {
     invoke('restore_file', { fileId: id }).then(() => {
       setTrashModels((prev) => prev.filter((m) => m.id !== id));
+      setSelectedId((prev) => (prev === id ? null : prev));
       invoke<ModelFile[]>('list_files').then(setModels);
       refreshFolders();
       refreshTags();
@@ -71,6 +72,7 @@ export default function App() {
   const deleteModelPermanently = (id: string) => {
     invoke('delete_file_permanently', { fileId: id }).then(() => {
       setTrashModels((prev) => prev.filter((m) => m.id !== id));
+      setSelectedId((prev) => (prev === id ? null : prev));
     });
   };
 
@@ -112,6 +114,7 @@ export default function App() {
     refreshTags();
     refreshCreators();
     refreshSavedFilters();
+    refreshTrash();
   }, []);
 
   useEffect(() => {
@@ -369,6 +372,7 @@ export default function App() {
         refreshFolders();
         refreshTags();
         refreshCreators();
+        refreshTrash();
       })
       .catch((e) => {
         console.error('[cleanup] Löschen fehlgeschlagen:', e);
@@ -404,6 +408,7 @@ export default function App() {
         mainView={mainView}
         onMainViewChange={(v) => {
           setMainView(v);
+          setSelectedId(null);
           if (v === 'trash') refreshTrash();
         }}
         trashCount={trashModels.length}

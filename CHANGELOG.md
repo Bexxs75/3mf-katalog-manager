@@ -33,6 +33,7 @@ Noch kein Release getaggt — dieser Abschnitt fasst die bisherige Entwicklung s
 - Aufräum-Vorschläge: manuell auslösbarer Katalog-Scan (Einstellungen-Panel) findet verwaiste Dateipfade und Bestands-Duplikate (gleicher Inhalts-Hash, bereits im Katalog vorhanden); Ergebnis-Dialog mit Einzelauswahl, ältestes Duplikat je Gruppe bleibt vorausgewählt erhalten
 - Komfort-Ansicht als Alternative zur bestehenden kompakten Oberfläche: deutlich größere Schrift, Grafiken und Bedienelemente (Karten-Layout angelehnt an printables.com/model), umschaltbar im Einstellungen-Panel unter "Ansicht", Standard bleibt die kompakte Ansicht. Neues Favorit-Merkmal je Modell (Herz-Icon), in beiden Ansichten sichtbar
 - Import-Button in der Kopfzeile öffnet jetzt immer direkt das Dropdown-Menü (Dateien/Ordner/Cloud) statt eines Split-Buttons mit Sofort-Aktion — macht die bereits vorhandene, rekursive lokale Ordner-Import-Option leichter auffindbar
+- Papierkorb statt sofortigem Hart-Löschen: gelöschte Modelle werden zunächst in ein Papierkorb-Verzeichnis verschoben und bleiben dort wiederherstellbar (eigene Papierkorb-Ansicht über neues Header-Icon mit Mengen-Badge, inkl. 3D-Vorschau); endgültiges Löschen sowie "Papierkorb leeren" räumen Datei und Katalog-Eintrag danach dauerhaft weg
 
 ### Changed
 

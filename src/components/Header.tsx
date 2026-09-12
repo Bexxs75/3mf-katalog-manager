@@ -191,6 +191,7 @@ export function Header({
       <button
         onClick={() => onMainViewChange(mainView === 'trash' ? 'catalog' : 'trash')}
         title={t('trashHeading')}
+        aria-label={t('trashHeading')}
         className="relative shrink-0 w-8 h-8 grid place-items-center rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink-2)] text-[15px] cursor-pointer hover:text-[var(--ink)] hover:border-[var(--line-strong)]"
       >
         🗑

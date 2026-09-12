@@ -598,7 +598,12 @@ mod tests {
         assert!(visible.iter().all(|f| f.id != id), "geloeschte Datei darf nicht in list_files erscheinen");
 
         let trashed = repository::list_trash(&conn).unwrap();
-        assert!(trashed.iter().any(|f| f.id == id), "geloeschte Datei muss in list_trash erscheinen");
+        let trashed_entry = trashed
+            .iter()
+            .find(|f| f.id == id)
+            .expect("geloeschte Datei muss in list_trash erscheinen");
+        assert_eq!(trashed_entry.deleted_at.as_deref(), Some("2026-01-01T00:00:00Z"));
+        assert_eq!(trashed_entry.trash_path.as_deref(), Some("/trash/1-test.3mf"));
 
         repository::restore_file(&conn, id, None).unwrap();
         let restored = repository::get_file(&conn, id).unwrap().unwrap();
