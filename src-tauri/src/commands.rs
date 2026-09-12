@@ -396,14 +396,20 @@ pub fn delete_file(state: State<AppState>, file_id: String) -> CmdResult<()> {
 
     match std::fs::metadata(&file.path) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            // Datei existiert schon wirklich nicht mehr (z.B. bereinigter
-            // verwaister Pfad) - nichts zu verschieben, Katalog-Eintrag
-            // direkt hart loeschen. Andere Fehlerarten (z.B.
-            // PermissionDenied oder ein temporär nicht eingehängtes
-            // Netzlaufwerk) duerfen NICHT wie "fehlt wirklich" behandelt
-            // werden, siehe Finding 3 im Review vom 2026-09-10
+            // Pfad nicht erreichbar (z.B. umbenannter/verschobener Ordner,
+            // nicht eingehaengtes Laufwerk) - es gibt nichts zu
+            // verschieben, aber das heisst NICHT zwingend "Datei
+            // unwiderruflich weg": eine Cloud-Mount-Umbenennung ist weit
+            // haeufiger als ein tatsaechlich geloeschtes Original. Der
+            // Katalog-Eintrag wird deshalb trotzdem nur WEICH geloescht
+            // (landet im Papierkorb, trash_path bleibt NULL) statt hart
+            // entfernt - erst "Endgueltig loeschen" oder Ablauf der
+            // 7-Tage-Frist entfernt ihn wirklich. Andere Fehlerarten (z.B.
+            // PermissionDenied) durchlaufen stattdessen den regulaeren
+            // Fehlerpfad unten, siehe Finding 3 im Review vom 2026-09-10
             // (scan_catalog_issues).
-            return db::delete_file(&conn, id).map_err(|e| e.to_string());
+            let deleted_at = chrono::Utc::now().to_rfc3339();
+            return db::soft_delete_file(&conn, id, None, &deleted_at).map_err(|e| e.to_string());
         }
         Err(e) => return Err(e.to_string()),
         Ok(_) => {}
@@ -413,7 +419,7 @@ pub fn delete_file(state: State<AppState>, file_id: String) -> CmdResult<()> {
     move_file(std::path::Path::new(&file.path), &trash_path).map_err(|e| e.to_string())?;
 
     let deleted_at = chrono::Utc::now().to_rfc3339();
-    db::soft_delete_file(&conn, id, &trash_path.to_string_lossy(), &deleted_at)
+    db::soft_delete_file(&conn, id, Some(&trash_path.to_string_lossy()), &deleted_at)
         .map_err(|e| e.to_string())
 }
 
@@ -1099,8 +1105,13 @@ pub fn delete_files(state: State<AppState>, file_ids: Vec<String>) -> CmdResult<
         // Batch mit veraltetem Zustand zu stehen.
         match std::fs::metadata(&file.path) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                if let Err(e) = db::delete_file(&conn, id) {
-                    eprintln!("[cleanup] DB-Eintrag konnte nicht geloescht werden fuer Datei-ID {id}: {e}");
+                // Pfad nicht erreichbar - wie in delete_file: trotzdem nur
+                // weich loeschen (Papierkorb-Eintrag ohne physische Datei)
+                // statt hart zu entfernen, da das haeufiger eine
+                // umbenannte/verschobene Quelle als ein echtes Fehlen ist.
+                let deleted_at = chrono::Utc::now().to_rfc3339();
+                if let Err(e) = db::soft_delete_file(&conn, id, None, &deleted_at) {
+                    eprintln!("[cleanup] DB-Eintrag konnte nicht als geloescht markiert werden fuer Datei-ID {id}: {e}");
                 }
                 continue;
             }
@@ -1121,7 +1132,7 @@ pub fn delete_files(state: State<AppState>, file_ids: Vec<String>) -> CmdResult<
             continue;
         }
         let deleted_at = chrono::Utc::now().to_rfc3339();
-        if let Err(e) = db::soft_delete_file(&conn, id, &trash_path.to_string_lossy(), &deleted_at) {
+        if let Err(e) = db::soft_delete_file(&conn, id, Some(&trash_path.to_string_lossy()), &deleted_at) {
             eprintln!("[cleanup] DB-Eintrag konnte nicht als geloescht markiert werden fuer Datei-ID {id}: {e}");
         }
     }
@@ -1142,10 +1153,18 @@ pub fn restore_file(state: State<AppState>, file_id: String) -> CmdResult<()> {
     let file = db::get_file(&conn, id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "file not found".to_string())?;
-    let trash_path = file
-        .trash_path
-        .clone()
-        .ok_or_else(|| "file is not in trash".to_string())?;
+    if file.deleted_at.is_none() {
+        return Err("file is not in trash".to_string());
+    }
+
+    let Some(trash_path) = file.trash_path.clone() else {
+        // Kein trash_path gesetzt: die Datei war beim Loeschen bereits am
+        // Original-Pfad nicht erreichbar (siehe delete_file), es gibt also
+        // physisch nichts zurueckzuverschieben - nur den Katalog-Eintrag
+        // wieder sichtbar machen. Ist der Pfad inzwischen wieder erreichbar
+        // (z.B. Ordner zurueckbenannt), zeigt er dann wieder korrekt darauf.
+        return db::restore_file(&conn, id, None).map_err(|e| e.to_string());
+    };
 
     let original = std::path::Path::new(&file.path);
     let target_path = if original.exists() {
