@@ -214,22 +214,24 @@ export function Sidebar({
             {creatorsCollapsed ? '▾' : '▴'}
           </span>
         </div>
-        {!creatorsCollapsed && creators.map((creator) => (
-          <div
-            key={creator.label}
-            onClick={() => onCreatorSelect(activeCreator === creator.label ? null : creator.label)}
-            className={`flex items-center gap-2 h-7 px-1.5 rounded-[3px] cursor-pointer ${
-              activeCreator === creator.label
-                ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
-                : 'text-[var(--ink-2)] hover:text-[var(--ink)]'
-            }`}
-          >
-            <span className="flex-1 font-mono-ui text-[length:var(--font-size-item)] overflow-hidden text-ellipsis whitespace-nowrap">
-              {creator.label}
-            </span>
-            <span className="font-mono-ui text-[11px] text-[var(--ink-3)]">{creator.count}</span>
+        {!creatorsCollapsed && (
+          <div className="flex flex-wrap gap-1.5 px-1.5 pb-1">
+            {creators.map((creator) => (
+              <span
+                key={creator.label}
+                onClick={() => onCreatorSelect(activeCreator === creator.label ? null : creator.label)}
+                className={`inline-flex items-center gap-1.5 h-6 px-2 rounded-full border cursor-pointer font-mono-ui text-[11.5px] ${
+                  activeCreator === creator.label
+                    ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
+                    : 'border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink-2)] hover:text-[var(--ink)]'
+                }`}
+              >
+                {creator.label}
+                <span className="text-[var(--ink-3)]">{creator.count}</span>
+              </span>
+            ))}
           </div>
-        ))}
+        )}
 
         <div className="flex items-center justify-between px-1.5 pt-[18px] pb-2">
           <span className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)]">
