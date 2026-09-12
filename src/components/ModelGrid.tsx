@@ -2,6 +2,7 @@ import type { ModelFile } from '../types';
 import { useT, useLanguage } from '../i18n/LanguageContext';
 import { useUiDensity } from '../hooks/UiDensityContext';
 import { formatWeightG } from '../i18n/format';
+import { BulkCheckbox } from './BulkCheckbox';
 
 interface Props {
   models: ModelFile[];
@@ -37,12 +38,10 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
       >
         <div className="relative aspect-square bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
           {!readOnly && (
-            <input
-              type="checkbox"
+            <BulkCheckbox
               checked={selectedForBulk.has(m.id)}
-              onClick={(e) => e.stopPropagation()}
-              onChange={() => onToggleBulkSelect(m.id)}
-              className="absolute top-1.5 left-1.5 z-10 w-4 h-4 cursor-pointer"
+              onToggle={() => onToggleBulkSelect(m.id)}
+              className="absolute top-1.5 right-1.5 z-10"
             />
           )}
           {m.displayImage ? (
@@ -139,12 +138,9 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
             <div className="h-[5px]" style={{ background: 'linear-gradient(90deg, var(--accent), var(--accent-soft))' }} />
             <div className="relative aspect-square bg-[var(--plate)] overflow-hidden">
               {!readOnly && (
-                <input
-                  type="checkbox"
+                <BulkCheckbox
                   checked={selectedForBulk.has(m.id)}
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={() => onToggleBulkSelect(m.id)}
-                  className="absolute top-1.5 left-1.5 z-10 w-4 h-4 cursor-pointer"
+                  onToggle={() => onToggleBulkSelect(m.id)}
                 />
               )}
               {m.displayImage ? (

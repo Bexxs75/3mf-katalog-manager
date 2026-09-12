@@ -133,6 +133,7 @@ export default function App() {
 
   useEffect(() => {
     setSelectedForBulk(new Set());
+    setConfirmBulkDelete(false);
   }, [activeFolderId, activeTag, activeCreator, query]);
 
   useEffect(() => {
@@ -265,12 +266,16 @@ export default function App() {
     setSelectedForBulk((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.size === 0) setConfirmBulkDelete(false);
       return next;
     });
   };
 
   const selectAllVisible = () => setSelectedForBulk(new Set(filtered.map((m) => m.id)));
-  const clearBulkSelection = () => setSelectedForBulk(new Set());
+  const clearBulkSelection = () => {
+    setSelectedForBulk(new Set());
+    setConfirmBulkDelete(false);
+  };
 
   const bulkDelete = () => {
     invoke('delete_files', { fileIds: Array.from(selectedForBulk) }).then(() => {
@@ -285,8 +290,9 @@ export default function App() {
   };
 
   const bulkAddToQueue = () => {
-    Promise.all(Array.from(selectedForBulk).map((id) => invoke('add_to_queue', { fileId: id }))).then(
-      () => invoke<ModelFile[]>('list_files').then(setModels),
+    const notYetQueued = models.filter((m) => selectedForBulk.has(m.id) && m.queuePosition === null);
+    Promise.all(notYetQueued.map((m) => invoke('add_to_queue', { fileId: m.id }))).then(() =>
+      invoke<ModelFile[]>('list_files').then(setModels),
     );
   };
 
@@ -591,7 +597,7 @@ export default function App() {
               )}
             </div>
 
-            {selectedForBulk.size > 0 && (
+            {!detailModel && selectedForBulk.size > 0 && (
               <div className="flex-none flex items-center gap-2 px-4 py-2 border-b border-[var(--line)] bg-[var(--panel-2)]">
                 {confirmBulkDelete ? (
                   <>
