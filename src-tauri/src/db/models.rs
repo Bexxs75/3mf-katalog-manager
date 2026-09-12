@@ -159,3 +159,10 @@ pub struct NewSavedFilter {
     pub query: Option<String>,
     pub sort: String,
 }
+
+#[derive(Debug, Clone)]
+pub struct CollectionRecord {
+    pub id: i64,
+    pub name: String,
+    pub model_count: i64,
+}
