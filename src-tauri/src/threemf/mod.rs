@@ -2,6 +2,7 @@ pub mod container;
 pub mod error;
 pub mod geometry;
 pub mod model_xml;
+pub mod plates;
 
 use std::collections::BTreeMap;
 use std::fs::File;
