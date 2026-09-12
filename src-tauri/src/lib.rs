@@ -31,6 +31,13 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            // Versionsnummer im Fenstertitel, damit sie sich automatisch mit
+            // jedem Versions-Bump in Cargo.toml mitzieht statt in
+            // tauri.conf.json separat gepflegt werden zu muessen.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_title(&format!("3MF Katalog Manager {}", env!("CARGO_PKG_VERSION")));
+            }
+
             let app_data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&app_data_dir)?;
             harden_permissions(&app_data_dir);
