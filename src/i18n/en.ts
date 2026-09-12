@@ -30,8 +30,8 @@ export const en: Translations = {
   densityDescriptionCompact: 'Dense, small text — fits as much as possible on screen.',
   densityDescriptionComfort: 'Larger text and graphics — easier to read.',
   displayPreferenceTitle: 'Preferred view',
-  displayPreferenceThumbnail: 'Embedded image',
-  displayPreferenceRender: 'Rendered view',
+  displayPreferenceThumbnail: 'Image',
+  displayPreferenceRender: '3D view',
   displayPreferenceDescriptionThumbnail: 'Prefers the thumbnail image stored inside the file.',
   displayPreferenceDescriptionRender: 'Prefers a rendered 3D view; missing snapshots are rendered automatically in the background.',
 

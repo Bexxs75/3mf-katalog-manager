@@ -30,8 +30,8 @@ export const de: Translations = {
   densityDescriptionCompact: 'Dichte, kleine Schrift — möglichst viel auf einen Blick.',
   densityDescriptionComfort: 'Größere Schrift und Grafiken — besser lesbar.',
   displayPreferenceTitle: 'Bevorzugte Ansicht',
-  displayPreferenceThumbnail: 'Eingebettetes Bild',
-  displayPreferenceRender: 'Gerenderte Ansicht',
+  displayPreferenceThumbnail: 'Bild',
+  displayPreferenceRender: '3D-Ansicht',
   displayPreferenceDescriptionThumbnail: 'Zeigt bevorzugt das in der Datei hinterlegte Vorschaubild.',
   displayPreferenceDescriptionRender: 'Zeigt bevorzugt eine gerenderte 3D-Ansicht; fehlende Schnappschüsse werden automatisch im Hintergrund nachgerendert.',
 
