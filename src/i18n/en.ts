@@ -108,6 +108,11 @@ export const en: Translations = {
   metaSourceUrl: 'Source',
   sourceUrlPlaceholder: 'https://…',
 
+  backToCatalog: 'Back to catalog',
+  detailViewer3d: '3D view',
+  detailViewerImage: 'Custom image',
+  metaCreator: 'Creator',
+
   queueHeading: 'Print Queue',
   queueEmptyState: 'No models in the queue',
   inQueueLabel: 'In queue',

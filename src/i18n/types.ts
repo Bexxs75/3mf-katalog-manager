@@ -112,6 +112,11 @@ export interface Translations {
   metaSourceUrl: string;
   sourceUrlPlaceholder: string;
 
+  backToCatalog: string;
+  detailViewer3d: string;
+  detailViewerImage: string;
+  metaCreator: string;
+
   queueHeading: string;
   queueEmptyState: string;
   inQueueLabel: string;
