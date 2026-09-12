@@ -70,6 +70,7 @@ pub fn run() {
             commands::get_model_geometry,
             commands::pick_slicer_executable,
             commands::open_in_slicer,
+            commands::scan_installed_slicers,
             commands::scan_catalog_issues,
             commands::delete_files,
             commands::list_trash,

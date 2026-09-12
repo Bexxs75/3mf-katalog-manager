@@ -10,6 +10,7 @@ use tauri_plugin_dialog::DialogExt;
 use crate::db::models::{FileType, MaterialRecord, NewFile};
 use crate::db::{self, models::FileRecord};
 use crate::geometry::RenderMesh;
+use crate::slicers::{detect_slicers, DetectedSlicer};
 use crate::tagging::{self, TaggingContext};
 use crate::{stl, threemf};
 
@@ -895,6 +896,11 @@ pub fn open_in_slicer(slicer_path: String, file_path: String) -> CmdResult<()> {
     }
     cmd.spawn().map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+pub fn scan_installed_slicers() -> CmdResult<Vec<DetectedSlicer>> {
+    Ok(detect_slicers())
 }
 
 // Encodiert die extrahierte Geometrie als einzelnen Binaerstrom fuer
