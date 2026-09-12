@@ -759,15 +759,16 @@ export default function App() {
                         {t('addToCollectionLabel')}
                       </button>
                       {addToCollectionMenuOpen && (
-                        <div className="absolute top-9 left-0 w-[220px] py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
+                        <div className="absolute top-9 left-0 min-w-[220px] max-w-[360px] py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
                           {collections.map((c) => (
                             <button
                               key={c.id}
+                              title={c.name}
                               onClick={() => {
                                 bulkAddToCollection(c.id);
                                 setAddToCollectionMenuOpen(false);
                               }}
-                              className="w-full text-left px-3 py-1.5 text-[13px] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
+                              className="w-full text-left px-3 py-1.5 text-[13px] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis"
                             >
                               {c.name}
                             </button>
