@@ -583,6 +583,29 @@ mod tests {
         assert_eq!(file.queue_position, Some(2));
     }
 
+    #[test]
+    fn soft_delete_and_restore_file_roundtrips() {
+        let mut conn = connect_in_memory().expect("connect");
+        let file = sample_file();
+        let id = repository::insert_file(&mut conn, &file).unwrap();
+
+        repository::soft_delete_file(&conn, id, "/trash/1-test.3mf", "2026-01-01T00:00:00Z").unwrap();
+        let fetched = repository::get_file(&conn, id).unwrap().unwrap();
+        assert_eq!(fetched.deleted_at.as_deref(), Some("2026-01-01T00:00:00Z"));
+        assert_eq!(fetched.trash_path.as_deref(), Some("/trash/1-test.3mf"));
+
+        let visible = repository::list_files(&conn).unwrap();
+        assert!(visible.iter().all(|f| f.id != id), "geloeschte Datei darf nicht in list_files erscheinen");
+
+        let trashed = repository::list_trash(&conn).unwrap();
+        assert!(trashed.iter().any(|f| f.id == id), "geloeschte Datei muss in list_trash erscheinen");
+
+        repository::restore_file(&conn, id, None).unwrap();
+        let restored = repository::get_file(&conn, id).unwrap().unwrap();
+        assert!(restored.deleted_at.is_none());
+        assert!(restored.trash_path.is_none());
+    }
+
     fn sample_saved_filter() -> NewSavedFilter {
         NewSavedFilter {
             name: "Meine Vasen".to_string(),

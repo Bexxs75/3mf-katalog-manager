@@ -15,6 +15,7 @@ use crate::{stl, threemf};
 
 pub struct AppState {
     pub db: Mutex<Connection>,
+    pub trash_dir: std::path::PathBuf,
 }
 
 type CmdResult<T> = Result<T, String>;
@@ -44,6 +45,7 @@ pub struct ModelFileDto {
     pub queue_position: Option<i64>,
     pub favorite: bool,
     pub plate_count: Option<i64>,
+    pub deleted_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -202,6 +204,7 @@ pub(crate) fn to_dto(file: FileRecord) -> ModelFileDto {
         queue_position: file.queue_position,
         favorite: file.favorite,
         plate_count: file.plate_count,
+        deleted_at: file.deleted_at,
     }
 }
 
@@ -1269,6 +1272,8 @@ mod tests {
             queue_position: None,
             favorite: false,
             plate_count: None,
+            deleted_at: None,
+            trash_path: None,
         }
     }
 

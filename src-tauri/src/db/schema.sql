@@ -44,7 +44,9 @@ CREATE TABLE IF NOT EXISTS files (
     source_url TEXT,
     queue_position INTEGER,
     favorite INTEGER NOT NULL DEFAULT 0,
-    plate_count INTEGER
+    plate_count INTEGER,
+    deleted_at TEXT,
+    trash_path TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_files_folder_id ON files (folder_id);
