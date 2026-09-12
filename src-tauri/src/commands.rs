@@ -394,13 +394,31 @@ pub fn delete_file(state: State<AppState>, file_id: String) -> CmdResult<()> {
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "file not found".to_string())?;
 
-    if let Err(e) = std::fs::remove_file(&file.path) {
-        if e.kind() != std::io::ErrorKind::NotFound {
-            return Err(e.to_string());
-        }
+    if std::fs::metadata(&file.path).is_err() {
+        // Datei existiert schon nicht mehr (z.B. bereinigter verwaister
+        // Pfad) - nichts zu verschieben, Katalog-Eintrag direkt hart loeschen.
+        return db::delete_file(&conn, id).map_err(|e| e.to_string());
     }
 
-    db::delete_file(&conn, id).map_err(|e| e.to_string())
+    let trash_path = state.trash_dir.join(format!("{id}-{}", file.name));
+    move_file(std::path::Path::new(&file.path), &trash_path).map_err(|e| e.to_string())?;
+
+    let deleted_at = chrono::Utc::now().to_rfc3339();
+    db::soft_delete_file(&conn, id, &trash_path.to_string_lossy(), &deleted_at)
+        .map_err(|e| e.to_string())
+}
+
+/// Verschiebt eine Datei; faellt bei "CrossesDevices" (Ziel auf anderem
+/// Dateisystem) auf Kopieren+Loeschen des Originals zurueck.
+fn move_file(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    match std::fs::rename(from, to) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::CrossesDevices => {
+            std::fs::copy(from, to)?;
+            std::fs::remove_file(from)
+        }
+        Err(e) => Err(e),
+    }
 }
 
 #[tauri::command]
@@ -1053,23 +1071,133 @@ pub fn delete_files(state: State<AppState>, file_ids: Vec<String>) -> CmdResult<
                 continue;
             }
         };
-        if let Err(e) = std::fs::remove_file(&file.path) {
-            if e.kind() != std::io::ErrorKind::NotFound {
-                // Batch nicht abbrechen (Finding 2 im finalen Review vom
-                // 2026-09-10): jede ID wird einzeln versucht, ein
-                // fehlgeschlagener Einzelfall wird geloggt und uebersprungen,
-                // damit das Frontend am Ende zuverlaessig resyncen kann statt
-                // auf einem abgebrochenen Batch mit veraltetem Zustand zu
-                // stehen.
-                eprintln!("[cleanup] Loeschen fehlgeschlagen fuer Datei-ID {id}: {e}");
-                continue;
+        // Batch nicht abbrechen (Finding 2 im finalen Review vom
+        // 2026-09-10): jede ID wird einzeln versucht, ein fehlgeschlagener
+        // Einzelfall wird geloggt und uebersprungen, damit das Frontend am
+        // Ende zuverlaessig resyncen kann statt auf einem abgebrochenen
+        // Batch mit veraltetem Zustand zu stehen.
+        if std::fs::metadata(&file.path).is_err() {
+            if let Err(e) = db::delete_file(&conn, id) {
+                eprintln!("[cleanup] DB-Eintrag konnte nicht geloescht werden fuer Datei-ID {id}: {e}");
             }
+            continue;
         }
-        if let Err(e) = db::delete_file(&conn, id) {
-            eprintln!("[cleanup] DB-Eintrag konnte nicht geloescht werden fuer Datei-ID {id}: {e}");
+        let trash_path = state.trash_dir.join(format!("{id}-{}", file.name));
+        if let Err(e) = move_file(std::path::Path::new(&file.path), &trash_path) {
+            eprintln!("[cleanup] Verschieben in Papierkorb fehlgeschlagen fuer Datei-ID {id}: {e}");
+            continue;
+        }
+        let deleted_at = chrono::Utc::now().to_rfc3339();
+        if let Err(e) = db::soft_delete_file(&conn, id, &trash_path.to_string_lossy(), &deleted_at) {
+            eprintln!("[cleanup] DB-Eintrag konnte nicht als geloescht markiert werden fuer Datei-ID {id}: {e}");
         }
     }
     Ok(())
+}
+
+#[tauri::command]
+pub fn list_trash(state: State<AppState>) -> CmdResult<Vec<ModelFileDto>> {
+    let conn = lock_db(&state)?;
+    let files = db::list_trash(&conn).map_err(|e| e.to_string())?;
+    Ok(files.into_iter().map(to_dto).collect())
+}
+
+#[tauri::command]
+pub fn restore_file(state: State<AppState>, file_id: String) -> CmdResult<()> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let conn = lock_db(&state)?;
+    let file = db::get_file(&conn, id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "file not found".to_string())?;
+    let trash_path = file
+        .trash_path
+        .clone()
+        .ok_or_else(|| "file is not in trash".to_string())?;
+
+    let original = std::path::Path::new(&file.path);
+    let target_path = if original.exists() {
+        let stem = original.file_stem().and_then(|s| s.to_str()).unwrap_or("datei");
+        let ext = original.extension().and_then(|s| s.to_str());
+        let parent = original.parent().unwrap_or_else(|| std::path::Path::new("."));
+        let new_name = match ext {
+            Some(ext) => format!("{stem} (wiederhergestellt).{ext}"),
+            None => format!("{stem} (wiederhergestellt)"),
+        };
+        parent.join(new_name)
+    } else {
+        original.to_path_buf()
+    };
+
+    move_file(std::path::Path::new(&trash_path), &target_path).map_err(|e| e.to_string())?;
+
+    let new_path_str = target_path.to_string_lossy().to_string();
+    let new_path_arg = if new_path_str == file.path { None } else { Some(new_path_str.as_str()) };
+    db::restore_file(&conn, id, new_path_arg).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_file_permanently(state: State<AppState>, file_id: String) -> CmdResult<()> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let conn = lock_db(&state)?;
+    let file = db::get_file(&conn, id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "file not found".to_string())?;
+    if let Some(trash_path) = &file.trash_path {
+        if let Err(e) = std::fs::remove_file(trash_path) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                return Err(e.to_string());
+            }
+        }
+    }
+    db::delete_file(&conn, id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn empty_trash(state: State<AppState>) -> CmdResult<()> {
+    let conn = lock_db(&state)?;
+    let files = db::list_trash(&conn).map_err(|e| e.to_string())?;
+    for file in files {
+        if let Some(trash_path) = &file.trash_path {
+            if let Err(e) = std::fs::remove_file(trash_path) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    eprintln!("[trash] Entfernen fehlgeschlagen fuer Datei-ID {}: {e}", file.id);
+                    continue;
+                }
+            }
+        }
+        if let Err(e) = db::delete_file(&conn, file.id) {
+            eprintln!("[trash] DB-Eintrag konnte nicht geloescht werden fuer Datei-ID {}: {e}", file.id);
+        }
+    }
+    Ok(())
+}
+
+/// Beim App-Start aufgerufen: entfernt alle Papierkorb-Eintraege, die
+/// laenger als 7 Tage zurueckliegen, endgueltig. Einzelne fehlschlagende
+/// Datei wird geloggt und uebersprungen, bricht den Rest nicht ab -
+/// gleiches Muster wie der bestehende content_hash-Backfill.
+pub fn purge_expired_trash_on_startup(conn: &Connection) {
+    let cutoff = (chrono::Utc::now() - chrono::Duration::days(7)).to_rfc3339();
+    let expired = match db::purge_expired_trash(conn, &cutoff) {
+        Ok(files) => files,
+        Err(e) => {
+            eprintln!("[startup] Papierkorb-Aufraeumen: Abfrage fehlgeschlagen: {e}");
+            return;
+        }
+    };
+    for file in expired {
+        if let Some(trash_path) = &file.trash_path {
+            if let Err(e) = std::fs::remove_file(trash_path) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    eprintln!("[startup] Papierkorb-Aufraeumen: Datei fehlgeschlagen fuer ID {}: {e}", file.id);
+                    continue;
+                }
+            }
+        }
+        if let Err(e) = db::delete_file(conn, file.id) {
+            eprintln!("[startup] Papierkorb-Aufraeumen: DB-Eintrag fehlgeschlagen fuer ID {}: {e}", file.id);
+        }
+    }
 }
 
 #[cfg(test)]

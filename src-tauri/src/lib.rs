@@ -29,6 +29,8 @@ pub fn run() {
             }
             commands::backfill_content_hashes(&conn);
             let trash_dir = app_data_dir.join("trash");
+            std::fs::create_dir_all(&trash_dir)?;
+            commands::purge_expired_trash_on_startup(&conn);
             app.manage(commands::AppState {
                 db: Mutex::new(conn),
                 trash_dir,
@@ -69,6 +71,10 @@ pub fn run() {
             commands::open_in_slicer,
             commands::scan_catalog_issues,
             commands::delete_files,
+            commands::list_trash,
+            commands::restore_file,
+            commands::delete_file_permanently,
+            commands::empty_trash,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
