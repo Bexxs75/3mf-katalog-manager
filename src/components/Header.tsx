@@ -13,6 +13,7 @@ interface Props {
   onViewChange: (v: ViewMode) => void;
   sort: SortKey;
   onSortChange: (s: SortKey) => void;
+  hideSortControl?: boolean;
   count: number;
   themeSetting: ThemeSetting;
   onThemeChange: (t: ThemeSetting) => void;
@@ -52,6 +53,7 @@ export function Header({
   onViewChange,
   sort,
   onSortChange,
+  hideSortControl,
   count,
   themeSetting,
   onThemeChange,
@@ -152,7 +154,7 @@ export function Header({
         )}
       </div>
 
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1.5" style={hideSortControl ? { display: 'none' } : undefined}>
         <span className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.1em] uppercase text-[var(--ink-3)]">
           {t('sortLabel')}
         </span>
