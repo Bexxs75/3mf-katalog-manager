@@ -14,6 +14,7 @@ import { CatalogCleanupDialog } from './components/CatalogCleanupDialog';
 import { useTheme } from './hooks/useTheme';
 import { useUiDensity } from './hooks/UiDensityContext';
 import { useSlicers } from './hooks/useSlicers';
+import { useT } from './i18n/LanguageContext';
 import type { ModelFile, Folder, TagCount, CreatorCount, ViewMode, SortKey, SavedFilter, CatalogIssues } from './types';
 
 interface ImportResultDto {
@@ -23,6 +24,7 @@ interface ImportResultDto {
 
 export default function App() {
   const { setting, setTheme } = useTheme();
+  const t = useT();
   const { density, setDensity } = useUiDensity();
   const { slicers, lastUsedId, addSlicer, removeSlicer, setLastUsed } = useSlicers();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -42,7 +44,6 @@ export default function App() {
   const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number } | null>(null);
   const [mainView, setMainView] = useState<'catalog' | 'filament' | 'trash'>('catalog');
   const [trashModels, setTrashModels] = useState<ModelFile[]>([]);
-  // @ts-expect-error confirmEmptyTrash is read starting in Task 4's trash view
   const [confirmEmptyTrash, setConfirmEmptyTrash] = useState(false);
   const [importBanner, setImportBanner] = useState<{ imported: number; duplicates: number } | null>(null);
   const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([]);
@@ -57,7 +58,6 @@ export default function App() {
   const refreshSavedFilters = () => invoke<SavedFilter[]>('list_saved_filters').then(setSavedFilters);
   const refreshTrash = () => invoke<ModelFile[]>('list_trash').then(setTrashModels);
 
-  // @ts-expect-error restoreModel is wired into the UI starting in Task 4's trash view
   const restoreModel = (id: string) => {
     invoke('restore_file', { fileId: id }).then(() => {
       setTrashModels((prev) => prev.filter((m) => m.id !== id));
@@ -68,14 +68,12 @@ export default function App() {
     });
   };
 
-  // @ts-expect-error deleteModelPermanently is wired into the UI starting in Task 4's trash view
   const deleteModelPermanently = (id: string) => {
     invoke('delete_file_permanently', { fileId: id }).then(() => {
       setTrashModels((prev) => prev.filter((m) => m.id !== id));
     });
   };
 
-  // @ts-expect-error emptyTrash is wired into the UI starting in Task 4's trash view
   const emptyTrash = () => {
     invoke('empty_trash').then(() => {
       setTrashModels([]);
@@ -411,7 +409,84 @@ export default function App() {
         trashCount={trashModels.length}
       />
 
-      {mainView === 'catalog' ? (
+      {mainView === 'trash' ? (
+        <div className="flex flex-1 min-h-0">
+          <main className="flex-1 min-w-0 flex flex-col">
+            <div className="flex-none flex items-center justify-between px-4 py-3 border-b border-[var(--line)]">
+              <h1 className="text-[15px] font-semibold">{t('trashHeading')}</h1>
+              {confirmEmptyTrash ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-[12.5px] font-medium text-[var(--ink)]">
+                    {t('emptyTrashConfirmQuestion')}
+                  </span>
+                  <button
+                    onClick={() => setConfirmEmptyTrash(false)}
+                    className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                  >
+                    {t('cancel')}
+                  </button>
+                  <button
+                    onClick={emptyTrash}
+                    className="h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
+                  >
+                    {t('emptyTrashButton')}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirmEmptyTrash(true)}
+                  disabled={trashModels.length === 0}
+                  className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer disabled:opacity-50 hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                >
+                  {t('emptyTrashButton')}
+                </button>
+              )}
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              {trashModels.length === 0 ? (
+                <p className="font-mono-ui text-[12.5px] text-[var(--ink-3)]">{t('trashEmptyState')}</p>
+              ) : view === 'grid' ? (
+                <ModelGrid
+                  models={trashModels}
+                  selectedId={selectedId}
+                  onSelect={selectModel}
+                  onOpenDetail={() => {}}
+                  onContextMenu={() => {}}
+                  onToggleFavorite={() => {}}
+                  readOnly
+                />
+              ) : (
+                <ModelList
+                  models={trashModels}
+                  selectedId={selectedId}
+                  onSelect={selectModel}
+                  onOpenDetail={() => {}}
+                  onContextMenu={() => {}}
+                  readOnly
+                />
+              )}
+            </div>
+          </main>
+          <DetailPanel
+            model={trashModels.find((m) => m.id === selectedId) ?? null}
+            trashMode
+            onRestore={() => selectedId && restoreModel(selectedId)}
+            onDeletePermanently={() => selectedId && deleteModelPermanently(selectedId)}
+            onAddTag={() => {}}
+            onRemoveTag={() => {}}
+            onDelete={() => {}}
+            onTogglePrintStatus={() => {}}
+            onToggleFavorite={() => {}}
+            onToggleQueue={() => {}}
+            onUploadImage={() => {}}
+            onSnapshotCaptured={() => {}}
+            onSetSourceUrl={() => {}}
+            onOpenInSlicer={() => {}}
+            slicers={[]}
+            slicerError={null}
+          />
+        </div>
+      ) : mainView === 'catalog' ? (
         <div className="flex-1 flex min-h-0">
           <Sidebar
             query={query}

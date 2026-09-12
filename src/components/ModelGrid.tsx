@@ -10,9 +10,10 @@ interface Props {
   onOpenDetail: (id: string) => void;
   onContextMenu: (id: string, x: number, y: number) => void;
   onToggleFavorite: (id: string) => void;
+  readOnly?: boolean;
 }
 
-export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContextMenu, onToggleFavorite }: Props) {
+export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContextMenu, onToggleFavorite, readOnly }: Props) {
   const t = useT();
   const { density } = useUiDensity();
   const { language } = useLanguage();
@@ -22,7 +23,7 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
       <div
         key={m.id}
         onClick={() => onSelect(m.id)}
-        onDoubleClick={() => onOpenDetail(m.id)}
+        onDoubleClick={readOnly ? undefined : () => onOpenDetail(m.id)}
         onContextMenu={(e) => {
           e.preventDefault();
           onSelect(m.id);
@@ -68,20 +69,22 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
               ✓ {t('printedBadge')}
             </div>
           )}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleFavorite(m.id);
-            }}
-            aria-label={m.favorite ? t('favoriteRemove') : t('favoriteAdd')}
-            className={`absolute left-[7px] bottom-[7px] font-mono-ui text-[9px] px-1 py-0.5 rounded border cursor-pointer ${
-              m.favorite
-                ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
-                : 'border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]'
-            }`}
-          >
-            {m.favorite ? '♥' : '♡'}
-          </button>
+          {!readOnly && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleFavorite(m.id);
+              }}
+              aria-label={m.favorite ? t('favoriteRemove') : t('favoriteAdd')}
+              className={`absolute left-[7px] bottom-[7px] font-mono-ui text-[9px] px-1 py-0.5 rounded border cursor-pointer ${
+                m.favorite
+                  ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
+                  : 'border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]'
+              }`}
+            >
+              {m.favorite ? '♥' : '♡'}
+            </button>
+          )}
         </div>
         <div className="flex flex-col gap-1.5 px-2.5 py-2.5 bg-[var(--panel)]">
           <div className="text-[12.5px] font-semibold overflow-hidden text-ellipsis whitespace-nowrap">
@@ -112,7 +115,7 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
           <div
             key={m.id}
             onClick={() => onSelect(m.id)}
-            onDoubleClick={() => onOpenDetail(m.id)}
+            onDoubleClick={readOnly ? undefined : () => onOpenDetail(m.id)}
             onContextMenu={(e) => {
               e.preventDefault();
               onSelect(m.id);
@@ -150,19 +153,21 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
                   ✓ {t('printedBadge')}
                 </div>
               )}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleFavorite(m.id);
-                }}
-                aria-label={m.favorite ? t('favoriteRemove') : t('favoriteAdd')}
-                style={{ width: 'var(--icon-badge-size)', height: 'var(--icon-badge-size)' }}
-                className={`absolute right-2.5 bottom-2.5 rounded-full grid place-items-center bg-[var(--panel)]/90 shadow-[var(--shadow)] cursor-pointer text-[17px] ${
-                  m.favorite ? 'text-[var(--accent)]' : 'text-[var(--ink-3)]'
-                }`}
-              >
-                {m.favorite ? '♥' : '♡'}
-              </button>
+              {!readOnly && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleFavorite(m.id);
+                  }}
+                  aria-label={m.favorite ? t('favoriteRemove') : t('favoriteAdd')}
+                  style={{ width: 'var(--icon-badge-size)', height: 'var(--icon-badge-size)' }}
+                  className={`absolute right-2.5 bottom-2.5 rounded-full grid place-items-center bg-[var(--panel)]/90 shadow-[var(--shadow)] cursor-pointer text-[17px] ${
+                    m.favorite ? 'text-[var(--accent)]' : 'text-[var(--ink-3)]'
+                  }`}
+                >
+                  {m.favorite ? '♥' : '♡'}
+                </button>
+              )}
             </div>
             <div className="flex flex-col gap-2" style={{ padding: 'var(--space-card-pad)' }}>
               <div

@@ -4,9 +4,13 @@ import { useLanguage, useT } from '../i18n/LanguageContext';
 import { ModelViewer } from './ModelViewer';
 import { useUiDensity } from '../hooks/UiDensityContext';
 import { buildMetaRows } from '../lib/modelMetadata';
+import { formatDate } from '../i18n/format';
 
 interface Props {
   model: ModelFile | null;
+  trashMode?: boolean;
+  onRestore?: () => void;
+  onDeletePermanently?: () => void;
   onAddTag: (tag: string) => void;
   onRemoveTag: (tag: string) => void;
   onDelete: () => void;
@@ -23,6 +27,9 @@ interface Props {
 
 export function DetailPanel({
   model,
+  trashMode,
+  onRestore,
+  onDeletePermanently,
   onAddTag,
   onRemoveTag,
   onDelete,
@@ -84,6 +91,59 @@ export function DetailPanel({
   };
 
   const hasSlicers = slicers.length > 0;
+
+  if (trashMode) {
+    const rows = buildMetaRows(model, t, language);
+    const expiryDate = model.deletedAt
+      ? new Date(new Date(model.deletedAt).getTime() + 7 * 24 * 60 * 60 * 1000)
+      : null;
+    return (
+      <aside className="flex-none w-[336px] flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]">
+        <div className="flex-none px-4 pt-3.5 pb-3 border-b border-[var(--line)]">
+          <div className="text-[14.5px] font-semibold leading-tight break-words">{model.name}</div>
+          <div className="font-mono-ui text-[10.5px] text-[var(--ink-3)] pt-1.5">{model.path}</div>
+        </div>
+
+        <div className="relative aspect-[4/3] bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
+          <ModelViewer fileId={model.id} needsSnapshot={false} onSnapshotCaptured={() => {}} />
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4 pt-3.5 pb-1">
+          <div className="font-mono-ui text-[10px] tracking-[0.12em] uppercase text-[var(--ink-3)] pb-2">
+            {t('metadataHeading')}
+          </div>
+          {rows.map((row) => (
+            <div key={row.label} className="flex items-baseline gap-3 py-1.5 border-b border-[var(--line)]">
+              <span className="flex-none w-[108px] text-[12.5px] text-[var(--ink-2)]">{row.label}</span>
+              <span className="flex-1 font-mono-ui text-xs text-right">{row.value}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex-none px-4 py-3 border-t border-[var(--line)] bg-[var(--panel-2)] flex flex-col gap-2">
+          {expiryDate && (
+            <p className="font-mono-ui text-[10.5px] text-[var(--ink-3)]">
+              {t('trashExpiryHint').replace('{date}', formatDate(expiryDate.toISOString(), language))}
+            </p>
+          )}
+          <div className="flex gap-2">
+            <button
+              onClick={onRestore}
+              className="flex-1 h-8 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            >
+              {t('restoreLabel')}
+            </button>
+            <button
+              onClick={onDeletePermanently}
+              className="flex-1 h-8 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
+            >
+              {t('deletePermanentlyLabel')}
+            </button>
+          </div>
+        </div>
+      </aside>
+    );
+  }
 
   if (density === 'compact') {
     return (

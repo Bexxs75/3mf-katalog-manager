@@ -8,9 +8,10 @@ interface Props {
   onSelect: (id: string) => void;
   onOpenDetail: (id: string) => void;
   onContextMenu: (id: string, x: number, y: number) => void;
+  readOnly?: boolean;
 }
 
-export function ModelList({ models, selectedId, onSelect, onOpenDetail, onContextMenu }: Props) {
+export function ModelList({ models, selectedId, onSelect, onOpenDetail, onContextMenu, readOnly }: Props) {
   const { language } = useLanguage();
   const t = useT();
 
@@ -29,7 +30,7 @@ export function ModelList({ models, selectedId, onSelect, onOpenDetail, onContex
         <div
           key={m.id}
           onClick={() => onSelect(m.id)}
-          onDoubleClick={() => onOpenDetail(m.id)}
+          onDoubleClick={readOnly ? undefined : () => onOpenDetail(m.id)}
           onContextMenu={(e) => {
             e.preventDefault();
             onSelect(m.id);
