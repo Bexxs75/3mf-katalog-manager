@@ -37,6 +37,9 @@ export default function App() {
   const [creators, setCreators] = useState<CreatorCount[]>([]);
   const [activeCreator, setActiveCreator] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedForBulk, setSelectedForBulk] = useState<Set<string>>(new Set());
+  // @ts-expect-error confirmBulkDelete wird erst in Task 3 im JSX verwendet
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [detailModelId, setDetailModelId] = useState<string | null>(null);
   const [models, setModels] = useState<ModelFile[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -128,6 +131,10 @@ export default function App() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [detailModelId]);
+
+  useEffect(() => {
+    setSelectedForBulk(new Set());
+  }, [activeFolderId, activeTag, activeCreator, query]);
 
   useEffect(() => {
     const unlisten = getCurrentWebview().onDragDropEvent((event) => {
@@ -253,6 +260,54 @@ export default function App() {
         setModels((prev) => prev.map((m) => (m.id === id ? { ...m, queuePosition: position } : m)));
       })
       .catch((e) => console.error('[queue] Hinzufügen fehlgeschlagen:', e));
+  };
+
+  // @ts-expect-error toggleBulkSelect wird erst in Task 3 im JSX verwendet
+  const toggleBulkSelect = (id: string) => {
+    setSelectedForBulk((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  // @ts-expect-error selectAllVisible wird erst in Task 3 im JSX verwendet
+  const selectAllVisible = () => setSelectedForBulk(new Set(filtered.map((m) => m.id)));
+  const clearBulkSelection = () => setSelectedForBulk(new Set());
+
+  // @ts-expect-error bulkDelete wird erst in Task 3 im JSX verwendet
+  const bulkDelete = () => {
+    invoke('delete_files', { fileIds: Array.from(selectedForBulk) }).then(() => {
+      setModels((prev) => prev.filter((m) => !selectedForBulk.has(m.id)));
+      clearBulkSelection();
+      setConfirmBulkDelete(false);
+      refreshFolders();
+      refreshTags();
+      refreshCreators();
+      refreshTrash();
+    });
+  };
+
+  // @ts-expect-error bulkAddToQueue wird erst in Task 3 im JSX verwendet
+  const bulkAddToQueue = () => {
+    Promise.all(Array.from(selectedForBulk).map((id) => invoke('add_to_queue', { fileId: id }))).then(
+      () => invoke<ModelFile[]>('list_files').then(setModels),
+    );
+  };
+
+  // @ts-expect-error bulkSetPrintStatus wird erst in Task 3 im JSX verwendet
+  const bulkSetPrintStatus = (status: 'printed' | 'not_printed') => {
+    Promise.all(
+      Array.from(selectedForBulk).map((id) => invoke('set_print_status', { fileId: id, status })),
+    ).then(() => {
+      setModels((prev) =>
+        prev.map((m) =>
+          selectedForBulk.has(m.id)
+            ? { ...m, printStatus: status, queuePosition: status === 'printed' ? null : m.queuePosition }
+            : m,
+        ),
+      );
+    });
   };
 
   const removeFromQueue = (id: string) => {

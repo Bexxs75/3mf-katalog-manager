@@ -137,6 +137,10 @@ export const de: Translations = {
   favoriteRemove: 'Aus Favoriten entfernen',
 
   trashHeading: 'Papierkorb',
+  bulkSelectedCount: '{count} ausgewählt',
+  selectAllLabel: 'Alle auswählen',
+  clearSelectionLabel: 'Auswahl aufheben',
+  bulkDeleteConfirmQuestion: '{count} Modelle löschen?',
   trashEmptyState: 'Papierkorb ist leer.',
   emptyTrashButton: 'Papierkorb leeren',
   emptyTrashConfirmQuestion: 'Papierkorb endgültig leeren?',
