@@ -137,6 +137,10 @@ export const fr: Translations = {
   favoriteRemove: 'Retirer des favoris',
 
   trashHeading: 'Corbeille',
+  bulkSelectedCount: '{count} sélectionné(s)',
+  selectAllLabel: 'Tout sélectionner',
+  clearSelectionLabel: 'Désélectionner',
+  bulkDeleteConfirmQuestion: 'Supprimer {count} modèles ?',
   trashEmptyState: 'La corbeille est vide.',
   emptyTrashButton: 'Vider la corbeille',
   emptyTrashConfirmQuestion: 'Vider définitivement la corbeille ?',

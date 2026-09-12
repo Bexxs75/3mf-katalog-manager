@@ -137,6 +137,10 @@ export const en: Translations = {
   favoriteRemove: 'Remove from favorites',
 
   trashHeading: 'Trash',
+  bulkSelectedCount: '{count} selected',
+  selectAllLabel: 'Select all',
+  clearSelectionLabel: 'Clear selection',
+  bulkDeleteConfirmQuestion: 'Delete {count} models?',
   trashEmptyState: 'Trash is empty.',
   emptyTrashButton: 'Empty trash',
   emptyTrashConfirmQuestion: 'Empty trash permanently?',

@@ -141,6 +141,10 @@ export interface Translations {
   favoriteRemove: string;
 
   trashHeading: string;
+  bulkSelectedCount: string;
+  selectAllLabel: string;
+  clearSelectionLabel: string;
+  bulkDeleteConfirmQuestion: string;
   trashEmptyState: string;
   emptyTrashButton: string;
   emptyTrashConfirmQuestion: string;
