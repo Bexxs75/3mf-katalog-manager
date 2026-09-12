@@ -634,20 +634,36 @@ export default function App() {
         <div className="flex-1 flex min-h-0">
           <Sidebar
             query={query}
-            onQueryChange={setQuery}
+            onQueryChange={(q) => {
+              setQuery(q);
+              setActiveCollection(null);
+              setCollectionsGalleryOpen(false);
+            }}
             queue={queue}
             onQueueReorder={reorderQueue}
             onQueueRemove={removeFromQueue}
             onQueueSelect={selectModel}
             folders={folders}
             activeFolderId={activeFolderId}
-            onFolderSelect={setActiveFolderId}
+            onFolderSelect={(id) => {
+              setActiveFolderId(id);
+              setActiveCollection(null);
+              setCollectionsGalleryOpen(false);
+            }}
             tags={tags}
             activeTag={activeTag}
-            onTagSelect={setActiveTag}
+            onTagSelect={(tag) => {
+              setActiveTag(tag);
+              setActiveCollection(null);
+              setCollectionsGalleryOpen(false);
+            }}
             creators={creators}
             activeCreator={activeCreator}
-            onCreatorSelect={setActiveCreator}
+            onCreatorSelect={(creator) => {
+              setActiveCreator(creator);
+              setActiveCollection(null);
+              setCollectionsGalleryOpen(false);
+            }}
             savedFilters={savedFilters}
             onSaveFilter={saveCurrentFilter}
             onApplyFilter={applySavedFilter}
@@ -839,7 +855,7 @@ export default function App() {
                   />
                 ) : (
                   <ModelList
-                    models={filtered}
+                    models={activeCollection ? collectionModels : filtered}
                     selectedId={selectedId}
                     onSelect={selectModel}
                     onOpenDetail={setDetailModelId}

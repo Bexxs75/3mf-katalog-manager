@@ -18,7 +18,9 @@ pub fn create_collection(conn: &Connection, name: &str, created_at: &str) -> Res
 pub fn list_collections(conn: &Connection) -> Result<Vec<CollectionRecord>, DbError> {
     let mut stmt = conn.prepare(
         "SELECT c.id, c.name,
-                (SELECT COUNT(*) FROM collection_files cf WHERE cf.collection_id = c.id)
+                (SELECT COUNT(*) FROM collection_files cf
+                 JOIN files f ON f.id = cf.file_id
+                 WHERE cf.collection_id = c.id AND f.deleted_at IS NULL)
          FROM collections c
          ORDER BY c.created_at",
     )?;
@@ -92,7 +94,10 @@ pub fn set_collection_position(
 
 pub fn list_collection_file_ids(conn: &Connection, collection_id: i64) -> Result<Vec<i64>, DbError> {
     let mut stmt = conn.prepare(
-        "SELECT file_id FROM collection_files WHERE collection_id = ?1 ORDER BY position",
+        "SELECT cf.file_id FROM collection_files cf
+         JOIN files f ON f.id = cf.file_id
+         WHERE cf.collection_id = ?1 AND f.deleted_at IS NULL
+         ORDER BY cf.position",
     )?;
     let rows = stmt
         .query_map(params![collection_id], |row| row.get(0))?
@@ -216,5 +221,27 @@ mod tests {
 
         assert_eq!(get_file_id_by_path(&conn, "/tmp/a.3mf").unwrap(), Some(file_id));
         assert_eq!(get_file_id_by_path(&conn, "/tmp/unbekannt.3mf").unwrap(), None);
+    }
+
+    #[test]
+    fn list_collection_file_ids_excludes_soft_deleted_files() {
+        let mut conn = connect_in_memory().unwrap();
+        let a = insert_file(&mut conn, &sample_file("/tmp/a.3mf")).unwrap();
+        let b = insert_file(&mut conn, &sample_file("/tmp/b.3mf")).unwrap();
+        let collection_id = create_collection(&conn, "Bauvorhaben X", "2026-09-12T10:00:00Z").unwrap();
+        add_file_to_collection(&conn, collection_id, a, 0).unwrap();
+        add_file_to_collection(&conn, collection_id, b, 1).unwrap();
+
+        conn.execute(
+            "UPDATE files SET deleted_at = ?1 WHERE id = ?2",
+            params!["2026-09-12T12:00:00Z", a],
+        )
+        .unwrap();
+
+        let ids = list_collection_file_ids(&conn, collection_id).unwrap();
+        assert_eq!(ids, vec![b]);
+
+        let collections = list_collections(&conn).unwrap();
+        assert_eq!(collections[0].model_count, 1);
     }
 }
