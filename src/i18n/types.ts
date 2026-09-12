@@ -163,14 +163,13 @@ export interface Translations {
   trashExpiryHint: string;
 
   collectionsTab: string;
-  modelCountLabel: string;
+  modelCountLabel: PluralForms;
   addToCollectionLabel: string;
   newCollectionPlaceholder: string;
   removeFromCollectionLabel: string;
   deleteCollectionConfirmQuestion: string;
   renameCollectionAria: string;
   noCollectionsEmptyState: string;
-  backToCollectionsLabel: string;
   createCollectionLabel: string;
   importFolderAsCollectionOption: string;
 }

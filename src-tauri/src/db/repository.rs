@@ -372,6 +372,16 @@ pub fn file_exists_by_path(conn: &Connection, path: &str) -> Result<bool, DbErro
     Ok(exists.is_some())
 }
 
+pub fn get_file_id_by_content_hash(conn: &Connection, hash: &str) -> Result<Option<i64>, DbError> {
+    Ok(conn
+        .query_row(
+            "SELECT id FROM files WHERE content_hash = ?1 AND deleted_at IS NULL",
+            params![hash],
+            |row| row.get(0),
+        )
+        .optional()?)
+}
+
 pub fn file_exists_by_hash(conn: &Connection, hash: &str) -> Result<bool, DbError> {
     let exists: Option<i64> = conn
         .query_row(
@@ -405,6 +415,45 @@ pub fn get_file(conn: &Connection, id: i64) -> Result<Option<FileRecord>, DbErro
     file.metadata = load_metadata(conn, id)?;
     file.tags = load_tags(conn, id)?;
     Ok(Some(file))
+}
+
+/// Laedt mehrere Dateien anhand ihrer IDs in EINER Hauptabfrage statt einer
+/// pro ID (wie es ein wiederholter get_file-Aufruf taete) - genutzt von
+/// list_collection_files, wo eine Sammlung aus vielen Dateien bestehen kann.
+/// Materials/Metadata/Tags werden weiterhin pro Datei nachgeladen (gleiches
+/// Muster wie list_files/get_file), das war nicht der eigentliche N+1-Teil.
+pub fn list_files_by_ids(conn: &Connection, ids: &[i64]) -> Result<Vec<FileRecord>, DbError> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT id, name, path, file_type, folder_id, origin, sync_status, cloud_id,
+                file_size_bytes, dimension_x_mm, dimension_y_mm, dimension_z_mm,
+                volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
+                print_status, last_viewed_at, creator, content_hash,
+                render_snapshot_png, custom_image_png, source_url, queue_position, favorite,
+                plate_count, deleted_at, trash_path
+         FROM files WHERE id IN ({placeholders})"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let params_vec: Vec<&dyn rusqlite::ToSql> = ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+    let mut files = stmt
+        .query_map(params_vec.as_slice(), row_to_file)?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    for file in &mut files {
+        file.materials = load_materials(conn, file.id)?;
+        file.metadata = load_metadata(conn, file.id)?;
+        file.tags = load_tags(conn, file.id)?;
+    }
+
+    // Reihenfolge der uebergebenen ids wiederherstellen - SQL "IN" garantiert
+    // keine bestimmte Ergebnisreihenfolge, die Sammlungs-Position haengt aber
+    // davon ab.
+    let mut by_id: std::collections::HashMap<i64, FileRecord> =
+        files.into_iter().map(|f| (f.id, f)).collect();
+    Ok(ids.iter().filter_map(|id| by_id.remove(id)).collect())
 }
 
 pub fn list_files(conn: &Connection) -> Result<Vec<FileRecord>, DbError> {

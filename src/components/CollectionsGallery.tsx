@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Collection } from '../types';
 import { useT } from '../i18n/LanguageContext';
+import { formatCount } from '../i18n/types';
 
 interface Props {
   collections: Collection[];
@@ -81,7 +82,7 @@ export function CollectionsGallery({ collections, onSelect, onCreate, onRename, 
               </div>
             )}
             <span className="font-mono-ui text-[11px] text-[var(--ink-3)]">
-              {t('modelCountLabel').replace('{count}', String(c.modelCount))}
+              {formatCount(t('modelCountLabel'), c.modelCount)}
             </span>
           </div>
         ))}

@@ -159,14 +159,13 @@ export const fr: Translations = {
   trashExpiryHint: 'Suppression automatique le {date}',
 
   collectionsTab: 'Collections',
-  modelCountLabel: '{count} modèles',
+  modelCountLabel: { one: '{count} modèle', other: '{count} modèles' },
   addToCollectionLabel: 'Ajouter à une collection',
   newCollectionPlaceholder: 'Nom de la collection',
   removeFromCollectionLabel: 'Retirer de la collection',
   deleteCollectionConfirmQuestion: 'Supprimer cette collection ? Les modèles restent dans votre catalogue.',
   renameCollectionAria: 'Renommer la collection',
   noCollectionsEmptyState: 'Aucune collection pour le moment.',
-  backToCollectionsLabel: '← Collections',
   createCollectionLabel: '+ Nouvelle collection',
   importFolderAsCollectionOption: 'Importer un dossier comme collection',
 };

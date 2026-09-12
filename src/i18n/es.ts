@@ -159,14 +159,13 @@ export const es: Translations = {
   trashExpiryHint: 'Se elimina automáticamente el {date}',
 
   collectionsTab: 'Colecciones',
-  modelCountLabel: '{count} modelos',
+  modelCountLabel: { one: '{count} modelo', other: '{count} modelos' },
   addToCollectionLabel: 'Añadir a colección',
   newCollectionPlaceholder: 'Nombre de la colección',
   removeFromCollectionLabel: 'Quitar de la colección',
   deleteCollectionConfirmQuestion: '¿Eliminar esta colección? Los modelos permanecen en tu catálogo.',
   renameCollectionAria: 'Renombrar colección',
   noCollectionsEmptyState: 'Aún no hay colecciones.',
-  backToCollectionsLabel: '← Colecciones',
   createCollectionLabel: '+ Nueva colección',
   importFolderAsCollectionOption: 'Importar carpeta como colección',
 };
