@@ -25,7 +25,7 @@ struct SlicerDefinition {
 const SLICER_DEFINITIONS: &[SlicerDefinition] = &[
     SlicerDefinition {
         display_name: "Bambu Studio",
-        binary_names: &["bambu-studio", "BambuStudio"],
+        binary_names: &["bambu-studio", "BambuStudio", "bambustudio"],
     },
     SlicerDefinition {
         display_name: "OrcaSlicer",
