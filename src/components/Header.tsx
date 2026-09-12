@@ -302,7 +302,14 @@ export function Header({
                 {slicers.map((s) => (
                   <div key={s.id} className="flex items-center gap-2">
                     <div className="flex-1 min-w-0">
-                      <div className="text-[length:var(--font-size-title)] text-[var(--ink)] truncate">{s.name}</div>
+                      <div className="flex items-center gap-1.5">
+                        <div className="text-[length:var(--font-size-title)] text-[var(--ink)] truncate">{s.name}</div>
+                        {s.source === 'auto' && (
+                          <span className="flex-none font-mono-ui text-[9px] tracking-[0.08em] uppercase text-[var(--ink-3)]">
+                            {t('slicerAutoDetectedLabel')}
+                          </span>
+                        )}
+                      </div>
                       <div className="font-mono-ui text-[length:var(--font-size-meta)] text-[var(--ink-3)] truncate">
                         {s.path}
                       </div>
