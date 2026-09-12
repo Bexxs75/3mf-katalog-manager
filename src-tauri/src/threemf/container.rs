@@ -24,6 +24,7 @@ pub struct PackageParts {
     /// ist der normalisierte (kein fuehrendes '/') Eintragspfad.
     pub referenced_models: HashMap<String, ParsedModel>,
     pub thumbnail: Option<Vec<u8>>,
+    pub plate_count: Option<u32>,
 }
 
 impl PackageParts {
@@ -41,6 +42,8 @@ impl PackageParts {
 
 pub fn read_package<R: Read + Seek>(reader: R) -> Result<PackageParts, ThreeMfError> {
     let mut archive = ZipArchive::new(reader)?;
+
+    let plate_count = super::plates::count_plates(&mut archive);
 
     let (model_path, thumbnail_path) = resolve_relationships(&mut archive);
     let model_path = model_path.unwrap_or_else(|| DEFAULT_MODEL_PATH.to_string());
@@ -94,6 +97,7 @@ pub fn read_package<R: Read + Seek>(reader: R) -> Result<PackageParts, ThreeMfEr
     Ok(PackageParts {
         root_model,
         referenced_models,
+        plate_count,
         thumbnail,
     })
 }

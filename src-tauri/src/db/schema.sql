@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS files (
     custom_image_png BLOB,
     source_url TEXT,
     queue_position INTEGER,
-    favorite INTEGER NOT NULL DEFAULT 0
+    favorite INTEGER NOT NULL DEFAULT 0,
+    plate_count INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_files_folder_id ON files (folder_id);

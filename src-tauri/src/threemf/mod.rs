@@ -27,6 +27,7 @@ pub struct ThreeMfDocument {
     pub materials: Vec<ThreeMfMaterial>,
     pub metadata: BTreeMap<String, String>,
     pub thumbnail_png: Option<Vec<u8>>,
+    pub plate_count: Option<u32>,
 }
 
 #[allow(dead_code)]
@@ -137,6 +138,7 @@ fn parse_3mf_reader<R: std::io::Read + std::io::Seek>(
             .collect(),
         metadata: package.root_model.metadata.clone(),
         thumbnail_png: package.thumbnail.clone(),
+        plate_count: package.plate_count,
     })
 }
 
