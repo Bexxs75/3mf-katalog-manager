@@ -492,6 +492,7 @@ mod tests {
         assert_eq!(file.creator, None);
         assert_eq!(file.content_hash, None);
         assert_eq!(file.queue_position, None);
+        assert_eq!(file.plate_count, None);
     }
 
     #[test]

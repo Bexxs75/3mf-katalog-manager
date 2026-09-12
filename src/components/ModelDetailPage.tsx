@@ -42,7 +42,7 @@ export function ModelDetailPage({
   const [tagDraft, setTagDraft] = useState('');
   const [sourceDraft, setSourceDraft] = useState(model.sourceUrl ?? '');
   const [editingSource, setEditingSource] = useState(false);
-  const [showCustomImage, setShowCustomImage] = useState(model.displayImage !== null);
+  const [showCustomImage, setShowCustomImage] = useState(false);
 
   const rows = buildMetaRows(model, t, language);
 

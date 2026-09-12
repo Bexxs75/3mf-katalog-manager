@@ -110,7 +110,7 @@ export const fr: Translations = {
 
   backToCatalog: 'Retour au catalogue',
   detailViewer3d: 'Vue 3D',
-  detailViewerImage: 'Image personnalisée',
+  detailViewerImage: 'Image',
   metaCreator: 'Créateur',
 
   queueHeading: "File d'impression",
