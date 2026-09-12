@@ -29,6 +29,11 @@ export const de: Translations = {
   densityComfort: 'Komfort',
   densityDescriptionCompact: 'Dichte, kleine Schrift — möglichst viel auf einen Blick.',
   densityDescriptionComfort: 'Größere Schrift und Grafiken — besser lesbar.',
+  displayPreferenceTitle: 'Bevorzugte Ansicht',
+  displayPreferenceThumbnail: 'Eingebettetes Bild',
+  displayPreferenceRender: 'Gerenderte Ansicht',
+  displayPreferenceDescriptionThumbnail: 'Zeigt bevorzugt das in der Datei hinterlegte Vorschaubild.',
+  displayPreferenceDescriptionRender: 'Zeigt bevorzugt eine gerenderte 3D-Ansicht; fehlende Schnappschüsse werden automatisch im Hintergrund nachgerendert.',
 
   searchPlaceholder: 'Name oder Tag suchen …',
   foldersHeading: 'Ordner',

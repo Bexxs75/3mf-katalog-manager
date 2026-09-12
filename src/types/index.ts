@@ -21,7 +21,9 @@ export interface ModelFile {
   estimatedWeightG: number | null;
   lastViewedAt: string | null;
   creator: string | null;
-  displayImage: string | null;
+  customImage: string | null;
+  thumbnailImage: string | null;
+  renderSnapshotImage: string | null;
   sourceUrl: string | null;
   queuePosition: number | null;
   favorite: boolean;

@@ -29,6 +29,11 @@ export const en: Translations = {
   densityComfort: 'Comfort',
   densityDescriptionCompact: 'Dense, small text — fits as much as possible on screen.',
   densityDescriptionComfort: 'Larger text and graphics — easier to read.',
+  displayPreferenceTitle: 'Preferred view',
+  displayPreferenceThumbnail: 'Embedded image',
+  displayPreferenceRender: 'Rendered view',
+  displayPreferenceDescriptionThumbnail: 'Prefers the thumbnail image stored inside the file.',
+  displayPreferenceDescriptionRender: 'Prefers a rendered 3D view; missing snapshots are rendered automatically in the background.',
 
   searchPlaceholder: 'Search name or tag …',
   foldersHeading: 'Folders',

@@ -29,6 +29,11 @@ export const es: Translations = {
   densityComfort: 'Confort',
   densityDescriptionCompact: 'Densa, texto pequeño — muestra lo máximo posible.',
   densityDescriptionComfort: 'Texto y gráficos más grandes — más fácil de leer.',
+  displayPreferenceTitle: 'Vista preferida',
+  displayPreferenceThumbnail: 'Imagen incrustada',
+  displayPreferenceRender: 'Vista renderizada',
+  displayPreferenceDescriptionThumbnail: 'Muestra preferentemente la imagen de vista previa guardada en el archivo.',
+  displayPreferenceDescriptionRender: 'Muestra preferentemente una vista 3D renderizada; las capturas faltantes se generan automáticamente en segundo plano.',
 
   searchPlaceholder: 'Buscar nombre o etiqueta …',
   foldersHeading: 'Carpetas',
