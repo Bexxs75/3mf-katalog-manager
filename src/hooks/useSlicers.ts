@@ -81,9 +81,14 @@ export function useSlicers() {
     setState((prev) => {
       const knownPaths = new Set(prev.slicers.map((s) => s.path));
       const dismissed = new Set(prev.dismissedPaths);
-      const additions: SlicerConfig[] = detected
-        .filter((d) => !knownPaths.has(d.path) && !dismissed.has(d.path))
-        .map((d) => ({ id: crypto.randomUUID(), name: d.name, path: d.path, source: 'auto' }));
+      const additions: SlicerConfig[] = [];
+      for (const d of detected) {
+        if (knownPaths.has(d.path) || dismissed.has(d.path)) continue;
+        // Verhindert doppelte Eintraege, falls `detected` selbst denselben
+        // Pfad mehrfach enthaelt (z.B. zwei Scan-Treffer fuer denselben Slicer).
+        knownPaths.add(d.path);
+        additions.push({ id: crypto.randomUUID(), name: d.name, path: d.path, source: 'auto' });
+      }
       if (additions.length === 0) return prev;
       const next: StoredState = { ...prev, slicers: [...prev.slicers, ...additions] };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
