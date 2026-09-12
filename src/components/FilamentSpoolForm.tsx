@@ -225,7 +225,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
                       min="1"
                       value={form.quantity}
                       onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))}
-                      className={`${fieldClass} text-center`}
+                      className={`${fieldClass} text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
                     />
                     <button
                       type="button"
