@@ -1,6 +1,7 @@
 pub mod error;
 pub mod models;
 mod repository;
+mod collections;
 
 pub use repository::{
     add_tag_to_file, connect, delete_file, delete_filament_spool, delete_saved_filter, delete_unused_tags,
@@ -10,6 +11,12 @@ pub use repository::{
     mark_file_viewed, max_queue_position, purge_expired_trash, remove_tag_from_file, restore_file,
     set_content_hash, set_custom_image_png, set_favorite, set_print_status, set_queue_position,
     set_render_snapshot_png, set_source_url, soft_delete_file, update_filament_spool,
+};
+
+pub use collections::{
+    add_file_to_collection, create_collection, delete_collection, get_file_id_by_path,
+    list_collection_file_ids, list_collections, max_collection_position,
+    remove_file_from_collection, rename_collection, set_collection_position,
 };
 
 #[cfg(test)]
