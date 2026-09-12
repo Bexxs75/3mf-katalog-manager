@@ -9,9 +9,11 @@ interface Props {
   onOpenDetail: (id: string) => void;
   onContextMenu: (id: string, x: number, y: number) => void;
   readOnly?: boolean;
+  selectedForBulk: Set<string>;
+  onToggleBulkSelect: (id: string) => void;
 }
 
-export function ModelList({ models, selectedId, onSelect, onOpenDetail, onContextMenu, readOnly }: Props) {
+export function ModelList({ models, selectedId, onSelect, onOpenDetail, onContextMenu, readOnly, selectedForBulk, onToggleBulkSelect }: Props) {
   const { language } = useLanguage();
   const t = useT();
 
@@ -19,8 +21,9 @@ export function ModelList({ models, selectedId, onSelect, onOpenDetail, onContex
     <div className="border border-[var(--line)] rounded overflow-x-auto bg-[var(--panel)]">
       <div
         className="min-w-[680px] grid gap-2.5 items-center px-3 py-2 bg-[var(--panel-2)] border-b border-[var(--line)] font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.1em] uppercase text-[var(--ink-3)]"
-        style={{ gridTemplateColumns: 'minmax(150px,2.2fr) minmax(110px,1.6fr) 92px 82px' }}
+        style={{ gridTemplateColumns: '24px minmax(150px,2.2fr) minmax(110px,1.6fr) 92px 82px' }}
       >
+        <span />
         <span>{t('columnName')}</span>
         <span>{t('columnTags')}</span>
         <span>{t('columnVolume')}</span>
@@ -39,8 +42,17 @@ export function ModelList({ models, selectedId, onSelect, onOpenDetail, onContex
           className={`min-w-[680px] grid gap-2.5 items-center px-3 py-2 border-b border-[var(--line)] cursor-pointer ${
             m.id === selectedId ? 'bg-[var(--accent-soft)]' : 'hover:bg-[var(--panel-2)]'
           }`}
-          style={{ gridTemplateColumns: 'minmax(150px,2.2fr) minmax(110px,1.6fr) 92px 82px' }}
+          style={{ gridTemplateColumns: '24px minmax(150px,2.2fr) minmax(110px,1.6fr) 92px 82px' }}
         >
+          {!readOnly && (
+            <input
+              type="checkbox"
+              checked={selectedForBulk.has(m.id)}
+              onClick={(e) => e.stopPropagation()}
+              onChange={() => onToggleBulkSelect(m.id)}
+              className="w-4 h-4 cursor-pointer justify-self-center"
+            />
+          )}
           <span className="text-[length:var(--font-size-body)] font-medium overflow-hidden text-ellipsis whitespace-nowrap">
             {m.name}
           </span>
