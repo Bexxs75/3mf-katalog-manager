@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS filament_spools (
     material TEXT NOT NULL,
     manufacturer TEXT,
     color TEXT,
+    location TEXT,
     diameter_mm REAL NOT NULL,
     original_weight_g INTEGER NOT NULL,
     remaining_weight_g INTEGER NOT NULL,

@@ -106,6 +106,28 @@ export interface Translations {
   filamentNavButton: string;
   filamentBackToCatalogButton: string;
   filamentUploadImageLabel: string;
+  filamentLocationLabel: string;
+  filamentViewDashboard: string;
+  filamentViewList: string;
+  filamentStatusOk: string;
+  filamentStatusLow: string;
+  filamentStatusEmpty: string;
+  filamentStatTotal: string;
+  filamentStatRemaining: string;
+  filamentStatLocations: string;
+  filamentStatAttention: string;
+  filamentSearchPlaceholder: string;
+  filamentFilterLow: string;
+  filamentFilterEmpty: string;
+  filamentOpenAddPanelButton: string;
+  filamentImageDropHint: string;
+  filamentSectionImage: string;
+  filamentSectionIdentification: string;
+  filamentSectionStorage: string;
+  filamentSectionStock: string;
+  filamentNoResults: string;
+  filamentColumnStock: string;
+  filamentColumnStatus: string;
 
   printedBadge: string;
   notPrintedLabel: string;

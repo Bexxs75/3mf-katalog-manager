@@ -72,6 +72,7 @@ export interface FilamentSpool {
   material: string;
   manufacturer: string | null;
   color: string | null;
+  location: string | null;
   diameterMm: number;
   originalWeightG: number;
   remainingWeightG: number;
