@@ -4,6 +4,7 @@ import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatWeightG, formatDiameterMm, formatPrice } from '../i18n/format';
 import type { FilamentSpool } from '../types';
 import { FILAMENT_MATERIALS, FILAMENT_MANUFACTURERS } from '../lib/filamentCatalog';
+import { AutocompleteInput } from './AutocompleteInput';
 
 interface FormState {
   material: string;
@@ -204,16 +205,6 @@ export function FilamentView() {
       </div>
 
       <div className="flex-none px-4 py-3 border-t border-[var(--line)] bg-[var(--panel-2)]">
-        <datalist id="filament-material-options">
-          {FILAMENT_MATERIALS.map((m) => (
-            <option key={m} value={m} />
-          ))}
-        </datalist>
-        <datalist id="filament-manufacturer-options">
-          {FILAMENT_MANUFACTURERS.map((m) => (
-            <option key={m} value={m} />
-          ))}
-        </datalist>
         <div className="flex items-center gap-2 mb-2">
           <button
             type="button"
@@ -230,18 +221,18 @@ export function FilamentView() {
           )}
         </div>
         <div className="grid grid-cols-2 gap-2 mb-2">
-          <input
+          <AutocompleteInput
             value={form.material}
-            onChange={(e) => setForm({ ...form, material: e.target.value })}
+            onChange={(v) => setForm({ ...form, material: v })}
+            options={FILAMENT_MATERIALS}
             placeholder={t('filamentMaterialLabel')}
-            list="filament-material-options"
             className={fieldClass}
           />
-          <input
+          <AutocompleteInput
             value={form.manufacturer}
-            onChange={(e) => setForm({ ...form, manufacturer: e.target.value })}
+            onChange={(v) => setForm({ ...form, manufacturer: v })}
+            options={FILAMENT_MANUFACTURERS}
             placeholder={t('filamentManufacturerLabel')}
-            list="filament-manufacturer-options"
             className={fieldClass}
           />
           <input
