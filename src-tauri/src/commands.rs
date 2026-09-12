@@ -41,7 +41,9 @@ pub struct ModelFileDto {
     pub estimated_weight_g: Option<f64>,
     pub last_viewed_at: Option<String>,
     pub creator: Option<String>,
-    pub display_image: Option<String>,
+    pub custom_image: Option<String>,
+    pub thumbnail_image: Option<String>,
+    pub render_snapshot_image: Option<String>,
     pub source_url: Option<String>,
     pub queue_position: Option<i64>,
     pub favorite: bool,
@@ -147,31 +149,22 @@ pub(crate) fn estimate_weight_g(volume_cm3: Option<f64>, material_name: Option<&
     Some(volume * density)
 }
 
-pub(crate) fn resolve_display_image(
-    custom_image_png: Option<Vec<u8>>,
-    thumbnail_png: Option<Vec<u8>>,
-    render_snapshot_png: Option<Vec<u8>>,
-) -> Option<String> {
+pub(crate) fn encode_image(bytes: Option<Vec<u8>>) -> Option<String> {
     use base64::Engine;
-    custom_image_png
-        .or(thumbnail_png)
-        .or(render_snapshot_png)
-        .map(|bytes| {
-            format!(
-                "data:image/png;base64,{}",
-                base64::engine::general_purpose::STANDARD.encode(bytes)
-            )
-        })
+    bytes.map(|b| {
+        format!(
+            "data:image/png;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(b)
+        )
+    })
 }
 
 pub(crate) fn to_dto(file: FileRecord) -> ModelFileDto {
     let estimated_weight_g =
         estimate_weight_g(file.volume_cm3, file.materials.first().map(|m| m.name.as_str()));
-    let display_image = resolve_display_image(
-        file.custom_image_png,
-        file.thumbnail_png,
-        file.render_snapshot_png,
-    );
+    let custom_image = encode_image(file.custom_image_png);
+    let thumbnail_image = encode_image(file.thumbnail_png);
+    let render_snapshot_image = encode_image(file.render_snapshot_png);
     ModelFileDto {
         id: file.id.to_string(),
         name: file.name,
@@ -200,7 +193,9 @@ pub(crate) fn to_dto(file: FileRecord) -> ModelFileDto {
         estimated_weight_g,
         last_viewed_at: file.last_viewed_at,
         creator: file.creator,
-        display_image,
+        custom_image,
+        thumbnail_image,
+        render_snapshot_image,
         source_url: file.source_url,
         queue_position: file.queue_position,
         favorite: file.favorite,
@@ -1439,35 +1434,17 @@ mod tests {
     }
 
     #[test]
-    fn resolve_display_image_prefers_custom_over_embedded_over_snapshot() {
+    fn encode_image_encodes_bytes_as_data_url() {
         use base64::Engine;
-        let result = resolve_display_image(Some(vec![1]), Some(vec![2]), Some(vec![3])).expect("some image");
+        let result = encode_image(Some(vec![1, 2, 3])).expect("some image");
         let b64 = result.strip_prefix("data:image/png;base64,").expect("data url prefix");
         let decoded = base64::engine::general_purpose::STANDARD.decode(b64).expect("valid base64");
-        assert_eq!(decoded, vec![1]);
+        assert_eq!(decoded, vec![1, 2, 3]);
     }
 
     #[test]
-    fn resolve_display_image_falls_back_to_embedded_thumbnail() {
-        use base64::Engine;
-        let result = resolve_display_image(None, Some(vec![2]), Some(vec![3])).expect("some image");
-        let b64 = result.strip_prefix("data:image/png;base64,").expect("data url prefix");
-        let decoded = base64::engine::general_purpose::STANDARD.decode(b64).expect("valid base64");
-        assert_eq!(decoded, vec![2]);
-    }
-
-    #[test]
-    fn resolve_display_image_falls_back_to_render_snapshot() {
-        use base64::Engine;
-        let result = resolve_display_image(None, None, Some(vec![3])).expect("some image");
-        let b64 = result.strip_prefix("data:image/png;base64,").expect("data url prefix");
-        let decoded = base64::engine::general_purpose::STANDARD.decode(b64).expect("valid base64");
-        assert_eq!(decoded, vec![3]);
-    }
-
-    #[test]
-    fn resolve_display_image_returns_none_without_any_source() {
-        assert_eq!(resolve_display_image(None, None, None), None);
+    fn encode_image_returns_none_for_none() {
+        assert_eq!(encode_image(None), None);
     }
 
     /// Minimal `FileRecord` for `group_duplicates` tests: only `id`,
