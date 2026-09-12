@@ -252,7 +252,7 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
           <button
             onClick={() => rotateStep(-1)}
             title={t('rotateLeftAria')}
-            className="w-7 h-7 grid place-items-center rounded-full text-[var(--ink-2)] hover:bg-white/10 hover:text-[var(--ink)]"
+            className="w-7 h-7 grid place-items-center rounded-full cursor-pointer text-[var(--ink-2)] hover:bg-[var(--line)] hover:text-[var(--ink)]"
           >
             <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M15 18l-6-6 6-6" />
@@ -262,10 +262,10 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
           <button
             onClick={() => setAutoRotating((prev) => !prev)}
             title={autoRotating ? t('pauseRotationAria') : t('playRotationAria')}
-            className={`w-7 h-7 grid place-items-center rounded-full ${
+            className={`w-7 h-7 grid place-items-center rounded-full cursor-pointer ${
               autoRotating
                 ? 'bg-[var(--accent)] text-[var(--accent-ink)]'
-                : 'text-[var(--ink-2)] hover:bg-white/10 hover:text-[var(--ink)]'
+                : 'text-[var(--ink-2)] hover:bg-[var(--line)] hover:text-[var(--ink)]'
             }`}
           >
             {autoRotating ? (
@@ -283,7 +283,7 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
           <button
             onClick={() => rotateStep(1)}
             title={t('rotateRightAria')}
-            className="w-7 h-7 grid place-items-center rounded-full text-[var(--ink-2)] hover:bg-white/10 hover:text-[var(--ink)]"
+            className="w-7 h-7 grid place-items-center rounded-full cursor-pointer text-[var(--ink-2)] hover:bg-[var(--line)] hover:text-[var(--ink)]"
           >
             <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 18l6-6-6-6" />
