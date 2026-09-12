@@ -73,6 +73,15 @@ export function Header({
   const [importMenuOpen, setImportMenuOpen] = useState(false);
   const [pendingSlicerPath, setPendingSlicerPath] = useState<string | null>(null);
   const [pendingSlicerName, setPendingSlicerName] = useState('');
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
+
+  const sortOptions: { value: SortKey; label: string }[] = [
+    { value: 'name', label: t('sortName') },
+    { value: 'date', label: t('sortDate') },
+    { value: 'size', label: t('sortSize') },
+    { value: 'vol', label: t('sortVolume') },
+    { value: 'viewed', label: t('sortLastViewed') },
+  ];
 
   const handlePickSlicer = () => {
     invoke<string | null>('pick_slicer_executable').then((path) => {
@@ -142,17 +151,35 @@ export function Header({
         <span className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.1em] uppercase text-[var(--ink-3)]">
           {t('sortLabel')}
         </span>
-        <select
-          value={sort}
-          onChange={(e) => onSortChange(e.target.value as SortKey)}
-          className="h-[30px] px-2 rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink)] text-[length:var(--font-size-body)] cursor-pointer"
-        >
-          <option value="name">{t('sortName')}</option>
-          <option value="date">{t('sortDate')}</option>
-          <option value="size">{t('sortSize')}</option>
-          <option value="vol">{t('sortVolume')}</option>
-          <option value="viewed">{t('sortLastViewed')}</option>
-        </select>
+        <div className="relative">
+          <button
+            onClick={() => setSortMenuOpen((o) => !o)}
+            className="h-[30px] px-2 rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink)] text-[length:var(--font-size-body)] cursor-pointer flex items-center gap-1.5"
+          >
+            {sortOptions.find((o) => o.value === sort)?.label}
+            <span className="text-[9px] leading-none text-[var(--ink-3)]">▾</span>
+          </button>
+          {sortMenuOpen && (
+            <div className="absolute top-9 left-0 w-[176px] py-1 bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)] z-40">
+              {sortOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => {
+                    onSortChange(opt.value);
+                    setSortMenuOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-1.5 text-[13px] cursor-pointer ${
+                    opt.value === sort
+                      ? 'text-[var(--accent)] font-semibold bg-[var(--accent-soft)]'
+                      : 'text-[var(--ink)] hover:bg-[var(--panel-2)]'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="flex p-0.5 gap-0.5 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)]">
