@@ -30,6 +30,12 @@ Dieses Projekt befindet sich in aktiver Entwicklung. Der lokale Katalog (Import,
 - **Plattformübergreifende Release-Builds**: Windows-/macOS-Pakete (msi/dmg) sowie Code-Signing stehen noch aus
 - **CI/CD-Pipeline**: noch nicht eingerichtet
 
+## Geplant
+
+**Hohe Priorität:**
+
+- **Sammlungen** — zusätzlich zu Tags eine Möglichkeit, mehrere Modelle explizit zu einem eigenen Projekt zusammenzufassen (z. B. alle Drucke für ein bestimmtes Bauvorhaben), unabhängig von der Hashtag-Logik. Noch nicht spezifiziert (kein Design-Dokument unter `docs/superpowers/specs/`).
+
 ## Tech-Stack
 
 - **Framework:** Tauri 2 (Rust-Backend, WebView-Frontend)
