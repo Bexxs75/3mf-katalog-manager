@@ -38,7 +38,6 @@ export default function App() {
   const [activeCreator, setActiveCreator] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedForBulk, setSelectedForBulk] = useState<Set<string>>(new Set());
-  // @ts-expect-error confirmBulkDelete wird erst in Task 3 im JSX verwendet
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [detailModelId, setDetailModelId] = useState<string | null>(null);
   const [models, setModels] = useState<ModelFile[]>([]);
@@ -262,7 +261,6 @@ export default function App() {
       .catch((e) => console.error('[queue] Hinzufügen fehlgeschlagen:', e));
   };
 
-  // @ts-expect-error toggleBulkSelect wird erst in Task 3 im JSX verwendet
   const toggleBulkSelect = (id: string) => {
     setSelectedForBulk((prev) => {
       const next = new Set(prev);
@@ -271,11 +269,9 @@ export default function App() {
     });
   };
 
-  // @ts-expect-error selectAllVisible wird erst in Task 3 im JSX verwendet
   const selectAllVisible = () => setSelectedForBulk(new Set(filtered.map((m) => m.id)));
   const clearBulkSelection = () => setSelectedForBulk(new Set());
 
-  // @ts-expect-error bulkDelete wird erst in Task 3 im JSX verwendet
   const bulkDelete = () => {
     invoke('delete_files', { fileIds: Array.from(selectedForBulk) }).then(() => {
       setModels((prev) => prev.filter((m) => !selectedForBulk.has(m.id)));
@@ -288,14 +284,12 @@ export default function App() {
     });
   };
 
-  // @ts-expect-error bulkAddToQueue wird erst in Task 3 im JSX verwendet
   const bulkAddToQueue = () => {
     Promise.all(Array.from(selectedForBulk).map((id) => invoke('add_to_queue', { fileId: id }))).then(
       () => invoke<ModelFile[]>('list_files').then(setModels),
     );
   };
 
-  // @ts-expect-error bulkSetPrintStatus wird erst in Task 3 im JSX verwendet
   const bulkSetPrintStatus = (status: 'printed' | 'not_printed') => {
     Promise.all(
       Array.from(selectedForBulk).map((id) => invoke('set_print_status', { fileId: id, status })),
@@ -513,6 +507,8 @@ export default function App() {
                   onOpenDetail={() => {}}
                   onContextMenu={() => {}}
                   onToggleFavorite={() => {}}
+                  selectedForBulk={new Set()}
+                  onToggleBulkSelect={() => {}}
                   readOnly
                 />
               ) : (
@@ -522,6 +518,8 @@ export default function App() {
                   onSelect={selectModel}
                   onOpenDetail={() => {}}
                   onContextMenu={() => {}}
+                  selectedForBulk={new Set()}
+                  onToggleBulkSelect={() => {}}
                   readOnly
                 />
               )}
@@ -593,6 +591,55 @@ export default function App() {
               )}
             </div>
 
+            {selectedForBulk.size > 0 && (
+              <div className="flex-none flex items-center gap-2 px-4 py-2 border-b border-[var(--line)] bg-[var(--panel-2)]">
+                {confirmBulkDelete ? (
+                  <>
+                    <span className="text-[12.5px] font-medium text-[var(--ink)]">
+                      {t('bulkDeleteConfirmQuestion').replace('{count}', String(selectedForBulk.size))}
+                    </span>
+                    <button
+                      onClick={() => setConfirmBulkDelete(false)}
+                      className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                    >
+                      {t('cancel')}
+                    </button>
+                    <button
+                      onClick={bulkDelete}
+                      className="h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
+                    >
+                      {t('delete')}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-[12.5px] font-medium text-[var(--ink)]">
+                      {t('bulkSelectedCount').replace('{count}', String(selectedForBulk.size))}
+                    </span>
+                    <button onClick={selectAllVisible} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]">
+                      {t('selectAllLabel')}
+                    </button>
+                    <button onClick={clearBulkSelection} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]">
+                      {t('clearSelectionLabel')}
+                    </button>
+                    <span className="flex-1" />
+                    <button onClick={bulkAddToQueue} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]">
+                      {t('addToQueue')}
+                    </button>
+                    <button onClick={() => bulkSetPrintStatus('printed')} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]">
+                      {t('printedBadge')}
+                    </button>
+                    <button onClick={() => bulkSetPrintStatus('not_printed')} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]">
+                      {t('notPrintedLabel')}
+                    </button>
+                    <button onClick={() => setConfirmBulkDelete(true)} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-red-400 text-[12.5px] font-semibold cursor-pointer hover:border-red-400">
+                      {t('delete')}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
             {detailModel ? (
               <ModelDetailPage
                 model={detailModel}
@@ -625,6 +672,8 @@ export default function App() {
                     onOpenDetail={setDetailModelId}
                     onContextMenu={(id, x, y) => setContextMenu({ modelId: id, x, y })}
                     onToggleFavorite={toggleFavorite}
+                    selectedForBulk={selectedForBulk}
+                    onToggleBulkSelect={toggleBulkSelect}
                   />
                 ) : (
                   <ModelList
@@ -633,6 +682,8 @@ export default function App() {
                     onSelect={selectModel}
                     onOpenDetail={setDetailModelId}
                     onContextMenu={(id, x, y) => setContextMenu({ modelId: id, x, y })}
+                    selectedForBulk={selectedForBulk}
+                    onToggleBulkSelect={toggleBulkSelect}
                   />
                 )}
               </div>
