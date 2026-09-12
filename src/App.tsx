@@ -14,6 +14,7 @@ import { CatalogCleanupDialog } from './components/CatalogCleanupDialog';
 import { useTheme } from './hooks/useTheme';
 import { useUiDensity } from './hooks/UiDensityContext';
 import { useSlicers } from './hooks/useSlicers';
+import { useDisplayPreference } from './hooks/useDisplayPreference';
 import { useT } from './i18n/LanguageContext';
 import type { ModelFile, Folder, TagCount, CreatorCount, ViewMode, SortKey, SavedFilter, CatalogIssues } from './types';
 
@@ -27,6 +28,7 @@ export default function App() {
   const t = useT();
   const { density, setDensity } = useUiDensity();
   const { slicers, lastUsedId, addSlicer, removeSlicer, setLastUsed, mergeDetected } = useSlicers();
+  const { preference: displayPreference, setPreference: setDisplayPreference } = useDisplayPreference();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [slicerError, setSlicerError] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>('grid');
@@ -458,6 +460,8 @@ export default function App() {
         onThemeChange={setTheme}
         uiDensity={density}
         onUiDensityChange={setDensity}
+        displayPreference={displayPreference}
+        onDisplayPreferenceChange={setDisplayPreference}
         onImportFiles={importFiles}
         onImportFolder={importFolder}
         settingsOpen={settingsOpen}
