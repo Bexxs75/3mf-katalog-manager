@@ -157,4 +157,16 @@ export const de: Translations = {
   restoreLabel: 'Wiederherstellen',
   deletePermanentlyLabel: 'Endgültig löschen',
   trashExpiryHint: 'Wird automatisch entfernt am {date}',
+
+  collectionsTab: 'Sammlungen',
+  modelCountLabel: '{count} Modelle',
+  addToCollectionLabel: 'Zu Sammlung hinzufügen',
+  newCollectionPlaceholder: 'Name der Sammlung',
+  removeFromCollectionLabel: 'Aus Sammlung entfernen',
+  deleteCollectionConfirmQuestion: 'Sammlung wirklich löschen? Die Modelle selbst bleiben erhalten.',
+  renameCollectionAria: 'Sammlung umbenennen',
+  noCollectionsEmptyState: 'Noch keine Sammlungen angelegt.',
+  backToCollectionsLabel: '← Sammlungen',
+  createCollectionLabel: '+ Neue Sammlung',
+  importFolderAsCollectionOption: 'Ordner als Sammlung importieren',
 };

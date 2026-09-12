@@ -83,3 +83,9 @@ export interface CatalogIssues {
   orphaned: ModelFile[];
   duplicateGroups: ModelFile[][];
 }
+
+export interface Collection {
+  id: string;
+  name: string;
+  modelCount: number;
+}
