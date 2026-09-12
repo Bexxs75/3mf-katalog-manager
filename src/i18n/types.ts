@@ -34,6 +34,11 @@ export interface Translations {
   densityComfort: string;
   densityDescriptionCompact: string;
   densityDescriptionComfort: string;
+  displayPreferenceTitle: string;
+  displayPreferenceThumbnail: string;
+  displayPreferenceRender: string;
+  displayPreferenceDescriptionThumbnail: string;
+  displayPreferenceDescriptionRender: string;
 
   searchPlaceholder: string;
   foldersHeading: string;

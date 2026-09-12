@@ -29,6 +29,11 @@ export const fr: Translations = {
   densityComfort: 'Confort',
   densityDescriptionCompact: 'Dense, petit texte — affiche un maximum à l\'écran.',
   densityDescriptionComfort: 'Texte et graphismes plus grands — plus lisible.',
+  displayPreferenceTitle: 'Vue préférée',
+  displayPreferenceThumbnail: 'Image intégrée',
+  displayPreferenceRender: 'Vue rendue',
+  displayPreferenceDescriptionThumbnail: "Affiche en priorité l'aperçu intégré au fichier.",
+  displayPreferenceDescriptionRender: 'Affiche en priorité une vue 3D rendue ; les captures manquantes sont générées automatiquement en arrière-plan.',
 
   searchPlaceholder: 'Rechercher un nom ou un tag …',
   foldersHeading: 'Dossiers',
