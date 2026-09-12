@@ -64,9 +64,11 @@ export function ModelDetailPage({
         <button
           onClick={onClose}
           title={t('backToCatalog')}
-          className="flex-none w-11 h-11 rounded-md border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[1.4rem] leading-none grid place-items-center hover:border-[var(--line-strong)] hover:text-[var(--ink)]"
+          className="flex-none w-11 h-11 rounded-md border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] grid place-items-center hover:border-[var(--line-strong)] hover:text-[var(--ink)]"
         >
-          ←
+          <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M11 18l-6-6 6-6" />
+          </svg>
         </button>
         <h1 className="flex-1 min-w-0 text-[1.5rem] font-semibold leading-tight break-words">
           {model.name}
