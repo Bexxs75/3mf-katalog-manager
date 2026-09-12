@@ -731,6 +731,8 @@ export default function App() {
           onToggleQueue={() =>
             contextModel.queuePosition !== null ? removeFromQueue(contextModel.id) : addToQueue(contextModel.id)
           }
+          printed={contextModel.printStatus === 'printed'}
+          onTogglePrintStatus={() => togglePrintStatus(contextModel.id)}
         />
       )}
 
