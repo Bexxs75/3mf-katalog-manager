@@ -11,6 +11,7 @@ import { ContextMenu } from './components/ContextMenu';
 import { FilamentView } from './components/FilamentView';
 import { ImportSummaryBanner } from './components/ImportSummaryBanner';
 import { CatalogCleanupDialog } from './components/CatalogCleanupDialog';
+import { CollectionsGallery } from './components/CollectionsGallery';
 import { BackgroundSnapshotRenderer } from './components/BackgroundSnapshotRenderer';
 import { useTheme } from './hooks/useTheme';
 import { useUiDensity } from './hooks/UiDensityContext';
@@ -61,11 +62,8 @@ export default function App() {
   const [cleanupIssues, setCleanupIssues] = useState<CatalogIssues | null>(null);
   const [cleanupScanning, setCleanupScanning] = useState(false);
   const [cleanupError, setCleanupError] = useState<string | null>(null);
-  // @ts-expect-error - wird ab Task 4 (CollectionsGallery + Breadcrumb) gelesen
   const [collections, setCollections] = useState<Collection[]>([]);
-  // @ts-expect-error - wird ab Task 4 (Breadcrumb) gelesen und gesetzt
   const [activeCollection, setActiveCollection] = useState<string | null>(null);
-  // @ts-expect-error - wird ab Task 4 (Breadcrumb) gelesen und gesetzt
   const [collectionsGalleryOpen, setCollectionsGalleryOpen] = useState(false);
 
   const refreshFolders = () => invoke<Folder[]>('list_folders').then(setFolders);
@@ -609,8 +607,27 @@ export default function App() {
 
           <main className="flex-1 min-w-0 flex flex-col min-h-0">
             <div className="flex-none h-[38px] flex items-center gap-2.5 px-4 border-b border-[var(--line)] bg-[var(--bg)]">
-              <span className="font-mono-ui text-[11px] text-[var(--ink-2)]">
+              <span
+                onClick={() => {
+                  setCollectionsGalleryOpen(false);
+                  setActiveCollection(null);
+                }}
+                className={`font-mono-ui text-[11px] cursor-pointer ${
+                  !collectionsGalleryOpen && !activeCollection ? 'text-[var(--ink)]' : 'text-[var(--ink-2)] hover:text-[var(--ink)]'
+                }`}
+              >
                 {folders.find((f) => f.id === activeFolderId)?.name}
+              </span>
+              <span
+                onClick={() => {
+                  setCollectionsGalleryOpen(true);
+                  setActiveCollection(null);
+                }}
+                className={`font-mono-ui text-[11px] cursor-pointer ${
+                  collectionsGalleryOpen || activeCollection ? 'text-[var(--accent)] font-semibold' : 'text-[var(--ink-2)] hover:text-[var(--ink)]'
+                }`}
+              >
+                {t('collectionsTab')}
               </span>
               {activeTag && (
                 <span
@@ -679,7 +696,23 @@ export default function App() {
               </div>
             )}
 
-            {detailModel ? (
+            {collectionsGalleryOpen ? (
+              <CollectionsGallery
+                collections={collections}
+                onSelect={(id) => {
+                  setActiveCollection(id);
+                  setCollectionsGalleryOpen(false);
+                }}
+                onCreate={(name) => invoke<Collection>('create_collection', { name }).then(() => refreshCollections())}
+                onRename={(id, name) => invoke('rename_collection', { collectionId: id, name }).then(() => refreshCollections())}
+                onDelete={(id) => {
+                  invoke('delete_collection', { collectionId: id }).then(() => {
+                    refreshCollections();
+                    if (activeCollection === id) setActiveCollection(null);
+                  });
+                }}
+              />
+            ) : detailModel ? (
               <ModelDetailPage
                 model={detailModel}
                 onClose={() => setDetailModelId(null)}
