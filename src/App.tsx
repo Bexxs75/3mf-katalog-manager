@@ -89,7 +89,10 @@ export default function App() {
   useEffect(() => {
     if (!detailModelId) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setDetailModelId(null);
+      if (e.key !== 'Escape') return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+      setDetailModelId(null);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);

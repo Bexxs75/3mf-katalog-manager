@@ -24,7 +24,7 @@ export function buildMetaRows(
     { label: t('metaObjectCount'), value: objectCountValue },
   ];
 
-  if (model.plateCount !== null) {
+  if (model.plateCount != null) {
     rows.push({ label: t('metaPlateCount'), value: String(model.plateCount) });
   }
 
