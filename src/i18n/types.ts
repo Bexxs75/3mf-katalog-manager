@@ -38,25 +38,13 @@ export interface Translations {
   searchPlaceholder: string;
   foldersHeading: string;
   tagsHeading: string;
-  cloudAccountsHeading: string;
-  cloudConnected: string;
-  cloudError: string;
-  cloudDisconnected: string;
-  cloudConnectionError: string;
 
   previewLabel3d: string;
 
-  columnOrigin: string;
   columnName: string;
   columnTags: string;
   columnVolume: string;
   columnSize: string;
-  columnSync: string;
-
-  syncSynced: string;
-  syncOutdated: string;
-  syncLocalOnly: string;
-  syncCloudOnly: string;
 
   cancel: string;
   delete: string;
@@ -70,14 +58,6 @@ export interface Translations {
   removeSlicerAria: string;
   chooseSlicerAria: string;
   slicerLaunchError: string;
-  uploadToCloudAria: string;
-  uploadingToCloudAria: string;
-  alreadyInCloudAria: string;
-  connectCloudToUploadAria: string;
-  cloudUploadError: string;
-  uploadButtonLabel: string;
-  uploadButtonLabelInProgress: string;
-  uploadButtonLabelDone: string;
 
   emptyStateText: string;
   dragToRotate: string;
@@ -94,8 +74,6 @@ export interface Translations {
 
   loadingPreview: string;
   previewUnavailable: string;
-
-  importFromCloudOption: string;
 
   sortLastViewed: string;
   newBadge: string;

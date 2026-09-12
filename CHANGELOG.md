@@ -40,6 +40,10 @@ Noch kein Release getaggt — dieser Abschnitt fasst die bisherige Entwicklung s
 - Sortierung nach Datum und Dateigröße korrigiert
 - Google-Drive-OAuth-Scope `drive.readonly` entfernt, nur noch `drive.file` + `userinfo.email`: `drive.readonly` ist ein "restricted scope" und würde für die Google-Verifizierung ein kostenpflichtiges, jährlich zu wiederholendes CASA-Sicherheitsaudit erfordern, `drive.file` (nicht sensibel) nicht. Die eigenen In-App-Dialoge zum Durchstöbern des gesamten Drives (`CloudBrowserDialog`, `CloudFolderPickerDialog`) sind dafür entfallen — Datei-Import und Upload-Zielordner laufen jetzt über Googles offizielles Picker-Widget (öffnet sich im System-Browser, analog zum bestehenden OAuth-Login-Flow, da Google eingebettete WebViews auch hierfür nicht zuverlässig unterstützt)
 
+### Removed
+
+- Cloud-Anbindung (Google Drive) komplett entfernt: Backend-Modul `src-tauri/src/cloud/` inkl. aller 7 Tauri-Commands, `tauri-plugin-opener`-Abhängigkeit (Rust + npm, nur für den Picker-Browser-Start gebraucht) sowie `oauth2`/`keyring`/`reqwest`/`async-trait`/`tokio` aus `Cargo.toml` (waren ausschließlich Cloud-Abhängigkeiten); Frontend-UI (Cloud-Konten-Sidebar-Sektion, Cloud-Import-Option, Sync-Status-Anzeigen, Herkunfts-Badges) und zugehörige i18n-Keys in allen vier Sprachen entfernt. `cloud_accounts`-Tabelle und der `sync_status`/`cloud_id`-Teil des `origin`-Wertebereichs aus `schema.sql` entfernt bzw. auf `'local'` reduziert (nur für Neuinstallationen wirksam — bestehende Datenbanken behalten die inerten Spalten `sync_status`/`cloud_id`, da dieses Projekt kein `DROP COLUMN`-Migrationsmuster hat und das Risiko für Bestandsdaten den Aufwand nicht wert war). Grund: die Google-Drive-Integration war trotz mehrfacher Nacharbeit (Picker-Migration, Timeout-Handling, `setAppId`-Fix) im Alltag zu instabil/fehleranfällig (u. a. ungeklärte Timeouts bei der Drive-Auswahl) und band zu viel Aufmerksamkeit von wichtigeren Themen ab. Wird bei Gelegenheit sauber neu konzipiert statt weiter geflickt.
+
 ### Security
 
 - `quick-xml` von 0.36.2 auf 0.41.0 angehoben: schließt zwei Denial-of-Service-Schwachstellen (RUSTSEC-2026-0194, RUSTSEC-2026-0195, je CVSS 7.5/Hoch — quadratische Laufzeit bei doppelten Attributnamen bzw. unbegrenzte Speicherallokation bei Namespace-Deklarationen), erreichbar über eine präparierte `.3mf`-Datei beim normalen Import. Gefunden im Security-Review vom 2026-09-11 (`docs/security/security-review-2026-09-11.md`), per `cargo audit` bestätigt behoben; alle 106 Backend-Tests weiterhin grün
@@ -63,9 +67,7 @@ Noch kein Release getaggt — dieser Abschnitt fasst die bisherige Entwicklung s
 
 ### Known Limitations
 
-- Cloud-Speicher: nur Google Drive implementiert (Verbinden/Trennen, Picker-basierter Import/Upload inkl. Zielordner-Auswahl); OneDrive, Dropbox und Proton Drive sind im UI weiterhin nur als Platzhalter vorhanden. Upload deckt keinen erneuten Upload/keine Konfliktauflösung bereits verknüpfter Dateien ab
-- Google-Drive-Anbindung funktioniert aktuell nur auf der Entwicklungsmaschine (OAuth-Client-Konfiguration ist lokal, App im Google-Cloud-Testmodus) — für andere Nutzer nach einem Release noch nicht nutzbar
-- `google_picker_api_key` in `cloud.config.json` muss manuell in der Google Cloud Console erzeugt werden (Picker API aktivieren, API-Key ohne HTTP-Referrer-Einschränkung anlegen) — noch nicht live gegen einen echten Key getestet
+- Keine Cloud-Anbindung (siehe "Removed" oben) — nur lokaler Dateisystem-Import
 - "In Slicer öffnen" unterstützt macOS nicht (`.app`-Bundles benötigen einen anderen Start-Mechanismus als Windows/Linux-Executables)
 - Plattformübergreifende Release-Builds (Windows `.msi`, macOS `.dmg`) sowie Code-Signing noch nicht eingerichtet — bisher nur unter Linux entwickelt und getestet
 - CI/CD-Pipeline (GitHub Actions) noch nicht eingerichtet

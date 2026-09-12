@@ -1,4 +1,3 @@
-mod cloud;
 mod commands;
 mod db;
 mod geometry;
@@ -19,7 +18,6 @@ fn greet(name: &str) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir()?;
@@ -69,13 +67,6 @@ pub fn run() {
             commands::open_in_slicer,
             commands::scan_catalog_issues,
             commands::delete_files,
-            cloud::commands::connect_google_drive,
-            cloud::commands::disconnect_cloud_account,
-            cloud::commands::list_cloud_accounts,
-            cloud::commands::open_drive_picker,
-            cloud::commands::import_from_cloud,
-            cloud::commands::check_cloud_sync_status,
-            cloud::commands::upload_file_to_cloud,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

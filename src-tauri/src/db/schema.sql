@@ -16,7 +16,12 @@ CREATE TABLE IF NOT EXISTS files (
     file_type TEXT NOT NULL CHECK (file_type IN ('3mf', 'stl')),
     folder_id INTEGER REFERENCES folders (id) ON DELETE SET NULL,
     origin TEXT NOT NULL DEFAULT 'local'
-        CHECK (origin IN ('local', 'gdrive', 'onedrive', 'dropbox', 'proton')),
+        CHECK (origin IN ('local')),
+    -- sync_status/cloud_id sind Relikte der entfernten Cloud-Anbindung
+    -- (Google Drive u.a. - zu instabil, siehe CHANGELOG). Absichtlich nicht
+    -- per Migration entfernt (kein DROP-COLUMN-Muster in diesem Projekt,
+    -- Risiko fuer Bestands-DBs), bleiben bis zu einer sauberen Neukonzeption
+    -- inert (immer 'local-only'/NULL, kein Code liest/schreibt sie mehr).
     sync_status TEXT NOT NULL DEFAULT 'local-only'
         CHECK (sync_status IN ('synced', 'outdated', 'local-only', 'cloud-only')),
     cloud_id TEXT,
@@ -67,15 +72,6 @@ CREATE TABLE IF NOT EXISTS file_materials (
 );
 
 CREATE INDEX IF NOT EXISTS idx_file_materials_file_id ON file_materials (file_id);
-
-CREATE TABLE IF NOT EXISTS cloud_accounts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    provider TEXT NOT NULL CHECK (provider IN ('gdrive', 'onedrive', 'dropbox', 'proton')),
-    account_label TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'connected' CHECK (status IN ('connected', 'error', 'disconnected')),
-    connected_at TEXT NOT NULL,
-    UNIQUE (provider)
-);
 
 CREATE TABLE IF NOT EXISTS filament_spools (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

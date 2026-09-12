@@ -33,25 +33,13 @@ export const en: Translations = {
   searchPlaceholder: 'Search name or tag …',
   foldersHeading: 'Folders',
   tagsHeading: 'Tags',
-  cloudAccountsHeading: 'Cloud accounts',
-  cloudConnected: 'connected',
-  cloudError: 'error',
-  cloudDisconnected: 'disconnected',
-  cloudConnectionError: 'Connection error:',
 
   previewLabel3d: '3D preview',
 
-  columnOrigin: 'Origin',
   columnName: 'Name',
   columnTags: 'Tags',
   columnVolume: 'Volume',
   columnSize: 'Size',
-  columnSync: 'Sync',
-
-  syncSynced: 'Synced',
-  syncOutdated: 'Outdated',
-  syncLocalOnly: 'Local only',
-  syncCloudOnly: 'Cloud only',
 
   cancel: 'Cancel',
   delete: 'Delete',
@@ -65,14 +53,6 @@ export const en: Translations = {
   removeSlicerAria: 'Remove slicer',
   chooseSlicerAria: 'Choose a different slicer',
   slicerLaunchError: 'Could not start slicer:',
-  uploadToCloudAria: 'Upload to Google Drive',
-  uploadingToCloudAria: 'Uploading to Google Drive …',
-  alreadyInCloudAria: 'Already linked to the cloud',
-  connectCloudToUploadAria: 'Connect Google Drive to upload',
-  cloudUploadError: 'Upload failed:',
-  uploadButtonLabel: 'Upload',
-  uploadButtonLabelInProgress: 'Uploading …',
-  uploadButtonLabelDone: 'Uploaded',
 
   emptyStateText: 'Select a model to see details, preview, and tags.',
   dragToRotate: 'Drag to rotate',
@@ -90,7 +70,6 @@ export const en: Translations = {
   loadingPreview: 'Loading preview …',
   previewUnavailable: 'Preview unavailable',
 
-  importFromCloudOption: 'Import from Google Drive…',
 
   filamentCatalogAria: 'Filament inventory',
   filamentDialogTitle: 'Filament Inventory',

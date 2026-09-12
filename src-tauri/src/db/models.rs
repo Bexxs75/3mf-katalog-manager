@@ -110,15 +110,6 @@ pub struct CreatorCount {
 }
 
 #[derive(Debug, Clone)]
-pub struct CloudAccountRecord {
-    pub id: i64,
-    pub provider: String,
-    pub account_label: String,
-    pub status: String,
-    pub connected_at: String,
-}
-
-#[derive(Debug, Clone)]
 pub struct FilamentSpoolRecord {
     pub id: i64,
     pub material: String,

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ModelFile, SlicerConfig, SyncStatus } from '../types';
+import type { ModelFile, SlicerConfig } from '../types';
 import type { Language, Translations } from '../i18n/types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
-import { formatBytes, formatDate, formatDimensions, formatRelativeTime, formatVolumeCm3, formatWeightG } from '../i18n/format';
+import { formatBytes, formatDate, formatDimensions, formatVolumeCm3, formatWeightG } from '../i18n/format';
 import { ModelViewer } from './ModelViewer';
 import { useUiDensity } from '../hooks/UiDensityContext';
 
@@ -20,20 +20,9 @@ interface Props {
   onOpenInSlicer: (slicerId?: string) => void;
   slicers: SlicerConfig[];
   slicerError: string | null;
-  onUploadToCloud: () => void;
-  cloudUploadAvailable: boolean;
-  uploading: boolean;
-  cloudUploadError: string | null;
 }
 
 type TFunction = <K extends keyof Translations>(key: K) => Translations[K];
-
-const SYNC_KEYS: Record<SyncStatus, 'syncSynced' | 'syncOutdated' | 'syncLocalOnly' | 'syncCloudOnly'> = {
-  synced: 'syncSynced',
-  outdated: 'syncOutdated',
-  'local-only': 'syncLocalOnly',
-  'cloud-only': 'syncCloudOnly',
-};
 
 function buildMetaRows(model: ModelFile, t: TFunction, language: Language): { label: string; value: string }[] {
   const materialsValue =
@@ -69,10 +58,6 @@ export function DetailPanel({
   onOpenInSlicer,
   slicers,
   slicerError,
-  onUploadToCloud,
-  cloudUploadAvailable,
-  uploading,
-  cloudUploadError,
 }: Props) {
   const { language } = useLanguage();
   const t = useT();
@@ -123,21 +108,6 @@ export function DetailPanel({
 
   const hasSlicers = slicers.length > 0;
 
-  const canUpload = model.origin === 'local';
-  const uploadDisabled = uploading || !canUpload || !cloudUploadAvailable;
-  const uploadAria = uploading
-    ? t('uploadingToCloudAria')
-    : !canUpload
-      ? t('alreadyInCloudAria')
-      : !cloudUploadAvailable
-        ? t('connectCloudToUploadAria')
-        : t('uploadToCloudAria');
-  const uploadLabel = uploading
-    ? t('uploadButtonLabelInProgress')
-    : !canUpload
-      ? t('uploadButtonLabelDone')
-      : t('uploadButtonLabel');
-
   if (density === 'compact') {
     return (
     <aside className="flex-none w-[336px] flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]">
@@ -169,18 +139,6 @@ export function DetailPanel({
           >
             {t('uploadModelImageLabel')}
           </button>
-        </div>
-
-        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--line)]">
-          <span
-            className={`w-2 h-2 rounded-full ${
-              model.sync === 'synced' ? 'bg-[var(--accent)]' : 'bg-[var(--ink-3)]'
-            }`}
-          />
-          <span className="flex-1 text-[12.5px] font-medium">{t(SYNC_KEYS[model.sync])}</span>
-          <span className="font-mono-ui text-[10.5px] text-[var(--ink-3)]">
-            {formatRelativeTime(model.importedAt, language)}
-          </span>
         </div>
 
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--line)]">
@@ -320,11 +278,6 @@ export function DetailPanel({
             {t('slicerLaunchError')} {slicerError}
           </div>
         )}
-        {cloudUploadError && (
-          <div className="pb-2 font-mono-ui text-[10px] text-[var(--accent)] break-words">
-            {t('cloudUploadError')} {cloudUploadError}
-          </div>
-        )}
         <div className="flex gap-2">
           {confirmDelete ? (
             <>
@@ -384,20 +337,6 @@ export function DetailPanel({
                   </div>
                 )}
               </div>
-              <button
-                onClick={() => !uploadDisabled && onUploadToCloud()}
-                disabled={uploadDisabled}
-                aria-label={uploadAria}
-                title={uploadAria}
-                className={`flex-none h-8 px-2.5 flex items-center gap-1.5 whitespace-nowrap rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold ${
-                  uploadDisabled
-                    ? 'opacity-40 cursor-not-allowed'
-                    : 'cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]'
-                }`}
-              >
-                <span className={`font-mono-ui ${uploading ? 'inline-block animate-spin' : 'inline-block'}`}>↑</span>
-                {uploadLabel}
-              </button>
               <button
                 onClick={() => setConfirmDelete(true)}
                 aria-label={t('deleteAriaLabel')}
@@ -497,10 +436,6 @@ export function DetailPanel({
               <span className="font-semibold">{row.value}</span>
             </div>
           ))}
-          <div className="flex justify-between py-2 border-b border-[var(--line)]" style={{ fontSize: 'var(--font-size-body)' }}>
-            <span className="text-[var(--ink-2)]">{t(SYNC_KEYS[model.sync])}</span>
-            <span className="font-semibold">{formatRelativeTime(model.importedAt, language)}</span>
-          </div>
           <div className="flex justify-between items-center gap-2 py-2" style={{ fontSize: 'var(--font-size-body)' }}>
             <span className="text-[var(--ink-2)]">{t('metaSourceUrl')}</span>
             {editingSourceUrl ? (
@@ -556,11 +491,6 @@ export function DetailPanel({
         {slicerError && (
           <div className="text-[var(--accent)] break-words" style={{ fontSize: 'var(--font-size-meta)' }}>
             {t('slicerLaunchError')} {slicerError}
-          </div>
-        )}
-        {cloudUploadError && (
-          <div className="text-[var(--accent)] break-words" style={{ fontSize: 'var(--font-size-meta)' }}>
-            {t('cloudUploadError')} {cloudUploadError}
           </div>
         )}
         {confirmDelete ? (
@@ -625,19 +555,6 @@ export function DetailPanel({
                 </div>
               )}
             </div>
-            <button
-              onClick={() => !uploadDisabled && onUploadToCloud()}
-              disabled={uploadDisabled}
-              aria-label={uploadAria}
-              title={uploadAria}
-              className={`h-11 px-4 flex items-center justify-center gap-2.5 rounded-lg bg-[var(--panel-2)] font-semibold ${
-                uploadDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:text-[var(--accent)]'
-              }`}
-              style={{ fontSize: 'var(--font-size-body)' }}
-            >
-              <span className={uploading ? 'inline-block animate-spin' : 'inline-block'}>☁</span>
-              {uploadLabel}
-            </button>
             <button
               onClick={onToggleQueue}
               className="h-11 px-4 flex items-center justify-center gap-2.5 rounded-lg bg-[var(--panel-2)] font-semibold cursor-pointer hover:text-[var(--accent)]"

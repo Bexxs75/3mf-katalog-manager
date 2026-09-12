@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Folder, TagCount, CreatorCount, CloudAccount, ModelFile, SavedFilter } from '../types';
+import type { Folder, TagCount, CreatorCount, ModelFile, SavedFilter } from '../types';
 import { useT } from '../i18n/LanguageContext';
 
 interface Props {
@@ -22,29 +22,7 @@ interface Props {
   onSaveFilter: (name: string) => void;
   onApplyFilter: (filter: SavedFilter) => void;
   onDeleteFilter: (id: string) => void;
-  clouds: CloudAccount[];
-  cloudError: string | null;
-  onAddCloud: () => void;
-  onConnectCloud: (id: string) => void;
-  onDisconnectCloud: (id: string) => void;
 }
-
-const originAbbr: Record<string, string> = {
-  gdrive: 'GD',
-  onedrive: 'OD',
-  dropbox: 'DB',
-  proton: 'PD',
-};
-
-// Anbieternamen bleiben immer im Original (Markenname), unabhängig von der
-// aktiven UI-Sprache — nicht über t() übersetzt, analog zu den
-// Sprachnamen im Sprache-Umschalter.
-const providerName: Record<string, string> = {
-  gdrive: 'Google Drive',
-  onedrive: 'OneDrive',
-  dropbox: 'Dropbox',
-  proton: 'Proton Drive',
-};
 
 export function Sidebar({
   query,
@@ -66,11 +44,6 @@ export function Sidebar({
   onSaveFilter,
   onApplyFilter,
   onDeleteFilter,
-  clouds,
-  cloudError,
-  onAddCloud,
-  onConnectCloud,
-  onDisconnectCloud,
 }: Props) {
   const t = useT();
   const [tagsCollapsed, setTagsCollapsed] = useState(false);
@@ -328,67 +301,6 @@ export function Sidebar({
             </span>
           </div>
         ))}
-      </div>
-
-      <div className="flex-none border-t border-[var(--line)] px-3.5 pt-3 pb-3.5">
-        <div className="flex items-center justify-between pb-2.5">
-          <span className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)]">
-            {t('cloudAccountsHeading')}
-          </span>
-          <span
-            onClick={onAddCloud}
-            className="font-mono-ui text-sm leading-none text-[var(--ink-3)] cursor-pointer hover:text-[var(--accent)]"
-          >
-            +
-          </span>
-        </div>
-        {clouds.map((c) => (
-          <div key={c.id} className="flex flex-col gap-1.5 py-1.5">
-            <div className="flex items-center gap-2">
-              <span className="font-mono-ui text-[length:var(--font-size-meta)] px-1 py-0.5 rounded border border-[var(--line-strong)] text-[var(--ink-2)]">
-                {originAbbr[c.id] ?? c.abbr}
-              </span>
-              <span
-                className="flex-1 text-[length:var(--font-size-title)] font-medium overflow-hidden text-ellipsis whitespace-nowrap"
-                title={c.name}
-              >
-                {providerName[c.id] ?? c.name}
-              </span>
-              <span
-                onClick={() =>
-                  c.status === 'disconnected' ? onConnectCloud(c.id) : onDisconnectCloud(c.id)
-                }
-                className={`font-mono-ui text-[length:var(--font-size-meta)] cursor-pointer ${
-                  c.status === 'connected'
-                    ? 'text-[var(--ink-3)] hover:text-[var(--accent)]'
-                    : 'text-[var(--accent)] hover:opacity-70'
-                }`}
-              >
-                {c.status === 'connected'
-                  ? t('cloudConnected')
-                  : c.status === 'error'
-                  ? t('cloudError')
-                  : t('cloudDisconnected')}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 pl-[26px]">
-              <div className="flex-1 h-[3px] rounded bg-[var(--line)] overflow-hidden">
-                <div
-                  className="h-full bg-[var(--accent)]"
-                  style={{ width: `${c.usedPercent}%` }}
-                />
-              </div>
-              <span className="font-mono-ui text-[length:var(--font-size-meta)] text-[var(--ink-3)] whitespace-nowrap">
-                {c.quotaLabel}
-              </span>
-            </div>
-          </div>
-        ))}
-        {cloudError && (
-          <div className="pt-1.5 font-mono-ui text-[length:var(--font-size-meta)] text-[var(--accent)] break-words">
-            {t('cloudConnectionError')} {cloudError}
-          </div>
-        )}
       </div>
     </aside>
   );

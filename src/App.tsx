@@ -13,35 +13,12 @@ import { CatalogCleanupDialog } from './components/CatalogCleanupDialog';
 import { useTheme } from './hooks/useTheme';
 import { useUiDensity } from './hooks/UiDensityContext';
 import { useSlicers } from './hooks/useSlicers';
-import type { ModelFile, Folder, TagCount, CreatorCount, CloudAccount, Origin, ViewMode, SortKey, SavedFilter, CatalogIssues } from './types';
-
-interface CloudAccountDto {
-  id: string;
-  name: string;
-  status: 'connected' | 'error' | 'disconnected';
-}
-
-interface PickerResultDto {
-  cancelled: boolean;
-  items: { id: string; name: string; isFolder: boolean }[];
-}
+import type { ModelFile, Folder, TagCount, CreatorCount, ViewMode, SortKey, SavedFilter, CatalogIssues } from './types';
 
 interface ImportResultDto {
   imported: ModelFile[];
   duplicateCount: number;
 }
-
-// usedPercent/quotaLabel sind noch nicht Teil dieses Backends (echte
-// Speicherplatz-Abfrage folgt bei Bedarf spaeter) - "–" statt erfundener
-// Zahlen.
-const toCloudAccount = (dto: CloudAccountDto): CloudAccount => ({
-  id: dto.id as Origin,
-  abbr: '',
-  name: dto.name,
-  status: dto.status,
-  usedPercent: 0,
-  quotaLabel: '—',
-});
 
 export default function App() {
   const { setting, setTheme } = useTheme();
@@ -60,12 +37,7 @@ export default function App() {
   const [models, setModels] = useState<ModelFile[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [tags, setTags] = useState<TagCount[]>([]);
-  const [clouds, setClouds] = useState<CloudAccount[]>([]);
-  const [connectingCloud, setConnectingCloud] = useState(false);
-  const [cloudError, setCloudError] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number } | null>(null);
-  const [uploadingId, setUploadingId] = useState<string | null>(null);
-  const [cloudUploadError, setCloudUploadError] = useState<string | null>(null);
   const [mainView, setMainView] = useState<'catalog' | 'filament'>('catalog');
   const [importBanner, setImportBanner] = useState<{ imported: number; duplicates: number } | null>(null);
   const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([]);
@@ -78,66 +50,6 @@ export default function App() {
   const refreshTags = () => invoke<TagCount[]>('list_tag_counts').then(setTags);
   const refreshCreators = () => invoke<CreatorCount[]>('list_creators').then(setCreators);
   const refreshSavedFilters = () => invoke<SavedFilter[]>('list_saved_filters').then(setSavedFilters);
-  const refreshClouds = () =>
-    invoke<CloudAccountDto[]>('list_cloud_accounts').then((accounts) => setClouds(accounts.map(toCloudAccount)));
-
-  // Weitere Anbieter (OneDrive/Dropbox/Proton) haben noch keinen eigenen
-  // Connect-Command im Backend - bis dahin verbindet dieser Handler nur
-  // Google Drive, unabhaengig von welcher Zeile/welchem "+" er ausgeloest wird.
-  const connectCloud = (id: string) => {
-    if (connectingCloud || id !== 'gdrive') return;
-    setConnectingCloud(true);
-    invoke('connect_google_drive')
-      .then(() => {
-        setCloudError(null);
-        refreshClouds();
-      })
-      .catch((e) => {
-        console.error('[cloud] Google Drive verbinden fehlgeschlagen:', e);
-        setCloudError(String(e));
-      })
-      .finally(() => setConnectingCloud(false));
-  };
-
-  const handleCloudImport = (fileIds: string[]) => {
-    return invoke<ImportResultDto>('import_from_cloud', { fileIds })
-      .then(mergeImported)
-      .catch((e) => {
-        console.error('[cloud] Import aus Google Drive fehlgeschlagen:', e);
-        setCloudError(String(e));
-      });
-  };
-
-  // Datei-/Ordnerauswahl laeuft ueber Googles eigenes Picker-Widget (im
-  // System-Browser, siehe cloud::picker im Backend) statt eines eigenen
-  // In-App-Dialogs - dafuer genuegt der nicht-sensible drive.file-Scope statt
-  // des kostenpflichtige CASA-Audits erfordernden drive.readonly-Scopes.
-  const importFromCloud = () => {
-    invoke<PickerResultDto>('open_drive_picker', { mode: 'files' })
-      .then((result) => {
-        if (result.cancelled) return;
-        const fileIds = result.items.filter((i) => !i.isFolder).map((i) => i.id);
-        if (fileIds.length === 0) return;
-        return handleCloudImport(fileIds);
-      })
-      .catch((e) => {
-        console.error('[cloud] Drive-Dateiauswahl fehlgeschlagen:', e);
-        setCloudError(String(e));
-      });
-  };
-
-  const uploadWithFolderPicker = (id: string) => {
-    invoke<PickerResultDto>('open_drive_picker', { mode: 'folder' })
-      .then((result) => {
-        if (result.cancelled) return;
-        const folderId = result.items[0]?.id ?? null;
-        return uploadToCloud(id, folderId);
-      })
-      .catch((e) => {
-        console.error('[cloud] Drive-Ordnerauswahl fehlgeschlagen:', e);
-        setCloudUploadError(String(e));
-      });
-  };
 
   const mergeImported = (result: ImportResultDto) => {
     if (result.imported.length) {
@@ -170,7 +82,6 @@ export default function App() {
     refreshTags();
     refreshCreators();
     refreshSavedFilters();
-    refreshClouds();
   }, []);
 
   useEffect(() => {
@@ -183,18 +94,6 @@ export default function App() {
       unlisten.then((fn) => fn());
     };
   }, [mainView]);
-
-  useEffect(() => {
-    const model = models.find((m) => m.id === selectedId);
-    if (!model || model.origin === 'local') return;
-    invoke<string>('check_cloud_sync_status', { fileId: model.id })
-      .then((status) => {
-        setModels((prev) =>
-          prev.map((m) => (m.id === model.id ? { ...m, sync: status as ModelFile['sync'] } : m)),
-        );
-      })
-      .catch((e) => console.error('[cloud] Sync-Check fehlgeschlagen:', e));
-  }, [selectedId]);
 
   const filtered = useMemo(() => {
     return models
@@ -263,21 +162,6 @@ export default function App() {
       console.error('[slicer] Start fehlgeschlagen:', e);
       setSlicerError(String(e));
     });
-  };
-
-  const uploadToCloud = (id: string, folderId: string | null) => {
-    if (uploadingId) return Promise.resolve();
-    setUploadingId(id);
-    setCloudUploadError(null);
-    return invoke<ModelFile>('upload_file_to_cloud', { fileId: id, folderId })
-      .then((updated) => {
-        setModels((prev) => prev.map((m) => (m.id === id ? updated : m)));
-      })
-      .catch((e) => {
-        console.error('[cloud] Hochladen fehlgeschlagen:', e);
-        setCloudUploadError(String(e));
-      })
-      .finally(() => setUploadingId(null));
   };
 
   const deleteModel = (id: string) => {
@@ -465,8 +349,6 @@ export default function App() {
         onUiDensityChange={setDensity}
         onImportFiles={importFiles}
         onImportFolder={importFolder}
-        cloudDriveConnected={clouds.some((c) => c.id === 'gdrive' && c.status === 'connected')}
-        onImportFromCloud={importFromCloud}
         settingsOpen={settingsOpen}
         onSettingsOpenChange={setSettingsOpen}
         slicers={slicers}
@@ -501,21 +383,6 @@ export default function App() {
             onSaveFilter={saveCurrentFilter}
             onApplyFilter={applySavedFilter}
             onDeleteFilter={deleteSavedFilter}
-            clouds={clouds}
-            cloudError={cloudError}
-            onAddCloud={() => connectCloud('gdrive')}
-            onConnectCloud={connectCloud}
-            onDisconnectCloud={(id) => {
-              invoke('disconnect_cloud_account', { provider: id })
-                .then(() => {
-                  setCloudError(null);
-                  refreshClouds();
-                })
-                .catch((e) => {
-                  console.error('[cloud] Trennen fehlgeschlagen:', e);
-                  setCloudError(String(e));
-                });
-            }}
           />
 
           <main className="flex-1 min-w-0 flex flex-col min-h-0">
@@ -577,10 +444,6 @@ export default function App() {
             onOpenInSlicer={(slicerId) => selected && openInSlicer(selected.id, slicerId)}
             slicers={slicers}
             slicerError={slicerError}
-            onUploadToCloud={() => selected && uploadWithFolderPicker(selected.id)}
-            cloudUploadAvailable={clouds.some((c) => c.id === 'gdrive' && c.status === 'connected')}
-            uploading={uploadingId !== null && uploadingId === selected?.id}
-            cloudUploadError={cloudUploadError}
           />
         </div>
       ) : (

@@ -33,25 +33,13 @@ export const es: Translations = {
   searchPlaceholder: 'Buscar nombre o etiqueta …',
   foldersHeading: 'Carpetas',
   tagsHeading: 'Etiquetas',
-  cloudAccountsHeading: 'Cuentas en la nube',
-  cloudConnected: 'conectado',
-  cloudError: 'error',
-  cloudDisconnected: 'desconectado',
-  cloudConnectionError: 'Error de conexión:',
 
   previewLabel3d: 'Vista previa 3D',
 
-  columnOrigin: 'Origen',
   columnName: 'Nombre',
   columnTags: 'Etiquetas',
   columnVolume: 'Volumen',
   columnSize: 'Tamaño',
-  columnSync: 'Sincro',
-
-  syncSynced: 'Actualizado',
-  syncOutdated: 'Desactualizado',
-  syncLocalOnly: 'Solo local',
-  syncCloudOnly: 'Solo nube',
 
   cancel: 'Cancelar',
   delete: 'Eliminar',
@@ -65,14 +53,6 @@ export const es: Translations = {
   removeSlicerAria: 'Eliminar laminador',
   chooseSlicerAria: 'Elegir otro laminador',
   slicerLaunchError: 'No se pudo iniciar el laminador:',
-  uploadToCloudAria: 'Subir a Google Drive',
-  uploadingToCloudAria: 'Subiendo a Google Drive …',
-  alreadyInCloudAria: 'Ya vinculado con la nube',
-  connectCloudToUploadAria: 'Conectar Google Drive para subir',
-  cloudUploadError: 'Error al subir:',
-  uploadButtonLabel: 'Subir',
-  uploadButtonLabelInProgress: 'Subiendo …',
-  uploadButtonLabelDone: 'Subido',
 
   emptyStateText: 'Selecciona un modelo para ver detalles, vista previa y etiquetas.',
   dragToRotate: 'Arrastra para girar',
@@ -90,7 +70,6 @@ export const es: Translations = {
   loadingPreview: 'Cargando vista previa …',
   previewUnavailable: 'Vista previa no disponible',
 
-  importFromCloudOption: 'Importar desde Google Drive…',
 
   filamentCatalogAria: 'Inventario de filamento',
   filamentDialogTitle: 'Inventario de Filamento',
