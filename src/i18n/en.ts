@@ -157,4 +157,16 @@ export const en: Translations = {
   restoreLabel: 'Restore',
   deletePermanentlyLabel: 'Delete permanently',
   trashExpiryHint: 'Automatically removed on {date}',
+
+  collectionsTab: 'Collections',
+  modelCountLabel: '{count} models',
+  addToCollectionLabel: 'Add to collection',
+  newCollectionPlaceholder: 'Collection name',
+  removeFromCollectionLabel: 'Remove from collection',
+  deleteCollectionConfirmQuestion: 'Delete this collection? The models themselves stay in your catalog.',
+  renameCollectionAria: 'Rename collection',
+  noCollectionsEmptyState: 'No collections yet.',
+  backToCollectionsLabel: '← Collections',
+  createCollectionLabel: '+ New collection',
+  importFolderAsCollectionOption: 'Import folder as collection',
 };

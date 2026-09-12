@@ -17,7 +17,7 @@ import { useUiDensity } from './hooks/UiDensityContext';
 import { useSlicers } from './hooks/useSlicers';
 import { useDisplayPreference } from './hooks/useDisplayPreference';
 import { useT } from './i18n/LanguageContext';
-import type { ModelFile, Folder, TagCount, CreatorCount, ViewMode, SortKey, SavedFilter, CatalogIssues } from './types';
+import type { ModelFile, Folder, TagCount, CreatorCount, ViewMode, SortKey, SavedFilter, CatalogIssues, Collection } from './types';
 
 interface ImportResultDto {
   imported: ModelFile[];
@@ -61,12 +61,19 @@ export default function App() {
   const [cleanupIssues, setCleanupIssues] = useState<CatalogIssues | null>(null);
   const [cleanupScanning, setCleanupScanning] = useState(false);
   const [cleanupError, setCleanupError] = useState<string | null>(null);
+  // @ts-expect-error - wird ab Task 4 (CollectionsGallery + Breadcrumb) gelesen
+  const [collections, setCollections] = useState<Collection[]>([]);
+  // @ts-expect-error - wird ab Task 4 (Breadcrumb) gelesen und gesetzt
+  const [activeCollection, setActiveCollection] = useState<string | null>(null);
+  // @ts-expect-error - wird ab Task 4 (Breadcrumb) gelesen und gesetzt
+  const [collectionsGalleryOpen, setCollectionsGalleryOpen] = useState(false);
 
   const refreshFolders = () => invoke<Folder[]>('list_folders').then(setFolders);
   const refreshTags = () => invoke<TagCount[]>('list_tag_counts').then(setTags);
   const refreshCreators = () => invoke<CreatorCount[]>('list_creators').then(setCreators);
   const refreshSavedFilters = () => invoke<SavedFilter[]>('list_saved_filters').then(setSavedFilters);
   const refreshTrash = () => invoke<ModelFile[]>('list_trash').then(setTrashModels);
+  const refreshCollections = () => invoke<Collection[]>('list_collections').then(setCollections);
 
   const restoreModel = (id: string) => {
     invoke('restore_file', { fileId: id }).then(() => {
@@ -125,6 +132,7 @@ export default function App() {
     refreshCreators();
     refreshSavedFilters();
     refreshTrash();
+    refreshCollections();
     invoke<{ name: string; path: string }[]>('scan_installed_slicers')
       .then(mergeDetected)
       .catch((e) => {

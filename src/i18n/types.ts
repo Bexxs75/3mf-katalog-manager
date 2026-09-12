@@ -161,6 +161,18 @@ export interface Translations {
   restoreLabel: string;
   deletePermanentlyLabel: string;
   trashExpiryHint: string;
+
+  collectionsTab: string;
+  modelCountLabel: string;
+  addToCollectionLabel: string;
+  newCollectionPlaceholder: string;
+  removeFromCollectionLabel: string;
+  deleteCollectionConfirmQuestion: string;
+  renameCollectionAria: string;
+  noCollectionsEmptyState: string;
+  backToCollectionsLabel: string;
+  createCollectionLabel: string;
+  importFolderAsCollectionOption: string;
 }
 
 export function formatCount(forms: PluralForms, n: number): string {
