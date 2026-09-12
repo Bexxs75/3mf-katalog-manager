@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatWeightG, formatDiameterMm, formatPrice } from '../i18n/format';
 import type { FilamentSpool } from '../types';
+import { FILAMENT_MATERIALS, FILAMENT_MANUFACTURERS } from '../lib/filamentCatalog';
 
 interface FormState {
   material: string;
@@ -203,6 +204,16 @@ export function FilamentView() {
       </div>
 
       <div className="flex-none px-4 py-3 border-t border-[var(--line)] bg-[var(--panel-2)]">
+        <datalist id="filament-material-options">
+          {FILAMENT_MATERIALS.map((m) => (
+            <option key={m} value={m} />
+          ))}
+        </datalist>
+        <datalist id="filament-manufacturer-options">
+          {FILAMENT_MANUFACTURERS.map((m) => (
+            <option key={m} value={m} />
+          ))}
+        </datalist>
         <div className="flex items-center gap-2 mb-2">
           <button
             type="button"
@@ -223,12 +234,14 @@ export function FilamentView() {
             value={form.material}
             onChange={(e) => setForm({ ...form, material: e.target.value })}
             placeholder={t('filamentMaterialLabel')}
+            list="filament-material-options"
             className={fieldClass}
           />
           <input
             value={form.manufacturer}
             onChange={(e) => setForm({ ...form, manufacturer: e.target.value })}
             placeholder={t('filamentManufacturerLabel')}
+            list="filament-manufacturer-options"
             className={fieldClass}
           />
           <input
