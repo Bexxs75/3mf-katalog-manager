@@ -65,6 +65,7 @@ export interface Translations {
   metaDimensions: string;
   metaVolume: string;
   metaObjectCount: string;
+  metaPlateCount: string;
   metaMaterial: string;
   metaFileSize: string;
   metaImported: string;
