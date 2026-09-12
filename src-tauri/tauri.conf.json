@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "mf-katalog-manager",
+  "productName": "3MF Katalog Manager",
   "version": "0.1.0",
   "identifier": "com.thebexxs.mfkatalogmanager",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "mf-katalog-manager",
+        "title": "3MF Katalog Manager",
         "width": 1000,
         "height": 600,
         "minWidth": 900,
