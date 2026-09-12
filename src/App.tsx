@@ -6,6 +6,7 @@ import { Sidebar } from './components/Sidebar';
 import { ModelGrid } from './components/ModelGrid';
 import { ModelList } from './components/ModelList';
 import { DetailPanel } from './components/DetailPanel';
+import { ModelDetailPage } from './components/ModelDetailPage';
 import { ContextMenu } from './components/ContextMenu';
 import { FilamentView } from './components/FilamentView';
 import { ImportSummaryBanner } from './components/ImportSummaryBanner';
@@ -34,6 +35,7 @@ export default function App() {
   const [creators, setCreators] = useState<CreatorCount[]>([]);
   const [activeCreator, setActiveCreator] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [detailModelId, setDetailModelId] = useState<string | null>(null);
   const [models, setModels] = useState<ModelFile[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [tags, setTags] = useState<TagCount[]>([]);
@@ -85,6 +87,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!detailModelId) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDetailModelId(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [detailModelId]);
+
+  useEffect(() => {
     const unlisten = getCurrentWebview().onDragDropEvent((event) => {
       if (event.payload.type !== 'drop') return;
       if (mainView !== 'catalog') return;
@@ -119,6 +130,7 @@ export default function App() {
   );
 
   const selected = models.find((m) => m.id === selectedId) ?? null;
+  const detailModel = detailModelId ? models.find((m) => m.id === detailModelId) ?? null : null;
   const contextModel = contextMenu ? models.find((m) => m.id === contextMenu.modelId) ?? null : null;
 
   const setLocalTags = (id: string, next: string[]) => {
@@ -408,43 +420,71 @@ export default function App() {
               )}
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4">
-              {view === 'grid' ? (
-                <ModelGrid
-                  models={filtered}
-                  selectedId={selectedId}
-                  onSelect={selectModel}
-                  onContextMenu={(id, x, y) => setContextMenu({ modelId: id, x, y })}
-                  onToggleFavorite={toggleFavorite}
-                />
-              ) : (
-                <ModelList
-                  models={filtered}
-                  selectedId={selectedId}
-                  onSelect={selectModel}
-                  onContextMenu={(id, x, y) => setContextMenu({ modelId: id, x, y })}
-                />
-              )}
-            </div>
+            {detailModel ? (
+              <ModelDetailPage
+                model={detailModel}
+                onClose={() => setDetailModelId(null)}
+                onAddTag={(t) => addTag(detailModel.id, t)}
+                onRemoveTag={(t) => removeTag(detailModel.id, t)}
+                onDelete={() => {
+                  deleteModel(detailModel.id);
+                  setDetailModelId(null);
+                }}
+                onTogglePrintStatus={() => togglePrintStatus(detailModel.id)}
+                onToggleFavorite={() => toggleFavorite(detailModel.id)}
+                onToggleQueue={() =>
+                  detailModel.queuePosition !== null ? removeFromQueue(detailModel.id) : addToQueue(detailModel.id)
+                }
+                onUploadImage={() => uploadCustomImage(detailModel.id)}
+                onSnapshotCaptured={(base64) => captureRenderSnapshot(detailModel.id, base64)}
+                onSetSourceUrl={(fileId, url) => setModelSourceUrl(fileId, url)}
+                onOpenInSlicer={(slicerId) => openInSlicer(detailModel.id, slicerId)}
+                slicers={slicers}
+                slicerError={slicerError}
+              />
+            ) : (
+              <div className="flex-1 overflow-y-auto p-4">
+                {view === 'grid' ? (
+                  <ModelGrid
+                    models={filtered}
+                    selectedId={selectedId}
+                    onSelect={selectModel}
+                    onOpenDetail={setDetailModelId}
+                    onContextMenu={(id, x, y) => setContextMenu({ modelId: id, x, y })}
+                    onToggleFavorite={toggleFavorite}
+                  />
+                ) : (
+                  <ModelList
+                    models={filtered}
+                    selectedId={selectedId}
+                    onSelect={selectModel}
+                    onOpenDetail={setDetailModelId}
+                    onContextMenu={(id, x, y) => setContextMenu({ modelId: id, x, y })}
+                  />
+                )}
+              </div>
+            )}
           </main>
 
-          <DetailPanel
-            model={selected}
-            onAddTag={(t) => selected && addTag(selected.id, t)}
-            onRemoveTag={(t) => selected && removeTag(selected.id, t)}
-            onDelete={() => selected && deleteModel(selected.id)}
-            onTogglePrintStatus={() => selected && togglePrintStatus(selected.id)}
-            onToggleFavorite={() => selected && toggleFavorite(selected.id)}
-            onToggleQueue={() =>
-              selected && (selected.queuePosition !== null ? removeFromQueue(selected.id) : addToQueue(selected.id))
-            }
-            onUploadImage={() => selected && uploadCustomImage(selected.id)}
-            onSnapshotCaptured={(base64) => selected && captureRenderSnapshot(selected.id, base64)}
-            onSetSourceUrl={(fileId, url) => setModelSourceUrl(fileId, url)}
-            onOpenInSlicer={(slicerId) => selected && openInSlicer(selected.id, slicerId)}
-            slicers={slicers}
-            slicerError={slicerError}
-          />
+          {!detailModel && (
+            <DetailPanel
+              model={selected}
+              onAddTag={(t) => selected && addTag(selected.id, t)}
+              onRemoveTag={(t) => selected && removeTag(selected.id, t)}
+              onDelete={() => selected && deleteModel(selected.id)}
+              onTogglePrintStatus={() => selected && togglePrintStatus(selected.id)}
+              onToggleFavorite={() => selected && toggleFavorite(selected.id)}
+              onToggleQueue={() =>
+                selected && (selected.queuePosition !== null ? removeFromQueue(selected.id) : addToQueue(selected.id))
+              }
+              onUploadImage={() => selected && uploadCustomImage(selected.id)}
+              onSnapshotCaptured={(base64) => selected && captureRenderSnapshot(selected.id, base64)}
+              onSetSourceUrl={(fileId, url) => setModelSourceUrl(fileId, url)}
+              onOpenInSlicer={(slicerId) => selected && openInSlicer(selected.id, slicerId)}
+              slicers={slicers}
+              slicerError={slicerError}
+            />
+          )}
         </div>
       ) : (
         <FilamentView />

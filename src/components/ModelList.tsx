@@ -6,10 +6,11 @@ interface Props {
   models: ModelFile[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onOpenDetail: (id: string) => void;
   onContextMenu: (id: string, x: number, y: number) => void;
 }
 
-export function ModelList({ models, selectedId, onSelect, onContextMenu }: Props) {
+export function ModelList({ models, selectedId, onSelect, onOpenDetail, onContextMenu }: Props) {
   const { language } = useLanguage();
   const t = useT();
 
@@ -28,6 +29,7 @@ export function ModelList({ models, selectedId, onSelect, onContextMenu }: Props
         <div
           key={m.id}
           onClick={() => onSelect(m.id)}
+          onDoubleClick={() => onOpenDetail(m.id)}
           onContextMenu={(e) => {
             e.preventDefault();
             onSelect(m.id);
