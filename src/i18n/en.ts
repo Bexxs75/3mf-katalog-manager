@@ -121,6 +121,8 @@ export const en: Translations = {
   filamentNoResults: 'No matches.',
   filamentColumnStock: 'Stock',
   filamentColumnStatus: 'Status',
+  filamentQuantityLabel: 'Number of spools',
+  filamentQuantityHint: 'Creates multiple identical spools, each tracked separately (e.g. 3× black PLA)',
 
   printedBadge: 'Printed',
   notPrintedLabel: 'Not printed',

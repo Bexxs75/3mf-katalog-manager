@@ -24,6 +24,7 @@ interface FormState {
   remainingWeightG: string;
   price: string;
   imagePng: string | null;
+  quantity: string;
 }
 
 const EMPTY_FORM: FormState = {
@@ -36,6 +37,7 @@ const EMPTY_FORM: FormState = {
   remainingWeightG: '1000',
   price: '',
   imagePng: null,
+  quantity: '1',
 };
 
 const fieldClass =
@@ -52,6 +54,7 @@ function toForm(spool: FilamentSpool): FormState {
     remainingWeightG: String(spool.remainingWeightG),
     price: spool.price === null ? '' : String(spool.price),
     imagePng: spool.imagePng,
+    quantity: '1',
   };
 }
 
@@ -76,7 +79,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
       .catch((e) => setError(String(e)));
   };
 
-  const submit = () => {
+  const submit = async () => {
     if (!form.material.trim()) return;
     const payload: FilamentSpool = {
       id: editing?.id ?? '',
@@ -90,13 +93,24 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
       price: form.price.trim() === '' ? null : parseFloat(form.price),
       imagePng: form.imagePng,
     };
-    const command = editing ? 'update_filament_spool' : 'add_filament_spool';
-    invoke(command, { spool: payload })
-      .then(() => {
-        onSaved();
-        onClose();
-      })
-      .catch((e) => setError(String(e)));
+    try {
+      if (editing) {
+        await invoke('update_filament_spool', { spool: payload });
+      } else {
+        // Jede Spule bekommt einen eigenen Datensatz (eigene id), auch bei
+        // identischen Werten - der Restbestand wird pro physischer Spule
+        // unabhaengig verfolgt (z.B. Schwarz PLA nutzt sich unterschiedlich
+        // schnell ab, je nachdem welche Spule gerade im Drucker steckt).
+        const count = Math.max(1, parseInt(form.quantity, 10) || 1);
+        for (let i = 0; i < count; i++) {
+          await invoke('add_filament_spool', { spool: payload });
+        }
+      }
+      onSaved();
+      onClose();
+    } catch (e) {
+      setError(String(e));
+    }
   };
 
   const original = parseFloat(form.originalWeightG) || 0;
@@ -194,6 +208,36 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
                   className={fieldClass}
                 />
               </div>
+
+              {!editing && (
+                <div>
+                  <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t('filamentQuantityLabel')}</label>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setForm((f) => ({ ...f, quantity: String(Math.max(1, (parseInt(f.quantity, 10) || 1) - 1)) }))}
+                      className="w-9 h-9 flex-none rounded-md border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[15px] font-bold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                    >
+                      −
+                    </button>
+                    <input
+                      type="number"
+                      min="1"
+                      value={form.quantity}
+                      onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))}
+                      className={`${fieldClass} text-center`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setForm((f) => ({ ...f, quantity: String((parseInt(f.quantity, 10) || 1) + 1) }))}
+                      className="w-9 h-9 flex-none rounded-md border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[15px] font-bold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                    >
+                      +
+                    </button>
+                  </div>
+                  <p className="text-[10.5px] text-[var(--ink-3)] mt-1 leading-snug">{t('filamentQuantityHint')}</p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -276,7 +320,11 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
             disabled={!form.material.trim()}
             className="w-full h-10 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[13.5px] font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {editing ? t('filamentSaveButton') : t('filamentAddButton')}
+            {editing
+              ? t('filamentSaveButton')
+              : (parseInt(form.quantity, 10) || 1) > 1
+                ? `${t('filamentAddButton')} (${Math.max(1, parseInt(form.quantity, 10) || 1)}×)`
+                : t('filamentAddButton')}
           </button>
         </div>
       </aside>

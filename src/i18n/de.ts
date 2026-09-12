@@ -121,6 +121,8 @@ export const de: Translations = {
   filamentNoResults: 'Keine Treffer.',
   filamentColumnStock: 'Bestand',
   filamentColumnStatus: 'Status',
+  filamentQuantityLabel: 'Anzahl Spulen',
+  filamentQuantityHint: 'Legt mehrere identische Spulen mit eigenem Bestand an (z. B. 3× Schwarz PLA)',
 
   printedBadge: 'Gedruckt',
   notPrintedLabel: 'Nicht gedruckt',
