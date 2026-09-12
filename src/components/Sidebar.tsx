@@ -46,8 +46,8 @@ export function Sidebar({
   onDeleteFilter,
 }: Props) {
   const t = useT();
-  const [tagsCollapsed, setTagsCollapsed] = useState(false);
-  const [creatorsCollapsed, setCreatorsCollapsed] = useState(false);
+  const [tagsCollapsed, setTagsCollapsed] = useState(true);
+  const [creatorsCollapsed, setCreatorsCollapsed] = useState(true);
   const [filtersCollapsed, setFiltersCollapsed] = useState(false);
   const [savingFilter, setSavingFilter] = useState(false);
   const [filterNameDraft, setFilterNameDraft] = useState('');
@@ -180,26 +180,28 @@ export function Sidebar({
             {tagsCollapsed ? '▾' : '▴'}
           </span>
         </div>
-        {!tagsCollapsed && tags.map((tag) => (
-          <div
-            key={tag.label}
-            onClick={() => onTagSelect(activeTag === tag.label ? null : tag.label)}
-            className={`flex items-center gap-2 h-7 px-1.5 rounded-[3px] cursor-pointer ${
-              activeTag === tag.label
-                ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
-                : 'text-[var(--ink-2)] hover:text-[var(--ink)]'
-            }`}
-          >
-            <span
-              className="w-[7px] h-[7px] rounded-full"
-              style={{ background: `oklch(0.62 0.14 ${tag.colorHue})` }}
-            />
-            <span className="flex-1 font-mono-ui text-[length:var(--font-size-item)] overflow-hidden text-ellipsis whitespace-nowrap">
-              #{tag.label}
-            </span>
-            <span className="font-mono-ui text-[11px] text-[var(--ink-3)]">{tag.count}</span>
+        {!tagsCollapsed && (
+          <div className="flex flex-wrap gap-1.5 px-1.5 pb-1">
+            {tags.map((tag) => (
+              <span
+                key={tag.label}
+                onClick={() => onTagSelect(activeTag === tag.label ? null : tag.label)}
+                className={`inline-flex items-center gap-1.5 h-6 px-2 rounded-full border cursor-pointer font-mono-ui text-[11.5px] ${
+                  activeTag === tag.label
+                    ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
+                    : 'border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink-2)] hover:text-[var(--ink)]'
+                }`}
+              >
+                <span
+                  className="w-[6px] h-[6px] rounded-full flex-none"
+                  style={{ background: `oklch(0.62 0.14 ${tag.colorHue})` }}
+                />
+                #{tag.label}
+                <span className="text-[var(--ink-3)]">{tag.count}</span>
+              </span>
+            ))}
           </div>
-        ))}
+        )}
 
         <div
           onClick={() => setCreatorsCollapsed((c) => !c)}
