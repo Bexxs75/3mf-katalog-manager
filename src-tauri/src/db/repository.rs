@@ -34,6 +34,7 @@ pub(crate) fn init(conn: &Connection) -> Result<(), DbError> {
     // falls die Spalte (auf einer frisch angelegten DB, wo CREATE TABLE sie
     // schon mitbringt) bereits existiert.
     let _ = conn.execute("ALTER TABLE filament_spools ADD COLUMN image_png BLOB", []);
+    let _ = conn.execute("ALTER TABLE filament_spools ADD COLUMN location TEXT", []);
     // Gleiches Muster fuer vier neue files-Spalten (Druckstatus, Zuletzt-
     // angesehen, Creator, Inhalts-Hash) auf einer bereits befuellten
     // Produktions-DB.
@@ -650,12 +651,13 @@ pub fn mark_file_viewed(conn: &Connection, file_id: i64) -> Result<(), DbError> 
 pub fn insert_filament_spool(conn: &Connection, spool: &NewFilamentSpool) -> Result<i64, DbError> {
     conn.execute(
         "INSERT INTO filament_spools
-            (material, manufacturer, color, diameter_mm, original_weight_g, remaining_weight_g, price, image_png, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            (material, manufacturer, color, location, diameter_mm, original_weight_g, remaining_weight_g, price, image_png, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             spool.material,
             spool.manufacturer,
             spool.color,
+            spool.location,
             spool.diameter_mm,
             spool.original_weight_g,
             spool.remaining_weight_g,
@@ -669,7 +671,7 @@ pub fn insert_filament_spool(conn: &Connection, spool: &NewFilamentSpool) -> Res
 
 pub fn list_filament_spools(conn: &Connection) -> Result<Vec<FilamentSpoolRecord>, DbError> {
     let mut stmt = conn.prepare(
-        "SELECT id, material, manufacturer, color, diameter_mm, original_weight_g, remaining_weight_g, price, image_png
+        "SELECT id, material, manufacturer, color, location, diameter_mm, original_weight_g, remaining_weight_g, price, image_png
          FROM filament_spools ORDER BY material, manufacturer",
     )?;
     let rows = stmt
@@ -679,11 +681,12 @@ pub fn list_filament_spools(conn: &Connection) -> Result<Vec<FilamentSpoolRecord
                 material: row.get(1)?,
                 manufacturer: row.get(2)?,
                 color: row.get(3)?,
-                diameter_mm: row.get(4)?,
-                original_weight_g: row.get(5)?,
-                remaining_weight_g: row.get(6)?,
-                price: row.get(7)?,
-                image_png: row.get(8)?,
+                location: row.get(4)?,
+                diameter_mm: row.get(5)?,
+                original_weight_g: row.get(6)?,
+                remaining_weight_g: row.get(7)?,
+                price: row.get(8)?,
+                image_png: row.get(9)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -693,13 +696,14 @@ pub fn list_filament_spools(conn: &Connection) -> Result<Vec<FilamentSpoolRecord
 pub fn update_filament_spool(conn: &Connection, id: i64, spool: &NewFilamentSpool) -> Result<(), DbError> {
     conn.execute(
         "UPDATE filament_spools
-         SET material = ?1, manufacturer = ?2, color = ?3, diameter_mm = ?4,
-             original_weight_g = ?5, remaining_weight_g = ?6, price = ?7, image_png = ?8
-         WHERE id = ?9",
+         SET material = ?1, manufacturer = ?2, color = ?3, location = ?4, diameter_mm = ?5,
+             original_weight_g = ?6, remaining_weight_g = ?7, price = ?8, image_png = ?9
+         WHERE id = ?10",
         params![
             spool.material,
             spool.manufacturer,
             spool.color,
+            spool.location,
             spool.diameter_mm,
             spool.original_weight_g,
             spool.remaining_weight_g,

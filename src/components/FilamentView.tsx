@@ -1,44 +1,27 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useLanguage, useT } from '../i18n/LanguageContext';
-import { formatWeightG, formatDiameterMm, formatPrice } from '../i18n/format';
+import { formatWeightG } from '../i18n/format';
 import type { FilamentSpool } from '../types';
-import { FILAMENT_MATERIALS, FILAMENT_MANUFACTURERS } from '../lib/filamentCatalog';
-import { AutocompleteInput } from './AutocompleteInput';
+import { filamentStockStatus } from '../lib/filamentStatus';
+import { FilamentDashboard } from './FilamentDashboard';
+import { FilamentTable } from './FilamentTable';
+import { FilamentSpoolForm } from './FilamentSpoolForm';
 
-interface FormState {
-  material: string;
-  manufacturer: string;
-  color: string;
-  diameterMm: string;
-  originalWeightG: string;
-  remainingWeightG: string;
-  price: string;
-  imagePng: string | null;
-}
-
-const EMPTY_FORM: FormState = {
-  material: '',
-  manufacturer: '',
-  color: '',
-  diameterMm: '1.75',
-  originalWeightG: '1000',
-  remainingWeightG: '1000',
-  price: '',
-  imagePng: null,
-};
-
-const fieldClass =
-  'h-8 px-2 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-[length:var(--font-size-title)]';
+type LayoutMode = 'dashboard' | 'list';
+type StatusFilter = 'low' | 'empty' | null;
 
 export function FilamentView() {
   const t = useT();
   const { language } = useLanguage();
   const [spools, setSpools] = useState<FilamentSpool[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [layout, setLayout] = useState<LayoutMode>('dashboard');
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [editingSpool, setEditingSpool] = useState<FilamentSpool | null>(null);
 
   const refresh = () => {
     invoke<FilamentSpool[]>('list_filament_spools')
@@ -51,245 +34,171 @@ export function FilamentView() {
 
   useEffect(refresh, []);
 
-  const startEdit = (spool: FilamentSpool) => {
-    setEditingId(spool.id);
-    setConfirmDeleteId(null);
-    setForm({
-      material: spool.material,
-      manufacturer: spool.manufacturer ?? '',
-      color: spool.color ?? '',
-      diameterMm: String(spool.diameterMm),
-      originalWeightG: String(spool.originalWeightG),
-      remainingWeightG: String(spool.remainingWeightG),
-      price: spool.price === null ? '' : String(spool.price),
-      imagePng: spool.imagePng,
+  const knownLocations = useMemo(
+    () => [...new Set(spools.map((s) => s.location).filter((l): l is string => !!l))].sort(),
+    [spools],
+  );
+
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return spools.filter((s) => {
+      if (statusFilter && filamentStockStatus(s) !== statusFilter) return false;
+      if (!needle) return true;
+      return [s.material, s.manufacturer, s.color, s.location].some((v) => v?.toLowerCase().includes(needle));
     });
+  }, [spools, query, statusFilter]);
+
+  const stats = useMemo(() => {
+    const totalRemaining = spools.reduce((sum, s) => sum + s.remainingWeightG, 0);
+    const locations = new Set(spools.map((s) => s.location).filter(Boolean)).size;
+    const attention = spools.filter((s) => filamentStockStatus(s) !== 'ok').length;
+    return { total: spools.length, totalRemaining, locations, attention };
+  }, [spools]);
+
+  const openAddPanel = () => {
+    setEditingSpool(null);
+    setPanelOpen(true);
+  };
+  const openEditPanel = (spool: FilamentSpool) => {
+    setEditingSpool(spool);
+    setPanelOpen(true);
   };
 
-  const cancelForm = () => {
-    setEditingId(null);
-    setForm(EMPTY_FORM);
-  };
-
-  const handlePickImage = () => {
-    invoke<string | null>('pick_and_read_image')
-      .then((base64) => {
-        if (base64 === null) return;
-        setForm((prev) => ({ ...prev, imagePng: base64 }));
-      })
-      .catch((e) => setError(String(e)));
-  };
-
-  const submitForm = () => {
-    if (!form.material.trim()) return;
-    const payload: FilamentSpool = {
-      id: editingId ?? '',
-      material: form.material.trim(),
-      manufacturer: form.manufacturer.trim() || null,
-      color: form.color.trim() || null,
-      diameterMm: parseFloat(form.diameterMm) || 0,
-      originalWeightG: parseInt(form.originalWeightG, 10) || 0,
-      remainingWeightG: parseInt(form.remainingWeightG, 10) || 0,
-      price: form.price.trim() === '' ? null : parseFloat(form.price),
-      imagePng: form.imagePng,
-    };
-    const command = editingId ? 'update_filament_spool' : 'add_filament_spool';
-    invoke(command, { spool: payload })
-      .then(() => {
-        cancelForm();
-        refresh();
-      })
-      .catch((e) => setError(String(e)));
-  };
-
-  const deleteSpool = (id: string) => {
+  const requestDelete = (id: string) => setConfirmDeleteId(id);
+  const cancelDelete = () => setConfirmDeleteId(null);
+  const confirmDelete = (id: string) => {
     invoke('delete_filament_spool', { spoolId: id })
       .then(() => {
         setConfirmDeleteId(null);
-        if (editingId === id) cancelForm();
         refresh();
       })
       .catch((e) => setError(String(e)));
   };
 
+  const toggleStatusFilter = (val: StatusFilter) => setStatusFilter((prev) => (prev === val ? null : val));
+
+  const segBase = 'h-8 px-3.5 rounded-[6px] text-[12.5px] font-semibold cursor-pointer';
+  const segActive = 'bg-[var(--panel)] text-[var(--ink)] shadow-[var(--shadow)]';
+  const segInactive = 'text-[var(--ink-3)] hover:text-[var(--ink)]';
+
   return (
-    <div className="flex-1 min-w-0 flex flex-col min-h-0">
+    <div className="flex-1 min-w-0 flex flex-col min-h-0 overflow-y-auto">
       <div className="flex-none px-4 py-3 border-b border-[var(--line)] text-[length:var(--font-size-body)] font-semibold">
         {t('filamentDialogTitle')}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 p-4 flex flex-col gap-3.5">
         {error && (
-          <div className="pb-2 text-[length:var(--font-size-title)] text-[var(--accent)] break-words">
+          <div className="text-[length:var(--font-size-title)] text-[var(--accent)] break-words">
             {t('filamentError')} {error}
           </div>
         )}
-        {spools.length === 0 ? (
-          <div className="text-[length:var(--font-size-title)] text-[var(--ink-3)]">{t('filamentEmptyState')}</div>
-        ) : (
-          <div className="grid gap-3.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(178px, 1fr))' }}>
-            {spools.map((spool) => (
-              <div key={spool.id} className="rounded-[4px] overflow-hidden border border-[var(--line)]">
-                <div className="relative aspect-square bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
-                  {spool.imagePng ? (
-                    <img
-                      src={`data:image/png;base64,${spool.imagePng}`}
-                      className="absolute inset-0 w-full h-full object-cover"
-                    />
-                  ) : (
-                    <>
-                      <div
-                        className="absolute inset-0 opacity-90"
-                        style={{
-                          backgroundImage:
-                            'repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 9px)',
-                        }}
-                      />
-                      <div className="absolute inset-0 grid place-items-center px-2">
-                        <span className="text-[length:var(--font-size-body)] font-semibold text-center truncate">{spool.material}</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-                <div className="flex flex-col gap-1 px-2.5 py-2 bg-[var(--panel)]">
-                  <div className="text-[11.5px] text-[var(--ink-2)] truncate">
-                    {[spool.manufacturer, spool.color].filter(Boolean).join(' · ') || t('noValue')}
-                  </div>
-                  <div className="font-mono-ui text-[length:var(--font-size-meta)] text-[var(--ink-3)]">
-                    {formatWeightG(spool.remainingWeightG, language)} / {formatWeightG(spool.originalWeightG, language)}
-                  </div>
-                  <div className="font-mono-ui text-[length:var(--font-size-meta)] text-[var(--ink-3)]">
-                    {formatDiameterMm(spool.diameterMm, language)}
-                    {spool.price !== null ? ` · ${formatPrice(spool.price, language)}` : ''}
-                  </div>
 
-                  {confirmDeleteId === spool.id ? (
-                    <div className="flex items-center gap-1.5 pt-1">
-                      <span className="flex-1 text-[10.5px] text-[var(--ink)]">{t('deleteConfirmQuestion')}</span>
-                      <button
-                        onClick={() => setConfirmDeleteId(null)}
-                        className="h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[length:var(--font-size-meta)] cursor-pointer"
-                      >
-                        {t('cancel')}
-                      </button>
-                      <button
-                        onClick={() => deleteSpool(spool.id)}
-                        className="h-6 px-1.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[length:var(--font-size-meta)] cursor-pointer"
-                      >
-                        {t('delete')}
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-end gap-1.5 pt-1">
-                      <span
-                        onClick={() => startEdit(spool)}
-                        aria-label={t('filamentEditAria')}
-                        className="w-6 h-6 grid place-items-center rounded-full cursor-pointer text-[11px] text-[var(--ink-3)] hover:bg-[var(--panel-2)]"
-                      >
-                        ✎
-                      </span>
-                      <span
-                        onClick={() => setConfirmDeleteId(spool.id)}
-                        aria-label={t('deleteAriaLabel')}
-                        className="w-6 h-6 grid place-items-center rounded-full cursor-pointer text-[11px] text-[var(--ink-3)] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
-                      >
-                        ✕
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <div className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3.5 py-2.5">
+            <div className="text-[10px] uppercase tracking-wider font-bold text-[var(--ink-3)] mb-1.5">{t('filamentStatTotal')}</div>
+            <div className="font-mono-ui text-[19px] font-bold tabular-nums">{stats.total}</div>
           </div>
+          <div className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3.5 py-2.5">
+            <div className="text-[10px] uppercase tracking-wider font-bold text-[var(--ink-3)] mb-1.5">{t('filamentStatRemaining')}</div>
+            <div className="font-mono-ui text-[19px] font-bold tabular-nums">{formatWeightG(stats.totalRemaining, language)}</div>
+          </div>
+          <div className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3.5 py-2.5">
+            <div className="text-[10px] uppercase tracking-wider font-bold text-[var(--ink-3)] mb-1.5">{t('filamentStatLocations')}</div>
+            <div className="font-mono-ui text-[19px] font-bold tabular-nums">{stats.locations}</div>
+          </div>
+          <div className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3.5 py-2.5">
+            <div className="text-[10px] uppercase tracking-wider font-bold text-[var(--ink-3)] mb-1.5">{t('filamentStatAttention')}</div>
+            <div className={`font-mono-ui text-[19px] font-bold tabular-nums ${stats.attention > 0 ? 'text-[var(--warn)]' : ''}`}>
+              {stats.attention}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative flex-1 min-w-[180px] max-w-[320px]">
+            <svg
+              width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 opacity-50 pointer-events-none"
+            >
+              <circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" />
+            </svg>
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t('filamentSearchPlaceholder')}
+              className="w-full h-8 pl-8 pr-2.5 rounded-md border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] outline-0 focus:border-[var(--accent)]"
+            />
+          </div>
+
+          <button
+            onClick={() => toggleStatusFilter('low')}
+            className={`h-8 px-3 rounded-md border text-[12px] font-semibold cursor-pointer ${
+              statusFilter === 'low'
+                ? 'bg-[var(--warn-soft)] border-[var(--warn)] text-[var(--warn)]'
+                : 'border-[var(--line-strong)] text-[var(--ink-2)] hover:border-[var(--warn)] hover:text-[var(--warn)]'
+            }`}
+          >
+            {t('filamentFilterLow')}
+          </button>
+          <button
+            onClick={() => toggleStatusFilter('empty')}
+            className={`h-8 px-3 rounded-md border text-[12px] font-semibold cursor-pointer ${
+              statusFilter === 'empty'
+                ? 'bg-[var(--crit-soft)] border-[var(--crit)] text-[var(--crit)]'
+                : 'border-[var(--line-strong)] text-[var(--ink-2)] hover:border-[var(--crit)] hover:text-[var(--crit)]'
+            }`}
+          >
+            {t('filamentFilterEmpty')}
+          </button>
+
+          <div className="flex p-0.5 gap-0.5 border border-[var(--line)] rounded-[8px] bg-[var(--panel-2)]">
+            <button onClick={() => setLayout('dashboard')} className={`${segBase} ${layout === 'dashboard' ? segActive : segInactive}`}>
+              {t('filamentViewDashboard')}
+            </button>
+            <button onClick={() => setLayout('list')} className={`${segBase} ${layout === 'list' ? segActive : segInactive}`}>
+              {t('filamentViewList')}
+            </button>
+          </div>
+
+          <button
+            onClick={openAddPanel}
+            className="ml-auto h-8 px-3.5 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-bold cursor-pointer flex items-center gap-1.5"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6"><path d="M12 5v14M5 12h14" /></svg>
+            {t('filamentOpenAddPanelButton')}
+          </button>
+        </div>
+
+        {layout === 'dashboard' ? (
+          <FilamentDashboard
+            spools={filtered}
+            confirmDeleteId={confirmDeleteId}
+            onEdit={openEditPanel}
+            onRequestDelete={requestDelete}
+            onCancelDelete={cancelDelete}
+            onConfirmDelete={confirmDelete}
+          />
+        ) : (
+          <FilamentTable
+            spools={filtered}
+            confirmDeleteId={confirmDeleteId}
+            onEdit={openEditPanel}
+            onRequestDelete={requestDelete}
+            onCancelDelete={cancelDelete}
+            onConfirmDelete={confirmDelete}
+          />
         )}
       </div>
 
-      <div className="flex-none px-4 py-3 border-t border-[var(--line)] bg-[var(--panel-2)]">
-        <div className="flex items-center gap-2 mb-2">
-          <button
-            type="button"
-            onClick={handlePickImage}
-            className="h-8 px-3 rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
-          >
-            {t('filamentUploadImageLabel')}
-          </button>
-          {form.imagePng && (
-            <img
-              src={`data:image/png;base64,${form.imagePng}`}
-              className="w-8 h-8 rounded-[3px] object-cover border border-[var(--line)]"
-            />
-          )}
-        </div>
-        <div className="grid grid-cols-2 gap-2 mb-2">
-          <AutocompleteInput
-            value={form.material}
-            onChange={(v) => setForm({ ...form, material: v })}
-            options={FILAMENT_MATERIALS}
-            placeholder={t('filamentMaterialLabel')}
-            className={fieldClass}
-          />
-          <AutocompleteInput
-            value={form.manufacturer}
-            onChange={(v) => setForm({ ...form, manufacturer: v })}
-            options={FILAMENT_MANUFACTURERS}
-            placeholder={t('filamentManufacturerLabel')}
-            className={fieldClass}
-          />
-          <input
-            value={form.color}
-            onChange={(e) => setForm({ ...form, color: e.target.value })}
-            placeholder={t('filamentColorLabel')}
-            className={fieldClass}
-          />
-          <input
-            type="number"
-            step="0.01"
-            value={form.diameterMm}
-            onChange={(e) => setForm({ ...form, diameterMm: e.target.value })}
-            placeholder={t('filamentDiameterLabel')}
-            className={fieldClass}
-          />
-          <input
-            type="number"
-            value={form.originalWeightG}
-            onChange={(e) => setForm({ ...form, originalWeightG: e.target.value })}
-            placeholder={t('filamentOriginalWeightLabel')}
-            className={fieldClass}
-          />
-          <input
-            type="number"
-            value={form.remainingWeightG}
-            onChange={(e) => setForm({ ...form, remainingWeightG: e.target.value })}
-            placeholder={t('filamentRemainingWeightLabel')}
-            className={fieldClass}
-          />
-          <input
-            type="number"
-            step="0.01"
-            value={form.price}
-            onChange={(e) => setForm({ ...form, price: e.target.value })}
-            placeholder={t('filamentPriceLabel')}
-            className={fieldClass}
-          />
-        </div>
-        <div className="flex gap-2">
-          {editingId && (
-            <button
-              onClick={cancelForm}
-              className="flex-1 h-8 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[length:var(--font-size-title)] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
-            >
-              {t('cancel')}
-            </button>
-          )}
-          <button
-            onClick={submitForm}
-            disabled={!form.material.trim()}
-            className="flex-1 h-8 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[length:var(--font-size-title)] font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {editingId ? t('filamentSaveButton') : t('filamentAddButton')}
-          </button>
-        </div>
-      </div>
+      <FilamentSpoolForm
+        open={panelOpen}
+        editing={editingSpool}
+        knownLocations={knownLocations}
+        onClose={() => setPanelOpen(false)}
+        onSaved={refresh}
+      />
     </div>
   );
 }

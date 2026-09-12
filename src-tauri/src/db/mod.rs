@@ -357,6 +357,7 @@ mod tests {
             material: "PLA".to_string(),
             manufacturer: Some("Bambu Lab".to_string()),
             color: Some("Schwarz".to_string()),
+            location: Some("Regal A · Fach 1".to_string()),
             diameter_mm: 1.75,
             original_weight_g: 1000,
             remaining_weight_g: 620,
