@@ -633,8 +633,23 @@ pub fn set_render_snapshot(state: State<AppState>, file_id: String, image_base64
 #[tauri::command]
 pub fn set_source_url(state: State<AppState>, file_id: String, url: Option<String>) -> CmdResult<()> {
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let url = validate_source_url(url)?;
     let conn = lock_db(&state)?;
     db::set_source_url(&conn, id, url.as_deref()).map_err(|e| e.to_string())
+}
+
+// Nur http(s)-Links zulassen: die URL wird im Frontend unveraendert als
+// <a href> gerendert, ein "javascript:"/"data:"-Wert wuerde dort beim Klick
+// ausgefuehrt statt navigiert (CWE-79-nah).
+fn validate_source_url(url: Option<String>) -> CmdResult<Option<String>> {
+    let Some(trimmed) = url.map(|u| u.trim().to_string()).filter(|u| !u.is_empty()) else {
+        return Ok(None);
+    };
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        Ok(Some(trimmed))
+    } else {
+        Err("source URL must start with http:// or https://".to_string())
+    }
 }
 
 fn is_supported_extension(path: &Path) -> bool {
@@ -1023,8 +1038,42 @@ const APPIMAGE_ENV_VARS_TO_STRIP: &[&str] = &[
     "WEBKIT_DISABLE_DMABUF_RENDERER",
 ];
 
+// Slicer-Liste wird ausschliesslich im Frontend (localStorage) verwaltet,
+// es gibt keine Backend-Quelle fuer eine Pfad-Whitelist. Als Ersatzschranke
+// wird hier zumindest sichergestellt, dass der Pfad tatsaechlich auf eine
+// existierende, ausfuehrbare Datei zeigt, statt jeden beliebigen String
+// klaglos an process::Command zu uebergeben.
+fn validate_slicer_path(slicer_path: &str) -> CmdResult<()> {
+    let path = Path::new(slicer_path);
+    let metadata = std::fs::metadata(path)
+        .map_err(|_| "slicer executable not found".to_string())?;
+    if !metadata.is_file() {
+        return Err("slicer path is not a file".to_string());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if metadata.permissions().mode() & 0o111 == 0 {
+            return Err("slicer path is not executable".to_string());
+        }
+    }
+    #[cfg(windows)]
+    {
+        let is_exe = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("exe"))
+            .unwrap_or(false);
+        if !is_exe {
+            return Err("slicer path must be an .exe file".to_string());
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn open_in_slicer(slicer_path: String, file_path: String) -> CmdResult<()> {
+    validate_slicer_path(&slicer_path)?;
     let mut cmd = std::process::Command::new(&slicer_path);
     cmd.arg(&file_path);
     for var in APPIMAGE_ENV_VARS_TO_STRIP {
@@ -1446,6 +1495,41 @@ pub fn purge_expired_trash_on_startup(conn: &Connection) {
 mod tests {
     use super::*;
     use crate::geometry::RenderMesh;
+
+    #[test]
+    fn validate_source_url_accepts_http_and_https() {
+        assert_eq!(
+            validate_source_url(Some("https://example.com/model".to_string())).unwrap(),
+            Some("https://example.com/model".to_string())
+        );
+        assert_eq!(
+            validate_source_url(Some("http://example.com".to_string())).unwrap(),
+            Some("http://example.com".to_string())
+        );
+    }
+
+    #[test]
+    fn validate_source_url_rejects_non_http_schemes() {
+        assert!(validate_source_url(Some("javascript:alert(1)".to_string())).is_err());
+        assert!(validate_source_url(Some("data:text/html,<script>".to_string())).is_err());
+    }
+
+    #[test]
+    fn validate_source_url_treats_none_and_blank_as_clear() {
+        assert_eq!(validate_source_url(None).unwrap(), None);
+        assert_eq!(validate_source_url(Some("   ".to_string())).unwrap(), None);
+    }
+
+    #[test]
+    fn validate_slicer_path_rejects_missing_file() {
+        assert!(validate_slicer_path("/does/not/exist/slicer").is_err());
+    }
+
+    #[test]
+    fn validate_slicer_path_rejects_directory() {
+        let dir = std::env::temp_dir();
+        assert!(validate_slicer_path(dir.to_str().unwrap()).is_err());
+    }
 
     #[derive(serde::Deserialize)]
     #[serde(rename_all = "camelCase")]
