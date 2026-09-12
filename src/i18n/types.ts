@@ -39,6 +39,10 @@ export interface Translations {
   displayPreferenceRender: string;
   displayPreferenceDescriptionThumbnail: string;
   displayPreferenceDescriptionRender: string;
+  rotateLeftAria: string;
+  rotateRightAria: string;
+  playRotationAria: string;
+  pauseRotationAria: string;
 
   searchPlaceholder: string;
   foldersHeading: string;

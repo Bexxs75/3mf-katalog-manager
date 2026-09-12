@@ -34,6 +34,10 @@ export const fr: Translations = {
   displayPreferenceRender: 'Vue 3D',
   displayPreferenceDescriptionThumbnail: "Affiche en priorité l'aperçu intégré au fichier.",
   displayPreferenceDescriptionRender: 'Affiche en priorité une vue 3D rendue ; les captures manquantes sont générées automatiquement en arrière-plan.',
+  rotateLeftAria: 'Tourner à gauche',
+  rotateRightAria: 'Tourner à droite',
+  playRotationAria: 'Démarrer la rotation automatique',
+  pauseRotationAria: 'Mettre en pause la rotation automatique',
 
   searchPlaceholder: 'Rechercher un nom ou un tag …',
   foldersHeading: 'Dossiers',

@@ -92,6 +92,7 @@ export function ModelDetailPage({
                 fileId={model.id}
                 needsSnapshot={model.renderSnapshotImage === null}
                 onSnapshotCaptured={onSnapshotCaptured}
+                showRotationControls
               />
             )}
             {resolvedImage && (

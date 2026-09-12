@@ -34,6 +34,10 @@ export const es: Translations = {
   displayPreferenceRender: 'Vista 3D',
   displayPreferenceDescriptionThumbnail: 'Muestra preferentemente la imagen de vista previa guardada en el archivo.',
   displayPreferenceDescriptionRender: 'Muestra preferentemente una vista 3D renderizada; las capturas faltantes se generan automáticamente en segundo plano.',
+  rotateLeftAria: 'Girar a la izquierda',
+  rotateRightAria: 'Girar a la derecha',
+  playRotationAria: 'Iniciar rotación automática',
+  pauseRotationAria: 'Pausar rotación automática',
 
   searchPlaceholder: 'Buscar nombre o etiqueta …',
   foldersHeading: 'Carpetas',
