@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::reader::Reader;
+use quick_xml::XmlVersion;
 
 use super::error::ThreeMfError;
 use super::geometry::Matrix3x4;
@@ -58,7 +59,7 @@ fn local_name(qname: &[u8]) -> &str {
 fn get_attr(e: &BytesStart, name: &str) -> Option<String> {
     e.attributes().flatten().find_map(|a| {
         if local_name(a.key.as_ref()) == name {
-            a.unescape_value().ok().map(|v| v.into_owned())
+            a.normalized_value(XmlVersion::Implicit1_0).ok().map(|v| v.into_owned())
         } else {
             None
         }

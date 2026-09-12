@@ -65,10 +65,18 @@ pub struct FileRecord {
     pub id: i64,
     pub name: String,
     pub path: String,
+    // In DB indiziert (idx_files_file_type) fuer eine geplante, noch nicht
+    // gebaute STL/3MF-Filterung - deshalb nicht entfernt, obwohl aktuell
+    // nirgends gelesen.
+    #[allow(dead_code)]
     pub file_type: FileType,
     pub folder_id: Option<i64>,
     pub origin: String,
     pub sync_status: String,
+    // Ueberbleibsel der entfernten Cloud-Synchronisation (siehe
+    // project_3mf_katalog_manager_major_features_20260912-Memory), Spalte
+    // bewusst nicht per Migration gedroppt.
+    #[allow(dead_code)]
     pub cloud_id: Option<String>,
     pub file_size_bytes: i64,
     pub dimensions_mm: Option<[f64; 3]>,
@@ -76,6 +84,9 @@ pub struct FileRecord {
     pub object_count: Option<i64>,
     pub thumbnail_png: Option<Vec<u8>>,
     pub imported_at: String,
+    // Wird beim Import nie gesetzt (immer None) - keine echte mtime-Erfassung
+    // implementiert, Spalte existiert bereits im Schema.
+    #[allow(dead_code)]
     pub file_modified_at: Option<String>,
     pub materials: Vec<MaterialRecord>,
     pub metadata: BTreeMap<String, String>,
@@ -147,6 +158,9 @@ pub struct SavedFilterRecord {
     pub creator: Option<String>,
     pub query: Option<String>,
     pub sort: String,
+    // Nach dem Laden im Rust-Code nie gelesen, aber die Spalte selbst treibt
+    // "ORDER BY created_at" in list_saved_filters() - funktional nicht tot.
+    #[allow(dead_code)]
     pub created_at: String,
 }
 

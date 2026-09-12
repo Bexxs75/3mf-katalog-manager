@@ -3,6 +3,7 @@ use std::io::{Read, Seek};
 
 use quick_xml::events::Event;
 use quick_xml::reader::Reader;
+use quick_xml::XmlVersion;
 use zip::ZipArchive;
 
 use super::error::ThreeMfError;
@@ -133,31 +134,25 @@ fn resolve_relationships<R: Read + Seek>(
     let mut thumbnail_path = None;
 
     let mut reader = Reader::from_str(&rels_xml);
-    loop {
-        let event = match reader.read_event() {
-            Ok(event) => event,
-            Err(_) => break,
-        };
+    while let Ok(event) = reader.read_event() {
         match event {
             Event::Eof => break,
-            Event::Start(e) | Event::Empty(e) => {
-                if e.name().as_ref() == b"Relationship" {
-                    let mut rel_type = None;
-                    let mut target = None;
-                    for attr in e.attributes().flatten() {
-                        match attr.key.as_ref() {
-                            b"Type" => rel_type = attr.unescape_value().ok().map(|v| v.into_owned()),
-                            b"Target" => target = attr.unescape_value().ok().map(|v| v.into_owned()),
-                            _ => {}
-                        }
+            Event::Start(e) | Event::Empty(e) if e.name().as_ref() == b"Relationship" => {
+                let mut rel_type = None;
+                let mut target = None;
+                for attr in e.attributes().flatten() {
+                    match attr.key.as_ref() {
+                        b"Type" => rel_type = attr.normalized_value(XmlVersion::Implicit1_0).ok().map(|v| v.into_owned()),
+                        b"Target" => target = attr.normalized_value(XmlVersion::Implicit1_0).ok().map(|v| v.into_owned()),
+                        _ => {}
                     }
-                    if let (Some(rel_type), Some(target)) = (rel_type, target) {
-                        let normalized = target.trim_start_matches('/').to_string();
-                        if rel_type == MODEL_RELATIONSHIP_TYPE {
-                            model_path = Some(normalized);
-                        } else if rel_type == THUMBNAIL_RELATIONSHIP_TYPE {
-                            thumbnail_path = Some(normalized);
-                        }
+                }
+                if let (Some(rel_type), Some(target)) = (rel_type, target) {
+                    let normalized = target.trim_start_matches('/').to_string();
+                    if rel_type == MODEL_RELATIONSHIP_TYPE {
+                        model_path = Some(normalized);
+                    } else if rel_type == THUMBNAIL_RELATIONSHIP_TYPE {
+                        thumbnail_path = Some(normalized);
                     }
                 }
             }

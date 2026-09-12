@@ -3,14 +3,12 @@ use std::fmt;
 #[derive(Debug)]
 pub enum DbError {
     Sqlite(rusqlite::Error),
-    UnknownTag(String),
 }
 
 impl fmt::Display for DbError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DbError::Sqlite(e) => write!(f, "database error: {e}"),
-            DbError::UnknownTag(name) => write!(f, "unknown tag: {name}"),
         }
     }
 }

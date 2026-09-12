@@ -81,6 +81,11 @@ pub(crate) fn init(conn: &Connection) -> Result<(), DbError> {
     Ok(())
 }
 
+// Nur von Tests genutzt: es gibt aktuell keinen Command, der Ordner manuell
+// anlegt (files.folder_id wird beim Import nie gesetzt, siehe commands.rs).
+// list_folders() liest die Tabelle trotzdem aus, daher hier nur unter Test
+// gehalten statt geloescht, um Testdaten fuer diese Abfrage anzulegen.
+#[cfg(test)]
 pub fn insert_folder(conn: &Connection, name: &str) -> Result<i64, DbError> {
     conn.execute("INSERT INTO folders (name) VALUES (?1)", params![name])?;
     Ok(conn.last_insert_rowid())

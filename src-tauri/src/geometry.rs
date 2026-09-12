@@ -13,12 +13,12 @@ impl BoundingBox {
     }
 
     pub fn extend(&mut self, p: [f64; 3]) {
-        for i in 0..3 {
-            if p[i] < self.min[i] {
-                self.min[i] = p[i];
+        for ((min, max), value) in self.min.iter_mut().zip(self.max.iter_mut()).zip(p) {
+            if value < *min {
+                *min = value;
             }
-            if p[i] > self.max[i] {
-                self.max[i] = p[i];
+            if value > *max {
+                *max = value;
             }
         }
     }
