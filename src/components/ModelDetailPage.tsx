@@ -59,7 +59,7 @@ export function ModelDetailPage({
   };
 
   return (
-    <div className="flex-1 min-w-0 overflow-y-auto p-6 flex flex-col gap-6 max-w-[1400px] w-full mx-auto">
+    <div className="flex-1 min-w-0 overflow-y-auto p-6 flex flex-col gap-6 max-w-[1600px] w-full mx-auto">
       <header className="flex items-start gap-4">
         <button
           onClick={onClose}
@@ -74,7 +74,7 @@ export function ModelDetailPage({
       </header>
 
       <div className="flex gap-7 flex-wrap items-start">
-        <div className="flex-[3_1_480px] min-w-[320px]">
+        <div className="flex-1 min-w-[320px]">
           <div className="relative aspect-[4/3] rounded-[10px] border border-[var(--line)] bg-[var(--plate)] overflow-hidden">
             {showCustomImage && model.displayImage ? (
               <img src={model.displayImage} alt={model.name} className="absolute inset-0 w-full h-full object-contain" />
@@ -110,7 +110,7 @@ export function ModelDetailPage({
           </button>
         </div>
 
-        <div className="flex-[2_1_340px] min-w-[300px] flex flex-col gap-4">
+        <div className="w-[540px] flex-none min-w-[300px] flex flex-col gap-4">
           <div className="rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-5 py-4">
             {rows.map((row) => (
               <div
