@@ -589,7 +589,7 @@ mod tests {
         let file = sample_file();
         let id = repository::insert_file(&mut conn, &file).unwrap();
 
-        repository::soft_delete_file(&conn, id, "/trash/1-test.3mf", "2026-01-01T00:00:00Z").unwrap();
+        repository::soft_delete_file(&conn, id, Some("/trash/1-test.3mf"), "2026-01-01T00:00:00Z").unwrap();
         let fetched = repository::get_file(&conn, id).unwrap().unwrap();
         assert_eq!(fetched.deleted_at.as_deref(), Some("2026-01-01T00:00:00Z"));
         assert_eq!(fetched.trash_path.as_deref(), Some("/trash/1-test.3mf"));
@@ -609,6 +609,34 @@ mod tests {
         let restored = repository::get_file(&conn, id).unwrap().unwrap();
         assert!(restored.deleted_at.is_none());
         assert!(restored.trash_path.is_none());
+    }
+
+    #[test]
+    fn soft_delete_without_trash_path_roundtrips_for_unreachable_source_files() {
+        // Deckt den Fall ab, in dem der Original-Pfad beim Loeschen nicht
+        // erreichbar war (z.B. umbenannter Cloud-Mount) - es gibt nichts zu
+        // verschieben, trash_path bleibt NULL, der Eintrag landet trotzdem
+        // im Papierkorb statt hart geloescht zu werden.
+        let mut conn = connect_in_memory().expect("connect");
+        let file = sample_file();
+        let id = repository::insert_file(&mut conn, &file).unwrap();
+
+        repository::soft_delete_file(&conn, id, None, "2026-01-01T00:00:00Z").unwrap();
+        let fetched = repository::get_file(&conn, id).unwrap().unwrap();
+        assert_eq!(fetched.deleted_at.as_deref(), Some("2026-01-01T00:00:00Z"));
+        assert!(fetched.trash_path.is_none());
+
+        let trashed = repository::list_trash(&conn).unwrap();
+        assert!(
+            trashed.iter().any(|f| f.id == id),
+            "auch ohne trash_path muss die Datei im Papierkorb erscheinen"
+        );
+
+        repository::restore_file(&conn, id, None).unwrap();
+        let restored = repository::get_file(&conn, id).unwrap().unwrap();
+        assert!(restored.deleted_at.is_none());
+        assert!(restored.trash_path.is_none());
+        assert_eq!(restored.path, file.path, "Pfad bleibt unveraendert, da nie verschoben wurde");
     }
 
     fn sample_saved_filter() -> NewSavedFilter {

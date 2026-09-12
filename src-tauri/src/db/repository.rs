@@ -306,7 +306,12 @@ pub fn delete_file(conn: &Connection, id: i64) -> Result<(), DbError> {
     Ok(())
 }
 
-pub fn soft_delete_file(conn: &Connection, id: i64, trash_path: &str, deleted_at: &str) -> Result<(), DbError> {
+pub fn soft_delete_file(
+    conn: &Connection,
+    id: i64,
+    trash_path: Option<&str>,
+    deleted_at: &str,
+) -> Result<(), DbError> {
     conn.execute(
         "UPDATE files SET deleted_at = ?1, trash_path = ?2 WHERE id = ?3",
         params![deleted_at, trash_path, id],
