@@ -30,8 +30,8 @@ export const es: Translations = {
   densityDescriptionCompact: 'Densa, texto pequeño — muestra lo máximo posible.',
   densityDescriptionComfort: 'Texto y gráficos más grandes — más fácil de leer.',
   displayPreferenceTitle: 'Vista preferida',
-  displayPreferenceThumbnail: 'Imagen incrustada',
-  displayPreferenceRender: 'Vista renderizada',
+  displayPreferenceThumbnail: 'Imagen',
+  displayPreferenceRender: 'Vista 3D',
   displayPreferenceDescriptionThumbnail: 'Muestra preferentemente la imagen de vista previa guardada en el archivo.',
   displayPreferenceDescriptionRender: 'Muestra preferentemente una vista 3D renderizada; las capturas faltantes se generan automáticamente en segundo plano.',
 
