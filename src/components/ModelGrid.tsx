@@ -11,9 +11,11 @@ interface Props {
   onContextMenu: (id: string, x: number, y: number) => void;
   onToggleFavorite: (id: string) => void;
   readOnly?: boolean;
+  selectedForBulk: Set<string>;
+  onToggleBulkSelect: (id: string) => void;
 }
 
-export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContextMenu, onToggleFavorite, readOnly }: Props) {
+export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContextMenu, onToggleFavorite, readOnly, selectedForBulk, onToggleBulkSelect }: Props) {
   const t = useT();
   const { density } = useUiDensity();
   const { language } = useLanguage();
@@ -34,6 +36,15 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
         }`}
       >
         <div className="relative aspect-square bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
+          {!readOnly && (
+            <input
+              type="checkbox"
+              checked={selectedForBulk.has(m.id)}
+              onClick={(e) => e.stopPropagation()}
+              onChange={() => onToggleBulkSelect(m.id)}
+              className="absolute top-1.5 left-1.5 z-10 w-4 h-4 cursor-pointer"
+            />
+          )}
           {m.displayImage ? (
             <img
               src={m.displayImage}
@@ -127,6 +138,15 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
           >
             <div className="h-[5px]" style={{ background: 'linear-gradient(90deg, var(--accent), var(--accent-soft))' }} />
             <div className="relative aspect-square bg-[var(--plate)] overflow-hidden">
+              {!readOnly && (
+                <input
+                  type="checkbox"
+                  checked={selectedForBulk.has(m.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={() => onToggleBulkSelect(m.id)}
+                  className="absolute top-1.5 left-1.5 z-10 w-4 h-4 cursor-pointer"
+                />
+              )}
               {m.displayImage ? (
                 <img src={m.displayImage} alt="" className="absolute inset-0 w-full h-full object-cover" />
               ) : (
