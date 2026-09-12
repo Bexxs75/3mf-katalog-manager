@@ -9,9 +9,21 @@ interface Props {
   onDelete: () => void;
   inQueue: boolean;
   onToggleQueue: () => void;
+  printed: boolean;
+  onTogglePrintStatus: () => void;
 }
 
-export function ContextMenu({ x, y, onClose, onOpenInSlicer, onDelete, inQueue, onToggleQueue }: Props) {
+export function ContextMenu({
+  x,
+  y,
+  onClose,
+  onOpenInSlicer,
+  onDelete,
+  inQueue,
+  onToggleQueue,
+  printed,
+  onTogglePrintStatus,
+}: Props) {
   const t = useT();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -77,6 +89,15 @@ export function ContextMenu({ x, y, onClose, onOpenInSlicer, onDelete, inQueue, 
             className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]"
           >
             {inQueue ? t('removeFromQueue') : t('addToQueue')}
+          </button>
+          <button
+            onClick={() => {
+              onTogglePrintStatus();
+              onClose();
+            }}
+            className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]"
+          >
+            {printed ? t('notPrintedLabel') : t('printedBadge')}
           </button>
           <button
             onClick={() => setConfirmDelete(true)}
