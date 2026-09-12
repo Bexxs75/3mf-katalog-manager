@@ -108,6 +108,11 @@ export const es: Translations = {
   metaSourceUrl: 'Fuente',
   sourceUrlPlaceholder: 'https://…',
 
+  backToCatalog: 'Volver al catálogo',
+  detailViewer3d: 'Vista 3D',
+  detailViewerImage: 'Imagen propia',
+  metaCreator: 'Creador',
+
   queueHeading: 'Cola de impresión',
   queueEmptyState: 'No hay modelos en la cola',
   inQueueLabel: 'En cola',

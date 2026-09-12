@@ -108,6 +108,11 @@ export const de: Translations = {
   metaSourceUrl: 'Quelle',
   sourceUrlPlaceholder: 'https://…',
 
+  backToCatalog: 'Zurück zum Katalog',
+  detailViewer3d: '3D-Ansicht',
+  detailViewerImage: 'Eigenes Bild',
+  metaCreator: 'Ersteller',
+
   queueHeading: 'Warteschlange',
   queueEmptyState: 'Keine Modelle in der Warteschlange',
   inQueueLabel: 'In Warteschlange',
