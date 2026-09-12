@@ -135,4 +135,12 @@ export const en: Translations = {
 
   favoriteAdd: 'Add to favorites',
   favoriteRemove: 'Remove from favorites',
+
+  trashHeading: 'Trash',
+  trashEmptyState: 'Trash is empty.',
+  emptyTrashButton: 'Empty trash',
+  emptyTrashConfirmQuestion: 'Empty trash permanently?',
+  restoreLabel: 'Restore',
+  deletePermanentlyLabel: 'Delete permanently',
+  trashExpiryHint: 'Automatically removed on {date}',
 };

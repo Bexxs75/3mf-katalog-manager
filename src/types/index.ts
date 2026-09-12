@@ -25,6 +25,7 @@ export interface ModelFile {
   sourceUrl: string | null;
   queuePosition: number | null;
   favorite: boolean;
+  deletedAt: string | null;
 }
 
 export interface Folder {

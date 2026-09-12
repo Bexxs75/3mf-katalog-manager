@@ -135,4 +135,12 @@ export const de: Translations = {
 
   favoriteAdd: 'Zu Favoriten hinzufügen',
   favoriteRemove: 'Aus Favoriten entfernen',
+
+  trashHeading: 'Papierkorb',
+  trashEmptyState: 'Papierkorb ist leer.',
+  emptyTrashButton: 'Papierkorb leeren',
+  emptyTrashConfirmQuestion: 'Papierkorb endgültig leeren?',
+  restoreLabel: 'Wiederherstellen',
+  deletePermanentlyLabel: 'Endgültig löschen',
+  trashExpiryHint: 'Wird automatisch entfernt am {date}',
 };

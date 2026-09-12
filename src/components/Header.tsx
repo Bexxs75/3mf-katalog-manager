@@ -27,8 +27,9 @@ interface Props {
   onScanCatalogIssues: () => void;
   cleanupScanning: boolean;
   cleanupError: string | null;
-  mainView: 'catalog' | 'filament';
-  onMainViewChange: (view: 'catalog' | 'filament') => void;
+  mainView: 'catalog' | 'filament' | 'trash';
+  onMainViewChange: (view: 'catalog' | 'filament' | 'trash') => void;
+  trashCount: number;
 }
 
 const segBase =
@@ -65,6 +66,7 @@ export function Header({
   cleanupError,
   mainView,
   onMainViewChange,
+  trashCount,
 }: Props) {
   const t = useT();
   const { language, setLanguage } = useLanguage();
@@ -184,6 +186,19 @@ export function Header({
         className="shrink-0 h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink-2)] text-[length:var(--font-size-body)] font-semibold cursor-pointer hover:text-[var(--ink)] hover:border-[var(--line-strong)]"
       >
         {mainView === 'catalog' ? t('filamentNavButton') : t('filamentBackToCatalogButton')}
+      </button>
+
+      <button
+        onClick={() => onMainViewChange(mainView === 'trash' ? 'catalog' : 'trash')}
+        title={t('trashHeading')}
+        className="relative shrink-0 w-8 h-8 grid place-items-center rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink-2)] text-[15px] cursor-pointer hover:text-[var(--ink)] hover:border-[var(--line-strong)]"
+      >
+        🗑
+        {trashCount > 0 && (
+          <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-[var(--accent)] text-[var(--accent-ink)] text-[9.5px] font-bold grid place-items-center font-mono-ui">
+            {trashCount}
+          </span>
+        )}
       </button>
 
       <div className="relative shrink-0">
