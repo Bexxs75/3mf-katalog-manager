@@ -169,7 +169,7 @@ export default function App() {
   useEffect(() => {
     setSelectedForBulk(new Set());
     setConfirmBulkDelete(false);
-  }, [activeFolderId, activeTag, activeCreator, query]);
+  }, [activeFolderId, activeTag, activeCreator, query, activeCollection, collectionsGalleryOpen]);
 
   useEffect(() => {
     const unlisten = getCurrentWebview().onDragDropEvent((event) => {
@@ -543,6 +543,7 @@ export default function App() {
         onMainViewChange={(v) => {
           setMainView(v);
           setSelectedId(null);
+          clearBulkSelection();
           if (v === 'trash') refreshTrash();
         }}
         trashCount={trashModels.length}

@@ -579,13 +579,8 @@ pub fn list_collection_files(state: State<AppState>, collection_id: String) -> C
     let cid: i64 = collection_id.parse().map_err(|_| "invalid collection id".to_string())?;
     let conn = lock_db(&state)?;
     let ids = db::list_collection_file_ids(&conn, cid).map_err(|e| e.to_string())?;
-    let mut dtos = Vec::with_capacity(ids.len());
-    for id in ids {
-        if let Some(file) = db::get_file(&conn, id).map_err(|e| e.to_string())? {
-            dtos.push(to_dto(file));
-        }
-    }
-    Ok(dtos)
+    let files = db::list_files_by_ids(&conn, &ids).map_err(|e| e.to_string())?;
+    Ok(files.into_iter().map(to_dto).collect())
 }
 
 #[tauri::command]
@@ -939,7 +934,21 @@ pub async fn import_folder_as_collection(
     let mut position = 0i64;
     for candidate in &candidates {
         let path_str = candidate.to_string_lossy().to_string();
-        if let Some(file_id) = db::get_file_id_by_path(&conn, &path_str).map_err(|e| e.to_string())? {
+        // Erst per Pfad suchen (deckt neu importierte UND bereits vorher am
+        // selben Pfad katalogisierte Dateien ab). Schlaegt das fehl, kann die
+        // Datei trotzdem schon im Katalog sein - unter einem ANDEREN Pfad,
+        // als exaktes Inhalts-Duplikat (von import_many via content_hash
+        // erkannt und deshalb nicht neu importiert). Ohne diesen Fallback
+        // wuerde so eine Datei beim Sammlung-aus-Ordner-Import stillschweigend
+        // uebersprungen, obwohl sie inhaltlich im Ordner liegt.
+        let file_id = match db::get_file_id_by_path(&conn, &path_str).map_err(|e| e.to_string())? {
+            Some(id) => Some(id),
+            None => match compute_content_hash(candidate) {
+                Ok(hash) => db::get_file_id_by_content_hash(&conn, &hash).map_err(|e| e.to_string())?,
+                Err(_) => None,
+            },
+        };
+        if let Some(file_id) = file_id {
             db::add_file_to_collection(&conn, collection_id, file_id, position).map_err(|e| e.to_string())?;
             position += 1;
         }

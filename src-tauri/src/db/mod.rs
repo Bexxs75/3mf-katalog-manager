@@ -5,9 +5,11 @@ mod collections;
 
 pub use repository::{
     add_tag_to_file, connect, delete_file, delete_filament_spool, delete_saved_filter, delete_unused_tags,
-    file_exists_by_hash, file_exists_by_path, get_file, insert_file, insert_filament_spool, insert_folder,
+    file_exists_by_hash, file_exists_by_path, get_file, get_file_id_by_content_hash, insert_file,
+    insert_filament_spool, insert_folder,
     insert_saved_filter, list_creator_counts, list_filament_spools, list_files,
-    list_files_missing_content_hash, list_folders, list_saved_filters, list_tag_counts, list_trash,
+    list_files_by_ids, list_files_missing_content_hash, list_folders, list_saved_filters, list_tag_counts,
+    list_trash,
     mark_file_viewed, max_queue_position, purge_expired_trash, remove_tag_from_file, restore_file,
     set_content_hash, set_custom_image_png, set_favorite, set_print_status, set_queue_position,
     set_render_snapshot_png, set_source_url, soft_delete_file, update_filament_spool,
@@ -679,5 +681,41 @@ mod tests {
 
         let filters = list_saved_filters(&conn).expect("list");
         assert!(filters.is_empty());
+    }
+
+    #[test]
+    fn list_files_by_ids_preserves_requested_order_and_loads_tags() {
+        let mut conn = connect_in_memory().expect("connect");
+        let mut file_a = sample_file();
+        file_a.path = "/tmp/a.3mf".to_string();
+        file_a.name = "a.3mf".to_string();
+        let mut file_b = sample_file();
+        file_b.path = "/tmp/b.3mf".to_string();
+        file_b.name = "b.3mf".to_string();
+        let mut file_c = sample_file();
+        file_c.path = "/tmp/c.3mf".to_string();
+        file_c.name = "c.3mf".to_string();
+
+        let id_a = insert_file(&mut conn, &file_a).expect("insert a");
+        let id_b = insert_file(&mut conn, &file_b).expect("insert b");
+        let id_c = insert_file(&mut conn, &file_c).expect("insert c");
+
+        // Bewusst NICHT in Einfuege-/ID-Reihenfolge angefragt - simuliert eine
+        // Sammlungs-Reihenfolge, die von der files.id-Reihenfolge abweicht.
+        let requested = vec![id_c, id_a, id_b];
+        let result = list_files_by_ids(&conn, &requested).expect("query");
+
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].id, id_c);
+        assert_eq!(result[1].id, id_a);
+        assert_eq!(result[2].id, id_b);
+        assert_eq!(result[0].tags, vec!["cube".to_string(), "test".to_string()]);
+    }
+
+    #[test]
+    fn list_files_by_ids_returns_empty_vec_for_empty_input() {
+        let conn = connect_in_memory().expect("connect");
+        let result = list_files_by_ids(&conn, &[]).expect("query");
+        assert!(result.is_empty());
     }
 }

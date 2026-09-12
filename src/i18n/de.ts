@@ -159,14 +159,13 @@ export const de: Translations = {
   trashExpiryHint: 'Wird automatisch entfernt am {date}',
 
   collectionsTab: 'Sammlungen',
-  modelCountLabel: '{count} Modelle',
+  modelCountLabel: { one: '{count} Modell', other: '{count} Modelle' },
   addToCollectionLabel: 'Zu Sammlung hinzufügen',
   newCollectionPlaceholder: 'Name der Sammlung',
   removeFromCollectionLabel: 'Aus Sammlung entfernen',
   deleteCollectionConfirmQuestion: 'Sammlung wirklich löschen? Die Modelle selbst bleiben erhalten.',
   renameCollectionAria: 'Sammlung umbenennen',
   noCollectionsEmptyState: 'Noch keine Sammlungen angelegt.',
-  backToCollectionsLabel: '← Sammlungen',
   createCollectionLabel: '+ Neue Sammlung',
   importFolderAsCollectionOption: 'Ordner als Sammlung importieren',
 };
