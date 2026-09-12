@@ -141,6 +141,7 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
                 <BulkCheckbox
                   checked={selectedForBulk.has(m.id)}
                   onToggle={() => onToggleBulkSelect(m.id)}
+                  className="absolute top-1.5 right-1.5 z-10"
                 />
               )}
               {m.displayImage ? (
