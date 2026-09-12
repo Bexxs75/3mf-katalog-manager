@@ -5,6 +5,7 @@ import { buildMetaRows } from '../lib/modelMetadata';
 import { ModelViewer } from './ModelViewer';
 import { resolveDisplayImage } from '../lib/resolveDisplayImage';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
+import { useEditableSourceUrl } from '../hooks/useEditableSourceUrl';
 
 interface Props {
   model: ModelFile;
@@ -44,8 +45,14 @@ export function ModelDetailPage({
   const t = useT();
   const { language } = useLanguage();
   const [tagDraft, setTagDraft] = useState('');
-  const [sourceDraft, setSourceDraft] = useState(model.sourceUrl ?? '');
-  const [editingSource, setEditingSource] = useState(false);
+  const {
+    editing: editingSource,
+    draft: sourceDraft,
+    setDraft: setSourceDraft,
+    startEditing: startEditingSource,
+    handleKeyDown: handleSourceKeyDown,
+    handleBlur: handleSourceBlur,
+  } = useEditableSourceUrl(model, onSetSourceUrl);
   const resolvedImage = resolveDisplayImage(model, displayPreference);
   const [showCustomImage, setShowCustomImage] = useState(
     () => displayPreference === 'thumbnail' && resolvedImage !== null,
@@ -57,12 +64,6 @@ export function ModelDetailPage({
     const value = tagDraft.trim();
     if (value) onAddTag(value);
     setTagDraft('');
-  };
-
-  const submitSource = () => {
-    const value = sourceDraft.trim();
-    onSetSourceUrl(model.id, value || null);
-    setEditingSource(false);
   };
 
   return (
@@ -142,8 +143,8 @@ export function ModelDetailPage({
                   autoFocus
                   value={sourceDraft}
                   onChange={(e) => setSourceDraft(e.target.value)}
-                  onBlur={submitSource}
-                  onKeyDown={(e) => e.key === 'Enter' && submitSource()}
+                  onBlur={handleSourceBlur}
+                  onKeyDown={handleSourceKeyDown}
                   placeholder={t('sourceUrlPlaceholder')}
                   className="flex-1 min-w-0 bg-[var(--panel-2)] border border-[var(--line-strong)] rounded px-2 py-1 text-[13px]"
                 />
@@ -152,10 +153,10 @@ export function ModelDetailPage({
                   <a href={model.sourceUrl} target="_blank" rel="noreferrer" className="underline decoration-[var(--line-strong)] underline-offset-2">
                     {model.sourceUrl}
                   </a>{' '}
-                  <button onClick={() => setEditingSource(true)} className="text-[var(--ink-3)]">✎</button>
+                  <button onClick={startEditingSource} className="text-[var(--ink-3)]">✎</button>
                 </span>
               ) : (
-                <button onClick={() => setEditingSource(true)} className="text-[var(--ink-3)] underline decoration-dotted">
+                <button onClick={startEditingSource} className="text-[var(--ink-3)] underline decoration-dotted">
                   {t('sourceUrlPlaceholder')} ✎
                 </button>
               )}

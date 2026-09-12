@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ModelFile, SlicerConfig } from '../types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { ModelViewer } from './ModelViewer';
 import { useUiDensity } from '../hooks/UiDensityContext';
 import { buildMetaRows } from '../lib/modelMetadata';
 import { formatDate } from '../i18n/format';
+import { useEditableSourceUrl } from '../hooks/useEditableSourceUrl';
 
 interface Props {
   model: ModelFile | null;
@@ -49,16 +50,18 @@ export function DetailPanel({
   const [draft, setDraft] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [slicerMenuOpen, setSlicerMenuOpen] = useState(false);
-  const [editingSourceUrl, setEditingSourceUrl] = useState(false);
-  const [sourceUrlDraft, setSourceUrlDraft] = useState('');
-  const cancelingSourceUrlRef = useRef(false);
-  const editingModelIdRef = useRef<string | null>(null);
+  const {
+    editing: editingSourceUrl,
+    draft: sourceUrlDraft,
+    setDraft: setSourceUrlDraft,
+    startEditing: startEditingSourceUrl,
+    handleKeyDown: handleSourceUrlKeyDown,
+    handleBlur: handleSourceUrlBlur,
+  } = useEditableSourceUrl(model, onSetSourceUrl);
 
   useEffect(() => {
     setConfirmDelete(false);
     setSlicerMenuOpen(false);
-    setEditingSourceUrl(false);
-    cancelingSourceUrlRef.current = false;
   }, [model?.id]);
 
   if (!model) {
@@ -73,21 +76,6 @@ export function DetailPanel({
     const value = draft.trim().replace(/^#/, '');
     if (value) onAddTag(value);
     setDraft('');
-  };
-
-  const startEditingSourceUrl = () => {
-    cancelingSourceUrlRef.current = false;
-    editingModelIdRef.current = model.id;
-    setSourceUrlDraft(model.sourceUrl ?? '');
-    setEditingSourceUrl(true);
-  };
-
-  const submitSourceUrl = () => {
-    const fileId = editingModelIdRef.current;
-    if (!fileId) return;
-    const value = sourceUrlDraft.trim();
-    onSetSourceUrl(fileId, value || null);
-    setEditingSourceUrl(false);
   };
 
   const hasSlicers = slicers.length > 0;
@@ -239,20 +227,8 @@ export function DetailPanel({
                 <input
                   value={sourceUrlDraft}
                   onChange={(e) => setSourceUrlDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') submitSourceUrl();
-                    if (e.key === 'Escape') {
-                      cancelingSourceUrlRef.current = true;
-                      setEditingSourceUrl(false);
-                    }
-                  }}
-                  onBlur={() => {
-                    if (cancelingSourceUrlRef.current) {
-                      cancelingSourceUrlRef.current = false;
-                      return;
-                    }
-                    submitSourceUrl();
-                  }}
+                  onKeyDown={handleSourceUrlKeyDown}
+                  onBlur={handleSourceUrlBlur}
                   autoFocus
                   placeholder={t('sourceUrlPlaceholder')}
                   className="flex-1 min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 font-mono-ui text-xs"
@@ -479,20 +455,8 @@ export function DetailPanel({
               <input
                 value={sourceUrlDraft}
                 onChange={(e) => setSourceUrlDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') submitSourceUrl();
-                  if (e.key === 'Escape') {
-                    cancelingSourceUrlRef.current = true;
-                    setEditingSourceUrl(false);
-                  }
-                }}
-                onBlur={() => {
-                  if (cancelingSourceUrlRef.current) {
-                    cancelingSourceUrlRef.current = false;
-                    return;
-                  }
-                  submitSourceUrl();
-                }}
+                onKeyDown={handleSourceUrlKeyDown}
+                onBlur={handleSourceUrlBlur}
                 autoFocus
                 placeholder={t('sourceUrlPlaceholder')}
                 className="flex-1 min-w-0 px-2 py-1 rounded-md border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0"
