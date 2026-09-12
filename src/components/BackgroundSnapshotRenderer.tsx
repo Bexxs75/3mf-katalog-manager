@@ -3,6 +3,7 @@ import { ModelViewer } from './ModelViewer';
 interface Props {
   fileId: string;
   onSnapshotCaptured: (base64: string) => void;
+  onError: () => void;
 }
 
 /**
@@ -13,13 +14,13 @@ interface Props {
  * dazu fuehren, dass nie gerendert wird, daher opacity+position statt
  * display.
  */
-export function BackgroundSnapshotRenderer({ fileId, onSnapshotCaptured }: Props) {
+export function BackgroundSnapshotRenderer({ fileId, onSnapshotCaptured, onError }: Props) {
   return (
     <div
       style={{ position: 'fixed', top: -9999, left: -9999, width: 400, height: 300, opacity: 0, pointerEvents: 'none' }}
       aria-hidden="true"
     >
-      <ModelViewer fileId={fileId} needsSnapshot onSnapshotCaptured={onSnapshotCaptured} />
+      <ModelViewer fileId={fileId} needsSnapshot onSnapshotCaptured={onSnapshotCaptured} onError={onError} />
     </div>
   );
 }

@@ -10,6 +10,7 @@ interface Props {
   fileId: string;
   needsSnapshot: boolean;
   onSnapshotCaptured: (base64: string) => void;
+  onError?: () => void;
 }
 
 function frameObject(object: THREE.Object3D, camera: THREE.PerspectiveCamera, controls: OrbitControls) {
@@ -68,7 +69,7 @@ interface ViewerContext {
   currentObject: THREE.Object3D | null;
 }
 
-export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured }: Props) {
+export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError }: Props) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const ctxRef = useRef<ViewerContext | null>(null);
@@ -137,6 +138,7 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured }: Props
         disposeObject(ctxRef.current.currentObject);
       }
       material.dispose();
+      renderer.forceContextLoss();
       renderer.dispose();
       container.removeChild(renderer.domElement);
       ctxRef.current = null;
@@ -184,6 +186,7 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured }: Props
                 if (base64) onSnapshotCaptured(base64);
               } catch (err) {
                 console.error('[ModelViewer] Snapshot fehlgeschlagen:', err);
+                onError?.();
               }
             });
           });
@@ -191,7 +194,10 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured }: Props
       })
       .catch((err) => {
         console.error('[ModelViewer] Laden fehlgeschlagen:', err);
-        if (!cancelled) setStatus('error');
+        if (!cancelled) {
+          setStatus('error');
+          onError?.();
+        }
       });
 
     return () => {

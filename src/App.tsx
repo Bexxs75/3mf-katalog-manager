@@ -44,9 +44,10 @@ export default function App() {
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [detailModelId, setDetailModelId] = useState<string | null>(null);
   const [models, setModels] = useState<ModelFile[]>([]);
+  const [skippedSnapshotIds, setSkippedSnapshotIds] = useState<Set<string>>(new Set());
   const pendingSnapshotIds = useMemo(
-    () => models.filter((m) => m.renderSnapshotImage === null).map((m) => m.id),
-    [models],
+    () => models.filter((m) => m.renderSnapshotImage === null && !skippedSnapshotIds.has(m.id)).map((m) => m.id),
+    [models, skippedSnapshotIds],
   );
   const [folders, setFolders] = useState<Folder[]>([]);
   const [tags, setTags] = useState<TagCount[]>([]);
@@ -458,6 +459,7 @@ export default function App() {
           key={pendingSnapshotIds[0]}
           fileId={pendingSnapshotIds[0]}
           onSnapshotCaptured={(base64) => captureRenderSnapshot(pendingSnapshotIds[0], base64)}
+          onError={() => setSkippedSnapshotIds((prev) => new Set(prev).add(pendingSnapshotIds[0]))}
         />
       )}
       <Header
