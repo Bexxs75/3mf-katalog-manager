@@ -133,6 +133,7 @@ export const es: Translations = {
   sliceFilamentHeading: 'Consumo de filamento (del laminador)',
   sliceFilamentPlateLabel: 'Placa {index}',
   rescanMetadataButton: 'Volver a leer metadatos',
+  rescanMetadataSuccess: 'Metadatos actualizados.',
 
   sortLastViewed: 'Visto recientemente',
   newBadge: 'NUEVO',

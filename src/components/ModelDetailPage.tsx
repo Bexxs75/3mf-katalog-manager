@@ -6,7 +6,7 @@ import { ModelViewer } from './ModelViewer';
 import { resolveDisplayImage } from '../lib/resolveDisplayImage';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import { useEditableSourceUrl } from '../hooks/useEditableSourceUrl';
-import { formatWeightG } from '../i18n/format';
+import { formatWeightG, formatLengthM } from '../i18n/format';
 
 interface Props {
   model: ModelFile;
@@ -25,6 +25,7 @@ interface Props {
   slicers: SlicerConfig[];
   slicerError: string | null;
   rescanError: string | null;
+  rescanSuccess: boolean;
   displayPreference: DisplayPreference;
 }
 
@@ -45,6 +46,7 @@ export function ModelDetailPage({
   slicers,
   slicerError,
   rescanError,
+  rescanSuccess,
   displayPreference,
 }: Props) {
   const t = useT();
@@ -239,7 +241,7 @@ export function ModelDetailPage({
                       )}
                       <span className="text-[var(--ink-2)]">{filament.type}</span>
                       <span className="font-mono-ui tabular-nums text-[var(--ink-3)]">
-                        {formatWeightG(filament.usedG, language)}
+                        {formatWeightG(filament.usedG, language)} · {formatLengthM(filament.usedM, language)}
                       </span>
                     </div>
                   ))}
@@ -273,6 +275,9 @@ export function ModelDetailPage({
       </footer>
       {slicerError && <p className="text-[12.5px] text-red-400">{slicerError}</p>}
       {rescanError && <p className="text-[12.5px] text-red-400">{rescanError}</p>}
+      {rescanSuccess && (
+        <p className="text-[12.5px] text-[var(--good,var(--accent))]">{t('rescanMetadataSuccess')}</p>
+      )}
     </div>
   );
 }
