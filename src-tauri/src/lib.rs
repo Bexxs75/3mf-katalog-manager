@@ -61,6 +61,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::list_files,
             commands::list_folders,
+            commands::create_folder,
+            commands::move_file_to_folder,
             commands::list_tag_counts,
             commands::list_creators,
             commands::list_filament_spools,

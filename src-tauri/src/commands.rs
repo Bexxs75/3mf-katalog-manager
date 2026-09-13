@@ -656,6 +656,99 @@ fn move_file(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()
     }
 }
 
+/// Kernlogik von `move_file_to_folder`, getrennt von der `State<AppState>`-
+/// Huelle gehalten, damit sie in Tests direkt gegen eine In-Memory-`Connection`
+/// aufgerufen werden kann (gleiche Konvention wie `import_many_with_conn`/
+/// `rescan_file`).
+fn move_file_to_folder_with_conn(conn: &Connection, file_id: i64, folder_id: Option<i64>) -> CmdResult<()> {
+    let file = db::get_file(conn, file_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "file not found".to_string())?;
+
+    let target_dir: std::path::PathBuf = match folder_id {
+        Some(fid) => {
+            let folders = db::list_folders(conn).map_err(|e| e.to_string())?;
+            let folder = folders.iter().find(|f| f.id == fid).ok_or_else(|| "folder not found".to_string())?;
+            std::path::PathBuf::from(&folder.path)
+        }
+        None => std::path::Path::new(&file.path)
+            .parent()
+            .map(|p| p.to_path_buf())
+            .ok_or_else(|| "invalid current path".to_string())?,
+    };
+
+    let new_path = target_dir.join(&file.name);
+    move_file(std::path::Path::new(&file.path), &new_path).map_err(|e| e.to_string())?;
+
+    db::update_file_folder(conn, file_id, folder_id, &new_path.to_string_lossy())
+        .map_err(|e| e.to_string())
+}
+
+/// Verschiebt eine Datei physisch in das Verzeichnis eines (echten)
+/// Zielordners und aktualisiert `folder_id`/`path` in der DB entsprechend.
+/// `folder_id: None` bedeutet "an aktuellem Ort belassen" (siehe Hinweis
+/// im Task-4-Brief - es gibt keinen globalen Basisordner, an den man
+/// zurueckverschieben koennte; der Zweig bleibt fuer zukuenftige
+/// Erweiterung ohne API-Bruch implementiert).
+#[tauri::command]
+pub fn move_file_to_folder(state: State<AppState>, file_id: String, folder_id: Option<String>) -> CmdResult<()> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let target_id: Option<i64> = folder_id
+        .map(|s| s.parse::<i64>().map_err(|_| "invalid folder id".to_string()))
+        .transpose()?;
+
+    let conn = lock_db(&state)?;
+    move_file_to_folder_with_conn(&conn, id, target_id)
+}
+
+/// Legt einen echten Ordner auf der Platte an (unterhalb eines bestehenden
+/// Ordners, oder - bei `parent_id: None` - unterhalb eines vom Nutzer per
+/// Dialog gewaehlten Basisverzeichnisses) und eine dazu passende
+/// `folders`-Zeile. Schlaegt fehl, wenn der Zielpfad bereits existiert
+/// (`std::fs::create_dir`, kein `create_dir_all`).
+#[tauri::command]
+pub async fn create_folder(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    parent_id: Option<String>,
+    name: String,
+) -> CmdResult<FolderDto> {
+    let parent: Option<i64> = parent_id
+        .map(|s| s.parse::<i64>().map_err(|_| "invalid folder id".to_string()))
+        .transpose()?;
+
+    let new_dir = {
+        let conn = lock_db(&state)?;
+        match parent {
+            Some(pid) => {
+                let folders = db::list_folders(&conn).map_err(|e| e.to_string())?;
+                let parent_folder = folders.iter().find(|f| f.id == pid).ok_or_else(|| "folder not found".to_string())?;
+                std::path::PathBuf::from(&parent_folder.path).join(&name)
+            }
+            None => {
+                let picked = app.dialog().file().blocking_pick_folder();
+                let Some(picked) = picked else {
+                    return Err("cancelled".to_string());
+                };
+                picked.into_path().map_err(|e| e.to_string())?.join(&name)
+            }
+        }
+    };
+
+    std::fs::create_dir(&new_dir).map_err(|e| e.to_string())?;
+
+    let conn = lock_db(&state)?;
+    let new_id = db::insert_folder_with_parent(&conn, &name, parent, &new_dir.to_string_lossy())
+        .map_err(|e| e.to_string())?;
+    Ok(FolderDto {
+        id: new_id.to_string(),
+        name,
+        path: new_dir.to_string_lossy().to_string(),
+        parent_id: parent.map(|p| p.to_string()),
+        count: 0,
+    })
+}
+
 #[tauri::command]
 pub fn set_print_status(state: State<AppState>, file_id: String, status: String) -> CmdResult<()> {
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
@@ -2782,6 +2875,58 @@ mod tests {
         let files = db::list_files(&conn).unwrap();
         assert_eq!(files.len(), 1);
         assert!(files[0].folder_id.is_some());
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn move_file_to_folder_updates_path_and_db() {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+        use zip::ZipWriter;
+
+        fn write_minimal_3mf(path: &std::path::Path) {
+            let mut buf = Vec::new();
+            {
+                let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buf));
+                let options = SimpleFileOptions::default();
+                zip.start_file("[Content_Types].xml", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>"#).unwrap();
+                zip.start_file("_rels/.rels", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model"/></Relationships>"#).unwrap();
+                zip.start_file("3D/3dmodel.model", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources></resources><build></build></model>"#).unwrap();
+                zip.finish().unwrap();
+            }
+            std::fs::write(path, &buf).expect("write temp file");
+        }
+
+        let tmp = unique_test_dir("move_file_to_folder");
+        let src_dir = tmp.join("A");
+        let dst_dir = tmp.join("B");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::create_dir_all(&dst_dir).unwrap();
+        let file_path = src_dir.join("model.3mf");
+        write_minimal_3mf(&file_path);
+
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let imported = import_one(&mut conn, &file_path, None, None, None).expect("import should succeed");
+        let file_id: i64 = imported.id.parse().unwrap();
+
+        // Zielordner direkt per ensure_folder_path anlegen (kein
+        // Command-Roundtrip noetig) - dst_dir liegt unter tmp, also ist tmp
+        // hier der "import_root".
+        let folder_id = db::ensure_folder_path(&conn, &tmp, &dst_dir).expect("ensure_folder_path");
+
+        move_file_to_folder_with_conn(&conn, file_id, Some(folder_id)).expect("move should succeed");
+
+        let expected_path = dst_dir.join("model.3mf");
+        assert!(expected_path.exists(), "file must physically exist under dst_dir after move");
+        assert!(!file_path.exists(), "file must no longer exist at the original location");
+
+        let after = db::get_file(&conn, file_id).expect("get_file").expect("file exists");
+        assert_eq!(after.path, expected_path.to_string_lossy().to_string(), "db path must reflect the new location");
+        assert_eq!(after.folder_id, Some(folder_id), "db folder_id must reflect the target folder");
 
         let _ = std::fs::remove_dir_all(&tmp);
     }

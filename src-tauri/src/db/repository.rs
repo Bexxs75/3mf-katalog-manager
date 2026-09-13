@@ -165,6 +165,36 @@ fn folder_name(path: &Path) -> String {
         .unwrap_or_else(|| path.to_string_lossy().to_string())
 }
 
+/// Duenner Insert-Wrapper fuer `create_folder`: legt IMMER eine neue Zeile
+/// an (anders als `find_or_insert_folder`, das bei bereits existierendem
+/// `path` still die bestehende id zurueckgibt). Ein `create_folder`-Aufruf
+/// mit bereits existierendem Zielpfad soll fehlschlagen statt den
+/// bestehenden Ordner zurueckzugeben - in der Praxis schlaegt in diesem
+/// Fall aber schon `std::fs::create_dir` vorher mit `AlreadyExists` fehl,
+/// bevor diese Funktion ueberhaupt erreicht wird.
+pub fn insert_folder_with_parent(
+    conn: &Connection,
+    name: &str,
+    parent_id: Option<i64>,
+    path: &str,
+) -> Result<i64, DbError> {
+    conn.execute(
+        "INSERT INTO folders (name, parent_id, path) VALUES (?1, ?2, ?3)",
+        params![name, parent_id, path],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+/// Aktualisiert `folder_id` und `path` einer Datei nach einem physischen
+/// Verschieben (siehe `move_file_to_folder`-Command in `commands.rs`).
+pub fn update_file_folder(conn: &Connection, file_id: i64, folder_id: Option<i64>, path: &str) -> Result<(), DbError> {
+    conn.execute(
+        "UPDATE files SET folder_id = ?1, path = ?2 WHERE id = ?3",
+        params![folder_id, path, file_id],
+    )?;
+    Ok(())
+}
+
 fn find_or_insert_folder(
     conn: &Connection,
     path: &Path,
