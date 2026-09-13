@@ -195,6 +195,56 @@ pub fn update_file_folder(conn: &Connection, file_id: i64, folder_id: Option<i64
     Ok(())
 }
 
+/// Aktualisiert nur die `name`-Spalte eines Ordners (der physische
+/// `std::fs::rename` und das rekursive Pfad-Update via
+/// `update_paths_under_folder` passieren getrennt, siehe `rename_folder`-
+/// Command in `commands.rs`).
+pub fn rename_folder_name(conn: &Connection, folder_id: i64, name: &str) -> Result<(), DbError> {
+    conn.execute("UPDATE folders SET name = ?1 WHERE id = ?2", params![name, folder_id])?;
+    Ok(())
+}
+
+/// Aktualisiert nur die `parent_id`-Spalte eines Ordners (der physische
+/// `std::fs::rename` und das rekursive Pfad-Update via
+/// `update_paths_under_folder` passieren getrennt, siehe `move_folder`-
+/// Command in `commands.rs`).
+pub fn set_folder_parent(conn: &Connection, folder_id: i64, parent_id: Option<i64>) -> Result<(), DbError> {
+    conn.execute("UPDATE folders SET parent_id = ?1 WHERE id = ?2", params![parent_id, folder_id])?;
+    Ok(())
+}
+
+/// Rekursives Praefix-Update fuer `folders.path` UND `files.path`
+/// unterhalb eines Ordners, nachdem sich dessen eigener Pfad geaendert hat
+/// (Umbenennen oder Verschieben, siehe `rename_folder`/`move_folder`-
+/// Commands in `commands.rs`). `old_path`/`new_path` sind der alte bzw.
+/// neue absolute Pfad von `folder_id` selbst; Kind-Ordner und -Dateien
+/// werden per Praefix-Ersetzung mitgezogen, beliebig tief verschachtelt.
+pub fn update_paths_under_folder(
+    conn: &Connection,
+    folder_id: i64,
+    old_path: &str,
+    new_path: &str,
+) -> Result<(), DbError> {
+    conn.execute("UPDATE folders SET path = ?1 WHERE id = ?2", params![new_path, folder_id])?;
+    conn.execute(
+        "UPDATE files SET path = ?1 || substr(path, ?2) WHERE folder_id = ?3",
+        params![new_path, (old_path.len() + 1) as i64, folder_id],
+    )?;
+
+    let mut stmt = conn.prepare("SELECT id, path FROM folders WHERE parent_id = ?1")?;
+    let children: Vec<(i64, String)> = stmt
+        .query_map(params![folder_id], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(stmt);
+
+    for (child_id, child_old_path) in children {
+        let suffix = &child_old_path[old_path.len()..];
+        let child_new_path = format!("{new_path}{suffix}");
+        update_paths_under_folder(conn, child_id, &child_old_path, &child_new_path)?;
+    }
+    Ok(())
+}
+
 fn find_or_insert_folder(
     conn: &Connection,
     path: &Path,

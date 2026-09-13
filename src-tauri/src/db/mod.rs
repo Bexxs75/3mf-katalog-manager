@@ -13,9 +13,10 @@ pub use repository::{
     list_saved_filters, list_tag_counts,
     list_trash,
     mark_file_viewed, max_queue_position, purge_expired_trash, remove_tag_from_file, restore_file,
-    set_content_hash, set_custom_image_png, set_favorite, set_print_status, set_queue_position,
-    set_render_snapshot_png, set_source_url, soft_delete_file, update_file_folder,
-    update_filament_spool, update_scanned_metadata,
+    rename_folder_name, set_content_hash, set_custom_image_png, set_favorite, set_folder_parent,
+    set_print_status, set_queue_position, set_render_snapshot_png, set_source_url,
+    soft_delete_file, update_file_folder, update_filament_spool, update_paths_under_folder,
+    update_scanned_metadata,
 };
 
 #[cfg(test)]

@@ -63,6 +63,8 @@ pub fn run() {
             commands::list_folders,
             commands::create_folder,
             commands::move_file_to_folder,
+            commands::rename_folder,
+            commands::move_folder,
             commands::list_tag_counts,
             commands::list_creators,
             commands::list_filament_spools,

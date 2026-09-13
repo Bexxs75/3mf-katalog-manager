@@ -749,6 +749,91 @@ pub async fn create_folder(
     })
 }
 
+/// Kernlogik von `rename_folder`, getrennt von der `State<AppState>`-Huelle
+/// gehalten, damit sie in Tests direkt gegen eine In-Memory-`Connection`
+/// aufgerufen werden kann (gleiche Konvention wie `move_file_to_folder_with_conn`).
+fn rename_folder_with_conn(conn: &Connection, id: i64, name: String) -> CmdResult<()> {
+    let folders = db::list_folders(conn).map_err(|e| e.to_string())?;
+    let folder = folders.iter().find(|f| f.id == id).ok_or_else(|| "folder not found".to_string())?;
+
+    let old_path = std::path::PathBuf::from(&folder.path);
+    let new_path = old_path.with_file_name(&name);
+
+    std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())?;
+    db::rename_folder_name(conn, id, &name).map_err(|e| e.to_string())?;
+    db::update_paths_under_folder(conn, id, &folder.path, &new_path.to_string_lossy()).map_err(|e| e.to_string())
+}
+
+/// Benennt einen echten Ordner auf der Platte um (`std::fs::rename`) und
+/// aktualisiert `folders.name` sowie rekursiv `folders.path`/`files.path`
+/// fuer den Ordner selbst und alle Nachfahren (beliebige Tiefe).
+#[tauri::command]
+pub fn rename_folder(state: State<AppState>, folder_id: String, name: String) -> CmdResult<()> {
+    let id: i64 = folder_id.parse().map_err(|_| "invalid folder id".to_string())?;
+    let conn = lock_db(&state)?;
+    rename_folder_with_conn(&conn, id, name)
+}
+
+/// Prueft, ob `candidate_id` ein (direkter oder indirekter) Nachfahre von
+/// `ancestor_id` ist, indem die `parent_id`-Kette von `candidate_id` aus
+/// nach oben verfolgt wird, bis entweder `ancestor_id` gefunden wird oder
+/// die Wurzel (`parent_id == None`) erreicht ist.
+fn is_descendant(folders: &[db::models::FolderRecord], candidate_id: i64, ancestor_id: i64) -> bool {
+    let mut current = candidate_id;
+    while let Some(f) = folders.iter().find(|f| f.id == current) {
+        match f.parent_id {
+            Some(pid) if pid == ancestor_id => return true,
+            Some(pid) => current = pid,
+            None => return false,
+        }
+    }
+    false
+}
+
+/// Kernlogik von `move_folder`, getrennt von der `State<AppState>`-Huelle
+/// gehalten, damit sie in Tests direkt gegen eine In-Memory-`Connection`
+/// aufgerufen werden kann.
+fn move_folder_with_conn(conn: &Connection, id: i64, target: Option<i64>) -> CmdResult<()> {
+    let folders = db::list_folders(conn).map_err(|e| e.to_string())?;
+    let folder = folders.iter().find(|f| f.id == id).ok_or_else(|| "folder not found".to_string())?.clone();
+
+    if let Some(target_id) = target {
+        if target_id == id || is_descendant(&folders, target_id, id) {
+            return Err("Ein Ordner kann nicht in einen eigenen Unterordner verschoben werden".to_string());
+        }
+    }
+
+    let new_parent_path = match target {
+        Some(target_id) => folders.iter().find(|f| f.id == target_id).map(|f| f.path.clone()),
+        None => std::path::Path::new(&folder.path).parent().map(|p| p.to_string_lossy().to_string()),
+    }
+    .ok_or_else(|| "target folder not found".to_string())?;
+
+    let old_path = std::path::PathBuf::from(&folder.path);
+    let new_path = std::path::PathBuf::from(&new_parent_path).join(&folder.name);
+
+    std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())?;
+    db::set_folder_parent(conn, id, target).map_err(|e| e.to_string())?;
+    db::update_paths_under_folder(conn, id, &folder.path, &new_path.to_string_lossy()).map_err(|e| e.to_string())
+}
+
+/// Verschiebt einen echten Ordner auf der Platte (`std::fs::rename`) unter
+/// einen anderen Elternordner (oder, bei `new_parent_id: None`, an die
+/// Wurzel des aktuellen Elternverzeichnisses) und aktualisiert
+/// `folders.parent_id` sowie rekursiv `folders.path`/`files.path` fuer den
+/// Ordner selbst und alle Nachfahren. Lehnt Zyklen ab (Verschieben in den
+/// eigenen Unterordner oder in sich selbst).
+#[tauri::command]
+pub fn move_folder(state: State<AppState>, folder_id: String, new_parent_id: Option<String>) -> CmdResult<()> {
+    let id: i64 = folder_id.parse().map_err(|_| "invalid folder id".to_string())?;
+    let target: Option<i64> = new_parent_id
+        .map(|s| s.parse::<i64>().map_err(|_| "invalid folder id".to_string()))
+        .transpose()?;
+
+    let conn = lock_db(&state)?;
+    move_folder_with_conn(&conn, id, target)
+}
+
 #[tauri::command]
 pub fn set_print_status(state: State<AppState>, file_id: String, status: String) -> CmdResult<()> {
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
@@ -2927,6 +3012,177 @@ mod tests {
         let after = db::get_file(&conn, file_id).expect("get_file").expect("file exists");
         assert_eq!(after.path, expected_path.to_string_lossy().to_string(), "db path must reflect the new location");
         assert_eq!(after.folder_id, Some(folder_id), "db folder_id must reflect the target folder");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn move_folder_rejects_moving_into_own_descendant() {
+        // Baum A -> B (zwei Ebenen genuegen fuer den Zyklus-Check selbst,
+        // da is_descendant die parent_id-Kette beliebig weit hochlaeuft).
+        let tmp = unique_test_dir("move_folder_cycle");
+        let a_dir = tmp.join("A");
+        let b_dir = a_dir.join("B");
+        std::fs::create_dir_all(&b_dir).unwrap();
+
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let a_id = db::insert_folder_with_parent(&conn, "A", None, &a_dir.to_string_lossy()).expect("insert A");
+        let b_id = db::insert_folder_with_parent(&conn, "B", Some(a_id), &b_dir.to_string_lossy()).expect("insert B");
+
+        let result = move_folder_with_conn(&conn, a_id, Some(b_id));
+        assert!(result.is_err(), "moving A into its own descendant B must be rejected");
+
+        // Weder Platte noch DB duerfen veraendert worden sein.
+        assert!(a_dir.exists());
+        assert!(b_dir.exists());
+        let folders = db::list_folders(&conn).expect("list_folders");
+        let a_after = folders.iter().find(|f| f.id == a_id).expect("A still present");
+        assert_eq!(a_after.parent_id, None, "A's parent_id must be unchanged after rejected move");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn move_folder_updates_all_descendant_paths() {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+        use zip::ZipWriter;
+
+        fn write_minimal_3mf(path: &std::path::Path) {
+            let mut buf = Vec::new();
+            {
+                let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buf));
+                let options = SimpleFileOptions::default();
+                zip.start_file("[Content_Types].xml", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>"#).unwrap();
+                zip.start_file("_rels/.rels", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model"/></Relationships>"#).unwrap();
+                zip.start_file("3D/3dmodel.model", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources></resources><build></build></model>"#).unwrap();
+                zip.finish().unwrap();
+            }
+            std::fs::write(path, &buf).expect("write temp file");
+        }
+
+        // Baum A/B/C (drei Ebenen), Datei liegt in C, plus ein separater
+        // Zielordner X. move_folder(B, Some(X)) haengt B (und damit C und
+        // die Datei darunter) physisch unter X um - eine 2-Ebenen-
+        // Konstruktion wuerde einen Rekursionsfehler in
+        // update_paths_under_folder nicht zuverlaessig aufdecken.
+        let tmp = unique_test_dir("move_folder_descendants");
+        let a_dir = tmp.join("A");
+        let b_dir = a_dir.join("B");
+        let c_dir = b_dir.join("C");
+        let x_dir = tmp.join("X");
+        std::fs::create_dir_all(&c_dir).unwrap();
+        std::fs::create_dir_all(&x_dir).unwrap();
+        let file_path = c_dir.join("model.3mf");
+        write_minimal_3mf(&file_path);
+
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let a_id = db::insert_folder_with_parent(&conn, "A", None, &a_dir.to_string_lossy()).expect("insert A");
+        let b_id = db::insert_folder_with_parent(&conn, "B", Some(a_id), &b_dir.to_string_lossy()).expect("insert B");
+        let c_id = db::insert_folder_with_parent(&conn, "C", Some(b_id), &c_dir.to_string_lossy()).expect("insert C");
+        let x_id = db::insert_folder_with_parent(&conn, "X", None, &x_dir.to_string_lossy()).expect("insert X");
+
+        let imported = import_one(&mut conn, &file_path, None, None, Some(c_id)).expect("import should succeed");
+        let file_id: i64 = imported.id.parse().unwrap();
+
+        move_folder_with_conn(&conn, b_id, Some(x_id)).expect("move should succeed");
+
+        let expected_b_dir = x_dir.join("B");
+        let expected_c_dir = expected_b_dir.join("C");
+        let expected_file_path = expected_c_dir.join("model.3mf");
+
+        assert!(expected_b_dir.exists(), "B must physically exist under X after move");
+        assert!(expected_c_dir.exists(), "C must physically exist under the new B location");
+        assert!(expected_file_path.exists(), "file must physically exist under the new C location");
+        assert!(!a_dir.join("B").exists(), "B must no longer exist under its old parent A");
+
+        let folders = db::list_folders(&conn).expect("list_folders");
+        let b_after = folders.iter().find(|f| f.id == b_id).expect("B present");
+        assert_eq!(b_after.parent_id, Some(x_id), "B's parent_id must now be X");
+        assert_eq!(b_after.path, expected_b_dir.to_string_lossy().to_string());
+
+        let c_after = folders.iter().find(|f| f.id == c_id).expect("C present");
+        assert_eq!(c_after.path, expected_c_dir.to_string_lossy().to_string(), "C's path must carry the new B prefix");
+
+        let file_after = db::get_file(&conn, file_id).expect("get_file").expect("file exists");
+        assert_eq!(
+            file_after.path,
+            expected_file_path.to_string_lossy().to_string(),
+            "file path must carry the new B/C prefix"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn rename_folder_updates_own_and_descendant_paths() {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+        use zip::ZipWriter;
+
+        fn write_minimal_3mf(path: &std::path::Path) {
+            let mut buf = Vec::new();
+            {
+                let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buf));
+                let options = SimpleFileOptions::default();
+                zip.start_file("[Content_Types].xml", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>"#).unwrap();
+                zip.start_file("_rels/.rels", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model"/></Relationships>"#).unwrap();
+                zip.start_file("3D/3dmodel.model", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources></resources><build></build></model>"#).unwrap();
+                zip.finish().unwrap();
+            }
+            std::fs::write(path, &buf).expect("write temp file");
+        }
+
+        // Baum A/B/C, Datei in C. rename_folder(B, "B2") muss B's eigenen
+        // Pfad UND den Pfad von C sowie der Datei darunter mitziehen -
+        // wieder drei Ebenen, damit die Rekursion tatsaechlich greift.
+        let tmp = unique_test_dir("rename_folder_descendants");
+        let a_dir = tmp.join("A");
+        let b_dir = a_dir.join("B");
+        let c_dir = b_dir.join("C");
+        std::fs::create_dir_all(&c_dir).unwrap();
+        let file_path = c_dir.join("model.3mf");
+        write_minimal_3mf(&file_path);
+
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let a_id = db::insert_folder_with_parent(&conn, "A", None, &a_dir.to_string_lossy()).expect("insert A");
+        let b_id = db::insert_folder_with_parent(&conn, "B", Some(a_id), &b_dir.to_string_lossy()).expect("insert B");
+        let c_id = db::insert_folder_with_parent(&conn, "C", Some(b_id), &c_dir.to_string_lossy()).expect("insert C");
+
+        let imported = import_one(&mut conn, &file_path, None, None, Some(c_id)).expect("import should succeed");
+        let file_id: i64 = imported.id.parse().unwrap();
+
+        rename_folder_with_conn(&conn, b_id, "B2".to_string()).expect("rename should succeed");
+
+        let expected_b_dir = a_dir.join("B2");
+        let expected_c_dir = expected_b_dir.join("C");
+        let expected_file_path = expected_c_dir.join("model.3mf");
+
+        assert!(expected_b_dir.exists(), "B2 must physically exist");
+        assert!(expected_c_dir.exists(), "C must physically exist under the renamed B2");
+        assert!(expected_file_path.exists(), "file must physically exist under the renamed B2/C");
+        assert!(!b_dir.exists(), "old B directory must no longer exist");
+
+        let folders = db::list_folders(&conn).expect("list_folders");
+        let b_after = folders.iter().find(|f| f.id == b_id).expect("B present");
+        assert_eq!(b_after.name, "B2");
+        assert_eq!(b_after.path, expected_b_dir.to_string_lossy().to_string());
+
+        let c_after = folders.iter().find(|f| f.id == c_id).expect("C present");
+        assert_eq!(c_after.path, expected_c_dir.to_string_lossy().to_string(), "C's path must carry the new B2 prefix");
+
+        let file_after = db::get_file(&conn, file_id).expect("get_file").expect("file exists");
+        assert_eq!(
+            file_after.path,
+            expected_file_path.to_string_lossy().to_string(),
+            "file path must carry the new B2/C prefix"
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
