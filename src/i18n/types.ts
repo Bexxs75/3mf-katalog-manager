@@ -46,6 +46,7 @@ export interface Translations {
 
   searchPlaceholder: string;
   foldersHeading: string;
+  allModelsLabel: string;
   tagsHeading: string;
 
   previewLabel3d: string;

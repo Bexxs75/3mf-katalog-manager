@@ -19,6 +19,7 @@ import { useUiDensity } from './hooks/UiDensityContext';
 import { useSlicers } from './hooks/useSlicers';
 import { useDisplayPreference } from './hooks/useDisplayPreference';
 import { useT } from './i18n/LanguageContext';
+import { isFileInFolderOrDescendant } from './lib/folderTree';
 import type { ModelFile, Folder, TagCount, CreatorCount, ViewMode, SortKey, SavedFilter, CatalogIssues, Collection } from './types';
 
 interface ImportResultDto {
@@ -185,7 +186,7 @@ export default function App() {
 
   const filtered = useMemo(() => {
     return models
-      .filter((m) => activeFolderId === 'all' || m.folderId === activeFolderId)
+      .filter((m) => activeFolderId === 'all' || isFileInFolderOrDescendant(m.folderId, activeFolderId, folders))
       .filter((m) => !activeTag || m.tags.includes(activeTag))
       .filter((m) => !activeCreator || m.creator === activeCreator)
       .filter((m) => !query || m.name.toLowerCase().includes(query.toLowerCase()))
@@ -196,7 +197,7 @@ export default function App() {
         if (sort === 'viewed') return (b.lastViewedAt ?? '').localeCompare(a.lastViewedAt ?? '');
         return 0;
       });
-  }, [models, activeFolderId, activeTag, activeCreator, query, sort]);
+  }, [models, activeFolderId, activeTag, activeCreator, query, sort, folders]);
 
   const queue = useMemo(
     () =>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Folder, TagCount, CreatorCount, ModelFile, SavedFilter } from '../types';
 import { useT } from '../i18n/LanguageContext';
+import { FolderTree } from './FolderTree';
 
 interface Props {
   query: string;
@@ -101,22 +102,7 @@ export function Sidebar({
         <div className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)] px-1.5 pb-2">
           {t('foldersHeading')}
         </div>
-        {folders.map((f) => (
-          <div
-            key={f.id}
-            onClick={() => onFolderSelect(f.id)}
-            className={`flex items-center gap-2 h-8 px-1.5 rounded-[3px] text-[length:var(--font-size-body)] cursor-pointer ${
-              f.id === activeFolderId
-                ? 'bg-[var(--panel-2)] text-[var(--ink)]'
-                : 'text-[var(--ink-2)] hover:text-[var(--ink)]'
-            }`}
-          >
-            <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
-              {f.name}
-            </span>
-            <span className="font-mono-ui text-[11px] text-[var(--ink-3)]">{f.count}</span>
-          </div>
-        ))}
+        <FolderTree folders={folders} activeFolderId={activeFolderId} onSelect={onFolderSelect} />
 
         <div
           onClick={() => setQueueCollapsed((c) => !c)}

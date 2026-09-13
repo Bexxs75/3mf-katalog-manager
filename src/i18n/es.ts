@@ -41,6 +41,7 @@ export const es: Translations = {
 
   searchPlaceholder: 'Buscar nombre o etiqueta …',
   foldersHeading: 'Carpetas',
+  allModelsLabel: 'Todos los modelos',
   tagsHeading: 'Etiquetas',
 
   previewLabel3d: 'Vista previa 3D',
