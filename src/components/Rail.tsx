@@ -30,6 +30,8 @@ interface Props {
   onExportCatalog: () => void;
   onImportCatalog: () => void;
   catalogBackupError: string | null;
+  catalogBaseDir: string | null;
+  onOpenCatalogSetup: () => void;
 }
 
 const railBtnBase =
@@ -70,6 +72,8 @@ export function Rail({
   onExportCatalog,
   onImportCatalog,
   catalogBackupError,
+  catalogBaseDir,
+  onOpenCatalogSetup,
 }: Props) {
   const t = useT();
   const { language, setLanguage } = useLanguage();
@@ -361,6 +365,27 @@ export function Rail({
                 {catalogBackupError}
               </div>
             )}
+
+            <div className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-2">{t('catalogBaseDirSectionTitle')}</div>
+            <div className="font-mono-ui text-[10.5px] text-[var(--ink-3)] truncate mb-1.5">
+              {catalogBaseDir ?? t('catalogBaseDirNotSet')}
+            </div>
+            <div className="flex gap-1.5">
+              <button
+                onClick={onOpenCatalogSetup}
+                className="flex-1 h-7 rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              >
+                {catalogBaseDir ? t('catalogBaseDirChangeButton') : t('catalogBaseDirSetupButton')}
+              </button>
+              {catalogBaseDir && (
+                <button
+                  onClick={() => invoke('open_in_file_manager', { path: catalogBaseDir })}
+                  className="flex-1 h-7 rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                >
+                  {t('catalogBaseDirOpenButton')}
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>

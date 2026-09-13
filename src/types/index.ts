@@ -64,6 +64,11 @@ export interface Folder {
   count: number;
 }
 
+export interface ImportResultDto {
+  imported: ModelFile[];
+  duplicateCount: number;
+}
+
 export interface TagCount {
   label: string;
   count: number;

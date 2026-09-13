@@ -21,12 +21,9 @@ import { useDisplayPreference } from './hooks/useDisplayPreference';
 import { useT } from './i18n/LanguageContext';
 import { isFileInFolderOrDescendant, isFolderSelfOrDescendant } from './lib/folderTree';
 import { MoveToast } from './components/MoveToast';
-import type { ModelFile, Folder, TagCount, CreatorCount, ViewMode, SortKey, SavedFilter, CatalogIssues, Collection } from './types';
-
-interface ImportResultDto {
-  imported: ModelFile[];
-  duplicateCount: number;
-}
+import { CatalogSetupDialog } from './components/CatalogSetupDialog';
+import { useCatalogBaseDir } from './hooks/useCatalogBaseDir';
+import type { ModelFile, Folder, TagCount, CreatorCount, ViewMode, SortKey, SavedFilter, CatalogIssues, Collection, ImportResultDto } from './types';
 
 export default function App() {
   const { setting, setTheme } = useTheme();
@@ -34,6 +31,8 @@ export default function App() {
   const { density, setDensity } = useUiDensity();
   const { slicers, lastUsedId, addSlicer, removeSlicer, setLastUsed, mergeDetected } = useSlicers();
   const { preference: displayPreference, setPreference: setDisplayPreference } = useDisplayPreference();
+  const { catalogBaseDir, setCatalogBaseDir, setupSeen, markSetupSeen } = useCatalogBaseDir();
+  const [setupDialogOpen, setSetupDialogOpen] = useState(!setupSeen);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [slicerError, setSlicerError] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>('grid');
@@ -342,7 +341,28 @@ export default function App() {
     invoke('remove_tag', { fileId: id, tag }).then(refreshTags);
   };
 
-  const importFiles = () => invoke<ImportResultDto>('import_files').then(mergeImported);
+  const importFiles = () =>
+    invoke<ImportResultDto>('import_files').then(async (result) => {
+      mergeImported(result);
+      if (catalogBaseDir) {
+        let targetFolder: string | undefined = activeFolderId !== 'all' ? activeFolderId : undefined;
+        if (!targetFolder) {
+          const freshFolders = await invoke<Folder[]>('list_folders');
+          targetFolder = freshFolders.find((f) => f.path === catalogBaseDir && !f.parentId)?.id;
+        }
+        if (targetFolder) {
+          await Promise.all(
+            result.imported.map((file) =>
+              invoke('move_file_to_folder', { fileId: file.id, folderId: targetFolder }).catch((e) =>
+                console.error('[import] Einsortieren fehlgeschlagen:', e),
+              ),
+            ),
+          );
+          refreshFolders();
+          refreshFiles();
+        }
+      }
+    });
   const importFolder = () => invoke<ImportResultDto>('import_folder').then(mergeImported);
   const importFolderAsCollection = () =>
     invoke<ImportResultDto>('import_folder_as_collection').then(mergeImported).then(() => refreshCollections());
@@ -729,6 +749,8 @@ export default function App() {
         onExportCatalog={exportCatalog}
         onImportCatalog={importCatalog}
         catalogBackupError={catalogBackupError}
+        catalogBaseDir={catalogBaseDir}
+        onOpenCatalogSetup={() => setSetupDialogOpen(true)}
       />
       <div className="flex-1 min-w-0 flex flex-col min-h-0">
 
@@ -1107,6 +1129,23 @@ export default function App() {
       )}
       </div>
       </div>
+      {setupDialogOpen && (
+        <CatalogSetupDialog
+          onClose={() => setSetupDialogOpen(false)}
+          onLater={() => {
+            markSetupSeen();
+            setSetupDialogOpen(false);
+          }}
+          onImported={(result) => {
+            markSetupSeen();
+            mergeImported(result);
+          }}
+          onBaseDirSet={(path) => {
+            setCatalogBaseDir(path);
+            markSetupSeen();
+          }}
+        />
+      )}
     </div>
   );
 }
