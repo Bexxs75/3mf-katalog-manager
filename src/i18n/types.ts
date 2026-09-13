@@ -46,6 +46,7 @@ export interface Translations {
 
   searchPlaceholder: string;
   foldersHeading: string;
+  allModelsLabel: string;
   tagsHeading: string;
 
   previewLabel3d: string;
@@ -218,6 +219,9 @@ export interface Translations {
   noCollectionsEmptyState: string;
   createCollectionLabel: string;
   importFolderAsCollectionOption: string;
+
+  createFolderLabel: string;
+  newFolderPlaceholder: string;
 }
 
 export function formatCount(forms: PluralForms, n: number): string {

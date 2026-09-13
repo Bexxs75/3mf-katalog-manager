@@ -20,9 +20,10 @@ interface Props {
   displayPreference: DisplayPreference;
   reorderable?: boolean;
   onReorder?: (orderedIds: string[]) => void;
+  onDragFileStart?: (id: string) => void;
 }
 
-export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContextMenu, onToggleFavorite, readOnly, selectedForBulk, onToggleBulkSelect, displayPreference, reorderable, onReorder }: Props) {
+export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContextMenu, onToggleFavorite, readOnly, selectedForBulk, onToggleBulkSelect, displayPreference, reorderable, onReorder, onDragFileStart }: Props) {
   const t = useT();
   const { density } = useUiDensity();
   const { language } = useLanguage();
@@ -74,6 +75,52 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
     };
   }, [reorderable, dragIndex, overIndex, dragArmed, models, onReorder]);
 
+  // Karten als Drag-Quelle fuer physisches Verschieben in einen Ordner
+  // (normale Katalog-Ansicht, `reorderable` ist dort false/undefined - die
+  // beiden Mechanismen schliessen sich pro Ansicht gegenseitig aus). Gleiches
+  // Schwellenwert-Muster wie oben (`DRAG_THRESHOLD_PX`), damit ein normaler
+  // Klick (Auswahl/Detailseite oeffnen) nicht versehentlich als Drag zaehlt.
+  // `draggedFileId` selbst lebt in App.tsx (globaler mouseup-Handler dort
+  // loest den `move_file_to_folder`-Call aus) - hier wird nur einmalig
+  // `onDragFileStart` gefeuert, sobald die Bewegung die Schwelle ueberschreitet.
+  const [fileDragCandidateId, setFileDragCandidateId] = useState<string | null>(null);
+  const [fileDragArmed, setFileDragArmed] = useState(false);
+  const fileDragStartPos = useRef<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    if (reorderable || !fileDragCandidateId) return;
+    const handleMouseMove = (e: MouseEvent) => {
+      if (fileDragArmed || !fileDragStartPos.current) return;
+      const dx = e.clientX - fileDragStartPos.current.x;
+      const dy = e.clientY - fileDragStartPos.current.y;
+      if (Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX) {
+        setFileDragArmed(true);
+        onDragFileStart?.(fileDragCandidateId);
+      }
+    };
+    const handleMouseUp = () => {
+      setFileDragCandidateId(null);
+      setFileDragArmed(false);
+      fileDragStartPos.current = null;
+    };
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [reorderable, fileDragCandidateId, fileDragArmed, onDragFileStart]);
+
+  const handleCardMouseDown = (e: { clientX: number; clientY: number }, id: string) => {
+    if (reorderable) {
+      dragStartPos.current = { x: e.clientX, y: e.clientY };
+      setDragIndex(models.findIndex((x) => x.id === id));
+    } else if (onDragFileStart) {
+      fileDragStartPos.current = { x: e.clientX, y: e.clientY };
+      setFileDragCandidateId(id);
+    }
+  };
+
   function renderCompactCard(m: ModelFile) {
     return (
       <div
@@ -85,15 +132,11 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
           onSelect(m.id);
           onContextMenu(m.id, e.clientX, e.clientY);
         }}
-        onMouseDown={(e) => {
-          if (!reorderable) return;
-          dragStartPos.current = { x: e.clientX, y: e.clientY };
-          setDragIndex(models.findIndex((x) => x.id === m.id));
-        }}
+        onMouseDown={(e) => handleCardMouseDown(e, m.id)}
         onMouseEnter={() => reorderable && dragIndex !== null && setOverIndex(models.findIndex((x) => x.id === m.id))}
         className={`rounded-[10px] overflow-hidden border cursor-pointer ${
           m.id === selectedId ? 'border-[var(--accent)]' : 'border-[var(--line)]'
-        }`}
+        } ${fileDragArmed && fileDragCandidateId === m.id ? 'opacity-50' : ''}`}
       >
         <div className="relative aspect-square bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
           {!readOnly && (
@@ -190,15 +233,11 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
               onSelect(m.id);
               onContextMenu(m.id, e.clientX, e.clientY);
             }}
-            onMouseDown={(e) => {
-              if (!reorderable) return;
-              dragStartPos.current = { x: e.clientX, y: e.clientY };
-              setDragIndex(models.findIndex((x) => x.id === m.id));
-            }}
+            onMouseDown={(e) => handleCardMouseDown(e, m.id)}
             onMouseEnter={() => reorderable && dragIndex !== null && setOverIndex(models.findIndex((x) => x.id === m.id))}
             className={`rounded-[10px] overflow-hidden cursor-pointer bg-[var(--panel)] shadow-[var(--shadow)] border-2 ${
               m.id === selectedId ? 'border-[var(--accent)]' : 'border-transparent'
-            }`}
+            } ${fileDragArmed && fileDragCandidateId === m.id ? 'opacity-50' : ''}`}
           >
             <div className="h-[5px]" style={{ background: 'linear-gradient(90deg, var(--accent), var(--accent-soft))' }} />
             <div className="relative aspect-square bg-[var(--plate)] overflow-hidden">

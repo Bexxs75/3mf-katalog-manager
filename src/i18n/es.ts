@@ -41,6 +41,7 @@ export const es: Translations = {
 
   searchPlaceholder: 'Buscar nombre o etiqueta …',
   foldersHeading: 'Carpetas',
+  allModelsLabel: 'Todos los modelos',
   tagsHeading: 'Etiquetas',
 
   previewLabel3d: 'Vista previa 3D',
@@ -214,4 +215,7 @@ export const es: Translations = {
   noCollectionsEmptyState: 'Aún no hay colecciones.',
   createCollectionLabel: '+ Nueva colección',
   importFolderAsCollectionOption: 'Importar carpeta como colección',
+
+  createFolderLabel: '+ Nueva carpeta',
+  newFolderPlaceholder: 'Nombre de la carpeta',
 };
