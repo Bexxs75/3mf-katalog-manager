@@ -2,6 +2,24 @@ export type Origin = 'local';
 
 export type SyncStatus = 'local-only';
 
+export interface FilamentUsage {
+  type: string;
+  color: string | null;
+  usedG: number;
+  usedM: number;
+}
+
+export interface PlateFilamentUsage {
+  plateIndex: number;
+  weightG: number;
+  filaments: FilamentUsage[];
+}
+
+export interface SliceInfo {
+  totalWeightG: number;
+  plates: PlateFilamentUsage[];
+}
+
 export interface ModelFile {
   id: string;
   name: string;
@@ -19,6 +37,8 @@ export interface ModelFile {
   importedAt: string;
   printStatus: 'not_printed' | 'printed';
   estimatedWeightG: number | null;
+  weightSource: 'slicer' | 'estimated';
+  sliceInfo: SliceInfo | null;
   lastViewedAt: string | null;
   creator: string | null;
   customImage: string | null;
