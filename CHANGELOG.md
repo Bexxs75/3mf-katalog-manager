@@ -7,6 +7,10 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
+### Security
+
+- Path-Traversal in `create_folder`/`rename_folder` behoben (CWE-22, gefunden bei Review gegen ISO/IEC 27002 A.8.28): der Ordnername wurde ungeprüft in Pfad-Operationen übernommen, wodurch z. B. `../../etc/x` oder ein absoluter Pfad einen echten Verzeichnis-Vorgang weit außerhalb des Katalog-Ordnerbaums hätte auslösen können — bei `create_folder` direkt über das "+ Neuer Ordner"-Eingabefeld erreichbar. Neuer gemeinsamer Validierungs-Helfer lehnt Pfad-Trenner, `.`/`..` sowie leere Namen ab. Zusätzlich prüft `open_in_file_manager` jetzt, dass der übergebene Pfad ein echtes existierendes Verzeichnis ist
+
 ## [0.7.0] - 2026-09-13
 
 ### Added
@@ -189,6 +193,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
 ## [Unreleased]
+
+### Security
+
+- Fixed path traversal in `create_folder`/`rename_folder` (CWE-22, found during a review against ISO/IEC 27002 A.8.28): the folder name was used in path operations without validation, so a value like `../../etc/x` or an absolute path could have triggered a real directory operation far outside the catalog's folder tree — directly reachable via the existing "+ New folder" input field for `create_folder`. A new shared validation helper now rejects path separators, `.`/`..`, and empty names. `open_in_file_manager` additionally now verifies the given path is a real, existing directory before opening it
 
 ## [0.7.0] - 2026-09-13
 
