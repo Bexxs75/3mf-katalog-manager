@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS files (
     queue_position INTEGER,
     favorite INTEGER NOT NULL DEFAULT 0,
     plate_count INTEGER,
+    slice_info_json TEXT,
     deleted_at TEXT,
     trash_path TEXT
 );
