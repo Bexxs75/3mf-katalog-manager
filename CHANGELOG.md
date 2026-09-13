@@ -9,6 +9,10 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 Kein Release getaggt — `0.6.0` ist der aktuelle Arbeitsstand.
 
+### Added
+
+- Filamentverbrauch aus gesliceten OrcaSlicer/Bambu-Studio-3mf-Dateien: liest `Metadata/slice_info.config` beim Import mit aus und zeigt auf der Modell-Detailseite das echte, vom Slicer berechnete Gewicht statt der bisherigen groben Schätzung aus Volumen × Materialdichte — inklusive Aufschlüsselung pro Druckplatte und Filament (Typ, Farbe, Gramm, Meter). Neuer Button "Metadaten neu einlesen" liest eine bereits katalogisierte Datei erneut vom Pfad ein, falls sie inzwischen in OrcaSlicer/Bambu Studio gesliced und überschrieben wurde (inkl. sichtbarer Erfolgsmeldung, Fehler/Erfolg sind pro Modell gescoped). Bewusst außerhalb des Scopes: Live-Drucker-Anbindung, Headless-Slicing, automatischer Abzug vom Filament-Lager
+
 ## [0.6.0] - 2026-09-12
 
 ### Added
