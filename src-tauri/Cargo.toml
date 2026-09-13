@@ -2,7 +2,8 @@
 name = "mf-katalog-manager"
 version = "0.7.2"
 description = "A Tauri App"
-authors = ["you"]
+authors = ["Bexxs75"]
+license = "MIT"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

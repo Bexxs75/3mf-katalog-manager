@@ -85,7 +85,7 @@ docs/              Zusätzliche Dokumentation
 
 ## Lizenz
 
-Noch nicht festgelegt.
+MIT — siehe [LICENSE](LICENSE).
 
 ---
 
@@ -176,4 +176,4 @@ docs/              Additional documentation
 
 ## License
 
-Not yet decided.
+MIT — see [LICENSE](LICENSE).
