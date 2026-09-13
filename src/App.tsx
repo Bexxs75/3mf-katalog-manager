@@ -254,6 +254,20 @@ export default function App() {
     });
   };
 
+  const [rescanError, setRescanError] = useState<string | null>(null);
+
+  const rescanMetadata = (id: string) => {
+    setRescanError(null);
+    invoke<ModelFile>('rescan_file_metadata', { fileId: id })
+      .then((updated) => {
+        setModels((prev) => prev.map((m) => (m.id === id ? updated : m)));
+      })
+      .catch((e) => {
+        console.error('[rescan] Neu-Einlesen fehlgeschlagen:', e);
+        setRescanError(String(e));
+      });
+  };
+
   const deleteModel = (id: string) => {
     invoke('delete_file', { fileId: id }).then(() => {
       setModels((prev) => prev.filter((m) => m.id !== id));
@@ -839,8 +853,10 @@ export default function App() {
                 onSnapshotCaptured={(base64) => captureRenderSnapshot(detailModel.id, base64)}
                 onSetSourceUrl={(fileId, url) => setModelSourceUrl(fileId, url)}
                 onOpenInSlicer={(slicerId) => openInSlicer(detailModel.id, slicerId)}
+                onRescanMetadata={() => rescanMetadata(detailModel.id)}
                 slicers={slicers}
                 slicerError={slicerError}
+                rescanError={rescanError}
                 displayPreference={displayPreference}
               />
             ) : (
