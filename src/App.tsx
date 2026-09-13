@@ -342,20 +342,24 @@ export default function App() {
   };
 
   const importFiles = () =>
-    invoke<ImportResultDto>('import_files').then((result) => {
+    invoke<ImportResultDto>('import_files').then(async (result) => {
       mergeImported(result);
       if (catalogBaseDir) {
-        const targetFolder =
-          activeFolderId !== 'all'
-            ? activeFolderId
-            : folders.find((f) => f.path === catalogBaseDir && !f.parentId)?.id;
+        let targetFolder: string | undefined = activeFolderId !== 'all' ? activeFolderId : undefined;
+        if (!targetFolder) {
+          const freshFolders = await invoke<Folder[]>('list_folders');
+          targetFolder = freshFolders.find((f) => f.path === catalogBaseDir && !f.parentId)?.id;
+        }
         if (targetFolder) {
-          result.imported.forEach((file) => {
-            invoke('move_file_to_folder', { fileId: file.id, folderId: targetFolder }).catch((e) =>
-              console.error('[import] Einsortieren fehlgeschlagen:', e),
-            );
-          });
+          await Promise.all(
+            result.imported.map((file) =>
+              invoke('move_file_to_folder', { fileId: file.id, folderId: targetFolder }).catch((e) =>
+                console.error('[import] Einsortieren fehlgeschlagen:', e),
+              ),
+            ),
+          );
           refreshFolders();
+          refreshFiles();
         }
       }
     });
