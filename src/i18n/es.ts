@@ -41,6 +41,7 @@ export const es: Translations = {
 
   searchPlaceholder: 'Buscar nombre o etiqueta …',
   foldersHeading: 'Carpetas',
+  foldersInfoTooltip: 'Directorios reales en el disco. Mover un archivo aquí también lo mueve físicamente, a diferencia de las "Colecciones".',
   allModelsLabel: 'Todos los modelos',
   tagsHeading: 'Etiquetas',
 
@@ -206,6 +207,7 @@ export const es: Translations = {
   trashExpiryHint: 'Se elimina automáticamente el {date}',
 
   collectionsTab: 'Colecciones',
+  viewAllCollectionsLabel: 'ver todas',
   modelCountLabel: { one: '{count} modelo', other: '{count} modelos' },
   addToCollectionLabel: 'Añadir a colección',
   newCollectionPlaceholder: 'Nombre de la colección',

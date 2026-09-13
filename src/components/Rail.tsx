@@ -96,10 +96,6 @@ export function Rail({
 
   return (
     <nav className="flex-none w-[60px] flex flex-col items-center pt-3.5 pb-2.5 bg-[var(--panel-2)] border-r border-[var(--line)]">
-      <div className="w-[30px] h-[30px] rounded-[8px] bg-[var(--accent)] text-[var(--accent-ink)] grid place-items-center font-mono-ui font-bold text-[12px] mb-[18px]">
-        3MF
-      </div>
-
       <div className="flex flex-col gap-1.5">
         <button
           onClick={() => onMainViewChange('catalog')}

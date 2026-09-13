@@ -46,6 +46,7 @@ export interface Translations {
 
   searchPlaceholder: string;
   foldersHeading: string;
+  foldersInfoTooltip: string;
   allModelsLabel: string;
   tagsHeading: string;
 
@@ -210,6 +211,7 @@ export interface Translations {
   trashExpiryHint: string;
 
   collectionsTab: string;
+  viewAllCollectionsLabel: string;
   modelCountLabel: PluralForms;
   addToCollectionLabel: string;
   newCollectionPlaceholder: string;
