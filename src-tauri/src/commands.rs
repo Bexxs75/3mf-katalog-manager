@@ -1644,14 +1644,13 @@ pub struct ImportCatalogResultDto {
 
 /// Importiert einen per `export_catalog` erzeugten Katalog-Export. Ersetzt
 /// die laufende `catalog.db` NUR nach erfolgreicher Validierung (siehe
-/// `validate_catalog_db_bytes`); die alte Datei wird zu `.bak-<Zeitstempel>`
-/// umbenannt statt geloescht. Die laufende `Connection` in `AppState` wird
-/// vor dem Umbenennen durch eine In-Memory-Platzhalter-Connection ersetzt -
-/// ein blosses Freigeben des Mutex-Locks wuerde das zugrundeliegende
-/// Datei-Handle NICHT schliessen, was auf Windows das nachfolgende
-/// `fs::rename` mit einer Sharing-Violation zum Scheitern braechte. Ein
-/// Neustart der App ist danach erforderlich, um die neue DB zu laden (kein
-/// Live-Reconnect vorgesehen, siehe Spec).
+/// `validate_catalog_db_bytes`); die eigentliche Ersetzung (Connection-Swap,
+/// Umbenennen der alten DB zu `.bak-<Zeitstempel>`, Kopieren der neuen DB,
+/// Restore-bei-Fehler) uebernimmt `replace_catalog_db` - siehe dort fuer
+/// Details. Ein Neustart der App wird dem Nutzer danach weiterhin empfohlen
+/// (Frontend-Zustand/Caches sind nicht auf einen Katalogwechsel zur Laufzeit
+/// ausgelegt), auch wenn das Backend ab dann bereits wieder eine echte
+/// Connection auf die neue DB haelt.
 #[tauri::command]
 pub async fn import_catalog(
     app: tauri::AppHandle,
@@ -1689,8 +1688,36 @@ pub async fn import_catalog(
         std::env::temp_dir().join(format!("3mf-katalog-import-{}.db", std::process::id()));
     std::fs::write(&tmp_db_path, &db_bytes).map_err(|e| e.to_string())?;
 
+    let replace_result = replace_catalog_db(&state, &tmp_db_path);
+    let _ = std::fs::remove_file(&tmp_db_path);
+    replace_result?;
+
+    Ok(ImportCatalogResultDto { imported: true, settings_json: Some(settings_json) })
+}
+
+/// Ersetzt die laufende `catalog.db` durch die Datei unter `new_db_path`.
+/// Herausgezogen aus `import_catalog`, damit die riskante Kernlogik
+/// (Connection-Swap, Umbenennen, Kopieren, Restore-bei-Fehler) ohne
+/// `AppHandle`/Datei-Dialog direkt getestet werden kann - `import_catalog`
+/// selbst bleibt duenne Verdrahtung (Dialog + Zip-Entpacken + Validierung),
+/// die auf diese Funktion delegiert.
+///
+/// Die laufende `Connection` in `state.db` wird vor dem Umbenennen durch eine
+/// In-Memory-Platzhalter-Connection ersetzt - ein blosses Freigeben des
+/// Mutex-Locks wuerde das zugrundeliegende Datei-Handle NICHT schliessen, was
+/// auf Windows das nachfolgende `fs::rename` mit einer Sharing-Violation zum
+/// Scheitern braechte.
+///
+/// Die alte `catalog.db` wird zu `.bak-<Zeitstempel>` umbenannt statt
+/// geloescht. Schlaegt das anschliessende Kopieren der neuen DB fehl, wird
+/// versucht, die Backup-Datei zurueck nach `catalog.db` umzubenennen; schlaegt
+/// *dieser* Wiederherstellungsversuch ebenfalls fehl, wird eine eigene,
+/// unmissverstaendliche Fehlermeldung zurueckgegeben, die auf den Pfad der
+/// Backup-Datei verweist (siehe Review-Finding: die alte Version taeuschte im
+/// Fehlerfall faelschlich eine erfolgreiche Wiederherstellung vor).
+fn replace_catalog_db(state: &AppState, new_db_path: &Path) -> CmdResult<()> {
     {
-        let mut guard = lock_db(&state)?;
+        let mut guard = state.db.lock().map_err(|_| "database lock poisoned".to_string())?;
         let placeholder = Connection::open_in_memory().map_err(|e| e.to_string())?;
         *guard = placeholder; // alte Connection droppt hier -> OS-Handle auf catalog.db wird geschlossen
     }
@@ -1701,16 +1728,31 @@ pub async fn import_catalog(
     ));
     std::fs::rename(&state.db_path, &backup_path).map_err(|e| e.to_string())?;
 
-    if let Err(e) = std::fs::copy(&tmp_db_path, &state.db_path) {
-        let _ = std::fs::rename(&backup_path, &state.db_path);
-        let _ = std::fs::remove_file(&tmp_db_path);
-        return Err(format!(
-            "Kopieren der neuen Datenbank fehlgeschlagen, alter Katalog wiederhergestellt: {e}"
-        ));
+    if let Err(e) = std::fs::copy(new_db_path, &state.db_path) {
+        return match std::fs::rename(&backup_path, &state.db_path) {
+            Ok(()) => Err(format!(
+                "Kopieren der neuen Datenbank fehlgeschlagen, alter Katalog wiederhergestellt: {e}"
+            )),
+            Err(restore_err) => Err(format!(
+                "Kopieren der neuen Datenbank fehlgeschlagen UND Wiederherstellung der alten \
+                 Datenbank fehlgeschlagen ({restore_err}). Die vorherige Datenbank liegt noch \
+                 unter {}. Bitte manuell nach {} zurückbenennen. Ursprünglicher Fehler: {e}",
+                backup_path.display(),
+                state.db_path.display()
+            )),
+        };
     }
-    let _ = std::fs::remove_file(&tmp_db_path);
 
-    Ok(ImportCatalogResultDto { imported: true, settings_json: Some(settings_json) })
+    // Neue DB liegt jetzt unter state.db_path - Connection darauf umstellen,
+    // statt sie auf dem In-Memory-Platzhalter zu belassen, damit AppState
+    // sofort wieder eine echte, funktionierende Verbindung haelt (und dies
+    // testbar ist). Ein Neustart der App bleibt trotzdem empfohlen (siehe
+    // Spec/Frontend-Flow), ist fuer die Backend-Korrektheit ab hier aber
+    // nicht mehr zwingend.
+    let mut guard = state.db.lock().map_err(|_| "database lock poisoned".to_string())?;
+    *guard = Connection::open(&state.db_path).map_err(|e| e.to_string())?;
+
+    Ok(())
 }
 
 #[derive(Debug, Serialize)]
@@ -2019,6 +2061,126 @@ mod tests {
     fn validate_catalog_db_bytes_rejects_garbage_bytes() {
         let result = validate_catalog_db_bytes(b"this is not a sqlite database");
         assert!(result.is_err());
+    }
+
+    fn unique_test_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "{name}_{}",
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        dir
+    }
+
+    #[test]
+    fn replace_catalog_db_backs_up_old_db_and_installs_new_one() {
+        let dir = unique_test_dir("replace_catalog_db_success");
+        let db_path = dir.join("catalog.db");
+
+        // "Alte" laufende DB: leerer Katalog.
+        let old_conn = crate::db::connect(&db_path).expect("connect creates schema");
+        drop(old_conn);
+        let old_bytes = std::fs::read(&db_path).expect("read old db bytes");
+
+        // "Neue" DB (simuliert das aus dem Zip entpackte catalog.db) mit
+        // einem Datensatz, damit sich alt/neu unterscheiden lassen.
+        let new_db_path = dir.join("incoming_catalog.db");
+        let new_conn = crate::db::connect(&new_db_path).expect("connect creates schema");
+        new_conn
+            .execute(
+                "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at)
+                 VALUES ('new.3mf', '/incoming/new.3mf', '3mf', 42, '2026-09-13T00:00:00Z')",
+                [],
+            )
+            .expect("seed new db with a marker row");
+        drop(new_conn);
+        let new_bytes = std::fs::read(&new_db_path).expect("read new db bytes");
+        assert_ne!(old_bytes, new_bytes, "old and new db content must differ for this test to be meaningful");
+
+        // AppState haelt zunaechst die "alte" Connection auf db_path.
+        let running_conn = crate::db::connect(&db_path).expect("reopen db for AppState");
+        let state = AppState {
+            db: Mutex::new(running_conn),
+            trash_dir: dir.join("trash"),
+            db_path: db_path.clone(),
+        };
+
+        let result = replace_catalog_db(&state, &new_db_path);
+        assert!(result.is_ok(), "expected successful replacement: {result:?}");
+
+        // Alte DB wurde zu genau einer .bak-* Datei umbenannt (nicht geloescht)
+        // und ihr Inhalt entspricht dem alten Katalog.
+        let bak_entries: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().starts_with("catalog.db.bak-"))
+            .collect();
+        assert_eq!(bak_entries.len(), 1, "expected exactly one backup file");
+        let bak_bytes = std::fs::read(bak_entries[0].path()).expect("read backup db bytes");
+        assert_eq!(bak_bytes, old_bytes, "backup file must contain the old db content");
+
+        // Neuer Inhalt liegt jetzt unter db_path.
+        let installed_bytes = std::fs::read(&db_path).expect("read installed db bytes");
+        assert_eq!(installed_bytes, new_bytes, "db_path must now contain the new db content");
+
+        // AppState's Connection zeigt jetzt tatsaechlich auf den neuen
+        // Inhalt (nicht mehr auf den In-Memory-Platzhalter) - der Marker-
+        // Datensatz aus der neuen DB ist ueber die laufende Connection
+        // sichtbar. Dass `fs::rename` weiter oben ueberhaupt erfolgreich
+        // war, beweist implizit, dass der Connection-Swap das alte
+        // Datei-Handle vorher freigegeben hat (ein noch offenes Handle
+        // haette das Umbenennen auf Windows mit einer Sharing-Violation
+        // scheitern lassen).
+        let guard = state.db.lock().unwrap();
+        let count: i64 =
+            guard.query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0)).unwrap();
+        assert_eq!(count, 1, "connection must reflect the newly installed db's content");
+        drop(guard);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn replace_catalog_db_restores_backup_when_copy_of_new_db_fails() {
+        let dir = unique_test_dir("replace_catalog_db_copy_failure");
+        let db_path = dir.join("catalog.db");
+
+        let old_conn = crate::db::connect(&db_path).expect("connect creates schema");
+        drop(old_conn);
+        let old_bytes = std::fs::read(&db_path).expect("read old db bytes");
+
+        // Existiert absichtlich nicht -> fs::copy schlaegt fehl.
+        let missing_new_db_path = dir.join("does_not_exist.db");
+
+        let running_conn = crate::db::connect(&db_path).expect("reopen db for AppState");
+        let state = AppState {
+            db: Mutex::new(running_conn),
+            trash_dir: dir.join("trash"),
+            db_path: db_path.clone(),
+        };
+
+        let result = replace_catalog_db(&state, &missing_new_db_path);
+        assert!(result.is_err(), "expected an error when the new db file is missing");
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("wiederhergestellt"),
+            "expected error to mention successful restoration, got: {err}"
+        );
+
+        // Alte DB wurde nach dem fehlgeschlagenen Kopieren wieder an ihren
+        // urspruenglichen Platz zurueckbenannt - kein .bak-* liegt mehr da,
+        // db_path enthaelt wieder den alten Inhalt.
+        let bak_entries: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().starts_with("catalog.db.bak-"))
+            .collect();
+        assert!(bak_entries.is_empty(), "backup file must have been renamed back after successful restore");
+        assert!(db_path.exists(), "catalog.db must exist again after restore");
+        let restored_bytes = std::fs::read(&db_path).expect("read restored db bytes");
+        assert_eq!(restored_bytes, old_bytes, "restored db must match the original content");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
