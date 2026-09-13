@@ -7,16 +7,13 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
-Kein Release getaggt — `0.6.0` ist der aktuelle Arbeitsstand.
+## [0.6.0] - 2026-09-13
+
+Erster getaggter Release. Die einzelnen Abschnitte unten stammen aus mehreren Entwicklungstagen (2026-09-12 und 2026-09-13), siehe Hinweis oben zur rückwirkenden Versionierung.
 
 ### Added
 
 - Filamentverbrauch aus gesliceten OrcaSlicer/Bambu-Studio-3mf-Dateien: liest `Metadata/slice_info.config` beim Import mit aus und zeigt auf der Modell-Detailseite das echte, vom Slicer berechnete Gewicht statt der bisherigen groben Schätzung aus Volumen × Materialdichte — inklusive Aufschlüsselung pro Druckplatte und Filament (Typ, Farbe, Gramm, Meter). Neuer Button "Metadaten neu einlesen" liest eine bereits katalogisierte Datei erneut vom Pfad ein, falls sie inzwischen in OrcaSlicer/Bambu Studio gesliced und überschrieben wurde (inkl. sichtbarer Erfolgsmeldung, Fehler/Erfolg sind pro Modell gescoped). Bewusst außerhalb des Scopes: Live-Drucker-Anbindung, Headless-Slicing, automatischer Abzug vom Filament-Lager
-
-## [0.6.0] - 2026-09-12
-
-### Added
-
 - Filament-Lager, Neugestaltung (nach Nutzer-Feedback "nicht gut/intuitiv" + Mockup-Review mit 3 Vorschlägen): neues Feld **Lagerort** (Autocomplete aus bereits verwendeten Standorten); lokaler **Dashboard/Liste**-Umschalter direkt im Filament-Lager (Kartenraster mit Bestandsbalken/Statusfarbe bzw. sortierbare Tabelle im Stil einer Lagerverwaltungssoftware); Statistik-Leiste (Spulen gesamt, Restbestand, belegte Lagerplätze, niedrig/leer) und Status-Filter-Chips (Niedrig/Leer); neue Theme-Tokens `--good`/`--warn`/`--crit` für eigenständige Statusfarben; Anlage-Formular als seitliches Panel mit Abschnitten (Bild/Identifikation/Lagerung/Bestand) statt der bisherigen gequetschten 7-Felder-Leiste, inkl. Live-Vorschau des Bestandsbalkens; "Anzahl Spulen"-Stepper beim Neuanlegen legt mehrere unabhängige Spulen mit denselben Werten gleichzeitig an
 - Filament-Lager: kuratierte Autocomplete-Vorschlagsliste gängiger FDM-Materialien (PLA, PETG, ABS, ASA, TPU, Nylon, PC, PEEK, Carbon-Fiber-Varianten u. a.) und Filament-Hersteller (Bambu Lab, Prusament, Polymaker, eSUN, SUNLU, Fillamentum, ColorFabb u. a.) für Material-/Hersteller-Felder; eigene, themekonforme `AutocompleteInput`-Komponente
 - Neues App-Icon: isometrischer 3D-Druck-Layer-Würfel, Farben direkt aus den echten Theme-Tokens (oklch → sRGB) berechnet, ersetzt das generische Tauri-Standard-Icon auf allen Plattformen
