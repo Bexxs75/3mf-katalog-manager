@@ -97,6 +97,8 @@ export const en: Translations = {
   filamentEditAria: 'Edit spool',
   filamentError: 'Error:',
   filamentNavButton: 'Filament',
+  railCatalog: 'Catalog',
+  railFilament: 'Filament storage',
   filamentBackToCatalogButton: 'Catalog',
   filamentUploadImageLabel: 'Upload image',
   filamentLocationLabel: 'Storage location',

@@ -104,6 +104,8 @@ export interface Translations {
   filamentEditAria: string;
   filamentError: string;
   filamentNavButton: string;
+  railCatalog: string;
+  railFilament: string;
   filamentBackToCatalogButton: string;
   filamentUploadImageLabel: string;
   filamentLocationLabel: string;

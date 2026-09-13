@@ -97,6 +97,8 @@ export const de: Translations = {
   filamentEditAria: 'Spule bearbeiten',
   filamentError: 'Fehler:',
   filamentNavButton: 'Filament',
+  railCatalog: 'Katalog',
+  railFilament: 'Filament-Lager',
   filamentBackToCatalogButton: 'Katalog',
   filamentUploadImageLabel: 'Bild hochladen',
   filamentLocationLabel: 'Lagerort',
