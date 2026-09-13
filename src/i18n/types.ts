@@ -139,6 +139,8 @@ export interface Translations {
   metaWeightFromSlicer: string;
   sliceFilamentHeading: string;
   sliceFilamentPlateLabel: string;
+  metaCostEstimate: string;
+  costEstimateUnpricedHint: string;
   rescanMetadataButton: string;
   rescanMetadataSuccess: string;
 
