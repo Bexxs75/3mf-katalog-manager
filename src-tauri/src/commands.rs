@@ -111,6 +111,11 @@ pub(crate) fn estimate_material_cost(
 
     for plate in &slice_info.plates {
         for filament in &plate.filaments {
+            if filament.filament_type.trim().is_empty() {
+                has_unpriced = true;
+                continue;
+            }
+
             let type_lower = filament.filament_type.to_lowercase();
             let matching: Vec<&db::models::FilamentSpoolRecord> = spools
                 .iter()
@@ -1806,6 +1811,33 @@ mod tests {
     }
 
     #[test]
+    fn estimate_material_cost_treats_empty_filament_type_as_unmatched_not_universal_match() {
+        let slice_info = threemf::SliceInfo {
+            total_weight_g: 10.0,
+            plates: vec![threemf::slice_info::PlateFilamentUsage {
+                plate_index: 1,
+                weight_g: 10.0,
+                filaments: vec![threemf::slice_info::FilamentUsage {
+                    filament_type: "".to_string(),
+                    color: None,
+                    used_g: 10.0,
+                    used_m: 0.0,
+                }],
+            }],
+        };
+        // Zwei Spulen mit gesetztem Preis im Lager - ohne den Fix wuerde die
+        // leere Typ-Zeichenkette beide "matchen" (jede Zeichenkette enthaelt "")
+        // und einen Fantasiepreis liefern statt "unbekannt".
+        let spools = vec![
+            sample_spool("PLA", 1000, Some(20.0)),
+            sample_spool("PETG", 1000, Some(25.0)),
+        ];
+        let cost = estimate_material_cost(&slice_info, &spools);
+        assert_eq!(cost.total_cost, None);
+        assert!(cost.has_unpriced_filaments);
+    }
+
+    #[test]
     fn validate_source_url_accepts_http_and_https() {
         assert_eq!(
             validate_source_url(Some("https://example.com/model".to_string())).unwrap(),
@@ -2011,7 +2043,9 @@ mod tests {
                 .to_string(),
         );
 
-        let dto = to_dto(file, &[]);
+        let spools = vec![sample_spool("PLA", 1000, Some(20.0))]; // 0.02/g
+
+        let dto = to_dto(file, &spools);
         let dto_json = serde_json::to_value(&dto).expect("dto serializes to JSON");
 
         assert_eq!(dto_json["weightSource"], "slicer");
@@ -2027,6 +2061,9 @@ mod tests {
         );
         assert_eq!(dto_json["sliceInfo"]["plates"][0]["filaments"][0]["usedG"], 42.5);
         assert_eq!(dto_json["sliceInfo"]["plates"][0]["filaments"][0]["usedM"], 15.0);
+        // 42.5g * 0.02/g = 0.85
+        assert!((dto_json["costEstimate"]["totalCost"].as_f64().expect("total cost number") - 0.85).abs() < 1e-6);
+        assert_eq!(dto_json["costEstimate"]["hasUnpricedFilaments"], false);
     }
 
     #[test]
@@ -2040,6 +2077,7 @@ mod tests {
         assert_eq!(dto.weight_source, "estimated");
         assert!(dto.slice_info.is_none());
         assert!(dto.estimated_weight_g.is_some());
+        assert!(dto.cost_estimate.is_none());
     }
 
     /// Minimal `FileRecord` for `group_duplicates` tests: only `id`,
