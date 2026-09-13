@@ -161,6 +161,20 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
         if (cancelled) return;
         const meshes = decodeModelGeometry(buffer);
         const object = buildGroup(meshes, ctx.material);
+        // 3MF/STL sind Z-up (Druckplatte = XY-Ebene, Z = Druckhoehe), Three.js/
+        // OrbitControls gehen dagegen von Y-up aus (Azimut-Drehung erfolgt
+        // immer um die Welt-Y-Achse). Ohne diese Korrektur liegt die stehende
+        // Achse der Figur quer zur Kamera-Drehachse: freies Ziehen kippt sie
+        // dann seitlich um, und keine Kamerastellung zeigt sie dauerhaft
+        // aufrecht (siehe Review 2026-09-13 - ein vorheriger Versuch, das
+        // stattdessen per fixiertem Polarwinkel zu loesen, verhinderte nur
+        // noch zusaetzlich, sie ueberhaupt wieder aufzurichten). Eine feste
+        // Rotation um -90 Grad auf der X-Achse mappt die Modell-Z-Achse auf
+        // Three.js' Y-Achse, danach ist jede Azimut-Drehung (Maus-Drag,
+        // Auto-Rotation, Pfeil-Buttons) ein sauberer Drehteller um die
+        // tatsaechlich stehende Achse - die Figur bleibt dabei in jeder
+        // Kamera-Neigung aufrecht und schaut den Betrachter weiterhin an.
+        object.rotateX(-Math.PI / 2);
 
         if (ctx.currentObject) {
           ctx.scene.remove(ctx.currentObject);

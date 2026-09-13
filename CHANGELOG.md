@@ -7,6 +7,12 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-09-13
+
+### Fixed
+
+- 3D-Vorschau: Modelle ließen sich per Maus nicht mehr sauber um die eigene stehende Achse drehen — 3MF/STL-Geometrie liegt Z-up vor (Druckplatte = XY-Ebene, Z = Druckhöhe), Three.js/OrbitControls gehen aber von Y-up aus. Dadurch lag die stehende Achse der Figur quer zur Kamera-Drehachse: freies Ziehen kippte sie seitlich um, statt sie wie einen Drehteller zu drehen. Die Modell-Geometrie wird beim Laden jetzt einmalig um -90° um die X-Achse gedreht, wodurch jede Drehung (Maus-Drag, Auto-Rotation, Pfeil-Buttons) die Figur aufrecht hält und dabei frei geneigt werden kann
+
 ## [0.7.2] - 2026-09-13
 
 ### Fixed
@@ -201,6 +207,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
 ## [Unreleased]
+
+## [0.7.3] - 2026-09-13
+
+### Fixed
+
+- 3D preview: models could no longer be cleanly rotated around their own upright axis by dragging — 3MF/STL geometry is Z-up (build plate = XY plane, Z = print height), but Three.js/OrbitControls assume Y-up. This left the model's upright axis crosswise to the camera's rotation axis: free dragging tipped it onto its side instead of spinning it like a turntable. Model geometry is now rotated by -90° around the X axis once on load, so every rotation (mouse drag, auto-rotation, arrow buttons) keeps the figure upright while still allowing free tilting
 
 ## [0.7.2] - 2026-09-13
 
