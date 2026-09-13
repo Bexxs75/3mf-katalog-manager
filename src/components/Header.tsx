@@ -1,12 +1,7 @@
 import { useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import type { ViewMode, SortKey, SlicerConfig } from '../types';
-import type { ThemeSetting } from '../hooks/useTheme';
-import type { UiDensity } from '../hooks/UiDensityContext';
-import type { DisplayPreference } from '../hooks/useDisplayPreference';
-import type { Language } from '../i18n/types';
+import type { ViewMode, SortKey } from '../types';
 import { formatCount } from '../i18n/types';
-import { useLanguage, useT } from '../i18n/LanguageContext';
+import { useT } from '../i18n/LanguageContext';
 
 interface Props {
   view: ViewMode;
@@ -15,42 +10,16 @@ interface Props {
   onSortChange: (s: SortKey) => void;
   hideSortControl?: boolean;
   count: number;
-  themeSetting: ThemeSetting;
-  onThemeChange: (t: ThemeSetting) => void;
-  uiDensity: UiDensity;
-  onUiDensityChange: (d: UiDensity) => void;
-  displayPreference: DisplayPreference;
-  onDisplayPreferenceChange: (p: DisplayPreference) => void;
   onImportFiles: () => void;
   onImportFolder: () => void;
   onImportFolderAsCollection: () => void;
-  settingsOpen: boolean;
-  onSettingsOpenChange: (open: boolean) => void;
-  slicers: SlicerConfig[];
-  onAddSlicer: (name: string, path: string) => void;
-  onRemoveSlicer: (id: string) => void;
-  onScanCatalogIssues: () => void;
-  cleanupScanning: boolean;
-  cleanupError: string | null;
-  onExportCatalog: () => void;
-  onImportCatalog: () => void;
-  catalogBackupError: string | null;
   mainView: 'catalog' | 'filament' | 'trash';
-  onMainViewChange: (view: 'catalog' | 'filament' | 'trash') => void;
-  trashCount: number;
 }
 
 const segBase =
   'h-[26px] px-3 rounded-[2px] text-[length:var(--font-size-control)] font-medium cursor-pointer transition-colors';
 const segActive = 'bg-[var(--accent)] text-[var(--accent-ink)]';
 const segInactive = 'text-[var(--ink-2)] hover:text-[var(--ink)]';
-
-const LANGUAGE_LABELS: Record<Language, string> = {
-  de: 'Deutsch',
-  en: 'English',
-  es: 'Español',
-  fr: 'Français',
-};
 
 export function Header({
   view,
@@ -59,37 +28,14 @@ export function Header({
   onSortChange,
   hideSortControl,
   count,
-  themeSetting,
-  onThemeChange,
-  uiDensity,
-  onUiDensityChange,
-  displayPreference,
-  onDisplayPreferenceChange,
   onImportFiles,
   onImportFolder,
   onImportFolderAsCollection,
-  settingsOpen,
-  onSettingsOpenChange,
-  slicers,
-  onAddSlicer,
-  onRemoveSlicer,
-  onScanCatalogIssues,
-  cleanupScanning,
-  cleanupError,
-  onExportCatalog,
-  onImportCatalog,
-  catalogBackupError,
   mainView,
-  onMainViewChange,
-  trashCount,
 }: Props) {
   const t = useT();
-  const { language, setLanguage } = useLanguage();
   const [importMenuOpen, setImportMenuOpen] = useState(false);
-  const [pendingSlicerPath, setPendingSlicerPath] = useState<string | null>(null);
-  const [pendingSlicerName, setPendingSlicerName] = useState('');
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
-  const [confirmImportCatalog, setConfirmImportCatalog] = useState(false);
 
   const sortOptions: { value: SortKey; label: string }[] = [
     { value: 'name', label: t('sortName') },
@@ -98,23 +44,6 @@ export function Header({
     { value: 'vol', label: t('sortVolume') },
     { value: 'viewed', label: t('sortLastViewed') },
   ];
-
-  const handlePickSlicer = () => {
-    invoke<string | null>('pick_slicer_executable').then((path) => {
-      if (!path) return;
-      const fileName = path.split(/[/\\]/).pop() ?? path;
-      const suggested = fileName.replace(/\.[^./\\]+$/, '');
-      setPendingSlicerPath(path);
-      setPendingSlicerName(suggested);
-    });
-  };
-
-  const confirmAddSlicer = () => {
-    if (!pendingSlicerPath || !pendingSlicerName.trim()) return;
-    onAddSlicer(pendingSlicerName.trim(), pendingSlicerPath);
-    setPendingSlicerPath(null);
-    setPendingSlicerName('');
-  };
 
   return (
     <header className="flex-none h-[54px] flex items-center gap-[18px] px-[14px] bg-[var(--panel)] border-b border-[var(--line)]">
@@ -233,246 +162,6 @@ export function Header({
         </span>
       )}
 
-      <button
-        onClick={() => onMainViewChange(mainView === 'catalog' ? 'filament' : 'catalog')}
-        className="shrink-0 h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink-2)] text-[length:var(--font-size-body)] font-semibold cursor-pointer hover:text-[var(--ink)] hover:border-[var(--line-strong)]"
-      >
-        {mainView === 'catalog' ? t('filamentNavButton') : t('filamentBackToCatalogButton')}
-      </button>
-
-      <button
-        onClick={() => onMainViewChange(mainView === 'trash' ? 'catalog' : 'trash')}
-        title={t('trashHeading')}
-        aria-label={t('trashHeading')}
-        className="relative shrink-0 w-8 h-8 grid place-items-center rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink-2)] text-[15px] cursor-pointer hover:text-[var(--ink)] hover:border-[var(--line-strong)]"
-      >
-        🗑
-        {trashCount > 0 && (
-          <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-[var(--accent)] text-[var(--accent-ink)] text-[9.5px] font-bold grid place-items-center font-mono-ui">
-            {trashCount}
-          </span>
-        )}
-      </button>
-
-      <div className="relative shrink-0">
-        <button
-          onClick={() => onSettingsOpenChange(!settingsOpen)}
-          className="w-8 h-8 grid place-items-center rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink-2)] text-[15px] cursor-pointer hover:text-[var(--ink)] hover:border-[var(--line-strong)]"
-        >
-          ⚙
-        </button>
-
-        {settingsOpen && (
-          <div className="absolute top-10 right-0 w-[268px] p-[14px] bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
-            <div className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)] mb-2.5">
-              {t('settingsTitle')}
-            </div>
-            <div className="text-[length:var(--font-size-body)] font-semibold mb-2">{t('appearanceTitle')}</div>
-            <div className="flex p-0.5 gap-0.5 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)]">
-              {(['system', 'light', 'dark'] as ThemeSetting[]).map((opt) => (
-                <button
-                  key={opt}
-                  onClick={() => onThemeChange(opt)}
-                  className={`${segBase} flex-1 ${themeSetting === opt ? segActive : segInactive}`}
-                >
-                  {opt === 'system' ? t('themeSystem') : opt === 'light' ? t('themeLight') : t('themeDark')}
-                </button>
-              ))}
-            </div>
-            <div className="mt-2 font-mono-ui text-[10.5px] leading-relaxed text-[var(--ink-3)]">
-              {themeSetting === 'system'
-                ? t('themeDescriptionSystem')
-                : t('themeDescriptionManual').replace(
-                    '{mode}',
-                    themeSetting === 'light' ? t('themeLight') : t('themeDark'),
-                  )}
-            </div>
-
-            <div className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-2">{t('densityTitle')}</div>
-            <div className="flex p-0.5 gap-0.5 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)]">
-              {(['compact', 'comfort'] as UiDensity[]).map((opt) => (
-                <button
-                  key={opt}
-                  onClick={() => onUiDensityChange(opt)}
-                  className={`${segBase} flex-1 ${uiDensity === opt ? segActive : segInactive}`}
-                >
-                  {opt === 'compact' ? t('densityCompact') : t('densityComfort')}
-                </button>
-              ))}
-            </div>
-            <div className="mt-2 font-mono-ui text-[10.5px] leading-relaxed text-[var(--ink-3)]">
-              {uiDensity === 'compact' ? t('densityDescriptionCompact') : t('densityDescriptionComfort')}
-            </div>
-
-            <div className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-2">{t('displayPreferenceTitle')}</div>
-            <div className="flex p-0.5 gap-0.5 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)]">
-              {(['thumbnail', 'render'] as DisplayPreference[]).map((opt) => (
-                <button
-                  key={opt}
-                  onClick={() => onDisplayPreferenceChange(opt)}
-                  className={`${segBase} flex-1 ${displayPreference === opt ? segActive : segInactive}`}
-                >
-                  {opt === 'thumbnail' ? t('displayPreferenceThumbnail') : t('displayPreferenceRender')}
-                </button>
-              ))}
-            </div>
-            <div className="mt-2 font-mono-ui text-[10.5px] leading-relaxed text-[var(--ink-3)]">
-              {displayPreference === 'thumbnail'
-                ? t('displayPreferenceDescriptionThumbnail')
-                : t('displayPreferenceDescriptionRender')}
-            </div>
-
-            <div className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-2">{t('languageTitle')}</div>
-            <div className="grid grid-cols-2 gap-0.5 p-0.5 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)]">
-              {(['de', 'en', 'es', 'fr'] as Language[]).map((lang) => (
-                <button
-                  key={lang}
-                  onClick={() => setLanguage(lang)}
-                  className={`${segBase} ${language === lang ? segActive : segInactive}`}
-                >
-                  {LANGUAGE_LABELS[lang]}
-                </button>
-              ))}
-            </div>
-
-            <div className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-2">{t('slicerSectionTitle')}</div>
-            {slicers.length === 0 ? (
-              <div className="font-mono-ui text-[10.5px] text-[var(--ink-3)]">
-                {t('noSlicersConfigured')}
-              </div>
-            ) : (
-              <div className="flex flex-col gap-1.5">
-                {slicers.map((s) => (
-                  <div key={s.id} className="flex items-center gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <div className="text-[length:var(--font-size-title)] text-[var(--ink)] truncate">{s.name}</div>
-                        {s.source === 'auto' && (
-                          <span className="flex-none font-mono-ui text-[9px] tracking-[0.08em] uppercase text-[var(--ink-3)]">
-                            {t('slicerAutoDetectedLabel')}
-                          </span>
-                        )}
-                      </div>
-                      <div className="font-mono-ui text-[length:var(--font-size-meta)] text-[var(--ink-3)] truncate">
-                        {s.path}
-                      </div>
-                    </div>
-                    <span
-                      onClick={() => onRemoveSlicer(s.id)}
-                      aria-label={t('removeSlicerAria')}
-                      className="w-4 h-4 grid place-items-center rounded-full cursor-pointer text-[length:var(--font-size-meta)] text-[var(--ink-3)] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
-                    >
-                      ✕
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-            {pendingSlicerPath ? (
-              <div className="flex items-center gap-1.5 mt-2">
-                <input
-                  value={pendingSlicerName}
-                  onChange={(e) => setPendingSlicerName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') confirmAddSlicer();
-                    if (e.key === 'Escape') {
-                      setPendingSlicerPath(null);
-                      setPendingSlicerName('');
-                    }
-                  }}
-                  autoFocus
-                  className="flex-1 h-7 px-2 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-[length:var(--font-size-title)]"
-                />
-                <button
-                  onClick={confirmAddSlicer}
-                  className="h-7 px-2.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[11.5px] font-semibold cursor-pointer"
-                >
-                  {t('confirmSlicerName')}
-                </button>
-                <button
-                  onClick={() => {
-                    setPendingSlicerPath(null);
-                    setPendingSlicerName('');
-                  }}
-                  aria-label={t('cancel')}
-                  className="flex-none w-7 h-7 grid place-items-center rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-[11px] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
-                >
-                  ✕
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={handlePickSlicer}
-                className="mt-2 h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
-              >
-                + {t('addSlicer')}
-              </button>
-            )}
-
-            <div className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-2">{t('catalogCleanupTitle')}</div>
-            <button
-              onClick={onScanCatalogIssues}
-              disabled={cleanupScanning}
-              className={`h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] ${
-                cleanupScanning
-                  ? 'opacity-40 cursor-not-allowed'
-                  : 'cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]'
-              }`}
-            >
-              {cleanupScanning ? t('catalogCleanupScanning') : t('catalogCleanupScanButton')}
-            </button>
-            {cleanupError && (
-              <div className="mt-1.5 font-mono-ui text-[length:var(--font-size-meta)] text-[var(--accent)] break-words">
-                {t('catalogCleanupError')} {cleanupError}
-              </div>
-            )}
-
-            <div className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-2">{t('catalogBackupTitle')}</div>
-            <button
-              onClick={onExportCatalog}
-              className="h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
-            >
-              {t('exportCatalogButton')}
-            </button>
-            {confirmImportCatalog ? (
-              <div className="mt-1.5 flex flex-col gap-1.5">
-                <div className="font-mono-ui text-[10.5px] text-[var(--ink-2)]">
-                  {t('importCatalogConfirmQuestion')}
-                </div>
-                <div className="flex gap-1.5">
-                  <button
-                    onClick={() => {
-                      setConfirmImportCatalog(false);
-                      onImportCatalog();
-                    }}
-                    className="flex-1 h-7 rounded-[3px] border border-red-400 bg-transparent text-red-400 text-[12px] cursor-pointer hover:bg-red-400/10"
-                  >
-                    {t('importCatalogConfirmYes')}
-                  </button>
-                  <button
-                    onClick={() => setConfirmImportCatalog(false)}
-                    className="flex-1 h-7 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] cursor-pointer hover:border-[var(--accent)]"
-                  >
-                    {t('cancel')}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button
-                onClick={() => setConfirmImportCatalog(true)}
-                className="mt-1.5 h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
-              >
-                {t('importCatalogButton')}
-              </button>
-            )}
-            {catalogBackupError && (
-              <div className="mt-1.5 font-mono-ui text-[length:var(--font-size-meta)] text-[var(--accent)] break-words">
-                {catalogBackupError}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
     </header>
   );
 }
