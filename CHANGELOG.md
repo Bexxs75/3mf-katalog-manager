@@ -7,11 +7,23 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-13
+
 ### Added
 
 - Materialkosten-Schätzung: bei Modellen mit echtem Slicer-Filamentverbrauch zeigt die Detailseite jetzt zusätzlich eine geschätzte Materialkosten-Summe, berechnet aus dem Verbrauch je Filament und dem Durchschnittspreis passender Spulen im Filament-Lager (Materialtyp-Abgleich, Farbe wird bewusst nicht berücksichtigt); fehlt ein Preis, wird das klar als "unbekannt" ausgewiesen statt als 0
 - Druckprotokoll: auf der Modell-Detailseite lässt sich jetzt zusätzlich zum bestehenden Druckstatus-Toggle ein Protokoll mehrerer Druckversuche führen — Datum, optionale Notiz, optionales Foto pro Eintrag, bewusst unabhängig vom Druckstatus (keine automatische Ableitung in beide Richtungen)
 - Katalog-Backup (Export/Import): neue Sektion im Einstellungen-Panel sichert die komplette Katalog-Datenbank plus Einstellungen (Theme, Sprache, Slicer-Liste, Ansicht) als ZIP-Datei; Import (mit Bestätigungsabfrage, da destruktiv) ersetzt den aktuellen Katalog sicher — die alte Datenbank wird nie gelöscht, nur als `.bak-<Zeitstempel>` beiseitegelegt, mit automatischer Wiederherstellung bei einem fehlgeschlagenen Import; nach erfolgreichem Import lädt die App automatisch neu, damit keine veralteten Modell-IDs im Katalog stehen bleiben
+- Navigationsleiste (links, feste Icon-Leiste) ersetzt den bisherigen Katalog/Filament-Lager-Wechsel-Button im Header sowie das Papierkorb-Icon; die Zahnrad-Einstellungen wandern ebenfalls dorthin. Design als klickbarer HTML-Prototyp mit Nutzer-Feedback abgestimmt
+- Echte Ordnerstruktur: Ordner im Katalog bilden jetzt echte Verzeichnisse auf der Platte ab. Import einer Ordnerstruktur legt automatisch eine passende Hierarchie in der Datenbank an (rekursiv, inkl. Unterordner), die Sidebar zeigt einen auf-/zuklappbaren Ordner-Baum statt der bisherigen (praktisch immer leeren) flachen Liste. Dateien und Ordner lassen sich per Drag & Drop **physisch** verschieben — inklusive rekursivem Pfad-Update für alle betroffenen Unterordner/Dateien und Schutz vor Verschieben in den eigenen Unterordner; neuer "+ Neuer Ordner"-Button legt echte Verzeichnisse an
+- Sammlungen sind jetzt Teil der linken Sidebar (mit "alle anzeigen"-Galerie und Inline-Anlage) statt eines separaten Reiters im Inhaltsbereich
+- Katalog-Speicherort-Ersteinrichtung: Dialog beim ersten Start (und jederzeit über die Einstellungen erreichbar) erklärt die neue Ordner-Bedeutung und bietet an, eine bestehende Ordnerstruktur zu übernehmen oder einen neuen, auch leeren Speicherort einzurichten — mit Hinweis, welche Dateitypen erfasst werden (.3mf/.stl) und dass bereits gepackte Archive (z. B. .zip) nicht berücksichtigt werden. "Dateien importieren" platziert Einzeldateien danach im gerade aktiven Ordner bzw. im konfigurierten Speicherort, statt immer in der Wurzel zu landen. Neuer Button "Ordner im Dateimanager öffnen" (Dialog und Einstellungen)
+
+### Changed
+
+- Kartenradius zwischen Katalog, Sammlungen-Galerie und Filament-Lager vereinheitlicht (10px, unabhängig von der UI-Dichte)
+- Kopfzeile ("3MF Katalog Manager") geht jetzt über die volle Fensterbreite, die Navigationsleiste beginnt erst darunter
+- Sidebar: Abschnitte "Creators" und "Gespeicherte Filter" entfernt (unnötig geworden), "Tags" steht jetzt vor der Warteschlange
 
 ### Fixed
 
@@ -178,11 +190,23 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-13
+
 ### Added
 
 - Material cost estimate: for models with real slicer filament usage, the detail page now also shows an estimated material cost, computed from the consumption per filament and the average price of matching spools in the filament inventory (matched by material type; color is deliberately not considered); if no price is found it's clearly shown as "unknown" rather than 0
 - Print log: the model detail page can now keep a log of multiple print attempts in addition to the existing print-status toggle — date, optional note, optional photo per entry, deliberately independent of print status (no automatic derivation in either direction)
 - Catalog backup (export/import): a new section in the settings panel backs up the entire catalog database plus settings (theme, language, slicer list, view) as a ZIP file; import (confirmation-gated, since destructive) safely replaces the current catalog — the old database is never deleted, only set aside as a timestamped `.bak-<timestamp>` file, with automatic restoration if the import fails; after a successful import the app automatically reloads so no stale model IDs remain in the catalog
+- Navigation rail (fixed left icon bar) replaces the previous catalog/filament-storage switch button in the header as well as the trash icon; the settings gear moved there too. Design was aligned with the user via a clickable HTML prototype
+- Real folder structure: folders in the catalog now mirror real directories on disk. Importing a folder structure automatically builds a matching hierarchy in the database (recursive, including subfolders); the sidebar shows an expandable/collapsible folder tree instead of the previous (practically always-empty) flat list. Files and folders can be dragged to **physically** move them — including recursive path updates for every affected subfolder/file and protection against moving a folder into its own descendant; a new "+ New folder" button creates real directories
+- Collections are now part of the left sidebar (with a "view all" gallery and inline creation) instead of a separate tab in the content area
+- Catalog storage location setup: a dialog on first launch (reachable anytime afterward via settings) explains the new meaning of folders and offers to adopt an existing folder structure or set up a new, even empty, storage location — noting which file types are captured (.3mf/.stl) and that already-packed archives (e.g. .zip) are not considered. "Import files" then places single files into the currently active folder or the configured storage location, instead of always landing at the root. New "Open folder in file manager" button (in the dialog and in settings)
+
+### Changed
+
+- Unified card corner radius across the catalog grid, collections gallery, and filament inventory (10px, regardless of UI density)
+- The header ("3MF Katalog Manager") now spans the full window width; the navigation rail starts only below it
+- Sidebar: removed the "Creators" and "Saved filters" sections (no longer needed); "Tags" now appears before the queue
 
 ### Fixed
 
