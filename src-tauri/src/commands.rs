@@ -1746,11 +1746,18 @@ fn replace_catalog_db(state: &AppState, new_db_path: &Path) -> CmdResult<()> {
     // Neue DB liegt jetzt unter state.db_path - Connection darauf umstellen,
     // statt sie auf dem In-Memory-Platzhalter zu belassen, damit AppState
     // sofort wieder eine echte, funktionierende Verbindung haelt (und dies
-    // testbar ist). Ein Neustart der App bleibt trotzdem empfohlen (siehe
+    // testbar ist). Bewusst db::connect() statt einem rohen
+    // Connection::open(): db::connect() ruft zusaetzlich init() auf, was
+    // PRAGMA foreign_keys = ON setzt und alte Schemata per ALTER TABLE auf
+    // den aktuellen Stand migriert - beides faellt bei einem rohen
+    // Connection::open() weg, was bei einem Import aus einem aelteren
+    // Export (mit veraltetem Schema) zu fehlenden Spalten bzw. deaktivierten
+    // Fremdschluessel-Kaskaden fuehren wuerde, bis die App neu gestartet
+    // wird. Ein Neustart der App bleibt trotzdem empfohlen (siehe
     // Spec/Frontend-Flow), ist fuer die Backend-Korrektheit ab hier aber
     // nicht mehr zwingend.
     let mut guard = state.db.lock().map_err(|_| "database lock poisoned".to_string())?;
-    *guard = Connection::open(&state.db_path).map_err(|e| e.to_string())?;
+    *guard = db::connect(&state.db_path).map_err(|e| e.to_string())?;
 
     Ok(())
 }
