@@ -75,19 +75,26 @@ export function ModelDetailPage({
     setTagDraft('');
   };
 
-  const { entries: printLogEntries, addEntry: addPrintLogEntry, deleteEntry: deletePrintLogEntry } = usePrintLog(model.id);
+  const {
+    entries: printLogEntries,
+    error: printLogError,
+    addEntry: addPrintLogEntry,
+    deleteEntry: deletePrintLogEntry,
+  } = usePrintLog(model.id);
   const [showPrintLogForm, setShowPrintLogForm] = useState(false);
   const [printLogDate, setPrintLogDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [printLogNote, setPrintLogNote] = useState('');
   const [printLogPhoto, setPrintLogPhoto] = useState<string | null>(null);
 
   const submitPrintLogEntry = () => {
-    addPrintLogEntry(new Date(printLogDate).toISOString(), printLogNote.trim() || null, printLogPhoto).then(() => {
-      setShowPrintLogForm(false);
-      setPrintLogNote('');
-      setPrintLogPhoto(null);
-      setPrintLogDate(new Date().toISOString().slice(0, 10));
-    });
+    addPrintLogEntry(new Date(printLogDate).toISOString(), printLogNote.trim() || null, printLogPhoto)
+      .then(() => {
+        setShowPrintLogForm(false);
+        setPrintLogNote('');
+        setPrintLogPhoto(null);
+        setPrintLogDate(new Date().toISOString().slice(0, 10));
+      })
+      .catch((e) => console.error('[print-log] Hinzufügen fehlgeschlagen:', e));
   };
 
   const pickPrintLogPhoto = () => {
@@ -373,12 +380,16 @@ export function ModelDetailPage({
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="font-mono-ui text-[var(--ink-3)]">
-                    {new Date(entry.printedAt).toLocaleDateString(language)}
+                    {new Date(entry.printedAt).toLocaleDateString(language, { timeZone: 'UTC' })}
                   </div>
                   {entry.note && <div className="text-[var(--ink-2)]">{entry.note}</div>}
                 </div>
                 <button
-                  onClick={() => deletePrintLogEntry(entry.id)}
+                  onClick={() =>
+                    deletePrintLogEntry(entry.id).catch((e) =>
+                      console.error('[print-log] Löschen fehlgeschlagen:', e),
+                    )
+                  }
                   className="text-[var(--ink-3)] hover:text-red-400 flex-none"
                 >
                   ✕
@@ -387,6 +398,7 @@ export function ModelDetailPage({
             ))}
           </div>
         )}
+        {printLogError && <p className="text-[12.5px] text-red-400">{printLogError}</p>}
       </div>
 
       <footer className="flex items-center justify-between gap-4 flex-wrap rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-4 py-3.5 mt-auto">
