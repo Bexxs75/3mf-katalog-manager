@@ -10,6 +10,7 @@ import { ModelDetailPage } from './components/ModelDetailPage';
 import { ContextMenu } from './components/ContextMenu';
 import { FilamentView } from './components/FilamentView';
 import { ImportSummaryBanner } from './components/ImportSummaryBanner';
+import { CatalogImportRestartBanner } from './components/CatalogImportRestartBanner';
 import { CatalogCleanupDialog } from './components/CatalogCleanupDialog';
 import { CollectionsGallery } from './components/CollectionsGallery';
 import { BackgroundSnapshotRenderer } from './components/BackgroundSnapshotRenderer';
@@ -261,6 +262,51 @@ export default function App() {
   const [rescanFeedback, setRescanFeedback] = useState<
     { fileId: string; status: 'success' | 'error'; message?: string } | null
   >(null);
+
+  const [catalogBackupError, setCatalogBackupError] = useState<string | null>(null);
+  const [showImportRestartBanner, setShowImportRestartBanner] = useState(false);
+
+  const CATALOG_SETTINGS_KEYS = [
+    '3mf-katalog-theme',
+    '3mf-katalog-display-preference',
+    '3mf-katalog-language',
+    '3mf-katalog-slicers',
+    '3mf-katalog-density',
+  ] as const;
+
+  const exportCatalog = () => {
+    setCatalogBackupError(null);
+    const settings: Record<string, string | null> = {};
+    for (const key of CATALOG_SETTINGS_KEYS) {
+      settings[key] = localStorage.getItem(key);
+    }
+    invoke('export_catalog', { settingsJson: JSON.stringify(settings) }).catch((e) => {
+      console.error('[catalog-backup] Export fehlgeschlagen:', e);
+      setCatalogBackupError(String(e));
+    });
+  };
+
+  const importCatalog = () => {
+    setCatalogBackupError(null);
+    invoke<{ imported: boolean; settingsJson: string | null }>('import_catalog')
+      .then((result) => {
+        if (!result.imported || !result.settingsJson) return;
+        const settings = JSON.parse(result.settingsJson) as Record<string, string | null>;
+        for (const key of CATALOG_SETTINGS_KEYS) {
+          const value = settings[key];
+          if (value === null || value === undefined) {
+            localStorage.removeItem(key);
+          } else {
+            localStorage.setItem(key, value);
+          }
+        }
+        setShowImportRestartBanner(true);
+      })
+      .catch((e) => {
+        console.error('[catalog-backup] Import fehlgeschlagen:', e);
+        setCatalogBackupError(String(e));
+      });
+  };
 
   const rescanMetadata = (id: string) => {
     setRescanFeedback(null);
@@ -560,6 +606,9 @@ export default function App() {
         onScanCatalogIssues={scanCatalogIssues}
         cleanupScanning={cleanupScanning}
         cleanupError={cleanupError}
+        onExportCatalog={exportCatalog}
+        onImportCatalog={importCatalog}
+        catalogBackupError={catalogBackupError}
         mainView={mainView}
         onMainViewChange={(v) => {
           setMainView(v);
@@ -948,6 +997,10 @@ export default function App() {
           duplicates={importBanner.duplicates}
           onClose={() => setImportBanner(null)}
         />
+      )}
+
+      {showImportRestartBanner && (
+        <CatalogImportRestartBanner onClose={() => setShowImportRestartBanner(false)} />
       )}
 
       {cleanupDialogOpen && cleanupIssues && (

@@ -143,6 +143,12 @@ export interface Translations {
   costEstimateUnpricedHint: string;
   rescanMetadataButton: string;
   rescanMetadataSuccess: string;
+  catalogBackupTitle: string;
+  exportCatalogButton: string;
+  importCatalogButton: string;
+  importCatalogConfirmQuestion: string;
+  importCatalogConfirmYes: string;
+  importCatalogRestartHint: string;
   printLogHeading: string;
   printLogAddButton: string;
   printLogDatePlaceholder: string;
