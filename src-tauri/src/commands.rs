@@ -1600,7 +1600,12 @@ pub async fn export_catalog(
     // Zip erst nach vollstaendigem, erfolgreichem Schreiben an den
     // eigentlichen Zielpfad verschieben - kein unvollstaendiges Archiv am
     // sichtbaren Zielort, falls das Packen mittendrin fehlschlaegt.
-    std::fs::rename(&tmp_zip_path, &dest_path).map_err(|e| e.to_string())?;
+    if let Err(e) = std::fs::rename(&tmp_zip_path, &dest_path) {
+        // Schlaegt auch das finale Umbenennen fehl, bleibt keine
+        // verwaiste .zip.tmp sichtbar neben dem Zielpfad zurueck.
+        let _ = std::fs::remove_file(&tmp_zip_path);
+        return Err(e.to_string());
+    }
     Ok(())
 }
 
