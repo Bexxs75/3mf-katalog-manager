@@ -180,6 +180,8 @@ impl From<threemf::SliceInfo> for SliceInfoDto {
 pub struct FolderDto {
     pub id: String,
     pub name: String,
+    pub path: String,
+    pub parent_id: Option<String>,
     pub count: i64,
 }
 
@@ -354,23 +356,37 @@ pub fn list_folders(state: State<AppState>) -> CmdResult<Vec<FolderDto>> {
     let folders = db::list_folders(&conn).map_err(|e| e.to_string())?;
     let files = db::list_files(&conn).map_err(|e| e.to_string())?;
 
-    let mut dtos = vec![FolderDto {
-        id: "all".to_string(),
-        name: "Alle Modelle".to_string(),
-        count: files.len() as i64,
-    }];
-
-    for folder in folders {
-        let count = files
-            .iter()
-            .filter(|f| f.folder_id == Some(folder.id))
-            .count() as i64;
-        dtos.push(FolderDto {
-            id: folder.id.to_string(),
-            name: folder.name,
-            count,
-        });
+    fn is_descendant_or_self(folders: &[db::models::FolderRecord], candidate_id: i64, ancestor_id: i64) -> bool {
+        if candidate_id == ancestor_id {
+            return true;
+        }
+        let mut current = candidate_id;
+        while let Some(f) = folders.iter().find(|f| f.id == current) {
+            match f.parent_id {
+                Some(pid) if pid == ancestor_id => return true,
+                Some(pid) => current = pid,
+                None => return false,
+            }
+        }
+        false
     }
+
+    let dtos = folders
+        .iter()
+        .map(|folder| {
+            let count = files
+                .iter()
+                .filter(|f| f.folder_id.is_some_and(|fid| is_descendant_or_self(&folders, fid, folder.id)))
+                .count() as i64;
+            FolderDto {
+                id: folder.id.to_string(),
+                name: folder.name.clone(),
+                path: folder.path.clone(),
+                parent_id: folder.parent_id.map(|id| id.to_string()),
+                count,
+            }
+        })
+        .collect();
 
     Ok(dtos)
 }

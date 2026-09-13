@@ -46,6 +46,15 @@ pub(crate) fn init(conn: &Connection) -> Result<(), DbError> {
     );
     let _ = conn.execute("ALTER TABLE files ADD COLUMN last_viewed_at TEXT", []);
     let _ = conn.execute("ALTER TABLE files ADD COLUMN creator TEXT", []);
+    let _ = conn.execute(
+        "ALTER TABLE folders ADD COLUMN parent_id INTEGER REFERENCES folders(id) ON DELETE CASCADE",
+        [],
+    );
+    let _ = conn.execute("ALTER TABLE folders ADD COLUMN path TEXT", []);
+    let _ = conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_folders_path ON folders (path)",
+        [],
+    );
     // Backfill fuer Bestandsdaten: 'creator' wurde erst mit obiger ALTER TABLE
     // eingefuehrt und wird sonst nur beim Import gesetzt (import_one). Ohne
     // diesen Backfill bleibt 'creator' fuer jede vor diesem Upgrade bereits
@@ -90,17 +99,27 @@ pub(crate) fn init(conn: &Connection) -> Result<(), DbError> {
 // gehalten statt geloescht, um Testdaten fuer diese Abfrage anzulegen.
 #[cfg(test)]
 pub fn insert_folder(conn: &Connection, name: &str) -> Result<i64, DbError> {
-    conn.execute("INSERT INTO folders (name) VALUES (?1)", params![name])?;
+    // path wird hier synthetisch aus dem Namen gebildet, nur damit bestehende
+    // Tests (die diese 1-Parameter-Signatur nutzen) weiterhin gueltige
+    // FolderRecord-Zeilen erzeugen (path ist in Rust ein non-optionales
+    // String-Feld). Eine echte parent_id/path-Vergabe kommt erst mit der
+    // erweiterten Signatur in Task 2.
+    conn.execute(
+        "INSERT INTO folders (name, path) VALUES (?1, ?1)",
+        params![name],
+    )?;
     Ok(conn.last_insert_rowid())
 }
 
 pub fn list_folders(conn: &Connection) -> Result<Vec<FolderRecord>, DbError> {
-    let mut stmt = conn.prepare("SELECT id, name FROM folders ORDER BY name")?;
+    let mut stmt = conn.prepare("SELECT id, name, parent_id, path FROM folders ORDER BY name")?;
     let rows = stmt
         .query_map([], |row| {
             Ok(FolderRecord {
                 id: row.get(0)?,
                 name: row.get(1)?,
+                parent_id: row.get(2)?,
+                path: row.get(3)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -849,4 +868,26 @@ pub fn list_print_log_entries(conn: &Connection, file_id: i64) -> Result<Vec<Pri
 pub fn delete_print_log_entry(conn: &Connection, id: i64) -> Result<(), DbError> {
     conn.execute("DELETE FROM print_log WHERE id = ?1", params![id])?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn list_folders_returns_path_and_parent_id() {
+        let conn = connect_in_memory().unwrap();
+        conn.execute("INSERT INTO folders (name, path) VALUES ('Root', '/tmp/Root')", []).unwrap();
+        let root_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO folders (name, path, parent_id) VALUES ('Child', '/tmp/Root/Child', ?1)",
+            params![root_id],
+        ).unwrap();
+
+        let folders = list_folders(&conn).unwrap();
+        assert_eq!(folders.len(), 2);
+        let child = folders.iter().find(|f| f.name == "Child").unwrap();
+        assert_eq!(child.parent_id, Some(root_id));
+        assert_eq!(child.path, "/tmp/Root/Child");
+    }
 }
