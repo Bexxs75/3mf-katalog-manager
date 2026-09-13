@@ -100,6 +100,20 @@
   .dialog-title{ font-size:17px; font-weight:800; letter-spacing:-.01em; margin-bottom:10px; text-wrap:balance; }
   .dialog-intro{ font-size:13px; line-height:1.6; color:var(--ink-2); margin-bottom:20px; }
 
+  .filetypes-note{
+    margin-bottom:16px; padding:11px 13px; border-radius:9px;
+    border:1px dashed var(--line-strong); font-size:12px; line-height:1.55; color:var(--ink-2);
+  }
+  .success-panel{
+    margin-bottom:16px; padding:16px; border-radius:12px;
+    border:2px solid var(--good); background:var(--good-soft);
+  }
+  .success-panel .msg{ font-size:13.5px; font-weight:700; color:var(--good); margin-bottom:12px; display:flex; align-items:center; gap:7px; }
+  .success-panel .actions{ display:flex; gap:8px; flex-wrap:wrap; }
+  .btn-ghost{ height:32px; padding:0 14px; border-radius:7px; border:1px solid var(--line-strong); background:var(--panel); color:var(--ink-2); font-size:12.5px; font-weight:600; cursor:pointer; }
+  .btn-ghost:hover{ border-color:var(--accent); color:var(--accent); }
+  .btn-solid{ height:32px; padding:0 14px; border-radius:7px; border:1px solid var(--accent); background:var(--accent); color:var(--accent-ink); font-size:12.5px; font-weight:700; cursor:pointer; }
+
   .cards{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; }
   .card{
     text-align:left; padding:16px; border-radius:12px; border:2px solid var(--line);
@@ -189,7 +203,16 @@
                 werden, legen wir jetzt einen festen Speicherort fest.
               </div>
 
-              <div class="cards">
+              <div class="filetypes-note" id="filetypesNote">
+                Erfasst werden ausschließlich <b>.3mf</b>- und <b>.stl</b>-Dateien. Bereits gepackte
+                Archive (z.&nbsp;B. .zip) werden dabei <b>nicht</b> berücksichtigt und bleiben
+                unverändert im Ordner liegen — entpacke sie bei Bedarf vorher, oder öffne den Ordner
+                nach der Einrichtung direkt über den Katalog im Dateimanager.
+              </div>
+
+              <div id="successPanel" hidden></div>
+
+              <div class="cards" id="cardsWrap">
                 <div class="card" id="cardAdopt">
                   <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/><path d="M9 13h6M9 16h4"/></svg></div>
                   <div class="ct">Bestehende Ordnerstruktur übernehmen</div>
@@ -210,12 +233,12 @@
                 </div>
               </div>
 
-              <div id="toastArea"></div>
-
-              <div class="later-row">
-                <span class="later-link" id="laterLink">Später einrichten</span>
+              <div id="laterWrap">
+                <div class="later-row">
+                  <span class="later-link" id="laterLink">Später einrichten</span>
+                </div>
+                <div class="footnote">Du kannst diese Wahl jederzeit in den Einstellungen unter „Katalog-Speicherort" ändern.</div>
               </div>
-              <div class="footnote">Du kannst diese Wahl jederzeit in den Einstellungen unter „Katalog-Speicherort" ändern.</div>
             </div>
           </div>
         </div>
@@ -228,8 +251,9 @@
 
   <div class="annot">
     <div class="a"><b>Gleichwertige Karten</b><span>Beide Wege sind gleich groß und gleich gewichtet — keiner wirkt wie die „empfohlene“, weil beide für unterschiedliche Nutzer richtig sind.</span></div>
+    <div class="a"><b>Dateityp-Hinweis vorab</b><span>Nennt explizit, was erfasst wird (.3mf/.stl), und stellt klar, dass gepackte Archive (.zip) nicht angerührt werden — bevor der User überhaupt klickt.</span></div>
+    <div class="a"><b>Erfolg ersetzt die Karten</b><span>Datei- UND Ordner-Anzahl auf einen Blick, plus „Ordner im Dateimanager öffnen“ direkt griffbereit — falls doch noch etwas manuell entpackt werden muss.</span></div>
     <div class="a"><b>„Später“ bewusst unauffällig</b><span>Als Textlink statt Button, damit er nicht mit den beiden echten Entscheidungen konkurriert — aber trotzdem leicht auffindbar bleibt.</span></div>
-    <div class="a"><b>Klick zeigt sofort Rückmeldung</b><span>Ladezustand in der Karte selbst, Erfolg als kompakter grüner Hinweis direkt im Dialog — kein zusätzliches Popup.</span></div>
   </div>
 
 <script>
@@ -248,7 +272,13 @@
   var cardNew = document.getElementById('cardNew');
   var cdAdopt = document.getElementById('cdAdopt');
   var cdNew = document.getElementById('cdNew');
-  var toastArea = document.getElementById('toastArea');
+  var cardsWrap = document.getElementById('cardsWrap');
+  var filetypesNote = document.getElementById('filetypesNote');
+  var successPanel = document.getElementById('successPanel');
+  var laterWrap = document.getElementById('laterWrap');
+  var errorArea = document.getElementById('toastArea') || (function(){
+    var d = document.createElement('div'); d.id = 'toastArea'; cardsWrap.insertAdjacentElement('afterend', d); return d;
+  })();
   var adoptText = cdAdopt.textContent;
   var newText = cdNew.textContent;
 
@@ -257,7 +287,37 @@
     cardNew.classList.remove('busy');
     cdAdopt.innerHTML = adoptText;
     cdNew.innerHTML = newText;
-    toastArea.innerHTML = '';
+    errorArea.innerHTML = '';
+    successPanel.hidden = true;
+    successPanel.innerHTML = '';
+    cardsWrap.hidden = false;
+    filetypesNote.hidden = false;
+    laterWrap.hidden = false;
+  }
+
+  function showSuccess(html){
+    cardsWrap.hidden = true;
+    filetypesNote.hidden = true;
+    laterWrap.hidden = true;
+    successPanel.hidden = false;
+    successPanel.className = 'success-panel';
+    successPanel.innerHTML = html;
+  }
+
+  function bindSuccessActions(path){
+    var openBtn = successPanel.querySelector('.btn-ghost');
+    var doneBtn = successPanel.querySelector('.btn-solid');
+    if(openBtn) openBtn.addEventListener('click', function(){
+      alert('Würde jetzt den nativen Dateimanager (z. B. Dolphin) öffnen:\n' + path);
+    });
+    if(doneBtn) doneBtn.addEventListener('click', reset);
+  }
+
+  function successActions(){
+    return '<div class="actions">' +
+      '<button class="btn-ghost">Ordner im Dateimanager öffnen</button>' +
+      '<button class="btn-solid">Fertig</button>' +
+      '</div>';
   }
 
   function simulateAdopt(){
@@ -265,9 +325,8 @@
     cardAdopt.classList.add('busy');
     cdAdopt.innerHTML = '<span class="spin"><span class="dot"></span>Importiere…</span>';
     setTimeout(function(){
-      cardAdopt.classList.remove('busy');
-      cdAdopt.innerHTML = adoptText;
-      toastArea.innerHTML = '<div class="toast-ok">✓ 47 Dateien importiert, Ordnerstruktur übernommen.</div>';
+      showSuccess('<div class="msg">✓ 47 Dateien in 6 Ordnern importiert.</div>' + successActions());
+      bindSuccessActions('/home/andreasm/3D-Drucke');
     }, 1100);
   }
 
@@ -276,15 +335,14 @@
     cardNew.classList.add('busy');
     cdNew.innerHTML = '<span class="spin"><span class="dot"></span>Richte ein…</span>';
     setTimeout(function(){
-      cardNew.classList.remove('busy');
-      cdNew.innerHTML = newText;
-      toastArea.innerHTML = '<div class="toast-ok">✓ „/home/andreasm/3D-Drucke“ als Speicherort eingerichtet.</div>';
+      showSuccess('<div class="msg">✓ „/home/andreasm/3D-Drucke“ als Speicherort eingerichtet.</div>' + successActions());
+      bindSuccessActions('/home/andreasm/3D-Drucke');
     }, 700);
   }
 
   function simulateError(){
     reset();
-    toastArea.innerHTML = '<div class="toast-ok" style="background:var(--crit);opacity:.14;color:var(--crit);">Fehler: Zugriff verweigert (keine Schreibrechte für diesen Ordner).</div>';
+    errorArea.innerHTML = '<div class="filetypes-note" style="border-color:var(--crit);color:var(--crit);border-style:solid;">Fehler: Zugriff verweigert (keine Schreibrechte für diesen Ordner).</div>';
   }
 
   cardAdopt.addEventListener('click', simulateAdopt);
