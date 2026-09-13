@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import type { ModelFile, SlicerConfig } from '../types';
+import type { ModelFile, SlicerConfig, Collection } from '../types';
 import { useT, useLanguage } from '../i18n/LanguageContext';
 import { buildMetaRows } from '../lib/modelMetadata';
 import { ModelViewer } from './ModelViewer';
@@ -24,6 +24,8 @@ interface Props {
   onSetSourceUrl: (fileId: string, url: string | null) => void;
   onOpenInSlicer: (slicerId?: string) => void;
   onRescanMetadata: () => void;
+  onAddToCollection: (collectionId: string) => void;
+  collections: Collection[];
   slicers: SlicerConfig[];
   slicerError: string | null;
   rescanError: string | null;
@@ -45,6 +47,8 @@ export function ModelDetailPage({
   onSetSourceUrl,
   onOpenInSlicer,
   onRescanMetadata,
+  onAddToCollection,
+  collections,
   slicers,
   slicerError,
   rescanError,
@@ -53,6 +57,7 @@ export function ModelDetailPage({
 }: Props) {
   const t = useT();
   const { language } = useLanguage();
+  const [addToCollectionMenuOpen, setAddToCollectionMenuOpen] = useState(false);
   const [tagDraft, setTagDraft] = useState('');
   const {
     editing: editingSource,
@@ -413,6 +418,36 @@ export function ModelDetailPage({
           >
             {t('rescanMetadataButton')}
           </button>
+          <div className="relative">
+            <button
+              onClick={() => setAddToCollectionMenuOpen((prev) => !prev)}
+              className="px-4 py-2 rounded-md border border-[var(--line)] text-[13px] font-semibold text-[var(--ink-2)] hover:border-[var(--line-strong)]"
+            >
+              {t('addToCollectionLabel')}
+            </button>
+            {addToCollectionMenuOpen && (
+              <div className="absolute bottom-11 right-0 min-w-[220px] max-w-[360px] py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
+                {collections.map((c) => (
+                  <button
+                    key={c.id}
+                    title={c.name}
+                    onClick={() => {
+                      onAddToCollection(c.id);
+                      setAddToCollectionMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-[13px] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis"
+                  >
+                    {c.name}
+                  </button>
+                ))}
+                {collections.length === 0 && (
+                  <div className="px-3 py-1.5 font-mono-ui text-[11px] text-[var(--ink-3)]">
+                    {t('noCollectionsEmptyState')}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           <button
             onClick={() => onOpenInSlicer()}
             disabled={slicers.length === 0}

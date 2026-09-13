@@ -437,6 +437,13 @@ export default function App() {
     });
   };
 
+  const addModelToCollection = (fileId: string, collectionId: string) => {
+    invoke('add_files_to_collection', { collectionId, fileIds: [fileId] }).then(() => {
+      refreshCollections();
+      if (activeCollection === collectionId) refreshCollectionModels(collectionId);
+    });
+  };
+
   const reorderCollection = (orderedIds: string[]) => {
     if (!activeCollection) return;
     const updates = orderedIds.map((fileId, position) => ({ fileId, position }));
@@ -925,6 +932,8 @@ export default function App() {
                 onSetSourceUrl={(fileId, url) => setModelSourceUrl(fileId, url)}
                 onOpenInSlicer={(slicerId) => openInSlicer(detailModel.id, slicerId)}
                 onRescanMetadata={() => rescanMetadata(detailModel.id)}
+                onAddToCollection={(collectionId) => addModelToCollection(detailModel.id, collectionId)}
+                collections={collections}
                 slicers={slicers}
                 slicerError={slicerError}
                 rescanError={
