@@ -1726,17 +1726,42 @@ fn replace_catalog_db(state: &AppState, new_db_path: &Path) -> CmdResult<()> {
         "catalog.db.bak-{}",
         chrono::Utc::now().format("%Y%m%d%H%M%S")
     ));
-    std::fs::rename(&state.db_path, &backup_path).map_err(|e| e.to_string())?;
+
+    if let Err(e) = std::fs::rename(&state.db_path, &backup_path) {
+        // catalog.db liegt unveraendert unter state.db_path (das rename ist
+        // fehlgeschlagen, bevor irgendetwas passiert ist) - Connection muss
+        // trotzdem wieder darauf zeigen statt auf dem In-Memory-Platzhalter
+        // zu bleiben, sonst ist die App bis zum naechsten Neustart unbenutzbar,
+        // obwohl die Datei voellig in Ordnung ist.
+        if let Ok(mut guard) = state.db.lock() {
+            if let Ok(conn) = db::connect(&state.db_path) {
+                *guard = conn;
+            }
+        }
+        return Err(e.to_string());
+    }
 
     if let Err(e) = std::fs::copy(new_db_path, &state.db_path) {
-        return match std::fs::rename(&backup_path, &state.db_path) {
+        let restore_result = std::fs::rename(&backup_path, &state.db_path);
+        if restore_result.is_ok() {
+            // Alte Datei ist wieder unter state.db_path - Connection
+            // reconnecten, sonst haengt die App mit dem In-Memory-Platzhalter,
+            // obwohl die Datei laengst wiederhergestellt ist.
+            if let Ok(mut guard) = state.db.lock() {
+                if let Ok(conn) = db::connect(&state.db_path) {
+                    *guard = conn;
+                }
+            }
+        }
+        return match restore_result {
             Ok(()) => Err(format!(
                 "Kopieren der neuen Datenbank fehlgeschlagen, alter Katalog wiederhergestellt: {e}"
             )),
             Err(restore_err) => Err(format!(
                 "Kopieren der neuen Datenbank fehlgeschlagen UND Wiederherstellung der alten \
                  Datenbank fehlgeschlagen ({restore_err}). Die vorherige Datenbank liegt noch \
-                 unter {}. Bitte manuell nach {} zurückbenennen. Ursprünglicher Fehler: {e}",
+                 unter {}. Bitte manuell nach {} zurückbenennen und anschließend die App neu \
+                 starten. Ursprünglicher Fehler: {e}",
                 backup_path.display(),
                 state.db_path.display()
             )),
@@ -2153,6 +2178,13 @@ mod tests {
         let db_path = dir.join("catalog.db");
 
         let old_conn = crate::db::connect(&db_path).expect("connect creates schema");
+        old_conn
+            .execute(
+                "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at)
+                 VALUES ('old.3mf', '/old/old.3mf', '3mf', 7, '2026-09-13T00:00:00Z')",
+                [],
+            )
+            .expect("seed old db with a marker row");
         drop(old_conn);
         let old_bytes = std::fs::read(&db_path).expect("read old db bytes");
 
@@ -2186,6 +2218,17 @@ mod tests {
         assert!(db_path.exists(), "catalog.db must exist again after restore");
         let restored_bytes = std::fs::read(&db_path).expect("read restored db bytes");
         assert_eq!(restored_bytes, old_bytes, "restored db must match the original content");
+
+        // AppState's Connection muss nach dem erfolgreichen Restore
+        // tatsaechlich wieder nutzbar sein und den alten (wiederhergestellten)
+        // Inhalt lesen - nicht auf dem In-Memory-Platzhalter haengen bleiben
+        // (Finding I1). Der Marker-Datensatz aus der alten DB muss ueber die
+        // laufende Connection sichtbar sein.
+        let guard = state.db.lock().unwrap();
+        let count: i64 =
+            guard.query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0)).unwrap();
+        assert_eq!(count, 1, "connection must reflect the restored old db's content, not the placeholder");
+        drop(guard);
 
         let _ = std::fs::remove_dir_all(&dir);
     }
