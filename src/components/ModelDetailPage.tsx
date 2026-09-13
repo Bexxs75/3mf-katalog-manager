@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import type { ModelFile, SlicerConfig } from '../types';
 import { useT, useLanguage } from '../i18n/LanguageContext';
 import { buildMetaRows } from '../lib/modelMetadata';
@@ -6,6 +7,7 @@ import { ModelViewer } from './ModelViewer';
 import { resolveDisplayImage } from '../lib/resolveDisplayImage';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import { useEditableSourceUrl } from '../hooks/useEditableSourceUrl';
+import { usePrintLog } from '../hooks/usePrintLog';
 import { formatWeightG, formatLengthM, formatPrice } from '../i18n/format';
 
 interface Props {
@@ -71,6 +73,27 @@ export function ModelDetailPage({
     const value = tagDraft.trim();
     if (value) onAddTag(value);
     setTagDraft('');
+  };
+
+  const { entries: printLogEntries, addEntry: addPrintLogEntry, deleteEntry: deletePrintLogEntry } = usePrintLog(model.id);
+  const [showPrintLogForm, setShowPrintLogForm] = useState(false);
+  const [printLogDate, setPrintLogDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [printLogNote, setPrintLogNote] = useState('');
+  const [printLogPhoto, setPrintLogPhoto] = useState<string | null>(null);
+
+  const submitPrintLogEntry = () => {
+    addPrintLogEntry(new Date(printLogDate).toISOString(), printLogNote.trim() || null, printLogPhoto).then(() => {
+      setShowPrintLogForm(false);
+      setPrintLogNote('');
+      setPrintLogPhoto(null);
+      setPrintLogDate(new Date().toISOString().slice(0, 10));
+    });
+  };
+
+  const pickPrintLogPhoto = () => {
+    invoke<string | null>('pick_and_read_image').then((base64) => {
+      if (base64) setPrintLogPhoto(base64);
+    });
   };
 
   return (
@@ -268,6 +291,103 @@ export function ModelDetailPage({
           )}
         </div>
       )}
+
+      <div className="rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-5 py-4">
+        <div className="flex items-center justify-between mb-3">
+          <p className="font-mono-ui text-[10.5px] tracking-[0.06em] uppercase text-[var(--ink-3)]">
+            {t('printLogHeading')}
+          </p>
+          {!showPrintLogForm && (
+            <button
+              onClick={() => setShowPrintLogForm(true)}
+              className="text-[12px] font-semibold text-[var(--accent)] hover:underline"
+            >
+              {t('printLogAddButton')}
+            </button>
+          )}
+        </div>
+
+        {showPrintLogForm && (
+          <div className="flex flex-col gap-2 mb-4 p-3 rounded-[6px] border border-dashed border-[var(--line-strong)]">
+            <input
+              type="date"
+              value={printLogDate}
+              onChange={(e) => setPrintLogDate(e.target.value)}
+              className="bg-[var(--panel-2)] border border-[var(--line)] rounded px-2 py-1 text-[13px]"
+            />
+            <textarea
+              value={printLogNote}
+              onChange={(e) => setPrintLogNote(e.target.value)}
+              placeholder={t('printLogNotePlaceholder')}
+              rows={2}
+              className="bg-[var(--panel-2)] border border-[var(--line)] rounded px-2 py-1 text-[13px] resize-none"
+            />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={pickPrintLogPhoto}
+                className="h-7 px-3 rounded-[3px] border border-[var(--line)] bg-transparent text-[var(--ink-2)] text-[12px] hover:border-[var(--accent)]"
+              >
+                {t('printLogPhotoButton')}
+              </button>
+              {printLogPhoto && (
+                <img
+                  src={`data:image/png;base64,${printLogPhoto}`}
+                  alt=""
+                  className="w-8 h-8 rounded object-cover border border-[var(--line)]"
+                />
+              )}
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => {
+                  setShowPrintLogForm(false);
+                  setPrintLogNote('');
+                  setPrintLogPhoto(null);
+                }}
+                className="h-7 px-3 rounded-[3px] border border-[var(--line)] bg-transparent text-[var(--ink-2)] text-[12px]"
+              >
+                {t('printLogCancelButton')}
+              </button>
+              <button
+                onClick={submitPrintLogEntry}
+                className="h-7 px-3 rounded-[3px] bg-[var(--accent)] text-[var(--accent-ink)] text-[12px] font-semibold"
+              >
+                {t('printLogSaveButton')}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {printLogEntries.length === 0 ? (
+          <p className="text-[13px] text-[var(--ink-3)]">{t('printLogEmpty')}</p>
+        ) : (
+          <div className="flex flex-col gap-2.5">
+            {printLogEntries.map((entry) => (
+              <div key={entry.id} className="flex items-start gap-2.5 text-[13px]">
+                {entry.photoImage && (
+                  <img
+                    src={entry.photoImage}
+                    alt=""
+                    className="w-10 h-10 rounded object-cover border border-[var(--line)] flex-none"
+                  />
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="font-mono-ui text-[var(--ink-3)]">
+                    {new Date(entry.printedAt).toLocaleDateString(language)}
+                  </div>
+                  {entry.note && <div className="text-[var(--ink-2)]">{entry.note}</div>}
+                </div>
+                <button
+                  onClick={() => deletePrintLogEntry(entry.id)}
+                  className="text-[var(--ink-3)] hover:text-red-400 flex-none"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       <footer className="flex items-center justify-between gap-4 flex-wrap rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-4 py-3.5 mt-auto">
         <span className="font-mono-ui text-[12px] text-[var(--ink-3)] break-all">{model.path}</span>

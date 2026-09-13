@@ -143,6 +143,15 @@ export interface Translations {
   costEstimateUnpricedHint: string;
   rescanMetadataButton: string;
   rescanMetadataSuccess: string;
+  printLogHeading: string;
+  printLogAddButton: string;
+  printLogDatePlaceholder: string;
+  printLogNotePlaceholder: string;
+  printLogPhotoButton: string;
+  printLogSaveButton: string;
+  printLogCancelButton: string;
+  printLogEmpty: string;
+  printLogDeleteButton: string;
 
   creatorsHeading: string;
 
