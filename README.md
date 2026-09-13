@@ -83,3 +83,91 @@ docs/              Zusätzliche Dokumentation
 ## Lizenz
 
 Noch nicht festgelegt.
+
+---
+
+# 3MF Katalog Manager (English)
+
+Cross-platform desktop application for cataloging and managing 3MF and STL files for 3D printing. Built with [Tauri](https://tauri.app/) (Rust backend) and React/TypeScript/Tailwind.
+
+## Features
+
+- **3MF and STL parsing** — both formats supported equally: OPC container extraction incl. embedded thumbnail for 3MF, ASCII and binary STL parsing
+- **Automatic metadata extraction** — dimensions, volume, object count, material (if present in the 3MF)
+- **Automatic hashtag generation** — suggestions from filename, geometry features, and slicer profile data, editable by the user
+- **Live 3D preview** — three.js rendering directly from the mesh geometry when no embedded thumbnail is available
+- **Tag and folder management**, search and filtering
+- **Import** of individual files or entire folders (including subfolders) via dialog or drag & drop, through a shared dropdown menu in the header
+- **Comfort view** — alternative, significantly more readable interface (larger text, graphics, and controls) alongside the existing compact view, toggleable in the settings panel; favorite marking per model in both views
+- **Open in slicer** — launch any number of self-configured slicer programs (vendor-agnostic) directly from the catalog (Windows/Linux)
+- **Multilingual UI** — German, English, Spanish, French, switchable at runtime
+- **Light/dark theme** with system detection and manual selection, persisted locally
+- **Filament inventory** — standalone management of your filament spools (material, manufacturer, color, storage location, diameter, original/remaining weight, price) with autocomplete for material/manufacturer/location, independent of the model catalog; toggleable between a card dashboard (stock bar, status color) and a sortable inventory list, including a stats bar and status filters; when adding new spools, several identical ones can be created at once (each with its own independently tracked remaining stock)
+- **Catalog extensions** — print-status toggle + weight per model (real value from the slicer if the 3mf has already been sliced, otherwise a rough estimate from volume × material density), sorting by "last viewed", NEW badge for recently imported models, creators filter (from the 3MF designer metadata), automatic detection of exact file duplicates on import via content hash
+- **Filament usage from the slicer** — reads the filament usage sliced in OrcaSlicer/Bambu Studio (`Metadata/slice_info.config`): real weight instead of an estimate, breakdown per build plate and filament (type, color, grams, meters) on the model detail page; "Rescan metadata" button retrieves the values afterward if an already-catalogued file was re-sliced in OrcaSlicer/Bambu Studio
+- **Model thumbnails** — grid view shows a real image per model (own upload, embedded 3MF thumbnail, or a snapshot automatically generated from the live 3D preview), plus an optional source link per model
+- **Queue** — ordered, drag-and-drop sortable list ("print next") in its own sidebar section, automatically removed when marked as printed
+- **Saved filters** — save frequently used combinations of folder/tag/creator/search/sort under a name and reapply them with a click
+- **Cleanup suggestions** — manually triggered catalog scan finds orphaned file paths and stock duplicates, cleanup via a selection dialog
+- **Model detail page** — full-screen view (double-click a model) with a large 3D preview, all metadata, and build-plate count for Bambu Studio/OrcaSlicer files; dedicated rotation controls (auto-rotation + 15° step buttons) in addition to free mouse dragging
+- **Trash** — deleted models remain recoverable for 7 days instead of being removed immediately, own view with a count badge
+- **Multi-select** — checkboxes in the catalog overview, "select all", action bar for queue/print-status/delete across multiple models at once
+- **Automatic slicer detection** — scans known installation locations at startup (Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura on Linux/Windows) and adds matches automatically; manual addition for custom forks remains possible
+- **Preferred view** — setting for whether the catalog and detail page default to the embedded file image or a rendered 3D view; missing snapshots are automatically re-rendered in the background as needed
+- **Collections** — a third organizational mechanism alongside folders and tags: explicitly group multiple models into a project, with a manually definable order (drag & drop); created via multi-select or via "import folder as collection"
+- **Custom app icon** — isometric 3D-printing layer cube in the app's real accent colors
+- **Content Security Policy** active (no `csp: null`), source URL fields and "open in slicer" validated server-side
+
+## Status
+
+This project is under active development. The local catalog (import, parsing, tagging, search, 3D preview, multilingual UI, theming) and "open in slicer" are functional. The following is **not** yet implemented:
+
+- **Cloud integration** (Google Drive etc.): existed previously but was removed again — too unstable/error-prone for everyday use. Will be cleanly redesigned at some point, see CHANGELOG
+- **macOS**: developed and tested on Linux only so far; "open in slicer" specifically does not support macOS (`.app` bundles need a different launch mechanism)
+- **Cross-platform release builds**: the Windows `.msi` build is manually verified on a Windows 11 VM (build + installation + icon check), but not part of an automated pipeline; a macOS package (`.dmg`) and code signing for both platforms are still outstanding
+- **CI/CD pipeline**: not yet set up
+
+## Planned
+
+No open high-priority items in the backlog at the moment.
+
+## Tech Stack
+
+- **Framework:** Tauri 2 (Rust backend, WebView frontend)
+- **Frontend:** React 19, TypeScript, Tailwind CSS, Vite
+- **3D rendering:** three.js
+- **Database:** SQLite (`rusqlite`)
+
+## Development
+
+Prerequisites: Node.js, the Rust toolchain (`cargo`), and the [Tauri system dependencies](https://tauri.app/start/prerequisites/) for your operating system.
+
+```bash
+npm install
+npm run tauri dev
+```
+
+Backend tests:
+
+```bash
+cd src-tauri
+cargo test
+```
+
+Production build (type checking + Vite build):
+
+```bash
+npm run build
+```
+
+## Project Structure
+
+```
+src/               React frontend (components, i18n, hooks, types)
+src-tauri/         Rust backend (Tauri commands, DB, 3MF/STL parsers, tagging)
+docs/              Additional documentation
+```
+
+## License
+
+Not yet decided.

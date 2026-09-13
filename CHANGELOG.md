@@ -156,3 +156,164 @@ Initialer Scaffold und Kern-Katalog.
 - Windows-`.msi`-Build ist manuell verifiziert, aber nicht Teil einer automatisierten Pipeline; macOS-Paket (`.dmg`) sowie Code-Signing für beide Plattformen stehen noch aus
 - CI/CD-Pipeline (GitHub Actions) noch nicht eingerichtet
 - Keine automatisierten Frontend-Tests (nur Backend/Rust-Tests)
+
+---
+
+# Changelog (English)
+
+All notable changes to this project are documented here.
+Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versioning follows [Semantic Versioning](https://semver.org/).
+
+Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
+
+## [Unreleased]
+
+## [0.6.0] - 2026-09-13
+
+First tagged release. The individual sections below stem from several development days (2026-09-12 and 2026-09-13), see the note above on retroactive versioning.
+
+### Added
+
+- Filament usage from sliced OrcaSlicer/Bambu Studio 3mf files: reads `Metadata/slice_info.config` on import and shows the real, slicer-calculated weight on the model detail page instead of the previous rough estimate from volume × material density — including a breakdown per build plate and filament (type, color, grams, meters). New "Rescan metadata" button re-reads an already-catalogued file from its path if it has since been re-sliced and overwritten in OrcaSlicer/Bambu Studio (incl. a visible success message, error/success scoped per model). Deliberately out of scope: live printer integration, headless slicing, automatic deduction from the filament inventory
+- Filament inventory redesign (following user feedback that it was "not good/intuitive" + a mockup review with 3 proposals): new **storage location** field (autocomplete from previously used locations); local **dashboard/list** toggle directly in the filament inventory (card grid with stock bar/status color, or a sortable table in the style of warehouse management software); stats bar (total spools, remaining stock, occupied storage slots, low/empty) and status filter chips (low/empty); new theme tokens `--good`/`--warn`/`--crit` for standalone status colors; creation form as a side panel with sections (image/identification/storage/stock) instead of the previous cramped 7-field bar, incl. a live preview of the stock bar; "spool count" stepper when creating new spools creates several independent spools with the same values at once
+- Filament inventory: curated autocomplete suggestion list of common FDM materials (PLA, PETG, ABS, ASA, TPU, Nylon, PC, PEEK, carbon-fiber variants, etc.) and filament manufacturers (Bambu Lab, Prusament, Polymaker, eSUN, SUNLU, Fillamentum, ColorFabb, etc.) for the material/manufacturer fields; own theme-consistent `AutocompleteInput` component
+- New app icon: isometric 3D-printing layer cube, colors computed directly from the real theme tokens (oklch → sRGB), replaces the generic Tauri default icon on all platforms
+- Content Security Policy enabled (`tauri.conf.json`)
+- Windows `.msi` build verified end-to-end on a Windows 11 VM (QEMU/KVM): build, installation, icon extraction from the installed `.exe` for visual verification
+
+### Changed
+
+- App display name (window title, installer/taskbar name) corrected from "mf-katalog-manager" to "3MF Katalog Manager" — a Cargo crate name may not start with a digit, which is why the very first project scaffold chose "mf-katalog-manager" instead of "3mf-katalog-manager". App identifier and data folder are unchanged
+- Source-URL editing in the detail area (compact/comfort side panel, model detail page) consolidated into a shared `useEditableSourceUrl` hook, previously triplicated with identical logic
+
+### Security
+
+- Full code review (senior-dev review against OWASP Top 10 / CWE / ISO 27002 A.8.28), documented in [GitHub Issue #1](https://github.com/Bexxs75/3mf-katalog-manager/issues/1): the Content Security Policy was completely disabled (`csp: null`) — now set to a restrictive policy (`default-src 'self'`, `img-src` allows `data:` for base64 thumbnails); a model's source URL now only accepts `http(s)://` links server-side (previously allowed a `javascript:`/`data:` value to land as a clickable `<a href>` in the WebView); "open in slicer" now checks before launching that the given path points to an existing, executable file instead of passing any string to `process::Command` unchecked
+- App data directory (`0700`) and `catalog.db` (`0600`) are hardened on startup under Unix (ISO 27002 A.8.28)
+- Various cleanup from the same review (low priority, no security impact): removed the dead Tauri demo command (`greet`), replaced the deprecated `quick_xml` attribute API (`unescape_value` → `normalized_value`), the STL parser now reads the facet count via the same bounds-checked access as the other values instead of implicitly relying on call order, several unused code paths removed or marked "test-only"/"kept deliberately"
+
+### Fixed
+
+- Rotation buttons in the detail page's 3D viewer: hover effect (`bg-white/10`) was practically invisible in the light theme, now theme-consistent via a token; missing `cursor-pointer` added to all three buttons
+- Collections, six deferred minor findings: model card count display didn't use real plural forms; dead i18n key `backToCollectionsLabel` removed; multi-select persisted when switching between views/collections; "import folder as collection" didn't detect file duplicates cataloged under a different path; drag-to-reorder started without a tolerance threshold from anywhere on the card; `list_collection_files` loaded per model individually (N+1) instead of batched
+- Filament autocomplete: the first version used a native `<input list>`/`<datalist>`, whose suggestion popup is rendered by the operating system/WebKit and doesn't adapt to the dark app theme (appeared as a white system popup) — replaced with the app's own theme-consistent `AutocompleteInput` component
+- The "spool count" field in the filament creation form showed both its own -/+ buttons and the number field's native browser spinner arrows at the same time — native spinners hidden via CSS
+
+## [0.5.0] - 2026-09-12
+
+### Added
+
+- File/folder dialogs use the native XDG desktop portal instead of a generic GTK dialog — on KDE, for example, the real Kirigami dialog with Dolphin's folder sorting now appears
+- Model detail page: full-screen view (double-click a model) with a large 3D preview, all metadata, and build-plate count for Bambu Studio/OrcaSlicer 3MF files (best-effort detection); the existing side panel remains for quick single selection
+- Rotation controls in the detail page's 3D viewer: play/pause button for continuous auto-rotation plus ←/→ buttons for 15° steps, in addition to free mouse dragging; auto-rotation automatically pauses on manual mouse interaction
+- Trash instead of immediate hard delete: deleted models are first moved to a trash directory and remain recoverable there (own trash view via a new header icon with a count badge, incl. 3D preview); permanent delete and "empty trash" then permanently remove the file and catalog entry
+- Multi-select in the catalog overview: checkbox per card/row, "select all" (respects active filters), action bar for queue, print status, and delete (with confirmation) across multiple selected models at once
+- Sidebar: tags and creators now start collapsed and show as compact, wrapping chips instead of long line lists; tags with only one match are hidden by default (actively selected tags remain visible)
+- Context menu (right-click on a card) now also offers "printed"/"not printed" directly
+- Automatic slicer detection: scans known installation locations for Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, and UltiMaker Cura at startup (PATH, `/opt`, Flatpak exports, common AppImage locations on Linux; `Program Files`/`Program Files (x86)` on Windows) and adds matches automatically (labeled "auto-detected"); manual addition for custom forks remains available
+- "Preferred view" setting (gear menu): determines whether catalog cards and the model detail page default to the embedded file image or a rendered 3D view; with "rendered view", the app automatically and sequentially re-renders missing 3D snapshots in the background — a single file that fails to load doesn't block the rest of the queue
+- Collections: a third organizational mechanism alongside folders and tags — a many-to-many association like tags, but with a manually definable order (drag & drop). Created via the multi-select action bar ("add to collection") or via the new "import folder as collection" import option. A new "Collections" tab next to "All Models" opens a card overview of all collections (rename/delete possible); clicking a collection shows its models in a fixed order. Models moved to the trash are correctly hidden in collections and automatically reappear after being restored
+
+### Changed
+
+- A file's image sources (own upload, embedded 3MF/STL thumbnail, rendered 3D snapshot) are no longer prioritized server-side into a fixed `displayImage`, but delivered separately to the frontend — the new "preferred view" setting decides the priority
+- Model detail page: viewer column (image/3D preview) is about 25% larger on very wide screens (e.g. 3440×1440), the metadata column on the right stays unchanged
+- Sort dropdown styled independently in the dark theme (popover pattern like the existing slicer selector) instead of a native `<select>` element with a light system background and wrong font
+
+### Removed
+
+- Cloud integration (Google Drive) removed entirely: backend module `src-tauri/src/cloud/` incl. all 7 Tauri commands, the `tauri-plugin-opener` dependency, and `oauth2`/`keyring`/`reqwest`/`async-trait`/`tokio` from `Cargo.toml`; frontend UI (cloud accounts sidebar section, cloud import option, sync status displays, origin badges) and related i18n keys removed. `cloud_accounts` table and the `sync_status`/`cloud_id` part of the `origin` value range removed from `schema.sql` or reduced to `'local'` (only effective for new installations — existing databases keep the inert `sync_status`/`cloud_id` columns, since this project has no `DROP COLUMN` migration pattern). Reason: the Google Drive integration remained too unstable/error-prone for everyday use despite repeated rework, and consumed too much attention from more important topics
+
+### Fixed
+
+- White screen on startup on systems with an NVIDIA graphics card (proprietary driver): WebKitGTK's default DMA-BUF hardware rendering is incompatible with the NVIDIA driver (`Failed to create GBM buffer`) — the app now automatically sets the required environment variable on startup
+- External slicers (e.g. OrcaSlicer) didn't start reliably from the app when the configured path pointed to an `AppRun` launch script: the app was passing its own AppImage-internal environment unfiltered to the launched process — these variables are now stripped before launching external programs
+- Bambu Studio wasn't found by automatic slicer detection on Arch/CachyOS AUR installations, since the AUR package installs the binary as `bambustudio` — added as a third name variant
+- Trash bug: if a file's catalog path no longer pointed to a reachable location, deleting it previously caused an immediate, unrecoverable loss instead of moving it to the trash
+- Automatic background re-rendering of missing 3D snapshots: a single file that failed to load previously blocked the entire queue permanently; failing files are now skipped. Each finished background rendering instance now explicitly releases its WebGL context
+- Collections: models moved to the trash remained visible in the collection detail view and were still counted in the model count; sidebar filters didn't leave the collection view when clicked; the list view still showed the entire catalog while a collection was active
+
+## [0.4.0] - 2026-09-11
+
+### Added
+
+- Comfort view as an alternative to the existing compact interface: significantly larger text, graphics, and controls (card layout inspired by printables.com/model), toggleable in the settings panel, compact view remains the default
+- Favorite flag per model (heart icon), visible in both views
+- The import button in the header now always opens the dropdown menu directly instead of a split button with an immediate default action
+
+### Security
+
+- `quick-xml` bumped from 0.36.2 to 0.41.0: closes two denial-of-service vulnerabilities (RUSTSEC-2026-0194, RUSTSEC-2026-0195, each CVSS 7.5/High — quadratic runtime on duplicate attribute names and unbounded memory allocation on namespace declarations, respectively), reachable via a crafted `.3mf` file during a normal import. Found in the 2026-09-11 security review (`docs/security/security-review-2026-09-11.md`), confirmed fixed via `cargo audit`
+
+### Fixed
+
+- Comfort view had no visible effect at all in the header, sidebar, list view, filament inventory, context menu, cleanup dialog, and import banner: Tailwind compiled the class `text-[var(--font-size-X)]` as a text *color* instead of font size, fixed with an explicit type hint `text-[length:var(--font-size-X)]`; additionally, folder/tag/creator names in the sidebar previously used Tailwind's fixed `text-xs` class instead of a token (new token `--font-size-item`)
+- Sidebar entries (folders/tags/creators) didn't scale with the comfort view
+
+## [0.3.0] - 2026-09-10
+
+### Added
+
+- Filament inventory: standalone spool management (material, manufacturer, color, diameter, original/remaining weight, price, image upload) accessible via a new header icon, independent of the model catalog
+- Four small catalog extensions: print-status toggle + weight per model estimated from volume/material, sorting by "last viewed" + NEW badge for recently imported models, creators as their own sidebar filter category (from the designer metadata parsed on 3MF import), automatic detection of exact file duplicates on import (SHA-256 content hash) with a summary message
+- Model thumbnails in the grid: image priority own upload > embedded 3MF thumbnail > automatically generated 3D snapshot > placeholder; plus an optional source link per model
+- Tags and creators sections in the sidebar are individually collapsible
+- Queue ("print next"): ordered, drag-and-drop sortable list in its own collapsible sidebar section; automatically removed when marked as printed
+- Saved filters: save the current combination of folder/tag/creator/search/sort under a name, reapply with a click
+- Cleanup suggestions: manually triggered catalog scan finds orphaned file paths and stock duplicates; result dialog with individual selection, the oldest duplicate per group stays pre-selected
+
+### Fixed
+
+- Cleanup suggestions: a file that was simultaneously orphaned AND part of a duplicate group could be marked "keep" in the selection dialog and still get deleted — orphaned files are now excluded before duplicate grouping; additionally, a filesystem error during deletion previously aborted the entire selection early instead of skipping individual errors
+- Queue: drag & drop reordering didn't respond — native HTML5 drag & drop collided under WebKitGTK with Tauri's window-level detection for OS file-drop import; switched to plain mouse events
+
+## [0.2.0] - 2026-09-09
+
+### Added
+
+- Full multilingual support (German/English/Spanish/French): own context-based i18n system without an external library, `Translations` interface enforces dictionary completeness at compile time, language switcher in the settings panel, persisted in localStorage
+- Localized formatting (date, relative time, file size, volume, dimensions) via `Intl` APIs in the frontend
+- Google Drive integration: OAuth2 PKCE connection, token storage in the OS keyring, file/folder selection via Google's official picker widget, import with duplicate detection and per-file sync status display (later removed entirely again in 0.5.0)
+- Native Rust-side geometry extraction for the 3D preview: ZIP extraction and mesh parsing now run entirely in the backend instead of in the frontend via three.js loaders/`DOMParser`
+- "Open in slicer": user configures any number of custom slicer program paths, split button for main selection/switching, context menu entry for the most recently used slicer
+- Upload to Google Drive: local files can be uploaded to Google Drive, including target folder selection via the picker widget
+
+### Changed
+
+- Backend now only delivers raw, unformatted model data (`ModelFileDto`); server-side, German-only formatting removed and replaced with frontend-side, language-dependent formatting
+- Google Drive OAuth scope `drive.readonly` removed, only `drive.file` + `userinfo.email` remain: `drive.readonly` is a "restricted scope" and would have required a paid CASA security audit for Google verification
+
+### Fixed
+
+- Fixed CSS `@import` order and Rust dependencies
+- Orphaned tags (last file with that tag deleted) remained stuck in the database and sidebar
+- Files imported from Google Drive used the internal cache filename instead of the real Drive filename
+- Connecting/disconnecting a Google Drive account and every authenticated cloud call briefly blocked the Tokio worker/IPC dispatch thread via synchronous D-Bus IPC to the keyring — decoupled via `spawn_blocking`
+
+## [0.1.0] - 2026-09-08
+
+Initial scaffold and core catalog.
+
+### Added
+
+- Tauri project scaffold with an integrated React/TypeScript/Tailwind UI package
+- Standalone 3MF parsing module (OPC container, model XML, embedded thumbnail)
+- Standalone STL parsing module (ASCII and binary)
+- SQLite catalog database (schema, models, repository)
+- Automatic tagging heuristics (filename, geometry features)
+- Tauri command bridge: frontend uses real backend data instead of sample data
+- Live 3D preview in the detail area via three.js
+- Import workflow: file dialog, folder selection, drag-and-drop
+- Delete function for models with a confirmation dialog and context menu
+
+### Fixed
+
+- Fixed sorting by date and file size
+
+## Known Limitations (as of 0.6.0)
+
+- No cloud integration (see "Removed" in 0.5.0) — local filesystem import only
+- "Open in slicer" doesn't support macOS (`.app` bundles need a different launch mechanism than Windows/Linux executables)
+- The Windows `.msi` build is manually verified but not part of an automated pipeline; a macOS package (`.dmg`) and code signing for both platforms are still outstanding
+- CI/CD pipeline (GitHub Actions) not yet set up
+- No automated frontend tests (backend/Rust tests only)
