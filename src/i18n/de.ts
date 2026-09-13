@@ -41,6 +41,7 @@ export const de: Translations = {
 
   searchPlaceholder: 'Name oder Tag suchen …',
   foldersHeading: 'Ordner',
+  allModelsLabel: 'Alle Modelle',
   tagsHeading: 'Tags',
 
   previewLabel3d: '3D Vorschau',
@@ -214,4 +215,7 @@ export const de: Translations = {
   noCollectionsEmptyState: 'Noch keine Sammlungen angelegt.',
   createCollectionLabel: '+ Neue Sammlung',
   importFolderAsCollectionOption: 'Ordner als Sammlung importieren',
+
+  createFolderLabel: '+ Neuer Ordner',
+  newFolderPlaceholder: 'Ordnername',
 };

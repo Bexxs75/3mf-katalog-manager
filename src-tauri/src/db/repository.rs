@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Component, Path};
 
 use rusqlite::{params, Connection, OptionalExtension};
 
@@ -46,6 +46,15 @@ pub(crate) fn init(conn: &Connection) -> Result<(), DbError> {
     );
     let _ = conn.execute("ALTER TABLE files ADD COLUMN last_viewed_at TEXT", []);
     let _ = conn.execute("ALTER TABLE files ADD COLUMN creator TEXT", []);
+    let _ = conn.execute(
+        "ALTER TABLE folders ADD COLUMN parent_id INTEGER REFERENCES folders(id) ON DELETE CASCADE",
+        [],
+    );
+    let _ = conn.execute("ALTER TABLE folders ADD COLUMN path TEXT", []);
+    let _ = conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_folders_path ON folders (path)",
+        [],
+    );
     // Backfill fuer Bestandsdaten: 'creator' wurde erst mit obiger ALTER TABLE
     // eingefuehrt und wird sonst nur beim Import gesetzt (import_one). Ohne
     // diesen Backfill bleibt 'creator' fuer jede vor diesem Upgrade bereits
@@ -84,27 +93,181 @@ pub(crate) fn init(conn: &Connection) -> Result<(), DbError> {
     Ok(())
 }
 
-// Nur von Tests genutzt: es gibt aktuell keinen Command, der Ordner manuell
-// anlegt (files.folder_id wird beim Import nie gesetzt, siehe commands.rs).
-// list_folders() liest die Tabelle trotzdem aus, daher hier nur unter Test
-// gehalten statt geloescht, um Testdaten fuer diese Abfrage anzulegen.
+// Nur von Tests genutzt: einfacher Test-Helfer, um schnell eine
+// folders-Zeile ohne parent_id/echte Verzeichnisstruktur anzulegen (fuer
+// Faelle, in denen der volle `insert_folder_with_parent`-Aufruf mit
+// physischem Pfad nicht noetig ist, z.B. list_folders()-Tests).
 #[cfg(test)]
 pub fn insert_folder(conn: &Connection, name: &str) -> Result<i64, DbError> {
-    conn.execute("INSERT INTO folders (name) VALUES (?1)", params![name])?;
+    // path wird hier synthetisch aus dem Namen gebildet, nur damit bestehende
+    // Tests (die diese 1-Parameter-Signatur nutzen) weiterhin gueltige
+    // FolderRecord-Zeilen erzeugen (path ist in Rust ein non-optionales
+    // String-Feld). Eine echte parent_id/path-Vergabe kommt erst mit der
+    // erweiterten Signatur in Task 2.
+    conn.execute(
+        "INSERT INTO folders (name, path) VALUES (?1, ?1)",
+        params![name],
+    )?;
     Ok(conn.last_insert_rowid())
 }
 
 pub fn list_folders(conn: &Connection) -> Result<Vec<FolderRecord>, DbError> {
-    let mut stmt = conn.prepare("SELECT id, name FROM folders ORDER BY name")?;
+    let mut stmt = conn.prepare("SELECT id, name, parent_id, path FROM folders ORDER BY name")?;
     let rows = stmt
         .query_map([], |row| {
             Ok(FolderRecord {
                 id: row.get(0)?,
                 name: row.get(1)?,
+                parent_id: row.get(2)?,
+                path: row.get(3)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rows)
+}
+
+/// Legt fuer jede Verzeichnisebene zwischen `import_root` (inklusive) und
+/// `dir` (inklusive) einen folders-Eintrag an, sofern er noch nicht
+/// existiert (Lookup per `path`-Spalte, idempotent bei wiederholtem
+/// Import desselben Baums). Gibt die id der tiefsten Ebene (= `dir`)
+/// zurueck.
+pub fn ensure_folder_path(conn: &Connection, import_root: &Path, dir: &Path) -> Result<i64, DbError> {
+    let relative = dir.strip_prefix(import_root).map_err(|_| {
+        DbError::Other(format!(
+            "{} liegt nicht unter {}",
+            dir.display(),
+            import_root.display()
+        ))
+    })?;
+
+    let mut current_path = import_root.to_path_buf();
+    let mut parent_id: Option<i64> = None;
+    parent_id = Some(find_or_insert_folder(conn, &current_path, parent_id, folder_name(&current_path))?);
+
+    for component in relative.components() {
+        if let Component::Normal(part) = component {
+            current_path.push(part);
+            parent_id = Some(find_or_insert_folder(
+                conn,
+                &current_path,
+                parent_id,
+                part.to_string_lossy().to_string(),
+            )?);
+        }
+    }
+
+    Ok(parent_id.expect("mindestens import_root wurde oben eingefuegt"))
+}
+
+fn folder_name(path: &Path) -> String {
+    path.file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.to_string_lossy().to_string())
+}
+
+/// Duenner Insert-Wrapper fuer `create_folder`: legt IMMER eine neue Zeile
+/// an (anders als `find_or_insert_folder`, das bei bereits existierendem
+/// `path` still die bestehende id zurueckgibt). Ein `create_folder`-Aufruf
+/// mit bereits existierendem Zielpfad soll fehlschlagen statt den
+/// bestehenden Ordner zurueckzugeben - in der Praxis schlaegt in diesem
+/// Fall aber schon `std::fs::create_dir` vorher mit `AlreadyExists` fehl,
+/// bevor diese Funktion ueberhaupt erreicht wird.
+pub fn insert_folder_with_parent(
+    conn: &Connection,
+    name: &str,
+    parent_id: Option<i64>,
+    path: &str,
+) -> Result<i64, DbError> {
+    conn.execute(
+        "INSERT INTO folders (name, parent_id, path) VALUES (?1, ?2, ?3)",
+        params![name, parent_id, path],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+/// Aktualisiert `folder_id` und `path` einer Datei nach einem physischen
+/// Verschieben (siehe `move_file_to_folder`-Command in `commands.rs`).
+pub fn update_file_folder(conn: &Connection, file_id: i64, folder_id: Option<i64>, path: &str) -> Result<(), DbError> {
+    conn.execute(
+        "UPDATE files SET folder_id = ?1, path = ?2 WHERE id = ?3",
+        params![folder_id, path, file_id],
+    )?;
+    Ok(())
+}
+
+/// Aktualisiert nur die `name`-Spalte eines Ordners (der physische
+/// `std::fs::rename` und das rekursive Pfad-Update via
+/// `update_paths_under_folder` passieren getrennt, siehe `rename_folder`-
+/// Command in `commands.rs`).
+pub fn rename_folder_name(conn: &Connection, folder_id: i64, name: &str) -> Result<(), DbError> {
+    conn.execute("UPDATE folders SET name = ?1 WHERE id = ?2", params![name, folder_id])?;
+    Ok(())
+}
+
+/// Aktualisiert nur die `parent_id`-Spalte eines Ordners (der physische
+/// `std::fs::rename` und das rekursive Pfad-Update via
+/// `update_paths_under_folder` passieren getrennt, siehe `move_folder`-
+/// Command in `commands.rs`).
+pub fn set_folder_parent(conn: &Connection, folder_id: i64, parent_id: Option<i64>) -> Result<(), DbError> {
+    conn.execute("UPDATE folders SET parent_id = ?1 WHERE id = ?2", params![parent_id, folder_id])?;
+    Ok(())
+}
+
+/// Rekursives Praefix-Update fuer `folders.path` UND `files.path`
+/// unterhalb eines Ordners, nachdem sich dessen eigener Pfad geaendert hat
+/// (Umbenennen oder Verschieben, siehe `rename_folder`/`move_folder`-
+/// Commands in `commands.rs`). `old_path`/`new_path` sind der alte bzw.
+/// neue absolute Pfad von `folder_id` selbst; Kind-Ordner und -Dateien
+/// werden per Praefix-Ersetzung mitgezogen, beliebig tief verschachtelt.
+pub fn update_paths_under_folder(
+    conn: &Connection,
+    folder_id: i64,
+    old_path: &str,
+    new_path: &str,
+) -> Result<(), DbError> {
+    conn.execute("UPDATE folders SET path = ?1 WHERE id = ?2", params![new_path, folder_id])?;
+    // length()/substr() auf TEXT-Werten zaehlen in SQLite in UTF-8-Zeichen,
+    // nicht in Bytes - old_path.len() (Rust, Byte-Laenge) waere bei
+    // Pfaden mit Nicht-ASCII-Zeichen (Umlaute etc.) ein falscher Offset.
+    // Indem length() hier ebenfalls von SQLite auf dem TEXT-Wert berechnet
+    // wird, stimmen beide Seiten in derselben Einheit (Zeichen) ueberein.
+    conn.execute(
+        "UPDATE files SET path = ?1 || substr(path, length(?2) + 1) WHERE folder_id = ?3",
+        params![new_path, old_path, folder_id],
+    )?;
+
+    let mut stmt = conn.prepare("SELECT id, path FROM folders WHERE parent_id = ?1")?;
+    let children: Vec<(i64, String)> = stmt
+        .query_map(params![folder_id], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(stmt);
+
+    for (child_id, child_old_path) in children {
+        let suffix = &child_old_path[old_path.len()..];
+        let child_new_path = format!("{new_path}{suffix}");
+        update_paths_under_folder(conn, child_id, &child_old_path, &child_new_path)?;
+    }
+    Ok(())
+}
+
+fn find_or_insert_folder(
+    conn: &Connection,
+    path: &Path,
+    parent_id: Option<i64>,
+    name: String,
+) -> Result<i64, DbError> {
+    let path_str = path.to_string_lossy().to_string();
+    if let Some(id) = conn
+        .query_row("SELECT id FROM folders WHERE path = ?1", params![path_str], |r| r.get(0))
+        .optional()?
+    {
+        return Ok(id);
+    }
+    conn.execute(
+        "INSERT INTO folders (name, parent_id, path) VALUES (?1, ?2, ?3)",
+        params![name, parent_id, path_str],
+    )?;
+    Ok(conn.last_insert_rowid())
 }
 
 /// Deterministic hue in [0, 360) derived from the tag name, so a tag keeps
@@ -849,4 +1012,67 @@ pub fn list_print_log_entries(conn: &Connection, file_id: i64) -> Result<Vec<Pri
 pub fn delete_print_log_entry(conn: &Connection, id: i64) -> Result<(), DbError> {
     conn.execute("DELETE FROM print_log WHERE id = ?1", params![id])?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn list_folders_returns_path_and_parent_id() {
+        let conn = connect_in_memory().unwrap();
+        conn.execute("INSERT INTO folders (name, path) VALUES ('Root', '/tmp/Root')", []).unwrap();
+        let root_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO folders (name, path, parent_id) VALUES ('Child', '/tmp/Root/Child', ?1)",
+            params![root_id],
+        ).unwrap();
+
+        let folders = list_folders(&conn).unwrap();
+        assert_eq!(folders.len(), 2);
+        let child = folders.iter().find(|f| f.name == "Child").unwrap();
+        assert_eq!(child.parent_id, Some(root_id));
+        assert_eq!(child.path, "/tmp/Root/Child");
+    }
+
+    #[test]
+    fn ensure_folder_path_creates_missing_levels() {
+        let conn = connect_in_memory().unwrap();
+        let root = Path::new("/tmp/Tabletop");
+        let dir = Path::new("/tmp/Tabletop/Reaper");
+
+        let leaf_id = ensure_folder_path(&conn, root, dir).unwrap();
+        let folders = list_folders(&conn).unwrap();
+        assert_eq!(folders.len(), 2);
+        let leaf = folders.iter().find(|f| f.id == leaf_id).unwrap();
+        assert_eq!(leaf.name, "Reaper");
+        assert_eq!(leaf.path, "/tmp/Tabletop/Reaper");
+        let parent = folders.iter().find(|f| f.id == leaf.parent_id.unwrap()).unwrap();
+        assert_eq!(parent.name, "Tabletop");
+        assert_eq!(parent.parent_id, None);
+    }
+
+    #[test]
+    fn ensure_folder_path_is_idempotent() {
+        let conn = connect_in_memory().unwrap();
+        let root = Path::new("/tmp/Tabletop");
+        let dir = Path::new("/tmp/Tabletop/Reaper");
+
+        let first = ensure_folder_path(&conn, root, dir).unwrap();
+        let second = ensure_folder_path(&conn, root, dir).unwrap();
+        assert_eq!(first, second);
+        assert_eq!(list_folders(&conn).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn ensure_folder_path_file_directly_in_root() {
+        let conn = connect_in_memory().unwrap();
+        let root = Path::new("/tmp/Tabletop");
+
+        let id = ensure_folder_path(&conn, root, root).unwrap();
+        let folders = list_folders(&conn).unwrap();
+        assert_eq!(folders.len(), 1);
+        assert_eq!(folders[0].id, id);
+        assert_eq!(folders[0].name, "Tabletop");
+    }
 }
