@@ -73,6 +73,8 @@ pub struct ScannedMetadataUpdate {
     pub slice_info_json: Option<String>,
     pub materials: Vec<MaterialRecord>,
     pub metadata: BTreeMap<String, String>,
+    pub file_size_bytes: i64,
+    pub content_hash: Option<String>,
 }
 
 #[derive(Debug, Clone)]

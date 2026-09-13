@@ -313,11 +313,12 @@ pub fn update_scanned_metadata(
         "UPDATE files SET
             dimension_x_mm = ?1, dimension_y_mm = ?2, dimension_z_mm = ?3,
             volume_cm3 = ?4, object_count = ?5, thumbnail_png = ?6,
-            plate_count = ?7, slice_info_json = ?8
-         WHERE id = ?9",
+            plate_count = ?7, slice_info_json = ?8, file_size_bytes = ?9, content_hash = ?10
+         WHERE id = ?11",
         params![
             dim_x, dim_y, dim_z, update.volume_cm3, update.object_count,
-            update.thumbnail_png, update.plate_count, update.slice_info_json, file_id,
+            update.thumbnail_png, update.plate_count, update.slice_info_json,
+            update.file_size_bytes, update.content_hash, file_id,
         ],
     )?;
 
