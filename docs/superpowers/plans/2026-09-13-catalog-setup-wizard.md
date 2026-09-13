@@ -88,13 +88,36 @@ pub fn register_catalog_base_dir(state: State<AppState>, path: String) -> CmdRes
 }
 ```
 
-- [ ] **Step 3: Beide Commands in `lib.rs` registrieren**
+- [ ] **Step 3: `open_in_file_manager` implementieren**
+
+Direkt nach `register_catalog_base_dir` einfügen (analog zum
+Rohmuster von `open_in_slicer`, keine neue Plugin-Abhängigkeit,
+`#[cfg]` direkt auf dem `let`-Statement wie beim bereits vorhandenen
+`pick_slicer_executable`-Windows-Sonderfall):
+
+```rust
+#[tauri::command]
+pub fn open_in_file_manager(path: String) -> CmdResult<()> {
+    #[cfg(target_os = "linux")]
+    let mut cmd = std::process::Command::new("xdg-open");
+    #[cfg(target_os = "macos")]
+    let mut cmd = std::process::Command::new("open");
+    #[cfg(target_os = "windows")]
+    let mut cmd = std::process::Command::new("explorer");
+
+    cmd.arg(&path).spawn().map_err(|e| e.to_string())?;
+    Ok(())
+}
+```
+
+- [ ] **Step 4: Alle drei Commands in `lib.rs` registrieren**
 
 In der `tauri::generate_handler![...]`-Liste (dort, wo `create_folder`/
 `move_file_to_folder`/`list_folders` bereits eingetragen sind)
-`pick_folder_path` und `register_catalog_base_dir` ergänzen.
+`pick_folder_path`, `register_catalog_base_dir` und
+`open_in_file_manager` ergänzen.
 
-- [ ] **Step 4: Rust-Test für `register_catalog_base_dir`**
+- [ ] **Step 5: Rust-Test für `register_catalog_base_dir`**
 
 Im bestehenden `#[cfg(test)] mod tests`-Block in `commands.rs` (siehe
 `unique_test_dir`-Helper aus vorherigen Tasks):
@@ -127,12 +150,12 @@ an die tatsächlich in `commands.rs` vorhandenen Test-Helper anpassen
 (dieselben, die die Tests aus dem Ordnerstruktur-Plan bereits nutzen,
 z. B. bei `move_file_to_folder_updates_path_and_db`).
 
-- [ ] **Step 5: Tests + Commit**
+- [ ] **Step 6: Tests + Commit**
 
 ```bash
 cd src-tauri && cargo test
 git add src-tauri/src/commands.rs src-tauri/src/lib.rs
-git commit -m "Backend: pick_folder_path und register_catalog_base_dir Commands"
+git commit -m "Backend: pick_folder_path, register_catalog_base_dir und open_in_file_manager Commands"
 ```
 
 ---
@@ -193,6 +216,7 @@ In jeder der vier Sprachdateien plus `types.ts` (Position: nach den
 ```
 catalogSetupTitle: 'Wie soll dein Katalog organisiert sein?',
 catalogSetupIntro: 'Ordner im Katalog sind jetzt echte Verzeichnisse auf deiner Festplatte. Verschiebst du eine Datei im Programm in einen anderen Ordner, wird sie dort auch tatsächlich abgelegt – nicht nur im Katalog umsortiert. Damit neu importierte Dateien sinnvoll einsortiert werden, legen wir jetzt einen festen Speicherort fest.',
+catalogSetupFileTypesNote: 'Erfasst werden ausschließlich .3mf- und .stl-Dateien. Bereits gepackte Archive (z. B. .zip) werden dabei nicht berücksichtigt und bleiben unverändert im Ordner liegen – entpacke sie bei Bedarf vorher, oder öffne den Ordner nach der Einrichtung direkt über den Katalog im Dateimanager.',
 catalogSetupAdoptTitle: 'Bestehende Ordnerstruktur übernehmen',
 catalogSetupAdoptDescription: 'Du organisierst deine Druckdateien schon in Ordnern? Wähle den obersten Ordner aus – der Katalog übernimmt die komplette Struktur inklusive aller Unterordner und importiert alle enthaltenen 3mf-/STL-Dateien.',
 catalogSetupNewTitle: 'Neuen Ort einrichten',
@@ -200,17 +224,25 @@ catalogSetupNewDescription: 'Leg einen (auch leeren) Ordner fest, in dem der Kat
 catalogSetupLater: 'Später einrichten',
 catalogSetupFootnote: 'Du kannst diese Wahl jederzeit in den Einstellungen unter „Katalog-Speicherort" ändern.',
 catalogSetupImporting: 'Importiere…',
-catalogSetupImportedCount: '{count} Dateien importiert.',
+catalogSetupSettingUp: 'Richte ein…',
+catalogSetupAdoptSummary: '{files} Dateien in {folders} Ordnern importiert.',
+catalogSetupNewSummary: '„{path}" als Speicherort eingerichtet.',
+catalogSetupOpenFolderButton: 'Ordner im Dateimanager öffnen',
+catalogSetupDoneButton: 'Fertig',
 catalogSetupError: 'Fehler:',
 catalogBaseDirSectionTitle: 'Katalog-Speicherort',
 catalogBaseDirNotSet: 'Nicht eingerichtet',
 catalogBaseDirChangeButton: 'Ändern',
 catalogBaseDirSetupButton: 'Einrichten',
+catalogBaseDirOpenButton: 'Ordner öffnen',
 ```
 
 Englische, spanische und französische Entsprechungen sinngemäß (nicht
 wörtlich) formulieren, gleiche Tonalität (klar, direkt, keine
-Fachbegriffe ohne Erklärung).
+Fachbegriffe ohne Erklärung). `{files}`/`{folders}`/`{path}` per
+`String.replace('{files}', ...)` usw. befüllen, gleiches Platzhalter-
+Muster wie das bereits vorhandene `bulkSelectedCount` (`{count}`) in
+`de.ts`/`App.tsx` — dort nachschlagen statt zu raten.
 
 - [ ] **Step 3: Typecheck + Commit**
 
@@ -229,21 +261,25 @@ git commit -m "Frontend: useCatalogBaseDir-Hook und i18n-Texte fuer Katalog-Einr
 
 **Interfaces:**
 - Consumes: `useCatalogBaseDir()` (Task 2), `pick_folder_path`/
-  `register_catalog_base_dir`/`import_dropped` (Tauri-Commands, Task 1
-  bzw. bereits vorhanden).
-- Produces: `<CatalogSetupDialog onClose={() => void} onImported={(result: ImportResultDto) => void} catalogBaseDir={...} setCatalogBaseDir={...} onLater={() => void} />`
+  `register_catalog_base_dir`/`import_dropped`/`list_folders`/
+  `open_in_file_manager` (Tauri-Commands, Task 1 bzw. bereits vorhanden).
+- Produces: `<CatalogSetupDialog onClose={() => void} onImported={(result: ImportResultDto) => void} onBaseDirSet={(path: string) => void} onLater={() => void} />`
   — von Task 4 (App.tsx-Verdrahtung) konsumiert.
 
 - [ ] **Step 1: Komponente erstellen**
 
 Visuelles Muster wie `CatalogCleanupDialog.tsx` (Overlay + zentriertes
-Panel), aber `w-[560px]`:
+Panel), aber `w-[560px]`. Zustandsmaschine: `idle` (beide Karten aktiv)
+→ `busy` (eine Karte lädt) → `done` (Karten werden durch eine
+Zusammenfassung + "Ordner öffnen"/"Fertig" ersetzt) ODER zurück zu
+`idle` mit `error` gesetzt (Karten bleiben nutzbar, erneuter Versuch
+möglich):
 
 ```tsx
 import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useT } from '../i18n/LanguageContext';
-import type { ImportResultDto } from '../types';
+import type { ImportResultDto, Folder } from '../types';
 
 interface Props {
   onClose: () => void;
@@ -252,10 +288,15 @@ interface Props {
   onBaseDirSet: (path: string) => void;
 }
 
+type Done =
+  | { kind: 'adopt'; path: string; files: number; folders: number }
+  | { kind: 'new'; path: string };
+
 export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet }: Props) {
   const t = useT();
   const [busy, setBusy] = useState<'adopt' | 'new' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<Done | null>(null);
 
   const adoptExisting = async () => {
     setError(null);
@@ -263,10 +304,14 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
     if (!path) return;
     setBusy('adopt');
     try {
+      const before = await invoke<Folder[]>('list_folders');
       const result = await invoke<ImportResultDto>('import_dropped', { paths: [path] });
+      const after = await invoke<Folder[]>('list_folders');
+      const newFolders = after.filter((f) => !before.some((b) => b.id === f.id)).length;
+
       onBaseDirSet(path);
       onImported(result);
-      onClose();
+      setDone({ kind: 'adopt', path, files: result.imported.length, folders: newFolders });
     } catch (e) {
       setError(String(e));
     } finally {
@@ -282,7 +327,7 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
     try {
       await invoke('register_catalog_base_dir', { path });
       onBaseDirSet(path);
-      onClose();
+      setDone({ kind: 'new', path });
     } catch (e) {
       setError(String(e));
     } finally {
@@ -290,35 +335,70 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
     }
   };
 
+  const openFolder = (path: string) => {
+    invoke('open_in_file_manager', { path }).catch((e) => console.error('[catalog-setup] Ordner oeffnen fehlgeschlagen:', e));
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="w-[560px] max-h-[80vh] flex flex-col bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] overflow-y-auto">
         <div className="px-5 py-4">
           <div className="text-[16px] font-semibold mb-2.5">{t('catalogSetupTitle')}</div>
-          <p className="text-[13px] leading-relaxed text-[var(--ink-2)] mb-5">{t('catalogSetupIntro')}</p>
+          <p className="text-[13px] leading-relaxed text-[var(--ink-2)] mb-4">{t('catalogSetupIntro')}</p>
 
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <button
-              onClick={adoptExisting}
-              disabled={busy !== null}
-              className="text-left p-4 rounded-[10px] border-2 border-[var(--line)] hover:border-[var(--accent)] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer bg-[var(--panel-2)]"
-            >
-              <div className="text-[13.5px] font-semibold mb-1.5">{t('catalogSetupAdoptTitle')}</div>
-              <div className="text-[12px] leading-relaxed text-[var(--ink-2)]">
-                {busy === 'adopt' ? t('catalogSetupImporting') : t('catalogSetupAdoptDescription')}
+          {!done && (
+            <div className="mb-4 p-3 rounded-[8px] border border-dashed border-[var(--line-strong)] text-[12px] leading-relaxed text-[var(--ink-2)]">
+              {t('catalogSetupFileTypesNote')}
+            </div>
+          )}
+
+          {done ? (
+            <div className="mb-4 p-4 rounded-[10px] border-2 border-[var(--good)] bg-[var(--good-soft)]">
+              <div className="text-[13px] font-semibold text-[var(--good)] mb-3">
+                ✓{' '}
+                {done.kind === 'adopt'
+                  ? t('catalogSetupAdoptSummary').replace('{files}', String(done.files)).replace('{folders}', String(done.folders))
+                  : t('catalogSetupNewSummary').replace('{path}', done.path)}
               </div>
-            </button>
-            <button
-              onClick={setupNew}
-              disabled={busy !== null}
-              className="text-left p-4 rounded-[10px] border-2 border-[var(--line)] hover:border-[var(--accent)] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer bg-[var(--panel-2)]"
-            >
-              <div className="text-[13.5px] font-semibold mb-1.5">{t('catalogSetupNewTitle')}</div>
-              <div className="text-[12px] leading-relaxed text-[var(--ink-2)]">
-                {busy === 'new' ? t('catalogSetupImporting') : t('catalogSetupNewDescription')}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => openFolder(done.path)}
+                  className="h-8 px-3 rounded-[6px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                >
+                  {t('catalogSetupOpenFolderButton')}
+                </button>
+                <button
+                  onClick={onClose}
+                  className="h-8 px-3 rounded-[6px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
+                >
+                  {t('catalogSetupDoneButton')}
+                </button>
               </div>
-            </button>
-          </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <button
+                onClick={adoptExisting}
+                disabled={busy !== null}
+                className="text-left p-4 rounded-[10px] border-2 border-[var(--line)] hover:border-[var(--accent)] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer bg-[var(--panel-2)]"
+              >
+                <div className="text-[13.5px] font-semibold mb-1.5">{t('catalogSetupAdoptTitle')}</div>
+                <div className="text-[12px] leading-relaxed text-[var(--ink-2)]">
+                  {busy === 'adopt' ? t('catalogSetupImporting') : t('catalogSetupAdoptDescription')}
+                </div>
+              </button>
+              <button
+                onClick={setupNew}
+                disabled={busy !== null}
+                className="text-left p-4 rounded-[10px] border-2 border-[var(--line)] hover:border-[var(--accent)] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer bg-[var(--panel-2)]"
+              >
+                <div className="text-[13.5px] font-semibold mb-1.5">{t('catalogSetupNewTitle')}</div>
+                <div className="text-[12px] leading-relaxed text-[var(--ink-2)]">
+                  {busy === 'new' ? t('catalogSetupSettingUp') : t('catalogSetupNewDescription')}
+                </div>
+              </button>
+            </div>
+          )}
 
           {error && (
             <div className="mb-3 font-mono-ui text-[11px] text-[var(--accent)] break-words">
@@ -326,15 +406,19 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
             </div>
           )}
 
-          <div className="flex items-center justify-between">
-            <span
-              onClick={busy === null ? onLater : undefined}
-              className={`text-[12px] text-[var(--ink-3)] underline ${busy === null ? 'cursor-pointer hover:text-[var(--accent)]' : 'opacity-50'}`}
-            >
-              {t('catalogSetupLater')}
-            </span>
-          </div>
-          <p className="mt-3 text-[11px] text-[var(--ink-3)]">{t('catalogSetupFootnote')}</p>
+          {!done && (
+            <>
+              <div className="flex items-center justify-between">
+                <span
+                  onClick={busy === null ? onLater : undefined}
+                  className={`text-[12px] text-[var(--ink-3)] underline ${busy === null ? 'cursor-pointer hover:text-[var(--accent)]' : 'opacity-50'}`}
+                >
+                  {t('catalogSetupLater')}
+                </span>
+              </div>
+              <p className="mt-3 text-[11px] text-[var(--ink-3)]">{t('catalogSetupFootnote')}</p>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -342,7 +426,7 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
 }
 ```
 
-Implementierer: `ImportResultDto`-Typ-Import-Pfad an die tatsächliche
+Implementierer: `ImportResultDto`-/`Folder`-Typ-Import-Pfad an die tatsächliche
 Stelle in `src/types.ts` (bzw. `src/types/index.ts`) anpassen, falls
 abweichend.
 
@@ -444,13 +528,26 @@ Abschnitt vor dem schließenden `</div>` des Panels):
 <div className="font-mono-ui text-[10.5px] text-[var(--ink-3)] truncate mb-1.5">
   {catalogBaseDir ?? t('catalogBaseDirNotSet')}
 </div>
-<button
-  onClick={onOpenCatalogSetup}
-  className="h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
->
-  {catalogBaseDir ? t('catalogBaseDirChangeButton') : t('catalogBaseDirSetupButton')}
-</button>
+<div className="flex gap-1.5">
+  <button
+    onClick={onOpenCatalogSetup}
+    className="flex-1 h-7 rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+  >
+    {catalogBaseDir ? t('catalogBaseDirChangeButton') : t('catalogBaseDirSetupButton')}
+  </button>
+  {catalogBaseDir && (
+    <button
+      onClick={() => invoke('open_in_file_manager', { path: catalogBaseDir })}
+      className="flex-1 h-7 rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+    >
+      {t('catalogBaseDirOpenButton')}
+    </button>
+  )}
+</div>
 ```
+
+`invoke` ist in `Rail.tsx` bereits importiert (wird für
+`pick_slicer_executable` genutzt) — kein neuer Import nötig.
 
 - [ ] **Step 5: Typecheck**
 
@@ -465,11 +562,22 @@ XDG_DATA_HOME=/tmp/setup-wizard-test npm run tauri dev
 ```
 Prüfen: Dialog erscheint beim ersten Start. "Später einrichten" schließt
 ihn dauerhaft (App neu starten → kein erneutes Aufpoppen). "Neuen Ort
-einrichten" mit einem leeren Testordner, danach "Dateien importieren"
-(Einzeldatei aus einem anderen Ort) → Datei landet nachweislich
-physisch im gewählten Ordner (`ls` im Zielordner prüfen). "Bestehende
-Struktur übernehmen" mit einem vorbereiteten zweistufigen Testordner →
-komplette Struktur erscheint im Ordner-Baum.
+einrichten" mit einem leeren Testordner zeigt die Erfolgszusammenfassung
+mit dem gewählten Pfad (kein Datei-/Ordner-Zähler, da nichts importiert
+wurde); "Ordner im Dateimanager öffnen" öffnet nachweislich einen echten
+Dateimanager (z. B. Dolphin) an diesem Pfad. Anschließend "Dateien
+importieren" (Einzeldatei aus einem anderen Ort) → Datei landet
+nachweislich physisch im gewählten Ordner (`ls` im Zielordner prüfen).
+
+"Bestehende Struktur übernehmen" mit einem vorbereiteten zweistufigen
+Testordner, der ZUSÄTZLICH eine `.zip`-Datei auf oberster Ebene enthält
+→ komplette `.3mf`/`.stl`-Struktur erscheint im Ordner-Baum, die
+Erfolgsmeldung zeigt korrekte Datei- UND Ordneranzahl, die `.zip`-Datei
+bleibt unangetastet am Ursprungsort liegen (`ls`/`md5sum` vorher/nachher
+vergleichen) und taucht nirgends im Katalog auf.
+
+Einstellungen-Panel: "Ordner öffnen" neben "Ändern" erscheint nur, wenn
+ein Speicherort konfiguriert ist, und öffnet denselben Pfad.
 
 - [ ] **Step 7: Commit**
 

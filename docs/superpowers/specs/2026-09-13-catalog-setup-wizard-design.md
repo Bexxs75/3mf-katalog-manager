@@ -94,6 +94,19 @@ pub fn register_catalog_base_dir(state: State<AppState>, path: String) -> CmdRes
 // "Neuen Ort einrichten"-Option gebraucht - die "Bestehende Struktur
 // uebernehmen"-Option legt ihre Wurzel-Zeile bereits automatisch ueber
 // den bestehenden import_dropped-Aufruf an.
+
+#[tauri::command]
+pub fn open_in_file_manager(path: String) -> CmdResult<()>
+// Oeffnet `path` im nativen Dateimanager des Betriebssystems (unter
+// Linux `xdg-open`, macOS `open`, Windows `explorer`) - std::process::
+// Command, dasselbe Rohmuster wie das bereits vorhandene open_in_slicer
+// (commands.rs), keine neue Plugin-Abhaengigkeit. Wird vom Setup-Dialog
+// nach einer erfolgreichen Auswahl angeboten (Button "Ordner im
+// Dateimanager oeffnen"), damit der Nutzer z.B. dort liegende gepackte
+// Archive (.zip) bei Bedarf selbst entpacken kann - der Katalog fasst
+// sie nicht an (siehe Dialog-Hinweistext unten). Zusaetzlich im
+// Einstellungen-Panel neben dem konfigurierten Katalog-Speicherort
+// nutzbar, nicht nur waehrend der Ersteinrichtung.
 ```
 
 Kein neuer Command für "bestehende Struktur übernehmen" nötig — das ist
@@ -140,6 +153,15 @@ Ordner, wird sie dort auch tatsächlich abgelegt — nicht nur im Katalog
 umsortiert. Damit neu importierte Dateien sinnvoll einsortiert werden,
 legen wir jetzt einen festen Speicherort fest."
 
+Direkt darunter, noch vor den beiden Karten, ein eigener Hinweisblock
+(optisch abgesetzt, `border border-dashed`, keine Warnfarbe — es ist eine
+Erklärung, keine Fehlermeldung) zu Dateitypen: "Erfasst werden
+ausschließlich **.3mf**- und **.stl**-Dateien. Bereits gepackte Archive
+(z. B. .zip) werden dabei **nicht** berücksichtigt und bleiben unverändert
+im Ordner liegen — entpacke sie bei Bedarf vorher, oder öffne den Ordner
+nach der Einrichtung direkt über den Katalog im Dateimanager."
+(`catalogSetupFileTypesNote`).
+
 Zwei große, gleichwertige Auswahlkarten (analog zum Options-Karten-Stil
 aus dem HTML-Mockup, aber hier als echte `<button>`-Kacheln):
 
@@ -149,11 +171,14 @@ aus dem HTML-Mockup, aber hier als echte `<button>`-Kacheln):
   Struktur inklusive aller Unterordner und importiert alle enthaltenen
   3mf-/STL-Dateien."
   Klick → `pick_folder_path()` → bei Auswahl: Ladezustand ("Importiere…"),
-  dann `invoke('import_dropped', { paths: [path] })`, danach
-  `setCatalogBaseDir(path)` + `setSetupSeen(true)`, Dialog schließt,
-  Erfolgsmeldung mit Anzahl importierter Dateien (bestehendes
-  `ImportResultDto` liefert `imported`/`duplicateCount` — bestehendes
-  `ImportSummaryBanner.tsx`-Muster wiederverwenden).
+  dann in dieser Reihenfolge: (1) `invoke('list_folders')` als
+  Vorher-Schnappschuss, (2) `invoke('import_dropped', { paths: [path] })`,
+  (3) erneut `invoke('list_folders')` als Nachher-Stand — die Differenz
+  der `id`-Mengen ergibt die Anzahl NEU angelegter Ordner (inkl.
+  Unterordner). Danach `setCatalogBaseDir(path)` + `setSetupSeen(true)`,
+  Dialog bleibt offen und wechselt in den Erfolgszustand (siehe unten) —
+  schließt NICHT automatisch, damit die Zusammenfassung und der
+  "Ordner öffnen"-Button sichtbar bleiben.
 
 - **Karte B — "Neuen Ort einrichten"**
   Beschreibung: "Leg einen (auch leeren) Ordner fest, in dem der Katalog
@@ -161,19 +186,36 @@ aus dem HTML-Mockup, aber hier als echte `<button>`-Kacheln):
   jederzeit im Programm anlegen und Dateien per Drag & Drop einsortieren."
   Klick → `pick_folder_path()` → bei Auswahl:
   `invoke('register_catalog_base_dir', { path })`, danach
-  `setCatalogBaseDir(path)` + `setSetupSeen(true)`, Dialog schließt.
+  `setCatalogBaseDir(path)` + `setSetupSeen(true)`, Dialog wechselt
+  ebenfalls in den Erfolgszustand (ohne Datei-/Ordner-Zahlen, da noch
+  nichts importiert wurde — nur Pfad-Bestätigung).
 
-Unauffälliger dritter Weg (Textlink, kein Button gleichen Gewichts):
+**Erfolgszustand** (ersetzt die beiden Karten nach einer erfolgreichen
+Aktion, `catalogSetupDone*`-Keys):
+- Karte A („Übernehmen"): "✓ {files} Dateien in {folders} Ordnern
+  importiert." (`catalogSetupAdoptSummary`, `{files}`/`{folders}` per
+  `String.replace`, gleiches Platzhaltermuster wie `bulkSelectedCount`
+  o. ä. bereits im Projekt).
+- Karte B („Neu einrichten"): "✓ „{path}" als Speicherort eingerichtet."
+  (`catalogSetupNewSummary`).
+- Beide: Button **"Ordner im Dateimanager öffnen"**
+  (`catalogSetupOpenFolderButton`) → `invoke('open_in_file_manager', { path })`.
+- Beide: Button **"Fertig"** (`catalogSetupDoneButton`) → schließt den
+  Dialog (entspricht dem bisherigen automatischen Schließen).
+
+Unauffälliger dritter Weg (Textlink, kein Button gleichen Gewichts, nur
+im Ausgangszustand sichtbar — im Erfolgszustand durch "Fertig" ersetzt):
 "Später einrichten" → nur `setSetupSeen(true)`, `catalogBaseDir` bleibt
 `null`, Dialog schließt, heutiges Verhalten bleibt bestehen.
 
-Fußnotiz unter beiden Karten: "Du kannst diese Wahl jederzeit in den
-Einstellungen unter „Katalog-Speicherort" ändern."
+Fußnotiz unter beiden Karten (nur im Ausgangszustand): "Du kannst diese
+Wahl jederzeit in den Einstellungen unter „Katalog-Speicherort" ändern."
 
 Beide Karten-Klicks können fehlschlagen (Dialog vom Nutzer abgebrochen →
-`pick_folder_path()` liefert `null` → nichts passiert, Dialog bleibt
-offen; Import-/Register-Fehler → Fehlertext im Dialog, analog zum
-bestehenden `catalogBackupError`-Anzeigemuster).
+`pick_folder_path()` liefert `null` → nichts passiert, Dialog bleibt im
+Ausgangszustand; Import-/Register-Fehler → Fehlertext im Dialog, analog
+zum bestehenden `catalogBackupError`-Anzeigemuster, Dialog bleibt im
+Ausgangszustand statt in den Erfolgszustand zu wechseln).
 
 ## Einstellungen-Panel-Ergänzung (`Rail.tsx`)
 
@@ -183,11 +225,18 @@ letzter Abschnitt) zeigt:
   `t('catalogBaseDirNotSet')`, falls `null`.
 - Button "Ändern" (falls gesetzt) / "Einrichten" (falls `null`) → öffnet
   denselben `CatalogSetupDialog`.
+- Zusätzlich, nur wenn ein Speicherort gesetzt ist: ein zweiter, kleinerer
+  Button/Link "Ordner öffnen" direkt daneben →
+  `invoke('open_in_file_manager', { path: catalogBaseDir })` — unabhängig
+  vom Dialog, für den laufenden Alltag (nicht nur während der
+  Ersteinrichtung).
 
 ## i18n
 
-Alle neuen Texte (Dialogtitel, Einleitung, beide Kartenbeschreibungen,
-Später-Link, Fußnotiz, Settings-Abschnitt, Fehlermeldungen) bekommen
+Alle neuen Texte (Dialogtitel, Einleitung, Dateitypen-Hinweis, beide
+Kartenbeschreibungen, beide Erfolgszusammenfassungen, "Ordner öffnen"-
+und "Fertig"-Buttons, Später-Link, Fußnotiz, Settings-Abschnitt,
+Fehlermeldungen) bekommen
 Schlüssel nach dem bestehenden Namensmuster (`catalogSetup*`) und werden
 in `de.ts`/`en.ts`/`es.ts`/`fr.ts` + `types.ts` ergänzt — deutsche Texte
 sind oben wörtlich vorgegeben, die drei anderen Sprachen sinngemäße,
@@ -199,11 +248,18 @@ natürliche Übersetzungen (keine Wort-für-Wort-Übertragung).
   wenn es fehlt; ist idempotent bei erneutem Aufruf mit demselben Pfad —
   über die bereits getestete `ensure_folder_path`-Logik ohnehin
   mitabgedeckt, hier nur der dünne Command-Wrapper zu prüfen).
+  `open_in_file_manager` wird NICHT unit-getestet (startet einen echten
+  Fremdprozess, wie `open_in_slicer` es auch nicht auf Verhalten prüft,
+  nur dass der Aufruf kompiliert/den Prozess ohne Fehler startet).
 - Frontend: `npx tsc --noEmit` sauber. Manueller Test (isolierte
   `XDG_DATA_HOME`, wie in dieser Session mehrfach praktiziert): erster
   Start zeigt den Dialog, "Später einrichten" schließt ihn dauerhaft
   (kein erneutes Aufpoppen bei App-Neustart), "Neuen Ort einrichten" mit
   leerem Testordner + anschließender Einzeldatei-Import landet
   nachweislich physisch im gewählten Ordner, "Bestehende Struktur
-  übernehmen" mit einem vorbereiteten Testordner (zwei Ebenen) importiert
-  sichtbar die komplette Struktur.
+  übernehmen" mit einem vorbereiteten Testordner (zwei Ebenen, plus einer
+  zusätzlichen `.zip`-Datei darin, um zu bestätigen dass sie nicht
+  importiert/angerührt wird) importiert sichtbar die komplette Struktur
+  und zeigt eine korrekte Datei-/Ordner-Anzahl. "Ordner im Dateimanager
+  öffnen" öffnet nachweislich einen echten Dateimanager (Dolphin o. ä.)
+  am richtigen Pfad.
