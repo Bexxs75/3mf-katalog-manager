@@ -50,6 +50,7 @@ pub struct ModelFileDto {
     pub plate_count: Option<i64>,
     pub weight_source: String,
     pub slice_info: Option<SliceInfoDto>,
+    pub cost_estimate: Option<CostEstimateDto>,
     pub deleted_at: Option<String>,
 }
 
@@ -83,6 +84,63 @@ pub struct PlateFilamentUsageDto {
 pub struct SliceInfoDto {
     pub total_weight_g: f64,
     pub plates: Vec<PlateFilamentUsageDto>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CostEstimateDto {
+    pub total_cost: Option<f64>,
+    pub has_unpriced_filaments: bool,
+}
+
+/// Schaetzt die Materialkosten eines Modells: pro Filament im `slice_info`
+/// wird nach Lager-Spulen gesucht, deren `material`-Feld den Filament-Typ
+/// als Teilstring enthaelt (case-insensitive, Farbe wird NICHT verglichen -
+/// Slicer- und Lager-Farbwerte stimmen selten exakt ueberein). Aus allen
+/// Treffern mit gesetztem Preis wird ein Durchschnittspreis pro Gramm
+/// gebildet. Filamente ohne Treffer/Preis fliessen nicht in die Summe ein
+/// (0 wuerde faelschlich "kostenlos" bedeuten) - stattdessen markiert
+/// `has_unpriced_filaments`, dass die Summe unvollstaendig ist.
+pub(crate) fn estimate_material_cost(
+    slice_info: &threemf::SliceInfo,
+    spools: &[db::models::FilamentSpoolRecord],
+) -> CostEstimateDto {
+    let mut total_cost = 0.0;
+    let mut priced_any = false;
+    let mut has_unpriced = false;
+
+    for plate in &slice_info.plates {
+        for filament in &plate.filaments {
+            let type_lower = filament.filament_type.to_lowercase();
+            let matching: Vec<&db::models::FilamentSpoolRecord> = spools
+                .iter()
+                .filter(|s| {
+                    s.material.to_lowercase().contains(&type_lower)
+                        && s.price.is_some()
+                        && s.original_weight_g > 0
+                })
+                .collect();
+
+            if matching.is_empty() {
+                has_unpriced = true;
+                continue;
+            }
+
+            let avg_price_per_gram: f64 = matching
+                .iter()
+                .map(|s| s.price.unwrap() / s.original_weight_g as f64)
+                .sum::<f64>()
+                / matching.len() as f64;
+
+            total_cost += filament.used_g * avg_price_per_gram;
+            priced_any = true;
+        }
+    }
+
+    CostEstimateDto {
+        total_cost: if priced_any { Some(total_cost) } else { None },
+        has_unpriced_filaments: has_unpriced,
+    }
 }
 
 impl From<threemf::SliceInfo> for SliceInfoDto {
@@ -212,7 +270,7 @@ pub(crate) fn encode_image(bytes: Option<Vec<u8>>) -> Option<String> {
     })
 }
 
-pub(crate) fn to_dto(file: FileRecord) -> ModelFileDto {
+pub(crate) fn to_dto(file: FileRecord, spools: &[db::models::FilamentSpoolRecord]) -> ModelFileDto {
     let slice_info: Option<threemf::SliceInfo> = file
         .slice_info_json
         .as_deref()
@@ -224,6 +282,9 @@ pub(crate) fn to_dto(file: FileRecord) -> ModelFileDto {
             "estimated".to_string(),
         ),
     };
+    let cost_estimate = slice_info
+        .as_ref()
+        .map(|info| estimate_material_cost(info, spools));
     let custom_image = encode_image(file.custom_image_png);
     let thumbnail_image = encode_image(file.thumbnail_png);
     let render_snapshot_image = encode_image(file.render_snapshot_png);
@@ -264,6 +325,7 @@ pub(crate) fn to_dto(file: FileRecord) -> ModelFileDto {
         plate_count: file.plate_count,
         weight_source,
         slice_info: slice_info.map(SliceInfoDto::from),
+        cost_estimate,
         deleted_at: file.deleted_at,
     }
 }
@@ -276,7 +338,8 @@ pub(crate) fn lock_db<'a>(state: &'a State<AppState>) -> CmdResult<std::sync::Mu
 pub fn list_files(state: State<AppState>) -> CmdResult<Vec<ModelFileDto>> {
     let conn = lock_db(&state)?;
     let files = db::list_files(&conn).map_err(|e| e.to_string())?;
-    Ok(files.into_iter().map(to_dto).collect())
+    let spools = db::list_filament_spools(&conn).map_err(|e| e.to_string())?;
+    Ok(files.into_iter().map(|f| to_dto(f, &spools)).collect())
 }
 
 #[tauri::command]
@@ -646,7 +709,8 @@ pub fn list_collection_files(state: State<AppState>, collection_id: String) -> C
     let conn = lock_db(&state)?;
     let ids = db::list_collection_file_ids(&conn, cid).map_err(|e| e.to_string())?;
     let files = db::list_files_by_ids(&conn, &ids).map_err(|e| e.to_string())?;
-    Ok(files.into_iter().map(to_dto).collect())
+    let spools = db::list_filament_spools(&conn).map_err(|e| e.to_string())?;
+    Ok(files.into_iter().map(|f| to_dto(f, &spools)).collect())
 }
 
 #[tauri::command]
@@ -888,7 +952,8 @@ pub(crate) fn import_one(
     let file = db::get_file(conn, id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "imported file not found after insert".to_string())?;
-    Ok(to_dto(file))
+    let spools = db::list_filament_spools(conn).map_err(|e| e.to_string())?;
+    Ok(to_dto(file, &spools))
 }
 
 /// Liest die Datei einer bereits katalogisierten `FileRecord` erneut vom
@@ -953,7 +1018,8 @@ pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFile
     let file = db::get_file(conn, id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "Datei nach Aktualisierung nicht mehr gefunden".to_string())?;
-    Ok(to_dto(file))
+    let spools = db::list_filament_spools(conn).map_err(|e| e.to_string())?;
+    Ok(to_dto(file, &spools))
 }
 
 #[tauri::command]
@@ -1429,6 +1495,7 @@ fn group_duplicates(files: Vec<FileRecord>, orphaned_ids: &HashSet<i64>) -> Vec<
 pub fn scan_catalog_issues(state: State<AppState>) -> CmdResult<CatalogIssuesDto> {
     let conn = lock_db(&state)?;
     let files = db::list_files(&conn).map_err(|e| e.to_string())?;
+    let spools = db::list_filament_spools(&conn).map_err(|e| e.to_string())?;
 
     // Nur ein fs::metadata-Fehler vom Typ NotFound bedeutet wirklich "Datei
     // fehlt" - PermissionDenied/IO-Fehler auf einem (noch) nicht
@@ -1441,14 +1508,14 @@ pub fn scan_catalog_issues(state: State<AppState>) -> CmdResult<CatalogIssuesDto
         if let Err(e) = std::fs::metadata(&file.path) {
             if e.kind() == std::io::ErrorKind::NotFound {
                 orphaned_ids.insert(file.id);
-                orphaned.push(to_dto(file.clone()));
+                orphaned.push(to_dto(file.clone(), &spools));
             }
         }
     }
 
     let duplicate_groups: Vec<Vec<ModelFileDto>> = group_duplicates(files, &orphaned_ids)
         .into_iter()
-        .map(|group| group.into_iter().map(to_dto).collect())
+        .map(|group| group.into_iter().map(|f| to_dto(f, &spools)).collect())
         .collect();
 
     Ok(CatalogIssuesDto { orphaned, duplicate_groups })
@@ -1521,7 +1588,8 @@ pub fn delete_files(state: State<AppState>, file_ids: Vec<String>) -> CmdResult<
 pub fn list_trash(state: State<AppState>) -> CmdResult<Vec<ModelFileDto>> {
     let conn = lock_db(&state)?;
     let files = db::list_trash(&conn).map_err(|e| e.to_string())?;
-    Ok(files.into_iter().map(to_dto).collect())
+    let spools = db::list_filament_spools(&conn).map_err(|e| e.to_string())?;
+    Ok(files.into_iter().map(|f| to_dto(f, &spools)).collect())
 }
 
 #[tauri::command]
@@ -1637,6 +1705,105 @@ pub fn purge_expired_trash_on_startup(conn: &Connection) {
 mod tests {
     use super::*;
     use crate::geometry::RenderMesh;
+
+    fn sample_spool(material: &str, original_weight_g: i64, price: Option<f64>) -> db::models::FilamentSpoolRecord {
+        db::models::FilamentSpoolRecord {
+            id: 1,
+            material: material.to_string(),
+            manufacturer: None,
+            color: None,
+            location: None,
+            diameter_mm: 1.75,
+            original_weight_g,
+            remaining_weight_g: original_weight_g,
+            price,
+            image_png: None,
+        }
+    }
+
+    fn sample_slice_info_single_filament(filament_type: &str, used_g: f64) -> threemf::SliceInfo {
+        threemf::SliceInfo {
+            total_weight_g: used_g,
+            plates: vec![threemf::slice_info::PlateFilamentUsage {
+                plate_index: 1,
+                weight_g: used_g,
+                filaments: vec![threemf::slice_info::FilamentUsage {
+                    filament_type: filament_type.to_string(),
+                    color: None,
+                    used_g,
+                    used_m: 0.0,
+                }],
+            }],
+        }
+    }
+
+    #[test]
+    fn estimate_material_cost_uses_single_matching_spool() {
+        let slice_info = sample_slice_info_single_filament("PLA", 20.0);
+        let spools = vec![sample_spool("PLA", 1000, Some(20.0))]; // 0.02 pro Gramm
+        let cost = estimate_material_cost(&slice_info, &spools);
+        assert!((cost.total_cost.expect("cost") - 0.4).abs() < 1e-6);
+        assert!(!cost.has_unpriced_filaments);
+    }
+
+    #[test]
+    fn estimate_material_cost_averages_multiple_matching_spools() {
+        let slice_info = sample_slice_info_single_filament("PLA", 10.0);
+        let spools = vec![
+            sample_spool("PLA", 1000, Some(20.0)), // 0.02/g
+            sample_spool("Generic PLA", 1000, Some(30.0)), // 0.03/g
+        ];
+        let cost = estimate_material_cost(&slice_info, &spools);
+        // Durchschnitt 0.025/g * 10g = 0.25
+        assert!((cost.total_cost.expect("cost") - 0.25).abs() < 1e-6);
+    }
+
+    #[test]
+    fn estimate_material_cost_returns_none_when_no_matching_material() {
+        let slice_info = sample_slice_info_single_filament("PETG", 10.0);
+        let spools = vec![sample_spool("PLA", 1000, Some(20.0))];
+        let cost = estimate_material_cost(&slice_info, &spools);
+        assert_eq!(cost.total_cost, None);
+        assert!(cost.has_unpriced_filaments);
+    }
+
+    #[test]
+    fn estimate_material_cost_ignores_spools_without_price() {
+        let slice_info = sample_slice_info_single_filament("PLA", 10.0);
+        let spools = vec![sample_spool("PLA", 1000, None)];
+        let cost = estimate_material_cost(&slice_info, &spools);
+        assert_eq!(cost.total_cost, None);
+        assert!(cost.has_unpriced_filaments);
+    }
+
+    #[test]
+    fn estimate_material_cost_sums_only_priced_filaments_when_mixed() {
+        let slice_info = threemf::SliceInfo {
+            total_weight_g: 30.0,
+            plates: vec![threemf::slice_info::PlateFilamentUsage {
+                plate_index: 1,
+                weight_g: 30.0,
+                filaments: vec![
+                    threemf::slice_info::FilamentUsage {
+                        filament_type: "PLA".to_string(),
+                        color: None,
+                        used_g: 20.0,
+                        used_m: 0.0,
+                    },
+                    threemf::slice_info::FilamentUsage {
+                        filament_type: "Nylon".to_string(),
+                        color: None,
+                        used_g: 10.0,
+                        used_m: 0.0,
+                    },
+                ],
+            }],
+        };
+        let spools = vec![sample_spool("PLA", 1000, Some(20.0))]; // 0.02/g, kein Nylon im Lager
+        let cost = estimate_material_cost(&slice_info, &spools);
+        assert!((cost.total_cost.expect("cost") - 0.4).abs() < 1e-6); // nur PLA-Anteil
+        assert!(cost.has_unpriced_filaments); // Nylon fehlt
+    }
 
     #[test]
     fn validate_source_url_accepts_http_and_https() {
@@ -1826,7 +1993,7 @@ mod tests {
                 .to_string(),
         );
 
-        let dto = to_dto(file);
+        let dto = to_dto(file, &[]);
 
         assert_eq!(dto.weight_source, "slicer");
         assert!((dto.estimated_weight_g.expect("weight") - 42.5).abs() < 1e-6);
@@ -1844,7 +2011,7 @@ mod tests {
                 .to_string(),
         );
 
-        let dto = to_dto(file);
+        let dto = to_dto(file, &[]);
         let dto_json = serde_json::to_value(&dto).expect("dto serializes to JSON");
 
         assert_eq!(dto_json["weightSource"], "slicer");
@@ -1868,7 +2035,7 @@ mod tests {
         file.volume_cm3 = Some(10.0);
         file.slice_info_json = None;
 
-        let dto = to_dto(file);
+        let dto = to_dto(file, &[]);
 
         assert_eq!(dto.weight_source, "estimated");
         assert!(dto.slice_info.is_none());
