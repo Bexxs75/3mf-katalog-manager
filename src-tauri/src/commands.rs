@@ -1609,6 +1609,110 @@ pub async fn export_catalog(
     Ok(())
 }
 
+/// Prueft, ob `bytes` eine brauchbare Katalog-Datenbank sind (oeffnbar und
+/// mit einer `files`-Tabelle) - Schutz davor, ein falsches/kaputtes ZIP zu
+/// importieren, BEVOR die bestehende catalog.db angefasst wird.
+fn validate_catalog_db_bytes(bytes: &[u8]) -> Result<(), String> {
+    let tmp_path = std::env::temp_dir().join(format!(
+        "3mf-katalog-import-check-{}-{}.db",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| e.to_string())?
+            .as_nanos()
+    ));
+    std::fs::write(&tmp_path, bytes).map_err(|e| e.to_string())?;
+
+    let result = Connection::open(&tmp_path)
+        .map_err(|e| e.to_string())
+        .and_then(|conn| {
+            conn.query_row("SELECT COUNT(*) FROM files", [], |row| row.get::<_, i64>(0))
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        });
+
+    let _ = std::fs::remove_file(&tmp_path);
+    result.map_err(|e| format!("Archiv enthält keine gültige Katalog-Datenbank: {e}"))
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportCatalogResultDto {
+    pub imported: bool,
+    pub settings_json: Option<String>,
+}
+
+/// Importiert einen per `export_catalog` erzeugten Katalog-Export. Ersetzt
+/// die laufende `catalog.db` NUR nach erfolgreicher Validierung (siehe
+/// `validate_catalog_db_bytes`); die alte Datei wird zu `.bak-<Zeitstempel>`
+/// umbenannt statt geloescht. Die laufende `Connection` in `AppState` wird
+/// vor dem Umbenennen durch eine In-Memory-Platzhalter-Connection ersetzt -
+/// ein blosses Freigeben des Mutex-Locks wuerde das zugrundeliegende
+/// Datei-Handle NICHT schliessen, was auf Windows das nachfolgende
+/// `fs::rename` mit einer Sharing-Violation zum Scheitern braechte. Ein
+/// Neustart der App ist danach erforderlich, um die neue DB zu laden (kein
+/// Live-Reconnect vorgesehen, siehe Spec).
+#[tauri::command]
+pub async fn import_catalog(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> CmdResult<ImportCatalogResultDto> {
+    use std::io::Read;
+
+    let picked = app.dialog().file().add_filter("ZIP-Archiv", &["zip"]).blocking_pick_file();
+    let Some(picked) = picked else {
+        return Ok(ImportCatalogResultDto { imported: false, settings_json: None });
+    };
+    let archive_path = picked.into_path().map_err(|e| e.to_string())?;
+
+    let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+
+    let mut db_bytes = Vec::new();
+    archive
+        .by_name("catalog.db")
+        .map_err(|_| "Archiv enthält keine catalog.db".to_string())?
+        .read_to_end(&mut db_bytes)
+        .map_err(|e| e.to_string())?;
+
+    let mut settings_bytes = Vec::new();
+    archive
+        .by_name("settings.json")
+        .map_err(|_| "Archiv enthält keine settings.json".to_string())?
+        .read_to_end(&mut settings_bytes)
+        .map_err(|e| e.to_string())?;
+    let settings_json = String::from_utf8(settings_bytes).map_err(|e| e.to_string())?;
+
+    validate_catalog_db_bytes(&db_bytes)?;
+
+    let tmp_db_path =
+        std::env::temp_dir().join(format!("3mf-katalog-import-{}.db", std::process::id()));
+    std::fs::write(&tmp_db_path, &db_bytes).map_err(|e| e.to_string())?;
+
+    {
+        let mut guard = lock_db(&state)?;
+        let placeholder = Connection::open_in_memory().map_err(|e| e.to_string())?;
+        *guard = placeholder; // alte Connection droppt hier -> OS-Handle auf catalog.db wird geschlossen
+    }
+
+    let backup_path = state.db_path.with_file_name(format!(
+        "catalog.db.bak-{}",
+        chrono::Utc::now().format("%Y%m%d%H%M%S")
+    ));
+    std::fs::rename(&state.db_path, &backup_path).map_err(|e| e.to_string())?;
+
+    if let Err(e) = std::fs::copy(&tmp_db_path, &state.db_path) {
+        let _ = std::fs::rename(&backup_path, &state.db_path);
+        let _ = std::fs::remove_file(&tmp_db_path);
+        return Err(format!(
+            "Kopieren der neuen Datenbank fehlgeschlagen, alter Katalog wiederhergestellt: {e}"
+        ));
+    }
+    let _ = std::fs::remove_file(&tmp_db_path);
+
+    Ok(ImportCatalogResultDto { imported: true, settings_json: Some(settings_json) })
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CatalogIssuesDto {
@@ -1891,6 +1995,30 @@ mod tests {
                 }],
             }],
         }
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_accepts_a_real_sqlite_database_with_files_table() {
+        let tmp_path = std::env::temp_dir().join(format!(
+            "validate_catalog_db_test_{}.db",
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        {
+            let conn = crate::db::connect(&tmp_path).expect("connect creates a valid schema");
+            drop(conn);
+        }
+        let bytes = std::fs::read(&tmp_path).expect("read temp db");
+
+        let result = validate_catalog_db_bytes(&bytes);
+
+        let _ = std::fs::remove_file(&tmp_path);
+        assert!(result.is_ok(), "expected valid catalog db to pass validation: {result:?}");
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_rejects_garbage_bytes() {
+        let result = validate_catalog_db_bytes(b"this is not a sqlite database");
+        assert!(result.is_err());
     }
 
     #[test]

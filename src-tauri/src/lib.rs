@@ -82,6 +82,7 @@ pub fn run() {
             commands::set_source_url,
             commands::rescan_file_metadata,
             commands::export_catalog,
+            commands::import_catalog,
             commands::list_print_log_entries,
             commands::add_print_log_entry,
             commands::delete_print_log_entry,
