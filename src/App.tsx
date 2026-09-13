@@ -10,7 +10,6 @@ import { ModelDetailPage } from './components/ModelDetailPage';
 import { ContextMenu } from './components/ContextMenu';
 import { FilamentView } from './components/FilamentView';
 import { ImportSummaryBanner } from './components/ImportSummaryBanner';
-import { CatalogImportRestartBanner } from './components/CatalogImportRestartBanner';
 import { CatalogCleanupDialog } from './components/CatalogCleanupDialog';
 import { CollectionsGallery } from './components/CollectionsGallery';
 import { BackgroundSnapshotRenderer } from './components/BackgroundSnapshotRenderer';
@@ -264,7 +263,6 @@ export default function App() {
   >(null);
 
   const [catalogBackupError, setCatalogBackupError] = useState<string | null>(null);
-  const [showImportRestartBanner, setShowImportRestartBanner] = useState(false);
 
   const CATALOG_SETTINGS_KEYS = [
     '3mf-katalog-theme',
@@ -290,17 +288,34 @@ export default function App() {
     setCatalogBackupError(null);
     invoke<{ imported: boolean; settingsJson: string | null }>('import_catalog')
       .then((result) => {
-        if (!result.imported || !result.settingsJson) return;
-        const settings = JSON.parse(result.settingsJson) as Record<string, string | null>;
-        for (const key of CATALOG_SETTINGS_KEYS) {
-          const value = settings[key];
-          if (value === null || value === undefined) {
-            localStorage.removeItem(key);
-          } else {
-            localStorage.setItem(key, value);
+        if (!result.imported) return;
+        if (result.settingsJson) {
+          // Ein Fehler beim Wiederherstellen der Einstellungen darf den
+          // erfolgreichen Katalog-Import nicht als Fehlschlag erscheinen
+          // lassen (Finding I2) - daher eigenes try/catch statt im
+          // aeusseren .catch() der Promise-Kette landen zu lassen.
+          try {
+            const settings = JSON.parse(result.settingsJson) as Record<string, string | null>;
+            for (const key of CATALOG_SETTINGS_KEYS) {
+              const value = settings[key];
+              if (value === null || value === undefined) {
+                localStorage.removeItem(key);
+              } else {
+                localStorage.setItem(key, value);
+              }
+            }
+          } catch (e) {
+            console.error('[catalog-backup] Einstellungen konnten nicht wiederhergestellt werden:', e);
           }
         }
-        setShowImportRestartBanner(true);
+        // Backend hat AppState.db bereits auf den neu importierten Katalog
+        // umverbunden - ohne sofortigen Reload wuerde das Frontend weiter
+        // veraltete Modell-IDs aus dem alten Katalog anzeigen und Aktionen
+        // (Loeschen/Favorit/Tag) koennten versehentlich falsche Datensaetze
+        // im neuen Katalog treffen (Finding C1). Ein voller Reload laedt die
+        // React-App komplett neu und holt alle Daten gegen die jetzt aktive
+        // DB neu ab.
+        window.location.reload();
       })
       .catch((e) => {
         console.error('[catalog-backup] Import fehlgeschlagen:', e);
@@ -997,10 +1012,6 @@ export default function App() {
           duplicates={importBanner.duplicates}
           onClose={() => setImportBanner(null)}
         />
-      )}
-
-      {showImportRestartBanner && (
-        <CatalogImportRestartBanner onClose={() => setShowImportRestartBanner(false)} />
       )}
 
       {cleanupDialogOpen && cleanupIssues && (
