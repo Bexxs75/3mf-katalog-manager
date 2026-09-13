@@ -96,7 +96,7 @@ export function Rail({
 
   return (
     <nav className="flex-none w-[60px] flex flex-col items-center pt-3.5 pb-2.5 bg-[var(--panel-2)] border-r border-[var(--line)]">
-      <div className="w-[30px] h-[30px] rounded-[8px] bg-[var(--accent)] text-[var(--accent-ink)] grid place-items-center font-mono-ui font-bold text-[12px] mb-4.5">
+      <div className="w-[30px] h-[30px] rounded-[8px] bg-[var(--accent)] text-[var(--accent-ink)] grid place-items-center font-mono-ui font-bold text-[12px] mb-[18px]">
         3MF
       </div>
 
@@ -158,7 +158,7 @@ export function Rail({
         </button>
 
         {settingsOpen && (
-          <div className="absolute bottom-0 left-12 w-[268px] p-[14px] bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
+          <div className="absolute bottom-0 left-12 w-[268px] p-[14px] bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40 max-h-[calc(100vh-80px)] overflow-y-auto">
             <div className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)] mb-2.5">
               {t('settingsTitle')}
             </div>
