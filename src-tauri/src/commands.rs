@@ -48,6 +48,8 @@ pub struct ModelFileDto {
     pub queue_position: Option<i64>,
     pub favorite: bool,
     pub plate_count: Option<i64>,
+    pub weight_source: String,
+    pub slice_info: Option<SliceInfoDto>,
     pub deleted_at: Option<String>,
 }
 
@@ -56,6 +58,57 @@ pub struct ModelFileDto {
 pub struct MaterialDto {
     pub name: String,
     pub display_color: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilamentUsageDto {
+    #[serde(rename = "type")]
+    pub filament_type: String,
+    pub color: Option<String>,
+    pub used_g: f64,
+    pub used_m: f64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlateFilamentUsageDto {
+    pub plate_index: u32,
+    pub weight_g: f64,
+    pub filaments: Vec<FilamentUsageDto>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SliceInfoDto {
+    pub total_weight_g: f64,
+    pub plates: Vec<PlateFilamentUsageDto>,
+}
+
+impl From<threemf::SliceInfo> for SliceInfoDto {
+    fn from(info: threemf::SliceInfo) -> Self {
+        SliceInfoDto {
+            total_weight_g: info.total_weight_g,
+            plates: info
+                .plates
+                .into_iter()
+                .map(|p| PlateFilamentUsageDto {
+                    plate_index: p.plate_index,
+                    weight_g: p.weight_g,
+                    filaments: p
+                        .filaments
+                        .into_iter()
+                        .map(|f| FilamentUsageDto {
+                            filament_type: f.filament_type,
+                            color: f.color,
+                            used_g: f.used_g,
+                            used_m: f.used_m,
+                        })
+                        .collect(),
+                })
+                .collect(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -160,8 +213,17 @@ pub(crate) fn encode_image(bytes: Option<Vec<u8>>) -> Option<String> {
 }
 
 pub(crate) fn to_dto(file: FileRecord) -> ModelFileDto {
-    let estimated_weight_g =
-        estimate_weight_g(file.volume_cm3, file.materials.first().map(|m| m.name.as_str()));
+    let slice_info: Option<threemf::SliceInfo> = file
+        .slice_info_json
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok());
+    let (estimated_weight_g, weight_source) = match &slice_info {
+        Some(info) => (Some(info.total_weight_g), "slicer".to_string()),
+        None => (
+            estimate_weight_g(file.volume_cm3, file.materials.first().map(|m| m.name.as_str())),
+            "estimated".to_string(),
+        ),
+    };
     let custom_image = encode_image(file.custom_image_png);
     let thumbnail_image = encode_image(file.thumbnail_png);
     let render_snapshot_image = encode_image(file.render_snapshot_png);
@@ -200,6 +262,8 @@ pub(crate) fn to_dto(file: FileRecord) -> ModelFileDto {
         queue_position: file.queue_position,
         favorite: file.favorite,
         plate_count: file.plate_count,
+        weight_source,
+        slice_info: slice_info.map(SliceInfoDto::from),
         deleted_at: file.deleted_at,
     }
 }
@@ -1679,6 +1743,37 @@ mod tests {
     #[test]
     fn encode_image_returns_none_for_none() {
         assert_eq!(encode_image(None), None);
+    }
+
+    #[test]
+    fn to_dto_uses_slicer_weight_and_marks_source_when_slice_info_present() {
+        let mut file = sample_file_record(1, None, "2026-09-13T00:00:00Z");
+        file.volume_cm3 = Some(100.0); // wuerde ohne slice_info eine Schaetzung liefern
+        file.slice_info_json = Some(
+            r##"{"total_weight_g":42.5,"plates":[{"plate_index":1,"weight_g":42.5,"filaments":[{"filament_type":"PLA","color":"#FFFFFFFF","used_g":42.5,"used_m":15.0}]}]}"##
+                .to_string(),
+        );
+
+        let dto = to_dto(file);
+
+        assert_eq!(dto.weight_source, "slicer");
+        assert!((dto.estimated_weight_g.expect("weight") - 42.5).abs() < 1e-6);
+        let slice_info = dto.slice_info.expect("slice info dto present");
+        assert_eq!(slice_info.plates.len(), 1);
+        assert_eq!(slice_info.plates[0].filaments[0].filament_type, "PLA");
+    }
+
+    #[test]
+    fn to_dto_falls_back_to_estimate_when_slice_info_absent() {
+        let mut file = sample_file_record(2, None, "2026-09-13T00:00:00Z");
+        file.volume_cm3 = Some(10.0);
+        file.slice_info_json = None;
+
+        let dto = to_dto(file);
+
+        assert_eq!(dto.weight_source, "estimated");
+        assert!(dto.slice_info.is_none());
+        assert!(dto.estimated_weight_g.is_some());
     }
 
     /// Minimal `FileRecord` for `group_duplicates` tests: only `id`,
