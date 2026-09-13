@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Component, Path};
 
 use rusqlite::{params, Connection, OptionalExtension};
 
@@ -124,6 +124,65 @@ pub fn list_folders(conn: &Connection) -> Result<Vec<FolderRecord>, DbError> {
         })?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rows)
+}
+
+/// Legt fuer jede Verzeichnisebene zwischen `import_root` (inklusive) und
+/// `dir` (inklusive) einen folders-Eintrag an, sofern er noch nicht
+/// existiert (Lookup per `path`-Spalte, idempotent bei wiederholtem
+/// Import desselben Baums). Gibt die id der tiefsten Ebene (= `dir`)
+/// zurueck.
+pub fn ensure_folder_path(conn: &Connection, import_root: &Path, dir: &Path) -> Result<i64, DbError> {
+    let relative = dir.strip_prefix(import_root).map_err(|_| {
+        DbError::Other(format!(
+            "{} liegt nicht unter {}",
+            dir.display(),
+            import_root.display()
+        ))
+    })?;
+
+    let mut current_path = import_root.to_path_buf();
+    let mut parent_id: Option<i64> = None;
+    parent_id = Some(find_or_insert_folder(conn, &current_path, parent_id, folder_name(&current_path))?);
+
+    for component in relative.components() {
+        if let Component::Normal(part) = component {
+            current_path.push(part);
+            parent_id = Some(find_or_insert_folder(
+                conn,
+                &current_path,
+                parent_id,
+                part.to_string_lossy().to_string(),
+            )?);
+        }
+    }
+
+    Ok(parent_id.expect("mindestens import_root wurde oben eingefuegt"))
+}
+
+fn folder_name(path: &Path) -> String {
+    path.file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.to_string_lossy().to_string())
+}
+
+fn find_or_insert_folder(
+    conn: &Connection,
+    path: &Path,
+    parent_id: Option<i64>,
+    name: String,
+) -> Result<i64, DbError> {
+    let path_str = path.to_string_lossy().to_string();
+    if let Some(id) = conn
+        .query_row("SELECT id FROM folders WHERE path = ?1", params![path_str], |r| r.get(0))
+        .optional()?
+    {
+        return Ok(id);
+    }
+    conn.execute(
+        "INSERT INTO folders (name, parent_id, path) VALUES (?1, ?2, ?3)",
+        params![name, parent_id, path_str],
+    )?;
+    Ok(conn.last_insert_rowid())
 }
 
 /// Deterministic hue in [0, 360) derived from the tag name, so a tag keeps
@@ -889,5 +948,46 @@ mod tests {
         let child = folders.iter().find(|f| f.name == "Child").unwrap();
         assert_eq!(child.parent_id, Some(root_id));
         assert_eq!(child.path, "/tmp/Root/Child");
+    }
+
+    #[test]
+    fn ensure_folder_path_creates_missing_levels() {
+        let conn = connect_in_memory().unwrap();
+        let root = Path::new("/tmp/Tabletop");
+        let dir = Path::new("/tmp/Tabletop/Reaper");
+
+        let leaf_id = ensure_folder_path(&conn, root, dir).unwrap();
+        let folders = list_folders(&conn).unwrap();
+        assert_eq!(folders.len(), 2);
+        let leaf = folders.iter().find(|f| f.id == leaf_id).unwrap();
+        assert_eq!(leaf.name, "Reaper");
+        assert_eq!(leaf.path, "/tmp/Tabletop/Reaper");
+        let parent = folders.iter().find(|f| f.id == leaf.parent_id.unwrap()).unwrap();
+        assert_eq!(parent.name, "Tabletop");
+        assert_eq!(parent.parent_id, None);
+    }
+
+    #[test]
+    fn ensure_folder_path_is_idempotent() {
+        let conn = connect_in_memory().unwrap();
+        let root = Path::new("/tmp/Tabletop");
+        let dir = Path::new("/tmp/Tabletop/Reaper");
+
+        let first = ensure_folder_path(&conn, root, dir).unwrap();
+        let second = ensure_folder_path(&conn, root, dir).unwrap();
+        assert_eq!(first, second);
+        assert_eq!(list_folders(&conn).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn ensure_folder_path_file_directly_in_root() {
+        let conn = connect_in_memory().unwrap();
+        let root = Path::new("/tmp/Tabletop");
+
+        let id = ensure_folder_path(&conn, root, root).unwrap();
+        let folders = list_folders(&conn).unwrap();
+        assert_eq!(folders.len(), 1);
+        assert_eq!(folders[0].id, id);
+        assert_eq!(folders[0].name, "Tabletop");
     }
 }
