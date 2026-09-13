@@ -7,6 +7,16 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
+### Added
+
+- Materialkosten-Schätzung: bei Modellen mit echtem Slicer-Filamentverbrauch zeigt die Detailseite jetzt zusätzlich eine geschätzte Materialkosten-Summe, berechnet aus dem Verbrauch je Filament und dem Durchschnittspreis passender Spulen im Filament-Lager (Materialtyp-Abgleich, Farbe wird bewusst nicht berücksichtigt); fehlt ein Preis, wird das klar als "unbekannt" ausgewiesen statt als 0
+- Druckprotokoll: auf der Modell-Detailseite lässt sich jetzt zusätzlich zum bestehenden Druckstatus-Toggle ein Protokoll mehrerer Druckversuche führen — Datum, optionale Notiz, optionales Foto pro Eintrag, bewusst unabhängig vom Druckstatus (keine automatische Ableitung in beide Richtungen)
+- Katalog-Backup (Export/Import): neue Sektion im Einstellungen-Panel sichert die komplette Katalog-Datenbank plus Einstellungen (Theme, Sprache, Slicer-Liste, Ansicht) als ZIP-Datei; Import (mit Bestätigungsabfrage, da destruktiv) ersetzt den aktuellen Katalog sicher — die alte Datenbank wird nie gelöscht, nur als `.bak-<Zeitstempel>` beiseitegelegt, mit automatischer Wiederherstellung bei einem fehlgeschlagenen Import; nach erfolgreichem Import lädt die App automatisch neu, damit keine veralteten Modell-IDs im Katalog stehen bleiben
+
+### Fixed
+
+- 3D-Live-Vorschau schlug bei sehr großen Modellen (mehrere hunderttausend bis über eine Million Vertices) im Release-Build stumm fehl ("Vorschau nicht verfügbar"): Tauri liefert große IPC-Binärantworten über einen separaten internen `fetch()` aus, den die Content-Security-Policy ohne explizite `connect-src`-Direktive blockierte. Betraf nur außergewöhnlich große Dateien, kleinere 3mf-Modelle waren nie betroffen
+
 ## [0.6.0] - 2026-09-13
 
 Erster getaggter Release. Die einzelnen Abschnitte unten stammen aus mehreren Entwicklungstagen (2026-09-12 und 2026-09-13), siehe Hinweis oben zur rückwirkenden Versionierung.
@@ -167,6 +177,16 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
 ## [Unreleased]
+
+### Added
+
+- Material cost estimate: for models with real slicer filament usage, the detail page now also shows an estimated material cost, computed from the consumption per filament and the average price of matching spools in the filament inventory (matched by material type; color is deliberately not considered); if no price is found it's clearly shown as "unknown" rather than 0
+- Print log: the model detail page can now keep a log of multiple print attempts in addition to the existing print-status toggle — date, optional note, optional photo per entry, deliberately independent of print status (no automatic derivation in either direction)
+- Catalog backup (export/import): a new section in the settings panel backs up the entire catalog database plus settings (theme, language, slicer list, view) as a ZIP file; import (confirmation-gated, since destructive) safely replaces the current catalog — the old database is never deleted, only set aside as a timestamped `.bak-<timestamp>` file, with automatic restoration if the import fails; after a successful import the app automatically reloads so no stale model IDs remain in the catalog
+
+### Fixed
+
+- Live 3D preview silently failed for very large models (several hundred thousand to over a million vertices) in the release build ("preview unavailable"): Tauri delivers large binary IPC responses via a separate internal `fetch()`, which the Content Security Policy blocked without an explicit `connect-src` directive. Only affected exceptionally large files; smaller 3mf models were never affected
 
 ## [0.6.0] - 2026-09-13
 
