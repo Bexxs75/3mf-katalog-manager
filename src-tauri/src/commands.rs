@@ -1764,6 +1764,33 @@ mod tests {
     }
 
     #[test]
+    fn to_dto_serializes_slice_info_with_camel_case_and_type_rename() {
+        let mut file = sample_file_record(3, None, "2026-09-13T00:00:00Z");
+        file.volume_cm3 = Some(100.0);
+        file.slice_info_json = Some(
+            r##"{"total_weight_g":42.5,"plates":[{"plate_index":1,"weight_g":42.5,"filaments":[{"filament_type":"PLA","color":"#FFFFFFFF","used_g":42.5,"used_m":15.0}]}]}"##
+                .to_string(),
+        );
+
+        let dto = to_dto(file);
+        let dto_json = serde_json::to_value(&dto).expect("dto serializes to JSON");
+
+        assert_eq!(dto_json["weightSource"], "slicer");
+        assert_eq!(dto_json["sliceInfo"]["totalWeightG"], 42.5);
+        assert_eq!(dto_json["sliceInfo"]["plates"][0]["plateIndex"], 1);
+        assert_eq!(dto_json["sliceInfo"]["plates"][0]["weightG"], 42.5);
+        // Critical: FilamentUsageDto::filament_type must serialize as "type",
+        // not "filamentType", to match the frontend contract.
+        assert_eq!(dto_json["sliceInfo"]["plates"][0]["filaments"][0]["type"], "PLA");
+        assert_eq!(
+            dto_json["sliceInfo"]["plates"][0]["filaments"][0]["color"],
+            "#FFFFFFFF"
+        );
+        assert_eq!(dto_json["sliceInfo"]["plates"][0]["filaments"][0]["usedG"], 42.5);
+        assert_eq!(dto_json["sliceInfo"]["plates"][0]["filaments"][0]["usedM"], 15.0);
+    }
+
+    #[test]
     fn to_dto_falls_back_to_estimate_when_slice_info_absent() {
         let mut file = sample_file_record(2, None, "2026-09-13T00:00:00Z");
         file.volume_cm3 = Some(10.0);
