@@ -1505,6 +1505,68 @@ pub async fn pick_slicer_executable(app: tauri::AppHandle) -> CmdResult<Option<S
         .map(|p| p.to_string_lossy().to_string()))
 }
 
+// Muss aus demselben Grund wie pick_slicer_executable async sein:
+// blocking_pick_folder() blockiert den aufrufenden Thread, bis der native
+// Ordner-Dialog geschlossen wird.
+#[tauri::command]
+pub async fn pick_folder_path(app: tauri::AppHandle) -> CmdResult<Option<String>> {
+    let picked = app.dialog().file().blocking_pick_folder();
+    Ok(picked
+        .and_then(|p| p.into_path().ok())
+        .map(|p| p.to_string_lossy().to_string()))
+}
+
+/// Kernlogik von `register_catalog_base_dir`, getrennt von der
+/// `State<AppState>`-Huelle gehalten, damit sie in Tests direkt gegen eine
+/// In-Memory-`Connection` aufgerufen werden kann (gleiche Konvention wie
+/// `move_file_to_folder_with_conn`/`rename_folder_with_conn`).
+fn register_catalog_base_dir_with_conn(conn: &Connection, dir: &Path) -> CmdResult<FolderDto> {
+    if !dir.exists() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+
+    let id = db::ensure_folder_path(conn, dir, dir).map_err(|e| e.to_string())?;
+
+    let folders = db::list_folders(conn).map_err(|e| e.to_string())?;
+    let folder = folders.iter().find(|f| f.id == id).ok_or_else(|| "folder not found".to_string())?;
+
+    Ok(FolderDto {
+        id: folder.id.to_string(),
+        name: folder.name.clone(),
+        path: folder.path.clone(),
+        parent_id: folder.parent_id.map(|p| p.to_string()),
+        count: 0,
+    })
+}
+
+/// Registriert ein vom Nutzer gewaehltes Basisverzeichnis als
+/// Katalog-Wurzelordner: legt das Verzeichnis auf der Platte an, falls es
+/// noch nicht existiert, und stellt per `db::ensure_folder_path` sicher,
+/// dass eine passende `folders`-Zeile existiert (idempotent bei erneutem
+/// Aufruf mit demselben Pfad).
+#[tauri::command]
+pub fn register_catalog_base_dir(state: State<AppState>, path: String) -> CmdResult<FolderDto> {
+    let dir = std::path::PathBuf::from(&path);
+    let conn = lock_db(&state)?;
+    register_catalog_base_dir_with_conn(&conn, &dir)
+}
+
+/// Oeffnet einen Pfad im systemeigenen Datei-Manager. Bewusst ohne eigene
+/// Plugin-Abhaengigkeit (analog zu `open_in_slicer`): startet direkt das
+/// jeweilige Betriebssystem-Kommando dafuer.
+#[tauri::command]
+pub fn open_in_file_manager(path: String) -> CmdResult<()> {
+    #[cfg(target_os = "linux")]
+    let mut cmd = std::process::Command::new("xdg-open");
+    #[cfg(target_os = "macos")]
+    let mut cmd = std::process::Command::new("open");
+    #[cfg(target_os = "windows")]
+    let mut cmd = std::process::Command::new("explorer");
+
+    cmd.arg(&path).spawn().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 // Wird beim Start unseres eigenen AppImage vom AppImage-Runtime bzw. dem
 // linuxdeploy-Gtk-Hook gesetzt und zeigt auf unser eigenes, temporaeres
 // Mount-Verzeichnis. std::process::Command vererbt per Default die
@@ -3027,6 +3089,31 @@ mod tests {
         assert_eq!(after.folder_id, Some(folder_id), "db folder_id must reflect the target folder");
 
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn register_catalog_base_dir_creates_missing_directory_and_is_idempotent() {
+        // unique_test_dir() legt das Verzeichnis bereits an - fuer diesen
+        // Test wird das Zielverzeichnis stattdessen erst noch fehlend
+        // gebraucht, also nur der (eindeutige) Pfad selbst verwendet und
+        // sofort wieder entfernt.
+        let base = unique_test_dir("register-base-dir");
+        std::fs::remove_dir_all(&base).expect("remove freshly created test dir");
+        assert!(!base.exists());
+
+        let conn = crate::db::connect_in_memory().expect("connect");
+
+        let first = register_catalog_base_dir_with_conn(&conn, &base).expect("first call should succeed");
+        assert!(base.exists(), "directory must be created on disk");
+        assert_eq!(first.name, base.file_name().unwrap().to_string_lossy());
+        assert_eq!(first.parent_id, None);
+
+        let second = register_catalog_base_dir_with_conn(&conn, &base).expect("second call should succeed");
+        assert_eq!(first.id, second.id, "same path must resolve to the same folder id");
+
+        assert_eq!(db::list_folders(&conn).unwrap().len(), 1, "must not create a duplicate folders row");
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
