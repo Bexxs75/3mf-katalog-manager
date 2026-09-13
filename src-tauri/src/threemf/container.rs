@@ -26,6 +26,7 @@ pub struct PackageParts {
     pub referenced_models: HashMap<String, ParsedModel>,
     pub thumbnail: Option<Vec<u8>>,
     pub plate_count: Option<u32>,
+    pub slice_info: Option<super::slice_info::SliceInfo>,
 }
 
 impl PackageParts {
@@ -45,6 +46,7 @@ pub fn read_package<R: Read + Seek>(reader: R) -> Result<PackageParts, ThreeMfEr
     let mut archive = ZipArchive::new(reader)?;
 
     let plate_count = super::plates::count_plates(&mut archive);
+    let slice_info = super::slice_info::parse_slice_info(&mut archive);
 
     let (model_path, thumbnail_path) = resolve_relationships(&mut archive);
     let model_path = model_path.unwrap_or_else(|| DEFAULT_MODEL_PATH.to_string());
@@ -99,6 +101,7 @@ pub fn read_package<R: Read + Seek>(reader: R) -> Result<PackageParts, ThreeMfEr
         root_model,
         referenced_models,
         plate_count,
+        slice_info,
         thumbnail,
     })
 }
