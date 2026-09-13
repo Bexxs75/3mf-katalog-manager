@@ -13,6 +13,7 @@ pub use repository::{
     mark_file_viewed, max_queue_position, purge_expired_trash, remove_tag_from_file, restore_file,
     set_content_hash, set_custom_image_png, set_favorite, set_print_status, set_queue_position,
     set_render_snapshot_png, set_source_url, soft_delete_file, update_filament_spool,
+    update_scanned_metadata,
 };
 
 #[cfg(test)]

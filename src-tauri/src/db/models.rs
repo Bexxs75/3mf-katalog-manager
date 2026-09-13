@@ -61,6 +61,20 @@ pub struct NewFile {
     pub slice_info_json: Option<String>,
 }
 
+/// Felder, die `rescan_file` (commands.rs) nach dem erneuten Einlesen einer
+/// bereits katalogisierten Datei unbedingt ueberschreibt - "neu einlesen"
+/// ist ein voller Refresh, kein Merge mit dem alten Zustand.
+pub struct ScannedMetadataUpdate {
+    pub dimensions_mm: Option<[f64; 3]>,
+    pub volume_cm3: Option<f64>,
+    pub object_count: Option<i64>,
+    pub thumbnail_png: Option<Vec<u8>>,
+    pub plate_count: Option<i64>,
+    pub slice_info_json: Option<String>,
+    pub materials: Vec<MaterialRecord>,
+    pub metadata: BTreeMap<String, String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct FileRecord {
     pub id: i64,

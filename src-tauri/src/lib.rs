@@ -79,6 +79,7 @@ pub fn run() {
             commands::upload_custom_image,
             commands::set_render_snapshot,
             commands::set_source_url,
+            commands::rescan_file_metadata,
             commands::save_filter,
             commands::list_saved_filters,
             commands::delete_saved_filter,

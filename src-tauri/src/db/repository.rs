@@ -297,6 +297,50 @@ pub fn insert_file(conn: &mut Connection, file: &NewFile) -> Result<i64, DbError
     Ok(file_id)
 }
 
+pub fn update_scanned_metadata(
+    conn: &mut Connection,
+    file_id: i64,
+    update: &super::models::ScannedMetadataUpdate,
+) -> Result<(), DbError> {
+    let tx = conn.transaction()?;
+
+    let [dim_x, dim_y, dim_z] = match update.dimensions_mm {
+        Some(d) => [Some(d[0]), Some(d[1]), Some(d[2])],
+        None => [None, None, None],
+    };
+
+    tx.execute(
+        "UPDATE files SET
+            dimension_x_mm = ?1, dimension_y_mm = ?2, dimension_z_mm = ?3,
+            volume_cm3 = ?4, object_count = ?5, thumbnail_png = ?6,
+            plate_count = ?7, slice_info_json = ?8
+         WHERE id = ?9",
+        params![
+            dim_x, dim_y, dim_z, update.volume_cm3, update.object_count,
+            update.thumbnail_png, update.plate_count, update.slice_info_json, file_id,
+        ],
+    )?;
+
+    tx.execute("DELETE FROM file_materials WHERE file_id = ?1", params![file_id])?;
+    for material in &update.materials {
+        tx.execute(
+            "INSERT INTO file_materials (file_id, name, display_color) VALUES (?1, ?2, ?3)",
+            params![file_id, material.name, material.display_color],
+        )?;
+    }
+
+    tx.execute("DELETE FROM file_metadata WHERE file_id = ?1", params![file_id])?;
+    for (label, value) in &update.metadata {
+        tx.execute(
+            "INSERT INTO file_metadata (file_id, label, value) VALUES (?1, ?2, ?3)",
+            params![file_id, label, value],
+        )?;
+    }
+
+    tx.commit()?;
+    Ok(())
+}
+
 pub fn delete_file(conn: &Connection, id: i64) -> Result<(), DbError> {
     // Tag-IDs vorher merken, da file_tags per ON DELETE CASCADE mitgeloescht
     // wird und danach nicht mehr bekannt ist, welche Tags betroffen waren.
