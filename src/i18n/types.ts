@@ -136,6 +136,10 @@ export interface Translations {
   markAsPrinted: string;
   markAsNotPrinted: string;
   metaWeight: string;
+  metaWeightFromSlicer: string;
+  sliceFilamentHeading: string;
+  sliceFilamentPlateLabel: string;
+  rescanMetadataButton: string;
 
   creatorsHeading: string;
 

@@ -129,6 +129,10 @@ export const fr: Translations = {
   markAsPrinted: 'Marquer comme imprimé',
   markAsNotPrinted: 'Marquer comme non imprimé',
   metaWeight: 'Poids (estimé)',
+  metaWeightFromSlicer: 'Poids (du logiciel de découpe)',
+  sliceFilamentHeading: 'Consommation de filament (du logiciel de découpe)',
+  sliceFilamentPlateLabel: 'Plateau {index}',
+  rescanMetadataButton: 'Relire les métadonnées',
 
   sortLastViewed: 'Vu récemment',
   newBadge: 'NOUVEAU',
