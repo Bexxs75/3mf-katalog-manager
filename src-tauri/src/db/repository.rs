@@ -388,13 +388,24 @@ pub fn list_creator_counts(conn: &Connection) -> Result<Vec<CreatorCount>, DbErr
 
 pub fn insert_file(conn: &mut Connection, file: &NewFile) -> Result<i64, DbError> {
     let tx = conn.transaction()?;
+    let id = insert_file_within_tx(&tx, file)?;
+    tx.commit()?;
+    Ok(id)
+}
 
+/// Core of [`insert_file`], operating on an already-open transaction/connection
+/// instead of opening its own. Callers that import many files in one batch
+/// (see `commands::import_many_with_conn`) use this directly so the whole
+/// batch commits once instead of once per file - SQLite fsyncs on every
+/// commit, so one-transaction-per-file made large imports take a very long
+/// time (Finding, Review 2026-09-13).
+pub fn insert_file_within_tx(conn: &Connection, file: &NewFile) -> Result<i64, DbError> {
     let [dim_x, dim_y, dim_z] = match file.dimensions_mm {
         Some(d) => [Some(d[0]), Some(d[1]), Some(d[2])],
         None => [None, None, None],
     };
 
-    tx.execute(
+    conn.execute(
         "INSERT INTO files (
             name, path, file_type, folder_id, origin, cloud_id, sync_status,
             file_size_bytes, dimension_x_mm, dimension_y_mm, dimension_z_mm,
@@ -433,31 +444,30 @@ pub fn insert_file(conn: &mut Connection, file: &NewFile) -> Result<i64, DbError
             file.slice_info_json,
         ],
     )?;
-    let file_id = tx.last_insert_rowid();
+    let file_id = conn.last_insert_rowid();
 
     for material in &file.materials {
-        tx.execute(
+        conn.execute(
             "INSERT INTO file_materials (file_id, name, display_color) VALUES (?1, ?2, ?3)",
             params![file_id, material.name, material.display_color],
         )?;
     }
 
     for (label, value) in &file.metadata {
-        tx.execute(
+        conn.execute(
             "INSERT INTO file_metadata (file_id, label, value) VALUES (?1, ?2, ?3)",
             params![file_id, label, value],
         )?;
     }
 
     for tag_name in &file.tags {
-        let tag_id = get_or_create_tag(&tx, tag_name)?;
-        tx.execute(
+        let tag_id = get_or_create_tag(conn, tag_name)?;
+        conn.execute(
             "INSERT OR IGNORE INTO file_tags (file_id, tag_id) VALUES (?1, ?2)",
             params![file_id, tag_id],
         )?;
     }
 
-    tx.commit()?;
     Ok(file_id)
 }
 

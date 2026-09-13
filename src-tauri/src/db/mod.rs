@@ -7,6 +7,7 @@ pub use repository::{
     add_tag_to_file, connect, delete_file, delete_filament_spool, delete_print_log_entry,
     delete_saved_filter, delete_unused_tags, ensure_folder_path,
     file_exists_by_hash, file_exists_by_path, get_file, get_file_id_by_content_hash, insert_file,
+    insert_file_within_tx,
     insert_filament_spool, insert_folder_with_parent, insert_print_log_entry,
     insert_saved_filter, list_creator_counts, list_filament_spools, list_files,
     list_files_by_ids, list_files_missing_content_hash, list_folders, list_print_log_entries,

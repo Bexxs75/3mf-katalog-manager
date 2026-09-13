@@ -7,6 +7,12 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-09-13
+
+### Fixed
+
+- Import vieler Dateien auf einmal (Ordner-Import) war spürbar langsam: jede importierte Datei öffnete und committete bisher ihre eigene Datenbank-Transaktion, und SQLite fsynct bei jedem Commit — bei einem Ordner mit vielen Modellen summierte sich das zu vielen einzelnen Festplatten-Synchronisationen nacheinander. Der komplette Batch läuft jetzt in einer einzigen Transaktion mit einem Commit am Ende
+
 ## [0.7.1] - 2026-09-13
 
 ### Security
@@ -195,6 +201,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
 ## [Unreleased]
+
+## [0.7.2] - 2026-09-13
+
+### Fixed
+
+- Importing many files at once (folder import) was noticeably slow: every imported file used to open and commit its own database transaction, and SQLite fsyncs on every commit — for a folder with many models this added up to many individual disk syncs one after another. The whole batch now runs inside a single transaction with one commit at the end
 
 ## [0.7.1] - 2026-09-13
 

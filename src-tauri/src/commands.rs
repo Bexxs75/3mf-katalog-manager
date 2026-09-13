@@ -1150,7 +1150,7 @@ fn collect_supported_files(path: &Path, out: &mut Vec<PathBuf>) {
 }
 
 pub(crate) fn import_one(
-    conn: &mut Connection,
+    conn: &Connection,
     path: &Path,
     display_name: Option<&str>,
     content_hash: Option<String>,
@@ -1254,7 +1254,7 @@ pub(crate) fn import_one(
         slice_info_json,
     };
 
-    let id = db::insert_file(conn, &new_file).map_err(|e| e.to_string())?;
+    let id = db::insert_file_within_tx(conn, &new_file).map_err(|e| e.to_string())?;
     let file = db::get_file(conn, id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "imported file not found after insert".to_string())?;
@@ -1352,6 +1352,13 @@ fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) -> CmdResul
     let mut imported = Vec::new();
     let mut duplicate_count = 0i64;
 
+    // Eine einzige Transaktion fuer den ganzen Batch statt einer pro Datei
+    // (vorher: import_one -> insert_file oeffnete/committete je Aufruf) -
+    // SQLite fsynct bei jedem Commit, ein Ordner-Import mit vielen Dateien
+    // machte den Import dadurch spuerbar langsam (Finding, Review
+    // 2026-09-13).
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
     for root in roots {
         let is_folder_root = root.is_dir();
         let mut candidates = Vec::new();
@@ -1362,7 +1369,7 @@ fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) -> CmdResul
             if !seen.insert(path_str.clone()) {
                 continue;
             }
-            match db::file_exists_by_path(&conn, &path_str) {
+            match db::file_exists_by_path(&tx, &path_str) {
                 Ok(true) => continue,
                 Ok(false) => {}
                 Err(e) => {
@@ -1378,7 +1385,7 @@ fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) -> CmdResul
                     continue;
                 }
             };
-            match db::file_exists_by_hash(&conn, &content_hash) {
+            match db::file_exists_by_hash(&tx, &content_hash) {
                 Ok(true) => {
                     duplicate_count += 1;
                     continue;
@@ -1391,12 +1398,12 @@ fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) -> CmdResul
             }
 
             let folder_id = if is_folder_root {
-                path.parent().and_then(|dir| db::ensure_folder_path(&conn, &root, dir).ok())
+                path.parent().and_then(|dir| db::ensure_folder_path(&tx, &root, dir).ok())
             } else {
                 None
             };
 
-            match import_one(conn, &path, None, Some(content_hash), folder_id) {
+            match import_one(&tx, &path, None, Some(content_hash), folder_id) {
                 Ok(dto) => imported.push(dto),
                 Err(e) if e.contains("UNIQUE constraint failed") => {
                     // Pfad gehoert noch einer Papierkorb-Zeile (files.path ist
@@ -1411,6 +1418,7 @@ fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) -> CmdResul
         }
     }
 
+    tx.commit().map_err(|e| e.to_string())?;
     Ok(ImportResultDto { imported, duplicate_count })
 }
 
@@ -3068,6 +3076,53 @@ mod tests {
         let files = db::list_files(&conn).unwrap();
         assert_eq!(files.len(), 1);
         assert!(files[0].folder_id.is_some());
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn import_one_succeeds_inside_an_already_open_transaction() {
+        // Guards the transaction-batching fix (Review 2026-09-13):
+        // import_many_with_conn now opens ONE transaction for the whole batch
+        // and calls import_one within it. Before the fix, import_one wrote
+        // via db::insert_file, which opened its OWN transaction - nesting a
+        // second `BEGIN` on a connection that is already mid-transaction
+        // fails ("cannot start a transaction within a transaction"), so this
+        // test would have failed before the fix.
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+        use zip::ZipWriter;
+
+        fn write_minimal_3mf(path: &std::path::Path) {
+            let mut buf = Vec::new();
+            {
+                let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buf));
+                let options = SimpleFileOptions::default();
+                zip.start_file("[Content_Types].xml", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>"#).unwrap();
+                zip.start_file("_rels/.rels", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model"/></Relationships>"#).unwrap();
+                zip.start_file("3D/3dmodel.model", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources></resources><build></build></model>"#).unwrap();
+                zip.finish().unwrap();
+            }
+            std::fs::write(path, &buf).expect("write temp file");
+        }
+
+        let tmp = unique_test_dir("import_one_in_open_tx");
+        std::fs::create_dir_all(&tmp).unwrap();
+        let file_path = tmp.join("model.3mf");
+        write_minimal_3mf(&file_path);
+
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let tx = conn.transaction().expect("begin outer transaction");
+
+        let dto = import_one(&tx, &file_path, None, None, None)
+            .expect("import_one must work inside an already-open transaction");
+        assert_eq!(dto.name, "model.3mf");
+
+        tx.commit().expect("commit outer transaction");
+        assert_eq!(db::list_files(&conn).unwrap().len(), 1);
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
