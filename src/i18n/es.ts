@@ -215,4 +215,7 @@ export const es: Translations = {
   noCollectionsEmptyState: 'Aún no hay colecciones.',
   createCollectionLabel: '+ Nueva colección',
   importFolderAsCollectionOption: 'Importar carpeta como colección',
+
+  createFolderLabel: '+ Nueva carpeta',
+  newFolderPlaceholder: 'Nombre de la carpeta',
 };

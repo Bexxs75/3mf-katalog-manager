@@ -10,6 +10,9 @@ interface Props {
   folders: Folder[];
   activeFolderId: string;
   onSelect: (id: string) => void;
+  dragOverFolderId?: string | null;
+  onFolderMouseEnter?: (id: string) => void;
+  onDragFolderStart?: (id: string) => void;
 }
 
 function buildTree(folders: Folder[]): TreeNode[] {
@@ -25,7 +28,14 @@ function buildTree(folders: Folder[]): TreeNode[] {
   return roots;
 }
 
-export function FolderTree({ folders, activeFolderId, onSelect }: Props) {
+export function FolderTree({
+  folders,
+  activeFolderId,
+  onSelect,
+  dragOverFolderId = null,
+  onFolderMouseEnter,
+  onDragFolderStart,
+}: Props) {
   const t = useT();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const tree = useMemo(() => buildTree(folders), [folders]);
@@ -44,11 +54,15 @@ export function FolderTree({ folders, activeFolderId, onSelect }: Props) {
       <div key={node.id}>
         <div
           onClick={() => onSelect(node.id)}
+          onMouseDown={() => onDragFolderStart?.(node.id)}
+          onMouseEnter={() => onFolderMouseEnter?.(node.id)}
           style={{ paddingLeft: 6 + depth * 16 }}
-          className={`flex items-center gap-1.5 h-7 pr-2 rounded-[7px] cursor-pointer text-[12.5px] ${
+          className={`flex items-center gap-1.5 h-7 pr-2 rounded-[7px] cursor-pointer text-[12.5px] border ${
             node.id === activeFolderId
-              ? 'bg-[var(--accent-soft)] text-[var(--accent)] font-semibold'
-              : 'text-[var(--ink-2)] hover:bg-[var(--panel-2)] hover:text-[var(--ink)]'
+              ? 'bg-[var(--accent-soft)] text-[var(--accent)] font-semibold border-transparent'
+              : 'text-[var(--ink-2)] hover:bg-[var(--panel-2)] hover:text-[var(--ink)] border-transparent'
+          } ${
+            dragOverFolderId === node.id ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : ''
           }`}
         >
           <span

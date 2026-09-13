@@ -219,6 +219,9 @@ export interface Translations {
   noCollectionsEmptyState: string;
   createCollectionLabel: string;
   importFolderAsCollectionOption: string;
+
+  createFolderLabel: string;
+  newFolderPlaceholder: string;
 }
 
 export function formatCount(forms: PluralForms, n: number): string {

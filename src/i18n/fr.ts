@@ -215,4 +215,7 @@ export const fr: Translations = {
   noCollectionsEmptyState: 'Aucune collection pour le moment.',
   createCollectionLabel: '+ Nouvelle collection',
   importFolderAsCollectionOption: 'Importer un dossier comme collection',
+
+  createFolderLabel: '+ Nouveau dossier',
+  newFolderPlaceholder: 'Nom du dossier',
 };

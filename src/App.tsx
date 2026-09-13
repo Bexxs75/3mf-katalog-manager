@@ -19,7 +19,8 @@ import { useUiDensity } from './hooks/UiDensityContext';
 import { useSlicers } from './hooks/useSlicers';
 import { useDisplayPreference } from './hooks/useDisplayPreference';
 import { useT } from './i18n/LanguageContext';
-import { isFileInFolderOrDescendant } from './lib/folderTree';
+import { isFileInFolderOrDescendant, isFolderSelfOrDescendant } from './lib/folderTree';
+import { MoveToast } from './components/MoveToast';
 import type { ModelFile, Folder, TagCount, CreatorCount, ViewMode, SortKey, SavedFilter, CatalogIssues, Collection } from './types';
 
 interface ImportResultDto {
@@ -70,10 +71,22 @@ export default function App() {
   const [collectionsGalleryOpen, setCollectionsGalleryOpen] = useState(false);
   const [collectionModels, setCollectionModels] = useState<ModelFile[]>([]);
 
+  // Maus-basiertes Drag-Tracking fuer physisches Verschieben von Dateien/
+  // Ordnern (Task 7) - folgt demselben Muster wie der Warteschlangen-Reorder
+  // in Sidebar.tsx und der Karten-Reorder in ModelGrid.tsx: kein natives
+  // HTML5-DnD (draggable/onDragStart/onDragOver/onDrop), da Tauri/WebKitGTK
+  // das nicht zuverlaessig unterstuetzt (dragDropEnabled faengt native
+  // Drag-Sessions auf Fensterebene ab, siehe Kommentare dort).
+  const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
+  const [draggedFolderId, setDraggedFolderId] = useState<string | null>(null);
+  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
+  const [moveToast, setMoveToast] = useState<{ from: string; to: string } | null>(null);
+
   const refreshCollectionModels = (collectionId: string) =>
     invoke<ModelFile[]>('list_collection_files', { collectionId }).then(setCollectionModels);
 
   const refreshFolders = () => invoke<Folder[]>('list_folders').then(setFolders);
+  const refreshFiles = () => invoke<ModelFile[]>('list_files').then(setModels);
   const refreshTags = () => invoke<TagCount[]>('list_tag_counts').then(setTags);
   const refreshCreators = () => invoke<CreatorCount[]>('list_creators').then(setCreators);
   const refreshSavedFilters = () => invoke<SavedFilter[]>('list_saved_filters').then(setSavedFilters);
@@ -183,6 +196,102 @@ export default function App() {
       unlisten.then((fn) => fn());
     };
   }, [mainView]);
+
+  // Karte in ModelGrid ueberschreitet die Bewegungsschwelle -> echter Drag
+  // einer Datei beginnt. Wird von ModelGrid nur im nicht-reorderbaren
+  // Katalog-Zweig aufgerufen (siehe dortigen Kommentar).
+  const onDragFileStart = (id: string) => setDraggedFileId(id);
+
+  // Baum-Zeile in FolderTree wird per Mousedown als Drag-Quelle markiert
+  // (Ordner-auf-Ordner-Verschieben, Step 7). Ein einfacher Klick ohne
+  // anschliessendes Hovern ueber eine andere Zeile loest nie einen Move aus,
+  // da dragOverFolderId dann null bleibt (siehe Mouseup-Handler unten).
+  const onDragFolderStart = (id: string) => setDraggedFolderId(id);
+
+  // Baum-Zeile wird waehrend eines aktiven Drags (Datei oder Ordner)
+  // betreten -> Drop-Ziel-Highlight setzen. Beim Ordner-Drag wird die
+  // Zyklus-Vorabpruefung (eigener Unterbaum/sich selbst) hier clientseitig
+  // dupliziert, damit gar kein Highlight auf einem ungueltigen Ziel
+  // erscheint - die serverseitige Pruefung in move_folder (Task 5) bleibt
+  // die verbindliche Instanz.
+  const handleFolderMouseEnter = (id: string) => {
+    if (!draggedFileId && !draggedFolderId) return;
+    if (draggedFolderId && isFolderSelfOrDescendant(id, draggedFolderId, folders)) {
+      setDragOverFolderId(null);
+      return;
+    }
+    setDragOverFolderId(id);
+  };
+
+  const onCreateFolder = (parentId: string | null, name: string) => {
+    invoke('create_folder', { parentId, name })
+      .then(() => refreshFolders())
+      .catch((e) => {
+        console.error('[folders] Anlegen fehlgeschlagen:', e);
+        setCatalogBackupError(String(e));
+      });
+  };
+
+  // Globaler mouseup-Handler fuer das Verschieben einer Datei per Maus-Drag
+  // auf eine Baum-Zeile - exakt dasselbe useEffect-Muster wie
+  // Sidebar.tsx:65-84 (Warteschlangen-Reorder).
+  useEffect(() => {
+    if (!draggedFileId) return;
+    const handleMouseUp = () => {
+      const fileId = draggedFileId;
+      const folderId = dragOverFolderId;
+      setDraggedFileId(null);
+      setDragOverFolderId(null);
+      if (!folderId) return;
+      const file = models.find((m) => m.id === fileId);
+      const targetFolder = folders.find((f) => f.id === folderId);
+      if (!file || !targetFolder) return;
+      invoke('move_file_to_folder', { fileId, folderId })
+        .then(() => {
+          setMoveToast({ from: file.name, to: targetFolder.path });
+          refreshFolders();
+          refreshFiles();
+        })
+        .catch((e) => {
+          console.error('[folders] Datei verschieben fehlgeschlagen:', e);
+          setCatalogBackupError(String(e));
+        });
+    };
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => document.removeEventListener('mouseup', handleMouseUp);
+  }, [draggedFileId, dragOverFolderId, models, folders]);
+
+  // Analoger mouseup-Handler fuer das Verschieben eines Ordners per
+  // Maus-Drag auf eine andere Baum-Zeile (Step 7). Die Zyklus-Pruefung wird
+  // hier zusaetzlich wiederholt (nicht nur beim Hover-Highlight), damit ein
+  // ungueltiges Ziel unter keinen Umstaenden einen invoke-Aufruf ausloest -
+  // move_folder auf der Rust-Seite lehnt es ohnehin verbindlich ab.
+  useEffect(() => {
+    if (!draggedFolderId) return;
+    const handleMouseUp = () => {
+      const folderId = draggedFolderId;
+      const targetId = dragOverFolderId;
+      setDraggedFolderId(null);
+      setDragOverFolderId(null);
+      if (!targetId || targetId === folderId) return;
+      if (isFolderSelfOrDescendant(targetId, folderId, folders)) return;
+      const folder = folders.find((f) => f.id === folderId);
+      const targetFolder = folders.find((f) => f.id === targetId);
+      if (!folder || !targetFolder) return;
+      invoke('move_folder', { folderId, newParentId: targetId })
+        .then(() => {
+          setMoveToast({ from: folder.name, to: targetFolder.path });
+          refreshFolders();
+          refreshFiles();
+        })
+        .catch((e) => {
+          console.error('[folders] Ordner verschieben fehlgeschlagen:', e);
+          setCatalogBackupError(String(e));
+        });
+    };
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => document.removeEventListener('mouseup', handleMouseUp);
+  }, [draggedFolderId, dragOverFolderId, folders]);
 
   const filtered = useMemo(() => {
     return models
@@ -749,6 +858,10 @@ export default function App() {
               setActiveCollection(null);
               setCollectionsGalleryOpen(false);
             }}
+            onCreateFolder={onCreateFolder}
+            dragOverFolderId={dragOverFolderId}
+            onFolderMouseEnter={handleFolderMouseEnter}
+            onDragFolderStart={onDragFolderStart}
             tags={tags}
             activeTag={activeTag}
             onTagSelect={(tag) => {
@@ -965,6 +1078,7 @@ export default function App() {
                     displayPreference={displayPreference}
                     reorderable={activeCollection !== null}
                     onReorder={reorderCollection}
+                    onDragFileStart={onDragFileStart}
                   />
                 ) : (
                   <ModelList
@@ -1035,6 +1149,10 @@ export default function App() {
           onClose={() => setCleanupDialogOpen(false)}
           onDelete={deleteSelectedCleanupFiles}
         />
+      )}
+
+      {moveToast && (
+        <MoveToast from={moveToast.from} to={moveToast.to} onDone={() => setMoveToast(null)} />
       )}
       </div>
     </div>

@@ -13,6 +13,10 @@ interface Props {
   folders: Folder[];
   activeFolderId: string;
   onFolderSelect: (id: string) => void;
+  onCreateFolder: (parentId: string | null, name: string) => void;
+  dragOverFolderId?: string | null;
+  onFolderMouseEnter?: (id: string) => void;
+  onDragFolderStart?: (id: string) => void;
   tags: TagCount[];
   activeTag: string | null;
   onTagSelect: (label: string | null) => void;
@@ -35,6 +39,10 @@ export function Sidebar({
   folders,
   activeFolderId,
   onFolderSelect,
+  onCreateFolder,
+  dragOverFolderId = null,
+  onFolderMouseEnter,
+  onDragFolderStart,
   tags,
   activeTag,
   onTagSelect,
@@ -55,6 +63,20 @@ export function Sidebar({
   const [queueCollapsed, setQueueCollapsed] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [folderNameDraft, setFolderNameDraft] = useState('');
+
+  // Inline-Input statt window.prompt, analog zum `creating`-Muster in
+  // CollectionsGallery.tsx (autoFocus + onBlur + Enter-Submit). Der neue
+  // Ordner wird unter dem gerade aktiven Ordner angelegt (bzw. an der Wurzel,
+  // wenn "Alle Modelle" aktiv ist - `onCreateFolder` in App.tsx macht daraus
+  // `parentId: null`).
+  const submitCreateFolder = () => {
+    const value = folderNameDraft.trim();
+    if (value) onCreateFolder(activeFolderId === 'all' ? null : activeFolderId, value);
+    setFolderNameDraft('');
+    setCreatingFolder(false);
+  };
 
   // Reihenfolge-Aenderung per Maus-Events statt nativem HTML5-Drag&Drop
   // (draggable/onDragStart/onDragOver/onDrop): Tauri faengt bei aktiviertem
@@ -102,7 +124,43 @@ export function Sidebar({
         <div className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)] px-1.5 pb-2">
           {t('foldersHeading')}
         </div>
-        <FolderTree folders={folders} activeFolderId={activeFolderId} onSelect={onFolderSelect} />
+        <FolderTree
+          folders={folders}
+          activeFolderId={activeFolderId}
+          onSelect={onFolderSelect}
+          dragOverFolderId={dragOverFolderId}
+          onFolderMouseEnter={onFolderMouseEnter}
+          onDragFolderStart={onDragFolderStart}
+        />
+        {creatingFolder ? (
+          <div className="flex items-center gap-1.5 px-1.5 pt-1 pb-1">
+            <input
+              value={folderNameDraft}
+              onChange={(e) => setFolderNameDraft(e.target.value)}
+              onBlur={submitCreateFolder}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitCreateFolder();
+                if (e.key === 'Escape') {
+                  setCreatingFolder(false);
+                  setFolderNameDraft('');
+                }
+              }}
+              autoFocus
+              placeholder={t('newFolderPlaceholder')}
+              className="flex-1 min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-[11.5px]"
+            />
+          </div>
+        ) : (
+          <div
+            onClick={() => {
+              setCreatingFolder(true);
+              setFolderNameDraft('');
+            }}
+            className="flex items-center h-7 px-1.5 rounded-[3px] cursor-pointer font-mono-ui text-[11.5px] text-[var(--ink-3)] hover:text-[var(--accent)]"
+          >
+            {t('createFolderLabel')}
+          </div>
+        )}
 
         <div
           onClick={() => setQueueCollapsed((c) => !c)}
