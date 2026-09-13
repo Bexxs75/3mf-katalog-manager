@@ -41,6 +41,7 @@ export const de: Translations = {
 
   searchPlaceholder: 'Name oder Tag suchen …',
   foldersHeading: 'Ordner',
+  foldersInfoTooltip: 'Echte Verzeichnisse von der Platte. Verschieben hier verschiebt die Datei auch physisch – anders als „Sammlungen".',
   allModelsLabel: 'Alle Modelle',
   tagsHeading: 'Tags',
 
@@ -206,6 +207,7 @@ export const de: Translations = {
   trashExpiryHint: 'Wird automatisch entfernt am {date}',
 
   collectionsTab: 'Sammlungen',
+  viewAllCollectionsLabel: 'alle anzeigen',
   modelCountLabel: { one: '{count} Modell', other: '{count} Modelle' },
   addToCollectionLabel: 'Zu Sammlung hinzufügen',
   newCollectionPlaceholder: 'Name der Sammlung',

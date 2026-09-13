@@ -41,8 +41,8 @@ export default function App() {
   const [query, setQuery] = useState('');
   const [activeFolderId, setActiveFolderId] = useState('all');
   const [activeTag, setActiveTag] = useState<string | null>(null);
-  const [creators, setCreators] = useState<CreatorCount[]>([]);
-  const [activeCreator, setActiveCreator] = useState<string | null>(null);
+  const [, setCreators] = useState<CreatorCount[]>([]);
+  const [activeCreator] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedForBulk, setSelectedForBulk] = useState<Set<string>>(new Set());
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
@@ -61,7 +61,7 @@ export default function App() {
   const [trashModels, setTrashModels] = useState<ModelFile[]>([]);
   const [confirmEmptyTrash, setConfirmEmptyTrash] = useState(false);
   const [importBanner, setImportBanner] = useState<{ imported: number; duplicates: number } | null>(null);
-  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([]);
+  const [, setSavedFilters] = useState<SavedFilter[]>([]);
   const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false);
   const [cleanupIssues, setCleanupIssues] = useState<CatalogIssues | null>(null);
   const [cleanupScanning, setCleanupScanning] = useState(false);
@@ -637,36 +637,6 @@ export default function App() {
     });
   };
 
-  const saveCurrentFilter = (name: string) => {
-    invoke<SavedFilter>('save_filter', {
-      filter: {
-        name,
-        folderId: activeFolderId === 'all' ? null : activeFolderId,
-        tag: activeTag,
-        creator: activeCreator,
-        query: query || null,
-        sort,
-      },
-    })
-      .then((saved) => setSavedFilters((prev) => [...prev, saved]))
-      .catch((e) => console.error('[saved-filter] Speichern fehlgeschlagen:', e));
-  };
-
-  const applySavedFilter = (filter: SavedFilter) => {
-    setActiveFolderId(filter.folderId ?? 'all');
-    setActiveTag(filter.tag);
-    setActiveCreator(filter.creator);
-    setQuery(filter.query ?? '');
-    setSort(filter.sort);
-  };
-
-  const deleteSavedFilter = (id: string) => {
-    setSavedFilters((prev) => prev.filter((f) => f.id !== id));
-    invoke('delete_saved_filter', { filterId: id }).catch((e) => {
-      console.error('[saved-filter] Löschen fehlgeschlagen:', e);
-    });
-  };
-
   const scanCatalogIssues = () => {
     setCleanupScanning(true);
     setCleanupError(null);
@@ -708,9 +678,31 @@ export default function App() {
 
   return (
     <div
-      className="h-screen min-h-[620px] flex flex-row bg-[var(--bg)] text-[var(--ink)] overflow-hidden"
+      className="h-screen min-h-[620px] flex flex-col bg-[var(--bg)] text-[var(--ink)] overflow-hidden"
       style={{ fontSize: 14 }}
     >
+      {displayPreference === 'render' && pendingSnapshotIds.length > 0 && (
+        <BackgroundSnapshotRenderer
+          key={pendingSnapshotIds[0]}
+          fileId={pendingSnapshotIds[0]}
+          onSnapshotCaptured={(base64) => captureRenderSnapshot(pendingSnapshotIds[0], base64)}
+          onError={() => setSkippedSnapshotIds((prev) => new Set(prev).add(pendingSnapshotIds[0]))}
+        />
+      )}
+      <Header
+        view={view}
+        onViewChange={setView}
+        sort={sort}
+        onSortChange={setSort}
+        hideSortControl={activeCollection !== null}
+        count={filtered.length}
+        onImportFiles={importFiles}
+        onImportFolder={importFolder}
+        onImportFolderAsCollection={importFolderAsCollection}
+        mainView={mainView}
+      />
+
+      <div className="flex-1 flex flex-row min-h-0">
       <Rail
         mainView={mainView}
         onMainViewChange={(v) => {
@@ -739,26 +731,6 @@ export default function App() {
         catalogBackupError={catalogBackupError}
       />
       <div className="flex-1 min-w-0 flex flex-col min-h-0">
-      {displayPreference === 'render' && pendingSnapshotIds.length > 0 && (
-        <BackgroundSnapshotRenderer
-          key={pendingSnapshotIds[0]}
-          fileId={pendingSnapshotIds[0]}
-          onSnapshotCaptured={(base64) => captureRenderSnapshot(pendingSnapshotIds[0], base64)}
-          onError={() => setSkippedSnapshotIds((prev) => new Set(prev).add(pendingSnapshotIds[0]))}
-        />
-      )}
-      <Header
-        view={view}
-        onViewChange={setView}
-        sort={sort}
-        onSortChange={setSort}
-        hideSortControl={activeCollection !== null}
-        count={filtered.length}
-        onImportFiles={importFiles}
-        onImportFolder={importFolder}
-        onImportFolderAsCollection={importFolderAsCollection}
-        mainView={mainView}
-      />
 
       {mainView === 'trash' ? (
         <div className="flex flex-1 min-h-0">
@@ -874,64 +846,33 @@ export default function App() {
               setActiveCollection(null);
               setCollectionsGalleryOpen(false);
             }}
-            creators={creators}
-            activeCreator={activeCreator}
-            onCreatorSelect={(creator) => {
-              setActiveCreator(creator);
-              setActiveCollection(null);
+            collections={collections}
+            activeCollection={activeCollection}
+            collectionsGalleryOpen={collectionsGalleryOpen}
+            onSelectCollection={(id) => {
+              setActiveCollection(id);
               setCollectionsGalleryOpen(false);
             }}
-            savedFilters={savedFilters}
-            onSaveFilter={saveCurrentFilter}
-            onApplyFilter={applySavedFilter}
-            onDeleteFilter={deleteSavedFilter}
+            onOpenCollectionsGallery={() => {
+              setCollectionsGalleryOpen(true);
+              setActiveCollection(null);
+            }}
+            onCreateCollection={(name) =>
+              invoke<Collection>('create_collection', { name }).then(() => refreshCollections())
+            }
           />
 
           <main className="flex-1 min-w-0 flex flex-col min-h-0">
-            <div className="flex-none h-[38px] flex items-center gap-2.5 px-4 border-b border-[var(--line)] bg-[var(--bg)]">
-              <span
-                onClick={() => {
-                  setCollectionsGalleryOpen(false);
-                  setActiveCollection(null);
-                }}
-                className={`font-mono-ui cursor-pointer h-[26px] px-2.5 rounded-full flex items-center ${
-                  !collectionsGalleryOpen && !activeCollection
-                    ? 'text-[13px] font-semibold bg-[var(--accent)] text-[var(--accent-ink)]'
-                    : 'text-[11px] text-[var(--ink-2)] hover:text-[var(--ink)]'
-                }`}
-              >
-                {folders.find((f) => f.id === activeFolderId)?.name}
-              </span>
-              <span
-                onClick={() => {
-                  setCollectionsGalleryOpen(true);
-                  setActiveCollection(null);
-                }}
-                className={`font-mono-ui cursor-pointer h-[26px] px-2.5 rounded-full flex items-center ${
-                  collectionsGalleryOpen || activeCollection
-                    ? 'text-[13px] font-semibold bg-[var(--accent)] text-[var(--accent-ink)]'
-                    : 'text-[11px] text-[var(--ink-2)] hover:text-[var(--ink)]'
-                }`}
-              >
-                {t('collectionsTab')}
-              </span>
-              {activeTag && (
+            {activeTag && (
+              <div className="flex-none h-[38px] flex items-center gap-2.5 px-4 border-b border-[var(--line)] bg-[var(--bg)]">
                 <span
                   onClick={() => setActiveTag(null)}
                   className="flex items-center gap-1.5 h-[22px] px-2 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] font-mono-ui text-[11px] cursor-pointer"
                 >
                   #{activeTag} ✕
                 </span>
-              )}
-              {activeCreator && (
-                <span
-                  onClick={() => setActiveCreator(null)}
-                  className="flex items-center gap-1.5 h-[22px] px-2 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] font-mono-ui text-[11px] cursor-pointer"
-                >
-                  {activeCreator} ✕
-                </span>
-              )}
-            </div>
+              </div>
+            )}
 
             {!detailModel && selectedForBulk.size > 0 && (
               <div className="flex-none flex items-center gap-2 px-4 py-2 border-b border-[var(--line)] bg-[var(--panel-2)]">
@@ -1164,6 +1105,7 @@ export default function App() {
           onDone={() => setMoveToast(null)}
         />
       )}
+      </div>
       </div>
     </div>
   );

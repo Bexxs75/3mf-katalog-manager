@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Folder, TagCount, CreatorCount, ModelFile, SavedFilter } from '../types';
+import type { Folder, TagCount, ModelFile, Collection } from '../types';
 import { useT } from '../i18n/LanguageContext';
 import { FolderTree } from './FolderTree';
 
@@ -21,13 +21,12 @@ interface Props {
   tags: TagCount[];
   activeTag: string | null;
   onTagSelect: (label: string | null) => void;
-  creators: CreatorCount[];
-  activeCreator: string | null;
-  onCreatorSelect: (label: string | null) => void;
-  savedFilters: SavedFilter[];
-  onSaveFilter: (name: string) => void;
-  onApplyFilter: (filter: SavedFilter) => void;
-  onDeleteFilter: (id: string) => void;
+  collections: Collection[];
+  activeCollection: string | null;
+  collectionsGalleryOpen: boolean;
+  onSelectCollection: (id: string) => void;
+  onOpenCollectionsGallery: () => void;
+  onCreateCollection: (name: string) => void;
 }
 
 export function Sidebar({
@@ -48,25 +47,29 @@ export function Sidebar({
   tags,
   activeTag,
   onTagSelect,
-  creators,
-  activeCreator,
-  onCreatorSelect,
-  savedFilters,
-  onSaveFilter,
-  onApplyFilter,
-  onDeleteFilter,
+  collections,
+  activeCollection,
+  collectionsGalleryOpen,
+  onSelectCollection,
+  onOpenCollectionsGallery,
+  onCreateCollection,
 }: Props) {
   const t = useT();
   const [tagsCollapsed, setTagsCollapsed] = useState(true);
-  const [creatorsCollapsed, setCreatorsCollapsed] = useState(true);
-  const [filtersCollapsed, setFiltersCollapsed] = useState(false);
-  const [savingFilter, setSavingFilter] = useState(false);
-  const [filterNameDraft, setFilterNameDraft] = useState('');
   const [queueCollapsed, setQueueCollapsed] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [folderNameDraft, setFolderNameDraft] = useState('');
+  const [creatingCollection, setCreatingCollection] = useState(false);
+  const [collectionNameDraft, setCollectionNameDraft] = useState('');
+
+  const submitCreateCollection = () => {
+    const value = collectionNameDraft.trim();
+    if (value) onCreateCollection(value);
+    setCollectionNameDraft('');
+    setCreatingCollection(false);
+  };
 
   // Inline-Input statt window.prompt, analog zum `creating`-Muster in
   // CollectionsGallery.tsx (autoFocus + onBlur + Enter-Submit). Der neue
@@ -123,8 +126,16 @@ export function Sidebar({
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 py-3">
-        <div className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)] px-1.5 pb-2">
-          {t('foldersHeading')}
+        <div className="group relative flex items-center gap-1 px-1.5 pb-2">
+          <span className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)]">
+            {t('foldersHeading')}
+          </span>
+          <span className="w-[13px] h-[13px] rounded-full border border-[var(--ink-3)] grid place-items-center font-mono-ui text-[9px] text-[var(--ink-3)] cursor-default">
+            i
+          </span>
+          <span className="pointer-events-none absolute top-[20px] right-0 z-20 w-[200px] rounded-[8px] bg-[var(--ink)] px-2.5 py-2 text-[11px] font-sans font-medium leading-[1.4] text-[var(--bg)] opacity-0 -translate-y-0.5 transition-opacity transition-transform group-hover:opacity-100 group-hover:translate-y-0">
+            {t('foldersInfoTooltip')}
+          </span>
         </div>
         <FolderTree
           folders={folders}
@@ -159,9 +170,100 @@ export function Sidebar({
               setCreatingFolder(true);
               setFolderNameDraft('');
             }}
-            className="flex items-center h-7 px-1.5 rounded-[3px] cursor-pointer font-mono-ui text-[11.5px] text-[var(--ink-3)] hover:text-[var(--accent)]"
+            className="flex items-center h-7 px-1.5 rounded-[3px] border border-dashed border-[var(--line-strong)] cursor-pointer font-mono-ui text-[11.5px] text-[var(--ink-3)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
             {t('createFolderLabel')}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between px-1.5 pt-[18px] pb-2">
+          <span className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)]">
+            {t('collectionsTab')}
+          </span>
+          <span
+            onClick={onOpenCollectionsGallery}
+            className="font-mono-ui text-[10.5px] text-[var(--accent)] cursor-pointer hover:underline"
+          >
+            {t('viewAllCollectionsLabel')}
+          </span>
+        </div>
+        {collections.map((c) => (
+          <div
+            key={c.id}
+            onClick={() => onSelectCollection(c.id)}
+            className={`flex items-center gap-2 h-7 px-1.5 rounded-[3px] cursor-pointer text-[length:var(--font-size-item)] ${
+              !collectionsGalleryOpen && activeCollection === c.id
+                ? 'bg-[var(--accent-soft)] text-[var(--accent)] font-semibold'
+                : 'text-[var(--ink-2)] hover:text-[var(--ink)]'
+            }`}
+          >
+            <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{c.name}</span>
+            <span className="font-mono-ui text-[11px] text-[var(--ink-3)]">{c.modelCount}</span>
+          </div>
+        ))}
+        {creatingCollection ? (
+          <div className="flex items-center gap-1.5 px-1.5 pt-1 pb-1">
+            <input
+              value={collectionNameDraft}
+              onChange={(e) => setCollectionNameDraft(e.target.value)}
+              onBlur={submitCreateCollection}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitCreateCollection();
+                if (e.key === 'Escape') {
+                  setCreatingCollection(false);
+                  setCollectionNameDraft('');
+                }
+              }}
+              autoFocus
+              placeholder={t('newCollectionPlaceholder')}
+              className="flex-1 min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-[11.5px]"
+            />
+          </div>
+        ) : (
+          <div
+            onClick={() => {
+              setCreatingCollection(true);
+              setCollectionNameDraft('');
+            }}
+            className="flex items-center h-7 px-1.5 rounded-[3px] border border-dashed border-[var(--line-strong)] cursor-pointer font-mono-ui text-[11.5px] text-[var(--ink-3)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+          >
+            {t('createCollectionLabel')}
+          </div>
+        )}
+
+        <div
+          onClick={() => setTagsCollapsed((c) => !c)}
+          className="flex items-center justify-between px-1.5 pt-[18px] pb-2 cursor-pointer"
+        >
+          <span className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)]">
+            {t('tagsHeading')}
+          </span>
+          <span className="font-mono-ui text-[length:var(--font-size-label)] leading-none text-[var(--ink-3)]">
+            {tagsCollapsed ? '▾' : '▴'}
+          </span>
+        </div>
+        {!tagsCollapsed && (
+          <div className="flex flex-wrap gap-1.5 px-1.5 pb-1">
+            {tags
+              .filter((tag) => tag.count >= 2 || tag.label === activeTag)
+              .map((tag) => (
+              <span
+                key={tag.label}
+                onClick={() => onTagSelect(activeTag === tag.label ? null : tag.label)}
+                className={`inline-flex items-center gap-1.5 h-6 px-2 rounded-full border cursor-pointer font-mono-ui text-[11.5px] ${
+                  activeTag === tag.label
+                    ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
+                    : 'border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink-2)] hover:text-[var(--ink)]'
+                }`}
+              >
+                <span
+                  className="w-[6px] h-[6px] rounded-full flex-none"
+                  style={{ background: `oklch(0.62 0.14 ${tag.colorHue})` }}
+                />
+                #{tag.label}
+                <span className="text-[var(--ink-3)]">{tag.count}</span>
+              </span>
+            ))}
           </div>
         )}
 
@@ -208,145 +310,6 @@ export function Sidebar({
               onClick={(e) => {
                 e.stopPropagation();
                 onQueueRemove(model.id);
-              }}
-              className="font-mono-ui text-[length:var(--font-size-meta)] text-[var(--ink-3)] cursor-pointer hover:text-[var(--accent)]"
-            >
-              ✕
-            </span>
-          </div>
-        ))}
-
-        <div
-          onClick={() => setTagsCollapsed((c) => !c)}
-          className="flex items-center justify-between px-1.5 pt-[18px] pb-2 cursor-pointer"
-        >
-          <span className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)]">
-            {t('tagsHeading')}
-          </span>
-          <span className="font-mono-ui text-[length:var(--font-size-label)] leading-none text-[var(--ink-3)]">
-            {tagsCollapsed ? '▾' : '▴'}
-          </span>
-        </div>
-        {!tagsCollapsed && (
-          <div className="flex flex-wrap gap-1.5 px-1.5 pb-1">
-            {tags
-              .filter((tag) => tag.count >= 2 || tag.label === activeTag)
-              .map((tag) => (
-              <span
-                key={tag.label}
-                onClick={() => onTagSelect(activeTag === tag.label ? null : tag.label)}
-                className={`inline-flex items-center gap-1.5 h-6 px-2 rounded-full border cursor-pointer font-mono-ui text-[11.5px] ${
-                  activeTag === tag.label
-                    ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
-                    : 'border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink-2)] hover:text-[var(--ink)]'
-                }`}
-              >
-                <span
-                  className="w-[6px] h-[6px] rounded-full flex-none"
-                  style={{ background: `oklch(0.62 0.14 ${tag.colorHue})` }}
-                />
-                #{tag.label}
-                <span className="text-[var(--ink-3)]">{tag.count}</span>
-              </span>
-            ))}
-          </div>
-        )}
-
-        <div
-          onClick={() => setCreatorsCollapsed((c) => !c)}
-          className="flex items-center justify-between px-1.5 pt-[18px] pb-2 cursor-pointer"
-        >
-          <span className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)]">
-            {t('creatorsHeading')}
-          </span>
-          <span className="font-mono-ui text-[length:var(--font-size-label)] leading-none text-[var(--ink-3)]">
-            {creatorsCollapsed ? '▾' : '▴'}
-          </span>
-        </div>
-        {!creatorsCollapsed && (
-          <div className="flex flex-wrap gap-1.5 px-1.5 pb-1">
-            {creators.map((creator) => (
-              <span
-                key={creator.label}
-                onClick={() => onCreatorSelect(activeCreator === creator.label ? null : creator.label)}
-                className={`inline-flex items-center gap-1.5 h-6 px-2 rounded-full border cursor-pointer font-mono-ui text-[11.5px] ${
-                  activeCreator === creator.label
-                    ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
-                    : 'border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink-2)] hover:text-[var(--ink)]'
-                }`}
-              >
-                {creator.label}
-                <span className="text-[var(--ink-3)]">{creator.count}</span>
-              </span>
-            ))}
-          </div>
-        )}
-
-        <div className="flex items-center justify-between px-1.5 pt-[18px] pb-2">
-          <span className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)]">
-            {t('savedFiltersHeading')}
-          </span>
-          <div className="flex items-center gap-2">
-            <span
-              onClick={() => {
-                setFiltersCollapsed(false);
-                setSavingFilter(true);
-                setFilterNameDraft('');
-              }}
-              className="font-mono-ui text-sm leading-none text-[var(--ink-3)] cursor-pointer hover:text-[var(--accent)]"
-            >
-              +
-            </span>
-            <span
-              onClick={() => setFiltersCollapsed((c) => !c)}
-              className="font-mono-ui text-[length:var(--font-size-label)] leading-none text-[var(--ink-3)] cursor-pointer"
-            >
-              {filtersCollapsed ? '▾' : '▴'}
-            </span>
-          </div>
-        </div>
-        {!filtersCollapsed && savingFilter && (
-          <div className="flex items-center gap-1.5 px-1.5 pb-2">
-            <input
-              value={filterNameDraft}
-              onChange={(e) => setFilterNameDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  const name = filterNameDraft.trim();
-                  if (name) onSaveFilter(name);
-                  setSavingFilter(false);
-                }
-                if (e.key === 'Escape') setSavingFilter(false);
-              }}
-              autoFocus
-              placeholder={t('savedFilterNamePlaceholder')}
-              className="flex-1 min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-[11.5px]"
-            />
-            <span
-              onClick={() => {
-                const name = filterNameDraft.trim();
-                if (name) onSaveFilter(name);
-                setSavingFilter(false);
-              }}
-              className="font-mono-ui text-[11px] text-[var(--accent)] cursor-pointer"
-            >
-              ✓
-            </span>
-          </div>
-        )}
-        {!filtersCollapsed && savedFilters.map((filter) => (
-          <div
-            key={filter.id}
-            onClick={() => onApplyFilter(filter)}
-            className="flex items-center gap-2 h-7 px-1.5 rounded-[3px] cursor-pointer text-[var(--ink-2)] hover:text-[var(--ink)]"
-          >
-            <span className="flex-1 text-[length:var(--font-size-item)] overflow-hidden text-ellipsis whitespace-nowrap">
-              {filter.name}
-            </span>
-            <span
-              onClick={(e) => {
-                e.stopPropagation();
-                onDeleteFilter(filter.id);
               }}
               className="font-mono-ui text-[length:var(--font-size-meta)] text-[var(--ink-3)] cursor-pointer hover:text-[var(--accent)]"
             >
