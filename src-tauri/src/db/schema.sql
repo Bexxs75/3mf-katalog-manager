@@ -119,3 +119,14 @@ CREATE INDEX IF NOT EXISTS idx_collection_files_collection_id
     ON collection_files (collection_id);
 CREATE INDEX IF NOT EXISTS idx_collection_files_file_id
     ON collection_files (file_id);
+
+CREATE TABLE IF NOT EXISTS print_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_id INTEGER NOT NULL REFERENCES files (id) ON DELETE CASCADE,
+    printed_at TEXT NOT NULL,
+    note TEXT,
+    photo_png BLOB,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_print_log_file_id ON print_log (file_id);
