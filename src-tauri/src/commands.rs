@@ -484,6 +484,74 @@ pub fn delete_filament_spool(state: State<AppState>, spool_id: String) -> CmdRes
     db::delete_filament_spool(&conn, id).map_err(|e| e.to_string())
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrintLogEntryDto {
+    pub id: String,
+    pub printed_at: String,
+    pub note: Option<String>,
+    pub photo_image: Option<String>,
+}
+
+fn print_log_entry_to_dto(record: db::models::PrintLogEntryRecord) -> PrintLogEntryDto {
+    PrintLogEntryDto {
+        id: record.id.to_string(),
+        printed_at: record.printed_at,
+        note: record.note,
+        photo_image: encode_image(record.photo_png),
+    }
+}
+
+#[tauri::command]
+pub fn list_print_log_entries(state: State<AppState>, file_id: String) -> CmdResult<Vec<PrintLogEntryDto>> {
+    let fid: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let conn = lock_db(&state)?;
+    let entries = db::list_print_log_entries(&conn, fid).map_err(|e| e.to_string())?;
+    Ok(entries.into_iter().map(print_log_entry_to_dto).collect())
+}
+
+#[tauri::command]
+pub fn add_print_log_entry(
+    state: State<AppState>,
+    file_id: String,
+    printed_at: String,
+    note: Option<String>,
+    photo_base64: Option<String>,
+) -> CmdResult<PrintLogEntryDto> {
+    use base64::Engine;
+    let fid: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+
+    let photo_png = photo_base64
+        .map(|b64| base64::engine::general_purpose::STANDARD.decode(&b64).map_err(|e| e.to_string()))
+        .transpose()?;
+    if let Some(bytes) = &photo_png {
+        if bytes.len() > MAX_CUSTOM_IMAGE_BYTES {
+            return Err(format!(
+                "Bild ist zu groß ({:.1} MB) - maximal {} MB erlaubt",
+                bytes.len() as f64 / (1024.0 * 1024.0),
+                MAX_CUSTOM_IMAGE_BYTES / (1024 * 1024)
+            ));
+        }
+    }
+
+    let conn = lock_db(&state)?;
+    let new_entry = db::models::NewPrintLogEntry { file_id: fid, printed_at, note, photo_png };
+    let id = db::insert_print_log_entry(&conn, &new_entry).map_err(|e| e.to_string())?;
+    let entries = db::list_print_log_entries(&conn, fid).map_err(|e| e.to_string())?;
+    let entry = entries
+        .into_iter()
+        .find(|e| e.id == id)
+        .ok_or_else(|| "entry not found after insert".to_string())?;
+    Ok(print_log_entry_to_dto(entry))
+}
+
+#[tauri::command]
+pub fn delete_print_log_entry(state: State<AppState>, entry_id: String) -> CmdResult<()> {
+    let id: i64 = entry_id.parse().map_err(|_| "invalid entry id".to_string())?;
+    let conn = lock_db(&state)?;
+    db::delete_print_log_entry(&conn, id).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn pick_and_read_image(app: tauri::AppHandle) -> CmdResult<Option<String>> {
     use base64::Engine;
@@ -2388,5 +2456,63 @@ mod tests {
             plate_count: None,
             slice_info_json: None,
         }
+    }
+
+    #[test]
+    fn add_and_list_print_log_entry_roundtrips_through_dto() {
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let file = sample_file_record(1, None, "2026-09-13T00:00:00Z");
+        // sample_file_record baut nur ein FileRecord in-memory, nicht in der DB -
+        // fuer diesen Test wird stattdessen eine minimale echte Datei ueber
+        // insert_file angelegt, da add_print_log_entry einen echten file_id
+        // Fremdschluessel braucht.
+        let _ = file;
+        let new_file = crate::db::models::NewFile {
+            name: "cube.3mf".to_string(),
+            path: "/tmp/print-log-test-cube.3mf".to_string(),
+            file_type: FileType::ThreeMf,
+            folder_id: None,
+            origin: "local".to_string(),
+            cloud_id: None,
+            sync_status: "local-only".to_string(),
+            file_size_bytes: 0,
+            dimensions_mm: None,
+            volume_cm3: None,
+            object_count: None,
+            thumbnail_png: None,
+            imported_at: "2026-09-13T00:00:00Z".to_string(),
+            file_modified_at: None,
+            materials: Vec::new(),
+            metadata: BTreeMap::new(),
+            tags: Vec::new(),
+            print_status: "not_printed".to_string(),
+            last_viewed_at: None,
+            creator: None,
+            content_hash: None,
+            render_snapshot_png: None,
+            custom_image_png: None,
+            source_url: None,
+            queue_position: None,
+            favorite: false,
+            plate_count: None,
+            slice_info_json: None,
+        };
+        let file_id = crate::db::insert_file(&mut conn, &new_file).expect("insert file");
+
+        let entry = crate::db::models::NewPrintLogEntry {
+            file_id,
+            printed_at: "2026-09-13T10:00:00Z".to_string(),
+            note: Some("Testdruck".to_string()),
+            photo_png: None,
+        };
+        let id = crate::db::insert_print_log_entry(&conn, &entry).expect("insert entry");
+
+        let entries = crate::db::list_print_log_entries(&conn, file_id).expect("list entries");
+        let dtos: Vec<PrintLogEntryDto> = entries.into_iter().map(print_log_entry_to_dto).collect();
+
+        assert_eq!(dtos.len(), 1);
+        assert_eq!(dtos[0].id, id.to_string());
+        assert_eq!(dtos[0].note.as_deref(), Some("Testdruck"));
+        assert_eq!(dtos[0].photo_image, None);
     }
 }
