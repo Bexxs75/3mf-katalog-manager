@@ -40,7 +40,7 @@ export function CollectionsGallery({ collections, onSelect, onCreate, onRename, 
         {collections.map((c) => (
           <div
             key={c.id}
-            className="rounded-[var(--radius-card)] overflow-hidden cursor-pointer bg-[var(--panel)] shadow-[var(--shadow)] border-2 border-transparent hover:border-[var(--line-strong)] p-4 flex flex-col gap-2"
+            className="rounded-[10px] overflow-hidden cursor-pointer bg-[var(--panel)] shadow-[var(--shadow)] border-2 border-transparent hover:border-[var(--line-strong)] p-4 flex flex-col gap-2"
             onClick={() => onSelect(c.id)}
           >
             {renamingId === c.id ? (

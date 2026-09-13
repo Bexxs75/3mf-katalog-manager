@@ -91,7 +91,7 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
           setDragIndex(models.findIndex((x) => x.id === m.id));
         }}
         onMouseEnter={() => reorderable && dragIndex !== null && setOverIndex(models.findIndex((x) => x.id === m.id))}
-        className={`rounded-[4px] overflow-hidden border cursor-pointer ${
+        className={`rounded-[10px] overflow-hidden border cursor-pointer ${
           m.id === selectedId ? 'border-[var(--accent)]' : 'border-[var(--line)]'
         }`}
       >
