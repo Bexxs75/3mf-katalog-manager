@@ -743,6 +743,7 @@ pub(crate) fn import_one(
         metadata,
         thumbnail_png,
         plate_count,
+        slice_info_json,
     ) = match extension.as_deref() {
         Some("3mf") => {
             let doc = threemf::parse_3mf_file(path).map_err(|e| e.to_string())?;
@@ -761,6 +762,7 @@ pub(crate) fn import_one(
                 doc.metadata,
                 doc.thumbnail_png,
                 doc.plate_count.map(|c| c as i64),
+                doc.slice_info.and_then(|s| serde_json::to_string(&s).ok()),
             )
         }
         Some("stl") => {
@@ -772,6 +774,7 @@ pub(crate) fn import_one(
                 None,
                 Vec::new(),
                 BTreeMap::new(),
+                None,
                 None,
                 None,
             )
@@ -814,7 +817,7 @@ pub(crate) fn import_one(
         queue_position: None,
         favorite: false,
         plate_count,
-        slice_info_json: None,
+        slice_info_json,
     };
 
     let id = db::insert_file(conn, &new_file).map_err(|e| e.to_string())?;
@@ -1776,5 +1779,49 @@ mod tests {
             groups[0].iter().map(|f| f.id).collect::<Vec<_>>(),
             vec![2, 3, 1]
         );
+    }
+
+    #[test]
+    fn import_one_stores_slice_info_json_when_present() {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+        use zip::ZipWriter;
+
+        let slice_info_xml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<config>
+  <plate>
+    <metadata key="index" value="1"/>
+    <metadata key="weight" value="9.90"/>
+    <filament id="1" type="PLA" color="#112233FF" used_m="3.0" used_g="9.90"/>
+  </plate>
+</config>"##;
+
+        let mut buf = Vec::new();
+        {
+            let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buf));
+            let options = SimpleFileOptions::default();
+            zip.start_file("[Content_Types].xml", options).unwrap();
+            zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>"#).unwrap();
+            zip.start_file("_rels/.rels", options).unwrap();
+            zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model"/></Relationships>"#).unwrap();
+            zip.start_file("3D/3dmodel.model", options).unwrap();
+            zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources></resources><build></build></model>"#).unwrap();
+            zip.start_file("Metadata/slice_info.config", options).unwrap();
+            zip.write_all(slice_info_xml.as_bytes()).unwrap();
+            zip.finish().unwrap();
+        }
+
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let path = std::env::temp_dir().join(format!("import_one_slice_info_test_{nanos}.3mf"));
+        std::fs::write(&path, &buf).expect("write temp file");
+
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let dto = import_one(&mut conn, &path, None, None).expect("import should succeed");
+
+        let stored = crate::db::get_file(&conn, dto.id.parse().unwrap()).expect("query").expect("present");
+        assert!(stored.slice_info_json.is_some());
+        assert!(stored.slice_info_json.unwrap().contains("9.9"));
+
+        let _ = std::fs::remove_file(&path);
     }
 }
