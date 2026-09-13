@@ -1557,17 +1557,22 @@ pub async fn export_catalog(
 
     let backup_db_path =
         std::env::temp_dir().join(format!("3mf-katalog-export-{}.db", std::process::id()));
-    {
-        let conn = lock_db(&state)?;
-        let mut dst = Connection::open(&backup_db_path).map_err(|e| e.to_string())?;
-        let backup = rusqlite::backup::Backup::new(&conn, &mut dst).map_err(|e| e.to_string())?;
-        backup
-            .run_to_completion(5, std::time::Duration::from_millis(250), None)
-            .map_err(|e| e.to_string())?;
-    }
-
     let tmp_zip_path = dest_path.with_extension("zip.tmp");
-    {
+
+    // Backup+Zip-Schritte in eine Closure gekapselt, damit bei jedem
+    // Fehlschlag (nicht nur beim Erfolgspfad) beide Temp-Artefakte
+    // aufgeraeumt werden koennen, bevor der Fehler propagiert wird.
+    let result: CmdResult<()> = (|| {
+        {
+            let conn = lock_db(&state)?;
+            let mut dst = Connection::open(&backup_db_path).map_err(|e| e.to_string())?;
+            let backup =
+                rusqlite::backup::Backup::new(&conn, &mut dst).map_err(|e| e.to_string())?;
+            backup
+                .run_to_completion(5, std::time::Duration::from_millis(250), None)
+                .map_err(|e| e.to_string())?;
+        }
+
         let zip_file = std::fs::File::create(&tmp_zip_path).map_err(|e| e.to_string())?;
         let mut zip = zip::ZipWriter::new(zip_file);
         let options = zip::write::SimpleFileOptions::default();
@@ -1580,8 +1585,17 @@ pub async fn export_catalog(
         zip.write_all(settings_json.as_bytes()).map_err(|e| e.to_string())?;
 
         zip.finish().map_err(|e| e.to_string())?;
-    }
+        Ok(())
+    })();
+
+    // Die temporaere DB-Kopie wird in jedem Fall nicht mehr gebraucht.
     let _ = std::fs::remove_file(&backup_db_path);
+    if let Err(e) = result {
+        // Kein unvollstaendiges .zip.tmp sichtbar neben dem Zielpfad
+        // zuruecklassen, falls das Packen mittendrin fehlschlaegt.
+        let _ = std::fs::remove_file(&tmp_zip_path);
+        return Err(e);
+    }
 
     // Zip erst nach vollstaendigem, erfolgreichem Schreiben an den
     // eigentlichen Zielpfad verschieben - kein unvollstaendiges Archiv am
