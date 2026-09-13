@@ -17,6 +17,7 @@ use crate::{stl, threemf};
 pub struct AppState {
     pub db: Mutex<Connection>,
     pub trash_dir: std::path::PathBuf,
+    pub db_path: std::path::PathBuf,
 }
 
 type CmdResult<T> = Result<T, String>;
@@ -1524,6 +1525,69 @@ pub fn delete_saved_filter(state: State<AppState>, filter_id: String) -> CmdResu
     let id: i64 = filter_id.parse().map_err(|_| "invalid filter id".to_string())?;
     let conn = lock_db(&state)?;
     db::delete_saved_filter(&conn, id).map_err(|e| e.to_string())
+}
+
+/// Exportiert den kompletten Katalogzustand (DB + Frontend-Settings) als
+/// ZIP-Datei. Nutzt SQLite's Online-Backup-API statt eines rohen
+/// Datei-Kopierens fuer die DB-Kopie: die laufende Connection kann im
+/// WAL-Modus sein, ein fs::copy koennte eine inkonsistente Zwischenstufe
+/// der Datei erwischen.
+#[tauri::command]
+pub async fn export_catalog(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    settings_json: String,
+) -> CmdResult<()> {
+    use std::io::Write;
+
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("ZIP-Archiv", &["zip"])
+        .set_file_name(format!(
+            "3mf-katalog-backup_{}.zip",
+            chrono::Utc::now().format("%Y-%m-%d")
+        ))
+        .blocking_save_file();
+
+    let Some(picked) = picked else {
+        return Ok(());
+    };
+    let dest_path = picked.into_path().map_err(|e| e.to_string())?;
+
+    let backup_db_path =
+        std::env::temp_dir().join(format!("3mf-katalog-export-{}.db", std::process::id()));
+    {
+        let conn = lock_db(&state)?;
+        let mut dst = Connection::open(&backup_db_path).map_err(|e| e.to_string())?;
+        let backup = rusqlite::backup::Backup::new(&conn, &mut dst).map_err(|e| e.to_string())?;
+        backup
+            .run_to_completion(5, std::time::Duration::from_millis(250), None)
+            .map_err(|e| e.to_string())?;
+    }
+
+    let tmp_zip_path = dest_path.with_extension("zip.tmp");
+    {
+        let zip_file = std::fs::File::create(&tmp_zip_path).map_err(|e| e.to_string())?;
+        let mut zip = zip::ZipWriter::new(zip_file);
+        let options = zip::write::SimpleFileOptions::default();
+
+        zip.start_file("catalog.db", options).map_err(|e| e.to_string())?;
+        let db_bytes = std::fs::read(&backup_db_path).map_err(|e| e.to_string())?;
+        zip.write_all(&db_bytes).map_err(|e| e.to_string())?;
+
+        zip.start_file("settings.json", options).map_err(|e| e.to_string())?;
+        zip.write_all(settings_json.as_bytes()).map_err(|e| e.to_string())?;
+
+        zip.finish().map_err(|e| e.to_string())?;
+    }
+    let _ = std::fs::remove_file(&backup_db_path);
+
+    // Zip erst nach vollstaendigem, erfolgreichem Schreiben an den
+    // eigentlichen Zielpfad verschieben - kein unvollstaendiges Archiv am
+    // sichtbaren Zielort, falls das Packen mittendrin fehlschlaegt.
+    std::fs::rename(&tmp_zip_path, &dest_path).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[derive(Debug, Serialize)]

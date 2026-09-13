@@ -54,6 +54,7 @@ pub fn run() {
             app.manage(commands::AppState {
                 db: Mutex::new(conn),
                 trash_dir,
+                db_path,
             });
             Ok(())
         })
@@ -80,6 +81,7 @@ pub fn run() {
             commands::set_render_snapshot,
             commands::set_source_url,
             commands::rescan_file_metadata,
+            commands::export_catalog,
             commands::list_print_log_entries,
             commands::add_print_log_entry,
             commands::delete_print_log_entry,
