@@ -32,6 +32,9 @@ interface Props {
   onScanCatalogIssues: () => void;
   cleanupScanning: boolean;
   cleanupError: string | null;
+  onExportCatalog: () => void;
+  onImportCatalog: () => void;
+  catalogBackupError: string | null;
   mainView: 'catalog' | 'filament' | 'trash';
   onMainViewChange: (view: 'catalog' | 'filament' | 'trash') => void;
   trashCount: number;
@@ -73,6 +76,9 @@ export function Header({
   onScanCatalogIssues,
   cleanupScanning,
   cleanupError,
+  onExportCatalog,
+  onImportCatalog,
+  catalogBackupError,
   mainView,
   onMainViewChange,
   trashCount,
@@ -83,6 +89,7 @@ export function Header({
   const [pendingSlicerPath, setPendingSlicerPath] = useState<string | null>(null);
   const [pendingSlicerName, setPendingSlicerName] = useState('');
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  const [confirmImportCatalog, setConfirmImportCatalog] = useState(false);
 
   const sortOptions: { value: SortKey; label: string }[] = [
     { value: 'name', label: t('sortName') },
@@ -417,6 +424,50 @@ export function Header({
             {cleanupError && (
               <div className="mt-1.5 font-mono-ui text-[length:var(--font-size-meta)] text-[var(--accent)] break-words">
                 {t('catalogCleanupError')} {cleanupError}
+              </div>
+            )}
+
+            <div className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-2">{t('catalogBackupTitle')}</div>
+            <button
+              onClick={onExportCatalog}
+              className="h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            >
+              {t('exportCatalogButton')}
+            </button>
+            {confirmImportCatalog ? (
+              <div className="mt-1.5 flex flex-col gap-1.5">
+                <div className="font-mono-ui text-[10.5px] text-[var(--ink-2)]">
+                  {t('importCatalogConfirmQuestion')}
+                </div>
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => {
+                      setConfirmImportCatalog(false);
+                      onImportCatalog();
+                    }}
+                    className="flex-1 h-7 rounded-[3px] border border-red-400 bg-transparent text-red-400 text-[12px] cursor-pointer hover:bg-red-400/10"
+                  >
+                    {t('importCatalogConfirmYes')}
+                  </button>
+                  <button
+                    onClick={() => setConfirmImportCatalog(false)}
+                    className="flex-1 h-7 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] cursor-pointer hover:border-[var(--accent)]"
+                  >
+                    {t('cancel')}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmImportCatalog(true)}
+                className="mt-1.5 h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              >
+                {t('importCatalogButton')}
+              </button>
+            )}
+            {catalogBackupError && (
+              <div className="mt-1.5 font-mono-ui text-[length:var(--font-size-meta)] text-[var(--accent)] break-words">
+                {catalogBackupError}
               </div>
             )}
           </div>
