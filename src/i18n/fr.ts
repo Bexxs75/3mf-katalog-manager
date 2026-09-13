@@ -131,6 +131,8 @@ export const fr: Translations = {
   metaWeight: 'Poids (estimé)',
   metaWeightFromSlicer: 'Poids (du logiciel de découpe)',
   sliceFilamentHeading: 'Consommation de filament (du logiciel de découpe)',
+  metaCostEstimate: 'Coût matière estimé',
+  costEstimateUnpricedHint: "Prix de stock introuvable pour tous les filaments",
   sliceFilamentPlateLabel: 'Plateau {index}',
   rescanMetadataButton: 'Relire les métadonnées',
   rescanMetadataSuccess: 'Métadonnées mises à jour.',

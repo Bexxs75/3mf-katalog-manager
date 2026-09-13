@@ -20,6 +20,11 @@ export interface SliceInfo {
   plates: PlateFilamentUsage[];
 }
 
+export interface CostEstimate {
+  totalCost: number | null;
+  hasUnpricedFilaments: boolean;
+}
+
 export interface ModelFile {
   id: string;
   name: string;
@@ -39,6 +44,7 @@ export interface ModelFile {
   estimatedWeightG: number | null;
   weightSource: 'slicer' | 'estimated';
   sliceInfo: SliceInfo | null;
+  costEstimate: CostEstimate | null;
   lastViewedAt: string | null;
   creator: string | null;
   customImage: string | null;

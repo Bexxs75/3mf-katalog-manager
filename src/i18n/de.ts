@@ -131,6 +131,8 @@ export const de: Translations = {
   metaWeight: 'Gewicht (geschätzt)',
   metaWeightFromSlicer: 'Gewicht (aus Slicer)',
   sliceFilamentHeading: 'Filamentverbrauch (aus Slicer)',
+  metaCostEstimate: 'Geschätzte Materialkosten',
+  costEstimateUnpricedHint: 'Nicht für alle Filamente ein Lagerpreis gefunden',
   sliceFilamentPlateLabel: 'Platte {index}',
   rescanMetadataButton: 'Metadaten neu einlesen',
   rescanMetadataSuccess: 'Metadaten aktualisiert.',

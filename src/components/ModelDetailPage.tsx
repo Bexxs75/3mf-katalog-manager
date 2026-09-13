@@ -6,7 +6,7 @@ import { ModelViewer } from './ModelViewer';
 import { resolveDisplayImage } from '../lib/resolveDisplayImage';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import { useEditableSourceUrl } from '../hooks/useEditableSourceUrl';
-import { formatWeightG, formatLengthM } from '../i18n/format';
+import { formatWeightG, formatLengthM, formatPrice } from '../i18n/format';
 
 interface Props {
   model: ModelFile;
@@ -249,6 +249,23 @@ export function ModelDetailPage({
               </div>
             ))}
           </div>
+          {model.costEstimate && (
+            <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-[var(--line)] text-[13px]">
+              <span className="text-[var(--ink-3)]">
+                {t('metaCostEstimate')}
+                {model.costEstimate.hasUnpricedFilaments && (
+                  <span title={t('costEstimateUnpricedHint')} className="ml-1 text-[var(--ink-3)]">
+                    *
+                  </span>
+                )}
+              </span>
+              <span className="font-mono-ui tabular-nums">
+                {model.costEstimate.totalCost === null
+                  ? t('noValue')
+                  : formatPrice(model.costEstimate.totalCost, language)}
+              </span>
+            </div>
+          )}
         </div>
       )}
 

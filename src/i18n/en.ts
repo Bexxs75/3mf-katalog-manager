@@ -131,6 +131,8 @@ export const en: Translations = {
   metaWeight: 'Weight (estimated)',
   metaWeightFromSlicer: 'Weight (from slicer)',
   sliceFilamentHeading: 'Filament usage (from slicer)',
+  metaCostEstimate: 'Estimated material cost',
+  costEstimateUnpricedHint: 'Not all filaments matched to an inventory price',
   sliceFilamentPlateLabel: 'Plate {index}',
   rescanMetadataButton: 'Rescan metadata',
   rescanMetadataSuccess: 'Metadata updated.',

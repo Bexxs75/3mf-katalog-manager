@@ -131,6 +131,8 @@ export const es: Translations = {
   metaWeight: 'Peso (estimado)',
   metaWeightFromSlicer: 'Peso (del laminador)',
   sliceFilamentHeading: 'Consumo de filamento (del laminador)',
+  metaCostEstimate: 'Coste de material estimado',
+  costEstimateUnpricedHint: 'No se encontró un precio de inventario para todos los filamentos',
   sliceFilamentPlateLabel: 'Placa {index}',
   rescanMetadataButton: 'Volver a leer metadatos',
   rescanMetadataSuccess: 'Metadatos actualizados.',
