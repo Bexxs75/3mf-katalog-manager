@@ -701,6 +701,28 @@ pub fn move_file_to_folder(state: State<AppState>, file_id: String, folder_id: O
     move_file_to_folder_with_conn(&conn, id, target_id)
 }
 
+/// Sicherheits-Grenze fuer `create_folder`/`rename_folder`: `name` landet
+/// unmittelbar in einem `PathBuf::join`/`with_file_name`-Aufruf und muss
+/// deshalb eine einzelne, harmlose Pfad-Komponente sein. Ohne diese
+/// Pruefung wuerde ein Name wie "../../../etc/x" (via `with_file_name`)
+/// oder ein absoluter Pfad wie "/etc/x" (via `join`, das einen absoluten
+/// zweiten Operanden den kompletten Basis-Pfad verwerfen laesst) einen
+/// physischen Verzeichnis-Vorgang weit ausserhalb des beabsichtigten
+/// Katalog-Ordnerbaums ausloesen - erreichbar allein durch Text-Eingabe
+/// im "+ Neuer Ordner"-Feld, keine weitere Angriffskette noetig (CWE-22).
+fn validate_folder_name(name: &str) -> CmdResult<()> {
+    if name.trim().is_empty() {
+        return Err("Ordnername darf nicht leer sein".to_string());
+    }
+    if name.contains('/') || name.contains('\\') {
+        return Err("Ordnername darf keine Pfad-Trennzeichen enthalten".to_string());
+    }
+    if name == "." || name == ".." {
+        return Err("Ungueltiger Ordnername".to_string());
+    }
+    Ok(())
+}
+
 /// Legt einen echten Ordner auf der Platte an (unterhalb eines bestehenden
 /// Ordners, oder - bei `parent_id: None` - unterhalb eines vom Nutzer per
 /// Dialog gewaehlten Basisverzeichnisses) und eine dazu passende
@@ -713,6 +735,7 @@ pub async fn create_folder(
     parent_id: Option<String>,
     name: String,
 ) -> CmdResult<FolderDto> {
+    validate_folder_name(&name)?;
     let parent: Option<i64> = parent_id
         .map(|s| s.parse::<i64>().map_err(|_| "invalid folder id".to_string()))
         .transpose()?;
@@ -753,6 +776,7 @@ pub async fn create_folder(
 /// gehalten, damit sie in Tests direkt gegen eine In-Memory-`Connection`
 /// aufgerufen werden kann (gleiche Konvention wie `move_file_to_folder_with_conn`).
 fn rename_folder_with_conn(conn: &Connection, id: i64, name: String) -> CmdResult<()> {
+    validate_folder_name(&name)?;
     let folders = db::list_folders(conn).map_err(|e| e.to_string())?;
     let folder = folders.iter().find(|f| f.id == id).ok_or_else(|| "folder not found".to_string())?;
 
@@ -1556,6 +1580,15 @@ pub fn register_catalog_base_dir(state: State<AppState>, path: String) -> CmdRes
 /// jeweilige Betriebssystem-Kommando dafuer.
 #[tauri::command]
 pub fn open_in_file_manager(path: String) -> CmdResult<()> {
+    // Nur echte, existierende Verzeichnisse oeffnen: haertet zusaetzlich
+    // gegen ein mit "-" beginnendes `path`, das manche Implementierungen
+    // von xdg-open/open/explorer als eigene Kommandozeilen-Option statt
+    // als Pfad interpretieren wuerden - ein Pfad, der kein reales
+    // Verzeichnis ist, kommt so gar nicht erst bis zum spawn().
+    if !std::path::Path::new(&path).is_dir() {
+        return Err("Pfad ist kein existierendes Verzeichnis".to_string());
+    }
+
     #[cfg(target_os = "linux")]
     let mut cmd = std::process::Command::new("xdg-open");
     #[cfg(target_os = "macos")]
@@ -3165,6 +3198,45 @@ mod tests {
         let folders = db::list_folders(&conn).expect("list_folders");
         let b_after = folders.iter().find(|f| f.id == b_id).expect("B still present");
         assert_eq!(b_after.parent_id, Some(a_id), "B's parent_id must be unchanged after rejected move");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn validate_folder_name_rejects_path_traversal_and_separators() {
+        // Regressionstest fuer den im Security-Review 2026-09-13 gefundenen
+        // Path-Traversal-Fund (CWE-22): create_folder/rename_folder duerfen
+        // `name` nie ungeprueft in PathBuf::join/with_file_name uebergeben.
+        assert!(validate_folder_name("../etc").is_err());
+        assert!(validate_folder_name("../../tmp/evil").is_err());
+        assert!(validate_folder_name("a/b").is_err());
+        assert!(validate_folder_name("a\\b").is_err());
+        assert!(validate_folder_name("/etc").is_err());
+        assert!(validate_folder_name("..").is_err());
+        assert!(validate_folder_name(".").is_err());
+        assert!(validate_folder_name("").is_err());
+        assert!(validate_folder_name("   ").is_err());
+
+        assert!(validate_folder_name("Tabletop").is_ok());
+        assert!(validate_folder_name("Ersatzteile 2026").is_ok());
+    }
+
+    #[test]
+    fn rename_folder_with_conn_rejects_name_with_path_traversal() {
+        let tmp = unique_test_dir("rename_folder_traversal");
+        let a_dir = tmp.join("A");
+        std::fs::create_dir_all(&a_dir).unwrap();
+
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let a_id = db::insert_folder_with_parent(&conn, "A", None, &a_dir.to_string_lossy()).expect("insert A");
+
+        let result = rename_folder_with_conn(&conn, a_id, "../../escaped".to_string());
+        assert!(result.is_err(), "rename_folder_with_conn must reject a name containing path separators");
+
+        assert!(a_dir.exists(), "original directory must be untouched after a rejected rename");
+        let folders = db::list_folders(&conn).expect("list_folders");
+        let a_after = folders.iter().find(|f| f.id == a_id).expect("A still present");
+        assert_eq!(a_after.name, "A", "name in the DB must be unchanged after a rejected rename");
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
