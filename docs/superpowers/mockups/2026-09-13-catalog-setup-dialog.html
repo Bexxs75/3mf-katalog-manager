@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<title>Katalog-Speicherort-Dialog</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --bg: oklch(0.965 0.004 60);
+    --panel: oklch(1 0 0);
+    --panel-2: oklch(0.985 0.003 60);
+    --line: oklch(0.895 0.006 60);
+    --line-strong: oklch(0.82 0.008 60);
+    --ink: oklch(0.245 0.01 45);
+    --ink-2: oklch(0.505 0.01 50);
+    --ink-3: oklch(0.645 0.008 50);
+    --accent: oklch(0.565 0.165 30);
+    --accent-ink: oklch(0.99 0.01 30);
+    --accent-soft: oklch(0.945 0.03 30);
+    --good: oklch(0.52 0.13 150);
+    --good-soft: oklch(0.94 0.045 150);
+    --crit: oklch(0.55 0.18 18);
+    --shadow: 0 1px 2px rgba(40, 28, 24, 0.06), 0 8px 24px rgba(40, 28, 24, 0.06);
+    --shadow-lift: 0 4px 10px rgba(40,28,24,0.10), 0 24px 48px rgba(40,28,24,0.14);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg: oklch(0.165 0.005 60);
+      --panel: oklch(0.205 0.006 60);
+      --panel-2: oklch(0.235 0.006 60);
+      --line: oklch(0.295 0.008 60);
+      --line-strong: oklch(0.375 0.01 60);
+      --ink: oklch(0.945 0.005 60);
+      --ink-2: oklch(0.715 0.008 60);
+      --ink-3: oklch(0.555 0.01 60);
+      --accent: oklch(0.735 0.155 34);
+      --accent-ink: oklch(0.17 0.03 30);
+      --accent-soft: oklch(0.285 0.05 32);
+      --good: oklch(0.72 0.14 150);
+      --good-soft: oklch(0.28 0.05 150);
+      --crit: oklch(0.68 0.19 15);
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+      --shadow-lift: 0 8px 20px rgba(0,0,0,.45), 0 30px 60px rgba(0,0,0,.5);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg: oklch(0.165 0.005 60); --panel: oklch(0.205 0.006 60); --panel-2: oklch(0.235 0.006 60);
+    --line: oklch(0.295 0.008 60); --line-strong: oklch(0.375 0.01 60);
+    --ink: oklch(0.945 0.005 60); --ink-2: oklch(0.715 0.008 60); --ink-3: oklch(0.555 0.01 60);
+    --accent: oklch(0.735 0.155 34); --accent-ink: oklch(0.17 0.03 30); --accent-soft: oklch(0.285 0.05 32);
+    --good: oklch(0.72 0.14 150); --good-soft: oklch(0.28 0.05 150); --crit: oklch(0.68 0.19 15);
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+    --shadow-lift: 0 8px 20px rgba(0,0,0,.45), 0 30px 60px rgba(0,0,0,.5);
+  }
+  *{ box-sizing: border-box; }
+  html,body{ margin:0; padding:0; }
+  body{ background: var(--bg); color: var(--ink); font-family:'Barlow', Helvetica, sans-serif; }
+  .mono{ font-family:'IBM Plex Mono', monospace; }
+
+  .brief{ max-width: 720px; margin: 0 auto; padding: 36px 20px 6px; }
+  .brief-eyebrow{ font-family:'IBM Plex Mono', monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); font-weight:600; }
+  .brief h1{ font-size: clamp(20px,4vw,27px); line-height:1.15; margin:8px 0 10px; text-wrap:balance; letter-spacing:-.01em; }
+  .brief p{ color:var(--ink-2); line-height:1.55; max-width:62ch; margin:0 0 8px; }
+
+  .frame-label{ max-width: 1080px; margin:0 auto; padding:0 20px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+  .tag{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); }
+  .theme-toggle{ display:flex; gap:2px; padding:2px; border:1px solid var(--line); border-radius:8px; background:var(--panel-2); }
+  .theme-toggle button{ height:26px; padding:0 11px; border-radius:6px; border:0; background:transparent; color:var(--ink-2); cursor:pointer; font-size:11.5px; font-weight:600; }
+  .theme-toggle button.active{ background:var(--panel); color:var(--ink); box-shadow:var(--shadow); }
+
+  .stage{ max-width:1080px; margin:16px auto 50px; padding:0 20px; display:flex; flex-direction:column; gap:16px; }
+  .stage-row{ display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; }
+
+  /* App-Hintergrund-Attrappe, damit der Dialog im Kontext wirkt */
+  .app-shell{
+    position:relative; flex:1; min-width:320px; height:560px;
+    border:1px solid var(--line); border-radius:14px; overflow:hidden;
+    background:var(--panel); box-shadow:var(--shadow-lift);
+  }
+  .app-topbar{ height:48px; display:flex; align-items:center; gap:10px; padding:0 16px; border-bottom:1px solid var(--line); }
+  .app-topbar b{ font-size:14px; letter-spacing:.02em; }
+  .app-topbar .accent{ color:var(--accent); font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.08em; }
+  .app-body{ display:flex; height:calc(100% - 48px); }
+  .app-rail{ width:52px; flex:none; border-right:1px solid var(--line); background:var(--panel-2); }
+  .app-sidebar{ width:190px; flex:none; border-right:1px solid var(--line); padding:12px 10px; }
+  .app-sidebar .lbl{ font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); margin:10px 0 6px; }
+  .app-sidebar .row{ height:22px; display:flex; align-items:center; font-size:11.5px; color:var(--ink-3); }
+  .app-main{ flex:1; background: repeating-linear-gradient(135deg, var(--panel-2) 0 1px, transparent 1px 14px); opacity:.5; }
+
+  /* Overlay + Dialog */
+  .scrim{ position:absolute; inset:0; background:rgba(20,14,10,0.42); display:flex; align-items:center; justify-content:center; padding:20px; }
+  .dialog{
+    width: 100%; max-width: 560px; max-height: 92%;
+    background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    box-shadow:var(--shadow-lift); overflow-y:auto;
+  }
+  .dialog-inner{ padding:22px 24px 20px; }
+  .dialog-title{ font-size:17px; font-weight:800; letter-spacing:-.01em; margin-bottom:10px; text-wrap:balance; }
+  .dialog-intro{ font-size:13px; line-height:1.6; color:var(--ink-2); margin-bottom:20px; }
+
+  .cards{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; }
+  .card{
+    text-align:left; padding:16px; border-radius:12px; border:2px solid var(--line);
+    background:var(--panel-2); cursor:pointer; transition:border-color .12s, transform .12s, box-shadow .12s;
+    display:flex; flex-direction:column; gap:8px;
+  }
+  .card:hover{ border-color:var(--accent); transform:translateY(-1px); box-shadow:var(--shadow); }
+  .card .icon{ width:34px; height:34px; border-radius:9px; background:var(--accent-soft); color:var(--accent); display:grid; place-items:center; }
+  .card .icon svg{ width:18px; height:18px; }
+  .card .ct{ font-size:13.5px; font-weight:700; }
+  .card .cd{ font-size:12px; line-height:1.55; color:var(--ink-2); }
+  .card.busy{ opacity:.65; cursor:wait; }
+  .card .spin{ display:inline-flex; align-items:center; gap:6px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:var(--accent); font-weight:700; }
+  .card .spin .dot{ width:6px; height:6px; border-radius:50%; background:var(--accent); animation:pulse 1s ease-in-out infinite; }
+  @keyframes pulse{ 0%,100%{opacity:.3;} 50%{opacity:1;} }
+
+  .later-row{ display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
+  .later-link{ font-size:12px; color:var(--ink-3); text-decoration:underline; cursor:pointer; }
+  .later-link:hover{ color:var(--accent); }
+  .footnote{ font-size:11px; color:var(--ink-3); line-height:1.5; margin-top:10px; }
+
+  .toast-ok{
+    display:flex; align-items:center; gap:8px; margin-top:14px; padding:9px 12px;
+    border-radius:9px; background:var(--good-soft); color:var(--good); font-size:12.5px; font-weight:600;
+  }
+
+  .state-label{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3); margin-bottom:8px; }
+
+  .annot{ max-width:1080px; margin:8px auto 0; padding:0 20px; display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; }
+  .annot .a{ border:1px dashed var(--line-strong); border-radius:10px; padding:11px 13px; }
+  .annot .a b{ display:block; font-size:12px; margin-bottom:3px; color:var(--accent); }
+  .annot .a span{ display:block; color:var(--ink-2); font-size:11.5px; line-height:1.45; }
+
+  @media (max-width: 720px){
+    .cards{ grid-template-columns:1fr; }
+    .stage-row{ flex-direction:column; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="brief">
+    <div class="brief-eyebrow">Mockup — Katalog-Speicherort-Dialog</div>
+    <h1>Einmal erklären, dann nie wieder überraschen</h1>
+    <p>
+      Seit Ordner im Katalog echte Verzeichnisse abbilden, verschiebt ein
+      Drag & Drop im Programm Dateien auch auf der Platte. Dieser Dialog
+      erklärt das beim ersten Start knapp und bietet zwei konkrete Wege an
+      — plus einen unaufdringlichen Ausweg für alle, die sich noch nicht
+      entscheiden wollen.
+    </p>
+  </div>
+
+  <div class="frame-label">
+    <span class="tag">Zustände durchklicken — Karten sind interaktiv</span>
+    <div class="theme-toggle" id="themeToggle">
+      <button data-theme="light" class="active">Hell</button>
+      <button data-theme="dark">Dunkel</button>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="stage-row">
+      <div class="app-shell">
+        <div class="app-topbar">
+          <b>3MF KATALOG</b><span class="accent">MANAGER</span>
+        </div>
+        <div class="app-body">
+          <div class="app-rail"></div>
+          <div class="app-sidebar">
+            <div class="lbl">Ordner</div>
+            <div class="row">Alle Modelle</div>
+            <div class="lbl">Sammlungen</div>
+            <div class="row">Auf dem Drucker</div>
+          </div>
+          <div class="app-main"></div>
+        </div>
+
+        <div class="scrim">
+          <div class="dialog">
+            <div class="dialog-inner">
+              <div class="dialog-title" id="dTitle">Wie soll dein Katalog organisiert sein?</div>
+              <div class="dialog-intro" id="dIntro">
+                Ordner im Katalog sind jetzt echte Verzeichnisse auf deiner Festplatte. Verschiebst du
+                eine Datei im Programm in einen anderen Ordner, wird sie dort auch tatsächlich abgelegt
+                — nicht nur im Katalog umsortiert. Damit neu importierte Dateien sinnvoll einsortiert
+                werden, legen wir jetzt einen festen Speicherort fest.
+              </div>
+
+              <div class="cards">
+                <div class="card" id="cardAdopt">
+                  <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/><path d="M9 13h6M9 16h4"/></svg></div>
+                  <div class="ct">Bestehende Ordnerstruktur übernehmen</div>
+                  <div class="cd" id="cdAdopt">
+                    Du organisierst deine Druckdateien schon in Ordnern? Wähle den obersten Ordner aus —
+                    der Katalog übernimmt die komplette Struktur inklusive aller Unterordner und
+                    importiert alle enthaltenen 3mf-/STL-Dateien.
+                  </div>
+                </div>
+                <div class="card" id="cardNew">
+                  <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/><path d="M12 11v5M9.5 13.5h5"/></svg></div>
+                  <div class="ct">Neuen Ort einrichten</div>
+                  <div class="cd" id="cdNew">
+                    Leg einen (auch leeren) Ordner fest, in dem der Katalog ab jetzt neu importierte
+                    Dateien ablegt. Unterordner kannst du später jederzeit im Programm anlegen und
+                    Dateien per Drag & Drop einsortieren.
+                  </div>
+                </div>
+              </div>
+
+              <div id="toastArea"></div>
+
+              <div class="later-row">
+                <span class="later-link" id="laterLink">Später einrichten</span>
+              </div>
+              <div class="footnote">Du kannst diese Wahl jederzeit in den Einstellungen unter „Katalog-Speicherort" ändern.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="state-label">Simulierte Zustände (zum Vorschau-Durchklicken)</div>
+    <div class="stage-row" id="stateButtons" style="gap:8px;"></div>
+  </div>
+
+  <div class="annot">
+    <div class="a"><b>Gleichwertige Karten</b><span>Beide Wege sind gleich groß und gleich gewichtet — keiner wirkt wie die „empfohlene“, weil beide für unterschiedliche Nutzer richtig sind.</span></div>
+    <div class="a"><b>„Später“ bewusst unauffällig</b><span>Als Textlink statt Button, damit er nicht mit den beiden echten Entscheidungen konkurriert — aber trotzdem leicht auffindbar bleibt.</span></div>
+    <div class="a"><b>Klick zeigt sofort Rückmeldung</b><span>Ladezustand in der Karte selbst, Erfolg als kompakter grüner Hinweis direkt im Dialog — kein zusätzliches Popup.</span></div>
+  </div>
+
+<script>
+(function(){
+  var root = document.documentElement;
+  var toggle = document.getElementById('themeToggle');
+  toggle.addEventListener('click', function(e){
+    var b = e.target.closest('button[data-theme]');
+    if(!b) return;
+    [...toggle.querySelectorAll('button')].forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    root.setAttribute('data-theme', b.dataset.theme);
+  });
+
+  var cardAdopt = document.getElementById('cardAdopt');
+  var cardNew = document.getElementById('cardNew');
+  var cdAdopt = document.getElementById('cdAdopt');
+  var cdNew = document.getElementById('cdNew');
+  var toastArea = document.getElementById('toastArea');
+  var adoptText = cdAdopt.textContent;
+  var newText = cdNew.textContent;
+
+  function reset(){
+    cardAdopt.classList.remove('busy');
+    cardNew.classList.remove('busy');
+    cdAdopt.innerHTML = adoptText;
+    cdNew.innerHTML = newText;
+    toastArea.innerHTML = '';
+  }
+
+  function simulateAdopt(){
+    reset();
+    cardAdopt.classList.add('busy');
+    cdAdopt.innerHTML = '<span class="spin"><span class="dot"></span>Importiere…</span>';
+    setTimeout(function(){
+      cardAdopt.classList.remove('busy');
+      cdAdopt.innerHTML = adoptText;
+      toastArea.innerHTML = '<div class="toast-ok">✓ 47 Dateien importiert, Ordnerstruktur übernommen.</div>';
+    }, 1100);
+  }
+
+  function simulateNew(){
+    reset();
+    cardNew.classList.add('busy');
+    cdNew.innerHTML = '<span class="spin"><span class="dot"></span>Richte ein…</span>';
+    setTimeout(function(){
+      cardNew.classList.remove('busy');
+      cdNew.innerHTML = newText;
+      toastArea.innerHTML = '<div class="toast-ok">✓ „/home/andreasm/3D-Drucke“ als Speicherort eingerichtet.</div>';
+    }, 700);
+  }
+
+  function simulateError(){
+    reset();
+    toastArea.innerHTML = '<div class="toast-ok" style="background:var(--crit);opacity:.14;color:var(--crit);">Fehler: Zugriff verweigert (keine Schreibrechte für diesen Ordner).</div>';
+  }
+
+  cardAdopt.addEventListener('click', simulateAdopt);
+  cardNew.addEventListener('click', simulateNew);
+
+  var states = [
+    { label: 'Ausgangszustand', fn: reset },
+    { label: '„Übernehmen“ läuft → Erfolg', fn: simulateAdopt },
+    { label: '„Neu einrichten“ läuft → Erfolg', fn: simulateNew },
+    { label: 'Fehlerfall', fn: simulateError },
+  ];
+  var wrap = document.getElementById('stateButtons');
+  states.forEach(function(s){
+    var b = document.createElement('button');
+    b.textContent = s.label;
+    b.className = 'btn';
+    b.style.cssText = 'height:32px;padding:0 14px;border-radius:8px;border:1px solid var(--line-strong);background:var(--panel);color:var(--ink-2);cursor:pointer;font-size:12.5px;font-weight:600;';
+    b.addEventListener('click', s.fn);
+    wrap.appendChild(b);
+  });
+})();
+</script>
+</body>
+</html>
