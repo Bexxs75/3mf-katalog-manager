@@ -6,6 +6,7 @@ import { ModelViewer } from './ModelViewer';
 import { resolveDisplayImage } from '../lib/resolveDisplayImage';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import { useEditableSourceUrl } from '../hooks/useEditableSourceUrl';
+import { formatWeightG } from '../i18n/format';
 
 interface Props {
   model: ModelFile;
@@ -20,8 +21,10 @@ interface Props {
   onSnapshotCaptured: (base64: string) => void;
   onSetSourceUrl: (fileId: string, url: string | null) => void;
   onOpenInSlicer: (slicerId?: string) => void;
+  onRescanMetadata: () => void;
   slicers: SlicerConfig[];
   slicerError: string | null;
+  rescanError: string | null;
   displayPreference: DisplayPreference;
 }
 
@@ -38,8 +41,10 @@ export function ModelDetailPage({
   onSnapshotCaptured,
   onSetSourceUrl,
   onOpenInSlicer,
+  onRescanMetadata,
   slicers,
   slicerError,
+  rescanError,
   displayPreference,
 }: Props) {
   const t = useT();
@@ -212,11 +217,50 @@ export function ModelDetailPage({
         </div>
       </div>
 
+      {model.sliceInfo && (
+        <div className="rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-5 py-4">
+          <p className="font-mono-ui text-[10.5px] tracking-[0.06em] uppercase text-[var(--ink-3)] mb-3">
+            {t('sliceFilamentHeading')}
+          </p>
+          <div className="flex flex-col gap-3">
+            {model.sliceInfo.plates.map((plate) => (
+              <div key={plate.plateIndex}>
+                <p className="text-[12.5px] font-semibold text-[var(--ink-2)] mb-1.5">
+                  {t('sliceFilamentPlateLabel').replace('{index}', String(plate.plateIndex))}
+                </p>
+                <div className="flex flex-col gap-1">
+                  {plate.filaments.map((filament, i) => (
+                    <div key={i} className="flex items-center gap-2 text-[13px]">
+                      {filament.color && (
+                        <span
+                          className="w-3 h-3 rounded-full border border-[var(--line)] flex-none"
+                          style={{ backgroundColor: filament.color.slice(0, 7) }}
+                        />
+                      )}
+                      <span className="text-[var(--ink-2)]">{filament.type}</span>
+                      <span className="font-mono-ui tabular-nums text-[var(--ink-3)]">
+                        {formatWeightG(filament.usedG, language)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <footer className="flex items-center justify-between gap-4 flex-wrap rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-4 py-3.5 mt-auto">
         <span className="font-mono-ui text-[12px] text-[var(--ink-3)] break-all">{model.path}</span>
         <div className="flex gap-2.5 items-center flex-none">
           <button onClick={onDelete} className="px-4 py-2 rounded-md border border-[var(--line)] text-[13px] font-semibold text-red-400 hover:border-red-400">
             {t('delete')}
+          </button>
+          <button
+            onClick={onRescanMetadata}
+            className="px-4 py-2 rounded-md border border-[var(--line)] text-[13px] font-semibold text-[var(--ink-2)] hover:border-[var(--line-strong)]"
+          >
+            {t('rescanMetadataButton')}
           </button>
           <button
             onClick={() => onOpenInSlicer()}
@@ -228,6 +272,7 @@ export function ModelDetailPage({
         </div>
       </footer>
       {slicerError && <p className="text-[12.5px] text-red-400">{slicerError}</p>}
+      {rescanError && <p className="text-[12.5px] text-red-400">{rescanError}</p>}
     </div>
   );
 }
