@@ -80,7 +80,7 @@ export default function App() {
   const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
   const [draggedFolderId, setDraggedFolderId] = useState<string | null>(null);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
-  const [moveToast, setMoveToast] = useState<{ from: string; to: string } | null>(null);
+  const [moveToast, setMoveToast] = useState<{ from: string; to: string; error?: boolean } | null>(null);
 
   const refreshCollectionModels = (collectionId: string) =>
     invoke<ModelFile[]>('list_collection_files', { collectionId }).then(setCollectionModels);
@@ -228,7 +228,11 @@ export default function App() {
       .then(() => refreshFolders())
       .catch((e) => {
         console.error('[folders] Anlegen fehlgeschlagen:', e);
-        setCatalogBackupError(String(e));
+        // Fehler sichtbar in der Naehe des Ordnerbaums zeigen (MoveToast
+        // wiederverwendet mit error:true) statt nur in das Settings-only
+        // catalogBackupError zu routen, das ohne geoeffnetes Rail-Panel
+        // unsichtbar bleibt.
+        setMoveToast({ from: name, to: String(e), error: true });
       });
   };
 
@@ -254,7 +258,7 @@ export default function App() {
         })
         .catch((e) => {
           console.error('[folders] Datei verschieben fehlgeschlagen:', e);
-          setCatalogBackupError(String(e));
+          setMoveToast({ from: file.name, to: String(e), error: true });
         });
     };
     document.addEventListener('mouseup', handleMouseUp);
@@ -286,7 +290,7 @@ export default function App() {
         })
         .catch((e) => {
           console.error('[folders] Ordner verschieben fehlgeschlagen:', e);
-          setCatalogBackupError(String(e));
+          setMoveToast({ from: folder.name, to: String(e), error: true });
         });
     };
     document.addEventListener('mouseup', handleMouseUp);
@@ -1152,7 +1156,12 @@ export default function App() {
       )}
 
       {moveToast && (
-        <MoveToast from={moveToast.from} to={moveToast.to} onDone={() => setMoveToast(null)} />
+        <MoveToast
+          from={moveToast.from}
+          to={moveToast.to}
+          error={moveToast.error}
+          onDone={() => setMoveToast(null)}
+        />
       )}
       </div>
     </div>

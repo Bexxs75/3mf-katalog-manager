@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Folder } from '../types';
 import { useT } from '../i18n/LanguageContext';
 
@@ -48,13 +48,56 @@ export function FolderTree({
       return next;
     });
 
+  // Ordner-Reihen sind nur 28px hoch und liegen ohne Abstand direkt
+  // uebereinander - ein `onMouseDown` das SOFORT `onDragFolderStart` feuert
+  // (wie zuvor) wuerde schon bei minimalem Cursor-Drift waehrend eines
+  // gewoehnlichen Klicks in die Nachbarzeile rutschen und dort per
+  // `onMouseEnter` ein Drop-Ziel markieren - ein `mouseup` danach loest dann
+  // OHNE Bestaetigung ein echtes `move_folder` auf der Platte aus. Deshalb
+  // hier dasselbe Kandidat+Schwellenwert-Muster wie beim Datei-Drag in
+  // ModelGrid.tsx: `onDragFolderStart` (und damit `draggedFolderId` in
+  // App.tsx) wird erst gesetzt, nachdem sich der Cursor seit dem Mousedown
+  // um mindestens `DRAG_THRESHOLD_PX` bewegt hat. Bleibt die Bewegung
+  // darunter, war es ein normaler Klick (der bestehende `onClick` auf der
+  // Zeile uebernimmt die Auswahl wie gehabt).
+  const DRAG_THRESHOLD_PX = 6;
+  const [dragCandidateId, setDragCandidateId] = useState<string | null>(null);
+  const dragStartPos = useRef<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    if (!dragCandidateId) return;
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!dragStartPos.current) return;
+      const dx = e.clientX - dragStartPos.current.x;
+      const dy = e.clientY - dragStartPos.current.y;
+      if (Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX) {
+        onDragFolderStart?.(dragCandidateId);
+        setDragCandidateId(null);
+        dragStartPos.current = null;
+      }
+    };
+    const handleMouseUp = () => {
+      setDragCandidateId(null);
+      dragStartPos.current = null;
+    };
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [dragCandidateId, onDragFolderStart]);
+
   function renderNode(node: TreeNode, depth: number) {
     const isOpen = expanded.has(node.id);
     return (
       <div key={node.id}>
         <div
           onClick={() => onSelect(node.id)}
-          onMouseDown={() => onDragFolderStart?.(node.id)}
+          onMouseDown={(e) => {
+            dragStartPos.current = { x: e.clientX, y: e.clientY };
+            setDragCandidateId(node.id);
+          }}
           onMouseEnter={() => onFolderMouseEnter?.(node.id)}
           style={{ paddingLeft: 6 + depth * 16 }}
           className={`flex items-center gap-1.5 h-7 pr-2 rounded-[7px] cursor-pointer text-[12.5px] border ${
