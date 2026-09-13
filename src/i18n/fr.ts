@@ -133,6 +133,7 @@ export const fr: Translations = {
   sliceFilamentHeading: 'Consommation de filament (du logiciel de découpe)',
   sliceFilamentPlateLabel: 'Plateau {index}',
   rescanMetadataButton: 'Relire les métadonnées',
+  rescanMetadataSuccess: 'Métadonnées mises à jour.',
 
   sortLastViewed: 'Vu récemment',
   newBadge: 'NOUVEAU',

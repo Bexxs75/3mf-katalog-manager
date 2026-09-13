@@ -52,6 +52,11 @@ export function formatWeightG(grams: number, language: Language): string {
   return `${new Intl.NumberFormat(localeFor(language)).format(grams)} g`;
 }
 
+export function formatLengthM(meters: number, language: Language): string {
+  const nf = new Intl.NumberFormat(localeFor(language), { maximumFractionDigits: 1 });
+  return `${nf.format(meters)} m`;
+}
+
 export function formatDiameterMm(diameterMm: number, language: Language): string {
   const formatted = new Intl.NumberFormat(localeFor(language), {
     minimumFractionDigits: 2,

@@ -254,17 +254,24 @@ export default function App() {
     });
   };
 
-  const [rescanError, setRescanError] = useState<string | null>(null);
+  // Pro Modell-ID statt global, damit ein Fehler/Erfolg von Modell A nicht
+  // unter Modell B stehen bleibt, wenn der Nutzer zwischendurch die
+  // Detailseite wechselt - kein separater Reset-Effekt nötig, da der Zugriff
+  // unten immer gegen detailModel.id abgeglichen wird.
+  const [rescanFeedback, setRescanFeedback] = useState<
+    { fileId: string; status: 'success' | 'error'; message?: string } | null
+  >(null);
 
   const rescanMetadata = (id: string) => {
-    setRescanError(null);
+    setRescanFeedback(null);
     invoke<ModelFile>('rescan_file_metadata', { fileId: id })
       .then((updated) => {
         setModels((prev) => prev.map((m) => (m.id === id ? updated : m)));
+        setRescanFeedback({ fileId: id, status: 'success' });
       })
       .catch((e) => {
         console.error('[rescan] Neu-Einlesen fehlgeschlagen:', e);
-        setRescanError(String(e));
+        setRescanFeedback({ fileId: id, status: 'error', message: String(e) });
       });
   };
 
@@ -856,7 +863,12 @@ export default function App() {
                 onRescanMetadata={() => rescanMetadata(detailModel.id)}
                 slicers={slicers}
                 slicerError={slicerError}
-                rescanError={rescanError}
+                rescanError={
+                  rescanFeedback?.fileId === detailModel.id && rescanFeedback.status === 'error'
+                    ? rescanFeedback.message ?? null
+                    : null
+                }
+                rescanSuccess={rescanFeedback?.fileId === detailModel.id && rescanFeedback.status === 'success'}
                 displayPreference={displayPreference}
               />
             ) : (

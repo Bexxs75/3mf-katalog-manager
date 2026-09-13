@@ -133,6 +133,7 @@ export const en: Translations = {
   sliceFilamentHeading: 'Filament usage (from slicer)',
   sliceFilamentPlateLabel: 'Plate {index}',
   rescanMetadataButton: 'Rescan metadata',
+  rescanMetadataSuccess: 'Metadata updated.',
 
   sortLastViewed: 'Last viewed',
   newBadge: 'NEW',

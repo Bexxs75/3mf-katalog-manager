@@ -140,6 +140,7 @@ export interface Translations {
   sliceFilamentHeading: string;
   sliceFilamentPlateLabel: string;
   rescanMetadataButton: string;
+  rescanMetadataSuccess: string;
 
   creatorsHeading: string;
 
