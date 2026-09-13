@@ -908,6 +908,9 @@ pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFile
     }
     let extension = path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase());
 
+    let file_size_bytes = std::fs::metadata(path).map_err(|e| e.to_string())?.len() as i64;
+    let content_hash = compute_content_hash(path).ok();
+
     let update = match extension.as_deref() {
         Some("3mf") => {
             let doc = threemf::parse_3mf_file(path).map_err(|e| e.to_string())?;
@@ -924,6 +927,8 @@ pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFile
                     .map(|m| MaterialRecord { name: m.name, display_color: m.display_color })
                     .collect(),
                 metadata: doc.metadata,
+                file_size_bytes,
+                content_hash,
             }
         }
         Some("stl") => {
@@ -937,6 +942,8 @@ pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFile
                 slice_info_json: None,
                 materials: Vec::new(),
                 metadata: BTreeMap::new(),
+                file_size_bytes,
+                content_hash,
             }
         }
         _ => return Err("nicht unterstütztes Dateiformat".to_string()),
@@ -2060,6 +2067,69 @@ mod tests {
         let rescanned = rescan_file(&mut conn, id).expect("rescan should succeed");
         assert_eq!(rescanned.weight_source, "slicer");
         assert!((rescanned.estimated_weight_g.expect("weight") - 7.70).abs() < 1e-6);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn rescan_file_updates_file_size_and_content_hash_from_current_disk_contents() {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+        use zip::ZipWriter;
+
+        fn write_3mf(path: &std::path::Path, slice_info_xml: Option<&str>) {
+            let mut buf = Vec::new();
+            {
+                let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buf));
+                let options = SimpleFileOptions::default();
+                zip.start_file("[Content_Types].xml", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>"#).unwrap();
+                zip.start_file("_rels/.rels", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model"/></Relationships>"#).unwrap();
+                zip.start_file("3D/3dmodel.model", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources></resources><build></build></model>"#).unwrap();
+                if let Some(xml) = slice_info_xml {
+                    zip.start_file("Metadata/slice_info.config", options).unwrap();
+                    zip.write_all(xml.as_bytes()).unwrap();
+                }
+                zip.finish().unwrap();
+            }
+            std::fs::write(path, &buf).expect("write temp file");
+        }
+
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let path = std::env::temp_dir().join(format!("rescan_hash_test_{nanos}.3mf"));
+        write_3mf(&path, None);
+
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let imported = import_one(&mut conn, &path, None, None).expect("initial import");
+        let id: i64 = imported.id.parse().unwrap();
+
+        let before = db::get_file(&conn, id).expect("get_file").expect("file exists");
+        let hash_before = before.content_hash.clone();
+        let size_before = before.file_size_bytes;
+
+        // Ueberschreibt die Datei am selben Pfad mit ANDEREM Inhalt (echtes
+        // Re-Slicing simulieren) - die eingebettete slice_info.config macht
+        // die Bytes garantiert unterschiedlich lang.
+        let slice_info_xml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<config>
+  <plate>
+    <metadata key="index" value="1"/>
+    <metadata key="weight" value="12.34"/>
+    <filament id="1" type="PLA" color="#00FF00FF" used_m="4.0" used_g="12.34"/>
+  </plate>
+</config>"##;
+        write_3mf(&path, Some(slice_info_xml));
+
+        let expected_hash = compute_content_hash(&path).expect("hash new content");
+
+        rescan_file(&mut conn, id).expect("rescan should succeed");
+
+        let after = db::get_file(&conn, id).expect("get_file").expect("file exists");
+        assert_ne!(after.file_size_bytes, size_before, "file_size_bytes must reflect rescanned content");
+        assert_ne!(after.content_hash, hash_before, "content_hash must reflect rescanned content");
+        assert_eq!(after.content_hash, Some(expected_hash), "content_hash must match hash of new disk content");
 
         let _ = std::fs::remove_file(&path);
     }

@@ -274,7 +274,13 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
                 style={{ fontSize: 'var(--font-size-meta)' }}
               >
                 {m.materials[0] && <span>📦 {m.materials[0].name}</span>}
-                {m.estimatedWeightG !== null && <span>⚖ ≈ {formatWeightG(m.estimatedWeightG, language)}</span>}
+                {m.estimatedWeightG !== null && (
+                  <span>
+                    ⚖ {m.weightSource === 'slicer'
+                      ? formatWeightG(m.estimatedWeightG, language)
+                      : `≈ ${formatWeightG(m.estimatedWeightG, language)}`}
+                  </span>
+                )}
               </div>
             </div>
           </div>
