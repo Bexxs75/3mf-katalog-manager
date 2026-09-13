@@ -129,6 +129,10 @@ export const en: Translations = {
   markAsPrinted: 'Mark as printed',
   markAsNotPrinted: 'Mark as not printed',
   metaWeight: 'Weight (estimated)',
+  metaWeightFromSlicer: 'Weight (from slicer)',
+  sliceFilamentHeading: 'Filament usage (from slicer)',
+  sliceFilamentPlateLabel: 'Plate {index}',
+  rescanMetadataButton: 'Rescan metadata',
 
   sortLastViewed: 'Last viewed',
   newBadge: 'NEW',

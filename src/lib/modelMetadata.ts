@@ -15,12 +15,17 @@ export function buildMetaRows(
       : model.materials.map((m) => m.name).join(', ');
   const objectCountValue = model.objectCount === null ? t('noValue') : String(model.objectCount);
   const weightValue =
-    model.estimatedWeightG === null ? t('noValue') : `≈ ${formatWeightG(model.estimatedWeightG, language)}`;
+    model.estimatedWeightG === null
+      ? t('noValue')
+      : model.weightSource === 'slicer'
+        ? formatWeightG(model.estimatedWeightG, language)
+        : `≈ ${formatWeightG(model.estimatedWeightG, language)}`;
+  const weightLabel = model.weightSource === 'slicer' ? t('metaWeightFromSlicer') : t('metaWeight');
 
   const rows = [
     { label: t('metaDimensions'), value: formatDimensions(model.dimensionsMm, language) },
     { label: t('metaVolume'), value: formatVolumeCm3(model.volumeCm3, language) },
-    { label: t('metaWeight'), value: weightValue },
+    { label: weightLabel, value: weightValue },
     { label: t('metaObjectCount'), value: objectCountValue },
   ];
 

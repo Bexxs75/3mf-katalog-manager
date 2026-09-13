@@ -129,6 +129,10 @@ export const es: Translations = {
   markAsPrinted: 'Marcar como impreso',
   markAsNotPrinted: 'Marcar como no impreso',
   metaWeight: 'Peso (estimado)',
+  metaWeightFromSlicer: 'Peso (del laminador)',
+  sliceFilamentHeading: 'Consumo de filamento (del laminador)',
+  sliceFilamentPlateLabel: 'Placa {index}',
+  rescanMetadataButton: 'Volver a leer metadatos',
 
   sortLastViewed: 'Visto recientemente',
   newBadge: 'NUEVO',
