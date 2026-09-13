@@ -25,3 +25,8 @@ dist-ssr
 *.sln
 *.sw?
 .worktrees/
+
+# Plugin-Artefakte (ruflo-core MCP), nicht Teil des Projekts
+.claude-flow/
+.claude/
+ruvector.db

@@ -1,0 +1,1208 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<title>3MF Katalog Manager — GUI-Redesign</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  /* ============ Tokens (aus dem echten Projekt uebernommen, siehe theme.css) ============ */
+  :root{
+    --bg: oklch(0.965 0.004 60);
+    --panel: oklch(1 0 0);
+    --panel-2: oklch(0.985 0.003 60);
+    --line: oklch(0.895 0.006 60);
+    --line-strong: oklch(0.82 0.008 60);
+    --ink: oklch(0.245 0.01 45);
+    --ink-2: oklch(0.505 0.01 50);
+    --ink-3: oklch(0.645 0.008 50);
+    --accent: oklch(0.565 0.165 30);
+    --accent-ink: oklch(0.99 0.01 30);
+    --accent-soft: oklch(0.945 0.03 30);
+    --plate: oklch(0.915 0.006 60);
+    --plate-2: oklch(0.955 0.004 60);
+    --hatch: rgba(40, 28, 24, 0.09);
+    --shadow: 0 1px 2px rgba(40, 28, 24, 0.06), 0 8px 24px rgba(40, 28, 24, 0.06);
+    --shadow-lift: 0 2px 6px rgba(40, 28, 24, 0.08), 0 16px 32px rgba(40, 28, 24, 0.10);
+    --good: oklch(0.52 0.13 150);
+    --good-soft: oklch(0.94 0.045 150);
+    --warn: oklch(0.62 0.14 80);
+    --warn-soft: oklch(0.94 0.05 85);
+    --crit: oklch(0.55 0.18 18);
+    --crit-soft: oklch(0.94 0.045 18);
+    --rail-w: 60px;
+    --sidebar-w: 240px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg: oklch(0.165 0.005 60);
+      --panel: oklch(0.205 0.006 60);
+      --panel-2: oklch(0.235 0.006 60);
+      --line: oklch(0.295 0.008 60);
+      --line-strong: oklch(0.375 0.01 60);
+      --ink: oklch(0.945 0.005 60);
+      --ink-2: oklch(0.715 0.008 60);
+      --ink-3: oklch(0.555 0.01 60);
+      --accent: oklch(0.735 0.155 34);
+      --accent-ink: oklch(0.17 0.03 30);
+      --accent-soft: oklch(0.285 0.05 32);
+      --plate: oklch(0.195 0.006 60);
+      --plate-2: oklch(0.235 0.006 60);
+      --hatch: rgba(255, 255, 255, 0.07);
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+      --shadow-lift: 0 4px 10px rgba(0,0,0,0.35), 0 20px 40px rgba(0,0,0,0.4);
+      --good: oklch(0.72 0.14 150);
+      --good-soft: oklch(0.28 0.05 150);
+      --warn: oklch(0.8 0.15 85);
+      --warn-soft: oklch(0.3 0.06 85);
+      --crit: oklch(0.68 0.19 15);
+      --crit-soft: oklch(0.3 0.06 15);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg: oklch(0.165 0.005 60);
+    --panel: oklch(0.205 0.006 60);
+    --panel-2: oklch(0.235 0.006 60);
+    --line: oklch(0.295 0.008 60);
+    --line-strong: oklch(0.375 0.01 60);
+    --ink: oklch(0.945 0.005 60);
+    --ink-2: oklch(0.715 0.008 60);
+    --ink-3: oklch(0.555 0.01 60);
+    --accent: oklch(0.735 0.155 34);
+    --accent-ink: oklch(0.17 0.03 30);
+    --accent-soft: oklch(0.285 0.05 32);
+    --plate: oklch(0.195 0.006 60);
+    --plate-2: oklch(0.235 0.006 60);
+    --hatch: rgba(255, 255, 255, 0.07);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+    --shadow-lift: 0 4px 10px rgba(0,0,0,0.35), 0 20px 40px rgba(0,0,0,0.4);
+    --good: oklch(0.72 0.14 150);
+    --good-soft: oklch(0.28 0.05 150);
+    --warn: oklch(0.8 0.15 85);
+    --warn-soft: oklch(0.3 0.06 85);
+    --crit: oklch(0.68 0.19 15);
+    --crit-soft: oklch(0.3 0.06 15);
+  }
+
+  *{ box-sizing: border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Barlow', Helvetica, sans-serif;
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono{ font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+  ::-webkit-scrollbar{ width:9px; height:9px; }
+  ::-webkit-scrollbar-thumb{ background: var(--line-strong); border-radius: 8px; }
+  ::-webkit-scrollbar-track{ background: transparent; }
+  button{ font: inherit; color: inherit; }
+  :focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* ============ Intro / Briefing ============ */
+  .brief{
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 40px 20px 8px;
+  }
+  .brief-eyebrow{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .brief h1{
+    font-size: clamp(22px, 4vw, 30px);
+    line-height: 1.15;
+    margin: 8px 0 10px;
+    text-wrap: balance;
+    letter-spacing: -0.01em;
+  }
+  .brief p{
+    color: var(--ink-2);
+    line-height: 1.55;
+    max-width: 62ch;
+    margin: 0 0 6px;
+  }
+  .brief-grid{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 10px;
+    margin: 20px 0 28px;
+  }
+  .brief-card{
+    border: 1px solid var(--line);
+    background: var(--panel);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .brief-card b{
+    display:block;
+    font-size: 12.5px;
+    margin-bottom: 4px;
+  }
+  .brief-card span{
+    display:block;
+    color: var(--ink-3);
+    font-size: 11.5px;
+    line-height: 1.45;
+  }
+
+  /* ============ App frame ============ */
+  .frame-label{
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .frame-label .tag{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .theme-toggle{
+    display:flex; gap:2px; padding:2px;
+    border:1px solid var(--line); border-radius: 8px; background: var(--panel-2);
+  }
+  .theme-toggle button{
+    height: 26px; padding: 0 11px; border-radius: 6px; border:0; background:transparent;
+    color: var(--ink-2); cursor:pointer; font-size: 11.5px; font-weight: 600;
+  }
+  .theme-toggle button.active{ background: var(--panel); color: var(--ink); box-shadow: var(--shadow); }
+
+  .app-shell{
+    max-width: 1180px;
+    margin: 14px auto 60px;
+    padding: 0 20px;
+  }
+  .app-window{
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: var(--shadow-lift);
+    background: var(--panel);
+    display: grid;
+    grid-template-columns: var(--rail-w) 1fr;
+    height: 680px;
+  }
+
+  /* ---- Navigation rail: primary fix — Katalog/Filament/Papierkorb sind
+     jetzt gleichwertige, permanent sichtbare Ziele statt eines Textlinks,
+     der hinter Icons in der Kopfzeile verschwindet. ---- */
+  .rail{
+    grid-row: 1 / -1;
+    background: var(--panel-2);
+    border-right: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 14px 0 10px;
+  }
+  .rail-mark{
+    width: 30px; height: 30px; border-radius: 8px;
+    background: var(--accent); color: var(--accent-ink);
+    display:grid; place-items:center;
+    font-family:'IBM Plex Mono', monospace; font-weight:700; font-size: 12px;
+    margin-bottom: 18px;
+  }
+  .rail-nav{ display:flex; flex-direction:column; gap:6px; }
+  .rail-btn{
+    position: relative;
+    width: 42px; height: 42px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--ink-3);
+    cursor: pointer;
+    display: grid; place-items:center;
+    transition: background .15s, color .15s, border-color .15s;
+  }
+  .rail-btn svg{ width:19px; height:19px; }
+  .rail-btn:hover{ color: var(--ink); background: var(--panel); }
+  .rail-btn.active{
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-color: color-mix(in oklch, var(--accent) 30%, transparent);
+  }
+  .rail-btn .count{
+    position:absolute; top:-3px; right:-3px;
+    min-width:15px; height:15px; padding:0 3px; border-radius:999px;
+    background: var(--accent); color: var(--accent-ink);
+    font-family:'IBM Plex Mono', monospace; font-size:9px; font-weight:700;
+    display:grid; place-items:center;
+  }
+  .rail-spacer{ flex:1; }
+  .rail-bottom{ display:flex; flex-direction:column; gap:6px; }
+
+  .rail-tip{
+    position:absolute; left: calc(var(--rail-w) + 8px);
+    background: var(--ink); color: var(--bg);
+    font-size: 11px; font-weight:600; white-space:nowrap;
+    padding: 5px 8px; border-radius: 6px;
+    opacity:0; pointer-events:none; transform: translateX(-4px);
+    transition: opacity .12s, transform .12s;
+    z-index: 30;
+  }
+  .rail-btn:hover .rail-tip{ opacity:1; transform: translateX(0); }
+
+  /* ---- Main column ---- */
+  .main-col{ display:flex; flex-direction:column; min-width:0; min-height:0; }
+
+  .topbar{
+    flex: none;
+    height: 52px;
+    display:flex; align-items:center; gap:10px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+  }
+  .topbar h2{ font-size: 14.5px; font-weight:700; margin:0; letter-spacing:-0.01em; }
+  .topbar .sub{ color: var(--ink-3); font-size: 11px; }
+  .btn{
+    display:inline-flex; align-items:center; gap:6px;
+    height: 30px; padding: 0 12px;
+    border-radius: 8px; border: 1px solid var(--line-strong);
+    background: var(--panel); color: var(--ink-2);
+    cursor:pointer; font-weight:600; font-size:12px;
+  }
+  .btn:hover{ color: var(--ink); border-color: var(--accent); }
+  .btn-primary{
+    border-color: var(--accent); background: var(--accent); color: var(--accent-ink);
+  }
+  .btn-primary:hover{ filter: brightness(1.06); }
+  .seg{ display:flex; padding:2px; gap:2px; border:1px solid var(--line); border-radius:8px; background:var(--panel-2); }
+  .seg button{ height:26px; padding:0 10px; border:0; border-radius:6px; background:transparent; color:var(--ink-2); cursor:pointer; font-size:12px; font-weight:600; }
+  .seg button.active{ background: var(--panel); color: var(--ink); box-shadow: var(--shadow); }
+  .search{
+    display:flex; align-items:center; gap:7px;
+    height:30px; padding:0 10px; min-width: 190px;
+    border:1px solid var(--line); border-radius:8px; background: var(--panel-2);
+    color: var(--ink-3);
+  }
+  .search input{ border:0; background:transparent; outline:0; color:var(--ink); font-size:12.5px; width:100%; }
+
+  .body-row{ flex:1; display:flex; min-height:0; }
+
+  /* ---- Scope bar: zeigt & bestätigt was gerade gefiltert ist (Ordner
+     oder Sammlung) — beantwortet "was passiert beim Klick auf einen
+     Ordner/eine Sammlung" direkt sichtbar statt implizit. ---- */
+  .scopebar{
+    flex:none; display:flex; align-items:center; gap:10px;
+    height: 34px; padding: 0 16px;
+    border-bottom: 1px solid var(--line); background: var(--panel-2);
+  }
+  .scope-name{ font-size: 11.5px; font-weight:700; letter-spacing:.02em; color: var(--ink); }
+  .scope-clear{
+    display:inline-flex; align-items:center; height:22px; padding:0 8px; border-radius:999px;
+    border:1px solid var(--accent); background: var(--accent-soft); color: var(--accent);
+    font-family:'IBM Plex Mono', monospace; font-size:10.5px; font-weight:700; cursor:pointer;
+  }
+
+  /* ---- Filter sidebar (catalog only) ---- */
+  .filters{
+    width: var(--sidebar-w); flex:none;
+    border-right: 1px solid var(--line);
+    padding: 14px 12px; overflow-y:auto;
+    background: var(--panel);
+  }
+  .f-label{
+    display:flex; align-items:baseline; justify-content:space-between;
+    font-family:'IBM Plex Mono', monospace; font-size:10px; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--ink-3); margin: 16px 4px 8px;
+  }
+  .f-label:first-child{ margin-top:0; }
+  .f-label-action{
+    text-transform:none; letter-spacing:0; font-size:10.5px; color:var(--accent); cursor:pointer; font-weight:600;
+  }
+  .f-label-info{
+    width:13px; height:13px; border-radius:50%; border:1px solid var(--ink-3);
+    display:inline-grid; place-items:center; font-size:9px; color:var(--ink-3);
+    cursor:default; text-transform:none; letter-spacing:0; margin-left:5px; position:relative;
+  }
+  .f-label-info .tip{
+    position:absolute; top:18px; left:0; width:210px; z-index:20;
+    background: var(--ink); color: var(--bg); font-size:11px; font-weight:500; line-height:1.4;
+    padding:8px 10px; border-radius:8px; opacity:0; pointer-events:none; transform: translateY(-3px);
+    transition: opacity .12s, transform .12s;
+  }
+  .f-label-info:hover .tip{ opacity:1; transform: translateY(0); }
+  .f-item{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    height:30px; padding: 0 8px; border-radius:7px; cursor:pointer; font-size:12.5px; color:var(--ink-2);
+  }
+  .f-item:hover{ background: var(--panel-2); color: var(--ink); }
+  .f-item.active{ background: var(--accent-soft); color: var(--accent); font-weight:600; }
+  .f-item .n{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:var(--ink-3); }
+  .f-item-new{ color: var(--ink-3); border:1px dashed var(--line-strong); }
+  .f-item-new:hover{ color: var(--accent); border-color: var(--accent); background:transparent; }
+
+  /* ---- Ordner-Baum: spiegelt echte Verzeichnisstruktur, drag&drop
+     verschiebt Dateien/Ordner tatsaechlich (physischer Pfadwechsel) —
+     bewusst optisch abgesetzt von Sammlungen (rein virtuell, kein Pfad). ---- */
+  .tree-row{
+    display:flex; align-items:center; gap:5px;
+    height:28px; padding: 0 6px; border-radius:7px; cursor:pointer;
+    font-size:12.5px; color:var(--ink-2); user-select:none;
+    border: 1.5px solid transparent;
+  }
+  .tree-row:hover{ background: var(--panel-2); color: var(--ink); }
+  .tree-row.active{ background: var(--accent-soft); color: var(--accent); font-weight:600; }
+  .tree-row.dragging{ opacity:.4; }
+  .tree-row.drop-target{ border-color: var(--accent); background: var(--accent-soft); }
+  .tree-caret{
+    flex:none; width:14px; height:14px; display:grid; place-items:center;
+    color: var(--ink-3); font-size:9px; transition: transform .12s;
+  }
+  .tree-caret.open{ transform: rotate(90deg); }
+  .tree-caret.leaf{ visibility:hidden; }
+  .tree-icon{ flex:none; width:14px; height:14px; color: var(--ink-3); }
+  .tree-row.active .tree-icon{ color: var(--accent); }
+  .tree-name{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tree-n{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:var(--ink-3); flex:none; }
+  .tree-children{ overflow:hidden; }
+  .tree-path-hint{
+    margin: 2px 0 6px; padding: 0 6px;
+    font-family:'IBM Plex Mono', monospace; font-size:10px; color:var(--ink-3);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+
+  /* ---- Toast (Verschieben-Bestaetigung) ---- */
+  .toast{
+    position:absolute; left:50%; bottom:16px; transform: translateX(-50%) translateY(8px);
+    display:flex; align-items:center; gap:8px;
+    background: var(--ink); color: var(--bg); border-radius: 10px;
+    padding: 9px 14px; font-size:12px; font-weight:600;
+    box-shadow: var(--shadow-lift);
+    opacity:0; pointer-events:none; transition: opacity .18s, transform .18s;
+    z-index: 50; max-width: 420px;
+  }
+  .toast.show{ opacity:1; transform: translateX(-50%) translateY(0); }
+  .toast .mono{ font-weight:500; opacity:.75; }
+
+  /* ---- Sammlungen-Galerie (Cover-Karten) ---- */
+  .coll-card{
+    border-radius: 12px; overflow:hidden; cursor:pointer;
+    background: var(--panel); border: 1.5px solid var(--line);
+    display:flex; flex-direction:column;
+    transition: border-color .12s, transform .12s, box-shadow .12s;
+  }
+  .coll-card:hover{ border-color: var(--line-strong); transform: translateY(-1px); box-shadow: var(--shadow); }
+  .coll-cover{ aspect-ratio: 16/9; background: var(--plate); position:relative; display:grid; grid-template-columns:1fr 1fr; }
+  .coll-cover img{ width:100%; height:100%; object-fit:cover; }
+  .coll-cover .single{ grid-column: 1 / -1; }
+  .coll-meta{ padding: 10px 12px 12px; }
+  .coll-meta .name{ font-size:13px; font-weight:700; margin-bottom:3px; }
+  .coll-meta .n{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:var(--ink-3); }
+  .coll-card-new{
+    border-radius:12px; border:1.5px dashed var(--line-strong); min-height: 128px;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    color: var(--ink-3); font-weight:700; font-size:12.5px;
+  }
+  .coll-card-new:hover{ border-color: var(--accent); color: var(--accent); }
+  .gallery-empty{
+    text-align:center; color: var(--ink-3); font-size:12.5px; line-height:1.6;
+    padding: 60px 20px;
+  }
+  .chips{ display:flex; flex-wrap:wrap; gap:6px; padding: 0 4px; }
+  .chip{
+    display:inline-flex; align-items:center; gap:5px;
+    height:22px; padding:0 9px; border-radius:999px; border:1px solid var(--line);
+    background:var(--panel-2); color:var(--ink-2); font-family:'IBM Plex Mono', monospace; font-size:10.5px;
+  }
+  .chip .dot{ width:5px; height:5px; border-radius:50%; }
+
+  /* ---- Content area ---- */
+  .content{ flex:1; min-width:0; overflow-y:auto; padding: 16px; }
+
+  .grid{
+    display:grid; gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  }
+  .card{
+    border-radius: 12px; overflow:hidden; cursor:pointer;
+    background: var(--panel); border: 1.5px solid var(--line);
+    transition: border-color .12s, transform .12s, box-shadow .12s;
+  }
+  .card:hover{ border-color: var(--line-strong); transform: translateY(-1px); box-shadow: var(--shadow); }
+  .card.sel{ border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .card .thumb{
+    position:relative; aspect-ratio:1; background: var(--plate);
+    display:grid; place-items:center; overflow:hidden;
+  }
+  .card .thumb img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  .plate-mark{
+    width:40px; height:40px; border:1.5px dashed var(--line-strong); transform:rotate(45deg); border-radius:3px;
+  }
+  .badge{
+    position:absolute; font-family:'IBM Plex Mono', monospace; font-size:9px; font-weight:700;
+    padding:2px 6px; border-radius:6px; letter-spacing:.02em;
+  }
+  .badge.new{ top:7px; left:7px; background: var(--panel); border:1px solid var(--line-strong); color:var(--ink-2); }
+  .badge.printed{ bottom:7px; right:7px; background: var(--good-soft); color: var(--good); }
+  .card .meta{ padding: 9px 10px 10px; }
+  .card .meta .name{ font-size:12.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:5px; }
+  .card .meta .tags{ display:flex; gap:4px; flex-wrap:wrap; }
+  .card .meta .tags span{ font-family:'IBM Plex Mono', monospace; font-size:9.5px; color:var(--ink-3); background:var(--panel-2); border:1px solid var(--line); border-radius:999px; padding:1px 6px; }
+
+  /* ---- Filament ---- */
+  .stat-row{ display:grid; grid-template-columns: repeat(4,1fr); gap:10px; margin-bottom:14px; }
+  .stat{ border:1px solid var(--line); background:var(--panel); border-radius:12px; padding:12px 14px; }
+  .stat .l{ font-family:'IBM Plex Mono', monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); margin-bottom:6px; }
+  .stat .v{ font-family:'IBM Plex Mono', monospace; font-size:20px; font-weight:700; }
+  .stat .v.warn{ color: var(--warn); }
+
+  .fgrid{ display:grid; gap:12px; grid-template-columns: repeat(auto-fill, minmax(220px,1fr)); }
+  .spool{ border:1px solid var(--line); background:var(--panel); border-radius:12px; overflow:hidden; }
+  .spool-top{ display:flex; gap:10px; align-items:center; padding:11px 12px 8px; }
+  .spool-swatch{ width:34px; height:34px; border-radius:9px; flex:none; display:grid; place-items:center; font-family:'IBM Plex Mono', monospace; font-size:9px; font-weight:700; color: #fff; }
+  .spool-top .name{ font-weight:700; font-size:13px; }
+  .spool-top .sub{ color:var(--ink-3); font-size:11px; }
+  .spool-body{ padding: 0 12px 12px; display:flex; flex-direction:column; gap:8px; }
+  .row-between{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .loc{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; background:var(--panel-2); border:1px solid var(--line); border-radius:7px; padding:3px 8px; color:var(--ink-2); }
+  .pill{ font-family:'IBM Plex Mono', monospace; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; border-radius:999px; padding:3px 8px; }
+  .pill.ok{ background:var(--good-soft); color:var(--good); }
+  .pill.low{ background:var(--warn-soft); color:var(--warn); }
+  .pill.empty{ background:var(--crit-soft); color:var(--crit); }
+  .bar{ height:6px; border-radius:99px; background:var(--panel-2); overflow:hidden; }
+  .bar > i{ display:block; height:100%; border-radius:99px; }
+  .bar.ok > i{ background:var(--good); }
+  .bar.low > i{ background:var(--warn); }
+  .bar.empty > i{ background:var(--crit); }
+  .gw{ font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--ink-2); font-variant-numeric: tabular-nums; }
+
+  /* ---- Trash ---- */
+  .trash-row{ display:flex; align-items:center; gap:12px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--panel); margin-bottom:8px; }
+  .trash-row .tmini{ width:38px; height:38px; border-radius:8px; background:var(--plate); flex:none; }
+  .trash-row .name{ font-weight:600; font-size:12.5px; }
+  .trash-row .exp{ font-size:11px; color:var(--ink-3); }
+  .trash-row .sp{ flex:1; }
+
+  /* ---- Modell-Detailseite: bleibt Vollseite (wie im echten Programm) —
+     ersetzt das Raster innerhalb von .content statt eines Seitenpanels,
+     damit 3D-Ansicht, Metadaten und Druckprotokoll wie gewohnt viel Platz
+     bekommen. ---- */
+  .detail-back{
+    display:inline-flex; align-items:center; gap:6px;
+    height:30px; width:30px; border-radius:8px; border:1px solid var(--line-strong);
+    background: var(--panel); color: var(--ink-2); cursor:pointer; margin-bottom:14px;
+  }
+  .detail-back:hover{ color: var(--ink); border-color: var(--accent); }
+  .detail-title{ font-size:20px; font-weight:700; margin: 0 0 16px; letter-spacing:-0.01em; }
+  .detail-cols{ display:grid; grid-template-columns: 1.5fr 1fr; gap:16px; align-items:start; }
+  .detail-viewer{
+    border:1px solid var(--line); border-radius:12px; background: var(--plate);
+    aspect-ratio: 4/3; position:relative; overflow:hidden;
+    display:grid; place-items:center;
+  }
+  .detail-viewer img{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
+  .detail-viewer-toggle{
+    position:absolute; top:10px; right:10px; display:flex; padding:2px; gap:2px;
+    border:1px solid var(--line); border-radius:8px; background: var(--panel); box-shadow: var(--shadow);
+  }
+  .detail-viewer-toggle button{ height:24px; padding:0 9px; border:0; border-radius:6px; background:transparent; color:var(--ink-2); font-size:11px; font-weight:600; cursor:pointer; }
+  .detail-viewer-toggle button.active{ background: var(--accent); color: var(--accent-ink); }
+  .detail-upload{ margin-top:10px; }
+  .detail-panel{ display:flex; flex-direction:column; gap:0; border:1px solid var(--line); border-radius:12px; overflow:hidden; background: var(--panel); }
+  .detail-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 13px; border-bottom:1px solid var(--line); }
+  .detail-row:last-of-type{ border-bottom:0; }
+  .detail-row .l{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-3); }
+  .detail-row .v{ font-size:12.5px; font-weight:600; text-align:right; }
+  .detail-tags{ padding: 11px 13px 13px; }
+  .detail-tags .l{ font-family:'IBM Plex Mono', monospace; font-size:10px; text-transform:uppercase; letter-spacing:.1em; color:var(--ink-3); margin-bottom:7px; }
+  .detail-tags .chips{ padding:0; }
+  .detail-tags .chip{ padding-right:6px; }
+  .detail-tags .chip .x{ cursor:pointer; color:var(--ink-3); }
+  .detail-tags .chip .x:hover{ color: var(--accent); }
+  .detail-tag-add{
+    display:inline-flex; align-items:center; height:22px; padding:0 9px; border-radius:999px;
+    border:1px dashed var(--line-strong); color:var(--ink-3); font-size:11px; cursor:pointer;
+  }
+  .detail-tag-add:hover{ color:var(--accent); border-color:var(--accent); }
+  .detail-log{ margin-top:16px; border:1px solid var(--line); border-radius:12px; background:var(--panel); }
+  .detail-log-head{ display:flex; align-items:center; justify-content:space-between; padding:10px 14px; border-bottom:1px solid var(--line); }
+  .detail-log-head .l{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:.1em; color:var(--ink-3); }
+  .detail-log-head .add{ font-size:12px; font-weight:600; color:var(--accent); cursor:pointer; }
+  .detail-log-body{ padding:14px; font-size:12px; color:var(--ink-3); }
+  .detail-log-entry{ display:flex; justify-content:space-between; gap:10px; padding:7px 0; border-bottom:1px solid var(--line); font-size:12px; color:var(--ink-2); }
+  .detail-log-entry:last-child{ border-bottom:0; }
+  .detail-bottombar{
+    flex:none; display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+    padding: 10px 16px; border-top: 1px solid var(--line); background: var(--panel);
+  }
+  .detail-bottombar .path{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:var(--ink-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-right:auto; }
+  .detail-bottombar .btn-danger{ border-color: var(--crit); color: var(--crit); }
+  .detail-bottombar .btn-danger:hover{ background: var(--crit-soft); }
+
+  .view{ display:none; }
+  .view.show{ display:flex; flex-direction:column; flex:1; min-height:0; }
+  .view.show.grid-view{ display:block; }
+
+  .annot{
+    max-width: 1180px; margin: 26px auto 0; padding: 0 20px;
+    display:grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap:10px;
+  }
+  .annot .a{ border:1px dashed var(--line-strong); border-radius:10px; padding:11px 13px; }
+  .annot .a b{ display:block; font-size:12px; margin-bottom:3px; color:var(--accent); }
+  .annot .a span{ display:block; color:var(--ink-2); font-size:11.5px; line-height:1.45; }
+
+  @media (max-width: 760px){
+    .app-shell{ padding:0 10px; }
+    .app-window{ height: auto; min-height: 560px; }
+    .filters{ display:none; }
+    .stat-row{ grid-template-columns: repeat(2,1fr); }
+    .detail-cols{ grid-template-columns: 1fr; }
+    .brief{ padding: 28px 14px 4px; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="brief">
+    <div class="brief-eyebrow">Design-Review — 3MF Katalog Manager</div>
+    <h1>Ein Werkzeugregal statt zwei getrennter Programme</h1>
+    <p>
+      Heute liegt der Wechsel „3D-Katalog ↔ Filament-Lager" als schmale Text-Schaltfläche
+      ganz rechts in der Kopfzeile, nach Sortierung, Ansichts-Umschalter und Mülleimer-Icon —
+      leicht zu übersehen, weil sie wie eine Nebenfunktion aussieht statt wie ein
+      gleichwertiger Programmbereich. Die zwei Bereiche verwenden zudem unterschiedliche
+      Eckenradien und Kartenformate, wodurch sich der Wechsel wie ein App-Bruch anfühlt.
+    </p>
+    <p>
+      Der Vorschlag unten führt eine feste <b>Navigationsleiste</b> links ein — Katalog,
+      Filament-Lager und Papierkorb stehen als gleichrangige, dauerhaft sichtbare Ziele
+      nebeneinander — und vereinheitlicht Kartenform, Radius und Abstände über beide Bereiche
+      hinweg. Farb- und Schriftsystem des Projekts (warmes Off-White, Terrakotta-Akzent,
+      Barlow/IBM Plex Mono) bleiben erhalten.
+    </p>
+    <p>
+      Recherche im echten Code ergab: „Ordner" war bisher totes UI — <span class="mono">folder_id</span>
+      wurde beim Import nie gesetzt, es gab keine Anlege-Funktion. Dieser Entwurf macht daraus ein
+      echtes Feature: ein Ordner-Baum, der die tatsächliche Verzeichnisstruktur auf der Platte
+      spiegelt (inkl. Unterordner), auf- und zuklappbar. Dateien und Ordner lassen sich per
+      Drag & Drop im Baum verschieben — das verschiebt die Datei auch <b>physisch</b>, anders als
+      „Zu Sammlung hinzufügen", das nur eine Datenbank-Referenz setzt. Die vollflächige
+      Modell-Detailseite (3D-Ansicht, Metadaten, Druckprotokoll) bleibt dabei unverändert erhalten —
+      sie wird nur um die neue Navigation herum eingebettet, nicht durch ein Seitenpanel ersetzt.
+    </p>
+    <div class="brief-grid">
+      <div class="brief-card"><b>① Navigationsleiste</b><span>Katalog / Filament-Lager / Papierkorb als permanente Icons statt vergrabenem Textlink.</span></div>
+      <div class="brief-card"><b>② Ein Kartensystem</b><span>12px-Radius, gleiche Innenabstände & Schatten in Katalog und Lager.</span></div>
+      <div class="brief-card"><b>③ Echter Ordner-Baum</b><span>Spiegelt die Platte inkl. Unterordner. Verschieben per Drag & Drop ändert den echten Dateipfad.</span></div>
+      <div class="brief-card"><b>④ Detailseite bleibt Vollseite</b><span>3D-Ansicht, Metadaten, Druckprotokoll unverändert — nur die Navigation drumherum ist neu.</span></div>
+    </div>
+  </div>
+
+  <div class="frame-label">
+    <span class="tag">Klickbarer Prototyp — Navigation links testen</span>
+    <div class="theme-toggle" id="themeToggle">
+      <button data-theme="light" class="active">Hell</button>
+      <button data-theme="dark">Dunkel</button>
+    </div>
+  </div>
+
+  <div class="app-shell">
+    <div class="app-window">
+
+      <!-- ============ RAIL ============ -->
+      <nav class="rail">
+        <div class="rail-mark">3MF</div>
+        <div class="rail-nav">
+          <button class="rail-btn active" data-view="catalog" aria-label="Katalog">
+            <span class="rail-tip">Katalog</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          </button>
+          <button class="rail-btn" data-view="filament" aria-label="Filament-Lager">
+            <span class="rail-tip">Filament-Lager</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+          <button class="rail-btn" data-view="trash" aria-label="Papierkorb">
+            <span class="rail-tip">Papierkorb</span>
+            <span class="count">3</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M9 7V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V7m-8 0 1 13.5A1.5 1.5 0 0 0 9.5 22h5a1.5 1.5 0 0 0 1.5-1.5L17 7"/></svg>
+          </button>
+        </div>
+        <div class="rail-spacer"></div>
+        <div class="rail-bottom">
+          <button class="rail-btn" aria-label="Einstellungen">
+            <span class="rail-tip">Einstellungen</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 13.5a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V19.6a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.04-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87A1.7 1.7 0 0 0 3.13 12.46H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.04 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1.04-1.56V1a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V6a1.7 1.7 0 0 0 1.56 1.04H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.56 1.04z" opacity="0"/></svg>
+          </button>
+        </div>
+      </nav>
+
+      <!-- ============ MAIN COLUMN ============ -->
+      <div class="main-col" style="position:relative;">
+
+        <!-- ---- CATALOG VIEW ---- -->
+        <div class="view show" id="view-catalog" style="min-height:0;">
+          <div class="topbar">
+            <button class="btn btn-primary">＋ Importieren</button>
+            <div class="seg">
+              <button class="active">Raster</button>
+              <button>Liste</button>
+            </div>
+            <div class="sp" style="flex:1"></div>
+            <div class="search"><span class="mono" style="font-size:12px;">⌕</span><input placeholder="Katalog durchsuchen…"></div>
+          </div>
+          <div class="scopebar" id="scopebar">
+            <span class="scope-name mono" id="scopeName">Alle Modelle</span>
+            <button class="scope-clear" id="scopeClear" hidden>✕ zurücksetzen</button>
+            <span class="sp" style="flex:1"></span>
+            <span class="mono sub" id="scopeCount">128 Dateien</span>
+          </div>
+          <div class="body-row" style="min-height:0;">
+            <aside class="filters">
+              <div class="f-label">
+                <span>Ordner
+                  <span class="f-label-info">i<span class="tip">Echte Verzeichnisse von der Platte. Verschieben hier verschiebt die Datei auch physisch — anders als „Sammlungen".</span></span>
+                </span>
+              </div>
+              <div id="folderTree"></div>
+              <div class="tree-path-hint" id="treePathHint"></div>
+
+              <div class="f-label">
+                <span>Sammlungen</span>
+                <span class="f-label-action" id="galleryOpenBtn">alle anzeigen</span>
+              </div>
+              <div id="collectionList"></div>
+              <div class="f-item f-item-new" id="newCollectionRow"><span>＋ Neue Sammlung</span></div>
+
+              <div class="f-label">Tags</div>
+              <div class="chips">
+                <span class="chip"><i class="dot" style="background:oklch(0.62 0.14 30)"></i>#reaper</span>
+                <span class="chip"><i class="dot" style="background:oklch(0.62 0.14 150)"></i>#voron</span>
+                <span class="chip"><i class="dot" style="background:oklch(0.62 0.14 260)"></i>#deko</span>
+                <span class="chip"><i class="dot" style="background:oklch(0.62 0.14 80)"></i>#funktional</span>
+              </div>
+
+              <div class="f-label">Warteschlange</div>
+              <div class="f-item"><span>1 · Articulated_Fox.3mf</span></div>
+              <div class="f-item"><span>2 · Cable_Clip_x10.3mf</span></div>
+            </aside>
+
+            <div class="content">
+              <div class="grid" id="modelGrid"></div>
+              <div class="gallery-empty" id="modelEmpty" hidden>
+                <div class="plate-mark" style="margin:0 auto 10px;"></div>
+                Dieser Ordner bzw. diese Sammlung ist noch leer.<br>Modelle per Drag &amp; Drop hierher ziehen oder über „Zu Sammlung“ hinzufügen.
+              </div>
+              <div class="grid" id="collectionsGrid" hidden></div>
+
+              <!-- ---- Vollseiten-Detailansicht: bleibt erhalten wie im echten
+                   Programm, ersetzt nur das Raster innerhalb der Inhaltsflaeche. ---- -->
+              <div id="modelDetail" hidden>
+                <button class="detail-back" id="detailBack" aria-label="Zurück">←</button>
+                <h1 class="detail-title" id="detailTitle">—</h1>
+                <div class="detail-cols">
+                  <div>
+                    <div class="detail-viewer">
+                      <div class="detail-viewer-toggle">
+                        <button class="active" data-mode="3d">3D-Ansicht</button>
+                        <button data-mode="img">Bild</button>
+                      </div>
+                      <img id="detailViewerImg" src="" alt="" hidden>
+                      <div class="plate-mark" id="detailViewerPlate"></div>
+                    </div>
+                    <button class="btn detail-upload">📷 Bild hochladen</button>
+                  </div>
+                  <div class="detail-panel" id="detailPanel"></div>
+                </div>
+                <div class="detail-log">
+                  <div class="detail-log-head">
+                    <span class="l">Druckprotokoll</span>
+                    <span class="add">+ Eintrag hinzufügen</span>
+                  </div>
+                  <div class="detail-log-body" id="detailLog">Noch keine Einträge.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="detail-bottombar" id="detailBottombar" hidden>
+            <span class="path mono" id="detailPath">—</span>
+            <button class="btn btn-danger">Löschen</button>
+            <button class="btn">↻ Metadaten neu einlesen</button>
+            <button class="btn">▤ Zu Sammlung hinzufügen</button>
+            <button class="btn btn-primary">▷ In Slicer öffnen</button>
+          </div>
+
+          <div class="toast" id="toast"></div>
+        </div>
+
+        <!-- ---- FILAMENT VIEW ---- -->
+        <div class="view" id="view-filament">
+          <div class="topbar">
+            <h2>Filament-Lager</h2>
+            <div class="sp" style="flex:1"></div>
+            <div class="search"><span class="mono" style="font-size:12px;">⌕</span><input placeholder="Material, Farbe, Ort…"></div>
+            <div class="seg">
+              <button class="active">Übersicht</button>
+              <button>Liste</button>
+            </div>
+            <button class="btn btn-primary">＋ Spule</button>
+          </div>
+          <div class="content">
+            <div class="stat-row">
+              <div class="stat"><div class="l">Spulen gesamt</div><div class="v">14</div></div>
+              <div class="stat"><div class="l">Restgewicht</div><div class="v">6,84 kg</div></div>
+              <div class="stat"><div class="l">Lagerorte</div><div class="v">4</div></div>
+              <div class="stat"><div class="l">Nachbestellen</div><div class="v warn">3</div></div>
+            </div>
+            <div class="fgrid" id="filGrid"></div>
+          </div>
+        </div>
+
+        <!-- ---- TRASH VIEW ---- -->
+        <div class="view" id="view-trash">
+          <div class="topbar">
+            <h2>Papierkorb</h2>
+            <span class="mono sub">Elemente werden nach 30 Tagen endgültig gelöscht</span>
+          </div>
+          <div class="content" id="trashList"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="annot">
+    <div class="a"><b>Warum Icons statt Text?</b><span>Drei gleich große Ziele mit Icon + Tooltip lassen sich schneller erfassen und lassen keinen Zweifel, dass Katalog und Lager gleichrangige Bereiche sind — nicht Haupt- und Nebenfunktion.</span></div>
+    <div class="a"><b>Warum ein Kartensystem?</b><span>12px-Radius und identische Innenabstände in Katalog und Lager signalisieren „gleiches Programm, andere Daten" statt zweier zusammengeklebter Tools.</span></div>
+    <div class="a"><b>Ordner = echte Verzeichnisse</b><span>Der Baum bildet die Platte ab (auf-/zuklappbar). Eine Datei oder einen Ordner auf eine andere Zeile ziehen, verschiebt sie physisch — die Toast-Meldung zeigt alten und neuen Pfad.</span></div>
+    <div class="a"><b>Sammlungen bleiben virtuell</b><span>Klick filtert das Raster, „alle anzeigen" öffnet die Cover-Galerie. Anders als Ordner berühren Sammlungen nie die Festplatte, nur die Datenbank.</span></div>
+    <div class="a"><b>Klick auf eine Datei</b><span>Öffnet weiterhin die vollflächige Detailseite mit 3D-Ansicht, Metadaten und Druckprotokoll — unverändert zum echten Programm, nur mit neuer Navigation drumherum.</span></div>
+  </div>
+
+<script>
+(function(){
+  var root = document.documentElement;
+  var toggle = document.getElementById('themeToggle');
+  toggle.addEventListener('click', function(e){
+    var b = e.target.closest('button[data-theme]');
+    if(!b) return;
+    [...toggle.querySelectorAll('button')].forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    root.setAttribute('data-theme', b.dataset.theme);
+  });
+
+  var models = [
+    {name:'Reaper-NoAMS.3mf', folder:'reaper', tags:['#reaper','#tabletop'], size:'41,3 MB', fil:'PLA · 38 g', time:'3 h 42 min', cost:'0,76 €', printed:true, img:'https://images.unsplash.com/photo-1615789591457-74a63395c990?q=80&w=400&auto=format&fit=crop',
+      sizeXYZ:'711 × 367 × 160 mm', volume:'398,0 cm³', weight:'≈ 493,524 g', objects:11, plates:5, material:'—', importedAt:'13.9.2026', creator:'novYTerra🌿', source:'https://…', log:[]},
+    {name:'Reaper+V3+A1+Minil.3mf', folder:'reaper', tags:['#reaper','#tabletop'], size:'53,8 MB', fil:'PLA · 61 g', time:'5 h 10 min', cost:'1,22 €', printed:false, img:'',
+      sizeXYZ:'244 × 198 × 88 mm', volume:'211,6 cm³', weight:'≈ 264,500 g', objects:6, plates:2, material:'—', importedAt:'13.9.2026', creator:'novYTerra🌿', source:'https://…', log:[]},
+    {name:'Voron_2.4_ToolheadPCB.3mf', folder:'parts', tags:['#voron','#funktional'], size:'2,1 MB', fil:'PETG · 14 g', time:'52 min', cost:'0,34 €', printed:true, img:'https://images.unsplash.com/photo-1631815589968-fdb09a223b1e?q=80&w=400&auto=format&fit=crop',
+      sizeXYZ:'54 × 46 × 12 mm', volume:'8,9 cm³', weight:'11,7 g', objects:1, plates:1, material:'PETG', importedAt:'11.9.2026', creator:'VoronDesign', source:'https://…',
+      log:[{d:'12.9.2026', t:'Erfolgreich, 0,20 mm Layer'}]},
+    {name:'Baby_Yoda_Vase_Mode.3mf', folder:'templates', tags:['#deko'], size:'8,4 MB', fil:'PLA Silk · 76 g', time:'4 h 05 min', cost:'1,52 €', printed:true, img:'https://images.unsplash.com/photo-1636465831140-8dad2811b358?q=80&w=400&auto=format&fit=crop',
+      sizeXYZ:'96 × 88 × 140 mm', volume:'61,2 cm³', weight:'76,0 g', objects:1, plates:1, material:'PLA Silk', importedAt:'2.9.2026', creator:'printcraft3d', source:'https://…',
+      log:[{d:'3.9.2026', t:'Erfolgreich, als Geschenk verpackt'}]},
+    {name:'Cable_Clip_x10.3mf', folder:'parts', tags:['#funktional'], size:'0,9 MB', fil:'PLA · 22 g', time:'1 h 18 min', cost:'0,44 €', printed:false, img:'',
+      sizeXYZ:'180 × 90 × 8 mm', volume:'17,6 cm³', weight:'22,1 g', objects:10, plates:1, material:'PLA', importedAt:'9.9.2026', creator:'eigenes Design', source:'—', log:[]},
+    {name:'Miniatur_Dragon_Bust.3mf', folder:'tabletop', tags:['#tabletop','#deko'], size:'19,2 MB', fil:'Resin · —', time:'2 h 30 min', cost:'2,10 €', printed:false, img:'https://images.unsplash.com/photo-1608889175123-8ee362201f81?q=80&w=400&auto=format&fit=crop',
+      sizeXYZ:'78 × 65 × 112 mm', volume:'44,8 cm³', weight:'—', objects:1, plates:1, material:'Resin', importedAt:'6.9.2026', creator:'DragonForge', source:'https://…', log:[]},
+    {name:'Phone_Stand_Adjustable.3mf', folder:'parts', tags:['#funktional'], size:'3,4 MB', fil:'PETG · 44 g', time:'2 h 02 min', cost:'1,08 €', printed:true, img:'',
+      sizeXYZ:'112 × 78 × 96 mm', volume:'36,4 cm³', weight:'44,3 g', objects:3, plates:1, material:'PETG', importedAt:'30.8.2026', creator:'eigenes Design', source:'—',
+      log:[{d:'31.8.2026', t:'Erfolgreich, Gelenke etwas stramm'}]},
+    {name:'Articulated_Fox.3mf', folder:'templates', tags:['#deko'], size:'27,6 MB', fil:'PLA Silk · 58 g', time:'6 h 20 min', cost:'1,16 €', printed:false, img:'https://images.unsplash.com/photo-1584824388878-1a3c2f877fb1?q=80&w=400&auto=format&fit=crop',
+      sizeXYZ:'210 × 64 × 58 mm', volume:'52,3 cm³', weight:'58,0 g', objects:1, plates:1, material:'PLA Silk', importedAt:'28.8.2026', creator:'ArticulatedCo', source:'https://…', log:[]},
+  ];
+
+  // ---- Ordner-Baum: spiegelt einen echten Verzeichnisbaum unter der
+  // Katalog-Basis. Jedes model.folder verweist auf eine Blatt-Node-Id;
+  // undefined/null == direkt in der Basis (root). ----
+  var folderTree = {
+    id:'root', name:'3D-Drucke', path:'/home/andreasm/3D-Drucke',
+    children:[
+      { id:'tabletop', name:'Tabletop & Miniaturen', path:'/home/andreasm/3D-Drucke/Tabletop', expanded:true, children:[
+        { id:'reaper', name:'Reaper', path:'/home/andreasm/3D-Drucke/Tabletop/Reaper', expanded:false, children:[] },
+      ]},
+      { id:'parts', name:'Ersatzteile', path:'/home/andreasm/3D-Drucke/Ersatzteile', expanded:false, children:[] },
+      { id:'templates', name:'Vorlagen', path:'/home/andreasm/3D-Drucke/Vorlagen', expanded:false, children:[] },
+    ],
+  };
+
+  function findFolderNode(id, node){
+    node = node || folderTree;
+    if(node.id === id) return node;
+    for(var i=0;i<node.children.length;i++){
+      var r = findFolderNode(id, node.children[i]);
+      if(r) return r;
+    }
+    return null;
+  }
+  function findParentNode(id, node){
+    node = node || folderTree;
+    for(var i=0;i<node.children.length;i++){
+      if(node.children[i].id === id) return node;
+      var r = findParentNode(id, node.children[i]);
+      if(r) return r;
+    }
+    return null;
+  }
+  function collectFolderIds(node, out){
+    out.push(node.id);
+    node.children.forEach(function(c){ collectFolderIds(c, out); });
+    return out;
+  }
+  function updatePaths(node, parentPath){
+    node.path = parentPath + '/' + node.name;
+    node.children.forEach(function(c){ updatePaths(c, node.path); });
+  }
+  function folderPath(id){
+    if(!id) return folderTree.path;
+    var n = findFolderNode(id);
+    return n ? n.path : folderTree.path;
+  }
+  function folderCount(node){
+    var ids = collectFolderIds(node, []);
+    return models.filter(function(m){ return ids.indexOf(m.folder) !== -1; }).length;
+  }
+
+  var collections = [
+    {id:'c1', name:'Auf dem Drucker', modelIdxs:[0,2,6]},
+    {id:'c2', name:'Geschenke Dezember', modelIdxs:[3,5]},
+    {id:'c3', name:'Neue Ideen', modelIdxs:[]},
+  ];
+
+  // scope: was der Katalog gerade zeigt — ein Ordner, eine geoeffnete
+  // Sammlung, oder die Sammlungs-Galerie selbst (Cover-Karten statt Modelle).
+  var scope = { kind:'folder', id:'all' };
+
+  var grid = document.getElementById('modelGrid');
+  var modelEmpty = document.getElementById('modelEmpty');
+  var collectionsGrid = document.getElementById('collectionsGrid');
+  var scopeName = document.getElementById('scopeName');
+  var scopeClear = document.getElementById('scopeClear');
+  var scopeCount = document.getElementById('scopeCount');
+  var toastEl = document.getElementById('toast');
+
+  function showToast(html){
+    toastEl.innerHTML = html;
+    toastEl.classList.add('show');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(function(){ toastEl.classList.remove('show'); }, 3200);
+  }
+
+  function visibleModelIdxs(){
+    if(scope.kind === 'folder'){
+      if(scope.id === 'all') return models.map(function(_,i){ return i; });
+      var ids = collectFolderIds(findFolderNode(scope.id) || {id:scope.id, children:[]}, []);
+      return models.map(function(_,i){ return i; }).filter(function(i){ return ids.indexOf(models[i].folder) !== -1; });
+    }
+    if(scope.kind === 'collection'){
+      var c = collections.find(function(x){ return x.id===scope.id; });
+      return c ? c.modelIdxs.slice() : [];
+    }
+    return [];
+  }
+
+  function renderModelGrid(){
+    var idxs = visibleModelIdxs();
+    grid.innerHTML = '';
+    idxs.forEach(function(i){
+      var m = models[i];
+      var el = document.createElement('div');
+      el.className = 'card';
+      el.dataset.idx = i;
+      el.draggable = true;
+      el.innerHTML =
+        '<div class="thumb">' +
+          (m.img ? '<img src="'+m.img+'" alt="">' : '<div class="plate-mark"></div>') +
+          (m.printed ? '<span class="badge printed">✓ gedruckt</span>' : '') +
+        '</div>' +
+        '<div class="meta"><div class="name">'+m.name+'</div><div class="tags">'+m.tags.map(function(t){ return '<span>'+t+'</span>'; }).join('')+'</div></div>';
+      el.addEventListener('click', function(){ openDetail(i); });
+      el.addEventListener('dragstart', function(e){
+        e.dataTransfer.setData('application/x-model-idx', String(i));
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      grid.appendChild(el);
+    });
+    grid.hidden = idxs.length === 0;
+    modelEmpty.hidden = idxs.length !== 0;
+  }
+
+  function renderCollectionsGallery(){
+    collectionsGrid.innerHTML = '';
+    collections.forEach(function(c){
+      var thumbs = c.modelIdxs.slice(0,2).map(i=>models[i]).filter(m=>m.img);
+      var el = document.createElement('div');
+      el.className = 'coll-card';
+      var coverHtml = thumbs.length
+        ? thumbs.map(m=>'<img src="'+m.img+'" alt="">').join('')
+        : '<div class="single" style="display:grid;place-items:center;"><div class="plate-mark"></div></div>';
+      el.innerHTML =
+        '<div class="coll-cover">'+coverHtml+'</div>' +
+        '<div class="coll-meta"><div class="name">'+c.name+'</div><div class="n">'+c.modelIdxs.length+' Modelle</div></div>';
+      el.addEventListener('click', function(){ setScope({kind:'collection', id:c.id}); });
+      collectionsGrid.appendChild(el);
+    });
+    var addEl = document.createElement('div');
+    addEl.className = 'coll-card-new';
+    addEl.textContent = '＋ Neue Sammlung';
+    collectionsGrid.appendChild(addEl);
+  }
+
+  // ---- Ordner-Baum rendern: rekursiv, mit Auf/Zuklappen, Drag&Drop fuer
+  // Dateien (Karte -> Ordnerzeile = physisch verschieben) und fuer Ordner
+  // selbst (Ordnerzeile -> Ordnerzeile = Unterbaum verschieben). ----
+  function attachFolderDropHandlers(el, targetId){
+    el.addEventListener('dragover', function(e){ e.preventDefault(); el.classList.add('drop-target'); });
+    el.addEventListener('dragleave', function(){ el.classList.remove('drop-target'); });
+    el.addEventListener('drop', function(e){
+      e.preventDefault();
+      el.classList.remove('drop-target');
+
+      var modelIdxRaw = e.dataTransfer.getData('application/x-model-idx');
+      if(modelIdxRaw !== ''){
+        var idx = parseInt(modelIdxRaw, 10);
+        var m = models[idx];
+        var oldPath = folderPath(m.folder) + '/' + m.name;
+        var newFolderId = targetId === 'all' ? null : targetId;
+        if(m.folder === newFolderId) return;
+        m.folder = newFolderId;
+        var newPath = folderPath(newFolderId) + '/' + m.name;
+        showToast('📁 <b>'+m.name+'</b> physisch verschoben<br><span class="mono">'+oldPath+' → '+newPath+'</span>');
+        renderFolderTree();
+        if(scope.kind === 'folder' || scope.kind === 'collection') { renderModelGrid(); updateScopeCount(); }
+        return;
+      }
+
+      var draggedFolderId = e.dataTransfer.getData('application/x-folder-id');
+      if(draggedFolderId && draggedFolderId !== targetId){
+        var draggedNode = findFolderNode(draggedFolderId);
+        if(!draggedNode) return;
+        var descendantIds = collectFolderIds(draggedNode, []);
+        if(descendantIds.indexOf(targetId) !== -1) return; // kein Verschieben in den eigenen Unterordner
+        var oldParent = findParentNode(draggedFolderId);
+        var oldPathF = draggedNode.path;
+        oldParent.children = oldParent.children.filter(function(c){ return c.id !== draggedFolderId; });
+        var targetNode = targetId === 'all' ? folderTree : findFolderNode(targetId);
+        targetNode.children.push(draggedNode);
+        targetNode.expanded = true;
+        updatePaths(draggedNode, targetNode.path);
+        showToast('📁 Ordner <b>'+draggedNode.name+'</b> physisch verschoben<br><span class="mono">'+oldPathF+' → '+draggedNode.path+'</span>');
+        renderFolderTree();
+        if(scope.kind === 'folder'){ renderModelGrid(); updateScopeCount(); }
+      }
+    });
+  }
+
+  function renderFolderTree(){
+    var container = document.getElementById('folderTree');
+    container.innerHTML = '';
+
+    var allRow = document.createElement('div');
+    allRow.className = 'f-item' + (scope.kind==='folder' && scope.id==='all' ? ' active' : '');
+    allRow.innerHTML = '<span>Alle Modelle</span><span class="n">'+models.length+'</span>';
+    allRow.addEventListener('click', function(){ setScope({kind:'folder', id:'all'}); });
+    attachFolderDropHandlers(allRow, 'all');
+    container.appendChild(allRow);
+
+    function renderNode(node, depth){
+      var row = document.createElement('div');
+      row.className = 'tree-row' + (scope.kind==='folder' && scope.id===node.id ? ' active' : '');
+      row.style.paddingLeft = (6 + depth*16) + 'px';
+      row.draggable = true;
+      var hasChildren = node.children.length > 0;
+      row.innerHTML =
+        '<span class="tree-caret'+(hasChildren ? (node.expanded ? ' open' : '') : ' leaf')+'">▸</span>' +
+        '<svg class="tree-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>' +
+        '<span class="tree-name">'+node.name+'</span>' +
+        '<span class="tree-n">'+folderCount(node)+'</span>';
+      row.addEventListener('click', function(e){
+        if(e.target.closest('.tree-caret') && hasChildren){
+          node.expanded = !node.expanded;
+          renderFolderTree();
+          return;
+        }
+        setScope({kind:'folder', id:node.id});
+      });
+      row.addEventListener('dragstart', function(e){
+        e.dataTransfer.setData('application/x-folder-id', node.id);
+        e.dataTransfer.effectAllowed = 'move';
+        row.classList.add('dragging');
+      });
+      row.addEventListener('dragend', function(){ row.classList.remove('dragging'); });
+      attachFolderDropHandlers(row, node.id);
+      container.appendChild(row);
+
+      if(hasChildren && node.expanded){
+        node.children.forEach(function(c){ renderNode(c, depth+1); });
+      }
+    }
+    folderTree.children.forEach(function(c){ renderNode(c, 0); });
+
+    var hint = document.getElementById('treePathHint');
+    if(scope.kind === 'folder'){
+      hint.textContent = scope.id === 'all' ? folderTree.path : folderPath(scope.id);
+    } else {
+      hint.textContent = '';
+    }
+  }
+
+  function renderCollectionList(){
+    var cl = document.getElementById('collectionList');
+    cl.innerHTML = '';
+    collections.forEach(function(c){
+      var el = document.createElement('div');
+      el.className = 'f-item' + (scope.kind==='collection' && scope.id===c.id ? ' active' : '');
+      el.innerHTML = '<span>'+c.name+'</span><span class="n">'+c.modelIdxs.length+'</span>';
+      el.addEventListener('click', function(){ setScope({kind:'collection', id:c.id}); });
+      cl.appendChild(el);
+    });
+  }
+
+  function updateScopeCount(){
+    var count = visibleModelIdxs().length;
+    scopeCount.textContent = count + (count===1 ? ' Datei' : ' Dateien');
+  }
+
+  function setScope(next){
+    scope = next;
+    renderFolderTree();
+    renderCollectionList();
+
+    var showGallery = scope.kind === 'gallery';
+    collectionsGrid.hidden = !showGallery;
+    if(showGallery) modelEmpty.hidden = true;
+
+    if(showGallery){
+      renderCollectionsGallery();
+      scopeName.textContent = 'Sammlungen';
+      scopeClear.hidden = false;
+      scopeCount.textContent = collections.length + ' Sammlungen';
+    } else {
+      renderModelGrid();
+      if(scope.kind === 'collection'){
+        var c = collections.find(function(x){ return x.id===scope.id; });
+        scopeName.textContent = 'Sammlung: ' + (c ? c.name : '');
+        scopeClear.hidden = false;
+      } else {
+        var f = scope.id === 'all' ? {name:'Alle Modelle'} : findFolderNode(scope.id);
+        scopeName.textContent = f ? f.name : 'Alle Modelle';
+        scopeClear.hidden = scope.id === 'all';
+      }
+      updateScopeCount();
+    }
+    closeDetail();
+  }
+
+  document.getElementById('galleryOpenBtn').addEventListener('click', function(){ setScope({kind:'gallery'}); });
+  document.getElementById('newCollectionRow').addEventListener('click', function(){ setScope({kind:'gallery'}); });
+  scopeClear.addEventListener('click', function(){ setScope({kind:'folder', id:'all'}); });
+
+  // ---- Vollseiten-Detailansicht (ersetzt das fruehere Seitenpanel) ----
+  var modelDetail = document.getElementById('modelDetail');
+  var detailBottombar = document.getElementById('detailBottombar');
+  var detailIdx = null;
+
+  function openDetail(i){
+    detailIdx = i;
+    var m = models[i];
+    grid.hidden = true; modelEmpty.hidden = true; collectionsGrid.hidden = true;
+    modelDetail.hidden = false; detailBottombar.hidden = false;
+
+    document.getElementById('detailTitle').textContent = m.name;
+    var img = document.getElementById('detailViewerImg');
+    var plate = document.getElementById('detailViewerPlate');
+    if(m.img){ img.src = m.img; img.hidden = false; plate.hidden = true; }
+    else { img.hidden = true; plate.hidden = false; }
+
+    var rows = [
+      ['Größe', m.sizeXYZ], ['Volumen', m.volume], ['Gewicht (geschätzt)', m.weight],
+      ['Objekte', m.objects], ['Druckplatten', m.plates], ['Material', m.material],
+      ['Dateigröße', m.size], ['Importiert', m.importedAt], ['Ersteller', m.creator], ['Quelle', m.source],
+    ];
+    var panel = document.getElementById('detailPanel');
+    panel.innerHTML = rows.map(function(r){
+      return '<div class="detail-row"><span class="l">'+r[0]+'</span><span class="v">'+r[1]+'</span></div>';
+    }).join('') + '<div class="detail-tags"><div class="l">Hashtags</div><div class="chips">' +
+      m.tags.map(function(t){ return '<span class="chip">'+t+' <span class="x">✕</span></span>'; }).join('') +
+      '<span class="detail-tag-add">+ Tag</span></div></div>';
+
+    var log = document.getElementById('detailLog');
+    log.innerHTML = m.log.length
+      ? m.log.map(function(e){ return '<div class="detail-log-entry"><span>'+e.d+'</span><span>'+e.t+'</span></div>'; }).join('')
+      : 'Noch keine Einträge.';
+
+    document.getElementById('detailPath').textContent = folderPath(m.folder) + '/' + m.name;
+  }
+  function closeDetail(){
+    detailIdx = null;
+    modelDetail.hidden = true; detailBottombar.hidden = true;
+    if(scope.kind !== 'gallery') renderModelGrid();
+  }
+  document.getElementById('detailBack').addEventListener('click', closeDetail);
+  document.querySelectorAll('.detail-viewer-toggle button').forEach(function(b){
+    b.addEventListener('click', function(){
+      document.querySelectorAll('.detail-viewer-toggle button').forEach(function(x){ x.classList.remove('active'); });
+      b.classList.add('active');
+    });
+  });
+
+  var spools = [
+    {mat:'PLA', sub:'Bambu Lab · Mattschwarz', loc:'Regal A2', pct:72, status:'ok', hue:'20 20% 12%', bg:'#2b2b2b'},
+    {mat:'PETG', sub:'Prusament · Orange Transluzent', loc:'Werkstatt', pct:34, status:'low', bg:'linear-gradient(135deg,#ff8a3d,#ff5c1a)'},
+    {mat:'PLA Silk', sub:'eSun · Gold', loc:'Regal A1', pct:8, status:'empty', bg:'linear-gradient(135deg,#e8c86a,#c79a2e)'},
+    {mat:'ABS', sub:'Overture · Grau', loc:'Schublade 3', pct:61, status:'ok', bg:'#8a8f94'},
+    {mat:'PLA+', sub:'Sunlu · Rot', loc:'Regal A2', pct:47, status:'ok', bg:'#c23b3b'},
+    {mat:'TPU', sub:'Bambu Lab · Schwarz', loc:'Werkstatt', pct:19, status:'low', bg:'#1c1c1c'},
+  ];
+  var fg = document.getElementById('filGrid');
+  spools.forEach(function(s){
+    var el = document.createElement('div'); el.className='spool';
+    var label = s.status==='ok'?'Ausreichend':s.status==='low'?'Bald leer':'Leer';
+    el.innerHTML =
+      '<div class="spool-top">' +
+        '<div class="spool-swatch" style="background:'+s.bg+'">'+s.mat.slice(0,3).toUpperCase()+'</div>' +
+        '<div><div class="name">'+s.mat+'</div><div class="sub">'+s.sub+'</div></div>' +
+      '</div>' +
+      '<div class="spool-body">' +
+        '<div class="row-between"><span class="loc">📍 '+s.loc+'</span><span class="pill '+s.status+'">'+label+'</span></div>' +
+        '<div class="bar '+s.status+'"><i style="width:'+s.pct+'%"></i></div>' +
+        '<div class="row-between"><span class="gw">'+s.pct+' % Rest</span></div>' +
+      '</div>';
+    fg.appendChild(el);
+  });
+
+  var trashed = [
+    {name:'Fehlgeschlagener_Druck_v1.3mf', exp:'läuft in 4 Tagen ab'},
+    {name:'Duplikat_Vase.3mf', exp:'läuft in 12 Tagen ab'},
+    {name:'Alt_Kalibrierwuerfel.3mf', exp:'läuft in 27 Tagen ab'},
+  ];
+  var tl = document.getElementById('trashList');
+  trashed.forEach(function(t){
+    var el = document.createElement('div'); el.className='trash-row';
+    el.innerHTML = '<div class="tmini"></div><div><div class="name">'+t.name+'</div><div class="exp">'+t.exp+'</div></div><div class="sp"></div><button class="btn">↺ Wiederherstellen</button>';
+    tl.appendChild(el);
+  });
+
+  var railBtns = document.querySelectorAll('.rail-btn[data-view]');
+  var views = { catalog: document.getElementById('view-catalog'), filament: document.getElementById('view-filament'), trash: document.getElementById('view-trash') };
+  railBtns.forEach(function(b){
+    b.addEventListener('click', function(){
+      railBtns.forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      Object.values(views).forEach(v=>v.classList.remove('show'));
+      views[b.dataset.view].classList.add('show');
+      closeDetail();
+    });
+  });
+
+  setScope({kind:'folder', id:'all'});
+})();
+</script>
+</body>
+</html>
