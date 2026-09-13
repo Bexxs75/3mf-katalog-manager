@@ -6,7 +6,8 @@ use rusqlite::{params, Connection, OptionalExtension};
 use super::error::DbError;
 use super::models::{
     FileRecord, FileType, FilamentSpoolRecord, FolderRecord, MaterialRecord,
-    NewFile, NewFilamentSpool, NewSavedFilter, SavedFilterRecord, TagCount, CreatorCount,
+    NewFile, NewFilamentSpool, NewPrintLogEntry, NewSavedFilter, PrintLogEntryRecord,
+    SavedFilterRecord, TagCount, CreatorCount,
 };
 
 const SCHEMA_SQL: &str = include_str!("schema.sql");
@@ -809,5 +810,43 @@ pub fn list_saved_filters(conn: &Connection) -> Result<Vec<SavedFilterRecord>, D
 
 pub fn delete_saved_filter(conn: &Connection, id: i64) -> Result<(), DbError> {
     conn.execute("DELETE FROM saved_filters WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+pub fn insert_print_log_entry(conn: &Connection, entry: &NewPrintLogEntry) -> Result<i64, DbError> {
+    conn.execute(
+        "INSERT INTO print_log (file_id, printed_at, note, photo_png, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![
+            entry.file_id,
+            entry.printed_at,
+            entry.note,
+            entry.photo_png,
+            chrono::Utc::now().to_rfc3339(),
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn list_print_log_entries(conn: &Connection, file_id: i64) -> Result<Vec<PrintLogEntryRecord>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, printed_at, note, photo_png FROM print_log
+         WHERE file_id = ?1 ORDER BY printed_at DESC, id DESC",
+    )?;
+    let rows = stmt
+        .query_map(params![file_id], |row| {
+            Ok(PrintLogEntryRecord {
+                id: row.get(0)?,
+                printed_at: row.get(1)?,
+                note: row.get(2)?,
+                photo_png: row.get(3)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+pub fn delete_print_log_entry(conn: &Connection, id: i64) -> Result<(), DbError> {
+    conn.execute("DELETE FROM print_log WHERE id = ?1", params![id])?;
     Ok(())
 }

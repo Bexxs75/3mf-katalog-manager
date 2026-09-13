@@ -4,11 +4,13 @@ mod repository;
 mod collections;
 
 pub use repository::{
-    add_tag_to_file, connect, delete_file, delete_filament_spool, delete_saved_filter, delete_unused_tags,
+    add_tag_to_file, connect, delete_file, delete_filament_spool, delete_print_log_entry,
+    delete_saved_filter, delete_unused_tags,
     file_exists_by_hash, file_exists_by_path, get_file, get_file_id_by_content_hash, insert_file,
-    insert_filament_spool,
+    insert_filament_spool, insert_print_log_entry,
     insert_saved_filter, list_creator_counts, list_filament_spools, list_files,
-    list_files_by_ids, list_files_missing_content_hash, list_folders, list_saved_filters, list_tag_counts,
+    list_files_by_ids, list_files_missing_content_hash, list_folders, list_print_log_entries,
+    list_saved_filters, list_tag_counts,
     list_trash,
     mark_file_viewed, max_queue_position, purge_expired_trash, remove_tag_from_file, restore_file,
     set_content_hash, set_custom_image_png, set_favorite, set_print_status, set_queue_position,
@@ -31,7 +33,7 @@ pub use repository::connect_in_memory;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use models::{FileType, MaterialRecord, NewFile, NewFilamentSpool, NewSavedFilter};
+    use models::{FileType, MaterialRecord, NewFile, NewFilamentSpool, NewPrintLogEntry, NewSavedFilter};
     use std::collections::BTreeMap;
 
     fn sample_file() -> NewFile {
@@ -733,5 +735,79 @@ mod tests {
         let conn = connect_in_memory().expect("connect");
         let result = list_files_by_ids(&conn, &[]).expect("query");
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn insert_and_list_print_log_entries_for_a_file() {
+        let mut conn = connect_in_memory().expect("connect");
+        let file_id = insert_file(&mut conn, &sample_file()).expect("insert file");
+
+        let id1 = insert_print_log_entry(
+            &conn,
+            &NewPrintLogEntry {
+                file_id,
+                printed_at: "2026-09-01T10:00:00Z".to_string(),
+                note: Some("Erster Versuch, Stringing an Bruecken".to_string()),
+                photo_png: None,
+            },
+        )
+        .expect("insert entry 1");
+        let id2 = insert_print_log_entry(
+            &conn,
+            &NewPrintLogEntry {
+                file_id,
+                printed_at: "2026-09-05T10:00:00Z".to_string(),
+                note: None,
+                photo_png: Some(vec![1, 2, 3]),
+            },
+        )
+        .expect("insert entry 2");
+
+        let entries = list_print_log_entries(&conn, file_id).expect("list entries");
+
+        assert_eq!(entries.len(), 2);
+        // neueste zuerst
+        assert_eq!(entries[0].id, id2);
+        assert_eq!(entries[0].photo_png, Some(vec![1, 2, 3]));
+        assert_eq!(entries[1].id, id1);
+        assert_eq!(entries[1].note.as_deref(), Some("Erster Versuch, Stringing an Bruecken"));
+    }
+
+    #[test]
+    fn delete_print_log_entry_removes_only_that_entry() {
+        let mut conn = connect_in_memory().expect("connect");
+        let file_id = insert_file(&mut conn, &sample_file()).expect("insert file");
+        let id1 = insert_print_log_entry(
+            &conn,
+            &NewPrintLogEntry { file_id, printed_at: "2026-09-01T10:00:00Z".to_string(), note: None, photo_png: None },
+        )
+        .expect("insert entry 1");
+        let _id2 = insert_print_log_entry(
+            &conn,
+            &NewPrintLogEntry { file_id, printed_at: "2026-09-02T10:00:00Z".to_string(), note: None, photo_png: None },
+        )
+        .expect("insert entry 2");
+
+        delete_print_log_entry(&conn, id1).expect("delete entry 1");
+
+        let entries = list_print_log_entries(&conn, file_id).expect("list entries");
+        assert_eq!(entries.len(), 1);
+        assert_ne!(entries[0].id, id1);
+    }
+
+    #[test]
+    fn deleting_a_file_cascades_to_its_print_log_entries() {
+        let mut conn = connect_in_memory().expect("connect");
+        let file_id = insert_file(&mut conn, &sample_file()).expect("insert file");
+        insert_print_log_entry(
+            &conn,
+            &NewPrintLogEntry { file_id, printed_at: "2026-09-01T10:00:00Z".to_string(), note: None, photo_png: None },
+        )
+        .expect("insert entry");
+
+        delete_file(&conn, file_id).expect("delete file");
+
+        let entries = list_print_log_entries(&conn, file_id).expect("list entries after file deletion");
+        assert!(entries.is_empty());
     }
 }

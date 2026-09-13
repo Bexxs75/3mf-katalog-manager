@@ -200,3 +200,17 @@ pub struct CollectionRecord {
     pub name: String,
     pub model_count: i64,
 }
+
+pub struct NewPrintLogEntry {
+    pub file_id: i64,
+    pub printed_at: String,
+    pub note: Option<String>,
+    pub photo_png: Option<Vec<u8>>,
+}
+
+pub struct PrintLogEntryRecord {
+    pub id: i64,
+    pub printed_at: String,
+    pub note: Option<String>,
+    pub photo_png: Option<Vec<u8>>,
+}
