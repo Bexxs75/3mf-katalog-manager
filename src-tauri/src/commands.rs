@@ -939,6 +939,7 @@ pub(crate) fn import_one(
     path: &Path,
     display_name: Option<&str>,
     content_hash: Option<String>,
+    folder_id: Option<i64>,
 ) -> CmdResult<ModelFileDto> {
     let file_name = display_name.map(|n| n.to_string()).unwrap_or_else(|| {
         path.file_name()
@@ -1011,7 +1012,7 @@ pub(crate) fn import_one(
         name: file_name,
         path: path.to_string_lossy().to_string(),
         file_type,
-        folder_id: None,
+        folder_id,
         origin: "local".to_string(),
         cloud_id: None,
         sync_status: "local-only".to_string(),
@@ -1124,60 +1125,74 @@ pub fn rescan_file_metadata(state: State<AppState>, file_id: String) -> CmdResul
 /// rest. A single unreadable/unparsable file is logged and skipped rather
 /// than aborting the whole batch.
 fn import_many(state: &State<AppState>, roots: Vec<PathBuf>) -> CmdResult<ImportResultDto> {
-    let mut candidates = Vec::new();
-    for root in roots {
-        collect_supported_files(&root, &mut candidates);
-    }
-
     let mut conn = lock_db(state)?;
+    import_many_with_conn(&mut conn, roots)
+}
+
+/// Core of [`import_many`], parameterized over a plain [`Connection`] instead
+/// of a Tauri-managed `State` so it is directly unit-testable (a
+/// `State<AppState>` cannot be constructed outside of a running Tauri app).
+fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) -> CmdResult<ImportResultDto> {
     let mut seen = HashSet::new();
     let mut imported = Vec::new();
     let mut duplicate_count = 0i64;
 
-    for path in candidates {
-        let path_str = path.to_string_lossy().to_string();
-        if !seen.insert(path_str.clone()) {
-            continue;
-        }
-        match db::file_exists_by_path(&conn, &path_str) {
-            Ok(true) => continue,
-            Ok(false) => {}
-            Err(e) => {
-                eprintln!("[import] Duplikatprüfung fehlgeschlagen für {path_str}: {e}");
-                continue;
-            }
-        }
+    for root in roots {
+        let is_folder_root = root.is_dir();
+        let mut candidates = Vec::new();
+        collect_supported_files(&root, &mut candidates);
 
-        let content_hash = match compute_content_hash(&path) {
-            Ok(h) => h,
-            Err(e) => {
-                eprintln!("[import] Hash fehlgeschlagen für {path_str}: {e}");
+        for path in candidates {
+            let path_str = path.to_string_lossy().to_string();
+            if !seen.insert(path_str.clone()) {
                 continue;
             }
-        };
-        match db::file_exists_by_hash(&conn, &content_hash) {
-            Ok(true) => {
-                duplicate_count += 1;
-                continue;
+            match db::file_exists_by_path(&conn, &path_str) {
+                Ok(true) => continue,
+                Ok(false) => {}
+                Err(e) => {
+                    eprintln!("[import] Duplikatprüfung fehlgeschlagen für {path_str}: {e}");
+                    continue;
+                }
             }
-            Ok(false) => {}
-            Err(e) => {
-                eprintln!("[import] Duplikatprüfung (Hash) fehlgeschlagen für {path_str}: {e}");
-                continue;
-            }
-        }
 
-        match import_one(&mut conn, &path, None, Some(content_hash)) {
-            Ok(dto) => imported.push(dto),
-            Err(e) if e.contains("UNIQUE constraint failed") => {
-                // Pfad gehoert noch einer Papierkorb-Zeile (files.path ist
-                // weiterhin UNIQUE, file_exists_by_path sieht geloeschte
-                // Zeilen aber nicht mehr) - fuer den Nutzer ist das ein
-                // Duplikat, kein stiller Fehlschlag (Finding 3, Review
-                // 2026-09-12).
-                duplicate_count += 1;
+            let content_hash = match compute_content_hash(&path) {
+                Ok(h) => h,
+                Err(e) => {
+                    eprintln!("[import] Hash fehlgeschlagen für {path_str}: {e}");
+                    continue;
+                }
+            };
+            match db::file_exists_by_hash(&conn, &content_hash) {
+                Ok(true) => {
+                    duplicate_count += 1;
+                    continue;
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    eprintln!("[import] Duplikatprüfung (Hash) fehlgeschlagen für {path_str}: {e}");
+                    continue;
+                }
             }
-            Err(e) => eprintln!("[import] Import fehlgeschlagen für {path_str}: {e}"),
+
+            let folder_id = if is_folder_root {
+                path.parent().and_then(|dir| db::ensure_folder_path(&conn, &root, dir).ok())
+            } else {
+                None
+            };
+
+            match import_one(conn, &path, None, Some(content_hash), folder_id) {
+                Ok(dto) => imported.push(dto),
+                Err(e) if e.contains("UNIQUE constraint failed") => {
+                    // Pfad gehoert noch einer Papierkorb-Zeile (files.path ist
+                    // weiterhin UNIQUE, file_exists_by_path sieht geloeschte
+                    // Zeilen aber nicht mehr) - fuer den Nutzer ist das ein
+                    // Duplikat, kein stiller Fehlschlag (Finding 3, Review
+                    // 2026-09-12).
+                    duplicate_count += 1;
+                }
+                Err(e) => eprintln!("[import] Import fehlgeschlagen für {path_str}: {e}"),
+            }
         }
     }
 
@@ -2722,13 +2737,53 @@ mod tests {
         std::fs::write(&path, &buf).expect("write temp file");
 
         let mut conn = crate::db::connect_in_memory().expect("connect");
-        let dto = import_one(&mut conn, &path, None, None).expect("import should succeed");
+        let dto = import_one(&mut conn, &path, None, None, None).expect("import should succeed");
 
         let stored = crate::db::get_file(&conn, dto.id.parse().unwrap()).expect("query").expect("present");
         assert!(stored.slice_info_json.is_some());
         assert!(stored.slice_info_json.unwrap().contains("9.9"));
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn import_many_assigns_folder_id_for_folder_roots() {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+        use zip::ZipWriter;
+
+        fn write_minimal_3mf(path: &std::path::Path) {
+            let mut buf = Vec::new();
+            {
+                let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buf));
+                let options = SimpleFileOptions::default();
+                zip.start_file("[Content_Types].xml", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>"#).unwrap();
+                zip.start_file("_rels/.rels", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model"/></Relationships>"#).unwrap();
+                zip.start_file("3D/3dmodel.model", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources></resources><build></build></model>"#).unwrap();
+                zip.finish().unwrap();
+            }
+            std::fs::write(path, &buf).expect("write temp file");
+        }
+
+        let tmp = unique_test_dir("import_many_folder_id");
+        let sub = tmp.join("Tabletop");
+        std::fs::create_dir(&sub).unwrap();
+        let file_path = sub.join("model.3mf");
+        write_minimal_3mf(&file_path);
+
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let result = import_many_with_conn(&mut conn, vec![tmp.clone()])
+            .expect("import should succeed");
+        assert_eq!(result.imported.len(), 1);
+
+        let files = db::list_files(&conn).unwrap();
+        assert_eq!(files.len(), 1);
+        assert!(files[0].folder_id.is_some());
+
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]
@@ -2762,7 +2817,7 @@ mod tests {
         write_3mf(&path, None);
 
         let mut conn = crate::db::connect_in_memory().expect("connect");
-        let imported = import_one(&mut conn, &path, None, None).expect("initial import");
+        let imported = import_one(&mut conn, &path, None, None, None).expect("initial import");
         let id: i64 = imported.id.parse().unwrap();
         assert_eq!(imported.weight_source, "estimated");
 
@@ -2814,7 +2869,7 @@ mod tests {
         write_3mf(&path, None);
 
         let mut conn = crate::db::connect_in_memory().expect("connect");
-        let imported = import_one(&mut conn, &path, None, None).expect("initial import");
+        let imported = import_one(&mut conn, &path, None, None, None).expect("initial import");
         let id: i64 = imported.id.parse().unwrap();
 
         let before = db::get_file(&conn, id).expect("get_file").expect("file exists");
