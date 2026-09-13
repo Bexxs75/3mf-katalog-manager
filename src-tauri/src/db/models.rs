@@ -58,6 +58,7 @@ pub struct NewFile {
     pub queue_position: Option<i64>,
     pub favorite: bool,
     pub plate_count: Option<i64>,
+    pub slice_info_json: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -101,6 +102,7 @@ pub struct FileRecord {
     pub queue_position: Option<i64>,
     pub favorite: bool,
     pub plate_count: Option<i64>,
+    pub slice_info_json: Option<String>,
     pub deleted_at: Option<String>,
     pub trash_path: Option<String>,
 }

@@ -814,6 +814,7 @@ pub(crate) fn import_one(
         queue_position: None,
         favorite: false,
         plate_count,
+        slice_info_json: None,
     };
 
     let id = db::insert_file(conn, &new_file).map_err(|e| e.to_string())?;
@@ -1710,6 +1711,7 @@ mod tests {
             queue_position: None,
             favorite: false,
             plate_count: None,
+            slice_info_json: None,
             deleted_at: None,
             trash_path: None,
         }

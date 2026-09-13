@@ -77,6 +77,7 @@ pub(crate) fn init(conn: &Connection) -> Result<(), DbError> {
         [],
     );
     let _ = conn.execute("ALTER TABLE files ADD COLUMN plate_count INTEGER", []);
+    let _ = conn.execute("ALTER TABLE files ADD COLUMN slice_info_json TEXT", []);
     let _ = conn.execute("ALTER TABLE files ADD COLUMN deleted_at TEXT", []);
     let _ = conn.execute("ALTER TABLE files ADD COLUMN trash_path TEXT", []);
     Ok(())
@@ -236,8 +237,8 @@ pub fn insert_file(conn: &mut Connection, file: &NewFile) -> Result<i64, DbError
             volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
             print_status, last_viewed_at, creator, content_hash,
             render_snapshot_png, custom_image_png, source_url, queue_position, favorite,
-            plate_count
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)",
+            plate_count, slice_info_json
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27)",
         params![
             file.name,
             file.path,
@@ -265,6 +266,7 @@ pub fn insert_file(conn: &mut Connection, file: &NewFile) -> Result<i64, DbError
             file.queue_position,
             file.favorite,
             file.plate_count,
+            file.slice_info_json,
         ],
     )?;
     let file_id = tx.last_insert_rowid();
@@ -348,7 +350,7 @@ const TRASH_SELECT_COLUMNS: &str = "id, name, path, file_type, folder_id, origin
      volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
      print_status, last_viewed_at, creator, content_hash,
      render_snapshot_png, custom_image_png, source_url, queue_position, favorite,
-     plate_count, deleted_at, trash_path";
+     plate_count, slice_info_json, deleted_at, trash_path";
 
 pub fn list_trash(conn: &Connection) -> Result<Vec<FileRecord>, DbError> {
     let sql = format!("SELECT {TRASH_SELECT_COLUMNS} FROM files WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC");
@@ -407,7 +409,7 @@ pub fn get_file(conn: &Connection, id: i64) -> Result<Option<FileRecord>, DbErro
                     volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
                     print_status, last_viewed_at, creator, content_hash,
                     render_snapshot_png, custom_image_png, source_url, queue_position, favorite,
-                    plate_count, deleted_at, trash_path
+                    plate_count, slice_info_json, deleted_at, trash_path
              FROM files WHERE id = ?1",
             params![id],
             row_to_file,
@@ -439,7 +441,7 @@ pub fn list_files_by_ids(conn: &Connection, ids: &[i64]) -> Result<Vec<FileRecor
                 volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
                 print_status, last_viewed_at, creator, content_hash,
                 render_snapshot_png, custom_image_png, source_url, queue_position, favorite,
-                plate_count, deleted_at, trash_path
+                plate_count, slice_info_json, deleted_at, trash_path
          FROM files WHERE id IN ({placeholders})"
     );
     let mut stmt = conn.prepare(&sql)?;
@@ -469,7 +471,7 @@ pub fn list_files(conn: &Connection) -> Result<Vec<FileRecord>, DbError> {
                 volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
                 print_status, last_viewed_at, creator, content_hash,
                 render_snapshot_png, custom_image_png, source_url, queue_position, favorite,
-                plate_count, deleted_at, trash_path
+                plate_count, slice_info_json, deleted_at, trash_path
          FROM files WHERE deleted_at IS NULL ORDER BY name",
     )?;
     let mut files = stmt
@@ -523,8 +525,9 @@ fn row_to_file(row: &rusqlite::Row) -> rusqlite::Result<FileRecord> {
         queue_position: row.get(24)?,
         favorite: row.get(25)?,
         plate_count: row.get(26)?,
-        deleted_at: row.get(27)?,
-        trash_path: row.get(28)?,
+        slice_info_json: row.get(27)?,
+        deleted_at: row.get(28)?,
+        trash_path: row.get(29)?,
     })
 }
 

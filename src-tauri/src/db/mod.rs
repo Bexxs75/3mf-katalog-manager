@@ -68,6 +68,7 @@ mod tests {
             queue_position: None,
             favorite: false,
             plate_count: None,
+            slice_info_json: None,
         }
     }
 
@@ -95,6 +96,16 @@ mod tests {
         let id = insert_file(&mut conn, &file).expect("insert");
         let fetched = get_file(&conn, id).expect("query").expect("present");
         assert_eq!(fetched.plate_count, Some(2));
+    }
+
+    #[test]
+    fn insert_and_get_file_roundtrips_slice_info_json() {
+        let mut conn = connect_in_memory().expect("connect");
+        let mut file = sample_file();
+        file.slice_info_json = Some(r#"{"total_weight_g":12.4,"plates":[]}"#.to_string());
+        let id = insert_file(&mut conn, &file).expect("insert");
+        let fetched = get_file(&conn, id).expect("query").expect("present");
+        assert_eq!(fetched.slice_info_json, Some(r#"{"total_weight_g":12.4,"plates":[]}"#.to_string()));
     }
 
     #[test]

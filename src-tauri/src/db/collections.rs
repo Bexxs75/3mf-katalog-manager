@@ -151,6 +151,7 @@ mod tests {
             queue_position: None,
             favorite: false,
             plate_count: None,
+            slice_info_json: None,
         }
     }
 
