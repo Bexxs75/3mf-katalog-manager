@@ -10,6 +10,7 @@ use std::fs::File;
 use std::path::Path;
 
 pub use error::ThreeMfError;
+pub use slice_info::SliceInfo;
 use crate::geometry::{BoundingBox, RenderMesh};
 use container::PackageParts;
 use geometry::Matrix3x4;
@@ -29,6 +30,7 @@ pub struct ThreeMfDocument {
     pub metadata: BTreeMap<String, String>,
     pub thumbnail_png: Option<Vec<u8>>,
     pub plate_count: Option<u32>,
+    pub slice_info: Option<SliceInfo>,
 }
 
 pub fn parse_3mf_file(path: &Path) -> Result<ThreeMfDocument, ThreeMfError> {
@@ -142,6 +144,7 @@ fn parse_3mf_reader<R: std::io::Read + std::io::Seek>(
         metadata: package.root_model.metadata.clone(),
         thumbnail_png: package.thumbnail.clone(),
         plate_count: package.plate_count,
+        slice_info: package.slice_info.clone(),
     })
 }
 
@@ -503,5 +506,51 @@ mod tests {
         let meshes = extract_render_meshes(&package);
 
         assert_eq!(meshes.len(), 1);
+    }
+
+    #[test]
+    fn parses_slice_info_when_present() {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+        use zip::ZipWriter;
+
+        let slice_info_xml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<config>
+  <plate>
+    <metadata key="index" value="1"/>
+    <metadata key="weight" value="12.40"/>
+    <filament id="1" type="PLA" color="#FF8800FF" used_m="5.0" used_g="12.40"/>
+  </plate>
+</config>"##;
+
+        let mut buf = build_test_3mf();
+        // build_test_3mf() liefert bereits fertige Zip-Bytes - fuer diesen Test
+        // wird stattdessen ein eigenes Archiv mit zusaetzlichem Slice-Info-Eintrag
+        // gebaut, da ZipWriter nicht nachtraeglich in fertige Bytes einfuegen kann.
+        buf.clear();
+        {
+            let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buf));
+            let options = SimpleFileOptions::default();
+            zip.start_file("[Content_Types].xml", options).unwrap();
+            zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>"#).unwrap();
+            zip.start_file("_rels/.rels", options).unwrap();
+            zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model"/></Relationships>"#).unwrap();
+            zip.start_file("3D/3dmodel.model", options).unwrap();
+            zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources></resources><build></build></model>"#).unwrap();
+            zip.start_file("Metadata/slice_info.config", options).unwrap();
+            zip.write_all(slice_info_xml.as_bytes()).unwrap();
+            zip.finish().unwrap();
+        }
+
+        let doc = parse_3mf_bytes(&buf).expect("parse should succeed");
+        let slice_info = doc.slice_info.expect("slice info present");
+        assert!((slice_info.total_weight_g - 12.40).abs() < 1e-6);
+    }
+
+    #[test]
+    fn slice_info_is_none_when_absent() {
+        let bytes = build_test_3mf();
+        let doc = parse_3mf_bytes(&bytes).expect("parse should succeed");
+        assert!(doc.slice_info.is_none());
     }
 }
