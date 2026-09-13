@@ -7,7 +7,7 @@ use serde::Serialize;
 use tauri::State;
 use tauri_plugin_dialog::DialogExt;
 
-use crate::db::models::{FileType, MaterialRecord, NewFile};
+use crate::db::models::{FileType, MaterialRecord, NewFile, ScannedMetadataUpdate};
 use crate::db::{self, models::FileRecord};
 use crate::geometry::RenderMesh;
 use crate::slicers::{detect_slicers, DetectedSlicer};
@@ -889,6 +889,71 @@ pub(crate) fn import_one(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "imported file not found after insert".to_string())?;
     Ok(to_dto(file))
+}
+
+/// Liest die Datei einer bereits katalogisierten `FileRecord` erneut vom
+/// gespeicherten Pfad ein und ueberschreibt alle davon abgeleiteten Spalten
+/// (Maße, Volumen, Materialien, Metadaten, Thumbnail, Plattenzahl,
+/// Slice-Info) - fuer den Fall, dass der Nutzer die Datei inzwischen in
+/// OrcaSlicer/Bambu Studio gesliced und am selben Pfad ueberschrieben hat.
+/// Existiert die Datei am Pfad nicht mehr, bricht die Funktion mit einem
+/// Fehler ab, BEVOR irgendetwas in der DB veraendert wird.
+pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFileDto> {
+    let existing = db::get_file(conn, id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Datei nicht im Katalog gefunden".to_string())?;
+    let path = Path::new(&existing.path);
+    if !path.exists() {
+        return Err(format!("Datei nicht gefunden: {}", existing.path));
+    }
+    let extension = path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase());
+
+    let update = match extension.as_deref() {
+        Some("3mf") => {
+            let doc = threemf::parse_3mf_file(path).map_err(|e| e.to_string())?;
+            ScannedMetadataUpdate {
+                dimensions_mm: doc.dimensions_mm,
+                volume_cm3: doc.volume_cm3,
+                object_count: Some(doc.object_count as i64),
+                thumbnail_png: doc.thumbnail_png,
+                plate_count: doc.plate_count.map(|c| c as i64),
+                slice_info_json: doc.slice_info.and_then(|s| serde_json::to_string(&s).ok()),
+                materials: doc
+                    .materials
+                    .into_iter()
+                    .map(|m| MaterialRecord { name: m.name, display_color: m.display_color })
+                    .collect(),
+                metadata: doc.metadata,
+            }
+        }
+        Some("stl") => {
+            let doc = stl::parse_stl_file(path).map_err(|e| e.to_string())?;
+            ScannedMetadataUpdate {
+                dimensions_mm: doc.dimensions_mm,
+                volume_cm3: doc.volume_cm3,
+                object_count: None,
+                thumbnail_png: None,
+                plate_count: None,
+                slice_info_json: None,
+                materials: Vec::new(),
+                metadata: BTreeMap::new(),
+            }
+        }
+        _ => return Err("nicht unterstütztes Dateiformat".to_string()),
+    };
+
+    db::update_scanned_metadata(conn, id, &update).map_err(|e| e.to_string())?;
+    let file = db::get_file(conn, id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Datei nach Aktualisierung nicht mehr gefunden".to_string())?;
+    Ok(to_dto(file))
+}
+
+#[tauri::command]
+pub fn rescan_file_metadata(state: State<AppState>, file_id: String) -> CmdResult<ModelFileDto> {
+    let id: i64 = file_id.parse().map_err(|_| "ungueltige Datei-ID".to_string())?;
+    let mut conn = lock_db(&state)?;
+    rescan_file(&mut conn, id)
 }
 
 /// Expands `roots` (files and/or directories) into the supported model files
@@ -1945,5 +2010,108 @@ mod tests {
         assert!(stored.slice_info_json.unwrap().contains("9.9"));
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn rescan_file_updates_plate_count_and_slice_info_from_current_disk_contents() {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+        use zip::ZipWriter;
+
+        fn write_3mf(path: &std::path::Path, slice_info_xml: Option<&str>) {
+            let mut buf = Vec::new();
+            {
+                let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buf));
+                let options = SimpleFileOptions::default();
+                zip.start_file("[Content_Types].xml", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>"#).unwrap();
+                zip.start_file("_rels/.rels", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model"/></Relationships>"#).unwrap();
+                zip.start_file("3D/3dmodel.model", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources></resources><build></build></model>"#).unwrap();
+                if let Some(xml) = slice_info_xml {
+                    zip.start_file("Metadata/slice_info.config", options).unwrap();
+                    zip.write_all(xml.as_bytes()).unwrap();
+                }
+                zip.finish().unwrap();
+            }
+            std::fs::write(path, &buf).expect("write temp file");
+        }
+
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let path = std::env::temp_dir().join(format!("rescan_test_{nanos}.3mf"));
+        write_3mf(&path, None);
+
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let imported = import_one(&mut conn, &path, None, None).expect("initial import");
+        let id: i64 = imported.id.parse().unwrap();
+        assert_eq!(imported.weight_source, "estimated");
+
+        let slice_info_xml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<config>
+  <plate>
+    <metadata key="index" value="1"/>
+    <metadata key="weight" value="7.70"/>
+    <filament id="1" type="PLA" color="#00FF00FF" used_m="2.5" used_g="7.70"/>
+  </plate>
+</config>"##;
+        write_3mf(&path, Some(slice_info_xml));
+
+        let rescanned = rescan_file(&mut conn, id).expect("rescan should succeed");
+        assert_eq!(rescanned.weight_source, "slicer");
+        assert!((rescanned.estimated_weight_g.expect("weight") - 7.70).abs() < 1e-6);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn rescan_file_returns_error_when_file_missing_on_disk() {
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let path = std::env::temp_dir().join(format!("rescan_missing_test_{nanos}.3mf"));
+        // Nie geschrieben - Datei existiert nicht auf der Platte.
+
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let mut new_file = sample_new_file_for_rescan_test(&path);
+        new_file.file_type = FileType::ThreeMf;
+        let id = crate::db::insert_file(&mut conn, &new_file).expect("insert");
+
+        let result = rescan_file(&mut conn, id);
+        assert!(result.is_err());
+    }
+
+    /// Minimaler `NewFile` fuer den Fehlerfall-Test oben - nur Pfad/Typ sind
+    /// relevant, alle anderen Felder sind fuer `rescan_file` irrelevant, da die
+    /// Funktion bei fehlender Datei abbricht, bevor sie sie liest.
+    fn sample_new_file_for_rescan_test(path: &std::path::Path) -> NewFile {
+        NewFile {
+            name: "missing.3mf".to_string(),
+            path: path.to_string_lossy().to_string(),
+            file_type: FileType::ThreeMf,
+            folder_id: None,
+            origin: "local".to_string(),
+            cloud_id: None,
+            sync_status: "local-only".to_string(),
+            file_size_bytes: 0,
+            dimensions_mm: None,
+            volume_cm3: None,
+            object_count: None,
+            thumbnail_png: None,
+            imported_at: "2026-09-13T00:00:00Z".to_string(),
+            file_modified_at: None,
+            materials: Vec::new(),
+            metadata: BTreeMap::new(),
+            tags: Vec::new(),
+            print_status: "not_printed".to_string(),
+            last_viewed_at: None,
+            creator: None,
+            content_hash: None,
+            render_snapshot_png: None,
+            custom_image_png: None,
+            source_url: None,
+            queue_position: None,
+            favorite: false,
+            plate_count: None,
+            slice_info_json: None,
+        }
     }
 }
