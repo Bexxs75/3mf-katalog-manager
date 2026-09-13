@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { Header } from './components/Header';
+import { Rail } from './components/Rail';
 import { Sidebar } from './components/Sidebar';
 import { ModelGrid } from './components/ModelGrid';
 import { ModelList } from './components/ModelList';
@@ -593,9 +594,37 @@ export default function App() {
 
   return (
     <div
-      className="h-screen min-h-[620px] flex flex-col bg-[var(--bg)] text-[var(--ink)] overflow-hidden"
+      className="h-screen min-h-[620px] flex flex-row bg-[var(--bg)] text-[var(--ink)] overflow-hidden"
       style={{ fontSize: 14 }}
     >
+      <Rail
+        mainView={mainView}
+        onMainViewChange={(v) => {
+          setMainView(v);
+          setSelectedId(null);
+          clearBulkSelection();
+          if (v === 'trash') refreshTrash();
+        }}
+        trashCount={trashModels.length}
+        settingsOpen={settingsOpen}
+        onSettingsOpenChange={setSettingsOpen}
+        themeSetting={setting}
+        onThemeChange={setTheme}
+        uiDensity={density}
+        onUiDensityChange={setDensity}
+        displayPreference={displayPreference}
+        onDisplayPreferenceChange={setDisplayPreference}
+        slicers={slicers}
+        onAddSlicer={addSlicer}
+        onRemoveSlicer={removeSlicer}
+        onScanCatalogIssues={scanCatalogIssues}
+        cleanupScanning={cleanupScanning}
+        cleanupError={cleanupError}
+        onExportCatalog={exportCatalog}
+        onImportCatalog={importCatalog}
+        catalogBackupError={catalogBackupError}
+      />
+      <div className="flex-1 min-w-0 flex flex-col min-h-0">
       {displayPreference === 'render' && pendingSnapshotIds.length > 0 && (
         <BackgroundSnapshotRenderer
           key={pendingSnapshotIds[0]}
@@ -611,34 +640,10 @@ export default function App() {
         onSortChange={setSort}
         hideSortControl={activeCollection !== null}
         count={filtered.length}
-        themeSetting={setting}
-        onThemeChange={setTheme}
-        uiDensity={density}
-        onUiDensityChange={setDensity}
-        displayPreference={displayPreference}
-        onDisplayPreferenceChange={setDisplayPreference}
         onImportFiles={importFiles}
         onImportFolder={importFolder}
         onImportFolderAsCollection={importFolderAsCollection}
-        settingsOpen={settingsOpen}
-        onSettingsOpenChange={setSettingsOpen}
-        slicers={slicers}
-        onAddSlicer={addSlicer}
-        onRemoveSlicer={removeSlicer}
-        onScanCatalogIssues={scanCatalogIssues}
-        cleanupScanning={cleanupScanning}
-        cleanupError={cleanupError}
-        onExportCatalog={exportCatalog}
-        onImportCatalog={importCatalog}
-        catalogBackupError={catalogBackupError}
         mainView={mainView}
-        onMainViewChange={(v) => {
-          setMainView(v);
-          setSelectedId(null);
-          clearBulkSelection();
-          if (v === 'trash') refreshTrash();
-        }}
-        trashCount={trashModels.length}
       />
 
       {mainView === 'trash' ? (
@@ -1030,6 +1035,7 @@ export default function App() {
           onDelete={deleteSelectedCleanupFiles}
         />
       )}
+      </div>
     </div>
   );
 }

@@ -103,8 +103,8 @@ export interface Translations {
   filamentSaveButton: string;
   filamentEditAria: string;
   filamentError: string;
-  filamentNavButton: string;
-  filamentBackToCatalogButton: string;
+  railCatalog: string;
+  railFilament: string;
   filamentUploadImageLabel: string;
   filamentLocationLabel: string;
   filamentViewDashboard: string;

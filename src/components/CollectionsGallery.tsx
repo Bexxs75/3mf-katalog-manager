@@ -40,7 +40,7 @@ export function CollectionsGallery({ collections, onSelect, onCreate, onRename, 
         {collections.map((c) => (
           <div
             key={c.id}
-            className="rounded-[var(--radius-card)] overflow-hidden cursor-pointer bg-[var(--panel)] shadow-[var(--shadow)] border-2 border-transparent hover:border-[var(--line-strong)] p-4 flex flex-col gap-2"
+            className="rounded-[10px] overflow-hidden cursor-pointer bg-[var(--panel)] shadow-[var(--shadow)] border-2 border-transparent hover:border-[var(--line-strong)] p-4 flex flex-col gap-2"
             onClick={() => onSelect(c.id)}
           >
             {renamingId === c.id ? (
@@ -88,7 +88,7 @@ export function CollectionsGallery({ collections, onSelect, onCreate, onRename, 
         ))}
 
         {creating ? (
-          <div className="rounded-[var(--radius-card)] border-2 border-dashed border-[var(--line-strong)] p-4 flex flex-col gap-2">
+          <div className="rounded-[10px] border-2 border-dashed border-[var(--line-strong)] p-4 flex flex-col gap-2">
             <input
               autoFocus
               value={nameDraft}
@@ -108,7 +108,7 @@ export function CollectionsGallery({ collections, onSelect, onCreate, onRename, 
         ) : (
           <button
             onClick={() => setCreating(true)}
-            className="rounded-[var(--radius-card)] border-2 border-dashed border-[var(--line-strong)] p-4 flex items-center justify-center text-[13px] font-semibold text-[var(--ink-2)] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] min-h-[76px]"
+            className="rounded-[10px] border-2 border-dashed border-[var(--line-strong)] p-4 flex items-center justify-center text-[13px] font-semibold text-[var(--ink-2)] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] min-h-[76px]"
           >
             {t('createCollectionLabel')}
           </button>
