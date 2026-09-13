@@ -11,6 +11,7 @@ interface Props {
   onQueueRemove: (id: string) => void;
   onQueueSelect: (id: string) => void;
   folders: Folder[];
+  totalModelCount: number;
   activeFolderId: string;
   onFolderSelect: (id: string) => void;
   onCreateFolder: (parentId: string | null, name: string) => void;
@@ -37,6 +38,7 @@ export function Sidebar({
   onQueueRemove,
   onQueueSelect,
   folders,
+  totalModelCount,
   activeFolderId,
   onFolderSelect,
   onCreateFolder,
@@ -126,6 +128,7 @@ export function Sidebar({
         </div>
         <FolderTree
           folders={folders}
+          totalModelCount={totalModelCount}
           activeFolderId={activeFolderId}
           onSelect={onFolderSelect}
           dragOverFolderId={dragOverFolderId}

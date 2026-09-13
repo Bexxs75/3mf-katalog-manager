@@ -93,10 +93,10 @@ pub(crate) fn init(conn: &Connection) -> Result<(), DbError> {
     Ok(())
 }
 
-// Nur von Tests genutzt: es gibt aktuell keinen Command, der Ordner manuell
-// anlegt (files.folder_id wird beim Import nie gesetzt, siehe commands.rs).
-// list_folders() liest die Tabelle trotzdem aus, daher hier nur unter Test
-// gehalten statt geloescht, um Testdaten fuer diese Abfrage anzulegen.
+// Nur von Tests genutzt: einfacher Test-Helfer, um schnell eine
+// folders-Zeile ohne parent_id/echte Verzeichnisstruktur anzulegen (fuer
+// Faelle, in denen der volle `insert_folder_with_parent`-Aufruf mit
+// physischem Pfad nicht noetig ist, z.B. list_folders()-Tests).
 #[cfg(test)]
 pub fn insert_folder(conn: &Connection, name: &str) -> Result<i64, DbError> {
     // path wird hier synthetisch aus dem Namen gebildet, nur damit bestehende
@@ -226,9 +226,14 @@ pub fn update_paths_under_folder(
     new_path: &str,
 ) -> Result<(), DbError> {
     conn.execute("UPDATE folders SET path = ?1 WHERE id = ?2", params![new_path, folder_id])?;
+    // length()/substr() auf TEXT-Werten zaehlen in SQLite in UTF-8-Zeichen,
+    // nicht in Bytes - old_path.len() (Rust, Byte-Laenge) waere bei
+    // Pfaden mit Nicht-ASCII-Zeichen (Umlaute etc.) ein falscher Offset.
+    // Indem length() hier ebenfalls von SQLite auf dem TEXT-Wert berechnet
+    // wird, stimmen beide Seiten in derselben Einheit (Zeichen) ueberein.
     conn.execute(
-        "UPDATE files SET path = ?1 || substr(path, ?2) WHERE folder_id = ?3",
-        params![new_path, (old_path.len() + 1) as i64, folder_id],
+        "UPDATE files SET path = ?1 || substr(path, length(?2) + 1) WHERE folder_id = ?3",
+        params![new_path, old_path, folder_id],
     )?;
 
     let mut stmt = conn.prepare("SELECT id, path FROM folders WHERE parent_id = ?1")?;

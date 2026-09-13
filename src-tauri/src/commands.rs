@@ -794,20 +794,32 @@ fn is_descendant(folders: &[db::models::FolderRecord], candidate_id: i64, ancest
 /// gehalten, damit sie in Tests direkt gegen eine In-Memory-`Connection`
 /// aufgerufen werden kann.
 fn move_folder_with_conn(conn: &Connection, id: i64, target: Option<i64>) -> CmdResult<()> {
+    let Some(target) = target else {
+        // Es gibt in diesem Plan kein echtes "an die Katalog-Wurzel
+        // verschieben"-Ziel (siehe "Abweichung vom Spec" im Plan). Ohne
+        // diese Ablehnung wuerde der Code unten den aktuellen Elternordner
+        // als "neues" Ziel berechnen (fs::rename waere ein No-Op-Rename
+        // auf denselben Pfad), aber set_folder_parent(.., None) wuerde die
+        // DB trotzdem so aendern, dass der Ordner keinen Parent mehr hat -
+        // eine inkonsistente Mischung aus "physisch weiter verschachtelt"
+        // und "DB sagt: kein Parent". Aktuell ruft das Frontend move_folder
+        // nie mit None auf; dieser Fehler haelt es so.
+        return Err("Ein Ordner kann nicht ohne Zielordner verschoben werden".to_string());
+    };
+
     let folders = db::list_folders(conn).map_err(|e| e.to_string())?;
     let folder = folders.iter().find(|f| f.id == id).ok_or_else(|| "folder not found".to_string())?.clone();
 
-    if let Some(target_id) = target {
-        if target_id == id || is_descendant(&folders, target_id, id) {
-            return Err("Ein Ordner kann nicht in einen eigenen Unterordner verschoben werden".to_string());
-        }
+    if target == id || is_descendant(&folders, target, id) {
+        return Err("Ein Ordner kann nicht in einen eigenen Unterordner verschoben werden".to_string());
     }
 
-    let new_parent_path = match target {
-        Some(target_id) => folders.iter().find(|f| f.id == target_id).map(|f| f.path.clone()),
-        None => std::path::Path::new(&folder.path).parent().map(|p| p.to_string_lossy().to_string()),
-    }
-    .ok_or_else(|| "target folder not found".to_string())?;
+    let new_parent_path = folders
+        .iter()
+        .find(|f| f.id == target)
+        .map(|f| f.path.clone())
+        .ok_or_else(|| "target folder not found".to_string())?;
+    let target = Some(target);
 
     let old_path = std::path::PathBuf::from(&folder.path);
     let new_path = std::path::PathBuf::from(&new_parent_path).join(&folder.name);
@@ -818,11 +830,12 @@ fn move_folder_with_conn(conn: &Connection, id: i64, target: Option<i64>) -> Cmd
 }
 
 /// Verschiebt einen echten Ordner auf der Platte (`std::fs::rename`) unter
-/// einen anderen Elternordner (oder, bei `new_parent_id: None`, an die
-/// Wurzel des aktuellen Elternverzeichnisses) und aktualisiert
-/// `folders.parent_id` sowie rekursiv `folders.path`/`files.path` fuer den
-/// Ordner selbst und alle Nachfahren. Lehnt Zyklen ab (Verschieben in den
-/// eigenen Unterordner oder in sich selbst).
+/// einen anderen Elternordner und aktualisiert `folders.parent_id` sowie
+/// rekursiv `folders.path`/`files.path` fuer den Ordner selbst und alle
+/// Nachfahren. Lehnt Zyklen ab (Verschieben in den eigenen Unterordner
+/// oder in sich selbst) sowie `new_parent_id: None` (kein "an die
+/// Katalog-Wurzel verschieben"-Ziel in diesem Plan, siehe "Abweichung vom
+/// Spec").
 #[tauri::command]
 pub fn move_folder(state: State<AppState>, folder_id: String, new_parent_id: Option<String>) -> CmdResult<()> {
     let id: i64 = folder_id.parse().map_err(|_| "invalid folder id".to_string())?;
@@ -3043,6 +3056,33 @@ mod tests {
     }
 
     #[test]
+    fn move_folder_rejects_none_target() {
+        // move_folder(id, None) darf nicht mehr, wie frueher, den Ordner
+        // physisch unveraendert lassen (fs::rename auf denselben Pfad,
+        // No-Op) waehrend set_folder_parent(.., None) die DB trotzdem so
+        // aendert, dass der Ordner keinen Parent mehr hat - das war eine
+        // stille DB/Platte-Inkonsistenz.
+        let tmp = unique_test_dir("move_folder_none_target");
+        let a_dir = tmp.join("A");
+        let b_dir = a_dir.join("B");
+        std::fs::create_dir_all(&b_dir).unwrap();
+
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let a_id = db::insert_folder_with_parent(&conn, "A", None, &a_dir.to_string_lossy()).expect("insert A");
+        let b_id = db::insert_folder_with_parent(&conn, "B", Some(a_id), &b_dir.to_string_lossy()).expect("insert B");
+
+        let result = move_folder_with_conn(&conn, b_id, None);
+        assert!(result.is_err(), "move_folder with new_parent_id=None must be rejected");
+
+        assert!(b_dir.exists(), "B must remain at its old physical location");
+        let folders = db::list_folders(&conn).expect("list_folders");
+        let b_after = folders.iter().find(|f| f.id == b_id).expect("B still present");
+        assert_eq!(b_after.parent_id, Some(a_id), "B's parent_id must be unchanged after rejected move");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
     fn move_folder_updates_all_descendant_paths() {
         use std::io::Write;
         use zip::write::SimpleFileOptions;
@@ -3182,6 +3222,69 @@ mod tests {
             file_after.path,
             expected_file_path.to_string_lossy().to_string(),
             "file path must carry the new B2/C prefix"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn rename_folder_with_non_ascii_name_produces_correct_child_paths() {
+        // Regressionstest fuer einen Byte-vs-Zeichen-Offset-Bug in
+        // update_paths_under_folder: SQLite's substr() zaehlt auf TEXT-
+        // Werten in UTF-8-Zeichen, nicht in Bytes. Ein aus Rust per
+        // old_path.len() (Byte-Laenge) berechneter Offset ist bei einem
+        // Ordnernamen mit einem Nicht-ASCII-Zeichen (hier: ue) zu gross,
+        // wodurch das Pfadtrennzeichen "verschluckt" wird und statt
+        // ".../Neu/model.3mf" ein falsches ".../Neumodel.3mf" entsteht.
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+        use zip::ZipWriter;
+
+        fn write_minimal_3mf(path: &std::path::Path) {
+            let mut buf = Vec::new();
+            {
+                let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buf));
+                let options = SimpleFileOptions::default();
+                zip.start_file("[Content_Types].xml", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>"#).unwrap();
+                zip.start_file("_rels/.rels", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model"/></Relationships>"#).unwrap();
+                zip.start_file("3D/3dmodel.model", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources></resources><build></build></model>"#).unwrap();
+                zip.finish().unwrap();
+            }
+            std::fs::write(path, &buf).expect("write temp file");
+        }
+
+        // "Pruefen" mit echtem Umlaut - alle Zeichen davor sind 2-Byte
+        // UTF-8-Sequenzen, was alleine schon alte Byte-basierte Offsets
+        // ausreichend weit verschiebt, um den Bug zu triggern.
+        let tmp = unique_test_dir("rename_folder_non_ascii");
+        let src_dir = tmp.join("Pr\u{fc}fen");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        let file_path = src_dir.join("model.3mf");
+        write_minimal_3mf(&file_path);
+
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let folder_id =
+            db::insert_folder_with_parent(&conn, "Pr\u{fc}fen", None, &src_dir.to_string_lossy()).expect("insert folder");
+
+        let imported = import_one(&mut conn, &file_path, None, None, Some(folder_id)).expect("import should succeed");
+        let file_id: i64 = imported.id.parse().unwrap();
+
+        rename_folder_with_conn(&conn, folder_id, "Neu".to_string()).expect("rename should succeed");
+
+        let expected_dir = tmp.join("Neu");
+        let expected_file_path = expected_dir.join("model.3mf");
+
+        assert!(expected_dir.exists(), "renamed folder must physically exist");
+        assert!(expected_file_path.exists(), "file must physically exist under the renamed folder");
+
+        let file_after = db::get_file(&conn, file_id).expect("get_file").expect("file exists");
+        assert_eq!(
+            file_after.path,
+            expected_file_path.to_string_lossy().to_string(),
+            "file path must be exactly '.../Neu/model.3mf', not corrupted by a byte-vs-character substr offset"
         );
 
         let _ = std::fs::remove_dir_all(&tmp);

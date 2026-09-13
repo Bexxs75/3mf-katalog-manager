@@ -856,6 +856,7 @@ export default function App() {
             onQueueRemove={removeFromQueue}
             onQueueSelect={selectModel}
             folders={folders}
+            totalModelCount={models.length}
             activeFolderId={activeFolderId}
             onFolderSelect={(id) => {
               setActiveFolderId(id);

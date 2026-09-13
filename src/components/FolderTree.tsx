@@ -8,6 +8,7 @@ interface TreeNode extends Folder {
 
 interface Props {
   folders: Folder[];
+  totalModelCount: number;
   activeFolderId: string;
   onSelect: (id: string) => void;
   dragOverFolderId?: string | null;
@@ -30,6 +31,7 @@ function buildTree(folders: Folder[]): TreeNode[] {
 
 export function FolderTree({
   folders,
+  totalModelCount,
   activeFolderId,
   onSelect,
   dragOverFolderId = null,
@@ -39,7 +41,6 @@ export function FolderTree({
   const t = useT();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const tree = useMemo(() => buildTree(folders), [folders]);
-  const totalCount = useMemo(() => folders.filter((f) => !f.parentId).reduce((sum, f) => sum + f.count, 0), [folders]);
 
   const toggle = (id: string) =>
     setExpanded((prev) => {
@@ -137,7 +138,7 @@ export function FolderTree({
         }`}
       >
         <span className="flex-1">{t('allModelsLabel')}</span>
-        <span className="font-mono-ui text-[10.5px] text-[var(--ink-3)]">{totalCount}</span>
+        <span className="font-mono-ui text-[10.5px] text-[var(--ink-3)]">{totalModelCount}</span>
       </div>
       {tree.map((n) => renderNode(n, 0))}
     </div>
