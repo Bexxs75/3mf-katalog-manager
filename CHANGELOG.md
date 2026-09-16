@@ -7,6 +7,12 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
+## [0.7.4] - 2026-09-16
+
+### Fixed
+
+- Touchpad-Pinch-Geste zoomte das ganze Anwendungsfenster statt nur die 3D-Vorschau ([GitHub Issue #6](https://github.com/Bexxs75/3mf-katalog-manager/issues/6)): Pinch-to-Zoom kommt im WebView als `wheel`-Event mit `ctrlKey: true` an (Browser-Konvention), das der Viewer im `ModelViewer.tsx` per `OrbitControls` bereits selbst auf seinem Canvas abfängt, aber überall sonst in der App ohne Gegenmaßnahme zum nativen Seiten-Zoom führte. Ein globaler `wheel`-Listener verhindert jetzt das Standardverhalten bei `ctrlKey`, unabhängig davon wo in der App gerade gescrollt wird
+
 ## [0.7.3] - 2026-09-13
 
 ### Fixed
@@ -207,6 +213,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
 ## [Unreleased]
+
+## [0.7.4] - 2026-09-16
+
+### Fixed
+
+- Touchpad pinch gesture zoomed the entire application window instead of just the 3D preview ([GitHub Issue #6](https://github.com/Bexxs75/3mf-katalog-manager/issues/6)): pinch-to-zoom arrives in the WebView as a `wheel` event with `ctrlKey: true` (browser convention), which the viewer already intercepts on its own canvas via `OrbitControls` in `ModelViewer.tsx`, but everywhere else in the app it fell through to native page zoom with no countermeasure. A global `wheel` listener now prevents the default behavior on `ctrlKey`, regardless of where in the app the gesture happens
 
 ## [0.7.3] - 2026-09-13
 

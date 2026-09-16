@@ -160,6 +160,20 @@ export default function App() {
       });
   }, []);
 
+  // Touchpad-Pinch-Gesten kommen im WebView als `wheel`-Events mit
+  // ctrlKey=true an (Browser-Konvention fuer Pinch-to-Zoom) und wuerden
+  // ohne Gegenmassnahme das ganze Fenster zoomen statt nur die 3D-Vorschau
+  // in ModelViewer.tsx, wo OrbitControls das Event bereits selbst auf dem
+  // Canvas abfaengt. Ein globaler, nicht-passiver Listener verhindert das
+  // Standardverhalten ueberall sonst in der App.
+  useEffect(() => {
+    const preventPinchZoom = (e: WheelEvent) => {
+      if (e.ctrlKey) e.preventDefault();
+    };
+    window.addEventListener('wheel', preventPinchZoom, { passive: false });
+    return () => window.removeEventListener('wheel', preventPinchZoom);
+  }, []);
+
   useEffect(() => {
     if (activeCollection) {
       refreshCollectionModels(activeCollection);
@@ -787,7 +801,7 @@ export default function App() {
                 </button>
               )}
             </div>
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto overscroll-contain p-4">
               {trashModels.length === 0 ? (
                 <p className="font-mono-ui text-[12.5px] text-[var(--ink-3)]">{t('trashEmptyState')}</p>
               ) : view === 'grid' ? (
@@ -1032,7 +1046,7 @@ export default function App() {
                 displayPreference={displayPreference}
               />
             ) : (
-              <div className="flex-1 overflow-y-auto p-4">
+              <div className="flex-1 overflow-y-auto overscroll-contain p-4">
                 {view === 'grid' ? (
                   <ModelGrid
                     models={activeCollection ? collectionModels : filtered}
