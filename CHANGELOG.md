@@ -12,6 +12,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ### Fixed
 
 - Touchpad-Pinch-Geste zoomte das ganze Anwendungsfenster statt nur die 3D-Vorschau ([GitHub Issue #6](https://github.com/Bexxs75/3mf-katalog-manager/issues/6)): Pinch-to-Zoom kommt im WebView als `wheel`-Event mit `ctrlKey: true` an (Browser-Konvention), das der Viewer im `ModelViewer.tsx` per `OrbitControls` bereits selbst auf seinem Canvas abfängt, aber überall sonst in der App ohne Gegenmaßnahme zum nativen Seiten-Zoom führte. Ein globaler `wheel`-Listener verhindert jetzt das Standardverhalten bei `ctrlKey`, unabhängig davon wo in der App gerade gescrollt wird
+- Listen- und Grid-Ansicht: Scrollen bis ans Ende ließ sich unter Linux (WebKitGTK) noch weiter über den Inhalt hinaus ziehen (elastischer Rubber-Band-Overscroll), statt am Ende zu stoppen ([GitHub Issue #5](https://github.com/Bexxs75/3mf-katalog-manager/issues/5)). `overscroll-behavior: contain` an den beiden Haupt-Scroll-Containern (Katalog- und Papierkorb-Ansicht in `App.tsx`) unterbindet das Nachgeben über die Content-Grenze hinaus
 
 ## [0.7.3] - 2026-09-13
 
@@ -219,6 +220,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 ### Fixed
 
 - Touchpad pinch gesture zoomed the entire application window instead of just the 3D preview ([GitHub Issue #6](https://github.com/Bexxs75/3mf-katalog-manager/issues/6)): pinch-to-zoom arrives in the WebView as a `wheel` event with `ctrlKey: true` (browser convention), which the viewer already intercepts on its own canvas via `OrbitControls` in `ModelViewer.tsx`, but everywhere else in the app it fell through to native page zoom with no countermeasure. A global `wheel` listener now prevents the default behavior on `ctrlKey`, regardless of where in the app the gesture happens
+- List and grid view: scrolling to the end could still be dragged further past the content on Linux (WebKitGTK), an elastic rubber-band overscroll instead of stopping at the end ([GitHub Issue #5](https://github.com/Bexxs75/3mf-katalog-manager/issues/5)). `overscroll-behavior: contain` on the two main scroll containers (catalog and trash view in `App.tsx`) now prevents scrolling past the content boundary
 
 ## [0.7.3] - 2026-09-13
 
