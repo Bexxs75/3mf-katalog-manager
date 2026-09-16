@@ -22,8 +22,10 @@ interface Props {
   displayPreference: DisplayPreference;
   onDisplayPreferenceChange: (p: DisplayPreference) => void;
   slicers: SlicerConfig[];
+  primarySlicerId: string | null;
   onAddSlicer: (name: string, path: string) => void;
   onRemoveSlicer: (id: string) => void;
+  onSetPrimarySlicer: (id: string) => void;
   onScanCatalogIssues: () => void;
   cleanupScanning: boolean;
   cleanupError: string | null;
@@ -64,8 +66,10 @@ export function Rail({
   displayPreference,
   onDisplayPreferenceChange,
   slicers,
+  primarySlicerId,
   onAddSlicer,
   onRemoveSlicer,
+  onSetPrimarySlicer,
   onScanCatalogIssues,
   cleanupScanning,
   cleanupError,
@@ -237,30 +241,50 @@ export function Rail({
               </div>
             ) : (
               <div className="flex flex-col gap-1.5">
-                {slicers.map((s) => (
-                  <div key={s.id} className="flex items-center gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <div className="text-[length:var(--font-size-title)] text-[var(--ink)] truncate">{s.name}</div>
-                        {s.source === 'auto' && (
-                          <span className="flex-none font-mono-ui text-[9px] tracking-[0.08em] uppercase text-[var(--ink-3)]">
-                            {t('slicerAutoDetectedLabel')}
-                          </span>
+                {slicers.map((s) => {
+                  const isPrimary = s.id === primarySlicerId;
+                  return (
+                    <div key={s.id} className="flex items-center gap-2">
+                      <button
+                        onClick={() => onSetPrimarySlicer(s.id)}
+                        aria-label={t('setPrimarySlicerAria')}
+                        className="flex-none w-3.5 h-3.5 rounded-full border cursor-pointer grid place-items-center"
+                        style={{
+                          borderColor: isPrimary ? 'var(--accent)' : 'var(--line-strong)',
+                        }}
+                      >
+                        {isPrimary && (
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent)' }} />
                         )}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <div className="text-[length:var(--font-size-title)] text-[var(--ink)] truncate">{s.name}</div>
+                          {isPrimary && (
+                            <span className="flex-none font-mono-ui text-[9px] tracking-[0.08em] uppercase px-1.5 rounded-full" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                              {t('slicerPrimaryChip')}
+                            </span>
+                          )}
+                          {s.source === 'auto' && (
+                            <span className="flex-none font-mono-ui text-[9px] tracking-[0.08em] uppercase text-[var(--ink-3)]">
+                              {t('slicerAutoDetectedLabel')}
+                            </span>
+                          )}
+                        </div>
+                        <div className="font-mono-ui text-[length:var(--font-size-meta)] text-[var(--ink-3)] truncate">
+                          {s.path}
+                        </div>
                       </div>
-                      <div className="font-mono-ui text-[length:var(--font-size-meta)] text-[var(--ink-3)] truncate">
-                        {s.path}
-                      </div>
+                      <span
+                        onClick={() => onRemoveSlicer(s.id)}
+                        aria-label={t('removeSlicerAria')}
+                        className="w-4 h-4 grid place-items-center rounded-full cursor-pointer text-[length:var(--font-size-meta)] text-[var(--ink-3)] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
+                      >
+                        ✕
+                      </span>
                     </div>
-                    <span
-                      onClick={() => onRemoveSlicer(s.id)}
-                      aria-label={t('removeSlicerAria')}
-                      className="w-4 h-4 grid place-items-center rounded-full cursor-pointer text-[length:var(--font-size-meta)] text-[var(--ink-3)] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
-                    >
-                      ✕
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
             {pendingSlicerPath ? (

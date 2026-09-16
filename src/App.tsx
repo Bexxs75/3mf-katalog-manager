@@ -29,7 +29,7 @@ export default function App() {
   const { setting, setTheme } = useTheme();
   const t = useT();
   const { density, setDensity } = useUiDensity();
-  const { slicers, lastUsedId, addSlicer, removeSlicer, setLastUsed, mergeDetected } = useSlicers();
+  const { slicers, primaryId, addSlicer, removeSlicer, setPrimary, mergeDetected } = useSlicers();
   const { preference: displayPreference, setPreference: setDisplayPreference } = useDisplayPreference();
   const { catalogBaseDir, setCatalogBaseDir, setupSeen, markSetupSeen } = useCatalogBaseDir();
   const [setupDialogOpen, setSetupDialogOpen] = useState(!setupSeen);
@@ -367,21 +367,18 @@ export default function App() {
   const importFolderAsCollection = () =>
     invoke<ImportResultDto>('import_folder_as_collection').then(mergeImported).then(() => refreshCollections());
 
-  const openInSlicer = (id: string, slicerId?: string) => {
+  const openInSlicer = (id: string) => {
     const model = models.find((m) => m.id === id);
     if (!model) return;
     if (slicers.length === 0) {
       setSettingsOpen(true);
       return;
     }
-    const target = slicerId
-      ? slicers.find((s) => s.id === slicerId)
-      : slicers.find((s) => s.id === lastUsedId) ?? slicers[0];
+    const target = slicers.find((s) => s.id === primaryId) ?? slicers[0];
     if (!target) {
       setSettingsOpen(true);
       return;
     }
-    setLastUsed(target.id);
     setSlicerError(null);
     invoke('open_in_slicer', { slicerPath: target.path, filePath: model.path }).catch((e) => {
       console.error('[slicer] Start fehlgeschlagen:', e);
@@ -741,8 +738,10 @@ export default function App() {
         displayPreference={displayPreference}
         onDisplayPreferenceChange={setDisplayPreference}
         slicers={slicers}
+        primarySlicerId={primaryId}
         onAddSlicer={addSlicer}
         onRemoveSlicer={removeSlicer}
+        onSetPrimarySlicer={setPrimary}
         onScanCatalogIssues={scanCatalogIssues}
         cleanupScanning={cleanupScanning}
         cleanupError={cleanupError}
@@ -832,7 +831,6 @@ export default function App() {
             onSnapshotCaptured={() => {}}
             onSetSourceUrl={() => {}}
             onOpenInSlicer={() => {}}
-            slicers={[]}
             slicerError={null}
           />
         </div>
@@ -1017,7 +1015,7 @@ export default function App() {
                 onUploadImage={() => uploadCustomImage(detailModel.id)}
                 onSnapshotCaptured={(base64) => captureRenderSnapshot(detailModel.id, base64)}
                 onSetSourceUrl={(fileId, url) => setModelSourceUrl(fileId, url)}
-                onOpenInSlicer={(slicerId) => openInSlicer(detailModel.id, slicerId)}
+                onOpenInSlicer={() => openInSlicer(detailModel.id)}
                 onRescanMetadata={() => rescanMetadata(detailModel.id)}
                 onAddToCollection={(collectionId) => addModelToCollection(detailModel.id, collectionId)}
                 collections={collections}
@@ -1077,8 +1075,7 @@ export default function App() {
               onUploadImage={() => selected && uploadCustomImage(selected.id)}
               onSnapshotCaptured={(base64) => selected && captureRenderSnapshot(selected.id, base64)}
               onSetSourceUrl={(fileId, url) => setModelSourceUrl(fileId, url)}
-              onOpenInSlicer={(slicerId) => selected && openInSlicer(selected.id, slicerId)}
-              slicers={slicers}
+              onOpenInSlicer={() => selected && openInSlicer(selected.id)}
               slicerError={slicerError}
             />
           )}

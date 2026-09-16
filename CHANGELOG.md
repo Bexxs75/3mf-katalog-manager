@@ -7,6 +7,16 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
+## [0.7.6] - 2026-09-16
+
+### Added
+
+- Standard-Slicer: ein Radio-Button pro Zeile in den Einstellungen legt fest, welcher Slicer "In Slicer öffnen" verwendet ([GitHub Issue #7](https://github.com/Bexxs75/3mf-katalog-manager/issues/7)). Ersetzt die bisherige implizite "zuletzt verwendet"-Logik (`lastUsedId`, bei jedem Klick still überschrieben) durch eine sichtbare, selbst gewählte Voreinstellung (`primaryId`). Bestehende `lastUsedId`-Werte aus localStorage werden beim ersten Laden einmalig als initialer Standard übernommen. Der allererste konfigurierte Slicer wird automatisch zum Standard
+
+### Changed
+
+- `DetailPanel.tsx`: der Split-Button+Dropdown zum spontanen Umschalten des Ziel-Slicers entfällt zugunsten des neuen Standard-Slicers — konsistentes Verhalten an allen drei Einstiegspunkten (Kontextmenü, Detailpanel, Detailseite), die jetzt alle denselben, in den Einstellungen festgelegten Slicer verwenden. Das Kontextmenü brauchte dafür keine Änderung, da es schon vorher ohne feste Slicer-Auswahl aufgerufen wurde
+
 ## [0.7.5] - 2026-09-16
 
 ### Fixed
@@ -217,6 +227,16 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
 ## [Unreleased]
+
+## [0.7.6] - 2026-09-16
+
+### Added
+
+- Default slicer: a radio button per row in Settings picks which slicer "Open in slicer" uses ([GitHub Issue #7](https://github.com/Bexxs75/3mf-katalog-manager/issues/7)). Replaces the previous implicit "last used" logic (`lastUsedId`, silently overwritten on every click) with a visible, user-chosen default (`primaryId`). Existing `lastUsedId` values in localStorage are adopted as the initial default on first load. The very first configured slicer becomes the default automatically
+
+### Changed
+
+- `DetailPanel.tsx`: the split-button-plus-dropdown for switching the target slicer on the fly is gone in favor of the new default slicer — consistent behavior across all three entry points (context menu, detail panel, detail page), which now all use the same slicer set in Settings. The context menu needed no change for this, since it already called the action without a fixed slicer choice
 
 ## [0.7.5] - 2026-09-16
 

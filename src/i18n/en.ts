@@ -62,9 +62,10 @@ export const en: Translations = {
   addSlicer: 'Add',
   confirmSlicerName: 'Confirm',
   removeSlicerAria: 'Remove slicer',
-  chooseSlicerAria: 'Choose a different slicer',
   slicerLaunchError: 'Could not start slicer:',
   slicerAutoDetectedLabel: 'auto-detected',
+  slicerPrimaryChip: 'Default',
+  setPrimarySlicerAria: 'Set as default slicer',
 
   emptyStateText: 'Select a model to see details, preview, and tags.',
   dragToRotate: 'Drag to rotate',

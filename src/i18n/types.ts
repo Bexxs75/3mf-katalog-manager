@@ -67,9 +67,10 @@ export interface Translations {
   addSlicer: string;
   confirmSlicerName: string;
   removeSlicerAria: string;
-  chooseSlicerAria: string;
   slicerLaunchError: string;
   slicerAutoDetectedLabel: string;
+  slicerPrimaryChip: string;
+  setPrimarySlicerAria: string;
 
   emptyStateText: string;
   dragToRotate: string;

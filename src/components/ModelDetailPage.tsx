@@ -22,7 +22,7 @@ interface Props {
   onUploadImage: () => void;
   onSnapshotCaptured: (base64: string) => void;
   onSetSourceUrl: (fileId: string, url: string | null) => void;
-  onOpenInSlicer: (slicerId?: string) => void;
+  onOpenInSlicer: () => void;
   onRescanMetadata: () => void;
   onAddToCollection: (collectionId: string) => void;
   collections: Collection[];

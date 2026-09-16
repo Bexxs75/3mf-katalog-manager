@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { ModelFile, SlicerConfig } from '../types';
+import type { ModelFile } from '../types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { ModelViewer } from './ModelViewer';
 import { useUiDensity } from '../hooks/UiDensityContext';
@@ -21,8 +21,7 @@ interface Props {
   onUploadImage: () => void;
   onSnapshotCaptured: (base64: string) => void;
   onSetSourceUrl: (fileId: string, url: string | null) => void;
-  onOpenInSlicer: (slicerId?: string) => void;
-  slicers: SlicerConfig[];
+  onOpenInSlicer: () => void;
   slicerError: string | null;
 }
 
@@ -41,7 +40,6 @@ export function DetailPanel({
   onSnapshotCaptured,
   onSetSourceUrl,
   onOpenInSlicer,
-  slicers,
   slicerError,
 }: Props) {
   const { language } = useLanguage();
@@ -49,7 +47,6 @@ export function DetailPanel({
   const { density } = useUiDensity();
   const [draft, setDraft] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [slicerMenuOpen, setSlicerMenuOpen] = useState(false);
   const {
     editing: editingSourceUrl,
     draft: sourceUrlDraft,
@@ -61,7 +58,6 @@ export function DetailPanel({
 
   useEffect(() => {
     setConfirmDelete(false);
-    setSlicerMenuOpen(false);
   }, [model?.id]);
 
   if (!model) {
@@ -77,8 +73,6 @@ export function DetailPanel({
     if (value) onAddTag(value);
     setDraft('');
   };
-
-  const hasSlicers = slicers.length > 0;
 
   if (trashMode) {
     const rows = buildMetaRows(model, t, language);
@@ -315,41 +309,12 @@ export function DetailPanel({
             </>
           ) : (
             <>
-              <div className="relative flex flex-1 min-w-0">
-                <button
-                  onClick={() => onOpenInSlicer()}
-                  className={`flex-1 min-w-0 h-8 px-2 truncate border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] ${
-                    hasSlicers ? 'rounded-l-[3px] border-r-0' : 'rounded-[3px]'
-                  }`}
-                >
-                  {t('openInSlicer')}
-                </button>
-                {hasSlicers && (
-                  <button
-                    onClick={() => setSlicerMenuOpen((o) => !o)}
-                    aria-label={t('chooseSlicerAria')}
-                    className="flex items-center justify-center w-6 h-8 rounded-r-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
-                  >
-                    <span className="text-[9px] leading-none">▾</span>
-                  </button>
-                )}
-                {slicerMenuOpen && (
-                  <div className="absolute bottom-10 left-0 w-[176px] py-1 bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)] z-40">
-                    {slicers.map((s) => (
-                      <button
-                        key={s.id}
-                        onClick={() => {
-                          setSlicerMenuOpen(false);
-                          onOpenInSlicer(s.id);
-                        }}
-                        className="w-full text-left px-3 py-1.5 text-[13px] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
-                      >
-                        {s.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <button
+                onClick={() => onOpenInSlicer()}
+                className="flex-1 min-w-0 h-8 px-2 truncate rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              >
+                {t('openInSlicer')}
+              </button>
               <button
                 onClick={() => setConfirmDelete(true)}
                 aria-label={t('deleteAriaLabel')}
@@ -519,43 +484,13 @@ export function DetailPanel({
           </div>
         ) : (
           <>
-            <div className="relative flex">
-              <button
-                onClick={() => onOpenInSlicer()}
-                className={`flex-1 h-11 px-4 flex items-center gap-2.5 justify-center font-bold cursor-pointer bg-[var(--accent)] text-[var(--accent-ink)] ${
-                  hasSlicers ? 'rounded-l-lg' : 'rounded-lg'
-                }`}
-                style={{ fontSize: 'var(--font-size-body)' }}
-              >
-                🖨 {t('openInSlicer')}
-              </button>
-              {hasSlicers && (
-                <button
-                  onClick={() => setSlicerMenuOpen((o) => !o)}
-                  aria-label={t('chooseSlicerAria')}
-                  className="w-11 h-11 grid place-items-center rounded-r-lg bg-[var(--accent)] text-[var(--accent-ink)] cursor-pointer border-l border-[var(--accent-ink)]/20"
-                >
-                  ▾
-                </button>
-              )}
-              {slicerMenuOpen && (
-                <div className="absolute bottom-12 left-0 right-0 py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded-lg shadow-[var(--shadow)] z-40">
-                  {slicers.map((s) => (
-                    <button
-                      key={s.id}
-                      onClick={() => {
-                        setSlicerMenuOpen(false);
-                        onOpenInSlicer(s.id);
-                      }}
-                      className="w-full text-left px-4 py-2 hover:bg-[var(--panel-2)] cursor-pointer"
-                      style={{ fontSize: 'var(--font-size-body)' }}
-                    >
-                      {s.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <button
+              onClick={() => onOpenInSlicer()}
+              className="flex-1 h-11 px-4 flex items-center gap-2.5 justify-center font-bold cursor-pointer bg-[var(--accent)] text-[var(--accent-ink)] rounded-lg"
+              style={{ fontSize: 'var(--font-size-body)' }}
+            >
+              🖨 {t('openInSlicer')}
+            </button>
             <button
               onClick={onToggleQueue}
               className="h-11 px-4 flex items-center justify-center gap-2.5 rounded-lg bg-[var(--panel-2)] font-semibold cursor-pointer hover:text-[var(--accent)]"

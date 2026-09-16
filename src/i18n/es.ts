@@ -62,9 +62,10 @@ export const es: Translations = {
   addSlicer: 'Añadir',
   confirmSlicerName: 'Confirmar',
   removeSlicerAria: 'Eliminar laminador',
-  chooseSlicerAria: 'Elegir otro laminador',
   slicerLaunchError: 'No se pudo iniciar el laminador:',
   slicerAutoDetectedLabel: 'detectado automáticamente',
+  slicerPrimaryChip: 'Predeterminado',
+  setPrimarySlicerAria: 'Establecer como laminador predeterminado',
 
   emptyStateText: 'Selecciona un modelo para ver detalles, vista previa y etiquetas.',
   dragToRotate: 'Arrastra para girar',

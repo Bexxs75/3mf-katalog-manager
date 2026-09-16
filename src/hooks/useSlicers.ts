@@ -10,26 +10,36 @@ interface DetectedSlicerInput {
 
 interface StoredState {
   slicers: SlicerConfig[];
-  lastUsedId: string | null;
+  primaryId: string | null;
   dismissedPaths: string[];
 }
 
 function loadStored(): StoredState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { slicers: [], lastUsedId: null, dismissedPaths: [] };
-    const parsed = JSON.parse(raw) as Partial<StoredState>;
+    if (!raw) return { slicers: [], primaryId: null, dismissedPaths: [] };
+    const parsed = JSON.parse(raw) as Partial<StoredState> & { lastUsedId?: unknown };
     const slicers = Array.isArray(parsed.slicers) ? parsed.slicers : [];
+    // Migration: vor diesem Feature hiess das Feld "lastUsedId" und wurde bei
+    // jedem Klick still ueberschrieben. Ein vorhandener Wert wird einmalig als
+    // initialer primaryId uebernommen, damit niemand seinen faktischen
+    // Default beim Umstieg verliert.
+    const primaryId =
+      typeof parsed.primaryId === 'string'
+        ? parsed.primaryId
+        : typeof parsed.lastUsedId === 'string'
+          ? parsed.lastUsedId
+          : null;
     return {
       // Aeltere, vor diesem Feature persistierte Eintraege haben noch kein
       // source-Feld - werden als 'manual' behandelt, da sie ausschliesslich
       // ueber den Datei-Dialog entstanden sein koennen.
       slicers: slicers.map((s) => ({ ...s, source: s.source ?? 'manual' })),
-      lastUsedId: typeof parsed.lastUsedId === 'string' ? parsed.lastUsedId : null,
+      primaryId,
       dismissedPaths: Array.isArray(parsed.dismissedPaths) ? parsed.dismissedPaths : [],
     };
   } catch {
-    return { slicers: [], lastUsedId: null, dismissedPaths: [] };
+    return { slicers: [], primaryId: null, dismissedPaths: [] };
   }
 }
 
@@ -44,9 +54,13 @@ export function useSlicers() {
 
   const addSlicer = useCallback((name: string, path: string) => {
     setState((prev) => {
+      const id = crypto.randomUUID();
       const next: StoredState = {
         ...prev,
-        slicers: [...prev.slicers, { id: crypto.randomUUID(), name, path, source: 'manual' }],
+        slicers: [...prev.slicers, { id, name, path, source: 'manual' }],
+        // Der allererste konfigurierte Slicer wird automatisch zum Standard -
+        // erspart einen unnoetigen Extra-Klick, wenn nur einer existiert.
+        primaryId: prev.primaryId ?? id,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       return next;
@@ -58,7 +72,7 @@ export function useSlicers() {
       const removed = prev.slicers.find((s) => s.id === id);
       const next: StoredState = {
         slicers: prev.slicers.filter((s) => s.id !== id),
-        lastUsedId: prev.lastUsedId === id ? null : prev.lastUsedId,
+        primaryId: prev.primaryId === id ? null : prev.primaryId,
         dismissedPaths:
           removed && removed.source === 'auto'
             ? [...prev.dismissedPaths, removed.path]
@@ -69,9 +83,9 @@ export function useSlicers() {
     });
   }, []);
 
-  const setLastUsed = useCallback((id: string) => {
+  const setPrimary = useCallback((id: string) => {
     setState((prev) => {
-      const next: StoredState = { ...prev, lastUsedId: id };
+      const next: StoredState = { ...prev, primaryId: id };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       return next;
     });
@@ -90,7 +104,11 @@ export function useSlicers() {
         additions.push({ id: crypto.randomUUID(), name: d.name, path: d.path, source: 'auto' });
       }
       if (additions.length === 0) return prev;
-      const next: StoredState = { ...prev, slicers: [...prev.slicers, ...additions] };
+      const next: StoredState = {
+        ...prev,
+        slicers: [...prev.slicers, ...additions],
+        primaryId: prev.primaryId ?? additions[0].id,
+      };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       return next;
     });
@@ -98,10 +116,10 @@ export function useSlicers() {
 
   return {
     slicers: state.slicers,
-    lastUsedId: state.lastUsedId,
+    primaryId: state.primaryId,
     addSlicer,
     removeSlicer,
-    setLastUsed,
+    setPrimary,
     mergeDetected,
   };
 }
