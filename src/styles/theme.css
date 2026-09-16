@@ -4,7 +4,12 @@
 @tailwind components;
 @tailwind utilities;
 
-html, body { margin: 0; padding: 0; }
+/* overscroll-behavior: none auf html/body unterbindet den WebKitGTK-
+   Seiten-Bounce (elastisches Ueberscrollen des gesamten Fensterinhalts,
+   nicht nur einzelner Container - siehe CHANGELOG v0.7.4/#5). "contain"
+   allein reicht laut Spec nicht, weil es den Bounce-Effekt auf dem
+   Root-Element selbst nicht verhindert, nur die Weitergabe an Eltern. */
+html, body { margin: 0; padding: 0; overscroll-behavior: none; }
 body { font-family: 'Barlow', Helvetica, sans-serif; }
 * { box-sizing: border-box; }
 

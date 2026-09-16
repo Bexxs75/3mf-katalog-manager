@@ -160,20 +160,6 @@ export default function App() {
       });
   }, []);
 
-  // Touchpad-Pinch-Gesten kommen im WebView als `wheel`-Events mit
-  // ctrlKey=true an (Browser-Konvention fuer Pinch-to-Zoom) und wuerden
-  // ohne Gegenmassnahme das ganze Fenster zoomen statt nur die 3D-Vorschau
-  // in ModelViewer.tsx, wo OrbitControls das Event bereits selbst auf dem
-  // Canvas abfaengt. Ein globaler, nicht-passiver Listener verhindert das
-  // Standardverhalten ueberall sonst in der App.
-  useEffect(() => {
-    const preventPinchZoom = (e: WheelEvent) => {
-      if (e.ctrlKey) e.preventDefault();
-    };
-    window.addEventListener('wheel', preventPinchZoom, { passive: false });
-    return () => window.removeEventListener('wheel', preventPinchZoom);
-  }, []);
-
   useEffect(() => {
     if (activeCollection) {
       refreshCollectionModels(activeCollection);

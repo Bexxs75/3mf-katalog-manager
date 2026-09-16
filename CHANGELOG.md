@@ -7,12 +7,15 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
-## [0.7.4] - 2026-09-16
+## [0.7.5] - 2026-09-16
 
 ### Fixed
 
-- Touchpad-Pinch-Geste zoomte das ganze Anwendungsfenster statt nur die 3D-Vorschau ([GitHub Issue #6](https://github.com/Bexxs75/3mf-katalog-manager/issues/6)): Pinch-to-Zoom kommt im WebView als `wheel`-Event mit `ctrlKey: true` an (Browser-Konvention), das der Viewer im `ModelViewer.tsx` per `OrbitControls` bereits selbst auf seinem Canvas abfängt, aber überall sonst in der App ohne Gegenmaßnahme zum nativen Seiten-Zoom führte. Ein globaler `wheel`-Listener verhindert jetzt das Standardverhalten bei `ctrlKey`, unabhängig davon wo in der App gerade gescrollt wird
-- Listen- und Grid-Ansicht: Scrollen bis ans Ende ließ sich unter Linux (WebKitGTK) noch weiter über den Inhalt hinaus ziehen (elastischer Rubber-Band-Overscroll), statt am Ende zu stoppen ([GitHub Issue #5](https://github.com/Bexxs75/3mf-katalog-manager/issues/5)). `overscroll-behavior: contain` an den beiden Haupt-Scroll-Containern (Katalog- und Papierkorb-Ansicht in `App.tsx`) unterbindet das Nachgeben über die Content-Grenze hinaus
+- Listen- und Grid-Ansicht: Scrollen bis ans Ende ließ sich unter Linux (WebKitGTK) noch weiter über den Inhalt hinaus ziehen (elastischer Rubber-Band-Overscroll), statt am Ende zu stoppen ([GitHub Issue #5](https://github.com/Bexxs75/3mf-katalog-manager/issues/5)). Der v0.7.4-Fix (`overscroll-behavior: contain` an den beiden Haupt-Scroll-Containern) reichte nicht aus, da dabei der komplette Fensterinhalt (auch Header/Sidebar außerhalb dieser Container) sichtbar mitwanderte — laut Spezifikation verhindert `contain` nur die Weitergabe an Eltern-Elemente, nicht den Bounce-Effekt auf der Seite selbst. Jetzt zusätzlich `overscroll-behavior: none` auf `html`/`body` gesetzt, was den Seiten-Bounce auf Root-Ebene unterbindet
+
+### Reverted
+
+- Der Pinch-Zoom-Fix aus v0.7.4 ([GitHub Issue #6](https://github.com/Bexxs75/3mf-katalog-manager/issues/6)) wurde zurückgenommen: nach weiterer Analyse stellte sich heraus, dass die beobachtete Vergrößerung eine Bildschirm-/Trackpad-Zoomfunktion des Notebooks selbst war (Betriebssystem-Ebene), kein Bug der App. Der globale `wheel`-Listener in `App.tsx` löste ohnehin nicht die tatsächliche Ursache und wurde daher wieder entfernt, statt unnötig Komplexität für ein Nicht-Problem der App zu behalten
 
 ## [0.7.3] - 2026-09-13
 
@@ -215,12 +218,15 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ## [Unreleased]
 
-## [0.7.4] - 2026-09-16
+## [0.7.5] - 2026-09-16
 
 ### Fixed
 
-- Touchpad pinch gesture zoomed the entire application window instead of just the 3D preview ([GitHub Issue #6](https://github.com/Bexxs75/3mf-katalog-manager/issues/6)): pinch-to-zoom arrives in the WebView as a `wheel` event with `ctrlKey: true` (browser convention), which the viewer already intercepts on its own canvas via `OrbitControls` in `ModelViewer.tsx`, but everywhere else in the app it fell through to native page zoom with no countermeasure. A global `wheel` listener now prevents the default behavior on `ctrlKey`, regardless of where in the app the gesture happens
-- List and grid view: scrolling to the end could still be dragged further past the content on Linux (WebKitGTK), an elastic rubber-band overscroll instead of stopping at the end ([GitHub Issue #5](https://github.com/Bexxs75/3mf-katalog-manager/issues/5)). `overscroll-behavior: contain` on the two main scroll containers (catalog and trash view in `App.tsx`) now prevents scrolling past the content boundary
+- List and grid view: scrolling to the end could still be dragged further past the content on Linux (WebKitGTK), an elastic rubber-band overscroll instead of stopping at the end ([GitHub Issue #5](https://github.com/Bexxs75/3mf-katalog-manager/issues/5)). The v0.7.4 fix (`overscroll-behavior: contain` on the two main scroll containers) wasn't enough — the entire window content (including the header/sidebar outside those containers) visibly shifted along with the bounce, because per spec `contain` only stops chaining to ancestor elements, not the bounce effect on the page itself. Now additionally sets `overscroll-behavior: none` on `html`/`body`, which suppresses the page-level bounce at the root
+
+### Reverted
+
+- The pinch-zoom fix from v0.7.4 ([GitHub Issue #6](https://github.com/Bexxs75/3mf-katalog-manager/issues/6)) has been reverted: further analysis showed the observed magnification was the notebook's own screen/trackpad zoom feature (OS level), not an app bug. The global `wheel` listener in `App.tsx` never addressed the actual cause anyway, so it was removed rather than kept as unnecessary complexity for something that isn't an app problem
 
 ## [0.7.3] - 2026-09-13
 
