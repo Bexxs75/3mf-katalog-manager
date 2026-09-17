@@ -7,6 +7,10 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
+### Added
+
+- GitHub-Actions-Workflows `build-macos.yml` und `build-windows.yml` (nur manuell per `workflow_dispatch` auslösbar): bauen unsignierte `.dmg`- bzw. `.msi`-Pakete komplett auf GitHubs eigenen Cloud-Runnern, ohne dass der lokale Rechner eine Mac- oder Windows-Toolchain braucht. Beide Ausgaben wurden nachträglich dem bestehenden [v0.7.6-Release](https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v0.7.6) hinzugefügt, das damit jetzt Linux, macOS und Windows abdeckt
+
 ## [0.7.6] - 2026-09-16
 
 ### Added
@@ -227,6 +231,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
 ## [Unreleased]
+
+### Added
+
+- GitHub Actions workflows `build-macos.yml` and `build-windows.yml` (manual `workflow_dispatch` trigger only): build unsigned `.dmg` and `.msi` packages entirely on GitHub's own cloud runners, no local Mac/Windows toolchain required. Both outputs were added to the existing [v0.7.6 release](https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v0.7.6), which now covers Linux, macOS, and Windows
 
 ## [0.7.6] - 2026-09-16
 
