@@ -10,6 +10,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ### Added
 
 - GitHub-Actions-Workflows `build-macos.yml` und `build-windows.yml` (nur manuell per `workflow_dispatch` auslösbar): bauen unsignierte `.dmg`- bzw. `.msi`-Pakete komplett auf GitHubs eigenen Cloud-Runnern, ohne dass der lokale Rechner eine Mac- oder Windows-Toolchain braucht. Beide Ausgaben wurden nachträglich dem bestehenden [v0.7.6-Release](https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v0.7.6) hinzugefügt, das damit jetzt Linux, macOS und Windows abdeckt
+- Bebildertes Benutzerhandbuch (`docs/benutzerhandbuch/BENUTZERHANDBUCH.md`) für Einsteiger ohne Vorwissen über die App, von der README aus verlinkt. Alle Screenshots zeigen frei erfundene Beispieldaten (Modelle, Filamentspulen), keine echten Nutzerdaten
 
 ## [0.7.6] - 2026-09-16
 

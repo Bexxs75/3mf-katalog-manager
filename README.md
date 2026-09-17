@@ -2,6 +2,8 @@
 
 Plattformunabhängige Desktop-Anwendung zur Katalogisierung und Verwaltung von 3MF- und STL-Dateien für den 3D-Druck. Gebaut mit [Tauri](https://tauri.app/) (Rust-Backend) und React/TypeScript/Tailwind.
 
+**Neu hier?** Das [Benutzerhandbuch](docs/benutzerhandbuch/BENUTZERHANDBUCH.md) erklärt alle Funktionen bebildert und Schritt für Schritt, ganz ohne Vorwissen über die App.
+
 ## Funktionen
 
 - **3MF- und STL-Parsing** — beide Formate gleichwertig unterstützt: OPC-Container-Entpackung inkl. eingebettetem Thumbnail bei 3MF, ASCII- und Binär-STL-Parsing
