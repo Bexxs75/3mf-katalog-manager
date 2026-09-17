@@ -302,3 +302,302 @@ lässt sich der Katalog aber manuell auf einen anderen Rechner übertragen.
 ist?** Das ist lediglich ein Platzhaltertext ("https://…") mit einem kleinen Stift-Symbol zum
 Bearbeiten daneben — je nach installierten Schriftarten auf deinem System kann dieses Symbol
 etwas anders aussehen, das ist kein Fehler.
+
+---
+
+# User Guide — 3MF Katalog Manager
+
+This guide is for anyone using the 3MF Katalog Manager for the first time and not yet familiar
+with the app. It walks you step by step through importing, organizing, and preparing your models
+for printing, and managing your filament stock.
+
+> **About the screenshots in this guide:** the screenshots below were taken with the app set to
+> German, using entirely made-up sample data (fictional models like "Kabelhalter Set" or
+> "Gartenzwerg Mini", fictional filament spools) — no real user data. The layout is exactly what
+> you'll see; only the on-screen text (German UI, since that's the app's default language) and
+> the content are for demonstration purposes. Switch the app's language to English in Settings
+> (see [Settings](#settings)) and every label described below will appear in English in your own
+> installation.
+
+## Contents
+
+1. [What is the 3MF Katalog Manager?](#what-is-the-3mf-katalog-manager)
+2. [Installation](#installation-1)
+3. [Getting started](#getting-started)
+4. [Interface overview](#interface-overview)
+5. [Importing files](#importing-files)
+6. [Browsing and organizing your catalog](#browsing-and-organizing-your-catalog)
+7. [Viewing a model in detail](#viewing-a-model-in-detail)
+8. [Quick actions: context menu and multi-select](#quick-actions-context-menu-and-multi-select)
+9. [Collections](#collections)
+10. [The print queue](#the-print-queue)
+11. [Opening models directly in your slicer](#opening-models-directly-in-your-slicer)
+12. [The filament stock](#the-filament-stock)
+13. [Print log](#print-log)
+14. [The trash](#the-trash)
+15. [Settings](#settings)
+16. [Backing up and restoring your catalog](#backing-up-and-restoring-your-catalog)
+17. [Known limitations](#known-limitations)
+18. [Frequently asked questions (FAQ)](#frequently-asked-questions-faq)
+
+---
+
+## What is the 3MF Katalog Manager?
+
+The 3MF Katalog Manager is a desktop application for keeping a large collection of 3D-printing
+files (`.3mf` and `.stl`) organized: with preview images, folders, tags, search, a dedicated
+stock manager for your filament spools, and a one-click way to open a model in your slicer of
+choice. Everything runs locally on your machine — there's no cloud connection, and your data
+never leaves your computer.
+
+## Installation
+
+The app is available for Linux, Windows, and macOS (see the project's
+[releases page](https://github.com/Bexxs75/3mf-katalog-manager/releases)).
+
+- **Linux:** extract the `.tar.gz` archive, make the included `.AppImage` file executable, and
+  run it.
+- **Windows:** run the `.msi` installer. The package is unsigned (no Windows code-signing
+  certificate) — SmartScreen will warn on first launch. Click "More info" → "Run anyway" to
+  continue.
+- **macOS:** open the `.dmg` file and drag the app into your Applications folder. This package is
+  also unsigned (no Apple Developer certificate) — Gatekeeper will block the first launch.
+  Right-click the app → "Open" and confirm in the dialog to start it anyway.
+
+## Getting started
+
+The very first time you launch the app, it asks how your catalog should be organized:
+
+![Initial setup dialog](bilder/01-ersteinrichtung.png)
+
+As of this app version, folders in the catalog correspond to real directories on your hard
+drive — if you move a file to another folder inside the app, it's actually moved there, not just
+re-sorted within the catalog. You have two options:
+
+- **Use existing folder structure** — if you already organize your print files in folders,
+  choose the top-level folder. The catalog adopts the complete structure including
+  subfolders and automatically imports every `.3mf`/`.stl` file it contains.
+- **Set up a new location** — pick a (possibly empty) folder where the catalog will store newly
+  imported files from now on.
+
+You can change this choice at any time in Settings under "Catalog location". The dialog can also
+be skipped via "Set up later".
+
+Already-packed archives (e.g. `.zip`) are not picked up by the automatic scan and are left
+untouched — unpack them first if needed, or open the folder directly from the catalog via your
+file manager afterwards.
+
+## Interface overview
+
+![Catalog in grid view](bilder/02-katalog-grid.png)
+
+- **Far left, the narrow navigation rail:** switches between the catalog, the filament stock, and
+  the trash (with an item-count badge). The gear icon for Settings sits at the very bottom.
+- **Sidebar:** a search field, followed by your folder tree with a model count per folder, your
+  collections, your tags, and your print queue.
+- **Main area:** your catalog as a grid (tiles with a preview image) or a list, switchable, plus
+  sorting and the "Import" button top left.
+- **Detail panel on the right:** shows the preview and metadata of the currently selected model,
+  including quick actions like "Printed"/"Add to queue".
+
+## Importing files
+
+The red "+ Import" button top left offers several ways in: pick individual files via a dialog,
+import an entire folder (including subfolders), or drag files straight from your file manager
+into the catalog window. On import, dimensions, volume, object count, and (if present in the
+file) material information are extracted automatically, and the app suggests matching hashtags
+that you're free to edit afterwards.
+
+If the app imports a file that's already present in the catalog content-wise (an exact duplicate
+check via content hash), it's recognized instead of being added a second time.
+
+## Browsing and organizing your catalog
+
+Top right, next to "Import", you switch between **grid** view (image tiles, see the screenshot
+above) and **list** view:
+
+![Catalog in list view](bilder/03-katalog-liste.png)
+
+The list shows additional columns (tags, volume, file size) and can be sorted by clicking a
+column header. Three independent mechanisms are available for organizing your catalog, and you
+can combine them freely:
+
+- **Folders** (sidebar, left) — real directories on disk, see above.
+- **Tags** — freely assigned hashtags, collected under "Tags" in the sidebar, clickable to
+  filter.
+- **Collections** — explicitly group several models into a project (see
+  [Collections](#collections) below).
+
+The search field at the top of the sidebar filters by name or tag. Frequently used combinations
+of folder/tag/creator/search/sort can be saved under a name and reapplied later with a click
+("Saved filters").
+
+## Viewing a model in detail
+
+Double-clicking a model opens the full detail page:
+
+![Model detail page](bilder/04-modell-detailseite.png)
+
+Top right in the preview area, you switch between the **3D view** (free rotation by dragging with
+the mouse, plus auto-rotation and 15°-step buttons) and the stored **image** — which of the two
+is shown by default is set in Settings under "Preferred view". On the right you'll find all
+metadata (dimensions, volume, estimated weight, material, file size, import date, creator),
+followed by a **source** field (e.g. a link to the model's origin page) and your hashtags, with
+the option to add or remove more. If the file has already been sliced in OrcaSlicer or Bambu
+Studio, the app reads the real filament weight straight from the slicer's metadata instead of
+only roughly estimating it — including a breakdown per print plate and filament, plus an
+estimated material-cost total if matching spools are on record in the filament stock. The
+"Re-scan metadata" button re-fetches these values later on, in case you sliced an already
+cataloged file after the fact.
+
+At the bottom left you can mark the model as **printed** and add it to the **queue**.
+
+## Quick actions: context menu and multi-select
+
+Right-clicking a model opens a context menu with the most important actions:
+
+![Context menu](bilder/05-kontextmenu.png)
+
+To edit several models at once, select them via the checkboxes at the top left of each tile (or
+"Select all"). An action bar appears, letting you add the whole selection to the queue or a
+collection, mark it printed/not printed, or delete it together:
+
+![Multi-select with action bar](bilder/06-mehrfachauswahl.png)
+
+## Collections
+
+Collections are a third organizational mechanism alongside folders and tags: you explicitly
+group several models into a project, with a manually definable order (drag & drop). Create a new
+collection via "+ New collection" in the sidebar, populate it via multi-select, or import an
+entire folder straight into a new collection. Clicking a collection in the sidebar filters the
+catalog down to its models:
+
+![Collection "Weihnachtsmarkt-Projekt"](bilder/07-sammlungen.png)
+
+## The print queue
+
+Under "Queue" in the sidebar, you collect models you plan to print next — sortable via drag &
+drop. Marking a model as printed automatically removes it from the queue again.
+
+![Queue with one waiting model](bilder/12-warteschlange.png)
+
+## Opening models directly in your slicer
+
+"Open in slicer" (available in the detail panel, on the detail page, and in the context menu)
+launches your slicer program directly with the selected file. Which slicers are available, and
+which of them is your **default slicer**, is configured in Settings (see below).
+
+> On macOS, this feature currently doesn't work reliably — see
+> [Known limitations](#known-limitations).
+
+## The filament stock
+
+The filament stock is an independent manager for your filament spools, separate from the model
+catalog. You reach it via the second icon in the navigation rail on the far left.
+
+![Filament stock dashboard](bilder/08-filament-dashboard.png)
+
+At the top is a stats bar (total spools, total remaining weight, occupied storage locations,
+spools with low/empty stock). Each spool card shows material, manufacturer, color, storage
+location, remaining weight as a bar and percentage, and a status: **In stock** (green), **Low**
+(orange, once stock is running low), or **Empty**. The "Low"/"Empty" filter buttons or the search
+field help you find spools that need reordering soon.
+
+As an alternative to the tile view, there's a sortable list view ("List" next to "Dashboard"):
+
+![Filament table](bilder/09-filament-tabelle.png)
+
+"+ Add spool" opens the form for a new spool:
+
+![Form for adding a new spool](bilder/10-filament-spule-formular.png)
+
+Besides the usual fields (material, manufacturer, color, storage location, diameter, price,
+original/remaining weight, optionally a photo), you can also set a **quantity** here: adding,
+say, three identical PLA spools at once still gives each one its own, independently tracked
+remaining weight. For material, manufacturer, and storage location, the app suggests previously
+used values as you type (autocomplete).
+
+## Print log
+
+In addition to the simple printed/not-printed status, you can keep a log of multiple print
+attempts per model (date, a note, optionally a photo) — useful if you print the same model
+repeatedly and want to keep track of which attempt worked and when.
+
+## The trash
+
+Deleted models aren't removed immediately — they move to the trash for 7 days and can be restored
+during that time:
+
+![Trash with two deleted models](bilder/13-papierkorb.png)
+
+"Empty trash" top right removes everything it contains immediately and permanently.
+
+## Settings
+
+The gear icon at the bottom of the navigation rail opens Settings:
+
+![Settings with slicer management](bilder/11-einstellungen-slicer.png)
+
+- **Appearance** — follows your system setting automatically, or fixed to light/dark.
+- **View** — "Compact" (dense, small text, a lot at a glance) or "Comfort" (larger text, graphics,
+  and controls, noticeably easier to read).
+- **Preferred view** — whether the catalog and the detail page default to the stored preview
+  image or the rendered 3D view. Missing snapshots are automatically re-rendered in the
+  background as needed.
+- **Language** — German, English, Spanish, or French, effective immediately without a restart.
+- **Slicer management** — the app scans known install locations on startup (Bambu Studio,
+  OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura) and adds any it finds automatically; use
+  "+ Add" to add others, including self-built or modified versions. The radio button sets which
+  slicer is used as the **default** when opening a model.
+- **Check catalog** — a manually triggered scan finds orphaned file paths (a file listed in the
+  catalog but no longer present on disk) and inventory duplicates, with cleanup via a selection
+  dialog.
+- **Catalog backup** — see the next section.
+
+Below in the screenshot, you can see an example of the **light** vs. **dark** theme side by side:
+
+![Catalog in dark theme](bilder/14-dark-mode.png)
+![Catalog in light theme](bilder/15-hell-mode-bonus.png)
+
+## Backing up and restoring your catalog
+
+"Catalog backup" in Settings exports your complete catalog (database and settings) as a ZIP
+file — handy before switching systems or simply as a safety copy. When restoring such a backup,
+the app automatically backs up your existing database first, so an accidental import never
+overwrites anything irreversibly.
+
+## Known limitations
+
+- **"Open in slicer" on macOS** currently doesn't work reliably, since slicers there are usually
+  installed as `.app` bundles (their own launch mechanism instead of a directly executable file).
+  On Linux and Windows, the feature works without restrictions.
+- The macOS and Windows installer packages are **unsigned** — Gatekeeper and SmartScreen
+  respectively will warn on first launch (see [Installation](#installation-1) for the way around
+  it).
+- There is **no cloud connection** — the catalog is deliberately local-only; an earlier Google
+  Drive integration was removed again because it was too unstable in everyday use.
+
+## Frequently asked questions (FAQ)
+
+**Why do some models show only a dotted pattern instead of a preview image?**
+The model has neither an uploaded image of its own, nor a thumbnail embedded in the file, nor has
+a 3D snapshot been generated for it yet. Open the model in the 3D view once, or upload your own
+image via "Upload image" on the detail page.
+
+**I accidentally deleted a file — is it gone?**
+No, as long as fewer than 7 days have passed: it sits in the trash and can be restored from
+there.
+
+**How do I get my existing folder structure into the catalog?**
+Choose "Use existing folder structure" during initial setup (see
+[Getting started](#getting-started)), or later via "Catalog location" in Settings.
+
+**Can I use the same catalog on multiple computers?**
+Not automatically/synced — there's currently no cloud connection for that (see
+[Known limitations](#known-limitations)). But "Catalog backup" (export/import) lets you transfer
+the catalog to another computer manually.
+
+**Why does the "Source" field look a bit odd on some systems when no URL is set?**
+That's just placeholder text ("https://…") with a small pencil icon next to it for editing —
+depending on the fonts installed on your system, that icon may render slightly differently. It's
+not a bug.

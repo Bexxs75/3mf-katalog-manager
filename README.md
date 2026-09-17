@@ -2,7 +2,7 @@
 
 Plattformunabhängige Desktop-Anwendung zur Katalogisierung und Verwaltung von 3MF- und STL-Dateien für den 3D-Druck. Gebaut mit [Tauri](https://tauri.app/) (Rust-Backend) und React/TypeScript/Tailwind.
 
-**Neu hier?** Das [Benutzerhandbuch](docs/benutzerhandbuch/BENUTZERHANDBUCH.md) erklärt alle Funktionen bebildert und Schritt für Schritt, ganz ohne Vorwissen über die App.
+**Neu hier?** Das [Benutzerhandbuch](docs/benutzerhandbuch/BENUTZERHANDBUCH.md) (DE + EN) erklärt alle Funktionen bebildert und Schritt für Schritt, ganz ohne Vorwissen über die App.
 
 ## Funktionen
 
@@ -93,6 +93,8 @@ MIT — siehe [LICENSE](LICENSE).
 # 3MF Katalog Manager (English)
 
 Cross-platform desktop application for cataloging and managing 3MF and STL files for 3D printing. Built with [Tauri](https://tauri.app/) (Rust backend) and React/TypeScript/Tailwind.
+
+**New here?** The [User Guide](docs/benutzerhandbuch/BENUTZERHANDBUCH.md) (DE + EN) explains every feature with screenshots, step by step, no prior knowledge of the app required.
 
 ## Features
 

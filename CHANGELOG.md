@@ -10,7 +10,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ### Added
 
 - GitHub-Actions-Workflows `build-macos.yml` und `build-windows.yml` (nur manuell per `workflow_dispatch` auslösbar): bauen unsignierte `.dmg`- bzw. `.msi`-Pakete komplett auf GitHubs eigenen Cloud-Runnern, ohne dass der lokale Rechner eine Mac- oder Windows-Toolchain braucht. Beide Ausgaben wurden nachträglich dem bestehenden [v0.7.6-Release](https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v0.7.6) hinzugefügt, das damit jetzt Linux, macOS und Windows abdeckt
-- Bebildertes Benutzerhandbuch (`docs/benutzerhandbuch/BENUTZERHANDBUCH.md`) für Einsteiger ohne Vorwissen über die App, von der README aus verlinkt. Alle Screenshots zeigen frei erfundene Beispieldaten (Modelle, Filamentspulen), keine echten Nutzerdaten
+- Bebildertes Benutzerhandbuch (`docs/benutzerhandbuch/BENUTZERHANDBUCH.md`, zweisprachig DE+EN) für Einsteiger ohne Vorwissen über die App, von der README aus verlinkt. Alle Screenshots zeigen frei erfundene Beispieldaten (Modelle, Filamentspulen) mit deutscher UI-Beschriftung, keine echten Nutzerdaten
 
 ## [0.7.6] - 2026-09-16
 
@@ -236,6 +236,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 ### Added
 
 - GitHub Actions workflows `build-macos.yml` and `build-windows.yml` (manual `workflow_dispatch` trigger only): build unsigned `.dmg` and `.msi` packages entirely on GitHub's own cloud runners, no local Mac/Windows toolchain required. Both outputs were added to the existing [v0.7.6 release](https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v0.7.6), which now covers Linux, macOS, and Windows
+- Illustrated user guide (`docs/benutzerhandbuch/BENUTZERHANDBUCH.md`, bilingual DE+EN) for beginners with no prior knowledge of the app, linked from the README. All screenshots show entirely made-up sample data (models, filament spools) with German UI labels, no real user data
 
 ## [0.7.6] - 2026-09-16
 
