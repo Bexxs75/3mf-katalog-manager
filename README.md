@@ -38,9 +38,8 @@ Plattformunabhängige Desktop-Anwendung zur Katalogisierung und Verwaltung von 3
 Dieses Projekt befindet sich in aktiver Entwicklung. Der lokale Katalog (Import, Parsing, Tagging, Suche, 3D-Vorschau, Mehrsprachigkeit, Theming) und "In Slicer öffnen" sind funktionsfähig. Folgendes ist noch **nicht** umgesetzt:
 
 - **Cloud-Anbindung** (Google Drive u. a.): war vorhanden, wurde aber wieder entfernt — zu instabil/fehleranfällig für den Alltagsgebrauch. Wird bei Gelegenheit sauber neu konzipiert, siehe CHANGELOG
-- **macOS**: bisher nur unter Linux entwickelt und getestet; "In Slicer öffnen" unterstützt macOS gezielt nicht (`.app`-Bundles brauchen einen eigenen Start-Mechanismus)
-- **Plattformübergreifende Release-Builds**: Windows-`.msi`-Build ist manuell auf einer Windows-11-VM verifiziert (Build + Installation + Icon-Prüfung), aber nicht Teil einer automatisierten Pipeline; macOS-Paket (`.dmg`) sowie Code-Signing für beide Plattformen stehen noch aus
-- **CI/CD-Pipeline**: noch nicht eingerichtet
+- **"In Slicer öffnen" unter macOS**: da Slicer dort meist als `.app`-Bundle installiert sind (eigener Start-Mechanismus statt einer direkt ausführbaren Datei), funktioniert das gezielte Öffnen aus dem Katalog heraus unter macOS derzeit nicht zuverlässig
+- **Code-Signing**: die macOS-`.dmg`- und Windows-`.msi`-Pakete sind unsigniert (kein Apple-Developer- bzw. Windows-Code-Signing-Zertifikat) — beim ersten Start warnen Gatekeeper bzw. SmartScreen entsprechend
 
 ## Geplant
 
@@ -129,9 +128,8 @@ Cross-platform desktop application for cataloging and managing 3MF and STL files
 This project is under active development. The local catalog (import, parsing, tagging, search, 3D preview, multilingual UI, theming) and "open in slicer" are functional. The following is **not** yet implemented:
 
 - **Cloud integration** (Google Drive etc.): existed previously but was removed again — too unstable/error-prone for everyday use. Will be cleanly redesigned at some point, see CHANGELOG
-- **macOS**: developed and tested on Linux only so far; "open in slicer" specifically does not support macOS (`.app` bundles need a different launch mechanism)
-- **Cross-platform release builds**: the Windows `.msi` build is manually verified on a Windows 11 VM (build + installation + icon check), but not part of an automated pipeline; a macOS package (`.dmg`) and code signing for both platforms are still outstanding
-- **CI/CD pipeline**: not yet set up
+- **"Open in slicer" on macOS**: slicers there are usually installed as `.app` bundles (their own launch mechanism instead of a directly executable file), so opening a model directly from the catalog currently doesn't work reliably on macOS
+- **Code signing**: the macOS `.dmg` and Windows `.msi` packages are unsigned (no Apple Developer or Windows code-signing certificate) — Gatekeeper/SmartScreen will warn accordingly on first launch
 
 ## Planned
 
