@@ -18,6 +18,14 @@ pub struct AppState {
     pub db: Mutex<Connection>,
     pub trash_dir: std::path::PathBuf,
     pub db_path: std::path::PathBuf,
+    /// Verzeichnisse, in die niemals per `create_folder`/`rename_folder`/
+    /// `move_folder`/`move_file_to_folder` geschrieben werden darf, einmalig
+    /// beim Start berechnet (siehe `crate::sensitive_dirs`). Schuetzt gegen
+    /// Finding 1 des Security-Reviews vom 2026-09-18: ein importiertes
+    /// Katalog-Backup kann `folders.path`/`files.path` auf beliebige Orte
+    /// setzen, die sonst ungeprueft an `fs::rename`/`fs::create_dir`
+    /// weitergereicht wuerden (z.B. Autostart-Verzeichnisse fuer Persistenz).
+    pub sensitive_dirs: Vec<std::path::PathBuf>,
 }
 
 type CmdResult<T> = Result<T, String>;
@@ -660,7 +668,12 @@ fn move_file(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()
 /// Huelle gehalten, damit sie in Tests direkt gegen eine In-Memory-`Connection`
 /// aufgerufen werden kann (gleiche Konvention wie `import_many_with_conn`/
 /// `rescan_file`).
-fn move_file_to_folder_with_conn(conn: &Connection, file_id: i64, folder_id: Option<i64>) -> CmdResult<()> {
+fn move_file_to_folder_with_conn(
+    conn: &Connection,
+    file_id: i64,
+    folder_id: Option<i64>,
+    sensitive_dirs: &[PathBuf],
+) -> CmdResult<()> {
     let file = db::get_file(conn, file_id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "file not found".to_string())?;
@@ -676,6 +689,7 @@ fn move_file_to_folder_with_conn(conn: &Connection, file_id: i64, folder_id: Opt
             .map(|p| p.to_path_buf())
             .ok_or_else(|| "invalid current path".to_string())?,
     };
+    reject_if_sensitive_path(&target_dir, sensitive_dirs)?;
 
     let new_path = target_dir.join(&file.name);
     move_file(std::path::Path::new(&file.path), &new_path).map_err(|e| e.to_string())?;
@@ -698,7 +712,8 @@ pub fn move_file_to_folder(state: State<AppState>, file_id: String, folder_id: O
         .transpose()?;
 
     let conn = lock_db(&state)?;
-    move_file_to_folder_with_conn(&conn, id, target_id)
+    let sensitive_dirs = state.sensitive_dirs.clone();
+    move_file_to_folder_with_conn(&conn, id, target_id, &sensitive_dirs)
 }
 
 /// Sicherheits-Grenze fuer `create_folder`/`rename_folder`: `name` landet
@@ -719,6 +734,32 @@ fn validate_folder_name(name: &str) -> CmdResult<()> {
     }
     if name == "." || name == ".." {
         return Err("Ungueltiger Ordnername".to_string());
+    }
+    Ok(())
+}
+
+/// Zweite Sicherheits-Grenze, zusaetzlich zu `validate_folder_name`: prueft
+/// den vollen, aufgeloesten Zielpfad einer Ordner-/Datei-Operation gegen eine
+/// Liste bekannter sensibler Systemverzeichnisse (Config-/Autostart-Ordner,
+/// SSH/GPG-Schluesselverzeichnisse, System-Wurzelverzeichnisse). Anders als
+/// `validate_folder_name` greift das nicht nur bei direkter Texteingabe im
+/// "+ Neuer Ordner"-Feld, sondern ueberall dort, wo ein Pfad aus der
+/// Datenbank gelesen und an `fs::rename`/`fs::create_dir` weitergereicht
+/// wird - insbesondere `folders.path`/`files.path`, die durch `import_catalog`
+/// aus einem beliebigen, nicht selbst erzeugten ZIP-Archiv komplett ersetzt
+/// werden koennen (Security-Review 2026-09-18, Finding 1). Ohne diese Pruefung
+/// koennte ein praepariertes Katalog-Backup einen Ordner-Eintrag mit
+/// `path = ~/.config/autostart` (o.ae.) einschleusen; verschiebt der Nutzer
+/// anschliessend ganz regulaer per UI eine Datei "in diesen Ordner", landet
+/// sie real dort - mit Persistenz-Wirkung beim naechsten Login.
+fn reject_if_sensitive_path(path: &Path, sensitive_dirs: &[PathBuf]) -> CmdResult<()> {
+    for dir in sensitive_dirs {
+        if path == dir.as_path() || path.starts_with(dir) {
+            return Err(format!(
+                "Zielpfad liegt in einem geschuetzten Systemverzeichnis ({}) und wird abgelehnt",
+                dir.display()
+            ));
+        }
     }
     Ok(())
 }
@@ -758,6 +799,7 @@ pub async fn create_folder(
         }
     };
 
+    reject_if_sensitive_path(&new_dir, &state.sensitive_dirs)?;
     std::fs::create_dir(&new_dir).map_err(|e| e.to_string())?;
 
     let conn = lock_db(&state)?;
@@ -775,13 +817,20 @@ pub async fn create_folder(
 /// Kernlogik von `rename_folder`, getrennt von der `State<AppState>`-Huelle
 /// gehalten, damit sie in Tests direkt gegen eine In-Memory-`Connection`
 /// aufgerufen werden kann (gleiche Konvention wie `move_file_to_folder_with_conn`).
-fn rename_folder_with_conn(conn: &Connection, id: i64, name: String) -> CmdResult<()> {
+fn rename_folder_with_conn(
+    conn: &Connection,
+    id: i64,
+    name: String,
+    sensitive_dirs: &[PathBuf],
+) -> CmdResult<()> {
     validate_folder_name(&name)?;
     let folders = db::list_folders(conn).map_err(|e| e.to_string())?;
     let folder = folders.iter().find(|f| f.id == id).ok_or_else(|| "folder not found".to_string())?;
 
     let old_path = std::path::PathBuf::from(&folder.path);
     let new_path = old_path.with_file_name(&name);
+    reject_if_sensitive_path(&old_path, sensitive_dirs)?;
+    reject_if_sensitive_path(&new_path, sensitive_dirs)?;
 
     std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())?;
     db::rename_folder_name(conn, id, &name).map_err(|e| e.to_string())?;
@@ -795,7 +844,7 @@ fn rename_folder_with_conn(conn: &Connection, id: i64, name: String) -> CmdResul
 pub fn rename_folder(state: State<AppState>, folder_id: String, name: String) -> CmdResult<()> {
     let id: i64 = folder_id.parse().map_err(|_| "invalid folder id".to_string())?;
     let conn = lock_db(&state)?;
-    rename_folder_with_conn(&conn, id, name)
+    rename_folder_with_conn(&conn, id, name, &state.sensitive_dirs)
 }
 
 /// Prueft, ob `candidate_id` ein (direkter oder indirekter) Nachfahre von
@@ -817,7 +866,12 @@ fn is_descendant(folders: &[db::models::FolderRecord], candidate_id: i64, ancest
 /// Kernlogik von `move_folder`, getrennt von der `State<AppState>`-Huelle
 /// gehalten, damit sie in Tests direkt gegen eine In-Memory-`Connection`
 /// aufgerufen werden kann.
-fn move_folder_with_conn(conn: &Connection, id: i64, target: Option<i64>) -> CmdResult<()> {
+fn move_folder_with_conn(
+    conn: &Connection,
+    id: i64,
+    target: Option<i64>,
+    sensitive_dirs: &[PathBuf],
+) -> CmdResult<()> {
     let Some(target) = target else {
         // Es gibt in diesem Plan kein echtes "an die Katalog-Wurzel
         // verschieben"-Ziel (siehe "Abweichung vom Spec" im Plan). Ohne
@@ -847,6 +901,8 @@ fn move_folder_with_conn(conn: &Connection, id: i64, target: Option<i64>) -> Cmd
 
     let old_path = std::path::PathBuf::from(&folder.path);
     let new_path = std::path::PathBuf::from(&new_parent_path).join(&folder.name);
+    reject_if_sensitive_path(&old_path, sensitive_dirs)?;
+    reject_if_sensitive_path(&new_path, sensitive_dirs)?;
 
     std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())?;
     db::set_folder_parent(conn, id, target).map_err(|e| e.to_string())?;
@@ -868,7 +924,7 @@ pub fn move_folder(state: State<AppState>, folder_id: String, new_parent_id: Opt
         .transpose()?;
 
     let conn = lock_db(&state)?;
-    move_folder_with_conn(&conn, id, target)
+    move_folder_with_conn(&conn, id, target, &state.sensitive_dirs)
 }
 
 #[tauri::command]
@@ -1889,6 +1945,16 @@ pub async fn export_catalog(
     // aufgeraeumt werden koennen, bevor der Fehler propagiert wird.
     let result: CmdResult<()> = (|| {
         {
+            // Zielpfad exklusiv reservieren (schliesst die Symlink-Race aus
+            // Finding 2), bevor rusqlite ihn oeffnet und befuellt - siehe
+            // `write_temp_file_exclusive` fuer die ausfuehrliche Begruendung.
+            std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&backup_db_path)
+                .map_err(|e| e.to_string())?;
+            crate::harden_permissions(&backup_db_path);
+
             let conn = lock_db(&state)?;
             let mut dst = Connection::open(&backup_db_path).map_err(|e| e.to_string())?;
             let backup =
@@ -1934,10 +2000,38 @@ pub async fn export_catalog(
     Ok(())
 }
 
-/// Prueft, ob `bytes` eine brauchbare Katalog-Datenbank sind (oeffnbar und
-/// mit einer `files`-Tabelle) - Schutz davor, ein falsches/kaputtes ZIP zu
-/// importieren, BEVOR die bestehende catalog.db angefasst wird.
-fn validate_catalog_db_bytes(bytes: &[u8]) -> Result<(), String> {
+/// Schreibt `bytes` exklusiv (`create_new` statt `fs::write`) nach `path` und
+/// haertet anschliessend die Zugriffsrechte (0600 unter Unix, siehe
+/// `crate::harden_permissions`). Fuer alle Katalog-Export-/Import-
+/// Temp-Dateien in `std::env::temp_dir()` verwendet - siehe Security-Review
+/// 2026-09-18, Finding 2: `fs::write`/`File::create` legen neue Dateien mit
+/// umask-abhaengigen (typischerweise world-readable) Rechten an und folgen
+/// dabei einem an dem Pfad bereits vorhandenen Symlink, statt dessen
+/// Existenz abzulehnen. Im geteilten `/tmp` auf Mehrbenutzer-Systemen ist das
+/// ein CWE-377-Risiko: ein anderer lokaler Nutzer koennte die (unverschluesselte)
+/// Katalog-DB waehrend des kurzen Zeitfensters mitlesen, oder den PID-basierten
+/// Dateinamen vorab als Symlink auf ein anderes Ziel anlegen (TOCTOU).
+/// `create_new` schlaegt fehl, sobald am Zielpfad bereits etwas liegt (Datei
+/// oder Symlink), statt hindurchzuschreiben.
+fn write_temp_file_exclusive(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(path)?;
+    file.write_all(bytes)?;
+    drop(file);
+    crate::harden_permissions(path);
+    Ok(())
+}
+
+/// Prueft, ob `bytes` eine brauchbare Katalog-Datenbank sind (oeffnbar, mit
+/// einer `files`-Tabelle, und ohne `folders.path`-Eintraege in geschuetzten
+/// Systemverzeichnissen) - Schutz davor, ein falsches/kaputtes ODER
+/// praepariertes ZIP zu importieren, BEVOR die bestehende catalog.db
+/// angefasst wird. Die zweite Pruefung schliesst Finding 1 des
+/// Security-Reviews vom 2026-09-18 direkt an der Vertrauensgrenze: ohne sie
+/// wuerde ein bereits an dieser Stelle abgelehnter Ordner-Eintrag sonst erst
+/// spaeter, beim naechsten `move`/`rename` ueber diesen Ordner, auffallen -
+/// mit den unter `reject_if_sensitive_path` beschriebenen Folgen.
+fn validate_catalog_db_bytes(bytes: &[u8], sensitive_dirs: &[PathBuf]) -> Result<(), String> {
     let tmp_path = std::env::temp_dir().join(format!(
         "3mf-katalog-import-check-{}-{}.db",
         std::process::id(),
@@ -1946,14 +2040,26 @@ fn validate_catalog_db_bytes(bytes: &[u8]) -> Result<(), String> {
             .map_err(|e| e.to_string())?
             .as_nanos()
     ));
-    std::fs::write(&tmp_path, bytes).map_err(|e| e.to_string())?;
+    write_temp_file_exclusive(&tmp_path, bytes).map_err(|e| e.to_string())?;
 
     let result = Connection::open(&tmp_path)
         .map_err(|e| e.to_string())
         .and_then(|conn| {
             conn.query_row("SELECT COUNT(*) FROM files", [], |row| row.get::<_, i64>(0))
-                .map(|_| ())
-                .map_err(|e| e.to_string())
+                .map_err(|e| e.to_string())?;
+            let mut stmt = conn
+                .prepare("SELECT path FROM folders")
+                .map_err(|e| e.to_string())?;
+            let paths = stmt
+                .query_map([], |row| row.get::<_, String>(0))
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            for path in paths {
+                reject_if_sensitive_path(Path::new(&path), sensitive_dirs)
+                    .map_err(|e| format!("Ordner-Eintrag im Archiv abgelehnt: {e}"))?;
+            }
+            Ok(())
         });
 
     let _ = std::fs::remove_file(&tmp_path);
@@ -2007,11 +2113,11 @@ pub async fn import_catalog(
         .map_err(|e| e.to_string())?;
     let settings_json = String::from_utf8(settings_bytes).map_err(|e| e.to_string())?;
 
-    validate_catalog_db_bytes(&db_bytes)?;
+    validate_catalog_db_bytes(&db_bytes, &state.sensitive_dirs)?;
 
     let tmp_db_path =
         std::env::temp_dir().join(format!("3mf-katalog-import-{}.db", std::process::id()));
-    std::fs::write(&tmp_db_path, &db_bytes).map_err(|e| e.to_string())?;
+    write_temp_file_exclusive(&tmp_db_path, &db_bytes).map_err(|e| e.to_string())?;
 
     let replace_result = replace_catalog_db(&state, &tmp_db_path);
     let _ = std::fs::remove_file(&tmp_db_path);
@@ -2408,7 +2514,7 @@ mod tests {
         }
         let bytes = std::fs::read(&tmp_path).expect("read temp db");
 
-        let result = validate_catalog_db_bytes(&bytes);
+        let result = validate_catalog_db_bytes(&bytes, &[]);
 
         let _ = std::fs::remove_file(&tmp_path);
         assert!(result.is_ok(), "expected valid catalog db to pass validation: {result:?}");
@@ -2416,7 +2522,7 @@ mod tests {
 
     #[test]
     fn validate_catalog_db_bytes_rejects_garbage_bytes() {
-        let result = validate_catalog_db_bytes(b"this is not a sqlite database");
+        let result = validate_catalog_db_bytes(b"this is not a sqlite database", &[]);
         assert!(result.is_err());
     }
 
@@ -2460,6 +2566,7 @@ mod tests {
             db: Mutex::new(running_conn),
             trash_dir: dir.join("trash"),
             db_path: db_path.clone(),
+            sensitive_dirs: Vec::new(),
         };
 
         let result = replace_catalog_db(&state, &new_db_path);
@@ -2521,6 +2628,7 @@ mod tests {
             db: Mutex::new(running_conn),
             trash_dir: dir.join("trash"),
             db_path: db_path.clone(),
+            sensitive_dirs: Vec::new(),
         };
 
         let result = replace_catalog_db(&state, &missing_new_db_path);
@@ -3166,7 +3274,7 @@ mod tests {
         // hier der "import_root".
         let folder_id = db::ensure_folder_path(&conn, &tmp, &dst_dir).expect("ensure_folder_path");
 
-        move_file_to_folder_with_conn(&conn, file_id, Some(folder_id)).expect("move should succeed");
+        move_file_to_folder_with_conn(&conn, file_id, Some(folder_id), &[]).expect("move should succeed");
 
         let expected_path = dst_dir.join("model.3mf");
         assert!(expected_path.exists(), "file must physically exist under dst_dir after move");
@@ -3217,7 +3325,7 @@ mod tests {
         let a_id = db::insert_folder_with_parent(&conn, "A", None, &a_dir.to_string_lossy()).expect("insert A");
         let b_id = db::insert_folder_with_parent(&conn, "B", Some(a_id), &b_dir.to_string_lossy()).expect("insert B");
 
-        let result = move_folder_with_conn(&conn, a_id, Some(b_id));
+        let result = move_folder_with_conn(&conn, a_id, Some(b_id), &[]);
         assert!(result.is_err(), "moving A into its own descendant B must be rejected");
 
         // Weder Platte noch DB duerfen veraendert worden sein.
@@ -3246,7 +3354,7 @@ mod tests {
         let a_id = db::insert_folder_with_parent(&conn, "A", None, &a_dir.to_string_lossy()).expect("insert A");
         let b_id = db::insert_folder_with_parent(&conn, "B", Some(a_id), &b_dir.to_string_lossy()).expect("insert B");
 
-        let result = move_folder_with_conn(&conn, b_id, None);
+        let result = move_folder_with_conn(&conn, b_id, None, &[]);
         assert!(result.is_err(), "move_folder with new_parent_id=None must be rejected");
 
         assert!(b_dir.exists(), "B must remain at its old physical location");
@@ -3277,6 +3385,104 @@ mod tests {
     }
 
     #[test]
+    fn reject_if_sensitive_path_rejects_exact_match_and_descendants_but_not_siblings() {
+        // Regressionstest fuer Finding 1 im Security-Review 2026-09-18: ein
+        // importiertes Katalog-Backup kann `folders.path`/`files.path` auf
+        // beliebige Orte setzen; diese Grenze wird an jeder Stelle geprueft,
+        // die einen aus der DB gelesenen Pfad an fs::rename/fs::create_dir
+        // weiterreicht.
+        let sensitive = vec![PathBuf::from("/home/user/.config")];
+        assert!(reject_if_sensitive_path(Path::new("/home/user/.config"), &sensitive).is_err());
+        assert!(reject_if_sensitive_path(Path::new("/home/user/.config/autostart"), &sensitive).is_err());
+        assert!(reject_if_sensitive_path(Path::new("/home/user/.config-backup"), &sensitive).is_ok());
+        assert!(reject_if_sensitive_path(Path::new("/home/user/3D-Drucke"), &sensitive).is_ok());
+    }
+
+    #[test]
+    fn rename_folder_with_conn_rejects_sensitive_target_path() {
+        let tmp = unique_test_dir("rename_folder_sensitive");
+        let a_dir = tmp.join("A");
+        std::fs::create_dir_all(&a_dir).unwrap();
+        let sensitive = vec![tmp.clone()];
+
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let a_id = db::insert_folder_with_parent(&conn, "A", None, &a_dir.to_string_lossy()).expect("insert A");
+
+        let result = rename_folder_with_conn(&conn, a_id, "B".to_string(), &sensitive);
+        assert!(result.is_err(), "rename_folder_with_conn must reject a target path under a sensitive directory");
+        assert!(a_dir.exists(), "original directory must be untouched after a rejected rename");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn move_folder_with_conn_rejects_sensitive_target_path() {
+        let tmp = unique_test_dir("move_folder_sensitive");
+        let a_dir = tmp.join("A");
+        let b_dir = tmp.join("B");
+        std::fs::create_dir_all(&a_dir).unwrap();
+        std::fs::create_dir_all(&b_dir).unwrap();
+        let sensitive = vec![tmp.clone()];
+
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let a_id = db::insert_folder_with_parent(&conn, "A", None, &a_dir.to_string_lossy()).expect("insert A");
+        let b_id = db::insert_folder_with_parent(&conn, "B", None, &b_dir.to_string_lossy()).expect("insert B");
+
+        let result = move_folder_with_conn(&conn, a_id, Some(b_id), &sensitive);
+        assert!(result.is_err(), "move_folder_with_conn must reject a move into a sensitive directory");
+        assert!(a_dir.exists(), "original directory must be untouched after a rejected move");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn move_file_to_folder_with_conn_rejects_sensitive_target_path() {
+        let tmp = unique_test_dir("move_file_sensitive");
+        let folder_dir = tmp.join("Zielordner");
+        std::fs::create_dir_all(&folder_dir).unwrap();
+        let file_path = tmp.join("model.3mf");
+        std::fs::write(&file_path, b"dummy").unwrap();
+        let sensitive = vec![tmp.clone()];
+
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let folder_id =
+            db::insert_folder_with_parent(&conn, "Zielordner", None, &folder_dir.to_string_lossy()).expect("insert folder");
+        let file_id = db::insert_file_within_tx(&conn, &sample_new_file_for_rescan_test(&file_path))
+            .expect("insert file");
+
+        let result = move_file_to_folder_with_conn(&conn, file_id, Some(folder_id), &sensitive);
+        assert!(result.is_err(), "move_file_to_folder_with_conn must reject a target folder under a sensitive directory");
+        assert!(file_path.exists(), "original file must be untouched after a rejected move");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_rejects_folder_path_in_sensitive_directory() {
+        // Grenzpruefung direkt an der Vertrauensgrenze (Import): ein
+        // praepariertes Katalog-Backup mit einem `folders.path`-Eintrag in
+        // einem geschuetzten Verzeichnis darf nicht durchgehen, auch wenn die
+        // DB selbst technisch gueltig ist.
+        let tmp_path = std::env::temp_dir().join(format!(
+            "validate_catalog_db_sensitive_test_{}.db",
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let sensitive_root = std::env::temp_dir().join("3mf-test-sensitive-root");
+        {
+            let conn = crate::db::connect(&tmp_path).expect("connect creates a valid schema");
+            db::insert_folder_with_parent(&conn, "evil", None, &sensitive_root.join("evil").to_string_lossy())
+                .expect("insert malicious folder row");
+            drop(conn);
+        }
+        let bytes = std::fs::read(&tmp_path).expect("read temp db");
+
+        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root]);
+
+        let _ = std::fs::remove_file(&tmp_path);
+        assert!(result.is_err(), "must reject an imported catalog whose folder path lies in a sensitive directory");
+    }
+
+    #[test]
     fn rename_folder_with_conn_rejects_name_with_path_traversal() {
         let tmp = unique_test_dir("rename_folder_traversal");
         let a_dir = tmp.join("A");
@@ -3285,7 +3491,7 @@ mod tests {
         let conn = crate::db::connect_in_memory().expect("connect");
         let a_id = db::insert_folder_with_parent(&conn, "A", None, &a_dir.to_string_lossy()).expect("insert A");
 
-        let result = rename_folder_with_conn(&conn, a_id, "../../escaped".to_string());
+        let result = rename_folder_with_conn(&conn, a_id, "../../escaped".to_string(), &[]);
         assert!(result.is_err(), "rename_folder_with_conn must reject a name containing path separators");
 
         assert!(a_dir.exists(), "original directory must be untouched after a rejected rename");
@@ -3342,7 +3548,7 @@ mod tests {
         let imported = import_one(&mut conn, &file_path, None, None, Some(c_id)).expect("import should succeed");
         let file_id: i64 = imported.id.parse().unwrap();
 
-        move_folder_with_conn(&conn, b_id, Some(x_id)).expect("move should succeed");
+        move_folder_with_conn(&conn, b_id, Some(x_id), &[]).expect("move should succeed");
 
         let expected_b_dir = x_dir.join("B");
         let expected_c_dir = expected_b_dir.join("C");
@@ -3412,7 +3618,7 @@ mod tests {
         let imported = import_one(&mut conn, &file_path, None, None, Some(c_id)).expect("import should succeed");
         let file_id: i64 = imported.id.parse().unwrap();
 
-        rename_folder_with_conn(&conn, b_id, "B2".to_string()).expect("rename should succeed");
+        rename_folder_with_conn(&conn, b_id, "B2".to_string(), &[]).expect("rename should succeed");
 
         let expected_b_dir = a_dir.join("B2");
         let expected_c_dir = expected_b_dir.join("C");
@@ -3486,7 +3692,7 @@ mod tests {
         let imported = import_one(&mut conn, &file_path, None, None, Some(folder_id)).expect("import should succeed");
         let file_id: i64 = imported.id.parse().unwrap();
 
-        rename_folder_with_conn(&conn, folder_id, "Neu".to_string()).expect("rename should succeed");
+        rename_folder_with_conn(&conn, folder_id, "Neu".to_string(), &[]).expect("rename should succeed");
 
         let expected_dir = tmp.join("Neu");
         let expected_file_path = expected_dir.join("model.3mf");

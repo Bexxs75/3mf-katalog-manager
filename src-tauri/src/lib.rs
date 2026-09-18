@@ -15,7 +15,7 @@ use tauri::Manager;
 // Desktops schon durch die Home-Verzeichnis-Rechte geschuetzt, aber auf
 // Mehrbenutzer-Systemen relevant (ISO 27002 A.8.28).
 #[cfg(unix)]
-fn harden_permissions(path: &std::path::Path) {
+pub(crate) fn harden_permissions(path: &std::path::Path) {
     use std::os::unix::fs::PermissionsExt;
     let mode = if path.is_dir() { 0o700 } else { 0o600 };
     if let Err(e) = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)) {
@@ -24,7 +24,38 @@ fn harden_permissions(path: &std::path::Path) {
 }
 
 #[cfg(not(unix))]
-fn harden_permissions(_path: &std::path::Path) {}
+pub(crate) fn harden_permissions(_path: &std::path::Path) {}
+
+// Verzeichnisse, in die `create_folder`/`rename_folder`/`move_folder`/
+// `move_file_to_folder` niemals schreiben duerfen - siehe
+// `commands::reject_if_sensitive_path` (Security-Review 2026-09-18,
+// Finding 1). Einmalig beim Start berechnet, da sich Home-/Config-/
+// Datenverzeichnis waehrend der Laufzeit nicht aendern.
+fn sensitive_dirs(app: &tauri::AppHandle) -> Vec<std::path::PathBuf> {
+    let mut dirs = Vec::new();
+    if let Ok(d) = app.path().config_dir() {
+        dirs.push(d);
+    }
+    if let Ok(d) = app.path().data_dir() {
+        dirs.push(d);
+    }
+    if let Ok(home) = app.path().home_dir() {
+        dirs.push(home.join(".ssh"));
+        dirs.push(home.join(".gnupg"));
+        dirs.push(home.join(".password-store"));
+        #[cfg(target_os = "macos")]
+        dirs.push(home.join("Library"));
+    }
+    #[cfg(target_os = "linux")]
+    for root in ["/etc", "/usr", "/bin", "/sbin", "/boot", "/root", "/var", "/sys", "/proc"] {
+        dirs.push(std::path::PathBuf::from(root));
+    }
+    #[cfg(target_os = "windows")]
+    for root in ["C:\\Windows", "C:\\Program Files", "C:\\Program Files (x86)"] {
+        dirs.push(std::path::PathBuf::from(root));
+    }
+    dirs
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -51,10 +82,12 @@ pub fn run() {
             let trash_dir = app_data_dir.join("trash");
             std::fs::create_dir_all(&trash_dir)?;
             commands::purge_expired_trash_on_startup(&conn);
+            let sensitive_dirs = sensitive_dirs(app.handle());
             app.manage(commands::AppState {
                 db: Mutex::new(conn),
                 trash_dir,
                 db_path,
+                sensitive_dirs,
             });
             Ok(())
         })

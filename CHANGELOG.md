@@ -7,6 +7,11 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
+### Security
+
+- Importierte Katalog-Backups (`import_catalog`) konnten `folders.path`/`files.path` auf beliebige Orte setzen, die anschließend ungeprüft an `fs::rename`/`fs::create_dir` weitergereicht wurden (`create_folder`, `rename_folder`, `move_folder`, `move_file_to_folder`) — ein präpariertes Backup-ZIP hätte so z.B. Autostart-Verzeichnisse als Ziel unterschieben können ([Security-Review 2026-09-18](docs/security/security-review-2026-09-18.md), Finding 1, CWE-829). Neue Prüfung `reject_if_sensitive_path` lehnt Ziele in bekannten sensiblen Systemverzeichnissen (Config-/Autostart-/SSH-/Systemverzeichnisse) ab, sowohl direkt beim Import als auch bei jeder späteren Ordner-/Datei-Verschiebung
+- Temporäre Katalog-Datenbank-Kopien beim Export/Import (`export_catalog`, `import_catalog`) landeten mit vorhersagbaren, PID-basierten Namen und Standard-Berechtigungen im geteilten `/tmp` (CWE-377) — auf Mehrbenutzer-Systemen von anderen lokalen Nutzern mitlesbar bzw. per Symlink-Race angreifbar. Werden jetzt exklusiv angelegt (`create_new`, schlägt fehl statt einem vorhandenen Symlink zu folgen) und wie `catalog.db` auf `0600` gehärtet
+
 ### Added
 
 - GitHub-Actions-Workflows `build-macos.yml` und `build-windows.yml` (nur manuell per `workflow_dispatch` auslösbar): bauen unsignierte `.dmg`- bzw. `.msi`-Pakete komplett auf GitHubs eigenen Cloud-Runnern, ohne dass der lokale Rechner eine Mac- oder Windows-Toolchain braucht. Beide Ausgaben wurden nachträglich dem bestehenden [v0.7.6-Release](https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v0.7.6) hinzugefügt, das damit jetzt Linux, macOS und Windows abdeckt
@@ -232,6 +237,11 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
 ## [Unreleased]
+
+### Security
+
+- Imported catalog backups (`import_catalog`) could set `folders.path`/`files.path` to arbitrary locations, which were then passed unchecked to `fs::rename`/`fs::create_dir` (`create_folder`, `rename_folder`, `move_folder`, `move_file_to_folder`) — a crafted backup ZIP could have pointed these at e.g. autostart directories ([Security review 2026-09-18](docs/security/security-review-2026-09-18.md), Finding 1, CWE-829). New `reject_if_sensitive_path` check rejects targets inside known sensitive system directories (config/autostart/SSH/system directories), both directly on import and on every later folder/file move
+- Temporary catalog database copies during export/import (`export_catalog`, `import_catalog`) were written to shared `/tmp` with predictable, PID-based names and default permissions (CWE-377) — readable by other local users on multi-user systems, or vulnerable to a symlink race. Now created exclusively (`create_new`, fails instead of following an existing symlink) and hardened to `0600` like `catalog.db`
 
 ### Added
 
