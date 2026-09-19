@@ -517,7 +517,7 @@ pub(crate) fn compute_content_hash(path: &Path) -> CmdResult<String> {
 /// Connection steht. Eine seit dem Import verschobene/geloeschte Datei
 /// (compute_content_hash schlaegt fehl) wird geloggt und uebersprungen, nicht
 /// abgebrochen - gleiche Fehlerbehandlung wie in import_one/import_many.
-pub fn backfill_content_hashes(conn: &Connection) {
+pub(crate) fn backfill_content_hashes(conn: &Connection) {
     let missing = match db::list_files_missing_content_hash(conn) {
         Ok(rows) => rows,
         Err(e) => {
