@@ -13,6 +13,8 @@ export const en: Translations = {
 
   viewGrid: 'Grid',
   viewList: 'List',
+  viewFolder: 'Folder',
+  noFolderLabel: 'No Folder',
 
   filesCount: { one: '{count} file', other: '{count} files' },
 

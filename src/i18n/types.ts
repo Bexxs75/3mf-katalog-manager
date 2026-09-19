@@ -18,6 +18,8 @@ export interface Translations {
 
   viewGrid: string;
   viewList: string;
+  viewFolder: string;
+  noFolderLabel: string;
 
   filesCount: PluralForms;
 

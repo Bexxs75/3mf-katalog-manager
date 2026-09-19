@@ -13,6 +13,8 @@ export const es: Translations = {
 
   viewGrid: 'Cuadrícula',
   viewList: 'Lista',
+  viewFolder: 'Carpeta',
+  noFolderLabel: 'Sin carpeta',
 
   filesCount: { one: '{count} archivo', other: '{count} archivos' },
 

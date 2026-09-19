@@ -13,6 +13,8 @@ export const de: Translations = {
 
   viewGrid: 'Raster',
   viewList: 'Liste',
+  viewFolder: 'Ordner',
+  noFolderLabel: 'Ohne Ordner',
 
   filesCount: { one: '{count} Datei', other: '{count} Dateien' },
 

@@ -90,7 +90,7 @@ export interface SavedFilter {
   sort: SortKey;
 }
 
-export type ViewMode = 'grid' | 'list';
+export type ViewMode = 'grid' | 'groupedGrid' | 'groupedList';
 export type SortKey = 'name' | 'date' | 'size' | 'vol' | 'viewed';
 
 export interface SlicerConfig {
