@@ -7,9 +7,21 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
+## [0.7.8] - 2026-09-19
+
 ### Changed
 
 - Frontend-Refactor: `App.tsx` (vormals 1148 Zeilen, 48 State-/Effect-Hooks, 29 inline `invoke()`-Aufrufe) in fokussierte Hooks (`useCatalogStore`, `useCatalogFilters`, `useCollections`, `useBulkSelection`, `useFileImport`, `useFolderDragAndDrop`, `useCatalogBackup`, `useCatalogCleanup`, `useSlicerLauncher`), einen typisierten `src/lib/api/*`-Wrapper um alle Tauri-Commands und drei ausgelagerte Komponenten (`TrashView`, `CatalogWorkspace`, `BulkActionToolbar`) aufgeteilt. `App.tsx` ist damit auf rund 310 Zeilen reine Komposition geschrumpft. Erste automatisierte Frontend-Testsuite (Vitest + Testing Library) eingeführt. Keine Verhaltensänderung
+
+### Security
+
+- Allgemeine ISO-27000-orientierte Sicherheitsprüfung des gesamten Codebase durchgeführt ([Security-Review 2026-09-19](docs/security/security-review-2026-09-19.md)). Vier Hoch-Findings behoben, alle auf dieselbe Ursache zurückgehend: importierte Katalog-Backups wurden nur teilweise als nicht vertrauenswürdig behandelt.
+  - Slicer-Startliste aus fremdem Backup konnte beliebiges Programm startbar machen (z.B. `/bin/sh`) — wird beim Import jetzt übersprungen, übrige Einstellungen gegen eine Werte-Whitelist geprüft (CWE-829)
+  - `files.name`/`trash_path` aus importiertem Katalog konnten beliebiges Schreiben bzw. automatisches Löschen fremder Dateien auslösen — jetzt vollständig validiert bzw. auf das echte Trash-Verzeichnis eingegrenzt (CWE-22, CWE-829)
+  - `source_url` wurde nur beim Schreiben, nicht beim Lesen validiert — ein `javascript:`-Link hätte beim Klick Code im App-Kontext ausführen können, jetzt beidseitig (Backend + Frontend) gefiltert
+  - Kein Größenlimit beim Entpacken von 3MF-/Backup-Zip-Einträgen (Zip-Bomb-Risiko) — jetzt auf 16-256 MB je nach Eintragstyp begrenzt, Prüfung vor dem vollständigen Dekomprimieren
+  - Zusätzlich behoben: Pfadprüfung ohne Kanonisierung (umgehbar via `../`/Symlinks), fehlende Validierung des Slicer-Datei-Arguments, fehlendes Größenlimit bei Render-Snapshots
+  - Ungenutzte Datei mit Klartext-Google-OAuth-Credentials (Rest der 2026-09-12 entfernten Cloud-Integration) gelöscht
 
 ## [0.7.7] - 2026-09-18
 
@@ -244,9 +256,21 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ## [Unreleased]
 
+## [0.7.8] - 2026-09-19
+
 ### Changed
 
 - Frontend refactor: `App.tsx` (previously 1148 lines, 48 state/effect hooks, 29 inline `invoke()` calls) split into focused hooks (`useCatalogStore`, `useCatalogFilters`, `useCollections`, `useBulkSelection`, `useFileImport`, `useFolderDragAndDrop`, `useCatalogBackup`, `useCatalogCleanup`, `useSlicerLauncher`), a typed `src/lib/api/*` wrapper around all Tauri commands, and three extracted components (`TrashView`, `CatalogWorkspace`, `BulkActionToolbar`). `App.tsx` is now around 310 lines of pure composition. First automated frontend test suite (Vitest + Testing Library) introduced. No behavior change
+
+### Security
+
+- General ISO-27000-oriented security review of the entire codebase performed ([Security Review 2026-09-19](docs/security/security-review-2026-09-19.md)). Four High findings fixed, all tracing to the same root cause: imported catalog backups were only partially treated as untrusted.
+  - A slicer launch list from a foreign backup could make an arbitrary program launchable (e.g. `/bin/sh`) — now skipped on import, remaining settings checked against a value whitelist (CWE-829)
+  - `files.name`/`trash_path` from an imported catalog could trigger arbitrary writes or automatic deletion of unrelated files — now fully validated, or contained to the real trash directory (CWE-22, CWE-829)
+  - `source_url` was only validated on write, not on read — a `javascript:` link could have executed code in the app context on click, now filtered on both backend and frontend
+  - No size limit when extracting 3MF/backup zip entries (zip-bomb risk) — now capped at 16-256 MB depending on entry type, checked before full decompression
+  - Also fixed: path validation without canonicalization (bypassable via `../`/symlinks), missing validation of the slicer file argument, missing size limit on render snapshots
+  - Deleted an unused file containing plaintext Google OAuth credentials (leftover from the cloud integration removed 2026-09-12)
 
 ## [0.7.7] - 2026-09-18
 
