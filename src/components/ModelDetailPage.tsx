@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { ModelFile, SlicerConfig, Collection } from '../types';
 import { useT, useLanguage } from '../i18n/LanguageContext';
 import { buildMetaRows } from '../lib/modelMetadata';
+import { isSafeHttpUrl } from '../lib/safeUrl';
 import { ModelViewer } from './ModelViewer';
 import { resolveDisplayImage } from '../lib/resolveDisplayImage';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
@@ -192,9 +193,14 @@ export function ModelDetailPage({
                 />
               ) : model.sourceUrl ? (
                 <span className="text-right">
-                  <a href={model.sourceUrl} target="_blank" rel="noreferrer" className="underline decoration-[var(--line-strong)] underline-offset-2">
-                    {model.sourceUrl}
-                  </a>{' '}
+                  {isSafeHttpUrl(model.sourceUrl) ? (
+                    <a href={model.sourceUrl} target="_blank" rel="noreferrer" className="underline decoration-[var(--line-strong)] underline-offset-2">
+                      {model.sourceUrl}
+                    </a>
+                  ) : (
+                    // Kein http(s)-Wert: als reiner Text, nie als klickbarer Link.
+                    <span className="text-[var(--ink-2)]">{model.sourceUrl}</span>
+                  )}{' '}
                   <button onClick={startEditingSource} className="text-[var(--ink-3)]">✎</button>
                 </span>
               ) : (

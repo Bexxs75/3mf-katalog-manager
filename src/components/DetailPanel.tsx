@@ -4,6 +4,7 @@ import { useLanguage, useT } from '../i18n/LanguageContext';
 import { ModelViewer } from './ModelViewer';
 import { useUiDensity } from '../hooks/UiDensityContext';
 import { buildMetaRows } from '../lib/modelMetadata';
+import { isSafeHttpUrl } from '../lib/safeUrl';
 import { formatDate } from '../i18n/format';
 import { useEditableSourceUrl } from '../hooks/useEditableSourceUrl';
 
@@ -227,7 +228,7 @@ export function DetailPanel({
                   placeholder={t('sourceUrlPlaceholder')}
                   className="flex-1 min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 font-mono-ui text-xs"
                 />
-              ) : model.sourceUrl ? (
+              ) : isSafeHttpUrl(model.sourceUrl) ? (
                 <a
                   href={model.sourceUrl}
                   target="_blank"
@@ -236,6 +237,11 @@ export function DetailPanel({
                 >
                   {model.sourceUrl}
                 </a>
+              ) : model.sourceUrl ? (
+                // Kein http(s)-Wert: als reiner Text, nie als klickbarer Link.
+                <span className="flex-1 min-w-0 truncate text-right text-[var(--ink-2)]">
+                  {model.sourceUrl}
+                </span>
               ) : (
                 <span className="flex-1 text-right text-[var(--ink-3)]">{t('noValue')}</span>
               )}
@@ -428,7 +434,7 @@ export function DetailPanel({
               />
             ) : (
               <span className="flex-1 flex items-center justify-end gap-1.5 min-w-0">
-                {model.sourceUrl ? (
+                {isSafeHttpUrl(model.sourceUrl) ? (
                   <a
                     href={model.sourceUrl}
                     target="_blank"
@@ -437,6 +443,11 @@ export function DetailPanel({
                   >
                     {model.sourceUrl}
                   </a>
+                ) : model.sourceUrl ? (
+                  // Kein http(s)-Wert: als reiner Text, nie als klickbarer Link.
+                  <span className="flex-1 min-w-0 truncate text-right text-[var(--ink-2)]">
+                    {model.sourceUrl}
+                  </span>
                 ) : (
                   <span className="flex-1 text-right text-[var(--ink-3)]">{t('noValue')}</span>
                 )}

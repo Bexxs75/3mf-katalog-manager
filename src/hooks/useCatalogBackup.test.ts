@@ -50,6 +50,56 @@ describe('useCatalogBackup', () => {
     expect(localStorage.getItem('3mf-katalog-theme')).toBe('light');
   });
 
+  it('exportCatalog still includes the slicer list (export direction unchanged)', async () => {
+    localStorage.setItem('3mf-katalog-slicers', JSON.stringify({ slicers: [] }));
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    const { result } = renderHook(() => useCatalogBackup());
+    await act(async () => {
+      await result.current.exportCatalog();
+    });
+    const call = vi.mocked(invoke).mock.calls[0];
+    const settings = JSON.parse((call[1] as { settingsJson: string }).settingsJson);
+    expect(settings['3mf-katalog-slicers']).toBe(JSON.stringify({ slicers: [] }));
+  });
+
+  it('importCatalog never restores the slicer list from a backup (Finding Z-1)', async () => {
+    // Slicer-Pfade werden per open_in_slicer als Prozess gestartet - ein
+    // fremdes Backup darf dort nichts hinterlegen koennen.
+    localStorage.setItem('3mf-katalog-slicers', 'eigene-liste');
+    vi.mocked(invoke).mockResolvedValue({
+      imported: true,
+      settingsJson: JSON.stringify({
+        '3mf-katalog-slicers': JSON.stringify({ slicers: [{ id: 'x', name: 'shell', path: '/bin/sh' }] }),
+      }),
+    });
+    const { result } = renderHook(() => useCatalogBackup());
+    await act(async () => {
+      await result.current.importCatalog(vi.fn());
+    });
+    expect(localStorage.getItem('3mf-katalog-slicers')).toBe('eigene-liste');
+  });
+
+  it('importCatalog skips settings values outside the allowed set', async () => {
+    localStorage.setItem('3mf-katalog-theme', 'dark');
+    localStorage.setItem('3mf-katalog-language', 'de');
+    vi.mocked(invoke).mockResolvedValue({
+      imported: true,
+      settingsJson: JSON.stringify({
+        '3mf-katalog-theme': '<img src=x onerror=alert(1)>',
+        '3mf-katalog-language': 'kl',
+        '3mf-katalog-density': 'comfort',
+      }),
+    });
+    const { result } = renderHook(() => useCatalogBackup());
+    await act(async () => {
+      await result.current.importCatalog(vi.fn());
+    });
+    expect(localStorage.getItem('3mf-katalog-theme')).toBe('dark');
+    expect(localStorage.getItem('3mf-katalog-language')).toBe('de');
+    // Gueltige Werte werden weiterhin ganz normal uebernommen.
+    expect(localStorage.getItem('3mf-katalog-density')).toBe('comfort');
+  });
+
   it('importCatalog does not call onImported when imported=false', async () => {
     vi.mocked(invoke).mockResolvedValue({ imported: false, settingsJson: null });
     const onImported = vi.fn();

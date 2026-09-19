@@ -7,6 +7,9 @@ pub enum ThreeMfError {
     Xml(quick_xml::Error),
     MissingRootModel,
     InvalidTransform(String),
+    /// Ein ZIP-Eintrag ueberschreitet die erlaubte entpackte Groesse -
+    /// Schutz gegen Zip-Bomben (Security-Review 2026-09-19, Finding A-1).
+    EntryTooLarge { path: String, size: u64, max: u64 },
 }
 
 impl fmt::Display for ThreeMfError {
@@ -17,6 +20,10 @@ impl fmt::Display for ThreeMfError {
             ThreeMfError::Xml(e) => write!(f, "XML error: {e}"),
             ThreeMfError::MissingRootModel => write!(f, "no root 3D model part found in package"),
             ThreeMfError::InvalidTransform(s) => write!(f, "invalid transform attribute: {s}"),
+            ThreeMfError::EntryTooLarge { path, size, max } => write!(
+                f,
+                "package entry \"{path}\" is too large ({size} bytes, maximum {max} bytes)"
+            ),
         }
     }
 }

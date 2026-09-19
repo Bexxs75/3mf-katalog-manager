@@ -261,6 +261,9 @@ const MATERIAL_DENSITY_G_CM3: &[(&str, f64)] = &[
 ];
 const DEFAULT_DENSITY_G_CM3: f64 = 1.24;
 const MAX_CUSTOM_IMAGE_BYTES: usize = 5 * 1024 * 1024; // 5 MB
+// Base64 blaeht Rohdaten auf 4/3 auf (plus Padding) - Obergrenze fuer den
+// noch nicht dekodierten String in `set_render_snapshot`.
+const MAX_RENDER_SNAPSHOT_BASE64_BYTES: usize = MAX_CUSTOM_IMAGE_BYTES / 3 * 4 + 4;
 
 pub(crate) fn estimate_weight_g(volume_cm3: Option<f64>, material_name: Option<&str>) -> Option<f64> {
     let volume = volume_cm3?;
@@ -335,7 +338,7 @@ pub(crate) fn to_dto(file: FileRecord, spools: &[db::models::FilamentSpoolRecord
         custom_image,
         thumbnail_image,
         render_snapshot_image,
-        source_url: file.source_url,
+        source_url: sanitize_source_url(file.source_url),
         queue_position: file.queue_position,
         favorite: file.favorite,
         plate_count: file.plate_count,
@@ -738,6 +741,27 @@ fn validate_folder_name(name: &str) -> CmdResult<()> {
     Ok(())
 }
 
+/// Gegenstueck zu `validate_folder_name` fuer `files.name`. Auch dieser Wert
+/// landet unmittelbar in einem `join` - `trash_dir.join(format!("{id}-{name}"))`
+/// in `delete_file`/`cleanup_missing_files` - und darf deshalb ebenfalls nur
+/// eine harmlose Pfad-Komponente sein. Anders als der Ordnername kann er aber
+/// nicht nur getippt, sondern auch komplett aus einem fremden Katalog-Backup
+/// importiert werden (Security-Review 2026-09-19, Finding I-1); ein Name wie
+/// "../../../.config/autostart/x.desktop" wuerde die Datei beim Loeschen aus
+/// dem Papierkorb-Verzeichnis herausschreiben.
+fn validate_file_name(name: &str) -> CmdResult<()> {
+    if name.trim().is_empty() {
+        return Err("Dateiname darf nicht leer sein".to_string());
+    }
+    if name.contains('/') || name.contains('\\') {
+        return Err("Dateiname darf keine Pfad-Trennzeichen enthalten".to_string());
+    }
+    if name.contains("..") {
+        return Err("Dateiname darf keine \"..\"-Folge enthalten".to_string());
+    }
+    Ok(())
+}
+
 /// Zweite Sicherheits-Grenze, zusaetzlich zu `validate_folder_name`: prueft
 /// den vollen, aufgeloesten Zielpfad einer Ordner-/Datei-Operation gegen eine
 /// Liste bekannter sensibler Systemverzeichnisse (Config-/Autostart-Ordner,
@@ -752,9 +776,39 @@ fn validate_folder_name(name: &str) -> CmdResult<()> {
 /// `path = ~/.config/autostart` (o.ae.) einschleusen; verschiebt der Nutzer
 /// anschliessend ganz regulaer per UI eine Datei "in diesen Ordner", landet
 /// sie real dort - mit Persistenz-Wirkung beim naechsten Login.
+///
+/// Der Vergleich laeuft auf dem AUFGELOESTEN Pfad (siehe
+/// `resolve_path_for_sensitivity_check`), nicht auf der rohen Zeichenkette:
+/// ein reiner Praefix-Vergleich liesse sich sonst mit
+/// `<Katalog>/../.config/autostart` oder einem Symlink, der in ein
+/// geschuetztes Verzeichnis zeigt, trivial umgehen (Security-Review
+/// 2026-09-19, Finding I-3).
 fn reject_if_sensitive_path(path: &Path, sensitive_dirs: &[PathBuf]) -> CmdResult<()> {
+    reject_if_sensitive_path_expanded(path, &expand_sensitive_dirs(sensitive_dirs))
+}
+
+/// Ergaenzt jeden geschuetzten Ordner um seine kanonische Schreibweise: auf
+/// Linux sind z.B. /bin und /sbin haeufig Symlinks nach /usr/bin bzw.
+/// /usr/sbin, und beide Varianten sollen greifen. Einmal vorberechnen und
+/// wiederverwenden, wo viele Pfade gegen dieselbe Liste geprueft werden
+/// (`validate_catalog_db_bytes` laeuft ueber jede Zeile der importierten DB).
+fn expand_sensitive_dirs(sensitive_dirs: &[PathBuf]) -> Vec<PathBuf> {
+    let mut expanded = Vec::with_capacity(sensitive_dirs.len());
     for dir in sensitive_dirs {
-        if path == dir.as_path() || path.starts_with(dir) {
+        if let Ok(canonical) = dir.canonicalize() {
+            if canonical != *dir {
+                expanded.push(canonical);
+            }
+        }
+        expanded.push(dir.clone());
+    }
+    expanded
+}
+
+fn reject_if_sensitive_path_expanded(path: &Path, expanded_dirs: &[PathBuf]) -> CmdResult<()> {
+    let resolved = resolve_path_for_sensitivity_check(path)?;
+    for dir in expanded_dirs {
+        if resolved == *dir || resolved.starts_with(dir) {
             return Err(format!(
                 "Zielpfad liegt in einem geschuetzten Systemverzeichnis ({}) und wird abgelehnt",
                 dir.display()
@@ -762,6 +816,45 @@ fn reject_if_sensitive_path(path: &Path, sensitive_dirs: &[PathBuf]) -> CmdResul
         }
     }
     Ok(())
+}
+
+/// Loest einen Pfad so weit auf, dass der Praefix-Vergleich in
+/// `reject_if_sensitive_path` nicht durch `..`-Komponenten oder Symlinks
+/// unterlaufen werden kann. Der Pfad muss dabei NICHT existieren - er ist
+/// an vielen Aufrufstellen ein erst noch anzulegendes Ziel (neuer Ordner,
+/// Verschiebe-Ziel, frisch gewaehltes Katalog-Basisverzeichnis):
+/// - existiert der Pfad, entscheidet `canonicalize` (loest Symlinks UND `..`);
+/// - existiert er nicht, wird jede literale `..`-Komponente abgelehnt (sie
+///   koennte sonst aus dem geprueften Teilbaum herausfuehren) und stattdessen
+///   der laengste bereits existierende Vorfahre aufgeloest, an den die
+///   restlichen Komponenten woertlich angehaengt werden.
+fn resolve_path_for_sensitivity_check(path: &Path) -> CmdResult<PathBuf> {
+    if let Ok(canonical) = path.canonicalize() {
+        return Ok(canonical);
+    }
+    if path
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Err(
+            "Pfad enthaelt \"..\"-Komponenten und wird abgelehnt".to_string(),
+        );
+    }
+
+    let mut trailing: Vec<std::ffi::OsString> = Vec::new();
+    let mut cursor = path;
+    while let (Some(name), Some(parent)) = (cursor.file_name(), cursor.parent()) {
+        trailing.push(name.to_os_string());
+        if let Ok(canonical) = parent.canonicalize() {
+            let mut resolved = canonical;
+            for component in trailing.iter().rev() {
+                resolved.push(component);
+            }
+            return Ok(resolved);
+        }
+        cursor = parent;
+    }
+    Ok(path.to_path_buf())
 }
 
 /// Legt einen echten Ordner auf der Platte an (unterhalb eines bestehenden
@@ -1114,9 +1207,26 @@ pub async fn upload_custom_image(
 pub fn set_render_snapshot(state: State<AppState>, file_id: String, image_base64: String) -> CmdResult<()> {
     use base64::Engine;
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    // Gleiche Obergrenze wie bei `upload_custom_image`/`add_print_log_entry`
+    // (Security-Review 2026-09-19, Finding A-2). Zuerst die Base64-Laenge
+    // pruefen, damit ein ueberdimensionierter String gar nicht erst dekodiert
+    // (und damit als Rohdaten zusaetzlich alloziert) wird.
+    if image_base64.len() > MAX_RENDER_SNAPSHOT_BASE64_BYTES {
+        return Err(format!(
+            "Bild ist zu groß - maximal {} MB erlaubt",
+            MAX_CUSTOM_IMAGE_BYTES / (1024 * 1024)
+        ));
+    }
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(&image_base64)
         .map_err(|e| e.to_string())?;
+    if bytes.len() > MAX_CUSTOM_IMAGE_BYTES {
+        return Err(format!(
+            "Bild ist zu groß ({:.1} MB) - maximal {} MB erlaubt",
+            bytes.len() as f64 / (1024.0 * 1024.0),
+            MAX_CUSTOM_IMAGE_BYTES / (1024 * 1024)
+        ));
+    }
     let conn = lock_db(&state)?;
     db::set_render_snapshot_png(&conn, id, &bytes).map_err(|e| e.to_string())
 }
@@ -1136,11 +1246,26 @@ fn validate_source_url(url: Option<String>) -> CmdResult<Option<String>> {
     let Some(trimmed) = url.map(|u| u.trim().to_string()).filter(|u| !u.is_empty()) else {
         return Ok(None);
     };
-    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+    if is_http_url(&trimmed) {
         Ok(Some(trimmed))
     } else {
         Err("source URL must start with http:// or https://".to_string())
     }
+}
+
+fn is_http_url(url: &str) -> bool {
+    url.starts_with("http://") || url.starts_with("https://")
+}
+
+/// Lese-Pendant zu `validate_source_url`: `set_source_url` ist nicht der
+/// einzige Weg, auf dem ein `source_url`-Wert in die DB gelangt - ein
+/// importierter Fremd-Katalog (`import_catalog`) bringt die Spalte komplett
+/// mit. Beim Herausreichen ins Frontend (`to_dto`) wird deshalb erneut
+/// geprueft; ein nicht-http(s)-Wert wird still verworfen statt den ganzen
+/// Lesevorgang scheitern zu lassen (Security-Review 2026-09-19, Finding I-2).
+fn sanitize_source_url(url: Option<String>) -> Option<String> {
+    url.map(|u| u.trim().to_string())
+        .filter(|u| !u.is_empty() && is_http_url(u))
 }
 
 fn is_supported_extension(path: &Path) -> bool {
@@ -1706,6 +1831,15 @@ const APPIMAGE_ENV_VARS_TO_STRIP: &[&str] = &[
 // wird hier zumindest sichergestellt, dass der Pfad tatsaechlich auf eine
 // existierende, ausfuehrbare Datei zeigt, statt jeden beliebigen String
 // klaglos an process::Command zu uebergeben.
+//
+// Security-Review 2026-09-19, Finding Z-1: eine echte Pfad-Allowlist
+// (nur automatisch erkannte ODER nachweislich per Datei-Dialog gewaehlte
+// Binaries) braucht eine backend-seitig persistierte Slicer-Liste - die
+// gibt es derzeit nicht, die Liste lebt ausschliesslich im localStorage.
+// Als Sofortmassnahme wird stattdessen die Import-Seite geschlossen
+// (`3mf-katalog-slicers` wird beim Katalog-Import nicht mehr
+// wiederhergestellt, siehe useCatalogBackup.ts) und das Modell-Argument
+// zusaetzlich validiert (`validate_slicer_target_file`).
 fn validate_slicer_path(slicer_path: &str) -> CmdResult<()> {
     let path = Path::new(slicer_path);
     let metadata = std::fs::metadata(path)
@@ -1734,9 +1868,35 @@ fn validate_slicer_path(slicer_path: &str) -> CmdResult<()> {
     Ok(())
 }
 
+/// Prueft das ZWEITE `Command`-Argument von `open_in_slicer`. Auch wenn der
+/// Slicer-Pfad selbst schon durch `validate_slicer_path` geht, ist der
+/// uebergebene Modell-Pfad bisher ungeprueft an den externen Prozess
+/// gewandert (Security-Review 2026-09-19, Finding I-5): ein mit "-"
+/// beginnender Wert wuerde vom Slicer als CLI-Flag gedeutet, ein beliebiger
+/// anderer Pfad/eine andere Endung hat in einem "im Slicer oeffnen"-Aufruf
+/// nichts zu suchen.
+fn validate_slicer_target_file(file_path: &str) -> CmdResult<()> {
+    let path = Path::new(file_path);
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| "invalid model file path".to_string())?;
+    if file_path.starts_with('-') || file_name.starts_with('-') {
+        return Err("model file path must not start with '-'".to_string());
+    }
+    if !is_supported_extension(path) {
+        return Err("model file must be a .3mf or .stl file".to_string());
+    }
+    if !std::fs::metadata(path).map(|m| m.is_file()).unwrap_or(false) {
+        return Err("model file not found".to_string());
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn open_in_slicer(slicer_path: String, file_path: String) -> CmdResult<()> {
     validate_slicer_path(&slicer_path)?;
+    validate_slicer_target_file(&file_path)?;
     let mut cmd = std::process::Command::new(&slicer_path);
     cmd.arg(&file_path);
     for var in APPIMAGE_ENV_VARS_TO_STRIP {
@@ -2022,6 +2182,29 @@ fn write_temp_file_exclusive(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Obergrenzen fuer die aus einem Katalog-Archiv entpackten Eintraege. Ohne
+/// sie kann ein wenige Kilobyte grosses ZIP beim Entpacken zu mehreren
+/// Gigabyte im Speicher werden ("Zip-Bombe", Security-Review 2026-09-19,
+/// Finding A-1).
+const MAX_IMPORT_DB_BYTES: u64 = 256 * 1024 * 1024; // 256 MB
+const MAX_IMPORT_SETTINGS_BYTES: u64 = 1024 * 1024; // 1 MB
+
+/// Lehnt einen ZIP-Eintrag anhand seiner im Archiv deklarierten
+/// entpackten Groesse ab. Die Angabe ist nicht vertrauenswuerdig (sie kann
+/// luegen), deshalb wird beim Lesen zusaetzlich mit `Read::take` hart
+/// begrenzt - diese Pruefung spart nur den Leseversuch bei ehrlich
+/// deklarierten Riesen-Eintraegen.
+fn reject_oversized_zip_entry(name: &str, size: u64, max: u64) -> CmdResult<()> {
+    if size > max {
+        return Err(format!(
+            "Eintrag \"{name}\" im Archiv ist zu groß ({:.1} MB) - maximal {} MB erlaubt",
+            size as f64 / (1024.0 * 1024.0),
+            max / (1024 * 1024)
+        ));
+    }
+    Ok(())
+}
+
 /// Prueft, ob `bytes` eine brauchbare Katalog-Datenbank sind (oeffnbar, mit
 /// einer `files`-Tabelle, und ohne `folders.path`-Eintraege in geschuetzten
 /// Systemverzeichnissen) - Schutz davor, ein falsches/kaputtes ODER
@@ -2045,6 +2228,9 @@ fn validate_catalog_db_bytes(bytes: &[u8], sensitive_dirs: &[PathBuf]) -> Result
     let result = Connection::open(&tmp_path)
         .map_err(|e| e.to_string())
         .and_then(|conn| {
+            // Einmal vorberechnen statt pro DB-Zeile - ein grosser Katalog hat
+            // zehntausende `files`-Zeilen.
+            let expanded_dirs = expand_sensitive_dirs(sensitive_dirs);
             conn.query_row("SELECT COUNT(*) FROM files", [], |row| row.get::<_, i64>(0))
                 .map_err(|e| e.to_string())?;
             let mut stmt = conn
@@ -2056,8 +2242,33 @@ fn validate_catalog_db_bytes(bytes: &[u8], sensitive_dirs: &[PathBuf]) -> Result
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| e.to_string())?;
             for path in paths {
-                reject_if_sensitive_path(Path::new(&path), sensitive_dirs)
+                reject_if_sensitive_path_expanded(Path::new(&path), &expanded_dirs)
                     .map_err(|e| format!("Ordner-Eintrag im Archiv abgelehnt: {e}"))?;
+            }
+
+            let mut stmt = conn
+                .prepare("SELECT name, path, trash_path FROM files")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                    ))
+                })
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            for (name, path, trash_path) in rows {
+                validate_file_name(&name)
+                    .map_err(|e| format!("Datei-Eintrag im Archiv abgelehnt: {e}"))?;
+                reject_if_sensitive_path_expanded(Path::new(&path), &expanded_dirs)
+                    .map_err(|e| format!("Datei-Eintrag im Archiv abgelehnt: {e}"))?;
+                if let Some(trash_path) = trash_path.filter(|p| !p.trim().is_empty()) {
+                    reject_if_sensitive_path_expanded(Path::new(&trash_path), &expanded_dirs)
+                        .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {e}"))?;
+                }
             }
             Ok(())
         });
@@ -2099,18 +2310,28 @@ pub async fn import_catalog(
     let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
 
     let mut db_bytes = Vec::new();
-    archive
-        .by_name("catalog.db")
-        .map_err(|_| "Archiv enthält keine catalog.db".to_string())?
-        .read_to_end(&mut db_bytes)
-        .map_err(|e| e.to_string())?;
+    {
+        let entry = archive
+            .by_name("catalog.db")
+            .map_err(|_| "Archiv enthält keine catalog.db".to_string())?;
+        reject_oversized_zip_entry("catalog.db", entry.size(), MAX_IMPORT_DB_BYTES)?;
+        entry
+            .take(MAX_IMPORT_DB_BYTES)
+            .read_to_end(&mut db_bytes)
+            .map_err(|e| e.to_string())?;
+    }
 
     let mut settings_bytes = Vec::new();
-    archive
-        .by_name("settings.json")
-        .map_err(|_| "Archiv enthält keine settings.json".to_string())?
-        .read_to_end(&mut settings_bytes)
-        .map_err(|e| e.to_string())?;
+    {
+        let entry = archive
+            .by_name("settings.json")
+            .map_err(|_| "Archiv enthält keine settings.json".to_string())?;
+        reject_oversized_zip_entry("settings.json", entry.size(), MAX_IMPORT_SETTINGS_BYTES)?;
+        entry
+            .take(MAX_IMPORT_SETTINGS_BYTES)
+            .read_to_end(&mut settings_bytes)
+            .map_err(|e| e.to_string())?;
+    }
     let settings_json = String::from_utf8(settings_bytes).map_err(|e| e.to_string())?;
 
     validate_catalog_db_bytes(&db_bytes, &state.sensitive_dirs)?;
@@ -2905,8 +3126,17 @@ mod tests {
         // einen echten Slicer zu benoetigen. Unter Windows existiert dieser
         // Pfad nicht, daher hier per #[cfg(unix)] komplett ausgeklammert
         // statt eines fragilen plattformabhaengigen Ersatzpfads.
-        let result = open_in_slicer("/usr/bin/true".to_string(), "/tmp/model.3mf".to_string());
-        assert!(result.is_ok());
+        //
+        // Die Modell-Datei muss seit Finding I-5 real existieren und eine
+        // unterstuetzte Endung haben (`validate_slicer_target_file`), daher
+        // hier eine echte temporaere Datei statt des frueheren Fantasie-Pfads
+        // "/tmp/model.3mf".
+        let dir = unique_test_dir("open_in_slicer_ok");
+        let model = dir.join("model.3mf");
+        std::fs::write(&model, b"x").unwrap();
+        let result = open_in_slicer("/usr/bin/true".to_string(), model.to_string_lossy().to_string());
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(result.is_ok(), "{result:?}");
     }
 
     #[test]
@@ -3480,6 +3710,222 @@ mod tests {
 
         let _ = std::fs::remove_file(&tmp_path);
         assert!(result.is_err(), "must reject an imported catalog whose folder path lies in a sensitive directory");
+    }
+
+    /// Legt eine gueltige Katalog-DB an, setzt darin genau eine `files`-Zeile
+    /// auf die uebergebenen Werte und gibt die Roh-Bytes zurueck - so wie sie
+    /// in einem praeparierten Backup-ZIP laegen.
+    fn catalog_db_bytes_with_file_row(
+        name: &str,
+        path: &str,
+        trash_path: Option<&str>,
+    ) -> Vec<u8> {
+        let tmp_path = std::env::temp_dir().join(format!(
+            "validate_catalog_db_files_test_{}.db",
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        {
+            let mut conn = crate::db::connect(&tmp_path).expect("connect creates a valid schema");
+            let new_file = sample_new_file_for_rescan_test(std::path::Path::new(path));
+            let id = db::insert_file(&mut conn, &new_file).expect("insert file row");
+            conn.execute(
+                "UPDATE files SET name = ?1, path = ?2, trash_path = ?3 WHERE id = ?4",
+                rusqlite::params![name, path, trash_path, id],
+            )
+            .expect("patch file row");
+            drop(conn);
+        }
+        let bytes = std::fs::read(&tmp_path).expect("read temp db");
+        let _ = std::fs::remove_file(&tmp_path);
+        bytes
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_accepts_harmless_file_rows() {
+        let dir = unique_test_dir("validate_catalog_db_files_ok");
+        let bytes = catalog_db_bytes_with_file_row(
+            "modell.3mf",
+            &dir.join("modell.3mf").to_string_lossy(),
+            Some(&dir.join("1-modell.3mf").to_string_lossy()),
+        );
+        let result = validate_catalog_db_bytes(&bytes, &[std::path::PathBuf::from("/etc")]);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(result.is_ok(), "a legitimate backup must still import: {result:?}");
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_rejects_file_name_with_path_traversal() {
+        // `files.name` landet in `trash_dir.join(format!("{id}-{name}"))` -
+        // ein Name mit "../" schreibt beim Loeschen aus dem Papierkorb heraus
+        // (Security-Review 2026-09-19, Finding I-1).
+        let dir = unique_test_dir("validate_catalog_db_files_name");
+        let bytes = catalog_db_bytes_with_file_row(
+            "../../../.config/autostart/evil.desktop",
+            &dir.join("modell.3mf").to_string_lossy(),
+            None,
+        );
+        let result = validate_catalog_db_bytes(&bytes, &[]);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(result.is_err(), "must reject an imported file row whose name escapes the trash dir");
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_rejects_file_path_in_sensitive_directory() {
+        let sensitive_root = std::env::temp_dir().join("3mf-test-sensitive-file-path");
+        let bytes = catalog_db_bytes_with_file_row(
+            "modell.3mf",
+            &sensitive_root.join("modell.3mf").to_string_lossy(),
+            None,
+        );
+        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root]);
+        assert!(result.is_err(), "must reject an imported file row pointing into a sensitive directory");
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_rejects_trash_path_in_sensitive_directory() {
+        // `files.trash_path` geht ungefragt an `fs::remove_file` - unter
+        // anderem in `purge_expired_trash_on_startup`, das beim App-Start
+        // ganz ohne Nutzer-Interaktion laeuft.
+        let dir = unique_test_dir("validate_catalog_db_trash_path");
+        let sensitive_root = std::env::temp_dir().join("3mf-test-sensitive-trash-path");
+        let bytes = catalog_db_bytes_with_file_row(
+            "modell.3mf",
+            &dir.join("modell.3mf").to_string_lossy(),
+            Some(&sensitive_root.join("wichtig.conf").to_string_lossy()),
+        );
+        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root]);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(result.is_err(), "must reject an imported trash_path pointing into a sensitive directory");
+    }
+
+    #[test]
+    fn validate_file_name_rejects_separators_and_parent_dir_sequences() {
+        assert!(validate_file_name("modell.3mf").is_ok());
+        assert!(validate_file_name("Modell mit Leerzeichen (v2).stl").is_ok());
+        assert!(validate_file_name("").is_err());
+        assert!(validate_file_name("   ").is_err());
+        assert!(validate_file_name("../evil.3mf").is_err());
+        assert!(validate_file_name("sub/evil.3mf").is_err());
+        assert!(validate_file_name("sub\\evil.3mf").is_err());
+        assert!(validate_file_name("..").is_err());
+    }
+
+    #[test]
+    fn reject_if_sensitive_path_rejects_parent_dir_traversal_into_sensitive_dir() {
+        // Ohne Aufloesung wuerde der reine Praefix-Vergleich hier "passt
+        // nicht" sagen, obwohl der Pfad real im geschuetzten Verzeichnis
+        // landet (Security-Review 2026-09-19, Finding I-3).
+        let base = unique_test_dir("reject_sensitive_traversal");
+        let sensitive = base.join(".config");
+        std::fs::create_dir_all(&sensitive).unwrap();
+        let catalog = base.join("Modelle");
+        std::fs::create_dir_all(&catalog).unwrap();
+
+        let escaping = catalog.join("../.config/autostart");
+        let result = reject_if_sensitive_path(&escaping, &[sensitive.clone()]);
+        let inside = reject_if_sensitive_path(&catalog.join("Unterordner"), &[sensitive]);
+
+        let _ = std::fs::remove_dir_all(&base);
+        assert!(result.is_err(), "a path traversing into a sensitive dir must be rejected");
+        assert!(inside.is_ok(), "a regular new subfolder of the catalog must stay allowed: {inside:?}");
+    }
+
+    #[test]
+    fn reject_if_sensitive_path_rejects_symlink_into_sensitive_dir() {
+        #[cfg(unix)]
+        {
+            let base = unique_test_dir("reject_sensitive_symlink");
+            let sensitive = base.join(".config");
+            std::fs::create_dir_all(&sensitive).unwrap();
+            let link = base.join("harmlos");
+            std::os::unix::fs::symlink(&sensitive, &link).unwrap();
+
+            let result = reject_if_sensitive_path(&link, &[sensitive]);
+
+            let _ = std::fs::remove_dir_all(&base);
+            assert!(result.is_err(), "a symlink pointing into a sensitive dir must be rejected");
+        }
+    }
+
+    #[test]
+    fn reject_if_sensitive_path_allows_a_not_yet_existing_fresh_catalog_dir() {
+        // Wichtigster Nicht-Regressions-Fall der Kanonisierung: das beim
+        // Einrichten gewaehlte Katalog-Basisverzeichnis existiert noch nicht.
+        let base = unique_test_dir("reject_sensitive_fresh");
+        let fresh = base.join("Neuer Katalog").join("Unterordner");
+        let result = reject_if_sensitive_path(&fresh, &[std::env::temp_dir().join("3mf-nichts-davon")]);
+        let _ = std::fs::remove_dir_all(&base);
+        assert!(result.is_ok(), "a fresh, not yet created catalog dir must remain a valid choice: {result:?}");
+    }
+
+    #[test]
+    fn sanitize_source_url_drops_non_http_values_instead_of_erroring() {
+        assert_eq!(
+            sanitize_source_url(Some("https://example.org/x".to_string())),
+            Some("https://example.org/x".to_string())
+        );
+        assert_eq!(
+            sanitize_source_url(Some("http://example.org/x".to_string())),
+            Some("http://example.org/x".to_string())
+        );
+        assert_eq!(sanitize_source_url(Some("javascript:alert(1)".to_string())), None);
+        assert_eq!(sanitize_source_url(Some("data:text/html,<script>".to_string())), None);
+        assert_eq!(sanitize_source_url(Some("file:///etc/passwd".to_string())), None);
+        assert_eq!(sanitize_source_url(Some("   ".to_string())), None);
+        assert_eq!(sanitize_source_url(None), None);
+    }
+
+    #[test]
+    fn to_dto_drops_a_non_http_source_url_from_an_imported_row() {
+        let mut file = sample_file_record(1, None, "2026-09-19T00:00:00Z");
+        file.source_url = Some("javascript:alert(document.domain)".to_string());
+        let dto = to_dto(file, &[]);
+        assert_eq!(dto.source_url, None, "a javascript: URL must never reach the frontend as an href");
+    }
+
+    #[test]
+    fn to_dto_keeps_a_regular_http_source_url() {
+        let mut file = sample_file_record(1, None, "2026-09-19T00:00:00Z");
+        file.source_url = Some("https://makerworld.com/de/models/1".to_string());
+        let dto = to_dto(file, &[]);
+        assert_eq!(dto.source_url, Some("https://makerworld.com/de/models/1".to_string()));
+    }
+
+    #[test]
+    fn validate_slicer_target_file_rejects_flags_unsupported_types_and_missing_files() {
+        let dir = unique_test_dir("validate_slicer_target");
+        let model = dir.join("modell.3mf");
+        std::fs::write(&model, b"x").unwrap();
+        let stl = dir.join("modell.STL");
+        std::fs::write(&stl, b"x").unwrap();
+        let other = dir.join("notiz.txt");
+        std::fs::write(&other, b"x").unwrap();
+        let flag = dir.join("--export-gcode.3mf");
+        std::fs::write(&flag, b"x").unwrap();
+
+        let ok_3mf = validate_slicer_target_file(&model.to_string_lossy());
+        let ok_stl = validate_slicer_target_file(&stl.to_string_lossy());
+        let bad_ext = validate_slicer_target_file(&other.to_string_lossy());
+        let bad_flag = validate_slicer_target_file(&flag.to_string_lossy());
+        let bad_bare_flag = validate_slicer_target_file("--version");
+        let bad_missing = validate_slicer_target_file(&dir.join("weg.3mf").to_string_lossy());
+        let bad_dir = validate_slicer_target_file(&dir.to_string_lossy());
+
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(ok_3mf.is_ok(), "a real .3mf file must still open: {ok_3mf:?}");
+        assert!(ok_stl.is_ok(), "extension check must be case-insensitive: {ok_stl:?}");
+        assert!(bad_ext.is_err(), "unsupported extension must be rejected");
+        assert!(bad_flag.is_err(), "a file name starting with '-' must be rejected");
+        assert!(bad_bare_flag.is_err(), "a bare CLI flag must be rejected");
+        assert!(bad_missing.is_err(), "a non-existent file must be rejected");
+        assert!(bad_dir.is_err(), "a directory must be rejected");
+    }
+
+    #[test]
+    fn reject_oversized_zip_entry_uses_the_declared_uncompressed_size() {
+        assert!(reject_oversized_zip_entry("catalog.db", 10, 100).is_ok());
+        assert!(reject_oversized_zip_entry("catalog.db", 100, 100).is_ok());
+        assert!(reject_oversized_zip_entry("catalog.db", 101, 100).is_err());
     }
 
     #[test]

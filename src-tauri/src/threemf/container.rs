@@ -17,6 +17,13 @@ const THUMBNAIL_RELATIONSHIP_TYPE: &str =
 const DEFAULT_MODEL_PATH: &str = "3D/3dmodel.model";
 const FALLBACK_THUMBNAIL_PATHS: [&str; 2] =
     ["Metadata/thumbnail.png", "3D/Thumbnails/thumbnail.png"];
+// Obergrenzen fuer die entpackte Groesse einzelner Paket-Eintraege: ein
+// wenige Kilobyte grosses 3MF kann sich sonst beim Entpacken auf mehrere
+// Gigabyte aufblaehen und die App per OOM beenden ("Zip-Bombe",
+// Security-Review 2026-09-19, Finding A-1).
+const MAX_MODEL_XML_BYTES: u64 = 256 * 1024 * 1024; // 256 MB
+const MAX_THUMBNAIL_BYTES: u64 = 16 * 1024 * 1024; // 16 MB
+const MAX_RELS_XML_BYTES: u64 = 16 * 1024 * 1024; // 16 MB
 
 pub struct PackageParts {
     pub root_model: ParsedModel,
@@ -51,8 +58,8 @@ pub fn read_package<R: Read + Seek>(reader: R) -> Result<PackageParts, ThreeMfEr
     let (model_path, thumbnail_path) = resolve_relationships(&mut archive);
     let model_path = model_path.unwrap_or_else(|| DEFAULT_MODEL_PATH.to_string());
 
-    let root_xml = read_entry_to_string(&mut archive, &model_path)
-        .or_else(|_| read_entry_to_string(&mut archive, DEFAULT_MODEL_PATH))
+    let root_xml = read_entry_to_string(&mut archive, &model_path, MAX_MODEL_XML_BYTES)
+        .or_else(|_| read_entry_to_string(&mut archive, DEFAULT_MODEL_PATH, MAX_MODEL_XML_BYTES))
         .map_err(|_| ThreeMfError::MissingRootModel)?;
     let root_model = parse_model_xml(&root_xml)?;
 
@@ -69,7 +76,7 @@ pub fn read_package<R: Read + Seek>(reader: R) -> Result<PackageParts, ThreeMfEr
         if !visited.insert(path.clone()) {
             continue;
         }
-        let Ok(xml) = read_entry_to_string(&mut archive, &path) else {
+        let Ok(xml) = read_entry_to_string(&mut archive, &path, MAX_MODEL_XML_BYTES) else {
             eprintln!(
                 "[3mf] referenzierte Modell-Datei nicht gefunden, wird uebersprungen: {path}"
             );
@@ -87,10 +94,10 @@ pub fn read_package<R: Read + Seek>(reader: R) -> Result<PackageParts, ThreeMfEr
         referenced_models.insert(path, parsed);
     }
 
-    let mut thumbnail = thumbnail_path.and_then(|p| read_entry_to_bytes(&mut archive, &p).ok());
+    let mut thumbnail = thumbnail_path.and_then(|p| read_entry_to_bytes(&mut archive, &p, MAX_THUMBNAIL_BYTES).ok());
     if thumbnail.is_none() {
         for candidate in FALLBACK_THUMBNAIL_PATHS {
-            if let Ok(bytes) = read_entry_to_bytes(&mut archive, candidate) {
+            if let Ok(bytes) = read_entry_to_bytes(&mut archive, candidate, MAX_THUMBNAIL_BYTES) {
                 thumbnail = Some(bytes);
                 break;
             }
@@ -129,7 +136,7 @@ fn referenced_paths(model: &ParsedModel) -> Vec<String> {
 fn resolve_relationships<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
 ) -> (Option<String>, Option<String>) {
-    let Ok(rels_xml) = read_entry_to_string(archive, RELS_PATH) else {
+    let Ok(rels_xml) = read_entry_to_string(archive, RELS_PATH, MAX_RELS_XML_BYTES) else {
         return (None, None);
     };
 
@@ -169,21 +176,42 @@ fn resolve_relationships<R: Read + Seek>(
 fn read_entry_to_string<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     path: &str,
+    max_bytes: u64,
 ) -> Result<String, ThreeMfError> {
-    let mut file = archive.by_name(path)?;
+    let file = archive.by_name(path)?;
+    reject_oversized_entry(path, file.size(), max_bytes)?;
     let mut contents = String::new();
-    file.read_to_string(&mut contents)?;
+    file.take(max_bytes).read_to_string(&mut contents)?;
     Ok(contents)
 }
 
 fn read_entry_to_bytes<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     path: &str,
+    max_bytes: u64,
 ) -> Result<Vec<u8>, ThreeMfError> {
-    let mut file = archive.by_name(path)?;
+    let file = archive.by_name(path)?;
+    reject_oversized_entry(path, file.size(), max_bytes)?;
     let mut contents = Vec::new();
-    file.read_to_end(&mut contents)?;
+    file.take(max_bytes).read_to_end(&mut contents)?;
     Ok(contents)
+}
+
+/// Lehnt einen ZIP-Eintrag anhand seiner im Archiv deklarierten entpackten
+/// Groesse ab. Die Angabe stammt aus dem Archiv selbst und ist damit nicht
+/// vertrauenswuerdig - die eigentliche Schranke ist das `Read::take` beim
+/// Lesen; diese Pruefung meldet nur den ehrlich deklarierten Fall mit einer
+/// brauchbaren Fehlermeldung, statt eine stillschweigend abgeschnittene
+/// (und dadurch kaputte) XML-/Bilddatei weiterzureichen.
+fn reject_oversized_entry(path: &str, size: u64, max_bytes: u64) -> Result<(), ThreeMfError> {
+    if size > max_bytes {
+        return Err(ThreeMfError::EntryTooLarge {
+            path: path.to_string(),
+            size,
+            max: max_bytes,
+        });
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -280,6 +308,39 @@ mod tests {
             zip.finish().unwrap();
         }
         buf
+    }
+
+    /// Baut ein ZIP mit einem einzelnen, stark komprimierbaren Eintrag -
+    /// Miniatur-Nachbau einer "Zip-Bombe" (Security-Review 2026-09-19,
+    /// Finding A-1).
+    fn build_zip_with_one_entry(path: &str, uncompressed_len: usize) -> Vec<u8> {
+        let mut buf = Vec::new();
+        {
+            let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buf));
+            zip.start_file(path, SimpleFileOptions::default()).unwrap();
+            zip.write_all(&vec![b'A'; uncompressed_len]).unwrap();
+            zip.finish().unwrap();
+        }
+        buf
+    }
+
+    #[test]
+    fn read_entry_rejects_an_entry_exceeding_the_size_limit() {
+        let bytes = build_zip_with_one_entry("big.model", 4096);
+        let mut archive = ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+
+        let too_big = read_entry_to_string(&mut archive, "big.model", 1024);
+        assert!(
+            matches!(too_big, Err(ThreeMfError::EntryTooLarge { .. })),
+            "an entry above the cap must be rejected, got {too_big:?}"
+        );
+
+        let bytes_too_big = read_entry_to_bytes(&mut archive, "big.model", 1024);
+        assert!(matches!(bytes_too_big, Err(ThreeMfError::EntryTooLarge { .. })));
+
+        // Unterhalb der Grenze bleibt alles wie bisher.
+        let ok = read_entry_to_bytes(&mut archive, "big.model", 8192).expect("within the cap");
+        assert_eq!(ok.len(), 4096);
     }
 
     #[test]
