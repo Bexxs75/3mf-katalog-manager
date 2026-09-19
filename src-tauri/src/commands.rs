@@ -687,6 +687,28 @@ pub fn delete_print_log_entry(state: State<AppState>, entry_id: String) -> CmdRe
     db::delete_print_log_entry(&conn, id).map_err(|e| e.to_string())
 }
 
+/// Gemeinsame Trust-Boundary-Hilfsfunktion fuer jede Stelle, die eine vom
+/// Nutzer ausgewaehlte Bilddatei liest (L-01, Senior-Code-Review 2026-09-19).
+/// Vereinheitlicht das bisher nur bei upload_custom_image() vorhandene
+/// Groessenlimit auch fuer pick_and_read_image() - UND liest TOCTOU-frei:
+/// statt Groesse vorab per metadata() zu pruefen und danach vollstaendig
+/// zu lesen (Race-Fenster, falls die Datei zwischen beiden Aufrufen waechst),
+/// wird direkt mit einem auf `max_bytes + 1` begrenzten Reader gelesen. Sind
+/// mehr als `max_bytes` tatsaechlich gelesen worden, war die Datei zu gross -
+/// das Limit ist damit unabhaengig vom Zeitpunkt einer Groessenaenderung
+/// garantiert, nicht nur zum Zeitpunkt einer fruehen Vorabpruefung.
+fn read_image_bounded(path: &std::path::Path, max_bytes: u64) -> CmdResult<Vec<u8>> {
+    use std::io::Read;
+    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut limited = file.take(max_bytes + 1);
+    let mut buffer = Vec::new();
+    limited.read_to_end(&mut buffer).map_err(|e| e.to_string())?;
+    if buffer.len() as u64 > max_bytes {
+        return Err(format!("Bilddatei ist zu gross (> {max_bytes} Bytes)"));
+    }
+    Ok(buffer)
+}
+
 #[tauri::command]
 pub async fn pick_and_read_image(app: tauri::AppHandle) -> CmdResult<Option<String>> {
     use base64::Engine;
@@ -700,7 +722,7 @@ pub async fn pick_and_read_image(app: tauri::AppHandle) -> CmdResult<Option<Stri
         return Ok(None);
     };
     let path = picked.into_path().map_err(|e| e.to_string())?;
-    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    let bytes = read_image_bounded(&path, MAX_CUSTOM_IMAGE_BYTES as u64)?;
     Ok(Some(base64::engine::general_purpose::STANDARD.encode(bytes)))
 }
 
@@ -1504,14 +1526,7 @@ pub async fn upload_custom_image(
         return Ok(None);
     };
     let path = picked.into_path().map_err(|e| e.to_string())?;
-    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
-    if bytes.len() > MAX_CUSTOM_IMAGE_BYTES {
-        return Err(format!(
-            "Bild ist zu groß ({:.1} MB) - maximal {} MB erlaubt",
-            bytes.len() as f64 / (1024.0 * 1024.0),
-            MAX_CUSTOM_IMAGE_BYTES / (1024 * 1024)
-        ));
-    }
+    let bytes = read_image_bounded(&path, MAX_CUSTOM_IMAGE_BYTES as u64)?;
 
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
@@ -6224,5 +6239,22 @@ mod tests {
             position1, 0,
             "the first update must be rolled back even though it succeeded inside the transaction before the second one failed"
         );
+    }
+
+    #[test]
+    fn read_image_bounded_rejects_a_file_over_the_limit() {
+        let path = unique_test_dir("image_over_limit").join("big.png");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, vec![0u8; 6 * 1024 * 1024]).unwrap(); // 6 MB
+        let result = read_image_bounded(&path, 5 * 1024 * 1024);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn read_image_bounded_accepts_a_file_under_the_limit() {
+        let path = unique_test_dir("image_under_limit").join("small.png");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, vec![0u8; 1024]).unwrap();
+        assert!(read_image_bounded(&path, 5 * 1024 * 1024).is_ok());
     }
 }
