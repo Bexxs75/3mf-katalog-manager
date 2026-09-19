@@ -1,123 +1,51 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as catalogMetaApi from '../lib/api/catalogMeta';
+import * as slicerApi from '../lib/api/slicer';
+import type { SlicerDto } from '../lib/api/slicer';
 import type { SlicerConfig } from '../types';
 
-const STORAGE_KEY = '3mf-katalog-slicers';
+const PRIMARY_ID_STORAGE_KEY = '3mf-katalog-primary-slicer-id';
+const HIDDEN_IDS_STORAGE_KEY = '3mf-katalog-hidden-slicer-ids';
 
-interface DetectedSlicerInput {
-  name: string;
-  path: string;
+function toSlicerConfig(dto: SlicerDto): SlicerConfig {
+  return { id: dto.id, name: dto.name, path: dto.executablePath };
 }
 
-interface StoredState {
-  slicers: SlicerConfig[];
-  primaryId: string | null;
-  dismissedPaths: string[];
-}
-
-function loadStored(): StoredState {
+function loadHiddenIds(): Set<string> {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { slicers: [], primaryId: null, dismissedPaths: [] };
-    const parsed = JSON.parse(raw) as Partial<StoredState> & { lastUsedId?: unknown };
-    const slicers = Array.isArray(parsed.slicers) ? parsed.slicers : [];
-    // Migration: vor diesem Feature hiess das Feld "lastUsedId" und wurde bei
-    // jedem Klick still ueberschrieben. Ein vorhandener Wert wird einmalig als
-    // initialer primaryId uebernommen, damit niemand seinen faktischen
-    // Default beim Umstieg verliert.
-    const primaryId =
-      typeof parsed.primaryId === 'string'
-        ? parsed.primaryId
-        : typeof parsed.lastUsedId === 'string'
-          ? parsed.lastUsedId
-          : null;
-    return {
-      // Aeltere, vor diesem Feature persistierte Eintraege haben noch kein
-      // source-Feld - werden als 'manual' behandelt, da sie ausschliesslich
-      // ueber den Datei-Dialog entstanden sein koennen.
-      slicers: slicers.map((s) => ({ ...s, source: s.source ?? 'manual' })),
-      primaryId,
-      dismissedPaths: Array.isArray(parsed.dismissedPaths) ? parsed.dismissedPaths : [],
-    };
+    const raw = localStorage.getItem(HIDDEN_IDS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(parsed) ? parsed : []);
   } catch {
-    return { slicers: [], primaryId: null, dismissedPaths: [] };
+    return new Set();
   }
 }
 
 /**
- * Verwaltet die konfigurierten Slicer-Programme (Name + Pfad), sowohl
- * manuell hinzugefuegte als auch automatisch erkannte. Persistiert in
- * localStorage nach demselben Muster wie Theme/Sprache (useTheme.ts) -
- * keine Backend-/DB-Beteiligung noetig fuer eine kurze Konfigurationsliste.
+ * Verwaltet die konfigurierten Slicer-Programme (Name + Pfad). Seit der
+ * M-06-Haertung (Task 11) ist die `registered_slicers`-Tabelle im Backend
+ * die alleinige Quelle der Wahrheit - dieser Hook haelt lediglich noch eine
+ * rein lokale UI-Praeferenz (welcher Slicer ist "primaer") sowie eine rein
+ * lokale "Ausgeblendet"-Liste (es gibt (noch) keinen Backend-Command zum
+ * endgueltigen Entfernen eines registrierten Slicers - ein "Entfernen" in
+ * der UI blendet den Eintrag daher nur lokal aus, loescht ihn aber nicht
+ * aus der Registry; ein erneuter Scan/Neustart zeigt ihn nicht erneut an,
+ * solange er ausgeblendet bleibt).
  */
 export function useSlicers() {
-  const [state, setState] = useState<StoredState>(loadStored);
+  const [slicers, setSlicers] = useState<SlicerConfig[]>([]);
+  const [primaryId, setPrimaryIdState] = useState<string | null>(
+    () => localStorage.getItem(PRIMARY_ID_STORAGE_KEY),
+  );
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(loadHiddenIds);
 
-  const addSlicer = useCallback((name: string, path: string) => {
-    setState((prev) => {
-      const id = crypto.randomUUID();
-      const next: StoredState = {
-        ...prev,
-        slicers: [...prev.slicers, { id, name, path, source: 'manual' }],
-        // Der allererste konfigurierte Slicer wird automatisch zum Standard -
-        // erspart einen unnoetigen Extra-Klick, wenn nur einer existiert.
-        primaryId: prev.primaryId ?? id,
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      return next;
-    });
-  }, []);
-
-  const removeSlicer = useCallback((id: string) => {
-    setState((prev) => {
-      const removed = prev.slicers.find((s) => s.id === id);
-      const next: StoredState = {
-        slicers: prev.slicers.filter((s) => s.id !== id),
-        primaryId: prev.primaryId === id ? null : prev.primaryId,
-        dismissedPaths:
-          removed && removed.source === 'auto'
-            ? [...prev.dismissedPaths, removed.path]
-            : prev.dismissedPaths,
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      return next;
-    });
-  }, []);
-
-  const setPrimary = useCallback((id: string) => {
-    setState((prev) => {
-      const next: StoredState = { ...prev, primaryId: id };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      return next;
-    });
-  }, []);
-
-  const mergeDetected = useCallback((detected: DetectedSlicerInput[]) => {
-    setState((prev) => {
-      const knownPaths = new Set(prev.slicers.map((s) => s.path));
-      const dismissed = new Set(prev.dismissedPaths);
-      const additions: SlicerConfig[] = [];
-      for (const d of detected) {
-        if (knownPaths.has(d.path) || dismissed.has(d.path)) continue;
-        // Verhindert doppelte Eintraege, falls `detected` selbst denselben
-        // Pfad mehrfach enthaelt (z.B. zwei Scan-Treffer fuer denselben Slicer).
-        knownPaths.add(d.path);
-        additions.push({ id: crypto.randomUUID(), name: d.name, path: d.path, source: 'auto' });
-      }
-      if (additions.length === 0) return prev;
-      const next: StoredState = {
-        ...prev,
-        slicers: [...prev.slicers, ...additions],
-        primaryId: prev.primaryId ?? additions[0].id,
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      return next;
-    });
+  const applyRegistry = useCallback((rows: SlicerDto[]) => {
+    setSlicers(rows.map(toSlicerConfig));
   }, []);
 
   useEffect(() => {
     catalogMetaApi.scanInstalledSlicers()
-      .then(mergeDetected)
+      .then(applyRegistry)
       .catch((e) => {
         // Rein komfortsteigerndes Feature - ein Fehlschlag darf die App
         // nicht beeintraechtigen, nur geloggt werden.
@@ -126,12 +54,48 @@ export function useSlicers() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const addSlicer = useCallback(async () => {
+    // M-06/P0: der native Datei-Dialog laeuft im Backend
+    // (`pick_and_register_slicer`) - das Frontend uebergibt hier keinen
+    // selbst konstruierten Pfad mehr.
+    const picked = await slicerApi.pickAndRegisterSlicer();
+    if (!picked) return null;
+    const rows = await slicerApi.listRegisteredSlicers();
+    applyRegistry(rows);
+    setPrimaryIdState((prev) => {
+      if (prev) return prev;
+      localStorage.setItem(PRIMARY_ID_STORAGE_KEY, picked.id);
+      return picked.id;
+    });
+    return picked;
+  }, [applyRegistry]);
+
+  const removeSlicer = useCallback((id: string) => {
+    setHiddenIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      localStorage.setItem(HIDDEN_IDS_STORAGE_KEY, JSON.stringify([...next]));
+      return next;
+    });
+    setPrimaryIdState((prev) => {
+      if (prev !== id) return prev;
+      localStorage.removeItem(PRIMARY_ID_STORAGE_KEY);
+      return null;
+    });
+  }, []);
+
+  const setPrimary = useCallback((id: string) => {
+    localStorage.setItem(PRIMARY_ID_STORAGE_KEY, id);
+    setPrimaryIdState(id);
+  }, []);
+
+  const visibleSlicers = slicers.filter((s) => !hiddenIds.has(s.id));
+
   return {
-    slicers: state.slicers,
-    primaryId: state.primaryId,
+    slicers: visibleSlicers,
+    primaryId,
     addSlicer,
     removeSlicer,
     setPrimary,
-    mergeDetected,
   };
 }

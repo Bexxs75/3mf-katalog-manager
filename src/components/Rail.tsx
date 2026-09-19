@@ -23,7 +23,7 @@ interface Props {
   onDisplayPreferenceChange: (p: DisplayPreference) => void;
   slicers: SlicerConfig[];
   primarySlicerId: string | null;
-  onAddSlicer: (name: string, path: string) => void;
+  onAddSlicer: () => void;
   onRemoveSlicer: (id: string) => void;
   onSetPrimarySlicer: (id: string) => void;
   onScanCatalogIssues: () => void;
@@ -90,27 +90,8 @@ export function Rail({
 }: Props) {
   const t = useT();
   const { language, setLanguage } = useLanguage();
-  const [pendingSlicerPath, setPendingSlicerPath] = useState<string | null>(null);
-  const [pendingSlicerName, setPendingSlicerName] = useState('');
   const [confirmImportCatalog, setConfirmImportCatalog] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState<'general' | 'slicer' | 'catalog' | 'info'>('general');
-
-  const handlePickSlicer = () => {
-    invoke<string | null>('pick_slicer_executable').then((path) => {
-      if (!path) return;
-      const fileName = path.split(/[/\\]/).pop() ?? path;
-      const suggested = fileName.replace(/\.[^./\\]+$/, '');
-      setPendingSlicerPath(path);
-      setPendingSlicerName(suggested);
-    });
-  };
-
-  const confirmAddSlicer = () => {
-    if (!pendingSlicerPath || !pendingSlicerName.trim()) return;
-    onAddSlicer(pendingSlicerName.trim(), pendingSlicerPath);
-    setPendingSlicerPath(null);
-    setPendingSlicerName('');
-  };
 
   return (
     <nav className="flex-none w-[60px] flex flex-col items-center pt-3.5 pb-2.5 bg-[var(--panel-2)] border-r border-[var(--line)]">
@@ -291,11 +272,6 @@ export function Rail({
                                   {t('slicerPrimaryChip')}
                                 </span>
                               )}
-                              {s.source === 'auto' && (
-                                <span className="flex-none font-mono-ui text-[9px] tracking-[0.08em] uppercase text-[var(--ink-3)]">
-                                  {t('slicerAutoDetectedLabel')}
-                                </span>
-                              )}
                             </div>
                             <div className="font-mono-ui text-[length:var(--font-size-meta)] text-[var(--ink-3)] truncate">
                               {s.path}
@@ -313,46 +289,12 @@ export function Rail({
                     })}
                   </div>
                 )}
-                {pendingSlicerPath ? (
-                  <div className="flex items-center gap-1.5 mt-2">
-                    <input
-                      value={pendingSlicerName}
-                      onChange={(e) => setPendingSlicerName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') confirmAddSlicer();
-                        if (e.key === 'Escape') {
-                          setPendingSlicerPath(null);
-                          setPendingSlicerName('');
-                        }
-                      }}
-                      autoFocus
-                      className="flex-1 h-7 px-2 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-[length:var(--font-size-title)]"
-                    />
-                    <button
-                      onClick={confirmAddSlicer}
-                      className="h-7 px-2.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[11.5px] font-semibold cursor-pointer"
-                    >
-                      {t('confirmSlicerName')}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setPendingSlicerPath(null);
-                        setPendingSlicerName('');
-                      }}
-                      aria-label={t('cancel')}
-                      className="flex-none w-7 h-7 grid place-items-center rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-[11px] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={handlePickSlicer}
-                    className="mt-2 h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
-                  >
-                    + {t('addSlicer')}
-                  </button>
-                )}
+                <button
+                  onClick={onAddSlicer}
+                  className="mt-2 h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                >
+                  + {t('addSlicer')}
+                </button>
               </>
             )}
 

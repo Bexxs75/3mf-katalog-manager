@@ -6,9 +6,22 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 beforeEach(() => { vi.mocked(invoke).mockReset(); });
 
 describe('slicer api', () => {
-  it('openInSlicer', async () => {
+  it('openInSlicer sends the model id and the registered slicer id, never a free path', async () => {
     vi.mocked(invoke).mockResolvedValue(undefined);
-    await slicerApi.openInSlicer('/usr/bin/slicer', '/model.3mf');
-    expect(invoke).toHaveBeenCalledWith('open_in_slicer', { slicerPath: '/usr/bin/slicer', filePath: '/model.3mf' });
+    await slicerApi.openInSlicer('m1', 's1');
+    expect(invoke).toHaveBeenCalledWith('open_in_slicer', { fileId: 'm1', slicerId: 's1' });
+  });
+
+  it('pickAndRegisterSlicer opens the backend-side native dialog with no path argument', async () => {
+    vi.mocked(invoke).mockResolvedValue({ id: '1', name: 'Orca', executablePath: '/usr/bin/orca' });
+    const result = await slicerApi.pickAndRegisterSlicer();
+    expect(invoke).toHaveBeenCalledWith('pick_and_register_slicer');
+    expect(result).toEqual({ id: '1', name: 'Orca', executablePath: '/usr/bin/orca' });
+  });
+
+  it('listRegisteredSlicers reads the backend registry', async () => {
+    vi.mocked(invoke).mockResolvedValue([]);
+    await slicerApi.listRegisteredSlicers();
+    expect(invoke).toHaveBeenCalledWith('list_registered_slicers');
   });
 });

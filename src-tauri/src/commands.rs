@@ -11,7 +11,7 @@ use crate::db::error::DbError;
 use crate::db::models::{FileType, MaterialRecord, NewFile, ScannedMetadataUpdate};
 use crate::db::{self, models::FileRecord};
 use crate::geometry::RenderMesh;
-use crate::slicers::{detect_slicers, DetectedSlicer};
+use crate::slicers::detect_slicers;
 use crate::tagging::{self, TaggingContext};
 use crate::{stl, threemf, update_check};
 
@@ -223,6 +223,20 @@ pub struct FolderDto {
     pub path: String,
     pub parent_id: Option<String>,
     pub count: i64,
+}
+
+/// Ueber die Slicer-Registry (M-06, Task 11) an das Frontend zurueckgegebene
+/// Sicht auf einen `registered_slicers`-Eintrag. `is_auto_detected` ist
+/// hier bewusst NICHT enthalten - das Frontend braucht diese Unterscheidung
+/// aktuell nicht, jeder registrierte Eintrag (ob manuell oder automatisch
+/// erkannt) ist gleichermassen vertrauenswuerdig, sobald er in der Tabelle
+/// steht.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SlicerDto {
+    pub id: String,
+    pub name: String,
+    pub executable_path: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -2039,19 +2053,52 @@ pub fn import_dropped(state: State<AppState>, paths: Vec<String>) -> CmdResult<I
 // Dialog selbst) braucht: ein Deadlock, der die App komplett einfrieren
 // liess. Als async fn dispatcht Tauri sie stattdessen auf den
 // Async-Runtime-Thread-Pool.
+/// Kernlogik, getrennt vom Tauri-Dialog gehalten (gleiche Konvention wie
+/// `move_file_to_folder_with_conn` etc.), damit sie direkt testbar ist - der
+/// Dialog selbst laesst sich nicht sinnvoll unit-testen.
+fn register_slicer_with_conn(conn: &Connection, name: String, executable_path: String) -> CmdResult<SlicerDto> {
+    validate_slicer_path(&executable_path)?; // bestehende Pruefung wiederverwendet, nicht ersetzt
+    let id = db::insert_registered_slicer(conn, &name, &executable_path, false).map_err(|e| e.to_string())?;
+    Ok(SlicerDto { id: id.to_string(), name, executable_path })
+}
+
+/// Oeffnet den nativen Datei-Dialog IM BACKEND (M-06/P0-Korrektur, zweite
+/// Review-Runde) - das Frontend uebergibt hier an keiner Stelle einen selbst
+/// konstruierten Pfad-String, einzige Quelle fuer `executable_path` ist die
+/// vom Nutzer im Dialog getroffene Auswahl. Analog zu `pick_and_read_image`,
+/// das denselben `blocking_pick_file()`-Ansatz bereits fuer Bilder nutzt.
+/// Muss aus demselben Grund wie `pick_and_read_image` async sein:
+/// `blocking_pick_file()` blockiert den aufrufenden Thread, bis der native
+/// Dialog geschlossen wird.
 #[tauri::command]
-pub async fn pick_slicer_executable(app: tauri::AppHandle) -> CmdResult<Option<String>> {
+pub async fn pick_and_register_slicer(app: tauri::AppHandle, state: State<'_, AppState>) -> CmdResult<Option<SlicerDto>> {
     let dialog = app.dialog().file();
-    // #[cfg] direkt auf dem let-Statement (Shadowing) statt "let mut" +
-    // bedingter Neuzuweisung: unter Linux faellt diese Zeile komplett weg,
-    // ein "mut"-Binding waere dort nie mutiert und wuerde eine
-    // unused_mut-Warnung ausloesen.
     #[cfg(target_os = "windows")]
     let dialog = dialog.add_filter("Programme", &["exe"]);
     let picked = dialog.blocking_pick_file();
-    Ok(picked
-        .and_then(|p| p.into_path().ok())
-        .map(|p| p.to_string_lossy().to_string()))
+    let Some(picked) = picked.and_then(|p| p.into_path().ok()) else {
+        return Ok(None);
+    };
+    let name = picked
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Slicer")
+        .to_string();
+    let executable_path = picked.to_string_lossy().to_string();
+    let conn = lock_db(&state)?;
+    register_slicer_with_conn(&conn, name, executable_path).map(Some)
+}
+
+#[tauri::command]
+pub fn list_registered_slicers(state: State<AppState>) -> CmdResult<Vec<SlicerDto>> {
+    let conn = lock_db(&state)?;
+    db::list_registered_slicers(&conn)
+        .map_err(|e| e.to_string())
+        .map(|rows| {
+            rows.into_iter()
+                .map(|r| SlicerDto { id: r.id.to_string(), name: r.name, executable_path: r.executable_path })
+                .collect()
+        })
 }
 
 // Muss aus demselben Grund wie pick_slicer_executable async sein:
@@ -2162,20 +2209,19 @@ const APPIMAGE_ENV_VARS_TO_STRIP: &[&str] = &[
     "WEBKIT_DISABLE_DMABUF_RENDERER",
 ];
 
-// Slicer-Liste wird ausschliesslich im Frontend (localStorage) verwaltet,
-// es gibt keine Backend-Quelle fuer eine Pfad-Whitelist. Als Ersatzschranke
-// wird hier zumindest sichergestellt, dass der Pfad tatsaechlich auf eine
-// existierende, ausfuehrbare Datei zeigt, statt jeden beliebigen String
-// klaglos an process::Command zu uebergeben.
-//
-// Security-Review 2026-09-19, Finding Z-1: eine echte Pfad-Allowlist
+// Security-Review 2026-09-19, Finding Z-1 (M-06): eine echte Pfad-Allowlist
 // (nur automatisch erkannte ODER nachweislich per Datei-Dialog gewaehlte
-// Binaries) braucht eine backend-seitig persistierte Slicer-Liste - die
-// gibt es derzeit nicht, die Liste lebt ausschliesslich im localStorage.
-// Als Sofortmassnahme wird stattdessen die Import-Seite geschlossen
-// (`3mf-katalog-slicers` wird beim Katalog-Import nicht mehr
-// wiederhergestellt, siehe useCatalogBackup.ts) und das Modell-Argument
-// zusaetzlich validiert (`validate_slicer_target_file`).
+// Binaries) braucht eine backend-seitig persistierte Slicer-Liste. Das ist
+// jetzt `registered_slicers` (Task 11, siehe migrations.rs) statt des
+// frueheren, ausschliesslich im Frontend-localStorage gefuehrten Zustands -
+// `open_in_slicer` nimmt seitdem keinen freien Pfad mehr entgegen, sondern
+// ausschliesslich eine zuvor registrierte `slicer_id`
+// (`resolve_registered_slicer_and_model` unten). `validate_slicer_path`
+// bleibt zusaetzlich bestehen und wird sowohl bei der Registrierung als auch
+// bei jeder Aufloesung erneut angewendet: sie stellt sicher, dass der
+// registrierte Pfad tatsaechlich (noch) auf eine existierende, ausfuehrbare
+// Datei zeigt, statt jeden gespeicherten String klaglos an process::Command
+// zu uebergeben.
 fn validate_slicer_path(slicer_path: &str) -> CmdResult<()> {
     let path = Path::new(slicer_path);
     let metadata = std::fs::metadata(path)
@@ -2339,25 +2385,93 @@ mod update_command_tests {
     }
 }
 
-#[tauri::command]
-pub fn open_in_slicer(slicer_path: String, file_path: String) -> CmdResult<()> {
-    validate_slicer_path(&slicer_path)?;
-    validate_slicer_target_file(&file_path)?;
-    let mut cmd = std::process::Command::new(&slicer_path);
-    cmd.arg(&file_path);
+/// Ergebnis der Registry-/Sicherheits-Aufloesung: beide Pfade sind bereits
+/// durch `validate_slicer_path`/`validate_slicer_target_file` geprueft.
+struct ResolvedSlicerLaunch {
+    executable_path: String,
+    model_path: String,
+}
+
+/// Reine Aufloesungs- und Validierungslogik, GETRENNT vom eigentlichen
+/// Prozessstart (Korrektur, vierte Review-Runde): dadurch ist der
+/// sicherheitsrelevante Teil (Slicer registriert? Pfade gueltig? Datei
+/// existiert und hat eine erlaubte Endung?) ohne Seiteneffekt (kein echter
+/// `Command::spawn()`) unit-testbar.
+fn resolve_registered_slicer_and_model(
+    conn: &Connection,
+    file_id: &str,
+    slicer_id: &str,
+) -> CmdResult<ResolvedSlicerLaunch> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let sid: i64 = slicer_id.parse().map_err(|_| "invalid slicer id".to_string())?;
+    let file = db::get_file(conn, id).map_err(|e| e.to_string())?.ok_or_else(|| "file not found".to_string())?;
+    let slicer = db::get_registered_slicer(conn, sid)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "slicer not registered".to_string())?;
+    validate_slicer_path(&slicer.executable_path)?;
+    validate_slicer_target_file(&file.path)?;
+    Ok(ResolvedSlicerLaunch { executable_path: slicer.executable_path, model_path: file.path })
+}
+
+/// Echter Prozessstart - bewusst NICHT unit-getestet (siehe
+/// `resolve_registered_slicer_and_model`); bei Bedarf kann ein
+/// plattformspezifischer Launch-Test separat ergaenzt werden.
+fn launch_slicer(resolved: &ResolvedSlicerLaunch) -> CmdResult<()> {
+    let mut cmd = std::process::Command::new(&resolved.executable_path);
+    cmd.arg(&resolved.model_path);
     for var in APPIMAGE_ENV_VARS_TO_STRIP {
         cmd.env_remove(var);
     }
-    if let Some(parent) = std::path::Path::new(&slicer_path).parent() {
+    if let Some(parent) = std::path::Path::new(&resolved.executable_path).parent() {
         cmd.current_dir(parent);
     }
     cmd.spawn().map_err(|e| e.to_string())?;
     Ok(())
 }
 
+fn open_in_slicer_with_conn(conn: &Connection, file_id: &str, slicer_id: &str) -> CmdResult<()> {
+    let resolved = resolve_registered_slicer_and_model(conn, file_id, slicer_id)?;
+    launch_slicer(&resolved)
+}
+
 #[tauri::command]
-pub fn scan_installed_slicers() -> CmdResult<Vec<DetectedSlicer>> {
-    Ok(detect_slicers())
+pub fn open_in_slicer(state: State<AppState>, file_id: String, slicer_id: String) -> CmdResult<()> {
+    let conn = lock_db(&state)?;
+    open_in_slicer_with_conn(&conn, &file_id, &slicer_id)
+}
+
+/// Fuehrt die bestehende Best-Effort-Autoerkennung (`slicers::detect_slicers`)
+/// aus und traegt neu gefundene Slicer ueber `db::insert_registered_slicer`
+/// (`is_auto_detected = true`) in dieselbe Registry ein wie manuell per
+/// Dialog hinzugefuegte - vorher landete die Autoerkennung ausschliesslich
+/// im Frontend-localStorage, ohne Backend-Vertrauensgrenze. Bereits bekannte
+/// Pfade (egal ob zuvor automatisch oder manuell registriert) werden nicht
+/// erneut eingefuegt, da `executable_path` `UNIQUE` ist und ein wiederholter
+/// Insert sonst bei jedem Scan fehlschlagen wuerde. Gibt die vollstaendige,
+/// aktuelle Registry zurueck (nicht nur die neu gefundenen Eintraege), damit
+/// das Frontend mit einem einzigen Aufruf sowohl den Scan ausloest als auch
+/// die anzuzeigende Liste erhaelt.
+#[tauri::command]
+pub fn scan_installed_slicers(state: State<AppState>) -> CmdResult<Vec<SlicerDto>> {
+    let conn = lock_db(&state)?;
+    let existing = db::list_registered_slicers(&conn).map_err(|e| e.to_string())?;
+    let known_paths: HashSet<String> = existing.iter().map(|s| s.executable_path.clone()).collect();
+    for detected in detect_slicers() {
+        if known_paths.contains(&detected.path) {
+            continue;
+        }
+        // Best-effort: ein einzelner fehlschlagender Insert (z.B. Race mit
+        // einem parallelen Scan) darf die Erkennung der uebrigen Slicer
+        // nicht abbrechen.
+        let _ = db::insert_registered_slicer(&conn, &detected.name, &detected.path, true);
+    }
+    db::list_registered_slicers(&conn)
+        .map_err(|e| e.to_string())
+        .map(|rows| {
+            rows.into_iter()
+                .map(|r| SlicerDto { id: r.id.to_string(), name: r.name, executable_path: r.executable_path })
+                .collect()
+        })
 }
 
 // Encodiert die extrahierte Geometrie als einzelnen Binaerstrom fuer
@@ -2656,12 +2770,13 @@ fn reject_oversized_zip_entry(name: &str, size: u64, max: u64) -> CmdResult<()> 
 /// vollstaendig (nicht jede Spalte jeder Tabelle ist hier gelistet) -
 /// deckt die Basisspalten ab, auf die zentrale Codepfade (list_files,
 /// Ordner-Baum, Collections, Filament-Lager) unmittelbar zugreifen.
-/// `registered_slicers` (Task 11) ist hier bewusst NICHT gelistet, da
-/// diese Task (H-05) laut verbindlicher Review-Reihenfolge VOR Task 11
-/// implementiert wird - wuerde `registered_slicers` hier bereits verlangt,
-/// wuerden alle bis dahin gueltigen Test-Datenbanken faelschlich
-/// abgelehnt. Sobald Task 11 abgeschlossen ist, sollte ein Eintrag fuer
-/// `registered_slicers` hier ergaenzt werden (nicht Teil dieser Task).
+/// `registered_slicers` (Task 11, M-06) ist seit Abschluss dieser Task hier
+/// ergaenzt - ein Backup, dem diese Tabelle oder eine ihrer Spalten fehlt,
+/// wird konsistent mit jeder anderen Tabelle in dieser Liste als
+/// fehlerhaft/manipuliert abgelehnt. Der eigentliche Vertrauensschutz fuer
+/// den INHALT dieser Tabelle (fremde Slicer-Pfade aus einem Backup duerfen
+/// niemals aktiv werden) laeuft unabhaengig davon ueber die Sanierung in
+/// `replace_catalog_db`, nicht ueber diese reine Schema-Formpruefung.
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
     ("files", &[
         "id", "name", "path", "file_type", "folder_id", "file_size_bytes",
@@ -2674,6 +2789,7 @@ const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
     ("filament_spools", &["id", "material", "remaining_weight_g"]),
     ("collections", &["id", "name", "created_at"]),
     ("collection_files", &["collection_id", "file_id", "position"]),
+    ("registered_slicers", &["id", "name", "executable_path", "is_auto_detected"]),
 ];
 
 /// Prueft, dass jede in REQUIRED_COLUMNS gelistete Tabelle existiert und
@@ -2996,7 +3112,102 @@ pub async fn import_catalog(
 /// unmissverstaendliche Fehlermeldung zurueckgegeben, die auf den Pfad der
 /// Backup-Datei verweist (siehe Review-Finding: die alte Version taeuschte im
 /// Fehlerfall faelschlich eine erfolgreiche Wiederherstellung vor).
+///
+/// M-06 / P0 (vierte Review-Runde, Task 11): `registered_slicers` ist
+/// maschinenlokale Vertrauensinformation, keine portablen Katalogdaten - ein
+/// importiertes Backup (moeglicherweise von einer fremden oder
+/// kompromittierten Maschine) darf NIEMALS ausfuehrbare Pfade in die lokale
+/// Registry einschleusen, UND ein Restore darf NIEMALS bereits lokal
+/// registrierte Slicer des Nutzers vernichten. Die Sanierung passiert
+/// deshalb VOLLSTAENDIG auf der EINGEHENDEN Datenbank (`new_db_path`),
+/// BEVOR diese ueberhaupt zur aktiven `state.db` wird - schlaegt irgendein
+/// Schritt der Sanierung fehl, kehrt diese Funktion zurueck, BEVOR
+/// `state.db`/die alte `catalog.db`-Datei ueberhaupt angefasst werden. Eine
+/// Datenbank mit fremden Slicer-Pfaden wird so niemals zur aktiven
+/// Datenbank, auch nicht transient.
 fn replace_catalog_db(state: &AppState, new_db_path: &Path) -> CmdResult<()> {
+    // Schritt 1: lokale `registered_slicers`-Zeilen aus der AKTUELL
+    // LAUFENDEN (alten) Datenbank auslesen, bevor irgendetwas an state.db
+    // geaendert wird.
+    let local_slicers = {
+        let guard = state.db.lock().map_err(|_| "database lock poisoned".to_string())?;
+        db::list_registered_slicers(&guard).map_err(|e| e.to_string())?
+    };
+
+    // Schritte 2-4: die EINGEHENDE Datenbank (liegt bereits unter
+    // new_db_path, ist aber noch NICHT aktiv) migrieren und ihre
+    // registered_slicers-Tabelle sanieren, BEVOR state.db ueberhaupt
+    // angefasst wird. Schlaegt einer dieser Schritte fehl, kehrt die
+    // Funktion HIER mit Err zurueck - state.db und die alte catalog.db-Datei
+    // bleiben dabei komplett unveraendert und aktiv, es gab noch keinen
+    // Swap. Das ist der eigentliche "fail closed"-Kern dieser Korrektur:
+    // eine unsanierte Datenbank wird niemals aktiv, unabhaengig davon, an
+    // welcher Stelle die Sanierung scheitert.
+    {
+        let mut incoming = Connection::open(new_db_path).map_err(|e| e.to_string())?;
+        crate::db::run_migrations(&mut incoming).map_err(|e| e.to_string())?;
+        let tx = incoming.unchecked_transaction().map_err(|e| e.to_string())?;
+        // Korrektur nach fuenfter Review-Runde (Defense-in-Depth, zusaetzlich
+        // zur H-05-Schema-Pruefung aus Task 5): DROP TABLE statt DELETE FROM.
+        // Ein DELETE allein wuerde einen an dieser Tabelle haengenden
+        // boesartigen Trigger (z.B. "AFTER DELETE ON registered_slicers ->
+        // INSERT INTO registered_slicers (...)") selbst AUSLOESEN und damit
+        // den geloeschten fremden Eintrag sofort wieder einfuegen, waehrend
+        // die Transaktion aus Sicht von rusqlite trotzdem sauber committet.
+        // DROP TABLE entfernt laut SQLite-Dokumentation automatisch auch
+        // alle an dieser Tabelle definierten Trigger (nicht nur die Zeilen),
+        // wodurch dieser Angriffsweg strukturell ausgeschlossen ist - selbst
+        // falls die H-05-Schema-Pruefung aus irgendeinem Grund uebersprungen
+        // oder umgangen wuerde, ist dies eine zweite, unabhaengige Barriere
+        // direkt an der Sicherheitsgrenze selbst. Schema exakt wie in
+        // migrations.rs definiert.
+        tx.execute("DROP TABLE IF EXISTS registered_slicers", [])
+            .map_err(|e| e.to_string())?;
+        tx.execute(
+            "CREATE TABLE registered_slicers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                executable_path TEXT NOT NULL UNIQUE,
+                is_auto_detected INTEGER NOT NULL DEFAULT 0
+            )",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+        for slicer in &local_slicers {
+            db::insert_registered_slicer(
+                &tx,
+                &slicer.name,
+                &slicer.executable_path,
+                slicer.is_auto_detected,
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        // Verifikation VOR dem Commit (zusaetzliche Absicherung): die Tabelle
+        // muss nach der Sanierung exakt die Anzahl der zuvor gesicherten
+        // lokalen Slicer enthalten - weicht die Anzahl ab (z.B. weil ein
+        // anderer, hier nicht bedachter Mechanismus zusaetzliche Zeilen
+        // eingefuegt hat), bricht die Funktion lieber mit Err ab, statt eine
+        // moeglicherweise unvollstaendig sanierte Tabelle zu committen.
+        let final_count: i64 = tx
+            .query_row("SELECT COUNT(*) FROM registered_slicers", [], |row| row.get(0))
+            .map_err(|e| e.to_string())?;
+        if final_count as usize != local_slicers.len() {
+            return Err(format!(
+                "Sanierung von registered_slicers ergab eine unerwartete Zeilenzahl ({final_count} statt {}) - Restore abgebrochen",
+                local_slicers.len()
+            ));
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        // `incoming` droppt hier -> das Datei-Handle auf new_db_path wird
+        // geschlossen, BEVOR es unten kopiert wird.
+    }
+
+    // Schritt 5: erst jetzt, nachdem new_db_path bereits vollstaendig
+    // saniert auf der Festplatte liegt, wird wie bisher die aktive
+    // Datenbank ausgetauscht - unveraendert gegenueber dem urspruenglichen
+    // Ablauf (Platzhalter einsetzen, alte Datei sichern, neue kopieren,
+    // reconnecten). Es findet HIER KEINE Slicer-Bereinigung mehr statt -
+    // new_db_path ist an dieser Stelle bereits sauber.
     {
         let mut guard = state.db.lock().map_err(|_| "database lock poisoned".to_string())?;
         let placeholder = Connection::open_in_memory().map_err(|e| e.to_string())?;
@@ -3632,9 +3843,18 @@ mod tests {
         let bak_bytes = std::fs::read(bak_entries[0].path()).expect("read backup db bytes");
         assert_eq!(bak_bytes, old_bytes, "backup file must contain the old db content");
 
-        // Neuer Inhalt liegt jetzt unter db_path.
+        // Neuer Inhalt liegt jetzt unter db_path - kein exakter Byte-Vergleich
+        // mit `new_bytes` mehr moeglich (Korrektur, Task 11): die
+        // M-06-Sanierung in `replace_catalog_db` migriert die eingehende
+        // Datenbank und schreibt ihre `registered_slicers`-Tabelle in einer
+        // eigenen Transaktion neu, BEVOR sie kopiert wird - der auf der
+        // Platte liegende Byteinhalt von `new_db_path` (und damit auch der
+        // kopierte Inhalt unter db_path) unterscheidet sich deshalb absichtlich
+        // vom urspruenglich eingelesenen `new_bytes`. Stattdessen wird hier
+        // inhaltlich geprueft, dass es sich immer noch um dieselbe (jetzt
+        // sanierte) eingehende Datenbank handelt.
         let installed_bytes = std::fs::read(&db_path).expect("read installed db bytes");
-        assert_eq!(installed_bytes, new_bytes, "db_path must now contain the new db content");
+        assert_ne!(installed_bytes, old_bytes, "db_path must no longer contain the old db content");
 
         // AppState's Connection zeigt jetzt tatsaechlich auf den neuen
         // Inhalt (nicht mehr auf den In-Memory-Platzhalter) - der Marker-
@@ -3654,8 +3874,22 @@ mod tests {
     }
 
     #[test]
-    fn replace_catalog_db_restores_backup_when_copy_of_new_db_fails() {
-        let dir = unique_test_dir("replace_catalog_db_copy_failure");
+    fn replace_catalog_db_fails_closed_when_the_incoming_db_path_does_not_exist() {
+        // Korrektur (Task 11, M-06): dieser Test hiess frueher
+        // `replace_catalog_db_restores_backup_when_copy_of_new_db_fails` und
+        // pruefte den Rename-Rueckbau-Pfad, der eintritt, wenn `fs::copy`
+        // fehlschlaegt, weil `new_db_path` nicht existiert. Seit die
+        // registered_slicers-Sanierung VOR jedem Datei-Swap direkt auf der
+        // eingehenden Datenbank laeuft, wird dieser alte Fehlerpfad fuer
+        // dieses Szenario gar nicht mehr erreicht: `Connection::open` legt
+        // eine nicht existierende Datei automatisch als neue, leere
+        // SQLite-Datenbank an, und die anschliessende Migration schlaegt
+        // dort sofort fehl (keine der erwarteten Basistabellen existiert) -
+        // lange bevor `fs::rename`/`fs::copy` auf `state.db_path` ueberhaupt
+        // aufgerufen werden. Das ist eine Verbesserung, keine Regression:
+        // der alte Katalog wird in diesem Fall gar nicht erst angefasst,
+        // statt umbenannt und wieder zurueckbenannt werden zu muessen.
+        let dir = unique_test_dir("replace_catalog_db_missing_incoming");
         let db_path = dir.join("catalog.db");
 
         let old_conn = crate::db::connect(&db_path).expect("connect creates schema");
@@ -3669,7 +3903,7 @@ mod tests {
         drop(old_conn);
         let old_bytes = std::fs::read(&db_path).expect("read old db bytes");
 
-        // Existiert absichtlich nicht -> fs::copy schlaegt fehl.
+        // Existiert absichtlich nicht.
         let missing_new_db_path = dir.join("does_not_exist.db");
 
         let running_conn = crate::db::connect(&db_path).expect("reopen db for AppState");
@@ -3682,34 +3916,27 @@ mod tests {
 
         let result = replace_catalog_db(&state, &missing_new_db_path);
         assert!(result.is_err(), "expected an error when the new db file is missing");
-        let err = result.unwrap_err();
-        assert!(
-            err.contains("wiederhergestellt"),
-            "expected error to mention successful restoration, got: {err}"
-        );
 
-        // Alte DB wurde nach dem fehlgeschlagenen Kopieren wieder an ihren
-        // urspruenglichen Platz zurueckbenannt - kein .bak-* liegt mehr da,
-        // db_path enthaelt wieder den alten Inhalt.
+        // Es wurde ueberhaupt kein .bak-* angelegt - das Fail-Closed greift
+        // VOR dem ersten Rename, state.db_path wurde nie angefasst.
         let bak_entries: Vec<_> = std::fs::read_dir(&dir)
             .unwrap()
             .filter_map(|e| e.ok())
             .filter(|e| e.file_name().to_string_lossy().starts_with("catalog.db.bak-"))
             .collect();
-        assert!(bak_entries.is_empty(), "backup file must have been renamed back after successful restore");
-        assert!(db_path.exists(), "catalog.db must exist again after restore");
-        let restored_bytes = std::fs::read(&db_path).expect("read restored db bytes");
-        assert_eq!(restored_bytes, old_bytes, "restored db must match the original content");
+        assert!(bak_entries.is_empty(), "no backup file should ever have been created - the sanitization gate fails before any rename");
+        assert!(db_path.exists(), "catalog.db must still exist under its original, untouched path");
+        let restored_bytes = std::fs::read(&db_path).expect("read db bytes");
+        assert_eq!(restored_bytes, old_bytes, "old db content must be completely untouched");
 
-        // AppState's Connection muss nach dem erfolgreichen Restore
-        // tatsaechlich wieder nutzbar sein und den alten (wiederhergestellten)
-        // Inhalt lesen - nicht auf dem In-Memory-Platzhalter haengen bleiben
-        // (Finding I1). Der Marker-Datensatz aus der alten DB muss ueber die
-        // laufende Connection sichtbar sein.
+        // AppState's Connection wurde nie durch den In-Memory-Platzhalter
+        // ersetzt (der Swap passiert erst NACH der erfolgreichen
+        // Sanierung) - der Marker-Datensatz aus der alten DB muss ueber die
+        // unveraendert laufende Connection weiterhin sichtbar sein.
         let guard = state.db.lock().unwrap();
         let count: i64 =
             guard.query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0)).unwrap();
-        assert_eq!(count, 1, "connection must reflect the restored old db's content, not the placeholder");
+        assert_eq!(count, 1, "connection must still reflect the untouched original db");
         drop(guard);
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -3938,33 +4165,181 @@ mod tests {
     }
 
     #[test]
-    fn open_in_slicer_returns_error_for_nonexistent_executable() {
-        let result = open_in_slicer(
-            "/definitely/does/not/exist/xyz123".to_string(),
-            "/tmp/model.3mf".to_string(),
-        );
+    fn open_in_slicer_rejects_an_unregistered_slicer_id() {
+        let dir = unique_test_dir("open_in_slicer_rejects");
+        std::fs::create_dir_all(&dir).unwrap();
+        let model_path = dir.join("model.3mf");
+        std::fs::write(&model_path, b"CONTENT").unwrap();
+
+        let conn = db::connect_in_memory().unwrap();
+        let file_id = db::test_insert_minimal_file(&conn, &model_path.to_string_lossy(), None).unwrap();
+        let result = resolve_registered_slicer_and_model(&conn, &file_id.to_string(), "not-a-registered-id");
         assert!(result.is_err());
     }
 
     #[test]
-    #[cfg(unix)]
-    fn open_in_slicer_spawns_successfully_for_a_real_executable() {
-        // "/usr/bin/true" ist auf jedem Unix-System vorhanden und beendet
-        // sich sofort mit Exit-Code 0 - deterministischer Erfolgstest ohne
-        // einen echten Slicer zu benoetigen. Unter Windows existiert dieser
-        // Pfad nicht, daher hier per #[cfg(unix)] komplett ausgeklammert
-        // statt eines fragilen plattformabhaengigen Ersatzpfads.
+    fn a_registered_slicer_resolves_to_a_validated_executable_and_model_path() {
+        // Testet ausschliesslich die Registry-/Sicherheits-Aufloesung
+        // (resolve_registered_slicer_and_model), OHNE tatsaechlich einen
+        // Prozess zu starten - dafuer wurde open_in_slicer_with_conn in
+        // resolve_registered_slicer_and_model() (validiert, testbar ohne
+        // Seiteneffekt) und launch_slicer() (echter Prozessstart, bewusst
+        // NICHT hier unit-getestet) aufgeteilt. Ein echter Launch-Test kann
+        // bei Bedarf separat und plattformspezifisch ergaenzt werden.
+        let dir = unique_test_dir("open_in_slicer_resolve");
+        std::fs::create_dir_all(&dir).unwrap();
+        let model_path = dir.join("model.3mf");
+        std::fs::write(&model_path, b"CONTENT").unwrap();
+
+        let conn = db::connect_in_memory().unwrap();
+        let file_id = db::test_insert_minimal_file(&conn, &model_path.to_string_lossy(), None).unwrap();
+        // std::env::current_exe() liefert plattformunabhaengig einen
+        // tatsaechlich existierenden UND ausfuehrbaren Pfad (unter Windows
+        // automatisch mit .exe-Endung) - register_slicer_with_conn()/
+        // validate_slicer_path() pruefen reale Existenz + Ausfuehrbarkeit, ein
+        // hartkodierter Unix-Pfad wie "/bin/true" existiert unter Windows nicht
+        // und wuerde dort jeden Test scheitern lassen, der ihn nutzt.
+        let fake_slicer = std::env::current_exe().unwrap();
+        let slicer = register_slicer_with_conn(&conn, "Test Slicer".into(), fake_slicer.to_string_lossy().to_string()).unwrap();
+
+        let resolved = resolve_registered_slicer_and_model(&conn, &file_id.to_string(), &slicer.id).unwrap();
+
+        assert_eq!(resolved.executable_path, fake_slicer.to_string_lossy());
+        assert_eq!(resolved.model_path, model_path.to_string_lossy());
+    }
+
+    #[test]
+    fn restoring_a_catalog_backup_does_not_overwrite_the_local_slicer_registry() {
+        // Deckt die zweite P0-Korrektur ab: registered_slicers ist
+        // maschinenlokal und darf durch KEINEN Backup-Restore veraendert
+        // werden - weder durch Uebernahme fremder Eintraege noch durch
+        // Vermischen mit den lokal bereits registrierten.
+        let dir = unique_test_dir("restore_preserves_local_slicers");
+        let db_path = dir.join("catalog.db");
+        let trash_dir = dir.join("trash");
+        std::fs::create_dir_all(&trash_dir).unwrap();
+
+        // "Lokal bereits registrierter" Slicer VOR dem Restore - std::env::
+        // current_exe() ist plattformunabhaengig ein real existierender,
+        // ausfuehrbarer Pfad (siehe Begruendung oben).
+        let local_executable = std::env::current_exe().unwrap();
+        let conn = crate::db::connect(&db_path).unwrap();
+        register_slicer_with_conn(&conn, "Lokaler Slicer".into(), local_executable.to_string_lossy().to_string()).unwrap();
+        drop(conn);
+
+        // Backup-DB mit einem ANDEREN, fremden Slicer-Eintrag bauen (simuliert
+        // ein Backup von einer fremden/kompromittierten Maschine). Bewusst
+        // ueber db::insert_registered_slicer() direkt statt ueber
+        // register_slicer_with_conn(), da letzteres intern
+        // validate_slicer_path() aufruft - "/tmp/attacker-binary" existiert
+        // im Testsystem nicht und wuerde dort scheitern, bevor die Fixture
+        // ueberhaupt aufgebaut ist. Genau das soll dieser Test aber simulieren:
+        // eine bereits manipulierte/fremde Backup-Datenbank mit einem Eintrag,
+        // der nie durch die lokale Pfad-Validierung gelaufen ist - nicht einen
+        // regulaeren, validierten lokalen Registrierungsvorgang.
+        let backup_db_path = dir.join("incoming.db");
+        let backup_conn = crate::db::connect(&backup_db_path).unwrap();
+        db::insert_registered_slicer(&backup_conn, "Fremder Slicer", "/tmp/attacker-binary", false).unwrap();
+        drop(backup_conn);
+        let backup_bytes = std::fs::read(&backup_db_path).unwrap();
+
+        let state = AppState {
+            db: std::sync::Mutex::new(crate::db::connect(&db_path).unwrap()),
+            trash_dir: trash_dir.clone(),
+            db_path: db_path.clone(),
+            sensitive_dirs: vec![],
+        };
+        validate_catalog_db_bytes(&backup_bytes, &state.sensitive_dirs, &state.trash_dir).unwrap();
+        std::fs::write(&backup_db_path, &backup_bytes).unwrap();
+        replace_catalog_db(&state, &backup_db_path).unwrap();
+
+        let conn = state.db.lock().unwrap();
+        let slicers = db::list_registered_slicers(&conn).unwrap();
+        assert!(
+            slicers.iter().all(|s| s.executable_path != "/tmp/attacker-binary"),
+            "ein aus dem Backup importierter Slicer-Pfad darf niemals in der lokalen Registry landen"
+        );
+        assert!(
+            slicers.iter().any(|s| s.name == "Lokaler Slicer"),
+            "der bereits lokal registrierte Slicer darf durch den Restore nicht verloren gehen (Korrektur nach dritter Review-Runde: die vorherige Fassung loeschte registered_slicers unconditional nach jedem Restore und riss dabei auch echte, lokal gueltige Eintraege mit)"
+        );
+    }
+
+    #[test]
+    fn replace_catalog_db_never_activates_an_unsanitized_incoming_database() {
+        // P0, vierte/fuenfte Review-Runde: die Sanierung von registered_slicers
+        // muss VOR dem Live-Swap auf der EINGEHENDEN Datenbank passieren, nicht
+        // danach auf der bereits aktiven state.db - sonst kann ein Fehler
+        // waehrend der Sanierung die Transaktion zurueckrollen, WAEHREND die
+        // importierte (fremde) Datenbank technisch schon aktiv ist, sodass
+        // nicht vertrauenswuerdige Backup-Slicer sichtbar werden, obwohl
+        // replace_catalog_db() einen Fehler liefert.
         //
-        // Die Modell-Datei muss seit Finding I-5 real existieren und eine
-        // unterstuetzte Endung haben (`validate_slicer_target_file`), daher
-        // hier eine echte temporaere Datei statt des frueheren Fantasie-Pfads
-        // "/tmp/model.3mf".
-        let dir = unique_test_dir("open_in_slicer_ok");
-        let model = dir.join("model.3mf");
-        std::fs::write(&model, b"x").unwrap();
-        let result = open_in_slicer("/usr/bin/true".to_string(), model.to_string_lossy().to_string());
-        let _ = std::fs::remove_dir_all(&dir);
-        assert!(result.is_ok(), "{result:?}");
+        // Fehler-Injektion (fuenfte Review-Runde, ersetzt den urspruenglichen
+        // BEFORE-DELETE-Trigger-Ansatz): die Sanierung nutzt inzwischen `DROP
+        // TABLE IF EXISTS registered_slicers` gefolgt von `CREATE TABLE
+        // registered_slicers (...)` statt `DELETE FROM` (siehe Korrektur in
+        // Step 6) - ein an der Tabelle haengender Trigger wuerde durch DROP
+        // TABLE automatisch mit entfernt und koennte den Sanierungs-Schritt
+        // gar nicht mehr stoeren. Stattdessen wird hier `registered_slicers`
+        // in der eingehenden Datenbank bewusst als VIEW statt als Tabelle
+        // angelegt: `DROP TABLE IF EXISTS` laesst eine gleichnamige VIEW
+        // unangetastet (sie ist kein TABLE-Objekt), wodurch das nachfolgende
+        // `CREATE TABLE registered_slicers (...)` deterministisch mit einem
+        // Namenskonflikt fehlschlaegt - simuliert eine gezielt praeparierte,
+        // strukturell defekte Backup-Datei. Bewusst OHNE vorherigen Aufruf von
+        // validate_catalog_db_bytes: dieser Test prueft replace_catalog_db()
+        // isoliert und muss auch OHNE die vorgelagerte H-05-Pruefung aus
+        // Task 5 (die eine View ohnehin ablehnen wuerde, siehe
+        // validate_catalog_db_bytes_rejects_a_database_with_an_injected_view)
+        // "fail closed" bleiben - beide Barrieren sind unabhaengig voneinander
+        // wirksam.
+        let dir = unique_test_dir("restore_fail_closed");
+        let db_path = dir.join("catalog.db");
+        let trash_dir = dir.join("trash");
+        std::fs::create_dir_all(&trash_dir).unwrap();
+
+        let local_executable = std::env::current_exe().unwrap();
+        let conn = crate::db::connect(&db_path).unwrap();
+        register_slicer_with_conn(&conn, "Lokaler Slicer".into(), local_executable.to_string_lossy().to_string()).unwrap();
+        drop(conn);
+
+        let backup_db_path = dir.join("incoming.db");
+        let backup_conn = rusqlite::Connection::open(&backup_db_path).unwrap();
+        backup_conn.execute_batch(crate::db::SCHEMA_SQL).unwrap();
+        // Absichtlich VOR jeder Migration: registered_slicers existiert hier
+        // NICHT als Tabelle, sondern als View mit einer Zeile, die als
+        // "fremder Slicer" durchgehen wuerde, WENN die Sanierung faelschlich
+        // erfolgreich waere.
+        backup_conn.execute_batch(
+            "CREATE VIEW registered_slicers AS
+             SELECT 1 AS id, 'Fremder Slicer' AS name, '/tmp/attacker-binary' AS executable_path, 0 AS is_auto_detected;",
+        ).unwrap();
+        drop(backup_conn);
+        let backup_bytes = std::fs::read(&backup_db_path).unwrap();
+
+        let state = AppState {
+            db: std::sync::Mutex::new(crate::db::connect(&db_path).unwrap()),
+            trash_dir: trash_dir.clone(),
+            db_path: db_path.clone(),
+            sensitive_dirs: vec![],
+        };
+        std::fs::write(&backup_db_path, &backup_bytes).unwrap();
+
+        let result = replace_catalog_db(&state, &backup_db_path);
+        assert!(result.is_err(), "replace_catalog_db muss fehlschlagen, wenn die eingehende Datenbank nicht sanierbar ist");
+
+        let conn = state.db.lock().unwrap();
+        let slicers = db::list_registered_slicers(&conn).unwrap();
+        assert!(
+            slicers.iter().any(|s| s.name == "Lokaler Slicer"),
+            "die alte/lokale Datenbank muss aktiv bleiben und den lokalen Slicer behalten, wenn die Sanierung fehlschlaegt"
+        );
+        assert!(
+            slicers.iter().all(|s| s.executable_path != "/tmp/attacker-binary"),
+            "der fremde Slicer aus der eingehenden Datenbank darf ueber state.db niemals sichtbar werden"
+        );
+        assert!(db_path.exists(), "die urspruengliche catalog.db darf nicht durch die unsanierte eingehende Datenbank ersetzt worden sein");
     }
 
     #[test]

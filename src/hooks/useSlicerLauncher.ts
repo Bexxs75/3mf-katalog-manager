@@ -1,9 +1,13 @@
 import { useCallback, useState } from 'react';
 import * as slicerApi from '../lib/api/slicer';
-import type { ModelFile, SlicerConfig } from '../types';
+import type { SlicerConfig } from '../types';
 
+// M-06 (Task 11): `openInSlicer` nimmt seit der Backend-Haertung keinen
+// freien Pfad mehr entgegen, sondern ausschliesslich `modelId`/`slicerId` -
+// die Pfad-Aufloesung/-Validierung passiert serverseitig gegen die
+// `registered_slicers`-Registry. `models` (vollstaendige `ModelFile[]`)
+// wird deshalb hier nicht mehr gebraucht.
 export function useSlicerLauncher(
-  models: ModelFile[],
   slicers: SlicerConfig[],
   primaryId: string | null,
   onNeedsSetup: () => void,
@@ -11,9 +15,7 @@ export function useSlicerLauncher(
   const [slicerError, setSlicerError] = useState<string | null>(null);
 
   const openInSlicer = useCallback(
-    (id: string) => {
-      const model = models.find((m) => m.id === id);
-      if (!model) return;
+    (modelId: string) => {
       if (slicers.length === 0) {
         onNeedsSetup();
         return;
@@ -24,12 +26,12 @@ export function useSlicerLauncher(
         return;
       }
       setSlicerError(null);
-      slicerApi.openInSlicer(target.path, model.path).catch((e) => {
+      slicerApi.openInSlicer(modelId, target.id).catch((e) => {
         console.error('[slicer] Start fehlgeschlagen:', e);
         setSlicerError(String(e));
       });
     },
-    [models, slicers, primaryId, onNeedsSetup],
+    [slicers, primaryId, onNeedsSetup],
   );
 
   return { slicerError, openInSlicer };

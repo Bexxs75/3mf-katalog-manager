@@ -67,7 +67,7 @@ export default function App() {
   });
 
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const slicerLauncher = useSlicerLauncher(store.models, slicers, primaryId, () => setSettingsOpen(true));
+  const slicerLauncher = useSlicerLauncher(slicers, primaryId, () => setSettingsOpen(true));
   const update = useUpdateCheck();
 
   const [setupDialogOpen, setSetupDialogOpen] = useState(!setupSeen);

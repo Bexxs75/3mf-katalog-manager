@@ -131,6 +131,17 @@ pub struct FolderRecord {
     pub path: String,
 }
 
+/// Maschinenlokale Registry vertrauenswuerdiger Slicer-Executables (M-06,
+/// Task 11) - siehe `registered_slicers`-Migration in `migrations.rs` und
+/// `replace_catalog_db` in `commands.rs`.
+#[derive(Debug, Clone)]
+pub struct RegisteredSlicer {
+    pub id: i64,
+    pub name: String,
+    pub executable_path: String,
+    pub is_auto_detected: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct TagCount {
     pub name: String,

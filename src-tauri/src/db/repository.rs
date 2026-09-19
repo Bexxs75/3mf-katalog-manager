@@ -7,7 +7,7 @@ use super::error::DbError;
 use super::models::{
     FileRecord, FileType, FilamentSpoolRecord, FolderRecord, MaterialRecord,
     NewFile, NewFilamentSpool, NewPrintLogEntry, NewSavedFilter, PrintLogEntryRecord,
-    SavedFilterRecord, TagCount, CreatorCount,
+    RegisteredSlicer, SavedFilterRecord, TagCount, CreatorCount,
 };
 
 pub const SCHEMA_SQL: &str = include_str!("schema.sql");
@@ -141,6 +141,59 @@ pub fn insert_folder_with_parent(
         params![name, parent_id, path],
     )?;
     Ok(conn.last_insert_rowid())
+}
+
+/// Legt einen neuen Eintrag in der maschinenlokalen Slicer-Registry an
+/// (M-06, Task 11). `executable_path` ist `UNIQUE` im Schema - ein erneuter
+/// Insert desselben Pfads (z.B. bei jedem App-Start erneut auto-erkannt)
+/// schlaegt mit einem echten `DbError` fehl; Aufrufer, die das best-effort
+/// tolerieren wollen (Autoerkennung), pruefen vorher selbst gegen
+/// `list_registered_slicers`.
+pub fn insert_registered_slicer(
+    conn: &Connection,
+    name: &str,
+    executable_path: &str,
+    is_auto_detected: bool,
+) -> Result<i64, DbError> {
+    conn.execute(
+        "INSERT INTO registered_slicers (name, executable_path, is_auto_detected) VALUES (?1, ?2, ?3)",
+        params![name, executable_path, is_auto_detected],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn get_registered_slicer(conn: &Connection, id: i64) -> Result<Option<RegisteredSlicer>, DbError> {
+    conn.query_row(
+        "SELECT id, name, executable_path, is_auto_detected FROM registered_slicers WHERE id = ?1",
+        params![id],
+        |row| {
+            Ok(RegisteredSlicer {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                executable_path: row.get(2)?,
+                is_auto_detected: row.get(3)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(DbError::from)
+}
+
+pub fn list_registered_slicers(conn: &Connection) -> Result<Vec<RegisteredSlicer>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, executable_path, is_auto_detected FROM registered_slicers ORDER BY id",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(RegisteredSlicer {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                executable_path: row.get(2)?,
+                is_auto_detected: row.get(3)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
 }
 
 /// Aktualisiert `folder_id` und `path` einer Datei nach einem physischen

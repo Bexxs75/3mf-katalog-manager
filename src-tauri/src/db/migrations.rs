@@ -5,7 +5,7 @@ use super::error::DbError;
 /// um genau 1 erhoehen - siehe H-02 im Senior-Code-Review vom 2026-09-19:
 /// ersetzt 20 zuvor mit `let _ = conn.execute(...)` still verschluckte
 /// ALTER-TABLE-/Backfill-Anweisungen in `repository::init()`.
-pub const CURRENT_SCHEMA_VERSION: i64 = 20;
+pub const CURRENT_SCHEMA_VERSION: i64 = 21;
 
 type MigrationFn = fn(&Connection) -> Result<(), DbError>;
 
@@ -33,6 +33,17 @@ const MIGRATIONS: &[MigrationFn] = &[
     |c| exec(c, "ALTER TABLE files ADD COLUMN slice_info_json TEXT"),
     |c| exec(c, "ALTER TABLE files ADD COLUMN deleted_at TEXT"),
     |c| exec(c, "ALTER TABLE files ADD COLUMN trash_path TEXT"),
+    // M-06 (Task 11): maschinenlokale Registry vertrauenswuerdiger
+    // Slicer-Executables, getrennt von den portablen Katalogdaten - siehe
+    // `replace_catalog_db` in commands.rs fuer die Begruendung, warum diese
+    // Tabelle bei einem Backup-Restore niemals aus der eingehenden
+    // Datenbank uebernommen werden darf.
+    |c| exec(c, "CREATE TABLE IF NOT EXISTS registered_slicers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        executable_path TEXT NOT NULL UNIQUE,
+        is_auto_detected INTEGER NOT NULL DEFAULT 0
+    )"),
 ];
 
 /// Fuehrt ein einzelnes ALTER-TABLE/Backfill-Statement aus. "Spalte/Index

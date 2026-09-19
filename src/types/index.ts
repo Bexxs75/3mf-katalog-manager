@@ -122,11 +122,17 @@ export interface SavedFilter {
 export type ViewMode = 'grid' | 'groupedGrid' | 'groupedList';
 export type SortKey = 'name' | 'date' | 'size' | 'vol' | 'viewed';
 
+// M-06 (Task 11): die Slicer-Registry lebt jetzt vollstaendig im Backend
+// (`registered_slicers`-Tabelle) statt in localStorage - `id` ist seitdem
+// eine echte, vom Backend vergebene Datenbank-id (als String), kein mehr
+// client-seitig erzeugtes `crypto.randomUUID()`. `source` (manuell/
+// automatisch erkannt) wird vom Backend nicht mehr an das Frontend
+// zurueckgegeben - jeder registrierte Eintrag ist gleichermassen
+// vertrauenswuerdig, sobald er in der Tabelle steht.
 export interface SlicerConfig {
   id: string;
   name: string;
   path: string;
-  source: 'manual' | 'auto';
 }
 
 export interface FilamentSpool {
