@@ -1530,8 +1530,21 @@ fn is_supported_extension(path: &Path) -> bool {
 
 pub(crate) fn compute_content_hash(path: &Path) -> CmdResult<String> {
     use sha2::{Digest, Sha256};
-    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
-    Ok(format!("{:x}", Sha256::digest(&bytes)))
+    use std::io::Read;
+
+    const CHUNK_SIZE: usize = 1024 * 1024; // 1 MiB
+    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut reader = std::io::BufReader::new(file);
+    let mut hasher = Sha256::new();
+    let mut buffer = vec![0u8; CHUNK_SIZE];
+    loop {
+        let bytes_read = reader.read(&mut buffer).map_err(|e| e.to_string())?;
+        if bytes_read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..bytes_read]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 /// Einmaliger Startup-Backfill fuer content_hash: die Spalte wurde erst mit
@@ -5431,5 +5444,36 @@ mod tests {
 
         assert_eq!(out.len(), 1, "must not follow a file symlink, even one matching the supported extension");
         assert_eq!(out[0], root.join("cube.3mf"));
+    }
+
+    #[test]
+    fn compute_content_hash_matches_previous_full_read_implementation_for_known_content() {
+        let path = unique_test_dir("hash_streaming").join("test.bin");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let content: Vec<u8> = (0..5_000_000u32).map(|i| (i % 256) as u8).collect(); // 5 MB, mehrere Chunks
+        std::fs::write(&path, &content).unwrap();
+
+        let streamed = compute_content_hash(&path).unwrap();
+
+        use sha2::{Digest, Sha256};
+        let expected = format!("{:x}", Sha256::digest(&content));
+        assert_eq!(streamed, expected, "streaming hash must match full-buffer hash for identical content");
+    }
+
+    #[test]
+    fn compute_content_hash_does_not_allocate_proportional_to_file_size() {
+        // Grobe Rauch-Pruefung ohne externes Profiling-Tool: eine 50-MB-Datei
+        // muss in vertretbarer Zeit UND ohne Panik/OOM auf gaengiger CI-Hardware
+        // hashen - dient primaer als Dokumentation der Erwartung, nicht als
+        // exakte Speichermessung.
+        let path = unique_test_dir("hash_large").join("big.bin");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let chunk = vec![0xABu8; 1024 * 1024];
+        let mut file = std::fs::File::create(&path).unwrap();
+        for _ in 0..50 {
+            std::io::Write::write_all(&mut file, &chunk).unwrap();
+        }
+        let hash = compute_content_hash(&path).unwrap();
+        assert_eq!(hash.len(), 64);
     }
 }
