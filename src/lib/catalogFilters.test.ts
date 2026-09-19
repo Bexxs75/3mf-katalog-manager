@@ -8,7 +8,7 @@ describe('filterAndSortModels', () => {
     const models = [
       makeModelFile({ id: '1', folderId: 'a' }),
       makeModelFile({ id: '2', folderId: 'b' }),
-      makeModelFile({ id: '3', folderId: null }),
+      makeModelFile({ id: '3', folderId: 'unrelated' }),
     ];
     const result = filterAndSortModels(models, folders, {
       activeFolderId: 'a', activeTag: null, activeCreator: null, query: '', sort: 'name',

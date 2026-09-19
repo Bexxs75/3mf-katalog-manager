@@ -87,5 +87,8 @@ export function useFileImport({
     };
   }, [enabled, mergeImported]);
 
-  return { importBanner, dismissImportBanner, importFiles, importFolder, importFolderAsCollection };
+  // mergeImported wird zusaetzlich exportiert, damit Importe, die ausserhalb
+  // dieses Hooks ausgeloest werden (Ersteinrichtungsdialog), dieselbe
+  // Duplikat-Banner-Logik durchlaufen wie die Importe hier.
+  return { importBanner, dismissImportBanner, mergeImported, importFiles, importFolder, importFolderAsCollection };
 }

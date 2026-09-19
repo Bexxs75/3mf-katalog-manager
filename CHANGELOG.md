@@ -7,6 +7,10 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
+### Changed
+
+- Frontend-Refactor: `App.tsx` (vormals 1148 Zeilen, 48 State-/Effect-Hooks, 29 inline `invoke()`-Aufrufe) in fokussierte Hooks (`useCatalogStore`, `useCatalogFilters`, `useCollections`, `useBulkSelection`, `useFileImport`, `useFolderDragAndDrop`, `useCatalogBackup`, `useCatalogCleanup`, `useSlicerLauncher`), einen typisierten `src/lib/api/*`-Wrapper um alle Tauri-Commands und drei ausgelagerte Komponenten (`TrashView`, `CatalogWorkspace`, `BulkActionToolbar`) aufgeteilt. `App.tsx` ist damit auf rund 310 Zeilen reine Komposition geschrumpft. Erste automatisierte Frontend-Testsuite (Vitest + Testing Library) eingeführt. Keine Verhaltensänderung
+
 ## [0.7.7] - 2026-09-18
 
 ### Security
@@ -239,6 +243,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
 ## [Unreleased]
+
+### Changed
+
+- Frontend refactor: `App.tsx` (previously 1148 lines, 48 state/effect hooks, 29 inline `invoke()` calls) split into focused hooks (`useCatalogStore`, `useCatalogFilters`, `useCollections`, `useBulkSelection`, `useFileImport`, `useFolderDragAndDrop`, `useCatalogBackup`, `useCatalogCleanup`, `useSlicerLauncher`), a typed `src/lib/api/*` wrapper around all Tauri commands, and three extracted components (`TrashView`, `CatalogWorkspace`, `BulkActionToolbar`). `App.tsx` is now around 310 lines of pure composition. First automated frontend test suite (Vitest + Testing Library) introduced. No behavior change
 
 ## [0.7.7] - 2026-09-18
 

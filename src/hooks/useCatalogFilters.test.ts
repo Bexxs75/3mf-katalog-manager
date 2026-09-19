@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useCatalogFilters } from './useCatalogFilters';
-import { makeModelFile, makeFolder } from '../test/factories';
+import { makeModelFile } from '../test/factories';
 
 describe('useCatalogFilters', () => {
   it('returns initial state with correct structure', () => {

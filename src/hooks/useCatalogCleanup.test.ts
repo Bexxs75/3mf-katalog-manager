@@ -1,5 +1,5 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, act, waitFor, cleanup } from '@testing-library/react';
+import { describe, expect, it, vi, afterEach } from 'vitest';
+import { renderHook, act, cleanup } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import { useCatalogCleanup } from './useCatalogCleanup';
 
