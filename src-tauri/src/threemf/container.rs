@@ -29,6 +29,53 @@ const MAX_RELS_XML_BYTES: u64 = 16 * 1024 * 1024; // 16 MB
 /// `plates.rs`/`slice_info.rs` lesen - dieselbe Groessenordnung wie die
 /// uebrigen Nicht-Modell-Eintraege.
 pub(super) const MAX_CONFIG_XML_BYTES: u64 = 16 * 1024 * 1024; // 16 MB
+/// Obergrenze fuer die Summe ALLER tatsaechlich aus dem ZIP entpackten
+/// Paket-Ressourcen (_rels/.rels, die beiden Slicer-Config-Eintraege,
+/// Root-Modell-XML, referenzierte Modell-XML-Dateien und Thumbnail) - ein
+/// wenige Kilobyte grosses 3MF darf sich in Summe nicht zu einem beliebig
+/// grossen Speicherabdruck aufblaehen, selbst wenn jede einzelne Ressource
+/// unter ihrem jeweiligen Pro-Entry-Limit bleibt (M-05, Senior-Code-Review
+/// 2026-09-19, korrigiert in der fuenften Review-Runde: die Fassung nach
+/// der zweiten Runde zaehlte nur root_xml + referenzierte Modell-XMLs +
+/// Thumbnail, nicht aber _rels/.rels und die beiden Slicer-Configs).
+const MAX_TOTAL_UNPACKED_BYTES: u64 = 512 * 1024 * 1024; // 512 MB
+/// Obergrenze fuer die Anzahl referenzierter `.model`-Dateien (3MF
+/// "Production Extension"), unabhaengig davon, dass jede einzelne Datei
+/// unter `MAX_MODEL_XML_BYTES` bleibt - verhindert, dass sehr viele kleine
+/// referenzierte Modelle zusammen das Gesamtbudget umgehen bzw. die
+/// Aufloesung unzumutbar lange dauert.
+const MAX_REFERENCED_MODELS: usize = 32;
+
+#[cfg(test)]
+thread_local! {
+    /// Erlaubt Tests, `MAX_TOTAL_UNPACKED_BYTES` fuer die Dauer eines
+    /// einzelnen Tests durch einen kleinen Wert zu ersetzen, ohne eine
+    /// tatsaechlich 512-MB-grosse Testdatei anlegen zu muessen. Jeder Test
+    /// laeuft in seinem eigenen Thread, daher keine Interferenz zwischen
+    /// Tests.
+    static TEST_MAX_TOTAL_UNPACKED_BYTES: std::cell::Cell<Option<u64>> =
+        std::cell::Cell::new(None);
+}
+
+fn max_total_unpacked_bytes() -> u64 {
+    #[cfg(test)]
+    {
+        if let Some(max) = TEST_MAX_TOTAL_UNPACKED_BYTES.with(|c| c.get()) {
+            return max;
+        }
+    }
+    MAX_TOTAL_UNPACKED_BYTES
+}
+
+fn check_total_budget(total_unpacked: u64) -> Result<(), ThreeMfError> {
+    let max = max_total_unpacked_bytes();
+    if total_unpacked > max {
+        return Err(ThreeMfError::ResourceLimitExceeded(format!(
+            "Gesamtgroesse der entpackten Paket-Ressourcen ueberschreitet {max} Bytes"
+        )));
+    }
+    Ok(())
+}
 
 pub struct PackageParts {
     pub root_model: ParsedModel,
@@ -57,20 +104,38 @@ impl PackageParts {
 pub fn read_package<R: Read + Seek>(reader: R) -> Result<PackageParts, ThreeMfError> {
     let mut archive = ZipArchive::new(reader)?;
 
-    let plate_count = super::plates::count_plates(&mut archive);
-    let slice_info = super::slice_info::parse_slice_info(&mut archive);
+    // `total_unpacked` erfasst JEDE aus dem ZIP tatsaechlich gelesene
+    // Ressource, in der Reihenfolge, in der read_package sie tatsaechlich
+    // liest - nicht nur root_xml/referenzierte Modelle/Thumbnail (zweite
+    // Review-Runde), sondern auch die beiden Slicer-Config-Dateien und
+    // _rels/.rels (fuenfte Review-Runde), damit der Name
+    // MAX_TOTAL_UNPACKED_BYTES ehrlich das gesamte Paket abdeckt.
+    let mut total_unpacked: u64 = 0;
 
-    let (model_path, thumbnail_path) = resolve_relationships(&mut archive);
+    let (plate_count, plates_bytes) = super::plates::count_plates(&mut archive);
+    total_unpacked += plates_bytes;
+    check_total_budget(total_unpacked)?;
+
+    let (slice_info, slice_info_bytes) = super::slice_info::parse_slice_info(&mut archive);
+    total_unpacked += slice_info_bytes;
+    check_total_budget(total_unpacked)?;
+
+    let (model_path, thumbnail_path, rels_bytes) = resolve_relationships(&mut archive);
+    total_unpacked += rels_bytes;
+    check_total_budget(total_unpacked)?;
     let model_path = model_path.unwrap_or_else(|| DEFAULT_MODEL_PATH.to_string());
 
     let root_xml = read_entry_to_string(&mut archive, &model_path, MAX_MODEL_XML_BYTES)
         .or_else(|_| read_entry_to_string(&mut archive, DEFAULT_MODEL_PATH, MAX_MODEL_XML_BYTES))
         .map_err(|_| ThreeMfError::MissingRootModel)?;
+    total_unpacked += root_xml.len() as u64;
+    check_total_budget(total_unpacked)?;
     let root_model = parse_model_xml(&root_xml)?;
 
     let mut referenced_models: HashMap<String, ParsedModel> = HashMap::new();
     let mut visited: HashSet<String> = HashSet::new();
     let mut queue: Vec<String> = referenced_paths(&root_model);
+    let mut referenced_count: usize = 0;
 
     // Iterative Aufloesung bis zum Fixpunkt statt eines einzelnen
     // Durchlaufs: jede neu gelesene Datei kann selbst wieder neue,
@@ -81,12 +146,35 @@ pub fn read_package<R: Read + Seek>(reader: R) -> Result<PackageParts, ThreeMfEr
         if !visited.insert(path.clone()) {
             continue;
         }
-        let Ok(xml) = read_entry_to_string(&mut archive, &path, MAX_MODEL_XML_BYTES) else {
-            eprintln!(
-                "[3mf] referenzierte Modell-Datei nicht gefunden, wird uebersprungen: {path}"
-            );
-            continue;
+        referenced_count += 1;
+        if referenced_count > MAX_REFERENCED_MODELS {
+            return Err(ThreeMfError::ResourceLimitExceeded(format!(
+                "Zu viele referenzierte Modelldateien (> {MAX_REFERENCED_MODELS})"
+            )));
+        }
+        // "Datei nicht gefunden"/"nicht parsbar" bleiben bewusst tolerant
+        // (unveraendertes Verhalten, siehe Tests
+        // `skips_missing_referenced_file_without_failing` und
+        // `extract_render_meshes_skips_missing_referenced_object_without_failing`)
+        // - NUR ein Verstoss gegen das Pro-Entry-Groessenlimit
+        // (`EntryTooLarge`) wird hart propagiert (P1-Korrektur, zweite
+        // Review-Runde): ein bereits bestehendes Groessenlimit darf nicht
+        // durch stilles Ueberspringen unterlaufen werden - ein boesartiges
+        // Paket koennte sonst gezielt knapp-zu-grosse referenzierte Modelle
+        // einschleusen, die unbemerkt fehlen, waehrend das restliche Paket
+        // scheinbar normal importiert wird.
+        let xml = match read_entry_to_string(&mut archive, &path, MAX_MODEL_XML_BYTES) {
+            Ok(xml) => xml,
+            Err(err @ ThreeMfError::EntryTooLarge { .. }) => return Err(err),
+            Err(_) => {
+                eprintln!(
+                    "[3mf] referenzierte Modell-Datei nicht gefunden, wird uebersprungen: {path}"
+                );
+                continue;
+            }
         };
+        total_unpacked += xml.len() as u64;
+        check_total_budget(total_unpacked)?;
         let Ok(parsed) = parse_model_xml(&xml) else {
             eprintln!("[3mf] referenzierte Modell-Datei nicht parsbar, wird uebersprungen: {path}");
             continue;
@@ -107,6 +195,10 @@ pub fn read_package<R: Read + Seek>(reader: R) -> Result<PackageParts, ThreeMfEr
                 break;
             }
         }
+    }
+    if let Some(thumb) = &thumbnail {
+        total_unpacked += thumb.len() as u64;
+        check_total_budget(total_unpacked)?;
     }
 
     Ok(PackageParts {
@@ -140,10 +232,11 @@ fn referenced_paths(model: &ParsedModel) -> Vec<String> {
 
 fn resolve_relationships<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
-) -> (Option<String>, Option<String>) {
+) -> (Option<String>, Option<String>, u64) {
     let Ok(rels_xml) = read_entry_to_string(archive, RELS_PATH, MAX_RELS_XML_BYTES) else {
-        return (None, None);
+        return (None, None, 0);
     };
+    let rels_bytes = rels_xml.len() as u64;
 
     let mut model_path = None;
     let mut thumbnail_path = None;
@@ -175,7 +268,7 @@ fn resolve_relationships<R: Read + Seek>(
         }
     }
 
-    (model_path, thumbnail_path)
+    (model_path, thumbnail_path, rels_bytes)
 }
 
 pub(super) fn read_entry_to_string<R: Read + Seek>(
@@ -384,6 +477,99 @@ mod tests {
         assert!(package
             .referenced_models
             .contains_key("3D/Objects/object_2.model"));
+    }
+
+    /// Baut ein 3MF mit `count` referenzierten `.model`-Dateien, die jede
+    /// einzeln winzig sind (weit unter `MAX_MODEL_XML_BYTES`), deren Summe
+    /// mit dem Root-Modell aber `total_bytes_target` Bytes ueberschreitet -
+    /// zusammen mit einem per Testthread ueberschriebenen, kleinen
+    /// `MAX_TOTAL_UNPACKED_BYTES` (siehe `TEST_MAX_TOTAL_UNPACKED_BYTES`)
+    /// reicht das, um das Gesamtbudget zu ueberschreiten, ohne eine
+    /// tatsaechlich riesige Testdatei anlegen zu muessen.
+    fn build_multi_model_3mf_exceeding_total_budget(count: usize) -> Vec<u8> {
+        let root_items: String = (0..count)
+            .map(|i| format!(r#"<item p:path="/3D/Objects/object_{i}.model" objectid="1"/>"#))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let root_xml = format!(
+            r##"<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06">
+  <build>
+    {root_items}
+  </build>
+</model>"##
+        );
+
+        let extra_files: Vec<(String, String)> = (0..count)
+            .map(|i| (format!("3D/Objects/object_{i}.model"), CHILD_MODEL_XML.to_string()))
+            .collect();
+        let extra_files_ref: Vec<(&str, &str)> = extra_files
+            .iter()
+            .map(|(p, x)| (p.as_str(), x.as_str()))
+            .collect();
+
+        build_multi_file_zip_with_root(&root_xml, &extra_files_ref)
+    }
+
+    /// Wie `build_multi_file_zip`, erlaubt aber ein abweichendes
+    /// Root-Modell-XML (die feste `ROOT_MODEL_XML`-Konstante deckt nur
+    /// genau eine referenzierte Datei ab).
+    fn build_multi_file_zip_with_root(root_xml: &str, extra_files: &[(&str, &str)]) -> Vec<u8> {
+        let rels_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model"/>
+</Relationships>"#;
+
+        let content_types_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
+</Types>"#;
+
+        let mut buf = Vec::new();
+        {
+            let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buf));
+            let options = SimpleFileOptions::default();
+
+            zip.start_file("[Content_Types].xml", options).unwrap();
+            zip.write_all(content_types_xml.as_bytes()).unwrap();
+
+            zip.start_file("_rels/.rels", options).unwrap();
+            zip.write_all(rels_xml.as_bytes()).unwrap();
+
+            zip.start_file("3D/3dmodel.model", options).unwrap();
+            zip.write_all(root_xml.as_bytes()).unwrap();
+
+            for (path, xml) in extra_files {
+                zip.start_file(*path, options).unwrap();
+                zip.write_all(xml.as_bytes()).unwrap();
+            }
+
+            zip.finish().unwrap();
+        }
+        buf
+    }
+
+    #[test]
+    fn read_package_rejects_many_referenced_models_that_together_exceed_the_total_budget() {
+        // 10 referenzierte Modelle liegen jede einzeln weit unter
+        // MAX_MODEL_XML_BYTES (256 MB), ihre Summe (+ Root-Modell)
+        // ueberschreitet aber das per Test auf 2000 Bytes verkleinerte
+        // Gesamtbudget.
+        TEST_MAX_TOTAL_UNPACKED_BYTES.with(|c| c.set(Some(2000)));
+        let bytes = build_multi_model_3mf_exceeding_total_budget(10);
+        let result = read_package(std::io::Cursor::new(bytes));
+        TEST_MAX_TOTAL_UNPACKED_BYTES.with(|c| c.set(None));
+
+        assert!(
+            result.is_err(),
+            "die Summe aller entpackten Ressourcen ueberschreitet das Gesamtbudget, das muss abgelehnt werden"
+        );
+    }
+
+    #[test]
+    fn read_package_still_accepts_a_legitimate_multi_part_3mf_within_budget() {
+        let bytes = build_multi_file_zip(&[("3D/Objects/object_1.model", CHILD_MODEL_XML)]);
+        assert!(read_package(std::io::Cursor::new(bytes)).is_ok());
     }
 
     #[test]

@@ -14,13 +14,23 @@ use zip::ZipArchive;
 /// dieser Eintrag als Zip-Bombe den gesamten Arbeitsspeicher belegen
 /// (Security-Review 2026-09-19, Finding A-1; Nachtrag zu Commit 800e373,
 /// der genau diese beiden Config-Eintraege noch ausgelassen hatte).
-pub fn count_plates<R: Read + Seek>(archive: &mut ZipArchive<R>) -> Option<u32> {
+///
+/// Gibt zusaetzlich die Anzahl der tatsaechlich gelesenen Bytes zurueck (0,
+/// wenn die Config-Datei nicht existiert/nicht gelesen werden konnte) - M-05
+/// (Senior-Code-Review 2026-09-19, fuenfte Runde): damit kann
+/// `read_package()` auch diesen Eintrag ins Gesamtbudget
+/// `MAX_TOTAL_UNPACKED_BYTES` einrechnen, das vorher nur Modell-XML und
+/// Thumbnail abdeckte.
+pub fn count_plates<R: Read + Seek>(archive: &mut ZipArchive<R>) -> (Option<u32>, u64) {
     let xml = super::container::read_entry_to_string(
         archive,
         "Metadata/model_settings.config",
         super::container::MAX_CONFIG_XML_BYTES,
-    )
-    .ok()?;
+    );
+    let bytes_read = xml.as_ref().map(|s| s.len() as u64).unwrap_or(0);
+    let Ok(xml) = xml else {
+        return (None, bytes_read);
+    };
 
     let mut reader = quick_xml::Reader::from_str(&xml);
     reader.config_mut().trim_text(true);
@@ -35,16 +45,16 @@ pub fn count_plates<R: Read + Seek>(archive: &mut ZipArchive<R>) -> Option<u32> 
                 }
             }
             Ok(quick_xml::events::Event::Eof) => break,
-            Err(_) => return None,
+            Err(_) => return (None, bytes_read),
             _ => {}
         }
         buf.clear();
     }
 
     if count == 0 {
-        None
+        (None, bytes_read)
     } else {
-        Some(count)
+        (Some(count), bytes_read)
     }
 }
 
@@ -98,7 +108,7 @@ mod tests {
     fn rejects_an_oversized_model_settings_config_instead_of_reading_it() {
         let mut archive = build_zip_with_oversized_config("Metadata/model_settings.config");
         assert_eq!(
-            count_plates(&mut archive),
+            count_plates(&mut archive).0,
             None,
             "ein ueberlanger Config-Eintrag darf nicht komplett eingelesen werden"
         );
@@ -109,13 +119,13 @@ mod tests {
         let mut archive = build_zip(&[
             ("Metadata/model_settings.config", MODEL_SETTINGS_TWO_PLATES),
         ]);
-        assert_eq!(count_plates(&mut archive), Some(2));
+        assert_eq!(count_plates(&mut archive).0, Some(2));
     }
 
     #[test]
     fn returns_none_when_config_missing() {
         let mut archive = build_zip(&[("3D/3dmodel.model", "<model></model>")]);
-        assert_eq!(count_plates(&mut archive), None);
+        assert_eq!(count_plates(&mut archive).0, None);
     }
 
     #[test]
@@ -123,7 +133,7 @@ mod tests {
         let mut archive = build_zip(&[
             ("Metadata/model_settings.config", "not xml at all <<<"),
         ]);
-        assert_eq!(count_plates(&mut archive), None);
+        assert_eq!(count_plates(&mut archive).0, None);
     }
 
     #[test]
@@ -132,6 +142,22 @@ mod tests {
             "Metadata/model_settings.config",
             r#"<config><p:plate xmlns:p="urn:x"></p:plate></config>"#,
         )]);
-        assert_eq!(count_plates(&mut archive), Some(1));
+        assert_eq!(count_plates(&mut archive).0, Some(1));
+    }
+
+    #[test]
+    fn reports_bytes_read_when_config_present() {
+        let mut archive = build_zip(&[
+            ("Metadata/model_settings.config", MODEL_SETTINGS_TWO_PLATES),
+        ]);
+        let (_, bytes_read) = count_plates(&mut archive);
+        assert_eq!(bytes_read, MODEL_SETTINGS_TWO_PLATES.len() as u64);
+    }
+
+    #[test]
+    fn reports_zero_bytes_read_when_config_missing() {
+        let mut archive = build_zip(&[("3D/3dmodel.model", "<model></model>")]);
+        let (_, bytes_read) = count_plates(&mut archive);
+        assert_eq!(bytes_read, 0);
     }
 }

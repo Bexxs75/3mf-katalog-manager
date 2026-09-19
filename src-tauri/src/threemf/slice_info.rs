@@ -55,13 +55,23 @@ fn get_attr(e: &BytesStart, name: &str) -> Option<String> {
 /// dieser Eintrag als Zip-Bombe den gesamten Arbeitsspeicher belegen
 /// (Security-Review 2026-09-19, Finding A-1; Nachtrag zu Commit 800e373,
 /// der genau diese beiden Config-Eintraege noch ausgelassen hatte).
-pub fn parse_slice_info<R: Read + Seek>(archive: &mut ZipArchive<R>) -> Option<SliceInfo> {
+///
+/// Gibt zusaetzlich die Anzahl der tatsaechlich gelesenen Bytes zurueck (0,
+/// wenn die Config-Datei nicht existiert/nicht gelesen werden konnte) - M-05
+/// (Senior-Code-Review 2026-09-19, fuenfte Runde): damit kann
+/// `read_package()` auch diesen Eintrag ins Gesamtbudget
+/// `MAX_TOTAL_UNPACKED_BYTES` einrechnen, das vorher nur Modell-XML und
+/// Thumbnail abdeckte.
+pub fn parse_slice_info<R: Read + Seek>(archive: &mut ZipArchive<R>) -> (Option<SliceInfo>, u64) {
     let xml = super::container::read_entry_to_string(
         archive,
         "Metadata/slice_info.config",
         super::container::MAX_CONFIG_XML_BYTES,
-    )
-    .ok()?;
+    );
+    let bytes_read = xml.as_ref().map(|s| s.len() as u64).unwrap_or(0);
+    let Ok(xml) = xml else {
+        return (None, bytes_read);
+    };
 
     let mut reader = quick_xml::Reader::from_str(&xml);
     reader.config_mut().trim_text(true);
@@ -118,18 +128,18 @@ pub fn parse_slice_info<R: Read + Seek>(archive: &mut ZipArchive<R>) -> Option<S
                 }
             }
             Ok(Event::Eof) => break,
-            Err(_) => return None,
+            Err(_) => return (None, bytes_read),
             _ => {}
         }
         buf.clear();
     }
 
     if plates.is_empty() {
-        return None;
+        return (None, bytes_read);
     }
 
     let total_weight_g = plates.iter().map(|p| p.weight_g).sum();
-    Some(SliceInfo { total_weight_g, plates })
+    (Some(SliceInfo { total_weight_g, plates }), bytes_read)
 }
 
 #[cfg(test)]
@@ -182,7 +192,7 @@ mod tests {
     fn rejects_an_oversized_slice_info_config_instead_of_reading_it() {
         let mut archive = build_zip_with_oversized_config("Metadata/slice_info.config");
         assert!(
-            parse_slice_info(&mut archive).is_none(),
+            parse_slice_info(&mut archive).0.is_none(),
             "ein ueberlanger Config-Eintrag darf nicht komplett eingelesen werden"
         );
     }
@@ -190,7 +200,7 @@ mod tests {
     #[test]
     fn parses_single_plate_single_filament() {
         let mut archive = build_zip(&[("Metadata/slice_info.config", SINGLE_PLATE_SINGLE_FILAMENT)]);
-        let info = parse_slice_info(&mut archive).expect("slice info present");
+        let info = parse_slice_info(&mut archive).0.expect("slice info present");
 
         assert!((info.total_weight_g - 15.83).abs() < 1e-6);
         assert_eq!(info.plates.len(), 1);
@@ -216,7 +226,7 @@ mod tests {
     #[test]
     fn parses_multicolor_plate_with_multiple_filaments() {
         let mut archive = build_zip(&[("Metadata/slice_info.config", MULTICOLOR_PLATE)]);
-        let info = parse_slice_info(&mut archive).expect("slice info present");
+        let info = parse_slice_info(&mut archive).0.expect("slice info present");
 
         assert_eq!(info.plates[0].filaments.len(), 2);
         assert_eq!(info.plates[0].filaments[1].color.as_deref(), Some("#000000FF"));
@@ -239,7 +249,7 @@ mod tests {
     #[test]
     fn parses_multiple_plates_and_sums_total_weight() {
         let mut archive = build_zip(&[("Metadata/slice_info.config", TWO_PLATES)]);
-        let info = parse_slice_info(&mut archive).expect("slice info present");
+        let info = parse_slice_info(&mut archive).0.expect("slice info present");
 
         assert_eq!(info.plates.len(), 2);
         assert!((info.total_weight_g - 15.00).abs() < 1e-6);
@@ -257,7 +267,7 @@ mod tests {
   </plate>
 </config>"##;
         let mut archive = build_zip(&[("Metadata/slice_info.config", xml)]);
-        let info = parse_slice_info(&mut archive).expect("slice info present");
+        let info = parse_slice_info(&mut archive).0.expect("slice info present");
 
         assert!((info.plates[0].weight_g - 12.5).abs() < 1e-6);
     }
@@ -265,19 +275,19 @@ mod tests {
     #[test]
     fn returns_none_when_config_missing() {
         let mut archive = build_zip(&[("3D/3dmodel.model", "<model></model>")]);
-        assert!(parse_slice_info(&mut archive).is_none());
+        assert!(parse_slice_info(&mut archive).0.is_none());
     }
 
     #[test]
     fn returns_none_when_config_is_not_valid_xml() {
         let mut archive = build_zip(&[("Metadata/slice_info.config", "not xml at all <<<")]);
-        assert!(parse_slice_info(&mut archive).is_none());
+        assert!(parse_slice_info(&mut archive).0.is_none());
     }
 
     #[test]
     fn returns_none_when_no_plate_elements_present() {
         let mut archive = build_zip(&[("Metadata/slice_info.config", "<config></config>")]);
-        assert!(parse_slice_info(&mut archive).is_none());
+        assert!(parse_slice_info(&mut archive).0.is_none());
     }
 
     #[test]
@@ -287,7 +297,7 @@ mod tests {
           <p:filament type="PLA" used_g="1.5" used_m="0.5"/>
         </p:plate></config>"#;
         let mut archive = build_zip(&[("Metadata/slice_info.config", xml)]);
-        let info = parse_slice_info(&mut archive).expect("slice info present");
+        let info = parse_slice_info(&mut archive).0.expect("slice info present");
         assert_eq!(info.plates.len(), 1);
     }
 }

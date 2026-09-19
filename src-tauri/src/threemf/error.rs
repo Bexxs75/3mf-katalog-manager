@@ -16,6 +16,11 @@ pub enum ThreeMfError {
     /// Komponentenkette ueberschreitet MAX_COMPONENT_DEPTH, obwohl
     /// azyklisch - Schutz gegen extrem tiefe, aber gueltige Graphen.
     MaxDepthExceeded,
+    /// Die Summe aller tatsaechlich aus dem ZIP entpackten Paket-Ressourcen
+    /// (_rels/.rels, Slicer-Configs, Modell-XML, Thumbnail) ueberschreitet
+    /// das Gesamtbudget, oder es wurden zu viele referenzierte Modelldateien
+    /// geladen (M-05, Senior-Code-Review 2026-09-19).
+    ResourceLimitExceeded(String),
 }
 
 impl fmt::Display for ThreeMfError {
@@ -36,6 +41,7 @@ impl fmt::Display for ThreeMfError {
             ThreeMfError::MaxDepthExceeded => {
                 write!(f, "3mf component graph exceeds maximum nesting depth")
             }
+            ThreeMfError::ResourceLimitExceeded(msg) => write!(f, "{msg}"),
         }
     }
 }
