@@ -105,14 +105,34 @@ Duplikat-Abgleich per Inhalts-Hash), wird das erkannt, statt sie ein zweites Mal
 
 ## Katalog durchsuchen und organisieren
 
-Oben rechts neben "Importieren" wechselst du zwischen **Raster**-Ansicht (Bildkacheln, siehe
-Screenshot oben) und **Liste**:
+Oben rechts neben "Importieren" wechselst du zwischen drei Ansichten: **Raster** (Bildkacheln,
+siehe Screenshot oben), **Ordner** und **Liste**:
 
 ![Katalog in der Listen-Ansicht](bilder/03-katalog-liste.png)
 
 Die Liste zeigt zusätzliche Spalten (Tags, Volumen, Dateigröße) und lässt sich per Klick auf die
-Spaltenüberschrift sortieren. Zum Organisieren stehen dir drei unabhängige Mechanismen zur
-Verfügung, die du beliebig kombinieren kannst:
+Spaltenüberschrift sortieren.
+
+### Ordner-Ansicht
+
+Die Ansicht **Ordner** gruppiert deine Modelle nach der echten Ordnerstruktur auf der Festplatte —
+wie in einem Datei-Explorer, mit Unterordnern eingerückt und einer durchgehenden Verbindungslinie:
+
+![Ordner-Ansicht als Kachel-Raster](bilder/16-ordner-ansicht.png)
+
+Jede Ordner-Kopfzeile zeigt die Gesamtzahl der enthaltenen Dateien, inklusive aller Unterordner.
+Per Klick auf die Kopfzeile klappst du einen Ordner ein oder aus — der Zustand bleibt über einen
+Neustart der App erhalten. Dateien ohne Ordner erscheinen als letzte Sektion "Ohne Ordner". Sowohl
+Ordner-Kopfzeilen als auch einzelne Dateien lassen sich innerhalb dieser Ansicht direkt per Maus
+verschieben, genau wie in der Seitenleiste — das Verschieben wirkt sich sofort auch auf der
+Festplatte aus.
+
+Dieselbe Gruppierung funktioniert auch in der Listen-Darstellung:
+
+![Ordner-gruppierte Listen-Ansicht](bilder/17-liste-gruppiert.png)
+
+Zum Organisieren stehen dir insgesamt drei unabhängige Mechanismen zur Verfügung, die du beliebig
+kombinieren kannst:
 
 - **Ordner** (Sidebar links) — echte Verzeichnisse auf der Festplatte, siehe oben.
 - **Tags** — frei vergebene Hashtags, in der Sidebar unter "Tags" gesammelt, anklickbar zum
@@ -232,27 +252,51 @@ lassen sich in dieser Zeit wiederherstellen:
 
 ## Einstellungen
 
-Über das Zahnrad-Symbol unten in der Navigationsleiste öffnest du die Einstellungen:
+Über das Zahnrad-Symbol unten in der Navigationsleiste öffnest du die Einstellungen. Sie sind in
+vier Reiter aufgeteilt: **Allgemein**, **Slicer**, **Katalog** und **Info**.
 
-![Einstellungen mit Slicer-Verwaltung](bilder/11-einstellungen-slicer.png)
+### Allgemein
+
+![Einstellungen: Allgemein](bilder/18-einstellungen-allgemein.png)
 
 - **Erscheinungsbild** — folgt automatisch deiner Systemeinstellung, oder fest auf Hell/Dunkel
-  gestellt.
-- **Ansicht** — "Kompakt" (dicht, kleine Schrift, viel auf einen Blick) oder "Komfort" (größere
-  Schrift, Grafiken und Bedienelemente, deutlich lesbarer).
+  gestellt. Direkt darunter die Dichte-Einstellung: "Kompakt" (dicht, kleine Schrift, viel auf
+  einen Blick) oder "Komfort" (größere Schrift, Grafiken und Bedienelemente, deutlich lesbarer).
 - **Bevorzugte Ansicht** — ob Katalog und Detailseite standardmäßig das hinterlegte Vorschaubild
   oder die gerenderte 3D-Ansicht zeigen. Fehlende Schnappschüsse werden bei Bedarf automatisch im
   Hintergrund nachgerendert.
 - **Sprache** — Deutsch, Englisch, Spanisch oder Französisch, sofort wirksam ohne Neustart.
-- **Slicer-Verwaltung** — die App durchsucht beim Start bekannte Installationsorte (Bambu Studio,
-  OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura) und trägt gefundene Slicer automatisch
-  ein; über "+ Hinzufügen" ergänzt du weitere, auch selbst kompilierte oder abgewandelte
-  Versionen. Der Radiobutton legt fest, welcher Slicer beim Öffnen eines Modells als
-  **Standard** verwendet wird.
+
+### Slicer
+
+![Einstellungen: Slicer-Verwaltung](bilder/11-einstellungen-slicer.png)
+
+Die App durchsucht beim Start bekannte Installationsorte (Bambu Studio, OrcaSlicer, PrusaSlicer,
+SuperSlicer, UltiMaker Cura) und trägt gefundene Slicer automatisch ein; über "+ Hinzufügen"
+ergänzt du weitere, auch selbst kompilierte oder abgewandelte Versionen. Der Radiobutton legt
+fest, welcher Slicer beim Öffnen eines Modells als **Standard** verwendet wird.
+
+### Katalog
+
+![Einstellungen: Katalog](bilder/19-einstellungen-katalog.png)
+
 - **Katalog prüfen** — ein manuell auslösbarer Scan findet verwaiste Dateipfade (Datei im Katalog
   eingetragen, aber auf der Festplatte nicht mehr vorhanden) und Bestands-Duplikate, mit
   Bereinigung per Auswahl-Dialog.
 - **Katalog-Backup** — siehe nächster Abschnitt.
+- **Katalog-Speicherort** — zeigt den aktuellen Basisordner und erlaubt, ihn zu ändern oder direkt
+  im Dateimanager zu öffnen.
+
+### Info
+
+![Einstellungen: Info mit Update-Check](bilder/20-einstellungen-info-update.png)
+
+Zeigt die installierte Version sowie Links zu Quellcode und Lizenz. Beim Start der App wird
+einmalig im Hintergrund still geprüft, ob auf GitHub eine neuere Version vorliegt — es wird
+**nichts automatisch heruntergeladen**. Ist eine neuere Version verfügbar, erscheint unten rechts
+ein wegklickbarer Hinweis mit einem "Herunterladen"-Knopf, der die passende Release-Seite im
+Standardbrowser öffnet. Denselben Status siehst du jederzeit auch hier im Info-Tab, inklusive
+einem Knopf "Erneut nach Updates suchen" für eine manuelle Prüfung.
 
 Unten im Screenshot siehst du ein Beispiel für das **Hell**- bzw. **Dunkel**-Theme im direkten
 Vergleich:
@@ -413,14 +457,33 @@ check via content hash), it's recognized instead of being added a second time.
 
 ## Browsing and organizing your catalog
 
-Top right, next to "Import", you switch between **grid** view (image tiles, see the screenshot
-above) and **list** view:
+Top right, next to "Import", you switch between three views: **grid** (image tiles, see the
+screenshot above), **folder**, and **list**:
 
 ![Catalog in list view](bilder/03-katalog-liste.png)
 
 The list shows additional columns (tags, volume, file size) and can be sorted by clicking a
-column header. Three independent mechanisms are available for organizing your catalog, and you
-can combine them freely:
+column header.
+
+### Folder view
+
+The **Folder** view groups your models by their real folder structure on disk — like a file
+explorer, with subfolders indented and a continuous connecting line:
+
+![Folder view as a tile grid](bilder/16-ordner-ansicht.png)
+
+Each folder header shows the total number of files it contains, including all subfolders.
+Clicking a header collapses or expands that folder — the state persists across app restarts.
+Files with no folder appear as a final "No folder" section. Both folder headers and individual
+files can be dragged directly within this view, exactly like in the sidebar — moving something
+here also moves it on disk immediately.
+
+The same grouping is available in list form:
+
+![Folder-grouped list view](bilder/17-liste-gruppiert.png)
+
+Three independent mechanisms are available for organizing your catalog overall, and you can
+combine them freely:
 
 - **Folders** (sidebar, left) — real directories on disk, see above.
 - **Tags** — freely assigned hashtags, collected under "Tags" in the sidebar, clickable to
@@ -534,25 +597,51 @@ during that time:
 
 ## Settings
 
-The gear icon at the bottom of the navigation rail opens Settings:
+The gear icon at the bottom of the navigation rail opens Settings. They're split into four tabs:
+**General**, **Slicer**, **Catalog**, and **Info**.
 
-![Settings with slicer management](bilder/11-einstellungen-slicer.png)
+### General
 
-- **Appearance** — follows your system setting automatically, or fixed to light/dark.
-- **View** — "Compact" (dense, small text, a lot at a glance) or "Comfort" (larger text, graphics,
-  and controls, noticeably easier to read).
+![Settings: General](bilder/18-einstellungen-allgemein.png)
+
+- **Appearance** — follows your system setting automatically, or fixed to light/dark. Right below
+  it, the density setting: "Compact" (dense, small text, a lot at a glance) or "Comfort" (larger
+  text, graphics, and controls, noticeably easier to read).
 - **Preferred view** — whether the catalog and the detail page default to the stored preview
   image or the rendered 3D view. Missing snapshots are automatically re-rendered in the
   background as needed.
 - **Language** — German, English, Spanish, or French, effective immediately without a restart.
-- **Slicer management** — the app scans known install locations on startup (Bambu Studio,
-  OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura) and adds any it finds automatically; use
-  "+ Add" to add others, including self-built or modified versions. The radio button sets which
-  slicer is used as the **default** when opening a model.
+
+### Slicer
+
+![Settings: slicer management](bilder/11-einstellungen-slicer.png)
+
+The app scans known install locations on startup (Bambu Studio, OrcaSlicer, PrusaSlicer,
+SuperSlicer, UltiMaker Cura) and adds any it finds automatically; use "+ Add" to add others,
+including self-built or modified versions. The radio button sets which slicer is used as the
+**default** when opening a model.
+
+### Catalog
+
+![Settings: Catalog](bilder/19-einstellungen-katalog.png)
+
 - **Check catalog** — a manually triggered scan finds orphaned file paths (a file listed in the
   catalog but no longer present on disk) and inventory duplicates, with cleanup via a selection
   dialog.
 - **Catalog backup** — see the next section.
+- **Catalog location** — shows the current base directory and lets you change it or open it
+  directly in the file manager.
+
+### Info
+
+![Settings: Info with update check](bilder/20-einstellungen-info-update.png)
+
+Shows the installed version plus links to the source code and license. On startup, the app
+silently checks once in the background whether a newer version is available on GitHub —
+**nothing is downloaded automatically**. If a newer version exists, a dismissible hint appears
+bottom-right with a "Download" button that opens the matching release page in your default
+browser. You can check the same status here in the Info tab any time, including a "Check for
+updates" button for a manual check.
 
 Below in the screenshot, you can see an example of the **light** vs. **dark** theme side by side:
 

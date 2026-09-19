@@ -4,6 +4,12 @@ Plattformunabhängige Desktop-Anwendung zur Katalogisierung und Verwaltung von 3
 
 **Neu hier?** Das [Benutzerhandbuch](docs/benutzerhandbuch/BENUTZERHANDBUCH.md) (DE + EN) erklärt alle Funktionen bebildert und Schritt für Schritt, ganz ohne Vorwissen über die App.
 
+## Screenshots
+
+| Katalog (Raster) | Nach Ordnern gruppiert | Einstellungen (Info & Update-Check) |
+|---|---|---|
+| ![Katalog in der Raster-Ansicht](docs/benutzerhandbuch/bilder/02-katalog-grid.png) | ![Nach Ordnern gruppierte Ansicht](docs/benutzerhandbuch/bilder/16-ordner-ansicht.png) | ![Einstellungen mit Update-Check](docs/benutzerhandbuch/bilder/20-einstellungen-info-update.png) |
+
 ## Funktionen
 
 - **3MF- und STL-Parsing** — beide Formate gleichwertig unterstützt: OPC-Container-Entpackung inkl. eingebettetem Thumbnail bei 3MF, ASCII- und Binär-STL-Parsing
@@ -95,6 +101,12 @@ MIT — siehe [LICENSE](LICENSE).
 Cross-platform desktop application for cataloging and managing 3MF and STL files for 3D printing. Built with [Tauri](https://tauri.app/) (Rust backend) and React/TypeScript/Tailwind.
 
 **New here?** The [User Guide](docs/benutzerhandbuch/BENUTZERHANDBUCH.md) (DE + EN) explains every feature with screenshots, step by step, no prior knowledge of the app required.
+
+## Screenshots
+
+| Catalog (grid) | Grouped by folder | Settings (Info & update check) |
+|---|---|---|
+| ![Catalog in grid view](docs/benutzerhandbuch/bilder/02-katalog-grid.png) | ![Folder-grouped view](docs/benutzerhandbuch/bilder/16-ordner-ansicht.png) | ![Settings with update check](docs/benutzerhandbuch/bilder/20-einstellungen-info-update.png) |
 
 ## Features
 
