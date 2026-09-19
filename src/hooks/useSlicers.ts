@@ -38,6 +38,7 @@ export function useSlicers() {
     () => localStorage.getItem(PRIMARY_ID_STORAGE_KEY),
   );
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(loadHiddenIds);
+  const [addSlicerError, setAddSlicerError] = useState<string | null>(null);
 
   const applyRegistry = useCallback((rows: SlicerDto[]) => {
     setSlicers(rows.map(toSlicerConfig));
@@ -58,16 +59,32 @@ export function useSlicers() {
     // M-06/P0: der native Datei-Dialog laeuft im Backend
     // (`pick_and_register_slicer`) - das Frontend uebergibt hier keinen
     // selbst konstruierten Pfad mehr.
-    const picked = await slicerApi.pickAndRegisterSlicer();
-    if (!picked) return null;
-    const rows = await slicerApi.listRegisteredSlicers();
-    applyRegistry(rows);
-    setPrimaryIdState((prev) => {
-      if (prev) return prev;
-      localStorage.setItem(PRIMARY_ID_STORAGE_KEY, picked.id);
-      return picked.id;
-    });
-    return picked;
+    //
+    // `pick_and_register_slicer` schlaegt in echten Szenarien durchaus
+    // fehl (z.B. `executable_path` ist `UNIQUE` - ein bereits registrierter
+    // Slicer erneut ausgewaehlt ergibt einen Datenbankfehler; oder
+    // `validate_slicer_path` lehnt die getroffene Auswahl ab) - ohne
+    // try/catch landete das bisher als unbehandelte Promise-Ablehnung,
+    // ohne dass der Nutzer irgendeine Rueckmeldung bekam. Gleiches
+    // Fehler-Anzeige-Muster wie `useCatalogBackup.ts`/`useCatalogCleanup.ts`
+    // (eigener `*Error`-State, in der Settings-UI direkt angezeigt).
+    try {
+      setAddSlicerError(null);
+      const picked = await slicerApi.pickAndRegisterSlicer();
+      if (!picked) return null;
+      const rows = await slicerApi.listRegisteredSlicers();
+      applyRegistry(rows);
+      setPrimaryIdState((prev) => {
+        if (prev) return prev;
+        localStorage.setItem(PRIMARY_ID_STORAGE_KEY, picked.id);
+        return picked.id;
+      });
+      return picked;
+    } catch (e) {
+      console.error('[slicer-register] Registrierung fehlgeschlagen:', e);
+      setAddSlicerError(String(e));
+      return null;
+    }
   }, [applyRegistry]);
 
   const removeSlicer = useCallback((id: string) => {
@@ -95,6 +112,7 @@ export function useSlicers() {
     slicers: visibleSlicers,
     primaryId,
     addSlicer,
+    addSlicerError,
     removeSlicer,
     setPrimary,
   };

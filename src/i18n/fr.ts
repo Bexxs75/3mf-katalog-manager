@@ -62,6 +62,7 @@ export const fr: Translations = {
   slicerSectionTitle: 'Slicer',
   noSlicersConfigured: 'Aucun slicer configuré.',
   addSlicer: 'Ajouter',
+  addSlicerError: "Impossible d'enregistrer le slicer :",
   confirmSlicerName: 'Confirmer',
   removeSlicerAria: 'Supprimer le slicer',
   slicerLaunchError: 'Impossible de démarrer le slicer :',

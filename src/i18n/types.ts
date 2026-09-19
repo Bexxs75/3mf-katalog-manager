@@ -67,6 +67,7 @@ export interface Translations {
   slicerSectionTitle: string;
   noSlicersConfigured: string;
   addSlicer: string;
+  addSlicerError: string;
   confirmSlicerName: string;
   removeSlicerAria: string;
   slicerLaunchError: string;

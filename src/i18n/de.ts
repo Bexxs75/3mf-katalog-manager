@@ -62,6 +62,7 @@ export const de: Translations = {
   slicerSectionTitle: 'Slicer',
   noSlicersConfigured: 'Kein Slicer konfiguriert.',
   addSlicer: 'Hinzufügen',
+  addSlicerError: 'Slicer konnte nicht registriert werden:',
   confirmSlicerName: 'Übernehmen',
   removeSlicerAria: 'Slicer entfernen',
   slicerLaunchError: 'Slicer konnte nicht gestartet werden:',

@@ -62,6 +62,7 @@ export const es: Translations = {
   slicerSectionTitle: 'Laminador',
   noSlicersConfigured: 'Ningún laminador configurado.',
   addSlicer: 'Añadir',
+  addSlicerError: 'No se pudo registrar el laminador:',
   confirmSlicerName: 'Confirmar',
   removeSlicerAria: 'Eliminar laminador',
   slicerLaunchError: 'No se pudo iniciar el laminador:',

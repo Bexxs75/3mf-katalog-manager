@@ -24,6 +24,7 @@ interface Props {
   slicers: SlicerConfig[];
   primarySlicerId: string | null;
   onAddSlicer: () => void;
+  addSlicerError: string | null;
   onRemoveSlicer: (id: string) => void;
   onSetPrimarySlicer: (id: string) => void;
   onScanCatalogIssues: () => void;
@@ -76,6 +77,7 @@ export function Rail({
   slicers,
   primarySlicerId,
   onAddSlicer,
+  addSlicerError,
   onRemoveSlicer,
   onSetPrimarySlicer,
   onScanCatalogIssues,
@@ -295,6 +297,11 @@ export function Rail({
                 >
                   + {t('addSlicer')}
                 </button>
+                {addSlicerError && (
+                  <div className="mt-1.5 font-mono-ui text-[length:var(--font-size-meta)] text-[var(--accent)] break-words">
+                    {t('addSlicerError')} {addSlicerError}
+                  </div>
+                )}
               </>
             )}
 

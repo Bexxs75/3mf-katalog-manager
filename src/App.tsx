@@ -31,7 +31,7 @@ import { useUpdateCheck } from './hooks/useUpdateCheck';
 export default function App() {
   const { setting, setTheme } = useTheme();
   const { density, setDensity } = useUiDensity();
-  const { slicers, primaryId, addSlicer, removeSlicer, setPrimary } = useSlicers();
+  const { slicers, primaryId, addSlicer, addSlicerError, removeSlicer, setPrimary } = useSlicers();
   const { preference: displayPreference, setPreference: setDisplayPreference } = useDisplayPreference();
   const { catalogBaseDir, setCatalogBaseDir, setupSeen, markSetupSeen } = useCatalogBaseDir();
 
@@ -164,6 +164,7 @@ export default function App() {
           slicers={slicers}
           primarySlicerId={primaryId}
           onAddSlicer={addSlicer}
+          addSlicerError={addSlicerError}
           onRemoveSlicer={removeSlicer}
           onSetPrimarySlicer={setPrimary}
           onScanCatalogIssues={cleanup.scanCatalogIssues}

@@ -62,6 +62,7 @@ export const en: Translations = {
   slicerSectionTitle: 'Slicer',
   noSlicersConfigured: 'No slicer configured.',
   addSlicer: 'Add',
+  addSlicerError: 'Could not register slicer:',
   confirmSlicerName: 'Confirm',
   removeSlicerAria: 'Remove slicer',
   slicerLaunchError: 'Could not start slicer:',

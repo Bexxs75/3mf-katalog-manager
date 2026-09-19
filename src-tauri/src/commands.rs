@@ -3126,6 +3126,40 @@ pub async fn import_catalog(
 /// Datenbank mit fremden Slicer-Pfaden wird so niemals zur aktiven
 /// Datenbank, auch nicht transient.
 fn replace_catalog_db(state: &AppState, new_db_path: &Path) -> CmdResult<()> {
+    replace_catalog_db_with_copy_fn(state, new_db_path, copy_file_default)
+}
+
+/// Nicht-generischer Wrapper um `std::fs::copy`, ausschliesslich damit er
+/// als konkreter `fn(&Path, &Path) -> io::Result<u64>`-Funktionszeiger an
+/// `replace_catalog_db_with_copy_fn` uebergeben werden kann - `std::fs::copy`
+/// selbst ist generisch ueber `AsRef<Path>` und laesst sich nicht direkt in
+/// diesen konkreten, HRTB-faehigen Funktionszeigertyp coercen.
+fn copy_file_default(from: &Path, to: &Path) -> std::io::Result<u64> {
+    std::fs::copy(from, to)
+}
+
+/// Kern von [`replace_catalog_db`], parametrisiert ueber die Funktion, die
+/// die eigentlichen Bytes von `new_db_path` nach `state.db_path` kopiert
+/// (Schritt 5) - analog zu `run_migrations_with` in `migrations.rs`, das
+/// aus demselben Grund ueber eine explizite Migrationsliste parametrisiert
+/// ist. Ein "der `fs::copy`-Schritt schlaegt fehl, obwohl das Umbenennen
+/// der alten DB bereits erfolgreich war"-Szenario laesst sich auf POSIX
+/// NICHT zuverlaessig ueber chmod/Dateisystem-Tricks erzwingen, ohne
+/// entweder das vorausgehende `fs::rename` (das denselben, gemeinsamen
+/// Zielverzeichnis-Schreibzugriff braucht wie die anschliessende
+/// Neuerstellung unter demselben Namen) gleich mit scheitern zu lassen,
+/// oder root-/Namespace-Rechte fuer eine groessenbegrenzte Testumgebung zu
+/// benoetigen (beides ungeeignet fuer einen portablen, deterministischen
+/// Unit-Test). Diese Parametrisierung erlaubt stattdessen, den
+/// Kopiervorgang selbst gezielt und deterministisch fehlschlagen zu lassen,
+/// um den Wiederherstellungs-Pfad (Rueckbenennen der Backup-Datei, erneutes
+/// Reconnect) unabhaengig zu testen - siehe
+/// `replace_catalog_db_restores_backup_when_the_copy_step_fails_for_a_valid_sanitized_incoming_db`.
+fn replace_catalog_db_with_copy_fn(
+    state: &AppState,
+    new_db_path: &Path,
+    copy_fn: fn(&Path, &Path) -> std::io::Result<u64>,
+) -> CmdResult<()> {
     // Schritt 1: lokale `registered_slicers`-Zeilen aus der AKTUELL
     // LAUFENDEN (alten) Datenbank auslesen, bevor irgendetwas an state.db
     // geaendert wird.
@@ -3233,7 +3267,7 @@ fn replace_catalog_db(state: &AppState, new_db_path: &Path) -> CmdResult<()> {
         return Err(e.to_string());
     }
 
-    if let Err(e) = std::fs::copy(new_db_path, &state.db_path) {
+    if let Err(e) = copy_fn(new_db_path, &state.db_path) {
         let restore_result = std::fs::rename(&backup_path, &state.db_path);
         if restore_result.is_ok() {
             // Alte Datei ist wieder unter state.db_path - Connection
@@ -3937,6 +3971,116 @@ mod tests {
         let count: i64 =
             guard.query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0)).unwrap();
         assert_eq!(count, 1, "connection must still reflect the untouched original db");
+        drop(guard);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn replace_catalog_db_restores_backup_when_the_copy_step_fails_for_a_valid_sanitized_incoming_db() {
+        // Deckt eine durch die Task-11-Aenderungen verlorene Regression ab:
+        // der vorherige Test `replace_catalog_db_restores_backup_when_copy_of_new_db_fails`
+        // simulierte einen Kopier-Fehlschlag ueber einen fehlenden
+        // `new_db_path` - dieses Szenario schlaegt seit der M-06-Sanierung
+        // aber bereits FRUEHER (in der Migration, siehe
+        // `replace_catalog_db_fails_closed_when_the_incoming_db_path_does_not_exist`),
+        // wodurch der eigentliche "fs::copy schlaegt fehl, alte DB wird
+        // zurueckbenannt" Wiederherstellungspfad (dessen Fehlermeldungstext
+        // selbst schon einmal Gegenstand eines fruerheren Reviews war, siehe
+        // die Kommentare an `replace_catalog_db_with_copy_fn` oben) seitdem
+        // durch KEINEN Test mehr abgedeckt war.
+        //
+        // Ein echter `fs::copy`-Fehlschlag laesst sich hier nicht ueber
+        // chmod/Dateisystem-Tricks erzwingen: `backup_path` liegt (per
+        // `with_file_name`) IMMER im selben Verzeichnis wie `db_path`, and
+        // sowohl das vorausgehende `fs::rename` als auch das anschliessende
+        // Neuanlegen der Datei unter demselben Namen benoetigen exakt
+        // dieselbe Verzeichnis-Schreibberechtigung - ein schreibgeschuetztes
+        // Zielverzeichnis wuerde deshalb bereits das `fs::rename` scheitern
+        // lassen (ein ANDERER, bereits separat abgedeckter Fehlerpfad),
+        // nicht speziell den `fs::copy`-Schritt. Stattdessen wird hier die
+        // testbare `replace_catalog_db_with_copy_fn`-Variante direkt mit
+        // einer bewusst fehlschlagenden `copy_fn` aufgerufen (siehe deren
+        // Doc-Kommentar) - deterministisch, portabel, ohne Root-Rechte oder
+        // Race-Conditions.
+        let dir = unique_test_dir("replace_catalog_db_copy_step_fails");
+        let db_path = dir.join("catalog.db");
+
+        let old_conn = crate::db::connect(&db_path).expect("connect creates schema");
+        old_conn
+            .execute(
+                "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at)
+                 VALUES ('old.3mf', '/old/old.3mf', '3mf', 7, '2026-09-13T00:00:00Z')",
+                [],
+            )
+            .expect("seed old db with a marker row");
+        drop(old_conn);
+        let old_bytes = std::fs::read(&db_path).expect("read old db bytes");
+
+        // Eine ECHTE, valide, sanierbare eingehende Datenbank - anders als
+        // im (jetzt umbenannten) Fail-Closed-Test oben, damit dieser Test
+        // wirklich den Kopier-Schritt prueft und nicht erneut die
+        // Sanierung.
+        let new_db_path = dir.join("incoming_catalog.db");
+        let new_conn = crate::db::connect(&new_db_path).expect("connect creates schema");
+        new_conn
+            .execute(
+                "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at)
+                 VALUES ('new.3mf', '/incoming/new.3mf', '3mf', 42, '2026-09-13T00:00:00Z')",
+                [],
+            )
+            .expect("seed new db with a marker row");
+        drop(new_conn);
+
+        let running_conn = crate::db::connect(&db_path).expect("reopen db for AppState");
+        let state = AppState {
+            db: Mutex::new(running_conn),
+            trash_dir: dir.join("trash"),
+            db_path: db_path.clone(),
+            sensitive_dirs: Vec::new(),
+        };
+
+        let result = replace_catalog_db_with_copy_fn(&state, &new_db_path, |_from, _to| {
+            Err(std::io::Error::other("simulated disk failure during copy"))
+        });
+        assert!(result.is_err(), "expected an error when the copy step itself fails");
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("wiederhergestellt"),
+            "expected error to mention successful restoration, got: {err}"
+        );
+
+        // Alte DB wurde nach dem fehlgeschlagenen Kopieren wieder an ihren
+        // urspruenglichen Platz zurueckbenannt - kein .bak-* liegt mehr da,
+        // db_path enthaelt wieder den alten Inhalt.
+        let bak_entries: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().starts_with("catalog.db.bak-"))
+            .collect();
+        assert!(bak_entries.is_empty(), "backup file must have been renamed back after successful restore");
+        assert!(db_path.exists(), "catalog.db must exist again after restore");
+        let restored_bytes = std::fs::read(&db_path).expect("read restored db bytes");
+        assert_eq!(restored_bytes, old_bytes, "restored db must match the original content");
+
+        // AppState's Connection muss nach dem erfolgreichen Restore
+        // tatsaechlich wieder nutzbar sein und den alten (wiederhergestellten)
+        // Inhalt lesen - nicht auf dem In-Memory-Platzhalter haengen bleiben
+        // (Finding I1, siehe die aeltere, gleichnamig gepruefte Logik oben).
+        // Der Marker-Datensatz aus der alten DB muss ueber die laufende
+        // Connection sichtbar sein, und der aus der (nie aktivierten)
+        // eingehenden DB darf es nicht sein.
+        let guard = state.db.lock().unwrap();
+        let count: i64 =
+            guard.query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0)).unwrap();
+        assert_eq!(count, 1, "connection must reflect the restored old db's content, not the placeholder");
+        let has_new_marker: bool = guard
+            .query_row("SELECT COUNT(*) FROM files WHERE name = 'new.3mf'", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .map(|c| c > 0)
+            .unwrap_or(false);
+        assert!(!has_new_marker, "the never-activated incoming db's content must not be visible");
         drop(guard);
 
         let _ = std::fs::remove_dir_all(&dir);
