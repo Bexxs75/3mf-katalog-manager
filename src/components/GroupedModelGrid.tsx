@@ -108,8 +108,8 @@ export function GroupedModelGrid({
         </div>
         {!isCollapsed && (
           <div className="mt-2">
-            {node.files.length > 0 && <ModelGrid models={node.files} {...modelGridProps} />}
             {node.children.map((child) => renderNode(child, depth + 1))}
+            {node.files.length > 0 && <ModelGrid models={node.files} {...modelGridProps} />}
           </div>
         )}
       </div>

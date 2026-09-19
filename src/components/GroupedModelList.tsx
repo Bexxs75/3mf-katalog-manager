@@ -105,8 +105,8 @@ export function GroupedModelList({
         </div>
         {!isCollapsed && (
           <div className="mt-2">
-            {node.files.length > 0 && <ModelList models={node.files} {...modelListProps} />}
             {node.children.map((child) => renderNode(child, depth + 1))}
+            {node.files.length > 0 && <ModelList models={node.files} {...modelListProps} />}
           </div>
         )}
       </div>
