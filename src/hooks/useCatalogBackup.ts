@@ -31,6 +31,10 @@ export function useCatalogBackup() {
       .then((result) => {
         if (!result.imported) return;
         if (result.settingsJson) {
+          // Ein Fehler beim Wiederherstellen der Einstellungen darf den
+          // erfolgreichen Katalog-Import nicht als Fehlschlag erscheinen
+          // lassen (Finding I2) - daher eigenes try/catch statt im
+          // aeusseren .catch() der Promise-Kette landen zu lassen.
           try {
             const settings = JSON.parse(result.settingsJson) as Record<string, string | null>;
             for (const key of CATALOG_SETTINGS_KEYS) {
@@ -45,6 +49,10 @@ export function useCatalogBackup() {
             console.error('[catalog-backup] Einstellungen konnten nicht wiederhergestellt werden:', e);
           }
         }
+        // Backend hat AppState.db bereits auf den neu importierten Katalog
+        // umverbunden - der Aufrufer muss hier deshalb einen vollen Reload
+        // ausloesen (Finding C1, siehe App.tsx), sonst zeigt das Frontend
+        // weiter veraltete Modell-IDs aus dem alten Katalog an.
         onImported();
       })
       .catch((e) => {

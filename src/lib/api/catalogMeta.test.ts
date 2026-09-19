@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import * as catalogMetaApi from './catalogMeta';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
-beforeEach(() => vi.mocked(invoke).mockReset());
+beforeEach(() => { vi.mocked(invoke).mockReset(); });
 
 describe('catalogMeta api', () => {
   it('listTagCounts', async () => {

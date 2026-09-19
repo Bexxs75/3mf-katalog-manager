@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import * as foldersApi from './folders';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
-beforeEach(() => vi.mocked(invoke).mockReset());
+beforeEach(() => { vi.mocked(invoke).mockReset(); });
 
 describe('folders api', () => {
   it('listFolders', async () => {

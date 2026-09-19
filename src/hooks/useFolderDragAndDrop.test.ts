@@ -5,7 +5,7 @@ import { useFolderDragAndDrop } from './useFolderDragAndDrop';
 import { makeModelFile, makeFolder } from '../test/factories';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
-beforeEach(() => vi.mocked(invoke).mockReset());
+beforeEach(() => { vi.mocked(invoke).mockReset(); });
 
 describe('useFolderDragAndDrop', () => {
   it('onCreateFolder calls create_folder and refreshes folders on success', async () => {

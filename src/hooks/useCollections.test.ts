@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useCollections } from './useCollections';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
-beforeEach(() => vi.mocked(invoke).mockReset());
+beforeEach(() => { vi.mocked(invoke).mockReset(); });
 
 describe('useCollections', () => {
   it('loads collections on mount', async () => {

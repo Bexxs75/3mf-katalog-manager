@@ -18,7 +18,11 @@ function mockInitialLoad(models = [makeModelFile({ id: 'm1' })]) {
   });
 }
 
-beforeEach(() => vi.mocked(invoke).mockReset());
+function callCount(cmd: string) {
+  return vi.mocked(invoke).mock.calls.filter(([c]) => c === cmd).length;
+}
+
+beforeEach(() => { vi.mocked(invoke).mockReset(); });
 
 describe('useCatalogStore', () => {
   it('loads models on mount and selects the first one', async () => {
@@ -76,6 +80,98 @@ describe('useCatalogStore', () => {
     act(() => result.current.applyLocalDeletion(['m1']));
     expect(result.current.models.map((m) => m.id)).toEqual(['m2']);
     expect(result.current.selectedId).toBeNull();
+  });
+
+  it('reorderQueue only sends updates for models whose position actually changed', async () => {
+    mockInitialLoad([
+      makeModelFile({ id: 'm1', queuePosition: 1 }),
+      makeModelFile({ id: 'm2', queuePosition: 2 }),
+      makeModelFile({ id: 'm3', queuePosition: 3 }),
+    ]);
+    const { result } = renderHook(() => useCatalogStore());
+    await waitFor(() => expect(result.current.models).toHaveLength(3));
+    act(() => result.current.reorderQueue(['m1', 'm3', 'm2']));
+    expect(result.current.models.map((m) => m.queuePosition)).toEqual([1, 3, 2]);
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('reorder_queue', {
+        updates: [
+          { fileId: 'm3', position: 2 },
+          { fileId: 'm2', position: 3 },
+        ],
+      }),
+    );
+  });
+
+  it('reorderQueue sends nothing when the order is unchanged', async () => {
+    mockInitialLoad([
+      makeModelFile({ id: 'm1', queuePosition: 1 }),
+      makeModelFile({ id: 'm2', queuePosition: 2 }),
+    ]);
+    const { result } = renderHook(() => useCatalogStore());
+    await waitFor(() => expect(result.current.models).toHaveLength(2));
+    act(() => result.current.reorderQueue(['m1', 'm2']));
+    expect(callCount('reorder_queue')).toBe(0);
+  });
+
+  it('refetchAfterPartialDelete reloads the list from the backend instead of filtering locally', async () => {
+    mockInitialLoad([makeModelFile({ id: 'm1' }), makeModelFile({ id: 'm2' })]);
+    const { result } = renderHook(() => useCatalogStore());
+    await waitFor(() => expect(result.current.models).toHaveLength(2));
+    act(() => result.current.setSelectedId('m1'));
+    // delete_files kann einzelne IDs stillschweigend uebersprungen haben - das
+    // Backend meldet hier weiterhin beide Modelle, lokales Filtern haette m1
+    // faelschlich entfernt.
+    act(() => result.current.refetchAfterPartialDelete(['m1']));
+    await waitFor(() => expect(callCount('list_files')).toBe(2));
+    expect(result.current.models.map((m) => m.id)).toEqual(['m1', 'm2']);
+    expect(result.current.selectedId).toBeNull();
+  });
+
+  it('refetchAfterPartialDelete keeps the selection when the selected model was not affected', async () => {
+    mockInitialLoad([makeModelFile({ id: 'm1' }), makeModelFile({ id: 'm2' })]);
+    const { result } = renderHook(() => useCatalogStore());
+    await waitFor(() => expect(result.current.models).toHaveLength(2));
+    act(() => result.current.setSelectedId('m2'));
+    act(() => result.current.refetchAfterPartialDelete(['m1']));
+    await waitFor(() => expect(callCount('list_files')).toBe(2));
+    expect(result.current.selectedId).toBe('m2');
+  });
+
+  it('mergeImported appends the imported models, selects the last one and refreshes side lists', async () => {
+    mockInitialLoad([makeModelFile({ id: 'm1' })]);
+    const { result } = renderHook(() => useCatalogStore());
+    await waitFor(() => expect(result.current.models).toHaveLength(1));
+    const before = {
+      folders: callCount('list_folders'),
+      tags: callCount('list_tag_counts'),
+      creators: callCount('list_creators'),
+    };
+    act(() =>
+      result.current.mergeImported({
+        imported: [makeModelFile({ id: 'm2' }), makeModelFile({ id: 'm3' })],
+        duplicateCount: 0,
+      }),
+    );
+    expect(result.current.models.map((m) => m.id)).toEqual(['m1', 'm2', 'm3']);
+    expect(result.current.selectedId).toBe('m3');
+    await waitFor(() => {
+      expect(callCount('list_folders')).toBe(before.folders + 1);
+      expect(callCount('list_tag_counts')).toBe(before.tags + 1);
+      expect(callCount('list_creators')).toBe(before.creators + 1);
+    });
+  });
+
+  it('pendingSnapshotIds lists models without a render snapshot and skipSnapshot removes them', async () => {
+    mockInitialLoad([
+      makeModelFile({ id: 'm1', renderSnapshotImage: null }),
+      makeModelFile({ id: 'm2', renderSnapshotImage: 'data:image/png;base64,xx' }),
+      makeModelFile({ id: 'm3', renderSnapshotImage: null }),
+    ]);
+    const { result } = renderHook(() => useCatalogStore());
+    await waitFor(() => expect(result.current.models).toHaveLength(3));
+    expect(result.current.pendingSnapshotIds).toEqual(['m1', 'm3']);
+    act(() => result.current.skipSnapshot('m1'));
+    expect(result.current.pendingSnapshotIds).toEqual(['m3']);
   });
 
   it('addToQueue stores the returned position', async () => {

@@ -13,6 +13,10 @@ export function useCatalogStore() {
   const [trashModels, setTrashModels] = useState<ModelFile[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [skippedSnapshotIds, setSkippedSnapshotIds] = useState<Set<string>>(new Set());
+  // Pro Modell-ID statt global, damit ein Fehler/Erfolg von Modell A nicht
+  // unter Modell B stehen bleibt, wenn der Nutzer zwischendurch die
+  // Detailseite wechselt - kein separater Reset-Effekt nötig, da der Zugriff
+  // in der UI immer gegen detailModel.id abgeglichen wird.
   const [rescanFeedback, setRescanFeedback] = useState<
     { fileId: string; status: 'success' | 'error'; message?: string } | null
   >(null);

@@ -8,7 +8,7 @@ vi.mock('@tauri-apps/api/webview', () => ({
   getCurrentWebview: () => ({ onDragDropEvent: () => Promise.resolve(() => {}) }),
 }));
 
-beforeEach(() => vi.mocked(invoke).mockReset());
+beforeEach(() => { vi.mocked(invoke).mockReset(); });
 
 function setup(overrides: Partial<Parameters<typeof useFileImport>[0]> = {}) {
   const onImported = vi.fn();

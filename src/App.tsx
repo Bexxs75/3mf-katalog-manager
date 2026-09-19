@@ -155,6 +155,13 @@ export default function App() {
           cleanupScanning={cleanup.cleanupScanning}
           cleanupError={cleanup.cleanupError}
           onExportCatalog={backup.exportCatalog}
+          // Backend hat AppState.db bereits auf den neu importierten Katalog
+          // umverbunden - ohne sofortigen Reload wuerde das Frontend weiter
+          // veraltete Modell-IDs aus dem alten Katalog anzeigen und Aktionen
+          // (Loeschen/Favorit/Tag) koennten versehentlich falsche Datensaetze
+          // im neuen Katalog treffen (Finding C1). Ein voller Reload laedt die
+          // React-App komplett neu und holt alle Daten gegen die jetzt aktive
+          // DB neu ab.
           onImportCatalog={() => backup.importCatalog(() => window.location.reload())}
           catalogBackupError={backup.catalogBackupError}
           catalogBaseDir={catalogBaseDir}
@@ -198,7 +205,9 @@ export default function App() {
               collections={collections.collections}
               activeCollection={collections.activeCollection}
               collectionsGalleryOpen={collections.collectionsGalleryOpen}
-              refreshCollections={collections.refreshCollections}
+              createCollection={collections.createCollection}
+              renameCollection={collections.renameCollection}
+              deleteCollection={collections.deleteCollection}
               detailModel={detailModel}
               selectedForBulk={bulk.selectedForBulk}
               confirmBulkDelete={bulk.confirmBulkDelete}

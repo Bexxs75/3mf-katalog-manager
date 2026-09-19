@@ -1,4 +1,3 @@
-import { invoke } from '@tauri-apps/api/core';
 import { Sidebar } from './Sidebar';
 import { ModelGrid } from './ModelGrid';
 import { ModelList } from './ModelList';
@@ -32,7 +31,9 @@ interface CatalogWorkspaceProps {
   collections: Collection[];
   activeCollection: string | null;
   collectionsGalleryOpen: boolean;
-  refreshCollections: () => void;
+  createCollection: (name: string) => void;
+  renameCollection: (id: string, name: string) => void;
+  deleteCollection: (id: string) => void;
   detailModel: ModelFile | null;
   selectedForBulk: Set<string>;
   confirmBulkDelete: boolean;
@@ -97,7 +98,9 @@ export function CatalogWorkspace({
   collections,
   activeCollection,
   collectionsGalleryOpen,
-  refreshCollections,
+  createCollection,
+  renameCollection,
+  deleteCollection,
   detailModel,
   selectedForBulk,
   confirmBulkDelete,
@@ -181,9 +184,7 @@ export function CatalogWorkspace({
           setCollectionsGalleryOpen(true);
           setActiveCollection(null);
         }}
-        onCreateCollection={(name) =>
-          invoke<Collection>('create_collection', { name }).then(() => refreshCollections())
-        }
+        onCreateCollection={createCollection}
       />
 
       <main className="flex-1 min-w-0 flex flex-col min-h-0">
@@ -224,14 +225,9 @@ export function CatalogWorkspace({
               setActiveCollection(id);
               setCollectionsGalleryOpen(false);
             }}
-            onCreate={(name) => invoke<Collection>('create_collection', { name }).then(() => refreshCollections())}
-            onRename={(id, name) => invoke('rename_collection', { collectionId: id, name }).then(() => refreshCollections())}
-            onDelete={(id) => {
-              invoke('delete_collection', { collectionId: id }).then(() => {
-                refreshCollections();
-                if (activeCollection === id) setActiveCollection(null);
-              });
-            }}
+            onCreate={createCollection}
+            onRename={renameCollection}
+            onDelete={deleteCollection}
           />
         ) : detailModel ? (
           <ModelDetailPage
