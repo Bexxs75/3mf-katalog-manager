@@ -23,6 +23,7 @@ interface CatalogWorkspaceProps {
   setActiveFolderId: (id: string) => void;
   onCreateFolder: (parentId: string | null, name: string) => void;
   dragOverFolderId: string | null;
+  draggedFolderId: string | null;
   handleFolderMouseEnter: (id: string) => void;
   onDragFolderStart: (id: string) => void;
   tags: TagCount[];
@@ -90,6 +91,7 @@ export function CatalogWorkspace({
   setActiveFolderId,
   onCreateFolder,
   dragOverFolderId,
+  draggedFolderId,
   handleFolderMouseEnter,
   onDragFolderStart,
   tags,
@@ -164,6 +166,7 @@ export function CatalogWorkspace({
         }}
         onCreateFolder={onCreateFolder}
         dragOverFolderId={dragOverFolderId}
+        draggedFolderId={draggedFolderId}
         onFolderMouseEnter={handleFolderMouseEnter}
         onDragFolderStart={onDragFolderStart}
         tags={tags}

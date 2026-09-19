@@ -197,6 +197,7 @@ export default function App() {
               setActiveFolderId={filters.setActiveFolderId}
               onCreateFolder={dragDrop.onCreateFolder}
               dragOverFolderId={dragDrop.dragOverFolderId}
+              draggedFolderId={dragDrop.draggedFolderId}
               handleFolderMouseEnter={dragDrop.handleFolderMouseEnter}
               onDragFolderStart={dragDrop.onDragFolderStart}
               tags={store.tags}

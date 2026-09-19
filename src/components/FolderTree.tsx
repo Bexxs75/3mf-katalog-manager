@@ -12,6 +12,7 @@ interface Props {
   activeFolderId: string;
   onSelect: (id: string) => void;
   dragOverFolderId?: string | null;
+  draggedFolderId?: string | null;
   onFolderMouseEnter?: (id: string) => void;
   onDragFolderStart?: (id: string) => void;
 }
@@ -35,6 +36,7 @@ export function FolderTree({
   activeFolderId,
   onSelect,
   dragOverFolderId = null,
+  draggedFolderId = null,
   onFolderMouseEnter,
   onDragFolderStart,
 }: Props) {
@@ -101,12 +103,14 @@ export function FolderTree({
           }}
           onMouseEnter={() => onFolderMouseEnter?.(node.id)}
           style={{ paddingLeft: 6 + depth * 16 }}
-          className={`flex items-center gap-1.5 h-7 pr-2 rounded-[7px] cursor-pointer text-[12.5px] border ${
+          className={`flex items-center gap-1.5 h-7 pr-2 rounded-[7px] cursor-pointer select-none text-[12.5px] border ${
             node.id === activeFolderId
               ? 'bg-[var(--accent-soft)] text-[var(--accent)] font-semibold border-transparent'
               : 'text-[var(--ink-2)] hover:bg-[var(--panel-2)] hover:text-[var(--ink)] border-transparent'
           } ${
             dragOverFolderId === node.id ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : ''
+          } ${
+            draggedFolderId === node.id ? 'opacity-40' : ''
           }`}
         >
           <span
