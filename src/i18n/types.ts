@@ -248,6 +248,20 @@ export interface Translations {
 
   createFolderLabel: string;
   newFolderPlaceholder: string;
+  settingsTabGeneral: string;
+  settingsTabSlicer: string;
+  settingsTabCatalog: string;
+  settingsTabInfo: string;
+  infoAppVersionLabel: string;
+  infoUpToDateLabel: string;
+  infoUpdateAvailableLabel: string;
+  infoCheckForUpdateButton: string;
+  infoCheckingForUpdate: string;
+  infoViewReleaseNotes: string;
+  infoSourceCodeLabel: string;
+  infoLicenseLabel: string;
+  updateToastText: string;
+  updateToastDownloadLabel: string;
 }
 
 export function formatCount(forms: PluralForms, n: number): string {

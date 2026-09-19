@@ -244,4 +244,18 @@ export const de: Translations = {
 
   createFolderLabel: '+ Neuer Ordner',
   newFolderPlaceholder: 'Ordnername',
+  settingsTabGeneral: 'Allgemein',
+  settingsTabSlicer: 'Slicer',
+  settingsTabCatalog: 'Katalog',
+  settingsTabInfo: 'Info',
+  infoAppVersionLabel: 'Version {version}',
+  infoUpToDateLabel: 'Du hast die aktuelle Version.',
+  infoUpdateAvailableLabel: 'Update verfügbar: v{version}',
+  infoCheckForUpdateButton: 'Erneut nach Updates suchen',
+  infoCheckingForUpdate: 'Suche läuft…',
+  infoViewReleaseNotes: 'Release-Notes ansehen',
+  infoSourceCodeLabel: 'Quellcode',
+  infoLicenseLabel: 'Lizenz',
+  updateToastText: 'Update verfügbar: v{version}',
+  updateToastDownloadLabel: 'Herunterladen',
 };
