@@ -10,86 +10,25 @@ use super::models::{
     SavedFilterRecord, TagCount, CreatorCount,
 };
 
-const SCHEMA_SQL: &str = include_str!("schema.sql");
+pub const SCHEMA_SQL: &str = include_str!("schema.sql");
 
 pub fn connect(path: &Path) -> Result<Connection, DbError> {
-    let conn = Connection::open(path)?;
-    init(&conn)?;
+    let mut conn = Connection::open(path)?;
+    init(&mut conn)?;
     Ok(conn)
 }
 
 #[allow(dead_code)]
 pub fn connect_in_memory() -> Result<Connection, DbError> {
-    let conn = Connection::open_in_memory()?;
-    init(&conn)?;
+    let mut conn = Connection::open_in_memory()?;
+    init(&mut conn)?;
     Ok(conn)
 }
 
-pub(crate) fn init(conn: &Connection) -> Result<(), DbError> {
+pub(crate) fn init(conn: &mut Connection) -> Result<(), DbError> {
     conn.pragma_update(None, "foreign_keys", true)?;
     conn.execute_batch(SCHEMA_SQL)?;
-    // filament_spools.image_png wurde nachtraeglich zur bereits bestehenden
-    // Tabelle hinzugefuegt (kein Migrations-Framework in diesem Projekt) -
-    // CREATE TABLE IF NOT EXISTS aendert eine schon vorhandene Tabelle nicht.
-    // ALTER TABLE laeuft daher hier zusaetzlich und wird bewusst ignoriert,
-    // falls die Spalte (auf einer frisch angelegten DB, wo CREATE TABLE sie
-    // schon mitbringt) bereits existiert.
-    let _ = conn.execute("ALTER TABLE filament_spools ADD COLUMN image_png BLOB", []);
-    let _ = conn.execute("ALTER TABLE filament_spools ADD COLUMN location TEXT", []);
-    // Gleiches Muster fuer vier neue files-Spalten (Druckstatus, Zuletzt-
-    // angesehen, Creator, Inhalts-Hash) auf einer bereits befuellten
-    // Produktions-DB.
-    let _ = conn.execute(
-        "ALTER TABLE files ADD COLUMN print_status TEXT NOT NULL DEFAULT 'not_printed'
-            CHECK (print_status IN ('not_printed', 'printed'))",
-        [],
-    );
-    let _ = conn.execute("ALTER TABLE files ADD COLUMN last_viewed_at TEXT", []);
-    let _ = conn.execute("ALTER TABLE files ADD COLUMN creator TEXT", []);
-    let _ = conn.execute(
-        "ALTER TABLE folders ADD COLUMN parent_id INTEGER REFERENCES folders(id) ON DELETE CASCADE",
-        [],
-    );
-    let _ = conn.execute("ALTER TABLE folders ADD COLUMN path TEXT", []);
-    let _ = conn.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_folders_path ON folders (path)",
-        [],
-    );
-    // Backfill fuer Bestandsdaten: 'creator' wurde erst mit obiger ALTER TABLE
-    // eingefuehrt und wird sonst nur beim Import gesetzt (import_one). Ohne
-    // diesen Backfill bleibt 'creator' fuer jede vor diesem Upgrade bereits
-    // importierte Datei fuer immer NULL, obwohl der Designer-Wert laengst in
-    // file_metadata steht. Laeuft bei jedem Start, ist aber billig und
-    // idempotent: WHERE creator IS NULL schliesst bereits befuellte Zeilen
-    // bei kuenftigen Starts automatisch aus.
-    let _ = conn.execute(
-        "UPDATE files SET creator = (
-             SELECT value FROM file_metadata
-             WHERE file_id = files.id AND label = 'Designer'
-         ) WHERE creator IS NULL",
-        [],
-    );
-    let _ = conn.execute("ALTER TABLE files ADD COLUMN content_hash TEXT", []);
-    // Index fuer content_hash wird hier ebenfalls als Migrations-Zeile hinzugefuegt,
-    // NACH der ALTER TABLE, da es von der Spalte abhaengt. Auf frischen DBs ist die
-    // Spalte bereits vorhanden (via CREATE TABLE), also ist diese Zeile hier auch auf
-    // frischen DBs ein no-op.
-    let _ = conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_files_content_hash ON files (content_hash)",
-        [],
-    );
-    let _ = conn.execute("ALTER TABLE files ADD COLUMN render_snapshot_png BLOB", []);
-    let _ = conn.execute("ALTER TABLE files ADD COLUMN custom_image_png BLOB", []);
-    let _ = conn.execute("ALTER TABLE files ADD COLUMN source_url TEXT", []);
-    let _ = conn.execute("ALTER TABLE files ADD COLUMN queue_position INTEGER", []);
-    let _ = conn.execute(
-        "ALTER TABLE files ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0",
-        [],
-    );
-    let _ = conn.execute("ALTER TABLE files ADD COLUMN plate_count INTEGER", []);
-    let _ = conn.execute("ALTER TABLE files ADD COLUMN slice_info_json TEXT", []);
-    let _ = conn.execute("ALTER TABLE files ADD COLUMN deleted_at TEXT", []);
-    let _ = conn.execute("ALTER TABLE files ADD COLUMN trash_path TEXT", []);
+    super::migrations::run_migrations(conn)?;
     Ok(())
 }
 

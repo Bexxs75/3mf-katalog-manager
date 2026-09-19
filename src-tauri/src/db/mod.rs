@@ -2,6 +2,9 @@ pub mod error;
 pub mod models;
 mod repository;
 mod collections;
+mod migrations;
+
+pub use migrations::{run_migrations, CURRENT_SCHEMA_VERSION};
 
 pub use repository::{
     add_tag_to_file, connect, delete_file, delete_filament_spool, delete_print_log_entry,
@@ -490,7 +493,7 @@ mod tests {
 
     #[test]
     fn init_migrates_a_pre_existing_database_missing_the_new_columns() {
-        let conn = rusqlite::Connection::open_in_memory().expect("open");
+        let mut conn = rusqlite::Connection::open_in_memory().expect("open");
         conn.execute_batch(
             "CREATE TABLE files (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -516,7 +519,7 @@ mod tests {
         )
         .expect("seed old schema");
 
-        repository::init(&conn).expect("init should migrate, not fail");
+        repository::init(&mut conn).expect("init should migrate, not fail");
 
         let file = get_file(&conn, 1).expect("query").expect("present");
         assert_eq!(file.print_status, "not_printed");
