@@ -476,7 +476,7 @@ export function Rail({
                 <div className="flex justify-between text-[11.5px] py-2 border-t border-[var(--line)] mt-3 text-[var(--ink-2)]">
                   <span>{t('infoSourceCodeLabel')}</span>
                   <span
-                    onClick={() => invoke('open_release_url', { url: 'https://github.com/Bexxs75/3mf-katalog-manager' }).catch(() => {})}
+                    onClick={() => invoke('open_release_url', { url: 'https://github.com/Bexxs75/3mf-katalog-manager/' }).catch(() => {})}
                     className="cursor-pointer hover:text-[var(--accent)]"
                   >
                     GitHub

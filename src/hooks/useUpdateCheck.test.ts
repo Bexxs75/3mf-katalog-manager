@@ -16,11 +16,47 @@ function mockResult(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
+function mockInvokeByCommand(handlers: Record<string, () => Promise<unknown>>) {
+  vi.mocked(invoke).mockImplementation((cmd: string) => {
+    const handler = handlers[cmd];
+    if (handler) return handler();
+    return Promise.resolve(undefined);
+  });
+}
+
 describe('useUpdateCheck', () => {
   it('checks for an update on mount', async () => {
     vi.mocked(invoke).mockResolvedValue(mockResult());
     renderHook(() => useUpdateCheck());
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('check_for_update'));
+  });
+
+  it('loads currentVersion immediately via get_app_version, independent of the network check', async () => {
+    let resolveCheck: (() => void) | undefined;
+    mockInvokeByCommand({
+      get_app_version: () => Promise.resolve('0.7.10'),
+      check_for_update: () =>
+        new Promise((resolve) => {
+          resolveCheck = () => resolve(mockResult({ currentVersion: '0.7.10' }));
+        }),
+    });
+    const { result } = renderHook(() => useUpdateCheck());
+    await waitFor(() => expect(result.current.currentVersion).toBe('0.7.10'));
+    // check_for_update is still pending at this point - currentVersion did not wait for it.
+    expect(result.current.checking).toBe(true);
+    resolveCheck?.();
+    await waitFor(() => expect(result.current.checking).toBe(false));
+  });
+
+  it('keeps currentVersion available even when check_for_update rejects', async () => {
+    mockInvokeByCommand({
+      get_app_version: () => Promise.resolve('0.7.10'),
+      check_for_update: () => Promise.reject(new Error('network down')),
+    });
+    const { result } = renderHook(() => useUpdateCheck());
+    await waitFor(() => expect(result.current.currentVersion).toBe('0.7.10'));
+    await waitFor(() => expect(result.current.checking).toBe(false));
+    expect(result.current.currentVersion).toBe('0.7.10');
   });
 
   it('exposes updateAvailable + latestVersion when a newer version exists', async () => {

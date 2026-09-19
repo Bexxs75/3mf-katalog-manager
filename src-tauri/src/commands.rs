@@ -1930,11 +1930,20 @@ const GITHUB_API_LATEST_RELEASE_URL: &str =
 // einer vertrauten Quelle (GitHub-API) stammt - Defense-in-depth, falls die
 // API-Antwort je manipuliert/geproxyt wird oder sich das Feld-Schema ändert.
 fn validate_release_url(url: &str) -> Result<(), String> {
-    if url.starts_with(GITHUB_REPO_URL_PREFIX) {
+    if url == GITHUB_REPO_URL_PREFIX.trim_end_matches('/') || url.starts_with(GITHUB_REPO_URL_PREFIX) {
         Ok(())
     } else {
         Err("URL zeigt nicht auf das erwartete GitHub-Repository".to_string())
     }
+}
+
+/// Liefert die eigene App-Version synchron und ohne Netzwerkzugriff, damit
+/// die UI die Versionsnummer sofort anzeigen kann, statt auf den (bis zu
+/// 5s dauernden) Netzwerk-Roundtrip von `check_for_update` zu warten
+/// (Final-Review Finding F2).
+#[tauri::command]
+pub fn get_app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
 }
 
 #[tauri::command]
@@ -2014,6 +2023,12 @@ mod update_command_tests {
     #[test]
     fn rejects_a_different_github_repo() {
         assert!(validate_release_url("https://github.com/someone-else/other-repo").is_err());
+    }
+
+    #[test]
+    fn accepts_the_repo_root_url_with_and_without_trailing_slash() {
+        assert!(validate_release_url("https://github.com/Bexxs75/3mf-katalog-manager").is_ok());
+        assert!(validate_release_url("https://github.com/Bexxs75/3mf-katalog-manager/").is_ok());
     }
 }
 
