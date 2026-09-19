@@ -1,0 +1,1819 @@
+use super::*;
+
+const MAX_CUSTOM_IMAGE_BYTES: usize = 5 * 1024 * 1024; // 5 MB
+// Base64 blaeht Rohdaten auf 4/3 auf (plus Padding) - Obergrenze fuer den
+// noch nicht dekodierten String in `set_render_snapshot`.
+const MAX_RENDER_SNAPSHOT_BASE64_BYTES: usize = MAX_CUSTOM_IMAGE_BYTES / 3 * 4 + 4;
+
+/// Schlanke Projektion von `ModelFileDto` fuer die Katalog-Uebersicht
+/// (Grid/Liste, siehe Finding M-01): enthaelt bewusst KEIN
+/// `renderSnapshotImage`/`customImage` und KEINE `materials`/`tags` -
+/// diese werden nur auf der Detailseite ueber `list_files_by_ids([id])`
+/// nachgeladen. `thumbnailImage` bleibt enthalten, da die Kachel-/
+/// Grid-Vorschau ein kleines Bild pro Zeile braucht (Variante (a) aus dem
+/// Task-6-Brief).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileSummaryDto {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    pub file_type: String,
+    // Bewusste Abweichung von einem `Option<String>`-Vorschlag im Review:
+    // das bestehende `ModelFileDto.folder_id` nutzt denselben leeren-String-
+    // als-"kein Ordner"-Sentinel, und das Frontend (`ModelFile.folderId:
+    // string`) ist bereits durchgaengig darauf ausgelegt - siehe
+    // Kommentar in `to_dto()`/`list_files_by_ids` unten.
+    pub folder_id: String,
+    pub file_size_bytes: i64,
+    pub dimensions_mm: Option<[f64; 3]>,
+    pub volume_cm3: Option<f64>,
+    pub object_count: Option<i64>,
+    pub imported_at: String,
+    pub print_status: String,
+    pub favorite: bool,
+    pub queue_position: Option<i64>,
+    pub thumbnail_image: Option<String>,
+}
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TagCountDto {
+    pub label: String,
+    pub count: i64,
+    pub color_hue: i64,
+}
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportResultDto {
+    pub imported: Vec<ModelFileDto>,
+    pub duplicate_count: i64,
+}
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatorCountDto {
+    pub label: String,
+    pub count: i64,
+}
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedFilterDto {
+    pub id: String,
+    pub name: String,
+    pub folder_id: Option<String>,
+    pub tag: Option<String>,
+    pub creator: Option<String>,
+    pub query: Option<String>,
+    pub sort: String,
+}
+fn saved_filter_to_dto(record: db::models::SavedFilterRecord) -> SavedFilterDto {
+    SavedFilterDto {
+        id: record.id.to_string(),
+        name: record.name,
+        folder_id: record.folder_id.map(|id| id.to_string()),
+        tag: record.tag,
+        creator: record.creator,
+        query: record.query,
+        sort: record.sort,
+    }
+}
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedFilterInputDto {
+    pub name: String,
+    pub folder_id: Option<String>,
+    pub tag: Option<String>,
+    pub creator: Option<String>,
+    pub query: Option<String>,
+    pub sort: String,
+}
+#[tauri::command]
+pub fn list_files(state: State<AppState>) -> CmdResult<Vec<ModelFileDto>> {
+    let conn = lock_db(&state)?;
+    let files = db::list_files(&conn).map_err(|e| e.to_string())?;
+    let spools = db::list_filament_spools(&conn).map_err(|e| e.to_string())?;
+    Ok(files.into_iter().map(|f| to_dto(f, &spools)).collect())
+}
+#[tauri::command]
+pub fn list_file_summaries(state: State<AppState>) -> CmdResult<Vec<FileSummaryDto>> {
+    let conn = lock_db(&state)?;
+    let summaries = db::list_file_summaries(&conn).map_err(|e| e.to_string())?;
+    Ok(summaries
+        .into_iter()
+        .map(|s| FileSummaryDto {
+            id: s.id.to_string(),
+            name: s.name,
+            path: s.path,
+            file_type: s.file_type.as_str().to_string(),
+            folder_id: s.folder_id.map(|id| id.to_string()).unwrap_or_default(),
+            file_size_bytes: s.file_size_bytes,
+            dimensions_mm: s.dimensions_mm,
+            volume_cm3: s.volume_cm3,
+            object_count: s.object_count,
+            imported_at: s.imported_at,
+            print_status: s.print_status,
+            favorite: s.favorite,
+            queue_position: s.queue_position,
+            thumbnail_image: encode_image(s.thumbnail_png),
+        })
+        .collect())
+}
+/// Nachtrag zu Finding M-01: die schlanke `list_file_summaries` liefert
+/// bewusst keine Tags mehr, wodurch die Sidebar-Tag-Filterung im Frontend
+/// (`m.tags.includes(activeTag)`) fuer noch nicht einzeln geoeffnete
+/// Modelle keine Treffer mehr fand. Dieser Command liefert alle Datei->Tag-
+/// Zuordnungen in EINER Abfrage (siehe `db::list_all_file_tags`), vom
+/// Frontend nach dem Laden der Summaries einmal fuer die gesamte Liste
+/// abgerufen und clientseitig gemergt - kein Pro-Zeile-Nachladen, bleibt
+/// also O(1) Queries.
+#[tauri::command]
+pub fn list_all_file_tags(state: State<AppState>) -> CmdResult<HashMap<String, Vec<String>>> {
+    let conn = lock_db(&state)?;
+    let pairs = db::list_all_file_tags(&conn).map_err(|e| e.to_string())?;
+    let mut by_file: HashMap<String, Vec<String>> = HashMap::new();
+    for (file_id, tag) in pairs {
+        by_file.entry(file_id.to_string()).or_default().push(tag);
+    }
+    Ok(by_file)
+}
+/// Generischer Nachlade-Command fuer volle Modelldaten (Bilder/Materialien/
+/// Tags/Metadata), die `list_file_summaries` bewusst nicht mitliefert. Kein
+/// neuer Einzeldatensatz-Command - die Detailseite ruft dies mit einer
+/// Liste der Laenge 1 auf (`listFilesByIds([id])`), siehe Task-6-Brief
+/// Korrektur nach fuenfter Review-Runde.
+#[tauri::command]
+pub fn list_files_by_ids(state: State<AppState>, ids: Vec<String>) -> CmdResult<Vec<ModelFileDto>> {
+    let conn = lock_db(&state)?;
+    let parsed_ids: Vec<i64> = ids
+        .iter()
+        .map(|id| id.parse().map_err(|_| format!("invalid file id: {id}")))
+        .collect::<Result<_, String>>()?;
+    let files = db::list_files_by_ids(&conn, &parsed_ids).map_err(|e| e.to_string())?;
+    let spools = db::list_filament_spools(&conn).map_err(|e| e.to_string())?;
+    Ok(files.into_iter().map(|f| to_dto(f, &spools)).collect())
+}
+#[tauri::command]
+pub fn list_tag_counts(state: State<AppState>) -> CmdResult<Vec<TagCountDto>> {
+    let conn = lock_db(&state)?;
+    let tags = db::list_tag_counts(&conn).map_err(|e| e.to_string())?;
+    Ok(tags
+        .into_iter()
+        .map(|t| TagCountDto {
+            label: t.name,
+            count: t.count,
+            color_hue: t.color_hue,
+        })
+        .collect())
+}
+#[tauri::command]
+pub fn list_creators(state: State<AppState>) -> CmdResult<Vec<CreatorCountDto>> {
+    let conn = lock_db(&state)?;
+    let creators = db::list_creator_counts(&conn).map_err(|e| e.to_string())?;
+    Ok(creators
+        .into_iter()
+        .map(|c| CreatorCountDto {
+            label: c.name,
+            count: c.count,
+        })
+        .collect())
+}
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrintLogEntryDto {
+    pub id: String,
+    pub printed_at: String,
+    pub note: Option<String>,
+    pub photo_image: Option<String>,
+}
+fn print_log_entry_to_dto(record: db::models::PrintLogEntryRecord) -> PrintLogEntryDto {
+    PrintLogEntryDto {
+        id: record.id.to_string(),
+        printed_at: record.printed_at,
+        note: record.note,
+        photo_image: encode_image(record.photo_png),
+    }
+}
+#[tauri::command]
+pub fn list_print_log_entries(state: State<AppState>, file_id: String) -> CmdResult<Vec<PrintLogEntryDto>> {
+    let fid: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let conn = lock_db(&state)?;
+    let entries = db::list_print_log_entries(&conn, fid).map_err(|e| e.to_string())?;
+    Ok(entries.into_iter().map(print_log_entry_to_dto).collect())
+}
+#[tauri::command]
+pub fn add_print_log_entry(
+    state: State<AppState>,
+    file_id: String,
+    printed_at: String,
+    note: Option<String>,
+    photo_base64: Option<String>,
+) -> CmdResult<PrintLogEntryDto> {
+    use base64::Engine;
+    let fid: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+
+    let photo_png = photo_base64
+        .map(|b64| base64::engine::general_purpose::STANDARD.decode(&b64).map_err(|e| e.to_string()))
+        .transpose()?;
+    if let Some(bytes) = &photo_png {
+        if bytes.len() > MAX_CUSTOM_IMAGE_BYTES {
+            return Err(format!(
+                "Bild ist zu groß ({:.1} MB) - maximal {} MB erlaubt",
+                bytes.len() as f64 / (1024.0 * 1024.0),
+                MAX_CUSTOM_IMAGE_BYTES / (1024 * 1024)
+            ));
+        }
+    }
+
+    let conn = lock_db(&state)?;
+    let new_entry = db::models::NewPrintLogEntry { file_id: fid, printed_at, note, photo_png };
+    let id = db::insert_print_log_entry(&conn, &new_entry).map_err(|e| e.to_string())?;
+    let entries = db::list_print_log_entries(&conn, fid).map_err(|e| e.to_string())?;
+    let entry = entries
+        .into_iter()
+        .find(|e| e.id == id)
+        .ok_or_else(|| "entry not found after insert".to_string())?;
+    Ok(print_log_entry_to_dto(entry))
+}
+#[tauri::command]
+pub fn delete_print_log_entry(state: State<AppState>, entry_id: String) -> CmdResult<()> {
+    let id: i64 = entry_id.parse().map_err(|_| "invalid entry id".to_string())?;
+    let conn = lock_db(&state)?;
+    db::delete_print_log_entry(&conn, id).map_err(|e| e.to_string())
+}
+/// Gemeinsame Trust-Boundary-Hilfsfunktion fuer jede Stelle, die eine vom
+/// Nutzer ausgewaehlte Bilddatei liest (L-01, Senior-Code-Review 2026-09-19).
+/// Vereinheitlicht das bisher nur bei upload_custom_image() vorhandene
+/// Groessenlimit auch fuer pick_and_read_image() - UND liest TOCTOU-frei:
+/// statt Groesse vorab per metadata() zu pruefen und danach vollstaendig
+/// zu lesen (Race-Fenster, falls die Datei zwischen beiden Aufrufen waechst),
+/// wird direkt mit einem auf `max_bytes + 1` begrenzten Reader gelesen. Sind
+/// mehr als `max_bytes` tatsaechlich gelesen worden, war die Datei zu gross -
+/// das Limit ist damit unabhaengig vom Zeitpunkt einer Groessenaenderung
+/// garantiert, nicht nur zum Zeitpunkt einer fruehen Vorabpruefung.
+fn read_image_bounded(path: &std::path::Path, max_bytes: u64) -> CmdResult<Vec<u8>> {
+    use std::io::Read;
+    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut limited = file.take(max_bytes + 1);
+    let mut buffer = Vec::new();
+    limited.read_to_end(&mut buffer).map_err(|e| e.to_string())?;
+    if buffer.len() as u64 > max_bytes {
+        return Err(format!("Bilddatei ist zu gross (> {max_bytes} Bytes)"));
+    }
+    Ok(buffer)
+}
+#[tauri::command]
+pub async fn pick_and_read_image(app: tauri::AppHandle) -> CmdResult<Option<String>> {
+    use base64::Engine;
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("Bilder", &["png", "jpg", "jpeg", "webp"])
+        .blocking_pick_file();
+
+    let Some(picked) = picked else {
+        return Ok(None);
+    };
+    let path = picked.into_path().map_err(|e| e.to_string())?;
+    let bytes = read_image_bounded(&path, MAX_CUSTOM_IMAGE_BYTES as u64)?;
+    Ok(Some(base64::engine::general_purpose::STANDARD.encode(bytes)))
+}
+#[tauri::command]
+pub fn add_tag(state: State<AppState>, file_id: String, tag: String) -> CmdResult<()> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let conn = lock_db(&state)?;
+    db::add_tag_to_file(&conn, id, &tag).map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub fn remove_tag(state: State<AppState>, file_id: String, tag: String) -> CmdResult<()> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let conn = lock_db(&state)?;
+    db::remove_tag_from_file(&conn, id, &tag).map_err(|e| e.to_string())
+}
+/// Kernlogik von `move_file_to_folder`, getrennt von der `State<AppState>`-
+/// Huelle gehalten, damit sie in Tests direkt gegen eine In-Memory-`Connection`
+/// aufgerufen werden kann (gleiche Konvention wie `import_many_with_conn`/
+/// `rescan_file`).
+fn move_file_to_folder_with_conn(
+    conn: &Connection,
+    file_id: i64,
+    folder_id: Option<i64>,
+    sensitive_dirs: &[PathBuf],
+) -> CmdResult<()> {
+    let file = db::get_file(conn, file_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "file not found".to_string())?;
+
+    let target_dir: std::path::PathBuf = match folder_id {
+        Some(fid) => {
+            let folders = db::list_folders(conn).map_err(|e| e.to_string())?;
+            let folder = folders.iter().find(|f| f.id == fid).ok_or_else(|| "folder not found".to_string())?;
+            std::path::PathBuf::from(&folder.path)
+        }
+        None => std::path::Path::new(&file.path)
+            .parent()
+            .map(|p| p.to_path_buf())
+            .ok_or_else(|| "invalid current path".to_string())?,
+    };
+    reject_if_sensitive_path(&target_dir, sensitive_dirs)?;
+
+    let new_path = target_dir.join(&file.name);
+    let old_path = std::path::PathBuf::from(&file.path);
+    move_file(&old_path, &new_path).map_err(|e| e.to_string())?;
+
+    if let Err(db_err) = db::update_file_folder(conn, file_id, folder_id, &new_path.to_string_lossy()) {
+        // Kompensation: physischen Move rueckgaengig machen, damit
+        // Filesystem und DB nicht auseinanderlaufen (H-01). move_file
+        // selbst hat bereits ein No-Clobber-Gate (C-01), der Rueckweg
+        // darf also ebenfalls nicht versehentlich etwas ueberschreiben.
+        if let Err(rollback_err) = move_file(&new_path, &old_path) {
+            return Err(format!(
+                "DB-Update fehlgeschlagen ({db_err}) UND Rollback der Dateiverschiebung fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}, DB verweist weiter auf {}",
+                new_path.display(),
+                old_path.display()
+            ));
+        }
+        return Err(db_err.to_string());
+    }
+    Ok(())
+}
+/// Verschiebt eine Datei physisch in das Verzeichnis eines (echten)
+/// Zielordners und aktualisiert `folder_id`/`path` in der DB entsprechend.
+/// `folder_id: None` bedeutet "an aktuellem Ort belassen" (siehe Hinweis
+/// im Task-4-Brief - es gibt keinen globalen Basisordner, an den man
+/// zurueckverschieben koennte; der Zweig bleibt fuer zukuenftige
+/// Erweiterung ohne API-Bruch implementiert).
+#[tauri::command]
+pub fn move_file_to_folder(state: State<AppState>, file_id: String, folder_id: Option<String>) -> CmdResult<()> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let target_id: Option<i64> = folder_id
+        .map(|s| s.parse::<i64>().map_err(|_| "invalid folder id".to_string()))
+        .transpose()?;
+
+    let conn = lock_db(&state)?;
+    let sensitive_dirs = state.sensitive_dirs.clone();
+    move_file_to_folder_with_conn(&conn, id, target_id, &sensitive_dirs)
+}
+#[tauri::command]
+pub fn set_print_status(state: State<AppState>, file_id: String, status: String) -> CmdResult<()> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let conn = lock_db(&state)?;
+    db::set_print_status(&conn, id, &status).map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub fn set_favorite(state: State<AppState>, file_id: String, favorite: bool) -> CmdResult<()> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let conn = lock_db(&state)?;
+    db::set_favorite(&conn, id, favorite).map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub fn mark_file_viewed(state: State<AppState>, file_id: String) -> CmdResult<()> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let conn = lock_db(&state)?;
+    db::mark_file_viewed(&conn, id).map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub fn add_to_queue(state: State<AppState>, file_id: String) -> CmdResult<i64> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let conn = lock_db(&state)?;
+    let next = db::max_queue_position(&conn).map_err(|e| e.to_string())?.unwrap_or(0) + 1;
+    db::set_queue_position(&conn, id, Some(next)).map_err(|e| e.to_string())?;
+    Ok(next)
+}
+#[tauri::command]
+pub fn remove_from_queue(state: State<AppState>, file_id: String) -> CmdResult<()> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let conn = lock_db(&state)?;
+    db::set_queue_position(&conn, id, None).map_err(|e| e.to_string())
+}
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueuePositionUpdate {
+    pub file_id: String,
+    pub position: i64,
+}
+#[tauri::command]
+pub fn reorder_queue(state: State<AppState>, updates: Vec<QueuePositionUpdate>) -> CmdResult<()> {
+    let mut conn = lock_db(&state)?;
+    reorder_queue_with_conn(&mut conn, updates)
+}
+/// Kernlogik von `reorder_queue`, getrennt von der `State<AppState>`-Huelle
+/// gehalten, damit sie in Tests direkt gegen eine In-Memory-`Connection`
+/// aufgerufen werden kann (gleiche Konvention wie `import_many_with_conn`).
+///
+/// M-04: alle `file_id`s werden VOR jeder Schreiboperation validiert, und
+/// alle Positions-Updates laufen in genau einer Transaktion. Vorher lief pro
+/// Update ein eigenes `db::set_queue_position(...)?` ohne Transaktion - schlug
+/// das N-te Update fehl, blieben die ersten N-1 bereits committed und der
+/// Batch damit halb angewendet.
+fn reorder_queue_with_conn(conn: &mut Connection, updates: Vec<QueuePositionUpdate>) -> CmdResult<()> {
+    let mut parsed = Vec::with_capacity(updates.len());
+    for update in updates {
+        let id: i64 = update.file_id.parse().map_err(|_| "invalid file id".to_string())?;
+        if db::get_file(conn, id).map_err(|e| e.to_string())?.is_none() {
+            return Err(format!("Datei mit id {id} nicht gefunden - Batch wird nicht angewendet"));
+        }
+        parsed.push((id, update.position));
+    }
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    for (id, position) in parsed {
+        db::set_queue_position(&tx, id, Some(position)).map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
+}
+#[tauri::command]
+pub async fn upload_custom_image(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    file_id: String,
+) -> CmdResult<Option<String>> {
+    use base64::Engine;
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("Bilder", &["png", "jpg", "jpeg", "webp"])
+        .blocking_pick_file();
+
+    let Some(picked) = picked else {
+        return Ok(None);
+    };
+    let path = picked.into_path().map_err(|e| e.to_string())?;
+    let bytes = read_image_bounded(&path, MAX_CUSTOM_IMAGE_BYTES as u64)?;
+
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let conn = lock_db(&state)?;
+    db::set_custom_image_png(&conn, id, &bytes).map_err(|e| e.to_string())?;
+
+    Ok(Some(format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(&bytes)
+    )))
+}
+#[tauri::command]
+pub fn set_render_snapshot(state: State<AppState>, file_id: String, image_base64: String) -> CmdResult<()> {
+    use base64::Engine;
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    // Gleiche Obergrenze wie bei `upload_custom_image`/`add_print_log_entry`
+    // (Security-Review 2026-09-19, Finding A-2). Zuerst die Base64-Laenge
+    // pruefen, damit ein ueberdimensionierter String gar nicht erst dekodiert
+    // (und damit als Rohdaten zusaetzlich alloziert) wird.
+    if image_base64.len() > MAX_RENDER_SNAPSHOT_BASE64_BYTES {
+        return Err(format!(
+            "Bild ist zu groß - maximal {} MB erlaubt",
+            MAX_CUSTOM_IMAGE_BYTES / (1024 * 1024)
+        ));
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&image_base64)
+        .map_err(|e| e.to_string())?;
+    if bytes.len() > MAX_CUSTOM_IMAGE_BYTES {
+        return Err(format!(
+            "Bild ist zu groß ({:.1} MB) - maximal {} MB erlaubt",
+            bytes.len() as f64 / (1024.0 * 1024.0),
+            MAX_CUSTOM_IMAGE_BYTES / (1024 * 1024)
+        ));
+    }
+    let conn = lock_db(&state)?;
+    db::set_render_snapshot_png(&conn, id, &bytes).map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub fn set_source_url(state: State<AppState>, file_id: String, url: Option<String>) -> CmdResult<()> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let url = validate_source_url(url)?;
+    let conn = lock_db(&state)?;
+    db::set_source_url(&conn, id, url.as_deref()).map_err(|e| e.to_string())
+}
+pub(crate) fn is_supported_extension(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| matches!(e.to_lowercase().as_str(), "3mf" | "stl"))
+        .unwrap_or(false)
+}
+pub(crate) fn compute_content_hash(path: &Path) -> CmdResult<String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+
+    const CHUNK_SIZE: usize = 1024 * 1024; // 1 MiB
+    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut reader = std::io::BufReader::new(file);
+    let mut hasher = Sha256::new();
+    let mut buffer = vec![0u8; CHUNK_SIZE];
+    loop {
+        let bytes_read = reader.read(&mut buffer).map_err(|e| e.to_string())?;
+        if bytes_read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..bytes_read]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+/// Einmaliger Startup-Backfill fuer content_hash: die Spalte wurde erst mit
+/// dieser Version eingefuehrt und ist sonst nur fuer neu importierte Dateien
+/// gesetzt (import_one) - fuer den kompletten Bestand vor diesem Upgrade
+/// bliebe die Duplikaterkennung sonst dauerhaft blind. Anders als der
+/// creator-Backfill in db::repository::init() braucht dieser Schritt echten
+/// Datei-Zugriff (Hash ueber die tatsaechlichen Bytes), laeuft deshalb hier
+/// statt dort und wird beim Start aus lib.rs aufgerufen, nachdem die
+/// Connection steht. Eine seit dem Import verschobene/geloeschte Datei
+/// (compute_content_hash schlaegt fehl) wird geloggt und uebersprungen, nicht
+/// abgebrochen - gleiche Fehlerbehandlung wie in import_one/import_many.
+pub fn backfill_content_hashes(conn: &Connection) {
+    let missing = match db::list_files_missing_content_hash(conn) {
+        Ok(rows) => rows,
+        Err(e) => {
+            eprintln!("[startup] content_hash-Backfill: Abfrage fehlgeschlagen: {e}");
+            return;
+        }
+    };
+
+    for (id, path) in missing {
+        match compute_content_hash(Path::new(&path)) {
+            Ok(hash) => {
+                if let Err(e) = db::set_content_hash(conn, id, &hash) {
+                    eprintln!("[startup] content_hash-Backfill: Speichern fehlgeschlagen fuer {path}: {e}");
+                }
+            }
+            Err(e) => {
+                eprintln!("[startup] content_hash-Backfill: Hash fehlgeschlagen fuer {path}: {e}");
+            }
+        }
+    }
+}
+/// Recursively walks `path`, collecting every supported model file found.
+/// A plain file is included as-is if its extension matches; unreadable
+/// directories are skipped rather than failing the whole scan.
+/// Sammelt rekursiv alle unterstuetzten Dateien unter `path`. Traversiert
+/// bewusst KEINE Symlinks - weder auf Verzeichnisse noch auf Dateien
+/// (Policy aus H-03, Senior-Code-Review 2026-09-19, zweite Runde
+/// verschaerft auf Datei-Symlinks): der Check steht bewusst VOR der
+/// is_dir()-Verzweigung, denn `Path::is_dir()` folgt Symlinks transparent
+/// (ein Verzeichnis-Symlink liefert `true`, ein Datei-Symlink `false` und
+/// waere sonst unbemerkt in den `is_supported_extension`-Zweig gefallen
+/// und importiert worden - erste Fassung dieser Funktion prüfte
+/// `is_symlink()` nur INNERHALB des `is_dir()`-Zweigs und deckte damit
+/// Datei-Symlinks nicht ab). Ein Link zurueck auf einen Elternordner
+/// wuerde ohne diesen Schutz zu unbegrenzter Rekursion fuehren, ein Link
+/// auf ein externes Ziel wuerde Dateien ausserhalb des vom Nutzer
+/// gewaehlten Imports einschliessen. Normale (nicht verlinkte) Unterordner
+/// und Dateien werden unveraendert importiert.
+fn collect_supported_files(path: &Path, out: &mut Vec<PathBuf>) {
+    if path.is_symlink() {
+        return;
+    }
+    if path.is_dir() {
+        let Ok(entries) = std::fs::read_dir(path) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            collect_supported_files(&entry.path(), out);
+        }
+    } else if is_supported_extension(path) {
+        out.push(path.to_path_buf());
+    }
+}
+pub(crate) fn import_one(
+    conn: &Connection,
+    path: &Path,
+    display_name: Option<&str>,
+    content_hash: Option<String>,
+    folder_id: Option<i64>,
+) -> CmdResult<ModelFileDto> {
+    let file_name = display_name.map(|n| n.to_string()).unwrap_or_else(|| {
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unbenannt")
+            .to_string()
+    });
+    let file_size_bytes = std::fs::metadata(path).map_err(|e| e.to_string())?.len() as i64;
+    let extension = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase());
+
+    let (
+        file_type,
+        dimensions_mm,
+        volume_cm3,
+        object_count,
+        materials,
+        metadata,
+        thumbnail_png,
+        plate_count,
+        slice_info_json,
+    ) = match extension.as_deref() {
+        Some("3mf") => {
+            let doc = threemf::parse_3mf_file(path).map_err(|e| e.to_string())?;
+            (
+                FileType::ThreeMf,
+                doc.dimensions_mm,
+                doc.volume_cm3,
+                Some(doc.object_count as i64),
+                doc.materials
+                    .into_iter()
+                    .map(|m| MaterialRecord {
+                        name: m.name,
+                        display_color: m.display_color,
+                    })
+                    .collect::<Vec<_>>(),
+                doc.metadata,
+                doc.thumbnail_png,
+                doc.plate_count.map(|c| c as i64),
+                doc.slice_info.and_then(|s| serde_json::to_string(&s).ok()),
+            )
+        }
+        Some("stl") => {
+            let doc = stl::parse_stl_file(path).map_err(|e| e.to_string())?;
+            (
+                FileType::Stl,
+                doc.dimensions_mm,
+                doc.volume_cm3,
+                None,
+                Vec::new(),
+                BTreeMap::new(),
+                None,
+                None,
+                None,
+            )
+        }
+        _ => return Err("nicht unterstütztes Dateiformat".to_string()),
+    };
+
+    let tags = tagging::suggest_tags(&TaggingContext {
+        file_name: &file_name,
+        dimensions_mm,
+        object_count,
+        materials: &materials,
+    });
+
+    let new_file = NewFile {
+        name: file_name,
+        path: path.to_string_lossy().to_string(),
+        file_type,
+        folder_id,
+        origin: "local".to_string(),
+        cloud_id: None,
+        sync_status: "local-only".to_string(),
+        file_size_bytes,
+        dimensions_mm,
+        volume_cm3,
+        object_count,
+        thumbnail_png,
+        imported_at: chrono::Utc::now().to_rfc3339(),
+        file_modified_at: None,
+        materials,
+        metadata: metadata.clone(),
+        tags,
+        print_status: "not_printed".to_string(),
+        last_viewed_at: None,
+        creator: metadata.get("Designer").cloned(),
+        content_hash,
+        render_snapshot_png: None,
+        custom_image_png: None,
+        source_url: None,
+        queue_position: None,
+        favorite: false,
+        plate_count,
+        slice_info_json,
+    };
+
+    let id = db::insert_file_within_tx(conn, &new_file).map_err(|e| e.to_string())?;
+    let file = db::get_file(conn, id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "imported file not found after insert".to_string())?;
+    let spools = db::list_filament_spools(conn).map_err(|e| e.to_string())?;
+    Ok(to_dto(file, &spools))
+}
+/// Liest die Datei einer bereits katalogisierten `FileRecord` erneut vom
+/// gespeicherten Pfad ein und ueberschreibt alle davon abgeleiteten Spalten
+/// (Maße, Volumen, Materialien, Metadaten, Thumbnail, Plattenzahl,
+/// Slice-Info) - fuer den Fall, dass der Nutzer die Datei inzwischen in
+/// OrcaSlicer/Bambu Studio gesliced und am selben Pfad ueberschrieben hat.
+/// Existiert die Datei am Pfad nicht mehr, bricht die Funktion mit einem
+/// Fehler ab, BEVOR irgendetwas in der DB veraendert wird.
+pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFileDto> {
+    let existing = db::get_file(conn, id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Datei nicht im Katalog gefunden".to_string())?;
+    let path = Path::new(&existing.path);
+    if !path.exists() {
+        return Err(format!("Datei nicht gefunden: {}", existing.path));
+    }
+    let extension = path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase());
+
+    let file_size_bytes = std::fs::metadata(path).map_err(|e| e.to_string())?.len() as i64;
+    let content_hash = compute_content_hash(path).ok();
+
+    let update = match extension.as_deref() {
+        Some("3mf") => {
+            let doc = threemf::parse_3mf_file(path).map_err(|e| e.to_string())?;
+            ScannedMetadataUpdate {
+                dimensions_mm: doc.dimensions_mm,
+                volume_cm3: doc.volume_cm3,
+                object_count: Some(doc.object_count as i64),
+                thumbnail_png: doc.thumbnail_png,
+                plate_count: doc.plate_count.map(|c| c as i64),
+                slice_info_json: doc.slice_info.and_then(|s| serde_json::to_string(&s).ok()),
+                materials: doc
+                    .materials
+                    .into_iter()
+                    .map(|m| MaterialRecord { name: m.name, display_color: m.display_color })
+                    .collect(),
+                metadata: doc.metadata,
+                file_size_bytes,
+                content_hash,
+            }
+        }
+        Some("stl") => {
+            let doc = stl::parse_stl_file(path).map_err(|e| e.to_string())?;
+            ScannedMetadataUpdate {
+                dimensions_mm: doc.dimensions_mm,
+                volume_cm3: doc.volume_cm3,
+                object_count: None,
+                thumbnail_png: None,
+                plate_count: None,
+                slice_info_json: None,
+                materials: Vec::new(),
+                metadata: BTreeMap::new(),
+                file_size_bytes,
+                content_hash,
+            }
+        }
+        _ => return Err("nicht unterstütztes Dateiformat".to_string()),
+    };
+
+    db::update_scanned_metadata(conn, id, &update).map_err(|e| e.to_string())?;
+    let file = db::get_file(conn, id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Datei nach Aktualisierung nicht mehr gefunden".to_string())?;
+    let spools = db::list_filament_spools(conn).map_err(|e| e.to_string())?;
+    Ok(to_dto(file, &spools))
+}
+#[tauri::command]
+pub fn rescan_file_metadata(state: State<AppState>, file_id: String) -> CmdResult<ModelFileDto> {
+    let id: i64 = file_id.parse().map_err(|_| "ungueltige Datei-ID".to_string())?;
+    let mut conn = lock_db(&state)?;
+    rescan_file(&mut conn, id)
+}
+/// Expands `roots` (files and/or directories) into the supported model files
+/// they contain, skips paths already present in the catalog, and imports the
+/// rest. A single unreadable/unparsable file is logged and skipped rather
+/// than aborting the whole batch.
+fn import_many(state: &State<AppState>, roots: Vec<PathBuf>) -> CmdResult<ImportResultDto> {
+    let mut conn = lock_db(state)?;
+    import_many_with_conn(&mut conn, roots)
+}
+/// Core of [`import_many`], parameterized over a plain [`Connection`] instead
+/// of a Tauri-managed `State` so it is directly unit-testable (a
+/// `State<AppState>` cannot be constructed outside of a running Tauri app).
+fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) -> CmdResult<ImportResultDto> {
+    let mut seen = HashSet::new();
+    let mut imported = Vec::new();
+    let mut duplicate_count = 0i64;
+
+    // Eine einzige Transaktion fuer den ganzen Batch statt einer pro Datei
+    // (vorher: import_one -> insert_file oeffnete/committete je Aufruf) -
+    // SQLite fsynct bei jedem Commit, ein Ordner-Import mit vielen Dateien
+    // machte den Import dadurch spuerbar langsam (Finding, Review
+    // 2026-09-13).
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    for root in roots {
+        let is_folder_root = root.is_dir();
+        let mut candidates = Vec::new();
+        collect_supported_files(&root, &mut candidates);
+
+        for path in candidates {
+            let path_str = path.to_string_lossy().to_string();
+            if !seen.insert(path_str.clone()) {
+                continue;
+            }
+            match db::file_exists_by_path(&tx, &path_str) {
+                Ok(true) => continue,
+                Ok(false) => {}
+                Err(e) => {
+                    eprintln!("[import] Duplikatprüfung fehlgeschlagen für {path_str}: {e}");
+                    continue;
+                }
+            }
+
+            let content_hash = match compute_content_hash(&path) {
+                Ok(h) => h,
+                Err(e) => {
+                    eprintln!("[import] Hash fehlgeschlagen für {path_str}: {e}");
+                    continue;
+                }
+            };
+            match db::file_exists_by_hash(&tx, &content_hash) {
+                Ok(true) => {
+                    duplicate_count += 1;
+                    continue;
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    eprintln!("[import] Duplikatprüfung (Hash) fehlgeschlagen für {path_str}: {e}");
+                    continue;
+                }
+            }
+
+            let folder_id = if is_folder_root {
+                path.parent().and_then(|dir| db::ensure_folder_path(&tx, &root, dir).ok())
+            } else {
+                None
+            };
+
+            match import_one(&tx, &path, None, Some(content_hash), folder_id) {
+                Ok(dto) => imported.push(dto),
+                Err(e) if e.contains("UNIQUE constraint failed") => {
+                    // Pfad gehoert noch einer Papierkorb-Zeile (files.path ist
+                    // weiterhin UNIQUE, file_exists_by_path sieht geloeschte
+                    // Zeilen aber nicht mehr) - fuer den Nutzer ist das ein
+                    // Duplikat, kein stiller Fehlschlag (Finding 3, Review
+                    // 2026-09-12).
+                    duplicate_count += 1;
+                }
+                Err(e) => eprintln!("[import] Import fehlgeschlagen für {path_str}: {e}"),
+            }
+        }
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(ImportResultDto { imported, duplicate_count })
+}
+#[tauri::command]
+pub async fn import_files(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> CmdResult<ImportResultDto> {
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("3D-Modelle", &["3mf", "stl"])
+        .blocking_pick_files();
+
+    let Some(picked) = picked else {
+        return Ok(ImportResultDto { imported: Vec::new(), duplicate_count: 0 });
+    };
+    let paths = picked
+        .into_iter()
+        .filter_map(|p| p.into_path().ok())
+        .collect();
+    import_many(&state, paths)
+}
+#[tauri::command]
+pub async fn import_folder(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> CmdResult<ImportResultDto> {
+    let picked = app.dialog().file().blocking_pick_folder();
+
+    let Some(picked) = picked else {
+        return Ok(ImportResultDto { imported: Vec::new(), duplicate_count: 0 });
+    };
+    let path = picked.into_path().map_err(|e| e.to_string())?;
+    import_many(&state, vec![path])
+}
+#[tauri::command]
+pub async fn import_folder_as_collection(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> CmdResult<ImportResultDto> {
+    let picked = app.dialog().file().blocking_pick_folder();
+
+    let Some(picked) = picked else {
+        return Ok(ImportResultDto { imported: Vec::new(), duplicate_count: 0 });
+    };
+    let path = picked.into_path().map_err(|e| e.to_string())?;
+    let folder_name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Sammlung".to_string());
+
+    let mut candidates = Vec::new();
+    collect_supported_files(&path, &mut candidates);
+
+    let result = import_many(&state, vec![path])?;
+
+    let conn = lock_db(&state)?;
+    let created_at = chrono::Utc::now().to_rfc3339();
+    let collection_id = db::create_collection(&conn, &folder_name, &created_at).map_err(|e| e.to_string())?;
+
+    let mut position = 0i64;
+    for candidate in &candidates {
+        let path_str = candidate.to_string_lossy().to_string();
+        // Erst per Pfad suchen (deckt neu importierte UND bereits vorher am
+        // selben Pfad katalogisierte Dateien ab). Schlaegt das fehl, kann die
+        // Datei trotzdem schon im Katalog sein - unter einem ANDEREN Pfad,
+        // als exaktes Inhalts-Duplikat (von import_many via content_hash
+        // erkannt und deshalb nicht neu importiert). Ohne diesen Fallback
+        // wuerde so eine Datei beim Sammlung-aus-Ordner-Import stillschweigend
+        // uebersprungen, obwohl sie inhaltlich im Ordner liegt.
+        let file_id = match db::get_file_id_by_path(&conn, &path_str).map_err(|e| e.to_string())? {
+            Some(id) => Some(id),
+            None => match compute_content_hash(candidate) {
+                Ok(hash) => db::get_file_id_by_content_hash(&conn, &hash).map_err(|e| e.to_string())?,
+                Err(_) => None,
+            },
+        };
+        if let Some(file_id) = file_id {
+            db::add_file_to_collection(&conn, collection_id, file_id, position).map_err(|e| e.to_string())?;
+            position += 1;
+        }
+    }
+
+    Ok(result)
+}
+#[tauri::command]
+pub fn import_dropped(state: State<AppState>, paths: Vec<String>) -> CmdResult<ImportResultDto> {
+    import_many(&state, paths.into_iter().map(PathBuf::from).collect())
+}
+/// Oeffnet einen Pfad im systemeigenen Datei-Manager. Bewusst ohne eigene
+/// Plugin-Abhaengigkeit (analog zu `open_in_slicer`): startet direkt das
+/// jeweilige Betriebssystem-Kommando dafuer.
+#[tauri::command]
+pub fn open_in_file_manager(path: String) -> CmdResult<()> {
+    // Nur echte, existierende Verzeichnisse oeffnen: haertet zusaetzlich
+    // gegen ein mit "-" beginnendes `path`, das manche Implementierungen
+    // von xdg-open/open/explorer als eigene Kommandozeilen-Option statt
+    // als Pfad interpretieren wuerden - ein Pfad, der kein reales
+    // Verzeichnis ist, kommt so gar nicht erst bis zum spawn().
+    if !std::path::Path::new(&path).is_dir() {
+        return Err("Pfad ist kein existierendes Verzeichnis".to_string());
+    }
+
+    #[cfg(target_os = "linux")]
+    let mut cmd = std::process::Command::new("xdg-open");
+    #[cfg(target_os = "macos")]
+    let mut cmd = std::process::Command::new("open");
+    #[cfg(target_os = "windows")]
+    let mut cmd = std::process::Command::new("explorer");
+
+    cmd.arg(&path).spawn().map_err(|e| e.to_string())?;
+    Ok(())
+}
+// Encodiert die extrahierte Geometrie als einzelnen Binaerstrom fuer
+// tauri::ipc::Response: 4 Bytes Headerlaenge (u32 LE), dann ein mit
+// Leerzeichen auf ein Vielfaches von 4 Bytes aufgepolsterter JSON-Header,
+// gefolgt von den rohen Float32/Uint32-Puffern je Mesh in Header-
+// Reihenfolge. Jeder Abschnitt (Position/Normale/Index) besteht
+// ausschliesslich aus 4-Byte-Elementen, daher bleibt der laufende Offset
+// nach jedem Mesh automatisch ein Vielfaches von 4 - keine zusaetzliche
+// Ausrichtungs-Behandlung noetig (siehe auch die Wire-Format-Beschreibung
+// in src/lib/parseModelGeometry.ts auf der Frontend-Seite).
+fn encode_render_meshes(meshes: &[RenderMesh]) -> Vec<u8> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct MeshHeaderEntry {
+        vertex_count: usize,
+        has_normal: bool,
+        index_count: usize,
+    }
+
+    let headers: Vec<MeshHeaderEntry> = meshes
+        .iter()
+        .map(|m| MeshHeaderEntry {
+            vertex_count: m.positions.len(),
+            has_normal: m.normals.is_some(),
+            index_count: m.indices.len() * 3,
+        })
+        .collect();
+
+    let mut header_json =
+        serde_json::to_vec(&headers).expect("mesh header serialization cannot fail");
+    while !(4 + header_json.len()).is_multiple_of(4) {
+        header_json.push(b' ');
+    }
+
+    let payload: usize = meshes
+        .iter()
+        .map(|m| {
+            m.positions.len() * 12
+                + m.normals.as_ref().map_or(0, |n| n.len() * 12)
+                + m.indices.len() * 12
+        })
+        .sum();
+    let mut out = Vec::with_capacity(4 + header_json.len() + payload);
+    out.extend_from_slice(&(header_json.len() as u32).to_le_bytes());
+    out.extend_from_slice(&header_json);
+
+    for mesh in meshes {
+        for p in &mesh.positions {
+            for &c in p {
+                out.extend_from_slice(&c.to_le_bytes());
+            }
+        }
+        if let Some(normals) = &mesh.normals {
+            for n in normals {
+                for &c in n {
+                    out.extend_from_slice(&c.to_le_bytes());
+                }
+            }
+        }
+        for tri in &mesh.indices {
+            for &idx in tri {
+                out.extend_from_slice(&idx.to_le_bytes());
+            }
+        }
+    }
+
+    out
+}
+#[tauri::command]
+pub async fn get_model_geometry(
+    state: State<'_, AppState>,
+    file_id: String,
+) -> Result<tauri::ipc::Response, String> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+
+    // Der MutexGuard aus lock_db muss vor dem .await unten aus dem Scope
+    // laufen (nicht nur per drop()): std::sync::MutexGuard ist nicht Send,
+    // und der Compiler haelt ihn sonst faelschlich fuer potenziell ueber die
+    // .await-Grenze hinweg lebendig, was den Command-Handler nicht mehr
+    // Send-kompatibel macht (siehe rust-lang/rust#57478 - ein expliziter
+    // drop()-Aufruf allein genuegt dafuer nicht).
+    let file = {
+        let conn = lock_db(&state)?;
+        db::get_file(&conn, id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "file not found".to_string())?
+    };
+
+    let path = PathBuf::from(file.trash_path.as_deref().unwrap_or(&file.path));
+    let extension = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .ok_or_else(|| "file has no extension".to_string())?;
+
+    let meshes = tauri::async_runtime::spawn_blocking(move || -> CmdResult<Vec<RenderMesh>> {
+        match extension.as_str() {
+            "stl" => {
+                let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+                let mesh = stl::parse_stl_geometry(&bytes).map_err(|e| e.to_string())?;
+                Ok(vec![mesh])
+            }
+            "3mf" => threemf::extract_render_meshes_from_path(&path).map_err(|e| e.to_string()),
+            other => Err(format!("nicht unterstütztes Dateiformat: {other}")),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    Ok(tauri::ipc::Response::new(encode_render_meshes(&meshes)))
+}
+#[tauri::command]
+pub fn save_filter(state: State<AppState>, filter: SavedFilterInputDto) -> CmdResult<SavedFilterDto> {
+    let folder_id = filter
+        .folder_id
+        .map(|s| s.parse::<i64>().map_err(|_| "invalid folder id".to_string()))
+        .transpose()?;
+    let conn = lock_db(&state)?;
+    let new_filter = db::models::NewSavedFilter {
+        name: filter.name,
+        folder_id,
+        tag: filter.tag,
+        creator: filter.creator,
+        query: filter.query,
+        sort: filter.sort,
+    };
+    let id = db::insert_saved_filter(&conn, &new_filter).map_err(|e| e.to_string())?;
+    Ok(saved_filter_to_dto(db::models::SavedFilterRecord {
+        id,
+        name: new_filter.name,
+        folder_id: new_filter.folder_id,
+        tag: new_filter.tag,
+        creator: new_filter.creator,
+        query: new_filter.query,
+        sort: new_filter.sort,
+        created_at: String::new(),
+    }))
+}
+#[tauri::command]
+pub fn list_saved_filters(state: State<AppState>) -> CmdResult<Vec<SavedFilterDto>> {
+    let conn = lock_db(&state)?;
+    let filters = db::list_saved_filters(&conn).map_err(|e| e.to_string())?;
+    Ok(filters.into_iter().map(saved_filter_to_dto).collect())
+}
+#[tauri::command]
+pub fn delete_saved_filter(state: State<AppState>, filter_id: String) -> CmdResult<()> {
+    let id: i64 = filter_id.parse().map_err(|_| "invalid filter id".to_string())?;
+    let conn = lock_db(&state)?;
+    db::delete_saved_filter(&conn, id).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct HeaderEntryForTest {
+        vertex_count: usize,
+        has_normal: bool,
+        index_count: usize,
+    }
+    fn decode_for_test(bytes: &[u8]) -> Vec<(Vec<[f32; 3]>, Option<Vec<[f32; 3]>>, Vec<u32>)> {
+        let header_len = u32::from_le_bytes(bytes[0..4].try_into().unwrap()) as usize;
+        let header_json = std::str::from_utf8(&bytes[4..4 + header_len]).unwrap();
+        let headers: Vec<HeaderEntryForTest> = serde_json::from_str(header_json).unwrap();
+
+        let mut offset = 4 + header_len;
+        let mut result = Vec::new();
+        for h in headers {
+            let mut positions = Vec::with_capacity(h.vertex_count);
+            for _ in 0..h.vertex_count {
+                let x = f32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
+                let y = f32::from_le_bytes(bytes[offset + 4..offset + 8].try_into().unwrap());
+                let z = f32::from_le_bytes(bytes[offset + 8..offset + 12].try_into().unwrap());
+                positions.push([x, y, z]);
+                offset += 12;
+            }
+
+            let normals = if h.has_normal {
+                let mut ns = Vec::with_capacity(h.vertex_count);
+                for _ in 0..h.vertex_count {
+                    let x = f32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
+                    let y = f32::from_le_bytes(bytes[offset + 4..offset + 8].try_into().unwrap());
+                    let z = f32::from_le_bytes(bytes[offset + 8..offset + 12].try_into().unwrap());
+                    ns.push([x, y, z]);
+                    offset += 12;
+                }
+                Some(ns)
+            } else {
+                None
+            };
+
+            let mut indices = Vec::with_capacity(h.index_count);
+            for _ in 0..h.index_count {
+                let idx = u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
+                indices.push(idx);
+                offset += 4;
+            }
+
+            result.push((positions, normals, indices));
+        }
+        assert_eq!(offset, bytes.len(), "encoder should not leave trailing bytes");
+        result
+    }
+    #[test]
+    fn encode_render_meshes_roundtrips_positions_normals_and_indices() {
+        let meshes = vec![
+            RenderMesh {
+                positions: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+                indices: vec![[0, 1, 2]],
+                normals: Some(vec![[0.0, 0.0, 1.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0]]),
+            },
+            RenderMesh {
+                positions: vec![
+                    [5.0, 5.0, 5.0],
+                    [6.0, 5.0, 5.0],
+                    [5.0, 6.0, 5.0],
+                    [5.0, 5.0, 6.0],
+                ],
+                indices: vec![[0, 1, 2], [0, 1, 3]],
+                normals: None,
+            },
+        ];
+
+        let bytes = encode_render_meshes(&meshes);
+        let decoded = decode_for_test(&bytes);
+
+        assert_eq!(decoded.len(), 2);
+        assert_eq!(decoded[0].0, meshes[0].positions);
+        assert_eq!(decoded[0].1, meshes[0].normals);
+        assert_eq!(decoded[0].2, vec![0, 1, 2]);
+
+        assert_eq!(decoded[1].0, meshes[1].positions);
+        assert_eq!(decoded[1].1, None);
+        assert_eq!(decoded[1].2, vec![0, 1, 2, 0, 1, 3]);
+    }
+    #[test]
+    fn encode_render_meshes_handles_empty_mesh_list() {
+        let bytes = encode_render_meshes(&[]);
+        let decoded = decode_for_test(&bytes);
+        assert!(decoded.is_empty());
+    }
+    #[test]
+    fn import_one_stores_slice_info_json_when_present() {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+        use zip::ZipWriter;
+
+        let slice_info_xml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<config>
+  <plate>
+    <metadata key="index" value="1"/>
+    <metadata key="weight" value="9.90"/>
+    <filament id="1" type="PLA" color="#112233FF" used_m="3.0" used_g="9.90"/>
+  </plate>
+</config>"##;
+
+        let mut buf = Vec::new();
+        {
+            let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buf));
+            let options = SimpleFileOptions::default();
+            zip.start_file("[Content_Types].xml", options).unwrap();
+            zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>"#).unwrap();
+            zip.start_file("_rels/.rels", options).unwrap();
+            zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model"/></Relationships>"#).unwrap();
+            zip.start_file("3D/3dmodel.model", options).unwrap();
+            zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources></resources><build></build></model>"#).unwrap();
+            zip.start_file("Metadata/slice_info.config", options).unwrap();
+            zip.write_all(slice_info_xml.as_bytes()).unwrap();
+            zip.finish().unwrap();
+        }
+
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let path = std::env::temp_dir().join(format!("import_one_slice_info_test_{nanos}.3mf"));
+        std::fs::write(&path, &buf).expect("write temp file");
+
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let dto = import_one(&mut conn, &path, None, None, None).expect("import should succeed");
+
+        let stored = crate::db::get_file(&conn, dto.id.parse().unwrap()).expect("query").expect("present");
+        assert!(stored.slice_info_json.is_some());
+        assert!(stored.slice_info_json.unwrap().contains("9.9"));
+
+        let _ = std::fs::remove_file(&path);
+    }
+    #[test]
+    fn import_many_assigns_folder_id_for_folder_roots() {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+        use zip::ZipWriter;
+
+        fn write_minimal_3mf(path: &std::path::Path) {
+            let mut buf = Vec::new();
+            {
+                let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buf));
+                let options = SimpleFileOptions::default();
+                zip.start_file("[Content_Types].xml", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>"#).unwrap();
+                zip.start_file("_rels/.rels", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model"/></Relationships>"#).unwrap();
+                zip.start_file("3D/3dmodel.model", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources></resources><build></build></model>"#).unwrap();
+                zip.finish().unwrap();
+            }
+            std::fs::write(path, &buf).expect("write temp file");
+        }
+
+        let tmp = unique_test_dir("import_many_folder_id");
+        let sub = tmp.join("Tabletop");
+        std::fs::create_dir(&sub).unwrap();
+        let file_path = sub.join("model.3mf");
+        write_minimal_3mf(&file_path);
+
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let result = import_many_with_conn(&mut conn, vec![tmp.clone()])
+            .expect("import should succeed");
+        assert_eq!(result.imported.len(), 1);
+
+        let files = db::list_files(&conn).unwrap();
+        assert_eq!(files.len(), 1);
+        assert!(files[0].folder_id.is_some());
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+    #[test]
+    fn import_one_succeeds_inside_an_already_open_transaction() {
+        // Guards the transaction-batching fix (Review 2026-09-13):
+        // import_many_with_conn now opens ONE transaction for the whole batch
+        // and calls import_one within it. Before the fix, import_one wrote
+        // via db::insert_file, which opened its OWN transaction - nesting a
+        // second `BEGIN` on a connection that is already mid-transaction
+        // fails ("cannot start a transaction within a transaction"), so this
+        // test would have failed before the fix.
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+        use zip::ZipWriter;
+
+        fn write_minimal_3mf(path: &std::path::Path) {
+            let mut buf = Vec::new();
+            {
+                let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buf));
+                let options = SimpleFileOptions::default();
+                zip.start_file("[Content_Types].xml", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>"#).unwrap();
+                zip.start_file("_rels/.rels", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model"/></Relationships>"#).unwrap();
+                zip.start_file("3D/3dmodel.model", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources></resources><build></build></model>"#).unwrap();
+                zip.finish().unwrap();
+            }
+            std::fs::write(path, &buf).expect("write temp file");
+        }
+
+        let tmp = unique_test_dir("import_one_in_open_tx");
+        std::fs::create_dir_all(&tmp).unwrap();
+        let file_path = tmp.join("model.3mf");
+        write_minimal_3mf(&file_path);
+
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let tx = conn.transaction().expect("begin outer transaction");
+
+        let dto = import_one(&tx, &file_path, None, None, None)
+            .expect("import_one must work inside an already-open transaction");
+        assert_eq!(dto.name, "model.3mf");
+
+        tx.commit().expect("commit outer transaction");
+        assert_eq!(db::list_files(&conn).unwrap().len(), 1);
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+    #[test]
+    fn move_file_to_folder_updates_path_and_db() {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+        use zip::ZipWriter;
+
+        fn write_minimal_3mf(path: &std::path::Path) {
+            let mut buf = Vec::new();
+            {
+                let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buf));
+                let options = SimpleFileOptions::default();
+                zip.start_file("[Content_Types].xml", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>"#).unwrap();
+                zip.start_file("_rels/.rels", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model"/></Relationships>"#).unwrap();
+                zip.start_file("3D/3dmodel.model", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources></resources><build></build></model>"#).unwrap();
+                zip.finish().unwrap();
+            }
+            std::fs::write(path, &buf).expect("write temp file");
+        }
+
+        let tmp = unique_test_dir("move_file_to_folder");
+        let src_dir = tmp.join("A");
+        let dst_dir = tmp.join("B");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::create_dir_all(&dst_dir).unwrap();
+        let file_path = src_dir.join("model.3mf");
+        write_minimal_3mf(&file_path);
+
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let imported = import_one(&mut conn, &file_path, None, None, None).expect("import should succeed");
+        let file_id: i64 = imported.id.parse().unwrap();
+
+        // Zielordner direkt per ensure_folder_path anlegen (kein
+        // Command-Roundtrip noetig) - dst_dir liegt unter tmp, also ist tmp
+        // hier der "import_root".
+        let folder_id = db::ensure_folder_path(&conn, &tmp, &dst_dir).expect("ensure_folder_path");
+
+        move_file_to_folder_with_conn(&conn, file_id, Some(folder_id), &[]).expect("move should succeed");
+
+        let expected_path = dst_dir.join("model.3mf");
+        assert!(expected_path.exists(), "file must physically exist under dst_dir after move");
+        assert!(!file_path.exists(), "file must no longer exist at the original location");
+
+        let after = db::get_file(&conn, file_id).expect("get_file").expect("file exists");
+        assert_eq!(after.path, expected_path.to_string_lossy().to_string(), "db path must reflect the new location");
+        assert_eq!(after.folder_id, Some(folder_id), "db folder_id must reflect the target folder");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+    #[test]
+    fn move_file_to_folder_with_conn_rejects_sensitive_target_path() {
+        let tmp = unique_test_dir("move_file_sensitive");
+        let folder_dir = tmp.join("Zielordner");
+        std::fs::create_dir_all(&folder_dir).unwrap();
+        let file_path = tmp.join("model.3mf");
+        std::fs::write(&file_path, b"dummy").unwrap();
+        let sensitive = vec![tmp.clone()];
+
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let folder_id =
+            db::insert_folder_with_parent(&conn, "Zielordner", None, &folder_dir.to_string_lossy()).expect("insert folder");
+        let file_id = db::insert_file_within_tx(&conn, &sample_new_file_for_rescan_test(&file_path))
+            .expect("insert file");
+
+        let result = move_file_to_folder_with_conn(&conn, file_id, Some(folder_id), &sensitive);
+        assert!(result.is_err(), "move_file_to_folder_with_conn must reject a target folder under a sensitive directory");
+        assert!(file_path.exists(), "original file must be untouched after a rejected move");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+    #[test]
+    fn rescan_file_updates_plate_count_and_slice_info_from_current_disk_contents() {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+        use zip::ZipWriter;
+
+        fn write_3mf(path: &std::path::Path, slice_info_xml: Option<&str>) {
+            let mut buf = Vec::new();
+            {
+                let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buf));
+                let options = SimpleFileOptions::default();
+                zip.start_file("[Content_Types].xml", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>"#).unwrap();
+                zip.start_file("_rels/.rels", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model"/></Relationships>"#).unwrap();
+                zip.start_file("3D/3dmodel.model", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources></resources><build></build></model>"#).unwrap();
+                if let Some(xml) = slice_info_xml {
+                    zip.start_file("Metadata/slice_info.config", options).unwrap();
+                    zip.write_all(xml.as_bytes()).unwrap();
+                }
+                zip.finish().unwrap();
+            }
+            std::fs::write(path, &buf).expect("write temp file");
+        }
+
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let path = std::env::temp_dir().join(format!("rescan_test_{nanos}.3mf"));
+        write_3mf(&path, None);
+
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let imported = import_one(&mut conn, &path, None, None, None).expect("initial import");
+        let id: i64 = imported.id.parse().unwrap();
+        assert_eq!(imported.weight_source, "estimated");
+
+        let slice_info_xml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<config>
+  <plate>
+    <metadata key="index" value="1"/>
+    <metadata key="weight" value="7.70"/>
+    <filament id="1" type="PLA" color="#00FF00FF" used_m="2.5" used_g="7.70"/>
+  </plate>
+</config>"##;
+        write_3mf(&path, Some(slice_info_xml));
+
+        let rescanned = rescan_file(&mut conn, id).expect("rescan should succeed");
+        assert_eq!(rescanned.weight_source, "slicer");
+        assert!((rescanned.estimated_weight_g.expect("weight") - 7.70).abs() < 1e-6);
+
+        let _ = std::fs::remove_file(&path);
+    }
+    #[test]
+    fn rescan_file_updates_file_size_and_content_hash_from_current_disk_contents() {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+        use zip::ZipWriter;
+
+        fn write_3mf(path: &std::path::Path, slice_info_xml: Option<&str>) {
+            let mut buf = Vec::new();
+            {
+                let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buf));
+                let options = SimpleFileOptions::default();
+                zip.start_file("[Content_Types].xml", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>"#).unwrap();
+                zip.start_file("_rels/.rels", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model"/></Relationships>"#).unwrap();
+                zip.start_file("3D/3dmodel.model", options).unwrap();
+                zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources></resources><build></build></model>"#).unwrap();
+                if let Some(xml) = slice_info_xml {
+                    zip.start_file("Metadata/slice_info.config", options).unwrap();
+                    zip.write_all(xml.as_bytes()).unwrap();
+                }
+                zip.finish().unwrap();
+            }
+            std::fs::write(path, &buf).expect("write temp file");
+        }
+
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let path = std::env::temp_dir().join(format!("rescan_hash_test_{nanos}.3mf"));
+        write_3mf(&path, None);
+
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let imported = import_one(&mut conn, &path, None, None, None).expect("initial import");
+        let id: i64 = imported.id.parse().unwrap();
+
+        let before = db::get_file(&conn, id).expect("get_file").expect("file exists");
+        let hash_before = before.content_hash.clone();
+        let size_before = before.file_size_bytes;
+
+        // Ueberschreibt die Datei am selben Pfad mit ANDEREM Inhalt (echtes
+        // Re-Slicing simulieren) - die eingebettete slice_info.config macht
+        // die Bytes garantiert unterschiedlich lang.
+        let slice_info_xml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<config>
+  <plate>
+    <metadata key="index" value="1"/>
+    <metadata key="weight" value="12.34"/>
+    <filament id="1" type="PLA" color="#00FF00FF" used_m="4.0" used_g="12.34"/>
+  </plate>
+</config>"##;
+        write_3mf(&path, Some(slice_info_xml));
+
+        let expected_hash = compute_content_hash(&path).expect("hash new content");
+
+        rescan_file(&mut conn, id).expect("rescan should succeed");
+
+        let after = db::get_file(&conn, id).expect("get_file").expect("file exists");
+        assert_ne!(after.file_size_bytes, size_before, "file_size_bytes must reflect rescanned content");
+        assert_ne!(after.content_hash, hash_before, "content_hash must reflect rescanned content");
+        assert_eq!(after.content_hash, Some(expected_hash), "content_hash must match hash of new disk content");
+
+        let _ = std::fs::remove_file(&path);
+    }
+    #[test]
+    fn rescan_file_returns_error_when_file_missing_on_disk() {
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let path = std::env::temp_dir().join(format!("rescan_missing_test_{nanos}.3mf"));
+        // Nie geschrieben - Datei existiert nicht auf der Platte.
+
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let mut new_file = sample_new_file_for_rescan_test(&path);
+        new_file.file_type = FileType::ThreeMf;
+        let id = crate::db::insert_file(&mut conn, &new_file).expect("insert");
+
+        let result = rescan_file(&mut conn, id);
+        assert!(result.is_err());
+    }
+    /// Minimaler `NewFile` fuer den Fehlerfall-Test oben - nur Pfad/Typ sind
+    /// relevant, alle anderen Felder sind fuer `rescan_file` irrelevant, da die
+    /// Funktion bei fehlender Datei abbricht, bevor sie sie liest.
+    fn sample_new_file_for_rescan_test(path: &std::path::Path) -> NewFile {
+        NewFile {
+            name: "missing.3mf".to_string(),
+            path: path.to_string_lossy().to_string(),
+            file_type: FileType::ThreeMf,
+            folder_id: None,
+            origin: "local".to_string(),
+            cloud_id: None,
+            sync_status: "local-only".to_string(),
+            file_size_bytes: 0,
+            dimensions_mm: None,
+            volume_cm3: None,
+            object_count: None,
+            thumbnail_png: None,
+            imported_at: "2026-09-13T00:00:00Z".to_string(),
+            file_modified_at: None,
+            materials: Vec::new(),
+            metadata: BTreeMap::new(),
+            tags: Vec::new(),
+            print_status: "not_printed".to_string(),
+            last_viewed_at: None,
+            creator: None,
+            content_hash: None,
+            render_snapshot_png: None,
+            custom_image_png: None,
+            source_url: None,
+            queue_position: None,
+            favorite: false,
+            plate_count: None,
+            slice_info_json: None,
+        }
+    }
+    #[test]
+    fn add_and_list_print_log_entry_roundtrips_through_dto() {
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let file = sample_file_record(1, None, "2026-09-13T00:00:00Z");
+        // sample_file_record baut nur ein FileRecord in-memory, nicht in der DB -
+        // fuer diesen Test wird stattdessen eine minimale echte Datei ueber
+        // insert_file angelegt, da add_print_log_entry einen echten file_id
+        // Fremdschluessel braucht.
+        let _ = file;
+        let new_file = crate::db::models::NewFile {
+            name: "cube.3mf".to_string(),
+            path: "/tmp/print-log-test-cube.3mf".to_string(),
+            file_type: FileType::ThreeMf,
+            folder_id: None,
+            origin: "local".to_string(),
+            cloud_id: None,
+            sync_status: "local-only".to_string(),
+            file_size_bytes: 0,
+            dimensions_mm: None,
+            volume_cm3: None,
+            object_count: None,
+            thumbnail_png: None,
+            imported_at: "2026-09-13T00:00:00Z".to_string(),
+            file_modified_at: None,
+            materials: Vec::new(),
+            metadata: BTreeMap::new(),
+            tags: Vec::new(),
+            print_status: "not_printed".to_string(),
+            last_viewed_at: None,
+            creator: None,
+            content_hash: None,
+            render_snapshot_png: None,
+            custom_image_png: None,
+            source_url: None,
+            queue_position: None,
+            favorite: false,
+            plate_count: None,
+            slice_info_json: None,
+        };
+        let file_id = crate::db::insert_file(&mut conn, &new_file).expect("insert file");
+
+        let entry = crate::db::models::NewPrintLogEntry {
+            file_id,
+            printed_at: "2026-09-13T10:00:00Z".to_string(),
+            note: Some("Testdruck".to_string()),
+            photo_png: None,
+        };
+        let id = crate::db::insert_print_log_entry(&conn, &entry).expect("insert entry");
+
+        let entries = crate::db::list_print_log_entries(&conn, file_id).expect("list entries");
+        let dtos: Vec<PrintLogEntryDto> = entries.into_iter().map(print_log_entry_to_dto).collect();
+
+        assert_eq!(dtos.len(), 1);
+        assert_eq!(dtos[0].id, id.to_string());
+        assert_eq!(dtos[0].note.as_deref(), Some("Testdruck"));
+        assert_eq!(dtos[0].photo_image, None);
+    }
+    #[test]
+    fn move_file_to_folder_compensates_when_db_update_fails() {
+        let dir = unique_test_dir("move_file_to_folder_compensation");
+        std::fs::create_dir_all(dir.join("source")).unwrap();
+        std::fs::create_dir_all(dir.join("target")).unwrap();
+        let src_path = dir.join("source/model.3mf");
+        std::fs::write(&src_path, b"CONTENT").unwrap();
+        let colliding_target_path = dir.join("target/model.3mf");
+
+        let conn = db::connect_in_memory().unwrap();
+        let folder_id = db::insert_folder_with_parent(&conn, "target", None, &dir.join("target").to_string_lossy()).unwrap();
+        let file_id = db::test_insert_minimal_file(&conn, &src_path.to_string_lossy(), None).unwrap();
+        // Eine ZWEITE Datei-Zeile, deren `path` bereits exakt dem Zielpfad
+        // entspricht, den move_file_to_folder_with_conn gleich physisch
+        // anlegen wird. files.path ist UNIQUE (schema.sql) - das nachfolgende
+        // db::update_file_folder(file_id, .., colliding_target_path) schlaegt
+        // dadurch garantiert NACH dem bereits erfolgreichen physischen Move
+        // fehl (nicht schon bei get_file() wie in der urspruenglichen,
+        // fehlerhaften Testfassung).
+        db::test_insert_minimal_file(&conn, &colliding_target_path.to_string_lossy(), Some(folder_id)).unwrap();
+
+        let result = move_file_to_folder_with_conn(&conn, file_id, Some(folder_id), &[]);
+
+        assert!(result.is_err(), "must surface the UNIQUE constraint failure from the DB update");
+        assert!(src_path.exists(), "source file must be moved back after the DB update failed");
+        assert!(
+            !colliding_target_path.exists() || std::fs::read(&colliding_target_path).unwrap() != b"CONTENT",
+            "the orphaned copy at the destination must not remain with the moved file's content"
+        );
+        let file_after = db::get_file(&conn, file_id).unwrap().unwrap();
+        assert_eq!(file_after.path, src_path.to_string_lossy(), "DB must still point at the original path");
+    }
+    #[test]
+    fn collect_supported_files_does_not_follow_a_self_referential_symlink() {
+        let dir = unique_test_dir("collect_supported_files_symlink_cycle");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("cube.3mf"), b"x").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&dir, dir.join("again")).unwrap();
+
+        let mut out = Vec::new();
+        // Muss terminieren (kein Stack Overflow / keine Endlosschleife) und
+        // darf cube.3mf trotzdem genau einmal finden.
+        collect_supported_files(&dir, &mut out);
+
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0], dir.join("cube.3mf"));
+    }
+    #[test]
+    fn collect_supported_files_does_not_traverse_a_symlink_outside_the_root() {
+        let root = unique_test_dir("collect_supported_files_symlink_outside_root");
+        let outside = unique_test_dir("collect_supported_files_symlink_outside_target");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("secret.3mf"), b"x").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&outside, root.join("link-out")).unwrap();
+        std::fs::write(root.join("cube.3mf"), b"x").unwrap();
+
+        let mut out = Vec::new();
+        collect_supported_files(&root, &mut out);
+
+        assert_eq!(out.len(), 1, "must not traverse into the externally-linked directory");
+        assert_eq!(out[0], root.join("cube.3mf"));
+    }
+    #[test]
+    fn collect_supported_files_does_not_follow_a_symlink_to_a_file_outside_the_root() {
+        let root = unique_test_dir("collect_supported_files_file_symlink");
+        let outside = unique_test_dir("collect_supported_files_file_symlink_target");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("secret.3mf"), b"x").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(outside.join("secret.3mf"), root.join("link.3mf")).unwrap();
+        std::fs::write(root.join("cube.3mf"), b"x").unwrap();
+
+        let mut out = Vec::new();
+        collect_supported_files(&root, &mut out);
+
+        assert_eq!(out.len(), 1, "must not follow a file symlink, even one matching the supported extension");
+        assert_eq!(out[0], root.join("cube.3mf"));
+    }
+    #[test]
+    fn compute_content_hash_matches_previous_full_read_implementation_for_known_content() {
+        let path = unique_test_dir("hash_streaming").join("test.bin");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let content: Vec<u8> = (0..5_000_000u32).map(|i| (i % 256) as u8).collect(); // 5 MB, mehrere Chunks
+        std::fs::write(&path, &content).unwrap();
+
+        let streamed = compute_content_hash(&path).unwrap();
+
+        use sha2::{Digest, Sha256};
+        let expected = format!("{:x}", Sha256::digest(&content));
+        assert_eq!(streamed, expected, "streaming hash must match full-buffer hash for identical content");
+    }
+    #[test]
+    fn compute_content_hash_does_not_allocate_proportional_to_file_size() {
+        // Grobe Rauch-Pruefung ohne externes Profiling-Tool: eine 50-MB-Datei
+        // muss in vertretbarer Zeit UND ohne Panik/OOM auf gaengiger CI-Hardware
+        // hashen - dient primaer als Dokumentation der Erwartung, nicht als
+        // exakte Speichermessung.
+        let path = unique_test_dir("hash_large").join("big.bin");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let chunk = vec![0xABu8; 1024 * 1024];
+        let mut file = std::fs::File::create(&path).unwrap();
+        for _ in 0..50 {
+            std::io::Write::write_all(&mut file, &chunk).unwrap();
+        }
+        let hash = compute_content_hash(&path).unwrap();
+        assert_eq!(hash.len(), 64);
+    }
+    #[test]
+    fn queue_reorder_batch_is_all_or_nothing_on_a_mid_batch_failure() {
+        let mut conn = db::connect_in_memory().unwrap();
+        let id1 = db::test_insert_minimal_file(&conn, "/tmp/1.3mf", None).unwrap();
+        let id2 = db::test_insert_minimal_file(&conn, "/tmp/2.3mf", None).unwrap();
+        // id 999999 existiert absichtlich nicht - erzwingt einen Fehler "in
+        // der Mitte" des Batches (upfront-Validierung faengt ihn zwar schon
+        // vor jeder Schreiboperation ab, aber der Test bleibt aussagekraeftig:
+        // keines der gueltigen Updates darf trotzdem committed sein).
+        let updates = vec![
+            QueuePositionUpdate { file_id: id1.to_string(), position: 1 },
+            QueuePositionUpdate { file_id: "999999".to_string(), position: 2 },
+            QueuePositionUpdate { file_id: id2.to_string(), position: 3 },
+        ];
+
+        let result = reorder_queue_with_conn(&mut conn, updates);
+
+        assert!(result.is_err());
+        let file1 = db::get_file(&conn, id1).unwrap().unwrap();
+        let file2 = db::get_file(&conn, id2).unwrap().unwrap();
+        assert_eq!(file1.queue_position, None, "kein Teil-Update darf committed sein");
+        assert_eq!(file2.queue_position, None, "kein Teil-Update darf committed sein");
+    }
+    #[test]
+    fn a_fully_valid_queue_reorder_batch_remains_functionally_identical() {
+        let mut conn = db::connect_in_memory().unwrap();
+        let id1 = db::test_insert_minimal_file(&conn, "/tmp/1.3mf", None).unwrap();
+        let id2 = db::test_insert_minimal_file(&conn, "/tmp/2.3mf", None).unwrap();
+        let updates = vec![
+            QueuePositionUpdate { file_id: id1.to_string(), position: 1 },
+            QueuePositionUpdate { file_id: id2.to_string(), position: 2 },
+        ];
+
+        reorder_queue_with_conn(&mut conn, updates).unwrap();
+
+        assert_eq!(db::get_file(&conn, id1).unwrap().unwrap().queue_position, Some(1));
+        assert_eq!(db::get_file(&conn, id2).unwrap().unwrap().queue_position, Some(2));
+    }
+    #[test]
+    fn queue_reorder_batch_rolls_back_an_already_applied_earlier_update_when_a_later_one_fails_inside_the_transaction() {
+        // Die obige "all_or_nothing"-Variante scheitert bereits in der
+        // Upfront-Validierung (VOR jeder Schreiboperation) - sie beweist also
+        // nicht, dass die Transaktion selbst ein Rollback durchfuehrt. Dieser
+        // Test erzwingt per Trigger stattdessen einen Fehler INNERHALB der
+        // Transaktion, NACHDEM das erste Update bereits geschrieben wurde,
+        // und prueft, dass genau dieses erste Update wieder zurueckgerollt
+        // wird - unter dem alten, nicht-transaktionalen Code waere es bereits
+        // einzeln committed gewesen.
+        let mut conn = db::connect_in_memory().unwrap();
+        let id1 = db::test_insert_minimal_file(&conn, "/tmp/1.3mf", None).unwrap();
+        let id2 = db::test_insert_minimal_file(&conn, "/tmp/2.3mf", None).unwrap();
+        let id3 = db::test_insert_minimal_file(&conn, "/tmp/3.3mf", None).unwrap();
+
+        // Bricht genau dann ab, wenn queue_position auf 20 gesetzt wird -
+        // das Ziel des ZWEITEN Updates. Das erste Update (id1 -> 10) muss
+        // also innerhalb der Transaktion bereits erfolgreich geschrieben
+        // worden sein, bevor der Abbruch greift.
+        conn.execute_batch(
+            "CREATE TRIGGER block_second_queue_update BEFORE UPDATE ON files
+             WHEN NEW.queue_position = 20
+             BEGIN SELECT RAISE(ABORT, 'simulierter Fehler beim zweiten Queue-Update'); END;",
+        )
+        .unwrap();
+
+        let updates = vec![
+            QueuePositionUpdate { file_id: id1.to_string(), position: 10 },
+            QueuePositionUpdate { file_id: id2.to_string(), position: 20 },
+            QueuePositionUpdate { file_id: id3.to_string(), position: 30 },
+        ];
+
+        let result = reorder_queue_with_conn(&mut conn, updates);
+
+        assert!(result.is_err(), "must surface the trigger-raised failure on the second update");
+        let file1 = db::get_file(&conn, id1).unwrap().unwrap();
+        assert_eq!(
+            file1.queue_position, None,
+            "the first update must be rolled back even though it succeeded inside the transaction before the second one failed"
+        );
+    }
+    #[test]
+    fn read_image_bounded_rejects_a_file_over_the_limit() {
+        let path = unique_test_dir("image_over_limit").join("big.png");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, vec![0u8; 6 * 1024 * 1024]).unwrap(); // 6 MB
+        let result = read_image_bounded(&path, 5 * 1024 * 1024);
+        assert!(result.is_err());
+    }
+    #[test]
+    fn read_image_bounded_accepts_a_file_under_the_limit() {
+        let path = unique_test_dir("image_under_limit").join("small.png");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, vec![0u8; 1024]).unwrap();
+        assert!(read_image_bounded(&path, 5 * 1024 * 1024).is_ok());
+    }
+}
