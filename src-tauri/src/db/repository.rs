@@ -730,6 +730,25 @@ pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbErro
     Ok(rows)
 }
 
+/// Alle Datei->Tag-Zuordnungen in EINER Abfrage (Nachtrag zu Finding M-01:
+/// die Sidebar-Tag-Filterung (`m.tags.includes(activeTag)`) braucht pro
+/// Datei die Tag-Liste, die `list_file_summaries` bewusst nicht mehr
+/// mitliefert - ein Nachladen ueber diese eine Aggregat-Abfrage haelt die
+/// Anzahl der Statements weiterhin O(1) statt O(N), im Gegensatz zu einem
+/// erneuten `load_tags`-Aufruf pro Zeile).
+pub fn list_all_file_tags(conn: &Connection) -> Result<Vec<(i64, String)>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT file_tags.file_id, tags.name
+         FROM file_tags
+         JOIN tags ON tags.id = file_tags.tag_id
+         ORDER BY file_tags.file_id, tags.name",
+    )?;
+    let rows = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
 fn row_to_file(row: &rusqlite::Row) -> rusqlite::Result<FileRecord> {
     let file_type_str: String = row.get(3)?;
     let dim_x: Option<f64> = row.get(9)?;
@@ -1129,6 +1148,50 @@ mod tests {
         // Bewusst KEINE harte Zeit-Assertion (P2-Korrektur) - dieser Test dient
         // nur der manuellen Beobachtung via --nocapture, nicht als CI-Gate.
         eprintln!("list_file_summaries(5000 rows): {elapsed:?}");
+    }
+
+    #[test]
+    fn list_all_file_tags_returns_every_file_tag_pair() {
+        let conn = connect_in_memory().unwrap();
+        let file_a = test_insert_minimal_file(&conn, "/tmp/a.3mf", None).unwrap();
+        let file_b = test_insert_minimal_file(&conn, "/tmp/b.3mf", None).unwrap();
+        add_tag_to_file(&conn, file_a, "vase").unwrap();
+        add_tag_to_file(&conn, file_a, "red").unwrap();
+        add_tag_to_file(&conn, file_b, "vase").unwrap();
+
+        let mut pairs = list_all_file_tags(&conn).unwrap();
+        pairs.sort();
+        let mut expected = vec![
+            (file_a, "red".to_string()),
+            (file_a, "vase".to_string()),
+            (file_b, "vase".to_string()),
+        ];
+        expected.sort();
+        assert_eq!(pairs, expected);
+    }
+
+    #[test]
+    fn list_all_file_tags_executes_a_constant_number_of_queries_regardless_of_row_count() {
+        let conn = connect_in_memory().unwrap();
+        for i in 0..500 {
+            let file_id = test_insert_minimal_file(&conn, &format!("/tmp/tagged-{i}.3mf"), None).unwrap();
+            add_tag_to_file(&conn, file_id, "bulk").unwrap();
+        }
+
+        QUERY_TRACE_COUNT.with(|c| c.set(0));
+        conn.trace_v2(
+            rusqlite::trace::TraceEventCodes::SQLITE_TRACE_STMT,
+            Some(count_traced_query),
+        );
+
+        let pairs = list_all_file_tags(&conn).unwrap();
+
+        assert_eq!(pairs.len(), 500);
+        let executed = QUERY_TRACE_COUNT.with(|c| c.get());
+        assert!(
+            executed <= 3,
+            "list_all_file_tags darf nicht pro Zeile eine zusaetzliche Query ausfuehren (gemessen: {executed} Statements fuer 500 Zeilen - muss unabhaengig von der Zeilenzahl konstant klein bleiben, nicht O(N))"
+        );
     }
 
     #[test]

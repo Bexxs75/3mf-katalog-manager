@@ -12,7 +12,7 @@ pub use repository::{
     file_exists_by_hash, file_exists_by_path, get_file, get_file_id_by_content_hash, insert_file,
     insert_file_within_tx,
     insert_filament_spool, insert_folder_with_parent, insert_print_log_entry,
-    insert_saved_filter, list_creator_counts, list_filament_spools, list_file_summaries, list_files,
+    insert_saved_filter, list_all_file_tags, list_creator_counts, list_filament_spools, list_file_summaries, list_files,
     list_files_by_ids, list_files_missing_content_hash, list_folders, list_print_log_entries,
     list_saved_filters, list_tag_counts,
     list_trash,

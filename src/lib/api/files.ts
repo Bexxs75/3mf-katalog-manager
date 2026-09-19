@@ -8,6 +8,14 @@ export function listFiles() {
 export function listFileSummaries() {
   return invoke<ModelFileSummary[]>('list_file_summaries');
 }
+// Nachtrag zu Finding M-01: list_file_summaries liefert bewusst keine Tags
+// mehr (sonst wieder ein Pro-Zeile-Join) - diese eine Aggregat-Abfrage
+// liefert alle Datei->Tag-Zuordnungen auf einen Schlag (file id -> tags[]),
+// damit die Sidebar-Tag-Filterung fuer noch nicht einzeln geoeffnete
+// Modelle weiterhin korrekt funktioniert (siehe useCatalogStore.ts).
+export function listAllFileTags() {
+  return invoke<Record<string, string[]>>('list_all_file_tags');
+}
 // Generischer Nachlade-Command fuer volle Modelldaten (Bilder/Materialien/
 // Tags/Metadata) - die Detailseite ruft dies mit einer Liste der Laenge 1
 // auf ([id]), kein separater Einzeldatensatz-Command (siehe Task-6-Brief).

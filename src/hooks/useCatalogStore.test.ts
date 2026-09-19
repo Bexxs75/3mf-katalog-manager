@@ -15,6 +15,15 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 function mockInitialLoad(models = [makeModelFile({ id: 'm1' })]) {
   vi.mocked(invoke).mockImplementation((cmd: string, args?: unknown) => {
     if (cmd === 'list_file_summaries') return Promise.resolve(models.map((m) => makeModelFileSummary(m)));
+    // Nachtrag zu Finding M-01: list_all_file_tags liefert alle Datei->Tag-
+    // Zuordnungen in einer Abfrage - hier aus den vollen Fixtures abgeleitet,
+    // damit bestehende Tests, die `tags` auf makeModelFile() setzen,
+    // weiterhin den erwarteten gemergten Zustand nach dem initialen Laden sehen.
+    if (cmd === 'list_all_file_tags') {
+      const byFile: Record<string, string[]> = {};
+      for (const m of models) if (m.tags.length > 0) byFile[m.id] = m.tags;
+      return Promise.resolve(byFile);
+    }
     if (cmd === 'list_files_by_ids') {
       const ids = ((args as { ids?: string[] } | undefined)?.ids) ?? [];
       return Promise.resolve(models.filter((m) => ids.includes(m.id)));
@@ -52,6 +61,31 @@ describe('useCatalogStore', () => {
     await waitFor(() =>
       expect(invoke).toHaveBeenCalledWith('set_print_status', { fileId: 'm1', status: 'printed' }),
     );
+  });
+
+  it('merges the bulk tags aggregate into summary-derived models so tag filtering works for never-opened models', async () => {
+    // Regressionstest fuer den Sidebar-Tag-Filter-Fund (Nachtrag zu Finding
+    // M-01): list_file_summaries liefert selbst keine Tags, ohne den Merge
+    // ueber list_all_file_tags waeren m1.tags/m2.tags hier beide [] und
+    // filterAndSortModels(activeTag: 'vase') haette faelschlich nichts
+    // gefunden, obwohl m1 nie einzeln ausgewaehlt/geoeffnet wurde.
+    mockInitialLoad([
+      makeModelFile({ id: 'm1', tags: ['vase'] }),
+      makeModelFile({ id: 'm2', tags: ['red'] }),
+    ]);
+    const { result } = renderHook(() => useCatalogStore());
+    await waitFor(() => expect(result.current.models).toHaveLength(2));
+
+    const m1 = result.current.models.find((m) => m.id === 'm1');
+    const m2 = result.current.models.find((m) => m.id === 'm2');
+    expect(m1?.tags).toEqual(['vase']);
+    expect(m2?.tags).toEqual(['red']);
+
+    const { filterAndSortModels } = await import('../lib/catalogFilters');
+    const filtered = filterAndSortModels(result.current.models, [], {
+      activeFolderId: 'all', activeTag: 'vase', activeCreator: null, query: '', sort: 'name',
+    });
+    expect(filtered.map((m) => m.id)).toEqual(['m1']);
   });
 
   it('toggleFavorite flips favorite and persists it', async () => {

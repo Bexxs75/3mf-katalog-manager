@@ -74,19 +74,33 @@ export function useCatalogStore() {
   );
 
   const refreshFolders = useCallback(() => foldersApi.listFolders().then(setFolders), []);
+
+  // Laedt die schlanken Summaries UND die Datei->Tag-Zuordnung in je EINER
+  // Abfrage (parallel) und mergt Tags client-seitig in die daraus
+  // abgeleiteten ModelFile-Stubs - ein einziger zusaetzlicher Request fuer
+  // die GESAMTE Liste, kein Pro-Zeile-Nachladen (Nachtrag zu Finding M-01:
+  // ohne das faende die Sidebar-Tag-Filterung fuer noch nicht einzeln
+  // geoeffnete Modelle keine Treffer mehr, siehe catalogFilters.ts).
+  const loadSummariesWithTags = useCallback(() => {
+    return Promise.all([filesApi.listFileSummaries(), filesApi.listAllFileTags()]).then(([summaries, tagsByFileId]) =>
+      summaries.map((s) => ({ ...summaryToModelFile(s), tags: tagsByFileId[s.id] ?? [] })),
+    );
+  }, []);
+
   // Katalog-Uebersicht laedt seit Finding M-01 nur noch die schlanke
-  // Summary-Projektion statt der vollen ModelFile-Liste (Materials/Tags/
+  // Summary-Projektion statt der vollen ModelFile-Liste (Materials/
   // Metadata sowie render_snapshot_png/custom_image_png wurden bisher pro
   // Zeile mitgeladen, obwohl die Grid-/Listen-Ansicht sie gar nicht
-  // anzeigt). Ein refreshFiles() setzt damit alle Eintraege wieder auf den
-  // schlanken Stand zurueck - bereits "hochgestufte" (fullyLoadedIds)
-  // Eintraege werden beim naechsten ensureFullModel()-Aufruf einfach erneut
-  // nachgeladen, das ist unkritisch (kein Datenverlust, nur ein zusaetzlicher
-  // Roundtrip).
+  // anzeigt) - Tags werden ueber loadSummariesWithTags() separat in einer
+  // einzigen Aggregat-Abfrage gemergt. Ein refreshFiles() setzt damit alle
+  // Eintraege wieder auf den schlanken Stand zurueck - bereits
+  // "hochgestufte" (fullyLoadedIds) Eintraege werden beim naechsten
+  // ensureFullModel()-Aufruf einfach erneut nachgeladen, das ist unkritisch
+  // (kein Datenverlust, nur ein zusaetzlicher Roundtrip).
   const refreshFiles = useCallback(() => {
     setFullyLoadedIds(new Set());
-    return filesApi.listFileSummaries().then((summaries) => setModels(summaries.map(summaryToModelFile)));
-  }, []);
+    return loadSummariesWithTags().then(setModels);
+  }, [loadSummariesWithTags]);
   const refreshTags = useCallback(() => catalogMetaApi.listTagCounts().then(setTags), []);
   const refreshCreators = useCallback(() => catalogMetaApi.listCreators().then(setCreators), []);
   const refreshSavedFilters = useCallback(() => catalogMetaApi.listSavedFilters().then(setSavedFilters), []);
@@ -120,8 +134,7 @@ export function useCatalogStore() {
   );
 
   useEffect(() => {
-    filesApi.listFileSummaries().then((summaries) => {
-      const mapped = summaries.map(summaryToModelFile);
+    loadSummariesWithTags().then((mapped) => {
       setModels(mapped);
       setSelectedId((prev) => prev ?? mapped[0]?.id ?? null);
     });

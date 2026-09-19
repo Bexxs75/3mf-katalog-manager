@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -416,6 +416,25 @@ pub fn list_file_summaries(state: State<AppState>) -> CmdResult<Vec<FileSummaryD
             thumbnail_image: encode_image(s.thumbnail_png),
         })
         .collect())
+}
+
+/// Nachtrag zu Finding M-01: die schlanke `list_file_summaries` liefert
+/// bewusst keine Tags mehr, wodurch die Sidebar-Tag-Filterung im Frontend
+/// (`m.tags.includes(activeTag)`) fuer noch nicht einzeln geoeffnete
+/// Modelle keine Treffer mehr fand. Dieser Command liefert alle Datei->Tag-
+/// Zuordnungen in EINER Abfrage (siehe `db::list_all_file_tags`), vom
+/// Frontend nach dem Laden der Summaries einmal fuer die gesamte Liste
+/// abgerufen und clientseitig gemergt - kein Pro-Zeile-Nachladen, bleibt
+/// also O(1) Queries.
+#[tauri::command]
+pub fn list_all_file_tags(state: State<AppState>) -> CmdResult<HashMap<String, Vec<String>>> {
+    let conn = lock_db(&state)?;
+    let pairs = db::list_all_file_tags(&conn).map_err(|e| e.to_string())?;
+    let mut by_file: HashMap<String, Vec<String>> = HashMap::new();
+    for (file_id, tag) in pairs {
+        by_file.entry(file_id.to_string()).or_default().push(tag);
+    }
+    Ok(by_file)
 }
 
 /// Generischer Nachlade-Command fuer volle Modelldaten (Bilder/Materialien/
