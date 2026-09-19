@@ -144,8 +144,14 @@ export function Header({
           {t('viewGrid')}
         </button>
         <button
-          onClick={() => onViewChange('list')}
-          className={`${segBase} ${view === 'list' ? segActive : segInactive}`}
+          onClick={() => onViewChange('groupedGrid')}
+          className={`${segBase} ${view === 'groupedGrid' ? segActive : segInactive}`}
+        >
+          {t('viewFolder')}
+        </button>
+        <button
+          onClick={() => onViewChange('groupedList')}
+          className={`${segBase} ${view === 'groupedList' ? segActive : segInactive}`}
         >
           {t('viewList')}
         </button>
