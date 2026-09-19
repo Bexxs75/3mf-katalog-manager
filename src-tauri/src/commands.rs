@@ -1478,7 +1478,24 @@ pub(crate) fn backfill_content_hashes(conn: &Connection) {
 /// Recursively walks `path`, collecting every supported model file found.
 /// A plain file is included as-is if its extension matches; unreadable
 /// directories are skipped rather than failing the whole scan.
+/// Sammelt rekursiv alle unterstuetzten Dateien unter `path`. Traversiert
+/// bewusst KEINE Symlinks - weder auf Verzeichnisse noch auf Dateien
+/// (Policy aus H-03, Senior-Code-Review 2026-09-19, zweite Runde
+/// verschaerft auf Datei-Symlinks): der Check steht bewusst VOR der
+/// is_dir()-Verzweigung, denn `Path::is_dir()` folgt Symlinks transparent
+/// (ein Verzeichnis-Symlink liefert `true`, ein Datei-Symlink `false` und
+/// waere sonst unbemerkt in den `is_supported_extension`-Zweig gefallen
+/// und importiert worden - erste Fassung dieser Funktion prüfte
+/// `is_symlink()` nur INNERHALB des `is_dir()`-Zweigs und deckte damit
+/// Datei-Symlinks nicht ab). Ein Link zurueck auf einen Elternordner
+/// wuerde ohne diesen Schutz zu unbegrenzter Rekursion fuehren, ein Link
+/// auf ein externes Ziel wuerde Dateien ausserhalb des vom Nutzer
+/// gewaehlten Imports einschliessen. Normale (nicht verlinkte) Unterordner
+/// und Dateien werden unveraendert importiert.
 fn collect_supported_files(path: &Path, out: &mut Vec<PathBuf>) {
+    if path.is_symlink() {
+        return;
+    }
     if path.is_dir() {
         let Ok(entries) = std::fs::read_dir(path) else {
             return;
@@ -4926,5 +4943,58 @@ mod tests {
             .query_row("SELECT deleted_at FROM files WHERE id = ?1", [file_id], |r| r.get(0))
             .unwrap();
         assert!(still_deleted.is_some(), "db must still show the file as deleted after the failed restore");
+    }
+
+    #[test]
+    fn collect_supported_files_does_not_follow_a_self_referential_symlink() {
+        let dir = unique_test_dir("collect_supported_files_symlink_cycle");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("cube.3mf"), b"x").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&dir, dir.join("again")).unwrap();
+
+        let mut out = Vec::new();
+        // Muss terminieren (kein Stack Overflow / keine Endlosschleife) und
+        // darf cube.3mf trotzdem genau einmal finden.
+        collect_supported_files(&dir, &mut out);
+
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0], dir.join("cube.3mf"));
+    }
+
+    #[test]
+    fn collect_supported_files_does_not_traverse_a_symlink_outside_the_root() {
+        let root = unique_test_dir("collect_supported_files_symlink_outside_root");
+        let outside = unique_test_dir("collect_supported_files_symlink_outside_target");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("secret.3mf"), b"x").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&outside, root.join("link-out")).unwrap();
+        std::fs::write(root.join("cube.3mf"), b"x").unwrap();
+
+        let mut out = Vec::new();
+        collect_supported_files(&root, &mut out);
+
+        assert_eq!(out.len(), 1, "must not traverse into the externally-linked directory");
+        assert_eq!(out[0], root.join("cube.3mf"));
+    }
+
+    #[test]
+    fn collect_supported_files_does_not_follow_a_symlink_to_a_file_outside_the_root() {
+        let root = unique_test_dir("collect_supported_files_file_symlink");
+        let outside = unique_test_dir("collect_supported_files_file_symlink_target");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("secret.3mf"), b"x").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(outside.join("secret.3mf"), root.join("link.3mf")).unwrap();
+        std::fs::write(root.join("cube.3mf"), b"x").unwrap();
+
+        let mut out = Vec::new();
+        collect_supported_files(&root, &mut out);
+
+        assert_eq!(out.len(), 1, "must not follow a file symlink, even one matching the supported extension");
+        assert_eq!(out[0], root.join("cube.3mf"));
     }
 }
