@@ -400,6 +400,13 @@ pub fn list_creator_counts(conn: &Connection) -> Result<Vec<CreatorCount>, DbErr
     Ok(rows)
 }
 
+// Nur noch von Testcode aufgerufen (hier und in commands/files.rs,
+// commands/backup.rs) - produktiver Code importiert seit Task 14 immer
+// Dateien im Batch ueber `insert_file_within_tx` direkt (eine gemeinsame
+// Transaktion statt einer pro Datei), siehe Kommentar dort. Ohne dieses
+// `#[cfg(test)]` waere die Funktion in einem Nicht-Test-Build totes Gepaeck
+// (Abschluss-Review, Finding 5).
+#[cfg(test)]
 pub fn insert_file(conn: &mut Connection, file: &NewFile) -> Result<i64, DbError> {
     let tx = conn.transaction()?;
     let id = insert_file_within_tx(&tx, file)?;
@@ -744,6 +751,16 @@ pub struct FileSummary {
     pub favorite: bool,
     pub queue_position: Option<i64>,
     pub thumbnail_png: Option<Vec<u8>>,
+    // Finding 1 (Abschluss-Review): NICHT der Blob selbst (der bleibt bewusst
+    // ausgeschlossen), sondern nur ein billiges Praesenz-Flag - damit das
+    // Frontend "braucht dieses Modell noch einen gerenderten Snapshot?" am
+    // tatsaechlichen DB-Stand festmachen kann statt an "wurde der Blob in
+    // diese schlanke Projektion mitgeliefert?" (der es nie wird). Ohne dieses
+    // Flag wertete `pendingSnapshotIds` JEDES per Summary geladene Modell als
+    // "braucht Snapshot", auch wenn bereits einer gespeichert ist - Snapshot-
+    // Rendering + Persistierung fuer den GESAMTEN Katalog bei jedem
+    // refreshFiles() (Import/Delete/Reorder-Fehler/...) statt nur einmalig.
+    pub has_render_snapshot: bool,
 }
 
 pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbError> {
@@ -751,7 +768,8 @@ pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbErro
         "SELECT id, name, path, file_type, folder_id, file_size_bytes,
                 dimension_x_mm, dimension_y_mm, dimension_z_mm, volume_cm3,
                 object_count, imported_at, print_status, favorite,
-                queue_position, thumbnail_png
+                queue_position, thumbnail_png,
+                render_snapshot_png IS NOT NULL AS has_render_snapshot
          FROM files WHERE deleted_at IS NULL ORDER BY name",
     )?;
     let rows = stmt
@@ -779,6 +797,7 @@ pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbErro
                 favorite: row.get::<_, i64>(13)? != 0,
                 queue_position: row.get(14)?,
                 thumbnail_png: row.get(15)?,
+                has_render_snapshot: row.get::<_, i64>(16)? != 0,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -1144,6 +1163,20 @@ mod tests {
         // dieser Test dokumentiert die Absicht ueber die Feldliste des Typs selbst
         // (Compile-Zeit-Garantie: FileSummary { .. } ohne diese Felder).
         assert_eq!(summaries[0].thumbnail_png, None);
+        // Finding 1: obwohl der Blob selbst nicht mitkommt, MUSS das Praesenz-
+        // Flag korrekt widerspiegeln, dass ein Snapshot in der DB existiert.
+        assert!(summaries[0].has_render_snapshot);
+    }
+
+    #[test]
+    fn list_file_summaries_has_render_snapshot_false_when_none_saved() {
+        let conn = connect_in_memory().unwrap();
+        test_insert_minimal_file(&conn, "/tmp/y.3mf", None).unwrap();
+
+        let summaries = list_file_summaries(&conn).unwrap();
+
+        assert_eq!(summaries.len(), 1);
+        assert!(!summaries[0].has_render_snapshot);
     }
 
     // `Connection::trace` (rusqlite 0.40) nimmt nur einen reinen

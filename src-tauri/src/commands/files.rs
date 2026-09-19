@@ -34,6 +34,9 @@ pub struct FileSummaryDto {
     pub favorite: bool,
     pub queue_position: Option<i64>,
     pub thumbnail_image: Option<String>,
+    // Finding 1 (Abschluss-Review): billiges Praesenz-Flag statt des Blobs
+    // selbst - siehe Kommentar an `db::FileSummary::has_render_snapshot`.
+    pub has_render_snapshot: bool,
 }
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -114,6 +117,7 @@ pub fn list_file_summaries(state: State<AppState>) -> CmdResult<Vec<FileSummaryD
             favorite: s.favorite,
             queue_position: s.queue_position,
             thumbnail_image: encode_image(s.thumbnail_png),
+            has_render_snapshot: s.has_render_snapshot,
         })
         .collect())
 }
