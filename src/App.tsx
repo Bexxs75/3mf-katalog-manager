@@ -10,6 +10,7 @@ import { MoveToast } from './components/MoveToast';
 import { CatalogSetupDialog } from './components/CatalogSetupDialog';
 import { TrashView } from './components/TrashView';
 import { CatalogWorkspace } from './components/CatalogWorkspace';
+import { UpdateAvailableToast } from './components/UpdateAvailableToast';
 import { useTheme } from './hooks/useTheme';
 import { useUiDensity } from './hooks/UiDensityContext';
 import { useSlicers } from './hooks/useSlicers';
@@ -25,6 +26,7 @@ import { useCatalogBackup } from './hooks/useCatalogBackup';
 import { useCatalogCleanup } from './hooks/useCatalogCleanup';
 import { useBulkSelection } from './hooks/useBulkSelection';
 import { useSlicerLauncher } from './hooks/useSlicerLauncher';
+import { useUpdateCheck } from './hooks/useUpdateCheck';
 
 export default function App() {
   const { setting, setTheme } = useTheme();
@@ -66,6 +68,7 @@ export default function App() {
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const slicerLauncher = useSlicerLauncher(store.models, slicers, primaryId, () => setSettingsOpen(true));
+  const update = useUpdateCheck();
 
   const [setupDialogOpen, setSetupDialogOpen] = useState(!setupSeen);
   const [detailModelId, setDetailModelId] = useState<string | null>(null);
@@ -168,6 +171,14 @@ export default function App() {
           catalogBackupError={backup.catalogBackupError}
           catalogBaseDir={catalogBaseDir}
           onOpenCatalogSetup={() => setSetupDialogOpen(true)}
+          updateInfo={{
+            currentVersion: update.currentVersion,
+            latestVersion: update.latestVersion,
+            updateAvailable: update.updateAvailable,
+            checking: update.checking,
+            checkNow: update.checkNow,
+            download: update.download,
+          }}
         />
         <div className="flex-1 min-w-0 flex flex-col min-h-0">
           {mainView === 'trash' ? (
@@ -280,6 +291,14 @@ export default function App() {
               imported={fileImport.importBanner.imported}
               duplicates={fileImport.importBanner.duplicates}
               onClose={fileImport.dismissImportBanner}
+            />
+          )}
+
+          {update.updateAvailable && !update.dismissed && (
+            <UpdateAvailableToast
+              latestVersion={update.latestVersion}
+              onDownload={update.download}
+              onDismiss={update.dismiss}
             />
           )}
 
