@@ -1,6 +1,6 @@
 pub mod error;
 pub mod models;
-pub(crate) mod repository;
+mod repository;
 mod collections;
 mod migrations;
 
@@ -37,6 +37,9 @@ pub use collections::{
 
 #[cfg(test)]
 pub use repository::connect_in_memory;
+
+#[cfg(test)]
+pub use repository::SCHEMA_SQL;
 
 #[cfg(test)]
 mod tests {

@@ -3308,7 +3308,7 @@ mod tests {
         let tmp_path = unique_test_db_path("validate_db_pre_migration_backup");
         {
             let conn = rusqlite::Connection::open(&tmp_path).unwrap();
-            conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+            conn.execute_batch(crate::db::SCHEMA_SQL).unwrap();
             // Bewusst KEIN run_migrations() hier - simuliert exakt den
             // Zustand einer vor der parent_id/path-Migration exportierten DB.
             conn.execute(
