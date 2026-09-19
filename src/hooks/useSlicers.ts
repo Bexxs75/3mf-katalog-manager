@@ -1,4 +1,5 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import * as catalogMetaApi from '../lib/api/catalogMeta';
 import type { SlicerConfig } from '../types';
 
 const STORAGE_KEY = '3mf-katalog-slicers';
@@ -112,6 +113,17 @@ export function useSlicers() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       return next;
     });
+  }, []);
+
+  useEffect(() => {
+    catalogMetaApi.scanInstalledSlicers()
+      .then(mergeDetected)
+      .catch((e) => {
+        // Rein komfortsteigerndes Feature - ein Fehlschlag darf die App
+        // nicht beeintraechtigen, nur geloggt werden.
+        console.warn('[slicer-scan] Automatische Slicer-Erkennung fehlgeschlagen:', e);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return {
