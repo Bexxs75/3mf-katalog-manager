@@ -38,6 +38,11 @@ function summaryToModelFile(s: ModelFileSummary): ModelFile {
     creator: null,
     customImage: null,
     thumbnailImage: s.thumbnailImage,
+    // Der grosse Blob selbst kommt nie aus list_file_summaries (siehe oben) -
+    // ob dieses Modell TATSAECHLICH bereits einen gespeicherten Snapshot hat,
+    // steht in `s.hasRenderSnapshot` (Finding 1) und wird separat in
+    // `useCatalogStore` fuer `pendingSnapshotIds` ausgewertet, nicht hier
+    // gegen `renderSnapshotImage === null` verwechselt.
     renderSnapshotImage: null,
     sourceUrl: null,
     queuePosition: s.queuePosition,
@@ -45,6 +50,23 @@ function summaryToModelFile(s: ModelFileSummary): ModelFile {
     deletedAt: null,
   };
 }
+
+// Finding 3 (Abschluss-Review): Feld-Praefixe, die im "<feld>:<id>"-Schema
+// von pendingMutationCounts/mutationEpochs oben verwendet werden, gemappt auf
+// den tatsaechlichen ModelFile-Feldnamen (weicht bei "queue"/"renderSnapshot"
+// vom Feldnamen ab). ensureFullModel() nutzt dieselbe Liste, um genau diese
+// Felder aus einem parallel laufenden/gerade erst resyncten
+// Mutations-Aufruf von seinem eigenen (potenziell veralteten) Fetch-Ergebnis
+// auszunehmen - siehe Kommentar an ensureFullModel unten.
+const MUTATION_TRACKED_FIELDS: { prefix: string; field: keyof ModelFile }[] = [
+  { prefix: 'lastViewedAt', field: 'lastViewedAt' },
+  { prefix: 'tags', field: 'tags' },
+  { prefix: 'printStatus', field: 'printStatus' },
+  { prefix: 'favorite', field: 'favorite' },
+  { prefix: 'queue', field: 'queuePosition' },
+  { prefix: 'renderSnapshot', field: 'renderSnapshotImage' },
+  { prefix: 'sourceUrl', field: 'sourceUrl' },
+];
 
 export function useCatalogStore() {
   const [models, setModels] = useState<ModelFile[]>([]);
@@ -60,6 +82,15 @@ export function useCatalogStore() {
   // schlanke Summaries zuruecksetzt (siehe ensureFullModel).
   const [fullyLoadedIds, setFullyLoadedIds] = useState<Set<string>>(new Set());
   const [skippedSnapshotIds, setSkippedSnapshotIds] = useState<Set<string>>(new Set());
+  // Finding 1 (Abschluss-Review): IDs, fuer die die zuletzt geladene Summary
+  // bestaetigt hat, dass in der DB bereits ein render_snapshot_png existiert
+  // (`ModelFileSummary.hasRenderSnapshot`). Der grosse Blob selbst wird ueber
+  // list_file_summaries nie mitgeliefert, weshalb `renderSnapshotImage` fuer
+  // summary-geladene Modelle IMMER `null` ist - ohne dieses Set wuerde
+  // `pendingSnapshotIds` jedes Modell faelschlich als "braucht Snapshot"
+  // werten, auch wenn bereits einer gespeichert ist (Re-Rendering + erneutes
+  // Persistieren des GESAMTEN Katalogs bei jedem refreshFiles()).
+  const [summaryConfirmedSnapshotIds, setSummaryConfirmedSnapshotIds] = useState<Set<string>>(new Set());
   // Pro Modell-ID statt global, damit ein Fehler/Erfolg von Modell A nicht
   // unter Modell B stehen bleibt, wenn der Nutzer zwischendurch die
   // Detailseite wechselt - kein separater Reset-Effekt nötig, da der Zugriff
@@ -142,8 +173,16 @@ export function useCatalogStore() {
   }
 
   const pendingSnapshotIds = useMemo(
-    () => models.filter((m) => m.renderSnapshotImage === null && !skippedSnapshotIds.has(m.id)).map((m) => m.id),
-    [models, skippedSnapshotIds],
+    () =>
+      models
+        .filter(
+          (m) =>
+            m.renderSnapshotImage === null &&
+            !skippedSnapshotIds.has(m.id) &&
+            !summaryConfirmedSnapshotIds.has(m.id),
+        )
+        .map((m) => m.id),
+    [models, skippedSnapshotIds, summaryConfirmedSnapshotIds],
   );
 
   const refreshFolders = useCallback(() => foldersApi.listFolders().then(setFolders), []);
@@ -155,9 +194,14 @@ export function useCatalogStore() {
   // ohne das faende die Sidebar-Tag-Filterung fuer noch nicht einzeln
   // geoeffnete Modelle keine Treffer mehr, siehe catalogFilters.ts).
   const loadSummariesWithTags = useCallback(() => {
-    return Promise.all([filesApi.listFileSummaries(), filesApi.listAllFileTags()]).then(([summaries, tagsByFileId]) =>
-      summaries.map((s) => ({ ...summaryToModelFile(s), tags: tagsByFileId[s.id] ?? [] })),
-    );
+    return Promise.all([filesApi.listFileSummaries(), filesApi.listAllFileTags()]).then(([summaries, tagsByFileId]) => {
+      // Finding 1: das Praesenz-Flag aus der Summary ist der einzige Ort, an
+      // dem "hat dieses Modell WIRKLICH schon einen Snapshot?" bekannt ist -
+      // hier einmal pro Ladevorgang fuer die gesamte Liste einsammeln statt
+      // `renderSnapshotImage === null` (das fuer JEDES summary-Modell zutrifft).
+      setSummaryConfirmedSnapshotIds(new Set(summaries.filter((s) => s.hasRenderSnapshot).map((s) => s.id)));
+      return summaries.map((s) => ({ ...summaryToModelFile(s), tags: tagsByFileId[s.id] ?? [] }));
+    });
   }, []);
 
   // Katalog-Uebersicht laedt seit Finding M-01 nur noch die schlanke
@@ -190,12 +234,41 @@ export function useCatalogStore() {
   const ensureFullModel = useCallback(
     (id: string) => {
       if (fullyLoadedIds.has(id) || !models.some((m) => m.id === id)) return;
+      // Finding 3 (Abschluss-Review): Epoch-Schnappschuss aller mutations-
+      // faehigen Felder VOR dem Fetch. ensureFullModel() ersetzte den
+      // Modell-Datensatz bisher unbedingt vollstaendig - nahm dieser Fetch
+      // laenger als eine parallel gestartete Mutation UND deren eigener
+      // M-03-Resync, ueberschrieb das (dann veraltete) Fetch-Ergebnis den
+      // bereits korrekt resyncten neuen Wert wieder mit dem alten Stand,
+      // ohne dass die UI das je bemerkt haette. Der Schnappschuss erlaubt es,
+      // beim Anwenden genau zu erkennen, fuer welche Felder waehrend des
+      // Fetches etwas passiert ist.
+      const epochSnapshot = MUTATION_TRACKED_FIELDS.map(({ prefix }) => mutationEpochs[`${prefix}:${id}`]);
       filesApi
         .listFilesByIds([id])
         .then((full) => {
           if (full.length === 0) return;
           setModels((prev) =>
-            prev.map((m) => (m.id === id ? { ...full[0], lastViewedAt: m.lastViewedAt ?? full[0].lastViewedAt } : m)),
+            prev.map((m) => {
+              if (m.id !== id) return m;
+              const merged: ModelFile = { ...full[0] };
+              MUTATION_TRACKED_FIELDS.forEach(({ prefix, field }, index) => {
+                const key = `${prefix}:${id}`;
+                const stillPending = pendingMutationCounts[key] !== undefined;
+                const epochAdvanced = mutationEpochs[key] !== epochSnapshot[index];
+                if (stillPending || epochAdvanced) {
+                  // Fuer dieses Feld ist waehrend/nach dem Fetch eine
+                  // Mutation gestartet oder resynct worden - das
+                  // Fetch-Ergebnis ist fuer GENAU DIESES Feld potenziell
+                  // veraltet, deshalb den aktuellen (bereits optimistischen
+                  // oder frisch resyncten) Wert behalten statt ihn mit dem
+                  // Fetch-Ergebnis zu ueberschreiben. Alle anderen Felder
+                  // werden regulaer aus `full[0]` uebernommen.
+                  (merged as unknown as Record<string, unknown>)[field] = m[field];
+                }
+              });
+              return merged;
+            }),
           );
           setFullyLoadedIds((prev) => new Set(prev).add(id));
         })

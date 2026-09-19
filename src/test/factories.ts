@@ -37,7 +37,9 @@ export function makeModelFile(overrides: Partial<ModelFile> = {}): ModelFile {
 // Projiziert einen ModelFile-Testfixture auf die schlanke
 // list_file_summaries-Form (Finding M-01), damit Store-Tests nicht zwei
 // unabhaengige Fixture-Definitionen pflegen muessen.
-export function makeModelFileSummary(overrides: Partial<ModelFile> = {}): ModelFileSummary {
+export function makeModelFileSummary(
+  overrides: Partial<ModelFile> & { hasRenderSnapshot?: boolean } = {},
+): ModelFileSummary {
   const m = makeModelFile(overrides);
   return {
     id: m.id,
@@ -54,6 +56,12 @@ export function makeModelFileSummary(overrides: Partial<ModelFile> = {}): ModelF
     favorite: m.favorite,
     queuePosition: m.queuePosition,
     thumbnailImage: m.thumbnailImage,
+    // Standard: leitet sich aus dem ueberschriebenen renderSnapshotImage des
+    // zugrundeliegenden ModelFile ab, damit bestehende Tests, die einen
+    // Snapshot per `renderSnapshotImage` setzen, automatisch konsistente
+    // Summaries erhalten - kann bei Bedarf explizit ueberschrieben werden,
+    // um genau das Finding-1-Szenario (Blob null, Flag true) nachzubilden.
+    hasRenderSnapshot: overrides.hasRenderSnapshot ?? m.renderSnapshotImage !== null,
   };
 }
 

@@ -238,10 +238,11 @@ describe('useCatalogStore', () => {
   });
 
   it('pendingSnapshotIds lists models without a render snapshot and skipSnapshot removes them', async () => {
-    // list_file_summaries traegt kein renderSnapshotImage (Finding M-01) -
-    // frisch geladene Modelle gelten deshalb erst einmal alle als "pending",
-    // bis eine Auswahl (selectModel) die vollen Daten per listFilesByIds
-    // nachlaedt und den tatsaechlichen Snapshot-Status liefert.
+    // list_file_summaries traegt nie den grossen renderSnapshotImage-Blob
+    // (Finding M-01), aber seit Finding 1 sehr wohl das billige
+    // `hasRenderSnapshot`-Praesenz-Flag - m2 gilt deshalb von Anfang an
+    // korrekt als "hat bereits einen Snapshot", ganz ohne dass zuerst
+    // selectModel() die vollen Daten nachladen muesste.
     mockInitialLoad([
       makeModelFile({ id: 'm1', renderSnapshotImage: null }),
       makeModelFile({ id: 'm2', renderSnapshotImage: 'data:image/png;base64,xx' }),
@@ -249,15 +250,28 @@ describe('useCatalogStore', () => {
     ]);
     const { result } = renderHook(() => useCatalogStore());
     await waitFor(() => expect(result.current.models).toHaveLength(3));
-    expect(result.current.pendingSnapshotIds).toEqual(['m1', 'm2', 'm3']);
-
-    // Sobald m2 ausgewaehlt wird, laedt selectModel die vollen Daten nach
-    // (ueber listFilesByIds) und deckt auf, dass m2 bereits einen Snapshot hat.
-    await act(async () => result.current.selectModel('m2'));
-    await waitFor(() => expect(result.current.pendingSnapshotIds).toEqual(['m1', 'm3']));
+    expect(result.current.pendingSnapshotIds).toEqual(['m1', 'm3']);
 
     act(() => result.current.skipSnapshot('m1'));
     expect(result.current.pendingSnapshotIds).toEqual(['m3']);
+  });
+
+  it('Finding 1: a model with a saved snapshot loaded only via the summary path is never pending', async () => {
+    // Regression: vor dem Fix hardcodete summaryToModelFile()
+    // renderSnapshotImage IMMER auf null, wodurch pendingSnapshotIds jedes
+    // frisch geladene Modell als "braucht Snapshot" wertete - unabhaengig
+    // davon, ob in der DB bereits einer gespeichert war. m1 hat hier laut
+    // Summary-Flag (hasRenderSnapshot: true) bereits einen Snapshot und darf
+    // deshalb zu KEINEM Zeitpunkt in pendingSnapshotIds auftauchen, auch
+    // nicht direkt nach dem initialen Laden (bevor ensureFullModel je lief).
+    mockInitialLoad([makeModelFile({ id: 'm1', renderSnapshotImage: 'data:image/png;base64,yy' })]);
+    const { result } = renderHook(() => useCatalogStore());
+    await waitFor(() => expect(result.current.models).toHaveLength(1));
+
+    // Frisch aus der Summary geladen: der Blob selbst ist (korrekt) null...
+    expect(result.current.models[0].renderSnapshotImage).toBeNull();
+    // ...aber pendingSnapshotIds darf sich davon nicht taeuschen lassen.
+    expect(result.current.pendingSnapshotIds).toEqual([]);
   });
 
   it('addToQueue stores the returned position', async () => {
@@ -547,6 +561,54 @@ describe('useCatalogStore', () => {
       });
 
       expect(result.current.models.find((m) => m.id === modelId)?.favorite).toBe(false);
+    });
+
+    it('Finding 3: a stale, slow ensureFullModel fetch does not overwrite a newer mutation resync', async () => {
+      // Szenario aus dem Abschluss-Review: ensureFullModel() (Fetch A, bleibt
+      // hier haengen) wird VOR einer Mutation gestartet; die Mutation
+      // (toggleFavorite) schliesst inklusive ihres eigenen M-03-Resyncs
+      // vollstaendig ab, WAEHREND Fetch A noch laeuft; erst DANACH liefert
+      // Fetch A sein (jetzt veraltetes) Ergebnis mit dem ALTEN favorite-Wert.
+      // Vor dem Fix ersetzte ensureFullModel() den kompletten Datensatz
+      // unbedingt, wodurch die laengst korrekt resyncte Mutation wieder
+      // stillschweigend rueckgaengig gemacht wurde.
+      vi.mocked(filesApi.setFavorite).mockResolvedValue(undefined);
+      mockInitialLoad([makeModelFile({ id: 'm1', favorite: false })]);
+      const { result } = renderHook(() => useCatalogStore());
+      await waitFor(() => expect(result.current.models).toHaveLength(1));
+      const modelId = result.current.models[0].id;
+      const initial = result.current.models[0];
+
+      const deferredFetchA = createDeferred<import('../types').ModelFile[]>();
+      // 1. Aufruf von listFilesByIds: ensureFullModel's Fetch A - bleibt haengen.
+      vi.mocked(filesApi.listFilesByIds).mockReturnValueOnce(deferredFetchA.promise);
+
+      await act(async () => {
+        result.current.ensureFullModel(modelId); // startet Fetch A (haengt)
+        await Promise.resolve();
+      });
+
+      // 2. Aufruf von listFilesByIds: der M-03-Resync von toggleFavorite -
+      // liefert sofort den neuen, korrekten Zustand (favorite: true).
+      vi.mocked(filesApi.listFilesByIds).mockResolvedValueOnce([{ ...initial, favorite: true }]);
+      await act(async () => {
+        result.current.toggleFavorite(modelId); // schliesst inkl. eigenem Resync vollstaendig ab
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(result.current.models.find((m) => m.id === modelId)?.favorite).toBe(true);
+
+      // Fetch A liefert jetzt endlich seinen LAENGST VERALTETEN Zustand
+      // (favorite: false, wie vor der Mutation) - darf den bereits korrekt
+      // resyncten Zustand NICHT ueberschreiben.
+      await act(async () => {
+        deferredFetchA.resolve([{ ...initial, favorite: false }]);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(result.current.models.find((m) => m.id === modelId)?.favorite).toBe(true);
     });
   });
 });

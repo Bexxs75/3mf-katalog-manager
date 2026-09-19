@@ -83,6 +83,10 @@ export interface ModelFileSummary {
   favorite: boolean;
   queuePosition: number | null;
   thumbnailImage: string | null;
+  // Finding 1 (Abschluss-Review): billiges Praesenz-Flag statt des grossen
+  // renderSnapshotImage-Blobs - treibt pendingSnapshotIds an, ohne dass
+  // jedes summary-geladene Modell faelschlich als "braucht Snapshot" gilt.
+  hasRenderSnapshot: boolean;
 }
 
 export interface Folder {
