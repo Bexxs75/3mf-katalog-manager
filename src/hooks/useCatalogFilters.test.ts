@@ -56,9 +56,9 @@ describe('useCatalogFilters', () => {
 
     expect(result.current.view).toBe('grid');
     act(() => {
-      result.current.setView('list');
+      result.current.setView('groupedList');
     });
-    expect(result.current.view).toBe('list');
+    expect(result.current.view).toBe('groupedList');
 
     expect(result.current.sort).toBe('name');
     act(() => {
