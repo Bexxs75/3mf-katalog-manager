@@ -2493,6 +2493,61 @@ fn reject_oversized_zip_entry(name: &str, size: u64, max: u64) -> CmdResult<()> 
     Ok(())
 }
 
+/// Tabellen und ihre minimal erforderlichen Spalten, die diese Anwendung
+/// nach vollstaendiger Migration zwingend voraussetzt. Bewusst NICHT
+/// vollstaendig (nicht jede Spalte jeder Tabelle ist hier gelistet) -
+/// deckt die Basisspalten ab, auf die zentrale Codepfade (list_files,
+/// Ordner-Baum, Collections, Filament-Lager) unmittelbar zugreifen.
+/// `registered_slicers` (Task 11) ist hier bewusst NICHT gelistet, da
+/// diese Task (H-05) laut verbindlicher Review-Reihenfolge VOR Task 11
+/// implementiert wird - wuerde `registered_slicers` hier bereits verlangt,
+/// wuerden alle bis dahin gueltigen Test-Datenbanken faelschlich
+/// abgelehnt. Sobald Task 11 abgeschlossen ist, sollte ein Eintrag fuer
+/// `registered_slicers` hier ergaenzt werden (nicht Teil dieser Task).
+const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
+    ("files", &[
+        "id", "name", "path", "file_type", "folder_id", "file_size_bytes",
+        "imported_at", "deleted_at", "trash_path",
+    ]),
+    ("folders", &["id", "name", "parent_id", "path"]),
+    ("tags", &["id", "name", "color_hue"]),
+    ("file_tags", &["file_id", "tag_id"]),
+    ("file_metadata", &["file_id", "label", "value"]),
+    ("filament_spools", &["id", "material", "remaining_weight_g"]),
+    ("collections", &["id", "name", "created_at"]),
+    ("collection_files", &["collection_id", "file_id", "position"]),
+];
+
+/// Prueft, dass jede in REQUIRED_COLUMNS gelistete Tabelle existiert und
+/// jede dort gelistete Spalte enthaelt. `table` stammt ausschliesslich aus
+/// dieser hartkodierten Konstante (kein Nutzereingabe-Pfad), daher ist die
+/// String-Interpolation in der PRAGMA-Anweisung hier unproblematisch -
+/// PRAGMA-Anweisungen unterstuetzen ohnehin keine gebundenen Parameter fuer
+/// Tabellennamen.
+fn validate_expected_schema(conn: &Connection) -> Result<(), String> {
+    for (table, required_columns) in REQUIRED_COLUMNS {
+        let mut stmt = conn
+            .prepare(&format!("PRAGMA table_info({table})"))
+            .map_err(|e| e.to_string())?;
+        let existing_columns: std::collections::HashSet<String> = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<_, _>>()
+            .map_err(|e| e.to_string())?;
+        if existing_columns.is_empty() {
+            return Err(format!("Katalog-Datenbank enthaelt nicht die erforderliche Tabelle '{table}'"));
+        }
+        for column in *required_columns {
+            if !existing_columns.contains(*column) {
+                return Err(format!(
+                    "Katalog-Datenbank: Tabelle '{table}' fehlt die erforderliche Spalte '{column}'"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Prueft, ob `bytes` eine brauchbare Katalog-Datenbank sind (oeffnbar, mit
 /// einer `files`-Tabelle, und ohne `folders.path`-Eintraege in geschuetzten
 /// Systemverzeichnissen) - Schutz davor, ein falsches/kaputtes ODER
@@ -2522,13 +2577,96 @@ fn validate_catalog_db_bytes(
 
     let result = Connection::open(&tmp_path)
         .map_err(|e| e.to_string())
-        .and_then(|conn| {
+        .and_then(|mut conn| {
             // Einmal vorberechnen statt pro DB-Zeile - ein grosser Katalog hat
             // zehntausende `files`-Zeilen.
             let expanded_dirs = expand_sensitive_dirs(sensitive_dirs);
             let resolved_trash_dir = resolve_path_for_sensitivity_check(trash_dir)?;
             conn.query_row("SELECT COUNT(*) FROM files", [], |row| row.get::<_, i64>(0))
                 .map_err(|e| e.to_string())?;
+
+            // H-05: PRAGMA quick_check erkennt strukturelle SQLite-Korruption,
+            // die eine reine "kann ich SELECT COUNT(*) ausfuehren"-Pruefung
+            // nicht zuverlaessig aufdeckt. Laeuft VOR jeder Migration, da
+            // eine strukturell korrupte Datei ohnehin nicht sinnvoll
+            // migriert werden kann.
+            let quick_check: String = conn
+                .query_row("PRAGMA quick_check", [], |row| row.get(0))
+                .map_err(|e| e.to_string())?;
+            if quick_check != "ok" {
+                return Err(format!("Katalog-Datenbank ist beschaedigt (quick_check: {quick_check})"));
+            }
+
+            // H-05-Korrektur (fuenfte Review-Runde, P0): diese Anwendung
+            // legt in ihrem eigenen Schema (SCHEMA_SQL + migrations.rs)
+            // NIEMALS Trigger oder Views an - jedes Vorkommen in einer
+            // importierten Datenbank ist deshalb per Definition fremd und
+            // wird abgelehnt, BEVOR irgendein weiterer Schritt (Migration,
+            // FK-Check, spaeter die M-06-Slicer-Sanierung in Task 11) auf
+            // dieser Datenbank ausgefuehrt wird. Ohne diese Pruefung koennte
+            // ein Trigger wie "AFTER DELETE ON registered_slicers -> INSERT
+            // INTO registered_slicers (...)" die Slicer-Sanierung aus
+            // Task 11 unterlaufen: das dortige DELETE wuerde den Trigger
+            // ausloesen, der den geloeschten Eintrag sofort wieder
+            // einfuegt, waehrend COMMIT trotzdem erfolgreich durchlaeuft.
+            let mut schema_stmt = conn
+                .prepare("SELECT type, name FROM sqlite_schema WHERE type IN ('trigger', 'view')")
+                .map_err(|e| e.to_string())?;
+            let unexpected_schema_objects: Vec<(String, String)> = schema_stmt
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            if !unexpected_schema_objects.is_empty() {
+                let names: Vec<String> = unexpected_schema_objects
+                    .iter()
+                    .map(|(kind, name)| format!("{kind} '{name}'"))
+                    .collect();
+                return Err(format!(
+                    "Katalog-Datenbank enthaelt nicht erlaubte Schema-Objekte: {}",
+                    names.join(", ")
+                ));
+            }
+            drop(schema_stmt);
+
+            // H-05-Korrektur (zweite Review-Runde): die Temp-Kopie auf das
+            // aktuelle Schema heben, BEVOR schema-abhaengige Pruefungen wie
+            // der Ordner-Graph-Check laufen - sonst wuerde ein legitimes
+            // AELTERES Backup (z.B. ohne folders.parent_id, das erst per
+            // Migration hinzukommt) bereits hier faelschlich abgelehnt.
+            // Dieselbe run_migrations()-Funktion aus Task 2 wird
+            // wiederverwendet, keine zweite Migrationslogik.
+            crate::db::run_migrations(&mut conn).map_err(|e| e.to_string())?;
+
+            // H-05-Korrektur (sechste Review-Runde, P1): Trigger/View-
+            // Ablehnung (siehe fuenfte Runde) und die bisherigen Checks
+            // pruefen Datenintegritaet und aktive Manipulation, aber nicht,
+            // ob das MIGRIERTE Schema ueberhaupt noch die von der
+            // Anwendung tatsaechlich benoetigten Tabellen/Spalten enthaelt.
+            // Eine formal gueltige SQLite-Datei koennte z.B. eine
+            // Basistabelle wie `files` komplett fehlen lassen, waehrend
+            // `quick_check` trotzdem "ok" meldet (strukturelle SQLite-
+            // Konsistenz ist unabhaengig davon, ob die enthaltenen
+            // Tabellen den von dieser App erwarteten Vertrag erfuellen).
+            // Laeuft NACH run_migrations, damit auch ein aelteres,
+            // legitimes Backup erst nach vollstaendiger Migration gegen
+            // das jetzt aktuelle Schema geprueft wird.
+            validate_expected_schema(&conn)?;
+
+            // Fremdschluessel-Verletzungen (z.B. files.folder_id zeigt auf
+            // eine nicht existierende folders-Zeile) werden von quick_check
+            // NICHT erfasst, da SQLite Fremdschluessel standardmaessig nicht
+            // erzwingt, sofern nicht explizit aktiviert. Laeuft ERST NACH
+            // der Migration, damit die Pruefung gegen das vollstaendige,
+            // aktuelle Schema erfolgt.
+            conn.pragma_update(None, "foreign_keys", true).map_err(|e| e.to_string())?;
+            let mut fk_stmt = conn.prepare("PRAGMA foreign_key_check").map_err(|e| e.to_string())?;
+            let has_violation = fk_stmt.exists([]).map_err(|e| e.to_string())?;
+            if has_violation {
+                return Err("Katalog-Datenbank enthaelt Fremdschluessel-Verletzungen".to_string());
+            }
+            drop(fk_stmt);
+
             let mut stmt = conn
                 .prepare("SELECT path FROM folders")
                 .map_err(|e| e.to_string())?;
@@ -2541,6 +2679,38 @@ fn validate_catalog_db_bytes(
                 reject_if_sensitive_path_expanded(Path::new(&path), &expanded_dirs)
                     .map_err(|e| format!("Ordner-Eintrag im Archiv abgelehnt: {e}"))?;
             }
+
+            // Zyklus-Check auf folders.parent_id (H-05): eine importierte
+            // DB mit A.parent_id = B und B.parent_id = A wuerde jeden
+            // Code, der den Ordnerbaum von einem Blatt aus zur Wurzel
+            // verfolgt (z.B. Pfad-Rekonstruktion), in eine Endlosschleife
+            // schicken.
+            let mut folder_edges_stmt = conn
+                .prepare("SELECT id, parent_id FROM folders")
+                .map_err(|e| e.to_string())?;
+            let edges: Vec<(i64, Option<i64>)> = folder_edges_stmt
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            let parent_of: std::collections::HashMap<i64, Option<i64>> = edges.into_iter().collect();
+            for &start in parent_of.keys() {
+                let mut current = start;
+                let mut steps = 0usize;
+                let mut seen = std::collections::HashSet::new();
+                seen.insert(current);
+                while let Some(Some(parent)) = parent_of.get(&current) {
+                    if !seen.insert(*parent) {
+                        return Err(format!("Katalog-Datenbank enthaelt einen zyklischen Ordner-Graphen (beteiligt: Ordner-ID {parent})"));
+                    }
+                    current = *parent;
+                    steps += 1;
+                    if steps > parent_of.len() {
+                        break; // defensive Obergrenze, sollte durch seen bereits abgedeckt sein
+                    }
+                }
+            }
+            drop(folder_edges_stmt);
 
             let mut stmt = conn
                 .prepare("SELECT name, path, trash_path FROM files")
@@ -3018,6 +3188,7 @@ pub fn purge_expired_trash_on_startup(conn: &Connection) {
 mod tests {
     use super::*;
     use crate::geometry::RenderMesh;
+    use rusqlite::params;
 
     fn sample_spool(material: &str, original_weight_g: i64, price: Option<f64>) -> db::models::FilamentSpoolRecord {
         db::models::FilamentSpoolRecord {
@@ -3072,6 +3243,178 @@ mod tests {
     fn validate_catalog_db_bytes_rejects_garbage_bytes() {
         let result = validate_catalog_db_bytes(b"this is not a sqlite database", &[], &std::env::temp_dir());
         assert!(result.is_err());
+    }
+
+    fn unique_test_db_path(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "{name}_{}.db",
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ))
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_corrupted_sqlite_file() {
+        let bytes = b"SQLite format 3\x00this-is-not-actually-a-valid-database-body".to_vec();
+        let sensitive_dirs = vec![];
+        let trash_dir = unique_test_dir("validate_db_corrupt_trash");
+        let result = validate_catalog_db_bytes(&bytes, &sensitive_dirs, &trash_dir);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_foreign_key_violation() {
+        let tmp_path = unique_test_db_path("validate_db_fk_violation");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            // Datei mit folder_id, die auf keine existierende Zeile in folders zeigt.
+            conn.execute("PRAGMA foreign_keys = OFF", []).unwrap();
+            conn.execute(
+                "INSERT INTO files (name, path, file_type, folder_id, file_size_bytes, imported_at) VALUES ('x', '/tmp/x.3mf', '3mf', 999999, 1, '2026-01-01T00:00:00Z')",
+                [],
+            ).unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_cyclic_folder_graph() {
+        let tmp_path = unique_test_db_path("validate_db_folder_cycle");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            conn.execute("INSERT INTO folders (name, path) VALUES ('A', '/tmp/A')", []).unwrap();
+            let a_id = conn.last_insert_rowid();
+            conn.execute("INSERT INTO folders (name, path) VALUES ('B', '/tmp/B')", []).unwrap();
+            let b_id = conn.last_insert_rowid();
+            conn.execute("UPDATE folders SET parent_id = ?1 WHERE id = ?2", params![b_id, a_id]).unwrap();
+            conn.execute("UPDATE folders SET parent_id = ?1 WHERE id = ?2", params![a_id, b_id]).unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_accepts_a_legitimate_pre_migration_backup() {
+        // KORREKTUR (zweite Review-Runde, P1): dieser Test war zuvor ein
+        // leerer Platzhalter. Er deckt jetzt genau das im Review genannte
+        // Szenario ab: ein AELTERES Backup, dessen Schema NUR die Basis-
+        // CREATE-TABLE-Definitionen enthaelt (kein folders.parent_id, kein
+        // folders.path, keine der 20 Migrationsspalten) - muss durch die in
+        // Step 3 ergaenzte run_migrations()-Vorabmigration trotzdem akzeptiert
+        // werden, statt am direkten Zugriff auf eine noch fehlende Spalte zu
+        // scheitern.
+        let tmp_path = unique_test_db_path("validate_db_pre_migration_backup");
+        {
+            let conn = rusqlite::Connection::open(&tmp_path).unwrap();
+            conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+            // Bewusst KEIN run_migrations() hier - simuliert exakt den
+            // Zustand einer vor der parent_id/path-Migration exportierten DB.
+            conn.execute(
+                "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at) VALUES ('x', '/tmp/x.3mf', '3mf', 1, '2026-01-01T00:00:00Z')",
+                [],
+            ).unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+
+        assert!(result.is_ok(), "a legitimate pre-migration backup must be accepted after internal migration, got: {result:?}");
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_database_with_an_injected_trigger() {
+        let tmp_path = unique_test_db_path("validate_db_injected_trigger");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            conn.execute_batch(
+                "CREATE TRIGGER evil AFTER DELETE ON folders
+                 BEGIN
+                     INSERT INTO folders (name, path) VALUES ('Injected', '/tmp/injected-by-trigger');
+                 END;",
+            ).unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        assert!(result.is_err(), "eine importierte Datenbank mit einem eingeschleusten Trigger muss abgelehnt werden");
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_database_with_an_injected_view() {
+        let tmp_path = unique_test_db_path("validate_db_injected_view");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            conn.execute_batch("CREATE VIEW evil_view AS SELECT * FROM folders;").unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        assert!(result.is_err(), "eine importierte Datenbank mit einer eingeschleusten View muss abgelehnt werden");
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_database_missing_a_required_table() {
+        // Korrektur nach siebter Review-Runde: geht bewusst von einer
+        // VOLLSTAENDIG GUELTIGEN, aktuell migrierten Datenbank aus und baut
+        // GEZIELT genau EINEN Defekt ein. Eine handgestrickte Minimal-DB (wie
+        // in der sechsten Runde) kann bereits VOR validate_expected_schema()
+        // an einer ganz anderen Stelle scheitern - dann waere `result.is_err()`
+        // gruen, OHNE dass validate_expected_schema() ueberhaupt ausgefuehrt
+        // wurde.
+        //
+        // Korrektur nach ACHTER Review-Runde (derselbe Fehler nochmal, eine
+        // Ebene tiefer): `files` ist fuer dieses Beispiel die FALSCHE Tabelle,
+        // weil `validate_catalog_db_bytes` bereits VOR `validate_expected_schema`
+        // einen bestehenden `SELECT COUNT(*) FROM files`-Check besitzt (siehe
+        // Kommentar am Anfang dieser Funktion, "H-05: PRAGMA quick_check..." -
+        // der COUNT-Check steht noch davor) - eine fehlende `files`-Tabelle
+        // wuerde also bereits DORT mit `Err` abbrechen, nicht erst in
+        // `validate_expected_schema`, und der Test wuerde wieder aus dem
+        // falschen Grund gruen. Stattdessen `tags` droppen: diese Tabelle wird
+        // an keiner Stelle VOR `validate_expected_schema` abgefragt, ist aber
+        // Teil von `REQUIRED_COLUMNS` - nur `validate_expected_schema` selbst
+        // kann diesen Fehler also erkennen. Da `crate::db::connect()` hier
+        // bereits auf `CURRENT_SCHEMA_VERSION` migriert (user_version =
+        // Ziel-Version), ueberspringt `run_migrations()` innerhalb von
+        // `validate_catalog_db_bytes()` zusaetzlich jeden Schritt (current ==
+        // target) und wird von der fehlenden `tags`-Tabelle nicht beruehrt.
+        let tmp_path = unique_test_db_path("validate_db_missing_table");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap(); // vollstaendiges, aktuell migriertes Schema
+            conn.execute_batch("DROP TABLE tags;").unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let err = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash")).unwrap_err();
+        assert!(
+            err.contains("tags"),
+            "validate_expected_schema muss die fehlende Tabelle 'tags' erkennen, got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_database_missing_a_required_column() {
+        // Gleiches Prinzip wie oben: vollstaendig gueltige, migrierte
+        // Datenbank, dann GEZIELT genau eine erforderliche Spalte per
+        // `ALTER TABLE ... DROP COLUMN` entfernen (rusqlite 0.40 mit
+        // `bundled`-Feature enthaelt eine SQLite-Version >= 3.35, die das
+        // unterstuetzt). run_migrations() innerhalb von
+        // validate_catalog_db_bytes() ist wieder ein No-Op (user_version
+        // bereits aktuell), sodass ausschliesslich validate_expected_schema()
+        // fuer die Ablehnung verantwortlich sein kann.
+        let tmp_path = unique_test_db_path("validate_db_missing_column");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            // Bewusst 'imported_at' statt z.B. 'path' - SQLites ALTER TABLE
+            // DROP COLUMN verweigert das Entfernen einer Spalte, die Teil
+            // eines UNIQUE-/PRIMARY-KEY-/FOREIGN-KEY-Constraints oder eines
+            // Index ist (path ist UNIQUE, folder_id/file_type haben eigene
+            // Indizes) - 'imported_at' hat ausser NOT NULL keine solche
+            // Einschraenkung und laesst sich deshalb sauber entfernen.
+            conn.execute_batch("ALTER TABLE files DROP COLUMN imported_at;").unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        assert!(result.is_err(), "eine 'files'-Tabelle ohne die erforderliche Spalte 'imported_at' muss abgelehnt werden");
     }
 
     fn unique_test_dir(name: &str) -> std::path::PathBuf {

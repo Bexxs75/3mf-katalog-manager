@@ -1,6 +1,6 @@
 pub mod error;
 pub mod models;
-mod repository;
+pub(crate) mod repository;
 mod collections;
 mod migrations;
 
