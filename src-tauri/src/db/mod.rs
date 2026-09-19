@@ -23,6 +23,9 @@ pub use repository::{
 #[cfg(test)]
 pub use repository::insert_folder;
 
+#[cfg(test)]
+pub use repository::test_insert_minimal_file;
+
 pub use collections::{
     add_file_to_collection, create_collection, delete_collection, get_file_id_by_path,
     list_collection_file_ids, list_collections, max_collection_position,

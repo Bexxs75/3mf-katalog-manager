@@ -93,6 +93,25 @@ pub(crate) fn init(conn: &Connection) -> Result<(), DbError> {
     Ok(())
 }
 
+// Nur von Tests genutzt: legt eine minimale files-Zeile an (Name wird aus
+// dem letzten Pfadsegment abgeleitet), fuer Kompensationstests in
+// commands.rs, die einen kollidierenden `path`-Wert oder einen bereits
+// vorhandenen file_id-Datensatz brauchen, ohne den vollen `insert_file`-Weg
+// mit einem kompletten `NewFile` zu gehen (siehe Task-1-Brief, C-01/H-01).
+#[cfg(test)]
+pub fn test_insert_minimal_file(conn: &Connection, path: &str, folder_id: Option<i64>) -> Result<i64, DbError> {
+    let name = Path::new(path)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.to_string());
+    conn.execute(
+        "INSERT INTO files (name, path, file_type, folder_id, file_size_bytes, imported_at)
+         VALUES (?1, ?2, '3mf', ?3, 0, '2026-01-01T00:00:00Z')",
+        params![name, path, folder_id],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
 // Nur von Tests genutzt: einfacher Test-Helfer, um schnell eine
 // folders-Zeile ohne parent_id/echte Verzeichnisstruktur anzulegen (fuer
 // Faelle, in denen der volle `insert_folder_with_parent`-Aufruf mit
@@ -188,10 +207,13 @@ pub fn insert_folder_with_parent(
 /// Aktualisiert `folder_id` und `path` einer Datei nach einem physischen
 /// Verschieben (siehe `move_file_to_folder`-Command in `commands.rs`).
 pub fn update_file_folder(conn: &Connection, file_id: i64, folder_id: Option<i64>, path: &str) -> Result<(), DbError> {
-    conn.execute(
+    let affected = conn.execute(
         "UPDATE files SET folder_id = ?1, path = ?2 WHERE id = ?3",
         params![folder_id, path, file_id],
     )?;
+    if affected == 0 {
+        return Err(DbError::Other(format!("keine Datei mit id {file_id} gefunden fuer update_file_folder")));
+    }
     Ok(())
 }
 
@@ -539,27 +561,29 @@ pub fn soft_delete_file(
     trash_path: Option<&str>,
     deleted_at: &str,
 ) -> Result<(), DbError> {
-    conn.execute(
+    let affected = conn.execute(
         "UPDATE files SET deleted_at = ?1, trash_path = ?2 WHERE id = ?3",
         params![deleted_at, trash_path, id],
     )?;
+    if affected == 0 {
+        return Err(DbError::Other(format!("keine Datei mit id {id} gefunden fuer soft_delete_file")));
+    }
     Ok(())
 }
 
 pub fn restore_file(conn: &Connection, id: i64, new_path: Option<&str>) -> Result<(), DbError> {
-    match new_path {
-        Some(path) => {
-            conn.execute(
-                "UPDATE files SET deleted_at = NULL, trash_path = NULL, path = ?1 WHERE id = ?2",
-                params![path, id],
-            )?;
-        }
-        None => {
-            conn.execute(
-                "UPDATE files SET deleted_at = NULL, trash_path = NULL WHERE id = ?1",
-                params![id],
-            )?;
-        }
+    let affected = match new_path {
+        Some(path) => conn.execute(
+            "UPDATE files SET deleted_at = NULL, trash_path = NULL, path = ?1 WHERE id = ?2",
+            params![path, id],
+        )?,
+        None => conn.execute(
+            "UPDATE files SET deleted_at = NULL, trash_path = NULL WHERE id = ?1",
+            params![id],
+        )?,
+    };
+    if affected == 0 {
+        return Err(DbError::Other(format!("keine Datei mit id {id} gefunden fuer restore_file")));
     }
     Ok(())
 }

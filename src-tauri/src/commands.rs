@@ -7,6 +7,7 @@ use serde::Serialize;
 use tauri::State;
 use tauri_plugin_dialog::DialogExt;
 
+use crate::db::error::DbError;
 use crate::db::models::{FileType, MaterialRecord, NewFile, ScannedMetadataUpdate};
 use crate::db::{self, models::FileRecord};
 use crate::geometry::RenderMesh;
@@ -613,14 +614,16 @@ pub fn remove_tag(state: State<AppState>, file_id: String, tag: String) -> CmdRe
 
 // Cloud-Löschung ist noch nicht möglich, da es keine Cloud-Anbindung gibt;
 // gelöscht werden nur der DB-Eintrag und die lokale Datei.
-#[tauri::command]
-pub fn delete_file(state: State<AppState>, file_id: String) -> CmdResult<()> {
-    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
-    let conn = lock_db(&state)?;
-    let file = db::get_file(&conn, id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "file not found".to_string())?;
-
+/// Kernlogik von `delete_file`, getrennt von der `State<AppState>`-Huelle
+/// gehalten (gleiche Konvention wie `move_file_to_folder_with_conn`), damit
+/// sie in Tests direkt mit einem bereits geladenen `FileRecord` aufgerufen
+/// werden kann, statt es intern per `get_file` zu laden.
+fn delete_file_with_conn(
+    conn: &Connection,
+    file: &db::models::FileRecord,
+    id: i64,
+    trash_dir: &std::path::Path,
+) -> CmdResult<()> {
     match std::fs::metadata(&file.path) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             // Pfad nicht erreichbar (z.B. umbenannter/verschobener Ordner,
@@ -636,35 +639,103 @@ pub fn delete_file(state: State<AppState>, file_id: String) -> CmdResult<()> {
             // Fehlerpfad unten, siehe Finding 3 im Review vom 2026-09-10
             // (scan_catalog_issues).
             let deleted_at = chrono::Utc::now().to_rfc3339();
-            return db::soft_delete_file(&conn, id, None, &deleted_at).map_err(|e| e.to_string());
+            return db::soft_delete_file(conn, id, None, &deleted_at).map_err(|e| e.to_string());
         }
         Err(e) => return Err(e.to_string()),
         Ok(_) => {}
     }
 
-    let trash_path = state.trash_dir.join(format!("{id}-{}", file.name));
+    let trash_path = trash_dir.join(format!("{id}-{}", file.name));
     move_file(std::path::Path::new(&file.path), &trash_path).map_err(|e| e.to_string())?;
 
     let deleted_at = chrono::Utc::now().to_rfc3339();
-    db::soft_delete_file(&conn, id, Some(&trash_path.to_string_lossy()), &deleted_at)
-        .map_err(|e| e.to_string())
+    if let Err(db_err) = db::soft_delete_file(conn, id, Some(&trash_path.to_string_lossy()), &deleted_at) {
+        // Kompensation (H-01): physisch bereits in den Papierkorb
+        // verschobene Datei zurueckholen, wenn der DB-Eintrag nicht als
+        // geloescht markiert werden konnte - sonst "verschwindet" die
+        // Datei fuer den Nutzer, obwohl der Katalog sie weiterhin am
+        // Originalort fuehrt.
+        if let Err(rollback_err) = move_file(&trash_path, std::path::Path::new(&file.path)) {
+            return Err(format!(
+                "DB-Update fehlgeschlagen ({db_err}) UND Rollback aus dem Papierkorb fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}, DB fuehrt sie weiterhin als aktiv unter {}",
+                trash_path.display(),
+                file.path
+            ));
+        }
+        return Err(db_err.to_string());
+    }
+    Ok(())
 }
 
-/// Verschiebt eine Datei; faellt bei "CrossesDevices" (Ziel auf anderem
-/// Dateisystem) auf Kopieren+Loeschen des Originals zurueck.
+#[tauri::command]
+pub fn delete_file(state: State<AppState>, file_id: String) -> CmdResult<()> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let conn = lock_db(&state)?;
+    let file = db::get_file(&conn, id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "file not found".to_string())?;
+    delete_file_with_conn(&conn, &file, id, &state.trash_dir)
+}
+
+/// Verschiebt eine Datei OHNE eine bestehende Zieldatei zu ueberschreiben
+/// (C-01, Senior-Code-Review 2026-09-19, dritte Runde: nicht als "atomar"
+/// bezeichnen - Quelle und Ziel koennen bei einem Absturz/Prozessende
+/// mitten im Kopiervorgang transient gleichzeitig existieren, da Kopieren
+/// und `remove_file` kein einzelner atomarer Schritt ist. Die einzige echte
+/// atomare Garantie ist die exklusive ANLAGE der Zieldatei ueber
+/// `OpenOptions::create_new(true)`: entweder die Zieldatei existierte
+/// vorher nicht und wird jetzt exklusiv angelegt, oder der Aufruf schlaegt
+/// sofort fehl - nie wird eine bestehende Zieldatei stillschweigend
+/// ersetzt).
+///
+/// Fruehere Fassung nutzte auf demselben Filesystem `std::fs::rename`,
+/// optional abgesichert durch einen vorherigen `to.exists()`-Check - das
+/// ist ein TOCTOU-Fenster (zwischen Check und Rename kann ein Ziel
+/// entstehen) UND plattformabhaengig unsicher: POSIX `rename(2)` ersetzt
+/// eine bestehende regulaere Zieldatei grundsaetzlich, Windows'
+/// `MoveFileExW` mit `MOVEFILE_REPLACE_EXISTING` (das `std::fs::rename`
+/// intern setzt) ebenso. Eine echte atomare "rename-no-replace"-Operation
+/// gibt es nur ueber plattformspezifische Syscalls (Linux: `renameat2` +
+/// `RENAME_NOREPLACE`; macOS: `renamex_np` + `RENAME_EXCL`; Windows:
+/// `MoveFileExW` OHNE `MOVEFILE_REPLACE_EXISTING`) - anstatt das ueber
+/// drei separate FFI-Aufrufe zu pflegen, wird hier bewusst IMMER ueber
+/// `OpenOptions::create_new(true)` verschoben: dieser Aufruf ist auf allen
+/// drei Zielplattformen (O_EXCL bzw. CREATE_NEW) atomar und lehnt eine
+/// bereits existierende Zieldatei ohne Race-Fenster ab. Kostet einen
+/// zusaetzlichen Kopiervorgang gegenueber einem reinen Rename auf
+/// demselben Filesystem - fuer Katalog-Modelldateien (ueblicherweise
+/// wenige MB bis niedrige zweistellige MB) ist das vertretbar.
 fn move_file(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
-    match std::fs::rename(from, to) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::CrossesDevices => {
-            std::fs::copy(from, to)?;
-            if let Err(remove_err) = std::fs::remove_file(from) {
-                let _ = std::fs::remove_file(to); // Kopie aufraeumen, kein verwaister Papierkorb-Eintrag
-                return Err(remove_err);
-            }
-            Ok(())
-        }
-        Err(e) => Err(e),
+    let mut dst = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(to)?;
+
+    let copy_result = (|| -> std::io::Result<()> {
+        let mut src = std::fs::File::open(from)?;
+        std::io::copy(&mut src, &mut dst)?;
+        dst.sync_all()?;
+        Ok(())
+    })();
+
+    if let Err(e) = copy_result {
+        // Eine teilweise geschriebene Zieldatei wird IMMER aufgeraeumt,
+        // nicht nur wenn das anschliessende remove_file(from) unten
+        // fehlschlaegt (zweiter Teil von C-01 aus der zweiten
+        // Review-Runde: vorher blieb eine bei io::copy()/sync_all()
+        // fehlgeschlagene Teil-Kopie liegen, wenn das Entfernen der
+        // Quelle danach gar nicht erst versucht wurde).
+        drop(dst);
+        let _ = std::fs::remove_file(to);
+        return Err(e);
     }
+    drop(dst);
+
+    if let Err(remove_err) = std::fs::remove_file(from) {
+        let _ = std::fs::remove_file(to);
+        return Err(remove_err);
+    }
+    Ok(())
 }
 
 /// Kernlogik von `move_file_to_folder`, getrennt von der `State<AppState>`-
@@ -695,10 +766,24 @@ fn move_file_to_folder_with_conn(
     reject_if_sensitive_path(&target_dir, sensitive_dirs)?;
 
     let new_path = target_dir.join(&file.name);
-    move_file(std::path::Path::new(&file.path), &new_path).map_err(|e| e.to_string())?;
+    let old_path = std::path::PathBuf::from(&file.path);
+    move_file(&old_path, &new_path).map_err(|e| e.to_string())?;
 
-    db::update_file_folder(conn, file_id, folder_id, &new_path.to_string_lossy())
-        .map_err(|e| e.to_string())
+    if let Err(db_err) = db::update_file_folder(conn, file_id, folder_id, &new_path.to_string_lossy()) {
+        // Kompensation: physischen Move rueckgaengig machen, damit
+        // Filesystem und DB nicht auseinanderlaufen (H-01). move_file
+        // selbst hat bereits ein No-Clobber-Gate (C-01), der Rueckweg
+        // darf also ebenfalls nicht versehentlich etwas ueberschreiben.
+        if let Err(rollback_err) = move_file(&new_path, &old_path) {
+            return Err(format!(
+                "DB-Update fehlgeschlagen ({db_err}) UND Rollback der Dateiverschiebung fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}, DB verweist weiter auf {}",
+                new_path.display(),
+                old_path.display()
+            ));
+        }
+        return Err(db_err.to_string());
+    }
+    Ok(())
 }
 
 /// Verschiebt eine Datei physisch in das Verzeichnis eines (echten)
@@ -947,16 +1032,36 @@ fn rename_folder_with_conn(
 ) -> CmdResult<()> {
     validate_folder_name(&name)?;
     let folders = db::list_folders(conn).map_err(|e| e.to_string())?;
-    let folder = folders.iter().find(|f| f.id == id).ok_or_else(|| "folder not found".to_string())?;
+    let folder = folders.iter().find(|f| f.id == id).ok_or_else(|| "folder not found".to_string())?.clone();
 
     let old_path = std::path::PathBuf::from(&folder.path);
     let new_path = old_path.with_file_name(&name);
     reject_if_sensitive_path(&old_path, sensitive_dirs)?;
     reject_if_sensitive_path(&new_path, sensitive_dirs)?;
 
+    if new_path.exists() {
+        return Err(format!("Zielordner existiert bereits: {}", new_path.display()));
+    }
     std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())?;
-    db::rename_folder_name(conn, id, &name).map_err(|e| e.to_string())?;
-    db::update_paths_under_folder(conn, id, &folder.path, &new_path.to_string_lossy()).map_err(|e| e.to_string())
+
+    let db_result = (|| -> Result<(), DbError> {
+        let tx = conn.unchecked_transaction()?;
+        db::rename_folder_name(&tx, id, &name)?;
+        db::update_paths_under_folder(&tx, id, &folder.path, &new_path.to_string_lossy())?;
+        tx.commit().map_err(DbError::from)
+    })();
+
+    if let Err(db_err) = db_result {
+        if let Err(rollback_err) = std::fs::rename(&new_path, &old_path) {
+            return Err(format!(
+                "DB-Update fehlgeschlagen ({db_err}) UND Rollback der Ordner-Umbenennung fehlgeschlagen ({rollback_err}) - Ordner heisst jetzt {}, DB verweist teilweise noch auf {}",
+                new_path.display(),
+                old_path.display()
+            ));
+        }
+        return Err(db_err.to_string());
+    }
+    Ok(())
 }
 
 /// Benennt einen echten Ordner auf der Platte um (`std::fs::rename`) und
@@ -1026,9 +1131,36 @@ fn move_folder_with_conn(
     reject_if_sensitive_path(&old_path, sensitive_dirs)?;
     reject_if_sensitive_path(&new_path, sensitive_dirs)?;
 
+    if new_path.exists() {
+        return Err(format!("Zielordner existiert bereits: {}", new_path.display()));
+    }
     std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())?;
-    db::set_folder_parent(conn, id, target).map_err(|e| e.to_string())?;
-    db::update_paths_under_folder(conn, id, &folder.path, &new_path.to_string_lossy()).map_err(|e| e.to_string())
+
+    // H-01: set_folder_parent + update_paths_under_folder muessen als
+    // Einheit gelten - in einer Transaktion, damit ein Fehler in der
+    // rekursiven Pfad-Aktualisierung nicht eine halb aktualisierte DB
+    // hinterlaesst, waehrend das Filesystem bereits vollstaendig
+    // verschoben ist. `Connection::unchecked_transaction()` (statt
+    // `transaction()`) braucht nur `&self`, die Signatur bleibt also bei
+    // `conn: &Connection` - keine Aenderung an move_folder() noetig.
+    let db_result = (|| -> Result<(), DbError> {
+        let tx = conn.unchecked_transaction()?;
+        db::set_folder_parent(&tx, id, target)?;
+        db::update_paths_under_folder(&tx, id, &folder.path, &new_path.to_string_lossy())?;
+        tx.commit().map_err(DbError::from)
+    })();
+
+    if let Err(db_err) = db_result {
+        if let Err(rollback_err) = std::fs::rename(&new_path, &old_path) {
+            return Err(format!(
+                "DB-Update fehlgeschlagen ({db_err}) UND Rollback des Ordner-Moves fehlgeschlagen ({rollback_err}) - Ordner liegt jetzt unter {}, DB verweist teilweise noch auf {}",
+                new_path.display(),
+                old_path.display()
+            ));
+        }
+        return Err(db_err.to_string());
+    }
+    Ok(())
 }
 
 /// Verschiebt einen echten Ordner auf der Platte (`std::fs::rename`) unter
@@ -2730,13 +2862,15 @@ pub fn list_trash(state: State<AppState>) -> CmdResult<Vec<ModelFileDto>> {
     Ok(files.into_iter().map(|f| to_dto(f, &spools)).collect())
 }
 
-#[tauri::command]
-pub fn restore_file(state: State<AppState>, file_id: String) -> CmdResult<()> {
-    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
-    let conn = lock_db(&state)?;
-    let file = db::get_file(&conn, id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "file not found".to_string())?;
+/// Kernlogik von `restore_file`, getrennt von der `State<AppState>`-Huelle
+/// gehalten (gleiche Konvention wie `delete_file_with_conn`), damit sie in
+/// Tests direkt mit einem bereits geladenen `FileRecord` aufgerufen werden
+/// kann.
+fn restore_file_with_conn(
+    conn: &Connection,
+    file: &db::models::FileRecord,
+    id: i64,
+) -> CmdResult<()> {
     if file.deleted_at.is_none() {
         return Err("file is not in trash".to_string());
     }
@@ -2747,7 +2881,7 @@ pub fn restore_file(state: State<AppState>, file_id: String) -> CmdResult<()> {
         // physisch nichts zurueckzuverschieben - nur den Katalog-Eintrag
         // wieder sichtbar machen. Ist der Pfad inzwischen wieder erreichbar
         // (z.B. Ordner zurueckbenannt), zeigt er dann wieder korrekt darauf.
-        return db::restore_file(&conn, id, None).map_err(|e| e.to_string());
+        return db::restore_file(conn, id, None).map_err(|e| e.to_string());
     };
 
     let original = std::path::Path::new(&file.path);
@@ -2768,7 +2902,31 @@ pub fn restore_file(state: State<AppState>, file_id: String) -> CmdResult<()> {
 
     let new_path_str = target_path.to_string_lossy().to_string();
     let new_path_arg = if new_path_str == file.path { None } else { Some(new_path_str.as_str()) };
-    db::restore_file(&conn, id, new_path_arg).map_err(|e| e.to_string())
+    if let Err(db_err) = db::restore_file(conn, id, new_path_arg) {
+        // Kompensation (H-01): physisch bereits aus dem Papierkorb
+        // wiederhergestellte Datei zurueck in den Papierkorb verschieben,
+        // wenn der DB-Eintrag nicht als wiederhergestellt markiert werden
+        // konnte - sonst zeigt die DB die Datei weiterhin als geloescht,
+        // obwohl sie physisch bereits am Zielort liegt.
+        if let Err(rollback_err) = move_file(&target_path, std::path::Path::new(&trash_path)) {
+            return Err(format!(
+                "DB-Update fehlgeschlagen ({db_err}) UND Rollback in den Papierkorb fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}, DB fuehrt sie weiterhin als geloescht",
+                target_path.display()
+            ));
+        }
+        return Err(db_err.to_string());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn restore_file(state: State<AppState>, file_id: String) -> CmdResult<()> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let conn = lock_db(&state)?;
+    let file = db::get_file(&conn, id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "file not found".to_string())?;
+    restore_file_with_conn(&conn, &file, id)
 }
 
 #[tauri::command]
@@ -4600,5 +4758,173 @@ mod tests {
         assert_eq!(dtos[0].id, id.to_string());
         assert_eq!(dtos[0].note.as_deref(), Some("Testdruck"));
         assert_eq!(dtos[0].photo_image, None);
+    }
+
+    // --- Task 1 (Senior-Code-Review 2026-09-19): C-01 No-Clobber + H-01 DB/FS-Kompensation ---
+
+    #[test]
+    fn move_file_refuses_to_overwrite_an_existing_destination() {
+        let dir = unique_test_dir("move_file_no_clobber");
+        std::fs::create_dir_all(&dir).unwrap();
+        let from = dir.join("source.3mf");
+        let to = dir.join("dest.3mf");
+        std::fs::write(&from, b"SOURCE-CONTENT").unwrap();
+        std::fs::write(&to, b"EXISTING-DEST-CONTENT").unwrap();
+
+        let result = move_file(&from, &to);
+
+        assert!(result.is_err(), "move_file must refuse to overwrite an existing destination");
+        assert_eq!(
+            std::fs::read(&to).unwrap(),
+            b"EXISTING-DEST-CONTENT",
+            "destination content must be unchanged after a refused move"
+        );
+        assert!(from.exists(), "source must still exist after a refused move");
+    }
+
+    #[test]
+    fn move_file_cleans_up_a_partially_written_destination_on_copy_failure() {
+        // Deckt die zweite C-01-Teilluecke ab: bisher wurde eine bei
+        // io::copy()/sync_all() fehlgeschlagene Teil-Kopie NUR aufgeraeumt,
+        // wenn zusaetzlich das nachfolgende remove_file(from) scheiterte.
+        let dir = unique_test_dir("move_file_partial_copy_cleanup");
+        std::fs::create_dir_all(&dir).unwrap();
+        let from = dir.join("source.3mf");
+        std::fs::write(&from, vec![0u8; 10 * 1024 * 1024]).unwrap(); // 10 MB
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&from, std::fs::Permissions::from_mode(0o000)).unwrap();
+            let to = dir.join("dest.3mf");
+            let result = move_file(&from, &to);
+            // Berechtigungen zuruecksetzen, damit unique_test_dir-Cleanup (falls vorhanden) nicht blockiert.
+            std::fs::set_permissions(&from, std::fs::Permissions::from_mode(0o644)).unwrap();
+            assert!(result.is_err());
+            assert!(!to.exists(), "partially written destination must be cleaned up on copy failure");
+        }
+    }
+
+    #[test]
+    fn move_file_to_folder_compensates_when_db_update_fails() {
+        let dir = unique_test_dir("move_file_to_folder_compensation");
+        std::fs::create_dir_all(dir.join("source")).unwrap();
+        std::fs::create_dir_all(dir.join("target")).unwrap();
+        let src_path = dir.join("source/model.3mf");
+        std::fs::write(&src_path, b"CONTENT").unwrap();
+        let colliding_target_path = dir.join("target/model.3mf");
+
+        let conn = db::connect_in_memory().unwrap();
+        let folder_id = db::insert_folder_with_parent(&conn, "target", None, &dir.join("target").to_string_lossy()).unwrap();
+        let file_id = db::test_insert_minimal_file(&conn, &src_path.to_string_lossy(), None).unwrap();
+        // Eine ZWEITE Datei-Zeile, deren `path` bereits exakt dem Zielpfad
+        // entspricht, den move_file_to_folder_with_conn gleich physisch
+        // anlegen wird. files.path ist UNIQUE (schema.sql) - das nachfolgende
+        // db::update_file_folder(file_id, .., colliding_target_path) schlaegt
+        // dadurch garantiert NACH dem bereits erfolgreichen physischen Move
+        // fehl (nicht schon bei get_file() wie in der urspruenglichen,
+        // fehlerhaften Testfassung).
+        db::test_insert_minimal_file(&conn, &colliding_target_path.to_string_lossy(), Some(folder_id)).unwrap();
+
+        let result = move_file_to_folder_with_conn(&conn, file_id, Some(folder_id), &[]);
+
+        assert!(result.is_err(), "must surface the UNIQUE constraint failure from the DB update");
+        assert!(src_path.exists(), "source file must be moved back after the DB update failed");
+        assert!(
+            !colliding_target_path.exists() || std::fs::read(&colliding_target_path).unwrap() != b"CONTENT",
+            "the orphaned copy at the destination must not remain with the moved file's content"
+        );
+        let file_after = db::get_file(&conn, file_id).unwrap().unwrap();
+        assert_eq!(file_after.path, src_path.to_string_lossy(), "DB must still point at the original path");
+    }
+
+    #[test]
+    fn delete_file_compensates_when_soft_delete_fails() {
+        // delete_file() nutzt move_file() bereits fuer den Trash-Move - das
+        // hier zu testende Kompensationsverhalten muss NACH dem physischen
+        // Move in den Papierkorb greifen, falls db::soft_delete_file scheitert
+        // (z.B. weil die Datei-Zeile inzwischen durch eine andere Operation
+        // bereits geloescht wurde - UPDATE trifft 0 Zeilen).
+        let dir = unique_test_dir("delete_file_compensation");
+        std::fs::create_dir_all(&dir).unwrap();
+        let src_path = dir.join("model.3mf");
+        std::fs::write(&src_path, b"CONTENT").unwrap();
+
+        let conn = db::connect_in_memory().unwrap();
+        let file_id = db::test_insert_minimal_file(&conn, &src_path.to_string_lossy(), None).unwrap();
+        // db::delete_file() (HARTES Loeschen der Zeile, nicht soft_delete)
+        // VOR dem Aufruf, um ein 0-Zeilen-UPDATE in soft_delete_file zu
+        // erzwingen, OHNE get_file() vorher scheitern zu lassen - dafuer wird
+        // delete_file_with_conn mit einem bereits geladenen FileRecord
+        // aufgerufen statt es intern per get_file zu laden, damit der Test
+        // die Reihenfolge exakt kontrollieren kann.
+        let file = db::get_file(&conn, file_id).unwrap().unwrap();
+        db::delete_file(&conn, file_id).unwrap();
+
+        let trash_dir = unique_test_dir("delete_file_compensation_trash");
+        std::fs::create_dir_all(&trash_dir).unwrap();
+        let result = delete_file_with_conn(&conn, &file, file_id, &trash_dir);
+
+        assert!(result.is_err(), "must surface the soft_delete_file failure (0 rows affected)");
+        assert!(src_path.exists(), "source file must be moved back from trash after soft_delete_file failed");
+    }
+
+    #[test]
+    fn rename_folder_compensates_when_db_update_fails() {
+        let dir = unique_test_dir("rename_folder_compensation");
+        std::fs::create_dir_all(dir.join("Alt")).unwrap();
+
+        let conn = db::connect_in_memory().unwrap();
+        let folder_id = db::insert_folder_with_parent(&conn, "Alt", None, &dir.join("Alt").to_string_lossy()).unwrap();
+        // Zweiten Ordner mit dem Zielnamen anlegen, dessen `path` bereits dem
+        // Zielpfad entspricht - folders.path ist ebenfalls UNIQUE, das
+        // erzwingt einen echten DB-Fehler NACH dem physischen std::fs::rename.
+        db::insert_folder_with_parent(&conn, "Neu", None, &dir.join("Neu").to_string_lossy()).unwrap();
+
+        let result = rename_folder_with_conn(&conn, folder_id, "Neu".to_string(), &[]);
+
+        assert!(result.is_err());
+        assert!(dir.join("Alt").exists(), "folder must be renamed back after the DB update failed");
+        assert!(!dir.join("Neu").is_dir() || std::fs::read_dir(dir.join("Neu")).unwrap().count() == 0);
+    }
+
+    #[test]
+    fn restore_file_compensates_when_db_update_fails() {
+        let dir = unique_test_dir("restore_file_compensation");
+        std::fs::create_dir_all(&dir).unwrap();
+        let trash_dir = unique_test_dir("restore_file_compensation_trash");
+        std::fs::create_dir_all(&trash_dir).unwrap();
+
+        let original_path = dir.join("model.3mf");
+        let trash_path = trash_dir.join("model.3mf");
+        std::fs::write(&trash_path, b"CONTENT").unwrap();
+
+        let conn = db::connect_in_memory().unwrap();
+        let file_id = db::test_insert_minimal_file(&conn, &original_path.to_string_lossy(), None).unwrap();
+        let deleted_at = chrono::Utc::now().to_rfc3339();
+        db::soft_delete_file(&conn, file_id, Some(&trash_path.to_string_lossy()), &deleted_at).unwrap();
+
+        // Erzwingt einen DB-Fehler GENAU bei der Deleted->Restored-Transition
+        // (deleted_at wechselt von NOT NULL zu NULL), NACHDEM move_file bereits
+        // physisch aus dem Papierkorb zurueckverschoben hat - deterministischer
+        // als ein UNIQUE-Konflikt, da restore_file keine kollidierbare Spalte
+        // wie `path`/`folders.path` in einer Weise setzt, die sich hier ohne
+        // einen zweiten, kuenstlich kollidierenden Datensatz ausnutzen liesse.
+        conn.execute_batch(
+            "CREATE TRIGGER block_restore BEFORE UPDATE ON files
+             WHEN NEW.deleted_at IS NULL AND OLD.deleted_at IS NOT NULL
+             BEGIN SELECT RAISE(ABORT, 'simulierter Fehler bei restore_file'); END;",
+        )
+        .unwrap();
+
+        let file = db::get_file(&conn, file_id).unwrap().unwrap();
+        let result = restore_file_with_conn(&conn, &file, file_id);
+
+        assert!(result.is_err(), "must surface the db::restore_file failure raised by the trigger");
+        assert!(trash_path.exists(), "file must be moved back into the trash after db::restore_file failed");
+        assert!(!original_path.exists(), "destination must not exist after the rollback");
+        let still_deleted: Option<String> = conn
+            .query_row("SELECT deleted_at FROM files WHERE id = ?1", [file_id], |r| r.get(0))
+            .unwrap();
+        assert!(still_deleted.is_some(), "db must still show the file as deleted after the failed restore");
     }
 }
