@@ -10,6 +10,11 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ### Added
 
 - Neue Ansicht "Ordner": Modelle können nach Ordnern gruppiert angezeigt werden (als Kachel-Raster oder Zeilen-Liste), verschachtelte Unterordner eingerückt mit Verbindungslinie, einzeln einklappbar (Zustand bleibt erhalten). Ordner-Kopfzeilen und Dateien lassen sich innerhalb dieser Ansicht direkt per Maus verschieben, genau wie bisher schon in der Seitenleiste.
+- Update-Check: Beim Start wird einmalig still geprüft, ob auf GitHub eine neuere Version vorliegt (kein automatischer Download); bei neuerer Version erscheint ein wegklickbarer Hinweis unten rechts, zusätzlich manuell im neuen "Info"-Tab der Einstellungen abrufbar.
+
+### Changed
+
+- Einstellungen in 4 Reiter aufgeteilt (Allgemein, Slicer, Katalog, Info) statt einer einzigen scrollenden Liste; die Dichte-Einstellung (Kompakt/Komfort) ist jetzt Teil von "Erscheinungsbild" statt eines eigenen Abschnitts.
 
 ## [0.7.8] - 2026-09-19
 
@@ -267,6 +272,11 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 ### Added
 
 - New "Folder" view: models can be shown grouped by folder (as a tile grid or row list), nested subfolders indented with a connecting line, individually collapsible (state persists). Folder headers and files can be dragged directly within this view, exactly like the existing sidebar behavior.
+- Update check: on startup, silently checks once whether a newer version is available on GitHub (no automatic download); when found, shows a dismissible hint bottom-right, also available on demand from the new "Info" tab in settings.
+
+### Changed
+
+- Settings split into 4 tabs (General, Slicer, Catalog, Info) instead of one long scrolling list; the density setting (Compact/Comfort) is now part of "Appearance" instead of its own section.
 
 ## [0.7.8] - 2026-09-19
 
