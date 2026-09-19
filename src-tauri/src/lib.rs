@@ -152,6 +152,8 @@ pub fn run() {
             commands::reorder_collection,
             commands::list_collection_files,
             commands::import_folder_as_collection,
+            commands::check_for_update,
+            commands::open_release_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
