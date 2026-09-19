@@ -57,8 +57,18 @@ export function useBulkSelection({
 
   const bulkAddToQueue = useCallback(() => {
     const notYetQueued = models.filter((m) => selectedForBulk.has(m.id) && m.queuePosition === null);
-    return Promise.all(notYetQueued.map((m) => filesApi.addToQueue(m.id))).then(() =>
-      filesApi.listFiles().then(setModels),
+    // Nur die betroffenen Modelle bekommen eine neue queuePosition - lokal
+    // patchen statt die komplette Liste per list_files() neu zu laden
+    // (Finding M-01: die Katalog-Uebersicht soll nicht mehr die volle,
+    // BLOB-lastige Abfrage ausloesen). Server ist bereits durch addToQueue
+    // aktualisiert; die zurueckgegebene Position wird hier gemerged.
+    return Promise.all(notYetQueued.map((m) => filesApi.addToQueue(m.id).then((position) => ({ id: m.id, position })))).then(
+      (updates) => {
+        const positionById = new Map(updates.map((u) => [u.id, u.position]));
+        setModels((prev) =>
+          prev.map((m) => (positionById.has(m.id) ? { ...m, queuePosition: positionById.get(m.id)! } : m)),
+        );
+      },
     );
   }, [models, selectedForBulk, setModels]);
 

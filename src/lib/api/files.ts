@@ -1,8 +1,18 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { ModelFile } from '../../types';
+import type { ModelFile, ModelFileSummary } from '../../types';
 
 export function listFiles() {
   return invoke<ModelFile[]>('list_files');
+}
+// Schlanke Katalog-Uebersicht (Finding M-01) - siehe ModelFileSummary.
+export function listFileSummaries() {
+  return invoke<ModelFileSummary[]>('list_file_summaries');
+}
+// Generischer Nachlade-Command fuer volle Modelldaten (Bilder/Materialien/
+// Tags/Metadata) - die Detailseite ruft dies mit einer Liste der Laenge 1
+// auf ([id]), kein separater Einzeldatensatz-Command (siehe Task-6-Brief).
+export function listFilesByIds(ids: string[]) {
+  return invoke<ModelFile[]>('list_files_by_ids', { ids });
 }
 export function listTrash() {
   return invoke<ModelFile[]>('list_trash');

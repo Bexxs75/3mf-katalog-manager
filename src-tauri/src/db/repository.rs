@@ -668,6 +668,68 @@ pub fn list_files(conn: &Connection) -> Result<Vec<FileRecord>, DbError> {
     Ok(files)
 }
 
+/// Schlanke Projektion von `files` fuer die Katalog-Uebersicht (Grid/Liste):
+/// bewusst OHNE `render_snapshot_png`/`custom_image_png` (grosse
+/// Zusatzbilder, nur auf der Detailseite gebraucht) und OHNE
+/// Materials/Metadata/Tags (bislang pro Zeile per `load_materials`/
+/// `load_metadata`/`load_tags` nachgeladen - genau das N+1-Problem aus
+/// Finding M-01). `thumbnail_png` bleibt enthalten, da die Kachel-/
+/// Grid-Vorschau ohne ein kleines Bild pro Zeile nicht sinnvoll waere
+/// (Variante (a) aus dem Task-6-Brief).
+pub struct FileSummary {
+    pub id: i64,
+    pub name: String,
+    pub path: String,
+    pub file_type: FileType,
+    pub folder_id: Option<i64>,
+    pub file_size_bytes: i64,
+    pub dimensions_mm: Option<[f64; 3]>,
+    pub volume_cm3: Option<f64>,
+    pub object_count: Option<i64>,
+    pub imported_at: String,
+    pub print_status: String,
+    pub favorite: bool,
+    pub queue_position: Option<i64>,
+    pub thumbnail_png: Option<Vec<u8>>,
+}
+
+pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, path, file_type, folder_id, file_size_bytes,
+                dimension_x_mm, dimension_y_mm, dimension_z_mm, volume_cm3,
+                object_count, imported_at, print_status, favorite,
+                queue_position, thumbnail_png
+         FROM files WHERE deleted_at IS NULL ORDER BY name",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            let dx: Option<f64> = row.get(6)?;
+            let dy: Option<f64> = row.get(7)?;
+            let dz: Option<f64> = row.get(8)?;
+            Ok(FileSummary {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                path: row.get(2)?,
+                file_type: FileType::parse(&row.get::<_, String>(3)?).unwrap_or(FileType::ThreeMf),
+                folder_id: row.get(4)?,
+                file_size_bytes: row.get(5)?,
+                dimensions_mm: match (dx, dy, dz) {
+                    (Some(x), Some(y), Some(z)) => Some([x, y, z]),
+                    _ => None,
+                },
+                volume_cm3: row.get(9)?,
+                object_count: row.get(10)?,
+                imported_at: row.get(11)?,
+                print_status: row.get(12)?,
+                favorite: row.get::<_, i64>(13)? != 0,
+                queue_position: row.get(14)?,
+                thumbnail_png: row.get(15)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
 fn row_to_file(row: &rusqlite::Row) -> rusqlite::Result<FileRecord> {
     let file_type_str: String = row.get(3)?;
     let dim_x: Option<f64> = row.get(9)?;
@@ -990,6 +1052,99 @@ pub fn delete_print_log_entry(conn: &Connection, id: i64) -> Result<(), DbError>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn list_file_summaries_omits_large_blob_columns() {
+        let conn = connect_in_memory().unwrap();
+        let file_id = test_insert_minimal_file(&conn, "/tmp/x.3mf", None).unwrap();
+        conn.execute(
+            "UPDATE files SET render_snapshot_png = ?1, custom_image_png = ?2 WHERE id = ?3",
+            params![vec![0u8; 1024], vec![0u8; 1024], file_id],
+        ).unwrap();
+
+        let summaries = list_file_summaries(&conn).unwrap();
+
+        assert_eq!(summaries.len(), 1);
+        // FileSummary hat schlicht KEIN Feld fuer render_snapshot_png/custom_image_png -
+        // dieser Test dokumentiert die Absicht ueber die Feldliste des Typs selbst
+        // (Compile-Zeit-Garantie: FileSummary { .. } ohne diese Felder).
+        assert_eq!(summaries[0].thumbnail_png, None);
+    }
+
+    // `Connection::trace` (rusqlite 0.40) nimmt nur einen reinen
+    // Funktionszeiger (`fn(&str)`), keine capturing Closure - der Zaehler
+    // muss deshalb ausserhalb der Closure leben. Ein thread-lokaler Zaehler
+    // reicht hier aus: der SQLite-Trace-Callback laeuft synchron auf
+    // demselben Thread wie der `list_file_summaries`-Aufruf, und cargo test
+    // fuehrt jeden Testfall auf einem eigenen Thread aus, wodurch Tests sich
+    // nicht gegenseitig verfaelschen (anders als bei einem globalen Static).
+    thread_local! {
+        static QUERY_TRACE_COUNT: std::cell::Cell<usize> = std::cell::Cell::new(0);
+    }
+
+    // `Connection::trace` ist in dieser rusqlite-Version als deprecated
+    // markiert (siehe Doc-Kommentar oben) - `trace_v2` mit dem
+    // `SQLITE_TRACE_STMT`-Event ist der empfohlene Nachfolger und zaehlt
+    // exakt dieselben "eine Query beginnt"-Ereignisse.
+    fn count_traced_query(event: rusqlite::trace::TraceEvent<'_>) {
+        if matches!(event, rusqlite::trace::TraceEvent::Stmt(_, _)) {
+            QUERY_TRACE_COUNT.with(|c| c.set(c.get() + 1));
+        }
+    }
+
+    #[test]
+    fn list_file_summaries_executes_a_constant_number_of_queries_regardless_of_row_count() {
+        let conn = connect_in_memory().unwrap();
+        for i in 0..500 {
+            test_insert_minimal_file(&conn, &format!("/tmp/model-{i}.3mf"), None).unwrap();
+        }
+
+        QUERY_TRACE_COUNT.with(|c| c.set(0));
+        conn.trace_v2(
+            rusqlite::trace::TraceEventCodes::SQLITE_TRACE_STMT,
+            Some(count_traced_query),
+        );
+
+        let summaries = list_file_summaries(&conn).unwrap();
+
+        assert_eq!(summaries.len(), 500);
+        let executed = QUERY_TRACE_COUNT.with(|c| c.get());
+        assert!(
+            executed <= 3,
+            "list_file_summaries darf nicht pro Zeile eine zusaetzliche Query ausfuehren (gemessen: {executed} Statements fuer 500 Zeilen - muss unabhaengig von der Zeilenzahl konstant klein bleiben, nicht O(N))"
+        );
+    }
+
+    #[test]
+    #[ignore] // manuell ausfuehren: cargo test --lib -- --ignored list_file_summaries_benchmark
+    fn list_file_summaries_benchmark_with_5000_files() {
+        let conn = connect_in_memory().unwrap();
+        for i in 0..5000 {
+            test_insert_minimal_file(&conn, &format!("/tmp/model-{i}.3mf"), None).unwrap();
+        }
+        let start = std::time::Instant::now();
+        let summaries = list_file_summaries(&conn).unwrap();
+        let elapsed = start.elapsed();
+        assert_eq!(summaries.len(), 5000);
+        // Bewusst KEINE harte Zeit-Assertion (P2-Korrektur) - dieser Test dient
+        // nur der manuellen Beobachtung via --nocapture, nicht als CI-Gate.
+        eprintln!("list_file_summaries(5000 rows): {elapsed:?}");
+    }
+
+    #[test]
+    fn list_files_by_ids_returns_full_records_including_images_and_metadata() {
+        let conn = connect_in_memory().unwrap();
+        let file_id = test_insert_minimal_file(&conn, "/tmp/detail.3mf", None).unwrap();
+        conn.execute(
+            "UPDATE files SET render_snapshot_png = ?1 WHERE id = ?2",
+            params![vec![0u8; 1024], file_id],
+        ).unwrap();
+
+        let files = list_files_by_ids(&conn, &[file_id]).unwrap();
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].render_snapshot_png, Some(vec![0u8; 1024]));
+    }
 
     #[test]
     fn list_folders_returns_path_and_parent_id() {

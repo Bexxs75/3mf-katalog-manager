@@ -80,6 +80,16 @@ export default function App() {
   const contextModel = contextMenu ? store.models.find((m) => m.id === contextMenu.modelId) ?? null : null;
 
   useEffect(() => {
+    // Sicherheitsnetz fuer Finding M-01: `selectModel` (immer vor einem
+    // Doppelklick ausgeloest) stoesst das Nachladen der vollen Modelldaten
+    // bereits an, aber falls die Detailseite jemals ohne vorherigen
+    // selectModel()-Aufruf geoeffnet wird, holt dieser Effekt die vollen
+    // Daten trotzdem nach (ensureFullModel ist idempotent).
+    if (detailModelId) store.ensureFullModel(detailModelId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailModelId]);
+
+  useEffect(() => {
     if (!detailModelId) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;

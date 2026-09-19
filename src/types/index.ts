@@ -56,6 +56,35 @@ export interface ModelFile {
   deletedAt: string | null;
 }
 
+/**
+ * Schlanke Projektion von `ModelFile` fuer die Katalog-Uebersicht (Grid/
+ * Liste), gespeist von `list_file_summaries` (Finding M-01: die volle
+ * `ModelFile`-Abfrage laedt pro Zeile Materials/Tags/Metadata sowie zwei
+ * grosse Zusatzbilder, obwohl die Uebersicht nur eine Kachel-Vorschau
+ * braucht). Enthaelt bewusst KEIN `materials`/`tags`/`renderSnapshotImage`/
+ * `customImage`/`sliceInfo`/`costEstimate`/`creator`/`sourceUrl`/
+ * `lastViewedAt` - `thumbnailImage` bleibt fuer die Kachel-Vorschau
+ * erhalten (Variante (a) aus dem Task-6-Brief). Volle Daten werden erst
+ * beim Oeffnen der Detailseite/Auswahl ueber `listFilesByIds([id])`
+ * nachgeladen (siehe `useCatalogStore.ts`).
+ */
+export interface ModelFileSummary {
+  id: string;
+  name: string;
+  path: string;
+  folderId: string;
+  fileType: string;
+  fileSizeBytes: number;
+  dimensionsMm: [number, number, number] | null;
+  volumeCm3: number | null;
+  objectCount: number | null;
+  importedAt: string;
+  printStatus: 'not_printed' | 'printed';
+  favorite: boolean;
+  queuePosition: number | null;
+  thumbnailImage: string | null;
+}
+
 export interface Folder {
   id: string;
   name: string;

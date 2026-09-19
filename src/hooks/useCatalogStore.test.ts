@@ -2,13 +2,23 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import { useCatalogStore } from './useCatalogStore';
-import { makeModelFile } from '../test/factories';
+import { makeModelFile, makeModelFileSummary } from '../test/factories';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
+// Seit Finding M-01 laedt die Katalog-Uebersicht list_file_summaries statt
+// list_files - die vollen ModelFile-Fixtures aus makeModelFile() werden hier
+// auf die schlanke Summary-Form projiziert, damit bestehende Test-Setups
+// (die volle ModelFile-Objekte als Ausgangsdaten formulieren) unveraendert
+// bleiben koennen. list_files_by_ids wird ebenfalls bedient, falls ein Test
+// das Nachladen der vollen Daten (ensureFullModel/selectModel) ausloest.
 function mockInitialLoad(models = [makeModelFile({ id: 'm1' })]) {
-  vi.mocked(invoke).mockImplementation((cmd: string) => {
-    if (cmd === 'list_files') return Promise.resolve(models);
+  vi.mocked(invoke).mockImplementation((cmd: string, args?: unknown) => {
+    if (cmd === 'list_file_summaries') return Promise.resolve(models.map((m) => makeModelFileSummary(m)));
+    if (cmd === 'list_files_by_ids') {
+      const ids = ((args as { ids?: string[] } | undefined)?.ids) ?? [];
+      return Promise.resolve(models.filter((m) => ids.includes(m.id)));
+    }
     if (cmd === 'list_folders') return Promise.resolve([]);
     if (cmd === 'list_tag_counts') return Promise.resolve([]);
     if (cmd === 'list_creators') return Promise.resolve([]);
@@ -122,7 +132,7 @@ describe('useCatalogStore', () => {
     // Backend meldet hier weiterhin beide Modelle, lokales Filtern haette m1
     // faelschlich entfernt.
     act(() => result.current.refetchAfterPartialDelete(['m1']));
-    await waitFor(() => expect(callCount('list_files')).toBe(2));
+    await waitFor(() => expect(callCount('list_file_summaries')).toBe(2));
     expect(result.current.models.map((m) => m.id)).toEqual(['m1', 'm2']);
     expect(result.current.selectedId).toBeNull();
   });
@@ -133,7 +143,7 @@ describe('useCatalogStore', () => {
     await waitFor(() => expect(result.current.models).toHaveLength(2));
     act(() => result.current.setSelectedId('m2'));
     act(() => result.current.refetchAfterPartialDelete(['m1']));
-    await waitFor(() => expect(callCount('list_files')).toBe(2));
+    await waitFor(() => expect(callCount('list_file_summaries')).toBe(2));
     expect(result.current.selectedId).toBe('m2');
   });
 
@@ -162,6 +172,10 @@ describe('useCatalogStore', () => {
   });
 
   it('pendingSnapshotIds lists models without a render snapshot and skipSnapshot removes them', async () => {
+    // list_file_summaries traegt kein renderSnapshotImage (Finding M-01) -
+    // frisch geladene Modelle gelten deshalb erst einmal alle als "pending",
+    // bis eine Auswahl (selectModel) die vollen Daten per listFilesByIds
+    // nachlaedt und den tatsaechlichen Snapshot-Status liefert.
     mockInitialLoad([
       makeModelFile({ id: 'm1', renderSnapshotImage: null }),
       makeModelFile({ id: 'm2', renderSnapshotImage: 'data:image/png;base64,xx' }),
@@ -169,7 +183,13 @@ describe('useCatalogStore', () => {
     ]);
     const { result } = renderHook(() => useCatalogStore());
     await waitFor(() => expect(result.current.models).toHaveLength(3));
-    expect(result.current.pendingSnapshotIds).toEqual(['m1', 'm3']);
+    expect(result.current.pendingSnapshotIds).toEqual(['m1', 'm2', 'm3']);
+
+    // Sobald m2 ausgewaehlt wird, laedt selectModel die vollen Daten nach
+    // (ueber listFilesByIds) und deckt auf, dass m2 bereits einen Snapshot hat.
+    await act(async () => result.current.selectModel('m2'));
+    await waitFor(() => expect(result.current.pendingSnapshotIds).toEqual(['m1', 'm3']));
+
     act(() => result.current.skipSnapshot('m1'));
     expect(result.current.pendingSnapshotIds).toEqual(['m3']);
   });
@@ -181,7 +201,9 @@ describe('useCatalogStore', () => {
       return mockInitialLoadResolver(cmd);
     });
     function mockInitialLoadResolver(cmd: string) {
-      if (cmd === 'list_files') return Promise.resolve([makeModelFile({ id: 'm1', queuePosition: null })]);
+      if (cmd === 'list_file_summaries') {
+        return Promise.resolve([makeModelFileSummary({ id: 'm1', queuePosition: null })]);
+      }
       return Promise.resolve([]);
     }
     const { result } = renderHook(() => useCatalogStore());

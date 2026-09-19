@@ -2,7 +2,49 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as filesApi from '../lib/api/files';
 import * as foldersApi from '../lib/api/folders';
 import * as catalogMetaApi from '../lib/api/catalogMeta';
-import type { ModelFile, Folder, TagCount, CreatorCount, SavedFilter, ImportResultDto } from '../types';
+import type { ModelFile, ModelFileSummary, Folder, TagCount, CreatorCount, SavedFilter, ImportResultDto } from '../types';
+
+// Bettet eine schlanke `ModelFileSummary` (siehe Finding M-01) in die volle
+// `ModelFile`-Form ein, damit die Grid-/Listen-Ansicht sowie alle
+// bestehenden Komponenten/Hooks weiterhin denselben `ModelFile`-Typ sehen,
+// ohne dass jede Stelle im Baum angepasst werden muss. Die hier NICHT von
+// list_file_summaries gelieferten Felder (materials/tags/renderSnapshotImage/
+// customImage/sliceInfo/costEstimate/creator/sourceUrl/lastViewedAt) werden
+// mit neutralen Defaults gefuellt und erst nachtraeglich per
+// `ensureFullModel()`/`listFilesByIds([id])` echt befuellt, sobald ein
+// Modell ausgewaehlt oder die Detailseite geoeffnet wird.
+function summaryToModelFile(s: ModelFileSummary): ModelFile {
+  return {
+    id: s.id,
+    name: s.name,
+    path: s.path,
+    folderId: s.folderId,
+    tags: [],
+    origin: 'local',
+    sync: 'local-only',
+    dimensionsMm: s.dimensionsMm,
+    volumeCm3: s.volumeCm3,
+    objectCount: s.objectCount,
+    plateCount: null,
+    materials: [],
+    fileSizeBytes: s.fileSizeBytes,
+    importedAt: s.importedAt,
+    printStatus: s.printStatus,
+    estimatedWeightG: null,
+    weightSource: 'estimated',
+    sliceInfo: null,
+    costEstimate: null,
+    lastViewedAt: null,
+    creator: null,
+    customImage: null,
+    thumbnailImage: s.thumbnailImage,
+    renderSnapshotImage: null,
+    sourceUrl: null,
+    queuePosition: s.queuePosition,
+    favorite: s.favorite,
+    deletedAt: null,
+  };
+}
 
 export function useCatalogStore() {
   const [models, setModels] = useState<ModelFile[]>([]);
@@ -12,6 +54,11 @@ export function useCatalogStore() {
   const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([]);
   const [trashModels, setTrashModels] = useState<ModelFile[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // IDs, fuer die bereits die volle ModelFile-Auskunft (Materials/Tags/
+  // Bilder/Metadata) per listFilesByIds nachgeladen wurde - verhindert
+  // wiederholtes Nachladen, solange kein refreshFiles() die Liste wieder auf
+  // schlanke Summaries zuruecksetzt (siehe ensureFullModel).
+  const [fullyLoadedIds, setFullyLoadedIds] = useState<Set<string>>(new Set());
   const [skippedSnapshotIds, setSkippedSnapshotIds] = useState<Set<string>>(new Set());
   // Pro Modell-ID statt global, damit ein Fehler/Erfolg von Modell A nicht
   // unter Modell B stehen bleibt, wenn der Nutzer zwischendurch die
@@ -27,16 +74,56 @@ export function useCatalogStore() {
   );
 
   const refreshFolders = useCallback(() => foldersApi.listFolders().then(setFolders), []);
-  const refreshFiles = useCallback(() => filesApi.listFiles().then(setModels), []);
+  // Katalog-Uebersicht laedt seit Finding M-01 nur noch die schlanke
+  // Summary-Projektion statt der vollen ModelFile-Liste (Materials/Tags/
+  // Metadata sowie render_snapshot_png/custom_image_png wurden bisher pro
+  // Zeile mitgeladen, obwohl die Grid-/Listen-Ansicht sie gar nicht
+  // anzeigt). Ein refreshFiles() setzt damit alle Eintraege wieder auf den
+  // schlanken Stand zurueck - bereits "hochgestufte" (fullyLoadedIds)
+  // Eintraege werden beim naechsten ensureFullModel()-Aufruf einfach erneut
+  // nachgeladen, das ist unkritisch (kein Datenverlust, nur ein zusaetzlicher
+  // Roundtrip).
+  const refreshFiles = useCallback(() => {
+    setFullyLoadedIds(new Set());
+    return filesApi.listFileSummaries().then((summaries) => setModels(summaries.map(summaryToModelFile)));
+  }, []);
   const refreshTags = useCallback(() => catalogMetaApi.listTagCounts().then(setTags), []);
   const refreshCreators = useCallback(() => catalogMetaApi.listCreators().then(setCreators), []);
   const refreshSavedFilters = useCallback(() => catalogMetaApi.listSavedFilters().then(setSavedFilters), []);
   const refreshTrash = useCallback(() => filesApi.listTrash().then(setTrashModels), []);
 
+  // Laedt die vollen Modelldaten (Materials/Tags/Bilder/Metadata) fuer genau
+  // ein Modell nach, sobald es tatsaechlich gebraucht wird (Auswahl in der
+  // Liste oder Oeffnen der Detailseite) - siehe Task-6-Brief Step 4b/6.
+  // Kein Einzeldatensatz-Command: `listFilesByIds` wird mit einer Liste der
+  // Laenge 1 aufgerufen. Ersetzt den bisherigen Eintrag in `models` in-place,
+  // damit `models.find(id)` (selected/detailModel in App.tsx) danach die
+  // vollen Daten liefert, ohne dass Grid/Liste selbst umgebaut werden
+  // muessen.
+  const ensureFullModel = useCallback(
+    (id: string) => {
+      if (fullyLoadedIds.has(id) || !models.some((m) => m.id === id)) return;
+      filesApi
+        .listFilesByIds([id])
+        .then((full) => {
+          if (full.length === 0) return;
+          setModels((prev) =>
+            prev.map((m) => (m.id === id ? { ...full[0], lastViewedAt: m.lastViewedAt ?? full[0].lastViewedAt } : m)),
+          );
+          setFullyLoadedIds((prev) => new Set(prev).add(id));
+        })
+        .catch((e) => {
+          console.error('[full-model] Nachladen fehlgeschlagen:', e);
+        });
+    },
+    [models, fullyLoadedIds],
+  );
+
   useEffect(() => {
-    filesApi.listFiles().then((files) => {
-      setModels(files);
-      setSelectedId((prev) => prev ?? files[0]?.id ?? null);
+    filesApi.listFileSummaries().then((summaries) => {
+      const mapped = summaries.map(summaryToModelFile);
+      setModels(mapped);
+      setSelectedId((prev) => prev ?? mapped[0]?.id ?? null);
     });
     refreshFolders();
     refreshTags();
@@ -51,19 +138,30 @@ export function useCatalogStore() {
     setSkippedSnapshotIds((prev) => new Set(prev).add(id));
   }, []);
 
-  const selectModel = useCallback((id: string) => {
-    setSelectedId(id);
-    const now = new Date().toISOString();
-    setModels((prev) => prev.map((m) => (m.id === id ? { ...m, lastViewedAt: now } : m)));
-    filesApi.markFileViewed(id).catch((e) => {
-      console.error('[last-viewed] Aktualisieren fehlgeschlagen:', e);
-    });
-  }, []);
+  const selectModel = useCallback(
+    (id: string) => {
+      setSelectedId(id);
+      ensureFullModel(id);
+      const now = new Date().toISOString();
+      setModels((prev) => prev.map((m) => (m.id === id ? { ...m, lastViewedAt: now } : m)));
+      filesApi.markFileViewed(id).catch((e) => {
+        console.error('[last-viewed] Aktualisieren fehlgeschlagen:', e);
+      });
+    },
+    [ensureFullModel],
+  );
 
   const mergeImported = useCallback(
     (result: ImportResultDto) => {
       if (result.imported.length) {
         setModels((prev) => [...prev, ...result.imported]);
+        // Frisch importierte Dateien kommen bereits als volle ModelFile-
+        // Datensaetze vom Import-Command - kein erneutes Nachladen noetig.
+        setFullyLoadedIds((prev) => {
+          const next = new Set(prev);
+          result.imported.forEach((m) => next.add(m.id));
+          return next;
+        });
         setSelectedId(result.imported[result.imported.length - 1].id);
         refreshFolders();
         refreshTags();
@@ -90,14 +188,14 @@ export function useCatalogStore() {
   // die Modell-Liste autoritativ neu statt lokal zu filtern.
   const refetchAfterPartialDelete = useCallback(
     (affectedIds: string[]) => {
-      filesApi.listFiles().then(setModels);
+      refreshFiles();
       setSelectedId((prev) => (prev && affectedIds.includes(prev) ? null : prev));
       refreshFolders();
       refreshTags();
       refreshCreators();
       refreshTrash();
     },
-    [refreshFolders, refreshTags, refreshCreators, refreshTrash],
+    [refreshFiles, refreshFolders, refreshTags, refreshCreators, refreshTrash],
   );
 
   const restoreModel = useCallback(
@@ -252,6 +350,8 @@ export function useCatalogStore() {
       .rescanFileMetadata(id)
       .then((updated) => {
         setModels((prev) => prev.map((m) => (m.id === id ? updated : m)));
+        // rescan_file_metadata liefert bereits den vollen ModelFile-Datensatz.
+        setFullyLoadedIds((prev) => new Set(prev).add(id));
         setRescanFeedback({ fileId: id, status: 'success' });
       })
       .catch((e) => {
@@ -267,7 +367,7 @@ export function useCatalogStore() {
     skippedSnapshotIds, skipSnapshot, pendingSnapshotIds,
     rescanFeedback,
     refreshFolders, refreshFiles, refreshTags, refreshCreators, refreshTrash,
-    selectModel, mergeImported,
+    selectModel, mergeImported, ensureFullModel,
     restoreModel, deleteModelPermanently, emptyTrashAction,
     addTag, removeTag, deleteModel,
     togglePrintStatus, toggleFavorite,

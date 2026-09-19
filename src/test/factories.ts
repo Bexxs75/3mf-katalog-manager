@@ -1,4 +1,4 @@
-import type { ModelFile, Folder } from '../types';
+import type { ModelFile, ModelFileSummary, Folder } from '../types';
 
 export function makeModelFile(overrides: Partial<ModelFile> = {}): ModelFile {
   return {
@@ -31,6 +31,29 @@ export function makeModelFile(overrides: Partial<ModelFile> = {}): ModelFile {
     favorite: false,
     deletedAt: null,
     ...overrides,
+  };
+}
+
+// Projiziert einen ModelFile-Testfixture auf die schlanke
+// list_file_summaries-Form (Finding M-01), damit Store-Tests nicht zwei
+// unabhaengige Fixture-Definitionen pflegen muessen.
+export function makeModelFileSummary(overrides: Partial<ModelFile> = {}): ModelFileSummary {
+  const m = makeModelFile(overrides);
+  return {
+    id: m.id,
+    name: m.name,
+    path: m.path,
+    folderId: m.folderId,
+    fileType: '3mf',
+    fileSizeBytes: m.fileSizeBytes,
+    dimensionsMm: m.dimensionsMm,
+    volumeCm3: m.volumeCm3,
+    objectCount: m.objectCount,
+    importedAt: m.importedAt,
+    printStatus: m.printStatus,
+    favorite: m.favorite,
+    queuePosition: m.queuePosition,
+    thumbnailImage: m.thumbnailImage,
   };
 }
 

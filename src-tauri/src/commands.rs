@@ -64,6 +64,37 @@ pub struct ModelFileDto {
     pub deleted_at: Option<String>,
 }
 
+/// Schlanke Projektion von `ModelFileDto` fuer die Katalog-Uebersicht
+/// (Grid/Liste, siehe Finding M-01): enthaelt bewusst KEIN
+/// `renderSnapshotImage`/`customImage` und KEINE `materials`/`tags` -
+/// diese werden nur auf der Detailseite ueber `list_files_by_ids([id])`
+/// nachgeladen. `thumbnailImage` bleibt enthalten, da die Kachel-/
+/// Grid-Vorschau ein kleines Bild pro Zeile braucht (Variante (a) aus dem
+/// Task-6-Brief).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileSummaryDto {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    pub file_type: String,
+    // Bewusste Abweichung von einem `Option<String>`-Vorschlag im Review:
+    // das bestehende `ModelFileDto.folder_id` nutzt denselben leeren-String-
+    // als-"kein Ordner"-Sentinel, und das Frontend (`ModelFile.folderId:
+    // string`) ist bereits durchgaengig darauf ausgelegt - siehe
+    // Kommentar in `to_dto()`/`list_files_by_ids` unten.
+    pub folder_id: String,
+    pub file_size_bytes: i64,
+    pub dimensions_mm: Option<[f64; 3]>,
+    pub volume_cm3: Option<f64>,
+    pub object_count: Option<i64>,
+    pub imported_at: String,
+    pub print_status: String,
+    pub favorite: bool,
+    pub queue_position: Option<i64>,
+    pub thumbnail_image: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MaterialDto {
@@ -358,6 +389,48 @@ pub(crate) fn lock_db<'a>(state: &'a State<AppState>) -> CmdResult<std::sync::Mu
 pub fn list_files(state: State<AppState>) -> CmdResult<Vec<ModelFileDto>> {
     let conn = lock_db(&state)?;
     let files = db::list_files(&conn).map_err(|e| e.to_string())?;
+    let spools = db::list_filament_spools(&conn).map_err(|e| e.to_string())?;
+    Ok(files.into_iter().map(|f| to_dto(f, &spools)).collect())
+}
+
+#[tauri::command]
+pub fn list_file_summaries(state: State<AppState>) -> CmdResult<Vec<FileSummaryDto>> {
+    let conn = lock_db(&state)?;
+    let summaries = db::list_file_summaries(&conn).map_err(|e| e.to_string())?;
+    Ok(summaries
+        .into_iter()
+        .map(|s| FileSummaryDto {
+            id: s.id.to_string(),
+            name: s.name,
+            path: s.path,
+            file_type: s.file_type.as_str().to_string(),
+            folder_id: s.folder_id.map(|id| id.to_string()).unwrap_or_default(),
+            file_size_bytes: s.file_size_bytes,
+            dimensions_mm: s.dimensions_mm,
+            volume_cm3: s.volume_cm3,
+            object_count: s.object_count,
+            imported_at: s.imported_at,
+            print_status: s.print_status,
+            favorite: s.favorite,
+            queue_position: s.queue_position,
+            thumbnail_image: encode_image(s.thumbnail_png),
+        })
+        .collect())
+}
+
+/// Generischer Nachlade-Command fuer volle Modelldaten (Bilder/Materialien/
+/// Tags/Metadata), die `list_file_summaries` bewusst nicht mitliefert. Kein
+/// neuer Einzeldatensatz-Command - die Detailseite ruft dies mit einer
+/// Liste der Laenge 1 auf (`listFilesByIds([id])`), siehe Task-6-Brief
+/// Korrektur nach fuenfter Review-Runde.
+#[tauri::command]
+pub fn list_files_by_ids(state: State<AppState>, ids: Vec<String>) -> CmdResult<Vec<ModelFileDto>> {
+    let conn = lock_db(&state)?;
+    let parsed_ids: Vec<i64> = ids
+        .iter()
+        .map(|id| id.parse().map_err(|_| format!("invalid file id: {id}")))
+        .collect::<Result<_, String>>()?;
+    let files = db::list_files_by_ids(&conn, &parsed_ids).map_err(|e| e.to_string())?;
     let spools = db::list_filament_spools(&conn).map_err(|e| e.to_string())?;
     Ok(files.into_iter().map(|f| to_dto(f, &spools)).collect())
 }
