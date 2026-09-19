@@ -8,11 +8,19 @@ use zip::ZipArchive;
 /// bestehende Model-Parser). Existiert die Datei nicht oder laesst sie
 /// sich nicht als XML lesen, wird `None` zurueckgegeben - kein
 /// Fehlerfall, gleiches Verhalten wie das bestehende Thumbnail-Fallback.
+///
+/// Gelesen wird ueber `container::read_entry_to_string`, also mit derselben
+/// Groessen-Obergrenze wie alle anderen Paket-Eintraege - ohne sie koennte
+/// dieser Eintrag als Zip-Bombe den gesamten Arbeitsspeicher belegen
+/// (Security-Review 2026-09-19, Finding A-1; Nachtrag zu Commit 800e373,
+/// der genau diese beiden Config-Eintraege noch ausgelassen hatte).
 pub fn count_plates<R: Read + Seek>(archive: &mut ZipArchive<R>) -> Option<u32> {
-    let mut file = archive.by_name("Metadata/model_settings.config").ok()?;
-    let mut xml = String::new();
-    file.read_to_string(&mut xml).ok()?;
-    drop(file);
+    let xml = super::container::read_entry_to_string(
+        archive,
+        "Metadata/model_settings.config",
+        super::container::MAX_CONFIG_XML_BYTES,
+    )
+    .ok()?;
 
     let mut reader = quick_xml::Reader::from_str(&xml);
     reader.config_mut().trim_text(true);
@@ -70,6 +78,31 @@ mod tests {
     <metadata key="plater_id" value="2"/>
   </plate>
 </config>"#;
+
+    /// Baut ein Archiv, dessen Config-Eintrag entpackt groesser als die
+    /// erlaubte Obergrenze ist - Miniatur-"Zip-Bombe" (Security-Review
+    /// 2026-09-19, Finding A-1).
+    fn build_zip_with_oversized_config(name: &str) -> ZipArchive<Cursor<Vec<u8>>> {
+        let oversized = (super::super::container::MAX_CONFIG_XML_BYTES + 1) as usize;
+        let mut buf = Vec::new();
+        {
+            let mut writer = ZipWriter::new(Cursor::new(&mut buf));
+            writer.start_file(name, SimpleFileOptions::default()).unwrap();
+            writer.write_all(&vec![b'A'; oversized]).unwrap();
+            writer.finish().unwrap();
+        }
+        ZipArchive::new(Cursor::new(buf)).unwrap()
+    }
+
+    #[test]
+    fn rejects_an_oversized_model_settings_config_instead_of_reading_it() {
+        let mut archive = build_zip_with_oversized_config("Metadata/model_settings.config");
+        assert_eq!(
+            count_plates(&mut archive),
+            None,
+            "ein ueberlanger Config-Eintrag darf nicht komplett eingelesen werden"
+        );
+    }
 
     #[test]
     fn counts_plate_elements_when_config_present() {

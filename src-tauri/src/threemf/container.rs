@@ -24,6 +24,11 @@ const FALLBACK_THUMBNAIL_PATHS: [&str; 2] =
 const MAX_MODEL_XML_BYTES: u64 = 256 * 1024 * 1024; // 256 MB
 const MAX_THUMBNAIL_BYTES: u64 = 16 * 1024 * 1024; // 16 MB
 const MAX_RELS_XML_BYTES: u64 = 16 * 1024 * 1024; // 16 MB
+/// Gilt fuer die slicer-spezifischen Config-Eintraege
+/// (`Metadata/model_settings.config`, `Metadata/slice_info.config`), die
+/// `plates.rs`/`slice_info.rs` lesen - dieselbe Groessenordnung wie die
+/// uebrigen Nicht-Modell-Eintraege.
+pub(super) const MAX_CONFIG_XML_BYTES: u64 = 16 * 1024 * 1024; // 16 MB
 
 pub struct PackageParts {
     pub root_model: ParsedModel,
@@ -173,7 +178,7 @@ fn resolve_relationships<R: Read + Seek>(
     (model_path, thumbnail_path)
 }
 
-fn read_entry_to_string<R: Read + Seek>(
+pub(super) fn read_entry_to_string<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     path: &str,
     max_bytes: u64,

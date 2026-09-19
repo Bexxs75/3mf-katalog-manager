@@ -818,6 +818,35 @@ fn reject_if_sensitive_path_expanded(path: &Path, expanded_dirs: &[PathBuf]) -> 
     Ok(())
 }
 
+/// Gegenstueck zu `reject_if_sensitive_path_expanded`: statt einer Liste
+/// verbotener Verzeichnisse (Denylist) verlangt diese Pruefung, dass der Pfad
+/// INNERHALB eines erwarteten Verzeichnisses liegt (Containment).
+///
+/// Noetig fuer `files.trash_path` aus einem importierten Katalog-Backup: die
+/// Denylist deckt nur ausgewiesene Systemverzeichnisse ab, ein praepariertes
+/// Backup konnte bisher aber `trash_path = ~/Dokumente/wichtig.pdf` mit einem
+/// alten `deleted_at` setzen - `purge_expired_trash_on_startup` haette die
+/// Datei beim naechsten App-Start ohne jede Nutzerinteraktion per
+/// `remove_file` geloescht (Security-Review 2026-09-19, Finding I-1;
+/// Nachtrag zu Commit 800e373, der hier nur die Denylist gesetzt hatte).
+/// Legitim erzeugte Werte kommen ausnahmslos aus
+/// `state.trash_dir.join(...)` (siehe `delete_file`/`cleanup`) und liegen
+/// damit immer innerhalb dieser Grenze.
+///
+/// Beide Seiten werden ueber `resolve_path_for_sensitivity_check` aufgeloest,
+/// damit `..`-Komponenten und Symlinks den Praefix-Vergleich nicht
+/// unterlaufen koennen - dieselbe Logik wie bei der Denylist (Finding I-3).
+fn reject_if_outside_trash_dir(path: &Path, resolved_trash_dir: &Path) -> CmdResult<()> {
+    let resolved = resolve_path_for_sensitivity_check(path)?;
+    if resolved == resolved_trash_dir || !resolved.starts_with(resolved_trash_dir) {
+        return Err(format!(
+            "Papierkorb-Pfad liegt ausserhalb des Papierkorb-Verzeichnisses ({}) und wird abgelehnt",
+            resolved_trash_dir.display()
+        ));
+    }
+    Ok(())
+}
+
 /// Loest einen Pfad so weit auf, dass der Praefix-Vergleich in
 /// `reject_if_sensitive_path` nicht durch `..`-Komponenten oder Symlinks
 /// unterlaufen werden kann. Der Pfad muss dabei NICHT existieren - er ist
@@ -2214,7 +2243,14 @@ fn reject_oversized_zip_entry(name: &str, size: u64, max: u64) -> CmdResult<()> 
 /// wuerde ein bereits an dieser Stelle abgelehnter Ordner-Eintrag sonst erst
 /// spaeter, beim naechsten `move`/`rename` ueber diesen Ordner, auffallen -
 /// mit den unter `reject_if_sensitive_path` beschriebenen Folgen.
-fn validate_catalog_db_bytes(bytes: &[u8], sensitive_dirs: &[PathBuf]) -> Result<(), String> {
+/// `trash_dir` ist das echte Papierkorb-Verzeichnis dieser Installation
+/// (`AppState::trash_dir`); jeder gesetzte `files.trash_path` muss darin
+/// liegen - siehe `reject_if_outside_trash_dir`.
+fn validate_catalog_db_bytes(
+    bytes: &[u8],
+    sensitive_dirs: &[PathBuf],
+    trash_dir: &Path,
+) -> Result<(), String> {
     let tmp_path = std::env::temp_dir().join(format!(
         "3mf-katalog-import-check-{}-{}.db",
         std::process::id(),
@@ -2231,6 +2267,7 @@ fn validate_catalog_db_bytes(bytes: &[u8], sensitive_dirs: &[PathBuf]) -> Result
             // Einmal vorberechnen statt pro DB-Zeile - ein grosser Katalog hat
             // zehntausende `files`-Zeilen.
             let expanded_dirs = expand_sensitive_dirs(sensitive_dirs);
+            let resolved_trash_dir = resolve_path_for_sensitivity_check(trash_dir)?;
             conn.query_row("SELECT COUNT(*) FROM files", [], |row| row.get::<_, i64>(0))
                 .map_err(|e| e.to_string())?;
             let mut stmt = conn
@@ -2266,7 +2303,12 @@ fn validate_catalog_db_bytes(bytes: &[u8], sensitive_dirs: &[PathBuf]) -> Result
                 reject_if_sensitive_path_expanded(Path::new(&path), &expanded_dirs)
                     .map_err(|e| format!("Datei-Eintrag im Archiv abgelehnt: {e}"))?;
                 if let Some(trash_path) = trash_path.filter(|p| !p.trim().is_empty()) {
+                    // Denylist UND Containment: die Denylist bleibt als
+                    // zweite Schranke bestehen, falls ein Pfad ueber eine
+                    // Symlink-Kette trotz passender Grenze woanders landet.
                     reject_if_sensitive_path_expanded(Path::new(&trash_path), &expanded_dirs)
+                        .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {e}"))?;
+                    reject_if_outside_trash_dir(Path::new(&trash_path), &resolved_trash_dir)
                         .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {e}"))?;
                 }
             }
@@ -2334,7 +2376,7 @@ pub async fn import_catalog(
     }
     let settings_json = String::from_utf8(settings_bytes).map_err(|e| e.to_string())?;
 
-    validate_catalog_db_bytes(&db_bytes, &state.sensitive_dirs)?;
+    validate_catalog_db_bytes(&db_bytes, &state.sensitive_dirs, &state.trash_dir)?;
 
     let tmp_db_path =
         std::env::temp_dir().join(format!("3mf-katalog-import-{}.db", std::process::id()));
@@ -2735,7 +2777,7 @@ mod tests {
         }
         let bytes = std::fs::read(&tmp_path).expect("read temp db");
 
-        let result = validate_catalog_db_bytes(&bytes, &[]);
+        let result = validate_catalog_db_bytes(&bytes, &[], &std::env::temp_dir());
 
         let _ = std::fs::remove_file(&tmp_path);
         assert!(result.is_ok(), "expected valid catalog db to pass validation: {result:?}");
@@ -2743,7 +2785,7 @@ mod tests {
 
     #[test]
     fn validate_catalog_db_bytes_rejects_garbage_bytes() {
-        let result = validate_catalog_db_bytes(b"this is not a sqlite database", &[]);
+        let result = validate_catalog_db_bytes(b"this is not a sqlite database", &[], &std::env::temp_dir());
         assert!(result.is_err());
     }
 
@@ -3706,7 +3748,7 @@ mod tests {
         }
         let bytes = std::fs::read(&tmp_path).expect("read temp db");
 
-        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root]);
+        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root], &std::env::temp_dir());
 
         let _ = std::fs::remove_file(&tmp_path);
         assert!(result.is_err(), "must reject an imported catalog whose folder path lies in a sensitive directory");
@@ -3748,7 +3790,7 @@ mod tests {
             &dir.join("modell.3mf").to_string_lossy(),
             Some(&dir.join("1-modell.3mf").to_string_lossy()),
         );
-        let result = validate_catalog_db_bytes(&bytes, &[std::path::PathBuf::from("/etc")]);
+        let result = validate_catalog_db_bytes(&bytes, &[std::path::PathBuf::from("/etc")], &dir);
         let _ = std::fs::remove_dir_all(&dir);
         assert!(result.is_ok(), "a legitimate backup must still import: {result:?}");
     }
@@ -3764,7 +3806,7 @@ mod tests {
             &dir.join("modell.3mf").to_string_lossy(),
             None,
         );
-        let result = validate_catalog_db_bytes(&bytes, &[]);
+        let result = validate_catalog_db_bytes(&bytes, &[], &dir);
         let _ = std::fs::remove_dir_all(&dir);
         assert!(result.is_err(), "must reject an imported file row whose name escapes the trash dir");
     }
@@ -3777,8 +3819,75 @@ mod tests {
             &sensitive_root.join("modell.3mf").to_string_lossy(),
             None,
         );
-        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root]);
+        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root], &std::env::temp_dir());
         assert!(result.is_err(), "must reject an imported file row pointing into a sensitive directory");
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_rejects_trash_path_outside_the_real_trash_dir() {
+        // Der Angriff, den die reine Denylist offen liess: `~/Dokumente/...`
+        // ist kein geschuetztes Systemverzeichnis, `purge_expired_trash_on_startup`
+        // haette die Datei beim naechsten App-Start trotzdem per `remove_file`
+        // entfernt (Security-Review 2026-09-19, Finding I-1).
+        let dir = unique_test_dir("validate_catalog_db_trash_containment");
+        let trash_dir = dir.join("trash");
+        std::fs::create_dir_all(&trash_dir).expect("create trash dir");
+        let victim = dir.join("irgendwas-wichtiges.pdf");
+        std::fs::write(&victim, b"wichtig").expect("create victim file");
+
+        let bytes = catalog_db_bytes_with_file_row(
+            "modell.3mf",
+            &dir.join("modell.3mf").to_string_lossy(),
+            Some(&victim.to_string_lossy()),
+        );
+        let result = validate_catalog_db_bytes(&bytes, &[], &trash_dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            result.is_err(),
+            "must reject a trash_path outside the app's real trash directory: {result:?}"
+        );
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_accepts_trash_path_inside_the_real_trash_dir() {
+        // Gegenprobe zum Test darueber: ein echtes, unveraendertes Backup
+        // dieser App traegt ausschliesslich Werte aus
+        // `state.trash_dir.join(...)` und muss weiterhin importierbar sein.
+        let dir = unique_test_dir("validate_catalog_db_trash_containment_ok");
+        let trash_dir = dir.join("trash");
+        std::fs::create_dir_all(&trash_dir).expect("create trash dir");
+
+        let bytes = catalog_db_bytes_with_file_row(
+            "modell.3mf",
+            &dir.join("modell.3mf").to_string_lossy(),
+            Some(&trash_dir.join("1-modell.3mf").to_string_lossy()),
+        );
+        let result = validate_catalog_db_bytes(&bytes, &[], &trash_dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(result.is_ok(), "a legitimate backup must still import: {result:?}");
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_rejects_trash_path_escaping_the_trash_dir_via_parent_components() {
+        // `<trash_dir>/../opfer.pdf` faellt im Praefix-Vergleich auf der rohen
+        // Zeichenkette nicht auf - `resolve_path_for_sensitivity_check` loest
+        // den Pfad vorher auf (gleiche Logik wie bei der Denylist, Finding I-3).
+        let dir = unique_test_dir("validate_catalog_db_trash_containment_dotdot");
+        let trash_dir = dir.join("trash");
+        std::fs::create_dir_all(&trash_dir).expect("create trash dir");
+
+        let escaping = format!("{}/../opfer.pdf", trash_dir.to_string_lossy());
+        let bytes = catalog_db_bytes_with_file_row(
+            "modell.3mf",
+            &dir.join("modell.3mf").to_string_lossy(),
+            Some(&escaping),
+        );
+        let result = validate_catalog_db_bytes(&bytes, &[], &trash_dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            result.is_err(),
+            "must reject a trash_path that escapes the trash dir via \"..\": {result:?}"
+        );
     }
 
     #[test]
@@ -3793,7 +3902,10 @@ mod tests {
             &dir.join("modell.3mf").to_string_lossy(),
             Some(&sensitive_root.join("wichtig.conf").to_string_lossy()),
         );
-        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root]);
+        // trash_dir bewusst auf temp_dir gesetzt: der praeparierte trash_path
+        // liegt darin, die Containment-Pruefung greift also NICHT - dieser
+        // Test prueft weiterhin genau die Denylist.
+        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root], &std::env::temp_dir());
         let _ = std::fs::remove_dir_all(&dir);
         assert!(result.is_err(), "must reject an imported trash_path pointing into a sensitive directory");
     }

@@ -49,11 +49,19 @@ fn get_attr(e: &BytesStart, name: &str) -> Option<String> {
 /// Zip-Archiv. Existiert die Datei nicht, laesst sie sich nicht als XML
 /// lesen, oder enthaelt sie keine `<plate>`-Elemente, wird `None`
 /// zurueckgegeben - kein Fehlerfall, gleiches Verhalten wie `count_plates`.
+///
+/// Gelesen wird ueber `container::read_entry_to_string`, also mit derselben
+/// Groessen-Obergrenze wie alle anderen Paket-Eintraege - ohne sie koennte
+/// dieser Eintrag als Zip-Bombe den gesamten Arbeitsspeicher belegen
+/// (Security-Review 2026-09-19, Finding A-1; Nachtrag zu Commit 800e373,
+/// der genau diese beiden Config-Eintraege noch ausgelassen hatte).
 pub fn parse_slice_info<R: Read + Seek>(archive: &mut ZipArchive<R>) -> Option<SliceInfo> {
-    let mut file = archive.by_name("Metadata/slice_info.config").ok()?;
-    let mut xml = String::new();
-    file.read_to_string(&mut xml).ok()?;
-    drop(file);
+    let xml = super::container::read_entry_to_string(
+        archive,
+        "Metadata/slice_info.config",
+        super::container::MAX_CONFIG_XML_BYTES,
+    )
+    .ok()?;
 
     let mut reader = quick_xml::Reader::from_str(&xml);
     reader.config_mut().trim_text(true);
@@ -154,6 +162,30 @@ mod tests {
     <filament id="1" tray_info_idx="GFA00" type="PLA" color="#FFFFFFFF" used_m="14.5" used_g="43.24"/>
   </plate>
 </config>"##;
+
+    /// Baut ein Archiv, dessen Config-Eintrag entpackt groesser als die
+    /// erlaubte Obergrenze ist - Miniatur-"Zip-Bombe" (Security-Review
+    /// 2026-09-19, Finding A-1).
+    fn build_zip_with_oversized_config(name: &str) -> ZipArchive<Cursor<Vec<u8>>> {
+        let oversized = (super::super::container::MAX_CONFIG_XML_BYTES + 1) as usize;
+        let mut buf = Vec::new();
+        {
+            let mut writer = ZipWriter::new(Cursor::new(&mut buf));
+            writer.start_file(name, SimpleFileOptions::default()).unwrap();
+            writer.write_all(&vec![b'A'; oversized]).unwrap();
+            writer.finish().unwrap();
+        }
+        ZipArchive::new(Cursor::new(buf)).unwrap()
+    }
+
+    #[test]
+    fn rejects_an_oversized_slice_info_config_instead_of_reading_it() {
+        let mut archive = build_zip_with_oversized_config("Metadata/slice_info.config");
+        assert!(
+            parse_slice_info(&mut archive).is_none(),
+            "ein ueberlanger Config-Eintrag darf nicht komplett eingelesen werden"
+        );
+    }
 
     #[test]
     fn parses_single_plate_single_filament() {

@@ -361,3 +361,153 @@ stört, wäre die Lockerung auf „Komponente ist genau `..`" (wie
    Dateinamen wäre es eine harte Kante ohne Reparaturweg. Die `..`-Regel für
    `files.name` (siehe oben) ist die einzige Stelle, an der das realistisch
    greifen könnte.
+
+---
+
+## 2026-09-19 (Nachtrag) — die 2 Lücken aus dem Re-Review von 800e373
+
+### Gap 1: A-1 (Zip-Bombe) — die beiden übersehenen Config-Einträge
+
+`read_package` liest ganz zuoberst (`container.rs:55-56`) zwei
+slicer-spezifische Einträge, bevor irgendeine gedeckelte Leseoperation läuft.
+Beide gingen bisher ungebremst durch `read_to_string`.
+
+Geändert:
+- `src-tauri/src/threemf/container.rs:27-32` — neue Konstante
+  `pub(super) const MAX_CONFIG_XML_BYTES: u64 = 16 * 1024 * 1024;` (16 MB,
+  gleiche Größenordnung wie `MAX_THUMBNAIL_BYTES`/`MAX_RELS_XML_BYTES`).
+- `src-tauri/src/threemf/container.rs:181` — `read_entry_to_string` von
+  privat auf `pub(super)` gehoben, damit die Geschwister-Module denselben
+  Helfer benutzen statt die Größenprüfung ein drittes Mal zu duplizieren.
+  Das etablierte Muster (`size()`-Check + `.take(max_bytes)`) bleibt
+  unverändert an genau einer Stelle.
+- `src-tauri/src/threemf/plates.rs:12-24` — `count_plates` liest
+  `Metadata/model_settings.config` jetzt über
+  `container::read_entry_to_string(..., MAX_CONFIG_XML_BYTES)`.
+- `src-tauri/src/threemf/slice_info.rs:53-65` — `parse_slice_info` liest
+  `Metadata/slice_info.config` analog.
+
+Verhalten unverändert: beide Funktionen geben weiterhin `None` zurück, wenn
+die Datei fehlt oder nicht lesbar ist — ein zu großer Eintrag fällt jetzt
+einfach in denselben `None`-Pfad, statt den Speicher zu füllen.
+
+Tests:
+- `threemf::plates::tests::rejects_an_oversized_model_settings_config_instead_of_reading_it`
+- `threemf::slice_info::tests::rejects_an_oversized_slice_info_config_instead_of_reading_it`
+
+Beide bauen ein Mini-ZIP mit einem entpackt 16 MB + 1 Byte großen Eintrag
+(stark komprimierbar, ~16 KB im Archiv) und erwarten `None`.
+
+### Gap 2: I-1 (Containment statt Denylist) — nur `trash_path`, bewusst nicht `files.path`
+
+**Was umgesetzt wurde — `files.trash_path`:**
+
+- `src-tauri/src/commands.rs:808-836` — neue Funktion
+  `reject_if_outside_trash_dir(path, resolved_trash_dir)`: löst beide Seiten
+  über das bestehende `resolve_path_for_sensitivity_check` auf und verlangt
+  `starts_with` (Gleichheit mit dem Verzeichnis selbst wird ebenfalls
+  abgelehnt).
+- `src-tauri/src/commands.rs:2241` — `validate_catalog_db_bytes` bekommt
+  einen dritten Parameter `trash_dir: &Path`; die aufgelöste Grenze wird
+  einmal vor der Zeilenschleife berechnet (gleiches Muster wie
+  `expand_sensitive_dirs`).
+- `src-tauri/src/commands.rs:2299-2306` — die bestehende Denylist-Prüfung
+  auf `trash_path` bleibt stehen, die Containment-Prüfung kommt daneben
+  (Defense in Depth).
+- `src-tauri/src/commands.rs:2374` — Aufrufstelle in `import_catalog` reicht
+  `&state.trash_dir` durch.
+- Leere/`NULL`-`trash_path`-Werte werden weiterhin übersprungen — die
+  bestehende `.filter(|p| !p.trim().is_empty())`-Kante bleibt unverändert.
+
+Damit ist der beschriebene Angriff geschlossen: ein präpariertes Backup mit
+`trash_path = /home/user/Dokumente/irgendwas-wichtiges.pdf` und altem
+`deleted_at` wird beim Import abgelehnt, statt beim nächsten App-Start von
+`purge_expired_trash_on_startup` per `remove_file` gelöscht zu werden.
+`restore_file` ist dadurch mit entschärft: die Quelle eines `move_file` kann
+nur noch innerhalb des echten Papierkorb-Verzeichnisses liegen, und
+existiert dort nichts, schlägt der Move fehl, statt ein beliebiges Ziel zu
+überschreiben.
+
+**Warum legitime Backups weiterhin importieren:**
+`trash_path` entsteht im gesamten Code ausschließlich als
+`state.trash_dir.join(format!("{id}-{}", file.name))` — an genau zwei
+Stellen (`delete_file`, `commands.rs:645`; Cleanup-Pfad, `commands.rs:2560`).
+`state.trash_dir` ist `app_data_dir.join("trash")` (`lib.rs:82`), also pro
+Installation fest und nicht vom Modell-Ablageort des Nutzers abhängig. Ein
+echtes Backup dieser App trägt damit immer Werte innerhalb der Grenze.
+Abgesichert durch den Gegenprobe-Test
+`validate_catalog_db_bytes_accepts_trash_path_inside_the_real_trash_dir`
+sowie den unveränderten Bestandstest
+`validate_catalog_db_bytes_accepts_harmless_file_rows`.
+
+Tests:
+- `validate_catalog_db_bytes_rejects_trash_path_outside_the_real_trash_dir`
+  (genau das Szenario aus dem Re-Review: Opferdatei im selben Elternordner,
+  aber außerhalb von `trash/`)
+- `validate_catalog_db_bytes_accepts_trash_path_inside_the_real_trash_dir`
+  (Gegenprobe: legitimes Backup)
+- `validate_catalog_db_bytes_rejects_trash_path_escaping_the_trash_dir_via_parent_components`
+  (`<trash_dir>/../opfer.pdf` — Symlink-/`..`-Auflösung greift)
+- Bestandstest `validate_catalog_db_bytes_rejects_trash_path_in_sensitive_directory`
+  wurde bewusst so parametrisiert (`trash_dir = temp_dir`), dass weiterhin
+  die Denylist die ablehnende Prüfung ist.
+
+**Was NICHT umgesetzt wurde — `files.path` (NEEDS_CONTEXT):**
+
+Für `files.path` gibt es in diesem Codebase kein "Katalog-Basisverzeichnis",
+gegen das man sinnvoll eindämmen könnte:
+
+- `register_catalog_base_dir` (`commands.rs:1736-1764`) nimmt ein vom Nutzer
+  per Dialog frei gewähltes Verzeichnis entgegen und legt es lediglich als
+  weitere `folders`-Zeile an. Es gibt keinen Speicherort für "das eine"
+  Basisverzeichnis und keine Beschränkung auf genau eines.
+- Der Import-/Scan-Pfad (`commands.rs:1543-1600`) iteriert über beliebig
+  viele `roots` aus einem Datei-/Ordner-Dialog. Jeder Aufruf kann einen
+  völlig anderen Ort auf der Platte einbringen; `files.path` ist danach
+  schlicht der reale Pfad der Quelldatei. Einzeldateien (`is_folder_root ==
+  false`) bekommen sogar gar keinen Ordner zugeordnet.
+- Der Ordnerbaum ist damit nicht an einer Wurzel verankert, sondern ist eine
+  Menge unabhängiger Wurzeln.
+
+Eine Containment-Prüfung auf `files.path` würde also mit hoher
+Wahrscheinlichkeit reale, unmodifizierte Backups ablehnen (jeder Katalog,
+der über mehrere Import-Aktionen aus verschiedenen Verzeichnissen gewachsen
+ist — der Normalfall). Deshalb bleibt es dort bei der Denylist, und die
+Entscheidung, ob die App künftig ein einziges verbindliches
+Katalog-Basisverzeichnis erzwingen soll (was diese Prüfung erst möglich
+machen würde), ist eine Produktentscheidung, keine Security-Korrektur.
+
+### Testlauf
+
+```
+cd src-tauri && cargo test --lib
+test result: ok. 174 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+(vorher 169 Tests; +5 neue). `cargo build` erzeugt weiterhin genau die
+2 vorbestehenden Warnungen aus `db::repository` (`insert_file` nur in Tests
+benutzt) — unverändert gegenüber 800e373, geprüft per `git stash`-Vergleich.
+Keine TS-Dateien angefasst, daher kein `tsc`/`npm test`-Lauf nötig.
+
+### Geänderte Dateien
+
+- `src-tauri/src/threemf/container.rs`
+- `src-tauri/src/threemf/plates.rs`
+- `src-tauri/src/threemf/slice_info.rs`
+- `src-tauri/src/commands.rs`
+
+### Offene Punkte / Bedenken
+
+1. **`files.path` ohne Containment** (siehe oben) — bleibt bewusst offen,
+   braucht eine Produktentscheidung.
+2. **Backup von einer anderen Maschine / einem anderen Benutzerkonto**: Die
+   neue `trash_path`-Prüfung lehnt ein solches Backup ab, sobald es
+   Papierkorb-Einträge enthält, weil `app_data_dir` den Benutzernamen
+   enthält. Praktisch ist dieser Fall ohnehin kaputt — der Export enthält
+   nur `catalog.db` + `settings.json`, die physischen Papierkorb-Dateien
+   reisen nicht mit, und `files.path` zeigt danach ins Leere. Trotzdem ist
+   es eine neue harte Ablehnung statt einer stillen Leerstelle. Ein
+   nachsichtigerer Weg (Zeile beim Import auf `trash_path = NULL` setzen,
+   statt den gesamten Import abzulehnen) wäre denkbar, würde aber die
+   bestehende „validieren, nicht reparieren"-Linie von
+   `validate_catalog_db_bytes` durchbrechen — daher hier nicht gemacht.
