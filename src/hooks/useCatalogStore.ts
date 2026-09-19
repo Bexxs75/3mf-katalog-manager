@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as filesApi from '../lib/api/files';
 import * as foldersApi from '../lib/api/folders';
 import * as catalogMetaApi from '../lib/api/catalogMeta';
@@ -67,6 +67,79 @@ export function useCatalogStore() {
   const [rescanFeedback, setRescanFeedback] = useState<
     { fileId: string; status: 'success' | 'error'; message?: string } | null
   >(null);
+
+  // M-03: Rollback fuer fehlgeschlagene optimistische Mutationen (favorite/
+  // printStatus/tags/sourceUrl/renderSnapshot/lastViewedAt). Weder ein
+  // simples "bei Fehler auf `previous` zuruecksetzen" noch ein reiner
+  // Generation-Zaehler ("nur der neueste Aufruf darf zurueckrollen") sind
+  // hier korrekt - siehe Task-8-Brief fuer die durchgespielten Gegenbei-
+  // spiele (u. a.: der jeweils neueste Aufruf kann selbst fehlschlagen,
+  // waehrend ein noch aelterer, als "ueberholt" ignorierter Aufruf ebenso
+  // fehlschlaegt, sodass die UI dauerhaft von einem Backend abweicht, das
+  // nie einen erfolgreichen Schreibvorgang verzeichnet hat). Stattdessen:
+  // pro "<feld>:<id>" wird nur die Anzahl GERADE LAUFENDER Backend-Aufrufe
+  // gezaehlt (pendingMutationCounts). Faellt sie fuer ein Feld+ID wieder auf
+  // 0 - d. h. alle bis dahin gestarteten ueberlappenden Aufrufe fuer genau
+  // dieses Feld+ID sind abgeschlossen, unabhaengig von Erfolg/Fehler -, wird
+  // der kanonische Datensatz einmalig per listFilesByIds([id]) (Task 6/M-01)
+  // nachgeladen und uebernommen. Das ist korrekt per Konstruktion: nach
+  // Abschluss aller Aufrufe fuer ein Feld+ID entspricht der Backend-Stand
+  // immer der Wahrheit, unabhaengig davon, welcher einzelne Aufruf erfolg-
+  // reich war oder wie die Aufrufe sich zeitlich ueberlappt haben.
+  //
+  // Ein zusaetzlicher monoton steigender Epoch-Zaehler pro Feld+ID
+  // (mutationEpochs) verhindert daruber hinaus, dass ein spaet ankommender,
+  // aber LAENGST VERALTETER Resync-Aufruf einen bereits abgeschlossenen,
+  // neueren Resync-Aufruf fuer dasselbe Feld+ID wieder ueberschreibt (siebte
+  // Review-Runde): ein reiner "pendingMutationCounts[key] === undefined"-
+  // Check nach dem await reicht dafuer nicht, da der Zaehler zwischenzeitlich
+  // erneut auf 0 gefallen sein kann, obwohl bereits ein aktuellerer Resync
+  // gelaufen ist. Ein Resync uebernimmt sein Ergebnis deshalb nur, wenn beim
+  // Abschluss seines awaits sowohl der Pending-Count als auch die Epoch fuer
+  // dieses Feld+ID unveraendert gegenueber dem Start dieses Resyncs sind.
+  //
+  // Bewusst als Ref (nicht als State) gefuehrt: die Zaehler selbst loesen nie
+  // direkt einen Re-Render aus, nur der daraus resultierende setModels()-
+  // Aufruf tut das - ein State-Update pro beginMutation()/Zaehlerstand waere
+  // hier unnoetig und wuerde zusaetzliche Re-Renders erzeugen.
+  const pendingMutationCounts = useRef<Record<string, number>>({}).current;
+  const mutationEpochs = useRef<Record<string, number>>({}).current;
+
+  function beginMutation(key: string): void {
+    pendingMutationCounts[key] = (pendingMutationCounts[key] ?? 0) + 1;
+    mutationEpochs[key] = (mutationEpochs[key] ?? 0) + 1;
+  }
+
+  // Wird IMMER im .finally() der betroffenen Mutation aufgerufen, unabhaengig
+  // von Erfolg oder Fehler. Generischer Helfer - arbeitet nur mit
+  // key/id, kein feldspezifischer Code darin - und wird von JEDER
+  // betroffenen Funktion unveraendert wiederverwendet (kein Copy-Paste pro
+  // Feld).
+  async function endMutationAndResyncIfSettled(key: string, id: string): Promise<void> {
+    const remaining = (pendingMutationCounts[key] ?? 1) - 1;
+    if (remaining > 0) {
+      pendingMutationCounts[key] = remaining;
+      return;
+    }
+    delete pendingMutationCounts[key];
+    const epochAtResyncStart = mutationEpochs[key];
+    try {
+      const [fresh] = await filesApi.listFilesByIds([id]);
+      // Nur uebernehmen, wenn WAEHREND des await oben (a) keine neue Mutation
+      // fuer dieses Feld+ID gestartet wurde UND (b) die Epoch seit Start
+      // dieses Resyncs unveraendert ist - (b) faengt genau den Fall ab, dass
+      // zwischenzeitlich ein NEUERER Resync (fuer eine inzwischen bereits
+      // wieder abgeschlossene Mutation) bereits seinerseits einen aktuelleren
+      // Zustand uebernommen hat, waehrend dieser (aeltere) Resync noch laeuft.
+      if (fresh && pendingMutationCounts[key] === undefined && mutationEpochs[key] === epochAtResyncStart) {
+        setModels((prev) => prev.map((m) => (m.id === id ? { ...m, ...fresh } : m)));
+      }
+    } catch (e) {
+      console.error(`[resync] Nachladen von ${key} fehlgeschlagen:`, e);
+      // Kein weiterer Rollback hier - der naechste reguläre refreshFiles()
+      // gleicht spaetestens dann wieder ab.
+    }
+  }
 
   const pendingSnapshotIds = useMemo(
     () => models.filter((m) => m.renderSnapshotImage === null && !skippedSnapshotIds.has(m.id)).map((m) => m.id),
@@ -157,9 +230,16 @@ export function useCatalogStore() {
       ensureFullModel(id);
       const now = new Date().toISOString();
       setModels((prev) => prev.map((m) => (m.id === id ? { ...m, lastViewedAt: now } : m)));
-      filesApi.markFileViewed(id).catch((e) => {
-        console.error('[last-viewed] Aktualisieren fehlgeschlagen:', e);
-      });
+      const key = `lastViewedAt:${id}`;
+      beginMutation(key);
+      filesApi
+        .markFileViewed(id)
+        .catch((e) => {
+          console.error('[last-viewed] Aktualisieren fehlgeschlagen:', e);
+        })
+        .finally(() => {
+          void endMutationAndResyncIfSettled(key, id);
+        });
     },
     [ensureFullModel],
   );
@@ -240,7 +320,17 @@ export function useCatalogStore() {
       const current = models.find((m) => m.id === id);
       if (!current || current.tags.includes(tag)) return;
       setModels((prev) => prev.map((m) => (m.id === id ? { ...m, tags: [...m.tags, tag] } : m)));
-      filesApi.addTag(id, tag).then(refreshTags);
+      const key = `tags:${id}`;
+      beginMutation(key);
+      filesApi
+        .addTag(id, tag)
+        .then(refreshTags)
+        .catch((e) => {
+          console.error('[tags] Hinzufügen fehlgeschlagen:', e);
+        })
+        .finally(() => {
+          void endMutationAndResyncIfSettled(key, id);
+        });
     },
     [models, refreshTags],
   );
@@ -250,7 +340,17 @@ export function useCatalogStore() {
       const current = models.find((m) => m.id === id);
       if (!current) return;
       setModels((prev) => prev.map((m) => (m.id === id ? { ...m, tags: m.tags.filter((t) => t !== tag) } : m)));
-      filesApi.removeTag(id, tag).then(refreshTags);
+      const key = `tags:${id}`;
+      beginMutation(key);
+      filesApi
+        .removeTag(id, tag)
+        .then(refreshTags)
+        .catch((e) => {
+          console.error('[tags] Entfernen fehlgeschlagen:', e);
+        })
+        .finally(() => {
+          void endMutationAndResyncIfSettled(key, id);
+        });
     },
     [models, refreshTags],
   );
@@ -270,9 +370,16 @@ export function useCatalogStore() {
           m.id === id ? { ...m, printStatus: next, queuePosition: next === 'printed' ? null : m.queuePosition } : m,
         ),
       );
-      filesApi.setPrintStatus(id, next).catch((e) => {
-        console.error('[print-status] Aktualisieren fehlgeschlagen:', e);
-      });
+      const key = `printStatus:${id}`;
+      beginMutation(key);
+      filesApi
+        .setPrintStatus(id, next)
+        .catch((e) => {
+          console.error('[print-status] Aktualisieren fehlgeschlagen:', e);
+        })
+        .finally(() => {
+          void endMutationAndResyncIfSettled(key, id);
+        });
     },
     [models],
   );
@@ -283,9 +390,16 @@ export function useCatalogStore() {
       if (!current) return;
       const next = !current.favorite;
       setModels((prev) => prev.map((m) => (m.id === id ? { ...m, favorite: next } : m)));
-      filesApi.setFavorite(id, next).catch((e) => {
-        console.error('[favorite] Aktualisieren fehlgeschlagen:', e);
-      });
+      const key = `favorite:${id}`;
+      beginMutation(key);
+      filesApi
+        .setFavorite(id, next)
+        .catch((e) => {
+          console.error('[favorite] Aktualisieren fehlgeschlagen:', e);
+        })
+        .finally(() => {
+          void endMutationAndResyncIfSettled(key, id);
+        });
     },
     [models],
   );
@@ -301,9 +415,16 @@ export function useCatalogStore() {
 
   const removeFromQueue = useCallback((id: string) => {
     setModels((prev) => prev.map((m) => (m.id === id ? { ...m, queuePosition: null } : m)));
-    filesApi.removeFromQueue(id).catch((e) => {
-      console.error('[queue] Entfernen fehlgeschlagen:', e);
-    });
+    const key = `queue:${id}`;
+    beginMutation(key);
+    filesApi
+      .removeFromQueue(id)
+      .catch((e) => {
+        console.error('[queue] Entfernen fehlgeschlagen:', e);
+      })
+      .finally(() => {
+        void endMutationAndResyncIfSettled(key, id);
+      });
   }, []);
 
   const reorderQueue = useCallback(
@@ -323,11 +444,19 @@ export function useCatalogStore() {
           return index === -1 ? m : { ...m, queuePosition: index + 1 };
         }),
       );
+      // Queue-Reorder betrifft immer mehrere Modelle gleichzeitig (ein
+      // Batch-Update, keine einzelne Feld+ID-Mutation) - das Pending-Count-
+      // Muster oben ist fuer genau EIN Feld+ID gedacht und wuerde hier nur
+      // unnoetige Komplexitaet bringen. Ein voller refreshFiles() bei Fehler
+      // erreicht dasselbe Ziel (Resync mit dem tatsaechlichen Backend-Stand)
+      // fuer den gesamten betroffenen Reorder-Batch in einem Rutsch (siehe
+      // Task-8-Brief: "hier reicht der bestehende Ansatz").
       filesApi.reorderQueue(updates).catch((e) => {
         console.error('[queue] Neusortierung fehlgeschlagen:', e);
+        void refreshFiles();
       });
     },
-    [models],
+    [models, refreshFiles],
   );
 
   const uploadCustomImage = useCallback((id: string) => {
@@ -345,16 +474,30 @@ export function useCatalogStore() {
   const captureRenderSnapshot = useCallback((id: string, base64: string) => {
     const renderSnapshotImage = `data:image/png;base64,${base64}`;
     setModels((prev) => prev.map((m) => (m.id === id ? { ...m, renderSnapshotImage } : m)));
-    filesApi.setRenderSnapshot(id, base64).catch((e) => {
-      console.error('[render-snapshot] Speichern fehlgeschlagen:', e);
-    });
+    const key = `renderSnapshot:${id}`;
+    beginMutation(key);
+    filesApi
+      .setRenderSnapshot(id, base64)
+      .catch((e) => {
+        console.error('[render-snapshot] Speichern fehlgeschlagen:', e);
+      })
+      .finally(() => {
+        void endMutationAndResyncIfSettled(key, id);
+      });
   }, []);
 
   const setModelSourceUrl = useCallback((id: string, url: string | null) => {
     setModels((prev) => prev.map((m) => (m.id === id ? { ...m, sourceUrl: url } : m)));
-    filesApi.setSourceUrl(id, url).catch((e) => {
-      console.error('[source-url] Speichern fehlgeschlagen:', e);
-    });
+    const key = `sourceUrl:${id}`;
+    beginMutation(key);
+    filesApi
+      .setSourceUrl(id, url)
+      .catch((e) => {
+        console.error('[source-url] Speichern fehlgeschlagen:', e);
+      })
+      .finally(() => {
+        void endMutationAndResyncIfSettled(key, id);
+      });
   }, []);
 
   const rescanMetadata = useCallback((id: string) => {
