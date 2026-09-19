@@ -759,11 +759,13 @@ pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbErro
             let dx: Option<f64> = row.get(6)?;
             let dy: Option<f64> = row.get(7)?;
             let dz: Option<f64> = row.get(8)?;
+            let file_type_str: String = row.get(3)?;
             Ok(FileSummary {
                 id: row.get(0)?,
                 name: row.get(1)?,
                 path: row.get(2)?,
-                file_type: FileType::parse(&row.get::<_, String>(3)?).unwrap_or(FileType::ThreeMf),
+                file_type: FileType::parse(&file_type_str)
+                    .ok_or_else(|| rusqlite::Error::InvalidColumnType(3, "file_type".to_string(), rusqlite::types::Type::Text))?,
                 folder_id: row.get(4)?,
                 file_size_bytes: row.get(5)?,
                 dimensions_mm: match (dx, dy, dz) {
@@ -816,7 +818,8 @@ fn row_to_file(row: &rusqlite::Row) -> rusqlite::Result<FileRecord> {
         id: row.get(0)?,
         name: row.get(1)?,
         path: row.get(2)?,
-        file_type: FileType::parse(&file_type_str).unwrap_or(FileType::ThreeMf),
+        file_type: FileType::parse(&file_type_str)
+            .ok_or_else(|| rusqlite::Error::InvalidColumnType(3, "file_type".to_string(), rusqlite::types::Type::Text))?,
         folder_id: row.get(4)?,
         origin: row.get(5)?,
         sync_status: row.get(6)?,
@@ -1318,5 +1321,64 @@ mod tests {
         assert_eq!(folders.len(), 1);
         assert_eq!(folders[0].id, id);
         assert_eq!(folders[0].name, "Tabletop");
+    }
+
+    #[test]
+    fn list_files_returns_an_error_for_a_row_with_an_unparseable_file_type() {
+        let conn = connect_in_memory().unwrap();
+        conn.execute("PRAGMA foreign_keys = OFF", []).unwrap();
+        // PRAGMA ignore_check_constraints deaktiviert CHECK-Constraints GEZIELT
+        // fuer diese Verbindung (offizielle SQLite-Pragma, siehe
+        // https://www.sqlite.org/pragma.html#pragma_ignore_check_constraints) -
+        // damit ist garantiert, dass der folgende INSERT gelingt, unabhaengig
+        // vom bestehenden `CHECK (file_type IN ('3mf', 'stl'))` in schema.sql.
+        // Kein bedingtes "return" mehr moeglich wie in der urspruenglichen
+        // Testfassung - der Test prueft den Fix immer tatsaechlich.
+        conn.execute("PRAGMA ignore_check_constraints = 1", []).unwrap();
+        conn.execute(
+            "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at) VALUES ('x', '/tmp/x.xyz', 'xyz', 1, '2026-01-01T00:00:00Z')",
+            [],
+        ).expect("insert must succeed with check constraints disabled");
+
+        let result = list_files(&conn);
+
+        assert!(result.is_err(), "ein nicht parsebarer file_type darf nicht still auf ThreeMf zurueckfallen");
+    }
+
+    #[test]
+    fn list_files_still_succeeds_for_rows_with_valid_file_types() {
+        // Regressionsschutz: normale 3mf/stl-Zeilen (der weit ueberwiegende
+        // Normalfall) duerfen durch die Aenderung nicht beeintraechtigt werden.
+        let conn = connect_in_memory().unwrap();
+        test_insert_minimal_file(&conn, "/tmp/a.3mf", None).unwrap();
+        let result = list_files(&conn);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 1);
+    }
+
+    #[test]
+    fn list_file_summaries_returns_an_error_for_a_row_with_an_unparseable_file_type() {
+        let conn = connect_in_memory().unwrap();
+        conn.execute("PRAGMA foreign_keys = OFF", []).unwrap();
+        conn.execute("PRAGMA ignore_check_constraints = 1", []).unwrap();
+        conn.execute(
+            "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at) VALUES ('x', '/tmp/x.xyz', 'xyz', 1, '2026-01-01T00:00:00Z')",
+            [],
+        ).expect("insert must succeed with check constraints disabled");
+
+        let result = list_file_summaries(&conn);
+
+        assert!(result.is_err(), "ein nicht parsebarer file_type darf nicht still auf ThreeMf zurueckfallen");
+    }
+
+    #[test]
+    fn list_file_summaries_still_succeeds_for_rows_with_valid_file_types() {
+        // Regressionsschutz: normale 3mf/stl-Zeilen (der weit ueberwiegende
+        // Normalfall) duerfen durch die Aenderung nicht beeintraechtigt werden.
+        let conn = connect_in_memory().unwrap();
+        test_insert_minimal_file(&conn, "/tmp/a.3mf", None).unwrap();
+        let result = list_file_summaries(&conn);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 1);
     }
 }
