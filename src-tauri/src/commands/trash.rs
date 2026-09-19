@@ -66,6 +66,14 @@ pub fn delete_file(state: State<AppState>, file_id: String) -> CmdResult<()> {
 #[tauri::command]
 pub fn delete_files(state: State<AppState>, file_ids: Vec<String>) -> CmdResult<()> {
     let conn = lock_db(&state)?;
+    delete_files_with_conn(&conn, &state.trash_dir, file_ids)
+}
+/// Kernlogik von `delete_files`, getrennt von der `State<AppState>`-Huelle
+/// gehalten (gleiche Konvention wie `delete_file_with_conn`/
+/// `restore_file_with_conn`), damit sie in Tests ohne eine echte
+/// `tauri::State` (die sich aus Testcode heraus nicht konstruieren laesst)
+/// aufgerufen werden kann.
+fn delete_files_with_conn(conn: &Connection, trash_dir: &std::path::Path, file_ids: Vec<String>) -> CmdResult<()> {
     for file_id in file_ids {
         let id: i64 = match file_id.parse() {
             Ok(id) => id,
@@ -77,7 +85,7 @@ pub fn delete_files(state: State<AppState>, file_ids: Vec<String>) -> CmdResult<
         // Bereinigungs-Batch: eine zwischenzeitlich bereits geloeschte Datei
         // (z.B. doppelt in der Auswahl) wird uebersprungen statt den ganzen
         // Batch abzubrechen.
-        let file = match db::get_file(&conn, id) {
+        let file = match db::get_file(conn, id) {
             Ok(Some(file)) => file,
             Ok(None) => continue,
             Err(e) => {
@@ -90,37 +98,20 @@ pub fn delete_files(state: State<AppState>, file_ids: Vec<String>) -> CmdResult<
         // Einzelfall wird geloggt und uebersprungen, damit das Frontend am
         // Ende zuverlaessig resyncen kann statt auf einem abgebrochenen
         // Batch mit veraltetem Zustand zu stehen.
-        match std::fs::metadata(&file.path) {
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                // Pfad nicht erreichbar - wie in delete_file: trotzdem nur
-                // weich loeschen (Papierkorb-Eintrag ohne physische Datei)
-                // statt hart zu entfernen, da das haeufiger eine
-                // umbenannte/verschobene Quelle als ein echtes Fehlen ist.
-                let deleted_at = chrono::Utc::now().to_rfc3339();
-                if let Err(e) = db::soft_delete_file(&conn, id, None, &deleted_at) {
-                    eprintln!("[cleanup] DB-Eintrag konnte nicht als geloescht markiert werden fuer Datei-ID {id}: {e}");
-                }
-                continue;
-            }
-            Err(e) => {
-                // Andere Fehlerarten als NotFound (z.B. PermissionDenied
-                // oder ein temporär nicht eingehängtes Netzlaufwerk) sind
-                // KEIN "Datei fehlt wirklich" - siehe Finding 3 im Review
-                // vom 2026-09-10 (scan_catalog_issues). Log-and-continue
-                // wie die anderen Fehlerpfade in diesem Batch.
-                eprintln!("[cleanup] Datei-Metadaten konnten nicht gelesen werden fuer Datei-ID {id}: {e}");
-                continue;
-            }
-            Ok(_) => {}
-        }
-        let trash_path = state.trash_dir.join(format!("{id}-{}", file.name));
-        if let Err(e) = move_file(std::path::Path::new(&file.path), &trash_path) {
-            eprintln!("[cleanup] Verschieben in Papierkorb fehlgeschlagen fuer Datei-ID {id}: {e}");
-            continue;
-        }
-        let deleted_at = chrono::Utc::now().to_rfc3339();
-        if let Err(e) = db::soft_delete_file(&conn, id, Some(&trash_path.to_string_lossy()), &deleted_at) {
-            eprintln!("[cleanup] DB-Eintrag konnte nicht als geloescht markiert werden fuer Datei-ID {id}: {e}");
+        //
+        // Finding 2 (Abschluss-Review): ruft dieselbe `delete_file_with_conn`
+        // wie das Einzel-Loeschen auf, statt die Physisch-verschieben +
+        // DB-Update-Sequenz hier ein zweites Mal nachzubauen - dadurch gilt
+        // die dortige H-01-Kompensation (Datei aus dem Papierkorb
+        // zurueckholen, wenn `soft_delete_file` fehlschlaegt) jetzt auch fuer
+        // den Mehrfachauswahl-Batch. Vorher landete eine Datei bei einem
+        // fehlgeschlagenen DB-Update physisch verwaist im Papierkorb,
+        // waehrend die DB sie weiterhin als aktiv unter dem (nicht mehr
+        // existierenden) Originalpfad fuehrte - der Fehler wurde nur
+        // geloggt, der Batch lief weiter und die gesamte Operation meldete
+        // trotzdem Erfolg.
+        if let Err(e) = delete_file_with_conn(conn, &file, id, trash_dir) {
+            eprintln!("[cleanup] Loeschen fehlgeschlagen fuer Datei-ID {id}: {e}");
         }
     }
     Ok(())
@@ -297,6 +288,55 @@ mod tests {
         assert!(result.is_err(), "must surface the soft_delete_file failure (0 rows affected)");
         assert!(src_path.exists(), "source file must be moved back from trash after soft_delete_file failed");
     }
+    #[test]
+    fn bulk_delete_compensates_for_one_failing_file_without_stranding_it_in_trash() {
+        // Finding 2 (Abschluss-Review): delete_files() (Mehrfachauswahl) muss
+        // dieselbe H-01-Kompensation wie das Einzel-Loeschen anwenden. Zwei
+        // Dateien werden geloescht; fuer die zweite wird ein 0-Zeilen-UPDATE
+        // in soft_delete_file erzwungen (gleiche Technik wie
+        // delete_file_compensates_when_soft_delete_fails oben: die Zeile wird
+        // VOR dem eigentlichen delete_files()-Aufruf hart geloescht). Erwartet:
+        // Datei 1 landet reguendlich im Papierkorb, Datei 2 landet wieder an
+        // ihrem urspruenglichen Ort (nicht verwaist im Papierkorb), und der
+        // Gesamtaufruf schlaegt trotz des Teilfehlers nicht fehl (Batch-
+        // Semantik: log-and-continue).
+        let dir = unique_test_dir("bulk_delete_compensation");
+        std::fs::create_dir_all(&dir).unwrap();
+        let trash_dir = unique_test_dir("bulk_delete_compensation_trash");
+        std::fs::create_dir_all(&trash_dir).unwrap();
+
+        let path1 = dir.join("model1.3mf");
+        let path2 = dir.join("model2.3mf");
+        std::fs::write(&path1, b"CONTENT1").unwrap();
+        std::fs::write(&path2, b"CONTENT2").unwrap();
+
+        let conn = db::connect_in_memory().unwrap();
+        let id1 = db::test_insert_minimal_file(&conn, &path1.to_string_lossy(), None).unwrap();
+        let id2 = db::test_insert_minimal_file(&conn, &path2.to_string_lossy(), None).unwrap();
+
+        // Erzwingt ein 0-Zeilen-UPDATE in soft_delete_file NUR fuer id2,
+        // NACHDEM delete_file_with_conn die Datei bereits physisch in den
+        // Papierkorb verschoben hat - gleiche Technik wie
+        // delete_file_compensates_when_soft_delete_fails.
+        db::delete_file(&conn, id2).unwrap();
+
+        let result = delete_files_with_conn(&conn, &trash_dir, vec![id1.to_string(), id2.to_string()]);
+
+        assert!(result.is_ok(), "bulk delete must not fail the whole batch on one item's error: {result:?}");
+
+        // id1: regulaer im Papierkorb gelandet.
+        let file1 = db::get_file(&conn, id1).unwrap().unwrap();
+        assert!(file1.deleted_at.is_some(), "file 1 must be soft-deleted");
+        assert!(!path1.exists(), "file 1 must have been moved into the trash");
+
+        // id2: DB-Update fehlgeschlagen (Zeile bereits geloescht) - Datei
+        // darf NICHT verwaist im Papierkorb liegen bleiben, sondern muss
+        // zurueck an ihren Originalort verschoben worden sein.
+        assert!(path2.exists(), "file 2 must be moved back out of trash after the compensating rollback");
+        let trash_entry = trash_dir.join(format!("{id2}-model2.3mf"));
+        assert!(!trash_entry.exists(), "file 2 must not remain stranded in the trash directory");
+    }
+
     #[test]
     fn restore_file_compensates_when_db_update_fails() {
         let dir = unique_test_dir("restore_file_compensation");
