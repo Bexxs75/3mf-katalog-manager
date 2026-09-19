@@ -23,6 +23,10 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
   - Zusätzlich behoben: Pfadprüfung ohne Kanonisierung (umgehbar via `../`/Symlinks), fehlende Validierung des Slicer-Datei-Arguments, fehlendes Größenlimit bei Render-Snapshots
   - Ungenutzte Datei mit Klartext-Google-OAuth-Credentials (Rest der 2026-09-12 entfernten Cloud-Integration) gelöscht
 
+### Fixed
+
+- Ordner per Drag & Drop verschieben markierte ungewollt Text in der Sidebar (mausbasiertes Drag&Drop statt natives HTML5-DnD); der gezogene Ordner war zudem visuell nicht von den anderen zu unterscheiden — zeigt jetzt reduzierte Deckkraft während des Ziehens
+
 ## [0.7.7] - 2026-09-18
 
 ### Security
@@ -271,6 +275,10 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
   - No size limit when extracting 3MF/backup zip entries (zip-bomb risk) — now capped at 16-256 MB depending on entry type, checked before full decompression
   - Also fixed: path validation without canonicalization (bypassable via `../`/symlinks), missing validation of the slicer file argument, missing size limit on render snapshots
   - Deleted an unused file containing plaintext Google OAuth credentials (leftover from the cloud integration removed 2026-09-12)
+
+### Fixed
+
+- Dragging a folder in the sidebar unintentionally selected text (mouse-based drag-and-drop instead of native HTML5 DnD); the dragged folder was also visually indistinguishable from the others — now shows reduced opacity while dragging
 
 ## [0.7.7] - 2026-09-18
 
