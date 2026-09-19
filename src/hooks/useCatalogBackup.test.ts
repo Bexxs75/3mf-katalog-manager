@@ -50,8 +50,13 @@ describe('useCatalogBackup', () => {
     expect(localStorage.getItem('3mf-katalog-theme')).toBe('light');
   });
 
-  it('exportCatalog still includes the slicer list (export direction unchanged)', async () => {
-    localStorage.setItem('3mf-katalog-slicers', JSON.stringify({ slicers: [] }));
+  it('Finding 7 (Abschluss-Review): exportCatalog no longer exports the dead slicer localStorage key', async () => {
+    // Seit Task 11 lebt die Slicer-Registry in der DB statt in localStorage -
+    // kein Code schreibt diesen Schluessel mehr, ein etwaiger Alt-Wert (z.B.
+    // aus einer Version vor Task 11) waere lediglich ein maschinenlokaler
+    // Programmpfad, der in einem portablen Backup nichts verloren hat und
+    // dort nicht mehr auftauchen darf.
+    localStorage.setItem('3mf-katalog-slicers', JSON.stringify({ slicers: [{ id: 'x', path: '/opt/old-slicer' }] }));
     vi.mocked(invoke).mockResolvedValue(undefined);
     const { result } = renderHook(() => useCatalogBackup());
     await act(async () => {
@@ -59,7 +64,7 @@ describe('useCatalogBackup', () => {
     });
     const call = vi.mocked(invoke).mock.calls[0];
     const settings = JSON.parse((call[1] as { settingsJson: string }).settingsJson);
-    expect(settings['3mf-katalog-slicers']).toBe(JSON.stringify({ slicers: [] }));
+    expect(settings).not.toHaveProperty('3mf-katalog-slicers');
   });
 
   it('importCatalog never restores the slicer list from a backup (Finding Z-1)', async () => {

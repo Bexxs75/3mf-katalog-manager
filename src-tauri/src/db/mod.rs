@@ -4,13 +4,18 @@ mod repository;
 mod collections;
 mod migrations;
 
-pub use migrations::{run_migrations, CURRENT_SCHEMA_VERSION};
+// CURRENT_SCHEMA_VERSION wird ausserhalb von migrations.rs nirgends
+// verwendet (weder produktiv noch in Tests) - der Re-Export hier war seit
+// dem Aufsplitten der Migrationen in db/migrations.rs (Task 2) totes Gepaeck
+// und erzeugte eine Clippy-Warnung. `run_migrations` bleibt der einzige
+// nach aussen sichtbare Teil dieses Moduls.
+pub use migrations::run_migrations;
 
 pub use repository::{
     add_tag_to_file, connect, delete_file, delete_filament_spool, delete_print_log_entry,
     delete_saved_filter, delete_unused_tags, ensure_folder_path,
     file_exists_by_hash, file_exists_by_path, get_file, get_file_id_by_content_hash,
-    get_registered_slicer, insert_file,
+    get_registered_slicer,
     insert_file_within_tx,
     insert_filament_spool, insert_folder_with_parent, insert_print_log_entry,
     insert_registered_slicer,
@@ -28,6 +33,13 @@ pub use repository::{
 
 #[cfg(test)]
 pub use repository::insert_folder;
+
+// insert_file wird ausserhalb der DB-Schicht nur noch von #[cfg(test)]-Code
+// in commands/files.rs und commands/backup.rs aufgerufen (seit dem Aufteilen
+// von commands.rs in Task 14) - dementsprechend cfg-gated, um die Clippy-
+// Warnung ueber einen im Nicht-Test-Build ungenutzten Re-Export zu vermeiden.
+#[cfg(test)]
+pub use repository::insert_file;
 
 #[cfg(test)]
 pub use repository::test_insert_minimal_file;

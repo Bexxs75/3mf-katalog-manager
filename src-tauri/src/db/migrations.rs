@@ -1,12 +1,6 @@
 use rusqlite::Connection;
 use super::error::DbError;
 
-/// Aktuelle Ziel-Schemaversion. Bei jeder neuen Migration in [`MIGRATIONS`]
-/// um genau 1 erhoehen - siehe H-02 im Senior-Code-Review vom 2026-09-19:
-/// ersetzt 20 zuvor mit `let _ = conn.execute(...)` still verschluckte
-/// ALTER-TABLE-/Backfill-Anweisungen in `repository::init()`.
-pub const CURRENT_SCHEMA_VERSION: i64 = 21;
-
 type MigrationFn = fn(&Connection) -> Result<(), DbError>;
 
 /// Jeder Eintrag entspricht 1:1 einer vormals stillschweigend ausgefuehrten
@@ -46,6 +40,14 @@ const MIGRATIONS: &[MigrationFn] = &[
     )"),
 ];
 
+/// Aktuelle Ziel-Schemaversion - leitet sich direkt aus der Anzahl der
+/// Eintraege in [`MIGRATIONS`] ab, statt sie (wie vor dem Abschluss-Review)
+/// als separaten, von Hand mitgepflegten Literal-Wert zu duplizieren. Ein
+/// vergessenes "+1" bei einer neuen Migration kann dadurch strukturell nicht
+/// mehr vorkommen - `MIGRATIONS.len()` UND `CURRENT_SCHEMA_VERSION` koennen
+/// nie mehr auseinanderlaufen, weil es nur noch einen Wert gibt.
+pub const CURRENT_SCHEMA_VERSION: i64 = MIGRATIONS.len() as i64;
+
 /// Fuehrt ein einzelnes ALTER-TABLE/Backfill-Statement aus. "Spalte/Index
 /// existiert bereits" (SQLite-Fehlermeldung enthaelt "duplicate column
 /// name" bzw. der Index-Fall ist durch `IF NOT EXISTS` bereits abgedeckt)
@@ -64,7 +66,7 @@ fn exec(conn: &Connection, sql: &str) -> Result<(), DbError> {
 /// einer fehl, wird `user_version` NICHT erhoeht (der Fehler propagiert
 /// sofort, kein Teil-Fortschritt wird stillschweigend uebernommen).
 pub fn run_migrations(conn: &mut Connection) -> Result<(), DbError> {
-    run_migrations_with(conn, MIGRATIONS, MIGRATIONS.len() as i64)
+    run_migrations_with(conn, MIGRATIONS, CURRENT_SCHEMA_VERSION)
 }
 
 /// Kern von [`run_migrations`], parametrisiert ueber eine explizite

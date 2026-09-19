@@ -1,8 +1,10 @@
 -- parent_id/path wurden nachtraeglich zur bereits bestehenden Tabelle
--- hinzugefuegt (kein Migrations-Framework in diesem Projekt) - CREATE TABLE
--- IF NOT EXISTS aendert eine schon vorhandene Tabelle nicht. Die beiden
--- Spalten kommen additiv ueber ALTER TABLE in repository.rs::init(),
--- gleiches Muster wie bei filament_spools/files.
+-- hinzugefuegt - CREATE TABLE IF NOT EXISTS aendert eine schon vorhandene
+-- Tabelle nicht. Die beiden Spalten kommen additiv ueber die versionierten
+-- Migrationen in db/migrations.rs (siehe MIGRATIONS/CURRENT_SCHEMA_VERSION
+-- dort), gleiches Muster wie bei filament_spools/files. Frueher liefen diese
+-- ALTER-TABLE-Schritte unversioniert in repository.rs::init() - Task 2 hat
+-- sie in ein richtiges Migrations-Framework ueberfuehrt.
 CREATE TABLE IF NOT EXISTS folders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL

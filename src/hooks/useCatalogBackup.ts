@@ -5,18 +5,22 @@ const CATALOG_SETTINGS_KEYS = [
   '3mf-katalog-theme',
   '3mf-katalog-display-preference',
   '3mf-katalog-language',
-  '3mf-katalog-slicers',
   '3mf-katalog-density',
 ] as const;
 
 /**
- * Schluessel, die zwar exportiert, beim Import aber NICHT wiederhergestellt
- * werden. `3mf-katalog-slicers` enthaelt Programmpfade, die spaeter per
+ * Schluessel, die zwar (bei einem Backup aus einer AELTEREN Version) noch
+ * exportiert worden sein KOENNTEN, beim Import aber NICHT wiederhergestellt
+ * werden. `3mf-katalog-slicers` enthielt Programmpfade, die spaeter per
  * `open_in_slicer` als Prozess gestartet werden - ein praepariertes Backup
  * koennte dort `/bin/sh` o.ae. hinterlegen (Security-Review 2026-09-19,
- * Finding Z-1). Slicer-Pfade sind ausserdem maschinenspezifisch und in einem
- * portablen Backup ohnehin wertlos; die automatische Erkennung
- * (`scanInstalledSlicers`) fuellt die Liste nach dem Import von selbst neu.
+ * Finding Z-1). Seit Task 11 lebt die Slicer-Registry serverseitig in der DB
+ * (`registered_slicers`) statt in localStorage und dieser Schluessel wird
+ * folglich seit Finding 7 (Abschluss-Review) NICHT mehr in
+ * `CATALOG_SETTINGS_KEYS` exportiert - der Eintrag hier bleibt trotzdem
+ * bestehen, damit ein Import eines AELTEREN Backups (das den Schluessel noch
+ * enthaelt, z.B. einen darin hinterlegten maschinenlokalen Pfad) ihn
+ * weiterhin sicher ueberspringt statt ihn stillschweigend wiederherzustellen.
  */
 const IMPORT_SKIPPED_SETTINGS_KEYS: ReadonlySet<string> = new Set(['3mf-katalog-slicers']);
 
