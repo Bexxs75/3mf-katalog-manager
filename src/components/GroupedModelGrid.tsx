@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ModelFile, Folder } from '../types';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import { buildGroupedFolderTree, type GroupedFolderNode } from '../lib/groupedFolderTree';
@@ -40,7 +40,7 @@ export function GroupedModelGrid({
   ...modelGridProps
 }: Props) {
   const t = useT();
-  const { roots, noFolder } = buildGroupedFolderTree(folders, models);
+  const { roots, noFolder } = useMemo(() => buildGroupedFolderTree(folders, models), [folders, models]);
 
   // Identisches Schwellenwert-Muster wie FolderTree.tsx's Ordner-Drag (siehe
   // dort) - hier auf die Ordner-Kopfzeilen der gruppierten Ansicht
