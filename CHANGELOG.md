@@ -7,6 +7,15 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
+### Security
+
+- Interne Härtung nach dem [Senior-Code-Review vom 2026-09-19](docs/superpowers/plans/2026-09-19-senior-code-review-fixes.md) (14 Aufgaben plus Abschluss-Review): Datenbank-Migrationen laufen jetzt über ein richtiges, versioniertes Migrations-System (`db/migrations.rs`) statt stillschweigend ausgeführter `ALTER TABLE`-Anweisungen; mehrere Fehlerpfade beim Löschen/Wiederherstellen aus dem Papierkorb (Einzel- und Mehrfachauswahl) holen eine bereits physisch verschobene Datei jetzt zuverlässig zurück, falls der zugehörige Datenbank-Eintrag nicht aktualisiert werden konnte, statt sie verwaist liegen zu lassen. Keine sichtbare Funktionsänderung, rein interne Robustheit.
+
+### Changed
+
+- Die Slicer-Registrierung (Name, Programmpfad, automatisch erkannt oder manuell hinzugefügt) lebt jetzt in der Katalog-Datenbank statt in localStorage. Bereits vorhandene Slicer-Einträge werden beim ersten Start nach dem Update automatisch übernommen — nichts muss neu eingerichtet werden. Beim Wiederherstellen eines Katalog-Backups bleiben lokal registrierte Slicer unverändert erhalten; Slicer-Einträge, die im Backup selbst enthalten waren (z.B. von einem anderen Rechner), werden dabei NICHT übernommen und müssen bei Bedarf manuell neu hinzugefügt werden — lokale Slicer-Konfiguration geht durch ein Backup-Restore also nie verloren.
+- Der zuvor beim Export exportierte, aber nirgends mehr benötigte localStorage-Schlüssel für die alte, lokale Slicer-Liste wird nicht mehr in Katalog-Backups aufgenommen (konnte dort einen maschinenlokalen Programmpfad hinterlassen).
+
 ## [0.8.0] - 2026-09-19
 
 ### Added
@@ -270,6 +279,15 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
 ## [Unreleased]
+
+### Security
+
+- Internal hardening following the [senior code review from 2026-09-19](docs/superpowers/plans/2026-09-19-senior-code-review-fixes.md) (14 tasks plus a final whole-branch review): database migrations now run through a proper, versioned migration system (`db/migrations.rs`) instead of silently-executed `ALTER TABLE` statements; several error paths when deleting/restoring files from the trash (single and multi-select) now reliably move a file back if it had already been physically moved but its database entry couldn't be updated, instead of leaving it stranded. No visible functional change, purely internal robustness.
+
+### Changed
+
+- Slicer registration (name, executable path, auto-detected or manually added) now lives in the catalog database instead of localStorage. Existing slicer entries are carried over automatically on first launch after the update — nothing needs to be set up again. Restoring a catalog backup now leaves locally registered slicers untouched; slicer entries that were part of the backup itself (e.g. from a different machine) are NOT restored and must be re-added manually if needed — local slicer configuration is therefore never lost through a backup restore.
+- The previously exported, but no-longer-used localStorage key for the old, local slicer list is no longer included in catalog backups (it could have leaked a machine-local executable path).
 
 ## [0.8.0] - 2026-09-19
 
