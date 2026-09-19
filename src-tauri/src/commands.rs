@@ -1319,11 +1319,34 @@ pub struct QueuePositionUpdate {
 
 #[tauri::command]
 pub fn reorder_queue(state: State<AppState>, updates: Vec<QueuePositionUpdate>) -> CmdResult<()> {
-    let conn = lock_db(&state)?;
+    let mut conn = lock_db(&state)?;
+    reorder_queue_with_conn(&mut conn, updates)
+}
+
+/// Kernlogik von `reorder_queue`, getrennt von der `State<AppState>`-Huelle
+/// gehalten, damit sie in Tests direkt gegen eine In-Memory-`Connection`
+/// aufgerufen werden kann (gleiche Konvention wie `import_many_with_conn`).
+///
+/// M-04: alle `file_id`s werden VOR jeder Schreiboperation validiert, und
+/// alle Positions-Updates laufen in genau einer Transaktion. Vorher lief pro
+/// Update ein eigenes `db::set_queue_position(...)?` ohne Transaktion - schlug
+/// das N-te Update fehl, blieben die ersten N-1 bereits committed und der
+/// Batch damit halb angewendet.
+fn reorder_queue_with_conn(conn: &mut Connection, updates: Vec<QueuePositionUpdate>) -> CmdResult<()> {
+    let mut parsed = Vec::with_capacity(updates.len());
     for update in updates {
         let id: i64 = update.file_id.parse().map_err(|_| "invalid file id".to_string())?;
-        db::set_queue_position(&conn, id, Some(update.position)).map_err(|e| e.to_string())?;
+        if db::get_file(conn, id).map_err(|e| e.to_string())?.is_none() {
+            return Err(format!("Datei mit id {id} nicht gefunden - Batch wird nicht angewendet"));
+        }
+        parsed.push((id, update.position));
     }
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    for (id, position) in parsed {
+        db::set_queue_position(&tx, id, Some(position)).map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -1402,11 +1425,41 @@ pub struct CollectionPositionUpdate {
 #[tauri::command]
 pub fn reorder_collection(state: State<AppState>, collection_id: String, updates: Vec<CollectionPositionUpdate>) -> CmdResult<()> {
     let cid: i64 = collection_id.parse().map_err(|_| "invalid collection id".to_string())?;
-    let conn = lock_db(&state)?;
+    let mut conn = lock_db(&state)?;
+    reorder_collection_with_conn(&mut conn, cid, updates)
+}
+
+/// Kernlogik von `reorder_collection`, getrennt von der `State<AppState>`-Huelle
+/// gehalten, damit sie in Tests direkt gegen eine In-Memory-`Connection`
+/// aufgerufen werden kann (gleiche Konvention wie `import_many_with_conn`).
+///
+/// M-04: alle `file_id`s werden VOR jeder Schreiboperation validiert (muessen
+/// existieren UND Mitglied der Collection sein), und alle Positions-Updates
+/// laufen in genau einer Transaktion - siehe `reorder_queue_with_conn` fuer
+/// den identischen Grund.
+fn reorder_collection_with_conn(
+    conn: &mut Connection,
+    collection_id: i64,
+    updates: Vec<CollectionPositionUpdate>,
+) -> CmdResult<()> {
+    let member_ids = db::list_collection_file_ids(conn, collection_id).map_err(|e| e.to_string())?;
+
+    let mut parsed = Vec::with_capacity(updates.len());
     for update in updates {
         let fid: i64 = update.file_id.parse().map_err(|_| "invalid file id".to_string())?;
-        db::set_collection_position(&conn, cid, fid, update.position).map_err(|e| e.to_string())?;
+        if !member_ids.contains(&fid) {
+            return Err(format!(
+                "Datei mit id {fid} ist nicht Teil der Collection {collection_id} - Batch wird nicht angewendet"
+            ));
+        }
+        parsed.push((fid, update.position));
     }
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    for (fid, position) in parsed {
+        db::set_collection_position(&tx, collection_id, fid, position).map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -5475,5 +5528,91 @@ mod tests {
         }
         let hash = compute_content_hash(&path).unwrap();
         assert_eq!(hash.len(), 64);
+    }
+
+    #[test]
+    fn queue_reorder_batch_is_all_or_nothing_on_a_mid_batch_failure() {
+        let mut conn = db::connect_in_memory().unwrap();
+        let id1 = db::test_insert_minimal_file(&conn, "/tmp/1.3mf", None).unwrap();
+        let id2 = db::test_insert_minimal_file(&conn, "/tmp/2.3mf", None).unwrap();
+        // id 999999 existiert absichtlich nicht - erzwingt einen Fehler "in
+        // der Mitte" des Batches (upfront-Validierung faengt ihn zwar schon
+        // vor jeder Schreiboperation ab, aber der Test bleibt aussagekraeftig:
+        // keines der gueltigen Updates darf trotzdem committed sein).
+        let updates = vec![
+            QueuePositionUpdate { file_id: id1.to_string(), position: 1 },
+            QueuePositionUpdate { file_id: "999999".to_string(), position: 2 },
+            QueuePositionUpdate { file_id: id2.to_string(), position: 3 },
+        ];
+
+        let result = reorder_queue_with_conn(&mut conn, updates);
+
+        assert!(result.is_err());
+        let file1 = db::get_file(&conn, id1).unwrap().unwrap();
+        let file2 = db::get_file(&conn, id2).unwrap().unwrap();
+        assert_eq!(file1.queue_position, None, "kein Teil-Update darf committed sein");
+        assert_eq!(file2.queue_position, None, "kein Teil-Update darf committed sein");
+    }
+
+    #[test]
+    fn a_fully_valid_queue_reorder_batch_remains_functionally_identical() {
+        let mut conn = db::connect_in_memory().unwrap();
+        let id1 = db::test_insert_minimal_file(&conn, "/tmp/1.3mf", None).unwrap();
+        let id2 = db::test_insert_minimal_file(&conn, "/tmp/2.3mf", None).unwrap();
+        let updates = vec![
+            QueuePositionUpdate { file_id: id1.to_string(), position: 1 },
+            QueuePositionUpdate { file_id: id2.to_string(), position: 2 },
+        ];
+
+        reorder_queue_with_conn(&mut conn, updates).unwrap();
+
+        assert_eq!(db::get_file(&conn, id1).unwrap().unwrap().queue_position, Some(1));
+        assert_eq!(db::get_file(&conn, id2).unwrap().unwrap().queue_position, Some(2));
+    }
+
+    #[test]
+    fn collection_reorder_batch_is_all_or_nothing_on_a_mid_batch_failure() {
+        let mut conn = db::connect_in_memory().unwrap();
+        let id1 = db::test_insert_minimal_file(&conn, "/tmp/1.3mf", None).unwrap();
+        let id2 = db::test_insert_minimal_file(&conn, "/tmp/2.3mf", None).unwrap();
+        let created_at = chrono::Utc::now().to_rfc3339();
+        let cid = db::create_collection(&conn, "Testset", &created_at).unwrap();
+        db::add_file_to_collection(&conn, cid, id1, 0).unwrap();
+        db::add_file_to_collection(&conn, cid, id2, 1).unwrap();
+        // id 999999 ist kein Mitglied dieser Collection - erzwingt einen
+        // Fehler "in der Mitte" des Batches.
+        let updates = vec![
+            CollectionPositionUpdate { file_id: id1.to_string(), position: 5 },
+            CollectionPositionUpdate { file_id: "999999".to_string(), position: 6 },
+            CollectionPositionUpdate { file_id: id2.to_string(), position: 7 },
+        ];
+
+        let result = reorder_collection_with_conn(&mut conn, cid, updates);
+
+        assert!(result.is_err());
+        let ids = db::list_collection_file_ids(&conn, cid).unwrap();
+        // Positionen unveraendert (0 und 1), keines der gueltigen Updates
+        // (5 und 7) darf committed sein.
+        assert_eq!(ids, vec![id1, id2], "Reihenfolge/Positionen duerfen nach fehlgeschlagenem Batch unveraendert sein");
+    }
+
+    #[test]
+    fn a_fully_valid_collection_reorder_batch_remains_functionally_identical() {
+        let mut conn = db::connect_in_memory().unwrap();
+        let id1 = db::test_insert_minimal_file(&conn, "/tmp/1.3mf", None).unwrap();
+        let id2 = db::test_insert_minimal_file(&conn, "/tmp/2.3mf", None).unwrap();
+        let created_at = chrono::Utc::now().to_rfc3339();
+        let cid = db::create_collection(&conn, "Testset", &created_at).unwrap();
+        db::add_file_to_collection(&conn, cid, id1, 0).unwrap();
+        db::add_file_to_collection(&conn, cid, id2, 1).unwrap();
+        let updates = vec![
+            CollectionPositionUpdate { file_id: id1.to_string(), position: 1 },
+            CollectionPositionUpdate { file_id: id2.to_string(), position: 0 },
+        ];
+
+        reorder_collection_with_conn(&mut conn, cid, updates).unwrap();
+
+        let ids = db::list_collection_file_ids(&conn, cid).unwrap();
+        assert_eq!(ids, vec![id2, id1], "nach Swap muss id2 (Position 0) vor id1 (Position 1) stehen");
     }
 }
