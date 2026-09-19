@@ -5571,6 +5571,48 @@ mod tests {
     }
 
     #[test]
+    fn queue_reorder_batch_rolls_back_an_already_applied_earlier_update_when_a_later_one_fails_inside_the_transaction() {
+        // Die obige "all_or_nothing"-Variante scheitert bereits in der
+        // Upfront-Validierung (VOR jeder Schreiboperation) - sie beweist also
+        // nicht, dass die Transaktion selbst ein Rollback durchfuehrt. Dieser
+        // Test erzwingt per Trigger stattdessen einen Fehler INNERHALB der
+        // Transaktion, NACHDEM das erste Update bereits geschrieben wurde,
+        // und prueft, dass genau dieses erste Update wieder zurueckgerollt
+        // wird - unter dem alten, nicht-transaktionalen Code waere es bereits
+        // einzeln committed gewesen.
+        let mut conn = db::connect_in_memory().unwrap();
+        let id1 = db::test_insert_minimal_file(&conn, "/tmp/1.3mf", None).unwrap();
+        let id2 = db::test_insert_minimal_file(&conn, "/tmp/2.3mf", None).unwrap();
+        let id3 = db::test_insert_minimal_file(&conn, "/tmp/3.3mf", None).unwrap();
+
+        // Bricht genau dann ab, wenn queue_position auf 20 gesetzt wird -
+        // das Ziel des ZWEITEN Updates. Das erste Update (id1 -> 10) muss
+        // also innerhalb der Transaktion bereits erfolgreich geschrieben
+        // worden sein, bevor der Abbruch greift.
+        conn.execute_batch(
+            "CREATE TRIGGER block_second_queue_update BEFORE UPDATE ON files
+             WHEN NEW.queue_position = 20
+             BEGIN SELECT RAISE(ABORT, 'simulierter Fehler beim zweiten Queue-Update'); END;",
+        )
+        .unwrap();
+
+        let updates = vec![
+            QueuePositionUpdate { file_id: id1.to_string(), position: 10 },
+            QueuePositionUpdate { file_id: id2.to_string(), position: 20 },
+            QueuePositionUpdate { file_id: id3.to_string(), position: 30 },
+        ];
+
+        let result = reorder_queue_with_conn(&mut conn, updates);
+
+        assert!(result.is_err(), "must surface the trigger-raised failure on the second update");
+        let file1 = db::get_file(&conn, id1).unwrap().unwrap();
+        assert_eq!(
+            file1.queue_position, None,
+            "the first update must be rolled back even though it succeeded inside the transaction before the second one failed"
+        );
+    }
+
+    #[test]
     fn collection_reorder_batch_is_all_or_nothing_on_a_mid_batch_failure() {
         let mut conn = db::connect_in_memory().unwrap();
         let id1 = db::test_insert_minimal_file(&conn, "/tmp/1.3mf", None).unwrap();
@@ -5614,5 +5656,54 @@ mod tests {
 
         let ids = db::list_collection_file_ids(&conn, cid).unwrap();
         assert_eq!(ids, vec![id2, id1], "nach Swap muss id2 (Position 0) vor id1 (Position 1) stehen");
+    }
+
+    #[test]
+    fn collection_reorder_batch_rolls_back_an_already_applied_earlier_update_when_a_later_one_fails_inside_the_transaction() {
+        // Analog zu queue_reorder_batch_rolls_back_...: erzwingt den Fehler
+        // per Trigger INNERHALB der Transaktion (nach Bestehen der
+        // Upfront-Membership-Validierung), statt in der Validierung selbst,
+        // um das tatsaechliche Rollback-Verhalten der Transaktion zu pruefen.
+        let mut conn = db::connect_in_memory().unwrap();
+        let id1 = db::test_insert_minimal_file(&conn, "/tmp/1.3mf", None).unwrap();
+        let id2 = db::test_insert_minimal_file(&conn, "/tmp/2.3mf", None).unwrap();
+        let id3 = db::test_insert_minimal_file(&conn, "/tmp/3.3mf", None).unwrap();
+        let created_at = chrono::Utc::now().to_rfc3339();
+        let cid = db::create_collection(&conn, "Testset", &created_at).unwrap();
+        db::add_file_to_collection(&conn, cid, id1, 0).unwrap();
+        db::add_file_to_collection(&conn, cid, id2, 1).unwrap();
+        db::add_file_to_collection(&conn, cid, id3, 2).unwrap();
+
+        // Bricht genau dann ab, wenn position auf 21 gesetzt wird - das Ziel
+        // des ZWEITEN Updates. Das erste Update (id1 -> 10) muss also
+        // innerhalb der Transaktion bereits erfolgreich geschrieben worden
+        // sein, bevor der Abbruch greift.
+        conn.execute_batch(
+            "CREATE TRIGGER block_second_collection_update BEFORE UPDATE ON collection_files
+             WHEN NEW.position = 21
+             BEGIN SELECT RAISE(ABORT, 'simulierter Fehler beim zweiten Collection-Update'); END;",
+        )
+        .unwrap();
+
+        let updates = vec![
+            CollectionPositionUpdate { file_id: id1.to_string(), position: 10 },
+            CollectionPositionUpdate { file_id: id2.to_string(), position: 21 },
+            CollectionPositionUpdate { file_id: id3.to_string(), position: 30 },
+        ];
+
+        let result = reorder_collection_with_conn(&mut conn, cid, updates);
+
+        assert!(result.is_err(), "must surface the trigger-raised failure on the second update");
+        let position1: i64 = conn
+            .query_row(
+                "SELECT position FROM collection_files WHERE collection_id = ?1 AND file_id = ?2",
+                rusqlite::params![cid, id1],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            position1, 0,
+            "the first update must be rolled back even though it succeeded inside the transaction before the second one failed"
+        );
     }
 }
