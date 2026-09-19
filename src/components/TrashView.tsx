@@ -31,6 +31,11 @@ export function TrashView({
   displayPreference,
 }: TrashViewProps) {
   const t = useT();
+  // Der Papierkorb unterstützt keine Ordner-Gruppierung (gelöschte Dateien
+  // "gehören" nicht mehr zu einem aktiven Ordner-Kontext) - fällt auf die
+  // jeweilige flache Darstellung zurück, falls der geteilte Umschalter
+  // während der Papierkorb-Ansicht auf eine gruppierte Option steht.
+  const effectiveIsGrid = view === 'grid' || view === 'groupedGrid';
   return (
     <div className="flex flex-1 min-h-0">
       <main className="flex-1 min-w-0 flex flex-col">
@@ -67,7 +72,7 @@ export function TrashView({
         <div className="flex-1 overflow-y-auto overscroll-contain p-4">
           {trashModels.length === 0 ? (
             <p className="font-mono-ui text-[12.5px] text-[var(--ink-3)]">{t('trashEmptyState')}</p>
-          ) : view === 'grid' ? (
+          ) : effectiveIsGrid ? (
             <ModelGrid
               models={trashModels}
               selectedId={selectedId}
