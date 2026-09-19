@@ -54,7 +54,7 @@ thread_local! {
     /// laeuft in seinem eigenen Thread, daher keine Interferenz zwischen
     /// Tests.
     static TEST_MAX_TOTAL_UNPACKED_BYTES: std::cell::Cell<Option<u64>> =
-        std::cell::Cell::new(None);
+        const { std::cell::Cell::new(None) };
 }
 
 fn max_total_unpacked_bytes() -> u64 {
@@ -570,6 +570,177 @@ mod tests {
     fn read_package_still_accepts_a_legitimate_multi_part_3mf_within_budget() {
         let bytes = build_multi_file_zip(&[("3D/Objects/object_1.model", CHILD_MODEL_XML)]);
         assert!(read_package(std::io::Cursor::new(bytes)).is_ok());
+    }
+
+    const MINIMAL_ROOT_MODEL_XML: &str = r##"<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+  <build></build>
+</model>"##;
+
+    const SMALL_RELS_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model"/>
+</Relationships>"#;
+
+    /// Baut ein minimales 3MF (kleines Root-Modell ohne Build-Items, also
+    /// ohne referenzierte Dateien) mit frei waehlbarem `_rels/.rels`-Inhalt
+    /// und beliebigen zusaetzlichen Eintraegen (z. B. die beiden
+    /// Slicer-Configs) - dient dazu, GENAU EINE Ressourcenart gezielt
+    /// aufzublaehen, waehrend alle anderen winzig bleiben.
+    fn build_minimal_3mf_with_entries(rels_xml: &str, extra_entries: &[(&str, &str)]) -> Vec<u8> {
+        let mut buf = Vec::new();
+        {
+            let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buf));
+            let options = SimpleFileOptions::default();
+
+            zip.start_file("_rels/.rels", options).unwrap();
+            zip.write_all(rels_xml.as_bytes()).unwrap();
+
+            zip.start_file("3D/3dmodel.model", options).unwrap();
+            zip.write_all(MINIMAL_ROOT_MODEL_XML.as_bytes()).unwrap();
+
+            for (path, content) in extra_entries {
+                zip.start_file(*path, options).unwrap();
+                zip.write_all(content.as_bytes()).unwrap();
+            }
+
+            zip.finish().unwrap();
+        }
+        buf
+    }
+
+    /// Dies ist genau der urspruengliche Bug (M-05, fuenfte Review-Runde):
+    /// ein einzelner `_rels/.rels`-Eintrag, der fuer sich genommen weit
+    /// unter `MAX_RELS_XML_BYTES` bleibt, aber gross genug ist, um allein
+    /// das (im Test verkleinerte) Gesamtbudget zu ueberschreiten, wurde
+    /// vorher gar nicht mitgezaehlt und daher stillschweigend akzeptiert.
+    #[test]
+    fn read_package_rejects_when_rels_alone_pushes_total_over_budget() {
+        let padded_rels = format!("<!--{}-->{SMALL_RELS_XML}", "A".repeat(5000));
+        assert!((padded_rels.len() as u64) < MAX_RELS_XML_BYTES);
+
+        TEST_MAX_TOTAL_UNPACKED_BYTES.with(|c| c.set(Some(1000)));
+        let bytes = build_minimal_3mf_with_entries(&padded_rels, &[]);
+        let result = read_package(std::io::Cursor::new(bytes));
+        TEST_MAX_TOTAL_UNPACKED_BYTES.with(|c| c.set(None));
+
+        assert!(
+            result.is_err(),
+            "ein ueberdimensionierter _rels/.rels-Eintrag allein muss das Gesamtbudget ueberschreiten koennen"
+        );
+    }
+
+    /// Analog zu oben, aber fuer `Metadata/model_settings.config`
+    /// (`count_plates()`).
+    #[test]
+    fn read_package_rejects_when_model_settings_config_alone_pushes_total_over_budget() {
+        let padded_config = "A".repeat(5000);
+        assert!((padded_config.len() as u64) < MAX_CONFIG_XML_BYTES);
+
+        TEST_MAX_TOTAL_UNPACKED_BYTES.with(|c| c.set(Some(1000)));
+        let bytes = build_minimal_3mf_with_entries(
+            SMALL_RELS_XML,
+            &[("Metadata/model_settings.config", &padded_config)],
+        );
+        let result = read_package(std::io::Cursor::new(bytes));
+        TEST_MAX_TOTAL_UNPACKED_BYTES.with(|c| c.set(None));
+
+        assert!(
+            result.is_err(),
+            "ein ueberdimensionierter model_settings.config-Eintrag allein muss das Gesamtbudget ueberschreiten koennen"
+        );
+    }
+
+    /// Analog zu oben, aber fuer `Metadata/slice_info.config`
+    /// (`parse_slice_info()`).
+    #[test]
+    fn read_package_rejects_when_slice_info_config_alone_pushes_total_over_budget() {
+        let padded_config = "A".repeat(5000);
+        assert!((padded_config.len() as u64) < MAX_CONFIG_XML_BYTES);
+
+        TEST_MAX_TOTAL_UNPACKED_BYTES.with(|c| c.set(Some(1000)));
+        let bytes = build_minimal_3mf_with_entries(
+            SMALL_RELS_XML,
+            &[("Metadata/slice_info.config", &padded_config)],
+        );
+        let result = read_package(std::io::Cursor::new(bytes));
+        TEST_MAX_TOTAL_UNPACKED_BYTES.with(|c| c.set(None));
+
+        assert!(
+            result.is_err(),
+            "ein ueberdimensionierter slice_info.config-Eintrag allein muss das Gesamtbudget ueberschreiten koennen"
+        );
+    }
+
+    /// Gegenprobe zu den drei Tests oben: dasselbe minimale Paket ohne
+    /// Polsterung wird unter demselben kleinen Testbudget weiterhin
+    /// akzeptiert - beweist, dass die Ablehnung oben wirklich am
+    /// Gesamtbudget liegt und nicht an einem unabhaengigen Parsing-Fehler
+    /// oder generell zu knappen Testbudget.
+    #[test]
+    fn read_package_accepts_a_tiny_package_under_the_same_small_test_budget() {
+        TEST_MAX_TOTAL_UNPACKED_BYTES.with(|c| c.set(Some(1000)));
+        let bytes = build_minimal_3mf_with_entries(SMALL_RELS_XML, &[]);
+        let result = read_package(std::io::Cursor::new(bytes));
+        TEST_MAX_TOTAL_UNPACKED_BYTES.with(|c| c.set(None));
+
+        assert!(result.is_ok(), "ein winziges Paket muss unter dem Testbudget akzeptiert werden");
+    }
+
+    /// Baut ein 3MF, dessen referenziertes Modell `3D/Objects/big.model`
+    /// tatsaechlich existiert (kein Missing-Referenzfall), dessen Inhalt
+    /// aber `MAX_MODEL_XML_BYTES` um 1 Byte ueberschreitet - `Stored`
+    /// (unkomprimiert) statt der Standard-Kompression, damit das Schreiben
+    /// des Fixtures in vertretbarer Zeit passiert.
+    fn build_3mf_with_oversized_referenced_model() -> Vec<u8> {
+        let root_xml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06">
+  <build>
+    <item p:path="/3D/Objects/big.model" objectid="1"/>
+  </build>
+</model>"##;
+
+        let oversized_len = (MAX_MODEL_XML_BYTES + 1) as usize;
+
+        let mut buf = Vec::new();
+        {
+            let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buf));
+            let options = SimpleFileOptions::default();
+            let stored = SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Stored);
+
+            zip.start_file("_rels/.rels", options).unwrap();
+            zip.write_all(SMALL_RELS_XML.as_bytes()).unwrap();
+
+            zip.start_file("3D/3dmodel.model", options).unwrap();
+            zip.write_all(root_xml.as_bytes()).unwrap();
+
+            zip.start_file("3D/Objects/big.model", stored).unwrap();
+            zip.write_all(&vec![b'A'; oversized_len]).unwrap();
+
+            zip.finish().unwrap();
+        }
+        buf
+    }
+
+    /// Finding 2 (Review): eine referenzierte Modell-Datei, die
+    /// tatsaechlich EXISTIERT, aber ihr Pro-Entry-Groessenlimit
+    /// (`MAX_MODEL_XML_BYTES`) ueberschreitet, muss hart fehlschlagen statt
+    /// stillschweigend uebersprungen zu werden - im Gegensatz zu einer
+    /// fehlenden/kaputten Datei (siehe
+    /// `skips_missing_referenced_file_without_failing`, die weiterhin
+    /// toleriert). Der Abgleich auf `EntryTooLarge` (statt nur `is_err()`)
+    /// stellt sicher, dass tatsaechlich der neue `EntryTooLarge`-Zweig
+    /// getroffen wird und nicht z. B. die Gesamtbudget-Pruefung.
+    #[test]
+    fn read_package_hard_errors_on_an_oversized_referenced_model_instead_of_skipping_it() {
+        let bytes = build_3mf_with_oversized_referenced_model();
+        let result = read_package(std::io::Cursor::new(bytes));
+
+        assert!(
+            matches!(result, Err(ThreeMfError::EntryTooLarge { .. })),
+            "ein referenziertes Modell ueber dem Pro-Entry-Limit muss als EntryTooLarge hart fehlschlagen"
+        );
     }
 
     #[test]
