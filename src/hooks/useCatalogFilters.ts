@@ -1,0 +1,33 @@
+import { useMemo, useState } from 'react';
+import type { ModelFile, Folder, ViewMode, SortKey } from '../types';
+import { filterAndSortModels, selectQueuedModels } from '../lib/catalogFilters';
+
+export function useCatalogFilters(models: ModelFile[], folders: Folder[]) {
+  const [view, setView] = useState<ViewMode>('grid');
+  const [sort, setSort] = useState<SortKey>('name');
+  const [query, setQuery] = useState('');
+  const [activeFolderId, setActiveFolderId] = useState('all');
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+  // activeCreator wird derzeit nirgends im UI gesetzt (siehe Konsistenz-
+  // Hinweis in App.tsx vor diesem Refactor) - beibehalten, um Verhalten
+  // exakt gleich zu lassen.
+  const [activeCreator] = useState<string | null>(null);
+
+  const filtered = useMemo(
+    () => filterAndSortModels(models, folders, { activeFolderId, activeTag, activeCreator, query, sort }),
+    [models, folders, activeFolderId, activeTag, activeCreator, query, sort],
+  );
+
+  const queue = useMemo(() => selectQueuedModels(models), [models]);
+
+  return {
+    view, setView,
+    sort, setSort,
+    query, setQuery,
+    activeFolderId, setActiveFolderId,
+    activeTag, setActiveTag,
+    activeCreator,
+    filtered,
+    queue,
+  };
+}
