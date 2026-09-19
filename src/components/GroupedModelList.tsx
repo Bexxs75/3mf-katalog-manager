@@ -21,6 +21,7 @@ interface Props {
   dragOverFolderId: string | null;
   onDragFolderStart: (id: string) => void;
   onFolderMouseEnter: (id: string) => void;
+  onFolderMouseLeave: (id: string) => void;
   collapsedFolders: ReturnType<typeof useCollapsedFolders>;
 }
 
@@ -33,6 +34,7 @@ export function GroupedModelList({
   dragOverFolderId,
   onDragFolderStart,
   onFolderMouseEnter,
+  onFolderMouseLeave,
   collapsedFolders,
   ...modelListProps
 }: Props) {
@@ -76,6 +78,11 @@ export function GroupedModelList({
   };
 
   function renderNode(node: GroupedFolderNode, depth: number) {
+    // totalCount ist rekursiv (schliesst alle Nachfahren ein) - bei 0 kann
+    // dieser Ordner und sein gesamter Unterbaum unter der aktiven Filterung
+    // keine Datei enthalten, ein return null hier ist also sicher (Review-
+    // Fund I-2: verhindert eine Wand leerer Kopfzeilen bei aktivem Filter).
+    if (node.totalCount === 0) return null;
     const isCollapsed = collapsedFolders.isCollapsed(node.folder.id);
     const isDraggedOver = dragOverFolderId === node.folder.id;
     const isBeingDragged = draggedFolderId === node.folder.id;
@@ -84,6 +91,7 @@ export function GroupedModelList({
         <div
           onMouseDown={(e) => handleFolderMouseDown(e, node.folder.id)}
           onMouseEnter={() => onFolderMouseEnter(node.folder.id)}
+          onMouseLeave={() => onFolderMouseLeave(node.folder.id)}
           onClick={() => collapsedFolders.toggle(node.folder.id)}
           className={`flex items-center gap-2 py-1.5 cursor-pointer select-none rounded-[4px] ${
             isDraggedOver ? 'bg-[var(--accent-soft)] border border-[var(--accent)]' : ''
@@ -110,23 +118,25 @@ export function GroupedModelList({
   return (
     <div>
       {roots.map((node) => renderNode(node, 0))}
-      <div className="mb-4">
-        <div
-          onClick={() => collapsedFolders.toggle(NO_FOLDER_COLLAPSE_KEY)}
-          className="flex items-center gap-2 py-1.5 cursor-pointer select-none rounded-[4px]"
-        >
-          <span className={`text-[9px] text-[var(--ink-3)] transition-transform ${noFolderCollapsed ? '-rotate-90' : ''}`}>▾</span>
-          <span className="text-[13px] opacity-40">📄</span>
-          <span className="text-[13px] font-semibold italic text-[var(--ink-2)]">{t('noFolderLabel')}</span>
-          <span className="font-mono-ui text-[10px] text-[var(--ink-3)]">{noFolder.length}</span>
-          <span className="flex-1 h-px bg-[var(--line)]" />
-        </div>
-        {!noFolderCollapsed && noFolder.length > 0 && (
-          <div className="mt-2">
-            <ModelList models={noFolder} {...modelListProps} />
+      {noFolder.length > 0 && (
+        <div className="mb-4">
+          <div
+            onClick={() => collapsedFolders.toggle(NO_FOLDER_COLLAPSE_KEY)}
+            className="flex items-center gap-2 py-1.5 cursor-pointer select-none rounded-[4px]"
+          >
+            <span className={`text-[9px] text-[var(--ink-3)] transition-transform ${noFolderCollapsed ? '-rotate-90' : ''}`}>▾</span>
+            <span className="text-[13px] opacity-40">📄</span>
+            <span className="text-[13px] font-semibold italic text-[var(--ink-2)]">{t('noFolderLabel')}</span>
+            <span className="font-mono-ui text-[10px] text-[var(--ink-3)]">{noFolder.length}</span>
+            <span className="flex-1 h-px bg-[var(--line)]" />
           </div>
-        )}
-      </div>
+          {!noFolderCollapsed && (
+            <div className="mt-2">
+              <ModelList models={noFolder} {...modelListProps} />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

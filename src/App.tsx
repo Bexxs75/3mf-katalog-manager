@@ -201,6 +201,7 @@ export default function App() {
               dragOverFolderId={dragDrop.dragOverFolderId}
               draggedFolderId={dragDrop.draggedFolderId}
               handleFolderMouseEnter={dragDrop.handleFolderMouseEnter}
+              handleFolderMouseLeave={dragDrop.handleFolderMouseLeave}
               onDragFolderStart={dragDrop.onDragFolderStart}
               collapsedFolders={collapsedFolders}
               tags={store.tags}

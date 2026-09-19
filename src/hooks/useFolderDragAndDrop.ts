@@ -46,6 +46,17 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
     [draggedFileId, draggedFolderId, folders],
   );
 
+  // Kopfzeile wird verlassen -> Highlight zuruecksetzen, sofern nicht
+  // bereits eine andere Zeile inzwischen als Ziel gesetzt wurde (spaetes
+  // mouseleave darf ein neueres mouseenter nicht ueberschreiben - siehe
+  // Review-Fund I-1: ohne dieses Reset bleibt dragOverFolderId auf dem
+  // zuletzt ueberfahrenen Ordner haengen, wenn danach ueber einer Karte
+  // oder der "Ohne Ordner"-Sektion losgelassen wird, und loest dort einen
+  // ungewollten move_file_to_folder in den falschen Ordner aus).
+  const handleFolderMouseLeave = useCallback((id: string) => {
+    setDragOverFolderId((current) => (current === id ? null : current));
+  }, []);
+
   const onCreateFolder = useCallback(
     (parentId: string | null, name: string) =>
       foldersApi
@@ -131,6 +142,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
     onDragFileStart,
     onDragFolderStart,
     handleFolderMouseEnter,
+    handleFolderMouseLeave,
     onCreateFolder,
   };
 }

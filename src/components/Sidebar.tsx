@@ -18,6 +18,7 @@ interface Props {
   dragOverFolderId?: string | null;
   draggedFolderId?: string | null;
   onFolderMouseEnter?: (id: string) => void;
+  onFolderMouseLeave?: (id: string) => void;
   onDragFolderStart?: (id: string) => void;
   tags: TagCount[];
   activeTag: string | null;
@@ -45,6 +46,7 @@ export function Sidebar({
   dragOverFolderId = null,
   draggedFolderId = null,
   onFolderMouseEnter,
+  onFolderMouseLeave,
   onDragFolderStart,
   tags,
   activeTag,
@@ -147,6 +149,7 @@ export function Sidebar({
           dragOverFolderId={dragOverFolderId}
           draggedFolderId={draggedFolderId}
           onFolderMouseEnter={onFolderMouseEnter}
+          onFolderMouseLeave={onFolderMouseLeave}
           onDragFolderStart={onDragFolderStart}
         />
         {creatingFolder ? (

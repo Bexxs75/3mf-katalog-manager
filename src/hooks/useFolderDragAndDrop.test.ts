@@ -50,4 +50,25 @@ describe('useFolderDragAndDrop', () => {
     act(() => result.current.handleFolderMouseEnter('child'));
     expect(result.current.dragOverFolderId).toBeNull();
   });
+
+  it('handleFolderMouseLeave resets dragOverFolderId when leaving the current target', () => {
+    const folders = [makeFolder({ id: 'f1' })];
+    const { result } = renderHook(() => useFolderDragAndDrop([], folders, { refreshFolders: vi.fn(), refreshFiles: vi.fn() }));
+    act(() => result.current.onDragFileStart('m1'));
+    act(() => result.current.handleFolderMouseEnter('f1'));
+    expect(result.current.dragOverFolderId).toBe('f1');
+    act(() => result.current.handleFolderMouseLeave('f1'));
+    expect(result.current.dragOverFolderId).toBeNull();
+  });
+
+  it('handleFolderMouseLeave does not clobber a newer target from a stale event', () => {
+    const folders = [makeFolder({ id: 'f1' }), makeFolder({ id: 'f2' })];
+    const { result } = renderHook(() => useFolderDragAndDrop([], folders, { refreshFolders: vi.fn(), refreshFiles: vi.fn() }));
+    act(() => result.current.onDragFileStart('m1'));
+    act(() => result.current.handleFolderMouseEnter('f1'));
+    act(() => result.current.handleFolderMouseEnter('f2'));
+    // Stale mouseleave for f1 arrives after the pointer already entered f2.
+    act(() => result.current.handleFolderMouseLeave('f1'));
+    expect(result.current.dragOverFolderId).toBe('f2');
+  });
 });

@@ -27,6 +27,7 @@ interface CatalogWorkspaceProps {
   dragOverFolderId: string | null;
   draggedFolderId: string | null;
   handleFolderMouseEnter: (id: string) => void;
+  handleFolderMouseLeave: (id: string) => void;
   onDragFolderStart: (id: string) => void;
   tags: TagCount[];
   activeTag: string | null;
@@ -96,6 +97,7 @@ export function CatalogWorkspace({
   dragOverFolderId,
   draggedFolderId,
   handleFolderMouseEnter,
+  handleFolderMouseLeave,
   onDragFolderStart,
   tags,
   activeTag,
@@ -172,6 +174,7 @@ export function CatalogWorkspace({
         dragOverFolderId={dragOverFolderId}
         draggedFolderId={draggedFolderId}
         onFolderMouseEnter={handleFolderMouseEnter}
+        onFolderMouseLeave={handleFolderMouseLeave}
         onDragFolderStart={onDragFolderStart}
         tags={tags}
         activeTag={activeTag}
@@ -302,6 +305,7 @@ export function CatalogWorkspace({
                 dragOverFolderId={dragOverFolderId}
                 onDragFolderStart={onDragFolderStart}
                 onFolderMouseEnter={handleFolderMouseEnter}
+                onFolderMouseLeave={handleFolderMouseLeave}
                 collapsedFolders={collapsedFolders}
               />
             ) : (
@@ -319,6 +323,7 @@ export function CatalogWorkspace({
                 dragOverFolderId={dragOverFolderId}
                 onDragFolderStart={onDragFolderStart}
                 onFolderMouseEnter={handleFolderMouseEnter}
+                onFolderMouseLeave={handleFolderMouseLeave}
                 collapsedFolders={collapsedFolders}
               />
             )}

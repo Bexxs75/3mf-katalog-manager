@@ -14,6 +14,7 @@ interface Props {
   dragOverFolderId?: string | null;
   draggedFolderId?: string | null;
   onFolderMouseEnter?: (id: string) => void;
+  onFolderMouseLeave?: (id: string) => void;
   onDragFolderStart?: (id: string) => void;
 }
 
@@ -38,6 +39,7 @@ export function FolderTree({
   dragOverFolderId = null,
   draggedFolderId = null,
   onFolderMouseEnter,
+  onFolderMouseLeave,
   onDragFolderStart,
 }: Props) {
   const t = useT();
@@ -102,6 +104,7 @@ export function FolderTree({
             setDragCandidateId(node.id);
           }}
           onMouseEnter={() => onFolderMouseEnter?.(node.id)}
+          onMouseLeave={() => onFolderMouseLeave?.(node.id)}
           style={{ paddingLeft: 6 + depth * 16 }}
           className={`flex items-center gap-1.5 h-7 pr-2 rounded-[7px] cursor-pointer select-none text-[12.5px] border ${
             node.id === activeFolderId
