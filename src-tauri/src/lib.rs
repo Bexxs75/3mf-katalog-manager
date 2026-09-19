@@ -5,6 +5,7 @@ mod slicers;
 mod stl;
 mod tagging;
 mod threemf;
+mod update_check;
 
 use std::sync::Mutex;
 
