@@ -7,6 +7,10 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
+### Added
+
+- Neue Ansicht "Ordner": Modelle können nach Ordnern gruppiert angezeigt werden (als Kachel-Raster oder Zeilen-Liste), verschachtelte Unterordner eingerückt mit Verbindungslinie, einzeln einklappbar (Zustand bleibt erhalten). Ordner-Kopfzeilen und Dateien lassen sich innerhalb dieser Ansicht direkt per Maus verschieben, genau wie bisher schon in der Seitenleiste.
+
 ## [0.7.8] - 2026-09-19
 
 ### Changed
@@ -259,6 +263,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
 ## [Unreleased]
+
+### Added
+
+- New "Folder" view: models can be shown grouped by folder (as a tile grid or row list), nested subfolders indented with a connecting line, individually collapsible (state persists). Folder headers and files can be dragged directly within this view, exactly like the existing sidebar behavior.
 
 ## [0.7.8] - 2026-09-19
 
