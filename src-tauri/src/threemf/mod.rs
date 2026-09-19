@@ -53,22 +53,29 @@ pub fn parse_3mf_bytes(bytes: &[u8]) -> Result<ThreeMfDocument, ThreeMfError> {
 pub fn extract_render_meshes_from_path(path: &Path) -> Result<Vec<RenderMesh>, ThreeMfError> {
     let file = File::open(path)?;
     let package = container::read_package(file)?;
-    Ok(extract_render_meshes(&package))
+    extract_render_meshes(&package)
 }
 
-pub fn extract_render_meshes(package: &PackageParts) -> Vec<RenderMesh> {
+/// Maximale Verschachtelungstiefe der 3MF-Komponentenkette (H-04,
+/// Senior-Code-Review 2026-09-19). Schuetzt vor Stack-Overflow/Haengern durch
+/// extrem tiefe (aber azyklische) Komponentengraphen.
+const MAX_COMPONENT_DEPTH: usize = 256;
+
+pub fn extract_render_meshes(package: &PackageParts) -> Result<Vec<RenderMesh>, ThreeMfError> {
     let mut meshes = Vec::new();
     for item in &package.root_model.build_items {
         let transform = item.transform.unwrap_or_else(Matrix3x4::identity);
+        let mut path = Vec::new();
         collect_render_meshes(
             package,
             item.path.as_deref(),
             &item.object_id,
             &transform,
             &mut meshes,
-        );
+            &mut path,
+        )?;
     }
-    meshes
+    Ok(meshes)
 }
 
 fn collect_render_meshes(
@@ -77,9 +84,20 @@ fn collect_render_meshes(
     object_id: &str,
     transform: &Matrix3x4,
     out: &mut Vec<RenderMesh>,
-) {
+    path: &mut Vec<(Option<String>, String)>,
+) -> Result<(), ThreeMfError> {
+    let key = (file.map(str::to_string), object_id.to_string());
+    if path.contains(&key) {
+        return Err(ThreeMfError::ComponentCycle);
+    }
+    if path.len() >= MAX_COMPONENT_DEPTH {
+        return Err(ThreeMfError::MaxDepthExceeded);
+    }
+    path.push(key);
+
     let Some(object) = package.lookup_object(file, object_id) else {
-        return;
+        path.pop();
+        return Ok(());
     };
 
     let is_model_geometry = object.object_type.as_deref().is_none_or(|t| t == "model");
@@ -114,8 +132,12 @@ fn collect_render_meshes(
             &component.object_id,
             &child_transform,
             out,
-        );
+            path,
+        )?;
     }
+
+    path.pop();
+    Ok(())
 }
 
 fn parse_3mf_reader<R: std::io::Read + std::io::Seek>(
@@ -123,7 +145,7 @@ fn parse_3mf_reader<R: std::io::Read + std::io::Seek>(
 ) -> Result<ThreeMfDocument, ThreeMfError> {
     let package = container::read_package(reader)?;
 
-    let (bbox, volume_mm3) = resolve_geometry(&package);
+    let (bbox, volume_mm3) = resolve_geometry(&package)?;
 
     let dimensions_mm = bbox.is_valid().then(|| bbox.size());
     let volume_cm3 = bbox.is_valid().then_some(volume_mm3 / 1000.0);
@@ -148,12 +170,13 @@ fn parse_3mf_reader<R: std::io::Read + std::io::Seek>(
     })
 }
 
-fn resolve_geometry(package: &PackageParts) -> (BoundingBox, f64) {
+fn resolve_geometry(package: &PackageParts) -> Result<(BoundingBox, f64), ThreeMfError> {
     let mut bbox = BoundingBox::empty();
     let mut volume_mm3 = 0.0;
 
     for item in &package.root_model.build_items {
         let transform = item.transform.unwrap_or_else(Matrix3x4::identity);
+        let mut path = Vec::new();
         accumulate_object(
             package,
             item.path.as_deref(),
@@ -161,12 +184,14 @@ fn resolve_geometry(package: &PackageParts) -> (BoundingBox, f64) {
             &transform,
             &mut bbox,
             &mut volume_mm3,
-        );
+            &mut path,
+        )?;
     }
 
-    (bbox, volume_mm3)
+    Ok((bbox, volume_mm3))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn accumulate_object(
     package: &PackageParts,
     file: Option<&str>,
@@ -174,9 +199,20 @@ fn accumulate_object(
     transform: &Matrix3x4,
     bbox: &mut BoundingBox,
     volume_mm3: &mut f64,
-) {
+    path: &mut Vec<(Option<String>, String)>,
+) -> Result<(), ThreeMfError> {
+    let key = (file.map(str::to_string), object_id.to_string());
+    if path.contains(&key) {
+        return Err(ThreeMfError::ComponentCycle);
+    }
+    if path.len() >= MAX_COMPONENT_DEPTH {
+        return Err(ThreeMfError::MaxDepthExceeded);
+    }
+    path.push(key);
+
     let Some(object) = package.lookup_object(file, object_id) else {
-        return;
+        path.pop();
+        return Ok(());
     };
 
     // Only "model" objects (the default when unspecified) count toward the
@@ -209,8 +245,12 @@ fn accumulate_object(
             &child_transform,
             bbox,
             volume_mm3,
-        );
+            path,
+        )?;
     }
+
+    path.pop();
+    Ok(())
 }
 
 #[cfg(test)]
@@ -484,7 +524,7 @@ mod tests {
         let package =
             container::read_package(std::io::Cursor::new(bytes)).expect("read should succeed");
 
-        let meshes = extract_render_meshes(&package);
+        let meshes = extract_render_meshes(&package).expect("resolve should succeed");
 
         assert_eq!(meshes.len(), 2);
         for mesh in &meshes {
@@ -503,7 +543,7 @@ mod tests {
         let package =
             container::read_package(std::io::Cursor::new(bytes)).expect("read should succeed");
 
-        let meshes = extract_render_meshes(&package);
+        let meshes = extract_render_meshes(&package).expect("resolve should succeed");
 
         assert_eq!(meshes.len(), 1);
     }
@@ -552,5 +592,189 @@ mod tests {
         let bytes = build_test_3mf();
         let doc = parse_3mf_bytes(&bytes).expect("parse should succeed");
         assert!(doc.slice_info.is_none());
+    }
+
+    // --- H-04: component cycle/depth protection tests ---
+
+    /// Baut ein minimales 3MF-Zip-Archiv (Content_Types, _rels/.rels, ein
+    /// einziges 3D/3dmodel.model) rund um das gegebene `<model>`-XML, analog
+    /// zu `build_test_3mf()`, aber ohne Thumbnail/Materialien - fuer Tests,
+    /// denen es nur um die Objekt-/Komponentenstruktur geht.
+    fn build_zip_with_model_xml(model_xml: &str) -> Vec<u8> {
+        let rels_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model"/>
+</Relationships>"#;
+
+        let content_types_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
+</Types>"#;
+
+        let mut buf = Vec::new();
+        {
+            let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buf));
+            let options = SimpleFileOptions::default();
+
+            zip.start_file("[Content_Types].xml", options).unwrap();
+            zip.write_all(content_types_xml.as_bytes()).unwrap();
+
+            zip.start_file("_rels/.rels", options).unwrap();
+            zip.write_all(rels_xml.as_bytes()).unwrap();
+
+            zip.start_file("3D/3dmodel.model", options).unwrap();
+            zip.write_all(model_xml.as_bytes()).unwrap();
+
+            zip.finish().unwrap();
+        }
+        buf
+    }
+
+    /// Baut ein Zip-Archiv mit `count` verkettenten Objekten (Objekt 1
+    /// referenziert Objekt 2, Objekt 2 referenziert Objekt 3, ..., das letzte
+    /// Objekt hat keine Komponenten mehr) - azyklisch, aber ggf. tiefer als
+    /// `MAX_COMPONENT_DEPTH`.
+    fn build_zip_with_deeply_chained_objects(count: usize) -> Vec<u8> {
+        let mut resources = String::new();
+        for i in 1..=count {
+            if i < count {
+                resources.push_str(&format!(
+                    r#"<object id="{i}" type="model"><components><component objectid="{next}"/></components></object>"#,
+                    i = i,
+                    next = i + 1
+                ));
+            } else {
+                resources.push_str(&format!(r#"<object id="{i}" type="model"/>"#, i = i));
+            }
+        }
+
+        let model_xml = format!(
+            r##"<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+  <resources>{resources}</resources>
+  <build><item objectid="1"/></build>
+</model>"##,
+            resources = resources
+        );
+
+        build_zip_with_model_xml(&model_xml)
+    }
+
+    const SELF_REFERENCING_MODEL_XML: &str = r##"<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+  <resources>
+    <object id="1" type="model">
+      <components><component objectid="1"/></components>
+    </object>
+  </resources>
+  <build><item objectid="1"/></build>
+</model>"##;
+
+    const THREE_LEVEL_CHAIN_MODEL_XML: &str = r##"<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+  <resources>
+    <object id="1" type="model">
+      <components><component objectid="2"/></components>
+    </object>
+    <object id="2" type="model">
+      <components><component objectid="3"/></components>
+    </object>
+    <object id="3" type="model">
+      <mesh>
+        <vertices>
+          <vertex x="0" y="0" z="0"/>
+          <vertex x="1" y="0" z="0"/>
+          <vertex x="1" y="1" z="0"/>
+        </vertices>
+        <triangles>
+          <triangle v1="0" v2="1" v3="2"/>
+        </triangles>
+      </mesh>
+    </object>
+  </resources>
+  <build><item objectid="1"/></build>
+</model>"##;
+
+    const DIAMOND_SHAPED_MODEL_XML: &str = r##"<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+  <resources>
+    <object id="1" type="model">
+      <components>
+        <component objectid="2"/>
+        <component objectid="3"/>
+      </components>
+    </object>
+    <object id="2" type="model">
+      <components><component objectid="4"/></components>
+    </object>
+    <object id="3" type="model">
+      <components><component objectid="4"/></components>
+    </object>
+    <object id="4" type="model">
+      <mesh>
+        <vertices>
+          <vertex x="0" y="0" z="0"/>
+          <vertex x="1" y="0" z="0"/>
+          <vertex x="1" y="1" z="0"/>
+        </vertices>
+        <triangles>
+          <triangle v1="0" v2="1" v3="2"/>
+        </triangles>
+      </mesh>
+    </object>
+  </resources>
+  <build><item objectid="1"/></build>
+</model>"##;
+
+    fn build_test_3mf_with_component_cycle() -> Vec<u8> {
+        let model_xml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+  <resources>
+    <object id="1" type="model">
+      <components><component objectid="2"/></components>
+    </object>
+    <object id="2" type="model">
+      <components><component objectid="1"/></components>
+    </object>
+  </resources>
+  <build><item objectid="1"/></build>
+</model>"##;
+        build_zip_with_model_xml(model_xml)
+    }
+
+    #[test]
+    fn direct_self_reference_is_rejected_as_a_cycle() {
+        let bytes = build_zip_with_model_xml(SELF_REFERENCING_MODEL_XML);
+        let result = parse_3mf_bytes(&bytes);
+        assert!(matches!(result, Err(ThreeMfError::ComponentCycle)));
+    }
+
+    #[test]
+    fn a_b_a_cycle_is_rejected() {
+        let bytes = build_test_3mf_with_component_cycle();
+        let result = parse_3mf_bytes(&bytes);
+        assert!(matches!(result, Err(ThreeMfError::ComponentCycle)));
+    }
+
+    #[test]
+    fn a_b_c_normal_chain_still_works() {
+        let bytes = build_zip_with_model_xml(THREE_LEVEL_CHAIN_MODEL_XML);
+        assert!(parse_3mf_bytes(&bytes).is_ok());
+    }
+
+    #[test]
+    fn same_child_object_legitimately_instanced_on_two_branches_still_works() {
+        let bytes = build_zip_with_model_xml(DIAMOND_SHAPED_MODEL_XML);
+        assert!(parse_3mf_bytes(&bytes).is_ok());
+    }
+
+    #[test]
+    fn extreme_depth_beyond_max_component_depth_is_rejected() {
+        let bytes = build_zip_with_deeply_chained_objects(300);
+        let result = parse_3mf_bytes(&bytes);
+        assert!(matches!(
+            result,
+            Err(ThreeMfError::ComponentCycle) | Err(ThreeMfError::MaxDepthExceeded)
+        ));
     }
 }

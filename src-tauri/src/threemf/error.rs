@@ -10,6 +10,12 @@ pub enum ThreeMfError {
     /// Ein ZIP-Eintrag ueberschreitet die erlaubte entpackte Groesse -
     /// Schutz gegen Zip-Bomben (Security-Review 2026-09-19, Finding A-1).
     EntryTooLarge { path: String, size: u64, max: u64 },
+    /// Zwei oder mehr Objekte referenzieren sich gegenseitig ueber
+    /// <component>-Elemente (H-04, Senior-Code-Review 2026-09-19).
+    ComponentCycle,
+    /// Komponentenkette ueberschreitet MAX_COMPONENT_DEPTH, obwohl
+    /// azyklisch - Schutz gegen extrem tiefe, aber gueltige Graphen.
+    MaxDepthExceeded,
 }
 
 impl fmt::Display for ThreeMfError {
@@ -24,6 +30,12 @@ impl fmt::Display for ThreeMfError {
                 f,
                 "package entry \"{path}\" is too large ({size} bytes, maximum {max} bytes)"
             ),
+            ThreeMfError::ComponentCycle => {
+                write!(f, "3mf component graph contains a cycle")
+            }
+            ThreeMfError::MaxDepthExceeded => {
+                write!(f, "3mf component graph exceeds maximum nesting depth")
+            }
         }
     }
 }
