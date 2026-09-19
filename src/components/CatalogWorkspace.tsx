@@ -1,12 +1,14 @@
 import { Sidebar } from './Sidebar';
 import { ModelGrid } from './ModelGrid';
-import { ModelList } from './ModelList';
+import { GroupedModelGrid } from './GroupedModelGrid';
+import { GroupedModelList } from './GroupedModelList';
 import { DetailPanel } from './DetailPanel';
 import { ModelDetailPage } from './ModelDetailPage';
 import { CollectionsGallery } from './CollectionsGallery';
 import { BulkActionToolbar } from './BulkActionToolbar';
 import type { ModelFile, Folder, TagCount, ViewMode, Collection, SlicerConfig } from '../types';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
+import type { useCollapsedFolders } from '../hooks/useCollapsedFolders';
 
 interface CatalogWorkspaceProps {
   query: string;
@@ -74,6 +76,7 @@ interface CatalogWorkspaceProps {
   reorderCollection: (orderedIds: string[]) => void;
   onDragFileStart: (id: string) => void;
   selected: ModelFile | null;
+  collapsedFolders: ReturnType<typeof useCollapsedFolders>;
 }
 
 export function CatalogWorkspace({
@@ -142,6 +145,7 @@ export function CatalogWorkspace({
   reorderCollection,
   onDragFileStart,
   selected,
+  collapsedFolders,
 }: CatalogWorkspaceProps) {
   return (
     <div className="flex-1 flex min-h-0">
@@ -281,15 +285,41 @@ export function CatalogWorkspace({
                 onReorder={reorderCollection}
                 onDragFileStart={onDragFileStart}
               />
-            ) : (
-              <ModelList
+            ) : view === 'groupedGrid' ? (
+              <GroupedModelGrid
                 models={activeCollection ? collectionModels : filtered}
+                folders={folders}
+                selectedId={selectedId}
+                onSelect={selectModel}
+                onOpenDetail={setDetailModelId}
+                onContextMenu={(id, x, y) => setContextMenu({ modelId: id, x, y })}
+                onToggleFavorite={toggleFavorite}
+                selectedForBulk={selectedForBulk}
+                onToggleBulkSelect={toggleBulkSelect}
+                displayPreference={displayPreference}
+                onDragFileStart={onDragFileStart}
+                draggedFolderId={draggedFolderId}
+                dragOverFolderId={dragOverFolderId}
+                onDragFolderStart={onDragFolderStart}
+                onFolderMouseEnter={handleFolderMouseEnter}
+                collapsedFolders={collapsedFolders}
+              />
+            ) : (
+              <GroupedModelList
+                models={activeCollection ? collectionModels : filtered}
+                folders={folders}
                 selectedId={selectedId}
                 onSelect={selectModel}
                 onOpenDetail={setDetailModelId}
                 onContextMenu={(id, x, y) => setContextMenu({ modelId: id, x, y })}
                 selectedForBulk={selectedForBulk}
                 onToggleBulkSelect={toggleBulkSelect}
+                onDragFileStart={onDragFileStart}
+                draggedFolderId={draggedFolderId}
+                dragOverFolderId={dragOverFolderId}
+                onDragFolderStart={onDragFolderStart}
+                onFolderMouseEnter={handleFolderMouseEnter}
+                collapsedFolders={collapsedFolders}
               />
             )}
           </div>
