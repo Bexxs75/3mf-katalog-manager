@@ -19,6 +19,7 @@ import { useCatalogStore } from './hooks/useCatalogStore';
 import { useCatalogFilters } from './hooks/useCatalogFilters';
 import { useCollections } from './hooks/useCollections';
 import { useFolderDragAndDrop } from './hooks/useFolderDragAndDrop';
+import { useCollapsedFolders } from './hooks/useCollapsedFolders';
 import { useFileImport } from './hooks/useFileImport';
 import { useCatalogBackup } from './hooks/useCatalogBackup';
 import { useCatalogCleanup } from './hooks/useCatalogCleanup';
@@ -39,6 +40,7 @@ export default function App() {
     refreshFolders: store.refreshFolders,
     refreshFiles: store.refreshFiles,
   });
+  const collapsedFolders = useCollapsedFolders();
 
   const [mainView, setMainView] = useState<'catalog' | 'filament' | 'trash'>('catalog');
   const fileImport = useFileImport({
@@ -200,6 +202,7 @@ export default function App() {
               draggedFolderId={dragDrop.draggedFolderId}
               handleFolderMouseEnter={dragDrop.handleFolderMouseEnter}
               onDragFolderStart={dragDrop.onDragFolderStart}
+              collapsedFolders={collapsedFolders}
               tags={store.tags}
               activeTag={filters.activeTag}
               setActiveTag={filters.setActiveTag}
