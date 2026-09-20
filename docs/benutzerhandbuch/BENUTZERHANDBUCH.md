@@ -140,9 +140,16 @@ kombinieren kannst:
 - **Sammlungen** — mehrere Modelle explizit zu einem Projekt zusammenfassen (siehe unten,
   [Sammlungen](#sammlungen)).
 
-Über das Suchfeld oben in der Sidebar filterst du nach Name oder Tag. Häufig genutzte
-Kombinationen aus Ordner/Tag/Ersteller/Suche/Sortierung lassen sich unter einem eigenen Namen
-speichern und später per Klick wieder anwenden ("Gespeicherte Filter").
+Über das Suchfeld oben in der Sidebar filterst du nach Name, Tag, Ersteller oder Dateipfad — ein
+Treffer in irgendeinem dieser Felder reicht. Mit der Taste `/` springst du von überall aus direkt
+ins Suchfeld, ohne erst mit der Maus dorthin zu klicken. Häufig genutzte Kombinationen aus
+Ordner/Tag/Ersteller/Suche/Sortierung lassen sich unter einem eigenen Namen speichern und später
+per Klick wieder anwenden ("Gespeicherte Filter").
+
+**Tastaturkürzel:** `/` fokussiert die Suche, die Pfeiltasten wechseln die Auswahl innerhalb der
+aktuell sichtbaren Modell-Liste, und Entf/Rücktaste öffnet bei aktiver Mehrfachauswahl die
+Löschen-Bestätigung (siehe [Mehrfachauswahl](#schnelle-aktionen-kontextmenü-und-mehrfachauswahl)).
+Alle drei greifen nicht, solange du gerade in einem Textfeld tippst.
 
 ## Ein Modell im Detail ansehen
 
@@ -174,8 +181,10 @@ Rechtsklick auf ein Modell öffnet ein Kontextmenü mit den wichtigsten Aktionen
 
 Willst du mehrere Modelle gleichzeitig bearbeiten, markierst du sie über die Checkboxen oben
 links auf jeder Kachel (oder "Alle auswählen"). Eine Aktionsleiste erscheint, über die sich die
-Auswahl gemeinsam zur Warteschlange oder einer Sammlung hinzufügen, als gedruckt/nicht gedruckt
-markieren oder löschen lässt:
+Auswahl gemeinsam zur Warteschlange oder einer Sammlung hinzufügen, mit einem Tag versehen oder
+davon befreien ("Tag hinzufügen" / "Tag entfernen" — Letzteres zeigt ein Dropdown mit allen in
+der Auswahl vorkommenden Tags), als gedruckt/nicht gedruckt markieren oder löschen lässt. Bei
+aktiver Mehrfachauswahl öffnet auch die Taste Entf/Rücktaste direkt die Löschen-Bestätigung:
 
 ![Mehrfachauswahl mit Aktionsleiste](bilder/06-mehrfachauswahl.png)
 
@@ -183,9 +192,9 @@ markieren oder löschen lässt:
 
 Sammlungen sind ein dritter Organisationsmechanismus neben Ordnern und Tags: Du fasst mehrere
 Modelle explizit zu einem Projekt zusammen, mit einer manuell festlegbaren Reihenfolge (Drag &
-Drop). Eine neue Sammlung legst du über "+ Neue Sammlung" in der Sidebar an, über Mehrfachauswahl
-befüllst du sie, oder du importierst gleich einen ganzen Ordner als neue Sammlung. Ein Klick auf
-eine Sammlung in der Sidebar filtert den Katalog auf ihre Modelle:
+Drop). Eine neue Sammlung legst du über "+ Neue Sammlung" in der Sidebar an und befüllst sie über
+die Mehrfachauswahl. Ein Klick auf eine Sammlung in der Sidebar filtert den Katalog auf ihre
+Modelle:
 
 ![Sammlung "Weihnachtsmarkt-Projekt"](bilder/07-sammlungen.png)
 
@@ -491,9 +500,15 @@ combine them freely:
 - **Collections** — explicitly group several models into a project (see
   [Collections](#collections) below).
 
-The search field at the top of the sidebar filters by name or tag. Frequently used combinations
-of folder/tag/creator/search/sort can be saved under a name and reapplied later with a click
-("Saved filters").
+The search field at the top of the sidebar filters by name, tag, creator, or file path — a match
+in any of these is enough. Press `/` from anywhere to jump straight into the search field without
+first clicking it. Frequently used combinations of folder/tag/creator/search/sort can be saved
+under a name and reapplied later with a click ("Saved filters").
+
+**Keyboard shortcuts:** `/` focuses search, the arrow keys move the selection through the
+currently visible model list, and Delete/Backspace opens the delete confirmation when a
+multi-selection is active (see [Multi-select](#quick-actions-context-menu-and-multi-select)).
+None of these fire while you're typing in a text field.
 
 ## Viewing a model in detail
 
@@ -523,7 +538,9 @@ Right-clicking a model opens a context menu with the most important actions:
 
 To edit several models at once, select them via the checkboxes at the top left of each tile (or
 "Select all"). An action bar appears, letting you add the whole selection to the queue or a
-collection, mark it printed/not printed, or delete it together:
+collection, add or remove a tag ("Add tag" / "Remove tag" — the latter shows a dropdown listing
+every tag present in the selection), mark it printed/not printed, or delete it together. With a
+multi-selection active, the Delete/Backspace key also opens the delete confirmation directly:
 
 ![Multi-select with action bar](bilder/06-mehrfachauswahl.png)
 
@@ -531,9 +548,8 @@ collection, mark it printed/not printed, or delete it together:
 
 Collections are a third organizational mechanism alongside folders and tags: you explicitly
 group several models into a project, with a manually definable order (drag & drop). Create a new
-collection via "+ New collection" in the sidebar, populate it via multi-select, or import an
-entire folder straight into a new collection. Clicking a collection in the sidebar filters the
-catalog down to its models:
+collection via "+ New collection" in the sidebar and populate it via multi-select. Clicking a
+collection in the sidebar filters the catalog down to its models:
 
 ![Collection "Weihnachtsmarkt-Projekt"](bilder/07-sammlungen.png)
 
