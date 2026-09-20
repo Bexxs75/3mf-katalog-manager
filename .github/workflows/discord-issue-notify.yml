@@ -1,0 +1,81 @@
+name: Notify Discord on Issue
+
+on:
+  issues:
+    types: [opened]
+
+# Kein workflow_dispatch zum erneuten Posten hier - dafuer gibt es das
+# separate Nachimport-Skript (discord-setup/import-github-issues.js), das
+# beliebige bestehende Issues gezielt (mit Vorschau) nachtragen kann, statt
+# blind "das zuletzt geoeffnete Issue nochmal posten" anzubieten.
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine target forum channel from labels
+        id: target
+        env:
+          # Nur Namen der Labels, keine Freitext-Issue-Inhalte - unkritisch
+          # fuer Command-Injection, trotzdem ueber env statt direkter
+          # ${{ }}-Interpolation in den Skript-Text (gleiche Vorsicht wie in
+          # discord-release-notify.yml).
+          LABELS_JSON: ${{ toJson(github.event.issue.labels.*.name) }}
+        run: |
+          HAS_BUG=$(echo "$LABELS_JSON" | jq 'any(. == "bug")')
+          HAS_ENHANCEMENT=$(echo "$LABELS_JSON" | jq 'any(. == "enhancement")')
+
+          if [ "$HAS_BUG" = "true" ]; then
+            echo "channel_id=1551177227683496026" >> "$GITHUB_OUTPUT"   # #bug-reports
+            echo "tag_id=1551177227683496027" >> "$GITHUB_OUTPUT"        # Offen/Open
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          elif [ "$HAS_ENHANCEMENT" = "true" ]; then
+            echo "channel_id=1551177231689064539" >> "$GITHUB_OUTPUT"   # #feature-wünsche-requests
+            echo "tag_id=1551177231689064540" >> "$GITHUB_OUTPUT"        # Offen/Open
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          else
+            # Weder "bug" noch "enhancement" gelabelt (z.B. nur "question"/
+            # "documentation") - bewusst NICHT posten statt in den falschen
+            # Kanal zu raten. Kann bei Bedarf spaeter per
+            # import-github-issues.js gezielt nachgetragen werden, sobald
+            # ein passendes Label gesetzt wurde.
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Post issue to Discord forum
+        if: steps.target.outputs.skip != 'true'
+        env:
+          BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          CHANNEL_ID: ${{ steps.target.outputs.channel_id }}
+          TAG_ID: ${{ steps.target.outputs.tag_id }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+        run: |
+          # Discord-Thread-Namen sind auf 100 Zeichen begrenzt.
+          THREAD_NAME=$(echo "#$ISSUE_NUMBER $ISSUE_TITLE" | head -c 100)
+
+          # Forum-Post-Inhalt auf 2000 Zeichen begrenzt (normale
+          # Message-Content-Grenze, gilt auch fuer die Startnachricht eines
+          # Forum-Threads).
+          BODY=$(echo "$ISSUE_BODY" | head -c 1700)
+          CONTENT=$(printf '**Importiert von GitHub-Issue #%s** von @%s\n%s\n\n%s' \
+            "$ISSUE_NUMBER" "$ISSUE_AUTHOR" "$ISSUE_URL" "$BODY")
+
+          PAYLOAD=$(jq -n \
+            --arg name "$THREAD_NAME" \
+            --arg content "$CONTENT" \
+            --arg tag "$TAG_ID" \
+            '{
+              name: $name,
+              message: { content: $content },
+              applied_tags: [$tag]
+            }')
+
+          curl -sS -f \
+            -H "Authorization: Bot $BOT_TOKEN" \
+            -H "Content-Type: application/json" \
+            -X POST -d "$PAYLOAD" \
+            "https://discord.com/api/v10/channels/$CHANNEL_ID/threads"
