@@ -1,0 +1,126 @@
+name: Notify Bluesky on Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release-Tag erneut posten (z.B. v0.11.0)"
+        required: true
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve release data
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_INPUT: ${{ inputs.tag }}
+          # Gleiche Vorsicht wie in discord-release-notify.yml: Release-Name/
+          # -Body sind Repo-Inhalt, deshalb ueber env statt direkter
+          # ${{ }}-Interpolation in den Skript-Text (Command-Injection-Schutz).
+          EVENT_NAME: ${{ github.event.release.name }}
+          EVENT_URL: ${{ github.event.release.html_url }}
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+          EVENT_BODY: ${{ github.event.release.body }}
+        run: |
+          if [ -n "$TAG_INPUT" ]; then
+            DATA=$(gh api "repos/${{ github.repository }}/releases/tags/$TAG_INPUT")
+            echo "name=$(echo "$DATA" | jq -r '.name')" >> "$GITHUB_OUTPUT"
+            echo "url=$(echo "$DATA" | jq -r '.html_url')" >> "$GITHUB_OUTPUT"
+            echo "tag=$(echo "$DATA" | jq -r '.tag_name')" >> "$GITHUB_OUTPUT"
+            {
+              echo "body<<RELEASE_BODY_EOF"
+              echo "$DATA" | jq -r '.body'
+              echo "RELEASE_BODY_EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "name=$EVENT_NAME" >> "$GITHUB_OUTPUT"
+            echo "url=$EVENT_URL" >> "$GITHUB_OUTPUT"
+            echo "tag=$EVENT_TAG" >> "$GITHUB_OUTPUT"
+            {
+              echo "body<<RELEASE_BODY_EOF"
+              echo "$EVENT_BODY"
+              echo "RELEASE_BODY_EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compose post text (300 grapheme limit)
+        id: post
+        env:
+          RELEASE_NAME: ${{ steps.release.outputs.name }}
+          RELEASE_URL: ${{ steps.release.outputs.url }}
+          RELEASE_BODY: ${{ steps.release.outputs.body }}
+          TAG_NAME: ${{ steps.release.outputs.tag }}
+        run: |
+          # jq schneidet Strings zeichenweise (Unicode-Codepoints), nicht
+          # byteweise wie `head -c` - bei einem so knappen Limit (300
+          # Zeichen) wichtig, um Emojis/Umlaute nicht mittendrin abzuschneiden
+          # und dadurch ungueltiges UTF-8 zu erzeugen.
+          TITLE="${RELEASE_NAME:-$TAG_NAME}"
+          FIRST_LINE=$(echo "$RELEASE_BODY" | grep -v '^$' | grep -v '^##' | head -1)
+
+          TEXT=$(jq -rn \
+            --arg title "$TITLE" \
+            --arg excerpt "$FIRST_LINE" \
+            --arg url "$RELEASE_URL" \
+            '
+            def clip(n): if (length > n) then .[0:n] + "…" else . end;
+            "🚀 " + $title + " ist da!\n\n" + ($excerpt | clip(150)) + "\n\n" + $url
+            ')
+
+          {
+            echo "text<<POST_TEXT_EOF"
+            echo "$TEXT"
+            echo "POST_TEXT_EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "url=$RELEASE_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Post to Bluesky
+        env:
+          BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
+          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+          POST_TEXT: ${{ steps.post.outputs.text }}
+          POST_URL: ${{ steps.post.outputs.url }}
+        run: |
+          # 1. Session erstellen (App-Passwort, NICHT das Hauptpasswort).
+          SESSION=$(curl -sS -f -X POST \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg id "$BLUESKY_HANDLE" --arg pw "$BLUESKY_APP_PASSWORD" '{identifier:$id, password:$pw}')" \
+            "https://bsky.social/xrpc/com.atproto.server.createSession")
+          ACCESS_JWT=$(echo "$SESSION" | jq -r '.accessJwt')
+          DID=$(echo "$SESSION" | jq -r '.did')
+
+          # 2. Byte-Offsets des Links innerhalb des Post-Texts ermitteln -
+          # Facets (klickbare Links) werden von Bluesky ueber UTF-8-Byte-
+          # Positionen referenziert, nicht ueber Zeichen-Indizes. `wc -c`
+          # zaehlt immer Bytes (unabhaengig vom Locale), genau das wird hier
+          # gebraucht.
+          PREFIX="${POST_TEXT%%"$POST_URL"*}"
+          BYTE_START=$(printf '%s' "$PREFIX" | wc -c)
+          URL_BYTES=$(printf '%s' "$POST_URL" | wc -c)
+          BYTE_END=$((BYTE_START + URL_BYTES))
+
+          RECORD=$(jq -n \
+            --arg text "$POST_TEXT" \
+            --arg url "$POST_URL" \
+            --argjson byteStart "$BYTE_START" \
+            --argjson byteEnd "$BYTE_END" \
+            --arg now "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" \
+            '{
+              "$type": "app.bsky.feed.post",
+              text: $text,
+              createdAt: $now,
+              facets: [{
+                index: { byteStart: $byteStart, byteEnd: $byteEnd },
+                features: [{ "$type": "app.bsky.richtext.facet#link", uri: $url }]
+              }]
+            }')
+
+          curl -sS -f -X POST \
+            -H "Authorization: Bearer $ACCESS_JWT" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg repo "$DID" --argjson record "$RECORD" '{repo:$repo, collection:"app.bsky.feed.post", record:$record}')" \
+            "https://bsky.social/xrpc/com.atproto.repo.createRecord"
