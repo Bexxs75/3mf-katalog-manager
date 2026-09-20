@@ -7,6 +7,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-20
+
 ### Added
 
 - Tastaturkürzel: `/` fokussiert die Suche, Pfeiltasten wechseln die Auswahl innerhalb der aktuell gefilterten/sortierten Modell-Liste, Entf/Rücktaste öffnet bei aktiver Mehrfachauswahl die bestehende Löschen-Bestätigung (löscht nicht direkt). Alle drei greifen nicht, solange der Fokus in einem Eingabefeld liegt.
@@ -300,6 +302,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
 ## [Unreleased]
+
+## [0.9.0] - 2026-09-20
 
 ### Added
 
