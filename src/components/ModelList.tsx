@@ -68,6 +68,7 @@ export function ModelList({ models, selectedId, onSelect, onOpenDetail, onContex
       {models.map((m) => (
         <div
           key={m.id}
+          data-model-id={m.id}
           onClick={() => onSelect(m.id)}
           onDoubleClick={readOnly ? undefined : () => onOpenDetail(m.id)}
           onContextMenu={(e) => {

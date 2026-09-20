@@ -125,6 +125,7 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
     return (
       <div
         key={m.id}
+        data-model-id={m.id}
         onClick={() => onSelect(m.id)}
         onDoubleClick={readOnly ? undefined : () => onOpenDetail(m.id)}
         onContextMenu={(e) => {
@@ -226,6 +227,7 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
         density === 'comfort' ? (
           <div
             key={m.id}
+            data-model-id={m.id}
             onClick={() => onSelect(m.id)}
             onDoubleClick={readOnly ? undefined : () => onOpenDetail(m.id)}
             onContextMenu={(e) => {

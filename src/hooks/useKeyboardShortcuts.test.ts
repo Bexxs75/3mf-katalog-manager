@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { useKeyboardShortcuts } from './useKeyboardShortcuts';
+import { useKeyboardShortcuts, findSpatialNeighbor, MODEL_TILE_ATTR } from './useKeyboardShortcuts';
 
 const SEARCH_INPUT_ID = 'catalog-search-input';
 
@@ -10,9 +10,78 @@ function fireKey(key: string, target: EventTarget = window) {
   return event;
 }
 
+// Legt eine Kachel mit fester, per getBoundingClientRect gemockter Position
+// an - jsdom layoutet nicht wirklich, reale Positionen muessen deshalb
+// vorgegeben werden, genau wie es ein echtes CSS-Grid-Layout im Browser tun
+// wuerde.
+function placeTile(id: string, rect: { left: number; top: number; width?: number; height?: number }) {
+  const el = document.createElement('div');
+  el.setAttribute(MODEL_TILE_ATTR, id);
+  const width = rect.width ?? 100;
+  const height = rect.height ?? 100;
+  el.getBoundingClientRect = () =>
+    ({ left: rect.left, top: rect.top, width, height, right: rect.left + width, bottom: rect.top + height, x: rect.left, y: rect.top, toJSON() {} }) as DOMRect;
+  document.body.appendChild(el);
+  return el;
+}
+
+describe('findSpatialNeighbor', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('finds the tile directly below in a 3-column grid', () => {
+    // Zeile 1: a b c / Zeile 2: d e f - Auswahl auf "b", "runter" muss "e" treffen.
+    placeTile('a', { left: 0, top: 0 });
+    placeTile('b', { left: 100, top: 0 });
+    placeTile('c', { left: 200, top: 0 });
+    placeTile('d', { left: 0, top: 100 });
+    placeTile('e', { left: 100, top: 100 });
+    placeTile('f', { left: 200, top: 100 });
+
+    expect(findSpatialNeighbor(document, 'b', 'down')).toBe('e');
+    expect(findSpatialNeighbor(document, 'e', 'up')).toBe('b');
+  });
+
+  it('picks the horizontally closest tile in the next row when columns are uneven', () => {
+    // Zeile 2 hat nur 2 statt 3 Kacheln (z.B. letzte Zeile eines Ordner-
+    // Abschnitts) - "runter" von "b" (x-Mitte 150) muss die naeher liegende
+    // von "d" (x-Mitte 50) und "e" (x-Mitte 150) treffen, also "e".
+    placeTile('a', { left: 0, top: 0 });
+    placeTile('b', { left: 100, top: 0 });
+    placeTile('c', { left: 200, top: 0 });
+    placeTile('d', { left: 0, top: 100 });
+    placeTile('e', { left: 100, top: 100 });
+
+    expect(findSpatialNeighbor(document, 'b', 'down')).toBe('e');
+  });
+
+  it('returns null when there is no tile in the requested direction', () => {
+    placeTile('a', { left: 0, top: 0 });
+    placeTile('b', { left: 100, top: 0 });
+    expect(findSpatialNeighbor(document, 'a', 'up')).toBeNull();
+    expect(findSpatialNeighbor(document, 'a', 'down')).toBeNull();
+  });
+
+  it('returns null when the current tile is not in the DOM (e.g. collapsed folder section)', () => {
+    placeTile('a', { left: 0, top: 0 });
+    expect(findSpatialNeighbor(document, 'not-rendered', 'down')).toBeNull();
+  });
+
+  it('treats a single-column list (one tile per row) as straightforward up/down', () => {
+    placeTile('row1', { left: 0, top: 0, width: 400, height: 40 });
+    placeTile('row2', { left: 0, top: 40, width: 400, height: 40 });
+    placeTile('row3', { left: 0, top: 80, width: 400, height: 40 });
+
+    expect(findSpatialNeighbor(document, 'row2', 'down')).toBe('row3');
+    expect(findSpatialNeighbor(document, 'row2', 'up')).toBe('row1');
+  });
+});
+
 function setup(overrides: Partial<Parameters<typeof useKeyboardShortcuts>[0]> = {}) {
   const selectModel = vi.fn();
   const openBulkDeleteConfirm = vi.fn();
+  const toggleBulkSelect = vi.fn();
   const args = {
     filteredIds: ['a', 'b', 'c'],
     selectedId: null as string | null,
@@ -20,10 +89,11 @@ function setup(overrides: Partial<Parameters<typeof useKeyboardShortcuts>[0]> = 
     hasBulkSelection: false,
     openBulkDeleteConfirm,
     navigationEnabled: true,
+    toggleBulkSelect,
     ...overrides,
   };
   const hook = renderHook(() => useKeyboardShortcuts(args));
-  return { ...hook, selectModel, openBulkDeleteConfirm };
+  return { ...hook, selectModel, openBulkDeleteConfirm, toggleBulkSelect };
 }
 
 describe('useKeyboardShortcuts', () => {
@@ -36,7 +106,7 @@ describe('useKeyboardShortcuts', () => {
   });
 
   afterEach(() => {
-    document.body.removeChild(searchInput);
+    document.body.innerHTML = '';
   });
 
   it('"/" focuses the search input when nothing else has focus', () => {
@@ -52,7 +122,6 @@ describe('useKeyboardShortcuts', () => {
     setup();
     fireKey('/', otherInput);
     expect(document.activeElement).toBe(otherInput);
-    document.body.removeChild(otherInput);
   });
 
   it('ArrowRight selects the next model in the filtered order', () => {
@@ -79,6 +148,23 @@ describe('useKeyboardShortcuts', () => {
     expect(selectModel).not.toHaveBeenCalled();
   });
 
+  it('ArrowDown uses spatial position (next row), not just list order', () => {
+    placeTile('a', { left: 0, top: 0 });
+    placeTile('b', { left: 100, top: 0 });
+    placeTile('c', { left: 0, top: 100 });
+    const { selectModel } = setup({ filteredIds: ['a', 'b', 'c'], selectedId: 'a' });
+    fireKey('ArrowDown');
+    expect(selectModel).toHaveBeenCalledWith('c');
+  });
+
+  it('ArrowUp falls back to flat list order when the selection has no rendered tile', () => {
+    // Kein Tile im DOM angelegt - findSpatialNeighbor liefert null, der Hook
+    // muss auf die einfache Listen-Reihenfolge zurueckfallen statt nichts zu tun.
+    const { selectModel } = setup({ filteredIds: ['a', 'b', 'c'], selectedId: 'b' });
+    fireKey('ArrowUp');
+    expect(selectModel).toHaveBeenCalledWith('a');
+  });
+
   it('arrow navigation is ignored while typing in an input', () => {
     const otherInput = document.createElement('input');
     document.body.appendChild(otherInput);
@@ -86,13 +172,39 @@ describe('useKeyboardShortcuts', () => {
     const { selectModel } = setup({ selectedId: 'a' });
     fireKey('ArrowRight', otherInput);
     expect(selectModel).not.toHaveBeenCalled();
-    document.body.removeChild(otherInput);
   });
 
   it('arrow navigation is ignored when navigationEnabled is false (e.g. detail view open)', () => {
     const { selectModel } = setup({ selectedId: 'a', navigationEnabled: false });
     fireKey('ArrowRight');
     expect(selectModel).not.toHaveBeenCalled();
+  });
+
+  it('Space toggles bulk selection for the currently selected model', () => {
+    const { toggleBulkSelect } = setup({ selectedId: 'b' });
+    fireKey(' ');
+    expect(toggleBulkSelect).toHaveBeenCalledWith('b');
+  });
+
+  it('Space does nothing when no model is selected', () => {
+    const { toggleBulkSelect } = setup({ selectedId: null });
+    fireKey(' ');
+    expect(toggleBulkSelect).not.toHaveBeenCalled();
+  });
+
+  it('Space is ignored while typing in an input', () => {
+    const otherInput = document.createElement('input');
+    document.body.appendChild(otherInput);
+    otherInput.focus();
+    const { toggleBulkSelect } = setup({ selectedId: 'a' });
+    fireKey(' ', otherInput);
+    expect(toggleBulkSelect).not.toHaveBeenCalled();
+  });
+
+  it('Space is ignored when navigationEnabled is false', () => {
+    const { toggleBulkSelect } = setup({ selectedId: 'a', navigationEnabled: false });
+    fireKey(' ');
+    expect(toggleBulkSelect).not.toHaveBeenCalled();
   });
 
   it('Delete opens the bulk-delete confirmation when a bulk selection exists', () => {
@@ -114,6 +226,5 @@ describe('useKeyboardShortcuts', () => {
     const { openBulkDeleteConfirm } = setup({ hasBulkSelection: true });
     fireKey('Delete', otherInput);
     expect(openBulkDeleteConfirm).not.toHaveBeenCalled();
-    document.body.removeChild(otherInput);
   });
 });
