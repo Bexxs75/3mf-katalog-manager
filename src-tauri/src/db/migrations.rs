@@ -60,6 +60,10 @@ const MIGRATIONS: &[MigrationStep] = &[
     // siehe add_stp_to_file_type_check() unten fuer die Fremdschluessel-
     // Kaskaden-Falle, die dieser Rebuild-Schritt umgehen muss.
     MigrationStep::Rebuild(add_stp_to_file_type_check),
+    // OBJ-Katalogisierung inkl. 3D-Vorschau (siehe Plan) - eigener,
+    // additiver Schritt statt einer Aenderung an add_stp_to_file_type_check,
+    // das bereits ausgeliefert wurde.
+    MigrationStep::Rebuild(add_obj_to_file_type_check),
 ];
 
 /// Aktuelle Ziel-Schemaversion - leitet sich direkt aus der Anzahl der
@@ -83,12 +87,17 @@ fn exec(conn: &Connection, sql: &str) -> Result<(), DbError> {
     }
 }
 
-/// Erweitert den `file_type`-CHECK-Constraint auf `files` um `'stp'`.
-/// SQLite kennt kein `ALTER TABLE ... ALTER/DROP CONSTRAINT` - eine
-/// CHECK-Aenderung erfordert den offiziell von SQLite empfohlenen
-/// "12-Schritte"-Tabellen-Rebuild (create-copy-drop-rename), siehe
-/// https://www.sqlite.org/lang_altertable.html Abschnitt "Making Other
-/// Kinds Of Table Schema Changes".
+/// Erweitert den `file_type`-CHECK-Constraint auf `files` um weitere
+/// erlaubte Werte. SQLite kennt kein `ALTER TABLE ... ALTER/DROP
+/// CONSTRAINT` - eine CHECK-Aenderung erfordert den offiziell von SQLite
+/// empfohlenen "12-Schritte"-Tabellen-Rebuild (create-copy-drop-rename),
+/// siehe https://www.sqlite.org/lang_altertable.html Abschnitt "Making
+/// Other Kinds Of Table Schema Changes". Gemeinsame Basis fuer mehrere
+/// Migrationsschritte (siehe `add_stp_to_file_type_check`/
+/// `add_obj_to_file_type_check` unten) - jeder neue Dateityp bekommt einen
+/// EIGENEN, zusaetzlichen Migrationsschritt statt einer Aenderung an einem
+/// bereits ausgelieferten (Grundsatz: Migrationen sind additiv, nie
+/// rueckwirkend editiert), ruft aber dieselbe Rebuild-Logik erneut auf.
 ///
 /// KRITISCH: `files` hat mehrere Kind-Tabellen mit
 /// `ON DELETE CASCADE`-Fremdschluesseln (file_tags, file_metadata,
@@ -104,16 +113,30 @@ fn exec(conn: &Connection, sql: &str) -> Result<(), DbError> {
 /// volle `&mut Connection` und verwaltet Pragma, Transaktion und den
 /// user_version-Bump komplett selbst, statt sich eine vom Runner bereits
 /// geoeffnete Transaktion injizieren zu lassen.
-fn add_stp_to_file_type_check(conn: &mut Connection, step_version: i64) -> Result<(), DbError> {
+fn rebuild_files_table_with_check(
+    conn: &mut Connection,
+    step_version: i64,
+    allowed_file_types: &[&str],
+) -> Result<(), DbError> {
+    let check_values = allowed_file_types
+        .iter()
+        .map(|t| format!("'{t}'"))
+        .collect::<Vec<_>>()
+        .join(", ");
+
     // Idempotenz-Guard: eine frische DB (SCHEMA_SQL enthaelt den neuen
     // CHECK bereits) braucht keinen Rebuild, nur den user_version-Bump
     // unten - erspart unnoetige Arbeit und ist konsistent mit dem
-    // "bereits erledigt" toleranten Verhalten von exec().
-    let already_migrated: bool = conn.query_row(
-        "SELECT sql LIKE '%''stp''%' FROM sqlite_master WHERE type = 'table' AND name = 'files'",
+    // "bereits erledigt" toleranten Verhalten von exec(). Prueft, ob JEDER
+    // der geforderten Werte bereits als Literal im aktuellen CHECK steht.
+    let current_sql: String = conn.query_row(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'files'",
         [],
         |r| r.get(0),
     )?;
+    let already_migrated = allowed_file_types
+        .iter()
+        .all(|t| current_sql.contains(&format!("'{t}'")));
 
     // Urspruenglichen Wert merken statt hart auf ON zurueckzusetzen: dieser
     // Schritt laeuft sowohl ueber repository::init (foreign_keys=ON) als
@@ -126,12 +149,12 @@ fn add_stp_to_file_type_check(conn: &mut Connection, step_version: i64) -> Resul
     let result = (|| -> Result<(), DbError> {
         let tx = conn.transaction()?;
         if !already_migrated {
-            tx.execute_batch(
+            tx.execute_batch(&format!(
                 "CREATE TABLE files_new (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL,
                     path TEXT NOT NULL UNIQUE,
-                    file_type TEXT NOT NULL CHECK (file_type IN ('3mf', 'stl', 'stp')),
+                    file_type TEXT NOT NULL CHECK (file_type IN ({check_values})),
                     folder_id INTEGER REFERENCES folders (id) ON DELETE SET NULL,
                     origin TEXT NOT NULL DEFAULT 'local'
                         CHECK (origin IN ('local')),
@@ -167,8 +190,8 @@ fn add_stp_to_file_type_check(conn: &mut Connection, step_version: i64) -> Resul
                 ALTER TABLE files_new RENAME TO files;
                 CREATE INDEX IF NOT EXISTS idx_files_folder_id ON files (folder_id);
                 CREATE INDEX IF NOT EXISTS idx_files_file_type ON files (file_type);
-                CREATE INDEX IF NOT EXISTS idx_files_content_hash ON files (content_hash);",
-            )?;
+                CREATE INDEX IF NOT EXISTS idx_files_content_hash ON files (content_hash);"
+            ))?;
             // Von der SQLite-Doku fuer diesen Rebuild-Ablauf empfohlene
             // Pflichtpruefung: stellt sicher, dass keine Fremdschluessel-
             // Zeile (aus file_tags/file_metadata/file_materials/
@@ -179,7 +202,7 @@ fn add_stp_to_file_type_check(conn: &mut Connection, step_version: i64) -> Resul
                 .is_some();
             if has_violation {
                 return Err(DbError::Other(
-                    "STP-Migration: foreign_key_check fand verwaiste Referenzen nach dem Rebuild".into(),
+                    "file_type-CHECK-Migration: foreign_key_check fand verwaiste Referenzen nach dem Rebuild".into(),
                 ));
             }
         }
@@ -193,6 +216,19 @@ fn add_stp_to_file_type_check(conn: &mut Connection, step_version: i64) -> Resul
     // deaktivierten Fremdschluessel-Constraints zuruecklassen.
     conn.pragma_update(None, "foreign_keys", previously_enabled)?;
     result
+}
+
+/// Duenner Wrapper - verhaltensidentisch zum bereits ausgelieferten Stand
+/// (reines Extrahieren der gemeinsamen Logik in
+/// `rebuild_files_table_with_check`, siehe deren Dokumentation).
+fn add_stp_to_file_type_check(conn: &mut Connection, step_version: i64) -> Result<(), DbError> {
+    rebuild_files_table_with_check(conn, step_version, &["3mf", "stl", "stp"])
+}
+
+/// Neuer, additiver Migrationsschritt fuer die OBJ-Katalogisierung
+/// (mit 3D-Vorschau, siehe Plan) - erweitert den CHECK ein zweites Mal.
+fn add_obj_to_file_type_check(conn: &mut Connection, step_version: i64) -> Result<(), DbError> {
+    rebuild_files_table_with_check(conn, step_version, &["3mf", "stl", "stp", "obj"])
 }
 
 /// Migriert `conn` von ihrer aktuellen `PRAGMA user_version` bis
@@ -473,6 +509,19 @@ mod tests {
             [],
         )
         .expect("file_type='stp' muss nach der Migration erlaubt sein");
+
+        // Deckt den ZWEITEN Rebuild-Schritt (add_obj_to_file_type_check) ab,
+        // der auf der vom ersten Schritt bereits umgebauten Tabelle noch
+        // einmal denselben Rebuild durchfuehrt - beweist, dass zwei
+        // aufeinanderfolgende Rebuild-Migrationen sich nicht gegenseitig
+        // die Kind-Tabellen-Beziehungen kaputt machen.
+        conn.execute(
+            "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at) VALUES ('e.obj', '/tmp/e.obj', 'obj', 1, '2020-01-01T00:00:00Z')",
+            [],
+        )
+        .expect("file_type='obj' muss nach der Migration erlaubt sein");
+        assert_eq!(count("SELECT COUNT(*) FROM file_tags WHERE file_id = 1 AND tag_id = 1"), 1, "Tag-Zuordnung darf auch den zweiten Rebuild ueberleben");
+        assert_eq!(count("SELECT COUNT(*) FROM print_log WHERE file_id = 2"), 1, "Druck-Log darf auch den zweiten Rebuild ueberleben");
 
         let rejected = conn.execute(
             "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at) VALUES ('d.xyz', '/tmp/d.xyz', 'xyz', 1, '2020-01-01T00:00:00Z')",

@@ -1,6 +1,7 @@
 mod commands;
 mod db;
 mod geometry;
+mod obj;
 mod slicers;
 mod stl;
 mod tagging;

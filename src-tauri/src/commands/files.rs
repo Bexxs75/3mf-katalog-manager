@@ -565,18 +565,20 @@ pub fn set_source_url(state: State<AppState>, file_id: String, url: Option<Strin
 pub(crate) fn is_supported_extension(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
-        .map(|e| matches!(e.to_lowercase().as_str(), "3mf" | "stl" | "stp" | "step"))
+        .map(|e| matches!(e.to_lowercase().as_str(), "3mf" | "stl" | "stp" | "step" | "obj"))
         .unwrap_or(false)
 }
 /// Engerer Check als [`is_supported_extension`] - STP/STEP-Dateien sind zwar
 /// katalogisierbar, aber die meisten Slicer koennen kein rohes STEP
 /// importieren. Bewusst NICHT ueber is_supported_extension geteilt, damit
 /// die Erweiterung um stp/step dort nicht automatisch auch den
-/// Slicer-Start fuer STEP-Dateien freischaltet.
+/// Slicer-Start fuer STEP-Dateien freischaltet. OBJ ist dagegen ein
+/// echtes druckfertiges Mesh-Format (wie 3mf/stl) und deshalb hier
+/// ebenfalls erlaubt.
 pub(crate) fn is_sliceable_extension(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
-        .map(|e| matches!(e.to_lowercase().as_str(), "3mf" | "stl"))
+        .map(|e| matches!(e.to_lowercase().as_str(), "3mf" | "stl" | "obj"))
         .unwrap_or(false)
 }
 pub(crate) fn compute_content_hash(path: &Path) -> CmdResult<String> {
@@ -739,6 +741,20 @@ pub(crate) fn import_one(
             None,
             None,
         ),
+        Some("obj") => {
+            let doc = obj::parse_obj_file(path).map_err(|e| e.to_string())?;
+            (
+                FileType::Obj,
+                doc.dimensions_mm,
+                doc.volume_cm3,
+                None,
+                Vec::new(),
+                BTreeMap::new(),
+                None,
+                None,
+                None,
+            )
+        }
         _ => return Err("nicht unterstütztes Dateiformat".to_string()),
     };
 
@@ -854,6 +870,21 @@ pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFile
             file_size_bytes,
             content_hash,
         },
+        Some("obj") => {
+            let doc = obj::parse_obj_file(path).map_err(|e| e.to_string())?;
+            ScannedMetadataUpdate {
+                dimensions_mm: doc.dimensions_mm,
+                volume_cm3: doc.volume_cm3,
+                object_count: None,
+                thumbnail_png: None,
+                plate_count: None,
+                slice_info_json: None,
+                materials: Vec::new(),
+                metadata: BTreeMap::new(),
+                file_size_bytes,
+                content_hash,
+            }
+        }
         _ => return Err("nicht unterstütztes Dateiformat".to_string()),
     };
 
@@ -963,7 +994,7 @@ pub async fn import_files(
     let picked = app
         .dialog()
         .file()
-        .add_filter("3D-Modelle", &["3mf", "stl", "stp", "step"])
+        .add_filter("3D-Modelle", &["3mf", "stl", "stp", "step", "obj"])
         .blocking_pick_files();
 
     let Some(picked) = picked else {
@@ -1115,6 +1146,11 @@ pub async fn get_model_geometry(
             "stl" => {
                 let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
                 let mesh = stl::parse_stl_geometry(&bytes).map_err(|e| e.to_string())?;
+                Ok(vec![mesh])
+            }
+            "obj" => {
+                let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+                let mesh = obj::parse_obj_geometry(&bytes).map_err(|e| e.to_string())?;
                 Ok(vec![mesh])
             }
             "3mf" => threemf::extract_render_meshes_from_path(&path).map_err(|e| e.to_string()),
@@ -2006,6 +2042,15 @@ mod tests {
         assert!(is_sliceable_extension(Path::new("teil.stl")));
     }
     #[test]
+    fn is_supported_and_sliceable_extension_both_accept_obj() {
+        // Regressionsschutz gegen versehentliches Weglassen aus
+        // is_sliceable_extension: anders als STP ist OBJ ein echtes
+        // druckfertiges Mesh-Format, muss also in BEIDEN Checks true sein.
+        assert!(is_supported_extension(Path::new("teil.obj")));
+        assert!(is_supported_extension(Path::new("teil.OBJ")));
+        assert!(is_sliceable_extension(Path::new("teil.obj")));
+    }
+    #[test]
     fn import_one_catalogs_an_stp_file_without_a_3d_preview() {
         let path = unique_test_dir("import_stp").join("teil.stp");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -2045,6 +2090,45 @@ mod tests {
         let id: i64 = dto.id.parse().unwrap();
 
         let rescanned = rescan_file(&mut conn, id).expect("rescan of an stp file should succeed");
+        assert_eq!(rescanned.id, dto.id);
+    }
+    #[test]
+    fn import_one_catalogs_an_obj_file_with_dimensions_and_no_thumbnail() {
+        let path = unique_test_dir("import_obj").join("wuerfel.obj");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            "v 0.0 0.0 0.0\nv 10.0 0.0 0.0\nv 10.0 10.0 0.0\nv 0.0 10.0 0.0\n\
+             v 0.0 0.0 10.0\nv 10.0 0.0 10.0\nv 10.0 10.0 10.0\nv 0.0 10.0 10.0\n\
+             f 1 3 2\nf 1 4 3\nf 5 6 7\nf 5 7 8\nf 1 2 6\nf 1 6 5\n\
+             f 4 7 3\nf 4 8 7\nf 1 8 4\nf 1 5 8\nf 2 3 7\nf 2 7 6\n",
+        )
+        .unwrap();
+
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let dto = import_one(&mut conn, &path, None, None, None).expect("obj import should succeed");
+
+        let stored = crate::db::get_file(&conn, dto.id.parse().unwrap()).expect("query").expect("present");
+        assert_eq!(stored.file_type, FileType::Obj);
+        assert_eq!(stored.dimensions_mm, Some([10.0, 10.0, 10.0]));
+        assert!(stored.volume_cm3.unwrap() > 0.0);
+        // Anders als STP bekommt OBJ eine 3D-Vorschau (get_model_geometry
+        // liefert einen RenderMesh) - beim Import selbst wird trotzdem kein
+        // Thumbnail-Blob gespeichert, das entsteht erst client-seitig ueber
+        // den Live-Renderer/Snapshot-Mechanismus, genau wie bei STL.
+        assert_eq!(stored.thumbnail_png, None);
+    }
+    #[test]
+    fn rescan_file_refreshes_an_obj_file() {
+        let path = unique_test_dir("rescan_obj").join("wuerfel.obj");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "v 0.0 0.0 0.0\nv 1.0 0.0 0.0\nv 0.0 1.0 0.0\nf 1 2 3\n").unwrap();
+
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let dto = import_one(&mut conn, &path, None, None, None).expect("import should succeed");
+        let id: i64 = dto.id.parse().unwrap();
+
+        let rescanned = rescan_file(&mut conn, id).expect("rescan of an obj file should succeed");
         assert_eq!(rescanned.id, dto.id);
     }
 }

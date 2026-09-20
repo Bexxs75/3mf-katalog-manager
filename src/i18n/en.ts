@@ -154,7 +154,7 @@ export const en: Translations = {
   importCatalogRestartHint: 'Catalog imported. Please restart the app now for the changes to take effect.',
   catalogSetupTitle: 'How should your catalog be organized?',
   catalogSetupIntro: 'Folders in the catalog are now real directories on your disk. If you move a file to another folder in the app, it actually gets moved there – not just reshuffled in the catalog. To keep newly imported files sensibly organized, let\'s set a fixed storage location now.',
-  catalogSetupFileTypesNote: 'Only .3mf, .stl, and .stp/.step files are picked up (STEP files without a 3D preview). Already-packed archives (e.g. .zip) are ignored and stay untouched in the folder – unpack them beforehand if needed, or open the folder in your file manager directly from the catalog after setup.',
+  catalogSetupFileTypesNote: 'Only .3mf, .stl, .obj, and .stp/.step files are picked up (STEP files without a 3D preview). Already-packed archives (e.g. .zip) are ignored and stay untouched in the folder – unpack them beforehand if needed, or open the folder in your file manager directly from the catalog after setup.',
   catalogSetupAdoptTitle: 'Adopt an existing folder structure',
   catalogSetupAdoptDescription: 'Already organizing your print files in folders? Pick the top-level folder – the catalog will adopt the entire structure, including all subfolders, and import every 3mf/STL file it contains.',
   catalogSetupNewTitle: 'Set up a new location',

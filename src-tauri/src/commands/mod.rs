@@ -42,7 +42,7 @@ use crate::db::{self, models::FileRecord};
 use crate::geometry::RenderMesh;
 use crate::slicers::detect_slicers;
 use crate::tagging::{self, TaggingContext};
-use crate::{stl, threemf, update_check};
+use crate::{obj, stl, threemf, update_check};
 
 pub struct AppState {
     pub db: Mutex<Connection>,

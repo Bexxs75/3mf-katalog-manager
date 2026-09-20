@@ -154,7 +154,7 @@ export const de: Translations = {
   importCatalogRestartHint: 'Katalog importiert. Bitte die App jetzt neu starten, damit die Änderungen wirksam werden.',
   catalogSetupTitle: 'Wie soll dein Katalog organisiert sein?',
   catalogSetupIntro: 'Ordner im Katalog sind jetzt echte Verzeichnisse auf deiner Festplatte. Verschiebst du eine Datei im Programm in einen anderen Ordner, wird sie dort auch tatsächlich abgelegt – nicht nur im Katalog umsortiert. Damit neu importierte Dateien sinnvoll einsortiert werden, legen wir jetzt einen festen Speicherort fest.',
-  catalogSetupFileTypesNote: 'Erfasst werden ausschließlich .3mf-, .stl- und .stp-/.step-Dateien (STEP-Dateien ohne 3D-Vorschau). Bereits gepackte Archive (z. B. .zip) werden dabei nicht berücksichtigt und bleiben unverändert im Ordner liegen – entpacke sie bei Bedarf vorher, oder öffne den Ordner nach der Einrichtung direkt über den Katalog im Dateimanager.',
+  catalogSetupFileTypesNote: 'Erfasst werden ausschließlich .3mf-, .stl-, .obj- und .stp-/.step-Dateien (STEP-Dateien ohne 3D-Vorschau). Bereits gepackte Archive (z. B. .zip) werden dabei nicht berücksichtigt und bleiben unverändert im Ordner liegen – entpacke sie bei Bedarf vorher, oder öffne den Ordner nach der Einrichtung direkt über den Katalog im Dateimanager.',
   catalogSetupAdoptTitle: 'Bestehende Ordnerstruktur übernehmen',
   catalogSetupAdoptDescription: 'Du organisierst deine Druckdateien schon in Ordnern? Wähle den obersten Ordner aus – der Katalog übernimmt die komplette Struktur inklusive aller Unterordner und importiert alle enthaltenen 3mf-/STL-Dateien.',
   catalogSetupNewTitle: 'Neuen Ort einrichten',

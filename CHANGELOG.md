@@ -10,6 +10,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ### Added
 
 - STEP-Dateien (`.stp`/`.step`) können jetzt katalogisiert werden — wie 3MF/STL mit Tags, Suche, Umbenennen, Verschieben und Papierkorb, allerdings (noch) ohne 3D-Vorschau, da STEP parametrische CAD-Geometrie statt eines Dreiecksnetzes ist. STEP-Dateien lassen sich bewusst nicht direkt im Slicer öffnen, da die meisten Slicer kein rohes STEP importieren können.
+- OBJ-Dateien (`.obj`) können jetzt katalogisiert werden — inklusive vollwertiger 3D-Vorschau, da OBJ (anders als STEP) ein reines Dreiecksnetz ist. OBJ-Dateien lassen sich wie 3MF/STL direkt im Slicer öffnen.
 
 ## [0.10.1] - 2026-09-20
 
@@ -324,6 +325,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 ### Added
 
 - STEP files (`.stp`/`.step`) can now be cataloged — like 3MF/STL with tags, search, renaming, moving, and trash, but (for now) without a 3D preview, since STEP is parametric CAD geometry rather than a triangle mesh. STEP files are deliberately not launchable directly in a slicer, as most slicers can't import raw STEP.
+- OBJ files (`.obj`) can now be cataloged — including a full 3D preview, since OBJ (unlike STEP) is a plain triangle mesh. OBJ files can be opened directly in a slicer, just like 3MF/STL.
 
 ## [0.10.1] - 2026-09-20
 

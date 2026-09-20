@@ -7,6 +7,7 @@ pub enum FileType {
     // Deckt sowohl .stp- als auch .step-Dateien ab - der DB-Wert ist
     // unabhaengig von der urspruenglichen Endung immer "stp" (kanonisch).
     Stp,
+    Obj,
 }
 
 impl FileType {
@@ -15,6 +16,7 @@ impl FileType {
             FileType::ThreeMf => "3mf",
             FileType::Stl => "stl",
             FileType::Stp => "stp",
+            FileType::Obj => "obj",
         }
     }
 
@@ -23,6 +25,7 @@ impl FileType {
             "3mf" => Some(FileType::ThreeMf),
             "stl" => Some(FileType::Stl),
             "stp" => Some(FileType::Stp),
+            "obj" => Some(FileType::Obj),
             _ => None,
         }
     }
