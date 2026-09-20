@@ -14,7 +14,7 @@ Plattformunabhängige Desktop-Anwendung zur Katalogisierung und Verwaltung von 3
 
 ## Funktionen
 
-- **3MF-, STL-, OBJ- und STEP-Parsing** — 3MF (OPC-Container-Entpackung inkl. eingebettetem Thumbnail), ASCII-/Binär-STL sowie OBJ jeweils mit 3D-Vorschau; STEP-Dateien (`.stp`/`.step`) werden katalogisiert (Tags, Suche, Umbenennen, Verschieben, Papierkorb), aktuell noch ohne 3D-Vorschau, da parametrische CAD-Geometrie statt eines Dreiecksnetzes
+- **3MF-, STL-, OBJ- und STEP-Parsing** — 3MF (OPC-Container-Entpackung inkl. eingebettetem Thumbnail), ASCII-/Binär-STL und OBJ jeweils mit 3D-Vorschau; die Linux-Fassung liest STEP-Dateien (`.stp`/`.step`) über Open CASCADE und ermittelt daraus 3D-Vorschau, Abmessungen, Volumen und Körperzahl. Die offiziellen Windows-/macOS-Pakete katalogisieren STEP zunächst weiterhin ohne Vorschau (siehe Plattformhinweis unten).
 - **Automatische Metadaten-Extraktion** — Abmessungen, Volumen, Objektanzahl, Material (sofern in der 3MF vorhanden)
 - **Automatische Hashtag-Generierung** — Vorschläge aus Dateiname, Geometrie-Merkmalen und Slicer-Profildaten, vom Nutzer editierbar
 - **3D-Live-Vorschau** — three.js-Rendering direkt aus der Mesh-Geometrie, wenn kein eingebettetes Thumbnail vorhanden ist
@@ -51,11 +51,11 @@ Dieses Projekt befindet sich in aktiver Entwicklung. Der lokale Katalog (Import,
 
 - **Cloud-Anbindung** (Google Drive u. a.): war vorhanden, wurde aber wieder entfernt — zu instabil/fehleranfällig für den Alltagsgebrauch. Wird bei Gelegenheit sauber neu konzipiert, siehe CHANGELOG
 - **"In Slicer öffnen" unter macOS**: da Slicer dort meist als `.app`-Bundle installiert sind (eigener Start-Mechanismus statt einer direkt ausführbaren Datei), funktioniert das gezielte Öffnen aus dem Katalog heraus unter macOS derzeit nicht zuverlässig
+- **STEP-Vorschau auf Windows und macOS**: Die offiziellen Pakete werden zunächst ohne `step-preview` gebaut und katalogisieren STEP-Dateien daher ohne Vorschau oder automatisch ermittelte CAD-Metadaten. So bleiben die Builds portabel, bis ein vollständiger, austauschbarer OCCT-DLL-/Universal-Dylib-Paketierungsweg verifiziert ist. Die Linux-Fassung enthält die Funktion.
 - **Code-Signing**: die macOS-`.dmg`- und Windows-`.msi`-Pakete sind unsigniert (kein Apple-Developer- bzw. Windows-Code-Signing-Zertifikat) — beim ersten Start warnen Gatekeeper bzw. SmartScreen entsprechend
 
 ## Geplant
 
-- 3D-Vorschau für STEP-Dateien (`.stp`/`.step`) — aktuell nur katalogisierbar, ohne Vorschau (siehe CHANGELOG), da STEP parametrische CAD-Geometrie statt eines Dreiecksnetzes ist und eine CAD-Kernel-Anbindung (z. B. OpenCASCADE) erfordert.
 - ZIP-Import: automatisches Entpacken hochgeladener `.zip`-Archive in einen echten Unterordner, mit anschließendem Import der enthaltenen Modell-Dateien.
 
 ## Tech-Stack
@@ -67,11 +67,18 @@ Dieses Projekt befindet sich in aktiver Entwicklung. Der lokale Katalog (Import,
 
 ## Entwicklung
 
-Voraussetzungen: Node.js, Rust-Toolchain (`cargo`), sowie die [Tauri-Systemabhängigkeiten](https://tauri.app/start/prerequisites/) für dein Betriebssystem.
+Voraussetzungen: Node.js, Rust-Toolchain (`cargo`), sowie die [Tauri-Systemabhängigkeiten](https://tauri.app/start/prerequisites/) für dein Betriebssystem. Für die standardmäßig aktivierte STEP-Vorschau wird zusätzlich Open CASCADE 7.8 oder 7.9 als dynamische Systembibliothek einschließlich Entwicklungsdateien benötigt.
 
 ```bash
 npm install
 npm run tauri dev
+```
+
+Ohne OCCT beziehungsweise für eine Fassung ohne STEP-Vorschau:
+
+```bash
+npm run tauri dev -- -- --no-default-features
+# oder: npm run tauri build -- -- --no-default-features
 ```
 
 Backend-Tests:
@@ -91,13 +98,13 @@ npm run build
 
 ```
 src/               React-Frontend (Komponenten, i18n, Hooks, Typen)
-src-tauri/         Rust-Backend (Tauri-Commands, DB, Parser für 3MF/STL, Tagging)
+src-tauri/         Rust-Backend (Tauri-Commands, DB, Parser für 3MF/STL/OBJ/STEP, Tagging)
 docs/              Zusätzliche Dokumentation
 ```
 
 ## Lizenz
 
-MIT — siehe [LICENSE](LICENSE).
+Der Anwendungscode steht unter MIT — siehe [LICENSE](LICENSE). Die optionale STEP-Vorschau bindet Open CASCADE dynamisch unter LGPL-2.1 mit Open-CASCADE-Ausnahme ein. Details, Lizenztexte und Quellenhinweise stehen in [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md).
 
 ---
 
@@ -117,7 +124,7 @@ Cross-platform desktop application for cataloging and managing 3MF, STL, OBJ, an
 
 ## Features
 
-- **3MF, STL, OBJ, and STEP parsing** — 3MF (OPC container extraction incl. embedded thumbnail), ASCII/binary STL, and OBJ each with a 3D preview; STEP files (`.stp`/`.step`) are cataloged (tags, search, renaming, moving, trash), currently without a 3D preview since it's parametric CAD geometry rather than a triangle mesh
+- **3MF, STL, OBJ, and STEP parsing** — 3MF (OPC container extraction incl. embedded thumbnail), ASCII/binary STL, and OBJ each have a 3D preview; the Linux build reads STEP files (`.stp`/`.step`) through Open CASCADE and derives a 3D preview, dimensions, volume, and body count. The official Windows/macOS packages initially continue to catalog STEP without a preview (see the platform note below).
 - **Automatic metadata extraction** — dimensions, volume, object count, material (if present in the 3MF)
 - **Automatic hashtag generation** — suggestions from filename, geometry features, and slicer profile data, editable by the user
 - **Live 3D preview** — three.js rendering directly from the mesh geometry when no embedded thumbnail is available
@@ -154,11 +161,11 @@ This project is under active development. The local catalog (import, parsing, ta
 
 - **Cloud integration** (Google Drive etc.): existed previously but was removed again — too unstable/error-prone for everyday use. Will be cleanly redesigned at some point, see CHANGELOG
 - **"Open in slicer" on macOS**: slicers there are usually installed as `.app` bundles (their own launch mechanism instead of a directly executable file), so opening a model directly from the catalog currently doesn't work reliably on macOS
+- **STEP preview on Windows and macOS**: the official packages are initially built without `step-preview`, so they catalog STEP files without a preview or automatically derived CAD metadata. This keeps the builds portable until a complete, replaceable OCCT DLL/universal-dylib packaging path has been verified. The Linux build includes the feature.
 - **Code signing**: the macOS `.dmg` and Windows `.msi` packages are unsigned (no Apple Developer or Windows code-signing certificate) — Gatekeeper/SmartScreen will warn accordingly on first launch
 
 ## Planned
 
-- 3D preview for STEP files (`.stp`/`.step`) — currently catalog-only, no preview (see CHANGELOG), since STEP is parametric CAD geometry rather than a triangle mesh and would need a CAD kernel binding (e.g. OpenCASCADE).
 - ZIP import: automatically unpack uploaded `.zip` archives into a real subfolder, then import the model files found inside.
 
 ## Tech Stack
@@ -170,11 +177,18 @@ This project is under active development. The local catalog (import, parsing, ta
 
 ## Development
 
-Prerequisites: Node.js, the Rust toolchain (`cargo`), and the [Tauri system dependencies](https://tauri.app/start/prerequisites/) for your operating system.
+Prerequisites: Node.js, the Rust toolchain (`cargo`), and the [Tauri system dependencies](https://tauri.app/start/prerequisites/) for your operating system. The default STEP-preview build additionally requires Open CASCADE 7.8 or 7.9 as dynamic system libraries, including development files.
 
 ```bash
 npm install
 npm run tauri dev
+```
+
+Without OCCT, or to build a variant without STEP preview:
+
+```bash
+npm run tauri dev -- -- --no-default-features
+# or: npm run tauri build -- -- --no-default-features
 ```
 
 Backend tests:
@@ -194,10 +208,10 @@ npm run build
 
 ```
 src/               React frontend (components, i18n, hooks, types)
-src-tauri/         Rust backend (Tauri commands, DB, 3MF/STL parsers, tagging)
+src-tauri/         Rust backend (Tauri commands, DB, 3MF/STL/OBJ/STEP parsers, tagging)
 docs/              Additional documentation
 ```
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+The application code is licensed under MIT — see [LICENSE](LICENSE). The optional STEP preview dynamically links Open CASCADE under LGPL-2.1 with the Open CASCADE exception. See [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) for details, full license texts, and source information.

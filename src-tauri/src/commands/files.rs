@@ -1,8 +1,8 @@
 use super::*;
 
 const MAX_CUSTOM_IMAGE_BYTES: usize = 5 * 1024 * 1024; // 5 MB
-// Base64 blaeht Rohdaten auf 4/3 auf (plus Padding) - Obergrenze fuer den
-// noch nicht dekodierten String in `set_render_snapshot`.
+                                                       // Base64 blaeht Rohdaten auf 4/3 auf (plus Padding) - Obergrenze fuer den
+                                                       // noch nicht dekodierten String in `set_render_snapshot`.
 const MAX_RENDER_SNAPSHOT_BASE64_BYTES: usize = MAX_CUSTOM_IMAGE_BYTES / 3 * 4 + 4;
 
 /// Schlanke Projektion von `ModelFileDto` fuer die Katalog-Uebersicht
@@ -202,7 +202,10 @@ fn print_log_entry_to_dto(record: db::models::PrintLogEntryRecord) -> PrintLogEn
     }
 }
 #[tauri::command]
-pub fn list_print_log_entries(state: State<AppState>, file_id: String) -> CmdResult<Vec<PrintLogEntryDto>> {
+pub fn list_print_log_entries(
+    state: State<AppState>,
+    file_id: String,
+) -> CmdResult<Vec<PrintLogEntryDto>> {
     let fid: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
     let entries = db::list_print_log_entries(&conn, fid).map_err(|e| e.to_string())?;
@@ -220,7 +223,11 @@ pub fn add_print_log_entry(
     let fid: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
 
     let photo_png = photo_base64
-        .map(|b64| base64::engine::general_purpose::STANDARD.decode(&b64).map_err(|e| e.to_string()))
+        .map(|b64| {
+            base64::engine::general_purpose::STANDARD
+                .decode(&b64)
+                .map_err(|e| e.to_string())
+        })
         .transpose()?;
     if let Some(bytes) = &photo_png {
         if bytes.len() > MAX_CUSTOM_IMAGE_BYTES {
@@ -233,7 +240,12 @@ pub fn add_print_log_entry(
     }
 
     let conn = lock_db(&state)?;
-    let new_entry = db::models::NewPrintLogEntry { file_id: fid, printed_at, note, photo_png };
+    let new_entry = db::models::NewPrintLogEntry {
+        file_id: fid,
+        printed_at,
+        note,
+        photo_png,
+    };
     let id = db::insert_print_log_entry(&conn, &new_entry).map_err(|e| e.to_string())?;
     let entries = db::list_print_log_entries(&conn, fid).map_err(|e| e.to_string())?;
     let entry = entries
@@ -244,7 +256,9 @@ pub fn add_print_log_entry(
 }
 #[tauri::command]
 pub fn delete_print_log_entry(state: State<AppState>, entry_id: String) -> CmdResult<()> {
-    let id: i64 = entry_id.parse().map_err(|_| "invalid entry id".to_string())?;
+    let id: i64 = entry_id
+        .parse()
+        .map_err(|_| "invalid entry id".to_string())?;
     let conn = lock_db(&state)?;
     db::delete_print_log_entry(&conn, id).map_err(|e| e.to_string())
 }
@@ -263,7 +277,9 @@ fn read_image_bounded(path: &std::path::Path, max_bytes: u64) -> CmdResult<Vec<u
     let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let mut limited = file.take(max_bytes + 1);
     let mut buffer = Vec::new();
-    limited.read_to_end(&mut buffer).map_err(|e| e.to_string())?;
+    limited
+        .read_to_end(&mut buffer)
+        .map_err(|e| e.to_string())?;
     if buffer.len() as u64 > max_bytes {
         return Err(format!("Bilddatei ist zu gross (> {max_bytes} Bytes)"));
     }
@@ -283,7 +299,9 @@ pub async fn pick_and_read_image(app: tauri::AppHandle) -> CmdResult<Option<Stri
     };
     let path = picked.into_path().map_err(|e| e.to_string())?;
     let bytes = read_image_bounded(&path, MAX_CUSTOM_IMAGE_BYTES as u64)?;
-    Ok(Some(base64::engine::general_purpose::STANDARD.encode(bytes)))
+    Ok(Some(
+        base64::engine::general_purpose::STANDARD.encode(bytes),
+    ))
 }
 #[tauri::command]
 pub fn add_tag(state: State<AppState>, file_id: String, tag: String) -> CmdResult<()> {
@@ -314,7 +332,10 @@ fn move_file_to_folder_with_conn(
     let target_dir: std::path::PathBuf = match folder_id {
         Some(fid) => {
             let folders = db::list_folders(conn).map_err(|e| e.to_string())?;
-            let folder = folders.iter().find(|f| f.id == fid).ok_or_else(|| "folder not found".to_string())?;
+            let folder = folders
+                .iter()
+                .find(|f| f.id == fid)
+                .ok_or_else(|| "folder not found".to_string())?;
             std::path::PathBuf::from(&folder.path)
         }
         None => std::path::Path::new(&file.path)
@@ -328,7 +349,9 @@ fn move_file_to_folder_with_conn(
     let old_path = std::path::PathBuf::from(&file.path);
     move_file(&old_path, &new_path).map_err(|e| e.to_string())?;
 
-    if let Err(db_err) = db::update_file_folder(conn, file_id, folder_id, &new_path.to_string_lossy()) {
+    if let Err(db_err) =
+        db::update_file_folder(conn, file_id, folder_id, &new_path.to_string_lossy())
+    {
         // Kompensation: physischen Move rueckgaengig machen, damit
         // Filesystem und DB nicht auseinanderlaufen (H-01). move_file
         // selbst hat bereits ein No-Clobber-Gate (C-01), der Rueckweg
@@ -351,10 +374,17 @@ fn move_file_to_folder_with_conn(
 /// zurueckverschieben koennte; der Zweig bleibt fuer zukuenftige
 /// Erweiterung ohne API-Bruch implementiert).
 #[tauri::command]
-pub fn move_file_to_folder(state: State<AppState>, file_id: String, folder_id: Option<String>) -> CmdResult<()> {
+pub fn move_file_to_folder(
+    state: State<AppState>,
+    file_id: String,
+    folder_id: Option<String>,
+) -> CmdResult<()> {
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let target_id: Option<i64> = folder_id
-        .map(|s| s.parse::<i64>().map_err(|_| "invalid folder id".to_string()))
+        .map(|s| {
+            s.parse::<i64>()
+                .map_err(|_| "invalid folder id".to_string())
+        })
         .transpose()?;
 
     let conn = lock_db(&state)?;
@@ -393,7 +423,9 @@ fn rename_file_with_conn(
     sensitive_dirs: &[PathBuf],
 ) -> CmdResult<()> {
     validate_file_name(&new_name)?;
-    let file = db::get_file(conn, id).map_err(|e| e.to_string())?.ok_or_else(|| "file not found".to_string())?;
+    let file = db::get_file(conn, id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "file not found".to_string())?;
 
     let old_path = PathBuf::from(&file.path);
     let new_path = old_path.with_file_name(&new_name);
@@ -404,7 +436,10 @@ fn rename_file_with_conn(
         return Ok(());
     }
     if new_path.exists() {
-        return Err(format!("Zieldatei existiert bereits: {}", new_path.display()));
+        return Err(format!(
+            "Zieldatei existiert bereits: {}",
+            new_path.display()
+        ));
     }
     std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())?;
 
@@ -453,7 +488,10 @@ pub fn mark_file_viewed(state: State<AppState>, file_id: String) -> CmdResult<()
 pub fn add_to_queue(state: State<AppState>, file_id: String) -> CmdResult<i64> {
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
-    let next = db::max_queue_position(&conn).map_err(|e| e.to_string())?.unwrap_or(0) + 1;
+    let next = db::max_queue_position(&conn)
+        .map_err(|e| e.to_string())?
+        .unwrap_or(0)
+        + 1;
     db::set_queue_position(&conn, id, Some(next)).map_err(|e| e.to_string())?;
     Ok(next)
 }
@@ -483,12 +521,20 @@ pub fn reorder_queue(state: State<AppState>, updates: Vec<QueuePositionUpdate>) 
 /// Update ein eigenes `db::set_queue_position(...)?` ohne Transaktion - schlug
 /// das N-te Update fehl, blieben die ersten N-1 bereits committed und der
 /// Batch damit halb angewendet.
-fn reorder_queue_with_conn(conn: &mut Connection, updates: Vec<QueuePositionUpdate>) -> CmdResult<()> {
+fn reorder_queue_with_conn(
+    conn: &mut Connection,
+    updates: Vec<QueuePositionUpdate>,
+) -> CmdResult<()> {
     let mut parsed = Vec::with_capacity(updates.len());
     for update in updates {
-        let id: i64 = update.file_id.parse().map_err(|_| "invalid file id".to_string())?;
+        let id: i64 = update
+            .file_id
+            .parse()
+            .map_err(|_| "invalid file id".to_string())?;
         if db::get_file(conn, id).map_err(|e| e.to_string())?.is_none() {
-            return Err(format!("Datei mit id {id} nicht gefunden - Batch wird nicht angewendet"));
+            return Err(format!(
+                "Datei mit id {id} nicht gefunden - Batch wird nicht angewendet"
+            ));
         }
         parsed.push((id, update.position));
     }
@@ -529,7 +575,11 @@ pub async fn upload_custom_image(
     )))
 }
 #[tauri::command]
-pub fn set_render_snapshot(state: State<AppState>, file_id: String, image_base64: String) -> CmdResult<()> {
+pub fn set_render_snapshot(
+    state: State<AppState>,
+    file_id: String,
+    image_base64: String,
+) -> CmdResult<()> {
     use base64::Engine;
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     // Gleiche Obergrenze wie bei `upload_custom_image`/`add_print_log_entry`
@@ -556,7 +606,11 @@ pub fn set_render_snapshot(state: State<AppState>, file_id: String, image_base64
     db::set_render_snapshot_png(&conn, id, &bytes).map_err(|e| e.to_string())
 }
 #[tauri::command]
-pub fn set_source_url(state: State<AppState>, file_id: String, url: Option<String>) -> CmdResult<()> {
+pub fn set_source_url(
+    state: State<AppState>,
+    file_id: String,
+    url: Option<String>,
+) -> CmdResult<()> {
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let url = validate_source_url(url)?;
     let conn = lock_db(&state)?;
@@ -565,7 +619,12 @@ pub fn set_source_url(state: State<AppState>, file_id: String, url: Option<Strin
 pub(crate) fn is_supported_extension(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
-        .map(|e| matches!(e.to_lowercase().as_str(), "3mf" | "stl" | "stp" | "step" | "obj"))
+        .map(|e| {
+            matches!(
+                e.to_lowercase().as_str(),
+                "3mf" | "stl" | "stp" | "step" | "obj"
+            )
+        })
         .unwrap_or(false)
 }
 /// Engerer Check als [`is_supported_extension`] - STP/STEP-Dateien sind zwar
@@ -663,6 +722,41 @@ fn collect_supported_files(path: &Path, out: &mut Vec<PathBuf>) {
         out.push(path.to_path_buf());
     }
 }
+/// Einzige Stelle, an der die STEP-Vorschau im Metadaten-Pfad sichtbar wird.
+/// Bei jedem Fehler bleibt die Datei katalogisierbar und erhaelt nur keine
+/// automatisch ermittelten Metadaten.
+#[cfg(feature = "step-preview")]
+fn step_metadata(path: &Path) -> (Option<[f64; 3]>, Option<f64>, Option<i64>) {
+    match crate::step::parse_step_file(path) {
+        Ok(doc) => (
+            doc.dimensions_mm,
+            doc.volume_cm3,
+            Some(doc.object_count as i64),
+        ),
+        Err(err) => {
+            eprintln!("STEP-Metadaten nicht lesbar ({}): {err}", path.display());
+            (None, None, None)
+        }
+    }
+}
+
+#[cfg(not(feature = "step-preview"))]
+fn step_metadata(_path: &Path) -> (Option<[f64; 3]>, Option<f64>, Option<i64>) {
+    (None, None, None)
+}
+
+/// Geometrie fuer die Vorschau. Ohne das Feature bleibt das Verhalten von
+/// v0.11.0 erhalten und die Ansicht zeigt den vorhandenen Platzhalter.
+#[cfg(feature = "step-preview")]
+fn step_geometry(path: &Path) -> CmdResult<Vec<RenderMesh>> {
+    crate::step::parse_step_geometry(path).map_err(|e| e.to_string())
+}
+
+#[cfg(not(feature = "step-preview"))]
+fn step_geometry(_path: &Path) -> CmdResult<Vec<RenderMesh>> {
+    Err("STEP-Vorschau ist in diesem Build nicht enthalten".to_string())
+}
+
 pub(crate) fn import_one(
     conn: &Connection,
     path: &Path,
@@ -727,20 +821,20 @@ pub(crate) fn import_one(
                 None,
             )
         }
-        // STEP ist parametrische CAD-Geometrie, kein Dreiecksnetz - es gibt
-        // bewusst keinen Parser dafuer (keine Masse/Volumen/Thumbnail), die
-        // Datei wird nur katalogisiert (Variante A, siehe Plan).
-        Some("stp") | Some("step") => (
-            FileType::Stp,
-            None,
-            None,
-            None,
-            Vec::new(),
-            BTreeMap::new(),
-            None,
-            None,
-            None,
-        ),
+        Some("stp") | Some("step") => {
+            let (dimensions_mm, volume_cm3, object_count) = step_metadata(path);
+            (
+                FileType::Stp,
+                dimensions_mm,
+                volume_cm3,
+                object_count,
+                Vec::new(),
+                BTreeMap::new(),
+                None,
+                None,
+                None,
+            )
+        }
         Some("obj") => {
             let doc = obj::parse_obj_file(path).map_err(|e| e.to_string())?;
             (
@@ -818,7 +912,10 @@ pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFile
     if !path.exists() {
         return Err(format!("Datei nicht gefunden: {}", existing.path));
     }
-    let extension = path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase());
+    let extension = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase());
 
     let file_size_bytes = std::fs::metadata(path).map_err(|e| e.to_string())?.len() as i64;
     let content_hash = compute_content_hash(path).ok();
@@ -836,7 +933,10 @@ pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFile
                 materials: doc
                     .materials
                     .into_iter()
-                    .map(|m| MaterialRecord { name: m.name, display_color: m.display_color })
+                    .map(|m| MaterialRecord {
+                        name: m.name,
+                        display_color: m.display_color,
+                    })
                     .collect(),
                 metadata: doc.metadata,
                 file_size_bytes,
@@ -858,18 +958,21 @@ pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFile
                 content_hash,
             }
         }
-        Some("stp") | Some("step") => ScannedMetadataUpdate {
-            dimensions_mm: None,
-            volume_cm3: None,
-            object_count: None,
-            thumbnail_png: None,
-            plate_count: None,
-            slice_info_json: None,
-            materials: Vec::new(),
-            metadata: BTreeMap::new(),
-            file_size_bytes,
-            content_hash,
-        },
+        Some("stp") | Some("step") => {
+            let (dimensions_mm, volume_cm3, object_count) = step_metadata(path);
+            ScannedMetadataUpdate {
+                dimensions_mm,
+                volume_cm3,
+                object_count,
+                thumbnail_png: None,
+                plate_count: None,
+                slice_info_json: None,
+                materials: Vec::new(),
+                metadata: BTreeMap::new(),
+                file_size_bytes,
+                content_hash,
+            }
+        }
         Some("obj") => {
             let doc = obj::parse_obj_file(path).map_err(|e| e.to_string())?;
             ScannedMetadataUpdate {
@@ -897,7 +1000,9 @@ pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFile
 }
 #[tauri::command]
 pub fn rescan_file_metadata(state: State<AppState>, file_id: String) -> CmdResult<ModelFileDto> {
-    let id: i64 = file_id.parse().map_err(|_| "ungueltige Datei-ID".to_string())?;
+    let id: i64 = file_id
+        .parse()
+        .map_err(|_| "ungueltige Datei-ID".to_string())?;
     let mut conn = lock_db(&state)?;
     rescan_file(&mut conn, id)
 }
@@ -963,7 +1068,8 @@ fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) -> CmdResul
             }
 
             let folder_id = if is_folder_root {
-                path.parent().and_then(|dir| db::ensure_folder_path(&tx, &root, dir).ok())
+                path.parent()
+                    .and_then(|dir| db::ensure_folder_path(&tx, &root, dir).ok())
             } else {
                 None
             };
@@ -984,7 +1090,10 @@ fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) -> CmdResul
     }
 
     tx.commit().map_err(|e| e.to_string())?;
-    Ok(ImportResultDto { imported, duplicate_count })
+    Ok(ImportResultDto {
+        imported,
+        duplicate_count,
+    })
 }
 #[tauri::command]
 pub async fn import_files(
@@ -998,7 +1107,10 @@ pub async fn import_files(
         .blocking_pick_files();
 
     let Some(picked) = picked else {
-        return Ok(ImportResultDto { imported: Vec::new(), duplicate_count: 0 });
+        return Ok(ImportResultDto {
+            imported: Vec::new(),
+            duplicate_count: 0,
+        });
     };
     let paths = picked
         .into_iter()
@@ -1014,7 +1126,10 @@ pub async fn import_folder(
     let picked = app.dialog().file().blocking_pick_folder();
 
     let Some(picked) = picked else {
-        return Ok(ImportResultDto { imported: Vec::new(), duplicate_count: 0 });
+        return Ok(ImportResultDto {
+            imported: Vec::new(),
+            duplicate_count: 0,
+        });
     };
     let path = picked.into_path().map_err(|e| e.to_string())?;
     import_many(&state, vec![path])
@@ -1154,6 +1269,7 @@ pub async fn get_model_geometry(
                 Ok(vec![mesh])
             }
             "3mf" => threemf::extract_render_meshes_from_path(&path).map_err(|e| e.to_string()),
+            "stp" | "step" => step_geometry(&path),
             other => Err(format!("nicht unterstütztes Dateiformat: {other}")),
         }
     })
@@ -1163,10 +1279,16 @@ pub async fn get_model_geometry(
     Ok(tauri::ipc::Response::new(encode_render_meshes(&meshes)))
 }
 #[tauri::command]
-pub fn save_filter(state: State<AppState>, filter: SavedFilterInputDto) -> CmdResult<SavedFilterDto> {
+pub fn save_filter(
+    state: State<AppState>,
+    filter: SavedFilterInputDto,
+) -> CmdResult<SavedFilterDto> {
     let folder_id = filter
         .folder_id
-        .map(|s| s.parse::<i64>().map_err(|_| "invalid folder id".to_string()))
+        .map(|s| {
+            s.parse::<i64>()
+                .map_err(|_| "invalid folder id".to_string())
+        })
         .transpose()?;
     let conn = lock_db(&state)?;
     let new_filter = db::models::NewSavedFilter {
@@ -1197,7 +1319,9 @@ pub fn list_saved_filters(state: State<AppState>) -> CmdResult<Vec<SavedFilterDt
 }
 #[tauri::command]
 pub fn delete_saved_filter(state: State<AppState>, filter_id: String) -> CmdResult<()> {
-    let id: i64 = filter_id.parse().map_err(|_| "invalid filter id".to_string())?;
+    let id: i64 = filter_id
+        .parse()
+        .map_err(|_| "invalid filter id".to_string())?;
     let conn = lock_db(&state)?;
     db::delete_saved_filter(&conn, id).map_err(|e| e.to_string())
 }
@@ -1253,7 +1377,11 @@ mod tests {
 
             result.push((positions, normals, indices));
         }
-        assert_eq!(offset, bytes.len(), "encoder should not leave trailing bytes");
+        assert_eq!(
+            offset,
+            bytes.len(),
+            "encoder should not leave trailing bytes"
+        );
         result
     }
     #[test]
@@ -1319,19 +1447,25 @@ mod tests {
             zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model"/></Relationships>"#).unwrap();
             zip.start_file("3D/3dmodel.model", options).unwrap();
             zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources></resources><build></build></model>"#).unwrap();
-            zip.start_file("Metadata/slice_info.config", options).unwrap();
+            zip.start_file("Metadata/slice_info.config", options)
+                .unwrap();
             zip.write_all(slice_info_xml.as_bytes()).unwrap();
             zip.finish().unwrap();
         }
 
-        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let path = std::env::temp_dir().join(format!("import_one_slice_info_test_{nanos}.3mf"));
         std::fs::write(&path, &buf).expect("write temp file");
 
         let mut conn = crate::db::connect_in_memory().expect("connect");
         let dto = import_one(&mut conn, &path, None, None, None).expect("import should succeed");
 
-        let stored = crate::db::get_file(&conn, dto.id.parse().unwrap()).expect("query").expect("present");
+        let stored = crate::db::get_file(&conn, dto.id.parse().unwrap())
+            .expect("query")
+            .expect("present");
         assert!(stored.slice_info_json.is_some());
         assert!(stored.slice_info_json.unwrap().contains("9.9"));
 
@@ -1366,8 +1500,8 @@ mod tests {
         write_minimal_3mf(&file_path);
 
         let mut conn = crate::db::connect_in_memory().expect("connect");
-        let result = import_many_with_conn(&mut conn, vec![tmp.clone()])
-            .expect("import should succeed");
+        let result =
+            import_many_with_conn(&mut conn, vec![tmp.clone()]).expect("import should succeed");
         assert_eq!(result.imported.len(), 1);
 
         let files = db::list_files(&conn).unwrap();
@@ -1453,7 +1587,8 @@ mod tests {
         write_minimal_3mf(&file_path);
 
         let mut conn = crate::db::connect_in_memory().expect("connect");
-        let imported = import_one(&mut conn, &file_path, None, None, None).expect("import should succeed");
+        let imported =
+            import_one(&mut conn, &file_path, None, None, None).expect("import should succeed");
         let file_id: i64 = imported.id.parse().unwrap();
 
         // Zielordner direkt per ensure_folder_path anlegen (kein
@@ -1461,15 +1596,32 @@ mod tests {
         // hier der "import_root".
         let folder_id = db::ensure_folder_path(&conn, &tmp, &dst_dir).expect("ensure_folder_path");
 
-        move_file_to_folder_with_conn(&conn, file_id, Some(folder_id), &[]).expect("move should succeed");
+        move_file_to_folder_with_conn(&conn, file_id, Some(folder_id), &[])
+            .expect("move should succeed");
 
         let expected_path = dst_dir.join("model.3mf");
-        assert!(expected_path.exists(), "file must physically exist under dst_dir after move");
-        assert!(!file_path.exists(), "file must no longer exist at the original location");
+        assert!(
+            expected_path.exists(),
+            "file must physically exist under dst_dir after move"
+        );
+        assert!(
+            !file_path.exists(),
+            "file must no longer exist at the original location"
+        );
 
-        let after = db::get_file(&conn, file_id).expect("get_file").expect("file exists");
-        assert_eq!(after.path, expected_path.to_string_lossy().to_string(), "db path must reflect the new location");
-        assert_eq!(after.folder_id, Some(folder_id), "db folder_id must reflect the target folder");
+        let after = db::get_file(&conn, file_id)
+            .expect("get_file")
+            .expect("file exists");
+        assert_eq!(
+            after.path,
+            expected_path.to_string_lossy().to_string(),
+            "db path must reflect the new location"
+        );
+        assert_eq!(
+            after.folder_id,
+            Some(folder_id),
+            "db folder_id must reflect the target folder"
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -1484,13 +1636,21 @@ mod tests {
 
         let conn = crate::db::connect_in_memory().expect("connect");
         let folder_id =
-            db::insert_folder_with_parent(&conn, "Zielordner", None, &folder_dir.to_string_lossy()).expect("insert folder");
-        let file_id = db::insert_file_within_tx(&conn, &sample_new_file_for_rescan_test(&file_path))
-            .expect("insert file");
+            db::insert_folder_with_parent(&conn, "Zielordner", None, &folder_dir.to_string_lossy())
+                .expect("insert folder");
+        let file_id =
+            db::insert_file_within_tx(&conn, &sample_new_file_for_rescan_test(&file_path))
+                .expect("insert file");
 
         let result = move_file_to_folder_with_conn(&conn, file_id, Some(folder_id), &sensitive);
-        assert!(result.is_err(), "move_file_to_folder_with_conn must reject a target folder under a sensitive directory");
-        assert!(file_path.exists(), "original file must be untouched after a rejected move");
+        assert!(
+            result.is_err(),
+            "move_file_to_folder_with_conn must reject a target folder under a sensitive directory"
+        );
+        assert!(
+            file_path.exists(),
+            "original file must be untouched after a rejected move"
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -1502,13 +1662,21 @@ mod tests {
         std::fs::write(&old_path, b"dummy").unwrap();
 
         let conn = crate::db::connect_in_memory().expect("connect");
-        let file_id = db::test_insert_minimal_file(&conn, &old_path.to_string_lossy(), None).unwrap();
+        let file_id =
+            db::test_insert_minimal_file(&conn, &old_path.to_string_lossy(), None).unwrap();
 
-        rename_file_with_conn(&conn, file_id, "neu.3mf".to_string(), &[]).expect("rename should succeed");
+        rename_file_with_conn(&conn, file_id, "neu.3mf".to_string(), &[])
+            .expect("rename should succeed");
 
         let new_path = tmp.join("neu.3mf");
-        assert!(new_path.exists(), "file must physically exist under the new name");
-        assert!(!old_path.exists(), "file must no longer exist under the old name");
+        assert!(
+            new_path.exists(),
+            "file must physically exist under the new name"
+        );
+        assert!(
+            !old_path.exists(),
+            "file must no longer exist under the old name"
+        );
 
         let after = db::get_file(&conn, file_id).unwrap().unwrap();
         assert_eq!(after.name, "neu.3mf");
@@ -1526,12 +1694,23 @@ mod tests {
         std::fs::write(&existing_path, b"dummy2").unwrap();
 
         let conn = crate::db::connect_in_memory().expect("connect");
-        let file_id = db::test_insert_minimal_file(&conn, &old_path.to_string_lossy(), None).unwrap();
+        let file_id =
+            db::test_insert_minimal_file(&conn, &old_path.to_string_lossy(), None).unwrap();
 
         let result = rename_file_with_conn(&conn, file_id, "existiert-schon.3mf".to_string(), &[]);
-        assert!(result.is_err(), "rename_file_with_conn must reject a name that collides with an existing file");
-        assert!(old_path.exists(), "original file must be untouched after a rejected rename");
-        assert_eq!(std::fs::read(&existing_path).unwrap(), b"dummy2", "the pre-existing file must not be overwritten");
+        assert!(
+            result.is_err(),
+            "rename_file_with_conn must reject a name that collides with an existing file"
+        );
+        assert!(
+            old_path.exists(),
+            "original file must be untouched after a rejected rename"
+        );
+        assert_eq!(
+            std::fs::read(&existing_path).unwrap(),
+            b"dummy2",
+            "the pre-existing file must not be overwritten"
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -1543,13 +1722,20 @@ mod tests {
         std::fs::write(&old_path, b"dummy").unwrap();
 
         let conn = crate::db::connect_in_memory().expect("connect");
-        let file_id = db::test_insert_minimal_file(&conn, &old_path.to_string_lossy(), None).unwrap();
+        let file_id =
+            db::test_insert_minimal_file(&conn, &old_path.to_string_lossy(), None).unwrap();
 
         for bad_name in ["../escaped.3mf", "sub/dir.3mf", "..", "."] {
             let result = rename_file_with_conn(&conn, file_id, bad_name.to_string(), &[]);
-            assert!(result.is_err(), "rename_file_with_conn must reject name {bad_name:?}");
+            assert!(
+                result.is_err(),
+                "rename_file_with_conn must reject name {bad_name:?}"
+            );
         }
-        assert!(old_path.exists(), "original file must be untouched after rejected renames");
+        assert!(
+            old_path.exists(),
+            "original file must be untouched after rejected renames"
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -1562,11 +1748,18 @@ mod tests {
         let sensitive = vec![tmp.clone()];
 
         let conn = crate::db::connect_in_memory().expect("connect");
-        let file_id = db::test_insert_minimal_file(&conn, &old_path.to_string_lossy(), None).unwrap();
+        let file_id =
+            db::test_insert_minimal_file(&conn, &old_path.to_string_lossy(), None).unwrap();
 
         let result = rename_file_with_conn(&conn, file_id, "neu.3mf".to_string(), &sensitive);
-        assert!(result.is_err(), "rename_file_with_conn must reject a rename under a sensitive directory");
-        assert!(old_path.exists(), "original file must be untouched after a rejected rename");
+        assert!(
+            result.is_err(),
+            "rename_file_with_conn must reject a rename under a sensitive directory"
+        );
+        assert!(
+            old_path.exists(),
+            "original file must be untouched after a rejected rename"
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -1578,7 +1771,8 @@ mod tests {
         std::fs::write(&old_path, b"dummy").unwrap();
 
         let conn = crate::db::connect_in_memory().expect("connect");
-        let file_id = db::test_insert_minimal_file(&conn, &old_path.to_string_lossy(), None).unwrap();
+        let file_id =
+            db::test_insert_minimal_file(&conn, &old_path.to_string_lossy(), None).unwrap();
         // Ein hartes db::delete_file(file_id) waere hier wirkungslos:
         // rename_file_with_conn laedt die Zeile zuerst per get_file() und
         // wuerde dann sofort mit "file not found" abbrechen, OHNE den
@@ -1596,9 +1790,18 @@ mod tests {
 
         let result = rename_file_with_conn(&conn, file_id, "neu.3mf".to_string(), &[]);
 
-        assert!(result.is_err(), "must surface the db::rename_file failure (0 rows affected)");
-        assert!(old_path.exists(), "file must be renamed back to its original name after the failed DB update");
-        assert!(!tmp.join("neu.3mf").exists(), "file must not remain stranded under the new name");
+        assert!(
+            result.is_err(),
+            "must surface the db::rename_file failure (0 rows affected)"
+        );
+        assert!(
+            old_path.exists(),
+            "file must be renamed back to its original name after the failed DB update"
+        );
+        assert!(
+            !tmp.join("neu.3mf").exists(),
+            "file must not remain stranded under the new name"
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -1620,7 +1823,8 @@ mod tests {
                 zip.start_file("3D/3dmodel.model", options).unwrap();
                 zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources></resources><build></build></model>"#).unwrap();
                 if let Some(xml) = slice_info_xml {
-                    zip.start_file("Metadata/slice_info.config", options).unwrap();
+                    zip.start_file("Metadata/slice_info.config", options)
+                        .unwrap();
                     zip.write_all(xml.as_bytes()).unwrap();
                 }
                 zip.finish().unwrap();
@@ -1628,7 +1832,10 @@ mod tests {
             std::fs::write(path, &buf).expect("write temp file");
         }
 
-        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let path = std::env::temp_dir().join(format!("rescan_test_{nanos}.3mf"));
         write_3mf(&path, None);
 
@@ -1671,7 +1878,8 @@ mod tests {
                 zip.start_file("3D/3dmodel.model", options).unwrap();
                 zip.write_all(br#"<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources></resources><build></build></model>"#).unwrap();
                 if let Some(xml) = slice_info_xml {
-                    zip.start_file("Metadata/slice_info.config", options).unwrap();
+                    zip.start_file("Metadata/slice_info.config", options)
+                        .unwrap();
                     zip.write_all(xml.as_bytes()).unwrap();
                 }
                 zip.finish().unwrap();
@@ -1679,7 +1887,10 @@ mod tests {
             std::fs::write(path, &buf).expect("write temp file");
         }
 
-        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let path = std::env::temp_dir().join(format!("rescan_hash_test_{nanos}.3mf"));
         write_3mf(&path, None);
 
@@ -1687,7 +1898,9 @@ mod tests {
         let imported = import_one(&mut conn, &path, None, None, None).expect("initial import");
         let id: i64 = imported.id.parse().unwrap();
 
-        let before = db::get_file(&conn, id).expect("get_file").expect("file exists");
+        let before = db::get_file(&conn, id)
+            .expect("get_file")
+            .expect("file exists");
         let hash_before = before.content_hash.clone();
         let size_before = before.file_size_bytes;
 
@@ -1708,16 +1921,31 @@ mod tests {
 
         rescan_file(&mut conn, id).expect("rescan should succeed");
 
-        let after = db::get_file(&conn, id).expect("get_file").expect("file exists");
-        assert_ne!(after.file_size_bytes, size_before, "file_size_bytes must reflect rescanned content");
-        assert_ne!(after.content_hash, hash_before, "content_hash must reflect rescanned content");
-        assert_eq!(after.content_hash, Some(expected_hash), "content_hash must match hash of new disk content");
+        let after = db::get_file(&conn, id)
+            .expect("get_file")
+            .expect("file exists");
+        assert_ne!(
+            after.file_size_bytes, size_before,
+            "file_size_bytes must reflect rescanned content"
+        );
+        assert_ne!(
+            after.content_hash, hash_before,
+            "content_hash must reflect rescanned content"
+        );
+        assert_eq!(
+            after.content_hash,
+            Some(expected_hash),
+            "content_hash must match hash of new disk content"
+        );
 
         let _ = std::fs::remove_file(&path);
     }
     #[test]
     fn rescan_file_returns_error_when_file_missing_on_disk() {
-        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let path = std::env::temp_dir().join(format!("rescan_missing_test_{nanos}.3mf"));
         // Nie geschrieben - Datei existiert nicht auf der Platte.
 
@@ -1831,8 +2059,15 @@ mod tests {
         let colliding_target_path = dir.join("target/model.3mf");
 
         let conn = db::connect_in_memory().unwrap();
-        let folder_id = db::insert_folder_with_parent(&conn, "target", None, &dir.join("target").to_string_lossy()).unwrap();
-        let file_id = db::test_insert_minimal_file(&conn, &src_path.to_string_lossy(), None).unwrap();
+        let folder_id = db::insert_folder_with_parent(
+            &conn,
+            "target",
+            None,
+            &dir.join("target").to_string_lossy(),
+        )
+        .unwrap();
+        let file_id =
+            db::test_insert_minimal_file(&conn, &src_path.to_string_lossy(), None).unwrap();
         // Eine ZWEITE Datei-Zeile, deren `path` bereits exakt dem Zielpfad
         // entspricht, den move_file_to_folder_with_conn gleich physisch
         // anlegen wird. files.path ist UNIQUE (schema.sql) - das nachfolgende
@@ -1840,18 +2075,34 @@ mod tests {
         // dadurch garantiert NACH dem bereits erfolgreichen physischen Move
         // fehl (nicht schon bei get_file() wie in der urspruenglichen,
         // fehlerhaften Testfassung).
-        db::test_insert_minimal_file(&conn, &colliding_target_path.to_string_lossy(), Some(folder_id)).unwrap();
+        db::test_insert_minimal_file(
+            &conn,
+            &colliding_target_path.to_string_lossy(),
+            Some(folder_id),
+        )
+        .unwrap();
 
         let result = move_file_to_folder_with_conn(&conn, file_id, Some(folder_id), &[]);
 
-        assert!(result.is_err(), "must surface the UNIQUE constraint failure from the DB update");
-        assert!(src_path.exists(), "source file must be moved back after the DB update failed");
         assert!(
-            !colliding_target_path.exists() || std::fs::read(&colliding_target_path).unwrap() != b"CONTENT",
+            result.is_err(),
+            "must surface the UNIQUE constraint failure from the DB update"
+        );
+        assert!(
+            src_path.exists(),
+            "source file must be moved back after the DB update failed"
+        );
+        assert!(
+            !colliding_target_path.exists()
+                || std::fs::read(&colliding_target_path).unwrap() != b"CONTENT",
             "the orphaned copy at the destination must not remain with the moved file's content"
         );
         let file_after = db::get_file(&conn, file_id).unwrap().unwrap();
-        assert_eq!(file_after.path, src_path.to_string_lossy(), "DB must still point at the original path");
+        assert_eq!(
+            file_after.path,
+            src_path.to_string_lossy(),
+            "DB must still point at the original path"
+        );
     }
     #[test]
     fn collect_supported_files_does_not_follow_a_self_referential_symlink() {
@@ -1883,7 +2134,11 @@ mod tests {
         let mut out = Vec::new();
         collect_supported_files(&root, &mut out);
 
-        assert_eq!(out.len(), 1, "must not traverse into the externally-linked directory");
+        assert_eq!(
+            out.len(),
+            1,
+            "must not traverse into the externally-linked directory"
+        );
         assert_eq!(out[0], root.join("cube.3mf"));
     }
     #[test]
@@ -1900,7 +2155,11 @@ mod tests {
         let mut out = Vec::new();
         collect_supported_files(&root, &mut out);
 
-        assert_eq!(out.len(), 1, "must not follow a file symlink, even one matching the supported extension");
+        assert_eq!(
+            out.len(),
+            1,
+            "must not follow a file symlink, even one matching the supported extension"
+        );
         assert_eq!(out[0], root.join("cube.3mf"));
     }
     #[test]
@@ -1914,7 +2173,10 @@ mod tests {
 
         use sha2::{Digest, Sha256};
         let expected = format!("{:x}", Sha256::digest(&content));
-        assert_eq!(streamed, expected, "streaming hash must match full-buffer hash for identical content");
+        assert_eq!(
+            streamed, expected,
+            "streaming hash must match full-buffer hash for identical content"
+        );
     }
     #[test]
     fn compute_content_hash_does_not_allocate_proportional_to_file_size() {
@@ -1942,9 +2204,18 @@ mod tests {
         // vor jeder Schreiboperation ab, aber der Test bleibt aussagekraeftig:
         // keines der gueltigen Updates darf trotzdem committed sein).
         let updates = vec![
-            QueuePositionUpdate { file_id: id1.to_string(), position: 1 },
-            QueuePositionUpdate { file_id: "999999".to_string(), position: 2 },
-            QueuePositionUpdate { file_id: id2.to_string(), position: 3 },
+            QueuePositionUpdate {
+                file_id: id1.to_string(),
+                position: 1,
+            },
+            QueuePositionUpdate {
+                file_id: "999999".to_string(),
+                position: 2,
+            },
+            QueuePositionUpdate {
+                file_id: id2.to_string(),
+                position: 3,
+            },
         ];
 
         let result = reorder_queue_with_conn(&mut conn, updates);
@@ -1952,8 +2223,14 @@ mod tests {
         assert!(result.is_err());
         let file1 = db::get_file(&conn, id1).unwrap().unwrap();
         let file2 = db::get_file(&conn, id2).unwrap().unwrap();
-        assert_eq!(file1.queue_position, None, "kein Teil-Update darf committed sein");
-        assert_eq!(file2.queue_position, None, "kein Teil-Update darf committed sein");
+        assert_eq!(
+            file1.queue_position, None,
+            "kein Teil-Update darf committed sein"
+        );
+        assert_eq!(
+            file2.queue_position, None,
+            "kein Teil-Update darf committed sein"
+        );
     }
     #[test]
     fn a_fully_valid_queue_reorder_batch_remains_functionally_identical() {
@@ -1961,17 +2238,30 @@ mod tests {
         let id1 = db::test_insert_minimal_file(&conn, "/tmp/1.3mf", None).unwrap();
         let id2 = db::test_insert_minimal_file(&conn, "/tmp/2.3mf", None).unwrap();
         let updates = vec![
-            QueuePositionUpdate { file_id: id1.to_string(), position: 1 },
-            QueuePositionUpdate { file_id: id2.to_string(), position: 2 },
+            QueuePositionUpdate {
+                file_id: id1.to_string(),
+                position: 1,
+            },
+            QueuePositionUpdate {
+                file_id: id2.to_string(),
+                position: 2,
+            },
         ];
 
         reorder_queue_with_conn(&mut conn, updates).unwrap();
 
-        assert_eq!(db::get_file(&conn, id1).unwrap().unwrap().queue_position, Some(1));
-        assert_eq!(db::get_file(&conn, id2).unwrap().unwrap().queue_position, Some(2));
+        assert_eq!(
+            db::get_file(&conn, id1).unwrap().unwrap().queue_position,
+            Some(1)
+        );
+        assert_eq!(
+            db::get_file(&conn, id2).unwrap().unwrap().queue_position,
+            Some(2)
+        );
     }
     #[test]
-    fn queue_reorder_batch_rolls_back_an_already_applied_earlier_update_when_a_later_one_fails_inside_the_transaction() {
+    fn queue_reorder_batch_rolls_back_an_already_applied_earlier_update_when_a_later_one_fails_inside_the_transaction(
+    ) {
         // Die obige "all_or_nothing"-Variante scheitert bereits in der
         // Upfront-Validierung (VOR jeder Schreiboperation) - sie beweist also
         // nicht, dass die Transaktion selbst ein Rollback durchfuehrt. Dieser
@@ -1997,14 +2287,26 @@ mod tests {
         .unwrap();
 
         let updates = vec![
-            QueuePositionUpdate { file_id: id1.to_string(), position: 10 },
-            QueuePositionUpdate { file_id: id2.to_string(), position: 20 },
-            QueuePositionUpdate { file_id: id3.to_string(), position: 30 },
+            QueuePositionUpdate {
+                file_id: id1.to_string(),
+                position: 10,
+            },
+            QueuePositionUpdate {
+                file_id: id2.to_string(),
+                position: 20,
+            },
+            QueuePositionUpdate {
+                file_id: id3.to_string(),
+                position: 30,
+            },
         ];
 
         let result = reorder_queue_with_conn(&mut conn, updates);
 
-        assert!(result.is_err(), "must surface the trigger-raised failure on the second update");
+        assert!(
+            result.is_err(),
+            "must surface the trigger-raised failure on the second update"
+        );
         let file1 = db::get_file(&conn, id1).unwrap().unwrap();
         assert_eq!(
             file1.queue_position, None,
@@ -2050,16 +2352,37 @@ mod tests {
         assert!(is_supported_extension(Path::new("teil.OBJ")));
         assert!(is_sliceable_extension(Path::new("teil.obj")));
     }
+    #[cfg(not(feature = "step-preview"))]
     #[test]
-    fn import_one_catalogs_an_stp_file_without_a_3d_preview() {
+    fn step_metadata_yields_nothing_when_the_feature_is_off() {
+        let path = unique_test_dir("step_metadata_feature_off").join("teil.stp");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"ISO-10303-21;\nHEADER;\nENDSEC;\nEND-ISO-10303-21;").unwrap();
+
+        assert_eq!(step_metadata(&path), (None, None, None));
+    }
+    #[cfg(feature = "step-preview")]
+    #[test]
+    fn step_metadata_yields_nothing_for_an_empty_step_document() {
+        let path = unique_test_dir("step_metadata_empty").join("teil.stp");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"ISO-10303-21;\nHEADER;\nENDSEC;\nEND-ISO-10303-21;").unwrap();
+
+        assert_eq!(step_metadata(&path), (None, None, None));
+    }
+    #[test]
+    fn import_one_catalogs_an_empty_stp_file_without_metadata() {
         let path = unique_test_dir("import_stp").join("teil.stp");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, b"ISO-10303-21;\nHEADER;\nENDSEC;\nEND-ISO-10303-21;").unwrap();
 
         let mut conn = crate::db::connect_in_memory().expect("connect");
-        let dto = import_one(&mut conn, &path, None, None, None).expect("stp import should succeed");
+        let dto =
+            import_one(&mut conn, &path, None, None, None).expect("stp import should succeed");
 
-        let stored = crate::db::get_file(&conn, dto.id.parse().unwrap()).expect("query").expect("present");
+        let stored = crate::db::get_file(&conn, dto.id.parse().unwrap())
+            .expect("query")
+            .expect("present");
         assert_eq!(stored.file_type, FileType::Stp);
         assert_eq!(stored.dimensions_mm, None);
         assert_eq!(stored.thumbnail_png, None);
@@ -2073,14 +2396,17 @@ mod tests {
         std::fs::write(&path, b"ISO-10303-21;\nHEADER;\nENDSEC;\nEND-ISO-10303-21;").unwrap();
 
         let mut conn = crate::db::connect_in_memory().expect("connect");
-        let dto = import_one(&mut conn, &path, None, None, None).expect(".step import should succeed");
+        let dto =
+            import_one(&mut conn, &path, None, None, None).expect(".step import should succeed");
 
-        let stored = crate::db::get_file(&conn, dto.id.parse().unwrap()).expect("query").expect("present");
+        let stored = crate::db::get_file(&conn, dto.id.parse().unwrap())
+            .expect("query")
+            .expect("present");
         assert_eq!(stored.file_type, FileType::Stp);
         assert_eq!(stored.file_type.as_str(), "stp");
     }
     #[test]
-    fn rescan_file_refreshes_an_stp_file_without_error() {
+    fn rescan_file_refreshes_an_empty_stp_file_without_error() {
         let path = unique_test_dir("rescan_stp").join("teil.stp");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, b"ISO-10303-21;\nHEADER;\nENDSEC;\nEND-ISO-10303-21;").unwrap();
@@ -2106,9 +2432,12 @@ mod tests {
         .unwrap();
 
         let mut conn = crate::db::connect_in_memory().expect("connect");
-        let dto = import_one(&mut conn, &path, None, None, None).expect("obj import should succeed");
+        let dto =
+            import_one(&mut conn, &path, None, None, None).expect("obj import should succeed");
 
-        let stored = crate::db::get_file(&conn, dto.id.parse().unwrap()).expect("query").expect("present");
+        let stored = crate::db::get_file(&conn, dto.id.parse().unwrap())
+            .expect("query")
+            .expect("present");
         assert_eq!(stored.file_type, FileType::Obj);
         assert_eq!(stored.dimensions_mm, Some([10.0, 10.0, 10.0]));
         assert!(stored.volume_cm3.unwrap() > 0.0);
@@ -2122,7 +2451,11 @@ mod tests {
     fn rescan_file_refreshes_an_obj_file() {
         let path = unique_test_dir("rescan_obj").join("wuerfel.obj");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, "v 0.0 0.0 0.0\nv 1.0 0.0 0.0\nv 0.0 1.0 0.0\nf 1 2 3\n").unwrap();
+        std::fs::write(
+            &path,
+            "v 0.0 0.0 0.0\nv 1.0 0.0 0.0\nv 0.0 1.0 0.0\nf 1 2 3\n",
+        )
+        .unwrap();
 
         let mut conn = crate::db::connect_in_memory().expect("connect");
         let dto = import_one(&mut conn, &path, None, None, None).expect("import should succeed");

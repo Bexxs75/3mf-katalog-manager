@@ -7,6 +7,12 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
+### Added
+
+- Die Linux-Fassung erzeugt für STEP-Dateien (`.stp`/`.step`) jetzt eine echte 3D-Vorschau und ermittelt Abmessungen, Volumen sowie Körperzahl über Open CASCADE Technology (OCCT). Baugruppen werden bewusst als ein gemeinsames Vorschaunetz dargestellt; STEP bleibt nicht direkt im Slicer öffnbar. Fehlerhafte oder zu große STEP-Dateien bleiben ohne automatisch ermittelte Metadaten im Katalog, statt den Import abzubrechen.
+- Die OCCT-Anbindung ist das einzige Default-Cargo-Feature (`step-preview`) und lässt sich mit `--no-default-features` vollständig aus dem Build entfernen. Die offiziellen Windows- und macOS-Pakete nutzen vorerst diese OCCT-freie Variante, bis ein austauschbares DLL-/Universal-Dylib-Paket verifiziert ist.
+- Open CASCADE wird dynamisch unter LGPL-2.1 mit Open-CASCADE-Ausnahme eingebunden. Vollständige Lizenztexte, Quellenhinweise und der dokumentierte `opencascade-sys`-Kompatibilitäts-Fork werden mit dem Quellcode beziehungsweise Programmpaket bereitgestellt; Details stehen in `THIRD-PARTY-LICENSES.md`.
+
 ## [0.11.0] - 2026-09-20
 
 ### Added
@@ -323,6 +329,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
 ## [Unreleased]
+
+### Added
+
+- The Linux build now creates a real 3D preview for STEP files (`.stp`/`.step`) and derives dimensions, volume, and body count through Open CASCADE Technology (OCCT). Assemblies are deliberately displayed as one combined preview mesh; STEP remains unavailable for direct slicer launch. Invalid or oversized STEP files stay cataloged without automatically derived metadata instead of aborting the import.
+- The OCCT integration is the only default Cargo feature (`step-preview`) and can be removed completely with `--no-default-features`. The official Windows and macOS packages initially use this OCCT-free variant until replaceable DLL/universal-dylib packaging has been verified.
+- Open CASCADE is dynamically linked under LGPL-2.1 with the Open CASCADE exception. Full license texts, source information, and the documented `opencascade-sys` compatibility fork are included with the source or application bundle; see `THIRD-PARTY-LICENSES.md`.
 
 ## [0.11.0] - 2026-09-20
 

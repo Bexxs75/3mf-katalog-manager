@@ -37,8 +37,10 @@ importierst, organisierst, druckfertig machst und dein Filament-Lager verwaltest
 Der 3MF Katalog Manager ist ein Desktop-Programm, mit dem du eine große Sammlung von
 3D-Druck-Dateien (`.3mf`, `.stl`, `.obj` sowie CAD-Quelldateien im `.stp`-/`.step`-Format) übersichtlich verwalten kannst: mit Vorschaubildern,
 Ordnern, Tags, Suche, einem eigenen Lager für deine Filamentspulen und einem direkten Weg, ein
-Modell mit einem Klick in deinem Slicer-Programm zu öffnen. Alles läuft lokal auf deinem
-Rechner — es gibt keine Cloud-Anbindung, deine Daten verlassen deinen Computer nicht.
+Modell mit einem Klick in deinem Slicer-Programm zu öffnen. Die Linux-Fassung erzeugt über Open
+CASCADE auch für STEP-Dateien eine 3D-Vorschau und liest Maße, Volumen und Körperzahl aus. Alles
+läuft lokal auf deinem Rechner — es gibt keine Cloud-Anbindung, deine Daten verlassen deinen
+Computer nicht.
 
 ## Installation
 
@@ -307,7 +309,8 @@ fest, welcher Slicer beim Öffnen eines Modells als **Standard** verwendet wird.
 
 ![Einstellungen: Info mit Update-Check](bilder/20-einstellungen-info-update.png)
 
-Zeigt die installierte Version sowie Links zu Quellcode und Lizenz. Beim Start der App wird
+Zeigt die installierte Version sowie Links zu Quellcode, Anwendungslizenz und den Lizenzen der
+Drittanbieter-Komponenten. Beim Start der App wird
 einmalig im Hintergrund still geprüft, ob auf GitHub eine neuere Version vorliegt — es wird
 **nichts automatisch heruntergeladen**. Ist eine neuere Version verfügbar, erscheint unten rechts
 ein wegklickbarer Hinweis mit einem "Herunterladen"-Knopf, der die passende Release-Seite im
@@ -330,6 +333,9 @@ unwiderruflich überschreibt.
 
 ## Bekannte Einschränkungen
 
+- Die **3D-Vorschau und automatisch ermittelten CAD-Metadaten für STEP-Dateien** sind zunächst nur
+  in der Linux-Fassung enthalten. Die offiziellen Windows- und macOS-Pakete katalogisieren
+  `.stp`/`.step` weiterhin, zeigen diese Dateien aber ohne 3D-Vorschau an.
 - **"In Slicer öffnen" unter macOS** funktioniert derzeit nicht zuverlässig, da Slicer dort meist
   als `.app`-Bundle installiert sind (eigener Start-Mechanismus statt einer direkt ausführbaren
   Datei). Auf Linux und Windows ist die Funktion uneingeschränkt nutzbar.
@@ -407,7 +413,8 @@ for printing, and managing your filament stock.
 The 3MF Katalog Manager is a desktop application for keeping a large collection of 3D-printing
 files (`.3mf`, `.stl`, `.obj`, and CAD source files in `.stp`/`.step` format) organized: with preview images, folders, tags, search, a dedicated
 stock manager for your filament spools, and a one-click way to open a model in your slicer of
-choice. Everything runs locally on your machine — there's no cloud connection, and your data
+choice. On Linux, Open CASCADE also provides a 3D preview and extracts dimensions, volume, and
+body count from STEP files. Everything runs locally on your machine — there's no cloud connection, and your data
 never leaves your computer.
 
 ## Installation
@@ -665,7 +672,8 @@ including self-built or modified versions. The radio button sets which slicer is
 
 ![Settings: Info with update check](bilder/20-einstellungen-info-update.png)
 
-Shows the installed version plus links to the source code and license. On startup, the app
+Shows the installed version plus links to the source code, application license, and third-party
+licenses. On startup, the app
 silently checks once in the background whether a newer version is available on GitHub —
 **nothing is downloaded automatically**. If a newer version exists, a dismissible hint appears
 bottom-right with a "Download" button that opens the matching release page in your default
@@ -686,6 +694,9 @@ overwrites anything irreversibly.
 
 ## Known limitations
 
+- **3D preview and automatically derived CAD metadata for STEP files** are initially available only
+  in the Linux build. The official Windows and macOS packages still catalog `.stp`/`.step`, but
+  display those files without a 3D preview.
 - **"Open in slicer" on macOS** currently doesn't work reliably, since slicers there are usually
   installed as `.app` bundles (their own launch mechanism instead of a directly executable file).
   On Linux and Windows, the feature works without restrictions.

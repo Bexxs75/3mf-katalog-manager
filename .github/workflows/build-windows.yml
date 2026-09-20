@@ -22,10 +22,14 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build Tauri app (Windows MSI)
+      # STEP-Vorschau bleibt aus, bis OCCT samt austauschbaren DLLs verifiziert
+      # paketiert werden kann. So enthaelt dieser Build keinen LGPL-Anteil.
+      - name: Build Tauri app (Windows MSI, without STEP preview)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: -- --no-default-features
 
       - name: Upload MSI artifact
         uses: actions/upload-artifact@v4

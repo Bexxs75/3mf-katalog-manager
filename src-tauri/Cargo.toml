@@ -18,6 +18,15 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[features]
+# Einziges Default-Feature. Der Build OHNE STEP-Vorschau entsteht mit
+# `--no-default-features`; er braucht dann weder OCCT noch cmake und enthaelt
+# keinen LGPL-Anteil (kommerzieller Build, siehe THIRD-PARTY-LICENSES.md).
+# WICHTIG: Das muss das einzige Default-Feature bleiben - kaeme ein zweites
+# dazu, wuerde `--no-default-features` dieses mit abschalten.
+default = ["step-preview"]
+step-preview = ["dep:cxx", "dep:opencascade-sys"]
+
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = { version = "2", default-features = false, features = ["xdg-portal"] }
@@ -30,6 +39,20 @@ rusqlite = { version = "0.40.2", features = ["bundled", "backup", "trace"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 base64 = "0.22"
 sha2 = "0.10"
+cxx = { version = "1", optional = true }
+# STEP-Vorschau (Version 2): rohe OCCT-Bindings. Bewusst OHNE das Feature
+# `builtin` - das wuerde OCCT aus dem Quelltext bauen und STATISCH linken, was
+# die LGPL-Pflicht ausloest (relinkbare Objektdateien an jeden Empfaenger).
+# Dynamisch gelinkt bleibt OCCT austauschbar; siehe THIRD-PARTY-LICENSES.md.
+opencascade-sys = { version = "0.3", optional = true }
+
+# Der Patch ersetzt die crates.io-Fassung durch die geforkte Kopie in
+# `vendor/opencascade-sys` - noetig, weil 0.3.0 gegen OCCT 7.9 nicht uebersetzt.
+# Nur zwei Aenderungen gegenueber upstream (TopoDS-Namensraum, CMake-Mindest-
+# version); Begruendung und Pflegehinweise stehen in
+# `vendor/opencascade-sys/VENDORING.md`.
+[patch.crates-io]
+opencascade-sys = { path = "vendor/opencascade-sys" }
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

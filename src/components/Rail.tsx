@@ -444,9 +444,18 @@ export function Rail({
                     Discord
                   </span>
                 </div>
-                <div className="flex justify-between text-[11.5px] py-1 text-[var(--ink-2)]">
+                <div className="flex justify-between text-[11.5px] py-1 border-t border-[var(--line)] text-[var(--ink-2)]">
                   <span>{t('infoLicenseLabel')}</span>
                   <span>MIT</span>
+                </div>
+                <div className="flex justify-between text-[11.5px] py-1 text-[var(--ink-2)]">
+                  <span>{t('infoThirdPartyLicensesLabel')}</span>
+                  <span
+                    onClick={() => invoke('open_release_url', { url: 'https://github.com/Bexxs75/3mf-katalog-manager/blob/master/THIRD-PARTY-LICENSES.md' }).catch(() => {})}
+                    className="cursor-pointer hover:text-[var(--accent)]"
+                  >
+                    Open CASCADE (LGPL-2.1)
+                  </span>
                 </div>
               </>
             )}

@@ -268,6 +268,7 @@ export interface Translations {
   infoSourceCodeLabel: string;
   infoCommunityLabel: string;
   infoLicenseLabel: string;
+  infoThirdPartyLicensesLabel: string;
   updateToastText: string;
   updateToastDownloadLabel: string;
 }

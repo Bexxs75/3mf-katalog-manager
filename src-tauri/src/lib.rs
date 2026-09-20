@@ -3,6 +3,8 @@ mod db;
 mod geometry;
 mod obj;
 mod slicers;
+#[cfg(feature = "step-preview")]
+pub mod step;
 mod stl;
 mod tagging;
 mod threemf;

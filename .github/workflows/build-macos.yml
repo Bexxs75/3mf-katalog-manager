@@ -24,12 +24,14 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build Tauri app (universal macOS binary)
+      # Homebrew liefert OCCT nur fuer die jeweilige Host-Architektur. Bis ein
+      # austauschbares Universal-OCCT-Paket existiert, bleibt STEP hier aus.
+      - name: Build Tauri app (universal macOS binary, without STEP preview)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          args: --target universal-apple-darwin
+          args: --target universal-apple-darwin -- --no-default-features
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
