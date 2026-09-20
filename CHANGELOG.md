@@ -7,6 +7,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-20
+
 ### Added
 
 - Modelle lassen sich jetzt direkt umbenennen: Kontextmenü → "Umbenennen", inline im selben Popup wie die Löschen-Bestätigung. Die Dateiendung (.3mf/.stl) wird dabei fest angezeigt und ist nicht editierbar. Verschiebt eine Umbenennung das Modell (Standardsortierung nach Name) aus dem sichtbaren Bereich, scrollt die Ansicht automatisch dorthin.
@@ -308,6 +310,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
 ## [Unreleased]
+
+## [0.10.0] - 2026-09-20
 
 ### Added
 
