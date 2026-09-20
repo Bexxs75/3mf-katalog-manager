@@ -6,12 +6,12 @@ const MAX_CUSTOM_IMAGE_BYTES: usize = 5 * 1024 * 1024; // 5 MB
 const MAX_RENDER_SNAPSHOT_BASE64_BYTES: usize = MAX_CUSTOM_IMAGE_BYTES / 3 * 4 + 4;
 
 /// Schlanke Projektion von `ModelFileDto` fuer die Katalog-Uebersicht
-/// (Grid/Liste, siehe Finding M-01): enthaelt bewusst KEIN
-/// `renderSnapshotImage`/`customImage` und KEINE `materials`/`tags` -
-/// diese werden nur auf der Detailseite ueber `list_files_by_ids([id])`
-/// nachgeladen. `thumbnailImage` bleibt enthalten, da die Kachel-/
-/// Grid-Vorschau ein kleines Bild pro Zeile braucht (Variante (a) aus dem
-/// Task-6-Brief).
+/// (Grid/Liste, siehe Finding M-01): enthaelt bewusst KEIN `customImage`
+/// und KEINE `materials`/`tags` - diese werden nur auf der Detailseite ueber
+/// `list_files_by_ids([id])` nachgeladen. `thumbnailImage` UND
+/// `renderSnapshotImage` bleiben enthalten (siehe Kommentar an
+/// `db::FileSummary` fuer die Vermessung, die den urspruenglichen Ausschluss
+/// von `renderSnapshotImage` widerlegt hat - Bugfix 2026-09-20).
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileSummaryDto {
@@ -34,8 +34,9 @@ pub struct FileSummaryDto {
     pub favorite: bool,
     pub queue_position: Option<i64>,
     pub thumbnail_image: Option<String>,
-    // Finding 1 (Abschluss-Review): billiges Praesenz-Flag statt des Blobs
-    // selbst - siehe Kommentar an `db::FileSummary::has_render_snapshot`.
+    pub render_snapshot_image: Option<String>,
+    // Praktisch redundant, seit renderSnapshotImage selbst mitgeliefert
+    // wird - siehe Kommentar an `db::FileSummary::has_render_snapshot`.
     pub has_render_snapshot: bool,
 }
 #[derive(Debug, Serialize)]
@@ -117,6 +118,7 @@ pub fn list_file_summaries(state: State<AppState>) -> CmdResult<Vec<FileSummaryD
             favorite: s.favorite,
             queue_position: s.queue_position,
             thumbnail_image: encode_image(s.thumbnail_png),
+            render_snapshot_image: encode_image(s.render_snapshot_png),
             has_render_snapshot: s.has_render_snapshot,
         })
         .collect())

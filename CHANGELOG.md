@@ -16,6 +16,10 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Die Slicer-Registrierung (Name, Programmpfad, automatisch erkannt oder manuell hinzugefügt) lebt jetzt in der Katalog-Datenbank statt in localStorage. Beim ersten Start nach dem Update werden nur automatisch erkennbare Slicer (Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura an bekannten Installationsorten) erneut per Startup-Scan gefunden; manuell hinzugefügte, individuelle Programmpfade werden beim Upgrade NICHT übernommen und müssen bei Bedarf neu eingerichtet werden. Beim Wiederherstellen eines Katalog-Backups bleiben lokal registrierte Slicer unverändert erhalten; Slicer-Einträge, die im Backup selbst enthalten waren (z.B. von einem anderen Rechner), werden dabei NICHT übernommen und müssen bei Bedarf manuell neu hinzugefügt werden — lokale Slicer-Konfiguration geht durch ein Backup-Restore also nie verloren.
 - Der zuvor beim Export exportierte, aber nirgends mehr benötigte localStorage-Schlüssel für die alte, lokale Slicer-Liste wird nicht mehr in Katalog-Backups aufgenommen (konnte dort einen maschinenlokalen Programmpfad hinterlassen).
 
+### Fixed
+
+- Katalog-Übersicht (Raster/Ordner/Liste) zeigte bereits im Hintergrund gerenderte 3D-Vorschauen nicht an, solange ein Modell nicht einzeln geöffnet wurde: die schlanke Summary-Abfrage für die Übersicht ließ den gerenderten Snapshot bewusst weg (in der Annahme, er sei "der große Blob"), obwohl er im Schnitt kleiner ist als das ohnehin mitgelieferte eingebettete Vorschaubild (~8,9 KB vs. ~54 KB). Modelle ohne eigenes Vorschaubild (z. B. STL-Dateien) zeigten deshalb dauerhaft nur den leeren "3D Vorschau"-Platzhalter, obwohl in der Datenbank längst ein fertiger Snapshot lag.
+
 ## [0.8.0] - 2026-09-19
 
 ### Added
@@ -288,6 +292,10 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 - Slicer registration (name, executable path, auto-detected or manually added) now lives in the catalog database instead of localStorage. On first launch after the update, only automatically detectable slicers (Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura at known install locations) are re-found by the startup scan; manually added, custom executable paths are NOT carried over across the upgrade and must be re-added if still needed. Restoring a catalog backup leaves locally registered slicers untouched; slicer entries that were part of the backup itself (e.g. from a different machine) are NOT restored and must be re-added manually if needed — local slicer configuration is therefore never lost through a backup restore.
 - The previously exported, but no-longer-used localStorage key for the old, local slicer list is no longer included in catalog backups (it could have leaked a machine-local executable path).
+
+### Fixed
+
+- The catalog overview (grid/folder/list) didn't show 3D previews already rendered in the background unless a model was opened individually: the slim summary query for the overview deliberately left out the rendered snapshot (assuming it was "the large blob"), even though it's on average smaller than the embedded thumbnail that was already included (~8.9 KB vs. ~54 KB). Models without their own embedded thumbnail (e.g. STL files) therefore permanently showed only the empty "3D preview" placeholder, even though a finished snapshot had long been saved in the database.
 
 ## [0.8.0] - 2026-09-19
 

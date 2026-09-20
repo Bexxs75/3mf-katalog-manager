@@ -238,11 +238,10 @@ describe('useCatalogStore', () => {
   });
 
   it('pendingSnapshotIds lists models without a render snapshot and skipSnapshot removes them', async () => {
-    // list_file_summaries traegt nie den grossen renderSnapshotImage-Blob
-    // (Finding M-01), aber seit Finding 1 sehr wohl das billige
-    // `hasRenderSnapshot`-Praesenz-Flag - m2 gilt deshalb von Anfang an
-    // korrekt als "hat bereits einen Snapshot", ganz ohne dass zuerst
-    // selectModel() die vollen Daten nachladen muesste.
+    // list_file_summaries traegt seit dem Bugfix vom 2026-09-20 den echten
+    // renderSnapshotImage-Blob mit - m2 gilt deshalb von Anfang an korrekt
+    // als "hat bereits einen Snapshot", ganz ohne dass zuerst selectModel()
+    // die vollen Daten nachladen muesste.
     mockInitialLoad([
       makeModelFile({ id: 'm1', renderSnapshotImage: null }),
       makeModelFile({ id: 'm2', renderSnapshotImage: 'data:image/png;base64,xx' }),
@@ -256,21 +255,22 @@ describe('useCatalogStore', () => {
     expect(result.current.pendingSnapshotIds).toEqual(['m3']);
   });
 
-  it('Finding 1: a model with a saved snapshot loaded only via the summary path is never pending', async () => {
-    // Regression: vor dem Fix hardcodete summaryToModelFile()
-    // renderSnapshotImage IMMER auf null, wodurch pendingSnapshotIds jedes
-    // frisch geladene Modell als "braucht Snapshot" wertete - unabhaengig
-    // davon, ob in der DB bereits einer gespeichert war. m1 hat hier laut
-    // Summary-Flag (hasRenderSnapshot: true) bereits einen Snapshot und darf
-    // deshalb zu KEINEM Zeitpunkt in pendingSnapshotIds auftauchen, auch
-    // nicht direkt nach dem initialen Laden (bevor ensureFullModel je lief).
+  it('Finding 1 + Bugfix 2026-09-20: a model with a saved snapshot loaded only via the summary path is never pending and shows its snapshot', async () => {
+    // Doppelte Regression, beide bereits behoben: (1, Finding 1) vor jenem
+    // Fix hardcodete summaryToModelFile() renderSnapshotImage IMMER auf
+    // null, wodurch pendingSnapshotIds jedes frisch geladene Modell als
+    // "braucht Snapshot" wertete, unabhaengig vom tatsaechlichen DB-Stand.
+    // (2, 2026-09-20) list_file_summaries selbst lieferte den Blob dann zwar
+    // korrekt NICHT als "braucht Snapshot", aber auch nie den Blob selbst,
+    // wodurch das Grid einen laengst gerenderten Snapshot nicht anzeigte,
+    // bevor ensureFullModel() lief. m1 hat hier bereits einen Snapshot und
+    // muss deshalb sofort (schon aus der Summary, vor jedem ensureFullModel)
+    // sowohl sein Bild zeigen als auch aus pendingSnapshotIds fernbleiben.
     mockInitialLoad([makeModelFile({ id: 'm1', renderSnapshotImage: 'data:image/png;base64,yy' })]);
     const { result } = renderHook(() => useCatalogStore());
     await waitFor(() => expect(result.current.models).toHaveLength(1));
 
-    // Frisch aus der Summary geladen: der Blob selbst ist (korrekt) null...
-    expect(result.current.models[0].renderSnapshotImage).toBeNull();
-    // ...aber pendingSnapshotIds darf sich davon nicht taeuschen lassen.
+    expect(result.current.models[0].renderSnapshotImage).toBe('data:image/png;base64,yy');
     expect(result.current.pendingSnapshotIds).toEqual([]);
   });
 

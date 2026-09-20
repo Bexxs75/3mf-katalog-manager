@@ -38,12 +38,12 @@ function summaryToModelFile(s: ModelFileSummary): ModelFile {
     creator: null,
     customImage: null,
     thumbnailImage: s.thumbnailImage,
-    // Der grosse Blob selbst kommt nie aus list_file_summaries (siehe oben) -
-    // ob dieses Modell TATSAECHLICH bereits einen gespeicherten Snapshot hat,
-    // steht in `s.hasRenderSnapshot` (Finding 1) und wird separat in
-    // `useCatalogStore` fuer `pendingSnapshotIds` ausgewertet, nicht hier
-    // gegen `renderSnapshotImage === null` verwechselt.
-    renderSnapshotImage: null,
+    // Bugfix (2026-09-20): list_file_summaries liefert render_snapshot_png
+    // jetzt mit (siehe Kommentar an db::FileSummary) - vorher stand hier
+    // hartcodiert `null`, wodurch das Grid einen im Hintergrund bereits
+    // gerenderten Snapshot nie zeigte, bevor das Modell einzeln per
+    // ensureFullModel nachgeladen wurde.
+    renderSnapshotImage: s.renderSnapshotImage,
     sourceUrl: null,
     queuePosition: s.queuePosition,
     favorite: s.favorite,

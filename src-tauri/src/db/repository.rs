@@ -729,13 +729,21 @@ pub fn list_files(conn: &Connection) -> Result<Vec<FileRecord>, DbError> {
 }
 
 /// Schlanke Projektion von `files` fuer die Katalog-Uebersicht (Grid/Liste):
-/// bewusst OHNE `render_snapshot_png`/`custom_image_png` (grosse
-/// Zusatzbilder, nur auf der Detailseite gebraucht) und OHNE
-/// Materials/Metadata/Tags (bislang pro Zeile per `load_materials`/
+/// bewusst OHNE `custom_image_png` (nur auf der Detailseite gebraucht) und
+/// OHNE Materials/Metadata/Tags (bislang pro Zeile per `load_materials`/
 /// `load_metadata`/`load_tags` nachgeladen - genau das N+1-Problem aus
-/// Finding M-01). `thumbnail_png` bleibt enthalten, da die Kachel-/
-/// Grid-Vorschau ohne ein kleines Bild pro Zeile nicht sinnvoll waere
-/// (Variante (a) aus dem Task-6-Brief).
+/// Finding M-01). `thumbnail_png` UND `render_snapshot_png` bleiben
+/// enthalten, da die Kachel-/Grid-Vorschau ohne ein Bild pro Zeile nicht
+/// sinnvoll waere (Variante (a) aus dem Task-6-Brief) - `render_snapshot_png`
+/// wurde hier ursspruenglich (Finding 1, Abschluss-Review) bewusst
+/// ausgeschlossen in der Annahme, es sei "der grosse Blob", was das Grid ohne
+/// individuelles Nachladen jedes Modells (`ensureFullModel`) dauerhaft auf
+/// dem eingebetteten `thumbnail_png` stehen liess, selbst nachdem im
+/// Hintergrund laengst ein Snapshot gerendert und gespeichert wurde. Eine
+/// Vermessung des echten Katalogs widerlegte die Annahme: `render_snapshot_png`
+/// ist im Schnitt KLEINER als `thumbnail_png` (~8,9 KB vs. ~54 KB, Maximum
+/// 29,6 KB vs. 269 KB) - der Ausschluss brachte also keinen Performance-
+/// Vorteil, nur eine kaputte Grid-Anzeige.
 pub struct FileSummary {
     pub id: i64,
     pub name: String,
@@ -751,15 +759,13 @@ pub struct FileSummary {
     pub favorite: bool,
     pub queue_position: Option<i64>,
     pub thumbnail_png: Option<Vec<u8>>,
-    // Finding 1 (Abschluss-Review): NICHT der Blob selbst (der bleibt bewusst
-    // ausgeschlossen), sondern nur ein billiges Praesenz-Flag - damit das
-    // Frontend "braucht dieses Modell noch einen gerenderten Snapshot?" am
-    // tatsaechlichen DB-Stand festmachen kann statt an "wurde der Blob in
-    // diese schlanke Projektion mitgeliefert?" (der es nie wird). Ohne dieses
-    // Flag wertete `pendingSnapshotIds` JEDES per Summary geladene Modell als
-    // "braucht Snapshot", auch wenn bereits einer gespeichert ist - Snapshot-
-    // Rendering + Persistierung fuer den GESAMTEN Katalog bei jedem
-    // refreshFiles() (Import/Delete/Reorder-Fehler/...) statt nur einmalig.
+    pub render_snapshot_png: Option<Vec<u8>>,
+    // Praktisch redundant, seit render_snapshot_png selbst mitgeliefert wird
+    // (`renderSnapshotImage === null` im Frontend bildet den DB-Stand jetzt
+    // direkt ab) - als eigenes Feld belassen, da `pendingSnapshotIds` im
+    // Frontend bereits gegen `summaryConfirmedSnapshotIds` (Finding 1)
+    // gefiltert wird und eine zusaetzliche Entfernung dieser Kette ausserhalb
+    // des Scopes dieses Bugfixes liegt.
     pub has_render_snapshot: bool,
 }
 
@@ -768,7 +774,7 @@ pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbErro
         "SELECT id, name, path, file_type, folder_id, file_size_bytes,
                 dimension_x_mm, dimension_y_mm, dimension_z_mm, volume_cm3,
                 object_count, imported_at, print_status, favorite,
-                queue_position, thumbnail_png,
+                queue_position, thumbnail_png, render_snapshot_png,
                 render_snapshot_png IS NOT NULL AS has_render_snapshot
          FROM files WHERE deleted_at IS NULL ORDER BY name",
     )?;
@@ -797,7 +803,8 @@ pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbErro
                 favorite: row.get::<_, i64>(13)? != 0,
                 queue_position: row.get(14)?,
                 thumbnail_png: row.get(15)?,
-                has_render_snapshot: row.get::<_, i64>(16)? != 0,
+                render_snapshot_png: row.get(16)?,
+                has_render_snapshot: row.get::<_, i64>(17)? != 0,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -1148,23 +1155,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn list_file_summaries_omits_large_blob_columns() {
+    fn list_file_summaries_includes_render_snapshot_but_omits_custom_image() {
         let conn = connect_in_memory().unwrap();
         let file_id = test_insert_minimal_file(&conn, "/tmp/x.3mf", None).unwrap();
         conn.execute(
             "UPDATE files SET render_snapshot_png = ?1, custom_image_png = ?2 WHERE id = ?3",
-            params![vec![0u8; 1024], vec![0u8; 1024], file_id],
+            params![vec![1u8; 1024], vec![2u8; 1024], file_id],
         ).unwrap();
 
         let summaries = list_file_summaries(&conn).unwrap();
 
         assert_eq!(summaries.len(), 1);
-        // FileSummary hat schlicht KEIN Feld fuer render_snapshot_png/custom_image_png -
-        // dieser Test dokumentiert die Absicht ueber die Feldliste des Typs selbst
-        // (Compile-Zeit-Garantie: FileSummary { .. } ohne diese Felder).
-        assert_eq!(summaries[0].thumbnail_png, None);
-        // Finding 1: obwohl der Blob selbst nicht mitkommt, MUSS das Praesenz-
-        // Flag korrekt widerspiegeln, dass ein Snapshot in der DB existiert.
+        // Bugfix (2026-09-20): render_snapshot_png muss mitkommen, sonst zeigt
+        // das Grid nie den im Hintergrund bereits gerenderten Snapshot an,
+        // solange das Modell nicht einzeln per ensureFullModel nachgeladen
+        // wurde - siehe Kommentar an FileSummary. custom_image_png bleibt
+        // dagegen weiterhin ausgeschlossen (FileSummary hat schlicht kein
+        // Feld dafuer - Compile-Zeit-Garantie ueber die Typ-Feldliste).
+        assert_eq!(summaries[0].render_snapshot_png, Some(vec![1u8; 1024]));
         assert!(summaries[0].has_render_snapshot);
     }
 

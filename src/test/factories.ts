@@ -56,11 +56,13 @@ export function makeModelFileSummary(
     favorite: m.favorite,
     queuePosition: m.queuePosition,
     thumbnailImage: m.thumbnailImage,
-    // Standard: leitet sich aus dem ueberschriebenen renderSnapshotImage des
-    // zugrundeliegenden ModelFile ab, damit bestehende Tests, die einen
-    // Snapshot per `renderSnapshotImage` setzen, automatisch konsistente
-    // Summaries erhalten - kann bei Bedarf explizit ueberschrieben werden,
-    // um genau das Finding-1-Szenario (Blob null, Flag true) nachzubilden.
+    // Bugfix (2026-09-20): list_file_summaries liefert render_snapshot_png
+    // jetzt mit, spiegelt hier also den zugrundeliegenden ModelFile-Wert
+    // wider statt hartcodiert null zu sein.
+    renderSnapshotImage: m.renderSnapshotImage,
+    // Standard: leitet sich aus demselben Wert ab - kann bei Bedarf explizit
+    // ueberschrieben werden, um eine Abweichung zwischen Blob und Flag
+    // nachzubilden (z.B. fuer Regressionstests des frueheren Finding-1-Bugs).
     hasRenderSnapshot: overrides.hasRenderSnapshot ?? m.renderSnapshotImage !== null,
   };
 }

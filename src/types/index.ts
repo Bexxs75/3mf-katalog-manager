@@ -59,14 +59,18 @@ export interface ModelFile {
 /**
  * Schlanke Projektion von `ModelFile` fuer die Katalog-Uebersicht (Grid/
  * Liste), gespeist von `list_file_summaries` (Finding M-01: die volle
- * `ModelFile`-Abfrage laedt pro Zeile Materials/Tags/Metadata sowie zwei
- * grosse Zusatzbilder, obwohl die Uebersicht nur eine Kachel-Vorschau
- * braucht). Enthaelt bewusst KEIN `materials`/`tags`/`renderSnapshotImage`/
- * `customImage`/`sliceInfo`/`costEstimate`/`creator`/`sourceUrl`/
- * `lastViewedAt` - `thumbnailImage` bleibt fuer die Kachel-Vorschau
- * erhalten (Variante (a) aus dem Task-6-Brief). Volle Daten werden erst
- * beim Oeffnen der Detailseite/Auswahl ueber `listFilesByIds([id])`
- * nachgeladen (siehe `useCatalogStore.ts`).
+ * `ModelFile`-Abfrage laedt pro Zeile Materials/Tags/Metadata sowie das
+ * grosse `customImage`-Zusatzbild, obwohl die Uebersicht nur eine Kachel-
+ * Vorschau braucht). Enthaelt bewusst KEIN `materials`/`tags`/`customImage`/
+ * `sliceInfo`/`costEstimate`/`creator`/`sourceUrl`/`lastViewedAt` -
+ * `thumbnailImage` UND `renderSnapshotImage` bleiben fuer die Kachel-Vorschau
+ * erhalten (Bugfix 2026-09-20: `renderSnapshotImage` war hier zunaechst
+ * ebenfalls ausgeschlossen, siehe Kommentar an `db::FileSummary` im Backend
+ * fuer die Vermessung, die den Ausschluss widerlegt hat - ohne den Blob
+ * zeigte das Grid nie einen im Hintergrund bereits gerenderten Snapshot,
+ * solange das Modell nicht einzeln per `listFilesByIds` nachgeladen wurde).
+ * Volle Daten werden erst beim Oeffnen der Detailseite/Auswahl ueber
+ * `listFilesByIds([id])` nachgeladen (siehe `useCatalogStore.ts`).
  */
 export interface ModelFileSummary {
   id: string;
@@ -83,9 +87,9 @@ export interface ModelFileSummary {
   favorite: boolean;
   queuePosition: number | null;
   thumbnailImage: string | null;
-  // Finding 1 (Abschluss-Review): billiges Praesenz-Flag statt des grossen
-  // renderSnapshotImage-Blobs - treibt pendingSnapshotIds an, ohne dass
-  // jedes summary-geladene Modell faelschlich als "braucht Snapshot" gilt.
+  renderSnapshotImage: string | null;
+  // Praktisch redundant, seit renderSnapshotImage selbst mitgeliefert wird -
+  // siehe Kommentar an `db::FileSummary::has_render_snapshot`.
   hasRenderSnapshot: boolean;
 }
 
