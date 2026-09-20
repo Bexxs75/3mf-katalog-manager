@@ -3,6 +3,7 @@ use super::*;
 const GITHUB_REPO_URL_PREFIX: &str = "https://github.com/Bexxs75/3mf-katalog-manager/";
 const GITHUB_API_LATEST_RELEASE_URL: &str =
     "https://api.github.com/repos/Bexxs75/3mf-katalog-manager/releases/latest";
+const DISCORD_INVITE_URL: &str = "https://discord.gg/abfVNfFqu3";
 
 // Nur Links auf das eigene GitHub-Repo werden geöffnet, obwohl die URL aus
 // einer vertrauten Quelle (GitHub-API) stammt - Defense-in-depth, falls die
@@ -67,6 +68,23 @@ pub fn open_release_url(url: String) -> CmdResult<()> {
     let mut cmd = std::process::Command::new("explorer");
 
     cmd.arg(&url).spawn().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// Nimmt bewusst keine URL vom Frontend entgegen (anders als open_release_url,
+// dessen URL je nach Release-Tag variiert) - der Discord-Invite-Link ist
+// statisch, es gibt also keinen Grund, ihn ueberhaupt als Parameter
+// entgegenzunehmen.
+#[tauri::command]
+pub fn open_discord_invite() -> CmdResult<()> {
+    #[cfg(target_os = "linux")]
+    let mut cmd = std::process::Command::new("xdg-open");
+    #[cfg(target_os = "macos")]
+    let mut cmd = std::process::Command::new("open");
+    #[cfg(target_os = "windows")]
+    let mut cmd = std::process::Command::new("explorer");
+
+    cmd.arg(DISCORD_INVITE_URL).spawn().map_err(|e| e.to_string())?;
     Ok(())
 }
 

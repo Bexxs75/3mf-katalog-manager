@@ -4,6 +4,8 @@ Plattformunabhängige Desktop-Anwendung zur Katalogisierung und Verwaltung von 3
 
 **Neu hier?** Das [Benutzerhandbuch](docs/benutzerhandbuch/BENUTZERHANDBUCH.md) (DE + EN) erklärt alle Funktionen bebildert und Schritt für Schritt, ganz ohne Vorwissen über die App.
 
+[![Join Discord](https://img.shields.io/badge/Join-Discord-5865F2?logo=discord&logoColor=white)](https://discord.gg/abfVNfFqu3)
+
 ## Screenshots
 
 | Katalog (Raster) | Nach Ordnern gruppiert | Einstellungen (Info & Update-Check) |
@@ -103,6 +105,8 @@ MIT — siehe [LICENSE](LICENSE).
 Cross-platform desktop application for cataloging and managing 3MF and STL files for 3D printing. Built with [Tauri](https://tauri.app/) (Rust backend) and React/TypeScript/Tailwind.
 
 **New here?** The [User Guide](docs/benutzerhandbuch/BENUTZERHANDBUCH.md) (DE + EN) explains every feature with screenshots, step by step, no prior knowledge of the app required.
+
+[![Join Discord](https://img.shields.io/badge/Join-Discord-5865F2?logo=discord&logoColor=white)](https://discord.gg/abfVNfFqu3)
 
 ## Screenshots
 

@@ -159,6 +159,7 @@ pub fn run() {
             commands::get_app_version,
             commands::check_for_update,
             commands::open_release_url,
+            commands::open_discord_invite,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

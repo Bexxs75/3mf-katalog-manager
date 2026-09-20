@@ -262,6 +262,7 @@ export const en: Translations = {
   infoCheckingForUpdate: 'Checking…',
   infoViewReleaseNotes: 'View release notes',
   infoSourceCodeLabel: 'Source code',
+  infoCommunityLabel: 'Community',
   infoLicenseLabel: 'License',
   updateToastText: 'Update available: v{version}',
   updateToastDownloadLabel: 'Download',

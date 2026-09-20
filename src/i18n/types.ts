@@ -266,6 +266,7 @@ export interface Translations {
   infoCheckingForUpdate: string;
   infoViewReleaseNotes: string;
   infoSourceCodeLabel: string;
+  infoCommunityLabel: string;
   infoLicenseLabel: string;
   updateToastText: string;
   updateToastDownloadLabel: string;
