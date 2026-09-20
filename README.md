@@ -55,7 +55,9 @@ Dieses Projekt befindet sich in aktiver Entwicklung. Der lokale Katalog (Import,
 
 ## Geplant
 
-Derzeit keine offenen hochpriorisierten Punkte im Backlog.
+- 3D-Vorschau für STEP-Dateien (`.stp`/`.step`) — aktuell nur katalogisierbar, ohne Vorschau (siehe CHANGELOG), da STEP parametrische CAD-Geometrie statt eines Dreiecksnetzes ist und eine CAD-Kernel-Anbindung (z. B. OpenCASCADE) erfordert.
+- Katalogisierung von `.obj`-Dateien inkl. 3D-Vorschau (technisch nah an STL, da ebenfalls ein Dreiecksnetz).
+- ZIP-Import: automatisches Entpacken hochgeladener `.zip`-Archive in einen echten Unterordner, mit anschließendem Import der enthaltenen Modell-Dateien.
 
 ## Tech-Stack
 
@@ -157,7 +159,9 @@ This project is under active development. The local catalog (import, parsing, ta
 
 ## Planned
 
-No open high-priority items in the backlog at the moment.
+- 3D preview for STEP files (`.stp`/`.step`) — currently catalog-only, no preview (see CHANGELOG), since STEP is parametric CAD geometry rather than a triangle mesh and would need a CAD kernel binding (e.g. OpenCASCADE).
+- Cataloging `.obj` files including 3D preview (technically close to STL, since it's also a triangle mesh).
+- ZIP import: automatically unpack uploaded `.zip` archives into a real subfolder, then import the model files found inside.
 
 ## Tech Stack
 
