@@ -240,6 +240,9 @@ export const de: Translations = {
   deleteCollectionConfirmQuestion: 'Sammlung wirklich löschen? Die Modelle selbst bleiben erhalten.',
   renameCollectionAria: 'Sammlung umbenennen',
   noCollectionsEmptyState: 'Noch keine Sammlungen angelegt.',
+  bulkAddTagLabel: 'Tag hinzufügen',
+  bulkRemoveTagLabel: 'Tag entfernen',
+  noTagsInSelectionEmptyState: 'Ausgewählte Modelle haben keine Tags.',
   createCollectionLabel: '+ Neue Sammlung',
 
   createFolderLabel: '+ Neuer Ordner',

@@ -244,6 +244,9 @@ export interface Translations {
   deleteCollectionConfirmQuestion: string;
   renameCollectionAria: string;
   noCollectionsEmptyState: string;
+  bulkAddTagLabel: string;
+  bulkRemoveTagLabel: string;
+  noTagsInSelectionEmptyState: string;
   createCollectionLabel: string;
 
   createFolderLabel: string;

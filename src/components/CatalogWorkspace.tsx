@@ -51,6 +51,15 @@ interface CatalogWorkspaceProps {
   bulkAddToCollection: (collectionId: string) => void;
   bulkRemoveFromCollection: () => void;
   bulkSetPrintStatus: (status: 'printed' | 'not_printed') => void;
+  addTagMenuOpen: boolean;
+  setAddTagMenuOpen: (value: boolean) => void;
+  tagDraft: string;
+  setTagDraft: (value: string) => void;
+  bulkAddTag: () => void;
+  removeTagMenuOpen: boolean;
+  setRemoveTagMenuOpen: (value: boolean) => void;
+  tagsInSelection: string[];
+  bulkRemoveTag: (tag: string) => void;
   setDetailModelId: (id: string | null) => void;
   addTag: (id: string, tag: string) => void;
   removeTag: (id: string, tag: string) => void;
@@ -121,6 +130,15 @@ export function CatalogWorkspace({
   bulkAddToCollection,
   bulkRemoveFromCollection,
   bulkSetPrintStatus,
+  addTagMenuOpen,
+  setAddTagMenuOpen,
+  tagDraft,
+  setTagDraft,
+  bulkAddTag,
+  removeTagMenuOpen,
+  setRemoveTagMenuOpen,
+  tagsInSelection,
+  bulkRemoveTag,
   setDetailModelId,
   addTag,
   removeTag,
@@ -225,6 +243,15 @@ export function CatalogWorkspace({
             onBulkRemoveFromCollection={bulkRemoveFromCollection}
             onBulkSetPrintStatus={bulkSetPrintStatus}
             onBulkDelete={bulkDelete}
+            addTagMenuOpen={addTagMenuOpen}
+            onAddTagMenuOpenChange={setAddTagMenuOpen}
+            tagDraft={tagDraft}
+            onTagDraftChange={setTagDraft}
+            onSubmitBulkAddTag={bulkAddTag}
+            removeTagMenuOpen={removeTagMenuOpen}
+            onRemoveTagMenuOpenChange={setRemoveTagMenuOpen}
+            tagsInSelection={tagsInSelection}
+            onBulkRemoveTag={bulkRemoveTag}
           />
         )}
 

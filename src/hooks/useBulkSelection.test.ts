@@ -83,4 +83,68 @@ describe('useBulkSelection', () => {
     expect(bulkAddToCollection).toHaveBeenCalledWith(['m1'], 'c1');
     expect(result.current.selectedForBulk.size).toBe(0);
   });
+
+  it('bulkAddTagAction tags every selected model, patches local state once, and closes the menu', async () => {
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    const models = [
+      makeModelFile({ id: 'm1', tags: [] }),
+      makeModelFile({ id: 'm2', tags: ['bambu'] }), // already has the tag - must not be sent twice
+    ];
+    const { result, setModels, refreshTags } = setup(models);
+    act(() => {
+      result.current.selectAllVisible(['m1', 'm2']);
+      result.current.setTagDraft('  bambu  ');
+      result.current.setAddTagMenuOpen(true);
+    });
+    await act(async () => result.current.bulkAddTagAction());
+
+    expect(invoke).toHaveBeenCalledWith('add_tag', { fileId: 'm1', tag: 'bambu' });
+    expect(invoke).toHaveBeenCalledWith('add_tag', { fileId: 'm2', tag: 'bambu' });
+    expect(setModels).toHaveBeenCalledTimes(1);
+    const patched = setModels.mock.calls[0][0](models);
+    expect(patched.find((m: { id: string }) => m.id === 'm1').tags).toEqual(['bambu']);
+    expect(patched.find((m: { id: string }) => m.id === 'm2').tags).toEqual(['bambu']);
+    expect(refreshTags).toHaveBeenCalled();
+    expect(result.current.tagDraft).toBe('');
+    expect(result.current.addTagMenuOpen).toBe(false);
+  });
+
+  it('bulkAddTagAction is a no-op for a blank draft', async () => {
+    const { result } = setup();
+    act(() => {
+      result.current.selectAllVisible(['m1']);
+      result.current.setTagDraft('   ');
+    });
+    await act(async () => result.current.bulkAddTagAction());
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('bulkRemoveTagAction only calls remove for models that actually carry the tag', async () => {
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    const models = [
+      makeModelFile({ id: 'm1', tags: ['bambu', 'mount'] }),
+      makeModelFile({ id: 'm2', tags: ['decor'] }),
+    ];
+    const { result, setModels, refreshTags } = setup(models);
+    act(() => result.current.selectAllVisible(['m1', 'm2']));
+    await act(async () => result.current.bulkRemoveTagAction('bambu'));
+
+    expect(invoke).toHaveBeenCalledWith('remove_tag', { fileId: 'm1', tag: 'bambu' });
+    expect(invoke).not.toHaveBeenCalledWith('remove_tag', { fileId: 'm2', tag: 'bambu' });
+    const patched = setModels.mock.calls[0][0](models);
+    expect(patched.find((m: { id: string }) => m.id === 'm1').tags).toEqual(['mount']);
+    expect(refreshTags).toHaveBeenCalled();
+    expect(result.current.removeTagMenuOpen).toBe(false);
+  });
+
+  it('tagsInSelection is the sorted union of tags across selected models only', () => {
+    const models = [
+      makeModelFile({ id: 'm1', tags: ['mount', 'bambu'] }),
+      makeModelFile({ id: 'm2', tags: ['decor'] }),
+      makeModelFile({ id: 'm3', tags: ['unrelated'] }),
+    ];
+    const { result } = setup(models);
+    act(() => result.current.selectAllVisible(['m1', 'm2']));
+    expect(result.current.tagsInSelection).toEqual(['bambu', 'decor', 'mount']);
+  });
 });

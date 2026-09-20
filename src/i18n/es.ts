@@ -240,6 +240,9 @@ export const es: Translations = {
   deleteCollectionConfirmQuestion: '¿Eliminar esta colección? Los modelos permanecen en tu catálogo.',
   renameCollectionAria: 'Renombrar colección',
   noCollectionsEmptyState: 'Aún no hay colecciones.',
+  bulkAddTagLabel: 'Añadir etiqueta',
+  bulkRemoveTagLabel: 'Quitar etiqueta',
+  noTagsInSelectionEmptyState: 'Los modelos seleccionados no tienen etiquetas.',
   createCollectionLabel: '+ Nueva colección',
 
   createFolderLabel: '+ Nueva carpeta',

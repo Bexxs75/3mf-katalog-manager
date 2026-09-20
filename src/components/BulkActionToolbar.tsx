@@ -16,6 +16,15 @@ interface BulkActionToolbarProps {
   onBulkRemoveFromCollection: () => void;
   onBulkSetPrintStatus: (status: 'printed' | 'not_printed') => void;
   onBulkDelete: () => void;
+  addTagMenuOpen: boolean;
+  onAddTagMenuOpenChange: (value: boolean) => void;
+  tagDraft: string;
+  onTagDraftChange: (value: string) => void;
+  onSubmitBulkAddTag: () => void;
+  removeTagMenuOpen: boolean;
+  onRemoveTagMenuOpenChange: (value: boolean) => void;
+  tagsInSelection: string[];
+  onBulkRemoveTag: (tag: string) => void;
 }
 
 export function BulkActionToolbar({
@@ -33,6 +42,15 @@ export function BulkActionToolbar({
   onBulkRemoveFromCollection,
   onBulkSetPrintStatus,
   onBulkDelete,
+  addTagMenuOpen,
+  onAddTagMenuOpenChange,
+  tagDraft,
+  onTagDraftChange,
+  onSubmitBulkAddTag,
+  removeTagMenuOpen,
+  onRemoveTagMenuOpenChange,
+  tagsInSelection,
+  onBulkRemoveTag,
 }: BulkActionToolbarProps) {
   const t = useT();
   return (
@@ -108,6 +126,58 @@ export function BulkActionToolbar({
               {t('removeFromCollectionLabel')}
             </button>
           )}
+          <div className="relative">
+            <button
+              onClick={() => onAddTagMenuOpenChange(!addTagMenuOpen)}
+              className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]"
+            >
+              {t('bulkAddTagLabel')}
+            </button>
+            {addTagMenuOpen && (
+              <div className="absolute top-9 left-0 flex items-center gap-1.5 p-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
+                <input
+                  value={tagDraft}
+                  onChange={(e) => onTagDraftChange(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && onSubmitBulkAddTag()}
+                  autoFocus
+                  placeholder={t('addTagPlaceholder')}
+                  className="h-7 w-[140px] px-2 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-[12.5px]"
+                />
+                <button
+                  onClick={onSubmitBulkAddTag}
+                  className="h-7 px-2.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[11.5px] font-semibold cursor-pointer whitespace-nowrap"
+                >
+                  {t('confirmSlicerName')}
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="relative">
+            <button
+              onClick={() => onRemoveTagMenuOpenChange(!removeTagMenuOpen)}
+              className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]"
+            >
+              {t('bulkRemoveTagLabel')}
+            </button>
+            {removeTagMenuOpen && (
+              <div className="absolute top-9 left-0 min-w-[160px] max-w-[300px] py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
+                {tagsInSelection.map((tag) => (
+                  <button
+                    key={tag}
+                    onClick={() => onBulkRemoveTag(tag)}
+                    className="w-full text-left px-3 py-1.5 text-[13px] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis"
+                  >
+                    #{tag}
+                  </button>
+                ))}
+                {tagsInSelection.length === 0 && (
+                  <div className="px-3 py-1.5 font-mono-ui text-[11px] text-[var(--ink-3)]">
+                    {t('noTagsInSelectionEmptyState')}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           <button onClick={() => onBulkSetPrintStatus('printed')} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]">
             {t('printedBadge')}
           </button>

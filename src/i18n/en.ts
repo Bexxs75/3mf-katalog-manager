@@ -240,6 +240,9 @@ export const en: Translations = {
   deleteCollectionConfirmQuestion: 'Delete this collection? The models themselves stay in your catalog.',
   renameCollectionAria: 'Rename collection',
   noCollectionsEmptyState: 'No collections yet.',
+  bulkAddTagLabel: 'Add tag',
+  bulkRemoveTagLabel: 'Remove tag',
+  noTagsInSelectionEmptyState: 'Selected models have no tags.',
   createCollectionLabel: '+ New collection',
 
   createFolderLabel: '+ New folder',

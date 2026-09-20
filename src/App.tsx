@@ -245,6 +245,15 @@ export default function App() {
               bulkAddToCollection={bulk.bulkAddToCollectionAction}
               bulkRemoveFromCollection={bulk.bulkRemoveFromCollectionAction}
               bulkSetPrintStatus={bulk.bulkSetPrintStatus}
+              addTagMenuOpen={bulk.addTagMenuOpen}
+              setAddTagMenuOpen={bulk.setAddTagMenuOpen}
+              tagDraft={bulk.tagDraft}
+              setTagDraft={bulk.setTagDraft}
+              bulkAddTag={bulk.bulkAddTagAction}
+              removeTagMenuOpen={bulk.removeTagMenuOpen}
+              setRemoveTagMenuOpen={bulk.setRemoveTagMenuOpen}
+              tagsInSelection={bulk.tagsInSelection}
+              bulkRemoveTag={bulk.bulkRemoveTagAction}
               setDetailModelId={setDetailModelId}
               addTag={store.addTag}
               removeTag={store.removeTag}

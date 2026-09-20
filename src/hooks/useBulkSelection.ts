@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import * as filesApi from '../lib/api/files';
 import type { ModelFile } from '../types';
 
@@ -26,6 +26,9 @@ export function useBulkSelection({
   const [selectedForBulk, setSelectedForBulk] = useState<Set<string>>(new Set());
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [addToCollectionMenuOpen, setAddToCollectionMenuOpen] = useState(false);
+  const [addTagMenuOpen, setAddTagMenuOpen] = useState(false);
+  const [tagDraft, setTagDraft] = useState('');
+  const [removeTagMenuOpen, setRemoveTagMenuOpen] = useState(false);
 
   const toggleBulkSelect = useCallback((id: string) => {
     setSelectedForBulk((prev) => {
@@ -41,6 +44,9 @@ export function useBulkSelection({
   const clearBulkSelection = useCallback(() => {
     setSelectedForBulk(new Set());
     setConfirmBulkDelete(false);
+    setAddTagMenuOpen(false);
+    setTagDraft('');
+    setRemoveTagMenuOpen(false);
   }, []);
 
   const bulkDelete = useCallback(() => {
@@ -86,6 +92,56 @@ export function useBulkSelection({
     [selectedForBulk, setModels],
   );
 
+  // Fuegt genau EINEN Tag allen ausgewaehlten Modellen hinzu, die ihn noch
+  // nicht haben - analog zu bulkSetPrintStatus: pro Datei ein einzelner
+  // addTag()-Aufruf (kein eigener Bulk-Tauri-Command noetig, die Anzahl
+  // gleichzeitig ausgewaehlter Dateien liegt praktisch immer im niedrigen
+  // zweistelligen Bereich), danach EIN lokaler State-Patch fuer alle
+  // betroffenen Modelle statt eines Refreshs der gesamten Liste.
+  const bulkAddTagAction = useCallback(() => {
+    const tag = tagDraft.trim();
+    if (!tag) return Promise.resolve();
+    const ids = selectedForBulk;
+    return Promise.all(Array.from(ids).map((id) => filesApi.addTag(id, tag))).then(() => {
+      setModels((prev) =>
+        prev.map((m) => (ids.has(m.id) && !m.tags.includes(tag) ? { ...m, tags: [...m.tags, tag] } : m)),
+      );
+      refreshTags();
+      setTagDraft('');
+      setAddTagMenuOpen(false);
+    });
+  }, [tagDraft, selectedForBulk, setModels, refreshTags]);
+
+  // Entfernt einen Tag aus allen ausgewaehlten Modellen, die ihn tragen -
+  // Gegenstueck zu bulkAddTagAction. Modelle ohne diesen Tag werden
+  // uebersprungen (kein Fehler, kein unnoetiger Aufruf).
+  const bulkRemoveTagAction = useCallback(
+    (tag: string) => {
+      const ids = Array.from(selectedForBulk).filter((id) => models.find((m) => m.id === id)?.tags.includes(tag));
+      return Promise.all(ids.map((id) => filesApi.removeTag(id, tag))).then(() => {
+        setModels((prev) =>
+          prev.map((m) => (selectedForBulk.has(m.id) ? { ...m, tags: m.tags.filter((t) => t !== tag) } : m)),
+        );
+        refreshTags();
+        setRemoveTagMenuOpen(false);
+      });
+    },
+    [models, selectedForBulk, setModels, refreshTags],
+  );
+
+  // Vereinigungsmenge aller Tags ueber die aktuell ausgewaehlten Modelle,
+  // fuer das "Tag entfernen"-Dropdown - nur Tags, die MINDESTENS eines der
+  // ausgewaehlten Modelle traegt, ergeben ueberhaupt einen sinnvollen
+  // Menuepunkt.
+  const tagsInSelection = useMemo(() => {
+    const set = new Set<string>();
+    for (const m of models) {
+      if (!selectedForBulk.has(m.id)) continue;
+      for (const tag of m.tags) set.add(tag);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [models, selectedForBulk]);
+
   const bulkAddToCollectionAction = useCallback(
     (collectionId: string) =>
       bulkAddToCollection(Array.from(selectedForBulk), collectionId).then(() => clearBulkSelection()),
@@ -101,6 +157,10 @@ export function useBulkSelection({
     selectedForBulk,
     confirmBulkDelete, setConfirmBulkDelete,
     addToCollectionMenuOpen, setAddToCollectionMenuOpen,
+    addTagMenuOpen, setAddTagMenuOpen,
+    tagDraft, setTagDraft,
+    removeTagMenuOpen, setRemoveTagMenuOpen,
+    tagsInSelection,
     toggleBulkSelect,
     selectAllVisible,
     clearBulkSelection,
@@ -109,5 +169,7 @@ export function useBulkSelection({
     bulkSetPrintStatus,
     bulkAddToCollectionAction,
     bulkRemoveFromCollectionAction,
+    bulkAddTagAction,
+    bulkRemoveTagAction,
   };
 }
