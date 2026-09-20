@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Folder, TagCount, ModelFile, Collection } from '../types';
 import { useT } from '../i18n/LanguageContext';
+import { SEARCH_INPUT_ID } from '../hooks/useKeyboardShortcuts';
 import { FolderTree } from './FolderTree';
 
 interface Props {
@@ -121,6 +122,7 @@ export function Sidebar({
         <div className="flex items-center gap-1.5 h-8 px-2.5 rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)]">
           <span className="font-mono-ui text-xs text-[var(--ink-3)]">⌕</span>
           <input
+            id={SEARCH_INPUT_ID}
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
             placeholder={t('searchPlaceholder')}

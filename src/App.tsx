@@ -27,6 +27,7 @@ import { useCatalogCleanup } from './hooks/useCatalogCleanup';
 import { useBulkSelection } from './hooks/useBulkSelection';
 import { useSlicerLauncher } from './hooks/useSlicerLauncher';
 import { useUpdateCheck } from './hooks/useUpdateCheck';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
 export default function App() {
   const { setting, setTheme } = useTheme();
@@ -88,6 +89,15 @@ export default function App() {
     if (detailModelId) store.ensureFullModel(detailModelId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detailModelId]);
+
+  useKeyboardShortcuts({
+    filteredIds: filters.filtered.map((m) => m.id),
+    selectedId: store.selectedId,
+    selectModel: store.selectModel,
+    hasBulkSelection: bulk.selectedForBulk.size > 0,
+    openBulkDeleteConfirm: () => bulk.setConfirmBulkDelete(true),
+    navigationEnabled: mainView === 'catalog' && !detailModelId && !collections.collectionsGalleryOpen,
+  });
 
   useEffect(() => {
     if (!detailModelId) return;
