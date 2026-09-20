@@ -35,7 +35,7 @@ importierst, organisierst, druckfertig machst und dein Filament-Lager verwaltest
 ## Was ist der 3MF Katalog Manager?
 
 Der 3MF Katalog Manager ist ein Desktop-Programm, mit dem du eine große Sammlung von
-3D-Druck-Dateien (`.3mf` und `.stl`) übersichtlich verwalten kannst: mit Vorschaubildern,
+3D-Druck-Dateien (`.3mf`, `.stl`, `.obj` sowie CAD-Quelldateien im `.stp`-/`.step`-Format) übersichtlich verwalten kannst: mit Vorschaubildern,
 Ordnern, Tags, Suche, einem eigenen Lager für deine Filamentspulen und einem direkten Weg, ein
 Modell mit einem Klick in deinem Slicer-Programm zu öffnen. Alles läuft lokal auf deinem
 Rechner — es gibt keine Cloud-Anbindung, deine Daten verlassen deinen Computer nicht.
@@ -67,7 +67,7 @@ tatsächlich abgelegt, nicht nur im Katalog umsortiert. Du hast zwei Möglichkei
 
 - **Bestehende Ordnerstruktur übernehmen** — wenn du deine Druckdateien schon in Ordnern
   organisierst, wählst du den obersten Ordner aus. Der Katalog übernimmt die komplette Struktur
-  inklusive Unterordner und importiert alle enthaltenen `.3mf`-/`.stl`-Dateien automatisch.
+  inklusive Unterordner und importiert alle enthaltenen `.3mf`-/`.stl`-/`.obj`-/`.stp`-/`.step`-Dateien automatisch.
 - **Neuen Ort einrichten** — du legst einen (auch leeren) Ordner fest, in dem der Katalog ab
   jetzt neu importierte Dateien ablegt.
 
@@ -181,8 +181,8 @@ Rechtsklick auf ein Modell öffnet ein Kontextmenü mit den wichtigsten Aktionen
 
 ![Kontextmenü](bilder/05-kontextmenu.png)
 
-Über "Umbenennen" änderst du den Dateinamen direkt im Kontextmenü — die Dateiendung (.3mf/.stl)
-wird dabei fest angezeigt und lässt sich nicht mit wegtippen. Verschiebt der neue Name das Modell
+Über "Umbenennen" änderst du den Dateinamen direkt im Kontextmenü — die Dateiendung wird dabei
+fest angezeigt und lässt sich nicht mit wegtippen. Verschiebt der neue Name das Modell
 in der Standardsortierung (nach Name) aus dem sichtbaren Bereich, scrollt die Ansicht automatisch
 dorthin.
 
@@ -405,7 +405,7 @@ for printing, and managing your filament stock.
 ## What is the 3MF Katalog Manager?
 
 The 3MF Katalog Manager is a desktop application for keeping a large collection of 3D-printing
-files (`.3mf` and `.stl`) organized: with preview images, folders, tags, search, a dedicated
+files (`.3mf`, `.stl`, `.obj`, and CAD source files in `.stp`/`.step` format) organized: with preview images, folders, tags, search, a dedicated
 stock manager for your filament spools, and a one-click way to open a model in your slicer of
 choice. Everything runs locally on your machine — there's no cloud connection, and your data
 never leaves your computer.
@@ -436,7 +436,7 @@ re-sorted within the catalog. You have two options:
 
 - **Use existing folder structure** — if you already organize your print files in folders,
   choose the top-level folder. The catalog adopts the complete structure including
-  subfolders and automatically imports every `.3mf`/`.stl` file it contains.
+  subfolders and automatically imports every `.3mf`/`.stl`/`.obj`/`.stp`/`.step` file it contains.
 - **Set up a new location** — pick a (possibly empty) folder where the catalog will store newly
   imported files from now on.
 
@@ -545,8 +545,8 @@ Right-clicking a model opens a context menu with the most important actions:
 
 ![Context menu](bilder/05-kontextmenu.png)
 
-Use "Rename" to change the file name right in the context menu — the file extension (.3mf/.stl)
-is shown fixed and can't be typed away. If the new name moves the model out of the visible area
+Use "Rename" to change the file name right in the context menu — the file extension is shown
+fixed and can't be typed away. If the new name moves the model out of the visible area
 under the default name sort, the view scrolls to it automatically.
 
 To edit several models at once, select them via the checkboxes at the top left of each tile (or
