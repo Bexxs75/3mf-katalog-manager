@@ -267,16 +267,16 @@ export function Rail({
                             {isPrimary && <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent)' }} />}
                           </button>
                           <div className="flex-1 min-w-0">
+                            <div className="text-[length:var(--font-size-title)] text-[var(--ink)] truncate">{s.name}</div>
                             <div className="flex items-center gap-1.5">
-                              <div className="text-[length:var(--font-size-title)] text-[var(--ink)] truncate">{s.name}</div>
                               {isPrimary && (
                                 <span className="flex-none font-mono-ui text-[9px] tracking-[0.08em] uppercase px-1.5 rounded-full" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
                                   {t('slicerPrimaryChip')}
                                 </span>
                               )}
-                            </div>
-                            <div className="font-mono-ui text-[length:var(--font-size-meta)] text-[var(--ink-3)] truncate">
-                              {s.path}
+                              <div className="flex-1 min-w-0 font-mono-ui text-[length:var(--font-size-meta)] text-[var(--ink-3)] truncate">
+                                {s.path}
+                              </div>
                             </div>
                           </div>
                           <span
