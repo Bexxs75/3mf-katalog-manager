@@ -9,7 +9,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Added
 
-- Die Linux-Fassung erzeugt für STEP-Dateien (`.stp`/`.step`) jetzt eine echte 3D-Vorschau und ermittelt Abmessungen, Volumen sowie Körperzahl über Open CASCADE Technology (OCCT). Baugruppen werden bewusst als ein gemeinsames Vorschaunetz dargestellt; STEP bleibt nicht direkt im Slicer öffnbar. Fehlerhafte oder zu große STEP-Dateien bleiben ohne automatisch ermittelte Metadaten im Katalog, statt den Import abzubrechen.
+- Die Linux-Fassung erzeugt für STEP-Dateien (`.stp`/`.step`) jetzt eine echte 3D-Vorschau und ermittelt Abmessungen, Volumen sowie Körperzahl über Open CASCADE Technology (OCCT). Baugruppen werden bewusst als ein gemeinsames Vorschaunetz dargestellt; STEP lässt sich weiterhin nicht direkt im Slicer öffnen. Fehlerhafte oder zu große STEP-Dateien bleiben ohne automatisch ermittelte Metadaten im Katalog, statt den Import abzubrechen.
 - Die OCCT-Anbindung ist das einzige Default-Cargo-Feature (`step-preview`) und lässt sich mit `--no-default-features` vollständig aus dem Build entfernen. Die offiziellen Windows- und macOS-Pakete nutzen vorerst diese OCCT-freie Variante, bis ein austauschbares DLL-/Universal-Dylib-Paket verifiziert ist.
 - Open CASCADE wird dynamisch unter LGPL-2.1 mit Open-CASCADE-Ausnahme eingebunden. Vollständige Lizenztexte, Quellenhinweise und der dokumentierte `opencascade-sys`-Kompatibilitäts-Fork werden mit dem Quellcode beziehungsweise Programmpaket bereitgestellt; Details stehen in `THIRD-PARTY-LICENSES.md`.
 
