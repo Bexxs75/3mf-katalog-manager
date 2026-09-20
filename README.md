@@ -35,7 +35,8 @@ Plattformunabhängige Desktop-Anwendung zur Katalogisierung und Verwaltung von 3
 - **Modell-Detailseite** — vollflächige Ansicht (Doppelklick auf ein Modell) mit großer 3D-Vorschau, allen Metadaten und Druckplatten-Anzahl bei Bambu-Studio-/OrcaSlicer-Dateien; eigene Dreh-Steuerelemente (Auto-Rotation + 15°-Schritt-Buttons) zusätzlich zum freien Maus-Ziehen
 - **Papierkorb** — gelöschte Modelle bleiben 7 Tage wiederherstellbar statt sofort entfernt zu werden, eigene Ansicht mit Mengen-Badge
 - **Mehrfachauswahl** — Checkboxen in der Katalogübersicht, "Alle auswählen", Aktionsleiste für Warteschlange/Sammlung/Druckstatus/Tags/Löschen über mehrere Modelle gleichzeitig
-- **Tastaturkürzel** — `/` fokussiert die Suche, Pfeiltasten wechseln die Auswahl im Raster, Entf/Rücktaste öffnet bei aktiver Mehrfachauswahl die Löschen-Bestätigung
+- **Tastaturkürzel** — `/` fokussiert die Suche, Pfeiltasten navigieren räumlich im Raster (Hoch/Runter springt zur nächsten Zeile), Leertaste schaltet die Mehrfachauswahl-Checkbox um, Entf/Rücktaste öffnet bei aktiver Mehrfachauswahl die Löschen-Bestätigung
+- **Umbenennen** — Modelle direkt per Kontextmenü umbenennen; die Dateiendung bleibt dabei fest
 - **Automatische Slicer-Erkennung** — durchsucht beim Start bekannte Installationsorte (Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura auf Linux/Windows) und ergänzt Treffer automatisch; manuelles Hinzufügen für Custom-Forks bleibt möglich
 - **Bevorzugte Ansicht** — Einstellung, ob Katalog und Detailseite standardmäßig das eingebettete Datei-Bild oder eine gerenderte 3D-Ansicht zeigen; fehlende Schnappschüsse werden bei Bedarf automatisch im Hintergrund nachgerendert
 - **Sammlungen** — dritter Organisationsmechanismus neben Ordnern und Tags: mehrere Modelle explizit zu einem Projekt zusammenfassen, mit manuell festlegbarer Reihenfolge (Drag & Drop); Erstellung über Mehrfachauswahl
@@ -134,7 +135,8 @@ Cross-platform desktop application for cataloging and managing 3MF and STL files
 - **Model detail page** — full-screen view (double-click a model) with a large 3D preview, all metadata, and build-plate count for Bambu Studio/OrcaSlicer files; dedicated rotation controls (auto-rotation + 15° step buttons) in addition to free mouse dragging
 - **Trash** — deleted models remain recoverable for 7 days instead of being removed immediately, own view with a count badge
 - **Multi-select** — checkboxes in the catalog overview, "select all", action bar for queue/collection/print-status/tags/delete across multiple models at once
-- **Keyboard shortcuts** — `/` focuses search, arrow keys move the selection in the grid, Delete/Backspace opens the delete confirmation when a multi-selection is active
+- **Keyboard shortcuts** — `/` focuses search, arrow keys navigate the grid spatially (Up/Down jumps to the next row), Space toggles the multi-select checkbox, Delete/Backspace opens the delete confirmation when a multi-selection is active
+- **Rename** — rename models directly from the context menu; the file extension stays fixed
 - **Automatic slicer detection** — scans known installation locations at startup (Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura on Linux/Windows) and adds matches automatically; manual addition for custom forks remains possible
 - **Preferred view** — setting for whether the catalog and detail page default to the embedded file image or a rendered 3D view; missing snapshots are automatically re-rendered in the background as needed
 - **Collections** — a third organizational mechanism alongside folders and tags: explicitly group multiple models into a project, with a manually definable order (drag & drop); created via multi-select

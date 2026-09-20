@@ -146,10 +146,12 @@ ins Suchfeld, ohne erst mit der Maus dorthin zu klicken. Häufig genutzte Kombin
 Ordner/Tag/Ersteller/Suche/Sortierung lassen sich unter einem eigenen Namen speichern und später
 per Klick wieder anwenden ("Gespeicherte Filter").
 
-**Tastaturkürzel:** `/` fokussiert die Suche, die Pfeiltasten wechseln die Auswahl innerhalb der
-aktuell sichtbaren Modell-Liste, und Entf/Rücktaste öffnet bei aktiver Mehrfachauswahl die
+**Tastaturkürzel:** `/` fokussiert die Suche, die Pfeiltasten navigieren räumlich im Raster (Hoch/
+Runter springt anhand der tatsächlich sichtbaren Kachel-Position zur nächsten Zeile, Links/Rechts
+zum nächsten/vorherigen Modell), die Leertaste schaltet die Mehrfachauswahl-Checkbox des gerade
+ausgewählten Modells um, und Entf/Rücktaste öffnet bei aktiver Mehrfachauswahl die
 Löschen-Bestätigung (siehe [Mehrfachauswahl](#schnelle-aktionen-kontextmenü-und-mehrfachauswahl)).
-Alle drei greifen nicht, solange du gerade in einem Textfeld tippst.
+Keines davon greift, solange du gerade in einem Textfeld tippst.
 
 ## Ein Modell im Detail ansehen
 
@@ -178,6 +180,11 @@ hinzufügen.
 Rechtsklick auf ein Modell öffnet ein Kontextmenü mit den wichtigsten Aktionen:
 
 ![Kontextmenü](bilder/05-kontextmenu.png)
+
+Über "Umbenennen" änderst du den Dateinamen direkt im Kontextmenü — die Dateiendung (.3mf/.stl)
+wird dabei fest angezeigt und lässt sich nicht mit wegtippen. Verschiebt der neue Name das Modell
+in der Standardsortierung (nach Name) aus dem sichtbaren Bereich, scrollt die Ansicht automatisch
+dorthin.
 
 Willst du mehrere Modelle gleichzeitig bearbeiten, markierst du sie über die Checkboxen oben
 links auf jeder Kachel (oder "Alle auswählen"). Eine Aktionsleiste erscheint, über die sich die
@@ -505,10 +512,12 @@ in any of these is enough. Press `/` from anywhere to jump straight into the sea
 first clicking it. Frequently used combinations of folder/tag/creator/search/sort can be saved
 under a name and reapplied later with a click ("Saved filters").
 
-**Keyboard shortcuts:** `/` focuses search, the arrow keys move the selection through the
-currently visible model list, and Delete/Backspace opens the delete confirmation when a
-multi-selection is active (see [Multi-select](#quick-actions-context-menu-and-multi-select)).
-None of these fire while you're typing in a text field.
+**Keyboard shortcuts:** `/` focuses search, the arrow keys navigate the grid spatially (Up/Down
+jumps to the next row based on actual rendered tile position, Left/Right to the next/previous
+model), Space toggles the multi-select checkbox of the currently selected model, and Delete/
+Backspace opens the delete confirmation when a multi-selection is active (see
+[Multi-select](#quick-actions-context-menu-and-multi-select)). None of these fire while you're
+typing in a text field.
 
 ## Viewing a model in detail
 
@@ -535,6 +544,10 @@ At the bottom left you can mark the model as **printed** and add it to the **que
 Right-clicking a model opens a context menu with the most important actions:
 
 ![Context menu](bilder/05-kontextmenu.png)
+
+Use "Rename" to change the file name right in the context menu — the file extension (.3mf/.stl)
+is shown fixed and can't be typed away. If the new name moves the model out of the visible area
+under the default name sort, the view scrolls to it automatically.
 
 To edit several models at once, select them via the checkboxes at the top left of each tile (or
 "Select all"). An action bar appears, letting you add the whole selection to the queue or a

@@ -7,6 +7,12 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
+### Added
+
+- Modelle lassen sich jetzt direkt umbenennen: Kontextmenü → "Umbenennen", inline im selben Popup wie die Löschen-Bestätigung. Die Dateiendung (.3mf/.stl) wird dabei fest angezeigt und ist nicht editierbar. Verschiebt eine Umbenennung das Modell (Standardsortierung nach Name) aus dem sichtbaren Bereich, scrollt die Ansicht automatisch dorthin.
+- Echte Pfeiltasten-Navigation im Raster: Hoch/Runter springt jetzt anhand der tatsächlich gerenderten Kachel-Position zur nächsten Zeile, statt nur zum nächsten/vorherigen Element in der Liste (vorher verhielt sich Runter wie Rechts).
+- Leertaste schaltet die Mehrfachauswahl-Checkbox des aktuell ausgewählten Modells um.
+
 ## [0.9.0] - 2026-09-20
 
 ### Added
@@ -302,6 +308,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
 ## [Unreleased]
+
+### Added
+
+- Models can now be renamed directly: context menu → "Rename", inline in the same popup as the delete confirmation. The file extension (.3mf/.stl) is shown fixed and cannot be edited. If a rename moves the model out of the visible area (default sort is by name), the view scrolls to it automatically.
+- Real spatial grid navigation: Up/Down now jumps to the next row based on actual rendered tile position, instead of just the next/previous item in list order (previously Down behaved like Right).
+- Space bar toggles the multi-select checkbox of the currently selected model.
 
 ## [0.9.0] - 2026-09-20
 
