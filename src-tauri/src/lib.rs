@@ -100,6 +100,7 @@ pub fn run() {
             commands::list_folders,
             commands::create_folder,
             commands::move_file_to_folder,
+            commands::rename_file,
             commands::rename_folder,
             commands::move_folder,
             commands::pick_folder_path,

@@ -138,6 +138,43 @@ describe('useCatalogStore', () => {
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('add_tag', { fileId: 'm1', tag: 'red' }));
   });
 
+  it('renameFile updates the local name only after the backend call resolves', async () => {
+    mockInitialLoad([makeModelFile({ id: 'm1', name: 'alt.3mf' })]);
+    const { result } = renderHook(() => useCatalogStore());
+    await waitFor(() => expect(result.current.models).toHaveLength(1));
+
+    let resolveRename: () => void = () => {};
+    vi.mocked(invoke).mockImplementationOnce(
+      () => new Promise<void>((resolve) => { resolveRename = resolve; }),
+    );
+
+    let pending: Promise<void>;
+    act(() => {
+      pending = result.current.renameFile('m1', 'neu.3mf');
+    });
+    // Nicht optimistisch: der Name darf sich noch nicht geaendert haben,
+    // solange der Backend-Aufruf noch laeuft.
+    expect(result.current.models[0].name).toBe('alt.3mf');
+
+    await act(async () => {
+      resolveRename();
+      await pending;
+    });
+    expect(result.current.models[0].name).toBe('neu.3mf');
+    expect(invoke).toHaveBeenCalledWith('rename_file', { fileId: 'm1', name: 'neu.3mf' });
+  });
+
+  it('renameFile rejects and leaves the local name unchanged when the backend call fails', async () => {
+    mockInitialLoad([makeModelFile({ id: 'm1', name: 'alt.3mf' })]);
+    const { result } = renderHook(() => useCatalogStore());
+    await waitFor(() => expect(result.current.models).toHaveLength(1));
+
+    vi.mocked(invoke).mockRejectedValueOnce(new Error('Zieldatei existiert bereits'));
+
+    await expect(result.current.renameFile('m1', 'neu.3mf')).rejects.toThrow('Zieldatei existiert bereits');
+    expect(result.current.models[0].name).toBe('alt.3mf');
+  });
+
   it('deleteModel removes it locally, clears selection, and refreshes side lists', async () => {
     mockInitialLoad([makeModelFile({ id: 'm1' })]);
     const { result } = renderHook(() => useCatalogStore());

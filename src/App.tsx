@@ -27,7 +27,7 @@ import { useCatalogCleanup } from './hooks/useCatalogCleanup';
 import { useBulkSelection } from './hooks/useBulkSelection';
 import { useSlicerLauncher } from './hooks/useSlicerLauncher';
 import { useUpdateCheck } from './hooks/useUpdateCheck';
-import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { useKeyboardShortcuts, MODEL_TILE_ATTR } from './hooks/useKeyboardShortcuts';
 
 export default function App() {
   const { setting, setTheme } = useTheme();
@@ -97,7 +97,21 @@ export default function App() {
     hasBulkSelection: bulk.selectedForBulk.size > 0,
     openBulkDeleteConfirm: () => bulk.setConfirmBulkDelete(true),
     navigationEnabled: mainView === 'catalog' && !detailModelId && !collections.collectionsGalleryOpen,
+    toggleBulkSelect: bulk.toggleBulkSelect,
   });
+
+  useEffect(() => {
+    // Laeuft garantiert erst NACH dem Commit+Paint des Re-Renders, der durch
+    // renameFile()s setModels() ausgeloest wurde (siehe Kommentar dort) -
+    // anders als ein rohes requestAnimationFrame direkt im Promise-Handler
+    // ist hier sichergestellt, dass die Kachel bereits an ihrer neuen,
+    // sortierten Position im DOM sitzt, bevor gescrollt wird.
+    if (!store.pendingScrollToId) return;
+    const id = store.pendingScrollToId;
+    document.querySelector(`[${MODEL_TILE_ATTR}="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    store.setPendingScrollToId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.pendingScrollToId]);
 
   useEffect(() => {
     if (!detailModelId) return;
@@ -310,6 +324,8 @@ export default function App() {
               }
               printed={contextModel.printStatus === 'printed'}
               onTogglePrintStatus={() => store.togglePrintStatus(contextModel.id)}
+              currentName={contextModel.name}
+              onRename={(name) => store.renameFile(contextModel.id, name)}
             />
           )}
 

@@ -28,6 +28,9 @@ export function listTrash() {
 export function markFileViewed(fileId: string) {
   return invoke('mark_file_viewed', { fileId });
 }
+export function renameFile(fileId: string, name: string) {
+  return invoke<void>('rename_file', { fileId, name });
+}
 export function deleteFile(fileId: string) {
   return invoke('delete_file', { fileId });
 }

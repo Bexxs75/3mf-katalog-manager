@@ -62,6 +62,10 @@ export interface Translations {
   cancel: string;
   delete: string;
   openInSlicer: string;
+  renameLabel: string;
+  renameError: string;
+  renameEmptyNameError: string;
+  renameExtensionLockedHint: string;
   deleteConfirmQuestion: string;
   deleteAriaLabel: string;
   slicerSectionTitle: string;

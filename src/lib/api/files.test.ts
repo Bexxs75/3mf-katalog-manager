@@ -24,6 +24,11 @@ describe('files api', () => {
     await filesApi.markFileViewed('m1');
     expect(invoke).toHaveBeenCalledWith('mark_file_viewed', { fileId: 'm1' });
   });
+  it('renameFile', async () => {
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    await filesApi.renameFile('m1', 'neu.3mf');
+    expect(invoke).toHaveBeenCalledWith('rename_file', { fileId: 'm1', name: 'neu.3mf' });
+  });
   it('deleteFile', async () => {
     vi.mocked(invoke).mockResolvedValue(undefined);
     await filesApi.deleteFile('m1');

@@ -100,6 +100,10 @@ export function useCatalogStore() {
   const [rescanFeedback, setRescanFeedback] = useState<
     { fileId: string; status: 'success' | 'error'; message?: string } | null
   >(null);
+  // Nur ein einmaliger "Wunsch", nach dem naechsten Commit zu diesem Modell
+  // zu scrollen (siehe renameFile) - App.tsx setzt ihn per useEffect nach
+  // Erledigung wieder auf null, kein dauerhafter UI-Zustand.
+  const [pendingScrollToId, setPendingScrollToId] = useState<string | null>(null);
 
   // M-03: Rollback fuer fehlgeschlagene optimistische Mutationen (favorite/
   // printStatus/tags/sourceUrl/renderSnapshot/lastViewedAt). Weder ein
@@ -410,6 +414,31 @@ export function useCatalogStore() {
     [models, refreshTags],
   );
 
+  // Bewusst NICHT optimistisch (anders als addTag/removeTag): eine
+  // Namenskollision im Zielverzeichnis ist ein haeufiger, fuer den Nutzer
+  // wichtiger Fehlerfall (siehe rename_file-Validierung im Backend), den die
+  // aufrufende UI direkt anzeigen soll, statt ihn nur still per naechstem
+  // Resync zu kaschieren. Der lokale Zustand wird deshalb erst nach
+  // erfolgreicher Backend-Bestaetigung aktualisiert; ein Fehler wird an den
+  // Aufrufer durchgereicht (Promise-Rejection).
+  const renameFile = useCallback((id: string, name: string) => {
+    return filesApi.renameFile(id, name).then(() => {
+      setModels((prev) => prev.map((m) => (m.id === id ? { ...m, name } : m)));
+      // Ein neuer Name kann die Sortierposition des Modells verschieben
+      // (Standard-Sortierung ist "Name") - ohne dies wuerde das gerade
+      // umbenannte, weiterhin ausgewaehlte Modell aus dem sichtbaren Bereich
+      // rutschen, ohne dass der Nutzer merkt, wohin. Bewusst NICHT per
+      // requestAnimationFrame direkt hier ausgeloest: das laeuft ausserhalb
+      // von Reacts Render-Zyklus und hat keine Garantie, dass der DOM-Knoten
+      // bereits an seiner neuen (sortierten) Position committet wurde, wenn
+      // der Frame feuert. Stattdessen wird nur der Scroll-Wunsch vermerkt;
+      // der tatsaechliche Scroll passiert in einem useEffect in App.tsx, der
+      // garantiert erst NACH dem zu diesem setModels() gehoerenden Commit
+      // + Paint laeuft.
+      setPendingScrollToId(id);
+    });
+  }, []);
+
   const removeTag = useCallback(
     (id: string, tag: string) => {
       const current = models.find((m) => m.id === id);
@@ -597,10 +626,11 @@ export function useCatalogStore() {
     selectedId, setSelectedId,
     skippedSnapshotIds, skipSnapshot, pendingSnapshotIds,
     rescanFeedback,
+    pendingScrollToId, setPendingScrollToId,
     refreshFolders, refreshFiles, refreshTags, refreshCreators, refreshTrash,
     selectModel, mergeImported, ensureFullModel,
     restoreModel, deleteModelPermanently, emptyTrashAction,
-    addTag, removeTag, deleteModel,
+    addTag, removeTag, renameFile, deleteModel,
     togglePrintStatus, toggleFavorite,
     addToQueue, removeFromQueue, reorderQueue,
     uploadCustomImage, captureRenderSnapshot, setModelSourceUrl,

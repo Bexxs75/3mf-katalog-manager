@@ -209,6 +209,19 @@ pub fn update_file_folder(conn: &Connection, file_id: i64, folder_id: Option<i64
     Ok(())
 }
 
+/// Aktualisiert `name` und `path` einer Datei nach einem physischen
+/// Umbenennen (siehe `rename_file`-Command in `commands/files.rs`).
+pub fn rename_file(conn: &Connection, file_id: i64, name: &str, path: &str) -> Result<(), DbError> {
+    let affected = conn.execute(
+        "UPDATE files SET name = ?1, path = ?2 WHERE id = ?3",
+        params![name, path, file_id],
+    )?;
+    if affected == 0 {
+        return Err(DbError::Other(format!("keine Datei mit id {file_id} gefunden fuer rename_file")));
+    }
+    Ok(())
+}
+
 /// Aktualisiert nur die `name`-Spalte eines Ordners (der physische
 /// `std::fs::rename` und das rekursive Pfad-Update via
 /// `update_paths_under_folder` passieren getrennt, siehe `rename_folder`-

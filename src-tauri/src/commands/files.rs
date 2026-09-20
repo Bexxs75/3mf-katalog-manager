@@ -361,6 +361,76 @@ pub fn move_file_to_folder(state: State<AppState>, file_id: String, folder_id: O
     let sensitive_dirs = state.sensitive_dirs.clone();
     move_file_to_folder_with_conn(&conn, id, target_id, &sensitive_dirs)
 }
+/// Sicherheits-Grenze fuer `rename_file`: `name` landet unmittelbar in einem
+/// `with_file_name`-Aufruf und muss deshalb eine einzelne, harmlose Pfad-
+/// Komponente sein - gleiche Begruendung wie `validate_folder_name` in
+/// `folders.rs` (CWE-22, erreichbar allein durch Text-Eingabe im
+/// "Umbenennen"-Feld).
+fn validate_file_name(name: &str) -> CmdResult<()> {
+    if name.trim().is_empty() {
+        return Err("Dateiname darf nicht leer sein".to_string());
+    }
+    if name.contains('/') || name.contains('\\') {
+        return Err("Dateiname darf keine Pfad-Trennzeichen enthalten".to_string());
+    }
+    if name == "." || name == ".." {
+        return Err("Ungueltiger Dateiname".to_string());
+    }
+    Ok(())
+}
+/// Kernlogik von `rename_file`, getrennt von der `State<AppState>`-Huelle
+/// gehalten (gleiche Konvention wie `move_file_to_folder_with_conn`/
+/// `rename_folder_with_conn`), damit sie in Tests direkt gegen eine
+/// In-Memory-`Connection` aufgerufen werden kann. Nutzt `std::fs::rename`
+/// statt `move_file` (Kopieren+Loeschen): Quelle und Ziel liegen immer im
+/// selben Verzeichnis, ein atomares Rename ist hier also sowohl korrekt als
+/// auch - anders als beim Verschieben zwischen (potenziell) unterschiedlichen
+/// Ordnern - der guenstigere Weg (kein voller Datei-Kopiervorgang noetig).
+fn rename_file_with_conn(
+    conn: &Connection,
+    id: i64,
+    new_name: String,
+    sensitive_dirs: &[PathBuf],
+) -> CmdResult<()> {
+    validate_file_name(&new_name)?;
+    let file = db::get_file(conn, id).map_err(|e| e.to_string())?.ok_or_else(|| "file not found".to_string())?;
+
+    let old_path = PathBuf::from(&file.path);
+    let new_path = old_path.with_file_name(&new_name);
+    reject_if_sensitive_path(&old_path, sensitive_dirs)?;
+    reject_if_sensitive_path(&new_path, sensitive_dirs)?;
+
+    if new_path == old_path {
+        return Ok(());
+    }
+    if new_path.exists() {
+        return Err(format!("Zieldatei existiert bereits: {}", new_path.display()));
+    }
+    std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())?;
+
+    if let Err(db_err) = db::rename_file(conn, id, &new_name, &new_path.to_string_lossy()) {
+        // Kompensation: physische Umbenennung rueckgaengig machen, damit
+        // Filesystem und DB nicht auseinanderlaufen (H-01-Muster).
+        if let Err(rollback_err) = std::fs::rename(&new_path, &old_path) {
+            return Err(format!(
+                "DB-Update fehlgeschlagen ({db_err}) UND Rollback der Datei-Umbenennung fehlgeschlagen ({rollback_err}) - Datei heisst jetzt {}, DB verweist weiter auf {}",
+                new_path.display(),
+                old_path.display()
+            ));
+        }
+        return Err(db_err.to_string());
+    }
+    Ok(())
+}
+/// Benennt eine echte Datei auf der Platte um (`std::fs::rename`, gleiches
+/// Verzeichnis) und aktualisiert `name`/`path` in der DB entsprechend.
+#[tauri::command]
+pub fn rename_file(state: State<AppState>, file_id: String, name: String) -> CmdResult<()> {
+    let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let conn = lock_db(&state)?;
+    let sensitive_dirs = state.sensitive_dirs.clone();
+    rename_file_with_conn(&conn, id, name, &sensitive_dirs)
+}
 #[tauri::command]
 pub fn set_print_status(state: State<AppState>, file_id: String, status: String) -> CmdResult<()> {
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
@@ -1348,6 +1418,114 @@ mod tests {
         let result = move_file_to_folder_with_conn(&conn, file_id, Some(folder_id), &sensitive);
         assert!(result.is_err(), "move_file_to_folder_with_conn must reject a target folder under a sensitive directory");
         assert!(file_path.exists(), "original file must be untouched after a rejected move");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+    #[test]
+    fn rename_file_renames_on_disk_and_updates_name_and_path() {
+        let tmp = unique_test_dir("rename_file");
+        std::fs::create_dir_all(&tmp).unwrap();
+        let old_path = tmp.join("alt.3mf");
+        std::fs::write(&old_path, b"dummy").unwrap();
+
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let file_id = db::test_insert_minimal_file(&conn, &old_path.to_string_lossy(), None).unwrap();
+
+        rename_file_with_conn(&conn, file_id, "neu.3mf".to_string(), &[]).expect("rename should succeed");
+
+        let new_path = tmp.join("neu.3mf");
+        assert!(new_path.exists(), "file must physically exist under the new name");
+        assert!(!old_path.exists(), "file must no longer exist under the old name");
+
+        let after = db::get_file(&conn, file_id).unwrap().unwrap();
+        assert_eq!(after.name, "neu.3mf");
+        assert_eq!(after.path, new_path.to_string_lossy().to_string());
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+    #[test]
+    fn rename_file_rejects_a_name_that_already_exists_in_the_same_directory() {
+        let tmp = unique_test_dir("rename_file_collision");
+        std::fs::create_dir_all(&tmp).unwrap();
+        let old_path = tmp.join("alt.3mf");
+        let existing_path = tmp.join("existiert-schon.3mf");
+        std::fs::write(&old_path, b"dummy").unwrap();
+        std::fs::write(&existing_path, b"dummy2").unwrap();
+
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let file_id = db::test_insert_minimal_file(&conn, &old_path.to_string_lossy(), None).unwrap();
+
+        let result = rename_file_with_conn(&conn, file_id, "existiert-schon.3mf".to_string(), &[]);
+        assert!(result.is_err(), "rename_file_with_conn must reject a name that collides with an existing file");
+        assert!(old_path.exists(), "original file must be untouched after a rejected rename");
+        assert_eq!(std::fs::read(&existing_path).unwrap(), b"dummy2", "the pre-existing file must not be overwritten");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+    #[test]
+    fn rename_file_rejects_names_with_path_separators_or_traversal() {
+        let tmp = unique_test_dir("rename_file_traversal");
+        std::fs::create_dir_all(&tmp).unwrap();
+        let old_path = tmp.join("alt.3mf");
+        std::fs::write(&old_path, b"dummy").unwrap();
+
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let file_id = db::test_insert_minimal_file(&conn, &old_path.to_string_lossy(), None).unwrap();
+
+        for bad_name in ["../escaped.3mf", "sub/dir.3mf", "..", "."] {
+            let result = rename_file_with_conn(&conn, file_id, bad_name.to_string(), &[]);
+            assert!(result.is_err(), "rename_file_with_conn must reject name {bad_name:?}");
+        }
+        assert!(old_path.exists(), "original file must be untouched after rejected renames");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+    #[test]
+    fn rename_file_with_conn_rejects_sensitive_target_path() {
+        let tmp = unique_test_dir("rename_file_sensitive");
+        std::fs::create_dir_all(&tmp).unwrap();
+        let old_path = tmp.join("alt.3mf");
+        std::fs::write(&old_path, b"dummy").unwrap();
+        let sensitive = vec![tmp.clone()];
+
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let file_id = db::test_insert_minimal_file(&conn, &old_path.to_string_lossy(), None).unwrap();
+
+        let result = rename_file_with_conn(&conn, file_id, "neu.3mf".to_string(), &sensitive);
+        assert!(result.is_err(), "rename_file_with_conn must reject a rename under a sensitive directory");
+        assert!(old_path.exists(), "original file must be untouched after a rejected rename");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+    #[test]
+    fn rename_file_compensates_when_db_update_fails() {
+        let tmp = unique_test_dir("rename_file_compensation");
+        std::fs::create_dir_all(&tmp).unwrap();
+        let old_path = tmp.join("alt.3mf");
+        std::fs::write(&old_path, b"dummy").unwrap();
+
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let file_id = db::test_insert_minimal_file(&conn, &old_path.to_string_lossy(), None).unwrap();
+        // Ein hartes db::delete_file(file_id) waere hier wirkungslos:
+        // rename_file_with_conn laedt die Zeile zuerst per get_file() und
+        // wuerde dann sofort mit "file not found" abbrechen, OHNE den
+        // physischen Rename je auszufuehren - der Kompensationspfad wuerde
+        // nie erreicht. Stattdessen bleibt die Zeile bestehen, und ein
+        // Trigger laesst nur das UPDATE fehlschlagen, NACHDEM
+        // rename_file_with_conn die Datei bereits physisch umbenannt hat
+        // (gleiche Technik wie bei den anderen H-01-Kompensationstests).
+        conn.execute_batch(&format!(
+            "CREATE TRIGGER block_rename BEFORE UPDATE ON files
+             WHEN NEW.id = {file_id}
+             BEGIN SELECT RAISE(ABORT, 'simulierter Fehler bei rename_file'); END;"
+        ))
+        .unwrap();
+
+        let result = rename_file_with_conn(&conn, file_id, "neu.3mf".to_string(), &[]);
+
+        assert!(result.is_err(), "must surface the db::rename_file failure (0 rows affected)");
+        assert!(old_path.exists(), "file must be renamed back to its original name after the failed DB update");
+        assert!(!tmp.join("neu.3mf").exists(), "file must not remain stranded under the new name");
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
