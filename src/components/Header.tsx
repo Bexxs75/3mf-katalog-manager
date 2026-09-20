@@ -12,7 +12,6 @@ interface Props {
   count: number;
   onImportFiles: () => void;
   onImportFolder: () => void;
-  onImportFolderAsCollection: () => void;
   mainView: 'catalog' | 'filament' | 'trash';
 }
 
@@ -30,7 +29,6 @@ export function Header({
   count,
   onImportFiles,
   onImportFolder,
-  onImportFolderAsCollection,
   mainView,
 }: Props) {
   const t = useT();
@@ -87,15 +85,6 @@ export function Header({
               className="w-full text-left px-3 py-1.5 text-[length:var(--font-size-body)] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
             >
               {t('importFolderOption')}
-            </button>
-            <button
-              onClick={() => {
-                setImportMenuOpen(false);
-                onImportFolderAsCollection();
-              }}
-              className="w-full text-left px-3 py-1.5 text-[length:var(--font-size-body)] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
-            >
-              {t('importFolderAsCollectionOption')}
             </button>
           </div>
         )}

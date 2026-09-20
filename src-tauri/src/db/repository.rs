@@ -622,16 +622,6 @@ pub fn file_exists_by_path(conn: &Connection, path: &str) -> Result<bool, DbErro
     Ok(exists.is_some())
 }
 
-pub fn get_file_id_by_content_hash(conn: &Connection, hash: &str) -> Result<Option<i64>, DbError> {
-    Ok(conn
-        .query_row(
-            "SELECT id FROM files WHERE content_hash = ?1 AND deleted_at IS NULL",
-            params![hash],
-            |row| row.get(0),
-        )
-        .optional()?)
-}
-
 pub fn file_exists_by_hash(conn: &Connection, hash: &str) -> Result<bool, DbError> {
     let exists: Option<i64> = conn
         .query_row(

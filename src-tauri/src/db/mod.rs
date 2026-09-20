@@ -14,7 +14,7 @@ pub use migrations::run_migrations;
 pub use repository::{
     add_tag_to_file, connect, delete_file, delete_filament_spool, delete_print_log_entry,
     delete_saved_filter, delete_unused_tags, ensure_folder_path,
-    file_exists_by_hash, file_exists_by_path, get_file, get_file_id_by_content_hash,
+    file_exists_by_hash, file_exists_by_path, get_file,
     get_registered_slicer,
     insert_file_within_tx,
     insert_filament_spool, insert_folder_with_parent, insert_print_log_entry,
@@ -45,7 +45,7 @@ pub use repository::insert_file;
 pub use repository::test_insert_minimal_file;
 
 pub use collections::{
-    add_file_to_collection, create_collection, delete_collection, get_file_id_by_path,
+    add_file_to_collection, create_collection, delete_collection,
     list_collection_file_ids, list_collections, max_collection_position,
     remove_file_from_collection, rename_collection, set_collection_position,
 };

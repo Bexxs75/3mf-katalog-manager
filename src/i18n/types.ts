@@ -245,7 +245,6 @@ export interface Translations {
   renameCollectionAria: string;
   noCollectionsEmptyState: string;
   createCollectionLabel: string;
-  importFolderAsCollectionOption: string;
 
   createFolderLabel: string;
   newFolderPlaceholder: string;

@@ -2,7 +2,7 @@
 // einer position-Spalte pro Zuordnung fuer eine manuell festlegbare
 // Reihenfolge - der eigentliche Mehrwert gegenueber einem Tag.
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection};
 
 use super::error::DbError;
 use super::models::CollectionRecord;
@@ -105,16 +105,6 @@ pub fn list_collection_file_ids(conn: &Connection, collection_id: i64) -> Result
     Ok(rows)
 }
 
-pub fn get_file_id_by_path(conn: &Connection, path: &str) -> Result<Option<i64>, DbError> {
-    Ok(conn
-        .query_row(
-            "SELECT id FROM files WHERE path = ?1 AND deleted_at IS NULL",
-            params![path],
-            |row| row.get(0),
-        )
-        .optional()?)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -213,15 +203,6 @@ mod tests {
         let collections = list_collections(&conn).unwrap();
         assert_eq!(collections.len(), 1);
         assert_eq!(collections[0].model_count, 2);
-    }
-
-    #[test]
-    fn get_file_id_by_path_finds_existing_file_and_returns_none_for_unknown_path() {
-        let mut conn = connect_in_memory().unwrap();
-        let file_id = insert_file(&mut conn, &sample_file("/tmp/a.3mf")).unwrap();
-
-        assert_eq!(get_file_id_by_path(&conn, "/tmp/a.3mf").unwrap(), Some(file_id));
-        assert_eq!(get_file_id_by_path(&conn, "/tmp/unbekannt.3mf").unwrap(), None);
     }
 
     #[test]

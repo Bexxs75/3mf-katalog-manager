@@ -241,7 +241,6 @@ export const de: Translations = {
   renameCollectionAria: 'Sammlung umbenennen',
   noCollectionsEmptyState: 'Noch keine Sammlungen angelegt.',
   createCollectionLabel: '+ Neue Sammlung',
-  importFolderAsCollectionOption: 'Ordner als Sammlung importieren',
 
   createFolderLabel: '+ Neuer Ordner',
   newFolderPlaceholder: 'Ordnername',

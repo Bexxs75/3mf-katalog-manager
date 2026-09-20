@@ -69,11 +69,6 @@ export function useFileImport({
     [mergeImported],
   );
 
-  const importFolderAsCollection = useCallback(
-    () => importExportApi.importFolderAsCollection().then(mergeImported),
-    [mergeImported],
-  );
-
   const dismissImportBanner = useCallback(() => setImportBanner(null), []);
 
   useEffect(() => {
@@ -90,5 +85,5 @@ export function useFileImport({
   // mergeImported wird zusaetzlich exportiert, damit Importe, die ausserhalb
   // dieses Hooks ausgeloest werden (Ersteinrichtungsdialog), dieselbe
   // Duplikat-Banner-Logik durchlaufen wie die Importe hier.
-  return { importBanner, dismissImportBanner, mergeImported, importFiles, importFolder, importFolderAsCollection };
+  return { importBanner, dismissImportBanner, mergeImported, importFiles, importFolder };
 }

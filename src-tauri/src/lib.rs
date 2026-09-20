@@ -155,7 +155,6 @@ pub fn run() {
             commands::remove_file_from_collection,
             commands::reorder_collection,
             commands::list_collection_files,
-            commands::import_folder_as_collection,
             commands::get_app_version,
             commands::check_for_update,
             commands::open_release_url,

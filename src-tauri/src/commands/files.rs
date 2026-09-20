@@ -879,56 +879,6 @@ pub async fn import_folder(
     import_many(&state, vec![path])
 }
 #[tauri::command]
-pub async fn import_folder_as_collection(
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-) -> CmdResult<ImportResultDto> {
-    let picked = app.dialog().file().blocking_pick_folder();
-
-    let Some(picked) = picked else {
-        return Ok(ImportResultDto { imported: Vec::new(), duplicate_count: 0 });
-    };
-    let path = picked.into_path().map_err(|e| e.to_string())?;
-    let folder_name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "Sammlung".to_string());
-
-    let mut candidates = Vec::new();
-    collect_supported_files(&path, &mut candidates);
-
-    let result = import_many(&state, vec![path])?;
-
-    let conn = lock_db(&state)?;
-    let created_at = chrono::Utc::now().to_rfc3339();
-    let collection_id = db::create_collection(&conn, &folder_name, &created_at).map_err(|e| e.to_string())?;
-
-    let mut position = 0i64;
-    for candidate in &candidates {
-        let path_str = candidate.to_string_lossy().to_string();
-        // Erst per Pfad suchen (deckt neu importierte UND bereits vorher am
-        // selben Pfad katalogisierte Dateien ab). Schlaegt das fehl, kann die
-        // Datei trotzdem schon im Katalog sein - unter einem ANDEREN Pfad,
-        // als exaktes Inhalts-Duplikat (von import_many via content_hash
-        // erkannt und deshalb nicht neu importiert). Ohne diesen Fallback
-        // wuerde so eine Datei beim Sammlung-aus-Ordner-Import stillschweigend
-        // uebersprungen, obwohl sie inhaltlich im Ordner liegt.
-        let file_id = match db::get_file_id_by_path(&conn, &path_str).map_err(|e| e.to_string())? {
-            Some(id) => Some(id),
-            None => match compute_content_hash(candidate) {
-                Ok(hash) => db::get_file_id_by_content_hash(&conn, &hash).map_err(|e| e.to_string())?,
-                Err(_) => None,
-            },
-        };
-        if let Some(file_id) = file_id {
-            db::add_file_to_collection(&conn, collection_id, file_id, position).map_err(|e| e.to_string())?;
-            position += 1;
-        }
-    }
-
-    Ok(result)
-}
-#[tauri::command]
 pub fn import_dropped(state: State<AppState>, paths: Vec<String>) -> CmdResult<ImportResultDto> {
     import_many(&state, paths.into_iter().map(PathBuf::from).collect())
 }

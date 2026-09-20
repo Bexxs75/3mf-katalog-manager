@@ -11,6 +11,10 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 - Slicer-Name in den Einstellungen konnte bei langen Namen fast vollständig verschwinden (z. B. auf "B.." verkürzt), weil er sich mit dem "Standard"-Badge eine Zeile ohne Mindestbreite teilte ([GitHub Issue #10](https://github.com/Bexxs75/3mf-katalog-manager/issues/10)). Der Name steht jetzt immer in einer eigenen, vollbreiten Zeile; das Badge steht in der Zeile darunter vor dem Programmpfad.
 
+### Removed
+
+- Import-Option "Ordner als Sammlung importieren" entfernt: seit Ordner echte Dateisystem-Verzeichnisse sind, legte diese Option ohnehin schon zusätzlich einen normalen Ordner an (identisch zu "Ordner...") und packte die Dateien zusätzlich in eine Sammlung — der ursprüngliche Zweck (irgendeine Gruppierung erzwingen, als Ordner noch rein virtuell waren) ist damit entfallen. Sammlungen lassen sich weiterhin über die Mehrfachauswahl-Aktionsleiste ("Zu Sammlung hinzufügen") anlegen.
+
 ## [0.8.1] - 2026-09-20
 
 ### Security
@@ -293,6 +297,10 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 ### Fixed
 
 - The slicer name in settings could nearly disappear entirely for long names (e.g. truncated to "B.."), because it shared a line with the "Default" badge with no minimum width for the name ([GitHub Issue #10](https://github.com/Bexxs75/3mf-katalog-manager/issues/10)). The name now always gets its own full-width line; the badge sits on the line below, in front of the executable path.
+
+### Removed
+
+- Removed the "Import folder as collection" import option: since folders became real filesystem directories, this option already created a regular folder as a side effect (identical to "Folder...") and additionally packed the files into a collection — its original purpose (forcing some grouping while folders were still purely virtual) no longer applies. Collections can still be created via the multi-select action bar ("Add to collection").
 
 ## [0.8.1] - 2026-09-20
 

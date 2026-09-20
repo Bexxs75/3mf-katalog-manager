@@ -241,7 +241,6 @@ export const en: Translations = {
   renameCollectionAria: 'Rename collection',
   noCollectionsEmptyState: 'No collections yet.',
   createCollectionLabel: '+ New collection',
-  importFolderAsCollectionOption: 'Import folder as collection',
 
   createFolderLabel: '+ New folder',
   newFolderPlaceholder: 'Folder name',

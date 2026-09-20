@@ -16,11 +16,6 @@ describe('importExport api', () => {
     await importExportApi.importFolder();
     expect(invoke).toHaveBeenCalledWith('import_folder');
   });
-  it('importFolderAsCollection', async () => {
-    vi.mocked(invoke).mockResolvedValue({ imported: [], duplicateCount: 0 });
-    await importExportApi.importFolderAsCollection();
-    expect(invoke).toHaveBeenCalledWith('import_folder_as_collection');
-  });
   it('importDropped', async () => {
     vi.mocked(invoke).mockResolvedValue({ imported: [], duplicateCount: 0 });
     await importExportApi.importDropped(['/a.3mf']);

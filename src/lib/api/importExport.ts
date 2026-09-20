@@ -7,9 +7,6 @@ export function importFiles() {
 export function importFolder() {
   return invoke<ImportResultDto>('import_folder');
 }
-export function importFolderAsCollection() {
-  return invoke<ImportResultDto>('import_folder_as_collection');
-}
 export function importDropped(paths: string[]) {
   return invoke<ImportResultDto>('import_dropped', { paths });
 }

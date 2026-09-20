@@ -137,9 +137,6 @@ export default function App() {
         count={filters.filtered.length}
         onImportFiles={fileImport.importFiles}
         onImportFolder={fileImport.importFolder}
-        onImportFolderAsCollection={() =>
-          fileImport.importFolderAsCollection().then(() => collections.refreshCollections())
-        }
         mainView={mainView}
       />
 
