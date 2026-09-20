@@ -7,9 +7,16 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
+### Added
+
+- Tastaturkürzel: `/` fokussiert die Suche, Pfeiltasten wechseln die Auswahl innerhalb der aktuell gefilterten/sortierten Modell-Liste, Entf/Rücktaste öffnet bei aktiver Mehrfachauswahl die bestehende Löschen-Bestätigung (löscht nicht direkt). Alle drei greifen nicht, solange der Fokus in einem Eingabefeld liegt.
+- Mehrfachauswahl-Leiste: Tags lassen sich jetzt für mehrere ausgewählte Modelle gleichzeitig hinzufügen ("Tag hinzufügen") oder entfernen ("Tag entfernen", Dropdown mit allen in der Auswahl vorkommenden Tags) — bisher musste dafür jedes Modell einzeln geöffnet werden.
+- Suche durchsucht jetzt zusätzlich zum Dateinamen auch Tags, Ersteller und den Dateipfad.
+
 ### Fixed
 
 - Slicer-Name in den Einstellungen konnte bei langen Namen fast vollständig verschwinden (z. B. auf "B.." verkürzt), weil er sich mit dem "Standard"-Badge eine Zeile ohne Mindestbreite teilte ([GitHub Issue #10](https://github.com/Bexxs75/3mf-katalog-manager/issues/10)). Der Name steht jetzt immer in einer eigenen, vollbreiten Zeile; das Badge steht in der Zeile darunter vor dem Programmpfad.
+- Der Creator-Filter (Sidebar) lief für jedes nur per schlanker Katalog-Übersicht geladene Modell ins Leere, da `creator` in dieser Projektion bislang fehlte und im Frontend hartcodiert `null` war — dieselbe Fehlerklasse wie der bereits behobene 3D-Vorschau-Bug. Betraf effektiv den gesamten Katalog, bis ein Modell einzeln geöffnet wurde.
 
 ### Removed
 
@@ -294,9 +301,16 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ## [Unreleased]
 
+### Added
+
+- Keyboard shortcuts: `/` focuses search, arrow keys move the selection through the currently filtered/sorted model list, Delete/Backspace opens the existing bulk-delete confirmation when a multi-selection is active (does not delete directly). All three are inert while focus is inside a text field.
+- Multi-select action bar: tags can now be added to ("Add tag") or removed from ("Remove tag", dropdown listing every tag present in the selection) several selected models at once — previously each model had to be opened individually for this.
+- Search now also matches tags, creator and the file path, in addition to the file name.
+
 ### Fixed
 
 - The slicer name in settings could nearly disappear entirely for long names (e.g. truncated to "B.."), because it shared a line with the "Default" badge with no minimum width for the name ([GitHub Issue #10](https://github.com/Bexxs75/3mf-katalog-manager/issues/10)). The name now always gets its own full-width line; the badge sits on the line below, in front of the executable path.
+- The sidebar creator filter silently matched nothing for any model loaded only through the slim catalog summary, because `creator` was missing from that projection and hardcoded to `null` on the frontend - the same bug class already fixed for the 3D-preview snapshot. Effectively affected the entire catalog until a model was opened individually.
 
 ### Removed
 
