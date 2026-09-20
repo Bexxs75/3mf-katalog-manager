@@ -757,6 +757,12 @@ pub struct FileSummary {
     // gefiltert wird und eine zusaetzliche Entfernung dieser Kette ausserhalb
     // des Scopes dieses Bugfixes liegt.
     pub has_render_snapshot: bool,
+    // Bugfix (2026-09-20): fehlte hier komplett, wodurch der Sidebar-
+    // Creator-Filter (`m.creator === activeCreator` in catalogFilters.ts)
+    // fuer jedes nur per Summary geladene Modell ins Leere lief, ganz analog
+    // zum render_snapshot_png-Bug oben - derselbe Fehlerklasse, hier nur noch
+    // nicht behoben gewesen.
+    pub creator: Option<String>,
 }
 
 pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbError> {
@@ -765,7 +771,7 @@ pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbErro
                 dimension_x_mm, dimension_y_mm, dimension_z_mm, volume_cm3,
                 object_count, imported_at, print_status, favorite,
                 queue_position, thumbnail_png, render_snapshot_png,
-                render_snapshot_png IS NOT NULL AS has_render_snapshot
+                render_snapshot_png IS NOT NULL AS has_render_snapshot, creator
          FROM files WHERE deleted_at IS NULL ORDER BY name",
     )?;
     let rows = stmt
@@ -795,6 +801,7 @@ pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbErro
                 thumbnail_png: row.get(15)?,
                 render_snapshot_png: row.get(16)?,
                 has_render_snapshot: row.get::<_, i64>(17)? != 0,
+                creator: row.get(18)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -1164,6 +1171,22 @@ mod tests {
         // Feld dafuer - Compile-Zeit-Garantie ueber die Typ-Feldliste).
         assert_eq!(summaries[0].render_snapshot_png, Some(vec![1u8; 1024]));
         assert!(summaries[0].has_render_snapshot);
+    }
+
+    #[test]
+    fn list_file_summaries_includes_creator() {
+        // Bugfix (2026-09-20): creator fehlte in der Projektion, wodurch der
+        // Sidebar-Creator-Filter (m.creator === activeCreator) fuer jedes nur
+        // per Summary geladene Modell nie traf - dieselbe Fehlerklasse wie der
+        // render_snapshot_png-Bug oben.
+        let conn = connect_in_memory().unwrap();
+        let file_id = test_insert_minimal_file(&conn, "/tmp/z.3mf", None).unwrap();
+        conn.execute("UPDATE files SET creator = ?1 WHERE id = ?2", params!["CarlFromUp", file_id]).unwrap();
+
+        let summaries = list_file_summaries(&conn).unwrap();
+
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].creator, Some("CarlFromUp".to_string()));
     }
 
     #[test]

@@ -19,7 +19,16 @@ export function filterAndSortModels(
     .filter((m) => activeFolderId === 'all' || isFileInFolderOrDescendant(m.folderId, activeFolderId, folders))
     .filter((m) => !activeTag || m.tags.includes(activeTag))
     .filter((m) => !activeCreator || m.creator === activeCreator)
-    .filter((m) => !query || m.name.toLowerCase().includes(query.toLowerCase()))
+    .filter((m) => {
+      if (!query) return true;
+      const q = query.toLowerCase();
+      return (
+        m.name.toLowerCase().includes(q) ||
+        m.path.toLowerCase().includes(q) ||
+        (m.creator?.toLowerCase().includes(q) ?? false) ||
+        m.tags.some((tag) => tag.toLowerCase().includes(q))
+      );
+    })
     .sort((a, b) => {
       if (sort === 'name') return a.name.localeCompare(b.name);
       if (sort === 'size') return a.fileSizeBytes - b.fileSizeBytes;

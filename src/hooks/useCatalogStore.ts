@@ -8,11 +8,13 @@ import type { ModelFile, ModelFileSummary, Folder, TagCount, CreatorCount, Saved
 // `ModelFile`-Form ein, damit die Grid-/Listen-Ansicht sowie alle
 // bestehenden Komponenten/Hooks weiterhin denselben `ModelFile`-Typ sehen,
 // ohne dass jede Stelle im Baum angepasst werden muss. Die hier NICHT von
-// list_file_summaries gelieferten Felder (materials/tags/renderSnapshotImage/
-// customImage/sliceInfo/costEstimate/creator/sourceUrl/lastViewedAt) werden
-// mit neutralen Defaults gefuellt und erst nachtraeglich per
+// list_file_summaries gelieferten Felder (materials/tags/customImage/
+// sliceInfo/costEstimate/sourceUrl/lastViewedAt) werden mit neutralen
+// Defaults gefuellt und erst nachtraeglich per
 // `ensureFullModel()`/`listFilesByIds([id])` echt befuellt, sobald ein
-// Modell ausgewaehlt oder die Detailseite geoeffnet wird.
+// Modell ausgewaehlt oder die Detailseite geoeffnet wird. renderSnapshotImage
+// und creator kommen dagegen bereits direkt aus der Summary (Bugfix
+// 2026-09-20 fuer beide - siehe Kommentar an `db::FileSummary`).
 function summaryToModelFile(s: ModelFileSummary): ModelFile {
   return {
     id: s.id,
@@ -35,7 +37,7 @@ function summaryToModelFile(s: ModelFileSummary): ModelFile {
     sliceInfo: null,
     costEstimate: null,
     lastViewedAt: null,
-    creator: null,
+    creator: s.creator,
     customImage: null,
     thumbnailImage: s.thumbnailImage,
     // Bugfix (2026-09-20): list_file_summaries liefert render_snapshot_png

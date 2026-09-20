@@ -64,6 +64,9 @@ export function makeModelFileSummary(
     // ueberschrieben werden, um eine Abweichung zwischen Blob und Flag
     // nachzubilden (z.B. fuer Regressionstests des frueheren Finding-1-Bugs).
     hasRenderSnapshot: overrides.hasRenderSnapshot ?? m.renderSnapshotImage !== null,
+    // Bugfix (2026-09-20): list_file_summaries liefert creator jetzt mit,
+    // analog zu renderSnapshotImage oben.
+    creator: m.creator,
   };
 }
 

@@ -274,6 +274,18 @@ describe('useCatalogStore', () => {
     expect(result.current.pendingSnapshotIds).toEqual([]);
   });
 
+  it('Bugfix 2026-09-20: creator is populated straight from the summary, not hardcoded to null', async () => {
+    // Derselbe Fehlerklasse wie oben: summaryToModelFile() hardcodete creator
+    // bislang auf null, wodurch der Sidebar-/Suchfilter nach Creator fuer
+    // jedes nur per Summary geladene Modell (also den gesamten Katalog vor
+    // dem ersten ensureFullModel()) ins Leere lief.
+    mockInitialLoad([makeModelFile({ id: 'm1', creator: 'CarlFromUp' })]);
+    const { result } = renderHook(() => useCatalogStore());
+    await waitFor(() => expect(result.current.models).toHaveLength(1));
+
+    expect(result.current.models[0].creator).toBe('CarlFromUp');
+  });
+
   it('addToQueue stores the returned position', async () => {
     mockInitialLoad([makeModelFile({ id: 'm1', queuePosition: null })]);
     vi.mocked(invoke).mockImplementation((cmd: string) => {

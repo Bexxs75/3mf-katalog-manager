@@ -32,6 +32,39 @@ describe('filterAndSortModels', () => {
     expect(result.map((m) => m.id)).toEqual(['1']);
   });
 
+  it('query also matches a tag, not just the name', () => {
+    const models = [
+      makeModelFile({ id: '1', name: 'Adapter', tags: ['bambu', 'mount'] }),
+      makeModelFile({ id: '2', name: 'Vase', tags: ['decor'] }),
+    ];
+    const result = filterAndSortModels(models, [], {
+      activeFolderId: 'all', activeTag: null, activeCreator: null, query: 'bambu', sort: 'name',
+    });
+    expect(result.map((m) => m.id)).toEqual(['1']);
+  });
+
+  it('query also matches the creator', () => {
+    const models = [
+      makeModelFile({ id: '1', name: 'Adapter', creator: 'CarlFromUp' }),
+      makeModelFile({ id: '2', name: 'Vase', creator: null }),
+    ];
+    const result = filterAndSortModels(models, [], {
+      activeFolderId: 'all', activeTag: null, activeCreator: null, query: 'carlfromup', sort: 'name',
+    });
+    expect(result.map((m) => m.id)).toEqual(['1']);
+  });
+
+  it('query also matches the file path', () => {
+    const models = [
+      makeModelFile({ id: '1', name: 'Adapter', path: '/mnt/Daten2/3D Druck Sammelordner/adapter.3mf' }),
+      makeModelFile({ id: '2', name: 'Vase', path: '/mnt/Daten2/vase.3mf' }),
+    ];
+    const result = filterAndSortModels(models, [], {
+      activeFolderId: 'all', activeTag: null, activeCreator: null, query: 'sammelordner', sort: 'name',
+    });
+    expect(result.map((m) => m.id)).toEqual(['1']);
+  });
+
   it('sorts by size ascending', () => {
     const models = [
       makeModelFile({ id: '1', fileSizeBytes: 500 }),

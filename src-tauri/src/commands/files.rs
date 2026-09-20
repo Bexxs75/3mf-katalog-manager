@@ -8,10 +8,11 @@ const MAX_RENDER_SNAPSHOT_BASE64_BYTES: usize = MAX_CUSTOM_IMAGE_BYTES / 3 * 4 +
 /// Schlanke Projektion von `ModelFileDto` fuer die Katalog-Uebersicht
 /// (Grid/Liste, siehe Finding M-01): enthaelt bewusst KEIN `customImage`
 /// und KEINE `materials`/`tags` - diese werden nur auf der Detailseite ueber
-/// `list_files_by_ids([id])` nachgeladen. `thumbnailImage` UND
-/// `renderSnapshotImage` bleiben enthalten (siehe Kommentar an
-/// `db::FileSummary` fuer die Vermessung, die den urspruenglichen Ausschluss
-/// von `renderSnapshotImage` widerlegt hat - Bugfix 2026-09-20).
+/// `list_files_by_ids([id])` nachgeladen. `thumbnailImage`, `renderSnapshotImage`
+/// UND `creator` bleiben enthalten (siehe Kommentar an `db::FileSummary` fuer
+/// die Vermessung, die den urspruenglichen Ausschluss von `renderSnapshotImage`
+/// widerlegt hat, sowie fuer den Creator-Filter-Bug, der aus dem Fehlen von
+/// `creator` hier resultierte - beides Bugfix 2026-09-20).
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileSummaryDto {
@@ -38,6 +39,7 @@ pub struct FileSummaryDto {
     // Praktisch redundant, seit renderSnapshotImage selbst mitgeliefert
     // wird - siehe Kommentar an `db::FileSummary::has_render_snapshot`.
     pub has_render_snapshot: bool,
+    pub creator: Option<String>,
 }
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -120,6 +122,7 @@ pub fn list_file_summaries(state: State<AppState>) -> CmdResult<Vec<FileSummaryD
             thumbnail_image: encode_image(s.thumbnail_png),
             render_snapshot_image: encode_image(s.render_snapshot_png),
             has_render_snapshot: s.has_render_snapshot,
+            creator: s.creator,
         })
         .collect())
 }

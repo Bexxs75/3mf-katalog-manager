@@ -62,13 +62,15 @@ export interface ModelFile {
  * `ModelFile`-Abfrage laedt pro Zeile Materials/Tags/Metadata sowie das
  * grosse `customImage`-Zusatzbild, obwohl die Uebersicht nur eine Kachel-
  * Vorschau braucht). Enthaelt bewusst KEIN `materials`/`tags`/`customImage`/
- * `sliceInfo`/`costEstimate`/`creator`/`sourceUrl`/`lastViewedAt` -
- * `thumbnailImage` UND `renderSnapshotImage` bleiben fuer die Kachel-Vorschau
- * erhalten (Bugfix 2026-09-20: `renderSnapshotImage` war hier zunaechst
- * ebenfalls ausgeschlossen, siehe Kommentar an `db::FileSummary` im Backend
- * fuer die Vermessung, die den Ausschluss widerlegt hat - ohne den Blob
- * zeigte das Grid nie einen im Hintergrund bereits gerenderten Snapshot,
- * solange das Modell nicht einzeln per `listFilesByIds` nachgeladen wurde).
+ * `sliceInfo`/`costEstimate`/`sourceUrl`/`lastViewedAt` - `thumbnailImage`,
+ * `renderSnapshotImage` UND `creator` bleiben dagegen enthalten, da Grid-
+ * Vorschau bzw. Sidebar-/Suchfilter direkt auf diesen Feldern operieren
+ * (Bugfix 2026-09-20: sowohl `renderSnapshotImage` als auch `creator` waren
+ * hier zunaechst ausgeschlossen, siehe Kommentar an `db::FileSummary` im
+ * Backend - ohne sie zeigte das Grid nie einen im Hintergrund bereits
+ * gerenderten Snapshot bzw. lief der Creator-Filter fuer jedes nur per
+ * Summary geladene Modell ins Leere, solange es nicht einzeln per
+ * `listFilesByIds` nachgeladen wurde).
  * Volle Daten werden erst beim Oeffnen der Detailseite/Auswahl ueber
  * `listFilesByIds([id])` nachgeladen (siehe `useCatalogStore.ts`).
  */
@@ -91,6 +93,7 @@ export interface ModelFileSummary {
   // Praktisch redundant, seit renderSnapshotImage selbst mitgeliefert wird -
   // siehe Kommentar an `db::FileSummary::has_render_snapshot`.
   hasRenderSnapshot: boolean;
+  creator: string | null;
 }
 
 export interface Folder {
