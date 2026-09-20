@@ -7,6 +7,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-09-20
+
 ### Security
 
 - Interne Härtung nach dem [Senior-Code-Review vom 2026-09-19](docs/superpowers/plans/2026-09-19-senior-code-review-fixes.md) (14 Aufgaben plus Abschluss-Review): Datenbank-Migrationen laufen jetzt über ein richtiges, versioniertes Migrations-System (`db/migrations.rs`) statt stillschweigend ausgeführter `ALTER TABLE`-Anweisungen; mehrere Fehlerpfade beim Löschen/Wiederherstellen aus dem Papierkorb (Einzel- und Mehrfachauswahl) holen eine bereits physisch verschobene Datei jetzt zuverlässig zurück, falls der zugehörige Datenbank-Eintrag nicht aktualisiert werden konnte, statt sie verwaist liegen zu lassen. Keine sichtbare Funktionsänderung, rein interne Robustheit.
@@ -283,6 +285,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
 ## [Unreleased]
+
+## [0.8.1] - 2026-09-20
 
 ### Security
 
