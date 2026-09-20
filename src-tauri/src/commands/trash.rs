@@ -314,11 +314,23 @@ mod tests {
         let id1 = db::test_insert_minimal_file(&conn, &path1.to_string_lossy(), None).unwrap();
         let id2 = db::test_insert_minimal_file(&conn, &path2.to_string_lossy(), None).unwrap();
 
-        // Erzwingt ein 0-Zeilen-UPDATE in soft_delete_file NUR fuer id2,
-        // NACHDEM delete_file_with_conn die Datei bereits physisch in den
-        // Papierkorb verschoben hat - gleiche Technik wie
-        // delete_file_compensates_when_soft_delete_fails.
-        db::delete_file(&conn, id2).unwrap();
+        // Erzwingt ein fehlschlagendes UPDATE in soft_delete_file NUR fuer
+        // id2, NACHDEM delete_file_with_conn die Datei bereits physisch in
+        // den Papierkorb verschoben hat. Ein hartes db::delete_file(id2)
+        // VOR dem delete_files_with_conn()-Aufruf waere hier wirkungslos:
+        // delete_files_with_conn laedt jede Datei zuerst per get_file() und
+        // ueberspringt sie mit `continue`, wenn die Zeile nicht mehr
+        // existiert - der Kompensationspfad in delete_file_with_conn wuerde
+        // dann nie erreicht. Stattdessen bleibt die Zeile bestehen, und ein
+        // Trigger (gleiche Technik wie im restore_file-Kompensationstest
+        // unten) laesst nur das UPDATE fuer id2 mit RAISE(ABORT) scheitern,
+        // nachdem move_file() bereits gelaufen ist.
+        conn.execute_batch(&format!(
+            "CREATE TRIGGER block_soft_delete_id2 BEFORE UPDATE ON files
+             WHEN NEW.id = {id2} AND NEW.deleted_at IS NOT NULL
+             BEGIN SELECT RAISE(ABORT, 'simulierter Fehler bei soft_delete_file'); END;"
+        ))
+        .unwrap();
 
         let result = delete_files_with_conn(&conn, &trash_dir, vec![id1.to_string(), id2.to_string()]);
 

@@ -13,7 +13,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Changed
 
-- Die Slicer-Registrierung (Name, Programmpfad, automatisch erkannt oder manuell hinzugefügt) lebt jetzt in der Katalog-Datenbank statt in localStorage. Bereits vorhandene Slicer-Einträge werden beim ersten Start nach dem Update automatisch übernommen — nichts muss neu eingerichtet werden. Beim Wiederherstellen eines Katalog-Backups bleiben lokal registrierte Slicer unverändert erhalten; Slicer-Einträge, die im Backup selbst enthalten waren (z.B. von einem anderen Rechner), werden dabei NICHT übernommen und müssen bei Bedarf manuell neu hinzugefügt werden — lokale Slicer-Konfiguration geht durch ein Backup-Restore also nie verloren.
+- Die Slicer-Registrierung (Name, Programmpfad, automatisch erkannt oder manuell hinzugefügt) lebt jetzt in der Katalog-Datenbank statt in localStorage. Beim ersten Start nach dem Update werden nur automatisch erkennbare Slicer (Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura an bekannten Installationsorten) erneut per Startup-Scan gefunden; manuell hinzugefügte, individuelle Programmpfade werden beim Upgrade NICHT übernommen und müssen bei Bedarf neu eingerichtet werden. Beim Wiederherstellen eines Katalog-Backups bleiben lokal registrierte Slicer unverändert erhalten; Slicer-Einträge, die im Backup selbst enthalten waren (z.B. von einem anderen Rechner), werden dabei NICHT übernommen und müssen bei Bedarf manuell neu hinzugefügt werden — lokale Slicer-Konfiguration geht durch ein Backup-Restore also nie verloren.
 - Der zuvor beim Export exportierte, aber nirgends mehr benötigte localStorage-Schlüssel für die alte, lokale Slicer-Liste wird nicht mehr in Katalog-Backups aufgenommen (konnte dort einen maschinenlokalen Programmpfad hinterlassen).
 
 ## [0.8.0] - 2026-09-19
@@ -286,7 +286,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Changed
 
-- Slicer registration (name, executable path, auto-detected or manually added) now lives in the catalog database instead of localStorage. Existing slicer entries are carried over automatically on first launch after the update — nothing needs to be set up again. Restoring a catalog backup now leaves locally registered slicers untouched; slicer entries that were part of the backup itself (e.g. from a different machine) are NOT restored and must be re-added manually if needed — local slicer configuration is therefore never lost through a backup restore.
+- Slicer registration (name, executable path, auto-detected or manually added) now lives in the catalog database instead of localStorage. On first launch after the update, only automatically detectable slicers (Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura at known install locations) are re-found by the startup scan; manually added, custom executable paths are NOT carried over across the upgrade and must be re-added if still needed. Restoring a catalog backup leaves locally registered slicers untouched; slicer entries that were part of the backup itself (e.g. from a different machine) are NOT restored and must be re-added manually if needed — local slicer configuration is therefore never lost through a backup restore.
 - The previously exported, but no-longer-used localStorage key for the old, local slicer list is no longer included in catalog backups (it could have leaked a machine-local executable path).
 
 ## [0.8.0] - 2026-09-19
