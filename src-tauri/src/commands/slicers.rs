@@ -148,7 +148,7 @@ fn validate_slicer_target_file(file_path: &str) -> CmdResult<()> {
     if file_path.starts_with('-') || file_name.starts_with('-') {
         return Err("model file path must not start with '-'".to_string());
     }
-    if !is_supported_extension(path) {
+    if !is_sliceable_extension(path) {
         return Err("model file must be a .3mf or .stl file".to_string());
     }
     if !std::fs::metadata(path).map(|m| m.is_file()).unwrap_or(false) {
@@ -306,6 +306,8 @@ mod tests {
         std::fs::write(&other, b"x").unwrap();
         let flag = dir.join("--export-gcode.3mf");
         std::fs::write(&flag, b"x").unwrap();
+        let stp = dir.join("modell.stp");
+        std::fs::write(&stp, b"x").unwrap();
 
         let ok_3mf = validate_slicer_target_file(&model.to_string_lossy());
         let ok_stl = validate_slicer_target_file(&stl.to_string_lossy());
@@ -314,6 +316,7 @@ mod tests {
         let bad_bare_flag = validate_slicer_target_file("--version");
         let bad_missing = validate_slicer_target_file(&dir.join("weg.3mf").to_string_lossy());
         let bad_dir = validate_slicer_target_file(&dir.to_string_lossy());
+        let bad_stp = validate_slicer_target_file(&stp.to_string_lossy());
 
         let _ = std::fs::remove_dir_all(&dir);
         assert!(ok_3mf.is_ok(), "a real .3mf file must still open: {ok_3mf:?}");
@@ -323,5 +326,10 @@ mod tests {
         assert!(bad_bare_flag.is_err(), "a bare CLI flag must be rejected");
         assert!(bad_missing.is_err(), "a non-existent file must be rejected");
         assert!(bad_dir.is_err(), "a directory must be rejected");
+        // Regressionsschutz: .stp ist seit der STP/STEP-Katalogisierung ueber
+        // is_supported_extension importierbar, darf aber NICHT ueber
+        // is_sliceable_extension zum Slicer-Start zugelassen werden (siehe
+        // Kommentar an is_sliceable_extension in files.rs).
+        assert!(bad_stp.is_err(), "a .stp file must not be launchable in a slicer");
     }
 }

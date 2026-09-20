@@ -154,7 +154,7 @@ export const es: Translations = {
   importCatalogRestartHint: 'Catálogo importado. Reinicia la aplicación ahora para que los cambios surtan efecto.',
   catalogSetupTitle: '¿Cómo quieres organizar tu catálogo?',
   catalogSetupIntro: 'Las carpetas del catálogo ahora son directorios reales en tu disco. Si mueves un archivo a otra carpeta en el programa, se mueve de verdad ahí, no solo se reordena en el catálogo. Para que los archivos recién importados se organicen de forma sensata, vamos a fijar ahora una ubicación de almacenamiento.',
-  catalogSetupFileTypesNote: 'Solo se detectan archivos .3mf y .stl. Los archivos ya empaquetados (por ejemplo .zip) se ignoran y permanecen intactos en la carpeta; descomprímelos antes si lo necesitas, o abre la carpeta en el gestor de archivos directamente desde el catálogo después de la configuración.',
+  catalogSetupFileTypesNote: 'Solo se detectan archivos .3mf, .stl y .stp/.step (los archivos STEP no tienen vista previa 3D). Los archivos ya empaquetados (por ejemplo .zip) se ignoran y permanecen intactos en la carpeta; descomprímelos antes si lo necesitas, o abre la carpeta en el gestor de archivos directamente desde el catálogo después de la configuración.',
   catalogSetupAdoptTitle: 'Adoptar una estructura de carpetas existente',
   catalogSetupAdoptDescription: '¿Ya organizas tus archivos de impresión en carpetas? Elige la carpeta principal: el catálogo adoptará toda la estructura, incluidas las subcarpetas, e importará todos los archivos 3mf/STL que contenga.',
   catalogSetupNewTitle: 'Configurar una ubicación nueva',

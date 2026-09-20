@@ -565,6 +565,17 @@ pub fn set_source_url(state: State<AppState>, file_id: String, url: Option<Strin
 pub(crate) fn is_supported_extension(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
+        .map(|e| matches!(e.to_lowercase().as_str(), "3mf" | "stl" | "stp" | "step"))
+        .unwrap_or(false)
+}
+/// Engerer Check als [`is_supported_extension`] - STP/STEP-Dateien sind zwar
+/// katalogisierbar, aber die meisten Slicer koennen kein rohes STEP
+/// importieren. Bewusst NICHT ueber is_supported_extension geteilt, damit
+/// die Erweiterung um stp/step dort nicht automatisch auch den
+/// Slicer-Start fuer STEP-Dateien freischaltet.
+pub(crate) fn is_sliceable_extension(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
         .map(|e| matches!(e.to_lowercase().as_str(), "3mf" | "stl"))
         .unwrap_or(false)
 }
@@ -714,6 +725,20 @@ pub(crate) fn import_one(
                 None,
             )
         }
+        // STEP ist parametrische CAD-Geometrie, kein Dreiecksnetz - es gibt
+        // bewusst keinen Parser dafuer (keine Masse/Volumen/Thumbnail), die
+        // Datei wird nur katalogisiert (Variante A, siehe Plan).
+        Some("stp") | Some("step") => (
+            FileType::Stp,
+            None,
+            None,
+            None,
+            Vec::new(),
+            BTreeMap::new(),
+            None,
+            None,
+            None,
+        ),
         _ => return Err("nicht unterstütztes Dateiformat".to_string()),
     };
 
@@ -817,6 +842,18 @@ pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFile
                 content_hash,
             }
         }
+        Some("stp") | Some("step") => ScannedMetadataUpdate {
+            dimensions_mm: None,
+            volume_cm3: None,
+            object_count: None,
+            thumbnail_png: None,
+            plate_count: None,
+            slice_info_json: None,
+            materials: Vec::new(),
+            metadata: BTreeMap::new(),
+            file_size_bytes,
+            content_hash,
+        },
         _ => return Err("nicht unterstütztes Dateiformat".to_string()),
     };
 
@@ -926,7 +963,7 @@ pub async fn import_files(
     let picked = app
         .dialog()
         .file()
-        .add_filter("3D-Modelle", &["3mf", "stl"])
+        .add_filter("3D-Modelle", &["3mf", "stl", "stp", "step"])
         .blocking_pick_files();
 
     let Some(picked) = picked else {
@@ -1952,5 +1989,62 @@ mod tests {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, vec![0u8; 1024]).unwrap();
         assert!(read_image_bounded(&path, 5 * 1024 * 1024).is_ok());
+    }
+    #[test]
+    fn is_supported_extension_accepts_stp_and_step_case_insensitively() {
+        assert!(is_supported_extension(Path::new("teil.stp")));
+        assert!(is_supported_extension(Path::new("teil.STEP")));
+    }
+    #[test]
+    fn is_sliceable_extension_rejects_stp_and_step() {
+        // Katalogisierbar (is_supported_extension), aber bewusst NICHT im
+        // Slicer oeffenbar - die meisten Slicer koennen kein rohes STEP
+        // importieren (siehe Plan/Kommentar an is_sliceable_extension).
+        assert!(!is_sliceable_extension(Path::new("teil.stp")));
+        assert!(!is_sliceable_extension(Path::new("teil.step")));
+        assert!(is_sliceable_extension(Path::new("teil.3mf")));
+        assert!(is_sliceable_extension(Path::new("teil.stl")));
+    }
+    #[test]
+    fn import_one_catalogs_an_stp_file_without_a_3d_preview() {
+        let path = unique_test_dir("import_stp").join("teil.stp");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"ISO-10303-21;\nHEADER;\nENDSEC;\nEND-ISO-10303-21;").unwrap();
+
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let dto = import_one(&mut conn, &path, None, None, None).expect("stp import should succeed");
+
+        let stored = crate::db::get_file(&conn, dto.id.parse().unwrap()).expect("query").expect("present");
+        assert_eq!(stored.file_type, FileType::Stp);
+        assert_eq!(stored.dimensions_mm, None);
+        assert_eq!(stored.thumbnail_png, None);
+    }
+    #[test]
+    fn import_one_catalogs_a_step_file_under_the_same_canonical_file_type_as_stp() {
+        // .stp und .step muessen auf denselben kanonischen DB-Wert ("stp")
+        // mappen, unabhaengig von der urspruenglichen Dateiendung.
+        let path = unique_test_dir("import_step").join("teil.step");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"ISO-10303-21;\nHEADER;\nENDSEC;\nEND-ISO-10303-21;").unwrap();
+
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let dto = import_one(&mut conn, &path, None, None, None).expect(".step import should succeed");
+
+        let stored = crate::db::get_file(&conn, dto.id.parse().unwrap()).expect("query").expect("present");
+        assert_eq!(stored.file_type, FileType::Stp);
+        assert_eq!(stored.file_type.as_str(), "stp");
+    }
+    #[test]
+    fn rescan_file_refreshes_an_stp_file_without_error() {
+        let path = unique_test_dir("rescan_stp").join("teil.stp");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"ISO-10303-21;\nHEADER;\nENDSEC;\nEND-ISO-10303-21;").unwrap();
+
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let dto = import_one(&mut conn, &path, None, None, None).expect("import should succeed");
+        let id: i64 = dto.id.parse().unwrap();
+
+        let rescanned = rescan_file(&mut conn, id).expect("rescan of an stp file should succeed");
+        assert_eq!(rescanned.id, dto.id);
     }
 }

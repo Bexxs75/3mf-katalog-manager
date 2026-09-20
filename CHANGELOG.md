@@ -7,6 +7,10 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
+### Added
+
+- STEP-Dateien (`.stp`/`.step`) können jetzt katalogisiert werden — wie 3MF/STL mit Tags, Suche, Umbenennen, Verschieben und Papierkorb, allerdings (noch) ohne 3D-Vorschau, da STEP parametrische CAD-Geometrie statt eines Dreiecksnetzes ist. STEP-Dateien lassen sich bewusst nicht direkt im Slicer öffnen, da die meisten Slicer kein rohes STEP importieren können.
+
 ## [0.10.1] - 2026-09-20
 
 ### Fixed
@@ -316,6 +320,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
 ## [Unreleased]
+
+### Added
+
+- STEP files (`.stp`/`.step`) can now be cataloged — like 3MF/STL with tags, search, renaming, moving, and trash, but (for now) without a 3D preview, since STEP is parametric CAD geometry rather than a triangle mesh. STEP files are deliberately not launchable directly in a slicer, as most slicers can't import raw STEP.
 
 ## [0.10.1] - 2026-09-20
 

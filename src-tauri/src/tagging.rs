@@ -143,6 +143,14 @@ mod tests {
     }
 
     #[test]
+    fn works_the_same_for_an_stp_filename_as_any_other_extension() {
+        // Regressionsschutz: Tag-Vorschlaege sind rein namens-/maß-/
+        // materialbasiert, keine Extension-Verzweigung - muss sich durch
+        // die STP/STEP-Katalogisierung nicht aendern.
+        let tags = suggest_tags(&ctx("kabelhalter_v3_final.stp", None, None, &[]));
+        assert_eq!(tags, vec!["kabelhalter".to_string()]);
+    }
+    #[test]
     fn caps_filename_tags_at_max() {
         let tags = suggest_tags(&ctx(
             "alpha_bravo_charlie_delta_echo_foxtrot.stl",

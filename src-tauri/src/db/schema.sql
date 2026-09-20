@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS files (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     path TEXT NOT NULL UNIQUE,
-    file_type TEXT NOT NULL CHECK (file_type IN ('3mf', 'stl')),
+    file_type TEXT NOT NULL CHECK (file_type IN ('3mf', 'stl', 'stp')),
     folder_id INTEGER REFERENCES folders (id) ON DELETE SET NULL,
     origin TEXT NOT NULL DEFAULT 'local'
         CHECK (origin IN ('local')),

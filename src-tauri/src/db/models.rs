@@ -4,6 +4,9 @@ use std::collections::BTreeMap;
 pub enum FileType {
     ThreeMf,
     Stl,
+    // Deckt sowohl .stp- als auch .step-Dateien ab - der DB-Wert ist
+    // unabhaengig von der urspruenglichen Endung immer "stp" (kanonisch).
+    Stp,
 }
 
 impl FileType {
@@ -11,6 +14,7 @@ impl FileType {
         match self {
             FileType::ThreeMf => "3mf",
             FileType::Stl => "stl",
+            FileType::Stp => "stp",
         }
     }
 
@@ -18,6 +22,7 @@ impl FileType {
         match s {
             "3mf" => Some(FileType::ThreeMf),
             "stl" => Some(FileType::Stl),
+            "stp" => Some(FileType::Stp),
             _ => None,
         }
     }
