@@ -7,6 +7,10 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
+### Fixed
+
+- Pfeiltasten-Navigation im Raster scrollte nicht mit, wenn die neu ausgewählte Kachel den sichtbaren Bereich verließ — man navigierte "blind" weiter, ohne zu sehen, welches Modell gerade ausgewählt ist.
+
 ## [0.10.0] - 2026-09-20
 
 ### Added
@@ -310,6 +314,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
 ## [Unreleased]
+
+### Fixed
+
+- Grid arrow-key navigation didn't scroll along when the newly selected tile left the visible area — you'd keep navigating "blind" without seeing which model was currently selected.
 
 ## [0.10.0] - 2026-09-20
 

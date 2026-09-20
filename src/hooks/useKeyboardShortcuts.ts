@@ -25,6 +25,14 @@ interface UseKeyboardShortcutsArgs {
   toggleBulkSelect: (id: string) => void;
 }
 
+// `?.scrollIntoView?.(...)` statt `.scrollIntoView(...)`: sowohl das Element
+// (Tastatur-Navigation kann eine Id treffen, deren Kachel gerade nicht im DOM
+// ist, siehe findSpatialNeighbor-Fallback) als auch die Methode selbst
+// (jsdom in Tests implementiert scrollIntoView nicht) koennen fehlen.
+function scrollTileIntoView(id: string): void {
+  document.querySelector<HTMLElement>(`[${MODEL_TILE_ATTR}="${CSS.escape(id)}"]`)?.scrollIntoView?.({ block: 'nearest' });
+}
+
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
@@ -88,7 +96,8 @@ export function findSpatialNeighbor(
  * Globale Tastaturkuerzel fuer die Katalog-Uebersicht: "/" fokussiert die
  * Suche, Pfeiltasten wechseln die Auswahl (Links/Rechts entlang der Listen-
  * Reihenfolge, Hoch/Runter raeumlich zur naechsten Zeile - siehe
- * findSpatialNeighbor), Leertaste schaltet die Bulk-Auswahl-Checkbox des
+ * findSpatialNeighbor) und scrollen die neu ausgewaehlte Kachel bei Bedarf
+ * in den sichtbaren Bereich, Leertaste schaltet die Bulk-Auswahl-Checkbox des
  * aktuell ausgewaehlten Modells um, Entf/Backspace oeffnet bei aktiver
  * Mehrfachauswahl die bestehende Loeschen-Bestaetigung (loescht NICHT
  * direkt - dieselbe Sicherheitsstufe wie der Button in der Bulk-
@@ -140,6 +149,7 @@ export function useKeyboardShortcuts({
         if (spatialTarget) {
           e.preventDefault();
           selectModel(spatialTarget);
+          scrollTileIntoView(spatialTarget);
           return;
         }
         // Kein raeumlicher Treffer (z.B. Auswahl gerade nicht im DOM, weil ihr
@@ -153,6 +163,7 @@ export function useKeyboardShortcuts({
       if (nextIndex < 0 || nextIndex >= filteredIds.length) return;
       e.preventDefault();
       selectModel(filteredIds[nextIndex]);
+      scrollTileIntoView(filteredIds[nextIndex]);
     };
 
     window.addEventListener('keydown', onKeyDown);

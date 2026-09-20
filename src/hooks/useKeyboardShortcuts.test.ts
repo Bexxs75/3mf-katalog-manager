@@ -21,6 +21,9 @@ function placeTile(id: string, rect: { left: number; top: number; width?: number
   const height = rect.height ?? 100;
   el.getBoundingClientRect = () =>
     ({ left: rect.left, top: rect.top, width, height, right: rect.left + width, bottom: rect.top + height, x: rect.left, y: rect.top, toJSON() {} }) as DOMRect;
+  // jsdom implementiert scrollIntoView nicht - fuer Tests, die pruefen wollen,
+  // ob/womit es aufgerufen wurde, muss die Kachel einen eigenen Spy bekommen.
+  el.scrollIntoView = vi.fn();
   document.body.appendChild(el);
   return el;
 }
@@ -151,10 +154,20 @@ describe('useKeyboardShortcuts', () => {
   it('ArrowDown uses spatial position (next row), not just list order', () => {
     placeTile('a', { left: 0, top: 0 });
     placeTile('b', { left: 100, top: 0 });
-    placeTile('c', { left: 0, top: 100 });
+    const target = placeTile('c', { left: 0, top: 100 });
     const { selectModel } = setup({ filteredIds: ['a', 'b', 'c'], selectedId: 'a' });
     fireKey('ArrowDown');
     expect(selectModel).toHaveBeenCalledWith('c');
+    expect(target.scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+  });
+
+  it('ArrowRight scrolls the newly selected tile into view (flat-order path)', () => {
+    placeTile('a', { left: 0, top: 0 });
+    const target = placeTile('b', { left: 100, top: 0 });
+    const { selectModel } = setup({ filteredIds: ['a', 'b', 'c'], selectedId: 'a' });
+    fireKey('ArrowRight');
+    expect(selectModel).toHaveBeenCalledWith('b');
+    expect(target.scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
   });
 
   it('ArrowUp falls back to flat list order when the selection has no rendered tile', () => {
