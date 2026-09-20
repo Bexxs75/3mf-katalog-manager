@@ -1,0 +1,85 @@
+name: Notify Discord on Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release-Tag erneut posten (z.B. v0.10.1)"
+        required: true
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve release data
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_INPUT: ${{ inputs.tag }}
+          # Nie direkt als ${{ ... }} in den Skript-Text interpolieren - der
+          # Release-Body ist Repo-Inhalt (potenziell von jedem mit
+          # Release-Rechten gesetzt) und wuerde sonst VOR der Bash-Ausfuehrung
+          # in den Skript-Text eingesetzt: Backticks/$(...) darin liefen dann
+          # als Code auf dem Runner, mit Zugriff auf alle Secrets (klassische
+          # GitHub-Actions-Command-Injection). Env-Variablen umgehen das, da
+          # bash sie erst zur Laufzeit als reinen String einsetzt.
+          EVENT_NAME: ${{ github.event.release.name }}
+          EVENT_URL: ${{ github.event.release.html_url }}
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+          EVENT_BODY: ${{ github.event.release.body }}
+        run: |
+          # workflow_dispatch (manuelles erneutes Posten) hat kein
+          # github.event.release - Daten dann per API zum angegebenen Tag
+          # nachladen, sonst kommen sie direkt aus dem release-Event.
+          if [ -n "$TAG_INPUT" ]; then
+            DATA=$(gh api "repos/${{ github.repository }}/releases/tags/$TAG_INPUT")
+            echo "name=$(echo "$DATA" | jq -r '.name')" >> "$GITHUB_OUTPUT"
+            echo "url=$(echo "$DATA" | jq -r '.html_url')" >> "$GITHUB_OUTPUT"
+            echo "tag=$(echo "$DATA" | jq -r '.tag_name')" >> "$GITHUB_OUTPUT"
+            {
+              echo "body<<RELEASE_BODY_EOF"
+              echo "$DATA" | jq -r '.body'
+              echo "RELEASE_BODY_EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "name=$EVENT_NAME" >> "$GITHUB_OUTPUT"
+            echo "url=$EVENT_URL" >> "$GITHUB_OUTPUT"
+            echo "tag=$EVENT_TAG" >> "$GITHUB_OUTPUT"
+            {
+              echo "body<<RELEASE_BODY_EOF"
+              echo "$EVENT_BODY"
+              echo "RELEASE_BODY_EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Post release to Discord
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+          RELEASE_NAME: ${{ steps.release.outputs.name }}
+          RELEASE_URL: ${{ steps.release.outputs.url }}
+          RELEASE_BODY: ${{ steps.release.outputs.body }}
+          TAG_NAME: ${{ steps.release.outputs.tag }}
+        run: |
+          # Discord embed description limit is 4096 chars - truncate long
+          # release bodies instead of letting the webhook call fail outright.
+          BODY=$(echo "$RELEASE_BODY" | head -c 3900)
+          if [ "${#RELEASE_BODY}" -gt 3900 ]; then
+            BODY="${BODY}...\n\n[Vollständige Notes auf GitHub]($RELEASE_URL)"
+          fi
+
+          PAYLOAD=$(jq -n \
+            --arg title "${RELEASE_NAME:-$TAG_NAME}" \
+            --arg url "$RELEASE_URL" \
+            --arg desc "$BODY" \
+            '{
+              embeds: [{
+                title: $title,
+                url: $url,
+                description: $desc,
+                color: 3447003
+              }]
+            }')
+
+          curl -sS -H "Content-Type: application/json" -X POST -d "$PAYLOAD" "$WEBHOOK_URL"
