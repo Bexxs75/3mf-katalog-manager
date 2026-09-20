@@ -1,6 +1,6 @@
 # 3MF Katalog Manager
 
-Plattformunabhängige Desktop-Anwendung zur Katalogisierung und Verwaltung von 3MF- und STL-Dateien für den 3D-Druck. Gebaut mit [Tauri](https://tauri.app/) (Rust-Backend) und React/TypeScript/Tailwind.
+Plattformunabhängige Desktop-Anwendung zur Katalogisierung und Verwaltung von 3MF-, STL-, OBJ- und STEP-Dateien für den 3D-Druck. Gebaut mit [Tauri](https://tauri.app/) (Rust-Backend) und React/TypeScript/Tailwind.
 
 **Neu hier?** Das [Benutzerhandbuch](docs/benutzerhandbuch/BENUTZERHANDBUCH.md) (DE + EN) erklärt alle Funktionen bebildert und Schritt für Schritt, ganz ohne Vorwissen über die App.
 
@@ -14,7 +14,7 @@ Plattformunabhängige Desktop-Anwendung zur Katalogisierung und Verwaltung von 3
 
 ## Funktionen
 
-- **3MF- und STL-Parsing** — beide Formate gleichwertig unterstützt: OPC-Container-Entpackung inkl. eingebettetem Thumbnail bei 3MF, ASCII- und Binär-STL-Parsing
+- **3MF-, STL-, OBJ- und STEP-Parsing** — 3MF (OPC-Container-Entpackung inkl. eingebettetem Thumbnail), ASCII-/Binär-STL sowie OBJ jeweils mit 3D-Vorschau; STEP-Dateien (`.stp`/`.step`) werden katalogisiert (Tags, Suche, Umbenennen, Verschieben, Papierkorb), aktuell noch ohne 3D-Vorschau, da parametrische CAD-Geometrie statt eines Dreiecksnetzes
 - **Automatische Metadaten-Extraktion** — Abmessungen, Volumen, Objektanzahl, Material (sofern in der 3MF vorhanden)
 - **Automatische Hashtag-Generierung** — Vorschläge aus Dateiname, Geometrie-Merkmalen und Slicer-Profildaten, vom Nutzer editierbar
 - **3D-Live-Vorschau** — three.js-Rendering direkt aus der Mesh-Geometrie, wenn kein eingebettetes Thumbnail vorhanden ist
@@ -56,7 +56,6 @@ Dieses Projekt befindet sich in aktiver Entwicklung. Der lokale Katalog (Import,
 ## Geplant
 
 - 3D-Vorschau für STEP-Dateien (`.stp`/`.step`) — aktuell nur katalogisierbar, ohne Vorschau (siehe CHANGELOG), da STEP parametrische CAD-Geometrie statt eines Dreiecksnetzes ist und eine CAD-Kernel-Anbindung (z. B. OpenCASCADE) erfordert.
-- Katalogisierung von `.obj`-Dateien inkl. 3D-Vorschau (technisch nah an STL, da ebenfalls ein Dreiecksnetz).
 - ZIP-Import: automatisches Entpacken hochgeladener `.zip`-Archive in einen echten Unterordner, mit anschließendem Import der enthaltenen Modell-Dateien.
 
 ## Tech-Stack
@@ -104,7 +103,7 @@ MIT — siehe [LICENSE](LICENSE).
 
 # 3MF Katalog Manager (English)
 
-Cross-platform desktop application for cataloging and managing 3MF and STL files for 3D printing. Built with [Tauri](https://tauri.app/) (Rust backend) and React/TypeScript/Tailwind.
+Cross-platform desktop application for cataloging and managing 3MF, STL, OBJ, and STEP files for 3D printing. Built with [Tauri](https://tauri.app/) (Rust backend) and React/TypeScript/Tailwind.
 
 **New here?** The [User Guide](docs/benutzerhandbuch/BENUTZERHANDBUCH.md) (DE + EN) explains every feature with screenshots, step by step, no prior knowledge of the app required.
 
@@ -118,7 +117,7 @@ Cross-platform desktop application for cataloging and managing 3MF and STL files
 
 ## Features
 
-- **3MF and STL parsing** — both formats supported equally: OPC container extraction incl. embedded thumbnail for 3MF, ASCII and binary STL parsing
+- **3MF, STL, OBJ, and STEP parsing** — 3MF (OPC container extraction incl. embedded thumbnail), ASCII/binary STL, and OBJ each with a 3D preview; STEP files (`.stp`/`.step`) are cataloged (tags, search, renaming, moving, trash), currently without a 3D preview since it's parametric CAD geometry rather than a triangle mesh
 - **Automatic metadata extraction** — dimensions, volume, object count, material (if present in the 3MF)
 - **Automatic hashtag generation** — suggestions from filename, geometry features, and slicer profile data, editable by the user
 - **Live 3D preview** — three.js rendering directly from the mesh geometry when no embedded thumbnail is available
@@ -160,7 +159,6 @@ This project is under active development. The local catalog (import, parsing, ta
 ## Planned
 
 - 3D preview for STEP files (`.stp`/`.step`) — currently catalog-only, no preview (see CHANGELOG), since STEP is parametric CAD geometry rather than a triangle mesh and would need a CAD kernel binding (e.g. OpenCASCADE).
-- Cataloging `.obj` files including 3D preview (technically close to STL, since it's also a triangle mesh).
 - ZIP import: automatically unpack uploaded `.zip` archives into a real subfolder, then import the model files found inside.
 
 ## Tech Stack
