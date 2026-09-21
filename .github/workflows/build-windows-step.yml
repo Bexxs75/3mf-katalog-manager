@@ -30,22 +30,24 @@ jobs:
       # vcpkg gebaut, gepinnt auf die in
       # src-tauri/vendor/opencascade-sys/VENDORING.md dokumentierte und
       # lokal verifizierte Version (7.9.3). Manifest liegt unter
-      # src-tauri/occt-vcpkg-manifest/vcpkg.json. Kein Binary-Caching in
-      # dieser ersten Fassung - ein kompletter OCCT-Build dauert lokal
-      # verifiziert rund 1,4 Stunden; vcpkgs eigenes Binary-Cache-Feature
-      # (z. B. ueber die GitHub-Actions-Cache-Anbindung "x-gha") waere ein
-      # sinnvoller spaeterer Ausbau, sobald ein erster Lauf verifiziert ist.
-      - name: Clone and bootstrap vcpkg
-        run: |
-          git clone https://github.com/microsoft/vcpkg C:\vcpkg
-          cd C:\vcpkg
-          git checkout 5f96cd15fd745122cf27e0524606d6c1efc5fd07
-          .\bootstrap-vcpkg.bat -disableMetrics
-
-      - name: Build OCCT 7.9.3 via vcpkg
-        run: |
-          cd src-tauri\occt-vcpkg-manifest
-          C:\vcpkg\vcpkg.exe install --triplet x64-windows
+      # src-tauri/occt-vcpkg-manifest/vcpkg.json.
+      #
+      # lukka/run-vcpkg statt eigenem git-clone/checkout-Scripting: ein
+      # erster manueller Versuch (git clone + git checkout <commit> per
+      # Hand) scheiterte reproduzierbar auf dem GitHub-Runner mit "path
+      # 'versions/baseline.json' exists on disk, but not in <commit>",
+      # obwohl Commit und Datei auf GitHub nachweislich existieren (per
+      # curl gegengeprueft) - vermutlich eine Eigenheit des manuellen
+      # Checkouts auf dem Runner. Die etablierte Action uebernimmt dasselbe
+      # Vorgehen zuverlaessig. Kein Binary-Caching in dieser ersten Fassung
+      # - ein kompletter OCCT-Build dauert lokal verifiziert rund 1,4
+      # Stunden; vcpkgs eigenes Binary-Cache-Feature waere ein sinnvoller
+      # spaeterer Ausbau, sobald ein erster Lauf verifiziert ist.
+      - name: Setup vcpkg and build OCCT 7.9.3
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: 5f96cd15fd745122cf27e0524606d6c1efc5fd07
+          vcpkgJsonGlob: 'src-tauri/occt-vcpkg-manifest/vcpkg.json'
 
       - name: Stage OCCT runtime DLLs
         run: |
