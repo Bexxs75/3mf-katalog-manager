@@ -4,20 +4,31 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  build-macos-step:
-    runs-on: macos-latest
+  # Baut je eine Single-Arch-Version auf ihrem jeweils nativen Runner - jede
+  # Architektur bekommt ihre eigene, echte Homebrew-Installation (kein
+  # Rosetta-Trick: Homebrews Installer verweigert sich seit einer neueren
+  # Version explizit, unter Rosetta/x86_64-Emulation auf einem Apple-
+  # Silicon-Host zu installieren - "Homebrew on macOS is only supported on
+  # Apple Silicon processors!"). Zwei getrennte, echte Runner umgehen dieses
+  # Problem sauber, statt es zu umschiffen.
+  build-single-arch:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-15
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Beide Ziel-Architekturen: der Runner selbst ist arm64 (macos-latest),
-      # x86_64-apple-darwin wird per Rosetta-emulierter Homebrew-Installation
-      # (siehe unten) mit eigener OCCT-Installation ausgestattet - kein
-      # separater Intel-Runner noetig.
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          targets: ${{ matrix.target }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -28,67 +39,82 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      # Native arm64-Homebrew (bereits vorinstalliert unter /opt/homebrew
-      # auf github-gehosteten arm64-Runnern) liefert die arm64-OCCT-
-      # Installation - wie im bisherigen Single-Arch-Workflow.
-      - name: Install arm64 OCCT + dylibbundler via Homebrew
+      # Jeder Runner liefert ueber seine eigene, native Homebrew-Installation
+      # (arm64 unter /opt/homebrew, x86_64 unter /usr/local) automatisch die
+      # zur jeweiligen Host-Architektur passende OCCT-Version - kein
+      # Cross-Installations-Trick noetig.
+      - name: Install OCCT + dylibbundler via Homebrew
         run: brew install opencascade dylibbundler
 
-      # Zweite, komplett unabhaengige Homebrew-Installation unter Rosetta
-      # 2 (praeinstalliert auf github-gehosteten macOS-Runnern, nur die
-      # Lizenz muss aktiviert werden). Installiert klassisch unter
-      # /usr/local statt /opt/homebrew - beide Installationen koexistieren
-      # konfliktfrei nebeneinander. Liefert die x86_64-OCCT-Installation,
-      # die fuer den x86_64-apple-darwin-Cargo-Build noetig ist.
-      - name: Install x86_64 OCCT via Rosetta-emulated Homebrew
-        run: |
-          softwareupdate --install-rosetta --agree-to-license
-          arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          arch -x86_64 /usr/local/bin/brew install opencascade dylibbundler
-
-      # --- arm64-Build ---
-      - name: Build Tauri app (arm64, with STEP preview)
+      - name: Build Tauri app (with STEP preview)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           export CMAKE_PREFIX_PATH="$(brew --prefix opencascade)"
-          npm run tauri build -- --target aarch64-apple-darwin --bundles app
+          npm run tauri build -- --target ${{ matrix.target }} --bundles app
 
-      - name: Bundle OCCT dylibs into the arm64 .app
+      - name: Bundle OCCT dylibs into the .app
         run: |
-          ./src-tauri/scripts/bundle-occt-dylibs-macos.sh "src-tauri/target/aarch64-apple-darwin/release/bundle/macos/3MF Katalog Manager.app"
+          ./src-tauri/scripts/bundle-occt-dylibs-macos.sh "src-tauri/target/${{ matrix.target }}/release/bundle/macos/3MF Katalog Manager.app"
 
-      # --- x86_64-Build ---
-      - name: Build Tauri app (x86_64, with STEP preview)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload single-arch .app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-app-${{ matrix.target }}
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/macos/3MF Katalog Manager.app
+          if-no-files-found: error
+
+  # Fuehrt beide Single-Arch-.app-Bundles zu einem echten Universal-Bundle
+  # zusammen (lipo fuer Hauptbinary UND jede einzelne OCCT-/Homebrew-.dylib)
+  # und packt daraus die finale DMG. Laeuft auf einem beliebigen macOS-
+  # Runner (arm64 reicht, lipo/hdiutil sind architekturunabhaengige Tools).
+  merge-and-package:
+    needs: build-single-arch
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download arm64 .app artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-app-aarch64-apple-darwin
+          path: arm64-app/3MF Katalog Manager.app
+
+      - name: Download x86_64 .app artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-app-x86_64-apple-darwin
+          path: x64-app/3MF Katalog Manager.app
+
+      # actions/download-artifact zieht Datei-Berechtigungen (insbesondere
+      # das ausfuehrbar-Bit der Hauptbinary) nicht zuverlaessig durch - vor
+      # dem Zusammenfuehren wiederherstellen, sonst schlaegt `lipo` auf
+      # einer nicht-ausfuehrbaren "Binary" mit einem irrefuehrenden Fehler
+      # fehl.
+      - name: Restore executable bits
         run: |
-          export CMAKE_PREFIX_PATH="$(arch -x86_64 /usr/local/bin/brew --prefix opencascade)"
-          npm run tauri build -- --target x86_64-apple-darwin --bundles app
+          chmod +x "arm64-app/3MF Katalog Manager.app/Contents/MacOS/"*
+          chmod +x "x64-app/3MF Katalog Manager.app/Contents/MacOS/"*
 
-      - name: Bundle OCCT dylibs into the x86_64 .app
-        run: |
-          ./src-tauri/scripts/bundle-occt-dylibs-macos.sh "src-tauri/target/x86_64-apple-darwin/release/bundle/macos/3MF Katalog Manager.app"
-
-      # --- Zusammenfuehren zu einem echten Universal-Bundle ---
       - name: Merge arm64 + x86_64 into one universal .app
         run: |
           ./src-tauri/scripts/merge-universal-step-macos.sh \
-            "src-tauri/target/aarch64-apple-darwin/release/bundle/macos/3MF Katalog Manager.app" \
-            "src-tauri/target/x86_64-apple-darwin/release/bundle/macos/3MF Katalog Manager.app" \
-            "src-tauri/target/universal-step/3MF Katalog Manager.app"
+            "arm64-app/3MF Katalog Manager.app" \
+            "x64-app/3MF Katalog Manager.app" \
+            "universal-app/3MF Katalog Manager.app"
 
       - name: Package DMG from the universal .app
         run: |
-          mkdir -p src-tauri/target/universal-step/dmg
+          mkdir -p dmg-out
           hdiutil create -volname "3MF Katalog Manager" \
-            -srcfolder "src-tauri/target/universal-step/3MF Katalog Manager.app" \
+            -srcfolder "universal-app/3MF Katalog Manager.app" \
             -ov -format UDZO \
-            "src-tauri/target/universal-step/dmg/3MF Katalog Manager_universal-step.dmg"
+            "dmg-out/3MF Katalog Manager_universal-step.dmg"
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
           name: 3mf-katalog-manager-macos-dmg-universal-step
-          path: src-tauri/target/universal-step/dmg/*.dmg
+          path: dmg-out/*.dmg
           if-no-files-found: error
