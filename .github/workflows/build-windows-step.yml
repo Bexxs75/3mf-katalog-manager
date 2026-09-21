@@ -39,15 +39,22 @@ jobs:
       # obwohl Commit und Datei auf GitHub nachweislich existieren (per
       # curl gegengeprueft) - vermutlich eine Eigenheit des manuellen
       # Checkouts auf dem Runner. Die etablierte Action uebernimmt dasselbe
-      # Vorgehen zuverlaessig. Kein Binary-Caching in dieser ersten Fassung
-      # - ein kompletter OCCT-Build dauert lokal verifiziert rund 1,4
-      # Stunden; vcpkgs eigenes Binary-Cache-Feature waere ein sinnvoller
-      # spaeterer Ausbau, sobald ein erster Lauf verifiziert ist.
+      # Vorgehen zuverlaessig.
+      #
+      # runVcpkgInstall: true ist noetig, sonst richtet die Action nur das
+      # vcpkg-Tooling ein, OHNE das Manifest tatsaechlich zu installieren
+      # (zweiter Fehlversuch: Job lief nur 54s durch, "vcpkg_installed"
+      # blieb leer). Bonus: die Action bringt GitHub-Actions-Binary-Caching
+      # (VCPKG_BINARY_SOURCES=x-gha) automatisch mit, das war ohnehin als
+      # spaeterer Ausbau geplant - kompletter Build dauert ohne Cache lokal
+      # verifiziert rund 1,4 Stunden, mit Cache auf Wiederholungslaeufen
+      # deutlich weniger.
       - name: Setup vcpkg and build OCCT 7.9.3
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgGitCommitId: 5f96cd15fd745122cf27e0524606d6c1efc5fd07
           vcpkgJsonGlob: 'src-tauri/occt-vcpkg-manifest/vcpkg.json'
+          runVcpkgInstall: true
 
       - name: Stage OCCT runtime DLLs
         run: |
