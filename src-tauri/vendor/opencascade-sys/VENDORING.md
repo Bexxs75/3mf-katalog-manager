@@ -141,6 +141,47 @@ Build mit `glob pattern ... not found` hart abbrechen lässt (verifiziert).
 Die Datei muss deshalb explizit per `--config` zugeschaltet werden, nur wenn
 `occt-runtime/` tatsächlich befüllt ist.
 
+## macOS: STEP-fähiges Bundle lokal bauen
+
+Anders als Windows liefert Homebrew ein fertiges OCCT-Paket, kein
+Selbstbau-Schritt nötig. Lokal verifiziert (Intel-Test-VM via `docker-osx`,
+Sonoma 14.8.9) und als Workflow `.github/workflows/build-macos-step.yml`
+automatisiert:
+
+```bash
+brew install opencascade
+export CMAKE_PREFIX_PATH="$(brew --prefix opencascade)"
+npm run tauri build -- --bundles dmg
+```
+
+**Homebrew liefert OCCT nur einzelarchitektur-rein** (kein universelles
+arm64+x86_64-Fat-Binary) — anders als `build-macos.yml` (STEP-frei,
+`--target universal-apple-darwin`) baut `build-macos-step.yml` deshalb nur für
+die Host-Architektur des Runners (arm64 auf github-gehosteten
+`macos-latest`-Runnern).
+
+**Achtung, offizielles Homebrew-Installationsskript:** unterstützt inzwischen
+nur noch Apple Silicon (`arm64`) — der Installer bricht auf x86_64-Macs mit
+`"Homebrew on macOS is only supported on Apple Silicon processors!"` ab. Auf
+Intel-Systemen (z. B. eine ältere Test-VM) hilft nur ein manueller Install am
+Skript vorbei:
+
+```bash
+git clone --branch main https://github.com/Homebrew/brew ~/homebrew
+eval "$(~/homebrew/bin/brew shellenv)"
+brew update
+```
+
+Betrifft `build-macos-step.yml` selbst nicht (github-gehostete `macos-latest`-
+Runner sind arm64 und haben Homebrew vorinstalliert), nur eine eigene
+Intel-Test-VM/-Mac.
+
+**Noch offen:** die OCCT-`.dylib`s werden aktuell **nicht** ins App-Bundle
+kopiert (nur dynamisch gegen die lokale Homebrew-Installation gelinkt) — eine
+so gebaute DMG läuft nur auf Systemen mit installiertem
+`brew install opencascade`. Eine macOS-Entsprechung des Windows-DLL-Stagings
+(`stage-occt-dlls.ps1` + `tauri.windows-step.conf.json`) steht noch aus.
+
 ## Was der Fork **nicht** ändert
 
 - Kein `builtin`-Feature, kein `occt-sys`. OCCT wird **dynamisch** gelinkt

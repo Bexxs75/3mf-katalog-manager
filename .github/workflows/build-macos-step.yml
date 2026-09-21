@@ -1,0 +1,47 @@
+name: Build macOS DMG (with STEP preview)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build-macos-step:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      # Nur Host-Architektur (arm64 auf github-gehosteten macos-latest-Runnern),
+      # anders als build-macos.yml: Homebrew liefert OCCT nur einzelarchitektur-
+      # rein, ein universal-apple-darwin-Build wie beim STEP-freien offiziellen
+      # Build ist damit nicht moeglich (siehe VENDORING.md). Version wird nicht
+      # explizit gepinnt - Homebrew hat ohnehin nur die jeweils aktuelle Formel-
+      # Version im Angebot; 7.9.3 (die auf Linux/Windows gepinnte Version) war
+      # zum Zeitpunkt dieses Workflows die aktuelle Homebrew-Version.
+      - name: Install OCCT via Homebrew
+        run: brew install opencascade
+
+      - name: Build Tauri app (macOS .app/.dmg, with STEP preview)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          export CMAKE_PREFIX_PATH="$(brew --prefix opencascade)"
+          npm run tauri build -- --bundles dmg
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 3mf-katalog-manager-macos-dmg-step
+          path: src-tauri/target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
