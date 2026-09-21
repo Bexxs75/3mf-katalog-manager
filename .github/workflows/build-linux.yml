@@ -66,6 +66,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run tauri build -- --bundles appimage
 
+      # Tauris Standard-AppImage-Bundling (linuxdeploy) buendelt veraltete
+      # libwayland-*/libxkbcommon/libxcb-*/libXau/libXdmcp mit, die auf
+      # Zielrechnern mit neuerem Mesa die EGL-Initialisierung von WebKitGTK
+      # zum Absturz bringen ("Could not create default EGL display:
+      # EGL_BAD_PARAMETER. Aborting..."). Siehe Skript-Kommentar und
+      # github.com/tauri-apps/tauri Issue #15976 fuer Details/Verifikation.
+      - name: Fix AppImage EGL crash (exclude bundled display-stack libs)
+        run: |
+          APPIMAGE=$(find src-tauri/target/release/bundle/appimage -name "*.AppImage")
+          ./src-tauri/scripts/fix-appimage-egl-linux.sh "$APPIMAGE"
+
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@v4
         with:
