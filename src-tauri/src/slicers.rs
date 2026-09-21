@@ -65,6 +65,7 @@ fn search_path_env(binary_names: &[&str]) -> Option<String> {
     None
 }
 
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn check_fixed_dir(dir: &Path, binary_names: &[&str]) -> Option<PathBuf> {
     for name in binary_names {
         let candidate = dir.join(name);
@@ -204,6 +205,57 @@ fn is_cura_folder_name(name: &str) -> bool {
     name.starts_with("Ultimaker Cura") || name.starts_with("UltiMaker Cura")
 }
 
+// macOS-Apps sind Bundles (`Name.app/Contents/MacOS/Binärname`), keine
+// einzelnen Binärdateien auf $PATH - deshalb eigene, feste Zuordnung statt
+// der generischen `binary_names` aus SLICER_DEFINITIONS (die Groß-/
+// Kleinschreibung auf macOS weicht teils ab, z. B. "PrusaSlicer" statt
+// "prusa-slicer"). Namen der App-Bundles und der darin enthaltenen
+// Binärdateien stammen aus den offiziellen macOS-Downloads der Hersteller
+// (Stand 2026-09-21, per Docker-OSX-VM verifiziert fuer Bambu Studio).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+const MACOS_FIXED_LOCATIONS: &[(&str, &str, &str)] = &[
+    ("Bambu Studio", "BambuStudio.app", "BambuStudio"),
+    ("OrcaSlicer", "OrcaSlicer.app", "OrcaSlicer"),
+    ("PrusaSlicer", "PrusaSlicer.app", "PrusaSlicer"),
+    ("SuperSlicer", "SuperSlicer.app", "SuperSlicer"),
+    ("UltiMaker Cura", "Ultimaker Cura.app", "UltiMaker-Cura"),
+];
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn macos_slicer_candidate_path(apps_dir: &Path, app_bundle: &str, binary_name: &str) -> PathBuf {
+    apps_dir
+        .join(app_bundle)
+        .join("Contents")
+        .join("MacOS")
+        .join(binary_name)
+}
+
+#[cfg(target_os = "macos")]
+fn macos_applications_dirs() -> Vec<PathBuf> {
+    let mut dirs = vec![PathBuf::from("/Applications")];
+    if let Some(home) = std::env::var_os("HOME") {
+        dirs.push(PathBuf::from(home).join("Applications"));
+    }
+    dirs
+}
+
+#[cfg(target_os = "macos")]
+fn detect_macos_fixed_locations() -> Vec<DetectedSlicer> {
+    let mut results = Vec::new();
+    for (display_name, app_bundle, binary_name) in MACOS_FIXED_LOCATIONS {
+        for dir in &macos_applications_dirs() {
+            let candidate = macos_slicer_candidate_path(dir, app_bundle, binary_name);
+            if candidate.is_file() {
+                results.push(DetectedSlicer {
+                    name: display_name.to_string(),
+                    path: candidate.to_string_lossy().to_string(),
+                });
+            }
+        }
+    }
+    results
+}
+
 fn dedupe_by_path(items: Vec<DetectedSlicer>) -> Vec<DetectedSlicer> {
     let mut seen = HashSet::new();
     let mut result = Vec::new();
@@ -246,6 +298,9 @@ pub fn detect_slicers() -> Vec<DetectedSlicer> {
         results.extend(detect_windows_fixed_locations());
         results.extend(detect_windows_cura());
     }
+
+    #[cfg(target_os = "macos")]
+    results.extend(detect_macos_fixed_locations());
 
     dedupe_by_name(dedupe_by_path(results))
 }
@@ -334,6 +389,19 @@ mod tests {
         assert_eq!(result[0].name, "OrcaSlicer");
         assert_eq!(result[0].path, "/usr/bin/orca-slicer");
         assert_eq!(result[1].name, "Bambu Studio");
+    }
+
+    #[test]
+    fn macos_slicer_candidate_path_builds_the_contents_macos_layout() {
+        let candidate = macos_slicer_candidate_path(
+            Path::new("/Applications"),
+            "BambuStudio.app",
+            "BambuStudio",
+        );
+        assert_eq!(
+            candidate,
+            Path::new("/Applications/BambuStudio.app/Contents/MacOS/BambuStudio")
+        );
     }
 
     #[test]
