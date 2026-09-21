@@ -1,0 +1,65 @@
+name: Build Windows MSI (with STEP preview)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build-windows-step:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      # windows-latest bringt MSVC Build Tools und CMake bereits mit - anders
+      # als eine frisch aufgesetzte VM braucht der Runner hier keine
+      # zusaetzliche Installation dafuer.
+      #
+      # OCCT selbst gibt es fuer Windows nicht als Systempaket, deshalb ueber
+      # vcpkg gebaut, gepinnt auf die in
+      # src-tauri/vendor/opencascade-sys/VENDORING.md dokumentierte und
+      # lokal verifizierte Version (7.9.3). Manifest liegt unter
+      # src-tauri/occt-vcpkg-manifest/vcpkg.json. Kein Binary-Caching in
+      # dieser ersten Fassung - ein kompletter OCCT-Build dauert lokal
+      # verifiziert rund 1,4 Stunden; vcpkgs eigenes Binary-Cache-Feature
+      # (z. B. ueber die GitHub-Actions-Cache-Anbindung "x-gha") waere ein
+      # sinnvoller spaeterer Ausbau, sobald ein erster Lauf verifiziert ist.
+      - name: Clone and bootstrap vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg C:\vcpkg
+          cd C:\vcpkg
+          git checkout 5f96cd15fd745122cf27e0524606d6c1efc5fd07
+          .\bootstrap-vcpkg.bat -disableMetrics
+
+      - name: Build OCCT 7.9.3 via vcpkg
+        run: |
+          cd src-tauri\occt-vcpkg-manifest
+          C:\vcpkg\vcpkg.exe install --triplet x64-windows
+
+      - name: Stage OCCT runtime DLLs
+        run: |
+          .\src-tauri\scripts\stage-occt-dlls.ps1 -VcpkgInstalledDir "${{ github.workspace }}\src-tauri\occt-vcpkg-manifest\vcpkg_installed\x64-windows"
+
+      - name: Build Tauri app (Windows MSI, with STEP preview)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CMAKE_PREFIX_PATH: ${{ github.workspace }}\src-tauri\occt-vcpkg-manifest\vcpkg_installed\x64-windows
+        run: npm run tauri build -- --bundles msi --config src-tauri\tauri.windows-step.conf.json
+
+      - name: Upload MSI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 3mf-katalog-manager-windows-msi-step
+          path: src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error

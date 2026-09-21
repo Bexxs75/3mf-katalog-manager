@@ -13,3 +13,8 @@
 # scripts/stage-occt-dlls.ps1). Werden bewusst nicht committet - siehe
 # vendor/opencascade-sys/VENDORING.md fuer die Begruendung.
 /occt-runtime/
+
+# vcpkg-Installationsausgabe bei lokalem Bauen im Manifest-Verzeichnis
+# (siehe occt-vcpkg-manifest/README.md). Nur das Manifest selbst ist Teil
+# des Repos, nicht die daraus gebauten Bibliotheken.
+/occt-vcpkg-manifest/vcpkg_installed/

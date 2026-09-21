@@ -111,24 +111,17 @@ Windows-Build inkl. MSI-Bundle mit gebündelten OCCT-DLLs erfolgreich getestet).
 ## Windows: STEP-fähiges Bundle lokal bauen
 
 Windows hat kein OS-Paket für OCCT (anders als Linux-Distros oder Homebrew auf
-macOS). Der Weg über `vcpkg` und ein manuelles DLL-Staging, lokal verifiziert:
+macOS). Der Weg über `vcpkg` und ein manuelles DLL-Staging, lokal verifiziert
+und als Workflow `.github/workflows/build-windows-step.yml` automatisiert:
 
-1. OCCT über `vcpkg` mit gepinnter Version bauen (Manifest-Beispiel mit
-   Override auf 7.9.3, `builtin-baseline` auf einen aktuellen vcpkg-Commit
-   setzen):
-   ```jsonc
-   {
-     "name": "step-preview-occt",
-     "version": "1.0.0",
-     "builtin-baseline": "<vcpkg-commit>",
-     "dependencies": ["opencascade"],
-     "overrides": [{ "name": "opencascade", "version": "7.9.3" }]
-   }
-   ```
+1. OCCT über `vcpkg` mit dem committeten, gepinnten Manifest bauen
+   (`src-tauri/occt-vcpkg-manifest/vcpkg.json`, Override auf 7.9.3):
    ```powershell
+   cd src-tauri\occt-vcpkg-manifest
    vcpkg install --triplet x64-windows
    ```
-   Ergebnis landet standardmäßig unter `<manifest-dir>\vcpkg_installed\x64-windows`.
+   Ergebnis landet standardmäßig unter
+   `src-tauri\occt-vcpkg-manifest\vcpkg_installed\x64-windows`.
 2. DLLs in den Projektbaum stagen (nie committen, siehe `.gitignore`):
    ```powershell
    .\src-tauri\scripts\stage-occt-dlls.ps1 -VcpkgInstalledDir <pfad>\vcpkg_installed\x64-windows
