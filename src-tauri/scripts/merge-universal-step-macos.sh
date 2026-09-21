@@ -39,6 +39,7 @@ for app in "$ARM64_APP" "$X64_APP"; do
 done
 
 rm -rf "$OUTPUT_APP"
+mkdir -p "$(dirname "$OUTPUT_APP")"
 cp -R "$ARM64_APP" "$OUTPUT_APP"
 
 ARM64_BIN="$(find "$ARM64_APP/Contents/MacOS" -maxdepth 1 -type f -perm -u+x | head -n1)"
