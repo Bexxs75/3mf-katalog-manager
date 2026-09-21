@@ -10,8 +10,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Beide Ziel-Architekturen: der Runner selbst ist arm64 (macos-latest),
+      # x86_64-apple-darwin wird per Rosetta-emulierter Homebrew-Installation
+      # (siehe unten) mit eigener OCCT-Installation ausgestattet - kein
+      # separater Intel-Runner noetig.
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -22,51 +28,67 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      # Nur Host-Architektur (arm64 auf github-gehosteten macos-latest-Runnern),
-      # anders als build-macos.yml: Homebrew liefert OCCT nur einzelarchitektur-
-      # rein, ein universal-apple-darwin-Build wie beim STEP-freien offiziellen
-      # Build ist damit nicht moeglich (siehe VENDORING.md). Version wird nicht
-      # explizit gepinnt - Homebrew hat ohnehin nur die jeweils aktuelle Formel-
-      # Version im Angebot; 7.9.3 (die auf Linux/Windows gepinnte Version) war
-      # zum Zeitpunkt dieses Workflows die aktuelle Homebrew-Version.
-      - name: Install OCCT + dylibbundler via Homebrew
+      # Native arm64-Homebrew (bereits vorinstalliert unter /opt/homebrew
+      # auf github-gehosteten arm64-Runnern) liefert die arm64-OCCT-
+      # Installation - wie im bisherigen Single-Arch-Workflow.
+      - name: Install arm64 OCCT + dylibbundler via Homebrew
         run: brew install opencascade dylibbundler
 
-      # Nur --bundles app hier (nicht dmg): der Build linkt die Binary fest
-      # gegen den absoluten Homebrew-Pfad, das naechste Skript schreibt das
-      # per install_name_tool auf Contents/Frameworks um. Ein zweiter
-      # `tauri build -- --bundles dmg`-Aufruf danach wuerde das .app-Bundle
-      # aus der Cargo-Binary NEU erzeugen und diesen Fix wieder verwerfen -
-      # die DMG wird deshalb im naechsten Schritt direkt per hdiutil aus dem
-      # bereits gefixten .app gebaut, nicht ueber Tauri.
-      - name: Build Tauri app (macOS .app, with STEP preview)
+      # Zweite, komplett unabhaengige Homebrew-Installation unter Rosetta
+      # 2 (praeinstalliert auf github-gehosteten macOS-Runnern, nur die
+      # Lizenz muss aktiviert werden). Installiert klassisch unter
+      # /usr/local statt /opt/homebrew - beide Installationen koexistieren
+      # konfliktfrei nebeneinander. Liefert die x86_64-OCCT-Installation,
+      # die fuer den x86_64-apple-darwin-Cargo-Build noetig ist.
+      - name: Install x86_64 OCCT via Rosetta-emulated Homebrew
+        run: |
+          softwareupdate --install-rosetta --agree-to-license
+          arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          arch -x86_64 /usr/local/bin/brew install opencascade dylibbundler
+
+      # --- arm64-Build ---
+      - name: Build Tauri app (arm64, with STEP preview)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           export CMAKE_PREFIX_PATH="$(brew --prefix opencascade)"
-          npm run tauri build -- --bundles app
+          npm run tauri build -- --target aarch64-apple-darwin --bundles app
 
-      # Bettet alle OCCT-.dylibs (inkl. transitiver Homebrew-Abhaengigkeiten
-      # wie tbb) in Contents/Frameworks ein, damit die DMG auch ohne lokal
-      # installiertes Homebrew-OCCT laeuft. Lokal verifiziert (siehe
-      # VENDORING.md): App startet und rendert eine STEP-3D-Vorschau, auch
-      # wenn die Homebrew-OCCT-Installation zum Testzeitpunkt komplett
-      # entfernt/umbenannt ist.
-      - name: Bundle OCCT dylibs into the .app
+      - name: Bundle OCCT dylibs into the arm64 .app
         run: |
-          ./src-tauri/scripts/bundle-occt-dylibs-macos.sh "src-tauri/target/release/bundle/macos/3MF Katalog Manager.app"
+          ./src-tauri/scripts/bundle-occt-dylibs-macos.sh "src-tauri/target/aarch64-apple-darwin/release/bundle/macos/3MF Katalog Manager.app"
 
-      - name: Package DMG from the dylib-bundled .app
+      # --- x86_64-Build ---
+      - name: Build Tauri app (x86_64, with STEP preview)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p src-tauri/target/release/bundle/dmg
+          export CMAKE_PREFIX_PATH="$(arch -x86_64 /usr/local/bin/brew --prefix opencascade)"
+          npm run tauri build -- --target x86_64-apple-darwin --bundles app
+
+      - name: Bundle OCCT dylibs into the x86_64 .app
+        run: |
+          ./src-tauri/scripts/bundle-occt-dylibs-macos.sh "src-tauri/target/x86_64-apple-darwin/release/bundle/macos/3MF Katalog Manager.app"
+
+      # --- Zusammenfuehren zu einem echten Universal-Bundle ---
+      - name: Merge arm64 + x86_64 into one universal .app
+        run: |
+          ./src-tauri/scripts/merge-universal-step-macos.sh \
+            "src-tauri/target/aarch64-apple-darwin/release/bundle/macos/3MF Katalog Manager.app" \
+            "src-tauri/target/x86_64-apple-darwin/release/bundle/macos/3MF Katalog Manager.app" \
+            "src-tauri/target/universal-step/3MF Katalog Manager.app"
+
+      - name: Package DMG from the universal .app
+        run: |
+          mkdir -p src-tauri/target/universal-step/dmg
           hdiutil create -volname "3MF Katalog Manager" \
-            -srcfolder "src-tauri/target/release/bundle/macos/3MF Katalog Manager.app" \
+            -srcfolder "src-tauri/target/universal-step/3MF Katalog Manager.app" \
             -ov -format UDZO \
-            "src-tauri/target/release/bundle/dmg/3MF Katalog Manager_step.dmg"
+            "src-tauri/target/universal-step/dmg/3MF Katalog Manager_universal-step.dmg"
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
-          name: 3mf-katalog-manager-macos-dmg-step
-          path: src-tauri/target/release/bundle/dmg/*.dmg
+          name: 3mf-katalog-manager-macos-dmg-universal-step
+          path: src-tauri/target/universal-step/dmg/*.dmg
           if-no-files-found: error
