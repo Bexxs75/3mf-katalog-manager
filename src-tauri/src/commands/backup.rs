@@ -1427,7 +1427,14 @@ mod tests {
             "validate_catalog_db_sensitive_test_{}.db",
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
         ));
-        let sensitive_root = std::env::temp_dir().join("3mf-test-sensitive-root");
+        // Als echtes Verzeichnis angelegt (nicht nur als Pfad-String): sonst
+        // loest `resolve_path_for_sensitivity_check` fuer den zu pruefenden
+        // Pfad ueber den naechsten EXISTIERENDEN Vorfahren auf (z.B. auf
+        // macOS "/tmp" -> "/private/tmp"), waehrend der nicht-existierende
+        // `sensitive_root` unaufgeloest bliebe - der Praefixvergleich
+        // scheitert dann an einem reinen Test-Artefakt, nicht an echter
+        // Sicherheitslogik.
+        let sensitive_root = unique_test_dir("3mf-test-sensitive-root");
         {
             let conn = crate::db::connect(&tmp_path).expect("connect creates a valid schema");
             db::insert_folder_with_parent(&conn, "evil", None, &sensitive_root.join("evil").to_string_lossy())
@@ -1436,9 +1443,10 @@ mod tests {
         }
         let bytes = std::fs::read(&tmp_path).expect("read temp db");
 
-        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root], &std::env::temp_dir());
+        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root.clone()], &std::env::temp_dir());
 
         let _ = std::fs::remove_file(&tmp_path);
+        let _ = std::fs::remove_dir_all(&sensitive_root);
         assert!(result.is_err(), "must reject an imported catalog whose folder path lies in a sensitive directory");
     }
     /// Legt eine gueltige Katalog-DB an, setzt darin genau eine `files`-Zeile
@@ -1497,13 +1505,16 @@ mod tests {
     }
     #[test]
     fn validate_catalog_db_bytes_rejects_file_path_in_sensitive_directory() {
-        let sensitive_root = std::env::temp_dir().join("3mf-test-sensitive-file-path");
+        // Als echtes Verzeichnis angelegt, nicht nur als Pfad-String -
+        // siehe Begruendung in `..._rejects_folder_path_in_sensitive_directory`.
+        let sensitive_root = unique_test_dir("3mf-test-sensitive-file-path");
         let bytes = catalog_db_bytes_with_file_row(
             "modell.3mf",
             &sensitive_root.join("modell.3mf").to_string_lossy(),
             None,
         );
-        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root], &std::env::temp_dir());
+        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root.clone()], &std::env::temp_dir());
+        let _ = std::fs::remove_dir_all(&sensitive_root);
         assert!(result.is_err(), "must reject an imported file row pointing into a sensitive directory");
     }
     #[test]
@@ -1576,7 +1587,9 @@ mod tests {
         // anderem in `purge_expired_trash_on_startup`, das beim App-Start
         // ganz ohne Nutzer-Interaktion laeuft.
         let dir = unique_test_dir("validate_catalog_db_trash_path");
-        let sensitive_root = std::env::temp_dir().join("3mf-test-sensitive-trash-path");
+        // Als echtes Verzeichnis angelegt, nicht nur als Pfad-String -
+        // siehe Begruendung in `..._rejects_folder_path_in_sensitive_directory`.
+        let sensitive_root = unique_test_dir("3mf-test-sensitive-trash-path");
         let bytes = catalog_db_bytes_with_file_row(
             "modell.3mf",
             &dir.join("modell.3mf").to_string_lossy(),
@@ -1585,8 +1598,9 @@ mod tests {
         // trash_dir bewusst auf temp_dir gesetzt: der praeparierte trash_path
         // liegt darin, die Containment-Pruefung greift also NICHT - dieser
         // Test prueft weiterhin genau die Denylist.
-        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root], &std::env::temp_dir());
+        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root.clone()], &std::env::temp_dir());
         let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&sensitive_root);
         assert!(result.is_err(), "must reject an imported trash_path pointing into a sensitive directory");
     }
     #[test]

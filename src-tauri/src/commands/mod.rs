@@ -794,11 +794,17 @@ mod tests {
         // beliebige Orte setzen; diese Grenze wird an jeder Stelle geprueft,
         // die einen aus der DB gelesenen Pfad an fs::rename/fs::create_dir
         // weiterreicht.
-        let sensitive = vec![PathBuf::from("/home/user/.config")];
-        assert!(reject_if_sensitive_path(Path::new("/home/user/.config"), &sensitive).is_err());
-        assert!(reject_if_sensitive_path(Path::new("/home/user/.config/autostart"), &sensitive).is_err());
-        assert!(reject_if_sensitive_path(Path::new("/home/user/.config-backup"), &sensitive).is_ok());
-        assert!(reject_if_sensitive_path(Path::new("/home/user/3D-Drucke"), &sensitive).is_ok());
+        //
+        // Bewusst kein "/home/..."-Praefix: auf macOS ist "/home" ein
+        // Automounter-Symlink auf "/System/Volumes/Data/home", der beim
+        // Kanonisieren aufgeloest wird, obwohl "/home/user/.config" selbst
+        // nicht existiert - das haette hier eine reine Pfad-Praefix-Pruefung
+        // ohne echten Sicherheitsbezug zum Scheitern gebracht.
+        let sensitive = vec![PathBuf::from("/nonexistent-3mf-test-root/.config")];
+        assert!(reject_if_sensitive_path(Path::new("/nonexistent-3mf-test-root/.config"), &sensitive).is_err());
+        assert!(reject_if_sensitive_path(Path::new("/nonexistent-3mf-test-root/.config/autostart"), &sensitive).is_err());
+        assert!(reject_if_sensitive_path(Path::new("/nonexistent-3mf-test-root/.config-backup"), &sensitive).is_ok());
+        assert!(reject_if_sensitive_path(Path::new("/nonexistent-3mf-test-root/3D-Drucke"), &sensitive).is_ok());
     }
     #[test]
     fn reject_if_sensitive_path_rejects_parent_dir_traversal_into_sensitive_dir() {
