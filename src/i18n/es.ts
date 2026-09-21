@@ -264,7 +264,7 @@ export const es: Translations = {
   infoSourceCodeLabel: 'Código fuente',
   infoCommunityLabel: 'Comunidad',
   infoLicenseLabel: 'Licencia',
-  infoThirdPartyLicensesLabel: 'Licencias de terceros',
+  infoThirdPartyLicensesLabel: 'Terceros',
   updateToastText: 'Actualización disponible: v{version}',
   updateToastDownloadLabel: 'Descargar',
 };

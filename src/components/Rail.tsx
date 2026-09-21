@@ -454,7 +454,7 @@ export function Rail({
                     onClick={() => invoke('open_release_url', { url: 'https://github.com/Bexxs75/3mf-katalog-manager/blob/master/THIRD-PARTY-LICENSES.md' }).catch(() => {})}
                     className="cursor-pointer hover:text-[var(--accent)]"
                   >
-                    Open CASCADE (LGPL-2.1)
+                    Open CASCADE
                   </span>
                 </div>
               </>
