@@ -29,15 +29,40 @@ jobs:
       # explizit gepinnt - Homebrew hat ohnehin nur die jeweils aktuelle Formel-
       # Version im Angebot; 7.9.3 (die auf Linux/Windows gepinnte Version) war
       # zum Zeitpunkt dieses Workflows die aktuelle Homebrew-Version.
-      - name: Install OCCT via Homebrew
-        run: brew install opencascade
+      - name: Install OCCT + dylibbundler via Homebrew
+        run: brew install opencascade dylibbundler
 
-      - name: Build Tauri app (macOS .app/.dmg, with STEP preview)
+      # Nur --bundles app hier (nicht dmg): der Build linkt die Binary fest
+      # gegen den absoluten Homebrew-Pfad, das naechste Skript schreibt das
+      # per install_name_tool auf Contents/Frameworks um. Ein zweiter
+      # `tauri build -- --bundles dmg`-Aufruf danach wuerde das .app-Bundle
+      # aus der Cargo-Binary NEU erzeugen und diesen Fix wieder verwerfen -
+      # die DMG wird deshalb im naechsten Schritt direkt per hdiutil aus dem
+      # bereits gefixten .app gebaut, nicht ueber Tauri.
+      - name: Build Tauri app (macOS .app, with STEP preview)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           export CMAKE_PREFIX_PATH="$(brew --prefix opencascade)"
-          npm run tauri build -- --bundles dmg
+          npm run tauri build -- --bundles app
+
+      # Bettet alle OCCT-.dylibs (inkl. transitiver Homebrew-Abhaengigkeiten
+      # wie tbb) in Contents/Frameworks ein, damit die DMG auch ohne lokal
+      # installiertes Homebrew-OCCT laeuft. Lokal verifiziert (siehe
+      # VENDORING.md): App startet und rendert eine STEP-3D-Vorschau, auch
+      # wenn die Homebrew-OCCT-Installation zum Testzeitpunkt komplett
+      # entfernt/umbenannt ist.
+      - name: Bundle OCCT dylibs into the .app
+        run: |
+          ./src-tauri/scripts/bundle-occt-dylibs-macos.sh "src-tauri/target/release/bundle/macos/3MF Katalog Manager.app"
+
+      - name: Package DMG from the dylib-bundled .app
+        run: |
+          mkdir -p src-tauri/target/release/bundle/dmg
+          hdiutil create -volname "3MF Katalog Manager" \
+            -srcfolder "src-tauri/target/release/bundle/macos/3MF Katalog Manager.app" \
+            -ov -format UDZO \
+            "src-tauri/target/release/bundle/dmg/3MF Katalog Manager_step.dmg"
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4

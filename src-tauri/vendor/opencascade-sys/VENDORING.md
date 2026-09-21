@@ -149,10 +149,22 @@ Sonoma 14.8.9) und als Workflow `.github/workflows/build-macos-step.yml`
 automatisiert:
 
 ```bash
-brew install opencascade
+brew install opencascade dylibbundler
 export CMAKE_PREFIX_PATH="$(brew --prefix opencascade)"
-npm run tauri build -- --bundles dmg
+npm run tauri build -- --bundles app
+./src-tauri/scripts/bundle-occt-dylibs-macos.sh "src-tauri/target/release/bundle/macos/3MF Katalog Manager.app"
+hdiutil create -volname "3MF Katalog Manager" \
+  -srcfolder "src-tauri/target/release/bundle/macos/3MF Katalog Manager.app" \
+  -ov -format UDZO \
+  "src-tauri/target/release/bundle/dmg/3MF Katalog Manager_step.dmg"
 ```
+
+**Wichtig, Reihenfolge:** nur `--bundles app` bauen, nicht `--bundles dmg` -
+Tauri erzeugt das `.app`-Bundle bei jedem `tauri build`-Aufruf frisch aus der
+Cargo-Binary. Ein zweiter `tauri build -- --bundles dmg`-Aufruf NACH dem
+Dylib-Bundling würde das `.app` neu bauen und den Fix wieder verwerfen -
+deshalb wird die DMG direkt per `hdiutil` aus dem bereits gefixten `.app`
+gepackt, nicht über einen zweiten Tauri-Aufruf.
 
 **Homebrew liefert OCCT nur einzelarchitektur-rein** (kein universelles
 arm64+x86_64-Fat-Binary) — anders als `build-macos.yml` (STEP-frei,
@@ -176,11 +188,18 @@ Betrifft `build-macos-step.yml` selbst nicht (github-gehostete `macos-latest`-
 Runner sind arm64 und haben Homebrew vorinstalliert), nur eine eigene
 Intel-Test-VM/-Mac.
 
-**Noch offen:** die OCCT-`.dylib`s werden aktuell **nicht** ins App-Bundle
-kopiert (nur dynamisch gegen die lokale Homebrew-Installation gelinkt) — eine
-so gebaute DMG läuft nur auf Systemen mit installiertem
-`brew install opencascade`. Eine macOS-Entsprechung des Windows-DLL-Stagings
-(`stage-occt-dlls.ps1` + `tauri.windows-step.conf.json`) steht noch aus.
+**Dylib-Bundling:** `src-tauri/scripts/bundle-occt-dylibs-macos.sh` bettet
+alle OCCT-`.dylib`s (inkl. transitiver Homebrew-Abhängigkeiten wie `tbb`) per
+`dylibbundler` in `Contents/Frameworks` ein und schreibt die Ladepfade der
+Binary sowie jeder kopierten `.dylib` per `install_name_tool` auf
+`@executable_path/../Frameworks/<name>` um — anders als bei Windows (DLLs
+einfach neben die `.exe` kopieren reicht dort) muss macOS die zur Compile-Zeit
+fest eingebrannten absoluten Homebrew-Pfade explizit umschreiben, sonst findet
+der dynamische Linker die Bibliotheken auf einem fremden System nicht.
+Rigoros verifiziert (2026-09-21, Intel-`docker-osx`-Sonoma-VM): Homebrew-OCCT
+komplett umbenannt/entfernt, App per `HOME`-Override in isolierter Umgebung
+gestartet, STEP-Datei importiert, 3D-Vorschau erschien — sowohl direkt aus dem
+`.app`-Bundle als auch aus einer gemounteten, tatsächlich gebauten DMG heraus.
 
 ## Was der Fork **nicht** ändert
 
