@@ -1,8 +1,8 @@
 # Vendored: opencascade-sys 0.3.0
 
 Dieses Verzeichnis ist eine **1:1-Kopie von `opencascade-sys` 0.3.0** von
-crates.io mit genau zwei Änderungen. Eingebunden wird sie über
-`[patch.crates-io]` in `src-tauri/Cargo.toml`.
+crates.io mit gezielten Patches für OCCT 7.9 (Linux/GCC) und MSVC (Windows).
+Eingebunden wird sie über `[patch.crates-io]` in `src-tauri/Cargo.toml`.
 
 ## Warum überhaupt ein Fork?
 
@@ -45,13 +45,80 @@ konfiguriert das nicht mehr.
 Anhebung ist deshalb gefahrlos. Ohne diesen Fix müsste jeder Entwickler und jede
 CI `CMAKE_POLICY_VERSION_MINIMUM=3.5` exportieren.
 
+## Änderung 3 — MSVC: `Handle_X` ist eine abgeleitete Klasse, kein Typalias (Windows)
+
+**Symptom:** Mehrere unterschiedliche C++-Übersetzungsfehler nur unter MSVC,
+u. a. `error C2440` beim Konstruieren eines `std::unique_ptr<Handle_X>` aus
+einem `opencascade::handle<T>*`, `error C2440` bei Funktionszeiger-
+Initialisierung für `handle_try_deref<T>`, sowie `error C2039`/`error C2440`
+bei direkter Bindung an echte OCCT-Methoden/-Funktionen, die `Handle(T)&`
+entgegennehmen (z. B. `BRepOffsetAPI_MakePipeShell::SetLaw`).
+
+**Ursache:** `Standard_Handle.hxx` definiert `Handle_X`
+(das rückwärtskompatible Alias für `opencascade::handle<X>`) je nach Compiler
+unterschiedlich:
+
+```cpp
+#if (defined(_MSC_VER) && _MSC_VER >= 1800)
+  // MSVC: Handle_X ist eine von opencascade::handle<X> ABGELEITETE Klasse
+  // (fuer C++/CLI-Export-Kompatibilitaet)
+#else
+  // andere Compiler: Handle_X ist ein einfacher Typalias
+  typedef Handle(X) Handle_X;
+#endif
+```
+
+Auf GCC/Linux sind `Handle_X` und `opencascade::handle<X>` also identisch
+(austauschbar), auf MSVC sind es zwei unterschiedliche Typen in einer
+Basis-/Ableitungsbeziehung. Das bricht drei Muster, die implizite
+Zeiger-/Referenzkonvertierung zwischen beiden voraussetzen:
+
+1. **Zeiger-Konstruktion:** `new opencascade::handle<T>(...)` lässt sich nicht
+   mehr in `std::unique_ptr<Handle_X>` konvertieren (Basis- vs. abgeleiteter
+   Zeiger sind nicht implizit kompatibel).
+   **Fix:** direkt über `new Handle_X(...)` konstruieren — der
+   Zeiger-/Kopier-Konstruktor von `Handle_X` funktioniert auf beiden
+   Compiler-Varianten identisch.
+2. **`handle_try_deref<T>`-Template** (in `bindings_common.hxx`, parametrisiert
+   auf `opencascade::handle<T>`): cxx braucht für die `Result<&T>`-Rückgabe
+   exakte Funktionszeiger-Signaturgleichheit, die bei `Handle_X` als
+   eigenständigem Typ nicht mehr gegeben ist.
+   **Fix:** eigene, nicht-templatisierte Deref-Funktion pro betroffenem Typ
+   (z. B. `top_tools_handle_try_deref`, `poly_triangulation_handle_try_deref`).
+3. **Direkte Bindung an echte OCCT-Methoden/-Funktionen**, die `Handle(T)&`
+   entgegennehmen: cxx bindet sowohl freie Funktionen als auch
+   Instanzmethoden (`self:`-Parameter) über einen exakten
+   Funktions-/Pointer-to-member-Signaturvergleich.
+   **Fix:** dünne `inline`-Wrapper-Funktionen mit unserer eigenen, exakten
+   `Handle_X`-Signatur, die intern die echte OCCT-Funktion aufrufen. Wichtig:
+   Eine `self:`-Methode wird von cxx **immer** als Member-Funktions-Bindung
+   behandelt, unabhängig von einem gesetzten `#[cxx_name]` — der Wrapper muss
+   also als echte freie Funktion (ohne `self:`) gebunden werden.
+
+Ein Nebenfund in `gc.hxx`: `GCE2d_MakeSegment` liefert ein `const`-
+qualifiziertes Rückgabe-Handle, das die MSVC-Überladungsauflösung beim
+direkten Durchreichen an den `Handle_X`-Konstruktor durcheinanderbrachte —
+gelöst über eine explizite, nicht-konstante lokale Zwischenvariable.
+
+**Betroffene Dateien:** `top_tools.{hxx,rs}`, `geom.hxx`, `gc.hxx`,
+`geom2d.hxx`, `geom_api.hxx`, `b_rep.hxx`, `poly.{hxx,rs}`,
+`b_rep_lib.{hxx,rs}`, `shape_analysis.{hxx,rs}`, `b_rep_offset_api.{hxx,rs}`.
+
+Alle Fixes sind so geschrieben, dass sie auf **beiden** Compilern
+funktionieren (verifiziert: 299 Linux-Tests weiterhin grün, vollständiger
+Windows-Build inkl. MSI-Bundle mit gebündelten OCCT-DLLs erfolgreich getestet).
+
 ## Was der Fork **nicht** ändert
 
 - Kein `builtin`-Feature, kein `occt-sys`. OCCT wird **dynamisch** gelinkt
   (`BUILD_SHARED_LIBS=ON` aus der System-Installation). `occt-sys` darf nie in
   `cargo tree` auftauchen — statisches Linken würde die LGPL-Pflicht auslösen,
   relinkbare Objektdateien an jeden Empfänger zu liefern.
-- Keine inhaltliche Änderung an Bindings, Headern oder `build.rs`.
+- Keine Änderung an der öffentlichen Rust-API des Crates, mit einer Ausnahme:
+  `BRepOffsetAPI_MakePipeShell::SetLaw` ist jetzt eine freie Funktion
+  (`BRepOffsetAPI_MakePipeShell_SetLaw`) statt einer Instanzmethode (siehe
+  Änderung 3, Punkt 3). Im eigenen `step`-Modul dieses Projekts hat `SetLaw`
+  keine Aufrufer, betrifft also aktuell nur zukünftige Crate-Nutzung.
 
 ## Pflege
 
@@ -69,4 +136,4 @@ rm -rf src-tauri/vendor/opencascade-sys
 cp -r $CARGO_CPY src-tauri/vendor/opencascade-sys
 ```
 
-…gefolgt von den beiden Patches oben.
+…gefolgt von den drei Patches oben.
