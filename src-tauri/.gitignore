@@ -8,3 +8,8 @@
 
 # Cloud-OAuth-Zugangsdaten, niemals committen
 /cloud.config.json
+
+# Windows: zur Build-Zeit aus vcpkg gestagte OCCT-Laufzeit-DLLs (siehe
+# scripts/stage-occt-dlls.ps1). Werden bewusst nicht committet - siehe
+# vendor/opencascade-sys/VENDORING.md fuer die Begruendung.
+/occt-runtime/

@@ -108,6 +108,46 @@ Alle Fixes sind so geschrieben, dass sie auf **beiden** Compilern
 funktionieren (verifiziert: 299 Linux-Tests weiterhin grün, vollständiger
 Windows-Build inkl. MSI-Bundle mit gebündelten OCCT-DLLs erfolgreich getestet).
 
+## Windows: STEP-fähiges Bundle lokal bauen
+
+Windows hat kein OS-Paket für OCCT (anders als Linux-Distros oder Homebrew auf
+macOS). Der Weg über `vcpkg` und ein manuelles DLL-Staging, lokal verifiziert:
+
+1. OCCT über `vcpkg` mit gepinnter Version bauen (Manifest-Beispiel mit
+   Override auf 7.9.3, `builtin-baseline` auf einen aktuellen vcpkg-Commit
+   setzen):
+   ```jsonc
+   {
+     "name": "step-preview-occt",
+     "version": "1.0.0",
+     "builtin-baseline": "<vcpkg-commit>",
+     "dependencies": ["opencascade"],
+     "overrides": [{ "name": "opencascade", "version": "7.9.3" }]
+   }
+   ```
+   ```powershell
+   vcpkg install --triplet x64-windows
+   ```
+   Ergebnis landet standardmäßig unter `<manifest-dir>\vcpkg_installed\x64-windows`.
+2. DLLs in den Projektbaum stagen (nie committen, siehe `.gitignore`):
+   ```powershell
+   .\src-tauri\scripts\stage-occt-dlls.ps1 -VcpkgInstalledDir <pfad>\vcpkg_installed\x64-windows
+   ```
+3. Bauen mit `CMAKE_PREFIX_PATH` auf die vcpkg-Installation gesetzt **und**
+   der zusätzlichen Config, die die DLLs als Bundle-Ressourcen einbindet:
+   ```powershell
+   $env:CMAKE_PREFIX_PATH = "<pfad>\vcpkg_installed\x64-windows"
+   npm run tauri build -- --bundles msi --config src-tauri\tauri.windows-step.conf.json
+   ```
+
+**Wichtig:** `tauri.windows-step.conf.json` wird **nicht** automatisch von
+Tauri eingemischt (anders als ein `tauri.windows.conf.json` hieße) — bewusst,
+weil ein `resources`-Eintrag mit einem Glob, der keine Datei trifft (z. B. der
+offizielle `--no-default-features`-Windows-CI-Build ohne OCCT), den gesamten
+Build mit `glob pattern ... not found` hart abbrechen lässt (verifiziert).
+Die Datei muss deshalb explizit per `--config` zugeschaltet werden, nur wenn
+`occt-runtime/` tatsächlich befüllt ist.
+
 ## Was der Fork **nicht** ändert
 
 - Kein `builtin`-Feature, kein `occt-sys`. OCCT wird **dynamisch** gelinkt
