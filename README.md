@@ -32,7 +32,7 @@ Beide Varianten sind ansonsten funktionsgleich. Die Downloads sind unsigniert (s
 - **Tag- und Ordnerverwaltung**, Suche und Filterung
 - **Import** einzelner Dateien oder ganzer Ordner (inkl. Unterordner) per Dialog oder Drag & Drop, über ein gemeinsames Dropdown-Menü in der Kopfzeile
 - **Komfort-Ansicht** — alternative, deutlich lesbarere Oberfläche (größere Schrift, Grafiken und Bedienelemente) neben der bestehenden kompakten Ansicht, umschaltbar im Einstellungen-Panel; Favorit-Kennzeichnung je Modell in beiden Ansichten
-- **In Slicer öffnen** — beliebig viele selbst hinterlegte Slicer-Programme (herstellerunabhängig) direkt aus dem Katalog heraus starten (Windows/Linux)
+- **In Slicer öffnen** — beliebig viele selbst hinterlegte Slicer-Programme (herstellerunabhängig) direkt aus dem Katalog heraus starten
 - **Mehrsprachige Oberfläche** — Deutsch, Englisch, Spanisch, Französisch, umschaltbar zur Laufzeit
 - **Hell-/Dunkel-Theme** mit System-Erkennung und manueller Auswahl, persistiert lokal
 - **Filament-Lager** — eigenständige Verwaltung deiner Filamentspulen (Material, Hersteller, Farbe, Lagerort, Durchmesser, Ursprungs-/Restgewicht, Preis) mit Autocomplete für Material/Hersteller/Lagerort, unabhängig vom Modell-Katalog; umschaltbar zwischen Karten-Dashboard (Bestandsbalken, Statusfarbe) und sortierbarer Inventarliste, inkl. Statistik-Leiste und Status-Filter; beim Neuanlegen lassen sich mehrere identische Spulen auf einmal erfassen (jede mit eigenem, unabhängig verfolgtem Restbestand)
@@ -61,7 +61,7 @@ Beide Varianten sind ansonsten funktionsgleich. Die Downloads sind unsigniert (s
 Dieses Projekt befindet sich in aktiver Entwicklung. Der lokale Katalog (Import, Parsing, Tagging, Suche, 3D-Vorschau, Mehrsprachigkeit, Theming) und "In Slicer öffnen" sind funktionsfähig. Folgendes ist noch **nicht** umgesetzt:
 
 - **Cloud-Anbindung** (Google Drive u. a.): war vorhanden, wurde aber wieder entfernt — zu instabil/fehleranfällig für den Alltagsgebrauch. Wird bei Gelegenheit sauber neu konzipiert, siehe CHANGELOG
-- **"In Slicer öffnen" unter macOS**: da Slicer dort meist als `.app`-Bundle installiert sind (eigener Start-Mechanismus statt einer direkt ausführbaren Datei), funktioniert das gezielte Öffnen aus dem Katalog heraus unter macOS derzeit nicht zuverlässig
+- **"In Slicer öffnen" bei manuell hinzugefügten Slicern unter macOS**: für automatisch erkannte Slicer (Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura) funktioniert das Öffnen zuverlässig, da die Erkennung bereits die richtige, direkt ausführbare Programmdatei innerhalb des `.app`-Bundles findet. Bei manuell hinzugefügten Slicern muss im Dateidialog gezielt diese Datei ausgewählt werden, nicht das `.app`-Bundle selbst
 - **STEP-Vorschau als separater Download**: Auf allen drei Plattformen gibt es dafür zwei Paketvarianten statt einer einzigen mit fest eingebauter STEP-Vorschau — siehe [Downloads](#downloads).
 - **Code-Signing**: die macOS-`.dmg`- und Windows-`.msi`-Pakete sind unsigniert (kein Apple-Developer- bzw. Windows-Code-Signing-Zertifikat) — beim ersten Start warnen Gatekeeper bzw. SmartScreen entsprechend
 
@@ -153,7 +153,7 @@ Both variants are otherwise feature-identical. Downloads are unsigned (see [Stat
 - **Tag and folder management**, search and filtering
 - **Import** of individual files or entire folders (including subfolders) via dialog or drag & drop, through a shared dropdown menu in the header
 - **Comfort view** — alternative, significantly more readable interface (larger text, graphics, and controls) alongside the existing compact view, toggleable in the settings panel; favorite marking per model in both views
-- **Open in slicer** — launch any number of self-configured slicer programs (vendor-agnostic) directly from the catalog (Windows/Linux)
+- **Open in slicer** — launch any number of self-configured slicer programs (vendor-agnostic) directly from the catalog
 - **Multilingual UI** — German, English, Spanish, French, switchable at runtime
 - **Light/dark theme** with system detection and manual selection, persisted locally
 - **Filament inventory** — standalone management of your filament spools (material, manufacturer, color, storage location, diameter, original/remaining weight, price) with autocomplete for material/manufacturer/location, independent of the model catalog; toggleable between a card dashboard (stock bar, status color) and a sortable inventory list, including a stats bar and status filters; when adding new spools, several identical ones can be created at once (each with its own independently tracked remaining stock)
@@ -182,7 +182,7 @@ Both variants are otherwise feature-identical. Downloads are unsigned (see [Stat
 This project is under active development. The local catalog (import, parsing, tagging, search, 3D preview, multilingual UI, theming) and "open in slicer" are functional. The following is **not** yet implemented:
 
 - **Cloud integration** (Google Drive etc.): existed previously but was removed again — too unstable/error-prone for everyday use. Will be cleanly redesigned at some point, see CHANGELOG
-- **"Open in slicer" on macOS**: slicers there are usually installed as `.app` bundles (their own launch mechanism instead of a directly executable file), so opening a model directly from the catalog currently doesn't work reliably on macOS
+- **"Open in slicer" for manually added slicers on macOS**: opening works reliably for automatically detected slicers (Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura), since detection already finds the correct, directly executable program file inside the `.app` bundle. For manually added slicers, that same file needs to be selected in the file picker, not the `.app` bundle itself
 - **STEP preview as a separate download**: all three platforms ship two package variants for this instead of a single one with STEP preview baked in — see [Downloads](#downloads-1).
 - **Code signing**: the macOS `.dmg` and Windows `.msi` packages are unsigned (no Apple Developer or Windows code-signing certificate) — Gatekeeper/SmartScreen will warn accordingly on first launch
 

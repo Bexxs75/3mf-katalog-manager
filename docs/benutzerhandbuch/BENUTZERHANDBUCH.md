@@ -230,7 +230,9 @@ wieder aus der Warteschlange entfernt.
 direkt dein Slicer-Programm mit der ausgewählten Datei. Welche Slicer zur Auswahl stehen und
 welcher davon dein **Standard-Slicer** ist, richtest du in den Einstellungen ein (siehe unten).
 
-> Unter macOS funktioniert diese Funktion derzeit nicht zuverlässig — siehe
+> Unter macOS funktioniert das für automatisch erkannte Slicer zuverlässig. Fügst du
+> stattdessen einen Slicer manuell hinzu, musst du im Auswahldialog gezielt die Programmdatei
+> **innerhalb** des `.app`-Bundles auswählen (nicht das Bundle selbst) — siehe
 > [Bekannte Einschränkungen](#bekannte-einschränkungen).
 
 ## Das Filament-Lager
@@ -342,9 +344,13 @@ unwiderruflich überschreibt.
 
 ## Bekannte Einschränkungen
 
-- **"In Slicer öffnen" unter macOS** funktioniert derzeit nicht zuverlässig, da Slicer dort meist
-  als `.app`-Bundle installiert sind (eigener Start-Mechanismus statt einer direkt ausführbaren
-  Datei). Auf Linux und Windows ist die Funktion uneingeschränkt nutzbar.
+- **"In Slicer öffnen" bei manuell hinzugefügten Slicern unter macOS**: die automatische
+  Slicer-Erkennung findet bei bekannten Programmen (Bambu Studio, OrcaSlicer, PrusaSlicer,
+  SuperSlicer, UltiMaker Cura) bereits die richtige, direkt ausführbare Programmdatei innerhalb
+  des `.app`-Bundles — für diese funktioniert "In Slicer öffnen" zuverlässig. Fügst du stattdessen
+  einen Slicer manuell hinzu, musst du im macOS-Dateidialog gezielt zur Programmdatei
+  `<Name>.app/Contents/MacOS/<Name>` navigieren (mit ⌘⇧G lässt sich der Pfad direkt eintippen),
+  da ein `.app`-Bundle selbst kein direkt ausführbares Ding im technischen Sinn ist.
 - Die macOS- und Windows-Installationspakete sind **unsigniert** — Gatekeeper bzw. SmartScreen
   warnen beim ersten Start (siehe [Installation](#installation) für den Weg drumherum).
 - Es gibt **keine Cloud-Anbindung** — der Katalog ist bewusst rein lokal, eine frühere
@@ -602,8 +608,9 @@ drop. Marking a model as printed automatically removes it from the queue again.
 launches your slicer program directly with the selected file. Which slicers are available, and
 which of them is your **default slicer**, is configured in Settings (see below).
 
-> On macOS, this feature currently doesn't work reliably — see
-> [Known limitations](#known-limitations).
+> On macOS, this works reliably for automatically detected slicers. If you add a slicer
+> manually instead, you need to select the program file **inside** the `.app` bundle in the
+> picker (not the bundle itself) — see [Known limitations](#known-limitations).
 
 ## The filament stock
 
@@ -710,9 +717,12 @@ overwrites anything irreversibly.
 
 ## Known limitations
 
-- **"Open in slicer" on macOS** currently doesn't work reliably, since slicers there are usually
-  installed as `.app` bundles (their own launch mechanism instead of a directly executable file).
-  On Linux and Windows, the feature works without restrictions.
+- **"Open in slicer" for manually added slicers on macOS**: automatic slicer detection already
+  finds the correct, directly executable program file inside the `.app` bundle for known programs
+  (Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura) — "Open in slicer" works
+  reliably for those. If you add a slicer manually instead, you need to navigate the macOS file
+  picker to `<Name>.app/Contents/MacOS/<Name>` (⌘⇧G lets you type the path directly), since a
+  `.app` bundle itself isn't a directly executable thing in the technical sense.
 - The macOS and Windows installer packages are **unsigned** — Gatekeeper and SmartScreen
   respectively will warn on first launch (see [Installation](#installation-1) for the way around
   it).
