@@ -1,0 +1,53 @@
+name: Build Linux AppImage (without STEP preview)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build-linux-nostep:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Tauri Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            cmake
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      # Kein OCCT-PPA-Schritt hier (anders als build-linux.yml) - diese
+      # Variante baut ohne die STEP-Vorschau, deshalb keine OCCT-Abhaengigkeit.
+      - name: Build Tauri app (AppImage, without STEP preview)
+        env:
+          NO_STRIP: "1"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run tauri build -- --bundles appimage -- --no-default-features
+
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 3mf-katalog-manager-linux-appimage
+          path: src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error

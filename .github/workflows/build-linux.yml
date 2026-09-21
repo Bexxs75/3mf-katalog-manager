@@ -1,4 +1,4 @@
-name: Build Linux AppImage
+name: Build Linux AppImage (with STEP preview)
 
 on:
   workflow_dispatch: {}
@@ -69,6 +69,6 @@ jobs:
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@v4
         with:
-          name: 3mf-katalog-manager-linux-appimage
+          name: 3mf-katalog-manager-linux-appimage-step
           path: src-tauri/target/release/bundle/appimage/*.AppImage
           if-no-files-found: error

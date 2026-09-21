@@ -12,9 +12,20 @@ Plattformunabhängige Desktop-Anwendung zur Katalogisierung und Verwaltung von 3
 |---|---|---|
 | ![Katalog in der Raster-Ansicht](docs/benutzerhandbuch/bilder/02-katalog-grid.png) | ![Nach Ordnern gruppierte Ansicht](docs/benutzerhandbuch/bilder/16-ordner-ansicht.png) | ![Einstellungen mit Update-Check](docs/benutzerhandbuch/bilder/20-einstellungen-info-update.png) |
 
+## Downloads
+
+Fertige Pakete gibt es auf der [Releases-Seite](https://github.com/Bexxs75/3mf-katalog-manager/releases). Für Linux, Windows und macOS steht jeweils **eine von zwei Varianten** zur Wahl:
+
+| Variante | Enthält | Größe | Für wen |
+|---|---|---|---|
+| **mit STEP-Vorschau** (`-step`) | 3D-Vorschau + Abmessungen/Volumen/Körperzahl auch für `.stp`/`.step`-Dateien (via Open CASCADE) | größer (OCCT-Bibliotheken mit eingepackt) | wer STEP-Dateien katalogisiert und die Vorschau braucht |
+| **ohne STEP-Vorschau** (Standardname, kein Suffix) | STEP-Dateien lassen sich weiterhin katalogisieren (Tags, Suche, Umbenennen, Papierkorb), aber ohne 3D-Vorschau/CAD-Metadaten | kleiner | wer nur 3MF/STL/OBJ nutzt oder STEP nur ablegen, nicht ansehen will |
+
+Beide Varianten sind ansonsten funktionsgleich. Die Downloads sind unsigniert (siehe [Status](#status)).
+
 ## Funktionen
 
-- **3MF-, STL-, OBJ- und STEP-Parsing** — 3MF (OPC-Container-Entpackung inkl. eingebettetem Thumbnail), ASCII-/Binär-STL und OBJ jeweils mit 3D-Vorschau; die Linux-Fassung liest STEP-Dateien (`.stp`/`.step`) über Open CASCADE und ermittelt daraus 3D-Vorschau, Abmessungen, Volumen und Körperzahl. Die offiziellen Windows-/macOS-Pakete katalogisieren STEP zunächst weiterhin ohne Vorschau (siehe Plattformhinweis unten).
+- **3MF-, STL-, OBJ- und STEP-Parsing** — 3MF (OPC-Container-Entpackung inkl. eingebettetem Thumbnail), ASCII-/Binär-STL und OBJ jeweils mit 3D-Vorschau; STEP-Dateien (`.stp`/`.step`) werden über Open CASCADE gelesen und liefern 3D-Vorschau, Abmessungen, Volumen und Körperzahl. Für jede Plattform (Linux/Windows/macOS) gibt es zwei Downloads: eine Variante **mit** STEP-Vorschau und eine kleinere Variante **ohne** (nur Katalogisierung ohne 3D-Vorschau für STEP) — siehe [Downloads](#downloads).
 - **Automatische Metadaten-Extraktion** — Abmessungen, Volumen, Objektanzahl, Material (sofern in der 3MF vorhanden)
 - **Automatische Hashtag-Generierung** — Vorschläge aus Dateiname, Geometrie-Merkmalen und Slicer-Profildaten, vom Nutzer editierbar
 - **3D-Live-Vorschau** — three.js-Rendering direkt aus der Mesh-Geometrie, wenn kein eingebettetes Thumbnail vorhanden ist
@@ -51,7 +62,7 @@ Dieses Projekt befindet sich in aktiver Entwicklung. Der lokale Katalog (Import,
 
 - **Cloud-Anbindung** (Google Drive u. a.): war vorhanden, wurde aber wieder entfernt — zu instabil/fehleranfällig für den Alltagsgebrauch. Wird bei Gelegenheit sauber neu konzipiert, siehe CHANGELOG
 - **"In Slicer öffnen" unter macOS**: da Slicer dort meist als `.app`-Bundle installiert sind (eigener Start-Mechanismus statt einer direkt ausführbaren Datei), funktioniert das gezielte Öffnen aus dem Katalog heraus unter macOS derzeit nicht zuverlässig
-- **STEP-Vorschau auf Windows und macOS**: Die offiziellen Pakete werden zunächst ohne `step-preview` gebaut und katalogisieren STEP-Dateien daher ohne Vorschau oder automatisch ermittelte CAD-Metadaten. So bleiben die Builds portabel, bis ein vollständiger, austauschbarer OCCT-DLL-/Universal-Dylib-Paketierungsweg verifiziert ist. Die Linux-Fassung enthält die Funktion.
+- **STEP-Vorschau als separater Download**: Auf allen drei Plattformen gibt es dafür zwei Paketvarianten statt einer einzigen mit fest eingebauter STEP-Vorschau — siehe [Downloads](#downloads).
 - **Code-Signing**: die macOS-`.dmg`- und Windows-`.msi`-Pakete sind unsigniert (kein Apple-Developer- bzw. Windows-Code-Signing-Zertifikat) — beim ersten Start warnen Gatekeeper bzw. SmartScreen entsprechend
 
 ## Geplant
@@ -122,9 +133,20 @@ Cross-platform desktop application for cataloging and managing 3MF, STL, OBJ, an
 |---|---|---|
 | ![Catalog in grid view](docs/benutzerhandbuch/bilder/02-katalog-grid.png) | ![Folder-grouped view](docs/benutzerhandbuch/bilder/16-ordner-ansicht.png) | ![Settings with update check](docs/benutzerhandbuch/bilder/20-einstellungen-info-update.png) |
 
+## Downloads
+
+Prebuilt packages are on the [Releases page](https://github.com/Bexxs75/3mf-katalog-manager/releases). For Linux, Windows, and macOS, there are **two variants** to choose from:
+
+| Variant | Includes | Size | For |
+|---|---|---|---|
+| **with STEP preview** (`-step`) | 3D preview + dimensions/volume/body count for `.stp`/`.step` files too (via Open CASCADE) | larger (bundles the OCCT libraries) | anyone cataloging STEP files who needs the preview |
+| **without STEP preview** (plain name, no suffix) | STEP files can still be cataloged (tags, search, rename, trash), just without a 3D preview/CAD metadata | smaller | anyone who only uses 3MF/STL/OBJ, or just wants to store STEP files without viewing them |
+
+Both variants are otherwise feature-identical. Downloads are unsigned (see [Status](#status-1)).
+
 ## Features
 
-- **3MF, STL, OBJ, and STEP parsing** — 3MF (OPC container extraction incl. embedded thumbnail), ASCII/binary STL, and OBJ each have a 3D preview; the Linux build reads STEP files (`.stp`/`.step`) through Open CASCADE and derives a 3D preview, dimensions, volume, and body count. The official Windows/macOS packages initially continue to catalog STEP without a preview (see the platform note below).
+- **3MF, STL, OBJ, and STEP parsing** — 3MF (OPC container extraction incl. embedded thumbnail), ASCII/binary STL, and OBJ each have a 3D preview; STEP files (`.stp`/`.step`) are read through Open CASCADE and provide a 3D preview, dimensions, volume, and body count. Every platform (Linux/Windows/macOS) ships two downloads: one **with** STEP preview and one smaller one **without** (cataloging only, no 3D preview for STEP) — see [Downloads](#downloads-1).
 - **Automatic metadata extraction** — dimensions, volume, object count, material (if present in the 3MF)
 - **Automatic hashtag generation** — suggestions from filename, geometry features, and slicer profile data, editable by the user
 - **Live 3D preview** — three.js rendering directly from the mesh geometry when no embedded thumbnail is available
@@ -161,7 +183,7 @@ This project is under active development. The local catalog (import, parsing, ta
 
 - **Cloud integration** (Google Drive etc.): existed previously but was removed again — too unstable/error-prone for everyday use. Will be cleanly redesigned at some point, see CHANGELOG
 - **"Open in slicer" on macOS**: slicers there are usually installed as `.app` bundles (their own launch mechanism instead of a directly executable file), so opening a model directly from the catalog currently doesn't work reliably on macOS
-- **STEP preview on Windows and macOS**: the official packages are initially built without `step-preview`, so they catalog STEP files without a preview or automatically derived CAD metadata. This keeps the builds portable until a complete, replaceable OCCT DLL/universal-dylib packaging path has been verified. The Linux build includes the feature.
+- **STEP preview as a separate download**: all three platforms ship two package variants for this instead of a single one with STEP preview baked in — see [Downloads](#downloads-1).
 - **Code signing**: the macOS `.dmg` and Windows `.msi` packages are unsigned (no Apple Developer or Windows code-signing certificate) — Gatekeeper/SmartScreen will warn accordingly on first launch
 
 ## Planned

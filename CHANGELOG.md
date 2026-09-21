@@ -7,12 +7,20 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-21
+
 ### Added
 
-- Die Linux-Fassung erzeugt für STEP-Dateien (`.stp`/`.step`) jetzt eine echte 3D-Vorschau und ermittelt Abmessungen, Volumen sowie Körperzahl über Open CASCADE Technology (OCCT). Baugruppen werden bewusst als ein gemeinsames Vorschaunetz dargestellt; STEP lässt sich weiterhin nicht direkt im Slicer öffnen. Fehlerhafte oder zu große STEP-Dateien bleiben ohne automatisch ermittelte Metadaten im Katalog, statt den Import abzubrechen.
-- Die OCCT-Anbindung ist das einzige Default-Cargo-Feature (`step-preview`) und lässt sich mit `--no-default-features` vollständig aus dem Build entfernen. Die offiziellen Windows- und macOS-Pakete (`build-windows.yml`/`build-macos.yml`) nutzen vorerst weiterhin diese OCCT-freie Variante.
-- STEP-Vorschau ist jetzt auch für Windows und macOS technisch fertig und über eigene, manuell auslösbare CI-Workflows verifiziert (`build-windows-step.yml`: MSI mit gebündelten OCCT-DLLs; `build-macos-step.yml`: DMG mit den OCCT-`.dylib`s im App-Bundle, per `dylibbundler` umgeschrieben auf `@executable_path`-relative Pfade). Beide wurden auf echten Zielsystemen ohne vorinstalliertes OCCT getestet. Die offizielle Übernahme in die regulären Release-Pakete steht noch aus.
+- STEP-Vorschau (`.stp`/`.step`) gibt es jetzt auf **allen drei Plattformen** — Linux, Windows und macOS. Für jede Plattform stehen zwei Downloadvarianten bereit: eine mit STEP-Vorschau (Dateiname mit `-step`-Zusatz, enthält Open CASCADE Technology/OCCT) und eine kleinere ohne (STEP-Dateien lassen sich weiterhin katalogisieren — Tags, Suche, Umbenennen, Papierkorb —, nur eben ohne 3D-Vorschau und automatisch ermittelte Abmessungen/Volumen/Körperzahl). Baugruppen werden bewusst als ein gemeinsames Vorschaunetz dargestellt; STEP lässt sich weiterhin nicht direkt im Slicer öffnen. Fehlerhafte oder zu große STEP-Dateien bleiben ohne automatisch ermittelte Metadaten im Katalog, statt den Import abzubrechen.
+- Windows: MSI mit gebündelten OCCT-DLLs (`build-windows-step.yml`, OCCT-Build über ein gepinntes vcpkg-Manifest). macOS: DMG mit den OCCT-`.dylib`s direkt im App-Bundle (`build-macos-step.yml`, per `dylibbundler` auf `@executable_path`-relative Pfade umgeschrieben). Beide auf echten Zielsystemen ohne vorinstalliertes OCCT verifiziert — die App startet und die STEP-Vorschau funktioniert, auch ohne dass OCCT auf dem Zielrechner separat installiert ist.
+- Die OCCT-Anbindung ist ein abschaltbares Cargo-Feature (`step-preview`, per Default aktiv) und lässt sich mit `--no-default-features` vollständig aus dem Build entfernen — genau das erzeugt die kleinere Downloadvariante ohne STEP-Vorschau.
+- Automatische Slicer-Erkennung durchsucht jetzt auch unter macOS bekannte Installationsorte (Bambu Studio, OrcaSlicer u. a.), analog zur bisherigen Linux-/Windows-Unterstützung.
 - Open CASCADE wird dynamisch unter LGPL-2.1 mit Open-CASCADE-Ausnahme eingebunden. Vollständige Lizenztexte, Quellenhinweise und der dokumentierte `opencascade-sys`-Kompatibilitäts-Fork werden mit dem Quellcode beziehungsweise Programmpaket bereitgestellt; Details stehen in `THIRD-PARTY-LICENSES.md`.
+
+### Fixed
+
+- Die Zeile "Drittanbieter-Lizenzen" im Info-Tab der Einstellungen brach bei Label und Wert auf zwei Zeilen um, anders als die übrigen Zeilen dort — Text auf allen vier Sprachen gekürzt.
+- Vier Security-Unit-Tests für die Prüfung auf geschützte Systemverzeichnisse schlugen auf macOS fehl, weil `/home` dort ein Automounter-Symlink auf `/System/Volumes/Data/home` ist und `/var` ein Symlink auf `/private/var` — ein reiner Testbug (nicht-existente Testpfade wurden nur einseitig kanonisiert), kein Fehler in der eigentlichen Prüflogik.
 
 ## [0.11.0] - 2026-09-20
 

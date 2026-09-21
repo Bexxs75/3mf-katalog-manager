@@ -37,15 +37,24 @@ importierst, organisierst, druckfertig machst und dein Filament-Lager verwaltest
 Der 3MF Katalog Manager ist ein Desktop-Programm, mit dem du eine große Sammlung von
 3D-Druck-Dateien (`.3mf`, `.stl`, `.obj` sowie CAD-Quelldateien im `.stp`-/`.step`-Format) übersichtlich verwalten kannst: mit Vorschaubildern,
 Ordnern, Tags, Suche, einem eigenen Lager für deine Filamentspulen und einem direkten Weg, ein
-Modell mit einem Klick in deinem Slicer-Programm zu öffnen. Die Linux-Fassung erzeugt über Open
-CASCADE auch für STEP-Dateien eine 3D-Vorschau und liest Maße, Volumen und Körperzahl aus. Alles
-läuft lokal auf deinem Rechner — es gibt keine Cloud-Anbindung, deine Daten verlassen deinen
-Computer nicht.
+Modell mit einem Klick in deinem Slicer-Programm zu öffnen. In der Variante mit STEP-Vorschau
+(siehe [Installation](#installation)) erzeugt Open CASCADE auch für STEP-Dateien eine 3D-Vorschau
+und liest Maße, Volumen und Körperzahl aus. Alles läuft lokal auf deinem Rechner — es gibt keine
+Cloud-Anbindung, deine Daten verlassen deinen Computer nicht.
 
 ## Installation
 
 Die App steht für Linux, Windows und macOS zum Download bereit (siehe die
-[Releases-Seite](https://github.com/Bexxs75/3mf-katalog-manager/releases) des Projekts).
+[Releases-Seite](https://github.com/Bexxs75/3mf-katalog-manager/releases) des Projekts). Für jede
+Plattform gibt es dort zwei Varianten:
+
+- Dateiname **mit** dem Zusatz `-step`: enthält die 3D-Vorschau für STEP-Dateien (`.stp`/`.step`),
+  dafür etwas größer.
+- Dateiname **ohne** diesen Zusatz: kleinerer Download, STEP-Dateien lassen sich weiterhin
+  katalogisieren (Tags, Suche, Umbenennen, Papierkorb), nur eben ohne 3D-Vorschau dafür.
+
+Ansonsten sind beide Varianten identisch. Wer keine STEP-Dateien verwendet, kann bedenkenlos die
+kleinere Variante ohne `-step` nehmen.
 
 - **Linux:** `.tar.gz`-Archiv entpacken, die enthaltene `.AppImage`-Datei ausführbar machen und
   starten.
@@ -333,9 +342,6 @@ unwiderruflich überschreibt.
 
 ## Bekannte Einschränkungen
 
-- Die **3D-Vorschau und automatisch ermittelten CAD-Metadaten für STEP-Dateien** sind zunächst nur
-  in der Linux-Fassung enthalten. Die offiziellen Windows- und macOS-Pakete katalogisieren
-  `.stp`/`.step` weiterhin, zeigen diese Dateien aber ohne 3D-Vorschau an.
 - **"In Slicer öffnen" unter macOS** funktioniert derzeit nicht zuverlässig, da Slicer dort meist
   als `.app`-Bundle installiert sind (eigener Start-Mechanismus statt einer direkt ausführbaren
   Datei). Auf Linux und Windows ist die Funktion uneingeschränkt nutzbar.
@@ -413,14 +419,24 @@ for printing, and managing your filament stock.
 The 3MF Katalog Manager is a desktop application for keeping a large collection of 3D-printing
 files (`.3mf`, `.stl`, `.obj`, and CAD source files in `.stp`/`.step` format) organized: with preview images, folders, tags, search, a dedicated
 stock manager for your filament spools, and a one-click way to open a model in your slicer of
-choice. On Linux, Open CASCADE also provides a 3D preview and extracts dimensions, volume, and
-body count from STEP files. Everything runs locally on your machine — there's no cloud connection, and your data
-never leaves your computer.
+choice. In the variant with STEP preview (see [Installation](#installation-1)), Open CASCADE also
+provides a 3D preview and extracts dimensions, volume, and body count from STEP files. Everything
+runs locally on your machine — there's no cloud connection, and your data never leaves your
+computer.
 
 ## Installation
 
 The app is available for Linux, Windows, and macOS (see the project's
-[releases page](https://github.com/Bexxs75/3mf-katalog-manager/releases)).
+[releases page](https://github.com/Bexxs75/3mf-katalog-manager/releases)). For each platform there
+are two variants:
+
+- Filename **with** the `-step` suffix: includes the 3D preview for STEP files (`.stp`/`.step`),
+  at the cost of a larger download.
+- Filename **without** that suffix: smaller download; STEP files can still be cataloged (tags,
+  search, rename, trash), just without the 3D preview.
+
+Otherwise the two variants are identical. If you don't use STEP files, the smaller variant without
+`-step` is the safe choice.
 
 - **Linux:** extract the `.tar.gz` archive, make the included `.AppImage` file executable, and
   run it.
@@ -694,9 +710,6 @@ overwrites anything irreversibly.
 
 ## Known limitations
 
-- **3D preview and automatically derived CAD metadata for STEP files** are initially available only
-  in the Linux build. The official Windows and macOS packages still catalog `.stp`/`.step`, but
-  display those files without a 3D preview.
 - **"Open in slicer" on macOS** currently doesn't work reliably, since slicers there are usually
   installed as `.app` bundles (their own launch mechanism instead of a directly executable file).
   On Linux and Windows, the feature works without restrictions.
