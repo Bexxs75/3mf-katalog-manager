@@ -10,26 +10,19 @@ mod inner {
         type TopAbs_Orientation = crate::top_abs::TopAbs_Orientation;
         type TopTools_ListOfShape = crate::top_tools::TopTools_ListOfShape;
 
-        #[namespace = "TopoDS"]
-        #[cxx_name = "Vertex"]
+        #[cxx_name = "topods_cast_vertex"]
         pub fn topods_vertex(shape: &TopoDS_Shape) -> &TopoDS_Vertex;
-        #[namespace = "TopoDS"]
-        #[cxx_name = "Edge"]
+        #[cxx_name = "topods_cast_edge"]
         pub fn topods_edge(shape: &TopoDS_Shape) -> &TopoDS_Edge;
-        #[namespace = "TopoDS"]
-        #[cxx_name = "Wire"]
+        #[cxx_name = "topods_cast_wire"]
         pub fn topods_wire(shape: &TopoDS_Shape) -> &TopoDS_Wire;
-        #[namespace = "TopoDS"]
-        #[cxx_name = "Face"]
+        #[cxx_name = "topods_cast_face"]
         pub fn topods_face(shape: &TopoDS_Shape) -> &TopoDS_Face;
-        #[namespace = "TopoDS"]
-        #[cxx_name = "Shell"]
+        #[cxx_name = "topods_cast_shell"]
         pub fn topods_shell(shape: &TopoDS_Shape) -> &TopoDS_Shell;
-        #[namespace = "TopoDS"]
-        #[cxx_name = "Solid"]
+        #[cxx_name = "topods_cast_solid"]
         pub fn topods_solid(shape: &TopoDS_Shape) -> &TopoDS_Solid;
-        #[namespace = "TopoDS"]
-        #[cxx_name = "Compound"]
+        #[cxx_name = "topods_cast_compound"]
         pub fn topods_compound(shape: &TopoDS_Shape) -> &TopoDS_Compound;
 
         type TopoDS_Vertex;
@@ -129,11 +122,13 @@ unsafe impl Send for inner::TopoDS_Solid {}
 unsafe impl Send for inner::TopoDS_Compound {}
 unsafe impl Send for inner::TopoDS_Shape {}
 
-/// OCCT 7.9 hat `TopoDS` von einer Klasse zu einem Namensraum gemacht. cxx kann
-/// darauf keinen Typ-Alias mehr bilden (`using TopoDS = ::TopoDS;` waere ungueltig),
-/// deshalb sind die Cast-Funktionen als namensraumqualifizierte freie Funktionen
-/// gebunden und werden hier unter dem gewohnten Pfad `TopoDS::Face(...)` angeboten.
-/// Patch gegenueber upstream 0.3.0 - siehe VENDORING.md.
+/// OCCT 7.9 hat `TopoDS` von einer Klasse zu einem Namensraum gemacht; cxx kann
+/// weder einen Typ-Alias noch eine `#[namespace = "TopoDS"]`-Bindung bilden, die
+/// beide OCCT-Versionen gleichzeitig abdeckt (siehe die `topods_cast_*`-Shims in
+/// topo_ds.hxx, die das versionsunabhaengig loesen). Die Cast-Funktionen rufen
+/// deshalb diese Shims auf und werden hier unter dem gewohnten Pfad
+/// `TopoDS::Face(...)` angeboten. Patch gegenueber upstream 0.3.0 - siehe
+/// VENDORING.md.
 pub struct TopoDS;
 
 #[allow(non_snake_case)]

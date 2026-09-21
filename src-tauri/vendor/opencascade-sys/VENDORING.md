@@ -10,9 +10,9 @@ Die Kiste (OCCT 7.9.3, Arch Linux) ist neuer als das Crate. Upstream 0.3.0 ist
 die letzte Veröffentlichung, und auch der git-Stand vom 2026-08-24 enthält
 keinen Fix. Ohne Patch übersetzt `opencascade-sys` gegen OCCT 7.9 nicht.
 
-## Änderung 1 — `src/topo_ds.rs`
+## Änderung 1 — `src/topo_ds.rs` + `include/topo_ds.hxx`
 
-**Symptom:** C++-Übersetzungsfehler
+**Symptom (erste Fassung):** C++-Übersetzungsfehler
 `'TopoDS' in namespace '::' does not name a type` in der von cxx erzeugten
 `topo_ds.rs.cc`.
 
@@ -21,14 +21,28 @@ gemacht (`/usr/include/opencascade/TopoDS.hxx:64`). cxx übersetzt die
 Crate-Deklaration `type TopoDS;` zusammen mit `#[Self = "TopoDS"]` in
 `using TopoDS = ::TopoDS;` — ein Alias auf einen Namensraum ist in C++ ungültig.
 
-**Fix:** Die sieben Cast-Funktionen werden nicht mehr über `#[Self = "TopoDS"]`,
-sondern über `#[namespace = "TopoDS"]` + `#[cxx_name = "..."]` als
-namensraumqualifizierte freie Funktionen gebunden (Rust-Namen `topods_face` usw.).
-Damit die öffentliche Schnittstelle des Crates unverändert bleibt, definiert der
-Fork zusätzlich einen Rust-seitigen `pub struct TopoDS` mit denselben sieben
-assoziierten Funktionen, die an `inner::topods_*` weiterreichen. Aufrufstellen
-wie `TopoDS::Face(&shape)` funktionieren also weiterhin unverändert — auch der
-Originaltest des Crates läuft damit durch.
+**Zwischenfix (verworfen, siehe unten):** Ein erster Fix band die sieben
+Cast-Funktionen über `#[namespace = "TopoDS"]` + `#[cxx_name = "..."]` als
+namensraumqualifizierte freie Funktionen. Das übersetzte gegen OCCT 7.9.3
+(lokal verifiziert), scheiterte aber beim ersten echten CI-Lauf auf
+`ubuntu-24.04` mit OCCT **7.8.1** (FreeCAD-Maintainers-PPA, siehe
+`build-linux.yml`) mit `'namespace TopoDS { }' redeclared as different kind
+of entity`: `#[namespace = "TopoDS"]` lässt cxx selbst einen
+`namespace TopoDS { ... }`-Block generieren — das kollidiert mit OCCT 7.8s
+`class TopoDS`. Der Fork war also fälschlich als "OCCT 7.8/7.9 kompatibel"
+dokumentiert, obwohl dieser Zweig nie gegen einen echten 7.8-Runner lief.
+
+**Fix (aktuell, versionsunabhängig):** `topo_ds.hxx` definiert sieben kleine
+`inline`-Shim-Funktionen (`topods_cast_vertex` usw.), die schlicht
+`TopoDS::Vertex(shape)` (etc.) zurückgeben. Dieser Aufruf ist in C++ **syntaktisch
+identisch**, ob `TopoDS::Vertex` eine statische Methode einer Klasse (OCCT < 7.9)
+oder eine freie Funktion in einem Namensraum (OCCT >= 7.9) ist — nur cxx's
+Bindungsmechanismus unterscheidet zwischen beidem, der eigentliche C++-Code
+nicht. Die Shims selbst liegen NICHT in einem `TopoDS`-Scope, cxx bindet sie
+also als gewöhnliche freie Funktionen (`#[cxx_name = "topods_cast_vertex"]`,
+kein `#[namespace]` mehr nötig). Ein Rust-seitiger `pub struct TopoDS` mit den
+sieben assoziierten Funktionen bleibt erhalten, damit Aufrufstellen wie
+`TopoDS::Face(&shape)` unverändert funktionieren.
 
 ## Änderung 2 — `OCCT/CMakeLists.txt`
 
