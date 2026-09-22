@@ -10,36 +10,43 @@
       "url": "https://github.com/Bexxs75/3mf-katalog-manager",
       "provider": "github",
       "link_mode": "local-only",
-      "revision": "0ac26a4d9faeaa6e595645f95443ec09b50b5826"
+      "revision": "69bfce4b6a25e66087ff0e629e981b887e998bfd"
     },
     "views": [
-      { "id": "import-path", "label": "Import & Katalogisierung", "focus": ["user", "frontend", "commands", "filesystem", "parser", "sqlite"], "note": "Ein neues Modell wird lokal ausgewählt, nativ geparst und im Katalog gespeichert — ohne Netzwerkzugriff." },
-      { "id": "preview-and-print", "label": "Vorschau & Druckvorbereitung", "focus": ["frontend", "preview3d", "commands", "slicer"], "note": "3D-Vorschau im WebView und der Wechsel zu einem lokal installierten Slicer für den eigentlichen Druck." },
-      { "id": "persistence", "label": "Persistenz", "focus": ["commands", "sqlite"], "note": "Tags, Ordnerstruktur, Filament-Lager, Druck-Log und Warteschlange leben alle in einer einzigen lokalen SQLite-Datei." }
+      { "id": "import-path", "label": "Import & Katalogisierung", "focus": ["user", "frontend", "commands", "filesystem", "parser", "sqlite"], "note": "Ein neues Modell wird lokal ausgewählt, nativ geparst (3MF · STL · OBJ · optional STEP) und im Katalog gespeichert — ohne Netzwerkzugriff." },
+      { "id": "preview-and-print", "label": "Vorschau & Druckvorbereitung", "focus": ["frontend", "preview3d", "commands", "slicer"], "note": "3D-Live-Vorschau im WebView (inkl. STEP/OBJ) und der Wechsel zu einem lokal installierten Slicer für den eigentlichen Druck." },
+      { "id": "persistence", "label": "Persistenz", "focus": ["commands", "sqlite"], "note": "Tags, Ordner, Filament, Sammlungen und Papierkorb leben in einer SQLite-Datei; die Commands-Schicht ist in 9 Rust-Module aufgeteilt." },
+      { "id": "update-check", "label": "Update-Check", "focus": ["frontend", "commands", "github"], "note": "Die einzige Netzwerkverbindung der App: ein optionaler, nicht-blockierender Check gegen die GitHub-Releases-API beim Start (5s-Timeout)." }
     ]
   },
   "components": [
     { "id": "user", "type": "external", "label": "Nutzer", "sublabel": "Desktop-Fenster", "pos": [40, 300], "size": [130, 60] },
-    { "id": "frontend", "type": "frontend", "label": "React-Frontend", "sublabel": "React 19 · TypeScript · Tailwind", "pos": [300, 300], "size": [180, 64], "sources": [{ "path": "package.json", "line": 12, "end_line": 16, "label": "Frontend-Abhängigkeiten" }] },
+    { "id": "frontend", "type": "frontend", "label": "React-Frontend", "sublabel": "React 19 · TypeScript · Tailwind", "pos": [300, 300], "size": [180, 64], "sources": [{ "path": "package.json", "line": 14, "end_line": 19, "label": "Frontend-Abhängigkeiten" }] },
     { "id": "preview3d", "type": "frontend", "label": "3D-Live-Vorschau", "sublabel": "three.js · OrbitControls", "pos": [300, 110], "size": [180, 60], "sources": [{ "path": "src/components/ModelViewer.tsx", "line": 4, "end_line": 5, "label": "three.js-Import" }] },
-    { "id": "commands", "type": "backend", "label": "Tauri-Commands", "sublabel": "IPC-Bridge · Rust-Backend", "pos": [630, 300], "size": [180, 64], "sources": [{ "path": "src-tauri/src/lib.rs", "line": 61, "label": "invoke_handler-Registrierung" }] },
-    { "id": "sqlite", "type": "database", "label": "SQLite-Katalog", "sublabel": "rusqlite (bundled)", "pos": [940, 300], "size": [160, 60], "sources": [{ "path": "src-tauri/src/commands.rs", "line": 5, "label": "rusqlite::Connection" }] },
-    { "id": "parser", "type": "backend", "label": "3MF/STL-Parser", "sublabel": "native Rust-Geometrie-Extraktion", "pos": [630, 480], "size": [180, 60], "sources": [{ "path": "src-tauri/src/geometry.rs", "line": 1, "end_line": 5, "label": "BoundingBox / Geometrie-Extraktion" }] },
-    { "id": "filesystem", "type": "external", "label": "Lokales Dateisystem", "sublabel": "Import · Ordner · Drag & Drop", "pos": [940, 480], "size": [180, 60], "sources": [{ "path": "src-tauri/src/commands.rs", "line": 1152, "label": "import_one()" }] },
-    { "id": "slicer", "type": "external", "label": "Installierter Slicer", "sublabel": "Bambu Studio · OrcaSlicer · u. a.", "pos": [940, 110], "size": [180, 60], "sources": [{ "path": "src-tauri/src/commands.rs", "line": 1682, "label": "open_in_slicer()" }] }
+    { "id": "commands", "type": "backend", "label": "Tauri-Commands", "sublabel": "IPC-Bridge · 9 Rust-Command-Module", "pos": [630, 300], "size": [180, 64], "sources": [{ "path": "src-tauri/src/commands/mod.rs", "line": 1, "end_line": 11, "label": "God-Module in 9 Submodule aufgeteilt" }] },
+    { "id": "sqlite", "type": "database", "label": "SQLite-Katalog", "sublabel": "rusqlite (bundled)", "pos": [940, 300], "size": [160, 60], "sources": [{ "path": "src-tauri/src/db/repository.rs", "line": 15, "label": "connect() öffnet catalog.db" }] },
+    { "id": "parser", "type": "backend", "label": "Datei-Parser", "sublabel": "3MF · STL · OBJ · STEP", "pos": [630, 480], "size": [180, 60], "sources": [
+      { "path": "src-tauri/src/threemf/mod.rs", "line": 1, "end_line": 6, "label": "3MF-Parser (Container/Model/Plates)" },
+      { "path": "src-tauri/src/obj/mod.rs", "line": 16, "label": "OBJ-Parser (Dimensionen/Volumen)" },
+      { "path": "src-tauri/src/step/mod.rs", "line": 1, "end_line": 7, "label": "STEP via OCCT, Feature step-preview" }
+    ] },
+    { "id": "filesystem", "type": "external", "label": "Lokales Dateisystem", "sublabel": "Import · Ordner · Papierkorb · Backup", "pos": [940, 480], "size": [180, 60], "sources": [{ "path": "src-tauri/src/commands/files.rs", "line": 1099, "label": "import_files()" }] },
+    { "id": "slicer", "type": "external", "label": "Installierter Slicer", "sublabel": "Bambu Studio · OrcaSlicer · u. a.", "pos": [940, 110], "size": [180, 60], "sources": [{ "path": "src-tauri/src/commands/slicers.rs", "line": 205, "label": "open_in_slicer()" }] },
+    { "id": "github", "type": "external", "label": "GitHub Releases", "sublabel": "Update-Check (HTTPS, optional)", "brand": "github", "pos": [630, 110], "size": [180, 60], "sources": [{ "path": "src-tauri/src/commands/security.rs", "line": 27, "end_line": 44, "label": "check_for_update()" }] }
   ],
   "connections": [
     { "id": "user-frontend", "from": "user", "to": "frontend", "label": "öffnet App", "variant": "emphasis" },
     { "id": "frontend-preview3d", "from": "frontend", "to": "preview3d", "label": "rendert Modell", "fromSide": "top", "toSide": "bottom" },
     { "id": "frontend-commands", "from": "frontend", "to": "commands", "label": "invoke() · IPC", "variant": "emphasis" },
-    { "id": "commands-sqlite", "from": "commands", "to": "sqlite", "label": "Tags · Ordner · Filament · Warteschlange", "labelAt": [875, 296] },
-    { "id": "commands-parser", "from": "commands", "to": "parser", "label": "parst 3MF/STL", "fromSide": "bottom", "toSide": "top", "labelAt": [720, 378] },
-    { "id": "commands-filesystem", "from": "commands", "to": "filesystem", "label": "Import / Scan" },
-    { "id": "commands-slicer", "from": "commands", "to": "slicer", "label": "erkennt & startet extern", "variant": "dashed", "fromSide": "top", "toSide": "bottom" }
+    { "id": "commands-sqlite", "from": "commands", "to": "sqlite", "label": "Tags · Ordner · Filament · Sammlungen · Papierkorb", "labelAt": [875, 296] },
+    { "id": "commands-parser", "from": "commands", "to": "parser", "label": "parst 3MF · STL · OBJ · STEP", "fromSide": "bottom", "toSide": "top", "labelAt": [720, 378] },
+    { "id": "commands-filesystem", "from": "commands", "to": "filesystem", "label": "Import / Scan / Backup" },
+    { "id": "commands-slicer", "from": "commands", "to": "slicer", "label": "erkennt & startet extern", "variant": "dashed", "fromSide": "top", "toSide": "bottom" },
+    { "id": "commands-github", "from": "commands", "to": "github", "label": "prüft neue Version", "variant": "dashed", "fromSide": "top", "toSide": "bottom", "labelAt": [650, 200] }
   ],
   "cards": [
-    { "dot": "cyan", "title": "Frontend", "items": ["React 19 + TypeScript + Tailwind im Tauri-WebView", "three.js-basierte 3D-Live-Vorschau direkt im UI", "Ordnerbaum, Katalog-Raster/Liste, Filament-Lager, Sammlungen"] },
-    { "dot": "emerald", "title": "Backend & Persistenz", "items": ["Tauri-Commands als einzige IPC-Grenze zum Rust-Backend", "Native Rust-Geometrie-Extraktion für 3MF/STL (kein externer Parser)", "Ein SQLite-Katalog (rusqlite, bundled) für Dateien, Tags, Filament, Druck-Log, Warteschlange"] },
-    { "dot": "amber", "title": "Lokal, kein Cloud-Zugriff", "items": ["Import ausschließlich vom lokalen Dateisystem (kein Cloud-Sync mehr, seit v0.5.0 entfernt)", "Slicer-Integration erkennt und startet nur lokal installierte Anwendungen", "Keine Netzwerk-Abhängigkeit im Kernbetrieb"] }
+    { "dot": "cyan", "title": "Frontend", "items": ["React 19 + TypeScript + Tailwind im Tauri-WebView", "App.tsx als schlanke Kompositionsschicht über ~18 fachliche Hooks + typisierte API-Schicht (src/lib/api/*)", "3D-Live-Vorschau, Ordner-Ansicht mit Drag & Drop, Bulk-Aktionen, Papierkorb"] },
+    { "dot": "emerald", "title": "Backend & Persistenz", "items": ["Tauri-Commands: ehemals ein 6200-Zeilen-God-Module, jetzt 9 fachliche Rust-Submodule", "Native Rust-Parser für 3MF/STL/OBJ; STEP optional via OpenCASCADE (OCCT)", "Ein SQLite-Katalog (rusqlite) für Dateien, Tags, Filament, Sammlungen, Papierkorb"] },
+    { "dot": "amber", "title": "Lokal-first, ein Netzwerk-Call", "items": ["Import nur vom lokalen Dateisystem (kein Cloud-Sync seit v0.5.0)", "Slicer-Integration startet nur lokal installierte Anwendungen", "Einzige Netzwerkverbindung: optionaler Update-Check via GitHub-API"] }
   ]
 }
