@@ -18,10 +18,10 @@ function outcome(overrides: Partial<ArchiveOutcome>): ArchiveOutcome {
   };
 }
 
-function renderBanner(archives?: ArchiveOutcome[]) {
+function renderBanner(archives?: ArchiveOutcome[], onClose: () => void = vi.fn()) {
   render(
     <LanguageProvider>
-      <ImportSummaryBanner imported={3} duplicates={1} archives={archives} onClose={vi.fn()} />
+      <ImportSummaryBanner imported={3} duplicates={1} archives={archives} onClose={onClose} />
     </LanguageProvider>,
   );
 }
@@ -46,5 +46,31 @@ describe('ImportSummaryBanner', () => {
     expect(screen.getByText('2 Archive gelöscht')).toBeInTheDocument();
     expect(screen.getByText('kaputt.zip fehlgeschlagen: beschaedigt')).toBeInTheDocument();
     expect(screen.getByText('c.rar nicht gelöscht: veraendert')).toBeInTheDocument();
+  });
+
+  it('does not auto-close when an archive has an error', () => {
+    vi.useFakeTimers();
+    const onClose = vi.fn();
+    renderBanner([outcome({ path: '/dl/kaputt.zip', extractedTo: null, error: 'beschaedigt' })], onClose);
+    vi.advanceTimersByTime(6000);
+    expect(onClose).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('auto-closes after 5s when there are no problems', () => {
+    vi.useFakeTimers();
+    const onClose = vi.fn();
+    renderBanner([outcome({ existingSkipped: 1 })], onClose);
+    vi.advanceTimersByTime(6000);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it('gives each same-basename failed archive its own list item', () => {
+    renderBanner([
+      outcome({ path: '/a/model.zip', error: 'x' }),
+      outcome({ path: '/b/model.zip', error: 'x' }),
+    ]);
+    expect(screen.getAllByText('model.zip fehlgeschlagen: x')).toHaveLength(2);
   });
 });

@@ -61,7 +61,24 @@ export function useFileImport({
   const openArchiveDialog = useCallback(async (result: ImportResultDto) => {
     const paths = result.pendingArchives ?? [];
     if (paths.length === 0) return;
-    setPendingArchives(await importExportApi.inspectArchives(paths));
+    try {
+      setPendingArchives(await importExportApi.inspectArchives(paths));
+    } catch (e) {
+      setImportBanner({
+        imported: result.imported.length,
+        duplicates: result.duplicateCount,
+        archives: paths.map((path) => ({
+          path,
+          extractedTo: null,
+          existingSkipped: 0,
+          unsafeSkipped: 0,
+          blockedSkipped: 0,
+          archiveDeleted: false,
+          deleteError: null,
+          error: String(e),
+        })),
+      });
+    }
   }, []);
 
   const finishArchives = useCallback(

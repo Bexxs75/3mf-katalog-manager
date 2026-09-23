@@ -103,6 +103,33 @@ describe('useFileImport', () => {
     expect(result.current.importBanner).toEqual({ imported: 1, duplicates: 0, archives: [outcome] });
   });
 
+  it('shows a failed-archive banner when inspectArchives rejects, instead of an unhandled rejection', async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === 'import_files') return Promise.resolve({ imported: [], duplicateCount: 0, pendingArchives: ['/dl/a.zip'] });
+      if (cmd === 'inspect_archives') return Promise.reject('kaputt');
+      return Promise.resolve(undefined);
+    });
+    const { result } = setup();
+    await act(async () => result.current.importFiles());
+    expect(result.current.pendingArchives).toBeNull();
+    expect(result.current.importBanner).toEqual({
+      imported: 0,
+      duplicates: 0,
+      archives: [
+        {
+          path: '/dl/a.zip',
+          extractedTo: null,
+          existingSkipped: 0,
+          unsafeSkipped: 0,
+          blockedSkipped: 0,
+          archiveDeleted: false,
+          deleteError: null,
+          error: 'kaputt',
+        },
+      ],
+    });
+  });
+
   it('cancelArchives closes the dialog without importing', async () => {
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === 'import_files') return Promise.resolve({ imported: [], duplicateCount: 0, pendingArchives: ['/dl/a.zip'] });

@@ -16,24 +16,30 @@ function fileName(path: string) {
 export function ImportSummaryBanner({ imported, duplicates, archives, onClose }: Props) {
   const t = useT();
 
-  const lines: string[] = [];
+  const lines: { key: string; text: string }[] = [];
   let hasProblems = false;
   if (archives) {
     const existing = archives.reduce((sum, a) => sum + a.existingSkipped, 0);
     const unsafe = archives.reduce((sum, a) => sum + a.unsafeSkipped, 0);
     const blocked = archives.reduce((sum, a) => sum + a.blockedSkipped, 0);
     const deleted = archives.filter((a) => a.archiveDeleted).length;
-    if (existing > 0) lines.push(t('archiveSummaryExistingSkipped').replace('{count}', String(existing)));
-    if (unsafe > 0) lines.push(t('archiveSummaryUnsafeSkipped').replace('{count}', String(unsafe)));
-    if (blocked > 0) lines.push(t('archiveSummaryBlockedSkipped').replace('{count}', String(blocked)));
-    if (deleted > 0) lines.push(t('archiveSummaryDeleted').replace('{count}', String(deleted)));
+    if (existing > 0) lines.push({ key: 'existing', text: t('archiveSummaryExistingSkipped').replace('{count}', String(existing)) });
+    if (unsafe > 0) lines.push({ key: 'unsafe', text: t('archiveSummaryUnsafeSkipped').replace('{count}', String(unsafe)) });
+    if (blocked > 0) lines.push({ key: 'blocked', text: t('archiveSummaryBlockedSkipped').replace('{count}', String(blocked)) });
+    if (deleted > 0) lines.push({ key: 'deleted', text: t('archiveSummaryDeleted').replace('{count}', String(deleted)) });
     for (const a of archives) {
       if (a.error) {
         hasProblems = true;
-        lines.push(t('archiveSummaryFailed').replace('{name}', fileName(a.path)).replace('{error}', a.error));
+        lines.push({
+          key: `failed:${a.path}`,
+          text: t('archiveSummaryFailed').replace('{name}', fileName(a.path)).replace('{error}', a.error),
+        });
       } else if (a.deleteError) {
         hasProblems = true;
-        lines.push(t('archiveSummaryNotDeleted').replace('{name}', fileName(a.path)).replace('{error}', a.deleteError));
+        lines.push({
+          key: `notDeleted:${a.path}`,
+          text: t('archiveSummaryNotDeleted').replace('{name}', fileName(a.path)).replace('{error}', a.deleteError),
+        });
       }
     }
   }
@@ -57,7 +63,7 @@ export function ImportSummaryBanner({ imported, duplicates, archives, onClose }:
         {lines.length > 0 && (
           <ul className="text-[length:var(--font-size-meta)] text-[var(--ink-3)]">
             {lines.map((line) => (
-              <li key={line}>{line}</li>
+              <li key={line.key}>{line.text}</li>
             ))}
           </ul>
         )}
