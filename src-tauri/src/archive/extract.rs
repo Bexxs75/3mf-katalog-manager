@@ -212,27 +212,12 @@ impl<'g> Extractor<'g> {
         self.stats.written_files += 1;
     }
 
-    /// Fuer Formate, deren Bibliothek selbst schreibt (RAR): VOR dem
-    /// Schreiben aufrufen, damit auch eine halb geschriebene Datei beim
-    /// Aufraeumen entfernt wird.
-    pub(super) fn mark_created(&mut self, target: &Path) {
-        self.created.push(target.to_path_buf());
-    }
-
-    /// Gegenstueck zu `mark_created`, NACH dem Schreiben: zaehlt die
-    /// Dateigroesse gegen das Budget und setzt die Rechte zurueck (unrar
-    /// uebernimmt sonst die im Archiv gespeicherten, ggf. ausfuehrbaren).
-    pub(super) fn account_written(&mut self, target: &Path) -> Result<(), ArchiveError> {
-        self.written_bytes += fs::metadata(target)?.len();
-        if self.written_bytes > self.byte_limit {
+    /// Prueft, ob `size` Bytes innerhalb des verbleibenden Budgets passen.
+    /// Wird VOR dem Schreiben aufgerufen, um Overrun zu verhindern.
+    pub(super) fn ensure_budget_for(&self, size: u64) -> Result<(), ArchiveError> {
+        if self.written_bytes.saturating_add(size) > self.byte_limit {
             return Err(ArchiveError::LimitExceeded);
         }
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(target, fs::Permissions::from_mode(0o644))?;
-        }
-        self.finish_file(target);
         Ok(())
     }
 }

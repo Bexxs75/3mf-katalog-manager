@@ -1,13 +1,15 @@
 //! Format-Adapter: pro Format "auflisten" und "an den Extractor streamen".
-//! Die Adapter kennen keine Zielpfade und schreiben nie selbst - mit
-//! Ausnahme von RAR, dessen Bibliothek nur in eine Datei entpacken kann;
-//! den Zielpfad bestimmt aber auch dort der `Extractor`.
+//! Die Adapter kennen keine Zielpfade und schreiben nie selbst.
+//! RAR wird in ein privates Staging-Verzeichnis entpackt, um die
+//! create_new(true)-Invariante einzuhalten (TOCTOU-Schutz).
 
-use std::fs::File;
+use std::fs::{self, File, DirBuilder};
 use std::cell::Cell;
 use std::io::{BufReader, Read};
 use std::rc::Rc;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::env;
+use std::process;
 
 use super::extract::Extractor;
 use super::{ArchiveError, ArchiveFormat, EntryKind, EntryMeta, MAX_ENTRIES, MAX_UNPACKED_BYTES};
@@ -18,6 +20,53 @@ const S_IFLNK: u32 = 0o120000;
 const WIN_REPARSE_POINT: u32 = 0x400;
 /// 7-Zip-Konvention: Bit 15 gesetzt = obere 16 Bit enthalten den Unix-Modus.
 const SEVENZ_UNIX_EXTENSION: u32 = 0x8000;
+
+/// Privater Staging-Ordner fuer RAR-Eintraege (RAII, loescht sich selbst).
+/// Verhindert TOCTOU zwischen Existenzpruefung und Schreiben durch Unrar.
+struct StagingDir {
+    path: PathBuf,
+}
+
+impl StagingDir {
+    fn new() -> Result<Self, ArchiveError> {
+        let pid = process::id();
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .subsec_nanos();
+
+        for attempt in 0..16 {
+            let name = format!("3mfkm-rar-{}-{}-{}", pid, nanos, attempt);
+            let path = env::temp_dir().join(name);
+
+            let mut builder = DirBuilder::new();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::DirBuilderExt;
+                builder.mode(0o700);
+            }
+
+            match builder.create(&path) {
+                Ok(_) => return Ok(StagingDir { path }),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(e) => return Err(ArchiveError::Io(e)),
+            }
+        }
+        Err(ArchiveError::Io(std::io::Error::other(
+            "Konnte keinen eindeutigen Staging-Ordner anlegen",
+        )))
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for StagingDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
 
 fn unreadable(e: impl std::fmt::Display) -> ArchiveError {
     ArchiveError::Unreadable(e.to_string())
@@ -384,19 +433,35 @@ fn list_rar(path: &Path) -> Result<Vec<EntryMeta>, ArchiveError> {
     Ok(out)
 }
 
-/// Unrar begrenzt die Ausgabe je Eintrag auf die Header-Groesse; zusammen
-/// mit der Header-Pruefung in `inspect` und `account_written` bleibt das
-/// Byte-Budget auch hier eingehalten.
+/// Entpackt RAR-Eintraege ueber einen privaten Staging-Ordner, um die
+/// create_new(true)-Invariante des Extractors einzuhalten (TOCTOU-Schutz).
+/// Prueft Budget VOR dem Schreiben.
 fn extract_rar(path: &Path, ex: &mut Extractor<'_>) -> Result<(), ArchiveError> {
     reject_multipart(path)?;
+    let staging = StagingDir::new()?;
     let mut archive = unrar::Archive::new(path).open_for_processing().map_err(rar_error)?;
     while let Some(header) = archive.read_header().map_err(rar_error)? {
         let meta = rar_meta(header.entry());
         archive = match ex.prepare(&meta)? {
             Some(target) => {
-                ex.mark_created(&target);
-                let next = header.extract_to(&target).map_err(rar_error)?;
-                ex.account_written(&target)?;
+                // Budget vor dem Schreiben pruefen
+                ex.ensure_budget_for(meta.size)?;
+
+                // In den Staging-Ordner entpacken (Unrar schreibt die Datei selbst)
+                let staged = staging.path().join("entry");
+                let next = header.extract_to(&staged).map_err(rar_error)?;
+
+                // Aus dem Staging-Ordner in das Ziel kopieren (mit create_new-Schutz)
+                let result = (|| -> Result<(), ArchiveError> {
+                    let mut file = File::open(&staged).map_err(ArchiveError::Io)?;
+                    ex.write_from(&target, &mut file)?;
+                    Ok(())
+                })();
+
+                // Staging-Eintrag immer aufraumen, auch bei Fehler
+                let _ = fs::remove_file(&staged);
+                result?;
+
                 next
             }
             None => header.skip().map_err(rar_error)?,
@@ -422,5 +487,26 @@ mod tests {
         let mut out = Vec::new();
         assert!(too_much.read_to_end(&mut out).is_err());
         assert!(exceeded.get());
+    }
+
+    #[test]
+    fn sevenz_meta_detects_symlinks_and_reparse_points() {
+        // Unix symlink via SEVENZ_UNIX_EXTENSION
+        let mut entry = sevenz_rust2::ArchiveEntry::new_file("link.stl");
+        entry.has_windows_attributes = true;
+        entry.windows_attributes = SEVENZ_UNIX_EXTENSION | (0o120777 << 16);
+        assert_eq!(sevenz_meta(&entry, false).kind, EntryKind::Other, "Unix symlink");
+
+        // Windows reparse point (symlink/junction)
+        let mut entry = sevenz_rust2::ArchiveEntry::new_file("link.stl");
+        entry.has_windows_attributes = true;
+        entry.windows_attributes = WIN_REPARSE_POINT;
+        assert_eq!(sevenz_meta(&entry, false).kind, EntryKind::Other, "Windows reparse");
+
+        // Regular file (not a link)
+        let mut entry = sevenz_rust2::ArchiveEntry::new_file("teil.stl");
+        entry.has_windows_attributes = true;
+        entry.windows_attributes = SEVENZ_UNIX_EXTENSION | (0o100644 << 16);
+        assert_eq!(sevenz_meta(&entry, false).kind, EntryKind::File, "Regular file");
     }
 }
