@@ -12,6 +12,13 @@ use std::path::Path;
 use super::extract::Extractor;
 use super::{ArchiveError, ArchiveFormat, EntryKind, EntryMeta, MAX_ENTRIES, MAX_UNPACKED_BYTES};
 
+const S_IFMT: u32 = 0o170000;
+const S_IFLNK: u32 = 0o120000;
+/// Windows-Attribut FILE_ATTRIBUTE_REPARSE_POINT (Symlinks/Junctions).
+const WIN_REPARSE_POINT: u32 = 0x400;
+/// 7-Zip-Konvention: Bit 15 gesetzt = obere 16 Bit enthalten den Unix-Modus.
+const SEVENZ_UNIX_EXTENSION: u32 = 0x8000;
+
 fn unreadable(e: impl std::fmt::Display) -> ArchiveError {
     ArchiveError::Unreadable(e.to_string())
 }
@@ -19,10 +26,8 @@ fn unreadable(e: impl std::fmt::Display) -> ArchiveError {
 pub(super) fn list(path: &Path, format: ArchiveFormat) -> Result<Vec<EntryMeta>, ArchiveError> {
     match format {
         ArchiveFormat::Zip => list_zip(path),
-        // Adapter fuer 7z und RAR folgen in Task 2.
-        ArchiveFormat::SevenZ | ArchiveFormat::Rar => {
-            Err(ArchiveError::Unsupported(format!("{format:?}")))
-        }
+        ArchiveFormat::SevenZ => list_7z(path),
+        ArchiveFormat::Rar => list_rar(path),
         _ => list_tar(path, format),
     }
 }
@@ -30,9 +35,8 @@ pub(super) fn list(path: &Path, format: ArchiveFormat) -> Result<Vec<EntryMeta>,
 pub(super) fn extract(path: &Path, format: ArchiveFormat, ex: &mut Extractor<'_>) -> Result<(), ArchiveError> {
     match format {
         ArchiveFormat::Zip => extract_zip(path, ex),
-        ArchiveFormat::SevenZ | ArchiveFormat::Rar => {
-            Err(ArchiveError::Unsupported(format!("{format:?}")))
-        }
+        ArchiveFormat::SevenZ => extract_7z(path, ex),
+        ArchiveFormat::Rar => extract_rar(path, ex),
         _ => extract_tar(path, format, ex),
     }
 }
@@ -220,6 +224,183 @@ fn extract_tar(path: &Path, format: ArchiveFormat, ex: &mut Extractor<'_>) -> Re
                 other => other,
             })?;
         }
+    }
+    Ok(())
+}
+
+// ---------- 7z ----------
+
+fn sevenz_error(e: sevenz_rust2::Error) -> ArchiveError {
+    use sevenz_rust2::Error;
+    match e {
+        Error::PasswordRequired | Error::MaybeBadPassword(_) => ArchiveError::Encrypted,
+        Error::UnsupportedCompressionMethod(m) if m.to_uppercase().contains("AES") => {
+            ArchiveError::Encrypted
+        }
+        Error::UnsupportedCompressionMethod(m) => ArchiveError::Unsupported(m),
+        Error::MaxMemLimited { .. } => ArchiveError::LimitExceeded,
+        other => unreadable(other),
+    }
+}
+
+fn sevenz_meta(entry: &sevenz_rust2::ArchiveEntry, encrypted: bool) -> EntryMeta {
+    let attrs = entry.windows_attributes;
+    let unix_mode = if entry.has_windows_attributes && attrs & SEVENZ_UNIX_EXTENSION != 0 {
+        Some(attrs >> 16)
+    } else {
+        None
+    };
+    let is_link = unix_mode.is_some_and(|m| m & S_IFMT == S_IFLNK)
+        || (entry.has_windows_attributes && attrs & WIN_REPARSE_POINT != 0);
+    EntryMeta {
+        name: entry.name().to_string(),
+        size: entry.size(),
+        kind: if entry.is_directory() {
+            EntryKind::Directory
+        } else if entry.is_anti_item() || is_link {
+            EntryKind::Other
+        } else {
+            EntryKind::File
+        },
+        encrypted: encrypted && entry.has_stream(),
+    }
+}
+
+fn open_7z(path: &Path) -> Result<(sevenz_rust2::ArchiveReader<BufReader<File>>, bool), ArchiveError> {
+    let file = BufReader::new(File::open(path)?);
+    let reader =
+        sevenz_rust2::ArchiveReader::new(file, sevenz_rust2::Password::empty()).map_err(sevenz_error)?;
+    // LZMA/LZMA2 reservieren Speicher bis zur entpackten Groesse des Blocks
+    // (hoechstens Woerterbuchgroesse). Deshalb die Blockgroessen VOR dem
+    // Dekodieren begrenzen - `sevenz-rust2` selbst hat kein Speicherlimit.
+    let too_large = reader.archive().blocks.iter().any(|block| {
+        block
+            .coders
+            .iter()
+            .any(|c| block.get_unpack_size_for_coder(c) > MAX_UNPACKED_BYTES)
+    });
+    if too_large {
+        return Err(ArchiveError::LimitExceeded);
+    }
+    let encrypted = reader.archive().blocks.iter().any(|block| {
+        block
+            .coders
+            .iter()
+            .any(|c| c.encoder_method_id() == sevenz_rust2::EncoderMethod::ID_AES256_SHA256)
+    });
+    Ok((reader, encrypted))
+}
+
+fn list_7z(path: &Path) -> Result<Vec<EntryMeta>, ArchiveError> {
+    let (reader, encrypted) = open_7z(path)?;
+    Ok(reader
+        .archive()
+        .files
+        .iter()
+        .take(MAX_ENTRIES + 1)
+        .map(|e| sevenz_meta(e, encrypted))
+        .collect())
+}
+
+fn extract_7z(path: &Path, ex: &mut Extractor<'_>) -> Result<(), ArchiveError> {
+    let (mut reader, encrypted) = open_7z(path)?;
+    if encrypted {
+        return Err(ArchiveError::Encrypted);
+    }
+    // Die Bibliothek erwartet einen eigenen Fehlertyp im Callback - unseren
+    // Fehler parken wir hier und brechen mit Ok(false) ab.
+    let mut failure: Option<ArchiveError> = None;
+    let result = reader.for_each_entries(|entry, data| {
+        let meta = sevenz_meta(entry, false);
+        let outcome = match ex.prepare(&meta) {
+            Ok(Some(target)) => ex.write_from(&target, data),
+            Ok(None) => Ok(()),
+            Err(e) => Err(e),
+        };
+        match outcome {
+            Ok(()) => Ok(true),
+            Err(e) => {
+                failure = Some(e);
+                Ok(false)
+            }
+        }
+    });
+    if let Some(e) = failure {
+        return Err(e);
+    }
+    result.map_err(sevenz_error)
+}
+
+// ---------- RAR ----------
+
+fn rar_error(e: unrar::error::UnrarError) -> ArchiveError {
+    use unrar::error::Code;
+    match e.code {
+        Code::MissingPassword | Code::BadPassword => ArchiveError::Encrypted,
+        Code::UnknownFormat => ArchiveError::Unsupported(e.to_string()),
+        Code::ECreate | Code::EWrite | Code::EClose => {
+            ArchiveError::Io(std::io::Error::other(e.to_string()))
+        }
+        _ => unreadable(e),
+    }
+}
+
+fn rar_meta(header: &unrar::FileHeader) -> EntryMeta {
+    let attr = header.file_attr;
+    let is_link = attr & S_IFMT == S_IFLNK || attr & WIN_REPARSE_POINT != 0;
+    EntryMeta {
+        name: header.filename.to_string_lossy().to_string(),
+        size: header.unpacked_size,
+        kind: if header.is_directory() {
+            EntryKind::Directory
+        } else if is_link {
+            EntryKind::Other
+        } else {
+            EntryKind::File
+        },
+        encrypted: header.is_encrypted(),
+    }
+}
+
+fn reject_multipart(path: &Path) -> Result<(), ArchiveError> {
+    if unrar::Archive::new(path).is_multipart() {
+        return Err(ArchiveError::Unsupported(
+            "mehrteilige RAR-Archive werden nicht unterstuetzt".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn list_rar(path: &Path) -> Result<Vec<EntryMeta>, ArchiveError> {
+    reject_multipart(path)?;
+    let archive = unrar::Archive::new(path).open_for_listing().map_err(rar_error)?;
+    let mut out = Vec::new();
+    for header in archive {
+        out.push(rar_meta(&header.map_err(rar_error)?));
+        if out.len() > MAX_ENTRIES {
+            break;
+        }
+    }
+    Ok(out)
+}
+
+/// Unrar begrenzt die Ausgabe je Eintrag auf die Header-Groesse; zusammen
+/// mit der Header-Pruefung in `inspect` und `account_written` bleibt das
+/// Byte-Budget auch hier eingehalten.
+fn extract_rar(path: &Path, ex: &mut Extractor<'_>) -> Result<(), ArchiveError> {
+    reject_multipart(path)?;
+    let mut archive = unrar::Archive::new(path).open_for_processing().map_err(rar_error)?;
+    while let Some(header) = archive.read_header().map_err(rar_error)? {
+        let meta = rar_meta(header.entry());
+        archive = match ex.prepare(&meta)? {
+            Some(target) => {
+                ex.mark_created(&target);
+                let next = header.extract_to(&target).map_err(rar_error)?;
+                ex.account_written(&target)?;
+                next
+            }
+            None => header.skip().map_err(rar_error)?,
+        };
     }
     Ok(())
 }

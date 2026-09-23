@@ -41,6 +41,12 @@ flate2 = "1"
 bzip2 = "0.6"
 lzma-rust2 = { version = "0.21", default-features = false, features = ["std", "xz", "optimization"] }
 ruzstd = "0.9"
+# 7z: reines Rust. Ohne "aes256" - verschluesselte 7z werden nur erkannt
+# (AES-Coder im Block), nicht entpackt.
+sevenz-rust2 = { version = "0.23", default-features = false, features = ["bzip2", "ppmd", "util"] }
+# RAR: bindet den offiziellen UnRAR-Quellcode (C++) ein. Lizenz siehe
+# THIRD-PARTY-LICENSES.md (Freeware, keine OSI-Lizenz).
+unrar = "0.5"
 quick-xml = "0.41"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 rusqlite = { version = "0.40.2", features = ["bundled", "backup", "trace"] }
@@ -62,6 +68,8 @@ xattr = "1"
 [dev-dependencies]
 # Nur fuer Tests: xz-Archive erzeugen.
 lzma-rust2 = { version = "0.21", default-features = false, features = ["std", "xz", "optimization", "encoder"] }
+# Nur fuer Tests: 7z-Archive (auch verschluesselte) erzeugen.
+sevenz-rust2 = { version = "0.23", default-features = false, features = ["bzip2", "ppmd", "util", "compress", "aes256"] }
 
 # Der Patch ersetzt die crates.io-Fassung durch die geforkte Kopie in
 # `vendor/opencascade-sys` - noetig, weil 0.3.0 gegen OCCT 7.9 nicht uebersetzt.

@@ -506,3 +506,72 @@ fn rollback_removes_everything_a_successful_extraction_created() {
     extraction.rollback();
     assert!(!dest.exists());
 }
+
+fn fixture(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/archives")
+        .join(name)
+}
+
+fn make_7z(path: &Path, entries: &[(&str, &[u8])], password: Option<&str>) {
+    let src = unique_dir("7z_src");
+    for (name, data) in entries {
+        let file = src.join(name);
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        fs::write(file, data).unwrap();
+    }
+    match password {
+        None => sevenz_rust2::compress_to_path(&src, path).unwrap(),
+        Some(pw) => sevenz_rust2::compress_to_path_encrypted(&src, path, pw.into()).unwrap(),
+    }
+}
+
+#[test]
+fn roundtrip_7z() {
+    roundtrip("a.7z", |p| make_7z(p, SAMPLE, None));
+}
+
+#[test]
+fn rar4_and_rar5_fixtures_extract() {
+    let dir = unique_dir("rar");
+    let dest4 = dir.join("rar4");
+    extract_archive(&fixture("rar4-plain.rar"), ArchiveFormat::Rar, &dest4, false, MAX_UNPACKED_BYTES, &allow_all).unwrap();
+    assert_eq!(fs::read_to_string(dest4.join("VERSION")).unwrap().len(), 11);
+
+    let dest5 = dir.join("rar5");
+    let extraction =
+        extract_archive(&fixture("rar5-solid.rar"), ArchiveFormat::Rar, &dest5, false, MAX_UNPACKED_BYTES, &allow_all).unwrap();
+    assert_eq!(extraction.stats.written_files, 1);
+    assert_eq!(fs::metadata(dest5.join(".gitignore")).unwrap().len(), 18);
+}
+
+#[test]
+fn skipped_entries_in_a_solid_7z_do_not_corrupt_later_entries() {
+    let dir = unique_dir("solid_skip");
+    let archive = dir.join("a.7z");
+    make_7z(&archive, SAMPLE, None);
+    let dest = dir.join("ziel");
+    fs::create_dir_all(dest.join("Benchy")).unwrap();
+    fs::write(dest.join("Benchy/README.txt"), b"vorher").unwrap();
+    let stats = extract_archive(&archive, ArchiveFormat::SevenZ, &dest, true, MAX_UNPACKED_BYTES, &allow_all)
+        .unwrap()
+        .stats;
+    assert_eq!(stats.existing_skipped, 1);
+    assert_eq!(fs::read(dest.join("Benchy/benchy.stl")).unwrap(), SAMPLE[0].1);
+    assert_eq!(fs::read(dest.join("Benchy/teile/rumpf.3mf")).unwrap(), SAMPLE[2].1);
+}
+
+#[test]
+fn inspect_reports_encrypted_7z_and_rar_and_unsupported_multipart_rar() {
+    let dir = unique_dir("encrypted_7z_rar");
+    let sevenz_path = dir.join("geheim.7z");
+    make_7z(&sevenz_path, SAMPLE, Some("pw"));
+    assert_eq!(inspect(&sevenz_path, is_model).status, InspectStatus::Encrypted);
+
+    assert_eq!(inspect(&fixture("rar4-encrypted.rar"), is_model).status, InspectStatus::Encrypted);
+    assert_eq!(
+        inspect(&fixture("rar5-encrypted-headers.rar"), is_model).status,
+        InspectStatus::Encrypted
+    );
+    assert_eq!(inspect(&fixture("multi.part1.rar"), is_model).status, InspectStatus::Unsupported);
+}
