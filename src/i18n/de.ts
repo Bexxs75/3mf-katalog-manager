@@ -296,7 +296,7 @@ export const de: Translations = {
   printersColumnTitle: 'Drucker',
   printersManageButton: 'Drucker verwalten',
   printersEmptyHint: 'Lege deinen Drucker und seine AMS an, um zu sehen, welche Spule in welchem Fach steckt.',
-  printersNoUnitsHint: 'Keine Fächer – über „Drucker verwalten" hinzufügen',
+  printersNoUnitsHint: 'Keine Fächer – über „Drucker verwalten“ hinzufügen',
   printersAddFirstButton: 'Drucker anlegen',
   printersSlotEmpty: 'leer',
   printersDropHere: 'hier ablegen',

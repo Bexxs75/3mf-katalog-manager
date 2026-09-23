@@ -56,7 +56,7 @@ describe('PrinterColumn', () => {
 
   it('tells how to add slots to a printer without units and opens the management on click', () => {
     const handlers = renderColumn({ printers: [{ id: 'p2', name: 'A1 mini', units: [] }] });
-    const hint = screen.getByRole('button', { name: 'Keine Fächer – über „Drucker verwalten" hinzufügen' });
+    const hint = screen.getByRole('button', { name: 'Keine Fächer – über „Drucker verwalten“ hinzufügen' });
     fireEvent.click(hint);
     expect(handlers.onManage).toHaveBeenCalled();
   });

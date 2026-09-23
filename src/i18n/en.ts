@@ -296,7 +296,7 @@ export const en: Translations = {
   printersColumnTitle: 'Printers',
   printersManageButton: 'Manage printers',
   printersEmptyHint: 'Add your printer and its AMS units to see which spool is loaded in which slot.',
-  printersNoUnitsHint: 'No slots – add them via "Manage printers"',
+  printersNoUnitsHint: 'No slots – add them via “Manage printers”',
   printersAddFirstButton: 'Add printer',
   printersSlotEmpty: 'empty',
   printersDropHere: 'drop here',
