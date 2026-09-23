@@ -90,10 +90,19 @@ describe('PrinterManagePanel', () => {
   it('confirms deleting a unit with the number of spools that go home', async () => {
     const { a, onSpoolsChanged } = renderPanel();
     fireEvent.click(screen.getByRole('button', { name: 'Löschen AMS A' }));
-    const question = screen.getByText('„AMS A“ entfernen? 1 Spulen kehren an ihren Stammplatz zurück.');
+    const question = screen.getByText('„AMS A“ entfernen? 1 Spule kehrt an ihren Stammplatz zurück.');
     fireEvent.click(within(question.parentElement as HTMLElement).getByRole('button', { name: 'Löschen' }));
     await waitFor(() => expect(a.deleteUnit).toHaveBeenCalledWith('u1'));
     await waitFor(() => expect(onSpoolsChanged).toHaveBeenCalled());
+  });
+
+  it('confirms deleting a unit without any spools without the return-home sentence', async () => {
+    const { a } = renderPanel();
+    // "Box" (u3) hat keine geladenen Spulen in diesem Test-Setup.
+    fireEvent.click(screen.getByRole('button', { name: 'Löschen Box' }));
+    const question = screen.getByText('„Box“ entfernen?');
+    fireEvent.click(within(question.parentElement as HTMLElement).getByRole('button', { name: 'Löschen' }));
+    await waitFor(() => expect(a.deleteUnit).toHaveBeenCalledWith('u3'));
   });
 
   it('renames a printer', async () => {

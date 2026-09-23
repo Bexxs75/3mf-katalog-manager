@@ -315,8 +315,9 @@ export const de: Translations = {
   printersSave: 'Speichern',
   printersCancel: 'Abbrechen',
   printersClose: 'Schließen',
-  printersDeletePrinterConfirm: 'Drucker „{name}“ mit allen Einheiten löschen? {count} Spulen kehren an ihren Stammplatz zurück.',
-  printersDeleteUnitConfirm: '„{name}“ entfernen? {count} Spulen kehren an ihren Stammplatz zurück.',
+  printersDeletePrinterConfirm: 'Drucker „{name}“ mit allen Einheiten löschen?',
+  printersDeleteUnitConfirm: '„{name}“ entfernen?',
+  printersDeleteReturnHomeCount: { one: '{count} Spule kehrt an ihren Stammplatz zurück.', other: '{count} Spulen kehren an ihren Stammplatz zurück.' },
   printersReorderHint: 'Zum Sortieren am Griff ziehen',
   printersKindBambuAms: 'Bambu AMS',
   printersKindBambuAmsLite: 'Bambu AMS lite',
@@ -334,6 +335,5 @@ export const de: Translations = {
   filamentColorNameLabel: 'Farbname',
   filamentColorNone: 'Kein Farbwert',
   filamentHomeLocationLabel: 'Stammplatz',
-  filamentInSlotHint: 'Steckt in {unit} · Fach {slot}',
   printersUnitSlotCount: { one: '{count} Fach', other: '{count} Fächer' },
 };

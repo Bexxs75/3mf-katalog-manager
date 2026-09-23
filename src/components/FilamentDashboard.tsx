@@ -3,6 +3,7 @@ import { useT, useLanguage } from '../i18n/LanguageContext';
 import { formatWeightG, formatDiameterMm, formatPrice } from '../i18n/format';
 import type { FilamentSpool } from '../types';
 import { filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus';
+import { isValidColorHex } from '../lib/filamentColors';
 
 interface Props {
   spools: FilamentSpool[];
@@ -72,10 +73,10 @@ export function FilamentDashboard({ spools, confirmDeleteId, onEdit, onRequestDe
               )}
               <div className="min-w-0 flex-1">
                 <div className="text-[13.5px] font-bold truncate flex items-center gap-1.5">
-                  {spool.colorHex && (
+                  {spool.colorHex && isValidColorHex(spool.colorHex) && (
                     <span
                       className="w-3 h-3 rounded-full border border-[var(--line-strong)] flex-none"
-                      style={{ background: spool.colorHex }}
+                      style={{ backgroundColor: spool.colorHex }}
                       aria-hidden
                     />
                   )}

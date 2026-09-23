@@ -122,6 +122,13 @@ export function PrinterManagePanel({ open, printers, spools, error, actions, onC
 
   const spoolsIn = (unitIds: string[]) => spools.filter((s) => s.unitId !== null && unitIds.includes(s.unitId)).length;
 
+  /** Loesch-Rueckfrage samt Anzahl betroffener Spulen - der Rueckkehr-Satz
+   * ist plural-bewusst (`printersDeleteReturnHomeCount`) und faellt bei
+   * 0 betroffenen Spulen ganz weg, statt "0 Spulen kehren zurück." zu
+   * zeigen. */
+  const deleteConfirmText = (question: string, count: number) =>
+    count === 0 ? question : `${question} ${formatCount(t('printersDeleteReturnHomeCount'), count)}`;
+
   const submitNewPrinter = () => {
     const name = newPrinter.trim();
     if (!name) return;
@@ -256,9 +263,10 @@ export function PrinterManagePanel({ open, printers, spools, error, actions, onC
                 {confirmRow(
                   printer.id,
                   'printer',
-                  t('printersDeletePrinterConfirm')
-                    .replace('{name}', printer.name)
-                    .replace('{count}', String(spoolsIn(printer.units.map((u) => u.id)))),
+                  deleteConfirmText(
+                    t('printersDeletePrinterConfirm').replace('{name}', printer.name),
+                    spoolsIn(printer.units.map((u) => u.id)),
+                  ),
                 )}
 
                 <div className="flex flex-col gap-1.5 mt-2.5">
@@ -320,9 +328,7 @@ export function PrinterManagePanel({ open, printers, spools, error, actions, onC
                       {confirmRow(
                         unit.id,
                         'unit',
-                        t('printersDeleteUnitConfirm')
-                          .replace('{name}', unit.name)
-                          .replace('{count}', String(spoolsIn([unit.id]))),
+                        deleteConfirmText(t('printersDeleteUnitConfirm').replace('{name}', unit.name), spoolsIn([unit.id])),
                       )}
                     </div>
                   ))}

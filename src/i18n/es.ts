@@ -315,8 +315,9 @@ export const es: Translations = {
   printersSave: 'Guardar',
   printersCancel: 'Cancelar',
   printersClose: 'Cerrar',
-  printersDeletePrinterConfirm: '¿Eliminar la impresora «{name}» con todas sus unidades? {count} bobinas vuelven a su ubicación habitual.',
-  printersDeleteUnitConfirm: '¿Quitar «{name}»? {count} bobinas vuelven a su ubicación habitual.',
+  printersDeletePrinterConfirm: '¿Eliminar la impresora «{name}» con todas sus unidades?',
+  printersDeleteUnitConfirm: '¿Quitar «{name}»?',
+  printersDeleteReturnHomeCount: { one: '{count} bobina vuelve a su ubicación habitual.', other: '{count} bobinas vuelven a su ubicación habitual.' },
   printersReorderHint: 'Arrastra el asa para reordenar',
   printersKindBambuAms: 'Bambu AMS',
   printersKindBambuAmsLite: 'Bambu AMS lite',
@@ -334,6 +335,5 @@ export const es: Translations = {
   filamentColorNameLabel: 'Nombre del color',
   filamentColorNone: 'Sin valor de color',
   filamentHomeLocationLabel: 'Ubicación habitual',
-  filamentInSlotHint: 'Cargada en {unit} · ranura {slot}',
   printersUnitSlotCount: { one: '{count} ranura', other: '{count} ranuras' },
 };

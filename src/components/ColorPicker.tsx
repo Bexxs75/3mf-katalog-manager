@@ -74,14 +74,14 @@ export function ColorPicker({ value, onChange }: Props) {
             className={`w-6 h-6 rounded-[4px] border border-[var(--line-strong)] cursor-pointer ${
               value === hex ? 'outline outline-2 outline-offset-1 outline-[var(--accent)]' : ''
             }`}
-            style={{ background: hex }}
+            style={{ backgroundColor: hex }}
           />
         ))}
       </div>
       <div className="flex items-center gap-2">
         <span
           className="w-7 h-7 rounded-[4px] border border-[var(--line-strong)] flex-none"
-          style={value ? { background: value } : undefined}
+          style={value && isValidColorHex(value) ? { backgroundColor: value } : undefined}
           aria-hidden
         />
         <input

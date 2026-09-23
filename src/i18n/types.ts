@@ -321,6 +321,8 @@ export interface Translations {
   printersClose: string;
   printersDeletePrinterConfirm: string;
   printersDeleteUnitConfirm: string;
+  /** Nur angezeigt, wenn mindestens eine Spule betroffen ist (count > 0). */
+  printersDeleteReturnHomeCount: PluralForms;
   printersReorderHint: string;
   printersKindBambuAms: string;
   printersKindBambuAmsLite: string;
@@ -338,7 +340,6 @@ export interface Translations {
   filamentColorNameLabel: string;
   filamentColorNone: string;
   filamentHomeLocationLabel: string;
-  filamentInSlotHint: string;
   printersUnitSlotCount: PluralForms;
 }
 

@@ -53,6 +53,15 @@ describe('FilamentView with printers', () => {
     expect(screen.getByText('Spulen gesamt').nextElementSibling).toHaveTextContent('2');
   });
 
+  it('counts a loaded spool\'s home location in the storage-location stat', async () => {
+    // LOADED hat `location: null` (steckt im Fach) aber `homeLocation:
+    // 'Regal 2'`; STORED liegt unter `location: 'Regal 1'` im Lager. Beide
+    // Orte muessen gezaehlt werden, nicht nur der von STORED.
+    renderView();
+    await waitFor(() => screen.getByTestId('slot-u1-0'));
+    expect(screen.getByText('Belegte Lagerplätze').nextElementSibling).toHaveTextContent('2');
+  });
+
   it('unloads through the slot menu and shows where the spool went', async () => {
     renderView();
     await waitFor(() => screen.getByTestId('slot-u1-0'));

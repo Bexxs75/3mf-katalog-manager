@@ -4,6 +4,7 @@ import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatWeightG } from '../i18n/format';
 import type { FilamentSpool } from '../types';
 import { filamentStockStatus } from '../lib/filamentStatus';
+import { isValidColorHex } from '../lib/filamentColors';
 import { FilamentDashboard } from './FilamentDashboard';
 import { FilamentTable } from './FilamentTable';
 import { FilamentSpoolForm } from './FilamentSpoolForm';
@@ -65,7 +66,11 @@ export function FilamentView() {
 
   const stats = useMemo(() => {
     const totalRemaining = spools.reduce((sum, s) => sum + s.remainingWeightG, 0);
-    const locations = new Set(spools.map((s) => s.location).filter(Boolean)).size;
+    // `s.location ?? s.homeLocation`: eine geladene Spule hat `location` auf
+    // NULL stehen (ihr Lagerort liegt als Stammplatz in `homeLocation`, siehe
+    // db/printers.rs) - ohne den Fallback wuerde ihr Lagerort beim Laden aus
+    // dieser Statistik verschwinden, obwohl er weiterhin existiert.
+    const locations = new Set(spools.map((s) => s.location ?? s.homeLocation).filter(Boolean)).size;
     const attention = spools.filter((s) => filamentStockStatus(s) !== 'ok').length;
     return { total: spools.length, totalRemaining, locations, attention };
   }, [spools]);
@@ -226,7 +231,7 @@ export function FilamentView() {
           data-testid="filament-storage"
           onMouseEnter={() => drag.enterTarget({ kind: 'storage' })}
           onMouseLeave={() => drag.leaveTarget({ kind: 'storage' })}
-          className={`rounded-lg ${storageIsTarget ? 'outline-2 outline-dashed outline-[var(--accent)] outline-offset-4' : ''}`}
+          className={`rounded-lg min-h-[240px] ${storageIsTarget ? 'outline-2 outline-dashed outline-[var(--accent)] outline-offset-4' : ''}`}
         >
           {layout === 'dashboard' ? (
             <FilamentDashboard
@@ -273,8 +278,8 @@ export function FilamentView() {
           className="fixed z-50 pointer-events-none px-2.5 py-1.5 rounded-md border border-[var(--accent)] bg-[var(--panel)] shadow-[var(--shadow)] text-[12px] font-semibold flex items-center gap-1.5 -rotate-2"
           style={{ left: drag.pointer.x + 12, top: drag.pointer.y + 12 }}
         >
-          {draggedSpool.colorHex && (
-            <span className="w-3 h-3 rounded-full border border-[var(--line-strong)]" style={{ background: draggedSpool.colorHex }} />
+          {draggedSpool.colorHex && isValidColorHex(draggedSpool.colorHex) && (
+            <span className="w-3 h-3 rounded-full border border-[var(--line-strong)]" style={{ backgroundColor: draggedSpool.colorHex }} />
           )}
           {spoolLabel(draggedSpool)}
         </div>

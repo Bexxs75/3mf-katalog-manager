@@ -4,6 +4,7 @@ import { useT, useLanguage } from '../i18n/LanguageContext';
 import { formatWeightG, formatDiameterMm, formatPrice } from '../i18n/format';
 import type { FilamentSpool } from '../types';
 import { filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus';
+import { isValidColorHex } from '../lib/filamentColors';
 
 interface Props {
   spools: FilamentSpool[];
@@ -146,10 +147,10 @@ export function FilamentTable({ spools, confirmDeleteId, onEdit, onRequestDelete
                 <td className="px-3 py-2.5 border-b border-[var(--line)] text-[var(--ink-2)]">{spool.manufacturer || t('noValue')}</td>
                 <td className="px-3 py-2.5 border-b border-[var(--line)] text-[var(--ink-2)]">
                   <span className="inline-flex items-center gap-1.5">
-                    {spool.colorHex && (
+                    {spool.colorHex && isValidColorHex(spool.colorHex) && (
                       <span
                         className="w-3 h-3 rounded-full border border-[var(--line-strong)] flex-none"
-                        style={{ background: spool.colorHex }}
+                        style={{ backgroundColor: spool.colorHex }}
                         aria-hidden
                       />
                     )}

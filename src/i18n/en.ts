@@ -315,8 +315,9 @@ export const en: Translations = {
   printersSave: 'Save',
   printersCancel: 'Cancel',
   printersClose: 'Close',
-  printersDeletePrinterConfirm: 'Delete printer “{name}” with all its units? {count} spools return to their home location.',
-  printersDeleteUnitConfirm: 'Remove “{name}”? {count} spools return to their home location.',
+  printersDeletePrinterConfirm: 'Delete printer “{name}” with all its units?',
+  printersDeleteUnitConfirm: 'Remove “{name}”?',
+  printersDeleteReturnHomeCount: { one: '{count} spool returns to its home location.', other: '{count} spools return to their home location.' },
   printersReorderHint: 'Drag the handle to reorder',
   printersKindBambuAms: 'Bambu AMS',
   printersKindBambuAmsLite: 'Bambu AMS lite',
@@ -334,6 +335,5 @@ export const en: Translations = {
   filamentColorNameLabel: 'Color name',
   filamentColorNone: 'No color value',
   filamentHomeLocationLabel: 'Home location',
-  filamentInSlotHint: 'Loaded in {unit} · slot {slot}',
   printersUnitSlotCount: { one: '{count} slot', other: '{count} slots' },
 };
