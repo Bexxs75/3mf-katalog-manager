@@ -2230,6 +2230,8 @@ mod tests {
             std::io::Write::write_all(&mut file, &chunk).unwrap();
         }
         let hash = compute_content_hash(&path).unwrap();
+        // 50 MB pro Lauf: sofort wieder weg, /tmp ist haeufig ein RAM-tmpfs.
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
         assert_eq!(hash.len(), 64);
     }
     #[test]
