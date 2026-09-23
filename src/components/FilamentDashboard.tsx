@@ -55,7 +55,16 @@ export function FilamentDashboard({ spools, confirmDeleteId, onEdit, onRequestDe
                 </span>
               )}
               <div className="min-w-0 flex-1">
-                <div className="text-[13.5px] font-bold truncate">{spool.material}</div>
+                <div className="text-[13.5px] font-bold truncate flex items-center gap-1.5">
+                  {spool.colorHex && (
+                    <span
+                      className="w-3 h-3 rounded-full border border-[var(--line-strong)] flex-none"
+                      style={{ background: spool.colorHex }}
+                      aria-hidden
+                    />
+                  )}
+                  {spool.material}
+                </div>
                 <div className="text-[11.5px] text-[var(--ink-3)] truncate">
                   {[spool.manufacturer, spool.color].filter(Boolean).join(' · ') || t('noValue')}
                 </div>

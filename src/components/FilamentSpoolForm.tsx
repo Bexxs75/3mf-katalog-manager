@@ -5,6 +5,7 @@ import type { FilamentSpool } from '../types';
 import { FILAMENT_MATERIALS, FILAMENT_MANUFACTURERS } from '../lib/filamentCatalog';
 import { filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus';
 import { AutocompleteInput } from './AutocompleteInput';
+import { ColorPicker } from './ColorPicker';
 
 interface Props {
   open: boolean;
@@ -18,6 +19,7 @@ interface FormState {
   material: string;
   manufacturer: string;
   color: string;
+  colorHex: string | null;
   location: string;
   diameterMm: string;
   originalWeightG: string;
@@ -31,6 +33,7 @@ const EMPTY_FORM: FormState = {
   material: '',
   manufacturer: '',
   color: '',
+  colorHex: null,
   location: '',
   diameterMm: '1.75',
   originalWeightG: '1000',
@@ -48,7 +51,9 @@ function toForm(spool: FilamentSpool): FormState {
     material: spool.material,
     manufacturer: spool.manufacturer ?? '',
     color: spool.color ?? '',
-    location: spool.location ?? '',
+    colorHex: spool.colorHex,
+    // Steckt die Spule in einem Fach, bearbeitet das Feld ihren Stammplatz.
+    location: (spool.unitId !== null ? spool.homeLocation : spool.location) ?? '',
     diameterMm: String(spool.diameterMm),
     originalWeightG: String(spool.originalWeightG),
     remainingWeightG: String(spool.remainingWeightG),
@@ -92,6 +97,11 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
       remainingWeightG: parseInt(form.remainingWeightG, 10) || 0,
       price: form.price.trim() === '' ? null : parseFloat(form.price),
       imagePng: form.imagePng,
+      colorHex: form.colorHex,
+      // Nur durchgereicht - das Fach aendern ausschliesslich load/unload_spool.
+      homeLocation: editing?.homeLocation ?? null,
+      unitId: editing?.unitId ?? null,
+      slotIndex: editing?.slotIndex ?? null,
     };
     try {
       if (editing) {
@@ -200,13 +210,17 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
                 />
               </div>
               <div>
-                <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t('filamentColorLabel')}</label>
+                <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t('filamentColorNameLabel')}</label>
                 <input
                   value={form.color}
                   onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))}
-                  placeholder={t('filamentColorLabel')}
+                  placeholder={t('filamentColorNameLabel')}
                   className={fieldClass}
                 />
+              </div>
+              <div>
+                <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t('filamentColorValueLabel')}</label>
+                <ColorPicker value={form.colorHex} onChange={(colorHex) => setForm((f) => ({ ...f, colorHex }))} />
               </div>
 
               {!editing && (
@@ -245,7 +259,9 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
             <p className="text-[10px] uppercase tracking-wider font-bold text-[var(--ink-3)] mb-2">
               {t('filamentSectionStorage')}
             </p>
-            <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t('filamentLocationLabel')}</label>
+            <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">
+              {editing?.unitId ? t('filamentHomeLocationLabel') : t('filamentLocationLabel')}
+            </label>
             <AutocompleteInput
               value={form.location}
               onChange={(v) => setForm((f) => ({ ...f, location: v }))}

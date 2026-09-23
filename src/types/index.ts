@@ -203,6 +203,37 @@ export interface FilamentSpool {
   remainingWeightG: number;
   price: number | null;
   imagePng: string | null;
+  /** Farbwert `#rrggbb`; `color` bleibt der Farbname. */
+  colorHex: string | null;
+  /** Stammplatz, solange die Spule in einem Fach steckt (dann ist `location` leer). */
+  homeLocation: string | null;
+  unitId: string | null;
+  slotIndex: number | null;
+}
+
+export type UnitKind =
+  | 'bambu_ams'
+  | 'bambu_ams_lite'
+  | 'bambu_ams_ht'
+  | 'creality_cfs'
+  | 'prusa_mmu3'
+  | 'anycubic_ace'
+  | 'external'
+  | 'custom';
+
+export interface MaterialUnit {
+  id: string;
+  printerId: string;
+  name: string;
+  kind: UnitKind;
+  slotCount: number;
+  bambuAmsIndex: number | null;
+}
+
+export interface Printer {
+  id: string;
+  name: string;
+  units: MaterialUnit[];
 }
 
 export interface CatalogIssues {
