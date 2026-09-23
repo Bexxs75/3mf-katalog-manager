@@ -5,7 +5,8 @@ use std::path::PathBuf;
 /// beim Umzug auf Windows gueltig bleibt.
 const RESERVED_NAMES: &[&str] = &[
     "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
-    "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9", "COM0", "LPT0",
+    "CONIN$", "CONOUT$",
     // Windows behandelt auch die hochgestellten Ziffern als Geraetenamen.
     "COM\u{b9}", "COM\u{b2}", "COM\u{b3}", "LPT\u{b9}", "LPT\u{b2}", "LPT\u{b3}",
 ];
@@ -46,7 +47,13 @@ pub fn sanitize_component(part: &str) -> String {
     while clean.ends_with('.') || clean.ends_with(' ') {
         clean.pop();
     }
-    let stem = clean.split('.').next().unwrap_or("").to_ascii_uppercase();
+    // Windows ignoriert Leerzeichen/Punkte am Ende des Stamms ("CON .txt" = CON).
+    let stem = clean
+        .split('.')
+        .next()
+        .unwrap_or("")
+        .trim_end_matches([' ', '.'])
+        .to_ascii_uppercase();
     if RESERVED_NAMES.contains(&stem.as_str()) {
         clean.insert(0, '_');
     }

@@ -224,7 +224,7 @@ fn tar_stream(path: &Path, format: ArchiveFormat, exceeded: Rc<Cell<bool>>) -> R
         ArchiveFormat::TarZst => {
             Box::new(ruzstd::decoding::StreamingDecoder::new(file).map_err(unreadable)?)
         }
-        other => unreachable!("kein tar-Format: {other:?}"),
+        other => return Err(ArchiveError::Unsupported(format!("kein tar-Format: {other:?}"))),
     };
     Ok(Box::new(LimitedReader {
         inner: decoded,

@@ -1,4 +1,5 @@
 use super::*;
+use super::paths::sanitize_component;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -137,6 +138,18 @@ fn sanitize_component_replaces_invalid_chars_and_reserved_names() {
     assert_eq!(sanitize_component("nul.txt"), "_nul.txt");
     assert_eq!(sanitize_component("Console.stl"), "Console.stl");
     assert_eq!(sanitize_component("tab\there"), "tab_here");
+}
+
+#[test]
+fn sanitize_component_covers_all_windows_device_names_and_trailing_stem_padding() {
+    assert_eq!(sanitize_component("CONIN$"), "_CONIN$");
+    assert_eq!(sanitize_component("conout$.txt"), "_conout$.txt");
+    assert_eq!(sanitize_component("COM0.stl"), "_COM0.stl");
+    assert_eq!(sanitize_component("lpt0"), "_lpt0");
+    // Windows ignoriert Leerzeichen/Punkte am Ende des Stamms: "CON .txt" ist CON.
+    assert_eq!(sanitize_component("CON .txt"), "_CON .txt");
+    assert_eq!(sanitize_component("aux..stl"), "_aux..stl");
+    assert_eq!(sanitize_component("CONSOLE .txt"), "CONSOLE .txt");
 }
 
 // ---------- Rundlauf pro Format ----------

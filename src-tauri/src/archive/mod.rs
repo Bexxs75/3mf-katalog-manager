@@ -15,8 +15,8 @@ mod formats;
 mod origin;
 mod paths;
 
-pub use extract::{extract_archive, Extraction, ExtractStats};
-pub use paths::{safe_folder_name, safe_relative_path, sanitize_component};
+pub use extract::extract_archive;
+pub use paths::{safe_folder_name, safe_relative_path};
 
 use std::fmt;
 use std::path::Path;
