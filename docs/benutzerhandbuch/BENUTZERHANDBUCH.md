@@ -312,8 +312,8 @@ eingelegte Spulen erscheinen dann in einer eigenen Spalte rechts neben dem Lager
    Prusa MMU3, Anycubic ACE Pro, externe Spule) oder als "Eigene…" mit frei wählbarer
    Fachanzahl. Die Reihenfolge der Einheiten änderst du per Griff.
 2. Eine Spule einlegen: Karte oder Zeile aus dem Lager auf ein Fach ziehen — oder das Fach
-   anklicken und eine Spule aus der Liste auswählen. Ist das Fach bereits belegt, wird
-   getauscht.
+   anklicken und eine Spule aus der Liste auswählen. Ist das Fach bereits belegt, kehrt die
+   Spule, die schon im Fach steckt, an ihren Stammplatz zurück.
 3. Herausnehmen: die Spule aus dem Fach zurück in den Lagerbereich ziehen, oder über das
    Fach-Menü "Herausnehmen" wählen. Sie kehrt automatisch an ihren Stammplatz zurück; im
    Hinweis dazu lässt sich der Ort noch ändern.
@@ -742,7 +742,8 @@ loaded spools then appear in their own column to the right of the stock.
    Anycubic ACE Pro, external spool) or as "Custom…" with any slot count you like. Reorder
    units by their drag handle.
 2. Loading a spool: drag a card or row from the stock onto a slot — or click the slot and pick
-   a spool from the list. If the slot is already occupied, the spools are swapped.
+   a spool from the list. If the slot is already occupied, the spool already in it returns to
+   its home location.
 3. Unloading: drag the spool from the slot back into the stock area, or choose "Unload" from
    the slot's menu. It automatically returns to its home location; the notice lets you change
    that location.
