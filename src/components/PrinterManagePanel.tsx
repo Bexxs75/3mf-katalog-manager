@@ -48,7 +48,7 @@ const KIND_LABEL: Record<UnitKind, KindLabelKey> = {
 
 const LETTERS = 'ABCDEFGHIJKLMNOP';
 
-/** "AMS A", "AMS B" … bzw. "Extern", "Extern 2" … fuer neue Einheiten. */
+/** "AMS A", "AMS B" … bzw. "Spulenhalter", "Spulenhalter 2" … fuer neue Einheiten. */
 export function suggestUnitName(printer: Printer, kind: UnitKind, defaultName: string): string {
   const sameKind = printer.units.filter((u) => u.kind === kind).length;
   if (kind === 'bambu_ams' || kind === 'bambu_ams_lite') return `${defaultName} ${LETTERS[sameKind] ?? sameKind + 1}`;
