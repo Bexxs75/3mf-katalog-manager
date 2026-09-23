@@ -197,6 +197,22 @@ pub struct NewFilamentSpool {
 }
 
 #[derive(Debug, Clone)]
+pub struct PrinterRecord {
+    pub id: i64,
+    pub name: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct MaterialUnitRecord {
+    pub id: i64,
+    pub printer_id: i64,
+    pub name: String,
+    pub kind: String,
+    pub slot_count: i64,
+    pub bambu_ams_index: Option<i64>,
+}
+
+#[derive(Debug, Clone)]
 pub struct SavedFilterRecord {
     pub id: i64,
     pub name: String,
