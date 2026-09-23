@@ -94,6 +94,58 @@ struct ArchiveProgressDto {
     state: &'static str,
 }
 
+/// Serverseitige Freigabeliste: Nur Archive, die der Nutzer tatsaechlich
+/// per Dateidialog oder Drag & Drop hereingegeben hat, duerfen entpackt
+/// (und ggf. geloescht) werden - jedes hoechstens einmal. Ohne diese Liste
+/// koennte ein kompromittiertes Frontend beliebige Dateien mit
+/// Archiv-Endung entpacken und loeschen lassen.
+#[derive(Default)]
+pub struct PendingArchives(std::sync::Mutex<std::collections::HashSet<PathBuf>>);
+
+impl PendingArchives {
+    pub(crate) fn register(&self, paths: &[String]) {
+        if let Ok(mut set) = self.0.lock() {
+            set.extend(paths.iter().map(PathBuf::from));
+        }
+    }
+
+    pub(crate) fn take_authorized(
+        &self,
+        requests: Vec<ArchiveRequest>,
+    ) -> (Vec<ArchiveRequest>, Vec<ArchiveOutcomeDto>) {
+        let mut allowed = Vec::new();
+        let mut rejected = Vec::new();
+        let mut set = match self.0.lock() {
+            Ok(set) => set,
+            Err(_) => {
+                return (
+                    Vec::new(),
+                    requests
+                        .into_iter()
+                        .map(|r| ArchiveOutcomeDto {
+                            path: r.path,
+                            error: Some("interner Fehler (Sperre)".to_string()),
+                            ..Default::default()
+                        })
+                        .collect(),
+                )
+            }
+        };
+        for request in requests {
+            if set.remove(Path::new(&request.path)) {
+                allowed.push(request);
+            } else {
+                rejected.push(ArchiveOutcomeDto {
+                    path: request.path,
+                    error: Some("Archiv wurde nicht ueber den Import freigegeben".to_string()),
+                    ..Default::default()
+                });
+            }
+        }
+        (allowed, rejected)
+    }
+}
+
 /// Groesse und Aenderungszeit (ms) - dient als "unveraendert seit
 /// inspect?"-Pruefung vor dem Loeschen des Originals.
 fn file_fingerprint(path: &Path) -> Option<(u64, i64)> {
@@ -298,14 +350,16 @@ pub fn archive_target_conflicts(target_dir: String, folder_names: Vec<String>) -
 pub async fn extract_archives(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
+    pending: State<'_, PendingArchives>,
     target_dir: String,
     requests: Vec<ArchiveRequest>,
     delete_archives: bool,
 ) -> CmdResult<ArchiveImportResultDto> {
-    extract_archives_core(
+    let (allowed, rejected) = pending.take_authorized(requests);
+    let mut result = extract_archives_core(
         &state.sensitive_dirs,
         Path::new(&target_dir),
-        requests,
+        allowed,
         delete_archives,
         |dir| {
             let mut conn = lock_db(&state)?;
@@ -320,7 +374,9 @@ pub async fn extract_archives(
                 },
             );
         },
-    )
+    )?;
+    result.archives.extend(rejected);
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -589,5 +645,30 @@ mod tests {
         )
         .unwrap();
         assert_eq!(result, vec![true, false]);
+    }
+
+    #[test]
+    fn only_registered_archives_are_authorized_and_only_once() {
+        let pending = PendingArchives::default();
+        pending.register(&["/dl/a.zip".to_string()]);
+        let request = |path: &str| ArchiveRequest {
+            path: path.to_string(),
+            folder_name: "x".to_string(),
+            on_conflict: ConflictMode::New,
+            expected_size: 0,
+            expected_modified_unix_ms: 0,
+        };
+
+        let (allowed, rejected) =
+            pending.take_authorized(vec![request("/dl/a.zip"), request("/home/u/wichtig.zip")]);
+        assert_eq!(allowed.len(), 1);
+        assert_eq!(allowed[0].path, "/dl/a.zip");
+        assert_eq!(rejected.len(), 1);
+        assert_eq!(rejected[0].path, "/home/u/wichtig.zip");
+        assert!(rejected[0].error.is_some());
+
+        let (allowed_again, rejected_again) = pending.take_authorized(vec![request("/dl/a.zip")]);
+        assert!(allowed_again.is_empty());
+        assert_eq!(rejected_again.len(), 1);
     }
 }

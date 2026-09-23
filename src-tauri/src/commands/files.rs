@@ -53,6 +53,9 @@ pub struct TagCountDto {
 pub struct ImportResultDto {
     pub imported: Vec<ModelFileDto>,
     pub duplicate_count: i64,
+    /// Einzeln gewaehlte/gezogene Archive - werden NICHT hier importiert,
+    /// sondern vom Frontend ueber den Entpack-Dialog behandelt.
+    pub pending_archives: Vec<String>,
 }
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1093,30 +1096,55 @@ pub(crate) fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) 
     Ok(ImportResultDto {
         imported,
         duplicate_count,
+        pending_archives: Vec::new(),
     })
+}
+/// Trennt Archive (echte Dateien mit Archiv-Endung) von allem anderen. Ein
+/// VERZEICHNIS namens `x.zip` bleibt beim normalen Import.
+fn split_archives(paths: Vec<PathBuf>) -> (Vec<PathBuf>, Vec<String>) {
+    let (archives, others): (Vec<PathBuf>, Vec<PathBuf>) = paths
+        .into_iter()
+        .partition(|p| p.is_file() && crate::archive::is_archive_path(p));
+    (
+        others,
+        archives
+            .into_iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect(),
+    )
 }
 #[tauri::command]
 pub async fn import_files(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
+    pending: State<'_, PendingArchives>,
 ) -> CmdResult<ImportResultDto> {
+    // Ein gemeinsamer Filter statt zwei: unter GTK zeigt der Dialog sonst
+    // nur den ersten Filter an, Archive waeren erst nach Umschalten sichtbar.
+    let mut extensions = vec!["3mf", "stl", "stp", "step", "obj"];
+    extensions.extend_from_slice(crate::archive::DIALOG_EXTENSIONS);
     let picked = app
         .dialog()
         .file()
-        .add_filter("3D-Modelle", &["3mf", "stl", "stp", "step", "obj"])
+        .add_filter("3D-Modelle & Archive", &extensions)
         .blocking_pick_files();
 
     let Some(picked) = picked else {
         return Ok(ImportResultDto {
             imported: Vec::new(),
             duplicate_count: 0,
+            pending_archives: Vec::new(),
         });
     };
     let paths = picked
         .into_iter()
         .filter_map(|p| p.into_path().ok())
         .collect();
-    import_many(&state, paths)
+    let (models, archives) = split_archives(paths);
+    let mut result = import_many(&state, models)?;
+    pending.register(&archives);
+    result.pending_archives = archives;
+    Ok(result)
 }
 #[tauri::command]
 pub async fn import_folder(
@@ -1129,14 +1157,23 @@ pub async fn import_folder(
         return Ok(ImportResultDto {
             imported: Vec::new(),
             duplicate_count: 0,
+            pending_archives: Vec::new(),
         });
     };
     let path = picked.into_path().map_err(|e| e.to_string())?;
     import_many(&state, vec![path])
 }
 #[tauri::command]
-pub fn import_dropped(state: State<AppState>, paths: Vec<String>) -> CmdResult<ImportResultDto> {
-    import_many(&state, paths.into_iter().map(PathBuf::from).collect())
+pub fn import_dropped(
+    state: State<AppState>,
+    pending: State<PendingArchives>,
+    paths: Vec<String>,
+) -> CmdResult<ImportResultDto> {
+    let (models, archives) = split_archives(paths.into_iter().map(PathBuf::from).collect());
+    let mut result = import_many(&state, models)?;
+    pending.register(&archives);
+    result.pending_archives = archives;
+    Ok(result)
 }
 /// Oeffnet einen Pfad im systemeigenen Datei-Manager. Bewusst ohne eigene
 /// Plugin-Abhaengigkeit (analog zu `open_in_slicer`): startet direkt das
@@ -2463,5 +2500,30 @@ mod tests {
 
         let rescanned = rescan_file(&mut conn, id).expect("rescan of an obj file should succeed");
         assert_eq!(rescanned.id, dto.id);
+    }
+    #[test]
+    fn split_archives_separates_archive_files_from_models_and_folders() {
+        let dir = unique_test_dir("split_archives");
+        let zip = dir.join("Paket.ZIP");
+        let tgz = dir.join("Paket.tar.gz");
+        let stl = dir.join("teil.stl");
+        let folder_named_like_zip = dir.join("Ordner.zip");
+        std::fs::write(&zip, b"x").unwrap();
+        std::fs::write(&tgz, b"x").unwrap();
+        std::fs::write(&stl, b"x").unwrap();
+        std::fs::create_dir(&folder_named_like_zip).unwrap();
+
+        let (models, archives) = split_archives(vec![
+            zip.clone(),
+            stl.clone(),
+            folder_named_like_zip.clone(),
+            tgz.clone(),
+        ]);
+
+        assert_eq!(models, vec![stl, folder_named_like_zip]);
+        assert_eq!(
+            archives,
+            vec![zip.to_string_lossy().to_string(), tgz.to_string_lossy().to_string()]
+        );
     }
 }

@@ -94,6 +94,7 @@ pub fn run() {
                 db_path,
                 sensitive_dirs,
             });
+            app.manage(commands::PendingArchives::default());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
