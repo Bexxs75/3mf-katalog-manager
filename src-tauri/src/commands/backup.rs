@@ -200,6 +200,183 @@ fn validate_expected_schema(conn: &Connection) -> Result<(), String> {
     }
     Ok(())
 }
+/// SQLite-Speicherklasse ("storage class", siehe
+/// https://sqlite.org/datatype3.html), die `typeof(spalte)` fuer eine
+/// bestimmte Spalte liefern darf, ausgedrueckt als der rusqlite-`FromSql`-
+/// Rust-Typ, mit dem diese Spalte tatsaechlich gelesen wird - deckungsgleich
+/// mit den vier praktisch vorkommenden `rusqlite::types::Type`-Varianten
+/// (NULL wird separat ueber das vierte Tupel-Feld `nullable` abgedeckt, nicht
+/// hier).
+#[derive(Clone, Copy)]
+enum ColType {
+    /// `i64` ODER `bool` (rusqlite liest `bool` intern als `i64 != 0`,
+    /// akzeptiert also ebenfalls NUR `typeof(...) = 'integer'`).
+    Integer,
+    /// `f64` - rusqlite konvertiert dafuer sowohl INTEGER als auch REAL
+    /// verlustfrei, akzeptiert also BEIDE Speicherklassen.
+    Real,
+    /// `String` - akzeptiert NUR `typeof(...) = 'text'`.
+    Text,
+    /// `Vec<u8>` - akzeptiert NUR `typeof(...) = 'blob'`.
+    Blob,
+}
+
+impl ColType {
+    fn allowed_typeof(self, nullable: bool) -> Vec<&'static str> {
+        let mut allowed: Vec<&'static str> = match self {
+            ColType::Integer => vec!["integer"],
+            ColType::Real => vec!["integer", "real"],
+            ColType::Text => vec!["text"],
+            ColType::Blob => vec!["blob"],
+        };
+        if nullable {
+            allowed.push("null");
+        }
+        allowed
+    }
+}
+/// Fuer jede Spalte, die irgendwo im Rust-Code als konkreter (nicht generisch
+/// geskippter) Typ gelesen wird, deren erwartete Speicherklasse(n) und ob
+/// NULL erlaubt ist - Grundlage fuer `validate_column_types`. Herleitung
+/// (Review 2026-09-23): fuer jede Tabelle aus REQUIRED_COLUMNS wurde jede
+/// Stelle gesucht, an der eine ihrer Spalten per `row.get`/`query_row`/
+/// `query_map` gelesen wird (repository.rs, printers.rs, collections.rs -
+/// db/mod.rs selbst enthaelt kein SQL), und der dortige Rust-Zieltyp notiert.
+/// Spalten, die NIRGENDS als typisierter Wert gelesen werden - nur in
+/// `ORDER BY`/`WHERE`/als Bind-Parameter vorkommen, z.B. `printers.position`,
+/// `material_units.position`, `collections.created_at`,
+/// `collection_files.position`/`collection_id`, `file_tags.tag_id`,
+/// `file_metadata.file_id`, `filament_spools.created_at` - fehlen hier
+/// bewusst: ein falscher Speicherklassen-Wert dort kann keinen
+/// `FromSql`-Fehler ausloesen, weil nie `row.get::<_, T>` darauf angewendet
+/// wird. `table`/`column` stammen ausschliesslich aus dieser hartkodierten
+/// Konstante (kein Nutzereingabe-Pfad) - siehe Kommentar an REQUIRED_COLUMNS
+/// zur selben Begruendung fuer die String-Interpolation in
+/// `validate_column_types`.
+const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
+    // files - siehe row_to_file/list_file_summaries (repository.rs).
+    ("files", "id", ColType::Integer, false),
+    ("files", "name", ColType::Text, false),
+    ("files", "path", ColType::Text, false),
+    ("files", "file_type", ColType::Text, false),
+    ("files", "folder_id", ColType::Integer, true),
+    ("files", "origin", ColType::Text, false),
+    ("files", "sync_status", ColType::Text, false),
+    ("files", "cloud_id", ColType::Text, true),
+    ("files", "file_size_bytes", ColType::Integer, false),
+    ("files", "dimension_x_mm", ColType::Real, true),
+    ("files", "dimension_y_mm", ColType::Real, true),
+    ("files", "dimension_z_mm", ColType::Real, true),
+    ("files", "volume_cm3", ColType::Real, true),
+    ("files", "object_count", ColType::Integer, true),
+    ("files", "thumbnail_png", ColType::Blob, true),
+    ("files", "imported_at", ColType::Text, false),
+    ("files", "file_modified_at", ColType::Text, true),
+    ("files", "print_status", ColType::Text, false),
+    ("files", "last_viewed_at", ColType::Text, true),
+    ("files", "creator", ColType::Text, true),
+    ("files", "content_hash", ColType::Text, true),
+    ("files", "render_snapshot_png", ColType::Blob, true),
+    ("files", "custom_image_png", ColType::Blob, true),
+    ("files", "source_url", ColType::Text, true),
+    ("files", "queue_position", ColType::Integer, true),
+    ("files", "favorite", ColType::Integer, false),
+    ("files", "plate_count", ColType::Integer, true),
+    ("files", "slice_info_json", ColType::Text, true),
+    ("files", "deleted_at", ColType::Text, true),
+    ("files", "trash_path", ColType::Text, true),
+    // folders - siehe list_folders (repository.rs).
+    ("folders", "id", ColType::Integer, false),
+    ("folders", "name", ColType::Text, false),
+    ("folders", "parent_id", ColType::Integer, true),
+    ("folders", "path", ColType::Text, false),
+    // tags - siehe list_tag_counts/load_tags/get_or_create_tag (repository.rs).
+    ("tags", "id", ColType::Integer, false),
+    ("tags", "name", ColType::Text, false),
+    ("tags", "color_hue", ColType::Integer, false),
+    // file_tags - nur file_id wird als Wert gelesen (list_all_file_tags);
+    // tag_id kommt nur in der JOIN-Bedingung vor.
+    ("file_tags", "file_id", ColType::Integer, false),
+    // file_metadata - siehe load_metadata (repository.rs); file_id selbst
+    // wird dort nur als Bind-Parameter genutzt, nicht zurueckgelesen.
+    ("file_metadata", "label", ColType::Text, false),
+    ("file_metadata", "value", ColType::Text, false),
+    // filament_spools - siehe list_filament_spools/get_filament_spool
+    // (repository.rs) sowie load_spool/unload_spool (printers.rs).
+    ("filament_spools", "id", ColType::Integer, false),
+    ("filament_spools", "material", ColType::Text, false),
+    ("filament_spools", "manufacturer", ColType::Text, true),
+    ("filament_spools", "color", ColType::Text, true),
+    ("filament_spools", "location", ColType::Text, true),
+    ("filament_spools", "diameter_mm", ColType::Real, false),
+    ("filament_spools", "original_weight_g", ColType::Integer, false),
+    ("filament_spools", "remaining_weight_g", ColType::Integer, false),
+    ("filament_spools", "price", ColType::Real, true),
+    ("filament_spools", "image_png", ColType::Blob, true),
+    ("filament_spools", "color_hex", ColType::Text, true),
+    ("filament_spools", "home_location", ColType::Text, true),
+    ("filament_spools", "unit_id", ColType::Integer, true),
+    ("filament_spools", "slot_index", ColType::Integer, true),
+    // printers - siehe list_printers (printers.rs); position ist NOT NULL
+    // DEFAULT 0 im Schema, wird aber nirgends als typisierter Wert gelesen
+    // (nur ORDER BY), deshalb hier bewusst nicht gelistet.
+    ("printers", "id", ColType::Integer, false),
+    ("printers", "name", ColType::Text, false),
+    // material_units - siehe list_units (printers.rs); position aus
+    // demselben Grund wie bei printers.position nicht gelistet.
+    ("material_units", "id", ColType::Integer, false),
+    ("material_units", "printer_id", ColType::Integer, false),
+    ("material_units", "name", ColType::Text, false),
+    ("material_units", "kind", ColType::Text, false),
+    ("material_units", "slot_count", ColType::Integer, false),
+    ("material_units", "bambu_ams_index", ColType::Integer, true),
+    // collections - siehe list_collections (collections.rs); created_at wird
+    // nur in ORDER BY genutzt, nicht als typisierter Wert zurueckgelesen.
+    ("collections", "id", ColType::Integer, false),
+    ("collections", "name", ColType::Text, false),
+    // collection_files - nur file_id wird als Wert gelesen
+    // (list_collection_file_ids); collection_id/position kommen nur als
+    // Bind-Parameter bzw. in ORDER BY vor.
+    ("collection_files", "file_id", ColType::Integer, false),
+    // registered_slicers - siehe list_registered_slicers/get_registered_slicer
+    // (repository.rs).
+    ("registered_slicers", "id", ColType::Integer, false),
+    ("registered_slicers", "name", ColType::Text, false),
+    ("registered_slicers", "executable_path", ColType::Text, false),
+    ("registered_slicers", "is_auto_detected", ColType::Integer, false),
+];
+/// Prueft, dass jede in COLUMN_TYPES gelistete Spalte NUR eine ihrer
+/// erlaubten SQLite-Speicherklassen enthaelt (siehe Kommentar an
+/// `COLUMN_TYPES`). Ergaenzt `validate_expected_schema` (Spalten-EXISTENZ,
+/// ignoriert Typen) und `validate_printer_invariants` (Wertebereiche,
+/// ignoriert Speicherklassen) um die dritte, bislang fehlende Ebene: eine
+/// praeparierte Datenbank kann ihre eigenen CREATE-TABLE-Statements OHNE
+/// Typ-Affinitaet/CHECK-Constraints mitbringen (SQLite erzwingt Spaltentypen
+/// ohnehin nur als "Affinitaet", nicht als harte Garantie) und so z.B.
+/// `material_units.slot_count = 4.5` (REAL statt INTEGER) einschleusen - das
+/// besteht `slot_count NOT BETWEEN 1 AND 16` anstandslos, laesst aber jedes
+/// `row.get::<_, i64>(...)` beim naechsten Lesen dieser Zeile mit
+/// `InvalidColumnType` scheitern. Laeuft deshalb VOR `validate_printer_invariants`,
+/// damit dessen Wertepruefungen bereits auf plausiblen Speicherklassen
+/// aufsetzen.
+fn validate_column_types(conn: &Connection) -> Result<(), String> {
+    for &(table, column, col_type, nullable) in COLUMN_TYPES {
+        let allowed = col_type.allowed_typeof(nullable);
+        let placeholders = allowed.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+        let sql = format!(
+            "SELECT COUNT(*) FROM \"{table}\" WHERE typeof(\"{column}\") NOT IN ({placeholders})"
+        );
+        let bad: i64 = conn
+            .query_row(&sql, rusqlite::params_from_iter(allowed.iter().copied()), |row| row.get(0))
+            .map_err(|e| e.to_string())?;
+        if bad > 0 {
+            return Err(format!(
+                "Katalog-Datenbank enthaelt einen falschen Datentyp in Tabelle '{table}', Spalte '{column}'"
+            ));
+        }
+    }
+    Ok(())
+}
 /// Prueft die Drucker/AMS-Fach-Invarianten direkt ueber den Dateninhalt
 /// (siehe Kommentar am Aufrufer in `validate_catalog_db_bytes` fuer die
 /// Begruendung, warum sich das nicht auf deklarierte CHECK-Constraints/
@@ -428,6 +605,15 @@ fn validate_catalog_db_bytes(
             // legitimes Backup erst nach vollstaendiger Migration gegen
             // das jetzt aktuelle Schema geprueft wird.
             validate_expected_schema(&conn)?;
+
+            // Finaler Review 2026-09-23, Finding 2: `validate_expected_schema`
+            // prueft nur, dass jede erwartete Spalte EXISTIERT - nicht, dass
+            // sie auch die richtige SQLite-Speicherklasse enthaelt. Laeuft
+            // VOR `validate_printer_invariants` (naechster Schritt unten),
+            // damit dessen Wertebereichs-/NULL-Pruefungen bereits auf
+            // plausiblen Speicherklassen aufsetzen - siehe Kommentar an
+            // `validate_column_types` fuer das konkrete Angriffsszenario.
+            validate_column_types(&conn)?;
 
             // Finaler Review 2026-09-23, Finding 1: `validate_expected_schema`
             // prueft nur, dass Tabellen/Spalten EXISTIEREN - nicht, dass ihre
@@ -1457,6 +1643,272 @@ mod tests {
         let bytes = std::fs::read(&tmp_path).unwrap();
         let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
         assert!(result.is_ok(), "ein gueltiges Backup mit belegten Faechern muss akzeptiert werden: {result:?}");
+    }
+    // ---- Datentyp-Pruefung (Finding 2, finaler Review 2026-09-23) ----
+    //
+    // Die obigen `validate_printer_invariants`-Tests pruefen WERTE (Bereiche,
+    // NULL) - sie decken NICHT ab, dass eine praeparierte Datenbank ihre
+    // eigenen CREATE-TABLE-Statements ohne Typ-Affinitaet mitbringen und so
+    // eine falsche SPEICHERKLASSE (SQLite: 'integer'/'real'/'text'/'blob'/
+    // 'null', siehe https://sqlite.org/datatype3.html) in einer Spalte
+    // hinterlassen kann, die WERTEMAESSIG trotzdem gueltig erscheint (z.B.
+    // `slot_count = 4.5`, das `BETWEEN 1 AND 16` anstandslos besteht). Genau
+    // das lassen anschliessend rusqlite's `FromSql`-Impls beim naechsten
+    // Lesen scheitern (`i64`/`bool` akzeptieren nur INTEGER, `String` nur
+    // TEXT, `Vec<u8>` nur BLOB, `f64` INTEGER oder REAL, `Option<T>`
+    // zusaetzlich NULL) - jeder betroffene `list_*`-Befehl bricht dann bei
+    // JEDEM App-Start ab.
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_material_unit_with_a_real_slot_count() {
+        // INTEGER-Affinitaet konvertiert einen REAL-Wert nur dann verlustfrei
+        // zu INTEGER, wenn er keine Nachkommastelle hat - 4.5 bleibt deshalb
+        // trotz deklarierter INTEGER-Spalte als REAL-Speicherklasse erhalten
+        // und besteht `slot_count NOT BETWEEN 1 AND 16` anstandslos (4.5 liegt
+        // "zwischen" 1 und 16), obwohl `MaterialUnitRecord.slot_count` in Rust
+        // ein `i64` ist.
+        let tmp_path = unique_test_db_path("validate_db_unit_real_slot_count");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            let printer_id = crate::db::printers::insert_printer(&conn, "X1C").unwrap();
+            conn.execute(
+                "INSERT INTO material_units (printer_id, name, kind, slot_count, bambu_ams_index, position)
+                 VALUES (?1, 'Kaputt', 'custom', 4.5, NULL, 0)",
+                params![printer_id],
+            )
+            .unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        assert!(result.is_err(), "eine Einheit mit 'slot_count' als REAL-Speicherklasse muss abgelehnt werden");
+    }
+    /// Baut `printers` OHNE deklarierten Spaltentyp fuer `name` neu auf - ein
+    /// Spaltenname ganz ohne Typangabe bekommt in SQLite BLOB-Affinitaet
+    /// ("keine Affinitaet", siehe https://sqlite.org/datatype3.html#determination_of_column_affinity),
+    /// wodurch ein eingefuegter INTEGER-Wert NICHT nach TEXT konvertiert wird,
+    /// anders als bei der regulaeren, per `crate::db::connect` angelegten
+    /// Tabelle (dort haette TEXT-Affinitaet den Wert automatisch in Text
+    /// umgewandelt).
+    fn drop_printers_constraints(conn: &Connection) {
+        conn.execute_batch(
+            "DROP TABLE printers;
+             CREATE TABLE printers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name,
+                position INTEGER
+             );",
+        )
+        .unwrap();
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_printer_with_an_integer_name() {
+        let tmp_path = unique_test_db_path("validate_db_printer_integer_name");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            drop_printers_constraints(&conn);
+            conn.execute("INSERT INTO printers (name, position) VALUES (12345, 0)", []).unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        assert!(result.is_err(), "ein Drucker mit 'name' als INTEGER-Speicherklasse muss abgelehnt werden");
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_filament_spool_with_remaining_weight_g_stored_as_text() {
+        // Kein Constraint-Umbau noetig: INTEGER-Affinitaet konvertiert einen
+        // TEXT-Wert nur, wenn er wie eine Zahl AUSSIEHT - 'viel' bleibt TEXT.
+        let tmp_path = unique_test_db_path("validate_db_spool_text_remaining_weight");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            conn.execute(
+                "INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at)
+                 VALUES ('PLA', 1.75, 1000, 'viel', '2026-01-01T00:00:00Z')",
+                [],
+            )
+            .unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        assert!(result.is_err(), "eine Spule mit 'remaining_weight_g' als TEXT-Speicherklasse muss abgelehnt werden");
+    }
+    /// Baut `filament_spools` OHNE NOT-NULL-Constraints neu auf - siehe
+    /// `drop_material_units_constraints` weiter oben fuer die Begruendung des
+    /// Musters (eine regulaer angelegte Tabelle wuerde `material = NULL`
+    /// bereits selbst am INSERT ablehnen).
+    fn drop_filament_spools_constraints(conn: &Connection) {
+        conn.execute_batch(
+            "DROP TABLE filament_spools;
+             CREATE TABLE filament_spools (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                material TEXT, manufacturer TEXT, color TEXT, location TEXT,
+                diameter_mm REAL, original_weight_g INTEGER, remaining_weight_g INTEGER,
+                price REAL, image_png BLOB, created_at TEXT,
+                unit_id INTEGER, slot_index INTEGER, home_location TEXT, color_hex TEXT
+             );",
+        )
+        .unwrap();
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_filament_spool_with_a_null_material() {
+        // `FilamentSpoolRecord.material` ist in Rust ein nicht-optionales
+        // `String`-Feld - anders als bei `material_units.kind` (siehe
+        // `validate_printer_invariants`) gibt es dafuer bislang KEINE eigene
+        // NULL-Pruefung ausserhalb der neuen Typpruefung.
+        let tmp_path = unique_test_db_path("validate_db_spool_null_material");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            drop_filament_spools_constraints(&conn);
+            conn.execute(
+                "INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at)
+                 VALUES (NULL, 1.75, 1000, 1000, '2026-01-01T00:00:00Z')",
+                [],
+            )
+            .unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        assert!(result.is_err(), "eine Spule mit NULL 'material' muss abgelehnt werden");
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_folder_with_name_stored_as_blob() {
+        // TEXT-Affinitaet konvertiert nur NUMERISCHE Werte zu Text - ein
+        // BLOB-Literal bleibt trotz TEXT-Spalte als BLOB-Speicherklasse
+        // erhalten (https://sqlite.org/datatype3.html), kein Constraint-Umbau
+        // noetig. Bewusst `folders.name` statt `files.name`: Letzteres wird
+        // bereits VOR dieser neuen Pruefung ueber `validate_file_name`
+        // gelesen (siehe die Datei-Schleife weiter unten) und wuerde deshalb
+        // auch ohne `validate_column_types` ablehnen - `folders.name` wird
+        // innerhalb von `validate_catalog_db_bytes` an keiner anderen Stelle
+        // gelesen (nur `folders.path`/`parent_id`) und deckt die neue
+        // Pruefung deshalb wirklich isoliert ab.
+        let tmp_path = unique_test_db_path("validate_db_folder_blob_name");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            conn.execute(
+                "INSERT INTO folders (name, path) VALUES (x'00010203', '/tmp/blob-name')",
+                [],
+            )
+            .unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        assert!(result.is_err(), "ein Ordner mit 'name' als BLOB-Speicherklasse muss abgelehnt werden");
+    }
+    #[test]
+    fn validate_catalog_db_bytes_accepts_a_full_catalog_with_data_in_every_table() {
+        // Regressionsnetz fuer die neue Typpruefung: ein normal aus der App
+        // heraus befuellter Katalog - mit Daten in JEDER Tabelle aus
+        // REQUIRED_COLUMNS, inklusive belegter Spule, Bild-BLOBs, Tags,
+        // Metadaten, Sammlung und registriertem Slicer - darf dadurch nicht
+        // faelschlich abgelehnt werden.
+        let tmp_path = unique_test_db_path("validate_db_full_catalog");
+        {
+            let mut conn = crate::db::connect(&tmp_path).unwrap();
+
+            let folder_id =
+                crate::db::insert_folder_with_parent(&conn, "Projekte", None, "/tmp/Projekte").unwrap();
+
+            let mut metadata = BTreeMap::new();
+            metadata.insert("Slicer".to_string(), "Bambu Studio".to_string());
+            let new_file = NewFile {
+                name: "Gehaeuse.3mf".to_string(),
+                path: "/tmp/Projekte/Gehaeuse.3mf".to_string(),
+                file_type: FileType::ThreeMf,
+                folder_id: Some(folder_id),
+                origin: "local".to_string(),
+                cloud_id: None,
+                sync_status: "local-only".to_string(),
+                file_size_bytes: 12345,
+                dimensions_mm: Some([10.0, 20.0, 30.0]),
+                volume_cm3: Some(123.4),
+                object_count: Some(3),
+                thumbnail_png: Some(vec![1, 2, 3]),
+                imported_at: "2026-09-23T00:00:00Z".to_string(),
+                file_modified_at: Some("2026-09-23T00:00:00Z".to_string()),
+                materials: vec![MaterialRecord { name: "PLA".to_string(), display_color: Some("#ff0000".to_string()) }],
+                metadata,
+                tags: vec!["Prototyp".to_string()],
+                print_status: "printed".to_string(),
+                last_viewed_at: Some("2026-09-23T00:00:00Z".to_string()),
+                creator: Some("Max".to_string()),
+                content_hash: Some("abc123".to_string()),
+                render_snapshot_png: Some(vec![4, 5, 6]),
+                custom_image_png: Some(vec![7, 8, 9]),
+                source_url: Some("https://example.com/model".to_string()),
+                queue_position: Some(1),
+                favorite: true,
+                plate_count: Some(2),
+                slice_info_json: Some("{}".to_string()),
+            };
+            let file_id = crate::db::insert_file(&mut conn, &new_file).unwrap();
+
+            let created_at = chrono::Utc::now().to_rfc3339();
+            let collection_id = crate::db::create_collection(&conn, "Sammlung", &created_at).unwrap();
+            crate::db::add_file_to_collection(&conn, collection_id, file_id, 0).unwrap();
+
+            let slicer_executable = std::env::current_exe().unwrap().to_string_lossy().to_string();
+            crate::db::insert_registered_slicer(&conn, "Bambu Studio", &slicer_executable, true).unwrap();
+
+            let (_, unit_id) = printer_with_one_ams_unit(&conn);
+            let spool_id = crate::db::insert_filament_spool(
+                &conn,
+                &crate::db::models::NewFilamentSpool {
+                    material: "PLA".to_string(),
+                    manufacturer: Some("Bambu".to_string()),
+                    color: Some("Schwarz".to_string()),
+                    location: Some("Regal 2".to_string()),
+                    diameter_mm: 1.75,
+                    original_weight_g: 1000,
+                    remaining_weight_g: 800,
+                    price: Some(19.99),
+                    image_png: Some(vec![9, 9, 9]),
+                    color_hex: Some("#1a1a1a".to_string()),
+                },
+            )
+            .unwrap();
+            crate::db::printers::load_spool(&conn, spool_id, unit_id, 0).unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        assert!(
+            result.is_ok(),
+            "ein regulaer befuellter Katalog mit Daten in jeder Tabelle muss weiterhin akzeptiert werden: {result:?}"
+        );
+    }
+    #[test]
+    fn column_types_covers_every_table_in_required_columns() {
+        for (table, _) in REQUIRED_COLUMNS {
+            assert!(
+                COLUMN_TYPES.iter().any(|(t, _, _, _)| t == table),
+                "COLUMN_TYPES hat keinen Eintrag fuer Tabelle '{table}' aus REQUIRED_COLUMNS - neue Tabellen muessen hier ergaenzt werden"
+            );
+        }
+    }
+    #[test]
+    fn column_types_covers_known_non_optional_columns_read_as_rust_values() {
+        // Stichprobe der beim Review (2026-09-23) identifizierten, mit einem
+        // konkreten (nicht generisch geskippten) Rust-Typ gelesenen Spalten
+        // je Tabelle - haelt fest, was COLUMN_TYPES mindestens abdecken muss,
+        // damit eine kuenftige Aenderung eine davon nicht versehentlich
+        // wieder herausfallen laesst.
+        let must_have: &[(&str, &str)] = &[
+            ("files", "name"), ("files", "path"), ("files", "file_type"), ("files", "imported_at"), ("files", "favorite"),
+            ("folders", "name"), ("folders", "path"),
+            ("tags", "name"), ("tags", "color_hue"),
+            ("file_metadata", "label"), ("file_metadata", "value"),
+            ("filament_spools", "material"), ("filament_spools", "diameter_mm"),
+            ("filament_spools", "original_weight_g"), ("filament_spools", "remaining_weight_g"),
+            ("printers", "name"),
+            ("material_units", "printer_id"), ("material_units", "name"), ("material_units", "kind"), ("material_units", "slot_count"),
+            ("collections", "name"),
+            ("registered_slicers", "name"), ("registered_slicers", "executable_path"), ("registered_slicers", "is_auto_detected"),
+            ("file_tags", "file_id"),
+            ("collection_files", "file_id"),
+        ];
+        for (table, column) in must_have {
+            assert!(
+                COLUMN_TYPES.iter().any(|(t, c, _, _)| t == table && c == column),
+                "COLUMN_TYPES hat keinen Eintrag fuer '{table}.{column}'"
+            );
+        }
     }
     #[test]
     fn replace_catalog_db_backs_up_old_db_and_installs_new_one() {

@@ -17,6 +17,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ### Fixed
 
 - Robustheit: Das Umbenennen oder Verschieben von Ordnern beendet die App bei einer inkonsistenten Ordnerhierarchie (z. B. aus einem präparierten Katalog-Backup) nicht mehr abrupt, sondern bricht mit einer Fehlermeldung ab.
+- Katalog-Sicherung: Beim Import werden jetzt auch die Datentypen aller Spalten geprüft; eine präparierte Sicherung mit falschen Werten (z. B. Text statt Zahl) wird abgelehnt, statt danach Ladefehler zu verursachen.
 
 ## [0.12.1] - 2026-09-23
 
@@ -367,6 +368,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 ### Fixed
 
 - Robustness: renaming or moving folders no longer terminates the app abruptly on an inconsistent folder hierarchy (e.g. from a crafted catalog backup); it aborts with an error message instead.
+- Catalog backup: importing now also checks the data types of every column; a crafted backup with wrong-typed values (e.g. text instead of a number) is rejected instead of causing load errors afterward.
 
 ## [0.12.1] - 2026-09-23
 
