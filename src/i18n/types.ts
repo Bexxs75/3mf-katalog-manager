@@ -300,6 +300,7 @@ export interface Translations {
   printersColumnTitle: string;
   printersManageButton: string;
   printersEmptyHint: string;
+  printersNoUnitsHint: string;
   printersAddFirstButton: string;
   printersSlotEmpty: string;
   printersDropHere: string;

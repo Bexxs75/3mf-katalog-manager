@@ -4,8 +4,9 @@ import type { MaterialUnit, Printer, UnitKind } from '../../types';
 export function listPrinters() {
   return invoke<Printer[]>('list_printers');
 }
-export function addPrinter(name: string) {
-  return invoke<Printer>('add_printer', { name });
+/** Legt den Drucker samt Spulenhalter (1 Fach, Name uebersetzt) an. */
+export function addPrinter(name: string, holderName: string) {
+  return invoke<Printer>('add_printer', { name, holderName });
 }
 export function renamePrinter(printerId: string, name: string) {
   return invoke('rename_printer', { printerId, name });

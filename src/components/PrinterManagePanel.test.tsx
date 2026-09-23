@@ -56,8 +56,8 @@ function renderPanel(printers: Printer[] = [X1C]) {
 describe('suggestUnitName', () => {
   it('letters AMS units and numbers repeated other units', () => {
     expect(suggestUnitName(X1C, 'bambu_ams', 'AMS')).toBe('AMS C');
-    expect(suggestUnitName(X1C, 'external', 'Extern')).toBe('Extern');
-    expect(suggestUnitName({ ...X1C, units: [...X1C.units, { ...X1C.units[0], id: 'e', kind: 'external' }] }, 'external', 'Extern')).toBe('Extern 2');
+    expect(suggestUnitName(X1C, 'external', 'Spulenhalter')).toBe('Spulenhalter');
+    expect(suggestUnitName({ ...X1C, units: [...X1C.units, { ...X1C.units[0], id: 'e', kind: 'external' }] }, 'external', 'Spulenhalter')).toBe('Spulenhalter 2');
   });
 });
 
@@ -66,7 +66,7 @@ describe('PrinterManagePanel', () => {
     const { a } = renderPanel([]);
     fireEvent.change(screen.getByPlaceholderText('Name, z. B. X1C'), { target: { value: 'X1C' } });
     fireEvent.click(screen.getByRole('button', { name: 'Drucker hinzufügen' }));
-    await waitFor(() => expect(a.addPrinter).toHaveBeenCalledWith('X1C'));
+    await waitFor(() => expect(a.addPrinter).toHaveBeenCalledWith('X1C', 'Spulenhalter'));
   });
 
   it('adds a unit from a template with a suggested name', () => {
@@ -74,6 +74,13 @@ describe('PrinterManagePanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /Einheit hinzufügen/ }));
     fireEvent.click(screen.getByRole('menuitem', { name: /Bambu AMS\s*4/ }));
     expect(a.addUnit).toHaveBeenCalledWith('p1', 'bambu_ams', 'AMS C', null);
+  });
+
+  it('names a spool holder added from the template menu in the UI language', () => {
+    const { a } = renderPanel();
+    fireEvent.click(screen.getByRole('button', { name: /Einheit hinzufügen/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Spulenhalter/ }));
+    expect(a.addUnit).toHaveBeenCalledWith('p1', 'external', 'Spulenhalter', null);
   });
 
   it('adds a custom unit with its own slot count', async () => {

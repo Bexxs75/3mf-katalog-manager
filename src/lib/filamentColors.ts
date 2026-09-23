@@ -28,6 +28,7 @@ export const UNIT_TEMPLATES: readonly UnitTemplate[] = [
   { kind: 'creality_cfs', slotCount: 4, defaultName: 'CFS' },
   { kind: 'prusa_mmu3', slotCount: 5, defaultName: 'MMU3' },
   { kind: 'anycubic_ace', slotCount: 4, defaultName: 'ACE Pro' },
-  { kind: 'external', slotCount: 1, defaultName: 'Extern' },
+  // Name kommt uebersetzt aus i18n (printersKindExternal), siehe PrinterManagePanel.
+  { kind: 'external', slotCount: 1, defaultName: '' },
   { kind: 'custom', slotCount: null, defaultName: '' },
 ];

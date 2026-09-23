@@ -45,7 +45,7 @@ export function usePrinters() {
     printers,
     error,
     refresh,
-    addPrinter: (name: string) => run(printersApi.addPrinter(name)),
+    addPrinter: (name: string, holderName: string) => run(printersApi.addPrinter(name, holderName)),
     renamePrinter: (printerId: string, name: string) => run(printersApi.renamePrinter(printerId, name)),
     deletePrinter: (printerId: string) => run(printersApi.deletePrinter(printerId)),
     addUnit: (printerId: string, kind: UnitKind, name: string, slotCount: number | null) =>

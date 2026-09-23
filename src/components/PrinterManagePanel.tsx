@@ -5,7 +5,7 @@ import { UNIT_TEMPLATES } from '../lib/filamentColors';
 import type { FilamentSpool, MaterialUnit, Printer, UnitKind } from '../types';
 
 export interface PrinterActions {
-  addPrinter: (name: string) => Promise<unknown>;
+  addPrinter: (name: string, holderName: string) => Promise<unknown>;
   renamePrinter: (printerId: string, name: string) => Promise<unknown>;
   deletePrinter: (printerId: string) => Promise<number>;
   addUnit: (printerId: string, kind: UnitKind, name: string, slotCount: number | null) => Promise<unknown>;
@@ -132,7 +132,7 @@ export function PrinterManagePanel({ open, printers, spools, error, actions, onC
   const submitNewPrinter = () => {
     const name = newPrinter.trim();
     if (!name) return;
-    actions.addPrinter(name).then(() => setNewPrinter(''), () => {});
+    actions.addPrinter(name, t('printersKindExternal')).then(() => setNewPrinter(''), () => {});
   };
 
   const submitRename = () => {
@@ -165,7 +165,8 @@ export function PrinterManagePanel({ open, printers, spools, error, actions, onC
       setCustomFor({ printerId: printer.id, name: '', slots: 4 });
       return;
     }
-    actions.addUnit(printer.id, kind, suggestUnitName(printer, kind, template.defaultName), null).catch(() => {});
+    const defaultName = kind === 'external' ? t('printersKindExternal') : template.defaultName;
+    actions.addUnit(printer.id, kind, suggestUnitName(printer, kind, defaultName), null).catch(() => {});
   };
 
   const changeCustomSlots = (unit: MaterialUnit, slots: number) => {

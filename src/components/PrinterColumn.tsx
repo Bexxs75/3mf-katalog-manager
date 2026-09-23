@@ -177,6 +177,15 @@ export function PrinterColumn({
           <div key={printer.id} className="flex flex-col gap-2">
             <div className="text-[12.5px] font-bold">{printer.name}</div>
             {printer.units.map(renderUnit)}
+            {printer.units.length === 0 && (
+              <button
+                type="button"
+                onClick={onManage}
+                className="self-start text-left text-[11.5px] text-[var(--ink-3)] hover:text-[var(--accent)] cursor-pointer"
+              >
+                {t('printersNoUnitsHint')}
+              </button>
+            )}
           </div>
         ))
       )}
