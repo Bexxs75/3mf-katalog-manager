@@ -9,8 +9,8 @@ Geprüft wurden der neue Entpack-Pfad und alle bestehenden Stellen, an denen Inh
 Archiven landen: Datenbank, Oberfläche, Parser, Dateisystem. Alle Maßnahmen sind umgesetzt und im
 Umsetzungsplan mit Tests hinterlegt.
 
-Kontrollzuordnung sinngemäß nach **ISO/IEC 27001:2022 Anhang A** bzw. **ISO/IEC 27002:2022** — als
-Orientierung, nicht als zertifizierte Konformitätsaussage.
+Befunde werden nach CWE klassifiziert; der Schweregrad folgt derselben Skala (Hoch/Mittel/Niedrig)
+wie in den früheren Reviews.
 
 ---
 
@@ -113,8 +113,9 @@ Aufruf ist aber fester, nicht optionaler Bestandteil der Extraktionspipeline
 Ohne Gegenmaßnahme hätte `extract_archives` jede vom Frontend übergebene Datei mit Archiv-Endung
 entpackt und auf Wunsch gelöscht — relevant bei einer künftigen XSS-Lücke im Frontend.
 
-**Maßnahme:** Serverseitige Freigabeliste `PendingArchives`: `register()` trägt beim `inspect`-Schritt
-nur die tatsächlich per Dateidialog oder Drag & Drop hereingekommenen Pfade ein, `take_authorized()`
+**Maßnahme:** Serverseitige Freigabeliste `PendingArchives`: `register()` wird direkt beim Import
+(`import_files`/`import_dropped` in `src-tauri/src/commands/files.rs`) aufgerufen und trägt nur die
+tatsächlich per Dateidialog oder Drag & Drop hereingekommenen Pfade ein, `take_authorized()`
 entfernt jeden Pfad beim Verbrauch aus der Liste (einmalige Verwendung). `extract_archives` entpackt
 ausschließlich, was `take_authorized` als autorisiert zurückgibt; alles andere landet mit Fehler
 „Archiv wurde nicht über den Import freigegeben" im Ergebnis.
@@ -288,8 +289,8 @@ Reviewed were the new extraction path and every existing spot where content from
 archives ends up: database, UI, parsers, filesystem. All mitigations are implemented and backed by
 tests in the implementation plan.
 
-Control mapping loosely follows **ISO/IEC 27001:2022 Annex A** / **ISO/IEC 27002:2022** — as
-orientation, not a certified conformance statement.
+Findings are classified by CWE; severity follows the same scale (High/Medium/Low) as the earlier
+reviews.
 
 ---
 
@@ -393,8 +394,9 @@ Without a countermeasure, `extract_archives` would have extracted — and, on re
 file with an archive extension supplied by the frontend, which matters given a future XSS
 vulnerability in the frontend.
 
-**Mitigation:** Server-side allowlist `PendingArchives`: `register()` records only the paths that
-actually came in via the file dialog or drag & drop, at the `inspect` step. `take_authorized()`
+**Mitigation:** Server-side allowlist `PendingArchives`: `register()` is called directly during
+import (`import_files`/`import_dropped` in `src-tauri/src/commands/files.rs`) and records only the
+paths that actually came in via the file dialog or drag & drop. `take_authorized()`
 removes each path from the list when it's consumed (single use). `extract_archives` extracts
 exclusively what `take_authorized` returns as authorized; everything else comes back in the result
 with the error "archive was not authorized via import".

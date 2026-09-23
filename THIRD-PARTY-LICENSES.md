@@ -67,5 +67,5 @@ Alexander Roshal (RARLAB) statisch einbindet.
 
 ## Weitere Entpack-Bibliotheken
 
-`tar`, `flate2`, `bzip2`, `lzma-rust2`, `ruzstd` und `sevenz-rust2` stehen
+`zip`, `tar`, `flate2`, `bzip2`, `lzma-rust2`, `ruzstd` und `sevenz-rust2` stehen
 unter MIT- bzw. Apache-2.0-Lizenzen.
