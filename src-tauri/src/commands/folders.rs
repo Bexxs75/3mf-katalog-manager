@@ -277,12 +277,21 @@ pub fn move_folder(state: State<AppState>, folder_id: String, new_parent_id: Opt
 // Muss aus demselben Grund wie pick_slicer_executable async sein:
 // blocking_pick_folder() blockiert den aufrufenden Thread, bis der native
 // Ordner-Dialog geschlossen wird.
+//
+// Der gewaehlte Ordner wird als erlaubtes Entpack-Ziel vermerkt (siehe
+// `ApprovedTargets`): nur Katalogordner und hier gewaehlte Ordner nimmt
+// `extract_archives` an.
 #[tauri::command]
-pub async fn pick_folder_path(app: tauri::AppHandle) -> CmdResult<Option<String>> {
+pub async fn pick_folder_path(
+    app: tauri::AppHandle,
+    approved: State<'_, ApprovedTargets>,
+) -> CmdResult<Option<String>> {
     let picked = app.dialog().file().blocking_pick_folder();
-    Ok(picked
-        .and_then(|p| p.into_path().ok())
-        .map(|p| p.to_string_lossy().to_string()))
+    let path = picked.and_then(|p| p.into_path().ok());
+    if let Some(path) = &path {
+        approved.approve(path);
+    }
+    Ok(path.map(|p| p.to_string_lossy().to_string()))
 }
 /// Kernlogik von `register_catalog_base_dir`, getrennt von der
 /// `State<AppState>`-Huelle gehalten, damit sie in Tests direkt gegen eine

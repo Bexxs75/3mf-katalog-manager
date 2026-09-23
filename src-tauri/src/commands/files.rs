@@ -1171,8 +1171,9 @@ pub fn import_dropped(
 ) -> CmdResult<ImportResultDto> {
     let (models, archives) = split_archives(paths.into_iter().map(PathBuf::from).collect());
     let mut result = import_many(&state, models)?;
-    pending.register(&archives);
-    result.pending_archives = archives;
+    // Archive nur, wenn das Backend den Drop selbst beobachtet hat (siehe
+    // `on_window_event` in lib.rs); andere Archiv-Pfade werden ignoriert.
+    result.pending_archives = pending.claim_dropped(archives);
     Ok(result)
 }
 /// Oeffnet einen Pfad im systemeigenen Datei-Manager. Bewusst ohne eigene

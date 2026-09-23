@@ -95,7 +95,22 @@ pub fn run() {
                 sensitive_dirs,
             });
             app.manage(commands::PendingArchives::default());
+            app.manage(commands::ApprovedTargets::default());
             Ok(())
+        })
+        // Drops vom Backend selbst beobachten: `import_dropped` gibt nur
+        // Archive frei, die hier gesehen wurden (sonst koennte ein
+        // kompromittiertes Frontend beliebige Pfade als "Drop" melden).
+        // Annahme zur Reihenfolge: Dieser Handler laeuft synchron im selben
+        // Event-Loop-Durchlauf, in dem Tauri das Drop-Ereignis an das
+        // Frontend weiterreicht - der darauf folgende IPC-Aufruf
+        // `import_dropped` wird daher immer erst danach verarbeitet.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                if let Some(pending) = window.try_state::<commands::PendingArchives>() {
+                    pending.observe_drop(paths);
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::list_files,
