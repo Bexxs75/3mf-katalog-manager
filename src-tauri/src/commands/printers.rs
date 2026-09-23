@@ -79,14 +79,25 @@ pub fn list_printers(state: State<AppState>) -> CmdResult<Vec<PrinterDto>> {
     list_printers_with_conn(&conn)
 }
 
-#[tauri::command]
-pub fn add_printer(state: State<AppState>, name: String) -> CmdResult<PrinterDto> {
-    let mut conn = lock_db(&state)?;
-    let id = in_tx(&mut conn, |tx| p::insert_printer(tx, &name))?;
-    list_printers_with_conn(&conn)?
+pub(crate) fn add_printer_with_conn(conn: &mut Connection, name: &str, holder_name: &str) -> CmdResult<PrinterDto> {
+    // Jeder Drucker bekommt direkt einen Spulenhalter (1 Fach), damit auch
+    // Drucker ohne AMS sofort eine Spule aufnehmen koennen. Beides in einer
+    // Transaktion: scheitert der Spulenhalter, entsteht auch kein Drucker.
+    let id = in_tx(conn, |tx| {
+        let id = p::insert_printer(tx, name)?;
+        p::insert_unit(tx, id, "external", holder_name, None)?;
+        Ok(id)
+    })?;
+    list_printers_with_conn(conn)?
         .into_iter()
         .find(|printer| printer.id == id.to_string())
         .ok_or_else(|| "Drucker nach dem Anlegen nicht gefunden".to_string())
+}
+
+#[tauri::command]
+pub fn add_printer(state: State<AppState>, name: String, holder_name: String) -> CmdResult<PrinterDto> {
+    let mut conn = lock_db(&state)?;
+    add_printer_with_conn(&mut conn, &name, &holder_name)
 }
 
 #[tauri::command]
@@ -256,5 +267,27 @@ mod tests {
             .query_row("SELECT location FROM filament_spools WHERE id = ?1", [first.parse::<i64>().unwrap()], |r| r.get(0))
             .unwrap();
         assert_eq!(location, Some("Regal 1".into()));
+    }
+
+    #[test]
+    fn a_new_printer_gets_a_spool_holder_with_one_slot() {
+        let mut conn = db::connect_in_memory().unwrap();
+
+        let printer = add_printer_with_conn(&mut conn, "A1 mini", "Spulenhalter").unwrap();
+
+        assert_eq!(printer.name, "A1 mini");
+        assert_eq!(printer.units.len(), 1);
+        let holder = &printer.units[0];
+        assert_eq!((holder.name.as_str(), holder.kind.as_str(), holder.slot_count), ("Spulenhalter", "external", 1));
+        assert_eq!(holder.bambu_ams_index, None);
+    }
+
+    #[test]
+    fn a_printer_is_not_created_when_its_spool_holder_is_rejected() {
+        let mut conn = db::connect_in_memory().unwrap();
+
+        assert!(add_printer_with_conn(&mut conn, "A1 mini", "   ").is_err());
+
+        assert!(list_printers_with_conn(&conn).unwrap().is_empty(), "keine halbe Anlage");
     }
 }
