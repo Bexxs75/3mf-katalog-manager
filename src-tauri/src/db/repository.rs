@@ -117,6 +117,25 @@ pub fn ensure_folder_path(conn: &Connection, import_root: &Path, dir: &Path) -> 
     Ok(parent_id.expect("mindestens import_root wurde oben eingefuegt"))
 }
 
+/// Haengt einen bisher als Wurzel angelegten Ordner (`parent_id IS NULL`)
+/// unter den katalogisierten Ordner, dessen `path` dem Elternverzeichnis
+/// entspricht. Noetig nach dem Entpacken eines Archivs: `ensure_folder_path`
+/// legt das Import-Wurzelverzeichnis immer als Wurzel an, auch wenn sein
+/// Elternverzeichnis bereits ein Katalogordner ist. Ohne katalogisierten
+/// Elternordner oder bei bereits eingehaengten Ordnern passiert nichts.
+pub fn attach_folder_to_parent_by_path(conn: &Connection, dir: &Path) -> Result<(), DbError> {
+    let Some(parent) = dir.parent() else {
+        return Ok(());
+    };
+    conn.execute(
+        "UPDATE folders SET parent_id = (SELECT id FROM folders WHERE path = ?2)
+         WHERE path = ?1 AND parent_id IS NULL
+           AND EXISTS (SELECT 1 FROM folders WHERE path = ?2)",
+        params![dir.to_string_lossy().to_string(), parent.to_string_lossy().to_string()],
+    )?;
+    Ok(())
+}
+
 fn folder_name(path: &Path) -> String {
     path.file_name()
         .map(|n| n.to_string_lossy().to_string())
@@ -270,7 +289,15 @@ pub fn update_paths_under_folder(
     drop(stmt);
 
     for (child_id, child_old_path) in children {
-        let suffix = &child_old_path[old_path.len()..];
+        // Kein Byte-Slicing: passt die Hierarchie nicht zu den Pfaden (z.B.
+        // aus einem praeparierten Backup), wuerde das paniken - und mit
+        // panic = "abort" die ganze App beenden. Stattdessen Fehler, die
+        // aufrufende Transaktion wird zurueckgerollt.
+        let Some(suffix) = child_old_path.strip_prefix(old_path) else {
+            return Err(DbError::Other(format!(
+                "Ordner {child_id} ({child_old_path}) liegt nicht unter {old_path}"
+            )));
+        };
         let child_new_path = format!("{new_path}{suffix}");
         update_paths_under_folder(conn, child_id, &child_old_path, &child_new_path)?;
     }
@@ -1388,6 +1415,54 @@ mod tests {
         assert_eq!(folders.len(), 1);
         assert_eq!(folders[0].id, id);
         assert_eq!(folders[0].name, "Tabletop");
+    }
+
+    #[test]
+    fn attach_folder_to_parent_by_path_moves_a_root_folder_under_its_catalogued_parent() {
+        let conn = connect_in_memory().unwrap();
+        let parent = Path::new("/tmp/Katalog/Tabletop");
+        let child = Path::new("/tmp/Katalog/Tabletop/Drache");
+        let parent_id = ensure_folder_path(&conn, parent, parent).unwrap();
+        let child_id = ensure_folder_path(&conn, child, child).unwrap();
+
+        attach_folder_to_parent_by_path(&conn, child).unwrap();
+
+        let folders = list_folders(&conn).unwrap();
+        let child_row = folders.iter().find(|f| f.id == child_id).unwrap();
+        assert_eq!(child_row.parent_id, Some(parent_id));
+    }
+
+    #[test]
+    fn attach_folder_to_parent_by_path_is_a_no_op_without_catalogued_parent_or_for_nested_folders() {
+        let conn = connect_in_memory().unwrap();
+        let lonely = Path::new("/tmp/Irgendwo/Drache");
+        let lonely_id = ensure_folder_path(&conn, lonely, lonely).unwrap();
+        attach_folder_to_parent_by_path(&conn, lonely).unwrap();
+        let folders = list_folders(&conn).unwrap();
+        assert_eq!(folders.iter().find(|f| f.id == lonely_id).unwrap().parent_id, None);
+
+        // Bereits eingehaengte Ordner werden nicht umgehaengt.
+        let root = Path::new("/tmp/A");
+        let nested = Path::new("/tmp/A/B");
+        let nested_id = ensure_folder_path(&conn, root, nested).unwrap();
+        let parent_before = list_folders(&conn).unwrap().into_iter().find(|f| f.id == nested_id).unwrap().parent_id;
+        attach_folder_to_parent_by_path(&conn, nested).unwrap();
+        let parent_after = list_folders(&conn).unwrap().into_iter().find(|f| f.id == nested_id).unwrap().parent_id;
+        assert!(parent_before.is_some());
+        assert_eq!(parent_before, parent_after);
+    }
+
+    #[test]
+    fn update_paths_under_folder_rejects_a_child_whose_path_is_not_below_the_parent() {
+        let conn = connect_in_memory().unwrap();
+        let parent = Path::new("/tmp/Katalog/A");
+        let parent_id = ensure_folder_path(&conn, parent, parent).unwrap();
+        // Inkonsistente Hierarchie wie aus einem praeparierten Backup:
+        // parent_id zeigt auf A, der Pfad liegt aber woanders.
+        insert_folder_with_parent(&conn, "fremd", Some(parent_id), "/x").unwrap();
+
+        let result = update_paths_under_folder(&conn, parent_id, "/tmp/Katalog/A", "/tmp/Katalog/B");
+        assert!(result.is_err());
     }
 
     #[test]
