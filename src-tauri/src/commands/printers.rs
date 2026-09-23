@@ -225,7 +225,7 @@ mod tests {
         let x1c = p::insert_printer(&conn, "X1C").unwrap();
         let a1 = p::insert_printer(&conn, "A1").unwrap();
         p::insert_unit(&conn, x1c, "bambu_ams", "AMS A", None).unwrap();
-        p::insert_unit(&conn, x1c, "external", "Extern", None).unwrap();
+        p::insert_unit(&conn, x1c, "external", "Spulenhalter", None).unwrap();
         p::insert_unit(&conn, a1, "bambu_ams_lite", "AMS lite", None).unwrap();
 
         let printers = list_printers_with_conn(&conn).unwrap();
@@ -233,7 +233,7 @@ mod tests {
         assert_eq!(printers.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), vec!["X1C", "A1"]);
         assert_eq!(
             printers[0].units.iter().map(|u| (u.name.as_str(), u.slot_count)).collect::<Vec<_>>(),
-            vec![("AMS A", 4), ("Extern", 1)]
+            vec![("AMS A", 4), ("Spulenhalter", 1)]
         );
         assert_eq!(printers[1].units[0].bambu_ams_index, Some(0), "Nummern zaehlen pro Drucker");
         assert_eq!(printers[0].units[0].printer_id, x1c.to_string());

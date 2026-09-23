@@ -314,7 +314,7 @@ eingelegte Spulen erscheinen dann in einer eigenen Spalte rechts neben dem Lager
    Prusa MMU3, Anycubic ACE Pro, Spulenhalter) oder als "Eigene…" mit frei wählbarer
    Fachanzahl. Die Reihenfolge der Einheiten änderst du per Griff. Hat ein Drucker gar keine
    Fächer mehr (z. B. nach dem Löschen des Spulenhalters), zeigt seine Spalte den Hinweis
-   "Keine Fächer – über „Drucker verwalten" hinzufügen"; ein Klick darauf öffnet direkt die
+   "Keine Fächer – über „Drucker verwalten“ hinzufügen"; ein Klick darauf öffnet direkt die
    Drucker-Verwaltung.
 2. Eine Spule einlegen: Karte oder Zeile aus dem Lager auf ein Fach ziehen — oder das Fach
    anklicken und eine Spule aus der Liste auswählen. Ist das Fach bereits belegt, kehrt die
