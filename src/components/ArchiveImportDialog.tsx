@@ -111,6 +111,8 @@ export function ArchiveImportDialog({ archives, defaultTargetDir, onCancel, onDo
     if (!targetDir) return;
     setRunning(true);
     setError(null);
+    // Anzeigen eines vorherigen Versuchs nicht stehen lassen.
+    setProgress({});
     try {
       const requests = extractable.map((a) => ({
         path: a.path,

@@ -79,6 +79,27 @@ describe('useFileImport', () => {
     expect(result.current.pendingArchives).toEqual(infos);
   });
 
+  it('appends archives from a second import to the open dialog, without duplicates', async () => {
+    const a = { path: '/dl/a.zip', status: 'ok' };
+    const b = { path: '/dl/b.zip', status: 'ok' };
+    let call = 0;
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === 'import_files') {
+        call += 1;
+        const pending = call === 1 ? ['/dl/a.zip'] : ['/dl/a.zip', '/dl/b.zip'];
+        return Promise.resolve({ imported: [], duplicateCount: 0, pendingArchives: pending });
+      }
+      // Beim zweiten Mal liefert inspect fuer a.zip einen neuen Stand - der
+      // bereits angezeigte Eintrag bleibt trotzdem unveraendert.
+      if (cmd === 'inspect_archives') return Promise.resolve(call === 1 ? [a] : [{ ...a, status: 'unreadable' }, b]);
+      return Promise.resolve(undefined);
+    });
+    const { result } = setup();
+    await act(async () => result.current.importFiles());
+    await act(async () => result.current.importFiles());
+    expect(result.current.pendingArchives).toEqual([a, b]);
+  });
+
   it('does not open the archive dialog when nothing is pending', async () => {
     vi.mocked(invoke).mockResolvedValue({ imported: [], duplicateCount: 0, pendingArchives: [] });
     const { result } = setup();

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { ArchiveImportDialog } from './ArchiveImportDialog';
 import type { ArchiveInfo } from '../types';
@@ -103,6 +104,29 @@ describe('ArchiveImportDialog', () => {
         { path: '/dl/Drache.7z', folderName: 'Drache', onConflict: 'merge', expectedSize: 500, expectedModifiedUnixMs: 42 },
       ],
     });
+  });
+
+  it('clears stale progress labels when extraction is started again after an error', async () => {
+    let emit: ((event: { payload: { path: string; state: string } }) => void) | undefined;
+    vi.mocked(listen).mockImplementation(((_name: string, handler: typeof emit) => {
+      emit = handler;
+      return Promise.resolve(() => {});
+    }) as never);
+    mockBackend({});
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === 'archive_target_conflicts') return Promise.resolve([false, false]);
+      if (cmd === 'extract_archives') return Promise.reject('Zielordner wurde nicht ueber die App ausgewaehlt');
+      return Promise.resolve(undefined);
+    });
+    renderDialog('/katalog');
+    await waitFor(() => expect(emit).toBeDefined());
+    act(() => emit!({ payload: { path: '/dl/Benchy.zip', state: 'failed' } }));
+    expect(screen.getByText('fehlgeschlagen')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Entpacken (2)' }));
+    await waitFor(() => expect(screen.getByText('Zielordner wurde nicht ueber die App ausgewaehlt')).toBeInTheDocument());
+    expect(screen.queryByText('fehlgeschlagen')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Entpacken (2)' })).toBeEnabled();
   });
 
   it('cancel closes without calling the backend', () => {

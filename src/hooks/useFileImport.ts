@@ -62,7 +62,14 @@ export function useFileImport({
     const paths = result.pendingArchives ?? [];
     if (paths.length === 0) return;
     try {
-      setPendingArchives(await importExportApi.inspectArchives(paths));
+      const inspected = await importExportApi.inspectArchives(paths);
+      // Ein weiterer Import bei offenem Dialog ergaenzt die Liste, statt sie
+      // zu ersetzen - bereits angezeigte Archive bleiben unveraendert.
+      setPendingArchives((prev) => {
+        if (!prev) return inspected;
+        const known = new Set(prev.map((a) => a.path));
+        return [...prev, ...inspected.filter((a) => !known.has(a.path))];
+      });
     } catch (e) {
       setImportBanner({
         imported: result.imported.length,
