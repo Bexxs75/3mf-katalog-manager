@@ -16,6 +16,26 @@ function dragTo(result: ReturnType<typeof setup>['result'], target: Parameters<R
 }
 
 describe('useSpoolDragAndDrop', () => {
+  it('prevents the press from starting a text selection', () => {
+    const { result } = setup();
+    const preventDefault = vi.fn();
+    act(() => result.current.startDrag('s1', null, { clientX: 0, clientY: 0, button: 0, preventDefault }));
+    expect(preventDefault).toHaveBeenCalled();
+  });
+
+  it('clears an existing text selection once the drag really starts', () => {
+    const { result } = setup();
+    const removeAllRanges = vi.fn();
+    const spy = vi.spyOn(window, 'getSelection').mockReturnValue({ removeAllRanges } as unknown as Selection);
+    act(() => result.current.startDrag('s1', null, { clientX: 0, clientY: 0, button: 0 }));
+    act(() => { fireEvent.mouseMove(document, { clientX: 1, clientY: 1 }); });
+    expect(removeAllRanges).not.toHaveBeenCalled();
+    act(() => { fireEvent.mouseMove(document, { clientX: 50, clientY: 50 }); });
+    expect(removeAllRanges).toHaveBeenCalled();
+    spy.mockRestore();
+    act(() => { fireEvent.mouseUp(document); });
+  });
+
   it('loads a storage spool into the slot it is dropped on', () => {
     const { result, onLoad } = setup();
     act(() => result.current.startDrag('s1', null, { clientX: 0, clientY: 0, button: 0 }));

@@ -44,8 +44,15 @@ export function useSpoolDragAndDrop({ onLoad, onUnload }: Handlers) {
   }, []);
 
   const startDrag = useCallback(
-    (spoolId: string, fromSlot: DragSource['fromSlot'], event: { clientX: number; clientY: number; button?: number }) => {
+    (
+      spoolId: string,
+      fromSlot: DragSource['fromSlot'],
+      event: { clientX: number; clientY: number; button?: number; preventDefault?: () => void },
+    ) => {
       if (event.button !== undefined && event.button !== 0) return;
+      // Sonst startet der Mausdruck eine Textauswahl, die beim Ziehen ueber die
+      // ganze Seite aufgezogen wird (select-none greift erst nach der Schwelle).
+      event.preventDefault?.();
       origin.current = { x: event.clientX, y: event.clientY };
       setSource({ spoolId, fromSlot });
     },
@@ -58,6 +65,7 @@ export function useSpoolDragAndDrop({ onLoad, onUnload }: Handlers) {
       const start = origin.current;
       if (!start) return;
       if (!active && Math.hypot(e.clientX - start.x, e.clientY - start.y) < DRAG_THRESHOLD_PX) return;
+      if (!active) window.getSelection()?.removeAllRanges();
       setActive(true);
       setPointer({ x: e.clientX, y: e.clientY });
     };
