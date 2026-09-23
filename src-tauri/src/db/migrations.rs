@@ -64,6 +64,32 @@ const MIGRATIONS: &[MigrationStep] = &[
     // additiver Schritt statt einer Aenderung an add_stp_to_file_type_check,
     // das bereits ausgeliefert wurde.
     MigrationStep::Rebuild(add_obj_to_file_type_check),
+    // Drucker & AMS-Faecher im Filament-Lager (Spec 2026-09-23): Drucker,
+    // ihre Mehrfarbeinheiten und pro Spule Fach, Stammplatz und Farbwert.
+    // Der eindeutige Index steht bewusst nur hier und nicht in schema.sql -
+    // schema.sql laeuft auch auf alten Datenbanken VOR den Migrationen, in
+    // denen die Spalten dann noch fehlen.
+    MigrationStep::Simple(|c| exec(c, "CREATE TABLE IF NOT EXISTS printers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        position INTEGER NOT NULL DEFAULT 0
+    )")),
+    MigrationStep::Simple(|c| exec(c, "CREATE TABLE IF NOT EXISTS material_units (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        printer_id INTEGER NOT NULL REFERENCES printers(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('bambu_ams', 'bambu_ams_lite', 'bambu_ams_ht', 'creality_cfs',
+                                           'prusa_mmu3', 'anycubic_ace', 'external', 'custom')),
+        slot_count INTEGER NOT NULL CHECK (slot_count BETWEEN 1 AND 16),
+        bambu_ams_index INTEGER CHECK (bambu_ams_index BETWEEN 0 AND 3),
+        position INTEGER NOT NULL DEFAULT 0
+    )")),
+    MigrationStep::Simple(|c| exec(c, "ALTER TABLE filament_spools ADD COLUMN unit_id INTEGER REFERENCES material_units(id) ON DELETE SET NULL")),
+    MigrationStep::Simple(|c| exec(c, "ALTER TABLE filament_spools ADD COLUMN slot_index INTEGER")),
+    MigrationStep::Simple(|c| exec(c, "ALTER TABLE filament_spools ADD COLUMN home_location TEXT")),
+    MigrationStep::Simple(|c| exec(c, "ALTER TABLE filament_spools ADD COLUMN color_hex TEXT")),
+    MigrationStep::Simple(|c| exec(c, "CREATE UNIQUE INDEX IF NOT EXISTS idx_filament_spools_slot ON filament_spools (unit_id, slot_index) WHERE unit_id IS NOT NULL")),
+    MigrationStep::Simple(super::printers::backfill_color_hex),
 ];
 
 /// Aktuelle Ziel-Schemaversion - leitet sich direkt aus der Anzahl der

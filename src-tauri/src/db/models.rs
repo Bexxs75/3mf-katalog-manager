@@ -175,6 +175,11 @@ pub struct FilamentSpoolRecord {
     pub remaining_weight_g: i64,
     pub price: Option<f64>,
     pub image_png: Option<Vec<u8>>,
+    pub color_hex: Option<String>,
+    /// Stammplatz, solange die Spule in einem Fach steckt (sonst `None`).
+    pub home_location: Option<String>,
+    pub unit_id: Option<i64>,
+    pub slot_index: Option<i64>,
 }
 
 #[derive(Debug, Clone)]
@@ -188,6 +193,7 @@ pub struct NewFilamentSpool {
     pub remaining_weight_g: i64,
     pub price: Option<f64>,
     pub image_png: Option<Vec<u8>>,
+    pub color_hex: Option<String>,
 }
 
 #[derive(Debug, Clone)]

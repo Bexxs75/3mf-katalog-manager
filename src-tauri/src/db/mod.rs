@@ -2,6 +2,7 @@ pub mod error;
 pub mod models;
 mod repository;
 mod collections;
+pub mod printers;
 mod migrations;
 
 // CURRENT_SCHEMA_VERSION wird ausserhalb von migrations.rs nirgends
@@ -403,6 +404,7 @@ mod tests {
             remaining_weight_g: 620,
             price: Some(19.99),
             image_png: None,
+            color_hex: Some("#1a1a1a".to_string()),
         }
     }
 

@@ -95,7 +95,28 @@ CREATE TABLE IF NOT EXISTS filament_spools (
     remaining_weight_g INTEGER NOT NULL,
     price REAL,
     image_png BLOB,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    unit_id INTEGER REFERENCES material_units(id) ON DELETE SET NULL,
+    slot_index INTEGER,
+    home_location TEXT,
+    color_hex TEXT
+);
+
+CREATE TABLE IF NOT EXISTS printers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS material_units (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    printer_id INTEGER NOT NULL REFERENCES printers(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('bambu_ams', 'bambu_ams_lite', 'bambu_ams_ht', 'creality_cfs',
+                                       'prusa_mmu3', 'anycubic_ace', 'external', 'custom')),
+    slot_count INTEGER NOT NULL CHECK (slot_count BETWEEN 1 AND 16),
+    bambu_ams_index INTEGER CHECK (bambu_ams_index BETWEEN 0 AND 3),
+    position INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS saved_filters (
