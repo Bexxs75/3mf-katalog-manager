@@ -9,6 +9,7 @@
 // `to_dto` fuer mehrere Domaenen gemeinsam braucht) und re-exportiert alle
 // Untermodule, damit `lib.rs`s `generate_handler!`-Liste und jeder externe
 // Aufrufer weiterhin unveraendert `commands::<name>` verwenden kann.
+mod archives;
 mod backup;
 mod collections;
 mod files;
@@ -18,6 +19,7 @@ mod security;
 mod slicers;
 mod trash;
 
+pub use archives::*;
 pub use backup::*;
 pub use collections::*;
 pub use files::*;

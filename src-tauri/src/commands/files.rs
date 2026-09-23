@@ -1017,7 +1017,7 @@ fn import_many(state: &State<AppState>, roots: Vec<PathBuf>) -> CmdResult<Import
 /// Core of [`import_many`], parameterized over a plain [`Connection`] instead
 /// of a Tauri-managed `State` so it is directly unit-testable (a
 /// `State<AppState>` cannot be constructed outside of a running Tauri app).
-fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) -> CmdResult<ImportResultDto> {
+pub(crate) fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) -> CmdResult<ImportResultDto> {
     let mut seen = HashSet::new();
     let mut imported = Vec::new();
     let mut duplicate_count = 0i64;
