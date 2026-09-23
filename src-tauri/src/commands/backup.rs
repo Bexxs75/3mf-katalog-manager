@@ -203,20 +203,56 @@ fn validate_expected_schema(conn: &Connection) -> Result<(), String> {
 /// Prueft die Drucker/AMS-Fach-Invarianten direkt ueber den Dateninhalt
 /// (siehe Kommentar am Aufrufer in `validate_catalog_db_bytes` fuer die
 /// Begruendung, warum sich das nicht auf deklarierte CHECK-Constraints/
-/// Fremdschluessel der importierten Datenbank verlassen kann): jede
-/// Einheit muss einen bekannten Typ, eine Fachanzahl zwischen 1 und 16 und
-/// (falls gesetzt) eine Bambu-AMS-Nummer zwischen 0 und 3 haben und einem
+/// Fremdschluessel der importierten Datenbank verlassen kann): jeder Drucker
+/// und jede Einheit muessen alle Pflichtwerte gesetzt haben, jede Einheit
+/// muss einen bekannten Typ, eine Fachanzahl zwischen 1 und 16 und (falls
+/// gesetzt) eine Bambu-AMS-Nummer zwischen 0 und 3 haben und einem
 /// existierenden Drucker gehoeren; jede Spule mit Fach muss auf eine
 /// existierende Einheit und ein innerhalb deren Fachanzahl liegendes Fach
 /// zeigen, `unit_id`/`slot_index` muessen gemeinsam gesetzt oder gemeinsam
 /// leer sein, kein Fach darf doppelt belegt sein, und ein gesetzter
 /// Farbwert muss dem `#rrggbb`-Format entsprechen.
+///
+/// Nachtrag (Re-Review): jede Bedingung unten muss `IS NULL` fuer die
+/// beteiligten Pflichtspalten EXPLIZIT abdecken. SQLite behandelt einen
+/// Vergleich mit NULL (auch `<>`, `NOT IN`, `NOT BETWEEN`) als UNKNOWN, nicht
+/// als TRUE - eine Zeile mit z.B. `kind = NULL` erfuellt `kind NOT IN (...)`
+/// deshalb NICHT und wuerde ohne die `... IS NULL OR`-Zusaetze unten
+/// unentdeckt durchrutschen. Eine so eingeschleuste Zeile bricht danach bei
+/// jedem App-Start `db::printers::list_printers`/`list_units` (liest
+/// `name`/`kind`/`slot_count`/... als nicht-optionale Rust-Typen, siehe deren
+/// `PrinterRecord`/`MaterialUnitRecord`), nicht erst beim naechsten Zugriff
+/// auf das Filament-Lager.
 fn validate_printer_invariants(conn: &Connection) -> Result<(), String> {
+    // `printers`: `db::printers::list_printers` liest `id`/`name` als
+    // nicht-optionale Felder von `PrinterRecord`; `position` wird zwar nicht
+    // typed ausgelesen, ist aber laut Schema `NOT NULL DEFAULT 0` und wird
+    // hier aus Konsistenz mitgeprueft.
+    let bad_printers: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM printers WHERE id IS NULL OR name IS NULL OR position IS NULL",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if bad_printers > 0 {
+        return Err("Katalog-Datenbank enthaelt Drucker mit fehlendem Pflichtwert".to_string());
+    }
+
+    // `material_units`: `db::printers::list_units` liest `id`/`printer_id`/
+    // `name`/`kind`/`slot_count` als nicht-optionale Felder von
+    // `MaterialUnitRecord` (nur `bambu_ams_index` ist dort `Option<i64>`).
     let bad_units: i64 = conn
         .query_row(
             &format!(
                 "SELECT COUNT(*) FROM material_units
-                 WHERE kind NOT IN ({})
+                 WHERE id IS NULL
+                    OR printer_id IS NULL
+                    OR name IS NULL
+                    OR kind IS NULL
+                    OR slot_count IS NULL
+                    OR position IS NULL
+                    OR kind NOT IN ({})
                     OR slot_count NOT BETWEEN 1 AND 16
                     OR (bambu_ams_index IS NOT NULL AND bambu_ams_index NOT BETWEEN 0 AND 3)
                     OR printer_id NOT IN (SELECT id FROM printers)",
@@ -228,11 +264,17 @@ fn validate_printer_invariants(conn: &Connection) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     if bad_units > 0 {
         return Err(
-            "Katalog-Datenbank enthaelt ungueltige Drucker-Einheiten (Typ, Fachanzahl, AMS-Nummer oder Drucker-Zuordnung)"
+            "Katalog-Datenbank enthaelt ungueltige Drucker-Einheiten (fehlender Pflichtwert, Typ, Fachanzahl, AMS-Nummer oder Drucker-Zuordnung)"
                 .to_string(),
         );
     }
 
+    // `COALESCE(..., 0)` in der `slot_index`-Bereichspruefung: faellt die
+    // Unterabfrage (falsches `unit_id` ODER eine - eigentlich schon oben
+    // abgelehnte - Einheit mit NULL `slot_count`) auf NULL zurueck, macht
+    // `slot_index >= NULL` (UNKNOWN) die Zeile sonst unsichtbar; mit
+    // `COALESCE(..., 0)` schlaegt JEDER nicht-negative `slot_index` fehl,
+    // wie es fuer eine Einheit ohne (gueltige) Fachanzahl korrekt ist.
     let bad_spools: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM filament_spools
@@ -240,7 +282,9 @@ fn validate_printer_invariants(conn: &Connection) -> Result<(), String> {
                 OR (unit_id IS NOT NULL AND unit_id NOT IN (SELECT id FROM material_units))
                 OR (unit_id IS NOT NULL AND (
                     slot_index < 0
-                    OR slot_index >= (SELECT slot_count FROM material_units m WHERE m.id = filament_spools.unit_id)
+                    OR slot_index >= COALESCE(
+                        (SELECT slot_count FROM material_units m WHERE m.id = filament_spools.unit_id), 0
+                    )
                 ))",
             [],
             |row| row.get(0),
@@ -1160,6 +1204,133 @@ mod tests {
         let bytes = std::fs::read(&tmp_path).unwrap();
         let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
         assert!(result.is_err(), "eine Einheit mit nicht existierendem 'printer_id' muss abgelehnt werden");
+    }
+    /// Baut `material_units` OHNE NOT NULL/CHECK-Constraints neu auf - eine
+    /// regulaer (per `crate::db::connect`) angelegte Tabelle wuerde ein
+    /// `INSERT ... VALUES (NULL, ...)` fuer eine NOT-NULL-Spalte bereits
+    /// selbst ablehnen, BEVOR `validate_printer_invariants` ueberhaupt zum
+    /// Zug kommt. Das bildet exakt das Angriffsszenario aus Finding 1 nach:
+    /// eine importierte DB mit eigenem, restriktionslosem `CREATE TABLE`.
+    fn drop_material_units_constraints(conn: &Connection) {
+        conn.execute_batch(
+            "DROP TABLE material_units;
+             CREATE TABLE material_units (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                printer_id INTEGER,
+                name TEXT,
+                kind TEXT,
+                slot_count INTEGER,
+                bambu_ams_index INTEGER,
+                position INTEGER
+             );",
+        )
+        .unwrap();
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_material_unit_with_a_null_kind() {
+        // Re-Review-Nachtrag: `kind NOT IN (...)` ist bei `kind = NULL` in
+        // SQLite UNKNOWN (nicht TRUE) - ohne eine explizite `kind IS NULL`-
+        // Bedingung wuerde diese Zeile durchrutschen und danach bei jedem
+        // App-Start `db::printers::list_units` (liest `kind` als
+        // nicht-optionales `String`) zum Absturz bringen.
+        let tmp_path = unique_test_db_path("validate_db_unit_null_kind");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            let printer_id = crate::db::printers::insert_printer(&conn, "X1C").unwrap();
+            drop_material_units_constraints(&conn);
+            conn.execute(
+                "INSERT INTO material_units (printer_id, name, kind, slot_count, bambu_ams_index, position)
+                 VALUES (?1, 'Kaputt', NULL, 4, NULL, 0)",
+                params![printer_id],
+            )
+            .unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        assert!(result.is_err(), "eine Einheit mit NULL 'kind' muss abgelehnt werden");
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_material_unit_with_a_null_slot_count() {
+        let tmp_path = unique_test_db_path("validate_db_unit_null_slot_count");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            let printer_id = crate::db::printers::insert_printer(&conn, "X1C").unwrap();
+            drop_material_units_constraints(&conn);
+            conn.execute(
+                "INSERT INTO material_units (printer_id, name, kind, slot_count, bambu_ams_index, position)
+                 VALUES (?1, 'Kaputt', 'custom', NULL, NULL, 0)",
+                params![printer_id],
+            )
+            .unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        assert!(result.is_err(), "eine Einheit mit NULL 'slot_count' muss abgelehnt werden");
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_material_unit_with_a_null_printer_id() {
+        let tmp_path = unique_test_db_path("validate_db_unit_null_printer_id");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            drop_material_units_constraints(&conn);
+            conn.execute(
+                "INSERT INTO material_units (printer_id, name, kind, slot_count, bambu_ams_index, position)
+                 VALUES (NULL, 'Kaputt', 'custom', 4, NULL, 0)",
+                [],
+            )
+            .unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        assert!(result.is_err(), "eine Einheit mit NULL 'printer_id' muss abgelehnt werden");
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_printer_with_a_null_name() {
+        let tmp_path = unique_test_db_path("validate_db_printer_null_name");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            conn.execute_batch(
+                "DROP TABLE printers;
+                 CREATE TABLE printers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT,
+                    position INTEGER
+                 );",
+            )
+            .unwrap();
+            conn.execute("INSERT INTO printers (name, position) VALUES (NULL, 0)", []).unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        assert!(result.is_err(), "ein Drucker mit NULL 'name' muss abgelehnt werden");
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_spool_in_a_slot_of_a_unit_with_a_null_slot_count() {
+        // Re-Review-Nachtrag: deckt zusaetzlich die `COALESCE`-Absicherung
+        // in der `bad_spools`-Abfrage ab, unabhaengig davon, dass diese Zeile
+        // schon vorher durch `bad_units` abgelehnt wird.
+        let tmp_path = unique_test_db_path("validate_db_spool_slot_in_null_slot_count_unit");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            let printer_id = crate::db::printers::insert_printer(&conn, "X1C").unwrap();
+            drop_material_units_constraints(&conn);
+            conn.execute(
+                "INSERT INTO material_units (printer_id, name, kind, slot_count, bambu_ams_index, position)
+                 VALUES (?1, 'Kaputt', 'custom', NULL, NULL, 0)",
+                params![printer_id],
+            )
+            .unwrap();
+            let unit_id = conn.last_insert_rowid();
+            conn.execute(
+                "INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at, unit_id, slot_index)
+                 VALUES ('PLA', 1.75, 1000, 1000, '2026-01-01T00:00:00Z', ?1, 999)",
+                params![unit_id],
+            )
+            .unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        assert!(result.is_err(), "eine Spule mit slot_index 999 in einer Einheit ohne gueltige Fachanzahl muss abgelehnt werden");
     }
     #[test]
     fn validate_catalog_db_bytes_rejects_a_spool_with_slot_index_set_but_no_unit() {
