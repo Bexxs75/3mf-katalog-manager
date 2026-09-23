@@ -212,6 +212,12 @@ impl<'g> Extractor<'g> {
         self.stats.written_files += 1;
     }
 
+    /// Zaehlt einen Eintrag, den ein Format-Adapter nach `prepare` doch nicht
+    /// schreiben darf (z.B. RAR-Referenz-Eintrag ohne Daten).
+    pub(super) fn skip_unsafe(&mut self) {
+        self.stats.unsafe_skipped += 1;
+    }
+
     /// Prueft, ob `size` Bytes innerhalb des verbleibenden Budgets passen.
     /// Wird VOR dem Schreiben aufgerufen, um Overrun zu verhindern.
     pub(super) fn ensure_budget_for(&self, size: u64) -> Result<(), ArchiveError> {

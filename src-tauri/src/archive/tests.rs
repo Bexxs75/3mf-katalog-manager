@@ -590,13 +590,11 @@ fn inspect_reports_encrypted_7z_and_rar_and_unsupported_multipart_rar() {
 }
 
 #[test]
-fn rar_budget_check_prevents_oversized_entry_and_cleans_staging() {
+fn rar_budget_check_prevents_oversized_entry() {
     let dir = unique_dir("rar_budget");
     let dest = dir.join("ziel");
     // rar5-solid.rar contains a .gitignore (18 bytes), but budget is only 10 bytes
     let result = extract_archive(&fixture("rar5-solid.rar"), ArchiveFormat::Rar, &dest, false, 10, &allow_all);
     assert!(matches!(result, Err(ArchiveError::LimitExceeded)));
     assert!(!dest.exists(), "Destination should not be created on budget exceeded");
-
-    // Note: staging directories should be cleaned up automatically by StagingDir's Drop impl.
 }

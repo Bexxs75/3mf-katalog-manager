@@ -1,15 +1,22 @@
 //! Format-Adapter: pro Format "auflisten" und "an den Extractor streamen".
 //! Die Adapter kennen keine Zielpfade und schreiben nie selbst.
-//! RAR wird in ein privates Staging-Verzeichnis entpackt, um die
-//! create_new(true)-Invariante einzuhalten (TOCTOU-Schutz).
+//!
+//! RAR wird im UnRAR-TESTMODUS in den Speicher gelesen und dann wie alle
+//! anderen Formate ueber den Extractor geschrieben. Warum nicht UnRAR selbst
+//! entpacken lassen: Das `unrar`-Crate uebergibt beim Entpacken (unter Linux
+//! auch bei `extract_with_base`) nur einen vollstaendigen Zielnamen
+//! (DestName). Damit schaltet UnRAR seine eigene Pfadpruefung ab, und
+//! RAR5-Eintraege vom Typ Datei-Kopie/Hardlink loesen ihre Quelle relativ zum
+//! Arbeitsverzeichnis des Prozesses auf - ein praepariertes Archiv koennte so
+//! beliebige lokale Dateien in den Katalog kopieren. Im Testmodus legt UnRAR
+//! keinerlei Dateien, Links oder Kopien an; solche Referenz-Eintraege liefern
+//! dort einfach keine Daten und werden uebersprungen.
 
-use std::fs::{self, File, DirBuilder};
+use std::fs::File;
 use std::cell::Cell;
 use std::io::{BufReader, Read};
 use std::rc::Rc;
-use std::path::{Path, PathBuf};
-use std::env;
-use std::process;
+use std::path::Path;
 
 use super::extract::Extractor;
 use super::{ArchiveError, ArchiveFormat, EntryKind, EntryMeta, MAX_ENTRIES, MAX_UNPACKED_BYTES};
@@ -20,53 +27,8 @@ const S_IFLNK: u32 = 0o120000;
 const WIN_REPARSE_POINT: u32 = 0x400;
 /// 7-Zip-Konvention: Bit 15 gesetzt = obere 16 Bit enthalten den Unix-Modus.
 const SEVENZ_UNIX_EXTENSION: u32 = 0x8000;
-
-/// Privater Staging-Ordner fuer RAR-Eintraege (RAII, loescht sich selbst).
-/// Verhindert TOCTOU zwischen Existenzpruefung und Schreiben durch Unrar.
-struct StagingDir {
-    path: PathBuf,
-}
-
-impl StagingDir {
-    fn new() -> Result<Self, ArchiveError> {
-        let pid = process::id();
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .subsec_nanos();
-
-        for attempt in 0..16 {
-            let name = format!("3mfkm-rar-{}-{}-{}", pid, nanos, attempt);
-            let path = env::temp_dir().join(name);
-
-            let mut builder = DirBuilder::new();
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::DirBuilderExt;
-                builder.mode(0o700);
-            }
-
-            match builder.create(&path) {
-                Ok(_) => return Ok(StagingDir { path }),
-                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
-                Err(e) => return Err(ArchiveError::Io(e)),
-            }
-        }
-        Err(ArchiveError::Io(std::io::Error::other(
-            "Konnte keinen eindeutigen Staging-Ordner anlegen",
-        )))
-    }
-
-    fn path(&self) -> &Path {
-        &self.path
-    }
-}
-
-impl Drop for StagingDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.path);
-    }
-}
+/// Obergrenze fuer EINEN RAR-Eintrag: er wird komplett im Speicher gehalten.
+pub(super) const MAX_RAR_ENTRY_BYTES: u64 = 1024 * 1024 * 1024;
 
 fn unreadable(e: impl std::fmt::Display) -> ArchiveError {
     ArchiveError::Unreadable(e.to_string())
@@ -433,35 +395,44 @@ fn list_rar(path: &Path) -> Result<Vec<EntryMeta>, ArchiveError> {
     Ok(out)
 }
 
-/// Entpackt RAR-Eintraege ueber einen privaten Staging-Ordner, um die
-/// create_new(true)-Invariante des Extractors einzuhalten (TOCTOU-Schutz).
-/// Prueft Budget VOR dem Schreiben.
+#[derive(Debug, PartialEq, Eq)]
+enum RarEntryDecision {
+    /// Groesse passt - Eintrag darf in den Speicher gelesen werden.
+    Read,
+    /// Gelesene Daten entsprechen dem Header - schreiben.
+    Write,
+    /// Datenlaenge weicht vom Header ab (typisch: Datei-Kopie/Hardlink-
+    /// Eintraege, die im Testmodus keine Daten liefern) - nicht schreiben.
+    Skip,
+}
+
+/// `actual == None`: Pruefung VOR dem Lesen, `Some(len)`: danach.
+fn rar_entry_decision(declared: u64, actual: Option<usize>) -> Result<RarEntryDecision, ArchiveError> {
+    match actual {
+        None if declared > MAX_RAR_ENTRY_BYTES => Err(ArchiveError::LimitExceeded),
+        None => Ok(RarEntryDecision::Read),
+        Some(len) if len as u64 == declared => Ok(RarEntryDecision::Write),
+        Some(_) => Ok(RarEntryDecision::Skip),
+    }
+}
+
+/// Liest jeden RAR-Eintrag im Testmodus in den Speicher (siehe Modul-Doku)
+/// und schreibt ihn ueber den Extractor. Budget und Eintragsgroesse werden
+/// VOR dem Lesen geprueft.
 fn extract_rar(path: &Path, ex: &mut Extractor<'_>) -> Result<(), ArchiveError> {
     reject_multipart(path)?;
-    let staging = StagingDir::new()?;
     let mut archive = unrar::Archive::new(path).open_for_processing().map_err(rar_error)?;
     while let Some(header) = archive.read_header().map_err(rar_error)? {
         let meta = rar_meta(header.entry());
         archive = match ex.prepare(&meta)? {
             Some(target) => {
-                // Budget vor dem Schreiben pruefen
+                rar_entry_decision(meta.size, None)?;
                 ex.ensure_budget_for(meta.size)?;
-
-                // In den Staging-Ordner entpacken (Unrar schreibt die Datei selbst)
-                let staged = staging.path().join("entry");
-                let next = header.extract_to(&staged).map_err(rar_error)?;
-
-                // Aus dem Staging-Ordner in das Ziel kopieren (mit create_new-Schutz)
-                let result = (|| -> Result<(), ArchiveError> {
-                    let mut file = File::open(&staged).map_err(ArchiveError::Io)?;
-                    ex.write_from(&target, &mut file)?;
-                    Ok(())
-                })();
-
-                // Staging-Eintrag immer aufraumen, auch bei Fehler
-                let _ = fs::remove_file(&staged);
-                result?;
-
+                let (data, next) = header.read().map_err(rar_error)?;
+                match rar_entry_decision(meta.size, Some(data.len()))? {
+                    RarEntryDecision::Write => ex.write_from(&target, &mut &data[..])?,
+                    _ => ex.skip_unsafe(),
+                }
                 next
             }
             None => header.skip().map_err(rar_error)?,
@@ -487,6 +458,21 @@ mod tests {
         let mut out = Vec::new();
         assert!(too_much.read_to_end(&mut out).is_err());
         assert!(exceeded.get());
+    }
+
+    #[test]
+    fn rar_entry_decision_limits_size_and_skips_entries_without_matching_data() {
+        // Vor dem Lesen: zu grosse Eintraege werden gar nicht erst in den Speicher geholt.
+        assert!(matches!(
+            rar_entry_decision(MAX_RAR_ENTRY_BYTES + 1, None),
+            Err(ArchiveError::LimitExceeded)
+        ));
+        assert!(matches!(rar_entry_decision(MAX_RAR_ENTRY_BYTES, None), Ok(RarEntryDecision::Read)));
+        // Nach dem Lesen: Datei-Kopie/Hardlink-Eintraege haben eine Header-Groesse, aber keine Daten.
+        assert!(matches!(rar_entry_decision(18, Some(0)), Ok(RarEntryDecision::Skip)));
+        assert!(matches!(rar_entry_decision(18, Some(17)), Ok(RarEntryDecision::Skip)));
+        assert!(matches!(rar_entry_decision(18, Some(18)), Ok(RarEntryDecision::Write)));
+        assert!(matches!(rar_entry_decision(0, Some(0)), Ok(RarEntryDecision::Write)));
     }
 
     #[test]
