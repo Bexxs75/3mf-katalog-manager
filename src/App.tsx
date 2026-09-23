@@ -16,7 +16,7 @@ import { useTheme } from './hooks/useTheme';
 import { useUiDensity } from './hooks/UiDensityContext';
 import { useSlicers } from './hooks/useSlicers';
 import { useDisplayPreference } from './hooks/useDisplayPreference';
-import { useCatalogBaseDir } from './hooks/useCatalogBaseDir';
+import { useCatalogBaseDir, useRegisterCatalogBaseDirOnStartup } from './hooks/useCatalogBaseDir';
 import { useCatalogStore } from './hooks/useCatalogStore';
 import { useCatalogFilters } from './hooks/useCatalogFilters';
 import { useCollections } from './hooks/useCollections';
@@ -38,6 +38,7 @@ export default function App() {
   const { catalogBaseDir, setCatalogBaseDir, setupSeen, markSetupSeen } = useCatalogBaseDir();
 
   const store = useCatalogStore();
+  useRegisterCatalogBaseDirOnStartup(catalogBaseDir, store.refreshFolders);
   const filters = useCatalogFilters(store.models, store.folders);
   const collections = useCollections();
   const dragDrop = useFolderDragAndDrop(store.models, store.folders, {

@@ -1,4 +1,5 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 
 const BASE_DIR_KEY = '3mf-katalog-base-dir';
 const SETUP_SEEN_KEY = '3mf-katalog-setup-seen';
@@ -29,4 +30,23 @@ export function useCatalogBaseDir() {
   }, []);
 
   return { catalogBaseDir, setCatalogBaseDir, setupSeen, markSetupSeen };
+}
+
+/**
+ * Einmal beim Start: stellt sicher, dass ein gesetzter Speicherort eine
+ * Ordnerzeile im Katalog hat. Sonst lehnt das Backend ihn als Entpack-Ziel
+ * ab (z.B. nach "Bestehenden Ordner uebernehmen" ohne Modelle). Das Backend
+ * legt dabei bewusst keinen inzwischen geloeschten Ordner neu an.
+ */
+export function useRegisterCatalogBaseDirOnStartup(catalogBaseDir: string | null, refreshFolders: () => void) {
+  const done = useRef(false);
+  useEffect(() => {
+    if (done.current || !catalogBaseDir) return;
+    done.current = true;
+    invoke<unknown>('register_existing_catalog_base_dir', { path: catalogBaseDir })
+      .then((folder) => {
+        if (folder) refreshFolders();
+      })
+      .catch((e) => console.error('[catalog-base-dir] Registrieren beim Start fehlgeschlagen:', e));
+  }, [catalogBaseDir, refreshFolders]);
 }

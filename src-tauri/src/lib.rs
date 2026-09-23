@@ -125,6 +125,7 @@ pub fn run() {
             commands::move_folder,
             commands::pick_folder_path,
             commands::register_catalog_base_dir,
+            commands::register_existing_catalog_base_dir,
             commands::open_in_file_manager,
             commands::list_tag_counts,
             commands::list_creators,

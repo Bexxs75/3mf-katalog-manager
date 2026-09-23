@@ -327,9 +327,42 @@ pub fn register_catalog_base_dir(state: State<AppState>, path: String) -> CmdRes
     register_catalog_base_dir_with_conn(&conn, &dir)
 }
 
+/// Wie `register_catalog_base_dir_with_conn`, aber legt NIE ein Verzeichnis
+/// an: Beim App-Start soll ein inzwischen geloeschter Speicherort nicht
+/// stillschweigend neu entstehen. `None`, wenn der Ordner fehlt.
+fn register_existing_catalog_base_dir_with_conn(conn: &Connection, dir: &Path) -> CmdResult<Option<FolderDto>> {
+    if !dir.is_dir() {
+        return Ok(None);
+    }
+    register_catalog_base_dir_with_conn(conn, dir).map(Some)
+}
+/// Beim Start aufgerufen: stellt sicher, dass ein gesetzter Speicherort
+/// eine Ordnerzeile hat (u.a. damit er als Entpack-Ziel gilt, siehe
+/// `target_is_approved`).
+#[tauri::command]
+pub fn register_existing_catalog_base_dir(state: State<AppState>, path: String) -> CmdResult<Option<FolderDto>> {
+    let conn = lock_db(&state)?;
+    register_existing_catalog_base_dir_with_conn(&conn, Path::new(&path))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn startup_registration_of_the_base_dir_never_creates_a_missing_directory() {
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let missing = unique_test_dir("register-existing-missing");
+        std::fs::remove_dir_all(&missing).unwrap();
+        assert!(register_existing_catalog_base_dir_with_conn(&conn, &missing).unwrap().is_none());
+        assert!(!missing.exists(), "Startaufruf darf keinen Ordner anlegen");
+
+        let existing = unique_test_dir("register-existing-present");
+        let first = register_existing_catalog_base_dir_with_conn(&conn, &existing).unwrap().unwrap();
+        let second = register_existing_catalog_base_dir_with_conn(&conn, &existing).unwrap().unwrap();
+        assert_eq!(first.id, second.id, "idempotent");
+        assert_eq!(first.path, existing.to_string_lossy());
+    }
 
     #[test]
     fn register_catalog_base_dir_creates_missing_directory_and_is_idempotent() {
