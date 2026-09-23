@@ -51,3 +51,21 @@ OCCT Teil des Abhängigkeitsgraphen oder Programmpakets. Eine zukünftige
 kommerzielle Fassung kann diese Variante verwenden; die Anwendung verhält sich
 für STEP-Dateien dann wie Version 0.11.0 (Katalogisierung ohne Vorschau und ohne
 automatisch ausgelesene STEP-Metadaten).
+
+## UnRAR
+
+Verwendet zum Entpacken von RAR-Archiven, angebunden über das Rust-Crate
+`unrar` (MIT OR Apache-2.0), das den offiziellen UnRAR-Quellcode von
+Alexander Roshal (RARLAB) statisch einbindet.
+
+- **Lizenz:** UnRAR-Lizenz (Freeware, keine OSI-Open-Source-Lizenz). Der
+  UnRAR-Quellcode darf frei verwendet und weitergegeben werden, jedoch
+  **nicht** dazu, den RAR-Kompressionsalgorithmus nachzubilden. Diese
+  Anwendung entpackt RAR-Archive ausschließlich, sie erzeugt keine.
+- **Quellcode/Lizenztext:** <https://www.rarlab.com/rar_add.htm>, im Crate
+  `unrar_sys` unter `vendor/unrar/license.txt`.
+
+## Weitere Entpack-Bibliotheken
+
+`tar`, `flate2`, `bzip2`, `lzma-rust2`, `ruzstd` und `sevenz-rust2` stehen
+unter MIT- bzw. Apache-2.0-Lizenzen.

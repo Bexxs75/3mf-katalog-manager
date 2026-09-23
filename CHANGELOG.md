@@ -7,6 +7,12 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
+### Added
+
+- Archive direkt entpacken: Über „Importieren → Dateien…" oder per Drag & Drop hinzugefügte Archive (`.zip`, `.7z`, `.rar` (RAR4/RAR5), `.tar`, `.tar.gz`/`.tgz`, `.tar.bz2`/`.tbz2`, `.tar.xz`/`.txz`, `.tar.zst`/`.tzst`) öffnen einen Dialog: Zielordner (vorbelegt mit dem aktiven Katalogordner bzw. dem Speicherort), je Archiv ein eigener Unterordner, bei bereits vorhandenem Ordner Wahl zwischen „neuer nummerierter Ordner" und „zusammenführen" (vorhandene Dateien bleiben unverändert), optional Löschen der Original-Archive nach erfolgreichem Entpacken (standardmäßig aus). Enthaltene Bilder, Anleitungen und Lizenzdateien bleiben neben den Modellen erhalten. Der Ordner-Import entpackt weiterhin nichts.
+- Schutz beim Entpacken: Einträge mit `..`, absoluten Pfaden oder Laufwerksbuchstaben (Zip-Slip) sowie Symlinks werden übersprungen. Ausführbare Dateien, Skripte und Verknüpfungen (`.exe`, `.bat`, `.ps1`, `.lnk`, `.url`, `desktop.ini`, `.desktop`, `.app` u. a.) werden grundsätzlich nicht entpackt. Kein Eintrag darf in geschützte Systembereiche schreiben, entpackte Dateien sind nie ausführbar, und die „Aus dem Internet"-Markierung des Downloads (Windows Mark-of-the-Web, macOS-Quarantäne) wird auf die entpackten Dateien übertragen. Pro Archiv gelten höchstens 2 GB entpackt und 10 000 Einträge (auch gegen gefälschte Größenangaben), dazu Speichergrenzen für die Dekompression. Entpackt werden nur Archive, die tatsächlich über den Import hereingekommen sind. Bei einem Fehler wird alles bereits Entpackte wieder entfernt.
+- Robustheit: Das Umbenennen oder Verschieben von Ordnern beendet die App bei einer inkonsistenten Ordnerhierarchie (z. B. aus einem präparierten Katalog-Backup) nicht mehr abrupt, sondern bricht mit einer Fehlermeldung ab.
+
 ## [0.12.0] - 2026-09-21
 
 ### Added
@@ -341,6 +347,9 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Added
 
+- Extract archives directly: archives added via "Import → Files…" or drag & drop (`.zip`, `.7z`, `.rar` (RAR4/RAR5), `.tar`, `.tar.gz`/`.tgz`, `.tar.bz2`/`.tbz2`, `.tar.xz`/`.txz`, `.tar.zst`/`.tzst`) open a dialog: target folder (prefilled with the active catalog folder or the storage location), one subfolder per archive, a choice between "new numbered folder" and "merge" when the folder already exists (existing files stay unchanged), and optional deletion of the original archives after a successful extraction (off by default). Images, instructions, and license files inside stay next to the models. Folder import still does not extract anything.
+- Extraction safety: entries with `..`, absolute paths, or drive letters (zip slip) and symlinks are skipped. Executables, scripts, and shortcuts (`.exe`, `.bat`, `.ps1`, `.lnk`, `.url`, `desktop.ini`, `.desktop`, `.app`, etc.) are never extracted. No entry may write into protected system locations, extracted files are never executable, and the download's "from the internet" mark (Windows Mark-of-the-Web, macOS quarantine) is carried over to the extracted files. Each archive is limited to 2 GB unpacked and 10,000 entries (also against forged size headers), plus memory limits for decompression. Only archives that actually came in through the import are extracted. On any error everything already extracted is removed again.
+- Robustness: renaming or moving folders no longer terminates the app abruptly on an inconsistent folder hierarchy (e.g. from a crafted catalog backup); it aborts with an error message instead.
 - The Linux build now creates a real 3D preview for STEP files (`.stp`/`.step`) and derives dimensions, volume, and body count through Open CASCADE Technology (OCCT). Assemblies are deliberately displayed as one combined preview mesh; STEP remains unavailable for direct slicer launch. Invalid or oversized STEP files stay cataloged without automatically derived metadata instead of aborting the import.
 - The OCCT integration is the only default Cargo feature (`step-preview`) and can be removed completely with `--no-default-features`. The official Windows and macOS packages initially use this OCCT-free variant until replaceable DLL/universal-dylib packaging has been verified.
 - Open CASCADE is dynamically linked under LGPL-2.1 with the Open CASCADE exception. Full license texts, source information, and the documented `opencascade-sys` compatibility fork are included with the source or application bundle; see `THIRD-PARTY-LICENSES.md`.

@@ -114,6 +114,36 @@ und die App schlägt passende Hashtags vor, die du danach frei bearbeiten kannst
 Importiert die App eine Datei, die inhaltlich bereits im Katalog vorhanden ist (exakter
 Duplikat-Abgleich per Inhalts-Hash), wird das erkannt, statt sie ein zweites Mal anzulegen.
 
+### Archive entpacken
+
+Importierst oder ziehst du ein einzelnes Archiv (`.zip`, `.7z`, `.rar`, `.tar`, `.tar.gz`/`.tgz`,
+`.tar.bz2`, `.tar.xz`, `.tar.zst`) statt einzelner Modell-Dateien, öffnet sich vor dem eigentlichen
+Import ein Dialog:
+
+- **Zielordner** — vorbelegt mit dem aktiven Katalogordner bzw. deinem Speicherort, über
+  „Ändern…" frei wählbar. Jedes Archiv bekommt darin einen eigenen Unterordner.
+- **Konflikt, wenn der Unterordner schon existiert** — du wählst zwischen „Neuen Ordner mit
+  Nummer anlegen" und „Zusammenführen" (vorhandene Dateien bleiben dabei unverändert, übersprungene
+  werden im Ergebnis gezählt).
+- **Checkbox „Archive nach dem Entpacken löschen"** — standardmäßig aus. Ist sie aktiv, wird das
+  Original-Archiv auch dann gelöscht, wenn beim Entpacken einzelne Einträge übersprungen wurden
+  (gesperrte Dateitypen, unsichere Einträge oder beim Zusammenführen bereits vorhandene Dateien) —
+  das Ergebnis-Banner nennt diese Zahlen. Brauchst du die übersprungenen Inhalte noch, lass die
+  Checkbox aus.
+- **Ausgegraute Zeilen** — Archive, die keine Modelle enthalten, beschädigt, verschlüsselt oder in
+  einem nicht unterstützten Format sind, werden in der Liste grau dargestellt und beim Entpacken
+  automatisch übersprungen.
+
+Schlägt bereits die Prüfung des Archivs fehl (z. B. weil es zwischenzeitlich verändert oder
+gelöscht wurde), öffnet sich kein Dialog — stattdessen zeigt das Ergebnis-Banner
+„<Name> fehlgeschlagen: <Fehler>" an, bis du es wegklickst.
+
+Aus Sicherheitsgründen werden Programme, Skripte und Verknüpfungen aus Archiven nie entpackt;
+passwortgeschützte und mehrteilige Archive werden erkannt, aber nicht entpackt. Der Ordner-Import
+entpackt weiterhin keine enthaltenen Archive.
+
+![Dialog zum Entpacken von Archiven](bilder/21-archiv-entpacken.png)
+
 ## Katalog durchsuchen und organisieren
 
 Oben rechts neben "Importieren" wechselst du zwischen drei Ansichten: **Raster** (Bildkacheln,
@@ -499,6 +529,34 @@ that you're free to edit afterwards.
 
 If the app imports a file that's already present in the catalog content-wise (an exact duplicate
 check via content hash), it's recognized instead of being added a second time.
+
+### Extracting archives
+
+If you import or drag in a single archive (`.zip`, `.7z`, `.rar`, `.tar`, `.tar.gz`/`.tgz`,
+`.tar.bz2`, `.tar.xz`, `.tar.zst`) instead of individual model files, a dialog opens before the
+actual import:
+
+- **Target folder** — prefilled with the active catalog folder or your storage location, freely
+  changeable via "Change…". Each archive gets its own subfolder inside it.
+- **Conflict when the subfolder already exists** — choose between "Create new numbered folder" and
+  "Merge" (existing files stay unchanged; skipped ones are counted in the result).
+- **"Delete archives after extraction" checkbox** — off by default. When enabled, the original
+  archive is deleted even if some entries were skipped during extraction (blocked file types,
+  unsafe entries, or files that already existed when merging) — the result banner reports these
+  counts. If you still need the skipped content, leave the checkbox off.
+- **Grayed-out rows** — archives with no models inside, that are corrupted, encrypted, or in an
+  unsupported format are shown grayed out in the list and are automatically skipped during
+  extraction.
+
+If checking the archive fails outright (for example because it was changed or deleted in the
+meantime), no dialog opens — instead the result banner shows "<name> failed: <error>" until you
+dismiss it.
+
+For security reasons, programs, scripts, and shortcuts inside archives are never extracted;
+password-protected and multi-part archives are detected but not extracted. Folder import still
+does not extract any archives it contains.
+
+![Dialog for extracting archives](bilder/21-archiv-entpacken.png)
 
 ## Browsing and organizing your catalog
 
