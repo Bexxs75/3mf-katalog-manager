@@ -42,4 +42,46 @@ describe('ColorPicker', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Kein Farbwert' }));
     expect(onChange).toHaveBeenCalledWith(null);
   });
+
+  it('exposes only one swatch in the tab order', () => {
+    renderPicker('#27ae60');
+    const swatches = screen.getAllByRole('radio');
+    const tabindexes = swatches.map((s) => s.getAttribute('tabindex'));
+    expect(tabindexes.filter((t) => t === '0')).toHaveLength(1);
+    expect(tabindexes.filter((t) => t === '-1')).toHaveLength(swatches.length - 1);
+  });
+
+  it('puts the first swatch in tab order when no color is selected', () => {
+    renderPicker(null);
+    const swatches = screen.getAllByRole('radio');
+    expect(swatches[0]).toHaveAttribute('tabindex', '0');
+  });
+
+  it('navigates right with ArrowRight and selects', () => {
+    const onChange = renderPicker('#c0392b');
+    const current = screen.getByRole('radio', { name: '#c0392b' });
+    fireEvent.keyDown(current, { key: 'ArrowRight' });
+    expect(onChange).toHaveBeenCalledWith('#e67e22');
+  });
+
+  it('navigates left with ArrowLeft and selects', () => {
+    const onChange = renderPicker('#e67e22');
+    const current = screen.getByRole('radio', { name: '#e67e22' });
+    fireEvent.keyDown(current, { key: 'ArrowLeft' });
+    expect(onChange).toHaveBeenCalledWith('#c0392b');
+  });
+
+  it('wraps around on ArrowRight at the end', () => {
+    const onChange = renderPicker('#e8eef0');
+    const current = screen.getByRole('radio', { name: '#e8eef0' });
+    fireEvent.keyDown(current, { key: 'ArrowRight' });
+    expect(onChange).toHaveBeenCalledWith('#1a1a1a');
+  });
+
+  it('wraps around on ArrowLeft at the start', () => {
+    const onChange = renderPicker('#1a1a1a');
+    const current = screen.getByRole('radio', { name: '#1a1a1a' });
+    fireEvent.keyDown(current, { key: 'ArrowLeft' });
+    expect(onChange).toHaveBeenCalledWith('#e8eef0');
+  });
 });
