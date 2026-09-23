@@ -149,6 +149,17 @@ fn rebuild_files_table_with_check(
     let result = (|| -> Result<(), DbError> {
         let tx = conn.transaction()?;
         if !already_migrated {
+            // Ueberbleibsel der in v0.5.0 entfernten Google-Drive-Anbindung:
+            // solche Zeilen verletzen den strengeren `origin`-CHECK der neuen
+            // Tabelle und liessen die Kopie unten scheitern (App startete
+            // nicht mehr, v0.12.1). Die Dateien liegen lokal im Cache, also
+            // als normale lokale Eintraege weiterfuehren statt sie zu
+            // verwerfen - in derselben Transaktion wie der Rebuild.
+            tx.execute(
+                "UPDATE files SET origin = 'local', sync_status = 'local-only', cloud_id = NULL
+                 WHERE origin <> 'local'",
+                [],
+            )?;
             tx.execute_batch(&format!(
                 "CREATE TABLE files_new (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -538,6 +549,65 @@ mod tests {
             .unwrap();
         assert!(index_names.contains(&"idx_files_folder_id".to_string()));
         assert!(index_names.contains(&"idx_files_file_type".to_string()));
+    }
+
+    /// Regressionstest v0.12.1: Kataloge aus der Zeit der Google-Drive-
+    /// Anbindung (bis v0.5.0) koennen noch Zeilen mit `origin = 'gdrive'`
+    /// enthalten. Der Rebuild legt `files` mit `CHECK (origin IN ('local'))`
+    /// neu an - vor dem Fix scheiterte `INSERT INTO files_new SELECT *` an
+    /// genau diesen Zeilen, die App brach im Setup-Hook ab und startete nie.
+    #[test]
+    fn migrating_a_catalog_with_leftover_cloud_rows_turns_them_into_local_rows() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE folders (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+             CREATE TABLE tags (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, color_hue INTEGER NOT NULL);
+             CREATE TABLE files (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 name TEXT NOT NULL,
+                 path TEXT NOT NULL UNIQUE,
+                 file_type TEXT NOT NULL CHECK (file_type IN ('3mf', 'stl')),
+                 folder_id INTEGER REFERENCES folders (id) ON DELETE SET NULL,
+                 origin TEXT NOT NULL DEFAULT 'local'
+                     CHECK (origin IN ('local', 'gdrive', 'onedrive', 'dropbox', 'proton')),
+                 sync_status TEXT NOT NULL DEFAULT 'local-only' CHECK (sync_status IN ('synced', 'outdated', 'local-only', 'cloud-only')),
+                 cloud_id TEXT,
+                 file_size_bytes INTEGER NOT NULL,
+                 dimension_x_mm REAL, dimension_y_mm REAL, dimension_z_mm REAL,
+                 volume_cm3 REAL, object_count INTEGER, thumbnail_png BLOB,
+                 imported_at TEXT NOT NULL, file_modified_at TEXT
+             );
+             CREATE TABLE file_tags (
+                 file_id INTEGER NOT NULL REFERENCES files (id) ON DELETE CASCADE,
+                 tag_id INTEGER NOT NULL REFERENCES tags (id) ON DELETE CASCADE,
+                 PRIMARY KEY (file_id, tag_id)
+             );
+
+             INSERT INTO tags (id, name, color_hue) VALUES (1, 'Deko', 30);
+             INSERT INTO files (id, name, path, file_type, origin, sync_status, cloud_id, file_size_bytes, imported_at)
+                 VALUES (1, 'cloud.3mf', '/home/u/.cache/app/abc.3mf', '3mf', 'gdrive', 'synced', 'abc', 100, '2020-01-01T00:00:00Z');
+             INSERT INTO files (id, name, path, file_type, file_size_bytes, imported_at)
+                 VALUES (2, 'lokal.stl', '/tmp/lokal.stl', 'stl', 200, '2020-01-01T00:00:00Z');
+             INSERT INTO file_tags (file_id, tag_id) VALUES (1, 1);",
+        )
+        .unwrap();
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        conn.pragma_update(None, "foreign_keys", true).unwrap();
+
+        run_migrations(&mut conn).expect("Migration darf an alten Cloud-Zeilen nicht scheitern");
+
+        let (origin, sync_status, cloud_id): (String, String, Option<String>) = conn
+            .query_row("SELECT origin, sync_status, cloud_id FROM files WHERE id = 1", [], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })
+            .unwrap();
+        assert_eq!(origin, "local");
+        assert_eq!(sync_status, "local-only");
+        assert_eq!(cloud_id, None);
+
+        let count = |sql: &str| -> i64 { conn.query_row(sql, [], |r| r.get(0)).unwrap() };
+        assert_eq!(count("SELECT COUNT(*) FROM files"), 2, "keine Zeile darf verloren gehen");
+        assert_eq!(count("SELECT COUNT(*) FROM file_tags WHERE file_id = 1"), 1, "Tags der ehemaligen Cloud-Datei bleiben erhalten");
     }
 
     #[test]

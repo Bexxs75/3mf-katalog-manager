@@ -7,6 +7,13 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-09-23
+
+### Fixed
+
+- Die App startete nicht mehr (Absturz direkt nach dem Öffnen, ohne Fehlermeldung), wenn der Katalog noch Einträge aus der früheren Google-Drive-Anbindung enthielt (entfernt in v0.5.0). Die mit v0.11.0 eingeführte Datenbank-Migration für STEP/OBJ baut die Dateitabelle mit einer strengeren Prüfung neu auf und scheiterte an diesen Einträgen („CHECK constraint failed: origin IN ('local')"). Solche Einträge werden jetzt während der Migration in normale lokale Einträge umgewandelt – Tags, Sammlungen und alle übrigen Daten bleiben erhalten. Der Katalog selbst war nie beschädigt: die fehlgeschlagene Migration wurde jeweils vollständig zurückgerollt.
+- Enthält außerdem die nach v0.12.0 bereits still in die Downloads eingespielten Build-Korrekturen: Linux-AppImage startet wieder auf Systemen mit neuerem Mesa (EGL-Absturz durch mitgebündelte, veraltete Wayland-/X11-Bibliotheken) und ein echtes Universal-DMG (Apple Silicon + Intel) für macOS.
+
 ## [0.12.0] - 2026-09-21
 
 ### Added
@@ -338,6 +345,13 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versio
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
 
 ## [Unreleased]
+
+## [0.12.1] - 2026-09-23
+
+### Fixed
+
+- The app no longer started (crashed right after launch, without an error message) when the catalog still contained entries from the former Google Drive integration (removed in v0.5.0). The STEP/OBJ database migration introduced in v0.11.0 rebuilds the file table with a stricter check and failed on these entries ("CHECK constraint failed: origin IN ('local')"). Such entries are now turned into regular local entries during the migration – tags, collections, and all other data are preserved. The catalog itself was never damaged: the failed migration was always rolled back completely.
+- Also includes the build fixes already delivered silently into the downloads after v0.12.0: the Linux AppImage starts again on systems with newer Mesa (EGL crash caused by bundled, outdated Wayland/X11 libraries), and a true universal DMG (Apple Silicon + Intel) for macOS.
 
 ### Added
 
