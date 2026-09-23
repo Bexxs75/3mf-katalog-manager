@@ -300,6 +300,28 @@ z. B. drei identische PLA-Spulen gleichzeitig an, erhält jede davon trotzdem ih
 unabhängig verfolgten Restbestand. Für Material, Hersteller und Lagerort schlägt die App beim
 Tippen bereits verwendete Werte vor (Autocomplete).
 
+### Drucker & AMS
+
+Neben dem Lager selbst lassen sich auch deine Drucker mit ihren Mehrfarbeinheiten abbilden —
+eingelegte Spulen erscheinen dann in einer eigenen Spalte rechts neben dem Lager.
+
+![Drucker & AMS-Fächer](bilder/22-drucker-ams.png)
+
+1. Über "Drucker verwalten" legst du einen Drucker an und fügst ihm über "+ Einheit hinzufügen"
+   Mehrfarbeinheiten hinzu — entweder aus Vorlagen (Bambu AMS/AMS lite/AMS HT, Creality CFS,
+   Prusa MMU3, Anycubic ACE Pro, externe Spule) oder als "Eigene…" mit frei wählbarer
+   Fachanzahl. Die Reihenfolge der Einheiten änderst du per Griff.
+2. Eine Spule einlegen: Karte oder Zeile aus dem Lager auf ein Fach ziehen — oder das Fach
+   anklicken und eine Spule aus der Liste auswählen. Ist das Fach bereits belegt, wird
+   getauscht.
+3. Herausnehmen: die Spule aus dem Fach zurück in den Lagerbereich ziehen, oder über das
+   Fach-Menü "Herausnehmen" wählen. Sie kehrt automatisch an ihren Stammplatz zurück; im
+   Hinweis dazu lässt sich der Ort noch ändern.
+4. Im Spulen-Formular gibt es jetzt einen **Farbwert** (Palette oder Hex-Eingabe) zusätzlich
+   zum Farbnamen; bei einer eingelegten Spule heißt das Lagerort-Feld "Stammplatz".
+5. Das Ganze ist reine manuelle Pflege — eine Live-Anbindung an den Drucker selbst ist geplant
+   (siehe [README](../../README.md#geplant)).
+
 ## Druckprotokoll
 
 Zusätzlich zum einfachen Gedruckt/Nicht-gedruckt-Status kannst du zu jedem Modell ein Protokoll
@@ -707,6 +729,27 @@ original/remaining weight, optionally a photo), you can also set a **quantity** 
 say, three identical PLA spools at once still gives each one its own, independently tracked
 remaining weight. For material, manufacturer, and storage location, the app suggests previously
 used values as you type (autocomplete).
+
+### Printers & AMS
+
+Besides the stock itself, you can also model your printers and their multi-material units —
+loaded spools then appear in their own column to the right of the stock.
+
+![Printers & AMS slots](bilder/22-drucker-ams.png)
+
+1. Use "Manage printers" to add a printer, then add multi-material units to it via "+ Add
+   unit" — either from templates (Bambu AMS/AMS lite/AMS HT, Creality CFS, Prusa MMU3,
+   Anycubic ACE Pro, external spool) or as "Custom…" with any slot count you like. Reorder
+   units by their drag handle.
+2. Loading a spool: drag a card or row from the stock onto a slot — or click the slot and pick
+   a spool from the list. If the slot is already occupied, the spools are swapped.
+3. Unloading: drag the spool from the slot back into the stock area, or choose "Unload" from
+   the slot's menu. It automatically returns to its home location; the notice lets you change
+   that location.
+4. The spool form now has a **color value** (palette or hex input) in addition to the color
+   name; for a loaded spool, the storage-location field is labeled "Home location".
+5. This is all manual upkeep — a live connection to the printer itself is planned (see the
+   [README](../../README.md#planned)).
 
 ## Print log
 
