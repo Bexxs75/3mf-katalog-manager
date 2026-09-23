@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatWeightG } from '../i18n/format';
@@ -7,6 +7,13 @@ import { filamentStockStatus } from '../lib/filamentStatus';
 import { FilamentDashboard } from './FilamentDashboard';
 import { FilamentTable } from './FilamentTable';
 import { FilamentSpoolForm } from './FilamentSpoolForm';
+import { PrinterColumn } from './PrinterColumn';
+import { PrinterManagePanel } from './PrinterManagePanel';
+import { SpoolToast } from './SpoolToast';
+import { usePrinters } from '../hooks/usePrinters';
+import { useSpoolDragAndDrop } from '../hooks/useSpoolDragAndDrop';
+import * as printersApi from '../lib/api/printers';
+import { isInStorage, spoolLabel } from '../lib/filamentSlots';
 
 type LayoutMode = 'dashboard' | 'list';
 type StatusFilter = 'low' | 'empty' | null;
@@ -22,6 +29,9 @@ export function FilamentView() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [editingSpool, setEditingSpool] = useState<FilamentSpool | null>(null);
+  const [manageOpen, setManageOpen] = useState(false);
+  const [toast, setToast] = useState<{ spoolId: string; label: string; location: string | null } | null>(null);
+  const printers = usePrinters();
 
   const refresh = () => {
     invoke<FilamentSpool[]>('list_filament_spools')
@@ -35,18 +45,23 @@ export function FilamentView() {
   useEffect(refresh, []);
 
   const knownLocations = useMemo(
-    () => [...new Set(spools.map((s) => s.location).filter((l): l is string => !!l))].sort(),
+    () =>
+      [...new Set(spools.flatMap((s) => [s.location, s.homeLocation]).filter((l): l is string => !!l))].sort(),
     [spools],
   );
 
+  // Spulen im Drucker stehen nur in der rechten Spalte, nicht im Lager
+  // (Spec: "Spulen im Drucker werden getrennt vom Lager angezeigt").
+  const storageSpools = useMemo(() => spools.filter(isInStorage), [spools]);
+
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return spools.filter((s) => {
+    return storageSpools.filter((s) => {
       if (statusFilter && filamentStockStatus(s) !== statusFilter) return false;
       if (!needle) return true;
       return [s.material, s.manufacturer, s.color, s.location].some((v) => v?.toLowerCase().includes(needle));
     });
-  }, [spools, query, statusFilter]);
+  }, [storageSpools, query, statusFilter]);
 
   const stats = useMemo(() => {
     const totalRemaining = spools.reduce((sum, s) => sum + s.remainingWeightG, 0);
@@ -77,17 +92,53 @@ export function FilamentView() {
 
   const toggleStatusFilter = (val: StatusFilter) => setStatusFilter((prev) => (prev === val ? null : val));
 
+  const loadSpool = useCallback((spoolId: string, unitId: string, slotIndex: number) => {
+    printersApi
+      .loadSpool(spoolId, unitId, slotIndex)
+      .then(() => refresh())
+      .catch((e) => setError(String(e)));
+  }, []);
+
+  const unloadSpool = useCallback(
+    (spoolId: string) => {
+      const spool = spools.find((s) => s.id === spoolId);
+      printersApi
+        .unloadSpool(spoolId, null)
+        .then((location) => {
+          setToast({ spoolId, label: spool ? spoolLabel(spool) : '', location });
+          refresh();
+        })
+        .catch((e) => setError(String(e)));
+    },
+    [spools],
+  );
+
+  const changeUnloadedLocation = (location: string) => {
+    const spool = spools.find((s) => s.id === toast?.spoolId);
+    if (!spool) return Promise.resolve();
+    return invoke('update_filament_spool', { spool: { ...spool, location } })
+      .then(() => refresh())
+      .catch((e) => setError(String(e)));
+  };
+
+  const dismissToast = useCallback(() => setToast(null), []);
+
+  const drag = useSpoolDragAndDrop({ onLoad: loadSpool, onUnload: unloadSpool });
+  const draggedSpool = drag.draggingSpoolId ? spools.find((s) => s.id === drag.draggingSpoolId) : undefined;
+  const storageIsTarget = drag.draggingFromSlot !== null && drag.target?.kind === 'storage';
+
   const segBase = 'h-8 px-3.5 rounded-[6px] text-[12.5px] font-semibold cursor-pointer';
   const segActive = 'bg-[var(--panel)] text-[var(--ink)] shadow-[var(--shadow)]';
   const segInactive = 'text-[var(--ink-3)] hover:text-[var(--ink)]';
 
   return (
-    <div className="flex-1 min-w-0 flex flex-col min-h-0 overflow-y-auto">
+    <div className={`flex-1 min-w-0 flex flex-col min-h-0 overflow-y-auto ${drag.draggingSpoolId ? 'select-none' : ''}`}>
       <div className="flex-none px-4 py-3 border-b border-[var(--line)] text-[length:var(--font-size-body)] font-semibold">
         {t('filamentDialogTitle')}
       </div>
 
-      <div className="flex-1 p-4 flex flex-col gap-3.5">
+      <div className="flex-1 p-4 flex flex-col lg:flex-row lg:items-start gap-4">
+      <div className="flex-1 min-w-0 w-full flex flex-col gap-3.5">
         {error && (
           <div className="text-[length:var(--font-size-title)] text-[var(--accent)] break-words">
             {t('filamentError')} {error}
@@ -171,26 +222,83 @@ export function FilamentView() {
           </button>
         </div>
 
-        {layout === 'dashboard' ? (
-          <FilamentDashboard
-            spools={filtered}
-            confirmDeleteId={confirmDeleteId}
-            onEdit={openEditPanel}
-            onRequestDelete={requestDelete}
-            onCancelDelete={cancelDelete}
-            onConfirmDelete={confirmDelete}
-          />
-        ) : (
-          <FilamentTable
-            spools={filtered}
-            confirmDeleteId={confirmDeleteId}
-            onEdit={openEditPanel}
-            onRequestDelete={requestDelete}
-            onCancelDelete={cancelDelete}
-            onConfirmDelete={confirmDelete}
-          />
-        )}
+        <div
+          data-testid="filament-storage"
+          onMouseEnter={() => drag.enterTarget({ kind: 'storage' })}
+          onMouseLeave={() => drag.leaveTarget({ kind: 'storage' })}
+          className={`rounded-lg ${storageIsTarget ? 'outline-2 outline-dashed outline-[var(--accent)] outline-offset-4' : ''}`}
+        >
+          {layout === 'dashboard' ? (
+            <FilamentDashboard
+              spools={filtered}
+              confirmDeleteId={confirmDeleteId}
+              onEdit={openEditPanel}
+              onRequestDelete={requestDelete}
+              onCancelDelete={cancelDelete}
+              onConfirmDelete={confirmDelete}
+              onSpoolMouseDown={(spoolId, e) => drag.startDrag(spoolId, null, e)}
+            />
+          ) : (
+            <FilamentTable
+              spools={filtered}
+              confirmDeleteId={confirmDeleteId}
+              onEdit={openEditPanel}
+              onRequestDelete={requestDelete}
+              onCancelDelete={cancelDelete}
+              onConfirmDelete={confirmDelete}
+              onSpoolMouseDown={(spoolId, e) => drag.startDrag(spoolId, null, e)}
+            />
+          )}
+        </div>
       </div>
+
+      <PrinterColumn
+        printers={printers.printers}
+        spools={spools}
+        draggingSpoolId={drag.draggingSpoolId}
+        dropTarget={drag.target}
+        onSlotMouseDown={(spoolId, unitId, slotIndex, e) => drag.startDrag(spoolId, { unitId, slotIndex }, e)}
+        onEnterSlot={(unitId, slotIndex) => drag.enterTarget({ kind: 'slot', unitId, slotIndex })}
+        onLeaveSlot={(unitId, slotIndex) => drag.leaveTarget({ kind: 'slot', unitId, slotIndex })}
+        onLoad={loadSpool}
+        onUnload={unloadSpool}
+        onEditSpool={openEditPanel}
+        onManage={() => setManageOpen(true)}
+      />
+      </div>
+
+      {draggedSpool && drag.pointer && (
+        <div
+          aria-hidden
+          className="fixed z-50 pointer-events-none px-2.5 py-1.5 rounded-md border border-[var(--accent)] bg-[var(--panel)] shadow-[var(--shadow)] text-[12px] font-semibold flex items-center gap-1.5 -rotate-2"
+          style={{ left: drag.pointer.x + 12, top: drag.pointer.y + 12 }}
+        >
+          {draggedSpool.colorHex && (
+            <span className="w-3 h-3 rounded-full border border-[var(--line-strong)]" style={{ background: draggedSpool.colorHex }} />
+          )}
+          {spoolLabel(draggedSpool)}
+        </div>
+      )}
+
+      {toast && (
+        <SpoolToast
+          label={toast.label}
+          location={toast.location}
+          knownLocations={knownLocations}
+          onChangeLocation={changeUnloadedLocation}
+          onDone={dismissToast}
+        />
+      )}
+
+      <PrinterManagePanel
+        open={manageOpen}
+        printers={printers.printers}
+        spools={spools}
+        error={printers.error}
+        actions={printers}
+        onClose={() => setManageOpen(false)}
+        onSpoolsChanged={refresh}
+      />
 
       <FilamentSpoolForm
         open={panelOpen}

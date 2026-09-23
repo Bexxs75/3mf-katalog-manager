@@ -1,3 +1,4 @@
+import type { MouseEvent as ReactMouseEvent } from 'react';
 import { useState } from 'react';
 import { useT, useLanguage } from '../i18n/LanguageContext';
 import { formatWeightG, formatDiameterMm, formatPrice } from '../i18n/format';
@@ -11,6 +12,14 @@ interface Props {
   onRequestDelete: (id: string) => void;
   onCancelDelete: () => void;
   onConfirmDelete: (id: string) => void;
+  /** Mausdruck auf einer Spule - startet ggf. das Ziehen in ein Fach. */
+  onSpoolMouseDown?: (spoolId: string, event: ReactMouseEvent) => void;
+}
+
+// Kein Ziehen, wenn der Mausdruck auf einem Knopf der Karte/Zeile landet
+// (Bearbeiten, Loeschen, Bestaetigen).
+function startsOnButton(event: ReactMouseEvent): boolean {
+  return (event.target as HTMLElement).closest('button') !== null;
 }
 
 type SortKey = 'material' | 'manufacturer' | 'color' | 'location' | 'diameterMm' | 'remainingWeightG' | 'price';
@@ -26,7 +35,7 @@ const barClass: Record<string, string> = {
   empty: 'bg-[var(--crit)]',
 };
 
-export function FilamentTable({ spools, confirmDeleteId, onEdit, onRequestDelete, onCancelDelete, onConfirmDelete }: Props) {
+export function FilamentTable({ spools, confirmDeleteId, onEdit, onRequestDelete, onCancelDelete, onConfirmDelete, onSpoolMouseDown }: Props) {
   const t = useT();
   const { language } = useLanguage();
   const [sortKey, setSortKey] = useState<SortKey>('material');
@@ -118,7 +127,12 @@ export function FilamentTable({ spools, confirmDeleteId, onEdit, onRequestDelete
             const status = filamentStockStatus(spool);
             const pct = filamentStockPercent(spool);
             return (
-              <tr key={spool.id} className="hover:bg-[var(--panel-2)]">
+              <tr
+                key={spool.id}
+                data-testid={`spool-row-${spool.id}`}
+                onMouseDown={(e) => !startsOnButton(e) && onSpoolMouseDown?.(spool.id, e)}
+                className={`hover:bg-[var(--panel-2)] ${onSpoolMouseDown ? 'cursor-grab' : ''}`}
+              >
                 <td className="px-3 py-2.5 border-b border-[var(--line)] font-semibold">
                   <div className="flex items-center gap-2">
                     {spool.imagePng ? (

@@ -1,3 +1,4 @@
+import type { MouseEvent as ReactMouseEvent } from 'react';
 import { useT, useLanguage } from '../i18n/LanguageContext';
 import { formatWeightG, formatDiameterMm, formatPrice } from '../i18n/format';
 import type { FilamentSpool } from '../types';
@@ -10,6 +11,14 @@ interface Props {
   onRequestDelete: (id: string) => void;
   onCancelDelete: () => void;
   onConfirmDelete: (id: string) => void;
+  /** Mausdruck auf einer Spule - startet ggf. das Ziehen in ein Fach. */
+  onSpoolMouseDown?: (spoolId: string, event: ReactMouseEvent) => void;
+}
+
+// Kein Ziehen, wenn der Mausdruck auf einem Knopf der Karte/Zeile landet
+// (Bearbeiten, Loeschen, Bestaetigen).
+function startsOnButton(event: ReactMouseEvent): boolean {
+  return (event.target as HTMLElement).closest('button') !== null;
 }
 
 const statusClass: Record<string, string> = {
@@ -23,7 +32,7 @@ const barClass: Record<string, string> = {
   empty: 'bg-[var(--crit)]',
 };
 
-export function FilamentDashboard({ spools, confirmDeleteId, onEdit, onRequestDelete, onCancelDelete, onConfirmDelete }: Props) {
+export function FilamentDashboard({ spools, confirmDeleteId, onEdit, onRequestDelete, onCancelDelete, onConfirmDelete, onSpoolMouseDown }: Props) {
   const t = useT();
   const { language } = useLanguage();
 
@@ -40,7 +49,14 @@ export function FilamentDashboard({ spools, confirmDeleteId, onEdit, onRequestDe
         const status = filamentStockStatus(spool);
         const pct = filamentStockPercent(spool);
         return (
-          <div key={spool.id} className="rounded-[10px] overflow-hidden border border-[var(--line)] bg-[var(--panel)] flex flex-col">
+          <div
+            key={spool.id}
+            data-testid={`spool-card-${spool.id}`}
+            onMouseDown={(e) => !startsOnButton(e) && onSpoolMouseDown?.(spool.id, e)}
+            className={`rounded-[10px] overflow-hidden border border-[var(--line)] bg-[var(--panel)] flex flex-col ${
+              onSpoolMouseDown ? 'cursor-grab' : ''
+            }`}
+          >
             <div className="flex items-center gap-2.5 px-3 py-2.5">
               {spool.imagePng ? (
                 <img
