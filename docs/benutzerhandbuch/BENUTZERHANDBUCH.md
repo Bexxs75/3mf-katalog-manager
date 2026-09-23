@@ -121,15 +121,17 @@ Importierst oder ziehst du ein einzelnes Archiv (`.zip`, `.7z`, `.rar`, `.tar`, 
 Import ein Dialog:
 
 - **Zielordner** — vorbelegt mit dem aktiven Katalogordner bzw. deinem Speicherort, über
-  „Ändern…" frei wählbar. Jedes Archiv bekommt darin einen eigenen Unterordner.
+  „Ändern…" änderbar. Jedes Archiv bekommt darin einen eigenen Unterordner. Als Ziel möglich sind
+  nur Katalogordner oder ein über „Ändern…" gewählter Ordner; Ordner, die geschützte Bereiche
+  enthalten — etwa dein Home-Verzeichnis selbst —, lehnt die App als Ziel ab (wähle dann einen
+  Unterordner, z. B. `~/3D-Drucke`).
 - **Konflikt, wenn der Unterordner schon existiert** — du wählst zwischen „Neuen Ordner mit
   Nummer anlegen" und „Zusammenführen" (vorhandene Dateien bleiben dabei unverändert, übersprungene
   werden im Ergebnis gezählt).
 - **Checkbox „Archive nach dem Entpacken löschen"** — standardmäßig aus. Ist sie aktiv, wird das
-  Original-Archiv auch dann gelöscht, wenn beim Entpacken einzelne Einträge übersprungen wurden
-  (gesperrte Dateitypen, unsichere Einträge oder beim Zusammenführen bereits vorhandene Dateien) —
-  das Ergebnis-Banner nennt diese Zahlen. Brauchst du die übersprungenen Inhalte noch, lass die
-  Checkbox aus.
+  Original-Archiv nur gelöscht, wenn wirklich alles entpackt wurde. Wurde etwas nicht entpackt
+  (gesperrte Dateitypen, unsichere Einträge oder beim Zusammenführen bereits vorhandene Dateien),
+  bleibt das Archiv liegen — das Ergebnis-Banner nennt den Grund.
 - **Ausgegraute Zeilen** — Archive, die keine Modelle enthalten, beschädigt, verschlüsselt oder in
   einem nicht unterstützten Format sind, werden in der Liste grau dargestellt und beim Entpacken
   automatisch übersprungen.
@@ -536,14 +538,16 @@ If you import or drag in a single archive (`.zip`, `.7z`, `.rar`, `.tar`, `.tar.
 `.tar.bz2`, `.tar.xz`, `.tar.zst`) instead of individual model files, a dialog opens before the
 actual import:
 
-- **Target folder** — prefilled with the active catalog folder or your storage location, freely
-  changeable via "Change…". Each archive gets its own subfolder inside it.
+- **Target folder** — prefilled with the active catalog folder or your storage location, changeable
+  via "Change…". Each archive gets its own subfolder inside it. Only catalog folders or a folder
+  chosen via "Change…" can be the target; folders that contain protected locations — such as your
+  home directory itself — are rejected as a target (pick a subfolder instead, e.g. `~/3D-Prints`).
 - **Conflict when the subfolder already exists** — choose between "Create new numbered folder" and
   "Merge" (existing files stay unchanged; skipped ones are counted in the result).
 - **"Delete archives after extraction" checkbox** — off by default. When enabled, the original
-  archive is deleted even if some entries were skipped during extraction (blocked file types,
-  unsafe entries, or files that already existed when merging) — the result banner reports these
-  counts. If you still need the skipped content, leave the checkbox off.
+  archive is only deleted if everything was actually extracted. If something was not extracted
+  (blocked file types, unsafe entries, or files that already existed when merging), the archive
+  stays in place — the result banner names the reason.
 - **Grayed-out rows** — archives with no models inside, that are corrupted, encrypted, or in an
   unsupported format are shown grayed out in the list and are automatically skipped during
   extraction.

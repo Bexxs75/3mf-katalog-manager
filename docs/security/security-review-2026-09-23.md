@@ -50,11 +50,16 @@ per Social Engineering, ganz ohne kompromittiertes Frontend.
 **Maßnahme:** Die Schutzliste (`reject_if_sensitive_path` / `reject_if_sensitive_path_expanded`)
 prüft **jeden** neu anzulegenden Pfad, nicht nur den Zielordner — als `guard`-Closure direkt in
 `archive::extract_archive` eingehängt. Zielordner-Namen beginnen dank `safe_folder_name` nie mit
-einem Punkt.
+einem Punkt. Seit der Abschluss-Korrekturrunde werden Zielordner und Entpack-Ordner (`dest`)
+außerdem abgelehnt, wenn sie ein geschütztes Verzeichnis **enthalten** (`reject_if_ancestor_of_sensitive`,
+aufgelöst über `resolve_path_for_sensitivity_check`, also auch bei Symlinks) — das sperrt u. a. das
+Home-Verzeichnis selbst (enthält `~/.ssh`), `~/.local` und `/` als Ziel. Der `guard` bleibt als
+zweite Verteidigungslinie bestehen.
 
 **Test:** `guard_blocks_protected_destinations_and_entries` (`src-tauri/src/archive/tests.rs`),
 `a_sensitive_target_is_rejected_before_anything_is_written`,
-`protected_subpaths_are_skipped_even_when_the_destination_is_allowed`,
+`merging_into_a_folder_that_contains_a_protected_path_is_refused`,
+`a_target_or_destination_containing_a_protected_folder_is_rejected`,
 `hidden_folder_names_from_the_frontend_are_neutralized` (`src-tauri/src/commands/archives.rs`,
 Modul `tests`).
 
@@ -78,7 +83,8 @@ werden nie entpackt und im Ergebnis-Banner gezählt (`archiveSummaryBlockedSkipp
 Zero-Width-Zeichen in Dateinamen werden beim Entpacken ersetzt.
 
 **Test:** `blocked_file_types_are_never_extracted`,
-`sanitize_component_neutralizes_bidi_and_zero_width_chars_and_superscript_devices`
+`sanitize_component_neutralizes_bidi_and_zero_width_chars_and_superscript_devices`,
+`sanitize_component_covers_all_windows_device_names_and_trailing_stem_padding`
 (`src-tauri/src/archive/tests.rs`), `blocked_file_types_are_reported_in_the_outcome`
 (`src-tauri/src/commands/archives.rs`, Modul `tests`).
 
@@ -111,17 +117,35 @@ Aufruf ist aber fester, nicht optionaler Bestandteil der Extraktionspipeline
 **CWE:** CWE-285 (Improper Authorization)
 
 Ohne Gegenmaßnahme hätte `extract_archives` jede vom Frontend übergebene Datei mit Archiv-Endung
-entpackt und auf Wunsch gelöscht — relevant bei einer künftigen XSS-Lücke im Frontend.
+entpackt und auf Wunsch gelöscht — relevant bei einer künftigen XSS-Lücke im Frontend. Die erste
+Umsetzung vertraute dabei noch zwei Angaben des Frontends: der Pfadliste von `import_dropped` (jede
+Datei ließ sich als „Drop" melden) und dem frei wählbaren Zielordner `target_dir`.
 
-**Maßnahme:** Serverseitige Freigabeliste `PendingArchives`: `register()` wird direkt beim Import
-(`import_files`/`import_dropped` in `src-tauri/src/commands/files.rs`) aufgerufen und trägt nur die
-tatsächlich per Dateidialog oder Drag & Drop hereingekommenen Pfade ein, `take_authorized()`
-entfernt jeden Pfad beim Verbrauch aus der Liste (einmalige Verwendung). `extract_archives` entpackt
-ausschließlich, was `take_authorized` als autorisiert zurückgibt; alles andere landet mit Fehler
-„Archiv wurde nicht über den Import freigegeben" im Ergebnis.
+**Maßnahme (nach dem Abschluss-Review verschärft):**
+- **Archive:** Serverseitige Freigabeliste `PendingArchives`. `import_files` trägt die im nativen
+  Dateidialog (im Backend) gewählten Archive direkt ein. Drag & Drop beobachtet das Backend selbst:
+  Ein Fenster-Ereignis-Handler (`WindowEvent::DragDrop(DragDropEvent::Drop)` in `src-tauri/src/lib.rs`)
+  vermerkt die abgelegten Archive; `import_dropped` übernimmt nur Archive aus dieser Menge
+  (`claim_dropped`, einmalig) und ignoriert alle anderen Archiv-Pfade. `take_authorized()` entfernt
+  jeden Pfad beim Verbrauch (einmalige Verwendung); alles andere landet mit Fehler „Archiv wurde
+  nicht über den Import freigegeben" im Ergebnis.
+- **Zielordner:** `extract_archives` akzeptiert `target_dir` nur, wenn er exakt einem Katalogordner
+  (Tabelle `folders`) entspricht oder zuvor im nativen Ordner-Dialog (`pick_folder_path`) gewählt
+  wurde (`ApprovedTargets`); sonst Fehler „Zielordner wurde nicht über die App ausgewählt". Dazu kommt
+  die Vorfahren-Prüfung aus S-01.
+- **Reihenfolge:** Alle Zielordner-Prüfungen laufen **vor** dem Verbrauch der Freigaben — nach einem
+  abgelehnten Ziel kann der Nutzer mit einem anderen Ordner erneut starten.
+- **Löschen (Verhaltensänderung):** Das Original wird nur noch gelöscht, wenn **alle** Einträge
+  entpackt wurden (keine vorhandenen, unsicheren oder gesperrten Einträge übersprungen) und die
+  Datei seit der Prüfung unverändert ist; sonst bleibt es liegen und das Banner nennt den Grund.
 
 **Test:** `only_registered_archives_are_authorized_and_only_once`,
+`import_dropped_only_accepts_archives_the_backend_saw_being_dropped`,
+`target_dir_must_be_a_catalog_folder_or_picked_in_the_app`,
+`an_unapproved_target_is_rejected_without_consuming_the_archives`,
 `delete_removes_the_archive_only_when_unchanged_since_inspect`,
+`the_archive_is_kept_when_some_entries_were_not_extracted`,
+`a_failed_catalog_import_removes_the_extracted_folder_and_keeps_the_archive`,
 `a_broken_archive_fails_alone_and_is_never_deleted` (`src-tauri/src/commands/archives.rs`, Modul
 `tests`).
 
@@ -330,11 +354,16 @@ code execution via social engineering, with no compromised frontend required.
 **Mitigation:** The protection list (`reject_if_sensitive_path` / `reject_if_sensitive_path_expanded`)
 checks **every** newly created path, not just the target folder — wired in as a `guard` closure
 directly into `archive::extract_archive`. Target folder names never start with a dot, thanks to
-`safe_folder_name`.
+`safe_folder_name`. Since the final fix round, the target folder and the extraction folder (`dest`)
+are also rejected when they **contain** a protected directory (`reject_if_ancestor_of_sensitive`,
+resolved via `resolve_path_for_sensitivity_check`, so symlinks are covered too) — this blocks, among
+others, the home directory itself (it contains `~/.ssh`), `~/.local` and `/` as a target. The `guard`
+stays in place as a second line of defense.
 
 **Test:** `guard_blocks_protected_destinations_and_entries` (`src-tauri/src/archive/tests.rs`),
 `a_sensitive_target_is_rejected_before_anything_is_written`,
-`protected_subpaths_are_skipped_even_when_the_destination_is_allowed`,
+`merging_into_a_folder_that_contains_a_protected_path_is_refused`,
+`a_target_or_destination_containing_a_protected_folder_is_rejected`,
 `hidden_folder_names_from_the_frontend_are_neutralized` (`src-tauri/src/commands/archives.rs`,
 `tests` module).
 
@@ -358,7 +387,8 @@ extracted and are counted in the result banner (`archiveSummaryBlockedSkipped`).
 zero-width characters in filenames are replaced during extraction.
 
 **Test:** `blocked_file_types_are_never_extracted`,
-`sanitize_component_neutralizes_bidi_and_zero_width_chars_and_superscript_devices`
+`sanitize_component_neutralizes_bidi_and_zero_width_chars_and_superscript_devices`,
+`sanitize_component_covers_all_windows_device_names_and_trailing_stem_padding`
 (`src-tauri/src/archive/tests.rs`), `blocked_file_types_are_reported_in_the_outcome`
 (`src-tauri/src/commands/archives.rs`, `tests` module).
 
@@ -392,17 +422,35 @@ other roundtrip/extraction test.
 
 Without a countermeasure, `extract_archives` would have extracted — and, on request, deleted — any
 file with an archive extension supplied by the frontend, which matters given a future XSS
-vulnerability in the frontend.
+vulnerability in the frontend. The first implementation still trusted two frontend inputs: the path
+list passed to `import_dropped` (any file could be reported as a "drop") and the freely chosen
+target folder `target_dir`.
 
-**Mitigation:** Server-side allowlist `PendingArchives`: `register()` is called directly during
-import (`import_files`/`import_dropped` in `src-tauri/src/commands/files.rs`) and records only the
-paths that actually came in via the file dialog or drag & drop. `take_authorized()`
-removes each path from the list when it's consumed (single use). `extract_archives` extracts
-exclusively what `take_authorized` returns as authorized; everything else comes back in the result
-with the error "archive was not authorized via import".
+**Mitigation (tightened after the final review):**
+- **Archives:** server-side allowlist `PendingArchives`. `import_files` registers the archives picked
+  in the native file dialog (run by the backend) directly. For drag & drop the backend watches the
+  drop itself: a window event handler (`WindowEvent::DragDrop(DragDropEvent::Drop)` in
+  `src-tauri/src/lib.rs`) records the dropped archives; `import_dropped` only accepts archives from
+  that set (`claim_dropped`, single use) and ignores every other archive path. `take_authorized()`
+  removes each path when it's consumed (single use); everything else comes back in the result with
+  the error "archive was not authorized via import".
+- **Target folder:** `extract_archives` only accepts a `target_dir` that exactly matches a catalog
+  folder (`folders` table) or was picked beforehand in the native folder dialog (`pick_folder_path`,
+  `ApprovedTargets`); otherwise it fails with "target folder was not chosen through the app". The
+  ancestor check from S-01 applies on top.
+- **Order:** all target folder checks run **before** the authorizations are consumed — after a
+  rejected target the user can start again with a different folder.
+- **Deletion (behavior change):** the original is only deleted when **every** entry was extracted
+  (no existing, unsafe or blocked entries skipped) and the file is unchanged since the check;
+  otherwise it stays in place and the banner names the reason.
 
 **Test:** `only_registered_archives_are_authorized_and_only_once`,
+`import_dropped_only_accepts_archives_the_backend_saw_being_dropped`,
+`target_dir_must_be_a_catalog_folder_or_picked_in_the_app`,
+`an_unapproved_target_is_rejected_without_consuming_the_archives`,
 `delete_removes_the_archive_only_when_unchanged_since_inspect`,
+`the_archive_is_kept_when_some_entries_were_not_extracted`,
+`a_failed_catalog_import_removes_the_extracted_folder_and_keeps_the_archive`,
 `a_broken_archive_fails_alone_and_is_never_deleted` (`src-tauri/src/commands/archives.rs`, `tests`
 module).
 
