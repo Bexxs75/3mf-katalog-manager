@@ -307,10 +307,15 @@ eingelegte Spulen erscheinen dann in einer eigenen Spalte rechts neben dem Lager
 
 ![Drucker & AMS-Fächer](bilder/22-drucker-ams.png)
 
-1. Über "Drucker verwalten" legst du einen Drucker an und fügst ihm über "+ Einheit hinzufügen"
+1. Über "Drucker verwalten" legst du einen Drucker an — er bekommt dabei automatisch einen
+   "Spulenhalter" (1 Fach); bei einem Drucker ohne AMS ist das zunächst sein einziges Fach, du
+   kannst ihn aber jederzeit löschen. Über "+ Einheit hinzufügen" fügst du weitere
    Mehrfarbeinheiten hinzu — entweder aus Vorlagen (Bambu AMS/AMS lite/AMS HT, Creality CFS,
-   Prusa MMU3, Anycubic ACE Pro, externe Spule) oder als "Eigene…" mit frei wählbarer
-   Fachanzahl. Die Reihenfolge der Einheiten änderst du per Griff.
+   Prusa MMU3, Anycubic ACE Pro, Spulenhalter) oder als "Eigene…" mit frei wählbarer
+   Fachanzahl. Die Reihenfolge der Einheiten änderst du per Griff. Hat ein Drucker gar keine
+   Fächer mehr (z. B. nach dem Löschen des Spulenhalters), zeigt seine Spalte den Hinweis
+   "Keine Fächer – über „Drucker verwalten" hinzufügen"; ein Klick darauf öffnet direkt die
+   Drucker-Verwaltung.
 2. Eine Spule einlegen: Karte oder Zeile aus dem Lager auf ein Fach ziehen — oder das Fach
    anklicken und eine Spule aus der Liste auswählen. Ist das Fach bereits belegt, kehrt die
    Spule, die schon im Fach steckt, an ihren Stammplatz zurück.
@@ -737,10 +742,14 @@ loaded spools then appear in their own column to the right of the stock.
 
 ![Printers & AMS slots](bilder/22-drucker-ams.png)
 
-1. Use "Manage printers" to add a printer, then add multi-material units to it via "+ Add
-   unit" — either from templates (Bambu AMS/AMS lite/AMS HT, Creality CFS, Prusa MMU3,
-   Anycubic ACE Pro, external spool) or as "Custom…" with any slot count you like. Reorder
-   units by their drag handle.
+1. Use "Manage printers" to add a printer — it automatically gets a "Spool holder" unit (1
+   slot); for a printer without an AMS this is initially its only slot, but you can delete it
+   at any time. Then add more multi-material units to it via "+ Add unit" — either from
+   templates (Bambu AMS/AMS lite/AMS HT, Creality CFS, Prusa MMU3, Anycubic ACE Pro, Spool
+   holder) or as "Custom…" with any slot count you like. Reorder units by their drag handle. If
+   a printer ends up with no slots at all (e.g. after deleting its spool holder), its column
+   shows the hint "No slots – add them via “Manage printers”"; clicking it opens printer
+   management directly.
 2. Loading a spool: drag a card or row from the stock onto a slot — or click the slot and pick
    a spool from the list. If the slot is already occupied, the spool already in it returns to
    its home location.
