@@ -81,8 +81,8 @@ pub fn list_printers(state: State<AppState>) -> CmdResult<Vec<PrinterDto>> {
 
 #[tauri::command]
 pub fn add_printer(state: State<AppState>, name: String) -> CmdResult<PrinterDto> {
-    let conn = lock_db(&state)?;
-    let id = p::insert_printer(&conn, &name).map_err(|e| e.to_string())?;
+    let mut conn = lock_db(&state)?;
+    let id = in_tx(&mut conn, |tx| p::insert_printer(tx, &name))?;
     list_printers_with_conn(&conn)?
         .into_iter()
         .find(|printer| printer.id == id.to_string())
@@ -92,8 +92,8 @@ pub fn add_printer(state: State<AppState>, name: String) -> CmdResult<PrinterDto
 #[tauri::command]
 pub fn rename_printer(state: State<AppState>, printer_id: String, name: String) -> CmdResult<()> {
     let id = parse_id(&printer_id, "Drucker")?;
-    let conn = lock_db(&state)?;
-    p::rename_printer(&conn, id, &name).map_err(|e| e.to_string())
+    let mut conn = lock_db(&state)?;
+    in_tx(&mut conn, |tx| p::rename_printer(tx, id, &name))
 }
 
 /// Liefert die Anzahl der Spulen, die an ihren Stammplatz zurueckkehrten.
@@ -113,8 +113,8 @@ pub fn add_unit(
     slot_count: Option<i64>,
 ) -> CmdResult<MaterialUnitDto> {
     let printer = parse_id(&printer_id, "Drucker")?;
-    let conn = lock_db(&state)?;
-    let id = p::insert_unit(&conn, printer, &kind, &name, slot_count).map_err(|e| e.to_string())?;
+    let mut conn = lock_db(&state)?;
+    let id = in_tx(&mut conn, |tx| p::insert_unit(tx, printer, &kind, &name, slot_count))?;
     p::list_units(&conn)
         .map_err(|e| e.to_string())?
         .into_iter()
