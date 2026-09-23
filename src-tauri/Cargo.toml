@@ -33,6 +33,14 @@ tauri-plugin-dialog = { version = "2", default-features = false, features = ["xd
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 zip = "2"
+# Archive beim Import entpacken (siehe src/archive/). Bewusst reine
+# Rust-Dekoder fuer xz/zstd (lzma-rust2, ruzstd), damit keine weiteren
+# C-Bibliotheken in die drei Plattform-Builds kommen.
+tar = "0.4"
+flate2 = "1"
+bzip2 = "0.6"
+lzma-rust2 = { version = "0.21", default-features = false, features = ["std", "xz", "optimization"] }
+ruzstd = "0.9"
 quick-xml = "0.41"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 rusqlite = { version = "0.40.2", features = ["bundled", "backup", "trace"] }
@@ -45,6 +53,15 @@ cxx = { version = "1", optional = true }
 # die LGPL-Pflicht ausloest (relinkbare Objektdateien an jeden Empfaenger).
 # Dynamisch gelinkt bleibt OCCT austauschbar; siehe THIRD-PARTY-LICENSES.md.
 opencascade-sys = { version = "0.3", optional = true }
+
+# Nur macOS: Quarantaene-Attribut des Archivs auf entpackte Dateien
+# uebertragen (siehe src/archive/origin.rs).
+[target.'cfg(target_os = "macos")'.dependencies]
+xattr = "1"
+
+[dev-dependencies]
+# Nur fuer Tests: xz-Archive erzeugen.
+lzma-rust2 = { version = "0.21", default-features = false, features = ["std", "xz", "optimization", "encoder"] }
 
 # Der Patch ersetzt die crates.io-Fassung durch die geforkte Kopie in
 # `vendor/opencascade-sys` - noetig, weil 0.3.0 gegen OCCT 7.9 nicht uebersetzt.
