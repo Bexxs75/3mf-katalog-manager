@@ -4,6 +4,7 @@ import { Rail } from './components/Rail';
 import { ContextMenu } from './components/ContextMenu';
 import { FilamentView } from './components/FilamentView';
 import { ImportSummaryBanner } from './components/ImportSummaryBanner';
+import { ArchiveImportDialog } from './components/ArchiveImportDialog';
 import { CatalogCleanupDialog } from './components/CatalogCleanupDialog';
 import { BackgroundSnapshotRenderer } from './components/BackgroundSnapshotRenderer';
 import { MoveToast } from './components/MoveToast';
@@ -46,6 +47,8 @@ export default function App() {
   const collapsedFolders = useCollapsedFolders();
 
   const [mainView, setMainView] = useState<'catalog' | 'filament' | 'trash'>('catalog');
+  const archiveTargetDefault =
+    store.folders.find((f) => f.id === filters.activeFolderId)?.path ?? catalogBaseDir;
   const fileImport = useFileImport({
     enabled: mainView === 'catalog',
     catalogBaseDir,
@@ -333,7 +336,17 @@ export default function App() {
             <ImportSummaryBanner
               imported={fileImport.importBanner.imported}
               duplicates={fileImport.importBanner.duplicates}
+              archives={fileImport.importBanner.archives}
               onClose={fileImport.dismissImportBanner}
+            />
+          )}
+
+          {fileImport.pendingArchives && (
+            <ArchiveImportDialog
+              archives={fileImport.pendingArchives}
+              defaultTargetDir={archiveTargetDefault}
+              onCancel={fileImport.cancelArchives}
+              onDone={fileImport.finishArchives}
             />
           )}
 

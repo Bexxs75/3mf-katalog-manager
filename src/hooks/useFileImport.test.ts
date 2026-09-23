@@ -65,4 +65,55 @@ describe('useFileImport', () => {
     act(() => result.current.dismissImportBanner());
     expect(result.current.importBanner).toBeNull();
   });
+
+  it('inspects returned archives and exposes them as pendingArchives', async () => {
+    const infos = [{ path: '/dl/a.zip', status: 'ok' }];
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === 'import_files') return Promise.resolve({ imported: [], duplicateCount: 0, pendingArchives: ['/dl/a.zip'] });
+      if (cmd === 'inspect_archives') return Promise.resolve(infos);
+      return Promise.resolve(undefined);
+    });
+    const { result } = setup();
+    await act(async () => result.current.importFiles());
+    expect(invoke).toHaveBeenCalledWith('inspect_archives', { paths: ['/dl/a.zip'] });
+    expect(result.current.pendingArchives).toEqual(infos);
+  });
+
+  it('does not open the archive dialog when nothing is pending', async () => {
+    vi.mocked(invoke).mockResolvedValue({ imported: [], duplicateCount: 0, pendingArchives: [] });
+    const { result } = setup();
+    await act(async () => result.current.importFiles());
+    expect(invoke).not.toHaveBeenCalledWith('inspect_archives', expect.anything());
+    expect(result.current.pendingArchives).toBeNull();
+  });
+
+  it('finishArchives merges models, refreshes folders, closes the dialog and always shows the banner', async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === 'import_files') return Promise.resolve({ imported: [], duplicateCount: 0, pendingArchives: ['/dl/a.zip'] });
+      if (cmd === 'inspect_archives') return Promise.resolve([{ path: '/dl/a.zip', status: 'ok' }]);
+      return Promise.resolve(undefined);
+    });
+    const { result, onImported, refreshFolders } = setup();
+    await act(async () => result.current.importFiles());
+    const outcome = { path: '/dl/a.zip', extractedTo: '/k/a', existingSkipped: 0, unsafeSkipped: 0, blockedSkipped: 0, archiveDeleted: false, deleteError: null, error: null };
+    act(() => result.current.finishArchives({ imported: [{ id: 'm1' }] as never, duplicateCount: 0, archives: [outcome] }));
+    expect(onImported).toHaveBeenCalledWith({ imported: [{ id: 'm1' }], duplicateCount: 0 });
+    expect(refreshFolders).toHaveBeenCalled();
+    expect(result.current.pendingArchives).toBeNull();
+    expect(result.current.importBanner).toEqual({ imported: 1, duplicates: 0, archives: [outcome] });
+  });
+
+  it('cancelArchives closes the dialog without importing', async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === 'import_files') return Promise.resolve({ imported: [], duplicateCount: 0, pendingArchives: ['/dl/a.zip'] });
+      if (cmd === 'inspect_archives') return Promise.resolve([{ path: '/dl/a.zip', status: 'ok' }]);
+      return Promise.resolve(undefined);
+    });
+    const { result, onImported } = setup();
+    await act(async () => result.current.importFiles());
+    onImported.mockClear();
+    act(() => result.current.cancelArchives());
+    expect(result.current.pendingArchives).toBeNull();
+    expect(onImported).not.toHaveBeenCalled();
+  });
 });

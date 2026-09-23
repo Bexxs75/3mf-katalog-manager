@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import * as importExportApi from '../lib/api/importExport';
 import * as foldersApi from '../lib/api/folders';
-import type { ImportResultDto, Folder } from '../types';
+import type { ArchiveImportResult, ArchiveInfo, ArchiveOutcome, ImportResultDto, Folder } from '../types';
 
 interface UseFileImportArgs {
   enabled: boolean;
@@ -21,7 +21,10 @@ export function useFileImport({
   refreshFolders,
   refreshFiles,
 }: UseFileImportArgs) {
-  const [importBanner, setImportBanner] = useState<{ imported: number; duplicates: number } | null>(null);
+  const [importBanner, setImportBanner] = useState<
+    { imported: number; duplicates: number; archives?: ArchiveOutcome[] } | null
+  >(null);
+  const [pendingArchives, setPendingArchives] = useState<ArchiveInfo[] | null>(null);
 
   const mergeImported = useCallback(
     (result: ImportResultDto) => {
@@ -55,13 +58,36 @@ export function useFileImport({
     [catalogBaseDir, activeFolderId, refreshFolders, refreshFiles],
   );
 
+  const openArchiveDialog = useCallback(async (result: ImportResultDto) => {
+    const paths = result.pendingArchives ?? [];
+    if (paths.length === 0) return;
+    setPendingArchives(await importExportApi.inspectArchives(paths));
+  }, []);
+
+  const finishArchives = useCallback(
+    (result: ArchiveImportResult) => {
+      setPendingArchives(null);
+      onImported({ imported: result.imported, duplicateCount: result.duplicateCount });
+      setImportBanner({
+        imported: result.imported.length,
+        duplicates: result.duplicateCount,
+        archives: result.archives,
+      });
+      refreshFolders();
+    },
+    [onImported, refreshFolders],
+  );
+
+  const cancelArchives = useCallback(() => setPendingArchives(null), []);
+
   const importFiles = useCallback(
     () =>
       importExportApi.importFiles().then(async (result) => {
         mergeImported(result);
         await autoFileIntoBaseDir(result);
+        await openArchiveDialog(result);
       }),
-    [mergeImported, autoFileIntoBaseDir],
+    [mergeImported, autoFileIntoBaseDir, openArchiveDialog],
   );
 
   const importFolder = useCallback(
@@ -75,15 +101,27 @@ export function useFileImport({
     const unlisten = getCurrentWebview().onDragDropEvent((event) => {
       if (event.payload.type !== 'drop') return;
       if (!enabled) return;
-      importExportApi.importDropped(event.payload.paths).then(mergeImported);
+      importExportApi.importDropped(event.payload.paths).then(async (result) => {
+        mergeImported(result);
+        await openArchiveDialog(result);
+      });
     });
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [enabled, mergeImported]);
+  }, [enabled, mergeImported, openArchiveDialog]);
 
   // mergeImported wird zusaetzlich exportiert, damit Importe, die ausserhalb
   // dieses Hooks ausgeloest werden (Ersteinrichtungsdialog), dieselbe
   // Duplikat-Banner-Logik durchlaufen wie die Importe hier.
-  return { importBanner, dismissImportBanner, mergeImported, importFiles, importFolder };
+  return {
+    importBanner,
+    dismissImportBanner,
+    mergeImported,
+    importFiles,
+    importFolder,
+    pendingArchives,
+    finishArchives,
+    cancelArchives,
+  };
 }
