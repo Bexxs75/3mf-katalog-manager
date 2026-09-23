@@ -122,7 +122,8 @@ Import ein Dialog:
 
 - **Zielordner** — vorbelegt mit dem aktiven Katalogordner bzw. deinem Speicherort, über
   „Ändern…" änderbar. Jedes Archiv bekommt darin einen eigenen Unterordner. Als Ziel möglich sind
-  nur Katalogordner oder ein über „Ändern…" gewählter Ordner; Ordner, die geschützte Bereiche
+  nur Katalogordner oder ein in einem Ordner-Auswahldialog der App (z. B. über „Ändern…") gewählter
+  Ordner; Ordner, die geschützte Bereiche
   enthalten — etwa dein Home-Verzeichnis selbst —, lehnt die App als Ziel ab (wähle dann einen
   Unterordner, z. B. `~/3D-Drucke`).
 - **Konflikt, wenn der Unterordner schon existiert** — du wählst zwischen „Neuen Ordner mit
@@ -141,8 +142,11 @@ gelöscht wurde), öffnet sich kein Dialog — stattdessen zeigt das Ergebnis-Ba
 „<Name> fehlgeschlagen: <Fehler>" an, bis du es wegklickst.
 
 Aus Sicherheitsgründen werden Programme, Skripte und Verknüpfungen aus Archiven nie entpackt;
-passwortgeschützte und mehrteilige Archive werden erkannt, aber nicht entpackt. Einzelne Dateien
-in RAR-Archiven dürfen höchstens 1 GB groß sein. Der Ordner-Import entpackt weiterhin keine
+passwortgeschützte und mehrteilige Archive werden erkannt, aber nicht entpackt. Enthält ein RAR-Archiv
+eine einzelne Datei über 1 GB, schlägt das ganze Archiv fehl (bereits Entpacktes wird wieder
+entfernt). Datei-Verweise in RAR-Archiven (mit `rar -oi` erzeugt) werden nicht aufgelöst: Sie
+werden übersprungen, als leere Datei angelegt oder lassen bei einem Prüfsummenfehler das ganze
+Archiv scheitern. Der Ordner-Import entpackt weiterhin keine
 enthaltenen Archive.
 
 ![Dialog zum Entpacken von Archiven](bilder/21-archiv-entpacken.png)
@@ -541,7 +545,7 @@ actual import:
 
 - **Target folder** — prefilled with the active catalog folder or your storage location, changeable
   via "Change…". Each archive gets its own subfolder inside it. Only catalog folders or a folder
-  chosen via "Change…" can be the target; folders that contain protected locations — such as your
+  chosen in one of the app's folder-selection dialogs (e.g. via "Change…") can be the target; folders that contain protected locations — such as your
   home directory itself — are rejected as a target (pick a subfolder instead, e.g. `~/3D-Prints`).
 - **Conflict when the subfolder already exists** — choose between "Create new numbered folder" and
   "Merge" (existing files stay unchanged; skipped ones are counted in the result).
@@ -558,8 +562,10 @@ meantime), no dialog opens — instead the result banner shows "<name> failed: <
 dismiss it.
 
 For security reasons, programs, scripts, and shortcuts inside archives are never extracted;
-password-protected and multi-part archives are detected but not extracted. Individual files inside
-RAR archives may be at most 1 GB. Folder import still does not extract any archives it contains.
+password-protected and multi-part archives are detected but not extracted. If a RAR archive contains a
+single file over 1 GB, the whole archive fails (anything already extracted is removed again). File
+references in RAR archives (created with `rar -oi`) are not resolved: they are skipped, created as an
+empty file, or make the whole archive fail on a checksum error. Folder import still does not extract any archives it contains.
 
 ![Dialog for extracting archives](bilder/21-archiv-entpacken.png)
 

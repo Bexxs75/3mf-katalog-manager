@@ -131,9 +131,11 @@ Datei ließ sich als „Drop" melden) und dem frei wählbaren Zielordner `target
   jeden Pfad beim Verbrauch (einmalige Verwendung); alles andere landet mit Fehler „Archiv wurde
   nicht über den Import freigegeben" im Ergebnis.
 - **Zielordner:** `extract_archives` akzeptiert `target_dir` nur, wenn er exakt einem Katalogordner
-  (Tabelle `folders`) entspricht oder zuvor im nativen Ordner-Dialog (`pick_folder_path`) gewählt
-  wurde (`ApprovedTargets`); sonst Fehler „Zielordner wurde nicht über die App ausgewählt". Dazu kommt
-  die Vorfahren-Prüfung aus S-01.
+  (Tabelle `folders`) entspricht oder zuvor in einem Ordner-Auswahldialog der App gewählt wurde
+  (jeder `pick_folder_path`-Aufruf, also z. B. auch im Ersteinrichtungsdialog; `ApprovedTargets`);
+  sonst Fehler „Zielordner wurde nicht über die App ausgewählt". Dazu kommt die Vorfahren-Prüfung aus
+  S-01. Das verhindert, dass ein kompromittiertes Frontend ein **beliebiges** Ziel unterschiebt; es
+  kann aber über andere Befehle weitere, nicht geschützte Ordner zu Katalogordnern machen (siehe R-7).
 - **Reihenfolge:** Alle Zielordner-Prüfungen laufen **vor** dem Verbrauch der Freigaben — nach einem
   abgelehnten Ziel kann der Nutzer mit einem anderen Ordner erneut starten.
 - **Löschen (Verhaltensänderung):** Das Original wird nur noch gelöscht, wenn **alle** Einträge
@@ -263,10 +265,12 @@ Katalogordner kopiert. `rar_meta` erkennt solche Einträge nicht, sie sehen wie 
 auch der Staging-Ordner aus S-08 half nicht, da die Kopie dort als gewöhnliche Datei ankam.
 
 **Maßnahme:** Entpacken im Testmodus in den Speicher (siehe S-08). Im Testmodus führt UnRAR keine
-Kopie-, Hardlink- oder Symlink-Operation aus; Referenz-Einträge liefern keine Daten. Ihre Länge (0)
-passt nicht zur Header-Größe, deshalb werden sie übersprungen und als unsicher gezählt. RAR-Archive
-mit Datei-Referenzen werden damit nur teilweise entpackt (die referenzierten Einträge fehlen); das
-Ergebnis-Banner zeigt die übersprungenen Einträge an.
+Kopie-, Hardlink- oder Symlink-Operation aus; Referenz-Einträge liefern keine Daten. Je nach Header
+gibt es drei Ausgänge, in keinem gelangt der Inhalt der referenzierten lokalen Datei in den Katalog:
+(1) Header-Größe > 0: Die gelesene Länge (0) passt nicht, der Eintrag wird übersprungen und als
+unsicher gezählt (das Banner zeigt ihn an). (2) Header-Größe 0: Es entsteht eine leere Datei.
+(3) Meldet UnRAR beim Testen einen Prüfsummenfehler (gespeicherte Prüfsumme passt nicht zu den
+leeren Daten), bricht das ganze Archiv ab und alles bereits Entpackte wird entfernt.
 
 **Test:** `rar_entry_decision_limits_size_and_skips_entries_without_matching_data`
 (`src-tauri/src/archive/formats.rs`, Modul `tests`) für die Entscheidungslogik; die bestehenden
@@ -305,7 +309,9 @@ RAR-Fixture-Tests für den Testmodus-Pfad. Ein Fixture mit echtem Datei-Kopie-Ei
   der DLL). Über das `unrar`-Crate lässt sich das nicht senken. Ein präpariertes RAR kann daher
   kurzzeitig bis zu 4 GB Speicher anfordern. Behebbar später über einen Crate-Fork mit
   `UCM_LARGEDICT`-Callback. Zusätzlich hält die App seit S-08/S-09 einen RAR-Eintrag (höchstens
-  1 GiB) vollständig im Speicher.
+  1 GiB) vollständig im Speicher; weil der Puffer im `unrar`-Crate schrittweise wächst (keine
+  Vorab-Reservierung möglich), kann der Speicherbedarf bei einem Eintrag nahe 1 GiB kurzzeitig
+  etwa 2–3 GiB erreichen.
 - **R-2 7z-Header:** Ein komprimierter 7z-Header wird von `sevenz-rust2` dekodiert, bevor unsere
   Blockprüfung greift, und zwar ohne Speicherlimit.
 - **R-3 Lokale TOCTOU:** Wer bereits Schreibrechte im Katalogordner hat, könnte zwischen Prüfung und
@@ -322,6 +328,12 @@ RAR-Fixture-Tests für den Testmodus-Pfad. Ein Fixture mit echtem Datei-Kopie-Ei
 - **R-6 Vorhersehbarer Staging-Ordnername — entfällt:** Mit S-08/S-09 gibt es keinen
   RAR-Staging-Ordner mehr; das frühere Verfügbarkeits-Restrisiko (vorab angelegte Ordnernamen)
   besteht nicht mehr.
+- **R-7 Katalogordner als Entpack-Ziel (neu):** Ein kompromittiertes Frontend könnte über
+  `register_catalog_base_dir` oder Ordner-Drops beliebige nicht geschützte Ordner, die kein
+  geschütztes Verzeichnis enthalten, zu Katalogordnern und damit zu erlaubten Entpack-Zielen machen.
+  Die Auswirkung ist begrenzt: Entpackt werden kann weiterhin nur ein Archiv, das der Nutzer selbst
+  per Dateidialog oder Drag & Drop hereingegeben hat; entpackte Dateien sind immer `0644` und nie
+  ausführbar, gesperrte Dateitypen werden gefiltert und nichts wird überschrieben.
 
 ## Nicht enthalten (bewusst, unverändert seit der Spezifikation)
 
@@ -466,9 +478,11 @@ target folder `target_dir`.
   removes each path when it's consumed (single use); everything else comes back in the result with
   the error "archive was not authorized via import".
 - **Target folder:** `extract_archives` only accepts a `target_dir` that exactly matches a catalog
-  folder (`folders` table) or was picked beforehand in the native folder dialog (`pick_folder_path`,
-  `ApprovedTargets`); otherwise it fails with "target folder was not chosen through the app". The
-  ancestor check from S-01 applies on top.
+  folder (`folders` table) or was picked beforehand in one of the app's folder-selection dialogs
+  (any `pick_folder_path` call, e.g. also in the first-run setup dialog; `ApprovedTargets`); otherwise
+  it fails with "target folder was not chosen through the app". The ancestor check from S-01 applies
+  on top. This stops a compromised frontend from substituting an **arbitrary** target; it can,
+  however, turn further non-protected folders into catalog folders through other commands (see R-7).
 - **Order:** all target folder checks run **before** the authorizations are consumed — after a
   rejected target the user can start again with a different folder.
 - **Deletion (behavior change):** the original is only deleted when **every** entry was extracted
@@ -598,10 +612,12 @@ look like regular files; the staging folder from S-08 did not help either, since
 there as an ordinary file.
 
 **Mitigation:** in-memory extraction in test mode (see S-08). In test mode UnRAR performs no copy,
-hardlink or symlink operation; reference entries yield no data. Their length (0) does not match the
-header size, so they are skipped and counted as unsafe. RAR archives with file references are
-therefore only partially extracted (the referencing entries are missing); the result banner shows
-the skipped entries.
+hardlink or symlink operation; reference entries yield no data. Depending on the header there are
+three outcomes, and in none of them does the content of the referenced local file reach the catalog:
+(1) header size > 0: the length read (0) does not match, so the entry is skipped and counted as
+unsafe (the banner shows it). (2) header size 0: an empty file is created. (3) if UnRAR reports a
+checksum error while testing (the stored checksum does not match the empty data), the whole archive
+is aborted and everything already extracted is removed.
 
 **Test:** `rar_entry_decision_limits_size_and_skips_entries_without_matching_data`
 (`src-tauri/src/archive/formats.rs`, `tests` module) for the decision logic; the existing RAR
@@ -637,7 +653,9 @@ tool in the build environment, UnRAR can only extract).
 - **R-1 UnRAR dictionary:** the UnRAR library allows dictionaries up to 4 GB per entry (the DLL's
   default). This cannot be lowered through the `unrar` crate. A crafted RAR can therefore briefly
   request up to 4 GB of memory. Fixable later via a crate fork with a `UCM_LARGEDICT` callback. In addition, since S-08/S-09 the
-  app holds one RAR entry (at most 1 GiB) completely in memory.
+  app holds one RAR entry (at most 1 GiB) completely in memory; because the buffer inside the
+  `unrar` crate grows step by step (no preallocation possible), memory use for an entry close to
+  1 GiB can transiently reach about 2–3 GiB.
 - **R-2 7z header:** a compressed 7z header is decoded by `sevenz-rust2` before our block check
   applies, without a memory limit.
 - **R-3 Local TOCTOU:** anyone who already has write access inside the catalog folder could swap an
@@ -652,6 +670,12 @@ tool in the build environment, UnRAR can only extract).
   covered by the carried-over origin mark (S-03).
 - **R-6 Predictable staging folder name — obsolete:** since S-08/S-09 there is no RAR staging
   folder anymore; the former availability risk (pre-created folder names) no longer exists.
+- **R-7 Catalog folders as extraction targets (new):** a compromised frontend could use
+  `register_catalog_base_dir` or folder drops to turn any non-protected folder that contains no
+  protected directory into a catalog folder, and thus an approved extraction target. The impact is
+  limited: only an archive that the user supplied through the file dialog or drag & drop can still be
+  extracted; extracted files are always `0644` and never executable, blocked file types are
+  filtered, and nothing is overwritten.
 
 ## Not included (deliberately, unchanged since the specification)
 
