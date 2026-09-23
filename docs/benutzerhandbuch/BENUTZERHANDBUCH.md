@@ -141,8 +141,9 @@ gelöscht wurde), öffnet sich kein Dialog — stattdessen zeigt das Ergebnis-Ba
 „<Name> fehlgeschlagen: <Fehler>" an, bis du es wegklickst.
 
 Aus Sicherheitsgründen werden Programme, Skripte und Verknüpfungen aus Archiven nie entpackt;
-passwortgeschützte und mehrteilige Archive werden erkannt, aber nicht entpackt. Der Ordner-Import
-entpackt weiterhin keine enthaltenen Archive.
+passwortgeschützte und mehrteilige Archive werden erkannt, aber nicht entpackt. Einzelne Dateien
+in RAR-Archiven dürfen höchstens 1 GB groß sein. Der Ordner-Import entpackt weiterhin keine
+enthaltenen Archive.
 
 ![Dialog zum Entpacken von Archiven](bilder/21-archiv-entpacken.png)
 
@@ -557,8 +558,8 @@ meantime), no dialog opens — instead the result banner shows "<name> failed: <
 dismiss it.
 
 For security reasons, programs, scripts, and shortcuts inside archives are never extracted;
-password-protected and multi-part archives are detected but not extracted. Folder import still
-does not extract any archives it contains.
+password-protected and multi-part archives are detected but not extracted. Individual files inside
+RAR archives may be at most 1 GB. Folder import still does not extract any archives it contains.
 
 ![Dialog for extracting archives](bilder/21-archiv-entpacken.png)
 

@@ -25,7 +25,8 @@ wie in den früheren Reviews.
 | S-05 | Ressourcenerschöpfung (Speicher, Einträge, tar-Bombe) | Mittel | CWE-400, CWE-409, CWE-367 | ✅ umgesetzt |
 | S-06 | Rechte aus dem Archiv (ausführbar, setuid) | Niedrig | CWE-732 | ✅ umgesetzt |
 | S-07 | Panic in `update_paths_under_folder` bei inkonsistenter Ordnerhierarchie | Niedrig (bestehend) | CWE-248 | ✅ behoben |
-| S-08 | Fremdbibliothek (UnRAR) schreibt direkt ans Ziel | Mittel | CWE-367, CWE-59 | ✅ umgesetzt |
+| S-08 | Fremdbibliothek (UnRAR) schreibt direkt ans Ziel | Mittel | CWE-367, CWE-59 | ✅ umgesetzt (neu gefasst) |
+| S-09 | RAR-Datei-Kopie-/Hardlink-Einträge lesen beliebige lokale Dateien | Kritisch | CWE-59, CWE-22 | ✅ behoben |
 
 Kein Fund zu: SQL-Injection (weiterhin durchgehend parametrisiert), Pfad-Präfix-Abfragen (kein
 `LIKE` auf Pfaden), XSS/HTML-Injection (React maskiert alle Namen, CSP aktiv), Parser-Seiteneffekte
@@ -190,8 +191,8 @@ Modul `tests`).
 tar- und RAR-Archive bringen eigene Unix-Rechte mit (ausführbar, im Extremfall setuid-Bit).
 
 **Maßnahme:** Alle entpackten Dateien werden unabhängig vom Archiv-Eintrag mit `0o644` angelegt
-(`create_new` + `OpenOptionsExt::mode(0o644)`); RAR-Dateien, die zunächst über den Staging-Ordner
-laufen (siehe S-08), erhalten dieselbe Rechtevergabe beim Kopieren ins Ziel.
+(`create_new` + `OpenOptionsExt::mode(0o644)`); das gilt auch für RAR, das seit S-08/S-09 über
+dieselbe Schreibfunktion geschrieben wird.
 
 **Test:** `extracted_files_are_never_executable_and_symlinked_merge_roots_are_refused`
 (`src-tauri/src/archive/tests.rs`).
@@ -216,30 +217,61 @@ bei einem inkonsistenten Kind-Pfad zurückgerollt statt die App abstürzen zu la
 
 ---
 
-## S-08 — Fremdbibliothek (UnRAR) schreibt direkt ans Ziel (Mittel, Ergänzung nach Review von Task 2)
+## S-08 — Fremdbibliothek (UnRAR) schreibt direkt ans Ziel (Mittel, Ergänzung nach Review von Task 2, neu gefasst im Abschluss-Review)
 
-**Betroffen:** `src-tauri/src/archive/formats.rs` (`StagingDir`, `extract_rar`).
+**Betroffen:** `src-tauri/src/archive/formats.rs` (`extract_rar`, `rar_entry_decision`,
+`MAX_RAR_ENTRY_BYTES`).
 **CWE:** CWE-367 (TOCTOU), CWE-59 (Improper Link Resolution Before File Access)
 
-Das `unrar`-Crate schreibt Einträge über die UnRAR-Bibliothek selbst auf die Platte
+Das `unrar`-Crate schreibt Einträge beim Entpacken über die UnRAR-Bibliothek selbst auf die Platte
 (`header.extract_to(...)`) statt über unsere abgesicherte Schreibfunktion. Ohne Gegenmaßnahme hätte
 damit für RAR-Archive „nie überschreiben / keinem Symlink folgen" nicht gegolten — im Gegensatz zu
 allen anderen Formaten, die ausschließlich über `create_new` (O_EXCL) in `extract.rs` schreiben.
 
-**Maßnahme (Entscheidung des Nutzers nach Review von Task 2):** Jeder RAR-Eintrag wird zuerst in
-einen frisch angelegten, privaten Staging-Ordner geschrieben (`<temp>/3mfkm-rar-<pid>-<nanos>-<n>`,
-unter Unix mit Rechten `0700`, per RAII beim `Drop` wieder gelöscht). Von dort kopiert die
-abgesicherte Schreibfunktion (`create_new`, `0o644`, Byte-Budget, Herkunftsmarkierung) ins
-eigentliche Ziel. Damit gilt „nie überschreiben / keinem Symlink folgen" jetzt auch für RAR ohne
-Ausnahme. Zusätzlich wird die im RAR-Header angegebene Größe eines Eintrags **vor** dem Entpacken
-gegen das verbleibende Byte-Budget geprüft (`ensure_budget_for`), nicht erst danach.
+**Maßnahme:** Die erste Umsetzung (UnRAR entpackt in einen privaten Staging-Ordner, von dort wird
+kopiert) wurde im Abschluss-Review durch S-09 als unzureichend erkannt und ersetzt: UnRAR schreibt
+jetzt **gar nichts** mehr auf die Platte. Jeder Eintrag wird mit `header.read()` im
+UnRAR-**Testmodus** in den Speicher gelesen (`RAR_TEST`: UnRAR legt dabei keine Dateien, Links oder
+Kopien an) und dann wie bei allen anderen Formaten über die abgesicherte Schreibfunktion
+(`create_new`, `0o644`, Byte-Budget, Herkunftsmarkierung) ins Ziel geschrieben. Vor dem Lesen werden
+die Header-Größe gegen `MAX_RAR_ENTRY_BYTES` (1 GiB, der Eintrag liegt vollständig im Speicher) und
+gegen das verbleibende Byte-Budget (`ensure_budget_for`) geprüft. Weicht die Länge der gelesenen
+Daten von der Header-Größe ab, wird nichts geschrieben und der Eintrag als unsicher gezählt.
 
-**Bezug zu R-3 (Restrisiko, siehe unten):** RAR ist durch diese Maßnahme lokalem TOCTOU jetzt nicht
-mehr stärker ausgesetzt als die übrigen Formate.
+**Bezug zu R-3 (Restrisiko, siehe unten):** RAR ist lokalem TOCTOU nicht stärker ausgesetzt als die
+übrigen Formate.
 
-**Test:** `rar_budget_check_prevents_oversized_entry_and_cleans_staging`,
-`rar4_and_rar5_fixtures_extract`, `skipped_entries_in_a_solid_7z_do_not_corrupt_later_entries`
+**Test:** `rar_entry_decision_limits_size_and_skips_entries_without_matching_data`
+(`src-tauri/src/archive/formats.rs`, Modul `tests`), `rar_budget_check_prevents_oversized_entry`,
+`rar4_and_rar5_fixtures_extract`, `inspect_reports_encrypted_7z_and_rar_and_unsupported_multipart_rar`
 (`src-tauri/src/archive/tests.rs`).
+
+---
+
+## S-09 — RAR-Datei-Kopie-/Hardlink-Einträge lesen beliebige lokale Dateien (Kritisch, Abschluss-Review)
+
+**Betroffen:** `src-tauri/src/archive/formats.rs` (`extract_rar`, vorher `header.extract_to`).
+**CWE:** CWE-59 (Improper Link Resolution Before File Access), CWE-22 (Path Traversal)
+
+RAR5 kennt Einträge vom Typ „Datei-Kopie" und „Hardlink" (mit `rar -oi` erzeugt), die statt Daten
+nur einen Verweis auf eine andere Datei enthalten. Das `unrar`-Crate übergibt beim Entpacken nur
+einen vollständigen Zielnamen (DestName; unter Linux auch bei `extract_with_base`). In diesem Modus
+schaltet UnRAR seine eigene Pfadbehandlung ab und löst die Quelle solcher Einträge relativ zum
+Arbeitsverzeichnis des App-Prozesses auf (meist das Home-Verzeichnis). Ein präpariertes Archiv mit
+einem Eintrag `modell.stl → .ssh/id_ed25519` hätte so den privaten SSH-Schlüssel des Nutzers in den
+Katalogordner kopiert. `rar_meta` erkennt solche Einträge nicht, sie sehen wie normale Dateien aus;
+auch der Staging-Ordner aus S-08 half nicht, da die Kopie dort als gewöhnliche Datei ankam.
+
+**Maßnahme:** Entpacken im Testmodus in den Speicher (siehe S-08). Im Testmodus führt UnRAR keine
+Kopie-, Hardlink- oder Symlink-Operation aus; Referenz-Einträge liefern keine Daten. Ihre Länge (0)
+passt nicht zur Header-Größe, deshalb werden sie übersprungen und als unsicher gezählt. RAR-Archive
+mit Datei-Referenzen werden damit nur teilweise entpackt (die referenzierten Einträge fehlen); das
+Ergebnis-Banner zeigt die übersprungenen Einträge an.
+
+**Test:** `rar_entry_decision_limits_size_and_skips_entries_without_matching_data`
+(`src-tauri/src/archive/formats.rs`, Modul `tests`) für die Entscheidungslogik; die bestehenden
+RAR-Fixture-Tests für den Testmodus-Pfad. Ein Fixture mit echtem Datei-Kopie-Eintrag gibt es nicht
+(kein `rar`-Werkzeug in der Build-Umgebung, UnRAR kann nur entpacken).
 
 ---
 
@@ -260,8 +292,10 @@ mehr stärker ausgesetzt als die übrigen Formate.
   Datei-Metadaten übernommen.
 - **UnRAR-Version:** Das `unrar`-Crate (`unrar_sys` 0.5.8) bündelt UnRAR 7.1. Darin sind
   CVE-2022-30333 (Pfad-Traversal über Symlinks, behoben in 6.12) und CVE-2023-40477
-  (Codeausführung über Recovery-Volumes, behoben in 6.23) bereits behoben. Symlinks werden
-  zusätzlich von uns generell übersprungen.
+  (Codeausführung über Recovery-Volumes, behoben in 6.23) bereits behoben. Zusätzlich lässt die App
+  UnRAR selbst nichts mehr anlegen (Testmodus, S-08/S-09): Symlink-Einträge werden anhand der
+  Dateiattribute übersprungen, Hardlink- und Datei-Kopie-Einträge liefern keine Daten und werden
+  ebenfalls übersprungen.
 - **Überschreiben/Symlink-Folgen am Ziel:** `create_new` (O_EXCL) folgt keinem Symlink an der
   Zieldatei; vorhandene Symlinks in Zwischenordnern werden erkannt und nicht betreten.
 
@@ -270,28 +304,24 @@ mehr stärker ausgesetzt als die übrigen Formate.
 - **R-1 UnRAR-Wörterbuch:** Die UnRAR-Bibliothek erlaubt Wörterbücher bis 4 GB pro Eintrag (Standard
   der DLL). Über das `unrar`-Crate lässt sich das nicht senken. Ein präpariertes RAR kann daher
   kurzzeitig bis zu 4 GB Speicher anfordern. Behebbar später über einen Crate-Fork mit
-  `UCM_LARGEDICT`-Callback.
+  `UCM_LARGEDICT`-Callback. Zusätzlich hält die App seit S-08/S-09 einen RAR-Eintrag (höchstens
+  1 GiB) vollständig im Speicher.
 - **R-2 7z-Header:** Ein komprimierter 7z-Header wird von `sevenz-rust2` dekodiert, bevor unsere
   Blockprüfung greift, und zwar ohne Speicherlimit.
 - **R-3 Lokale TOCTOU:** Wer bereits Schreibrechte im Katalogordner hat, könnte zwischen Prüfung und
   Anlegen einen Zwischenordner gegen einen Symlink tauschen. Voll ausschließen ließe sich das nur
   mit `openat`-basiertem Schreiben (z. B. `cap-std`). Ein solcher Angreifer hat das System ohnehin
-  schon kompromittiert. Seit der S-08-Maßnahme (Staging-Ordner) ist RAR davon nicht mehr stärker
-  betroffen als die übrigen Formate.
+  schon kompromittiert. RAR ist davon seit S-08/S-09 nicht stärker betroffen als die übrigen
+  Formate.
 - **R-4 Parser-Abstürze:** STEP-Dateien werden im Prozess über OCCT gelesen. Stürzt OCCT bei einer
   präparierten Datei ab, endet die App mitten im Import. Die entpackten Dateien bleiben dann liegen,
   es entstehen aber keine halben Katalogeinträge (die Transaktion ist nicht committet). Das Risiko
   bestand schon vorher, Archive erhöhen nur die Menge der Dateien pro Vorgang.
 - **R-5 Dokumente mit aktiven Inhalten** (Office-Makros, PDF) liegen außerhalb der Sperrliste. Sie
   sind über die übertragene Herkunftsmarkierung (S-03) abgesichert.
-- **R-6 Vorhersehbarer Staging-Ordnername (neu, Ergänzung zu S-08):** Der Name des privaten
-  RAR-Staging-Ordners folgt dem Muster `3mfkm-rar-<pid>-<nanos>-<n>` mit `n` von 0 bis 15. Ein
-  anderer lokaler Nutzer könnte theoretisch alle 16 Kandidaten-Namen vorab anlegen und damit das
-  Entpacken dieses einen RAR-Archivs zum Scheitern bringen (`StagingDir::new` gibt dann einen
-  Fehler zurück). Das ist ausschließlich ein Verfügbarkeits-Restrisiko (Denial of Service für den
-  Entpack-Vorgang), kein Schreib-Primitive: Da der Ordner selbst mit `DirBuilder::create` (kein
-  `create_dir_all`, keinem Symlink folgend) angelegt und mit `0700` gehärtet wird, kann ein Angreifer
-  darüber keine Datei des Nutzers manipulieren oder mitlesen.
+- **R-6 Vorhersehbarer Staging-Ordnername — entfällt:** Mit S-08/S-09 gibt es keinen
+  RAR-Staging-Ordner mehr; das frühere Verfügbarkeits-Restrisiko (vorab angelegte Ordnernamen)
+  besteht nicht mehr.
 
 ## Nicht enthalten (bewusst, unverändert seit der Spezifikation)
 
@@ -329,7 +359,8 @@ reviews.
 | S-05 | Resource exhaustion (memory, entries, tar bomb) | Medium | CWE-400, CWE-409, CWE-367 | ✅ implemented |
 | S-06 | Permissions carried over from the archive (executable, setuid) | Low | CWE-732 | ✅ implemented |
 | S-07 | Panic in `update_paths_under_folder` on an inconsistent folder hierarchy | Low (pre-existing) | CWE-248 | ✅ fixed |
-| S-08 | Third-party library (UnRAR) writes directly to the destination | Medium | CWE-367, CWE-59 | ✅ implemented |
+| S-08 | Third-party library (UnRAR) writes directly to the destination | Medium | CWE-367, CWE-59 | ✅ implemented (revised) |
+| S-09 | RAR file-copy/hardlink entries read arbitrary local files | Critical | CWE-59, CWE-22 | ✅ fixed |
 
 No finding for: SQL injection (still consistently parameterized), path-prefix queries (no `LIKE`
 on paths), XSS/HTML injection (React escapes all names, CSP active), parser side effects (the OBJ
@@ -496,8 +527,8 @@ tar and RAR archives carry their own Unix permissions (executable, in the extrem
 bit).
 
 **Mitigation:** Every extracted file is created with `0o644` regardless of the archive entry
-(`create_new` + `OpenOptionsExt::mode(0o644)`); RAR files, which first pass through the staging
-folder (see S-08), get the same permission assignment when copied to the destination.
+(`create_new` + `OpenOptionsExt::mode(0o644)`); this also applies to RAR, which since S-08/S-09 is
+written through the same write function.
 
 **Test:** `extracted_files_are_never_executable_and_symlinked_merge_roots_are_refused`
 (`src-tauri/src/archive/tests.rs`).
@@ -521,30 +552,61 @@ is rolled back on an inconsistent child path instead of crashing the app.
 
 ---
 
-## S-08 — Third-party library (UnRAR) writes directly to the destination (Medium, added after the Task 2 review)
+## S-08 — Third-party library (UnRAR) writes directly to the destination (Medium, added after the Task 2 review, revised in the final review)
 
-**Affected:** `src-tauri/src/archive/formats.rs` (`StagingDir`, `extract_rar`).
+**Affected:** `src-tauri/src/archive/formats.rs` (`extract_rar`, `rar_entry_decision`,
+`MAX_RAR_ENTRY_BYTES`).
 **CWE:** CWE-367 (TOCTOU), CWE-59 (Improper Link Resolution Before File Access)
 
-The `unrar` crate writes entries to disk itself via the UnRAR library (`header.extract_to(...)`)
-instead of going through our hardened write function. Without a countermeasure, "never overwrite /
-never follow a symlink" would not have held for RAR archives — unlike every other format, which
-writes exclusively through `create_new` (O_EXCL) in `extract.rs`.
+When extracting, the `unrar` crate writes entries to disk itself via the UnRAR library
+(`header.extract_to(...)`) instead of going through our hardened write function. Without a
+countermeasure, "never overwrite / never follow a symlink" would not have held for RAR archives —
+unlike every other format, which writes exclusively through `create_new` (O_EXCL) in `extract.rs`.
 
-**Mitigation (user decision after the Task 2 review):** Every RAR entry is first written into a
-freshly created, private staging folder (`<temp>/3mfkm-rar-<pid>-<nanos>-<n>`, mode `0700` on Unix,
-removed again via RAII on `Drop`). From there, the hardened write function (`create_new`, `0o644`,
-byte budget, origin marking) copies it to the actual destination. This makes "never overwrite /
-never follow a symlink" hold for RAR without exception, too. In addition, the size of a RAR entry as
-declared in its header is checked against the remaining byte budget **before** extraction
-(`ensure_budget_for`), not only afterward.
+**Mitigation:** The first implementation (UnRAR extracts into a private staging folder, which is
+then copied) was found insufficient in the final review because of S-09 and replaced: UnRAR no
+longer writes **anything** to disk. Every entry is read into memory with `header.read()` in UnRAR's
+**test mode** (`RAR_TEST`: UnRAR creates no files, links or copies) and then written to the
+destination through the hardened write function (`create_new`, `0o644`, byte budget, origin
+marking), just like every other format. Before reading, the header size is checked against
+`MAX_RAR_ENTRY_BYTES` (1 GiB, the entry is held in memory completely) and against the remaining byte
+budget (`ensure_budget_for`). If the length of the data read differs from the header size, nothing
+is written and the entry is counted as unsafe.
 
-**Relation to R-3 (residual risk, below):** thanks to this mitigation, RAR is no longer more exposed
-to local TOCTOU than the other formats.
+**Relation to R-3 (residual risk, below):** RAR is no more exposed to local TOCTOU than the other
+formats.
 
-**Test:** `rar_budget_check_prevents_oversized_entry_and_cleans_staging`,
-`rar4_and_rar5_fixtures_extract`, `skipped_entries_in_a_solid_7z_do_not_corrupt_later_entries`
+**Test:** `rar_entry_decision_limits_size_and_skips_entries_without_matching_data`
+(`src-tauri/src/archive/formats.rs`, `tests` module), `rar_budget_check_prevents_oversized_entry`,
+`rar4_and_rar5_fixtures_extract`, `inspect_reports_encrypted_7z_and_rar_and_unsupported_multipart_rar`
 (`src-tauri/src/archive/tests.rs`).
+
+---
+
+## S-09 — RAR file-copy/hardlink entries read arbitrary local files (Critical, final review)
+
+**Affected:** `src-tauri/src/archive/formats.rs` (`extract_rar`, previously `header.extract_to`).
+**CWE:** CWE-59 (Improper Link Resolution Before File Access), CWE-22 (Path Traversal)
+
+RAR5 has "file copy" and "hardlink" entries (created with `rar -oi`) that contain no data, only a
+reference to another file. When extracting, the `unrar` crate passes only a full destination name
+(DestName; on Linux even for `extract_with_base`). In that mode UnRAR turns off its own path handling
+and resolves the source of such entries relative to the app process's working directory (usually
+the home directory). A crafted archive with an entry `model.stl → .ssh/id_ed25519` would have copied
+the user's private SSH key into the catalog folder. `rar_meta` does not recognize such entries, they
+look like regular files; the staging folder from S-08 did not help either, since the copy arrived
+there as an ordinary file.
+
+**Mitigation:** in-memory extraction in test mode (see S-08). In test mode UnRAR performs no copy,
+hardlink or symlink operation; reference entries yield no data. Their length (0) does not match the
+header size, so they are skipped and counted as unsafe. RAR archives with file references are
+therefore only partially extracted (the referencing entries are missing); the result banner shows
+the skipped entries.
+
+**Test:** `rar_entry_decision_limits_size_and_skips_entries_without_matching_data`
+(`src-tauri/src/archive/formats.rs`, `tests` module) for the decision logic; the existing RAR
+fixture tests for the test-mode path. There is no fixture with a real file-copy entry (no `rar`
+tool in the build environment, UnRAR can only extract).
 
 ---
 
@@ -564,7 +626,9 @@ to local TOCTOU than the other formats.
   file metadata.
 - **UnRAR version:** the `unrar` crate (`unrar_sys` 0.5.8) bundles UnRAR 7.1, which already fixes
   CVE-2022-30333 (path traversal via symlinks, fixed in 6.12) and CVE-2023-40477 (code execution
-  via recovery volumes, fixed in 6.23). We additionally skip symlinks generally.
+  via recovery volumes, fixed in 6.23). On top of that, the app no longer lets UnRAR create anything
+  itself (test mode, S-08/S-09): symlink entries are skipped based on their file attributes, and
+  hardlink and file-copy entries yield no data and are skipped as well.
 - **Overwrite/symlink-following at the destination:** `create_new` (O_EXCL) never follows a symlink
   at the destination file; existing symlinks in intermediate folders are detected and never entered.
 
@@ -572,27 +636,22 @@ to local TOCTOU than the other formats.
 
 - **R-1 UnRAR dictionary:** the UnRAR library allows dictionaries up to 4 GB per entry (the DLL's
   default). This cannot be lowered through the `unrar` crate. A crafted RAR can therefore briefly
-  request up to 4 GB of memory. Fixable later via a crate fork with a `UCM_LARGEDICT` callback.
+  request up to 4 GB of memory. Fixable later via a crate fork with a `UCM_LARGEDICT` callback. In addition, since S-08/S-09 the
+  app holds one RAR entry (at most 1 GiB) completely in memory.
 - **R-2 7z header:** a compressed 7z header is decoded by `sevenz-rust2` before our block check
   applies, without a memory limit.
 - **R-3 Local TOCTOU:** anyone who already has write access inside the catalog folder could swap an
   intermediate folder for a symlink between the check and its creation. Fully ruling this out would
   require `openat`-based writes (e.g. `cap-std`). Such an attacker has already compromised the
-  system anyway. Since the S-08 mitigation (staging folder), RAR is no longer more exposed to this
-  than the other formats.
+  system anyway. Since S-08/S-09, RAR is no more exposed to this than the other formats.
 - **R-4 Parser crashes:** STEP files are read in-process via OCCT. If OCCT crashes on a crafted
   file, the app terminates mid-import. Already-extracted files remain on disk, but no half-written
   catalog entries result (the transaction is never committed). This risk predates archives; archives
   only increase the number of files per operation.
 - **R-5 Documents with active content** (Office macros, PDF) fall outside the block list. They are
   covered by the carried-over origin mark (S-03).
-- **R-6 Predictable staging folder name (new, addition to S-08):** the private RAR staging folder's
-  name follows the pattern `3mfkm-rar-<pid>-<nanos>-<n>` with `n` from 0 to 15. Another local user
-  could in theory pre-create all 16 candidate names, causing the extraction of that one RAR archive
-  to fail (`StagingDir::new` then returns an error). This is purely an availability risk (denial of
-  service for the extraction operation), not a write primitive: since the folder itself is created
-  with `DirBuilder::create` (no `create_dir_all`, never following a symlink) and hardened to `0700`,
-  an attacker cannot use it to manipulate or read any of the user's files.
+- **R-6 Predictable staging folder name — obsolete:** since S-08/S-09 there is no RAR staging
+  folder anymore; the former availability risk (pre-created folder names) no longer exists.
 
 ## Not included (deliberately, unchanged since the specification)
 
