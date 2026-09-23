@@ -193,6 +193,32 @@ export interface Translations {
   creatorsHeading: string;
 
   importSummaryText: string;
+  archiveDialogTitle: string;
+  archiveTargetLabel: string;
+  archiveTargetChange: string;
+  archiveTargetMissing: string;
+  archiveModelsCount: string;
+  archiveStatusNoModels: string;
+  archiveStatusTooLarge: string;
+  archiveStatusEncrypted: string;
+  archiveStatusUnreadable: string;
+  archiveStatusUnsupported: string;
+  archiveConflictText: string;
+  archiveConflictNew: string;
+  archiveConflictMerge: string;
+  archiveDeleteAfter: string;
+  archiveCancel: string;
+  archiveExtractButton: string;
+  archiveProgressExtracting: string;
+  archiveProgressImporting: string;
+  archiveProgressDone: string;
+  archiveProgressFailed: string;
+  archiveSummaryExistingSkipped: string;
+  archiveSummaryUnsafeSkipped: string;
+  archiveSummaryBlockedSkipped: string;
+  archiveSummaryDeleted: string;
+  archiveSummaryFailed: string;
+  archiveSummaryNotDeleted: string;
 
   uploadModelImageLabel: string;
 

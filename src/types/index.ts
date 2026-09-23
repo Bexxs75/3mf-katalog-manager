@@ -107,6 +107,52 @@ export interface Folder {
 export interface ImportResultDto {
   imported: ModelFile[];
   duplicateCount: number;
+  pendingArchives?: string[];
+}
+
+export type ArchiveStatus = 'ok' | 'noModels' | 'tooLarge' | 'encrypted' | 'unreadable' | 'unsupported';
+
+export interface ArchiveInfo {
+  path: string;
+  suggestedFolderName: string;
+  modelCount: number;
+  entryCount: number;
+  unpackedSize: number;
+  fileSize: number;
+  modifiedUnixMs: number;
+  status: ArchiveStatus;
+}
+
+export type ConflictMode = 'new' | 'merge';
+
+export interface ArchiveRequest {
+  path: string;
+  folderName: string;
+  onConflict: ConflictMode;
+  expectedSize: number;
+  expectedModifiedUnixMs: number;
+}
+
+export interface ArchiveOutcome {
+  path: string;
+  extractedTo: string | null;
+  existingSkipped: number;
+  unsafeSkipped: number;
+  blockedSkipped: number;
+  archiveDeleted: boolean;
+  deleteError: string | null;
+  error: string | null;
+}
+
+export interface ArchiveImportResult {
+  imported: ModelFile[];
+  duplicateCount: number;
+  archives: ArchiveOutcome[];
+}
+
+export interface ArchiveProgress {
+  path: string;
+  state: 'extracting' | 'importing' | 'done' | 'failed';
 }
 
 export interface TagCount {
