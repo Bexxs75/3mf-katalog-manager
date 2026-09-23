@@ -4,6 +4,7 @@ import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatWeightG } from '../i18n/format';
 import { filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus';
 import { isInStorage, slotKey, spoolsBySlot } from '../lib/filamentSlots';
+import { isValidColorHex } from '../lib/filamentColors';
 import type { SpoolDropTarget } from '../hooks/useSpoolDragAndDrop';
 import type { FilamentSpool, MaterialUnit, Printer } from '../types';
 
@@ -60,17 +61,24 @@ export function PrinterColumn({
     dropTarget.slotIndex === slotIndex;
 
   const renderUnit = (unit: MaterialUnit) => {
-    const used = Array.from({ length: unit.slotCount }, (_, i) => bySlot.get(slotKey(unit.id, i))).filter(Boolean).length;
+    // Verteidigung in der Tiefe (finaler Review 2026-09-23, Finding 1): das
+    // Backend lehnt eine `slotCount` ausserhalb 1..16 bereits beim Import
+    // eines Katalog-Backups ab (`validate_printer_invariants`), aber diese
+    // Obergrenze hier stellt sicher, dass eine Ansicht auch dann nie haengt
+    // (`Array.from({length: unit.slotCount})`), wenn irgendein anderer,
+    // noch unbekannter Pfad einmal einen zu grossen Wert liefert.
+    const slotCount = Math.min(unit.slotCount, 16);
+    const used = Array.from({ length: slotCount }, (_, i) => bySlot.get(slotKey(unit.id, i))).filter(Boolean).length;
     return (
       <div key={unit.id} className="rounded-md border border-[var(--line)] bg-[var(--panel-2)] p-2">
         <div className="flex items-center justify-between text-[11px] font-semibold text-[var(--ink-2)] mb-1.5">
           <span className="truncate">{unit.name}</span>
           <span className="font-mono-ui text-[var(--ink-3)]">
-            {used}/{unit.slotCount}
+            {used}/{slotCount}
           </span>
         </div>
         <div className="flex flex-col gap-1">
-          {Array.from({ length: unit.slotCount }, (_, slotIndex) => {
+          {Array.from({ length: slotCount }, (_, slotIndex) => {
             const spool = bySlot.get(slotKey(unit.id, slotIndex)) ?? null;
             const target = isTarget(unit.id, slotIndex);
             const menuOpen = menu?.unitId === unit.id && menu.slotIndex === slotIndex;
@@ -96,7 +104,7 @@ export function PrinterColumn({
                     <>
                       <span
                         className="w-3.5 h-3.5 rounded-[3px] border border-[var(--line-strong)] flex-none"
-                        style={spool.colorHex ? { background: spool.colorHex } : undefined}
+                        style={spool.colorHex && isValidColorHex(spool.colorHex) ? { backgroundColor: spool.colorHex } : undefined}
                         aria-hidden
                       />
                       <span className="min-w-0 flex-1">
@@ -266,7 +274,7 @@ function SlotMenu({ spool, storage, onClose, onLoad, onUnload, onEdit }: SlotMen
             >
               <span
                 className="w-3 h-3 rounded-full border border-[var(--line-strong)] flex-none"
-                style={candidate.colorHex ? { background: candidate.colorHex } : undefined}
+                style={candidate.colorHex && isValidColorHex(candidate.colorHex) ? { backgroundColor: candidate.colorHex } : undefined}
                 aria-hidden
               />
               <span className="flex-1 truncate">{[candidate.material, candidate.color].filter(Boolean).join(' · ')}</span>

@@ -15,7 +15,7 @@ pub use migrations::run_migrations;
 pub use repository::{
     add_tag_to_file, attach_folder_to_parent_by_path, connect, delete_file, delete_filament_spool, delete_print_log_entry,
     delete_saved_filter, delete_unused_tags, ensure_folder_path,
-    file_exists_by_hash, file_exists_by_path, get_file,
+    file_exists_by_hash, file_exists_by_path, get_file, get_filament_spool,
     get_registered_slicer,
     insert_file_within_tx,
     insert_filament_spool, insert_folder_with_parent, insert_print_log_entry,

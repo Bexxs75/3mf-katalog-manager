@@ -1084,6 +1084,39 @@ pub fn list_filament_spools(conn: &Connection) -> Result<Vec<FilamentSpoolRecord
     Ok(rows)
 }
 
+/// Liest eine einzelne Spule, inklusive ihrer aktuellen Fach-Zuordnung -
+/// genutzt von `update_filament_spool` (commands/filament.rs), um nach dem
+/// UPDATE den tatsaechlichen Datenbankstand zurueckzugeben, statt (wie vor
+/// dem finalen Review) einfach das ungeprueft vom Aufrufer geschickte DTO
+/// zu spiegeln (siehe dortiger Kommentar).
+pub fn get_filament_spool(conn: &Connection, id: i64) -> Result<FilamentSpoolRecord, DbError> {
+    conn.query_row(
+        "SELECT id, material, manufacturer, color, location, diameter_mm, original_weight_g, remaining_weight_g, price, image_png,
+                color_hex, home_location, unit_id, slot_index
+         FROM filament_spools WHERE id = ?1",
+        params![id],
+        |row| {
+            Ok(FilamentSpoolRecord {
+                id: row.get(0)?,
+                material: row.get(1)?,
+                manufacturer: row.get(2)?,
+                color: row.get(3)?,
+                location: row.get(4)?,
+                diameter_mm: row.get(5)?,
+                original_weight_g: row.get(6)?,
+                remaining_weight_g: row.get(7)?,
+                price: row.get(8)?,
+                image_png: row.get(9)?,
+                color_hex: row.get(10)?,
+                home_location: row.get(11)?,
+                unit_id: row.get(12)?,
+                slot_index: row.get(13)?,
+            })
+        },
+    )
+    .map_err(DbError::from)
+}
+
 /// Aendert nie das Fach einer Spule (das tun nur `load_spool`/`unload_spool`
 /// in `db::printers`). Steckt die Spule in einem Fach, ist der uebergebene
 /// Lagerort ihr Stammplatz und landet in `home_location`; `location` bleibt

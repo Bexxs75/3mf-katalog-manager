@@ -449,8 +449,7 @@ mod tests {
                        ('ASA', NULL, 'Trockenbox', 1.75, 1000, 900, '2026-01-01');",
         )
         .unwrap();
-        let before_new_steps = super::super::migrations::CURRENT_SCHEMA_VERSION - 8;
-        conn.pragma_update(None, "user_version", before_new_steps).unwrap();
+        conn.pragma_update(None, "user_version", super::super::migrations::FIRST_PRINTER_MIGRATION_VERSION).unwrap();
 
         crate::db::run_migrations(&mut conn).unwrap();
 

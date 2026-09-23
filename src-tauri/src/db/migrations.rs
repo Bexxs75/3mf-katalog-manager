@@ -69,6 +69,12 @@ const MIGRATIONS: &[MigrationStep] = &[
     // Der eindeutige Index steht bewusst nur hier und nicht in schema.sql -
     // schema.sql laeuft auch auf alten Datenbanken VOR den Migrationen, in
     // denen die Spalten dann noch fehlen.
+    //
+    // FIRST_PRINTER_MIGRATION_VERSION (unten) ist die Schema-Version
+    // UNMITTELBAR VOR diesem Schritt - der Migrationstest in db/printers.rs
+    // simuliert damit exakt den Vor-Zustand einer Datenbank ohne jede
+    // Drucker/AMS-Migration, statt den Versatz zu CURRENT_SCHEMA_VERSION
+    // hart zu codieren.
     MigrationStep::Simple(|c| exec(c, "CREATE TABLE IF NOT EXISTS printers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
@@ -99,6 +105,17 @@ const MIGRATIONS: &[MigrationStep] = &[
 /// mehr vorkommen - `MIGRATIONS.len()` UND `CURRENT_SCHEMA_VERSION` koennen
 /// nie mehr auseinanderlaufen, weil es nur noch einen Wert gibt.
 pub const CURRENT_SCHEMA_VERSION: i64 = MIGRATIONS.len() as i64;
+
+/// Schema-Version UNMITTELBAR VOR dem ersten Drucker/AMS-Migrationsschritt
+/// (`CREATE TABLE printers`, siehe Kommentar dort in [`MIGRATIONS`]) - vor
+/// dieser Version existieren die Drucker/AMS-Tabellen und -Spalten noch
+/// nicht. Verwendet vom Migrationstest
+/// `migrating_an_old_catalog_keeps_spools_in_storage_and_backfills_colors`
+/// in `db/printers.rs`, um exakt diesen Vor-Zustand zu simulieren, statt
+/// den Versatz zu [`CURRENT_SCHEMA_VERSION`] als Magic Number ("- 8") hart
+/// zu codieren. Nur fuer diesen Test gebraucht, deshalb `#[cfg(test)]`.
+#[cfg(test)]
+pub(crate) const FIRST_PRINTER_MIGRATION_VERSION: i64 = 23;
 
 /// Fuehrt ein einzelnes ALTER-TABLE/Backfill-Statement aus. "Spalte/Index
 /// existiert bereits" (SQLite-Fehlermeldung enthaelt "duplicate column

@@ -200,6 +200,86 @@ fn validate_expected_schema(conn: &Connection) -> Result<(), String> {
     }
     Ok(())
 }
+/// Prueft die Drucker/AMS-Fach-Invarianten direkt ueber den Dateninhalt
+/// (siehe Kommentar am Aufrufer in `validate_catalog_db_bytes` fuer die
+/// Begruendung, warum sich das nicht auf deklarierte CHECK-Constraints/
+/// Fremdschluessel der importierten Datenbank verlassen kann): jede
+/// Einheit muss einen bekannten Typ, eine Fachanzahl zwischen 1 und 16 und
+/// (falls gesetzt) eine Bambu-AMS-Nummer zwischen 0 und 3 haben und einem
+/// existierenden Drucker gehoeren; jede Spule mit Fach muss auf eine
+/// existierende Einheit und ein innerhalb deren Fachanzahl liegendes Fach
+/// zeigen, `unit_id`/`slot_index` muessen gemeinsam gesetzt oder gemeinsam
+/// leer sein, kein Fach darf doppelt belegt sein, und ein gesetzter
+/// Farbwert muss dem `#rrggbb`-Format entsprechen.
+fn validate_printer_invariants(conn: &Connection) -> Result<(), String> {
+    let bad_units: i64 = conn
+        .query_row(
+            &format!(
+                "SELECT COUNT(*) FROM material_units
+                 WHERE kind NOT IN ({})
+                    OR slot_count NOT BETWEEN 1 AND 16
+                    OR (bambu_ams_index IS NOT NULL AND bambu_ams_index NOT BETWEEN 0 AND 3)
+                    OR printer_id NOT IN (SELECT id FROM printers)",
+                db::printers::UNIT_KINDS.iter().map(|_| "?").collect::<Vec<_>>().join(", ")
+            ),
+            rusqlite::params_from_iter(db::printers::UNIT_KINDS.iter().copied()),
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if bad_units > 0 {
+        return Err(
+            "Katalog-Datenbank enthaelt ungueltige Drucker-Einheiten (Typ, Fachanzahl, AMS-Nummer oder Drucker-Zuordnung)"
+                .to_string(),
+        );
+    }
+
+    let bad_spools: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM filament_spools
+             WHERE (unit_id IS NULL) <> (slot_index IS NULL)
+                OR (unit_id IS NOT NULL AND unit_id NOT IN (SELECT id FROM material_units))
+                OR (unit_id IS NOT NULL AND (
+                    slot_index < 0
+                    OR slot_index >= (SELECT slot_count FROM material_units m WHERE m.id = filament_spools.unit_id)
+                ))",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if bad_spools > 0 {
+        return Err("Katalog-Datenbank enthaelt Spulen mit ungueltiger Fach-Zuordnung".to_string());
+    }
+
+    let duplicate_slots: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM (
+                SELECT unit_id, slot_index FROM filament_spools
+                WHERE unit_id IS NOT NULL
+                GROUP BY unit_id, slot_index HAVING COUNT(*) > 1
+             )",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if duplicate_slots > 0 {
+        return Err("Katalog-Datenbank enthaelt mehrere Spulen im selben Fach".to_string());
+    }
+
+    let bad_colors: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM filament_spools
+             WHERE color_hex IS NOT NULL
+               AND color_hex NOT GLOB '#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if bad_colors > 0 {
+        return Err("Katalog-Datenbank enthaelt ungueltige Farbwerte".to_string());
+    }
+
+    Ok(())
+}
 /// Prueft, ob `bytes` eine brauchbare Katalog-Datenbank sind (oeffnbar, mit
 /// einer `files`-Tabelle, und ohne `folders.path`-Eintraege in geschuetzten
 /// Systemverzeichnissen) - Schutz davor, ein falsches/kaputtes ODER
@@ -304,6 +384,26 @@ fn validate_catalog_db_bytes(
             // legitimes Backup erst nach vollstaendiger Migration gegen
             // das jetzt aktuelle Schema geprueft wird.
             validate_expected_schema(&conn)?;
+
+            // Finaler Review 2026-09-23, Finding 1: `validate_expected_schema`
+            // prueft nur, dass Tabellen/Spalten EXISTIEREN - nicht, dass ihre
+            // CHECK-Constraints/Fremdschluessel/der eindeutige Index auch
+            // tatsaechlich vorhanden sind. Eine praeparierte Datenbank mit
+            // bereits aktuellem `user_version` ueberspringt oben JEDE
+            // Migration (`run_migrations` ist dann ein No-Op) - ein Angreifer
+            // kann `material_units`/`filament_spools` also mit eigenen
+            // CREATE-TABLE-Statements OHNE diese Constraints anlegen, in
+            // denen weder `quick_check` noch `foreign_key_check` (das
+            // weiter unten laeuft) etwas findet, weil dort schlicht keine
+            // FK-Deklaration existiert, gegen die geprueft werden koennte.
+            // `validate_printer_invariants` prueft die Fach-Invarianten
+            // deshalb direkt ueber den Dateninhalt, unabhaengig von jedem
+            // in der importierten Datenbank deklarierten Constraint - ohne
+            // sie koennte z.B. `slot_count = 1000000000` das Frontend
+            // (`Array.from({length: unit.slotCount})` in PrinterColumn.tsx)
+            // beim Rendern haengen lassen, oder zwei Spulen im selben Fach
+            // landen.
+            validate_printer_invariants(&conn)?;
 
             // Fremdschluessel-Verletzungen (z.B. files.folder_id zeigt auf
             // eine nicht existierende folders-Zeile) werden von quick_check
@@ -975,6 +1075,217 @@ mod tests {
         let bytes = std::fs::read(&tmp_path).unwrap();
         let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
         assert!(result.is_err(), "eine 'files'-Tabelle ohne die erforderliche Spalte 'imported_at' muss abgelehnt werden");
+    }
+    /// Gemeinsame Grundlage fuer die `validate_printer_invariants`-Tests
+    /// unten: eine vollstaendig migrierte DB mit genau einem Drucker und
+    /// genau einer Einheit ("AMS A", 4 Faecher), Rueckgabe von
+    /// (printer_id, unit_id). Ungueltige Zeilen schreiben die einzelnen
+    /// Tests danach selbst per Roh-SQL hinein - `crate::db::printers`s
+    /// eigene API wuerde diese Werte ja bereits selbst ablehnen.
+    fn printer_with_one_ams_unit(conn: &Connection) -> (i64, i64) {
+        let printer_id = crate::db::printers::insert_printer(conn, "X1C").unwrap();
+        let unit_id = crate::db::printers::insert_unit(conn, printer_id, "bambu_ams", "AMS A", None).unwrap();
+        (printer_id, unit_id)
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_material_unit_with_an_unknown_kind() {
+        let tmp_path = unique_test_db_path("validate_db_unit_bad_kind");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            let (printer_id, _) = printer_with_one_ams_unit(&conn);
+            conn.execute("PRAGMA ignore_check_constraints = ON", []).unwrap();
+            conn.execute(
+                "INSERT INTO material_units (printer_id, name, kind, slot_count, bambu_ams_index, position)
+                 VALUES (?1, 'Toaster', 'toaster', 4, NULL, 1)",
+                params![printer_id],
+            )
+            .unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        assert!(result.is_err(), "eine Einheit mit unbekanntem 'kind' muss abgelehnt werden");
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_material_unit_with_slot_count_out_of_range() {
+        let tmp_path = unique_test_db_path("validate_db_unit_bad_slot_count");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            let (printer_id, _) = printer_with_one_ams_unit(&conn);
+            conn.execute("PRAGMA ignore_check_constraints = ON", []).unwrap();
+            conn.execute(
+                "INSERT INTO material_units (printer_id, name, kind, slot_count, bambu_ams_index, position)
+                 VALUES (?1, 'Riesig', 'custom', 1000000000, NULL, 1)",
+                params![printer_id],
+            )
+            .unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        assert!(
+            result.is_err(),
+            "eine Einheit mit riesiger 'slot_count' muss abgelehnt werden (sonst haengt PrinterColumn.tsx beim Rendern)"
+        );
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_material_unit_with_bambu_ams_index_out_of_range() {
+        let tmp_path = unique_test_db_path("validate_db_unit_bad_ams_index");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            let (printer_id, _) = printer_with_one_ams_unit(&conn);
+            conn.execute("PRAGMA ignore_check_constraints = ON", []).unwrap();
+            conn.execute(
+                "INSERT INTO material_units (printer_id, name, kind, slot_count, bambu_ams_index, position)
+                 VALUES (?1, 'AMS X', 'bambu_ams', 4, 99, 1)",
+                params![printer_id],
+            )
+            .unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        assert!(result.is_err(), "eine Einheit mit 'bambu_ams_index' ausserhalb 0..=3 muss abgelehnt werden");
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_material_unit_with_a_dangling_printer_id() {
+        let tmp_path = unique_test_db_path("validate_db_unit_dangling_printer");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            conn.execute("PRAGMA foreign_keys = OFF", []).unwrap();
+            conn.execute(
+                "INSERT INTO material_units (printer_id, name, kind, slot_count, bambu_ams_index, position)
+                 VALUES (999999, 'Verwaist', 'custom', 4, NULL, 0)",
+                [],
+            )
+            .unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        assert!(result.is_err(), "eine Einheit mit nicht existierendem 'printer_id' muss abgelehnt werden");
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_spool_with_slot_index_set_but_no_unit() {
+        let tmp_path = unique_test_db_path("validate_db_spool_half_placement");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            conn.execute(
+                "INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at, unit_id, slot_index)
+                 VALUES ('PLA', 1.75, 1000, 1000, '2026-01-01T00:00:00Z', NULL, 0)",
+                [],
+            )
+            .unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        assert!(
+            result.is_err(),
+            "eine Spule mit gesetztem 'slot_index' aber ohne 'unit_id' muss abgelehnt werden"
+        );
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_spool_with_a_dangling_unit_id() {
+        let tmp_path = unique_test_db_path("validate_db_spool_dangling_unit");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            conn.execute("PRAGMA foreign_keys = OFF", []).unwrap();
+            conn.execute(
+                "INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at, unit_id, slot_index)
+                 VALUES ('PLA', 1.75, 1000, 1000, '2026-01-01T00:00:00Z', 999999, 0)",
+                [],
+            )
+            .unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        assert!(result.is_err(), "eine Spule mit nicht existierender 'unit_id' muss abgelehnt werden");
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_spool_with_slot_index_outside_the_units_range() {
+        let tmp_path = unique_test_db_path("validate_db_spool_slot_out_of_range");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            let (_, unit_id) = printer_with_one_ams_unit(&conn); // 4 Faecher, gueltig sind 0..=3
+            conn.execute(
+                "INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at, unit_id, slot_index)
+                 VALUES ('PLA', 1.75, 1000, 1000, '2026-01-01T00:00:00Z', ?1, 4)",
+                params![unit_id],
+            )
+            .unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        assert!(result.is_err(), "eine Spule mit 'slot_index' >= der Fachanzahl ihrer Einheit muss abgelehnt werden");
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_two_spools_in_the_same_slot() {
+        let tmp_path = unique_test_db_path("validate_db_duplicate_slot");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            let (_, unit_id) = printer_with_one_ams_unit(&conn);
+            // idx_filament_spools_slot existiert in einer regulaer migrierten
+            // DB bereits und wuerde das zweite INSERT selbst verhindern -
+            // fuer diesen Test wird er deshalb bewusst entfernt, um exakt
+            // das im Finding beschriebene Szenario (Index fehlt in einer
+            // praeparierten DB) nachzustellen.
+            conn.execute("DROP INDEX idx_filament_spools_slot", []).unwrap();
+            conn.execute(
+                "INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at, unit_id, slot_index)
+                 VALUES ('PLA', 1.75, 1000, 1000, '2026-01-01T00:00:00Z', ?1, 0)",
+                params![unit_id],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at, unit_id, slot_index)
+                 VALUES ('PETG', 1.75, 1000, 1000, '2026-01-01T00:00:00Z', ?1, 0)",
+                params![unit_id],
+            )
+            .unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        assert!(result.is_err(), "zwei Spulen im selben Fach muessen abgelehnt werden");
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_an_invalid_color_hex() {
+        let tmp_path = unique_test_db_path("validate_db_bad_color_hex");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            conn.execute(
+                "INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at, color_hex)
+                 VALUES ('PLA', 1.75, 1000, 1000, '2026-01-01T00:00:00Z', 'rot')",
+                [],
+            )
+            .unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        assert!(result.is_err(), "ein 'color_hex' ausserhalb des #rrggbb-Formats muss abgelehnt werden");
+    }
+    #[test]
+    fn validate_catalog_db_bytes_accepts_a_valid_backup_with_loaded_spools() {
+        let tmp_path = unique_test_db_path("validate_db_valid_with_loaded_spools");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            let (_, unit_id) = printer_with_one_ams_unit(&conn);
+            let spool_id = crate::db::insert_filament_spool(
+                &conn,
+                &crate::db::models::NewFilamentSpool {
+                    material: "PLA".to_string(),
+                    manufacturer: None,
+                    color: None,
+                    location: Some("Regal 2".to_string()),
+                    diameter_mm: 1.75,
+                    original_weight_g: 1000,
+                    remaining_weight_g: 800,
+                    price: None,
+                    image_png: None,
+                    color_hex: Some("#1a1a1a".to_string()),
+                },
+            )
+            .unwrap();
+            crate::db::printers::load_spool(&conn, spool_id, unit_id, 0).unwrap();
+        }
+        let bytes = std::fs::read(&tmp_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        assert!(result.is_ok(), "ein gueltiges Backup mit belegten Faechern muss akzeptiert werden: {result:?}");
     }
     #[test]
     fn replace_catalog_db_backs_up_old_db_and_installs_new_one() {
