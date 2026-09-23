@@ -65,6 +65,10 @@ Alexander Roshal (RARLAB) statisch einbindet.
 - **Quellcode/Lizenztext:** <https://www.rarlab.com/rar_add.htm>, im Crate
   `unrar_sys` unter `vendor/unrar/license.txt`.
 
+Der vollständige Lizenztext wird im Programmpaket mitgeliefert:
+
+- `LICENSES/UnRAR.txt`
+
 ## Weitere Entpack-Bibliotheken
 
 `zip`, `tar`, `flate2`, `bzip2`, `lzma-rust2`, `ruzstd` und `sevenz-rust2` stehen

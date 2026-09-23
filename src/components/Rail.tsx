@@ -450,11 +450,20 @@ export function Rail({
                 </div>
                 <div className="flex justify-between text-[11.5px] py-1 text-[var(--ink-2)]">
                   <span>{t('infoThirdPartyLicensesLabel')}</span>
-                  <span
-                    onClick={() => invoke('open_release_url', { url: 'https://github.com/Bexxs75/3mf-katalog-manager/blob/master/THIRD-PARTY-LICENSES.md' }).catch(() => {})}
-                    className="cursor-pointer hover:text-[var(--accent)]"
-                  >
-                    Open CASCADE
+                  {/* Untereinander statt nebeneinander, damit Label und Werte nicht umbrechen. */}
+                  <span className="flex flex-col items-end">
+                    {[
+                      { name: 'Open CASCADE', anchor: '' },
+                      { name: 'UnRAR', anchor: '#unrar' },
+                    ].map(({ name, anchor }) => (
+                      <span
+                        key={name}
+                        onClick={() => invoke('open_release_url', { url: `https://github.com/Bexxs75/3mf-katalog-manager/blob/master/THIRD-PARTY-LICENSES.md${anchor}` }).catch(() => {})}
+                        className="cursor-pointer hover:text-[var(--accent)]"
+                      >
+                        {name}
+                      </span>
+                    ))}
                   </span>
                 </div>
               </>
