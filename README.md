@@ -2,9 +2,11 @@
 
 Plattformunabhängige Desktop-Anwendung zur Katalogisierung und Verwaltung von 3MF-, STL-, OBJ- und STEP-Dateien für den 3D-Druck. Gebaut mit [Tauri](https://tauri.app/) (Rust-Backend) und React/TypeScript/Tailwind.
 
+**Webseite:** [3mfkatalog.de](https://3mfkatalog.de) – Überblick, Download und Screenshots.
+
 **Neu hier?** Das [Benutzerhandbuch](docs/benutzerhandbuch/BENUTZERHANDBUCH.md) (DE + EN) erklärt alle Funktionen bebildert und Schritt für Schritt, ganz ohne Vorwissen über die App.
 
-[![Join Discord](https://img.shields.io/badge/Join-Discord-5865F2?logo=discord&logoColor=white)](https://discord.gg/abfVNfFqu3)
+[![Webseite](https://img.shields.io/badge/Webseite-3mfkatalog.de-ff7a5c)](https://3mfkatalog.de) [![Join Discord](https://img.shields.io/badge/Join-Discord-5865F2?logo=discord&logoColor=white)](https://discord.gg/abfVNfFqu3)
 
 ## Screenshots
 
@@ -128,9 +130,11 @@ Der Anwendungscode steht unter MIT — siehe [LICENSE](LICENSE). Die optionale S
 
 Cross-platform desktop application for cataloging and managing 3MF, STL, OBJ, and STEP files for 3D printing. Built with [Tauri](https://tauri.app/) (Rust backend) and React/TypeScript/Tailwind.
 
+**Website:** [3mfkatalog.de/en](https://3mfkatalog.de/en/) – overview, download and screenshots.
+
 **New here?** The [User Guide](docs/benutzerhandbuch/BENUTZERHANDBUCH.md) (DE + EN) explains every feature with screenshots, step by step, no prior knowledge of the app required.
 
-[![Join Discord](https://img.shields.io/badge/Join-Discord-5865F2?logo=discord&logoColor=white)](https://discord.gg/abfVNfFqu3)
+[![Website](https://img.shields.io/badge/Website-3mfkatalog.de%2Fen-ff7a5c)](https://3mfkatalog.de/en/) [![Join Discord](https://img.shields.io/badge/Join-Discord-5865F2?logo=discord&logoColor=white)](https://discord.gg/abfVNfFqu3)
 
 ## Screenshots
 
