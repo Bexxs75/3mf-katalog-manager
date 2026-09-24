@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import * as filesApi from '../lib/api/files';
+import { canonicalTag } from '../lib/autoTags';
 import type { ModelFile } from '../types';
 
 interface UseBulkSelectionArgs {
@@ -99,7 +100,7 @@ export function useBulkSelection({
   // zweistelligen Bereich), danach EIN lokaler State-Patch fuer alle
   // betroffenen Modelle statt eines Refreshs der gesamten Liste.
   const bulkAddTagAction = useCallback(() => {
-    const tag = tagDraft.trim();
+    const tag = canonicalTag(tagDraft.trim());
     if (!tag) return Promise.resolve();
     const ids = selectedForBulk;
     return Promise.all(Array.from(ids).map((id) => filesApi.addTag(id, tag))).then(() => {

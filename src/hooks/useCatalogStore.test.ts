@@ -138,6 +138,24 @@ describe('useCatalogStore', () => {
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('add_tag', { fileId: 'm1', tag: 'red' }));
   });
 
+  it('addTag stores a translated auto tag name as the canonical tag', async () => {
+    mockInitialLoad([makeModelFile({ id: 'm1', tags: [] })]);
+    const { result } = renderHook(() => useCatalogStore());
+    await waitFor(() => expect(result.current.models).toHaveLength(1));
+    act(() => result.current.addTag('m1', 'Multipart'));
+    expect(result.current.models[0].tags).toEqual(['mehrteilig']);
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('add_tag', { fileId: 'm1', tag: 'mehrteilig' }));
+  });
+
+  it('addTag does nothing if the model already has the canonical tag', async () => {
+    mockInitialLoad([makeModelFile({ id: 'm1', tags: ['mehrteilig'] })]);
+    const { result } = renderHook(() => useCatalogStore());
+    await waitFor(() => expect(result.current.models).toHaveLength(1));
+    act(() => result.current.addTag('m1', 'multipart'));
+    expect(result.current.models[0].tags).toEqual(['mehrteilig']);
+    expect(invoke).not.toHaveBeenCalledWith('add_tag', expect.anything());
+  });
+
   it('renameFile updates the local name only after the backend call resolves', async () => {
     mockInitialLoad([makeModelFile({ id: 'm1', name: 'alt.3mf' })]);
     const { result } = renderHook(() => useCatalogStore());

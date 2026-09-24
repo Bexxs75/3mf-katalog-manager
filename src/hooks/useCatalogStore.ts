@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as filesApi from '../lib/api/files';
 import * as foldersApi from '../lib/api/folders';
 import * as catalogMetaApi from '../lib/api/catalogMeta';
+import { canonicalTag } from '../lib/autoTags';
 import type { ModelFile, ModelFileSummary, Folder, TagCount, CreatorCount, SavedFilter, ImportResultDto } from '../types';
 
 // Bettet eine schlanke `ModelFileSummary` (siehe Finding M-01) in die volle
@@ -395,7 +396,11 @@ export function useCatalogStore() {
   const emptyTrashAction = useCallback(() => filesApi.emptyTrash().then(() => setTrashModels([])), []);
 
   const addTag = useCallback(
-    (id: string, tag: string) => {
+    (id: string, rawTag: string) => {
+      // Uebersetzte Namen automatischer Tags (z. B. "Multipart") auf die
+      // Kennung abbilden, bevor optimistisch aktualisiert wird - sonst
+      // blitzt kurz ein zweiter Tag auf, bis das Backend normalisiert hat.
+      const tag = canonicalTag(rawTag);
       const current = models.find((m) => m.id === id);
       if (!current || current.tags.includes(tag)) return;
       setModels((prev) => prev.map((m) => (m.id === id ? { ...m, tags: [...m.tags, tag] } : m)));
@@ -405,7 +410,7 @@ export function useCatalogStore() {
         .addTag(id, tag)
         .then(refreshTags)
         .catch((e) => {
-          console.error('[tags] Hinzufügen fehlgeschlagen:', e);
+          console.error('[tags] Hinzufuegen fehlgeschlagen:', e);
         })
         .finally(() => {
           void endMutationAndResyncIfSettled(key, id);

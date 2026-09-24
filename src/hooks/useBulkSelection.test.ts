@@ -109,6 +109,21 @@ describe('useBulkSelection', () => {
     expect(result.current.addTagMenuOpen).toBe(false);
   });
 
+  it('bulkAddTagAction normalizes a translated auto tag name', async () => {
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    const models = [makeModelFile({ id: 'm1', tags: [] })];
+    const { result, setModels } = setup(models);
+    act(() => {
+      result.current.selectAllVisible(['m1']);
+      result.current.setTagDraft(' Multipart ');
+    });
+    await act(async () => result.current.bulkAddTagAction());
+
+    expect(invoke).toHaveBeenCalledWith('add_tag', { fileId: 'm1', tag: 'mehrteilig' });
+    const patched = setModels.mock.calls[0][0](models);
+    expect(patched[0].tags).toEqual(['mehrteilig']);
+  });
+
   it('bulkAddTagAction is a no-op for a blank draft', async () => {
     const { result } = setup();
     act(() => {
