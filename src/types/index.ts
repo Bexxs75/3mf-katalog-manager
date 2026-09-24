@@ -246,3 +246,36 @@ export interface Collection {
   name: string;
   modelCount: number;
 }
+
+export type FilamentCheckStatus = 'ok' | 'swap' | 'short' | 'unknown' | 'no_data';
+
+export interface FilamentSlotRef {
+  printer: string;
+  unit: string;
+  slotNumber: number;
+}
+
+export interface FilamentSpoolUse {
+  spoolId: string;
+  label: string;
+  colorName: string | null;
+  remainingG: number;
+  slot: FilamentSlotRef | null;
+  location: string | null;
+}
+
+export interface FilamentNeedCheck {
+  filamentType: string;
+  color: string | null;
+  neededG: number;
+  status: Exclude<FilamentCheckStatus, 'no_data'>;
+  missingG: number;
+  spools: FilamentSpoolUse[];
+  possible: FilamentSpoolUse[];
+}
+
+export interface FilamentCheck {
+  fileId: string;
+  status: FilamentCheckStatus;
+  needs: FilamentNeedCheck[];
+}
