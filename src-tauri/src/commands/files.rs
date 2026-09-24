@@ -306,17 +306,25 @@ pub async fn pick_and_read_image(app: tauri::AppHandle) -> CmdResult<Option<Stri
         base64::engine::general_purpose::STANDARD.encode(bytes),
     ))
 }
+/// Kernlogik von `add_tag` (Test-Huelle wie `move_file_to_folder_with_conn`):
+/// Namen automatischer Tags in jeder Sprache werden auf die Kennung
+/// normalisiert, damit z. B. "Multipart" keinen zweiten Tag neben
+/// "mehrteilig" anlegt.
+fn add_tag_with_conn(conn: &Connection, file_id: i64, tag: &str) -> CmdResult<()> {
+    db::add_tag_to_file(conn, file_id, &tagging::canonical_tag(tag)).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn add_tag(state: State<AppState>, file_id: String, tag: String) -> CmdResult<()> {
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
-    db::add_tag_to_file(&conn, id, &tag).map_err(|e| e.to_string())
+    add_tag_with_conn(&conn, id, &tag)
 }
 #[tauri::command]
 pub fn remove_tag(state: State<AppState>, file_id: String, tag: String) -> CmdResult<()> {
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
-    db::remove_tag_from_file(&conn, id, &tag).map_err(|e| e.to_string())
+    db::remove_tag_from_file(&conn, id, &tagging::canonical_tag(&tag)).map_err(|e| e.to_string())
 }
 /// Kernlogik von `move_file_to_folder`, getrennt von der `State<AppState>`-
 /// Huelle gehalten, damit sie in Tests direkt gegen eine In-Memory-`Connection`
@@ -2503,6 +2511,23 @@ mod tests {
 
         let rescanned = rescan_file(&mut conn, id).expect("rescan of an obj file should succeed");
         assert_eq!(rescanned.id, dto.id);
+    }
+    #[test]
+    fn add_tag_maps_a_translated_auto_tag_name_to_its_canonical_tag() {
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let id = crate::db::test_insert_minimal_file(&conn, "/tmp/add_tag_alias.3mf", None).expect("insert");
+
+        add_tag_with_conn(&conn, id, "Multipart").expect("add");
+        add_tag_with_conn(&conn, id, "Vase").expect("add");
+
+        let mut tags: Vec<String> = crate::db::list_all_file_tags(&conn)
+            .expect("tags")
+            .into_iter()
+            .filter(|(fid, _)| *fid == id)
+            .map(|(_, t)| t)
+            .collect();
+        tags.sort();
+        assert_eq!(tags, vec!["Vase".to_string(), "mehrteilig".to_string()]);
     }
     #[test]
     fn split_archives_separates_archive_files_from_models_and_folders() {
