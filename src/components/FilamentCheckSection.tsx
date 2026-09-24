@@ -1,7 +1,8 @@
+import { Fragment } from 'react';
 import type { FilamentCheck, FilamentCheckStatus, FilamentNeedCheck, FilamentSpoolUse } from '../types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatWeightG } from '../i18n/format';
-import { STATUS_SYMBOL, roundG, slotText, statusLabel } from '../lib/filamentCheck';
+import { STATUS_SYMBOL, roundG, slotText, spoolFillRatio, statusLabel } from '../lib/filamentCheck';
 
 type NeedStatus = Exclude<FilamentCheckStatus, 'no_data'>;
 
@@ -20,7 +21,7 @@ function StatusChip({ status }: { status: NeedStatus }) {
     <span
       className={`inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full border font-mono-ui text-[11.5px] whitespace-nowrap ${TONE[status]}`}
     >
-      {STATUS_SYMBOL[status]} {statusLabel(status, t)}
+      <span aria-hidden="true">{STATUS_SYMBOL[status]}</span> {statusLabel(status, t)}
     </span>
   );
 }
@@ -40,6 +41,30 @@ function PlaceChip({ spool }: { spool: FilamentSpoolUse }) {
     <span className="inline-flex items-center font-mono-ui text-[11px] px-1.5 rounded-[6px] border border-[var(--line)] text-[var(--ink-2)] bg-[var(--panel-2)]">
       {spool.location}
     </span>
+  );
+}
+
+// Duenner Fuellbalken unter der Spulen-Zeile fuer "reicht" (gruen) und
+// "reicht nicht" (rot); kein Balken ohne bekanntes Originalgewicht.
+function FillBar({ spool, tone }: { spool: FilamentSpoolUse; tone: 'ok' | 'short' }) {
+  const t = useT();
+  const ratio = spoolFillRatio(spool);
+  if (ratio === null) return null;
+  const percent = Math.round(ratio * 100);
+  return (
+    <div
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={percent}
+      aria-label={t('filamentCheckSpoolFill').replace('{percent}', () => String(percent))}
+      className="h-[5px] w-full max-w-[260px] rounded-full bg-[var(--panel-2)] overflow-hidden"
+    >
+      <div
+        className="h-full rounded-full"
+        style={{ width: `${percent}%`, backgroundColor: tone === 'ok' ? 'var(--good)' : 'var(--crit)' }}
+      />
+    </div>
   );
 }
 
@@ -77,7 +102,12 @@ function NeedRow({ need }: { need: FilamentNeedCheck }) {
       </span>
       <StatusChip status={need.status} />
       <div className="col-start-2 col-span-2 text-[12.5px] text-[var(--ink-2)] flex flex-col gap-1">
-        {need.status === 'ok' && need.spools[0] && <SpoolLine spool={need.spools[0]} showRemaining />}
+        {need.status === 'ok' && need.spools[0] && (
+          <>
+            <SpoolLine spool={need.spools[0]} showRemaining />
+            <FillBar spool={need.spools[0]} tone="ok" />
+          </>
+        )}
         {need.status === 'swap' && (
           <>
             <span>
@@ -90,7 +120,12 @@ function NeedRow({ need }: { need: FilamentNeedCheck }) {
         )}
         {need.status === 'short' && (
           <>
-            {need.spools.map((s) => <SpoolLine key={s.spoolId} spool={s} showRemaining />)}
+            {need.spools.map((s) => (
+              <Fragment key={s.spoolId}>
+                <SpoolLine spool={s} showRemaining />
+                <FillBar spool={s} tone="short" />
+              </Fragment>
+            ))}
             <span className="text-[var(--crit)]">
               {t('filamentCheckMissing').replace('{g}', () => formatWeightG(roundG(need.missingG), language))}
             </span>

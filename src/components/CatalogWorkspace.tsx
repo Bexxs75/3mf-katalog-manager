@@ -171,7 +171,13 @@ export function CatalogWorkspace({
   collapsedFolders,
 }: CatalogWorkspaceProps) {
   const { language } = useLanguage();
-  const queueFilament = useFilamentCheck(queue.map((m) => m.id));
+  const queueFilament = useFilamentCheck(
+    queue.map((m) => m.id),
+    // Erzwingt ein Neuladen, wenn sich der Slicer-Bedarf eines Warteschlangen-
+    // Eintrags aendert (z. B. nach "Metadaten neu einlesen"), auch wenn die
+    // IDs und ihre Reihenfolge gleich bleiben.
+    queue.map((m) => `${m.id}:${m.sliceInfo?.totalWeightG ?? ''}`).join('|'),
+  );
   return (
     <div className="flex-1 flex min-h-0">
       <Sidebar

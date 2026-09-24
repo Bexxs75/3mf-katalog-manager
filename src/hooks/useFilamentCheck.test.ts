@@ -46,4 +46,32 @@ describe('useFilamentCheck', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(result.current.checks?.has('1')).toBe(false);
   });
+
+  it('keeps the previous checks visible while a reload is in flight', async () => {
+    let resolveSecond: (v: FilamentCheck[]) => void = () => {};
+    vi.mocked(invoke)
+      .mockResolvedValueOnce([check('1')])
+      .mockImplementationOnce(() => new Promise((r) => { resolveSecond = r as (v: FilamentCheck[]) => void; }));
+    const { result, rerender } = renderHook(({ ids }) => useFilamentCheck(ids), { initialProps: { ids: ['1'] } });
+    await waitFor(() => expect(result.current.checks?.has('1')).toBe(true));
+
+    rerender({ ids: ['1', '2'] });
+    // Kein Flackern: waehrend des Nachladens bleibt der alte Stand sichtbar.
+    expect(result.current.checks?.has('1')).toBe(true);
+    expect(result.current.error).toBe(false);
+
+    resolveSecond([check('1'), check('2')]);
+    await waitFor(() => expect(result.current.checks?.has('2')).toBe(true));
+  });
+
+  it('refetches when refreshKey changes for unchanged ids', async () => {
+    vi.mocked(invoke).mockResolvedValue([check('1')]);
+    const { rerender } = renderHook(({ refreshKey }) => useFilamentCheck(['1'], refreshKey), {
+      initialProps: { refreshKey: 'a' },
+    });
+    await waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
+
+    rerender({ refreshKey: 'b' });
+    await waitFor(() => expect(invoke).toHaveBeenCalledTimes(2));
+  });
 });

@@ -173,6 +173,7 @@ pub(crate) fn check_filament_with_conn(
                 color_name: s.color,
                 color_hex: s.color_hex,
                 remaining_g: s.remaining_weight_g as f64,
+                original_g: s.original_weight_g as f64,
                 slot,
                 location: s.location,
             }
@@ -244,6 +245,41 @@ mod tests {
         let conn = crate::db::connect_in_memory().expect("connect");
         let file_id = crate::db::test_insert_minimal_file(&conn, "/tmp/no_slice.stl", None).expect("file");
         let result = check_filament_with_conn(&conn, &[file_id.to_string()]).expect("check");
+        assert_eq!(result[0].status, crate::filament_check::CheckStatus::NoData);
+    }
+
+    #[test]
+    fn check_filament_skips_a_soft_deleted_file() {
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let file_id = crate::db::test_insert_minimal_file(&conn, "/tmp/deleted.3mf", None).expect("file");
+        conn.execute(
+            "UPDATE files SET slice_info_json = ?1 WHERE id = ?2",
+            rusqlite::params![
+                r##"{"total_weight_g":50,"plates":[{"plate_index":1,"weight_g":50,"filaments":[{"filament_type":"PLA","color":"#C0392B","used_g":50,"used_m":16}]}]}"##,
+                file_id
+            ],
+        )
+        .expect("slice");
+        crate::db::soft_delete_file(&conn, file_id, None, "2026-09-24T00:00:00Z").expect("soft delete");
+
+        let result = check_filament_with_conn(&conn, &[file_id.to_string()]).expect("check");
+
+        assert!(result.is_empty(), "eine geloeschte Datei wird komplett uebersprungen");
+    }
+
+    #[test]
+    fn check_filament_reports_no_data_for_malformed_slice_info_json() {
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let file_id = crate::db::test_insert_minimal_file(&conn, "/tmp/kaputt.3mf", None).expect("file");
+        conn.execute(
+            "UPDATE files SET slice_info_json = ?1 WHERE id = ?2",
+            rusqlite::params!["{das ist kein gueltiges json", file_id],
+        )
+        .expect("slice");
+
+        let result = check_filament_with_conn(&conn, &[file_id.to_string()]).expect("check");
+
+        assert_eq!(result.len(), 1);
         assert_eq!(result[0].status, crate::filament_check::CheckStatus::NoData);
     }
 }

@@ -152,6 +152,7 @@ export const es: Translations = {
   filamentCheckRemaining: 'quedan {g}',
   filamentCheckSwapSpools: '{count} bobinas juntas {g}',
   filamentCheckMissing: 'faltan {g}',
+  filamentCheckSpoolFill: '{percent} % restante',
   filamentCheckNoMatch: 'Ninguna bobina adecuada',
   filamentCheckPossible: 'Posible coincidencia sin valor de color:',
   filamentCheckSlot: '{printer} · {unit} · Ranura {slot}',

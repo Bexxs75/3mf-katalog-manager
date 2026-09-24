@@ -1,6 +1,6 @@
 import type { Language, Translations } from '../i18n/types';
 import { formatWeightG } from '../i18n/format';
-import type { FilamentCheck, FilamentCheckStatus, FilamentSlotRef } from '../types';
+import type { FilamentCheck, FilamentCheckStatus, FilamentSlotRef, FilamentSpoolUse } from '../types';
 
 type T = <K extends keyof Translations>(key: K) => Translations[K];
 
@@ -14,6 +14,13 @@ export const STATUS_SYMBOL: Record<FilamentCheckStatus, string> = {
 
 export function roundG(grams: number): number {
   return Math.round(grams * 10) / 10;
+}
+
+// Fuellstand einer Spule fuer den Fuellbalken (0..1); null = kein Balken
+// (kein bekanntes Originalgewicht).
+export function spoolFillRatio(spool: FilamentSpoolUse): number | null {
+  if (spool.originalG <= 0) return null;
+  return Math.min(1, Math.max(0, spool.remainingG / spool.originalG));
 }
 
 export function statusLabel(status: Exclude<FilamentCheckStatus, 'no_data'>, t: T): string {

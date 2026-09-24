@@ -152,6 +152,7 @@ export const en: Translations = {
   filamentCheckRemaining: '{g} left',
   filamentCheckSwapSpools: '{count} spools together {g}',
   filamentCheckMissing: '{g} missing',
+  filamentCheckSpoolFill: '{percent}% left',
   filamentCheckNoMatch: 'No matching spool',
   filamentCheckPossible: 'Possible match without color value:',
   filamentCheckSlot: '{printer} · {unit} · Slot {slot}',

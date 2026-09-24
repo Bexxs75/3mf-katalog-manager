@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { de } from '../i18n/de';
 import { en } from '../i18n/en';
-import { STATUS_SYMBOL, queueTooltip, roundG, slotText, statusLabel } from './filamentCheck';
-import type { FilamentCheck, FilamentNeedCheck } from '../types';
+import { STATUS_SYMBOL, queueTooltip, roundG, slotText, spoolFillRatio, statusLabel } from './filamentCheck';
+import type { FilamentCheck, FilamentNeedCheck, FilamentSpoolUse } from '../types';
 
 const tDe = <K extends keyof typeof de>(k: K) => de[k];
 const tEn = <K extends keyof typeof en>(k: K) => en[k];
@@ -65,5 +65,23 @@ describe('filamentCheck helpers', () => {
       ],
     };
     expect(queueTooltip(check, tDe, 'de')).toBe('PLA $&: es fehlen 13,5 g');
+  });
+
+  const spool = (over: Partial<FilamentSpoolUse> = {}): FilamentSpoolUse => ({
+    spoolId: 's1', label: 'Bambu PLA · Rot', colorName: 'Rot', remainingG: 640, originalG: 1000, slot: null, location: null, ...over,
+  });
+
+  it('computes the fill ratio of a spool', () => {
+    expect(spoolFillRatio(spool({ remainingG: 640, originalG: 1000 }))).toBe(0.64);
+  });
+
+  it('clamps the fill ratio to 0..1', () => {
+    expect(spoolFillRatio(spool({ remainingG: -5, originalG: 1000 }))).toBe(0);
+    expect(spoolFillRatio(spool({ remainingG: 1200, originalG: 1000 }))).toBe(1);
+  });
+
+  it('has no fill ratio without a known original weight', () => {
+    expect(spoolFillRatio(spool({ originalG: 0 }))).toBeNull();
+    expect(spoolFillRatio(spool({ originalG: -1 }))).toBeNull();
   });
 });

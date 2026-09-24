@@ -12,6 +12,10 @@ use crate::threemf::SliceInfo;
 /// (Rot/Weinrot ~12,8 ja, Weiss/Beige ~15,1 nein).
 pub const COLOR_MATCH_MAX_DELTA_E: f64 = 14.0;
 
+/// Toleranz fuer Gewichtsvergleiche in Gramm, gegen Rundungsrauschen aus
+/// aufsummierten/abgezogenen Fliesskommazahlen (z. B. 3 x 11.1 g != exakt 33.3 g).
+const EPS: f64 = 1e-6;
+
 /// "#RRGGBB" oder "#RRGGBBAA" (Gross/klein egal, Leerzeichen rundherum egal)
 /// -> "#RRGGBB" in Grossbuchstaben; sonst None.
 pub(crate) fn color_key(hex: &str) -> Option<String> {
@@ -142,6 +146,7 @@ pub struct SpoolInput {
     pub color_name: Option<String>,
     pub color_hex: Option<String>,
     pub remaining_g: f64,
+    pub original_g: f64,
     pub slot: Option<SlotRef>,
     pub location: Option<String>,
 }
@@ -153,6 +158,7 @@ pub struct SpoolUse {
     pub label: String,
     pub color_name: Option<String>,
     pub remaining_g: f64,
+    pub original_g: f64,
     pub slot: Option<SlotRef>,
     pub location: Option<String>,
 }
@@ -226,6 +232,7 @@ fn spool_use(s: &SpoolInput, available: f64) -> SpoolUse {
         label: spool_label(s),
         color_name: s.color_name.clone(),
         remaining_g: available,
+        original_g: s.original_g,
         slot: s.slot.clone(),
         location: if s.slot.is_some() { None } else { s.location.clone().filter(|l| !l.trim().is_empty()) },
     }
@@ -237,9 +244,14 @@ fn left(s: &SpoolInput, available: &HashMap<String, f64>) -> f64 {
 }
 
 fn check_need(need: &Need, spools: &[SpoolInput], available: &mut HashMap<String, f64>) -> NeedCheck {
+    // Kandidaten werden am gespeicherten remaining_g gefiltert, nicht am schon
+    // gedanklich abgebuchten Stand (left()): eine Spule, die ein frueherer
+    // Warteschlangen-Eintrag geleert hat, bleibt Kandidat, damit ein spaeterer
+    // Bedarf als "short" (mit korrektem Fehlbetrag) statt faelschlich
+    // "unknown" gemeldet wird. left() bleibt die Quelle fuer die Betraege.
     let material_ok: Vec<&SpoolInput> = spools
         .iter()
-        .filter(|s| left(s, available) > 0.0 && material_matches(&s.material, &need.filament_type))
+        .filter(|s| s.remaining_g > 0.0 && material_matches(&s.material, &need.filament_type))
         .collect();
 
     let spool_color = |s: &SpoolInput| s.color_hex.as_deref().and_then(color_key);
@@ -282,23 +294,30 @@ fn check_need(need: &Need, spools: &[SpoolInput], available: &mut HashMap<String
         return result;
     }
 
-    if let Some(single) = hits.iter().copied().find(|s| left(s, available) >= need.needed_g) {
+    if let Some(single) = hits.iter().copied().find(|s| left(s, available) >= need.needed_g - EPS) {
         let before = left(single, available);
         result.status = CheckStatus::Ok;
         result.spools.push(spool_use(single, before));
-        available.insert(single.id.clone(), before - need.needed_g);
+        // .max(0.0): before kann wegen der EPS-Toleranz oben minimal unter
+        // need.needed_g liegen, das Ergebnis bleibt nicht negativ.
+        available.insert(single.id.clone(), (before - need.needed_g).max(0.0));
         return result;
     }
 
     let total: f64 = hits.iter().map(|s| left(s, available)).sum();
-    if total >= need.needed_g {
+    if total >= need.needed_g - EPS {
         result.status = CheckStatus::Swap;
         let mut still = need.needed_g;
         for s in hits {
-            if still <= 0.0 {
+            if still <= EPS {
                 break;
             }
             let before = left(s, available);
+            // Eine bereits geleerte Spule (z. B. durch einen frueheren
+            // Warteschlangen-Eintrag) wird nicht als Wechselpartner genannt.
+            if before <= 0.0 {
+                continue;
+            }
             let take = before.min(still);
             result.spools.push(spool_use(s, before));
             available.insert(s.id.clone(), before - take);
@@ -306,7 +325,9 @@ fn check_need(need: &Need, spools: &[SpoolInput], available: &mut HashMap<String
         }
     } else {
         result.status = CheckStatus::Short;
-        result.missing_g = need.needed_g - total;
+        result.missing_g = (need.needed_g - total).max(0.0);
+        // Alle Treffer werden genannt, auch eine dabei bereits geleerte Spule
+        // (remaining 0) - konsistent mit "alle Treffer werden auf 0 abgebucht".
         for s in hits {
             result.spools.push(spool_use(s, left(s, available)));
             available.insert(s.id.clone(), 0.0);
@@ -421,6 +442,7 @@ mod tests {
             color_name: Some("Rot".to_string()),
             color_hex: hex.map(str::to_string),
             remaining_g: g,
+            original_g: 1000.0,
             slot: loaded.then(|| SlotRef { printer: "X1C".into(), unit: "AMS 1".into(), slot_number: 2 }),
             location: (!loaded).then(|| "Regal A".to_string()),
         }
@@ -579,5 +601,72 @@ mod tests {
     fn status_serializes_as_snake_case() {
         assert_eq!(serde_json::to_string(&CheckStatus::NoData).unwrap(), "\"no_data\"");
         assert_eq!(serde_json::to_string(&CheckStatus::Swap).unwrap(), "\"swap\"");
+    }
+
+    #[test]
+    fn drained_spool_still_counts_as_short_instead_of_unknown() {
+        // Review-Fund 1: eine durch den ersten Warteschlangen-Eintrag komplett
+        // geleerte Spule muss beim zweiten Eintrag als "short" (mit korrektem
+        // Fehlbetrag) gemeldet werden, nicht als "unknown".
+        let models = vec![
+            ("1".to_string(), one_plate(&fil("PLA", RED, 150.0))),
+            ("2".to_string(), one_plate(&fil("PLA", RED, 50.0))),
+        ];
+        let r = check_models(&models, &[spool("a", "PLA", Some(RED), 100.0, false)]);
+        let statuses: Vec<CheckStatus> = r.iter().map(|m| m.status).collect();
+        assert_eq!(statuses, vec![CheckStatus::Short, CheckStatus::Short]);
+        assert!((r[0].needs[0].missing_g - 50.0).abs() < 1e-9);
+        assert!((r[1].needs[0].missing_g - 50.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn spool_emptied_by_ok_entry_yields_short_not_unknown_for_the_next_entry() {
+        // Review-Fund 1, zweites Beispiel: die erste Pruefung passt genau
+        // ("ok"), die zweite muss trotzdem den fehlenden Betrag als "short"
+        // melden statt "unknown", weil die Spule als Kandidat bestehen bleibt.
+        let models = vec![
+            ("1".to_string(), one_plate(&fil("PLA", RED, 100.0))),
+            ("2".to_string(), one_plate(&fil("PLA", RED, 30.0))),
+        ];
+        let r = check_models(&models, &[spool("a", "PLA", Some(RED), 100.0, false)]);
+        let statuses: Vec<CheckStatus> = r.iter().map(|m| m.status).collect();
+        assert_eq!(statuses, vec![CheckStatus::Ok, CheckStatus::Short]);
+        assert!((r[1].needs[0].missing_g - 30.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn drained_spool_is_not_listed_as_a_swap_partner() {
+        // Review-Fund 1 (Swap-Zweig): eine bereits geleerte Spule zaehlt als
+        // Kandidat (Material passt, gespeichertes remaining_g > 0), darf im
+        // Swap-Fall aber nicht mit 0 g als Wechselpartner aufgelistet werden.
+        // "loaded" ist eingelegt und sortiert deshalb vor den vollen,
+        // nicht eingelegten Spulen - genau der Fall, in dem der Swap-Loop sie
+        // sonst zuerst anfassen wuerde.
+        let spools = [
+            spool("loaded", "PLA", Some(RED), 100.0, true),
+            spool("full", "PLA", Some(RED), 90.0, false),
+            spool("extra", "PLA", Some(RED), 90.0, false),
+        ];
+        let mut available: HashMap<String, f64> = spools.iter().map(|s| (s.id.clone(), s.remaining_g)).collect();
+        available.insert("loaded".to_string(), 0.0); // durch einen frueheren Eintrag schon geleert
+        let need = Need { filament_type: "PLA".to_string(), color: color_key(RED), needed_g: 150.0 };
+        let result = check_need(&need, &spools, &mut available);
+        assert_eq!(result.status, CheckStatus::Swap);
+        let ids: Vec<&str> = result.spools.iter().map(|s| s.spool_id.as_str()).collect();
+        assert_eq!(ids, vec!["extra", "full"], "'loaded' ist geleert und darf nicht auftauchen");
+    }
+
+    #[test]
+    fn tiny_float_rounding_still_counts_as_ok() {
+        // Review-Fund 3: 3 x 11.1 g summiert kann minimal von 33.3 abweichen.
+        let json = format!("{},{},{}", fil("PLA", RED, 11.1), fil("PLA", RED, 11.1), fil("PLA", RED, 11.1));
+        let r = check_one(one_plate(&json), &[spool("a", "PLA", Some(RED), 33.3, false)]);
+        assert_eq!(r.status, CheckStatus::Ok);
+    }
+
+    #[test]
+    fn spool_use_carries_the_original_weight() {
+        let r = check_one(one_plate(&fil("PLA", RED, 100.0)), &[spool("s1", "PLA", Some(RED), 640.0, false)]);
+        assert_eq!(r.needs[0].spools[0].original_g, 1000.0);
     }
 }

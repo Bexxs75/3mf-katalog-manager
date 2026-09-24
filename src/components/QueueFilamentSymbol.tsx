@@ -14,9 +14,12 @@ export function QueueFilamentSymbol({ check }: { check: FilamentCheck | undefine
   const t = useT();
   const { language } = useLanguage();
   if (!check) return null;
+  const tooltip = queueTooltip(check, t, language);
   return (
     <span
-      title={queueTooltip(check, t, language)}
+      role="img"
+      aria-label={tooltip}
+      title={tooltip}
       className={`inline-grid place-items-center w-[18px] h-[18px] rounded-[5px] border font-mono-ui text-[11px] font-semibold flex-none ${TONE[check.status]}`}
     >
       {STATUS_SYMBOL[check.status]}

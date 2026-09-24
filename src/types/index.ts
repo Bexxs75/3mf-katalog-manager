@@ -260,6 +260,7 @@ export interface FilamentSpoolUse {
   label: string;
   colorName: string | null;
   remainingG: number;
+  originalG: number;
   slot: FilamentSlotRef | null;
   location: string | null;
 }

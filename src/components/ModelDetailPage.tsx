@@ -77,7 +77,10 @@ export function ModelDetailPage({
   );
 
   const rows = buildMetaRows(model, t, language);
-  const filamentCheck = useFilamentCheck(model.sliceInfo ? [model.id] : []);
+  const filamentCheck = useFilamentCheck(
+    model.sliceInfo ? [model.id] : [],
+    JSON.stringify(model.sliceInfo ?? null),
+  );
 
   const submitTag = () => {
     const value = tagDraft.trim();

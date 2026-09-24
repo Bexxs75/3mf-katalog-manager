@@ -9,7 +9,7 @@ beforeEach(() => {
 });
 
 const spool = (over: Partial<FilamentSpoolUse> = {}): FilamentSpoolUse => ({
-  spoolId: 's1', label: 'Bambu PLA · Rot', colorName: 'Rot', remainingG: 640, slot: null, location: 'Regal A', ...over,
+  spoolId: 's1', label: 'Bambu PLA · Rot', colorName: 'Rot', remainingG: 640, originalG: 1000, slot: null, location: 'Regal A', ...over,
 });
 const need = (over: Partial<FilamentNeedCheck>): FilamentNeedCheck => ({
   filamentType: 'PLA', color: '#C0392B', neededG: 208.46, status: 'ok', missingG: 0, spools: [spool()], possible: [], ...over,
@@ -26,6 +26,26 @@ describe('FilamentCheckSection', () => {
     expect(screen.getByText('208,5 g')).toBeInTheDocument();
     expect(screen.getByText('Bambu PLA · Rot')).toBeInTheDocument();
     expect(screen.getByText('Regal A')).toBeInTheDocument();
+  });
+
+  it('shows a fill bar for an ok row sized by remaining/original weight', () => {
+    renderSection({ fileId: '1', status: 'ok', needs: [need({ spools: [spool({ remainingG: 640, originalG: 1000 })] })] });
+    const bar = screen.getByRole('progressbar');
+    expect(bar).toHaveAttribute('aria-valuenow', '64');
+    expect(bar.firstChild).toHaveStyle({ width: '64%' });
+  });
+
+  it('shows a fill bar per spool for a short row', () => {
+    renderSection({
+      fileId: '1', status: 'short',
+      needs: [need({ status: 'short', missingG: 13.46, spools: [spool({ remainingG: 18, originalG: 1000 })] })],
+    });
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '2');
+  });
+
+  it('renders no fill bar without a known original weight', () => {
+    renderSection({ fileId: '1', status: 'ok', needs: [need({ spools: [spool({ originalG: 0 })] })] });
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
   });
 
   it('shows the slot chip for a loaded spool', () => {

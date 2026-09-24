@@ -160,6 +160,7 @@ export interface Translations {
   filamentCheckRemaining: string;
   filamentCheckSwapSpools: string;
   filamentCheckMissing: string;
+  filamentCheckSpoolFill: string;
   filamentCheckNoMatch: string;
   filamentCheckPossible: string;
   filamentCheckSlot: string;

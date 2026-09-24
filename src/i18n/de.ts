@@ -152,6 +152,7 @@ export const de: Translations = {
   filamentCheckRemaining: '{g} übrig',
   filamentCheckSwapSpools: '{count} Spulen zusammen {g}',
   filamentCheckMissing: 'es fehlen {g}',
+  filamentCheckSpoolFill: '{percent} % übrig',
   filamentCheckNoMatch: 'Keine passende Spule',
   filamentCheckPossible: 'Möglicher Treffer ohne Farbwert:',
   filamentCheckSlot: '{printer} · {unit} · Fach {slot}',
