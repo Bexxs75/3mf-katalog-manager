@@ -88,4 +88,14 @@ describe('ToolsSection', () => {
     fireEvent.click(screen.getByText('Werkzeuge'));
     expect(screen.queryByRole('button', { name: /Duplikate/ })).not.toBeInTheDocument();
   });
+
+  it('exposes the heading as a keyboard-accessible button with aria-expanded', () => {
+    setup();
+    const heading = screen.getByRole('button', { name: /Werkzeuge/ });
+    expect(heading).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(heading);
+    expect(heading).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(heading);
+    expect(heading).toHaveAttribute('aria-expanded', 'true');
+  });
 });

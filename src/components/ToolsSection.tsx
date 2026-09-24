@@ -82,7 +82,11 @@ function Count({ value, active }: { value: number; active?: boolean }) {
 }
 
 function Hint({ children }: { children: ReactNode }) {
-  return <span className="ml-auto font-mono-ui text-[length:var(--font-size-meta)] text-[var(--ink-3)]">{children}</span>;
+  return (
+    <span aria-hidden="true" className="ml-auto font-mono-ui text-[length:var(--font-size-meta)] text-[var(--ink-3)]">
+      {children}
+    </span>
+  );
 }
 
 export function ToolsSection(props: ToolsSectionProps) {
@@ -108,9 +112,11 @@ export function ToolsSection(props: ToolsSectionProps) {
 
   return (
     <div>
-      <div
+      <button
+        type="button"
+        aria-expanded={!collapsed}
         onClick={() => setCollapsed((c) => !c)}
-        className="flex items-center justify-between px-1.5 pt-[18px] pb-2 cursor-pointer"
+        className="w-full flex items-center justify-between px-1.5 pt-[18px] pb-2 cursor-pointer bg-transparent border-0 text-left"
       >
         <span className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)]">
           {t('toolsHeading')}
@@ -118,7 +124,7 @@ export function ToolsSection(props: ToolsSectionProps) {
         <span className="font-mono-ui text-[length:var(--font-size-label)] leading-none text-[var(--ink-3)]">
           {collapsed ? '▾' : '▴'}
         </span>
-      </div>
+      </button>
       {!collapsed && (
         <div className="flex flex-col gap-px">
           <button
@@ -156,7 +162,9 @@ export function ToolsSection(props: ToolsSectionProps) {
             <Hint>↗</Hint>
           </button>
           {props.cleanupError && (
-            <div className="px-1.5 pl-[32px] text-[length:var(--font-size-meta)] text-[var(--crit)]">{props.cleanupError}</div>
+            <div role="alert" className="px-1.5 pl-[32px] text-[length:var(--font-size-meta)] text-[var(--crit)]">
+              {props.cleanupError}
+            </div>
           )}
           <button type="button" onClick={props.onOpenFilament} className={`${rowBase} ${rowIdle}`}>
             <Icon>{ICONS.filament}</Icon>
