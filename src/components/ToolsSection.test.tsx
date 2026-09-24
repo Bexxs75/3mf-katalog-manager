@@ -53,7 +53,8 @@ describe('ToolsSection', () => {
 
   it('marks the active view and deselects it on a second click', () => {
     const props = setup({ toolView: 'duplicates' });
-    expect(row('Duplikate')).toHaveAttribute('aria-current', 'true');
+    expect(row('Duplikate')).toHaveAttribute('aria-pressed', 'true');
+    expect(row('Zuletzt angesehen')).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(row('Duplikate'));
     expect(props.onToolViewChange).toHaveBeenCalledWith(null);
   });

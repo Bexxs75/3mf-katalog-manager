@@ -251,10 +251,12 @@ export const de: Translations = {
   toolRecent: 'Zuletzt angesehen',
   toolNew: 'Neu hinzugefügt',
   toolDuplicates: 'Duplikate',
+  toolViewEmpty: 'Keine Modelle in dieser Ansicht',
   inQueueLabel: 'In Warteschlange',
   notInQueueLabel: 'Nicht in Warteschlange',
   addToQueue: 'Zur Warteschlange hinzufügen',
   removeFromQueue: 'Aus Warteschlange entfernen',
+  chipRemove: '{label} entfernen',
   savedFiltersHeading: 'Gespeicherte Filter',
   savedFilterNamePlaceholder: 'Name…',
 

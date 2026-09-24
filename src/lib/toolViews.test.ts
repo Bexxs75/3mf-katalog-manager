@@ -25,6 +25,32 @@ describe('applyToolView recent', () => {
     expect(result[0].id).toBe('m0');
     expect(ids(result)).not.toContain('m20');
   });
+
+  it('ranks by a frozen snapshot when given, ignoring a newer live lastViewedAt', () => {
+    const models = [
+      makeModelFile({ id: 'a', lastViewedAt: daysAgo(5) }),
+      makeModelFile({ id: 'b', lastViewedAt: daysAgo(0) }), // live: b is newest
+    ];
+    const snapshot = new Map([
+      ['a', daysAgo(0)], // snapshot says a is newest
+      ['b', daysAgo(5)],
+    ]);
+    expect(ids(applyToolView(models, 'recent', NOW, snapshot))).toEqual(['a', 'b']);
+  });
+
+  it('excludes models missing from the snapshot or with a null snapshot value', () => {
+    const models = [
+      makeModelFile({ id: 'a', lastViewedAt: daysAgo(1) }),
+      makeModelFile({ id: 'b', lastViewedAt: daysAgo(1) }),
+      makeModelFile({ id: 'c', lastViewedAt: daysAgo(1) }),
+    ];
+    const snapshot = new Map([
+      ['a', daysAgo(1)],
+      ['b', null],
+      // 'c' intentionally absent from the snapshot.
+    ]);
+    expect(ids(applyToolView(models, 'recent', NOW, snapshot))).toEqual(['a']);
+  });
 });
 
 describe('applyToolView new', () => {

@@ -255,10 +255,12 @@ export interface Translations {
   toolRecent: string;
   toolNew: string;
   toolDuplicates: string;
+  toolViewEmpty: string;
   inQueueLabel: string;
   notInQueueLabel: string;
   addToQueue: string;
   removeFromQueue: string;
+  chipRemove: string;
   savedFiltersHeading: string;
   savedFilterNamePlaceholder: string;
 

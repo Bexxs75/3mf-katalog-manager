@@ -99,7 +99,7 @@ export function ToolsSection(props: ToolsSectionProps) {
     return (
       <button
         type="button"
-        aria-current={active ? 'true' : undefined}
+        aria-pressed={active}
         onClick={() => props.onToolViewChange(active ? null : view)}
         className={`${rowBase} ${active ? rowActive : rowIdle}`}
       >

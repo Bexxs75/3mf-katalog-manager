@@ -1,6 +1,6 @@
 import { isFileInFolderOrDescendant } from './folderTree';
 import { tagMatches } from './autoTags';
-import { applyToolView, type ToolView } from './toolViews';
+import { applyToolView, type RecentSnapshot, type ToolView } from './toolViews';
 import type { Language } from '../i18n/types';
 import type { ModelFile, Folder, SortKey } from '../types';
 
@@ -16,6 +16,9 @@ export interface CatalogFilterCriteria {
   toolView?: ToolView | null;
   // Bezugszeitpunkt fuer "Neu hinzugefuegt" (Tests setzen ihn fest).
   now?: Date;
+  // Eingefrorener lastViewedAt-Stand fuer die "recent"-Ansicht (siehe
+  // useCatalogFilters); nur relevant, wenn toolView === 'recent'.
+  recentSnapshot?: RecentSnapshot;
 }
 
 export function filterAndSortModels(
@@ -23,8 +26,8 @@ export function filterAndSortModels(
   folders: Folder[],
   criteria: CatalogFilterCriteria,
 ): ModelFile[] {
-  const { activeFolderId, activeTag, activeCreator, query, sort, language = 'de', toolView = null, now } = criteria;
-  const base = toolView ? applyToolView(models, toolView, now ?? new Date()) : models;
+  const { activeFolderId, activeTag, activeCreator, query, sort, language = 'de', toolView = null, now, recentSnapshot } = criteria;
+  const base = toolView ? applyToolView(models, toolView, now ?? new Date(), recentSnapshot) : models;
   const matched = base
     .filter((m) => activeFolderId === 'all' || isFileInFolderOrDescendant(m.folderId, activeFolderId, folders))
     .filter((m) => !activeTag || m.tags.includes(activeTag))

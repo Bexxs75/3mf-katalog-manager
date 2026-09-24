@@ -86,4 +86,31 @@ describe('useCatalogFilters', () => {
     act(() => result.current.setToolView(null));
     expect(result.current.filtered).toHaveLength(3);
   });
+
+  it('freezes the "recent" ranking while active and refreshes it on re-activation', () => {
+    const initial = [
+      makeModelFile({ id: 'a', lastViewedAt: '2026-01-01T00:00:00.000Z' }),
+      makeModelFile({ id: 'b', lastViewedAt: '2026-01-02T00:00:00.000Z' }),
+    ];
+    const { result, rerender } = renderHook(({ models }) => useCatalogFilters(models, []), {
+      initialProps: { models: initial },
+    });
+
+    act(() => result.current.setToolView('recent'));
+    expect(result.current.filtered.map((m) => m.id)).toEqual(['b', 'a']);
+
+    // A model's lastViewedAt is updated live (as selectModel does on click),
+    // making 'a' the newest by live data - the active view must not reorder.
+    const updated = [
+      { ...initial[0], lastViewedAt: '2026-01-03T00:00:00.000Z' },
+      initial[1],
+    ];
+    rerender({ models: updated });
+    expect(result.current.filtered.map((m) => m.id)).toEqual(['b', 'a']);
+
+    // Re-activating the view (off, then on again) takes a fresh snapshot.
+    act(() => result.current.setToolView(null));
+    act(() => result.current.setToolView('recent'));
+    expect(result.current.filtered.map((m) => m.id)).toEqual(['a', 'b']);
+  });
 });

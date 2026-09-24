@@ -251,10 +251,12 @@ export const es: Translations = {
   toolRecent: 'Vistos recientemente',
   toolNew: 'Añadidos recientemente',
   toolDuplicates: 'Duplicados',
+  toolViewEmpty: 'No hay modelos en esta vista',
   inQueueLabel: 'En cola',
   notInQueueLabel: 'No está en cola',
   addToQueue: 'Añadir a la cola',
   removeFromQueue: 'Quitar de la cola',
+  chipRemove: 'Quitar {label}',
   savedFiltersHeading: 'Filtros guardados',
   savedFilterNamePlaceholder: 'Nombre…',
 

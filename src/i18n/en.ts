@@ -251,10 +251,12 @@ export const en: Translations = {
   toolRecent: 'Recently viewed',
   toolNew: 'Recently added',
   toolDuplicates: 'Duplicates',
+  toolViewEmpty: 'No models in this view',
   inQueueLabel: 'In queue',
   notInQueueLabel: 'Not in queue',
   addToQueue: 'Add to queue',
   removeFromQueue: 'Remove from queue',
+  chipRemove: 'Remove {label}',
   savedFiltersHeading: 'Saved Filters',
   savedFilterNamePlaceholder: 'Name…',
 

@@ -270,20 +270,24 @@ export function CatalogWorkspace({
         {(activeTag || toolView) && (
           <div className="flex-none h-[38px] flex items-center gap-2.5 px-4 border-b border-[var(--line)] bg-[var(--bg)]">
             {toolView && (
-              <span
+              <button
+                type="button"
                 onClick={() => setToolView(null)}
+                aria-label={t('chipRemove').replace('{label}', t(TOOL_VIEW_LABEL_KEY[toolView]))}
                 className="flex items-center gap-1.5 h-[22px] px-2 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] font-mono-ui text-[11px] cursor-pointer"
               >
                 {t(TOOL_VIEW_LABEL_KEY[toolView])} ✕
-              </span>
+              </button>
             )}
             {activeTag && (
-              <span
+              <button
+                type="button"
                 onClick={() => setActiveTag(null)}
+                aria-label={t('chipRemove').replace('{label}', `#${tagLabel(activeTag, language)}`)}
                 className="flex items-center gap-1.5 h-[22px] px-2 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] font-mono-ui text-[11px] cursor-pointer"
               >
                 #{tagLabel(activeTag, language)} ✕
-              </span>
+              </button>
             )}
           </div>
         )}
@@ -361,7 +365,11 @@ export function CatalogWorkspace({
           />
         ) : (
           <div className="flex-1 overflow-y-auto overscroll-contain p-4">
-            {view === 'grid' ? (
+            {toolView && filtered.length === 0 && !activeCollection ? (
+              <div className="font-mono-ui text-[length:var(--font-size-item)] text-[var(--ink-3)] px-1.5 py-8 text-center">
+                {t('toolViewEmpty')}
+              </div>
+            ) : view === 'grid' ? (
               <ModelGrid
                 models={activeCollection ? collectionModels : filtered}
                 selectedId={selectedId}

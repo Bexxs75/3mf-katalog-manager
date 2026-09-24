@@ -170,7 +170,7 @@ export default function App() {
         onViewChange={filters.setView}
         sort={filters.sort}
         onSortChange={filters.setSort}
-        hideSortControl={collections.activeCollection !== null}
+        hideSortControl={collections.activeCollection !== null || filters.toolView !== null}
         count={filters.filtered.length}
         onImportFiles={fileImport.importFiles}
         onImportFolder={fileImport.importFolder}
