@@ -1,4 +1,8 @@
+use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::OnceLock;
+
+use serde::Deserialize;
 
 use crate::db::models::MaterialRecord;
 
@@ -9,7 +13,49 @@ const LARGE_MIN_DIM_MM: f64 = 200.0;
 
 const FILENAME_STOPWORDS: &[&str] = &[
     "kopie", "copy", "neu", "new", "final", "fertig", "export", "test", "scan", "model", "modell",
+    "copia", "nuevo", "nueva", "modelo", "prueba", "copie", "nouveau", "nouvelle", "modèle", "essai",
+    "untitled", "sans", "titre",
 ];
+
+// Gemeinsame Namentabelle der automatischen Tags mit dem Frontend
+// (src/lib/autoTags.json). Die Kennung (Schluessel) ist der deutsche Name
+// und das, was in der Datenbank steht; das Frontend uebersetzt nur die Anzeige.
+const AUTO_TAGS_JSON: &str = include_str!("../../src/lib/autoTags.json");
+
+#[derive(Debug, Deserialize)]
+struct AutoTagNames {
+    de: String,
+    en: String,
+    es: String,
+    fr: String,
+}
+
+impl AutoTagNames {
+    fn all(&self) -> [&str; 4] {
+        [&self.de, &self.en, &self.es, &self.fr]
+    }
+}
+
+fn auto_tags() -> &'static BTreeMap<String, AutoTagNames> {
+    static TABLE: OnceLock<BTreeMap<String, AutoTagNames>> = OnceLock::new();
+    TABLE.get_or_init(|| serde_json::from_str(AUTO_TAGS_JSON).expect("src/lib/autoTags.json ist ungueltig"))
+}
+
+fn alias_key(name: &str) -> String {
+    name.trim().to_lowercase()
+}
+
+/// Bildet einen Namen eines automatischen Tags in irgendeiner Sprache
+/// (Gross-/Kleinschreibung und Leerzeichen rundherum egal) auf die Kennung
+/// ab, z. B. "Multipart" -> "mehrteilig". Alle anderen Tags bleiben unveraendert.
+pub fn canonical_tag(name: &str) -> String {
+    let key = alias_key(name);
+    auto_tags()
+        .iter()
+        .find(|(_, names)| names.all().iter().any(|n| alias_key(n) == key))
+        .map(|(canonical, _)| canonical.clone())
+        .unwrap_or_else(|| name.to_string())
+}
 
 pub struct TaggingContext<'a> {
     pub file_name: &'a str,
@@ -46,6 +92,7 @@ fn filename_tags(file_name: &str) -> Vec<String> {
     stem.split(|c: char| !c.is_alphanumeric())
         .map(|token| token.to_lowercase())
         .filter(|token| is_meaningful_token(token))
+        .map(|token| canonical_tag(&token))
         .take(MAX_FILENAME_TAGS)
         .collect()
 }
@@ -228,5 +275,65 @@ mod tests {
             &materials,
         ));
         assert_eq!(tags.iter().filter(|t| *t == "pla").count(), 1);
+    }
+
+    #[test]
+    fn auto_tag_table_is_consistent() {
+        let table = auto_tags();
+        assert_eq!(table.len(), 4);
+        let mut seen: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        for (canonical, names) in table {
+            assert_eq!(&names.de, canonical, "DE-Name muss der Kennung entsprechen");
+            for name in names.all() {
+                assert!(!name.trim().is_empty(), "leerer Name bei {canonical}");
+                if let Some(other) = seen.insert(alias_key(name), canonical.clone()) {
+                    assert_eq!(&other, canonical, "Alias {name} gehoert zu zwei Kennungen");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn canonical_tag_maps_every_alias_in_every_language() {
+        for (alias, expected) in [
+            ("mehrteilig", "mehrteilig"), ("multipart", "mehrteilig"), ("multipieza", "mehrteilig"), ("multipièce", "mehrteilig"),
+            ("miniatur", "miniatur"), ("mini", "miniatur"), ("miniatura", "miniatur"), ("miniature", "miniatur"),
+            ("grossformat", "grossformat"), ("large", "grossformat"), ("grande", "grossformat"), ("grand format", "grossformat"),
+            ("mehrfarbig", "mehrfarbig"), ("multicolor", "mehrfarbig"), ("multicolore", "mehrfarbig"),
+        ] {
+            assert_eq!(canonical_tag(alias), expected, "Alias {alias}");
+        }
+    }
+
+    #[test]
+    fn canonical_tag_ignores_case_and_surrounding_whitespace() {
+        assert_eq!(canonical_tag("  Multipart "), "mehrteilig");
+        assert_eq!(canonical_tag("MULTIPIÈCE"), "mehrteilig");
+        assert_eq!(canonical_tag("Grand Format"), "grossformat");
+    }
+
+    #[test]
+    fn canonical_tag_leaves_other_tags_untouched() {
+        assert_eq!(canonical_tag("Vase"), "Vase");
+        assert_eq!(canonical_tag("pla-silk"), "pla-silk");
+        assert_eq!(canonical_tag("minis"), "minis");
+    }
+
+    #[test]
+    fn filename_tokens_that_are_auto_tag_aliases_become_the_canonical_tag() {
+        let tags = suggest_tags(&ctx("Board_multipart.3mf", None, None, &[]));
+        assert_eq!(tags, vec!["board".to_string(), "mehrteilig".to_string()]);
+    }
+
+    #[test]
+    fn filename_alias_and_geometry_tag_are_not_duplicated() {
+        let tags = suggest_tags(&ctx("set_multipart.3mf", None, Some(3), &[]));
+        assert_eq!(tags.iter().filter(|t| *t == "mehrteilig").count(), 1);
+    }
+
+    #[test]
+    fn drops_spanish_french_and_english_filler_words() {
+        let tags = suggest_tags(&ctx("vase_copia_nuevo_modèle_untitled.stl", None, None, &[]));
+        assert_eq!(tags, vec!["vase".to_string()]);
     }
 }
