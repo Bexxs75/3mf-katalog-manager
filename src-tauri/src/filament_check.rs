@@ -2,6 +2,12 @@
 //! mit den Spulen im Lager bzw. in den Druckerfaechern. Reine Funktionen ohne
 //! DB-Zugriff; den Tauri-Befehl gibt es in `commands/filament.rs`.
 
+use std::collections::HashMap;
+
+use serde::Serialize;
+
+use crate::threemf::SliceInfo;
+
 /// Groesster CIEDE2000-Abstand, bei dem zwei Farben noch als "dieselbe" gelten
 /// (Rot/Weinrot ~12,8 ja, Weiss/Beige ~15,1 nein).
 pub const COLOR_MATCH_MAX_DELTA_E: f64 = 14.0;
@@ -98,6 +104,241 @@ pub fn material_matches(spool_material: &str, filament_type: &str) -> bool {
     !wanted.is_empty() && norm(spool_material).contains(&wanted)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CheckStatus {
+    Ok,
+    Swap,
+    Short,
+    Unknown,
+    NoData,
+}
+
+impl CheckStatus {
+    /// Rangfolge fuer den Modellstatus: der schlechteste Bedarf gewinnt.
+    fn severity(self) -> u8 {
+        match self {
+            CheckStatus::Ok | CheckStatus::NoData => 0,
+            CheckStatus::Swap => 1,
+            CheckStatus::Unknown => 2,
+            CheckStatus::Short => 3,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SlotRef {
+    pub printer: String,
+    pub unit: String,
+    pub slot_number: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct SpoolInput {
+    pub id: String,
+    pub material: String,
+    pub manufacturer: Option<String>,
+    pub color_name: Option<String>,
+    pub color_hex: Option<String>,
+    pub remaining_g: f64,
+    pub slot: Option<SlotRef>,
+    pub location: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpoolUse {
+    pub spool_id: String,
+    pub label: String,
+    pub color_name: Option<String>,
+    pub remaining_g: f64,
+    pub slot: Option<SlotRef>,
+    pub location: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NeedCheck {
+    pub filament_type: String,
+    pub color: Option<String>,
+    pub needed_g: f64,
+    pub status: CheckStatus,
+    pub missing_g: f64,
+    pub spools: Vec<SpoolUse>,
+    pub possible: Vec<SpoolUse>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelCheck {
+    pub file_id: String,
+    pub status: CheckStatus,
+    pub needs: Vec<NeedCheck>,
+}
+
+const MAX_POSSIBLE: usize = 3;
+
+struct Need {
+    filament_type: String,
+    color: Option<String>,
+    needed_g: f64,
+}
+
+/// Summiert den Bedarf ueber alle Platten, gruppiert nach (norm(Typ), Farbe);
+/// Reihenfolge = erstes Auftreten.
+fn collect_needs(slice: &SliceInfo) -> Vec<Need> {
+    let mut needs: Vec<Need> = Vec::new();
+    for plate in &slice.plates {
+        for f in &plate.filaments {
+            if f.filament_type.trim().is_empty() || f.used_g <= 0.0 {
+                continue;
+            }
+            let color = f.color.as_deref().and_then(color_key);
+            let key = norm(&f.filament_type);
+            match needs.iter_mut().find(|n| norm(&n.filament_type) == key && n.color == color) {
+                Some(n) => n.needed_g += f.used_g,
+                None => needs.push(Need { filament_type: f.filament_type.trim().to_string(), color, needed_g: f.used_g }),
+            }
+        }
+    }
+    needs
+}
+
+fn spool_label(s: &SpoolInput) -> String {
+    let head: Vec<&str> = [s.manufacturer.as_deref(), Some(s.material.as_str())]
+        .into_iter()
+        .flatten()
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .collect();
+    let mut label = head.join(" ");
+    if let Some(color) = s.color_name.as_deref().map(str::trim).filter(|c| !c.is_empty()) {
+        label.push_str(" · ");
+        label.push_str(color);
+    }
+    label
+}
+
+fn spool_use(s: &SpoolInput, available: f64) -> SpoolUse {
+    SpoolUse {
+        spool_id: s.id.clone(),
+        label: spool_label(s),
+        color_name: s.color_name.clone(),
+        remaining_g: available,
+        slot: s.slot.clone(),
+        location: if s.slot.is_some() { None } else { s.location.clone().filter(|l| !l.trim().is_empty()) },
+    }
+}
+
+/// Noch verfuegbares Gewicht einer Spule im gedachten Abbuchungsstand.
+fn left(s: &SpoolInput, available: &HashMap<String, f64>) -> f64 {
+    available.get(&s.id).copied().unwrap_or(0.0)
+}
+
+fn check_need(need: &Need, spools: &[SpoolInput], available: &mut HashMap<String, f64>) -> NeedCheck {
+    let material_ok: Vec<&SpoolInput> = spools
+        .iter()
+        .filter(|s| left(s, available) > 0.0 && material_matches(&s.material, &need.filament_type))
+        .collect();
+
+    let spool_color = |s: &SpoolInput| s.color_hex.as_deref().and_then(color_key);
+    let mut hits: Vec<&SpoolInput> = match &need.color {
+        Some(want) => material_ok
+            .iter()
+            .copied()
+            .filter(|s| {
+                spool_color(s)
+                    .and_then(|have| delta_e_2000(want, &have))
+                    .is_some_and(|d| d <= COLOR_MATCH_MAX_DELTA_E)
+            })
+            .collect(),
+        None => Vec::new(),
+    };
+    hits.sort_by(|a, b| {
+        b.slot.is_some()
+            .cmp(&a.slot.is_some())
+            .then(left(b, available).total_cmp(&left(a, available)))
+            .then(a.id.cmp(&b.id))
+    });
+
+    let mut result = NeedCheck {
+        filament_type: need.filament_type.clone(),
+        color: need.color.clone(),
+        needed_g: need.needed_g,
+        status: CheckStatus::Unknown,
+        missing_g: 0.0,
+        spools: Vec::new(),
+        possible: Vec::new(),
+    };
+
+    if hits.is_empty() {
+        let mut possible: Vec<&SpoolInput> = material_ok
+            .into_iter()
+            .filter(|s| need.color.is_none() || spool_color(s).is_none())
+            .collect();
+        possible.sort_by(|a, b| left(b, available).total_cmp(&left(a, available)).then(a.id.cmp(&b.id)));
+        result.possible = possible.into_iter().take(MAX_POSSIBLE).map(|s| spool_use(s, left(s, available))).collect();
+        return result;
+    }
+
+    if let Some(single) = hits.iter().copied().find(|s| left(s, available) >= need.needed_g) {
+        let before = left(single, available);
+        result.status = CheckStatus::Ok;
+        result.spools.push(spool_use(single, before));
+        available.insert(single.id.clone(), before - need.needed_g);
+        return result;
+    }
+
+    let total: f64 = hits.iter().map(|s| left(s, available)).sum();
+    if total >= need.needed_g {
+        result.status = CheckStatus::Swap;
+        let mut still = need.needed_g;
+        for s in hits {
+            if still <= 0.0 {
+                break;
+            }
+            let before = left(s, available);
+            let take = before.min(still);
+            result.spools.push(spool_use(s, before));
+            available.insert(s.id.clone(), before - take);
+            still -= take;
+        }
+    } else {
+        result.status = CheckStatus::Short;
+        result.missing_g = need.needed_g - total;
+        for s in hits {
+            result.spools.push(spool_use(s, left(s, available)));
+            available.insert(s.id.clone(), 0.0);
+        }
+    }
+    result
+}
+
+/// Prueft Modelle in der uebergebenen Reihenfolge (= Warteschlange) mit einem
+/// gemeinsamen, nur gedachten Abbuchungsstand. Aendert nichts in der DB.
+pub fn check_models(models: &[(String, Option<SliceInfo>)], spools: &[SpoolInput]) -> Vec<ModelCheck> {
+    let mut available: HashMap<String, f64> = spools.iter().map(|s| (s.id.clone(), s.remaining_g.max(0.0))).collect();
+    models
+        .iter()
+        .map(|(file_id, slice)| {
+            let needs: Vec<NeedCheck> = slice
+                .as_ref()
+                .map(collect_needs)
+                .unwrap_or_default()
+                .iter()
+                .map(|n| check_need(n, spools, &mut available))
+                .collect();
+            let status = if needs.is_empty() {
+                CheckStatus::NoData
+            } else {
+                needs.iter().map(|n| n.status).max_by_key(|s| s.severity()).unwrap_or(CheckStatus::Ok)
+            };
+            ModelCheck { file_id: file_id.clone(), status, needs }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,5 +399,185 @@ mod tests {
         assert!(material_matches("pla basic", "PLA"));
         assert!(!material_matches("PETG", "PLA"));
         assert!(!material_matches("PLA", ""));
+    }
+
+    fn slice(json: &str) -> Option<SliceInfo> {
+        Some(serde_json::from_str(json).expect("slice json"))
+    }
+
+    fn one_plate(filaments: &str) -> Option<SliceInfo> {
+        slice(&format!(r#"{{"total_weight_g":0,"plates":[{{"plate_index":1,"weight_g":0,"filaments":[{filaments}]}}]}}"#))
+    }
+
+    fn fil(t: &str, color: &str, g: f64) -> String {
+        format!(r#"{{"filament_type":"{t}","color":"{color}","used_g":{g},"used_m":1}}"#)
+    }
+
+    fn spool(id: &str, material: &str, hex: Option<&str>, g: f64, loaded: bool) -> SpoolInput {
+        SpoolInput {
+            id: id.to_string(),
+            material: material.to_string(),
+            manufacturer: Some("Bambu".to_string()),
+            color_name: Some("Rot".to_string()),
+            color_hex: hex.map(str::to_string),
+            remaining_g: g,
+            slot: loaded.then(|| SlotRef { printer: "X1C".into(), unit: "AMS 1".into(), slot_number: 2 }),
+            location: (!loaded).then(|| "Regal A".to_string()),
+        }
+    }
+
+    fn check_one(model: Option<SliceInfo>, spools: &[SpoolInput]) -> ModelCheck {
+        check_models(&[("1".to_string(), model)], spools).remove(0)
+    }
+
+    const RED: &str = "#C0392B";
+
+    #[test]
+    fn ok_when_one_matching_spool_has_enough() {
+        let r = check_one(one_plate(&fil("PLA", RED, 100.0)), &[spool("s1", "PLA", Some("#B03020"), 640.0, false)]);
+        assert_eq!(r.status, CheckStatus::Ok);
+        let need = &r.needs[0];
+        assert_eq!(need.status, CheckStatus::Ok);
+        assert_eq!(need.spools.len(), 1);
+        assert_eq!(need.spools[0].spool_id, "s1");
+        assert_eq!(need.spools[0].remaining_g, 640.0);
+        assert_eq!(need.spools[0].label, "Bambu PLA · Rot");
+        assert_eq!(need.spools[0].location.as_deref(), Some("Regal A"));
+    }
+
+    #[test]
+    fn loaded_spool_is_preferred_when_it_suffices() {
+        let spools = [spool("big", "PLA", Some(RED), 900.0, false), spool("ams", "PLA", Some(RED), 200.0, true)];
+        let r = check_one(one_plate(&fil("PLA", RED, 150.0)), &spools);
+        assert_eq!(r.needs[0].spools[0].spool_id, "ams");
+        assert!(r.needs[0].spools[0].slot.is_some());
+    }
+
+    #[test]
+    fn larger_unloaded_spool_is_used_when_loaded_one_is_too_small() {
+        let spools = [spool("big", "PLA", Some(RED), 900.0, false), spool("ams", "PLA", Some(RED), 50.0, true)];
+        let r = check_one(one_plate(&fil("PLA", RED, 150.0)), &spools);
+        assert_eq!(r.needs[0].status, CheckStatus::Ok);
+        assert_eq!(r.needs[0].spools[0].spool_id, "big");
+    }
+
+    #[test]
+    fn swap_when_only_the_sum_of_spools_suffices() {
+        let spools = [spool("a", "PLA", Some(RED), 100.0, true), spool("b", "PLA", Some(RED), 100.0, false)];
+        let r = check_one(one_plate(&fil("PLA", RED, 150.0)), &spools);
+        assert_eq!(r.status, CheckStatus::Swap);
+        let ids: Vec<&str> = r.needs[0].spools.iter().map(|s| s.spool_id.as_str()).collect();
+        assert_eq!(ids, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn short_reports_the_missing_amount() {
+        let r = check_one(one_plate(&fil("PLA", RED, 150.0)), &[spool("a", "PLA", Some(RED), 40.0, false)]);
+        assert_eq!(r.status, CheckStatus::Short);
+        assert!((r.needs[0].missing_g - 110.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn wrong_color_does_not_count_and_yields_unknown() {
+        let r = check_one(one_plate(&fil("PLA", RED, 10.0)), &[spool("orange", "PLA", Some("#E67E22"), 900.0, false)]);
+        assert_eq!(r.status, CheckStatus::Unknown);
+        assert!(r.needs[0].spools.is_empty());
+        assert!(r.needs[0].possible.is_empty());
+    }
+
+    #[test]
+    fn spool_without_color_is_only_a_possible_match() {
+        let r = check_one(one_plate(&fil("PLA", RED, 10.0)), &[spool("nocolor", "PLA", None, 900.0, false)]);
+        assert_eq!(r.needs[0].status, CheckStatus::Unknown);
+        assert_eq!(r.needs[0].possible.len(), 1);
+        assert_eq!(r.needs[0].possible[0].spool_id, "nocolor");
+    }
+
+    #[test]
+    fn filament_without_color_makes_every_material_match_possible_only() {
+        let json = r#"{"filament_type":"PLA","color":null,"used_g":10,"used_m":1}"#;
+        let r = check_one(one_plate(json), &[spool("a", "PLA", Some(RED), 900.0, false)]);
+        assert_eq!(r.needs[0].status, CheckStatus::Unknown);
+        assert_eq!(r.needs[0].possible.len(), 1);
+    }
+
+    #[test]
+    fn possible_matches_are_capped_at_three_by_weight() {
+        let spools = [
+            spool("a", "PLA", None, 100.0, false),
+            spool("b", "PLA", None, 400.0, false),
+            spool("c", "PLA", None, 300.0, false),
+            spool("d", "PLA", None, 200.0, false),
+        ];
+        let r = check_one(one_plate(&fil("PLA", RED, 10.0)), &spools);
+        let ids: Vec<&str> = r.needs[0].possible.iter().map(|s| s.spool_id.as_str()).collect();
+        assert_eq!(ids, vec!["b", "c", "d"]);
+    }
+
+    #[test]
+    fn empty_spools_are_ignored() {
+        let r = check_one(one_plate(&fil("PLA", RED, 10.0)), &[spool("empty", "PLA", Some(RED), 0.0, false)]);
+        assert_eq!(r.status, CheckStatus::Unknown);
+        assert!(r.needs[0].possible.is_empty());
+    }
+
+    #[test]
+    fn need_is_summed_over_plates_and_split_by_color() {
+        let json = format!(
+            r#"{{"total_weight_g":0,"plates":[
+                {{"plate_index":1,"weight_g":0,"filaments":[{},{}]}},
+                {{"plate_index":2,"weight_g":0,"filaments":[{}]}}]}}"#,
+            fil("PLA", RED, 50.0),
+            fil("PLA", "#000000", 5.0),
+            fil("PLA", "#c0392bff", 30.0)
+        );
+        let r = check_one(slice(&json), &[]);
+        assert_eq!(r.needs.len(), 2);
+        assert_eq!(r.needs[0].color.as_deref(), Some("#C0392B"));
+        assert!((r.needs[0].needed_g - 80.0).abs() < 1e-9);
+        assert_eq!(r.needs[1].color.as_deref(), Some("#000000"));
+    }
+
+    #[test]
+    fn empty_type_and_zero_usage_are_ignored_and_yield_no_data() {
+        let r = check_one(one_plate(&format!("{},{}", fil("", RED, 10.0), fil("PLA", RED, 0.0))), &[]);
+        assert_eq!(r.status, CheckStatus::NoData);
+        assert!(r.needs.is_empty());
+    }
+
+    #[test]
+    fn model_without_slice_info_has_no_data() {
+        assert_eq!(check_one(None, &[]).status, CheckStatus::NoData);
+    }
+
+    #[test]
+    fn model_status_is_the_worst_need_status() {
+        let json = format!("{},{}", fil("PLA", RED, 10.0), fil("PETG", "#000000", 10.0));
+        let spools = [spool("a", "PLA", Some(RED), 900.0, false), spool("b", "PETG", Some("#000000"), 5.0, false)];
+        assert_eq!(check_one(one_plate(&json), &spools).status, CheckStatus::Short);
+    }
+
+    #[test]
+    fn short_outranks_unknown() {
+        let json = format!("{},{}", fil("PLA", RED, 100.0), fil("TPU", "#3A7BD5", 5.0));
+        let spools = [spool("a", "PLA", Some(RED), 10.0, false)];
+        assert_eq!(check_one(one_plate(&json), &spools).status, CheckStatus::Short);
+    }
+
+    #[test]
+    fn queue_deducts_cumulatively_in_order() {
+        let m = || one_plate(&fil("PLA", RED, 200.0));
+        let models = vec![("1".to_string(), m()), ("2".to_string(), m()), ("3".to_string(), m())];
+        let r = check_models(&models, &[spool("a", "PLA", Some(RED), 500.0, false)]);
+        let statuses: Vec<CheckStatus> = r.iter().map(|m| m.status).collect();
+        assert_eq!(statuses, vec![CheckStatus::Ok, CheckStatus::Ok, CheckStatus::Short]);
+        assert!((r[2].needs[0].missing_g - 100.0).abs() < 1e-9);
+        assert_eq!(r[1].needs[0].spools[0].remaining_g, 300.0);
+    }
+
+    #[test]
+    fn status_serializes_as_snake_case() {
+        assert_eq!(serde_json::to_string(&CheckStatus::NoData).unwrap(), "\"no_data\"");
+        assert_eq!(serde_json::to_string(&CheckStatus::Swap).unwrap(), "\"swap\"");
     }
 }
