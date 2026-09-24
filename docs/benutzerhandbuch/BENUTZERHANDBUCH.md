@@ -4,10 +4,10 @@ Dieses Handbuch richtet sich an alle, die den 3MF Katalog Manager zum ersten Mal
 sich mit der App noch nicht auskennen. Es erklärt Schritt für Schritt, wie du Modelle
 importierst, organisierst, druckfertig machst und dein Filament-Lager verwaltest.
 
-> **Hinweis zu den Bildern in diesem Handbuch:** Alle Screenshots zeigen die App mit frei
-> erfundenen Beispieldaten (fiktive Modelle wie "Kabelhalter Set" oder "Gartenzwerg Mini",
-> fiktive Filamentspulen) — keine echten Nutzerdaten. Die tatsächliche Optik entspricht exakt
-> dem, was du siehst; nur der Inhalt ist zu Demonstrationszwecken erfunden.
+> **Hinweis zu den Bildern in diesem Handbuch:** Alle Screenshots zeigen die App (Version 0.13.0)
+> mit einem erfundenen Demo-Katalog (Modelle wie "Rakete" oder "Spiralvase", erfundene
+> Filamentspulen und Hersteller) — keine echten Nutzerdaten. Die Optik entspricht exakt dem, was
+> du in der App siehst; nur der Inhalt ist zu Demonstrationszwecken erfunden.
 
 ## Inhalt
 
@@ -484,13 +484,10 @@ This guide is for anyone using the 3MF Katalog Manager for the first time and no
 with the app. It walks you step by step through importing, organizing, and preparing your models
 for printing, and managing your filament stock.
 
-> **About the screenshots in this guide:** the screenshots below were taken with the app set to
-> German, using entirely made-up sample data (fictional models like "Kabelhalter Set" or
-> "Gartenzwerg Mini", fictional filament spools) — no real user data. The layout is exactly what
-> you'll see; only the on-screen text (German UI, since that's the app's default language) and
-> the content are for demonstration purposes. Switch the app's language to English in Settings
-> (see [Settings](#settings)) and every label described below will appear in English in your own
-> installation.
+> **About the screenshots in this guide:** all screenshots show the app (version 0.13.0) with its
+> interface set to English and a made-up demo catalog (models like "Rocket" or "Spiral Vase",
+> made-up filament spools and brands) — no real user data. The layout is exactly what you'll see
+> in the app; only the content is for demonstration purposes.
 
 ## Contents
 
@@ -552,7 +549,7 @@ Otherwise the two variants are identical. If you don't use STEP files, the small
 
 The very first time you launch the app, it asks how your catalog should be organized:
 
-![Initial setup dialog](bilder/01-ersteinrichtung.png)
+![Initial setup dialog](bilder/en/01-ersteinrichtung.png)
 
 As of this app version, folders in the catalog correspond to real directories on your hard
 drive — if you move a file to another folder inside the app, it's actually moved there, not just
@@ -573,7 +570,7 @@ file manager afterwards.
 
 ## Interface overview
 
-![Catalog in grid view](bilder/02-katalog-grid.png)
+![Catalog in grid view](bilder/en/02-katalog-grid.png)
 
 - **Far left, the narrow navigation rail:** switches between the catalog, the filament stock, and
   the trash (with an item-count badge). The gear icon for Settings sits at the very bottom.
@@ -627,14 +624,14 @@ single file over 1 GB, the whole archive fails (anything already extracted is re
 references in RAR archives (created with `rar -oi`) are not resolved: they are skipped, created as an
 empty file, or make the whole archive fail on a checksum error. Folder import still does not extract any archives it contains.
 
-![Dialog for extracting archives](bilder/21-archiv-entpacken.png)
+![Dialog for extracting archives](bilder/en/21-archiv-entpacken.png)
 
 ## Browsing and organizing your catalog
 
 Top right, next to "Import", you switch between three views: **grid** (image tiles, see the
 screenshot above), **folder**, and **list**:
 
-![Catalog in list view](bilder/03-katalog-liste.png)
+![Catalog in list view](bilder/en/03-katalog-liste.png)
 
 The list shows additional columns (tags, volume, file size) and can be sorted by clicking a
 column header.
@@ -644,7 +641,7 @@ column header.
 The **Folder** view groups your models by their real folder structure on disk — like a file
 explorer, with subfolders indented and a continuous connecting line:
 
-![Folder view as a tile grid](bilder/16-ordner-ansicht.png)
+![Folder view as a tile grid](bilder/en/16-ordner-ansicht.png)
 
 Each folder header shows the total number of files it contains, including all subfolders.
 Clicking a header collapses or expands that folder — the state persists across app restarts.
@@ -654,7 +651,7 @@ here also moves it on disk immediately.
 
 The same grouping is available in list form:
 
-![Folder-grouped list view](bilder/17-liste-gruppiert.png)
+![Folder-grouped list view](bilder/en/17-liste-gruppiert.png)
 
 Three independent mechanisms are available for organizing your catalog overall, and you can
 combine them freely:
@@ -681,7 +678,7 @@ typing in a text field.
 
 Double-clicking a model opens the full detail page:
 
-![Model detail page](bilder/04-modell-detailseite.png)
+![Model detail page](bilder/en/04-modell-detailseite.png)
 
 Top right in the preview area, you switch between the **3D view** (free rotation by dragging with
 the mouse, plus auto-rotation and 15°-step buttons) and the stored **image** — which of the two
@@ -702,7 +699,7 @@ marks it as a favorite; you find all favorites under "Tools → Favorites".
 
 Right-clicking a model opens a context menu with the most important actions:
 
-![Context menu](bilder/05-kontextmenu.png)
+![Context menu](bilder/en/05-kontextmenu.png)
 
 Use "Rename" to change the file name right in the context menu — the file extension is shown
 fixed and can't be typed away. If the new name moves the model out of the visible area
@@ -714,7 +711,7 @@ collection, add or remove a tag ("Add tag" / "Remove tag" — the latter shows a
 every tag present in the selection), mark it printed/not printed, or delete it together. With a
 multi-selection active, the Delete/Backspace key also opens the delete confirmation directly:
 
-![Multi-select with action bar](bilder/06-mehrfachauswahl.png)
+![Multi-select with action bar](bilder/en/06-mehrfachauswahl.png)
 
 ## Collections
 
@@ -723,7 +720,7 @@ group several models into a project, with a manually definable order (drag & dro
 collection via "+ New collection" in the sidebar and populate it via multi-select. Clicking a
 collection in the sidebar filters the catalog down to its models:
 
-![Collection "Weihnachtsmarkt-Projekt"](bilder/07-sammlungen.png)
+![Collection "Christmas Market Project"](bilder/en/07-sammlungen.png)
 
 ## Tools in the sidebar
 
@@ -761,7 +758,7 @@ which of them is your **default slicer**, is configured in Settings (see below).
 The filament stock is an independent manager for your filament spools, separate from the model
 catalog. You reach it via the second icon in the navigation rail on the far left.
 
-![Filament stock dashboard](bilder/08-filament-dashboard.png)
+![Filament stock dashboard](bilder/en/08-filament-dashboard.png)
 
 At the top is a stats bar (total spools, total remaining weight, occupied storage locations,
 spools with low/empty stock). Each spool card shows material, manufacturer, color, storage
@@ -771,11 +768,11 @@ field help you find spools that need reordering soon.
 
 As an alternative to the tile view, there's a sortable list view ("List" next to "Dashboard"):
 
-![Filament table](bilder/09-filament-tabelle.png)
+![Filament table](bilder/en/09-filament-tabelle.png)
 
 "+ Add spool" opens the form for a new spool:
 
-![Form for adding a new spool](bilder/10-filament-spule-formular.png)
+![Form for adding a new spool](bilder/en/10-filament-spule-formular.png)
 
 Besides the usual fields (material, manufacturer, color, storage location, diameter, price,
 original/remaining weight, optionally a photo), you can also set a **quantity** here: adding,
@@ -803,7 +800,7 @@ icon and calculates top to bottom with the combined need. Nothing is deducted.
 Besides the stock itself, you can also model your printers and their multi-material units —
 loaded spools then appear in their own column to the right of the stock.
 
-![Printers & AMS slots](bilder/22-drucker-ams.png)
+![Printers & AMS slots](bilder/en/22-drucker-ams.png)
 
 1. Use "Manage printers" to add a printer — it automatically gets a "Spool holder" unit (1
    slot); for a printer without an AMS this is initially its only slot, but you can delete it
@@ -835,7 +832,7 @@ repeatedly and want to keep track of which attempt worked and when.
 Deleted models aren't removed immediately — they move to the trash for 7 days and can be restored
 during that time:
 
-![Trash with two deleted models](bilder/13-papierkorb.png)
+![Trash with two deleted models](bilder/en/13-papierkorb.png)
 
 "Empty trash" top right removes everything it contains immediately and permanently.
 
@@ -846,7 +843,7 @@ The gear icon at the bottom of the navigation rail opens Settings. They're split
 
 ### General
 
-![Settings: General](bilder/18-einstellungen-allgemein.png)
+![Settings: General](bilder/en/18-einstellungen-allgemein.png)
 
 - **Appearance** — follows your system setting automatically, or fixed to light/dark. Right below
   it, the density setting: "Compact" (dense, small text, a lot at a glance) or "Comfort" (larger
@@ -858,7 +855,7 @@ The gear icon at the bottom of the navigation rail opens Settings. They're split
 
 ### Slicer
 
-![Settings: slicer management](bilder/11-einstellungen-slicer.png)
+![Settings: slicer management](bilder/en/11-einstellungen-slicer.png)
 
 The app scans known install locations on startup (Bambu Studio, OrcaSlicer, PrusaSlicer,
 SuperSlicer, UltiMaker Cura) and adds any it finds automatically; use "+ Add" to add others,
@@ -867,7 +864,7 @@ including self-built or modified versions. The radio button sets which slicer is
 
 ### Catalog
 
-![Settings: Catalog](bilder/19-einstellungen-katalog.png)
+![Settings: Catalog](bilder/en/19-einstellungen-katalog.png)
 
 - **Check catalog** — a manually triggered scan finds orphaned file paths (a file listed in the
   catalog but no longer present on disk) and inventory duplicates, with cleanup via a selection
@@ -878,7 +875,7 @@ including self-built or modified versions. The radio button sets which slicer is
 
 ### Info
 
-![Settings: Info with update check](bilder/20-einstellungen-info-update.png)
+![Settings: Info with update check](bilder/en/20-einstellungen-info-update.png)
 
 Shows the installed version plus links to the source code, application license, and third-party
 licenses. On startup, the app
@@ -890,8 +887,8 @@ updates" button for a manual check.
 
 Below in the screenshot, you can see an example of the **light** vs. **dark** theme side by side:
 
-![Catalog in dark theme](bilder/14-dark-mode.png)
-![Catalog in light theme](bilder/15-hell-mode-bonus.png)
+![Catalog in dark theme](bilder/en/14-dark-mode.png)
+![Catalog in light theme](bilder/en/15-hell-mode-bonus.png)
 
 ## Backing up and restoring your catalog
 

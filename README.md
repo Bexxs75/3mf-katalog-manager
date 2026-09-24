@@ -141,7 +141,7 @@ Cross-platform desktop application for cataloging and managing 3MF, STL, OBJ, an
 
 | Catalog (grid) | Grouped by folder | Settings (Info & update check) |
 |---|---|---|
-| ![Catalog in grid view](docs/benutzerhandbuch/bilder/02-katalog-grid.png) | ![Folder-grouped view](docs/benutzerhandbuch/bilder/16-ordner-ansicht.png) | ![Settings with update check](docs/benutzerhandbuch/bilder/20-einstellungen-info-update.png) |
+| ![Catalog in grid view](docs/benutzerhandbuch/bilder/en/02-katalog-grid.png) | ![Folder-grouped view](docs/benutzerhandbuch/bilder/en/16-ordner-ansicht.png) | ![Settings with update check](docs/benutzerhandbuch/bilder/en/20-einstellungen-info-update.png) |
 
 ## Downloads
 
