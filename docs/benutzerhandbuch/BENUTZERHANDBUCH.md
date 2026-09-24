@@ -20,7 +20,7 @@ importierst, organisierst, druckfertig machst und dein Filament-Lager verwaltest
 7. [Ein Modell im Detail ansehen](#ein-modell-im-detail-ansehen)
 8. [Schnelle Aktionen: Kontextmenü und Mehrfachauswahl](#schnelle-aktionen-kontextmenü-und-mehrfachauswahl)
 9. [Sammlungen](#sammlungen)
-10. [Die Druck-Warteschlange](#die-druck-warteschlange)
+10. [Werkzeuge in der Seitenleiste](#werkzeuge-in-der-seitenleiste)
 11. [Modelle direkt im Slicer öffnen](#modelle-direkt-im-slicer-öffnen)
 12. [Das Filament-Lager](#das-filament-lager)
 13. [Druckprotokoll](#druckprotokoll)
@@ -109,7 +109,9 @@ Einrichtung direkt über den Katalog im Dateimanager.
 Dialog auswählen, einen ganzen Ordner (inklusive Unterordner) importieren, oder Dateien direkt per
 Drag & Drop aus deinem Dateimanager in das Katalog-Fenster ziehen. Beim Import werden Abmessungen,
 Volumen, Objektanzahl und (falls in der Datei vorhanden) Materialangaben automatisch ausgelesen,
-und die App schlägt passende Hashtags vor, die du danach frei bearbeiten kannst.
+und die App schlägt passende Hashtags vor, die du danach frei bearbeiten kannst. Automatisch
+vergebene Tags wie „mehrteilig“, „miniatur“, „grossformat“ und „mehrfarbig“ erscheinen in der
+eingestellten Sprache der Oberfläche; die Suche findet sie unter beiden Namen.
 
 Importiert die App eine Datei, die inhaltlich bereits im Katalog vorhanden ist (exakter
 Duplikat-Abgleich per Inhalts-Hash), wird das erkannt, statt sie ein zweites Mal anzulegen.
@@ -221,7 +223,8 @@ diese Werte nachträglich nach, falls du eine bereits katalogisierte Datei erst 
 nachgesliced hast.
 
 Unten links kannst du das Modell als **gedruckt** markieren und es zur **Warteschlange**
-hinzufügen.
+hinzufügen. Mit dem **Herz** markierst du es als Favorit; alle Favoriten findest du unter
+„Werkzeuge → Favoriten“.
 
 ## Schnelle Aktionen: Kontextmenü und Mehrfachauswahl
 
@@ -253,13 +256,26 @@ Modelle:
 
 ![Sammlung "Weihnachtsmarkt-Projekt"](bilder/07-sammlungen.png)
 
-## Die Druck-Warteschlange
+## Werkzeuge in der Seitenleiste
 
-Unter "Warteschlange" in der Sidebar sammelst du Modelle, die als Nächstes gedruckt werden
-sollen — per Drag & Drop sortierbar. Markierst du ein Modell als gedruckt, wird es automatisch
-wieder aus der Warteschlange entfernt.
+Unten in der Seitenleiste bündelt der Bereich **Werkzeuge** mehrere Hilfen, jeweils mit Anzahl.
+Über die Überschrift lässt er sich zuklappen.
 
-![Warteschlange mit einem wartenden Modell](bilder/12-warteschlange.png)
+![Werkzeuge mit aktiver Ansicht „Favoriten“](bilder/23-werkzeuge.png)
+
+- **Warteschlange** — Modelle, die als Nächstes gedruckt werden sollen. Aufklappbar und per
+  Drag & Drop sortierbar; ein Klick auf einen Eintrag zeigt das Modell an. Ein Symbol je Eintrag
+  zeigt, ob dein Filament reicht (siehe [Reicht das Filament?](#reicht-das-filament)). Markierst
+  du ein Modell als gedruckt, verschwindet es automatisch aus der Warteschlange.
+- **Zuletzt angesehen** — die 20 zuletzt geöffneten Modelle, das neueste zuerst.
+- **Neu hinzugefügt** — alles, was in den letzten 7 Tagen importiert wurde.
+- **Favoriten** — alle Modelle, die du mit dem Herz markiert hast, alphabetisch sortiert.
+- **Duplikate** — Modelle mit identischem Dateiinhalt, als Gruppen nebeneinander.
+- **Aufräum-Vorschläge** — prüft den Katalog auf fehlende Dateien und Duplikate.
+
+Eine gewählte Ansicht erscheint oben als Filter-Chip und lässt sich mit Ordnern, Tags und Suche
+kombinieren. Ein zweiter Klick auf die Ansicht oder das ✕ am Chip hebt sie wieder auf.
+Filament-Lager und Papierkorb erreichst du wie gewohnt über die Symbole in der linken Leiste.
 
 ## Modelle direkt im Slicer öffnen
 
@@ -299,6 +315,21 @@ Ursprungs-/Restgewicht, optional ein Foto) lässt sich hier auch die **Anzahl** 
 z. B. drei identische PLA-Spulen gleichzeitig an, erhält jede davon trotzdem ihren eigenen,
 unabhängig verfolgten Restbestand. Für Material, Hersteller und Lagerort schlägt die App beim
 Tippen bereits verwendete Werte vor (Autocomplete).
+
+### Reicht das Filament?
+
+Für 3MF-Dateien, die in Bambu Studio oder OrcaSlicer gesliced wurden, vergleicht die Detailseite
+den Filamentbedarf (über alle Druckplatten zusammengezählt) mit deinen Spulen: gleiches Material
+und ähnliche Farbe. Pro Filament siehst du einen Status:
+
+- **reicht** — eine passende Spule hat genug Restgewicht,
+- **reicht mit Spulenwechsel** — es reicht nur, wenn du unterwegs eine zweite Spule einlegst,
+- **reicht nicht** — mit der fehlenden Menge,
+- **unklar** — keine passende Spule gefunden oder keine Slicer-Daten.
+
+Dazu nennt die App die passende Spule mit Restgewicht und sagt, ob sie im Drucker steckt
+(Drucker · Einheit · Fach) oder wo sie liegt. Die Warteschlange zeigt denselben Status als Symbol
+und rechnet von oben nach unten mit dem gemeinsamen Bedarf. Es wird dabei nichts abgebucht.
 
 ### Drucker & AMS
 
@@ -472,7 +503,7 @@ for printing, and managing your filament stock.
 7. [Viewing a model in detail](#viewing-a-model-in-detail)
 8. [Quick actions: context menu and multi-select](#quick-actions-context-menu-and-multi-select)
 9. [Collections](#collections)
-10. [The print queue](#the-print-queue)
+10. [Tools in the sidebar](#tools-in-the-sidebar)
 11. [Opening models directly in your slicer](#opening-models-directly-in-your-slicer)
 12. [The filament stock](#the-filament-stock)
 13. [Print log](#print-log)
@@ -559,7 +590,9 @@ The red "+ Import" button top left offers several ways in: pick individual files
 import an entire folder (including subfolders), or drag files straight from your file manager
 into the catalog window. On import, dimensions, volume, object count, and (if present in the
 file) material information are extracted automatically, and the app suggests matching hashtags
-that you're free to edit afterwards.
+that you're free to edit afterwards. Automatically assigned tags such as "multipart", "mini",
+"large" and "multicolor" appear in the interface language you selected; search finds them under
+both names.
 
 If the app imports a file that's already present in the catalog content-wise (an exact duplicate
 check via content hash), it's recognized instead of being added a second time.
@@ -662,7 +695,8 @@ estimated material-cost total if matching spools are on record in the filament s
 "Re-scan metadata" button re-fetches these values later on, in case you sliced an already
 cataloged file after the fact.
 
-At the bottom left you can mark the model as **printed** and add it to the **queue**.
+At the bottom left you can mark the model as **printed** and add it to the **queue**. The **heart**
+marks it as a favorite; you find all favorites under "Tools → Favorites".
 
 ## Quick actions: context menu and multi-select
 
@@ -691,12 +725,26 @@ collection in the sidebar filters the catalog down to its models:
 
 ![Collection "Weihnachtsmarkt-Projekt"](bilder/07-sammlungen.png)
 
-## The print queue
+## Tools in the sidebar
 
-Under "Queue" in the sidebar, you collect models you plan to print next — sortable via drag &
-drop. Marking a model as printed automatically removes it from the queue again.
+At the bottom of the sidebar, the **Tools** section bundles several helpers, each with a count.
+Click its heading to collapse it.
 
-![Queue with one waiting model](bilder/12-warteschlange.png)
+![Tools with the "Favorites" view active](bilder/en/23-werkzeuge.png)
+
+- **Print Queue** — models you plan to print next. Collapsible and sortable via drag & drop;
+  clicking an entry shows the model. An icon per entry tells you whether your filament is enough
+  (see [Is there enough filament?](#is-there-enough-filament)). Marking a model as printed automatically removes
+  it from the queue.
+- **Recently viewed** — the 20 most recently opened models, newest first.
+- **Recently added** — everything imported in the last 7 days.
+- **Favorites** — all models you marked with the heart, sorted alphabetically.
+- **Duplicates** — models with identical file content, shown side by side as groups.
+- **Cleanup suggestions** — checks the catalog for missing files and duplicates.
+
+A selected view appears as a filter chip at the top and can be combined with folders, tags and
+search. Clicking the view again or the ✕ on the chip removes it. Filament storage and trash are
+still reached via the icons in the left rail.
 
 ## Opening models directly in your slicer
 
@@ -734,6 +782,21 @@ original/remaining weight, optionally a photo), you can also set a **quantity** 
 say, three identical PLA spools at once still gives each one its own, independently tracked
 remaining weight. For material, manufacturer, and storage location, the app suggests previously
 used values as you type (autocomplete).
+
+### Is there enough filament?
+
+For 3MF files sliced in Bambu Studio or OrcaSlicer, the detail page compares the filament needed
+(summed over all plates) with your spools: same material and similar color. For each filament
+you see a status:
+
+- **enough** — a matching spool has enough remaining weight,
+- **enough with spool change** — only enough if you load a second spool along the way,
+- **not enough** — with the missing amount,
+- **unclear** — no matching spool found or no slicer data.
+
+The app also names the matching spool with its remaining weight and tells you whether it is in a
+printer (printer · unit · slot) or where it is stored. The print queue shows the same status as an
+icon and calculates top to bottom with the combined need. Nothing is deducted.
 
 ### Printers & AMS
 
