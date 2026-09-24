@@ -31,9 +31,9 @@ export function statusLabel(status: Exclude<FilamentCheckStatus, 'no_data'>, t: 
 
 export function slotText(slot: FilamentSlotRef, t: T): string {
   return t('filamentCheckSlot')
-    .replace('{printer}', slot.printer)
-    .replace('{unit}', slot.unit)
-    .replace('{slot}', String(slot.slotNumber));
+    .replace('{printer}', () => slot.printer)
+    .replace('{unit}', () => slot.unit)
+    .replace('{slot}', () => String(slot.slotNumber));
 }
 
 export function queueTooltip(check: FilamentCheck, t: T, language: Language): string {
@@ -43,11 +43,11 @@ export function queueTooltip(check: FilamentCheck, t: T, language: Language): st
     .map((n) => {
       if (n.status === 'short') {
         return t('queueFilamentShortLine')
-          .replace('{type}', n.filamentType)
-          .replace('{g}', formatWeightG(roundG(n.missingG), language));
+          .replace('{type}', () => n.filamentType)
+          .replace('{g}', () => formatWeightG(roundG(n.missingG), language));
       }
-      if (n.status === 'swap') return t('queueFilamentSwapLine').replace('{type}', n.filamentType);
-      return t('queueFilamentUnknownLine').replace('{type}', n.filamentType);
+      if (n.status === 'swap') return t('queueFilamentSwapLine').replace('{type}', () => n.filamentType);
+      return t('queueFilamentUnknownLine').replace('{type}', () => n.filamentType);
     });
   return lines.length === 0 ? t('queueFilamentOk') : lines.join('\n');
 }

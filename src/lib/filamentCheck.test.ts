@@ -51,4 +51,19 @@ describe('filamentCheck helpers', () => {
     expect(queueTooltip({ fileId: '1', status: 'ok', needs: [need({})] }, tDe, 'de')).toBe('Filament reicht');
     expect(queueTooltip({ fileId: '1', status: 'no_data', needs: [] }, tDe, 'de')).toBe('Keine Verbrauchsdaten');
   });
+
+  it('handles special characters in user-supplied names (slotText)', () => {
+    expect(slotText({ printer: 'Drucker $&', unit: 'AMS $$', slotNumber: 1 }, tDe)).toBe('Drucker $& · AMS $$ · Fach 1');
+  });
+
+  it('handles special characters in user-supplied filament types (queueTooltip)', () => {
+    const check: FilamentCheck = {
+      fileId: '1',
+      status: 'short',
+      needs: [
+        need({ filamentType: 'PLA $&', status: 'short', missingG: 13.46 }),
+      ],
+    };
+    expect(queueTooltip(check, tDe, 'de')).toBe('PLA $&: es fehlen 13,5 g');
+  });
 });
