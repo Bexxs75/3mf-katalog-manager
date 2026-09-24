@@ -83,14 +83,29 @@ describe('applyToolView duplicates', () => {
   });
 });
 
-describe('toolCounts', () => {
-  it('counts recent (capped), new and duplicate groups', () => {
+describe('applyToolView favorites', () => {
+  it('returns only favorites, sorted by name', () => {
     const models = [
-      makeModelFile({ id: '1', lastViewedAt: daysAgo(1), importedAt: daysAgo(2), contentHash: 'h' }),
-      makeModelFile({ id: '2', lastViewedAt: null, importedAt: daysAgo(30), contentHash: 'h' }),
-      makeModelFile({ id: '3', lastViewedAt: null, importedAt: daysAgo(30), contentHash: 'x' }),
+      makeModelFile({ id: 'z', name: 'Zahnrad.3mf', favorite: true }),
+      makeModelFile({ id: 'x', name: 'Adapter.stl', favorite: false }),
+      makeModelFile({ id: 'a', name: 'Ablage.3mf', favorite: true }),
     ];
-    expect(toolCounts(models, NOW)).toEqual({ recent: 1, new: 1, duplicateGroups: 1 });
+    expect(ids(applyToolView(models, 'favorites', NOW))).toEqual(['a', 'z']);
+  });
+
+  it('is empty when nothing is marked', () => {
+    expect(applyToolView([makeModelFile({ id: '1', favorite: false })], 'favorites', NOW)).toEqual([]);
+  });
+});
+
+describe('toolCounts', () => {
+  it('counts recent (capped), new, favorites and duplicate groups', () => {
+    const models = [
+      makeModelFile({ id: '1', lastViewedAt: daysAgo(1), importedAt: daysAgo(2), contentHash: 'h', favorite: true }),
+      makeModelFile({ id: '2', lastViewedAt: null, importedAt: daysAgo(30), contentHash: 'h', favorite: true }),
+      makeModelFile({ id: '3', lastViewedAt: null, importedAt: daysAgo(30), contentHash: 'x', favorite: false }),
+    ];
+    expect(toolCounts(models, NOW)).toEqual({ recent: 1, new: 1, favorites: 2, duplicateGroups: 1 });
   });
 
   it('reports zero duplicate groups when all hashes are unique', () => {
@@ -101,6 +116,11 @@ describe('toolCounts', () => {
 
 describe('TOOL_VIEW_LABEL_KEY', () => {
   it('maps every view to its i18n key', () => {
-    expect(TOOL_VIEW_LABEL_KEY).toEqual({ recent: 'toolRecent', new: 'toolNew', duplicates: 'toolDuplicates' });
+    expect(TOOL_VIEW_LABEL_KEY).toEqual({
+      recent: 'toolRecent',
+      new: 'toolNew',
+      favorites: 'toolFavorites',
+      duplicates: 'toolDuplicates',
+    });
   });
 });

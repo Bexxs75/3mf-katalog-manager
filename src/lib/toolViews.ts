@@ -2,7 +2,7 @@ import type { ModelFile } from '../types';
 
 // Werkzeug-Ansichten der Seitenleiste: rein berechnet aus der Modellliste,
 // ohne Seiteneffekte, damit sie einzeln testbar sind.
-export type ToolView = 'recent' | 'new' | 'duplicates';
+export type ToolView = 'recent' | 'new' | 'favorites' | 'duplicates';
 
 export const RECENT_LIMIT = 20;
 export const NEW_WINDOW_DAYS = 7;
@@ -11,12 +11,14 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export interface ToolCounts {
   recent: number;
   new: number;
+  favorites: number;
   duplicateGroups: number;
 }
 
-export const TOOL_VIEW_LABEL_KEY: Record<ToolView, 'toolRecent' | 'toolNew' | 'toolDuplicates'> = {
+export const TOOL_VIEW_LABEL_KEY: Record<ToolView, 'toolRecent' | 'toolNew' | 'toolFavorites' | 'toolDuplicates'> = {
   recent: 'toolRecent',
   new: 'toolNew',
+  favorites: 'toolFavorites',
   duplicates: 'toolDuplicates',
 };
 
@@ -50,6 +52,10 @@ function newModels(models: ModelFile[], now: Date): ModelFile[] {
     .map((entry) => entry.m);
 }
 
+function favoriteModels(models: ModelFile[]): ModelFile[] {
+  return models.filter((m) => m.favorite).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 function duplicateGroups(models: ModelFile[]): ModelFile[][] {
   const byHash = new Map<string, ModelFile[]>();
   for (const m of models) {
@@ -80,6 +86,8 @@ export function applyToolView(
       return recentModels(models, recentSnapshot);
     case 'new':
       return newModels(models, now);
+    case 'favorites':
+      return favoriteModels(models);
     case 'duplicates':
       return duplicateGroups(models).flat();
   }
@@ -90,6 +98,7 @@ export function toolCounts(models: ModelFile[], now: Date): ToolCounts {
   return {
     recent: Math.min(RECENT_LIMIT, recentCount),
     new: newModels(models, now).length,
+    favorites: models.reduce((acc, m) => (m.favorite ? acc + 1 : acc), 0),
     duplicateGroups: duplicateGroups(models).length,
   };
 }

@@ -254,6 +254,7 @@ export interface Translations {
   toolsHeading: string;
   toolRecent: string;
   toolNew: string;
+  toolFavorites: string;
   toolDuplicates: string;
   toolViewEmpty: string;
   inQueueLabel: string;

@@ -13,12 +13,9 @@ export interface ToolsSectionProps {
   toolView: ToolView | null;
   onToolViewChange: (view: ToolView | null) => void;
   counts: ToolCounts;
-  trashCount: number;
   onOpenCleanup: () => void;
   cleanupScanning: boolean;
   cleanupError: string | null;
-  onOpenFilament: () => void;
-  onOpenTrash: () => void;
 }
 
 // Linien-Symbole (16 px, currentColor) wie im freigegebenen Mockup.
@@ -55,6 +52,7 @@ const ICONS = {
       <path d="M21 21l-4.3-4.3M11 8v6M8 11h6" />
     </>
   ),
+  favorites: <path d="M12 20s-7-4.4-9-8.8A4.6 4.6 0 0 1 12 7a4.6 4.6 0 0 1 9 4.2C19 15.6 12 20 12 20z" />,
   duplicates: (
     <>
       <rect x="8" y="8" width="12" height="12" rx="2" />
@@ -62,8 +60,6 @@ const ICONS = {
     </>
   ),
   cleanup: <path d="M3 7h18M5 7l1 13h12l1-13M9 7V4h6v3M10 11v6M14 11v6" />,
-  filament: <path d="M21 8l-9-5-9 5 9 5 9-5zM3 8v8l9 5 9-5V8M12 13v8" />,
-  trash: <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" />,
 };
 
 const rowBase =
@@ -150,6 +146,7 @@ export function ToolsSection(props: ToolsSectionProps) {
           )}
           {viewRow('recent', ICONS.recent, t('toolRecent'), props.counts.recent)}
           {viewRow('new', ICONS.new, t('toolNew'), props.counts.new)}
+          {viewRow('favorites', ICONS.favorites, t('toolFavorites'), props.counts.favorites)}
           {viewRow('duplicates', ICONS.duplicates, t('toolDuplicates'), props.counts.duplicateGroups)}
           <button
             type="button"
@@ -166,16 +163,6 @@ export function ToolsSection(props: ToolsSectionProps) {
               {props.cleanupError}
             </div>
           )}
-          <button type="button" onClick={props.onOpenFilament} className={`${rowBase} ${rowIdle}`}>
-            <Icon>{ICONS.filament}</Icon>
-            <span>{t('railFilament')}</span>
-            <Hint>→</Hint>
-          </button>
-          <button type="button" onClick={props.onOpenTrash} className={`${rowBase} ${rowIdle}`}>
-            <Icon>{ICONS.trash}</Icon>
-            <span>{t('trashHeading')}</span>
-            <Count value={props.trashCount} />
-          </button>
         </div>
       )}
     </div>

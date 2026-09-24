@@ -314,12 +314,9 @@ export default function App() {
               selected={selected}
               toolView={filters.toolView}
               setToolView={filters.setToolView}
-              trashCount={store.trashModels.length}
               onOpenCleanup={() => void cleanup.scanCatalogIssues()}
               cleanupScanning={cleanup.cleanupScanning}
               cleanupError={cleanup.cleanupError}
-              onOpenFilament={() => changeMainView('filament')}
-              onOpenTrash={() => changeMainView('trash')}
             />
           ) : (
             <FilamentView />

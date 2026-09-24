@@ -250,6 +250,7 @@ export const en: Translations = {
   toolsHeading: 'Tools',
   toolRecent: 'Recently viewed',
   toolNew: 'Recently added',
+  toolFavorites: 'Favorites',
   toolDuplicates: 'Duplicates',
   toolViewEmpty: 'No models in this view',
   inQueueLabel: 'In queue',

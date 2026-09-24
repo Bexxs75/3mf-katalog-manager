@@ -95,12 +95,9 @@ interface CatalogWorkspaceProps {
   collapsedFolders: ReturnType<typeof useCollapsedFolders>;
   toolView: ToolView | null;
   setToolView: (v: ToolView | null) => void;
-  trashCount: number;
   onOpenCleanup: () => void;
   cleanupScanning: boolean;
   cleanupError: string | null;
-  onOpenFilament: () => void;
-  onOpenTrash: () => void;
 }
 
 export function CatalogWorkspace({
@@ -182,12 +179,9 @@ export function CatalogWorkspace({
   collapsedFolders,
   toolView,
   setToolView,
-  trashCount,
   onOpenCleanup,
   cleanupScanning,
   cleanupError,
-  onOpenFilament,
-  onOpenTrash,
 }: CatalogWorkspaceProps) {
   const { language } = useLanguage();
   const t = useT();
@@ -261,12 +255,9 @@ export function CatalogWorkspace({
           }
         }}
         toolCounts={counts}
-        trashCount={trashCount}
         onOpenCleanup={onOpenCleanup}
         cleanupScanning={cleanupScanning}
         cleanupError={cleanupError}
-        onOpenFilament={onOpenFilament}
-        onOpenTrash={onOpenTrash}
       />
 
       <main className="flex-1 min-w-0 flex flex-col min-h-0">

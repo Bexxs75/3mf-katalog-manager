@@ -37,12 +37,9 @@ interface Props {
   toolView: ToolView | null;
   onToolViewChange: (v: ToolView | null) => void;
   toolCounts: ToolCounts;
-  trashCount: number;
   onOpenCleanup: () => void;
   cleanupScanning: boolean;
   cleanupError: string | null;
-  onOpenFilament: () => void;
-  onOpenTrash: () => void;
 }
 
 export function Sidebar({
@@ -75,12 +72,9 @@ export function Sidebar({
   toolView,
   onToolViewChange,
   toolCounts,
-  trashCount,
   onOpenCleanup,
   cleanupScanning,
   cleanupError,
-  onOpenFilament,
-  onOpenTrash,
 }: Props) {
   const t = useT();
   const { language } = useLanguage();
@@ -277,12 +271,9 @@ export function Sidebar({
           toolView={toolView}
           onToolViewChange={onToolViewChange}
           counts={toolCounts}
-          trashCount={trashCount}
           onOpenCleanup={onOpenCleanup}
           cleanupScanning={cleanupScanning}
           cleanupError={cleanupError}
-          onOpenFilament={onOpenFilament}
-          onOpenTrash={onOpenTrash}
         />
       </div>
     </aside>

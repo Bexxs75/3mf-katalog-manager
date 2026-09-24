@@ -17,13 +17,10 @@ function setup(over: Partial<ToolsSectionProps> = {}) {
     queueFilament: null,
     toolView: null,
     onToolViewChange: vi.fn(),
-    counts: { recent: 20, new: 3, duplicateGroups: 1 },
-    trashCount: 0,
+    counts: { recent: 20, new: 3, favorites: 4, duplicateGroups: 1 },
     onOpenCleanup: vi.fn(),
     cleanupScanning: false,
     cleanupError: null,
-    onOpenFilament: vi.fn(),
-    onOpenTrash: vi.fn(),
     ...over,
   };
   render(<LanguageProvider><ToolsSection {...props} /></LanguageProvider>);
@@ -39,10 +36,21 @@ describe('ToolsSection', () => {
     expect(row('Warteschlange')).toHaveTextContent('1');
     expect(row('Zuletzt angesehen')).toHaveTextContent('20');
     expect(row('Neu hinzugefügt')).toHaveTextContent('3');
+    expect(row('Favoriten')).toHaveTextContent('4');
     expect(row('Duplikate')).toHaveTextContent('1');
-    expect(row('Papierkorb')).toHaveTextContent('0');
     expect(row('Aufräum-Vorschläge')).toBeInTheDocument();
-    expect(row('Filament-Lager')).toBeInTheDocument();
+  });
+
+  it('leaves filament storage and trash to the left rail', () => {
+    setup();
+    expect(screen.queryByRole('button', { name: /Filament-Lager/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Papierkorb/ })).not.toBeInTheDocument();
+  });
+
+  it('toggles the favorites view', () => {
+    const props = setup();
+    fireEvent.click(row('Favoriten'));
+    expect(props.onToolViewChange).toHaveBeenCalledWith('favorites');
   });
 
   it('toggles a view on and off', () => {
@@ -59,14 +67,10 @@ describe('ToolsSection', () => {
     expect(props.onToolViewChange).toHaveBeenCalledWith(null);
   });
 
-  it('opens cleanup, filament and trash', () => {
+  it('opens the cleanup suggestions', () => {
     const props = setup();
     fireEvent.click(row('Aufräum-Vorschläge'));
-    fireEvent.click(row('Filament-Lager'));
-    fireEvent.click(row('Papierkorb'));
     expect(props.onOpenCleanup).toHaveBeenCalled();
-    expect(props.onOpenFilament).toHaveBeenCalled();
-    expect(props.onOpenTrash).toHaveBeenCalled();
   });
 
   it('disables cleanup while scanning and shows a scan error', () => {
