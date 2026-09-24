@@ -379,7 +379,11 @@ pub fn merge_auto_tag_aliases(conn: &mut Connection) -> Result<usize, DbError> {
     };
     let mut merged = 0;
     for (alias_id, name) in tags {
-        let canonical = crate::tagging::canonical_tag(&name);
+        // canonical_tag_unambiguous statt canonical_tag: die mehrdeutigen
+        // Aliase "mini"/"large"/"grande" (z. B. Druckername "Bambu A1 mini")
+        // sollen beim Start NICHT automatisch zusammengelegt werden, siehe
+        // Nachtrag im Spec-Dokument (Nutzer-Entscheidung 2026-09-24).
+        let canonical = crate::tagging::canonical_tag_unambiguous(&name);
         if canonical == name {
             continue;
         }

@@ -23,6 +23,7 @@ const FILENAME_STOPWORDS: &[&str] = &[
 const AUTO_TAGS_JSON: &str = include_str!("../../src/lib/autoTags.json");
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct AutoTagNames {
     de: String,
     en: String,
@@ -55,6 +56,31 @@ pub fn canonical_tag(name: &str) -> String {
         .find(|(_, names)| names.all().iter().any(|n| alias_key(n) == key))
         .map(|(canonical, _)| canonical.clone())
         .unwrap_or_else(|| name.to_string())
+}
+
+/// Mehrdeutige Aliase (Nutzer-Entscheidung nach dem Gesamt-Review vom
+/// 2026-09-24): "mini" ist z. B. auch der Druckername "Bambu A1 mini",
+/// "large"/"grande" tauchen ebenso ausserhalb des Tag-Kontexts in
+/// Dateinamen auf. Verglichen wird ueber `alias_key`, damit auch
+/// Gross-/Kleinschreibvarianten ("Mini", "LARGE") erfasst werden.
+const AMBIGUOUS_ALIASES: &[&str] = &["mini", "large", "grande"];
+
+fn is_ambiguous_alias(name: &str) -> bool {
+    let key = alias_key(name);
+    AMBIGUOUS_ALIASES.iter().any(|alias| *alias == key)
+}
+
+/// Wie [`canonical_tag`], bildet aber die mehrdeutigen Aliase aus
+/// `AMBIGUOUS_ALIASES` NICHT ab - der Eingabewert kommt dann unveraendert
+/// zurueck. Gedacht fuer alle automatischen Quellen (Dateinamen-Token,
+/// Materialnamen, Zusammenlegen beim Start); die manuelle Eingabe
+/// (`add_tag`-Befehl, Frontend `canonicalTag`) nutzt weiterhin die volle
+/// `canonical_tag`.
+pub fn canonical_tag_unambiguous(name: &str) -> String {
+    if is_ambiguous_alias(name) {
+        return name.to_string();
+    }
+    canonical_tag(name)
 }
 
 pub struct TaggingContext<'a> {
@@ -92,7 +118,7 @@ fn filename_tags(file_name: &str) -> Vec<String> {
     stem.split(|c: char| !c.is_alphanumeric())
         .map(|token| token.to_lowercase())
         .filter(|token| is_meaningful_token(token))
-        .map(|token| canonical_tag(&token))
+        .map(|token| canonical_tag_unambiguous(&token))
         .take(MAX_FILENAME_TAGS)
         .collect()
 }
@@ -139,12 +165,15 @@ fn geometry_tags(dimensions_mm: Option<[f64; 3]>, object_count: Option<i64>) -> 
 fn material_tags(materials: &[MaterialRecord]) -> Vec<String> {
     let mut tags: Vec<String> = materials
         .iter()
-        .map(|m| normalize_material_name(&m.name))
+        .map(|m| canonical_tag_unambiguous(&normalize_material_name(&m.name)))
         .filter(|name| !name.is_empty())
         .collect();
     tags.dedup();
 
-    if tags.len() > 1 {
+    // `contains`-Check statt blindem Push: ein Materialname kann selbst
+    // schon auf "mehrfarbig" abgebildet worden sein (z. B. Materialname
+    // "Multicolor"), ein zweiter Eintrag waere sonst ein Duplikat.
+    if tags.len() > 1 && !tags.contains(&"mehrfarbig".to_string()) {
         tags.push("mehrfarbig".to_string());
     }
 
@@ -335,5 +364,62 @@ mod tests {
     fn drops_spanish_french_and_english_filler_words() {
         let tags = suggest_tags(&ctx("vase_copia_nuevo_modèle_untitled.stl", None, None, &[]));
         assert_eq!(tags, vec!["vase".to_string()]);
+    }
+
+    #[test]
+    fn canonical_tag_unambiguous_leaves_ambiguous_aliases_untouched() {
+        for alias in ["mini", "large", "grande", "Mini", "LARGE", "Grande"] {
+            assert_eq!(canonical_tag_unambiguous(alias), alias, "Alias {alias}");
+        }
+    }
+
+    #[test]
+    fn canonical_tag_unambiguous_still_maps_unambiguous_aliases() {
+        for (alias, expected) in [
+            ("multipart", "mehrteilig"),
+            ("Multipart", "mehrteilig"),
+            ("miniature", "miniatur"),
+            ("grand format", "grossformat"),
+            ("multicolor", "mehrfarbig"),
+        ] {
+            assert_eq!(canonical_tag_unambiguous(alias), expected, "Alias {alias}");
+        }
+    }
+
+    #[test]
+    fn filename_token_a1_mini_stays_mini_not_miniatur() {
+        let tags = suggest_tags(&ctx("A1_mini_halter.3mf", None, None, &[]));
+        assert!(tags.contains(&"mini".to_string()));
+        assert!(!tags.contains(&"miniatur".to_string()));
+    }
+
+    #[test]
+    fn filename_token_large_stays_large_not_grossformat() {
+        let tags = suggest_tags(&ctx("gehaeuse_large_v2.3mf", None, None, &[]));
+        assert!(tags.contains(&"large".to_string()));
+        assert!(!tags.contains(&"grossformat".to_string()));
+    }
+
+    #[test]
+    fn filename_token_multipart_still_becomes_mehrteilig() {
+        let tags = suggest_tags(&ctx("Board_multipart.3mf", None, None, &[]));
+        assert!(tags.contains(&"mehrteilig".to_string()));
+    }
+
+    #[test]
+    fn material_named_multicolor_maps_to_the_canonical_tag_without_duplicating_it() {
+        let materials = vec![
+            MaterialRecord {
+                name: "Multicolor".to_string(),
+                display_color: None,
+            },
+            MaterialRecord {
+                name: "PLA".to_string(),
+                display_color: None,
+            },
+        ];
+        let tags = suggest_tags(&ctx("teil.3mf", None, None, &materials));
+        assert_eq!(tags.iter().filter(|t| *t == "mehrfarbig").count(), 1);
+        assert!(!tags.contains(&"multicolor".to_string()));
     }
 }

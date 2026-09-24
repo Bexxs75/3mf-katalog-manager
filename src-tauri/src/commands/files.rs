@@ -324,7 +324,11 @@ pub fn add_tag(state: State<AppState>, file_id: String, tag: String) -> CmdResul
 pub fn remove_tag(state: State<AppState>, file_id: String, tag: String) -> CmdResult<()> {
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
-    db::remove_tag_from_file(&conn, id, &tagging::canonical_tag(&tag)).map_err(|e| e.to_string())
+    // Keine Normalisierung hier (anders als add_tag): das Frontend sendet
+    // immer den tatsaechlich gespeicherten Namen - eine Normalisierung
+    // wuerde einen Alias-Tag (z. B. den mehrdeutigen "mini") unentfernbar
+    // machen, sobald er nicht (mehr) der Kennung entspricht.
+    db::remove_tag_from_file(&conn, id, &tag).map_err(|e| e.to_string())
 }
 /// Kernlogik von `move_file_to_folder`, getrennt von der `State<AppState>`-
 /// Huelle gehalten, damit sie in Tests direkt gegen eine In-Memory-`Connection`
@@ -2528,6 +2532,25 @@ mod tests {
             .collect();
         tags.sort();
         assert_eq!(tags, vec!["Vase".to_string(), "mehrteilig".to_string()]);
+    }
+    #[test]
+    fn add_tag_still_maps_the_ambiguous_alias_mini_when_typed_by_hand() {
+        // Die Mehrdeutigkeit von "mini" (siehe tagging::AMBIGUOUS_ALIASES)
+        // gilt nur fuer automatische Quellen (Dateinamen/Material) - bei
+        // manueller Eingabe ueber add_tag bleibt "mini" weiterhin ein Alias
+        // fuer "miniatur".
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let id = crate::db::test_insert_minimal_file(&conn, "/tmp/add_tag_mini.3mf", None).expect("insert");
+
+        add_tag_with_conn(&conn, id, "mini").expect("add");
+
+        let tags: Vec<String> = crate::db::list_all_file_tags(&conn)
+            .expect("tags")
+            .into_iter()
+            .filter(|(fid, _)| *fid == id)
+            .map(|(_, t)| t)
+            .collect();
+        assert_eq!(tags, vec!["miniatur".to_string()]);
     }
     #[test]
     fn split_archives_separates_archive_files_from_models_and_folders() {

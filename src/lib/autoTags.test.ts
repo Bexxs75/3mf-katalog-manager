@@ -14,6 +14,11 @@ describe('tagLabel', () => {
     expect(tagLabel('Vase', 'en')).toBe('Vase');
     expect(tagLabel('mini', 'en')).toBe('mini');
   });
+
+  it('does not resolve inherited Object.prototype properties as tags', () => {
+    expect(tagLabel('constructor', 'en')).toBe('constructor');
+    expect(tagLabel('toString', 'en')).toBe('toString');
+  });
 });
 
 describe('canonicalTag', () => {

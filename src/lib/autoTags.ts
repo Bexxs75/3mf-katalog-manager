@@ -19,7 +19,12 @@ for (const [canonical, names] of Object.entries(TABLE)) {
 }
 
 export function tagLabel(tag: string, language: Language): string {
-  return TABLE[tag]?.[language] ?? tag;
+  // Eigene-Property-Pruefung statt eines Index-Zugriffs auf TABLE: ein Tag
+  // mit dem Namen "constructor" oder "toString" wuerde sonst ein geerbtes
+  // Objekt.prototype-Property statt undefined liefern. Object.hasOwn waere
+  // die kuerzere Schreibweise, braucht aber ES2022-Typdefinitionen (Projekt-
+  // Ziel ist ES2020) - hasOwnProperty.call() prueft dasselbe.
+  return Object.prototype.hasOwnProperty.call(TABLE, tag) ? TABLE[tag][language] : tag;
 }
 
 export function canonicalTag(input: string): string {

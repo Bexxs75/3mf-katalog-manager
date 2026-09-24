@@ -866,7 +866,10 @@ mod tests {
         let mut conn = connect_in_memory().expect("connect");
         let a = repository::test_insert_minimal_file(&conn, "/tmp/a.3mf", None).expect("a");
         let b = repository::test_insert_minimal_file(&conn, "/tmp/b.3mf", None).expect("b");
-        add_tag_to_file(&conn, a, "mini").expect("tag a");
+        // "miniature" (nicht "mini"): "mini" ist ein mehrdeutiger Alias und
+        // wird beim Zusammenlegen bewusst nicht angefasst, siehe
+        // merge_leaves_ambiguous_aliases_untouched_but_still_merges_others.
+        add_tag_to_file(&conn, a, "miniature").expect("tag a");
         add_tag_to_file(&conn, b, "miniatur").expect("tag b");
 
         let merged = merge_auto_tag_aliases(&mut conn).expect("merge");
@@ -874,14 +877,14 @@ mod tests {
         assert_eq!(merged, 1);
         assert_eq!(tags_of(&conn, a), vec!["miniatur".to_string()]);
         assert_eq!(tags_of(&conn, b), vec!["miniatur".to_string()]);
-        assert!(!tag_names(&conn).contains(&"mini".to_string()));
+        assert!(!tag_names(&conn).contains(&"miniature".to_string()));
     }
 
     #[test]
     fn merge_does_not_duplicate_when_a_file_has_both_alias_and_canonical() {
         let mut conn = connect_in_memory().expect("connect");
         let a = repository::test_insert_minimal_file(&conn, "/tmp/a.3mf", None).expect("a");
-        add_tag_to_file(&conn, a, "mini").expect("alias");
+        add_tag_to_file(&conn, a, "miniature").expect("alias");
         add_tag_to_file(&conn, a, "miniatur").expect("canonical");
 
         merge_auto_tag_aliases(&mut conn).expect("merge");
@@ -905,7 +908,8 @@ mod tests {
     fn merge_is_idempotent_and_leaves_other_tags_alone() {
         let mut conn = connect_in_memory().expect("connect");
         let a = repository::test_insert_minimal_file(&conn, "/tmp/a.3mf", None).expect("a");
-        add_tag_to_file(&conn, a, "large").expect("alias");
+        // "grand format" (nicht "large"/"grande" - mehrdeutig, siehe oben).
+        add_tag_to_file(&conn, a, "grand format").expect("alias");
         add_tag_to_file(&conn, a, "Vase").expect("other");
 
         assert_eq!(merge_auto_tag_aliases(&mut conn).expect("first"), 1);
@@ -917,13 +921,13 @@ mod tests {
     fn merge_rewrites_saved_filters_that_point_at_an_alias() {
         let mut conn = connect_in_memory().expect("connect");
         let a = repository::test_insert_minimal_file(&conn, "/tmp/a.3mf", None).expect("a");
-        add_tag_to_file(&conn, a, "mini").expect("alias");
+        add_tag_to_file(&conn, a, "miniature").expect("alias");
         insert_saved_filter(
             &conn,
             &NewSavedFilter {
                 name: "Kleinteile".to_string(),
                 folder_id: None,
-                tag: Some("mini".to_string()),
+                tag: Some("miniature".to_string()),
                 creator: None,
                 query: None,
                 sort: "name".to_string(),
@@ -935,6 +939,31 @@ mod tests {
 
         let filters = list_saved_filters(&conn).expect("filters");
         assert_eq!(filters[0].tag.as_deref(), Some("miniatur"));
+    }
+
+    #[test]
+    fn merge_leaves_ambiguous_aliases_untouched_but_still_merges_unambiguous_ones() {
+        let mut conn = connect_in_memory().expect("connect");
+        let a = repository::test_insert_minimal_file(&conn, "/tmp/a.3mf", None).expect("a");
+        add_tag_to_file(&conn, a, "mini").expect("mini");
+        add_tag_to_file(&conn, a, "large").expect("large");
+        add_tag_to_file(&conn, a, "grande").expect("grande");
+        add_tag_to_file(&conn, a, "multipart").expect("multipart");
+
+        let merged = merge_auto_tag_aliases(&mut conn).expect("merge");
+
+        assert_eq!(merged, 1, "nur 'multipart' soll zusammengelegt werden");
+        let mut names = tag_names(&conn);
+        names.sort();
+        assert_eq!(
+            names,
+            vec![
+                "grande".to_string(),
+                "large".to_string(),
+                "mehrteilig".to_string(),
+                "mini".to_string(),
+            ]
+        );
     }
 
     #[test]
