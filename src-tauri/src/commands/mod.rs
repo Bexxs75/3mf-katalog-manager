@@ -81,6 +81,7 @@ pub struct ModelFileDto {
     pub print_status: String,
     pub estimated_weight_g: Option<f64>,
     pub last_viewed_at: Option<String>,
+    pub content_hash: Option<String>,
     pub creator: Option<String>,
     pub custom_image: Option<String>,
     pub thumbnail_image: Option<String>,
@@ -285,6 +286,7 @@ pub(crate) fn to_dto(file: FileRecord, spools: &[db::models::FilamentSpoolRecord
         print_status: file.print_status,
         estimated_weight_g,
         last_viewed_at: file.last_viewed_at,
+        content_hash: file.content_hash,
         creator: file.creator,
         custom_image,
         thumbnail_image,
@@ -750,6 +752,13 @@ mod tests {
         let slice_info = dto.slice_info.expect("slice info dto present");
         assert_eq!(slice_info.plates.len(), 1);
         assert_eq!(slice_info.plates[0].filaments[0].filament_type, "PLA");
+    }
+    #[test]
+    fn to_dto_includes_content_hash() {
+        let dto = to_dto(sample_file_record(7, Some("hash-7"), "2026-09-24T08:00:00+00:00"), &[]);
+        assert_eq!(dto.content_hash.as_deref(), Some("hash-7"));
+        let none = to_dto(sample_file_record(8, None, "2026-09-24T08:00:00+00:00"), &[]);
+        assert_eq!(none.content_hash, None);
     }
     #[test]
     fn to_dto_serializes_slice_info_with_camel_case_and_type_rename() {

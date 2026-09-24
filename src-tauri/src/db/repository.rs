@@ -847,6 +847,11 @@ pub struct FileSummary {
     // zum render_snapshot_png-Bug oben - derselbe Fehlerklasse, hier nur noch
     // nicht behoben gewesen.
     pub creator: Option<String>,
+    // Fuer die Werkzeug-Ansichten "Zuletzt angesehen" und "Duplikate" in der
+    // Seitenleiste; ohne diese Felder kannte das Frontend beides erst nach
+    // dem Oeffnen eines Modells (auch die Sortierung 'viewed' lief ins Leere).
+    pub last_viewed_at: Option<String>,
+    pub content_hash: Option<String>,
 }
 
 pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbError> {
@@ -855,7 +860,8 @@ pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbErro
                 dimension_x_mm, dimension_y_mm, dimension_z_mm, volume_cm3,
                 object_count, imported_at, print_status, favorite,
                 queue_position, thumbnail_png, render_snapshot_png,
-                render_snapshot_png IS NOT NULL AS has_render_snapshot, creator
+                render_snapshot_png IS NOT NULL AS has_render_snapshot, creator,
+                last_viewed_at, content_hash
          FROM files WHERE deleted_at IS NULL ORDER BY name",
     )?;
     let rows = stmt
@@ -886,6 +892,8 @@ pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbErro
                 render_snapshot_png: row.get(16)?,
                 has_render_snapshot: row.get::<_, i64>(17)? != 0,
                 creator: row.get(18)?,
+                last_viewed_at: row.get(19)?,
+                content_hash: row.get(20)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -1318,6 +1326,27 @@ mod tests {
 
         assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].creator, Some("CarlFromUp".to_string()));
+    }
+
+    #[test]
+    fn list_file_summaries_includes_last_viewed_at_and_content_hash() {
+        let conn = connect_in_memory().unwrap();
+        let viewed = test_insert_minimal_file(&conn, "/tmp/viewed.3mf", None).unwrap();
+        let _plain = test_insert_minimal_file(&conn, "/tmp/plain.3mf", None).unwrap();
+        conn.execute(
+            "UPDATE files SET last_viewed_at = ?1, content_hash = ?2 WHERE id = ?3",
+            params!["2026-09-24T08:00:00+00:00", "abc123", viewed],
+        )
+        .unwrap();
+
+        let summaries = list_file_summaries(&conn).unwrap();
+        let v = summaries.iter().find(|s| s.id == viewed).unwrap();
+        let p = summaries.iter().find(|s| s.id != viewed).unwrap();
+
+        assert_eq!(v.last_viewed_at.as_deref(), Some("2026-09-24T08:00:00+00:00"));
+        assert_eq!(v.content_hash.as_deref(), Some("abc123"));
+        assert_eq!(p.last_viewed_at, None);
+        assert_eq!(p.content_hash, None);
     }
 
     #[test]

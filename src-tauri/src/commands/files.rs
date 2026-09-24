@@ -40,6 +40,8 @@ pub struct FileSummaryDto {
     // wird - siehe Kommentar an `db::FileSummary::has_render_snapshot`.
     pub has_render_snapshot: bool,
     pub creator: Option<String>,
+    pub last_viewed_at: Option<String>,
+    pub content_hash: Option<String>,
 }
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -126,6 +128,8 @@ pub fn list_file_summaries(state: State<AppState>) -> CmdResult<Vec<FileSummaryD
             render_snapshot_image: encode_image(s.render_snapshot_png),
             has_render_snapshot: s.has_render_snapshot,
             creator: s.creator,
+            last_viewed_at: s.last_viewed_at,
+            content_hash: s.content_hash,
         })
         .collect())
 }
