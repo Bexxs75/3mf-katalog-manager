@@ -13,6 +13,7 @@ import type { useCollapsedFolders } from '../hooks/useCollapsedFolders';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { tagLabel } from '../lib/autoTags';
 import { useFilamentCheck } from '../hooks/useFilamentCheck';
+import { selectFromQueue } from '../lib/queueSelect';
 import { toolCounts as computeToolCounts, TOOL_VIEW_LABEL_KEY, type ToolView } from '../lib/toolViews';
 
 interface CatalogWorkspaceProps {
@@ -211,7 +212,9 @@ export function CatalogWorkspace({
         queue={queue}
         onQueueReorder={reorderQueue}
         onQueueRemove={removeFromQueue}
-        onQueueSelect={selectModel}
+        onQueueSelect={(id) =>
+          selectFromQueue(id, { detailOpen: detailModel !== null, selectModel, openDetail: setDetailModelId })
+        }
         queueFilament={queueFilament.checks}
         folders={folders}
         totalModelCount={models.length}
