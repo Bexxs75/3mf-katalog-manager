@@ -16,11 +16,13 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Automatische Tags in der Oberflächensprache: Die beim Import vergebenen Tags „mehrteilig", „miniatur", „grossformat" und „mehrfarbig" erscheinen jetzt auf Englisch (multipart, mini, large, multicolor), Spanisch und Französisch, wenn die Oberfläche so eingestellt ist. Die Suche findet sie unter beiden Namen. Wer einen dieser Namen in einer anderen Sprache von Hand eingibt (z. B. „Multipart"), bekommt den vorhandenen Tag statt eines zweiten. Bereits vorhandene Tags mit solchen Namen (etwa aus Dateinamen) werden beim nächsten Start einmalig mit dem automatischen Tag zusammengelegt, auch in gespeicherten Filtern – außer den mehrdeutigen Wörtern „mini", „large" und „grande", die nur bei Eingabe von Hand dem automatischen Tag zugeordnet werden.
 - Beim Vorschlagen von Tags aus Dateinamen werden jetzt auch englische, spanische und französische Füllwörter ignoriert (z. B. „untitled", „copia", „nouveau").
 - Filament-Lager: **„Reicht das Filament?“** – für in Bambu Studio oder OrcaSlicer geslicete 3MF-Dateien vergleicht die Detailseite den Filamentbedarf (über alle Platten zusammengezählt) mit deinen Spulen: gleiches Material und ähnliche Farbe (Farbabstand CIEDE2000). Pro Filament zeigt sie „reicht“, „reicht mit Spulenwechsel“, „reicht nicht“ (mit Fehlmenge) oder „unklar“, dazu die passende Spule mit Restgewicht und ob sie im Drucker steckt (Drucker · Einheit · Fach) oder wo sie liegt. Die Druck-Warteschlange zeigt den Status als Symbol je Eintrag und rechnet von oben nach unten mit dem Gesamtbedarf. Es wird nichts abgebucht.
+- **Werkzeuge in der Seitenleiste:** Ein neuer Abschnitt bündelt die Warteschlange (aufklappbar, wie bisher mit Ziehen zum Umsortieren), die Ansichten „Zuletzt angesehen“ (die 20 zuletzt geöffneten Modelle), „Neu hinzugefügt“ (letzte 7 Tage) und „Duplikate“ (Modelle mit identischem Dateiinhalt, gruppiert) sowie Aufräum-Vorschläge, Filament-Lager und Papierkorb – jeweils mit Anzahl. Eine gewählte Ansicht erscheint oben als Filter-Chip und lässt sich mit Ordnern, Tags und Suche kombinieren.
 
 ### Fixed
 
 - Robustheit: Das Umbenennen oder Verschieben von Ordnern beendet die App bei einer inkonsistenten Ordnerhierarchie (z. B. aus einem präparierten Katalog-Backup) nicht mehr abrupt, sondern bricht mit einer Fehlermeldung ab.
 - Katalog-Sicherung: Beim Import werden jetzt auch die Datentypen aller Spalten geprüft; eine präparierte Sicherung mit falschen Werten (z. B. Text statt Zahl) wird abgelehnt, statt danach Ladefehler zu verursachen.
+- Die Sortierung „Zuletzt angesehen“ berücksichtigt jetzt alle Modelle, nicht nur die in dieser Sitzung bereits geöffneten.
 
 ## [0.12.1] - 2026-09-23
 
@@ -370,11 +372,13 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - Automatic tags in the interface language: the tags assigned on import ("mehrteilig", "miniatur", "grossformat", "mehrfarbig") now appear in English (multipart, mini, large, multicolor), Spanish and French when the interface is set to that language. Search finds them under both names. Typing one of these names in another language by hand (e.g. "Multipart") adds the existing tag instead of a second one. Existing tags with such names (e.g. from file names) are merged into the automatic tag once on the next start, including in saved filters, except the ambiguous words "mini", "large" and "grande", which are only mapped to the automatic tag when typed by hand.
 - Tag suggestions from file names now also ignore English, Spanish and French filler words (e.g. "untitled", "copia", "nouveau").
 - Filament inventory: **"Is there enough filament?"** – for 3MF files sliced in Bambu Studio or OrcaSlicer, the detail page compares the filament requirement (summed over all plates) with your spools: same material and similar color (CIEDE2000 color distance). For each filament it shows "enough", "enough with spool change", "not enough" (with the missing amount) or "unclear", plus the matching spool with its remaining weight and whether it is loaded in a printer (printer · unit · slot) or where it is stored. The print queue shows the status as a symbol per entry and works top to bottom with the combined requirement. Nothing is deducted.
+- **Tools in the sidebar:** a new section groups the print queue (collapsible, reorder by dragging as before), the views "Recently viewed" (the 20 most recently opened models), "Recently added" (last 7 days) and "Duplicates" (models with identical file content, grouped) as well as cleanup suggestions, filament inventory and trash – each with a count. A selected view appears as a filter chip at the top and can be combined with folders, tags and search.
 
 ### Fixed
 
 - Robustness: renaming or moving folders no longer terminates the app abruptly on an inconsistent folder hierarchy (e.g. from a crafted catalog backup); it aborts with an error message instead.
 - Catalog backup: importing now also checks the data types of every column; a crafted backup with wrong-typed values (e.g. text instead of a number) is rejected instead of causing load errors afterward.
+- Sorting by "Recently viewed" now takes all models into account, not only those already opened in the current session.
 
 ## [0.12.1] - 2026-09-23
 
