@@ -410,7 +410,7 @@ export function useCatalogStore() {
         .addTag(id, tag)
         .then(refreshTags)
         .catch((e) => {
-          console.error('[tags] Hinzufuegen fehlgeschlagen:', e);
+          console.error('[tags] Hinzufügen fehlgeschlagen:', e);
         })
         .finally(() => {
           void endMutationAndResyncIfSettled(key, id);
