@@ -65,6 +65,25 @@ describe('filterAndSortModels', () => {
     expect(result.map((m) => m.id)).toEqual(['1']);
   });
 
+  it('query matches the translated label of an auto tag', () => {
+    const models = [
+      makeModelFile({ id: '1', name: 'Board', tags: ['mehrteilig'] }),
+      makeModelFile({ id: '2', name: 'Vase', tags: ['decor'] }),
+    ];
+    const result = filterAndSortModels(models, [], {
+      activeFolderId: 'all', activeTag: null, activeCreator: null, query: 'multipart', sort: 'name', language: 'en',
+    });
+    expect(result.map((m) => m.id)).toEqual(['1']);
+  });
+
+  it('query still matches the canonical auto tag name', () => {
+    const models = [makeModelFile({ id: '1', name: 'Board', tags: ['mehrteilig'] })];
+    const result = filterAndSortModels(models, [], {
+      activeFolderId: 'all', activeTag: null, activeCreator: null, query: 'mehrteilig', sort: 'name', language: 'en',
+    });
+    expect(result.map((m) => m.id)).toEqual(['1']);
+  });
+
   it('sorts by size ascending', () => {
     const models = [
       makeModelFile({ id: '1', fileSizeBytes: 500 }),

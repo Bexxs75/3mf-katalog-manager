@@ -1,4 +1,6 @@
 import { isFileInFolderOrDescendant } from './folderTree';
+import { tagMatches } from './autoTags';
+import type { Language } from '../i18n/types';
 import type { ModelFile, Folder, SortKey } from '../types';
 
 export interface CatalogFilterCriteria {
@@ -7,6 +9,8 @@ export interface CatalogFilterCriteria {
   activeCreator: string | null;
   query: string;
   sort: SortKey;
+  // Fuer die Suche in uebersetzten Namen automatischer Tags.
+  language?: Language;
 }
 
 export function filterAndSortModels(
@@ -14,7 +18,7 @@ export function filterAndSortModels(
   folders: Folder[],
   criteria: CatalogFilterCriteria,
 ): ModelFile[] {
-  const { activeFolderId, activeTag, activeCreator, query, sort } = criteria;
+  const { activeFolderId, activeTag, activeCreator, query, sort, language = 'de' } = criteria;
   return models
     .filter((m) => activeFolderId === 'all' || isFileInFolderOrDescendant(m.folderId, activeFolderId, folders))
     .filter((m) => !activeTag || m.tags.includes(activeTag))
@@ -26,7 +30,7 @@ export function filterAndSortModels(
         m.name.toLowerCase().includes(q) ||
         m.path.toLowerCase().includes(q) ||
         (m.creator?.toLowerCase().includes(q) ?? false) ||
-        m.tags.some((tag) => tag.toLowerCase().includes(q))
+        m.tags.some((tag) => tagMatches(tag, q, language))
       );
     })
     .sort((a, b) => {

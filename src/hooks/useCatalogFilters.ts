@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
+import type { Language } from '../i18n/types';
 import type { ModelFile, Folder, ViewMode, SortKey } from '../types';
 import { filterAndSortModels, selectQueuedModels } from '../lib/catalogFilters';
 
-export function useCatalogFilters(models: ModelFile[], folders: Folder[]) {
+export function useCatalogFilters(models: ModelFile[], folders: Folder[], language: Language = 'de') {
   const [view, setView] = useState<ViewMode>('grid');
   const [sort, setSort] = useState<SortKey>('name');
   const [query, setQuery] = useState('');
@@ -14,8 +15,8 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[]) {
   const [activeCreator] = useState<string | null>(null);
 
   const filtered = useMemo(
-    () => filterAndSortModels(models, folders, { activeFolderId, activeTag, activeCreator, query, sort }),
-    [models, folders, activeFolderId, activeTag, activeCreator, query, sort],
+    () => filterAndSortModels(models, folders, { activeFolderId, activeTag, activeCreator, query, sort, language }),
+    [models, folders, activeFolderId, activeTag, activeCreator, query, sort, language],
   );
 
   const queue = useMemo(() => selectQueuedModels(models), [models]);

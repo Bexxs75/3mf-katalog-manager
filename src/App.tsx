@@ -29,6 +29,7 @@ import { useBulkSelection } from './hooks/useBulkSelection';
 import { useSlicerLauncher } from './hooks/useSlicerLauncher';
 import { useUpdateCheck } from './hooks/useUpdateCheck';
 import { useKeyboardShortcuts, MODEL_TILE_ATTR } from './hooks/useKeyboardShortcuts';
+import { useLanguage } from './i18n/LanguageContext';
 
 export default function App() {
   const { setting, setTheme } = useTheme();
@@ -39,7 +40,8 @@ export default function App() {
 
   const store = useCatalogStore();
   useRegisterCatalogBaseDirOnStartup(catalogBaseDir, store.refreshFolders);
-  const filters = useCatalogFilters(store.models, store.folders);
+  const { language } = useLanguage();
+  const filters = useCatalogFilters(store.models, store.folders, language);
   const collections = useCollections();
   const dragDrop = useFolderDragAndDrop(store.models, store.folders, {
     refreshFolders: store.refreshFolders,
