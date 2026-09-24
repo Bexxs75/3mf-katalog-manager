@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Language } from '../i18n/types';
 import type { ModelFile, Folder, ViewMode, SortKey } from '../types';
+import type { ToolView } from '../lib/toolViews';
 import { filterAndSortModels, selectQueuedModels } from '../lib/catalogFilters';
 
 export function useCatalogFilters(models: ModelFile[], folders: Folder[], language: Language = 'de') {
@@ -13,10 +14,11 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
   // Hinweis in App.tsx vor diesem Refactor) - beibehalten, um Verhalten
   // exakt gleich zu lassen.
   const [activeCreator] = useState<string | null>(null);
+  const [toolView, setToolView] = useState<ToolView | null>(null);
 
   const filtered = useMemo(
-    () => filterAndSortModels(models, folders, { activeFolderId, activeTag, activeCreator, query, sort, language }),
-    [models, folders, activeFolderId, activeTag, activeCreator, query, sort, language],
+    () => filterAndSortModels(models, folders, { activeFolderId, activeTag, activeCreator, query, sort, language, toolView }),
+    [models, folders, activeFolderId, activeTag, activeCreator, query, sort, language, toolView],
   );
 
   const queue = useMemo(() => selectQueuedModels(models), [models]);
@@ -28,6 +30,7 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
     activeFolderId, setActiveFolderId,
     activeTag, setActiveTag,
     activeCreator,
+    toolView, setToolView,
     filtered,
     queue,
   };

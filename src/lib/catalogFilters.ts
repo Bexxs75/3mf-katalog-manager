@@ -1,5 +1,6 @@
 import { isFileInFolderOrDescendant } from './folderTree';
 import { tagMatches } from './autoTags';
+import { applyToolView, type ToolView } from './toolViews';
 import type { Language } from '../i18n/types';
 import type { ModelFile, Folder, SortKey } from '../types';
 
@@ -11,6 +12,10 @@ export interface CatalogFilterCriteria {
   sort: SortKey;
   // Fuer die Suche in uebersetzten Namen automatischer Tags.
   language?: Language;
+  // Werkzeug-Ansicht der Seitenleiste; bestimmt Auswahl UND Reihenfolge.
+  toolView?: ToolView | null;
+  // Bezugszeitpunkt fuer "Neu hinzugefuegt" (Tests setzen ihn fest).
+  now?: Date;
 }
 
 export function filterAndSortModels(
@@ -18,8 +23,9 @@ export function filterAndSortModels(
   folders: Folder[],
   criteria: CatalogFilterCriteria,
 ): ModelFile[] {
-  const { activeFolderId, activeTag, activeCreator, query, sort, language = 'de' } = criteria;
-  return models
+  const { activeFolderId, activeTag, activeCreator, query, sort, language = 'de', toolView = null, now } = criteria;
+  const base = toolView ? applyToolView(models, toolView, now ?? new Date()) : models;
+  const matched = base
     .filter((m) => activeFolderId === 'all' || isFileInFolderOrDescendant(m.folderId, activeFolderId, folders))
     .filter((m) => !activeTag || m.tags.includes(activeTag))
     .filter((m) => !activeCreator || m.creator === activeCreator)
@@ -32,14 +38,15 @@ export function filterAndSortModels(
         (m.creator?.toLowerCase().includes(q) ?? false) ||
         m.tags.some((tag) => tagMatches(tag, q, language))
       );
-    })
-    .sort((a, b) => {
-      if (sort === 'name') return a.name.localeCompare(b.name);
-      if (sort === 'size') return a.fileSizeBytes - b.fileSizeBytes;
-      if (sort === 'date') return b.importedAt.localeCompare(a.importedAt);
-      if (sort === 'viewed') return (b.lastViewedAt ?? '').localeCompare(a.lastViewedAt ?? '');
-      return 0;
     });
+  if (toolView) return matched;
+  return matched.sort((a, b) => {
+    if (sort === 'name') return a.name.localeCompare(b.name);
+    if (sort === 'size') return a.fileSizeBytes - b.fileSizeBytes;
+    if (sort === 'date') return b.importedAt.localeCompare(a.importedAt);
+    if (sort === 'viewed') return (b.lastViewedAt ?? '').localeCompare(a.lastViewedAt ?? '');
+    return 0;
+  });
 }
 
 export function selectQueuedModels(models: ModelFile[]): ModelFile[] {

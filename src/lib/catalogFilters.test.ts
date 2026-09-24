@@ -105,6 +105,29 @@ describe('filterAndSortModels', () => {
     });
     expect(result.map((m) => m.id)).toEqual(['2', '1']);
   });
+
+  it('applies a tool view before the other filters and keeps its order', () => {
+    const now = new Date('2026-09-24T12:00:00.000Z');
+    const models = [
+      makeModelFile({ id: 'a', name: 'A', lastViewedAt: '2026-09-20T00:00:00.000Z', tags: ['deko'] }),
+      makeModelFile({ id: 'b', name: 'B', lastViewedAt: '2026-09-23T00:00:00.000Z', tags: ['deko'] }),
+      makeModelFile({ id: 'c', name: 'C', lastViewedAt: null, tags: ['deko'] }),
+      makeModelFile({ id: 'd', name: 'D', lastViewedAt: '2026-09-24T00:00:00.000Z', tags: [] }),
+    ];
+    const result = filterAndSortModels(models, [], {
+      activeFolderId: 'all', activeTag: 'deko', activeCreator: null, query: '', sort: 'name',
+      toolView: 'recent', now,
+    });
+    expect(result.map((m) => m.id)).toEqual(['b', 'a']);
+  });
+
+  it('sorts normally when no tool view is active', () => {
+    const models = [makeModelFile({ id: '2', name: 'Zebra' }), makeModelFile({ id: '1', name: 'Adler' })];
+    const result = filterAndSortModels(models, [], {
+      activeFolderId: 'all', activeTag: null, activeCreator: null, query: '', sort: 'name', toolView: null,
+    });
+    expect(result.map((m) => m.id)).toEqual(['1', '2']);
+  });
 });
 
 describe('selectQueuedModels', () => {

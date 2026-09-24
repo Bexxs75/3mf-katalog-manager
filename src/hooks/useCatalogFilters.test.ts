@@ -72,4 +72,18 @@ describe('useCatalogFilters', () => {
     });
     expect(result.current.query).toBe('test');
   });
+
+  it('exposes a tool view that filters the catalog and can be cleared', () => {
+    const models = [
+      makeModelFile({ id: 'dup1', name: 'A', contentHash: 'h', importedAt: '2026-01-01T00:00:00.000Z' }),
+      makeModelFile({ id: 'dup2', name: 'B', contentHash: 'h', importedAt: '2026-02-01T00:00:00.000Z' }),
+      makeModelFile({ id: 'solo', name: 'C', contentHash: 'x' }),
+    ];
+    const { result } = renderHook(() => useCatalogFilters(models, []));
+    expect(result.current.toolView).toBeNull();
+    act(() => result.current.setToolView('duplicates'));
+    expect(result.current.filtered.map((m) => m.id)).toEqual(['dup1', 'dup2']);
+    act(() => result.current.setToolView(null));
+    expect(result.current.filtered).toHaveLength(3);
+  });
 });
