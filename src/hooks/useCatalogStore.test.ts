@@ -341,6 +341,16 @@ describe('useCatalogStore', () => {
     expect(result.current.models[0].creator).toBe('CarlFromUp');
   });
 
+  it('maps lastViewedAt and contentHash from the catalog summaries', async () => {
+    mockInitialLoad([
+      makeModelFile({ id: 'm1', lastViewedAt: '2026-09-24T08:00:00+00:00', contentHash: 'abc' }),
+    ]);
+    const { result } = renderHook(() => useCatalogStore());
+    await waitFor(() => expect(result.current.models).toHaveLength(1));
+    expect(result.current.models[0].lastViewedAt).toBe('2026-09-24T08:00:00+00:00');
+    expect(result.current.models[0].contentHash).toBe('abc');
+  });
+
   it('addToQueue stores the returned position', async () => {
     mockInitialLoad([makeModelFile({ id: 'm1', queuePosition: null })]);
     vi.mocked(invoke).mockImplementation((cmd: string) => {

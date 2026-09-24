@@ -10,7 +10,7 @@ import type { ModelFile, ModelFileSummary, Folder, TagCount, CreatorCount, Saved
 // bestehenden Komponenten/Hooks weiterhin denselben `ModelFile`-Typ sehen,
 // ohne dass jede Stelle im Baum angepasst werden muss. Die hier NICHT von
 // list_file_summaries gelieferten Felder (materials/tags/customImage/
-// sliceInfo/costEstimate/sourceUrl/lastViewedAt) werden mit neutralen
+// sliceInfo/costEstimate/sourceUrl) werden mit neutralen
 // Defaults gefuellt und erst nachtraeglich per
 // `ensureFullModel()`/`listFilesByIds([id])` echt befuellt, sobald ein
 // Modell ausgewaehlt oder die Detailseite geoeffnet wird. renderSnapshotImage
@@ -37,7 +37,8 @@ function summaryToModelFile(s: ModelFileSummary): ModelFile {
     weightSource: 'estimated',
     sliceInfo: null,
     costEstimate: null,
-    lastViewedAt: null,
+    lastViewedAt: s.lastViewedAt,
+    contentHash: s.contentHash,
     creator: s.creator,
     customImage: null,
     thumbnailImage: s.thumbnailImage,

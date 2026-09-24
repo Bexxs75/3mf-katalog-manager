@@ -22,6 +22,7 @@ export function makeModelFile(overrides: Partial<ModelFile> = {}): ModelFile {
     sliceInfo: null,
     costEstimate: null,
     lastViewedAt: null,
+    contentHash: null,
     creator: null,
     customImage: null,
     thumbnailImage: null,
@@ -67,6 +68,8 @@ export function makeModelFileSummary(
     // Bugfix (2026-09-20): list_file_summaries liefert creator jetzt mit,
     // analog zu renderSnapshotImage oben.
     creator: m.creator,
+    lastViewedAt: m.lastViewedAt,
+    contentHash: m.contentHash,
   };
 }
 

@@ -46,6 +46,7 @@ export interface ModelFile {
   sliceInfo: SliceInfo | null;
   costEstimate: CostEstimate | null;
   lastViewedAt: string | null;
+  contentHash: string | null;
   creator: string | null;
   customImage: string | null;
   thumbnailImage: string | null;
@@ -94,6 +95,8 @@ export interface ModelFileSummary {
   // siehe Kommentar an `db::FileSummary::has_render_snapshot`.
   hasRenderSnapshot: boolean;
   creator: string | null;
+  lastViewedAt: string | null;
+  contentHash: string | null;
 }
 
 export interface Folder {
