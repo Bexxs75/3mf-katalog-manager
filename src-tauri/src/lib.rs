@@ -1,6 +1,7 @@
 mod archive;
 mod commands;
 mod db;
+mod filament_check;
 mod geometry;
 mod obj;
 mod slicers;
