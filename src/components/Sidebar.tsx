@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import type { Folder, TagCount, ModelFile, Collection } from '../types';
+import type { Folder, TagCount, ModelFile, Collection, FilamentCheck } from '../types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { SEARCH_INPUT_ID } from '../hooks/useKeyboardShortcuts';
 import { FolderTree } from './FolderTree';
 import { sortTagsForDisplay, tagLabel } from '../lib/autoTags';
+import { QueueFilamentSymbol } from './QueueFilamentSymbol';
 
 interface Props {
   query: string;
@@ -12,6 +13,7 @@ interface Props {
   onQueueReorder: (orderedIds: string[]) => void;
   onQueueRemove: (id: string) => void;
   onQueueSelect: (id: string) => void;
+  queueFilament?: Map<string, FilamentCheck> | null;
   folders: Folder[];
   totalModelCount: number;
   activeFolderId: string;
@@ -40,6 +42,7 @@ export function Sidebar({
   onQueueReorder,
   onQueueRemove,
   onQueueSelect,
+  queueFilament,
   folders,
   totalModelCount,
   activeFolderId,
@@ -312,6 +315,7 @@ export function Sidebar({
             } text-[var(--ink-2)] hover:text-[var(--ink)]`}
           >
             <span className="font-mono-ui text-[length:var(--font-size-meta)] text-[var(--ink-3)] w-3.5">{index + 1}</span>
+            <QueueFilamentSymbol check={queueFilament?.get(model.id)} />
             <span className="flex-1 text-[length:var(--font-size-item)] overflow-hidden text-ellipsis whitespace-nowrap">
               {model.name}
             </span>

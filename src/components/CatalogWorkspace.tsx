@@ -11,6 +11,7 @@ import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import type { useCollapsedFolders } from '../hooks/useCollapsedFolders';
 import { useLanguage } from '../i18n/LanguageContext';
 import { tagLabel } from '../lib/autoTags';
+import { useFilamentCheck } from '../hooks/useFilamentCheck';
 
 interface CatalogWorkspaceProps {
   query: string;
@@ -170,6 +171,7 @@ export function CatalogWorkspace({
   collapsedFolders,
 }: CatalogWorkspaceProps) {
   const { language } = useLanguage();
+  const queueFilament = useFilamentCheck(queue.map((m) => m.id));
   return (
     <div className="flex-1 flex min-h-0">
       <Sidebar
@@ -183,6 +185,7 @@ export function CatalogWorkspace({
         onQueueReorder={reorderQueue}
         onQueueRemove={removeFromQueue}
         onQueueSelect={selectModel}
+        queueFilament={queueFilament.checks}
         folders={folders}
         totalModelCount={models.length}
         activeFolderId={activeFolderId}
