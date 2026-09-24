@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import type { Folder, TagCount, ModelFile, Collection } from '../types';
-import { useT } from '../i18n/LanguageContext';
+import { useLanguage, useT } from '../i18n/LanguageContext';
 import { SEARCH_INPUT_ID } from '../hooks/useKeyboardShortcuts';
 import { FolderTree } from './FolderTree';
+import { sortTagsForDisplay, tagLabel } from '../lib/autoTags';
 
 interface Props {
   query: string;
@@ -60,6 +61,7 @@ export function Sidebar({
   onCreateCollection,
 }: Props) {
   const t = useT();
+  const { language } = useLanguage();
   const [tagsCollapsed, setTagsCollapsed] = useState(true);
   const [queueCollapsed, setQueueCollapsed] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -252,7 +254,7 @@ export function Sidebar({
         </div>
         {!tagsCollapsed && (
           <div className="flex flex-wrap gap-1.5 px-1.5 pb-1">
-            {tags
+            {sortTagsForDisplay(tags, language)
               .filter((tag) => tag.count >= 2 || tag.label === activeTag)
               .map((tag) => (
               <span
@@ -268,7 +270,7 @@ export function Sidebar({
                   className="w-[6px] h-[6px] rounded-full flex-none"
                   style={{ background: `oklch(0.62 0.14 ${tag.colorHue})` }}
                 />
-                #{tag.label}
+                #{tagLabel(tag.label, language)}
                 <span className="text-[var(--ink-3)]">{tag.count}</span>
               </span>
             ))}

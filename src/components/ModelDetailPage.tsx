@@ -10,6 +10,7 @@ import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import { useEditableSourceUrl } from '../hooks/useEditableSourceUrl';
 import { usePrintLog } from '../hooks/usePrintLog';
 import { formatWeightG, formatLengthM, formatPrice } from '../i18n/format';
+import { tagLabel } from '../lib/autoTags';
 
 interface Props {
   model: ModelFile;
@@ -217,7 +218,7 @@ export function ModelDetailPage({
               <div className="flex flex-wrap gap-1.5">
                 {model.tags.map((tag) => (
                   <span key={tag} className="font-mono-ui text-[12px] px-2.5 py-1 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)]">
-                    #{tag}{' '}
+                    #{tagLabel(tag, language)}{' '}
                     <button onClick={() => onRemoveTag(tag)} className="text-[var(--ink-3)]">✕</button>
                   </span>
                 ))}

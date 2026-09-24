@@ -9,6 +9,8 @@ import { BulkActionToolbar } from './BulkActionToolbar';
 import type { ModelFile, Folder, TagCount, ViewMode, Collection, SlicerConfig } from '../types';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import type { useCollapsedFolders } from '../hooks/useCollapsedFolders';
+import { useLanguage } from '../i18n/LanguageContext';
+import { tagLabel } from '../lib/autoTags';
 
 interface CatalogWorkspaceProps {
   query: string;
@@ -167,6 +169,7 @@ export function CatalogWorkspace({
   selected,
   collapsedFolders,
 }: CatalogWorkspaceProps) {
+  const { language } = useLanguage();
   return (
     <div className="flex-1 flex min-h-0">
       <Sidebar
@@ -222,7 +225,7 @@ export function CatalogWorkspace({
               onClick={() => setActiveTag(null)}
               className="flex items-center gap-1.5 h-[22px] px-2 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] font-mono-ui text-[11px] cursor-pointer"
             >
-              #{activeTag} ✕
+              #{tagLabel(activeTag, language)} ✕
             </span>
           </div>
         )}

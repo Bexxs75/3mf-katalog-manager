@@ -3,6 +3,7 @@ import type { ModelFile } from '../types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatBytes, formatVolumeCm3 } from '../i18n/format';
 import { BulkCheckbox } from './BulkCheckbox';
+import { tagLabel } from '../lib/autoTags';
 
 interface Props {
   models: ModelFile[];
@@ -104,7 +105,7 @@ export function ModelList({ models, selectedId, onSelect, onOpenDetail, onContex
                 key={tag}
                 className="font-mono-ui text-[length:var(--font-size-meta)] px-1.5 py-0.5 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)] whitespace-nowrap"
               >
-                #{tag}
+                #{tagLabel(tag, language)}
               </span>
             ))}
           </span>

@@ -1,5 +1,6 @@
 import type { Collection } from '../types';
-import { useT } from '../i18n/LanguageContext';
+import { useLanguage, useT } from '../i18n/LanguageContext';
+import { tagLabel } from '../lib/autoTags';
 
 interface BulkActionToolbarProps {
   selectedCount: number;
@@ -53,6 +54,7 @@ export function BulkActionToolbar({
   onBulkRemoveTag,
 }: BulkActionToolbarProps) {
   const t = useT();
+  const { language } = useLanguage();
   return (
     <div className="flex-none flex items-center gap-2 px-4 py-2 border-b border-[var(--line)] bg-[var(--panel-2)]">
       {confirmBulkDelete ? (
@@ -167,7 +169,7 @@ export function BulkActionToolbar({
                     onClick={() => onBulkRemoveTag(tag)}
                     className="w-full text-left px-3 py-1.5 text-[13px] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis"
                   >
-                    #{tag}
+                    #{tagLabel(tag, language)}
                   </button>
                 ))}
                 {tagsInSelection.length === 0 && (

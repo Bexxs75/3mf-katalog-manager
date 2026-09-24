@@ -3,6 +3,7 @@ import type { ModelFile } from '../types';
 import { useT, useLanguage } from '../i18n/LanguageContext';
 import { useUiDensity } from '../hooks/UiDensityContext';
 import { formatWeightG } from '../i18n/format';
+import { tagLabel } from '../lib/autoTags';
 import { BulkCheckbox } from './BulkCheckbox';
 import { resolveDisplayImage } from '../lib/resolveDisplayImage';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
@@ -209,7 +210,7 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
                 key={tag}
                 className="font-mono-ui text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)]"
               >
-                #{tag}
+                #{tagLabel(tag, language)}
               </span>
             ))}
           </div>
@@ -306,7 +307,7 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
                     className="px-2.5 py-1 rounded-full bg-[var(--panel-2)] text-[var(--ink-2)]"
                     style={{ fontSize: 'var(--font-size-meta)' }}
                   >
-                    #{tag}
+                    #{tagLabel(tag, language)}
                   </span>
                 ))}
               </div>

@@ -7,6 +7,7 @@ import { buildMetaRows } from '../lib/modelMetadata';
 import { isSafeHttpUrl } from '../lib/safeUrl';
 import { formatDate } from '../i18n/format';
 import { useEditableSourceUrl } from '../hooks/useEditableSourceUrl';
+import { tagLabel } from '../lib/autoTags';
 
 interface Props {
   model: ModelFile | null;
@@ -265,7 +266,7 @@ export function DetailPanel({
                 key={tag}
                 className="inline-flex items-center gap-1.5 h-6 pl-2.5 pr-1 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] font-mono-ui text-[11.5px]"
               >
-                #{tag}
+                #{tagLabel(tag, language)}
                 <span
                   onClick={() => onRemoveTag(tag)}
                   className="w-4 h-4 grid place-items-center rounded-full cursor-pointer text-[10px] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
@@ -383,7 +384,7 @@ export function DetailPanel({
               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]"
               style={{ fontSize: 'var(--font-size-meta)' }}
             >
-              #{tag}
+              #{tagLabel(tag, language)}
               <span
                 onClick={() => onRemoveTag(tag)}
                 className="w-4 h-4 grid place-items-center rounded-full cursor-pointer hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
