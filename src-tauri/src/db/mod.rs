@@ -45,6 +45,13 @@ pub use repository::insert_file;
 #[cfg(test)]
 pub use repository::test_insert_minimal_file;
 
+// merge_auto_tag_aliases wird produktiv nur intern von repository::init()
+// aufgerufen (kein Aufruf ueber den db::-Re-Export ausserhalb von Tests) -
+// dementsprechend cfg-gated, um die Clippy-Warnung ueber einen im
+// Nicht-Test-Build ungenutzten Re-Export zu vermeiden.
+#[cfg(test)]
+pub use repository::merge_auto_tag_aliases;
+
 pub use collections::{
     add_file_to_collection, create_collection, delete_collection,
     list_collection_file_ids, list_collections, max_collection_position,
@@ -837,5 +844,113 @@ mod tests {
 
         let entries = list_print_log_entries(&conn, file_id).expect("list entries after file deletion");
         assert!(entries.is_empty());
+    }
+
+    fn tags_of(conn: &rusqlite::Connection, file_id: i64) -> Vec<String> {
+        let mut tags: Vec<String> = list_all_file_tags(conn)
+            .expect("tags")
+            .into_iter()
+            .filter(|(fid, _)| *fid == file_id)
+            .map(|(_, t)| t)
+            .collect();
+        tags.sort();
+        tags
+    }
+
+    fn tag_names(conn: &rusqlite::Connection) -> Vec<String> {
+        list_tag_counts(conn).expect("counts").into_iter().map(|t| t.name).collect()
+    }
+
+    #[test]
+    fn merge_moves_alias_tag_links_onto_the_canonical_tag() {
+        let mut conn = connect_in_memory().expect("connect");
+        let a = repository::test_insert_minimal_file(&conn, "/tmp/a.3mf", None).expect("a");
+        let b = repository::test_insert_minimal_file(&conn, "/tmp/b.3mf", None).expect("b");
+        add_tag_to_file(&conn, a, "mini").expect("tag a");
+        add_tag_to_file(&conn, b, "miniatur").expect("tag b");
+
+        let merged = merge_auto_tag_aliases(&mut conn).expect("merge");
+
+        assert_eq!(merged, 1);
+        assert_eq!(tags_of(&conn, a), vec!["miniatur".to_string()]);
+        assert_eq!(tags_of(&conn, b), vec!["miniatur".to_string()]);
+        assert!(!tag_names(&conn).contains(&"mini".to_string()));
+    }
+
+    #[test]
+    fn merge_does_not_duplicate_when_a_file_has_both_alias_and_canonical() {
+        let mut conn = connect_in_memory().expect("connect");
+        let a = repository::test_insert_minimal_file(&conn, "/tmp/a.3mf", None).expect("a");
+        add_tag_to_file(&conn, a, "mini").expect("alias");
+        add_tag_to_file(&conn, a, "miniatur").expect("canonical");
+
+        merge_auto_tag_aliases(&mut conn).expect("merge");
+
+        assert_eq!(tags_of(&conn, a), vec!["miniatur".to_string()]);
+    }
+
+    #[test]
+    fn merge_creates_the_canonical_tag_if_only_an_alias_exists() {
+        let mut conn = connect_in_memory().expect("connect");
+        let a = repository::test_insert_minimal_file(&conn, "/tmp/a.3mf", None).expect("a");
+        add_tag_to_file(&conn, a, "Multipart").expect("alias");
+
+        merge_auto_tag_aliases(&mut conn).expect("merge");
+
+        assert_eq!(tags_of(&conn, a), vec!["mehrteilig".to_string()]);
+        assert_eq!(tag_names(&conn), vec!["mehrteilig".to_string()]);
+    }
+
+    #[test]
+    fn merge_is_idempotent_and_leaves_other_tags_alone() {
+        let mut conn = connect_in_memory().expect("connect");
+        let a = repository::test_insert_minimal_file(&conn, "/tmp/a.3mf", None).expect("a");
+        add_tag_to_file(&conn, a, "large").expect("alias");
+        add_tag_to_file(&conn, a, "Vase").expect("other");
+
+        assert_eq!(merge_auto_tag_aliases(&mut conn).expect("first"), 1);
+        assert_eq!(merge_auto_tag_aliases(&mut conn).expect("second"), 0);
+        assert_eq!(tags_of(&conn, a), vec!["Vase".to_string(), "grossformat".to_string()]);
+    }
+
+    #[test]
+    fn merge_rewrites_saved_filters_that_point_at_an_alias() {
+        let mut conn = connect_in_memory().expect("connect");
+        let a = repository::test_insert_minimal_file(&conn, "/tmp/a.3mf", None).expect("a");
+        add_tag_to_file(&conn, a, "mini").expect("alias");
+        insert_saved_filter(
+            &conn,
+            &NewSavedFilter {
+                name: "Kleinteile".to_string(),
+                folder_id: None,
+                tag: Some("mini".to_string()),
+                creator: None,
+                query: None,
+                sort: "name".to_string(),
+            },
+        )
+        .expect("filter");
+
+        merge_auto_tag_aliases(&mut conn).expect("merge");
+
+        let filters = list_saved_filters(&conn).expect("filters");
+        assert_eq!(filters[0].tag.as_deref(), Some("miniatur"));
+    }
+
+    #[test]
+    fn connect_merges_aliases_that_are_already_in_the_database() {
+        let path = std::env::temp_dir().join(format!(
+            "merge_on_connect_{}.db",
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        {
+            let conn = connect(&path).expect("connect 1");
+            let a = repository::test_insert_minimal_file(&conn, "/tmp/a.3mf", None).expect("a");
+            add_tag_to_file(&conn, a, "multicolor").expect("alias");
+        }
+        let conn = connect(&path).expect("connect 2");
+        assert_eq!(tag_names(&conn), vec!["mehrfarbig".to_string()]);
+        drop(conn);
+        let _ = std::fs::remove_file(&path);
     }
 }

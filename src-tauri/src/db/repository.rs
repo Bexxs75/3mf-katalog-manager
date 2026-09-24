@@ -29,6 +29,11 @@ pub(crate) fn init(conn: &mut Connection) -> Result<(), DbError> {
     conn.pragma_update(None, "foreign_keys", true)?;
     conn.execute_batch(SCHEMA_SQL)?;
     super::migrations::run_migrations(conn)?;
+    // Kein Abbruch: ein Fehler hier darf den Start nicht verhindern, die
+    // Transaktion in merge_auto_tag_aliases rollt dann zurueck.
+    if let Err(e) = merge_auto_tag_aliases(conn) {
+        eprintln!("[tags] Zusammenlegen der Namen automatischer Tags fehlgeschlagen: {e}");
+    }
     Ok(())
 }
 
@@ -358,6 +363,41 @@ pub fn add_tag_to_file(conn: &Connection, file_id: i64, tag_name: &str) -> Resul
         params![file_id, tag_id],
     )?;
     Ok(())
+}
+
+/// Legt Tags, deren Name ein Name eines automatischen Tags in irgendeiner
+/// Sprache ist (z. B. "mini", "Multipart"), mit der deutschen Kennung
+/// zusammen. Laeuft bei jedem Oeffnen der DB (siehe `init`) und ist
+/// idempotent: ein zweiter Lauf findet nichts mehr. Alles in einer
+/// Transaktion - bei einem Fehler bleibt der Katalog unveraendert.
+pub fn merge_auto_tag_aliases(conn: &mut Connection) -> Result<usize, DbError> {
+    let tx = conn.transaction()?;
+    let tags: Vec<(i64, String)> = {
+        let mut stmt = tx.prepare("SELECT id, name FROM tags")?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        rows.collect::<Result<_, _>>()?
+    };
+    let mut merged = 0;
+    for (alias_id, name) in tags {
+        let canonical = crate::tagging::canonical_tag(&name);
+        if canonical == name {
+            continue;
+        }
+        let canonical_id = get_or_create_tag(&tx, &canonical)?;
+        tx.execute(
+            "INSERT OR IGNORE INTO file_tags (file_id, tag_id)
+             SELECT file_id, ?1 FROM file_tags WHERE tag_id = ?2",
+            params![canonical_id, alias_id],
+        )?;
+        tx.execute("DELETE FROM tags WHERE id = ?1", params![alias_id])?;
+        tx.execute(
+            "UPDATE saved_filters SET tag = ?1 WHERE tag = ?2",
+            params![canonical, name],
+        )?;
+        merged += 1;
+    }
+    tx.commit()?;
+    Ok(merged)
 }
 
 pub fn remove_tag_from_file(conn: &Connection, file_id: i64, tag_name: &str) -> Result<(), DbError> {
