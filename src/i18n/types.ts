@@ -251,6 +251,10 @@ export interface Translations {
 
   queueHeading: string;
   queueEmptyState: string;
+  toolsHeading: string;
+  toolRecent: string;
+  toolNew: string;
+  toolDuplicates: string;
   inQueueLabel: string;
   notInQueueLabel: string;
   addToQueue: string;

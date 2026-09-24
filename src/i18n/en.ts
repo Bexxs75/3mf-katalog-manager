@@ -247,6 +247,10 @@ export const en: Translations = {
 
   queueHeading: 'Print Queue',
   queueEmptyState: 'No models in the queue',
+  toolsHeading: 'Tools',
+  toolRecent: 'Recently viewed',
+  toolNew: 'Recently added',
+  toolDuplicates: 'Duplicates',
   inQueueLabel: 'In queue',
   notInQueueLabel: 'Not in queue',
   addToQueue: 'Add to queue',

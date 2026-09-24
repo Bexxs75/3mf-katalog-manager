@@ -247,6 +247,10 @@ export const fr: Translations = {
 
   queueHeading: "File d'impression",
   queueEmptyState: 'Aucun modèle dans la file',
+  toolsHeading: 'Outils',
+  toolRecent: 'Vus récemment',
+  toolNew: 'Ajoutés récemment',
+  toolDuplicates: 'Doublons',
   inQueueLabel: 'Dans la file',
   notInQueueLabel: "Pas dans la file",
   addToQueue: "Ajouter à la file",

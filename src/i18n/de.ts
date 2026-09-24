@@ -247,6 +247,10 @@ export const de: Translations = {
 
   queueHeading: 'Warteschlange',
   queueEmptyState: 'Keine Modelle in der Warteschlange',
+  toolsHeading: 'Werkzeuge',
+  toolRecent: 'Zuletzt angesehen',
+  toolNew: 'Neu hinzugefügt',
+  toolDuplicates: 'Duplikate',
   inQueueLabel: 'In Warteschlange',
   notInQueueLabel: 'Nicht in Warteschlange',
   addToQueue: 'Zur Warteschlange hinzufügen',

@@ -247,6 +247,10 @@ export const es: Translations = {
 
   queueHeading: 'Cola de impresión',
   queueEmptyState: 'No hay modelos en la cola',
+  toolsHeading: 'Herramientas',
+  toolRecent: 'Vistos recientemente',
+  toolNew: 'Añadidos recientemente',
+  toolDuplicates: 'Duplicados',
   inQueueLabel: 'En cola',
   notInQueueLabel: 'No está en cola',
   addToQueue: 'Añadir a la cola',
