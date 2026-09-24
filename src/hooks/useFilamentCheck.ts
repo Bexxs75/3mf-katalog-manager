@@ -26,7 +26,7 @@ export function useFilamentCheck(fileIds: string[]): FilamentCheckState {
         if (current) setState({ checks: new Map(result.map((c) => [c.fileId, c])), error: false });
       })
       .catch((e) => {
-        console.error('[filament-check] Pruefung fehlgeschlagen:', e);
+        console.error('[filament-check] Prüfung fehlgeschlagen:', e);
         if (current) setState({ checks: null, error: true });
       });
     return () => {
