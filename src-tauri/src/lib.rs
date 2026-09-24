@@ -131,6 +131,7 @@ pub fn run() {
             commands::list_tag_counts,
             commands::list_creators,
             commands::list_filament_spools,
+            commands::check_filament,
             commands::add_filament_spool,
             commands::update_filament_spool,
             commands::delete_filament_spool,

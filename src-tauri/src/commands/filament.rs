@@ -123,3 +123,127 @@ pub fn delete_filament_spool(state: State<AppState>, spool_id: String) -> CmdRes
     let conn = lock_db(&state)?;
     db::delete_filament_spool(&conn, id).map_err(|e| e.to_string())
 }
+
+/// Kernlogik von `check_filament` (Test-Huelle wie andere `*_with_conn`):
+/// laedt Slicer-Daten der Modelle in der uebergebenen Reihenfolge, alle Spulen
+/// und die Namen von Drucker/Einheit fuer eingelegte Spulen. Unbekannte,
+/// geloeschte oder ungueltige IDs werden uebersprungen.
+pub(crate) fn check_filament_with_conn(
+    conn: &Connection,
+    file_ids: &[String],
+) -> CmdResult<Vec<crate::filament_check::ModelCheck>> {
+    use crate::filament_check::{check_models, SlotRef, SpoolInput};
+
+    let mut models = Vec::new();
+    for raw in file_ids {
+        let Ok(id) = raw.parse::<i64>() else { continue };
+        let Some(file) = db::get_file(conn, id).map_err(|e| e.to_string())? else { continue };
+        if file.deleted_at.is_some() {
+            continue;
+        }
+        let slice = file
+            .slice_info_json
+            .as_deref()
+            .and_then(|json| serde_json::from_str::<crate::threemf::SliceInfo>(json).ok());
+        models.push((raw.clone(), slice));
+    }
+
+    let printers = db::printers::list_printers(conn).map_err(|e| e.to_string())?;
+    let units = db::printers::list_units(conn).map_err(|e| e.to_string())?;
+    let spools = db::list_filament_spools(conn)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|s| {
+            let slot = match (s.unit_id, s.slot_index) {
+                (Some(unit_id), Some(slot_index)) => units.iter().find(|u| u.id == unit_id).map(|u| SlotRef {
+                    printer: printers
+                        .iter()
+                        .find(|p| p.id == u.printer_id)
+                        .map(|p| p.name.clone())
+                        .unwrap_or_default(),
+                    unit: u.name.clone(),
+                    slot_number: slot_index + 1,
+                }),
+                _ => None,
+            };
+            SpoolInput {
+                id: s.id.to_string(),
+                material: s.material,
+                manufacturer: s.manufacturer,
+                color_name: s.color,
+                color_hex: s.color_hex,
+                remaining_g: s.remaining_weight_g as f64,
+                slot,
+                location: s.location,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    Ok(check_models(&models, &spools))
+}
+
+#[tauri::command]
+pub fn check_filament(state: State<AppState>, file_ids: Vec<String>) -> CmdResult<Vec<crate::filament_check::ModelCheck>> {
+    let conn = lock_db(&state)?;
+    check_filament_with_conn(&conn, &file_ids)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn check_filament_reads_slice_info_spools_and_slots() {
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let file_id = crate::db::test_insert_minimal_file(&conn, "/tmp/check_filament.3mf", None).expect("file");
+        conn.execute(
+            "UPDATE files SET slice_info_json = ?1 WHERE id = ?2",
+            rusqlite::params![
+                r##"{"total_weight_g":50,"plates":[{"plate_index":1,"weight_g":50,"filaments":[{"filament_type":"PLA","color":"#C0392B","used_g":50,"used_m":16}]}]}"##,
+                file_id
+            ],
+        )
+        .expect("slice");
+        let spool_id = crate::db::insert_filament_spool(
+            &conn,
+            &crate::db::models::NewFilamentSpool {
+                material: "PLA".to_string(),
+                manufacturer: Some("Bambu".to_string()),
+                color: Some("Rot".to_string()),
+                location: Some("Regal A".to_string()),
+                diameter_mm: 1.75,
+                original_weight_g: 1000,
+                remaining_weight_g: 640,
+                price: None,
+                image_png: None,
+                color_hex: Some("#B03020".to_string()),
+            },
+        )
+        .expect("spool");
+        let printer = crate::db::printers::insert_printer(&conn, "X1C").expect("printer");
+        let unit = crate::db::printers::insert_unit(&conn, printer, "bambu_ams", "AMS 1", None).expect("unit");
+        crate::db::printers::load_spool(&conn, spool_id, unit, 1).expect("load");
+
+        let result = check_filament_with_conn(&conn, &[file_id.to_string(), "999999".to_string(), "kaputt".to_string()])
+            .expect("check");
+
+        assert_eq!(result.len(), 1, "unbekannte und ungueltige IDs werden uebersprungen");
+        assert_eq!(result[0].file_id, file_id.to_string());
+        assert_eq!(result[0].status, crate::filament_check::CheckStatus::Ok);
+        let used = &result[0].needs[0].spools[0];
+        assert_eq!(used.spool_id, spool_id.to_string());
+        assert_eq!(
+            used.slot,
+            Some(crate::filament_check::SlotRef { printer: "X1C".into(), unit: "AMS 1".into(), slot_number: 2 })
+        );
+        assert_eq!(used.location, None);
+    }
+
+    #[test]
+    fn check_filament_reports_no_data_for_files_without_slice_info() {
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let file_id = crate::db::test_insert_minimal_file(&conn, "/tmp/no_slice.stl", None).expect("file");
+        let result = check_filament_with_conn(&conn, &[file_id.to_string()]).expect("check");
+        assert_eq!(result[0].status, crate::filament_check::CheckStatus::NoData);
+    }
+}
