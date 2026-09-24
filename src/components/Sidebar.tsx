@@ -4,7 +4,8 @@ import { useLanguage, useT } from '../i18n/LanguageContext';
 import { SEARCH_INPUT_ID } from '../hooks/useKeyboardShortcuts';
 import { FolderTree } from './FolderTree';
 import { sortTagsForDisplay, tagLabel } from '../lib/autoTags';
-import { QueueList } from './QueueList';
+import { ToolsSection } from './ToolsSection';
+import type { ToolCounts, ToolView } from '../lib/toolViews';
 
 interface Props {
   query: string;
@@ -33,6 +34,15 @@ interface Props {
   onSelectCollection: (id: string) => void;
   onOpenCollectionsGallery: () => void;
   onCreateCollection: (name: string) => void;
+  toolView: ToolView | null;
+  onToolViewChange: (v: ToolView | null) => void;
+  toolCounts: ToolCounts;
+  trashCount: number;
+  onOpenCleanup: () => void;
+  cleanupScanning: boolean;
+  cleanupError: string | null;
+  onOpenFilament: () => void;
+  onOpenTrash: () => void;
 }
 
 export function Sidebar({
@@ -62,11 +72,19 @@ export function Sidebar({
   onSelectCollection,
   onOpenCollectionsGallery,
   onCreateCollection,
+  toolView,
+  onToolViewChange,
+  toolCounts,
+  trashCount,
+  onOpenCleanup,
+  cleanupScanning,
+  cleanupError,
+  onOpenFilament,
+  onOpenTrash,
 }: Props) {
   const t = useT();
   const { language } = useLanguage();
   const [tagsCollapsed, setTagsCollapsed] = useState(true);
-  const [queueCollapsed, setQueueCollapsed] = useState(false);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [folderNameDraft, setFolderNameDraft] = useState('');
   const [creatingCollection, setCreatingCollection] = useState(false);
@@ -250,26 +268,22 @@ export function Sidebar({
           </div>
         )}
 
-        <div
-          onClick={() => setQueueCollapsed((c) => !c)}
-          className="flex items-center justify-between px-1.5 pt-[18px] pb-2 cursor-pointer"
-        >
-          <span className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)]">
-            {t('queueHeading')}
-          </span>
-          <span className="font-mono-ui text-[length:var(--font-size-label)] leading-none text-[var(--ink-3)]">
-            {queueCollapsed ? '▾' : '▴'}
-          </span>
-        </div>
-        {!queueCollapsed && (
-          <QueueList
-            queue={queue}
-            onQueueReorder={onQueueReorder}
-            onQueueRemove={onQueueRemove}
-            onQueueSelect={onQueueSelect}
-            queueFilament={queueFilament}
-          />
-        )}
+        <ToolsSection
+          queue={queue}
+          onQueueReorder={onQueueReorder}
+          onQueueRemove={onQueueRemove}
+          onQueueSelect={onQueueSelect}
+          queueFilament={queueFilament}
+          toolView={toolView}
+          onToolViewChange={onToolViewChange}
+          counts={toolCounts}
+          trashCount={trashCount}
+          onOpenCleanup={onOpenCleanup}
+          cleanupScanning={cleanupScanning}
+          cleanupError={cleanupError}
+          onOpenFilament={onOpenFilament}
+          onOpenTrash={onOpenTrash}
+        />
       </div>
     </aside>
   );

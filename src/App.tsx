@@ -82,6 +82,13 @@ export default function App() {
   const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number } | null>(null);
   const [confirmEmptyTrash, setConfirmEmptyTrash] = useState(false);
 
+  const changeMainView = (v: 'catalog' | 'filament' | 'trash') => {
+    setMainView(v);
+    store.setSelectedId(null);
+    bulk.clearBulkSelection();
+    if (v === 'trash') store.refreshTrash();
+  };
+
   const selected = store.models.find((m) => m.id === store.selectedId) ?? null;
   const detailModel = detailModelId ? store.models.find((m) => m.id === detailModelId) ?? null : null;
   const contextModel = contextMenu ? store.models.find((m) => m.id === contextMenu.modelId) ?? null : null;
@@ -173,12 +180,7 @@ export default function App() {
       <div className="flex-1 flex flex-row min-h-0">
         <Rail
           mainView={mainView}
-          onMainViewChange={(v) => {
-            setMainView(v);
-            store.setSelectedId(null);
-            bulk.clearBulkSelection();
-            if (v === 'trash') store.refreshTrash();
-          }}
+          onMainViewChange={changeMainView}
           trashCount={store.trashModels.length}
           settingsOpen={settingsOpen}
           onSettingsOpenChange={setSettingsOpen}
@@ -310,6 +312,14 @@ export default function App() {
               reorderCollection={collections.reorderCollection}
               onDragFileStart={dragDrop.onDragFileStart}
               selected={selected}
+              toolView={filters.toolView}
+              setToolView={filters.setToolView}
+              trashCount={store.trashModels.length}
+              onOpenCleanup={() => void cleanup.scanCatalogIssues()}
+              cleanupScanning={cleanup.cleanupScanning}
+              cleanupError={cleanup.cleanupError}
+              onOpenFilament={() => changeMainView('filament')}
+              onOpenTrash={() => changeMainView('trash')}
             />
           ) : (
             <FilamentView />

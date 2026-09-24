@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Sidebar } from './Sidebar';
 import { ModelGrid } from './ModelGrid';
 import { GroupedModelGrid } from './GroupedModelGrid';
@@ -9,9 +10,10 @@ import { BulkActionToolbar } from './BulkActionToolbar';
 import type { ModelFile, Folder, TagCount, ViewMode, Collection, SlicerConfig } from '../types';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import type { useCollapsedFolders } from '../hooks/useCollapsedFolders';
-import { useLanguage } from '../i18n/LanguageContext';
+import { useLanguage, useT } from '../i18n/LanguageContext';
 import { tagLabel } from '../lib/autoTags';
 import { useFilamentCheck } from '../hooks/useFilamentCheck';
+import { toolCounts as computeToolCounts, TOOL_VIEW_LABEL_KEY, type ToolView } from '../lib/toolViews';
 
 interface CatalogWorkspaceProps {
   query: string;
@@ -90,6 +92,14 @@ interface CatalogWorkspaceProps {
   onDragFileStart: (id: string) => void;
   selected: ModelFile | null;
   collapsedFolders: ReturnType<typeof useCollapsedFolders>;
+  toolView: ToolView | null;
+  setToolView: (v: ToolView | null) => void;
+  trashCount: number;
+  onOpenCleanup: () => void;
+  cleanupScanning: boolean;
+  cleanupError: string | null;
+  onOpenFilament: () => void;
+  onOpenTrash: () => void;
 }
 
 export function CatalogWorkspace({
@@ -169,8 +179,17 @@ export function CatalogWorkspace({
   onDragFileStart,
   selected,
   collapsedFolders,
+  toolView,
+  setToolView,
+  trashCount,
+  onOpenCleanup,
+  cleanupScanning,
+  cleanupError,
+  onOpenFilament,
+  onOpenTrash,
 }: CatalogWorkspaceProps) {
   const { language } = useLanguage();
+  const t = useT();
   const queueFilament = useFilamentCheck(
     queue.map((m) => m.id),
     // Erzwingt ein Neuladen, wenn sich der Slicer-Bedarf eines Warteschlangen-
@@ -178,6 +197,8 @@ export function CatalogWorkspace({
     // IDs und ihre Reihenfolge gleich bleiben.
     queue.map((m) => `${m.id}:${m.sliceInfo?.totalWeightG ?? ''}`).join('|'),
   );
+  // Zaehler aus dem ganzen Katalog (ohne Ordner/Tag/Suche), damit sie stabil bleiben.
+  const counts = useMemo(() => computeToolCounts(models, new Date()), [models]);
   return (
     <div className="flex-1 flex min-h-0">
       <Sidebar
@@ -219,23 +240,51 @@ export function CatalogWorkspace({
         onSelectCollection={(id) => {
           setActiveCollection(id);
           setCollectionsGalleryOpen(false);
+          setToolView(null);
         }}
         onOpenCollectionsGallery={() => {
           setCollectionsGalleryOpen(true);
           setActiveCollection(null);
+          setToolView(null);
         }}
         onCreateCollection={createCollection}
+        toolView={toolView}
+        onToolViewChange={(v) => {
+          setToolView(v);
+          // Ansicht und Sammlung schliessen sich aus.
+          if (v) {
+            setActiveCollection(null);
+            setCollectionsGalleryOpen(false);
+          }
+        }}
+        toolCounts={counts}
+        trashCount={trashCount}
+        onOpenCleanup={onOpenCleanup}
+        cleanupScanning={cleanupScanning}
+        cleanupError={cleanupError}
+        onOpenFilament={onOpenFilament}
+        onOpenTrash={onOpenTrash}
       />
 
       <main className="flex-1 min-w-0 flex flex-col min-h-0">
-        {activeTag && (
+        {(activeTag || toolView) && (
           <div className="flex-none h-[38px] flex items-center gap-2.5 px-4 border-b border-[var(--line)] bg-[var(--bg)]">
-            <span
-              onClick={() => setActiveTag(null)}
-              className="flex items-center gap-1.5 h-[22px] px-2 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] font-mono-ui text-[11px] cursor-pointer"
-            >
-              #{tagLabel(activeTag, language)} ✕
-            </span>
+            {toolView && (
+              <span
+                onClick={() => setToolView(null)}
+                className="flex items-center gap-1.5 h-[22px] px-2 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] font-mono-ui text-[11px] cursor-pointer"
+              >
+                {t(TOOL_VIEW_LABEL_KEY[toolView])} ✕
+              </span>
+            )}
+            {activeTag && (
+              <span
+                onClick={() => setActiveTag(null)}
+                className="flex items-center gap-1.5 h-[22px] px-2 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] font-mono-ui text-[11px] cursor-pointer"
+              >
+                #{tagLabel(activeTag, language)} ✕
+              </span>
+            )}
           </div>
         )}
 
