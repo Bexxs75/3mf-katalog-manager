@@ -45,6 +45,8 @@ body { font-family: 'Barlow', Helvetica, sans-serif; }
   --warn-soft: oklch(0.94 0.05 85);
   --crit: oklch(0.55 0.18 18);
   --crit-soft: oklch(0.94 0.045 18);
+  --unk: oklch(0.55 0.02 250);
+  --unk-soft: oklch(0.94 0.012 250);
 }
 
 /* Dunkles Theme */
@@ -71,6 +73,8 @@ body { font-family: 'Barlow', Helvetica, sans-serif; }
   --warn-soft: oklch(0.3 0.06 85);
   --crit: oklch(0.68 0.19 15);
   --crit-soft: oklch(0.3 0.06 15);
+  --unk: oklch(0.72 0.03 250);
+  --unk-soft: oklch(0.28 0.02 250);
 }
 
 .font-mono-ui { font-family: 'IBM Plex Mono', monospace; }
