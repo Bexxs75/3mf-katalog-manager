@@ -9,8 +9,10 @@ import { resolveDisplayImage } from '../lib/resolveDisplayImage';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import { useEditableSourceUrl } from '../hooks/useEditableSourceUrl';
 import { usePrintLog } from '../hooks/usePrintLog';
+import { useFilamentCheck } from '../hooks/useFilamentCheck';
 import { formatWeightG, formatLengthM, formatPrice } from '../i18n/format';
 import { tagLabel } from '../lib/autoTags';
+import { FilamentCheckSection } from './FilamentCheckSection';
 
 interface Props {
   model: ModelFile;
@@ -75,6 +77,7 @@ export function ModelDetailPage({
   );
 
   const rows = buildMetaRows(model, t, language);
+  const filamentCheck = useFilamentCheck(model.sliceInfo ? [model.id] : []);
 
   const submitTag = () => {
     const value = tagDraft.trim();
@@ -291,6 +294,10 @@ export function ModelDetailPage({
               </div>
             ))}
           </div>
+          <FilamentCheckSection
+            check={filamentCheck.checks?.get(model.id) ?? null}
+            error={filamentCheck.error}
+          />
           {model.costEstimate && (
             <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-[var(--line)] text-[13px]">
               <span className="text-[var(--ink-3)]">
