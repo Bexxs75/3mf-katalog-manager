@@ -40,7 +40,7 @@ export default function App() {
   const { preference: displayPreference, setPreference: setDisplayPreference } = useDisplayPreference();
   const { catalogBaseDir, setCatalogBaseDir, setupSeen, markSetupSeen } = useCatalogBaseDir();
   const printerLink = usePrinterLink();
-  const printerListState = usePrinters();
+  const printers = usePrinters();
 
   const store = useCatalogStore();
   useRegisterCatalogBaseDirOnStartup(catalogBaseDir, store.refreshFolders);
@@ -216,7 +216,7 @@ export default function App() {
           catalogBaseDir={catalogBaseDir}
           onOpenCatalogSetup={() => setSetupDialogOpen(true)}
           printerLink={printerLink}
-          printerList={printerListState.printers}
+          printerList={printers.printers}
           updateInfo={{
             currentVersion: update.currentVersion,
             latestVersion: update.latestVersion,
@@ -325,7 +325,7 @@ export default function App() {
               cleanupError={cleanup.cleanupError}
             />
           ) : (
-            <FilamentView printerLink={printerLink} />
+            <FilamentView printerLink={printerLink} printers={printers} />
           )}
 
           {contextMenu && contextModel && (

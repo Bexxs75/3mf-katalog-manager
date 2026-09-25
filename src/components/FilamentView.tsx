@@ -12,7 +12,7 @@ import { FilamentSpoolForm } from './FilamentSpoolForm';
 import { PrinterColumn } from './PrinterColumn';
 import { PrinterManagePanel } from './PrinterManagePanel';
 import { SpoolToast } from './SpoolToast';
-import { usePrinters } from '../hooks/usePrinters';
+import type { PrintersState } from '../hooks/usePrinters';
 import { useSpoolDragAndDrop } from '../hooks/useSpoolDragAndDrop';
 import * as printersApi from '../lib/api/printers';
 import { isInStorage, spoolLabel } from '../lib/filamentSlots';
@@ -23,9 +23,16 @@ type StatusFilter = 'low' | 'empty' | null;
 interface Props {
   /** Ab Task 14/15 fuer den Abgleich-Workflow (Auftraege bestaetigen/ignorieren) genutzt. */
   printerLink: PrinterLinkState;
+  /**
+   * Von App.tsx einmal angelegt und auch an Rail (Reiter "Drucker")
+   * weitergereicht - eine gemeinsame Instanz, damit z.B. das Hinzufuegen
+   * eines Druckers hier auch dort sofort sichtbar ist (nicht erst nach
+   * einem Remount).
+   */
+  printers: PrintersState;
 }
 
-export function FilamentView({ printerLink: _printerLink }: Props) {
+export function FilamentView({ printerLink: _printerLink, printers }: Props) {
   const t = useT();
   const { language } = useLanguage();
   const [spools, setSpools] = useState<FilamentSpool[]>([]);
@@ -38,7 +45,6 @@ export function FilamentView({ printerLink: _printerLink }: Props) {
   const [editingSpool, setEditingSpool] = useState<FilamentSpool | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
   const [toast, setToast] = useState<{ spoolId: string; label: string; location: string | null } | null>(null);
-  const printers = usePrinters();
 
   const refresh = () => {
     invoke<FilamentSpool[]>('list_filament_spools')

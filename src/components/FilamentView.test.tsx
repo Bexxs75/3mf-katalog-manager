@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
@@ -5,6 +6,7 @@ import { LanguageProvider } from '../i18n/LanguageContext';
 import { FilamentView } from './FilamentView';
 import type { FilamentSpool, Printer } from '../types';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
+import { usePrinters } from '../hooks/usePrinters';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
@@ -44,10 +46,17 @@ function printerLink(): PrinterLinkState {
   } as unknown as PrinterLinkState;
 }
 
+// Spiegelt App.tsx: eine einzige `usePrinters()`-Instanz, die an FilamentView
+// (und in der echten App zugleich an Rail) weitergereicht wird.
+function PrintersWrapper({ children }: { children: (printers: ReturnType<typeof usePrinters>) => ReactNode }) {
+  const printers = usePrinters();
+  return <>{children(printers)}</>;
+}
+
 function renderView() {
   render(
     <LanguageProvider>
-      <FilamentView printerLink={printerLink()} />
+      <PrintersWrapper>{(printers) => <FilamentView printerLink={printerLink()} printers={printers} />}</PrintersWrapper>
     </LanguageProvider>,
   );
 }
@@ -101,5 +110,53 @@ describe('FilamentView with printers', () => {
     fireEvent.mouseEnter(screen.getByTestId('filament-storage'));
     fireEvent.mouseUp(document);
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('unload_spool', { spoolId: 'in', location: null }));
+  });
+});
+
+describe('FilamentView shares one printers instance with other consumers', () => {
+  it('reflects a printer added elsewhere (e.g. the Rail "Drucker" tab) without a remount', async () => {
+    // Regression fuer Task-12-Review-Fund: App.tsx darf `usePrinters()` nur
+    // einmal aufrufen und dieselbe Instanz an FilamentView UND an Rail
+    // weiterreichen - sonst sieht der Rail-Reiter Aenderungen aus dem
+    // Filament-Lager erst nach einem Remount.
+    let printerAdded = false;
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === 'list_filament_spools') return Promise.resolve([LOADED, STORED]);
+      if (cmd === 'list_printers') {
+        return Promise.resolve(printerAdded ? [X1C, { id: 'p2', name: 'Neuer Drucker', units: [] }] : [X1C]);
+      }
+      if (cmd === 'add_printer') {
+        printerAdded = true;
+        return Promise.resolve(undefined);
+      }
+      if (cmd === 'unload_spool') return Promise.resolve('Regal 2');
+      if (cmd === 'load_spool') return Promise.resolve({ displacedSpoolId: null });
+      return Promise.resolve(undefined);
+    });
+
+    render(
+      <LanguageProvider>
+        <PrintersWrapper>
+          {(printers) => (
+            <>
+              {/* Steht hier fuer einen zweiten Verbraucher derselben Instanz, z.B. Rail. */}
+              <div data-testid="other-consumer">{printers.printers.map((p) => p.name).join(', ')}</div>
+              <button onClick={() => printers.addPrinter('Neuer Drucker', 'Halter')}>Drucker hinzufuegen</button>
+              <FilamentView printerLink={printerLink()} printers={printers} />
+            </>
+          )}
+        </PrintersWrapper>
+      </LanguageProvider>,
+    );
+
+    const printerColumn = () => screen.getByRole('complementary', { name: 'Drucker' });
+    await waitFor(() => expect(screen.getByTestId('other-consumer')).toHaveTextContent('X1C'));
+    expect(printerColumn()).toHaveTextContent('X1C');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Drucker hinzufuegen' }));
+
+    await waitFor(() => expect(screen.getByTestId('other-consumer')).toHaveTextContent('Neuer Drucker'));
+    // Derselbe Refresh muss auch in FilamentViews eigener Druckerspalte ankommen.
+    expect(printerColumn()).toHaveTextContent('Neuer Drucker');
   });
 });
