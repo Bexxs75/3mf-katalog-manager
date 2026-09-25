@@ -402,6 +402,7 @@ export const fr: Translations = {
   printerJobsDialogHint: "Vérifie bobine et modèle. Rien n'est déduit avant confirmation.",
   printerJobsColPrint: 'Impression',
   printerJobsColUsage: 'Consommation',
+  printerJobsMinutes: '{min} min',
   printerJobsColSpool: 'Bobine',
   printerJobsColModel: 'Modèle du catalogue',
   printerJobCompleted: 'TERMINÉE',

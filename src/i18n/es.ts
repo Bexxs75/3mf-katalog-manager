@@ -402,6 +402,7 @@ export const es: Translations = {
   printerJobsDialogHint: 'Revisa bobina y modelo. No se descuenta nada hasta confirmar.',
   printerJobsColPrint: 'Impresión',
   printerJobsColUsage: 'Consumo',
+  printerJobsMinutes: '{min} min',
   printerJobsColSpool: 'Bobina',
   printerJobsColModel: 'Modelo en el catálogo',
   printerJobCompleted: 'TERMINADA',

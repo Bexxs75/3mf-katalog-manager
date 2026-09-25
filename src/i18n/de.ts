@@ -402,6 +402,7 @@ export const de: Translations = {
   printerJobsDialogHint: 'Prüfe Spule und Modell. Abgezogen wird erst beim Bestätigen.',
   printerJobsColPrint: 'Druck',
   printerJobsColUsage: 'Verbrauch',
+  printerJobsMinutes: '{min} min',
   printerJobsColSpool: 'Spule',
   printerJobsColModel: 'Modell im Katalog',
   printerJobCompleted: 'FERTIG',

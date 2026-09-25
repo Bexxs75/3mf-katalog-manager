@@ -402,6 +402,7 @@ export const en: Translations = {
   printerJobsDialogHint: 'Check spool and model. Nothing is deducted until you confirm.',
   printerJobsColPrint: 'Print',
   printerJobsColUsage: 'Usage',
+  printerJobsMinutes: '{min} min',
   printerJobsColSpool: 'Spool',
   printerJobsColModel: 'Model in catalog',
   printerJobCompleted: 'DONE',

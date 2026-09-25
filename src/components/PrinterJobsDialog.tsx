@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
-import { formatStockG } from '../i18n/format';
+import { formatDateTime, formatDurationMinutes, formatLengthMm, formatStockG } from '../i18n/format';
 import { messageOf } from '../lib/errors';
 import { getPrinterJobThumbnail } from '../lib/api/printerLink';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
@@ -49,6 +49,10 @@ export function PrinterJobsDialog({ open, jobs, spools, models, link, onClose, o
   const [picking, setPicking] = useState<string | null>(null);
   const [failed, setFailed] = useState(0);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Auftrags-IDs mit einer laufenden Bestaetigen/Ignorieren-Anfrage - blockt
+  // Doppelklicks (und "Alle bestaetigen" waehrend eine Einzelzeile laeuft)
+  // davor, den Backend-Aufruf doppelt auszuloesen.
+  const [pending, setPending] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     setRows((prev) => {
@@ -76,41 +80,67 @@ export function PrinterJobsDialog({ open, jobs, spools, models, link, onClose, o
 
   if (!open) return null;
 
-  const setSpool = async (job: PrinterJob, spoolId: string) => {
-    setActionError(null);
-    setRows((r) => ({ ...r, [job.id]: { ...r[job.id], spoolId } }));
+  const withPending = async (ids: string[], run: () => Promise<void>) => {
+    setPending((p) => new Set([...p, ...ids]));
     try {
-      const p = await link.previewJob(job.id, spoolId);
-      setRows((r) => ({ ...r, [job.id]: { ...r[job.id], grams: p.grams, mismatch: p.materialMismatch } }));
-    } catch (e) {
-      setActionError(messageOf(e));
+      await run();
+    } finally {
+      setPending((p) => {
+        const next = new Set(p);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      });
     }
   };
 
-  const confirm = async (ids: string[]) => {
+  const setSpool = (job: PrinterJob, spoolId: string) => {
+    setActionError(null);
+    setRows((r) => ({ ...r, [job.id]: { ...r[job.id], spoolId } }));
+    link
+      .previewJob(job.id, spoolId)
+      .then((p) => {
+        // Waehrenddessen wurde vielleicht schon wieder eine andere Spule
+        // gewaehlt (bzw. eine schnellere Folgeanfrage kam frueher zurueck) -
+        // eine veraltete Antwort darf den aktuellen Stand nicht ueberschreiben.
+        setRows((r) => {
+          const current = r[job.id];
+          if (!current || current.spoolId !== spoolId) return r;
+          return { ...r, [job.id]: { ...current, grams: p.grams, mismatch: p.materialMismatch } };
+        });
+      })
+      .catch((e) => setActionError(messageOf(e)));
+  };
+
+  const confirm = (ids: string[]) => {
     const decisions = ids
       .map((id) => ({ id, row: rows[id] }))
       .filter(({ row }) => row?.spoolId)
       .map(({ id, row }) => ({ jobId: id, spoolId: row.spoolId as string, fileId: row.fileId }));
     if (decisions.length === 0) return;
-    setActionError(null);
-    try {
-      const r = await link.confirmJobs(decisions);
-      setFailed(r.failed);
-      if (r.confirmed > 0) onBooked();
-    } catch (e) {
-      setActionError(messageOf(e));
-    }
+    const confirmIds = decisions.map((d) => d.jobId);
+    return withPending(confirmIds, async () => {
+      setActionError(null);
+      setFailed(0);
+      try {
+        const r = await link.confirmJobs(decisions);
+        setFailed(r.failed);
+        if (r.confirmed > 0) onBooked();
+      } catch (e) {
+        setFailed(0);
+        setActionError(messageOf(e));
+      }
+    });
   };
 
-  const ignore = async (jobId: string) => {
-    setActionError(null);
-    try {
-      await link.ignoreJob(jobId);
-    } catch (e) {
-      setActionError(messageOf(e));
-    }
-  };
+  const ignore = (jobId: string) =>
+    withPending([jobId], async () => {
+      setActionError(null);
+      try {
+        await link.ignoreJob(jobId);
+      } catch (e) {
+        setActionError(messageOf(e));
+      }
+    });
 
   const bookable = jobs.filter((j) => rows[j.id]?.spoolId);
   const total = bookable.reduce((s, j) => s + (rows[j.id]?.grams ?? 0), 0);
@@ -122,8 +152,7 @@ export function PrinterJobsDialog({ open, jobs, spools, models, link, onClose, o
     restBySpool.set(sid, Math.max(0, start - (r.grams ?? 0)));
   }
   const restText = [...restBySpool.values()].map((g) => formatStockG(Math.round(g * 10) / 10, language)).join(', ');
-  const dateFmt = new Intl.DateTimeFormat(language, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-  const minutes = (s: number) => `${Math.max(1, Math.round(s / 60))} min`;
+  const allConfirmDisabled = bookable.length === 0 || bookable.some((j) => pending.has(j.id));
   const multiplePrinters = new Set(jobs.map((j) => j.printerId)).size > 1;
 
   return (
@@ -141,7 +170,7 @@ export function PrinterJobsDialog({ open, jobs, spools, models, link, onClose, o
             <h2 id="printer-jobs-title" className="text-[17px] font-semibold">{t('printerJobsDialogTitle')}</h2>
             <p className="text-[13px] text-[var(--ink-2)]">{t('printerJobsDialogHint')}</p>
           </div>
-          <button type="button" aria-label="✕" onClick={onClose} className="text-[var(--ink-2)] cursor-pointer">✕</button>
+          <button type="button" aria-label={t('printersClose')} onClick={onClose} className="text-[var(--ink-2)] cursor-pointer">✕</button>
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -151,6 +180,7 @@ export function PrinterJobsDialog({ open, jobs, spools, models, link, onClose, o
             const model = row.fileId ? modelById.get(row.fileId) ?? (job.modelMatch?.fileId === row.fileId ? { id: row.fileId, name: job.modelMatch.fileName } : undefined) : undefined;
             const isSuggestedModel = !!model && job.modelMatch?.fileId === model.id;
             const showHeader = i === 0 || jobs[i - 1].printerId !== job.printerId;
+            const busy = pending.has(job.id);
             const chip =
               job.outcome === 'completed'
                 ? <span className="font-mono-ui text-[11px] font-semibold px-1.5 py-0.5 rounded bg-[var(--good-soft)] text-[var(--good)]">{t('printerJobCompleted')}</span>
@@ -167,13 +197,13 @@ export function PrinterJobsDialog({ open, jobs, spools, models, link, onClose, o
                   <div className="min-w-0">
                     <div className="font-semibold text-[13.5px] break-words">{stripExt(job.fileName)}</div>
                     <div className="font-mono-ui text-[11.5px] text-[var(--ink-3)] mt-0.5">
-                      {dateFmt.format(new Date(job.endedAt * 1000))} · {minutes(job.printDurationS)}
+                      {formatDateTime(job.endedAt, language)} · {t('printerJobsMinutes').replace('{min}', formatDurationMinutes(job.printDurationS, language))}
                     </div>
                     <div className="mt-1.5">{chip}</div>
                   </div>
                   <div className="font-mono-ui text-[15px] font-semibold">
                     {row.grams !== null ? formatStockG(row.grams, language) : '–'}
-                    <small className="block text-[11px] font-normal text-[var(--ink-3)]">{Math.round(job.usedMm).toLocaleString(language)} mm</small>
+                    <small className="block text-[11px] font-normal text-[var(--ink-3)]">{formatLengthMm(job.usedMm, language)}</small>
                   </div>
                   <div className="flex flex-col gap-1">
                     <SpoolPicker spools={spools} value={row.spoolId} onChange={(id) => setSpool(job, id)} label={t('printerJobsColSpool')} placeholder={t('printerJobChooseSpool')} />
@@ -221,13 +251,18 @@ export function PrinterJobsDialog({ open, jobs, spools, models, link, onClose, o
                   <div className="flex flex-col gap-1.5">
                     <button
                       type="button"
-                      disabled={!row.spoolId}
+                      disabled={!row.spoolId || busy}
                       onClick={() => confirm([job.id])}
                       className="h-7 px-2 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12px] font-semibold cursor-pointer disabled:opacity-50"
                     >
                       {t('printerJobConfirm')}
                     </button>
-                    <button type="button" onClick={() => ignore(job.id)} className="h-7 px-2 text-[12px] text-[var(--ink-2)] cursor-pointer">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => ignore(job.id)}
+                      className="h-7 px-2 text-[12px] text-[var(--ink-2)] cursor-pointer disabled:opacity-50"
+                    >
                       {t('printerJobIgnore')}
                     </button>
                   </div>
@@ -249,7 +284,7 @@ export function PrinterJobsDialog({ open, jobs, spools, models, link, onClose, o
             </button>
             <button
               type="button"
-              disabled={bookable.length === 0}
+              disabled={allConfirmDisabled}
               onClick={() => confirm(bookable.map((j) => j.id))}
               className="h-8 px-3 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-bold cursor-pointer disabled:opacity-50"
             >

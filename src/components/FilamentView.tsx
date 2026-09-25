@@ -59,6 +59,15 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
       .catch(() => setModels([]));
   }, [jobsOpen]);
 
+  // Wird die Liste waehrend der Dialog offen ist leer (z.B. nach dem letzten
+  // Bestaetigen/Ignorieren), muss `jobsOpen` mit zurueckgesetzt werden -
+  // sonst bleibt der Banner dauerhaft ausgeblendet (er zeigt sich nur, wenn
+  // `!jobsOpen`) UND der Dialog wuerde beim naechsten Abgleich mit neuen
+  // Drucken ungefragt wieder aufspringen (`open={jobsOpen && jobs.length > 0}`).
+  useEffect(() => {
+    if (jobsOpen && printerLink.jobs.length === 0) setJobsOpen(false);
+  }, [jobsOpen, printerLink.jobs.length]);
+
   const refresh = () => {
     invoke<FilamentSpool[]>('list_filament_spools')
       .then((result) => {

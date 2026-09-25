@@ -4,7 +4,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import { invoke } from '@tauri-apps/api/core';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { FilamentView } from './FilamentView';
-import type { FilamentSpool, Printer } from '../types';
+import type { FilamentSpool, Printer, PrinterJob } from '../types';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
 import { usePrinters } from '../hooks/usePrinters';
 
@@ -33,6 +33,7 @@ beforeEach(() => {
     if (cmd === 'list_printers') return Promise.resolve([X1C]);
     if (cmd === 'unload_spool') return Promise.resolve('Regal 2');
     if (cmd === 'load_spool') return Promise.resolve({ displacedSpoolId: null });
+    if (cmd === 'list_file_summaries') return Promise.resolve([]);
     return Promise.resolve(undefined);
   });
   localStorage.setItem('3mf-katalog-language', 'de');
@@ -44,6 +45,22 @@ function printerLink(): PrinterLinkState {
     refresh: vi.fn(), setEnabled: vi.fn(), testConnection: vi.fn(),
     removeConnection: vi.fn(), syncNow: vi.fn(), ignoreJob: vi.fn(), confirmJobs: vi.fn(), previewJob: vi.fn(),
   } as unknown as PrinterLinkState;
+}
+
+const printerJob = (over: Partial<PrinterJob>): PrinterJob => ({
+  id: '1', printerId: 'p1', printerName: 'Sovol SV08', fileName: 'Test.gcode', outcome: 'completed',
+  rawStatus: 'completed', endedAt: 1700000000, printDurationS: 120, usedMm: 100, partialPercent: null,
+  material: 'PLA', hasThumbnail: false, suggestedSpoolId: null, grams: null, materialMismatch: false,
+  modelMatch: null, ...over,
+});
+
+function JobsWrapper({ jobs }: { jobs: PrinterJob[] }) {
+  const link = { ...printerLink(), enabled: true, jobs };
+  return (
+    <LanguageProvider>
+      <PrintersWrapper>{(printers) => <FilamentView printerLink={link} printers={printers} />}</PrintersWrapper>
+    </LanguageProvider>
+  );
 }
 
 // Spiegelt App.tsx: eine einzige `usePrinters()`-Instanz, die an FilamentView
@@ -158,5 +175,26 @@ describe('FilamentView shares one printers instance with other consumers', () =>
     await waitFor(() => expect(screen.getByTestId('other-consumer')).toHaveTextContent('Neuer Drucker'));
     // Derselbe Refresh muss auch in FilamentViews eigener Druckerspalte ankommen.
     expect(printerColumn()).toHaveTextContent('Neuer Drucker');
+  });
+});
+
+describe('FilamentView printer-jobs dialog state', () => {
+  it('resets jobsOpen once the job list empties, so the banner returns and no dialog pops up unasked', async () => {
+    const { rerender } = render(<JobsWrapper jobs={[printerJob({ id: '1' })]} />);
+    await waitFor(() => screen.getByTestId('slot-u1-0'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Prüfen' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    // Liste leert sich (z.B. nach dem letzten Bestaetigen/Ignorieren) -
+    // ohne Reset bliebe der Banner dauerhaft ausgeblendet.
+    rerender(<JobsWrapper jobs={[]} />);
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    // Neue Drucke kommen herein - der Dialog darf NICHT ungefragt wieder
+    // aufspringen, der Banner muss stattdessen zurueck sein.
+    rerender(<JobsWrapper jobs={[printerJob({ id: '2' })]} />);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Prüfen' })).toBeInTheDocument();
   });
 });

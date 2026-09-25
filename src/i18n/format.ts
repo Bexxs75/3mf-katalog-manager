@@ -63,6 +63,20 @@ export function formatLengthM(meters: number, language: Language): string {
   return `${nf.format(meters)} m`;
 }
 
+/** Verbrauchte Filamentlaenge eines Druckauftrags in mm (gerundet). */
+export function formatLengthMm(mm: number, language: Language): string {
+  return `${new Intl.NumberFormat(localeFor(language)).format(Math.round(mm))} mm`;
+}
+
+/**
+ * Nur die Minutenzahl (mind. 1), lokalisiert - die Einheit kommt aus dem
+ * Uebersetzungstext `printerJobsMinutes` (bewusst kein hartkodiertes " min").
+ */
+export function formatDurationMinutes(seconds: number, language: Language): string {
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  return new Intl.NumberFormat(localeFor(language)).format(minutes);
+}
+
 export function formatDiameterMm(diameterMm: number, language: Language): string {
   const formatted = new Intl.NumberFormat(localeFor(language), {
     minimumFractionDigits: 2,

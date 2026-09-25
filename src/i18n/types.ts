@@ -407,6 +407,8 @@ export interface Translations {
   printerJobsDialogHint: string;
   printerJobsColPrint: string;
   printerJobsColUsage: string;
+  /** Einheitentext hinter der Minutenzahl der Druckdauer, z.B. „{min} min“ - bewusst gleich in allen Sprachen. */
+  printerJobsMinutes: string;
   printerJobsColSpool: string;
   printerJobsColModel: string;
   printerJobCompleted: string;
