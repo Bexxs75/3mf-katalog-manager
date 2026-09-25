@@ -3,6 +3,7 @@
 
 use super::*;
 use serde::Deserialize;
+use tauri::Manager;
 
 use crate::db::printer_link as store;
 use crate::printer_link::address::AddressPolicy;
@@ -109,7 +110,6 @@ fn now_rfc3339() -> String {
 }
 
 fn wake(app: &tauri::AppHandle) {
-    use tauri::Manager;
     if let Some(w) = app.try_state::<SyncWaker>() {
         w.wake();
     }
@@ -187,6 +187,21 @@ pub(crate) fn preview_printer_job_with_conn(conn: &Connection, job_id: &str, spo
     })
 }
 
+/// Schalter-Sperre: bevor `test_printer_connection` auch nur ein Paket
+/// senden darf, muss die Druckeranbindung eingeschaltet sein (globale
+/// Vorgabe: "Schalter aus -> kein einziges Netzwerkpaket an einen
+/// Drucker" gilt fuer JEDEN Netzwerkzugriff, nicht nur den
+/// Hintergrund-Abgleich). Liefert `Some(...)` mit dem Ergebnis, das der
+/// Aufrufer ungeprueft zurueckgeben soll, wenn der Schalter aus ist; `None`
+/// heisst: Schalter an, weitermachen.
+pub(crate) fn test_printer_connection_gate_with_conn(conn: &Connection) -> CmdResult<Option<TestResultDto>> {
+    if store::printer_link_enabled(conn).map_err(|e| e.to_string())? {
+        Ok(None)
+    } else {
+        Ok(Some(TestResultDto { ok: false, error: Some("disabled".into()), connection: None }))
+    }
+}
+
 pub(crate) fn confirm_printer_jobs_with_conn(conn: &mut Connection, decisions: Vec<JobDecisionDto>) -> CmdResult<ConfirmResultDto> {
     let parsed = decisions
         .iter()
@@ -234,6 +249,12 @@ pub async fn test_printer_connection(
     address: String,
 ) -> CmdResult<TestResultDto> {
     let pid = id(&printer_id, "Drucker")?;
+    {
+        let conn = state.db.lock().map_err(|_| "database lock poisoned".to_string())?;
+        if let Some(disabled) = test_printer_connection_gate_with_conn(&conn)? {
+            return Ok(disabled);
+        }
+    }
     let (k, a) = (kind.clone(), address.trim().to_string());
     let tested = tauri::async_runtime::spawn_blocking(move || {
         make_link(&k, &a, AddressPolicy::HOME_NETWORK).and_then(|l| l.test())
@@ -265,10 +286,25 @@ pub fn sync_printers_now(app: tauri::AppHandle) -> CmdResult<()> {
     Ok(())
 }
 
+// Async statt eines schlichten `State<AppState>`-Sync-Commands (Vorgabe:
+// alle Tauri-Commands async, blockierende Arbeit per `spawn_blocking` -
+// siehe design.md "Tauri-Commands"): `list_open_printer_jobs` liest fuer
+// jeden offenen Druck Spule, Modellkandidaten und den Materialabgleich, das
+// ist mehr als ein trivialer Getter. `State<'_, AppState>` liesse sich
+// wegen seiner Lifetime nicht in die `'static`-Closure von
+// `spawn_blocking` verschieben, deshalb wird stattdessen das (Send + Clone
+// + 'static) `AppHandle` hineinverschoben und die Verbindung darin per
+// `app.state::<AppState>()` neu geholt - dasselbe Muster wie im
+// Hintergrund-Abgleich (`printer_link::sync::spawn_background`).
 #[tauri::command]
-pub fn list_open_printer_jobs(state: State<AppState>) -> CmdResult<Vec<OpenPrinterJobDto>> {
-    let conn = lock_db(&state)?;
-    list_open_printer_jobs_with_conn(&conn)
+pub async fn list_open_printer_jobs(app: tauri::AppHandle) -> CmdResult<Vec<OpenPrinterJobDto>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let conn = state.db.lock().map_err(|_| "database lock poisoned".to_string())?;
+        list_open_printer_jobs_with_conn(&conn)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -277,18 +313,36 @@ pub fn preview_printer_job(state: State<AppState>, job_id: String, spool_id: Str
     preview_printer_job_with_conn(&conn, &job_id, &spool_id)
 }
 
+/// Entscheidet OHNE Netzwerkzugriff, ob und wovon ein Vorschaubild geholt
+/// werden darf: `None`, wenn der Schalter aus ist, der Druck/Pfad/die
+/// Verbindung fehlt, oder die Verbindung pausiert ist (z.B. "Anmeldung
+/// noetig" - laut Spezifikation hebt das erst ein erneutes "Verbindung
+/// testen" auf, nicht das blosse Abrufen eines Vorschaubilds).
+pub(crate) fn thumbnail_fetch_plan_with_conn(
+    conn: &Connection,
+    job_id: &str,
+) -> CmdResult<Option<(store::PrinterConnectionRecord, String)>> {
+    let jid = id(job_id, "Druck")?;
+    if !store::printer_link_enabled(conn).map_err(|e| e.to_string())? {
+        return Ok(None);
+    }
+    let Some(job) = store::get_job(conn, jid).map_err(|e| e.to_string())? else { return Ok(None) };
+    let Some(path) = job.thumbnail_path else { return Ok(None) };
+    let Some(c) = store::get_connection(conn, job.printer_id).map_err(|e| e.to_string())? else { return Ok(None) };
+    if c.paused {
+        return Ok(None);
+    }
+    Ok(Some((c, path)))
+}
+
 #[tauri::command]
 pub async fn get_printer_job_thumbnail(state: State<'_, AppState>, job_id: String) -> CmdResult<Option<String>> {
-    let jid = id(&job_id, "Druck")?;
     let (connection, path) = {
         let conn = state.db.lock().map_err(|_| "database lock poisoned".to_string())?;
-        if !store::printer_link_enabled(&conn).map_err(|e| e.to_string())? {
-            return Ok(None);
+        match thumbnail_fetch_plan_with_conn(&conn, &job_id)? {
+            Some(plan) => plan,
+            None => return Ok(None),
         }
-        let Some(job) = store::get_job(&conn, jid).map_err(|e| e.to_string())? else { return Ok(None) };
-        let Some(path) = job.thumbnail_path else { return Ok(None) };
-        let Some(c) = store::get_connection(&conn, job.printer_id).map_err(|e| e.to_string())? else { return Ok(None) };
-        (c, path)
     };
     let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, LinkError> {
         let link = make_link(&connection.kind, &connection.address, AddressPolicy::HOME_NETWORK)?;
@@ -307,10 +361,18 @@ pub fn ignore_printer_job(state: State<AppState>, job_id: String) -> CmdResult<(
     booking::ignore_job(&conn, id(&job_id, "Druck")?, &now_rfc3339()).map_err(|e| e.to_string())
 }
 
+// Async aus demselben Grund wie `list_open_printer_jobs` oben: bucht in
+// einer Schleife von DB-Transaktionen ab (`booking::confirm_many`), keine
+// triviale Ein-Zeilen-Operation.
 #[tauri::command]
-pub fn confirm_printer_jobs(state: State<AppState>, decisions: Vec<JobDecisionDto>) -> CmdResult<ConfirmResultDto> {
-    let mut conn = lock_db(&state)?;
-    confirm_printer_jobs_with_conn(&mut conn, decisions)
+pub async fn confirm_printer_jobs(app: tauri::AppHandle, decisions: Vec<JobDecisionDto>) -> CmdResult<ConfirmResultDto> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let mut conn = state.db.lock().map_err(|_| "database lock poisoned".to_string())?;
+        confirm_printer_jobs_with_conn(&mut conn, decisions)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[cfg(test)]
@@ -400,5 +462,54 @@ mod tests {
     fn invalid_ids_are_rejected() {
         let conn = setup();
         assert!(preview_printer_job_with_conn(&conn, "x", "100").is_err());
+    }
+
+    // Fix Round 1, Finding 1 (Review 7cee630..5e32acc): der Schalter muss
+    // JEDEN Netzwerkzugriff sperren, nicht nur den Hintergrund-Abgleich.
+    #[test]
+    fn test_connection_is_blocked_while_switched_off() {
+        let conn = setup();
+        let gated = test_printer_connection_gate_with_conn(&conn).unwrap();
+        let dto = gated.expect("switch is off in setup(), gate must trigger");
+        assert!(!dto.ok);
+        assert_eq!(dto.error.as_deref(), Some("disabled"));
+        assert!(dto.connection.is_none());
+    }
+
+    #[test]
+    fn test_connection_is_allowed_once_switched_on() {
+        let conn = setup();
+        crate::db::printer_link::set_printer_link_enabled(&conn, true).unwrap();
+        assert!(test_printer_connection_gate_with_conn(&conn).unwrap().is_none());
+    }
+
+    // Fix Round 1, Finding 2 (cheap add-on): pausierte Verbindungen duerfen
+    // erst nach einem erneuten "Verbindung testen" wieder Vorschaubilder
+    // liefern.
+    #[test]
+    fn thumbnail_plan_is_none_while_switch_is_off() {
+        let conn = setup();
+        let job_id = list_open_printer_jobs_with_conn(&conn).unwrap()[0].id.clone();
+        assert!(thumbnail_fetch_plan_with_conn(&conn, &job_id).unwrap().is_none());
+    }
+
+    #[test]
+    fn thumbnail_plan_is_none_for_a_paused_connection() {
+        let conn = setup();
+        crate::db::printer_link::set_printer_link_enabled(&conn, true).unwrap();
+        let job_id = list_open_printer_jobs_with_conn(&conn).unwrap()[0].id.clone();
+        crate::db::printer_link::record_sync_error(&conn, 1, "auth_required", 2.0).unwrap();
+        assert!(thumbnail_fetch_plan_with_conn(&conn, &job_id).unwrap().is_none());
+    }
+
+    #[test]
+    fn thumbnail_plan_finds_the_connection_when_everything_is_ready() {
+        let conn = setup();
+        crate::db::printer_link::set_printer_link_enabled(&conn, true).unwrap();
+        let job_id = list_open_printer_jobs_with_conn(&conn).unwrap()[0].id.clone();
+        let (connection, path) = thumbnail_fetch_plan_with_conn(&conn, &job_id).unwrap().unwrap();
+        assert_eq!(connection.address, "192.168.1.60");
+        assert!(!connection.paused);
+        assert_eq!(path, ".thumbs/x-300x300.png");
     }
 }
