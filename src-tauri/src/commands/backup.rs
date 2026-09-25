@@ -175,6 +175,12 @@ const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
     ("collections", &["id", "name", "created_at"]),
     ("collection_files", &["collection_id", "file_id", "position"]),
     ("registered_slicers", &["id", "name", "executable_path", "is_auto_detected"]),
+    ("app_settings", &["key", "value"]),
+    ("printer_connections", &["printer_id", "kind", "address", "connected_since", "paused"]),
+    ("printer_jobs", &[
+        "id", "printer_id", "remote_id", "file_name", "outcome", "raw_status", "ended_at",
+        "print_duration_s", "used_mm", "state",
+    ]),
 ];
 
 fn validate_expected_schema(conn: &Connection) -> Result<(), String> {
@@ -344,6 +350,37 @@ const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
     ("registered_slicers", "name", ColType::Text, false),
     ("registered_slicers", "executable_path", ColType::Text, false),
     ("registered_slicers", "is_auto_detected", ColType::Integer, false),
+    // Druckeranbindung - siehe db/printer_link.rs (connection_from_row, job_from_row).
+    ("app_settings", "key", ColType::Text, false),
+    ("app_settings", "value", ColType::Text, false),
+    ("printer_connections", "printer_id", ColType::Integer, false),
+    ("printer_connections", "kind", ColType::Text, false),
+    ("printer_connections", "address", ColType::Text, false),
+    ("printer_connections", "base_url", ColType::Text, true),
+    ("printer_connections", "remote_version", ColType::Text, true),
+    ("printer_connections", "connected_since", ColType::Real, false),
+    ("printer_connections", "last_synced_at", ColType::Real, true),
+    ("printer_connections", "last_error", ColType::Text, true),
+    ("printer_connections", "error_since", ColType::Real, true),
+    ("printer_connections", "paused", ColType::Integer, false),
+    ("printer_jobs", "id", ColType::Integer, false),
+    ("printer_jobs", "printer_id", ColType::Integer, false),
+    ("printer_jobs", "remote_id", ColType::Text, false),
+    ("printer_jobs", "file_name", ColType::Text, false),
+    ("printer_jobs", "outcome", ColType::Text, false),
+    ("printer_jobs", "raw_status", ColType::Text, false),
+    ("printer_jobs", "ended_at", ColType::Real, false),
+    ("printer_jobs", "print_duration_s", ColType::Real, false),
+    ("printer_jobs", "used_mm", ColType::Real, false),
+    ("printer_jobs", "slicer_total_mm", ColType::Real, true),
+    ("printer_jobs", "slicer_weight_g", ColType::Real, true),
+    ("printer_jobs", "material", ColType::Text, true),
+    ("printer_jobs", "thumbnail_path", ColType::Text, true),
+    ("printer_jobs", "state", ColType::Text, false),
+    ("printer_jobs", "booked_spool_id", ColType::Integer, true),
+    ("printer_jobs", "booked_file_id", ColType::Integer, true),
+    ("printer_jobs", "booked_g", ColType::Real, true),
+    ("printer_jobs", "decided_at", ColType::Text, true),
 ];
 /// Prueft, dass jede in COLUMN_TYPES gelistete Spalte NUR eine ihrer
 /// erlaubten SQLite-Speicherklassen enthaelt (siehe Kommentar an
@@ -501,6 +538,43 @@ fn validate_printer_invariants(conn: &Connection) -> Result<(), String> {
 
     Ok(())
 }
+/// CHECK-Werte der Druckeranbindung (eine präparierte Sicherung könnte
+/// Tabellen ohne CHECK mitbringen, falls sie vor der Migration angelegt
+/// wurden). Die Heimnetz-Prüfung der Adresse passiert beim Wiederherstellen
+/// in `sanitize_printer_connections`.
+fn validate_printer_link_rows(conn: &Connection) -> Result<(), String> {
+    let bad: i64 = conn
+        .query_row(
+            "SELECT
+               (SELECT COUNT(*) FROM printer_connections WHERE kind <> 'moonraker' OR paused NOT IN (0, 1))
+             + (SELECT COUNT(*) FROM printer_jobs WHERE outcome NOT IN ('completed', 'partial')
+                    OR state NOT IN ('open', 'confirmed', 'ignored'))",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if bad > 0 {
+        return Err("Katalog-Datenbank enthaelt ungueltige Druckeranbindungs-Eintraege".to_string());
+    }
+    Ok(())
+}
+
+/// Beim Wiederherstellen: Verbindungen mit Adressen außerhalb des Heimnetzes
+/// verwerfen, alle übrigen pausieren, bis der Nutzer sie neu testet.
+fn sanitize_printer_connections(conn: &Connection) -> Result<(), String> {
+    let rows: Vec<(i64, String)> = conn
+        .prepare("SELECT printer_id, address FROM printer_connections")
+        .and_then(|mut s| s.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect())
+        .map_err(|e| e.to_string())?;
+    for (printer_id, address) in rows {
+        if !crate::printer_link::address::looks_valid(&address) {
+            conn.execute("DELETE FROM printer_connections WHERE printer_id = ?1", [printer_id])
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    conn.execute("UPDATE printer_connections SET paused = 1", []).map_err(|e| e.to_string())?;
+    Ok(())
+}
 /// Prueft, ob `bytes` eine brauchbare Katalog-Datenbank sind (oeffnbar, mit
 /// einer `files`-Tabelle, und ohne `folders.path`-Eintraege in geschuetzten
 /// Systemverzeichnissen) - Schutz davor, ein falsches/kaputtes ODER
@@ -634,6 +708,7 @@ fn validate_catalog_db_bytes(
             // beim Rendern haengen lassen, oder zwei Spulen im selben Fach
             // landen.
             validate_printer_invariants(&conn)?;
+            validate_printer_link_rows(&conn)?;
 
             // Fremdschluessel-Verletzungen (z.B. files.folder_id zeigt auf
             // eine nicht existierende folders-Zeile) werden von quick_check
@@ -884,6 +959,7 @@ fn replace_catalog_db_with_copy_fn(
         let mut incoming = Connection::open(new_db_path).map_err(|e| e.to_string())?;
         crate::db::run_migrations(&mut incoming).map_err(|e| e.to_string())?;
         let tx = incoming.unchecked_transaction().map_err(|e| e.to_string())?;
+        sanitize_printer_connections(&tx)?;
         // Korrektur nach fuenfter Review-Runde (Defense-in-Depth, zusaetzlich
         // zur H-05-Schema-Pruefung aus Task 5): DROP TABLE statt DELETE FROM.
         // Ein DELETE allein wuerde einen an dieser Tabelle haengenden
@@ -1154,6 +1230,48 @@ mod tests {
         let bytes = std::fs::read(&tmp_path).expect("read temp db");
         let _ = std::fs::remove_file(&tmp_path);
         (bytes, Vec::new(), std::env::temp_dir())
+    }
+    #[test]
+    fn validate_catalog_db_bytes_accepts_printer_link_tables() {
+        let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+            conn.execute_batch(
+                "INSERT INTO printers (id, name, position) VALUES (1, 'SV08', 0);
+                 INSERT INTO app_settings (key, value) VALUES ('printer_link_enabled', '1');
+                 INSERT INTO printer_connections (printer_id, kind, address, connected_since) VALUES (1, 'moonraker', '192.168.1.60', 1000.0);
+                 INSERT INTO printer_jobs (printer_id, remote_id, file_name, outcome, raw_status, ended_at, print_duration_s, used_mm)
+                     VALUES (1, 'A', 'a.gcode', 'completed', 'completed', 2000.0, 10.0, 5.0);",
+            )
+            .unwrap();
+        });
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_ok());
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_printer_jobs_with_wrong_types() {
+        let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+            conn.execute_batch(
+                "INSERT INTO printers (id, name, position) VALUES (1, 'SV08', 0);
+                 INSERT INTO printer_jobs (printer_id, remote_id, file_name, outcome, raw_status, ended_at, print_duration_s, used_mm)
+                     VALUES (1, 'A', 'a.gcode', 'completed', 'completed', 'gestern', 10.0, 5.0);",
+            )
+            .unwrap();
+        });
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_err());
+    }
+    #[test]
+    fn sanitize_drops_foreign_addresses_and_pauses_the_rest() {
+        let conn = crate::db::connect_in_memory().unwrap();
+        conn.execute_batch(
+            "INSERT INTO printers (id, name, position) VALUES (1, 'A', 0), (2, 'B', 1), (3, 'C', 2);
+             INSERT INTO printer_connections (printer_id, kind, address, connected_since) VALUES
+                 (1, 'moonraker', '192.168.1.60', 1.0), (2, 'moonraker', '8.8.8.8', 1.0), (3, 'moonraker', 'sv08.local', 1.0);",
+        )
+        .unwrap();
+        sanitize_printer_connections(&conn).unwrap();
+        let rows: Vec<(i64, i64)> = conn
+            .prepare("SELECT printer_id, paused FROM printer_connections ORDER BY printer_id").unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?))).unwrap()
+            .collect::<Result<_, _>>().unwrap();
+        assert_eq!(rows, vec![(1, 1), (3, 1)]);
     }
     #[test]
     fn validate_catalog_db_bytes_accepts_fractional_spool_weights() {
