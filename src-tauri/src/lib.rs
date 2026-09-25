@@ -97,6 +97,7 @@ pub fn run() {
             });
             app.manage(commands::PendingArchives::default());
             app.manage(commands::ApprovedTargets::default());
+            app.manage(commands::DroppedImages::default());
             Ok(())
         })
         // Drops vom Backend selbst beobachten: `import_dropped` gibt nur
@@ -110,6 +111,9 @@ pub fn run() {
             if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
                 if let Some(pending) = window.try_state::<commands::PendingArchives>() {
                     pending.observe_drop(paths);
+                }
+                if let Some(images) = window.try_state::<commands::DroppedImages>() {
+                    images.observe_drop(paths);
                 }
             }
         })
@@ -148,6 +152,7 @@ pub fn run() {
             commands::load_spool,
             commands::unload_spool,
             commands::pick_and_read_image,
+            commands::read_dropped_image,
             commands::add_tag,
             commands::remove_tag,
             commands::delete_file,

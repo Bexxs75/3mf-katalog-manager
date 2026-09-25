@@ -12,6 +12,7 @@
 mod archives;
 mod backup;
 mod collections;
+mod dropped_image;
 mod files;
 mod filament;
 mod folders;
@@ -23,6 +24,7 @@ mod trash;
 pub use archives::*;
 pub use backup::*;
 pub use collections::*;
+pub use dropped_image::*;
 pub use files::*;
 pub use filament::*;
 pub use folders::*;
