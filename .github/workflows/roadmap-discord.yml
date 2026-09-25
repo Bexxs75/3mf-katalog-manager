@@ -1,0 +1,34 @@
+name: Roadmap nach Discord
+
+# Überträgt die öffentliche GitHub-Roadmap (Projekt 1) in den Discord-Kanal
+# #🗺️-roadmap. Bearbeitet zwei bestehende Webhook-Nachrichten (DE, EN),
+# postet nie neu - also keine Benachrichtigungen bei jedem Lauf.
+# Änderungen am Projekt lösen bei einem User-Projekt keinen Workflow aus,
+# deshalb täglich, nach jedem Release und von Hand.
+
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  release:
+    types: [published]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Roadmap übertragen
+        env:
+          # Eigener, nur lesender Token (read:project), falls der
+          # Standard-Token das User-Projekt nicht lesen darf.
+          GH_TOKEN: ${{ secrets.ROADMAP_READ_TOKEN || github.token }}
+          DISCORD_ROADMAP_WEBHOOK: ${{ secrets.DISCORD_ROADMAP_WEBHOOK }}
+          DISCORD_ROADMAP_MSG_DE: ${{ vars.DISCORD_ROADMAP_MSG_DE }}
+          DISCORD_ROADMAP_MSG_EN: ${{ vars.DISCORD_ROADMAP_MSG_EN }}
+        run: python3 .github/scripts/roadmap_discord.py
