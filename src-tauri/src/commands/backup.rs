@@ -169,7 +169,7 @@ const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
     ("tags", &["id", "name", "color_hue"]),
     ("file_tags", &["file_id", "tag_id"]),
     ("file_metadata", &["file_id", "label", "value"]),
-    ("filament_spools", &["id", "material", "remaining_weight_g", "unit_id", "slot_index", "home_location", "color_hex"]),
+    ("filament_spools", &["id", "material", "remaining_weight_g", "unit_id", "slot_index", "home_location", "color_hex", "kind"]),
     ("printers", &["id", "name", "position"]),
     ("material_units", &["id", "printer_id", "name", "kind", "slot_count", "bambu_ams_index", "position"]),
     ("collections", &["id", "name", "created_at"]),
@@ -323,6 +323,7 @@ const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
     ("filament_spools", "home_location", ColType::Text, true),
     ("filament_spools", "unit_id", ColType::Integer, true),
     ("filament_spools", "slot_index", ColType::Integer, true),
+    ("filament_spools", "kind", ColType::Text, false),
     // printers - siehe list_printers (printers.rs); position ist NOT NULL
     // DEFAULT 0 im Schema, wird aber nirgends als typisierter Wert gelesen
     // (nur ORDER BY), deshalb hier bewusst nicht gelistet.
@@ -534,6 +535,22 @@ fn validate_printer_invariants(conn: &Connection) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     if bad_colors > 0 {
         return Err("Katalog-Datenbank enthaelt ungueltige Farbwerte".to_string());
+    }
+
+    // v0.13.1: nur 'filament'/'resin', und Resin nie in einem Fach. Eine
+    // praeparierte Sicherung kann die Spalte ohne CHECK mitbringen (die
+    // Migration ueberspringt sie dann als "duplicate column").
+    let bad_kinds: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM filament_spools
+             WHERE kind IS NULL OR kind NOT IN ('filament', 'resin')
+                OR (kind = 'resin' AND unit_id IS NOT NULL)",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if bad_kinds > 0 {
+        return Err("Katalog-Datenbank enthaelt Eintraege mit ungueltiger Art (oder Resin in einem Fach)".to_string());
     }
 
     Ok(())
@@ -1784,6 +1801,7 @@ mod tests {
                     price: None,
                     image_png: None,
                     color_hex: Some("#1a1a1a".to_string()),
+                    kind: "filament".to_string(),
                 },
             )
             .unwrap();
@@ -2010,6 +2028,7 @@ mod tests {
                     price: Some(19.99),
                     image_png: Some(vec![9, 9, 9]),
                     color_hex: Some("#1a1a1a".to_string()),
+                    kind: "filament".to_string(),
                 },
             )
             .unwrap();
@@ -2704,5 +2723,136 @@ mod tests {
         assert!(reject_oversized_zip_entry("catalog.db", 10, 100).is_ok());
         assert!(reject_oversized_zip_entry("catalog.db", 100, 100).is_ok());
         assert!(reject_oversized_zip_entry("catalog.db", 101, 100).is_err());
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_accepts_an_old_backup_without_the_kind_column() {
+        let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+            let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+            conn.execute_batch(
+                "DROP INDEX IF EXISTS idx_filament_spools_slot;
+                 DROP TABLE filament_spools;
+                 CREATE TABLE filament_spools (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    material TEXT NOT NULL, manufacturer TEXT, color TEXT, location TEXT,
+                    diameter_mm REAL NOT NULL, original_weight_g INTEGER NOT NULL,
+                    remaining_weight_g INTEGER NOT NULL, price REAL, image_png BLOB,
+                    created_at TEXT NOT NULL,
+                    unit_id INTEGER REFERENCES material_units(id) ON DELETE SET NULL,
+                    slot_index INTEGER, home_location TEXT, color_hex TEXT
+                 );
+                 INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at)
+                    VALUES ('PLA', 1.75, 1000, 600, '2026-09-01');",
+            )
+            .unwrap();
+            conn.pragma_update(None, "user_version", version - 1).unwrap();
+        });
+        let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash);
+        assert!(result.is_ok(), "aeltere Sicherung ohne kind muss gehen: {result:?}");
+    }
+
+    /// Merge v0.13.1 -> v0.14.0 (final review I-1): eine mit v0.13.1 erstellte
+    /// Sicherung steht auf user_version 32, hat `kind`, aber noch keine
+    /// Druckeranbindungs-Tabellen. Pruefung und Wiederherstellung laufen nur
+    /// ueber `run_migrations` (nicht `SCHEMA_SQL`) - die Schritte 33-35 muessen
+    /// die Tabellen also selbst anlegen, sonst scheitert jede v0.13.1-Sicherung.
+    #[test]
+    fn a_v0131_backup_without_printer_link_tables_validates_and_restores() {
+        const V0131_SCHEMA_VERSION: i64 = 32;
+        let dir = unique_test_dir("restore_v0131_backup");
+        let incoming_path = dir.join("incoming_catalog.db");
+        {
+            let conn = crate::db::connect(&incoming_path).expect("connect creates schema");
+            conn.execute_batch(
+                "DROP TABLE printer_jobs;
+                 DROP TABLE printer_connections;
+                 DROP TABLE app_settings;
+                 INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at, kind)
+                    VALUES ('Standard', 1.75, 1000, 640.5, '2026-09-25', 'resin');",
+            )
+            .unwrap();
+            conn.pragma_update(None, "user_version", V0131_SCHEMA_VERSION).unwrap();
+        }
+        let table_exists = |conn: &Connection, name: &str| -> bool {
+            conn.query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+                [name],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+        {
+            let conn = Connection::open(&incoming_path).unwrap();
+            assert!(!table_exists(&conn, "app_settings"), "Vorbedingung: v0.13.1-Form ohne app_settings");
+        }
+        let bytes = std::fs::read(&incoming_path).unwrap();
+        let result = validate_catalog_db_bytes(&bytes, &[], &dir.join("trash"));
+        assert!(result.is_ok(), "v0.13.1-Sicherung muss die Pruefung bestehen: {result:?}");
+
+        let db_path = dir.join("catalog.db");
+        let state = AppState {
+            db: Mutex::new(crate::db::connect(&db_path).expect("connect running db")),
+            trash_dir: dir.join("trash"),
+            db_path: db_path.clone(),
+            sensitive_dirs: Vec::new(),
+        };
+        let restored = replace_catalog_db(&state, &incoming_path);
+        assert!(restored.is_ok(), "v0.13.1-Sicherung muss sich wiederherstellen lassen: {restored:?}");
+
+        // Die installierte Datei selbst (nicht nur die per `init` geoeffnete
+        // Verbindung) hat danach alle Tabellen und die aktuelle Version.
+        let installed = Connection::open(&db_path).unwrap();
+        for table in ["app_settings", "printer_connections", "printer_jobs"] {
+            assert!(table_exists(&installed, table), "{table} fehlt nach der Wiederherstellung");
+        }
+        let version: i64 = installed.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        let current: i64 = crate::db::connect_in_memory()
+            .unwrap()
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, current);
+        drop(installed);
+        let guard = state.db.lock().unwrap();
+        let kind: String = guard.query_row("SELECT kind FROM filament_spools", [], |r| r.get(0)).unwrap();
+        assert_eq!(kind, "resin", "die Resin-Flasche aus der Sicherung bleibt Resin");
+        drop(guard);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_rejects_resin_in_a_slot() {
+        let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+            conn.execute_batch(
+                "INSERT INTO printers (name) VALUES ('X1C');
+                 INSERT INTO material_units (printer_id, name, kind, slot_count) VALUES (1, 'AMS', 'bambu_ams', 4);
+                 INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at, kind, unit_id, slot_index)
+                    VALUES ('Standard', 1.75, 1000, 500, '2026-09-25', 'resin', 1, 0);",
+            )
+            .unwrap();
+        });
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_err());
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_rejects_an_unknown_kind_without_check_constraint() {
+        let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+            conn.execute_batch(
+                "DROP INDEX IF EXISTS idx_filament_spools_slot;
+                 DROP TABLE filament_spools;
+                 CREATE TABLE filament_spools (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    material TEXT NOT NULL, manufacturer TEXT, color TEXT, location TEXT,
+                    diameter_mm REAL NOT NULL, original_weight_g INTEGER NOT NULL,
+                    remaining_weight_g INTEGER NOT NULL, price REAL, image_png BLOB,
+                    created_at TEXT NOT NULL, unit_id INTEGER, slot_index INTEGER,
+                    home_location TEXT, color_hex TEXT, kind TEXT
+                 );
+                 INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at, kind)
+                    VALUES ('PLA', 1.75, 1000, 600, '2026-09-01', 'pla');",
+            )
+            .unwrap();
+        });
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_err());
     }
 }

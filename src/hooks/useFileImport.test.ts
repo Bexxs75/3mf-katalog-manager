@@ -4,8 +4,15 @@ import { invoke } from '@tauri-apps/api/core';
 import { useFileImport } from './useFileImport';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
+
+const dnd = vi.hoisted(() => ({ handler: null as null | ((event: { payload: unknown }) => void) }));
 vi.mock('@tauri-apps/api/webview', () => ({
-  getCurrentWebview: () => ({ onDragDropEvent: () => Promise.resolve(() => {}) }),
+  getCurrentWebview: () => ({
+    onDragDropEvent: (cb: (event: { payload: unknown }) => void) => {
+      dnd.handler = cb;
+      return Promise.resolve(() => {});
+    },
+  }),
 }));
 
 beforeEach(() => { vi.mocked(invoke).mockReset(); });
@@ -163,5 +170,11 @@ describe('useFileImport', () => {
     act(() => result.current.cancelArchives());
     expect(result.current.pendingArchives).toBeNull();
     expect(onImported).not.toHaveBeenCalled();
+  });
+
+  it('does not import dropped files while disabled (filament view)', () => {
+    setup({ enabled: false });
+    act(() => dnd.handler?.({ payload: { type: 'drop', paths: ['/home/u/spule.png'], position: { x: 1, y: 1 } } }));
+    expect(invoke).not.toHaveBeenCalledWith('import_dropped', expect.anything());
   });
 });

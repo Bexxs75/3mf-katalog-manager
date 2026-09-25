@@ -213,6 +213,7 @@ mod tests {
                 price: None,
                 image_png: None,
                 color_hex: None,
+                kind: "filament".into(),
             },
         )
         .unwrap()

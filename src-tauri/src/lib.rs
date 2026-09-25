@@ -104,6 +104,7 @@ pub fn run() {
             app.manage(commands::ApprovedTargets::default());
             let waker = printer_link::sync::spawn_background(app.handle().clone());
             app.manage(waker);
+            app.manage(commands::DroppedImages::default());
             Ok(())
         })
         // Drops vom Backend selbst beobachten: `import_dropped` gibt nur
@@ -117,6 +118,9 @@ pub fn run() {
             if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
                 if let Some(pending) = window.try_state::<commands::PendingArchives>() {
                     pending.observe_drop(paths);
+                }
+                if let Some(images) = window.try_state::<commands::DroppedImages>() {
+                    images.observe_drop(paths);
                 }
             }
         })
@@ -142,6 +146,8 @@ pub fn run() {
             commands::add_filament_spool,
             commands::update_filament_spool,
             commands::delete_filament_spool,
+            commands::restock_filament_spool,
+            commands::consume_resin,
             commands::list_printers,
             commands::add_printer,
             commands::rename_printer,
@@ -164,6 +170,7 @@ pub fn run() {
             commands::ignore_printer_job,
             commands::confirm_printer_jobs,
             commands::pick_and_read_image,
+            commands::read_dropped_image,
             commands::add_tag,
             commands::remove_tag,
             commands::delete_file,

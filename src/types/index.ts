@@ -195,6 +195,9 @@ export interface SlicerConfig {
   path: string;
 }
 
+/** Art eines Lager-Eintrags (v0.13.1). Bei 'resin' sind originalWeightG/remainingWeightG Milliliter. */
+export type SpoolKind = 'filament' | 'resin';
+
 export interface FilamentSpool {
   id: string;
   material: string;
@@ -212,6 +215,7 @@ export interface FilamentSpool {
   homeLocation: string | null;
   unitId: string | null;
   slotIndex: number | null;
+  kind: SpoolKind;
 }
 
 export type UnitKind =

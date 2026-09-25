@@ -1088,8 +1088,8 @@ pub fn mark_file_viewed(conn: &Connection, file_id: i64) -> Result<(), DbError> 
 pub fn insert_filament_spool(conn: &Connection, spool: &NewFilamentSpool) -> Result<i64, DbError> {
     conn.execute(
         "INSERT INTO filament_spools
-            (material, manufacturer, color, location, diameter_mm, original_weight_g, remaining_weight_g, price, image_png, created_at, color_hex)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            (material, manufacturer, color, location, diameter_mm, original_weight_g, remaining_weight_g, price, image_png, created_at, color_hex, kind)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         params![
             spool.material,
             spool.manufacturer,
@@ -1102,6 +1102,7 @@ pub fn insert_filament_spool(conn: &Connection, spool: &NewFilamentSpool) -> Res
             spool.image_png,
             chrono::Utc::now().to_rfc3339(),
             spool.color_hex,
+            spool.kind,
         ],
     )?;
     Ok(conn.last_insert_rowid())
@@ -1110,7 +1111,7 @@ pub fn insert_filament_spool(conn: &Connection, spool: &NewFilamentSpool) -> Res
 pub fn list_filament_spools(conn: &Connection) -> Result<Vec<FilamentSpoolRecord>, DbError> {
     let mut stmt = conn.prepare(
         "SELECT id, material, manufacturer, color, location, diameter_mm, original_weight_g, remaining_weight_g, price, image_png,
-                color_hex, home_location, unit_id, slot_index
+                color_hex, home_location, unit_id, slot_index, kind
          FROM filament_spools ORDER BY material, manufacturer",
     )?;
     let rows = stmt
@@ -1130,6 +1131,7 @@ pub fn list_filament_spools(conn: &Connection) -> Result<Vec<FilamentSpoolRecord
                 home_location: row.get(11)?,
                 unit_id: row.get(12)?,
                 slot_index: row.get(13)?,
+                kind: row.get(14)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -1144,7 +1146,7 @@ pub fn list_filament_spools(conn: &Connection) -> Result<Vec<FilamentSpoolRecord
 pub fn get_filament_spool(conn: &Connection, id: i64) -> Result<FilamentSpoolRecord, DbError> {
     conn.query_row(
         "SELECT id, material, manufacturer, color, location, diameter_mm, original_weight_g, remaining_weight_g, price, image_png,
-                color_hex, home_location, unit_id, slot_index
+                color_hex, home_location, unit_id, slot_index, kind
          FROM filament_spools WHERE id = ?1",
         params![id],
         |row| {
@@ -1163,6 +1165,7 @@ pub fn get_filament_spool(conn: &Connection, id: i64) -> Result<FilamentSpoolRec
                 home_location: row.get(11)?,
                 unit_id: row.get(12)?,
                 slot_index: row.get(13)?,
+                kind: row.get(14)?,
             })
         },
     )
@@ -1174,13 +1177,28 @@ pub fn get_filament_spool(conn: &Connection, id: i64) -> Result<FilamentSpoolRec
 /// Lagerort ihr Stammplatz und landet in `home_location`; `location` bleibt
 /// dann leer.
 pub fn update_filament_spool(conn: &Connection, id: i64, spool: &NewFilamentSpool) -> Result<(), DbError> {
+    if spool.kind == super::models::SPOOL_KIND_RESIN {
+        let in_slot: bool = conn
+            .query_row(
+                "SELECT unit_id IS NOT NULL FROM filament_spools WHERE id = ?1",
+                params![id],
+                |r| r.get(0),
+            )
+            .optional()?
+            .unwrap_or(false);
+        if in_slot {
+            return Err(DbError::Other(
+                "Eine Spule im Drucker kann nicht zu Resin werden - erst herausnehmen".to_string(),
+            ));
+        }
+    }
     conn.execute(
         "UPDATE filament_spools
          SET material = ?1, manufacturer = ?2, color = ?3,
              location = CASE WHEN unit_id IS NULL THEN ?4 ELSE location END,
              home_location = CASE WHEN unit_id IS NULL THEN home_location ELSE ?4 END,
              diameter_mm = ?5, original_weight_g = ?6, remaining_weight_g = ?7, price = ?8, image_png = ?9,
-             color_hex = ?11
+             color_hex = ?11, kind = ?12
          WHERE id = ?10",
         params![
             spool.material,
@@ -1194,6 +1212,7 @@ pub fn update_filament_spool(conn: &Connection, id: i64, spool: &NewFilamentSpoo
             spool.image_png,
             id,
             spool.color_hex,
+            spool.kind,
         ],
     )?;
     Ok(())

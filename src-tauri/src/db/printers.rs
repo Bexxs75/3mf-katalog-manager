@@ -344,14 +344,17 @@ pub fn load_spool(conn: &Connection, spool_id: i64, unit_id: i64, slot_index: i6
     if slot_index < 0 || slot_index >= unit.slot_count {
         return Err(DbError::Other(format!("Fach {} existiert in {} nicht", slot_index + 1, unit.name)));
     }
-    let (current_unit, current_slot): (Option<i64>, Option<i64>) = conn
+    let (current_unit, current_slot, kind): (Option<i64>, Option<i64>, String) = conn
         .query_row(
-            "SELECT unit_id, slot_index FROM filament_spools WHERE id = ?1",
+            "SELECT unit_id, slot_index, kind FROM filament_spools WHERE id = ?1",
             params![spool_id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )
         .optional()?
         .ok_or_else(|| DbError::Other(format!("Spule {spool_id} existiert nicht")))?;
+    if kind == crate::db::models::SPOOL_KIND_RESIN {
+        return Err(DbError::Other("Resin-Flaschen koennen in kein Fach".to_string()));
+    }
     if current_unit == Some(unit_id) && current_slot == Some(slot_index) {
         return Ok(LoadOutcome { displaced_spool_id: None });
     }
@@ -489,6 +492,7 @@ mod tests {
                 price: None,
                 image_png: None,
                 color_hex: None,
+                kind: "filament".into(),
             },
         )
         .unwrap()
@@ -695,8 +699,39 @@ mod tests {
             price: None,
             image_png: None,
             color_hex: Some("#1a1a1a".into()),
+            kind: "filament".into(),
         };
         crate::db::update_filament_spool(&conn, pla, &edited).unwrap();
         assert_eq!(placement(&conn, pla), (None, Some("Regal 5".into()), Some(ams_a), Some(0)));
+    }
+
+    #[test]
+    fn a_resin_bottle_can_never_be_loaded_into_a_slot() {
+        let conn = crate::db::connect_in_memory().unwrap();
+        let printer = insert_printer(&conn, "Mars").unwrap();
+        let unit = insert_unit(&conn, printer, "external", "Halter", None).unwrap();
+        let resin = crate::db::insert_filament_spool(
+            &conn,
+            &crate::db::models::NewFilamentSpool {
+                material: "Standard".into(),
+                manufacturer: None,
+                color: None,
+                location: Some("Resin-Schrank".into()),
+                diameter_mm: 1.75,
+                original_weight_g: 1000.0,
+                remaining_weight_g: 1000.0,
+                price: None,
+                image_png: None,
+                color_hex: None,
+                kind: crate::db::models::SPOOL_KIND_RESIN.into(),
+            },
+        )
+        .unwrap();
+
+        assert!(load_spool(&conn, resin, unit, 0).is_err());
+        let slot: Option<i64> = conn
+            .query_row("SELECT unit_id FROM filament_spools WHERE id = ?1", params![resin], |r| r.get(0))
+            .unwrap();
+        assert_eq!(slot, None);
     }
 }

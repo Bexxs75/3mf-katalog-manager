@@ -1,6 +1,6 @@
 use super::*;
 
-const MAX_CUSTOM_IMAGE_BYTES: usize = 5 * 1024 * 1024; // 5 MB
+pub(crate) const MAX_CUSTOM_IMAGE_BYTES: usize = 5 * 1024 * 1024; // 5 MB
                                                        // Base64 blaeht Rohdaten auf 4/3 auf (plus Padding) - Obergrenze fuer den
                                                        // noch nicht dekodierten String in `set_render_snapshot`.
 const MAX_RENDER_SNAPSHOT_BASE64_BYTES: usize = MAX_CUSTOM_IMAGE_BYTES / 3 * 4 + 4;
@@ -279,7 +279,7 @@ pub fn delete_print_log_entry(state: State<AppState>, entry_id: String) -> CmdRe
 /// mehr als `max_bytes` tatsaechlich gelesen worden, war die Datei zu gross -
 /// das Limit ist damit unabhaengig vom Zeitpunkt einer Groessenaenderung
 /// garantiert, nicht nur zum Zeitpunkt einer fruehen Vorabpruefung.
-fn read_image_bounded(path: &std::path::Path, max_bytes: u64) -> CmdResult<Vec<u8>> {
+pub(crate) fn read_image_bounded(path: &std::path::Path, max_bytes: u64) -> CmdResult<Vec<u8>> {
     use std::io::Read;
     let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let mut limited = file.take(max_bytes + 1);

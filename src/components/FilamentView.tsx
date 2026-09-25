@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useLanguage, useT } from '../i18n/LanguageContext';
-import { formatWeightG } from '../i18n/format';
-import type { FilamentSpool } from '../types';
+import { formatVolumeMl, formatWeightG } from '../i18n/format';
+import { formatCount } from '../i18n/types';
+import type { FilamentSpool, SpoolKind } from '../types';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
 import { filamentStockStatus } from '../lib/filamentStatus';
 import { isValidColorHex } from '../lib/filamentColors';
+import { restockSpoolLabel, roundTenth } from '../lib/filamentRestock';
+import { loadSpoolKind, saveSpoolKind } from '../lib/spoolKindPreference';
 import { FilamentDashboard } from './FilamentDashboard';
 import { FilamentTable } from './FilamentTable';
 import { FilamentSpoolForm } from './FilamentSpoolForm';
@@ -14,6 +17,9 @@ import { PrinterJobsBanner } from './PrinterJobsBanner';
 import { PrinterJobsDialog } from './PrinterJobsDialog';
 import { PrinterManagePanel } from './PrinterManagePanel';
 import { SpoolToast } from './SpoolToast';
+import { RestockPopover } from './RestockPopover';
+import { ConsumeResinPopover } from './ConsumeResinPopover';
+import { SegmentedControl } from './SegmentedControl';
 import type { PrintersState } from '../hooks/usePrinters';
 import { useSpoolDragAndDrop } from '../hooks/useSpoolDragAndDrop';
 import * as printersApi from '../lib/api/printers';
@@ -21,6 +27,16 @@ import { isInStorage, spoolLabel } from '../lib/filamentSlots';
 
 type LayoutMode = 'dashboard' | 'list';
 type StatusFilter = 'low' | 'empty' | null;
+
+/** So lange sind neu angelegte Eintraege gruen umrandet. */
+const HIGHLIGHT_MS = 2500;
+
+type PopoverType = 'restock' | 'consume';
+type PopoverState = { type: PopoverType; spool: FilamentSpool; anchor: HTMLElement };
+
+type ToastState =
+  | { type: 'unload'; spoolId: string; label: string; location: string | null }
+  | { type: 'message'; label: string };
 
 interface Props {
   printerLink: PrinterLinkState;
@@ -47,7 +63,10 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
   const [panelOpen, setPanelOpen] = useState(false);
   const [editingSpool, setEditingSpool] = useState<FilamentSpool | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
-  const [toast, setToast] = useState<{ spoolId: string; label: string; location: string | null } | null>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
+  const [popover, setPopover] = useState<PopoverState | null>(null);
+  const [highlightIds, setHighlightIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [kind, setKindState] = useState<SpoolKind>(loadSpoolKind);
   // Blendet den Hinweisbanner aus, sobald der Bestaetigungs-Dialog offen ist.
   const [jobsOpen, setJobsOpen] = useState(false);
   const [models, setModels] = useState<{ id: string; name: string }[]>([]);
@@ -68,6 +87,19 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
     if (jobsOpen && printerLink.jobs.length === 0) setJobsOpen(false);
   }, [jobsOpen, printerLink.jobs.length]);
 
+  const changeKind = (next: SpoolKind) => {
+    setKindState(next);
+    saveSpoolKind(next);
+    setPopover(null);
+    setConfirmDeleteId(null);
+  };
+
+  useEffect(() => {
+    if (highlightIds.size === 0) return;
+    const timer = setTimeout(() => setHighlightIds(new Set()), HIGHLIGHT_MS);
+    return () => clearTimeout(timer);
+  }, [highlightIds]);
+
   const refresh = () => {
     invoke<FilamentSpool[]>('list_filament_spools')
       .then((result) => {
@@ -87,7 +119,10 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
 
   // Spulen im Drucker stehen nur in der rechten Spalte, nicht im Lager
   // (Spec: "Spulen im Drucker werden getrennt vom Lager angezeigt").
-  const storageSpools = useMemo(() => spools.filter(isInStorage), [spools]);
+  const storageSpools = useMemo(() => spools.filter((s) => isInStorage(s) && s.kind === kind), [spools, kind]);
+
+  // Drucker, Faecher und Spulenhalter kennen nur Filament (Resin nie im Fach).
+  const filamentSpools = useMemo(() => spools.filter((s) => s.kind === 'filament'), [spools]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -99,15 +134,16 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
   }, [storageSpools, query, statusFilter]);
 
   const stats = useMemo(() => {
-    const totalRemaining = spools.reduce((sum, s) => sum + s.remainingWeightG, 0);
+    const ofKind = spools.filter((s) => s.kind === kind);
+    const totalRemaining = roundTenth(ofKind.reduce((sum, s) => sum + s.remainingWeightG, 0));
     // `s.location ?? s.homeLocation`: eine geladene Spule hat `location` auf
     // NULL stehen (ihr Lagerort liegt als Stammplatz in `homeLocation`, siehe
     // db/printers.rs) - ohne den Fallback wuerde ihr Lagerort beim Laden aus
     // dieser Statistik verschwinden, obwohl er weiterhin existiert.
-    const locations = new Set(spools.map((s) => s.location ?? s.homeLocation).filter(Boolean)).size;
-    const attention = spools.filter((s) => filamentStockStatus(s) !== 'ok').length;
-    return { total: spools.length, totalRemaining, locations, attention };
-  }, [spools]);
+    const locations = new Set(ofKind.map((s) => s.location ?? s.homeLocation).filter(Boolean)).size;
+    const attention = ofKind.filter((s) => filamentStockStatus(s) !== 'ok').length;
+    return { total: ofKind.length, totalRemaining, locations, attention };
+  }, [spools, kind]);
 
   const openAddPanel = () => {
     setEditingSpool(null);
@@ -144,7 +180,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
       printersApi
         .unloadSpool(spoolId, null)
         .then((location) => {
-          setToast({ spoolId, label: spool ? spoolLabel(spool) : '', location });
+          setToast({ type: 'unload', spoolId, label: spool ? spoolLabel(spool) : '', location });
           refresh();
         })
         .catch((e) => setError(String(e)));
@@ -153,7 +189,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
   );
 
   const changeUnloadedLocation = (location: string) => {
-    const spool = spools.find((s) => s.id === toast?.spoolId);
+    const spool = toast?.type === 'unload' ? spools.find((s) => s.id === toast.spoolId) : undefined;
     if (!spool) return Promise.resolve();
     return invoke('update_filament_spool', { spool: { ...spool, location } })
       .then(() => refresh())
@@ -161,6 +197,34 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
   };
 
   const dismissToast = useCallback(() => setToast(null), []);
+
+  const togglePopover = (type: PopoverType, spool: FilamentSpool, anchor: HTMLElement) =>
+    setPopover((prev) => (prev?.type === type && prev.spool.id === spool.id ? null : { type, spool, anchor }));
+  const closePopover = useCallback(() => setPopover(null), []);
+  const handleRestocked = (created: FilamentSpool[]) => {
+    const template = popover?.spool;
+    setPopover(null);
+    setHighlightIds(new Set(created.map((s) => s.id)));
+    if (template) {
+      const forms = template.kind === 'resin' ? t('resinRestockDone') : t('filamentRestockDone');
+      setToast({ type: 'message', label: formatCount(forms, created.length).replace('{spool}', restockSpoolLabel(template)) });
+    }
+    refresh();
+  };
+  const handleConsumed = (updated: FilamentSpool) => {
+    const before = popover?.spool;
+    setPopover(null);
+    if (before) {
+      const deducted = roundTenth(before.remainingWeightG - updated.remainingWeightG);
+      setToast({
+        type: 'message',
+        label: t('resinConsumeDone')
+          .replace('{amount}', formatVolumeMl(deducted, language))
+          .replace('{spool}', restockSpoolLabel(before)),
+      });
+    }
+    refresh();
+  };
 
   const drag = useSpoolDragAndDrop({ onLoad: loadSpool, onUnload: unloadSpool });
   const draggedSpool = drag.draggingSpoolId ? spools.find((s) => s.id === drag.draggingSpoolId) : undefined;
@@ -178,6 +242,15 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
 
       <div className="flex-1 p-4 flex flex-col lg:flex-row lg:items-start gap-4">
       <div className="flex-1 min-w-0 w-full flex flex-col gap-3.5">
+        <SegmentedControl
+          label={t('spoolKindLabel')}
+          options={[
+            { value: 'filament', label: t('spoolKindFilament') },
+            { value: 'resin', label: t('spoolKindResin') },
+          ]}
+          value={kind}
+          onChange={changeKind}
+        />
         {error && (
           <div className="text-[length:var(--font-size-title)] text-[var(--accent)] break-words">
             {t('filamentError')} {error}
@@ -190,14 +263,18 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
           <div className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3.5 py-2.5">
-            <div className="text-[10px] uppercase tracking-wider font-bold text-[var(--ink-3)] mb-1.5">{t('filamentStatTotal')}</div>
+            <div className="text-[10px] uppercase tracking-wider font-bold text-[var(--ink-3)] mb-1.5">{kind === 'resin' ? t('resinStatTotal') : t('filamentStatTotal')}</div>
             <div className="font-mono-ui text-[19px] font-bold tabular-nums">{stats.total}</div>
           </div>
           <div className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3.5 py-2.5">
             <div className="text-[10px] uppercase tracking-wider font-bold text-[var(--ink-3)] mb-1.5">{t('filamentStatRemaining')}</div>
-            {/* Summe ueber Zehntelgramm-genaue Restgewichte - ohne Runden zeigt
-                formatWeightG hier gelegentlich Nachkommastellen (Spec: ganze Gramm). */}
-            <div className="font-mono-ui text-[19px] font-bold tabular-nums">{formatWeightG(Math.round(stats.totalRemaining), language)}</div>
+            {/* Filament: Summe ueber Zehntelgramm-genaue Restgewichte, gerundet auf
+                ganze Gramm (Spec Druckeranbindung). Resin: Milliliter, 0,1 ml genau. */}
+            <div className="font-mono-ui text-[19px] font-bold tabular-nums">
+              {kind === 'resin'
+                ? formatVolumeMl(stats.totalRemaining, language)
+                : formatWeightG(Math.round(stats.totalRemaining), language)}
+            </div>
           </div>
           <div className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3.5 py-2.5">
             <div className="text-[10px] uppercase tracking-wider font-bold text-[var(--ink-3)] mb-1.5">{t('filamentStatLocations')}</div>
@@ -263,7 +340,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
             className="ml-auto h-8 px-3.5 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-bold cursor-pointer flex items-center gap-1.5"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6"><path d="M12 5v14M5 12h14" /></svg>
-            {t('filamentOpenAddPanelButton')}
+            {kind === 'resin' ? t('resinOpenAddPanelButton') : t('filamentOpenAddPanelButton')}
           </button>
         </div>
 
@@ -281,7 +358,12 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
               onRequestDelete={requestDelete}
               onCancelDelete={cancelDelete}
               onConfirmDelete={confirmDelete}
-              onSpoolMouseDown={(spoolId, e) => drag.startDrag(spoolId, null, e)}
+              onSpoolMouseDown={kind === 'filament' ? (spoolId, e) => drag.startDrag(spoolId, null, e) : undefined}
+              onRestock={(spool, anchor) => togglePopover('restock', spool, anchor)}
+              restockOpenId={popover?.type === 'restock' ? popover.spool.id : null}
+              onConsume={(spool, anchor) => togglePopover('consume', spool, anchor)}
+              consumeOpenId={popover?.type === 'consume' ? popover.spool.id : null}
+              highlightIds={highlightIds}
             />
           ) : (
             <FilamentTable
@@ -291,7 +373,13 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
               onRequestDelete={requestDelete}
               onCancelDelete={cancelDelete}
               onConfirmDelete={confirmDelete}
-              onSpoolMouseDown={(spoolId, e) => drag.startDrag(spoolId, null, e)}
+              onSpoolMouseDown={kind === 'filament' ? (spoolId, e) => drag.startDrag(spoolId, null, e) : undefined}
+              onRestock={(spool, anchor) => togglePopover('restock', spool, anchor)}
+              restockOpenId={popover?.type === 'restock' ? popover.spool.id : null}
+              onConsume={(spool, anchor) => togglePopover('consume', spool, anchor)}
+              consumeOpenId={popover?.type === 'consume' ? popover.spool.id : null}
+              highlightIds={highlightIds}
+              kind={kind}
             />
           )}
         </div>
@@ -299,7 +387,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
 
       <PrinterColumn
         printers={printers.printers}
-        spools={spools}
+        spools={filamentSpools}
         draggingSpoolId={drag.draggingSpoolId}
         dropTarget={drag.target}
         onSlotMouseDown={(spoolId, unitId, slotIndex, e) => drag.startDrag(spoolId, { unitId, slotIndex }, e)}
@@ -326,7 +414,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
         </div>
       )}
 
-      {toast && (
+      {toast?.type === 'unload' && (
         <SpoolToast
           label={toast.label}
           location={toast.location}
@@ -335,11 +423,35 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
           onDone={dismissToast}
         />
       )}
+      {toast?.type === 'message' && (
+        <SpoolToast label={toast.label} location={null} knownLocations={[]} onDone={dismissToast} />
+      )}
+
+      {popover?.type === 'restock' && (
+        <RestockPopover
+          key={popover.spool.id}
+          spool={popover.spool}
+          anchor={popover.anchor}
+          knownLocations={knownLocations}
+          onClose={closePopover}
+          onCreated={handleRestocked}
+        />
+      )}
+
+      {popover?.type === 'consume' && (
+        <ConsumeResinPopover
+          key={popover.spool.id}
+          spool={popover.spool}
+          anchor={popover.anchor}
+          onClose={closePopover}
+          onConsumed={handleConsumed}
+        />
+      )}
 
       <PrinterManagePanel
         open={manageOpen}
         printers={printers.printers}
-        spools={spools}
+        spools={filamentSpools}
         error={printers.error}
         actions={printers}
         onClose={() => setManageOpen(false)}
@@ -353,12 +465,13 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
         knownLocations={knownLocations}
         onClose={() => setPanelOpen(false)}
         onSaved={refresh}
+        defaultKind={kind}
       />
 
       <PrinterJobsDialog
         open={jobsOpen && printerLink.jobs.length > 0}
         jobs={printerLink.jobs}
-        spools={spools}
+        spools={filamentSpools}
         models={models}
         link={printerLink}
         onClose={() => setJobsOpen(false)}

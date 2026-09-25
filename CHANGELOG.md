@@ -10,7 +10,19 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ### Added
 
 - **Druckeranbindung (Klipper/Moonraker):** Neuer Einstellungs-Reiter „Drucker“ mit dem Schalter „Druckeranbindung“ (standardmäßig aus). Pro Drucker lassen sich unter „Drucker verwalten“ Typ und Adresse eintragen und testen. Die App fragt angebundene Drucker beim Start, alle 5 Minuten und per Knopf nach beendeten Drucken, liest den tatsächlich geförderten Filamentverbrauch (bei abgebrochenen Drucken nur bis zum Abbruch) und rechnet ihn in Gramm um. Im Filament-Lager erscheint dann „N neue Drucke warten auf Bestätigung“: Im Dialog lassen sich pro Druck Spule (vorgeschlagen: die im Drucker eingelegte) und Katalogmodell (Vorschlag über den Dateinamen) prüfen, bestätigen oder ignorieren. Erst beim Bestätigen wird abgebucht; mit Modell entsteht zusätzlich ein Druckprotokoll-Eintrag, und das Modell wird als gedruckt markiert. Abgebucht werden nur Drucke, die nach dem ersten Verbinden enden. Die App spricht nur mit selbst eingetragenen Adressen im Heimnetz, liest nur und verändert am Drucker nichts. Getestet mit einem Sovol SV08.
-- Filament-Lager: Das Restgewicht einer Spule wird jetzt auf 0,1 g genau geführt und angezeigt.
+## [0.13.1] - 2026-09-25
+
+### Added
+
+- Filament-Lager: **Resin**. Oben im Lager schaltet „Filament | Resin" zwischen Spulen und Resin-Flaschen um; die App merkt sich die Auswahl. Übersicht, Liste, Suche, Filter und Kennzahlen gelten für die gewählte Art („Flaschen gesamt", Mengen in ml). Resin-Flaschen zeigen ein Flaschen-Symbol, den Rest in ml und die Flaschengröße statt des Durchmessers; der Status (vorrätig/niedrig/leer) folgt denselben Regeln. Über „− Verbrauch" buchst du verbrauchte Milliliter ab (auf 0,1 ml genau, nie unter 0). Neue Einträge bekommen die Art des gerade gewählten Bereichs (kein Umschalter im Formular), Material und Hersteller schlagen passende Werte vor; bei Resin heißt die Menge „Inhalt (ml)", der Durchmesser entfällt. Resin kommt nie in ein Druckerfach und zählt nicht bei „Reicht das Filament?", der Materialkosten-Schätzung, dem Filament-Symbol der Warteschlange und den Gramm-Summen. Alle bisherigen Einträge bleiben Filament; auch ältere Sicherungen lassen sich weiter einspielen.
+- Filament-Lager: **Nachkaufen**. Jede Karte hat unten links den Knopf „＋ Nachkaufen", jede Zeile der Listenansicht einen „＋"-Knopf. Ein kleines Fenster legt 1 bis 20 neue, volle Spulen bzw. Flaschen mit denselben Daten an (Art, Material, Hersteller, Farbname, Farbwert, Bild, Durchmesser). Menge, Preis je Stück und Lagerort sind mit den Werten der Vorlage vorbelegt (Lagerort: ihr Stammplatz, falls sie gerade im Drucker steckt) und lassen sich vorher ändern. Neue Einträge liegen immer im Lager. Alles wird in einem Schritt angelegt: Schlägt etwas fehl (z. B. weil die Vorlage inzwischen gelöscht wurde), entsteht kein einziger. Die neuen Karten sind danach kurz grün umrandet, eine Meldung nennt die Anzahl. Escape oder ein Klick daneben schließt das Fenster, ohne etwas anzulegen.
+- Filament-Lager: Ein **Doppelklick** auf eine Karte oder eine Tabellenzeile öffnet das Bearbeiten-Formular (wie ✎). Doppelklicks auf Knöpfe lösen das nicht aus.
+- Filament-Lager: Restgewichte werden auf 0,1 g genau gespeichert und angezeigt.
+
+### Fixed
+
+- Filament-Lager: Das Bildfeld im Spulenformular („Bild hierher ziehen oder klicken") nimmt jetzt auch per **Drag & Drop** hineingezogene Bilder an; bisher funktionierte nur Klicken. Erlaubt ist genau eine PNG-, JPG- oder WebP-Datei bis 5 MB (wie beim Klick-Upload). Das Feld hebt sich beim Darüberziehen hervor. Bei mehreren Dateien, einer anderen Datei oder einem zu großen Bild erscheint der Hinweis direkt unter dem Bildfeld, und „Speichern" lässt das Formular offen, bis ein anderes Bild gewählt oder der Hinweis geschlossen wird. Ein Drop im Filament-Lager startet nie einen Modell-Import.
+- Filament-Lager, Listenansicht: Spulen ohne eigenes Bild zeigen ein Spulen-Symbol in der Spulenfarbe statt eines leeren Kästchens, das wie eine Checkbox aussah.
 
 ## [0.13.0] - 2026-09-24
 
@@ -373,7 +385,19 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 ### Added
 
 - **Printer connection (Klipper/Moonraker):** New “Printers” settings tab with the “Printer connection” switch (off by default). Under “Manage printers” you can enter and test type and address per printer. The app asks connected printers at startup, every 5 minutes and on demand for finished prints, reads the filament actually extruded (for aborted prints only up to the abort) and converts it to grams. The filament storage then shows “N new prints waiting for confirmation”: in the dialog you check the spool (suggested: the one loaded in the printer) and the catalog model (suggested from the file name) per print, then confirm or ignore it. Nothing is deducted before you confirm; with a model, a print log entry is added and the model is marked as printed. Only prints ending after the first connection are deducted. The app only talks to addresses you entered yourself on your home network, only reads, and never changes anything on the printer. Tested with a Sovol SV08.
-- Filament storage: a spool's remaining weight is now tracked and shown to 0.1 g.
+## [0.13.1] - 2026-09-25
+
+### Added
+
+- Filament stock: **Resin**. "Filament | Resin" at the top of the stock switches between spools and resin bottles; the app remembers your choice. Overview, list, search, filters and stats apply to the selected type ("Total bottles", amounts in ml). Resin bottles show a bottle icon, the remaining amount in ml and the bottle size instead of the diameter; the status (in stock/low/empty) follows the same rules. "− Use" deducts the milliliters you used (to 0.1 ml, never below 0). New entries get the type of the currently selected area (no switch in the form), and material and manufacturer suggest matching values; for resin the amount is called "Volume (ml)" and there is no diameter. Resin never goes into a printer slot and is left out of "Is there enough filament?", the material cost estimate, the queue's filament symbol and gram totals. All existing entries stay filament, and older backups can still be restored.
+- Filament stock: **Restock**. Every card has a "＋ Restock" button at the bottom left, and every row in the list view has a "＋" button. A small window adds 1 to 20 new, full spools or bottles with the same details (type, material, manufacturer, color name, color value, image, diameter). Amount, price per item and storage location are prefilled from the template (storage location: its home location if it currently sits in a printer) and can be changed first. New entries always go to storage. Everything is created in one step: if anything fails (for example because the template was deleted in the meantime), nothing is created. The new cards get a brief green outline, and a message states how many were added. Escape or a click outside closes the window without adding anything.
+- Filament stock: **Double-clicking** a card or a table row opens the edit form (same as ✎). Double-clicks on buttons don't trigger it.
+- Filament stock: Remaining weights are stored and shown to 0.1 g.
+
+### Fixed
+
+- Filament stock: The image field in the spool form ("Drop an image here or click") now also accepts images dropped onto it via **drag & drop**; previously only clicking worked. Exactly one PNG, JPG or WebP file up to 5 MB is accepted (same as the click upload). The field is highlighted while you drag over it. Several files, a different file type or an image that is too large show a notice right below the image field, and saving keeps the form open until another image is chosen or the notice is closed. A drop in the filament stock never starts a model import.
+- Filament stock, list view: spools without their own image show a spool icon in the spool color instead of an empty square that looked like a checkbox.
 
 ## [0.13.0] - 2026-09-24
 

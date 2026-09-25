@@ -96,6 +96,10 @@ const MIGRATIONS: &[MigrationStep] = &[
     MigrationStep::Simple(|c| exec(c, "ALTER TABLE filament_spools ADD COLUMN color_hex TEXT")),
     MigrationStep::Simple(|c| exec(c, "CREATE UNIQUE INDEX IF NOT EXISTS idx_filament_spools_slot ON filament_spools (unit_id, slot_index) WHERE unit_id IS NOT NULL")),
     MigrationStep::Simple(super::printers::backfill_color_hex),
+    // Resin im Filament-Lager (v0.13.1): Art je Eintrag. Bestehende Zeilen
+    // bekommen per DEFAULT 'filament'. Bei 'resin' bedeuten
+    // original_weight_g/remaining_weight_g Milliliter.
+    MigrationStep::Simple(|c| exec(c, "ALTER TABLE filament_spools ADD COLUMN kind TEXT NOT NULL DEFAULT 'filament' CHECK (kind IN ('filament', 'resin'))")),
     // Druckeranbindung (Spec 2026-09-24): Einstellungen, Verbindung pro
     // Drucker, abgeholte Drucke.
     MigrationStep::Simple(|c| exec(c, "CREATE TABLE IF NOT EXISTS app_settings (
@@ -135,6 +139,14 @@ const MIGRATIONS: &[MigrationStep] = &[
         decided_at TEXT,
         UNIQUE (printer_id, remote_id)
     )")),
+    // Merge v0.13.1 -> v0.14.0 (final review I-1): Schritt 32 (`kind`) ist
+    // so ausgeliefert wie in v0.13.1; die Druckeranbindungs-Schritte davor
+    // waren nie ausgeliefert und stehen deshalb jetzt bei 33-35. Master-
+    // Entwicklungs-DBs, die bereits auf user_version 34 standen (alte
+    // Nummerierung, ohne `kind`), ueberspringen Schritt 32 - dieser Schritt
+    // holt die Spalte fuer sie nach. Auf allen anderen DBs ist er dank der
+    // von `exec` tolerierten "duplicate column name" ein No-Op.
+    MigrationStep::Simple(|c| exec(c, "ALTER TABLE filament_spools ADD COLUMN kind TEXT NOT NULL DEFAULT 'filament' CHECK (kind IN ('filament', 'resin'))")),
 ];
 
 /// Aktuelle Ziel-Schemaversion - leitet sich direkt aus der Anzahl der
@@ -155,6 +167,11 @@ pub const CURRENT_SCHEMA_VERSION: i64 = MIGRATIONS.len() as i64;
 /// zu codieren. Nur fuer diesen Test gebraucht, deshalb `#[cfg(test)]`.
 #[cfg(test)]
 pub(crate) const FIRST_PRINTER_MIGRATION_VERSION: i64 = 23;
+
+/// Schema-Version nach dem in v0.13.1 ausgelieferten `kind`-Schritt (Resin).
+/// Muss 32 bleiben: so steht es in jeder mit v0.13.1 erstellten Datenbank.
+#[cfg(test)]
+pub(crate) const KIND_MIGRATION_VERSION: i64 = 32;
 
 /// Fuehrt ein einzelnes ALTER-TABLE/Backfill-Statement aus. "Spalte/Index
 /// existiert bereits" (SQLite-Fehlermeldung enthaelt "duplicate column
@@ -708,5 +725,90 @@ mod tests {
         let result = run_migrations(&mut conn);
 
         assert!(result.is_err(), "eine Datenbank mit einer neueren Schemaversion als der App muss abgelehnt werden");
+    }
+
+    #[test]
+    fn the_kind_migration_marks_existing_spools_as_filament_and_checks_the_value() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        // Stand vor dem kind-Schritt: filament_spools ohne kind-Spalte.
+        conn.execute_batch(
+            "CREATE TABLE filament_spools (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                material TEXT NOT NULL, manufacturer TEXT, color TEXT, location TEXT,
+                diameter_mm REAL NOT NULL, original_weight_g INTEGER NOT NULL,
+                remaining_weight_g INTEGER NOT NULL, price REAL, image_png BLOB,
+                created_at TEXT NOT NULL, unit_id INTEGER, slot_index INTEGER,
+                home_location TEXT, color_hex TEXT
+            );
+            INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at)
+                VALUES ('PLA', 1.75, 1000, 600, '2026-01-01');",
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", KIND_MIGRATION_VERSION - 1).unwrap();
+
+        run_migrations(&mut conn).unwrap();
+
+        let kind: String = conn.query_row("SELECT kind FROM filament_spools", [], |r| r.get(0)).unwrap();
+        assert_eq!(kind, "filament");
+        let bad = conn.execute(
+            "INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at, kind)
+             VALUES ('X', 1.75, 1, 1, '2026-01-01', 'pla')",
+            [],
+        );
+        assert!(bad.is_err(), "CHECK erlaubt nur filament/resin");
+    }
+
+    /// Reihenfolge nach dem Merge v0.13.1 -> v0.14.0 (final review I-1):
+    /// `kind` bleibt auf 32 (wie ausgeliefert), danach die Druckeranbindung.
+    #[test]
+    fn the_kind_step_stays_at_the_shipped_position_32() {
+        assert_eq!(KIND_MIGRATION_VERSION, 32);
+        assert_eq!(CURRENT_SCHEMA_VERSION, 36);
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        // Nur die Schritte bis einschliesslich 32 laufen lassen.
+        run_migrations_with(&mut conn, &MIGRATIONS[..KIND_MIGRATION_VERSION as usize], KIND_MIGRATION_VERSION).unwrap();
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(version, 32);
+    }
+
+    /// Master-Entwicklungs-DBs aus der Zeit vor dem Merge standen auf
+    /// user_version 34 (alte Nummerierung: Druckeranbindung auf 32-34), aber
+    /// ohne `kind`. Schritt 36 holt die Spalte nach, auch ueber `init`.
+    #[test]
+    fn a_master_dev_db_at_version_34_without_kind_gets_the_column_on_init() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        run_migrations(&mut conn).unwrap();
+        conn.execute_batch(
+            "DROP INDEX IF EXISTS idx_filament_spools_slot;
+             DROP TABLE filament_spools;
+             CREATE TABLE filament_spools (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                material TEXT NOT NULL, manufacturer TEXT, color TEXT, location TEXT,
+                diameter_mm REAL NOT NULL, original_weight_g REAL NOT NULL,
+                remaining_weight_g REAL NOT NULL, price REAL, image_png BLOB,
+                created_at TEXT NOT NULL,
+                unit_id INTEGER REFERENCES material_units(id) ON DELETE SET NULL,
+                slot_index INTEGER, home_location TEXT, color_hex TEXT
+             );
+             INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at)
+                VALUES ('PLA', 1.75, 1000, 612.4, '2026-09-24');",
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", 34).unwrap();
+
+        crate::db::repository::init(&mut conn).unwrap();
+
+        let kind: String = conn.query_row("SELECT kind FROM filament_spools", [], |r| r.get(0)).unwrap();
+        assert_eq!(kind, "filament");
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+        let bad = conn.execute(
+            "INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at, kind)
+             VALUES ('X', 1.75, 1, 1, '2026-01-01', 'pla')",
+            [],
+        );
+        assert!(bad.is_err(), "auch der nachgeholte Schritt bringt den CHECK mit");
     }
 }

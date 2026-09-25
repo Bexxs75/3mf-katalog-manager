@@ -18,7 +18,7 @@ const X1C: Printer = {
 const LOADED = {
   id: 's1', material: 'PLA', manufacturer: null, color: null, location: null, diameterMm: 1.75,
   originalWeightG: 1000, remainingWeightG: 500, price: null, imagePng: null, colorHex: null,
-  homeLocation: 'Regal 1', unitId: 'u1', slotIndex: 0,
+  homeLocation: 'Regal 1', unitId: 'u1', slotIndex: 0, kind: 'filament',
 } satisfies FilamentSpool;
 
 function actions(): PrinterActions {

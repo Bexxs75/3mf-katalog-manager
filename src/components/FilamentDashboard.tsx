@@ -1,9 +1,11 @@
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { useT, useLanguage } from '../i18n/LanguageContext';
-import { formatStockG, formatDiameterMm, formatPrice } from '../i18n/format';
+import { formatSpoolAmount, formatVolumeMl, formatDiameterMm, formatPrice } from '../i18n/format';
 import type { FilamentSpool } from '../types';
 import { filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus';
 import { isValidColorHex } from '../lib/filamentColors';
+import { isFromInteractiveElement } from '../lib/spoolCardEvents';
+import { ResinBottleIcon } from './ResinBottleIcon';
 
 interface Props {
   spools: FilamentSpool[];
@@ -14,6 +16,16 @@ interface Props {
   onConfirmDelete: (id: string) => void;
   /** Mausdruck auf einer Spule - startet ggf. das Ziehen in ein Fach. */
   onSpoolMouseDown?: (spoolId: string, event: ReactMouseEvent) => void;
+  /** Oeffnet/schliesst das Nachkaufen-Fenster; `anchor` = der geklickte Knopf. */
+  onRestock?: (spool: FilamentSpool, anchor: HTMLElement) => void;
+  /** Spule, deren Nachkaufen-Fenster gerade offen ist (aria-expanded). */
+  restockOpenId?: string | null;
+  /** Oeffnet "− Verbrauch" (nur Resin). */
+  onConsume?: (spool: FilamentSpool, anchor: HTMLElement) => void;
+  /** Spule, deren Verbrauch-Fenster gerade offen ist (aria-expanded). */
+  consumeOpenId?: string | null;
+  /** Gerade per Nachkaufen angelegte Eintraege, kurz hervorgehoben. */
+  highlightIds?: ReadonlySet<string>;
 }
 
 // Kein Ziehen, wenn der Mausdruck auf einem Knopf der Karte/Zeile landet
@@ -33,7 +45,20 @@ const barClass: Record<string, string> = {
   empty: 'bg-[var(--crit)]',
 };
 
-export function FilamentDashboard({ spools, confirmDeleteId, onEdit, onRequestDelete, onCancelDelete, onConfirmDelete, onSpoolMouseDown }: Props) {
+export function FilamentDashboard({
+  spools,
+  confirmDeleteId,
+  onEdit,
+  onRequestDelete,
+  onCancelDelete,
+  onConfirmDelete,
+  onSpoolMouseDown,
+  onRestock,
+  restockOpenId,
+  onConsume,
+  consumeOpenId,
+  highlightIds,
+}: Props) {
   const t = useT();
   const { language } = useLanguage();
 
@@ -53,10 +78,13 @@ export function FilamentDashboard({ spools, confirmDeleteId, onEdit, onRequestDe
           <div
             key={spool.id}
             data-testid={`spool-card-${spool.id}`}
-            onMouseDown={(e) => !startsOnButton(e) && onSpoolMouseDown?.(spool.id, e)}
+            onMouseDown={(e) => !startsOnButton(e) && spool.kind !== 'resin' && onSpoolMouseDown?.(spool.id, e)}
+            onDoubleClick={(e) => {
+              if (confirmDeleteId !== spool.id && !isFromInteractiveElement(e)) onEdit(spool);
+            }}
             className={`rounded-[10px] overflow-hidden border border-[var(--line)] bg-[var(--panel)] flex flex-col ${
-              onSpoolMouseDown ? 'cursor-grab' : ''
-            }`}
+              onSpoolMouseDown && spool.kind !== 'resin' ? 'cursor-grab' : ''
+            } ${highlightIds?.has(spool.id) ? 'spool-new' : ''}`}
           >
             <div className="flex items-center gap-2.5 px-3 py-2.5">
               {spool.imagePng ? (
@@ -64,6 +92,10 @@ export function FilamentDashboard({ spools, confirmDeleteId, onEdit, onRequestDe
                   src={`data:image/png;base64,${spool.imagePng}`}
                   className="w-9 h-9 rounded-md object-cover border border-[var(--line)] flex-none"
                 />
+              ) : spool.kind === 'resin' ? (
+                <span className="w-9 h-9 rounded-md flex-none grid place-items-center bg-[var(--plate)] border border-[var(--line)]">
+                  <ResinBottleIcon colorHex={spool.colorHex} />
+                </span>
               ) : (
                 <span
                   className="w-9 h-9 rounded-md flex-none grid place-items-center text-[9px] font-bold text-[var(--ink-3)] bg-[var(--plate)] border border-[var(--line)]"
@@ -100,7 +132,7 @@ export function FilamentDashboard({ spools, confirmDeleteId, onEdit, onRequestDe
 
               <div>
                 <div className="flex justify-between font-mono-ui text-[11px] text-[var(--ink-2)] mb-1">
-                  <span>{formatStockG(spool.remainingWeightG, language)}</span>
+                  <span>{formatSpoolAmount(spool.remainingWeightG, spool.kind, language)}</span>
                   <span>{pct}%</span>
                 </div>
                 <div className="h-1.5 rounded-full bg-[var(--plate)] overflow-hidden">
@@ -109,7 +141,11 @@ export function FilamentDashboard({ spools, confirmDeleteId, onEdit, onRequestDe
               </div>
 
               <div className="flex items-center justify-between pt-2 border-t border-[var(--line)] text-[11.5px] text-[var(--ink-3)]">
-                <span>{formatDiameterMm(spool.diameterMm, language)}</span>
+                <span>
+                  {spool.kind === 'resin'
+                    ? t('resinBottleFooter').replace('{amount}', formatVolumeMl(spool.originalWeightG, language))
+                    : formatDiameterMm(spool.diameterMm, language)}
+                </span>
                 {spool.price !== null && <span className="font-mono-ui text-[var(--ink-2)] font-semibold">{formatPrice(spool.price, language)}</span>}
               </div>
 
@@ -131,6 +167,32 @@ export function FilamentDashboard({ spools, confirmDeleteId, onEdit, onRequestDe
                 </div>
               ) : (
                 <div className="flex items-center justify-end gap-1">
+                  <span className="mr-auto inline-flex items-center gap-1">
+                    {onConsume && spool.kind === 'resin' && (
+                      <button
+                        type="button"
+                        onClick={(e) => onConsume(spool, e.currentTarget)}
+                        aria-haspopup="dialog"
+                        aria-expanded={consumeOpenId === spool.id}
+                        className="h-6 px-2 inline-flex items-center gap-1 rounded-full text-[11px] font-semibold text-[var(--ink-2)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] cursor-pointer"
+                      >
+                        <span aria-hidden>−</span>
+                        {t('resinConsumeButton')}
+                      </button>
+                    )}
+                    {onRestock && (
+                      <button
+                        type="button"
+                        onClick={(e) => onRestock(spool, e.currentTarget)}
+                        aria-haspopup="dialog"
+                        aria-expanded={restockOpenId === spool.id}
+                        className="h-6 px-2 inline-flex items-center gap-1 rounded-full text-[11px] font-semibold text-[var(--ink-2)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] cursor-pointer"
+                      >
+                        <span aria-hidden>＋</span>
+                        {t('filamentRestockButton')}
+                      </button>
+                    )}
+                  </span>
                   <button
                     onClick={() => onEdit(spool)}
                     aria-label={t('filamentEditAria')}
