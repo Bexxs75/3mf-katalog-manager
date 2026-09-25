@@ -6,7 +6,9 @@ import { filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus
 import { isInStorage, slotKey, spoolsBySlot } from '../lib/filamentSlots';
 import { isValidColorHex } from '../lib/filamentColors';
 import type { SpoolDropTarget } from '../hooks/useSpoolDragAndDrop';
+import type { PrinterLinkState } from '../hooks/usePrinterLink';
 import type { FilamentSpool, MaterialUnit, Printer } from '../types';
+import { PrinterLinkStatus } from './PrinterLinkStatus';
 
 interface Props {
   printers: Printer[];
@@ -21,6 +23,7 @@ interface Props {
   onUnload: (spoolId: string) => void;
   onEditSpool: (spool: FilamentSpool) => void;
   onManage: () => void;
+  printerLink?: PrinterLinkState;
 }
 
 const barClass: Record<string, string> = {
@@ -47,6 +50,7 @@ export function PrinterColumn({
   onUnload,
   onEditSpool,
   onManage,
+  printerLink,
 }: Props) {
   const t = useT();
   const { language } = useLanguage();
@@ -176,6 +180,7 @@ export function PrinterColumn({
         printers.map((printer) => (
           <div key={printer.id} className="flex flex-col gap-2">
             <div className="text-[12.5px] font-bold">{printer.name}</div>
+            {printerLink && <PrinterLinkStatus printerId={printer.id} link={printerLink} />}
             {printer.units.map(renderUnit)}
             {printer.units.length === 0 && (
               <button

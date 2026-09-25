@@ -10,6 +10,7 @@ import { FilamentDashboard } from './FilamentDashboard';
 import { FilamentTable } from './FilamentTable';
 import { FilamentSpoolForm } from './FilamentSpoolForm';
 import { PrinterColumn } from './PrinterColumn';
+import { PrinterJobsBanner } from './PrinterJobsBanner';
 import { PrinterManagePanel } from './PrinterManagePanel';
 import { SpoolToast } from './SpoolToast';
 import type { PrintersState } from '../hooks/usePrinters';
@@ -44,6 +45,9 @@ export function FilamentView({ printerLink, printers }: Props) {
   const [editingSpool, setEditingSpool] = useState<FilamentSpool | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
   const [toast, setToast] = useState<{ spoolId: string; label: string; location: string | null } | null>(null);
+  // Blendet den Hinweisbanner aus, sobald er einmal geoeffnet wurde; der
+  // eigentliche Bestaetigungs-Dialog kommt erst in Task 15 dazu.
+  const [jobsOpen, setJobsOpen] = useState(false);
 
   const refresh = () => {
     invoke<FilamentSpool[]>('list_filament_spools')
@@ -159,6 +163,10 @@ export function FilamentView({ printerLink, printers }: Props) {
           <div className="text-[length:var(--font-size-title)] text-[var(--accent)] break-words">
             {t('filamentError')} {error}
           </div>
+        )}
+
+        {printerLink.enabled && !jobsOpen && (
+          <PrinterJobsBanner jobs={printerLink.jobs} onReview={() => setJobsOpen(true)} />
         )}
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
@@ -280,6 +288,7 @@ export function FilamentView({ printerLink, printers }: Props) {
         onUnload={unloadSpool}
         onEditSpool={openEditPanel}
         onManage={() => setManageOpen(true)}
+        printerLink={printerLink}
       />
       </div>
 
