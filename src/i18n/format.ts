@@ -1,4 +1,5 @@
 import type { Language } from './types';
+import type { SpoolKind } from '../types';
 
 const LOCALE_MAP: Record<Language, string> = {
   de: 'de-DE',
@@ -96,4 +97,23 @@ export function formatRelativeTime(rfc3339: string, language: Language): string 
   if (absSeconds < 3600) return rtf.format(Math.round(diffSeconds / 60), 'minute');
   if (absSeconds < 86400) return rtf.format(Math.round(diffSeconds / 3600), 'hour');
   return rtf.format(Math.round(diffSeconds / 86400), 'day');
+}
+
+/**
+ * Zahl für ein Eingabefeld (z. B. Preis vorbelegen): Dezimalzeichen der Sprache,
+ * ohne Tausendertrennzeichen, höchstens 2 Nachkommastellen, damit
+ * `parseDecimalInput` den Wert unverändert wieder einlesen kann.
+ */
+export function formatDecimalInput(value: number, language: Language): string {
+  return new Intl.NumberFormat(localeFor(language), { useGrouping: false, maximumFractionDigits: 2 }).format(value);
+}
+
+/** Resin-Menge: höchstens eine Nachkommastelle (0,1 ml). */
+export function formatVolumeMl(ml: number, language: Language): string {
+  return `${new Intl.NumberFormat(localeFor(language), { maximumFractionDigits: 1 }).format(ml)} ml`;
+}
+
+/** Bestand je nach Art: Gramm (Filament) oder Milliliter (Resin). */
+export function formatSpoolAmount(amount: number, kind: SpoolKind, language: Language): string {
+  return kind === 'resin' ? formatVolumeMl(amount, language) : formatStockG(amount, language);
 }

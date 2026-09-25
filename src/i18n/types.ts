@@ -141,6 +141,59 @@ export interface Translations {
   filamentQuantityLabel: string;
   filamentQuantityHint: string;
 
+  /** Knopf an Karte/Zeile; das "＋" davor setzt die Komponente (aria-hidden). */
+  filamentRestockButton: string;
+  /** `{spool}` = "Material · Farbe" */
+  filamentRestockTitle: string;
+  filamentRestockSubtitle: string;
+  resinRestockSubtitle: string;
+  filamentRestockCountLabel: string;
+  filamentRestockWeightLabel: string;
+  /** Resin: Originalmenge (Nachkaufen + Formular) */
+  resinAmountLabel: string;
+  /** Resin: Restmenge im Formular */
+  resinRemainingLabel: string;
+  filamentRestockPriceLabel: string;
+  resinRestockPriceLabel: string;
+  filamentRestockDecrease: string;
+  filamentRestockIncrease: string;
+  filamentRestockSubmit: PluralForms;
+  resinRestockSubmit: PluralForms;
+  /** `{count}` über formatCount, `{spool}` = "Material · Farbe" */
+  filamentRestockDone: PluralForms;
+  resinRestockDone: PluralForms;
+  filamentRestockError: string;
+  /** Menge (g oder ml) fehlt oder ist nicht > 0 – Nachkaufen und Verbrauch */
+  stockInvalidAmount: string;
+  filamentRestockInvalidPrice: string;
+  filamentImageDropMultiple: string;
+  filamentImageDropNotImage: string;
+  /** Formular-Titel und Öffnen-Knopf beim Anlegen einer Flasche (Pendant zu `filamentOpenAddPanelButton`). */
+  resinOpenAddPanelButton: string;
+  /** Formular-Titel und aria-label beim Bearbeiten einer Flasche (Pendant zu `filamentEditAria`). */
+  resinEditAria: string;
+  /** Gruppenname des Umschalters und Formularfeld "Art" */
+  spoolKindLabel: string;
+  spoolKindFilament: string;
+  spoolKindResin: string;
+  spoolKindLockedHint: string;
+  /** Wie `spoolKindLockedHint`, aber für Flaschen (Resin) statt Spulen. */
+  resinKindLockedHint: string;
+  resinStatTotal: string;
+  /** `{amount}` = formatierte Flaschengröße */
+  resinBottleFooter: string;
+  /** Knopf; das "−" davor setzt die Komponente (aria-hidden) */
+  resinConsumeButton: string;
+  /** `{spool}` = "Material · Farbe" */
+  resinConsumeTitle: string;
+  /** `{amount}` = formatierte Restmenge */
+  resinConsumeRemaining: string;
+  resinConsumeAmountLabel: string;
+  resinConsumeSubmit: string;
+  /** `{amount}` = abgebuchte Menge, `{spool}` = "Material · Farbe" */
+  resinConsumeDone: string;
+  resinConsumeError: string;
+
   printedBadge: string;
   notPrintedLabel: string;
   markAsPrinted: string;
