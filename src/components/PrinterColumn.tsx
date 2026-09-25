@@ -1,19 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
-import { formatStockG } from '../i18n/format';
+import { formatSpoolAmount } from '../i18n/format';
 import { filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus';
-import { isInStorage, slotKey, spoolsBySlot } from '../lib/filamentSlots';
+import { isInStorage, slotKey, spoolFitsUnit, spoolsBySlot } from '../lib/filamentSlots';
 import { isValidColorHex } from '../lib/filamentColors';
 import type { SpoolDropTarget } from '../hooks/useSpoolDragAndDrop';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
-import type { FilamentSpool, MaterialUnit, Printer } from '../types';
+import type { FilamentSpool, MaterialUnit, Printer, SpoolKind } from '../types';
 import { PrinterLinkStatus } from './PrinterLinkStatus';
+import { ResinBottleIcon } from './ResinBottleIcon';
 
 interface Props {
+  /** Alle Drucker; angezeigt werden nur die der aktuellen Ansicht (`kind`). */
   printers: Printer[];
-  /** Alle Spulen (Lager und Faecher). */
+  /** Alle Spulen und Flaschen (Lager und Faecher). */
   spools: FilamentSpool[];
+  /** Aktuelle Ansicht im Filament-Lager: Filament- oder Resin-Drucker. */
+  kind?: SpoolKind;
   draggingSpoolId: string | null;
   dropTarget: SpoolDropTarget | null;
   onSlotMouseDown: (spoolId: string, unitId: string, slotIndex: number, event: ReactMouseEvent) => void;
@@ -22,6 +26,8 @@ interface Props {
   onLoad: (spoolId: string, unitId: string, slotIndex: number) => void;
   onUnload: (spoolId: string) => void;
   onEditSpool: (spool: FilamentSpool) => void;
+  /** "− Verbrauch" fuer die Flasche in einer Harzwanne (bleibt an der Flasche). */
+  onConsume?: (spool: FilamentSpool, anchor: HTMLElement) => void;
   onManage: () => void;
   printerLink?: PrinterLinkState;
 }
@@ -41,6 +47,7 @@ interface OpenMenu {
 export function PrinterColumn({
   printers,
   spools,
+  kind = 'filament',
   draggingSpoolId,
   dropTarget,
   onSlotMouseDown,
@@ -49,19 +56,28 @@ export function PrinterColumn({
   onLoad,
   onUnload,
   onEditSpool,
+  onConsume,
   onManage,
   printerLink,
 }: Props) {
   const t = useT();
   const { language } = useLanguage();
   const [menu, setMenu] = useState<OpenMenu | null>(null);
+  const slotButtons = useRef(new Map<string, HTMLButtonElement>());
   const bySlot = useMemo(() => spoolsBySlot(spools), [spools]);
   const storage = useMemo(() => spools.filter(isInStorage), [spools]);
+  // In der Filament-Ansicht nur Filament-Drucker, in der Resin-Ansicht nur
+  // Resin-Drucker (v0.14.0).
+  const visiblePrinters = useMemo(() => printers.filter((p) => p.kind === kind), [printers, kind]);
+  const draggedSpool = draggingSpoolId ? spools.find((s) => s.id === draggingSpoolId) : undefined;
+  /** Nimmt diese Einheit die gerade gezogene Spule/Flasche an? Ohne Ziehen: ja. */
+  const acceptsDragged = (unit: MaterialUnit) => !draggedSpool || spoolFitsUnit(draggedSpool, unit);
 
-  const isTarget = (unitId: string, slotIndex: number) =>
+  const isTarget = (unit: MaterialUnit, slotIndex: number) =>
     draggingSpoolId !== null &&
+    acceptsDragged(unit) &&
     dropTarget?.kind === 'slot' &&
-    dropTarget.unitId === unitId &&
+    dropTarget.unitId === unit.id &&
     dropTarget.slotIndex === slotIndex;
 
   const renderUnit = (unit: MaterialUnit) => {
@@ -73,10 +89,12 @@ export function PrinterColumn({
     // noch unbekannter Pfad einmal einen zu grossen Wert liefert.
     const slotCount = Math.min(unit.slotCount, 16);
     const used = Array.from({ length: slotCount }, (_, i) => bySlot.get(slotKey(unit.id, i))).filter(Boolean).length;
+    const isVat = unit.kind === 'resin_vat';
     return (
       <div key={unit.id} className="rounded-md border border-[var(--line)] bg-[var(--panel-2)] p-2">
         <div className="flex items-center justify-between text-[11px] font-semibold text-[var(--ink-2)] mb-1.5">
-          <span className="truncate">{unit.name}</span>
+          {/* Die Harzwanne ist nicht umbenennbar - immer in der UI-Sprache. */}
+          <span className="truncate">{isVat ? t('printersKindResinVat') : unit.name}</span>
           <span className="font-mono-ui text-[var(--ink-3)]">
             {used}/{slotCount}
           </span>
@@ -84,15 +102,23 @@ export function PrinterColumn({
         <div className="flex flex-col gap-1">
           {Array.from({ length: slotCount }, (_, slotIndex) => {
             const spool = bySlot.get(slotKey(unit.id, slotIndex)) ?? null;
-            const target = isTarget(unit.id, slotIndex);
+            const target = isTarget(unit, slotIndex);
             const menuOpen = menu?.unitId === unit.id && menu.slotIndex === slotIndex;
             return (
               <div key={slotIndex} className="relative">
                 <button
                   type="button"
                   data-testid={`slot-${unit.id}-${slotIndex}`}
+                  ref={(el) => {
+                    const key = slotKey(unit.id, slotIndex);
+                    if (el) slotButtons.current.set(key, el);
+                    else slotButtons.current.delete(key);
+                  }}
                   onMouseDown={(e) => spool && onSlotMouseDown(spool.id, unit.id, slotIndex, e)}
-                  onMouseEnter={() => onEnterSlot(unit.id, slotIndex)}
+                  onMouseEnter={() => {
+                    // Unpassende Einheit (Resin <-> Filament) wird nie zum Ziel.
+                    if (acceptsDragged(unit)) onEnterSlot(unit.id, slotIndex);
+                  }}
                   onMouseLeave={() => onLeaveSlot(unit.id, slotIndex)}
                   onClick={() => setMenu(menuOpen ? null : { unitId: unit.id, slotIndex })}
                   className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-[5px] border text-left text-[11.5px] cursor-pointer ${
@@ -103,21 +129,29 @@ export function PrinterColumn({
                         : 'border-dashed border-[var(--line-strong)] text-[var(--ink-3)] hover:border-[var(--accent)]'
                   }`}
                 >
-                  <span className="font-mono-ui text-[10.5px] text-[var(--ink-3)] w-3 flex-none">{slotIndex + 1}</span>
+                  {!isVat && (
+                    <span className="font-mono-ui text-[10.5px] text-[var(--ink-3)] w-3 flex-none">{slotIndex + 1}</span>
+                  )}
                   {spool ? (
                     <>
-                      <span
-                        className="w-3.5 h-3.5 rounded-[3px] border border-[var(--line-strong)] flex-none"
-                        style={spool.colorHex && isValidColorHex(spool.colorHex) ? { backgroundColor: spool.colorHex } : undefined}
-                        aria-hidden
-                      />
+                      {isVat ? (
+                        <span className="flex-none">
+                          <ResinBottleIcon colorHex={spool.colorHex} size={18} />
+                        </span>
+                      ) : (
+                        <span
+                          className="w-3.5 h-3.5 rounded-[3px] border border-[var(--line-strong)] flex-none"
+                          style={spool.colorHex && isValidColorHex(spool.colorHex) ? { backgroundColor: spool.colorHex } : undefined}
+                          aria-hidden
+                        />
+                      )}
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-semibold text-[var(--ink)]">
                           {[spool.material, spool.color].filter(Boolean).join(' · ')}
                         </span>
                         <span className="flex items-center gap-1.5">
                           <span className="font-mono-ui text-[10.5px] text-[var(--ink-3)]">
-                            {formatStockG(spool.remainingWeightG, language)}
+                            {formatSpoolAmount(spool.remainingWeightG, spool.kind, language)}
                           </span>
                           <span className="flex-1 h-1 rounded-full bg-[var(--plate)] overflow-hidden">
                             <span
@@ -135,11 +169,20 @@ export function PrinterColumn({
                 {menuOpen && (
                   <SlotMenu
                     spool={spool}
-                    storage={storage}
+                    storage={storage.filter((s) => spoolFitsUnit(s, unit))}
+                    vat={isVat}
                     onClose={() => setMenu(null)}
                     onLoad={(spoolId) => onLoad(spoolId, unit.id, slotIndex)}
                     onUnload={onUnload}
                     onEdit={onEditSpool}
+                    onConsume={
+                      isVat && spool && onConsume
+                        ? () => {
+                            const anchor = slotButtons.current.get(slotKey(unit.id, slotIndex));
+                            if (anchor) onConsume(spool, anchor);
+                          }
+                        : undefined
+                    }
                   />
                 )}
               </div>
@@ -154,7 +197,7 @@ export function PrinterColumn({
     <aside className="w-full lg:w-[260px] flex-none flex flex-col gap-3" aria-label={t('printersColumnTitle')}>
       <div className="flex items-center justify-between">
         <span className="text-[10px] uppercase tracking-wider font-bold text-[var(--ink-3)]">{t('printersColumnTitle')}</span>
-        {printers.length > 0 && (
+        {visiblePrinters.length > 0 && (
           <button
             type="button"
             onClick={onManage}
@@ -165,9 +208,9 @@ export function PrinterColumn({
         )}
       </div>
 
-      {printers.length === 0 ? (
+      {visiblePrinters.length === 0 ? (
         <div className="rounded-lg border border-dashed border-[var(--line-strong)] p-3 text-[12px] text-[var(--ink-3)] flex flex-col gap-2">
-          <span>{t('printersEmptyHint')}</span>
+          <span>{kind === 'resin' ? t('printersResinEmptyHint') : t('printersEmptyHint')}</span>
           <button
             type="button"
             onClick={onManage}
@@ -177,10 +220,11 @@ export function PrinterColumn({
           </button>
         </div>
       ) : (
-        printers.map((printer) => (
+        visiblePrinters.map((printer) => (
           <div key={printer.id} className="flex flex-col gap-2">
             <div className="text-[12.5px] font-bold">{printer.name}</div>
-            {printerLink && <PrinterLinkStatus printerId={printer.id} link={printerLink} />}
+            {/* Resin-Drucker haben keine Druckeranbindung. */}
+            {printerLink && printer.kind !== 'resin' && <PrinterLinkStatus printerId={printer.id} link={printerLink} />}
             {printer.units.map(renderUnit)}
             {printer.units.length === 0 && (
               <button
@@ -200,14 +244,18 @@ export function PrinterColumn({
 
 interface SlotMenuProps {
   spool: FilamentSpool | null;
+  /** Nur Eintraege, die in diese Einheit passen. */
   storage: FilamentSpool[];
+  /** Menue der Harzwanne: Wortwahl Flasche statt Spule. */
+  vat: boolean;
   onClose: () => void;
   onLoad: (spoolId: string) => void;
   onUnload: (spoolId: string) => void;
   onEdit: (spool: FilamentSpool) => void;
+  onConsume?: () => void;
 }
 
-function SlotMenu({ spool, storage, onClose, onLoad, onUnload, onEdit }: SlotMenuProps) {
+function SlotMenu({ spool, storage, vat, onClose, onLoad, onUnload, onEdit, onConsume }: SlotMenuProps) {
   const t = useT();
   const [query, setQuery] = useState('');
   const ref = useRef<HTMLDivElement>(null);
@@ -257,24 +305,25 @@ function SlotMenu({ spool, storage, onClose, onLoad, onUnload, onEdit }: SlotMen
       {spool && (
         <>
           {action(t('printersSlotMenuUnload'), () => onUnload(spool.id))}
-          {action(t('printersSlotMenuEdit'), () => onEdit(spool))}
+          {onConsume && action(`− ${t('resinConsumeButton')}`, onConsume)}
+          {action(vat ? t('printersVatMenuEdit') : t('printersSlotMenuEdit'), () => onEdit(spool))}
           <div className="border-t border-[var(--line)] my-1" />
         </>
       )}
       <div className="px-2.5 pt-1 pb-1.5 text-[10px] uppercase tracking-wider font-bold text-[var(--ink-3)]">
-        {t('printersSlotMenuLoad')}
+        {vat ? t('printersVatMenuLoad') : t('printersSlotMenuLoad')}
       </div>
       <div className="px-2 pb-1.5">
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={t('printersSlotMenuSearch')}
+          placeholder={vat ? t('printersVatMenuSearch') : t('printersSlotMenuSearch')}
           className="w-full h-7 px-2 rounded-[4px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12px] outline-0 focus:border-[var(--accent)]"
         />
       </div>
       <div className="max-h-48 overflow-y-auto">
         {candidates.length === 0 ? (
-          <div className="px-2.5 py-1.5 text-[11.5px] text-[var(--ink-3)]">{t('printersSlotMenuNoSpools')}</div>
+          <div className="px-2.5 py-1.5 text-[11.5px] text-[var(--ink-3)]">{vat ? t('printersVatMenuNoBottles') : t('printersSlotMenuNoSpools')}</div>
         ) : (
           candidates.map((candidate) => (
             <button

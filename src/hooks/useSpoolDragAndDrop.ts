@@ -13,6 +13,12 @@ interface DragSource {
 interface Handlers {
   onLoad: (spoolId: string, unitId: string, slotIndex: number) => void;
   onUnload: (spoolId: string) => void;
+  /**
+   * Passt die gezogene Spule in diese Einheit? Resin-Flaschen nur in eine
+   * Harzwanne, Filament nie (v0.14.0). Ein unpassendes Fach wird nie zum
+   * Ziel: keine Markierung, kein Ablegen.
+   */
+  canDropOnSlot?: (spoolId: string, unitId: string) => boolean;
 }
 
 /** Ab so vielen Pixeln Mausbewegung wird aus einem Klick ein Ziehen. */
@@ -26,14 +32,15 @@ const DRAG_THRESHOLD_PX = 4;
  * Mausdruck als Ziehen, damit ein einfacher Klick auf ein Fach weiter dessen
  * Menue oeffnet. Escape bricht ab.
  */
-export function useSpoolDragAndDrop({ onLoad, onUnload }: Handlers) {
+export function useSpoolDragAndDrop({ onLoad, onUnload, canDropOnSlot }: Handlers) {
   const [source, setSource] = useState<DragSource | null>(null);
   const [active, setActive] = useState(false);
   const [target, setTarget] = useState<SpoolDropTarget | null>(null);
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   const origin = useRef<{ x: number; y: number } | null>(null);
-  const handlers = useRef({ onLoad, onUnload });
-  handlers.current = { onLoad, onUnload };
+  const handlers = useRef({ onLoad, onUnload, canDropOnSlot });
+  handlers.current = { onLoad, onUnload, canDropOnSlot };
+  const fits = (spoolId: string, unitId: string) => handlers.current.canDropOnSlot?.(spoolId, unitId) ?? true;
 
   const reset = useCallback(() => {
     setSource(null);
@@ -78,7 +85,9 @@ export function useSpoolDragAndDrop({ onLoad, onUnload }: Handlers) {
       if (current.kind === 'slot') {
         const same =
           dragged.fromSlot?.unitId === current.unitId && dragged.fromSlot?.slotIndex === current.slotIndex;
-        if (!same) handlers.current.onLoad(dragged.spoolId, current.unitId, current.slotIndex);
+        if (!same && fits(dragged.spoolId, current.unitId)) {
+          handlers.current.onLoad(dragged.spoolId, current.unitId, current.slotIndex);
+        }
       } else if (dragged.fromSlot) {
         handlers.current.onUnload(dragged.spoolId);
       }
@@ -98,10 +107,12 @@ export function useSpoolDragAndDrop({ onLoad, onUnload }: Handlers) {
 
   const enterTarget = useCallback(
     (next: SpoolDropTarget) => {
-      if (!active) return;
+      if (!active || !source) return;
+      if (next.kind === 'slot' && !fits(source.spoolId, next.unitId)) return;
       setTarget(next);
     },
-    [active],
+    // `fits` liest nur den Ref, braucht also keine eigene Abhaengigkeit.
+    [active, source],
   );
 
   // Spaetes mouseleave darf ein neueres mouseenter nicht ueberschreiben

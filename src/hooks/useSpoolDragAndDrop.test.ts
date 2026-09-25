@@ -100,4 +100,22 @@ describe('useSpoolDragAndDrop', () => {
     act(() => { fireEvent.mouseMove(document, { clientX: 50, clientY: 50 }); });
     expect(result.current.draggingSpoolId).toBeNull();
   });
+
+  it('ignores a slot the dragged spool does not fit: no target, no drop', () => {
+    const onLoad = vi.fn();
+    const onUnload = vi.fn();
+    const canDropOnSlot = vi.fn((spoolId: string, unitId: string) => !(spoolId === 'resin' && unitId === 'ams'));
+    const { result } = renderHook(() => useSpoolDragAndDrop({ onLoad, onUnload, canDropOnSlot }));
+
+    act(() => result.current.startDrag('resin', null, { clientX: 0, clientY: 0, button: 0 }));
+    act(() => { fireEvent.mouseMove(document, { clientX: 50, clientY: 50 }); });
+    act(() => result.current.enterTarget({ kind: 'slot', unitId: 'ams', slotIndex: 0 }));
+    expect(result.current.target).toBeNull();
+    act(() => { fireEvent.mouseUp(document); });
+    expect(onLoad).not.toHaveBeenCalled();
+
+    act(() => result.current.startDrag('resin', null, { clientX: 0, clientY: 0, button: 0 }));
+    dragTo(result, { kind: 'slot', unitId: 'vat', slotIndex: 0 });
+    expect(onLoad).toHaveBeenCalledWith('resin', 'vat', 0);
+  });
 });

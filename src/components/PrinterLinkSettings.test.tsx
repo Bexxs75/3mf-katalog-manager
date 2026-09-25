@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { PrinterLinkSettings } from './PrinterLinkSettings';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
+import type { Printer } from '../types';
 
 beforeEach(() => localStorage.setItem('3mf-katalog-language', 'de'));
 
@@ -15,9 +16,9 @@ function link(over: Partial<PrinterLinkState> = {}): PrinterLinkState {
   } as PrinterLinkState;
 }
 
-const printers = [
-  { id: '1', name: 'Sovol SV08', units: [] },
-  { id: '2', name: 'Werkstatt-Drucker', units: [] },
+const printers: Printer[] = [
+  { id: '1', name: 'Sovol SV08', kind: 'filament', units: [] },
+  { id: '2', name: 'Werkstatt-Drucker', kind: 'filament', units: [] },
 ];
 
 describe('PrinterLinkSettings', () => {
@@ -61,5 +62,13 @@ describe('PrinterLinkSettings', () => {
     const l = link({ error: 'Netzwerk kaputt' });
     render(<LanguageProvider><PrinterLinkSettings link={l} printers={printers} /></LanguageProvider>);
     expect(screen.getByText('Das hat nicht geklappt: Netzwerk kaputt')).toBeInTheDocument();
+  });
+
+  it('does not list resin printers, they have no printer connection', () => {
+    const l = link({ enabled: true });
+    const withResin: Printer[] = [...printers, { id: '9', name: 'Saturn 4', kind: 'resin', units: [] }];
+    render(<LanguageProvider><PrinterLinkSettings link={l} printers={withResin} /></LanguageProvider>);
+    expect(screen.getByText('Sovol SV08')).toBeInTheDocument();
+    expect(screen.queryByText('Saturn 4')).toBeNull();
   });
 });

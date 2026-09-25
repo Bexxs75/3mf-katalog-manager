@@ -30,7 +30,15 @@ const RESIN = spool({
 const X1C: Printer = {
   id: 'p1',
   name: 'X1C',
+  kind: 'filament',
   units: [{ id: 'u1', printerId: 'p1', name: 'AMS A', kind: 'bambu_ams', slotCount: 4, bambuAmsIndex: 0 }],
+};
+
+const SATURN: Printer = {
+  id: 'p9',
+  name: 'Saturn 4',
+  kind: 'resin',
+  units: [{ id: 'vat', printerId: 'p9', name: 'Harzwanne', kind: 'resin_vat', slotCount: 1, bambuAmsIndex: null }],
 };
 
 beforeEach(() => {
@@ -175,8 +183,8 @@ describe('FilamentView with printers', () => {
     expect(screen.queryByTestId('spool-card-store')).toBeNull();
     expect(screen.getByText('Flaschen gesamt').nextElementSibling).toHaveTextContent('1');
     expect(screen.getByText('Restbestand gesamt').nextElementSibling).toHaveTextContent('640,5 ml');
-    // Die Druckerspalte bleibt und zeigt weiter das Filament im Fach.
-    expect(screen.getByTestId('slot-u1-0')).toHaveTextContent('PLA');
+    // Die Druckerspalte zeigt in der Resin-Ansicht nur Resin-Drucker (v0.14.0).
+    expect(screen.queryByTestId('slot-u1-0')).toBeNull();
   });
 
   it('deducts resin and confirms the amount', async () => {
@@ -222,13 +230,61 @@ describe('FilamentView with printers', () => {
     expect(within(menu).queryByText(/Standard/)).toBeNull();
   });
 
-  it('does not start a slot drag from a resin card', async () => {
+  it('shows the resin printer only in the resin view and drags a bottle onto its vat', async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === 'list_filament_spools') return Promise.resolve([LOADED, STORED, RESIN]);
+      if (cmd === 'list_printers') return Promise.resolve([X1C, SATURN]);
+      if (cmd === 'load_spool') return Promise.resolve({ displacedSpoolId: null });
+      return Promise.resolve(undefined);
+    });
     renderView();
-    fireEvent.click(await screen.findByRole('button', { name: 'Resin' }));
+    await screen.findByTestId('slot-u1-0');
+    expect(screen.queryByText('Saturn 4')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Resin' }));
+    const vat = await screen.findByTestId('slot-vat-0');
+    expect(screen.queryByTestId('slot-u1-0')).toBeNull();
     const card = await screen.findByTestId('spool-card-resin1');
     fireEvent.mouseDown(card, { clientX: 0, clientY: 0, button: 0 });
     fireEvent.mouseMove(document, { clientX: 40, clientY: 40 });
-    fireEvent.mouseEnter(screen.getByTestId('slot-u1-2'));
+    fireEvent.mouseEnter(vat);
+    fireEvent.mouseUp(document);
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('load_spool', { spoolId: 'resin1', unitId: 'vat', slotIndex: 0 }),
+    );
+  });
+
+  it('takes a bottle out of the vat back to its home location', async () => {
+    const inVat = { ...RESIN, location: null, homeLocation: 'Resin-Schrank', unitId: 'vat', slotIndex: 0 };
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === 'list_filament_spools') return Promise.resolve([STORED, inVat]);
+      if (cmd === 'list_printers') return Promise.resolve([X1C, SATURN]);
+      if (cmd === 'unload_spool') return Promise.resolve('Resin-Schrank');
+      return Promise.resolve(undefined);
+    });
+    renderView();
+    fireEvent.click(await screen.findByRole('button', { name: 'Resin' }));
+    const vat = await screen.findByTestId('slot-vat-0');
+    await waitFor(() => expect(vat).toHaveTextContent('Standard · Grau'));
+    fireEvent.click(vat);
+    fireEvent.click(screen.getByRole('button', { name: 'Herausnehmen' }));
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('zurück nach Resin-Schrank'));
+    expect(invoke).toHaveBeenCalledWith('unload_spool', { spoolId: 'resin1', location: null });
+  });
+
+  it('does not drop a filament spool on a slot it does not fit (no request)', async () => {
+    // Filament-Ansicht: ein Resin-Drucker ist hier gar nicht sichtbar; ein
+    // Ziehen auf eine Stelle ohne passendes Ziel loest nichts aus.
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === 'list_filament_spools') return Promise.resolve([STORED, RESIN]);
+      if (cmd === 'list_printers') return Promise.resolve([SATURN]);
+      return Promise.resolve(undefined);
+    });
+    renderView();
+    const card = await screen.findByTestId('spool-card-store');
+    expect(screen.queryByTestId('slot-vat-0')).toBeNull();
+    fireEvent.mouseDown(card, { clientX: 0, clientY: 0, button: 0 });
+    fireEvent.mouseMove(document, { clientX: 40, clientY: 40 });
     fireEvent.mouseUp(document);
     expect(invoke).not.toHaveBeenCalledWith('load_spool', expect.anything());
   });
@@ -284,7 +340,7 @@ describe('FilamentView shares one printers instance with other consumers', () =>
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === 'list_filament_spools') return Promise.resolve([LOADED, STORED]);
       if (cmd === 'list_printers') {
-        return Promise.resolve(printerAdded ? [X1C, { id: 'p2', name: 'Neuer Drucker', units: [] }] : [X1C]);
+        return Promise.resolve(printerAdded ? [X1C, { id: 'p2', name: 'Neuer Drucker', kind: 'filament', units: [] }] : [X1C]);
       }
       if (cmd === 'add_printer') {
         printerAdded = true;
@@ -302,7 +358,7 @@ describe('FilamentView shares one printers instance with other consumers', () =>
             <>
               {/* Steht hier fuer einen zweiten Verbraucher derselben Instanz, z.B. Rail. */}
               <div data-testid="other-consumer">{printers.printers.map((p) => p.name).join(', ')}</div>
-              <button onClick={() => printers.addPrinter('Neuer Drucker', 'Halter')}>Drucker hinzufuegen</button>
+              <button onClick={() => printers.addPrinter('Neuer Drucker', 'Halter', 'filament')}>Drucker hinzufuegen</button>
               <FilamentView printerLink={printerLink()} printers={printers} />
             </>
           )}

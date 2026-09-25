@@ -413,6 +413,14 @@ export interface Translations {
   printersKindAnycubicAce: string;
   printersKindExternal: string;
   printersKindCustom: string;
+  printersKindResinVat: string;
+  printersVatCapacity: string;
+  printersResinPrinterNote: string;
+  printersResinEmptyHint: string;
+  printersVatMenuLoad: string;
+  printersVatMenuEdit: string;
+  printersVatMenuSearch: string;
+  printersVatMenuNoBottles: string;
   printersReturnedTo: string;
   printersReturnedToStorage: string;
   printersChangeLocation: string;

@@ -23,7 +23,7 @@ import { SegmentedControl } from './SegmentedControl';
 import type { PrintersState } from '../hooks/usePrinters';
 import { useSpoolDragAndDrop } from '../hooks/useSpoolDragAndDrop';
 import * as printersApi from '../lib/api/printers';
-import { isInStorage, spoolLabel } from '../lib/filamentSlots';
+import { isInStorage, spoolFitsUnit, spoolLabel } from '../lib/filamentSlots';
 
 type LayoutMode = 'dashboard' | 'list';
 type StatusFilter = 'low' | 'empty' | null;
@@ -121,8 +121,18 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
   // (Spec: "Spulen im Drucker werden getrennt vom Lager angezeigt").
   const storageSpools = useMemo(() => spools.filter((s) => isInStorage(s) && s.kind === kind), [spools, kind]);
 
-  // Drucker, Faecher und Spulenhalter kennen nur Filament (Resin nie im Fach).
+  // Druckeranbindung kennt nur Filament (Resin nie als Buchungsziel).
   const filamentSpools = useMemo(() => spools.filter((s) => s.kind === 'filament'), [spools]);
+
+  /** Passt der Eintrag in die Einheit? (Resin nur in eine Harzwanne, Filament nie.) */
+  const fitsUnit = useCallback(
+    (spoolId: string, unitId: string) => {
+      const spool = spools.find((s) => s.id === spoolId);
+      const unit = printers.printers.flatMap((p) => p.units).find((u) => u.id === unitId);
+      return !!spool && !!unit && spoolFitsUnit(spool, unit);
+    },
+    [spools, printers.printers],
+  );
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -167,12 +177,18 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
 
   const toggleStatusFilter = (val: StatusFilter) => setStatusFilter((prev) => (prev === val ? null : val));
 
-  const loadSpool = useCallback((spoolId: string, unitId: string, slotIndex: number) => {
-    printersApi
-      .loadSpool(spoolId, unitId, slotIndex)
-      .then(() => refresh())
-      .catch((e) => setError(String(e)));
-  }, []);
+  const loadSpool = useCallback(
+    (spoolId: string, unitId: string, slotIndex: number) => {
+      // Das Backend lehnt es ohnehin ab; ein unpassendes Ziel schickt gar
+      // keine Anfrage erst los.
+      if (!fitsUnit(spoolId, unitId)) return;
+      printersApi
+        .loadSpool(spoolId, unitId, slotIndex)
+        .then(() => refresh())
+        .catch((e) => setError(String(e)));
+    },
+    [fitsUnit],
+  );
 
   const unloadSpool = useCallback(
     (spoolId: string) => {
@@ -226,7 +242,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
     refresh();
   };
 
-  const drag = useSpoolDragAndDrop({ onLoad: loadSpool, onUnload: unloadSpool });
+  const drag = useSpoolDragAndDrop({ onLoad: loadSpool, onUnload: unloadSpool, canDropOnSlot: fitsUnit });
   const draggedSpool = drag.draggingSpoolId ? spools.find((s) => s.id === drag.draggingSpoolId) : undefined;
   const storageIsTarget = drag.draggingFromSlot !== null && drag.target?.kind === 'storage';
 
@@ -358,7 +374,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
               onRequestDelete={requestDelete}
               onCancelDelete={cancelDelete}
               onConfirmDelete={confirmDelete}
-              onSpoolMouseDown={kind === 'filament' ? (spoolId, e) => drag.startDrag(spoolId, null, e) : undefined}
+              onSpoolMouseDown={(spoolId, e) => drag.startDrag(spoolId, null, e)}
               onRestock={(spool, anchor) => togglePopover('restock', spool, anchor)}
               restockOpenId={popover?.type === 'restock' ? popover.spool.id : null}
               onConsume={(spool, anchor) => togglePopover('consume', spool, anchor)}
@@ -373,7 +389,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
               onRequestDelete={requestDelete}
               onCancelDelete={cancelDelete}
               onConfirmDelete={confirmDelete}
-              onSpoolMouseDown={kind === 'filament' ? (spoolId, e) => drag.startDrag(spoolId, null, e) : undefined}
+              onSpoolMouseDown={(spoolId, e) => drag.startDrag(spoolId, null, e)}
               onRestock={(spool, anchor) => togglePopover('restock', spool, anchor)}
               restockOpenId={popover?.type === 'restock' ? popover.spool.id : null}
               onConsume={(spool, anchor) => togglePopover('consume', spool, anchor)}
@@ -387,7 +403,8 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
 
       <PrinterColumn
         printers={printers.printers}
-        spools={filamentSpools}
+        spools={spools}
+        kind={kind}
         draggingSpoolId={drag.draggingSpoolId}
         dropTarget={drag.target}
         onSlotMouseDown={(spoolId, unitId, slotIndex, e) => drag.startDrag(spoolId, { unitId, slotIndex }, e)}
@@ -396,6 +413,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
         onLoad={loadSpool}
         onUnload={unloadSpool}
         onEditSpool={openEditPanel}
+        onConsume={(spool, anchor) => togglePopover('consume', spool, anchor)}
         onManage={() => setManageOpen(true)}
         printerLink={printerLink}
       />
@@ -451,7 +469,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
       <PrinterManagePanel
         open={manageOpen}
         printers={printers.printers}
-        spools={filamentSpools}
+        spools={spools}
         error={printers.error}
         actions={printers}
         onClose={() => setManageOpen(false)}

@@ -78,12 +78,12 @@ export function FilamentDashboard({
           <div
             key={spool.id}
             data-testid={`spool-card-${spool.id}`}
-            onMouseDown={(e) => !startsOnButton(e) && spool.kind !== 'resin' && onSpoolMouseDown?.(spool.id, e)}
+            onMouseDown={(e) => !startsOnButton(e) && onSpoolMouseDown?.(spool.id, e)}
             onDoubleClick={(e) => {
               if (confirmDeleteId !== spool.id && !isFromInteractiveElement(e)) onEdit(spool);
             }}
             className={`rounded-[10px] overflow-hidden border border-[var(--line)] bg-[var(--panel)] flex flex-col ${
-              onSpoolMouseDown && spool.kind !== 'resin' ? 'cursor-grab' : ''
+              onSpoolMouseDown ? 'cursor-grab' : ''
             } ${highlightIds?.has(spool.id) ? 'spool-new' : ''}`}
           >
             <div className="flex items-center gap-2.5 px-3 py-2.5">

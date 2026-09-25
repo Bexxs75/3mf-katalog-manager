@@ -1,12 +1,16 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { MaterialUnit, Printer, UnitKind } from '../../types';
+import type { MaterialUnit, Printer, PrinterKind, UnitKind } from '../../types';
 
 export function listPrinters() {
   return invoke<Printer[]>('list_printers');
 }
-/** Legt den Drucker samt Spulenhalter (1 Fach, Name uebersetzt) an. */
-export function addPrinter(name: string, holderName: string) {
-  return invoke<Printer>('add_printer', { name, holderName });
+/**
+ * Legt den Drucker samt erster Einheit an: Filament-Drucker bekommen einen
+ * Spulenhalter (1 Fach), Resin-Drucker ihre Harzwanne. `holderName` ist der
+ * uebersetzte Name dieser Einheit.
+ */
+export function addPrinter(name: string, holderName: string, kind: PrinterKind) {
+  return invoke<Printer>('add_printer', { name, holderName, kind });
 }
 export function renamePrinter(printerId: string, name: string) {
   return invoke('rename_printer', { printerId, name });

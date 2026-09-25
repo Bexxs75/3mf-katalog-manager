@@ -4,10 +4,12 @@ import { LanguageProvider } from '../i18n/LanguageContext';
 import { PrinterManagePanel, suggestUnitName } from './PrinterManagePanel';
 import type { PrinterActions } from './PrinterManagePanel';
 import type { FilamentSpool, Printer } from '../types';
+import type { PrinterLinkState } from '../hooks/usePrinterLink';
 
 const X1C: Printer = {
   id: 'p1',
   name: 'X1C',
+  kind: 'filament',
   units: [
     { id: 'u1', printerId: 'p1', name: 'AMS A', kind: 'bambu_ams', slotCount: 4, bambuAmsIndex: 0 },
     { id: 'u2', printerId: 'p1', name: 'AMS B', kind: 'bambu_ams', slotCount: 4, bambuAmsIndex: 1 },
@@ -33,7 +35,14 @@ function actions(): PrinterActions {
   };
 }
 
-function renderPanel(printers: Printer[] = [X1C]) {
+const SATURN: Printer = {
+  id: 'p9',
+  name: 'Saturn 4',
+  kind: 'resin',
+  units: [{ id: 'vat', printerId: 'p9', name: 'Harzwanne', kind: 'resin_vat', slotCount: 1, bambuAmsIndex: null }],
+};
+
+function renderPanel(printers: Printer[] = [X1C], printerLink?: PrinterLinkState) {
   localStorage.setItem('3mf-katalog-language', 'de');
   const a = actions();
   const onSpoolsChanged = vi.fn();
@@ -47,6 +56,7 @@ function renderPanel(printers: Printer[] = [X1C]) {
         actions={a}
         onClose={vi.fn()}
         onSpoolsChanged={onSpoolsChanged}
+        printerLink={printerLink}
       />
     </LanguageProvider>,
   );
@@ -66,7 +76,7 @@ describe('PrinterManagePanel', () => {
     const { a } = renderPanel([]);
     fireEvent.change(screen.getByPlaceholderText('Name, z. B. X1C'), { target: { value: 'X1C' } });
     fireEvent.click(screen.getByRole('button', { name: 'Drucker hinzufügen' }));
-    await waitFor(() => expect(a.addPrinter).toHaveBeenCalledWith('X1C', 'Spulenhalter'));
+    await waitFor(() => expect(a.addPrinter).toHaveBeenCalledWith('X1C', 'Spulenhalter', 'filament'));
   });
 
   it('adds a unit from a template with a suggested name', () => {
@@ -133,5 +143,49 @@ describe('PrinterManagePanel', () => {
     fireEvent.mouseEnter(screen.getByTestId('unit-row-u1'));
     fireEvent.mouseUp(document);
     await waitFor(() => expect(a.reorderUnits).toHaveBeenCalledWith('p1', ['u3', 'u1', 'u2']));
+  });
+
+  it('adds a resin printer with its resin vat when Resin is chosen', async () => {
+    const { a } = renderPanel([]);
+    fireEvent.change(screen.getByPlaceholderText('Name, z. B. X1C'), { target: { value: 'Saturn 4' } });
+    const kind = screen.getByRole('group', { name: 'Art' });
+    expect(within(kind).getByRole('button', { name: 'Filament' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(within(kind).getByRole('button', { name: 'Resin' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Drucker hinzufügen' }));
+    await waitFor(() => expect(a.addPrinter).toHaveBeenCalledWith('Saturn 4', 'Harzwanne', 'resin'));
+  });
+
+  it('shows a resin printer with its fixed vat: no rename, delete, reorder or add unit', () => {
+    renderPanel([SATURN]);
+    const row = screen.getByTestId('unit-row-vat');
+    expect(row).toHaveTextContent('Harzwanne');
+    expect(row).toHaveTextContent('1 Flasche');
+    expect(within(row).queryByRole('button')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Einheit hinzufügen/ })).toBeNull();
+    expect(screen.getByText('Resin-Drucker haben nur ihre Harzwanne und keine Druckeranbindung.')).toBeInTheDocument();
+    // Der Drucker selbst bleibt umbenenn- und loeschbar.
+    expect(screen.getByRole('button', { name: 'Umbenennen' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Löschen' })).toBeInTheDocument();
+  });
+
+  it('shows the printer kind next to each printer', () => {
+    renderPanel([X1C, SATURN]);
+    expect(screen.getByTestId('printer-kind-p1')).toHaveTextContent('Filament');
+    expect(screen.getByTestId('printer-kind-p9')).toHaveTextContent('Resin');
+  });
+
+  it('shows the connection section only for filament printers', () => {
+    const link = {
+      enabled: true, connections: [], jobs: [], error: null,
+      refresh: vi.fn(), setEnabled: vi.fn(), testConnection: vi.fn(),
+      removeConnection: vi.fn(), syncNow: vi.fn(), ignoreJob: vi.fn(), confirmJobs: vi.fn(), previewJob: vi.fn(),
+    } as unknown as PrinterLinkState;
+    renderPanel([X1C, SATURN], link);
+    const cards = screen.getAllByTestId(/^printer-card-/);
+    expect(cards).toHaveLength(2);
+    const x1c = screen.getByTestId('printer-card-p1');
+    const saturn = screen.getByTestId('printer-card-p9');
+    expect(within(x1c).getByPlaceholderText('192.168.1.60')).toBeInTheDocument();
+    expect(within(saturn).queryByPlaceholderText('192.168.1.60')).toBeNull();
   });
 });

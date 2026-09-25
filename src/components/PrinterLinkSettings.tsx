@@ -14,6 +14,8 @@ interface Props {
 export function PrinterLinkSettings({ link, printers }: Props) {
   const t = useT();
   const [actionError, setActionError] = useState<string | null>(null);
+  // Resin-Drucker haben keine Druckeranbindung (v0.14.0).
+  const linkable = printers.filter((p) => p.kind !== 'resin');
   const statusOf = (printerId: string): { text: string; dot: string } => {
     const c = link.connections.find((x) => x.printerId === printerId);
     if (!c) return { text: t('printerLinkStatusNotLinked'), dot: 'bg-[var(--ink-3)]' };
@@ -47,9 +49,9 @@ export function PrinterLinkSettings({ link, printers }: Props) {
           {t('printerConnectionActionFailed').replace('{message}', () => link.error as string)}
         </div>
       )}
-      {link.enabled && printers.length > 0 && (
+      {link.enabled && linkable.length > 0 && (
         <ul className="flex flex-col gap-1.5 border-t border-[var(--line)] pt-2.5">
-          {printers.map((p) => {
+          {linkable.map((p) => {
             const s = statusOf(p.id);
             return (
               <li key={p.id} className="flex items-center justify-between gap-2 text-[12.5px]">

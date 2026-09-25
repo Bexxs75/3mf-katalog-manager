@@ -6,7 +6,7 @@ import { usePrinters } from './usePrinters';
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 beforeEach(() => { vi.mocked(invoke).mockReset(); });
 
-const X1C = { id: 'p1', name: 'X1C', units: [] };
+const X1C = { id: 'p1', name: 'X1C', kind: 'filament', units: [] };
 
 describe('usePrinters', () => {
   it('loads printers on mount', async () => {
@@ -42,5 +42,15 @@ describe('usePrinters', () => {
     });
     expect(thrown).toBe('Ein Drucker kann hoechstens 4 AMS haben');
     expect(result.current.error).toBe('Ein Drucker kann hoechstens 4 AMS haben');
+  });
+
+  it('passes the printer kind when adding a printer', async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => Promise.resolve(cmd === 'list_printers' ? [] : { id: 'p9' }));
+    const { result } = renderHook(() => usePrinters());
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('list_printers'));
+    await act(async () => {
+      await result.current.addPrinter('Saturn 4', 'Harzwanne', 'resin');
+    });
+    expect(invoke).toHaveBeenCalledWith('add_printer', { name: 'Saturn 4', holderName: 'Harzwanne', kind: 'resin' });
   });
 });

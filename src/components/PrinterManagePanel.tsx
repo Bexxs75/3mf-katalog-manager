@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import { formatCount } from '../i18n/types';
 import { UNIT_TEMPLATES } from '../lib/filamentColors';
-import type { FilamentSpool, MaterialUnit, Printer, UnitKind } from '../types';
+import type { FilamentSpool, MaterialUnit, Printer, PrinterKind, UnitKind } from '../types';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
 import { PrinterConnectionSection } from './PrinterConnectionSection';
+import { SegmentedControl } from './SegmentedControl';
 
 export interface PrinterActions {
-  addPrinter: (name: string, holderName: string) => Promise<unknown>;
+  addPrinter: (name: string, holderName: string, kind: PrinterKind) => Promise<unknown>;
   renamePrinter: (printerId: string, name: string) => Promise<unknown>;
   deletePrinter: (printerId: string) => Promise<number>;
   addUnit: (printerId: string, kind: UnitKind, name: string, slotCount: number | null) => Promise<unknown>;
@@ -37,7 +38,8 @@ type KindLabelKey =
   | 'printersKindPrusaMmu3'
   | 'printersKindAnycubicAce'
   | 'printersKindExternal'
-  | 'printersKindCustom';
+  | 'printersKindCustom'
+  | 'printersKindResinVat';
 
 const KIND_LABEL: Record<UnitKind, KindLabelKey> = {
   bambu_ams: 'printersKindBambuAms',
@@ -48,6 +50,7 @@ const KIND_LABEL: Record<UnitKind, KindLabelKey> = {
   anycubic_ace: 'printersKindAnycubicAce',
   external: 'printersKindExternal',
   custom: 'printersKindCustom',
+  resin_vat: 'printersKindResinVat',
 };
 
 const LETTERS = 'ABCDEFGHIJKLMNOP';
@@ -84,6 +87,7 @@ function Stepper({ value, onChange, label }: { value: number; onChange: (n: numb
 export function PrinterManagePanel({ open, printers, spools, error, actions, onClose, onSpoolsChanged, printerLink }: Props) {
   const t = useT();
   const [newPrinter, setNewPrinter] = useState('');
+  const [newPrinterKind, setNewPrinterKind] = useState<PrinterKind>('filament');
   const [renaming, setRenaming] = useState<{ id: string; kind: 'printer' | 'unit'; value: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; kind: 'printer' | 'unit' } | null>(null);
   const [addMenuFor, setAddMenuFor] = useState<string | null>(null);
@@ -93,6 +97,7 @@ export function PrinterManagePanel({ open, printers, spools, error, actions, onC
 
   useEffect(() => {
     if (!open) {
+      setNewPrinterKind('filament');
       setRenaming(null);
       setConfirmDelete(null);
       setAddMenuFor(null);
@@ -136,7 +141,10 @@ export function PrinterManagePanel({ open, printers, spools, error, actions, onC
   const submitNewPrinter = () => {
     const name = newPrinter.trim();
     if (!name) return;
-    actions.addPrinter(name, t('printersKindExternal')).then(() => setNewPrinter(''), () => {});
+    // Filament-Drucker bekommen einen Spulenhalter, Resin-Drucker ihre
+    // Harzwanne - der Name kommt uebersetzt mit.
+    const holderName = newPrinterKind === 'resin' ? t('printersKindResinVat') : t('printersKindExternal');
+    actions.addPrinter(name, holderName, newPrinterKind).then(() => setNewPrinter(''), () => {});
   };
 
   const submitRename = () => {
@@ -242,180 +250,219 @@ export function PrinterManagePanel({ open, printers, spools, error, actions, onC
           <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
             {error && <div className="text-[12.5px] text-[var(--accent)] break-words">{t('filamentError')} {error}</div>}
 
-            {printers.map((printer) => (
-              <div key={printer.id} className="rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-3">
-                <div className="flex items-center gap-2">
-                  {renameRow(printer.id, 'printer') ?? (
-                    <>
-                      <span className="flex-1 text-[13.5px] font-bold truncate">{printer.name}</span>
-                      <button
-                        type="button"
-                        className={smallButton}
-                        onClick={() => setRenaming({ id: printer.id, kind: 'printer', value: printer.name })}
-                      >
-                        {t('printersRename')}
-                      </button>
-                      <button
-                        type="button"
-                        className={smallButton}
-                        onClick={() => setConfirmDelete({ id: printer.id, kind: 'printer' })}
-                      >
-                        {t('printersDelete')}
-                      </button>
-                    </>
-                  )}
-                </div>
-                {confirmRow(
-                  printer.id,
-                  'printer',
-                  deleteConfirmText(
-                    t('printersDeletePrinterConfirm').replace('{name}', printer.name),
-                    spoolsIn(printer.units.map((u) => u.id)),
-                  ),
-                )}
-
-                <div className="flex flex-col gap-1.5 mt-2.5">
-                  {printer.units.map((unit) => (
-                    <div
-                      key={unit.id}
-                      data-testid={`unit-row-${unit.id}`}
-                      onMouseEnter={() => dragUnit && setDragOverUnit(unit.id)}
-                      className={`rounded-md border bg-[var(--panel)] px-2 py-1.5 ${
-                        dragOverUnit === unit.id ? 'border-[var(--accent)]' : 'border-[var(--line)]'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
+            {printers.map((printer) => {
+              const isResin = printer.kind === 'resin';
+              return (
+                <div
+                  key={printer.id}
+                  data-testid={`printer-card-${printer.id}`}
+                  className="rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-3"
+                >
+                  <div className="flex items-center gap-2">
+                    {renameRow(printer.id, 'printer') ?? (
+                      <>
+                        <span className="flex-1 text-[13.5px] font-bold truncate">{printer.name}</span>
                         <span
-                          role="button"
-                          aria-label={t('printersReorderHint')}
-                          title={t('printersReorderHint')}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            setDragUnit({ printerId: printer.id, unitId: unit.id });
-                          }}
-                          className="text-[var(--ink-3)] cursor-grab select-none px-0.5"
+                          data-testid={`printer-kind-${printer.id}`}
+                          className="flex-none text-[10.5px] font-bold rounded-full px-2 py-0.5 border border-[var(--line-strong)] text-[var(--ink-2)]"
                         >
-                          ⋮⋮
+                          {isResin ? t('spoolKindResin') : t('spoolKindFilament')}
                         </span>
-                        {renameRow(unit.id, 'unit') ?? (
-                          <>
-                            <span className="flex-1 min-w-0">
-                              <span className="block text-[12.5px] font-semibold truncate">{unit.name}</span>
-                              <span className="block text-[11px] text-[var(--ink-3)]">
-                                {t(KIND_LABEL[unit.kind])} · {formatCount(t('printersUnitSlotCount'), unit.slotCount)}
-                              </span>
-                            </span>
-                            {unit.kind === 'custom' && (
-                              <Stepper
-                                value={unit.slotCount}
-                                onChange={(n) => changeCustomSlots(unit, n)}
-                                label={t('printersSlotsLabel')}
-                              />
-                            )}
-                            <button
-                              type="button"
-                              className={smallButton}
-                              onClick={() => setRenaming({ id: unit.id, kind: 'unit', value: unit.name })}
-                            >
-                              {t('printersRename')}
-                            </button>
-                            <button
-                              type="button"
-                              className={smallButton}
-                              aria-label={`${t('printersDelete')} ${unit.name}`}
-                              onClick={() => setConfirmDelete({ id: unit.id, kind: 'unit' })}
-                            >
-                              ✕
-                            </button>
-                          </>
-                        )}
-                      </div>
-                      {confirmRow(
-                        unit.id,
-                        'unit',
-                        deleteConfirmText(t('printersDeleteUnitConfirm').replace('{name}', unit.name), spoolsIn([unit.id])),
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                {customFor?.printerId === printer.id ? (
-                  <div className="flex items-center gap-1.5 mt-2">
-                    <input
-                      autoFocus
-                      value={customFor.name}
-                      onChange={(e) => setCustomFor({ ...customFor, name: e.target.value })}
-                      placeholder={t('printersCustomUnitNamePlaceholder')}
-                      className={`${fieldClass} flex-1 min-w-0`}
-                    />
-                    <Stepper
-                      value={customFor.slots}
-                      onChange={(slots) => setCustomFor({ ...customFor, slots })}
-                      label={t('printersSlotsLabel')}
-                    />
-                    <button
-                      type="button"
-                      className={primaryButton}
-                      disabled={!customFor.name.trim()}
-                      onClick={() =>
-                        actions
-                          .addUnit(printer.id, 'custom', customFor.name.trim(), customFor.slots)
-                          .then(() => setCustomFor(null), () => {})
-                      }
-                    >
-                      {t('printersAddUnitButton')}
-                    </button>
-                  </div>
-                ) : (
-                  <div className="relative mt-2">
-                    <button
-                      type="button"
-                      className={smallButton}
-                      onClick={() => setAddMenuFor(addMenuFor === printer.id ? null : printer.id)}
-                    >
-                      + {t('printersAddUnitButton')} ▾
-                    </button>
-                    {addMenuFor === printer.id && (
-                      <div
-                        role="menu"
-                        className="absolute left-0 top-full mt-1 z-10 min-w-[200px] rounded-md border border-[var(--line-strong)] bg-[var(--panel)] shadow-[var(--shadow)] py-1"
-                      >
-                        {UNIT_TEMPLATES.map((template) => (
-                          <button
-                            key={template.kind}
-                            type="button"
-                            role="menuitem"
-                            onClick={() => addTemplate(printer, template.kind)}
-                            className="w-full flex justify-between gap-3 text-left px-2.5 py-1.5 text-[12px] hover:bg-[var(--panel-2)] cursor-pointer"
-                          >
-                            <span>{t(KIND_LABEL[template.kind])}</span>
-                            {template.slotCount !== null && (
-                              <span className="text-[var(--ink-3)]">{template.slotCount}</span>
-                            )}
-                          </button>
-                        ))}
-                      </div>
+                        <button
+                          type="button"
+                          className={smallButton}
+                          onClick={() => setRenaming({ id: printer.id, kind: 'printer', value: printer.name })}
+                        >
+                          {t('printersRename')}
+                        </button>
+                        <button
+                          type="button"
+                          className={smallButton}
+                          onClick={() => setConfirmDelete({ id: printer.id, kind: 'printer' })}
+                        >
+                          {t('printersDelete')}
+                        </button>
+                      </>
                     )}
                   </div>
-                )}
+                  {confirmRow(
+                    printer.id,
+                    'printer',
+                    deleteConfirmText(
+                      t('printersDeletePrinterConfirm').replace('{name}', printer.name),
+                      spoolsIn(printer.units.map((u) => u.id)),
+                    ),
+                  )}
 
-                {printerLink?.enabled && (
-                  <PrinterConnectionSection
-                    printerId={printer.id}
-                    connection={printerLink.connections.find((c) => c.printerId === printer.id) ?? null}
-                    link={printerLink}
-                  />
-                )}
-              </div>
-            ))}
+                  <div className="flex flex-col gap-1.5 mt-2.5">
+                    {printer.units.map((unit) =>
+                      unit.kind === 'resin_vat' ? (
+                        // Die Harzwanne ist fest: nicht umbenennbar, nicht
+                        // loeschbar, nicht sortierbar.
+                        <div
+                          key={unit.id}
+                          data-testid={`unit-row-${unit.id}`}
+                          className="rounded-md border border-[var(--line)] bg-[var(--panel)] px-2 py-1.5 flex items-center justify-between gap-2"
+                        >
+                          <span className="text-[12.5px] font-semibold truncate">{t('printersKindResinVat')}</span>
+                          <span className="text-[11px] text-[var(--ink-3)]">{t('printersVatCapacity')}</span>
+                        </div>
+                      ) : (
+                      <div
+                        key={unit.id}
+                        data-testid={`unit-row-${unit.id}`}
+                        onMouseEnter={() => dragUnit && setDragOverUnit(unit.id)}
+                        className={`rounded-md border bg-[var(--panel)] px-2 py-1.5 ${
+                          dragOverUnit === unit.id ? 'border-[var(--accent)]' : 'border-[var(--line)]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span
+                            role="button"
+                            aria-label={t('printersReorderHint')}
+                            title={t('printersReorderHint')}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setDragUnit({ printerId: printer.id, unitId: unit.id });
+                            }}
+                            className="text-[var(--ink-3)] cursor-grab select-none px-0.5"
+                          >
+                            ⋮⋮
+                          </span>
+                          {renameRow(unit.id, 'unit') ?? (
+                            <>
+                              <span className="flex-1 min-w-0">
+                                <span className="block text-[12.5px] font-semibold truncate">{unit.name}</span>
+                                <span className="block text-[11px] text-[var(--ink-3)]">
+                                  {t(KIND_LABEL[unit.kind])} · {formatCount(t('printersUnitSlotCount'), unit.slotCount)}
+                                </span>
+                              </span>
+                              {unit.kind === 'custom' && (
+                                <Stepper
+                                  value={unit.slotCount}
+                                  onChange={(n) => changeCustomSlots(unit, n)}
+                                  label={t('printersSlotsLabel')}
+                                />
+                              )}
+                              <button
+                                type="button"
+                                className={smallButton}
+                                onClick={() => setRenaming({ id: unit.id, kind: 'unit', value: unit.name })}
+                              >
+                                {t('printersRename')}
+                              </button>
+                              <button
+                                type="button"
+                                className={smallButton}
+                                aria-label={`${t('printersDelete')} ${unit.name}`}
+                                onClick={() => setConfirmDelete({ id: unit.id, kind: 'unit' })}
+                              >
+                                ✕
+                              </button>
+                            </>
+                          )}
+                        </div>
+                        {confirmRow(
+                          unit.id,
+                          'unit',
+                          deleteConfirmText(t('printersDeleteUnitConfirm').replace('{name}', unit.name), spoolsIn([unit.id])),
+                        )}
+                      </div>
+                      ),
+                    )}
+                  </div>
 
-            <div className="flex items-center gap-1.5">
+                  {isResin ? (
+                    <div className="mt-2 text-[11.5px] text-[var(--ink-3)]">{t('printersResinPrinterNote')}</div>
+                  ) : customFor?.printerId === printer.id ? (
+                    <div className="flex items-center gap-1.5 mt-2">
+                      <input
+                        autoFocus
+                        value={customFor.name}
+                        onChange={(e) => setCustomFor({ ...customFor, name: e.target.value })}
+                        placeholder={t('printersCustomUnitNamePlaceholder')}
+                        className={`${fieldClass} flex-1 min-w-0`}
+                      />
+                      <Stepper
+                        value={customFor.slots}
+                        onChange={(slots) => setCustomFor({ ...customFor, slots })}
+                        label={t('printersSlotsLabel')}
+                      />
+                      <button
+                        type="button"
+                        className={primaryButton}
+                        disabled={!customFor.name.trim()}
+                        onClick={() =>
+                          actions
+                            .addUnit(printer.id, 'custom', customFor.name.trim(), customFor.slots)
+                            .then(() => setCustomFor(null), () => {})
+                        }
+                      >
+                        {t('printersAddUnitButton')}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="relative mt-2">
+                      <button
+                        type="button"
+                        className={smallButton}
+                        onClick={() => setAddMenuFor(addMenuFor === printer.id ? null : printer.id)}
+                      >
+                        + {t('printersAddUnitButton')} ▾
+                      </button>
+                      {addMenuFor === printer.id && (
+                        <div
+                          role="menu"
+                          className="absolute left-0 top-full mt-1 z-10 min-w-[200px] rounded-md border border-[var(--line-strong)] bg-[var(--panel)] shadow-[var(--shadow)] py-1"
+                        >
+                          {UNIT_TEMPLATES.map((template) => (
+                            <button
+                              key={template.kind}
+                              type="button"
+                              role="menuitem"
+                              onClick={() => addTemplate(printer, template.kind)}
+                              className="w-full flex justify-between gap-3 text-left px-2.5 py-1.5 text-[12px] hover:bg-[var(--panel-2)] cursor-pointer"
+                            >
+                              <span>{t(KIND_LABEL[template.kind])}</span>
+                              {template.slotCount !== null && (
+                                <span className="text-[var(--ink-3)]">{template.slotCount}</span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Resin-Drucker haben keine Druckeranbindung (Backend lehnt sie ab). */}
+                  {printerLink?.enabled && !isResin && (
+                    <PrinterConnectionSection
+                      printerId={printer.id}
+                      connection={printerLink.connections.find((c) => c.printerId === printer.id) ?? null}
+                      link={printerLink}
+                    />
+                  )}
+                </div>
+              );
+            })}
+
+            <div className="flex items-center gap-1.5 flex-wrap">
               <input
                 value={newPrinter}
                 onChange={(e) => setNewPrinter(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && submitNewPrinter()}
                 placeholder={t('printersNewPrinterPlaceholder')}
-                className={`${fieldClass} flex-1 min-w-0`}
+                className={`${fieldClass} flex-1 min-w-[140px]`}
+              />
+              {/* Die Art wird nur beim Anlegen gewaehlt und ist danach fest. */}
+              <SegmentedControl
+                label={t('spoolKindLabel')}
+                options={[
+                  { value: 'filament', label: t('spoolKindFilament') },
+                  { value: 'resin', label: t('spoolKindResin') },
+                ]}
+                value={newPrinterKind}
+                onChange={setNewPrinterKind}
               />
               <button type="button" className={primaryButton} disabled={!newPrinter.trim()} onClick={submitNewPrinter}>
                 {t('printersAddPrinterButton')}

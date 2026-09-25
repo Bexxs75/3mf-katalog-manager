@@ -226,7 +226,12 @@ export type UnitKind =
   | 'prusa_mmu3'
   | 'anycubic_ace'
   | 'external'
-  | 'custom';
+  | 'custom'
+  /** Harzwanne eines Resin-Druckers (v0.14.0): 1 Platz, fest, nur Resin. */
+  | 'resin_vat';
+
+/** Druckerart (v0.14.0), beim Anlegen gewaehlt und danach fest. */
+export type PrinterKind = 'filament' | 'resin';
 
 export interface MaterialUnit {
   id: string;
@@ -240,6 +245,7 @@ export interface MaterialUnit {
 export interface Printer {
   id: string;
   name: string;
+  kind: PrinterKind;
   units: MaterialUnit[];
 }
 

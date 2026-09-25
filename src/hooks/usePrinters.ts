@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as printersApi from '../lib/api/printers';
-import type { Printer, UnitKind } from '../types';
+import type { Printer, PrinterKind, UnitKind } from '../types';
 
 /**
  * Drucker und ihre Mehrfarbeinheiten. Jede Aenderung laedt die Liste neu;
@@ -45,7 +45,8 @@ export function usePrinters() {
     printers,
     error,
     refresh,
-    addPrinter: (name: string, holderName: string) => run(printersApi.addPrinter(name, holderName)),
+    addPrinter: (name: string, holderName: string, kind: PrinterKind) =>
+      run(printersApi.addPrinter(name, holderName, kind)),
     renamePrinter: (printerId: string, name: string) => run(printersApi.renamePrinter(printerId, name)),
     deletePrinter: (printerId: string) => run(printersApi.deletePrinter(printerId)),
     addUnit: (printerId: string, kind: UnitKind, name: string, slotCount: number | null) =>

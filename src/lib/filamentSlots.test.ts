@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isInStorage, slotKey, spoolLabel, spoolsBySlot } from './filamentSlots';
+import { isInStorage, slotKey, spoolFitsUnit, spoolLabel, spoolsBySlot } from './filamentSlots';
 import type { FilamentSpool } from '../types';
 
 function spool(overrides: Partial<FilamentSpool>): FilamentSpool {
@@ -24,5 +24,12 @@ describe('filamentSlots', () => {
   it('builds a short label', () => {
     expect(spoolLabel(spool({}))).toBe('PLA Schwarz');
     expect(spoolLabel(spool({ color: null }))).toBe('PLA');
+  });
+
+  it('lets resin only into a resin vat and filament never', () => {
+    expect(spoolFitsUnit({ kind: 'resin' }, { kind: 'resin_vat' })).toBe(true);
+    expect(spoolFitsUnit({ kind: 'filament' }, { kind: 'bambu_ams' })).toBe(true);
+    expect(spoolFitsUnit({ kind: 'resin' }, { kind: 'external' })).toBe(false);
+    expect(spoolFitsUnit({ kind: 'filament' }, { kind: 'resin_vat' })).toBe(false);
   });
 });

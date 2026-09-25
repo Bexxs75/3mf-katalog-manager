@@ -1,4 +1,4 @@
-import type { FilamentSpool } from '../types';
+import type { FilamentSpool, MaterialUnit } from '../types';
 
 export function slotKey(unitId: string, slotIndex: number): string {
   return `${unitId}:${slotIndex}`;
@@ -22,4 +22,12 @@ export function isInStorage(spool: FilamentSpool): boolean {
 /** Kurzbezeichnung fuer Hinweise, z.B. "PLA Schwarz". */
 export function spoolLabel(spool: FilamentSpool): string {
   return [spool.material, spool.color].filter(Boolean).join(' ');
+}
+
+/**
+ * Passt der Eintrag in diese Einheit? Resin-Flaschen nur in eine Harzwanne,
+ * Filament-Spulen nie (v0.14.0; das Backend prueft dasselbe in `load_spool`).
+ */
+export function spoolFitsUnit(spool: Pick<FilamentSpool, 'kind'>, unit: Pick<MaterialUnit, 'kind'>): boolean {
+  return (spool.kind === 'resin') === (unit.kind === 'resin_vat');
 }
