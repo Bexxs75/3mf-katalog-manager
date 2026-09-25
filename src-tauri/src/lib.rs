@@ -4,10 +4,10 @@ mod db;
 mod filament_check;
 mod geometry;
 mod obj;
-// Druckeranbindung (Spec 2026-09-24, Task 2 von 16): Typen ohne Aufrufer,
-// bis spaetere Tasks Tauri-Commands/Abgleich darauf aufbauen - siehe
-// gleichlautenden Kommentar bei `pub mod printer_link;` in db/mod.rs.
-#[allow(dead_code)]
+// Druckeranbindung (Spec 2026-09-24): Verbindungs-/Abgleichlogik, seit
+// Task 10 von den Tauri-Commands und seit Task 8 vom Hintergrunddienst
+// benutzt - siehe gleichlautenden Kommentar bei `pub mod printer_link;`
+// in db/mod.rs.
 mod printer_link;
 mod slicers;
 #[cfg(feature = "step-preview")]
@@ -152,6 +152,17 @@ pub fn run() {
             commands::reorder_units,
             commands::load_spool,
             commands::unload_spool,
+            commands::get_printer_link_enabled,
+            commands::set_printer_link_enabled,
+            commands::list_printer_connections,
+            commands::test_printer_connection,
+            commands::remove_printer_connection,
+            commands::sync_printers_now,
+            commands::list_open_printer_jobs,
+            commands::preview_printer_job,
+            commands::get_printer_job_thumbnail,
+            commands::ignore_printer_job,
+            commands::confirm_printer_jobs,
             commands::pick_and_read_image,
             commands::add_tag,
             commands::remove_tag,
