@@ -143,6 +143,93 @@ pub fn delete_filament_spool(state: State<AppState>, spool_id: String) -> CmdRes
     db::delete_filament_spool(&conn, id).map_err(|e| e.to_string())
 }
 
+/// Obergrenze fuer "Nachkaufen" (Spec v0.13.1: Anzahl 1 bis 20).
+pub(crate) const RESTOCK_MAX_COUNT: i64 = 20;
+
+/// Kernlogik von `restock_filament_spool` (Test-Huelle wie andere `*_with_conn`).
+/// Legt `count` neue, volle Eintraege nach dem Vorbild der Vorlage an. Kopiert
+/// werden Art, Material, Hersteller, Farbname, Farbwert, Bild und Durchmesser;
+/// NICHT kopiert werden Fach (`unit_id`/`slot_index`) und Stammplatz - neue
+/// Spulen/Flaschen liegen immer im Lager. `weight` ist Gramm (Filament) bzw.
+/// Milliliter (Resin), auf 0,1 gerundet. Alles in EINER Transaktion:
+/// scheitert eine Einfuegung, wird nichts angelegt.
+pub(crate) fn restock_filament_spool_with_conn(
+    conn: &mut Connection,
+    template_id: &str,
+    count: i64,
+    weight: f64,
+    price: Option<f64>,
+    location: Option<String>,
+) -> CmdResult<Vec<FilamentSpoolDto>> {
+    let template_id: i64 = template_id.parse().map_err(|_| "invalid spool id".to_string())?;
+    if !(1..=RESTOCK_MAX_COUNT).contains(&count) {
+        return Err(format!("Anzahl muss zwischen 1 und {RESTOCK_MAX_COUNT} liegen"));
+    }
+    let weight = db::printers::round_tenth(weight);
+    if !weight.is_finite() || weight <= 0.0 {
+        return Err("Menge muss groesser als 0 sein".to_string());
+    }
+    if let Some(value) = price {
+        if !value.is_finite() || value < 0.0 {
+            return Err("ungueltiger Preis".to_string());
+        }
+    }
+    let location = location
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty());
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let template = match db::get_filament_spool(&tx, template_id) {
+        Ok(record) => record,
+        Err(DbError::Sqlite(rusqlite::Error::QueryReturnedNoRows)) => {
+            return Err("Vorlage nicht gefunden (die Spule wurde inzwischen geloescht)".to_string());
+        }
+        Err(e) => return Err(e.to_string()),
+    };
+    let new_spool = db::models::NewFilamentSpool {
+        material: template.material,
+        manufacturer: template.manufacturer,
+        color: template.color,
+        location,
+        diameter_mm: template.diameter_mm,
+        original_weight_g: weight,
+        remaining_weight_g: weight,
+        price,
+        image_png: template.image_png,
+        color_hex: template.color_hex,
+        kind: template.kind,
+    };
+    let mut created = Vec::with_capacity(count as usize);
+    for _ in 0..count {
+        let id = db::insert_filament_spool(&tx, &new_spool).map_err(|e| e.to_string())?;
+        let record = db::get_filament_spool(&tx, id).map_err(|e| e.to_string())?;
+        created.push(spool_record_to_dto(record));
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(created)
+}
+
+/// "Nachkaufen" (v0.13.1). `async` + `spawn_blocking`: bis zu 20 Einfuegungen
+/// mit Bild-Blob sollen den UI-Thread nicht blockieren.
+#[tauri::command]
+pub async fn restock_filament_spool(
+    app: tauri::AppHandle,
+    template_id: String,
+    count: i64,
+    weight: f64,
+    price: Option<f64>,
+    location: Option<String>,
+) -> CmdResult<Vec<FilamentSpoolDto>> {
+    use tauri::Manager;
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let mut conn = lock_db(&state)?;
+        restock_filament_spool_with_conn(&mut conn, &template_id, count, weight, price, location)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Kernlogik von `check_filament` (Test-Huelle wie andere `*_with_conn`):
 /// laedt Slicer-Daten der Modelle in der uebergebenen Reihenfolge, alle Spulen
 /// und die Namen von Drucker/Einheit fuer eingelegte Spulen. Unbekannte,
@@ -362,5 +449,148 @@ mod tests {
 
         crate::db::update_filament_spool(&conn, stored, &new_spool("resin")).expect("update");
         assert_eq!(crate::db::get_filament_spool(&conn, stored).expect("get").kind, "resin");
+    }
+
+    fn restock_template(conn: &Connection, kind: &str) -> i64 {
+        crate::db::insert_filament_spool(
+            conn,
+            &crate::db::models::NewFilamentSpool {
+                material: "ABS-T".to_string(),
+                manufacturer: Some("Prusament".to_string()),
+                color: Some("Orange".to_string()),
+                location: Some("Technik".to_string()),
+                diameter_mm: 1.75,
+                original_weight_g: 1000.0,
+                remaining_weight_g: 120.0,
+                price: Some(29.95),
+                image_png: Some(vec![1, 2, 3]),
+                color_hex: Some("#f07f1e".to_string()),
+                kind: kind.to_string(),
+            },
+        )
+        .expect("template")
+    }
+
+    #[test]
+    fn restock_creates_full_spools_in_storage_with_the_template_data() {
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let template = restock_template(&conn, "filament");
+        // Vorlage steckt im Drucker: Fach und Stammplatz duerfen NICHT kopiert werden.
+        let printer = crate::db::printers::insert_printer(&conn, "X1C").expect("printer");
+        let unit = crate::db::printers::insert_unit(&conn, printer, "bambu_ams", "AMS 1", None).expect("unit");
+        crate::db::printers::load_spool(&conn, template, unit, 0).expect("load");
+
+        let created = restock_filament_spool_with_conn(
+            &mut conn,
+            &template.to_string(),
+            3,
+            750.04,
+            Some(24.5),
+            Some("  Regal B ".to_string()),
+        )
+        .expect("restock");
+
+        assert_eq!(created.len(), 3);
+        for spool in &created {
+            assert_ne!(spool.id, template.to_string());
+            assert_eq!(spool.kind, "filament");
+            assert_eq!(spool.material, "ABS-T");
+            assert_eq!(spool.manufacturer.as_deref(), Some("Prusament"));
+            assert_eq!(spool.color.as_deref(), Some("Orange"));
+            assert_eq!(spool.color_hex.as_deref(), Some("#f07f1e"));
+            assert_eq!(spool.diameter_mm, 1.75);
+            assert_eq!(spool.image_png.as_deref(), Some("AQID"), "Bild wird kopiert");
+            assert_eq!(spool.original_weight_g, 750.0, "auf 0,1 gerundet");
+            assert_eq!(spool.remaining_weight_g, 750.0, "neue Spulen sind voll");
+            assert_eq!(spool.price, Some(24.5));
+            assert_eq!(spool.location.as_deref(), Some("Regal B"), "Lagerort getrimmt");
+            assert_eq!(spool.home_location, None);
+            assert_eq!(spool.unit_id, None);
+            assert_eq!(spool.slot_index, None);
+        }
+        let ids: std::collections::HashSet<_> = created.iter().map(|s| s.id.clone()).collect();
+        assert_eq!(ids.len(), 3, "jede Spule bekommt einen eigenen Datensatz");
+        assert_eq!(crate::db::list_filament_spools(&conn).expect("list").len(), 4);
+        let original = crate::db::get_filament_spool(&conn, template).expect("template");
+        assert_eq!(original.remaining_weight_g, 120.0, "die Vorlage bleibt unveraendert");
+        assert_eq!(original.unit_id, Some(unit));
+    }
+
+    #[test]
+    fn restock_of_a_resin_bottle_creates_resin_bottles() {
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let template = restock_template(&conn, "resin").to_string();
+
+        let created = restock_filament_spool_with_conn(&mut conn, &template, 2, 500.0, None, None).expect("restock");
+
+        assert!(created.iter().all(|s| s.kind == "resin" && s.remaining_weight_g == 500.0));
+    }
+
+    #[test]
+    fn restock_accepts_the_upper_limit_and_stores_blank_location_and_missing_price_as_none() {
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let template = restock_template(&conn, "filament").to_string();
+
+        let created =
+            restock_filament_spool_with_conn(&mut conn, &template, RESTOCK_MAX_COUNT, 1000.0, None, Some("   ".to_string()))
+                .expect("restock");
+
+        assert_eq!(created.len(), 20);
+        assert!(created.iter().all(|s| s.location.is_none() && s.price.is_none()));
+    }
+
+    #[test]
+    fn restock_rejects_invalid_input_and_creates_nothing() {
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let template = restock_template(&conn, "filament").to_string();
+
+        for (count, weight, price) in [
+            (0, 1000.0, None),
+            (21, 1000.0, None),
+            (1, 0.0, None),
+            (1, 0.04, None),
+            (1, -5.0, None),
+            (1, f64::NAN, None),
+            (1, 1000.0, Some(-1.0)),
+            (1, 1000.0, Some(f64::NAN)),
+            (1, 1000.0, Some(f64::INFINITY)),
+        ] {
+            let result = restock_filament_spool_with_conn(&mut conn, &template, count, weight, price, None);
+            assert!(result.is_err(), "({count}, {weight}, {price:?}) muss abgelehnt werden");
+        }
+        assert!(restock_filament_spool_with_conn(&mut conn, "kaputt", 1, 1000.0, None, None).is_err());
+        assert_eq!(crate::db::list_filament_spools(&conn).expect("list").len(), 1);
+    }
+
+    #[test]
+    fn restock_fails_with_a_clear_message_when_the_template_is_gone() {
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+
+        let err = restock_filament_spool_with_conn(&mut conn, "999999", 2, 1000.0, None, None).unwrap_err();
+
+        assert!(err.contains("Vorlage"), "verstaendliche Meldung, war: {err}");
+        assert!(crate::db::list_filament_spools(&conn).expect("list").is_empty());
+    }
+
+    #[test]
+    fn restock_rolls_back_every_insert_when_one_fails() {
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let template = restock_template(&conn, "filament").to_string();
+        // Laesst die dritte neue Spule scheitern (1 Vorlage + 2 neue = 3 Zeilen).
+        conn.execute_batch(
+            "CREATE TEMP TRIGGER restock_fail BEFORE INSERT ON filament_spools
+             WHEN (SELECT COUNT(*) FROM filament_spools) >= 3
+             BEGIN SELECT RAISE(ABORT, 'boom'); END;",
+        )
+        .expect("trigger");
+
+        let result = restock_filament_spool_with_conn(&mut conn, &template, 5, 1000.0, None, None);
+
+        assert!(result.is_err());
+        assert_eq!(
+            crate::db::list_filament_spools(&conn).expect("list").len(),
+            1,
+            "nichts halb angelegt: auch die zwei erfolgreichen Einfuegungen sind zurueckgerollt"
+        );
     }
 }
