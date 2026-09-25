@@ -87,6 +87,9 @@ export function FilamentView() {
   // (Spec: "Spulen im Drucker werden getrennt vom Lager angezeigt").
   const storageSpools = useMemo(() => spools.filter((s) => isInStorage(s) && s.kind === kind), [spools, kind]);
 
+  // Drucker, Faecher und Spulenhalter kennen nur Filament (Resin nie im Fach).
+  const filamentSpools = useMemo(() => spools.filter((s) => s.kind === 'filament'), [spools]);
+
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return storageSpools.filter((s) => {
@@ -311,7 +314,7 @@ export function FilamentView() {
               onRequestDelete={requestDelete}
               onCancelDelete={cancelDelete}
               onConfirmDelete={confirmDelete}
-              onSpoolMouseDown={(spoolId, e) => drag.startDrag(spoolId, null, e)}
+              onSpoolMouseDown={kind === 'filament' ? (spoolId, e) => drag.startDrag(spoolId, null, e) : undefined}
               onRestock={(spool, anchor) => togglePopover('restock', spool, anchor)}
               restockOpenId={popover?.type === 'restock' ? popover.spool.id : null}
               onConsume={(spool, anchor) => togglePopover('consume', spool, anchor)}
@@ -326,7 +329,7 @@ export function FilamentView() {
               onRequestDelete={requestDelete}
               onCancelDelete={cancelDelete}
               onConfirmDelete={confirmDelete}
-              onSpoolMouseDown={(spoolId, e) => drag.startDrag(spoolId, null, e)}
+              onSpoolMouseDown={kind === 'filament' ? (spoolId, e) => drag.startDrag(spoolId, null, e) : undefined}
               onRestock={(spool, anchor) => togglePopover('restock', spool, anchor)}
               restockOpenId={popover?.type === 'restock' ? popover.spool.id : null}
               onConsume={(spool, anchor) => togglePopover('consume', spool, anchor)}
@@ -340,7 +343,7 @@ export function FilamentView() {
 
       <PrinterColumn
         printers={printers.printers}
-        spools={spools}
+        spools={filamentSpools}
         draggingSpoolId={drag.draggingSpoolId}
         dropTarget={drag.target}
         onSlotMouseDown={(spoolId, unitId, slotIndex, e) => drag.startDrag(spoolId, { unitId, slotIndex }, e)}
@@ -403,7 +406,7 @@ export function FilamentView() {
       <PrinterManagePanel
         open={manageOpen}
         printers={printers.printers}
-        spools={spools}
+        spools={filamentSpools}
         error={printers.error}
         actions={printers}
         onClose={() => setManageOpen(false)}

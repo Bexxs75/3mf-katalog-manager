@@ -156,7 +156,8 @@ pub(crate) fn estimate_material_cost(
             let matching: Vec<&db::models::FilamentSpoolRecord> = spools
                 .iter()
                 .filter(|s| {
-                    s.material.to_lowercase().contains(&type_lower)
+                    s.kind == db::models::SPOOL_KIND_FILAMENT
+                        && s.material.to_lowercase().contains(&type_lower)
                         && s.price.is_some()
                         && s.original_weight_g > 0.0
                 })
@@ -938,5 +939,13 @@ mod tests {
             assert!(result.is_err());
             assert!(!to.exists(), "partially written destination must be cleaned up on copy failure");
         }
+    }
+    #[test]
+    fn estimate_material_cost_ignores_resin() {
+        let slice_info = sample_slice_info_single_filament("PLA", 10.0);
+        let resin = db::models::FilamentSpoolRecord { kind: "resin".into(), ..sample_spool("PLA", 1000.0, Some(20.0)) };
+        let cost = estimate_material_cost(&slice_info, &[resin]);
+        assert_eq!(cost.total_cost, None);
+        assert!(cost.has_unpriced_filaments);
     }
 }

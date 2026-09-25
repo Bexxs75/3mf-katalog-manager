@@ -174,4 +174,24 @@ describe('FilamentView with printers', () => {
     renderView();
     expect(await screen.findByTestId('spool-card-resin1')).toBeInTheDocument();
   });
+
+  it('never offers resin for a printer slot', async () => {
+    renderView();
+    const slot = await screen.findByTestId('slot-u1-2');
+    fireEvent.click(slot);
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).getByText('PETG · Rot')).toBeInTheDocument();
+    expect(within(menu).queryByText(/Standard/)).toBeNull();
+  });
+
+  it('does not start a slot drag from a resin card', async () => {
+    renderView();
+    fireEvent.click(await screen.findByRole('button', { name: 'Resin' }));
+    const card = await screen.findByTestId('spool-card-resin1');
+    fireEvent.mouseDown(card, { clientX: 0, clientY: 0, button: 0 });
+    fireEvent.mouseMove(document, { clientX: 40, clientY: 40 });
+    fireEvent.mouseEnter(screen.getByTestId('slot-u1-2'));
+    fireEvent.mouseUp(document);
+    expect(invoke).not.toHaveBeenCalledWith('load_spool', expect.anything());
+  });
 });

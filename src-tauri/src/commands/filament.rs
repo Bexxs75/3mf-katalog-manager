@@ -303,6 +303,8 @@ pub(crate) fn check_filament_with_conn(
     let spools = db::list_filament_spools(conn)
         .map_err(|e| e.to_string())?
         .into_iter()
+        // "Reicht das Filament?" (und das Warteschlangen-Symbol) nur mit Filament.
+        .filter(|s| s.kind == db::models::SPOOL_KIND_FILAMENT)
         .map(|s| {
             let slot = match (s.unit_id, s.slot_index) {
                 (Some(unit_id), Some(slot_index)) => units.iter().find(|u| u.id == unit_id).map(|u| SlotRef {
@@ -678,5 +680,41 @@ mod tests {
         assert!(consume_resin_with_conn(&mut conn, "kaputt", 10.0).is_err());
         assert_eq!(remaining(&conn, bottle), 120.0, "nichts geaendert");
         assert_eq!(remaining(&conn, spool), 120.0, "nichts geaendert");
+    }
+
+    #[test]
+    fn check_filament_ignores_resin_even_with_matching_material_and_color() {
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let file_id = crate::db::test_insert_minimal_file(&conn, "/tmp/resin_check.3mf", None).expect("file");
+        conn.execute(
+            "UPDATE files SET slice_info_json = ?1 WHERE id = ?2",
+            rusqlite::params![
+                r##"{"total_weight_g":50,"plates":[{"plate_index":1,"weight_g":50,"filaments":[{"filament_type":"PLA","color":"#C0392B","used_g":50,"used_m":16}]}]}"##,
+                file_id
+            ],
+        )
+        .expect("slice");
+        crate::db::insert_filament_spool(
+            &conn,
+            &crate::db::models::NewFilamentSpool {
+                material: "PLA".into(),
+                manufacturer: None,
+                color: Some("Rot".into()),
+                location: None,
+                diameter_mm: 1.75,
+                original_weight_g: 1000.0,
+                remaining_weight_g: 1000.0,
+                price: None,
+                image_png: None,
+                color_hex: Some("#b03020".into()),
+                kind: "resin".into(),
+            },
+        )
+        .expect("resin");
+
+        let result = check_filament_with_conn(&conn, &[file_id.to_string()]).expect("check");
+
+        assert_ne!(result[0].status, crate::filament_check::CheckStatus::Ok);
+        assert!(result[0].needs[0].spools.is_empty(), "Resin darf nie als passende Spule auftauchen");
     }
 }
