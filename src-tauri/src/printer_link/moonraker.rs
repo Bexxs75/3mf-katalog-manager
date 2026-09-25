@@ -2,6 +2,7 @@
 //! Nur lesende GET-Anfragen.
 
 use std::io::Read;
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
@@ -176,17 +177,41 @@ impl MoonrakerLink {
         }
     }
 
-    /// Liest den Antwortkoerper in Stuecken mit einem eigenen Gesamt-Zeitlimit
-    /// (`self.timeout` ab Anfragebeginn, deckt Kopfzeilen UND Koerper ab).
+    /// Holt Kopfzeilen + Koerper mit einer harten Gesamt-Obergrenze von
+    /// `self.timeout` ab Aufruf, egal wie lange ein einzelner `read()`-Aufruf
+    /// intern braucht.
     ///
-    /// Noetig, weil reqwest 0.12 in `blocking::Response::read` jedem
-    /// einzelnen `read()`-Aufruf ein frisches Zeitlimit gibt (nicht der
-    /// gesamten Antwort): ein Drucker, der einzelne Bytes knapp unterhalb
-    /// des Zeitlimits "troepfelt", wuerde ein einfaches `read_to_end` sonst
-    /// unbegrenzt lange blockieren.
+    /// reqwest 0.12 gibt in `blocking::Response::read` JEDEM einzelnen
+    /// `read()`-Aufruf ein frisches volles Zeitlimit (nicht der gesamten
+    /// Antwort): ein `read()`, das kurz vor Ablauf des Zeitlimits beginnt,
+    /// darf selbst noch einmal die volle Zeitspanne laufen. Ein Drucker, der
+    /// Bytes knapp unterhalb des Zeitlimits "troepfelt", koennte so trotz
+    /// eines Zeitlimit-Checks zwischen den Aufrufen auf etwa das Doppelte
+    /// kommen. Deshalb laeuft die eigentliche Anfrage (Senden + gestueckeltes
+    /// Lesen mit eigenem Zeitlimit-Check) auf einem Hilfs-Thread; der
+    /// aufrufende Thread wartet nur mit `recv_timeout(self.timeout)` auf das
+    /// Ergebnis und liefert spaetestens dann `Unreachable`, egal ob der
+    /// Hilfs-Thread noch in einem einzelnen `read()` haengt. Der Hilfs-Thread
+    /// laeuft in diesem Fall im Hintergrund aus (sein eigener Zeitlimit-Check
+    /// bzw. der naechste `read()`-Fehler beendet ihn spaetestens nach einem
+    /// weiteren `self.timeout`) und sendet dann ins Leere (Empfaenger schon
+    /// verworfen) - das ist unschaedlich.
     fn get_bytes(&self, url: reqwest::Url, limit: u64) -> Result<Vec<u8>, LinkError> {
-        let deadline = Instant::now() + self.timeout;
-        let mut resp = self.client.get(url).send().map_err(|_| LinkError::Unreachable)?;
+        let client = self.client.clone();
+        let timeout = self.timeout;
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(Self::fetch_bytes(&client, url, limit, timeout));
+        });
+        rx.recv_timeout(timeout).unwrap_or(Err(LinkError::Unreachable))
+    }
+
+    /// Der eigentliche Netzwerkteil von `get_bytes`, auf dem Hilfs-Thread
+    /// ausgefuehrt. Liest in Stuecken und prueft vor jedem `read()` das
+    /// eigene Zeitlimit; siehe Doku bei `get_bytes` fuer den Grund.
+    fn fetch_bytes(client: &reqwest::blocking::Client, url: reqwest::Url, limit: u64, timeout: Duration) -> Result<Vec<u8>, LinkError> {
+        let deadline = Instant::now() + timeout;
+        let mut resp = client.get(url).send().map_err(|_| LinkError::Unreachable)?;
         match resp.status().as_u16() {
             401 | 403 => return Err(LinkError::AuthRequired),
             s if !(200..300).contains(&s) => return Err(LinkError::BadResponse(format!("HTTP {s}"))),
@@ -491,5 +516,51 @@ mod client_tests {
         let started = std::time::Instant::now();
         assert_eq!(link.test(), Err(LinkError::Unreachable));
         assert!(started.elapsed() < std::time::Duration::from_secs(2), "{:?}", started.elapsed());
+    }
+
+    /// Ein einzelner `read()`-Aufruf am Antwortkoerper bekommt in reqwest
+    /// 0.12 sein EIGENES volles Zeitlimit (nicht das der Gesamtantwort). Ein
+    /// `read()`, das kurz vor Ablauf des Gesamt-Zeitlimits beginnt, darf also
+    /// selbst noch einmal (fast) die volle Zeitspanne laufen - ein reiner
+    /// Zeitlimit-Check ZWISCHEN den `read()`-Aufrufen reicht deshalb nicht
+    /// (siehe Fund 1, Runde 2). Hier sendet der Server ein erstes Byte bei
+    /// ~100 ms und laesst dann den naechsten `read()`-Aufruf bis ~240 ms
+    /// haengen (Zeitlimit 150 ms). Der Hilfs-Thread in `get_bytes` sorgt
+    /// dafuer, dass der Aufruf trotzdem spaetestens nach dem Zeitlimit
+    /// zurueckkehrt.
+    #[test]
+    fn a_single_stalled_read_still_returns_unreachable_within_the_overall_deadline() {
+        use std::io::{BufRead, BufReader, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let Ok((mut stream, _)) = listener.accept() else { return };
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            let _ = reader.read_line(&mut line);
+            loop {
+                let mut h = String::new();
+                if reader.read_line(&mut h).is_err() || h == "\r\n" || h.is_empty() {
+                    break;
+                }
+            }
+            let head = "HTTP/1.1 200 X\r\nContent-Length: 1000000\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n";
+            if stream.write_all(head.as_bytes()).is_err() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            if stream.write_all(b" ").is_err() {
+                return;
+            }
+            // Der naechste `read()`-Aufruf haengt jetzt ~140 ms - laenger als
+            // das verbleibende Zeitbudget (150 ms Gesamtlimit minus ~100 ms
+            // bereits verstrichen).
+            std::thread::sleep(std::time::Duration::from_millis(140));
+            let _ = stream.write_all(b" ");
+        });
+        let link = MoonrakerLink::new_with_timeout(&format!("127.0.0.1:{port}"), AddressPolicy::TEST, Duration::from_millis(150));
+        let started = std::time::Instant::now();
+        assert_eq!(link.test(), Err(LinkError::Unreachable));
+        assert!(started.elapsed() < Duration::from_millis(210), "{:?}", started.elapsed());
     }
 }
