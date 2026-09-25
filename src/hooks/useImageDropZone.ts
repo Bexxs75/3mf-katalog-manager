@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { evaluateImageDrop, isOverDropZone, type ImageDropRejection } from '../lib/imageDrop';
+import { evaluateImageDrop, isOverDropZone, isWindowsPlatform, type ImageDropRejection } from '../lib/imageDrop';
 
 interface Options {
   /** Nur lauschen, solange das Formular offen ist. */
@@ -24,6 +24,9 @@ export function useImageDropZone<T extends HTMLElement>({ enabled, onImage, onRe
   useEffect(() => {
     handlers.current = { onImage, onReject };
   });
+  // Nur unter Windows liefert Tauri physische Pixel (siehe imageDrop.ts); die
+  // Plattform aendert sich waehrend der Laufzeit nicht, daher einmal ermitteln.
+  const isWindows = useRef(isWindowsPlatform()).current;
 
   useEffect(() => {
     if (!enabled) return;
@@ -35,21 +38,26 @@ export function useImageDropZone<T extends HTMLElement>({ enabled, onImage, onRe
       if (!active) return;
       const payload = event.payload;
       if (payload.type === 'enter' || payload.type === 'over') {
-        setOver(isOverDropZone(payload.position, window.devicePixelRatio, zoneRect()));
+        setOver(isOverDropZone(payload.position, window.devicePixelRatio, isWindows, zoneRect()));
         return;
       }
       setOver(false);
       if (payload.type !== 'drop') return;
-      const result = evaluateImageDrop(payload.paths, payload.position, window.devicePixelRatio, zoneRect());
+      const result = evaluateImageDrop(payload.paths, payload.position, window.devicePixelRatio, isWindows, zoneRect());
       if (result.kind === 'image') handlers.current.onImage(result.path);
       else if (result.kind === 'rejected') handlers.current.onReject(result.reason);
     });
     return () => {
       active = false;
       setOver(false);
-      void unlisten.then((fn) => fn());
+      // `listen()` kann (v.a. in StrictMode, doppelter Mount) auch erst nach
+      // dem Cleanup ablehnen bzw. `fn()` kann fehlschlagen - ohne catch waere
+      // das eine unhandled rejection.
+      unlisten
+        .then((fn) => fn())
+        .catch((e) => console.error('[useImageDropZone] Abbestellen fehlgeschlagen:', e));
     };
-  }, [enabled]);
+  }, [enabled, isWindows]);
 
   return { zoneRef, over: enabled && over };
 }

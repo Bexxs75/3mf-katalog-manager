@@ -18,6 +18,16 @@ vi.mock('@tauri-apps/api/webview', () => ({
   }),
 }));
 
+const ORIGINAL_USER_AGENT = navigator.userAgent;
+
+/** `useImageDropZone` ermittelt die Plattform einmal beim ersten Render - daher vor `setup()` setzen. */
+function setPlatform(isWindows: boolean) {
+  Object.defineProperty(navigator, 'userAgent', {
+    value: isWindows ? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' : 'Mozilla/5.0 (X11; Linux x86_64)',
+    configurable: true,
+  });
+}
+
 function zone() {
   const el = document.createElement('button');
   el.getBoundingClientRect = () =>
@@ -34,9 +44,12 @@ beforeEach(() => {
   mocks.subscriptions = 0;
   mocks.unlisten.mockReset();
   Object.defineProperty(window, 'devicePixelRatio', { value: 2, configurable: true });
+  // Bestehende Tests unten pruefen die Windows-Division; macOS/Linux hat einen eigenen Test.
+  setPlatform(true);
 });
 afterEach(() => {
   Object.defineProperty(window, 'devicePixelRatio', { value: 1, configurable: true });
+  Object.defineProperty(navigator, 'userAgent', { value: ORIGINAL_USER_AGENT, configurable: true });
 });
 
 function setup(enabled = true) {
@@ -50,7 +63,7 @@ function setup(enabled = true) {
 }
 
 describe('useImageDropZone', () => {
-  it('highlights while a drag hovers over the zone (physical pixels / dpr)', () => {
+  it('highlights while a drag hovers over the zone (Windows: physical pixels / dpr)', () => {
     const { result } = setup();
     emit({ type: 'over', position: { x: 300, y: 300 } }); // 150/150 CSS: drin
     expect(result.current.over).toBe(true);
@@ -89,5 +102,29 @@ describe('useImageDropZone', () => {
     rerender({ on: false });
     await Promise.resolve();
     expect(mocks.unlisten).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the raw CSS position on macOS/Linux (no dpr division)', () => {
+    setPlatform(false);
+    const { result, onImage } = setup();
+    emit({ type: 'over', position: { x: 150, y: 150 } }); // schon CSS-Pixel, im Rahmen 100-200: drin
+    expect(result.current.over).toBe(true);
+    emit({ type: 'over', position: { x: 300, y: 300 } }); // waere nur bei Division durch dpr 2 drin
+    expect(result.current.over).toBe(false);
+    emit({ type: 'drop', paths: ['/a.png'], position: { x: 150, y: 150 } });
+    expect(onImage).toHaveBeenCalledWith('/a.png');
+  });
+
+  it('does not throw when unsubscribing fails (e.g. late StrictMode resolution)', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mocks.unlisten.mockImplementation(() => {
+      throw new Error('boom');
+    });
+    const { rerender } = setup();
+    rerender({ on: false });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 });
