@@ -74,7 +74,7 @@ Dieses Projekt befindet sich in aktiver Entwicklung. Der lokale Katalog (Import,
 
 ## Geplant
 
-Den aktuellen Stand zeigt immer die öffentliche [Roadmap](https://github.com/users/Bexxs75/projects/1); sie ist maßgeblich.
+Den aktuellen Stand zeigt immer die öffentliche [Roadmap](https://github.com/users/Bexxs75/projects/1/views/1?groupedBy%5BcolumnId%5D=416999698); sie ist maßgeblich.
 
 - **v0.14.0 – Druckeranbindung** für Klipper/Moonraker: der Filamentverbrauch eines Drucks wird erst nach deiner Bestätigung vom Lager abgebucht
 - **v0.15.0 – Updates direkt in der App** und weitere Linux-Pakete (.deb, .rpm, AUR)
@@ -206,7 +206,7 @@ This project is under active development. The local catalog (import, parsing, ta
 
 ## Planned
 
-The public [roadmap](https://github.com/users/Bexxs75/projects/1) always shows the current state and is the source of truth.
+The public [roadmap](https://github.com/users/Bexxs75/projects/1/views/1?groupedBy%5BcolumnId%5D=416999698) always shows the current state and is the source of truth.
 
 - **v0.14.0 – Printer link** for Klipper/Moonraker: a print's filament usage is deducted from the stock only after you confirm it
 - **v0.15.0 – In-app updates** and more Linux packages (.deb, .rpm, AUR)
