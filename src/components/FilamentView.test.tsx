@@ -17,6 +17,10 @@ function spool(overrides: Partial<FilamentSpool>): FilamentSpool {
 
 const LOADED = spool({ id: 'in', homeLocation: 'Regal 2', unitId: 'u1', slotIndex: 0 });
 const STORED = spool({ id: 'store', material: 'PETG', color: 'Rot', location: 'Regal 1', colorHex: '#c0392b' });
+const RESIN = spool({
+  id: 'resin1', kind: 'resin', material: 'Standard', manufacturer: 'Elegoo', color: 'Grau',
+  location: 'Resin-Schrank', colorHex: '#8a8f98', originalWeightG: 1000, remainingWeightG: 640.5,
+});
 const X1C: Printer = {
   id: 'p1',
   name: 'X1C',
@@ -26,13 +30,14 @@ const X1C: Printer = {
 beforeEach(() => {
   vi.mocked(invoke).mockReset();
   vi.mocked(invoke).mockImplementation((cmd: string) => {
-    if (cmd === 'list_filament_spools') return Promise.resolve([LOADED, STORED]);
+    if (cmd === 'list_filament_spools') return Promise.resolve([LOADED, STORED, RESIN]);
     if (cmd === 'list_printers') return Promise.resolve([X1C]);
     if (cmd === 'unload_spool') return Promise.resolve('Regal 2');
     if (cmd === 'load_spool') return Promise.resolve({ displacedSpoolId: null });
     return Promise.resolve(undefined);
   });
   localStorage.setItem('3mf-katalog-language', 'de');
+  localStorage.removeItem('3mf-katalog-filament-kind');
 });
 
 function renderView() {
@@ -118,5 +123,33 @@ describe('FilamentView with printers', () => {
     expect(await screen.findByTestId('spool-card-new1')).toHaveClass('spool-new');
     expect(screen.getByRole('status')).toHaveTextContent('1 Spule PETG · Rot angelegt');
     expect(screen.queryByRole('dialog', { name: /Nachkaufen/ })).toBeNull();
+  });
+
+  it('shows only filament by default and switches to resin with its own stats', async () => {
+    renderView();
+    await screen.findByTestId('spool-card-store');
+    expect(screen.queryByTestId('spool-card-resin1')).toBeNull();
+    expect(screen.getByText('Spulen gesamt').nextElementSibling).toHaveTextContent('2');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Resin' }));
+
+    expect(await screen.findByTestId('spool-card-resin1')).toBeInTheDocument();
+    expect(screen.queryByTestId('spool-card-store')).toBeNull();
+    expect(screen.getByText('Flaschen gesamt').nextElementSibling).toHaveTextContent('1');
+    expect(screen.getByText('Restbestand gesamt').nextElementSibling).toHaveTextContent('640,5 ml');
+    // Die Druckerspalte bleibt und zeigt weiter das Filament im Fach.
+    expect(screen.getByTestId('slot-u1-0')).toHaveTextContent('PLA');
+  });
+
+  it('remembers the chosen kind', async () => {
+    const first = render(
+      <LanguageProvider>
+        <FilamentView />
+      </LanguageProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Resin' }));
+    first.unmount();
+    renderView();
+    expect(await screen.findByTestId('spool-card-resin1')).toBeInTheDocument();
   });
 });
