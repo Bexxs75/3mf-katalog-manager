@@ -73,7 +73,7 @@ export function FilamentDashboard({
             data-testid={`spool-card-${spool.id}`}
             onMouseDown={(e) => !startsOnButton(e) && onSpoolMouseDown?.(spool.id, e)}
             onDoubleClick={(e) => {
-              if (!isFromInteractiveElement(e)) onEdit(spool);
+              if (confirmDeleteId !== spool.id && !isFromInteractiveElement(e)) onEdit(spool);
             }}
             className={`rounded-[10px] overflow-hidden border border-[var(--line)] bg-[var(--panel)] flex flex-col ${
               onSpoolMouseDown ? 'cursor-grab' : ''

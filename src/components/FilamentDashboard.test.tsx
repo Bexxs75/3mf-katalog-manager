@@ -63,4 +63,10 @@ describe('FilamentDashboard double-click', () => {
     fireEvent.doubleClick(screen.getByRole('button', { name: 'Spule bearbeiten' }));
     expect(onEdit).not.toHaveBeenCalled();
   });
+
+  it('ignores double-clicks while the delete confirmation is open', () => {
+    const { onEdit } = renderDashboard({ confirmDeleteId: 'a' });
+    fireEvent.doubleClick(screen.getByTestId('spool-card-a'));
+    expect(onEdit).not.toHaveBeenCalled();
+  });
 });

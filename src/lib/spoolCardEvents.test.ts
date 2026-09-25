@@ -25,4 +25,21 @@ describe('isFromInteractiveElement', () => {
     const outside = document.createElement('div');
     expect(isFromInteractiveElement({ target: outside, currentTarget: root })).toBe(true);
   });
+
+  it('treats a text node inside a button as interactive (WebKitGTK dblclick target)', () => {
+    const root = card();
+    const button = root.querySelector('button')!;
+    const textNode = button.firstChild!;
+    expect(textNode.nodeType).toBe(Node.TEXT_NODE);
+    expect(isFromInteractiveElement({ target: textNode, currentTarget: root })).toBe(true);
+  });
+
+  it('treats a text node from a portal outside the card as interactive', () => {
+    const root = card();
+    const outside = document.createElement('div');
+    outside.textContent = 'popover text';
+    const textNode = outside.firstChild!;
+    expect(textNode.nodeType).toBe(Node.TEXT_NODE);
+    expect(isFromInteractiveElement({ target: textNode, currentTarget: root })).toBe(true);
+  });
 });

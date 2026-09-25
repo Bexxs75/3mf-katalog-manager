@@ -7,7 +7,11 @@ const INTERACTIVE = 'button, input, textarea, select, a, [role="dialog"]';
  */
 export function isFromInteractiveElement(event: { target: EventTarget | null; currentTarget: EventTarget | null }): boolean {
   const { target, currentTarget } = event;
-  if (!(target instanceof Element)) return false;
-  if (currentTarget instanceof Node && !currentTarget.contains(target)) return true;
-  return target.closest(INTERACTIVE) !== null;
+  // Auf WebKitGTK/WKWebView kann das dblclick-Ziel ein Text-Node sein (z.B.
+  // der Text in einem Knopf oder im Popover) statt des umschliessenden
+  // Elements. Auf das Eltern-Element normalisieren, bevor geprueft wird.
+  const el = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
+  if (!el) return true;
+  if (currentTarget instanceof Node && !currentTarget.contains(el)) return true;
+  return el.closest(INTERACTIVE) !== null;
 }

@@ -151,7 +151,7 @@ export function FilamentTable({
                 data-testid={`spool-row-${spool.id}`}
                 onMouseDown={(e) => !startsOnButton(e) && onSpoolMouseDown?.(spool.id, e)}
                 onDoubleClick={(e) => {
-                  if (!isFromInteractiveElement(e)) onEdit(spool);
+                  if (confirmDeleteId !== spool.id && !isFromInteractiveElement(e)) onEdit(spool);
                 }}
                 className={`hover:bg-[var(--panel-2)] ${onSpoolMouseDown ? 'cursor-grab' : ''} ${
                   highlightIds?.has(spool.id) ? 'spool-new-row' : ''

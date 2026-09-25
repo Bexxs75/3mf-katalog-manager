@@ -57,4 +57,10 @@ describe('FilamentTable double-click', () => {
     fireEvent.doubleClick(screen.getByRole('button', { name: 'Nachkaufen' }));
     expect(onEdit).not.toHaveBeenCalled();
   });
+
+  it('ignores double-clicks while the delete confirmation is open', () => {
+    const { onEdit } = renderTable({ confirmDeleteId: 'a' });
+    fireEvent.doubleClick(screen.getByTestId('spool-row-a'));
+    expect(onEdit).not.toHaveBeenCalled();
+  });
 });
