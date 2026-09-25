@@ -136,6 +136,7 @@ pub fn run() {
             commands::update_filament_spool,
             commands::delete_filament_spool,
             commands::restock_filament_spool,
+            commands::consume_resin,
             commands::list_printers,
             commands::add_printer,
             commands::rename_printer,

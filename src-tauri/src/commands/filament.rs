@@ -230,6 +230,50 @@ pub async fn restock_filament_spool(
     .map_err(|e| e.to_string())?
 }
 
+/// Kernlogik von `consume_resin` (v0.13.1, "− Verbrauch"): zieht `amount_ml`
+/// (auf 0,1 ml gerundet, > 0) vom Rest einer Resin-Flasche ab, nie unter 0.
+/// Eine Transaktion; nur fuer Resin (Filament wird ueber Drucke/Formular
+/// gepflegt).
+pub(crate) fn consume_resin_with_conn(conn: &mut Connection, spool_id: &str, amount_ml: f64) -> CmdResult<FilamentSpoolDto> {
+    let id: i64 = spool_id.parse().map_err(|_| "invalid spool id".to_string())?;
+    let amount = db::printers::round_tenth(amount_ml);
+    if !amount.is_finite() || amount <= 0.0 {
+        return Err("Verbrauch muss groesser als 0 sein".to_string());
+    }
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let spool = match db::get_filament_spool(&tx, id) {
+        Ok(record) => record,
+        Err(DbError::Sqlite(rusqlite::Error::QueryReturnedNoRows)) => {
+            return Err("Flasche nicht gefunden (wurde sie inzwischen geloescht?)".to_string());
+        }
+        Err(e) => return Err(e.to_string()),
+    };
+    if spool.kind != db::models::SPOOL_KIND_RESIN {
+        return Err("Verbrauch abbuchen gibt es nur fuer Resin".to_string());
+    }
+    let remaining = db::printers::round_tenth((spool.remaining_weight_g - amount).max(0.0));
+    tx.execute(
+        "UPDATE filament_spools SET remaining_weight_g = ?1 WHERE id = ?2",
+        rusqlite::params![remaining, id],
+    )
+    .map_err(|e| e.to_string())?;
+    let updated = db::get_filament_spool(&tx, id).map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(spool_record_to_dto(updated))
+}
+
+#[tauri::command]
+pub async fn consume_resin(app: tauri::AppHandle, spool_id: String, amount_ml: f64) -> CmdResult<FilamentSpoolDto> {
+    use tauri::Manager;
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let mut conn = lock_db(&state)?;
+        consume_resin_with_conn(&mut conn, &spool_id, amount_ml)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Kernlogik von `check_filament` (Test-Huelle wie andere `*_with_conn`):
 /// laedt Slicer-Daten der Modelle in der uebergebenen Reihenfolge, alle Spulen
 /// und die Namen von Drucker/Einheit fuer eingelegte Spulen. Unbekannte,
@@ -592,5 +636,47 @@ mod tests {
             1,
             "nichts halb angelegt: auch die zwei erfolgreichen Einfuegungen sind zurueckgerollt"
         );
+    }
+
+    fn remaining(conn: &Connection, id: i64) -> f64 {
+        crate::db::get_filament_spool(conn, id).expect("get").remaining_weight_g
+    }
+
+    #[test]
+    fn consume_resin_deducts_rounded_to_a_tenth() {
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let bottle = restock_template(&conn, "resin"); // 120 ml Rest
+
+        let updated = consume_resin_with_conn(&mut conn, &bottle.to_string(), 45.44).expect("consume");
+
+        assert_eq!(updated.remaining_weight_g, 74.6);
+        assert_eq!(remaining(&conn, bottle), 74.6);
+        assert_eq!(updated.original_weight_g, 1000.0, "Flaschengroesse bleibt");
+    }
+
+    #[test]
+    fn consume_resin_never_goes_below_zero() {
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let bottle = restock_template(&conn, "resin");
+
+        let updated = consume_resin_with_conn(&mut conn, &bottle.to_string(), 500.0).expect("consume");
+
+        assert_eq!(updated.remaining_weight_g, 0.0);
+    }
+
+    #[test]
+    fn consume_resin_rejects_invalid_amounts_filament_and_unknown_ids() {
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let bottle = restock_template(&conn, "resin");
+        let spool = restock_template(&conn, "filament");
+
+        for amount in [0.0, 0.04, -3.0, f64::NAN, f64::INFINITY] {
+            assert!(consume_resin_with_conn(&mut conn, &bottle.to_string(), amount).is_err(), "{amount}");
+        }
+        assert!(consume_resin_with_conn(&mut conn, &spool.to_string(), 10.0).is_err(), "nur Resin");
+        assert!(consume_resin_with_conn(&mut conn, "999999", 10.0).is_err());
+        assert!(consume_resin_with_conn(&mut conn, "kaputt", 10.0).is_err());
+        assert_eq!(remaining(&conn, bottle), 120.0, "nichts geaendert");
+        assert_eq!(remaining(&conn, spool), 120.0, "nichts geaendert");
     }
 }
