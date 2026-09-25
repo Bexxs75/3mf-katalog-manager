@@ -13,7 +13,6 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Changed
 
-- Die 3D-Vorschau zeigt Modelle jetzt in Koralle statt in Beige. Sie heben sich damit im hellen wie im dunklen Design deutlich vom Hintergrund ab.
 - Die Update-Prüfung erkennt jetzt auch Vorschauversionen (z. B. „0.14.0-gharac") korrekt als älter als das zugehörige fertige Release, statt nie ein Update zu melden.
 - Interne Qualitätsprüfungen: Testcode ist jetzt clippy-sauber, dazu ein automatischer CI-Prüflauf (TypeScript, Tests, Clippy) sowie eine wöchentliche Abhängigkeits-Sicherheitsprüfung (cargo-deny, npm audit).
 
@@ -25,6 +24,10 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Filament-Lager: **Nachkaufen**. Jede Karte hat unten links den Knopf „＋ Nachkaufen", jede Zeile der Listenansicht einen „＋"-Knopf. Ein kleines Fenster legt 1 bis 20 neue, volle Spulen bzw. Flaschen mit denselben Daten an (Art, Material, Hersteller, Farbname, Farbwert, Bild, Durchmesser). Menge, Preis je Stück und Lagerort sind mit den Werten der Vorlage vorbelegt (Lagerort: ihr Stammplatz, falls sie gerade im Drucker steckt) und lassen sich vorher ändern. Neue Einträge liegen immer im Lager. Alles wird in einem Schritt angelegt: Schlägt etwas fehl (z. B. weil die Vorlage inzwischen gelöscht wurde), entsteht kein einziger. Die neuen Karten sind danach kurz grün umrandet, eine Meldung nennt die Anzahl. Escape oder ein Klick daneben schließt das Fenster, ohne etwas anzulegen.
 - Filament-Lager: Ein **Doppelklick** auf eine Karte oder eine Tabellenzeile öffnet das Bearbeiten-Formular (wie ✎). Doppelklicks auf Knöpfe lösen das nicht aus.
 - Filament-Lager: Restgewichte werden auf 0,1 g genau gespeichert und angezeigt.
+
+### Changed
+
+- Die 3D-Vorschau zeigt Modelle jetzt in Koralle statt in Beige. Sie heben sich damit im hellen wie im dunklen Design deutlich vom Hintergrund ab.
 
 ### Fixed
 
@@ -395,7 +398,6 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Changed
 
-- The 3D preview now shows models in coral instead of beige, so they stand out clearly from the background in both the light and the dark theme.
 - The update check now correctly recognizes preview versions (e.g. "0.14.0-gharac") as older than the matching final release, instead of never reporting an update.
 - Internal quality checks: test code is now clippy-clean, plus an automated CI check (TypeScript, tests, clippy) and a weekly dependency security audit (cargo-deny, npm audit).
 
@@ -407,6 +409,10 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - Filament stock: **Restock**. Every card has a "＋ Restock" button at the bottom left, and every row in the list view has a "＋" button. A small window adds 1 to 20 new, full spools or bottles with the same details (type, material, manufacturer, color name, color value, image, diameter). Amount, price per item and storage location are prefilled from the template (storage location: its home location if it currently sits in a printer) and can be changed first. New entries always go to storage. Everything is created in one step: if anything fails (for example because the template was deleted in the meantime), nothing is created. The new cards get a brief green outline, and a message states how many were added. Escape or a click outside closes the window without adding anything.
 - Filament stock: **Double-clicking** a card or a table row opens the edit form (same as ✎). Double-clicks on buttons don't trigger it.
 - Filament stock: Remaining weights are stored and shown to 0.1 g.
+
+### Changed
+
+- The 3D preview now shows models in coral instead of beige, so they stand out clearly from the background in both the light and the dark theme.
 
 ### Fixed
 
