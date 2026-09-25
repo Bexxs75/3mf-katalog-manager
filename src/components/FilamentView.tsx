@@ -21,7 +21,6 @@ type LayoutMode = 'dashboard' | 'list';
 type StatusFilter = 'low' | 'empty' | null;
 
 interface Props {
-  /** Ab Task 14/15 fuer den Abgleich-Workflow (Auftraege bestaetigen/ignorieren) genutzt. */
   printerLink: PrinterLinkState;
   /**
    * Von App.tsx einmal angelegt und auch an Rail (Reiter "Drucker")
@@ -32,7 +31,7 @@ interface Props {
   printers: PrintersState;
 }
 
-export function FilamentView({ printerLink: _printerLink, printers }: Props) {
+export function FilamentView({ printerLink, printers }: Props) {
   const t = useT();
   const { language } = useLanguage();
   const [spools, setSpools] = useState<FilamentSpool[]>([]);
@@ -315,6 +314,7 @@ export function FilamentView({ printerLink: _printerLink, printers }: Props) {
         actions={printers}
         onClose={() => setManageOpen(false)}
         onSpoolsChanged={refresh}
+        printerLink={printerLink}
       />
 
       <FilamentSpoolForm

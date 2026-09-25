@@ -3,6 +3,8 @@ import { useT } from '../i18n/LanguageContext';
 import { formatCount } from '../i18n/types';
 import { UNIT_TEMPLATES } from '../lib/filamentColors';
 import type { FilamentSpool, MaterialUnit, Printer, UnitKind } from '../types';
+import type { PrinterLinkState } from '../hooks/usePrinterLink';
+import { PrinterConnectionSection } from './PrinterConnectionSection';
 
 export interface PrinterActions {
   addPrinter: (name: string, holderName: string) => Promise<unknown>;
@@ -23,6 +25,8 @@ interface Props {
   onClose: () => void;
   /** Nach Aenderungen, die Spulen an ihren Stammplatz zurueckschicken koennen. */
   onSpoolsChanged: () => void;
+  /** Zeigt je Drucker-Karte die Verbindung (Typ, Adresse, Test) an - nur wenn die Druckeranbindung eingeschaltet ist. */
+  printerLink?: PrinterLinkState;
 }
 
 type KindLabelKey =
@@ -77,7 +81,7 @@ function Stepper({ value, onChange, label }: { value: number; onChange: (n: numb
 }
 
 /** Seitenpanel zum Anlegen und Pflegen von Druckern und ihren Einheiten. */
-export function PrinterManagePanel({ open, printers, spools, error, actions, onClose, onSpoolsChanged }: Props) {
+export function PrinterManagePanel({ open, printers, spools, error, actions, onClose, onSpoolsChanged, printerLink }: Props) {
   const t = useT();
   const [newPrinter, setNewPrinter] = useState('');
   const [renaming, setRenaming] = useState<{ id: string; kind: 'printer' | 'unit'; value: string } | null>(null);
@@ -393,6 +397,14 @@ export function PrinterManagePanel({ open, printers, spools, error, actions, onC
                       </div>
                     )}
                   </div>
+                )}
+
+                {printerLink?.enabled && (
+                  <PrinterConnectionSection
+                    printerId={printer.id}
+                    connection={printerLink.connections.find((c) => c.printerId === printer.id) ?? null}
+                    link={printerLink}
+                  />
                 )}
               </div>
             ))}
