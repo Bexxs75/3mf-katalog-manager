@@ -158,3 +158,43 @@ CREATE TABLE IF NOT EXISTS print_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_print_log_file_id ON print_log (file_id);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS printer_connections (
+    printer_id INTEGER PRIMARY KEY REFERENCES printers(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('moonraker')),
+    address TEXT NOT NULL,
+    base_url TEXT,
+    remote_version TEXT,
+    connected_since REAL NOT NULL,
+    last_synced_at REAL,
+    last_error TEXT,
+    error_since REAL,
+    paused INTEGER NOT NULL DEFAULT 0 CHECK (paused IN (0, 1))
+);
+
+CREATE TABLE IF NOT EXISTS printer_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    printer_id INTEGER NOT NULL REFERENCES printers(id) ON DELETE CASCADE,
+    remote_id TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    outcome TEXT NOT NULL CHECK (outcome IN ('completed', 'partial')),
+    raw_status TEXT NOT NULL,
+    ended_at REAL NOT NULL,
+    print_duration_s REAL NOT NULL,
+    used_mm REAL NOT NULL,
+    slicer_total_mm REAL,
+    slicer_weight_g REAL,
+    material TEXT,
+    thumbnail_path TEXT,
+    state TEXT NOT NULL DEFAULT 'open' CHECK (state IN ('open', 'confirmed', 'ignored')),
+    booked_spool_id INTEGER REFERENCES filament_spools(id) ON DELETE SET NULL,
+    booked_file_id INTEGER REFERENCES files(id) ON DELETE SET NULL,
+    booked_g REAL,
+    decided_at TEXT,
+    UNIQUE (printer_id, remote_id)
+);

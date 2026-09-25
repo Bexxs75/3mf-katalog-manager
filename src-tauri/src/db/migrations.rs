@@ -96,6 +96,45 @@ const MIGRATIONS: &[MigrationStep] = &[
     MigrationStep::Simple(|c| exec(c, "ALTER TABLE filament_spools ADD COLUMN color_hex TEXT")),
     MigrationStep::Simple(|c| exec(c, "CREATE UNIQUE INDEX IF NOT EXISTS idx_filament_spools_slot ON filament_spools (unit_id, slot_index) WHERE unit_id IS NOT NULL")),
     MigrationStep::Simple(super::printers::backfill_color_hex),
+    // Druckeranbindung (Spec 2026-09-24): Einstellungen, Verbindung pro
+    // Drucker, abgeholte Drucke.
+    MigrationStep::Simple(|c| exec(c, "CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    )")),
+    MigrationStep::Simple(|c| exec(c, "CREATE TABLE IF NOT EXISTS printer_connections (
+        printer_id INTEGER PRIMARY KEY REFERENCES printers(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK (kind IN ('moonraker')),
+        address TEXT NOT NULL,
+        base_url TEXT,
+        remote_version TEXT,
+        connected_since REAL NOT NULL,
+        last_synced_at REAL,
+        last_error TEXT,
+        error_since REAL,
+        paused INTEGER NOT NULL DEFAULT 0 CHECK (paused IN (0, 1))
+    )")),
+    MigrationStep::Simple(|c| exec(c, "CREATE TABLE IF NOT EXISTS printer_jobs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        printer_id INTEGER NOT NULL REFERENCES printers(id) ON DELETE CASCADE,
+        remote_id TEXT NOT NULL,
+        file_name TEXT NOT NULL,
+        outcome TEXT NOT NULL CHECK (outcome IN ('completed', 'partial')),
+        raw_status TEXT NOT NULL,
+        ended_at REAL NOT NULL,
+        print_duration_s REAL NOT NULL,
+        used_mm REAL NOT NULL,
+        slicer_total_mm REAL,
+        slicer_weight_g REAL,
+        material TEXT,
+        thumbnail_path TEXT,
+        state TEXT NOT NULL DEFAULT 'open' CHECK (state IN ('open', 'confirmed', 'ignored')),
+        booked_spool_id INTEGER REFERENCES filament_spools(id) ON DELETE SET NULL,
+        booked_file_id INTEGER REFERENCES files(id) ON DELETE SET NULL,
+        booked_g REAL,
+        decided_at TEXT,
+        UNIQUE (printer_id, remote_id)
+    )")),
 ];
 
 /// Aktuelle Ziel-Schemaversion - leitet sich direkt aus der Anzahl der

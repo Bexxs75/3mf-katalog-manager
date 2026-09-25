@@ -4,6 +4,11 @@ mod db;
 mod filament_check;
 mod geometry;
 mod obj;
+// Druckeranbindung (Spec 2026-09-24, Task 2 von 16): Typen ohne Aufrufer,
+// bis spaetere Tasks Tauri-Commands/Abgleich darauf aufbauen - siehe
+// gleichlautenden Kommentar bei `pub mod printer_link;` in db/mod.rs.
+#[allow(dead_code)]
+mod printer_link;
 mod slicers;
 #[cfg(feature = "step-preview")]
 pub mod step;

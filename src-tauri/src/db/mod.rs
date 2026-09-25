@@ -3,6 +3,13 @@ pub mod models;
 mod repository;
 mod collections;
 pub mod printers;
+// Druckeranbindung (Spec 2026-09-24, Task 2 von 16): reiner Datenbankzugriff
+// fuer Einstellungen/Verbindungen/abgeholte Drucke, noch ohne Aufrufer -
+// die Tauri-Commands und der Abgleich-Hintergrunddienst, die diese
+// Funktionen tatsaechlich benutzen, kommen erst in spaeteren Tasks des
+// Plans. `allow(dead_code)` gilt fuer das gesamte Untermodul, bis dahin.
+#[allow(dead_code)]
+pub mod printer_link;
 mod migrations;
 
 // CURRENT_SCHEMA_VERSION wird ausserhalb von migrations.rs nirgends
