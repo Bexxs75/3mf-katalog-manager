@@ -53,6 +53,10 @@ rusqlite = { version = "0.40.2", features = ["bundled", "backup", "trace"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 base64 = "0.22"
 sha2 = "0.10"
+# Update-Check: echter SemVer-Vergleich (auch fuer Vorabversionen wie
+# "0.14.0-gharac"), statt der frueheren handgeschriebenen major.minor.patch-
+# Auswertung, die Pre-Release-Suffixe gar nicht kannte.
+semver = "1"
 cxx = { version = "1", optional = true }
 # STEP-Vorschau (Version 2): rohe OCCT-Bindings. Bewusst OHNE das Feature
 # `builtin` - das wuerde OCCT aus dem Quelltext bauen und STATISCH linken, was
