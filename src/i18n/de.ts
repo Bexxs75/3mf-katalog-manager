@@ -157,6 +157,8 @@ export const de: Translations = {
   filamentRestockInvalidPrice: 'Bitte einen gültigen Preis eingeben oder das Feld leer lassen.',
   filamentImageDropMultiple: 'Bitte nur ein Bild hineinziehen.',
   filamentImageDropNotImage: 'Nur PNG-, JPG- oder WebP-Bilder werden unterstützt.',
+  filamentImageErrorHint: 'Wähle ein anderes Bild oder schließe den Hinweis, um ohne dieses Bild zu speichern.',
+  filamentImageErrorDismiss: 'Hinweis schließen',
   resinOpenAddPanelButton: 'Flasche anlegen',
   resinEditAria: 'Flasche bearbeiten',
   spoolKindLabel: 'Art',

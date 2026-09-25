@@ -157,6 +157,8 @@ export const es: Translations = {
   filamentRestockInvalidPrice: 'Introduce un precio válido o deja el campo vacío.',
   filamentImageDropMultiple: 'Suelta solo una imagen.',
   filamentImageDropNotImage: 'Solo se admiten imágenes PNG, JPG o WebP.',
+  filamentImageErrorHint: 'Elige otra imagen o cierra este aviso para guardar sin ella.',
+  filamentImageErrorDismiss: 'Cerrar aviso',
   resinOpenAddPanelButton: 'Añadir botella',
   resinEditAria: 'Editar botella',
   spoolKindLabel: 'Tipo',

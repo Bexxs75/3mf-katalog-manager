@@ -157,6 +157,41 @@ describe('FilamentSpoolForm', () => {
     expect(button).not.toHaveAttribute('data-drop-over');
   });
 
+  it('keeps the form open while an image error is shown, until it is dismissed', async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === 'read_dropped_image'
+        ? Promise.reject('Bild ist zu groß (51.5 MB) - maximal 5 MB erlaubt')
+        : Promise.resolve(undefined),
+    );
+    const onSaved = renderForm(null);
+    imageZone();
+    fireEvent.change(screen.getByPlaceholderText('Material'), { target: { value: 'PLA' } });
+    act(() => drop.handler?.({ payload: { type: 'drop', paths: ['/home/u/zu-gross.png'], position: { x: 10, y: 10 } } }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Bild ist zu groß');
+    fireEvent.click(screen.getByRole('button', { name: 'Hinzufügen' }));
+    await act(async () => {});
+    expect(invoke).not.toHaveBeenCalledWith('add_filament_spool', expect.anything());
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Hinweis schließen' }));
+    expect(screen.queryByRole('alert')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Hinzufügen' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  });
+
+  it('clears the image error when a valid image is dropped afterwards', async () => {
+    renderForm(null);
+    imageZone();
+    act(() => drop.handler?.({ payload: { type: 'drop', paths: ['/a.txt'], position: { x: 10, y: 10 } } }));
+    expect(screen.getByRole('alert')).toHaveTextContent('Nur PNG-, JPG- oder WebP-Bilder werden unterstützt.');
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === 'read_dropped_image' ? 'QUJD' : undefined),
+    );
+    act(() => drop.handler?.({ payload: { type: 'drop', paths: ['/b.png'], position: { x: 10, y: 10 } } }));
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+  });
+
   it('explains why several files are not taken', () => {
     renderForm(null);
     imageZone();

@@ -316,7 +316,9 @@ z. B. drei identische PLA-Spulen gleichzeitig an, erhält jede davon trotzdem ih
 unabhängig verfolgten Restbestand. Gewichte speichert die App auf 0,1 g genau. Für Material,
 Hersteller und Lagerort schlägt die App beim Tippen bereits verwendete Werte vor (Autocomplete).
 Das Foto wählst du per Klick auf das Bildfeld aus oder ziehst es direkt aus dem Dateimanager
-darauf (eine PNG-, JPG- oder WebP-Datei, höchstens 5 MB).
+darauf (eine PNG-, JPG- oder WebP-Datei, höchstens 5 MB). Passt ein Bild nicht, steht der Hinweis
+direkt unter dem Bildfeld und das Formular bleibt beim Speichern offen: Wähl ein anderes Bild oder
+schließ den Hinweis mit ✕, um ohne dieses Bild zu speichern.
 
 **Bearbeiten per Doppelklick:** Ein Doppelklick auf eine Karte oder eine Zeile der Liste öffnet
 dasselbe Formular wie der Stift ✎.
@@ -802,7 +804,9 @@ say, three identical PLA spools at once still gives each one its own, independen
 remaining weight. Weights are stored to 0.1 g. For material, manufacturer, and storage location,
 the app suggests previously used values as you type (autocomplete). Pick the photo by clicking
 the image field, or drag it straight from your file manager onto the field (one PNG, JPG or WebP
-file, up to 5 MB).
+file, up to 5 MB). If an image doesn't fit, the notice appears right below the image field and
+the form stays open when you save: choose another image or close the notice with ✕ to save
+without it.
 
 **Edit with a double-click:** Double-clicking a card or a row in the list opens the same form as
 the pencil ✎.

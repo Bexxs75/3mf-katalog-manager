@@ -170,6 +170,8 @@ export interface Translations {
   filamentRestockInvalidPrice: string;
   filamentImageDropMultiple: string;
   filamentImageDropNotImage: string;
+  filamentImageErrorHint: string;
+  filamentImageErrorDismiss: string;
   /** Formular-Titel und Öffnen-Knopf beim Anlegen einer Flasche (Pendant zu `filamentOpenAddPanelButton`). */
   resinOpenAddPanelButton: string;
   /** Formular-Titel und aria-label beim Bearbeiten einer Flasche (Pendant zu `filamentEditAria`). */

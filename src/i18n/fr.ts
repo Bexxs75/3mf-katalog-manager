@@ -157,6 +157,8 @@ export const fr: Translations = {
   filamentRestockInvalidPrice: 'Saisissez un prix valide ou laissez le champ vide.',
   filamentImageDropMultiple: 'Déposez une seule image.',
   filamentImageDropNotImage: 'Seules les images PNG, JPG ou WebP sont prises en charge.',
+  filamentImageErrorHint: "Choisis une autre image ou ferme cet avis pour enregistrer sans elle.",
+  filamentImageErrorDismiss: 'Fermer l’avis',
   resinOpenAddPanelButton: 'Ajouter un flacon',
   resinEditAria: 'Modifier le flacon',
   spoolKindLabel: 'Type',

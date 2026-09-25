@@ -16,7 +16,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Fixed
 
-- Filament-Lager: Das Bildfeld im Spulenformular („Bild hierher ziehen oder klicken") nimmt jetzt auch per **Drag & Drop** hineingezogene Bilder an; bisher funktionierte nur Klicken. Erlaubt ist genau eine PNG-, JPG- oder WebP-Datei bis 5 MB (wie beim Klick-Upload). Das Feld hebt sich beim Darüberziehen hervor. Bei mehreren Dateien oder einer anderen Datei erscheint ein Hinweis. Ein Drop im Filament-Lager startet nie einen Modell-Import.
+- Filament-Lager: Das Bildfeld im Spulenformular („Bild hierher ziehen oder klicken") nimmt jetzt auch per **Drag & Drop** hineingezogene Bilder an; bisher funktionierte nur Klicken. Erlaubt ist genau eine PNG-, JPG- oder WebP-Datei bis 5 MB (wie beim Klick-Upload). Das Feld hebt sich beim Darüberziehen hervor. Bei mehreren Dateien, einer anderen Datei oder einem zu großen Bild erscheint der Hinweis direkt unter dem Bildfeld, und „Speichern" lässt das Formular offen, bis ein anderes Bild gewählt oder der Hinweis geschlossen wird. Ein Drop im Filament-Lager startet nie einen Modell-Import.
 - Filament-Lager, Listenansicht: Spulen ohne eigenes Bild zeigen ein Spulen-Symbol in der Spulenfarbe statt eines leeren Kästchens, das wie eine Checkbox aussah.
 
 ## [0.13.0] - 2026-09-24
@@ -386,7 +386,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
-- Filament stock: The image field in the spool form ("Drop an image here or click") now also accepts images dropped onto it via **drag & drop**; previously only clicking worked. Exactly one PNG, JPG or WebP file up to 5 MB is accepted (same as the click upload). The field is highlighted while you drag over it. Several files or a different file type show a hint. A drop in the filament stock never starts a model import.
+- Filament stock: The image field in the spool form ("Drop an image here or click") now also accepts images dropped onto it via **drag & drop**; previously only clicking worked. Exactly one PNG, JPG or WebP file up to 5 MB is accepted (same as the click upload). The field is highlighted while you drag over it. Several files, a different file type or an image that is too large show a notice right below the image field, and saving keeps the form open until another image is chosen or the notice is closed. A drop in the filament stock never starts a model import.
 - Filament stock, list view: spools without their own image show a spool icon in the spool color instead of an empty square that looked like a checkbox.
 
 ## [0.13.0] - 2026-09-24

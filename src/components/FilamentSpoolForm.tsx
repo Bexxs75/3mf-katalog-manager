@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useT } from '../i18n/LanguageContext';
 import type { FilamentSpool, SpoolKind } from '../types';
@@ -75,11 +75,17 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
   const t = useT();
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [error, setError] = useState<string | null>(null);
+  // Abgelehntes Bild (zu gross, kein Bild, mehrere Dateien): steht direkt am
+  // Bildfeld und haelt das Formular offen, bis ein anderes Bild kommt oder
+  // der Hinweis geschlossen wird - sonst wuerde still ohne Bild gespeichert.
+  const [imageError, setImageError] = useState<string | null>(null);
+  const imageErrorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (open) {
       setForm(editing ? toForm(editing) : { ...EMPTY_FORM, kind: defaultKind });
       setError(null);
+      setImageError(null);
     }
   }, [open, editing, defaultKind]);
 
@@ -87,23 +93,24 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
     invoke<string | null>('pick_and_read_image')
       .then((base64) => {
         if (base64 === null) return;
+        setImageError(null);
         setForm((prev) => ({ ...prev, imagePng: base64 }));
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => setImageError(String(e)));
   };
 
   const handleDroppedImage = useCallback((path: string) => {
     readDroppedImage(path)
       .then((base64) => {
-        setError(null);
+        setImageError(null);
         setForm((prev) => ({ ...prev, imagePng: base64 }));
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => setImageError(String(e)));
   }, []);
 
   const handleRejectedDrop = useCallback(
     (reason: ImageDropRejection) =>
-      setError(reason === 'multiple' ? t('filamentImageDropMultiple') : t('filamentImageDropNotImage')),
+      setImageError(reason === 'multiple' ? t('filamentImageDropMultiple') : t('filamentImageDropNotImage')),
     [t],
   );
 
@@ -115,6 +122,10 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
 
   const submit = async () => {
     if (!form.material.trim()) return;
+    if (imageError) {
+      imageErrorRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+      return;
+    }
     const payload: FilamentSpool = {
       id: editing?.id ?? '',
       material: form.material.trim(),
@@ -230,6 +241,27 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
               )}
               {t('filamentImageDropHint')}
             </button>
+            {imageError && (
+              <div
+                ref={imageErrorRef}
+                role="alert"
+                className="mt-2 flex items-start gap-2 px-3 py-2 rounded-md border border-[var(--accent)] bg-[var(--accent-soft)] text-[12px] text-[var(--ink)]"
+              >
+                <div className="flex-1 min-w-0 break-words">
+                  <p className="font-semibold">{imageError}</p>
+                  <p className="text-[11px] text-[var(--ink-2)] mt-0.5">{t('filamentImageErrorHint')}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setImageError(null)}
+                  aria-label={t('filamentImageErrorDismiss')}
+                  title={t('filamentImageErrorDismiss')}
+                  className="w-6 h-6 flex-none rounded grid place-items-center text-[var(--ink-2)] hover:text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
           </div>
 
           <div>
