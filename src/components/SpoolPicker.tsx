@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -33,8 +33,11 @@ const optionMeta = (s: FilamentSpool, language: Language) =>
 const POPUP_MIN_WIDTH = 384; // 24rem
 
 /** Eigene Auswahl mit Farbfeld (native <select>-Popups ignorieren das Theme). */
-export function SpoolPicker({ spools, value, onChange, label, placeholder }: Props) {
+export function SpoolPicker({ spools: allSpools, value, onChange, label, placeholder }: Props) {
   const { language } = useLanguage();
+  // Die Druckeranbindung bucht nur Filament ab - Resin-Flaschen (v0.13.1)
+  // sind nie ein Kandidat, auch wenn ein Aufrufer die volle Liste reicht.
+  const spools = useMemo(() => allSpools.filter((s) => s.kind !== 'resin'), [allSpools]);
   const uid = useId();
   const [open, setOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);

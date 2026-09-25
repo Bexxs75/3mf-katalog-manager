@@ -178,7 +178,9 @@ pub(crate) fn preview_printer_job_with_conn(conn: &Connection, job_id: &str, spo
     let job = store::get_job(conn, id(job_id, "Druck")?)
         .map_err(|e| e.to_string())?
         .ok_or("Druck nicht gefunden")?;
-    let spool = booking::spool_info(conn, id(spool_id, "Spulen")?)
+    let spool_id = id(spool_id, "Spulen")?;
+    booking::ensure_filament(conn, spool_id).map_err(|e| e.to_string())?;
+    let spool = booking::spool_info(conn, spool_id)
         .map_err(|e| e.to_string())?
         .ok_or("Spule nicht gefunden")?;
     Ok(JobPreviewDto {
@@ -447,6 +449,29 @@ mod tests {
         .unwrap();
         assert_eq!((r.confirmed, r.failed), (1, 0));
         assert!(list_open_printer_jobs_with_conn(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn resin_is_rejected_by_preview_and_confirm() {
+        let mut conn = setup();
+        conn.execute(
+            "INSERT INTO filament_spools (id, kind, material, diameter_mm, original_weight_g, remaining_weight_g, created_at)
+             VALUES (300, 'resin', 'Standard', 1.75, 1000, 640.5, '2026-09-25')",
+            [],
+        )
+        .unwrap();
+        let job_id = list_open_printer_jobs_with_conn(&conn).unwrap()[0].id.clone();
+        let err = preview_printer_job_with_conn(&conn, &job_id, "300").unwrap_err();
+        assert!(err.contains("Resin"), "unerwartete Meldung: {err}");
+        let r = confirm_printer_jobs_with_conn(
+            &mut conn,
+            vec![JobDecisionDto { job_id, spool_id: "300".into(), file_id: None }],
+        )
+        .unwrap();
+        assert_eq!((r.confirmed, r.failed), (0, 1));
+        assert_eq!(list_open_printer_jobs_with_conn(&conn).unwrap().len(), 1);
+        let rest: f64 = conn.query_row("SELECT remaining_weight_g FROM filament_spools WHERE id = 300", [], |r| r.get(0)).unwrap();
+        assert_eq!(rest, 640.5);
     }
 
     #[test]

@@ -49,8 +49,11 @@ function Thumb({ job }: { job: PrinterJob }) {
 
 const stripExt = (name: string) => name.replace(/\.(b?gcode)$/i, '');
 
-export function PrinterJobsDialog({ open, jobs, spools, models, link, onClose, onBooked }: Props) {
+export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link, onClose, onBooked }: Props) {
   const t = useT();
+  // Nur Filament kann abgebucht werden: Resin-Flaschen sind weder Vorschlag
+  // noch Auswahl (das Backend lehnt sie beim Bestaetigen ohnehin ab).
+  const spools = useMemo(() => allSpools.filter((s) => s.kind !== 'resin'), [allSpools]);
   const { language } = useLanguage();
   const [rows, setRows] = useState<Record<string, RowState>>({});
   const [picking, setPicking] = useState<string | null>(null);

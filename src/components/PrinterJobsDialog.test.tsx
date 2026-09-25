@@ -66,6 +66,24 @@ describe('PrinterJobsDialog', () => {
     expect(screen.getByRole('button', { name: 'Bestätigen' })).toBeDisabled();
   });
 
+  it('ignores a resin bottle as booking candidate, even as the suggestion', () => {
+    const withResin = [
+      ...spools,
+      { id: '200', kind: 'resin', material: 'Standard', color: 'Grau', remainingWeightG: 640.5, originalWeightG: 1000, diameterMm: 1.75, colorHex: '#8a8f98' },
+    ] as FilamentSpool[];
+    const l = link([job({ suggestedSpoolId: '200' })]);
+    render(
+      <LanguageProvider>
+        <PrinterJobsDialog open jobs={l.jobs} spools={withResin} models={[]} link={l} onClose={vi.fn()} onBooked={vi.fn()} />
+      </LanguageProvider>,
+    );
+    // Kein Vorschlag uebernommen -> ohne Spule nicht bestaetigbar.
+    expect(screen.getByRole('button', { name: 'Bestätigen' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: /Spule/ }));
+    expect(screen.queryByRole('option', { name: /Standard/ })).toBeNull();
+    expect(screen.getAllByRole('option')).toHaveLength(2);
+  });
+
   it('shows partial jobs with percent', () => {
     renderDialog(link([job({ outcome: 'partial', rawStatus: 'klippy_shutdown', partialPercent: 39, grams: 4 })]));
     expect(screen.getByText('ABGEBROCHEN · 39 %')).toBeInTheDocument();

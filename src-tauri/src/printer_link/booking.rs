@@ -84,21 +84,37 @@ pub fn suggest_spool(conn: &Connection, printer_id: i64) -> Result<Option<i64>, 
     Ok(conn
         .query_row(
             "SELECT s.id FROM filament_spools s JOIN material_units u ON s.unit_id = u.id
-             WHERE u.printer_id = ?1 ORDER BY u.position, u.id, s.slot_index LIMIT 1",
+             WHERE u.printer_id = ?1 AND s.kind = 'filament'
+             ORDER BY u.position, u.id, s.slot_index LIMIT 1",
             params![printer_id],
             |r| r.get(0),
         )
         .optional()?)
 }
 
+/// Daten einer Spule fuer die Abbuchung. Resin-Flaschen (v0.13.1) sind fuer
+/// die Druckeranbindung keine Spulen: dafuer gibt es `None`, wie fuer eine
+/// unbekannte ID - `ensure_filament` liefert vorher die passende Meldung.
 pub fn spool_info(conn: &Connection, spool_id: i64) -> Result<Option<SpoolInfo>, DbError> {
     Ok(conn
         .query_row(
-            "SELECT diameter_mm, material, remaining_weight_g FROM filament_spools WHERE id = ?1",
+            "SELECT diameter_mm, material, remaining_weight_g FROM filament_spools WHERE id = ?1 AND kind = 'filament'",
             params![spool_id],
             |r| Ok(SpoolInfo { diameter_mm: r.get(0)?, material: r.get(1)?, remaining_weight_g: r.get(2)? }),
         )
         .optional()?)
+}
+
+/// Lehnt eine Resin-Flasche als Abbuch-Ziel ab (Druckeranbindung kennt nur
+/// Filament). Eine unbekannte ID laesst sie durch - das meldet `spool_info`.
+pub fn ensure_filament(conn: &Connection, spool_id: i64) -> Result<(), DbError> {
+    let kind: Option<String> = conn
+        .query_row("SELECT kind FROM filament_spools WHERE id = ?1", params![spool_id], |r| r.get(0))
+        .optional()?;
+    if kind.as_deref() == Some("resin") {
+        return Err(DbError::Other("Resin kann nicht über die Druckeranbindung abgebucht werden".into()));
+    }
+    Ok(())
 }
 
 pub fn log_note(printer_name: &str, grams: f64, outcome: &str, percent: Option<u8>) -> String {
@@ -122,6 +138,7 @@ pub fn confirm_job(conn: &mut Connection, d: &Decision, decided_at: &str) -> Res
     let job = get_job(&tx, d.job_id)?
         .filter(|j| j.state == "open")
         .ok_or_else(|| DbError::Other("Druck ist nicht mehr offen".into()))?;
+    ensure_filament(&tx, d.spool_id)?;
     let spool = spool_info(&tx, d.spool_id)?.ok_or_else(|| DbError::Other("Spule nicht gefunden".into()))?;
     let g = grams(job.used_mm, job.slicer_total_mm, job.slicer_weight_g, spool.diameter_mm, &spool.material);
     let rest = round_tenth((spool.remaining_weight_g - g).max(0.0));
@@ -332,6 +349,39 @@ mod db_tests {
         let mut conn = setup();
         let job = first_job(&conn);
         assert!(confirm_job(&mut conn, &Decision { job_id: job, spool_id: 555, file_id: None }, "t").is_err());
+    }
+
+    #[test]
+    fn a_resin_bottle_is_never_booked_and_nothing_changes() {
+        let mut conn = setup();
+        conn.execute(
+            "INSERT INTO filament_spools (id, kind, material, diameter_mm, original_weight_g, remaining_weight_g, created_at)
+             VALUES (200, 'resin', 'Standard', 1.75, 1000, 640.5, '2026-09-25')",
+            [],
+        )
+        .unwrap();
+        let job = first_job(&conn);
+        let err = confirm_job(&mut conn, &Decision { job_id: job, spool_id: 200, file_id: None }, "t").unwrap_err();
+        assert!(err.to_string().contains("Resin"), "unerwartete Meldung: {err}");
+        let rest: f64 = conn.query_row("SELECT remaining_weight_g FROM filament_spools WHERE id = 200", [], |r| r.get(0)).unwrap();
+        assert_eq!(rest, 640.5);
+        assert_eq!(list_open_jobs(&conn).unwrap().len(), 1, "der Druck bleibt offen");
+        assert_eq!(spool_info(&conn, 200).unwrap(), None);
+    }
+
+    #[test]
+    fn resin_is_never_suggested_even_if_it_sat_in_a_slot() {
+        // Eine Resin-Flasche kommt ueber die App nie in ein Fach; eine
+        // praeparierte DB koennte das trotzdem enthalten. Der Vorschlag
+        // ueberspringt sie und nimmt die naechste Filament-Spule.
+        let conn = setup();
+        conn.execute_batch(
+            "INSERT INTO material_units (id, printer_id, name, kind, slot_count, position) VALUES (5, 1, 'AMS', 'bambu_ams', 4, 0);
+             INSERT INTO filament_spools (id, kind, material, diameter_mm, original_weight_g, remaining_weight_g, created_at, unit_id, slot_index)
+                 VALUES (200, 'resin', 'Standard', 1.75, 1000, 640.5, '2026-09-25', 5, 0);",
+        )
+        .unwrap();
+        assert_eq!(suggest_spool(&conn, 1).unwrap(), Some(100));
     }
 
     #[test]

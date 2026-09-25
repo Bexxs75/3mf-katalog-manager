@@ -198,4 +198,21 @@ describe('SpoolPicker', () => {
     expect(button).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('listbox')).toBeInTheDocument();
   });
+
+  it('never offers a resin bottle (the printer link books filament only)', () => {
+    render(
+      <LanguageProvider>
+        <SpoolPicker
+          spools={[spool('1', 'PLA', 'Grau', { kind: 'filament' }), spool('2', 'Standard', 'Grau', { kind: 'resin', remainingWeightG: 640.5 })]}
+          value={null}
+          onChange={vi.fn()}
+          label="Spule"
+          placeholder="Spule wählen"
+        />
+      </LanguageProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Spule/ }));
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+    expect(screen.queryByRole('option', { name: /Standard/ })).toBeNull();
+  });
 });
