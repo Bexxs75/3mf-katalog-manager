@@ -1,0 +1,51 @@
+import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { LanguageProvider } from '../i18n/LanguageContext';
+import { FilamentDashboard } from './FilamentDashboard';
+import type { FilamentSpool } from '../types';
+
+const S: FilamentSpool = {
+  id: 'a', material: 'PETG', manufacturer: null, color: 'Rot', location: 'Regal 1',
+  diameterMm: 1.75, originalWeightG: 1000, remainingWeightG: 800, price: null, imagePng: null,
+  colorHex: null, homeLocation: null, unitId: null, slotIndex: null, kind: 'filament',
+};
+
+function renderDashboard(props: Partial<Parameters<typeof FilamentDashboard>[0]> = {}) {
+  localStorage.setItem('3mf-katalog-language', 'de');
+  const onEdit = vi.fn();
+  const onRestock = vi.fn();
+  render(
+    <LanguageProvider>
+      <FilamentDashboard
+        spools={[S]}
+        confirmDeleteId={null}
+        onEdit={onEdit}
+        onRequestDelete={vi.fn()}
+        onCancelDelete={vi.fn()}
+        onConfirmDelete={vi.fn()}
+        onRestock={onRestock}
+        {...props}
+      />
+    </LanguageProvider>,
+  );
+  return { onEdit, onRestock };
+}
+
+describe('FilamentDashboard restock', () => {
+  it('passes the spool and the clicked button as anchor', () => {
+    const { onRestock } = renderDashboard();
+    const button = within(screen.getByTestId('spool-card-a')).getByRole('button', { name: 'Nachkaufen' });
+    fireEvent.click(button);
+    expect(onRestock).toHaveBeenCalledWith(S, button);
+  });
+
+  it('marks the open popover on its button', () => {
+    renderDashboard({ restockOpenId: 'a' });
+    expect(screen.getByRole('button', { name: 'Nachkaufen' })).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('highlights freshly created spools', () => {
+    renderDashboard({ highlightIds: new Set(['a']) });
+    expect(screen.getByTestId('spool-card-a')).toHaveClass('spool-new');
+  });
+});

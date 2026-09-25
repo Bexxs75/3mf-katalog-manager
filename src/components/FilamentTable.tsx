@@ -15,6 +15,12 @@ interface Props {
   onConfirmDelete: (id: string) => void;
   /** Mausdruck auf einer Spule - startet ggf. das Ziehen in ein Fach. */
   onSpoolMouseDown?: (spoolId: string, event: ReactMouseEvent) => void;
+  /** Oeffnet/schliesst das Nachkaufen-Fenster; `anchor` = der geklickte Knopf. */
+  onRestock?: (spool: FilamentSpool, anchor: HTMLElement) => void;
+  /** Spule, deren Nachkaufen-Fenster gerade offen ist (aria-expanded). */
+  restockOpenId?: string | null;
+  /** Gerade per Nachkaufen angelegte Eintraege, kurz hervorgehoben. */
+  highlightIds?: ReadonlySet<string>;
 }
 
 // Kein Ziehen, wenn der Mausdruck auf einem Knopf der Karte/Zeile landet
@@ -36,7 +42,18 @@ const barClass: Record<string, string> = {
   empty: 'bg-[var(--crit)]',
 };
 
-export function FilamentTable({ spools, confirmDeleteId, onEdit, onRequestDelete, onCancelDelete, onConfirmDelete, onSpoolMouseDown }: Props) {
+export function FilamentTable({
+  spools,
+  confirmDeleteId,
+  onEdit,
+  onRequestDelete,
+  onCancelDelete,
+  onConfirmDelete,
+  onSpoolMouseDown,
+  onRestock,
+  restockOpenId,
+  highlightIds,
+}: Props) {
   const t = useT();
   const { language } = useLanguage();
   const [sortKey, setSortKey] = useState<SortKey>('material');
@@ -132,7 +149,9 @@ export function FilamentTable({ spools, confirmDeleteId, onEdit, onRequestDelete
                 key={spool.id}
                 data-testid={`spool-row-${spool.id}`}
                 onMouseDown={(e) => !startsOnButton(e) && onSpoolMouseDown?.(spool.id, e)}
-                className={`hover:bg-[var(--panel-2)] ${onSpoolMouseDown ? 'cursor-grab' : ''}`}
+                className={`hover:bg-[var(--panel-2)] ${onSpoolMouseDown ? 'cursor-grab' : ''} ${
+                  highlightIds?.has(spool.id) ? 'spool-new-row' : ''
+                }`}
               >
                 <td className="px-3 py-2.5 border-b border-[var(--line)] font-semibold">
                   <div className="flex items-center gap-2">
@@ -198,6 +217,19 @@ export function FilamentTable({ spools, confirmDeleteId, onEdit, onRequestDelete
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1">
+                      {onRestock && (
+                        <button
+                          type="button"
+                          onClick={(e) => onRestock(spool, e.currentTarget)}
+                          aria-label={t('filamentRestockButton')}
+                          title={t('filamentRestockButton')}
+                          aria-haspopup="dialog"
+                          aria-expanded={restockOpenId === spool.id}
+                          className="w-6 h-6 grid place-items-center rounded-full text-[12px] text-[var(--ink-3)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] cursor-pointer"
+                        >
+                          ＋
+                        </button>
+                      )}
                       <button
                         onClick={() => onEdit(spool)}
                         aria-label={t('filamentEditAria')}

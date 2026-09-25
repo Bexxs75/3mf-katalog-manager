@@ -14,6 +14,12 @@ interface Props {
   onConfirmDelete: (id: string) => void;
   /** Mausdruck auf einer Spule - startet ggf. das Ziehen in ein Fach. */
   onSpoolMouseDown?: (spoolId: string, event: ReactMouseEvent) => void;
+  /** Oeffnet/schliesst das Nachkaufen-Fenster; `anchor` = der geklickte Knopf. */
+  onRestock?: (spool: FilamentSpool, anchor: HTMLElement) => void;
+  /** Spule, deren Nachkaufen-Fenster gerade offen ist (aria-expanded). */
+  restockOpenId?: string | null;
+  /** Gerade per Nachkaufen angelegte Eintraege, kurz hervorgehoben. */
+  highlightIds?: ReadonlySet<string>;
 }
 
 // Kein Ziehen, wenn der Mausdruck auf einem Knopf der Karte/Zeile landet
@@ -33,7 +39,18 @@ const barClass: Record<string, string> = {
   empty: 'bg-[var(--crit)]',
 };
 
-export function FilamentDashboard({ spools, confirmDeleteId, onEdit, onRequestDelete, onCancelDelete, onConfirmDelete, onSpoolMouseDown }: Props) {
+export function FilamentDashboard({
+  spools,
+  confirmDeleteId,
+  onEdit,
+  onRequestDelete,
+  onCancelDelete,
+  onConfirmDelete,
+  onSpoolMouseDown,
+  onRestock,
+  restockOpenId,
+  highlightIds,
+}: Props) {
   const t = useT();
   const { language } = useLanguage();
 
@@ -56,7 +73,7 @@ export function FilamentDashboard({ spools, confirmDeleteId, onEdit, onRequestDe
             onMouseDown={(e) => !startsOnButton(e) && onSpoolMouseDown?.(spool.id, e)}
             className={`rounded-[10px] overflow-hidden border border-[var(--line)] bg-[var(--panel)] flex flex-col ${
               onSpoolMouseDown ? 'cursor-grab' : ''
-            }`}
+            } ${highlightIds?.has(spool.id) ? 'spool-new' : ''}`}
           >
             <div className="flex items-center gap-2.5 px-3 py-2.5">
               {spool.imagePng ? (
@@ -131,6 +148,18 @@ export function FilamentDashboard({ spools, confirmDeleteId, onEdit, onRequestDe
                 </div>
               ) : (
                 <div className="flex items-center justify-end gap-1">
+                  {onRestock && (
+                    <button
+                      type="button"
+                      onClick={(e) => onRestock(spool, e.currentTarget)}
+                      aria-haspopup="dialog"
+                      aria-expanded={restockOpenId === spool.id}
+                      className="mr-auto h-6 px-2 inline-flex items-center gap-1 rounded-full text-[11px] font-semibold text-[var(--ink-2)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] cursor-pointer"
+                    >
+                      <span aria-hidden>＋</span>
+                      {t('filamentRestockButton')}
+                    </button>
+                  )}
                   <button
                     onClick={() => onEdit(spool)}
                     aria-label={t('filamentEditAria')}

@@ -102,3 +102,24 @@ body { font-family: 'Barlow', Helvetica, sans-serif; }
   --radius-card: 14px;
   --icon-badge-size: 2.375rem;
 }
+
+/* v0.13.1 Nachkaufen: neu angelegte Eintraege kurz hervorheben (FilamentView entfernt die Klasse nach 2,5 s). */
+.spool-new {
+  outline: 2px solid var(--good);
+  outline-offset: -1px;
+  animation: spool-new-pop 0.5s ease both;
+}
+.spool-new-row > td {
+  background: var(--good-soft);
+}
+@keyframes spool-new-pop {
+  from {
+    transform: scale(0.94);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spool-new {
+    animation: none;
+  }
+}

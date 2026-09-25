@@ -93,4 +93,30 @@ describe('FilamentView with printers', () => {
     fireEvent.mouseUp(document);
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('unload_spool', { spoolId: 'in', location: null }));
   });
+
+  it('restocks a spool: one backend call, highlighted new card, confirmation toast', async () => {
+    const NEW = spool({ id: 'new1', material: 'PETG', color: 'Rot', location: 'Regal 1', colorHex: '#c0392b', remainingWeightG: 1000 });
+    let list = [LOADED, STORED];
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === 'list_filament_spools') return Promise.resolve(list);
+      if (cmd === 'list_printers') return Promise.resolve([X1C]);
+      if (cmd === 'restock_filament_spool') {
+        list = [LOADED, STORED, NEW];
+        return Promise.resolve([NEW]);
+      }
+      return Promise.resolve(undefined);
+    });
+    renderView();
+    const card = await screen.findByTestId('spool-card-store');
+    fireEvent.click(within(card).getByRole('button', { name: 'Nachkaufen' }));
+    fireEvent.click(await screen.findByRole('button', { name: '1 Spule anlegen' }));
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('restock_filament_spool', {
+        templateId: 'store', count: 1, weight: 1000, price: null, location: 'Regal 1',
+      }),
+    );
+    expect(await screen.findByTestId('spool-card-new1')).toHaveClass('spool-new');
+    expect(screen.getByRole('status')).toHaveTextContent('1 Spule PETG · Rot angelegt');
+    expect(screen.queryByRole('dialog', { name: /Nachkaufen/ })).toBeNull();
+  });
 });

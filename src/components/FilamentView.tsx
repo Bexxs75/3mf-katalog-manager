@@ -2,15 +2,18 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatWeightG } from '../i18n/format';
+import { formatCount } from '../i18n/types';
 import type { FilamentSpool } from '../types';
 import { filamentStockStatus } from '../lib/filamentStatus';
 import { isValidColorHex } from '../lib/filamentColors';
+import { restockSpoolLabel } from '../lib/filamentRestock';
 import { FilamentDashboard } from './FilamentDashboard';
 import { FilamentTable } from './FilamentTable';
 import { FilamentSpoolForm } from './FilamentSpoolForm';
 import { PrinterColumn } from './PrinterColumn';
 import { PrinterManagePanel } from './PrinterManagePanel';
 import { SpoolToast } from './SpoolToast';
+import { RestockPopover } from './RestockPopover';
 import { usePrinters } from '../hooks/usePrinters';
 import { useSpoolDragAndDrop } from '../hooks/useSpoolDragAndDrop';
 import * as printersApi from '../lib/api/printers';
@@ -18,6 +21,16 @@ import { isInStorage, spoolLabel } from '../lib/filamentSlots';
 
 type LayoutMode = 'dashboard' | 'list';
 type StatusFilter = 'low' | 'empty' | null;
+
+/** So lange sind neu angelegte Eintraege gruen umrandet. */
+const HIGHLIGHT_MS = 2500;
+
+type PopoverType = 'restock';
+type PopoverState = { type: PopoverType; spool: FilamentSpool; anchor: HTMLElement };
+
+type ToastState =
+  | { type: 'unload'; spoolId: string; label: string; location: string | null }
+  | { type: 'message'; label: string };
 
 export function FilamentView() {
   const t = useT();
@@ -31,8 +44,16 @@ export function FilamentView() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [editingSpool, setEditingSpool] = useState<FilamentSpool | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
-  const [toast, setToast] = useState<{ spoolId: string; label: string; location: string | null } | null>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
+  const [popover, setPopover] = useState<PopoverState | null>(null);
+  const [highlightIds, setHighlightIds] = useState<ReadonlySet<string>>(() => new Set());
   const printers = usePrinters();
+
+  useEffect(() => {
+    if (highlightIds.size === 0) return;
+    const timer = setTimeout(() => setHighlightIds(new Set()), HIGHLIGHT_MS);
+    return () => clearTimeout(timer);
+  }, [highlightIds]);
 
   const refresh = () => {
     invoke<FilamentSpool[]>('list_filament_spools')
@@ -110,7 +131,7 @@ export function FilamentView() {
       printersApi
         .unloadSpool(spoolId, null)
         .then((location) => {
-          setToast({ spoolId, label: spool ? spoolLabel(spool) : '', location });
+          setToast({ type: 'unload', spoolId, label: spool ? spoolLabel(spool) : '', location });
           refresh();
         })
         .catch((e) => setError(String(e)));
@@ -119,7 +140,7 @@ export function FilamentView() {
   );
 
   const changeUnloadedLocation = (location: string) => {
-    const spool = spools.find((s) => s.id === toast?.spoolId);
+    const spool = toast?.type === 'unload' ? spools.find((s) => s.id === toast.spoolId) : undefined;
     if (!spool) return Promise.resolve();
     return invoke('update_filament_spool', { spool: { ...spool, location } })
       .then(() => refresh())
@@ -127,6 +148,20 @@ export function FilamentView() {
   };
 
   const dismissToast = useCallback(() => setToast(null), []);
+
+  const togglePopover = (type: PopoverType, spool: FilamentSpool, anchor: HTMLElement) =>
+    setPopover((prev) => (prev?.type === type && prev.spool.id === spool.id ? null : { type, spool, anchor }));
+  const closePopover = useCallback(() => setPopover(null), []);
+  const handleRestocked = (created: FilamentSpool[]) => {
+    const template = popover?.spool;
+    setPopover(null);
+    setHighlightIds(new Set(created.map((s) => s.id)));
+    if (template) {
+      const forms = template.kind === 'resin' ? t('resinRestockDone') : t('filamentRestockDone');
+      setToast({ type: 'message', label: formatCount(forms, created.length).replace('{spool}', restockSpoolLabel(template)) });
+    }
+    refresh();
+  };
 
   const drag = useSpoolDragAndDrop({ onLoad: loadSpool, onUnload: unloadSpool });
   const draggedSpool = drag.draggingSpoolId ? spools.find((s) => s.id === drag.draggingSpoolId) : undefined;
@@ -242,6 +277,9 @@ export function FilamentView() {
               onCancelDelete={cancelDelete}
               onConfirmDelete={confirmDelete}
               onSpoolMouseDown={(spoolId, e) => drag.startDrag(spoolId, null, e)}
+              onRestock={(spool, anchor) => togglePopover('restock', spool, anchor)}
+              restockOpenId={popover?.type === 'restock' ? popover.spool.id : null}
+              highlightIds={highlightIds}
             />
           ) : (
             <FilamentTable
@@ -252,6 +290,9 @@ export function FilamentView() {
               onCancelDelete={cancelDelete}
               onConfirmDelete={confirmDelete}
               onSpoolMouseDown={(spoolId, e) => drag.startDrag(spoolId, null, e)}
+              onRestock={(spool, anchor) => togglePopover('restock', spool, anchor)}
+              restockOpenId={popover?.type === 'restock' ? popover.spool.id : null}
+              highlightIds={highlightIds}
             />
           )}
         </div>
@@ -285,13 +326,27 @@ export function FilamentView() {
         </div>
       )}
 
-      {toast && (
+      {toast?.type === 'unload' && (
         <SpoolToast
           label={toast.label}
           location={toast.location}
           knownLocations={knownLocations}
           onChangeLocation={changeUnloadedLocation}
           onDone={dismissToast}
+        />
+      )}
+      {toast?.type === 'message' && (
+        <SpoolToast label={toast.label} location={null} knownLocations={[]} onDone={dismissToast} />
+      )}
+
+      {popover?.type === 'restock' && (
+        <RestockPopover
+          key={popover.spool.id}
+          spool={popover.spool}
+          anchor={popover.anchor}
+          knownLocations={knownLocations}
+          onClose={closePopover}
+          onCreated={handleRestocked}
         />
       )}
 
