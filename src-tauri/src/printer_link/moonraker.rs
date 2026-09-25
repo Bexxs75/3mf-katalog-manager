@@ -2,7 +2,7 @@
 //! Nur lesende GET-Anfragen.
 
 use std::io::Read;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
@@ -126,17 +126,36 @@ pub struct MoonrakerLink {
     address: String,
     policy: AddressPolicy,
     client: reqwest::blocking::Client,
+    /// Gesamtzeitlimit fuer eine Anfrage inkl. Kopfzeilen UND Koerper (siehe
+    /// `get_bytes`). In Produktion immer `TIMEOUT` (5 s); Tests koennen ueber
+    /// `new_with_timeout` ein kuerzeres Limit setzen, damit ein Test mit
+    /// tropfenden Antworten nicht die vollen 5 s abwarten muss.
+    timeout: Duration,
 }
 
 impl MoonrakerLink {
     pub fn new(address: &str, policy: AddressPolicy) -> Self {
+        Self::with_timeout(address, policy, TIMEOUT)
+    }
+
+    /// Nur fuer Tests: eigenes Zeitlimit statt der festen 5 s der Produktion.
+    #[cfg(test)]
+    pub(crate) fn new_with_timeout(address: &str, policy: AddressPolicy, timeout: Duration) -> Self {
+        Self::with_timeout(address, policy, timeout)
+    }
+
+    fn with_timeout(address: &str, policy: AddressPolicy, timeout: Duration) -> Self {
         let client = reqwest::blocking::Client::builder()
-            .timeout(TIMEOUT)
-            .connect_timeout(TIMEOUT)
+            .timeout(timeout)
+            .connect_timeout(timeout)
+            // Nie den System-Proxy (HTTP_PROXY/ALL_PROXY) benutzen: die
+            // Anfrage muss an die bereits geprüfte `Target.ip` gehen, nicht
+            // an einen Proxy, der eine ganz andere Adresse anspricht.
+            .no_proxy()
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .expect("HTTP-Client");
-        MoonrakerLink { address: address.to_string(), policy, client }
+        MoonrakerLink { address: address.to_string(), policy, client, timeout }
     }
 
     /// Zuerst Port 80 (Mainsail/nginx), dann 7125 (Moonraker direkt), außer
@@ -157,17 +176,36 @@ impl MoonrakerLink {
         }
     }
 
+    /// Liest den Antwortkoerper in Stuecken mit einem eigenen Gesamt-Zeitlimit
+    /// (`self.timeout` ab Anfragebeginn, deckt Kopfzeilen UND Koerper ab).
+    ///
+    /// Noetig, weil reqwest 0.12 in `blocking::Response::read` jedem
+    /// einzelnen `read()`-Aufruf ein frisches Zeitlimit gibt (nicht der
+    /// gesamten Antwort): ein Drucker, der einzelne Bytes knapp unterhalb
+    /// des Zeitlimits "troepfelt", wuerde ein einfaches `read_to_end` sonst
+    /// unbegrenzt lange blockieren.
     fn get_bytes(&self, url: reqwest::Url, limit: u64) -> Result<Vec<u8>, LinkError> {
-        let resp = self.client.get(url).send().map_err(|_| LinkError::Unreachable)?;
+        let deadline = Instant::now() + self.timeout;
+        let mut resp = self.client.get(url).send().map_err(|_| LinkError::Unreachable)?;
         match resp.status().as_u16() {
             401 | 403 => return Err(LinkError::AuthRequired),
             s if !(200..300).contains(&s) => return Err(LinkError::BadResponse(format!("HTTP {s}"))),
             _ => {}
         }
         let mut buf = Vec::new();
-        resp.take(limit + 1).read_to_end(&mut buf).map_err(|_| LinkError::Unreachable)?;
-        if buf.len() as u64 > limit {
-            return Err(LinkError::BadResponse("Antwort zu gross".into()));
+        let mut chunk = [0u8; 8192];
+        loop {
+            if Instant::now() >= deadline {
+                return Err(LinkError::Unreachable);
+            }
+            let n = resp.read(&mut chunk).map_err(|_| LinkError::Unreachable)?;
+            if n == 0 {
+                break;
+            }
+            buf.extend_from_slice(&chunk[..n]);
+            if buf.len() as u64 > limit {
+                return Err(LinkError::BadResponse("Antwort zu gross".into()));
+            }
         }
         Ok(buf)
     }
@@ -409,5 +447,49 @@ mod client_tests {
         let server = FakeServer::start(move |_| Some((200, big.clone())));
         let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
         assert!(matches!(link.test(), Err(LinkError::BadResponse(_))));
+    }
+
+    /// reqwest 0.12 gibt jedem einzelnen `read()` am Antwortkoerper ein neues
+    /// Zeitlimit (blocking/response.rs: `wait::timeout(self.body_mut().read(buf), timeout)`),
+    /// nicht der gesamten Antwort. Ein Drucker, der einzelne Bytes knapp
+    /// unterhalb des Zeitlimits "troepfelt", wuerde `read_to_end` sonst
+    /// unbegrenzt lange blockieren. `new_with_timeout` erlaubt ein kurzes
+    /// Zeitlimit nur fuer diesen Test, ohne die 5-s-Vorgabe der Produktion
+    /// anzutasten.
+    #[test]
+    fn a_dripping_body_times_out_as_unreachable_within_the_overall_deadline() {
+        use std::io::{BufRead, BufReader, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let Ok((mut stream, _)) = listener.accept() else { return };
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            let _ = reader.read_line(&mut line);
+            loop {
+                let mut h = String::new();
+                if reader.read_line(&mut h).is_err() || h == "\r\n" || h.is_empty() {
+                    break;
+                }
+            }
+            // Grosse Content-Length ankuendigen, dann alle 30 ms ein Byte
+            // "troepfeln" - simuliert einen Drucker, der die Antwort absichtlich
+            // oder defekt in Trippelschritten schickt, jeder Schritt knapp unter
+            // dem Zeitlimit des Tests.
+            let head = "HTTP/1.1 200 X\r\nContent-Length: 1000000\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n";
+            if stream.write_all(head.as_bytes()).is_err() {
+                return;
+            }
+            for _ in 0..50 {
+                if stream.write_all(b" ").is_err() {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(30));
+            }
+        });
+        let link = MoonrakerLink::new_with_timeout(&format!("127.0.0.1:{port}"), AddressPolicy::TEST, Duration::from_millis(120));
+        let started = std::time::Instant::now();
+        assert_eq!(link.test(), Err(LinkError::Unreachable));
+        assert!(started.elapsed() < std::time::Duration::from_secs(2), "{:?}", started.elapsed());
     }
 }
