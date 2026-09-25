@@ -1,10 +1,11 @@
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { useT, useLanguage } from '../i18n/LanguageContext';
-import { formatStockG, formatDiameterMm, formatPrice } from '../i18n/format';
+import { formatSpoolAmount, formatVolumeMl, formatDiameterMm, formatPrice } from '../i18n/format';
 import type { FilamentSpool } from '../types';
 import { filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus';
 import { isValidColorHex } from '../lib/filamentColors';
 import { isFromInteractiveElement } from '../lib/spoolCardEvents';
+import { ResinBottleIcon } from './ResinBottleIcon';
 
 interface Props {
   spools: FilamentSpool[];
@@ -71,12 +72,12 @@ export function FilamentDashboard({
           <div
             key={spool.id}
             data-testid={`spool-card-${spool.id}`}
-            onMouseDown={(e) => !startsOnButton(e) && onSpoolMouseDown?.(spool.id, e)}
+            onMouseDown={(e) => !startsOnButton(e) && spool.kind !== 'resin' && onSpoolMouseDown?.(spool.id, e)}
             onDoubleClick={(e) => {
               if (confirmDeleteId !== spool.id && !isFromInteractiveElement(e)) onEdit(spool);
             }}
             className={`rounded-[10px] overflow-hidden border border-[var(--line)] bg-[var(--panel)] flex flex-col ${
-              onSpoolMouseDown ? 'cursor-grab' : ''
+              onSpoolMouseDown && spool.kind !== 'resin' ? 'cursor-grab' : ''
             } ${highlightIds?.has(spool.id) ? 'spool-new' : ''}`}
           >
             <div className="flex items-center gap-2.5 px-3 py-2.5">
@@ -85,6 +86,10 @@ export function FilamentDashboard({
                   src={`data:image/png;base64,${spool.imagePng}`}
                   className="w-9 h-9 rounded-md object-cover border border-[var(--line)] flex-none"
                 />
+              ) : spool.kind === 'resin' ? (
+                <span className="w-9 h-9 rounded-md flex-none grid place-items-center bg-[var(--plate)] border border-[var(--line)]">
+                  <ResinBottleIcon colorHex={spool.colorHex} />
+                </span>
               ) : (
                 <span
                   className="w-9 h-9 rounded-md flex-none grid place-items-center text-[9px] font-bold text-[var(--ink-3)] bg-[var(--plate)] border border-[var(--line)]"
@@ -121,7 +126,7 @@ export function FilamentDashboard({
 
               <div>
                 <div className="flex justify-between font-mono-ui text-[11px] text-[var(--ink-2)] mb-1">
-                  <span>{formatStockG(spool.remainingWeightG, language)}</span>
+                  <span>{formatSpoolAmount(spool.remainingWeightG, spool.kind, language)}</span>
                   <span>{pct}%</span>
                 </div>
                 <div className="h-1.5 rounded-full bg-[var(--plate)] overflow-hidden">
@@ -130,7 +135,11 @@ export function FilamentDashboard({
               </div>
 
               <div className="flex items-center justify-between pt-2 border-t border-[var(--line)] text-[11.5px] text-[var(--ink-3)]">
-                <span>{formatDiameterMm(spool.diameterMm, language)}</span>
+                <span>
+                  {spool.kind === 'resin'
+                    ? t('resinBottleFooter').replace('{amount}', formatVolumeMl(spool.originalWeightG, language))
+                    : formatDiameterMm(spool.diameterMm, language)}
+                </span>
                 {spool.price !== null && <span className="font-mono-ui text-[var(--ink-2)] font-semibold">{formatPrice(spool.price, language)}</span>}
               </div>
 

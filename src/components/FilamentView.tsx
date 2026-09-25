@@ -313,6 +313,7 @@ export function FilamentView() {
               onRestock={(spool, anchor) => togglePopover('restock', spool, anchor)}
               restockOpenId={popover?.type === 'restock' ? popover.spool.id : null}
               highlightIds={highlightIds}
+              kind={kind}
             />
           )}
         </div>

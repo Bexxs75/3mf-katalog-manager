@@ -64,3 +64,12 @@ describe('FilamentTable double-click', () => {
     expect(onEdit).not.toHaveBeenCalled();
   });
 });
+
+describe('FilamentTable resin', () => {
+  it('drops the diameter column and shows ml', () => {
+    const R: FilamentSpool = { ...S, id: 'r', kind: 'resin', remainingWeightG: 90 };
+    renderTable({ spools: [R], kind: 'resin' });
+    expect(screen.queryByRole('columnheader', { name: /⌀/ })).toBeNull();
+    expect(screen.getByTestId('spool-row-r')).toHaveTextContent('90 ml');
+  });
+});

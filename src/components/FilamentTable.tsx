@@ -1,11 +1,12 @@
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { useState } from 'react';
 import { useT, useLanguage } from '../i18n/LanguageContext';
-import { formatStockG, formatDiameterMm, formatPrice } from '../i18n/format';
-import type { FilamentSpool } from '../types';
+import { formatSpoolAmount, formatDiameterMm, formatPrice } from '../i18n/format';
+import type { FilamentSpool, SpoolKind } from '../types';
 import { filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus';
 import { isValidColorHex } from '../lib/filamentColors';
 import { isFromInteractiveElement } from '../lib/spoolCardEvents';
+import { ResinBottleIcon } from './ResinBottleIcon';
 
 interface Props {
   spools: FilamentSpool[];
@@ -22,6 +23,8 @@ interface Props {
   restockOpenId?: string | null;
   /** Gerade per Nachkaufen angelegte Eintraege, kurz hervorgehoben. */
   highlightIds?: ReadonlySet<string>;
+  /** Art der gezeigten Liste; bei 'resin' entfaellt die Durchmesser-Spalte. */
+  kind?: SpoolKind;
 }
 
 // Kein Ziehen, wenn der Mausdruck auf einem Knopf der Karte/Zeile landet
@@ -54,6 +57,7 @@ export function FilamentTable({
   onRestock,
   restockOpenId,
   highlightIds,
+  kind = 'filament',
 }: Props) {
   const t = useT();
   const { language } = useLanguage();
@@ -113,6 +117,7 @@ export function FilamentTable({
     { key: 'remainingWeightG', label: t('filamentColumnStock') },
     { key: 'price', label: t('filamentPriceLabel') },
   ];
+  const visibleColumns = kind === 'resin' ? columns.filter((c) => c.key !== 'diameterMm') : columns;
 
   if (spools.length === 0) {
     return <div className="text-[13px] text-[var(--ink-3)]">{t('filamentNoResults')}</div>;
@@ -123,7 +128,7 @@ export function FilamentTable({
       <table className="w-full border-collapse text-[12.5px]">
         <thead>
           <tr>
-            {columns.map((col) => (
+            {visibleColumns.map((col) => (
               <th
                 key={col.key}
                 onClick={() => toggleSort(col.key)}
@@ -149,11 +154,11 @@ export function FilamentTable({
               <tr
                 key={spool.id}
                 data-testid={`spool-row-${spool.id}`}
-                onMouseDown={(e) => !startsOnButton(e) && onSpoolMouseDown?.(spool.id, e)}
+                onMouseDown={(e) => !startsOnButton(e) && spool.kind !== 'resin' && onSpoolMouseDown?.(spool.id, e)}
                 onDoubleClick={(e) => {
                   if (confirmDeleteId !== spool.id && !isFromInteractiveElement(e)) onEdit(spool);
                 }}
-                className={`hover:bg-[var(--panel-2)] ${onSpoolMouseDown ? 'cursor-grab' : ''} ${
+                className={`hover:bg-[var(--panel-2)] ${onSpoolMouseDown && spool.kind !== 'resin' ? 'cursor-grab' : ''} ${
                   highlightIds?.has(spool.id) ? 'spool-new-row' : ''
                 }`}
               >
@@ -161,6 +166,8 @@ export function FilamentTable({
                   <div className="flex items-center gap-2">
                     {spool.imagePng ? (
                       <img src={`data:image/png;base64,${spool.imagePng}`} className="w-6 h-6 rounded object-cover border border-[var(--line)]" />
+                    ) : spool.kind === 'resin' ? (
+                      <ResinBottleIcon colorHex={spool.colorHex} size={20} />
                     ) : (
                       <span className="w-2.5 h-2.5 rounded-sm bg-[var(--plate)] border border-[var(--line-strong)]" />
                     )}
@@ -185,10 +192,12 @@ export function FilamentTable({
                     {spool.location || t('noValue')}
                   </span>
                 </td>
-                <td className="px-3 py-2.5 border-b border-[var(--line)] font-mono-ui text-[var(--ink-2)]">{formatDiameterMm(spool.diameterMm, language)}</td>
+                {spool.kind !== 'resin' && (
+                  <td className="px-3 py-2.5 border-b border-[var(--line)] font-mono-ui text-[var(--ink-2)]">{formatDiameterMm(spool.diameterMm, language)}</td>
+                )}
                 <td className="px-3 py-2.5 border-b border-[var(--line)] min-w-[130px]">
                   <div className="flex justify-between font-mono-ui text-[10.5px] text-[var(--ink-3)] mb-1">
-                    <span>{formatStockG(spool.remainingWeightG, language)}</span>
+                    <span>{formatSpoolAmount(spool.remainingWeightG, spool.kind, language)}</span>
                     <span>{pct}%</span>
                   </div>
                   <div className="h-1.5 rounded-full bg-[var(--plate)] overflow-hidden">
