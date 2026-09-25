@@ -325,7 +325,7 @@ export default function App() {
               cleanupError={cleanup.cleanupError}
             />
           ) : (
-            <FilamentView printerLink={printerLink} printers={printers} />
+            <FilamentView printerLink={printerLink} printers={printers} onCatalogChanged={store.refreshFiles} />
           )}
 
           {contextMenu && contextModel && (

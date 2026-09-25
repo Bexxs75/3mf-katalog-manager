@@ -11,6 +11,7 @@ import { FilamentTable } from './FilamentTable';
 import { FilamentSpoolForm } from './FilamentSpoolForm';
 import { PrinterColumn } from './PrinterColumn';
 import { PrinterJobsBanner } from './PrinterJobsBanner';
+import { PrinterJobsDialog } from './PrinterJobsDialog';
 import { PrinterManagePanel } from './PrinterManagePanel';
 import { SpoolToast } from './SpoolToast';
 import type { PrintersState } from '../hooks/usePrinters';
@@ -30,9 +31,11 @@ interface Props {
    * einem Remount).
    */
   printers: PrintersState;
+  /** Katalog neu laden (z.B. Druckstatus/Warteschlange) nach dem Bestaetigen von Drucken. */
+  onCatalogChanged?: () => void;
 }
 
-export function FilamentView({ printerLink, printers }: Props) {
+export function FilamentView({ printerLink, printers, onCatalogChanged }: Props) {
   const t = useT();
   const { language } = useLanguage();
   const [spools, setSpools] = useState<FilamentSpool[]>([]);
@@ -45,9 +48,16 @@ export function FilamentView({ printerLink, printers }: Props) {
   const [editingSpool, setEditingSpool] = useState<FilamentSpool | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
   const [toast, setToast] = useState<{ spoolId: string; label: string; location: string | null } | null>(null);
-  // Blendet den Hinweisbanner aus, sobald er einmal geoeffnet wurde; der
-  // eigentliche Bestaetigungs-Dialog kommt erst in Task 15 dazu.
+  // Blendet den Hinweisbanner aus, sobald der Bestaetigungs-Dialog offen ist.
   const [jobsOpen, setJobsOpen] = useState(false);
+  const [models, setModels] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    if (!jobsOpen) return;
+    invoke<{ id: string; name: string }[]>('list_file_summaries')
+      .then((list) => setModels(list.map((m) => ({ id: m.id, name: m.name }))))
+      .catch(() => setModels([]));
+  }, [jobsOpen]);
 
   const refresh = () => {
     invoke<FilamentSpool[]>('list_filament_spools')
@@ -332,6 +342,19 @@ export function FilamentView({ printerLink, printers }: Props) {
         knownLocations={knownLocations}
         onClose={() => setPanelOpen(false)}
         onSaved={refresh}
+      />
+
+      <PrinterJobsDialog
+        open={jobsOpen && printerLink.jobs.length > 0}
+        jobs={printerLink.jobs}
+        spools={spools}
+        models={models}
+        link={printerLink}
+        onClose={() => setJobsOpen(false)}
+        onBooked={() => {
+          refresh();
+          onCatalogChanged?.();
+        }}
       />
     </div>
   );
