@@ -2,6 +2,8 @@
 //! (zuerst Klipper/Moonraker) und bucht ihn nach Bestätigung von einer Spule
 //! ab. Nur Heimnetz, nur lesende Anfragen, standardmäßig ausgeschaltet.
 
+pub mod address;
+
 /// Ergebnis von "Verbindung testen".
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConnectionInfo {
