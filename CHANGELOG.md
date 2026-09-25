@@ -5,6 +5,19 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/), Ve
 
 Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unter der Scaffold-Versionsnummer `0.1.0`, ohne dass Meilensteine markiert wurden. Die folgenden Versionsgrenzen wurden nachträglich anhand von Entwicklungs-Tagen und natürlichen Feature-Abschlüssen (jeweils an einem Dokumentations-Commit) gezogen, keine davon wurde zum jeweiligen Zeitpunkt live getaggt oder veröffentlicht.
 
+## [0.13.1] - 2026-09-25
+
+### Added
+
+- Filament-Lager: **Resin**. Oben im Lager schaltet „Filament | Resin" zwischen Spulen und Resin-Flaschen um; die App merkt sich die Auswahl. Übersicht, Liste, Suche, Filter und Kennzahlen gelten für die gewählte Art („Flaschen gesamt", Mengen in ml). Resin-Flaschen zeigen ein Flaschen-Symbol, den Rest in ml und die Flaschengröße statt des Durchmessers; der Status (vorrätig/niedrig/leer) folgt denselben Regeln. Über „− Verbrauch" buchst du verbrauchte Milliliter ab (auf 0,1 ml genau, nie unter 0). Beim Anlegen oder Bearbeiten wählst du die Art; bei Resin heißt die Menge „Inhalt (ml)", der Durchmesser entfällt. Resin kommt nie in ein Druckerfach und zählt nicht bei „Reicht das Filament?", der Materialkosten-Schätzung, dem Filament-Symbol der Warteschlange und den Gramm-Summen. Alle bisherigen Einträge bleiben Filament; auch ältere Sicherungen lassen sich weiter einspielen.
+- Filament-Lager: **Nachkaufen**. Jede Karte hat unten links den Knopf „＋ Nachkaufen", jede Zeile der Listenansicht einen „＋"-Knopf. Ein kleines Fenster legt 1 bis 20 neue, volle Spulen bzw. Flaschen mit denselben Daten an (Art, Material, Hersteller, Farbname, Farbwert, Bild, Durchmesser). Menge, Preis je Stück und Lagerort sind mit den Werten der Vorlage vorbelegt (Lagerort: ihr Stammplatz, falls sie gerade im Drucker steckt) und lassen sich vorher ändern. Neue Einträge liegen immer im Lager. Alles wird in einem Schritt angelegt: Schlägt etwas fehl (z. B. weil die Vorlage inzwischen gelöscht wurde), entsteht kein einziger. Die neuen Karten sind danach kurz grün umrandet, eine Meldung nennt die Anzahl. Escape oder ein Klick daneben schließt das Fenster, ohne etwas anzulegen.
+- Filament-Lager: Ein **Doppelklick** auf eine Karte oder eine Tabellenzeile öffnet das Bearbeiten-Formular (wie ✎). Doppelklicks auf Knöpfe lösen das nicht aus.
+- Filament-Lager: Restgewichte werden auf 0,1 g genau gespeichert und angezeigt.
+
+### Fixed
+
+- Filament-Lager: Das Bildfeld im Spulenformular („Bild hierher ziehen oder klicken") nimmt jetzt auch per **Drag & Drop** hineingezogene Bilder an; bisher funktionierte nur Klicken. Erlaubt ist genau eine PNG-, JPG- oder WebP-Datei bis 5 MB (wie beim Klick-Upload). Das Feld hebt sich beim Darüberziehen hervor. Bei mehreren Dateien oder einer anderen Datei erscheint ein Hinweis. Ein Drop im Filament-Lager startet nie einen Modell-Import.
+
 ## [0.13.0] - 2026-09-24
 
 ### Added
@@ -360,6 +373,19 @@ All notable changes to this project are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versioning follows [Semantic Versioning](https://semver.org/).
 
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
+
+## [0.13.1] - 2026-09-25
+
+### Added
+
+- Filament stock: **Resin**. "Filament | Resin" at the top of the stock switches between spools and resin bottles; the app remembers your choice. Overview, list, search, filters and stats apply to the selected type ("Total bottles", amounts in ml). Resin bottles show a bottle icon, the remaining amount in ml and the bottle size instead of the diameter; the status (in stock/low/empty) follows the same rules. "− Use" deducts the milliliters you used (to 0.1 ml, never below 0). When adding or editing an entry you choose the type; for resin the amount is called "Volume (ml)" and there is no diameter. Resin never goes into a printer slot and is left out of "Is there enough filament?", the material cost estimate, the queue's filament symbol and gram totals. All existing entries stay filament, and older backups can still be restored.
+- Filament stock: **Restock**. Every card has a "＋ Restock" button at the bottom left, and every row in the list view has a "＋" button. A small window adds 1 to 20 new, full spools or bottles with the same details (type, material, manufacturer, color name, color value, image, diameter). Amount, price per item and storage location are prefilled from the template (storage location: its home location if it currently sits in a printer) and can be changed first. New entries always go to storage. Everything is created in one step: if anything fails (for example because the template was deleted in the meantime), nothing is created. The new cards get a brief green outline, and a message states how many were added. Escape or a click outside closes the window without adding anything.
+- Filament stock: **Double-clicking** a card or a table row opens the edit form (same as ✎). Double-clicks on buttons don't trigger it.
+- Filament stock: Remaining weights are stored and shown to 0.1 g.
+
+### Fixed
+
+- Filament stock: The image field in the spool form ("Drop an image here or click") now also accepts images dropped onto it via **drag & drop**; previously only clicking worked. Exactly one PNG, JPG or WebP file up to 5 MB is accepted (same as the click upload). The field is highlighted while you drag over it. Several files or a different file type show a hint. A drop in the filament stock never starts a model import.
 
 ## [0.13.0] - 2026-09-24
 

@@ -313,8 +313,30 @@ Alternativ zur Kachel-Ansicht gibt es eine sortierbare Listenansicht ("Liste" ne
 Neben den üblichen Angaben (Material, Hersteller, Farbe, Lagerort, Durchmesser, Preis,
 Ursprungs-/Restgewicht, optional ein Foto) lässt sich hier auch die **Anzahl** angeben: Legst du
 z. B. drei identische PLA-Spulen gleichzeitig an, erhält jede davon trotzdem ihren eigenen,
-unabhängig verfolgten Restbestand. Für Material, Hersteller und Lagerort schlägt die App beim
-Tippen bereits verwendete Werte vor (Autocomplete).
+unabhängig verfolgten Restbestand. Gewichte speichert die App auf 0,1 g genau. Für Material,
+Hersteller und Lagerort schlägt die App beim Tippen bereits verwendete Werte vor (Autocomplete).
+Das Foto wählst du per Klick auf das Bildfeld aus oder ziehst es direkt aus dem Dateimanager
+darauf (eine PNG-, JPG- oder WebP-Datei, höchstens 5 MB).
+
+**Bearbeiten per Doppelklick:** Ein Doppelklick auf eine Karte oder eine Zeile der Liste öffnet
+dasselbe Formular wie der Stift ✎.
+
+**Nachkaufen:** Hast du eine Spule nachgekauft, die du schon im Lager hast, klick auf ihrer Karte
+auf „＋ Nachkaufen" (in der Liste auf „＋" in der Zeile). Im kleinen Fenster wählst du die Anzahl
+(1 bis 20) und passt bei Bedarf Menge, Preis und Lagerort an. Vorbelegt sind die Werte der
+Vorlage, beim Lagerort ihr Stammplatz, falls sie gerade im Drucker steckt. Die neuen Einträge
+übernehmen Art, Material, Hersteller, Farbe, Farbwert, Bild und Durchmesser, sind voll und liegen
+im Lager. Danach sind sie kurz grün umrandet. Escape oder ein Klick neben das Fenster schließt es,
+ohne etwas anzulegen.
+
+**Resin:** Mit „Filament | Resin" oben im Lager wechselst du zu deinen Resin-Flaschen; die App
+merkt sich die Auswahl. Übersicht, Liste, Suche und Kennzahlen zeigen dann nur Resin, Mengen in
+Milliliter („Flaschen gesamt"). Beim Anlegen wählst du im Formular die Art „Resin": Statt des
+Gewichts gibst du den „Inhalt (ml)" an, einen Durchmesser gibt es nicht. Hast du Resin verbraucht,
+klick auf der Flasche auf „− Verbrauch" und trag die Milliliter ein (auf 0,1 ml genau); der Rest
+sinkt nie unter 0. Resin-Flaschen kommen nie in ein Druckerfach und zählen nicht bei „Reicht das
+Filament?" und den Materialkosten. Die Art einer Spule, die gerade im Drucker steckt, lässt sich
+erst nach dem Herausnehmen ändern.
 
 ### Reicht das Filament?
 
@@ -777,8 +799,30 @@ As an alternative to the tile view, there's a sortable list view ("List" next to
 Besides the usual fields (material, manufacturer, color, storage location, diameter, price,
 original/remaining weight, optionally a photo), you can also set a **quantity** here: adding,
 say, three identical PLA spools at once still gives each one its own, independently tracked
-remaining weight. For material, manufacturer, and storage location, the app suggests previously
-used values as you type (autocomplete).
+remaining weight. Weights are stored to 0.1 g. For material, manufacturer, and storage location,
+the app suggests previously used values as you type (autocomplete). Pick the photo by clicking
+the image field, or drag it straight from your file manager onto the field (one PNG, JPG or WebP
+file, up to 5 MB).
+
+**Edit with a double-click:** Double-clicking a card or a row in the list opens the same form as
+the pencil ✎.
+
+**Restock:** When you've bought more of a spool you already have in stock, click "＋ Restock" on
+its card (in the list: "＋" in the row). In the small window, choose the quantity (1 to 20) and
+adjust amount, price and storage location if needed. They are prefilled from the template; the
+storage location is its home location if it currently sits in a printer. The new entries copy
+type, material, manufacturer, color, color value, image and diameter, are full and go to storage.
+Afterwards they get a brief green outline. Escape or a click outside the window closes it without
+adding anything.
+
+**Resin:** Use "Filament | Resin" at the top of the stock to switch to your resin bottles; the
+app remembers your choice. Overview, list, search and stats then show only resin, with amounts in
+milliliters ("Total bottles"). When adding an entry, choose the type "Resin" in the form: instead
+of the weight you enter the "Volume (ml)", and there is no diameter. When you've used resin, click
+"− Use" on the bottle and enter the milliliters (to 0.1 ml); the remaining amount never drops
+below 0. Resin bottles never go into a printer slot and are left out of "Is there enough
+filament?" and the material cost. The type of a spool that currently sits in a printer can only be
+changed after taking it out.
 
 ### Is there enough filament?
 
