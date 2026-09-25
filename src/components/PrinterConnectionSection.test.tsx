@@ -54,4 +54,25 @@ describe('PrinterConnectionSection', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Verbindung entfernen' })));
     expect(l.removeConnection).toHaveBeenCalledWith('1');
   });
+
+  it('shows an error and does not throw when testConnection rejects', async () => {
+    const l = link(undefined);
+    l.testConnection = vi.fn().mockRejectedValue(new Error('lock poisoned'));
+    renderIt(l);
+    fireEvent.change(screen.getByLabelText('Adresse (IP oder Name)'), { target: { value: '10.0.0.9' } });
+    await expect(
+      act(async () => fireEvent.click(screen.getByRole('button', { name: 'Verbindung testen' }))),
+    ).resolves.not.toThrow();
+    expect(screen.getByText('Das hat nicht geklappt: lock poisoned')).toBeInTheDocument();
+  });
+
+  it('shows an error and does not throw when removeConnection rejects', async () => {
+    const l = link(null);
+    l.removeConnection = vi.fn().mockRejectedValue(new Error('unknown printer id'));
+    renderIt(l, okConnection);
+    const removeButton = screen.getByRole('button', { name: 'Verbindung entfernen' });
+    await expect(act(async () => fireEvent.click(removeButton))).resolves.not.toThrow();
+    expect(screen.getByText('Das hat nicht geklappt: unknown printer id')).toBeInTheDocument();
+    expect(removeButton).not.toBeDisabled();
+  });
 });

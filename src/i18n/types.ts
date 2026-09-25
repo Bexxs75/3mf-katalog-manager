@@ -379,12 +379,14 @@ export interface Translations {
   printerConnectionType: string;
   printerConnectionTypeMoonraker: string;
   printerConnectionAddress: string;
+  printerConnectionPort: string;
   printerConnectionTest: string;
   printerConnectionTesting: string;
   printerConnectionRemove: string;
   printerConnectionOk: string;
   printerConnectionOkDetail: string;
   printerConnectionSince: string;
+  printerConnectionActionFailed: string;
   printerErrorUnreachable: string;
   printerErrorAuthRequired: string;
   printerErrorBadResponse: string;

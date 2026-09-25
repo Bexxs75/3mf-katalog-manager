@@ -30,7 +30,11 @@ const errorKey: Record<PrinterConnectionError, PrinterErrorKey> = {
 function portOf(baseUrl: string | null): string {
   if (!baseUrl) return '';
   const m = baseUrl.match(/:(\d+)$/);
-  return `Port ${m ? m[1] : '80'}`;
+  return m ? m[1] : '80';
+}
+
+function messageOf(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }
 
 const fieldClass =
@@ -44,18 +48,36 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
   const { language } = useLanguage();
   const [address, setAddress] = useState(connection?.address ?? '');
   const [testing, setTesting] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<PrinterConnectionError | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [current, setCurrent] = useState<PrinterConnection | null>(connection);
 
   const runTest = async () => {
     setTesting(true);
     setError(null);
+    setActionError(null);
     try {
       const r = await link.testConnection(printerId, address.trim());
       if (r.ok && r.connection) setCurrent(r.connection);
       else setError(r.error ?? 'bad_response');
+    } catch (e) {
+      setActionError(messageOf(e));
     } finally {
       setTesting(false);
+    }
+  };
+
+  const runRemove = async () => {
+    setRemoving(true);
+    setActionError(null);
+    try {
+      await link.removeConnection(printerId);
+      setCurrent(null);
+    } catch (e) {
+      setActionError(messageOf(e));
+    } finally {
+      setRemoving(false);
     }
   };
 
@@ -86,18 +108,16 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
           {testing ? t('printerConnectionTesting') : t('printerConnectionTest')}
         </button>
         {current && (
-          <button
-            type="button"
-            className={smallButton}
-            onClick={async () => {
-              await link.removeConnection(printerId);
-              setCurrent(null);
-            }}
-          >
+          <button type="button" className={smallButton} disabled={removing} onClick={runRemove}>
             {t('printerConnectionRemove')}
           </button>
         )}
       </div>
+      {actionError && (
+        <div role="alert" className="border-l-[3px] border-[var(--crit)] pl-2.5 text-[12px] text-[var(--ink-2)]">
+          {t('printerConnectionActionFailed').replace('{message}', actionError)}
+        </div>
+      )}
       {error && (
         <div role="alert" className="border-l-[3px] border-[var(--crit)] pl-2.5 text-[12px] text-[var(--ink-2)]">
           {t(errorKey[error])}
@@ -107,7 +127,9 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
         <div className="border-l-[3px] border-[var(--good)] pl-2.5 flex flex-col gap-0.5">
           <b className="text-[12.5px]">{t('printerConnectionOk')}</b>
           <span className="font-mono-ui text-[11px] text-[var(--ink-2)]">
-            {t('printerConnectionOkDetail').replace('{version}', current.remoteVersion ?? '?').replace('{port}', portOf(current.baseUrl))}
+            {t('printerConnectionOkDetail')
+              .replace('{version}', current.remoteVersion ?? '?')
+              .replace('{port}', t('printerConnectionPort').replace('{port}', portOf(current.baseUrl)))}
           </span>
           <span className="text-[11.5px] text-[var(--ink-2)]">{t('printerConnectionSince').replace('{date}', since)}</span>
         </div>
