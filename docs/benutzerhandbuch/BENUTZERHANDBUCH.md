@@ -338,7 +338,8 @@ Milliliter („Flaschen gesamt"). „Flasche anlegen" legt dort immer eine Resin
 Filament-Bereich entsteht immer eine Spule. Statt des Gewichts gibst du den „Inhalt (ml)" an, einen
 Durchmesser gibt es nicht, und Material und Hersteller schlagen Resin-Werte vor. Hast du Resin verbraucht,
 klick auf der Flasche auf „− Verbrauch" und trag die Milliliter ein (auf 0,1 ml genau); der Rest
-sinkt nie unter 0. Resin-Flaschen kommen nie in ein Druckerfach und zählen nicht bei „Reicht das
+sinkt nie unter 0. Resin-Flaschen kommen nie in ein Filament-Fach, sondern nur in die Harzwanne
+eines Resin-Druckers (siehe [Resin-Drucker](#resin-drucker)), und zählen nicht bei „Reicht das
 Filament?" und den Materialkosten.
 
 ![Resin-Flaschen im Filament-Lager](bilder/12-resin-flaschen.png)
@@ -365,8 +366,9 @@ eingelegte Spulen erscheinen dann in einer eigenen Spalte rechts neben dem Lager
 
 ![Drucker & AMS-Fächer](bilder/22-drucker-ams.png)
 
-1. Über "Drucker verwalten" legst du einen Drucker an — er bekommt dabei automatisch einen
-   "Spulenhalter" (1 Fach); bei einem Drucker ohne AMS ist das zunächst sein einziges Fach, du
+1. Über "Drucker verwalten" legst du einen Drucker an — neben dem Namen wählst du dabei
+   "Filament" (Standard) oder "Resin"; die Art ist danach fest. Ein Filament-Drucker bekommt
+   automatisch einen "Spulenhalter" (1 Fach); bei einem Drucker ohne AMS ist das zunächst sein einziges Fach, du
    kannst ihn aber jederzeit löschen. Über "+ Einheit hinzufügen" fügst du weitere
    Mehrfarbeinheiten hinzu — entweder aus Vorlagen (Bambu AMS/AMS lite/AMS HT, Creality CFS,
    Prusa MMU3, Anycubic ACE Pro, Spulenhalter) oder als "Eigene…" mit frei wählbarer
@@ -384,7 +386,32 @@ eingelegte Spulen erscheinen dann in einer eigenen Spalte rechts neben dem Lager
    zum Farbnamen; bei einer eingelegten Spule heißt das Lagerort-Feld "Stammplatz".
 5. Welche Spule in welchem Fach steckt, trägst du hier weiterhin von Hand ein (Drag & Drop oder
    Fach-Menü). Was die App dir abnehmen kann, ist das Ablesen des Filamentverbrauchs nach einem
-   Druck bei angebundenen Klipper/Moonraker-Druckern — siehe nächster Abschnitt.
+   Druck bei angebundenen Klipper/Moonraker-Druckern — siehe [Druckeranbindung](#druckeranbindung).
+
+In der Ansicht "Filament" zeigt die rechte Spalte nur Filament-Drucker, in der Ansicht "Resin"
+nur Resin-Drucker.
+
+### Resin-Drucker
+
+Wählst du beim Anlegen "Resin", bekommt der Drucker statt des Spulenhalters genau eine
+**Harzwanne** mit Platz für eine Flasche. Sie lässt sich weder umbenennen noch löschen, und
+weitere Einheiten gibt es bei Resin-Druckern nicht; den Drucker selbst kannst du umbenennen und
+löschen wie jeden anderen.
+
+- In der Ansicht "Resin" des Lagers steht der Resin-Drucker in der rechten Spalte. Die Wanne
+  zeigt die eingesetzte Flasche mit Farbe, Rest in ml und Füllbalken.
+- Eine Flasche setzt du ein, indem du ihre Karte oder Zeile auf die Wanne ziehst oder die Wanne
+  anklickst und eine Flasche auswählst — das Menü listet nur Resin-Flaschen. Steckt schon eine
+  Flasche in der Wanne, kehrt sie an ihren Stammplatz zurück.
+- "Herausnehmen" (Menü der Wanne oder zurück in den Lagerbereich ziehen) bringt die Flasche an
+  ihren Stammplatz zurück, wie bei Spulen.
+- "− Verbrauch" gibt es für eine eingesetzte Flasche im Menü der Wanne.
+- Resin-Flaschen passen nur in eine Harzwanne, Filament-Spulen nie. Ein unpassendes Ziel wird
+  beim Ziehen nicht hervorgehoben, und dort loslassen bewirkt nichts.
+- Resin-Drucker haben keine Druckeranbindung und zählen nicht bei „Reicht das Filament?", den
+  Materialkosten und dem Warteschlangen-Symbol.
+- Eine Flasche in der Wanne behält ihre Art: Sie lässt sich erst nach dem Herausnehmen zu
+  Filament ändern (umgekehrt genauso bei Spulen im Fach).
 
 ### Druckeranbindung
 
@@ -392,6 +419,7 @@ Bei einem Klipper-Drucker mit Moonraker (z. B. über Mainsail oder Fluidd bedien
 den Filamentverbrauch fertiger und abgebrochener Drucke selbst ablesen, statt dass du ihn von
 Hand einträgst. Das ist standardmäßig **ausgeschaltet** und rein lesend: Die App sendet nur
 Abfragen, nie einen Befehl, und spricht nur mit Adressen, die du selbst im Heimnetz einträgst.
+Für Resin-Drucker gibt es keine Anbindung: Bei ihnen fehlt der Abschnitt "Verbindung".
 
 1. **Einstellungen → Drucker** → Schalter "Druckeranbindung" einschalten.
 2. **Filament-Lager → Drucker verwalten** → beim gewünschten Drucker unter "Verbindung" die
@@ -469,7 +497,7 @@ Hier schaltest du die Druckeranbindung ein oder aus (standardmäßig aus) und si
 Blick den Status jedes angebundenen Druckers ("Klipper · verbunden", "Klipper · Fehler" oder
 "nicht angebunden"). Adresse und Verbindungstest trägst du pro Drucker im Filament-Lager unter
 "Drucker verwalten" ein — Details dazu im Abschnitt
-[Druckeranbindung](#druckeranbindung) weiter oben.
+[Druckeranbindung](#druckeranbindung) weiter oben. Resin-Drucker erscheinen hier nicht.
 
 ### Info
 
@@ -862,8 +890,9 @@ milliliters ("Total bottles"). "Add bottle" there always creates a resin bottle,
 filament area always creates a spool. Instead of the weight you enter the "Volume (ml)", there is
 no diameter, and material and manufacturer suggest resin values. When you've used resin, click
 "− Use" on the bottle and enter the milliliters (to 0.1 ml); the remaining amount never drops
-below 0. Resin bottles never go into a printer slot and are left out of "Is there enough
-filament?" and the material cost.
+below 0. Resin bottles never go into a filament slot, only into the resin vat of a resin printer
+(see [Resin printers](#resin-printers)), and are left out of "Is there enough filament?" and the
+material cost.
 
 ![Resin bottles in the filament stock](bilder/en/12-resin-bottles.png)
 
@@ -889,8 +918,9 @@ loaded spools then appear in their own column to the right of the stock.
 
 ![Printers & AMS slots](bilder/en/22-drucker-ams.png)
 
-1. Use "Manage printers" to add a printer — it automatically gets a "Spool holder" unit (1
-   slot); for a printer without an AMS this is initially its only slot, but you can delete it
+1. Use "Manage printers" to add a printer — next to the name you choose "Filament" (default)
+   or "Resin"; the kind can't be changed afterwards. A filament printer automatically gets a
+   "Spool holder" unit (1 slot); for a printer without an AMS this is initially its only slot, but you can delete it
    at any time. Then add more multi-material units to it via "+ Add unit" — either from
    templates (Bambu AMS/AMS lite/AMS HT, Creality CFS, Prusa MMU3, Anycubic ACE Pro, Spool
    holder) or as "Custom…" with any slot count you like. Reorder units by their drag handle. If
@@ -907,7 +937,31 @@ loaded spools then appear in their own column to the right of the stock.
    name; for a loaded spool, the storage-location field is labeled "Home location".
 5. Which spool is in which slot is still something you enter by hand here (drag & drop or the
    slot menu). What the app can take off your hands is reading the filament used after a print
-   on connected Klipper/Moonraker printers — see the next section.
+   on connected Klipper/Moonraker printers — see [Printer connection](#printer-connection).
+
+In the "Filament" view the right-hand column only shows filament printers, in the "Resin" view
+only resin printers.
+
+### Resin printers
+
+If you choose "Resin" when adding a printer, it gets exactly one **resin vat** with room for one
+bottle instead of the spool holder. The vat can't be renamed or deleted, and resin printers
+can't have any other units; the printer itself can be renamed and deleted like any other.
+
+- In the "Resin" view of the stock, the resin printer appears in the right-hand column. The vat
+  shows the inserted bottle with its color, the remaining ml and a fill bar.
+- To insert a bottle, drag its card or row onto the vat, or click the vat and pick a bottle —
+  the menu only lists resin bottles. If the vat already holds a bottle, that one returns to its
+  home location.
+- "Unload" (vat menu, or drag it back into the stock area) returns the bottle to its home
+  location, just like spools.
+- "− Use" is available for an inserted bottle in the vat's menu.
+- Resin bottles only fit into a resin vat, filament spools never do. A target that doesn't fit
+  isn't highlighted while dragging, and dropping there does nothing.
+- Resin printers have no printer connection and are left out of "Is there enough filament?",
+  the material cost and the queue icon.
+- A bottle in the vat keeps its kind: you can only change it to filament after unloading it
+  (and the same goes for spools in a slot).
 
 ### Printer connection
 
@@ -915,6 +969,7 @@ With a Klipper printer running Moonraker (e.g. controlled via Mainsail or Fluidd
 read the filament used by finished and aborted prints itself, instead of you entering it by
 hand. This is **off by default** and read-only: the app only sends queries, never a command, and
 only talks to addresses you enter yourself on your home network.
+Resin printers can't be connected: they have no "Connection" section.
 
 1. **Settings → Printers** → switch on "Printer connection".
 2. **Filament stock → Manage printers** → for the printer you want, enter the address under
@@ -990,7 +1045,7 @@ This is where you switch the printer connection on or off (off by default) and s
 of every connected printer at a glance ("Klipper · connected", "Klipper · error", or "not
 connected"). Address and connection test are entered per printer in the filament stock under
 "Manage printers" — see the [Printer connection](#printer-connection) section above for
-details.
+details. Resin printers don't appear here.
 
 ### Info
 
