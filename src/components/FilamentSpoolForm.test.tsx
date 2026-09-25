@@ -82,4 +82,21 @@ describe('FilamentSpoolForm', () => {
     expect(screen.getByRole('button', { name: 'Resin' })).toBeDisabled();
     expect(screen.getByText('Die Art lässt sich erst ändern, wenn die Spule nicht im Drucker steckt.')).toBeInTheDocument();
   });
+
+  it('is inert (unreachable) while closed, and not inert once opened', () => {
+    localStorage.setItem('3mf-katalog-language', 'de');
+    const { container, rerender } = render(
+      <LanguageProvider>
+        <FilamentSpoolForm open={false} editing={null} knownLocations={[]} onClose={vi.fn()} onSaved={vi.fn()} />
+      </LanguageProvider>,
+    );
+    expect(container.querySelector('aside')).toHaveAttribute('inert');
+
+    rerender(
+      <LanguageProvider>
+        <FilamentSpoolForm open editing={null} knownLocations={[]} onClose={vi.fn()} onSaved={vi.fn()} />
+      </LanguageProvider>,
+    );
+    expect(container.querySelector('aside')).not.toHaveAttribute('inert');
+  });
 });

@@ -150,6 +150,9 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
       />
       <aside
         aria-hidden={!open}
+        // `inert` (not just aria-hidden) so the always-mounted, off-canvas panel's
+        // controls are also unreachable by keyboard/Tab while closed (WCAG 4.1.2).
+        inert={!open}
         className={`fixed top-0 right-0 bottom-0 w-full max-w-[380px] bg-[var(--panel)] border-l border-[var(--line)] shadow-[var(--shadow)] z-50 flex flex-col transition-transform duration-200 ${
           open ? 'translate-x-0' : 'translate-x-full'
         }`}
