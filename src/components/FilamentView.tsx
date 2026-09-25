@@ -296,7 +296,7 @@ export function FilamentView() {
             className="ml-auto h-8 px-3.5 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-bold cursor-pointer flex items-center gap-1.5"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6"><path d="M12 5v14M5 12h14" /></svg>
-            {t('filamentOpenAddPanelButton')}
+            {kind === 'resin' ? t('resinOpenAddPanelButton') : t('filamentOpenAddPanelButton')}
           </button>
         </div>
 

@@ -46,7 +46,15 @@ export function AutocompleteInput({ value, onChange, options, placeholder, class
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Escape') {
+      // Bei offener Vorschlagsliste soll Escape nur die Liste schliessen,
+      // nicht auch das umgebende Popover/Formular (z.B. RestockPopover)
+      // dessen Escape-Handler sonst die Eingaben verwirft.
+      const listWasOpen = open && filtered.length > 0;
       setOpen(false);
+      if (listWasOpen) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
       return;
     }
     if (!open || filtered.length === 0) return;

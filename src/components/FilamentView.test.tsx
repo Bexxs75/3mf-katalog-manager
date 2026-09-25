@@ -204,4 +204,16 @@ describe('FilamentView with printers', () => {
     fireEvent.doubleClick(within(card).getByText('PETG'));
     await waitFor(() => expect(screen.getByDisplayValue('Regal 1')).toBeInTheDocument());
   });
+
+  it('shows the bottle wording on the add-panel button for resin', async () => {
+    renderView();
+    await screen.findByTestId('spool-card-store');
+    expect(screen.getByRole('button', { name: 'Spule anlegen' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Flasche anlegen' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Resin' }));
+
+    expect(await screen.findByRole('button', { name: 'Flasche anlegen' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Spule anlegen' })).toBeNull();
+  });
 });
