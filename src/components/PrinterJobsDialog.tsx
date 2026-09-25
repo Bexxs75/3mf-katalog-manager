@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatCount } from '../i18n/types';
 import { formatDateTime, formatDurationMinutes, formatLengthMm, formatStockG } from '../i18n/format';
@@ -54,6 +54,10 @@ export function PrinterJobsDialog({ open, jobs, spools, models, link, onClose, o
   const { language } = useLanguage();
   const [rows, setRows] = useState<Record<string, RowState>>({});
   const [picking, setPicking] = useState<string | null>(null);
+  // DOM-Knoten des gerade angeklickten Modell-Auswahl-Knopfs - wird im
+  // onClick unten manuell gesetzt (nicht per JSX-ref), da derselbe Knopf pro
+  // Auftrag existiert und ModelPicker ihre Popup-Position daran ausrichtet.
+  const modelAnchorRef = useRef<HTMLElement | null>(null);
   const [failed, setFailed] = useState(0);
   const [actionError, setActionError] = useState<string | null>(null);
   // Auftrags-IDs mit einer laufenden Bestaetigen/Ignorieren-Anfrage - blockt
@@ -249,7 +253,10 @@ export function PrinterJobsDialog({ open, jobs, spools, models, link, onClose, o
                   <div className="relative flex flex-col gap-1">
                     <button
                       type="button"
-                      onClick={() => setPicking(picking === job.id ? null : job.id)}
+                      onClick={(e) => {
+                        modelAnchorRef.current = e.currentTarget;
+                        setPicking(picking === job.id ? null : job.id);
+                      }}
                       className="flex items-center gap-2 rounded-md border border-dashed border-[var(--line-strong)] px-2 py-1.5 text-[12.5px] text-left cursor-pointer"
                     >
                       {model ? (
@@ -273,6 +280,7 @@ export function PrinterJobsDialog({ open, jobs, spools, models, link, onClose, o
                     {picking === job.id && (
                       <ModelPicker
                         models={models}
+                        anchorRef={modelAnchorRef}
                         onClose={() => setPicking(null)}
                         onChange={(fileId) => {
                           setRows((r) => ({ ...r, [job.id]: { ...r[job.id], fileId } }));

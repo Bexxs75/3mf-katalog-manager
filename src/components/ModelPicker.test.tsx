@@ -1,18 +1,33 @@
+import { createRef } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LanguageProvider } from '../i18n/LanguageContext';
-import { ModelPicker } from './ModelPicker';
+import { ModelPicker, type ModelOption } from './ModelPicker';
 
 beforeEach(() => localStorage.setItem('3mf-katalog-language', 'de'));
 
+const defaultModels: ModelOption[] = [{ id: '1', name: 'Rakete.3mf' }, { id: '2', name: 'Kabelclip.stl' }];
+
+// ModelPicker rendert ihr Popup per Portal fixed relativ zu `anchorRef` -
+// dieser Helfer stellt (wie in PrinterJobsDialog) einen echten Auswahl-Knopf
+// als Anker bereit.
+function renderPicker(overrides: { models?: ModelOption[]; onChange?: (id: string | null) => void; onClose?: () => void } = {}) {
+  const anchorRef = createRef<HTMLButtonElement>();
+  const onChange = overrides.onChange ?? vi.fn();
+  const onClose = overrides.onClose ?? vi.fn();
+  const models = overrides.models ?? defaultModels;
+  const utils = render(
+    <LanguageProvider>
+      <button ref={anchorRef}>Modell wählen</button>
+      <ModelPicker models={models} anchorRef={anchorRef} onChange={onChange} onClose={onClose} />
+    </LanguageProvider>,
+  );
+  return { ...utils, onChange, onClose, anchorRef };
+}
+
 describe('ModelPicker', () => {
   it('filters by name and allows "no model"', () => {
-    const onChange = vi.fn();
-    render(
-      <LanguageProvider>
-        <ModelPicker models={[{ id: '1', name: 'Rakete.3mf' }, { id: '2', name: 'Kabelclip.stl' }]} onChange={onChange} onClose={vi.fn()} />
-      </LanguageProvider>,
-    );
+    const { onChange } = renderPicker();
     fireEvent.change(screen.getByPlaceholderText('Modell suchen …'), { target: { value: 'kabel' } });
     expect(screen.queryByText('Rakete.3mf')).not.toBeInTheDocument();
     fireEvent.click(screen.getByText('Kabelclip.stl'));
@@ -22,12 +37,7 @@ describe('ModelPicker', () => {
   });
 
   it('navigates with the keyboard from the search field and selects with Enter', () => {
-    const onChange = vi.fn();
-    render(
-      <LanguageProvider>
-        <ModelPicker models={[{ id: '1', name: 'Rakete.3mf' }, { id: '2', name: 'Kabelclip.stl' }]} onChange={onChange} onClose={vi.fn()} />
-      </LanguageProvider>,
-    );
+    const { onChange } = renderPicker();
     const input = screen.getByPlaceholderText('Modell suchen …');
     fireEvent.keyDown(input, { key: 'ArrowDown' }); // von "Kein Modell" zu "Rakete.3mf"
     fireEvent.keyDown(input, { key: 'ArrowDown' }); // zu "Kabelclip.stl"
@@ -36,11 +46,7 @@ describe('ModelPicker', () => {
   });
 
   it('reports the active option via aria-activedescendant on the search field', () => {
-    render(
-      <LanguageProvider>
-        <ModelPicker models={[{ id: '1', name: 'Rakete.3mf' }]} onChange={vi.fn()} onClose={vi.fn()} />
-      </LanguageProvider>,
-    );
+    renderPicker({ models: [{ id: '1', name: 'Rakete.3mf' }] });
     const input = screen.getByPlaceholderText('Modell suchen …');
     const none = screen.getByText('Kein Modell');
     expect(input).toHaveAttribute('aria-activedescendant', none.id);
@@ -52,15 +58,59 @@ describe('ModelPicker', () => {
   it('does not bubble Escape to the surrounding dialog', () => {
     const onClose = vi.fn();
     const outerKeyDown = vi.fn();
+    const anchorRef = createRef<HTMLButtonElement>();
     render(
       <div onKeyDown={outerKeyDown}>
         <LanguageProvider>
-          <ModelPicker models={[{ id: '1', name: 'Rakete.3mf' }]} onChange={vi.fn()} onClose={onClose} />
+          <button ref={anchorRef}>Modell wählen</button>
+          <ModelPicker models={[{ id: '1', name: 'Rakete.3mf' }]} anchorRef={anchorRef} onChange={vi.fn()} onClose={onClose} />
         </LanguageProvider>
       </div>,
     );
     fireEvent.keyDown(screen.getByPlaceholderText('Modell suchen …'), { key: 'Escape' });
     expect(onClose).toHaveBeenCalled();
     expect(outerKeyDown).not.toHaveBeenCalled();
+  });
+
+  it('renders its popup in a portal attached to document.body, not the local render tree', () => {
+    // Regression: absolute Positionierung wurde vom ueberlaufenden
+    // Dialog-Scrollcontainer in PrinterJobsDialog abgeschnitten - das Popup
+    // muss per createPortal direkt an document.body haengen (wie
+    // SpoolPicker, Commits 3365945 + 475c607).
+    const { container } = renderPicker();
+    const listbox = screen.getByRole('listbox');
+    expect(container.contains(listbox)).toBe(false);
+    expect(document.body.contains(listbox)).toBe(true);
+  });
+
+  it('opens on mount and stays open (no self-close via mount side effects)', () => {
+    const { onClose } = renderPicker();
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('does not close when a scroll event originates from inside the popup list itself', () => {
+    const { onClose } = renderPicker();
+    fireEvent.scroll(screen.getByRole('listbox'));
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('closes on click outside the popup and its anchor', () => {
+    const { onClose } = renderPicker();
+    fireEvent.mouseDown(document.body);
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('closes on a real scroll event from outside the popup (e.g. the page or an outer scroll container)', () => {
+    const { onClose } = renderPicker();
+    fireEvent.scroll(window);
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('closes on window resize', () => {
+    const { onClose } = renderPicker();
+    fireEvent(window, new Event('resize'));
+    expect(onClose).toHaveBeenCalled();
   });
 });

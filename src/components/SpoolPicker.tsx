@@ -1,5 +1,6 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
 import { useLanguage } from '../i18n/LanguageContext';
 import { formatStockG } from '../i18n/format';
 import type { Language } from '../i18n/types';
@@ -30,24 +31,6 @@ const optionMeta = (s: FilamentSpool, language: Language) =>
   [formatStockG(s.remainingWeightG, language), s.manufacturer, s.location].filter(Boolean).join(' · ');
 
 const POPUP_MIN_WIDTH = 384; // 24rem
-const VIEWPORT_MARGIN = 8;
-
-interface PopupRect {
-  top: number;
-  left: number;
-  width: number;
-}
-
-function popupPosition(rect: DOMRect): PopupRect {
-  const width = Math.min(Math.max(rect.width, POPUP_MIN_WIDTH), window.innerWidth - VIEWPORT_MARGIN * 2);
-  let left = rect.left;
-  if (left + width > window.innerWidth - VIEWPORT_MARGIN) {
-    // Passt rechts nicht mehr in den Viewport - am rechten Rand des Knopfs
-    // ausrichten (und noch innerhalb des Viewports halten).
-    left = Math.max(VIEWPORT_MARGIN, rect.right - width);
-  }
-  return { top: rect.bottom + 4, left, width };
-}
 
 /** Eigene Auswahl mit Farbfeld (native <select>-Popups ignorieren das Theme). */
 export function SpoolPicker({ spools, value, onChange, label, placeholder }: Props) {
@@ -55,23 +38,22 @@ export function SpoolPicker({ spools, value, onChange, label, placeholder }: Pro
   const uid = useId();
   const [open, setOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [popup, setPopup] = useState<PopupRect | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const listRef = useRef<HTMLUListElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  const { popupRef: listRef, style: popup } = useAnchoredPopup<HTMLButtonElement, HTMLUListElement>(buttonRef, open, close, POPUP_MIN_WIDTH);
   const selected = spools.find((s) => s.id === value) ?? null;
   const optionId = (id: string) => `${uid}-${id}`;
 
   // Beim Oeffnen (bzw. wenn sich der ausgewaehlte Wert aendert) auf die
-  // aktuelle Auswahl springen, die Liste fokussieren und die Popup-Position
-  // relativ zum Knopf berechnen (fixed positioniert, damit der ueberlaufende
-  // Dialog-Scrollcontainer sie nicht abschneidet).
+  // aktuelle Auswahl springen und die Liste fokussieren (Position/Schliessen
+  // uebernimmt useAnchoredPopup).
   useEffect(() => {
     if (open) {
       setActiveId(value ?? spools[0]?.id ?? null);
-      if (buttonRef.current) setPopup(popupPosition(buttonRef.current.getBoundingClientRect()));
       // `preventScroll`, damit das Fokussieren selbst in echten Browsern
       // keinen Scroll der Seite ausloest - sonst schliesst der eigene
-      // Scroll-Listener (unten) das Popup, kaum dass es offen ist.
+      // Scroll-Listener (in useAnchoredPopup) das Popup, kaum dass es offen
+      // ist.
       listRef.current?.focus({ preventScroll: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -90,46 +72,6 @@ export function SpoolPicker({ spools, value, onChange, label, placeholder }: Pro
     document.getElementById(optionId(activeId))?.scrollIntoView?.({ block: 'nearest' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId, open]);
-
-  // Fixed-positioniertes Popup: bei Scroll/Resize schliessen statt neu zu
-  // berechnen (einfacher und ausreichend, da der Knopf dabei ohnehin meist
-  // aus dem sichtbaren Bereich wandert). Scroll-Events, die von der Liste
-  // selbst kommen (z.B. ihr eigenes scrollIntoView beim Oeffnen oder bei
-  // Pfeiltasten-Navigation), duerfen das Popup NICHT schliessen - sonst
-  // schliesst es sich in echten Browsern sofort wieder selbst, noch bevor
-  // der Nutzer etwas anklicken kann (Regression aus 3365945).
-  useEffect(() => {
-    if (!open) return;
-    const closeOnResize = () => setOpen(false);
-    const closeOnScroll = (e: Event) => {
-      // `target` ist bei einem Scroll auf `window`/`document` selbst kein
-      // Node (kein `.contains()`) - dann ist es per Definition kein Scroll
-      // innerhalb der Liste.
-      const target = e.target;
-      if (target instanceof Node && listRef.current?.contains(target)) return;
-      setOpen(false);
-    };
-    window.addEventListener('scroll', closeOnScroll, true);
-    window.addEventListener('resize', closeOnResize);
-    return () => {
-      window.removeEventListener('scroll', closeOnScroll, true);
-      window.removeEventListener('resize', closeOnResize);
-    };
-  }, [open]);
-
-  // Klick ausserhalb von Knopf und Liste schliesst das Popup (zusaetzlich zum
-  // onBlur unten, das per Tastatur wegfokussierte Faelle abdeckt).
-  useEffect(() => {
-    if (!open) return;
-    const onDocMouseDown = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (buttonRef.current?.contains(target)) return;
-      if (listRef.current?.contains(target)) return;
-      setOpen(false);
-    };
-    document.addEventListener('mousedown', onDocMouseDown);
-    return () => document.removeEventListener('mousedown', onDocMouseDown);
-  }, [open]);
 
   const choose = (id: string) => {
     onChange(id);
@@ -190,7 +132,7 @@ export function SpoolPicker({ spools, value, onChange, label, placeholder }: Pro
               }
             }}
             onBlur={() => setOpen(false)}
-            style={{ position: 'fixed', top: popup.top, left: popup.left, width: popup.width }}
+            style={popup}
             className="z-[60] max-h-64 overflow-y-auto rounded-md border border-[var(--line-strong)] bg-[var(--panel)] shadow-[var(--shadow)] py-1 outline-0"
           >
             {spools.map((s) => (

@@ -1,4 +1,6 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
+import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
 import { useT } from '../i18n/LanguageContext';
 
 export interface ModelOption {
@@ -8,6 +10,8 @@ export interface ModelOption {
 
 interface Props {
   models: ModelOption[];
+  /** DOM-Knoten des Auswahl-Knopfs, an dem das Popup positioniert wird. */
+  anchorRef: RefObject<HTMLElement | null>;
   onChange: (fileId: string | null) => void;
   onClose: () => void;
 }
@@ -15,15 +19,28 @@ interface Props {
 const NONE = Symbol('none');
 type OptionId = string | typeof NONE;
 
+// Entspricht der bisherigen festen Breite (w-[280px]) - useAnchoredPopup
+// nimmt die groessere der beiden (Ankerbreite oder dieser Mindestbreite).
+const POPUP_MIN_WIDTH = 280;
+
 /**
  * Suchauswahl über alle Katalogmodelle, inkl. „Kein Modell“ - Pfeiltasten ab
- * dem Suchfeld und Enter waehlen aus, wie bei SpoolPicker.
+ * dem Suchfeld und Enter waehlen aus, wie bei SpoolPicker. Wird per Portal
+ * fixed relativ zum Auswahl-Knopf (`anchorRef`) gerendert, damit ein
+ * ueberlaufender Dialog-Scrollcontainer (z.B. PrinterJobsDialog) das Popup
+ * nicht abschneidet (siehe SpoolPicker, Commits 3365945 + 475c607).
  */
-export function ModelPicker({ models, onChange, onClose }: Props) {
+export function ModelPicker({ models, anchorRef, onChange, onClose }: Props) {
   const t = useT();
   const uid = useId();
   const [q, setQ] = useState('');
   const [active, setActive] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const focusedRef = useRef(false);
+  // `onClose` ist die einzige Weise, wie diese Komponente (von aussen
+  // gesteuert) wieder verschwindet - solange sie gemountet ist, gilt sie als
+  // offen.
+  const { popupRef, style } = useAnchoredPopup<HTMLElement, HTMLDivElement>(anchorRef, true, onClose, POPUP_MIN_WIDTH);
   const hits = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return (needle ? models.filter((m) => m.name.toLowerCase().includes(needle)) : models).slice(0, 50);
@@ -34,13 +51,31 @@ export function ModelPicker({ models, onChange, onClose }: Props) {
 
   useEffect(() => setActive(0), [q]);
 
+  // Suchfeld fokussieren, sobald das Popup tatsaechlich im DOM steht (nicht
+  // schon beim ersten Rendern, da das Popup erst rendert, sobald
+  // useAnchoredPopup eine Position berechnet hat). `preventScroll`, damit das
+  // Fokussieren selbst in echten Browsern keinen Scroll ausloest - sonst
+  // schliesst der eigene Scroll-Listener (in useAnchoredPopup) das Popup,
+  // kaum dass es offen ist (dieselbe Regression, die bei SpoolPicker schon
+  // einmal aufgetreten ist, siehe Commit 475c607).
+  useEffect(() => {
+    if (style && !focusedRef.current) {
+      focusedRef.current = true;
+      inputRef.current?.focus({ preventScroll: true });
+    }
+  }, [style]);
+
   const choose = (id: OptionId) => onChange(id === NONE ? null : id);
   const domId = (id: OptionId) => (id === NONE ? `${uid}-none` : `${uid}-${id}`);
   const activeId = optionIds[Math.min(active, optionIds.length - 1)];
 
-  return (
+  if (!style) return null;
+
+  return createPortal(
     <div
-      className="absolute z-50 mt-1 w-[280px] rounded-md border border-[var(--line-strong)] bg-[var(--panel)] shadow-[var(--shadow)] p-1.5 flex flex-col gap-1"
+      ref={popupRef}
+      style={style}
+      className="z-[60] rounded-md border border-[var(--line-strong)] bg-[var(--panel)] shadow-[var(--shadow)] p-1.5 flex flex-col gap-1"
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
           // Nicht bis zum umgebenden Dialog durchreichen - Escape soll hier
@@ -60,7 +95,7 @@ export function ModelPicker({ models, onChange, onClose }: Props) {
       }}
     >
       <input
-        autoFocus
+        ref={inputRef}
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder={t('printerJobModelSearch')}
@@ -93,6 +128,7 @@ export function ModelPicker({ models, onChange, onClose }: Props) {
           </li>
         ))}
       </ul>
-    </div>
+    </div>,
+    document.body,
   );
 }
