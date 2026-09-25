@@ -6,6 +6,9 @@ import { FilamentView } from './FilamentView';
 import type { FilamentSpool, Printer } from '../types';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
+vi.mock('@tauri-apps/api/webview', () => ({
+  getCurrentWebview: () => ({ onDragDropEvent: () => Promise.resolve(() => {}) }),
+}));
 
 function spool(overrides: Partial<FilamentSpool>): FilamentSpool {
   return {
@@ -193,5 +196,12 @@ describe('FilamentView with printers', () => {
     fireEvent.mouseEnter(screen.getByTestId('slot-u1-2'));
     fireEvent.mouseUp(document);
     expect(invoke).not.toHaveBeenCalledWith('load_spool', expect.anything());
+  });
+
+  it('opens the edit form on a double-click on a storage card', async () => {
+    renderView();
+    const card = await screen.findByTestId('spool-card-store');
+    fireEvent.doubleClick(within(card).getByText('PETG'));
+    await waitFor(() => expect(screen.getByDisplayValue('Regal 1')).toBeInTheDocument());
   });
 });

@@ -16,3 +16,8 @@ export function restockFilamentSpool(
 export function consumeResin(spoolId: string, amountMl: number) {
   return invoke<FilamentSpool>('consume_resin', { spoolId, amountMl });
 }
+
+/** Liest ein per Drag & Drop abgelegtes Bild (nur vom Backend beobachtete Drops, max. 5 MB) als Base64. */
+export function readDroppedImage(path: string) {
+  return invoke<string>('read_dropped_image', { path });
+}

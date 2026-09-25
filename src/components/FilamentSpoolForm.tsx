@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useT } from '../i18n/LanguageContext';
 import type { FilamentSpool, SpoolKind } from '../types';
 import { FILAMENT_MATERIALS, FILAMENT_MANUFACTURERS } from '../lib/filamentCatalog';
 import { filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus';
+import { useImageDropZone } from '../hooks/useImageDropZone';
+import { readDroppedImage } from '../lib/api/filament';
+import type { ImageDropRejection } from '../lib/imageDrop';
 import { AutocompleteInput } from './AutocompleteInput';
 import { ColorPicker } from './ColorPicker';
 import { SegmentedControl } from './SegmentedControl';
@@ -89,6 +92,27 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
       })
       .catch((e) => setError(String(e)));
   };
+
+  const handleDroppedImage = useCallback((path: string) => {
+    readDroppedImage(path)
+      .then((base64) => {
+        setError(null);
+        setForm((prev) => ({ ...prev, imagePng: base64 }));
+      })
+      .catch((e) => setError(String(e)));
+  }, []);
+
+  const handleRejectedDrop = useCallback(
+    (reason: ImageDropRejection) =>
+      setError(reason === 'multiple' ? t('filamentImageDropMultiple') : t('filamentImageDropNotImage')),
+    [t],
+  );
+
+  const imageDrop = useImageDropZone<HTMLButtonElement>({
+    enabled: open,
+    onImage: handleDroppedImage,
+    onReject: handleRejectedDrop,
+  });
 
   const submit = async () => {
     if (!form.material.trim()) return;
@@ -185,8 +209,14 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
             </p>
             <button
               type="button"
+              ref={imageDrop.zoneRef}
               onClick={handlePickImage}
-              className="w-full flex flex-col items-center gap-1.5 px-4 py-4 rounded-lg border-[1.5px] border-dashed border-[var(--line-strong)] text-[var(--ink-3)] text-[12px] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              data-drop-over={imageDrop.over ? 'true' : undefined}
+              className={`w-full flex flex-col items-center gap-1.5 px-4 py-4 rounded-lg border-[1.5px] border-dashed text-[12px] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] ${
+                imageDrop.over
+                  ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent-soft)]'
+                  : 'border-[var(--line-strong)] text-[var(--ink-3)]'
+              }`}
             >
               {form.imagePng ? (
                 <img

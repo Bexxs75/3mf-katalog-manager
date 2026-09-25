@@ -1,11 +1,22 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { FilamentSpoolForm } from './FilamentSpoolForm';
 import type { FilamentSpool, SpoolKind } from '../types';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
+
+const drop = vi.hoisted(() => ({ handler: null as null | ((event: { payload: unknown }) => void) }));
+vi.mock('@tauri-apps/api/webview', () => ({
+  getCurrentWebview: () => ({
+    onDragDropEvent: (cb: (event: { payload: unknown }) => void) => {
+      drop.handler = cb;
+      return Promise.resolve(() => {});
+    },
+  }),
+}));
+
 beforeEach(() => { vi.mocked(invoke).mockReset(); vi.mocked(invoke).mockResolvedValue(undefined); });
 
 const LOADED: FilamentSpool = {
@@ -98,5 +109,34 @@ describe('FilamentSpoolForm', () => {
       </LanguageProvider>,
     );
     expect(container.querySelector('aside')).not.toHaveAttribute('inert');
+  });
+
+  function imageZone() {
+    const button = screen.getByText('Bild hierher ziehen oder klicken').closest('button')!;
+    button.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, right: 100, bottom: 100, width: 100, height: 100, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+    return button;
+  }
+
+  it('takes an image dropped onto the image field', async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === 'read_dropped_image' ? 'QUJD' : undefined),
+    );
+    renderForm(null);
+    const button = imageZone();
+    act(() => drop.handler?.({ payload: { type: 'over', position: { x: 10, y: 10 } } }));
+    expect(button).toHaveAttribute('data-drop-over', 'true');
+    act(() => drop.handler?.({ payload: { type: 'drop', paths: ['/home/u/spule.png'], position: { x: 10, y: 10 } } }));
+    await waitFor(() => expect(button.querySelector('img')).toHaveAttribute('src', 'data:image/png;base64,QUJD'));
+    expect(invoke).toHaveBeenCalledWith('read_dropped_image', { path: '/home/u/spule.png' });
+    expect(button).not.toHaveAttribute('data-drop-over');
+  });
+
+  it('explains why several files are not taken', () => {
+    renderForm(null);
+    imageZone();
+    act(() => drop.handler?.({ payload: { type: 'drop', paths: ['/a.png', '/b.png'], position: { x: 10, y: 10 } } }));
+    expect(screen.getByText(/Bitte nur ein Bild hineinziehen\./)).toBeInTheDocument();
+    expect(invoke).not.toHaveBeenCalledWith('read_dropped_image', expect.anything());
   });
 });
