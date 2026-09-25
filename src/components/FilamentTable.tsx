@@ -7,6 +7,7 @@ import { filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus
 import { isValidColorHex } from '../lib/filamentColors';
 import { isFromInteractiveElement } from '../lib/spoolCardEvents';
 import { ResinBottleIcon } from './ResinBottleIcon';
+import { FilamentSpoolIcon } from './FilamentSpoolIcon';
 
 interface Props {
   spools: FilamentSpool[];
@@ -175,7 +176,7 @@ export function FilamentTable({
                     ) : spool.kind === 'resin' ? (
                       <ResinBottleIcon colorHex={spool.colorHex} size={20} />
                     ) : (
-                      <span className="w-2.5 h-2.5 rounded-sm bg-[var(--plate)] border border-[var(--line-strong)]" />
+                      <FilamentSpoolIcon colorHex={spool.colorHex} size={20} />
                     )}
                     {spool.material}
                   </div>

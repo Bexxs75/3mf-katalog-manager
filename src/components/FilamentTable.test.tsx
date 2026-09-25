@@ -73,3 +73,16 @@ describe('FilamentTable resin', () => {
     expect(screen.getByTestId('spool-row-r')).toHaveTextContent('90 ml');
   });
 });
+
+describe('FilamentTable spool icon', () => {
+  it('shows a spool icon in the spool color for filament without an image', () => {
+    renderTable({ spools: [{ ...S, colorHex: '#c0392b' }] });
+    const icon = screen.getByTestId('filament-spool-icon');
+    expect(icon.querySelector('circle[fill="#c0392b"]')).not.toBeNull();
+  });
+
+  it('prefers the own image over the spool icon', () => {
+    renderTable({ spools: [{ ...S, imagePng: 'AAAA' }] });
+    expect(screen.queryByTestId('filament-spool-icon')).toBeNull();
+  });
+});
