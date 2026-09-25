@@ -155,6 +155,16 @@ Build mit `glob pattern ... not found` hart abbrechen lässt (verifiziert).
 Die Datei muss deshalb explizit per `--config` zugeschaltet werden, nur wenn
 `occt-runtime/` tatsächlich befüllt ist.
 
+**CI-Cache (ab 2026-09-25):** Der Workflow `build-windows-step.yml` legt die
+fertig gebauten vcpkg-Pakete als NuGet-Pakete in GitHub Packages dieses Repos
+ab (`VCPKG_BINARY_SOURCES=clear;nuget,<feed>,readwrite`). Das frühere
+GitHub-Actions-Backend `x-gha` hat vcpkg entfernt, deshalb wurde OCCT bis
+v0.13.1 bei jedem Lauf neu gebaut (ca. 1,1 h). Ein neuer Vollbau passiert jetzt
+nur noch, wenn sich die OCCT-Version im Manifest, der vcpkg-Commit
+(`vcpkgGitCommitId`) oder das Triplet ändern. Der erste Lauf danach dauert
+wieder ~1,1 h und befüllt den Cache neu. Alte Cache-Pakete lassen sich auf der
+Repo-Seite unter „Packages“ löschen; das ist nie nötig, spart nur Speicher.
+
 ## macOS: STEP-fähiges Bundle lokal bauen
 
 Anders als Windows liefert Homebrew ein fertiges OCCT-Paket, kein
