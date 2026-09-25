@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatDateTime } from '../i18n/format';
 import { messageOf } from '../lib/errors';
@@ -11,7 +11,7 @@ interface Props {
   link: PrinterLinkState;
 }
 
-type PrinterErrorKey =
+export type PrinterErrorKey =
   | 'printerErrorUnreachable'
   | 'printerErrorAuthRequired'
   | 'printerErrorBadResponse'
@@ -19,7 +19,8 @@ type PrinterErrorKey =
   | 'printerErrorAddressNotAllowed'
   | 'printerErrorDisabled';
 
-const errorKey: Record<PrinterConnectionError, PrinterErrorKey> = {
+/** Auch von `PrinterLinkStatus` genutzt, damit Fehlertexte nicht doppelt gepflegt werden. */
+export const errorKey: Record<PrinterConnectionError, PrinterErrorKey> = {
   unreachable: 'printerErrorUnreachable',
   auth_required: 'printerErrorAuthRequired',
   bad_response: 'printerErrorBadResponse',
@@ -49,6 +50,21 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
   const [error, setError] = useState<PrinterConnectionError | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [current, setCurrent] = useState<PrinterConnection | null>(connection);
+  // Verhindert, dass die naechste Prop-Synchronisation (Effekt unten) ein
+  // gerade erst von `runTest` zurueckgegebenes Ergebnis sofort wieder mit
+  // einem noch nicht aktualisierten `connection`-Prop ueberschreibt.
+  const skipNextPropSync = useRef(false);
+
+  // `current` wird beim Mount nur einmal aus dem Prop gesetzt - spaetere
+  // Aenderungen (z.B. Hintergrund-Abgleich pausiert die Verbindung nach einer
+  // Sicherungswiederherstellung) kamen bisher nie in der Sektion an.
+  useEffect(() => {
+    if (skipNextPropSync.current) {
+      skipNextPropSync.current = false;
+      return;
+    }
+    setCurrent(connection);
+  }, [connection]);
 
   const runTest = async () => {
     setTesting(true);
@@ -56,8 +72,12 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
     setActionError(null);
     try {
       const r = await link.testConnection(printerId, address.trim());
-      if (r.ok && r.connection) setCurrent(r.connection);
-      else setError(r.error ?? 'bad_response');
+      if (r.ok && r.connection) {
+        skipNextPropSync.current = true;
+        setCurrent(r.connection);
+      } else {
+        setError(r.error ?? 'bad_response');
+      }
     } catch (e) {
       setActionError(messageOf(e));
     } finally {
@@ -120,7 +140,7 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
           {t(errorKey[error])}
         </div>
       )}
-      {!error && current && (
+      {!error && current && !current.paused && !current.lastError && (
         <div className="border-l-[3px] border-[var(--good)] pl-2.5 flex flex-col gap-0.5">
           <b className="text-[12.5px]">{t('printerConnectionOk')}</b>
           <span className="font-mono-ui text-[11px] text-[var(--ink-2)]">

@@ -1,17 +1,25 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { LanguageProvider } from '../i18n/LanguageContext';
 import { SpoolPicker } from './SpoolPicker';
 import type { FilamentSpool } from '../types';
 
-const spool = (id: string, material: string, color: string): FilamentSpool => ({
+beforeEach(() => localStorage.setItem('3mf-katalog-language', 'de'));
+
+const spool = (id: string, material: string, color: string, over: Partial<FilamentSpool> = {}): FilamentSpool => ({
   id, material, manufacturer: null, color, location: null, diameterMm: 1.75, originalWeightG: 1000,
   remainingWeightG: 612.4, price: null, imagePng: null, colorHex: '#8a8f94', homeLocation: null, unitId: null, slotIndex: null,
+  ...over,
 } as FilamentSpool);
 
 describe('SpoolPicker', () => {
   it('opens a listbox and selects with the keyboard', () => {
     const onChange = vi.fn();
-    render(<SpoolPicker spools={[spool('1', 'PLA', 'Grau'), spool('2', 'PETG', 'Petrol')]} value="1" onChange={onChange} label="Spule" />);
+    render(
+      <LanguageProvider>
+        <SpoolPicker spools={[spool('1', 'PLA', 'Grau'), spool('2', 'PETG', 'Petrol')]} value="1" onChange={onChange} label="Spule" />
+      </LanguageProvider>,
+    );
     fireEvent.click(screen.getByRole('button', { name: /Spule/ }));
     const list = screen.getByRole('listbox');
     fireEvent.keyDown(list, { key: 'ArrowDown' });
@@ -19,13 +27,50 @@ describe('SpoolPicker', () => {
     expect(onChange).toHaveBeenCalledWith('2');
   });
 
+  it('shows the remaining weight, so identical material/color spools stay distinguishable', () => {
+    const onChange = vi.fn();
+    render(
+      <LanguageProvider>
+        <SpoolPicker
+          spools={[
+            spool('1', 'PLA', 'Grau', { remainingWeightG: 612.4 }),
+            spool('2', 'PLA', 'Grau', { remainingWeightG: 88 }),
+          ]}
+          value="1"
+          onChange={onChange}
+          label="Spule"
+        />
+      </LanguageProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Spule/ }));
+    expect(screen.getByRole('option', { name: 'PLA · Grau · 612,4 g' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'PLA · Grau · 88,0 g' })).toBeInTheDocument();
+  });
+
+  it('adds manufacturer and location to the label when available', () => {
+    const onChange = vi.fn();
+    render(
+      <LanguageProvider>
+        <SpoolPicker
+          spools={[spool('1', 'PLA', 'Grau', { manufacturer: 'Prusament', location: 'Regal A' })]}
+          value="1"
+          onChange={onChange}
+          label="Spule"
+        />
+      </LanguageProvider>,
+    );
+    expect(screen.getByRole('button', { name: /PLA · Grau · Prusament · Regal A · 612,4 g/ })).toBeInTheDocument();
+  });
+
   it('does not bubble Escape to the surrounding dialog (only closes its own list)', () => {
     const onChange = vi.fn();
     const outerKeyDown = vi.fn();
     render(
-      <div onKeyDown={outerKeyDown}>
-        <SpoolPicker spools={[spool('1', 'PLA', 'Grau')]} value="1" onChange={onChange} label="Spule" />
-      </div>,
+      <LanguageProvider>
+        <div onKeyDown={outerKeyDown}>
+          <SpoolPicker spools={[spool('1', 'PLA', 'Grau')]} value="1" onChange={onChange} label="Spule" />
+        </div>
+      </LanguageProvider>,
     );
     fireEvent.click(screen.getByRole('button', { name: /Spule/ }));
     fireEvent.keyDown(screen.getByRole('listbox'), { key: 'Escape' });
@@ -35,7 +80,11 @@ describe('SpoolPicker', () => {
 
   it('exposes the active option via aria-activedescendant and moves it with ArrowDown', () => {
     const onChange = vi.fn();
-    render(<SpoolPicker spools={[spool('1', 'PLA', 'Grau'), spool('2', 'PETG', 'Petrol')]} value="1" onChange={onChange} label="Spule" />);
+    render(
+      <LanguageProvider>
+        <SpoolPicker spools={[spool('1', 'PLA', 'Grau'), spool('2', 'PETG', 'Petrol')]} value="1" onChange={onChange} label="Spule" />
+      </LanguageProvider>,
+    );
     fireEvent.click(screen.getByRole('button', { name: /Spule/ }));
     const list = screen.getByRole('listbox');
     const option1 = screen.getByRole('option', { name: /PLA/ });
@@ -48,7 +97,11 @@ describe('SpoolPicker', () => {
   it('keeps the active option when the spool list re-renders with the same items while open', () => {
     const onChange = vi.fn();
     const first = [spool('1', 'PLA', 'Grau'), spool('2', 'PETG', 'Petrol')];
-    const { rerender } = render(<SpoolPicker spools={first} value="1" onChange={onChange} label="Spule" />);
+    const { rerender } = render(
+      <LanguageProvider>
+        <SpoolPicker spools={first} value="1" onChange={onChange} label="Spule" />
+      </LanguageProvider>,
+    );
     fireEvent.click(screen.getByRole('button', { name: /Spule/ }));
     const list = screen.getByRole('listbox');
     fireEvent.keyDown(list, { key: 'ArrowDown' });
@@ -57,18 +110,30 @@ describe('SpoolPicker', () => {
     // aus der umgebenden PrinterJobsDialog) - die Tastatur-Position darf
     // dabei NICHT zurueckspringen.
     const second = [spool('1', 'PLA', 'Grau'), spool('2', 'PETG', 'Petrol')];
-    rerender(<SpoolPicker spools={second} value="1" onChange={onChange} label="Spule" />);
+    rerender(
+      <LanguageProvider>
+        <SpoolPicker spools={second} value="1" onChange={onChange} label="Spule" />
+      </LanguageProvider>,
+    );
     expect(screen.getByRole('listbox')).toHaveAttribute('aria-activedescendant', activeBefore);
   });
 
   it('moves the active option only once it actually disappears from a refreshed list', () => {
     const onChange = vi.fn();
     const first = [spool('1', 'PLA', 'Grau'), spool('2', 'PETG', 'Petrol')];
-    const { rerender } = render(<SpoolPicker spools={first} value="1" onChange={onChange} label="Spule" />);
+    const { rerender } = render(
+      <LanguageProvider>
+        <SpoolPicker spools={first} value="1" onChange={onChange} label="Spule" />
+      </LanguageProvider>,
+    );
     fireEvent.click(screen.getByRole('button', { name: /Spule/ }));
     const list = screen.getByRole('listbox');
     fireEvent.keyDown(list, { key: 'ArrowDown' }); // aktiv ist jetzt Spule 2 (PETG)
-    rerender(<SpoolPicker spools={[spool('1', 'PLA', 'Grau')]} value="1" onChange={onChange} label="Spule" />);
+    rerender(
+      <LanguageProvider>
+        <SpoolPicker spools={[spool('1', 'PLA', 'Grau')]} value="1" onChange={onChange} label="Spule" />
+      </LanguageProvider>,
+    );
     const remaining = screen.getByRole('option', { name: /PLA/ });
     expect(screen.getByRole('listbox')).toHaveAttribute('aria-activedescendant', remaining.id);
   });

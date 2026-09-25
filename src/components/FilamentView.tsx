@@ -195,7 +195,9 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
           </div>
           <div className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3.5 py-2.5">
             <div className="text-[10px] uppercase tracking-wider font-bold text-[var(--ink-3)] mb-1.5">{t('filamentStatRemaining')}</div>
-            <div className="font-mono-ui text-[19px] font-bold tabular-nums">{formatWeightG(stats.totalRemaining, language)}</div>
+            {/* Summe ueber Zehntelgramm-genaue Restgewichte - ohne Runden zeigt
+                formatWeightG hier gelegentlich Nachkommastellen (Spec: ganze Gramm). */}
+            <div className="font-mono-ui text-[19px] font-bold tabular-nums">{formatWeightG(Math.round(stats.totalRemaining), language)}</div>
           </div>
           <div className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3.5 py-2.5">
             <div className="text-[10px] uppercase tracking-wider font-bold text-[var(--ink-3)] mb-1.5">{t('filamentStatLocations')}</div>

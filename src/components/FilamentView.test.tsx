@@ -128,6 +128,27 @@ describe('FilamentView with printers', () => {
     fireEvent.mouseUp(document);
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('unload_spool', { spoolId: 'in', location: null }));
   });
+
+  it('shows the total remaining stock in whole grams, without decimals from the tenth-gram sum', async () => {
+    // 620,3 g + 620,4 g = 1240,7 g - die Summe der Zehntelgramm-genauen
+    // Restgewichte darf im Statistik-Kachel nicht mit Nachkommastelle
+    // erscheinen (Spec: ganze Gramm).
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === 'list_filament_spools') {
+        return Promise.resolve([
+          spool({ id: 'in', homeLocation: 'Regal 2', unitId: 'u1', slotIndex: 0, remainingWeightG: 620.3 }),
+          spool({ id: 'store', material: 'PETG', color: 'Rot', location: 'Regal 1', colorHex: '#c0392b', remainingWeightG: 620.4 }),
+        ]);
+      }
+      if (cmd === 'list_printers') return Promise.resolve([X1C]);
+      if (cmd === 'list_file_summaries') return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+    renderView();
+    await waitFor(() => screen.getByTestId('slot-u1-0'));
+    expect(screen.getByText('Restbestand gesamt').nextElementSibling).toHaveTextContent('1.241 g');
+    expect(screen.getByText('Restbestand gesamt').nextElementSibling).not.toHaveTextContent(',');
+  });
 });
 
 describe('FilamentView shares one printers instance with other consumers', () => {

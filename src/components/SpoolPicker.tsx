@@ -1,4 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { useLanguage } from '../i18n/LanguageContext';
+import { formatStockG } from '../i18n/format';
+import type { Language } from '../i18n/types';
 import type { FilamentSpool } from '../types';
 
 interface Props {
@@ -9,10 +12,15 @@ interface Props {
   placeholder?: string;
 }
 
-const text = (s: FilamentSpool) => [s.material, s.color].filter(Boolean).join(' · ');
+// Material · Farbe · Hersteller/Lagerort (falls vorhanden) · Restgewicht -
+// sonst sind baugleiche Spulen (gleiches Material, gleiche Farbe) in der
+// Liste nicht unterscheidbar.
+const text = (s: FilamentSpool, language: Language) =>
+  [s.material, s.color, s.manufacturer, s.location, formatStockG(s.remainingWeightG, language)].filter(Boolean).join(' · ');
 
 /** Eigene Auswahl mit Farbfeld (native <select>-Popups ignorieren das Theme). */
 export function SpoolPicker({ spools, value, onChange, label, placeholder }: Props) {
+  const { language } = useLanguage();
   const uid = useId();
   const [open, setOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -57,14 +65,14 @@ export function SpoolPicker({ spools, value, onChange, label, placeholder }: Pro
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label={`${label}: ${selected ? text(selected) : placeholder ?? ''}`}
+        aria-label={`${label}: ${selected ? text(selected, language) : placeholder ?? ''}`}
         onClick={() => setOpen((o) => !o)}
         className="w-full h-8 px-2 flex items-center gap-2 rounded-md border border-[var(--line-strong)] bg-[var(--panel-2)] text-[12.5px] text-left cursor-pointer"
       >
         {selected ? (
           <>
             <span className="w-3 h-3 rounded-[3px] flex-none border border-white/15" style={{ background: selected.colorHex ?? 'transparent' }} />
-            <span className="truncate">{text(selected)}</span>
+            <span className="truncate">{text(selected, language)}</span>
           </>
         ) : (
           <span className="text-[var(--ink-3)] truncate">{placeholder}</span>
@@ -111,7 +119,7 @@ export function SpoolPicker({ spools, value, onChange, label, placeholder }: Pro
               className={`px-2 py-1.5 flex items-center gap-2 text-[12.5px] cursor-pointer ${s.id === activeId ? 'bg-[var(--panel-2)]' : ''}`}
             >
               <span className="w-3 h-3 rounded-[3px] flex-none border border-white/15" style={{ background: s.colorHex ?? 'transparent' }} />
-              <span className="truncate">{text(s)}</span>
+              <span className="truncate">{text(s, language)}</span>
             </li>
           ))}
         </ul>

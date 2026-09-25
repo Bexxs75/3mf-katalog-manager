@@ -397,16 +397,16 @@ export interface Translations {
   printerNotSyncedYet: string;
   printerUnreachableSince: string;
   printerAuthNeeded: string;
+  /** Verbindung nach einer Sicherungswiederherstellung pausiert (kein `lastError`). */
+  printerPausedRetest: string;
   printerSyncNow: string;
-  printerJobsPending: string;
+  printerJobsPending: PluralForms;
   printerJobsBanner: string;
   printerJobsBannerOne: string;
   printerJobsBannerDetail: string;
   printerJobsReview: string;
   printerJobsDialogTitle: string;
   printerJobsDialogHint: string;
-  printerJobsColPrint: string;
-  printerJobsColUsage: string;
   /** Einheitentext hinter der Minutenzahl der Druckdauer, z.B. „{min} min“ - bewusst gleich in allen Sprachen. */
   printerJobsMinutes: string;
   printerJobsColSpool: string;
@@ -430,7 +430,7 @@ export interface Translations {
   printerJobsLater: string;
   printerJobsConfirmAll: string;
   printerJobsTotal: string;
-  printerJobsConfirmFailed: string;
+  printerJobsConfirmFailed: PluralForms;
 }
 
 export function formatCount(forms: PluralForms, n: number): string {

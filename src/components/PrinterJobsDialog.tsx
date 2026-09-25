@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
+import { formatCount } from '../i18n/types';
 import { formatDateTime, formatDurationMinutes, formatLengthMm, formatStockG } from '../i18n/format';
 import { messageOf } from '../lib/errors';
 import { getPrinterJobThumbnail } from '../lib/api/printerLink';
@@ -58,16 +59,27 @@ export function PrinterJobsDialog({ open, jobs, spools, models, link, onClose, o
     setRows((prev) => {
       const next: Record<string, RowState> = {};
       for (const j of jobs) {
-        next[j.id] = prev[j.id] ?? {
-          spoolId: j.suggestedSpoolId,
-          fileId: j.modelMatch?.fileId ?? null,
-          grams: j.grams,
-          mismatch: j.materialMismatch,
-        };
+        const existing = prev[j.id];
+        if (existing) {
+          // Die gewaehlte Spule kann inzwischen verschwunden sein (geloescht,
+          // oder eine Sicherung mit weniger Spulen wiederhergestellt) - dann
+          // muss die Auswahl geleert werden, sonst laesst sich mit einer
+          // nicht mehr existierenden Spule "bestaetigen".
+          const stillExists = existing.spoolId === null || spools.some((s) => s.id === existing.spoolId);
+          next[j.id] = stillExists ? existing : { ...existing, spoolId: null };
+        } else {
+          const suggested = j.suggestedSpoolId !== null && spools.some((s) => s.id === j.suggestedSpoolId) ? j.suggestedSpoolId : null;
+          next[j.id] = {
+            spoolId: suggested,
+            fileId: j.modelMatch?.fileId ?? null,
+            grams: j.grams,
+            mismatch: j.materialMismatch,
+          };
+        }
       }
       return next;
     });
-  }, [jobs]);
+  }, [jobs, spools]);
 
   // Direkter Fokus auf den Dialog, damit Escape sofort wirkt (ohne
   // vorherigen Klick ins Fenster).
@@ -185,7 +197,7 @@ export function PrinterJobsDialog({ open, jobs, spools, models, link, onClose, o
               job.outcome === 'completed'
                 ? <span className="font-mono-ui text-[11px] font-semibold px-1.5 py-0.5 rounded bg-[var(--good-soft)] text-[var(--good)]">{t('printerJobCompleted')}</span>
                 : <span className="font-mono-ui text-[11px] font-semibold px-1.5 py-0.5 rounded bg-[var(--warn-soft)] text-[var(--warn)]">
-                    {job.partialPercent !== null ? t('printerJobPartialPercent').replace('{percent}', String(job.partialPercent)) : t('printerJobPartial')}
+                    {job.partialPercent !== null ? t('printerJobPartialPercent').replace('{percent}', () => String(job.partialPercent)) : t('printerJobPartial')}
                   </span>;
             return (
               <Fragment key={job.id}>
@@ -197,7 +209,7 @@ export function PrinterJobsDialog({ open, jobs, spools, models, link, onClose, o
                   <div className="min-w-0">
                     <div className="font-semibold text-[13.5px] break-words">{stripExt(job.fileName)}</div>
                     <div className="font-mono-ui text-[11.5px] text-[var(--ink-3)] mt-0.5">
-                      {formatDateTime(job.endedAt, language)} · {t('printerJobsMinutes').replace('{min}', formatDurationMinutes(job.printDurationS, language))}
+                      {formatDateTime(job.endedAt, language)} · {t('printerJobsMinutes').replace('{min}', () => formatDurationMinutes(job.printDurationS, language))}
                     </div>
                     <div className="mt-1.5">{chip}</div>
                   </div>
@@ -208,9 +220,9 @@ export function PrinterJobsDialog({ open, jobs, spools, models, link, onClose, o
                   <div className="flex flex-col gap-1">
                     <SpoolPicker spools={spools} value={row.spoolId} onChange={(id) => setSpool(job, id)} label={t('printerJobsColSpool')} placeholder={t('printerJobChooseSpool')} />
                     {row.mismatch && spool && job.material ? (
-                      <span className="text-[12px] text-[var(--warn)]">⚠ {t('printerJobMaterialWarning').replace('{job}', job.material).replace('{spool}', spool.material)}</span>
+                      <span className="text-[12px] text-[var(--warn)]">⚠ {t('printerJobMaterialWarning').replace('{job}', () => job.material as string).replace('{spool}', () => spool.material)}</span>
                     ) : row.spoolId && row.spoolId === job.suggestedSpoolId ? (
-                      <span className="text-[11.5px] text-[var(--ink-3)]">{t('printerJobLoadedIn').replace('{printer}', job.printerName)}</span>
+                      <span className="text-[11.5px] text-[var(--ink-3)]">{t('printerJobLoadedIn').replace('{printer}', () => job.printerName)}</span>
                     ) : null}
                   </div>
                   <div className="relative flex flex-col gap-1">
@@ -274,9 +286,11 @@ export function PrinterJobsDialog({ open, jobs, spools, models, link, onClose, o
 
         <div className="flex flex-wrap items-center justify-between gap-3 px-[18px] py-3 bg-[var(--panel-2)] rounded-b-[10px]">
           <span className="text-[13px] text-[var(--ink-2)]">
-            {t('printerJobsTotal').replace('{grams}', formatStockG(Math.round(total * 10) / 10, language)).replace('{rest}', restText || '–')}
-            {failed > 0 && <span className="block text-[var(--crit)]">{t('printerJobsConfirmFailed').replace('{count}', String(failed))}</span>}
-            {actionError && <span role="alert" className="block text-[var(--crit)]">{t('printerConnectionActionFailed').replace('{message}', actionError)}</span>}
+            {t('printerJobsTotal')
+              .replace('{grams}', () => formatStockG(Math.round(total * 10) / 10, language))
+              .replace('{rest}', () => restText || '–')}
+            {failed > 0 && <span className="block text-[var(--crit)]">{formatCount(t('printerJobsConfirmFailed'), failed)}</span>}
+            {actionError && <span role="alert" className="block text-[var(--crit)]">{t('printerConnectionActionFailed').replace('{message}', () => actionError)}</span>}
           </span>
           <div className="flex gap-2.5">
             <button type="button" onClick={onClose} className="h-8 px-3 rounded-md border border-[var(--line-strong)] text-[12.5px] cursor-pointer">
@@ -288,7 +302,7 @@ export function PrinterJobsDialog({ open, jobs, spools, models, link, onClose, o
               onClick={() => confirm(bookable.map((j) => j.id))}
               className="h-8 px-3 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-bold cursor-pointer disabled:opacity-50"
             >
-              {t('printerJobsConfirmAll').replace('{count}', String(bookable.length))}
+              {t('printerJobsConfirmAll').replace('{count}', () => String(bookable.length))}
             </button>
           </div>
         </div>

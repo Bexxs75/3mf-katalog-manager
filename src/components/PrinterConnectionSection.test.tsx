@@ -21,7 +21,7 @@ const okConnection: PrinterConnection = {
 };
 
 function renderIt(l: PrinterLinkState, connection: PrinterConnection | null = null) {
-  render(<LanguageProvider><PrinterConnectionSection printerId="1" connection={connection} link={l} /></LanguageProvider>);
+  return render(<LanguageProvider><PrinterConnectionSection printerId="1" connection={connection} link={l} /></LanguageProvider>);
 }
 
 describe('PrinterConnectionSection', () => {
@@ -74,5 +74,56 @@ describe('PrinterConnectionSection', () => {
     await expect(act(async () => fireEvent.click(removeButton))).resolves.not.toThrow();
     expect(screen.getByText('Das hat nicht geklappt: unknown printer id')).toBeInTheDocument();
     expect(removeButton).not.toBeDisabled();
+  });
+
+  it('does not claim "Verbunden" while the connection is paused (e.g. after a backup restore)', () => {
+    // sanitize_printer_connections (backup.rs) setzt nach einer
+    // Wiederherstellung `paused = 1`, aber `lastError` bleibt leer - ohne
+    // diese Sperre wuerde die Sektion faelschlich "Verbunden" zeigen, obwohl
+    // der Abgleich diesen Drucker fuer immer ueberspringt.
+    renderIt(link(null), { ...okConnection, paused: true, lastError: null });
+    expect(screen.queryByText('Verbunden')).not.toBeInTheDocument();
+  });
+
+  it('does not claim "Verbunden" while a lastError is set, even if paused is false', () => {
+    renderIt(link(null), { ...okConnection, paused: false, lastError: 'unreachable', errorSince: 1 });
+    expect(screen.queryByText('Verbunden')).not.toBeInTheDocument();
+  });
+
+  it('reflects a later connection prop update instead of only the one seen on mount', () => {
+    const l = link(null);
+    const { rerender } = renderIt(l, okConnection);
+    expect(screen.getByText('Verbunden')).toBeInTheDocument();
+    // Ein Hintergrund-Abgleich (z.B. nach einer Sicherungswiederherstellung)
+    // liefert eine aktualisierte `connection` - die Sektion sass bisher fest
+    // auf dem beim Mount gesehenen Stand.
+    const paused = { ...okConnection, paused: true, lastError: null };
+    rerender(
+      <LanguageProvider>
+        <PrinterConnectionSection printerId="1" connection={paused} link={l} />
+      </LanguageProvider>,
+    );
+    expect(screen.queryByText('Verbunden')).not.toBeInTheDocument();
+  });
+
+  it('does not let a stale prop update clobber a just-returned test result', async () => {
+    // `runTest` setzt `current` sofort aus der Antwort. Aktualisiert sich die
+    // `connection`-Prop danach noch einmal, aber mit einem Stand, der das
+    // frische Ergebnis noch nicht kennt (z.B. eine ueberlappende, aeltere
+    // Hintergrund-Abfrage), darf das gerade gezeigte Ergebnis nicht wieder
+    // verworfen werden.
+    const freshConnection: PrinterConnection = { ...okConnection, remoteVersion: 'v0.9.0-fresh' };
+    const l = link({ ok: true, error: null, connection: freshConnection });
+    const { rerender } = renderIt(l, null);
+    fireEvent.change(screen.getByLabelText('Adresse (IP oder Name)'), { target: { value: '192.168.1.60' } });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Verbindung testen' })));
+    expect(screen.getByText(/v0\.9\.0-fresh/)).toBeInTheDocument();
+    const staleConnection: PrinterConnection = { ...okConnection, remoteVersion: null };
+    rerender(
+      <LanguageProvider>
+        <PrinterConnectionSection printerId="1" connection={staleConnection} link={l} />
+      </LanguageProvider>,
+    );
+    expect(screen.getByText(/v0\.9\.0-fresh/)).toBeInTheDocument();
   });
 });

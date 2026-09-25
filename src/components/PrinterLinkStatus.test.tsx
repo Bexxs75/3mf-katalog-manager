@@ -53,4 +53,27 @@ describe('PrinterLinkStatus', () => {
     rerender(<LanguageProvider><PrinterLinkStatus printerId="1" link={link({ ...base, lastError: 'auth_required', paused: true })} /></LanguageProvider>);
     expect(screen.getByText('Anmeldung nötig')).toBeInTheDocument();
   });
+
+  it('shows a paused-retest hint instead of a healthy status when paused without an error', () => {
+    // sanitize_printer_connections (backup.rs) setzt nach einer
+    // Sicherungswiederherstellung `paused = 1`, aber `lastError` bleibt leer
+    // - ohne diesen Zweig sah die Verbindung "gesund" aus, obwohl der
+    // Abgleich sie fuer immer ueberspringt.
+    const l = link({ ...base, paused: true, lastError: null });
+    const { container } = render(<LanguageProvider><PrinterLinkStatus printerId="1" link={l} /></LanguageProvider>);
+    expect(screen.getByText('pausiert – bitte Verbindung neu testen')).toBeInTheDocument();
+    expect(container.querySelector('.bg-\\[var\\(--warn\\)\\]')).toBeInTheDocument();
+  });
+
+  it('maps a non-unreachable error through the shared error-key texts instead of "unreachable since"', () => {
+    const l = link({ ...base, lastError: 'bad_response', errorSince: 1 });
+    render(<LanguageProvider><PrinterLinkStatus printerId="1" link={l} /></LanguageProvider>);
+    expect(screen.getByText(/Unerwartete Antwort/)).toBeInTheDocument();
+    expect(screen.queryByText(/nicht erreichbar seit/)).not.toBeInTheDocument();
+  });
+
+  it('shows the plural form for pending jobs', () => {
+    render(<LanguageProvider><PrinterLinkStatus printerId="1" link={link(base, 1)} /></LanguageProvider>);
+    expect(screen.getByText('1 Druck zu bestätigen')).toBeInTheDocument();
+  });
 });

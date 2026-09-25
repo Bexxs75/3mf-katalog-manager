@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
-import { formatRelativeTime, formatTime } from '../i18n/format';
+import { formatCount } from '../i18n/types';
+import { formatDateTime, formatRelativeTime } from '../i18n/format';
 import { messageOf } from '../lib/errors';
+import { errorKey } from './PrinterConnectionSection';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
 
 interface Props {
@@ -22,13 +24,24 @@ export function PrinterLinkStatus({ printerId, link }: Props) {
   const pending = link.jobs.filter((j) => j.printerId === printerId).length;
 
   let dot = 'bg-[var(--good)]';
-  let text = c.lastSyncedAt ? t('printerSyncedAgo').replace('{time}', formatRelativeTime(iso(c.lastSyncedAt), language)) : t('printerNotSyncedYet');
-  if (c.lastError === 'auth_required') {
+  let text = c.lastSyncedAt
+    ? t('printerSyncedAgo').replace('{time}', () => formatRelativeTime(iso(c.lastSyncedAt as number), language))
+    : t('printerNotSyncedYet');
+  // Nach einer Sicherungswiederherstellung ist `paused` gesetzt, aber
+  // `lastError` (noch) leer - ohne diesen Zweig sah die Verbindung "gesund"
+  // aus, obwohl der Abgleich sie fuer immer ueberspringt.
+  if (c.paused && c.lastError !== 'auth_required') {
+    dot = 'bg-[var(--warn)]';
+    text = t('printerPausedRetest');
+  } else if (c.lastError === 'auth_required') {
     dot = 'bg-[var(--warn)]';
     text = t('printerAuthNeeded');
+  } else if (c.lastError === 'unreachable') {
+    dot = 'bg-[var(--crit)]';
+    text = t('printerUnreachableSince').replace('{time}', () => formatDateTime(c.errorSince ?? 0, language));
   } else if (c.lastError) {
     dot = 'bg-[var(--crit)]';
-    text = t('printerUnreachableSince').replace('{time}', formatTime(c.errorSince ?? 0, language));
+    text = t(errorKey[c.lastError]);
   }
 
   return (
@@ -51,12 +64,12 @@ export function PrinterLinkStatus({ printerId, link }: Props) {
       </div>
       {pending > 0 && (
         <div className="text-[11.5px] text-[var(--accent)]">
-          <span aria-hidden>●</span> {t('printerJobsPending').replace('{count}', String(pending))}
+          <span aria-hidden>●</span> {formatCount(t('printerJobsPending'), pending)}
         </div>
       )}
       {syncError && (
         <div className="text-[11px] text-[var(--crit)]">
-          {t('printerConnectionActionFailed').replace('{message}', syncError)}
+          {t('printerConnectionActionFailed').replace('{message}', () => syncError)}
         </div>
       )}
     </div>

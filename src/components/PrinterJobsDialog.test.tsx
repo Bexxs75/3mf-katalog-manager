@@ -163,7 +163,7 @@ describe('PrinterJobsDialog', () => {
     l.confirmJobs = vi.fn().mockResolvedValue({ confirmed: 0, failed: 1 });
     renderDialog(l);
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Bestätigen' })));
-    expect(screen.getByText('1 Drucke konnten nicht gebucht werden.')).toBeInTheDocument();
+    expect(screen.getByText('1 Druck konnte nicht gebucht werden.')).toBeInTheDocument();
   });
 
   it('clears a previous "could not be booked" message once a new confirm succeeds', async () => {
@@ -175,9 +175,9 @@ describe('PrinterJobsDialog', () => {
     renderDialog(l);
     const button = screen.getByRole('button', { name: 'Bestätigen' });
     await act(async () => fireEvent.click(button));
-    expect(screen.getByText('1 Drucke konnten nicht gebucht werden.')).toBeInTheDocument();
+    expect(screen.getByText('1 Druck konnte nicht gebucht werden.')).toBeInTheDocument();
     await act(async () => fireEvent.click(button));
-    expect(screen.queryByText('1 Drucke konnten nicht gebucht werden.')).not.toBeInTheDocument();
+    expect(screen.queryByText('1 Druck konnte nicht gebucht werden.')).not.toBeInTheDocument();
   });
 
   it('ignores a stale preview response for a spool that is no longer selected', async () => {
@@ -192,9 +192,9 @@ describe('PrinterJobsDialog', () => {
     renderDialog(l);
 
     fireEvent.click(screen.getByRole('button', { name: /Spule/ }));
-    fireEvent.mouseDown(screen.getByText('PETG · Petrol')); // langsame erste Anfrage fuer Spule 101
+    fireEvent.mouseDown(screen.getByText('PETG · Petrol · 900,0 g')); // langsame erste Anfrage fuer Spule 101
     fireEvent.click(screen.getByRole('button', { name: /Spule/ }));
-    fireEvent.mouseDown(screen.getByText('PLA · Grau')); // schnellere zweite Anfrage fuer Spule 100
+    fireEvent.mouseDown(screen.getByText('PLA · Grau · 612,4 g')); // schnellere zweite Anfrage fuer Spule 100
 
     await act(async () => second.resolve({ grams: 0.9, materialMismatch: false }));
     expect(screen.getByText('0,9 g')).toBeInTheDocument();
@@ -204,5 +204,27 @@ describe('PrinterJobsDialog', () => {
     await act(async () => first.resolve({ grams: 5, materialMismatch: true }));
     expect(screen.getByText('0,9 g')).toBeInTheDocument();
     expect(screen.queryByText(/Drucker meldet/)).not.toBeInTheDocument();
+  });
+
+  it('clears a row\'s spool selection once that spool no longer exists in the catalog', async () => {
+    // z.B. nach einer Sicherungswiederherstellung mit weniger Spulen - ohne
+    // diesen Guard liesse sich mit einer nicht mehr existierenden Spule
+    // "bestaetigen".
+    const l = link([job({})]);
+    const { rerender } = render(
+      <LanguageProvider>
+        <PrinterJobsDialog open jobs={l.jobs} spools={spools} models={[]} link={l} onClose={vi.fn()} onBooked={vi.fn()} />
+      </LanguageProvider>,
+    );
+    expect(screen.getByRole('button', { name: 'Bestätigen' })).not.toBeDisabled();
+
+    const spoolsWithout100 = spools.filter((s) => s.id !== '100');
+    rerender(
+      <LanguageProvider>
+        <PrinterJobsDialog open jobs={l.jobs} spools={spoolsWithout100} models={[]} link={l} onClose={vi.fn()} onBooked={vi.fn()} />
+      </LanguageProvider>,
+    );
+    expect(screen.getByRole('button', { name: 'Bestätigen' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Spule wählen/ })).toBeInTheDocument();
   });
 });
