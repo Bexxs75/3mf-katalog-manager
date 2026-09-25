@@ -1,0 +1,38 @@
+name: Security-Audit (Abhängigkeiten)
+
+on:
+  schedule:
+    # Montags 06:00 UTC
+    - cron: "0 6 * * 1"
+  workflow_dispatch: {}
+  push:
+    paths:
+      - "src-tauri/Cargo.lock"
+
+jobs:
+  cargo-deny:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: cargo-deny (Advisories)
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: src-tauri/Cargo.toml
+          command: check advisories
+
+  npm-audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: npm audit (nur High/Critical)
+        run: npm audit --audit-level=high

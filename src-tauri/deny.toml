@@ -1,0 +1,86 @@
+# cargo-deny-Konfiguration.
+#
+# Fokus dieser Konfiguration liegt bewusst auf "advisories" (echte
+# Sicherheits-Lücken und zurückgezogene ("yanked") Crates) - das ist der
+# Teil, der in security-audit.yml automatisiert läuft. "licenses", "bans"
+# und "sources" sind bewusst minimal/permissiv gehalten (siehe unten) und
+# wurden nicht mit einer vollständigen Lizenz-Allowlist ausgearbeitet;
+# das war für dieses Aufräumpaket nicht der Auftrag.
+
+[graph]
+targets = []
+all-features = false
+no-default-features = false
+
+[advisories]
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+# Echte Sicherheits-Advisories und zurückgezogene Crates sollen den Build
+# brechen (cargo deny check advisories). "unmaintained"/"unsound"-Meldungen
+# werden bewusst nicht global stummgeschaltet, sondern einzeln unten unter
+# "ignore" mit Begründung aufgeführt - sie kommen ausnahmslos aus Tauris
+# GTK3-Stack (Linux-Backend) bzw. dessen Abhängigkeiten und sind transitiv,
+# also nicht durch ein `cargo update` in diesem Repo behebbar.
+yanked = "deny"
+ignore = [
+    # proc-macro-error ist unmaintained; kommt transitiv über glib-macros ->
+    # glib -> atk -> gtk -> muda -> tauri (Linux-Fenstermenü-Unterbau).
+    "RUSTSEC-2024-0370",
+    # unic-char-property ist unmaintained; kommt transitiv über
+    # unic-ucd-ident -> urlpattern -> tauri-utils -> tauri.
+    "RUSTSEC-2025-0081",
+    # unic-char-range ist unmaintained; gleiche Abhängigkeitskette wie oben.
+    "RUSTSEC-2025-0075",
+    # unic-common ist unmaintained; gleiche Abhängigkeitskette wie oben.
+    "RUSTSEC-2025-0080",
+    # unic-ucd-ident ist unmaintained; kommt transitiv über urlpattern ->
+    # tauri-utils -> tauri.
+    "RUSTSEC-2025-0100",
+    # unic-ucd-version ist unmaintained; gleiche Abhängigkeitskette wie oben.
+    "RUSTSEC-2025-0098",
+]
+
+[licenses]
+# Bewusst keine sorgfältig kuratierte Lizenz-Policy: die Liste unten sind
+# schlicht alle SPDX-Bezeichner, die in der aktuellen Abhängigkeits-
+# Baumausgabe von `cargo deny check licenses` auftauchen (inkl. LGPL-2.1
+# von opencascade-sys/OCCT - siehe THIRD-PARTY-LICENSES.md, dynamisch
+# gelinkt, bewusste Projektentscheidung). Eine echte, bewusst geprüfte
+# Lizenz-Allowlist ist ein eigenes, separates Vorhaben (siehe Bericht) -
+# diese Liste soll nur den heutigen Stand grün halten.
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "LGPL-2.1",
+    "LGPL-2.1-or-later",
+    "MIT",
+    "MIT-0",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+    "bzip2-1.0.6",
+]
+confidence-threshold = 0.8
+
+[bans]
+# Mehrfache Versionen derselben Crate (z.B. durch unterschiedliche
+# transitive Abhängigkeiten von Tauri-Plugins) sind in diesem Repo normal
+# und werden nicht als Fehler behandelt.
+multiple-versions = "allow"
+wildcards = "allow"
+deny = []
+skip = []
+skip-tree = []
+
+[sources]
+unknown-registry = "warn"
+unknown-git = "warn"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
