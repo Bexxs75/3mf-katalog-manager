@@ -4,6 +4,8 @@
 
 pub mod address;
 pub mod moonraker;
+#[cfg(test)]
+pub(crate) mod fake_moonraker;
 
 /// Ergebnis von "Verbindung testen".
 #[derive(Debug, Clone, PartialEq)]
@@ -69,3 +71,21 @@ impl LinkError {
 }
 
 pub const KIND_MOONRAKER: &str = "moonraker";
+
+/// Gemeinsame Schnittstelle aller Druckersysteme. Blockierend; Aufrufer
+/// laufen im Hintergrund-Thread oder in `spawn_blocking`.
+pub trait PrinterLink: Send {
+    /// Prüft Adresse und Verbindung, liefert die funktionierende Basis-URL.
+    fn test(&self) -> Result<ConnectionInfo, LinkError>;
+    /// Beendete Drucke mit `ended_at > since` (Unix-Sekunden).
+    fn jobs_ended_since(&self, base_url: &str, since: f64) -> Result<Vec<RemoteJob>, LinkError>;
+    /// Vorschaubild (PNG) zu einem Pfad aus `RemoteJob::thumbnail_path`.
+    fn thumbnail(&self, base_url: &str, path: &str) -> Result<Vec<u8>, LinkError>;
+}
+
+pub fn make_link(kind: &str, address: &str, policy: address::AddressPolicy) -> Result<Box<dyn PrinterLink>, LinkError> {
+    match kind {
+        KIND_MOONRAKER => Ok(Box::new(moonraker::MoonrakerLink::new(address, policy))),
+        other => Err(LinkError::BadResponse(format!("unbekannter Druckertyp {other}"))),
+    }
+}

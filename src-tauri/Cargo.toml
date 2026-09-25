@@ -48,7 +48,7 @@ sevenz-rust2 = { version = "0.23", default-features = false, features = ["bzip2"
 # THIRD-PARTY-LICENSES.md (Freeware, keine OSI-Lizenz).
 unrar = "0.5"
 quick-xml = "0.41"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
 rusqlite = { version = "0.40.2", features = ["bundled", "backup", "trace"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 base64 = "0.22"
