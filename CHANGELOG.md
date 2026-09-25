@@ -10,6 +10,12 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ### Added
 
 - **Druckeranbindung (Klipper/Moonraker):** Neuer Einstellungs-Reiter „Drucker“ mit dem Schalter „Druckeranbindung“ (standardmäßig aus). Pro Drucker lassen sich unter „Drucker verwalten“ Typ und Adresse eintragen und testen. Die App fragt angebundene Drucker beim Start, alle 5 Minuten und per Knopf nach beendeten Drucken, liest den tatsächlich geförderten Filamentverbrauch (bei abgebrochenen Drucken nur bis zum Abbruch) und rechnet ihn in Gramm um. Im Filament-Lager erscheint dann „N neue Drucke warten auf Bestätigung“: Im Dialog lassen sich pro Druck Spule (vorgeschlagen: die im Drucker eingelegte) und Katalogmodell (Vorschlag über den Dateinamen) prüfen, bestätigen oder ignorieren. Erst beim Bestätigen wird abgebucht; mit Modell entsteht zusätzlich ein Druckprotokoll-Eintrag, und das Modell wird als gedruckt markiert. Abgebucht werden nur Drucke, die nach dem ersten Verbinden enden. Die App spricht nur mit selbst eingetragenen Adressen im Heimnetz, liest nur und verändert am Drucker nichts. Getestet mit einem Sovol SV08. Resin-Flaschen werden von der Druckeranbindung nie vorgeschlagen oder abgebucht.
+
+### Geändert
+
+- Die Update-Prüfung erkennt jetzt auch Vorschauversionen (z. B. „0.14.0-gharac") korrekt als älter als das zugehörige fertige Release, statt nie ein Update zu melden.
+- Interne Qualitätsprüfungen: Testcode ist jetzt clippy-sauber, dazu ein automatischer CI-Prüflauf (TypeScript, Tests, Clippy) sowie eine wöchentliche Abhängigkeits-Sicherheitsprüfung (cargo-deny, npm audit).
+
 ## [0.13.1] - 2026-09-25
 
 ### Added
@@ -385,6 +391,12 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 ### Added
 
 - **Printer connection (Klipper/Moonraker):** New “Printers” settings tab with the “Printer connection” switch (off by default). Under “Manage printers” you can enter and test type and address per printer. The app asks connected printers at startup, every 5 minutes and on demand for finished prints, reads the filament actually extruded (for aborted prints only up to the abort) and converts it to grams. The filament storage then shows “N new prints waiting for confirmation”: in the dialog you check the spool (suggested: the one loaded in the printer) and the catalog model (suggested from the file name) per print, then confirm or ignore it. Nothing is deducted before you confirm; with a model, a print log entry is added and the model is marked as printed. Only prints ending after the first connection are deducted. The app only talks to addresses you entered yourself on your home network, only reads, and never changes anything on the printer. Tested with a Sovol SV08. Resin bottles are never suggested or deducted by the printer connection.
+
+### Changed
+
+- The update check now correctly recognizes preview versions (e.g. "0.14.0-gharac") as older than the matching final release, instead of never reporting an update.
+- Internal quality checks: test code is now clippy-clean, plus an automated CI check (TypeScript, tests, clippy) and a weekly dependency security audit (cargo-deny, npm audit).
+
 ## [0.13.1] - 2026-09-25
 
 ### Added
