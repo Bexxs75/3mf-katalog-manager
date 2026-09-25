@@ -283,3 +283,71 @@ export interface FilamentCheck {
   status: FilamentCheckStatus;
   needs: FilamentNeedCheck[];
 }
+
+/**
+ * `'disabled'` kommt nur von `test_printer_connection` zurueck, wenn der
+ * Schalter "Druckeranbindung" aus ist (Netzwerk-Sperre greift vor jeder
+ * Anfrage, siehe global-constraints.md).
+ */
+export type PrinterConnectionError =
+  | 'unreachable'
+  | 'auth_required'
+  | 'bad_response'
+  | 'history_missing'
+  | 'address_not_allowed'
+  | 'disabled';
+
+export interface PrinterConnection {
+  printerId: string;
+  kind: 'moonraker';
+  address: string;
+  baseUrl: string | null;
+  remoteVersion: string | null;
+  /** Unix-Sekunden: ab hier wird abgebucht. */
+  connectedSince: number;
+  lastSyncedAt: number | null;
+  lastError: PrinterConnectionError | null;
+  errorSince: number | null;
+  paused: boolean;
+}
+
+export interface PrinterTestResult {
+  ok: boolean;
+  error: PrinterConnectionError | null;
+  connection: PrinterConnection | null;
+}
+
+export interface PrinterJob {
+  id: string;
+  printerId: string;
+  printerName: string;
+  fileName: string;
+  outcome: 'completed' | 'partial';
+  rawStatus: string;
+  endedAt: number;
+  printDurationS: number;
+  usedMm: number;
+  partialPercent: number | null;
+  material: string | null;
+  hasThumbnail: boolean;
+  suggestedSpoolId: string | null;
+  grams: number | null;
+  materialMismatch: boolean;
+  modelMatch: { fileId: string; fileName: string; sure: boolean } | null;
+}
+
+export interface JobDecision {
+  jobId: string;
+  spoolId: string;
+  fileId: string | null;
+}
+
+export interface JobPreview {
+  grams: number;
+  materialMismatch: boolean;
+}
+
+export interface ConfirmResult {
+  confirmed: number;
+  failed: number;
+}
