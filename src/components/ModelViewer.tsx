@@ -104,8 +104,10 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
     fill.position.set(-1, -0.4, -1);
     scene.add(fill);
 
+    // Koralle nah am App-Akzent: hebt sich im hellen wie im dunklen Design
+    // deutlich vom schraffierten Hintergrund ab (vorher Beige 0xd7c9a8).
     const material = new THREE.MeshStandardMaterial({
-      color: 0xd7c9a8,
+      color: 0xd0603f,
       roughness: 0.55,
       metalness: 0.05,
     });
