@@ -3,6 +3,7 @@
 //! ab. Nur Heimnetz, nur lesende Anfragen, standardmäßig ausgeschaltet.
 
 pub mod address;
+pub mod moonraker;
 
 /// Ergebnis von "Verbindung testen".
 #[derive(Debug, Clone, PartialEq)]
