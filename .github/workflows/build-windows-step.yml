@@ -3,6 +3,15 @@ name: Build Windows MSI (with STEP preview)
 on:
   workflow_dispatch: {}
 
+# packages: write fuer den vcpkg-Binary-Cache in GitHub Packages (NuGet),
+# siehe Schritt "Setup vcpkg binary cache" unten.
+permissions:
+  contents: read
+  packages: write
+
+env:
+  VCPKG_NUGET_FEED: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
+
 jobs:
   build-windows-step:
     runs-on: windows-latest
@@ -12,6 +21,11 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -28,46 +42,39 @@ jobs:
       #
       # OCCT selbst gibt es fuer Windows nicht als Systempaket, deshalb ueber
       # vcpkg gebaut, gepinnt auf die in
-      # src-tauri/vendor/opencascade-sys/VENDORING.md dokumentierte und
-      # lokal verifizierte Version (7.9.3). Manifest liegt unter
       # src-tauri/occt-vcpkg-manifest/vcpkg.json.
       #
-      # lukka/run-vcpkg statt eigenem git-clone/checkout-Scripting: ein
-      # erster manueller Versuch (git clone + git checkout <commit> per
-      # Hand) scheiterte reproduzierbar auf dem GitHub-Runner mit "path
-      # 'versions/baseline.json' exists on disk, but not in <commit>",
-      # obwohl Commit und Datei auf GitHub nachweislich existieren (per
-      # curl gegengeprueft) - vermutlich eine Eigenheit des manuellen
-      # Checkouts auf dem Runner. Die etablierte Action uebernimmt dasselbe
-      # Vorgehen zuverlaessig.
+      # lukka/run-vcpkg richtet nur das vcpkg-Tool ein (RUNVCPKG_VCPKG_ROOT);
+      # "vcpkg install" rufen wir danach selbst mit festem --x-install-root
+      # auf, weil der Staging-Schritt diesen vorhersagbaren Pfad braucht
+      # (siehe VENDORING.md).
       #
-      # runVcpkgInstall: true ist noetig, sonst richtet die Action nur das
-      # vcpkg-Tooling ein, OHNE das Manifest tatsaechlich zu installieren
-      # (zweiter Fehlversuch: Job lief nur 54s durch, "vcpkg_installed"
-      # blieb leer). Bonus: die Action bringt GitHub-Actions-Binary-Caching
-      # (VCPKG_BINARY_SOURCES=x-gha) automatisch mit, das war ohnehin als
-      # spaeterer Ausbau geplant - kompletter Build dauert ohne Cache lokal
-      # verifiziert rund 1,4 Stunden, mit Cache auf Wiederholungslaeufen
-      # deutlich weniger.
-      # runVcpkgInstall bewusst weggelassen (anders als zuvor): die Action
-      # installiert das Manifest sonst selbst in einen intern gehashten
-      # Ordner (z.B. "<guid>/vcpkg_installed"), dessen genauer Pfad nicht
-      # dokumentiert/stabil vorhersagbar ist - ein erster CI-Lauf baute OCCT
-      # damit zwar erfolgreich durch (1,4h), aber der nachfolgende
-      # Staging-Schritt griff daneben, weil er den vorhersehbaren Pfad
-      # "src-tauri/occt-vcpkg-manifest/vcpkg_installed/x64-windows" erwartet
-      # (siehe VENDORING.md, lokal so verifiziert). Deshalb hier: Action nur
-      # zum Einrichten des vcpkg-Tools nutzen (setzt RUNVCPKG_VCPKG_ROOT und
-      # das GitHub-Actions-Binary-Caching via VCPKG_BINARY_SOURCES=x-gha),
-      # den eigentlichen "vcpkg install" danach explizit mit exakt diesem
-      # Zielpfad selbst aufrufen.
+      # Binary-Cache: Das fruehere GitHub-Actions-Backend (x-gha) hat vcpkg
+      # entfernt - bis v0.13.1 wurde OCCT deshalb bei JEDEM Lauf neu gebaut
+      # (ca. 1,1 h). Jetzt legt vcpkg die fertigen Pakete als NuGet-Pakete in
+      # GitHub Packages dieses Repos ab (von vcpkg selbst empfohlen). Anders
+      # als der Actions-Cache verfaellt das nicht nach 7 Tagen ohne Zugriff.
+      # Neu gebaut wird nur, wenn sich OCCT-Version, vcpkg-Commit oder Triplet
+      # aendern (dann einmal ~1,1 h, danach wieder aus dem Cache).
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgGitCommitId: 5f96cd15fd745122cf27e0524606d6c1efc5fd07
 
+      - name: Setup vcpkg binary cache (GitHub Packages / NuGet)
+        shell: pwsh
+        run: |
+          $nuget = & "$env:RUNVCPKG_VCPKG_ROOT\vcpkg.exe" fetch nuget | Select-Object -Last 1
+          & $nuget sources add -Source "$env:VCPKG_NUGET_FEED" -StorePasswordInClearText -Name GitHubPackages -UserName "${{ github.repository_owner }}" -Password "${{ secrets.GITHUB_TOKEN }}"
+          if ($LASTEXITCODE -ne 0) { throw "nuget sources add failed" }
+          & $nuget setapikey "${{ secrets.GITHUB_TOKEN }}" -Source "$env:VCPKG_NUGET_FEED"
+          if ($LASTEXITCODE -ne 0) { throw "nuget setapikey failed" }
+
       - name: Build OCCT 7.9.3 via vcpkg manifest
         working-directory: src-tauri/occt-vcpkg-manifest
+        env:
+          # Ueberschreibt das von lukka/run-vcpkg gesetzte (entfernte) x-gha.
+          VCPKG_BINARY_SOURCES: clear;nuget,${{ env.VCPKG_NUGET_FEED }},readwrite
         run: |
           & "$env:RUNVCPKG_VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows --x-install-root vcpkg_installed
           if ($LASTEXITCODE -ne 0) { throw "vcpkg install failed with exit code $LASTEXITCODE" }
