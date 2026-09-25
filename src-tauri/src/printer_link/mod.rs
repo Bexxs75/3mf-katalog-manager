@@ -3,6 +3,8 @@
 //! ab. Nur Heimnetz, nur lesende Anfragen, standardmäßig ausgeschaltet.
 
 pub mod address;
+pub mod booking;
+pub mod matching;
 pub mod moonraker;
 #[cfg(test)]
 pub(crate) mod fake_moonraker;
