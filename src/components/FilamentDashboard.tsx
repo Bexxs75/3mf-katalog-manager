@@ -4,6 +4,7 @@ import { formatStockG, formatDiameterMm, formatPrice } from '../i18n/format';
 import type { FilamentSpool } from '../types';
 import { filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus';
 import { isValidColorHex } from '../lib/filamentColors';
+import { isFromInteractiveElement } from '../lib/spoolCardEvents';
 
 interface Props {
   spools: FilamentSpool[];
@@ -71,6 +72,9 @@ export function FilamentDashboard({
             key={spool.id}
             data-testid={`spool-card-${spool.id}`}
             onMouseDown={(e) => !startsOnButton(e) && onSpoolMouseDown?.(spool.id, e)}
+            onDoubleClick={(e) => {
+              if (!isFromInteractiveElement(e)) onEdit(spool);
+            }}
             className={`rounded-[10px] overflow-hidden border border-[var(--line)] bg-[var(--panel)] flex flex-col ${
               onSpoolMouseDown ? 'cursor-grab' : ''
             } ${highlightIds?.has(spool.id) ? 'spool-new' : ''}`}

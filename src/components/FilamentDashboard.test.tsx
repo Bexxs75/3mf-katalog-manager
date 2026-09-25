@@ -49,3 +49,18 @@ describe('FilamentDashboard restock', () => {
     expect(screen.getByTestId('spool-card-a')).toHaveClass('spool-new');
   });
 });
+
+describe('FilamentDashboard double-click', () => {
+  it('opens the edit form on a double-click on the card', () => {
+    const { onEdit } = renderDashboard();
+    fireEvent.doubleClick(screen.getByText('PETG'));
+    expect(onEdit).toHaveBeenCalledWith(S);
+  });
+
+  it('ignores double-clicks on the card buttons', () => {
+    const { onEdit } = renderDashboard();
+    fireEvent.doubleClick(screen.getByRole('button', { name: 'Nachkaufen' }));
+    fireEvent.doubleClick(screen.getByRole('button', { name: 'Spule bearbeiten' }));
+    expect(onEdit).not.toHaveBeenCalled();
+  });
+});

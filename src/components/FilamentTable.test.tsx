@@ -44,3 +44,17 @@ describe('FilamentTable restock', () => {
     expect(screen.getByTestId('spool-row-a')).toHaveClass('spool-new-row');
   });
 });
+
+describe('FilamentTable double-click', () => {
+  it('opens the edit form on a double-click on the row', () => {
+    const { onEdit } = renderTable();
+    fireEvent.doubleClick(screen.getByText('PETG'));
+    expect(onEdit).toHaveBeenCalledWith(S);
+  });
+
+  it('ignores double-clicks on the row buttons', () => {
+    const { onEdit } = renderTable();
+    fireEvent.doubleClick(screen.getByRole('button', { name: 'Nachkaufen' }));
+    expect(onEdit).not.toHaveBeenCalled();
+  });
+});

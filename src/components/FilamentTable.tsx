@@ -5,6 +5,7 @@ import { formatStockG, formatDiameterMm, formatPrice } from '../i18n/format';
 import type { FilamentSpool } from '../types';
 import { filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus';
 import { isValidColorHex } from '../lib/filamentColors';
+import { isFromInteractiveElement } from '../lib/spoolCardEvents';
 
 interface Props {
   spools: FilamentSpool[];
@@ -149,6 +150,9 @@ export function FilamentTable({
                 key={spool.id}
                 data-testid={`spool-row-${spool.id}`}
                 onMouseDown={(e) => !startsOnButton(e) && onSpoolMouseDown?.(spool.id, e)}
+                onDoubleClick={(e) => {
+                  if (!isFromInteractiveElement(e)) onEdit(spool);
+                }}
                 className={`hover:bg-[var(--panel-2)] ${onSpoolMouseDown ? 'cursor-grab' : ''} ${
                   highlightIds?.has(spool.id) ? 'spool-new-row' : ''
                 }`}
