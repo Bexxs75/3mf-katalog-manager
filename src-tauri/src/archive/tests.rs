@@ -389,7 +389,7 @@ fn exceeding_the_byte_budget_in_merge_mode_restores_the_previous_state() {
     assert_eq!(remaining, vec![std::ffi::OsString::from("alt.txt")]);
 }
 
-// ---------- Haertung (Security-Review 2026-09-23) ----------
+// ---------- Haertung ----------
 
 #[test]
 fn sanitize_component_neutralizes_bidi_and_zero_width_chars_and_superscript_devices() {

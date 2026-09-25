@@ -69,14 +69,9 @@ pub fn reorder_collection(state: State<AppState>, collection_id: String, updates
     let mut conn = lock_db(&state)?;
     reorder_collection_with_conn(&mut conn, cid, updates)
 }
-/// Kernlogik von `reorder_collection`, getrennt von der `State<AppState>`-Huelle
-/// gehalten, damit sie in Tests direkt gegen eine In-Memory-`Connection`
-/// aufgerufen werden kann (gleiche Konvention wie `import_many_with_conn`).
-///
-/// M-04: alle `file_id`s werden VOR jeder Schreiboperation validiert (muessen
-/// existieren UND Mitglied der Collection sein), und alle Positions-Updates
-/// laufen in genau einer Transaktion - siehe `reorder_queue_with_conn` fuer
-/// den identischen Grund.
+/// Kernlogik von `reorder_collection`, ohne `State`, damit testbar. Alle ids
+/// werden vorab geprueft (existieren und sind Mitglied), alle Updates laufen in
+/// einer Transaktion (siehe `reorder_queue_with_conn`).
 fn reorder_collection_with_conn(
     conn: &mut Connection,
     collection_id: i64,
@@ -162,10 +157,7 @@ mod tests {
     }
     #[test]
     fn collection_reorder_batch_rolls_back_an_already_applied_earlier_update_when_a_later_one_fails_inside_the_transaction() {
-        // Analog zu queue_reorder_batch_rolls_back_...: erzwingt den Fehler
-        // per Trigger INNERHALB der Transaktion (nach Bestehen der
-        // Upfront-Membership-Validierung), statt in der Validierung selbst,
-        // um das tatsaechliche Rollback-Verhalten der Transaktion zu pruefen.
+        // Fehler per Trigger innerhalb der Transaktion, nach bestandener Vorabpruefung.
         let mut conn = db::connect_in_memory().unwrap();
         let id1 = db::test_insert_minimal_file(&conn, "/tmp/1.3mf", None).unwrap();
         let id2 = db::test_insert_minimal_file(&conn, "/tmp/2.3mf", None).unwrap();
@@ -176,10 +168,6 @@ mod tests {
         db::add_file_to_collection(&conn, cid, id2, 1).unwrap();
         db::add_file_to_collection(&conn, cid, id3, 2).unwrap();
 
-        // Bricht genau dann ab, wenn position auf 21 gesetzt wird - das Ziel
-        // des ZWEITEN Updates. Das erste Update (id1 -> 10) muss also
-        // innerhalb der Transaktion bereits erfolgreich geschrieben worden
-        // sein, bevor der Abbruch greift.
         conn.execute_batch(
             "CREATE TRIGGER block_second_collection_update BEFORE UPDATE ON collection_files
              WHEN NEW.position = 21

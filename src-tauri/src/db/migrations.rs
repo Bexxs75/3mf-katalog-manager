@@ -3,25 +3,16 @@ use super::error::DbError;
 
 type MigrationFn = fn(&Connection) -> Result<(), DbError>;
 
-/// Die meisten Migrationsschritte sind ein einzelnes ALTER-TABLE/Backfill-
-/// Statement, das der Runner selbst in eine Transaktion einbettet (siehe
-/// `Simple`-Zweig unten). Ein CHECK-Constraint zu aendern (siehe
-/// `add_stp_to_file_type_check`) erfordert dagegen einen Tabellen-Rebuild,
-/// bei dem `PRAGMA foreign_keys` VOR Beginn einer Transaktion aus- und
-/// danach wieder eingeschaltet werden muss - das Pragma ist laut
-/// SQLite-Dokumentation ein No-Op INNERHALB einer offenen Transaktion.
-/// Ein `Rebuild`-Schritt bekommt deshalb die volle `&mut Connection` und
-/// verwaltet Pragma, Transaktion UND den user_version-Bump komplett selbst,
-/// statt sich (wie `Simple`) eine bereits offene Transaktion vom Runner
-/// injizieren zu lassen.
+/// `Simple`-Schritte laufen in einer vom Runner geoeffneten Transaktion.
+/// `Rebuild`-Schritte (CHECK-Aenderung per Tabellen-Rebuild) bekommen die volle
+/// Connection und verwalten Pragma, Transaktion und user_version selbst:
+/// `PRAGMA foreign_keys` ist innerhalb einer Transaktion ein No-Op.
 enum MigrationStep {
     Simple(MigrationFn),
     Rebuild(fn(&mut Connection, i64) -> Result<(), DbError>),
 }
 
-/// Jeder Eintrag entspricht 1:1 einer vormals stillschweigend ausgefuehrten
-/// Zeile in `repository::init()`, in unveraenderter Reihenfolge - siehe
-/// Kommentar-Historie dort fuer den fachlichen Hintergrund jeder Spalte.
+/// Migrationen sind additiv: ausgelieferte Schritte nie aendern oder umnummerieren.
 const MIGRATIONS: &[MigrationStep] = &[
     MigrationStep::Simple(|c| exec(c, "ALTER TABLE filament_spools ADD COLUMN image_png BLOB")),
     MigrationStep::Simple(|c| exec(c, "ALTER TABLE filament_spools ADD COLUMN location TEXT")),
@@ -43,38 +34,20 @@ const MIGRATIONS: &[MigrationStep] = &[
     MigrationStep::Simple(|c| exec(c, "ALTER TABLE files ADD COLUMN slice_info_json TEXT")),
     MigrationStep::Simple(|c| exec(c, "ALTER TABLE files ADD COLUMN deleted_at TEXT")),
     MigrationStep::Simple(|c| exec(c, "ALTER TABLE files ADD COLUMN trash_path TEXT")),
-    // M-06 (Task 11): maschinenlokale Registry vertrauenswuerdiger
-    // Slicer-Executables, getrennt von den portablen Katalogdaten - siehe
-    // `replace_catalog_db` in commands.rs fuer die Begruendung, warum diese
-    // Tabelle bei einem Backup-Restore niemals aus der eingehenden
-    // Datenbank uebernommen werden darf.
+    // Maschinenlokale Slicer-Registry, bei einem Restore nie uebernommen (siehe replace_catalog_db).
     MigrationStep::Simple(|c| exec(c, "CREATE TABLE IF NOT EXISTS registered_slicers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         executable_path TEXT NOT NULL UNIQUE,
         is_auto_detected INTEGER NOT NULL DEFAULT 0
     )")),
-    // STP/STEP-Kataloginisierung (Variante A): CHECK-Constraint auf
-    // file_type erlaubt jetzt zusaetzlich 'stp'. SQLite kennt kein ALTER
-    // TABLE zum Aendern eines CHECK-Constraints - erfordert Tabellen-Rebuild,
-    // siehe add_stp_to_file_type_check() unten fuer die Fremdschluessel-
-    // Kaskaden-Falle, die dieser Rebuild-Schritt umgehen muss.
+    // 'stp' im file_type-CHECK; eine CHECK-Aenderung braucht einen Rebuild.
     MigrationStep::Rebuild(add_stp_to_file_type_check),
-    // OBJ-Katalogisierung inkl. 3D-Vorschau (siehe Plan) - eigener,
-    // additiver Schritt statt einer Aenderung an add_stp_to_file_type_check,
-    // das bereits ausgeliefert wurde.
+    // 'obj' als eigener Schritt, weil der STP-Schritt schon ausgeliefert ist.
     MigrationStep::Rebuild(add_obj_to_file_type_check),
-    // Drucker & AMS-Faecher im Filament-Lager (Spec 2026-09-23): Drucker,
-    // ihre Mehrfarbeinheiten und pro Spule Fach, Stammplatz und Farbwert.
-    // Der eindeutige Index steht bewusst nur hier und nicht in schema.sql -
-    // schema.sql laeuft auch auf alten Datenbanken VOR den Migrationen, in
-    // denen die Spalten dann noch fehlen.
-    //
-    // FIRST_PRINTER_MIGRATION_VERSION (unten) ist die Schema-Version
-    // UNMITTELBAR VOR diesem Schritt - der Migrationstest in db/printers.rs
-    // simuliert damit exakt den Vor-Zustand einer Datenbank ohne jede
-    // Drucker/AMS-Migration, statt den Versatz zu CURRENT_SCHEMA_VERSION
-    // hart zu codieren.
+    // Drucker, Einheiten und Fach-Spalten der Spulen. Der Unique-Index steht nur
+    // hier, nicht in schema.sql: schema.sql laeuft auf alten DBs vor den
+    // Migrationen, dort fehlen die Spalten noch.
     MigrationStep::Simple(|c| exec(c, "CREATE TABLE IF NOT EXISTS printers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
@@ -96,12 +69,9 @@ const MIGRATIONS: &[MigrationStep] = &[
     MigrationStep::Simple(|c| exec(c, "ALTER TABLE filament_spools ADD COLUMN color_hex TEXT")),
     MigrationStep::Simple(|c| exec(c, "CREATE UNIQUE INDEX IF NOT EXISTS idx_filament_spools_slot ON filament_spools (unit_id, slot_index) WHERE unit_id IS NOT NULL")),
     MigrationStep::Simple(super::printers::backfill_color_hex),
-    // Resin im Filament-Lager (v0.13.1): Art je Eintrag. Bestehende Zeilen
-    // bekommen per DEFAULT 'filament'. Bei 'resin' bedeuten
-    // original_weight_g/remaining_weight_g Milliliter.
+    // Art je Eintrag; bei 'resin' sind die Gewichtsspalten Milliliter.
     MigrationStep::Simple(|c| exec(c, "ALTER TABLE filament_spools ADD COLUMN kind TEXT NOT NULL DEFAULT 'filament' CHECK (kind IN ('filament', 'resin'))")),
-    // Druckeranbindung (Spec 2026-09-24): Einstellungen, Verbindung pro
-    // Drucker, abgeholte Drucke.
+    // Druckeranbindung: Einstellungen, Verbindung pro Drucker, abgeholte Drucke.
     MigrationStep::Simple(|c| exec(c, "CREATE TABLE IF NOT EXISTS app_settings (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
@@ -139,37 +109,20 @@ const MIGRATIONS: &[MigrationStep] = &[
         decided_at TEXT,
         UNIQUE (printer_id, remote_id)
     )")),
-    // Merge v0.13.1 -> v0.14.0 (final review I-1): Schritt 32 (`kind`) ist
-    // so ausgeliefert wie in v0.13.1; die Druckeranbindungs-Schritte davor
-    // waren nie ausgeliefert und stehen deshalb jetzt bei 33-35. Master-
-    // Entwicklungs-DBs, die bereits auf user_version 34 standen (alte
-    // Nummerierung, ohne `kind`), ueberspringen Schritt 32 - dieser Schritt
-    // holt die Spalte fuer sie nach. Auf allen anderen DBs ist er dank der
-    // von `exec` tolerierten "duplicate column name" ein No-Op.
+    // Holt `kind` fuer Entwicklungs-DBs nach, die mit der alten Nummerierung
+    // (Druckeranbindung vor `kind`) auf 34 standen. Sonst ein No-Op dank
+    // toleriertem "duplicate column name".
     MigrationStep::Simple(|c| exec(c, "ALTER TABLE filament_spools ADD COLUMN kind TEXT NOT NULL DEFAULT 'filament' CHECK (kind IN ('filament', 'resin'))")),
-    // Resin-Drucker mit Harzwanne (v0.14.0, Plan 2026-09-25): `printers.kind`
-    // und 'resin_vat' im CHECK von `material_units.kind`. Letzteres braucht
-    // einen Tabellen-Rebuild, deshalb ein `Rebuild`-Schritt, der beides in
-    // EINER Transaktion erledigt - siehe add_resin_printers().
+    // Resin-Drucker: `printers.kind` und 'resin_vat' im CHECK von
+    // `material_units.kind` (Rebuild, eine Transaktion).
     MigrationStep::Rebuild(add_resin_printers),
 ];
 
-/// Aktuelle Ziel-Schemaversion - leitet sich direkt aus der Anzahl der
-/// Eintraege in [`MIGRATIONS`] ab, statt sie (wie vor dem Abschluss-Review)
-/// als separaten, von Hand mitgepflegten Literal-Wert zu duplizieren. Ein
-/// vergessenes "+1" bei einer neuen Migration kann dadurch strukturell nicht
-/// mehr vorkommen - `MIGRATIONS.len()` UND `CURRENT_SCHEMA_VERSION` koennen
-/// nie mehr auseinanderlaufen, weil es nur noch einen Wert gibt.
+/// Leitet sich aus [`MIGRATIONS`] ab, damit beide nie auseinanderlaufen.
 pub const CURRENT_SCHEMA_VERSION: i64 = MIGRATIONS.len() as i64;
 
-/// Schema-Version UNMITTELBAR VOR dem ersten Drucker/AMS-Migrationsschritt
-/// (`CREATE TABLE printers`, siehe Kommentar dort in [`MIGRATIONS`]) - vor
-/// dieser Version existieren die Drucker/AMS-Tabellen und -Spalten noch
-/// nicht. Verwendet vom Migrationstest
-/// `migrating_an_old_catalog_keeps_spools_in_storage_and_backfills_colors`
-/// in `db/printers.rs`, um exakt diesen Vor-Zustand zu simulieren, statt
-/// den Versatz zu [`CURRENT_SCHEMA_VERSION`] als Magic Number ("- 8") hart
-/// zu codieren. Nur fuer diesen Test gebraucht, deshalb `#[cfg(test)]`.
+/// Schema-Version direkt vor dem ersten Drucker-Schritt, fuer den
+/// Migrationstest in `db/printers.rs`.
 #[cfg(test)]
 pub(crate) const FIRST_PRINTER_MIGRATION_VERSION: i64 = 23;
 
@@ -178,15 +131,12 @@ pub(crate) const FIRST_PRINTER_MIGRATION_VERSION: i64 = 23;
 #[cfg(test)]
 pub(crate) const KIND_MIGRATION_VERSION: i64 = 32;
 
-/// Schema-Version nach dem Resin-Drucker-Schritt (v0.14.0).
+/// Schema-Version nach dem Resin-Drucker-Schritt.
 #[cfg(test)]
 pub(crate) const RESIN_PRINTER_MIGRATION_VERSION: i64 = 37;
 
-/// Fuehrt ein einzelnes ALTER-TABLE/Backfill-Statement aus. "Spalte/Index
-/// existiert bereits" (SQLite-Fehlermeldung enthaelt "duplicate column
-/// name" bzw. der Index-Fall ist durch `IF NOT EXISTS` bereits abgedeckt)
-/// ist der EINZIGE tolerierte Fehlerfall - alles andere (read-only,
-/// I/O, korruptes Schema) propagiert als echter Fehler (Kern von H-02).
+/// Fuehrt ein einzelnes Statement aus. Einzig toleriert ist "duplicate column
+/// name" (Spalte existiert schon); alles andere propagiert.
 fn exec(conn: &Connection, sql: &str) -> Result<(), DbError> {
     match conn.execute(sql, []) {
         Ok(_) => Ok(()),
@@ -195,32 +145,15 @@ fn exec(conn: &Connection, sql: &str) -> Result<(), DbError> {
     }
 }
 
-/// Erweitert den `file_type`-CHECK-Constraint auf `files` um weitere
-/// erlaubte Werte. SQLite kennt kein `ALTER TABLE ... ALTER/DROP
-/// CONSTRAINT` - eine CHECK-Aenderung erfordert den offiziell von SQLite
-/// empfohlenen "12-Schritte"-Tabellen-Rebuild (create-copy-drop-rename),
-/// siehe https://www.sqlite.org/lang_altertable.html Abschnitt "Making
-/// Other Kinds Of Table Schema Changes". Gemeinsame Basis fuer mehrere
-/// Migrationsschritte (siehe `add_stp_to_file_type_check`/
-/// `add_obj_to_file_type_check` unten) - jeder neue Dateityp bekommt einen
-/// EIGENEN, zusaetzlichen Migrationsschritt statt einer Aenderung an einem
-/// bereits ausgelieferten (Grundsatz: Migrationen sind additiv, nie
-/// rueckwirkend editiert), ruft aber dieselbe Rebuild-Logik erneut auf.
+/// Erweitert den `file_type`-CHECK von `files`. SQLite kann CHECKs nicht
+/// aendern, deshalb der empfohlene Rebuild (create-copy-drop-rename, siehe
+/// https://www.sqlite.org/lang_altertable.html). Jeder neue Dateityp bekommt
+/// einen eigenen Schritt, ausgelieferte werden nie geaendert.
 ///
-/// KRITISCH: `files` hat mehrere Kind-Tabellen mit
-/// `ON DELETE CASCADE`-Fremdschluesseln (file_tags, file_metadata,
-/// file_materials, collection_files, print_log). Ist `PRAGMA foreign_keys`
-/// aktiv (was `repository::init` immer VOR `run_migrations` setzt), fuehrt
-/// `DROP TABLE files` intern ein implizites `DELETE FROM files` aus, das
-/// alle Tags/Metadaten/Materialien/Collection-Zuordnungen JEDER
-/// bestehenden Datei kaskadierend loeschen wuerde - ein Rebuild ohne
-/// Gegenmassnahme waere ein stiller Datenverlust-Bug. `PRAGMA
-/// foreign_keys` laesst sich laut SQLite-Doku aber nur AUSSERHALB einer
-/// offenen Transaktion umschalten (innerhalb ist es ein No-Op) - deshalb
-/// bekommt dieser Schritt (anders als die `Simple`-Schritte oben) die
-/// volle `&mut Connection` und verwaltet Pragma, Transaktion und den
-/// user_version-Bump komplett selbst, statt sich eine vom Runner bereits
-/// geoeffnete Transaktion injizieren zu lassen.
+/// KRITISCH: Die Kind-Tabellen von `files` haben `ON DELETE CASCADE`. Mit
+/// aktivem `foreign_keys` loescht `DROP TABLE files` alle Tags, Metadaten,
+/// Materialien und Zuordnungen. Das Pragma laesst sich nur ausserhalb einer
+/// Transaktion umschalten, deshalb verwaltet dieser Schritt beides selbst.
 fn rebuild_files_table_with_check(
     conn: &mut Connection,
     step_version: i64,
@@ -232,11 +165,7 @@ fn rebuild_files_table_with_check(
         .collect::<Vec<_>>()
         .join(", ");
 
-    // Idempotenz-Guard: eine frische DB (SCHEMA_SQL enthaelt den neuen
-    // CHECK bereits) braucht keinen Rebuild, nur den user_version-Bump
-    // unten - erspart unnoetige Arbeit und ist konsistent mit dem
-    // "bereits erledigt" toleranten Verhalten von exec(). Prueft, ob JEDER
-    // der geforderten Werte bereits als Literal im aktuellen CHECK steht.
+    // Frische DBs haben den CHECK schon (schema.sql): nur user_version erhoehen.
     let current_sql: String = conn.query_row(
         "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'files'",
         [],
@@ -246,23 +175,16 @@ fn rebuild_files_table_with_check(
         .iter()
         .all(|t| current_sql.contains(&format!("'{t}'")));
 
-    // Urspruenglichen Wert merken statt hart auf ON zurueckzusetzen: dieser
-    // Schritt laeuft sowohl ueber repository::init (foreign_keys=ON) als
-    // auch in Migrations-Tests, die run_migrations direkt auf einer
-    // frischen Connection ohne vorheriges Pragma aufrufen (SQLite-Default:
-    // OFF).
+    // Vorherigen Wert merken: Tests rufen run_migrations auch ohne foreign_keys=ON auf.
     let previously_enabled: bool = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0))?;
     conn.pragma_update(None, "foreign_keys", false)?;
 
     let result = (|| -> Result<(), DbError> {
         let tx = conn.transaction()?;
         if !already_migrated {
-            // Ueberbleibsel der in v0.5.0 entfernten Google-Drive-Anbindung:
-            // solche Zeilen verletzen den strengeren `origin`-CHECK der neuen
-            // Tabelle und liessen die Kopie unten scheitern (App startete
-            // nicht mehr, v0.12.1). Die Dateien liegen lokal im Cache, also
-            // als normale lokale Eintraege weiterfuehren statt sie zu
-            // verwerfen - in derselben Transaktion wie der Rebuild.
+            // Reste der entfernten Google-Drive-Anbindung verletzen den strengeren
+            // `origin`-CHECK und liessen die Kopie scheitern (App startete nicht). Die
+            // Dateien liegen lokal, also als lokale Eintraege weiterfuehren.
             tx.execute(
                 "UPDATE files SET origin = 'local', sync_status = 'local-only', cloud_id = NULL
                  WHERE origin <> 'local'",
@@ -311,10 +233,7 @@ fn rebuild_files_table_with_check(
                 CREATE INDEX IF NOT EXISTS idx_files_file_type ON files (file_type);
                 CREATE INDEX IF NOT EXISTS idx_files_content_hash ON files (content_hash);"
             ))?;
-            // Von der SQLite-Doku fuer diesen Rebuild-Ablauf empfohlene
-            // Pflichtpruefung: stellt sicher, dass keine Fremdschluessel-
-            // Zeile (aus file_tags/file_metadata/file_materials/
-            // collection_files/print_log) jetzt ins Leere zeigt.
+            // Pflichtpruefung laut SQLite-Doku: keine Kind-Zeile zeigt ins Leere.
             let has_violation = tx
                 .query_row("PRAGMA foreign_key_check", [], |_| Ok(()))
                 .optional()?
@@ -330,43 +249,26 @@ fn rebuild_files_table_with_check(
         Ok(())
     })();
 
-    // IMMER wiederherstellen, unabhaengig von Erfolg/Fehler oben - ein
-    // fehlgeschlagener Rebuild darf die Verbindung nicht dauerhaft mit
-    // deaktivierten Fremdschluessel-Constraints zuruecklassen.
+    // Immer zuruecksetzen, auch nach einem Fehler.
     conn.pragma_update(None, "foreign_keys", previously_enabled)?;
     result
 }
 
-/// Duenner Wrapper - verhaltensidentisch zum bereits ausgelieferten Stand
-/// (reines Extrahieren der gemeinsamen Logik in
-/// `rebuild_files_table_with_check`, siehe deren Dokumentation).
 fn add_stp_to_file_type_check(conn: &mut Connection, step_version: i64) -> Result<(), DbError> {
     rebuild_files_table_with_check(conn, step_version, &["3mf", "stl", "stp"])
 }
 
-/// Neuer, additiver Migrationsschritt fuer die OBJ-Katalogisierung
-/// (mit 3D-Vorschau, siehe Plan) - erweitert den CHECK ein zweites Mal.
 fn add_obj_to_file_type_check(conn: &mut Connection, step_version: i64) -> Result<(), DbError> {
     rebuild_files_table_with_check(conn, step_version, &["3mf", "stl", "stp", "obj"])
 }
 
-/// Resin-Drucker (v0.14.0): `printers.kind` ('filament'/'resin', bestehende
-/// Drucker werden per DEFAULT Filament) und 'resin_vat' im CHECK von
-/// `material_units.kind`. Der CHECK laesst sich nur per Tabellen-Rebuild
-/// aendern - gleiches Verfahren wie `rebuild_files_table_with_check`, auch
-/// mit derselben Kaskaden-Falle: `filament_spools.unit_id` verweist mit
-/// `ON DELETE SET NULL` auf `material_units`; mit aktivem `foreign_keys`
-/// wuerde `DROP TABLE material_units` jede eingelegte Spule stillschweigend
-/// aus ihrem Fach werfen. Deshalb Pragma VOR der Transaktion aus und danach
-/// auf den vorherigen Wert zurueck. `material_units` hat keine eigenen
-/// Indizes oder Trigger, die wiederhergestellt werden muessten; der
-/// Fach-Index `idx_filament_spools_slot` haengt an `filament_spools` und
-/// bleibt unberuehrt.
+/// `printers.kind` und 'resin_vat' im CHECK von `material_units.kind`, per
+/// Rebuild wie `rebuild_files_table_with_check` und mit derselben Falle:
+/// `filament_spools.unit_id` hat `ON DELETE SET NULL`, mit aktivem
+/// `foreign_keys` wuerde der Rebuild jede Spule aus ihrem Fach werfen.
 fn add_resin_printers(conn: &mut Connection, step_version: i64) -> Result<(), DbError> {
-    // Idempotenz-Guard wie beim files-Rebuild: eine frische DB (schema.sql
-    // enthaelt 'resin_vat' bereits) braucht keinen Rebuild.
-    // Fehlt eine Tabelle ganz (nur in Tests, die `run_migrations` ohne
-    // schema.sql auf einer Teil-DB aufrufen), gibt es dort nichts zu tun.
+    // Frische DBs haben 'resin_vat' schon. Fehlende Tabellen gibt es nur in
+    // Tests mit Teil-DBs; dort ist nichts zu tun.
     let table_sql = |conn: &Connection, name: &str| -> Result<Option<String>, DbError> {
         Ok(conn
             .query_row("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?1", [name], |r| r.get(0))
@@ -439,22 +341,12 @@ pub fn run_migrations(conn: &mut Connection) -> Result<(), DbError> {
     run_migrations_with(conn, MIGRATIONS, CURRENT_SCHEMA_VERSION)
 }
 
-/// Kern von [`run_migrations`], parametrisiert ueber eine explizite
-/// Migrationsliste und Ziel-Version - separiert, damit Tests gezielt
-/// einzelne (auch absichtlich fehlschlagende) Migrationsschritte
-/// injizieren koennen, ohne die globale [`MIGRATIONS`]-Liste zu
-/// beeinflussen (siehe `a_failing_step_does_not_leave_a_half_applied_schema_change_committed`).
+/// Kern von [`run_migrations`] mit eigener Schrittliste, damit Tests auch
+/// fehlschlagende Schritte einspielen koennen.
 fn run_migrations_with(conn: &mut Connection, migrations: &[MigrationStep], target_version: i64) -> Result<(), DbError> {
     let current: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-    // Korrektur nach sechster Review-Runde (P1): OHNE diese Pruefung wuerde
-    // eine Datenbank mit einer HOEHEREN user_version als target_version
-    // (z.B. importiert aus einer neueren App-Version, deren Schema diese
-    // aeltere Version nicht kennt) die untenstehende Schleife komplett
-    // ueberspringen (jeder step_version <= current) und stillschweigend
-    // Ok(()) zurueckgeben - die DB wuerde dann so weiterverwendet, als sei
-    // sie vollstaendig kompatibel, obwohl ihr tatsaechliches Schema neuer
-    // und potenziell inkompatibel mit dem ist, was diese (aeltere)
-    // App-Version versteht.
+    // Eine DB aus einer neueren App-Version wuerde sonst jeden Schritt
+    // ueberspringen und stillschweigend als kompatibel gelten.
     if current > target_version {
         return Err(DbError::Other(format!(
             "Datenbank-Schemaversion {current} ist neuer als die von dieser App-Version unterstuetzte Version {target_version}"
@@ -467,27 +359,14 @@ fn run_migrations_with(conn: &mut Connection, migrations: &[MigrationStep], targ
         }
         match migration {
             MigrationStep::Simple(f) => {
-                // H-02-Korrektur (zweite Review-Runde): das ALTER-TABLE/
-                // Backfill-Statement UND die anschliessende Erhoehung von
-                // PRAGMA user_version laufen in DERSELBEN Transaktion.
-                // Vorher waren dies zwei getrennte Anweisungen - ein Fehler
-                // zwischen beiden haette eine Migration real angewendet,
-                // ohne sie als erledigt zu vermerken, sodass sie beim
-                // naechsten Start erneut (und wegen der bereits vorhandenen
-                // Spalte harmlos, aber unnoetig) versucht worden waere;
-                // schlimmer: ein Fehler WAEHREND der Migration selbst
-                // haette bei einer mehrteiligen Anweisung eine
-                // Teil-Aenderung hinterlassen koennen.
+                // Statement und user_version-Bump in derselben Transaktion: nie eine
+                // angewendete, aber nicht vermerkte Migration.
                 let tx = conn.transaction()?;
                 f(&tx)?;
                 tx.pragma_update(None, "user_version", step_version)?;
                 tx.commit()?;
             }
-            // Verwaltet Pragma, Transaktion und user_version-Bump komplett
-            // selbst (siehe add_stp_to_file_type_check) - der Runner darf
-            // hier KEINE eigene Transaktion oeffnen, siehe deren
-            // Dokumentation fuer den Grund (PRAGMA foreign_keys als No-Op
-            // innerhalb einer Transaktion).
+            // Verwaltet Transaktion und user_version selbst (siehe MigrationStep).
             MigrationStep::Rebuild(f) => f(conn, step_version)?,
         }
     }
@@ -520,16 +399,8 @@ mod tests {
 
     #[test]
     fn migrating_a_genuinely_partially_upgraded_db_only_applies_remaining_steps() {
-        // KORREKTUR (zweite Review-Runde): anders als eine fruehere
-        // Testfassung, die das VOLLSTAENDIGE aktuelle Schema anwendete und
-        // user_version nur manuell auf 3 setzte (testet dann praktisch nur
-        // die Duplicate-Column-Toleranz), wendet dieser Test das ECHTE
-        // Basis-Schema an (SCHEMA_SQL selbst enthaelt schon heute weder
-        // folders.parent_id/path noch files.print_status etc. - diese
-        // Spalten kommen ausschliesslich ueber Migrationsschritte hinzu,
-        // auch auf einer brandneuen DB, siehe repository.rs) und fuehrt
-        // dann NUR die ersten 3 MIGRATIONS-Eintraege wirklich aus, bevor
-        // run_migrations den Rest uebernehmen soll.
+        // Echtes Basis-Schema (ohne Migrationsspalten), nur die ersten 3 Schritte
+        // ausfuehren; run_migrations muss den Rest nachholen.
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         for migration in &MIGRATIONS[0..3] {
@@ -544,15 +415,9 @@ mod tests {
 
         let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
         assert_eq!(version, CURRENT_SCHEMA_VERSION);
-        // Stichprobe: eine Spalte aus einem SPAETEN Migrationsschritt (z.B.
-        // trash_path, Schritt 20) muss existieren - war zu Beginn dieses
-        // Tests garantiert noch nicht vorhanden, da nur Schritt 1-3 real
-        // ausgefuehrt wurden.
+        // Spalte aus einem spaeten Schritt (trash_path, Schritt 20).
         conn.query_row("SELECT COUNT(trash_path) FROM files", [], |_| Ok(())).unwrap();
-        // Gegenprobe: eine Spalte aus Schritt 6 (folders.parent_id) muss
-        // ebenfalls existieren, obwohl sie NICHT in den vorab manuell
-        // ausgefuehrten ersten 3 Schritten enthalten war - beweist, dass
-        // run_migrations tatsaechlich ab Schritt 4 weitergemacht hat.
+        // Schritt 6 (folders.parent_id) lief ebenfalls, also ging es ab Schritt 4 weiter.
         conn.query_row("SELECT COUNT(parent_id) FROM folders", [], |_| Ok(())).unwrap();
     }
 
@@ -568,17 +433,8 @@ mod tests {
 
     #[test]
     fn a_failing_step_does_not_leave_a_half_applied_schema_change_committed() {
-        // Deckt die H-02-Korrektur ab: Migration + PRAGMA user_version
-        // muessen in EINER Transaktion laufen. Korrektur nach dritter
-        // Review-Runde: der Fehler muss INNERHALB derselben Migrations-
-        // Closure ausgeloest werden, die auch das ALTER TABLE ausfuehrt -
-        // NICHT als zweiter, separater Migrations-Schritt. Da jeder
-        // Schritt seine eigene Transaktion bekommt (siehe
-        // run_migrations_with unten), wuerde ein separater zweiter Schritt
-        // bedeuten, dass der erste Schritt (mit dem ALTER TABLE) laengst
-        // erfolgreich committet wurde, BEVOR der zweite ueberhaupt
-        // beginnt - das wuerde user_version == 1 und eine existierende
-        // Spalte ergeben, im Widerspruch zu den folgenden Assertions.
+        // Der Fehler muss in derselben Closure wie das ALTER TABLE entstehen; ein
+        // eigener zweiter Schritt haette seine eigene Transaktion.
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         let failing_migrations: &[MigrationStep] = &[
@@ -591,25 +447,16 @@ mod tests {
         assert!(result.is_err());
         let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
         assert_eq!(version, 0, "user_version darf nicht erhoeht werden, wenn der Schritt insgesamt fehlschlaegt");
-        // Da beide Anweisungen (ALTER TABLE + user_version) in EINER
-        // Transaktion liefen, die wegen des zweiten (simulierten) Fehlers
-        // zurueckgerollt wurde, darf test_marker_column NICHT existieren -
-        // ansonsten waere die Spalte real angelegt, aber nie als erledigt
-        // vermerkt worden (genau die urspruengliche H-02-Luecke).
+        // Zurueckgerollt: die Spalte darf nicht existieren.
         let column_exists = conn
             .query_row("SELECT test_marker_column FROM files LIMIT 0", [], |_| Ok(()))
             .is_ok();
         assert!(!column_exists, "ALTER TABLE muss mit user_version zusammen zurueckgerollt werden");
     }
 
-    /// Der wichtigste Test in dieser Datei: deckt genau die im Kommentar an
-    /// `add_stp_to_file_type_check` beschriebene Kaskaden-Falle ab. Baut
-    /// eine DB im ALTEN Schema (CHECK ohne 'stp', wie eine echte
-    /// Bestands-DB vor diesem Upgrade), aktiviert `foreign_keys` (wie
-    /// `repository::init` es tut - OHNE das waere die Falle in diesem Test
-    /// gar nicht scharf), seedet Zeilen in JEDER Kind-Tabelle von `files`
-    /// und prueft nach `run_migrations`, dass keine einzige davon durch den
-    /// Tabellen-Rebuild kaskadierend geloescht wurde.
+    /// Kaskaden-Falle aus `rebuild_files_table_with_check`: altes Schema,
+    /// foreign_keys aktiv (wie in repository::init), Zeilen in jeder Kind-Tabelle.
+    /// Nach der Migration darf keine davon fehlen.
     #[test]
     fn migrating_preserves_all_child_rows_and_widens_the_file_type_check() {
         let mut conn = Connection::open_in_memory().unwrap();
@@ -672,14 +519,9 @@ mod tests {
              INSERT INTO print_log (id, file_id, printed_at, created_at) VALUES (1, 2, '2020-01-02T00:00:00Z', '2020-01-02T00:00:00Z');",
         )
         .unwrap();
-        // Wie repository::init: SCHEMA_SQL laeuft IMMER zuerst (CREATE TABLE
-        // IF NOT EXISTS - legt die von den obigen ALTER-TABLE-Migrationen
-        // vorausgesetzten Tabellen wie filament_spools an, ruehrt die oben
-        // bewusst unvollstaendig angelegten Tabellen aber nicht an).
+        // Wie repository::init: SCHEMA_SQL zuerst (legt fehlende Tabellen an).
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
-        // Muss VOR run_migrations aktiv sein - genau wie repository::init es
-        // tut - sonst wuerde dieser Test die eigentliche Kaskaden-Falle gar
-        // nicht scharf schalten (DROP TABLE cascadet nur bei foreign_keys=ON).
+        // Wie repository::init; nur mit foreign_keys=ON ist die Falle scharf.
         conn.pragma_update(None, "foreign_keys", true).unwrap();
 
         run_migrations(&mut conn).unwrap();
@@ -698,9 +540,7 @@ mod tests {
         assert_eq!(count("SELECT COUNT(*) FROM collection_files WHERE collection_id = 1 AND file_id = 1"), 1, "Collection-Zuordnung darf nicht verloren gehen");
         assert_eq!(count("SELECT COUNT(*) FROM print_log WHERE file_id = 2"), 1, "Druck-Log darf nicht verloren gehen");
 
-        // id-Erhalt: file_tags/file_metadata/etc. referenzieren weiterhin
-        // dieselben ids - waere ein Rebuild ohne explizite id-Spalte in der
-        // Kopie erfolgt, waeren die ids der Kind-Tabellen jetzt verwaist.
+        // Die ids bleiben erhalten, sonst waeren die Kind-Zeilen verwaist.
         let file1_path: String = conn.query_row("SELECT path FROM files WHERE id = 1", [], |r| r.get(0)).unwrap();
         assert_eq!(file1_path, "/tmp/a.3mf");
 
@@ -710,11 +550,7 @@ mod tests {
         )
         .expect("file_type='stp' muss nach der Migration erlaubt sein");
 
-        // Deckt den ZWEITEN Rebuild-Schritt (add_obj_to_file_type_check) ab,
-        // der auf der vom ersten Schritt bereits umgebauten Tabelle noch
-        // einmal denselben Rebuild durchfuehrt - beweist, dass zwei
-        // aufeinanderfolgende Rebuild-Migrationen sich nicht gegenseitig
-        // die Kind-Tabellen-Beziehungen kaputt machen.
+        // Zweiter Rebuild (obj) auf der schon umgebauten Tabelle.
         conn.execute(
             "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at) VALUES ('e.obj', '/tmp/e.obj', 'obj', 1, '2020-01-01T00:00:00Z')",
             [],
@@ -740,11 +576,8 @@ mod tests {
         assert!(index_names.contains(&"idx_files_file_type".to_string()));
     }
 
-    /// Regressionstest v0.12.1: Kataloge aus der Zeit der Google-Drive-
-    /// Anbindung (bis v0.5.0) koennen noch Zeilen mit `origin = 'gdrive'`
-    /// enthalten. Der Rebuild legt `files` mit `CHECK (origin IN ('local'))`
-    /// neu an - vor dem Fix scheiterte `INSERT INTO files_new SELECT *` an
-    /// genau diesen Zeilen, die App brach im Setup-Hook ab und startete nie.
+    /// Kataloge aus der Google-Drive-Zeit koennen `origin = 'gdrive'` enthalten;
+    /// der Rebuild mit `CHECK (origin IN ('local'))` liess die App sonst nicht starten.
     #[test]
     fn migrating_a_catalog_with_leftover_cloud_rows_turns_them_into_local_rows() {
         let mut conn = Connection::open_in_memory().unwrap();
@@ -801,13 +634,7 @@ mod tests {
 
     #[test]
     fn a_database_from_a_newer_schema_version_is_rejected() {
-        // Korrektur nach sechster Review-Runde (P1): ohne diese Pruefung
-        // wuerde run_migrations_with jeden Schritt uebergehen (jede
-        // step_version <= current) und stillschweigend Ok(()) liefern,
-        // wenn die DB bereits eine HOEHERE user_version als
-        // CURRENT_SCHEMA_VERSION hat - z.B. weil sie mit einer neueren
-        // App-Version erstellt wurde, deren Schema diese (aeltere) Version
-        // nicht kennt.
+        // Eine DB aus einer neueren App-Version muss abgelehnt werden.
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         conn.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION + 1).unwrap();
@@ -848,8 +675,7 @@ mod tests {
         assert!(bad.is_err(), "CHECK erlaubt nur filament/resin");
     }
 
-    /// Reihenfolge nach dem Merge v0.13.1 -> v0.14.0 (final review I-1):
-    /// `kind` bleibt auf 32 (wie ausgeliefert), danach die Druckeranbindung.
+    /// `kind` bleibt auf 32 (wie in v0.13.1 ausgeliefert), danach die Druckeranbindung.
     #[test]
     fn the_kind_step_stays_at_the_shipped_position_32() {
         assert_eq!(KIND_MIGRATION_VERSION, 32);
@@ -862,9 +688,8 @@ mod tests {
         assert_eq!(version, 32);
     }
 
-    /// Master-Entwicklungs-DBs aus der Zeit vor dem Merge standen auf
-    /// user_version 34 (alte Nummerierung: Druckeranbindung auf 32-34), aber
-    /// ohne `kind`. Schritt 36 holt die Spalte nach, auch ueber `init`.
+    /// Entwicklungs-DBs mit alter Nummerierung standen auf 34, ohne `kind`.
+    /// Schritt 36 holt die Spalte nach, auch ueber `init`.
     #[test]
     fn a_master_dev_db_at_version_34_without_kind_gets_the_column_on_init() {
         let mut conn = Connection::open_in_memory().unwrap();
@@ -902,8 +727,7 @@ mod tests {
         assert!(bad.is_err(), "auch der nachgeholte Schritt bringt den CHECK mit");
     }
 
-    /// Stand vor Schritt 37 (v0.14.0): Drucker ohne `kind`, Einheiten mit
-    /// dem alten CHECK ohne 'resin_vat', eine Spule im Fach.
+    /// Stand vor Schritt 37: Drucker ohne `kind`, alter Einheiten-CHECK, eine Spule im Fach.
     fn db_before_resin_printers() -> Connection {
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();

@@ -25,12 +25,7 @@ const APPIMAGE_ENV_VARS_TO_STRIP: &[&str] = &[
     "WEBKIT_DISABLE_DMABUF_RENDERER",
 ];
 
-/// Ueber die Slicer-Registry (M-06, Task 11) an das Frontend zurueckgegebene
-/// Sicht auf einen `registered_slicers`-Eintrag. `is_auto_detected` ist
-/// hier bewusst NICHT enthalten - das Frontend braucht diese Unterscheidung
-/// aktuell nicht, jeder registrierte Eintrag (ob manuell oder automatisch
-/// erkannt) ist gleichermassen vertrauenswuerdig, sobald er in der Tabelle
-/// steht.
+/// Sicht des Frontends auf einen `registered_slicers`-Eintrag.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SlicerDto {
@@ -38,31 +33,15 @@ pub struct SlicerDto {
     pub name: String,
     pub executable_path: String,
 }
-// Muss async sein, obwohl kein .await im Rumpf steht: eine synchrone
-// Tauri-Command-Funktion laeuft direkt auf dem IPC-Dispatch-Thread (siehe
-// import_files/import_folder, die aus demselben Grund schon async sind).
-// blocking_pick_file() blockiert diesen Thread, bis der native Dialog
-// geschlossen wird - lief die Funktion synchron, waere das genau der
-// Thread, den GTK fuer die eigene Fensterschleife (und damit fuer den
-// Dialog selbst) braucht: ein Deadlock, der die App komplett einfrieren
-// liess. Als async fn dispatcht Tauri sie stattdessen auf den
-// Async-Runtime-Thread-Pool.
-/// Kernlogik, getrennt vom Tauri-Dialog gehalten (gleiche Konvention wie
-/// `move_file_to_folder_with_conn` etc.), damit sie direkt testbar ist - der
-/// Dialog selbst laesst sich nicht sinnvoll unit-testen.
+/// Kernlogik der Registrierung, ohne Dialog, damit testbar.
 pub(crate) fn register_slicer_with_conn(conn: &Connection, name: String, executable_path: String) -> CmdResult<SlicerDto> {
-    validate_slicer_path(&executable_path)?; // bestehende Pruefung wiederverwendet, nicht ersetzt
+    validate_slicer_path(&executable_path)?;
     let id = db::insert_registered_slicer(conn, &name, &executable_path, false).map_err(|e| e.to_string())?;
     Ok(SlicerDto { id: id.to_string(), name, executable_path })
 }
-/// Oeffnet den nativen Datei-Dialog IM BACKEND (M-06/P0-Korrektur, zweite
-/// Review-Runde) - das Frontend uebergibt hier an keiner Stelle einen selbst
-/// konstruierten Pfad-String, einzige Quelle fuer `executable_path` ist die
-/// vom Nutzer im Dialog getroffene Auswahl. Analog zu `pick_and_read_image`,
-/// das denselben `blocking_pick_file()`-Ansatz bereits fuer Bilder nutzt.
-/// Muss aus demselben Grund wie `pick_and_read_image` async sein:
-/// `blocking_pick_file()` blockiert den aufrufenden Thread, bis der native
-/// Dialog geschlossen wird.
+/// Oeffnet den Datei-Dialog im Backend: der Pfad kommt nur aus der Auswahl des
+/// Nutzers, nie als String vom Frontend. async, weil ein synchroner Command auf
+/// dem Thread laeuft, den GTK fuer den Dialog braucht (Deadlock).
 #[tauri::command]
 pub async fn pick_and_register_slicer(app: tauri::AppHandle, state: State<'_, AppState>) -> CmdResult<Option<SlicerDto>> {
     let dialog = app.dialog().file();
@@ -92,19 +71,9 @@ pub fn list_registered_slicers(state: State<AppState>) -> CmdResult<Vec<SlicerDt
                 .collect()
         })
 }
-// Security-Review 2026-09-19, Finding Z-1 (M-06): eine echte Pfad-Allowlist
-// (nur automatisch erkannte ODER nachweislich per Datei-Dialog gewaehlte
-// Binaries) braucht eine backend-seitig persistierte Slicer-Liste. Das ist
-// jetzt `registered_slicers` (Task 11, siehe migrations.rs) statt des
-// frueheren, ausschliesslich im Frontend-localStorage gefuehrten Zustands -
-// `open_in_slicer` nimmt seitdem keinen freien Pfad mehr entgegen, sondern
-// ausschliesslich eine zuvor registrierte `slicer_id`
-// (`resolve_registered_slicer_and_model` unten). `validate_slicer_path`
-// bleibt zusaetzlich bestehen und wird sowohl bei der Registrierung als auch
-// bei jeder Aufloesung erneut angewendet: sie stellt sicher, dass der
-// registrierte Pfad tatsaechlich (noch) auf eine existierende, ausfuehrbare
-// Datei zeigt, statt jeden gespeicherten String klaglos an process::Command
-// zu uebergeben.
+// `open_in_slicer` startet nur registrierte Slicer (`slicer_id`), nie einen
+// freien Pfad. Diese Pruefung laeuft bei der Registrierung und bei jedem Start
+// erneut: der Pfad muss (noch) auf eine existierende, ausfuehrbare Datei zeigen.
 fn validate_slicer_path(slicer_path: &str) -> CmdResult<()> {
     let path = Path::new(slicer_path);
     let metadata = std::fs::metadata(path)
@@ -132,13 +101,8 @@ fn validate_slicer_path(slicer_path: &str) -> CmdResult<()> {
     }
     Ok(())
 }
-/// Prueft das ZWEITE `Command`-Argument von `open_in_slicer`. Auch wenn der
-/// Slicer-Pfad selbst schon durch `validate_slicer_path` geht, ist der
-/// uebergebene Modell-Pfad bisher ungeprueft an den externen Prozess
-/// gewandert (Security-Review 2026-09-19, Finding I-5): ein mit "-"
-/// beginnender Wert wuerde vom Slicer als CLI-Flag gedeutet, ein beliebiger
-/// anderer Pfad/eine andere Endung hat in einem "im Slicer oeffnen"-Aufruf
-/// nichts zu suchen.
+/// Prueft das Modell-Argument fuer den Slicer: ein fuehrendes "-" waere ein
+/// CLI-Flag, und nur slicebare Dateien sind erlaubt.
 fn validate_slicer_target_file(file_path: &str) -> CmdResult<()> {
     let path = Path::new(file_path);
     let file_name = path
@@ -162,11 +126,7 @@ struct ResolvedSlicerLaunch {
     executable_path: String,
     model_path: String,
 }
-/// Reine Aufloesungs- und Validierungslogik, GETRENNT vom eigentlichen
-/// Prozessstart (Korrektur, vierte Review-Runde): dadurch ist der
-/// sicherheitsrelevante Teil (Slicer registriert? Pfade gueltig? Datei
-/// existiert und hat eine erlaubte Endung?) ohne Seiteneffekt (kein echter
-/// `Command::spawn()`) unit-testbar.
+/// Aufloesung und Pruefung ohne Prozessstart, damit ohne Seiteneffekt testbar.
 fn resolve_registered_slicer_and_model(
     conn: &Connection,
     file_id: &str,
@@ -182,9 +142,7 @@ fn resolve_registered_slicer_and_model(
     validate_slicer_target_file(&file.path)?;
     Ok(ResolvedSlicerLaunch { executable_path: slicer.executable_path, model_path: file.path })
 }
-/// Echter Prozessstart - bewusst NICHT unit-getestet (siehe
-/// `resolve_registered_slicer_and_model`); bei Bedarf kann ein
-/// plattformspezifischer Launch-Test separat ergaenzt werden.
+/// Echter Prozessstart, bewusst nicht unit-getestet.
 fn launch_slicer(resolved: &ResolvedSlicerLaunch) -> CmdResult<()> {
     let mut cmd = std::process::Command::new(&resolved.executable_path);
     cmd.arg(&resolved.model_path);
@@ -206,17 +164,9 @@ pub fn open_in_slicer(state: State<AppState>, file_id: String, slicer_id: String
     let conn = lock_db(&state)?;
     open_in_slicer_with_conn(&conn, &file_id, &slicer_id)
 }
-/// Fuehrt die bestehende Best-Effort-Autoerkennung (`slicers::detect_slicers`)
-/// aus und traegt neu gefundene Slicer ueber `db::insert_registered_slicer`
-/// (`is_auto_detected = true`) in dieselbe Registry ein wie manuell per
-/// Dialog hinzugefuegte - vorher landete die Autoerkennung ausschliesslich
-/// im Frontend-localStorage, ohne Backend-Vertrauensgrenze. Bereits bekannte
-/// Pfade (egal ob zuvor automatisch oder manuell registriert) werden nicht
-/// erneut eingefuegt, da `executable_path` `UNIQUE` ist und ein wiederholter
-/// Insert sonst bei jedem Scan fehlschlagen wuerde. Gibt die vollstaendige,
-/// aktuelle Registry zurueck (nicht nur die neu gefundenen Eintraege), damit
-/// das Frontend mit einem einzigen Aufruf sowohl den Scan ausloest als auch
-/// die anzuzeigende Liste erhaelt.
+/// Fuehrt die Autoerkennung aus und traegt neue Slicer (`is_auto_detected`) in
+/// die Registry ein; bekannte Pfade werden uebersprungen (UNIQUE). Gibt die
+/// vollstaendige Registry zurueck.
 #[tauri::command]
 pub fn scan_installed_slicers(state: State<AppState>) -> CmdResult<Vec<SlicerDto>> {
     let conn = lock_db(&state)?;
@@ -267,13 +217,7 @@ mod tests {
     }
     #[test]
     fn a_registered_slicer_resolves_to_a_validated_executable_and_model_path() {
-        // Testet ausschliesslich die Registry-/Sicherheits-Aufloesung
-        // (resolve_registered_slicer_and_model), OHNE tatsaechlich einen
-        // Prozess zu starten - dafuer wurde open_in_slicer_with_conn in
-        // resolve_registered_slicer_and_model() (validiert, testbar ohne
-        // Seiteneffekt) und launch_slicer() (echter Prozessstart, bewusst
-        // NICHT hier unit-getestet) aufgeteilt. Ein echter Launch-Test kann
-        // bei Bedarf separat und plattformspezifisch ergaenzt werden.
+        // Nur die Aufloesung, ohne Prozessstart.
         let dir = unique_test_dir("open_in_slicer_resolve");
         std::fs::create_dir_all(&dir).unwrap();
         let model_path = dir.join("model.3mf");
@@ -281,12 +225,7 @@ mod tests {
 
         let conn = db::connect_in_memory().unwrap();
         let file_id = db::test_insert_minimal_file(&conn, &model_path.to_string_lossy(), None).unwrap();
-        // std::env::current_exe() liefert plattformunabhaengig einen
-        // tatsaechlich existierenden UND ausfuehrbaren Pfad (unter Windows
-        // automatisch mit .exe-Endung) - register_slicer_with_conn()/
-        // validate_slicer_path() pruefen reale Existenz + Ausfuehrbarkeit, ein
-        // hartkodierter Unix-Pfad wie "/bin/true" existiert unter Windows nicht
-        // und wuerde dort jeden Test scheitern lassen, der ihn nutzt.
+        // current_exe() existiert und ist ausfuehrbar, auch unter Windows (/bin/true nicht).
         let fake_slicer = std::env::current_exe().unwrap();
         let slicer = register_slicer_with_conn(&conn, "Test Slicer".into(), fake_slicer.to_string_lossy().to_string()).unwrap();
 
@@ -326,10 +265,7 @@ mod tests {
         assert!(bad_bare_flag.is_err(), "a bare CLI flag must be rejected");
         assert!(bad_missing.is_err(), "a non-existent file must be rejected");
         assert!(bad_dir.is_err(), "a directory must be rejected");
-        // Regressionsschutz: .stp ist seit der STP/STEP-Katalogisierung ueber
-        // is_supported_extension importierbar, darf aber NICHT ueber
-        // is_sliceable_extension zum Slicer-Start zugelassen werden (siehe
-        // Kommentar an is_sliceable_extension in files.rs).
+        // .stp ist katalogisierbar, aber nicht im Slicer startbar.
         assert!(bad_stp.is_err(), "a .stp file must not be launchable in a slicer");
     }
 }

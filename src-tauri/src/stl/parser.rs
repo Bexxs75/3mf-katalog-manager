@@ -25,11 +25,8 @@ fn is_binary(bytes: &[u8]) -> bool {
     bytes.len() == BINARY_HEADER_LEN + 4 + count * BINARY_FACET_LEN
 }
 
-// Bounds-geprueft statt bytes[80..84] + unwrap(): is_binary() prueft die
-// Laenge zwar bereits vor jedem Aufruf, aber parse_binary() haengt sonst
-// implizit davon ab, immer NACH is_binary() aufgerufen zu werden - ein
-// Refactor, der das nicht mehr garantiert, wuerde sonst bei kurzen Dateien
-// paniken statt einen Parse-Fehler zurueckzugeben.
+// Bounds-geprueft statt bytes[80..84] + unwrap(): so gibt es auch ohne
+// vorheriges is_binary() einen Fehler statt einer Panik.
 fn read_facet_count(bytes: &[u8]) -> Option<usize> {
     let slice = bytes.get(BINARY_HEADER_LEN..BINARY_HEADER_LEN + 4)?;
     Some(u32::from_le_bytes(slice.try_into().unwrap()) as usize)

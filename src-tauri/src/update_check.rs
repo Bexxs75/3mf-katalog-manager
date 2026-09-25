@@ -14,18 +14,10 @@ fn parse_version(v: &str) -> Option<semver::Version> {
     semver::Version::parse(v).ok()
 }
 
-/// Vergleicht die laufende Version gegen einen GitHub-Release-Tag (z.B.
-/// "v0.7.9") nach echter SemVer-Praezedenz (ueber die `semver`-Crate), nicht
-/// mehr nur nach major.minor.patch. Dadurch werden auch Vorabversionen wie
-/// "0.14.0-gharac" korrekt eingeordnet: sie zaehlen als aelter als das
-/// zugehoerige finale Release "0.14.0", aber als neuer als das vorherige
-/// finale Release "0.13.1". Die GitHub-API (`/releases/latest`) liefert zwar
-/// nie ein Pre-Release als "latest", aber die Logik bleibt so auch fuer
-/// andere Aufrufer korrekt. Ein nicht parsbarer Tag (z.B. GitHub-API-
-/// Fehlerantwort ohne echtes Release) wird bewusst als "kein Update"
-/// behandelt statt einen Fehler zu werfen - der Aufrufer (die Tauri-Command-Ebene) muss so nie
-/// zwischen "kein Update" und "Antwort nicht verstanden" unterscheiden,
-/// beides fuehrt zum selben harmlosen UI-Zustand.
+/// Vergleicht die laufende Version mit einem Release-Tag (z.B. "v0.7.9") nach
+/// SemVer, damit auch Vorabversionen wie "0.14.0-gharac" richtig eingeordnet
+/// werden. Ein nicht parsbarer Tag gilt als "kein Update"; die UI muss so nie
+/// zwischen beidem unterscheiden.
 pub fn compare_versions(current: &str, latest_tag: &str, release_url: &str) -> UpdateCheckResult {
     let current_parsed = parse_version(current);
     let latest_parsed = parse_version(latest_tag);

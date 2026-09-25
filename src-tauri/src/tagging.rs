@@ -58,11 +58,8 @@ pub fn canonical_tag(name: &str) -> String {
         .unwrap_or_else(|| name.to_string())
 }
 
-/// Mehrdeutige Aliase (Nutzer-Entscheidung nach dem Gesamt-Review vom
-/// 2026-09-24): "mini" ist z. B. auch der Druckername "Bambu A1 mini",
-/// "large"/"grande" tauchen ebenso ausserhalb des Tag-Kontexts in
-/// Dateinamen auf. Verglichen wird ueber `alias_key`, damit auch
-/// Gross-/Kleinschreibvarianten ("Mini", "LARGE") erfasst werden.
+/// Mehrdeutige Aliase: "mini" steht z.B. auch in "Bambu A1 mini", "large" und
+/// "grande" tauchen auch sonst in Dateinamen auf. Vergleich ueber `alias_key`.
 const AMBIGUOUS_ALIASES: &[&str] = &["mini", "large", "grande"];
 
 fn is_ambiguous_alias(name: &str) -> bool {
@@ -220,9 +217,7 @@ mod tests {
 
     #[test]
     fn works_the_same_for_an_stp_filename_as_any_other_extension() {
-        // Regressionsschutz: Tag-Vorschlaege sind rein namens-/maß-/
-        // materialbasiert, keine Extension-Verzweigung - muss sich durch
-        // die STP/STEP-Katalogisierung nicht aendern.
+        // Tag-Vorschlaege haengen nicht von der Dateiendung ab.
         let tags = suggest_tags(&ctx("kabelhalter_v3_final.stp", None, None, &[]));
         assert_eq!(tags, vec!["kabelhalter".to_string()]);
     }

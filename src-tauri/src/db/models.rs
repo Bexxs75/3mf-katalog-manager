@@ -69,9 +69,8 @@ pub struct NewFile {
     pub slice_info_json: Option<String>,
 }
 
-/// Felder, die `rescan_file` (commands.rs) nach dem erneuten Einlesen einer
-/// bereits katalogisierten Datei unbedingt ueberschreibt - "neu einlesen"
-/// ist ein voller Refresh, kein Merge mit dem alten Zustand.
+/// Felder, die `rescan_file` beim erneuten Einlesen immer ueberschreibt (voller
+/// Refresh, kein Merge).
 pub struct ScannedMetadataUpdate {
     pub dimensions_mm: Option<[f64; 3]>,
     pub volume_cm3: Option<f64>,
@@ -98,9 +97,7 @@ pub struct FileRecord {
     pub folder_id: Option<i64>,
     pub origin: String,
     pub sync_status: String,
-    // Ueberbleibsel der entfernten Cloud-Synchronisation (siehe
-    // project_3mf_katalog_manager_major_features_20260912-Memory), Spalte
-    // bewusst nicht per Migration gedroppt.
+    // Rest der entfernten Cloud-Synchronisation; Spalte bewusst nicht gedroppt.
     #[allow(dead_code)]
     pub cloud_id: Option<String>,
     pub file_size_bytes: i64,
@@ -139,9 +136,7 @@ pub struct FolderRecord {
     pub path: String,
 }
 
-/// Maschinenlokale Registry vertrauenswuerdiger Slicer-Executables (M-06,
-/// Task 11) - siehe `registered_slicers`-Migration in `migrations.rs` und
-/// `replace_catalog_db` in `commands.rs`.
+/// Maschinenlokale Registry vertrauenswuerdiger Slicer (siehe `replace_catalog_db`).
 #[derive(Debug, Clone)]
 pub struct RegisteredSlicer {
     pub id: i64,
@@ -163,9 +158,9 @@ pub struct CreatorCount {
     pub count: i64,
 }
 
-/// Art eines Lager-Eintrags (v0.13.1). Bei `SPOOL_KIND_RESIN` bedeuten
+/// Art eines Lager-Eintrags. Bei `SPOOL_KIND_RESIN` bedeuten
 /// `original_weight_g`/`remaining_weight_g` Milliliter; Resin steckt nie in
-/// einem Fach.
+/// einem Filament-Fach.
 pub const SPOOL_KIND_FILAMENT: &str = "filament";
 pub const SPOOL_KIND_RESIN: &str = "resin";
 pub const SPOOL_KINDS: &[&str] = &[SPOOL_KIND_FILAMENT, SPOOL_KIND_RESIN];
@@ -209,7 +204,7 @@ pub struct NewFilamentSpool {
 pub struct PrinterRecord {
     pub id: i64,
     pub name: String,
-    /// "filament" oder "resin" (v0.14.0).
+    /// "filament" oder "resin".
     pub kind: String,
 }
 

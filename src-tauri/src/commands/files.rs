@@ -1,18 +1,12 @@
 use super::*;
 
-pub(crate) const MAX_CUSTOM_IMAGE_BYTES: usize = 5 * 1024 * 1024; // 5 MB
-                                                       // Base64 blaeht Rohdaten auf 4/3 auf (plus Padding) - Obergrenze fuer den
-                                                       // noch nicht dekodierten String in `set_render_snapshot`.
+pub(crate) const MAX_CUSTOM_IMAGE_BYTES: usize = 5 * 1024 * 1024;
+// Base64 blaeht um 4/3 auf: Obergrenze fuer den noch kodierten String in `set_render_snapshot`.
 const MAX_RENDER_SNAPSHOT_BASE64_BYTES: usize = MAX_CUSTOM_IMAGE_BYTES / 3 * 4 + 4;
 
-/// Schlanke Projektion von `ModelFileDto` fuer die Katalog-Uebersicht
-/// (Grid/Liste, siehe Finding M-01): enthaelt bewusst KEIN `customImage`
-/// und KEINE `materials`/`tags` - diese werden nur auf der Detailseite ueber
-/// `list_files_by_ids([id])` nachgeladen. `thumbnailImage`, `renderSnapshotImage`
-/// UND `creator` bleiben enthalten (siehe Kommentar an `db::FileSummary` fuer
-/// die Vermessung, die den urspruenglichen Ausschluss von `renderSnapshotImage`
-/// widerlegt hat, sowie fuer den Creator-Filter-Bug, der aus dem Fehlen von
-/// `creator` hier resultierte - beides Bugfix 2026-09-20).
+/// Schlanke Projektion von `ModelFileDto` fuer Grid und Liste: ohne
+/// `customImage`, `materials` und `tags`, die laedt nur die Detailseite ueber
+/// `list_files_by_ids([id])` nach.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileSummaryDto {
@@ -20,11 +14,7 @@ pub struct FileSummaryDto {
     pub name: String,
     pub path: String,
     pub file_type: String,
-    // Bewusste Abweichung von einem `Option<String>`-Vorschlag im Review:
-    // das bestehende `ModelFileDto.folder_id` nutzt denselben leeren-String-
-    // als-"kein Ordner"-Sentinel, und das Frontend (`ModelFile.folderId:
-    // string`) ist bereits durchgaengig darauf ausgelegt - siehe
-    // Kommentar in `to_dto()`/`list_files_by_ids` unten.
+    // Leerer String = kein Ordner, wie in `ModelFileDto.folder_id` und im Frontend.
     pub folder_id: String,
     pub file_size_bytes: i64,
     pub dimensions_mm: Option<[f64; 3]>,
@@ -133,14 +123,8 @@ pub fn list_file_summaries(state: State<AppState>) -> CmdResult<Vec<FileSummaryD
         })
         .collect())
 }
-/// Nachtrag zu Finding M-01: die schlanke `list_file_summaries` liefert
-/// bewusst keine Tags mehr, wodurch die Sidebar-Tag-Filterung im Frontend
-/// (`m.tags.includes(activeTag)`) fuer noch nicht einzeln geoeffnete
-/// Modelle keine Treffer mehr fand. Dieser Command liefert alle Datei->Tag-
-/// Zuordnungen in EINER Abfrage (siehe `db::list_all_file_tags`), vom
-/// Frontend nach dem Laden der Summaries einmal fuer die gesamte Liste
-/// abgerufen und clientseitig gemergt - kein Pro-Zeile-Nachladen, bleibt
-/// also O(1) Queries.
+/// Alle Datei-Tag-Zuordnungen in einer Abfrage, weil `list_file_summaries`
+/// keine Tags liefert; das Frontend fuehrt sie fuer die Tag-Filterung zusammen.
 #[tauri::command]
 pub fn list_all_file_tags(state: State<AppState>) -> CmdResult<HashMap<String, Vec<String>>> {
     let conn = lock_db(&state)?;
@@ -151,11 +135,8 @@ pub fn list_all_file_tags(state: State<AppState>) -> CmdResult<HashMap<String, V
     }
     Ok(by_file)
 }
-/// Generischer Nachlade-Command fuer volle Modelldaten (Bilder/Materialien/
-/// Tags/Metadata), die `list_file_summaries` bewusst nicht mitliefert. Kein
-/// neuer Einzeldatensatz-Command - die Detailseite ruft dies mit einer
-/// Liste der Laenge 1 auf (`listFilesByIds([id])`), siehe Task-6-Brief
-/// Korrektur nach fuenfter Review-Runde.
+/// Laedt die vollen Modelldaten, die `list_file_summaries` nicht liefert
+/// (die Detailseite ruft das mit einer einzelnen id auf).
 #[tauri::command]
 pub fn list_files_by_ids(state: State<AppState>, ids: Vec<String>) -> CmdResult<Vec<ModelFileDto>> {
     let conn = lock_db(&state)?;
@@ -269,16 +250,9 @@ pub fn delete_print_log_entry(state: State<AppState>, entry_id: String) -> CmdRe
     let conn = lock_db(&state)?;
     db::delete_print_log_entry(&conn, id).map_err(|e| e.to_string())
 }
-/// Gemeinsame Trust-Boundary-Hilfsfunktion fuer jede Stelle, die eine vom
-/// Nutzer ausgewaehlte Bilddatei liest (L-01, Senior-Code-Review 2026-09-19).
-/// Vereinheitlicht das bisher nur bei upload_custom_image() vorhandene
-/// Groessenlimit auch fuer pick_and_read_image() - UND liest TOCTOU-frei:
-/// statt Groesse vorab per metadata() zu pruefen und danach vollstaendig
-/// zu lesen (Race-Fenster, falls die Datei zwischen beiden Aufrufen waechst),
-/// wird direkt mit einem auf `max_bytes + 1` begrenzten Reader gelesen. Sind
-/// mehr als `max_bytes` tatsaechlich gelesen worden, war die Datei zu gross -
-/// das Limit ist damit unabhaengig vom Zeitpunkt einer Groessenaenderung
-/// garantiert, nicht nur zum Zeitpunkt einer fruehen Vorabpruefung.
+/// Liest eine vom Nutzer gewaehlte Bilddatei mit Groessenlimit, direkt ueber
+/// einen auf `max_bytes + 1` begrenzten Reader statt einer Vorabpruefung per
+/// metadata(): so gilt das Limit auch, wenn die Datei waehrenddessen waechst.
 pub(crate) fn read_image_bounded(path: &std::path::Path, max_bytes: u64) -> CmdResult<Vec<u8>> {
     use std::io::Read;
     let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
@@ -310,10 +284,9 @@ pub async fn pick_and_read_image(app: tauri::AppHandle) -> CmdResult<Option<Stri
         base64::engine::general_purpose::STANDARD.encode(bytes),
     ))
 }
-/// Kernlogik von `add_tag` (Test-Huelle wie `move_file_to_folder_with_conn`):
-/// Namen automatischer Tags in jeder Sprache werden auf die Kennung
-/// normalisiert, damit z. B. "Multipart" keinen zweiten Tag neben
-/// "mehrteilig" anlegt.
+/// Kernlogik von `add_tag`: Namen automatischer Tags werden in jeder Sprache
+/// auf die Kennung normalisiert, damit z.B. "Multipart" keinen zweiten Tag
+/// neben "mehrteilig" anlegt.
 fn add_tag_with_conn(conn: &Connection, file_id: i64, tag: &str) -> CmdResult<()> {
     db::add_tag_to_file(conn, file_id, &tagging::canonical_tag(tag)).map_err(|e| e.to_string())
 }
@@ -334,10 +307,7 @@ pub fn remove_tag(state: State<AppState>, file_id: String, tag: String) -> CmdRe
     // machen, sobald er nicht (mehr) der Kennung entspricht.
     db::remove_tag_from_file(&conn, id, &tag).map_err(|e| e.to_string())
 }
-/// Kernlogik von `move_file_to_folder`, getrennt von der `State<AppState>`-
-/// Huelle gehalten, damit sie in Tests direkt gegen eine In-Memory-`Connection`
-/// aufgerufen werden kann (gleiche Konvention wie `import_many_with_conn`/
-/// `rescan_file`).
+/// Kernlogik von `move_file_to_folder`, ohne `State`, damit testbar.
 fn move_file_to_folder_with_conn(
     conn: &Connection,
     file_id: i64,
@@ -371,10 +341,8 @@ fn move_file_to_folder_with_conn(
     if let Err(db_err) =
         db::update_file_folder(conn, file_id, folder_id, &new_path.to_string_lossy())
     {
-        // Kompensation: physischen Move rueckgaengig machen, damit
-        // Filesystem und DB nicht auseinanderlaufen (H-01). move_file
-        // selbst hat bereits ein No-Clobber-Gate (C-01), der Rueckweg
-        // darf also ebenfalls nicht versehentlich etwas ueberschreiben.
+        // Physischen Move rueckgaengig machen, damit Dateisystem und DB nicht
+        // auseinanderlaufen. move_file ueberschreibt nie etwas.
         if let Err(rollback_err) = move_file(&new_path, &old_path) {
             return Err(format!(
                 "DB-Update fehlgeschlagen ({db_err}) UND Rollback der Dateiverschiebung fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}, DB verweist weiter auf {}",
@@ -386,12 +354,8 @@ fn move_file_to_folder_with_conn(
     }
     Ok(())
 }
-/// Verschiebt eine Datei physisch in das Verzeichnis eines (echten)
-/// Zielordners und aktualisiert `folder_id`/`path` in der DB entsprechend.
-/// `folder_id: None` bedeutet "an aktuellem Ort belassen" (siehe Hinweis
-/// im Task-4-Brief - es gibt keinen globalen Basisordner, an den man
-/// zurueckverschieben koennte; der Zweig bleibt fuer zukuenftige
-/// Erweiterung ohne API-Bruch implementiert).
+/// Verschiebt eine Datei in das Verzeichnis eines Zielordners und aktualisiert
+/// `folder_id`/`path`. `folder_id: None` laesst sie am aktuellen Ort.
 #[tauri::command]
 pub fn move_file_to_folder(
     state: State<AppState>,
@@ -410,11 +374,8 @@ pub fn move_file_to_folder(
     let sensitive_dirs = state.sensitive_dirs.clone();
     move_file_to_folder_with_conn(&conn, id, target_id, &sensitive_dirs)
 }
-/// Sicherheits-Grenze fuer `rename_file`: `name` landet unmittelbar in einem
-/// `with_file_name`-Aufruf und muss deshalb eine einzelne, harmlose Pfad-
-/// Komponente sein - gleiche Begruendung wie `validate_folder_name` in
-/// `folders.rs` (CWE-22, erreichbar allein durch Text-Eingabe im
-/// "Umbenennen"-Feld).
+/// `name` landet in `with_file_name` und muss eine einzelne, harmlose
+/// Pfad-Komponente sein (CWE-22, wie `validate_folder_name`).
 fn validate_file_name(name: &str) -> CmdResult<()> {
     if name.trim().is_empty() {
         return Err("Dateiname darf nicht leer sein".to_string());
@@ -427,14 +388,8 @@ fn validate_file_name(name: &str) -> CmdResult<()> {
     }
     Ok(())
 }
-/// Kernlogik von `rename_file`, getrennt von der `State<AppState>`-Huelle
-/// gehalten (gleiche Konvention wie `move_file_to_folder_with_conn`/
-/// `rename_folder_with_conn`), damit sie in Tests direkt gegen eine
-/// In-Memory-`Connection` aufgerufen werden kann. Nutzt `std::fs::rename`
-/// statt `move_file` (Kopieren+Loeschen): Quelle und Ziel liegen immer im
-/// selben Verzeichnis, ein atomares Rename ist hier also sowohl korrekt als
-/// auch - anders als beim Verschieben zwischen (potenziell) unterschiedlichen
-/// Ordnern - der guenstigere Weg (kein voller Datei-Kopiervorgang noetig).
+/// Kernlogik von `rename_file`, ohne `State`, damit testbar. `fs::rename` statt
+/// `move_file`, weil Quelle und Ziel im selben Verzeichnis liegen.
 fn rename_file_with_conn(
     conn: &Connection,
     id: i64,
@@ -463,8 +418,7 @@ fn rename_file_with_conn(
     std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())?;
 
     if let Err(db_err) = db::rename_file(conn, id, &new_name, &new_path.to_string_lossy()) {
-        // Kompensation: physische Umbenennung rueckgaengig machen, damit
-        // Filesystem und DB nicht auseinanderlaufen (H-01-Muster).
+        // Umbenennung rueckgaengig machen, damit Dateisystem und DB nicht auseinanderlaufen.
         if let Err(rollback_err) = std::fs::rename(&new_path, &old_path) {
             return Err(format!(
                 "DB-Update fehlgeschlagen ({db_err}) UND Rollback der Datei-Umbenennung fehlgeschlagen ({rollback_err}) - Datei heisst jetzt {}, DB verweist weiter auf {}",
@@ -531,15 +485,9 @@ pub fn reorder_queue(state: State<AppState>, updates: Vec<QueuePositionUpdate>) 
     let mut conn = lock_db(&state)?;
     reorder_queue_with_conn(&mut conn, updates)
 }
-/// Kernlogik von `reorder_queue`, getrennt von der `State<AppState>`-Huelle
-/// gehalten, damit sie in Tests direkt gegen eine In-Memory-`Connection`
-/// aufgerufen werden kann (gleiche Konvention wie `import_many_with_conn`).
-///
-/// M-04: alle `file_id`s werden VOR jeder Schreiboperation validiert, und
-/// alle Positions-Updates laufen in genau einer Transaktion. Vorher lief pro
-/// Update ein eigenes `db::set_queue_position(...)?` ohne Transaktion - schlug
-/// das N-te Update fehl, blieben die ersten N-1 bereits committed und der
-/// Batch damit halb angewendet.
+/// Kernlogik von `reorder_queue`, ohne `State`, damit testbar. Alle ids werden
+/// vorab geprueft und alle Updates laufen in einer Transaktion: nie ein halb
+/// angewendeter Batch.
 fn reorder_queue_with_conn(
     conn: &mut Connection,
     updates: Vec<QueuePositionUpdate>,
@@ -601,10 +549,8 @@ pub fn set_render_snapshot(
 ) -> CmdResult<()> {
     use base64::Engine;
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
-    // Gleiche Obergrenze wie bei `upload_custom_image`/`add_print_log_entry`
-    // (Security-Review 2026-09-19, Finding A-2). Zuerst die Base64-Laenge
-    // pruefen, damit ein ueberdimensionierter String gar nicht erst dekodiert
-    // (und damit als Rohdaten zusaetzlich alloziert) wird.
+    // Obergrenze wie bei `upload_custom_image`. Erst die Base64-Laenge pruefen,
+    // damit ein riesiger String gar nicht erst dekodiert wird.
     if image_base64.len() > MAX_RENDER_SNAPSHOT_BASE64_BYTES {
         return Err(format!(
             "Bild ist zu groß - maximal {} MB erlaubt",
@@ -646,13 +592,9 @@ pub(crate) fn is_supported_extension(path: &Path) -> bool {
         })
         .unwrap_or(false)
 }
-/// Engerer Check als [`is_supported_extension`] - STP/STEP-Dateien sind zwar
-/// katalogisierbar, aber die meisten Slicer koennen kein rohes STEP
-/// importieren. Bewusst NICHT ueber is_supported_extension geteilt, damit
-/// die Erweiterung um stp/step dort nicht automatisch auch den
-/// Slicer-Start fuer STEP-Dateien freischaltet. OBJ ist dagegen ein
-/// echtes druckfertiges Mesh-Format (wie 3mf/stl) und deshalb hier
-/// ebenfalls erlaubt.
+/// Enger als [`is_supported_extension`]: STEP ist katalogisierbar, aber die
+/// meisten Slicer koennen es nicht importieren. OBJ ist ein druckfertiges Mesh
+/// und deshalb erlaubt.
 pub(crate) fn is_sliceable_extension(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
@@ -663,7 +605,7 @@ pub(crate) fn compute_content_hash(path: &Path) -> CmdResult<String> {
     use sha2::{Digest, Sha256};
     use std::io::Read;
 
-    const CHUNK_SIZE: usize = 1024 * 1024; // 1 MiB
+    const CHUNK_SIZE: usize = 1024 * 1024;
     let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let mut reader = std::io::BufReader::new(file);
     let mut hasher = Sha256::new();
@@ -677,16 +619,9 @@ pub(crate) fn compute_content_hash(path: &Path) -> CmdResult<String> {
     }
     Ok(format!("{:x}", hasher.finalize()))
 }
-/// Einmaliger Startup-Backfill fuer content_hash: die Spalte wurde erst mit
-/// dieser Version eingefuehrt und ist sonst nur fuer neu importierte Dateien
-/// gesetzt (import_one) - fuer den kompletten Bestand vor diesem Upgrade
-/// bliebe die Duplikaterkennung sonst dauerhaft blind. Anders als der
-/// creator-Backfill in db::repository::init() braucht dieser Schritt echten
-/// Datei-Zugriff (Hash ueber die tatsaechlichen Bytes), laeuft deshalb hier
-/// statt dort und wird beim Start aus lib.rs aufgerufen, nachdem die
-/// Connection steht. Eine seit dem Import verschobene/geloeschte Datei
-/// (compute_content_hash schlaegt fehl) wird geloggt und uebersprungen, nicht
-/// abgebrochen - gleiche Fehlerbehandlung wie in import_one/import_many.
+/// Einmaliger Backfill von content_hash beim Start fuer Dateien, die vor
+/// Einfuehrung der Spalte importiert wurden. Braucht Dateizugriff und laeuft
+/// deshalb hier statt in db::init. Fehlende Dateien werden geloggt und uebersprungen.
 pub(crate) fn backfill_content_hashes(conn: &Connection) {
     let missing = match db::list_files_missing_content_hash(conn) {
         Ok(rows) => rows,
@@ -709,23 +644,10 @@ pub(crate) fn backfill_content_hashes(conn: &Connection) {
         }
     }
 }
-/// Recursively walks `path`, collecting every supported model file found.
-/// A plain file is included as-is if its extension matches; unreadable
-/// directories are skipped rather than failing the whole scan.
-/// Sammelt rekursiv alle unterstuetzten Dateien unter `path`. Traversiert
-/// bewusst KEINE Symlinks - weder auf Verzeichnisse noch auf Dateien
-/// (Policy aus H-03, Senior-Code-Review 2026-09-19, zweite Runde
-/// verschaerft auf Datei-Symlinks): der Check steht bewusst VOR der
-/// is_dir()-Verzweigung, denn `Path::is_dir()` folgt Symlinks transparent
-/// (ein Verzeichnis-Symlink liefert `true`, ein Datei-Symlink `false` und
-/// waere sonst unbemerkt in den `is_supported_extension`-Zweig gefallen
-/// und importiert worden - erste Fassung dieser Funktion prüfte
-/// `is_symlink()` nur INNERHALB des `is_dir()`-Zweigs und deckte damit
-/// Datei-Symlinks nicht ab). Ein Link zurueck auf einen Elternordner
-/// wuerde ohne diesen Schutz zu unbegrenzter Rekursion fuehren, ein Link
-/// auf ein externes Ziel wuerde Dateien ausserhalb des vom Nutzer
-/// gewaehlten Imports einschliessen. Normale (nicht verlinkte) Unterordner
-/// und Dateien werden unveraendert importiert.
+/// Sammelt rekursiv alle unterstuetzten Dateien unter `path`; unlesbare
+/// Verzeichnisse werden uebersprungen. Folgt bewusst KEINEN Symlinks, weder auf
+/// Verzeichnisse (Endlosrekursion, Dateien ausserhalb der Auswahl) noch auf
+/// Dateien. Die Pruefung steht vor `is_dir()`, weil `is_dir()` Symlinks folgt.
 fn collect_supported_files(path: &Path, out: &mut Vec<PathBuf>) {
     if path.is_symlink() {
         return;
@@ -764,8 +686,7 @@ fn step_metadata(_path: &Path) -> (Option<[f64; 3]>, Option<f64>, Option<i64>) {
     (None, None, None)
 }
 
-/// Geometrie fuer die Vorschau. Ohne das Feature bleibt das Verhalten von
-/// v0.11.0 erhalten und die Ansicht zeigt den vorhandenen Platzhalter.
+/// Geometrie fuer die STEP-Vorschau; ohne das Feature zeigt die Ansicht den Platzhalter.
 #[cfg(feature = "step-preview")]
 fn step_geometry(path: &Path) -> CmdResult<Vec<RenderMesh>> {
     crate::step::parse_step_geometry(path).map_err(|e| e.to_string())
@@ -916,13 +837,9 @@ pub(crate) fn import_one(
     let spools = db::list_filament_spools(conn).map_err(|e| e.to_string())?;
     Ok(to_dto(file, &spools))
 }
-/// Liest die Datei einer bereits katalogisierten `FileRecord` erneut vom
-/// gespeicherten Pfad ein und ueberschreibt alle davon abgeleiteten Spalten
-/// (Maße, Volumen, Materialien, Metadaten, Thumbnail, Plattenzahl,
-/// Slice-Info) - fuer den Fall, dass der Nutzer die Datei inzwischen in
-/// OrcaSlicer/Bambu Studio gesliced und am selben Pfad ueberschrieben hat.
-/// Existiert die Datei am Pfad nicht mehr, bricht die Funktion mit einem
-/// Fehler ab, BEVOR irgendetwas in der DB veraendert wird.
+/// Liest eine katalogisierte Datei erneut ein und ueberschreibt alle daraus
+/// abgeleiteten Spalten, z.B. nachdem sie im Slicer neu gesliced wurde. Fehlt
+/// die Datei, bricht die Funktion ab, bevor die DB veraendert wird.
 pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFileDto> {
     let existing = db::get_file(conn, id)
         .map_err(|e| e.to_string())?
@@ -1041,11 +958,7 @@ pub(crate) fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) 
     let mut imported = Vec::new();
     let mut duplicate_count = 0i64;
 
-    // Eine einzige Transaktion fuer den ganzen Batch statt einer pro Datei
-    // (vorher: import_one -> insert_file oeffnete/committete je Aufruf) -
-    // SQLite fsynct bei jedem Commit, ein Ordner-Import mit vielen Dateien
-    // machte den Import dadurch spuerbar langsam (Finding, Review
-    // 2026-09-13).
+    // Eine Transaktion fuer den ganzen Batch: SQLite fsynct bei jedem Commit.
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
     for root in roots {
@@ -1096,11 +1009,8 @@ pub(crate) fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) 
             match import_one(&tx, &path, None, Some(content_hash), folder_id) {
                 Ok(dto) => imported.push(dto),
                 Err(e) if e.contains("UNIQUE constraint failed") => {
-                    // Pfad gehoert noch einer Papierkorb-Zeile (files.path ist
-                    // weiterhin UNIQUE, file_exists_by_path sieht geloeschte
-                    // Zeilen aber nicht mehr) - fuer den Nutzer ist das ein
-                    // Duplikat, kein stiller Fehlschlag (Finding 3, Review
-                    // 2026-09-12).
+                    // Der Pfad gehoert noch einer Papierkorb-Zeile (files.path ist UNIQUE);
+                    // fuer den Nutzer ist das ein Duplikat.
                     duplicate_count += 1;
                 }
                 Err(e) => eprintln!("[import] Import fehlgeschlagen für {path_str}: {e}"),
@@ -1192,16 +1102,11 @@ pub fn import_dropped(
     result.pending_archives = pending.claim_dropped(archives);
     Ok(result)
 }
-/// Oeffnet einen Pfad im systemeigenen Datei-Manager. Bewusst ohne eigene
-/// Plugin-Abhaengigkeit (analog zu `open_in_slicer`): startet direkt das
-/// jeweilige Betriebssystem-Kommando dafuer.
+/// Oeffnet einen Pfad im Datei-Manager des Systems.
 #[tauri::command]
 pub fn open_in_file_manager(path: String) -> CmdResult<()> {
-    // Nur echte, existierende Verzeichnisse oeffnen: haertet zusaetzlich
-    // gegen ein mit "-" beginnendes `path`, das manche Implementierungen
-    // von xdg-open/open/explorer als eigene Kommandozeilen-Option statt
-    // als Pfad interpretieren wuerden - ein Pfad, der kein reales
-    // Verzeichnis ist, kommt so gar nicht erst bis zum spawn().
+    // Nur existierende Verzeichnisse: ein Pfad mit fuehrendem "-" koennte sonst
+    // von xdg-open/open/explorer als Option gelesen werden.
     if !std::path::Path::new(&path).is_dir() {
         return Err("Pfad ist kein existierendes Verzeichnis".to_string());
     }
@@ -1290,12 +1195,8 @@ pub async fn get_model_geometry(
 ) -> Result<tauri::ipc::Response, String> {
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
 
-    // Der MutexGuard aus lock_db muss vor dem .await unten aus dem Scope
-    // laufen (nicht nur per drop()): std::sync::MutexGuard ist nicht Send,
-    // und der Compiler haelt ihn sonst faelschlich fuer potenziell ueber die
-    // .await-Grenze hinweg lebendig, was den Command-Handler nicht mehr
-    // Send-kompatibel macht (siehe rust-lang/rust#57478 - ein expliziter
-    // drop()-Aufruf allein genuegt dafuer nicht).
+    // Der MutexGuard muss per Scope vor dem .await enden; ein drop() reicht dem
+    // Compiler nicht (rust-lang/rust#57478), der Handler waere sonst nicht Send.
     let file = {
         let conn = lock_db(&state)?;
         db::get_file(&conn, id)
@@ -1568,13 +1469,8 @@ mod tests {
     }
     #[test]
     fn import_one_succeeds_inside_an_already_open_transaction() {
-        // Guards the transaction-batching fix (Review 2026-09-13):
-        // import_many_with_conn now opens ONE transaction for the whole batch
-        // and calls import_one within it. Before the fix, import_one wrote
-        // via db::insert_file, which opened its OWN transaction - nesting a
-        // second `BEGIN` on a connection that is already mid-transaction
-        // fails ("cannot start a transaction within a transaction"), so this
-        // test would have failed before the fix.
+        // import_many_with_conn oeffnet eine Transaktion fuer den ganzen Batch;
+        // import_one darf darin keine eigene oeffnen.
         use std::io::Write;
         use zip::write::SimpleFileOptions;
         use zip::ZipWriter;
@@ -1647,9 +1543,6 @@ mod tests {
             import_one(&conn, &file_path, None, None, None).expect("import should succeed");
         let file_id: i64 = imported.id.parse().unwrap();
 
-        // Zielordner direkt per ensure_folder_path anlegen (kein
-        // Command-Roundtrip noetig) - dst_dir liegt unter tmp, also ist tmp
-        // hier der "import_root".
         let folder_id = db::ensure_folder_path(&conn, &tmp, &dst_dir).expect("ensure_folder_path");
 
         move_file_to_folder_with_conn(&conn, file_id, Some(folder_id), &[])
@@ -1829,14 +1722,8 @@ mod tests {
         let conn = crate::db::connect_in_memory().expect("connect");
         let file_id =
             db::test_insert_minimal_file(&conn, &old_path.to_string_lossy(), None).unwrap();
-        // Ein hartes db::delete_file(file_id) waere hier wirkungslos:
-        // rename_file_with_conn laedt die Zeile zuerst per get_file() und
-        // wuerde dann sofort mit "file not found" abbrechen, OHNE den
-        // physischen Rename je auszufuehren - der Kompensationspfad wuerde
-        // nie erreicht. Stattdessen bleibt die Zeile bestehen, und ein
-        // Trigger laesst nur das UPDATE fehlschlagen, NACHDEM
-        // rename_file_with_conn die Datei bereits physisch umbenannt hat
-        // (gleiche Technik wie bei den anderen H-01-Kompensationstests).
+        // Die Zeile bleibt, ein Trigger laesst nur das UPDATE scheitern, nachdem die
+        // Datei umbenannt wurde (sonst bricht get_file() vorher ab).
         conn.execute_batch(&format!(
             "CREATE TRIGGER block_rename BEFORE UPDATE ON files
              WHEN NEW.id = {file_id}
@@ -2013,9 +1900,6 @@ mod tests {
         let result = rescan_file(&mut conn, id);
         assert!(result.is_err());
     }
-    /// Minimaler `NewFile` fuer den Fehlerfall-Test oben - nur Pfad/Typ sind
-    /// relevant, alle anderen Felder sind fuer `rescan_file` irrelevant, da die
-    /// Funktion bei fehlender Datei abbricht, bevor sie sie liest.
     fn sample_new_file_for_rescan_test(path: &std::path::Path) -> NewFile {
         NewFile {
             name: "missing.3mf".to_string(),
@@ -2052,10 +1936,7 @@ mod tests {
     fn add_and_list_print_log_entry_roundtrips_through_dto() {
         let mut conn = crate::db::connect_in_memory().expect("connect");
         let file = sample_file_record(1, None, "2026-09-13T00:00:00Z");
-        // sample_file_record baut nur ein FileRecord in-memory, nicht in der DB -
-        // fuer diesen Test wird stattdessen eine minimale echte Datei ueber
-        // insert_file angelegt, da add_print_log_entry einen echten file_id
-        // Fremdschluessel braucht.
+        // add_print_log_entry braucht eine echte file_id.
         let _ = file;
         let new_file = crate::db::models::NewFile {
             name: "cube.3mf".to_string(),
@@ -2124,13 +2005,8 @@ mod tests {
         .unwrap();
         let file_id =
             db::test_insert_minimal_file(&conn, &src_path.to_string_lossy(), None).unwrap();
-        // Eine ZWEITE Datei-Zeile, deren `path` bereits exakt dem Zielpfad
-        // entspricht, den move_file_to_folder_with_conn gleich physisch
-        // anlegen wird. files.path ist UNIQUE (schema.sql) - das nachfolgende
-        // db::update_file_folder(file_id, .., colliding_target_path) schlaegt
-        // dadurch garantiert NACH dem bereits erfolgreichen physischen Move
-        // fehl (nicht schon bei get_file() wie in der urspruenglichen,
-        // fehlerhaften Testfassung).
+        // Zweite Zeile mit genau dem Zielpfad: files.path ist UNIQUE, das DB-Update
+        // scheitert also erst nach dem physischen Move.
         db::test_insert_minimal_file(
             &conn,
             &colliding_target_path.to_string_lossy(),
@@ -2236,10 +2112,7 @@ mod tests {
     }
     #[test]
     fn compute_content_hash_does_not_allocate_proportional_to_file_size() {
-        // Grobe Rauch-Pruefung ohne externes Profiling-Tool: eine 50-MB-Datei
-        // muss in vertretbarer Zeit UND ohne Panik/OOM auf gaengiger CI-Hardware
-        // hashen - dient primaer als Dokumentation der Erwartung, nicht als
-        // exakte Speichermessung.
+        // Rauchtest: 50 MB muessen ohne Panik oder OOM hashen.
         let path = unique_test_dir("hash_large").join("big.bin");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         let chunk = vec![0xABu8; 1024 * 1024];
@@ -2257,10 +2130,7 @@ mod tests {
         let mut conn = db::connect_in_memory().unwrap();
         let id1 = db::test_insert_minimal_file(&conn, "/tmp/1.3mf", None).unwrap();
         let id2 = db::test_insert_minimal_file(&conn, "/tmp/2.3mf", None).unwrap();
-        // id 999999 existiert absichtlich nicht - erzwingt einen Fehler "in
-        // der Mitte" des Batches (upfront-Validierung faengt ihn zwar schon
-        // vor jeder Schreiboperation ab, aber der Test bleibt aussagekraeftig:
-        // keines der gueltigen Updates darf trotzdem committed sein).
+        // id 999999 existiert nicht; keines der gueltigen Updates darf committed sein.
         let updates = vec![
             QueuePositionUpdate {
                 file_id: id1.to_string(),
@@ -2320,23 +2190,14 @@ mod tests {
     #[test]
     fn queue_reorder_batch_rolls_back_an_already_applied_earlier_update_when_a_later_one_fails_inside_the_transaction(
     ) {
-        // Die obige "all_or_nothing"-Variante scheitert bereits in der
-        // Upfront-Validierung (VOR jeder Schreiboperation) - sie beweist also
-        // nicht, dass die Transaktion selbst ein Rollback durchfuehrt. Dieser
-        // Test erzwingt per Trigger stattdessen einen Fehler INNERHALB der
-        // Transaktion, NACHDEM das erste Update bereits geschrieben wurde,
-        // und prueft, dass genau dieses erste Update wieder zurueckgerollt
-        // wird - unter dem alten, nicht-transaktionalen Code waere es bereits
-        // einzeln committed gewesen.
+        // Die Variante oben scheitert schon in der Vorabpruefung. Hier scheitert per
+        // Trigger das zweite Update innerhalb der Transaktion; das erste muss
+        // zurueckgerollt sein.
         let mut conn = db::connect_in_memory().unwrap();
         let id1 = db::test_insert_minimal_file(&conn, "/tmp/1.3mf", None).unwrap();
         let id2 = db::test_insert_minimal_file(&conn, "/tmp/2.3mf", None).unwrap();
         let id3 = db::test_insert_minimal_file(&conn, "/tmp/3.3mf", None).unwrap();
 
-        // Bricht genau dann ab, wenn queue_position auf 20 gesetzt wird -
-        // das Ziel des ZWEITEN Updates. Das erste Update (id1 -> 10) muss
-        // also innerhalb der Transaktion bereits erfolgreich geschrieben
-        // worden sein, bevor der Abbruch greift.
         conn.execute_batch(
             "CREATE TRIGGER block_second_queue_update BEFORE UPDATE ON files
              WHEN NEW.queue_position = 20
@@ -2393,9 +2254,7 @@ mod tests {
     }
     #[test]
     fn is_sliceable_extension_rejects_stp_and_step() {
-        // Katalogisierbar (is_supported_extension), aber bewusst NICHT im
-        // Slicer oeffenbar - die meisten Slicer koennen kein rohes STEP
-        // importieren (siehe Plan/Kommentar an is_sliceable_extension).
+        // Katalogisierbar, aber nicht im Slicer oeffenbar.
         assert!(!is_sliceable_extension(Path::new("teil.stp")));
         assert!(!is_sliceable_extension(Path::new("teil.step")));
         assert!(is_sliceable_extension(Path::new("teil.3mf")));
@@ -2403,9 +2262,7 @@ mod tests {
     }
     #[test]
     fn is_supported_and_sliceable_extension_both_accept_obj() {
-        // Regressionsschutz gegen versehentliches Weglassen aus
-        // is_sliceable_extension: anders als STP ist OBJ ein echtes
-        // druckfertiges Mesh-Format, muss also in BEIDEN Checks true sein.
+        // OBJ muss in beiden Checks true sein.
         assert!(is_supported_extension(Path::new("teil.obj")));
         assert!(is_supported_extension(Path::new("teil.OBJ")));
         assert!(is_sliceable_extension(Path::new("teil.obj")));
@@ -2499,10 +2356,7 @@ mod tests {
         assert_eq!(stored.file_type, FileType::Obj);
         assert_eq!(stored.dimensions_mm, Some([10.0, 10.0, 10.0]));
         assert!(stored.volume_cm3.unwrap() > 0.0);
-        // Anders als STP bekommt OBJ eine 3D-Vorschau (get_model_geometry
-        // liefert einen RenderMesh) - beim Import selbst wird trotzdem kein
-        // Thumbnail-Blob gespeichert, das entsteht erst client-seitig ueber
-        // den Live-Renderer/Snapshot-Mechanismus, genau wie bei STL.
+        // Das Vorschaubild entsteht erst im Frontend (Snapshot), wie bei STL.
         assert_eq!(stored.thumbnail_png, None);
     }
     #[test]

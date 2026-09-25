@@ -92,8 +92,8 @@ pub fn suggest_spool(conn: &Connection, printer_id: i64) -> Result<Option<i64>, 
         .optional()?)
 }
 
-/// Daten einer Spule fuer die Abbuchung. Resin-Flaschen (v0.13.1) sind fuer
-/// die Druckeranbindung keine Spulen: dafuer gibt es `None`, wie fuer eine
+/// Daten einer Spule fuer die Abbuchung. Resin-Flaschen sind fuer die
+/// Druckeranbindung keine Spulen: dafuer gibt es `None`, wie fuer eine
 /// unbekannte ID - `ensure_filament` liefert vorher die passende Meldung.
 pub fn spool_info(conn: &Connection, spool_id: i64) -> Result<Option<SpoolInfo>, DbError> {
     Ok(conn

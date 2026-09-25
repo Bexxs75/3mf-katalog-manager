@@ -23,7 +23,7 @@ pub struct FilamentSpoolDto {
     pub unit_id: Option<String>,
     #[serde(default)]
     pub slot_index: Option<i64>,
-    /// "filament" oder "resin" (v0.13.1). Fehlt es (aeltere Aufrufer), gilt "filament".
+    /// "filament" oder "resin"; fehlt es (aeltere Aufrufer), gilt "filament".
     #[serde(default = "default_spool_kind")]
     pub kind: String,
 }
@@ -47,10 +47,7 @@ fn validate_spool_kind(kind: &str) -> CmdResult<()> {
         Err(format!("ungueltige Art: {kind}"))
     }
 }
-/// Gegenstueck zu `filament_dto_to_record`: baut das nach aussen gehende DTO
-/// aus dem tatsaechlichen Datenbankstand, statt (wie vor dem finalen Review
-/// bei `update_filament_spool`) das ungeprueft vom Aufrufer geschickte DTO
-/// zu spiegeln - siehe `update_filament_spool` fuer die Begruendung.
+/// Baut das DTO aus dem echten Datenbankstand (siehe `update_filament_spool`).
 fn spool_record_to_dto(s: db::models::FilamentSpoolRecord) -> FilamentSpoolDto {
     use base64::Engine;
     FilamentSpoolDto {
@@ -114,17 +111,8 @@ pub fn add_filament_spool(state: State<AppState>, spool: FilamentSpoolDto) -> Cm
         ..spool
     })
 }
-/// Finaler Review 2026-09-23, Finding 8: gab frueher einfach `spool`, das
-/// unveraendert vom Aufrufer stammende DTO, zurueck - inkonsistent mit
-/// `add_filament_spool` (das ein neu gebautes DTO mit normalisiertem
-/// `color_hex` und ohne die vom Aufrufer geschickten Fach-Felder
-/// zurueckgibt). Ein Aufrufer, der z.B. `colorHex: "#ABCDEF"` (nicht
-/// kleingeschrieben) oder einen erfundenen `unitId`/`slotIndex` schickt,
-/// haette dieselben, ungeprueften Werte zurueckbekommen, obwohl die
-/// Datenbank (siehe `db::update_filament_spool`s Kommentar: Fach-Felder
-/// aendern sich NIE ueber diesen Pfad) etwas anderes gespeichert hat. Liest
-/// die Zeile deshalb nach dem UPDATE frisch aus der Datenbank, genau wie
-/// `add_filament_spool` es fuer die neu eingefuegte Zeile tut.
+/// Gibt den frisch gelesenen DB-Stand zurueck, nicht das DTO des Aufrufers: der
+/// Farbwert wird normalisiert, Fach-Felder aendern sich ueber diesen Weg nie.
 #[tauri::command]
 pub fn update_filament_spool(state: State<AppState>, spool: FilamentSpoolDto) -> CmdResult<FilamentSpoolDto> {
     validate_spool_kind(&spool.kind)?;
@@ -143,7 +131,7 @@ pub fn delete_filament_spool(state: State<AppState>, spool_id: String) -> CmdRes
     db::delete_filament_spool(&conn, id).map_err(|e| e.to_string())
 }
 
-/// Obergrenze fuer "Nachkaufen" (Spec v0.13.1: Anzahl 1 bis 20).
+/// Obergrenze fuer "Nachkaufen" (1 bis 20).
 pub(crate) const RESTOCK_MAX_COUNT: i64 = 20;
 
 /// Kernlogik von `restock_filament_spool` (Test-Huelle wie andere `*_with_conn`).
@@ -209,8 +197,8 @@ pub(crate) fn restock_filament_spool_with_conn(
     Ok(created)
 }
 
-/// "Nachkaufen" (v0.13.1). `async` + `spawn_blocking`: bis zu 20 Einfuegungen
-/// mit Bild-Blob sollen den UI-Thread nicht blockieren.
+/// "Nachkaufen". `async` + `spawn_blocking`: bis zu 20 Einfuegungen mit
+/// Bild-Blob sollen den UI-Thread nicht blockieren.
 #[tauri::command]
 pub async fn restock_filament_spool(
     app: tauri::AppHandle,
@@ -230,10 +218,9 @@ pub async fn restock_filament_spool(
     .map_err(|e| e.to_string())?
 }
 
-/// Kernlogik von `consume_resin` (v0.13.1, "− Verbrauch"): zieht `amount_ml`
-/// (auf 0,1 ml gerundet, > 0) vom Rest einer Resin-Flasche ab, nie unter 0.
-/// Eine Transaktion; nur fuer Resin (Filament wird ueber Drucke/Formular
-/// gepflegt).
+/// Kernlogik von `consume_resin` ("− Verbrauch"): zieht `amount_ml` (auf 0,1 ml
+/// gerundet, > 0) vom Rest einer Resin-Flasche ab, nie unter 0. Eine
+/// Transaktion; nur fuer Resin (Filament wird ueber Drucke/Formular gepflegt).
 pub(crate) fn consume_resin_with_conn(conn: &mut Connection, spool_id: &str, amount_ml: f64) -> CmdResult<FilamentSpoolDto> {
     let id: i64 = spool_id.parse().map_err(|_| "invalid spool id".to_string())?;
     let amount = db::printers::round_tenth(amount_ml);
@@ -718,8 +705,8 @@ mod tests {
         assert!(result[0].needs[0].spools.is_empty(), "Resin darf nie als passende Spule auftauchen");
     }
 
-    /// v0.14.0: auch eine Flasche in der Harzwanne eines Resin-Druckers
-    /// zaehlt nie fuer "Reicht das Filament?" (und damit das Warteschlangen-Symbol).
+    /// Auch eine Flasche in der Harzwanne eines Resin-Druckers zaehlt nie fuer
+    /// "Reicht das Filament?" (und damit das Warteschlangen-Symbol).
     #[test]
     fn check_filament_ignores_a_bottle_in_a_resin_vat() {
         let conn = crate::db::connect_in_memory().expect("connect");

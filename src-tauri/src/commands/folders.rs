@@ -49,15 +49,9 @@ pub fn list_folders(state: State<AppState>) -> CmdResult<Vec<FolderDto>> {
 
     Ok(dtos)
 }
-/// Sicherheits-Grenze fuer `create_folder`/`rename_folder`: `name` landet
-/// unmittelbar in einem `PathBuf::join`/`with_file_name`-Aufruf und muss
-/// deshalb eine einzelne, harmlose Pfad-Komponente sein. Ohne diese
-/// Pruefung wuerde ein Name wie "../../../etc/x" (via `with_file_name`)
-/// oder ein absoluter Pfad wie "/etc/x" (via `join`, das einen absoluten
-/// zweiten Operanden den kompletten Basis-Pfad verwerfen laesst) einen
-/// physischen Verzeichnis-Vorgang weit ausserhalb des beabsichtigten
-/// Katalog-Ordnerbaums ausloesen - erreichbar allein durch Text-Eingabe
-/// im "+ Neuer Ordner"-Feld, keine weitere Angriffskette noetig (CWE-22).
+/// `name` landet in `join`/`with_file_name` und muss eine einzelne, harmlose
+/// Pfad-Komponente sein: "../../etc/x" oder "/etc/x" wuerden sonst ausserhalb
+/// des Katalogs anlegen, allein per Texteingabe (CWE-22).
 fn validate_folder_name(name: &str) -> CmdResult<()> {
     if name.trim().is_empty() {
         return Err("Ordnername darf nicht leer sein".to_string());
@@ -119,9 +113,7 @@ pub async fn create_folder(
         count: 0,
     })
 }
-/// Kernlogik von `rename_folder`, getrennt von der `State<AppState>`-Huelle
-/// gehalten, damit sie in Tests direkt gegen eine In-Memory-`Connection`
-/// aufgerufen werden kann (gleiche Konvention wie `move_file_to_folder_with_conn`).
+/// Kernlogik von `rename_folder`, ohne `State`, damit testbar.
 fn rename_folder_with_conn(
     conn: &Connection,
     id: i64,
@@ -170,10 +162,7 @@ pub fn rename_folder(state: State<AppState>, folder_id: String, name: String) ->
     let conn = lock_db(&state)?;
     rename_folder_with_conn(&conn, id, name, &state.sensitive_dirs)
 }
-/// Prueft, ob `candidate_id` ein (direkter oder indirekter) Nachfahre von
-/// `ancestor_id` ist, indem die `parent_id`-Kette von `candidate_id` aus
-/// nach oben verfolgt wird, bis entweder `ancestor_id` gefunden wird oder
-/// die Wurzel (`parent_id == None`) erreicht ist.
+/// Ob `candidate_id` (direkter oder indirekter) Nachfahre von `ancestor_id` ist.
 fn is_descendant(folders: &[db::models::FolderRecord], candidate_id: i64, ancestor_id: i64) -> bool {
     let mut current = candidate_id;
     while let Some(f) = folders.iter().find(|f| f.id == current) {
@@ -185,9 +174,7 @@ fn is_descendant(folders: &[db::models::FolderRecord], candidate_id: i64, ancest
     }
     false
 }
-/// Kernlogik von `move_folder`, getrennt von der `State<AppState>`-Huelle
-/// gehalten, damit sie in Tests direkt gegen eine In-Memory-`Connection`
-/// aufgerufen werden kann.
+/// Kernlogik von `move_folder`, ohne `State`, damit testbar.
 fn move_folder_with_conn(
     conn: &Connection,
     id: i64,
@@ -195,15 +182,8 @@ fn move_folder_with_conn(
     sensitive_dirs: &[PathBuf],
 ) -> CmdResult<()> {
     let Some(target) = target else {
-        // Es gibt in diesem Plan kein echtes "an die Katalog-Wurzel
-        // verschieben"-Ziel (siehe "Abweichung vom Spec" im Plan). Ohne
-        // diese Ablehnung wuerde der Code unten den aktuellen Elternordner
-        // als "neues" Ziel berechnen (fs::rename waere ein No-Op-Rename
-        // auf denselben Pfad), aber set_folder_parent(.., None) wuerde die
-        // DB trotzdem so aendern, dass der Ordner keinen Parent mehr hat -
-        // eine inkonsistente Mischung aus "physisch weiter verschachtelt"
-        // und "DB sagt: kein Parent". Aktuell ruft das Frontend move_folder
-        // nie mit None auf; dieser Fehler haelt es so.
+        // Es gibt kein "an die Wurzel verschieben": die Platte bliebe unveraendert,
+        // die DB saehe aber keinen Parent mehr.
         return Err("Ein Ordner kann nicht ohne Zielordner verschoben werden".to_string());
     };
 
@@ -231,13 +211,9 @@ fn move_folder_with_conn(
     }
     std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())?;
 
-    // H-01: set_folder_parent + update_paths_under_folder muessen als
-    // Einheit gelten - in einer Transaktion, damit ein Fehler in der
-    // rekursiven Pfad-Aktualisierung nicht eine halb aktualisierte DB
-    // hinterlaesst, waehrend das Filesystem bereits vollstaendig
-    // verschoben ist. `Connection::unchecked_transaction()` (statt
-    // `transaction()`) braucht nur `&self`, die Signatur bleibt also bei
-    // `conn: &Connection` - keine Aenderung an move_folder() noetig.
+    // Parent und Pfade in einer Transaktion, damit die DB nie halb aktualisiert
+    // ist, waehrend die Platte schon verschoben ist. unchecked_transaction, weil
+    // nur `&Connection` vorliegt.
     let db_result = (|| -> Result<(), DbError> {
         let tx = conn.unchecked_transaction()?;
         db::set_folder_parent(&tx, id, target)?;
@@ -257,13 +233,9 @@ fn move_folder_with_conn(
     }
     Ok(())
 }
-/// Verschiebt einen echten Ordner auf der Platte (`std::fs::rename`) unter
-/// einen anderen Elternordner und aktualisiert `folders.parent_id` sowie
-/// rekursiv `folders.path`/`files.path` fuer den Ordner selbst und alle
-/// Nachfahren. Lehnt Zyklen ab (Verschieben in den eigenen Unterordner
-/// oder in sich selbst) sowie `new_parent_id: None` (kein "an die
-/// Katalog-Wurzel verschieben"-Ziel in diesem Plan, siehe "Abweichung vom
-/// Spec").
+/// Verschiebt einen Ordner auf der Platte unter einen anderen Elternordner und
+/// zieht `parent_id` sowie alle Pfade darunter nach. Lehnt Zyklen und
+/// `new_parent_id: None` ab.
 #[tauri::command]
 pub fn move_folder(state: State<AppState>, folder_id: String, new_parent_id: Option<String>) -> CmdResult<()> {
     let id: i64 = folder_id.parse().map_err(|_| "invalid folder id".to_string())?;
@@ -274,13 +246,8 @@ pub fn move_folder(state: State<AppState>, folder_id: String, new_parent_id: Opt
     let conn = lock_db(&state)?;
     move_folder_with_conn(&conn, id, target, &state.sensitive_dirs)
 }
-// Muss aus demselben Grund wie pick_slicer_executable async sein:
-// blocking_pick_folder() blockiert den aufrufenden Thread, bis der native
-// Ordner-Dialog geschlossen wird.
-//
-// Der gewaehlte Ordner wird als erlaubtes Entpack-Ziel vermerkt (siehe
-// `ApprovedTargets`): nur Katalogordner und hier gewaehlte Ordner nimmt
-// `extract_archives` an.
+// async, weil blocking_pick_folder() bis zum Schliessen des Dialogs blockiert.
+// Der gewaehlte Ordner gilt danach als erlaubtes Entpack-Ziel (`ApprovedTargets`).
 #[tauri::command]
 pub async fn pick_folder_path(
     app: tauri::AppHandle,
@@ -293,10 +260,7 @@ pub async fn pick_folder_path(
     }
     Ok(path.map(|p| p.to_string_lossy().to_string()))
 }
-/// Kernlogik von `register_catalog_base_dir`, getrennt von der
-/// `State<AppState>`-Huelle gehalten, damit sie in Tests direkt gegen eine
-/// In-Memory-`Connection` aufgerufen werden kann (gleiche Konvention wie
-/// `move_file_to_folder_with_conn`/`rename_folder_with_conn`).
+/// Kernlogik von `register_catalog_base_dir`, ohne `State`, damit testbar.
 fn register_catalog_base_dir_with_conn(conn: &Connection, dir: &Path) -> CmdResult<FolderDto> {
     if !dir.exists() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
@@ -315,11 +279,8 @@ fn register_catalog_base_dir_with_conn(conn: &Connection, dir: &Path) -> CmdResu
         count: 0,
     })
 }
-/// Registriert ein vom Nutzer gewaehltes Basisverzeichnis als
-/// Katalog-Wurzelordner: legt das Verzeichnis auf der Platte an, falls es
-/// noch nicht existiert, und stellt per `db::ensure_folder_path` sicher,
-/// dass eine passende `folders`-Zeile existiert (idempotent bei erneutem
-/// Aufruf mit demselben Pfad).
+/// Registriert ein gewaehltes Basisverzeichnis als Katalog-Wurzel: legt es bei
+/// Bedarf an und sorgt idempotent fuer eine `folders`-Zeile.
 #[tauri::command]
 pub fn register_catalog_base_dir(state: State<AppState>, path: String) -> CmdResult<FolderDto> {
     let dir = std::path::PathBuf::from(&path);
@@ -366,10 +327,7 @@ mod tests {
 
     #[test]
     fn register_catalog_base_dir_creates_missing_directory_and_is_idempotent() {
-        // unique_test_dir() legt das Verzeichnis bereits an - fuer diesen
-        // Test wird das Zielverzeichnis stattdessen erst noch fehlend
-        // gebraucht, also nur der (eindeutige) Pfad selbst verwendet und
-        // sofort wieder entfernt.
+        // Das Zielverzeichnis soll noch fehlen: nur den eindeutigen Pfad nutzen.
         let base = unique_test_dir("register-base-dir");
         std::fs::remove_dir_all(&base).expect("remove freshly created test dir");
         assert!(!base.exists());
@@ -390,8 +348,6 @@ mod tests {
     }
     #[test]
     fn move_folder_rejects_moving_into_own_descendant() {
-        // Baum A -> B (zwei Ebenen genuegen fuer den Zyklus-Check selbst,
-        // da is_descendant die parent_id-Kette beliebig weit hochlaeuft).
         let tmp = unique_test_dir("move_folder_cycle");
         let a_dir = tmp.join("A");
         let b_dir = a_dir.join("B");
@@ -415,11 +371,7 @@ mod tests {
     }
     #[test]
     fn move_folder_rejects_none_target() {
-        // move_folder(id, None) darf nicht mehr, wie frueher, den Ordner
-        // physisch unveraendert lassen (fs::rename auf denselben Pfad,
-        // No-Op) waehrend set_folder_parent(.., None) die DB trotzdem so
-        // aendert, dass der Ordner keinen Parent mehr hat - das war eine
-        // stille DB/Platte-Inkonsistenz.
+        // move_folder(id, None) muss abgelehnt werden (siehe move_folder_with_conn).
         let tmp = unique_test_dir("move_folder_none_target");
         let a_dir = tmp.join("A");
         let b_dir = a_dir.join("B");
@@ -441,9 +393,7 @@ mod tests {
     }
     #[test]
     fn validate_folder_name_rejects_path_traversal_and_separators() {
-        // Regressionstest fuer den im Security-Review 2026-09-13 gefundenen
-        // Path-Traversal-Fund (CWE-22): create_folder/rename_folder duerfen
-        // `name` nie ungeprueft in PathBuf::join/with_file_name uebergeben.
+        // create_folder/rename_folder duerfen `name` nie ungeprueft verwenden (CWE-22).
         assert!(validate_folder_name("../etc").is_err());
         assert!(validate_folder_name("../../tmp/evil").is_err());
         assert!(validate_folder_name("a/b").is_err());
@@ -533,11 +483,7 @@ mod tests {
             std::fs::write(path, &buf).expect("write temp file");
         }
 
-        // Baum A/B/C (drei Ebenen), Datei liegt in C, plus ein separater
-        // Zielordner X. move_folder(B, Some(X)) haengt B (und damit C und
-        // die Datei darunter) physisch unter X um - eine 2-Ebenen-
-        // Konstruktion wuerde einen Rekursionsfehler in
-        // update_paths_under_folder nicht zuverlaessig aufdecken.
+        // Drei Ebenen, damit ein Rekursionsfehler in update_paths_under_folder auffaellt.
         let tmp = unique_test_dir("move_folder_descendants");
         let a_dir = tmp.join("A");
         let b_dir = a_dir.join("B");
@@ -607,9 +553,7 @@ mod tests {
             std::fs::write(path, &buf).expect("write temp file");
         }
 
-        // Baum A/B/C, Datei in C. rename_folder(B, "B2") muss B's eigenen
-        // Pfad UND den Pfad von C sowie der Datei darunter mitziehen -
-        // wieder drei Ebenen, damit die Rekursion tatsaechlich greift.
+        // Drei Ebenen: B, C und die Datei muessen mitgezogen werden.
         let tmp = unique_test_dir("rename_folder_descendants");
         let a_dir = tmp.join("A");
         let b_dir = a_dir.join("B");
@@ -656,13 +600,8 @@ mod tests {
     }
     #[test]
     fn rename_folder_with_non_ascii_name_produces_correct_child_paths() {
-        // Regressionstest fuer einen Byte-vs-Zeichen-Offset-Bug in
-        // update_paths_under_folder: SQLite's substr() zaehlt auf TEXT-
-        // Werten in UTF-8-Zeichen, nicht in Bytes. Ein aus Rust per
-        // old_path.len() (Byte-Laenge) berechneter Offset ist bei einem
-        // Ordnernamen mit einem Nicht-ASCII-Zeichen (hier: ue) zu gross,
-        // wodurch das Pfadtrennzeichen "verschluckt" wird und statt
-        // ".../Neu/model.3mf" ein falsches ".../Neumodel.3mf" entsteht.
+        // substr() zaehlt Zeichen, nicht Bytes: bei einem Umlaut wuerde ein
+        // Byte-Offset das Trennzeichen verschlucken ("Neumodel.3mf").
         use std::io::Write;
         use zip::write::SimpleFileOptions;
         use zip::ZipWriter;
@@ -683,9 +622,6 @@ mod tests {
             std::fs::write(path, &buf).expect("write temp file");
         }
 
-        // "Pruefen" mit echtem Umlaut - alle Zeichen davor sind 2-Byte
-        // UTF-8-Sequenzen, was alleine schon alte Byte-basierte Offsets
-        // ausreichend weit verschiebt, um den Bug zu triggern.
         let tmp = unique_test_dir("rename_folder_non_ascii");
         let src_dir = tmp.join("Pr\u{fc}fen");
         std::fs::create_dir_all(&src_dir).unwrap();
@@ -723,9 +659,7 @@ mod tests {
 
         let conn = db::connect_in_memory().unwrap();
         let folder_id = db::insert_folder_with_parent(&conn, "Alt", None, &dir.join("Alt").to_string_lossy()).unwrap();
-        // Zweiten Ordner mit dem Zielnamen anlegen, dessen `path` bereits dem
-        // Zielpfad entspricht - folders.path ist ebenfalls UNIQUE, das
-        // erzwingt einen echten DB-Fehler NACH dem physischen std::fs::rename.
+        // folders.path ist UNIQUE: erzwingt einen DB-Fehler nach dem Umbenennen.
         db::insert_folder_with_parent(&conn, "Neu", None, &dir.join("Neu").to_string_lossy()).unwrap();
 
         let result = rename_folder_with_conn(&conn, folder_id, "Neu".to_string(), &[]);

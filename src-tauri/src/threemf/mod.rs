@@ -56,9 +56,8 @@ pub fn extract_render_meshes_from_path(path: &Path) -> Result<Vec<RenderMesh>, T
     extract_render_meshes(&package)
 }
 
-/// Maximale Verschachtelungstiefe der 3MF-Komponentenkette (H-04,
-/// Senior-Code-Review 2026-09-19). Schuetzt vor Stack-Overflow/Haengern durch
-/// extrem tiefe (aber azyklische) Komponentengraphen.
+/// Maximale Verschachtelungstiefe der Komponentenkette, gegen Stack-Overflow
+/// bei extrem tiefen (azyklischen) Graphen.
 const MAX_COMPONENT_DEPTH: usize = 256;
 
 pub fn extract_render_meshes(package: &PackageParts) -> Result<Vec<RenderMesh>, ThreeMfError> {
@@ -564,9 +563,7 @@ mod tests {
 </config>"##;
 
         let mut buf = build_test_3mf();
-        // build_test_3mf() liefert bereits fertige Zip-Bytes - fuer diesen Test
-        // wird stattdessen ein eigenes Archiv mit zusaetzlichem Slice-Info-Eintrag
-        // gebaut, da ZipWriter nicht nachtraeglich in fertige Bytes einfuegen kann.
+        // Eigenes Archiv mit Slice-Info-Eintrag; fertige Zip-Bytes lassen sich nicht ergaenzen.
         buf.clear();
         {
             let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buf));
@@ -594,7 +591,7 @@ mod tests {
         assert!(doc.slice_info.is_none());
     }
 
-    // --- H-04: component cycle/depth protection tests ---
+    // --- Zyklen und Tiefe der Komponenten ---
 
     /// Baut ein minimales 3MF-Zip-Archiv (Content_Types, _rels/.rels, ein
     /// einziges 3D/3dmodel.model) rund um das gegebene `<model>`-XML, analog

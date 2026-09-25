@@ -605,9 +605,8 @@ mod tests {
 
     #[test]
     fn drained_spool_still_counts_as_short_instead_of_unknown() {
-        // Review-Fund 1: eine durch den ersten Warteschlangen-Eintrag komplett
-        // geleerte Spule muss beim zweiten Eintrag als "short" (mit korrektem
-        // Fehlbetrag) gemeldet werden, nicht als "unknown".
+        // Eine vom ersten Eintrag geleerte Spule muss beim zweiten als "short" (mit
+        // korrektem Fehlbetrag) gemeldet werden, nicht als "unknown".
         let models = vec![
             ("1".to_string(), one_plate(&fil("PLA", RED, 150.0))),
             ("2".to_string(), one_plate(&fil("PLA", RED, 50.0))),
@@ -621,9 +620,7 @@ mod tests {
 
     #[test]
     fn spool_emptied_by_ok_entry_yields_short_not_unknown_for_the_next_entry() {
-        // Review-Fund 1, zweites Beispiel: die erste Pruefung passt genau
-        // ("ok"), die zweite muss trotzdem den fehlenden Betrag als "short"
-        // melden statt "unknown", weil die Spule als Kandidat bestehen bleibt.
+        // Die erste Pruefung passt genau, die zweite muss trotzdem "short" melden.
         let models = vec![
             ("1".to_string(), one_plate(&fil("PLA", RED, 100.0))),
             ("2".to_string(), one_plate(&fil("PLA", RED, 30.0))),
@@ -636,12 +633,8 @@ mod tests {
 
     #[test]
     fn drained_spool_is_not_listed_as_a_swap_partner() {
-        // Review-Fund 1 (Swap-Zweig): eine bereits geleerte Spule zaehlt als
-        // Kandidat (Material passt, gespeichertes remaining_g > 0), darf im
-        // Swap-Fall aber nicht mit 0 g als Wechselpartner aufgelistet werden.
-        // "loaded" ist eingelegt und sortiert deshalb vor den vollen,
-        // nicht eingelegten Spulen - genau der Fall, in dem der Swap-Loop sie
-        // sonst zuerst anfassen wuerde.
+        // Eine geleerte, eingelegte Spule bleibt Kandidat, darf im Swap-Fall aber
+        // nicht mit 0 g als Wechselpartner erscheinen (sie sortiert zuerst).
         let spools = [
             spool("loaded", "PLA", Some(RED), 100.0, true),
             spool("full", "PLA", Some(RED), 90.0, false),
@@ -658,7 +651,7 @@ mod tests {
 
     #[test]
     fn tiny_float_rounding_still_counts_as_ok() {
-        // Review-Fund 3: 3 x 11.1 g summiert kann minimal von 33.3 abweichen.
+        // 3 x 11.1 g summiert kann minimal von 33.3 abweichen.
         let json = format!("{},{},{}", fil("PLA", RED, 11.1), fil("PLA", RED, 11.1), fil("PLA", RED, 11.1));
         let r = check_one(one_plate(&json), &[spool("a", "PLA", Some(RED), 33.3, false)]);
         assert_eq!(r.status, CheckStatus::Ok);

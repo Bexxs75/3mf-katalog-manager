@@ -1,9 +1,9 @@
-//! STEP-Vorschau ueber Open CASCADE (Version 2).
+//! STEP-Vorschau ueber Open CASCADE.
 //!
 //! Liest eine STEP-Datei in eine TopoDS_Shape, tesselliert sie und baut daraus
 //! EIN RenderMesh im bestehenden Format (nicht-indiziert, flache Normalen).
-//! Alles liegt hinter dem Feature `step-preview`; ohne das Feature existiert
-//! dieses Modul nicht und die App verhaelt sich wie v0.11.0 (Variante A).
+//! Alles liegt hinter dem Feature `step-preview`; ohne das Feature werden
+//! STEP-Dateien nur katalogisiert.
 
 pub mod mesh;
 pub mod props;

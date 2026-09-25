@@ -17,42 +17,22 @@ const THUMBNAIL_RELATIONSHIP_TYPE: &str =
 const DEFAULT_MODEL_PATH: &str = "3D/3dmodel.model";
 const FALLBACK_THUMBNAIL_PATHS: [&str; 2] =
     ["Metadata/thumbnail.png", "3D/Thumbnails/thumbnail.png"];
-// Obergrenzen fuer die entpackte Groesse einzelner Paket-Eintraege: ein
-// wenige Kilobyte grosses 3MF kann sich sonst beim Entpacken auf mehrere
-// Gigabyte aufblaehen und die App per OOM beenden ("Zip-Bombe",
-// Security-Review 2026-09-19, Finding A-1).
-const MAX_MODEL_XML_BYTES: u64 = 256 * 1024 * 1024; // 256 MB
-const MAX_THUMBNAIL_BYTES: u64 = 16 * 1024 * 1024; // 16 MB
-const MAX_RELS_XML_BYTES: u64 = 16 * 1024 * 1024; // 16 MB
-/// Gilt fuer die slicer-spezifischen Config-Eintraege
-/// (`Metadata/model_settings.config`, `Metadata/slice_info.config`), die
-/// `plates.rs`/`slice_info.rs` lesen - dieselbe Groessenordnung wie die
-/// uebrigen Nicht-Modell-Eintraege.
-pub(super) const MAX_CONFIG_XML_BYTES: u64 = 16 * 1024 * 1024; // 16 MB
-/// Obergrenze fuer die Summe ALLER tatsaechlich aus dem ZIP entpackten
-/// Paket-Ressourcen (_rels/.rels, die beiden Slicer-Config-Eintraege,
-/// Root-Modell-XML, referenzierte Modell-XML-Dateien und Thumbnail) - ein
-/// wenige Kilobyte grosses 3MF darf sich in Summe nicht zu einem beliebig
-/// grossen Speicherabdruck aufblaehen, selbst wenn jede einzelne Ressource
-/// unter ihrem jeweiligen Pro-Entry-Limit bleibt (M-05, Senior-Code-Review
-/// 2026-09-19, korrigiert in der fuenften Review-Runde: die Fassung nach
-/// der zweiten Runde zaehlte nur root_xml + referenzierte Modell-XMLs +
-/// Thumbnail, nicht aber _rels/.rels und die beiden Slicer-Configs).
-const MAX_TOTAL_UNPACKED_BYTES: u64 = 512 * 1024 * 1024; // 512 MB
-/// Obergrenze fuer die Anzahl referenzierter `.model`-Dateien (3MF
-/// "Production Extension"), unabhaengig davon, dass jede einzelne Datei
-/// unter `MAX_MODEL_XML_BYTES` bleibt - verhindert, dass sehr viele kleine
-/// referenzierte Modelle zusammen das Gesamtbudget umgehen bzw. die
-/// Aufloesung unzumutbar lange dauert.
+// Obergrenzen gegen Zip-Bomben (entpackte Groesse je Eintrag).
+const MAX_MODEL_XML_BYTES: u64 = 256 * 1024 * 1024;
+const MAX_THUMBNAIL_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_RELS_XML_BYTES: u64 = 16 * 1024 * 1024;
+/// Fuer `Metadata/model_settings.config` und `Metadata/slice_info.config`.
+pub(super) const MAX_CONFIG_XML_BYTES: u64 = 16 * 1024 * 1024;
+/// Obergrenze fuer die Summe ALLER entpackten Ressourcen, damit viele Eintraege
+/// knapp unter ihrem Einzellimit zusammen nicht beliebig viel Speicher belegen.
+const MAX_TOTAL_UNPACKED_BYTES: u64 = 512 * 1024 * 1024;
+/// Maximal referenzierte `.model`-Dateien (Production Extension), damit viele
+/// kleine Dateien weder das Budget umgehen noch die Aufloesung ewig dauern lassen.
 const MAX_REFERENCED_MODELS: usize = 32;
 
 #[cfg(test)]
 thread_local! {
-    /// Erlaubt Tests, `MAX_TOTAL_UNPACKED_BYTES` fuer die Dauer eines
-    /// einzelnen Tests durch einen kleinen Wert zu ersetzen, ohne eine
-    /// tatsaechlich 512-MB-grosse Testdatei anlegen zu muessen. Jeder Test
-    /// laeuft in seinem eigenen Thread, daher keine Interferenz zwischen
-    /// Tests.
+    /// Erlaubt Tests ein kleines Gesamtbudget ohne 512-MB-Testdatei (thread-lokal).
     static TEST_MAX_TOTAL_UNPACKED_BYTES: std::cell::Cell<Option<u64>> =
         const { std::cell::Cell::new(None) };
 }
@@ -104,12 +84,7 @@ impl PackageParts {
 pub fn read_package<R: Read + Seek>(reader: R) -> Result<PackageParts, ThreeMfError> {
     let mut archive = ZipArchive::new(reader)?;
 
-    // `total_unpacked` erfasst JEDE aus dem ZIP tatsaechlich gelesene
-    // Ressource, in der Reihenfolge, in der read_package sie tatsaechlich
-    // liest - nicht nur root_xml/referenzierte Modelle/Thumbnail (zweite
-    // Review-Runde), sondern auch die beiden Slicer-Config-Dateien und
-    // _rels/.rels (fuenfte Review-Runde), damit der Name
-    // MAX_TOTAL_UNPACKED_BYTES ehrlich das gesamte Paket abdeckt.
+    // Zaehlt JEDE aus dem ZIP gelesene Ressource, auch _rels/.rels und die Slicer-Configs.
     let mut total_unpacked: u64 = 0;
 
     let (plate_count, plates_bytes) = super::plates::count_plates(&mut archive);
@@ -152,17 +127,9 @@ pub fn read_package<R: Read + Seek>(reader: R) -> Result<PackageParts, ThreeMfEr
                 "Zu viele referenzierte Modelldateien (> {MAX_REFERENCED_MODELS})"
             )));
         }
-        // "Datei nicht gefunden"/"nicht parsbar" bleiben bewusst tolerant
-        // (unveraendertes Verhalten, siehe Tests
-        // `skips_missing_referenced_file_without_failing` und
-        // `extract_render_meshes_skips_missing_referenced_object_without_failing`)
-        // - NUR ein Verstoss gegen das Pro-Entry-Groessenlimit
-        // (`EntryTooLarge`) wird hart propagiert (P1-Korrektur, zweite
-        // Review-Runde): ein bereits bestehendes Groessenlimit darf nicht
-        // durch stilles Ueberspringen unterlaufen werden - ein boesartiges
-        // Paket koennte sonst gezielt knapp-zu-grosse referenzierte Modelle
-        // einschleusen, die unbemerkt fehlen, waehrend das restliche Paket
-        // scheinbar normal importiert wird.
+        // Fehlende oder kaputte Referenzen werden toleriert, ein zu grosser Eintrag
+        // aber nicht: sonst liesse sich das Limit mit knapp zu grossen Referenzen
+        // unterlaufen, die dann still fehlen.
         let xml = match read_entry_to_string(&mut archive, &path, MAX_MODEL_XML_BYTES) {
             Ok(xml) => xml,
             Err(err @ ThreeMfError::EntryTooLarge { .. }) => return Err(err),
@@ -295,12 +262,9 @@ fn read_entry_to_bytes<R: Read + Seek>(
     Ok(contents)
 }
 
-/// Lehnt einen ZIP-Eintrag anhand seiner im Archiv deklarierten entpackten
-/// Groesse ab. Die Angabe stammt aus dem Archiv selbst und ist damit nicht
-/// vertrauenswuerdig - die eigentliche Schranke ist das `Read::take` beim
-/// Lesen; diese Pruefung meldet nur den ehrlich deklarierten Fall mit einer
-/// brauchbaren Fehlermeldung, statt eine stillschweigend abgeschnittene
-/// (und dadurch kaputte) XML-/Bilddatei weiterzureichen.
+/// Die deklarierte Groesse ist nicht vertrauenswuerdig, die Schranke ist das
+/// `Read::take` beim Lesen. Diese Pruefung liefert bei ehrlich zu grossen
+/// Eintraegen eine klare Fehlermeldung statt einer abgeschnittenen Datei.
 fn reject_oversized_entry(path: &str, size: u64, max_bytes: u64) -> Result<(), ThreeMfError> {
     if size > max_bytes {
         return Err(ThreeMfError::EntryTooLarge {
@@ -408,9 +372,7 @@ mod tests {
         buf
     }
 
-    /// Baut ein ZIP mit einem einzelnen, stark komprimierbaren Eintrag -
-    /// Miniatur-Nachbau einer "Zip-Bombe" (Security-Review 2026-09-19,
-    /// Finding A-1).
+    /// ZIP mit einem stark komprimierbaren Eintrag (Mini-Zip-Bombe).
     fn build_zip_with_one_entry(path: &str, uncompressed_len: usize) -> Vec<u8> {
         let mut buf = Vec::new();
         {
@@ -479,13 +441,8 @@ mod tests {
             .contains_key("3D/Objects/object_2.model"));
     }
 
-    /// Baut ein 3MF mit `count` referenzierten `.model`-Dateien, die jede
-    /// einzeln winzig sind (weit unter `MAX_MODEL_XML_BYTES`), deren Summe
-    /// mit dem Root-Modell aber `total_bytes_target` Bytes ueberschreitet -
-    /// zusammen mit einem per Testthread ueberschriebenen, kleinen
-    /// `MAX_TOTAL_UNPACKED_BYTES` (siehe `TEST_MAX_TOTAL_UNPACKED_BYTES`)
-    /// reicht das, um das Gesamtbudget zu ueberschreiten, ohne eine
-    /// tatsaechlich riesige Testdatei anlegen zu muessen.
+    /// 3MF mit `count` winzigen referenzierten Modellen, die zusammen ein im Test
+    /// verkleinertes Gesamtbudget ueberschreiten.
     fn build_multi_model_3mf_exceeding_total_budget(count: usize) -> Vec<u8> {
         let root_items: String = (0..count)
             .map(|i| format!(r#"<item p:path="/3D/Objects/object_{i}.model" objectid="1"/>"#))
@@ -551,10 +508,7 @@ mod tests {
 
     #[test]
     fn read_package_rejects_many_referenced_models_that_together_exceed_the_total_budget() {
-        // 10 referenzierte Modelle liegen jede einzeln weit unter
-        // MAX_MODEL_XML_BYTES (256 MB), ihre Summe (+ Root-Modell)
-        // ueberschreitet aber das per Test auf 2000 Bytes verkleinerte
-        // Gesamtbudget.
+        // Jedes Modell liegt weit unter dem Einzellimit, die Summe ueber 2000 Bytes.
         TEST_MAX_TOTAL_UNPACKED_BYTES.with(|c| c.set(Some(2000)));
         let bytes = build_multi_model_3mf_exceeding_total_budget(10);
         let result = read_package(std::io::Cursor::new(bytes));
@@ -582,11 +536,8 @@ mod tests {
   <Relationship Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model"/>
 </Relationships>"#;
 
-    /// Baut ein minimales 3MF (kleines Root-Modell ohne Build-Items, also
-    /// ohne referenzierte Dateien) mit frei waehlbarem `_rels/.rels`-Inhalt
-    /// und beliebigen zusaetzlichen Eintraegen (z. B. die beiden
-    /// Slicer-Configs) - dient dazu, GENAU EINE Ressourcenart gezielt
-    /// aufzublaehen, waehrend alle anderen winzig bleiben.
+    /// Minimales 3MF mit frei waehlbarem `_rels/.rels` und Zusatzeintraegen, um
+    /// genau eine Ressourcenart aufzublaehen.
     fn build_minimal_3mf_with_entries(rels_xml: &str, extra_entries: &[(&str, &str)]) -> Vec<u8> {
         let mut buf = Vec::new();
         {
@@ -609,11 +560,8 @@ mod tests {
         buf
     }
 
-    /// Dies ist genau der urspruengliche Bug (M-05, fuenfte Review-Runde):
-    /// ein einzelner `_rels/.rels`-Eintrag, der fuer sich genommen weit
-    /// unter `MAX_RELS_XML_BYTES` bleibt, aber gross genug ist, um allein
-    /// das (im Test verkleinerte) Gesamtbudget zu ueberschreiten, wurde
-    /// vorher gar nicht mitgezaehlt und daher stillschweigend akzeptiert.
+    /// Ein `_rels/.rels` unter seinem Einzellimit, aber ueber dem Gesamtbudget,
+    /// muss mitgezaehlt und abgelehnt werden.
     #[test]
     fn read_package_rejects_when_rels_alone_pushes_total_over_budget() {
         let padded_rels = format!("<!--{}-->{SMALL_RELS_XML}", "A".repeat(5000));
@@ -672,11 +620,7 @@ mod tests {
         );
     }
 
-    /// Gegenprobe zu den drei Tests oben: dasselbe minimale Paket ohne
-    /// Polsterung wird unter demselben kleinen Testbudget weiterhin
-    /// akzeptiert - beweist, dass die Ablehnung oben wirklich am
-    /// Gesamtbudget liegt und nicht an einem unabhaengigen Parsing-Fehler
-    /// oder generell zu knappen Testbudget.
+    /// Gegenprobe: ohne Polsterung wird dasselbe Paket akzeptiert.
     #[test]
     fn read_package_accepts_a_tiny_package_under_the_same_small_test_budget() {
         TEST_MAX_TOTAL_UNPACKED_BYTES.with(|c| c.set(Some(1000)));
@@ -687,11 +631,8 @@ mod tests {
         assert!(result.is_ok(), "ein winziges Paket muss unter dem Testbudget akzeptiert werden");
     }
 
-    /// Baut ein 3MF, dessen referenziertes Modell `3D/Objects/big.model`
-    /// tatsaechlich existiert (kein Missing-Referenzfall), dessen Inhalt
-    /// aber `MAX_MODEL_XML_BYTES` um 1 Byte ueberschreitet - `Stored`
-    /// (unkomprimiert) statt der Standard-Kompression, damit das Schreiben
-    /// des Fixtures in vertretbarer Zeit passiert.
+    /// 3MF mit existierendem referenziertem Modell, 1 Byte ueber
+    /// `MAX_MODEL_XML_BYTES` (`Stored`, damit das Schreiben schnell geht).
     fn build_3mf_with_oversized_referenced_model() -> Vec<u8> {
         let root_xml = r##"<?xml version="1.0" encoding="UTF-8"?>
 <model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06">
@@ -723,15 +664,8 @@ mod tests {
         buf
     }
 
-    /// Finding 2 (Review): eine referenzierte Modell-Datei, die
-    /// tatsaechlich EXISTIERT, aber ihr Pro-Entry-Groessenlimit
-    /// (`MAX_MODEL_XML_BYTES`) ueberschreitet, muss hart fehlschlagen statt
-    /// stillschweigend uebersprungen zu werden - im Gegensatz zu einer
-    /// fehlenden/kaputten Datei (siehe
-    /// `skips_missing_referenced_file_without_failing`, die weiterhin
-    /// toleriert). Der Abgleich auf `EntryTooLarge` (statt nur `is_err()`)
-    /// stellt sicher, dass tatsaechlich der neue `EntryTooLarge`-Zweig
-    /// getroffen wird und nicht z. B. die Gesamtbudget-Pruefung.
+    /// Eine existierende, aber zu grosse Referenz muss mit `EntryTooLarge`
+    /// scheitern statt uebersprungen zu werden.
     #[test]
     fn read_package_hard_errors_on_an_oversized_referenced_model_instead_of_skipping_it() {
         let bytes = build_3mf_with_oversized_referenced_model();

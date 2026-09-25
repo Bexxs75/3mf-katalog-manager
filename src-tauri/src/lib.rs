@@ -4,10 +4,7 @@ mod db;
 mod filament_check;
 mod geometry;
 mod obj;
-// Druckeranbindung (Spec 2026-09-24): Verbindungs-/Abgleichlogik, seit
-// Task 10 von den Tauri-Commands und seit Task 8 vom Hintergrunddienst
-// benutzt - siehe gleichlautenden Kommentar bei `pub mod printer_link;`
-// in db/mod.rs.
+// Druckeranbindung: Verbindungs- und Abgleichlogik.
 mod printer_link;
 mod slicers;
 #[cfg(feature = "step-preview")]
@@ -21,10 +18,7 @@ use std::sync::Mutex;
 
 use tauri::Manager;
 
-// App-Datenverzeichnis (enthaelt catalog.db, Thumbnails, Papierkorb) nur
-// fuer den eigenen Benutzer lesbar/schreibbar machen. Auf Single-User-
-// Desktops schon durch die Home-Verzeichnis-Rechte geschuetzt, aber auf
-// Mehrbenutzer-Systemen relevant (ISO 27002 A.8.28).
+// Datenverzeichnis nur fuer den eigenen Benutzer (relevant auf Mehrbenutzer-Systemen).
 #[cfg(unix)]
 pub(crate) fn harden_permissions(path: &std::path::Path) {
     use std::os::unix::fs::PermissionsExt;
@@ -37,11 +31,8 @@ pub(crate) fn harden_permissions(path: &std::path::Path) {
 #[cfg(not(unix))]
 pub(crate) fn harden_permissions(_path: &std::path::Path) {}
 
-// Verzeichnisse, in die `create_folder`/`rename_folder`/`move_folder`/
-// `move_file_to_folder` niemals schreiben duerfen - siehe
-// `commands::reject_if_sensitive_path` (Security-Review 2026-09-18,
-// Finding 1). Einmalig beim Start berechnet, da sich Home-/Config-/
-// Datenverzeichnis waehrend der Laufzeit nicht aendern.
+// Verzeichnisse, in die Ordner- und Datei-Operationen nie schreiben duerfen
+// (siehe `commands::reject_if_sensitive_path`); einmal beim Start berechnet.
 fn sensitive_dirs(app: &tauri::AppHandle) -> Vec<std::path::PathBuf> {
     let mut dirs = Vec::new();
     if let Ok(d) = app.path().config_dir() {
@@ -73,9 +64,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            // Versionsnummer im Fenstertitel, damit sie sich automatisch mit
-            // jedem Versions-Bump in Cargo.toml mitzieht statt in
-            // tauri.conf.json separat gepflegt werden zu muessen.
+            // Version im Fenstertitel direkt aus Cargo.toml.
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_title(&format!("3MF Katalog Manager {}", env!("CARGO_PKG_VERSION")));
             }

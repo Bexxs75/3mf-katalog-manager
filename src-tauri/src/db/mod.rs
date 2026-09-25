@@ -3,17 +3,10 @@ pub mod models;
 mod repository;
 mod collections;
 pub mod printers;
-// Druckeranbindung (Spec 2026-09-24): reiner Datenbankzugriff fuer
-// Einstellungen/Verbindungen/abgeholte Drucke. Aufrufer seit Task 10
-// (Tauri-Commands) und dem Abgleich-Hintergrunddienst (Task 8).
+// Druckeranbindung: Einstellungen, Verbindungen, abgeholte Drucke.
 pub mod printer_link;
 mod migrations;
 
-// CURRENT_SCHEMA_VERSION wird ausserhalb von migrations.rs nirgends
-// verwendet (weder produktiv noch in Tests) - der Re-Export hier war seit
-// dem Aufsplitten der Migrationen in db/migrations.rs (Task 2) totes Gepaeck
-// und erzeugte eine Clippy-Warnung. `run_migrations` bleibt der einzige
-// nach aussen sichtbare Teil dieses Moduls.
 pub use migrations::run_migrations;
 
 pub use repository::{
@@ -39,20 +32,14 @@ pub use repository::{
 #[cfg(test)]
 pub use repository::insert_folder;
 
-// insert_file wird ausserhalb der DB-Schicht nur noch von #[cfg(test)]-Code
-// in commands/files.rs und commands/backup.rs aufgerufen (seit dem Aufteilen
-// von commands.rs in Task 14) - dementsprechend cfg-gated, um die Clippy-
-// Warnung ueber einen im Nicht-Test-Build ungenutzten Re-Export zu vermeiden.
+// Ausserhalb der DB-Schicht nur noch in Tests genutzt.
 #[cfg(test)]
 pub use repository::insert_file;
 
 #[cfg(test)]
 pub use repository::test_insert_minimal_file;
 
-// merge_auto_tag_aliases wird produktiv nur intern von repository::init()
-// aufgerufen (kein Aufruf ueber den db::-Re-Export ausserhalb von Tests) -
-// dementsprechend cfg-gated, um die Clippy-Warnung ueber einen im
-// Nicht-Test-Build ungenutzten Re-Export zu vermeiden.
+// Produktiv nur intern von repository::init() genutzt.
 #[cfg(test)]
 pub use repository::merge_auto_tag_aliases;
 
@@ -386,10 +373,7 @@ mod tests {
     fn delete_unused_tags_removes_orphans_but_keeps_used_tags() {
         let mut conn = connect_in_memory().expect("connect");
         insert_file(&mut conn, &sample_file()).expect("insert");
-        // Verwaisten Tag simulieren, wie er vor dieser Aufraeum-Logik
-        // entstehen konnte (z.B. durch das direkte DELETE FROM files vor
-        // dem Fix, das file_tags per Cascade mitloeschte, den Tag selbst
-        // aber stehen liess).
+        // Verwaisten Tag simulieren, wie ihn fruehere Versionen hinterlassen konnten.
         conn.execute(
             "INSERT INTO tags (name, color_hue) VALUES ('verwaist', 10)",
             [],

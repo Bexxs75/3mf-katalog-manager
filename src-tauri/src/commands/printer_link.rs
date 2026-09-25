@@ -189,16 +189,10 @@ pub(crate) fn preview_printer_job_with_conn(conn: &Connection, job_id: &str, spo
     })
 }
 
-/// Schalter-Sperre: bevor `test_printer_connection` auch nur ein Paket
-/// senden darf, muss die Druckeranbindung eingeschaltet sein (globale
-/// Vorgabe: "Schalter aus -> kein einziges Netzwerkpaket an einen
-/// Drucker" gilt fuer JEDEN Netzwerkzugriff, nicht nur den
-/// Hintergrund-Abgleich). Liefert `Some(...)` mit dem Ergebnis, das der
-/// Aufrufer ungeprueft zurueckgeben soll, wenn der Schalter aus ist; `None`
-/// heisst: Schalter an, weitermachen.
-///
-/// Resin-Drucker (v0.14.0) haben keine Druckeranbindung: fuer sie (und fuer
-/// unbekannte IDs) gibt es einen Fehler, noch bevor irgendetwas ins Netz geht.
+/// Sperre vor `test_printer_connection`: ist die Druckeranbindung aus, geht kein
+/// Paket an einen Drucker, auch nicht beim Test. `Some(...)` = Ergebnis direkt
+/// zurueckgeben, `None` = weitermachen. Resin-Drucker und unbekannte IDs geben
+/// einen Fehler, bevor etwas ins Netz geht.
 pub(crate) fn test_printer_connection_gate_with_conn(conn: &Connection, printer_id: i64) -> CmdResult<Option<TestResultDto>> {
     db::printers::ensure_filament_printer(conn, printer_id).map_err(|e| e.to_string())?;
     if store::printer_link_enabled(conn).map_err(|e| e.to_string())? {
@@ -292,16 +286,9 @@ pub fn sync_printers_now(app: tauri::AppHandle) -> CmdResult<()> {
     Ok(())
 }
 
-// Async statt eines schlichten `State<AppState>`-Sync-Commands (Vorgabe:
-// alle Tauri-Commands async, blockierende Arbeit per `spawn_blocking` -
-// siehe design.md "Tauri-Commands"): `list_open_printer_jobs` liest fuer
-// jeden offenen Druck Spule, Modellkandidaten und den Materialabgleich, das
-// ist mehr als ein trivialer Getter. `State<'_, AppState>` liesse sich
-// wegen seiner Lifetime nicht in die `'static`-Closure von
-// `spawn_blocking` verschieben, deshalb wird stattdessen das (Send + Clone
-// + 'static) `AppHandle` hineinverschoben und die Verbindung darin per
-// `app.state::<AppState>()` neu geholt - dasselbe Muster wie im
-// Hintergrund-Abgleich (`printer_link::sync::spawn_background`).
+// async + spawn_blocking, weil pro offenem Druck mehrere Abfragen laufen.
+// `State` kann nicht in die `'static`-Closure, deshalb das `AppHandle` (wie im
+// Hintergrund-Abgleich).
 #[tauri::command]
 pub async fn list_open_printer_jobs(app: tauri::AppHandle) -> CmdResult<Vec<OpenPrinterJobDto>> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -319,11 +306,9 @@ pub fn preview_printer_job(state: State<AppState>, job_id: String, spool_id: Str
     preview_printer_job_with_conn(&conn, &job_id, &spool_id)
 }
 
-/// Entscheidet OHNE Netzwerkzugriff, ob und wovon ein Vorschaubild geholt
-/// werden darf: `None`, wenn der Schalter aus ist, der Druck/Pfad/die
-/// Verbindung fehlt, oder die Verbindung pausiert ist (z.B. "Anmeldung
-/// noetig" - laut Spezifikation hebt das erst ein erneutes "Verbindung
-/// testen" auf, nicht das blosse Abrufen eines Vorschaubilds).
+/// Entscheidet ohne Netzwerkzugriff, ob ein Vorschaubild geholt werden darf:
+/// `None` bei ausgeschaltetem Schalter, fehlendem Druck/Pfad/Verbindung oder
+/// pausierter Verbindung (die hebt nur ein erneuter Verbindungstest auf).
 pub(crate) fn thumbnail_fetch_plan_with_conn(
     conn: &Connection,
     job_id: &str,
@@ -367,9 +352,7 @@ pub fn ignore_printer_job(state: State<AppState>, job_id: String) -> CmdResult<(
     booking::ignore_job(&conn, id(&job_id, "Druck")?, &now_rfc3339()).map_err(|e| e.to_string())
 }
 
-// Async aus demselben Grund wie `list_open_printer_jobs` oben: bucht in
-// einer Schleife von DB-Transaktionen ab (`booking::confirm_many`), keine
-// triviale Ein-Zeilen-Operation.
+// async aus demselben Grund wie `list_open_printer_jobs`.
 #[tauri::command]
 pub async fn confirm_printer_jobs(app: tauri::AppHandle, decisions: Vec<JobDecisionDto>) -> CmdResult<ConfirmResultDto> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -493,8 +476,7 @@ mod tests {
         assert!(preview_printer_job_with_conn(&conn, "x", "100").is_err());
     }
 
-    // Fix Round 1, Finding 1 (Review 7cee630..5e32acc): der Schalter muss
-    // JEDEN Netzwerkzugriff sperren, nicht nur den Hintergrund-Abgleich.
+    // Der Schalter muss JEDEN Netzwerkzugriff sperren, nicht nur den Abgleich.
     #[test]
     fn test_connection_is_blocked_while_switched_off() {
         let conn = setup();
@@ -525,9 +507,7 @@ mod tests {
         assert!(test_printer_connection_gate_with_conn(&conn, 999).is_err());
     }
 
-    // Fix Round 1, Finding 2 (cheap add-on): pausierte Verbindungen duerfen
-    // erst nach einem erneuten "Verbindung testen" wieder Vorschaubilder
-    // liefern.
+    // Pausierte Verbindungen liefern erst nach erneutem Test wieder Vorschaubilder.
     #[test]
     fn thumbnail_plan_is_none_while_switch_is_off() {
         let conn = setup();

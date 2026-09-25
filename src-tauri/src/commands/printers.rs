@@ -23,7 +23,7 @@ pub struct MaterialUnitDto {
 pub struct PrinterDto {
     pub id: String,
     pub name: String,
-    /// "filament" oder "resin" (v0.14.0), beim Anlegen fest gewaehlt.
+    /// "filament" oder "resin", beim Anlegen fest gewaehlt.
     pub kind: String,
     pub units: Vec<MaterialUnitDto>,
 }

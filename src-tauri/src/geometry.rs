@@ -58,15 +58,8 @@ pub struct RenderMesh {
     pub normals: Option<Vec<[f32; 3]>>,
 }
 
-/// Berechnet eine flache (nicht ueber Dreiecke gemittelte) Normale pro
-/// Dreieck und weist sie allen drei Ecken zu. Das entspricht exakt three.js'
-/// `BufferGeometry.computeVertexNormals()` fuer *nicht-indizierte* Geometrie
-/// (siehe deren Quelltext: im nicht-indizierten Zweig wird das rohe
-/// Kreuzprodukt ohne Mittelung ueber Dreiecke hinweg direkt auf alle drei
-/// Ecken geschrieben, da ohne Index keine Information ueber geteilte
-/// Vertices existiert). STL-Daten haben von Natur aus keine geteilten
-/// Vertices, daher reproduziert das exakt das bisherige (three.js-basierte)
-/// Shading der STL-Vorschau.
+/// Flache Normale pro Dreieck fuer alle drei Ecken, wie three.js'
+/// `computeVertexNormals()` bei nicht-indizierter Geometrie (bisheriges STL-Shading).
 pub fn compute_flat_normals(vertices: &[[f64; 3]], triangles: &[[u32; 3]]) -> Vec<[f32; 3]> {
     let mut normals = vec![[0.0f32; 3]; vertices.len()];
     for tri in triangles {

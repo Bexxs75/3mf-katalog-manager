@@ -123,7 +123,7 @@ pub const UNIT_KINDS: &[&str] = &[
     "resin_vat",
 ];
 
-/// Druckerart (v0.14.0). Wird beim Anlegen gewaehlt und ist danach fest.
+/// Druckerart; wird beim Anlegen gewaehlt und ist danach fest.
 pub const PRINTER_KIND_FILAMENT: &str = "filament";
 pub const PRINTER_KIND_RESIN: &str = "resin";
 pub const PRINTER_KINDS: &[&str] = &[PRINTER_KIND_FILAMENT, PRINTER_KIND_RESIN];
@@ -428,8 +428,8 @@ pub fn load_spool(conn: &Connection, spool_id: i64, unit_id: i64, slot_index: i6
         )
         .optional()?
         .ok_or_else(|| DbError::Other(format!("Spule {spool_id} existiert nicht")))?;
-    // Resin-Flaschen nur in eine Harzwanne, Filament nie (v0.14.0). Eine
-    // Harzwanne gibt es nur an Resin-Druckern (`insert_resin_vat`).
+    // Resin-Flaschen nur in eine Harzwanne, Filament nie. Eine Harzwanne gibt es
+    // nur an Resin-Druckern (`insert_resin_vat`).
     let is_resin = kind == crate::db::models::SPOOL_KIND_RESIN;
     let is_vat = unit.kind == UNIT_KIND_RESIN_VAT;
     if is_resin && !is_vat {

@@ -37,11 +37,8 @@ pub(crate) fn init(conn: &mut Connection) -> Result<(), DbError> {
     Ok(())
 }
 
-// Nur von Tests genutzt: legt eine minimale files-Zeile an (Name wird aus
-// dem letzten Pfadsegment abgeleitet), fuer Kompensationstests in
-// commands.rs, die einen kollidierenden `path`-Wert oder einen bereits
-// vorhandenen file_id-Datensatz brauchen, ohne den vollen `insert_file`-Weg
-// mit einem kompletten `NewFile` zu gehen (siehe Task-1-Brief, C-01/H-01).
+// Nur fuer Tests: minimale files-Zeile (Name aus dem letzten Pfadsegment),
+// ohne den vollen `insert_file`-Weg.
 #[cfg(test)]
 pub fn test_insert_minimal_file(conn: &Connection, path: &str, folder_id: Option<i64>) -> Result<i64, DbError> {
     let name = Path::new(path)
@@ -56,17 +53,10 @@ pub fn test_insert_minimal_file(conn: &Connection, path: &str, folder_id: Option
     Ok(conn.last_insert_rowid())
 }
 
-// Nur von Tests genutzt: einfacher Test-Helfer, um schnell eine
-// folders-Zeile ohne parent_id/echte Verzeichnisstruktur anzulegen (fuer
-// Faelle, in denen der volle `insert_folder_with_parent`-Aufruf mit
-// physischem Pfad nicht noetig ist, z.B. list_folders()-Tests).
+// Nur fuer Tests: folders-Zeile ohne parent_id und ohne echtes Verzeichnis.
 #[cfg(test)]
 pub fn insert_folder(conn: &Connection, name: &str) -> Result<i64, DbError> {
-    // path wird hier synthetisch aus dem Namen gebildet, nur damit bestehende
-    // Tests (die diese 1-Parameter-Signatur nutzen) weiterhin gueltige
-    // FolderRecord-Zeilen erzeugen (path ist in Rust ein non-optionales
-    // String-Feld). Eine echte parent_id/path-Vergabe kommt erst mit der
-    // erweiterten Signatur in Task 2.
+    // Synthetischer Pfad, weil `path` in Rust nicht optional ist.
     conn.execute(
         "INSERT INTO folders (name, path) VALUES (?1, ?1)",
         params![name],
@@ -89,11 +79,9 @@ pub fn list_folders(conn: &Connection) -> Result<Vec<FolderRecord>, DbError> {
     Ok(rows)
 }
 
-/// Legt fuer jede Verzeichnisebene zwischen `import_root` (inklusive) und
-/// `dir` (inklusive) einen folders-Eintrag an, sofern er noch nicht
-/// existiert (Lookup per `path`-Spalte, idempotent bei wiederholtem
-/// Import desselben Baums). Gibt die id der tiefsten Ebene (= `dir`)
-/// zurueck.
+/// Legt fuer jede Verzeichnisebene von `import_root` bis `dir` (beide inklusive)
+/// einen folders-Eintrag an, falls er fehlt (idempotent ueber `path`). Gibt die
+/// id von `dir` zurueck.
 pub fn ensure_folder_path(conn: &Connection, import_root: &Path, dir: &Path) -> Result<i64, DbError> {
     let relative = dir.strip_prefix(import_root).map_err(|_| {
         DbError::Other(format!(
@@ -147,13 +135,8 @@ fn folder_name(path: &Path) -> String {
         .unwrap_or_else(|| path.to_string_lossy().to_string())
 }
 
-/// Duenner Insert-Wrapper fuer `create_folder`: legt IMMER eine neue Zeile
-/// an (anders als `find_or_insert_folder`, das bei bereits existierendem
-/// `path` still die bestehende id zurueckgibt). Ein `create_folder`-Aufruf
-/// mit bereits existierendem Zielpfad soll fehlschlagen statt den
-/// bestehenden Ordner zurueckzugeben - in der Praxis schlaegt in diesem
-/// Fall aber schon `std::fs::create_dir` vorher mit `AlreadyExists` fehl,
-/// bevor diese Funktion ueberhaupt erreicht wird.
+/// Legt IMMER eine neue Zeile an, anders als `find_or_insert_folder`. Einen
+/// schon existierenden Zielpfad faengt `create_dir` vorher mit `AlreadyExists` ab.
 pub fn insert_folder_with_parent(
     conn: &Connection,
     name: &str,
@@ -167,12 +150,8 @@ pub fn insert_folder_with_parent(
     Ok(conn.last_insert_rowid())
 }
 
-/// Legt einen neuen Eintrag in der maschinenlokalen Slicer-Registry an
-/// (M-06, Task 11). `executable_path` ist `UNIQUE` im Schema - ein erneuter
-/// Insert desselben Pfads (z.B. bei jedem App-Start erneut auto-erkannt)
-/// schlaegt mit einem echten `DbError` fehl; Aufrufer, die das best-effort
-/// tolerieren wollen (Autoerkennung), pruefen vorher selbst gegen
-/// `list_registered_slicers`.
+/// Neuer Eintrag in der maschinenlokalen Slicer-Registry. `executable_path` ist
+/// UNIQUE; die Autoerkennung prueft deshalb vorher gegen `list_registered_slicers`.
 pub fn insert_registered_slicer(
     conn: &Connection,
     name: &str,
@@ -220,8 +199,7 @@ pub fn list_registered_slicers(conn: &Connection) -> Result<Vec<RegisteredSlicer
     Ok(rows)
 }
 
-/// Aktualisiert `folder_id` und `path` einer Datei nach einem physischen
-/// Verschieben (siehe `move_file_to_folder`-Command in `commands.rs`).
+/// Aktualisiert `folder_id` und `path` nach einem physischen Verschieben.
 pub fn update_file_folder(conn: &Connection, file_id: i64, folder_id: Option<i64>, path: &str) -> Result<(), DbError> {
     let affected = conn.execute(
         "UPDATE files SET folder_id = ?1, path = ?2 WHERE id = ?3",
@@ -233,8 +211,7 @@ pub fn update_file_folder(conn: &Connection, file_id: i64, folder_id: Option<i64
     Ok(())
 }
 
-/// Aktualisiert `name` und `path` einer Datei nach einem physischen
-/// Umbenennen (siehe `rename_file`-Command in `commands/files.rs`).
+/// Aktualisiert `name` und `path` nach einem physischen Umbenennen.
 pub fn rename_file(conn: &Connection, file_id: i64, name: &str, path: &str) -> Result<(), DbError> {
     let affected = conn.execute(
         "UPDATE files SET name = ?1, path = ?2 WHERE id = ?3",
@@ -246,30 +223,23 @@ pub fn rename_file(conn: &Connection, file_id: i64, name: &str, path: &str) -> R
     Ok(())
 }
 
-/// Aktualisiert nur die `name`-Spalte eines Ordners (der physische
-/// `std::fs::rename` und das rekursive Pfad-Update via
-/// `update_paths_under_folder` passieren getrennt, siehe `rename_folder`-
-/// Command in `commands.rs`).
+/// Aktualisiert nur `name`; Umbenennen auf der Platte und Pfad-Update
+/// (`update_paths_under_folder`) passieren getrennt.
 pub fn rename_folder_name(conn: &Connection, folder_id: i64, name: &str) -> Result<(), DbError> {
     conn.execute("UPDATE folders SET name = ?1 WHERE id = ?2", params![name, folder_id])?;
     Ok(())
 }
 
-/// Aktualisiert nur die `parent_id`-Spalte eines Ordners (der physische
-/// `std::fs::rename` und das rekursive Pfad-Update via
-/// `update_paths_under_folder` passieren getrennt, siehe `move_folder`-
-/// Command in `commands.rs`).
+/// Aktualisiert nur `parent_id`; Verschieben auf der Platte und Pfad-Update
+/// (`update_paths_under_folder`) passieren getrennt.
 pub fn set_folder_parent(conn: &Connection, folder_id: i64, parent_id: Option<i64>) -> Result<(), DbError> {
     conn.execute("UPDATE folders SET parent_id = ?1 WHERE id = ?2", params![parent_id, folder_id])?;
     Ok(())
 }
 
-/// Rekursives Praefix-Update fuer `folders.path` UND `files.path`
-/// unterhalb eines Ordners, nachdem sich dessen eigener Pfad geaendert hat
-/// (Umbenennen oder Verschieben, siehe `rename_folder`/`move_folder`-
-/// Commands in `commands.rs`). `old_path`/`new_path` sind der alte bzw.
-/// neue absolute Pfad von `folder_id` selbst; Kind-Ordner und -Dateien
-/// werden per Praefix-Ersetzung mitgezogen, beliebig tief verschachtelt.
+/// Zieht `folders.path` und `files.path` unterhalb von `folder_id` per
+/// Praefix-Ersetzung nach, nachdem sich dessen Pfad von `old_path` zu
+/// `new_path` geaendert hat.
 pub fn update_paths_under_folder(
     conn: &Connection,
     folder_id: i64,
@@ -277,11 +247,8 @@ pub fn update_paths_under_folder(
     new_path: &str,
 ) -> Result<(), DbError> {
     conn.execute("UPDATE folders SET path = ?1 WHERE id = ?2", params![new_path, folder_id])?;
-    // length()/substr() auf TEXT-Werten zaehlen in SQLite in UTF-8-Zeichen,
-    // nicht in Bytes - old_path.len() (Rust, Byte-Laenge) waere bei
-    // Pfaden mit Nicht-ASCII-Zeichen (Umlaute etc.) ein falscher Offset.
-    // Indem length() hier ebenfalls von SQLite auf dem TEXT-Wert berechnet
-    // wird, stimmen beide Seiten in derselben Einheit (Zeichen) ueberein.
+    // length()/substr() zaehlen in SQLite Zeichen, nicht Bytes. Deshalb auch die
+    // Laenge von SQLite berechnen lassen, sonst stimmt der Offset bei Umlauten nicht.
     conn.execute(
         "UPDATE files SET path = ?1 || substr(path, length(?2) + 1) WHERE folder_id = ?3",
         params![new_path, old_path, folder_id],
@@ -294,10 +261,8 @@ pub fn update_paths_under_folder(
     drop(stmt);
 
     for (child_id, child_old_path) in children {
-        // Kein Byte-Slicing: passt die Hierarchie nicht zu den Pfaden (z.B.
-        // aus einem praeparierten Backup), wuerde das paniken - und mit
-        // panic = "abort" die ganze App beenden. Stattdessen Fehler, die
-        // aufrufende Transaktion wird zurueckgerollt.
+        // Kein Byte-Slicing: passt die Hierarchie nicht zu den Pfaden (praepariertes
+        // Backup), wuerde das paniken und mit panic = "abort" die App beenden.
         let Some(suffix) = child_old_path.strip_prefix(old_path) else {
             return Err(DbError::Other(format!(
                 "Ordner {child_id} ({child_old_path}) liegt nicht unter {old_path}"
@@ -365,11 +330,9 @@ pub fn add_tag_to_file(conn: &Connection, file_id: i64, tag_name: &str) -> Resul
     Ok(())
 }
 
-/// Legt Tags, deren Name ein Name eines automatischen Tags in irgendeiner
-/// Sprache ist (z. B. "mini", "Multipart"), mit der deutschen Kennung
-/// zusammen. Laeuft bei jedem Oeffnen der DB (siehe `init`) und ist
-/// idempotent: ein zweiter Lauf findet nichts mehr. Alles in einer
-/// Transaktion - bei einem Fehler bleibt der Katalog unveraendert.
+/// Legt Tags, die in irgendeiner Sprache wie ein automatischer Tag heissen
+/// (z.B. "Multipart"), mit der deutschen Kennung zusammen. Laeuft bei jedem
+/// Oeffnen der DB, idempotent und in einer Transaktion.
 pub fn merge_auto_tag_aliases(conn: &mut Connection) -> Result<usize, DbError> {
     let tx = conn.transaction()?;
     let tags: Vec<(i64, String)> = {
@@ -379,10 +342,8 @@ pub fn merge_auto_tag_aliases(conn: &mut Connection) -> Result<usize, DbError> {
     };
     let mut merged = 0;
     for (alias_id, name) in tags {
-        // canonical_tag_unambiguous statt canonical_tag: die mehrdeutigen
-        // Aliase "mini"/"large"/"grande" (z. B. Druckername "Bambu A1 mini")
-        // sollen beim Start NICHT automatisch zusammengelegt werden, siehe
-        // Nachtrag im Spec-Dokument (Nutzer-Entscheidung 2026-09-24).
+        // Mehrdeutige Aliase ("mini" wie in "Bambu A1 mini") werden beim Start
+        // bewusst nicht zusammengelegt.
         let canonical = crate::tagging::canonical_tag_unambiguous(&name);
         if canonical == name {
             continue;
@@ -423,9 +384,7 @@ pub fn remove_tag_from_file(conn: &Connection, file_id: i64, tag_name: &str) -> 
     Ok(())
 }
 
-/// Loescht einen Tag, wenn ihm nach einer Aenderung keine Datei mehr
-/// zugeordnet ist - verhindert verwaiste, sinnfreie Tags (z.B. aus geloeschten
-/// Dateien) im Sidebar-Tag-Filter.
+/// Loescht einen Tag, wenn ihm keine Datei mehr zugeordnet ist.
 fn delete_tag_if_unused(conn: &Connection, tag_id: i64) -> Result<(), DbError> {
     let count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM file_tags WHERE tag_id = ?1",
@@ -438,9 +397,7 @@ fn delete_tag_if_unused(conn: &Connection, tag_id: i64) -> Result<(), DbError> {
     Ok(())
 }
 
-/// Entfernt alle Tags, die aktuell keiner Datei zugeordnet sind. Wird beim
-/// App-Start aufgerufen, um bereits vorhandene verwaiste Tags aus frueheren
-/// Sitzungen (vor dieser Aufraeum-Logik) zu bereinigen.
+/// Entfernt beim Start alle Tags ohne Datei.
 pub fn delete_unused_tags(conn: &Connection) -> Result<usize, DbError> {
     Ok(conn.execute(
         "DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM file_tags)",
@@ -484,12 +441,7 @@ pub fn list_creator_counts(conn: &Connection) -> Result<Vec<CreatorCount>, DbErr
     Ok(rows)
 }
 
-// Nur noch von Testcode aufgerufen (hier und in commands/files.rs,
-// commands/backup.rs) - produktiver Code importiert seit Task 14 immer
-// Dateien im Batch ueber `insert_file_within_tx` direkt (eine gemeinsame
-// Transaktion statt einer pro Datei), siehe Kommentar dort. Ohne dieses
-// `#[cfg(test)]` waere die Funktion in einem Nicht-Test-Build totes Gepaeck
-// (Abschluss-Review, Finding 5).
+// Nur fuer Tests; der Import nutzt `insert_file_within_tx` in einer Batch-Transaktion.
 #[cfg(test)]
 pub fn insert_file(conn: &mut Connection, file: &NewFile) -> Result<i64, DbError> {
     let tx = conn.transaction()?;
@@ -498,12 +450,8 @@ pub fn insert_file(conn: &mut Connection, file: &NewFile) -> Result<i64, DbError
     Ok(id)
 }
 
-/// Core of [`insert_file`], operating on an already-open transaction/connection
-/// instead of opening its own. Callers that import many files in one batch
-/// (see `commands::import_many_with_conn`) use this directly so the whole
-/// batch commits once instead of once per file - SQLite fsyncs on every
-/// commit, so one-transaction-per-file made large imports take a very long
-/// time (Finding, Review 2026-09-13).
+/// Core of [`insert_file`] on an already open transaction, so a batch import
+/// commits once instead of once per file (SQLite fsyncs on every commit).
 pub fn insert_file_within_tx(conn: &Connection, file: &NewFile) -> Result<i64, DbError> {
     let [dim_x, dim_y, dim_z] = match file.dimensions_mm {
         Some(d) => [Some(d[0]), Some(d[1]), Some(d[2])],
@@ -741,11 +689,8 @@ pub fn get_file(conn: &Connection, id: i64) -> Result<Option<FileRecord>, DbErro
     Ok(Some(file))
 }
 
-/// Laedt mehrere Dateien anhand ihrer IDs in EINER Hauptabfrage statt einer
-/// pro ID (wie es ein wiederholter get_file-Aufruf taete) - genutzt von
-/// list_collection_files, wo eine Sammlung aus vielen Dateien bestehen kann.
-/// Materials/Metadata/Tags werden weiterhin pro Datei nachgeladen (gleiches
-/// Muster wie list_files/get_file), das war nicht der eigentliche N+1-Teil.
+/// Laedt mehrere Dateien mit EINER Hauptabfrage statt einer pro id (z.B. fuer
+/// grosse Sammlungen).
 pub fn list_files_by_ids(conn: &Connection, ids: &[i64]) -> Result<Vec<FileRecord>, DbError> {
     if ids.is_empty() {
         return Ok(Vec::new());
@@ -772,9 +717,7 @@ pub fn list_files_by_ids(conn: &Connection, ids: &[i64]) -> Result<Vec<FileRecor
         file.tags = load_tags(conn, file.id)?;
     }
 
-    // Reihenfolge der uebergebenen ids wiederherstellen - SQL "IN" garantiert
-    // keine bestimmte Ergebnisreihenfolge, die Sammlungs-Position haengt aber
-    // davon ab.
+    // SQL "IN" garantiert keine Reihenfolge; die Sammlungs-Position haengt aber davon ab.
     let mut by_id: std::collections::HashMap<i64, FileRecord> =
         files.into_iter().map(|f| (f.id, f)).collect();
     Ok(ids.iter().filter_map(|id| by_id.remove(id)).collect())
@@ -802,22 +745,11 @@ pub fn list_files(conn: &Connection) -> Result<Vec<FileRecord>, DbError> {
     Ok(files)
 }
 
-/// Schlanke Projektion von `files` fuer die Katalog-Uebersicht (Grid/Liste):
-/// bewusst OHNE `custom_image_png` (nur auf der Detailseite gebraucht) und
-/// OHNE Materials/Metadata/Tags (bislang pro Zeile per `load_materials`/
-/// `load_metadata`/`load_tags` nachgeladen - genau das N+1-Problem aus
-/// Finding M-01). `thumbnail_png` UND `render_snapshot_png` bleiben
-/// enthalten, da die Kachel-/Grid-Vorschau ohne ein Bild pro Zeile nicht
-/// sinnvoll waere (Variante (a) aus dem Task-6-Brief) - `render_snapshot_png`
-/// wurde hier ursspruenglich (Finding 1, Abschluss-Review) bewusst
-/// ausgeschlossen in der Annahme, es sei "der grosse Blob", was das Grid ohne
-/// individuelles Nachladen jedes Modells (`ensureFullModel`) dauerhaft auf
-/// dem eingebetteten `thumbnail_png` stehen liess, selbst nachdem im
-/// Hintergrund laengst ein Snapshot gerendert und gespeichert wurde. Eine
-/// Vermessung des echten Katalogs widerlegte die Annahme: `render_snapshot_png`
-/// ist im Schnitt KLEINER als `thumbnail_png` (~8,9 KB vs. ~54 KB, Maximum
-/// 29,6 KB vs. 269 KB) - der Ausschluss brachte also keinen Performance-
-/// Vorteil, nur eine kaputte Grid-Anzeige.
+/// Schlanke Projektion von `files` fuer Grid und Liste: ohne
+/// `custom_image_png` und ohne Materialien, Metadaten und Tags (sonst N+1
+/// Abfragen). `thumbnail_png` und `render_snapshot_png` bleiben drin, das Grid
+/// braucht ein Bild pro Zeile; der Snapshot ist im Schnitt sogar kleiner
+/// (~9 KB gegenueber ~54 KB).
 pub struct FileSummary {
     pub id: i64,
     pub name: String,
@@ -834,22 +766,11 @@ pub struct FileSummary {
     pub queue_position: Option<i64>,
     pub thumbnail_png: Option<Vec<u8>>,
     pub render_snapshot_png: Option<Vec<u8>>,
-    // Praktisch redundant, seit render_snapshot_png selbst mitgeliefert wird
-    // (`renderSnapshotImage === null` im Frontend bildet den DB-Stand jetzt
-    // direkt ab) - als eigenes Feld belassen, da `pendingSnapshotIds` im
-    // Frontend bereits gegen `summaryConfirmedSnapshotIds` (Finding 1)
-    // gefiltert wird und eine zusaetzliche Entfernung dieser Kette ausserhalb
-    // des Scopes dieses Bugfixes liegt.
+    // Redundant zu `render_snapshot_png`, wird im Frontend aber noch fuer die Snapshot-Warteschlange genutzt.
     pub has_render_snapshot: bool,
-    // Bugfix (2026-09-20): fehlte hier komplett, wodurch der Sidebar-
-    // Creator-Filter (`m.creator === activeCreator` in catalogFilters.ts)
-    // fuer jedes nur per Summary geladene Modell ins Leere lief, ganz analog
-    // zum render_snapshot_png-Bug oben - derselbe Fehlerklasse, hier nur noch
-    // nicht behoben gewesen.
+    // Fuer den Creator-Filter der Seitenleiste.
     pub creator: Option<String>,
-    // Fuer die Werkzeug-Ansichten "Zuletzt angesehen" und "Duplikate" in der
-    // Seitenleiste; ohne diese Felder kannte das Frontend beides erst nach
-    // dem Oeffnen eines Modells (auch die Sortierung 'viewed' lief ins Leere).
+    // Fuer "Zuletzt angesehen", "Duplikate" und die Sortierung 'viewed'.
     pub last_viewed_at: Option<String>,
     pub content_hash: Option<String>,
 }
@@ -900,12 +821,8 @@ pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbErro
     Ok(rows)
 }
 
-/// Alle Datei->Tag-Zuordnungen in EINER Abfrage (Nachtrag zu Finding M-01:
-/// die Sidebar-Tag-Filterung (`m.tags.includes(activeTag)`) braucht pro
-/// Datei die Tag-Liste, die `list_file_summaries` bewusst nicht mehr
-/// mitliefert - ein Nachladen ueber diese eine Aggregat-Abfrage haelt die
-/// Anzahl der Statements weiterhin O(1) statt O(N), im Gegensatz zu einem
-/// erneuten `load_tags`-Aufruf pro Zeile).
+/// Alle Datei-Tag-Zuordnungen in EINER Abfrage, fuer die Tag-Filterung (die
+/// Summaries enthalten keine Tags).
 pub fn list_all_file_tags(conn: &Connection) -> Result<Vec<(i64, String)>, DbError> {
     let mut stmt = conn.prepare(
         "SELECT file_tags.file_id, tags.name
@@ -1032,10 +949,7 @@ pub fn max_queue_position(conn: &Connection) -> Result<Option<i64>, DbError> {
     Ok(conn.query_row("SELECT MAX(queue_position) FROM files WHERE deleted_at IS NULL", [], |row| row.get(0))?)
 }
 
-/// Liefert (id, path) fuer alle Dateien ohne content_hash - Grundlage fuer
-/// den einmaligen Startup-Backfill in commands::backfill_content_hashes, der
-/// fuer Bestandsdaten den Hash nachtraeglich per Datei-I/O berechnet. Bewusst
-/// minimal (kein FileRecord), da nur diese zwei Felder gebraucht werden.
+/// (id, path) aller Dateien ohne content_hash, fuer `backfill_content_hashes`.
 pub fn list_files_missing_content_hash(conn: &Connection) -> Result<Vec<(i64, String)>, DbError> {
     let mut stmt = conn.prepare("SELECT id, path FROM files WHERE content_hash IS NULL AND deleted_at IS NULL")?;
     let rows = stmt
@@ -1138,11 +1052,7 @@ pub fn list_filament_spools(conn: &Connection) -> Result<Vec<FilamentSpoolRecord
     Ok(rows)
 }
 
-/// Liest eine einzelne Spule, inklusive ihrer aktuellen Fach-Zuordnung -
-/// genutzt von `update_filament_spool` (commands/filament.rs), um nach dem
-/// UPDATE den tatsaechlichen Datenbankstand zurueckzugeben, statt (wie vor
-/// dem finalen Review) einfach das ungeprueft vom Aufrufer geschickte DTO
-/// zu spiegeln (siehe dortiger Kommentar).
+/// Liest eine Spule inklusive Fach, damit `update_filament_spool` den echten DB-Stand zurueckgibt.
 pub fn get_filament_spool(conn: &Connection, id: i64) -> Result<FilamentSpoolRecord, DbError> {
     conn.query_row(
         "SELECT id, material, manufacturer, color, location, diameter_mm, original_weight_g, remaining_weight_g, price, image_png,
@@ -1178,7 +1088,7 @@ pub fn get_filament_spool(conn: &Connection, id: i64) -> Result<FilamentSpoolRec
 /// dann leer.
 pub fn update_filament_spool(conn: &Connection, id: i64, spool: &NewFilamentSpool) -> Result<(), DbError> {
     // Ein eingelegter Eintrag behaelt seine Art: sonst laege Resin in einem
-    // Filament-Fach oder Filament in einer Harzwanne (v0.14.0).
+    // Filament-Fach oder Filament in einer Harzwanne.
     let loaded_kind: Option<String> = conn
         .query_row(
             "SELECT kind FROM filament_spools WHERE id = ?1 AND unit_id IS NOT NULL",
@@ -1320,22 +1230,14 @@ mod tests {
         let summaries = list_file_summaries(&conn).unwrap();
 
         assert_eq!(summaries.len(), 1);
-        // Bugfix (2026-09-20): render_snapshot_png muss mitkommen, sonst zeigt
-        // das Grid nie den im Hintergrund bereits gerenderten Snapshot an,
-        // solange das Modell nicht einzeln per ensureFullModel nachgeladen
-        // wurde - siehe Kommentar an FileSummary. custom_image_png bleibt
-        // dagegen weiterhin ausgeschlossen (FileSummary hat schlicht kein
-        // Feld dafuer - Compile-Zeit-Garantie ueber die Typ-Feldliste).
+        // Der Snapshot muss mitkommen, sonst zeigt das Grid ihn erst nach dem Oeffnen des Modells.
         assert_eq!(summaries[0].render_snapshot_png, Some(vec![1u8; 1024]));
         assert!(summaries[0].has_render_snapshot);
     }
 
     #[test]
     fn list_file_summaries_includes_creator() {
-        // Bugfix (2026-09-20): creator fehlte in der Projektion, wodurch der
-        // Sidebar-Creator-Filter (m.creator === activeCreator) fuer jedes nur
-        // per Summary geladene Modell nie traf - dieselbe Fehlerklasse wie der
-        // render_snapshot_png-Bug oben.
+        // creator muss in der Projektion sein, sonst greift der Creator-Filter nicht.
         let conn = connect_in_memory().unwrap();
         let file_id = test_insert_minimal_file(&conn, "/tmp/z.3mf", None).unwrap();
         conn.execute("UPDATE files SET creator = ?1 WHERE id = ?2", params!["CarlFromUp", file_id]).unwrap();
@@ -1378,21 +1280,14 @@ mod tests {
         assert!(!summaries[0].has_render_snapshot);
     }
 
-    // `Connection::trace` (rusqlite 0.40) nimmt nur einen reinen
-    // Funktionszeiger (`fn(&str)`), keine capturing Closure - der Zaehler
-    // muss deshalb ausserhalb der Closure leben. Ein thread-lokaler Zaehler
-    // reicht hier aus: der SQLite-Trace-Callback laeuft synchron auf
-    // demselben Thread wie der `list_file_summaries`-Aufruf, und cargo test
-    // fuehrt jeden Testfall auf einem eigenen Thread aus, wodurch Tests sich
-    // nicht gegenseitig verfaelschen (anders als bei einem globalen Static).
+    // `Connection::trace` nimmt nur einen Funktionszeiger, der Zaehler lebt deshalb
+    // ausserhalb. Thread-lokal reicht: der Callback laeuft synchron, und jeder Test
+    // hat einen eigenen Thread.
     thread_local! {
         static QUERY_TRACE_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     }
 
-    // `Connection::trace` ist in dieser rusqlite-Version als deprecated
-    // markiert (siehe Doc-Kommentar oben) - `trace_v2` mit dem
-    // `SQLITE_TRACE_STMT`-Event ist der empfohlene Nachfolger und zaehlt
-    // exakt dieselben "eine Query beginnt"-Ereignisse.
+    // `trace_v2` mit `SQLITE_TRACE_STMT` ersetzt das veraltete `trace`.
     fn count_traced_query(event: rusqlite::trace::TraceEvent<'_>) {
         if matches!(event, rusqlite::trace::TraceEvent::Stmt(_, _)) {
             QUERY_TRACE_COUNT.with(|c| c.set(c.get() + 1));
@@ -1433,8 +1328,7 @@ mod tests {
         let summaries = list_file_summaries(&conn).unwrap();
         let elapsed = start.elapsed();
         assert_eq!(summaries.len(), 5000);
-        // Bewusst KEINE harte Zeit-Assertion (P2-Korrektur) - dieser Test dient
-        // nur der manuellen Beobachtung via --nocapture, nicht als CI-Gate.
+        // Bewusst ohne Zeit-Assertion: nur zur Beobachtung mit --nocapture.
         eprintln!("list_file_summaries(5000 rows): {elapsed:?}");
     }
 
@@ -1607,13 +1501,7 @@ mod tests {
     fn list_files_returns_an_error_for_a_row_with_an_unparseable_file_type() {
         let conn = connect_in_memory().unwrap();
         conn.execute("PRAGMA foreign_keys = OFF", []).unwrap();
-        // PRAGMA ignore_check_constraints deaktiviert CHECK-Constraints GEZIELT
-        // fuer diese Verbindung (offizielle SQLite-Pragma, siehe
-        // https://www.sqlite.org/pragma.html#pragma_ignore_check_constraints) -
-        // damit ist garantiert, dass der folgende INSERT gelingt, unabhaengig
-        // vom bestehenden `CHECK (file_type IN ('3mf', 'stl'))` in schema.sql.
-        // Kein bedingtes "return" mehr moeglich wie in der urspruenglichen
-        // Testfassung - der Test prueft den Fix immer tatsaechlich.
+        // ignore_check_constraints, damit der INSERT trotz CHECK in schema.sql gelingt.
         conn.execute("PRAGMA ignore_check_constraints = 1", []).unwrap();
         conn.execute(
             "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at) VALUES ('x', '/tmp/x.xyz', 'xyz', 1, '2026-01-01T00:00:00Z')",
@@ -1627,8 +1515,7 @@ mod tests {
 
     #[test]
     fn list_files_still_succeeds_for_rows_with_valid_file_types() {
-        // Regressionsschutz: normale 3mf/stl-Zeilen (der weit ueberwiegende
-        // Normalfall) duerfen durch die Aenderung nicht beeintraechtigt werden.
+        // Normale 3mf/stl-Zeilen bleiben unberuehrt.
         let conn = connect_in_memory().unwrap();
         test_insert_minimal_file(&conn, "/tmp/a.3mf", None).unwrap();
         let result = list_files(&conn);
@@ -1653,8 +1540,7 @@ mod tests {
 
     #[test]
     fn list_file_summaries_still_succeeds_for_rows_with_valid_file_types() {
-        // Regressionsschutz: normale 3mf/stl-Zeilen (der weit ueberwiegende
-        // Normalfall) duerfen durch die Aenderung nicht beeintraechtigt werden.
+        // Normale 3mf/stl-Zeilen bleiben unberuehrt.
         let conn = connect_in_memory().unwrap();
         test_insert_minimal_file(&conn, "/tmp/a.3mf", None).unwrap();
         let result = list_file_summaries(&conn);

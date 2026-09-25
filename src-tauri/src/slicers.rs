@@ -205,13 +205,9 @@ fn is_cura_folder_name(name: &str) -> bool {
     name.starts_with("Ultimaker Cura") || name.starts_with("UltiMaker Cura")
 }
 
-// macOS-Apps sind Bundles (`Name.app/Contents/MacOS/Binärname`), keine
-// einzelnen Binärdateien auf $PATH - deshalb eigene, feste Zuordnung statt
-// der generischen `binary_names` aus SLICER_DEFINITIONS (die Groß-/
-// Kleinschreibung auf macOS weicht teils ab, z. B. "PrusaSlicer" statt
-// "prusa-slicer"). Namen der App-Bundles und der darin enthaltenen
-// Binärdateien stammen aus den offiziellen macOS-Downloads der Hersteller
-// (Stand 2026-09-21, per Docker-OSX-VM verifiziert fuer Bambu Studio).
+// macOS-Apps sind Bundles (`Name.app/Contents/MacOS/Binaerdatei`) mit teils
+// anderer Schreibweise, deshalb eine eigene Zuordnung (Namen aus den
+// offiziellen macOS-Downloads).
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 const MACOS_FIXED_LOCATIONS: &[(&str, &str, &str)] = &[
     ("Bambu Studio", "BambuStudio.app", "BambuStudio"),

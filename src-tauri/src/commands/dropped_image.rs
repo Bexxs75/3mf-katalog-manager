@@ -1,4 +1,4 @@
-//! Bild per Drag & Drop in das Spulenformular (v0.13.1).
+//! Bild per Drag & Drop in das Spulenformular.
 //!
 //! Unter `dragDropEnabled` kommen Datei-Drops nur als Tauri-Ereignis an; das
 //! Frontend kennt dann den Pfad und fragt `read_dropped_image` an. Damit daraus

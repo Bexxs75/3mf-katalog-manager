@@ -1,8 +1,7 @@
 //! Tauri-Befehle zum Entpacken EINZELN importierter Archive (Dateidialog,
 //! Drag & Drop). Die Archivlogik selbst liegt in `crate::archive`; hier
 //! passieren nur Ablaufsteuerung, Katalog-Import und das optionale Loeschen
-//! des Originals. Der Ordner-Import entpackt bewusst nichts (Spezifikation
-//! 2026-09-23, Entscheidung 1).
+//! des Originals. Der Ordner-Import entpackt bewusst nichts.
 
 use super::*;
 use super::files::{import_many_with_conn, is_supported_extension};
@@ -702,9 +701,8 @@ mod tests {
 
     #[test]
     fn merging_into_a_folder_that_contains_a_protected_path_is_refused() {
-        // Nachbau des ".local.zip"-Angriffs: Das Ziel ist erlaubt, `dest`
-        // enthaelt aber einen geschuetzten Bereich - seit F2c wird dann gar
-        // nichts entpackt (vorher: nur die betroffenen Eintraege uebersprungen).
+        // ".local.zip"-Angriff: das Ziel ist erlaubt, `dest` enthaelt aber einen
+        // geschuetzten Bereich; dann wird gar nichts entpackt.
         let dir = unique_test_dir("archives_guard");
         let target = dir.join("Home");
         let protected = target.join("Drache/share/applications");
@@ -888,7 +886,7 @@ mod tests {
         assert!(first.unwrap_err().contains("nicht ueber die App ausgewaehlt"));
         assert!(!target.join("Drache").exists());
 
-        // Missing target folder: also nothing consumed.
+        // Fehlender Zielordner: ebenfalls nichts verbraucht.
         let missing = authorize_and_extract(
             &pending,
             &[],

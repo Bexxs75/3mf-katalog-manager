@@ -1,14 +1,5 @@
-// L-03 (Senior-Code-Review 2026-09-19): `commands.rs` war zu einem "God
-// Module" (~6200 Zeilen) angewachsen, das viele fachlich unabhaengige
-// Bereiche (Datei-CRUD, Ordner, Backup, Filament, Slicer, Sammlungen,
-// Sicherheit, Papierkorb) vermischte. Reiner Struktur-Refactor, KEINE
-// Verhaltensaenderung: jede Funktion wurde 1:1 in ihr fachliches
-// Untermodul verschoben. Dieses `mod.rs` haelt nur das, was von mehreren
-// Untermodulen gebraucht wird (`AppState`, `CmdResult`, `lock_db`,
-// `reject_if_sensitive_path`/`move_file` & Co., sowie die DTOs/Helfer, die
-// `to_dto` fuer mehrere Domaenen gemeinsam braucht) und re-exportiert alle
-// Untermodule, damit `lib.rs`s `generate_handler!`-Liste und jeder externe
-// Aufrufer weiterhin unveraendert `commands::<name>` verwenden kann.
+// Gemeinsame Typen und Helfer der Tauri-Commands; die Commands selbst liegen
+// fachlich getrennt in den Untermodulen und werden hier re-exportiert.
 mod archives;
 mod backup;
 mod collections;
@@ -56,13 +47,9 @@ pub struct AppState {
     pub db: Mutex<Connection>,
     pub trash_dir: std::path::PathBuf,
     pub db_path: std::path::PathBuf,
-    /// Verzeichnisse, in die niemals per `create_folder`/`rename_folder`/
-    /// `move_folder`/`move_file_to_folder` geschrieben werden darf, einmalig
-    /// beim Start berechnet (siehe `crate::sensitive_dirs`). Schuetzt gegen
-    /// Finding 1 des Security-Reviews vom 2026-09-18: ein importiertes
-    /// Katalog-Backup kann `folders.path`/`files.path` auf beliebige Orte
-    /// setzen, die sonst ungeprueft an `fs::rename`/`fs::create_dir`
-    /// weitergereicht wuerden (z.B. Autostart-Verzeichnisse fuer Persistenz).
+    /// Verzeichnisse, in die nie geschrieben werden darf (einmal beim Start
+    /// berechnet). Ein importiertes Backup kann `folders.path`/`files.path` auf
+    /// beliebige Orte setzen, z.B. Autostart-Ordner.
     pub sensitive_dirs: Vec<std::path::PathBuf>,
 }
 pub(crate) type CmdResult<T> = Result<T, String>;
@@ -133,14 +120,11 @@ pub struct CostEstimateDto {
     pub total_cost: Option<f64>,
     pub has_unpriced_filaments: bool,
 }
-/// Schaetzt die Materialkosten eines Modells: pro Filament im `slice_info`
-/// wird nach Lager-Spulen gesucht, deren `material`-Feld den Filament-Typ
-/// als Teilstring enthaelt (case-insensitive, Farbe wird NICHT verglichen -
-/// Slicer- und Lager-Farbwerte stimmen selten exakt ueberein). Aus allen
-/// Treffern mit gesetztem Preis wird ein Durchschnittspreis pro Gramm
-/// gebildet. Filamente ohne Treffer/Preis fliessen nicht in die Summe ein
-/// (0 wuerde faelschlich "kostenlos" bedeuten) - stattdessen markiert
-/// `has_unpriced_filaments`, dass die Summe unvollstaendig ist.
+/// Schaetzt die Materialkosten: pro Filament aus `slice_info` werden Lager-Spulen
+/// gesucht, deren `material` den Typ enthaelt (ohne Farbe, die stimmt selten
+/// ueberein), und ihr Durchschnittspreis pro Gramm genommen. Filamente ohne
+/// Preis zaehlen nicht mit (0 hiesse "kostenlos"); `has_unpriced_filaments`
+/// markiert die Summe dann als unvollstaendig.
 pub(crate) fn estimate_material_cost(
     slice_info: &threemf::SliceInfo,
     spools: &[db::models::FilamentSpoolRecord],
@@ -309,34 +293,13 @@ pub(crate) fn to_dto(file: FileRecord, spools: &[db::models::FilamentSpoolRecord
 pub(crate) fn lock_db<'a>(state: &'a State<AppState>) -> CmdResult<std::sync::MutexGuard<'a, Connection>> {
     state.db.lock().map_err(|_| "database lock poisoned".to_string())
 }
-/// Verschiebt eine Datei OHNE eine bestehende Zieldatei zu ueberschreiben
-/// (C-01, Senior-Code-Review 2026-09-19, dritte Runde: nicht als "atomar"
-/// bezeichnen - Quelle und Ziel koennen bei einem Absturz/Prozessende
-/// mitten im Kopiervorgang transient gleichzeitig existieren, da Kopieren
-/// und `remove_file` kein einzelner atomarer Schritt ist. Die einzige echte
-/// atomare Garantie ist die exklusive ANLAGE der Zieldatei ueber
-/// `OpenOptions::create_new(true)`: entweder die Zieldatei existierte
-/// vorher nicht und wird jetzt exklusiv angelegt, oder der Aufruf schlaegt
-/// sofort fehl - nie wird eine bestehende Zieldatei stillschweigend
-/// ersetzt).
+/// Verschiebt eine Datei, ohne je eine bestehende Zieldatei zu ueberschreiben.
 ///
-/// Fruehere Fassung nutzte auf demselben Filesystem `std::fs::rename`,
-/// optional abgesichert durch einen vorherigen `to.exists()`-Check - das
-/// ist ein TOCTOU-Fenster (zwischen Check und Rename kann ein Ziel
-/// entstehen) UND plattformabhaengig unsicher: POSIX `rename(2)` ersetzt
-/// eine bestehende regulaere Zieldatei grundsaetzlich, Windows'
-/// `MoveFileExW` mit `MOVEFILE_REPLACE_EXISTING` (das `std::fs::rename`
-/// intern setzt) ebenso. Eine echte atomare "rename-no-replace"-Operation
-/// gibt es nur ueber plattformspezifische Syscalls (Linux: `renameat2` +
-/// `RENAME_NOREPLACE`; macOS: `renamex_np` + `RENAME_EXCL`; Windows:
-/// `MoveFileExW` OHNE `MOVEFILE_REPLACE_EXISTING`) - anstatt das ueber
-/// drei separate FFI-Aufrufe zu pflegen, wird hier bewusst IMMER ueber
-/// `OpenOptions::create_new(true)` verschoben: dieser Aufruf ist auf allen
-/// drei Zielplattformen (O_EXCL bzw. CREATE_NEW) atomar und lehnt eine
-/// bereits existierende Zieldatei ohne Race-Fenster ab. Kostet einen
-/// zusaetzlichen Kopiervorgang gegenueber einem reinen Rename auf
-/// demselben Filesystem - fuer Katalog-Modelldateien (ueblicherweise
-/// wenige MB bis niedrige zweistellige MB) ist das vertretbar.
+/// Immer per Kopie mit `OpenOptions::create_new(true)` (O_EXCL/CREATE_NEW):
+/// `std::fs::rename` ersetzt auf POSIX und Windows ein bestehendes Ziel, ein
+/// vorheriger `exists()`-Check waere ein TOCTOU-Fenster, und rename-no-replace
+/// gaebe es nur ueber drei plattformspezifische Syscalls. Nicht atomar im
+/// Ganzen: bei einem Absturz koennen Quelle und Ziel kurz beide existieren.
 pub(crate) fn move_file(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
     let mut dst = std::fs::OpenOptions::new()
         .write(true)
@@ -351,12 +314,7 @@ pub(crate) fn move_file(from: &std::path::Path, to: &std::path::Path) -> std::io
     })();
 
     if let Err(e) = copy_result {
-        // Eine teilweise geschriebene Zieldatei wird IMMER aufgeraeumt,
-        // nicht nur wenn das anschliessende remove_file(from) unten
-        // fehlschlaegt (zweiter Teil von C-01 aus der zweiten
-        // Review-Runde: vorher blieb eine bei io::copy()/sync_all()
-        // fehlgeschlagene Teil-Kopie liegen, wenn das Entfernen der
-        // Quelle danach gar nicht erst versucht wurde).
+        // Eine teilweise geschriebene Zieldatei wird immer aufgeraeumt.
         drop(dst);
         let _ = std::fs::remove_file(to);
         return Err(e);
@@ -369,35 +327,19 @@ pub(crate) fn move_file(from: &std::path::Path, to: &std::path::Path) -> std::io
     }
     Ok(())
 }
-/// Zweite Sicherheits-Grenze, zusaetzlich zu `validate_folder_name`: prueft
-/// den vollen, aufgeloesten Zielpfad einer Ordner-/Datei-Operation gegen eine
-/// Liste bekannter sensibler Systemverzeichnisse (Config-/Autostart-Ordner,
-/// SSH/GPG-Schluesselverzeichnisse, System-Wurzelverzeichnisse). Anders als
-/// `validate_folder_name` greift das nicht nur bei direkter Texteingabe im
-/// "+ Neuer Ordner"-Feld, sondern ueberall dort, wo ein Pfad aus der
-/// Datenbank gelesen und an `fs::rename`/`fs::create_dir` weitergereicht
-/// wird - insbesondere `folders.path`/`files.path`, die durch `import_catalog`
-/// aus einem beliebigen, nicht selbst erzeugten ZIP-Archiv komplett ersetzt
-/// werden koennen (Security-Review 2026-09-18, Finding 1). Ohne diese Pruefung
-/// koennte ein praepariertes Katalog-Backup einen Ordner-Eintrag mit
-/// `path = ~/.config/autostart` (o.ae.) einschleusen; verschiebt der Nutzer
-/// anschliessend ganz regulaer per UI eine Datei "in diesen Ordner", landet
-/// sie real dort - mit Persistenz-Wirkung beim naechsten Login.
+/// Zweite Schranke neben `validate_folder_name`: prueft den aufgeloesten
+/// Zielpfad gegen sensible Systemverzeichnisse (Config, Autostart, SSH/GPG,
+/// Systemwurzeln). Greift ueberall, wo ein Pfad aus der DB an
+/// `fs::rename`/`fs::create_dir` geht, denn ein importiertes Backup kann z.B.
+/// `path = ~/.config/autostart` einschleusen.
 ///
-/// Der Vergleich laeuft auf dem AUFGELOESTEN Pfad (siehe
-/// `resolve_path_for_sensitivity_check`), nicht auf der rohen Zeichenkette:
-/// ein reiner Praefix-Vergleich liesse sich sonst mit
-/// `<Katalog>/../.config/autostart` oder einem Symlink, der in ein
-/// geschuetztes Verzeichnis zeigt, trivial umgehen (Security-Review
-/// 2026-09-19, Finding I-3).
+/// Verglichen wird der AUFGELOESTE Pfad (`resolve_path_for_sensitivity_check`),
+/// sonst liesse sich die Pruefung mit `..` oder Symlinks umgehen.
 pub(crate) fn reject_if_sensitive_path(path: &Path, sensitive_dirs: &[PathBuf]) -> CmdResult<()> {
     reject_if_sensitive_path_expanded(path, &expand_sensitive_dirs(sensitive_dirs))
 }
-/// Ergaenzt jeden geschuetzten Ordner um seine kanonische Schreibweise: auf
-/// Linux sind z.B. /bin und /sbin haeufig Symlinks nach /usr/bin bzw.
-/// /usr/sbin, und beide Varianten sollen greifen. Einmal vorberechnen und
-/// wiederverwenden, wo viele Pfade gegen dieselbe Liste geprueft werden
-/// (`validate_catalog_db_bytes` laeuft ueber jede Zeile der importierten DB).
+/// Ergaenzt jeden geschuetzten Ordner um seine kanonische Schreibweise (z.B.
+/// /bin -> /usr/bin). Einmal vorberechnen, wenn viele Pfade geprueft werden.
 fn expand_sensitive_dirs(sensitive_dirs: &[PathBuf]) -> Vec<PathBuf> {
     let mut expanded = Vec::with_capacity(sensitive_dirs.len());
     for dir in sensitive_dirs {
@@ -422,24 +364,10 @@ fn reject_if_sensitive_path_expanded(path: &Path, expanded_dirs: &[PathBuf]) -> 
     }
     Ok(())
 }
-/// Gegenstueck zu `reject_if_sensitive_path_expanded`: statt einer Liste
-/// verbotener Verzeichnisse (Denylist) verlangt diese Pruefung, dass der Pfad
-/// INNERHALB eines erwarteten Verzeichnisses liegt (Containment).
-///
-/// Noetig fuer `files.trash_path` aus einem importierten Katalog-Backup: die
-/// Denylist deckt nur ausgewiesene Systemverzeichnisse ab, ein praepariertes
-/// Backup konnte bisher aber `trash_path = ~/Dokumente/wichtig.pdf` mit einem
-/// alten `deleted_at` setzen - `purge_expired_trash_on_startup` haette die
-/// Datei beim naechsten App-Start ohne jede Nutzerinteraktion per
-/// `remove_file` geloescht (Security-Review 2026-09-19, Finding I-1;
-/// Nachtrag zu Commit 800e373, der hier nur die Denylist gesetzt hatte).
-/// Legitim erzeugte Werte kommen ausnahmslos aus
-/// `state.trash_dir.join(...)` (siehe `delete_file`/`cleanup`) und liegen
-/// damit immer innerhalb dieser Grenze.
-///
-/// Beide Seiten werden ueber `resolve_path_for_sensitivity_check` aufgeloest,
-/// damit `..`-Komponenten und Symlinks den Praefix-Vergleich nicht
-/// unterlaufen koennen - dieselbe Logik wie bei der Denylist (Finding I-3).
+/// Containment statt Denylist: `path` muss innerhalb des Papierkorbs liegen.
+/// Sonst koennte ein Backup `trash_path = ~/Dokumente/wichtig.pdf` mit altem
+/// `deleted_at` setzen, und `purge_expired_trash_on_startup` wuerde die Datei
+/// beim naechsten Start loeschen. Beide Seiten werden aufgeloest (`..`, Symlinks).
 fn reject_if_outside_trash_dir(path: &Path, resolved_trash_dir: &Path) -> CmdResult<()> {
     let resolved = resolve_path_for_sensitivity_check(path)?;
     if resolved == resolved_trash_dir || !resolved.starts_with(resolved_trash_dir) {
@@ -504,20 +432,14 @@ fn validate_source_url(url: Option<String>) -> CmdResult<Option<String>> {
 fn is_http_url(url: &str) -> bool {
     url.starts_with("http://") || url.starts_with("https://")
 }
-/// Lese-Pendant zu `validate_source_url`: `set_source_url` ist nicht der
-/// einzige Weg, auf dem ein `source_url`-Wert in die DB gelangt - ein
-/// importierter Fremd-Katalog (`import_catalog`) bringt die Spalte komplett
-/// mit. Beim Herausreichen ins Frontend (`to_dto`) wird deshalb erneut
-/// geprueft; ein nicht-http(s)-Wert wird still verworfen statt den ganzen
-/// Lesevorgang scheitern zu lassen (Security-Review 2026-09-19, Finding I-2).
+/// Lese-Pendant zu `validate_source_url`: ein importierter Katalog bringt die
+/// Spalte ungeprueft mit. Ungueltige Werte werden still verworfen.
 fn sanitize_source_url(url: Option<String>) -> Option<String> {
     url.map(|u| u.trim().to_string())
         .filter(|u| !u.is_empty() && is_http_url(u))
 }
 
-// Von Tests in mehreren Untermodulen gebraucht (u.a. backup.rs, folders.rs,
-// slicers.rs, trash.rs) - deshalb hier auf Ebene von `commands/mod.rs`
-// definiert statt in einem einzelnen `mod tests` dupliziert zu werden.
+// Von Tests in mehreren Untermodulen gebraucht.
 #[cfg(test)]
 pub(crate) fn unique_test_dir(name: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!(
@@ -528,9 +450,7 @@ pub(crate) fn unique_test_dir(name: &str) -> std::path::PathBuf {
     dir
 }
 
-/// Minimal `FileRecord` fuer Tests, die nur wenige Felder brauchen (u.a.
-/// `group_duplicates`-Tests in backup.rs und `to_dto`-Tests hier) - alle
-/// anderen Felder sind mit billigen Platzhalterwerten gefuellt.
+/// Minimaler `FileRecord` fuer Tests, restliche Felder mit Platzhaltern.
 #[cfg(test)]
 pub(crate) fn sample_file_record(id: i64, content_hash: Option<&str>, imported_at: &str) -> FileRecord {
     FileRecord {
@@ -684,9 +604,8 @@ mod tests {
                 }],
             }],
         };
-        // Zwei Spulen mit gesetztem Preis im Lager - ohne den Fix wuerde die
-        // leere Typ-Zeichenkette beide "matchen" (jede Zeichenkette enthaelt "")
-        // und einen Fantasiepreis liefern statt "unbekannt".
+        // Die leere Typ-Zeichenkette darf nicht jede Spule "matchen" (jeder String
+        // enthaelt "").
         let spools = vec![
             sample_spool("PLA", 1000.0, Some(20.0)),
             sample_spool("PETG", 1000.0, Some(25.0)),
@@ -812,17 +731,8 @@ mod tests {
     }
     #[test]
     fn reject_if_sensitive_path_rejects_exact_match_and_descendants_but_not_siblings() {
-        // Regressionstest fuer Finding 1 im Security-Review 2026-09-18: ein
-        // importiertes Katalog-Backup kann `folders.path`/`files.path` auf
-        // beliebige Orte setzen; diese Grenze wird an jeder Stelle geprueft,
-        // die einen aus der DB gelesenen Pfad an fs::rename/fs::create_dir
-        // weiterreicht.
-        //
-        // Bewusst kein "/home/..."-Praefix: auf macOS ist "/home" ein
-        // Automounter-Symlink auf "/System/Volumes/Data/home", der beim
-        // Kanonisieren aufgeloest wird, obwohl "/home/user/.config" selbst
-        // nicht existiert - das haette hier eine reine Pfad-Praefix-Pruefung
-        // ohne echten Sicherheitsbezug zum Scheitern gebracht.
+        // Bewusst kein "/home/..."-Praefix: auf macOS ist "/home" ein Automounter-
+        // Symlink und wuerde beim Kanonisieren aufgeloest.
         let sensitive = vec![PathBuf::from("/nonexistent-3mf-test-root/.config")];
         assert!(reject_if_sensitive_path(Path::new("/nonexistent-3mf-test-root/.config"), &sensitive).is_err());
         assert!(reject_if_sensitive_path(Path::new("/nonexistent-3mf-test-root/.config/autostart"), &sensitive).is_err());
@@ -831,9 +741,8 @@ mod tests {
     }
     #[test]
     fn reject_if_sensitive_path_rejects_parent_dir_traversal_into_sensitive_dir() {
-        // Ohne Aufloesung wuerde der reine Praefix-Vergleich hier "passt
-        // nicht" sagen, obwohl der Pfad real im geschuetzten Verzeichnis
-        // landet (Security-Review 2026-09-19, Finding I-3).
+        // Ohne Aufloesung sagte der Praefix-Vergleich "passt nicht", obwohl der Pfad
+        // real im geschuetzten Verzeichnis landet.
         let base = unique_test_dir("reject_sensitive_traversal");
         let sensitive = base.join(".config");
         std::fs::create_dir_all(&sensitive).unwrap();
@@ -925,9 +834,7 @@ mod tests {
     }
     #[test]
     fn move_file_cleans_up_a_partially_written_destination_on_copy_failure() {
-        // Deckt die zweite C-01-Teilluecke ab: bisher wurde eine bei
-        // io::copy()/sync_all() fehlgeschlagene Teil-Kopie NUR aufgeraeumt,
-        // wenn zusaetzlich das nachfolgende remove_file(from) scheiterte.
+        // Eine bei io::copy()/sync_all() gescheiterte Teil-Kopie muss immer aufgeraeumt werden.
         let dir = unique_test_dir("move_file_partial_copy_cleanup");
         std::fs::create_dir_all(&dir).unwrap();
         let from = dir.join("source.3mf");

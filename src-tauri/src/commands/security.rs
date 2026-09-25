@@ -15,10 +15,8 @@ fn validate_release_url(url: &str) -> Result<(), String> {
         Err("URL zeigt nicht auf das erwartete GitHub-Repository".to_string())
     }
 }
-/// Liefert die eigene App-Version synchron und ohne Netzwerkzugriff, damit
-/// die UI die Versionsnummer sofort anzeigen kann, statt auf den (bis zu
-/// 5s dauernden) Netzwerk-Roundtrip von `check_for_update` zu warten
-/// (Final-Review Finding F2).
+/// Eigene Version sofort und ohne Netzwerk, damit die UI nicht auf
+/// `check_for_update` (bis 5 s) warten muss.
 #[tauri::command]
 pub fn get_app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
@@ -38,8 +36,7 @@ pub async fn check_for_update() -> CmdResult<update_check::UpdateCheckResult> {
 
     let response = match client.get(GITHUB_API_LATEST_RELEASE_URL).send().await {
         Ok(r) => r,
-        // Netzwerkfehler/kein Internet: still als "kein Update" behandeln,
-        // niemals einen Fehlerdialog zeigen (siehe Global Constraints).
+        // Netzwerkfehler: still als "kein Update" behandeln, nie ein Fehlerdialog.
         Err(_) => return Ok(update_check::compare_versions(current, current, "")),
     };
 
@@ -71,10 +68,7 @@ pub fn open_release_url(url: String) -> CmdResult<()> {
     Ok(())
 }
 
-// Nimmt bewusst keine URL vom Frontend entgegen (anders als open_release_url,
-// dessen URL je nach Release-Tag variiert) - der Discord-Invite-Link ist
-// statisch, es gibt also keinen Grund, ihn ueberhaupt als Parameter
-// entgegenzunehmen.
+// Keine URL vom Frontend: der Discord-Link ist statisch.
 #[tauri::command]
 pub fn open_discord_invite() -> CmdResult<()> {
     #[cfg(target_os = "linux")]

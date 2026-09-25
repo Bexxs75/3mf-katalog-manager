@@ -91,7 +91,7 @@ pub fn save_connection_after_test(
     version: &str,
     now: f64,
 ) -> Result<PrinterConnectionRecord, DbError> {
-    // Resin-Drucker (v0.14.0) haben keine Druckeranbindung.
+    // Resin-Drucker haben keine Druckeranbindung.
     crate::db::printers::ensure_filament_printer(conn, printer_id)?;
     conn.execute(
         "INSERT INTO printer_connections (printer_id, kind, address, base_url, remote_version, connected_since)

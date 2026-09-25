@@ -2,34 +2,13 @@ use super::error::ObjError;
 
 type ObjGeometry = (Vec<[f64; 3]>, Vec<[u32; 3]>);
 
-/// Handgeschriebener Wavefront-OBJ-Parser (analog zum STL-Parser in
-/// `src-tauri/src/stl/parser.rs` - kein externes Crate, gleicher Stil wie
-/// die bestehenden 3MF-/STL-Parser dieses Projekts).
+/// Handgeschriebener Wavefront-OBJ-Parser (wie der STL-Parser, ohne Crate).
+/// `vt`/`vn`, `mtllib`/`usemtl` und `o`/`g`/`s` werden ignoriert; Normalen
+/// entstehen spaeter aus der Geometrie.
 ///
-/// Bewusst NICHT unterstuetzt (siehe Plan, "Scope fuer v1"): `vt`/`vn`
-/// werden gelesen und ignoriert (eigene, flache Normalen werden spaeter aus
-/// der fertigen Geometrie berechnet, wie bei STL), `mtllib`/`usemtl` werden
-/// ignoriert (keine Materialfarben, wie bei STL), `o`/`g`/`s` werden
-/// ignoriert (kein Objekt-Zaehlen, wie bei STL).
-///
-/// **Achsen-Konvention (wichtig, Bugfix 2026-09-20)**: OBJ-Dateien sind in
-/// der Praxis ueberwiegend Y-up (Y = vertikale Achse, Standard-Export vieler
-/// Tools, u.a. Blender), waehrend 3MF/STL in diesem Projekt intern als
-/// Z-up behandelt werden (siehe `ModelViewer.tsx`, das JEDE Geometrie
-/// unabhaengig vom Ursprungsformat per `object.rotateX(-Math.PI / 2)` von
-/// Z-up nach Three.js' Y-up konvertiert). Ohne Gegenmassnahme wuerde ein
-/// bereits korrekt Y-up ausgerichtetes OBJ-Modell durch genau diese
-/// Blanket-Rotation auf die Seite gekippt (das Modell "rollt" beim Drehen
-/// statt sich wie auf einem Drehteller um seine echte Hochachse zu drehen).
-/// Da das Rendering-Frontend bewusst formatunabhaengig bleiben soll (siehe
-/// Architektur-Kommentare an anderer Stelle im Projekt), wird die
-/// Normalisierung stattdessen HIER beim Parsen vorgenommen: jede
-/// eingelesene Vertex-Position `(x, y, z)` (Datei-Konvention: y = oben)
-/// wird nach `(x, -z, y)` umgerechnet - das ist exakt die Umkehrung der in
-/// `ModelViewer.tsx` fest verdrahteten Rotation, sodass das Modell nach
-/// deren Anwendung wieder in seiner urspruenglich autorierten
-/// Y-up-Ausrichtung erscheint. Diese Transformation ist eine reine Drehung
-/// (keine Spiegelung), veraendert also weder Volumen noch Chiralitaet.
+/// Achsen: OBJ ist praktisch immer Y-up, intern gilt Z-up (`ModelViewer.tsx`
+/// dreht JEDE Geometrie per `rotateX(-PI/2)`). Deshalb wird hier jeder Vertex
+/// `(x, y, z)` zu `(x, -z, y)`, die Umkehrung dieser Drehung (keine Spiegelung).
 pub fn parse(text: &str) -> Result<ObjGeometry, ObjError> {
     let mut vertices: Vec<[f64; 3]> = Vec::new();
     let mut triangles: Vec<[u32; 3]> = Vec::new();
@@ -119,9 +98,7 @@ f 1 2 3
     #[test]
     fn parses_a_single_triangle() {
         let (vertices, triangles) = parse(TRIANGLE_OBJ).unwrap();
-        // Datei-Vertex (0,1,0) hat y=1 ("oben" in OBJ-Konvention) - landet
-        // nach der Y-up->Z-up-Normalisierung als (0,0,1) (z=1, "oben" im
-        // internen Z-up-Modell). Siehe Doc-Kommentar an parse().
+        // Datei-Vertex (0,1,0) (oben in Y-up) wird intern (0,0,1).
         assert_eq!(vertices, vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
         assert_eq!(triangles, vec![[0, 1, 2]]);
     }
@@ -155,11 +132,7 @@ f 1//1 2//1 3//1
 
     #[test]
     fn normalizes_obj_y_up_to_the_apps_internal_z_up_convention() {
-        // Bugfix 2026-09-20: ein Vertex, der in der Datei "1 Einheit nach
-        // oben" (Y-up) liegt, muss nach dem Parsen "1 Einheit in Z" liegen
-        // (internes Z-up, siehe Doc-Kommentar an parse()) - sonst kippt das
-        // Modell im Viewer auf die Seite, weil ModelViewer.tsx jede
-        // Geometrie blind als Z-up behandelt.
+        // "1 nach oben" in der Datei muss intern "1 in Z" sein, sonst kippt das Modell.
         let obj = "v 0.0 1.0 0.0\nv 0.0 0.0 0.0\nv 1.0 0.0 0.0\nf 1 2 3\n";
         let (vertices, _) = parse(obj).unwrap();
         assert_eq!(vertices[0], [0.0, 0.0, 1.0]);

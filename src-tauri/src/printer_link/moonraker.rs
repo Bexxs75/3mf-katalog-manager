@@ -127,10 +127,8 @@ pub struct MoonrakerLink {
     address: String,
     policy: AddressPolicy,
     client: reqwest::blocking::Client,
-    /// Gesamtzeitlimit fuer eine Anfrage inkl. Kopfzeilen UND Koerper (siehe
-    /// `get_bytes`). In Produktion immer `TIMEOUT` (5 s); Tests koennen ueber
-    /// `new_with_timeout` ein kuerzeres Limit setzen, damit ein Test mit
-    /// tropfenden Antworten nicht die vollen 5 s abwarten muss.
+    /// Gesamtzeitlimit einer Anfrage inkl. Koerper; in Produktion `TIMEOUT` (5 s),
+    /// Tests setzen per `new_with_timeout` ein kuerzeres.
     timeout: Duration,
 }
 
@@ -177,25 +175,13 @@ impl MoonrakerLink {
         }
     }
 
-    /// Holt Kopfzeilen + Koerper mit einer harten Gesamt-Obergrenze von
-    /// `self.timeout` ab Aufruf, egal wie lange ein einzelner `read()`-Aufruf
-    /// intern braucht.
+    /// Holt Kopfzeilen und Koerper mit harter Gesamt-Obergrenze `self.timeout`.
     ///
-    /// reqwest 0.12 gibt in `blocking::Response::read` JEDEM einzelnen
-    /// `read()`-Aufruf ein frisches volles Zeitlimit (nicht der gesamten
-    /// Antwort): ein `read()`, das kurz vor Ablauf des Zeitlimits beginnt,
-    /// darf selbst noch einmal die volle Zeitspanne laufen. Ein Drucker, der
-    /// Bytes knapp unterhalb des Zeitlimits "troepfelt", koennte so trotz
-    /// eines Zeitlimit-Checks zwischen den Aufrufen auf etwa das Doppelte
-    /// kommen. Deshalb laeuft die eigentliche Anfrage (Senden + gestueckeltes
-    /// Lesen mit eigenem Zeitlimit-Check) auf einem Hilfs-Thread; der
-    /// aufrufende Thread wartet nur mit `recv_timeout(self.timeout)` auf das
-    /// Ergebnis und liefert spaetestens dann `Unreachable`, egal ob der
-    /// Hilfs-Thread noch in einem einzelnen `read()` haengt. Der Hilfs-Thread
-    /// laeuft in diesem Fall im Hintergrund aus (sein eigener Zeitlimit-Check
-    /// bzw. der naechste `read()`-Fehler beendet ihn spaetestens nach einem
-    /// weiteren `self.timeout`) und sendet dann ins Leere (Empfaenger schon
-    /// verworfen) - das ist unschaedlich.
+    /// reqwest gibt jedem einzelnen `read()` ein frisches Zeitlimit; ein
+    /// troepfelnder Drucker koennte so ein Vielfaches davon erreichen. Deshalb
+    /// laeuft die Anfrage auf einem Hilfs-Thread, und hier wird nur mit
+    /// `recv_timeout` gewartet. Ein noch haengender Hilfs-Thread laeuft spaeter
+    /// aus und sendet ins Leere, das ist unschaedlich.
     fn get_bytes(&self, url: reqwest::Url, limit: u64) -> Result<Vec<u8>, LinkError> {
         let client = self.client.clone();
         let timeout = self.timeout;
@@ -206,9 +192,7 @@ impl MoonrakerLink {
         rx.recv_timeout(timeout).unwrap_or(Err(LinkError::Unreachable))
     }
 
-    /// Der eigentliche Netzwerkteil von `get_bytes`, auf dem Hilfs-Thread
-    /// ausgefuehrt. Liest in Stuecken und prueft vor jedem `read()` das
-    /// eigene Zeitlimit; siehe Doku bei `get_bytes` fuer den Grund.
+    /// Netzwerkteil von `get_bytes` auf dem Hilfs-Thread: liest in Stuecken mit eigenem Zeitlimit-Check.
     fn fetch_bytes(client: &reqwest::blocking::Client, url: reqwest::Url, limit: u64, timeout: Duration) -> Result<Vec<u8>, LinkError> {
         let deadline = Instant::now() + timeout;
         let mut resp = client.get(url).send().map_err(|_| LinkError::Unreachable)?;
@@ -489,13 +473,7 @@ mod client_tests {
         assert!(matches!(link.test(), Err(LinkError::BadResponse(_))));
     }
 
-    /// reqwest 0.12 gibt jedem einzelnen `read()` am Antwortkoerper ein neues
-    /// Zeitlimit (blocking/response.rs: `wait::timeout(self.body_mut().read(buf), timeout)`),
-    /// nicht der gesamten Antwort. Ein Drucker, der einzelne Bytes knapp
-    /// unterhalb des Zeitlimits "troepfelt", wuerde `read_to_end` sonst
-    /// unbegrenzt lange blockieren. `new_with_timeout` erlaubt ein kurzes
-    /// Zeitlimit nur fuer diesen Test, ohne die 5-s-Vorgabe der Produktion
-    /// anzutasten.
+    /// Ein troepfelnder Drucker darf `get_bytes` nicht unbegrenzt blockieren.
     #[test]
     fn a_dripping_body_times_out_as_unreachable_within_the_overall_deadline() {
         use std::io::{BufRead, BufReader, Write};
@@ -512,10 +490,7 @@ mod client_tests {
                     break;
                 }
             }
-            // Grosse Content-Length ankuendigen, dann alle 30 ms ein Byte
-            // "troepfeln" - simuliert einen Drucker, der die Antwort absichtlich
-            // oder defekt in Trippelschritten schickt, jeder Schritt knapp unter
-            // dem Zeitlimit des Tests.
+            // Grosse Content-Length ankuendigen, dann alle 30 ms ein Byte.
             let head = "HTTP/1.1 200 X\r\nContent-Length: 1000000\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n";
             if stream.write_all(head.as_bytes()).is_err() {
                 return;
@@ -533,16 +508,8 @@ mod client_tests {
         assert!(started.elapsed() < std::time::Duration::from_secs(2), "{:?}", started.elapsed());
     }
 
-    /// Ein einzelner `read()`-Aufruf am Antwortkoerper bekommt in reqwest
-    /// 0.12 sein EIGENES volles Zeitlimit (nicht das der Gesamtantwort). Ein
-    /// `read()`, das kurz vor Ablauf des Gesamt-Zeitlimits beginnt, darf also
-    /// selbst noch einmal (fast) die volle Zeitspanne laufen - ein reiner
-    /// Zeitlimit-Check ZWISCHEN den `read()`-Aufrufen reicht deshalb nicht
-    /// (siehe Fund 1, Runde 2). Hier sendet der Server ein erstes Byte bei
-    /// ~100 ms und laesst dann den naechsten `read()`-Aufruf bis ~240 ms
-    /// haengen (Zeitlimit 150 ms). Der Hilfs-Thread in `get_bytes` sorgt
-    /// dafuer, dass der Aufruf trotzdem spaetestens nach dem Zeitlimit
-    /// zurueckkehrt.
+    /// Ein einzelnes haengendes `read()` kurz vor Ablauf darf das Zeitlimit nicht
+    /// verlaengern: erstes Byte nach ~100 ms, dann 140 ms Pause bei 150 ms Limit.
     #[test]
     fn a_single_stalled_read_still_returns_unreachable_within_the_overall_deadline() {
         use std::io::{BufRead, BufReader, Write};
