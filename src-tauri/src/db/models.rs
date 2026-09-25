@@ -163,6 +163,13 @@ pub struct CreatorCount {
     pub count: i64,
 }
 
+/// Art eines Lager-Eintrags (v0.13.1). Bei `SPOOL_KIND_RESIN` bedeuten
+/// `original_weight_g`/`remaining_weight_g` Milliliter; Resin steckt nie in
+/// einem Fach.
+pub const SPOOL_KIND_FILAMENT: &str = "filament";
+pub const SPOOL_KIND_RESIN: &str = "resin";
+pub const SPOOL_KINDS: &[&str] = &[SPOOL_KIND_FILAMENT, SPOOL_KIND_RESIN];
+
 #[derive(Debug, Clone)]
 pub struct FilamentSpoolRecord {
     pub id: i64,
@@ -180,6 +187,7 @@ pub struct FilamentSpoolRecord {
     pub home_location: Option<String>,
     pub unit_id: Option<i64>,
     pub slot_index: Option<i64>,
+    pub kind: String,
 }
 
 #[derive(Debug, Clone)]
@@ -194,6 +202,7 @@ pub struct NewFilamentSpool {
     pub price: Option<f64>,
     pub image_png: Option<Vec<u8>>,
     pub color_hex: Option<String>,
+    pub kind: String,
 }
 
 #[derive(Debug, Clone)]

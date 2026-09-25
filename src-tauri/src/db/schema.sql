@@ -99,7 +99,8 @@ CREATE TABLE IF NOT EXISTS filament_spools (
     unit_id INTEGER REFERENCES material_units(id) ON DELETE SET NULL,
     slot_index INTEGER,
     home_location TEXT,
-    color_hex TEXT
+    color_hex TEXT,
+    kind TEXT NOT NULL DEFAULT 'filament' CHECK (kind IN ('filament', 'resin'))
 );
 
 CREATE TABLE IF NOT EXISTS printers (

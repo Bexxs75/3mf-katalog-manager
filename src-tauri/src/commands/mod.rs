@@ -583,6 +583,7 @@ mod tests {
             home_location: None,
             unit_id: None,
             slot_index: None,
+            kind: "filament".to_string(),
         }
     }
     fn sample_slice_info_single_filament(filament_type: &str, used_g: f64) -> threemf::SliceInfo {

@@ -11,7 +11,7 @@ function spool(overrides: Partial<FilamentSpool>): FilamentSpool {
   return {
     id: 's1', material: 'PLA', manufacturer: null, color: 'Schwarz', location: null,
     diameterMm: 1.75, originalWeightG: 1000, remainingWeightG: 620, price: null, imagePng: null,
-    colorHex: '#1a1a1a', homeLocation: null, unitId: null, slotIndex: null, ...overrides,
+    colorHex: '#1a1a1a', homeLocation: null, unitId: null, slotIndex: null, kind: 'filament', ...overrides,
   };
 }
 

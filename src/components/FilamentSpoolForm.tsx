@@ -102,6 +102,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
       homeLocation: editing?.homeLocation ?? null,
       unitId: editing?.unitId ?? null,
       slotIndex: editing?.slotIndex ?? null,
+      kind: editing?.kind ?? 'filament',
     };
     try {
       if (editing) {

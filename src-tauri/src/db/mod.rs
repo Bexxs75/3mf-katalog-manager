@@ -412,6 +412,7 @@ mod tests {
             price: Some(19.99),
             image_png: None,
             color_hex: Some("#1a1a1a".to_string()),
+            kind: "filament".to_string(),
         }
     }
 

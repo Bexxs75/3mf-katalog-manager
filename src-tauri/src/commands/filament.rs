@@ -23,6 +23,9 @@ pub struct FilamentSpoolDto {
     pub unit_id: Option<String>,
     #[serde(default)]
     pub slot_index: Option<i64>,
+    /// "filament" oder "resin" (v0.13.1). Fehlt es (aeltere Aufrufer), gilt "filament".
+    #[serde(default = "default_spool_kind")]
+    pub kind: String,
 }
 fn validate_color_hex(color_hex: &Option<String>) -> CmdResult<()> {
     match color_hex {
@@ -30,6 +33,18 @@ fn validate_color_hex(color_hex: &Option<String>) -> CmdResult<()> {
             Err(format!("ungueltiger Farbwert: {value}"))
         }
         _ => Ok(()),
+    }
+}
+
+fn default_spool_kind() -> String {
+    db::models::SPOOL_KIND_FILAMENT.to_string()
+}
+
+fn validate_spool_kind(kind: &str) -> CmdResult<()> {
+    if db::models::SPOOL_KINDS.contains(&kind) {
+        Ok(())
+    } else {
+        Err(format!("ungueltige Art: {kind}"))
     }
 }
 /// Gegenstueck zu `filament_dto_to_record`: baut das nach aussen gehende DTO
@@ -53,6 +68,7 @@ fn spool_record_to_dto(s: db::models::FilamentSpoolRecord) -> FilamentSpoolDto {
         home_location: s.home_location,
         unit_id: s.unit_id.map(|id| id.to_string()),
         slot_index: s.slot_index,
+        kind: s.kind,
     }
 }
 fn filament_dto_to_record(spool: &FilamentSpoolDto) -> db::models::NewFilamentSpool {
@@ -71,6 +87,7 @@ fn filament_dto_to_record(spool: &FilamentSpoolDto) -> db::models::NewFilamentSp
             .as_ref()
             .and_then(|b64| base64::engine::general_purpose::STANDARD.decode(b64).ok()),
         color_hex: spool.color_hex.as_ref().map(|c| c.to_lowercase()),
+        kind: spool.kind.clone(),
     }
 }
 #[tauri::command]
@@ -81,6 +98,7 @@ pub fn list_filament_spools(state: State<AppState>) -> CmdResult<Vec<FilamentSpo
 }
 #[tauri::command]
 pub fn add_filament_spool(state: State<AppState>, spool: FilamentSpoolDto) -> CmdResult<FilamentSpoolDto> {
+    validate_spool_kind(&spool.kind)?;
     validate_color_hex(&spool.color_hex)?;
     let conn = lock_db(&state)?;
     let new_spool = filament_dto_to_record(&spool);
@@ -109,6 +127,7 @@ pub fn add_filament_spool(state: State<AppState>, spool: FilamentSpoolDto) -> Cm
 /// `add_filament_spool` es fuer die neu eingefuegte Zeile tut.
 #[tauri::command]
 pub fn update_filament_spool(state: State<AppState>, spool: FilamentSpoolDto) -> CmdResult<FilamentSpoolDto> {
+    validate_spool_kind(&spool.kind)?;
     validate_color_hex(&spool.color_hex)?;
     let id: i64 = spool.id.parse().map_err(|_| "invalid spool id".to_string())?;
     let conn = lock_db(&state)?;
@@ -218,6 +237,7 @@ mod tests {
                 price: None,
                 image_png: None,
                 color_hex: Some("#B03020".to_string()),
+                kind: "filament".to_string(),
             },
         )
         .expect("spool");
@@ -281,5 +301,66 @@ mod tests {
 
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].status, crate::filament_check::CheckStatus::NoData);
+    }
+
+    fn new_spool(kind: &str) -> crate::db::models::NewFilamentSpool {
+        crate::db::models::NewFilamentSpool {
+            material: "PLA".into(),
+            manufacturer: None,
+            color: None,
+            location: Some("Regal 1".into()),
+            diameter_mm: 1.75,
+            original_weight_g: 1000.0,
+            remaining_weight_g: 1000.0,
+            price: None,
+            image_png: None,
+            color_hex: None,
+            kind: kind.into(),
+        }
+    }
+
+    #[test]
+    fn kind_round_trips_through_insert_list_and_dto() {
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let id = crate::db::insert_filament_spool(&conn, &new_spool("resin")).expect("insert");
+        let record = crate::db::get_filament_spool(&conn, id).expect("get");
+        assert_eq!(record.kind, "resin");
+        assert_eq!(crate::db::list_filament_spools(&conn).expect("list")[0].kind, "resin");
+        assert_eq!(spool_record_to_dto(record).kind, "resin");
+    }
+
+    #[test]
+    fn a_dto_without_kind_defaults_to_filament() {
+        let dto: FilamentSpoolDto = serde_json::from_value(serde_json::json!({
+            "id": "", "material": "PLA", "manufacturer": null, "color": null, "location": null,
+            "diameterMm": 1.75, "originalWeightG": 1000.0, "remainingWeightG": 1000.0,
+            "price": null, "imagePng": null
+        }))
+        .expect("deserialize");
+        assert_eq!(dto.kind, "filament");
+    }
+
+    #[test]
+    fn unknown_kinds_are_rejected() {
+        assert!(validate_spool_kind("filament").is_ok());
+        assert!(validate_spool_kind("resin").is_ok());
+        assert!(validate_spool_kind("pla").is_err());
+        assert!(validate_spool_kind("").is_err());
+    }
+
+    #[test]
+    fn a_spool_in_a_slot_cannot_become_resin_but_a_stored_one_can() {
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let loaded = crate::db::insert_filament_spool(&conn, &new_spool("filament")).expect("insert");
+        let stored = crate::db::insert_filament_spool(&conn, &new_spool("filament")).expect("insert");
+        let printer = crate::db::printers::insert_printer(&conn, "X1C").expect("printer");
+        let unit = crate::db::printers::insert_unit(&conn, printer, "bambu_ams", "AMS 1", None).expect("unit");
+        crate::db::printers::load_spool(&conn, loaded, unit, 0).expect("load");
+
+        assert!(crate::db::update_filament_spool(&conn, loaded, &new_spool("resin")).is_err());
+        assert_eq!(crate::db::get_filament_spool(&conn, loaded).expect("get").kind, "filament");
+
+        crate::db::update_filament_spool(&conn, stored, &new_spool("resin")).expect("update");
+        assert_eq!(crate::db::get_filament_spool(&conn, stored).expect("get").kind, "resin");
     }
 }

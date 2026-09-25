@@ -96,6 +96,10 @@ const MIGRATIONS: &[MigrationStep] = &[
     MigrationStep::Simple(|c| exec(c, "ALTER TABLE filament_spools ADD COLUMN color_hex TEXT")),
     MigrationStep::Simple(|c| exec(c, "CREATE UNIQUE INDEX IF NOT EXISTS idx_filament_spools_slot ON filament_spools (unit_id, slot_index) WHERE unit_id IS NOT NULL")),
     MigrationStep::Simple(super::printers::backfill_color_hex),
+    // Resin im Filament-Lager (v0.13.1): Art je Eintrag. Bestehende Zeilen
+    // bekommen per DEFAULT 'filament'. Bei 'resin' bedeuten
+    // original_weight_g/remaining_weight_g Milliliter.
+    MigrationStep::Simple(|c| exec(c, "ALTER TABLE filament_spools ADD COLUMN kind TEXT NOT NULL DEFAULT 'filament' CHECK (kind IN ('filament', 'resin'))")),
 ];
 
 /// Aktuelle Ziel-Schemaversion - leitet sich direkt aus der Anzahl der
@@ -669,5 +673,36 @@ mod tests {
         let result = run_migrations(&mut conn);
 
         assert!(result.is_err(), "eine Datenbank mit einer neueren Schemaversion als der App muss abgelehnt werden");
+    }
+
+    #[test]
+    fn the_kind_migration_marks_existing_spools_as_filament_and_checks_the_value() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        // Stand vor dem kind-Schritt: filament_spools ohne kind-Spalte.
+        conn.execute_batch(
+            "CREATE TABLE filament_spools (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                material TEXT NOT NULL, manufacturer TEXT, color TEXT, location TEXT,
+                diameter_mm REAL NOT NULL, original_weight_g INTEGER NOT NULL,
+                remaining_weight_g INTEGER NOT NULL, price REAL, image_png BLOB,
+                created_at TEXT NOT NULL, unit_id INTEGER, slot_index INTEGER,
+                home_location TEXT, color_hex TEXT
+            );
+            INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at)
+                VALUES ('PLA', 1.75, 1000, 600, '2026-01-01');",
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION - 1).unwrap();
+
+        run_migrations(&mut conn).unwrap();
+
+        let kind: String = conn.query_row("SELECT kind FROM filament_spools", [], |r| r.get(0)).unwrap();
+        assert_eq!(kind, "filament");
+        let bad = conn.execute(
+            "INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at, kind)
+             VALUES ('X', 1.75, 1, 1, '2026-01-01', 'pla')",
+            [],
+        );
+        assert!(bad.is_err(), "CHECK erlaubt nur filament/resin");
     }
 }

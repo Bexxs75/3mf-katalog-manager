@@ -11,7 +11,7 @@ beforeEach(() => { vi.mocked(invoke).mockReset(); vi.mocked(invoke).mockResolved
 const LOADED: FilamentSpool = {
   id: 's1', material: 'PLA', manufacturer: 'Bambu Lab', color: 'Galaxy Black', location: null,
   diameterMm: 1.75, originalWeightG: 1000, remainingWeightG: 600, price: null, imagePng: null,
-  colorHex: '#1a1a1a', homeLocation: 'Regal 2', unitId: 'u1', slotIndex: 0,
+  colorHex: '#1a1a1a', homeLocation: 'Regal 2', unitId: 'u1', slotIndex: 0, kind: 'filament',
 };
 
 function renderForm(editing: FilamentSpool | null) {
