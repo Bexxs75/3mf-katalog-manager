@@ -1177,20 +1177,19 @@ pub fn get_filament_spool(conn: &Connection, id: i64) -> Result<FilamentSpoolRec
 /// Lagerort ihr Stammplatz und landet in `home_location`; `location` bleibt
 /// dann leer.
 pub fn update_filament_spool(conn: &Connection, id: i64, spool: &NewFilamentSpool) -> Result<(), DbError> {
-    if spool.kind == super::models::SPOOL_KIND_RESIN {
-        let in_slot: bool = conn
-            .query_row(
-                "SELECT unit_id IS NOT NULL FROM filament_spools WHERE id = ?1",
-                params![id],
-                |r| r.get(0),
-            )
-            .optional()?
-            .unwrap_or(false);
-        if in_slot {
-            return Err(DbError::Other(
-                "Eine Spule im Drucker kann nicht zu Resin werden - erst herausnehmen".to_string(),
-            ));
-        }
+    // Ein eingelegter Eintrag behaelt seine Art: sonst laege Resin in einem
+    // Filament-Fach oder Filament in einer Harzwanne (v0.14.0).
+    let loaded_kind: Option<String> = conn
+        .query_row(
+            "SELECT kind FROM filament_spools WHERE id = ?1 AND unit_id IS NOT NULL",
+            params![id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if loaded_kind.is_some_and(|k| k != spool.kind) {
+        return Err(DbError::Other(
+            "Die Art eines Eintrags im Drucker kann nicht geaendert werden - erst herausnehmen".to_string(),
+        ));
     }
     conn.execute(
         "UPDATE filament_spools

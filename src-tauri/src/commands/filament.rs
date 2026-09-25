@@ -717,4 +717,34 @@ mod tests {
         assert_ne!(result[0].status, crate::filament_check::CheckStatus::Ok);
         assert!(result[0].needs[0].spools.is_empty(), "Resin darf nie als passende Spule auftauchen");
     }
+
+    /// v0.14.0: auch eine Flasche in der Harzwanne eines Resin-Druckers
+    /// zaehlt nie fuer "Reicht das Filament?" (und damit das Warteschlangen-Symbol).
+    #[test]
+    fn check_filament_ignores_a_bottle_in_a_resin_vat() {
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let file_id = crate::db::test_insert_minimal_file(&conn, "/tmp/resin_vat_check.3mf", None).expect("file");
+        conn.execute(
+            "UPDATE files SET slice_info_json = ?1 WHERE id = ?2",
+            rusqlite::params![
+                r##"{"total_weight_g":50,"plates":[{"plate_index":1,"weight_g":50,"filaments":[{"filament_type":"PLA","color":"#C0392B","used_g":50,"used_m":16}]}]}"##,
+                file_id
+            ],
+        )
+        .expect("slice");
+        let bottle = crate::db::insert_filament_spool(&conn, &crate::db::models::NewFilamentSpool {
+            material: "PLA".into(),
+            color_hex: Some("#b03020".into()),
+            ..new_spool("resin")
+        })
+        .expect("resin");
+        let saturn = crate::db::printers::insert_printer_of_kind(&conn, "Saturn", "resin").expect("printer");
+        let vat = crate::db::printers::insert_resin_vat(&conn, saturn, "Harzwanne").expect("vat");
+        crate::db::printers::load_spool(&conn, bottle, vat, 0).expect("load");
+
+        let result = check_filament_with_conn(&conn, &[file_id.to_string()]).expect("check");
+
+        assert_ne!(result[0].status, crate::filament_check::CheckStatus::Ok);
+        assert!(result[0].needs[0].spools.is_empty());
+    }
 }

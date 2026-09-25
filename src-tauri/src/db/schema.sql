@@ -106,7 +106,8 @@ CREATE TABLE IF NOT EXISTS filament_spools (
 CREATE TABLE IF NOT EXISTS printers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    position INTEGER NOT NULL DEFAULT 0
+    position INTEGER NOT NULL DEFAULT 0,
+    kind TEXT NOT NULL DEFAULT 'filament' CHECK (kind IN ('filament', 'resin'))
 );
 
 CREATE TABLE IF NOT EXISTS material_units (
@@ -114,7 +115,7 @@ CREATE TABLE IF NOT EXISTS material_units (
     printer_id INTEGER NOT NULL REFERENCES printers(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     kind TEXT NOT NULL CHECK (kind IN ('bambu_ams', 'bambu_ams_lite', 'bambu_ams_ht', 'creality_cfs',
-                                       'prusa_mmu3', 'anycubic_ace', 'external', 'custom')),
+                                       'prusa_mmu3', 'anycubic_ace', 'external', 'custom', 'resin_vat')),
     slot_count INTEGER NOT NULL CHECK (slot_count BETWEEN 1 AND 16),
     bambu_ams_index INTEGER CHECK (bambu_ams_index BETWEEN 0 AND 3),
     position INTEGER NOT NULL DEFAULT 0

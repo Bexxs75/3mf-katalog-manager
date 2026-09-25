@@ -23,6 +23,8 @@ pub struct MaterialUnitDto {
 pub struct PrinterDto {
     pub id: String,
     pub name: String,
+    /// "filament" oder "resin" (v0.14.0), beim Anlegen fest gewaehlt.
+    pub kind: String,
     pub units: Vec<MaterialUnitDto>,
 }
 
@@ -55,6 +57,7 @@ pub(crate) fn list_printers_with_conn(conn: &Connection) -> CmdResult<Vec<Printe
         .map(|printer| PrinterDto {
             id: printer.id.to_string(),
             name: printer.name,
+            kind: printer.kind,
             units: units
                 .iter()
                 .filter(|u| u.printer_id == printer.id)
@@ -79,13 +82,21 @@ pub fn list_printers(state: State<AppState>) -> CmdResult<Vec<PrinterDto>> {
     list_printers_with_conn(&conn)
 }
 
-pub(crate) fn add_printer_with_conn(conn: &mut Connection, name: &str, holder_name: &str) -> CmdResult<PrinterDto> {
-    // Jeder Drucker bekommt direkt einen Spulenhalter (1 Fach), damit auch
-    // Drucker ohne AMS sofort eine Spule aufnehmen koennen. Beides in einer
-    // Transaktion: scheitert der Spulenhalter, entsteht auch kein Drucker.
+/// `holder_name` ist der (uebersetzte) Name der ersten Einheit: bei
+/// Filament-Druckern der Spulenhalter, bei Resin-Druckern die Harzwanne.
+pub(crate) fn add_printer_with_conn(conn: &mut Connection, name: &str, holder_name: &str, kind: &str) -> CmdResult<PrinterDto> {
+    // Jeder Filament-Drucker bekommt direkt einen Spulenhalter (1 Fach),
+    // damit auch Drucker ohne AMS sofort eine Spule aufnehmen koennen; ein
+    // Resin-Drucker bekommt stattdessen seine einzige Einheit, die
+    // Harzwanne. Beides in einer Transaktion: scheitert die Einheit,
+    // entsteht auch kein Drucker.
     let id = in_tx(conn, |tx| {
-        let id = p::insert_printer(tx, name)?;
-        p::insert_unit(tx, id, "external", holder_name, None)?;
+        let id = p::insert_printer_of_kind(tx, name, kind)?;
+        if kind == p::PRINTER_KIND_RESIN {
+            p::insert_resin_vat(tx, id, holder_name)?;
+        } else {
+            p::insert_unit(tx, id, "external", holder_name, None)?;
+        }
         Ok(id)
     })?;
     list_printers_with_conn(conn)?
@@ -95,9 +106,11 @@ pub(crate) fn add_printer_with_conn(conn: &mut Connection, name: &str, holder_na
 }
 
 #[tauri::command]
-pub fn add_printer(state: State<AppState>, name: String, holder_name: String) -> CmdResult<PrinterDto> {
+pub fn add_printer(state: State<AppState>, name: String, holder_name: String, kind: Option<String>) -> CmdResult<PrinterDto> {
     let mut conn = lock_db(&state)?;
-    add_printer_with_conn(&mut conn, &name, &holder_name)
+    // Fehlt `kind` (aeltere Aufrufer), gilt Filament.
+    let kind = kind.unwrap_or_else(|| p::PRINTER_KIND_FILAMENT.to_string());
+    add_printer_with_conn(&mut conn, &name, &holder_name, &kind)
 }
 
 #[tauri::command]
@@ -274,7 +287,7 @@ mod tests {
     fn a_new_printer_gets_a_spool_holder_with_one_slot() {
         let mut conn = db::connect_in_memory().unwrap();
 
-        let printer = add_printer_with_conn(&mut conn, "A1 mini", "Spulenhalter").unwrap();
+        let printer = add_printer_with_conn(&mut conn, "A1 mini", "Spulenhalter", "filament").unwrap();
 
         assert_eq!(printer.name, "A1 mini");
         assert_eq!(printer.units.len(), 1);
@@ -287,8 +300,63 @@ mod tests {
     fn a_printer_is_not_created_when_its_spool_holder_is_rejected() {
         let mut conn = db::connect_in_memory().unwrap();
 
-        assert!(add_printer_with_conn(&mut conn, "A1 mini", "   ").is_err());
+        assert!(add_printer_with_conn(&mut conn, "A1 mini", "   ", "filament").is_err());
 
         assert!(list_printers_with_conn(&conn).unwrap().is_empty(), "keine halbe Anlage");
+    }
+
+    #[test]
+    fn a_new_resin_printer_gets_exactly_one_vat_instead_of_a_spool_holder() {
+        let mut conn = db::connect_in_memory().unwrap();
+
+        let printer = add_printer_with_conn(&mut conn, "Saturn 4", "Harzwanne", "resin").unwrap();
+
+        assert_eq!((printer.name.as_str(), printer.kind.as_str()), ("Saturn 4", "resin"));
+        assert_eq!(printer.units.len(), 1);
+        let vat = &printer.units[0];
+        assert_eq!((vat.name.as_str(), vat.kind.as_str(), vat.slot_count), ("Harzwanne", "resin_vat", 1));
+        let filament = add_printer_with_conn(&mut conn, "X1C", "Spulenhalter", "filament").unwrap();
+        assert_eq!(filament.kind, "filament");
+    }
+
+    #[test]
+    fn an_unknown_printer_kind_creates_nothing() {
+        let mut conn = db::connect_in_memory().unwrap();
+        assert!(add_printer_with_conn(&mut conn, "X", "Halter", "toast").is_err());
+        assert!(add_printer_with_conn(&mut conn, "Saturn", "  ", "resin").is_err(), "Wanne ohne Namen");
+        assert!(list_printers_with_conn(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn bottles_and_spools_only_go_where_they_belong_through_the_command_layer() {
+        let mut conn = db::connect_in_memory().unwrap();
+        let saturn = add_printer_with_conn(&mut conn, "Saturn 4", "Harzwanne", "resin").unwrap();
+        let x1c = add_printer_with_conn(&mut conn, "X1C", "Spulenhalter", "filament").unwrap();
+        let vat = saturn.units[0].id.clone();
+        let holder = x1c.units[0].id.clone();
+        let pla = spool(&conn, "Regal 1");
+        let bottle = db::insert_filament_spool(
+            &conn,
+            &db::models::NewFilamentSpool {
+                material: "Standard".into(),
+                manufacturer: None,
+                color: None,
+                location: Some("Resin-Schrank".into()),
+                diameter_mm: 1.75,
+                original_weight_g: 1000.0,
+                remaining_weight_g: 620.0,
+                price: None,
+                image_png: None,
+                color_hex: None,
+                kind: "resin".into(),
+            },
+        )
+        .unwrap()
+        .to_string();
+
+        assert!(load_spool_with_conn(&mut conn, &bottle, &holder, 0).is_err(), "Resin nie in einen Filament-Drucker");
+        assert!(load_spool_with_conn(&mut conn, &pla, &vat, 0).is_err(), "Filament nie in die Harzwanne");
+        load_spool_with_conn(&mut conn, &bottle, &vat, 0).unwrap();
+        assert_eq!(unload_spool_with_conn(&mut conn, &bottle, None).unwrap(), Some("Resin-Schrank".into()));
     }
 }

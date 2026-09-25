@@ -84,7 +84,7 @@ pub fn suggest_spool(conn: &Connection, printer_id: i64) -> Result<Option<i64>, 
     Ok(conn
         .query_row(
             "SELECT s.id FROM filament_spools s JOIN material_units u ON s.unit_id = u.id
-             WHERE u.printer_id = ?1 AND s.kind = 'filament'
+             WHERE u.printer_id = ?1 AND s.kind = 'filament' AND u.kind <> 'resin_vat'
              ORDER BY u.position, u.id, s.slot_index LIMIT 1",
             params![printer_id],
             |r| r.get(0),

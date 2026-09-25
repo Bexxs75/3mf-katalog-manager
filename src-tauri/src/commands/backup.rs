@@ -170,7 +170,7 @@ const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
     ("file_tags", &["file_id", "tag_id"]),
     ("file_metadata", &["file_id", "label", "value"]),
     ("filament_spools", &["id", "material", "remaining_weight_g", "unit_id", "slot_index", "home_location", "color_hex", "kind"]),
-    ("printers", &["id", "name", "position"]),
+    ("printers", &["id", "name", "position", "kind"]),
     ("material_units", &["id", "printer_id", "name", "kind", "slot_count", "bambu_ams_index", "position"]),
     ("collections", &["id", "name", "created_at"]),
     ("collection_files", &["collection_id", "file_id", "position"]),
@@ -329,6 +329,7 @@ const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
     // (nur ORDER BY), deshalb hier bewusst nicht gelistet.
     ("printers", "id", ColType::Integer, false),
     ("printers", "name", ColType::Text, false),
+    ("printers", "kind", ColType::Text, false),
     // material_units - siehe list_units (printers.rs); position aus
     // demselben Grund wie bei printers.position nicht gelistet.
     ("material_units", "id", ColType::Integer, false),
@@ -445,7 +446,9 @@ fn validate_printer_invariants(conn: &Connection) -> Result<(), String> {
     // hier aus Konsistenz mitgeprueft.
     let bad_printers: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM printers WHERE id IS NULL OR name IS NULL OR position IS NULL",
+            "SELECT COUNT(*) FROM printers
+             WHERE id IS NULL OR name IS NULL OR position IS NULL
+                OR kind IS NULL OR kind NOT IN ('filament', 'resin')",
             [],
             |row| row.get(0),
         )
@@ -537,20 +540,45 @@ fn validate_printer_invariants(conn: &Connection) -> Result<(), String> {
         return Err("Katalog-Datenbank enthaelt ungueltige Farbwerte".to_string());
     }
 
-    // v0.13.1: nur 'filament'/'resin', und Resin nie in einem Fach. Eine
-    // praeparierte Sicherung kann die Spalte ohne CHECK mitbringen (die
-    // Migration ueberspringt sie dann als "duplicate column").
+    // v0.13.1: nur 'filament'/'resin'. v0.14.0: Resin nur in einer
+    // Harzwanne, Filament nie. Eine praeparierte Sicherung kann die Spalte
+    // ohne CHECK mitbringen (die Migration ueberspringt sie dann als
+    // "duplicate column"). `unit_id` zeigt hier schon sicher auf eine
+    // existierende Einheit (siehe `bad_spools` oben).
     let bad_kinds: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM filament_spools
              WHERE kind IS NULL OR kind NOT IN ('filament', 'resin')
-                OR (kind = 'resin' AND unit_id IS NOT NULL)",
+                OR (unit_id IS NOT NULL AND (kind = 'resin') <> COALESCE(
+                    (SELECT m.kind = 'resin_vat' FROM material_units m WHERE m.id = filament_spools.unit_id), 0
+                ))",
             [],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
     if bad_kinds > 0 {
-        return Err("Katalog-Datenbank enthaelt Eintraege mit ungueltiger Art (oder Resin in einem Fach)".to_string());
+        return Err(
+            "Katalog-Datenbank enthaelt Eintraege mit ungueltiger Art (oder Resin/Filament im falschen Drucker)".to_string(),
+        );
+    }
+
+    // v0.14.0: Harzwannen haben genau einen Platz und gehoeren nur zu
+    // Resin-Druckern; ein Resin-Drucker hat nur seine eine Harzwanne.
+    let bad_resin_units: i64 = conn
+        .query_row(
+            "SELECT
+               (SELECT COUNT(*) FROM material_units m JOIN printers p ON p.id = m.printer_id
+                 WHERE (m.kind = 'resin_vat') <> (p.kind = 'resin')
+                    OR (m.kind = 'resin_vat' AND m.slot_count <> 1))
+             + (SELECT COUNT(*) FROM (
+                 SELECT printer_id FROM material_units WHERE kind = 'resin_vat'
+                 GROUP BY printer_id HAVING COUNT(*) > 1))",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if bad_resin_units > 0 {
+        return Err("Katalog-Datenbank enthaelt ungueltige Harzwannen oder Resin-Drucker-Einheiten".to_string());
     }
 
     Ok(())
@@ -560,10 +588,12 @@ fn validate_printer_invariants(conn: &Connection) -> Result<(), String> {
 /// wurden). Die Heimnetz-Prüfung der Adresse passiert beim Wiederherstellen
 /// in `sanitize_printer_connections`.
 fn validate_printer_link_rows(conn: &Connection) -> Result<(), String> {
+    // v0.14.0: Resin-Drucker haben keine Druckeranbindung.
     let bad: i64 = conn
         .query_row(
             "SELECT
-               (SELECT COUNT(*) FROM printer_connections WHERE kind <> 'moonraker' OR paused NOT IN (0, 1))
+               (SELECT COUNT(*) FROM printer_connections WHERE kind <> 'moonraker' OR paused NOT IN (0, 1)
+                    OR printer_id IN (SELECT id FROM printers WHERE kind = 'resin'))
              + (SELECT COUNT(*) FROM printer_jobs WHERE outcome NOT IN ('completed', 'partial')
                     OR state NOT IN ('open', 'confirmed', 'ignored'))",
             [],
@@ -1861,7 +1891,8 @@ mod tests {
              CREATE TABLE printers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name,
-                position INTEGER
+                position INTEGER,
+                kind TEXT
              );",
         )
         .unwrap();
@@ -1872,7 +1903,7 @@ mod tests {
         {
             let conn = crate::db::connect(&tmp_path).unwrap();
             drop_printers_constraints(&conn);
-            conn.execute("INSERT INTO printers (name, position) VALUES (12345, 0)", []).unwrap();
+            conn.execute("INSERT INTO printers (name, position, kind) VALUES (12345, 0, 'filament')", []).unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
         let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
@@ -2064,7 +2095,7 @@ mod tests {
             ("file_metadata", "label"), ("file_metadata", "value"),
             ("filament_spools", "material"), ("filament_spools", "diameter_mm"),
             ("filament_spools", "original_weight_g"), ("filament_spools", "remaining_weight_g"),
-            ("printers", "name"),
+            ("printers", "name"), ("printers", "kind"),
             ("material_units", "printer_id"), ("material_units", "name"), ("material_units", "kind"), ("material_units", "slot_count"),
             ("collections", "name"),
             ("registered_slicers", "name"), ("registered_slicers", "executable_path"), ("registered_slicers", "is_auto_detected"),
@@ -2745,7 +2776,10 @@ mod tests {
                     VALUES ('PLA', 1.75, 1000, 600, '2026-09-01');",
             )
             .unwrap();
-            conn.pragma_update(None, "user_version", version - 1).unwrap();
+            // Vor Schritt 36 (Nachhol-Schritt fuer `kind`); Schritt 37
+            // (Resin-Drucker) kam spaeter dazu und laeuft danach mit.
+            assert!(version >= 36);
+            conn.pragma_update(None, "user_version", 35).unwrap();
         });
         let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash);
         assert!(result.is_ok(), "aeltere Sicherung ohne kind muss gehen: {result:?}");
@@ -2850,6 +2884,225 @@ mod tests {
                  );
                  INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at, kind)
                     VALUES ('PLA', 1.75, 1000, 600, '2026-09-01', 'pla');",
+            )
+            .unwrap();
+        });
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_err());
+    }
+
+    // ---- Resin-Drucker (v0.14.0) ----
+
+    fn resin_bottle(conn: &Connection) -> i64 {
+        crate::db::insert_filament_spool(
+            conn,
+            &crate::db::models::NewFilamentSpool {
+                material: "Standard".to_string(),
+                manufacturer: None,
+                color: Some("Grau".to_string()),
+                location: Some("Resin-Schrank".to_string()),
+                diameter_mm: 1.75,
+                original_weight_g: 1000.0,
+                remaining_weight_g: 620.0,
+                price: None,
+                image_png: None,
+                color_hex: None,
+                kind: "resin".to_string(),
+            },
+        )
+        .unwrap()
+    }
+
+    fn saturn_with_vat(conn: &Connection) -> (i64, i64) {
+        let printer = crate::db::printers::insert_printer_of_kind(conn, "Saturn 4", "resin").unwrap();
+        let vat = crate::db::printers::insert_resin_vat(conn, printer, "Harzwanne").unwrap();
+        (printer, vat)
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_accepts_a_resin_printer_with_a_bottle_in_its_vat() {
+        let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+            let (_, vat) = saturn_with_vat(conn);
+            let bottle = resin_bottle(conn);
+            crate::db::printers::load_spool(conn, bottle, vat, 0).unwrap();
+        });
+        let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash);
+        assert!(result.is_ok(), "gueltiger Resin-Drucker muss durchgehen: {result:?}");
+    }
+
+    /// Sicherung aus v0.13.x/fruehem v0.14.0 (user_version 36): `printers`
+    /// ohne `kind`, `material_units` mit dem alten CHECK, eine Spule im Fach.
+    /// Muss durch Schritt 37 migriert und akzeptiert werden; der
+    /// Tabellen-Rebuild darf die Spule nicht aus dem Fach werfen.
+    #[test]
+    fn validate_catalog_db_bytes_accepts_an_old_backup_without_printer_kind_and_keeps_loaded_spools() {
+        let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+            conn.execute_batch(
+                "DROP INDEX IF EXISTS idx_filament_spools_slot;
+                 DROP TABLE printer_jobs;
+                 DROP TABLE printer_connections;
+                 DROP TABLE material_units;
+                 DROP TABLE printers;
+                 CREATE TABLE printers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    position INTEGER NOT NULL DEFAULT 0
+                 );
+                 CREATE TABLE material_units (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    printer_id INTEGER NOT NULL REFERENCES printers(id) ON DELETE CASCADE,
+                    name TEXT NOT NULL,
+                    kind TEXT NOT NULL CHECK (kind IN ('bambu_ams', 'bambu_ams_lite', 'bambu_ams_ht', 'creality_cfs',
+                                                       'prusa_mmu3', 'anycubic_ace', 'external', 'custom')),
+                    slot_count INTEGER NOT NULL CHECK (slot_count BETWEEN 1 AND 16),
+                    bambu_ams_index INTEGER CHECK (bambu_ams_index BETWEEN 0 AND 3),
+                    position INTEGER NOT NULL DEFAULT 0
+                 );
+                 CREATE UNIQUE INDEX idx_filament_spools_slot ON filament_spools (unit_id, slot_index) WHERE unit_id IS NOT NULL;
+                 CREATE TABLE printer_connections (
+                    printer_id INTEGER PRIMARY KEY REFERENCES printers(id) ON DELETE CASCADE,
+                    kind TEXT NOT NULL CHECK (kind IN ('moonraker')),
+                    address TEXT NOT NULL, base_url TEXT, remote_version TEXT,
+                    connected_since REAL NOT NULL, last_synced_at REAL, last_error TEXT, error_since REAL,
+                    paused INTEGER NOT NULL DEFAULT 0 CHECK (paused IN (0, 1))
+                 );
+                 CREATE TABLE printer_jobs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    printer_id INTEGER NOT NULL REFERENCES printers(id) ON DELETE CASCADE,
+                    remote_id TEXT NOT NULL, file_name TEXT NOT NULL,
+                    outcome TEXT NOT NULL CHECK (outcome IN ('completed', 'partial')),
+                    raw_status TEXT NOT NULL, ended_at REAL NOT NULL, print_duration_s REAL NOT NULL,
+                    used_mm REAL NOT NULL, slicer_total_mm REAL, slicer_weight_g REAL, material TEXT,
+                    thumbnail_path TEXT,
+                    state TEXT NOT NULL DEFAULT 'open' CHECK (state IN ('open', 'confirmed', 'ignored')),
+                    booked_spool_id INTEGER REFERENCES filament_spools(id) ON DELETE SET NULL,
+                    booked_file_id INTEGER REFERENCES files(id) ON DELETE SET NULL,
+                    booked_g REAL, decided_at TEXT,
+                    UNIQUE (printer_id, remote_id)
+                 );
+                 INSERT INTO printers (id, name, position) VALUES (1, 'X1C', 0);
+                 INSERT INTO material_units (id, printer_id, name, kind, slot_count, bambu_ams_index, position)
+                     VALUES (10, 1, 'AMS A', 'bambu_ams', 4, 0, 0);
+                 INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at, unit_id, slot_index, home_location)
+                     VALUES ('PLA', 1.75, 1000, 600, '2026-09-01', 10, 1, 'Regal 2');
+                 INSERT INTO printer_connections (printer_id, kind, address, connected_since) VALUES (1, 'moonraker', '192.168.1.60', 1.0);",
+            )
+            .unwrap();
+            conn.pragma_update(None, "user_version", 36).unwrap();
+        });
+        let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash);
+        assert!(result.is_ok(), "alte Sicherung ohne printers.kind muss gehen: {result:?}");
+
+        // Und die Wiederherstellung (gleicher Weg: run_migrations auf der
+        // Kopie) behaelt die Spule im Fach.
+        let path = unique_test_db_path("old_backup_restore_resin_step");
+        std::fs::write(&path, &bytes).unwrap();
+        let mut conn = Connection::open(&path).unwrap();
+        conn.pragma_update(None, "foreign_keys", true).unwrap();
+        crate::db::run_migrations(&mut conn).unwrap();
+        let (kind, unit_id): (String, Option<i64>) = conn
+            .query_row(
+                "SELECT p.kind, s.unit_id FROM printers p, filament_spools s WHERE p.id = 1 AND s.material = 'PLA'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((kind.as_str(), unit_id), ("filament", Some(10)));
+        drop(conn);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_resin_bottle_in_a_filament_unit() {
+        let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+            let (_, unit_id) = printer_with_one_ams_unit(conn);
+            let bottle = resin_bottle(conn);
+            conn.execute("UPDATE filament_spools SET unit_id = ?1, slot_index = 0 WHERE id = ?2", params![unit_id, bottle])
+                .unwrap();
+        });
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_err());
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_filament_spool_in_a_vat() {
+        let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+            let (_, vat) = saturn_with_vat(conn);
+            let spool = crate::db::insert_filament_spool(
+                conn,
+                &crate::db::models::NewFilamentSpool { kind: "filament".to_string(), material: "PLA".to_string(), ..resin_new() },
+            )
+            .unwrap();
+            conn.execute("UPDATE filament_spools SET unit_id = ?1, slot_index = 0 WHERE id = ?2", params![vat, spool])
+                .unwrap();
+        });
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_err());
+    }
+
+    fn resin_new() -> crate::db::models::NewFilamentSpool {
+        crate::db::models::NewFilamentSpool {
+            material: "Standard".to_string(),
+            manufacturer: None,
+            color: None,
+            location: Some("Regal".to_string()),
+            diameter_mm: 1.75,
+            original_weight_g: 1000.0,
+            remaining_weight_g: 500.0,
+            price: None,
+            image_png: None,
+            color_hex: None,
+            kind: "resin".to_string(),
+        }
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_vat_on_a_filament_printer() {
+        let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+            let (printer, _) = printer_with_one_ams_unit(conn);
+            conn.execute(
+                "INSERT INTO material_units (printer_id, name, kind, slot_count, position) VALUES (?1, 'Wanne', 'resin_vat', 1, 1)",
+                params![printer],
+            )
+            .unwrap();
+        });
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_err());
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_rejects_other_units_or_a_second_vat_on_a_resin_printer() {
+        for extra in ["'AMS', 'bambu_ams', 4", "'Wanne 2', 'resin_vat', 1"] {
+            let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+                let (printer, _) = saturn_with_vat(conn);
+                conn.execute(
+                    &format!("INSERT INTO material_units (printer_id, name, kind, slot_count, position) VALUES (?1, {extra}, 1)"),
+                    params![printer],
+                )
+                .unwrap();
+            });
+            assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_err(), "{extra}");
+        }
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_vat_with_more_than_one_place_or_an_unknown_printer_kind() {
+        let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+            let (_, vat) = saturn_with_vat(conn);
+            conn.execute("UPDATE material_units SET slot_count = 2 WHERE id = ?1", params![vat]).unwrap();
+        });
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_err(), "Wanne mit 2 Plaetzen");
+
+        let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+            conn.execute("PRAGMA ignore_check_constraints = ON", []).unwrap();
+            conn.execute("INSERT INTO printers (name, kind, position) VALUES ('X', 'toast', 0)", []).unwrap();
+        });
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_err(), "unbekannte Druckerart");
+    }
+
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_connection_for_a_resin_printer() {
+        let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+            let (printer, _) = saturn_with_vat(conn);
+            conn.execute(
+                "INSERT INTO printer_connections (printer_id, kind, address, connected_since) VALUES (?1, 'moonraker', '192.168.1.60', 1.0)",
+                params![printer],
             )
             .unwrap();
         });

@@ -147,6 +147,11 @@ const MIGRATIONS: &[MigrationStep] = &[
     // holt die Spalte fuer sie nach. Auf allen anderen DBs ist er dank der
     // von `exec` tolerierten "duplicate column name" ein No-Op.
     MigrationStep::Simple(|c| exec(c, "ALTER TABLE filament_spools ADD COLUMN kind TEXT NOT NULL DEFAULT 'filament' CHECK (kind IN ('filament', 'resin'))")),
+    // Resin-Drucker mit Harzwanne (v0.14.0, Plan 2026-09-25): `printers.kind`
+    // und 'resin_vat' im CHECK von `material_units.kind`. Letzteres braucht
+    // einen Tabellen-Rebuild, deshalb ein `Rebuild`-Schritt, der beides in
+    // EINER Transaktion erledigt - siehe add_resin_printers().
+    MigrationStep::Rebuild(add_resin_printers),
 ];
 
 /// Aktuelle Ziel-Schemaversion - leitet sich direkt aus der Anzahl der
@@ -172,6 +177,10 @@ pub(crate) const FIRST_PRINTER_MIGRATION_VERSION: i64 = 23;
 /// Muss 32 bleiben: so steht es in jeder mit v0.13.1 erstellten Datenbank.
 #[cfg(test)]
 pub(crate) const KIND_MIGRATION_VERSION: i64 = 32;
+
+/// Schema-Version nach dem Resin-Drucker-Schritt (v0.14.0).
+#[cfg(test)]
+pub(crate) const RESIN_PRINTER_MIGRATION_VERSION: i64 = 37;
 
 /// Fuehrt ein einzelnes ALTER-TABLE/Backfill-Statement aus. "Spalte/Index
 /// existiert bereits" (SQLite-Fehlermeldung enthaelt "duplicate column
@@ -339,6 +348,87 @@ fn add_stp_to_file_type_check(conn: &mut Connection, step_version: i64) -> Resul
 /// (mit 3D-Vorschau, siehe Plan) - erweitert den CHECK ein zweites Mal.
 fn add_obj_to_file_type_check(conn: &mut Connection, step_version: i64) -> Result<(), DbError> {
     rebuild_files_table_with_check(conn, step_version, &["3mf", "stl", "stp", "obj"])
+}
+
+/// Resin-Drucker (v0.14.0): `printers.kind` ('filament'/'resin', bestehende
+/// Drucker werden per DEFAULT Filament) und 'resin_vat' im CHECK von
+/// `material_units.kind`. Der CHECK laesst sich nur per Tabellen-Rebuild
+/// aendern - gleiches Verfahren wie `rebuild_files_table_with_check`, auch
+/// mit derselben Kaskaden-Falle: `filament_spools.unit_id` verweist mit
+/// `ON DELETE SET NULL` auf `material_units`; mit aktivem `foreign_keys`
+/// wuerde `DROP TABLE material_units` jede eingelegte Spule stillschweigend
+/// aus ihrem Fach werfen. Deshalb Pragma VOR der Transaktion aus und danach
+/// auf den vorherigen Wert zurueck. `material_units` hat keine eigenen
+/// Indizes oder Trigger, die wiederhergestellt werden muessten; der
+/// Fach-Index `idx_filament_spools_slot` haengt an `filament_spools` und
+/// bleibt unberuehrt.
+fn add_resin_printers(conn: &mut Connection, step_version: i64) -> Result<(), DbError> {
+    // Idempotenz-Guard wie beim files-Rebuild: eine frische DB (schema.sql
+    // enthaelt 'resin_vat' bereits) braucht keinen Rebuild.
+    // Fehlt eine Tabelle ganz (nur in Tests, die `run_migrations` ohne
+    // schema.sql auf einer Teil-DB aufrufen), gibt es dort nichts zu tun.
+    let table_sql = |conn: &Connection, name: &str| -> Result<Option<String>, DbError> {
+        Ok(conn
+            .query_row("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?1", [name], |r| r.get(0))
+            .optional()?)
+    };
+    let has_printers = table_sql(conn, "printers")?.is_some();
+    let already_migrated = table_sql(conn, "material_units")?.is_none_or(|sql| sql.contains("'resin_vat'"));
+
+    let previously_enabled: bool = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0))?;
+    conn.pragma_update(None, "foreign_keys", false)?;
+
+    let result = (|| -> Result<(), DbError> {
+        let tx = conn.transaction()?;
+        // "duplicate column name" (frische DB oder schon vorhanden) toleriert
+        // `exec`, alles andere propagiert.
+        if has_printers {
+            exec(
+                &tx,
+                "ALTER TABLE printers ADD COLUMN kind TEXT NOT NULL DEFAULT 'filament' CHECK (kind IN ('filament', 'resin'))",
+            )?;
+        }
+        if !already_migrated {
+            // Spalten explizit statt `SELECT *`: die Reihenfolge einer
+            // importierten Sicherung muss nicht der eigenen entsprechen.
+            tx.execute_batch(
+                "CREATE TABLE material_units_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    printer_id INTEGER NOT NULL REFERENCES printers(id) ON DELETE CASCADE,
+                    name TEXT NOT NULL,
+                    kind TEXT NOT NULL CHECK (kind IN ('bambu_ams', 'bambu_ams_lite', 'bambu_ams_ht', 'creality_cfs',
+                                                       'prusa_mmu3', 'anycubic_ace', 'external', 'custom', 'resin_vat')),
+                    slot_count INTEGER NOT NULL CHECK (slot_count BETWEEN 1 AND 16),
+                    bambu_ams_index INTEGER CHECK (bambu_ams_index BETWEEN 0 AND 3),
+                    position INTEGER NOT NULL DEFAULT 0
+                );
+                INSERT INTO material_units_new (id, printer_id, name, kind, slot_count, bambu_ams_index, position)
+                    SELECT id, printer_id, name, kind, slot_count, bambu_ams_index, position FROM material_units;
+                DROP TABLE material_units;
+                ALTER TABLE material_units_new RENAME TO material_units;",
+            )?;
+            // Pflichtpruefung laut SQLite-Doku, beschraenkt auf die Tabellen,
+            // die der Rebuild beruehrt: keine Spule zeigt auf eine fehlende
+            // Einheit, keine Einheit auf einen fehlenden Drucker.
+            for table in ["filament_spools", "material_units"] {
+                let has_violation = tx
+                    .query_row(&format!("PRAGMA foreign_key_check({table})"), [], |_| Ok(()))
+                    .optional()?
+                    .is_some();
+                if has_violation {
+                    return Err(DbError::Other(format!(
+                        "Resin-Drucker-Migration: foreign_key_check fand verwaiste Referenzen in {table}"
+                    )));
+                }
+            }
+        }
+        tx.pragma_update(None, "user_version", step_version)?;
+        tx.commit()?;
+        Ok(())
+    })();
+
+    conn.pragma_update(None, "foreign_keys", previously_enabled)?;
+    result
 }
 
 /// Migriert `conn` von ihrer aktuellen `PRAGMA user_version` bis
@@ -763,7 +853,7 @@ mod tests {
     #[test]
     fn the_kind_step_stays_at_the_shipped_position_32() {
         assert_eq!(KIND_MIGRATION_VERSION, 32);
-        assert_eq!(CURRENT_SCHEMA_VERSION, 36);
+        assert_eq!(CURRENT_SCHEMA_VERSION, RESIN_PRINTER_MIGRATION_VERSION);
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         // Nur die Schritte bis einschliesslich 32 laufen lassen.
@@ -810,5 +900,117 @@ mod tests {
             [],
         );
         assert!(bad.is_err(), "auch der nachgeholte Schritt bringt den CHECK mit");
+    }
+
+    /// Stand vor Schritt 37 (v0.14.0): Drucker ohne `kind`, Einheiten mit
+    /// dem alten CHECK ohne 'resin_vat', eine Spule im Fach.
+    fn db_before_resin_printers() -> Connection {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        run_migrations(&mut conn).unwrap();
+        conn.execute_batch(
+            "DROP INDEX IF EXISTS idx_filament_spools_slot;
+             DROP TABLE printer_jobs;
+             DROP TABLE printer_connections;
+             DROP TABLE material_units;
+             DROP TABLE printers;
+             CREATE TABLE printers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                position INTEGER NOT NULL DEFAULT 0
+             );
+             CREATE TABLE material_units (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                printer_id INTEGER NOT NULL REFERENCES printers(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK (kind IN ('bambu_ams', 'bambu_ams_lite', 'bambu_ams_ht', 'creality_cfs',
+                                                   'prusa_mmu3', 'anycubic_ace', 'external', 'custom')),
+                slot_count INTEGER NOT NULL CHECK (slot_count BETWEEN 1 AND 16),
+                bambu_ams_index INTEGER CHECK (bambu_ams_index BETWEEN 0 AND 3),
+                position INTEGER NOT NULL DEFAULT 0
+             );
+             CREATE UNIQUE INDEX idx_filament_spools_slot ON filament_spools (unit_id, slot_index) WHERE unit_id IS NOT NULL;
+             INSERT INTO printers (id, name, position) VALUES (1, 'X1C', 0), (2, 'A1', 1);
+             INSERT INTO material_units (id, printer_id, name, kind, slot_count, bambu_ams_index, position)
+                 VALUES (10, 1, 'AMS A', 'bambu_ams', 4, 0, 0), (11, 2, 'Spulenhalter', 'external', 1, NULL, 0);
+             INSERT INTO filament_spools (id, material, diameter_mm, original_weight_g, remaining_weight_g, created_at, unit_id, slot_index, home_location)
+                 VALUES (100, 'PLA', 1.75, 1000, 600, '2026-09-01', 10, 2, 'Regal 2'),
+                        (101, 'PETG', 1.75, 1000, 900, '2026-09-01', NULL, NULL, NULL);",
+        )
+        .unwrap();
+        // printer_connections/printer_jobs wie im echten Stand vor 37 wieder anlegen.
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        conn.pragma_update(None, "user_version", RESIN_PRINTER_MIGRATION_VERSION - 1).unwrap();
+        conn
+    }
+
+    #[test]
+    fn the_resin_printer_step_keeps_units_and_loaded_spools_and_marks_printers_as_filament() {
+        let mut conn = db_before_resin_printers();
+        // Wie repository::init: foreign_keys ist VOR den Migrationen an -
+        // sonst waere die Kaskaden-Falle (ON DELETE SET NULL) nicht scharf.
+        conn.pragma_update(None, "foreign_keys", true).unwrap();
+
+        run_migrations(&mut conn).unwrap();
+
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(version, RESIN_PRINTER_MIGRATION_VERSION);
+        let fk: bool = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0)).unwrap();
+        assert!(fk, "foreign_keys muss danach wieder an sein");
+
+        let kinds: Vec<String> = conn
+            .prepare("SELECT kind FROM printers ORDER BY id")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(kinds, vec!["filament", "filament"]);
+        let units: i64 = conn.query_row("SELECT COUNT(*) FROM material_units", [], |r| r.get(0)).unwrap();
+        assert_eq!(units, 2);
+        let slot: (Option<i64>, Option<i64>, Option<String>) = conn
+            .query_row("SELECT unit_id, slot_index, home_location FROM filament_spools WHERE id = 100", [], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })
+            .unwrap();
+        assert_eq!(slot, (Some(10), Some(2), Some("Regal 2".into())), "Spule bleibt im Fach");
+        let ams_index: Option<i64> =
+            conn.query_row("SELECT bambu_ams_index FROM material_units WHERE id = 10", [], |r| r.get(0)).unwrap();
+        assert_eq!(ams_index, Some(0));
+
+        // Neue Werte erlaubt, ungueltige weiter abgelehnt.
+        conn.execute("INSERT INTO printers (id, name, kind, position) VALUES (3, 'Saturn', 'resin', 2)", []).unwrap();
+        conn.execute(
+            "INSERT INTO material_units (printer_id, name, kind, slot_count, position) VALUES (3, 'Harzwanne', 'resin_vat', 1, 0)",
+            [],
+        )
+        .expect("resin_vat ist nach Schritt 37 erlaubt");
+        assert!(conn.execute("INSERT INTO printers (name, kind, position) VALUES ('X', 'toast', 3)", []).is_err());
+        assert!(conn
+            .execute("INSERT INTO material_units (printer_id, name, kind, slot_count, position) VALUES (3, 'X', 'toaster', 1, 1)", [])
+            .is_err());
+        // Die Kaskaden von material_units funktionieren weiter.
+        conn.execute("DELETE FROM material_units WHERE id = 10", []).unwrap();
+        let unit_id: Option<i64> =
+            conn.query_row("SELECT unit_id FROM filament_spools WHERE id = 100", [], |r| r.get(0)).unwrap();
+        assert_eq!(unit_id, None, "ON DELETE SET NULL gilt weiter");
+        let slot_index_exists: i64 = conn
+            .query_row("SELECT COUNT(*) FROM sqlite_master WHERE name = 'idx_filament_spools_slot'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(slot_index_exists, 1);
+    }
+
+    #[test]
+    fn the_resin_printer_step_is_a_no_op_rebuild_on_a_fresh_db() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        conn.execute("INSERT INTO printers (id, name, kind) VALUES (1, 'Saturn', 'resin')", []).unwrap();
+        run_migrations(&mut conn).unwrap();
+        let kind: String = conn.query_row("SELECT kind FROM printers WHERE id = 1", [], |r| r.get(0)).unwrap();
+        assert_eq!(kind, "resin");
+        let sql: String = conn
+            .query_row("SELECT sql FROM sqlite_master WHERE name = 'material_units'", [], |r| r.get(0))
+            .unwrap();
+        assert!(sql.contains("'resin_vat'"));
     }
 }

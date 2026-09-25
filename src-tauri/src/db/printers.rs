@@ -120,7 +120,18 @@ pub const UNIT_KINDS: &[&str] = &[
     "anycubic_ace",
     "external",
     "custom",
+    "resin_vat",
 ];
+
+/// Druckerart (v0.14.0). Wird beim Anlegen gewaehlt und ist danach fest.
+pub const PRINTER_KIND_FILAMENT: &str = "filament";
+pub const PRINTER_KIND_RESIN: &str = "resin";
+pub const PRINTER_KINDS: &[&str] = &[PRINTER_KIND_FILAMENT, PRINTER_KIND_RESIN];
+
+/// Einzige Einheit eines Resin-Druckers: die Harzwanne mit genau einem Platz.
+/// Sie entsteht nur ueber `insert_resin_vat` und ist weder umbenennbar noch
+/// loeschbar. Resin-Flaschen duerfen nur hierhin, Filament nie.
+pub const UNIT_KIND_RESIN_VAT: &str = "resin_vat";
 
 const MAX_NAME_LEN: usize = 60;
 const MAX_SLOTS: i64 = 16;
@@ -131,7 +142,7 @@ const MAX_BAMBU_AMS: i64 = 4;
 pub fn template_slot_count(kind: &str) -> Option<i64> {
     match kind {
         "bambu_ams" | "bambu_ams_lite" | "creality_cfs" | "anycubic_ace" => Some(4),
-        "bambu_ams_ht" | "external" => Some(1),
+        "bambu_ams_ht" | "external" | "resin_vat" => Some(1),
         "prusa_mmu3" => Some(5),
         _ => None,
     }
@@ -153,9 +164,9 @@ fn clean_name(name: &str) -> Result<String, DbError> {
 }
 
 pub fn list_printers(conn: &Connection) -> Result<Vec<PrinterRecord>, DbError> {
-    let mut stmt = conn.prepare("SELECT id, name FROM printers ORDER BY position, id")?;
+    let mut stmt = conn.prepare("SELECT id, name, kind FROM printers ORDER BY position, id")?;
     let rows = stmt
-        .query_map([], |r| Ok(PrinterRecord { id: r.get(0)?, name: r.get(1)? }))?
+        .query_map([], |r| Ok(PrinterRecord { id: r.get(0)?, name: r.get(1)?, kind: r.get(2)? }))?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rows)
 }
@@ -187,13 +198,55 @@ fn get_unit(conn: &Connection, unit_id: i64) -> Result<MaterialUnitRecord, DbErr
         .ok_or_else(|| DbError::Other(format!("Einheit {unit_id} existiert nicht")))
 }
 
+/// Legt einen Filament-Drucker an (Kurzform fuer Tests; die App geht ueber
+/// `insert_printer_of_kind`).
+#[cfg(test)]
 pub fn insert_printer(conn: &Connection, name: &str) -> Result<i64, DbError> {
+    insert_printer_of_kind(conn, name, PRINTER_KIND_FILAMENT)
+}
+
+/// Legt einen Drucker der Art `kind` ("filament"/"resin") an - ohne
+/// Einheiten; die legt der Aufrufer in derselben Transaktion an.
+pub fn insert_printer_of_kind(conn: &Connection, name: &str, kind: &str) -> Result<i64, DbError> {
+    if !PRINTER_KINDS.contains(&kind) {
+        return Err(DbError::Other(format!("unbekannte Druckerart: {kind}")));
+    }
     let name = clean_name(name)?;
     conn.execute(
-        "INSERT INTO printers (name, position) VALUES (?1, (SELECT COALESCE(MAX(position), -1) + 1 FROM printers))",
-        params![name],
+        "INSERT INTO printers (name, kind, position) VALUES (?1, ?2, (SELECT COALESCE(MAX(position), -1) + 1 FROM printers))",
+        params![name, kind],
     )?;
     Ok(conn.last_insert_rowid())
+}
+
+/// Art des Druckers; Fehler, wenn es ihn nicht gibt.
+pub fn printer_kind(conn: &Connection, printer_id: i64) -> Result<String, DbError> {
+    conn.query_row("SELECT kind FROM printers WHERE id = ?1", params![printer_id], |r| r.get(0))
+        .optional()?
+        .ok_or_else(|| DbError::Other(format!("Drucker {printer_id} existiert nicht")))
+}
+
+/// Druckeranbindung, "Reicht das Filament?" usw. gibt es nur fuer
+/// Filament-Drucker. Lehnt Resin-Drucker und unbekannte IDs ab.
+pub fn ensure_filament_printer(conn: &Connection, printer_id: i64) -> Result<(), DbError> {
+    if printer_kind(conn, printer_id)? == PRINTER_KIND_RESIN {
+        return Err(DbError::Other("Resin-Drucker haben keine Druckeranbindung".into()));
+    }
+    Ok(())
+}
+
+/// Legt die Harzwanne (1 Platz) eines Resin-Druckers an. Nur fuer
+/// Resin-Drucker und nur einmal pro Drucker. Aufrufer haelt eine Transaktion.
+pub fn insert_resin_vat(conn: &Connection, printer_id: i64, name: &str) -> Result<i64, DbError> {
+    if printer_kind(conn, printer_id)? != PRINTER_KIND_RESIN {
+        return Err(DbError::Other("Eine Harzwanne gibt es nur bei Resin-Druckern".into()));
+    }
+    let has_units: bool =
+        conn.query_row("SELECT EXISTS(SELECT 1 FROM material_units WHERE printer_id = ?1)", params![printer_id], |r| r.get(0))?;
+    if has_units {
+        return Err(DbError::Other("Ein Resin-Drucker hat genau eine Harzwanne".into()));
+    }
+    insert_unit_row(conn, printer_id, UNIT_KIND_RESIN_VAT, name, None)
 }
 
 pub fn rename_printer(conn: &Connection, printer_id: i64, name: &str) -> Result<(), DbError> {
@@ -231,10 +284,28 @@ pub fn delete_printer(conn: &Connection, printer_id: i64) -> Result<usize, DbErr
     Ok(returned)
 }
 
-/// Fuegt eine Einheit hinzu. Vorlagen haben eine feste Fachanzahl (der
-/// Parameter wird dann ignoriert); AMS/AMS lite bekommen die naechste freie
-/// Bambu-AMS-Nummer des Druckers.
+/// Fuegt einem Filament-Drucker eine Einheit hinzu. Vorlagen haben eine
+/// feste Fachanzahl (der Parameter wird dann ignoriert); AMS/AMS lite
+/// bekommen die naechste freie Bambu-AMS-Nummer des Druckers. Harzwannen
+/// entstehen nur ueber `insert_resin_vat`, Resin-Drucker bekommen keine
+/// weiteren Einheiten.
 pub fn insert_unit(
+    conn: &Connection,
+    printer_id: i64,
+    kind: &str,
+    name: &str,
+    slot_count: Option<i64>,
+) -> Result<i64, DbError> {
+    if kind == UNIT_KIND_RESIN_VAT {
+        return Err(DbError::Other("Eine Harzwanne entsteht nur mit dem Resin-Drucker".into()));
+    }
+    if printer_kind(conn, printer_id)? == PRINTER_KIND_RESIN {
+        return Err(DbError::Other("Resin-Drucker haben nur ihre Harzwanne".into()));
+    }
+    insert_unit_row(conn, printer_id, kind, name, slot_count)
+}
+
+fn insert_unit_row(
     conn: &Connection,
     printer_id: i64,
     kind: &str,
@@ -283,6 +354,9 @@ pub fn insert_unit(
 /// Transaktion.
 pub fn update_unit(conn: &Connection, unit_id: i64, name: &str, slot_count: Option<i64>) -> Result<usize, DbError> {
     let unit = get_unit(conn, unit_id)?;
+    if unit.kind == UNIT_KIND_RESIN_VAT {
+        return Err(DbError::Other("Die Harzwanne kann nicht geaendert werden".into()));
+    }
     let name = clean_name(name)?;
     let slots = match template_slot_count(&unit.kind) {
         Some(fixed) => fixed,
@@ -302,7 +376,9 @@ pub fn update_unit(conn: &Connection, unit_id: i64, name: &str, slot_count: Opti
 /// Loescht eine Einheit; ihre Spulen kehren vorher an ihren Stammplatz
 /// zurueck. Aufrufer haelt eine Transaktion.
 pub fn delete_unit(conn: &Connection, unit_id: i64) -> Result<usize, DbError> {
-    get_unit(conn, unit_id)?;
+    if get_unit(conn, unit_id)?.kind == UNIT_KIND_RESIN_VAT {
+        return Err(DbError::Other("Die Harzwanne kann nicht geloescht werden".into()));
+    }
     let returned = return_spools_home(conn, "unit_id = ?1", &[&unit_id])?;
     conn.execute("DELETE FROM material_units WHERE id = ?1", params![unit_id])?;
     Ok(returned)
@@ -352,8 +428,15 @@ pub fn load_spool(conn: &Connection, spool_id: i64, unit_id: i64, slot_index: i6
         )
         .optional()?
         .ok_or_else(|| DbError::Other(format!("Spule {spool_id} existiert nicht")))?;
-    if kind == crate::db::models::SPOOL_KIND_RESIN {
-        return Err(DbError::Other("Resin-Flaschen koennen in kein Fach".to_string()));
+    // Resin-Flaschen nur in eine Harzwanne, Filament nie (v0.14.0). Eine
+    // Harzwanne gibt es nur an Resin-Druckern (`insert_resin_vat`).
+    let is_resin = kind == crate::db::models::SPOOL_KIND_RESIN;
+    let is_vat = unit.kind == UNIT_KIND_RESIN_VAT;
+    if is_resin && !is_vat {
+        return Err(DbError::Other("Resin-Flaschen passen nur in die Harzwanne eines Resin-Druckers".to_string()));
+    }
+    if !is_resin && is_vat {
+        return Err(DbError::Other("Filament-Spulen passen nicht in eine Harzwanne".to_string()));
     }
     if current_unit == Some(unit_id) && current_slot == Some(slot_index) {
         return Ok(LoadOutcome { displaced_spool_id: None });
@@ -705,33 +788,156 @@ mod tests {
         assert_eq!(placement(&conn, pla), (None, Some("Regal 5".into()), Some(ams_a), Some(0)));
     }
 
-    #[test]
-    fn a_resin_bottle_can_never_be_loaded_into_a_slot() {
-        let conn = crate::db::connect_in_memory().unwrap();
-        let printer = insert_printer(&conn, "Mars").unwrap();
-        let unit = insert_unit(&conn, printer, "external", "Halter", None).unwrap();
-        let resin = crate::db::insert_filament_spool(
-            &conn,
+    fn bottle(conn: &Connection, location: &str) -> i64 {
+        crate::db::insert_filament_spool(
+            conn,
             &crate::db::models::NewFilamentSpool {
                 material: "Standard".into(),
                 manufacturer: None,
-                color: None,
-                location: Some("Resin-Schrank".into()),
+                color: Some("Grau".into()),
+                location: Some(location.into()),
                 diameter_mm: 1.75,
                 original_weight_g: 1000.0,
-                remaining_weight_g: 1000.0,
+                remaining_weight_g: 620.0,
                 price: None,
                 image_png: None,
                 color_hex: None,
                 kind: crate::db::models::SPOOL_KIND_RESIN.into(),
             },
         )
-        .unwrap();
+        .unwrap()
+    }
 
-        assert!(load_spool(&conn, resin, unit, 0).is_err());
-        let slot: Option<i64> = conn
-            .query_row("SELECT unit_id FROM filament_spools WHERE id = ?1", params![resin], |r| r.get(0))
-            .unwrap();
-        assert_eq!(slot, None);
+    /// Resin-Drucker samt Harzwanne (wie `add_printer` sie anlegt).
+    fn saturn_with_vat(conn: &Connection) -> (i64, i64) {
+        let printer = insert_printer_of_kind(conn, "Saturn 4", PRINTER_KIND_RESIN).unwrap();
+        let vat = insert_resin_vat(conn, printer, "Harzwanne").unwrap();
+        (printer, vat)
+    }
+
+    #[test]
+    fn printers_have_a_kind_and_default_to_filament() {
+        let conn = crate::db::connect_in_memory().unwrap();
+        insert_printer(&conn, "X1C").unwrap();
+        insert_printer_of_kind(&conn, "Saturn 4", PRINTER_KIND_RESIN).unwrap();
+        assert!(insert_printer_of_kind(&conn, "Toaster", "toast").is_err());
+
+        let kinds: Vec<(String, String)> = list_printers(&conn).unwrap().into_iter().map(|p| (p.name, p.kind)).collect();
+        assert_eq!(kinds, vec![("X1C".into(), "filament".into()), ("Saturn 4".into(), "resin".into())]);
+    }
+
+    #[test]
+    fn a_resin_printer_gets_exactly_one_vat_and_no_other_units() {
+        let conn = crate::db::connect_in_memory().unwrap();
+        let (printer, vat) = saturn_with_vat(&conn);
+
+        let unit = list_units(&conn).unwrap().into_iter().find(|u| u.id == vat).unwrap();
+        assert_eq!((unit.kind.as_str(), unit.slot_count, unit.bambu_ams_index), ("resin_vat", 1, None));
+        assert!(insert_resin_vat(&conn, printer, "Zweite Wanne").is_err(), "nur eine Wanne");
+        assert!(insert_unit(&conn, printer, "external", "Halter", None).is_err(), "keine weiteren Einheiten");
+        assert!(insert_unit(&conn, printer, "custom", "Box", Some(2)).is_err());
+    }
+
+    #[test]
+    fn vats_exist_only_on_resin_printers() {
+        let conn = crate::db::connect_in_memory().unwrap();
+        let (x1c, _, _) = x1c_with_two_ams(&conn);
+        assert!(insert_resin_vat(&conn, x1c, "Harzwanne").is_err());
+        assert!(insert_unit(&conn, x1c, "resin_vat", "Harzwanne", None).is_err(), "nicht ueber add_unit");
+        assert!(insert_resin_vat(&conn, 999, "Harzwanne").is_err());
+    }
+
+    #[test]
+    fn the_vat_can_be_neither_renamed_nor_deleted() {
+        let conn = crate::db::connect_in_memory().unwrap();
+        let (_, vat) = saturn_with_vat(&conn);
+        assert!(update_unit(&conn, vat, "Wanne 2", None).is_err());
+        assert!(delete_unit(&conn, vat).is_err());
+        assert_eq!(list_units(&conn).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_resin_bottle_goes_into_the_vat_and_back_home() {
+        let conn = crate::db::connect_in_memory().unwrap();
+        let (_, vat) = saturn_with_vat(&conn);
+        let grey = bottle(&conn, "Resin-Schrank");
+        let clear = bottle(&conn, "Keller");
+
+        assert_eq!(load_spool(&conn, grey, vat, 0).unwrap().displaced_spool_id, None);
+        assert_eq!(placement(&conn, grey), (None, Some("Resin-Schrank".into()), Some(vat), Some(0)));
+        assert_eq!(load_spool(&conn, clear, vat, 0).unwrap().displaced_spool_id, Some(grey), "Tausch");
+        assert_eq!(placement(&conn, grey), (Some("Resin-Schrank".into()), None, None, None));
+        assert_eq!(unload_spool(&conn, clear, None).unwrap(), Some("Keller".into()));
+    }
+
+    #[test]
+    fn a_resin_bottle_can_never_be_loaded_into_a_filament_unit() {
+        let conn = crate::db::connect_in_memory().unwrap();
+        let printer = insert_printer(&conn, "Mars").unwrap();
+        let holder = insert_unit(&conn, printer, "external", "Halter", None).unwrap();
+        let ams = insert_unit(&conn, printer, "bambu_ams", "AMS", None).unwrap();
+        let resin = bottle(&conn, "Resin-Schrank");
+
+        assert!(load_spool(&conn, resin, holder, 0).is_err());
+        assert!(load_spool(&conn, resin, ams, 2).is_err());
+        assert_eq!(placement(&conn, resin), (Some("Resin-Schrank".into()), None, None, None));
+    }
+
+    #[test]
+    fn a_filament_spool_can_never_be_loaded_into_a_vat() {
+        let conn = crate::db::connect_in_memory().unwrap();
+        let (_, vat) = saturn_with_vat(&conn);
+        let (_, ams_a, _) = x1c_with_two_ams(&conn);
+        let pla = spool(&conn, "PLA", Some("Regal 2"));
+        load_spool(&conn, pla, ams_a, 0).unwrap();
+
+        assert!(load_spool(&conn, pla, vat, 0).is_err(), "auch nicht aus einem Fach heraus");
+        assert_eq!(placement(&conn, pla), (None, Some("Regal 2".into()), Some(ams_a), Some(0)));
+    }
+
+    #[test]
+    fn a_loaded_entry_cannot_change_its_kind() {
+        let conn = crate::db::connect_in_memory().unwrap();
+        let (_, vat) = saturn_with_vat(&conn);
+        let grey = bottle(&conn, "Resin-Schrank");
+        load_spool(&conn, grey, vat, 0).unwrap();
+        let as_filament = crate::db::models::NewFilamentSpool {
+            material: "PLA".into(),
+            manufacturer: None,
+            color: None,
+            location: Some("Regal".into()),
+            diameter_mm: 1.75,
+            original_weight_g: 1000.0,
+            remaining_weight_g: 1000.0,
+            price: None,
+            image_png: None,
+            color_hex: None,
+            kind: "filament".into(),
+        };
+        assert!(crate::db::update_filament_spool(&conn, grey, &as_filament).is_err());
+        assert_eq!(crate::db::get_filament_spool(&conn, grey).unwrap().kind, "resin");
+        let as_resin = crate::db::models::NewFilamentSpool { kind: "resin".into(), ..as_filament };
+        crate::db::update_filament_spool(&conn, grey, &as_resin).expect("Art bleibt gleich: erlaubt");
+    }
+
+    #[test]
+    fn deleting_a_resin_printer_sends_the_bottle_home() {
+        let conn = crate::db::connect_in_memory().unwrap();
+        let (printer, vat) = saturn_with_vat(&conn);
+        let grey = bottle(&conn, "Resin-Schrank");
+        load_spool(&conn, grey, vat, 0).unwrap();
+
+        assert_eq!(delete_printer(&conn, printer).unwrap(), 1);
+        assert_eq!(placement(&conn, grey), (Some("Resin-Schrank".into()), None, None, None));
+    }
+
+    #[test]
+    fn only_filament_printers_accept_a_connection() {
+        let conn = crate::db::connect_in_memory().unwrap();
+        let (saturn, _) = saturn_with_vat(&conn);
+        let x1c = insert_printer(&conn, "X1C").unwrap();
+        assert!(ensure_filament_printer(&conn, x1c).is_ok());
+        assert!(ensure_filament_printer(&conn, saturn).is_err());
+        assert!(ensure_filament_printer(&conn, 999).is_err());
     }
 }

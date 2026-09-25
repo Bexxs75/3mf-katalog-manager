@@ -209,6 +209,8 @@ pub struct NewFilamentSpool {
 pub struct PrinterRecord {
     pub id: i64,
     pub name: String,
+    /// "filament" oder "resin" (v0.14.0).
+    pub kind: String,
 }
 
 #[derive(Debug, Clone)]
