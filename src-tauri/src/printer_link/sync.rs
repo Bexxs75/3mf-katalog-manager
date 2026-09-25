@@ -44,12 +44,36 @@ pub fn sync_once(db: &Mutex<Connection>, make: &LinkMaker, now: f64) -> Result<u
 
     let mut new_jobs = 0;
     for (printer_id, kind, address, since) in plan {
+        // Der Plan wurde einmal zu Beginn erstellt; eine einzelne
+        // Netzwerkabfrage (`test()`) kann Sekunden dauern. Bevor der
+        // naechste Drucker kontaktiert wird, deshalb erneut kurz pruefen:
+        // wurde der Schalter inzwischen ausgeschaltet, endet der gesamte
+        // Durchlauf sofort (kein Paket mehr an irgendeinen Drucker); wurde
+        // nur diese eine Verbindung entfernt oder pausiert, wird nur sie
+        // uebersprungen.
+        {
+            let conn = lock(db)?;
+            if !store::printer_link_enabled(&conn)? {
+                break;
+            }
+            match store::get_connection(&conn, printer_id)? {
+                Some(c) if !c.paused => {}
+                _ => continue,
+            }
+        }
+
         let result = make(&kind, &address).and_then(|link| {
             let info = link.test()?;
             let jobs = link.jobs_ended_since(&info.base_url, since)?;
             Ok((info, jobs))
         });
+
         let conn = lock(db)?;
+        // Die Verbindung kann waehrend der Netzwerkabfrage entfernt worden
+        // sein; dann darf das Ergebnis nicht mehr geschrieben werden.
+        if store::get_connection(&conn, printer_id)?.is_none() {
+            continue;
+        }
         match result {
             Ok((info, jobs)) => {
                 for job in &jobs {
@@ -101,7 +125,8 @@ mod tests {
     use crate::db::printer_link::{get_connection, list_open_jobs, save_connection_after_test, set_printer_link_enabled};
     use crate::printer_link::address::AddressPolicy;
     use crate::printer_link::fake_moonraker::{sv08, FakeServer};
-    use std::sync::Mutex;
+    use crate::printer_link::{ConnectionInfo, JobOutcome, RemoteJob};
+    use std::sync::{Arc, Mutex};
 
     fn db_with_connection(address: &str, connected_since: f64) -> Mutex<Connection> {
         let conn = crate::db::connect_in_memory().unwrap();
@@ -173,5 +198,101 @@ mod tests {
         assert_eq!(sync_once(&db, &*test_maker(), 960.0).unwrap(), 0);
         ended.store(true, Ordering::SeqCst);
         assert_eq!(sync_once(&db, &*test_maker(), 1100.0).unwrap(), 1);
+    }
+
+    /// `test()` des ersten Druckers schaltet die Verbindung mittendrin aus.
+    /// Der zweite Drucker darf dann nicht mehr kontaktiert werden - der
+    /// Schalter wird laut Vorgabe pro Drucker im Durchlauf erneut geprueft,
+    /// nicht nur einmal beim Erstellen des Plans.
+    struct SwitchOffOnTest {
+        db: Arc<Mutex<Connection>>,
+    }
+
+    impl PrinterLink for SwitchOffOnTest {
+        fn test(&self) -> Result<ConnectionInfo, LinkError> {
+            set_printer_link_enabled(&self.db.lock().unwrap(), false).unwrap();
+            Ok(ConnectionInfo { version: "v0".into(), base_url: "http://printer-1".into() })
+        }
+        fn jobs_ended_since(&self, _base_url: &str, _since: f64) -> Result<Vec<RemoteJob>, LinkError> {
+            Ok(Vec::new())
+        }
+        fn thumbnail(&self, _base_url: &str, _path: &str) -> Result<Vec<u8>, LinkError> {
+            Err(LinkError::Unreachable)
+        }
+    }
+
+    #[test]
+    fn switch_off_mid_pass_stops_the_next_printer_from_being_contacted() {
+        let server2 = sv08();
+        let conn = crate::db::connect_in_memory().unwrap();
+        conn.execute("INSERT INTO printers (id, name, position) VALUES (1, 'A', 0)", []).unwrap();
+        conn.execute("INSERT INTO printers (id, name, position) VALUES (2, 'B', 1)", []).unwrap();
+        save_connection_after_test(&conn, 1, "moonraker", "printer-1", "", "", 0.0).unwrap();
+        save_connection_after_test(&conn, 2, "moonraker", &server2.address(), "", "", 0.0).unwrap();
+        set_printer_link_enabled(&conn, true).unwrap();
+        let db = Arc::new(Mutex::new(conn));
+        let maker_db = db.clone();
+
+        let maker: Box<LinkMaker> = Box::new(move |kind: &str, address: &str| {
+            if address == "printer-1" {
+                Ok(Box::new(SwitchOffOnTest { db: maker_db.clone() }) as Box<dyn PrinterLink>)
+            } else {
+                crate::printer_link::make_link(kind, address, AddressPolicy::TEST)
+            }
+        });
+
+        assert_eq!(sync_once(&db, &*maker, 2e9).unwrap(), 0);
+        assert!(server2.requests().is_empty());
+    }
+
+    /// Die Verbindung verschwindet waehrend der Netzwerkabfrage (z. B. weil
+    /// der Benutzer den Drucker in der Zwischenzeit entfernt hat). Der
+    /// zurueckkommende Druck darf dann nicht mehr geschrieben werden.
+    struct DeleteSelfOnTest {
+        db: Arc<Mutex<Connection>>,
+        printer_id: i64,
+    }
+
+    impl PrinterLink for DeleteSelfOnTest {
+        fn test(&self) -> Result<ConnectionInfo, LinkError> {
+            store::delete_connection(&self.db.lock().unwrap(), self.printer_id).unwrap();
+            Ok(ConnectionInfo { version: "v0".into(), base_url: "http://printer-1".into() })
+        }
+        fn jobs_ended_since(&self, _base_url: &str, _since: f64) -> Result<Vec<RemoteJob>, LinkError> {
+            Ok(vec![RemoteJob {
+                remote_id: "A".into(),
+                file_name: "a.gcode".into(),
+                outcome: JobOutcome::Completed,
+                raw_status: "completed".into(),
+                ended_at: 1000.0,
+                print_duration_s: 9.0,
+                used_mm: 50.0,
+                slicer_total_mm: None,
+                slicer_weight_g: None,
+                material: None,
+                thumbnail_path: None,
+            }])
+        }
+        fn thumbnail(&self, _base_url: &str, _path: &str) -> Result<Vec<u8>, LinkError> {
+            Err(LinkError::Unreachable)
+        }
+    }
+
+    #[test]
+    fn connection_removed_during_the_network_call_is_not_written_to() {
+        let conn = crate::db::connect_in_memory().unwrap();
+        conn.execute("INSERT INTO printers (id, name, position) VALUES (1, 'A', 0)", []).unwrap();
+        save_connection_after_test(&conn, 1, "moonraker", "printer-1", "", "", 0.0).unwrap();
+        set_printer_link_enabled(&conn, true).unwrap();
+        let db = Arc::new(Mutex::new(conn));
+        let maker_db = db.clone();
+
+        let maker: Box<LinkMaker> = Box::new(move |_kind: &str, _address: &str| {
+            Ok(Box::new(DeleteSelfOnTest { db: maker_db.clone(), printer_id: 1 }) as Box<dyn PrinterLink>)
+        });
+
+        assert_eq!(sync_once(&db, &*maker, 2e9).unwrap(), 0);
+        assert!(get_connection(&db.lock().unwrap(), 1).unwrap().is_none());
+        assert_eq!(list_open_jobs(&db.lock().unwrap()).unwrap().len(), 0);
     }
 }
