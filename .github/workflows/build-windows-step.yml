@@ -36,26 +36,20 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      # windows-latest bringt MSVC Build Tools und CMake bereits mit - anders
-      # als eine frisch aufgesetzte VM braucht der Runner hier keine
-      # zusaetzliche Installation dafuer.
+      # windows-latest bringt MSVC Build Tools und CMake bereits mit.
       #
-      # OCCT selbst gibt es fuer Windows nicht als Systempaket, deshalb ueber
-      # vcpkg gebaut, gepinnt auf die in
-      # src-tauri/occt-vcpkg-manifest/vcpkg.json.
+      # OCCT gibt es fuer Windows nicht als Systempaket, deshalb ueber vcpkg gebaut,
+      # gepinnt in src-tauri/occt-vcpkg-manifest/vcpkg.json.
       #
       # lukka/run-vcpkg richtet nur das vcpkg-Tool ein (RUNVCPKG_VCPKG_ROOT);
-      # "vcpkg install" rufen wir danach selbst mit festem --x-install-root
-      # auf, weil der Staging-Schritt diesen vorhersagbaren Pfad braucht
-      # (siehe VENDORING.md).
+      # "vcpkg install" rufen wir danach selbst mit festem --x-install-root auf,
+      # weil der Staging-Schritt diesen vorhersagbaren Pfad braucht (siehe
+      # VENDORING.md).
       #
-      # Binary-Cache: Das fruehere GitHub-Actions-Backend (x-gha) hat vcpkg
-      # entfernt - bis v0.13.1 wurde OCCT deshalb bei JEDEM Lauf neu gebaut
-      # (ca. 1,1 h). Jetzt legt vcpkg die fertigen Pakete als NuGet-Pakete in
-      # GitHub Packages dieses Repos ab (von vcpkg selbst empfohlen). Anders
-      # als der Actions-Cache verfaellt das nicht nach 7 Tagen ohne Zugriff.
-      # Neu gebaut wird nur, wenn sich OCCT-Version, vcpkg-Commit oder Triplet
-      # aendern (dann einmal ~1,1 h, danach wieder aus dem Cache).
+      # Binary-Cache: vcpkg legt die fertigen Pakete als NuGet-Pakete in GitHub
+      # Packages dieses Repos ab (das x-gha-Backend gibt es nicht mehr). Anders als
+      # der Actions-Cache verfaellt das nicht nach 7 Tagen. Neu gebaut (~1,1 h) wird
+      # nur bei neuer OCCT-Version, neuem vcpkg-Commit oder Triplet.
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:

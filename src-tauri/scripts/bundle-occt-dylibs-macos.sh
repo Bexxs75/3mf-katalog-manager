@@ -22,11 +22,6 @@
 #
 # Usage:
 #   ./src-tauri/scripts/bundle-occt-dylibs-macos.sh <path-to-.app>
-#
-# Verified (2026-09-21, Intel docker-osx Sonoma VM): app launches and
-# renders a STEP file's 3D preview with the real Homebrew OCCT install
-# renamed out of the way (i.e. genuinely self-contained), not just
-# incidentally still resolving against a local Homebrew install.
 
 set -euo pipefail
 

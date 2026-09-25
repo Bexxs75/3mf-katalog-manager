@@ -13,7 +13,7 @@
 # `tauri build --target universal-apple-darwin` in einem Rutsch gebaut
 # werden. Stattdessen: einmal fuer aarch64-apple-darwin bauen (native
 # Homebrew-OCCT unter /opt/homebrew), einmal fuer x86_64-apple-darwin
-# (Rosetta-emulierte Homebrew-OCCT unter /usr/local), beide Male
+# (Homebrew-OCCT unter /usr/local, eigener Intel-Runner), beide Male
 # dylib-buendeln, und erst danach hier zu einem echten Universal-Bundle
 # zusammenfuehren.
 #
