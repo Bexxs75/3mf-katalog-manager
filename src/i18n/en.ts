@@ -161,7 +161,6 @@ export const en: Translations = {
   spoolKindFilament: 'Filament',
   spoolKindResin: 'Resin',
   spoolKindLockedHint: 'The type can only be changed once the spool is out of the printer.',
-  resinKindLockedHint: 'The type can only be changed once the bottle is out of the printer.',
   resinStatTotal: 'Total bottles',
   resinBottleFooter: '{amount} bottle',
   resinConsumeButton: 'Use',

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useT } from '../i18n/LanguageContext';
-import type { FilamentSpool } from '../types';
+import type { FilamentSpool, SpoolKind } from '../types';
 import { FILAMENT_MATERIALS, FILAMENT_MANUFACTURERS } from '../lib/filamentCatalog';
 import { filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus';
 import { AutocompleteInput } from './AutocompleteInput';
 import { ColorPicker } from './ColorPicker';
+import { SegmentedControl } from './SegmentedControl';
 
 interface Props {
   open: boolean;
@@ -13,9 +14,12 @@ interface Props {
   knownLocations: string[];
   onClose: () => void;
   onSaved: () => void;
+  /** Art fuer neue Eintraege (aktuelle Ansicht im Lager). */
+  defaultKind?: SpoolKind;
 }
 
 interface FormState {
+  kind: SpoolKind;
   material: string;
   manufacturer: string;
   color: string;
@@ -30,6 +34,7 @@ interface FormState {
 }
 
 const EMPTY_FORM: FormState = {
+  kind: 'filament',
   material: '',
   manufacturer: '',
   color: '',
@@ -48,6 +53,7 @@ const fieldClass =
 
 function toForm(spool: FilamentSpool): FormState {
   return {
+    kind: spool.kind,
     material: spool.material,
     manufacturer: spool.manufacturer ?? '',
     color: spool.color ?? '',
@@ -63,17 +69,17 @@ function toForm(spool: FilamentSpool): FormState {
   };
 }
 
-export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSaved }: Props) {
+export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSaved, defaultKind = 'filament' }: Props) {
   const t = useT();
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
-      setForm(editing ? toForm(editing) : EMPTY_FORM);
+      setForm(editing ? toForm(editing) : { ...EMPTY_FORM, kind: defaultKind });
       setError(null);
     }
-  }, [open, editing]);
+  }, [open, editing, defaultKind]);
 
   const handlePickImage = () => {
     invoke<string | null>('pick_and_read_image')
@@ -102,7 +108,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
       homeLocation: editing?.homeLocation ?? null,
       unitId: editing?.unitId ?? null,
       slotIndex: editing?.slotIndex ?? null,
-      kind: editing?.kind ?? 'filament',
+      kind: form.kind,
     };
     try {
       if (editing) {
@@ -124,6 +130,9 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
     }
   };
 
+  const resin = form.kind === 'resin';
+  const kindLocked = editing?.unitId != null;
+
   const original = parseFloat(form.originalWeightG) || 0;
   const remaining = parseFloat(form.remainingWeightG) || 0;
   const previewStatus = filamentStockStatus({ originalWeightG: original, remainingWeightG: remaining });
@@ -140,13 +149,20 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
         onClick={onClose}
       />
       <aside
+        aria-hidden={!open}
         className={`fixed top-0 right-0 bottom-0 w-full max-w-[380px] bg-[var(--panel)] border-l border-[var(--line)] shadow-[var(--shadow)] z-50 flex flex-col transition-transform duration-200 ${
           open ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
         <div className="flex-none flex items-center justify-between px-4 py-3.5 border-b border-[var(--line)]">
           <h3 className="text-[15px] font-bold m-0">
-            {editing ? t('filamentSaveButton') : t('filamentOpenAddPanelButton')}
+            {editing
+              ? resin
+                ? t('resinEditAria')
+                : t('filamentEditAria')
+              : resin
+                ? t('resinOpenAddPanelButton')
+                : t('filamentOpenAddPanelButton')}
           </h3>
           <button
             onClick={onClose}
@@ -190,6 +206,22 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
               {t('filamentSectionIdentification')}
             </p>
             <div className="flex flex-col gap-2.5">
+              <div>
+                <span className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t('spoolKindLabel')}</span>
+                <SegmentedControl
+                  label={t('spoolKindLabel')}
+                  options={[
+                    { value: 'filament', label: t('spoolKindFilament') },
+                    { value: 'resin', label: t('spoolKindResin') },
+                  ]}
+                  value={form.kind}
+                  onChange={(kind) => setForm((f) => ({ ...f, kind }))}
+                  disabled={kindLocked}
+                />
+                {kindLocked && (
+                  <p className="text-[10.5px] text-[var(--ink-3)] mt-1 leading-snug">{t('spoolKindLockedHint')}</p>
+                )}
+              </div>
               <div>
                 <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t('filamentMaterialLabel')}</label>
                 <AutocompleteInput
@@ -277,16 +309,18 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
               {t('filamentSectionStock')}
             </p>
             <div className="grid grid-cols-2 gap-2.5">
-              <div>
-                <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t('filamentDiameterLabel')}</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={form.diameterMm}
-                  onChange={(e) => setForm((f) => ({ ...f, diameterMm: e.target.value }))}
-                  className={fieldClass}
-                />
-              </div>
+              {!resin && (
+                <div>
+                  <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t('filamentDiameterLabel')}</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={form.diameterMm}
+                    onChange={(e) => setForm((f) => ({ ...f, diameterMm: e.target.value }))}
+                    className={fieldClass}
+                  />
+                </div>
+              )}
               <div>
                 <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t('filamentPriceLabel')}</label>
                 <input
@@ -299,7 +333,9 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
                 />
               </div>
               <div>
-                <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t('filamentOriginalWeightLabel')}</label>
+                <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">
+                  {resin ? t('resinAmountLabel') : t('filamentOriginalWeightLabel')}
+                </label>
                 <input
                   type="number"
                   step="0.1"
@@ -310,7 +346,9 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
                 />
               </div>
               <div>
-                <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t('filamentRemainingWeightLabel')}</label>
+                <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">
+                  {resin ? t('resinRemainingLabel') : t('filamentRemainingWeightLabel')}
+                </label>
                 <input
                   type="number"
                   step="0.1"

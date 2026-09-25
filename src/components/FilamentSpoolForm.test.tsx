@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { FilamentSpoolForm } from './FilamentSpoolForm';
-import type { FilamentSpool } from '../types';
+import type { FilamentSpool, SpoolKind } from '../types';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 beforeEach(() => { vi.mocked(invoke).mockReset(); vi.mocked(invoke).mockResolvedValue(undefined); });
@@ -14,12 +14,19 @@ const LOADED: FilamentSpool = {
   colorHex: '#1a1a1a', homeLocation: 'Regal 2', unitId: 'u1', slotIndex: 0, kind: 'filament',
 };
 
-function renderForm(editing: FilamentSpool | null) {
+function renderForm(editing: FilamentSpool | null, defaultKind?: SpoolKind) {
   localStorage.setItem('3mf-katalog-language', 'de');
   const onSaved = vi.fn();
   render(
     <LanguageProvider>
-      <FilamentSpoolForm open editing={editing} knownLocations={[]} onClose={vi.fn()} onSaved={onSaved} />
+      <FilamentSpoolForm
+        open
+        editing={editing}
+        knownLocations={[]}
+        onClose={vi.fn()}
+        onSaved={onSaved}
+        defaultKind={defaultKind}
+      />
     </LanguageProvider>,
   );
   return onSaved;
@@ -49,5 +56,30 @@ describe('FilamentSpoolForm', () => {
     renderForm({ ...LOADED, unitId: null, slotIndex: null, homeLocation: null, location: 'Regal 1' });
     expect(screen.getByText('Lagerort')).toBeInTheDocument();
     expect(screen.getByDisplayValue('Regal 1')).toBeInTheDocument();
+  });
+
+  it('creates a resin bottle with ml labels and without diameter', async () => {
+    const onSaved = renderForm(null);
+    fireEvent.click(screen.getByRole('button', { name: 'Resin' }));
+    expect(screen.getByText('Inhalt (ml)')).toBeInTheDocument();
+    expect(screen.getByText('Restmenge (ml)')).toBeInTheDocument();
+    expect(screen.queryByText('Durchmesser (mm)')).toBeNull();
+    fireEvent.change(screen.getByPlaceholderText('Material'), { target: { value: 'Standard' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Hinzufügen' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(invoke).toHaveBeenCalledWith('add_filament_spool', expect.objectContaining({
+      spool: expect.objectContaining({ kind: 'resin', material: 'Standard' }),
+    }));
+  });
+
+  it('preselects the kind of the current view for new entries', () => {
+    renderForm(null, 'resin');
+    expect(screen.getByRole('button', { name: 'Resin' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('locks the kind of a spool that sits in a slot', () => {
+    renderForm(LOADED);
+    expect(screen.getByRole('button', { name: 'Resin' })).toBeDisabled();
+    expect(screen.getByText('Die Art lässt sich erst ändern, wenn die Spule nicht im Drucker steckt.')).toBeInTheDocument();
   });
 });

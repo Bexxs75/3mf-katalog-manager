@@ -177,8 +177,6 @@ export interface Translations {
   spoolKindFilament: string;
   spoolKindResin: string;
   spoolKindLockedHint: string;
-  /** Wie `spoolKindLockedHint`, aber für Flaschen (Resin) statt Spulen. */
-  resinKindLockedHint: string;
   resinStatTotal: string;
   /** `{amount}` = formatierte Flaschengröße */
   resinBottleFooter: string;

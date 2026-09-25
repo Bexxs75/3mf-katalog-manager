@@ -161,7 +161,6 @@ export const de: Translations = {
   spoolKindFilament: 'Filament',
   spoolKindResin: 'Resin',
   spoolKindLockedHint: 'Die Art lässt sich erst ändern, wenn die Spule nicht im Drucker steckt.',
-  resinKindLockedHint: 'Die Art lässt sich erst ändern, wenn die Flasche nicht im Drucker steckt.',
   resinStatTotal: 'Flaschen gesamt',
   resinBottleFooter: '{amount} Flasche',
   resinConsumeButton: 'Verbrauch',

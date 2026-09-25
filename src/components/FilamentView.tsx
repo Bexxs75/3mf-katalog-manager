@@ -416,6 +416,7 @@ export function FilamentView() {
         knownLocations={knownLocations}
         onClose={() => setPanelOpen(false)}
         onSaved={refresh}
+        defaultKind={kind}
       />
     </div>
   );

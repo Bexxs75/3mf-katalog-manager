@@ -161,7 +161,6 @@ export const fr: Translations = {
   spoolKindFilament: 'Filament',
   spoolKindResin: 'Résine',
   spoolKindLockedHint: 'Le type ne peut être modifié que lorsque la bobine n’est pas dans l’imprimante.',
-  resinKindLockedHint: 'Le type ne peut être modifié que lorsque le flacon n’est pas dans l’imprimante.',
   resinStatTotal: 'Flacons au total',
   resinBottleFooter: 'Flacon de {amount}',
   resinConsumeButton: 'Consommation',
