@@ -407,8 +407,8 @@ mod tests {
             color: Some("Schwarz".to_string()),
             location: Some("Regal A · Fach 1".to_string()),
             diameter_mm: 1.75,
-            original_weight_g: 1000,
-            remaining_weight_g: 620,
+            original_weight_g: 1000.0,
+            remaining_weight_g: 620.0,
             price: Some(19.99),
             image_png: None,
             color_hex: Some("#1a1a1a".to_string()),
@@ -426,8 +426,8 @@ mod tests {
         assert_eq!(spools[0].manufacturer, Some("Bambu Lab".to_string()));
         assert_eq!(spools[0].color, Some("Schwarz".to_string()));
         assert_eq!(spools[0].diameter_mm, 1.75);
-        assert_eq!(spools[0].original_weight_g, 1000);
-        assert_eq!(spools[0].remaining_weight_g, 620);
+        assert_eq!(spools[0].original_weight_g, 1000.0);
+        assert_eq!(spools[0].remaining_weight_g, 620.0);
         assert_eq!(spools[0].price, Some(19.99));
     }
 
@@ -437,13 +437,13 @@ mod tests {
         let id = insert_filament_spool(&conn, &sample_filament_spool()).expect("insert");
 
         let mut updated = sample_filament_spool();
-        updated.remaining_weight_g = 450;
+        updated.remaining_weight_g = 450.0;
         updated.color = None;
         update_filament_spool(&conn, id, &updated).expect("update");
 
         let spools = list_filament_spools(&conn).expect("list");
         assert_eq!(spools.len(), 1);
-        assert_eq!(spools[0].remaining_weight_g, 450);
+        assert_eq!(spools[0].remaining_weight_g, 450.0);
         assert_eq!(spools[0].color, None);
     }
 
@@ -456,6 +456,33 @@ mod tests {
 
         let spools = list_filament_spools(&conn).expect("list");
         assert!(spools.is_empty());
+    }
+
+    #[test]
+    fn spool_weights_keep_one_decimal() {
+        let conn = crate::db::connect_in_memory().unwrap();
+        conn.execute(
+            "INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at)
+             VALUES ('PLA', 1.75, 1000, 612.4, '2026-09-24')",
+            [],
+        )
+        .unwrap();
+        let spools = crate::db::list_filament_spools(&conn).unwrap();
+        assert_eq!(spools[0].remaining_weight_g, 612.4);
+        assert_eq!(spools[0].original_weight_g, 1000.0);
+    }
+
+    #[test]
+    fn integer_weights_from_old_databases_read_as_f64() {
+        let conn = crate::db::connect_in_memory().unwrap();
+        conn.execute(
+            "INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at)
+             VALUES ('PLA', 1.75, 1000, 600, '2026-09-24')",
+            [],
+        )
+        .unwrap();
+        let spools = crate::db::list_filament_spools(&conn).unwrap();
+        assert_eq!(spools[0].remaining_weight_g, 600.0);
     }
 
     #[test]

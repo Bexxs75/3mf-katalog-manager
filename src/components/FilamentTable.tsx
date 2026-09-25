@@ -1,7 +1,7 @@
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { useState } from 'react';
 import { useT, useLanguage } from '../i18n/LanguageContext';
-import { formatWeightG, formatDiameterMm, formatPrice } from '../i18n/format';
+import { formatStockG, formatDiameterMm, formatPrice } from '../i18n/format';
 import type { FilamentSpool } from '../types';
 import { filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus';
 import { isValidColorHex } from '../lib/filamentColors';
@@ -165,7 +165,7 @@ export function FilamentTable({ spools, confirmDeleteId, onEdit, onRequestDelete
                 <td className="px-3 py-2.5 border-b border-[var(--line)] font-mono-ui text-[var(--ink-2)]">{formatDiameterMm(spool.diameterMm, language)}</td>
                 <td className="px-3 py-2.5 border-b border-[var(--line)] min-w-[130px]">
                   <div className="flex justify-between font-mono-ui text-[10.5px] text-[var(--ink-3)] mb-1">
-                    <span>{formatWeightG(spool.remainingWeightG, language)}</span>
+                    <span>{formatStockG(spool.remainingWeightG, language)}</span>
                     <span>{pct}%</span>
                   </div>
                   <div className="h-1.5 rounded-full bg-[var(--plate)] overflow-hidden">

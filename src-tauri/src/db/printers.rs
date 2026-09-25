@@ -86,6 +86,11 @@ pub fn is_valid_color_hex(value: &str) -> bool {
         && value[1..].chars().all(|c| c.is_ascii_hexdigit())
 }
 
+/// Rundet auf eine Nachkommastelle (Gramm-Angaben im Filament-Lager).
+pub fn round_tenth(x: f64) -> f64 {
+    (x * 10.0).round() / 10.0
+}
+
 /// Migrationsschritt: setzt `color_hex` fuer alle Spulen ohne Farbwert, deren
 /// Farbname bekannt ist. Idempotent.
 pub fn backfill_color_hex(conn: &Connection) -> Result<(), DbError> {
@@ -479,8 +484,8 @@ mod tests {
                 color: None,
                 location: location.map(str::to_string),
                 diameter_mm: 1.75,
-                original_weight_g: 1000,
-                remaining_weight_g: 800,
+                original_weight_g: 1000.0,
+                remaining_weight_g: 800.0,
                 price: None,
                 image_png: None,
                 color_hex: None,
@@ -685,8 +690,8 @@ mod tests {
             color: Some("Schwarz".into()),
             location: Some("Regal 5".into()),
             diameter_mm: 1.75,
-            original_weight_g: 1000,
-            remaining_weight_g: 700,
+            original_weight_g: 1000.0,
+            remaining_weight_g: 700.0,
             price: None,
             image_png: None,
             color_hex: Some("#1a1a1a".into()),

@@ -1,6 +1,6 @@
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { useT, useLanguage } from '../i18n/LanguageContext';
-import { formatWeightG, formatDiameterMm, formatPrice } from '../i18n/format';
+import { formatStockG, formatDiameterMm, formatPrice } from '../i18n/format';
 import type { FilamentSpool } from '../types';
 import { filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus';
 import { isValidColorHex } from '../lib/filamentColors';
@@ -100,7 +100,7 @@ export function FilamentDashboard({ spools, confirmDeleteId, onEdit, onRequestDe
 
               <div>
                 <div className="flex justify-between font-mono-ui text-[11px] text-[var(--ink-2)] mb-1">
-                  <span>{formatWeightG(spool.remainingWeightG, language)}</span>
+                  <span>{formatStockG(spool.remainingWeightG, language)}</span>
                   <span>{pct}%</span>
                 </div>
                 <div className="h-1.5 rounded-full bg-[var(--plate)] overflow-hidden">
