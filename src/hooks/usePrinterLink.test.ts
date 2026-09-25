@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import React from 'react';
 
 const api = vi.hoisted(() => ({
   getPrinterLinkEnabled: vi.fn(),
@@ -82,5 +83,18 @@ describe('usePrinterLink', () => {
     api.listOpenPrinterJobs.mockRejectedValue(new Error('boom'));
     const { result } = renderHook(() => usePrinterLink());
     await waitFor(() => expect(result.current.error).not.toBeNull());
+  });
+
+  it('loads state correctly under React StrictMode', async () => {
+    const testConnections = [{ id: 'printer1', name: 'Test Printer', address: '192.168.1.100' }];
+    api.listPrinterConnections.mockResolvedValue(testConnections);
+
+    const { result } = renderHook(() => usePrinterLink(), {
+      wrapper: React.StrictMode as React.ComponentType<{ children: React.ReactNode }>,
+    });
+
+    await waitFor(() => expect(result.current.enabled).toBe(true));
+    expect(result.current.connections).toEqual(testConnections);
+    expect(api.listPrinterConnections).toHaveBeenCalled();
   });
 });

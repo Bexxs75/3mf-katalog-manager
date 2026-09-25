@@ -13,10 +13,14 @@ export function usePrinterLink() {
   const [jobs, setJobs] = useState<PrinterJob[]>([]);
   const [error, setError] = useState<string | null>(null);
   // Verhindert setState nach dem Unmount (z.B. wenn eine Ladeanfrage erst
-  // nach dem Verlassen der Seite antwortet).
-  const mounted = useRef(true);
-  useEffect(() => () => {
-    mounted.current = false;
+  // nach dem Verlassen der Seite antwortet). Wird in Effects korrekt auf-/abbaut
+  // um mit React StrictMode kompatibel zu sein.
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
   }, []);
 
   const refresh = useCallback(async () => {
