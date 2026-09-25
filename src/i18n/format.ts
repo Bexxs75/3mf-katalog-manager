@@ -91,6 +91,13 @@ export function formatDateTime(unixSeconds: number, language: Language): string 
   return new Intl.DateTimeFormat(localeFor(language), { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 }
 
+/** Nur die Uhrzeit aus Unix-Sekunden (z. B. Zeitpunkt eines Verbindungsfehlers). */
+export function formatTime(unixSeconds: number, language: Language): string {
+  const date = new Date(unixSeconds * 1000);
+  if (Number.isNaN(date.getTime())) return '–';
+  return new Intl.DateTimeFormat(localeFor(language), { timeStyle: 'short' }).format(date);
+}
+
 export function formatRelativeTime(rfc3339: string, language: Language): string {
   const date = new Date(rfc3339);
   if (Number.isNaN(date.getTime())) return '–';

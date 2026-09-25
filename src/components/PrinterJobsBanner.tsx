@@ -23,7 +23,7 @@ export function PrinterJobsBanner({ jobs, onReview }: Props) {
       <p className="flex-1 min-w-0 text-[13px]">
         {title}
         <small className="block text-[11.5px] text-[var(--ink-2)]">
-          {t('printerJobsBannerDetail').replace('{printers}', printers).replace('{grams}', formatStockG(Math.round(total * 10) / 10, language))}
+          {t('printerJobsBannerDetail').replace('{printers}', printers).replace('{grams}', formatStockG(total, language))}
         </small>
       </p>
       <button

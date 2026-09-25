@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatDateTime } from '../i18n/format';
+import { messageOf } from '../lib/errors';
 import type { PrinterConnection, PrinterConnectionError } from '../types';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
 
@@ -31,10 +32,6 @@ function portOf(baseUrl: string | null): string {
   if (!baseUrl) return '';
   const m = baseUrl.match(/:(\d+)$/);
   return m ? m[1] : '80';
-}
-
-function messageOf(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
 }
 
 const fieldClass =

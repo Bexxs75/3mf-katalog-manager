@@ -35,6 +35,16 @@ describe('PrinterLinkStatus', () => {
     expect(l.syncNow).toHaveBeenCalled();
   });
 
+  it('shows a message when syncing fails', async () => {
+    // Tauri lehnt Commands oft mit einem einfachen String ab, nicht mit
+    // einem Error-Objekt - genau dieser Fall soll hier abgefangen werden.
+    const l = link(base);
+    l.syncNow = vi.fn().mockRejectedValue('offline');
+    render(<LanguageProvider><PrinterLinkStatus printerId="1" link={l} /></LanguageProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'Jetzt abgleichen' }));
+    expect(await screen.findByText('Das hat nicht geklappt: offline')).toBeInTheDocument();
+  });
+
   it('shows unreachable and auth states', () => {
     const { rerender } = render(
       <LanguageProvider><PrinterLinkStatus printerId="1" link={link({ ...base, lastError: 'unreachable', errorSince: 1790253900 })} /></LanguageProvider>,

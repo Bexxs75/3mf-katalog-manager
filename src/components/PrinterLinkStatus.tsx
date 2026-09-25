@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
-import { formatRelativeTime } from '../i18n/format';
+import { formatRelativeTime, formatTime } from '../i18n/format';
+import { messageOf } from '../lib/errors';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
 
 interface Props {
@@ -9,10 +10,6 @@ interface Props {
 }
 
 const iso = (unixSeconds: number) => new Date(unixSeconds * 1000).toISOString();
-
-function messageOf(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
 
 /** Status-Zeile eines angebundenen Druckers in der Druckerspalte. */
 export function PrinterLinkStatus({ printerId, link }: Props) {
@@ -31,8 +28,7 @@ export function PrinterLinkStatus({ printerId, link }: Props) {
     text = t('printerAuthNeeded');
   } else if (c.lastError) {
     dot = 'bg-[var(--crit)]';
-    const time = new Intl.DateTimeFormat(language, { timeStyle: 'short' }).format(new Date((c.errorSince ?? 0) * 1000));
-    text = t('printerUnreachableSince').replace('{time}', time);
+    text = t('printerUnreachableSince').replace('{time}', formatTime(c.errorSince ?? 0, language));
   }
 
   return (
