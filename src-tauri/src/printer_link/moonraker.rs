@@ -364,6 +364,21 @@ mod parse_tests {
     }
 
     #[test]
+    fn rinkhals_on_anycubic_kobra_s1_is_accepted() {
+        // Echter, anonymer Testbericht (Anycubic Kobra S1, Rinkhals, ACE Pro):
+        // Moonraker-Version nur "?", Dateien im Ordner .3mf_temp/, Materialliste
+        // aller ACE-Fächer in filament_type.
+        assert_eq!(parse_server_info(&fixture("server_info_rinkhals_kobra_s1.json")).unwrap(), "?");
+        let page = parse_history_page(&fixture("history_rinkhals_kobra_s1.json")).unwrap();
+        assert_eq!(page.jobs.len(), 2);
+        let j = page.jobs.iter().find(|j| j.remote_id == "000158").unwrap();
+        assert_eq!(j.file_name, "S1_OrcaToleranceTest_PLA_12m28s.gcode");
+        assert_eq!(j.outcome, JobOutcome::Completed);
+        assert_eq!(j.material.as_deref(), Some("PLA"));
+        assert_eq!(j.slicer_weight_g, Some(3.65));
+    }
+
+    #[test]
     fn missing_result_is_a_bad_response() {
         assert!(matches!(parse_history_page(&serde_json::json!({"error": "x"})), Err(LinkError::BadResponse(_))));
     }

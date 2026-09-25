@@ -13,6 +13,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Changed
 
+- Druckeranbindung: Das passende Katalogmodell wird auch vorgeschlagen, wenn der Slicer Druckermodell oder Datum vor den Dateinamen setzt oder die Platte als „plate(01)“ anhängt (z. B. Anycubic Kobra S1 mit Rinkhals, Dank an einen anonymen Tester).
 - Die Update-Prüfung erkennt jetzt auch Vorschauversionen (z. B. „0.14.0-gharac") korrekt als älter als das zugehörige fertige Release, statt nie ein Update zu melden.
 - Interne Qualitätsprüfungen: Testcode ist jetzt clippy-sauber, dazu ein automatischer CI-Prüflauf (TypeScript, Tests, Clippy) sowie eine wöchentliche Abhängigkeits-Sicherheitsprüfung (cargo-deny, npm audit).
 
@@ -398,6 +399,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Changed
 
+- Printer connection: the matching catalog model is also suggested when the slicer puts the printer model or a date in front of the file name or appends the plate as “plate(01)” (e.g. Anycubic Kobra S1 with Rinkhals, thanks to an anonymous tester).
 - The update check now correctly recognizes preview versions (e.g. "0.14.0-gharac") as older than the matching final release, instead of never reporting an update.
 - Internal quality checks: test code is now clippy-clean, plus an automated CI check (TypeScript, tests, clippy) and a weekly dependency security audit (cargo-deny, npm audit).
 

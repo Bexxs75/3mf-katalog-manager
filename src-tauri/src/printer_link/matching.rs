@@ -59,13 +59,20 @@ fn is_layer_token(w: &str) -> bool {
     }
 }
 
+/// "plate(01)" wie ihn der Anycubic-Slicer anhaengt.
+fn is_plate_token(w: &str) -> bool {
+    w.strip_prefix("plate(")
+        .and_then(|r| r.strip_suffix(')'))
+        .is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+}
+
 /// Wie `normalize_name`, zusaetzlich werden angehaengte Slicer-Teile
 /// (Druckzeit, Schichthoehe, Material, "plate N") von hinten entfernt.
 pub fn normalize_gcode_name(name: &str) -> String {
     let normalized = normalize_name(name);
     let mut words: Vec<&str> = normalized.split(' ').collect();
     while let Some(last) = words.last().copied() {
-        if is_time_token(last) || is_layer_token(last) || MATERIAL_WORDS.contains(&last) {
+        if is_time_token(last) || is_layer_token(last) || is_plate_token(last) || MATERIAL_WORDS.contains(&last) {
             words.pop();
         } else if last.chars().all(|c| c.is_ascii_digit()) && words.len() >= 2 && words[words.len() - 2] == "plate" {
             words.truncate(words.len() - 2);
@@ -99,11 +106,14 @@ pub fn best_match(gcode_file_name: &str, candidates: &[Candidate]) -> Option<Mod
         let overlap = common as f64 / g_words.len() as f64;
         let (shorter, longer) = if n.len() <= g.len() { (&n, &g) } else { (&g, &n) };
         let prefix = shorter.chars().count() >= 6 && longer.starts_with(shorter.as_str());
-        let qualifies = (overlap >= 0.6 && common >= 2) || prefix;
+        // Katalogname steckt als ganze Woerter im G-Code-Namen, z. B. wenn der
+        // Slicer Druckermodell oder Datum davorsetzt ("S1_<Name>_PLA_12m.gcode").
+        let contained = n.chars().count() >= 6 && format!(" {g} ").contains(&format!(" {n} "));
+        let qualifies = (overlap >= 0.6 && common >= 2) || prefix || contained;
         if !qualifies {
             continue;
         }
-        let score = if prefix { overlap.max(0.6) } else { overlap };
+        let score = if prefix || contained { overlap.max(0.6) } else { overlap };
         let distance = n.len().abs_diff(g.len());
         let better = match best {
             None => true,
@@ -163,6 +173,29 @@ mod tests {
         assert_eq!(best_match("Wandhaken_gross_PLA_0.2_30m.gcode", &cands).unwrap().kind, MatchKind::Unsure);
         let cands = [c(4, "Box.3mf", "2026-09-01T00:00:00Z")];
         assert_eq!(best_match("Boxdeckel_PLA_0.2_30m.gcode", &cands), None);
+    }
+
+    #[test]
+    fn slicer_plate_in_parentheses_is_removed() {
+        assert_eq!(normalize_gcode_name("OrcaToleranceTest_plate(01)_PLA_0.2_14m11s.gcode"), "orcatolerancetest");
+    }
+
+    #[test]
+    fn catalog_name_inside_a_prefixed_gcode_name_is_unsure() {
+        // Anycubic-Slicer (Kobra S1) setzt Druckermodell oder Datum/Uhrzeit vor den Namen.
+        let cands = [c(5, "OrcaToleranceTest.3mf", "2026-09-01T00:00:00Z"), c(6, "Kabelclip.stl", "2026-09-01T00:00:00Z")];
+        let m = best_match("S1_OrcaToleranceTest_PLA_12m28s.gcode", &cands).unwrap();
+        assert_eq!((m.file_id, m.kind), (5, MatchKind::Unsure));
+        let m = best_match("0912-1742-OrcaToleranceTest_plate(01)_PLA_0.2_14m11s.gcode", &cands).unwrap();
+        assert_eq!((m.file_id, m.kind), (5, MatchKind::Unsure));
+        let cands = [c(7, "Gehäuse Deckel.3mf", "2026-09-01T00:00:00Z")];
+        assert_eq!(best_match("S1_Gehäuse Deckel_PLA_20m28s.gcode", &cands).unwrap().file_id, 7);
+    }
+
+    #[test]
+    fn short_catalog_names_are_not_found_inside_other_names() {
+        let cands = [c(8, "Box.3mf", "2026-09-01T00:00:00Z")];
+        assert_eq!(best_match("S1_Box_Deckel_PLA_20m.gcode", &cands), None);
     }
 
     #[test]

@@ -1,0 +1,175 @@
+{
+  "result": {
+    "count": 2,
+    "jobs": [
+      {
+        "job_id": "000158",
+        "user": "No User",
+        "filename": ".3mf_temp/S1_OrcaToleranceTest_PLA_12m28s.gcode",
+        "status": "completed",
+        "start_time": 1789300032.9857213,
+        "end_time": 1789301277.4599395,
+        "print_duration": 678.0,
+        "total_duration": 911.0,
+        "filament_used": 1271.0,
+        "metadata": {
+          "size": 931804,
+          "modified": 1789300035.8298774,
+          "uuid": "8bbc29b8-2bb9-47b9-a755-62576e91344b",
+          "file_processors": [],
+          "slicer": "AnycubicSlicerNext",
+          "slicer_version": "2.0.0.3",
+          "gcode_start_byte": 30256,
+          "gcode_end_byte": 904932,
+          "layer_count": 32,
+          "object_height": 10.0,
+          "estimated_time": 748,
+          "nozzle_diameter": 0.4,
+          "layer_height": 0.2,
+          "first_layer_height": 0.2,
+          "first_layer_extr_temp": 220.0,
+          "first_layer_bed_temp": 55.0,
+          "chamber_temp": 0.0,
+          "filament_name": "Anycubic PLA @Anycubic Kobra S1 0.4 nozzle\";\"Anycubic PLA @Anycubic Kobra S1 0.4 nozzle\";\"ABS @Anycubic Kobra S1 0.4 nozzle -DH",
+          "filament_type": "PLA;PLA;ABS",
+          "filament_colors": [
+            "#75787B",
+            "#FF7000",
+            "#000000"
+          ],
+          "extruder_colors": [
+            "#75787B",
+            "#FF7000",
+            "#000000"
+          ],
+          "filament_temps": [
+            210,
+            210,
+            235
+          ],
+          "referenced_tools": [
+            1
+          ],
+          "mmu_print": 1,
+          "filament_total": 1222.59,
+          "filament_weight_total": 3.65,
+          "filament_weights": [
+            0.0,
+            3.65,
+            0.0
+          ],
+          "thumbnails": [
+            {
+              "width": 230,
+              "height": 110,
+              "size": 3830,
+              "relative_path": ".thumbs/S1_OrcaToleranceTest_PLA_12m28s-230x110.png"
+            },
+            {
+              "width": 32,
+              "height": 32,
+              "size": 819,
+              "relative_path": ".thumbs/S1_OrcaToleranceTest_PLA_12m28s-32x32.png"
+            },
+            {
+              "width": 400,
+              "height": 300,
+              "size": 13049,
+              "relative_path": ".thumbs/S1_OrcaToleranceTest_PLA_12m28s-400x300.png"
+            },
+            {
+              "width": 512,
+              "height": 512,
+              "size": 2856,
+              "relative_path": ".thumbs/S1_OrcaToleranceTest_PLA_12m28s-512x512.png"
+            }
+          ]
+        },
+        "auxiliary_data": [],
+        "exists": false
+      },
+      {
+        "job_id": "000156",
+        "user": "No User",
+        "filename": ".3mf_temp/0912-1742-OrcaToleranceTest_plate(01)_PLA_0.2_14m11s.gcode",
+        "status": "completed",
+        "start_time": 1789227756.1922183,
+        "end_time": 1789229391.6881168,
+        "print_duration": 970.0,
+        "total_duration": 1326.0,
+        "filament_used": 1426.0,
+        "metadata": {
+          "size": 807173,
+          "modified": 1789227760.2707272,
+          "uuid": "432b3f09-72d6-4efa-956c-2556542f14d1",
+          "file_processors": [],
+          "slicer": "AnycubicSlicerNext",
+          "slicer_version": "2.0.0.3",
+          "gcode_start_byte": 12502,
+          "gcode_end_byte": 784027,
+          "layer_count": 32,
+          "object_height": 8.4,
+          "estimated_time": 851,
+          "nozzle_diameter": 0.4,
+          "layer_height": 0.2,
+          "first_layer_height": 0.2,
+          "first_layer_extr_temp": 220.0,
+          "first_layer_bed_temp": 55.0,
+          "chamber_temp": 0.0,
+          "filament_name": "Anycubic PLA @Anycubic Kobra S1 0.4 nozzle\";\"Anycubic PLA @Anycubic Kobra S1 0.4 nozzle\";\"Anycubic ABS @Anycubic Kobra S1 0.4 nozzle",
+          "filament_type": "PLA;PLA;ABS",
+          "filament_colors": [
+            "#75787B",
+            "#FF7000",
+            "#000000"
+          ],
+          "filament_change_count": 1,
+          "extruder_colors": [
+            "#75787B",
+            "#FF7000",
+            "#000000"
+          ],
+          "filament_temps": [
+            210,
+            210,
+            260
+          ],
+          "referenced_tools": [
+            0,
+            1
+          ],
+          "mmu_print": 1,
+          "filament_total": 1393.54,
+          "filament_weight_total": 4.16,
+          "filament_weights": [
+            2.41,
+            1.75,
+            0.0
+          ],
+          "thumbnails": [
+            {
+              "width": 32,
+              "height": 15,
+              "size": 703,
+              "relative_path": ".thumbs/0912-1742-OrcaToleranceTest_plate(01)_PLA_0.2_14m11s-32x32.png"
+            },
+            {
+              "width": 230,
+              "height": 110,
+              "size": 4749,
+              "relative_path": ".thumbs/0912-1742-OrcaToleranceTest_plate(01)_PLA_0.2_14m11s-230x110.png"
+            },
+            {
+              "width": 512,
+              "height": 512,
+              "size": 2897,
+              "relative_path": ".thumbs/0912-1742-OrcaToleranceTest_plate(01)_PLA_0.2_14m11s-512x512.png"
+            }
+          ]
+        },
+        "auxiliary_data": [],
+        "exists": false
+      }
+    ]
+  }
+}
