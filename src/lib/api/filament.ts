@@ -11,3 +11,8 @@ export function restockFilamentSpool(
 ) {
   return invoke<FilamentSpool[]>('restock_filament_spool', { templateId, count, weight, price, location });
 }
+
+/** Zieht verbrauchte Milliliter von einer Resin-Flasche ab (nie unter 0) und liefert den neuen Stand. */
+export function consumeResin(spoolId: string, amountMl: number) {
+  return invoke<FilamentSpool>('consume_resin', { spoolId, amountMl });
+}

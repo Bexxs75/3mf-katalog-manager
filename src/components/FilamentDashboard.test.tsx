@@ -93,3 +93,14 @@ describe('FilamentDashboard resin', () => {
     expect(card).toHaveTextContent('1,75 mm');
   });
 });
+
+describe('FilamentDashboard consume', () => {
+  it('offers "Verbrauch" only on resin bottles', () => {
+    const onConsume = vi.fn();
+    renderDashboard({ spools: [S, R], onConsume });
+    expect(within(screen.getByTestId('spool-card-a')).queryByRole('button', { name: 'Verbrauch' })).toBeNull();
+    const button = within(screen.getByTestId('spool-card-r')).getByRole('button', { name: 'Verbrauch' });
+    fireEvent.click(button);
+    expect(onConsume).toHaveBeenCalledWith(R, button);
+  });
+});

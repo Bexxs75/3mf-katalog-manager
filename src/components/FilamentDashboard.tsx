@@ -20,6 +20,10 @@ interface Props {
   onRestock?: (spool: FilamentSpool, anchor: HTMLElement) => void;
   /** Spule, deren Nachkaufen-Fenster gerade offen ist (aria-expanded). */
   restockOpenId?: string | null;
+  /** Oeffnet "− Verbrauch" (nur Resin). */
+  onConsume?: (spool: FilamentSpool, anchor: HTMLElement) => void;
+  /** Spule, deren Verbrauch-Fenster gerade offen ist (aria-expanded). */
+  consumeOpenId?: string | null;
   /** Gerade per Nachkaufen angelegte Eintraege, kurz hervorgehoben. */
   highlightIds?: ReadonlySet<string>;
 }
@@ -51,6 +55,8 @@ export function FilamentDashboard({
   onSpoolMouseDown,
   onRestock,
   restockOpenId,
+  onConsume,
+  consumeOpenId,
   highlightIds,
 }: Props) {
   const t = useT();
@@ -161,18 +167,32 @@ export function FilamentDashboard({
                 </div>
               ) : (
                 <div className="flex items-center justify-end gap-1">
-                  {onRestock && (
-                    <button
-                      type="button"
-                      onClick={(e) => onRestock(spool, e.currentTarget)}
-                      aria-haspopup="dialog"
-                      aria-expanded={restockOpenId === spool.id}
-                      className="mr-auto h-6 px-2 inline-flex items-center gap-1 rounded-full text-[11px] font-semibold text-[var(--ink-2)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] cursor-pointer"
-                    >
-                      <span aria-hidden>＋</span>
-                      {t('filamentRestockButton')}
-                    </button>
-                  )}
+                  <span className="mr-auto inline-flex items-center gap-1">
+                    {onConsume && spool.kind === 'resin' && (
+                      <button
+                        type="button"
+                        onClick={(e) => onConsume(spool, e.currentTarget)}
+                        aria-haspopup="dialog"
+                        aria-expanded={consumeOpenId === spool.id}
+                        className="h-6 px-2 inline-flex items-center gap-1 rounded-full text-[11px] font-semibold text-[var(--ink-2)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] cursor-pointer"
+                      >
+                        <span aria-hidden>−</span>
+                        {t('resinConsumeButton')}
+                      </button>
+                    )}
+                    {onRestock && (
+                      <button
+                        type="button"
+                        onClick={(e) => onRestock(spool, e.currentTarget)}
+                        aria-haspopup="dialog"
+                        aria-expanded={restockOpenId === spool.id}
+                        className="h-6 px-2 inline-flex items-center gap-1 rounded-full text-[11px] font-semibold text-[var(--ink-2)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] cursor-pointer"
+                      >
+                        <span aria-hidden>＋</span>
+                        {t('filamentRestockButton')}
+                      </button>
+                    )}
+                  </span>
                   <button
                     onClick={() => onEdit(spool)}
                     aria-label={t('filamentEditAria')}

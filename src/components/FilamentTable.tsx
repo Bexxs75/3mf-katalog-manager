@@ -21,6 +21,10 @@ interface Props {
   onRestock?: (spool: FilamentSpool, anchor: HTMLElement) => void;
   /** Spule, deren Nachkaufen-Fenster gerade offen ist (aria-expanded). */
   restockOpenId?: string | null;
+  /** Oeffnet "− Verbrauch" (nur Resin). */
+  onConsume?: (spool: FilamentSpool, anchor: HTMLElement) => void;
+  /** Spule, deren Verbrauch-Fenster gerade offen ist (aria-expanded). */
+  consumeOpenId?: string | null;
   /** Gerade per Nachkaufen angelegte Eintraege, kurz hervorgehoben. */
   highlightIds?: ReadonlySet<string>;
   /** Art der gezeigten Liste; bei 'resin' entfaellt die Durchmesser-Spalte. */
@@ -56,6 +60,8 @@ export function FilamentTable({
   onSpoolMouseDown,
   onRestock,
   restockOpenId,
+  onConsume,
+  consumeOpenId,
   highlightIds,
   kind = 'filament',
 }: Props) {
@@ -230,6 +236,19 @@ export function FilamentTable({
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1">
+                      {onConsume && spool.kind === 'resin' && (
+                        <button
+                          type="button"
+                          onClick={(e) => onConsume(spool, e.currentTarget)}
+                          aria-label={t('resinConsumeButton')}
+                          title={t('resinConsumeButton')}
+                          aria-haspopup="dialog"
+                          aria-expanded={consumeOpenId === spool.id}
+                          className="w-6 h-6 grid place-items-center rounded-full text-[12px] text-[var(--ink-3)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] cursor-pointer"
+                        >
+                          −
+                        </button>
+                      )}
                       {onRestock && (
                         <button
                           type="button"

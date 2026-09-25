@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useLanguage, useT } from '../i18n/LanguageContext';
-import { formatSpoolAmount } from '../i18n/format';
+import { formatSpoolAmount, formatVolumeMl } from '../i18n/format';
 import { formatCount } from '../i18n/types';
 import type { FilamentSpool, SpoolKind } from '../types';
 import { filamentStockStatus } from '../lib/filamentStatus';
@@ -15,6 +15,7 @@ import { PrinterColumn } from './PrinterColumn';
 import { PrinterManagePanel } from './PrinterManagePanel';
 import { SpoolToast } from './SpoolToast';
 import { RestockPopover } from './RestockPopover';
+import { ConsumeResinPopover } from './ConsumeResinPopover';
 import { SegmentedControl } from './SegmentedControl';
 import { usePrinters } from '../hooks/usePrinters';
 import { useSpoolDragAndDrop } from '../hooks/useSpoolDragAndDrop';
@@ -27,7 +28,7 @@ type StatusFilter = 'low' | 'empty' | null;
 /** So lange sind neu angelegte Eintraege gruen umrandet. */
 const HIGHLIGHT_MS = 2500;
 
-type PopoverType = 'restock';
+type PopoverType = 'restock' | 'consume';
 type PopoverState = { type: PopoverType; spool: FilamentSpool; anchor: HTMLElement };
 
 type ToastState =
@@ -173,6 +174,20 @@ export function FilamentView() {
     }
     refresh();
   };
+  const handleConsumed = (updated: FilamentSpool) => {
+    const before = popover?.spool;
+    setPopover(null);
+    if (before) {
+      const deducted = roundTenth(before.remainingWeightG - updated.remainingWeightG);
+      setToast({
+        type: 'message',
+        label: t('resinConsumeDone')
+          .replace('{amount}', formatVolumeMl(deducted, language))
+          .replace('{spool}', restockSpoolLabel(before)),
+      });
+    }
+    refresh();
+  };
 
   const drag = useSpoolDragAndDrop({ onLoad: loadSpool, onUnload: unloadSpool });
   const draggedSpool = drag.draggingSpoolId ? spools.find((s) => s.id === drag.draggingSpoolId) : undefined;
@@ -299,6 +314,8 @@ export function FilamentView() {
               onSpoolMouseDown={(spoolId, e) => drag.startDrag(spoolId, null, e)}
               onRestock={(spool, anchor) => togglePopover('restock', spool, anchor)}
               restockOpenId={popover?.type === 'restock' ? popover.spool.id : null}
+              onConsume={(spool, anchor) => togglePopover('consume', spool, anchor)}
+              consumeOpenId={popover?.type === 'consume' ? popover.spool.id : null}
               highlightIds={highlightIds}
             />
           ) : (
@@ -312,6 +329,8 @@ export function FilamentView() {
               onSpoolMouseDown={(spoolId, e) => drag.startDrag(spoolId, null, e)}
               onRestock={(spool, anchor) => togglePopover('restock', spool, anchor)}
               restockOpenId={popover?.type === 'restock' ? popover.spool.id : null}
+              onConsume={(spool, anchor) => togglePopover('consume', spool, anchor)}
+              consumeOpenId={popover?.type === 'consume' ? popover.spool.id : null}
               highlightIds={highlightIds}
               kind={kind}
             />
@@ -368,6 +387,16 @@ export function FilamentView() {
           knownLocations={knownLocations}
           onClose={closePopover}
           onCreated={handleRestocked}
+        />
+      )}
+
+      {popover?.type === 'consume' && (
+        <ConsumeResinPopover
+          key={popover.spool.id}
+          spool={popover.spool}
+          anchor={popover.anchor}
+          onClose={closePopover}
+          onConsumed={handleConsumed}
         />
       )}
 

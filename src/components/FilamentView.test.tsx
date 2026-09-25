@@ -141,6 +141,28 @@ describe('FilamentView with printers', () => {
     expect(screen.getByTestId('slot-u1-0')).toHaveTextContent('PLA');
   });
 
+  it('deducts resin and confirms the amount', async () => {
+    const after = { ...RESIN, remainingWeightG: 595 };
+    let list = [LOADED, STORED, RESIN];
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === 'list_filament_spools') return Promise.resolve(list);
+      if (cmd === 'list_printers') return Promise.resolve([X1C]);
+      if (cmd === 'consume_resin') {
+        list = [LOADED, STORED, after];
+        return Promise.resolve(after);
+      }
+      return Promise.resolve(undefined);
+    });
+    renderView();
+    fireEvent.click(await screen.findByRole('button', { name: 'Resin' }));
+    const card = await screen.findByTestId('spool-card-resin1');
+    fireEvent.click(within(card).getByRole('button', { name: 'Verbrauch' }));
+    fireEvent.change(await screen.findByLabelText('Verbraucht (ml)'), { target: { value: '45,5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Abbuchen' }));
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('45,5 ml von Standard · Grau abgebucht'));
+    expect(await screen.findByTestId('spool-card-resin1')).toHaveTextContent('595 ml');
+  });
+
   it('remembers the chosen kind', async () => {
     const first = render(
       <LanguageProvider>
