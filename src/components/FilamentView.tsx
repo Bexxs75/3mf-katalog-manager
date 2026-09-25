@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatWeightG } from '../i18n/format';
 import type { FilamentSpool } from '../types';
+import type { PrinterLinkState } from '../hooks/usePrinterLink';
 import { filamentStockStatus } from '../lib/filamentStatus';
 import { isValidColorHex } from '../lib/filamentColors';
 import { FilamentDashboard } from './FilamentDashboard';
@@ -19,7 +20,12 @@ import { isInStorage, spoolLabel } from '../lib/filamentSlots';
 type LayoutMode = 'dashboard' | 'list';
 type StatusFilter = 'low' | 'empty' | null;
 
-export function FilamentView() {
+interface Props {
+  /** Ab Task 14/15 fuer den Abgleich-Workflow (Auftraege bestaetigen/ignorieren) genutzt. */
+  printerLink: PrinterLinkState;
+}
+
+export function FilamentView({ printerLink: _printerLink }: Props) {
   const t = useT();
   const { language } = useLanguage();
   const [spools, setSpools] = useState<FilamentSpool[]>([]);

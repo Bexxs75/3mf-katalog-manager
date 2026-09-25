@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import type { SlicerConfig } from '../types';
+import type { Printer, SlicerConfig } from '../types';
 import type { ThemeSetting } from '../hooks/useTheme';
 import type { UiDensity } from '../hooks/UiDensityContext';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
+import type { PrinterLinkState } from '../hooks/usePrinterLink';
 import type { Language } from '../i18n/types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
+import { PrinterLinkSettings } from './PrinterLinkSettings';
 
 type MainView = 'catalog' | 'filament' | 'trash';
 
@@ -35,6 +37,8 @@ interface Props {
   catalogBackupError: string | null;
   catalogBaseDir: string | null;
   onOpenCatalogSetup: () => void;
+  printerLink: PrinterLinkState;
+  printerList: Printer[];
   updateInfo: {
     currentVersion: string;
     latestVersion: string;
@@ -88,12 +92,14 @@ export function Rail({
   catalogBackupError,
   catalogBaseDir,
   onOpenCatalogSetup,
+  printerLink,
+  printerList,
   updateInfo,
 }: Props) {
   const t = useT();
   const { language, setLanguage } = useLanguage();
   const [confirmImportCatalog, setConfirmImportCatalog] = useState(false);
-  const [activeSettingsTab, setActiveSettingsTab] = useState<'general' | 'slicer' | 'catalog' | 'info'>('general');
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'general' | 'slicer' | 'catalog' | 'printers' | 'info'>('general');
 
   return (
     <nav className="flex-none w-[60px] flex flex-col items-center pt-3.5 pb-2.5 bg-[var(--panel-2)] border-r border-[var(--line)]">
@@ -153,7 +159,7 @@ export function Rail({
         </button>
 
         {settingsOpen && (
-          <div className="absolute bottom-0 left-12 w-[268px] p-[14px] bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40 max-h-[calc(100vh-80px)] overflow-y-auto">
+          <div className="absolute bottom-0 left-12 w-[300px] p-[14px] bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40 max-h-[calc(100vh-80px)] overflow-y-auto">
             <div className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)] mb-2.5">
               {t('settingsTitle')}
             </div>
@@ -162,6 +168,7 @@ export function Rail({
                 ['general', t('settingsTabGeneral')],
                 ['slicer', t('settingsTabSlicer')],
                 ['catalog', t('settingsTabCatalog')],
+                ['printers', t('settingsTabPrinters')],
                 ['info', t('settingsTabInfo')],
               ] as const).map(([key, label]) => (
                 <button
@@ -388,6 +395,10 @@ export function Rail({
                   )}
                 </div>
               </>
+            )}
+
+            {activeSettingsTab === 'printers' && (
+              <PrinterLinkSettings link={printerLink} printers={printerList} />
             )}
 
             {activeSettingsTab === 'info' && (

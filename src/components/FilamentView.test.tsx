@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { FilamentView } from './FilamentView';
 import type { FilamentSpool, Printer } from '../types';
+import type { PrinterLinkState } from '../hooks/usePrinterLink';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
@@ -35,10 +36,18 @@ beforeEach(() => {
   localStorage.setItem('3mf-katalog-language', 'de');
 });
 
+function printerLink(): PrinterLinkState {
+  return {
+    enabled: false, connections: [], jobs: [], error: null,
+    refresh: vi.fn(), setEnabled: vi.fn(), testConnection: vi.fn(),
+    removeConnection: vi.fn(), syncNow: vi.fn(), ignoreJob: vi.fn(), confirmJobs: vi.fn(), previewJob: vi.fn(),
+  } as unknown as PrinterLinkState;
+}
+
 function renderView() {
   render(
     <LanguageProvider>
-      <FilamentView />
+      <FilamentView printerLink={printerLink()} />
     </LanguageProvider>,
   );
 }

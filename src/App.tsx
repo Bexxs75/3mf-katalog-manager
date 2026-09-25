@@ -29,6 +29,8 @@ import { useBulkSelection } from './hooks/useBulkSelection';
 import { useSlicerLauncher } from './hooks/useSlicerLauncher';
 import { useUpdateCheck } from './hooks/useUpdateCheck';
 import { useKeyboardShortcuts, MODEL_TILE_ATTR } from './hooks/useKeyboardShortcuts';
+import { usePrinterLink } from './hooks/usePrinterLink';
+import { usePrinters } from './hooks/usePrinters';
 import { useLanguage } from './i18n/LanguageContext';
 
 export default function App() {
@@ -37,6 +39,8 @@ export default function App() {
   const { slicers, primaryId, addSlicer, addSlicerError, removeSlicer, setPrimary } = useSlicers();
   const { preference: displayPreference, setPreference: setDisplayPreference } = useDisplayPreference();
   const { catalogBaseDir, setCatalogBaseDir, setupSeen, markSetupSeen } = useCatalogBaseDir();
+  const printerLink = usePrinterLink();
+  const printerListState = usePrinters();
 
   const store = useCatalogStore();
   useRegisterCatalogBaseDirOnStartup(catalogBaseDir, store.refreshFolders);
@@ -211,6 +215,8 @@ export default function App() {
           catalogBackupError={backup.catalogBackupError}
           catalogBaseDir={catalogBaseDir}
           onOpenCatalogSetup={() => setSetupDialogOpen(true)}
+          printerLink={printerLink}
+          printerList={printerListState.printers}
           updateInfo={{
             currentVersion: update.currentVersion,
             latestVersion: update.latestVersion,
@@ -319,7 +325,7 @@ export default function App() {
               cleanupError={cleanup.cleanupError}
             />
           ) : (
-            <FilamentView />
+            <FilamentView printerLink={printerLink} />
           )}
 
           {contextMenu && contextModel && (
