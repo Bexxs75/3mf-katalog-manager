@@ -90,6 +90,10 @@ def edit(webhook, message_id, content):
 
 def main():
     items = fetch_items(os.environ["GH_TOKEN"])
+    if not items:
+        # Nie eine leere Roadmap schreiben: der Standard-Token von GitHub
+        # Actions sieht die Einträge eines User-Projekts nicht.
+        sys.exit("Keine Einträge gelesen - Token ohne Projektzugriff? (Secret ROADMAP_READ_TOKEN)")
     for lang in ("de", "en"):
         text = render(items, lang)
         if os.environ.get("DRY_RUN"):
