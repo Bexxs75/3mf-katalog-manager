@@ -6,6 +6,7 @@ pub mod address;
 pub mod booking;
 pub mod matching;
 pub mod moonraker;
+pub mod sync;
 #[cfg(test)]
 pub(crate) mod fake_moonraker;
 

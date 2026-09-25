@@ -102,6 +102,8 @@ pub fn run() {
             });
             app.manage(commands::PendingArchives::default());
             app.manage(commands::ApprovedTargets::default());
+            let waker = printer_link::sync::spawn_background(app.handle().clone());
+            app.manage(waker);
             Ok(())
         })
         // Drops vom Backend selbst beobachten: `import_dropped` gibt nur
