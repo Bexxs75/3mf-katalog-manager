@@ -1387,7 +1387,7 @@ mod tests {
     // fuehrt jeden Testfall auf einem eigenen Thread aus, wodurch Tests sich
     // nicht gegenseitig verfaelschen (anders als bei einem globalen Static).
     thread_local! {
-        static QUERY_TRACE_COUNT: std::cell::Cell<usize> = std::cell::Cell::new(0);
+        static QUERY_TRACE_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     }
 
     // `Connection::trace` ist in dieser rusqlite-Version als deprecated

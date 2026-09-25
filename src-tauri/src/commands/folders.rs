@@ -548,13 +548,13 @@ mod tests {
         let file_path = c_dir.join("model.3mf");
         write_minimal_3mf(&file_path);
 
-        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let conn = crate::db::connect_in_memory().expect("connect");
         let a_id = db::insert_folder_with_parent(&conn, "A", None, &a_dir.to_string_lossy()).expect("insert A");
         let b_id = db::insert_folder_with_parent(&conn, "B", Some(a_id), &b_dir.to_string_lossy()).expect("insert B");
         let c_id = db::insert_folder_with_parent(&conn, "C", Some(b_id), &c_dir.to_string_lossy()).expect("insert C");
         let x_id = db::insert_folder_with_parent(&conn, "X", None, &x_dir.to_string_lossy()).expect("insert X");
 
-        let imported = import_one(&mut conn, &file_path, None, None, Some(c_id)).expect("import should succeed");
+        let imported = import_one(&conn, &file_path, None, None, Some(c_id)).expect("import should succeed");
         let file_id: i64 = imported.id.parse().unwrap();
 
         move_folder_with_conn(&conn, b_id, Some(x_id), &[]).expect("move should succeed");
@@ -618,12 +618,12 @@ mod tests {
         let file_path = c_dir.join("model.3mf");
         write_minimal_3mf(&file_path);
 
-        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let conn = crate::db::connect_in_memory().expect("connect");
         let a_id = db::insert_folder_with_parent(&conn, "A", None, &a_dir.to_string_lossy()).expect("insert A");
         let b_id = db::insert_folder_with_parent(&conn, "B", Some(a_id), &b_dir.to_string_lossy()).expect("insert B");
         let c_id = db::insert_folder_with_parent(&conn, "C", Some(b_id), &c_dir.to_string_lossy()).expect("insert C");
 
-        let imported = import_one(&mut conn, &file_path, None, None, Some(c_id)).expect("import should succeed");
+        let imported = import_one(&conn, &file_path, None, None, Some(c_id)).expect("import should succeed");
         let file_id: i64 = imported.id.parse().unwrap();
 
         rename_folder_with_conn(&conn, b_id, "B2".to_string(), &[]).expect("rename should succeed");
@@ -692,11 +692,11 @@ mod tests {
         let file_path = src_dir.join("model.3mf");
         write_minimal_3mf(&file_path);
 
-        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let conn = crate::db::connect_in_memory().expect("connect");
         let folder_id =
             db::insert_folder_with_parent(&conn, "Pr\u{fc}fen", None, &src_dir.to_string_lossy()).expect("insert folder");
 
-        let imported = import_one(&mut conn, &file_path, None, None, Some(folder_id)).expect("import should succeed");
+        let imported = import_one(&conn, &file_path, None, None, Some(folder_id)).expect("import should succeed");
         let file_id: i64 = imported.id.parse().unwrap();
 
         rename_folder_with_conn(&conn, folder_id, "Neu".to_string(), &[]).expect("rename should succeed");

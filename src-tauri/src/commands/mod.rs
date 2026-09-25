@@ -841,7 +841,7 @@ mod tests {
         std::fs::create_dir_all(&catalog).unwrap();
 
         let escaping = catalog.join("../.config/autostart");
-        let result = reject_if_sensitive_path(&escaping, &[sensitive.clone()]);
+        let result = reject_if_sensitive_path(&escaping, std::slice::from_ref(&sensitive));
         let inside = reject_if_sensitive_path(&catalog.join("Unterordner"), &[sensitive]);
 
         let _ = std::fs::remove_dir_all(&base);

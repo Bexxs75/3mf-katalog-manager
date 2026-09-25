@@ -1391,7 +1391,9 @@ mod tests {
         has_normal: bool,
         index_count: usize,
     }
-    fn decode_for_test(bytes: &[u8]) -> Vec<(Vec<[f32; 3]>, Option<Vec<[f32; 3]>>, Vec<u32>)> {
+    type DecodedMesh = (Vec<[f32; 3]>, Option<Vec<[f32; 3]>>, Vec<u32>);
+
+    fn decode_for_test(bytes: &[u8]) -> Vec<DecodedMesh> {
         let header_len = u32::from_le_bytes(bytes[0..4].try_into().unwrap()) as usize;
         let header_json = std::str::from_utf8(&bytes[4..4 + header_len]).unwrap();
         let headers: Vec<HeaderEntryForTest> = serde_json::from_str(header_json).unwrap();
@@ -1514,8 +1516,8 @@ mod tests {
         let path = std::env::temp_dir().join(format!("import_one_slice_info_test_{nanos}.3mf"));
         std::fs::write(&path, &buf).expect("write temp file");
 
-        let mut conn = crate::db::connect_in_memory().expect("connect");
-        let dto = import_one(&mut conn, &path, None, None, None).expect("import should succeed");
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let dto = import_one(&conn, &path, None, None, None).expect("import should succeed");
 
         let stored = crate::db::get_file(&conn, dto.id.parse().unwrap())
             .expect("query")
@@ -1640,9 +1642,9 @@ mod tests {
         let file_path = src_dir.join("model.3mf");
         write_minimal_3mf(&file_path);
 
-        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let conn = crate::db::connect_in_memory().expect("connect");
         let imported =
-            import_one(&mut conn, &file_path, None, None, None).expect("import should succeed");
+            import_one(&conn, &file_path, None, None, None).expect("import should succeed");
         let file_id: i64 = imported.id.parse().unwrap();
 
         // Zielordner direkt per ensure_folder_path anlegen (kein
@@ -1894,7 +1896,7 @@ mod tests {
         write_3mf(&path, None);
 
         let mut conn = crate::db::connect_in_memory().expect("connect");
-        let imported = import_one(&mut conn, &path, None, None, None).expect("initial import");
+        let imported = import_one(&conn, &path, None, None, None).expect("initial import");
         let id: i64 = imported.id.parse().unwrap();
         assert_eq!(imported.weight_source, "estimated");
 
@@ -1949,7 +1951,7 @@ mod tests {
         write_3mf(&path, None);
 
         let mut conn = crate::db::connect_in_memory().expect("connect");
-        let imported = import_one(&mut conn, &path, None, None, None).expect("initial import");
+        let imported = import_one(&conn, &path, None, None, None).expect("initial import");
         let id: i64 = imported.id.parse().unwrap();
 
         let before = db::get_file(&conn, id)
@@ -2432,9 +2434,9 @@ mod tests {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, b"ISO-10303-21;\nHEADER;\nENDSEC;\nEND-ISO-10303-21;").unwrap();
 
-        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let conn = crate::db::connect_in_memory().expect("connect");
         let dto =
-            import_one(&mut conn, &path, None, None, None).expect("stp import should succeed");
+            import_one(&conn, &path, None, None, None).expect("stp import should succeed");
 
         let stored = crate::db::get_file(&conn, dto.id.parse().unwrap())
             .expect("query")
@@ -2451,9 +2453,9 @@ mod tests {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, b"ISO-10303-21;\nHEADER;\nENDSEC;\nEND-ISO-10303-21;").unwrap();
 
-        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let conn = crate::db::connect_in_memory().expect("connect");
         let dto =
-            import_one(&mut conn, &path, None, None, None).expect(".step import should succeed");
+            import_one(&conn, &path, None, None, None).expect(".step import should succeed");
 
         let stored = crate::db::get_file(&conn, dto.id.parse().unwrap())
             .expect("query")
@@ -2468,7 +2470,7 @@ mod tests {
         std::fs::write(&path, b"ISO-10303-21;\nHEADER;\nENDSEC;\nEND-ISO-10303-21;").unwrap();
 
         let mut conn = crate::db::connect_in_memory().expect("connect");
-        let dto = import_one(&mut conn, &path, None, None, None).expect("import should succeed");
+        let dto = import_one(&conn, &path, None, None, None).expect("import should succeed");
         let id: i64 = dto.id.parse().unwrap();
 
         let rescanned = rescan_file(&mut conn, id).expect("rescan of an stp file should succeed");
@@ -2487,9 +2489,9 @@ mod tests {
         )
         .unwrap();
 
-        let mut conn = crate::db::connect_in_memory().expect("connect");
+        let conn = crate::db::connect_in_memory().expect("connect");
         let dto =
-            import_one(&mut conn, &path, None, None, None).expect("obj import should succeed");
+            import_one(&conn, &path, None, None, None).expect("obj import should succeed");
 
         let stored = crate::db::get_file(&conn, dto.id.parse().unwrap())
             .expect("query")
@@ -2514,7 +2516,7 @@ mod tests {
         .unwrap();
 
         let mut conn = crate::db::connect_in_memory().expect("connect");
-        let dto = import_one(&mut conn, &path, None, None, None).expect("import should succeed");
+        let dto = import_one(&conn, &path, None, None, None).expect("import should succeed");
         let id: i64 = dto.id.parse().unwrap();
 
         let rescanned = rescan_file(&mut conn, id).expect("rescan of an obj file should succeed");

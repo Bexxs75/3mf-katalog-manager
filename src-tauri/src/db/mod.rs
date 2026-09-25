@@ -165,15 +165,15 @@ mod tests {
         let id = insert_file(&mut conn, &sample_file()).expect("insert");
 
         let before = get_file(&conn, id).expect("query").expect("present");
-        assert_eq!(before.favorite, false);
+        assert!(!before.favorite);
 
         set_favorite(&conn, id, true).expect("set favorite");
         let after = get_file(&conn, id).expect("query").expect("present");
-        assert_eq!(after.favorite, true);
+        assert!(after.favorite);
 
         set_favorite(&conn, id, false).expect("unset favorite");
         let reverted = get_file(&conn, id).expect("query").expect("present");
-        assert_eq!(reverted.favorite, false);
+        assert!(!reverted.favorite);
     }
 
     #[test]

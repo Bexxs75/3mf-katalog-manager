@@ -2547,7 +2547,7 @@ mod tests {
         }
         let bytes = std::fs::read(&tmp_path).expect("read temp db");
 
-        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root.clone()], &std::env::temp_dir());
+        let result = validate_catalog_db_bytes(&bytes, std::slice::from_ref(&sensitive_root), &std::env::temp_dir());
 
         let _ = std::fs::remove_file(&tmp_path);
         let _ = std::fs::remove_dir_all(&sensitive_root);
@@ -2617,7 +2617,7 @@ mod tests {
             &sensitive_root.join("modell.3mf").to_string_lossy(),
             None,
         );
-        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root.clone()], &std::env::temp_dir());
+        let result = validate_catalog_db_bytes(&bytes, std::slice::from_ref(&sensitive_root), &std::env::temp_dir());
         let _ = std::fs::remove_dir_all(&sensitive_root);
         assert!(result.is_err(), "must reject an imported file row pointing into a sensitive directory");
     }
@@ -2702,7 +2702,7 @@ mod tests {
         // trash_dir bewusst auf temp_dir gesetzt: der praeparierte trash_path
         // liegt darin, die Containment-Pruefung greift also NICHT - dieser
         // Test prueft weiterhin genau die Denylist.
-        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root.clone()], &std::env::temp_dir());
+        let result = validate_catalog_db_bytes(&bytes, std::slice::from_ref(&sensitive_root), &std::env::temp_dir());
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::remove_dir_all(&sensitive_root);
         assert!(result.is_err(), "must reject an imported trash_path pointing into a sensitive directory");
