@@ -196,7 +196,11 @@ pub(crate) fn preview_printer_job_with_conn(conn: &Connection, job_id: &str, spo
 /// Hintergrund-Abgleich). Liefert `Some(...)` mit dem Ergebnis, das der
 /// Aufrufer ungeprueft zurueckgeben soll, wenn der Schalter aus ist; `None`
 /// heisst: Schalter an, weitermachen.
-pub(crate) fn test_printer_connection_gate_with_conn(conn: &Connection) -> CmdResult<Option<TestResultDto>> {
+///
+/// Resin-Drucker (v0.14.0) haben keine Druckeranbindung: fuer sie (und fuer
+/// unbekannte IDs) gibt es einen Fehler, noch bevor irgendetwas ins Netz geht.
+pub(crate) fn test_printer_connection_gate_with_conn(conn: &Connection, printer_id: i64) -> CmdResult<Option<TestResultDto>> {
+    db::printers::ensure_filament_printer(conn, printer_id).map_err(|e| e.to_string())?;
     if store::printer_link_enabled(conn).map_err(|e| e.to_string())? {
         Ok(None)
     } else {
@@ -253,7 +257,7 @@ pub async fn test_printer_connection(
     let pid = id(&printer_id, "Drucker")?;
     {
         let conn = state.db.lock().map_err(|_| "database lock poisoned".to_string())?;
-        if let Some(disabled) = test_printer_connection_gate_with_conn(&conn)? {
+        if let Some(disabled) = test_printer_connection_gate_with_conn(&conn, pid)? {
             return Ok(disabled);
         }
     }
@@ -494,7 +498,7 @@ mod tests {
     #[test]
     fn test_connection_is_blocked_while_switched_off() {
         let conn = setup();
-        let gated = test_printer_connection_gate_with_conn(&conn).unwrap();
+        let gated = test_printer_connection_gate_with_conn(&conn, 1).unwrap();
         let dto = gated.expect("switch is off in setup(), gate must trigger");
         assert!(!dto.ok);
         assert_eq!(dto.error.as_deref(), Some("disabled"));
@@ -505,7 +509,20 @@ mod tests {
     fn test_connection_is_allowed_once_switched_on() {
         let conn = setup();
         crate::db::printer_link::set_printer_link_enabled(&conn, true).unwrap();
-        assert!(test_printer_connection_gate_with_conn(&conn).unwrap().is_none());
+        assert!(test_printer_connection_gate_with_conn(&conn, 1).unwrap().is_none());
+    }
+
+    #[test]
+    fn a_resin_printer_never_gets_a_connection() {
+        let conn = setup();
+        crate::db::printer_link::set_printer_link_enabled(&conn, true).unwrap();
+        let saturn = crate::db::printers::insert_printer_of_kind(&conn, "Saturn 4", "resin").unwrap();
+        crate::db::printers::insert_resin_vat(&conn, saturn, "Harzwanne").unwrap();
+
+        assert!(test_printer_connection_gate_with_conn(&conn, saturn).is_err(), "kein Netzwerkzugriff");
+        assert!(save_connection_after_test(&conn, saturn, "moonraker", "192.168.1.70", "http://192.168.1.70", "v1", 1.0).is_err());
+        assert!(list_printer_connections_with_conn(&conn).unwrap().iter().all(|c| c.printer_id != saturn.to_string()));
+        assert!(test_printer_connection_gate_with_conn(&conn, 999).is_err());
     }
 
     // Fix Round 1, Finding 2 (cheap add-on): pausierte Verbindungen duerfen
