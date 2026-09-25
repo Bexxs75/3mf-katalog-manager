@@ -25,6 +25,12 @@ interface RowState {
   fileId: string | null;
   grams: number | null;
   mismatch: boolean;
+  /** Wurde die Spule ausdruecklich vom Nutzer gewaehlt (statt vom
+   * Vorschlag uebernommen)? Verhindert, dass eine spaeter eintreffende
+   * `spools`-Liste die Wahl mit dem Vorschlag ueberschreibt, erlaubt aber
+   * umgekehrt, den Vorschlag noch anzuwenden, sobald die vorgeschlagene
+   * Spule verfuegbar wird (z.B. wenn `spools` erst nach `jobs` laedt). */
+  userChosenSpool: boolean;
 }
 
 function Thumb({ job }: { job: PrinterJob }) {
@@ -61,12 +67,26 @@ export function PrinterJobsDialog({ open, jobs, spools, models, link, onClose, o
       for (const j of jobs) {
         const existing = prev[j.id];
         if (existing) {
-          // Die gewaehlte Spule kann inzwischen verschwunden sein (geloescht,
-          // oder eine Sicherung mit weniger Spulen wiederhergestellt) - dann
-          // muss die Auswahl geleert werden, sonst laesst sich mit einer
-          // nicht mehr existierenden Spule "bestaetigen".
-          const stillExists = existing.spoolId === null || spools.some((s) => s.id === existing.spoolId);
-          next[j.id] = stillExists ? existing : { ...existing, spoolId: null };
+          let spoolId = existing.spoolId;
+          if (spoolId !== null && !spools.some((s) => s.id === spoolId)) {
+            // Die gewaehlte Spule (Vorschlag oder Nutzerwahl) ist inzwischen
+            // verschwunden (geloescht, oder eine Sicherung mit weniger
+            // Spulen wiederhergestellt) - dann muss die Auswahl geleert
+            // werden, sonst laesst sich mit einer nicht mehr existierenden
+            // Spule "bestaetigen".
+            spoolId = null;
+          } else if (
+            !existing.userChosenSpool &&
+            spoolId === null &&
+            j.suggestedSpoolId !== null &&
+            spools.some((s) => s.id === j.suggestedSpoolId)
+          ) {
+            // Noch keine Nutzerwahl getroffen, und die vorgeschlagene Spule
+            // ist jetzt in `spools` vorhanden (z.B. weil sie erst nach den
+            // Auftraegen nachgeladen wurde) - Vorschlag jetzt anwenden.
+            spoolId = j.suggestedSpoolId;
+          }
+          next[j.id] = spoolId === existing.spoolId ? existing : { ...existing, spoolId };
         } else {
           const suggested = j.suggestedSpoolId !== null && spools.some((s) => s.id === j.suggestedSpoolId) ? j.suggestedSpoolId : null;
           next[j.id] = {
@@ -74,6 +94,7 @@ export function PrinterJobsDialog({ open, jobs, spools, models, link, onClose, o
             fileId: j.modelMatch?.fileId ?? null,
             grams: j.grams,
             mismatch: j.materialMismatch,
+            userChosenSpool: false,
           };
         }
       }
@@ -107,7 +128,7 @@ export function PrinterJobsDialog({ open, jobs, spools, models, link, onClose, o
 
   const setSpool = (job: PrinterJob, spoolId: string) => {
     setActionError(null);
-    setRows((r) => ({ ...r, [job.id]: { ...r[job.id], spoolId } }));
+    setRows((r) => ({ ...r, [job.id]: { ...r[job.id], spoolId, userChosenSpool: true } }));
     link
       .previewJob(job.id, spoolId)
       .then((p) => {
@@ -187,7 +208,7 @@ export function PrinterJobsDialog({ open, jobs, spools, models, link, onClose, o
 
         <div className="flex-1 overflow-y-auto">
           {jobs.map((job, i) => {
-            const row = rows[job.id] ?? { spoolId: null, fileId: null, grams: null, mismatch: false };
+            const row = rows[job.id] ?? { spoolId: null, fileId: null, grams: null, mismatch: false, userChosenSpool: false };
             const spool = row.spoolId ? spoolById.get(row.spoolId) : undefined;
             const model = row.fileId ? modelById.get(row.fileId) ?? (job.modelMatch?.fileId === row.fileId ? { id: row.fileId, name: job.modelMatch.fileName } : undefined) : undefined;
             const isSuggestedModel = !!model && job.modelMatch?.fileId === model.id;

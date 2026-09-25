@@ -192,9 +192,9 @@ describe('PrinterJobsDialog', () => {
     renderDialog(l);
 
     fireEvent.click(screen.getByRole('button', { name: /Spule/ }));
-    fireEvent.mouseDown(screen.getByText('PETG · Petrol · 900,0 g')); // langsame erste Anfrage fuer Spule 101
+    fireEvent.mouseDown(screen.getByRole('option', { name: 'PETG · Petrol · 900,0 g' })); // langsame erste Anfrage fuer Spule 101
     fireEvent.click(screen.getByRole('button', { name: /Spule/ }));
-    fireEvent.mouseDown(screen.getByText('PLA · Grau · 612,4 g')); // schnellere zweite Anfrage fuer Spule 100
+    fireEvent.mouseDown(screen.getByRole('option', { name: 'PLA · Grau · 612,4 g' })); // schnellere zweite Anfrage fuer Spule 100
 
     await act(async () => second.resolve({ grams: 0.9, materialMismatch: false }));
     expect(screen.getByText('0,9 g')).toBeInTheDocument();
@@ -226,5 +226,50 @@ describe('PrinterJobsDialog', () => {
     );
     expect(screen.getByRole('button', { name: 'Bestätigen' })).toBeDisabled();
     expect(screen.getByRole('button', { name: /Spule wählen/ })).toBeInTheDocument();
+  });
+
+  it('applies the suggested spool once it appears in a later spools update (spools loads after jobs)', () => {
+    const l = link([job({ suggestedSpoolId: '100' })]);
+    const { rerender } = render(
+      <LanguageProvider>
+        <PrinterJobsDialog open jobs={l.jobs} spools={[]} models={[]} link={l} onClose={vi.fn()} onBooked={vi.fn()} />
+      </LanguageProvider>,
+    );
+    // Beim ersten Rendern ist `spools` noch leer - der Vorschlag kann noch
+    // nicht angewendet werden.
+    expect(screen.getByRole('button', { name: 'Bestätigen' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Spule wählen/ })).toBeInTheDocument();
+
+    rerender(
+      <LanguageProvider>
+        <PrinterJobsDialog open jobs={l.jobs} spools={spools} models={[]} link={l} onClose={vi.fn()} onBooked={vi.fn()} />
+      </LanguageProvider>,
+    );
+    // Jetzt ist Spule 100 in `spools` vorhanden - der Vorschlag muss
+    // nachtraeglich uebernommen werden.
+    expect(screen.getByRole('button', { name: 'Bestätigen' })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: /PLA · Grau/ })).toBeInTheDocument();
+  });
+
+  it("keeps the user's own spool choice when the spools list is refreshed (not overwritten by the suggestion)", () => {
+    const l = link([job({ suggestedSpoolId: '100' })]);
+    const { rerender } = render(
+      <LanguageProvider>
+        <PrinterJobsDialog open jobs={l.jobs} spools={spools} models={[]} link={l} onClose={vi.fn()} onBooked={vi.fn()} />
+      </LanguageProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Spule/ }));
+    fireEvent.mouseDown(screen.getByRole('option', { name: 'PETG · Petrol · 900,0 g' })); // bewusst NICHT der Vorschlag (Spule 100)
+    expect(screen.getByRole('button', { name: /PETG · Petrol/ })).toBeInTheDocument();
+
+    // Ein neues `spools`-Array (z.B. nach einem Hintergrund-Abgleich) darf
+    // die Nutzerwahl nicht durch den Vorschlag ersetzen.
+    const refreshedSpools = spools.map((s) => ({ ...s }));
+    rerender(
+      <LanguageProvider>
+        <PrinterJobsDialog open jobs={l.jobs} spools={refreshedSpools} models={[]} link={l} onClose={vi.fn()} onBooked={vi.fn()} />
+      </LanguageProvider>,
+    );
+    expect(screen.getByRole('button', { name: /PETG · Petrol/ })).toBeInTheDocument();
   });
 });

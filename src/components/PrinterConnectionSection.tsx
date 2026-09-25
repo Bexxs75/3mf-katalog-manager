@@ -103,15 +103,15 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
   return (
     <div className="mt-3 rounded-md border border-[var(--line)] bg-[var(--panel)] p-3 flex flex-col gap-2.5">
       <div className="font-mono-ui text-[10.5px] uppercase tracking-[0.12em] text-[var(--ink-3)]">{t('printerConnectionTitle')}</div>
-      <div className="grid grid-cols-1 sm:grid-cols-[170px_1fr] gap-2">
-        <div className="flex flex-col gap-1">
+      <div className="grid grid-cols-1 sm:grid-cols-[170px_minmax(0,1fr)] gap-2">
+        <div className="flex flex-col gap-1 min-w-0">
           <span className="text-[11.5px] text-[var(--ink-2)]">{t('printerConnectionType')}</span>
-          <div className={`${fieldClass} flex items-center font-sans`}>{t('printerConnectionTypeMoonraker')}</div>
+          <div className={`${fieldClass} flex items-center font-sans min-w-0`}>{t('printerConnectionTypeMoonraker')}</div>
         </div>
-        <label className="flex flex-col gap-1">
+        <label className="flex flex-col gap-1 min-w-0">
           <span className="text-[11.5px] text-[var(--ink-2)]">{t('printerConnectionAddress')}</span>
           <input
-            className={fieldClass}
+            className={`${fieldClass} w-full min-w-0 placeholder:text-[var(--ink-3)]`}
             value={address}
             onChange={(e) => setAddress(e.target.value)}
             placeholder="192.168.1.60"
