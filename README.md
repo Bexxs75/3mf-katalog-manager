@@ -37,7 +37,8 @@ Beide Varianten sind ansonsten funktionsgleich. Die Downloads sind unsigniert (s
 - **In Slicer öffnen** — beliebig viele selbst hinterlegte Slicer-Programme (herstellerunabhängig) direkt aus dem Katalog heraus starten
 - **Mehrsprachige Oberfläche** — Deutsch, Englisch, Spanisch, Französisch, umschaltbar zur Laufzeit
 - **Hell-/Dunkel-Theme** mit System-Erkennung und manueller Auswahl, persistiert lokal
-- **Filament-Lager** — eigenständige Verwaltung deiner Filamentspulen (Material, Hersteller, Farbe, Lagerort, Durchmesser, Ursprungs-/Restgewicht, Preis) mit Autocomplete für Material/Hersteller/Lagerort, unabhängig vom Modell-Katalog; umschaltbar zwischen Karten-Dashboard (Bestandsbalken, Statusfarbe) und sortierbarer Inventarliste, inkl. Statistik-Leiste und Status-Filter; beim Neuanlegen lassen sich mehrere identische Spulen auf einmal erfassen (jede mit eigenem, unabhängig verfolgtem Restbestand)
+- **Filament-Lager** — eigenständige Verwaltung deiner Filamentspulen (Material, Hersteller, Farbe, Lagerort, Durchmesser, Ursprungs-/Restgewicht, Preis) mit Autocomplete für Material/Hersteller/Lagerort, unabhängig vom Modell-Katalog; umschaltbar zwischen Karten-Dashboard (Bestandsbalken, Statusfarbe) und sortierbarer Inventarliste, inkl. Statistik-Leiste und Status-Filter; beim Neuanlegen lassen sich mehrere identische Spulen auf einmal erfassen (jede mit eigenem, unabhängig verfolgtem Restbestand); „＋ Nachkaufen“ auf der Karte bzw. „＋“ in der Listenzeile legt 1 bis 20 neue, volle Spulen mit denselben Daten an; ein Doppelklick auf Karte oder Zeile öffnet das Bearbeiten-Formular; Restgewichte auf 0,1 g genau; Spulenbild per Klick oder Drag & Drop (PNG, JPG oder WebP bis 5 MB); Spulen ohne Bild zeigen in der Liste ein Spulen-Symbol in ihrer Farbe
+- **Resin im Lager** — der Umschalter „Filament | Resin“ oben im Filament-Lager wechselt zu deinen Resin-Flaschen: Mengen in ml, eigene Kennzahlen („Flaschen gesamt“), Vorschläge für Resin-Material und -Hersteller, „− Verbrauch“ zum Abbuchen verbrauchter Milliliter und Nachkaufen wie bei Spulen; neue Einträge bekommen die Art des gewählten Bereichs. Resin kommt nie in ein Druckerfach und zählt nicht bei „Reicht das Filament?“ und der Materialkosten-Schätzung.
 - **Drucker & AMS-Fächer** — Drucker und ihre Mehrfarbeinheiten (Bambu AMS, AMS lite, AMS HT, Creality CFS, Prusa MMU3, Anycubic ACE Pro, Spulenhalter oder eigene mit frei wählbarer Fachanzahl) anlegen und Spulen per Drag & Drop oder Klick in die Fächer legen. Jeder neue Drucker bekommt automatisch einen Spulenhalter, sodass auch Drucker ohne AMS sofort eine Spule aufnehmen. Spulen im Drucker erscheinen getrennt vom Lager in einer eigenen Spalte; beim Herausnehmen kehren sie automatisch an ihren Stammplatz zurück. Spulen haben einen echten Farbwert (Palette oder Hex) zusätzlich zum Farbnamen.
 - **Reicht das Filament?** — für geslicete 3MF-Dateien vergleicht die Detailseite den Filamentbedarf mit deinen Spulen (Material und ähnliche Farbe) und zeigt, ob er reicht, nur mit Spulenwechsel reicht oder wie viel fehlt – samt passender Spule und ob sie im Drucker steckt. Die Druck-Warteschlange zeigt den Status je Eintrag und berücksichtigt den Gesamtbedarf.
 - **Werkzeuge** — Abschnitt in der Seitenleiste mit Warteschlange, „Zuletzt angesehen“, „Neu hinzugefügt“, „Favoriten“ (alle mit Herz markierten Modelle), „Duplikate“ und Aufräum-Vorschlägen, jeweils mit Anzahl; die Ansichten filtern den Katalog und lassen sich mit Ordnern, Tags und Suche kombinieren.
@@ -74,8 +75,10 @@ Dieses Projekt befindet sich in aktiver Entwicklung. Der lokale Katalog (Import,
 
 ## Geplant
 
-- **Live-Anbindung an weitere Drucker** (z. B. Bambu Lab per MQTT im lokalen Netz) mit automatischer AMS-Belegung. Für Klipper/Moonraker gibt es seit v0.14.0 bereits eine Anbindung mit Bestätigung vor dem Abbuchen, siehe „Druckeranbindung“ oben.
-- **Historie der Fachbelegung** – welche Spule wann in welchem Fach steckte
+Den aktuellen Stand zeigt immer die öffentliche [Roadmap](https://github.com/users/Bexxs75/projects/1); sie ist maßgeblich.
+
+- **v0.15.0 – Updates direkt in der App** und weitere Linux-Pakete (.deb, .rpm, AUR)
+- **Anbindung an Bambu-Lab-Drucker**: wird geprüft
 
 ## Tech-Stack
 
@@ -166,7 +169,8 @@ Both variants are otherwise feature-identical. Downloads are unsigned (see [Stat
 - **Open in slicer** — launch any number of self-configured slicer programs (vendor-agnostic) directly from the catalog
 - **Multilingual UI** — German, English, Spanish, French, switchable at runtime
 - **Light/dark theme** with system detection and manual selection, persisted locally
-- **Filament inventory** — standalone management of your filament spools (material, manufacturer, color, storage location, diameter, original/remaining weight, price) with autocomplete for material/manufacturer/location, independent of the model catalog; toggleable between a card dashboard (stock bar, status color) and a sortable inventory list, including a stats bar and status filters; when adding new spools, several identical ones can be created at once (each with its own independently tracked remaining stock)
+- **Filament inventory** — standalone management of your filament spools (material, manufacturer, color, storage location, diameter, original/remaining weight, price) with autocomplete for material/manufacturer/location, independent of the model catalog; toggleable between a card dashboard (stock bar, status color) and a sortable inventory list, including a stats bar and status filters; when adding new spools, several identical ones can be created at once (each with its own independently tracked remaining stock); "＋ Restock" on the card or "＋" in the list row adds 1 to 20 new, full spools with the same details; double-clicking a card or row opens the edit form; remaining weights to 0.1 g; spool image by click or drag & drop (PNG, JPG or WebP up to 5 MB); spools without an image show a spool icon in their color in the list
+- **Resin in the stock** — the "Filament | Resin" switch at the top of the filament inventory changes to your resin bottles: amounts in ml, separate stats ("Total bottles"), suggestions for resin material and manufacturer, "− Use" to deduct the milliliters you used, and restocking just like spools; new entries get the type of the selected area. Resin never goes into a printer slot and is left out of "Is there enough filament?" and the material cost estimate.
 - **Printers & AMS slots** — add printers and their multi-material units (Bambu AMS, AMS lite, AMS HT, Creality CFS, Prusa MMU3, Anycubic ACE Pro, spool holder, or custom with any slot count) and put spools into slots by drag & drop or click. Every new printer automatically gets a spool holder, so printers without an AMS can take a spool right away. Loaded spools are shown separately from storage in their own column; when unloaded they automatically return to their home location. Spools have a real color value (palette or hex) in addition to the color name.
 - **Is there enough filament?** — for sliced 3MF files, the detail page compares the filament requirement with your spools (material and similar color) and shows whether it is enough, enough only with a spool change, or how much is missing – including the matching spool and whether it is loaded in a printer. The print queue shows the status per entry and takes the combined requirement into account.
 - **Tools** — a sidebar section with the print queue, "Recently viewed", "Recently added", "Favorites" (all models marked with a heart), "Duplicates" and cleanup suggestions, each with a count; the views filter the catalog and combine with folders, tags and search.
@@ -203,8 +207,10 @@ This project is under active development. The local catalog (import, parsing, ta
 
 ## Planned
 
-- **Live connection to more printers** (e.g. Bambu Lab via MQTT on the local network) with automatic AMS slot detection. Klipper/Moonraker already has a connection as of v0.14.0, with confirmation before anything is deducted — see "Printer connection" above.
-- **Slot history** – which spool was in which slot and when
+The public [roadmap](https://github.com/users/Bexxs75/projects/1) always shows the current state and is the source of truth.
+
+- **v0.15.0 – In-app updates** and more Linux packages (.deb, .rpm, AUR)
+- **Bambu Lab printer link**: being evaluated
 
 ## Tech Stack
 
