@@ -69,7 +69,10 @@ export function SpoolPicker({ spools, value, onChange, label, placeholder }: Pro
     if (open) {
       setActiveId(value ?? spools[0]?.id ?? null);
       if (buttonRef.current) setPopup(popupPosition(buttonRef.current.getBoundingClientRect()));
-      listRef.current?.focus();
+      // `preventScroll`, damit das Fokussieren selbst in echten Browsern
+      // keinen Scroll der Seite ausloest - sonst schliesst der eigene
+      // Scroll-Listener (unten) das Popup, kaum dass es offen ist.
+      listRef.current?.focus({ preventScroll: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, value]);
@@ -90,15 +93,27 @@ export function SpoolPicker({ spools, value, onChange, label, placeholder }: Pro
 
   // Fixed-positioniertes Popup: bei Scroll/Resize schliessen statt neu zu
   // berechnen (einfacher und ausreichend, da der Knopf dabei ohnehin meist
-  // aus dem sichtbaren Bereich wandert).
+  // aus dem sichtbaren Bereich wandert). Scroll-Events, die von der Liste
+  // selbst kommen (z.B. ihr eigenes scrollIntoView beim Oeffnen oder bei
+  // Pfeiltasten-Navigation), duerfen das Popup NICHT schliessen - sonst
+  // schliesst es sich in echten Browsern sofort wieder selbst, noch bevor
+  // der Nutzer etwas anklicken kann (Regression aus 3365945).
   useEffect(() => {
     if (!open) return;
-    const close = () => setOpen(false);
-    window.addEventListener('scroll', close, true);
-    window.addEventListener('resize', close);
+    const closeOnResize = () => setOpen(false);
+    const closeOnScroll = (e: Event) => {
+      // `target` ist bei einem Scroll auf `window`/`document` selbst kein
+      // Node (kein `.contains()`) - dann ist es per Definition kein Scroll
+      // innerhalb der Liste.
+      const target = e.target;
+      if (target instanceof Node && listRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    window.addEventListener('scroll', closeOnScroll, true);
+    window.addEventListener('resize', closeOnResize);
     return () => {
-      window.removeEventListener('scroll', close, true);
-      window.removeEventListener('resize', close);
+      window.removeEventListener('scroll', closeOnScroll, true);
+      window.removeEventListener('resize', closeOnResize);
     };
   }, [open]);
 
