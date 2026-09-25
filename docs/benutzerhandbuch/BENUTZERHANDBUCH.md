@@ -355,8 +355,33 @@ eingelegte Spulen erscheinen dann in einer eigenen Spalte rechts neben dem Lager
    Hinweis dazu lässt sich der Ort noch ändern.
 4. Im Spulen-Formular gibt es jetzt einen **Farbwert** (Palette oder Hex-Eingabe) zusätzlich
    zum Farbnamen; bei einer eingelegten Spule heißt das Lagerort-Feld "Stammplatz".
-5. Das Ganze ist reine manuelle Pflege — eine Live-Anbindung an den Drucker selbst ist geplant
-   (siehe [README](../../README.md#geplant)).
+5. Welche Spule in welchem Fach steckt, trägst du hier weiterhin von Hand ein (Drag & Drop oder
+   Fach-Menü). Was die App dir abnehmen kann, ist das Ablesen des Filamentverbrauchs nach einem
+   Druck bei angebundenen Klipper/Moonraker-Druckern — siehe nächster Abschnitt.
+
+### Druckeranbindung
+
+Bei einem Klipper-Drucker mit Moonraker (z. B. über Mainsail oder Fluidd bedient) kann die App
+den Filamentverbrauch fertiger und abgebrochener Drucke selbst ablesen, statt dass du ihn von
+Hand einträgst. Das ist standardmäßig **ausgeschaltet** und rein lesend: Die App sendet nur
+Abfragen, nie einen Befehl, und spricht nur mit Adressen, die du selbst im Heimnetz einträgst.
+
+1. **Einstellungen → Drucker** → Schalter "Druckeranbindung" einschalten.
+2. **Filament-Lager → Drucker verwalten** → beim gewünschten Drucker unter "Verbindung" die
+   Adresse eintragen (dieselbe IP oder denselben Namen, mit dem du z. B. Mainsail im Browser
+   öffnest) → "Verbindung testen". Klappt es, zeigt die App Version und Port sowie ab welchem
+   Zeitpunkt Drucke abgebucht werden — ältere Drucke bleiben unberührt. Meldet der Drucker
+   "Anmeldung nötig", ist am Drucker eine Anmeldung eingerichtet, die diese Version noch nicht
+   unterstützt.
+3. Danach fragt die App den Drucker beim Start, alle 5 Minuten und über den "↻"-Knopf neben
+   seinem Status automatisch nach neu beendeten Drucken. Gibt es welche, erscheint im
+   Filament-Lager der Hinweis "N neue Drucke warten auf Bestätigung" mit einem Knopf "Prüfen".
+4. Im sich öffnenden Dialog "Neue Drucke" siehst du pro Druck den Verbrauch in Gramm, dazu je
+   eine vorgeschlagene Spule (die im Drucker eingelegte, falls bekannt) und ein vorgeschlagenes
+   Katalogmodell (über den Dateinamen ermittelt) — beides lässt sich ändern. Erst mit
+   "Bestätigen" (einzeln oder über "Alle N bestätigen") wird das Gewicht von der Spule
+   abgebucht; mit ausgewähltem Modell entsteht zusätzlich ein Eintrag im Druckprotokoll und das
+   Modell wird als gedruckt markiert. "Ignorieren" verwirft den Vorschlag ohne zu buchen.
 
 ## Druckprotokoll
 
@@ -377,7 +402,7 @@ lassen sich in dieser Zeit wiederherstellen:
 ## Einstellungen
 
 Über das Zahnrad-Symbol unten in der Navigationsleiste öffnest du die Einstellungen. Sie sind in
-vier Reiter aufgeteilt: **Allgemein**, **Slicer**, **Katalog** und **Info**.
+fünf Reiter aufgeteilt: **Allgemein**, **Slicer**, **Katalog**, **Drucker** und **Info**.
 
 ### Allgemein
 
@@ -410,6 +435,14 @@ fest, welcher Slicer beim Öffnen eines Modells als **Standard** verwendet wird.
 - **Katalog-Backup** — siehe nächster Abschnitt.
 - **Katalog-Speicherort** — zeigt den aktuellen Basisordner und erlaubt, ihn zu ändern oder direkt
   im Dateimanager zu öffnen.
+
+### Drucker
+
+Hier schaltest du die Druckeranbindung ein oder aus (standardmäßig aus) und siehst auf einen
+Blick den Status jedes angebundenen Druckers ("Klipper · verbunden", "Klipper · Fehler" oder
+"nicht angebunden"). Adresse und Verbindungstest trägst du pro Drucker im Filament-Lager unter
+"Drucker verwalten" ein — Details dazu im Abschnitt
+[Druckeranbindung](#druckeranbindung) weiter oben.
 
 ### Info
 
@@ -818,8 +851,32 @@ loaded spools then appear in their own column to the right of the stock.
    that location.
 4. The spool form now has a **color value** (palette or hex input) in addition to the color
    name; for a loaded spool, the storage-location field is labeled "Home location".
-5. This is all manual upkeep — a live connection to the printer itself is planned (see the
-   [README](../../README.md#planned)).
+5. Which spool is in which slot is still something you enter by hand here (drag & drop or the
+   slot menu). What the app can take off your hands is reading the filament used after a print
+   on connected Klipper/Moonraker printers — see the next section.
+
+### Printer connection
+
+With a Klipper printer running Moonraker (e.g. controlled via Mainsail or Fluidd), the app can
+read the filament used by finished and aborted prints itself, instead of you entering it by
+hand. This is **off by default** and read-only: the app only sends queries, never a command, and
+only talks to addresses you enter yourself on your home network.
+
+1. **Settings → Printers** → switch on "Printer connection".
+2. **Filament stock → Manage printers** → for the printer you want, enter the address under
+   "Connection" (the same IP or name you'd use to open Mainsail in a browser) → "Test
+   connection". If it works, the app shows the version and port, plus the point in time from
+   which prints will be deducted — older prints are left alone. If the printer reports "Login
+   required", it has a login set up that this version doesn't support yet.
+3. After that, the app automatically asks the printer for newly finished prints at startup,
+   every 5 minutes, and via the "↻" button next to its status. If there are any, the filament
+   stock shows the hint "N new prints waiting for confirmation" with a "Review" button.
+4. In the "New prints" dialog that opens, you see the usage in grams per print, plus a
+   suggested spool (the one loaded in the printer, if known) and a suggested catalog model
+   (matched from the file name) — both can be changed. Only "Confirm" (individually or via
+   "Confirm all N") deducts the weight from the spool; with a model selected, this also adds a
+   print log entry and marks the model as printed. "Ignore" discards the suggestion without
+   booking anything.
 
 ## Print log
 
@@ -838,8 +895,8 @@ during that time:
 
 ## Settings
 
-The gear icon at the bottom of the navigation rail opens Settings. They're split into four tabs:
-**General**, **Slicer**, **Catalog**, and **Info**.
+The gear icon at the bottom of the navigation rail opens Settings. They're split into five tabs:
+**General**, **Slicer**, **Catalog**, **Printers**, and **Info**.
 
 ### General
 
@@ -872,6 +929,14 @@ including self-built or modified versions. The radio button sets which slicer is
 - **Catalog backup** — see the next section.
 - **Catalog location** — shows the current base directory and lets you change it or open it
   directly in the file manager.
+
+### Printers
+
+This is where you switch the printer connection on or off (off by default) and see the status
+of every connected printer at a glance ("Klipper · connected", "Klipper · error", or "not
+connected"). Address and connection test are entered per printer in the filament stock under
+"Manage printers" — see the [Printer connection](#printer-connection) section above for
+details.
 
 ### Info
 

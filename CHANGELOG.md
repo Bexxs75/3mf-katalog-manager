@@ -5,6 +5,13 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/), Ve
 
 Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unter der Scaffold-Versionsnummer `0.1.0`, ohne dass Meilensteine markiert wurden. Die folgenden Versionsgrenzen wurden nachträglich anhand von Entwicklungs-Tagen und natürlichen Feature-Abschlüssen (jeweils an einem Dokumentations-Commit) gezogen, keine davon wurde zum jeweiligen Zeitpunkt live getaggt oder veröffentlicht.
 
+## [Unreleased]
+
+### Added
+
+- **Druckeranbindung (Klipper/Moonraker):** Neuer Einstellungs-Reiter „Drucker“ mit dem Schalter „Druckeranbindung“ (standardmäßig aus). Pro Drucker lassen sich unter „Drucker verwalten“ Typ und Adresse eintragen und testen. Die App fragt angebundene Drucker beim Start, alle 5 Minuten und per Knopf nach beendeten Drucken, liest den tatsächlich geförderten Filamentverbrauch (bei abgebrochenen Drucken nur bis zum Abbruch) und rechnet ihn in Gramm um. Im Filament-Lager erscheint dann „N neue Drucke warten auf Bestätigung“: Im Dialog lassen sich pro Druck Spule (vorgeschlagen: die im Drucker eingelegte) und Katalogmodell (Vorschlag über den Dateinamen) prüfen, bestätigen oder ignorieren. Erst beim Bestätigen wird abgebucht; mit Modell entsteht zusätzlich ein Druckprotokoll-Eintrag, und das Modell wird als gedruckt markiert. Abgebucht werden nur Drucke, die nach dem ersten Verbinden enden. Die App spricht nur mit selbst eingetragenen Adressen im Heimnetz, liest nur und verändert am Drucker nichts. Getestet mit einem Sovol SV08.
+- Filament-Lager: Das Restgewicht einer Spule wird jetzt auf 0,1 g genau geführt und angezeigt.
+
 ## [0.13.0] - 2026-09-24
 
 ### Added
@@ -360,6 +367,13 @@ All notable changes to this project are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versioning follows [Semantic Versioning](https://semver.org/).
 
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
+
+## [Unreleased]
+
+### Added
+
+- **Printer connection (Klipper/Moonraker):** New “Printers” settings tab with the “Printer connection” switch (off by default). Under “Manage printers” you can enter and test type and address per printer. The app asks connected printers at startup, every 5 minutes and on demand for finished prints, reads the filament actually extruded (for aborted prints only up to the abort) and converts it to grams. The filament storage then shows “N new prints waiting for confirmation”: in the dialog you check the spool (suggested: the one loaded in the printer) and the catalog model (suggested from the file name) per print, then confirm or ignore it. Nothing is deducted before you confirm; with a model, a print log entry is added and the model is marked as printed. Only prints ending after the first connection are deducted. The app only talks to addresses you entered yourself on your home network, only reads, and never changes anything on the printer. Tested with a Sovol SV08.
+- Filament storage: a spool's remaining weight is now tracked and shown to 0.1 g.
 
 ## [0.13.0] - 2026-09-24
 

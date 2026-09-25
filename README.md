@@ -41,6 +41,7 @@ Beide Varianten sind ansonsten funktionsgleich. Die Downloads sind unsigniert (s
 - **Drucker & AMS-Fächer** — Drucker und ihre Mehrfarbeinheiten (Bambu AMS, AMS lite, AMS HT, Creality CFS, Prusa MMU3, Anycubic ACE Pro, Spulenhalter oder eigene mit frei wählbarer Fachanzahl) anlegen und Spulen per Drag & Drop oder Klick in die Fächer legen. Jeder neue Drucker bekommt automatisch einen Spulenhalter, sodass auch Drucker ohne AMS sofort eine Spule aufnehmen. Spulen im Drucker erscheinen getrennt vom Lager in einer eigenen Spalte; beim Herausnehmen kehren sie automatisch an ihren Stammplatz zurück. Spulen haben einen echten Farbwert (Palette oder Hex) zusätzlich zum Farbnamen.
 - **Reicht das Filament?** — für geslicete 3MF-Dateien vergleicht die Detailseite den Filamentbedarf mit deinen Spulen (Material und ähnliche Farbe) und zeigt, ob er reicht, nur mit Spulenwechsel reicht oder wie viel fehlt – samt passender Spule und ob sie im Drucker steckt. Die Druck-Warteschlange zeigt den Status je Eintrag und berücksichtigt den Gesamtbedarf.
 - **Werkzeuge** — Abschnitt in der Seitenleiste mit Warteschlange, „Zuletzt angesehen“, „Neu hinzugefügt“, „Favoriten“ (alle mit Herz markierten Modelle), „Duplikate“ und Aufräum-Vorschlägen, jeweils mit Anzahl; die Ansichten filtern den Katalog und lassen sich mit Ordnern, Tags und Suche kombinieren.
+- **Druckeranbindung** — optional (standardmäßig aus): Klipper/Moonraker-Drucker im Heimnetz melden den Filamentverbrauch fertiger und abgebrochener Drucke; nach deiner Bestätigung wird er von der Spule abgebucht, auf Wunsch mit Druckprotokoll-Eintrag. Nur lesend, nur selbst eingetragene Adressen im Heimnetz.
 - **Katalog-Erweiterungen** — Druckstatus-Toggle + Gewicht pro Modell (echter Wert aus dem Slicer, falls die 3mf bereits gesliced wurde, sonst grobe Schätzung aus Volumen × Materialdichte), Sortierung nach "Zuletzt angesehen", NEU-Badge für kürzlich importierte Modelle, Creators-Filter (aus 3MF-Designer-Metadatum), automatische Erkennung exakter Datei-Duplikate beim Import per Inhalts-Hash
 - **Filamentverbrauch aus dem Slicer** — liest den in OrcaSlicer/Bambu Studio gesliceten Filamentverbrauch (`Metadata/slice_info.config`) mit aus: reales Gewicht statt Schätzung, Aufschlüsselung pro Druckplatte und Filament (Typ, Farbe, Gramm, Meter) auf der Modell-Detailseite; Button "Metadaten neu einlesen" holt die Werte nachträglich, wenn eine bereits katalogisierte Datei in OrcaSlicer/Bambu Studio nachgesliced wurde
 - **Materialkosten-Schätzung** — bei Modellen mit echtem Slicer-Filamentverbrauch zusätzlich eine geschätzte Materialkosten-Summe auf der Detailseite, berechnet aus Verbrauch und den Preisen passender Spulen im Filament-Lager
@@ -73,8 +74,7 @@ Dieses Projekt befindet sich in aktiver Entwicklung. Der lokale Katalog (Import,
 
 ## Geplant
 
-- **Live-Anbindung an den Drucker** (z. B. Bambu Lab per MQTT im lokalen Netz): AMS-Belegung und Restmengen automatisch übernehmen
-- **Automatisches Abbuchen** des Filamentverbrauchs nach einem Druck
+- **Live-Anbindung an weitere Drucker** (z. B. Bambu Lab per MQTT im lokalen Netz) mit automatischer AMS-Belegung. Für Klipper/Moonraker gibt es seit v0.14.0 bereits eine Anbindung mit Bestätigung vor dem Abbuchen, siehe „Druckeranbindung“ oben.
 - **Historie der Fachbelegung** – welche Spule wann in welchem Fach steckte
 
 ## Tech-Stack
@@ -170,6 +170,7 @@ Both variants are otherwise feature-identical. Downloads are unsigned (see [Stat
 - **Printers & AMS slots** — add printers and their multi-material units (Bambu AMS, AMS lite, AMS HT, Creality CFS, Prusa MMU3, Anycubic ACE Pro, spool holder, or custom with any slot count) and put spools into slots by drag & drop or click. Every new printer automatically gets a spool holder, so printers without an AMS can take a spool right away. Loaded spools are shown separately from storage in their own column; when unloaded they automatically return to their home location. Spools have a real color value (palette or hex) in addition to the color name.
 - **Is there enough filament?** — for sliced 3MF files, the detail page compares the filament requirement with your spools (material and similar color) and shows whether it is enough, enough only with a spool change, or how much is missing – including the matching spool and whether it is loaded in a printer. The print queue shows the status per entry and takes the combined requirement into account.
 - **Tools** — a sidebar section with the print queue, "Recently viewed", "Recently added", "Favorites" (all models marked with a heart), "Duplicates" and cleanup suggestions, each with a count; the views filter the catalog and combine with folders, tags and search.
+- **Printer connection** — optional (off by default): Klipper/Moonraker printers on your home network report the filament used by finished and aborted prints; after you confirm, it is deducted from the spool, optionally with a print log entry. Read-only, only addresses you entered yourself on your home network.
 - **Catalog extensions** — print-status toggle + weight per model (real value from the slicer if the 3mf has already been sliced, otherwise a rough estimate from volume × material density), sorting by "last viewed", NEW badge for recently imported models, creators filter (from the 3MF designer metadata), automatic detection of exact file duplicates on import via content hash
 - **Filament usage from the slicer** — reads the filament usage sliced in OrcaSlicer/Bambu Studio (`Metadata/slice_info.config`): real weight instead of an estimate, breakdown per build plate and filament (type, color, grams, meters) on the model detail page; "Rescan metadata" button retrieves the values afterward if an already-catalogued file was re-sliced in OrcaSlicer/Bambu Studio
 - **Material cost estimate** — for models with real slicer filament usage, an additional estimated material cost on the detail page, computed from consumption and the prices of matching spools in the filament inventory
@@ -202,8 +203,7 @@ This project is under active development. The local catalog (import, parsing, ta
 
 ## Planned
 
-- **Live printer connection** (e.g. Bambu Lab via MQTT on the local network): take over AMS slot contents and remaining amounts automatically
-- **Automatic deduction** of filament usage after a print
+- **Live connection to more printers** (e.g. Bambu Lab via MQTT on the local network) with automatic AMS slot detection. Klipper/Moonraker already has a connection as of v0.14.0, with confirmation before anything is deducted — see "Printer connection" above.
 - **Slot history** – which spool was in which slot and when
 
 ## Tech Stack
