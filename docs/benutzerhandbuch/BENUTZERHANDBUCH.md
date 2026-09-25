@@ -331,12 +331,12 @@ ohne etwas anzulegen.
 
 **Resin:** Mit „Filament | Resin" oben im Lager wechselst du zu deinen Resin-Flaschen; die App
 merkt sich die Auswahl. Übersicht, Liste, Suche und Kennzahlen zeigen dann nur Resin, Mengen in
-Milliliter („Flaschen gesamt"). Beim Anlegen wählst du im Formular die Art „Resin": Statt des
-Gewichts gibst du den „Inhalt (ml)" an, einen Durchmesser gibt es nicht. Hast du Resin verbraucht,
+Milliliter („Flaschen gesamt"). „Flasche anlegen" legt dort immer eine Resin-Flasche an, im
+Filament-Bereich entsteht immer eine Spule. Statt des Gewichts gibst du den „Inhalt (ml)" an, einen
+Durchmesser gibt es nicht, und Material und Hersteller schlagen Resin-Werte vor. Hast du Resin verbraucht,
 klick auf der Flasche auf „− Verbrauch" und trag die Milliliter ein (auf 0,1 ml genau); der Rest
 sinkt nie unter 0. Resin-Flaschen kommen nie in ein Druckerfach und zählen nicht bei „Reicht das
-Filament?" und den Materialkosten. Die Art einer Spule, die gerade im Drucker steckt, lässt sich
-erst nach dem Herausnehmen ändern.
+Filament?" und den Materialkosten.
 
 ### Reicht das Filament?
 
@@ -817,12 +817,12 @@ adding anything.
 
 **Resin:** Use "Filament | Resin" at the top of the stock to switch to your resin bottles; the
 app remembers your choice. Overview, list, search and stats then show only resin, with amounts in
-milliliters ("Total bottles"). When adding an entry, choose the type "Resin" in the form: instead
-of the weight you enter the "Volume (ml)", and there is no diameter. When you've used resin, click
+milliliters ("Total bottles"). "Add bottle" there always creates a resin bottle, while the
+filament area always creates a spool. Instead of the weight you enter the "Volume (ml)", there is
+no diameter, and material and manufacturer suggest resin values. When you've used resin, click
 "− Use" on the bottle and enter the milliliters (to 0.1 ml); the remaining amount never drops
 below 0. Resin bottles never go into a printer slot and are left out of "Is there enough
-filament?" and the material cost. The type of a spool that currently sits in a printer can only be
-changed after taking it out.
+filament?" and the material cost.
 
 ### Is there enough filament?
 

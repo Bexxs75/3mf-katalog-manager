@@ -133,6 +133,8 @@ export const fr: Translations = {
   filamentColumnStatus: 'Statut',
   filamentQuantityLabel: 'Nombre de bobines',
   filamentQuantityHint: 'Crée plusieurs bobines identiques, suivies séparément (ex. 3× PLA noir)',
+  resinQuantityLabel: 'Nombre de flacons',
+  resinQuantityHint: 'Crée plusieurs flacons identiques, suivis séparément (ex. 3× Standard gris)',
 
   filamentRestockButton: 'Racheter',
   filamentRestockTitle: 'Racheter : {spool}',
@@ -160,7 +162,6 @@ export const fr: Translations = {
   spoolKindLabel: 'Type',
   spoolKindFilament: 'Filament',
   spoolKindResin: 'Résine',
-  spoolKindLockedHint: 'Le type ne peut être modifié que lorsque la bobine n’est pas dans l’imprimante.',
   resinStatTotal: 'Flacons au total',
   resinBottleFooter: 'Flacon de {amount}',
   resinConsumeButton: 'Consommation',

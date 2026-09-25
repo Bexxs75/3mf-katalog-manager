@@ -2,14 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useT } from '../i18n/LanguageContext';
 import type { FilamentSpool, SpoolKind } from '../types';
-import { FILAMENT_MATERIALS, FILAMENT_MANUFACTURERS } from '../lib/filamentCatalog';
+import { FILAMENT_MATERIALS, FILAMENT_MANUFACTURERS, RESIN_MATERIALS, RESIN_MANUFACTURERS } from '../lib/filamentCatalog';
 import { filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus';
 import { useImageDropZone } from '../hooks/useImageDropZone';
 import { readDroppedImage } from '../lib/api/filament';
 import type { ImageDropRejection } from '../lib/imageDrop';
 import { AutocompleteInput } from './AutocompleteInput';
 import { ColorPicker } from './ColorPicker';
-import { SegmentedControl } from './SegmentedControl';
 
 interface Props {
   open: boolean;
@@ -155,7 +154,6 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
   };
 
   const resin = form.kind === 'resin';
-  const kindLocked = editing?.unitId != null;
 
   const original = parseFloat(form.originalWeightG) || 0;
   const remaining = parseFloat(form.remainingWeightG) || 0;
@@ -240,27 +238,11 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
             </p>
             <div className="flex flex-col gap-2.5">
               <div>
-                <span className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t('spoolKindLabel')}</span>
-                <SegmentedControl
-                  label={t('spoolKindLabel')}
-                  options={[
-                    { value: 'filament', label: t('spoolKindFilament') },
-                    { value: 'resin', label: t('spoolKindResin') },
-                  ]}
-                  value={form.kind}
-                  onChange={(kind) => setForm((f) => ({ ...f, kind }))}
-                  disabled={kindLocked}
-                />
-                {kindLocked && (
-                  <p className="text-[10.5px] text-[var(--ink-3)] mt-1 leading-snug">{t('spoolKindLockedHint')}</p>
-                )}
-              </div>
-              <div>
                 <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t('filamentMaterialLabel')}</label>
                 <AutocompleteInput
                   value={form.material}
                   onChange={(v) => setForm((f) => ({ ...f, material: v }))}
-                  options={FILAMENT_MATERIALS}
+                  options={resin ? RESIN_MATERIALS : FILAMENT_MATERIALS}
                   placeholder={t('filamentMaterialLabel')}
                   className={fieldClass}
                 />
@@ -270,7 +252,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
                 <AutocompleteInput
                   value={form.manufacturer}
                   onChange={(v) => setForm((f) => ({ ...f, manufacturer: v }))}
-                  options={FILAMENT_MANUFACTURERS}
+                  options={resin ? RESIN_MANUFACTURERS : FILAMENT_MANUFACTURERS}
                   placeholder={t('filamentManufacturerLabel')}
                   className={fieldClass}
                 />
@@ -291,7 +273,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
 
               {!editing && (
                 <div>
-                  <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t('filamentQuantityLabel')}</label>
+                  <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t(resin ? 'resinQuantityLabel' : 'filamentQuantityLabel')}</label>
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
@@ -315,7 +297,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
                       +
                     </button>
                   </div>
-                  <p className="text-[10.5px] text-[var(--ink-3)] mt-1 leading-snug">{t('filamentQuantityHint')}</p>
+                  <p className="text-[10.5px] text-[var(--ink-3)] mt-1 leading-snug">{t(resin ? 'resinQuantityHint' : 'filamentQuantityHint')}</p>
                 </div>
               )}
             </div>

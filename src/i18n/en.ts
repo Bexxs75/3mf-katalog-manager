@@ -133,6 +133,8 @@ export const en: Translations = {
   filamentColumnStatus: 'Status',
   filamentQuantityLabel: 'Number of spools',
   filamentQuantityHint: 'Creates multiple identical spools, each tracked separately (e.g. 3× black PLA)',
+  resinQuantityLabel: 'Number of bottles',
+  resinQuantityHint: 'Creates multiple identical bottles, each tracked separately (e.g. 3× grey Standard)',
 
   filamentRestockButton: 'Restock',
   filamentRestockTitle: 'Restock: {spool}',
@@ -160,7 +162,6 @@ export const en: Translations = {
   spoolKindLabel: 'Type',
   spoolKindFilament: 'Filament',
   spoolKindResin: 'Resin',
-  spoolKindLockedHint: 'The type can only be changed once the spool is out of the printer.',
   resinStatTotal: 'Total bottles',
   resinBottleFooter: '{amount} bottle',
   resinConsumeButton: 'Use',

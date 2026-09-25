@@ -140,6 +140,8 @@ export interface Translations {
   filamentColumnStatus: string;
   filamentQuantityLabel: string;
   filamentQuantityHint: string;
+  resinQuantityLabel: string;
+  resinQuantityHint: string;
 
   /** Knopf an Karte/Zeile; das "＋" davor setzt die Komponente (aria-hidden). */
   filamentRestockButton: string;
@@ -176,7 +178,6 @@ export interface Translations {
   spoolKindLabel: string;
   spoolKindFilament: string;
   spoolKindResin: string;
-  spoolKindLockedHint: string;
   resinStatTotal: string;
   /** `{amount}` = formatierte Flaschengröße */
   resinBottleFooter: string;

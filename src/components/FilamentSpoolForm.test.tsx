@@ -70,10 +70,10 @@ describe('FilamentSpoolForm', () => {
   });
 
   it('creates a resin bottle with ml labels and without diameter', async () => {
-    const onSaved = renderForm(null);
-    fireEvent.click(screen.getByRole('button', { name: 'Resin' }));
+    const onSaved = renderForm(null, 'resin');
     expect(screen.getByText('Inhalt (ml)')).toBeInTheDocument();
     expect(screen.getByText('Restmenge (ml)')).toBeInTheDocument();
+    expect(screen.getByText('Anzahl Flaschen')).toBeInTheDocument();
     expect(screen.queryByText('Durchmesser (mm)')).toBeNull();
     fireEvent.change(screen.getByPlaceholderText('Material'), { target: { value: 'Standard' } });
     fireEvent.click(screen.getByRole('button', { name: 'Hinzufügen' }));
@@ -83,15 +83,40 @@ describe('FilamentSpoolForm', () => {
     }));
   });
 
-  it('preselects the kind of the current view for new entries', () => {
-    renderForm(null, 'resin');
-    expect(screen.getByRole('button', { name: 'Resin' })).toHaveAttribute('aria-pressed', 'true');
+  it('creates filament by default and shows spool wording', () => {
+    renderForm(null);
+    expect(screen.getByText('Anzahl Spulen')).toBeInTheDocument();
+    expect(screen.getByText('Durchmesser (mm)')).toBeInTheDocument();
   });
 
-  it('locks the kind of a spool that sits in a slot', () => {
-    renderForm(LOADED);
-    expect(screen.getByRole('button', { name: 'Resin' })).toBeDisabled();
-    expect(screen.getByText('Die Art lässt sich erst ändern, wenn die Spule nicht im Drucker steckt.')).toBeInTheDocument();
+  it('has no kind selector, neither when adding nor when editing', () => {
+    renderForm(null, 'resin');
+    expect(screen.queryByRole('button', { name: 'Filament' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Resin' })).toBeNull();
+  });
+
+  it('keeps the kind of an edited spool', async () => {
+    const onSaved = renderForm({ ...LOADED, unitId: null, slotIndex: null, location: 'Regal 1' }, 'resin');
+    expect(screen.getByText('Durchmesser (mm)')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(invoke).toHaveBeenCalledWith('update_filament_spool', expect.objectContaining({
+      spool: expect.objectContaining({ kind: 'filament' }),
+    }));
+  });
+
+  it('suggests resin materials in the resin view and filament materials otherwise', () => {
+    renderForm(null, 'resin');
+    fireEvent.focus(screen.getByPlaceholderText('Material'));
+    expect(screen.getByText('ABS-like')).toBeInTheDocument();
+    expect(screen.queryByText('PETG')).toBeNull();
+  });
+
+  it('suggests filament materials in the filament view', () => {
+    renderForm(null, 'filament');
+    fireEvent.focus(screen.getByPlaceholderText('Material'));
+    expect(screen.getByText('PETG')).toBeInTheDocument();
+    expect(screen.queryByText('ABS-like')).toBeNull();
   });
 
   it('is inert (unreachable) while closed, and not inert once opened', () => {

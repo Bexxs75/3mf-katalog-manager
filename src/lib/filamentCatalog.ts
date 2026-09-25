@@ -70,3 +70,32 @@ export const FILAMENT_MANUFACTURERS: string[] = [
   'Verbatim',
   'ZIRO',
 ];
+
+// Vorschlaege fuer Resin-Flaschen (Filament-Lager, Resin-Ansicht). Wie oben
+// nur Autocomplete - freie Eingabe bleibt moeglich.
+export const RESIN_MATERIALS: string[] = [
+  'ABS-like',
+  'Castable',
+  'Dental',
+  'Flexibel',
+  'Hochtemperatur',
+  'Pflanzenbasiert',
+  'Standard',
+  'Tough',
+  'Transparent',
+  'Wasserwaschbar',
+];
+
+export const RESIN_MANUFACTURERS: string[] = [
+  'Anycubic',
+  'Creality',
+  'Elegoo',
+  'Formlabs',
+  'Liqcreate',
+  'Monocure 3D',
+  'Nova3D',
+  'Phrozen',
+  'Prusa',
+  'Siraya Tech',
+  'Sunlu',
+];

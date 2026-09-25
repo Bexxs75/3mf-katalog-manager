@@ -133,6 +133,8 @@ export const es: Translations = {
   filamentColumnStatus: 'Estado',
   filamentQuantityLabel: 'Número de bobinas',
   filamentQuantityHint: 'Crea varias bobinas idénticas, cada una con su propio inventario (p. ej. 3× PLA negro)',
+  resinQuantityLabel: 'Número de botellas',
+  resinQuantityHint: 'Crea varias botellas idénticas, cada una con su propio inventario (p. ej. 3× Standard gris)',
 
   filamentRestockButton: 'Reponer',
   filamentRestockTitle: 'Reponer: {spool}',
@@ -160,7 +162,6 @@ export const es: Translations = {
   spoolKindLabel: 'Tipo',
   spoolKindFilament: 'Filamento',
   spoolKindResin: 'Resina',
-  spoolKindLockedHint: 'El tipo solo se puede cambiar cuando la bobina no está en la impresora.',
   resinStatTotal: 'Botellas en total',
   resinBottleFooter: 'Botella de {amount}',
   resinConsumeButton: 'Consumo',

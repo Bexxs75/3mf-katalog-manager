@@ -133,6 +133,8 @@ export const de: Translations = {
   filamentColumnStatus: 'Status',
   filamentQuantityLabel: 'Anzahl Spulen',
   filamentQuantityHint: 'Legt mehrere identische Spulen mit eigenem Bestand an (z. B. 3× Schwarz PLA)',
+  resinQuantityLabel: 'Anzahl Flaschen',
+  resinQuantityHint: 'Legt mehrere identische Flaschen mit eigenem Bestand an (z. B. 3× Standard Grau)',
 
   filamentRestockButton: 'Nachkaufen',
   filamentRestockTitle: 'Nachkaufen: {spool}',
@@ -160,7 +162,6 @@ export const de: Translations = {
   spoolKindLabel: 'Art',
   spoolKindFilament: 'Filament',
   spoolKindResin: 'Resin',
-  spoolKindLockedHint: 'Die Art lässt sich erst ändern, wenn die Spule nicht im Drucker steckt.',
   resinStatTotal: 'Flaschen gesamt',
   resinBottleFooter: '{amount} Flasche',
   resinConsumeButton: 'Verbrauch',
