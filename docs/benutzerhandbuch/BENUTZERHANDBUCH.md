@@ -4,10 +4,11 @@ Dieses Handbuch richtet sich an alle, die den 3MF Katalog Manager zum ersten Mal
 sich mit der App noch nicht auskennen. Es erklärt Schritt für Schritt, wie du Modelle
 importierst, organisierst, druckfertig machst und dein Filament-Lager verwaltest.
 
-> **Hinweis zu den Bildern in diesem Handbuch:** Alle Screenshots zeigen die App (Version 0.13.0)
-> mit einem erfundenen Demo-Katalog (Modelle wie "Rakete" oder "Spiralvase", erfundene
-> Filamentspulen und Hersteller) — keine echten Nutzerdaten. Die Optik entspricht exakt dem, was
-> du in der App siehst; nur der Inhalt ist zu Demonstrationszwecken erfunden.
+> **Hinweis zu den Bildern in diesem Handbuch:** Alle Screenshots zeigen die App (Version 0.13.0;
+> die ersten drei Bilder zum Filament-Lager und das Resin-Bild Version 0.13.1) mit einem erfundenen
+> Demo-Katalog (Modelle wie "Rakete" oder "Spiralvase", erfundene Filamentspulen, Resin-Flaschen
+> und Hersteller) — keine echten Nutzerdaten. Die Optik entspricht exakt dem, was du in der App
+> siehst; nur der Inhalt ist zu Demonstrationszwecken erfunden.
 
 ## Inhalt
 
@@ -340,6 +341,8 @@ klick auf der Flasche auf „− Verbrauch" und trag die Milliliter ein (auf 0,1
 sinkt nie unter 0. Resin-Flaschen kommen nie in ein Druckerfach und zählen nicht bei „Reicht das
 Filament?" und den Materialkosten.
 
+![Resin-Flaschen im Filament-Lager](bilder/12-resin-flaschen.png)
+
 ### Reicht das Filament?
 
 Für 3MF-Dateien, die in Bambu Studio oder OrcaSlicer gesliced wurden, vergleicht die Detailseite
@@ -508,10 +511,11 @@ This guide is for anyone using the 3MF Katalog Manager for the first time and no
 with the app. It walks you step by step through importing, organizing, and preparing your models
 for printing, and managing your filament stock.
 
-> **About the screenshots in this guide:** all screenshots show the app (version 0.13.0) with its
-> interface set to English and a made-up demo catalog (models like "Rocket" or "Spiral Vase",
-> made-up filament spools and brands) — no real user data. The layout is exactly what you'll see
-> in the app; only the content is for demonstration purposes.
+> **About the screenshots in this guide:** all screenshots show the app (version 0.13.0; the first
+> three filament stock images and the resin image version 0.13.1) with its interface set to English
+> and a made-up demo catalog (models like "Rocket" or "Spiral Vase", made-up filament spools, resin
+> bottles and brands) — no real user data. The layout is exactly what you'll see in the app; only
+> the content is for demonstration purposes.
 
 ## Contents
 
@@ -827,6 +831,8 @@ no diameter, and material and manufacturer suggest resin values. When you've use
 "− Use" on the bottle and enter the milliliters (to 0.1 ml); the remaining amount never drops
 below 0. Resin bottles never go into a printer slot and are left out of "Is there enough
 filament?" and the material cost.
+
+![Resin bottles in the filament stock](bilder/en/12-resin-bottles.png)
 
 ### Is there enough filament?
 
