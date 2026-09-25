@@ -309,8 +309,8 @@ const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
     ("filament_spools", "color", ColType::Text, true),
     ("filament_spools", "location", ColType::Text, true),
     ("filament_spools", "diameter_mm", ColType::Real, false),
-    ("filament_spools", "original_weight_g", ColType::Integer, false),
-    ("filament_spools", "remaining_weight_g", ColType::Integer, false),
+    ("filament_spools", "original_weight_g", ColType::Real, false),
+    ("filament_spools", "remaining_weight_g", ColType::Real, false),
     ("filament_spools", "price", ColType::Real, true),
     ("filament_spools", "image_png", ColType::Blob, true),
     ("filament_spools", "color_hex", ColType::Text, true),
@@ -1138,6 +1138,37 @@ mod tests {
         let _ = std::fs::remove_file(&tmp_path);
         assert!(result.is_ok(), "expected valid catalog db to pass validation: {result:?}");
     }
+    /// Baut wie der Test oben eine frisch migrierte Katalog-DB, ruft davor
+    /// aber `setup` mit der offenen Verbindung auf, damit Aufrufer noch
+    /// zusaetzliche Zeilen einfuegen koennen. Ergebnis passt direkt als
+    /// (bytes, sensitive_dirs, trash_dir) fuer `validate_catalog_db_bytes`.
+    fn backup_test_db_with(setup: impl FnOnce(&Connection)) -> (Vec<u8>, Vec<PathBuf>, PathBuf) {
+        let tmp_path = std::env::temp_dir().join(format!(
+            "backup_test_db_with_{}.db",
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        {
+            let conn = crate::db::connect(&tmp_path).expect("connect creates a valid schema");
+            setup(&conn);
+        }
+        let bytes = std::fs::read(&tmp_path).expect("read temp db");
+        let _ = std::fs::remove_file(&tmp_path);
+        (bytes, Vec::new(), std::env::temp_dir())
+    }
+    #[test]
+    fn validate_catalog_db_bytes_accepts_fractional_spool_weights() {
+        // Wie validate_catalog_db_bytes_accepts_a_real_sqlite_database_with_files_table,
+        // zusaetzlich eine Spule mit 612.4 g Restgewicht.
+        let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+            conn.execute(
+                "INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at)
+                 VALUES ('PLA', 1.75, 1000.0, 612.4, '2026-09-24')",
+                [],
+            )
+            .unwrap();
+        });
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_ok());
+    }
     #[test]
     fn validate_catalog_db_bytes_rejects_garbage_bytes() {
         let result = validate_catalog_db_bytes(b"this is not a sqlite database", &[], &std::env::temp_dir());
@@ -1630,8 +1661,8 @@ mod tests {
                     color: None,
                     location: Some("Regal 2".to_string()),
                     diameter_mm: 1.75,
-                    original_weight_g: 1000,
-                    remaining_weight_g: 800,
+                    original_weight_g: 1000.0,
+                    remaining_weight_g: 800.0,
                     price: None,
                     image_png: None,
                     color_hex: Some("#1a1a1a".to_string()),
@@ -1856,8 +1887,8 @@ mod tests {
                     color: Some("Schwarz".to_string()),
                     location: Some("Regal 2".to_string()),
                     diameter_mm: 1.75,
-                    original_weight_g: 1000,
-                    remaining_weight_g: 800,
+                    original_weight_g: 1000.0,
+                    remaining_weight_g: 800.0,
                     price: Some(19.99),
                     image_png: Some(vec![9, 9, 9]),
                     color_hex: Some("#1a1a1a".to_string()),

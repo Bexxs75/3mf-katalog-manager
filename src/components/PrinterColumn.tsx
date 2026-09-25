@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
-import { formatWeightG } from '../i18n/format';
+import { formatStockG } from '../i18n/format';
 import { filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus';
 import { isInStorage, slotKey, spoolsBySlot } from '../lib/filamentSlots';
 import { isValidColorHex } from '../lib/filamentColors';
@@ -113,7 +113,7 @@ export function PrinterColumn({
                         </span>
                         <span className="flex items-center gap-1.5">
                           <span className="font-mono-ui text-[10.5px] text-[var(--ink-3)]">
-                            {formatWeightG(spool.remainingWeightG, language)}
+                            {formatStockG(spool.remainingWeightG, language)}
                           </span>
                           <span className="flex-1 h-1 rounded-full bg-[var(--plate)] overflow-hidden">
                             <span

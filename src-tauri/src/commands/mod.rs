@@ -158,7 +158,7 @@ pub(crate) fn estimate_material_cost(
                 .filter(|s| {
                     s.material.to_lowercase().contains(&type_lower)
                         && s.price.is_some()
-                        && s.original_weight_g > 0
+                        && s.original_weight_g > 0.0
                 })
                 .collect();
 
@@ -169,7 +169,7 @@ pub(crate) fn estimate_material_cost(
 
             let avg_price_per_gram: f64 = matching
                 .iter()
-                .map(|s| s.price.unwrap() / s.original_weight_g as f64)
+                .map(|s| s.price.unwrap() / s.original_weight_g)
                 .sum::<f64>()
                 / matching.len() as f64;
 
@@ -567,7 +567,7 @@ pub(crate) fn sample_file_record(id: i64, content_hash: Option<&str>, imported_a
 mod tests {
     use super::*;
 
-    fn sample_spool(material: &str, original_weight_g: i64, price: Option<f64>) -> db::models::FilamentSpoolRecord {
+    fn sample_spool(material: &str, original_weight_g: f64, price: Option<f64>) -> db::models::FilamentSpoolRecord {
         db::models::FilamentSpoolRecord {
             id: 1,
             material: material.to_string(),
@@ -603,7 +603,7 @@ mod tests {
     #[test]
     fn estimate_material_cost_uses_single_matching_spool() {
         let slice_info = sample_slice_info_single_filament("PLA", 20.0);
-        let spools = vec![sample_spool("PLA", 1000, Some(20.0))]; // 0.02 pro Gramm
+        let spools = vec![sample_spool("PLA", 1000.0, Some(20.0))]; // 0.02 pro Gramm
         let cost = estimate_material_cost(&slice_info, &spools);
         assert!((cost.total_cost.expect("cost") - 0.4).abs() < 1e-6);
         assert!(!cost.has_unpriced_filaments);
@@ -612,8 +612,8 @@ mod tests {
     fn estimate_material_cost_averages_multiple_matching_spools() {
         let slice_info = sample_slice_info_single_filament("PLA", 10.0);
         let spools = vec![
-            sample_spool("PLA", 1000, Some(20.0)), // 0.02/g
-            sample_spool("Generic PLA", 1000, Some(30.0)), // 0.03/g
+            sample_spool("PLA", 1000.0, Some(20.0)), // 0.02/g
+            sample_spool("Generic PLA", 1000.0, Some(30.0)), // 0.03/g
         ];
         let cost = estimate_material_cost(&slice_info, &spools);
         // Durchschnitt 0.025/g * 10g = 0.25
@@ -622,7 +622,7 @@ mod tests {
     #[test]
     fn estimate_material_cost_returns_none_when_no_matching_material() {
         let slice_info = sample_slice_info_single_filament("PETG", 10.0);
-        let spools = vec![sample_spool("PLA", 1000, Some(20.0))];
+        let spools = vec![sample_spool("PLA", 1000.0, Some(20.0))];
         let cost = estimate_material_cost(&slice_info, &spools);
         assert_eq!(cost.total_cost, None);
         assert!(cost.has_unpriced_filaments);
@@ -630,7 +630,7 @@ mod tests {
     #[test]
     fn estimate_material_cost_ignores_spools_without_price() {
         let slice_info = sample_slice_info_single_filament("PLA", 10.0);
-        let spools = vec![sample_spool("PLA", 1000, None)];
+        let spools = vec![sample_spool("PLA", 1000.0, None)];
         let cost = estimate_material_cost(&slice_info, &spools);
         assert_eq!(cost.total_cost, None);
         assert!(cost.has_unpriced_filaments);
@@ -658,7 +658,7 @@ mod tests {
                 ],
             }],
         };
-        let spools = vec![sample_spool("PLA", 1000, Some(20.0))]; // 0.02/g, kein Nylon im Lager
+        let spools = vec![sample_spool("PLA", 1000.0, Some(20.0))]; // 0.02/g, kein Nylon im Lager
         let cost = estimate_material_cost(&slice_info, &spools);
         assert!((cost.total_cost.expect("cost") - 0.4).abs() < 1e-6); // nur PLA-Anteil
         assert!(cost.has_unpriced_filaments); // Nylon fehlt
@@ -682,8 +682,8 @@ mod tests {
         // leere Typ-Zeichenkette beide "matchen" (jede Zeichenkette enthaelt "")
         // und einen Fantasiepreis liefern statt "unbekannt".
         let spools = vec![
-            sample_spool("PLA", 1000, Some(20.0)),
-            sample_spool("PETG", 1000, Some(25.0)),
+            sample_spool("PLA", 1000.0, Some(20.0)),
+            sample_spool("PETG", 1000.0, Some(25.0)),
         ];
         let cost = estimate_material_cost(&slice_info, &spools);
         assert_eq!(cost.total_cost, None);
@@ -769,7 +769,7 @@ mod tests {
                 .to_string(),
         );
 
-        let spools = vec![sample_spool("PLA", 1000, Some(20.0))]; // 0.02/g
+        let spools = vec![sample_spool("PLA", 1000.0, Some(20.0))]; // 0.02/g
 
         let dto = to_dto(file, &spools);
         let dto_json = serde_json::to_value(&dto).expect("dto serializes to JSON");

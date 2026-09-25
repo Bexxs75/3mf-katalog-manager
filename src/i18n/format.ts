@@ -52,6 +52,12 @@ export function formatWeightG(grams: number, language: Language): string {
   return `${new Intl.NumberFormat(localeFor(language)).format(grams)} g`;
 }
 
+/** Restgewicht einer Spule: immer eine Nachkommastelle (Zehntelgramm). */
+export function formatStockG(grams: number, language: Language): string {
+  const nf = new Intl.NumberFormat(localeFor(language), { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  return `${nf.format(grams)} g`;
+}
+
 export function formatLengthM(meters: number, language: Language): string {
   const nf = new Intl.NumberFormat(localeFor(language), { maximumFractionDigits: 1 });
   return `${nf.format(meters)} m`;

@@ -93,8 +93,8 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
       color: form.color.trim() || null,
       location: form.location.trim() || null,
       diameterMm: parseFloat(form.diameterMm) || 0,
-      originalWeightG: parseInt(form.originalWeightG, 10) || 0,
-      remainingWeightG: parseInt(form.remainingWeightG, 10) || 0,
+      originalWeightG: Math.round((parseFloat(form.originalWeightG.replace(',', '.')) || 0) * 10) / 10,
+      remainingWeightG: Math.round((parseFloat(form.remainingWeightG.replace(',', '.')) || 0) * 10) / 10,
       price: form.price.trim() === '' ? null : parseFloat(form.price),
       imagePng: form.imagePng,
       colorHex: form.colorHex,
@@ -301,6 +301,8 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
                 <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t('filamentOriginalWeightLabel')}</label>
                 <input
                   type="number"
+                  step="0.1"
+                  inputMode="decimal"
                   value={form.originalWeightG}
                   onChange={(e) => setForm((f) => ({ ...f, originalWeightG: e.target.value }))}
                   className={fieldClass}
@@ -310,6 +312,8 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
                 <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t('filamentRemainingWeightLabel')}</label>
                 <input
                   type="number"
+                  step="0.1"
+                  inputMode="decimal"
                   value={form.remainingWeightG}
                   onChange={(e) => setForm((f) => ({ ...f, remainingWeightG: e.target.value }))}
                   className={fieldClass}
