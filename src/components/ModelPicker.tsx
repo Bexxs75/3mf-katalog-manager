@@ -76,7 +76,7 @@ export function ModelPicker({ models, onChange, onClose }: Props) {
           role="option"
           aria-selected={active === 0}
           onClick={() => choose(NONE)}
-          className={`text-left px-2 py-1 text-[12.5px] text-[var(--ink-3)] rounded cursor-pointer ${active === 0 ? 'bg-[var(--panel-2)]' : ''}`}
+          className={`shrink-0 text-left px-2 py-1 text-[12.5px] text-[var(--ink-3)] rounded cursor-pointer ${active === 0 ? 'bg-[var(--panel-2)]' : ''}`}
         >
           {t('printerJobModelNoModel')}
         </li>
@@ -87,7 +87,7 @@ export function ModelPicker({ models, onChange, onClose }: Props) {
             role="option"
             aria-selected={active === i + 1}
             onClick={() => choose(m.id)}
-            className={`px-2 py-1 text-[12.5px] rounded truncate cursor-pointer ${active === i + 1 ? 'bg-[var(--panel-2)]' : ''}`}
+            className={`shrink-0 px-2 py-1 text-[12.5px] rounded truncate cursor-pointer ${active === i + 1 ? 'bg-[var(--panel-2)]' : ''}`}
           >
             {m.name}
           </li>
