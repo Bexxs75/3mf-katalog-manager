@@ -17,9 +17,8 @@ interface Props {
 const POPUP_MIN_WIDTH = 280;
 
 /**
- * "− Verbrauch" (v0.13.1, Mockup freigegeben): verbrauchte ml einer Resin-Flasche
- * abbuchen. Nutzt die gemeinsame Popover-Huelle SpoolPopoverShell (wie
- * RestockPopover); Enter im Mengenfeld loest zusaetzlich das Absenden aus.
+ * "− Verbrauch": verbrauchte ml einer Resin-Flasche abbuchen (Huelle:
+ * SpoolPopoverShell); Enter im Mengenfeld sendet ab.
  */
 export function ConsumeResinPopover({ spool, anchor, onClose, onConsumed }: Props) {
   const t = useT();

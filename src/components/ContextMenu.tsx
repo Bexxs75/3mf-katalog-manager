@@ -34,9 +34,7 @@ export function ContextMenu({
   const t = useT();
   const [view, setView] = useState<View>('menu');
   const [baseNameDraft, setBaseNameDraft] = useState('');
-  // Wird nur beim Oeffnen der Umbenennen-Ansicht aus currentName abgeleitet
-  // (siehe "Umbenennen"-Button unten) und danach nicht mehr veraendert -
-  // die Endung ist bewusst nicht Teil des editierbaren Eingabefelds.
+  // Beim Oeffnen des Umbenennens abgeleitet; die Endung ist nicht editierbar.
   const [extension, setExtension] = useState('');
   const [renameError, setRenameError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
@@ -47,10 +45,8 @@ export function ContextMenu({
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     };
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Waehrend des Umbenennens schluckt das Eingabefeld selbst Escape
-      // (siehe unten) - dieser globale Handler ist nur fuer die reine
-      // Menue-Ansicht gedacht, damit Escape das ganze Menue schliesst statt
-      // versehentlich mitten in einer Texteingabe zuzuschlagen.
+      // Beim Umbenennen faengt das Eingabefeld Escape selbst ab; hier nur fuer die
+      // Menue-Ansicht.
       if (e.key === 'Escape' && view === 'menu') onClose();
     };
     document.addEventListener('mousedown', handlePointerDown);

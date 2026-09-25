@@ -15,8 +15,7 @@ interface Handlers {
   onUnload: (spoolId: string) => void;
   /**
    * Passt die gezogene Spule in diese Einheit? Resin-Flaschen nur in eine
-   * Harzwanne, Filament nie (v0.14.0). Ein unpassendes Fach wird nie zum
-   * Ziel: keine Markierung, kein Ablegen.
+   * Harzwanne, Filament nie. Ein unpassendes Fach wird nie zum Ziel.
    */
   canDropOnSlot?: (spoolId: string, unitId: string) => boolean;
 }
@@ -115,8 +114,7 @@ export function useSpoolDragAndDrop({ onLoad, onUnload, canDropOnSlot }: Handler
     [active, source],
   );
 
-  // Spaetes mouseleave darf ein neueres mouseenter nicht ueberschreiben
-  // (gleiche Falle wie in useFolderDragAndDrop, Review-Fund I-1).
+  // Spaetes mouseleave darf ein neueres mouseenter nicht ueberschreiben (wie in useFolderDragAndDrop).
   const leaveTarget = useCallback((left: SpoolDropTarget) => {
     setTarget((current) => {
       if (!current) return null;

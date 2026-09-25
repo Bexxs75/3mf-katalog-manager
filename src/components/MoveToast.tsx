@@ -8,18 +8,9 @@ interface Props {
 }
 
 /**
- * Kurze Bestaetigungs-Meldung nach einem per Maus-Drag ausgeloesten Verschieben
- * (Datei oder Ordner), bzw. nach dem Anlegen eines Ordners. Analog zur
- * `.toast`-Optik im HTML-Mockup, aber mit den Projekt-Tokens statt fester
- * Farbwerte, damit Hell/Dunkel-Theme automatisch passt. Verschwindet nach 3
- * Sekunden von selbst (`onDone` raeumt den `moveToast`-State in `App.tsx`
- * auf); ein erneuter Move waehrenddessen ersetzt die Props und startet den
- * Timer ueber den Effekt-Cleanup neu.
- *
- * `error`: fuer fehlgeschlagene move_file_to_folder/move_folder/create_folder
- * Aufrufe wiederverwendet (statt die Fehlermeldung nur unsichtbar in das
- * Settings-only `catalogBackupError` zu routen) - `to` traegt in diesem Fall
- * die Fehlermeldung statt eines Zielpfads, kein Pfeil, roter Akzent.
+ * Kurze Bestaetigung nach einem Verschieben per Ziehen oder dem Anlegen eines
+ * Ordners; verschwindet nach 3 s (`onDone`). Ein neuer Move startet den Timer
+ * neu. Mit `error` traegt `to` die Fehlermeldung (kein Pfeil, roter Akzent).
  */
 export function MoveToast({ from, to, error = false, onDone }: Props) {
   useEffect(() => {

@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 
-// Extrahiert aus SpoolPicker (Commits 3365945 + 475c607): fixed-positioniertes
-// Popup ausserhalb des DOM-Baums (per createPortal in document.body), damit
-// ueberlaufende Dialog-Scrollcontainer es nicht abschneiden. Wird von
-// SpoolPicker und ModelPicker gemeinsam genutzt.
+// Fixed positioniertes Popup per Portal in document.body, damit ueberlaufende
+// Dialog-Scrollcontainer es nicht abschneiden (SpoolPicker, ModelPicker).
 
 const VIEWPORT_MARGIN = 8;
 
@@ -26,17 +24,11 @@ function popupPosition(rect: DOMRect, minWidth: number): AnchoredPopupStyle {
 }
 
 /**
- * Positioniert ein Popup fixed relativ zu einem Anker-Element und schliesst
- * es bei Klick ausserhalb, Fenster-Resize und "echtem" Scroll (Seite oder ein
- * aeusserer Scroll-Container). Scroll-Events, die vom Popup selbst kommen
- * (z.B. sein eigenes scrollIntoView beim Oeffnen oder bei
- * Pfeiltasten-Navigation), duerfen das Popup NICHT schliessen - sonst
- * schliesst es sich in echten Browsern sofort wieder selbst, noch bevor der
- * Nutzer etwas anklicken kann (Regression aus 3365945).
- *
- * Klappt das Popup nach oben, wenn unten im Viewport nicht genug Platz ist,
- * aber oben mehr - erst nach dem ersten Rendern moeglich, da dafuer die
- * tatsaechliche Hoehe des Popups gemessen wird.
+ * Positioniert ein Popup fixed am Anker und schliesst es bei Klick ausserhalb,
+ * Resize und echtem Scroll. Scroll-Events aus dem Popup selbst (z.B. sein
+ * scrollIntoView) schliessen es nicht, sonst ginge es sofort wieder zu.
+ * Klappt nach oben, wenn unten zu wenig Platz ist (nach dem ersten Rendern
+ * gemessen).
  */
 export function useAnchoredPopup<Anchor extends HTMLElement, Popup extends HTMLElement>(
   anchorRef: RefObject<Anchor | null>,
@@ -47,19 +39,14 @@ export function useAnchoredPopup<Anchor extends HTMLElement, Popup extends HTMLE
   const popupRef = useRef<Popup>(null);
   const [style, setStyle] = useState<AnchoredPopupStyle | null>(null);
 
-  // Neueste onClose-Referenz halten, damit die Listener unten nicht bei
-  // jedem Render der aufrufenden Komponente ab- und wieder angemeldet werden
-  // muessen (identisch zum bisherigen Verhalten von SpoolPicker, dessen
-  // `setOpen`-Setter referenzstabil war).
+  // Neueste onClose-Referenz halten, damit die Listener nicht bei jedem Render neu angemeldet werden.
   const onCloseRef = useRef(onClose);
   useEffect(() => {
     onCloseRef.current = onClose;
   });
 
-  // Position relativ zum Anker berechnen, wenn geoeffnet wird. Wird beim
-  // Schliessen NICHT zurueckgesetzt, damit beim naechsten Oeffnen sofort eine
-  // (ggf. leicht veraltete) Position da ist, statt kurz an Position 0/0 zu
-  // erscheinen.
+  // Position beim Oeffnen berechnen und beim Schliessen behalten, damit das
+  // Popup beim naechsten Oeffnen nicht kurz bei 0/0 erscheint.
   useEffect(() => {
     if (!open) return;
     const anchor = anchorRef.current;

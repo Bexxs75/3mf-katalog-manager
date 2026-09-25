@@ -14,14 +14,13 @@ interface Props {
 export function PrinterLinkSettings({ link, printers }: Props) {
   const t = useT();
   const [actionError, setActionError] = useState<string | null>(null);
-  // Resin-Drucker haben keine Druckeranbindung (v0.14.0).
+  // Resin-Drucker haben keine Druckeranbindung.
   const linkable = printers.filter((p) => p.kind !== 'resin');
   const statusOf = (printerId: string): { text: string; dot: string } => {
     const c = link.connections.find((x) => x.printerId === printerId);
     if (!c) return { text: t('printerLinkStatusNotLinked'), dot: 'bg-[var(--ink-3)]' };
-    // Nach einer Sicherungswiederherstellung ist `paused` gesetzt, aber
-    // `lastError` (noch) leer - ohne diesen Zweig sah die Verbindung
-    // "verbunden" aus, obwohl der Abgleich sie fuer immer ueberspringt.
+    // Nach einer Wiederherstellung ist `paused` gesetzt, `lastError` aber leer;
+    // ohne diesen Zweig saehe die Verbindung faelschlich verbunden aus.
     if (c.paused && c.lastError !== 'auth_required') return { text: t('printerPausedRetest'), dot: 'bg-[var(--warn)]' };
     if (c.lastError) return { text: t('printerLinkStatusError'), dot: 'bg-[var(--crit)]' };
     return { text: t('printerLinkStatusConnected'), dot: 'bg-[var(--good)]' };

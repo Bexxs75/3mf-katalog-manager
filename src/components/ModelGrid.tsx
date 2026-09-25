@@ -34,17 +34,10 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
   const [dragArmed, setDragArmed] = useState(false);
   const dragStartPos = useRef<{ x: number; y: number } | null>(null);
 
-  // Reihenfolge-Aenderung per Maus-Events statt nativem HTML5-Drag&Drop -
-  // identisches Muster wie die Warteschlange in Sidebar.tsx. Natives
-  // draggable/onDragStart/onDragOver/onDrop funktioniert unter Tauri/
-  // WebKitGTK nicht zuverlaessig, da dragDropEnabled native Drag-Sessions
-  // auf Fensterebene abfaengt.
-  //
-  // Toleranzschwelle (dragArmed): ein Klick auf die Bulk-Checkbox oder den
-  // Favoriten-Stern loest ebenfalls onMouseDown aus. Ohne Mindestbewegung
-  // wuerde ein winziges, unbeabsichtigtes Verrutschen auf eine Nachbarkarte
-  // bereits ein Umsortieren ausloesen - erst ab DRAG_THRESHOLD_PX Bewegung
-  // seit dem Mousedown gilt der Vorgang als echter Drag.
+  // Umsortieren per Maus-Events statt HTML5-DnD (unter Tauri/WebKitGTK faengt
+  // dragDropEnabled native Drag-Sessions ab). Erst ab DRAG_THRESHOLD_PX
+  // Bewegung gilt es als Ziehen, sonst wuerde schon ein verrutschter Klick auf
+  // Checkbox oder Stern umsortieren.
   const DRAG_THRESHOLD_PX = 6;
   useEffect(() => {
     if (!reorderable || dragIndex === null) return;
@@ -76,14 +69,9 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
     };
   }, [reorderable, dragIndex, overIndex, dragArmed, models, onReorder]);
 
-  // Karten als Drag-Quelle fuer physisches Verschieben in einen Ordner
-  // (normale Katalog-Ansicht, `reorderable` ist dort false/undefined - die
-  // beiden Mechanismen schliessen sich pro Ansicht gegenseitig aus). Gleiches
-  // Schwellenwert-Muster wie oben (`DRAG_THRESHOLD_PX`), damit ein normaler
-  // Klick (Auswahl/Detailseite oeffnen) nicht versehentlich als Drag zaehlt.
-  // `draggedFileId` selbst lebt in App.tsx (globaler mouseup-Handler dort
-  // loest den `move_file_to_folder`-Call aus) - hier wird nur einmalig
-  // `onDragFileStart` gefeuert, sobald die Bewegung die Schwelle ueberschreitet.
+  // Karten als Drag-Quelle fuer das Verschieben in einen Ordner (nur ohne
+  // `reorderable`), mit derselben Schwelle. Den Move loest der globale
+  // mouseup-Handler in App.tsx aus; hier nur `onDragFileStart`.
   const [fileDragCandidateId, setFileDragCandidateId] = useState<string | null>(null);
   const [fileDragArmed, setFileDragArmed] = useState(false);
   const fileDragStartPos = useRef<{ x: number; y: number } | null>(null);

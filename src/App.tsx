@@ -98,11 +98,8 @@ export default function App() {
   const contextModel = contextMenu ? store.models.find((m) => m.id === contextMenu.modelId) ?? null : null;
 
   useEffect(() => {
-    // Sicherheitsnetz fuer Finding M-01: `selectModel` (immer vor einem
-    // Doppelklick ausgeloest) stoesst das Nachladen der vollen Modelldaten
-    // bereits an, aber falls die Detailseite jemals ohne vorherigen
-    // selectModel()-Aufruf geoeffnet wird, holt dieser Effekt die vollen
-    // Daten trotzdem nach (ensureFullModel ist idempotent).
+    // Sicherheitsnetz: selectModel laedt die vollen Daten normalerweise schon;
+    // ensureFullModel ist idempotent.
     if (detailModelId) store.ensureFullModel(detailModelId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detailModelId]);
@@ -118,11 +115,8 @@ export default function App() {
   });
 
   useEffect(() => {
-    // Laeuft garantiert erst NACH dem Commit+Paint des Re-Renders, der durch
-    // renameFile()s setModels() ausgeloest wurde (siehe Kommentar dort) -
-    // anders als ein rohes requestAnimationFrame direkt im Promise-Handler
-    // ist hier sichergestellt, dass die Kachel bereits an ihrer neuen,
-    // sortierten Position im DOM sitzt, bevor gescrollt wird.
+    // Laeuft sicher nach dem Commit des Umbenennens, die Kachel sitzt also schon
+    // an ihrer neuen Position (siehe renameFile).
     if (!store.pendingScrollToId) return;
     const id = store.pendingScrollToId;
     document.querySelector(`[${MODEL_TILE_ATTR}="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -204,13 +198,8 @@ export default function App() {
           cleanupScanning={cleanup.cleanupScanning}
           cleanupError={cleanup.cleanupError}
           onExportCatalog={backup.exportCatalog}
-          // Backend hat AppState.db bereits auf den neu importierten Katalog
-          // umverbunden - ohne sofortigen Reload wuerde das Frontend weiter
-          // veraltete Modell-IDs aus dem alten Katalog anzeigen und Aktionen
-          // (Loeschen/Favorit/Tag) koennten versehentlich falsche Datensaetze
-          // im neuen Katalog treffen (Finding C1). Ein voller Reload laedt die
-          // React-App komplett neu und holt alle Daten gegen die jetzt aktive
-          // DB neu ab.
+          // Das Backend nutzt schon den neuen Katalog: voller Reload, sonst trafen
+          // Aktionen mit veralteten IDs falsche Datensaetze.
           onImportCatalog={() => backup.importCatalog(() => window.location.reload())}
           catalogBackupError={backup.catalogBackupError}
           catalogBaseDir={catalogBaseDir}

@@ -41,12 +41,8 @@ function disposeObject(object: THREE.Object3D) {
   });
 }
 
-// Baut aus den von decodeModelGeometry gelieferten Rohdaten eine
-// THREE-Objekthierarchie auf. Die Positionen sind bereits weltraum-
-// transformiert (Rust liefert sie so) - anders als vor der Umstellung auf
-// die native Geometrie-Extraktion ist daher keine Matrix-Handhabung pro
-// Mesh mehr noetig, eine flache Gruppe aus Meshes mit Identitaets-
-// Transformation genuegt.
+// Baut aus den Rohdaten eine flache Gruppe; die Positionen kommen aus Rust
+// schon weltraum-transformiert.
 function buildGroup(meshes: ParsedMesh[], material: THREE.MeshStandardMaterial): THREE.Group {
   const group = new THREE.Group();
   for (const mesh of meshes) {
@@ -77,11 +73,8 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [autoRotating, setAutoRotating] = useState(false);
 
-  // Renderer/Szene/Kamera/Controls/Licht werden nur einmal beim Mounten
-  // aufgebaut und beim Unmounten freigegeben - ein WebGL-Kontext-Neuaufbau
-  // ist teuer und bremste bei jedem Modellwechsel spuerbar die ganze App
-  // aus. Modellwechsel (zweiter Effekt unten) tauschen nur das angezeigte
-  // Objekt in dieser bestehenden Szene aus.
+  // Renderer, Szene, Kamera und Licht nur einmal aufbauen: ein neuer
+  // WebGL-Kontext pro Modellwechsel bremste die App spuerbar.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -104,8 +97,7 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
     fill.position.set(-1, -0.4, -1);
     scene.add(fill);
 
-    // Koralle nah am App-Akzent: hebt sich im hellen wie im dunklen Design
-    // deutlich vom schraffierten Hintergrund ab (vorher Beige 0xd7c9a8).
+    // Koralle nah am App-Akzent, hebt sich in beiden Themes vom Hintergrund ab.
     const material = new THREE.MeshStandardMaterial({
       color: 0xd0603f,
       roughness: 0.55,
@@ -163,19 +155,9 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
         if (cancelled) return;
         const meshes = decodeModelGeometry(buffer);
         const object = buildGroup(meshes, ctx.material);
-        // 3MF/STL sind Z-up (Druckplatte = XY-Ebene, Z = Druckhoehe), Three.js/
-        // OrbitControls gehen dagegen von Y-up aus (Azimut-Drehung erfolgt
-        // immer um die Welt-Y-Achse). Ohne diese Korrektur liegt die stehende
-        // Achse der Figur quer zur Kamera-Drehachse: freies Ziehen kippt sie
-        // dann seitlich um, und keine Kamerastellung zeigt sie dauerhaft
-        // aufrecht (siehe Review 2026-09-13 - ein vorheriger Versuch, das
-        // stattdessen per fixiertem Polarwinkel zu loesen, verhinderte nur
-        // noch zusaetzlich, sie ueberhaupt wieder aufzurichten). Eine feste
-        // Rotation um -90 Grad auf der X-Achse mappt die Modell-Z-Achse auf
-        // Three.js' Y-Achse, danach ist jede Azimut-Drehung (Maus-Drag,
-        // Auto-Rotation, Pfeil-Buttons) ein sauberer Drehteller um die
-        // tatsaechlich stehende Achse - die Figur bleibt dabei in jeder
-        // Kamera-Neigung aufrecht und schaut den Betrachter weiterhin an.
+        // 3MF/STL sind Z-up, OrbitControls drehen um die Welt-Y-Achse. Die feste
+        // Drehung um -90 Grad auf X macht jede Azimut-Drehung zum Drehteller um die
+        // stehende Achse des Modells.
         object.rotateX(-Math.PI / 2);
 
         if (ctx.currentObject) {
@@ -223,21 +205,15 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
     };
   }, [fileId]);
 
-  // Synchronisiert den Auto-Rotation-Button-Zustand mit OrbitControls'
-  // eingebauter autoRotate-Funktion. OrbitControls pausiert autoRotate
-  // intern automatisch, sobald der Nutzer selbst per Maus zieht, und setzt
-  // sie danach von selbst fort - kein eigener Rotations-Loop noetig.
+  // OrbitControls pausiert autoRotate beim Ziehen selbst und setzt danach fort.
   useEffect(() => {
     if (ctxRef.current) {
       ctxRef.current.controls.autoRotate = autoRotating;
     }
   }, [autoRotating]);
 
-  // Dreht die Kamera um einen festen Schritt (15 Grad) um die vertikale
-  // Achse, unabhaengig vom Auto-Rotation-Zustand. Reine oeffentliche
-  // three.js-API (THREE.Spherical) - OrbitControls' interne
-  // rotateLeft/rotateRight-Methoden sind private Closures, nicht von
-  // aussen ansprechbar.
+  // Dreht die Kamera um 15 Grad um die Hochachse. Ueber THREE.Spherical, weil
+  // rotateLeft/rotateRight in OrbitControls privat sind.
   const rotateStep = (direction: 1 | -1) => {
     const ctx = ctxRef.current;
     if (!ctx) return;

@@ -8,9 +8,7 @@ beforeEach(() => localStorage.setItem('3mf-katalog-language', 'de'));
 
 const defaultModels: ModelOption[] = [{ id: '1', name: 'Rakete.3mf' }, { id: '2', name: 'Kabelclip.stl' }];
 
-// ModelPicker rendert ihr Popup per Portal fixed relativ zu `anchorRef` -
-// dieser Helfer stellt (wie in PrinterJobsDialog) einen echten Auswahl-Knopf
-// als Anker bereit.
+// Echter Auswahl-Knopf als Anker, wie in PrinterJobsDialog.
 function renderPicker(overrides: { models?: ModelOption[]; onChange?: (id: string | null) => void; onClose?: () => void } = {}) {
   const anchorRef = createRef<HTMLButtonElement>();
   const onChange = overrides.onChange ?? vi.fn();
@@ -73,10 +71,8 @@ describe('ModelPicker', () => {
   });
 
   it('renders its popup in a portal attached to document.body, not the local render tree', () => {
-    // Regression: absolute Positionierung wurde vom ueberlaufenden
-    // Dialog-Scrollcontainer in PrinterJobsDialog abgeschnitten - das Popup
-    // muss per createPortal direkt an document.body haengen (wie
-    // SpoolPicker, Commits 3365945 + 475c607).
+    // Das Popup haengt per Portal an document.body, sonst schneidet es der
+    // Scrollcontainer des Dialogs ab.
     const { container } = renderPicker();
     const listbox = screen.getByRole('listbox');
     expect(container.contains(listbox)).toBe(false);

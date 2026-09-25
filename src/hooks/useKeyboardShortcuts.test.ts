@@ -10,10 +10,7 @@ function fireKey(key: string, target: EventTarget = window) {
   return event;
 }
 
-// Legt eine Kachel mit fester, per getBoundingClientRect gemockter Position
-// an - jsdom layoutet nicht wirklich, reale Positionen muessen deshalb
-// vorgegeben werden, genau wie es ein echtes CSS-Grid-Layout im Browser tun
-// wuerde.
+// Kachel mit gemockter Position: jsdom layoutet nicht.
 function placeTile(id: string, rect: { left: number; top: number; width?: number; height?: number }) {
   const el = document.createElement('div');
   el.setAttribute(MODEL_TILE_ATTR, id);
@@ -47,9 +44,8 @@ describe('findSpatialNeighbor', () => {
   });
 
   it('picks the horizontally closest tile in the next row when columns are uneven', () => {
-    // Zeile 2 hat nur 2 statt 3 Kacheln (z.B. letzte Zeile eines Ordner-
-    // Abschnitts) - "runter" von "b" (x-Mitte 150) muss die naeher liegende
-    // von "d" (x-Mitte 50) und "e" (x-Mitte 150) treffen, also "e".
+    // Zeile 2 hat nur 2 Kacheln: "runter" von "b" (x-Mitte 150) muss die naehere
+    // von "d" (50) und "e" (150) treffen, also "e".
     placeTile('a', { left: 0, top: 0 });
     placeTile('b', { left: 100, top: 0 });
     placeTile('c', { left: 200, top: 0 });

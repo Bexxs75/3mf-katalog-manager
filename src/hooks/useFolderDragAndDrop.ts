@@ -9,31 +9,21 @@ interface Refreshers {
 }
 
 export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { refreshFolders, refreshFiles }: Refreshers) {
-  // Maus-basiertes Drag-Tracking fuer physisches Verschieben von Dateien/
-  // Ordnern (Task 7) - folgt demselben Muster wie der Warteschlangen-Reorder
-  // in Sidebar.tsx und der Karten-Reorder in ModelGrid.tsx: kein natives
-  // HTML5-DnD (draggable/onDragStart/onDragOver/onDrop), da Tauri/WebKitGTK
-  // das nicht zuverlaessig unterstuetzt (dragDropEnabled faengt native
-  // Drag-Sessions auf Fensterebene ab, siehe Kommentare dort).
+  // Maus-basiertes Ziehen statt HTML5-DnD: unter Tauri/WebKitGTK faengt
+  // dragDropEnabled native Drag-Sessions auf Fensterebene ab.
   const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
   const [draggedFolderId, setDraggedFolderId] = useState<string | null>(null);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   const [moveToast, setMoveToast] = useState<{ from: string; to: string; error?: boolean } | null>(null);
 
   const onDragFileStart = useCallback((id: string) => setDraggedFileId(id), []);
-  // Baum-Zeile in FolderTree wird per Mousedown als Drag-Quelle markiert
-  // (Ordner-auf-Ordner-Verschieben, Step 7). Ein einfacher Klick ohne
-  // anschliessendes Hovern ueber eine andere Zeile loest nie einen Move aus,
-  // da dragOverFolderId dann null bleibt (siehe Mouseup-Handler unten).
+  // Ein Klick ohne Hovern ueber eine andere Zeile verschiebt nichts
+  // (dragOverFolderId bleibt null).
   const onDragFolderStart = useCallback((id: string) => setDraggedFolderId(id), []);
   const dismissMoveToast = useCallback(() => setMoveToast(null), []);
 
-  // Baum-Zeile wird waehrend eines aktiven Drags (Datei oder Ordner)
-  // betreten -> Drop-Ziel-Highlight setzen. Beim Ordner-Drag wird die
-  // Zyklus-Vorabpruefung (eigener Unterbaum/sich selbst) hier clientseitig
-  // dupliziert, damit gar kein Highlight auf einem ungueltigen Ziel
-  // erscheint - die serverseitige Pruefung in move_folder (Task 5) bleibt
-  // die verbindliche Instanz.
+  // Die Zyklus-Pruefung ist hier nur fuer das Highlight dupliziert; verbindlich
+  // prueft move_folder im Backend.
   const handleFolderMouseEnter = useCallback(
     (id: string) => {
       if (!draggedFileId && !draggedFolderId) return;
@@ -46,13 +36,9 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
     [draggedFileId, draggedFolderId, folders],
   );
 
-  // Kopfzeile wird verlassen -> Highlight zuruecksetzen, sofern nicht
-  // bereits eine andere Zeile inzwischen als Ziel gesetzt wurde (spaetes
-  // mouseleave darf ein neueres mouseenter nicht ueberschreiben - siehe
-  // Review-Fund I-1: ohne dieses Reset bleibt dragOverFolderId auf dem
-  // zuletzt ueberfahrenen Ordner haengen, wenn danach ueber einer Karte
-  // oder der "Ohne Ordner"-Sektion losgelassen wird, und loest dort einen
-  // ungewollten move_file_to_folder in den falschen Ordner aus).
+  // Nur zuruecksetzen, wenn nicht schon eine andere Zeile Ziel ist: ein spaetes
+  // mouseleave darf ein neueres mouseenter nicht ueberschreiben, sonst landet
+  // ein Drop ueber einer Karte im zuletzt ueberfahrenen Ordner.
   const handleFolderMouseLeave = useCallback((id: string) => {
     setDragOverFolderId((current) => (current === id ? null : current));
   }, []);
@@ -64,10 +50,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
         .then(() => refreshFolders())
         .catch((e) => {
           console.error('[folders] Anlegen fehlgeschlagen:', e);
-          // Fehler sichtbar in der Naehe des Ordnerbaums zeigen (MoveToast
-          // wiederverwendet mit error:true) statt nur in das Settings-only
-          // catalogBackupError zu routen, das ohne geoeffnetes Rail-Panel
-          // unsichtbar bleibt.
+          // Fehler neben dem Ordnerbaum zeigen; catalogBackupError waere ohne offenes Panel unsichtbar.
           setMoveToast({ from: name, to: String(e), error: true });
         }),
     [refreshFolders],
@@ -100,11 +83,8 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
     return () => document.removeEventListener('mouseup', handleMouseUp);
   }, [draggedFileId, dragOverFolderId, models, folders, refreshFolders, refreshFiles]);
 
-  // Analoger mouseup-Handler fuer das Verschieben eines Ordners per
-  // Maus-Drag auf eine andere Baum-Zeile (Step 7). Die Zyklus-Pruefung wird
-  // hier zusaetzlich wiederholt (nicht nur beim Hover-Highlight), damit ein
-  // ungueltiges Ziel unter keinen Umstaenden einen invoke-Aufruf ausloest -
-  // move_folder auf der Rust-Seite lehnt es ohnehin verbindlich ab.
+  // Ordner auf Ordner ziehen. Die Zyklus-Pruefung wiederholt sich hier, damit ein
+  // ungueltiges Ziel nie einen invoke ausloest.
   useEffect(() => {
     if (!draggedFolderId) return;
     const handleMouseUp = () => {

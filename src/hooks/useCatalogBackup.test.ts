@@ -51,11 +51,8 @@ describe('useCatalogBackup', () => {
   });
 
   it('Finding 7 (Abschluss-Review): exportCatalog no longer exports the dead slicer localStorage key', async () => {
-    // Seit Task 11 lebt die Slicer-Registry in der DB statt in localStorage -
-    // kein Code schreibt diesen Schluessel mehr, ein etwaiger Alt-Wert (z.B.
-    // aus einer Version vor Task 11) waere lediglich ein maschinenlokaler
-    // Programmpfad, der in einem portablen Backup nichts verloren hat und
-    // dort nicht mehr auftauchen darf.
+    // Die Slicer-Registry liegt im Backend; ein Alt-Wert in localStorage ist ein
+    // maschinenlokaler Pfad und darf nicht ins Backup.
     localStorage.setItem('3mf-katalog-slicers', JSON.stringify({ slicers: [{ id: 'x', path: '/opt/old-slicer' }] }));
     vi.mocked(invoke).mockResolvedValue(undefined);
     const { result } = renderHook(() => useCatalogBackup());

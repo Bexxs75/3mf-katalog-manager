@@ -40,12 +40,7 @@ type ToastState =
 
 interface Props {
   printerLink: PrinterLinkState;
-  /**
-   * Von App.tsx einmal angelegt und auch an Rail (Reiter "Drucker")
-   * weitergereicht - eine gemeinsame Instanz, damit z.B. das Hinzufuegen
-   * eines Druckers hier auch dort sofort sichtbar ist (nicht erst nach
-   * einem Remount).
-   */
+  /** Gemeinsame Instanz mit Rail, damit Aenderungen sofort ueberall sichtbar sind. */
   printers: PrintersState;
   /** Katalog neu laden (z.B. Druckstatus/Warteschlange) nach dem Bestaetigen von Drucken. */
   onCatalogChanged?: () => void;
@@ -78,11 +73,8 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
       .catch(() => setModels([]));
   }, [jobsOpen]);
 
-  // Wird die Liste waehrend der Dialog offen ist leer (z.B. nach dem letzten
-  // Bestaetigen/Ignorieren), muss `jobsOpen` mit zurueckgesetzt werden -
-  // sonst bleibt der Banner dauerhaft ausgeblendet (er zeigt sich nur, wenn
-  // `!jobsOpen`) UND der Dialog wuerde beim naechsten Abgleich mit neuen
-  // Drucken ungefragt wieder aufspringen (`open={jobsOpen && jobs.length > 0}`).
+  // Leert sich die Liste bei offenem Dialog, jobsOpen zuruecksetzen: sonst
+  // bliebe der Banner aus und der Dialog spraenge beim naechsten Abgleich auf.
   useEffect(() => {
     if (jobsOpen && printerLink.jobs.length === 0) setJobsOpen(false);
   }, [jobsOpen, printerLink.jobs.length]);
@@ -117,8 +109,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
     [spools],
   );
 
-  // Spulen im Drucker stehen nur in der rechten Spalte, nicht im Lager
-  // (Spec: "Spulen im Drucker werden getrennt vom Lager angezeigt").
+  // Spulen im Drucker stehen nur in der rechten Spalte, nicht im Lager.
   const storageSpools = useMemo(() => spools.filter((s) => isInStorage(s) && s.kind === kind), [spools, kind]);
 
   // Druckeranbindung kennt nur Filament (Resin nie als Buchungsziel).
@@ -146,10 +137,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
   const stats = useMemo(() => {
     const ofKind = spools.filter((s) => s.kind === kind);
     const totalRemaining = roundTenth(ofKind.reduce((sum, s) => sum + s.remainingWeightG, 0));
-    // `s.location ?? s.homeLocation`: eine geladene Spule hat `location` auf
-    // NULL stehen (ihr Lagerort liegt als Stammplatz in `homeLocation`, siehe
-    // db/printers.rs) - ohne den Fallback wuerde ihr Lagerort beim Laden aus
-    // dieser Statistik verschwinden, obwohl er weiterhin existiert.
+    // Geladene Spulen haben ihren Lagerort in `homeLocation`.
     const locations = new Set(ofKind.map((s) => s.location ?? s.homeLocation).filter(Boolean)).size;
     const attention = ofKind.filter((s) => filamentStockStatus(s) !== 'ok').length;
     return { total: ofKind.length, totalRemaining, locations, attention };

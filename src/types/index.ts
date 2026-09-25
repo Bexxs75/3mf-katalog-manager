@@ -58,22 +58,10 @@ export interface ModelFile {
 }
 
 /**
- * Schlanke Projektion von `ModelFile` fuer die Katalog-Uebersicht (Grid/
- * Liste), gespeist von `list_file_summaries` (Finding M-01: die volle
- * `ModelFile`-Abfrage laedt pro Zeile Materials/Tags/Metadata sowie das
- * grosse `customImage`-Zusatzbild, obwohl die Uebersicht nur eine Kachel-
- * Vorschau braucht). Enthaelt bewusst KEIN `materials`/`tags`/`customImage`/
- * `sliceInfo`/`costEstimate`/`sourceUrl`/`lastViewedAt` - `thumbnailImage`,
- * `renderSnapshotImage` UND `creator` bleiben dagegen enthalten, da Grid-
- * Vorschau bzw. Sidebar-/Suchfilter direkt auf diesen Feldern operieren
- * (Bugfix 2026-09-20: sowohl `renderSnapshotImage` als auch `creator` waren
- * hier zunaechst ausgeschlossen, siehe Kommentar an `db::FileSummary` im
- * Backend - ohne sie zeigte das Grid nie einen im Hintergrund bereits
- * gerenderten Snapshot bzw. lief der Creator-Filter fuer jedes nur per
- * Summary geladene Modell ins Leere, solange es nicht einzeln per
- * `listFilesByIds` nachgeladen wurde).
- * Volle Daten werden erst beim Oeffnen der Detailseite/Auswahl ueber
- * `listFilesByIds([id])` nachgeladen (siehe `useCatalogStore.ts`).
+ * Schlanke Projektion von `ModelFile` fuer Grid und Liste
+ * (`list_file_summaries`), ohne die Felder, die nur die Detailseite braucht
+ * (z.B. `materials`, `customImage`, `sliceInfo`). Volle Daten laedt
+ * `listFilesByIds([id])` bei der Auswahl nach.
  */
 export interface ModelFileSummary {
   id: string;
@@ -91,8 +79,7 @@ export interface ModelFileSummary {
   queuePosition: number | null;
   thumbnailImage: string | null;
   renderSnapshotImage: string | null;
-  // Praktisch redundant, seit renderSnapshotImage selbst mitgeliefert wird -
-  // siehe Kommentar an `db::FileSummary::has_render_snapshot`.
+  // Redundant zu renderSnapshotImage, siehe `db::FileSummary`.
   hasRenderSnapshot: boolean;
   creator: string | null;
   lastViewedAt: string | null;
@@ -182,20 +169,14 @@ export interface SavedFilter {
 export type ViewMode = 'grid' | 'groupedGrid' | 'groupedList';
 export type SortKey = 'name' | 'date' | 'size' | 'vol' | 'viewed';
 
-// M-06 (Task 11): die Slicer-Registry lebt jetzt vollstaendig im Backend
-// (`registered_slicers`-Tabelle) statt in localStorage - `id` ist seitdem
-// eine echte, vom Backend vergebene Datenbank-id (als String), kein mehr
-// client-seitig erzeugtes `crypto.randomUUID()`. `source` (manuell/
-// automatisch erkannt) wird vom Backend nicht mehr an das Frontend
-// zurueckgegeben - jeder registrierte Eintrag ist gleichermassen
-// vertrauenswuerdig, sobald er in der Tabelle steht.
+// Eintrag der Slicer-Registry im Backend; `id` ist die Datenbank-id.
 export interface SlicerConfig {
   id: string;
   name: string;
   path: string;
 }
 
-/** Art eines Lager-Eintrags (v0.13.1). Bei 'resin' sind originalWeightG/remainingWeightG Milliliter. */
+/** Art eines Lager-Eintrags. Bei 'resin' sind originalWeightG/remainingWeightG Milliliter. */
 export type SpoolKind = 'filament' | 'resin';
 
 export interface FilamentSpool {
@@ -227,10 +208,10 @@ export type UnitKind =
   | 'anycubic_ace'
   | 'external'
   | 'custom'
-  /** Harzwanne eines Resin-Druckers (v0.14.0): 1 Platz, fest, nur Resin. */
+  /** Harzwanne eines Resin-Druckers: 1 Platz, fest, nur Resin. */
   | 'resin_vat';
 
-/** Druckerart (v0.14.0), beim Anlegen gewaehlt und danach fest. */
+/** Druckerart, beim Anlegen gewaehlt und danach fest. */
 export type PrinterKind = 'filament' | 'resin';
 
 export interface MaterialUnit {
@@ -295,9 +276,8 @@ export interface FilamentCheck {
 }
 
 /**
- * `'disabled'` kommt nur von `test_printer_connection` zurueck, wenn der
- * Schalter "Druckeranbindung" aus ist (Netzwerk-Sperre greift vor jeder
- * Anfrage, siehe global-constraints.md).
+ * `'disabled'` kommt nur von `test_printer_connection`, wenn der Schalter
+ * "Druckeranbindung" aus ist (dann geht keine Anfrage raus).
  */
 export type PrinterConnectionError =
   | 'unreachable'

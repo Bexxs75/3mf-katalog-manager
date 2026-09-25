@@ -35,8 +35,8 @@ const POPUP_MIN_WIDTH = 384; // 24rem
 /** Eigene Auswahl mit Farbfeld (native <select>-Popups ignorieren das Theme). */
 export function SpoolPicker({ spools: allSpools, value, onChange, label, placeholder }: Props) {
   const { language } = useLanguage();
-  // Die Druckeranbindung bucht nur Filament ab - Resin-Flaschen (v0.13.1)
-  // sind nie ein Kandidat, auch wenn ein Aufrufer die volle Liste reicht.
+  // Die Druckeranbindung bucht nur Filament ab; Resin-Flaschen sind nie ein
+  // Kandidat, auch wenn ein Aufrufer die volle Liste reicht.
   const spools = useMemo(() => allSpools.filter((s) => s.kind !== 'resin'), [allSpools]);
   const uid = useId();
   const [open, setOpen] = useState(false);

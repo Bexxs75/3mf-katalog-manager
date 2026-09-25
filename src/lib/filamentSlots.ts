@@ -26,7 +26,7 @@ export function spoolLabel(spool: FilamentSpool): string {
 
 /**
  * Passt der Eintrag in diese Einheit? Resin-Flaschen nur in eine Harzwanne,
- * Filament-Spulen nie (v0.14.0; das Backend prueft dasselbe in `load_spool`).
+ * Filament-Spulen nie (das Backend prueft dasselbe in `load_spool`).
  */
 export function spoolFitsUnit(spool: Pick<FilamentSpool, 'kind'>, unit: Pick<MaterialUnit, 'kind'>): boolean {
   return (spool.kind === 'resin') === (unit.kind === 'resin_vat');

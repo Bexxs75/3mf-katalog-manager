@@ -19,16 +19,13 @@ interface Props {
 const NONE = Symbol('none');
 type OptionId = string | typeof NONE;
 
-// Entspricht der bisherigen festen Breite (w-[280px]) - useAnchoredPopup
-// nimmt die groessere der beiden (Ankerbreite oder dieser Mindestbreite).
+// Mindestbreite; useAnchoredPopup nimmt die groessere von Ankerbreite und dieser.
 const POPUP_MIN_WIDTH = 280;
 
 /**
- * Suchauswahl über alle Katalogmodelle, inkl. „Kein Modell“ - Pfeiltasten ab
- * dem Suchfeld und Enter waehlen aus, wie bei SpoolPicker. Wird per Portal
- * fixed relativ zum Auswahl-Knopf (`anchorRef`) gerendert, damit ein
- * ueberlaufender Dialog-Scrollcontainer (z.B. PrinterJobsDialog) das Popup
- * nicht abschneidet (siehe SpoolPicker, Commits 3365945 + 475c607).
+ * Suchauswahl ueber alle Katalogmodelle inkl. „Kein Modell“; Pfeiltasten und
+ * Enter wie bei SpoolPicker. Per Portal am Knopf (`anchorRef`) positioniert,
+ * damit ein ueberlaufender Dialog das Popup nicht abschneidet.
  */
 export function ModelPicker({ models, anchorRef, onChange, onClose }: Props) {
   const t = useT();
@@ -37,9 +34,7 @@ export function ModelPicker({ models, anchorRef, onChange, onClose }: Props) {
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const focusedRef = useRef(false);
-  // `onClose` ist die einzige Weise, wie diese Komponente (von aussen
-  // gesteuert) wieder verschwindet - solange sie gemountet ist, gilt sie als
-  // offen.
+  // Solange gemountet, gilt das Popup als offen; geschlossen wird ueber `onClose`.
   const { popupRef, style } = useAnchoredPopup<HTMLElement, HTMLDivElement>(anchorRef, true, onClose, POPUP_MIN_WIDTH);
   const hits = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -51,13 +46,9 @@ export function ModelPicker({ models, anchorRef, onChange, onClose }: Props) {
 
   useEffect(() => setActive(0), [q]);
 
-  // Suchfeld fokussieren, sobald das Popup tatsaechlich im DOM steht (nicht
-  // schon beim ersten Rendern, da das Popup erst rendert, sobald
-  // useAnchoredPopup eine Position berechnet hat). `preventScroll`, damit das
-  // Fokussieren selbst in echten Browsern keinen Scroll ausloest - sonst
-  // schliesst der eigene Scroll-Listener (in useAnchoredPopup) das Popup,
-  // kaum dass es offen ist (dieselbe Regression, die bei SpoolPicker schon
-  // einmal aufgetreten ist, siehe Commit 475c607).
+  // Suchfeld fokussieren, sobald das Popup positioniert im DOM steht.
+  // `preventScroll`, sonst schliesst der Scroll-Listener von useAnchoredPopup es
+  // sofort wieder.
   useEffect(() => {
     if (style && !focusedRef.current) {
       focusedRef.current = true;

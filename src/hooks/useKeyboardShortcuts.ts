@@ -18,10 +18,7 @@ interface UseKeyboardShortcutsArgs {
   // false waehrend die Detailseite offen ist oder sonst ein Kontext aktiv
   // ist, in dem Pfeiltasten-Navigation im Raster keinen Sinn ergibt.
   navigationEnabled: boolean;
-  // Schaltet die Bulk-Auswahl (Checkbox) fuer eine einzelne Datei um -
-  // von der Leertaste genutzt, um das gerade per Pfeiltasten/Klick
-  // ausgewaehlte Modell in die Mehrfachauswahl aufzunehmen, ohne die Maus
-  // auf die kleine Checkbox in der Kachel-Ecke zielen zu muessen.
+  // Leertaste: das ausgewaehlte Modell in die Mehrfachauswahl aufnehmen.
   toggleBulkSelect: (id: string) => void;
 }
 
@@ -44,20 +41,11 @@ function isTypingTarget(target: EventTarget | null): boolean {
 const ROW_TOLERANCE_PX = 4;
 
 /**
- * Findet die naechste Kachel oberhalb/unterhalb der aktuell ausgewaehlten,
- * anhand ihrer TATSAECHLICH gerenderten Position (getBoundingClientRect) statt
- * anhand einer angenommenen Spaltenzahl. Das ist notwendig, weil das Raster
- * responsiv per CSS Grid `auto-fill` umbricht (Spaltenzahl haengt von der
- * Fensterbreite ab) und in der Ordner-Ansicht mehrere unabhaengige Mini-Raster
- * (ein Grid pro Ordner-Abschnitt) nebeneinander existieren.
- *
- * Naeherung: alle Kacheln in der angefragten Richtung (Mittelpunkt-Y echt
- * kleiner/groesser als die aktuelle), davon die mit dem geringsten
- * Y-Abstand (= naechste Zeile), und darunter die mit dem geringsten
- * X-Abstand (= gleiche Spalte bzw. naeheste). Gibt null zurueck, wenn die
- * aktuelle Kachel nicht im DOM ist (z.B. in eingeklapptem Ordner) oder keine
- * Kachel in der gesuchten Richtung existiert - der Aufrufer faellt dann auf
- * die flache Listen-Reihenfolge zurueck.
+ * Findet die naechste Kachel oberhalb/unterhalb anhand der gerenderten
+ * Position statt einer Spaltenzahl: das Raster bricht per `auto-fill` um, und
+ * die Ordner-Ansicht hat mehrere Mini-Raster. Nimmt die naechste Zeile in
+ * Richtung und darin die horizontal naechste Kachel; null, wenn die aktuelle
+ * Kachel nicht im DOM ist oder es keine gibt.
  */
 export function findSpatialNeighbor(
   container: ParentNode,
@@ -93,18 +81,10 @@ export function findSpatialNeighbor(
 }
 
 /**
- * Globale Tastaturkuerzel fuer die Katalog-Uebersicht: "/" fokussiert die
- * Suche, Pfeiltasten wechseln die Auswahl (Links/Rechts entlang der Listen-
- * Reihenfolge, Hoch/Runter raeumlich zur naechsten Zeile - siehe
- * findSpatialNeighbor) und scrollen die neu ausgewaehlte Kachel bei Bedarf
- * in den sichtbaren Bereich, Leertaste schaltet die Bulk-Auswahl-Checkbox des
- * aktuell ausgewaehlten Modells um, Entf/Backspace oeffnet bei aktiver
- * Mehrfachauswahl die bestehende Loeschen-Bestaetigung (loescht NICHT
- * direkt - dieselbe Sicherheitsstufe wie der Button in der Bulk-
- * Aktionsleiste). Alle vier werden ignoriert, solange der Fokus in einem
- * Eingabefeld liegt, damit normales Tippen (auch ein "/" oder eine
- * Leertaste im Suchfeld selbst oder in einem Tag-Eingabefeld) nicht
- * beeintraechtigt wird.
+ * Tastaturkuerzel der Katalog-Uebersicht: "/" fokussiert die Suche, Pfeile
+ * wechseln die Auswahl (Hoch/Runter raeumlich), Leertaste schaltet die
+ * Mehrfachauswahl um, Entf/Backspace oeffnet die Loeschen-Bestaetigung (loescht
+ * nicht direkt). Ignoriert, solange der Fokus in einem Eingabefeld liegt.
  */
 export function useKeyboardShortcuts({
   filteredIds,
@@ -152,9 +132,7 @@ export function useKeyboardShortcuts({
           scrollTileIntoView(spatialTarget);
           return;
         }
-        // Kein raeumlicher Treffer (z.B. Auswahl gerade nicht im DOM, weil ihr
-        // Ordner-Abschnitt eingeklappt ist) - auf die flache Reihenfolge
-        // zurueckfallen, statt gar nichts zu tun.
+        // Kein raeumlicher Treffer (z.B. eingeklappter Ordner): flache Reihenfolge.
       }
 
       const isNext = e.key === 'ArrowRight' || e.key === 'ArrowDown';

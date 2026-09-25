@@ -22,15 +22,9 @@ function loadHiddenIds(): Set<string> {
 }
 
 /**
- * Verwaltet die konfigurierten Slicer-Programme (Name + Pfad). Seit der
- * M-06-Haertung (Task 11) ist die `registered_slicers`-Tabelle im Backend
- * die alleinige Quelle der Wahrheit - dieser Hook haelt lediglich noch eine
- * rein lokale UI-Praeferenz (welcher Slicer ist "primaer") sowie eine rein
- * lokale "Ausgeblendet"-Liste (es gibt (noch) keinen Backend-Command zum
- * endgueltigen Entfernen eines registrierten Slicers - ein "Entfernen" in
- * der UI blendet den Eintrag daher nur lokal aus, loescht ihn aber nicht
- * aus der Registry; ein erneuter Scan/Neustart zeigt ihn nicht erneut an,
- * solange er ausgeblendet bleibt).
+ * Slicer-Programme aus der Backend-Registry. Lokal bleiben nur der primaere
+ * Slicer und eine "Ausgeblendet"-Liste: es gibt keinen Befehl zum Loeschen
+ * aus der Registry, "Entfernen" blendet nur aus.
  */
 export function useSlicers() {
   const [slicers, setSlicers] = useState<SlicerConfig[]>([]);
@@ -48,26 +42,16 @@ export function useSlicers() {
     catalogMetaApi.scanInstalledSlicers()
       .then(applyRegistry)
       .catch((e) => {
-        // Rein komfortsteigerndes Feature - ein Fehlschlag darf die App
-        // nicht beeintraechtigen, nur geloggt werden.
+        // Komfortfunktion: ein Fehlschlag wird nur geloggt.
         console.warn('[slicer-scan] Automatische Slicer-Erkennung fehlgeschlagen:', e);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const addSlicer = useCallback(async () => {
-    // M-06/P0: der native Datei-Dialog laeuft im Backend
-    // (`pick_and_register_slicer`) - das Frontend uebergibt hier keinen
-    // selbst konstruierten Pfad mehr.
-    //
-    // `pick_and_register_slicer` schlaegt in echten Szenarien durchaus
-    // fehl (z.B. `executable_path` ist `UNIQUE` - ein bereits registrierter
-    // Slicer erneut ausgewaehlt ergibt einen Datenbankfehler; oder
-    // `validate_slicer_path` lehnt die getroffene Auswahl ab) - ohne
-    // try/catch landete das bisher als unbehandelte Promise-Ablehnung,
-    // ohne dass der Nutzer irgendeine Rueckmeldung bekam. Gleiches
-    // Fehler-Anzeige-Muster wie `useCatalogBackup.ts`/`useCatalogCleanup.ts`
-    // (eigener `*Error`-State, in der Settings-UI direkt angezeigt).
+    // Der Datei-Dialog laeuft im Backend, das Frontend reicht keinen Pfad durch.
+    // Scheitern ist realistisch (schon registriert = UNIQUE, oder
+    // validate_slicer_path lehnt ab), deshalb die Anzeige per addSlicerError.
     try {
       setAddSlicerError(null);
       const picked = await slicerApi.pickAndRegisterSlicer();

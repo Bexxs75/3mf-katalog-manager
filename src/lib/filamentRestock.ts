@@ -1,6 +1,6 @@
 import type { FilamentSpool } from '../types';
 
-/** Spec v0.13.1: Anzahl 1 bis 20 (Backend prueft dasselbe, RESTOCK_MAX_COUNT in filament.rs). */
+/** Anzahl 1 bis 20 (das Backend prueft dasselbe, RESTOCK_MAX_COUNT in filament.rs). */
 export const RESTOCK_MIN_COUNT = 1;
 export const RESTOCK_MAX_COUNT = 20;
 

@@ -139,11 +139,8 @@ describe('SpoolPicker', () => {
   });
 
   it('does not close when a scroll event originates from inside the popup list itself', () => {
-    // Regression: echte Browser loesen beim Oeffnen intern Scroll-Events aus
-    // (z.B. scrollIntoView der aktiven Option, oder focus()-bedingtes
-    // Scrollen) - jsdom tut das nicht von selbst, darum hier direkt
-    // simuliert. Das darf das gerade geoeffnete Popup NICHT sofort wieder
-    // schliessen.
+    // Echte Browser loesen beim Oeffnen Scroll-Events aus (scrollIntoView, focus),
+    // jsdom nicht; hier simuliert. Das Popup darf dadurch nicht zugehen.
     const onChange = vi.fn();
     render(
       <LanguageProvider>
@@ -184,9 +181,7 @@ describe('SpoolPicker', () => {
   });
 
   it('opens on click and stays open (does not immediately close itself)', () => {
-    // Regression aus commit 3365945: ein echter Klick oeffnete das Popup
-    // nicht mehr, weil interne Scroll-/Fokus-Nebenwirkungen den eigenen
-    // Schliessen-Listener ausgeloest haben.
+    // Ein echter Klick muss oeffnen, trotz Scroll- und Fokus-Nebenwirkungen.
     const onChange = vi.fn();
     render(
       <LanguageProvider>

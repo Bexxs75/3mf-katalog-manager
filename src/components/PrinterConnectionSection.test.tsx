@@ -77,10 +77,8 @@ describe('PrinterConnectionSection', () => {
   });
 
   it('does not claim "Verbunden" while the connection is paused (e.g. after a backup restore)', () => {
-    // sanitize_printer_connections (backup.rs) setzt nach einer
-    // Wiederherstellung `paused = 1`, aber `lastError` bleibt leer - ohne
-    // diese Sperre wuerde die Sektion faelschlich "Verbunden" zeigen, obwohl
-    // der Abgleich diesen Drucker fuer immer ueberspringt.
+    // Nach einer Wiederherstellung ist `paused = 1` ohne `lastError`; die Sektion
+    // darf dann nicht "Verbunden" zeigen.
     renderIt(link(null), { ...okConnection, paused: true, lastError: null });
     expect(screen.queryByText('Verbunden')).not.toBeInTheDocument();
   });
@@ -94,9 +92,7 @@ describe('PrinterConnectionSection', () => {
     const l = link(null);
     const { rerender } = renderIt(l, okConnection);
     expect(screen.getByText('Verbunden')).toBeInTheDocument();
-    // Ein Hintergrund-Abgleich (z.B. nach einer Sicherungswiederherstellung)
-    // liefert eine aktualisierte `connection` - die Sektion sass bisher fest
-    // auf dem beim Mount gesehenen Stand.
+    // Eine aktualisierte `connection` von aussen muss ankommen.
     const paused = { ...okConnection, paused: true, lastError: null };
     rerender(
       <LanguageProvider>
@@ -107,11 +103,8 @@ describe('PrinterConnectionSection', () => {
   });
 
   it('does not let a stale prop update clobber a just-returned test result', async () => {
-    // `runTest` setzt `current` sofort aus der Antwort. Aktualisiert sich die
-    // `connection`-Prop danach noch einmal, aber mit einem Stand, der das
-    // frische Ergebnis noch nicht kennt (z.B. eine ueberlappende, aeltere
-    // Hintergrund-Abfrage), darf das gerade gezeigte Ergebnis nicht wieder
-    // verworfen werden.
+    // Eine spaetere, aeltere `connection`-Prop darf das frische Testergebnis nicht
+    // verwerfen.
     const freshConnection: PrinterConnection = { ...okConnection, remoteVersion: 'v0.9.0-fresh' };
     const l = link({ ok: true, error: null, connection: freshConnection });
     const { rerender } = renderIt(l, null);

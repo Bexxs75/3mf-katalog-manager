@@ -14,10 +14,8 @@ function loadStored(): Set<string> {
 }
 
 /**
- * Merkt sich, welche Ordner-Sektionen in der gruppierten Ansicht eingeklappt
- * sind. Persistiert in localStorage nach demselben Muster wie
- * Theme/Sprache/Slicer-Liste (siehe useSlicers.ts) - bleibt ueber
- * App-Neustarts erhalten, im Gegensatz zum ViewMode selbst.
+ * Merkt sich die eingeklappten Ordner-Sektionen der gruppierten Ansicht in
+ * localStorage, damit sie Neustarts ueberstehen.
  */
 export function useCollapsedFolders() {
   const [collapsed, setCollapsed] = useState<Set<string>>(loadStored);

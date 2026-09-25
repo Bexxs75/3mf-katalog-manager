@@ -7,13 +7,8 @@ import * as filesApi from '../lib/api/files';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
-// M-03: die Resync-Tests unten spionieren einzelne filesApi-Funktionen
-// (setFavorite/setPrintStatus/listFilesByIds/...) direkt an, um sie
-// gezielt fehlschlagen zu lassen bzw. um ihre Aufrufreihenfolge zu
-// pruefen - der Rest der Datei nutzt weiterhin ausschliesslich das
-// bestehende invoke-Mocking (mockInitialLoad), da die gewrappten
-// vi.fn()-Implementierungen standardmaessig einfach an die echte
-// invoke()-basierte Implementierung durchreichen.
+// Einzelne filesApi-Funktionen sind Spies, die standardmaessig an die echte
+// Implementierung durchreichen; Tests lassen sie gezielt scheitern.
 vi.mock('../lib/api/files', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/api/files')>();
   return Object.fromEntries(
@@ -31,19 +26,12 @@ function createDeferred<T>() {
   return { promise, resolve, reject };
 }
 
-// Seit Finding M-01 laedt die Katalog-Uebersicht list_file_summaries statt
-// list_files - die vollen ModelFile-Fixtures aus makeModelFile() werden hier
-// auf die schlanke Summary-Form projiziert, damit bestehende Test-Setups
-// (die volle ModelFile-Objekte als Ausgangsdaten formulieren) unveraendert
-// bleiben koennen. list_files_by_ids wird ebenfalls bedient, falls ein Test
-// das Nachladen der vollen Daten (ensureFullModel/selectModel) ausloest.
+// Projiziert volle ModelFile-Fixtures auf Summaries und bedient auch
+// list_files_by_ids fuer das Nachladen.
 function mockInitialLoad(models = [makeModelFile({ id: 'm1' })]) {
   vi.mocked(invoke).mockImplementation((cmd: string, args?: unknown) => {
     if (cmd === 'list_file_summaries') return Promise.resolve(models.map((m) => makeModelFileSummary(m)));
-    // Nachtrag zu Finding M-01: list_all_file_tags liefert alle Datei->Tag-
-    // Zuordnungen in einer Abfrage - hier aus den vollen Fixtures abgeleitet,
-    // damit bestehende Tests, die `tags` auf makeModelFile() setzen,
-    // weiterhin den erwarteten gemergten Zustand nach dem initialen Laden sehen.
+    // Tags aus den vollen Fixtures, damit der gemergte Zustand stimmt.
     if (cmd === 'list_all_file_tags') {
       const byFile: Record<string, string[]> = {};
       for (const m of models) if (m.tags.length > 0) byFile[m.id] = m.tags;
@@ -68,10 +56,7 @@ function callCount(cmd: string) {
 
 beforeEach(() => {
   vi.mocked(invoke).mockReset();
-  // Nur mockClear (nicht mockReset) fuer filesApi: der Standard-Passthrough
-  // zur echten, invoke()-basierten Implementierung (siehe vi.mock-Factory
-  // oben) soll erhalten bleiben - nur die Aufrufhistorie/etwaige
-  // Once-Ueberschreibungen aus dem vorherigen Test sollen verschwinden.
+  // Nur clear, nicht reset: der Passthrough zur echten Implementierung bleibt.
   vi.clearAllMocks();
 });
 
@@ -96,11 +81,8 @@ describe('useCatalogStore', () => {
   });
 
   it('merges the bulk tags aggregate into summary-derived models so tag filtering works for never-opened models', async () => {
-    // Regressionstest fuer den Sidebar-Tag-Filter-Fund (Nachtrag zu Finding
-    // M-01): list_file_summaries liefert selbst keine Tags, ohne den Merge
-    // ueber list_all_file_tags waeren m1.tags/m2.tags hier beide [] und
-    // filterAndSortModels(activeTag: 'vase') haette faelschlich nichts
-    // gefunden, obwohl m1 nie einzeln ausgewaehlt/geoeffnet wurde.
+    // Summaries haben keine Tags; ohne den Merge ueber list_all_file_tags faende
+    // der Tag-Filter nichts.
     mockInitialLoad([
       makeModelFile({ id: 'm1', tags: ['vase'] }),
       makeModelFile({ id: 'm2', tags: ['red'] }),
@@ -293,10 +275,7 @@ describe('useCatalogStore', () => {
   });
 
   it('pendingSnapshotIds lists models without a render snapshot and skipSnapshot removes them', async () => {
-    // list_file_summaries traegt seit dem Bugfix vom 2026-09-20 den echten
-    // renderSnapshotImage-Blob mit - m2 gilt deshalb von Anfang an korrekt
-    // als "hat bereits einen Snapshot", ganz ohne dass zuerst selectModel()
-    // die vollen Daten nachladen muesste.
+    // Die Summary traegt den Snapshot schon, m2 braucht keinen neuen.
     mockInitialLoad([
       makeModelFile({ id: 'm1', renderSnapshotImage: null }),
       makeModelFile({ id: 'm2', renderSnapshotImage: 'data:image/png;base64,xx' }),
@@ -311,16 +290,8 @@ describe('useCatalogStore', () => {
   });
 
   it('Finding 1 + Bugfix 2026-09-20: a model with a saved snapshot loaded only via the summary path is never pending and shows its snapshot', async () => {
-    // Doppelte Regression, beide bereits behoben: (1, Finding 1) vor jenem
-    // Fix hardcodete summaryToModelFile() renderSnapshotImage IMMER auf
-    // null, wodurch pendingSnapshotIds jedes frisch geladene Modell als
-    // "braucht Snapshot" wertete, unabhaengig vom tatsaechlichen DB-Stand.
-    // (2, 2026-09-20) list_file_summaries selbst lieferte den Blob dann zwar
-    // korrekt NICHT als "braucht Snapshot", aber auch nie den Blob selbst,
-    // wodurch das Grid einen laengst gerenderten Snapshot nicht anzeigte,
-    // bevor ensureFullModel() lief. m1 hat hier bereits einen Snapshot und
-    // muss deshalb sofort (schon aus der Summary, vor jedem ensureFullModel)
-    // sowohl sein Bild zeigen als auch aus pendingSnapshotIds fernbleiben.
+    // m1 hat schon einen Snapshot: das Bild muss sofort aus der Summary kommen,
+    // und m1 darf nicht in pendingSnapshotIds stehen.
     mockInitialLoad([makeModelFile({ id: 'm1', renderSnapshotImage: 'data:image/png;base64,yy' })]);
     const { result } = renderHook(() => useCatalogStore());
     await waitFor(() => expect(result.current.models).toHaveLength(1));
@@ -330,10 +301,7 @@ describe('useCatalogStore', () => {
   });
 
   it('Bugfix 2026-09-20: creator is populated straight from the summary, not hardcoded to null', async () => {
-    // Derselbe Fehlerklasse wie oben: summaryToModelFile() hardcodete creator
-    // bislang auf null, wodurch der Sidebar-/Suchfilter nach Creator fuer
-    // jedes nur per Summary geladene Modell (also den gesamten Katalog vor
-    // dem ersten ensureFullModel()) ins Leere lief.
+    // creator muss schon aus der Summary kommen, sonst greift der Creator-Filter nicht.
     mockInitialLoad([makeModelFile({ id: 'm1', creator: 'CarlFromUp' })]);
     const { result } = renderHook(() => useCatalogStore());
     await waitFor(() => expect(result.current.models).toHaveLength(1));
@@ -369,10 +337,8 @@ describe('useCatalogStore', () => {
     expect(result.current.models[0].queuePosition).toBe(1);
   });
 
-  // M-03: Resync betroffener optimistischer Mutationen nach Abschluss ALLER
-  // ueberlappenden Backend-Aufrufe fuer dasselbe Feld+ID (siehe Task-8-Brief
-  // fuer die Begruendung, warum weder ein simpler "previous"-Rollback noch
-  // ein reiner Generation-Zaehler ausreicht).
+  // Resync nach Abschluss ALLER ueberlappenden Aufrufe fuer dasselbe Feld+ID
+  // (siehe Kommentar in useCatalogStore).
   describe('M-03: mutation resync on settle', () => {
     it('resyncs the favorite flag from the backend if the call fails', async () => {
       vi.mocked(filesApi.setFavorite).mockRejectedValueOnce(new Error('db locked'));
@@ -462,10 +428,7 @@ describe('useCatalogStore', () => {
       expect(result.current.models.map((m) => m.queuePosition)).toEqual([2, 1]);
 
       await waitFor(() => {
-        // Nach dem fehlgeschlagenen reorder_queue wird die gesamte Liste
-        // (inkl. Reihenfolge) per refreshFiles() aus dem Backend
-        // nachgeladen - list_file_summaries wurde dafuer ein zweites Mal
-        // aufgerufen (einmal beim initialen Mount, einmal fuer den Resync).
+        // Einmal beim Laden, einmal fuer den Resync.
         expect(callCount('list_file_summaries')).toBe(2);
       });
     });
@@ -477,18 +440,8 @@ describe('useCatalogStore', () => {
       await waitFor(() => expect(result.current.models).toHaveLength(1));
       const modelId = result.current.models[0].id;
       const initial = result.current.models[0];
-      // Korrektur nach siebter Review-Runde: listFilesByIds() SEQUENZIELL mit
-      // dem jeweils nach diesem Klick erwarteten Backend-Wert mocken (statt
-      // dauerhaft mit favorite:true) - da setFavorite() hier sofort aufloest,
-      // koennte ein Resync bereits INNERHALB desselben act()-Blocks
-      // abschliessen und den `models`-Snapshot fuer den naechsten Klick
-      // veraendern. Ein konstanter Resync-Wert (true) wuerde deshalb nach
-      // Klick B (der Backend-Wert waere dann false) einen falschen Zustand
-      // einspielen, wodurch Klick C wieder mit next=false statt next=true
-      // aufgerufen wuerde und die erwartete Abfolge [true, false, true] nicht
-      // mehr stimmt. Die sequenzielle Mockierung macht den Test unabhaengig
-      // von der exakten Mikrotask-Interleaving-Reihenfolge zwischen den
-      // act()-Bloecken.
+      // Resync-Werte nacheinander passend zu jedem Klick mocken: ein Resync kann
+      // schon im selben act() abschliessen, ein konstanter Wert waere dann falsch.
       vi.mocked(filesApi.listFilesByIds)
         .mockResolvedValueOnce([{ ...initial, favorite: true }]) // nach A
         .mockResolvedValueOnce([{ ...initial, favorite: false }]) // nach B
@@ -585,23 +538,13 @@ describe('useCatalogStore', () => {
         await Promise.resolve();
       });
 
-      // Der Resync liefert den vom Mock vorgegebenen kanonischen Wert (true) -
-      // das ist der Punkt: unabhaengig vom Erfolg/Fehler-Muster einzelner
-      // Aufrufe bestimmt am Ende IMMER der Backend-Stand die UI, nicht ein
-      // lokal nachgebildeter "letzter gueltiger Wert".
+      // Am Ende bestimmt immer der Backend-Stand die UI.
       expect(result.current.models.find((m) => m.id === modelId)?.favorite).toBe(true);
     });
 
     it('does not let a stale, slow resync overwrite a newer resync that already completed', async () => {
-      // Deckt die Resync-Race ab (siebte Review-Runde): A endet -> Resync R1
-      // startet (bleibt hier absichtlich haengen); WAEHREND R1 noch laeuft,
-      // startet und beendet B vollstaendig eine eigene Mutation, deren Resync
-      // R2 sofort abschliesst und den neuen, korrekten Zustand uebernimmt;
-      // ERST DANACH liefert das verzoegerte R1 seinen (jetzt veralteten)
-      // Zustand. Ein reiner "pendingMutationCounts[key] === undefined"-Check
-      // wuerde das nicht erkennen, da nach B's Abschluss der Zaehler erneut
-      // undefined ist - der Mutation-Epoch-Zaehler verhindert die
-      // Ueberschreibung durch R1.
+      // Race: Resync R1 nach A haengt, waehrenddessen laeuft B samt Resync R2
+      // komplett durch. Das verspaetete R1 darf R2 nicht ueberschreiben (Epoch).
       vi.mocked(filesApi.setFavorite).mockResolvedValue(undefined);
       const deferredResyncR1 = createDeferred<import('../types').ModelFile[]>();
       mockInitialLoad([makeModelFile({ id: 'm1', favorite: false })]);
@@ -641,14 +584,8 @@ describe('useCatalogStore', () => {
     });
 
     it('Finding 3: a stale, slow ensureFullModel fetch does not overwrite a newer mutation resync', async () => {
-      // Szenario aus dem Abschluss-Review: ensureFullModel() (Fetch A, bleibt
-      // hier haengen) wird VOR einer Mutation gestartet; die Mutation
-      // (toggleFavorite) schliesst inklusive ihres eigenen M-03-Resyncs
-      // vollstaendig ab, WAEHREND Fetch A noch laeuft; erst DANACH liefert
-      // Fetch A sein (jetzt veraltetes) Ergebnis mit dem ALTEN favorite-Wert.
-      // Vor dem Fix ersetzte ensureFullModel() den kompletten Datensatz
-      // unbedingt, wodurch die laengst korrekt resyncte Mutation wieder
-      // stillschweigend rueckgaengig gemacht wurde.
+      // ensureFullModel() haengt, waehrenddessen laeuft eine Mutation samt Resync
+      // durch. Das verspaetete Fetch-Ergebnis darf sie nicht rueckgaengig machen.
       vi.mocked(filesApi.setFavorite).mockResolvedValue(undefined);
       mockInitialLoad([makeModelFile({ id: 'm1', favorite: false })]);
       const { result } = renderHook(() => useCatalogStore());

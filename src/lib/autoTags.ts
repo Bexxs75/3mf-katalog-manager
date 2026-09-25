@@ -19,11 +19,8 @@ for (const [canonical, names] of Object.entries(TABLE)) {
 }
 
 export function tagLabel(tag: string, language: Language): string {
-  // Eigene-Property-Pruefung statt eines Index-Zugriffs auf TABLE: ein Tag
-  // mit dem Namen "constructor" oder "toString" wuerde sonst ein geerbtes
-  // Objekt.prototype-Property statt undefined liefern. Object.hasOwn waere
-  // die kuerzere Schreibweise, braucht aber ES2022-Typdefinitionen (Projekt-
-  // Ziel ist ES2020) - hasOwnProperty.call() prueft dasselbe.
+  // hasOwnProperty statt Index-Zugriff: "constructor" o.ae. lieferte sonst ein
+  // geerbtes Property (Object.hasOwn braucht ES2022, Ziel ist ES2020).
   return Object.prototype.hasOwnProperty.call(TABLE, tag) ? TABLE[tag][language] : tag;
 }
 

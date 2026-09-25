@@ -183,7 +183,7 @@ describe('FilamentView with printers', () => {
     expect(screen.queryByTestId('spool-card-store')).toBeNull();
     expect(screen.getByText('Flaschen gesamt').nextElementSibling).toHaveTextContent('1');
     expect(screen.getByText('Restbestand gesamt').nextElementSibling).toHaveTextContent('640,5 ml');
-    // Die Druckerspalte zeigt in der Resin-Ansicht nur Resin-Drucker (v0.14.0).
+    // Die Druckerspalte zeigt in der Resin-Ansicht nur Resin-Drucker.
     expect(screen.queryByTestId('slot-u1-0')).toBeNull();
   });
 
@@ -309,9 +309,7 @@ describe('FilamentView with printers', () => {
   });
 
   it('shows the total remaining stock in whole grams, without decimals from the tenth-gram sum', async () => {
-    // 620,3 g + 620,4 g = 1240,7 g - die Summe der Zehntelgramm-genauen
-    // Restgewichte darf im Statistik-Kachel nicht mit Nachkommastelle
-    // erscheinen (Spec: ganze Gramm).
+    // 620,3 g + 620,4 g = 1240,7 g, die Statistik zeigt ganze Gramm.
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === 'list_filament_spools') {
         return Promise.resolve([
@@ -332,10 +330,8 @@ describe('FilamentView with printers', () => {
 
 describe('FilamentView shares one printers instance with other consumers', () => {
   it('reflects a printer added elsewhere (e.g. the Rail "Drucker" tab) without a remount', async () => {
-    // Regression fuer Task-12-Review-Fund: App.tsx darf `usePrinters()` nur
-    // einmal aufrufen und dieselbe Instanz an FilamentView UND an Rail
-    // weiterreichen - sonst sieht der Rail-Reiter Aenderungen aus dem
-    // Filament-Lager erst nach einem Remount.
+    // App.tsx reicht dieselbe usePrinters()-Instanz an FilamentView UND Rail,
+    // sonst sieht Rail Aenderungen erst nach einem Remount.
     let printerAdded = false;
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === 'list_filament_spools') return Promise.resolve([LOADED, STORED]);

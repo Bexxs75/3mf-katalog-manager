@@ -53,18 +53,9 @@ export function FolderTree({
       return next;
     });
 
-  // Ordner-Reihen sind nur 28px hoch und liegen ohne Abstand direkt
-  // uebereinander - ein `onMouseDown` das SOFORT `onDragFolderStart` feuert
-  // (wie zuvor) wuerde schon bei minimalem Cursor-Drift waehrend eines
-  // gewoehnlichen Klicks in die Nachbarzeile rutschen und dort per
-  // `onMouseEnter` ein Drop-Ziel markieren - ein `mouseup` danach loest dann
-  // OHNE Bestaetigung ein echtes `move_folder` auf der Platte aus. Deshalb
-  // hier dasselbe Kandidat+Schwellenwert-Muster wie beim Datei-Drag in
-  // ModelGrid.tsx: `onDragFolderStart` (und damit `draggedFolderId` in
-  // App.tsx) wird erst gesetzt, nachdem sich der Cursor seit dem Mousedown
-  // um mindestens `DRAG_THRESHOLD_PX` bewegt hat. Bleibt die Bewegung
-  // darunter, war es ein normaler Klick (der bestehende `onClick` auf der
-  // Zeile uebernimmt die Auswahl wie gehabt).
+  // Ordner-Reihen sind nur 28px hoch: ein sofortiger Drag-Start liesse schon
+  // leichtes Verrutschen beim Klick einen echten move_folder ausloesen. Deshalb
+  // wie in ModelGrid erst ab DRAG_THRESHOLD_PX Bewegung ziehen.
   const DRAG_THRESHOLD_PX = 6;
   const [dragCandidateId, setDragCandidateId] = useState<string | null>(null);
   const dragStartPos = useRef<{ x: number; y: number } | null>(null);

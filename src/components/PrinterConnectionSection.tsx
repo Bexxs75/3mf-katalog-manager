@@ -50,14 +50,11 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
   const [error, setError] = useState<PrinterConnectionError | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [current, setCurrent] = useState<PrinterConnection | null>(connection);
-  // Verhindert, dass die naechste Prop-Synchronisation (Effekt unten) ein
-  // gerade erst von `runTest` zurueckgegebenes Ergebnis sofort wieder mit
-  // einem noch nicht aktualisierten `connection`-Prop ueberschreibt.
+  // Verhindert, dass der Prop-Sync unten ein gerade von `runTest` geliefertes
+  // Ergebnis mit einem noch alten `connection`-Prop ueberschreibt.
   const skipNextPropSync = useRef(false);
 
-  // `current` wird beim Mount nur einmal aus dem Prop gesetzt - spaetere
-  // Aenderungen (z.B. Hintergrund-Abgleich pausiert die Verbindung nach einer
-  // Sicherungswiederherstellung) kamen bisher nie in der Sektion an.
+  // Spaetere Prop-Aenderungen (z.B. vom Hintergrund-Abgleich) uebernehmen.
   useEffect(() => {
     if (skipNextPropSync.current) {
       skipNextPropSync.current = false;

@@ -25,11 +25,8 @@ interface RowState {
   fileId: string | null;
   grams: number | null;
   mismatch: boolean;
-  /** Wurde die Spule ausdruecklich vom Nutzer gewaehlt (statt vom
-   * Vorschlag uebernommen)? Verhindert, dass eine spaeter eintreffende
-   * `spools`-Liste die Wahl mit dem Vorschlag ueberschreibt, erlaubt aber
-   * umgekehrt, den Vorschlag noch anzuwenden, sobald die vorgeschlagene
-   * Spule verfuegbar wird (z.B. wenn `spools` erst nach `jobs` laedt). */
+  /** Vom Nutzer gewaehlt statt vom Vorschlag uebernommen? Dann darf eine spaeter
+   * eintreffende `spools`-Liste die Wahl nicht mehr ueberschreiben. */
   userChosenSpool: boolean;
 }
 
@@ -57,15 +54,12 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
   const { language } = useLanguage();
   const [rows, setRows] = useState<Record<string, RowState>>({});
   const [picking, setPicking] = useState<string | null>(null);
-  // DOM-Knoten des gerade angeklickten Modell-Auswahl-Knopfs - wird im
-  // onClick unten manuell gesetzt (nicht per JSX-ref), da derselbe Knopf pro
-  // Auftrag existiert und ModelPicker ihre Popup-Position daran ausrichtet.
+  // Anker des gerade angeklickten Modell-Knopfs, im onClick gesetzt (einen Knopf
+  // gibt es pro Auftrag).
   const modelAnchorRef = useRef<HTMLElement | null>(null);
   const [failed, setFailed] = useState(0);
   const [actionError, setActionError] = useState<string | null>(null);
-  // Auftrags-IDs mit einer laufenden Bestaetigen/Ignorieren-Anfrage - blockt
-  // Doppelklicks (und "Alle bestaetigen" waehrend eine Einzelzeile laeuft)
-  // davor, den Backend-Aufruf doppelt auszuloesen.
+  // Auftraege mit laufender Anfrage, gegen Doppelklicks und "Alle bestaetigen" dazwischen.
   const [pending, setPending] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -76,11 +70,8 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
         if (existing) {
           let spoolId = existing.spoolId;
           if (spoolId !== null && !spools.some((s) => s.id === spoolId)) {
-            // Die gewaehlte Spule (Vorschlag oder Nutzerwahl) ist inzwischen
-            // verschwunden (geloescht, oder eine Sicherung mit weniger
-            // Spulen wiederhergestellt) - dann muss die Auswahl geleert
-            // werden, sonst laesst sich mit einer nicht mehr existierenden
-            // Spule "bestaetigen".
+            // Die gewaehlte Spule gibt es nicht mehr (geloescht oder Sicherung
+            // wiederhergestellt): Auswahl leeren.
             spoolId = null;
           } else if (
             !existing.userChosenSpool &&
@@ -88,9 +79,7 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
             j.suggestedSpoolId !== null &&
             spools.some((s) => s.id === j.suggestedSpoolId)
           ) {
-            // Noch keine Nutzerwahl getroffen, und die vorgeschlagene Spule
-            // ist jetzt in `spools` vorhanden (z.B. weil sie erst nach den
-            // Auftraegen nachgeladen wurde) - Vorschlag jetzt anwenden.
+            // Noch keine Nutzerwahl und der Vorschlag ist jetzt geladen: anwenden.
             spoolId = j.suggestedSpoolId;
           }
           next[j.id] = spoolId === existing.spoolId ? existing : { ...existing, spoolId };
@@ -139,9 +128,7 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
     link
       .previewJob(job.id, spoolId)
       .then((p) => {
-        // Waehrenddessen wurde vielleicht schon wieder eine andere Spule
-        // gewaehlt (bzw. eine schnellere Folgeanfrage kam frueher zurueck) -
-        // eine veraltete Antwort darf den aktuellen Stand nicht ueberschreiben.
+        // Eine veraltete Antwort darf eine inzwischen neuere Auswahl nicht ueberschreiben.
         setRows((r) => {
           const current = r[job.id];
           if (!current || current.spoolId !== spoolId) return r;

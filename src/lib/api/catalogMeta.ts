@@ -11,10 +11,8 @@ export function listCreators() {
 export function listSavedFilters() {
   return invoke<SavedFilter[]>('list_saved_filters');
 }
-// Loest serverseitig die bestehende Autoerkennung aus UND traegt neu
-// gefundene Slicer direkt in die `registered_slicers`-Registry ein (M-06,
-// Task 11) - gibt die vollstaendige, aktuelle Registry zurueck (nicht nur
-// die neu gefundenen Eintraege).
+// Autoerkennung im Backend; traegt neue Slicer in die Registry ein und gibt
+// die vollstaendige Registry zurueck.
 export function scanInstalledSlicers() {
   return invoke<SlicerDto[]>('scan_installed_slicers');
 }

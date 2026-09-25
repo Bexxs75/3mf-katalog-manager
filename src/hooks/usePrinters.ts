@@ -59,8 +59,7 @@ export function usePrinters() {
 }
 
 /**
- * Eine einzige Instanz gehoert nach App.tsx; wird an Rail (Reiter "Drucker")
- * und FilamentView weitergereicht, damit beide denselben Stand sehen (sonst
- * bleibt z.B. der Rail-Reiter nach einer Aenderung im Filament-Lager veraltet).
+ * Eine einzige Instanz in App.tsx, weitergereicht an Rail und FilamentView,
+ * damit beide denselben Stand sehen.
  */
 export type PrintersState = ReturnType<typeof usePrinters>;

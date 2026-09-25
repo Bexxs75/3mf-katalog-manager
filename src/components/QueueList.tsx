@@ -16,13 +16,8 @@ export function QueueList({ queue, onQueueReorder, onQueueRemove, onQueueSelect,
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
 
-  // Reihenfolge-Aenderung per Maus-Events statt nativem HTML5-Drag&Drop
-  // (draggable/onDragStart/onDragOver/onDrop): Tauri faengt bei aktiviertem
-  // dragDropEnabled (Standard, wird fuer den Datei-Import per OS-Drop
-  // benoetigt) native Drag-Sessions auf Fenster-Ebene ab, was unter
-  // WebKitGTK In-Page-HTML5-DnD zuverlaessig verhindert. Ein rein
-  // JS-gesteuerter Mouse-Down/Enter/Up-Ablauf umgeht das native DnD-System
-  // vollstaendig.
+  // Umsortieren per Maus-Events statt HTML5-DnD: dragDropEnabled (fuer den
+  // Datei-Import noetig) faengt native Drag-Sessions unter WebKitGTK ab.
   useEffect(() => {
     if (dragIndex === null) return;
     const handleMouseUp = () => {

@@ -2,11 +2,7 @@ import { useCallback, useState } from 'react';
 import * as slicerApi from '../lib/api/slicer';
 import type { SlicerConfig } from '../types';
 
-// M-06 (Task 11): `openInSlicer` nimmt seit der Backend-Haertung keinen
-// freien Pfad mehr entgegen, sondern ausschliesslich `modelId`/`slicerId` -
-// die Pfad-Aufloesung/-Validierung passiert serverseitig gegen die
-// `registered_slicers`-Registry. `models` (vollstaendige `ModelFile[]`)
-// wird deshalb hier nicht mehr gebraucht.
+// `openInSlicer` nimmt nur `modelId`/`slicerId`; Pfad und Pruefung liegen im Backend.
 export function useSlicerLauncher(
   slicers: SlicerConfig[],
   primaryId: string | null,

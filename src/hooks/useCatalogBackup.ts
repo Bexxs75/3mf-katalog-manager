@@ -9,28 +9,17 @@ const CATALOG_SETTINGS_KEYS = [
 ] as const;
 
 /**
- * Schluessel, die zwar (bei einem Backup aus einer AELTEREN Version) noch
- * exportiert worden sein KOENNTEN, beim Import aber NICHT wiederhergestellt
- * werden. `3mf-katalog-slicers` enthielt Programmpfade, die spaeter per
- * `open_in_slicer` als Prozess gestartet werden - ein praepariertes Backup
- * koennte dort `/bin/sh` o.ae. hinterlegen (Security-Review 2026-09-19,
- * Finding Z-1). Seit Task 11 lebt die Slicer-Registry serverseitig in der DB
- * (`registered_slicers`) statt in localStorage und dieser Schluessel wird
- * folglich seit Finding 7 (Abschluss-Review) NICHT mehr in
- * `CATALOG_SETTINGS_KEYS` exportiert - der Eintrag hier bleibt trotzdem
- * bestehen, damit ein Import eines AELTEREN Backups (das den Schluessel noch
- * enthaelt, z.B. einen darin hinterlegten maschinenlokalen Pfad) ihn
- * weiterhin sicher ueberspringt statt ihn stillschweigend wiederherzustellen.
+ * Schluessel aelterer Backups, die beim Import NIE wiederhergestellt werden.
+ * `3mf-katalog-slicers` enthielt Programmpfade, die spaeter als Prozess
+ * gestartet werden; ein praepariertes Backup koennte dort `/bin/sh` o.ae.
+ * hinterlegen. Die Slicer-Registry liegt inzwischen im Backend.
  */
 const IMPORT_SKIPPED_SETTINGS_KEYS: ReadonlySet<string> = new Set(['3mf-katalog-slicers']);
 
 /**
- * Erlaubte Werte je Einstellung - gespiegelt aus den Hooks/Contexts, die
- * diese Schluessel besitzen (useTheme, useDisplayPreference,
- * i18n/LanguageContext, UiDensityContext). Ein Wert aus einem fremden Backup,
- * der hier nicht auftaucht, wird stillschweigend uebersprungen (die
- * bestehende lokale Einstellung bleibt dann erhalten) - der Katalog-Import
- * selbst gilt weiterhin als erfolgreich.
+ * Erlaubte Werte je Einstellung (gespiegelt aus useTheme, useDisplayPreference,
+ * LanguageContext, UiDensityContext). Andere Werte aus einem fremden Backup
+ * werden still uebersprungen; der Import gilt trotzdem als erfolgreich.
  */
 const IMPORT_ALLOWED_SETTINGS_VALUES: Record<string, readonly string[]> = {
   '3mf-katalog-theme': ['system', 'light', 'dark'],
@@ -61,10 +50,8 @@ export function useCatalogBackup() {
       .then((result) => {
         if (!result.imported) return;
         if (result.settingsJson) {
-          // Ein Fehler beim Wiederherstellen der Einstellungen darf den
-          // erfolgreichen Katalog-Import nicht als Fehlschlag erscheinen
-          // lassen (Finding I2) - daher eigenes try/catch statt im
-          // aeusseren .catch() der Promise-Kette landen zu lassen.
+          // Ein Fehler bei den Einstellungen darf den erfolgreichen Katalog-Import
+          // nicht als Fehlschlag erscheinen lassen.
           try {
             const settings = JSON.parse(result.settingsJson) as Record<string, string | null>;
             for (const key of CATALOG_SETTINGS_KEYS) {
@@ -85,10 +72,8 @@ export function useCatalogBackup() {
             console.error('[catalog-backup] Einstellungen konnten nicht wiederhergestellt werden:', e);
           }
         }
-        // Backend hat AppState.db bereits auf den neu importierten Katalog
-        // umverbunden - der Aufrufer muss hier deshalb einen vollen Reload
-        // ausloesen (Finding C1, siehe App.tsx), sonst zeigt das Frontend
-        // weiter veraltete Modell-IDs aus dem alten Katalog an.
+        // Das Backend nutzt schon den neuen Katalog; der Aufrufer muss neu laden,
+        // sonst zeigt das Frontend veraltete Modell-IDs.
         onImported();
       })
       .catch((e) => {

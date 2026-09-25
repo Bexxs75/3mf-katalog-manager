@@ -30,10 +30,8 @@ const stepButtonClass =
   'w-7 h-7 bg-[var(--panel-2)] text-[var(--ink)] text-[14px] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-[var(--accent)]';
 
 /**
- * "Nachkaufen" (v0.13.1, Mockups freigegeben): legt N neue, volle Spulen bzw.
- * Resin-Flaschen nach dem Vorbild von `spool` an. Nutzt die gemeinsame
- * Popover-Huelle SpoolPopoverShell (Positionierung, Escape, Fehleranzeige,
- * Abbrechen/Absenden-Fusszeile identisch zu ConsumeResinPopover).
+ * "Nachkaufen": legt N neue, volle Spulen bzw. Resin-Flaschen nach dem Vorbild
+ * von `spool` an (Huelle: SpoolPopoverShell).
  */
 export function RestockPopover({ spool, anchor, knownLocations, onClose, onCreated }: Props) {
   const t = useT();

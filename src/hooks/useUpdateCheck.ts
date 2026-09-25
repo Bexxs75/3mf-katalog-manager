@@ -28,9 +28,7 @@ export function useUpdateCheck() {
   }, []);
 
   useEffect(() => {
-    // Die App-Version ist statisch bekannt und wird unabhaengig vom
-    // (netzwerkabhaengigen) Update-Check sofort geladen, damit die Anzeige
-    // nicht bis zu 5s auf den Roundtrip warten muss (Final-Review Finding F2).
+    // Die App-Version sofort laden, unabhaengig vom Update-Check (bis zu 5 s).
     updateApi
       .getAppVersion()
       .then((version) => setCurrentVersion(version))

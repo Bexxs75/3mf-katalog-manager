@@ -28,9 +28,7 @@ describe('useSlicers', () => {
   });
 
   it('addSlicer goes through the backend-driven pick_and_register_slicer dialog, never a self-constructed path', async () => {
-    // M-06/P0 (Task 11): es gibt hier bewusst keinen Weg, addSlicer() einen
-    // Pfad-String zu uebergeben - die einzige Quelle fuer einen neuen
-    // Slicer-Eintrag ist der native, backend-gesteuerte Dialog.
+    // addSlicer() nimmt keinen Pfad; einzige Quelle ist der Dialog im Backend.
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === 'scan_installed_slicers') return Promise.resolve([]);
       if (cmd === 'pick_and_register_slicer') {
@@ -64,11 +62,8 @@ describe('useSlicers', () => {
   });
 
   it('surfaces a rejection from pick_and_register_slicer via addSlicerError instead of an unhandled rejection', async () => {
-    // Finding 2 (Important, post-review): pick_and_register_slicer genuinely
-    // fails in real scenarios - executable_path is UNIQUE in the DB (a
-    // re-picked, already-registered slicer errors), and validate_slicer_path
-    // can reject the picked file. Previously this was an unhandled promise
-    // rejection with zero user-visible feedback.
+    // pick_and_register_slicer can really fail (UNIQUE path, rejected file); the
+    // user must see an error instead of an unhandled rejection.
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === 'scan_installed_slicers') return Promise.resolve([]);
       if (cmd === 'pick_and_register_slicer') {

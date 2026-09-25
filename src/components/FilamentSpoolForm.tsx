@@ -148,10 +148,8 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
       if (editing) {
         await invoke('update_filament_spool', { spool: payload });
       } else {
-        // Jede Spule bekommt einen eigenen Datensatz (eigene id), auch bei
-        // identischen Werten - der Restbestand wird pro physischer Spule
-        // unabhaengig verfolgt (z.B. Schwarz PLA nutzt sich unterschiedlich
-        // schnell ab, je nachdem welche Spule gerade im Drucker steckt).
+        // Jede Spule bekommt einen eigenen Datensatz, auch bei gleichen Werten: der
+        // Rest wird pro physischer Spule verfolgt.
         const count = Math.max(1, parseInt(form.quantity, 10) || 1);
         for (let i = 0; i < count; i++) {
           await invoke('add_filament_spool', { spool: payload });

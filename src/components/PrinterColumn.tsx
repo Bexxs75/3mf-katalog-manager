@@ -66,8 +66,7 @@ export function PrinterColumn({
   const slotButtons = useRef(new Map<string, HTMLButtonElement>());
   const bySlot = useMemo(() => spoolsBySlot(spools), [spools]);
   const storage = useMemo(() => spools.filter(isInStorage), [spools]);
-  // In der Filament-Ansicht nur Filament-Drucker, in der Resin-Ansicht nur
-  // Resin-Drucker (v0.14.0).
+  // In der Filament-Ansicht nur Filament-Drucker, in der Resin-Ansicht nur Resin-Drucker.
   const visiblePrinters = useMemo(() => printers.filter((p) => p.kind === kind), [printers, kind]);
   const draggedSpool = draggingSpoolId ? spools.find((s) => s.id === draggingSpoolId) : undefined;
   /** Nimmt diese Einheit die gerade gezogene Spule/Flasche an? Ohne Ziehen: ja. */
@@ -81,12 +80,8 @@ export function PrinterColumn({
     dropTarget.slotIndex === slotIndex;
 
   const renderUnit = (unit: MaterialUnit) => {
-    // Verteidigung in der Tiefe (finaler Review 2026-09-23, Finding 1): das
-    // Backend lehnt eine `slotCount` ausserhalb 1..16 bereits beim Import
-    // eines Katalog-Backups ab (`validate_printer_invariants`), aber diese
-    // Obergrenze hier stellt sicher, dass eine Ansicht auch dann nie haengt
-    // (`Array.from({length: unit.slotCount})`), wenn irgendein anderer,
-    // noch unbekannter Pfad einmal einen zu grossen Wert liefert.
+    // Obergrenze wie im Backend (1..16), damit `Array.from` bei einem kaputten
+    // Wert nie haengt.
     const slotCount = Math.min(unit.slotCount, 16);
     const used = Array.from({ length: slotCount }, (_, i) => bySlot.get(slotKey(unit.id, i))).filter(Boolean).length;
     const isVat = unit.kind === 'resin_vat';

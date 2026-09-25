@@ -64,11 +64,8 @@ export function useBulkSelection({
 
   const bulkAddToQueue = useCallback(() => {
     const notYetQueued = models.filter((m) => selectedForBulk.has(m.id) && m.queuePosition === null);
-    // Nur die betroffenen Modelle bekommen eine neue queuePosition - lokal
-    // patchen statt die komplette Liste per list_files() neu zu laden
-    // (Finding M-01: die Katalog-Uebersicht soll nicht mehr die volle,
-    // BLOB-lastige Abfrage ausloesen). Server ist bereits durch addToQueue
-    // aktualisiert; die zurueckgegebene Position wird hier gemerged.
+    // Nur die betroffenen Modelle lokal patchen statt die ganze Liste neu zu
+    // laden; das Backend ist durch addToQueue schon aktuell.
     return Promise.all(notYetQueued.map((m) => filesApi.addToQueue(m.id).then((position) => ({ id: m.id, position })))).then(
       (updates) => {
         const positionById = new Map(updates.map((u) => [u.id, u.position]));
@@ -93,12 +90,8 @@ export function useBulkSelection({
     [selectedForBulk, setModels],
   );
 
-  // Fuegt genau EINEN Tag allen ausgewaehlten Modellen hinzu, die ihn noch
-  // nicht haben - analog zu bulkSetPrintStatus: pro Datei ein einzelner
-  // addTag()-Aufruf (kein eigener Bulk-Tauri-Command noetig, die Anzahl
-  // gleichzeitig ausgewaehlter Dateien liegt praktisch immer im niedrigen
-  // zweistelligen Bereich), danach EIN lokaler State-Patch fuer alle
-  // betroffenen Modelle statt eines Refreshs der gesamten Liste.
+  // Einen Tag allen ausgewaehlten Modellen ohne ihn hinzufuegen: ein addTag()
+  // pro Datei (Auswahlen sind klein), danach ein lokaler Patch.
   const bulkAddTagAction = useCallback(() => {
     const tag = canonicalTag(tagDraft.trim());
     if (!tag) return Promise.resolve();
@@ -113,9 +106,7 @@ export function useBulkSelection({
     });
   }, [tagDraft, selectedForBulk, setModels, refreshTags]);
 
-  // Entfernt einen Tag aus allen ausgewaehlten Modellen, die ihn tragen -
-  // Gegenstueck zu bulkAddTagAction. Modelle ohne diesen Tag werden
-  // uebersprungen (kein Fehler, kein unnoetiger Aufruf).
+  // Gegenstueck zu bulkAddTagAction; Modelle ohne den Tag werden uebersprungen.
   const bulkRemoveTagAction = useCallback(
     (tag: string) => {
       const ids = Array.from(selectedForBulk).filter((id) => models.find((m) => m.id === id)?.tags.includes(tag));
@@ -130,10 +121,7 @@ export function useBulkSelection({
     [models, selectedForBulk, setModels, refreshTags],
   );
 
-  // Vereinigungsmenge aller Tags ueber die aktuell ausgewaehlten Modelle,
-  // fuer das "Tag entfernen"-Dropdown - nur Tags, die MINDESTENS eines der
-  // ausgewaehlten Modelle traegt, ergeben ueberhaupt einen sinnvollen
-  // Menuepunkt.
+  // Alle Tags der Auswahl, fuer das "Tag entfernen"-Menue.
   const tagsInSelection = useMemo(() => {
     const set = new Set<string>();
     for (const m of models) {

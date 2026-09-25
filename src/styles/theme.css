@@ -103,7 +103,7 @@ body { font-family: 'Barlow', Helvetica, sans-serif; }
   --icon-badge-size: 2.375rem;
 }
 
-/* v0.13.1 Nachkaufen: neu angelegte Eintraege kurz hervorheben (FilamentView entfernt die Klasse nach 2,5 s). */
+/* Nachkaufen: neu angelegte Eintraege kurz hervorheben (FilamentView entfernt die Klasse nach 2,5 s). */
 .spool-new {
   outline: 2px solid var(--good);
   outline-offset: -1px;

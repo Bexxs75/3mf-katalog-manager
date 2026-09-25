@@ -131,10 +131,8 @@ export function PrinterManagePanel({ open, printers, spools, error, actions, onC
 
   const spoolsIn = (unitIds: string[]) => spools.filter((s) => s.unitId !== null && unitIds.includes(s.unitId)).length;
 
-  /** Loesch-Rueckfrage samt Anzahl betroffener Spulen - der Rueckkehr-Satz
-   * ist plural-bewusst (`printersDeleteReturnHomeCount`) und faellt bei
-   * 0 betroffenen Spulen ganz weg, statt "0 Spulen kehren zurück." zu
-   * zeigen. */
+  /** Loesch-Rueckfrage; der Satz zu zurueckkehrenden Spulen entfaellt bei 0
+   * (statt "0 Spulen kehren zurück."). */
   const deleteConfirmText = (question: string, count: number) =>
     count === 0 ? question : `${question} ${formatCount(t('printersDeleteReturnHomeCount'), count)}`;
 

@@ -6,14 +6,8 @@ export type ResolvedTheme = 'light' | 'dark';
 const STORAGE_KEY = '3mf-katalog-theme';
 
 /**
- * Verwaltet das Theme der Anwendung.
- * - "system": folgt automatisch der OS Einstellung (prefers-color-scheme) und reagiert live auf Änderungen
- * - "light" / "dark": manuell fixiert, überschreibt den Systemmodus
- * Die Auswahl wird in localStorage gespeichert und beim nächsten Start wiederhergestellt.
- *
- * In der Tauri App kann prefers-color-scheme durch die native OS Theme API
- * ersetzt werden (z. B. @tauri-apps/api/window getTheme / onThemeChanged),
- * das Interface dieses Hooks bleibt dabei unverändert.
+ * Theme der Anwendung: "system" folgt live prefers-color-scheme, "light"/"dark"
+ * sind fest. Die Auswahl liegt in localStorage.
  */
 export function useTheme() {
   const [setting, setSetting] = useState<ThemeSetting>(() => {

@@ -1,8 +1,5 @@
-// Decodiert das von get_model_geometry (src-tauri/src/commands.rs::
-// encode_render_meshes) gelieferte Binaerformat direkt in typed-array-
-// Views auf den ArrayBuffer - keine three.js-Loader (STLLoader/
-// ThreeMFLoader) und damit keine DOMParser-Abhaengigkeit mehr noetig, da
-// ZIP-Entpacken und Mesh-Parsing komplett in Rust passieren.
+// Decodiert das Binaerformat von get_model_geometry (`encode_render_meshes`
+// in Rust) direkt in typed-array-Views auf den ArrayBuffer.
 //
 // Wire-Format:
 // - 4 Bytes: Laenge des JSON-Headers, little-endian u32

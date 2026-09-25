@@ -26,10 +26,7 @@ export function ModelList({ models, selectedId, onSelect, onOpenDetail, onContex
   const [fileDragArmed, setFileDragArmed] = useState(false);
   const fileDragStartPos = useRef<{ x: number; y: number } | null>(null);
 
-  // Identisches Schwellenwert-Muster wie ModelGrid.tsx's Datei-Drag (siehe
-  // dort fuer die ausfuehrliche Begruendung) - hier auf Zeilen statt Karten
-  // angewendet, damit auch die Listenansicht Dateien per Maus auf
-  // Ordner-Kopfzeilen der gruppierten Ansicht ziehen kann.
+  // Schwellenwert-Muster wie beim Datei-Drag in ModelGrid, hier fuer Zeilen.
   useEffect(() => {
     if (!fileDragCandidateId) return;
     const handleMouseMove = (e: MouseEvent) => {

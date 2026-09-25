@@ -27,9 +27,8 @@ export function PrinterLinkStatus({ printerId, link }: Props) {
   let text = c.lastSyncedAt
     ? t('printerSyncedAgo').replace('{time}', () => formatRelativeTime(iso(c.lastSyncedAt as number), language))
     : t('printerNotSyncedYet');
-  // Nach einer Sicherungswiederherstellung ist `paused` gesetzt, aber
-  // `lastError` (noch) leer - ohne diesen Zweig sah die Verbindung "gesund"
-  // aus, obwohl der Abgleich sie fuer immer ueberspringt.
+  // Nach einer Wiederherstellung ist `paused` gesetzt, `lastError` aber leer;
+  // ohne diesen Zweig saehe die Verbindung faelschlich gesund aus.
   if (c.paused && c.lastError !== 'auth_required') {
     dot = 'bg-[var(--warn)]';
     text = t('printerPausedRetest');

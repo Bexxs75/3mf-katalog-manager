@@ -5,13 +5,9 @@ export type DisplayPreference = 'thumbnail' | 'render';
 const STORAGE_KEY = '3mf-katalog-display-preference';
 
 /**
- * Verwaltet die globale Einstellung, ob Katalog-Karten und die Modell-
- * Detailseite standardmaessig das eingebettete Datei-Bild ("thumbnail")
- * oder eine gerenderte 3D-Ansicht ("render") bevorzugen. Persistiert in
- * localStorage nach demselben Muster wie Theme/Dichte (useTheme.ts).
- * Default ist "thumbnail" - entspricht dem Verhalten vor Einfuehrung
- * dieser Einstellung, damit Bestandsnutzer keine Aenderung ohne aktives
- * Zutun erleben.
+ * Ob Karten und Detailseite das eingebettete Datei-Bild ("thumbnail") oder die
+ * gerenderte 3D-Ansicht ("render") bevorzugen, in localStorage gespeichert.
+ * Default "thumbnail", damit sich fuer Bestandsnutzer nichts aendert.
  */
 export function useDisplayPreference() {
   const [preference, setPreferenceState] = useState<DisplayPreference>(() => {

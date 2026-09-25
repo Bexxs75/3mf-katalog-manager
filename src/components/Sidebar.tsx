@@ -91,11 +91,8 @@ export function Sidebar({
     setCreatingCollection(false);
   };
 
-  // Inline-Input statt window.prompt, analog zum `creating`-Muster in
-  // CollectionsGallery.tsx (autoFocus + onBlur + Enter-Submit). Der neue
-  // Ordner wird unter dem gerade aktiven Ordner angelegt (bzw. an der Wurzel,
-  // wenn "Alle Modelle" aktiv ist - `onCreateFolder` in App.tsx macht daraus
-  // `parentId: null`).
+  // Inline-Eingabe statt window.prompt. Der Ordner entsteht unter dem aktiven
+  // Ordner, bei "Alle Modelle" an der Wurzel.
   const submitCreateFolder = () => {
     const value = folderNameDraft.trim();
     if (value) onCreateFolder(activeFolderId === 'all' ? null : activeFolderId, value);

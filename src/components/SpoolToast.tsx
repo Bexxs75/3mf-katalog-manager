@@ -16,10 +16,9 @@ const AUTO_CLOSE_MS = 5000;
 
 /**
  * Hinweis nach dem Herausnehmen einer Spule: "PLA Schwarz → zurueck nach
- * Regal 2 · Aendern". Beim Ziehen wuerde eine Nachfrage nach dem Lagerort
- * den Fluss stoeren (Spec, Entscheidung 3) - deshalb stumm zum Stammplatz,
- * aber hier korrigierbar. Schliesst sich nach 5 s, ausser waehrend der
- * Korrektur.
+ * Regal 2 · Aendern". Beim Ziehen wuerde eine Nachfrage den Fluss stoeren,
+ * deshalb stumm zum Stammplatz, aber hier korrigierbar. Schliesst nach 5 s,
+ * ausser waehrend der Korrektur.
  */
 export function SpoolToast({ label, location, knownLocations, onChangeLocation, onDone }: Props) {
   const t = useT();

@@ -21,12 +21,8 @@ export function isFileInFolderOrDescendant(
 }
 
 /**
- * Prueft, ob `candidateId` gleich `ancestorId` ist oder ein (direkter oder
- * indirekter) Nachfahre davon (entlang der `parentId`-Kette). Client-seitiges
- * Aequivalent zu `is_descendant` in `commands.rs` (Task 5) - dient hier nur
- * dem sofortigen visuellen Feedback beim Drag (kein Drop-Highlight auf dem
- * eigenen Unterbaum eines gerade gezogenen Ordners); die serverseitige
- * Pruefung bleibt die verbindliche Instanz.
+ * Ob `candidateId` gleich `ancestorId` oder ein Nachfahre davon ist. Nur fuer
+ * das Highlight beim Ziehen; verbindlich prueft `is_descendant` im Backend.
  */
 export function isFolderSelfOrDescendant(
   candidateId: string,

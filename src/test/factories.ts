@@ -35,9 +35,7 @@ export function makeModelFile(overrides: Partial<ModelFile> = {}): ModelFile {
   };
 }
 
-// Projiziert einen ModelFile-Testfixture auf die schlanke
-// list_file_summaries-Form (Finding M-01), damit Store-Tests nicht zwei
-// unabhaengige Fixture-Definitionen pflegen muessen.
+// Projiziert eine ModelFile-Fixture auf die Summary-Form (eine Fixture-Definition fuer beide).
 export function makeModelFileSummary(
   overrides: Partial<ModelFile> & { hasRenderSnapshot?: boolean } = {},
 ): ModelFileSummary {
@@ -57,16 +55,10 @@ export function makeModelFileSummary(
     favorite: m.favorite,
     queuePosition: m.queuePosition,
     thumbnailImage: m.thumbnailImage,
-    // Bugfix (2026-09-20): list_file_summaries liefert render_snapshot_png
-    // jetzt mit, spiegelt hier also den zugrundeliegenden ModelFile-Wert
-    // wider statt hartcodiert null zu sein.
     renderSnapshotImage: m.renderSnapshotImage,
-    // Standard: leitet sich aus demselben Wert ab - kann bei Bedarf explizit
-    // ueberschrieben werden, um eine Abweichung zwischen Blob und Flag
-    // nachzubilden (z.B. fuer Regressionstests des frueheren Finding-1-Bugs).
+    // Standard aus dem Blob abgeleitet; ueberschreibbar, um Blob und Flag
+    // auseinanderlaufen zu lassen.
     hasRenderSnapshot: overrides.hasRenderSnapshot ?? m.renderSnapshotImage !== null,
-    // Bugfix (2026-09-20): list_file_summaries liefert creator jetzt mit,
-    // analog zu renderSnapshotImage oben.
     creator: m.creator,
     lastViewedAt: m.lastViewedAt,
     contentHash: m.contentHash,

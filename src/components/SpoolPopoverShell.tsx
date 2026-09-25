@@ -29,12 +29,10 @@ interface Props {
 }
 
 /**
- * Gemeinsame Huelle fuer die Lager-Popover ("Nachkaufen", "− Verbrauch"):
- * per useAnchoredPopup fest positioniertes Portal-Fenster mit Titel/Untertitel,
- * Formularbereich (children), Fehleranzeige (role=alert) und
- * Abbrechen/Absenden-Fusszeile. Escape, "Abbrechen" und Klick daneben
- * schliessen immer, ohne etwas abzusenden (extrahiert aus RestockPopover bei
- * der Einfuehrung von ConsumeResinPopover, v0.13.1).
+ * Gemeinsame Huelle der Lager-Popover ("Nachkaufen", "− Verbrauch"): per
+ * useAnchoredPopup positioniertes Portal-Fenster mit Titel, Formular (children),
+ * Fehleranzeige und Abbrechen/Absenden. Escape, "Abbrechen" und Klick daneben
+ * schliessen immer, ohne abzusenden.
  */
 export function SpoolPopoverShell({
   anchor,

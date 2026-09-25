@@ -41,10 +41,7 @@ export function GroupedModelList({
   const t = useT();
   const { roots, noFolder } = useMemo(() => buildGroupedFolderTree(folders, models), [folders, models]);
 
-  // Identisches Schwellenwert-Muster wie FolderTree.tsx's Ordner-Drag (siehe
-  // dort) - hier auf die Ordner-Kopfzeilen der gruppierten Ansicht
-  // angewendet, damit Ordner auch von hier aus verschoben werden koennen,
-  // nicht nur aus der Sidebar.
+  // Schwellenwert-Muster wie beim Ordner-Drag in FolderTree, fuer die Ordner-Kopfzeilen.
   const [folderDragCandidateId, setFolderDragCandidateId] = useState<string | null>(null);
   const folderDragStartPos = useRef<{ x: number; y: number } | null>(null);
 
@@ -78,10 +75,8 @@ export function GroupedModelList({
   };
 
   function renderNode(node: GroupedFolderNode, depth: number) {
-    // totalCount ist rekursiv (schliesst alle Nachfahren ein) - bei 0 kann
-    // dieser Ordner und sein gesamter Unterbaum unter der aktiven Filterung
-    // keine Datei enthalten, ein return null hier ist also sicher (Review-
-    // Fund I-2: verhindert eine Wand leerer Kopfzeilen bei aktivem Filter).
+    // totalCount ist rekursiv: bei 0 enthaelt der ganze Unterbaum unter dem Filter
+    // nichts (sonst eine Wand leerer Kopfzeilen).
     if (node.totalCount === 0) return null;
     const isCollapsed = collapsedFolders.isCollapsed(node.folder.id);
     const isDraggedOver = dragOverFolderId === node.folder.id;

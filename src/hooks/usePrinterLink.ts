@@ -12,9 +12,7 @@ export function usePrinterLink() {
   const [connections, setConnections] = useState<PrinterConnection[]>([]);
   const [jobs, setJobs] = useState<PrinterJob[]>([]);
   const [error, setError] = useState<string | null>(null);
-  // Verhindert setState nach dem Unmount (z.B. wenn eine Ladeanfrage erst
-  // nach dem Verlassen der Seite antwortet). Wird in Effects korrekt auf-/abbaut
-  // um mit React StrictMode kompatibel zu sein.
+  // Verhindert setState nach dem Unmount; in Effects gesetzt, damit StrictMode passt.
   const mounted = useRef(false);
   useEffect(() => {
     mounted.current = true;

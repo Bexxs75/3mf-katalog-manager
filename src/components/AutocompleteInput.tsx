@@ -8,12 +8,8 @@ interface Props {
   className?: string;
 }
 
-// Eigenes, themekonformes Autocomplete statt <input list="..."> +
-// <datalist>: die Vorschlagsliste eines nativen <datalist> wird vom
-// Betriebssystem/WebKit gerendert und laesst sich per CSS nicht an das
-// dunkle Theme der App anpassen (erscheint immer als weisses System-
-// Popup) - gleiches Problem wie bei nativen Checkboxen, die aus demselben
-// Grund bereits durch eine eigene Komponente ersetzt wurden.
+// Eigenes Autocomplete statt <datalist>: dessen Vorschlagsliste rendert das
+// System und ignoriert das dunkle Theme.
 export function AutocompleteInput({ value, onChange, options, placeholder, className }: Props) {
   const [open, setOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
