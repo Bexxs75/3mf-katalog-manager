@@ -1,10 +1,11 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { LanguageProvider } from '../i18n/LanguageContext';
+import { LanguageProviderWithDiagnostics as LanguageProvider } from '../test/renderWithDiagnostics';
 import { clockOffsetParts, PrinterConnectionSection } from './PrinterConnectionSection';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
 import type { PrinterConnection } from '../types';
 
+vi.mock('@tauri-apps/plugin-log', () => ({ error: vi.fn(() => Promise.resolve()), info: vi.fn(() => Promise.resolve()) }));
 beforeEach(() => localStorage.setItem('3mf-katalog-language', 'de'));
 
 function link(testResult: unknown): PrinterLinkState {
@@ -63,7 +64,7 @@ describe('PrinterConnectionSection', () => {
     await expect(
       act(async () => fireEvent.click(screen.getByRole('button', { name: 'Verbindung testen' }))),
     ).resolves.not.toThrow();
-    expect(screen.getByText('Das hat nicht geklappt: lock poisoned')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Das hat nicht geklappt: lock poisoned');
   });
 
   it('shows an error and does not throw when removeConnection rejects', async () => {
@@ -72,8 +73,27 @@ describe('PrinterConnectionSection', () => {
     renderIt(l, okConnection);
     const removeButton = screen.getByRole('button', { name: 'Verbindung entfernen' });
     await expect(act(async () => fireEvent.click(removeButton))).resolves.not.toThrow();
-    expect(screen.getByText('Das hat nicht geklappt: unknown printer id')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Das hat nicht geklappt: unknown printer id');
     expect(removeButton).not.toBeDisabled();
+  });
+
+  it('offers "Report problem" for an unexpected command rejection', async () => {
+    const l = link(undefined);
+    l.testConnection = vi.fn().mockRejectedValue({ message: 'x', expected: false });
+    renderIt(l);
+    fireEvent.change(screen.getByLabelText('Adresse (IP oder Name)'), { target: { value: '10.0.0.9' } });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Verbindung testen' })));
+    expect(screen.getByText('Problem melden')).toBeInTheDocument();
+  });
+
+  it('does not offer "Report problem" for an expected command rejection', async () => {
+    const l = link(undefined);
+    l.testConnection = vi.fn().mockRejectedValue({ message: 'x', expected: true });
+    renderIt(l);
+    fireEvent.change(screen.getByLabelText('Adresse (IP oder Name)'), { target: { value: '10.0.0.9' } });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Verbindung testen' })));
+    expect(screen.getByRole('alert')).toHaveTextContent('x');
+    expect(screen.queryByText('Problem melden')).not.toBeInTheDocument();
   });
 
   it('does not claim "Verbunden" while the connection is paused (e.g. after a backup restore)', () => {

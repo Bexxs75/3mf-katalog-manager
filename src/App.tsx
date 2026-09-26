@@ -374,6 +374,7 @@ export default function App() {
               from={dragDrop.moveToast.from}
               to={dragDrop.moveToast.to}
               error={dragDrop.moveToast.error}
+              unexpected={dragDrop.moveToast.unexpected}
               onDone={dragDrop.dismissMoveToast}
             />
           )}

@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
-import { LanguageProvider } from '../i18n/LanguageContext';
+import { LanguageProviderWithDiagnostics as LanguageProvider } from '../test/renderWithDiagnostics';
 import { RestockPopover } from './RestockPopover';
 import type { FilamentSpool } from '../types';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
+vi.mock('@tauri-apps/plugin-log', () => ({ error: vi.fn(() => Promise.resolve()), info: vi.fn(() => Promise.resolve()) }));
 
 const TEMPLATE: FilamentSpool = {
   id: 's2', material: 'ABS-T', manufacturer: 'Prusament', color: 'Orange', location: null,

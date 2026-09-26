@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import * as importExportApi from '../lib/api/importExport';
-import { messageOf } from '../lib/errors';
+import { toAppError, type AppError } from '../lib/errors';
 
 const CATALOG_SETTINGS_KEYS = [
   '3mf-katalog-theme',
@@ -30,7 +30,7 @@ const IMPORT_ALLOWED_SETTINGS_VALUES: Record<string, readonly string[]> = {
 };
 
 export function useCatalogBackup() {
-  const [catalogBackupError, setCatalogBackupError] = useState<string | null>(null);
+  const [catalogBackupError, setCatalogBackupError] = useState<AppError | null>(null);
 
   const exportCatalog = useCallback(() => {
     setCatalogBackupError(null);
@@ -40,7 +40,7 @@ export function useCatalogBackup() {
     }
     return importExportApi.exportCatalog(JSON.stringify(settings)).catch((e) => {
       console.error('[catalog-backup] export failed:', e);
-      setCatalogBackupError(messageOf(e));
+      setCatalogBackupError(toAppError(e));
     });
   }, []);
 
@@ -79,7 +79,7 @@ export function useCatalogBackup() {
       })
       .catch((e) => {
         console.error('[catalog-backup] import failed:', e);
-        setCatalogBackupError(messageOf(e));
+        setCatalogBackupError(toAppError(e));
       });
   }, []);
 

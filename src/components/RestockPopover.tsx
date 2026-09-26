@@ -12,7 +12,7 @@ import {
   validateRestockInput,
 } from '../lib/filamentRestock';
 import { restockFilamentSpool } from '../lib/api/filament';
-import { messageOf } from '../lib/errors';
+import { expectedError, messageOf, toAppError, type AppError } from '../lib/errors';
 import { AutocompleteInput } from './AutocompleteInput';
 import { SpoolPopoverShell, fieldClass } from './SpoolPopoverShell';
 
@@ -44,7 +44,7 @@ export function RestockPopover({ spool, anchor, knownLocations, onClose, onCreat
   const [weight, setWeight] = useState(() => formatDecimalInput(defaults.weight, language));
   const [price, setPrice] = useState(() => (defaults.price === null ? '' : formatDecimalInput(defaults.price, language)));
   const [location, setLocation] = useState(defaults.location);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<AppError | null>(null);
   const [busy, setBusy] = useState(false);
 
   const title = t('filamentRestockTitle').replace('{spool}', restockSpoolLabel(spool));
@@ -53,7 +53,7 @@ export function RestockPopover({ spool, anchor, knownLocations, onClose, onCreat
     if (busy) return;
     const result = validateRestockInput({ count, weight, price, location });
     if (!result.ok) {
-      setError(result.error === 'weight' ? t('stockInvalidAmount') : t('filamentRestockInvalidPrice'));
+      setError(expectedError(result.error === 'weight' ? t('stockInvalidAmount') : t('filamentRestockInvalidPrice')));
       return;
     }
     setError(null);
@@ -62,7 +62,7 @@ export function RestockPopover({ spool, anchor, knownLocations, onClose, onCreat
     restockFilamentSpool(spool.id, value.count, value.weight, value.price, value.location)
       .then((created) => onCreated(created))
       .catch((e) => {
-        setError(`${t('filamentRestockError')} (${messageOf(e)})`);
+        setError({ ...toAppError(e), message: `${t('filamentRestockError')} (${messageOf(e)})` });
         setBusy(false);
       });
   };

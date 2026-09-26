@@ -7,9 +7,10 @@ import { filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus
 import { useImageDropZone } from '../hooks/useImageDropZone';
 import { readDroppedImage } from '../lib/api/filament';
 import type { ImageDropRejection } from '../lib/imageDrop';
-import { messageOf } from '../lib/errors';
+import { expectedError, toAppError, type AppError } from '../lib/errors';
 import { AutocompleteInput } from './AutocompleteInput';
 import { ColorPicker } from './ColorPicker';
+import { ErrorText } from '../diagnostics/ErrorText';
 
 interface Props {
   open: boolean;
@@ -75,11 +76,11 @@ function toForm(spool: FilamentSpool): FormState {
 export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSaved, defaultKind = 'filament' }: Props) {
   const t = useT();
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<AppError | null>(null);
   // Rejected image (too large, not an image, several files): shown right at
   // the image field and keeps the form open until another image arrives or
   // the hint is closed - otherwise it would silently save without an image.
-  const [imageError, setImageError] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<AppError | null>(null);
   const imageErrorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -97,7 +98,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
         setImageError(null);
         setForm((prev) => ({ ...prev, imagePng: base64 }));
       })
-      .catch((e) => setImageError(messageOf(e)));
+      .catch((e) => setImageError(toAppError(e)));
   };
 
   const handleDroppedImage = useCallback((path: string) => {
@@ -106,12 +107,12 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
         setImageError(null);
         setForm((prev) => ({ ...prev, imagePng: base64 }));
       })
-      .catch((e) => setImageError(messageOf(e)));
+      .catch((e) => setImageError(toAppError(e)));
   }, []);
 
   const handleRejectedDrop = useCallback(
     (reason: ImageDropRejection) =>
-      setImageError(reason === 'multiple' ? t('filamentImageDropMultiple') : t('filamentImageDropNotImage')),
+      setImageError(expectedError(reason === 'multiple' ? t('filamentImageDropMultiple') : t('filamentImageDropNotImage'))),
     [t],
   );
 
@@ -159,7 +160,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
       onSaved();
       onClose();
     } catch (e) {
-      setError(messageOf(e));
+      setError(toAppError(e));
     }
   };
 
@@ -209,7 +210,11 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-5">
-          {error && <div className="text-[12.5px] text-[var(--accent)] break-words">{t('filamentError')} {error}</div>}
+          {error && (
+            <div className="text-[12.5px] text-[var(--accent)] break-words">
+              {t('filamentError')} <ErrorText error={error} />
+            </div>
+          )}
 
           <div>
             <p className="text-[10px] uppercase tracking-wider font-bold text-[var(--ink-3)] mb-2">
@@ -247,7 +252,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
                 className="mt-2 flex items-start gap-2 px-3 py-2 rounded-md border border-[var(--accent)] bg-[var(--accent-soft)] text-[12px] text-[var(--ink)]"
               >
                 <div className="flex-1 min-w-0 break-words">
-                  <p className="font-semibold">{imageError}</p>
+                  <p className="font-semibold"><ErrorText error={imageError} /></p>
                   <p className="text-[11px] text-[var(--ink-2)] mt-0.5">{t('filamentImageErrorHint')}</p>
                 </div>
                 <button

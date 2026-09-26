@@ -80,7 +80,7 @@ describe('useSlicers', () => {
       await result.current.addSlicer();
     });
 
-    expect(result.current.addSlicerError).toBe('slicer executable already registered');
+    expect(result.current.addSlicerError).toEqual({ message: 'slicer executable already registered', unexpected: true });
     // The slicer list itself stays unchanged (nothing was registered).
     expect(result.current.slicers).toEqual([]);
   });

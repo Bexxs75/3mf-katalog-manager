@@ -1,11 +1,12 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { LanguageProvider } from '../i18n/LanguageContext';
+import { LanguageProviderWithDiagnostics as LanguageProvider } from '../test/renderWithDiagnostics';
 import { PrinterJobsDialog } from './PrinterJobsDialog';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
 import type { FilamentSpool, PrinterJob } from '../types';
 
 vi.mock('../lib/api/printerLink', () => ({ getPrinterJobThumbnail: vi.fn().mockResolvedValue(null) }));
+vi.mock('@tauri-apps/plugin-log', () => ({ error: vi.fn(() => Promise.resolve()), info: vi.fn(() => Promise.resolve()) }));
 beforeEach(() => localStorage.setItem('3mf-katalog-language', 'de'));
 
 const spools = [

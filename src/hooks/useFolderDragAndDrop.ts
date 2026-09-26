@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as foldersApi from '../lib/api/folders';
 import { isFolderSelfOrDescendant } from '../lib/folderTree';
-import { messageOf } from '../lib/errors';
+import { toAppError } from '../lib/errors';
 import type { ModelFile, Folder } from '../types';
 
 interface Refreshers {
@@ -15,7 +15,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
   const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
   const [draggedFolderId, setDraggedFolderId] = useState<string | null>(null);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
-  const [moveToast, setMoveToast] = useState<{ from: string; to: string; error?: boolean } | null>(null);
+  const [moveToast, setMoveToast] = useState<{ from: string; to: string; error?: boolean; unexpected?: boolean } | null>(null);
 
   const onDragFileStart = useCallback((id: string) => setDraggedFileId(id), []);
   // A click without hovering over another row moves nothing
@@ -52,7 +52,8 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
         .catch((e) => {
           console.error('[folders] creating failed:', e);
           // Show the error next to the folder tree; catalogBackupError would be invisible without an open panel.
-          setMoveToast({ from: name, to: messageOf(e), error: true });
+          const err = toAppError(e);
+          setMoveToast({ from: name, to: err.message, error: true, unexpected: err.unexpected });
         }),
     [refreshFolders],
   );
@@ -77,7 +78,8 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
         })
         .catch((e) => {
           console.error('[folders] moving file failed:', e);
-          setMoveToast({ from: file.name, to: messageOf(e), error: true });
+          const err = toAppError(e);
+          setMoveToast({ from: file.name, to: err.message, error: true, unexpected: err.unexpected });
         });
     };
     document.addEventListener('mouseup', handleMouseUp);
@@ -107,7 +109,8 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
         })
         .catch((e) => {
           console.error('[folders] moving folder failed:', e);
-          setMoveToast({ from: folder.name, to: messageOf(e), error: true });
+          const err = toAppError(e);
+          setMoveToast({ from: folder.name, to: err.message, error: true, unexpected: err.unexpected });
         });
     };
     document.addEventListener('mouseup', handleMouseUp);

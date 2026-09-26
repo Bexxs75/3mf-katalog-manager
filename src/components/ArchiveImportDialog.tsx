@@ -3,8 +3,9 @@ import { listen } from '@tauri-apps/api/event';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatBytes } from '../i18n/format';
 import * as importExportApi from '../lib/api/importExport';
-import { messageOf } from '../lib/errors';
+import { toAppError, type AppError } from '../lib/errors';
 import { BulkCheckbox } from './BulkCheckbox';
+import { ErrorText } from '../diagnostics/ErrorText';
 import type {
   ArchiveImportResult,
   ArchiveInfo,
@@ -72,7 +73,7 @@ export function ArchiveImportDialog({ archives, defaultTargetDir, onCancel, onDo
   const [deleteArchives, setDeleteArchives] = useState(false);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<Record<string, ArchiveProgress['state']>>({});
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<AppError | null>(null);
 
   const extractable = useMemo(() => archives.filter((a) => a.status === 'ok'), [archives]);
 
@@ -88,7 +89,7 @@ export function ArchiveImportDialog({ archives, defaultTargetDir, onCancel, onDo
         if (cancelled) return;
         setConflicts(Object.fromEntries(extractable.map((a, i) => [a.path, flags[i] ?? false])));
       })
-      .catch((e) => setError(messageOf(e)));
+      .catch((e) => setError(toAppError(e)));
     return () => {
       cancelled = true;
     };
@@ -125,7 +126,7 @@ export function ArchiveImportDialog({ archives, defaultTargetDir, onCancel, onDo
       const result = await importExportApi.extractArchives(targetDir, requests, deleteArchives);
       onDone(result);
     } catch (e) {
-      setError(messageOf(e));
+      setError(toAppError(e));
       setRunning(false);
     }
   };
@@ -208,7 +209,11 @@ export function ArchiveImportDialog({ archives, defaultTargetDir, onCancel, onDo
               </div>
             );
           })}
-          {error && <div className="text-[length:var(--font-size-meta)] text-[var(--danger,#d33)]">{error}</div>}
+          {error && (
+            <div className="text-[length:var(--font-size-meta)] text-[var(--danger,#d33)]">
+              <ErrorText error={error} />
+            </div>
+          )}
         </div>
 
         <div className="flex-none px-4 py-3 border-t border-[var(--line)] flex items-center gap-2">

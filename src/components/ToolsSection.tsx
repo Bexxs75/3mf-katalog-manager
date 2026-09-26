@@ -3,6 +3,8 @@ import type { FilamentCheck, ModelFile } from '../types';
 import { useT } from '../i18n/LanguageContext';
 import { QueueList } from './QueueList';
 import type { ToolCounts, ToolView } from '../lib/toolViews';
+import type { AppError } from '../lib/errors';
+import { ErrorText } from '../diagnostics/ErrorText';
 
 export interface ToolsSectionProps {
   queue: ModelFile[];
@@ -15,7 +17,7 @@ export interface ToolsSectionProps {
   counts: ToolCounts;
   onOpenCleanup: () => void;
   cleanupScanning: boolean;
-  cleanupError: string | null;
+  cleanupError: AppError | null;
 }
 
 // Line icons (16 px, currentColor) as in the approved mockup.
@@ -160,7 +162,7 @@ export function ToolsSection(props: ToolsSectionProps) {
           </button>
           {props.cleanupError && (
             <div role="alert" className="px-1.5 pl-[32px] text-[length:var(--font-size-meta)] text-[var(--crit)]">
-              {props.cleanupError}
+              <ErrorText error={props.cleanupError} />
             </div>
           )}
         </div>

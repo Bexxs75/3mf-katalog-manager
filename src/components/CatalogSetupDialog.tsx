@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useT } from '../i18n/LanguageContext';
 import type { ImportResultDto, Folder } from '../types';
-import { messageOf } from '../lib/errors';
+import { toAppError, type AppError } from '../lib/errors';
+import { ErrorText } from '../diagnostics/ErrorText';
 
 interface Props {
   onClose: () => void;
@@ -18,7 +19,7 @@ type Done =
 export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet }: Props) {
   const t = useT();
   const [busy, setBusy] = useState<'adopt' | 'new' | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<AppError | null>(null);
   const [done, setDone] = useState<Done | null>(null);
 
   const adoptExisting = async () => {
@@ -39,7 +40,7 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
       onImported(result);
       setDone({ kind: 'adopt', path, files: result.imported.length, folders: newFolders });
     } catch (e) {
-      setError(messageOf(e));
+      setError(toAppError(e));
     } finally {
       setBusy(null);
     }
@@ -55,7 +56,7 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
       onBaseDirSet(path);
       setDone({ kind: 'new', path });
     } catch (e) {
-      setError(messageOf(e));
+      setError(toAppError(e));
     } finally {
       setBusy(null);
     }
@@ -128,7 +129,7 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
 
           {error && (
             <div className="mb-3 font-mono-ui text-[11px] text-[var(--accent)] break-words">
-              {t('catalogSetupError')} {error}
+              {t('catalogSetupError')} <ErrorText error={error} />
             </div>
           )}
 

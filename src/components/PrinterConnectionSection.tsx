@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatDateTime } from '../i18n/format';
-import { messageOf } from '../lib/errors';
+import { toAppError, type AppError } from '../lib/errors';
 import type { PrinterConnection, PrinterConnectionError } from '../types';
 import { formatCount, type PluralForms } from '../i18n/types';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
+import { ErrorText } from '../diagnostics/ErrorText';
 
 interface Props {
   printerId: string;
@@ -67,7 +68,7 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
   const [testing, setTesting] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<PrinterConnectionError | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<AppError | null>(null);
   const [current, setCurrent] = useState<PrinterConnection | null>(connection);
   // Prevents the prop sync below from overwriting a result just delivered by
   // `runTest` with a still stale `connection` prop.
@@ -95,7 +96,7 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
         setError(r.error ?? 'bad_response');
       }
     } catch (e) {
-      setActionError(messageOf(e));
+      setActionError(toAppError(e));
     } finally {
       setTesting(false);
     }
@@ -108,7 +109,7 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
       await link.removeConnection(printerId);
       setCurrent(null);
     } catch (e) {
-      setActionError(messageOf(e));
+      setActionError(toAppError(e));
     } finally {
       setRemoving(false);
     }
@@ -160,7 +161,8 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
       </div>
       {actionError && (
         <div role="alert" className="border-l-[3px] border-[var(--crit)] pl-2.5 text-[12px] text-[var(--ink-2)]">
-          {t('printerConnectionActionFailed').replace('{message}', actionError)}
+          {t('printerConnectionActionFailed').replace('{message}', '')}
+          <ErrorText error={actionError} />
         </div>
       )}
       {error && (

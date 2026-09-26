@@ -4,8 +4,10 @@ import { formatCount } from '../i18n/types';
 import { UNIT_TEMPLATES } from '../lib/filamentColors';
 import type { FilamentSpool, MaterialUnit, Printer, PrinterKind, UnitKind } from '../types';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
+import type { AppError } from '../lib/errors';
 import { PrinterConnectionSection } from './PrinterConnectionSection';
 import { SegmentedControl } from './SegmentedControl';
+import { ErrorText } from '../diagnostics/ErrorText';
 
 export interface PrinterActions {
   addPrinter: (name: string, holderName: string, kind: PrinterKind) => Promise<unknown>;
@@ -21,7 +23,7 @@ interface Props {
   open: boolean;
   printers: Printer[];
   spools: FilamentSpool[];
-  error: string | null;
+  error: AppError | null;
   actions: PrinterActions;
   onClose: () => void;
   /** After changes that can send spools back to their home location. */
@@ -246,7 +248,11 @@ export function PrinterManagePanel({ open, printers, spools, error, actions, onC
 
         {open && (
           <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4">
-            {error && <div className="text-[12.5px] text-[var(--accent)] break-words">{t('filamentError')} {error}</div>}
+            {error && (
+              <div className="text-[12.5px] text-[var(--accent)] break-words">
+                {t('filamentError')} <ErrorText error={error} />
+              </div>
+            )}
 
             {printers.map((printer) => {
               const isResin = printer.kind === 'resin';

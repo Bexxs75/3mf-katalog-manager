@@ -132,6 +132,8 @@ export interface ArchiveOutcome {
   archiveDeleted: boolean;
   deleteError: string | null;
   error: string | null;
+  /** Only set when `error` came from a frontend-side catch (see useFileImport); offers "Report problem". */
+  unexpected?: boolean;
 }
 
 export interface ArchiveImportResult {

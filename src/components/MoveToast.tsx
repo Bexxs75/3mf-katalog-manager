@@ -1,9 +1,12 @@
 import { useEffect } from 'react';
+import { ReportProblemLink } from '../diagnostics/ReportProblemLink';
 
 interface Props {
   from: string;
   to: string;
   error?: boolean;
+  /** Only meaningful together with `error`: offers "Report problem" for an unexpected error. */
+  unexpected?: boolean;
   onDone: () => void;
 }
 
@@ -12,7 +15,7 @@ interface Props {
  * folder; disappears after 3 s (`onDone`). A new move restarts the
  * timer. With `error`, `to` carries the error message (no arrow, red accent).
  */
-export function MoveToast({ from, to, error = false, onDone }: Props) {
+export function MoveToast({ from, to, error = false, unexpected = false, onDone }: Props) {
   useEffect(() => {
     const timer = setTimeout(onDone, 3000);
     return () => clearTimeout(timer);
@@ -32,6 +35,7 @@ export function MoveToast({ from, to, error = false, onDone }: Props) {
           <span className="font-semibold flex-none">✕</span>
           <span className="font-semibold overflow-hidden text-ellipsis whitespace-nowrap">{from}:</span>
           <span className="opacity-90 overflow-hidden text-ellipsis whitespace-nowrap">{to}</span>
+          {unexpected && <ReportProblemLink />}
         </>
       ) : (
         <>

@@ -9,6 +9,8 @@ import type { Language } from '../i18n/types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { DiagnosticsSettings } from '../diagnostics/DiagnosticsSettings';
 import { PrinterLinkSettings } from './PrinterLinkSettings';
+import type { AppError } from '../lib/errors';
+import { ErrorText } from '../diagnostics/ErrorText';
 
 type MainView = 'catalog' | 'filament' | 'trash';
 
@@ -27,15 +29,15 @@ interface Props {
   slicers: SlicerConfig[];
   primarySlicerId: string | null;
   onAddSlicer: () => void;
-  addSlicerError: string | null;
+  addSlicerError: AppError | null;
   onRemoveSlicer: (id: string) => void;
   onSetPrimarySlicer: (id: string) => void;
   onScanCatalogIssues: () => void;
   cleanupScanning: boolean;
-  cleanupError: string | null;
+  cleanupError: AppError | null;
   onExportCatalog: () => void;
   onImportCatalog: () => void;
-  catalogBackupError: string | null;
+  catalogBackupError: AppError | null;
   catalogBaseDir: string | null;
   onOpenCatalogSetup: () => void;
   printerLink: PrinterLinkState;
@@ -307,7 +309,7 @@ export function Rail({
                 </button>
                 {addSlicerError && (
                   <div className="mt-1.5 font-mono-ui text-[length:var(--font-size-meta)] text-[var(--accent)] break-words">
-                    {t('addSlicerError')} {addSlicerError}
+                    {t('addSlicerError')} <ErrorText error={addSlicerError} />
                   </div>
                 )}
               </>
@@ -327,7 +329,7 @@ export function Rail({
                 </button>
                 {cleanupError && (
                   <div className="mt-1.5 font-mono-ui text-[length:var(--font-size-meta)] text-[var(--accent)] break-words">
-                    {t('catalogCleanupError')} {cleanupError}
+                    {t('catalogCleanupError')} <ErrorText error={cleanupError} />
                   </div>
                 )}
 
@@ -371,7 +373,7 @@ export function Rail({
                 )}
                 {catalogBackupError && (
                   <div className="mt-1.5 font-mono-ui text-[length:var(--font-size-meta)] text-[var(--accent)] break-words">
-                    {catalogBackupError}
+                    <ErrorText error={catalogBackupError} />
                   </div>
                 )}
 

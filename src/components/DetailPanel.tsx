@@ -8,6 +8,8 @@ import { isSafeHttpUrl } from '../lib/safeUrl';
 import { formatDate } from '../i18n/format';
 import { useEditableSourceUrl } from '../hooks/useEditableSourceUrl';
 import { tagLabel } from '../lib/autoTags';
+import type { AppError } from '../lib/errors';
+import { ErrorText } from '../diagnostics/ErrorText';
 
 interface Props {
   model: ModelFile | null;
@@ -24,7 +26,7 @@ interface Props {
   onSnapshotCaptured: (base64: string) => void;
   onSetSourceUrl: (fileId: string, url: string | null) => void;
   onOpenInSlicer: () => void;
-  slicerError: string | null;
+  slicerError: AppError | null;
 }
 
 export function DetailPanel({
@@ -289,7 +291,7 @@ export function DetailPanel({
       <div className="flex-none px-4 py-3 border-t border-[var(--line)] bg-[var(--panel-2)]">
         {slicerError && (
           <div className="pb-2 font-mono-ui text-[10px] text-[var(--accent)] break-words">
-            {t('slicerLaunchError')} {slicerError}
+            {t('slicerLaunchError')} <ErrorText error={slicerError} />
           </div>
         )}
         <div className="flex gap-2">
@@ -468,7 +470,7 @@ export function DetailPanel({
       <div className="flex-none px-[18px] py-4 border-t border-[var(--line)] bg-[var(--panel-2)] flex flex-col gap-2">
         {slicerError && (
           <div className="text-[var(--accent)] break-words" style={{ fontSize: 'var(--font-size-meta)' }}>
-            {t('slicerLaunchError')} {slicerError}
+            {t('slicerLaunchError')} <ErrorText error={slicerError} />
           </div>
         )}
         {confirmDelete ? (

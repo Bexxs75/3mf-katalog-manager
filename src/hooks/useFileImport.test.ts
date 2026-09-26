@@ -153,6 +153,7 @@ describe('useFileImport', () => {
           archiveDeleted: false,
           deleteError: null,
           error: 'kaputt',
+          unexpected: true,
         },
       ],
     });

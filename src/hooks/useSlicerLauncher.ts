@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import * as slicerApi from '../lib/api/slicer';
-import { messageOf } from '../lib/errors';
+import { toAppError, type AppError } from '../lib/errors';
 import type { SlicerConfig } from '../types';
 
 // `openInSlicer` only takes `modelId`/`slicerId`; path and validation live in the backend.
@@ -9,7 +9,7 @@ export function useSlicerLauncher(
   primaryId: string | null,
   onNeedsSetup: () => void,
 ) {
-  const [slicerError, setSlicerError] = useState<string | null>(null);
+  const [slicerError, setSlicerError] = useState<AppError | null>(null);
 
   const openInSlicer = useCallback(
     (modelId: string) => {
@@ -25,7 +25,7 @@ export function useSlicerLauncher(
       setSlicerError(null);
       slicerApi.openInSlicer(modelId, target.id).catch((e) => {
         console.error('[slicer] launch failed:', e);
-        setSlicerError(messageOf(e));
+        setSlicerError(toAppError(e));
       });
     },
     [slicers, primaryId, onNeedsSetup],

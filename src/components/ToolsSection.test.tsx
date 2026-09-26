@@ -74,7 +74,7 @@ describe('ToolsSection', () => {
   });
 
   it('disables cleanup while scanning and shows a scan error', () => {
-    setup({ cleanupScanning: true, cleanupError: 'Scan fehlgeschlagen' });
+    setup({ cleanupScanning: true, cleanupError: { message: 'Scan fehlgeschlagen', unexpected: false } });
     expect(row('Aufräum-Vorschläge')).toBeDisabled();
     expect(screen.getByText('Scan fehlgeschlagen')).toBeInTheDocument();
   });

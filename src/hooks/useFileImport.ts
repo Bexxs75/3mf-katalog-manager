@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import * as importExportApi from '../lib/api/importExport';
 import * as foldersApi from '../lib/api/folders';
-import { messageOf } from '../lib/errors';
+import { toAppError } from '../lib/errors';
 import type { ArchiveImportResult, ArchiveInfo, ArchiveOutcome, ImportResultDto, Folder } from '../types';
 
 interface UseFileImportArgs {
@@ -72,6 +72,7 @@ export function useFileImport({
         return [...prev, ...inspected.filter((a) => !known.has(a.path))];
       });
     } catch (e) {
+      const err = toAppError(e);
       setImportBanner({
         imported: result.imported.length,
         duplicates: result.duplicateCount,
@@ -83,7 +84,8 @@ export function useFileImport({
           blockedSkipped: 0,
           archiveDeleted: false,
           deleteError: null,
-          error: messageOf(e),
+          error: err.message,
+          unexpected: err.unexpected,
         })),
       });
     }

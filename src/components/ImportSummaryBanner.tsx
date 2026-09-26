@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import type { ArchiveOutcome } from '../types';
+import { ReportProblemLink } from '../diagnostics/ReportProblemLink';
 
 interface Props {
   imported: number;
@@ -16,7 +17,7 @@ function fileName(path: string) {
 export function ImportSummaryBanner({ imported, duplicates, archives, onClose }: Props) {
   const t = useT();
 
-  const lines: { key: string; text: string }[] = [];
+  const lines: { key: string; text: string; unexpected?: boolean }[] = [];
   let hasProblems = false;
   if (archives) {
     const existing = archives.reduce((sum, a) => sum + a.existingSkipped, 0);
@@ -33,6 +34,7 @@ export function ImportSummaryBanner({ imported, duplicates, archives, onClose }:
         lines.push({
           key: `failed:${a.path}`,
           text: t('archiveSummaryFailed').replace('{name}', fileName(a.path)).replace('{error}', a.error),
+          unexpected: a.unexpected === true,
         });
       } else if (a.deleteError) {
         hasProblems = true;
@@ -63,7 +65,10 @@ export function ImportSummaryBanner({ imported, duplicates, archives, onClose }:
         {lines.length > 0 && (
           <ul className="text-[length:var(--font-size-meta)] text-[var(--ink-3)]">
             {lines.map((line) => (
-              <li key={line.key}>{line.text}</li>
+              <li key={line.key}>
+                {line.text}
+                {line.unexpected && <ReportProblemLink />}
+              </li>
             ))}
           </ul>
         )}

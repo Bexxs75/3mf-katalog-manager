@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
-import { messageOf } from '../lib/errors';
+import { toAppError, type AppError } from '../lib/errors';
 import type { Printer } from '../types';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
 import { ToggleSwitch } from './ToggleSwitch';
+import { ErrorText } from '../diagnostics/ErrorText';
 
 interface Props {
   link: PrinterLinkState;
@@ -13,7 +14,7 @@ interface Props {
 /** Content of the "Printers" settings tab. */
 export function PrinterLinkSettings({ link, printers }: Props) {
   const t = useT();
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<AppError | null>(null);
   // Resin printers have no printer connection.
   const linkable = printers.filter((p) => p.kind !== 'resin');
   const statusOf = (printerId: string): { text: string; dot: string } => {
@@ -27,7 +28,7 @@ export function PrinterLinkSettings({ link, printers }: Props) {
   };
   const toggle = (on: boolean) => {
     setActionError(null);
-    Promise.resolve(link.setEnabled(on)).catch((e) => setActionError(messageOf(e)));
+    Promise.resolve(link.setEnabled(on)).catch((e) => setActionError(toAppError(e)));
   };
   return (
     <div className="flex flex-col gap-3">
@@ -40,12 +41,14 @@ export function PrinterLinkSettings({ link, printers }: Props) {
       </div>
       {actionError && (
         <div role="alert" className="text-[12px] text-[var(--crit)]">
-          {t('printerConnectionActionFailed').replace('{message}', () => actionError)}
+          {t('printerConnectionActionFailed').replace('{message}', '')}
+          <ErrorText error={actionError} />
         </div>
       )}
       {link.error && (
         <div role="alert" className="text-[12px] text-[var(--crit)]">
-          {t('printerConnectionActionFailed').replace('{message}', () => link.error as string)}
+          {t('printerConnectionActionFailed').replace('{message}', '')}
+          <ErrorText error={link.error} />
         </div>
       )}
       {link.enabled && linkable.length > 0 && (
