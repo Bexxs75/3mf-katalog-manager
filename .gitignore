@@ -32,3 +32,5 @@ docs/superpowers/
 .claude/
 .swarm/
 ruvector.db
+agentdb.rvf
+agentdb.rvf.lock
