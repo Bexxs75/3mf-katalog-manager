@@ -38,7 +38,7 @@ export function useCatalogBackup() {
       settings[key] = localStorage.getItem(key);
     }
     return importExportApi.exportCatalog(JSON.stringify(settings)).catch((e) => {
-      console.error('[catalog-backup] Export fehlgeschlagen:', e);
+      console.error('[catalog-backup] export failed:', e);
       setCatalogBackupError(String(e));
     });
   }, []);
@@ -63,13 +63,13 @@ export function useCatalogBackup() {
               }
               const allowed = IMPORT_ALLOWED_SETTINGS_VALUES[key];
               if (allowed && !allowed.includes(value)) {
-                console.warn(`[catalog-backup] Ungueltiger Wert fuer ${key} im Backup, wird ignoriert.`);
+                console.warn(`[catalog-backup] invalid value for ${key} in backup, ignored.`);
                 continue;
               }
               localStorage.setItem(key, value);
             }
           } catch (e) {
-            console.error('[catalog-backup] Einstellungen konnten nicht wiederhergestellt werden:', e);
+            console.error('[catalog-backup] settings could not be restored:', e);
           }
         }
         // The backend already uses the new catalog; the caller must reload,
@@ -77,7 +77,7 @@ export function useCatalogBackup() {
         onImported();
       })
       .catch((e) => {
-        console.error('[catalog-backup] Import fehlgeschlagen:', e);
+        console.error('[catalog-backup] import failed:', e);
         setCatalogBackupError(String(e));
       });
   }, []);

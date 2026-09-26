@@ -32,7 +32,7 @@ pub(crate) fn init(conn: &mut Connection) -> Result<(), DbError> {
     // Don't abort: an error here must not prevent startup; the transaction in
     // merge_auto_tag_aliases rolls back.
     if let Err(e) = merge_auto_tag_aliases(conn) {
-        eprintln!("[tags] Zusammenlegen der Namen automatischer Tags fehlgeschlagen: {e}");
+        eprintln!("[tags] merging automatic tag names failed: {e}");
     }
     Ok(())
 }

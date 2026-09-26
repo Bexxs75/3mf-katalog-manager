@@ -115,7 +115,7 @@ export function useCatalogStore() {
         setModels((prev) => prev.map((m) => (m.id === id ? { ...m, ...fresh } : m)));
       }
     } catch (e) {
-      console.error(`[resync] Nachladen von ${key} fehlgeschlagen:`, e);
+      console.error(`[resync] reloading ${key} failed:`, e);
       // No further rollback; the next refreshFiles() reconciles.
     }
   }
@@ -185,7 +185,7 @@ export function useCatalogStore() {
           setFullyLoadedIds((prev) => new Set(prev).add(id));
         })
         .catch((e) => {
-          console.error('[full-model] Nachladen fehlgeschlagen:', e);
+          console.error('[full-model] loading failed:', e);
         });
     },
     [models, fullyLoadedIds],
@@ -218,7 +218,7 @@ export function useCatalogStore() {
       filesApi
         .markFileViewed(id)
         .catch((e) => {
-          console.error('[last-viewed] Aktualisieren fehlgeschlagen:', e);
+          console.error('[last-viewed] update failed:', e);
         })
         .finally(() => {
           void endMutationAndResyncIfSettled(key, id);
@@ -307,7 +307,7 @@ export function useCatalogStore() {
         .addTag(id, tag)
         .then(refreshTags)
         .catch((e) => {
-          console.error('[tags] Hinzufügen fehlgeschlagen:', e);
+          console.error('[tags] adding failed:', e);
         })
         .finally(() => {
           void endMutationAndResyncIfSettled(key, id);
@@ -339,7 +339,7 @@ export function useCatalogStore() {
         .removeTag(id, tag)
         .then(refreshTags)
         .catch((e) => {
-          console.error('[tags] Entfernen fehlgeschlagen:', e);
+          console.error('[tags] removing failed:', e);
         })
         .finally(() => {
           void endMutationAndResyncIfSettled(key, id);
@@ -368,7 +368,7 @@ export function useCatalogStore() {
       filesApi
         .setPrintStatus(id, next)
         .catch((e) => {
-          console.error('[print-status] Aktualisieren fehlgeschlagen:', e);
+          console.error('[print-status] update failed:', e);
         })
         .finally(() => {
           void endMutationAndResyncIfSettled(key, id);
@@ -388,7 +388,7 @@ export function useCatalogStore() {
       filesApi
         .setFavorite(id, next)
         .catch((e) => {
-          console.error('[favorite] Aktualisieren fehlgeschlagen:', e);
+          console.error('[favorite] update failed:', e);
         })
         .finally(() => {
           void endMutationAndResyncIfSettled(key, id);
@@ -403,7 +403,7 @@ export function useCatalogStore() {
       .then((position) => {
         setModels((prev) => prev.map((m) => (m.id === id ? { ...m, queuePosition: position } : m)));
       })
-      .catch((e) => console.error('[queue] Hinzufügen fehlgeschlagen:', e));
+      .catch((e) => console.error('[queue] adding failed:', e));
   }, []);
 
   const removeFromQueue = useCallback((id: string) => {
@@ -413,7 +413,7 @@ export function useCatalogStore() {
     filesApi
       .removeFromQueue(id)
       .catch((e) => {
-        console.error('[queue] Entfernen fehlgeschlagen:', e);
+        console.error('[queue] removing failed:', e);
       })
       .finally(() => {
         void endMutationAndResyncIfSettled(key, id);
@@ -440,7 +440,7 @@ export function useCatalogStore() {
       // A reorder affects several models; on failure a full refreshFiles()
       // is enough instead of the field+ID counters.
       filesApi.reorderQueue(updates).catch((e) => {
-        console.error('[queue] Neusortierung fehlgeschlagen:', e);
+        console.error('[queue] reordering failed:', e);
         void refreshFiles();
       });
     },
@@ -455,7 +455,7 @@ export function useCatalogStore() {
         setModels((prev) => prev.map((m) => (m.id === id ? { ...m, customImage } : m)));
       })
       .catch((e) => {
-        console.error('[custom-image] Hochladen fehlgeschlagen:', e);
+        console.error('[custom-image] upload failed:', e);
       });
   }, []);
 
@@ -467,7 +467,7 @@ export function useCatalogStore() {
     filesApi
       .setRenderSnapshot(id, base64)
       .catch((e) => {
-        console.error('[render-snapshot] Speichern fehlgeschlagen:', e);
+        console.error('[render-snapshot] saving failed:', e);
       })
       .finally(() => {
         void endMutationAndResyncIfSettled(key, id);
@@ -481,7 +481,7 @@ export function useCatalogStore() {
     filesApi
       .setSourceUrl(id, url)
       .catch((e) => {
-        console.error('[source-url] Speichern fehlgeschlagen:', e);
+        console.error('[source-url] saving failed:', e);
       })
       .finally(() => {
         void endMutationAndResyncIfSettled(key, id);
@@ -499,7 +499,7 @@ export function useCatalogStore() {
         setRescanFeedback({ fileId: id, status: 'success' });
       })
       .catch((e) => {
-        console.error('[rescan] Neu-Einlesen fehlgeschlagen:', e);
+        console.error('[rescan] rescan failed:', e);
         setRescanFeedback({ fileId: id, status: 'error', message: String(e) });
       });
   }, []);

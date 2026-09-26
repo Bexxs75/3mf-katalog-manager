@@ -61,7 +61,7 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
   };
 
   const openFolder = (path: string) => {
-    invoke('open_in_file_manager', { path }).catch((e) => console.error('[catalog-setup] Ordner oeffnen fehlgeschlagen:', e));
+    invoke('open_in_file_manager', { path }).catch((e) => console.error('[catalog-setup] opening folder failed:', e));
   };
 
   return (

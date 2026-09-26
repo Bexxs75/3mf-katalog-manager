@@ -19,7 +19,7 @@ export function useCatalogCleanup() {
         setCleanupDialogOpen(true);
       })
       .catch((e) => {
-        console.error('[cleanup] Scan fehlgeschlagen:', e);
+        console.error('[cleanup] scan failed:', e);
         setCleanupError(String(e));
       })
       .finally(() => setCleanupScanning(false));
@@ -37,7 +37,7 @@ export function useCatalogCleanup() {
           setCleanupIssues(null);
         })
         .catch((e) => {
-          console.error('[cleanup] Löschen fehlgeschlagen:', e);
+          console.error('[cleanup] deleting failed:', e);
           setCleanupError(String(e));
         }),
     [],

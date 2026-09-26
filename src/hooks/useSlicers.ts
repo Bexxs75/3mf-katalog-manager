@@ -43,7 +43,7 @@ export function useSlicers() {
       .then(applyRegistry)
       .catch((e) => {
         // Convenience feature: a failure is only logged.
-        console.warn('[slicer-scan] Automatische Slicer-Erkennung fehlgeschlagen:', e);
+        console.warn('[slicer-scan] automatic slicer detection failed:', e);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -65,7 +65,7 @@ export function useSlicers() {
       });
       return picked;
     } catch (e) {
-      console.error('[slicer-register] Registrierung fehlgeschlagen:', e);
+      console.error('[slicer-register] registration failed:', e);
       setAddSlicerError(String(e));
       return null;
     }

@@ -67,7 +67,7 @@ fn delete_files_with_conn(conn: &Connection, trash_dir: &std::path::Path, file_i
             Ok(Some(file)) => file,
             Ok(None) => continue,
             Err(e) => {
-                eprintln!("[cleanup] Datei-ID {id} konnte nicht geladen werden: {e}");
+                eprintln!("[cleanup] could not load file ID {id}: {e}");
                 continue;
             }
         };
@@ -75,7 +75,7 @@ fn delete_files_with_conn(conn: &Connection, trash_dir: &std::path::Path, file_i
         // afterwards. Same function as for single deletes, so the move-back
         // compensation applies here too.
         if let Err(e) = delete_file_with_conn(conn, &file, id, trash_dir) {
-            eprintln!("[cleanup] Loeschen fehlgeschlagen fuer Datei-ID {id}: {e}");
+            eprintln!("[cleanup] deleting failed for file ID {id}: {e}");
         }
     }
     Ok(())
@@ -169,13 +169,13 @@ pub fn empty_trash(state: State<AppState>) -> CmdResult<()> {
         if let Some(trash_path) = &file.trash_path {
             if let Err(e) = std::fs::remove_file(trash_path) {
                 if e.kind() != std::io::ErrorKind::NotFound {
-                    eprintln!("[trash] Entfernen fehlgeschlagen fuer Datei-ID {}: {e}", file.id);
+                    eprintln!("[trash] removing failed for file ID {}: {e}", file.id);
                     continue;
                 }
             }
         }
         if let Err(e) = db::delete_file(&conn, file.id) {
-            eprintln!("[trash] DB-Eintrag konnte nicht geloescht werden fuer Datei-ID {}: {e}", file.id);
+            eprintln!("[trash] could not delete DB row for file ID {}: {e}", file.id);
         }
     }
     Ok(())
@@ -187,7 +187,7 @@ pub fn purge_expired_trash_on_startup(conn: &Connection) {
     let expired = match db::purge_expired_trash(conn, &cutoff) {
         Ok(files) => files,
         Err(e) => {
-            eprintln!("[startup] Papierkorb-Aufraeumen: Abfrage fehlgeschlagen: {e}");
+            eprintln!("[startup] trash cleanup: query failed: {e}");
             return;
         }
     };
@@ -195,13 +195,13 @@ pub fn purge_expired_trash_on_startup(conn: &Connection) {
         if let Some(trash_path) = &file.trash_path {
             if let Err(e) = std::fs::remove_file(trash_path) {
                 if e.kind() != std::io::ErrorKind::NotFound {
-                    eprintln!("[startup] Papierkorb-Aufraeumen: Datei fehlgeschlagen fuer ID {}: {e}", file.id);
+                    eprintln!("[startup] trash cleanup: file failed for ID {}: {e}", file.id);
                     continue;
                 }
             }
         }
         if let Err(e) = db::delete_file(conn, file.id) {
-            eprintln!("[startup] Papierkorb-Aufraeumen: DB-Eintrag fehlgeschlagen fuer ID {}: {e}", file.id);
+            eprintln!("[startup] trash cleanup: DB row failed for ID {}: {e}", file.id);
         }
     }
 }

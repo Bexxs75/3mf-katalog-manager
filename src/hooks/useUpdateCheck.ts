@@ -22,7 +22,7 @@ export function useUpdateCheck() {
       .catch((e) => {
         // As in the backend: a failed update check is never a visible error,
         // only a logged hint.
-        console.warn('[update-check] Fehlgeschlagen:', e);
+        console.warn('[update-check] failed:', e);
       })
       .finally(() => setChecking(false));
   }, []);
@@ -33,7 +33,7 @@ export function useUpdateCheck() {
       .getAppVersion()
       .then((version) => setCurrentVersion(version))
       .catch((e) => {
-        console.warn('[update-check] App-Version konnte nicht ermittelt werden:', e);
+        console.warn('[update-check] could not determine app version:', e);
       });
     runCheck();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -49,7 +49,7 @@ export function useUpdateCheck() {
   const download = useCallback(() => {
     if (!releaseUrl) return;
     updateApi.openReleaseUrl(releaseUrl).catch((e) => {
-      console.warn('[update-check] Release-Seite konnte nicht geoeffnet werden:', e);
+      console.warn('[update-check] could not open release page:', e);
     });
   }, [releaseUrl]);
 

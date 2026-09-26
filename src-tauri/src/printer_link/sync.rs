@@ -106,7 +106,7 @@ pub fn spawn_background(app: tauri::AppHandle) -> SyncWaker {
                 super::make_link(kind, address, super::address::AddressPolicy::HOME_NETWORK)
             };
             if let Err(e) = sync_once(&state.db, &maker, unix_now()) {
-                eprintln!("[printer_link] Abgleich fehlgeschlagen: {e}");
+                eprintln!("[printer_link] sync failed: {e}");
             }
             let _ = app.emit(EVENT_JOBS_CHANGED, ());
             wait = INTERVAL;

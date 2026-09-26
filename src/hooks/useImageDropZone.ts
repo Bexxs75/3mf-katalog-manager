@@ -55,7 +55,7 @@ export function useImageDropZone<T extends HTMLElement>({ enabled, onImage, onRe
       // would be an unhandled rejection.
       unlisten
         .then((fn) => fn())
-        .catch((e) => console.error('[useImageDropZone] Abbestellen fehlgeschlagen:', e));
+        .catch((e) => console.error('[useImageDropZone] unlisten failed:', e));
     };
   }, [enabled, isWindows]);
 

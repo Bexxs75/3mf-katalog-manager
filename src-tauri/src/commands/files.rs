@@ -615,7 +615,7 @@ pub(crate) fn backfill_content_hashes(conn: &Connection) {
     let missing = match db::list_files_missing_content_hash(conn) {
         Ok(rows) => rows,
         Err(e) => {
-            eprintln!("[startup] content_hash-Backfill: Abfrage fehlgeschlagen: {e}");
+            eprintln!("[startup] content_hash backfill: query failed: {e}");
             return;
         }
     };
@@ -624,11 +624,11 @@ pub(crate) fn backfill_content_hashes(conn: &Connection) {
         match compute_content_hash(Path::new(&path)) {
             Ok(hash) => {
                 if let Err(e) = db::set_content_hash(conn, id, &hash) {
-                    eprintln!("[startup] content_hash-Backfill: Speichern fehlgeschlagen fuer {path}: {e}");
+                    eprintln!("[startup] content_hash backfill: saving failed for {path}: {e}");
                 }
             }
             Err(e) => {
-                eprintln!("[startup] content_hash-Backfill: Hash fehlgeschlagen fuer {path}: {e}");
+                eprintln!("[startup] content_hash backfill: hashing failed for {path}: {e}");
             }
         }
     }
@@ -663,7 +663,7 @@ fn step_metadata(path: &Path) -> (Option<[f64; 3]>, Option<f64>, Option<i64>) {
             Some(doc.object_count as i64),
         ),
         Err(err) => {
-            eprintln!("STEP-Metadaten nicht lesbar ({}): {err}", path.display());
+            eprintln!("[step] metadata not readable ({}): {err}", path.display());
             (None, None, None)
         }
     }
@@ -963,7 +963,7 @@ pub(crate) fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) 
                 Ok(true) => continue,
                 Ok(false) => {}
                 Err(e) => {
-                    eprintln!("[import] Duplikatprüfung fehlgeschlagen für {path_str}: {e}");
+                    eprintln!("[import] duplicate check failed for {path_str}: {e}");
                     continue;
                 }
             }
@@ -971,7 +971,7 @@ pub(crate) fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) 
             let content_hash = match compute_content_hash(&path) {
                 Ok(h) => h,
                 Err(e) => {
-                    eprintln!("[import] Hash fehlgeschlagen für {path_str}: {e}");
+                    eprintln!("[import] hashing failed for {path_str}: {e}");
                     continue;
                 }
             };
@@ -982,7 +982,7 @@ pub(crate) fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) 
                 }
                 Ok(false) => {}
                 Err(e) => {
-                    eprintln!("[import] Duplikatprüfung (Hash) fehlgeschlagen für {path_str}: {e}");
+                    eprintln!("[import] duplicate check (hash) failed for {path_str}: {e}");
                     continue;
                 }
             }
@@ -1001,7 +1001,7 @@ pub(crate) fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) 
                     // user this is a duplicate.
                     duplicate_count += 1;
                 }
-                Err(e) => eprintln!("[import] Import fehlgeschlagen für {path_str}: {e}"),
+                Err(e) => eprintln!("[import] import failed for {path_str}: {e}"),
             }
         }
     }

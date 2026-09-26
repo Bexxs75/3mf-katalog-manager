@@ -48,7 +48,7 @@ export function useFileImport({
       await Promise.all(
         result.imported.map((file) =>
           foldersApi.moveFileToFolder(file.id, targetFolder!).catch((e) =>
-            console.error('[import] Einsortieren fehlgeschlagen:', e),
+            console.error('[import] placing into folder failed:', e),
           ),
         ),
       );

@@ -185,7 +185,7 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
                 const base64 = dataUrl.split(',')[1];
                 if (base64) onSnapshotCaptured(base64);
               } catch (err) {
-                console.error('[ModelViewer] Snapshot fehlgeschlagen:', err);
+                console.error('[ModelViewer] snapshot failed:', err);
                 onError?.();
               }
             });
@@ -193,7 +193,7 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
         }
       })
       .catch((err) => {
-        console.error('[ModelViewer] Laden fehlgeschlagen:', err);
+        console.error('[ModelViewer] loading failed:', err);
         if (!cancelled) {
           setStatus('error');
           onError?.();

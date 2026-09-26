@@ -23,7 +23,7 @@ export function useSlicerLauncher(
       }
       setSlicerError(null);
       slicerApi.openInSlicer(modelId, target.id).catch((e) => {
-        console.error('[slicer] Start fehlgeschlagen:', e);
+        console.error('[slicer] launch failed:', e);
         setSlicerError(String(e));
       });
     },

@@ -47,6 +47,6 @@ export function useRegisterCatalogBaseDirOnStartup(catalogBaseDir: string | null
       .then((folder) => {
         if (folder) refreshFolders();
       })
-      .catch((e) => console.error('[catalog-base-dir] Registrieren beim Start fehlgeschlagen:', e));
+      .catch((e) => console.error('[catalog-base-dir] registering at startup failed:', e));
   }, [catalogBaseDir, refreshFolders]);
 }

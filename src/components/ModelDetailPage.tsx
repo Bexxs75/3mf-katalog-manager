@@ -107,7 +107,7 @@ export function ModelDetailPage({
         setPrintLogPhoto(null);
         setPrintLogDate(new Date().toISOString().slice(0, 10));
       })
-      .catch((e) => console.error('[print-log] Hinzufügen fehlgeschlagen:', e));
+      .catch((e) => console.error('[print-log] adding failed:', e));
   };
 
   const pickPrintLogPhoto = () => {
@@ -409,7 +409,7 @@ export function ModelDetailPage({
                 <button
                   onClick={() =>
                     deletePrintLogEntry(entry.id).catch((e) =>
-                      console.error('[print-log] Löschen fehlgeschlagen:', e),
+                      console.error('[print-log] deleting failed:', e),
                     )
                   }
                   className="text-[var(--ink-3)] hover:text-red-400 flex-none"

@@ -49,7 +49,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
         .createFolder(parentId, name)
         .then(() => refreshFolders())
         .catch((e) => {
-          console.error('[folders] Anlegen fehlgeschlagen:', e);
+          console.error('[folders] creating failed:', e);
           // Show the error next to the folder tree; catalogBackupError would be invisible without an open panel.
           setMoveToast({ from: name, to: String(e), error: true });
         }),
@@ -75,7 +75,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
           refreshFiles();
         })
         .catch((e) => {
-          console.error('[folders] Datei verschieben fehlgeschlagen:', e);
+          console.error('[folders] moving file failed:', e);
           setMoveToast({ from: file.name, to: String(e), error: true });
         });
     };
@@ -105,7 +105,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
           refreshFiles();
         })
         .catch((e) => {
-          console.error('[folders] Ordner verschieben fehlgeschlagen:', e);
+          console.error('[folders] moving folder failed:', e);
           setMoveToast({ from: folder.name, to: String(e), error: true });
         });
     };

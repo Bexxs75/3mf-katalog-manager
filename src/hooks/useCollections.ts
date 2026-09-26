@@ -36,7 +36,7 @@ export function useCollections() {
         return orderedIds.map((id) => byId.get(id)).filter((m): m is ModelFile => m !== undefined);
       });
       collectionsApi.reorderCollection(activeCollection, updates).catch((e) => {
-        console.error('[collections] Umsortieren fehlgeschlagen:', e);
+        console.error('[collections] reordering failed:', e);
       });
     },
     [activeCollection],

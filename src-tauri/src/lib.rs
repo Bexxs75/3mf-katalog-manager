@@ -24,7 +24,7 @@ pub(crate) fn harden_permissions(path: &std::path::Path) {
     use std::os::unix::fs::PermissionsExt;
     let mode = if path.is_dir() { 0o700 } else { 0o600 };
     if let Err(e) = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)) {
-        eprintln!("[startup] Dateirechte konnten nicht gehaertet werden fuer {path:?}: {e}");
+        eprintln!("[startup] could not harden file permissions for {path:?}: {e}");
     }
 }
 
@@ -76,7 +76,7 @@ pub fn run() {
             let conn = db::connect(&db_path)?;
             harden_permissions(&db_path);
             if let Err(e) = db::delete_unused_tags(&conn) {
-                eprintln!("[startup] Aufraeumen verwaister Tags fehlgeschlagen: {e}");
+                eprintln!("[startup] cleaning up orphaned tags failed: {e}");
             }
             commands::backfill_content_hashes(&conn);
             let trash_dir = app_data_dir.join("trash");
