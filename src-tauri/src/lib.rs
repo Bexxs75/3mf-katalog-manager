@@ -1,6 +1,7 @@
 mod archive;
 mod commands;
 mod db;
+pub mod diagnostics;
 mod filament_check;
 mod geometry;
 mod obj;
@@ -24,7 +25,7 @@ pub(crate) fn harden_permissions(path: &std::path::Path) {
     use std::os::unix::fs::PermissionsExt;
     let mode = if path.is_dir() { 0o700 } else { 0o600 };
     if let Err(e) = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)) {
-        eprintln!("[startup] could not harden file permissions for {path:?}: {e}");
+        log::error!(target: "startup", "could not harden file permissions for {path:?}: {e}");
     }
 }
 
@@ -62,6 +63,40 @@ fn sensitive_dirs(app: &tauri::AppHandle) -> Vec<std::path::PathBuf> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .clear_targets()
+                .target(tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir { file_name: None }))
+                .target(tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stderr))
+                // Debug passes the plugin; the effective level is set at runtime with
+                // log::set_max_level (verbose mode), see diagnostics::verbose.
+                .level(log::LevelFilter::Debug)
+                .level_for("tauri", log::LevelFilter::Info)
+                .level_for("tao", log::LevelFilter::Warn)
+                .level_for("wry", log::LevelFilter::Warn)
+                .level_for("reqwest", log::LevelFilter::Warn)
+                .level_for("hyper", log::LevelFilter::Warn)
+                .level_for("hyper_util", log::LevelFilter::Warn)
+                .level_for("rustls", log::LevelFilter::Warn)
+                .level_for("h2", log::LevelFilter::Warn)
+                .level_for("mio", log::LevelFilter::Warn)
+                .level_for("tokio", log::LevelFilter::Warn)
+                .level_for("tracing", log::LevelFilter::Warn)
+                .level_for("rusqlite", log::LevelFilter::Warn)
+                .max_file_size(2_000_000)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(4))
+                .timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal)
+                .format(|out, message, record| {
+                    out.finish(format_args!(
+                        "{} {:<5} [{}] {}",
+                        chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                        record.level(),
+                        record.target(),
+                        message
+                    ))
+                })
+                .build(),
+        )
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // Version in the window title, taken straight from Cargo.toml.
@@ -74,9 +109,11 @@ pub fn run() {
             harden_permissions(&app_data_dir);
             let db_path = app_data_dir.join("catalog.db");
             let conn = db::connect(&db_path)?;
+            log::set_max_level(log::LevelFilter::Info);
+            diagnostics::log_startup(&conn);
             harden_permissions(&db_path);
             if let Err(e) = db::delete_unused_tags(&conn) {
-                eprintln!("[startup] cleaning up orphaned tags failed: {e}");
+                log::error!(target: "startup", "cleaning up orphaned tags failed: {e}");
             }
             commands::backfill_content_hashes(&conn);
             let trash_dir = app_data_dir.join("trash");

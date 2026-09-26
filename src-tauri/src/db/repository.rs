@@ -32,7 +32,7 @@ pub(crate) fn init(conn: &mut Connection) -> Result<(), DbError> {
     // Don't abort: an error here must not prevent startup; the transaction in
     // merge_auto_tag_aliases rolls back.
     if let Err(e) = merge_auto_tag_aliases(conn) {
-        eprintln!("[tags] merging automatic tag names failed: {e}");
+        log::error!(target: "tags", "merging automatic tag names failed: {e}");
     }
     Ok(())
 }
@@ -1255,7 +1255,7 @@ mod tests {
         let elapsed = start.elapsed();
         assert_eq!(summaries.len(), 5000);
         // Deliberately no timing assertion: only for watching with --nocapture.
-        eprintln!("list_file_summaries(5000 rows): {elapsed:?}");
+        log::debug!(target: "db", "list_file_summaries(5000 rows): {elapsed:?}");
     }
 
     #[test]

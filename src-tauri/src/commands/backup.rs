@@ -91,6 +91,7 @@ pub async fn export_catalog(
         let _ = std::fs::remove_file(&tmp_zip_path);
         return Err(e.to_string().into());
     }
+    log::info!(target: "backup", "Sicherung erstellt");
     Ok(())
 }
 /// Writes `bytes` exclusively (`create_new`) to `path` and sets 0600.
@@ -748,6 +749,7 @@ pub async fn import_catalog(
     let _ = std::fs::remove_file(&tmp_db_path);
     replace_result?;
 
+    log::info!(target: "backup", "Sicherung wiederhergestellt");
     Ok(ImportCatalogResultDto { imported: true, settings_json: Some(settings_json) })
 }
 /// Replaces the running `catalog.db` with `new_db_path`.

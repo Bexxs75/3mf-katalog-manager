@@ -55,6 +55,9 @@ sha2 = "0.10"
 # "0.14.0-gharac").
 semver = "1"
 log = "0.4"
+tauri-plugin-log = "2.9"
+# Startup header line: OS name/version next to the app version.
+os_info = "3"
 cxx = { version = "1", optional = true }
 # STEP preview: raw OCCT bindings. Deliberately WITHOUT the `builtin` feature -
 # that would build OCCT from source and link it STATICALLY, which triggers the

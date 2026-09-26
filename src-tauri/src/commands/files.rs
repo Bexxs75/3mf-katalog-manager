@@ -294,6 +294,7 @@ fn move_file_to_folder_with_conn(
         }
         return Err(db_err.to_string().into());
     }
+    log::debug!(target: "datei", "verschoben: {} -> {}", old_path.display(), new_path.display());
     Ok(())
 }
 /// Moves a file into a target folder's directory and updates `folder_id`/`path`.
@@ -371,6 +372,7 @@ fn rename_file_with_conn(
         }
         return Err(db_err.to_string().into());
     }
+    log::debug!(target: "datei", "umbenannt: {} -> {}", old_path.display(), new_path.display());
     Ok(())
 }
 /// Renames a real file on disk (`std::fs::rename`, same directory) and updates
@@ -571,7 +573,7 @@ pub(crate) fn backfill_content_hashes(conn: &Connection) {
     let missing = match db::list_files_missing_content_hash(conn) {
         Ok(rows) => rows,
         Err(e) => {
-            eprintln!("[startup] content_hash backfill: query failed: {e}");
+            log::error!(target: "startup", "content_hash backfill: query failed: {e}");
             return;
         }
     };
@@ -580,11 +582,11 @@ pub(crate) fn backfill_content_hashes(conn: &Connection) {
         match compute_content_hash(Path::new(&path)) {
             Ok(hash) => {
                 if let Err(e) = db::set_content_hash(conn, id, &hash) {
-                    eprintln!("[startup] content_hash backfill: saving failed for {path}: {e}");
+                    log::error!(target: "startup", "content_hash backfill: saving failed for {path}: {e}");
                 }
             }
             Err(e) => {
-                eprintln!("[startup] content_hash backfill: hashing failed for {path}: {e}");
+                log::error!(target: "startup", "content_hash backfill: hashing failed for {path}: {e}");
             }
         }
     }
@@ -619,7 +621,7 @@ fn step_metadata(path: &Path) -> (Option<[f64; 3]>, Option<f64>, Option<i64>) {
             Some(doc.object_count as i64),
         ),
         Err(err) => {
-            eprintln!("[step] metadata not readable ({}): {err}", path.display());
+            log::warn!(target: "step", "metadata not readable ({}): {err}", path.display());
             (None, None, None)
         }
     }
@@ -898,6 +900,7 @@ fn import_many(state: &State<AppState>, roots: Vec<PathBuf>) -> CmdResult<Import
 /// of a Tauri-managed `State` so it is directly unit-testable (a
 /// `State<AppState>` cannot be constructed outside of a running Tauri app).
 pub(crate) fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) -> CmdResult<ImportResultDto> {
+    let started = std::time::Instant::now();
     let mut seen = HashSet::new();
     let mut imported = Vec::new();
     let mut duplicate_count = 0i64;
@@ -919,7 +922,7 @@ pub(crate) fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) 
                 Ok(true) => continue,
                 Ok(false) => {}
                 Err(e) => {
-                    eprintln!("[import] duplicate check failed for {path_str}: {e}");
+                    log::error!(target: "import", "duplicate check failed for {path_str}: {e}");
                     continue;
                 }
             }
@@ -927,7 +930,7 @@ pub(crate) fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) 
             let content_hash = match compute_content_hash(&path) {
                 Ok(h) => h,
                 Err(e) => {
-                    eprintln!("[import] hashing failed for {path_str}: {e}");
+                    log::error!(target: "import", "hashing failed for {path_str}: {e}");
                     continue;
                 }
             };
@@ -938,7 +941,7 @@ pub(crate) fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) 
                 }
                 Ok(false) => {}
                 Err(e) => {
-                    eprintln!("[import] duplicate check (hash) failed for {path_str}: {e}");
+                    log::error!(target: "import", "duplicate check (hash) failed for {path_str}: {e}");
                     continue;
                 }
             }
@@ -951,23 +954,35 @@ pub(crate) fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) 
             };
 
             match import_one(&tx, &path, None, Some(content_hash), folder_id) {
-                Ok(dto) => imported.push(dto),
+                Ok(dto) => {
+                    log::debug!(target: "import", "{}", path.display());
+                    imported.push(dto);
+                }
                 Err(e) if e.contains("UNIQUE constraint failed") => {
                     // The path still belongs to a trash row (files.path is UNIQUE); for the
                     // user this is a duplicate.
                     duplicate_count += 1;
                 }
-                Err(e) => eprintln!("[import] import failed for {path_str}: {e}"),
+                Err(e) => log::error!(target: "import", "import failed for {path_str}: {e}"),
             }
         }
     }
 
     tx.commit().map_err(|e| e.to_string())?;
-    Ok(ImportResultDto {
+    let result = ImportResultDto {
         imported,
         duplicate_count,
         pending_archives: Vec::new(),
-    })
+    };
+    log::info!(
+        target: "import",
+        "{} importiert, {} Duplikate, {} Archive offen, {:.1} s",
+        result.imported.len(),
+        result.duplicate_count,
+        result.pending_archives.len(),
+        started.elapsed().as_secs_f64()
+    );
+    Ok(result)
 }
 /// Separates archives (real files with an archive extension) from everything
 /// else. A DIRECTORY named `x.zip` stays in the normal import.

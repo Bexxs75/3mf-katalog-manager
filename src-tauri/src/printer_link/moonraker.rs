@@ -49,7 +49,7 @@ pub fn parse_history_page(v: &Value) -> Result<HistoryPage, LinkError> {
         .filter_map(|j| {
             let parsed = parse_job(j);
             if parsed.is_none() && j.get("status").and_then(Value::as_str) != Some("in_progress") {
-                eprintln!("[printer_link] skipped incomplete Moonraker job: {:?}", j.get("job_id"));
+                log::warn!(target: "drucker", "skipped incomplete Moonraker job: {:?}", j.get("job_id"));
             }
             parsed
         })
@@ -222,6 +222,9 @@ impl MoonrakerLink {
     fn fetch_bytes(client: &reqwest::blocking::Client, url: reqwest::Url, limit: u64, timeout: Duration) -> Result<Fetched, LinkError> {
         let deadline = Instant::now() + timeout;
         let sent_at = unix_now();
+        // Path only, never the host (a printer's LAN address) or the query string
+        // (can carry the `since` timestamp, not secret but still noise).
+        let path = url.path().to_string();
         let mut resp = client.get(url).send().map_err(|_| LinkError::Unreachable)?;
         let local_mid = (sent_at + unix_now()) / 2.0;
         let printer_now = resp
@@ -229,7 +232,9 @@ impl MoonrakerLink {
             .get(reqwest::header::DATE)
             .and_then(|v| v.to_str().ok())
             .and_then(parse_http_date);
-        match resp.status().as_u16() {
+        let status = resp.status().as_u16();
+        log::debug!(target: "drucker", "GET {path} -> {status}");
+        match status {
             401 | 403 => return Err(LinkError::AuthRequired),
             s if !(200..300).contains(&s) => return Err(LinkError::BadResponse(format!("HTTP {s}"))),
             _ => {}

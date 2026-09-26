@@ -39,6 +39,7 @@ pub fn sync_once(db: &Mutex<Connection>, make: &LinkMaker, now: f64) -> Result<u
         }
         plan
     };
+    let printer_count = plan.len();
 
     let mut new_jobs = 0;
     for (printer_id, kind, address, since) in plan {
@@ -83,6 +84,7 @@ pub fn sync_once(db: &Mutex<Connection>, make: &LinkMaker, now: f64) -> Result<u
             Err(e) => store::record_sync_error(&conn, printer_id, e.code(), now)?,
         }
     }
+    log::info!(target: "drucker", "{printer_count} Drucker abgefragt, {new_jobs} neue Drucke");
     Ok(new_jobs)
 }
 
@@ -107,7 +109,7 @@ pub fn spawn_background(app: tauri::AppHandle) -> SyncWaker {
                 super::make_link(kind, address, super::address::AddressPolicy::HOME_NETWORK)
             };
             if let Err(e) = sync_once(&state.db, &maker, unix_now()) {
-                eprintln!("[printer_link] sync failed: {e}");
+                log::error!(target: "drucker", "sync failed: {e}");
             }
             let _ = app.emit(EVENT_JOBS_CHANGED, ());
             wait = INTERVAL;

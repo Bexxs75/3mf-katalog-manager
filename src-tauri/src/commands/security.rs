@@ -36,7 +36,10 @@ pub async fn check_for_update() -> CmdResult<update_check::UpdateCheckResult> {
     let response = match client.get(GITHUB_API_LATEST_RELEASE_URL).send().await {
         Ok(r) => r,
         // Network error: silently treat as "no update", never an error dialog.
-        Err(_) => return Ok(update_check::compare_versions(current, current, "")),
+        Err(_) => {
+            log::info!(target: "update", "Update-Check: keine Verbindung");
+            return Ok(update_check::compare_versions(current, current, ""));
+        }
     };
 
     #[derive(serde::Deserialize)]
@@ -47,9 +50,12 @@ pub async fn check_for_update() -> CmdResult<update_check::UpdateCheckResult> {
 
     let release: GithubRelease = match response.json().await {
         Ok(r) => r,
+        // Not a network error (a response did arrive) but still no usable version
+        // to compare against - same silent "no update" outcome for the user.
         Err(_) => return Ok(update_check::compare_versions(current, current, "")),
     };
 
+    log::info!(target: "update", "Update-Check: installiert {current}, neueste {}", release.tag_name);
     Ok(update_check::compare_versions(current, &release.tag_name, &release.html_url))
 }
 #[tauri::command]

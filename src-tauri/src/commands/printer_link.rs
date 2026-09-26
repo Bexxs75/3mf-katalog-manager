@@ -268,6 +268,7 @@ pub async fn test_printer_connection(
             store::save_connection_after_test(&conn, pid, &kind, address.trim(), &info.base_url, &info.version, unix_now())
                 .map_err(|e| e.to_string())?;
             store::set_clock_offset(&conn, pid, info.clock_offset_s).map_err(|e| e.to_string())?;
+            log::info!(target: "drucker", "Uhr des Druckers weicht {:.0} s ab", info.clock_offset_s);
             let saved = store::get_connection(&conn, pid)
                 .map_err(|e| e.to_string())?
                 .ok_or_else(|| "Verbindung fehlt nach dem Speichern".to_string())?;

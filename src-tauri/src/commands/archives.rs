@@ -286,7 +286,7 @@ pub(crate) fn import_extracted_dir(conn: &mut Connection, dir: &Path) -> CmdResu
     let result = import_many_with_conn(conn, vec![dir.to_path_buf()])?;
     // Only cosmetic (folder tree) - an error here must not undo the successful import.
     if let Err(e) = db::attach_folder_to_parent_by_path(conn, dir) {
-        eprintln!("[archive] mounting {} failed: {e}", dir.display());
+        log::error!(target: "archive", "mounting {} failed: {e}", dir.display());
     }
     Ok(result)
 }

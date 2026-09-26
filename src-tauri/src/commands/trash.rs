@@ -36,6 +36,7 @@ fn delete_file_with_conn(
         }
         return Err(db_err.to_string().into());
     }
+    log::debug!(target: "datei", "in den Papierkorb: {}", file.path);
     Ok(())
 }
 #[tauri::command]
@@ -58,7 +59,7 @@ fn delete_files_with_conn(conn: &Connection, trash_dir: &std::path::Path, file_i
         let id: i64 = match file_id.parse() {
             Ok(id) => id,
             Err(_) => {
-                eprintln!("[cleanup] skipped invalid file ID: {file_id}");
+                log::warn!(target: "cleanup", "skipped invalid file ID: {file_id}");
                 continue;
             }
         };
@@ -68,7 +69,7 @@ fn delete_files_with_conn(conn: &Connection, trash_dir: &std::path::Path, file_i
             Ok(Some(file)) => file,
             Ok(None) => continue,
             Err(e) => {
-                eprintln!("[cleanup] could not load file ID {id}: {e}");
+                log::error!(target: "cleanup", "could not load file ID {id}: {e}");
                 continue;
             }
         };
@@ -76,7 +77,7 @@ fn delete_files_with_conn(conn: &Connection, trash_dir: &std::path::Path, file_i
         // afterwards. Same function as for single deletes, so the move-back
         // compensation applies here too.
         if let Err(e) = delete_file_with_conn(conn, &file, id, trash_dir) {
-            eprintln!("[cleanup] deleting failed for file ID {id}: {e}");
+            log::error!(target: "cleanup", "deleting failed for file ID {id}: {e}");
         }
     }
     Ok(())
@@ -133,6 +134,7 @@ fn restore_file_with_conn(
         }
         return Err(db_err.to_string().into());
     }
+    log::debug!(target: "datei", "wiederhergestellt: {} -> {}", trash_path, target_path.display());
     Ok(())
 }
 #[tauri::command]
@@ -171,13 +173,13 @@ pub fn empty_trash(state: State<AppState>) -> CmdResult<()> {
         if let Some(trash_path) = &file.trash_path {
             if let Err(e) = std::fs::remove_file(trash_path) {
                 if e.kind() != std::io::ErrorKind::NotFound {
-                    eprintln!("[trash] removing failed for file ID {}: {e}", file.id);
+                    log::error!(target: "trash", "removing failed for file ID {}: {e}", file.id);
                     continue;
                 }
             }
         }
         if let Err(e) = db::delete_file(&conn, file.id) {
-            eprintln!("[trash] could not delete DB row for file ID {}: {e}", file.id);
+            log::error!(target: "trash", "could not delete DB row for file ID {}: {e}", file.id);
         }
     }
     Ok(())
@@ -189,7 +191,7 @@ pub fn purge_expired_trash_on_startup(conn: &Connection) {
     let expired = match db::purge_expired_trash(conn, &cutoff) {
         Ok(files) => files,
         Err(e) => {
-            eprintln!("[startup] trash cleanup: query failed: {e}");
+            log::error!(target: "startup", "trash cleanup: query failed: {e}");
             return;
         }
     };
@@ -197,13 +199,13 @@ pub fn purge_expired_trash_on_startup(conn: &Connection) {
         if let Some(trash_path) = &file.trash_path {
             if let Err(e) = std::fs::remove_file(trash_path) {
                 if e.kind() != std::io::ErrorKind::NotFound {
-                    eprintln!("[startup] trash cleanup: file failed for ID {}: {e}", file.id);
+                    log::error!(target: "startup", "trash cleanup: file failed for ID {}: {e}", file.id);
                     continue;
                 }
             }
         }
         if let Err(e) = db::delete_file(conn, file.id) {
-            eprintln!("[startup] trash cleanup: DB row failed for ID {}: {e}", file.id);
+            log::error!(target: "startup", "trash cleanup: DB row failed for ID {}: {e}", file.id);
         }
     }
 }
