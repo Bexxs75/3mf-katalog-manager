@@ -64,7 +64,10 @@ pub async fn check_for_update() -> CmdResult<update_check::UpdateCheckResult> {
         Ok(r) => r,
         // Not a network error (a response did arrive) but still no usable version
         // to compare against - same silent "no update" outcome for the user.
-        Err(_) => return Ok(update_check::compare_versions(current, current, "")),
+        Err(_) => {
+            log::info!(target: "update", "Update-Check: Antwort nicht lesbar");
+            return Ok(update_check::compare_versions(current, current, ""));
+        }
     };
 
     log::info!(target: "update", "Update-Check: installiert {current}, neueste {}", release.tag_name);

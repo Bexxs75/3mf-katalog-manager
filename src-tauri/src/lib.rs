@@ -32,6 +32,12 @@ pub(crate) fn harden_permissions(path: &std::path::Path) {
 #[cfg(not(unix))]
 pub(crate) fn harden_permissions(_path: &std::path::Path) {}
 
+/// Indents continuation lines of a multi-line log message (e.g. a stack
+/// trace) so they read as part of the same entry, not as separate log lines.
+fn indent_continuation_lines(message: &str) -> String {
+    message.replace('\n', "\n    ")
+}
+
 // Directories that folder and file operations must never write to (see
 // `commands::reject_if_sensitive_path`); computed once at startup.
 fn sensitive_dirs(app: &tauri::AppHandle) -> Vec<std::path::PathBuf> {
@@ -87,6 +93,7 @@ pub fn run() {
                 .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(4))
                 .timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal)
                 .format(|out, message, record| {
+                    let message = indent_continuation_lines(&message.to_string());
                     out.finish(format_args!(
                         "{} {:<5} [{}] {}",
                         chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
@@ -262,4 +269,18 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn continuation_lines_are_indented() {
+        assert_eq!(indent_continuation_lines("single line"), "single line");
+        assert_eq!(
+            indent_continuation_lines("panic message\nat src/lib.rs:1\nat main"),
+            "panic message\n    at src/lib.rs:1\n    at main"
+        );
+    }
 }

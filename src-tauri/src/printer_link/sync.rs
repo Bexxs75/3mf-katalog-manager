@@ -42,6 +42,7 @@ pub fn sync_once(db: &Mutex<Connection>, make: &LinkMaker, now: f64) -> Result<u
     let printer_count = plan.len();
 
     let mut new_jobs = 0;
+    let mut error_codes: Vec<&'static str> = Vec::new();
     for (printer_id, kind, address, since) in plan {
         // The plan was made once at the start; a single network request (`test()`) can
         // take seconds. So check again briefly before contacting the next printer: if
@@ -80,12 +81,34 @@ pub fn sync_once(db: &Mutex<Connection>, make: &LinkMaker, now: f64) -> Result<u
                 }
                 store::record_sync_success(&conn, printer_id, now, &info.base_url, &info.version)?;
                 store::set_clock_offset(&conn, printer_id, info.clock_offset_s)?;
+                // A printer with a wrong system clock (see `record_sync_success`'s use of
+                // `info.clock_offset_s` to translate its print end times) is otherwise
+                // invisible in the log; note it once per pass while it's non-zero.
+                if info.clock_offset_s.abs() >= 1.0 {
+                    log::info!(target: "drucker", "Drucker {printer_id}: Uhrabweichung {:.0} s", info.clock_offset_s);
+                }
             }
-            Err(e) => store::record_sync_error(&conn, printer_id, e.code(), now)?,
+            Err(e) => {
+                store::record_sync_error(&conn, printer_id, e.code(), now)?;
+                error_codes.push(e.code());
+            }
         }
     }
-    log::info!(target: "drucker", "{printer_count} Drucker abgefragt, {new_jobs} neue Drucke");
+    log::info!(target: "drucker", "{}", sync_summary(printer_count, new_jobs, &error_codes));
     Ok(new_jobs)
+}
+
+/// One-line summary logged exactly once per sync pass.
+fn sync_summary(printer_count: usize, new_jobs: usize, error_codes: &[&str]) -> String {
+    if error_codes.is_empty() {
+        format!("{printer_count} Drucker abgefragt, {new_jobs} neue Drucke")
+    } else {
+        format!(
+            "{printer_count} Drucker abgefragt, {new_jobs} neue Drucke, {} Fehler ({})",
+            error_codes.len(),
+            error_codes.join(", ")
+        )
+    }
 }
 
 /// Wakes the background sync immediately (button, switch, new connection).
@@ -126,6 +149,19 @@ mod tests {
     use crate::printer_link::fake_moonraker::{sv08, FakeServer};
     use crate::printer_link::{ConnectionInfo, JobOutcome, RemoteJob};
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn summary_lists_error_codes_when_present() {
+        assert_eq!(sync_summary(3, 2, &[]), "3 Drucker abgefragt, 2 neue Drucke");
+        assert_eq!(
+            sync_summary(3, 2, &["unreachable"]),
+            "3 Drucker abgefragt, 2 neue Drucke, 1 Fehler (unreachable)"
+        );
+        assert_eq!(
+            sync_summary(3, 0, &["unreachable", "auth_required"]),
+            "3 Drucker abgefragt, 0 neue Drucke, 2 Fehler (unreachable, auth_required)"
+        );
+    }
 
     fn db_with_connection(address: &str, connected_since: f64) -> Mutex<Connection> {
         let conn = crate::db::connect_in_memory().unwrap();

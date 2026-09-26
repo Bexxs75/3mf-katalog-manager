@@ -1,6 +1,7 @@
 //! Replaces personal data in a log excerpt before it leaves the computer.
 //! Returns segments so the preview can highlight exactly what was replaced.
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 use regex::Regex;
 use serde::Serialize;
@@ -22,6 +23,23 @@ pub struct Context {
 }
 
 const FILE_EXTENSIONS: &str = "3mf|stl|obj|step|stp|gcode|bgcode|zip|7z|rar|tar|gz|xz|zst|png|jpe?g|webp|ctb|goo|pwmx";
+
+// Fixed patterns (independent of `Context`), compiled once instead of on every
+// preview/export call - this runs on the main thread and previously recompiled
+// all of these regexes per call.
+static EMAIL_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}").unwrap());
+static IP_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"\b(?:\d{1,3}\.){3}\d{1,3}\b|\b(?:[0-9a-fA-F]{1,4}:){3,7}[0-9a-fA-F]{1,4}\b|\b[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4})*::(?:[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4})*)?",
+    )
+    .unwrap()
+});
+static LOCAL_HOST_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)(?:^|[^.\w-])([0-9A-Za-z-]+\.local)(?:[^.\w-]|$)").unwrap());
+static IN_PATH_FILE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(&format!(r#"(?i)[/\\]([^/\\"<>|:\r\n]+?)\.(?:{FILE_EXTENSIONS})\b"#)).unwrap());
+static BARE_FILE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(&format!(r#"(?i)(?:^|[\s("'])([^\s/\\"'<>|:()]+)\.(?:{FILE_EXTENSIONS})\b"#)).unwrap());
 
 pub fn to_text(segs: &[Segment]) -> String {
     segs.iter().map(|s| s.text.as_str()).collect()
@@ -46,7 +64,7 @@ pub fn anonymize(text: &str, ctx: &Context) -> Vec<Segment> {
     }
     ci_literals.sort_by_key(|a| std::cmp::Reverse(a.0.len()));
     for (needle, repl) in &ci_literals {
-        segs = replace_literal_ci(segs, needle, repl);
+        segs = replace_path_prefix_ci(segs, needle, repl);
     }
 
     let mut literals: Vec<(String, String)> = Vec::new();
@@ -65,20 +83,17 @@ pub fn anonymize(text: &str, ctx: &Context) -> Vec<Segment> {
     }
     literals.sort_by_key(|a| std::cmp::Reverse(a.0.len()));
     for (needle, repl) in &literals {
-        segs = replace_literal(segs, needle, repl);
+        // Configured hostnames (e.g. "printer.fritz.box") show up in logs in
+        // varying case, just like home/catalog paths.
+        segs = replace_literal_ci(segs, needle, repl);
     }
 
-    let email = Regex::new(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}").unwrap();
-    segs = replace_group(segs, &email, 0, |_| Some("<email>".into()));
+    segs = replace_group(segs, &EMAIL_RE, 0, |_| Some("<email>".into()));
 
     // IPv4 and IPv6 (at least three colons or a "::", so clock times like
     // 14:02:11 never match).
-    let ip = Regex::new(
-        r"\b(?:\d{1,3}\.){3}\d{1,3}\b|\b(?:[0-9a-fA-F]{1,4}:){3,7}[0-9a-fA-F]{1,4}\b|\b[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4})*::(?:[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4})*)?",
-    )
-    .unwrap();
     let mut ips: HashMap<String, usize> = HashMap::new();
-    segs = replace_group(segs, &ip, 0, |m| {
+    segs = replace_group(segs, &IP_RE, 0, |m| {
         // Real addresses always contain a digit; Rust paths like `db::list` don't.
         if !m.chars().any(|c| c.is_ascii_digit()) {
             return None;
@@ -94,8 +109,7 @@ pub fn anonymize(text: &str, ctx: &Context) -> Vec<Segment> {
     // so a file name that merely ends in `.local` (`.env.local`,
     // `vite.config.local.ts`) is not mistaken for a host: the name before
     // `.local` must not itself be preceded by a `.` or dotted extension.
-    let local_host = Regex::new(r"(?:^|[^.\w-])([0-9A-Za-z-]+\.local)(?:[^.\w-]|$)").unwrap();
-    segs = replace_group(segs, &local_host, 1, |m| {
+    segs = replace_group(segs, &LOCAL_HOST_RE, 1, |m| {
         let next = ips.len() + 1;
         let n = *ips.entry(m.to_string()).or_insert(next);
         Some(format!("<ip-{n}>"))
@@ -118,10 +132,8 @@ pub fn anonymize(text: &str, ctx: &Context) -> Vec<Segment> {
             Some(format!("<datei-{n}>"))
         };
         // After a path separator the name may contain spaces.
-        let in_path = Regex::new(&format!(r#"(?i)[/\\]([^/\\"<>|:\r\n]+?)\.(?:{FILE_EXTENSIONS})\b"#)).unwrap();
-        segs = replace_group(segs, &in_path, 1, &mut label);
-        let bare = Regex::new(&format!(r#"(?i)(?:^|[\s("'])([^\s/\\"'<>|:()]+)\.(?:{FILE_EXTENSIONS})\b"#)).unwrap();
-        segs = replace_group(segs, &bare, 1, &mut label);
+        segs = replace_group(segs, &IN_PATH_FILE_RE, 1, &mut label);
+        segs = replace_group(segs, &BARE_FILE_RE, 1, &mut label);
     }
 
     merge_plain(segs)
@@ -144,32 +156,29 @@ fn push_plain(out: &mut Vec<Segment>, text: &str) {
     }
 }
 
-fn replace_literal(segs: Vec<Segment>, needle: &str, repl: &str) -> Vec<Segment> {
-    let mut out = Vec::new();
-    for s in segs {
-        if s.replaced || !s.text.contains(needle) {
-            out.push(s);
-            continue;
-        }
-        let mut parts = s.text.split(needle).peekable();
-        while let Some(part) = parts.next() {
-            push_plain(&mut out, part);
-            if parts.peek().is_some() {
-                out.push(Segment { text: repl.to_string(), replaced: true });
-            }
-        }
-    }
-    out
-}
-
-/// Case-insensitive variant of `replace_literal`, for home/catalog paths
-/// (which are case-insensitive on Windows and macOS).
+/// Replaces every occurrence of a literal needle, case-insensitively: used for
+/// configured printer hostnames (which show up in logs in varying case).
 fn replace_literal_ci(segs: Vec<Segment>, needle: &str, repl: &str) -> Vec<Segment> {
     if needle.is_empty() {
         return segs;
     }
     let re = Regex::new(&format!("(?i){}", regex::escape(needle))).unwrap();
     replace_group(segs, &re, 0, |_| Some(repl.to_string()))
+}
+
+/// Case-insensitive variant of `replace_literal_ci` for home/catalog paths,
+/// which additionally requires a path/word boundary right after the needle -
+/// without it, "/home/thebexxs" would also match inside an unrelated longer
+/// name like "/home/thebexxs2" or "/home/thebexxsBackup".
+fn replace_path_prefix_ci(segs: Vec<Segment>, needle: &str, repl: &str) -> Vec<Segment> {
+    if needle.is_empty() {
+        return segs;
+    }
+    let re = Regex::new(&format!(r"(?i)({})(?:[^.\w-]|$)", regex::escape(needle))).unwrap();
+    // Group 1 is only the needle itself; the boundary character checked by the
+    // non-capturing part (a path separator, punctuation, or end of string)
+    // stays untouched in the output.
+    replace_group(segs, &re, 1, |_| Some(repl.to_string()))
 }
 
 /// `f` returns `None` to keep a match as it is (e.g. `db::list` is not an IPv6 address).
@@ -268,10 +277,33 @@ mod tests {
     }
 
     #[test]
+    fn home_and_catalog_need_a_boundary_after_the_needle() {
+        // "/home/thebexxs" must not match as a prefix inside an unrelated,
+        // longer directory name of another user.
+        let ctx = Context { home: Some("/home/thebexxs".into()), ..Default::default() };
+        assert_eq!(run("/home/thebexxs2/x", &ctx), "/home/thebexxs2/x");
+        assert_eq!(run("/home/thebexxsBackup/x", &ctx), "/home/thebexxsBackup/x");
+    }
+
+    #[test]
+    fn configured_printer_hostnames_are_matched_case_insensitively() {
+        let ctx = Context {
+            printer_addresses: vec!["printer.fritz.box".into()],
+            ..Default::default()
+        };
+        assert_eq!(run("GET Printer.Fritz.Box/api", &ctx), "GET <printer-1>/api");
+    }
+
+    #[test]
     fn dotted_file_names_ending_in_local_are_not_hosts() {
         assert_eq!(run("Loaded config: .env.local", &Context::default()), "Loaded config: .env.local");
         assert_eq!(run("vite.config.local.ts", &Context::default()), "vite.config.local.ts");
         assert_eq!(run("GET qidi.local/x", &Context::default()), "GET <ip-1>/x");
+    }
+
+    #[test]
+    fn local_hostnames_are_matched_case_insensitively() {
+        assert_eq!(run("GET SV08.LOCAL/api", &Context::default()), "GET <ip-1>/api");
     }
 
     #[test]

@@ -76,8 +76,9 @@ pub fn list_registered_slicers(state: State<AppState>) -> CmdResult<Vec<SlicerDt
 // (still) point to an existing executable file.
 fn validate_slicer_path(slicer_path: &str) -> CmdResult<()> {
     let path = Path::new(slicer_path);
-    let metadata = std::fs::metadata(path)
-        .map_err(|_| "slicer executable not found".to_string())?;
+    // A missing slicer executable (uninstalled, moved) is a normal situation for the
+    // user to fix, not an application fault.
+    let metadata = std::fs::metadata(path).map_err(|_| CmdError::expected("slicer executable not found"))?;
     if !metadata.is_file() {
         return Err(CmdError::expected("slicer path is not a file"));
     }
@@ -116,7 +117,9 @@ fn validate_slicer_target_file(file_path: &str) -> CmdResult<()> {
         return Err("model file must be a .3mf or .stl file".into());
     }
     if !std::fs::metadata(path).map(|m| m.is_file()).unwrap_or(false) {
-        return Err("model file not found".into());
+        // The model file was deleted or moved outside the app - a normal situation,
+        // not an application fault.
+        return Err(CmdError::expected("model file not found"));
     }
     Ok(())
 }
@@ -194,7 +197,9 @@ mod tests {
 
     #[test]
     fn validate_slicer_path_rejects_missing_file() {
-        assert!(validate_slicer_path("/does/not/exist/slicer").is_err());
+        let err = validate_slicer_path("/does/not/exist/slicer").unwrap_err();
+        // A slicer that's been uninstalled/moved is normal feedback, not a fault.
+        assert!(err.expected, "a missing slicer executable must be an expected error");
     }
     #[test]
     fn validate_slicer_path_rejects_directory() {
@@ -262,6 +267,10 @@ mod tests {
         assert!(bad_flag.is_err(), "a file name starting with '-' must be rejected");
         assert!(bad_bare_flag.is_err(), "a bare CLI flag must be rejected");
         assert!(bad_missing.is_err(), "a non-existent file must be rejected");
+        assert!(
+            bad_missing.as_ref().unwrap_err().expected,
+            "a model file deleted outside the app is normal feedback, not a fault"
+        );
         assert!(bad_dir.is_err(), "a directory must be rejected");
         // .stp can be cataloged, but not launched in a slicer.
         assert!(bad_stp.is_err(), "a .stp file must not be launchable in a slicer");

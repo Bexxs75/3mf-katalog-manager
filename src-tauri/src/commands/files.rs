@@ -582,11 +582,13 @@ pub(crate) fn backfill_content_hashes(conn: &Connection) {
         match compute_content_hash(Path::new(&path)) {
             Ok(hash) => {
                 if let Err(e) = db::set_content_hash(conn, id, &hash) {
-                    log::error!(target: "startup", "content_hash backfill: saving failed for {path}: {e}");
+                    log::warn!(target: "startup", "content_hash backfill übersprungen (Speichern fehlgeschlagen): {path}: {e}");
                 }
             }
+            // compute_content_hash already logged the fault itself; this runs on every
+            // startup until the file is reachable again, so it stays at Warn, not Error.
             Err(e) => {
-                log::error!(target: "startup", "content_hash backfill: hashing failed for {path}: {e}");
+                log::warn!(target: "startup", "content_hash backfill übersprungen: {path}: {e}");
             }
         }
     }
@@ -776,7 +778,15 @@ pub(crate) fn import_one(
         slice_info_json,
     };
 
-    let id = db::insert_file_within_tx(conn, &new_file).map_err(|e| e.to_string())?;
+    let id = match db::insert_file_within_tx(conn, &new_file) {
+        Ok(id) => id,
+        // The path still belongs to a trash row (files.path is UNIQUE, even for
+        // soft-deleted rows): for the user this is just a normal duplicate, not a fault.
+        Err(e) if e.to_string().contains("UNIQUE constraint failed") => {
+            return Err(CmdError::expected(e.to_string()));
+        }
+        Err(e) => return Err(e.to_string().into()),
+    };
     let file = db::get_file(conn, id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "imported file not found after insert".to_string())?;
@@ -928,8 +938,10 @@ pub(crate) fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) 
 
             let content_hash = match compute_content_hash(&path) {
                 Ok(h) => h,
+                // compute_content_hash already logged the fault itself; this is just the
+                // (expected) consequence for the batch.
                 Err(e) => {
-                    log::error!(target: "import", "hashing failed for {path_str}: {e}");
+                    log::warn!(target: "import", "übersprungen (Hashing fehlgeschlagen): {path_str}: {e}");
                     continue;
                 }
             };
@@ -959,10 +971,12 @@ pub(crate) fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) 
                 }
                 Err(e) if e.contains("UNIQUE constraint failed") => {
                     // The path still belongs to a trash row (files.path is UNIQUE); for the
-                    // user this is a duplicate.
+                    // user this is a duplicate. import_one already logged this at Info.
                     duplicate_count += 1;
                 }
-                Err(e) => log::error!(target: "import", "import failed for {path_str}: {e}"),
+                // import_one already logged the fault itself; this is just the
+                // (expected) consequence for the batch.
+                Err(e) => log::warn!(target: "import", "übersprungen: {path_str}: {e}"),
             }
         }
     }
@@ -2217,6 +2231,24 @@ mod tests {
         std::fs::write(&path, b"ISO-10303-21;\nHEADER;\nENDSEC;\nEND-ISO-10303-21;").unwrap();
 
         assert_eq!(step_metadata(&path), (None, None, None));
+    }
+    #[test]
+    fn reimporting_a_path_still_occupied_by_a_trash_row_is_an_expected_duplicate() {
+        let path = unique_test_dir("import_duplicate_of_trashed_path").join("teil.stp");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"ISO-10303-21;\nHEADER;\nENDSEC;\nEND-ISO-10303-21;").unwrap();
+
+        let conn = crate::db::connect_in_memory().expect("connect");
+        let first = import_one(&conn, &path, None, None, None).expect("first import should succeed");
+        db::soft_delete_file(&conn, first.id.parse().unwrap(), None, "2026-01-01T00:00:00Z")
+            .expect("soft delete");
+
+        // file_exists_by_path ignores soft-deleted rows, so import_one reaches the
+        // INSERT, which then fails on the UNIQUE(path) constraint.
+        let result = import_one(&conn, &path, None, None, None);
+
+        let err = result.expect_err("path still occupied by a trash row must fail");
+        assert!(err.expected, "a normal duplicate must be an expected error, not an unexpected fault");
     }
     #[test]
     fn import_one_catalogs_an_empty_stp_file_without_metadata() {

@@ -75,9 +75,10 @@ fn delete_files_with_conn(conn: &Connection, trash_dir: &std::path::Path, file_i
         };
         // Log single errors and continue, so the frontend can reload cleanly
         // afterwards. Same function as for single deletes, so the move-back
-        // compensation applies here too.
+        // compensation applies here too. delete_file_with_conn already logged the
+        // fault itself; this is just the (expected) consequence for the batch.
         if let Err(e) = delete_file_with_conn(conn, &file, id, trash_dir) {
-            log::error!(target: "cleanup", "deleting failed for file ID {id}: {e}");
+            log::warn!(target: "cleanup", "übersprungen: {} ({e})", file.path);
         }
     }
     Ok(())
