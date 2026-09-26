@@ -7,7 +7,8 @@ import { isValidColorHex } from '../lib/filamentColors';
 import { isFromInteractiveElement, startsOnButton } from '../lib/spoolCardEvents';
 import { ResinBottleIcon } from './ResinBottleIcon';
 
-interface Props {
+/** Shared by the dashboard cards and the inventory table. */
+export interface SpoolListProps {
   spools: FilamentSpool[];
   confirmDeleteId: string | null;
   onEdit: (spool: FilamentSpool) => void;
@@ -41,7 +42,7 @@ export function FilamentDashboard({
   onConsume,
   consumeOpenId,
   highlightIds,
-}: Props) {
+}: SpoolListProps) {
   const t = useT();
   const { language } = useLanguage();
 

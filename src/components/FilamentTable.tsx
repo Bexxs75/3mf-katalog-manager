@@ -1,33 +1,15 @@
-import type { MouseEvent as ReactMouseEvent } from 'react';
 import { useState } from 'react';
 import { useT, useLanguage } from '../i18n/LanguageContext';
 import { formatSpoolAmount, formatDiameterMm, formatPrice } from '../i18n/format';
-import type { FilamentSpool, SpoolKind } from '../types';
+import type { SpoolKind } from '../types';
 import { STOCK_BADGE_CLASS, STOCK_BAR_CLASS, filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus';
 import { isValidColorHex } from '../lib/filamentColors';
 import { isFromInteractiveElement, startsOnButton } from '../lib/spoolCardEvents';
 import { ResinBottleIcon } from './ResinBottleIcon';
 import { FilamentSpoolIcon } from './FilamentSpoolIcon';
+import type { SpoolListProps } from './FilamentDashboard';
 
-interface Props {
-  spools: FilamentSpool[];
-  confirmDeleteId: string | null;
-  onEdit: (spool: FilamentSpool) => void;
-  onRequestDelete: (id: string) => void;
-  onCancelDelete: () => void;
-  onConfirmDelete: (id: string) => void;
-  /** Mouse down on a spool - may start dragging it into a slot. */
-  onSpoolMouseDown?: (spoolId: string, event: ReactMouseEvent) => void;
-  /** Opens/closes the restock popover; `anchor` = the clicked button. */
-  onRestock?: (spool: FilamentSpool, anchor: HTMLElement) => void;
-  /** Spool whose restock popover is currently open (aria-expanded). */
-  restockOpenId?: string | null;
-  /** Opens "− Usage" (resin only). */
-  onConsume?: (spool: FilamentSpool, anchor: HTMLElement) => void;
-  /** Spool whose usage popover is currently open (aria-expanded). */
-  consumeOpenId?: string | null;
-  /** Entries just created via restock, briefly highlighted. */
-  highlightIds?: ReadonlySet<string>;
+interface Props extends SpoolListProps {
   /** Kind of the list shown; for 'resin' the diameter column is omitted. */
   kind?: SpoolKind;
 }
