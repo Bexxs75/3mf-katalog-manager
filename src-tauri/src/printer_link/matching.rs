@@ -66,8 +66,21 @@ fn is_plate_token(w: &str) -> bool {
         .is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
 }
 
+/// Copy counter such as "(1)" or "(01)" that the Anycubic slicer appends, e.g.
+/// "slide(01)" or "plate_1(2)"; returns the word without it.
+fn strip_copy_counter(w: &str) -> Option<&str> {
+    let (head, rest) = w.split_once('(')?;
+    let n = rest.strip_suffix(')')?;
+    (!head.is_empty() && !n.is_empty() && n.chars().all(|c| c.is_ascii_digit())).then_some(head)
+}
+
+fn is_four_digits(w: &str) -> bool {
+    w.len() == 4 && w.chars().all(|c| c.is_ascii_digit())
+}
+
 /// Like `normalize_name`, additionally strips appended slicer parts (print time,
-/// layer height, material, "plate N") from the end.
+/// layer height, material, "plate N", copy counters) from the end and the
+/// "MMDD-HHMM-" date prefix of the Anycubic slicer from the start.
 pub fn normalize_gcode_name(name: &str) -> String {
     let normalized = normalize_name(name);
     let mut words: Vec<&str> = normalized.split(' ').collect();
@@ -76,9 +89,15 @@ pub fn normalize_gcode_name(name: &str) -> String {
             words.pop();
         } else if last.chars().all(|c| c.is_ascii_digit()) && words.len() >= 2 && words[words.len() - 2] == "plate" {
             words.truncate(words.len() - 2);
+        } else if let Some(head) = strip_copy_counter(last) {
+            *words.last_mut().expect("loop only runs with a last word") = head;
         } else {
             break;
         }
+    }
+    // Only when a name remains, so a model really called "2024-1234" keeps its name.
+    if words.len() > 2 && is_four_digits(words[0]) && is_four_digits(words[1]) {
+        words.drain(..2);
     }
     words.join(" ")
 }
@@ -144,6 +163,32 @@ mod tests {
     }
 
     #[test]
+    fn anycubic_copy_and_plate_suffixes_are_removed() {
+        assert_eq!(normalize_gcode_name("Axle Cleaning Tool_plate_1(1).gcode"), "axle cleaning tool");
+        assert_eq!(normalize_gcode_name("Cartridge+nozzle_plate_1(2).gcode"), "cartridge+nozzle");
+        assert_eq!(normalize_gcode_name("0926-1506-slide(01)_PETG_0.12_2h56m50s.gcode"), "slide");
+        assert_eq!(
+            normalize_gcode_name("0920-1338-Kobra S1 Front Z-Axis Spacer V2_plate(01)_ABS_0.2_16m46s.gcode"),
+            "kobra s1 front z axis spacer v2"
+        );
+        assert_eq!(normalize_gcode_name("0912-1742-OrcaToleranceTest_plate(01)_PLA_0.2_14m11s.gcode"), "orcatolerancetest");
+    }
+
+    #[test]
+    fn a_leading_number_pair_is_kept_when_it_is_the_whole_name() {
+        assert_eq!(normalize_gcode_name("2024-1234.gcode"), "2024 1234");
+    }
+
+    #[test]
+    fn anycubic_suffixes_give_a_sure_match() {
+        let cands = [c(1, "Axle Cleaning Tool.3mf", "2026-09-01T00:00:00Z"), c(2, "slide.stl", "2026-09-01T00:00:00Z")];
+        let m = best_match("Axle Cleaning Tool_plate_1(1).gcode", &cands).unwrap();
+        assert_eq!((m.file_id, m.kind), (1, MatchKind::Sure));
+        let m = best_match("0926-1506-slide(01)_PETG_0.12_2h56m50s.gcode", &cands).unwrap();
+        assert_eq!((m.file_id, m.kind), (2, MatchKind::Sure));
+    }
+
+    #[test]
     fn umlauts_are_unified() {
         assert_eq!(normalize_name("Distanzhülse 13,40mm.3mf"), "distanzhulse 13,40mm");
         assert_eq!(normalize_name("Distanzhuelse 13,40mm.stl"), "distanzhulse 13,40mm");
@@ -181,13 +226,15 @@ mod tests {
     }
 
     #[test]
-    fn catalog_name_inside_a_prefixed_gcode_name_is_unsure() {
+    fn prefixed_gcode_names_match_the_catalog_name() {
         // The Anycubic slicer (Kobra S1) prepends the printer model or date/time to the name.
+        // The model prefix can't be told apart from a real word, so that stays unsure;
+        // the "MMDD-HHMM-" date prefix is removed, so that is a sure match.
         let cands = [c(5, "OrcaToleranceTest.3mf", "2026-09-01T00:00:00Z"), c(6, "Kabelclip.stl", "2026-09-01T00:00:00Z")];
         let m = best_match("S1_OrcaToleranceTest_PLA_12m28s.gcode", &cands).unwrap();
         assert_eq!((m.file_id, m.kind), (5, MatchKind::Unsure));
         let m = best_match("0912-1742-OrcaToleranceTest_plate(01)_PLA_0.2_14m11s.gcode", &cands).unwrap();
-        assert_eq!((m.file_id, m.kind), (5, MatchKind::Unsure));
+        assert_eq!((m.file_id, m.kind), (5, MatchKind::Sure));
         let cands = [c(7, "Gehäuse Deckel.3mf", "2026-09-01T00:00:00Z")];
         assert_eq!(best_match("S1_Gehäuse Deckel_PLA_20m28s.gcode", &cands).unwrap().file_id, 7);
     }
