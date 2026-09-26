@@ -148,12 +148,6 @@ pub struct TagCount {
     pub count: i64,
 }
 
-#[derive(Debug, Clone)]
-pub struct CreatorCount {
-    pub name: String,
-    pub count: i64,
-}
-
 /// Kind of a stock entry. For `SPOOL_KIND_RESIN`, `original_weight_g`/
 /// `remaining_weight_g` are milliliters; resin never sits in a filament slot.
 pub const SPOOL_KIND_FILAMENT: &str = "filament";
@@ -211,31 +205,6 @@ pub struct MaterialUnitRecord {
     pub kind: String,
     pub slot_count: i64,
     pub bambu_ams_index: Option<i64>,
-}
-
-#[derive(Debug, Clone)]
-pub struct SavedFilterRecord {
-    pub id: i64,
-    pub name: String,
-    pub folder_id: Option<i64>,
-    pub tag: Option<String>,
-    pub creator: Option<String>,
-    pub query: Option<String>,
-    pub sort: String,
-    // Never read in Rust after loading, but the column itself drives
-    // "ORDER BY created_at" in list_saved_filters() - not actually dead.
-    #[allow(dead_code)]
-    pub created_at: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct NewSavedFilter {
-    pub name: String,
-    pub folder_id: Option<i64>,
-    pub tag: Option<String>,
-    pub creator: Option<String>,
-    pub query: Option<String>,
-    pub sort: String,
 }
 
 #[derive(Debug, Clone)]

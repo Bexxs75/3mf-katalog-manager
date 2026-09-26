@@ -115,6 +115,8 @@ const MIGRATIONS: &[MigrationStep] = &[
     MigrationStep::Simple(|c| exec(c, "ALTER TABLE filament_spools ADD COLUMN kind TEXT NOT NULL DEFAULT 'filament' CHECK (kind IN ('filament', 'resin'))")),
     // Resin printers: `printers.kind` and 'resin_vat' in the CHECK of `material_units.kind` (rebuild, one transaction).
     MigrationStep::Rebuild(add_resin_printers),
+    // Saved filters have had no UI since the GUI redesign; the table goes away.
+    MigrationStep::Simple(|c| exec(c, "DROP TABLE IF EXISTS saved_filters")),
 ];
 
 /// Derived from [`MIGRATIONS`] so the two can never drift apart.
@@ -132,6 +134,10 @@ pub(crate) const KIND_MIGRATION_VERSION: i64 = 32;
 /// Schema version after the resin printer step.
 #[cfg(test)]
 pub(crate) const RESIN_PRINTER_MIGRATION_VERSION: i64 = 37;
+
+/// Schema version after dropping `saved_filters`.
+#[cfg(test)]
+const DROP_SAVED_FILTERS_MIGRATION_VERSION: i64 = 38;
 
 /// Runs a single statement. The only tolerated error is "duplicate column name"
 /// (column already exists); everything else propagates.
@@ -391,6 +397,29 @@ mod tests {
         run_migrations(&mut conn).unwrap(); // must not run ALTER TABLE again / must not fail
         let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
         assert_eq!(version, CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn migration_drops_the_saved_filters_table_of_older_databases() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        run_migrations(&mut conn).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE saved_filters (id INTEGER PRIMARY KEY, name TEXT NOT NULL, sort TEXT NOT NULL);
+             INSERT INTO saved_filters (name, sort) VALUES ('Vases', 'name');
+             INSERT INTO tags (name, color_hue) VALUES ('keep', 0);",
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", DROP_SAVED_FILTERS_MIGRATION_VERSION - 1).unwrap();
+
+        run_migrations(&mut conn).unwrap();
+
+        let tables: i64 = conn
+            .query_row("SELECT COUNT(*) FROM sqlite_master WHERE name = 'saved_filters'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(tables, 0);
+        let tags: i64 = conn.query_row("SELECT COUNT(*) FROM tags WHERE name = 'keep'", [], |r| r.get(0)).unwrap();
+        assert_eq!(tags, 1);
     }
 
     #[test]
@@ -675,7 +704,7 @@ mod tests {
     #[test]
     fn the_kind_step_stays_at_the_shipped_position_32() {
         assert_eq!(KIND_MIGRATION_VERSION, 32);
-        assert_eq!(CURRENT_SCHEMA_VERSION, RESIN_PRINTER_MIGRATION_VERSION);
+        assert_eq!(CURRENT_SCHEMA_VERSION, DROP_SAVED_FILTERS_MIGRATION_VERSION);
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         // Only run the steps up to and including 32.
@@ -774,7 +803,7 @@ mod tests {
         run_migrations(&mut conn).unwrap();
 
         let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(version, RESIN_PRINTER_MIGRATION_VERSION);
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
         let fk: bool = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0)).unwrap();
         assert!(fk, "foreign_keys muss danach wieder an sein");
 

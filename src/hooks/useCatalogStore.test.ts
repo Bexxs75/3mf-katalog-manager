@@ -297,7 +297,7 @@ describe('useCatalogStore', () => {
   });
 
   it('Bugfix 2026-09-20: creator is populated straight from the summary, not hardcoded to null', async () => {
-    // creator must already come from the summary, otherwise the creator filter doesn't apply.
+    // creator must already come from the summary, otherwise searching by creator finds nothing.
     mockInitialLoad([makeModelFile({ id: 'm1', creator: 'CarlFromUp' })]);
     const { result } = renderHook(() => useCatalogStore());
     await waitFor(() => expect(result.current.models).toHaveLength(1));

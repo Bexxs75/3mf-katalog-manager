@@ -187,8 +187,7 @@ combine them freely:
 
 The search field at the top of the sidebar filters by name, tag, creator, or file path — a match
 in any of these is enough. Press `/` from anywhere to jump straight into the search field without
-first clicking it. Frequently used combinations of folder/tag/creator/search/sort can be saved
-under a name and reapplied later with a click ("Saved filters").
+first clicking it.
 
 **Keyboard shortcuts:** `/` focuses search, the arrow keys navigate the grid spatially (Up/Down
 jumps to the next row based on actual rendered tile position, Left/Right to the next/previous
@@ -763,9 +762,7 @@ kombinieren kannst:
 
 Über das Suchfeld oben in der Sidebar filterst du nach Name, Tag, Ersteller oder Dateipfad — ein
 Treffer in irgendeinem dieser Felder reicht. Mit der Taste `/` springst du von überall aus direkt
-ins Suchfeld, ohne erst mit der Maus dorthin zu klicken. Häufig genutzte Kombinationen aus
-Ordner/Tag/Ersteller/Suche/Sortierung lassen sich unter einem eigenen Namen speichern und später
-per Klick wieder anwenden ("Gespeicherte Filter").
+ins Suchfeld, ohne erst mit der Maus dorthin zu klicken.
 
 **Tastaturkürzel:** `/` fokussiert die Suche, die Pfeiltasten navigieren räumlich im Raster (Hoch/
 Runter springt anhand der tatsächlich sichtbaren Kachel-Position zur nächsten Zeile, Links/Rechts

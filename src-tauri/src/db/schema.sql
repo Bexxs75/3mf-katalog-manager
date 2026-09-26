@@ -118,17 +118,6 @@ CREATE TABLE IF NOT EXISTS material_units (
     position INTEGER NOT NULL DEFAULT 0
 );
 
-CREATE TABLE IF NOT EXISTS saved_filters (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    folder_id INTEGER,
-    tag TEXT,
-    creator TEXT,
-    query TEXT,
-    sort TEXT NOT NULL,
-    created_at TEXT NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS collections (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,

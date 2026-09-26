@@ -6,8 +6,8 @@ use rusqlite::{params, Connection, OptionalExtension};
 use super::error::DbError;
 use super::models::{
     FileRecord, FileType, FilamentSpoolRecord, FolderRecord, MaterialRecord,
-    NewFile, NewFilamentSpool, NewPrintLogEntry, NewSavedFilter, PrintLogEntryRecord,
-    RegisteredSlicer, SavedFilterRecord, TagCount, CreatorCount,
+    NewFile, NewFilamentSpool, NewPrintLogEntry, PrintLogEntryRecord,
+    RegisteredSlicer, TagCount,
 };
 
 pub const SCHEMA_SQL: &str = include_str!("schema.sql");
@@ -348,10 +348,6 @@ pub fn merge_auto_tag_aliases(conn: &mut Connection) -> Result<usize, DbError> {
             params![canonical_id, alias_id],
         )?;
         tx.execute("DELETE FROM tags WHERE id = ?1", params![alias_id])?;
-        tx.execute(
-            "UPDATE saved_filters SET tag = ?1 WHERE tag = ?2",
-            params![canonical, name],
-        )?;
         merged += 1;
     }
     tx.commit()?;
@@ -413,21 +409,6 @@ pub fn list_tag_counts(conn: &Connection) -> Result<Vec<TagCount>, DbError> {
                 name: row.get(0)?,
                 color_hue: row.get(1)?,
                 count: row.get(2)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(rows)
-}
-
-pub fn list_creator_counts(conn: &Connection) -> Result<Vec<CreatorCount>, DbError> {
-    let mut stmt = conn.prepare(
-        "SELECT creator, COUNT(*) FROM files WHERE creator IS NOT NULL AND deleted_at IS NULL GROUP BY creator ORDER BY creator",
-    )?;
-    let rows = stmt
-        .query_map([], |row| {
-            Ok(CreatorCount {
-                name: row.get(0)?,
-                count: row.get(1)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -1118,50 +1099,6 @@ pub fn update_filament_spool(conn: &Connection, id: i64, spool: &NewFilamentSpoo
 
 pub fn delete_filament_spool(conn: &Connection, id: i64) -> Result<(), DbError> {
     conn.execute("DELETE FROM filament_spools WHERE id = ?1", params![id])?;
-    Ok(())
-}
-
-pub fn insert_saved_filter(conn: &Connection, filter: &NewSavedFilter) -> Result<i64, DbError> {
-    conn.execute(
-        "INSERT INTO saved_filters (name, folder_id, tag, creator, query, sort, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        params![
-            filter.name,
-            filter.folder_id,
-            filter.tag,
-            filter.creator,
-            filter.query,
-            filter.sort,
-            chrono::Utc::now().to_rfc3339(),
-        ],
-    )?;
-    Ok(conn.last_insert_rowid())
-}
-
-pub fn list_saved_filters(conn: &Connection) -> Result<Vec<SavedFilterRecord>, DbError> {
-    let mut stmt = conn.prepare(
-        "SELECT id, name, folder_id, tag, creator, query, sort, created_at
-         FROM saved_filters ORDER BY created_at",
-    )?;
-    let rows = stmt
-        .query_map([], |row| {
-            Ok(SavedFilterRecord {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                folder_id: row.get(2)?,
-                tag: row.get(3)?,
-                creator: row.get(4)?,
-                query: row.get(5)?,
-                sort: row.get(6)?,
-                created_at: row.get(7)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(rows)
-}
-
-pub fn delete_saved_filter(conn: &Connection, id: i64) -> Result<(), DbError> {
-    conn.execute("DELETE FROM saved_filters WHERE id = ?1", params![id])?;
     Ok(())
 }
 

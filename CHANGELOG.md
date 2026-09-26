@@ -17,6 +17,10 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - README, changelog and user guide now show the English text first, followed by the German version.
 - Code: all comments and developer log messages are now in English. Removed unused code (translations no UI used anymore, the creator and saved-filter lists that were loaded but never shown, an obsolete backend command) and merged duplicated drag-and-drop and inventory helpers. No visible change in the app.
 
+### Removed
+
+- Saved filters and the creator list, which had no place in the interface since the redesign. The database table for saved filters is removed on the next start; searching by creator still works.
+
 ## [0.14.0] - 2026-09-26
 
 ### Added
@@ -414,6 +418,10 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Die automatische CI-Prüfung läuft jetzt mit Node 24; mit Node 20 startete die Test-Umgebung nicht.
 - README, Changelog und Benutzerhandbuch zeigen jetzt zuerst den englischen Text, danach die deutsche Fassung.
 - Code: Alle Kommentare und Entwickler-Logmeldungen sind jetzt englisch. Ungenutzter Code wurde entfernt (Übersetzungen, die keine Oberfläche mehr verwendet, die Ersteller- und Filterlisten, die geladen, aber nie angezeigt wurden, ein veralteter Backend-Befehl), doppelte Hilfsfunktionen für Drag & Drop und das Lager wurden zusammengeführt. In der App ändert sich dadurch nichts Sichtbares.
+
+### Removed
+
+- Gespeicherte Filter und die Ersteller-Liste, die seit dem Redesign keinen Platz mehr in der Oberfläche hatten. Die Datenbanktabelle der gespeicherten Filter wird beim nächsten Start entfernt; die Suche nach Erstellern funktioniert weiterhin.
 
 ## [0.14.0] - 2026-09-26
 

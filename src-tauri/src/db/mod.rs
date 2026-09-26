@@ -11,16 +11,16 @@ pub use migrations::run_migrations;
 
 pub use repository::{
     add_tag_to_file, attach_folder_to_parent_by_path, connect, delete_file, delete_filament_spool, delete_print_log_entry,
-    delete_saved_filter, delete_unused_tags, ensure_folder_path,
+    delete_unused_tags, ensure_folder_path,
     file_exists_by_hash, file_exists_by_path, get_file, get_filament_spool,
     get_registered_slicer,
     insert_file_within_tx,
     insert_filament_spool, insert_folder_with_parent, insert_print_log_entry,
     insert_registered_slicer,
-    insert_saved_filter, list_all_file_tags, list_creator_counts, list_filament_spools, list_file_summaries, list_files,
+    list_all_file_tags, list_filament_spools, list_file_summaries, list_files,
     list_files_by_ids, list_files_missing_content_hash, list_folders, list_print_log_entries,
     list_registered_slicers,
-    list_saved_filters, list_tag_counts,
+    list_tag_counts,
     list_trash,
     mark_file_viewed, max_queue_position, purge_expired_trash, remove_tag_from_file, rename_file, restore_file,
     rename_folder_name, set_content_hash, set_custom_image_png, set_favorite, set_folder_parent,
@@ -58,7 +58,7 @@ pub use repository::SCHEMA_SQL;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use models::{FileType, MaterialRecord, NewFile, NewFilamentSpool, NewPrintLogEntry, NewSavedFilter};
+    use models::{FileType, MaterialRecord, NewFile, NewFilamentSpool, NewPrintLogEntry};
     use std::collections::BTreeMap;
 
     fn sample_file() -> NewFile {
@@ -173,32 +173,6 @@ mod tests {
         mark_file_viewed(&conn, id).expect("mark viewed");
         let after = get_file(&conn, id).expect("query").expect("present");
         assert!(after.last_viewed_at.is_some());
-    }
-
-    #[test]
-    fn list_creator_counts_groups_by_creator_and_excludes_missing() {
-        let mut conn = connect_in_memory().expect("connect");
-
-        let mut a = sample_file();
-        a.creator = Some("Jane".to_string());
-        insert_file(&mut conn, &a).expect("insert 1");
-
-        let mut b = sample_file();
-        b.name = "second.3mf".to_string();
-        b.path = "/tmp/second.3mf".to_string();
-        b.creator = Some("Jane".to_string());
-        insert_file(&mut conn, &b).expect("insert 2");
-
-        let mut c = sample_file();
-        c.name = "third.stl".to_string();
-        c.path = "/tmp/third.stl".to_string();
-        c.creator = None;
-        insert_file(&mut conn, &c).expect("insert 3");
-
-        let counts = list_creator_counts(&conn).expect("list");
-        assert_eq!(counts.len(), 1);
-        assert_eq!(counts[0].name, "Jane");
-        assert_eq!(counts[0].count, 2);
     }
 
     #[test]
@@ -715,41 +689,6 @@ mod tests {
         assert_eq!(restored.path, file.path, "Pfad bleibt unveraendert, da nie verschoben wurde");
     }
 
-    fn sample_saved_filter() -> NewSavedFilter {
-        NewSavedFilter {
-            name: "Meine Vasen".to_string(),
-            folder_id: None,
-            tag: Some("vase".to_string()),
-            creator: None,
-            query: None,
-            sort: "name".to_string(),
-        }
-    }
-
-    #[test]
-    fn saved_filters_round_trip() {
-        let conn = connect_in_memory().expect("connect");
-        let id = insert_saved_filter(&conn, &sample_saved_filter()).expect("insert");
-        assert!(id > 0);
-
-        let filters = list_saved_filters(&conn).expect("list");
-        assert_eq!(filters.len(), 1);
-        assert_eq!(filters[0].name, "Meine Vasen");
-        assert_eq!(filters[0].tag, Some("vase".to_string()));
-        assert_eq!(filters[0].sort, "name");
-    }
-
-    #[test]
-    fn delete_saved_filter_removes_it() {
-        let conn = connect_in_memory().expect("connect");
-        let id = insert_saved_filter(&conn, &sample_saved_filter()).expect("insert");
-
-        delete_saved_filter(&conn, id).expect("delete");
-
-        let filters = list_saved_filters(&conn).expect("list");
-        assert!(filters.is_empty());
-    }
-
     #[test]
     fn list_files_by_ids_preserves_requested_order_and_loads_tags() {
         let mut conn = connect_in_memory().expect("connect");
@@ -928,30 +867,6 @@ mod tests {
         assert_eq!(merge_auto_tag_aliases(&mut conn).expect("first"), 1);
         assert_eq!(merge_auto_tag_aliases(&mut conn).expect("second"), 0);
         assert_eq!(tags_of(&conn, a), vec!["Vase".to_string(), "grossformat".to_string()]);
-    }
-
-    #[test]
-    fn merge_rewrites_saved_filters_that_point_at_an_alias() {
-        let mut conn = connect_in_memory().expect("connect");
-        let a = repository::test_insert_minimal_file(&conn, "/tmp/a.3mf", None).expect("a");
-        add_tag_to_file(&conn, a, "miniature").expect("alias");
-        insert_saved_filter(
-            &conn,
-            &NewSavedFilter {
-                name: "Kleinteile".to_string(),
-                folder_id: None,
-                tag: Some("miniature".to_string()),
-                creator: None,
-                query: None,
-                sort: "name".to_string(),
-            },
-        )
-        .expect("filter");
-
-        merge_auto_tag_aliases(&mut conn).expect("merge");
-
-        let filters = list_saved_filters(&conn).expect("filters");
-        assert_eq!(filters[0].tag.as_deref(), Some("miniatur"));
     }
 
     #[test]

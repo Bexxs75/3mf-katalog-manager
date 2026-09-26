@@ -48,44 +48,6 @@ pub struct ImportResultDto {
     /// frontend through the extract dialog.
     pub pending_archives: Vec<String>,
 }
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreatorCountDto {
-    pub label: String,
-    pub count: i64,
-}
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SavedFilterDto {
-    pub id: String,
-    pub name: String,
-    pub folder_id: Option<String>,
-    pub tag: Option<String>,
-    pub creator: Option<String>,
-    pub query: Option<String>,
-    pub sort: String,
-}
-fn saved_filter_to_dto(record: db::models::SavedFilterRecord) -> SavedFilterDto {
-    SavedFilterDto {
-        id: record.id.to_string(),
-        name: record.name,
-        folder_id: record.folder_id.map(|id| id.to_string()),
-        tag: record.tag,
-        creator: record.creator,
-        query: record.query,
-        sort: record.sort,
-    }
-}
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SavedFilterInputDto {
-    pub name: String,
-    pub folder_id: Option<String>,
-    pub tag: Option<String>,
-    pub creator: Option<String>,
-    pub query: Option<String>,
-    pub sort: String,
-}
 #[tauri::command]
 pub fn list_file_summaries(state: State<AppState>) -> CmdResult<Vec<FileSummaryDto>> {
     let conn = lock_db(&state)?;
@@ -149,18 +111,6 @@ pub fn list_tag_counts(state: State<AppState>) -> CmdResult<Vec<TagCountDto>> {
             label: t.name,
             count: t.count,
             color_hue: t.color_hue,
-        })
-        .collect())
-}
-#[tauri::command]
-pub fn list_creators(state: State<AppState>) -> CmdResult<Vec<CreatorCountDto>> {
-    let conn = lock_db(&state)?;
-    let creators = db::list_creator_counts(&conn).map_err(|e| e.to_string())?;
-    Ok(creators
-        .into_iter()
-        .map(|c| CreatorCountDto {
-            label: c.name,
-            count: c.count,
         })
         .collect())
 }
@@ -1218,53 +1168,6 @@ pub async fn get_model_geometry(
     .map_err(|e| e.to_string())??;
 
     Ok(tauri::ipc::Response::new(encode_render_meshes(&meshes)))
-}
-#[tauri::command]
-pub fn save_filter(
-    state: State<AppState>,
-    filter: SavedFilterInputDto,
-) -> CmdResult<SavedFilterDto> {
-    let folder_id = filter
-        .folder_id
-        .map(|s| {
-            s.parse::<i64>()
-                .map_err(|_| "invalid folder id".to_string())
-        })
-        .transpose()?;
-    let conn = lock_db(&state)?;
-    let new_filter = db::models::NewSavedFilter {
-        name: filter.name,
-        folder_id,
-        tag: filter.tag,
-        creator: filter.creator,
-        query: filter.query,
-        sort: filter.sort,
-    };
-    let id = db::insert_saved_filter(&conn, &new_filter).map_err(|e| e.to_string())?;
-    Ok(saved_filter_to_dto(db::models::SavedFilterRecord {
-        id,
-        name: new_filter.name,
-        folder_id: new_filter.folder_id,
-        tag: new_filter.tag,
-        creator: new_filter.creator,
-        query: new_filter.query,
-        sort: new_filter.sort,
-        created_at: String::new(),
-    }))
-}
-#[tauri::command]
-pub fn list_saved_filters(state: State<AppState>) -> CmdResult<Vec<SavedFilterDto>> {
-    let conn = lock_db(&state)?;
-    let filters = db::list_saved_filters(&conn).map_err(|e| e.to_string())?;
-    Ok(filters.into_iter().map(saved_filter_to_dto).collect())
-}
-#[tauri::command]
-pub fn delete_saved_filter(state: State<AppState>, filter_id: String) -> CmdResult<()> {
-    let id: i64 = filter_id
-        .parse()
-        .map_err(|_| "invalid filter id".to_string())?;
-    let conn = lock_db(&state)?;
-    db::delete_saved_filter(&conn, id).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
