@@ -1,4 +1,4 @@
-name: CI-Prüfungen (TypeScript, Tests, Clippy)
+name: CI checks (TypeScript, tests, Clippy)
 
 on:
   push:
@@ -20,7 +20,7 @@ jobs:
         with:
           components: clippy
 
-      - name: Rust-Cache
+      - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
@@ -49,21 +49,21 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: TypeScript prüfen (tsc --noEmit)
+      - name: Type-check TypeScript (tsc --noEmit)
         run: npx tsc --noEmit
 
-      - name: Frontend-Tests (vitest)
+      - name: Frontend tests (vitest)
         run: npx vitest run
 
       # The frontend build is needed because tauri::generate_context!() embeds the
       # dist directory (frontendDist) during the Rust build/test.
-      - name: Frontend bauen (dist fuer tauri::generate_context)
+      - name: Build frontend (dist for tauri::generate_context)
         run: npm run build
 
-      - name: Clippy (nur test code betroffen, -D warnings)
+      - name: Clippy (all targets, -D warnings)
         working-directory: src-tauri
         run: cargo clippy --no-default-features --all-targets -- -D warnings
 
-      - name: Rust-Tests
+      - name: Rust tests
         working-directory: src-tauri
         run: cargo test --no-default-features

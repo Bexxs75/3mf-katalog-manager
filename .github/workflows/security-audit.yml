@@ -1,4 +1,4 @@
-name: Security-Audit (Abhängigkeiten)
+name: Security audit (dependencies)
 
 on:
   schedule:
@@ -34,5 +34,5 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: npm audit (nur High/Critical)
+      - name: npm audit (high/critical only)
         run: npm audit --audit-level=high

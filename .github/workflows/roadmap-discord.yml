@@ -1,4 +1,4 @@
-name: Roadmap nach Discord
+name: Roadmap to Discord
 
 # Mirrors the public GitHub roadmap (project 1) into the Discord channel
 # #🗺️-roadmap. Edits two existing webhook messages (DE, EN) and never posts new
@@ -22,7 +22,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Roadmap übertragen
+      - name: Sync roadmap
         env:
           # A separate read-only token (read:project), in case the default token can't read the user project.
           GH_TOKEN: ${{ secrets.ROADMAP_READ_TOKEN || github.token }}
