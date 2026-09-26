@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { getVerboseLogging, openLogFolder, setVerboseLogging, type VerboseLogging } from '../lib/api/diagnostics';
 import { ToggleSwitch } from '../components/ToggleSwitch';
@@ -17,9 +17,19 @@ export function DiagnosticsSettings() {
   const { language } = useLanguage();
   const { openBugReport } = useDiagnostics();
   const [verbose, setVerbose] = useState<VerboseLogging>({ enabled: false, untilMs: null });
+  const mountedRef = useRef(true);
+
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    [],
+  );
 
   useEffect(() => {
-    getVerboseLogging().then(setVerbose).catch(() => {});
+    getVerboseLogging()
+      .then((v) => mountedRef.current && setVerbose(v))
+      .catch(() => {});
   }, []);
 
   const until = verbose.untilMs ? new Date(verbose.untilMs).toLocaleDateString(language) : '';
@@ -41,7 +51,11 @@ export function DiagnosticsSettings() {
           <ToggleSwitch
             checked={verbose.enabled}
             label={t('infoVerboseLoggingLabel')}
-            onChange={(on) => setVerboseLogging(on).then(setVerbose).catch(() => {})}
+            onChange={(on) =>
+              setVerboseLogging(on)
+                .then((v) => mountedRef.current && setVerbose(v))
+                .catch(() => {})
+            }
           />
         </div>
         <p className={`mt-1 text-[10.5px] leading-[1.4] ${verbose.enabled ? 'text-[var(--warn)]' : 'text-[var(--ink-3)]'}`}>

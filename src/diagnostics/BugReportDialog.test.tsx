@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { BugReportDialog } from './BugReportDialog';
 import * as diagnosticsApi from '../lib/api/diagnostics';
+import type { LogPreview } from '../lib/api/diagnostics';
 
 vi.mock('../lib/api/diagnostics');
 
@@ -25,6 +26,7 @@ beforeEach(() => {
   localStorage.setItem('3mf-katalog-language', 'de');
   vi.mocked(diagnosticsApi.getBugReportInfo).mockResolvedValue(INFO);
   vi.mocked(diagnosticsApi.previewLogExport).mockResolvedValue({
+    id: 1,
     segments: [{ text: 'plain', replaced: false }],
     containsDebug: false,
     replaceFileNames: true,
@@ -59,6 +61,7 @@ describe('BugReportDialog', () => {
 
   it('loads and shows the anonymized preview when "Yes" is chosen', async () => {
     vi.mocked(diagnosticsApi.previewLogExport).mockResolvedValue({
+      id: 1,
       segments: [
         { text: 'plain text ', replaced: false },
         { text: 'C:\\Users\\Anna', replaced: true },
@@ -82,6 +85,7 @@ describe('BugReportDialog', () => {
     await waitFor(() => expect(diagnosticsApi.previewLogExport).toHaveBeenCalledTimes(1));
 
     vi.mocked(diagnosticsApi.previewLogExport).mockResolvedValue({
+      id: 2,
       segments: [{ text: 'plain', replaced: false }],
       containsDebug: false,
       replaceFileNames: false,
@@ -91,13 +95,41 @@ describe('BugReportDialog', () => {
     await waitFor(() => expect(diagnosticsApi.previewLogExport).toHaveBeenCalledWith(false));
   });
 
+  it('ignores a stale preview response that resolves after a newer one', async () => {
+    renderDialog();
+    fireEvent.click(screen.getByText('Ja, Logdatei anhängen'));
+    await waitFor(() => expect(screen.getByRole('checkbox')).toBeInTheDocument());
+
+    let resolveStale!: (v: LogPreview) => void;
+    let resolveFresh!: (v: LogPreview) => void;
+    vi.mocked(diagnosticsApi.previewLogExport)
+      .mockImplementationOnce(() => new Promise((r) => { resolveStale = r; }))
+      .mockImplementationOnce(() => new Promise((r) => { resolveFresh = r; }));
+
+    // Two rapid toggles: the first (older) request resolves last.
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('checkbox'));
+    await waitFor(() => expect(diagnosticsApi.previewLogExport).toHaveBeenCalledTimes(3));
+
+    await act(async () => {
+      resolveFresh({ id: 3, segments: [{ text: 'fresh', replaced: false }], containsDebug: false, replaceFileNames: true, empty: false });
+    });
+    expect(screen.getByText('fresh')).toBeInTheDocument();
+
+    await act(async () => {
+      resolveStale({ id: 2, segments: [{ text: 'stale', replaced: false }], containsDebug: false, replaceFileNames: false, empty: false });
+    });
+    expect(screen.queryByText('stale')).not.toBeInTheDocument();
+    expect(screen.getByText('fresh')).toBeInTheDocument();
+  });
+
   it('saves the log, opens the form and keeps the dialog open', async () => {
     renderDialog();
     fireEvent.click(screen.getByText('Ja, Logdatei anhängen'));
     await waitFor(() => expect(screen.getByRole('checkbox')).toBeInTheDocument());
 
     fireEvent.click(screen.getByText('Speichern und Formular öffnen'));
-    await waitFor(() => expect(diagnosticsApi.saveLogExport).toHaveBeenCalled());
+    await waitFor(() => expect(diagnosticsApi.saveLogExport).toHaveBeenCalledWith(1));
     await waitFor(() => expect(diagnosticsApi.openBugReportForm).toHaveBeenCalledWith('de', true));
 
     expect(screen.getByText(/3mf-katalog-log-2026-09-26\.txt/)).toBeInTheDocument();
@@ -105,8 +137,26 @@ describe('BugReportDialog', () => {
     expect(screen.getByText('Schließen')).toBeInTheDocument();
   });
 
+  it('ignores a second click on the main button while a submit is already in flight', async () => {
+    let resolveForm!: () => void;
+    vi.mocked(diagnosticsApi.openBugReportForm).mockImplementation(
+      () => new Promise((resolve) => { resolveForm = () => resolve(undefined); }),
+    );
+    renderDialog();
+    fireEvent.click(screen.getByText('Nein, ohne Logdatei melden'));
+    const button = openButton();
+
+    fireEvent.click(button);
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+
+    expect(diagnosticsApi.openBugReportForm).toHaveBeenCalledTimes(1);
+    await act(async () => resolveForm());
+  });
+
   it('shows the empty-log hint instead of a preview', async () => {
     vi.mocked(diagnosticsApi.previewLogExport).mockResolvedValue({
+      id: 1,
       segments: [],
       containsDebug: false,
       replaceFileNames: false,
@@ -117,9 +167,18 @@ describe('BugReportDialog', () => {
     await waitFor(() => expect(screen.getByText('Das Protokoll ist noch leer.')).toBeInTheDocument());
   });
 
-  it('closes on Escape', () => {
+  it('closes on Escape once the dialog has taken focus, even from outside it', async () => {
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    outside.focus();
+    expect(document.activeElement).toBe(outside);
+
     const onClose = renderDialog();
-    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    // The dialog focuses itself on mount, same as the other dialogs in the app.
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('dialog')));
+
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
     expect(onClose).toHaveBeenCalled();
+    outside.remove();
   });
 });

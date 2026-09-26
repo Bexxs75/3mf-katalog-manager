@@ -44,11 +44,55 @@ pub fn set_verbose_logging(state: State<AppState>, enabled: bool) -> CmdResult<V
     Ok(apply_verbose_state(&conn))
 }
 
+/// Pure ordering logic for the preview cache, kept separate from the Tauri
+/// command so the "newer wins, save only for the id shown" rule can be unit
+/// tested without going through `State`/`AppHandle`.
+#[derive(Default)]
+struct PreviewCache {
+    next_id: u64,
+    stored: Option<(u64, String)>,
+}
+
+impl PreviewCache {
+    fn reserve_id(&mut self) -> u64 {
+        self.next_id += 1;
+        self.next_id
+    }
+
+    /// Ignores results from a request older than the one already cached, so
+    /// a slow, superseded `preview_log_export` call can't clobber what the
+    /// user is currently looking at.
+    fn store_if_newer(&mut self, id: u64, text: String) {
+        if self.stored.as_ref().is_none_or(|(cur, _)| id > *cur) {
+            self.stored = Some((id, text));
+        }
+    }
+
+    /// Only returns the text if `id` is exactly the currently cached one, so
+    /// saving always writes exactly what was shown, never an older or
+    /// already-superseded preview.
+    fn take_for_save(&self, id: u64) -> Option<String> {
+        self.stored.as_ref().filter(|(cur, _)| *cur == id).map(|(_, text)| text.clone())
+    }
+}
+
 #[derive(Default)]
 pub struct DiagnosticsState {
-    /// Exactly the text the user saw in the preview; saving writes this, not a
-    /// fresh read, so nothing unseen leaves the computer.
-    pub last_preview: Mutex<Option<String>>,
+    cache: Mutex<PreviewCache>,
+}
+
+impl DiagnosticsState {
+    fn reserve_preview_id(&self) -> u64 {
+        self.cache.lock().unwrap().reserve_id()
+    }
+
+    fn store_preview(&self, id: u64, text: String) {
+        self.cache.lock().unwrap().store_if_newer(id, text);
+    }
+
+    fn preview_for_save(&self, id: u64) -> Option<String> {
+        self.cache.lock().unwrap().take_for_save(id)
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -61,6 +105,10 @@ pub struct BugReportInfoDto {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LogPreviewDto {
+    /// Identifies exactly this computation; the frontend must pass it back
+    /// to `save_log_export` unchanged, and only the request holding the
+    /// newest id ever gets cached (see `PreviewCache`).
+    pub id: u64,
     pub segments: Vec<anonymize::Segment>,
     pub contains_debug: bool,
     pub replace_file_names: bool,
@@ -101,6 +149,9 @@ pub fn preview_log_export(
     replace_file_names: Option<bool>,
 ) -> CmdResult<LogPreviewDto> {
     use tauri::Manager;
+    // Reserved before the (comparatively slow) read+anonymize below, so ids
+    // reflect call order even when a later call's result arrives first.
+    let id = diag.reserve_preview_id();
     let dir = app.path().app_log_dir().map_err(|e| e.to_string())?;
     let raw = export::collect_tail(&export::read_logs(&dir), export::EXPORT_LIMIT);
     let contains_debug = export::contains_debug(&raw);
@@ -110,19 +161,16 @@ pub fn preview_log_export(
         anonymize_context(&app, &conn, replace)
     };
     let segments = anonymize::anonymize(&raw, &ctx);
-    *diag.last_preview.lock().map_err(|_| "preview lock poisoned".to_string())? = Some(anonymize::to_text(&segments));
-    Ok(LogPreviewDto { empty: raw.trim().is_empty(), segments, contains_debug, replace_file_names: replace })
+    diag.store_preview(id, anonymize::to_text(&segments));
+    Ok(LogPreviewDto { id, empty: raw.trim().is_empty(), segments, contains_debug, replace_file_names: replace })
 }
 
 #[tauri::command]
-pub fn save_log_export(app: tauri::AppHandle, diag: State<DiagnosticsState>) -> CmdResult<String> {
+pub fn save_log_export(app: tauri::AppHandle, diag: State<DiagnosticsState>, id: u64) -> CmdResult<String> {
     use tauri::Manager;
     let text = diag
-        .last_preview
-        .lock()
-        .map_err(|_| "preview lock poisoned".to_string())?
-        .clone()
-        .ok_or_else(|| "no preview to save".to_string())?;
+        .preview_for_save(id)
+        .ok_or_else(|| CmdError::expected("Die Vorschau ist veraltet, bitte erneut anzeigen"))?;
     let dir = app.path().download_dir().map_err(|e| e.to_string())?;
     let date = chrono::Local::now().format("%Y-%m-%d").to_string();
     let path = export::write_new_export(&dir, &date, &text).map_err(|e| e.to_string())?;
@@ -155,5 +203,44 @@ mod tests {
         let dto = apply_verbose_state(&conn);
         assert_eq!(dto, VerboseLoggingDto { enabled: false, until_ms: None });
         assert_eq!(get_setting(&conn, verbose::SETTING_KEY).unwrap().as_deref(), Some(""));
+    }
+
+    #[test]
+    fn preview_cache_ids_increase_and_start_empty() {
+        let mut cache = PreviewCache::default();
+        assert_eq!(cache.reserve_id(), 1);
+        assert_eq!(cache.reserve_id(), 2);
+        assert_eq!(cache.take_for_save(1), None);
+    }
+
+    #[test]
+    fn newer_preview_replaces_older() {
+        let mut cache = PreviewCache::default();
+        cache.store_if_newer(1, "old".into());
+        cache.store_if_newer(2, "new".into());
+        assert_eq!(cache.take_for_save(2), Some("new".into()));
+    }
+
+    #[test]
+    fn older_result_finishing_later_does_not_replace_a_newer_one() {
+        let mut cache = PreviewCache::default();
+        // id 2's request started after id 1's, but its computation (e.g. a
+        // faster "no file-name replacement" pass) finishes first.
+        cache.store_if_newer(2, "new".into());
+        cache.store_if_newer(1, "old".into());
+        assert_eq!(cache.take_for_save(2), Some("new".into()));
+        // The stale id must not be servable either, even though it was
+        // computed - the user is no longer looking at it.
+        assert_eq!(cache.take_for_save(1), None);
+    }
+
+    #[test]
+    fn save_with_a_stale_id_fails() {
+        let mut cache = PreviewCache::default();
+        cache.store_if_newer(1, "first".into());
+        cache.store_if_newer(2, "second".into());
+        // id 1 was superseded by id 2 before it could be saved.
+        assert_eq!(cache.take_for_save(1), None);
+        assert_eq!(cache.take_for_save(2), Some("second".into()));
     }
 }

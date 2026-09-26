@@ -15,7 +15,7 @@ describe('diagnostics api', () => {
   });
 
   it('previewLogExport without argument sends null', async () => {
-    const result = { segments: [], containsDebug: false, replaceFileNames: true, empty: true };
+    const result = { id: 1, segments: [], containsDebug: false, replaceFileNames: true, empty: true };
     vi.mocked(invoke).mockResolvedValue(result);
     const actual = await diagnosticsApi.previewLogExport();
     expect(invoke).toHaveBeenCalledWith('preview_log_export', { replaceFileNames: null });
@@ -23,15 +23,15 @@ describe('diagnostics api', () => {
   });
 
   it('previewLogExport forwards an explicit replaceFileNames value', async () => {
-    vi.mocked(invoke).mockResolvedValue({ segments: [], containsDebug: false, replaceFileNames: false, empty: false });
+    vi.mocked(invoke).mockResolvedValue({ id: 2, segments: [], containsDebug: false, replaceFileNames: false, empty: false });
     await diagnosticsApi.previewLogExport(false);
     expect(invoke).toHaveBeenCalledWith('preview_log_export', { replaceFileNames: false });
   });
 
-  it('saveLogExport', async () => {
+  it('saveLogExport passes the previewed id', async () => {
     vi.mocked(invoke).mockResolvedValue('/home/user/Downloads/3mf-katalog-log-2026-09-26.txt');
-    const actual = await diagnosticsApi.saveLogExport();
-    expect(invoke).toHaveBeenCalledWith('save_log_export');
+    const actual = await diagnosticsApi.saveLogExport(3);
+    expect(invoke).toHaveBeenCalledWith('save_log_export', { id: 3 });
     expect(actual).toBe('/home/user/Downloads/3mf-katalog-log-2026-09-26.txt');
   });
 

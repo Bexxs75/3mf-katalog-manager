@@ -11,6 +11,9 @@ export interface LogSegment {
 }
 
 export interface LogPreview {
+  /** Identifies this computation; pass it back to saveLogExport() unchanged
+   *  so saving always writes exactly the preview the user is looking at. */
+  id: number;
   segments: LogSegment[];
   containsDebug: boolean;
   replaceFileNames: boolean;
@@ -27,7 +30,7 @@ export const getBugReportInfo = () => invoke<BugReportInfo>('get_bug_report_info
 export const previewLogExport = (replaceFileNames?: boolean) =>
   invoke<LogPreview>('preview_log_export', { replaceFileNames: replaceFileNames ?? null });
 
-export const saveLogExport = () => invoke<string>('save_log_export');
+export const saveLogExport = (id: number) => invoke<string>('save_log_export', { id });
 
 export const openLogFolder = () => invoke<void>('open_log_folder');
 

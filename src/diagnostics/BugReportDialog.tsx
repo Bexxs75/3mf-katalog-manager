@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import {
   getBugReportInfo,
@@ -19,19 +19,51 @@ export function BugReportDialog({ onClose }: { onClose: () => void }) {
   const [choice, setChoice] = useState<'yes' | 'no' | null>(null);
   const [preview, setPreview] = useState<LogPreview | null>(null);
   const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [savedPath, setSavedPath] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const mountedRef = useRef(true);
+  // Monotonic per-dialog request id: only the reply matching the request
+  // that is currently in flight may ever update `preview`, so a slow reply
+  // to a superseded "replace file names" toggle can't overwrite a newer one.
+  const requestIdRef = useRef(0);
+
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    [],
+  );
+
+  // Focus the dialog itself right away so Escape works without first
+  // clicking into it (same pattern as PrinterJobsDialog).
+  useEffect(() => {
+    dialogRef.current?.focus();
+  }, []);
 
   useEffect(() => {
-    getBugReportInfo().then(setInfo).catch(() => {});
+    getBugReportInfo()
+      .then((i) => mountedRef.current && setInfo(i))
+      .catch(() => {});
   }, []);
 
   const loadPreview = (replace?: boolean) => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     previewLogExport(replace)
-      .then(setPreview)
-      .catch((e) => setFailure(messageOf(e)))
-      .finally(() => setLoading(false));
+      .then((p) => {
+        if (!mountedRef.current || requestId !== requestIdRef.current) return;
+        setPreview(p);
+      })
+      .catch((e) => {
+        if (!mountedRef.current || requestId !== requestIdRef.current) return;
+        setFailure(messageOf(e));
+      })
+      .finally(() => {
+        if (!mountedRef.current || requestId !== requestIdRef.current) return;
+        setLoading(false);
+      });
   };
 
   const choose = (c: 'yes' | 'no') => {
@@ -40,16 +72,23 @@ export function BugReportDialog({ onClose }: { onClose: () => void }) {
   };
 
   const submit = async () => {
+    if (submitting) return;
+    setSubmitting(true);
     try {
       if (choice === 'yes' && preview && !preview.empty) {
-        setSavedPath(await saveLogExport());
+        const path = await saveLogExport(preview.id);
+        if (!mountedRef.current) return;
+        setSavedPath(path);
         await openBugReportForm(language, true);
       } else {
         await openBugReportForm(language, false);
+        if (!mountedRef.current) return;
         onClose();
       }
     } catch (e) {
-      setFailure(messageOf(e));
+      if (mountedRef.current) setFailure(messageOf(e));
+    } finally {
+      if (mountedRef.current) setSubmitting(false);
     }
   };
 
@@ -61,6 +100,7 @@ export function BugReportDialog({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/50">
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="bug-report-title"
@@ -129,13 +169,18 @@ export function BugReportDialog({ onClose }: { onClose: () => void }) {
         <div className="mt-4 flex items-center justify-between gap-3">
           <span className="text-[11px] text-[var(--ink-3)]">{choice === 'yes' ? t('bugReportOriginalsUnchanged') : ''}</span>
           <div className="flex gap-2">
-            <button type="button" onClick={onClose} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] text-[12.5px] text-[var(--ink-2)] cursor-pointer bg-transparent">
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={onClose}
+              className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] text-[12.5px] text-[var(--ink-2)] cursor-pointer bg-transparent disabled:opacity-40 disabled:cursor-not-allowed"
+            >
               {savedPath ? t('bugReportClose') : t('bugReportCancel')}
             </button>
             {!savedPath && (
               <button
                 type="button"
-                disabled={choice === null || (choice === 'yes' && (loading || !preview))}
+                disabled={submitting || choice === null || (choice === 'yes' && (loading || !preview))}
                 onClick={submit}
                 className="h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
