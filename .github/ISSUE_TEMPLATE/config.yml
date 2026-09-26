@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & chat
+    url: https://discord.gg/abfVNfFqu3
+    about: Ask a question or chat with the community on Discord.
+  - name: Share printer data
+    url: https://3mfkatalog.de/en/printer-test.html
+    about: Have a printer with Klipper/Moonraker (or OctoPrint/Bambu Lab/PrusaLink)? Share test results on the printer test page.
+  - name: Report a security vulnerability
+    url: mailto:info@3mfkatalog.de
+    about: Please report security issues by email instead of a public issue.
