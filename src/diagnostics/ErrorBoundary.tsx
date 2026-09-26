@@ -1,6 +1,7 @@
 import { Component, type ReactNode } from 'react';
 import { error as logError } from '@tauri-apps/plugin-log';
 import { useT } from '../i18n/LanguageContext';
+import { resolveTheme } from '../hooks/useTheme';
 import { ReportProblemLink } from './ReportProblemLink';
 
 interface Props {
@@ -25,13 +26,16 @@ export class ErrorBoundary extends Component<Props, { failed: boolean }> {
   }
 }
 
-// No `data-app` attribute here: useTheme() already sets it on <html> (see
-// src/hooks/useTheme.ts), and CSS custom properties inherit down from there,
-// so this fallback is themed the same way as the rest of the app.
+// `data-app` is normally only set on <html> by useTheme()'s effect (see
+// src/hooks/useTheme.ts), which never runs if App throws on its very first
+// render. So this sets `data-app` on its own root too, preferring whatever
+// is already on <html> (kept in sync with a running app) and otherwise
+// resolving the theme the same way useTheme() would.
 export function CrashFallback({ onReload }: { onReload: () => void }) {
   const t = useT();
+  const theme = document.documentElement.getAttribute('data-app') || resolveTheme();
   return (
-    <div className="h-screen grid place-items-center bg-[var(--bg)] text-[var(--ink)]">
+    <div data-app={theme} className="h-screen grid place-items-center bg-[var(--bg)] text-[var(--ink)]">
       <div className="text-center">
         <div className="text-[15px] font-semibold">{t('unexpectedErrorTitle')}</div>
         <div className="mt-1 text-[12.5px] text-[var(--ink-2)]">{t('unexpectedErrorText')}</div>

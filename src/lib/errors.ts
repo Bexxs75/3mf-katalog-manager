@@ -21,12 +21,17 @@ function isCmdError(e: unknown): e is CmdError {
 /**
  * Error message from a rejected promise. Tauri commands reject with a
  * `CmdError` object (`{ message, expected }`) or, in a few older spots, a
- * plain string; `Error` objects also have a string `message`. Without this
- * safeguard, `String(e)` would show "[object Object]" for a `CmdError`.
+ * plain string; `Error` objects also have a string `message`. Also falls
+ * back to any string `message` property so other plain error-shaped
+ * objects still read out their text instead of "[object Object]".
  */
 export function messageOf(e: unknown): string {
   if (isCmdError(e)) return e.message;
-  return e instanceof Error ? e.message : String(e);
+  if (e instanceof Error) return e.message;
+  if (typeof e === 'object' && e !== null && typeof (e as { message?: unknown }).message === 'string') {
+    return (e as { message: string }).message;
+  }
+  return String(e);
 }
 
 /** Turns any rejection into an `AppError`; only a `CmdError` with `expected: true` counts as expected. */

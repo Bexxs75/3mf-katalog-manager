@@ -30,4 +30,9 @@ describe('errors', () => {
   it('builds expected errors for frontend validation', () => {
     expect(expectedError('Bitte Ordner wählen')).toEqual({ message: 'Bitte Ordner wählen', unexpected: false });
   });
+
+  it('falls back to a string message property without an expected flag', () => {
+    expect(messageOf({ message: 'x' })).toBe('x');
+    expect(toAppError({ message: 'x' })).toEqual({ message: 'x', unexpected: true });
+  });
 });

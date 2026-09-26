@@ -49,7 +49,6 @@ export function DiagnosticsProvider({ children }: { children: ReactNode }) {
     <DiagnosticsContext.Provider value={value}>
       {children}
       {toast && <UnexpectedErrorToast message={toast.split('\n')[0]} onClose={() => setToast(null)} />}
-      {/* BugReportDialog is added in the next task, controlled by dialogOpen. */}
       {dialogOpen && null}
     </DiagnosticsContext.Provider>
   );
