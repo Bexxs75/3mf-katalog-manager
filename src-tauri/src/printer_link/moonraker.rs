@@ -61,6 +61,27 @@ fn positive(v: Option<&Value>) -> Option<f64> {
     v.and_then(Value::as_f64).filter(|x| *x > 0.0)
 }
 
+/// Material of a print. Multi-material units (AMS, ACE, MMU) list every loaded slot
+/// in `filament_type` ("PLA;PETG"); when `filament_weights` has one weight per slot,
+/// the slot that used the most filament wins, so the suggested spool fits.
+fn main_material(meta: &Value) -> Option<String> {
+    let types: Vec<&str> = meta.get("filament_type")?.as_str()?.split(';').map(str::trim).collect();
+    let weights: Vec<f64> = meta
+        .get("filament_weights")
+        .and_then(Value::as_array)
+        .map(|w| w.iter().map(|x| x.as_f64().unwrap_or(0.0)).collect())
+        .unwrap_or_default();
+    let mut index = 0;
+    if weights.len() == types.len() {
+        for (i, w) in weights.iter().enumerate() {
+            if *w > weights[index] {
+                index = i;
+            }
+        }
+    }
+    Some(types[index].to_string()).filter(|s| !s.is_empty())
+}
+
 /// `None` = don't take over (still running, a required field is missing, or no
 /// filament was used - e.g. cancelled right at the start - so nothing to deduct).
 fn parse_job(j: &Value) -> Option<RemoteJob> {
@@ -80,11 +101,7 @@ fn parse_job(j: &Value) -> Option<RemoteJob> {
         None => (None, filename),
     };
     let meta = j.get("metadata");
-    let material = meta
-        .and_then(|m| m.get("filament_type"))
-        .and_then(Value::as_str)
-        .map(|s| s.split(';').next().unwrap_or("").trim().to_string())
-        .filter(|s| !s.is_empty());
+    let material = meta.and_then(main_material);
     let thumbnail_path = meta
         .and_then(|m| m.get("thumbnails"))
         .and_then(Value::as_array)
@@ -424,6 +441,26 @@ mod parse_tests {
         assert_eq!(slide.outcome, JobOutcome::Completed);
         assert_eq!(slide.slicer_weight_g, Some(66.69));
         assert_eq!(page.jobs[1].file_name, "Axle Cleaning Tool_plate_1(1).gcode");
+        // "PLA;PETG" with weights [0.35, 66.34]: almost everything was PETG.
+        assert_eq!(slide.material.as_deref(), Some("PETG"));
+    }
+
+    #[test]
+    fn material_follows_the_heaviest_slot() {
+        let job = |types: &str, weights: serde_json::Value| {
+            parse_job(&serde_json::json!({"end_time": 2.0, "filament_used": 10.0, "filename": "x.gcode",
+                "metadata": {"filament_type": types, "filament_weights": weights},
+                "print_duration": 1.0, "status": "completed", "job_id": "1"}))
+            .unwrap()
+            .material
+        };
+        assert_eq!(job("PLA;PLA;ABS", serde_json::json!([0.0, 0.0, 5.0])).as_deref(), Some("ABS"));
+        // Without usable weights (missing, wrong length, all zero) the first entry stays.
+        assert_eq!(job("PLA;PETG", serde_json::Value::Null).as_deref(), Some("PLA"));
+        assert_eq!(job("PLA;PETG", serde_json::json!([1.0])).as_deref(), Some("PLA"));
+        assert_eq!(job("PLA;PETG", serde_json::json!([0.0, 0.0])).as_deref(), Some("PLA"));
+        // Equal weights keep the earlier slot.
+        assert_eq!(job("PLA;PETG", serde_json::json!([2.0, 2.0])).as_deref(), Some("PLA"));
     }
 
     #[test]
