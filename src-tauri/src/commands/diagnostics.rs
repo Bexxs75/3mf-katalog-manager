@@ -124,8 +124,8 @@ pub fn save_log_export(app: tauri::AppHandle, diag: State<DiagnosticsState>) -> 
         .clone()
         .ok_or_else(|| "no preview to save".to_string())?;
     let dir = app.path().download_dir().map_err(|e| e.to_string())?;
-    let path = export::free_file_name(&dir, &chrono::Local::now().format("%Y-%m-%d").to_string());
-    std::fs::write(&path, text).map_err(|e| e.to_string())?;
+    let date = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let path = export::write_new_export(&dir, &date, &text).map_err(|e| e.to_string())?;
     log::info!(target: "start", "Logdatei für Fehlerbericht gespeichert");
     Ok(path.to_string_lossy().into_owned())
 }

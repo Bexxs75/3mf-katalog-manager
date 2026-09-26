@@ -1,5 +1,9 @@
 //! Picks the part of the log files that goes into a bug report.
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+
+use regex::Regex;
 
 use crate::diagnostics::HEADER_MARK;
 
@@ -30,21 +34,40 @@ pub fn contains_debug(text: &str) -> bool {
     text.lines().any(|l| l.get(20..25) == Some("DEBUG"))
 }
 
-/// Log files of the app, oldest first (rotated files keep a date in their name,
-/// the modification time orders them reliably).
+/// tauri-plugin-log 2.9 renames the active file to
+/// `"<app-name>_YYYY-MM-DD_HH-MM-SS.log"` when it rotates it out (see
+/// `RotatingFile::rename_file_to_dated` in its source); the file currently
+/// being written has no such suffix. That distinction - not the modification
+/// time - is what marks a file as "current": right after a rotation, coarse
+/// filesystem timestamps can give the just-renamed rotated file and the fresh
+/// current file the exact same mtime.
+fn is_current_log_file(name: &str) -> bool {
+    static ROTATED_SUFFIX: OnceLock<Regex> = OnceLock::new();
+    let re = ROTATED_SUFFIX.get_or_init(|| Regex::new(r"_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.log$").unwrap());
+    !re.is_match(name)
+}
+
+/// Log files of the app, oldest first. Ordered by (is the current file, mtime,
+/// path) rather than mtime alone, so the currently active file always sorts
+/// last even on an mtime tie with a file just rotated out of the way (see
+/// `is_current_log_file`).
 pub fn read_logs(dir: &Path) -> Vec<String> {
-    let mut files: Vec<(std::time::SystemTime, PathBuf)> = std::fs::read_dir(dir)
+    let mut files: Vec<(bool, std::time::SystemTime, PathBuf)> = std::fs::read_dir(dir)
         .into_iter()
         .flatten()
         .flatten()
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|x| x == "log"))
-        .filter_map(|p| Some((std::fs::metadata(&p).ok()?.modified().ok()?, p)))
+        .filter_map(|p| {
+            let modified = std::fs::metadata(&p).ok()?.modified().ok()?;
+            let current = is_current_log_file(p.file_name()?.to_str()?);
+            Some((current, modified, p))
+        })
         .collect();
     files.sort();
     files
         .into_iter()
-        .filter_map(|(_, p)| std::fs::read(&p).ok())
+        .filter_map(|(_, _, p)| std::fs::read(&p).ok())
         .map(|b| String::from_utf8_lossy(&b).into_owned())
         .collect()
 }
@@ -58,6 +81,30 @@ pub fn free_file_name(dir: &Path, date: &str) -> PathBuf {
         .map(|n| dir.join(format!("3mf-katalog-log-{date}-{n}.txt")))
         .find(|p| !p.exists())
         .expect("unbounded range always yields a free name")
+}
+
+/// Same name sequence as `free_file_name`, but writes atomically: a name that
+/// gets taken between checking and writing (e.g. a double click on "save") is
+/// skipped instead of overwritten, never truncating a file that appeared in
+/// between.
+pub fn write_new_export(dir: &Path, date: &str, contents: &str) -> std::io::Result<PathBuf> {
+    const MAX_ATTEMPTS: u32 = 10_000;
+    for n in 0..MAX_ATTEMPTS {
+        let path = if n == 0 {
+            dir.join(format!("3mf-katalog-log-{date}.txt"))
+        } else {
+            dir.join(format!("3mf-katalog-log-{date}-{}.txt", n + 1))
+        };
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(mut file) => {
+                file.write_all(contents.as_bytes())?;
+                return Ok(path);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        }
+    }
+    Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "no free export file name found"))
 }
 
 #[cfg(test)]
@@ -107,6 +154,37 @@ mod tests {
         assert_eq!(first.file_name().unwrap(), "3mf-katalog-log-2026-10-03.txt");
         std::fs::write(&first, "x").unwrap();
         assert_eq!(free_file_name(&dir, "2026-10-03").file_name().unwrap(), "3mf-katalog-log-2026-10-03-2.txt");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn the_current_file_sorts_last_even_on_an_mtime_tie_with_a_rotated_file() {
+        let dir = std::env::temp_dir().join(format!("3mf-read-logs-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let rotated = dir.join("3MF Katalog Manager_2026-10-03_10-00-00.log");
+        let current = dir.join("3MF Katalog Manager.log");
+        std::fs::write(&rotated, "OLD\n").unwrap();
+        std::fs::write(&current, "NEW\n").unwrap();
+        // Coarse filesystem timestamps can make the file just rotated out and the
+        // fresh current file land on the exact same mtime; force that tie here
+        // instead of relying on timing.
+        let same_instant = std::time::SystemTime::now();
+        std::fs::File::open(&rotated).unwrap().set_modified(same_instant).unwrap();
+        std::fs::File::open(&current).unwrap().set_modified(same_instant).unwrap();
+        assert_eq!(read_logs(&dir), vec!["OLD\n".to_string(), "NEW\n".to_string()]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn write_new_export_never_overwrites_a_file_that_appeared_in_the_meantime() {
+        let dir = std::env::temp_dir().join(format!("3mf-write-new-export-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let first = write_new_export(&dir, "2026-10-03", "first").unwrap();
+        let second = write_new_export(&dir, "2026-10-03", "second").unwrap();
+        assert_eq!(first.file_name().unwrap(), "3mf-katalog-log-2026-10-03.txt");
+        assert_eq!(second.file_name().unwrap(), "3mf-katalog-log-2026-10-03-2.txt");
+        assert_eq!(std::fs::read_to_string(&first).unwrap(), "first");
+        assert_eq!(std::fs::read_to_string(&second).unwrap(), "second");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }
