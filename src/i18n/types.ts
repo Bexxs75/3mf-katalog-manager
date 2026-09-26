@@ -491,6 +491,36 @@ export interface Translations {
   printerJobsConfirmAll: string;
   printerJobsTotal: string;
   printerJobsConfirmFailed: PluralForms;
+
+  infoReportBugButton: string;
+  infoDiagnosticsHeading: string;
+  infoVerboseLoggingLabel: string;
+  infoVerboseLoggingHint: string;
+  /** `{date}` = local date the setting turns itself off */
+  infoVerboseLoggingOn: string;
+  infoLogFilesLabel: string;
+  infoOpenFolder: string;
+  bugReportTitle: string;
+  /** `{version}`, `{os}` */
+  bugReportIntro: string;
+  bugReportLogQuestion: string;
+  bugReportLogExplain: string;
+  bugReportLogYes: string;
+  bugReportLogNo: string;
+  bugReportReplaceFileNames: string;
+  /** `{path}` = saved log file path */
+  bugReportSavedTo: string;
+  bugReportOriginalsUnchanged: string;
+  bugReportSaveAndOpen: string;
+  bugReportOpenForm: string;
+  bugReportCancel: string;
+  bugReportClose: string;
+  bugReportLoading: string;
+  bugReportEmptyLog: string;
+  unexpectedErrorTitle: string;
+  unexpectedErrorText: string;
+  reportProblemLink: string;
+  errorBoundaryReload: string;
 }
 
 export function formatCount(forms: PluralForms, n: number): string {
