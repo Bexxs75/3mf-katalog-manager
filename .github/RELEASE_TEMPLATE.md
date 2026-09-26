@@ -1,6 +1,8 @@
 <!--
 Release notes template (EN first, then DE). Title: "vX.Y.Z — <English> / <Deutsch>".
 Copy into the GitHub release, fill in the <…> parts, keep the full changelog lists in the <details> blocks.
+Rename the CI artifacts to the file names in the download table before uploading (from v0.15.0 on;
+the Tauri names like "_x64_en-US.msi" suggest an English-only app). SHA256SUMS.txt is created after renaming.
 -->
 ![3MF Katalog Manager demo](https://github.com/Bexxs75/3mf-katalog-manager/raw/master/docs/assets/demo.gif)
 
@@ -23,9 +25,9 @@ Copy into the GitHub release, fill in the <…> parts, keep the full changelog l
 
 | System | Standard | With STEP preview |
 |---|---|---|
-| Windows | `3MF.Katalog.Manager_X.Y.Z_x64_en-US.msi` | `…_x64_en-US-step.msi` |
-| macOS (Intel + Apple Silicon) | `3MF.Katalog.Manager_X.Y.Z_universal.dmg` | `…_universal-step.dmg` |
-| Linux | `3MF.Katalog.Manager_X.Y.Z_amd64.AppImage` | `…_amd64-step.AppImage` |
+| Windows | `3MF-Katalog-Manager-X.Y.Z-Windows-x64.msi` | `3MF-Katalog-Manager-X.Y.Z-Windows-x64-STEP.msi` |
+| macOS (Intel + Apple Silicon) | `3MF-Katalog-Manager-X.Y.Z-macOS-universal.dmg` | `3MF-Katalog-Manager-X.Y.Z-macOS-universal-STEP.dmg` |
+| Linux | `3MF-Katalog-Manager-X.Y.Z-Linux-x86_64.AppImage` | `3MF-Katalog-Manager-X.Y.Z-Linux-x86_64-STEP.AppImage` |
 
 Not sure? Take the **Standard** file. Checksums: `SHA256SUMS.txt` · [Is it safe to install?](https://github.com/Bexxs75/3mf-katalog-manager#is-it-safe-to-install) · [Full changelog](https://github.com/Bexxs75/3mf-katalog-manager/blob/master/CHANGELOG.md)
 
