@@ -7,5 +7,5 @@ contact_links:
     url: https://3mfkatalog.de/en/printer-test.html
     about: Have a printer with Klipper/Moonraker (or OctoPrint/Bambu Lab/PrusaLink)? Share test results on the printer test page.
   - name: Report a security vulnerability
-    url: mailto:info@3mfkatalog.de
+    url: https://github.com/Bexxs75/3mf-katalog-manager/security/policy
     about: Please report security issues by email instead of a public issue.

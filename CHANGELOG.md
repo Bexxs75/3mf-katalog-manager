@@ -15,7 +15,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - Documentation: the README and the user guide now mention resin printers, the printers tested with the printer connection (Sovol SV08, Anycubic Kobra S1 running Rinkhals) and the current roadmap. The Linux installation now describes the AppImage file instead of a `.tar.gz` archive, and a new FAQ explains why you should create a backup before updating.
 - User guide: all images now show v0.14.0 (coral 3D preview), plus new images of resin printers, "Manage printers", the printer connection (notice and "New prints" dialog) and Settings → Printers.
 - The automatic CI check now runs on Node 24; with Node 20 the test environment didn't start.
-- README, changelog and user guide now show the English text first, followed by the German version.
+- The README is now split into `README.md` (English) and `README.de.md` (German) with a language link at the top, and has a compatibility table (systems, file formats, slicers, printer connection). Changelog and user guide show the English text first, followed by the German version.
+- New `SECURITY.md`: supported versions and how to report security problems privately by email instead of in a public issue. Release notes follow a new template (`.github/RELEASE_TEMPLATE.md`) with highlights, who should update, known limitations and a download table.
 - Code: all comments and developer log messages are now in English. Removed unused code (translations no UI used anymore, the creator and saved-filter lists that were loaded but never shown, an obsolete backend command) and merged duplicated drag-and-drop and inventory helpers. No visible change in the app.
 
 ### Removed
@@ -422,7 +423,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Dokumentation: README und Benutzerhandbuch nennen die Resin-Drucker, die mit der Druckeranbindung getesteten Drucker (Sovol SV08, Anycubic Kobra S1 mit Rinkhals) und die aktuelle Roadmap. Die Linux-Installation beschreibt jetzt die AppImage-Datei statt eines `.tar.gz`-Archivs, und eine neue FAQ erklärt, warum man vor einem Update eine Sicherung anlegen sollte.
 - Benutzerhandbuch: Alle Bilder zeigen jetzt v0.14.0 (3D-Vorschau in Koralle), dazu neue Bilder zu Resin-Druckern, „Drucker verwalten“, der Druckeranbindung (Hinweis und Dialog „Neue Drucke“) und Einstellungen → Drucker.
 - Die automatische CI-Prüfung läuft jetzt mit Node 24; mit Node 20 startete die Test-Umgebung nicht.
-- README, Changelog und Benutzerhandbuch zeigen jetzt zuerst den englischen Text, danach die deutsche Fassung.
+- Die README ist jetzt aufgeteilt in `README.md` (Englisch) und `README.de.md` (Deutsch) mit einem Sprach-Link ganz oben und hat eine Kompatibilitätstabelle (Systeme, Dateiformate, Slicer, Druckeranbindung). Changelog und Benutzerhandbuch zeigen zuerst den englischen Text, danach die deutsche Fassung.
+- Neue `SECURITY.md`: unterstützte Versionen und wie man Sicherheitsprobleme vertraulich per E-Mail statt in einem öffentlichen Issue meldet. Release-Texte folgen einer neuen Vorlage (`.github/RELEASE_TEMPLATE.md`) mit Highlights, „Für wen lohnt sich das Update?“, bekannten Einschränkungen und Download-Tabelle.
 - Code: Alle Kommentare und Entwickler-Logmeldungen sind jetzt englisch. Ungenutzter Code wurde entfernt (Übersetzungen, die keine Oberfläche mehr verwendet, die Ersteller- und Filterlisten, die geladen, aber nie angezeigt wurden, ein veralteter Backend-Befehl), doppelte Hilfsfunktionen für Drag & Drop und das Lager wurden zusammengeführt. In der App ändert sich dadurch nichts Sichtbares.
 
 ### Removed

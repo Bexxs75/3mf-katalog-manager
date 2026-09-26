@@ -65,7 +65,7 @@ Issues labeled [`good first issue`](https://github.com/Bexxs75/3mf-katalog-manag
 
 ### Security issues
 
-Please **don't** open a public issue for a security vulnerability. Email **info@3mfkatalog.de** instead so it can be fixed before it's public.
+Please **don't** open a public issue for a security vulnerability. Email **info@3mfkatalog.de** instead so it can be fixed before it's public. Details: [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -85,7 +85,7 @@ Danke für dein Interesse am 3MF Katalog Manager! Dieses Dokument sammelt die M�
 
 #### Voraussetzungen und Entwicklungsbefehle
 
-Aus dem Abschnitt [Entwicklung](README.md#entwicklung) im README:
+Aus dem Abschnitt [Entwicklung](README.de.md#entwicklung) im README:
 
 Voraussetzungen: Node.js, Rust-Toolchain (`cargo`), sowie die [Tauri-Systemabhängigkeiten](https://tauri.app/start/prerequisites/) für dein Betriebssystem. Für die standardmäßig aktivierte STEP-Vorschau wird zusätzlich Open CASCADE 7.8 oder 7.9 als dynamische Systembibliothek einschließlich Entwicklungsdateien benötigt.
 
@@ -134,4 +134,4 @@ Issues mit dem Label [`good first issue`](https://github.com/Bexxs75/3mf-katalog
 
 #### Sicherheitslücken
 
-Bitte **kein** öffentliches Issue für eine Sicherheitslücke eröffnen. Schreib stattdessen an **info@3mfkatalog.de**, damit sie behoben werden kann, bevor sie öffentlich wird.
+Bitte **kein** öffentliches Issue für eine Sicherheitslücke eröffnen. Schreib stattdessen an **info@3mfkatalog.de**, damit sie behoben werden kann, bevor sie öffentlich wird. Details: [SECURITY.md](SECURITY.md#sicherheitsrichtlinie-deutsch).
