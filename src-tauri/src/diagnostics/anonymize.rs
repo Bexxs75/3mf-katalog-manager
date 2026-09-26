@@ -30,18 +30,26 @@ pub fn to_text(segs: &[Segment]) -> String {
 pub fn anonymize(text: &str, ctx: &Context) -> Vec<Segment> {
     let mut segs = vec![Segment { text: text.to_string(), replaced: false }];
 
-    // Longest first, so a catalog inside the home folder becomes <katalog>, not ~/....
-    let mut literals: Vec<(String, String)> = Vec::new();
+    // Longest first, so a catalog inside the home folder becomes <katalog>, not
+    // ~/.... Matched case-insensitively: Windows and macOS paths are
+    // case-insensitive and show up in varying case in logs.
+    let mut ci_literals: Vec<(String, String)> = Vec::new();
     for root in &ctx.catalog_roots {
         for v in path_variants(root) {
-            literals.push((v, "<katalog>".into()));
+            ci_literals.push((v, "<katalog>".into()));
         }
     }
     if let Some(home) = &ctx.home {
         for v in path_variants(home) {
-            literals.push((v, "~".into()));
+            ci_literals.push((v, "~".into()));
         }
     }
+    ci_literals.sort_by_key(|a| std::cmp::Reverse(a.0.len()));
+    for (needle, repl) in &ci_literals {
+        segs = replace_literal_ci(segs, needle, repl);
+    }
+
+    let mut literals: Vec<(String, String)> = Vec::new();
     for (i, addr) in ctx.printer_addresses.iter().enumerate() {
         let label = format!("<printer-{}>", i + 1);
         let addr = addr.trim();
@@ -63,20 +71,31 @@ pub fn anonymize(text: &str, ctx: &Context) -> Vec<Segment> {
     let email = Regex::new(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}").unwrap();
     segs = replace_group(segs, &email, 0, |_| Some("<email>".into()));
 
-    // IPv4, *.local hosts and IPv6 (at least three colons or a "::", so clock
-    // times like 14:02:11 never match).
+    // IPv4 and IPv6 (at least three colons or a "::", so clock times like
+    // 14:02:11 never match).
     let ip = Regex::new(
-        r"\b(?:\d{1,3}\.){3}\d{1,3}\b|\b[0-9A-Za-z-]+\.local\b|\b(?:[0-9a-fA-F]{1,4}:){3,7}[0-9a-fA-F]{1,4}\b|\b[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4})*::(?:[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4})*)?",
+        r"\b(?:\d{1,3}\.){3}\d{1,3}\b|\b(?:[0-9a-fA-F]{1,4}:){3,7}[0-9a-fA-F]{1,4}\b|\b[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4})*::(?:[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4})*)?",
     )
     .unwrap();
     let mut ips: HashMap<String, usize> = HashMap::new();
     segs = replace_group(segs, &ip, 0, |m| {
         // Real addresses always contain a digit; Rust paths like `db::list` don't.
-        // `*.local` hostnames are exempt: a hostname like `qidi.local` is a real
-        // address even without a digit in its name.
-        if !m.to_ascii_lowercase().ends_with(".local") && !m.chars().any(|c| c.is_ascii_digit()) {
+        if !m.chars().any(|c| c.is_ascii_digit()) {
             return None;
         }
+        let next = ips.len() + 1;
+        let n = *ips.entry(m.to_string()).or_insert(next);
+        Some(format!("<ip-{n}>"))
+    });
+
+    // `*.local` hostnames, numbered from the same pool as the IPs above. Kept
+    // as a separate pass (no digit requirement, since a hostname like
+    // `qidi.local` is a real address without one) with its own boundary check,
+    // so a file name that merely ends in `.local` (`.env.local`,
+    // `vite.config.local.ts`) is not mistaken for a host: the name before
+    // `.local` must not itself be preceded by a `.` or dotted extension.
+    let local_host = Regex::new(r"(?:^|[^.\w-])([0-9A-Za-z-]+\.local)(?:[^.\w-]|$)").unwrap();
+    segs = replace_group(segs, &local_host, 1, |m| {
         let next = ips.len() + 1;
         let n = *ips.entry(m.to_string()).or_insert(next);
         Some(format!("<ip-{n}>"))
@@ -141,6 +160,16 @@ fn replace_literal(segs: Vec<Segment>, needle: &str, repl: &str) -> Vec<Segment>
         }
     }
     out
+}
+
+/// Case-insensitive variant of `replace_literal`, for home/catalog paths
+/// (which are case-insensitive on Windows and macOS).
+fn replace_literal_ci(segs: Vec<Segment>, needle: &str, repl: &str) -> Vec<Segment> {
+    if needle.is_empty() {
+        return segs;
+    }
+    let re = Regex::new(&format!("(?i){}", regex::escape(needle))).unwrap();
+    replace_group(segs, &re, 0, |_| Some(repl.to_string()))
 }
 
 /// `f` returns `None` to keep a match as it is (e.g. `db::list` is not an IPv6 address).
@@ -228,6 +257,21 @@ mod tests {
             run("GET 192.168.2.50:7125 and 192.168.2.50 and sv08.local", &linux()),
             "GET <printer-1> and <printer-1> and <printer-2>"
         );
+    }
+
+    #[test]
+    fn home_and_catalog_are_matched_case_insensitively() {
+        let ctx = Context { home: Some("/home/thebexxs".into()), ..Default::default() };
+        assert_eq!(run("/Home/thebexxs/x", &ctx), "~/x");
+        let win = Context { home: Some(r"C:\Users\Andreas".into()), ..Default::default() };
+        assert_eq!(run(r"C:\users\andreas\x", &win), r"~\x");
+    }
+
+    #[test]
+    fn dotted_file_names_ending_in_local_are_not_hosts() {
+        assert_eq!(run("Loaded config: .env.local", &Context::default()), "Loaded config: .env.local");
+        assert_eq!(run("vite.config.local.ts", &Context::default()), "vite.config.local.ts");
+        assert_eq!(run("GET qidi.local/x", &Context::default()), "GET <ip-1>/x");
     }
 
     #[test]
