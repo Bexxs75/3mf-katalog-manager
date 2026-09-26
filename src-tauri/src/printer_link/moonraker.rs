@@ -61,7 +61,8 @@ fn positive(v: Option<&Value>) -> Option<f64> {
     v.and_then(Value::as_f64).filter(|x| *x > 0.0)
 }
 
-/// `None` = don't take over (still running or a required field is missing).
+/// `None` = don't take over (still running, a required field is missing, or no
+/// filament was used - e.g. cancelled right at the start - so nothing to deduct).
 fn parse_job(j: &Value) -> Option<RemoteJob> {
     let status = j.get("status")?.as_str()?;
     if status == "in_progress" {
@@ -70,6 +71,9 @@ fn parse_job(j: &Value) -> Option<RemoteJob> {
     let ended_at = j.get("end_time")?.as_f64()?;
     let remote_id = j.get("job_id")?.as_str()?.to_string();
     let used_mm = j.get("filament_used")?.as_f64()?;
+    if used_mm <= 0.0 {
+        return None;
+    }
     let filename = j.get("filename").and_then(Value::as_str).unwrap_or("");
     let (dir, file_name) = match filename.rsplit_once('/') {
         Some((d, f)) => (Some(d), f),
@@ -404,6 +408,29 @@ mod parse_tests {
         assert_eq!(j.outcome, JobOutcome::Completed);
         assert_eq!(j.material.as_deref(), Some("PLA"));
         assert_eq!(j.slicer_weight_g, Some(3.65));
+    }
+
+    #[test]
+    fn second_kobra_s1_report_skips_a_print_without_usage() {
+        // Real test report (Anycubic Kobra S1, Rinkhals, ACE Pro): a print cancelled right
+        // at the start reports 0 mm; there is nothing to deduct, so it is not offered.
+        assert_eq!(parse_server_info(&fixture("server_info_rinkhals_kobra_s1_ace.json")).unwrap(), "?");
+        let page = parse_history_page(&fixture("history_rinkhals_kobra_s1_ace.json")).unwrap();
+        assert_eq!(page.count, 5);
+        let ids: Vec<&str> = page.jobs.iter().map(|j| j.remote_id.as_str()).collect();
+        assert_eq!(ids, ["00001B", "00001A", "000019", "000018"]);
+        let slide = &page.jobs[0];
+        assert_eq!(slide.file_name, "0926-1506-slide(01)_PETG_0.12_2h56m50s.gcode");
+        assert_eq!(slide.outcome, JobOutcome::Completed);
+        assert_eq!(slide.slicer_weight_g, Some(66.69));
+        assert_eq!(page.jobs[1].file_name, "Axle Cleaning Tool_plate_1(1).gcode");
+    }
+
+    #[test]
+    fn a_finished_print_without_usage_is_skipped() {
+        let v = serde_json::json!({"end_time": 2.0, "filament_used": 0.0, "filename": "x.gcode",
+            "metadata": {}, "print_duration": 1.0, "status": "completed", "job_id": "1"});
+        assert!(parse_job(&v).is_none());
     }
 
     #[test]

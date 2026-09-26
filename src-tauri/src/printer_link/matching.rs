@@ -189,6 +189,23 @@ mod tests {
     }
 
     #[test]
+    fn real_kobra_s1_file_names_match_their_models() {
+        let cands = [
+            c(1, "slide.3mf", "2026-09-01T00:00:00Z"),
+            c(2, "Axle Cleaning Tool.3mf", "2026-09-01T00:00:00Z"),
+            c(3, "Cartridge+nozzle.3mf", "2026-09-01T00:00:00Z"),
+        ];
+        for (gcode, id) in [
+            ("0926-1506-slide(01)_PETG_0.12_2h56m50s.gcode", 1),
+            ("Axle Cleaning Tool_plate_1(1).gcode", 2),
+            ("Cartridge+nozzle_plate_1(2).gcode", 3),
+        ] {
+            let m = best_match(gcode, &cands).unwrap();
+            assert_eq!((m.file_id, m.kind), (id, MatchKind::Sure), "{gcode}");
+        }
+    }
+
+    #[test]
     fn umlauts_are_unified() {
         assert_eq!(normalize_name("Distanzhülse 13,40mm.3mf"), "distanzhulse 13,40mm");
         assert_eq!(normalize_name("Distanzhuelse 13,40mm.stl"), "distanzhulse 13,40mm");
