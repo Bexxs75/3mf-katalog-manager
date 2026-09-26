@@ -142,6 +142,7 @@ pub fn run() {
             let waker = printer_link::sync::spawn_background(app.handle().clone());
             app.manage(waker);
             app.manage(commands::DroppedImages::default());
+            app.manage(commands::DiagnosticsState::default());
             Ok(())
         })
         // Observe drops in the backend itself: `import_dropped` only approves archives
@@ -253,6 +254,11 @@ pub fn run() {
             commands::open_discord_invite,
             commands::get_verbose_logging,
             commands::set_verbose_logging,
+            commands::get_bug_report_info,
+            commands::preview_log_export,
+            commands::save_log_export,
+            commands::open_log_folder,
+            commands::open_bug_report_form,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -15,6 +15,18 @@ fn validate_release_url(url: &str) -> Result<(), String> {
         Err("URL zeigt nicht auf das erwartete GitHub-Repository".to_string())
     }
 }
+
+/// Opens a URL or folder with the system default handler.
+pub(crate) fn open_external(target: &str) -> CmdResult<()> {
+    #[cfg(target_os = "linux")]
+    let mut cmd = std::process::Command::new("xdg-open");
+    #[cfg(target_os = "macos")]
+    let mut cmd = std::process::Command::new("open");
+    #[cfg(target_os = "windows")]
+    let mut cmd = std::process::Command::new("explorer");
+    cmd.arg(target).spawn().map_err(|e| e.to_string())?;
+    Ok(())
+}
 /// Own version immediately and without network, so the UI doesn't wait for `check_for_update` (up to 5 s).
 #[tauri::command]
 pub fn get_app_version() -> String {
@@ -61,30 +73,13 @@ pub async fn check_for_update() -> CmdResult<update_check::UpdateCheckResult> {
 #[tauri::command]
 pub fn open_release_url(url: String) -> CmdResult<()> {
     validate_release_url(&url)?;
-
-    #[cfg(target_os = "linux")]
-    let mut cmd = std::process::Command::new("xdg-open");
-    #[cfg(target_os = "macos")]
-    let mut cmd = std::process::Command::new("open");
-    #[cfg(target_os = "windows")]
-    let mut cmd = std::process::Command::new("explorer");
-
-    cmd.arg(&url).spawn().map_err(|e| e.to_string())?;
-    Ok(())
+    open_external(&url)
 }
 
 // No URL from the frontend: the Discord link is static.
 #[tauri::command]
 pub fn open_discord_invite() -> CmdResult<()> {
-    #[cfg(target_os = "linux")]
-    let mut cmd = std::process::Command::new("xdg-open");
-    #[cfg(target_os = "macos")]
-    let mut cmd = std::process::Command::new("open");
-    #[cfg(target_os = "windows")]
-    let mut cmd = std::process::Command::new("explorer");
-
-    cmd.arg(DISCORD_INVITE_URL).spawn().map_err(|e| e.to_string())?;
-    Ok(())
+    open_external(DISCORD_INVITE_URL)
 }
 
 #[cfg(test)]

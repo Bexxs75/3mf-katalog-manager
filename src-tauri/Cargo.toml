@@ -59,6 +59,8 @@ tauri-plugin-log = "2.9"
 regex = "1"
 # Startup header line: OS name/version next to the app version.
 os_info = "3"
+# Anonymizing the host name in a log export before it leaves the computer.
+gethostname = "1"
 cxx = { version = "1", optional = true }
 # STEP preview: raw OCCT bindings. Deliberately WITHOUT the `builtin` feature -
 # that would build OCCT from source and link it STATICALLY, which triggers the
