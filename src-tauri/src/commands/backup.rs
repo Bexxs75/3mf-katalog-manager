@@ -678,6 +678,15 @@ fn validate_catalog_db_bytes(
     let _ = std::fs::remove_file(&tmp_path);
     result.map_err(|e| format!("Archiv enthält keine gültige Katalog-Datenbank: {e}"))
 }
+/// Boundary used by `import_catalog`: a rejected backup file (bad schema,
+/// corrupted DB, a path escaping the trash/sensitive-dir checks, ...) is always
+/// the user's file, not a fault here - hence `expected`, not a plain `?` (which
+/// would mark it a fault and log it at ERROR via `From<String>`). Extracted so
+/// this conversion is exercised by a test instead of only living inline in the
+/// `#[tauri::command]`.
+fn validate_backup_for_import(bytes: &[u8], sensitive_dirs: &[PathBuf], trash_dir: &Path) -> CmdResult<()> {
+    validate_catalog_db_bytes(bytes, sensitive_dirs, trash_dir).map_err(CmdError::expected)
+}
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportCatalogResultDto {
@@ -729,11 +738,7 @@ pub async fn import_catalog(
     }
     let settings_json = String::from_utf8(settings_bytes).map_err(|e| e.to_string())?;
 
-    // A rejected backup file (bad schema, corrupted DB, a path escaping the
-    // trash/sensitive-dir checks, ...) is always the user's file, not a fault
-    // here - hence `expected`, not the plain `?` (which would mark it a fault
-    // and log it at ERROR via `From<String>`).
-    validate_catalog_db_bytes(&db_bytes, &state.sensitive_dirs, &state.trash_dir).map_err(CmdError::expected)?;
+    validate_backup_for_import(&db_bytes, &state.sensitive_dirs, &state.trash_dir)?;
 
     let tmp_db_path =
         std::env::temp_dir().join(format!("3mf-katalog-import-{}.db", std::process::id()));
@@ -1066,15 +1071,19 @@ mod tests {
         assert!(result.is_err());
     }
     #[test]
-    fn a_rejected_backup_becomes_an_expected_cmderror_at_the_import_catalog_boundary() {
-        // Same conversion `import_catalog` applies to the `validate_catalog_db_bytes`
-        // result: a bad backup file is the user's problem, not a fault, so it must
-        // come out `expected`, not the default `expected: false` of a plain String.
-        let result: CmdResult<()> =
-            validate_catalog_db_bytes(b"this is not a sqlite database", &[], &std::env::temp_dir())
-                .map_err(CmdError::expected);
-        let err = result.unwrap_err();
+    fn validate_backup_for_import_reports_a_rejected_backup_as_expected() {
+        // Exercises the real boundary `import_catalog` calls, not a hand-copied
+        // conversion: a bad backup file is the user's problem, not a fault, so it
+        // must come out `expected`, not the default `expected: false` of a plain
+        // String, and the message must still be the validation text.
+        let err = validate_backup_for_import(b"this is not a sqlite database", &[], &std::env::temp_dir())
+            .unwrap_err();
         assert!(err.expected, "a rejected backup file must be reported as expected, not a fault");
+        assert!(
+            err.message.contains("Katalog-Datenbank"),
+            "message should still be the validation text, was: {}",
+            err.message
+        );
     }
     fn unique_test_db_path(name: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
