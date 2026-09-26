@@ -900,7 +900,6 @@ fn import_many(state: &State<AppState>, roots: Vec<PathBuf>) -> CmdResult<Import
 /// of a Tauri-managed `State` so it is directly unit-testable (a
 /// `State<AppState>` cannot be constructed outside of a running Tauri app).
 pub(crate) fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) -> CmdResult<ImportResultDto> {
-    let started = std::time::Instant::now();
     let mut seen = HashSet::new();
     let mut imported = Vec::new();
     let mut duplicate_count = 0i64;
@@ -969,20 +968,26 @@ pub(crate) fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) 
     }
 
     tx.commit().map_err(|e| e.to_string())?;
-    let result = ImportResultDto {
+    Ok(ImportResultDto {
         imported,
         duplicate_count,
+        // Archives aren't known here: they're split off and attached by the
+        // `#[tauri::command]` callers (`import_files`/`import_dropped`) once
+        // `import_many`/`import_many_with_conn` has returned.
         pending_archives: Vec::new(),
-    };
-    log::info!(
-        target: "import",
+    })
+}
+/// One-line summary logged exactly once per user-triggered import, by the
+/// callers (`import_files`/`import_folder`/`import_dropped`) after they've
+/// attached the real pending-archive count to `result`.
+fn import_summary(result: &ImportResultDto, secs: f64) -> String {
+    format!(
         "{} importiert, {} Duplikate, {} Archive offen, {:.1} s",
         result.imported.len(),
         result.duplicate_count,
         result.pending_archives.len(),
-        started.elapsed().as_secs_f64()
-    );
-    Ok(result)
+        secs
+    )
 }
 /// Separates archives (real files with an archive extension) from everything
 /// else. A DIRECTORY named `x.zip` stays in the normal import.
@@ -1026,9 +1031,11 @@ pub async fn import_files(
         .filter_map(|p| p.into_path().ok())
         .collect();
     let (models, archives) = split_archives(paths);
+    let started = std::time::Instant::now();
     let mut result = import_many(&state, models)?;
     pending.register(&archives);
     result.pending_archives = archives;
+    log::info!(target: "import", "{}", import_summary(&result, started.elapsed().as_secs_f64()));
     Ok(result)
 }
 #[tauri::command]
@@ -1046,7 +1053,10 @@ pub async fn import_folder(
         });
     };
     let path = picked.into_path().map_err(|e| e.to_string())?;
-    import_many(&state, vec![path])
+    let started = std::time::Instant::now();
+    let result = import_many(&state, vec![path])?;
+    log::info!(target: "import", "{}", import_summary(&result, started.elapsed().as_secs_f64()));
+    Ok(result)
 }
 #[tauri::command]
 pub fn import_dropped(
@@ -1055,10 +1065,12 @@ pub fn import_dropped(
     paths: Vec<String>,
 ) -> CmdResult<ImportResultDto> {
     let (models, archives) = split_archives(paths.into_iter().map(PathBuf::from).collect());
+    let started = std::time::Instant::now();
     let mut result = import_many(&state, models)?;
     // Archives only if the backend observed the drop itself (see `on_window_event`
     // in lib.rs); other archive paths are ignored.
     result.pending_archives = pending.claim_dropped(archives);
+    log::info!(target: "import", "{}", import_summary(&result, started.elapsed().as_secs_f64()));
     Ok(result)
 }
 /// Opens a path in the system file manager.
@@ -1194,6 +1206,19 @@ pub async fn get_model_geometry(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn import_summary_reports_the_real_pending_archive_count() {
+        let result = ImportResultDto {
+            imported: Vec::new(),
+            duplicate_count: 3,
+            pending_archives: vec!["a.zip".to_string(), "b.zip".to_string()],
+        };
+        assert_eq!(
+            import_summary(&result, 1.34),
+            "0 importiert, 3 Duplikate, 2 Archive offen, 1.3 s"
+        );
+    }
 
     #[derive(serde::Deserialize)]
     #[serde(rename_all = "camelCase")]
