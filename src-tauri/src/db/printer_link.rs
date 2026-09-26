@@ -19,6 +19,8 @@ pub struct PrinterConnectionRecord {
     pub last_error: Option<String>,
     pub error_since: Option<f64>,
     pub paused: bool,
+    /// Printer clock minus local clock from the last test or sync; 0 = within tolerance.
+    pub clock_offset_s: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -63,7 +65,7 @@ pub fn set_printer_link_enabled(conn: &Connection, enabled: bool) -> Result<(), 
 }
 
 const CONNECTION_COLUMNS: &str = "printer_id, kind, address, base_url, remote_version, connected_since,
-    last_synced_at, last_error, error_since, paused";
+    last_synced_at, last_error, error_since, paused, clock_offset_s";
 
 fn connection_from_row(r: &Row) -> rusqlite::Result<PrinterConnectionRecord> {
     Ok(PrinterConnectionRecord {
@@ -77,6 +79,7 @@ fn connection_from_row(r: &Row) -> rusqlite::Result<PrinterConnectionRecord> {
         last_error: r.get(7)?,
         error_since: r.get(8)?,
         paused: r.get::<_, i64>(9)? != 0,
+        clock_offset_s: r.get(10)?,
     })
 }
 
@@ -127,6 +130,15 @@ pub fn list_connections(conn: &Connection) -> Result<Vec<PrinterConnectionRecord
 pub fn delete_connection(conn: &Connection, printer_id: i64) -> Result<(), DbError> {
     conn.execute("DELETE FROM printer_jobs WHERE printer_id = ?1 AND state = 'open'", params![printer_id])?;
     conn.execute("DELETE FROM printer_connections WHERE printer_id = ?1", params![printer_id])?;
+    Ok(())
+}
+
+/// Stores the clock offset measured by the last test or sync.
+pub fn set_clock_offset(conn: &Connection, printer_id: i64, offset_s: f64) -> Result<(), DbError> {
+    conn.execute(
+        "UPDATE printer_connections SET clock_offset_s = ?2 WHERE printer_id = ?1",
+        params![printer_id, offset_s],
+    )?;
     Ok(())
 }
 
@@ -319,6 +331,18 @@ mod tests {
         assert!(!insert_job_if_new(&conn, 1, &job("00003F", 5000.0)).unwrap());
         assert!(insert_job_if_new(&conn, 1, &job("00003E", 5100.0)).unwrap());
         assert_eq!(list_open_jobs(&conn).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn clock_offset_starts_at_zero_and_is_stored() {
+        let conn = setup();
+        let c = save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", "http://192.168.1.60", "v0.7.1", 1000.0).unwrap();
+        assert_eq!(c.clock_offset_s, 0.0);
+        set_clock_offset(&conn, 1, -87_000_000.0).unwrap();
+        assert_eq!(get_connection(&conn, 1).unwrap().unwrap().clock_offset_s, -87_000_000.0);
+        // A new test keeps the column until the command stores the new measurement.
+        save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", "http://192.168.1.60", "v0.7.1", 2000.0).unwrap();
+        assert_eq!(list_connections(&conn).unwrap()[0].clock_offset_s, -87_000_000.0);
     }
 
     #[test]

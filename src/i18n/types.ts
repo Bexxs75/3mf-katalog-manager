@@ -437,6 +437,15 @@ export interface Translations {
   printerConnectionOk: string;
   printerConnectionOkDetail: string;
   printerConnectionSince: string;
+  printerClockOffTitle: string;
+  printerClockOffTimes: string;
+  printerClockOffBody: string;
+  printerClockAnd: string;
+  printerClockMinutes: PluralForms;
+  printerClockHours: PluralForms;
+  printerClockDays: PluralForms;
+  printerClockMonths: PluralForms;
+  printerClockYears: PluralForms;
   printerConnectionActionFailed: string;
   printerErrorUnreachable: string;
   printerErrorAuthRequired: string;

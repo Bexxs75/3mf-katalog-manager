@@ -24,6 +24,7 @@ pub struct PrinterConnectionDto {
     pub last_error: Option<String>,
     pub error_since: Option<f64>,
     pub paused: bool,
+    pub clock_offset_s: f64,
 }
 
 #[derive(Debug, Serialize)]
@@ -101,6 +102,7 @@ fn connection_dto(c: store::PrinterConnectionRecord) -> PrinterConnectionDto {
         last_error: c.last_error,
         error_since: c.error_since,
         paused: c.paused,
+        clock_offset_s: c.clock_offset_s,
     }
 }
 
@@ -263,8 +265,12 @@ pub async fn test_printer_connection(
     match tested {
         Ok(info) => {
             let conn = state.db.lock().map_err(|_| "database lock poisoned".to_string())?;
-            let saved = store::save_connection_after_test(&conn, pid, &kind, address.trim(), &info.base_url, &info.version, unix_now())
+            store::save_connection_after_test(&conn, pid, &kind, address.trim(), &info.base_url, &info.version, unix_now())
                 .map_err(|e| e.to_string())?;
+            store::set_clock_offset(&conn, pid, info.clock_offset_s).map_err(|e| e.to_string())?;
+            let saved = store::get_connection(&conn, pid)
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| "Verbindung fehlt nach dem Speichern".to_string())?;
             drop(conn);
             wake(&app);
             Ok(TestResultDto { ok: true, error: None, connection: Some(connection_dto(saved)) })

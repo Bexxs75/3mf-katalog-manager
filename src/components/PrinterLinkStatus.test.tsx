@@ -9,7 +9,7 @@ beforeEach(() => localStorage.setItem('3mf-katalog-language', 'de'));
 
 const base: PrinterConnection = {
   printerId: '1', kind: 'moonraker', address: '192.168.1.60', baseUrl: null, remoteVersion: null,
-  connectedSince: 1, lastSyncedAt: Date.now() / 1000 - 120, lastError: null, errorSince: null, paused: false,
+  connectedSince: 1, lastSyncedAt: Date.now() / 1000 - 120, lastError: null, errorSince: null, paused: false, clockOffsetS: 0,
 };
 
 function link(c: PrinterConnection | null, jobs = 0): PrinterLinkState {

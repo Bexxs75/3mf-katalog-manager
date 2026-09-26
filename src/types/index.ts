@@ -284,6 +284,8 @@ export interface PrinterConnection {
   lastError: PrinterConnectionError | null;
   errorSince: number | null;
   paused: boolean;
+  /** Printer clock minus local clock in seconds; 0 when within 5 minutes. */
+  clockOffsetS: number;
 }
 
 export interface PrinterTestResult {

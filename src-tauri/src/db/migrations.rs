@@ -117,6 +117,8 @@ const MIGRATIONS: &[MigrationStep] = &[
     MigrationStep::Rebuild(add_resin_printers),
     // Saved filters have had no UI since the GUI redesign; the table goes away.
     MigrationStep::Simple(|c| exec(c, "DROP TABLE IF EXISTS saved_filters")),
+    // Printer clock minus local clock, measured on every test and sync (printers without NTP).
+    MigrationStep::Simple(|c| exec(c, "ALTER TABLE printer_connections ADD COLUMN clock_offset_s REAL NOT NULL DEFAULT 0")),
 ];
 
 /// Derived from [`MIGRATIONS`] so the two can never drift apart.
@@ -138,6 +140,10 @@ pub(crate) const RESIN_PRINTER_MIGRATION_VERSION: i64 = 37;
 /// Schema version after dropping `saved_filters`.
 #[cfg(test)]
 const DROP_SAVED_FILTERS_MIGRATION_VERSION: i64 = 38;
+
+/// Schema version after adding `printer_connections.clock_offset_s`.
+#[cfg(test)]
+const CLOCK_OFFSET_MIGRATION_VERSION: i64 = 39;
 
 /// Runs a single statement. The only tolerated error is "duplicate column name"
 /// (column already exists); everything else propagates.
@@ -704,7 +710,7 @@ mod tests {
     #[test]
     fn the_kind_step_stays_at_the_shipped_position_32() {
         assert_eq!(KIND_MIGRATION_VERSION, 32);
-        assert_eq!(CURRENT_SCHEMA_VERSION, DROP_SAVED_FILTERS_MIGRATION_VERSION);
+        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION);
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         // Only run the steps up to and including 32.

@@ -78,6 +78,7 @@ pub fn sync_once(db: &Mutex<Connection>, make: &LinkMaker, now: f64) -> Result<u
                     }
                 }
                 store::record_sync_success(&conn, printer_id, now, &info.base_url, &info.version)?;
+                store::set_clock_offset(&conn, printer_id, info.clock_offset_s)?;
             }
             Err(e) => store::record_sync_error(&conn, printer_id, e.code(), now)?,
         }
@@ -170,6 +171,8 @@ mod tests {
         assert_eq!(sync_once(&db, &*test_maker(), unix_now()).unwrap(), 0);
         let jobs = list_open_jobs(&db.lock().unwrap()).unwrap();
         assert!(jobs.iter().all(|j| j.ended_at > unix_now() - 6.0 * 3600.0), "end times are local, not 2023");
+        let c = get_connection(&db.lock().unwrap(), 1).unwrap().unwrap();
+        assert!((c.clock_offset_s - offset).abs() < 3.0, "offset is stored for the UI note");
     }
 
     #[test]

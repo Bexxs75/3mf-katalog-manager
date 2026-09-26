@@ -3,6 +3,7 @@ import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatDateTime } from '../i18n/format';
 import { messageOf } from '../lib/errors';
 import type { PrinterConnection, PrinterConnectionError } from '../types';
+import { formatCount, type PluralForms } from '../i18n/types';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
 
 interface Props {
@@ -33,6 +34,24 @@ function portOf(baseUrl: string | null): string {
   if (!baseUrl) return '';
   const m = baseUrl.match(/:(\d+)$/);
   return m ? m[1] : '80';
+}
+
+/** Offsets below this are ignored (the backend already stores 0 then). */
+export const CLOCK_NOTE_MIN_S = 300;
+
+export type ClockUnit = 'minutes' | 'hours' | 'days' | 'months' | 'years';
+
+/** Rough size of a clock offset: minutes, hours, days, or years plus months. Months are cut, not rounded. */
+export function clockOffsetParts(offsetS: number): Array<[ClockUnit, number]> {
+  const s = Math.abs(offsetS);
+  if (s < 3600) return [['minutes', Math.round(s / 60)]];
+  if (s < 2 * 86400) return [['hours', Math.round(s / 3600)]];
+  if (s < 60 * 86400) return [['days', Math.round(s / 86400)]];
+  const months = Math.floor(s / (30.4375 * 86400));
+  const parts: Array<[ClockUnit, number]> = [];
+  if (months >= 12) parts.push(['years', Math.floor(months / 12)]);
+  if (months % 12 > 0) parts.push(['months', months % 12]);
+  return parts;
 }
 
 const fieldClass =
@@ -96,6 +115,18 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
   };
 
   const since = current ? formatDateTime(current.connectedSince, language) : '';
+  const unitForms: Record<ClockUnit, PluralForms> = {
+    minutes: t('printerClockMinutes'),
+    hours: t('printerClockHours'),
+    days: t('printerClockDays'),
+    months: t('printerClockMonths'),
+    years: t('printerClockYears'),
+  };
+  const clockOffset = current?.clockOffsetS ?? 0;
+  const clockAmount = clockOffsetParts(clockOffset)
+    .map(([unit, n]) => formatCount(unitForms[unit], n))
+    .reduce((a, b) => t('printerClockAnd').replace('{a}', () => a).replace('{b}', () => b));
+  const localNow = Date.now() / 1000;
 
   return (
     <div className="mt-3 rounded-md border border-[var(--line)] bg-[var(--panel)] p-3 flex flex-col gap-2.5">
@@ -146,6 +177,17 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
               .replace('{port}', t('printerConnectionPort').replace('{port}', portOf(current.baseUrl)))}
           </span>
           <span className="text-[11.5px] text-[var(--ink-2)]">{t('printerConnectionSince').replace('{date}', since)}</span>
+        </div>
+      )}
+      {!error && current && !current.paused && !current.lastError && Math.abs(clockOffset) >= CLOCK_NOTE_MIN_S && (
+        <div role="status" className="border-l-[3px] border-[var(--warn)] pl-2.5 flex flex-col gap-0.5">
+          <b className="text-[12.5px]">{t('printerClockOffTitle')}</b>
+          <span className="font-mono-ui text-[11px] text-[var(--ink)]">
+            {t('printerClockOffTimes')
+              .replace('{printer}', () => formatDateTime(localNow + clockOffset, language))
+              .replace('{local}', () => formatDateTime(localNow, language))}
+          </span>
+          <span className="text-[11.5px] text-[var(--ink-2)]">{t('printerClockOffBody').replace('{amount}', () => clockAmount)}</span>
         </div>
       )}
     </div>

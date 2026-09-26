@@ -23,7 +23,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
-- Printer connection: prints from printers whose clock is wrong (no time sync, e.g. a Qidi Smart 3 whose clock was in 2023) were never found, because the app compared the printer's times with the computer's time. The app now reads the printer's clock with every connection test, corrects any difference of more than 5 minutes, and stores the end times in the computer's time. Found through an anonymous test report of a Qidi Smart 3 (Moonraker v0.7.1), whose answers are now part of the automated tests.
+- Printer connection: prints from printers whose clock is wrong (no time sync, e.g. a Qidi Smart 3 whose clock was in 2023) were never found, because the app compared the printer's times with the computer's time. The app now reads the printer's clock with every connection test, corrects any difference of more than 5 minutes, and stores the end times in the computer's time. Under "Manage printers", the note "The printer's clock is wrong" shows both times and suggests turning on time sync (NTP) on the printer. Found through an anonymous test report of a Qidi Smart 3 (Moonraker v0.7.1), whose answers are now part of the automated tests.
 
 ## [0.14.0] - 2026-09-26
 
@@ -429,7 +429,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Fixed
 
-- Druckeranbindung: Drucke von Druckern mit falsch gehender Uhr (ohne Zeitabgleich, z. B. ein Qidi Smart 3, dessen Uhr im Jahr 2023 stand) wurden nie gefunden, weil die App die Zeiten des Druckers mit der Uhr des Computers verglich. Die App liest jetzt bei jedem Verbindungstest die Uhr des Druckers, gleicht Abweichungen über 5 Minuten aus und speichert die Endzeiten in der Zeit des Computers. Gefunden durch einen anonymen Testbericht eines Qidi Smart 3 (Moonraker v0.7.1), dessen Antworten jetzt in den automatischen Tests stecken.
+- Druckeranbindung: Drucke von Druckern mit falsch gehender Uhr (ohne Zeitabgleich, z. B. ein Qidi Smart 3, dessen Uhr im Jahr 2023 stand) wurden nie gefunden, weil die App die Zeiten des Druckers mit der Uhr des Computers verglich. Die App liest jetzt bei jedem Verbindungstest die Uhr des Druckers, gleicht Abweichungen über 5 Minuten aus und speichert die Endzeiten in der Zeit des Computers. Unter „Drucker verwalten“ zeigt der Hinweis „Die Uhr des Druckers geht falsch“ beide Uhrzeiten und empfiehlt, am Drucker den Zeitabgleich (NTP) einzuschalten. Gefunden durch einen anonymen Testbericht eines Qidi Smart 3 (Moonraker v0.7.1), dessen Antworten jetzt in den automatischen Tests stecken.
 
 ## [0.14.0] - 2026-09-26
 

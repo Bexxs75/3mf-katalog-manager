@@ -162,7 +162,8 @@ CREATE TABLE IF NOT EXISTS printer_connections (
     last_synced_at REAL,
     last_error TEXT,
     error_since REAL,
-    paused INTEGER NOT NULL DEFAULT 0 CHECK (paused IN (0, 1))
+    paused INTEGER NOT NULL DEFAULT 0 CHECK (paused IN (0, 1)),
+    clock_offset_s REAL NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS printer_jobs (

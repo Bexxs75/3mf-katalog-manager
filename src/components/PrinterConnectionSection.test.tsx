@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LanguageProvider } from '../i18n/LanguageContext';
-import { PrinterConnectionSection } from './PrinterConnectionSection';
+import { clockOffsetParts, PrinterConnectionSection } from './PrinterConnectionSection';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
 import type { PrinterConnection } from '../types';
 
@@ -17,7 +17,7 @@ function link(testResult: unknown): PrinterLinkState {
 
 const okConnection: PrinterConnection = {
   printerId: '1', kind: 'moonraker', address: '192.168.1.60', baseUrl: 'http://192.168.1.60',
-  remoteVersion: 'v0.8.0-209', connectedSince: 1790271120, lastSyncedAt: null, lastError: null, errorSince: null, paused: false,
+  remoteVersion: 'v0.8.0-209', connectedSince: 1790271120, lastSyncedAt: null, lastError: null, errorSince: null, paused: false, clockOffsetS: 0,
 };
 
 function renderIt(l: PrinterLinkState, connection: PrinterConnection | null = null) {
@@ -118,5 +118,32 @@ describe('PrinterConnectionSection', () => {
       </LanguageProvider>,
     );
     expect(screen.getByText(/v0\.9\.0-fresh/)).toBeInTheDocument();
+  });
+
+  it('explains a wrong printer clock under "Connected"', () => {
+    // Qidi Smart 3 from the test report: clock in December 2023.
+    const offset = -(2 * 365.25 + 9 * 30.4375 + 15) * 86400;
+    renderIt(link(null), { ...okConnection, clockOffsetS: offset });
+    expect(screen.getByText('Die Uhr des Druckers geht falsch')).toBeInTheDocument();
+    expect(screen.getByText(/Abweichung von etwa 2 Jahren und 9 Monaten aus/)).toBeInTheDocument();
+    expect(screen.getByText(/^Drucker: .* · Computer: /)).toBeInTheDocument();
+  });
+
+  it('shows no clock note for a correct clock or a broken connection', () => {
+    const { unmount } = renderIt(link(null), okConnection);
+    expect(screen.queryByText('Die Uhr des Druckers geht falsch')).not.toBeInTheDocument();
+    unmount();
+    renderIt(link(null), { ...okConnection, clockOffsetS: -1e8, lastError: 'unreachable', errorSince: 1 });
+    expect(screen.queryByText('Die Uhr des Druckers geht falsch')).not.toBeInTheDocument();
+  });
+});
+
+describe('clockOffsetParts', () => {
+  it('picks a rough unit', () => {
+    expect(clockOffsetParts(600)).toEqual([['minutes', 10]]);
+    expect(clockOffsetParts(-3 * 3600)).toEqual([['hours', 3]]);
+    expect(clockOffsetParts(5 * 86400)).toEqual([['days', 5]]);
+    expect(clockOffsetParts(-(365.25 * 86400 + 10 * 86400))).toEqual([['years', 1]]);
+    expect(clockOffsetParts(90 * 86400)).toEqual([['months', 2]]);
   });
 });

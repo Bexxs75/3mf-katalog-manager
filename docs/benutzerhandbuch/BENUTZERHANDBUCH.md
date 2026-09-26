@@ -407,7 +407,7 @@ read the filament used by finished and aborted prints itself, instead of you ent
 hand. This is **off by default** and read-only: the app only sends queries, never a command, and
 only talks to addresses you enter yourself on your home network.
 Resin printers can't be connected: they have no "Connection" section.
-The connection has been tested with a Sovol SV08 and an Anycubic Kobra S1 running Rinkhals. Other
+The connection has been tested with a Sovol SV08, an Anycubic Kobra S1 running Rinkhals and a Qidi Smart 3. Other
 Klipper printers should work the same way; if you want to test yours, the
 [test page](https://3mfkatalog.de/en/printer-test.html) helps.
 
@@ -416,7 +416,10 @@ Klipper printers should work the same way; if you want to test yours, the
    "Connection" (the same IP or name you'd use to open Mainsail in a browser) → "Test
    connection". If it works, the app shows the version and port, plus the point in time from
    which prints will be deducted — older prints are left alone. If the printer reports "Login
-   required", it has a login set up that this version doesn't support yet.
+   required", it has a login set up that this version doesn't support yet. If the printer's
+   clock is wrong (no time sync), a note "The printer's clock is wrong" shows both times: the app
+   corrects the difference automatically, but it's better to turn on time sync (NTP) on the
+   printer.
 3. After that, the app automatically asks the printer for newly finished prints at startup,
    every 5 minutes, and via the "↻" button next to its status. If there are any, the filament
    stock shows the hint "N new prints waiting for confirmation" with a "Review" button.
@@ -991,7 +994,7 @@ den Filamentverbrauch fertiger und abgebrochener Drucke selbst ablesen, statt da
 Hand einträgst. Das ist standardmäßig **ausgeschaltet** und rein lesend: Die App sendet nur
 Abfragen, nie einen Befehl, und spricht nur mit Adressen, die du selbst im Heimnetz einträgst.
 Für Resin-Drucker gibt es keine Anbindung: Bei ihnen fehlt der Abschnitt "Verbindung".
-Getestet ist die Anbindung mit einem Sovol SV08 und einem Anycubic Kobra S1 mit Rinkhals. Andere
+Getestet ist die Anbindung mit einem Sovol SV08, einem Anycubic Kobra S1 mit Rinkhals und einem Qidi Smart 3. Andere
 Klipper-Drucker sollten genauso funktionieren; wenn du deinen testen möchtest, hilft die
 [Testseite](https://3mfkatalog.de/druckertest.html).
 
@@ -1001,7 +1004,9 @@ Klipper-Drucker sollten genauso funktionieren; wenn du deinen testen möchtest, 
    öffnest) → "Verbindung testen". Klappt es, zeigt die App Version und Port sowie ab welchem
    Zeitpunkt Drucke abgebucht werden — ältere Drucke bleiben unberührt. Meldet der Drucker
    "Anmeldung nötig", ist am Drucker eine Anmeldung eingerichtet, die diese Version noch nicht
-   unterstützt.
+   unterstützt. Geht die Uhr des Druckers falsch (ohne Zeitabgleich), zeigt der Hinweis "Die Uhr
+   des Druckers geht falsch" beide Uhrzeiten: Die App gleicht die Abweichung selbst aus, besser
+   ist aber, am Drucker den Zeitabgleich (NTP) einzuschalten.
 3. Danach fragt die App den Drucker beim Start, alle 5 Minuten und über den "↻"-Knopf neben
    seinem Status automatisch nach neu beendeten Drucken. Gibt es welche, erscheint im
    Filament-Lager der Hinweis "N neue Drucke warten auf Bestätigung" mit einem Knopf "Prüfen".
