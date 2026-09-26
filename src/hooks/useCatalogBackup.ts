@@ -9,17 +9,17 @@ const CATALOG_SETTINGS_KEYS = [
 ] as const;
 
 /**
- * Schluessel aelterer Backups, die beim Import NIE wiederhergestellt werden.
- * `3mf-katalog-slicers` enthielt Programmpfade, die spaeter als Prozess
- * gestartet werden; ein praepariertes Backup koennte dort `/bin/sh` o.ae.
- * hinterlegen. Die Slicer-Registry liegt inzwischen im Backend.
+ * Keys from older backups that are NEVER restored on import.
+ * `3mf-katalog-slicers` contained program paths that are later launched
+ * as processes; a crafted backup could store `/bin/sh` or similar
+ * there. The slicer registry now lives in the backend.
  */
 const IMPORT_SKIPPED_SETTINGS_KEYS: ReadonlySet<string> = new Set(['3mf-katalog-slicers']);
 
 /**
- * Erlaubte Werte je Einstellung (gespiegelt aus useTheme, useDisplayPreference,
- * LanguageContext, UiDensityContext). Andere Werte aus einem fremden Backup
- * werden still uebersprungen; der Import gilt trotzdem als erfolgreich.
+ * Allowed values per setting (mirrored from useTheme, useDisplayPreference,
+ * LanguageContext, UiDensityContext). Other values from a foreign backup
+ * are silently skipped; the import still counts as successful.
  */
 const IMPORT_ALLOWED_SETTINGS_VALUES: Record<string, readonly string[]> = {
   '3mf-katalog-theme': ['system', 'light', 'dark'],
@@ -50,8 +50,8 @@ export function useCatalogBackup() {
       .then((result) => {
         if (!result.imported) return;
         if (result.settingsJson) {
-          // Ein Fehler bei den Einstellungen darf den erfolgreichen Katalog-Import
-          // nicht als Fehlschlag erscheinen lassen.
+          // An error with the settings must not make the successful catalog import
+          // look like a failure.
           try {
             const settings = JSON.parse(result.settingsJson) as Record<string, string | null>;
             for (const key of CATALOG_SETTINGS_KEYS) {
@@ -72,8 +72,8 @@ export function useCatalogBackup() {
             console.error('[catalog-backup] Einstellungen konnten nicht wiederhergestellt werden:', e);
           }
         }
-        // Das Backend nutzt schon den neuen Katalog; der Aufrufer muss neu laden,
-        // sonst zeigt das Frontend veraltete Modell-IDs.
+        // The backend already uses the new catalog; the caller must reload,
+        // otherwise the frontend shows stale model IDs.
         onImported();
       })
       .catch((e) => {

@@ -4,7 +4,7 @@ interface Option<T extends string> {
 }
 
 interface Props<T extends string> {
-  /** Name der Gruppe fuer Screenreader (z. B. "Art"). */
+  /** Group name for screen readers (e.g. "Kind"). */
   label: string;
   options: Option<T>[];
   value: T;
@@ -12,7 +12,7 @@ interface Props<T extends string> {
   disabled?: boolean;
 }
 
-/** Eigene Segment-Auswahl (kein natives Control), gleiche Optik wie Dashboard|Liste. */
+/** Custom segmented control (no native control), same look as Dashboard|List. */
 export function SegmentedControl<T extends string>({ label, options, value, onChange, disabled = false }: Props<T>) {
   return (
     <div role="group" aria-label={label} className="flex w-max p-0.5 gap-0.5 border border-[var(--line)] rounded-[8px] bg-[var(--panel-2)]">

@@ -4,15 +4,15 @@ import type { ModelFile, ModelFileSummary } from '../../types';
 export function listFiles() {
   return invoke<ModelFile[]>('list_files');
 }
-// Schlanke Katalog-Uebersicht, siehe ModelFileSummary.
+// Slim catalog overview, see ModelFileSummary.
 export function listFileSummaries() {
   return invoke<ModelFileSummary[]>('list_file_summaries');
 }
-// Alle Datei-Tag-Zuordnungen in einer Abfrage (die Summaries enthalten keine Tags).
+// All file-tag mappings in one query (the summaries contain no tags).
 export function listAllFileTags() {
   return invoke<Record<string, string[]>>('list_all_file_tags');
 }
-// Volle Modelldaten nachladen; die Detailseite ruft das mit [id] auf.
+// Load full model data; the detail page calls this with [id].
 export function listFilesByIds(ids: string[]) {
   return invoke<ModelFile[]>('list_files_by_ids', { ids });
 }

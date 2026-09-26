@@ -1,6 +1,6 @@
 import type { FilamentSpool } from '../types';
 
-/** Anzahl 1 bis 20 (das Backend prueft dasselbe, RESTOCK_MAX_COUNT in filament.rs). */
+/** Count 1 to 20 (the backend checks the same, RESTOCK_MAX_COUNT in filament.rs). */
 export const RESTOCK_MIN_COUNT = 1;
 export const RESTOCK_MAX_COUNT = 20;
 
@@ -9,30 +9,30 @@ export function clampRestockCount(n: number): number {
   return Math.min(RESTOCK_MAX_COUNT, Math.max(RESTOCK_MIN_COUNT, Math.round(n)));
 }
 
-/** Auf 0,1 runden (wie `round_tenth` im Backend). */
+/** Round to 0.1 (like `round_tenth` in the backend). */
 export function roundTenth(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
 export interface RestockDefaults {
-  /** Gramm (Filament) bzw. Milliliter (Resin). */
+  /** Grams (filament) or milliliters (resin). */
   weight: number;
   price: number | null;
   location: string;
 }
 
-/** Vorbelegung: Originalmenge, Preis, Lagerort (steckt die Vorlage im Drucker: ihr Stammplatz). */
+/** Prefill: original amount, price, location (if the template sits in a printer: its home location). */
 export function restockDefaults(spool: FilamentSpool): RestockDefaults {
   const location = spool.location?.trim() ? spool.location : (spool.homeLocation ?? '');
   return { weight: spool.originalWeightG, price: spool.price, location };
 }
 
-/** "PETG · Rot" für Titel und Meldungen. */
+/** "PETG · Red" for titles and messages. */
 export function restockSpoolLabel(spool: Pick<FilamentSpool, 'material' | 'color'>): string {
   return [spool.material, spool.color].filter(Boolean).join(' · ');
 }
 
-/** "29,95" / "29.95" / "30" → Zahl; leer → null; alles andere → undefined (ungültig). */
+/** "29,95" / "29.95" / "30" → number; empty → null; anything else → undefined (invalid). */
 export function parseDecimalInput(raw: string): number | null | undefined {
   const trimmed = raw.trim();
   if (trimmed === '') return null;

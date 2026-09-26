@@ -16,8 +16,8 @@ export function roundG(grams: number): number {
   return Math.round(grams * 10) / 10;
 }
 
-// Fuellstand einer Spule fuer den Fuellbalken (0..1); null = kein Balken
-// (kein bekanntes Originalgewicht).
+// Fill level of a spool for the fill bar (0..1); null = no bar
+// (no known original weight).
 export function spoolFillRatio(spool: FilamentSpoolUse): number | null {
   if (spool.originalG <= 0) return null;
   return Math.min(1, Math.max(0, spool.remainingG / spool.originalG));

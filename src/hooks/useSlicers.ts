@@ -22,9 +22,9 @@ function loadHiddenIds(): Set<string> {
 }
 
 /**
- * Slicer-Programme aus der Backend-Registry. Lokal bleiben nur der primaere
- * Slicer und eine "Ausgeblendet"-Liste: es gibt keinen Befehl zum Loeschen
- * aus der Registry, "Entfernen" blendet nur aus.
+ * Slicer programs from the backend registry. Only the primary slicer and a
+ * "hidden" list stay local: there is no command to delete from the
+ * registry, "Remove" only hides.
  */
 export function useSlicers() {
   const [slicers, setSlicers] = useState<SlicerConfig[]>([]);
@@ -42,16 +42,16 @@ export function useSlicers() {
     catalogMetaApi.scanInstalledSlicers()
       .then(applyRegistry)
       .catch((e) => {
-        // Komfortfunktion: ein Fehlschlag wird nur geloggt.
+        // Convenience feature: a failure is only logged.
         console.warn('[slicer-scan] Automatische Slicer-Erkennung fehlgeschlagen:', e);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const addSlicer = useCallback(async () => {
-    // Der Datei-Dialog laeuft im Backend, das Frontend reicht keinen Pfad durch.
-    // Scheitern ist realistisch (schon registriert = UNIQUE, oder
-    // validate_slicer_path lehnt ab), deshalb die Anzeige per addSlicerError.
+    // The file dialog runs in the backend, the frontend passes no path through.
+    // Failure is realistic (already registered = UNIQUE, or
+    // validate_slicer_path rejects), hence the display via addSlicerError.
     try {
       setAddSlicerError(null);
       const picked = await slicerApi.pickAndRegisterSlicer();

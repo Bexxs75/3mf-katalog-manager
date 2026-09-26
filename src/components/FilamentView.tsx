@@ -28,7 +28,7 @@ import { isInStorage, spoolFitsUnit, spoolLabel } from '../lib/filamentSlots';
 type LayoutMode = 'dashboard' | 'list';
 type StatusFilter = 'low' | 'empty' | null;
 
-/** So lange sind neu angelegte Eintraege gruen umrandet. */
+/** How long newly created entries keep their green outline. */
 const HIGHLIGHT_MS = 2500;
 
 type PopoverType = 'restock' | 'consume';
@@ -40,9 +40,9 @@ type ToastState =
 
 interface Props {
   printerLink: PrinterLinkState;
-  /** Gemeinsame Instanz mit Rail, damit Aenderungen sofort ueberall sichtbar sind. */
+  /** Shared instance with Rail so changes show up everywhere immediately. */
   printers: PrintersState;
-  /** Katalog neu laden (z.B. Druckstatus/Warteschlange) nach dem Bestaetigen von Drucken. */
+  /** Reload the catalog (e.g. print status/queue) after prints are confirmed. */
   onCatalogChanged?: () => void;
 }
 
@@ -62,7 +62,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
   const [popover, setPopover] = useState<PopoverState | null>(null);
   const [highlightIds, setHighlightIds] = useState<ReadonlySet<string>>(() => new Set());
   const [kind, setKindState] = useState<SpoolKind>(loadSpoolKind);
-  // Blendet den Hinweisbanner aus, sobald der Bestaetigungs-Dialog offen ist.
+  // Hides the hint banner as soon as the confirmation dialog is open.
   const [jobsOpen, setJobsOpen] = useState(false);
   const [models, setModels] = useState<{ id: string; name: string }[]>([]);
 
@@ -73,8 +73,8 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
       .catch(() => setModels([]));
   }, [jobsOpen]);
 
-  // Leert sich die Liste bei offenem Dialog, jobsOpen zuruecksetzen: sonst
-  // bliebe der Banner aus und der Dialog spraenge beim naechsten Abgleich auf.
+  // If the list empties while the dialog is open, reset jobsOpen: otherwise
+  // the banner would stay hidden and the dialog would pop up on the next sync.
   useEffect(() => {
     if (jobsOpen && printerLink.jobs.length === 0) setJobsOpen(false);
   }, [jobsOpen, printerLink.jobs.length]);
@@ -109,13 +109,13 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
     [spools],
   );
 
-  // Spulen im Drucker stehen nur in der rechten Spalte, nicht im Lager.
+  // Spools in a printer appear only in the right column, not in storage.
   const storageSpools = useMemo(() => spools.filter((s) => isInStorage(s) && s.kind === kind), [spools, kind]);
 
-  // Druckeranbindung kennt nur Filament (Resin nie als Buchungsziel).
+  // The printer connection only knows filament (resin is never a booking target).
   const filamentSpools = useMemo(() => spools.filter((s) => s.kind === 'filament'), [spools]);
 
-  /** Passt der Eintrag in die Einheit? (Resin nur in eine Harzwanne, Filament nie.) */
+  /** Does the entry fit the unit? (Resin only into a resin vat, filament never.) */
   const fitsUnit = useCallback(
     (spoolId: string, unitId: string) => {
       const spool = spools.find((s) => s.id === spoolId);
@@ -167,8 +167,8 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
 
   const loadSpool = useCallback(
     (spoolId: string, unitId: string, slotIndex: number) => {
-      // Das Backend lehnt es ohnehin ab; ein unpassendes Ziel schickt gar
-      // keine Anfrage erst los.
+      // The backend rejects it anyway; an unsuitable target doesn't even
+      // send a request.
       if (!fitsUnit(spoolId, unitId)) return;
       printersApi
         .loadSpool(spoolId, unitId, slotIndex)
@@ -272,8 +272,8 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
           </div>
           <div className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3.5 py-2.5">
             <div className="text-[10px] uppercase tracking-wider font-bold text-[var(--ink-3)] mb-1.5">{t('filamentStatRemaining')}</div>
-            {/* Filament: Summe ueber Zehntelgramm-genaue Restgewichte, gerundet auf
-                ganze Gramm (Spec Druckeranbindung). Resin: Milliliter, 0,1 ml genau. */}
+            {/* Filament: sum over remaining weights precise to 0.1 g, rounded to
+                whole grams (printer connection spec). Resin: milliliters, precise to 0.1 ml. */}
             <div className="font-mono-ui text-[19px] font-bold tabular-nums">
               {kind === 'resin'
                 ? formatVolumeMl(stats.totalRemaining, language)

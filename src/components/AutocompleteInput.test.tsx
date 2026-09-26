@@ -3,9 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { AutocompleteInput } from './AutocompleteInput';
 
-// Simuliert die Situation in RestockPopover/SpoolPopoverShell: ein
-// umgebendes Element behandelt Escape selbst (dort: schliesst das ganze
-// Popover und verwirft die Eingaben).
+// Simulates the situation in RestockPopover/SpoolPopoverShell: a
+// surrounding element handles Escape itself (there: closes the whole
+// popover and discards the input).
 function Wrapper({ onParentKeyDown }: { onParentKeyDown: (e: KeyboardEvent) => void }) {
   const [value, setValue] = useState('');
   return (

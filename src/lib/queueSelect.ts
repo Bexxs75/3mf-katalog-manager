@@ -1,6 +1,6 @@
-// Klick auf einen Warteschlangen-Eintrag: waehlt das Modell aus. Ist gerade
-// die Detailseite offen, wechselt sie zum angeklickten Modell - dort ist der
-// Detailbereich rechts ausgeblendet, eine reine Auswahl bliebe unsichtbar.
+// Click on a queue entry: selects the model. If the detail page is open,
+// it switches to the clicked model - the detail area on the right is hidden
+// there, so a plain selection would stay invisible.
 export function selectFromQueue(
   id: string,
   { detailOpen, selectModel, openDetail }: { detailOpen: boolean; selectModel: (id: string) => void; openDetail: (id: string) => void },

@@ -56,7 +56,7 @@ describe('useFilamentCheck', () => {
     await waitFor(() => expect(result.current.checks?.has('1')).toBe(true));
 
     rerender({ ids: ['1', '2'] });
-    // Kein Flackern: waehrend des Nachladens bleibt der alte Stand sichtbar.
+    // No flicker: the old state stays visible while reloading.
     expect(result.current.checks?.has('1')).toBe(true);
     expect(result.current.error).toBe(false);
 

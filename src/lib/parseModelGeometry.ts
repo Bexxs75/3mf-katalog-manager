@@ -1,14 +1,14 @@
-// Decodiert das Binaerformat von get_model_geometry (`encode_render_meshes`
-// in Rust) direkt in typed-array-Views auf den ArrayBuffer.
+// Decodes the binary format of get_model_geometry (`encode_render_meshes`
+// in Rust) directly into typed array views on the ArrayBuffer.
 //
-// Wire-Format:
-// - 4 Bytes: Laenge des JSON-Headers, little-endian u32
-// - JSON-Header (mit Leerzeichen auf ein Vielfaches von 4 Bytes
-//   aufgepolstert): Array von { vertexCount, hasNormal, indexCount }
-// - pro Mesh, in Header-Reihenfolge: Float32-Positionen, optional
-//   Float32-Normalen, dann immer Uint32-Indizes. Jeder Abschnitt besteht
-//   nur aus 4-Byte-Elementen, daher bleibt der Offset zwischen Meshes
-//   automatisch ausgerichtet.
+// Wire format:
+// - 4 bytes: length of the JSON header, little-endian u32
+// - JSON header (padded with spaces to a multiple of 4 bytes):
+//   array of { vertexCount, hasNormal, indexCount }
+// - per mesh, in header order: Float32 positions, optionally
+//   Float32 normals, then always Uint32 indices. Every section consists
+//   only of 4-byte elements, so the offset between meshes stays
+//   aligned automatically.
 
 export interface ParsedMesh {
   position: Float32Array;

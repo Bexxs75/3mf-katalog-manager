@@ -7,8 +7,8 @@ import * as filesApi from '../lib/api/files';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
-// Einzelne filesApi-Funktionen sind Spies, die standardmaessig an die echte
-// Implementierung durchreichen; Tests lassen sie gezielt scheitern.
+// Individual filesApi functions are spies that pass through to the real
+// implementation by default; tests make them fail on purpose.
 vi.mock('../lib/api/files', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/api/files')>();
   return Object.fromEntries(
@@ -26,12 +26,12 @@ function createDeferred<T>() {
   return { promise, resolve, reject };
 }
 
-// Projiziert volle ModelFile-Fixtures auf Summaries und bedient auch
-// list_files_by_ids fuer das Nachladen.
+// Projects full ModelFile fixtures onto summaries and also serves
+// list_files_by_ids for lazy loading.
 function mockInitialLoad(models = [makeModelFile({ id: 'm1' })]) {
   vi.mocked(invoke).mockImplementation((cmd: string, args?: unknown) => {
     if (cmd === 'list_file_summaries') return Promise.resolve(models.map((m) => makeModelFileSummary(m)));
-    // Tags aus den vollen Fixtures, damit der gemergte Zustand stimmt.
+    // Tags from the full fixtures so the merged state is correct.
     if (cmd === 'list_all_file_tags') {
       const byFile: Record<string, string[]> = {};
       for (const m of models) if (m.tags.length > 0) byFile[m.id] = m.tags;
@@ -56,7 +56,7 @@ function callCount(cmd: string) {
 
 beforeEach(() => {
   vi.mocked(invoke).mockReset();
-  // Nur clear, nicht reset: der Passthrough zur echten Implementierung bleibt.
+  // Only clear, not reset: the passthrough to the real implementation stays.
   vi.clearAllMocks();
 });
 
@@ -81,8 +81,8 @@ describe('useCatalogStore', () => {
   });
 
   it('merges the bulk tags aggregate into summary-derived models so tag filtering works for never-opened models', async () => {
-    // Summaries haben keine Tags; ohne den Merge ueber list_all_file_tags faende
-    // der Tag-Filter nichts.
+    // Summaries have no tags; without the merge via list_all_file_tags the
+    // tag filter would find nothing.
     mockInitialLoad([
       makeModelFile({ id: 'm1', tags: ['vase'] }),
       makeModelFile({ id: 'm2', tags: ['red'] }),
@@ -152,8 +152,8 @@ describe('useCatalogStore', () => {
     act(() => {
       pending = result.current.renameFile('m1', 'neu.3mf');
     });
-    // Nicht optimistisch: der Name darf sich noch nicht geaendert haben,
-    // solange der Backend-Aufruf noch laeuft.
+    // Not optimistic: the name must not have changed yet
+    // while the backend call is still running.
     expect(result.current.models[0].name).toBe('alt.3mf');
 
     await act(async () => {
@@ -231,9 +231,9 @@ describe('useCatalogStore', () => {
     const { result } = renderHook(() => useCatalogStore());
     await waitFor(() => expect(result.current.models).toHaveLength(2));
     act(() => result.current.setSelectedId('m1'));
-    // delete_files kann einzelne IDs stillschweigend uebersprungen haben - das
-    // Backend meldet hier weiterhin beide Modelle, lokales Filtern haette m1
-    // faelschlich entfernt.
+    // delete_files may have silently skipped individual IDs - the backend
+    // still reports both models here, local filtering would have wrongly
+    // removed m1.
     act(() => result.current.refetchAfterPartialDelete(['m1']));
     await waitFor(() => expect(callCount('list_file_summaries')).toBe(2));
     expect(result.current.models.map((m) => m.id)).toEqual(['m1', 'm2']);
@@ -275,7 +275,7 @@ describe('useCatalogStore', () => {
   });
 
   it('pendingSnapshotIds lists models without a render snapshot and skipSnapshot removes them', async () => {
-    // Die Summary traegt den Snapshot schon, m2 braucht keinen neuen.
+    // The summary already carries the snapshot, m2 doesn't need a new one.
     mockInitialLoad([
       makeModelFile({ id: 'm1', renderSnapshotImage: null }),
       makeModelFile({ id: 'm2', renderSnapshotImage: 'data:image/png;base64,xx' }),
@@ -290,8 +290,8 @@ describe('useCatalogStore', () => {
   });
 
   it('Finding 1 + Bugfix 2026-09-20: a model with a saved snapshot loaded only via the summary path is never pending and shows its snapshot', async () => {
-    // m1 hat schon einen Snapshot: das Bild muss sofort aus der Summary kommen,
-    // und m1 darf nicht in pendingSnapshotIds stehen.
+    // m1 already has a snapshot: the image must come from the summary right away,
+    // and m1 must not be in pendingSnapshotIds.
     mockInitialLoad([makeModelFile({ id: 'm1', renderSnapshotImage: 'data:image/png;base64,yy' })]);
     const { result } = renderHook(() => useCatalogStore());
     await waitFor(() => expect(result.current.models).toHaveLength(1));
@@ -301,7 +301,7 @@ describe('useCatalogStore', () => {
   });
 
   it('Bugfix 2026-09-20: creator is populated straight from the summary, not hardcoded to null', async () => {
-    // creator muss schon aus der Summary kommen, sonst greift der Creator-Filter nicht.
+    // creator must already come from the summary, otherwise the creator filter doesn't apply.
     mockInitialLoad([makeModelFile({ id: 'm1', creator: 'CarlFromUp' })]);
     const { result } = renderHook(() => useCatalogStore());
     await waitFor(() => expect(result.current.models).toHaveLength(1));
@@ -337,8 +337,8 @@ describe('useCatalogStore', () => {
     expect(result.current.models[0].queuePosition).toBe(1);
   });
 
-  // Resync nach Abschluss ALLER ueberlappenden Aufrufe fuer dasselbe Feld+ID
-  // (siehe Kommentar in useCatalogStore).
+  // Resync after ALL overlapping calls for the same field+ID have settled
+  // (see comment in useCatalogStore).
   describe('M-03: mutation resync on settle', () => {
     it('resyncs the favorite flag from the backend if the call fails', async () => {
       vi.mocked(filesApi.setFavorite).mockRejectedValueOnce(new Error('db locked'));
@@ -347,8 +347,8 @@ describe('useCatalogStore', () => {
       await waitFor(() => expect(result.current.models).toHaveLength(1));
       const modelId = result.current.models[0].id;
       const initialFavorite = result.current.models[0].favorite;
-      // Backend behaelt den urspruenglichen Wert - listFilesByIds() liefert
-      // ihn beim Resync unveraendert zurueck.
+      // The backend keeps the original value - listFilesByIds() returns
+      // it unchanged on resync.
       vi.mocked(filesApi.listFilesByIds).mockResolvedValueOnce([
         { ...result.current.models[0], favorite: initialFavorite },
       ]);
@@ -428,7 +428,7 @@ describe('useCatalogStore', () => {
       expect(result.current.models.map((m) => m.queuePosition)).toEqual([2, 1]);
 
       await waitFor(() => {
-        // Einmal beim Laden, einmal fuer den Resync.
+        // Once on load, once for the resync.
         expect(callCount('list_file_summaries')).toBe(2);
       });
     });
@@ -440,15 +440,15 @@ describe('useCatalogStore', () => {
       await waitFor(() => expect(result.current.models).toHaveLength(1));
       const modelId = result.current.models[0].id;
       const initial = result.current.models[0];
-      // Resync-Werte nacheinander passend zu jedem Klick mocken: ein Resync kann
-      // schon im selben act() abschliessen, ein konstanter Wert waere dann falsch.
+      // Mock resync values one after another per click: a resync can already
+      // settle in the same act(), a constant value would be wrong then.
       vi.mocked(filesApi.listFilesByIds)
-        .mockResolvedValueOnce([{ ...initial, favorite: true }]) // nach A
-        .mockResolvedValueOnce([{ ...initial, favorite: false }]) // nach B
-        .mockResolvedValueOnce([{ ...initial, favorite: true }]); // nach C
+        .mockResolvedValueOnce([{ ...initial, favorite: true }]) // after A
+        .mockResolvedValueOnce([{ ...initial, favorite: false }]) // after B
+        .mockResolvedValueOnce([{ ...initial, favorite: true }]); // after C
 
-      // Jeder Klick in einem eigenen act() - echter Re-Render dazwischen,
-      // genau wie bei drei zeitlich getrennten Nutzerklicks.
+      // Each click in its own act() - a real re-render in between,
+      // just like three user clicks separated in time.
       await act(async () => {
         result.current.toggleFavorite(modelId); // A
       });
@@ -480,25 +480,25 @@ describe('useCatalogStore', () => {
       const { result } = renderHook(() => useCatalogStore());
       await waitFor(() => expect(result.current.models).toHaveLength(1));
       const modelId = result.current.models[0].id;
-      const backendValue = result.current.models[0].favorite; // Backend aendert sich in diesem Test NIE erfolgreich.
+      const backendValue = result.current.models[0].favorite; // the backend NEVER changes successfully in this test.
       vi.mocked(filesApi.listFilesByIds).mockResolvedValue([{ ...result.current.models[0], favorite: backendValue }]);
 
       await act(async () => {
         result.current.toggleFavorite(modelId); // A: pending
       });
       await act(async () => {
-        result.current.toggleFavorite(modelId); // B: pending, neuere Generation
+        result.current.toggleFavorite(modelId); // B: pending, newer generation
       });
 
-      // B (neuester Aufruf) schlaegt zuerst fehl.
+      // B (newest call) fails first.
       await act(async () => {
         deferredB.reject(new Error('db locked'));
         await Promise.resolve();
         await Promise.resolve();
       });
-      // A (aelterer Aufruf) schlaegt DANACH ebenfalls fehl - ein reiner
-      // Generation-Zaehler wuerde diesen Fehler ignorieren und die UI faelschlich
-      // auf einem erfolgreichen Zustand belassen, den das Backend nie hatte.
+      // A (older call) ALSO fails AFTERWARDS - a plain generation counter
+      // would ignore this error and wrongly leave the UI in a successful
+      // state the backend never had.
       await act(async () => {
         deferredA.reject(new Error('db locked'));
         await Promise.resolve();
@@ -511,7 +511,7 @@ describe('useCatalogStore', () => {
     it('keeps the latest successful value when an older overlapping call fails later', async () => {
       const deferredA = createDeferred<void>();
       vi.mocked(filesApi.setFavorite)
-        .mockReturnValueOnce(deferredA.promise as Promise<void>) // A: bleibt pending, schlaegt spaeter fehl
+        .mockReturnValueOnce(deferredA.promise as Promise<void>) // A: stays pending, fails later
         .mockResolvedValueOnce(undefined); // C: erfolgreich
 
       mockInitialLoad([makeModelFile({ id: 'm1', favorite: false })]);
@@ -524,27 +524,27 @@ describe('useCatalogStore', () => {
         result.current.toggleFavorite(modelId); // A: pending (false -> true)
       });
       await act(async () => {
-        result.current.toggleFavorite(modelId); // C: erfolgreich (true -> false -> ... siehe Zuweisung oben, Endwert durch Resync bestimmt)
+        result.current.toggleFavorite(modelId); // C: succeeds (true -> false -> ... see assignment above, final value determined by resync)
       });
       await act(async () => {
         await Promise.resolve();
         await Promise.resolve();
       });
 
-      // A schlaegt jetzt verspaetet fehl - C ist bereits erfolgreich durchgelaufen.
+      // A now fails late - C has already completed successfully.
       await act(async () => {
         deferredA.reject(new Error('db locked'));
         await Promise.resolve();
         await Promise.resolve();
       });
 
-      // Am Ende bestimmt immer der Backend-Stand die UI.
+      // In the end the backend state always determines the UI.
       expect(result.current.models.find((m) => m.id === modelId)?.favorite).toBe(true);
     });
 
     it('does not let a stale, slow resync overwrite a newer resync that already completed', async () => {
-      // Race: Resync R1 nach A haengt, waehrenddessen laeuft B samt Resync R2
-      // komplett durch. Das verspaetete R1 darf R2 nicht ueberschreiben (Epoch).
+      // Race: resync R1 after A hangs, meanwhile B including resync R2
+      // runs to completion. The late R1 must not overwrite R2 (epoch).
       vi.mocked(filesApi.setFavorite).mockResolvedValue(undefined);
       const deferredResyncR1 = createDeferred<import('../types').ModelFile[]>();
       mockInitialLoad([makeModelFile({ id: 'm1', favorite: false })]);
@@ -553,27 +553,27 @@ describe('useCatalogStore', () => {
       const modelId = result.current.models[0].id;
       const initial = result.current.models[0];
 
-      // R1 (Resync nach A) bleibt zunaechst haengen.
+      // R1 (resync after A) hangs for now.
       vi.mocked(filesApi.listFilesByIds).mockReturnValueOnce(deferredResyncR1.promise);
 
       await act(async () => {
-        result.current.toggleFavorite(modelId); // A: loest setFavorite + danach R1 aus (R1 haengt)
+        result.current.toggleFavorite(modelId); // A: triggers setFavorite and then R1 (R1 hangs)
         await Promise.resolve();
         await Promise.resolve();
       });
 
-      // R2 (Resync nach B) liefert sofort den neuen, korrekten Zustand.
+      // R2 (resync after B) delivers the new, correct state right away.
       vi.mocked(filesApi.listFilesByIds).mockResolvedValueOnce([{ ...initial, favorite: false }]);
       await act(async () => {
-        result.current.toggleFavorite(modelId); // B: eigene, vollstaendig abgeschlossene Mutation inkl. R2
+        result.current.toggleFavorite(modelId); // B: its own, fully completed mutation incl. R2
         await Promise.resolve();
         await Promise.resolve();
         await Promise.resolve();
       });
       expect(result.current.models.find((m) => m.id === modelId)?.favorite).toBe(false);
 
-      // R1 liefert jetzt endlich seinen LAENGST VERALTETEN Zustand - darf den
-      // bereits von R2 gesetzten korrekten Zustand NICHT ueberschreiben.
+      // R1 finally delivers its LONG OUTDATED state - must NOT overwrite
+      // the correct state already set by R2.
       await act(async () => {
         deferredResyncR1.resolve([{ ...initial, favorite: true }]);
         await Promise.resolve();
@@ -584,8 +584,8 @@ describe('useCatalogStore', () => {
     });
 
     it('Finding 3: a stale, slow ensureFullModel fetch does not overwrite a newer mutation resync', async () => {
-      // ensureFullModel() haengt, waehrenddessen laeuft eine Mutation samt Resync
-      // durch. Das verspaetete Fetch-Ergebnis darf sie nicht rueckgaengig machen.
+      // ensureFullModel() hangs, meanwhile a mutation including resync runs
+      // through. The late fetch result must not undo it.
       vi.mocked(filesApi.setFavorite).mockResolvedValue(undefined);
       mockInitialLoad([makeModelFile({ id: 'm1', favorite: false })]);
       const { result } = renderHook(() => useCatalogStore());
@@ -594,7 +594,7 @@ describe('useCatalogStore', () => {
       const initial = result.current.models[0];
 
       const deferredFetchA = createDeferred<import('../types').ModelFile[]>();
-      // 1. Aufruf von listFilesByIds: ensureFullModel's Fetch A - bleibt haengen.
+      // 1st call of listFilesByIds: ensureFullModel's fetch A - hangs.
       vi.mocked(filesApi.listFilesByIds).mockReturnValueOnce(deferredFetchA.promise);
 
       await act(async () => {
@@ -602,20 +602,20 @@ describe('useCatalogStore', () => {
         await Promise.resolve();
       });
 
-      // 2. Aufruf von listFilesByIds: der M-03-Resync von toggleFavorite -
-      // liefert sofort den neuen, korrekten Zustand (favorite: true).
+      // 2nd call of listFilesByIds: the M-03 resync of toggleFavorite -
+      // delivers the new, correct state right away (favorite: true).
       vi.mocked(filesApi.listFilesByIds).mockResolvedValueOnce([{ ...initial, favorite: true }]);
       await act(async () => {
-        result.current.toggleFavorite(modelId); // schliesst inkl. eigenem Resync vollstaendig ab
+        result.current.toggleFavorite(modelId); // completes fully including its own resync
         await Promise.resolve();
         await Promise.resolve();
         await Promise.resolve();
       });
       expect(result.current.models.find((m) => m.id === modelId)?.favorite).toBe(true);
 
-      // Fetch A liefert jetzt endlich seinen LAENGST VERALTETEN Zustand
-      // (favorite: false, wie vor der Mutation) - darf den bereits korrekt
-      // resyncten Zustand NICHT ueberschreiben.
+      // Fetch A finally delivers its LONG OUTDATED state
+      // (favorite: false, as before the mutation) - must NOT overwrite the
+      // already correctly resynced state.
       await act(async () => {
         deferredFetchA.resolve([{ ...initial, favorite: false }]);
         await Promise.resolve();

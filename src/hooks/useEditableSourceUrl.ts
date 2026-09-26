@@ -6,10 +6,10 @@ interface EditableSourceUrlModel {
 }
 
 /**
- * Teilt sich das Bearbeiten-Verhalten der "Quell-URL"-Zeile zwischen
- * DetailPanel (kompakt/komfortabel) und ModelDetailPage: Eingabefeld
- * anzeigen, per Enter/Blur speichern, per Escape verwerfen ohne beim
- * Blur trotzdem zu speichern (cancelingRef verhindert das).
+ * Shares the editing behavior of the "Source URL" row between
+ * DetailPanel (compact/comfort) and ModelDetailPage: show the input,
+ * save on Enter/blur, discard on Escape without still saving on
+ * blur (cancelingRef prevents that).
  */
 export function useEditableSourceUrl(
   model: EditableSourceUrlModel | null,

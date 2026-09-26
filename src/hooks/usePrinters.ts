@@ -3,9 +3,9 @@ import * as printersApi from '../lib/api/printers';
 import type { Printer, PrinterKind, UnitKind } from '../types';
 
 /**
- * Drucker und ihre Mehrfarbeinheiten. Jede Aenderung laedt die Liste neu;
- * Fehler landen in `error` und werden zusaetzlich weitergereicht, damit der
- * Aufrufer z.B. ein Eingabefeld offen lassen kann.
+ * Printers and their multi-color units. Every change reloads the list;
+ * errors end up in `error` and are also passed on so the caller can,
+ * for example, keep an input open.
  */
 export function usePrinters() {
   const [printers, setPrinters] = useState<Printer[]>([]);
@@ -59,7 +59,7 @@ export function usePrinters() {
 }
 
 /**
- * Eine einzige Instanz in App.tsx, weitergereicht an Rail und FilamentView,
- * damit beide denselben Stand sehen.
+ * A single instance in App.tsx, passed to Rail and FilamentView so both
+ * see the same state.
  */
 export type PrintersState = ReturnType<typeof usePrinters>;

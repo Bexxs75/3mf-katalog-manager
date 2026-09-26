@@ -3,19 +3,19 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { evaluateImageDrop, isOverDropZone, isWindowsPlatform, type ImageDropRejection } from '../lib/imageDrop';
 
 interface Options {
-  /** Nur lauschen, solange das Formular offen ist. */
+  /** Only listen while the form is open. */
   enabled: boolean;
   onImage: (path: string) => void;
   onReject: (reason: ImageDropRejection) => void;
 }
 
 /**
- * Datei-Drop auf ein Element (z. B. das Bildfeld im Spulenformular). Natives
- * HTML5-Drop kommt unter `dragDropEnabled` (fuer den Modell-Import in
- * useFileImport) im WebKitGTK-Fenster nie an: Deshalb wird Tauris
- * `onDragDropEvent` ausgewertet und die Position selbst gegen das Element
- * geprueft. Der Modell-Import ignoriert Drops ausserhalb des Katalogs
- * (useFileImport `enabled`), es gibt also keinen Doppel-Import.
+ * File drop onto an element (e.g. the image field in the spool form). Native
+ * HTML5 drop never arrives in the WebKitGTK window under `dragDropEnabled`
+ * (needed for model import in useFileImport): so Tauri's
+ * `onDragDropEvent` is evaluated and the position is checked against the
+ * element ourselves. The model import ignores drops outside the catalog
+ * (useFileImport `enabled`), so there is no double import.
  */
 export function useImageDropZone<T extends HTMLElement>({ enabled, onImage, onReject }: Options) {
   const zoneRef = useRef<T>(null);
@@ -24,14 +24,14 @@ export function useImageDropZone<T extends HTMLElement>({ enabled, onImage, onRe
   useEffect(() => {
     handlers.current = { onImage, onReject };
   });
-  // Nur unter Windows liefert Tauri physische Pixel (siehe imageDrop.ts); die
-  // Plattform aendert sich waehrend der Laufzeit nicht, daher einmal ermitteln.
+  // Only on Windows does Tauri deliver physical pixels (see imageDrop.ts); the
+  // platform doesn't change at runtime, so detect it once.
   const isWindows = useRef(isWindowsPlatform()).current;
 
   useEffect(() => {
     if (!enabled) return;
-    // Lokales Flag statt "mounted"-Ref: StrictMode (mount → cleanup → mount)
-    // macht aus der ersten Anmeldung sauber eine tote, die zweite bleibt aktiv.
+    // Local flag instead of a "mounted" ref: StrictMode (mount → cleanup → mount)
+    // cleanly turns the first registration into a dead one, the second stays active.
     let active = true;
     const zoneRect = () => zoneRef.current?.getBoundingClientRect() ?? null;
     const unlisten = getCurrentWebview().onDragDropEvent((event) => {
@@ -50,9 +50,9 @@ export function useImageDropZone<T extends HTMLElement>({ enabled, onImage, onRe
     return () => {
       active = false;
       setOver(false);
-      // `listen()` kann (v.a. in StrictMode, doppelter Mount) auch erst nach
-      // dem Cleanup ablehnen bzw. `fn()` kann fehlschlagen - ohne catch waere
-      // das eine unhandled rejection.
+      // `listen()` may also reject only after the cleanup (especially in
+      // StrictMode, double mount), or `fn()` may fail - without catch this
+      // would be an unhandled rejection.
       unlisten
         .then((fn) => fn())
         .catch((e) => console.error('[useImageDropZone] Abbestellen fehlgeschlagen:', e));

@@ -16,8 +16,8 @@ export function QueueList({ queue, onQueueReorder, onQueueRemove, onQueueSelect,
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
 
-  // Umsortieren per Maus-Events statt HTML5-DnD: dragDropEnabled (fuer den
-  // Datei-Import noetig) faengt native Drag-Sessions unter WebKitGTK ab.
+  // Reordering via mouse events instead of HTML5 DnD: dragDropEnabled (needed
+  // for file import) intercepts native drag sessions under WebKitGTK.
   useEffect(() => {
     if (dragIndex === null) return;
     const handleMouseUp = () => {

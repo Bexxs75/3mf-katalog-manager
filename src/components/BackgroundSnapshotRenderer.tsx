@@ -7,12 +7,11 @@ interface Props {
 }
 
 /**
- * Rendert unsichtbar (echte Groesse, aber ausserhalb des sichtbaren
- * Bereichs positioniert und transparent) im Hintergrund einen
- * Schnappschuss fuer eine einzelne Datei nach. ModelViewer braucht eine
- * reale Container-Groesse (ResizeObserver-basiert) - display:none wuerde
- * dazu fuehren, dass nie gerendert wird, daher opacity+position statt
- * display.
+ * Renders a snapshot for a single file invisibly in the background (real
+ * size, but positioned outside the visible area and transparent).
+ * ModelViewer needs a real container size (ResizeObserver-based) -
+ * display:none would mean it never renders, hence opacity+position
+ * instead of display.
  */
 export function BackgroundSnapshotRenderer({ fileId, onSnapshotCaptured, onError }: Props) {
   return (

@@ -187,12 +187,12 @@ export function CatalogWorkspace({
   const t = useT();
   const queueFilament = useFilamentCheck(
     queue.map((m) => m.id),
-    // Erzwingt ein Neuladen, wenn sich der Slicer-Bedarf eines Warteschlangen-
-    // Eintrags aendert (z. B. nach "Metadaten neu einlesen"), auch wenn die
-    // IDs und ihre Reihenfolge gleich bleiben.
+    // Forces a reload when the slicer data of a queue entry changes
+    // (e.g. after "Re-read metadata"), even if the IDs and their
+    // order stay the same.
     queue.map((m) => `${m.id}:${m.sliceInfo?.totalWeightG ?? ''}`).join('|'),
   );
-  // Zaehler aus dem ganzen Katalog (ohne Ordner/Tag/Suche), damit sie stabil bleiben.
+  // Counts over the whole catalog (without folder/tag/search) so they stay stable.
   const counts = useMemo(() => computeToolCounts(models, new Date()), [models]);
   return (
     <div className="flex-1 flex min-h-0">
@@ -248,7 +248,7 @@ export function CatalogWorkspace({
         toolView={toolView}
         onToolViewChange={(v) => {
           setToolView(v);
-          // Ansicht und Sammlung schliessen sich aus.
+          // View and collection are mutually exclusive.
           if (v) {
             setActiveCollection(null);
             setCollectionsGalleryOpen(false);

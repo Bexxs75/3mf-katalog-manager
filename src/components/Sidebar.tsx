@@ -91,8 +91,8 @@ export function Sidebar({
     setCreatingCollection(false);
   };
 
-  // Inline-Eingabe statt window.prompt. Der Ordner entsteht unter dem aktiven
-  // Ordner, bei "Alle Modelle" an der Wurzel.
+  // Inline input instead of window.prompt. The folder is created below the
+  // active folder, at the root for "All models".
   const submitCreateFolder = () => {
     const value = folderNameDraft.trim();
     if (value) onCreateFolder(activeFolderId === 'all' ? null : activeFolderId, value);

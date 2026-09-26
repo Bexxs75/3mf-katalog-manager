@@ -1,7 +1,7 @@
 import type { ModelFile } from '../types';
 
-// Werkzeug-Ansichten der Seitenleiste: rein berechnet aus der Modellliste,
-// ohne Seiteneffekte, damit sie einzeln testbar sind.
+// Tool views of the sidebar: computed purely from the model list,
+// without side effects, so they can be tested individually.
 export type ToolView = 'recent' | 'new' | 'favorites' | 'duplicates';
 
 export const RECENT_LIMIT = 20;
@@ -22,9 +22,9 @@ export const TOOL_VIEW_LABEL_KEY: Record<ToolView, 'toolRecent' | 'toolNew' | 't
   duplicates: 'toolDuplicates',
 };
 
-// Eingefrorener Stand von lastViewedAt je Modell-id, aufgenommen beim
-// (Re-)Aktivieren der "recent"-Ansicht - haelt die Reihenfolge stabil,
-// waehrend die Ansicht aktiv ist (siehe useCatalogFilters).
+// Frozen lastViewedAt state per model id, captured when the "recent" view
+// is (re)activated - keeps the order stable while the view is active
+// (see useCatalogFilters).
 export type RecentSnapshot = Map<string, string | null>;
 
 function time(value: string | null): number {

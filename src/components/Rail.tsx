@@ -461,7 +461,7 @@ export function Rail({
                 </div>
                 <div className="flex justify-between text-[11.5px] py-1 text-[var(--ink-2)]">
                   <span>{t('infoThirdPartyLicensesLabel')}</span>
-                  {/* Untereinander statt nebeneinander, damit Label und Werte nicht umbrechen. */}
+                  {/* Stacked instead of side by side so label and values don't wrap. */}
                   <span className="flex flex-col items-end">
                     {[
                       { name: 'Open CASCADE', anchor: '' },

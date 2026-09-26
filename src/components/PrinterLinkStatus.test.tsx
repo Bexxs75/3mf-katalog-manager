@@ -36,8 +36,8 @@ describe('PrinterLinkStatus', () => {
   });
 
   it('shows a message when syncing fails', async () => {
-    // Tauri lehnt Commands oft mit einem einfachen String ab, nicht mit
-    // einem Error-Objekt - genau dieser Fall soll hier abgefangen werden.
+    // Tauri often rejects commands with a plain string, not with an
+    // Error object - exactly this case is to be caught here.
     const l = link(base);
     l.syncNow = vi.fn().mockRejectedValue('offline');
     render(<LanguageProvider><PrinterLinkStatus printerId="1" link={l} /></LanguageProvider>);
@@ -55,10 +55,10 @@ describe('PrinterLinkStatus', () => {
   });
 
   it('shows a paused-retest hint instead of a healthy status when paused without an error', () => {
-    // sanitize_printer_connections (backup.rs) setzt nach einer
-    // Sicherungswiederherstellung `paused = 1`, aber `lastError` bleibt leer
-    // - ohne diesen Zweig sah die Verbindung "gesund" aus, obwohl der
-    // Abgleich sie fuer immer ueberspringt.
+    // sanitize_printer_connections (backup.rs) sets `paused = 1` after a
+    // backup restore, but `lastError` stays empty - without this branch
+    // the connection looked "healthy" although the sync skips it
+    // forever.
     const l = link({ ...base, paused: true, lastError: null });
     const { container } = render(<LanguageProvider><PrinterLinkStatus printerId="1" link={l} /></LanguageProvider>);
     expect(screen.getByText('pausiert – bitte Verbindung neu testen')).toBeInTheDocument();

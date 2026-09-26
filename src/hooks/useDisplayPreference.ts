@@ -5,9 +5,9 @@ export type DisplayPreference = 'thumbnail' | 'render';
 const STORAGE_KEY = '3mf-katalog-display-preference';
 
 /**
- * Ob Karten und Detailseite das eingebettete Datei-Bild ("thumbnail") oder die
- * gerenderte 3D-Ansicht ("render") bevorzugen, in localStorage gespeichert.
- * Default "thumbnail", damit sich fuer Bestandsnutzer nichts aendert.
+ * Whether cards and detail page prefer the embedded file image ("thumbnail")
+ * or the rendered 3D view ("render"), stored in localStorage.
+ * Default "thumbnail" so nothing changes for existing users.
  */
 export function useDisplayPreference() {
   const [preference, setPreferenceState] = useState<DisplayPreference>(() => {

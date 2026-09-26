@@ -10,17 +10,17 @@ interface Props {
   printers: Printer[];
 }
 
-/** Inhalt des Einstellungs-Reiters „Drucker“. */
+/** Content of the "Printers" settings tab. */
 export function PrinterLinkSettings({ link, printers }: Props) {
   const t = useT();
   const [actionError, setActionError] = useState<string | null>(null);
-  // Resin-Drucker haben keine Druckeranbindung.
+  // Resin printers have no printer connection.
   const linkable = printers.filter((p) => p.kind !== 'resin');
   const statusOf = (printerId: string): { text: string; dot: string } => {
     const c = link.connections.find((x) => x.printerId === printerId);
     if (!c) return { text: t('printerLinkStatusNotLinked'), dot: 'bg-[var(--ink-3)]' };
-    // Nach einer Wiederherstellung ist `paused` gesetzt, `lastError` aber leer;
-    // ohne diesen Zweig saehe die Verbindung faelschlich verbunden aus.
+    // After a restore `paused` is set but `lastError` is empty;
+    // without this branch the connection would wrongly look connected.
     if (c.paused && c.lastError !== 'auth_required') return { text: t('printerPausedRetest'), dot: 'bg-[var(--warn)]' };
     if (c.lastError) return { text: t('printerLinkStatusError'), dot: 'bg-[var(--crit)]' };
     return { text: t('printerLinkStatusConnected'), dot: 'bg-[var(--good)]' };

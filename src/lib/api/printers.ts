@@ -5,9 +5,9 @@ export function listPrinters() {
   return invoke<Printer[]>('list_printers');
 }
 /**
- * Legt den Drucker samt erster Einheit an: Filament-Drucker bekommen einen
- * Spulenhalter (1 Fach), Resin-Drucker ihre Harzwanne. `holderName` ist der
- * uebersetzte Name dieser Einheit.
+ * Creates the printer with its first unit: filament printers get a
+ * spool holder (1 slot), resin printers their resin vat. `holderName` is the
+ * translated name of that unit.
  */
 export function addPrinter(name: string, holderName: string, kind: PrinterKind) {
   return invoke<Printer>('add_printer', { name, holderName, kind });
@@ -15,7 +15,7 @@ export function addPrinter(name: string, holderName: string, kind: PrinterKind) 
 export function renamePrinter(printerId: string, name: string) {
   return invoke('rename_printer', { printerId, name });
 }
-/** Liefert die Anzahl der Spulen, die an ihren Stammplatz zurueckkehrten. */
+/** Returns the number of spools that returned to their home location. */
 export function deletePrinter(printerId: string) {
   return invoke<number>('delete_printer', { printerId });
 }
@@ -34,7 +34,7 @@ export function reorderUnits(printerId: string, unitIds: string[]) {
 export function loadSpool(spoolId: string, unitId: string, slotIndex: number) {
   return invoke<{ displacedSpoolId: string | null }>('load_spool', { spoolId, unitId, slotIndex });
 }
-/** Liefert den neuen Lagerort (Stammplatz oder `location`). */
+/** Returns the new location (home location or `location`). */
 export function unloadSpool(spoolId: string, location: string | null) {
   return invoke<string | null>('unload_spool', { spoolId, location });
 }

@@ -1,7 +1,7 @@
 /**
- * Trennt einen Dateinamen in Basis und Endung (samt Punkt) fuer die
- * Umbenennen-UI, die die Endung nicht editierbar zeigt. Trenner ist der LETZTE
- * Punkt; ein Punkt an Position 0 (".gitignore") zaehlt nicht.
+ * Splits a file name into base and extension (including the dot) for the
+ * rename UI, which shows the extension as non-editable. The separator is the
+ * LAST dot; a dot at position 0 (".gitignore") doesn't count.
  */
 export function splitFileName(name: string): { base: string; extension: string } {
   const dotIndex = name.lastIndexOf('.');

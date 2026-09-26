@@ -34,10 +34,10 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
   const [dragArmed, setDragArmed] = useState(false);
   const dragStartPos = useRef<{ x: number; y: number } | null>(null);
 
-  // Umsortieren per Maus-Events statt HTML5-DnD (unter Tauri/WebKitGTK faengt
-  // dragDropEnabled native Drag-Sessions ab). Erst ab DRAG_THRESHOLD_PX
-  // Bewegung gilt es als Ziehen, sonst wuerde schon ein verrutschter Klick auf
-  // Checkbox oder Stern umsortieren.
+  // Reordering via mouse events instead of HTML5 DnD (under Tauri/WebKitGTK
+  // dragDropEnabled intercepts native drag sessions). Only movement beyond
+  // DRAG_THRESHOLD_PX counts as dragging, otherwise a slipped click on the
+  // checkbox or star would already reorder.
   const DRAG_THRESHOLD_PX = 6;
   useEffect(() => {
     if (!reorderable || dragIndex === null) return;
@@ -69,9 +69,9 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
     };
   }, [reorderable, dragIndex, overIndex, dragArmed, models, onReorder]);
 
-  // Karten als Drag-Quelle fuer das Verschieben in einen Ordner (nur ohne
-  // `reorderable`), mit derselben Schwelle. Den Move loest der globale
-  // mouseup-Handler in App.tsx aus; hier nur `onDragFileStart`.
+  // Cards as drag source for moving into a folder (only without
+  // `reorderable`), with the same threshold. The move itself is triggered by the
+  // global mouseup handler in App.tsx; here only `onDragFileStart`.
   const [fileDragCandidateId, setFileDragCandidateId] = useState<string | null>(null);
   const [fileDragArmed, setFileDragArmed] = useState(false);
   const fileDragStartPos = useRef<{ x: number; y: number } | null>(null);

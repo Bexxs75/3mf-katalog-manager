@@ -20,15 +20,15 @@ export function useUpdateCheck() {
         setReleaseUrl(result.releaseUrl);
       })
       .catch((e) => {
-        // Wie im Backend: ein fehlgeschlagener Update-Check ist niemals ein
-        // sichtbarer Fehler, nur ein geloggter Hinweis.
+        // As in the backend: a failed update check is never a visible error,
+        // only a logged hint.
         console.warn('[update-check] Fehlgeschlagen:', e);
       })
       .finally(() => setChecking(false));
   }, []);
 
   useEffect(() => {
-    // Die App-Version sofort laden, unabhaengig vom Update-Check (bis zu 5 s).
+    // Load the app version right away, independent of the update check (up to 5 s).
     updateApi
       .getAppVersion()
       .then((version) => setCurrentVersion(version))

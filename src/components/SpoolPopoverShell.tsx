@@ -8,7 +8,7 @@ export const fieldClass =
 export const buttonClass = 'h-[30px] px-3 rounded-md text-[12.5px] font-semibold cursor-pointer border';
 
 interface Props {
-  /** Der Knopf, an dem das Fenster haengt. */
+  /** The button the popover hangs on. */
   anchor: HTMLElement;
   onClose: () => void;
   minWidth: number;
@@ -19,20 +19,20 @@ interface Props {
   submitLabel: ReactNode;
   onSubmit: () => void;
   /**
-   * Zusaetzliche Tastaturbehandlung (z.B. Enter im Eingabefeld loest das
-   * Absenden aus). Escape wird bereits von der Huelle behandelt und schliesst
-   * immer, unabhaengig davon, ob dieser Handler gesetzt ist.
+   * Additional keyboard handling (e.g. Enter in the input submits).
+   * Escape is already handled by the shell and always closes,
+   * regardless of whether this handler is set.
    */
   onKeyDown?: (e: ReactKeyboardEvent) => void;
-  /** Formularinhalt zwischen Untertitel und Fehleranzeige. */
+  /** Form content between subtitle and error display. */
   children: ReactNode;
 }
 
 /**
- * Gemeinsame Huelle der Lager-Popover ("Nachkaufen", "− Verbrauch"): per
- * useAnchoredPopup positioniertes Portal-Fenster mit Titel, Formular (children),
- * Fehleranzeige und Abbrechen/Absenden. Escape, "Abbrechen" und Klick daneben
- * schliessen immer, ohne abzusenden.
+ * Shared shell of the inventory popovers ("Restock", "− Usage"): portal
+ * window positioned via useAnchoredPopup with title, form (children), error
+ * display and cancel/submit. Escape, "Cancel" and clicking outside always
+ * close without submitting.
  */
 export function SpoolPopoverShell({
   anchor,
@@ -48,7 +48,7 @@ export function SpoolPopoverShell({
   children,
 }: Props) {
   const t = useT();
-  // Stabile Ref-Huelle, weil useAnchoredPopup eine RefObject erwartet.
+  // Stable ref wrapper because useAnchoredPopup expects a RefObject.
   const anchorRef = useMemo(() => ({ current: anchor }), [anchor]);
   const { popupRef, style } = useAnchoredPopup<HTMLElement, HTMLDivElement>(anchorRef, true, onClose, minWidth);
 

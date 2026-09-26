@@ -77,8 +77,8 @@ describe('PrinterConnectionSection', () => {
   });
 
   it('does not claim "Verbunden" while the connection is paused (e.g. after a backup restore)', () => {
-    // Nach einer Wiederherstellung ist `paused = 1` ohne `lastError`; die Sektion
-    // darf dann nicht "Verbunden" zeigen.
+    // After a restore `paused = 1` is set without `lastError`; the section
+    // must not show "Connected" then.
     renderIt(link(null), { ...okConnection, paused: true, lastError: null });
     expect(screen.queryByText('Verbunden')).not.toBeInTheDocument();
   });
@@ -92,7 +92,7 @@ describe('PrinterConnectionSection', () => {
     const l = link(null);
     const { rerender } = renderIt(l, okConnection);
     expect(screen.getByText('Verbunden')).toBeInTheDocument();
-    // Eine aktualisierte `connection` von aussen muss ankommen.
+    // An updated `connection` from outside must arrive.
     const paused = { ...okConnection, paused: true, lastError: null };
     rerender(
       <LanguageProvider>
@@ -103,8 +103,8 @@ describe('PrinterConnectionSection', () => {
   });
 
   it('does not let a stale prop update clobber a just-returned test result', async () => {
-    // Eine spaetere, aeltere `connection`-Prop darf das frische Testergebnis nicht
-    // verwerfen.
+    // A later, older `connection` prop must not discard the fresh test
+    // result.
     const freshConnection: PrinterConnection = { ...okConnection, remoteVersion: 'v0.9.0-fresh' };
     const l = link({ ok: true, error: null, connection: freshConnection });
     const { rerender } = renderIt(l, null);

@@ -16,7 +16,7 @@ interface Props {
   knownLocations: string[];
   onClose: () => void;
   onSaved: () => void;
-  /** Art fuer neue Eintraege (aktuelle Ansicht im Lager). */
+  /** Kind for new entries (current view in the inventory). */
   defaultKind?: SpoolKind;
 }
 
@@ -60,7 +60,7 @@ function toForm(spool: FilamentSpool): FormState {
     manufacturer: spool.manufacturer ?? '',
     color: spool.color ?? '',
     colorHex: spool.colorHex,
-    // Steckt die Spule in einem Fach, bearbeitet das Feld ihren Stammplatz.
+    // If the spool sits in a slot, the field edits its home location.
     location: (spool.unitId !== null ? spool.homeLocation : spool.location) ?? '',
     diameterMm: String(spool.diameterMm),
     originalWeightG: String(spool.originalWeightG),
@@ -75,9 +75,9 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
   const t = useT();
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [error, setError] = useState<string | null>(null);
-  // Abgelehntes Bild (zu gross, kein Bild, mehrere Dateien): steht direkt am
-  // Bildfeld und haelt das Formular offen, bis ein anderes Bild kommt oder
-  // der Hinweis geschlossen wird - sonst wuerde still ohne Bild gespeichert.
+  // Rejected image (too large, not an image, several files): shown right at
+  // the image field and keeps the form open until another image arrives or
+  // the hint is closed - otherwise it would silently save without an image.
   const [imageError, setImageError] = useState<string | null>(null);
   const imageErrorRef = useRef<HTMLDivElement>(null);
 
@@ -138,7 +138,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
       price: form.price.trim() === '' ? null : parseFloat(form.price),
       imagePng: form.imagePng,
       colorHex: form.colorHex,
-      // Nur durchgereicht - das Fach aendern ausschliesslich load/unload_spool.
+      // Only passed through - the slot is changed exclusively by load/unload_spool.
       homeLocation: editing?.homeLocation ?? null,
       unitId: editing?.unitId ?? null,
       slotIndex: editing?.slotIndex ?? null,
@@ -148,8 +148,8 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
       if (editing) {
         await invoke('update_filament_spool', { spool: payload });
       } else {
-        // Jede Spule bekommt einen eigenen Datensatz, auch bei gleichen Werten: der
-        // Rest wird pro physischer Spule verfolgt.
+        // Every spool gets its own record, even with identical values: the
+        // remaining weight is tracked per physical spool.
         const count = Math.max(1, parseInt(form.quantity, 10) || 1);
         for (let i = 0; i < count; i++) {
           await invoke('add_filament_spool', { spool: payload });

@@ -9,9 +9,9 @@ export interface PrintLogEntry {
 }
 
 /**
- * Laedt und verwaltet die Druckprotokoll-Eintraege eines einzelnen Modells.
- * Bewusst nicht Teil von ModelFile/list_files - Eintraege koennen Fotos
- * enthalten und sollen nicht bei jedem Katalog-Laden mitkommen.
+ * Loads and manages the print log entries of a single model.
+ * Deliberately not part of ModelFile/list_files - entries can contain
+ * photos and shouldn't come along with every catalog load.
  */
 export function usePrintLog(fileId: string) {
   const [entries, setEntries] = useState<PrintLogEntry[]>([]);

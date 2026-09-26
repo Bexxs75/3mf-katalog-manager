@@ -4,15 +4,15 @@ import * as api from '../lib/api/printerLink';
 import type { JobDecision, PrinterConnection, PrinterJob } from '../types';
 
 /**
- * Zustand der Druckeranbindung. Lädt beim Start und nach jedem Abgleich
- * (Ereignis vom Backend) neu.
+ * State of the printer connection. Reloads at startup and after every sync
+ * (event from the backend).
  */
 export function usePrinterLink() {
   const [enabled, setEnabledState] = useState(false);
   const [connections, setConnections] = useState<PrinterConnection[]>([]);
   const [jobs, setJobs] = useState<PrinterJob[]>([]);
   const [error, setError] = useState<string | null>(null);
-  // Verhindert setState nach dem Unmount; in Effects gesetzt, damit StrictMode passt.
+  // Prevents setState after unmount; set in effects so StrictMode works.
   const mounted = useRef(false);
   useEffect(() => {
     mounted.current = true;

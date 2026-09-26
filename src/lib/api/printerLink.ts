@@ -8,7 +8,7 @@ import type {
   PrinterTestResult,
 } from '../../types';
 
-/** Vom Backend nach jedem Abgleich gesendet. */
+/** Sent by the backend after every sync. */
 export const PRINTER_JOBS_CHANGED_EVENT = 'printer-jobs-changed';
 
 export function getPrinterLinkEnabled() {
@@ -20,7 +20,7 @@ export function setPrinterLinkEnabled(enabled: boolean) {
 export function listPrinterConnections() {
   return invoke<PrinterConnection[]>('list_printer_connections');
 }
-/** Vorerst nur Klipper/Moonraker. */
+/** Klipper/Moonraker only for now. */
 export function testPrinterConnection(printerId: string, address: string) {
   return invoke<PrinterTestResult>('test_printer_connection', { printerId, kind: 'moonraker', address });
 }
@@ -36,7 +36,7 @@ export function listOpenPrinterJobs() {
 export function previewPrinterJob(jobId: string, spoolId: string) {
   return invoke<JobPreview>('preview_printer_job', { jobId, spoolId });
 }
-/** Base64-PNG oder null. */
+/** Base64 PNG or null. */
 export function getPrinterJobThumbnail(jobId: string) {
   return invoke<string | null>('get_printer_job_thumbnail', { jobId });
 }

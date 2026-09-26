@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import * as slicerApi from '../lib/api/slicer';
 import type { SlicerConfig } from '../types';
 
-// `openInSlicer` nimmt nur `modelId`/`slicerId`; Pfad und Pruefung liegen im Backend.
+// `openInSlicer` only takes `modelId`/`slicerId`; path and validation live in the backend.
 export function useSlicerLauncher(
   slicers: SlicerConfig[],
   primaryId: string | null,

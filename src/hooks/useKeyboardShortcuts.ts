@@ -1,31 +1,31 @@
 import { useEffect } from 'react';
 
 export const SEARCH_INPUT_ID = 'catalog-search-input';
-// Von ModelGrid/ModelList auf jeder Modell-Kachel/-Zeile gesetzt (siehe dort) -
-// einziger Kopplungspunkt zwischen Raster-Markup und dieser rein positions-
-// basierten Navigation.
+// Set by ModelGrid/ModelList on every model tile/row (see there) -
+// the only coupling point between grid markup and this purely
+// position-based navigation.
 export const MODEL_TILE_ATTR = 'data-model-id';
 
 interface UseKeyboardShortcutsArgs {
-  // Reihenfolge der aktuell sichtbaren Modelle (nach Filter/Sortierung) -
-  // Grundlage fuer Links/Rechts (einfache Listen-Reihenfolge) und den
-  // Fallback fuer Hoch/Runter, falls die räumliche Suche nichts findet.
+  // Order of the currently visible models (after filter/sort) -
+  // basis for left/right (plain list order) and the fallback for
+  // up/down if the spatial search finds nothing.
   filteredIds: string[];
   selectedId: string | null;
   selectModel: (id: string) => void;
   hasBulkSelection: boolean;
   openBulkDeleteConfirm: () => void;
-  // false waehrend die Detailseite offen ist oder sonst ein Kontext aktiv
-  // ist, in dem Pfeiltasten-Navigation im Raster keinen Sinn ergibt.
+  // false while the detail page is open or another context is active
+  // in which arrow key navigation in the grid makes no sense.
   navigationEnabled: boolean;
-  // Leertaste: das ausgewaehlte Modell in die Mehrfachauswahl aufnehmen.
+  // Space: add the selected model to the multi-selection.
   toggleBulkSelect: (id: string) => void;
 }
 
-// `?.scrollIntoView?.(...)` statt `.scrollIntoView(...)`: sowohl das Element
-// (Tastatur-Navigation kann eine Id treffen, deren Kachel gerade nicht im DOM
-// ist, siehe findSpatialNeighbor-Fallback) als auch die Methode selbst
-// (jsdom in Tests implementiert scrollIntoView nicht) koennen fehlen.
+// `?.scrollIntoView?.(...)` instead of `.scrollIntoView(...)`: both the element
+// (keyboard navigation can hit an id whose tile isn't in the DOM right now,
+// see the findSpatialNeighbor fallback) and the method itself
+// (jsdom in tests doesn't implement scrollIntoView) can be missing.
 function scrollTileIntoView(id: string): void {
   document.querySelector<HTMLElement>(`[${MODEL_TILE_ATTR}="${CSS.escape(id)}"]`)?.scrollIntoView?.({ block: 'nearest' });
 }
@@ -35,17 +35,17 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
 }
 
-// Toleranz in Pixeln, innerhalb derer zwei Kachel-Mittelpunkte noch als
-// "gleiche Zeile" gelten - faengt Subpixel-Rundung ab, ohne echte
-// Nachbarzeilen faelschlich zusammenzufassen.
+// Tolerance in pixels within which two tile centers still count as the
+// "same row" - absorbs subpixel rounding without wrongly merging real
+// neighboring rows.
 const ROW_TOLERANCE_PX = 4;
 
 /**
- * Findet die naechste Kachel oberhalb/unterhalb anhand der gerenderten
- * Position statt einer Spaltenzahl: das Raster bricht per `auto-fill` um, und
- * die Ordner-Ansicht hat mehrere Mini-Raster. Nimmt die naechste Zeile in
- * Richtung und darin die horizontal naechste Kachel; null, wenn die aktuelle
- * Kachel nicht im DOM ist oder es keine gibt.
+ * Finds the next tile above/below by rendered position instead of a
+ * column count: the grid wraps via `auto-fill`, and the folder view has
+ * several mini grids. Takes the next row in that direction and the
+ * horizontally closest tile in it; null if the current tile isn't in the
+ * DOM or there is none.
  */
 export function findSpatialNeighbor(
   container: ParentNode,
@@ -81,10 +81,10 @@ export function findSpatialNeighbor(
 }
 
 /**
- * Tastaturkuerzel der Katalog-Uebersicht: "/" fokussiert die Suche, Pfeile
- * wechseln die Auswahl (Hoch/Runter raeumlich), Leertaste schaltet die
- * Mehrfachauswahl um, Entf/Backspace oeffnet die Loeschen-Bestaetigung (loescht
- * nicht direkt). Ignoriert, solange der Fokus in einem Eingabefeld liegt.
+ * Keyboard shortcuts of the catalog overview: "/" focuses the search, arrows
+ * change the selection (up/down spatially), Space toggles the
+ * multi-selection, Delete/Backspace opens the delete confirmation (doesn't
+ * delete directly). Ignored while focus is in an input field.
  */
 export function useKeyboardShortcuts({
   filteredIds,
@@ -132,7 +132,7 @@ export function useKeyboardShortcuts({
           scrollTileIntoView(spatialTarget);
           return;
         }
-        // Kein raeumlicher Treffer (z.B. eingeklappter Ordner): flache Reihenfolge.
+        // No spatial hit (e.g. collapsed folder): flat order.
       }
 
       const isNext = e.key === 'ArrowRight' || e.key === 'ArrowDown';

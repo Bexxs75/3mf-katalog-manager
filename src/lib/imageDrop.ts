@@ -1,4 +1,4 @@
-/** Wie der Klick-Upload (`pick_and_read_image`) und `read_dropped_image` im Backend. */
+/** Like the click upload (`pick_and_read_image`) and `read_dropped_image` in the backend. */
 export const DROPPABLE_IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp'] as const;
 
 export interface Point {
@@ -21,9 +21,9 @@ export type ImageDropResult =
   | { kind: 'rejected'; reason: ImageDropRejection };
 
 /**
- * Erkennt Windows an User-Agent/Platform, ohne eine zusaetzliche Abhaengigkeit
- * (z. B. `@tauri-apps/plugin-os`) einzufuehren. Ein `nav`-Parameter macht die
- * Funktion ohne globales `navigator`-Mocking testbar.
+ * Detects Windows via user agent/platform without adding an extra dependency
+ * (e.g. `@tauri-apps/plugin-os`). A `nav` parameter makes the function
+ * testable without mocking the global `navigator`.
  */
 export function isWindowsPlatform(
   nav: Pick<Navigator, 'userAgent' | 'platform'> = typeof navigator === 'undefined' ? { userAgent: '', platform: '' } : navigator,
@@ -38,13 +38,13 @@ export function physicalToCss(position: Point, devicePixelRatio: number): Point 
 }
 
 /**
- * Wandelt eine Tauri-Drop-Position in CSS-Pixel um. Nach dem wry-0.55-Quellcode
- * unterscheidet sich das je Backend:
- * - Windows (WebView2, `ScreenToClient`): liefert physische Pixel -> durch
- *   `devicePixelRatio` teilen.
- * - macOS (WKWebView, AppKit-Points) und Linux (WebKitGTK, unskalierte
- *   Widget-Koordinaten): liefern bereits CSS-/logische Pixel -> unveraendert
- *   uebernehmen, sonst waere die Trefferzone bei Skalierung falsch versetzt.
+ * Converts a Tauri drop position into CSS pixels. According to the wry 0.55
+ * source this differs per backend:
+ * - Windows (WebView2, `ScreenToClient`): delivers physical pixels -> divide by
+ *   `devicePixelRatio`.
+ * - macOS (WKWebView, AppKit points) and Linux (WebKitGTK, unscaled
+ *   widget coordinates): already deliver CSS/logical pixels -> take them
+ *   unchanged, otherwise the hit zone would be offset under scaling.
  */
 export function toCssPosition(position: Point, devicePixelRatio: number, isWindows: boolean): Point {
   return isWindows ? physicalToCss(position, devicePixelRatio) : position;
@@ -70,7 +70,7 @@ export function isDroppableImagePath(path: string): boolean {
   return (DROPPABLE_IMAGE_EXTENSIONS as readonly string[]).includes(name.slice(dot + 1).toLowerCase());
 }
 
-/** Reine Entscheidung fuer einen Tauri-Drop: ausserhalb, genau ein Bild, oder abgelehnt (mit Grund). */
+/** Pure decision for a Tauri drop: outside, exactly one image, or rejected (with reason). */
 export function evaluateImageDrop(
   paths: string[],
   position: Point,

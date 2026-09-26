@@ -16,24 +16,24 @@ interface Props {
   onRequestDelete: (id: string) => void;
   onCancelDelete: () => void;
   onConfirmDelete: (id: string) => void;
-  /** Mausdruck auf einer Spule - startet ggf. das Ziehen in ein Fach. */
+  /** Mouse down on a spool - may start dragging it into a slot. */
   onSpoolMouseDown?: (spoolId: string, event: ReactMouseEvent) => void;
-  /** Oeffnet/schliesst das Nachkaufen-Fenster; `anchor` = der geklickte Knopf. */
+  /** Opens/closes the restock popover; `anchor` = the clicked button. */
   onRestock?: (spool: FilamentSpool, anchor: HTMLElement) => void;
-  /** Spule, deren Nachkaufen-Fenster gerade offen ist (aria-expanded). */
+  /** Spool whose restock popover is currently open (aria-expanded). */
   restockOpenId?: string | null;
-  /** Oeffnet "− Verbrauch" (nur Resin). */
+  /** Opens "− Usage" (resin only). */
   onConsume?: (spool: FilamentSpool, anchor: HTMLElement) => void;
-  /** Spule, deren Verbrauch-Fenster gerade offen ist (aria-expanded). */
+  /** Spool whose usage popover is currently open (aria-expanded). */
   consumeOpenId?: string | null;
-  /** Gerade per Nachkaufen angelegte Eintraege, kurz hervorgehoben. */
+  /** Entries just created via restock, briefly highlighted. */
   highlightIds?: ReadonlySet<string>;
-  /** Art der gezeigten Liste; bei 'resin' entfaellt die Durchmesser-Spalte. */
+  /** Kind of the list shown; for 'resin' the diameter column is omitted. */
   kind?: SpoolKind;
 }
 
-// Kein Ziehen, wenn der Mausdruck auf einem Knopf der Karte/Zeile landet
-// (Bearbeiten, Loeschen, Bestaetigen).
+// No dragging when the mouse down lands on a button of the card/row
+// (edit, delete, confirm).
 function startsOnButton(event: ReactMouseEvent): boolean {
   return (event.target as HTMLElement).closest('button') !== null;
 }

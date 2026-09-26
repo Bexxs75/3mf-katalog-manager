@@ -205,7 +205,7 @@ export function ModelDetailPage({
                       {model.sourceUrl}
                     </a>
                   ) : (
-                    // Kein http(s)-Wert: als reiner Text, nie als klickbarer Link.
+                    // Not an http(s) value: plain text, never a clickable link.
                     <span className="text-[var(--ink-2)]">{model.sourceUrl}</span>
                   )}{' '}
                   <button onClick={startEditingSource} className="text-[var(--ink-3)]">✎</button>

@@ -24,9 +24,9 @@ interface Props {
   error: string | null;
   actions: PrinterActions;
   onClose: () => void;
-  /** Nach Aenderungen, die Spulen an ihren Stammplatz zurueckschicken koennen. */
+  /** After changes that can send spools back to their home location. */
   onSpoolsChanged: () => void;
-  /** Zeigt je Drucker-Karte die Verbindung (Typ, Adresse, Test) an - nur wenn die Druckeranbindung eingeschaltet ist. */
+  /** Shows the connection (type, address, test) per printer card - only when the printer connection is enabled. */
   printerLink?: PrinterLinkState;
 }
 
@@ -55,7 +55,7 @@ const KIND_LABEL: Record<UnitKind, KindLabelKey> = {
 
 const LETTERS = 'ABCDEFGHIJKLMNOP';
 
-/** "AMS A", "AMS B" … bzw. "Spulenhalter", "Spulenhalter 2" … fuer neue Einheiten. */
+/** "AMS A", "AMS B" … or "Spulenhalter", "Spulenhalter 2" … for new units. */
 export function suggestUnitName(printer: Printer, kind: UnitKind, defaultName: string): string {
   const sameKind = printer.units.filter((u) => u.kind === kind).length;
   if (kind === 'bambu_ams' || kind === 'bambu_ams_lite') return `${defaultName} ${LETTERS[sameKind] ?? sameKind + 1}`;
@@ -83,7 +83,7 @@ function Stepper({ value, onChange, label }: { value: number; onChange: (n: numb
   );
 }
 
-/** Seitenpanel zum Anlegen und Pflegen von Druckern und ihren Einheiten. */
+/** Side panel for creating and maintaining printers and their units. */
 export function PrinterManagePanel({ open, printers, spools, error, actions, onClose, onSpoolsChanged, printerLink }: Props) {
   const t = useT();
   const [newPrinter, setNewPrinter] = useState('');
@@ -105,8 +105,8 @@ export function PrinterManagePanel({ open, printers, spools, error, actions, onC
     }
   }, [open]);
 
-  // Sortieren per Ziehen am Griff: zeigerbasiert wie im restlichen Projekt
-  // (kein natives HTML5-Drag-&-Drop unter Tauri/WebKitGTK).
+  // Reordering by dragging the handle: pointer-based like the rest of the
+  // project (no native HTML5 drag & drop under Tauri/WebKitGTK).
   useEffect(() => {
     if (!dragUnit) return;
     const handleUp = () => {
@@ -131,16 +131,16 @@ export function PrinterManagePanel({ open, printers, spools, error, actions, onC
 
   const spoolsIn = (unitIds: string[]) => spools.filter((s) => s.unitId !== null && unitIds.includes(s.unitId)).length;
 
-  /** Loesch-Rueckfrage; der Satz zu zurueckkehrenden Spulen entfaellt bei 0
-   * (statt "0 Spulen kehren zurück."). */
+  /** Delete confirmation; the sentence about returning spools is dropped at 0
+   * (instead of "0 spools will return."). */
   const deleteConfirmText = (question: string, count: number) =>
     count === 0 ? question : `${question} ${formatCount(t('printersDeleteReturnHomeCount'), count)}`;
 
   const submitNewPrinter = () => {
     const name = newPrinter.trim();
     if (!name) return;
-    // Filament-Drucker bekommen einen Spulenhalter, Resin-Drucker ihre
-    // Harzwanne - der Name kommt uebersetzt mit.
+    // Filament printers get a spool holder, resin printers their
+    // resin vat - the name comes translated.
     const holderName = newPrinterKind === 'resin' ? t('printersKindResinVat') : t('printersKindExternal');
     actions.addPrinter(name, holderName, newPrinterKind).then(() => setNewPrinter(''), () => {});
   };
@@ -295,8 +295,8 @@ export function PrinterManagePanel({ open, printers, spools, error, actions, onC
                   <div className="flex flex-col gap-1.5 mt-2.5">
                     {printer.units.map((unit) =>
                       unit.kind === 'resin_vat' ? (
-                        // Die Harzwanne ist fest: nicht umbenennbar, nicht
-                        // loeschbar, nicht sortierbar.
+                        // The resin vat is fixed: not renamable, not
+                        // deletable, not sortable.
                         <div
                           key={unit.id}
                           data-testid={`unit-row-${unit.id}`}
@@ -432,7 +432,7 @@ export function PrinterManagePanel({ open, printers, spools, error, actions, onC
                     </div>
                   )}
 
-                  {/* Resin-Drucker haben keine Druckeranbindung (Backend lehnt sie ab). */}
+                  {/* Resin printers have no printer connection (the backend rejects it). */}
                   {printerLink?.enabled && !isResin && (
                     <PrinterConnectionSection
                       printerId={printer.id}
@@ -452,7 +452,7 @@ export function PrinterManagePanel({ open, printers, spools, error, actions, onC
                 placeholder={t('printersNewPrinterPlaceholder')}
                 className={`${fieldClass} flex-1 min-w-[140px]`}
               />
-              {/* Die Art wird nur beim Anlegen gewaehlt und ist danach fest. */}
+              {/* The kind is chosen only on creation and is fixed afterwards. */}
               <SegmentedControl
                 label={t('spoolKindLabel')}
                 options={[

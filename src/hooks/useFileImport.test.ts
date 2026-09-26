@@ -96,8 +96,8 @@ describe('useFileImport', () => {
         const pending = call === 1 ? ['/dl/a.zip'] : ['/dl/a.zip', '/dl/b.zip'];
         return Promise.resolve({ imported: [], duplicateCount: 0, pendingArchives: pending });
       }
-      // Beim zweiten Mal liefert inspect fuer a.zip einen neuen Stand - der
-      // bereits angezeigte Eintrag bleibt trotzdem unveraendert.
+      // The second time, inspect returns a new state for a.zip - the
+      // entry already shown stays unchanged anyway.
       if (cmd === 'inspect_archives') return Promise.resolve(call === 1 ? [a] : [{ ...a, status: 'unreadable' }, b]);
       return Promise.resolve(undefined);
     });

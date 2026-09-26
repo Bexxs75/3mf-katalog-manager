@@ -14,8 +14,8 @@ function loadStored(): Set<string> {
 }
 
 /**
- * Merkt sich die eingeklappten Ordner-Sektionen der gruppierten Ansicht in
- * localStorage, damit sie Neustarts ueberstehen.
+ * Remembers the collapsed folder sections of the grouped view in
+ * localStorage so they survive restarts.
  */
 export function useCollapsedFolders() {
   const [collapsed, setCollapsed] = useState<Set<string>>(loadStored);

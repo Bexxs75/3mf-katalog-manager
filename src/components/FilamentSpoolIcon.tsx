@@ -1,6 +1,6 @@
 import { isValidColorHex } from '../lib/filamentColors';
 
-/** Spulen-Symbol (Vorderansicht) fuer Filament ohne eigenes Bild; Wicklung in der Spulenfarbe. */
+/** Spool icon (front view) for filament without its own image; winding in the spool color. */
 export function FilamentSpoolIcon({ colorHex, size = 20 }: { colorHex: string | null; size?: number }) {
   const fill = colorHex && isValidColorHex(colorHex) ? colorHex : 'var(--plate)';
   return (

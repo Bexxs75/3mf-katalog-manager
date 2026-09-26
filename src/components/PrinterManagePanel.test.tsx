@@ -115,7 +115,7 @@ describe('PrinterManagePanel', () => {
 
   it('confirms deleting a unit without any spools without the return-home sentence', async () => {
     const { a } = renderPanel();
-    // "Box" (u3) hat keine geladenen Spulen in diesem Test-Setup.
+    // "Box" (u3) has no loaded spools in this test setup.
     fireEvent.click(screen.getByRole('button', { name: 'Löschen Box' }));
     const question = screen.getByText('„Box“ entfernen?');
     fireEvent.click(within(question.parentElement as HTMLElement).getByRole('button', { name: 'Löschen' }));
@@ -163,7 +163,7 @@ describe('PrinterManagePanel', () => {
     expect(within(row).queryByRole('button')).toBeNull();
     expect(screen.queryByRole('button', { name: /Einheit hinzufügen/ })).toBeNull();
     expect(screen.getByText('Resin-Drucker haben nur ihre Harzwanne und keine Druckeranbindung.')).toBeInTheDocument();
-    // Der Drucker selbst bleibt umbenenn- und loeschbar.
+    // The printer itself stays renamable and deletable.
     expect(screen.getByRole('button', { name: 'Umbenennen' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Löschen' })).toBeInTheDocument();
   });

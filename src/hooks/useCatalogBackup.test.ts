@@ -51,8 +51,8 @@ describe('useCatalogBackup', () => {
   });
 
   it('Finding 7 (Abschluss-Review): exportCatalog no longer exports the dead slicer localStorage key', async () => {
-    // Die Slicer-Registry liegt im Backend; ein Alt-Wert in localStorage ist ein
-    // maschinenlokaler Pfad und darf nicht ins Backup.
+    // The slicer registry lives in the backend; a legacy value in localStorage is a
+    // machine-local path and must not go into the backup.
     localStorage.setItem('3mf-katalog-slicers', JSON.stringify({ slicers: [{ id: 'x', path: '/opt/old-slicer' }] }));
     vi.mocked(invoke).mockResolvedValue(undefined);
     const { result } = renderHook(() => useCatalogBackup());
@@ -65,8 +65,8 @@ describe('useCatalogBackup', () => {
   });
 
   it('importCatalog never restores the slicer list from a backup (Finding Z-1)', async () => {
-    // Slicer-Pfade werden per open_in_slicer als Prozess gestartet - ein
-    // fremdes Backup darf dort nichts hinterlegen koennen.
+    // Slicer paths are launched as processes via open_in_slicer - a
+    // foreign backup must not be able to store anything there.
     localStorage.setItem('3mf-katalog-slicers', 'eigene-liste');
     vi.mocked(invoke).mockResolvedValue({
       imported: true,
@@ -98,7 +98,7 @@ describe('useCatalogBackup', () => {
     });
     expect(localStorage.getItem('3mf-katalog-theme')).toBe('dark');
     expect(localStorage.getItem('3mf-katalog-language')).toBe('de');
-    // Gueltige Werte werden weiterhin ganz normal uebernommen.
+    // Valid values are still taken over normally.
     expect(localStorage.getItem('3mf-katalog-density')).toBe('comfort');
   });
 

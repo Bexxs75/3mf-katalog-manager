@@ -8,7 +8,7 @@ beforeEach(() => localStorage.setItem('3mf-katalog-language', 'de'));
 
 const defaultModels: ModelOption[] = [{ id: '1', name: 'Rakete.3mf' }, { id: '2', name: 'Kabelclip.stl' }];
 
-// Echter Auswahl-Knopf als Anker, wie in PrinterJobsDialog.
+// Real picker button as anchor, as in PrinterJobsDialog.
 function renderPicker(overrides: { models?: ModelOption[]; onChange?: (id: string | null) => void; onClose?: () => void } = {}) {
   const anchorRef = createRef<HTMLButtonElement>();
   const onChange = overrides.onChange ?? vi.fn();
@@ -37,8 +37,8 @@ describe('ModelPicker', () => {
   it('navigates with the keyboard from the search field and selects with Enter', () => {
     const { onChange } = renderPicker();
     const input = screen.getByPlaceholderText('Modell suchen …');
-    fireEvent.keyDown(input, { key: 'ArrowDown' }); // von "Kein Modell" zu "Rakete.3mf"
-    fireEvent.keyDown(input, { key: 'ArrowDown' }); // zu "Kabelclip.stl"
+    fireEvent.keyDown(input, { key: 'ArrowDown' }); // from "Kein Modell" to "Rakete.3mf"
+    fireEvent.keyDown(input, { key: 'ArrowDown' }); // to "Kabelclip.stl"
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(onChange).toHaveBeenCalledWith('2');
   });
@@ -71,8 +71,8 @@ describe('ModelPicker', () => {
   });
 
   it('renders its popup in a portal attached to document.body, not the local render tree', () => {
-    // Das Popup haengt per Portal an document.body, sonst schneidet es der
-    // Scrollcontainer des Dialogs ab.
+    // The popup is attached to document.body via a portal, otherwise the
+    // dialog's scroll container would clip it.
     const { container } = renderPicker();
     const listbox = screen.getByRole('listbox');
     expect(container.contains(listbox)).toBe(false);

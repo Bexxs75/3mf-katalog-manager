@@ -1,10 +1,10 @@
 import type { Folder } from '../types';
 
 /**
- * Prueft, ob eine Datei in `targetId` selbst oder einem seiner Nachfahren
- * liegt (rekursiv entlang der `parentId`-Kette in `folders`). Analog zur
- * Backend-`count`-Semantik: ein Klick auf einen Elternordner zeigt auch die
- * Dateien aus allen Unterordnern.
+ * Checks whether a file lies in `targetId` itself or one of its descendants
+ * (recursively along the `parentId` chain in `folders`). Analogous to the
+ * backend `count` semantics: a click on a parent folder also shows the
+ * files from all subfolders.
  */
 export function isFileInFolderOrDescendant(
   fileFolderId: string | null,
@@ -21,8 +21,8 @@ export function isFileInFolderOrDescendant(
 }
 
 /**
- * Ob `candidateId` gleich `ancestorId` oder ein Nachfahre davon ist. Nur fuer
- * das Highlight beim Ziehen; verbindlich prueft `is_descendant` im Backend.
+ * Whether `candidateId` equals `ancestorId` or is a descendant of it. Only for
+ * the highlight while dragging; `is_descendant` in the backend does the binding check.
  */
 export function isFolderSelfOrDescendant(
   candidateId: string,

@@ -1,6 +1,6 @@
 import type { UnitKind } from '../types';
 
-/** Gleiche Werte wie `COLOR_NAMES` in src-tauri/src/db/printers.rs. */
+/** Same values as `COLOR_NAMES` in src-tauri/src/db/printers.rs. */
 export const FILAMENT_PALETTE: readonly string[] = [
   '#1a1a1a', '#f2f2f2', '#8a8d91', '#c0c0c0',
   '#c0392b', '#e67e22', '#f1c40f', '#27ae60',
@@ -14,13 +14,13 @@ export function isValidColorHex(value: string): boolean {
 
 export interface UnitTemplate {
   kind: UnitKind;
-  /** Feste Fachanzahl; `null` = frei waehlbar ("Eigene…"). */
+  /** Fixed slot count; `null` = freely selectable ("Custom…"). */
   slotCount: number | null;
-  /** Vorschlag fuer den Namen der neuen Einheit. */
+  /** Suggested name for the new unit. */
   defaultName: string;
 }
 
-/** Gleiche Fachanzahlen wie `template_slot_count` im Backend. */
+/** Same slot counts as `template_slot_count` in the backend. */
 export const UNIT_TEMPLATES: readonly UnitTemplate[] = [
   { kind: 'bambu_ams', slotCount: 4, defaultName: 'AMS' },
   { kind: 'bambu_ams_lite', slotCount: 4, defaultName: 'AMS lite' },
@@ -28,7 +28,7 @@ export const UNIT_TEMPLATES: readonly UnitTemplate[] = [
   { kind: 'creality_cfs', slotCount: 4, defaultName: 'CFS' },
   { kind: 'prusa_mmu3', slotCount: 5, defaultName: 'MMU3' },
   { kind: 'anycubic_ace', slotCount: 4, defaultName: 'ACE Pro' },
-  // Name kommt uebersetzt aus i18n (printersKindExternal), siehe PrinterManagePanel.
+  // The name comes translated from i18n (printersKindExternal), see PrinterManagePanel.
   { kind: 'external', slotCount: 1, defaultName: '' },
   { kind: 'custom', slotCount: null, defaultName: '' },
 ];

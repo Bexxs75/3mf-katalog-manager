@@ -20,7 +20,7 @@ vi.mock('@tauri-apps/api/webview', () => ({
 
 const ORIGINAL_USER_AGENT = navigator.userAgent;
 
-/** `useImageDropZone` ermittelt die Plattform einmal beim ersten Render - daher vor `setup()` setzen. */
+/** `useImageDropZone` detects the platform once on the first render - so set it before `setup()`. */
 function setPlatform(isWindows: boolean) {
   Object.defineProperty(navigator, 'userAgent', {
     value: isWindows ? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' : 'Mozilla/5.0 (X11; Linux x86_64)',
@@ -44,7 +44,7 @@ beforeEach(() => {
   mocks.subscriptions = 0;
   mocks.unlisten.mockReset();
   Object.defineProperty(window, 'devicePixelRatio', { value: 2, configurable: true });
-  // Bestehende Tests unten pruefen die Windows-Division; macOS/Linux hat einen eigenen Test.
+  // The existing tests below check the Windows division; macOS/Linux has its own test.
   setPlatform(true);
 });
 afterEach(() => {
@@ -107,9 +107,9 @@ describe('useImageDropZone', () => {
   it('uses the raw CSS position on macOS/Linux (no dpr division)', () => {
     setPlatform(false);
     const { result, onImage } = setup();
-    emit({ type: 'over', position: { x: 150, y: 150 } }); // schon CSS-Pixel, im Rahmen 100-200: drin
+    emit({ type: 'over', position: { x: 150, y: 150 } }); // already CSS pixels, inside the 100-200 frame: in
     expect(result.current.over).toBe(true);
-    emit({ type: 'over', position: { x: 300, y: 300 } }); // waere nur bei Division durch dpr 2 drin
+    emit({ type: 'over', position: { x: 300, y: 300 } }); // would only be inside when dividing by dpr 2
     expect(result.current.over).toBe(false);
     emit({ type: 'drop', paths: ['/a.png'], position: { x: 150, y: 150 } });
     expect(onImage).toHaveBeenCalledWith('/a.png');

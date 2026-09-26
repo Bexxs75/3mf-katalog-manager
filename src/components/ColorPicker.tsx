@@ -8,12 +8,12 @@ interface Props {
 }
 
 /**
- * Farbwahl fuer Spulen: Palette gaengiger Filamentfarben plus Hex-Eingabe.
- * Bewusst kein `<input type="color">` - native Formularelemente ignorieren
- * das Dark-Theme dieser App.
+ * Color picker for spools: palette of common filament colors plus hex input.
+ * Deliberately no `<input type="color">` - native form controls ignore
+ * this app's dark theme.
  *
- * Keyboard: Radiogroup mit roving tabindex. Nur eine Swatch im Tab-Stop;
- * Pfeiltasten navigieren und waehlen.
+ * Keyboard: radiogroup with roving tabindex. Only one swatch in the tab order;
+ * arrow keys navigate and select.
  */
 export function ColorPicker({ value, onChange }: Props) {
   const t = useT();

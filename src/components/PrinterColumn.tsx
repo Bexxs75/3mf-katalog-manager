@@ -12,11 +12,11 @@ import { PrinterLinkStatus } from './PrinterLinkStatus';
 import { ResinBottleIcon } from './ResinBottleIcon';
 
 interface Props {
-  /** Alle Drucker; angezeigt werden nur die der aktuellen Ansicht (`kind`). */
+  /** All printers; only those of the current view (`kind`) are shown. */
   printers: Printer[];
-  /** Alle Spulen und Flaschen (Lager und Faecher). */
+  /** All spools and bottles (storage and slots). */
   spools: FilamentSpool[];
-  /** Aktuelle Ansicht im Filament-Lager: Filament- oder Resin-Drucker. */
+  /** Current view in the filament inventory: filament or resin printers. */
   kind?: SpoolKind;
   draggingSpoolId: string | null;
   dropTarget: SpoolDropTarget | null;
@@ -26,7 +26,7 @@ interface Props {
   onLoad: (spoolId: string, unitId: string, slotIndex: number) => void;
   onUnload: (spoolId: string) => void;
   onEditSpool: (spool: FilamentSpool) => void;
-  /** "− Verbrauch" fuer die Flasche in einer Harzwanne (bleibt an der Flasche). */
+  /** "− Usage" for the bottle in a resin vat (stays on the bottle). */
   onConsume?: (spool: FilamentSpool, anchor: HTMLElement) => void;
   onManage: () => void;
   printerLink?: PrinterLinkState;
@@ -43,7 +43,7 @@ interface OpenMenu {
   slotIndex: number;
 }
 
-/** Feste Spalte rechts im Filament-Lager: Drucker, Einheiten, Faecher. */
+/** Fixed column on the right of the filament inventory: printers, units, slots. */
 export function PrinterColumn({
   printers,
   spools,
@@ -66,10 +66,10 @@ export function PrinterColumn({
   const slotButtons = useRef(new Map<string, HTMLButtonElement>());
   const bySlot = useMemo(() => spoolsBySlot(spools), [spools]);
   const storage = useMemo(() => spools.filter(isInStorage), [spools]);
-  // In der Filament-Ansicht nur Filament-Drucker, in der Resin-Ansicht nur Resin-Drucker.
+  // Filament view shows only filament printers, resin view only resin printers.
   const visiblePrinters = useMemo(() => printers.filter((p) => p.kind === kind), [printers, kind]);
   const draggedSpool = draggingSpoolId ? spools.find((s) => s.id === draggingSpoolId) : undefined;
-  /** Nimmt diese Einheit die gerade gezogene Spule/Flasche an? Ohne Ziehen: ja. */
+  /** Does this unit accept the spool/bottle currently being dragged? Without dragging: yes. */
   const acceptsDragged = (unit: MaterialUnit) => !draggedSpool || spoolFitsUnit(draggedSpool, unit);
 
   const isTarget = (unit: MaterialUnit, slotIndex: number) =>
@@ -80,15 +80,15 @@ export function PrinterColumn({
     dropTarget.slotIndex === slotIndex;
 
   const renderUnit = (unit: MaterialUnit) => {
-    // Obergrenze wie im Backend (1..16), damit `Array.from` bei einem kaputten
-    // Wert nie haengt.
+    // Upper bound as in the backend (1..16) so `Array.from` never hangs
+    // on a broken value.
     const slotCount = Math.min(unit.slotCount, 16);
     const used = Array.from({ length: slotCount }, (_, i) => bySlot.get(slotKey(unit.id, i))).filter(Boolean).length;
     const isVat = unit.kind === 'resin_vat';
     return (
       <div key={unit.id} className="rounded-md border border-[var(--line)] bg-[var(--panel-2)] p-2">
         <div className="flex items-center justify-between text-[11px] font-semibold text-[var(--ink-2)] mb-1.5">
-          {/* Die Harzwanne ist nicht umbenennbar - immer in der UI-Sprache. */}
+          {/* The resin vat can't be renamed - always in the UI language. */}
           <span className="truncate">{isVat ? t('printersKindResinVat') : unit.name}</span>
           <span className="font-mono-ui text-[var(--ink-3)]">
             {used}/{slotCount}
@@ -111,7 +111,7 @@ export function PrinterColumn({
                   }}
                   onMouseDown={(e) => spool && onSlotMouseDown(spool.id, unit.id, slotIndex, e)}
                   onMouseEnter={() => {
-                    // Unpassende Einheit (Resin <-> Filament) wird nie zum Ziel.
+                    // An unsuitable unit (resin <-> filament) never becomes a target.
                     if (acceptsDragged(unit)) onEnterSlot(unit.id, slotIndex);
                   }}
                   onMouseLeave={() => onLeaveSlot(unit.id, slotIndex)}
@@ -218,7 +218,7 @@ export function PrinterColumn({
         visiblePrinters.map((printer) => (
           <div key={printer.id} className="flex flex-col gap-2">
             <div className="text-[12.5px] font-bold">{printer.name}</div>
-            {/* Resin-Drucker haben keine Druckeranbindung. */}
+            {/* Resin printers have no printer connection. */}
             {printerLink && printer.kind !== 'resin' && <PrinterLinkStatus printerId={printer.id} link={printerLink} />}
             {printer.units.map(renderUnit)}
             {printer.units.length === 0 && (
@@ -239,9 +239,9 @@ export function PrinterColumn({
 
 interface SlotMenuProps {
   spool: FilamentSpool | null;
-  /** Nur Eintraege, die in diese Einheit passen. */
+  /** Only entries that fit this unit. */
   storage: FilamentSpool[];
-  /** Menue der Harzwanne: Wortwahl Flasche statt Spule. */
+  /** Menu of the resin vat: wording bottle instead of spool. */
   vat: boolean;
   onClose: () => void;
   onLoad: (spoolId: string) => void;
@@ -262,8 +262,8 @@ function SlotMenu({ spool, storage, vat, onClose, onLoad, onUnload, onEdit, onCo
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
-    // Erst nach dem aktuellen Klick registrieren, sonst schliesst der Klick,
-    // der das Menue oeffnet, es sofort wieder.
+    // Register only after the current click, otherwise the click that
+    // opens the menu would close it right away.
     const timer = setTimeout(() => document.addEventListener('mousedown', handleDown));
     document.addEventListener('keydown', handleKey);
     return () => {

@@ -12,9 +12,9 @@ interface UiDensityContextValue {
 const UiDensityContext = createContext<UiDensityContextValue | null>(null);
 
 /**
- * Verwaltet die UI-Dichte der Anwendung ("compact" = bestehende, dichte
- * Ansicht; "comfort" = größere Schrift/Grafiken). Persistiert in
- * localStorage nach demselben Muster wie useTheme/LanguageContext.
+ * Manages the app's UI density ("compact" = existing, dense view;
+ * "comfort" = larger text/graphics). Persisted in localStorage
+ * following the same pattern as useTheme/LanguageContext.
  */
 export function UiDensityProvider({ children }: { children: ReactNode }) {
   const [density, setDensityState] = useState<UiDensity>(() => {

@@ -58,10 +58,10 @@ export interface ModelFile {
 }
 
 /**
- * Schlanke Projektion von `ModelFile` fuer Grid und Liste
- * (`list_file_summaries`), ohne die Felder, die nur die Detailseite braucht
- * (z.B. `materials`, `customImage`, `sliceInfo`). Volle Daten laedt
- * `listFilesByIds([id])` bei der Auswahl nach.
+ * Slim projection of `ModelFile` for grid and list
+ * (`list_file_summaries`), without the fields only the detail page needs
+ * (e.g. `materials`, `customImage`, `sliceInfo`). `listFilesByIds([id])`
+ * loads the full data on selection.
  */
 export interface ModelFileSummary {
   id: string;
@@ -79,7 +79,7 @@ export interface ModelFileSummary {
   queuePosition: number | null;
   thumbnailImage: string | null;
   renderSnapshotImage: string | null;
-  // Redundant zu renderSnapshotImage, siehe `db::FileSummary`.
+  // Redundant to renderSnapshotImage, see `db::FileSummary`.
   hasRenderSnapshot: boolean;
   creator: string | null;
   lastViewedAt: string | null;
@@ -169,14 +169,14 @@ export interface SavedFilter {
 export type ViewMode = 'grid' | 'groupedGrid' | 'groupedList';
 export type SortKey = 'name' | 'date' | 'size' | 'vol' | 'viewed';
 
-// Eintrag der Slicer-Registry im Backend; `id` ist die Datenbank-id.
+// Entry of the slicer registry in the backend; `id` is the database id.
 export interface SlicerConfig {
   id: string;
   name: string;
   path: string;
 }
 
-/** Art eines Lager-Eintrags. Bei 'resin' sind originalWeightG/remainingWeightG Milliliter. */
+/** Kind of an inventory entry. For 'resin', originalWeightG/remainingWeightG are milliliters. */
 export type SpoolKind = 'filament' | 'resin';
 
 export interface FilamentSpool {
@@ -190,9 +190,9 @@ export interface FilamentSpool {
   remainingWeightG: number;
   price: number | null;
   imagePng: string | null;
-  /** Farbwert `#rrggbb`; `color` bleibt der Farbname. */
+  /** Color value `#rrggbb`; `color` stays the color name. */
   colorHex: string | null;
-  /** Stammplatz, solange die Spule in einem Fach steckt (dann ist `location` leer). */
+  /** Home location while the spool sits in a slot (then `location` is empty). */
   homeLocation: string | null;
   unitId: string | null;
   slotIndex: number | null;
@@ -208,10 +208,10 @@ export type UnitKind =
   | 'anycubic_ace'
   | 'external'
   | 'custom'
-  /** Harzwanne eines Resin-Druckers: 1 Platz, fest, nur Resin. */
+  /** Resin vat of a resin printer: 1 place, fixed, resin only. */
   | 'resin_vat';
 
-/** Druckerart, beim Anlegen gewaehlt und danach fest. */
+/** Printer kind, chosen on creation and fixed afterwards. */
 export type PrinterKind = 'filament' | 'resin';
 
 export interface MaterialUnit {
@@ -276,8 +276,8 @@ export interface FilamentCheck {
 }
 
 /**
- * `'disabled'` kommt nur von `test_printer_connection`, wenn der Schalter
- * "Druckeranbindung" aus ist (dann geht keine Anfrage raus).
+ * `'disabled'` only comes from `test_printer_connection` when the
+ * "Printer connection" switch is off (then no request goes out).
  */
 export type PrinterConnectionError =
   | 'unreachable'
@@ -293,7 +293,7 @@ export interface PrinterConnection {
   address: string;
   baseUrl: string | null;
   remoteVersion: string | null;
-  /** Unix-Sekunden: ab hier wird abgebucht. */
+  /** Unix seconds: deductions start from here. */
   connectedSince: number;
   lastSyncedAt: number | null;
   lastError: PrinterConnectionError | null;

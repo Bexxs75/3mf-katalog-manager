@@ -7,10 +7,10 @@ interface FilamentCheckState {
   error: boolean;
 }
 
-// Laedt die Filament-Pruefung fuer die IDs (Reihenfolge zaehlt). Eine Antwort
-// fuer eine inzwischen geaenderte ID-Liste wird verworfen. `refreshKey` loest
-// zusaetzlich ein Neuladen aus (z. B. nach "Metadaten neu einlesen"), ohne
-// dass sich die ID-Liste selbst aendert.
+// Loads the filament check for the IDs (order matters). An answer for an
+// ID list that has changed in the meantime is discarded. `refreshKey`
+// additionally triggers a reload (e.g. after "Re-read metadata") without
+// the ID list itself changing.
 export function useFilamentCheck(fileIds: string[], refreshKey = ''): FilamentCheckState {
   const key = fileIds.join(',');
   const [state, setState] = useState<FilamentCheckState>({ checks: null, error: false });
@@ -22,9 +22,8 @@ export function useFilamentCheck(fileIds: string[], refreshKey = ''): FilamentCh
       return;
     }
     let current = true;
-    // Bisherige Ergebnisse bleiben waehrend des Nachladens sichtbar (kein
-    // Flackern der Warteschlangen-Symbole bei jeder Umsortierung); nur ein
-    // vorheriger Fehler wird zurueckgesetzt.
+    // Previous results stay visible while reloading (no flickering of the
+    // queue icons on every reorder); only a previous error is reset.
     setState((prev) => ({ checks: prev.checks, error: false }));
     checkFilament(ids)
       .then((result) => {
@@ -37,7 +36,7 @@ export function useFilamentCheck(fileIds: string[], refreshKey = ''): FilamentCh
     return () => {
       current = false;
     };
-    // refreshKey erzwingt bewusst ein Neuladen ohne eigene Verwendung im Effekt.
+    // refreshKey deliberately forces a reload without being used in the effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, refreshKey]);
 

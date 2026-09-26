@@ -19,7 +19,7 @@ export type PrinterErrorKey =
   | 'printerErrorAddressNotAllowed'
   | 'printerErrorDisabled';
 
-/** Auch von `PrinterLinkStatus` genutzt, damit Fehlertexte nicht doppelt gepflegt werden. */
+/** Also used by `PrinterLinkStatus` so error texts aren't maintained twice. */
 export const errorKey: Record<PrinterConnectionError, PrinterErrorKey> = {
   unreachable: 'printerErrorUnreachable',
   auth_required: 'printerErrorAuthRequired',
@@ -40,7 +40,7 @@ const fieldClass =
 const smallButton =
   'h-7 px-2 rounded-[4px] border border-[var(--line-strong)] text-[11.5px] text-[var(--ink-2)] hover:border-[var(--accent)] cursor-pointer disabled:opacity-50';
 
-/** Verbindung eines Druckers (Typ, Adresse, Test). Nur bei eingeschalteter Druckeranbindung sichtbar. */
+/** Connection of a printer (type, address, test). Only visible with the printer connection enabled. */
 export function PrinterConnectionSection({ printerId, connection, link }: Props) {
   const t = useT();
   const { language } = useLanguage();
@@ -50,11 +50,11 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
   const [error, setError] = useState<PrinterConnectionError | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [current, setCurrent] = useState<PrinterConnection | null>(connection);
-  // Verhindert, dass der Prop-Sync unten ein gerade von `runTest` geliefertes
-  // Ergebnis mit einem noch alten `connection`-Prop ueberschreibt.
+  // Prevents the prop sync below from overwriting a result just delivered by
+  // `runTest` with a still stale `connection` prop.
   const skipNextPropSync = useRef(false);
 
-  // Spaetere Prop-Aenderungen (z.B. vom Hintergrund-Abgleich) uebernehmen.
+  // Take over later prop changes (e.g. from the background sync).
   useEffect(() => {
     if (skipNextPropSync.current) {
       skipNextPropSync.current = false;

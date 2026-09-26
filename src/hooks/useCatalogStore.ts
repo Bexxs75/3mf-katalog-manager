@@ -5,10 +5,10 @@ import * as catalogMetaApi from '../lib/api/catalogMeta';
 import { canonicalTag } from '../lib/autoTags';
 import type { ModelFile, ModelFileSummary, Folder, TagCount, CreatorCount, SavedFilter, ImportResultDto } from '../types';
 
-// Bettet eine schlanke `ModelFileSummary` in die volle `ModelFile`-Form ein,
-// damit alle Komponenten denselben Typ sehen. Nicht gelieferte Felder
-// (materials, customImage, sliceInfo, costEstimate, sourceUrl) bekommen
-// neutrale Defaults und werden erst per `ensureFullModel()` nachgeladen.
+// Embeds a slim `ModelFileSummary` into the full `ModelFile` shape so
+// all components see the same type. Fields not delivered
+// (materials, customImage, sliceInfo, costEstimate, sourceUrl) get
+// neutral defaults and are only loaded later via `ensureFullModel()`.
 function summaryToModelFile(s: ModelFileSummary): ModelFile {
   return {
     id: s.id,
@@ -43,9 +43,9 @@ function summaryToModelFile(s: ModelFileSummary): ModelFile {
   };
 }
 
-// Praefixe im "<feld>:<id>"-Schema der Mutationszaehler, gemappt auf den
-// ModelFile-Feldnamen. ensureFullModel() behaelt fuer diese Felder den
-// aktuellen Wert, wenn waehrend seines Fetches eine Mutation lief.
+// Prefixes in the "<field>:<id>" scheme of the mutation counters, mapped to
+// ModelFile field names. ensureFullModel() keeps the current value for these
+// fields if a mutation ran during its fetch.
 const MUTATION_TRACKED_FIELDS: { prefix: string; field: keyof ModelFile }[] = [
   { prefix: 'lastViewedAt', field: 'lastViewedAt' },
   { prefix: 'tags', field: 'tags' },
@@ -64,34 +64,34 @@ export function useCatalogStore() {
   const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([]);
   const [trashModels, setTrashModels] = useState<ModelFile[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  // IDs mit bereits nachgeladenen vollen Daten; refreshFiles() setzt die Liste
-  // wieder auf Summaries zurueck.
+  // IDs whose full data is already loaded; refreshFiles() resets the list
+  // back to summaries.
   const [fullyLoadedIds, setFullyLoadedIds] = useState<Set<string>>(new Set());
   const [skippedSnapshotIds, setSkippedSnapshotIds] = useState<Set<string>>(new Set());
-  // IDs, fuer die laut Summary schon ein Snapshot in der DB liegt; sie brauchen
-  // keinen neuen.
+  // IDs that already have a snapshot in the DB according to the summary; they
+  // don't need a new one.
   const [summaryConfirmedSnapshotIds, setSummaryConfirmedSnapshotIds] = useState<Set<string>>(new Set());
-  // Pro Modell-ID, damit Feedback von Modell A nicht unter Modell B stehen
-  // bleibt, wenn der Nutzer die Detailseite wechselt.
+  // Per model ID, so feedback for model A doesn't stay under model B
+  // when the user switches the detail page.
   const [rescanFeedback, setRescanFeedback] = useState<
     { fileId: string; status: 'success' | 'error'; message?: string } | null
   >(null);
-  // Einmaliger Scroll-Wunsch nach dem naechsten Commit (siehe renameFile);
-  // App.tsx setzt ihn danach wieder auf null.
+  // One-shot scroll request after the next commit (see renameFile);
+  // App.tsx resets it to null afterwards.
   const [pendingScrollToId, setPendingScrollToId] = useState<string | null>(null);
 
-  // Rollback fuer fehlgeschlagene optimistische Mutationen: pro "<feld>:<id>"
-  // wird die Zahl der laufenden Backend-Aufrufe gezaehlt. Faellt sie auf 0,
-  // wird der Datensatz einmal per listFilesByIds([id]) neu geladen; nach
-  // Abschluss aller Aufrufe stimmt das Backend immer, egal welcher Aufruf
-  // gescheitert ist. (Ein "auf previous zuruecksetzen" oder "nur der neueste
-  // darf zurueckrollen" ist bei ueberlappenden Fehlschlaegen falsch.)
+  // Rollback for failed optimistic mutations: per "<field>:<id>" the number
+  // of running backend calls is counted. When it drops to 0, the record is
+  // reloaded once via listFilesByIds([id]); once all calls have settled the
+  // backend is always right, no matter which call failed. ("Reset to
+  // previous" or "only the newest may roll back" is wrong with overlapping
+  // failures.)
   //
-  // Die Epoch pro Feld+ID verhindert, dass ein verspaeteter, veralteter Resync
-  // einen neueren ueberschreibt: uebernommen wird nur, wenn Zaehler und Epoch
-  // seit Start des Resyncs unveraendert sind.
+  // The epoch per field+ID prevents a late, stale resync from overwriting a
+  // newer one: the result is only taken if counter and epoch are unchanged
+  // since the resync started.
   //
-  // Refs statt State: die Zaehler selbst sollen keine Re-Renders ausloesen.
+  // Refs instead of state: the counters themselves must not trigger re-renders.
   const pendingMutationCounts = useRef<Record<string, number>>({}).current;
   const mutationEpochs = useRef<Record<string, number>>({}).current;
 
@@ -100,7 +100,7 @@ export function useCatalogStore() {
     mutationEpochs[key] = (mutationEpochs[key] ?? 0) + 1;
   }
 
-  // Immer im .finally() der Mutation aufrufen, egal ob Erfolg oder Fehler.
+  // Always call in the mutation's .finally(), whether success or failure.
   async function endMutationAndResyncIfSettled(key: string, id: string): Promise<void> {
     const remaining = (pendingMutationCounts[key] ?? 1) - 1;
     if (remaining > 0) {
@@ -111,14 +111,14 @@ export function useCatalogStore() {
     const epochAtResyncStart = mutationEpochs[key];
     try {
       const [fresh] = await filesApi.listFilesByIds([id]);
-      // Nur uebernehmen, wenn waehrend des await keine neue Mutation startete und
-      // kein neuerer Resync schon einen aktuelleren Stand uebernommen hat.
+      // Only take it if no new mutation started during the await and no
+      // newer resync has already taken a more current state.
       if (fresh && pendingMutationCounts[key] === undefined && mutationEpochs[key] === epochAtResyncStart) {
         setModels((prev) => prev.map((m) => (m.id === id ? { ...m, ...fresh } : m)));
       }
     } catch (e) {
       console.error(`[resync] Nachladen von ${key} fehlgeschlagen:`, e);
-      // Kein weiterer Rollback; der naechste refreshFiles() gleicht ab.
+      // No further rollback; the next refreshFiles() reconciles.
     }
   }
 
@@ -137,8 +137,8 @@ export function useCatalogStore() {
 
   const refreshFolders = useCallback(() => foldersApi.listFolders().then(setFolders), []);
 
-  // Summaries und Datei-Tag-Zuordnung parallel in je einer Abfrage laden und
-  // die Tags client-seitig einmischen (fuer die Tag-Filterung).
+  // Load summaries and file-tag mapping in parallel with one query each and
+  // merge the tags in on the client (for tag filtering).
   const loadSummariesWithTags = useCallback(() => {
     return Promise.all([filesApi.listFileSummaries(), filesApi.listAllFileTags()]).then(([summaries, tagsByFileId]) => {
       setSummaryConfirmedSnapshotIds(new Set(summaries.filter((s) => s.hasRenderSnapshot).map((s) => s.id)));
@@ -146,8 +146,8 @@ export function useCatalogStore() {
     });
   }, []);
 
-  // Laedt nur die schlanken Summaries. Schon hochgestufte Eintraege werden beim
-  // naechsten ensureFullModel() einfach erneut nachgeladen.
+  // Loads only the slim summaries. Entries already upgraded are simply
+  // loaded again on the next ensureFullModel().
   const refreshFiles = useCallback(() => {
     setFullyLoadedIds(new Set());
     return loadSummariesWithTags().then(setModels);
@@ -157,14 +157,13 @@ export function useCatalogStore() {
   const refreshSavedFilters = useCallback(() => catalogMetaApi.listSavedFilters().then(setSavedFilters), []);
   const refreshTrash = useCallback(() => filesApi.listTrash().then(setTrashModels), []);
 
-  // Laedt die vollen Daten eines Modells nach, sobald es gebraucht wird
-  // (Auswahl oder Detailseite), und ersetzt den Eintrag in `models`.
+  // Loads a model's full data as soon as it is needed
+  // (selection or detail page) and replaces the entry in `models`.
   const ensureFullModel = useCallback(
     (id: string) => {
       if (fullyLoadedIds.has(id) || !models.some((m) => m.id === id)) return;
-      // Epoch-Schnappschuss vor dem Fetch: laeuft parallel eine Mutation samt
-      // Resync, darf das dann veraltete Fetch-Ergebnis deren Wert nicht
-      // ueberschreiben.
+      // Epoch snapshot before the fetch: if a mutation including resync runs in
+      // parallel, the then stale fetch result must not overwrite its value.
       const epochSnapshot = MUTATION_TRACKED_FIELDS.map(({ prefix }) => mutationEpochs[`${prefix}:${id}`]);
       filesApi
         .listFilesByIds([id])
@@ -179,8 +178,8 @@ export function useCatalogStore() {
                 const stillPending = pendingMutationCounts[key] !== undefined;
                 const epochAdvanced = mutationEpochs[key] !== epochSnapshot[index];
                 if (stillPending || epochAdvanced) {
-                  // Fuer dieses Feld lief waehrend des Fetches eine Mutation: aktuellen
-                  // Wert behalten, alle anderen Felder aus `full[0]` nehmen.
+                  // A mutation ran for this field during the fetch: keep the current
+                  // value, take all other fields from `full[0]`.
                   (merged as unknown as Record<string, unknown>)[field] = m[field];
                 }
               });
@@ -206,7 +205,7 @@ export function useCatalogStore() {
     refreshCreators();
     refreshSavedFilters();
     refreshTrash();
-    // Nur beim Mount - die Refresher selbst sind stabil (useCallback ohne Deps).
+    // Mount only - the refreshers themselves are stable (useCallback without deps).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -238,7 +237,7 @@ export function useCatalogStore() {
     (result: ImportResultDto) => {
       if (result.imported.length) {
         setModels((prev) => [...prev, ...result.imported]);
-        // Frisch importierte Dateien kommen schon mit vollen Daten.
+        // Freshly imported files already come with full data.
         setFullyLoadedIds((prev) => {
           const next = new Set(prev);
           result.imported.forEach((m) => next.add(m.id));
@@ -265,8 +264,8 @@ export function useCatalogStore() {
     [refreshFolders, refreshTags, refreshCreators, refreshTrash],
   );
 
-  // Fuer Aufrufer, bei denen delete_files IDs still uebersprungen haben kann:
-  // laedt autoritativ neu statt lokal zu filtern.
+  // For callers where delete_files may have silently skipped IDs:
+  // reloads authoritatively instead of filtering locally.
   const refetchAfterPartialDelete = useCallback(
     (affectedIds: string[]) => {
       refreshFiles();
@@ -305,9 +304,9 @@ export function useCatalogStore() {
 
   const addTag = useCallback(
     (id: string, rawTag: string) => {
-      // Uebersetzte Namen automatischer Tags (z. B. "Multipart") auf die
-      // Kennung abbilden, bevor optimistisch aktualisiert wird - sonst
-      // blitzt kurz ein zweiter Tag auf, bis das Backend normalisiert hat.
+      // Map translated names of automatic tags (e.g. "Multipart") to the
+      // identifier before updating optimistically - otherwise a second tag
+      // flashes briefly until the backend has normalized it.
       const tag = canonicalTag(rawTag);
       const current = models.find((m) => m.id === id);
       if (!current || current.tags.includes(tag)) return;
@@ -327,14 +326,14 @@ export function useCatalogStore() {
     [models, refreshTags],
   );
 
-  // Bewusst NICHT optimistisch: eine Namenskollision soll die UI direkt
-  // anzeigen koennen. Der Fehler geht als Rejection an den Aufrufer.
+  // Deliberately NOT optimistic: the UI should be able to show a name
+  // collision directly. The error goes to the caller as a rejection.
   const renameFile = useCallback((id: string, name: string) => {
     return filesApi.renameFile(id, name).then(() => {
       setModels((prev) => prev.map((m) => (m.id === id ? { ...m, name } : m)));
-      // Der neue Name kann die Sortierposition aendern. Gescrollt wird in einem
-      // useEffect in App.tsx, der sicher nach dem Commit laeuft
-      // (requestAnimationFrame hier haette diese Garantie nicht).
+      // The new name can change the sort position. Scrolling happens in a
+      // useEffect in App.tsx, which reliably runs after the commit
+      // (requestAnimationFrame here wouldn't have that guarantee).
       setPendingScrollToId(id);
     });
   }, []);
@@ -448,8 +447,8 @@ export function useCatalogStore() {
           return index === -1 ? m : { ...m, queuePosition: index + 1 };
         }),
       );
-      // Ein Reorder betrifft mehrere Modelle; bei einem Fehler reicht ein voller
-      // refreshFiles() statt der Feld+ID-Zaehler.
+      // A reorder affects several models; on failure a full refreshFiles()
+      // is enough instead of the field+ID counters.
       filesApi.reorderQueue(updates).catch((e) => {
         console.error('[queue] Neusortierung fehlgeschlagen:', e);
         void refreshFiles();
@@ -505,7 +504,7 @@ export function useCatalogStore() {
       .rescanFileMetadata(id)
       .then((updated) => {
         setModels((prev) => prev.map((m) => (m.id === id ? updated : m)));
-        // rescan_file_metadata liefert bereits den vollen ModelFile-Datensatz.
+        // rescan_file_metadata already returns the full ModelFile record.
         setFullyLoadedIds((prev) => new Set(prev).add(id));
         setRescanFeedback({ fileId: id, status: 'success' });
       })

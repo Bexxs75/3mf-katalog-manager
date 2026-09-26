@@ -39,7 +39,7 @@ function renderDialog(l: PrinterLinkState, onClose = vi.fn()) {
   return onBooked;
 }
 
-/** Kontrollierbares Promise fuer "eine Anfrage laeuft noch" in den Guard-Tests. */
+/** Controllable promise for "a request is still running" in the guard tests. */
 function deferred<T>() {
   let resolve!: (v: T) => void;
   let reject!: (e: unknown) => void;
@@ -77,7 +77,7 @@ describe('PrinterJobsDialog', () => {
         <PrinterJobsDialog open jobs={l.jobs} spools={withResin} models={[]} link={l} onClose={vi.fn()} onBooked={vi.fn()} />
       </LanguageProvider>,
     );
-    // Kein Vorschlag uebernommen -> ohne Spule nicht bestaetigbar.
+    // No suggestion taken -> can't be confirmed without a spool.
     expect(screen.getByRole('button', { name: 'Bestätigen' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: /Spule/ }));
     expect(screen.queryByRole('option', { name: /Standard/ })).toBeNull();
@@ -210,24 +210,24 @@ describe('PrinterJobsDialog', () => {
     renderDialog(l);
 
     fireEvent.click(screen.getByRole('button', { name: /Spule/ }));
-    fireEvent.mouseDown(screen.getByRole('option', { name: 'PETG · Petrol · 900,0 g' })); // langsame erste Anfrage fuer Spule 101
+    fireEvent.mouseDown(screen.getByRole('option', { name: 'PETG · Petrol · 900,0 g' })); // slow first request for spool 101
     fireEvent.click(screen.getByRole('button', { name: /Spule/ }));
-    fireEvent.mouseDown(screen.getByRole('option', { name: 'PLA · Grau · 612,4 g' })); // schnellere zweite Anfrage fuer Spule 100
+    fireEvent.mouseDown(screen.getByRole('option', { name: 'PLA · Grau · 612,4 g' })); // faster second request for spool 100
 
     await act(async () => second.resolve({ grams: 0.9, materialMismatch: false }));
     expect(screen.getByText('0,9 g')).toBeInTheDocument();
 
-    // Die veraltete Antwort fuer die zwischenzeitlich verlassene Spule 101
-    // darf den aktuellen Stand (Spule 100) nicht mehr ueberschreiben.
+    // The stale answer for spool 101, left in the meantime,
+    // must no longer overwrite the current state (spool 100).
     await act(async () => first.resolve({ grams: 5, materialMismatch: true }));
     expect(screen.getByText('0,9 g')).toBeInTheDocument();
     expect(screen.queryByText(/Drucker meldet/)).not.toBeInTheDocument();
   });
 
   it('clears a row\'s spool selection once that spool no longer exists in the catalog', async () => {
-    // z.B. nach einer Sicherungswiederherstellung mit weniger Spulen - ohne
-    // diesen Guard liesse sich mit einer nicht mehr existierenden Spule
-    // "bestaetigen".
+    // e.g. after a backup restore with fewer spools - without
+    // this guard one could "confirm" with a spool that no longer
+    // exists.
     const l = link([job({})]);
     const { rerender } = render(
       <LanguageProvider>
@@ -253,8 +253,8 @@ describe('PrinterJobsDialog', () => {
         <PrinterJobsDialog open jobs={l.jobs} spools={[]} models={[]} link={l} onClose={vi.fn()} onBooked={vi.fn()} />
       </LanguageProvider>,
     );
-    // Beim ersten Rendern ist `spools` noch leer - der Vorschlag kann noch
-    // nicht angewendet werden.
+    // On the first render `spools` is still empty - the suggestion can't
+    // be applied yet.
     expect(screen.getByRole('button', { name: 'Bestätigen' })).toBeDisabled();
     expect(screen.getByRole('button', { name: /Spule wählen/ })).toBeInTheDocument();
 
@@ -263,8 +263,8 @@ describe('PrinterJobsDialog', () => {
         <PrinterJobsDialog open jobs={l.jobs} spools={spools} models={[]} link={l} onClose={vi.fn()} onBooked={vi.fn()} />
       </LanguageProvider>,
     );
-    // Jetzt ist Spule 100 in `spools` vorhanden - der Vorschlag muss
-    // nachtraeglich uebernommen werden.
+    // Now spool 100 is present in `spools` - the suggestion must
+    // be applied afterwards.
     expect(screen.getByRole('button', { name: 'Bestätigen' })).not.toBeDisabled();
     expect(screen.getByRole('button', { name: /PLA · Grau/ })).toBeInTheDocument();
   });
@@ -277,11 +277,11 @@ describe('PrinterJobsDialog', () => {
       </LanguageProvider>,
     );
     fireEvent.click(screen.getByRole('button', { name: /Spule/ }));
-    fireEvent.mouseDown(screen.getByRole('option', { name: 'PETG · Petrol · 900,0 g' })); // bewusst NICHT der Vorschlag (Spule 100)
+    fireEvent.mouseDown(screen.getByRole('option', { name: 'PETG · Petrol · 900,0 g' })); // deliberately NOT the suggestion (spool 100)
     expect(screen.getByRole('button', { name: /PETG · Petrol/ })).toBeInTheDocument();
 
-    // Ein neues `spools`-Array (z.B. nach einem Hintergrund-Abgleich) darf
-    // die Nutzerwahl nicht durch den Vorschlag ersetzen.
+    // A new `spools` array (e.g. after a background sync) must not
+    // replace the user's choice with the suggestion.
     const refreshedSpools = spools.map((s) => ({ ...s }));
     rerender(
       <LanguageProvider>

@@ -53,7 +53,7 @@ export function formatWeightG(grams: number, language: Language): string {
   return `${new Intl.NumberFormat(localeFor(language)).format(grams)} g`;
 }
 
-/** Restgewicht einer Spule: immer eine Nachkommastelle (Zehntelgramm). */
+/** Remaining weight of a spool: always one decimal place (0.1 g). */
 export function formatStockG(grams: number, language: Language): string {
   const nf = new Intl.NumberFormat(localeFor(language), { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   return `${nf.format(grams)} g`;
@@ -70,8 +70,8 @@ export function formatLengthMm(mm: number, language: Language): string {
 }
 
 /**
- * Nur die Minutenzahl (mind. 1), lokalisiert - die Einheit kommt aus dem
- * Uebersetzungstext `printerJobsMinutes` (bewusst kein hartkodiertes " min").
+ * Only the number of minutes (at least 1), localized - the unit comes from the
+ * translation text `printerJobsMinutes` (deliberately no hard-coded " min").
  */
 export function formatDurationMinutes(seconds: number, language: Language): string {
   const minutes = Math.max(1, Math.round(seconds / 60));
@@ -99,14 +99,14 @@ export function formatDate(rfc3339: string, language: Language): string {
   return new Intl.DateTimeFormat(localeFor(language)).format(date);
 }
 
-/** Datum + Uhrzeit aus Unix-Sekunden (z. B. `PrinterConnection.connectedSince`). */
+/** Date + time from Unix seconds (e.g. `PrinterConnection.connectedSince`). */
 export function formatDateTime(unixSeconds: number, language: Language): string {
   const date = new Date(unixSeconds * 1000);
   if (Number.isNaN(date.getTime())) return '–';
   return new Intl.DateTimeFormat(localeFor(language), { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 }
 
-/** Nur die Uhrzeit aus Unix-Sekunden (z. B. Zeitpunkt eines Verbindungsfehlers). */
+/** Only the time from Unix seconds (e.g. when a connection error happened). */
 export function formatTime(unixSeconds: number, language: Language): string {
   const date = new Date(unixSeconds * 1000);
   if (Number.isNaN(date.getTime())) return '–';
@@ -128,20 +128,20 @@ export function formatRelativeTime(rfc3339: string, language: Language): string 
 }
 
 /**
- * Zahl für ein Eingabefeld (z. B. Preis vorbelegen): Dezimalzeichen der Sprache,
- * ohne Tausendertrennzeichen, höchstens 2 Nachkommastellen, damit
- * `parseDecimalInput` den Wert unverändert wieder einlesen kann.
+ * Number for an input field (e.g. prefilling the price): the language's decimal
+ * separator, no thousands separator, at most 2 decimal places so
+ * `parseDecimalInput` can read the value back unchanged.
  */
 export function formatDecimalInput(value: number, language: Language): string {
   return new Intl.NumberFormat(localeFor(language), { useGrouping: false, maximumFractionDigits: 2 }).format(value);
 }
 
-/** Resin-Menge: höchstens eine Nachkommastelle (0,1 ml). */
+/** Resin amount: at most one decimal place (0.1 ml). */
 export function formatVolumeMl(ml: number, language: Language): string {
   return `${new Intl.NumberFormat(localeFor(language), { maximumFractionDigits: 1 }).format(ml)} ml`;
 }
 
-/** Bestand je nach Art: Gramm (Filament) oder Milliliter (Resin). */
+/** Stock depending on kind: grams (filament) or milliliters (resin). */
 export function formatSpoolAmount(amount: number, kind: SpoolKind, language: Language): string {
   return kind === 'resin' ? formatVolumeMl(amount, language) : formatStockG(amount, language);
 }

@@ -31,10 +31,10 @@ export function TrashView({
   displayPreference,
 }: TrashViewProps) {
   const t = useT();
-  // Der Papierkorb unterstützt keine Ordner-Gruppierung (gelöschte Dateien
-  // "gehören" nicht mehr zu einem aktiven Ordner-Kontext) - fällt auf die
-  // jeweilige flache Darstellung zurück, falls der geteilte Umschalter
-  // während der Papierkorb-Ansicht auf eine gruppierte Option steht.
+  // The trash doesn't support folder grouping (deleted files no longer
+  // "belong" to an active folder context) - falls back to the respective
+  // flat display if the shared toggle is set to a grouped option
+  // while the trash view is shown.
   const effectiveIsGrid = view === 'grid' || view === 'groupedGrid';
   return (
     <div className="flex flex-1 min-h-0">

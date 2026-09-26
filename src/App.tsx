@@ -98,8 +98,8 @@ export default function App() {
   const contextModel = contextMenu ? store.models.find((m) => m.id === contextMenu.modelId) ?? null : null;
 
   useEffect(() => {
-    // Sicherheitsnetz: selectModel laedt die vollen Daten normalerweise schon;
-    // ensureFullModel ist idempotent.
+    // Safety net: selectModel normally loads the full data already;
+    // ensureFullModel is idempotent.
     if (detailModelId) store.ensureFullModel(detailModelId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detailModelId]);
@@ -115,8 +115,8 @@ export default function App() {
   });
 
   useEffect(() => {
-    // Laeuft sicher nach dem Commit des Umbenennens, die Kachel sitzt also schon
-    // an ihrer neuen Position (siehe renameFile).
+    // Runs safely after the rename commit, so the tile is already
+    // at its new position (see renameFile).
     if (!store.pendingScrollToId) return;
     const id = store.pendingScrollToId;
     document.querySelector(`[${MODEL_TILE_ATTR}="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -138,8 +138,8 @@ export default function App() {
 
   useEffect(() => {
     bulk.clearBulkSelection();
-    // Absichtlich nur an den Filter-/Sammlungs-Wechseln haengend - bulk selbst
-    // ist bei jedem Render neu, wuerde die Auswahl also sofort wieder leeren.
+    // Deliberately depends only on filter/collection changes - bulk itself
+    // is new on every render and would clear the selection right away.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     filters.activeFolderId,
@@ -198,8 +198,8 @@ export default function App() {
           cleanupScanning={cleanup.cleanupScanning}
           cleanupError={cleanup.cleanupError}
           onExportCatalog={backup.exportCatalog}
-          // Das Backend nutzt schon den neuen Katalog: voller Reload, sonst trafen
-          // Aktionen mit veralteten IDs falsche Datensaetze.
+          // The backend already uses the new catalog: full reload, otherwise actions
+          // with stale IDs would hit the wrong records.
           onImportCatalog={() => backup.importCatalog(() => window.location.reload())}
           catalogBackupError={backup.catalogBackupError}
           catalogBaseDir={catalogBaseDir}

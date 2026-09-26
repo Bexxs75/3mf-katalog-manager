@@ -7,9 +7,9 @@ interface ImageSources {
 }
 
 /**
- * Waehlt die anzuzeigende Bildquelle: ein hochgeladenes Bild (customImage) hat
- * immer Vorrang, danach entscheidet die Einstellung "Bevorzugte Ansicht",
- * mit der jeweils anderen automatischen Quelle als Rueckfall.
+ * Picks the image source to display: an uploaded image (customImage) always
+ * wins, then the "Preferred view" setting decides, with the respective
+ * other automatic source as fallback.
  */
 export function resolveDisplayImage(model: ImageSources, preference: DisplayPreference): string | null {
   if (model.customImage) return model.customImage;

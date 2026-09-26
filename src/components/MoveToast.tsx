@@ -8,9 +8,9 @@ interface Props {
 }
 
 /**
- * Kurze Bestaetigung nach einem Verschieben per Ziehen oder dem Anlegen eines
- * Ordners; verschwindet nach 3 s (`onDone`). Ein neuer Move startet den Timer
- * neu. Mit `error` traegt `to` die Fehlermeldung (kein Pfeil, roter Akzent).
+ * Short confirmation after a move by dragging or after creating a
+ * folder; disappears after 3 s (`onDone`). A new move restarts the
+ * timer. With `error`, `to` carries the error message (no arrow, red accent).
  */
 export function MoveToast({ from, to, error = false, onDone }: Props) {
   useEffect(() => {

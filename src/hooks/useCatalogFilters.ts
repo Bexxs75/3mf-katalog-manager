@@ -10,12 +10,11 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
   const [query, setQuery] = useState('');
   const [activeFolderId, setActiveFolderId] = useState('all');
   const [activeTag, setActiveTag] = useState<string | null>(null);
-  // activeCreator setzt die UI derzeit nirgends.
+  // activeCreator is currently not set anywhere in the UI.
   const [activeCreator] = useState<string | null>(null);
   const [toolView, setToolViewState] = useState<ToolView | null>(null);
-  // Eingefroren beim (Re-)Aktivieren der "recent"-Ansicht, damit ein Klick auf
-  // ein Modell (der lastViewedAt aktualisiert) die Reihenfolge nicht sofort
-  // veraendert.
+  // Frozen when the "recent" view is (re)activated so a click on a model
+  // (which updates lastViewedAt) doesn't change the order right away.
   const [recentSnapshot, setRecentSnapshot] = useState<RecentSnapshot | null>(null);
 
   const setToolView = (next: ToolView | null) => {

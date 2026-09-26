@@ -1,7 +1,7 @@
-// Kuratierte Vorschlagslisten fuer die Material-/Hersteller-Felder im
-// Filament-Katalog (siehe FilamentView.tsx). Alphabetisch sortiert, dienen
-// nur als Autocomplete-Vorschlag ueber <datalist> - beide Felder bleiben
-// freie Texteingaben, damit exotische/eigene Werte weiterhin moeglich sind.
+// Curated suggestion lists for the material/manufacturer fields in the
+// filament catalog (see FilamentView.tsx). Sorted alphabetically, they only
+// serve as autocomplete suggestions - both fields stay free text inputs
+// so exotic/custom values remain possible.
 
 export const FILAMENT_MATERIALS: string[] = [
   'ABS',
@@ -71,8 +71,8 @@ export const FILAMENT_MANUFACTURERS: string[] = [
   'ZIRO',
 ];
 
-// Vorschlaege fuer Resin-Flaschen (Filament-Lager, Resin-Ansicht). Wie oben
-// nur Autocomplete - freie Eingabe bleibt moeglich.
+// Suggestions for resin bottles (filament inventory, resin view). As above,
+// only autocomplete - free input stays possible.
 export const RESIN_MATERIALS: string[] = [
   'ABS-like',
   'Castable',

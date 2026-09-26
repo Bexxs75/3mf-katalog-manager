@@ -8,8 +8,8 @@ interface Props {
   className?: string;
 }
 
-// Eigenes Autocomplete statt <datalist>: dessen Vorschlagsliste rendert das
-// System und ignoriert das dunkle Theme.
+// Custom autocomplete instead of <datalist>: its suggestion list is rendered
+// by the system and ignores the dark theme.
 export function AutocompleteInput({ value, onChange, options, placeholder, className }: Props) {
   const [open, setOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
@@ -42,9 +42,9 @@ export function AutocompleteInput({ value, onChange, options, placeholder, class
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Escape') {
-      // Bei offener Vorschlagsliste soll Escape nur die Liste schliessen,
-      // nicht auch das umgebende Popover/Formular (z.B. RestockPopover)
-      // dessen Escape-Handler sonst die Eingaben verwirft.
+      // With the suggestion list open, Escape should only close the list,
+      // not also the surrounding popover/form (e.g. RestockPopover)
+      // whose Escape handler would otherwise discard the input.
       const listWasOpen = open && filtered.length > 0;
       setOpen(false);
       if (listWasOpen) {

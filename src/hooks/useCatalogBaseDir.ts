@@ -5,10 +5,10 @@ const BASE_DIR_KEY = '3mf-katalog-base-dir';
 const SETUP_SEEN_KEY = '3mf-katalog-setup-seen';
 
 /**
- * Verwaltet den optionalen Katalog-Speicherort (Zielordner fuer neu
- * importierte Einzeldateien) und ob der Ersteinrichtungsdialog schon
- * gesehen/entschieden wurde. Persistiert in localStorage nach demselben
- * Muster wie Theme/Dichte/Anzeige-Praeferenz (siehe useDisplayPreference.ts).
+ * Manages the optional catalog location (target folder for newly
+ * imported single files) and whether the first-run dialog has already
+ * been seen/decided. Persisted in localStorage following the same
+ * pattern as theme/density/display preference (see useDisplayPreference.ts).
  */
 export function useCatalogBaseDir() {
   const [catalogBaseDir, setCatalogBaseDirState] = useState<string | null>(() =>
@@ -33,10 +33,10 @@ export function useCatalogBaseDir() {
 }
 
 /**
- * Einmal beim Start: stellt sicher, dass ein gesetzter Speicherort eine
- * Ordnerzeile im Katalog hat. Sonst lehnt das Backend ihn als Entpack-Ziel
- * ab (z.B. nach "Bestehenden Ordner uebernehmen" ohne Modelle). Das Backend
- * legt dabei bewusst keinen inzwischen geloeschten Ordner neu an.
+ * Once at startup: makes sure a configured location has a folder row
+ * in the catalog. Otherwise the backend rejects it as an extraction target
+ * (e.g. after "Adopt existing folder" without models). The backend
+ * deliberately doesn't recreate a folder that was deleted in the meantime.
  */
 export function useRegisterCatalogBaseDirOnStartup(catalogBaseDir: string | null, refreshFolders: () => void) {
   const done = useRef(false);

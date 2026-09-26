@@ -239,7 +239,7 @@ export function DetailPanel({
                   {model.sourceUrl}
                 </a>
               ) : model.sourceUrl ? (
-                // Kein http(s)-Wert: als reiner Text, nie als klickbarer Link.
+                // Not an http(s) value: plain text, never a clickable link.
                 <span className="flex-1 min-w-0 truncate text-right text-[var(--ink-2)]">
                   {model.sourceUrl}
                 </span>
@@ -445,7 +445,7 @@ export function DetailPanel({
                     {model.sourceUrl}
                   </a>
                 ) : model.sourceUrl ? (
-                  // Kein http(s)-Wert: als reiner Text, nie als klickbarer Link.
+                  // Not an http(s) value: plain text, never a clickable link.
                   <span className="flex-1 min-w-0 truncate text-right text-[var(--ink-2)]">
                     {model.sourceUrl}
                   </span>

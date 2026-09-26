@@ -21,7 +21,7 @@ describe('FilamentCheckSection', () => {
   it('shows heading, overall status and an ok row with location', () => {
     renderSection({ fileId: '1', status: 'ok', needs: [need({})] });
     expect(screen.getByText('Reicht das Filament?')).toBeInTheDocument();
-    expect(screen.getAllByText(/reicht$/)).toHaveLength(2); // Kopf-Chip + Zeilen-Chip
+    expect(screen.getAllByText(/reicht$/)).toHaveLength(2); // header chip + row chip
     expect(screen.getByText('PLA Rot')).toBeInTheDocument();
     expect(screen.getByText('208,5 g')).toBeInTheDocument();
     expect(screen.getByText('Bambu PLA · Rot')).toBeInTheDocument();

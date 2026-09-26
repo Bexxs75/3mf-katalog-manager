@@ -5,7 +5,7 @@ interface Props {
   disabled?: boolean;
 }
 
-/** Eigener Schalter (native Checkboxen ignorieren das dunkle Theme). */
+/** Custom switch (native checkboxes ignore the dark theme). */
 export function ToggleSwitch({ checked, onChange, label, disabled }: Props) {
   const toggle = () => !disabled && onChange(!checked);
   return (

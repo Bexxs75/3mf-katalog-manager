@@ -17,7 +17,7 @@ import { SpoolPopoverShell, fieldClass } from './SpoolPopoverShell';
 
 interface Props {
   spool: FilamentSpool;
-  /** Der "Nachkaufen"-Knopf, an dem das Fenster haengt. */
+  /** The "Restock" button the popover hangs on. */
   anchor: HTMLElement;
   knownLocations: string[];
   onClose: () => void;
@@ -30,8 +30,8 @@ const stepButtonClass =
   'w-7 h-7 bg-[var(--panel-2)] text-[var(--ink)] text-[14px] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-[var(--accent)]';
 
 /**
- * "Nachkaufen": legt N neue, volle Spulen bzw. Resin-Flaschen nach dem Vorbild
- * von `spool` an (Huelle: SpoolPopoverShell).
+ * "Restock": creates N new, full spools or resin bottles modeled on
+ * `spool` (shell: SpoolPopoverShell).
  */
 export function RestockPopover({ spool, anchor, knownLocations, onClose, onCreated }: Props) {
   const t = useT();

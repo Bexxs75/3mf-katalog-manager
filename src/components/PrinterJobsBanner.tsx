@@ -7,7 +7,7 @@ interface Props {
   onReview: () => void;
 }
 
-/** Hinweis über der Lagertabelle, nur wenn Drucke zu bestätigen sind. */
+/** Hint above the inventory table, only when there are prints to confirm. */
 export function PrinterJobsBanner({ jobs, onReview }: Props) {
   const t = useT();
   const { language } = useLanguage();

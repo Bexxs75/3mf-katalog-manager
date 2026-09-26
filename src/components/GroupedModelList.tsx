@@ -41,7 +41,7 @@ export function GroupedModelList({
   const t = useT();
   const { roots, noFolder } = useMemo(() => buildGroupedFolderTree(folders, models), [folders, models]);
 
-  // Schwellenwert-Muster wie beim Ordner-Drag in FolderTree, fuer die Ordner-Kopfzeilen.
+  // Threshold pattern as for folder dragging in FolderTree, for the folder header rows.
   const [folderDragCandidateId, setFolderDragCandidateId] = useState<string | null>(null);
   const folderDragStartPos = useRef<{ x: number; y: number } | null>(null);
 
@@ -75,8 +75,8 @@ export function GroupedModelList({
   };
 
   function renderNode(node: GroupedFolderNode, depth: number) {
-    // totalCount ist rekursiv: bei 0 enthaelt der ganze Unterbaum unter dem Filter
-    // nichts (sonst eine Wand leerer Kopfzeilen).
+    // totalCount is recursive: 0 means the whole subtree contains nothing under
+    // the filter (otherwise a wall of empty header rows).
     if (node.totalCount === 0) return null;
     const isCollapsed = collapsedFolders.isCollapsed(node.folder.id);
     const isDraggedOver = dragOverFolderId === node.folder.id;

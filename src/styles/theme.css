@@ -4,11 +4,11 @@
 @tailwind components;
 @tailwind utilities;
 
-/* overscroll-behavior: none auf html/body unterbindet den WebKitGTK-
-   Seiten-Bounce (elastisches Ueberscrollen des gesamten Fensterinhalts,
-   nicht nur einzelner Container - siehe CHANGELOG v0.7.4/#5). "contain"
-   allein reicht laut Spec nicht, weil es den Bounce-Effekt auf dem
-   Root-Element selbst nicht verhindert, nur die Weitergabe an Eltern. */
+/* overscroll-behavior: none on html/body stops the WebKitGTK page bounce
+   (elastic overscrolling of the whole window content, not just single
+   containers - see CHANGELOG v0.7.4/#5). According to the spec "contain"
+   alone isn't enough because it doesn't prevent the bounce on the root
+   element itself, only the propagation to parents. */
 html, body { margin: 0; padding: 0; overscroll-behavior: none; }
 body { font-family: 'Barlow', Helvetica, sans-serif; }
 * { box-sizing: border-box; }
@@ -17,7 +17,7 @@ body { font-family: 'Barlow', Helvetica, sans-serif; }
 ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 
-/* Helles Theme (Standard) */
+/* Light theme (default) */
 [data-app] {
   color-scheme: light;
   --bg: oklch(0.965 0.004 60);
@@ -35,10 +35,10 @@ body { font-family: 'Barlow', Helvetica, sans-serif; }
   --plate-2: oklch(0.955 0.004 60);
   --hatch: rgba(40, 28, 24, 0.09);
   --shadow: 0 1px 2px rgba(40, 28, 24, 0.06), 0 8px 24px rgba(40, 28, 24, 0.05);
-  /* Semantische Statusfarben (Lager-Bestand etc.) - bewusst andere Hues als
-     --accent (30deg), damit "Status" nicht mit "Marke/Primaeraktion"
-     verwechselt wird. --good deckt auch das schon vorhandene
-     var(--good,var(--accent))-Fallback im Druckstatus-Badge ab. */
+  /* Semantic status colors (inventory stock etc.) - deliberately different hues
+     from --accent (30deg) so "status" isn't confused with "brand/primary
+     action". --good also covers the existing
+     var(--good,var(--accent)) fallback in the print status badge. */
   --good: oklch(0.52 0.13 150);
   --good-soft: oklch(0.94 0.045 150);
   --warn: oklch(0.62 0.14 80);
@@ -49,7 +49,7 @@ body { font-family: 'Barlow', Helvetica, sans-serif; }
   --unk-soft: oklch(0.94 0.012 250);
 }
 
-/* Dunkles Theme */
+/* Dark theme */
 [data-app="dark"] {
   color-scheme: dark;
   --bg: oklch(0.165 0.005 60);
@@ -103,7 +103,7 @@ body { font-family: 'Barlow', Helvetica, sans-serif; }
   --icon-badge-size: 2.375rem;
 }
 
-/* Nachkaufen: neu angelegte Eintraege kurz hervorheben (FilamentView entfernt die Klasse nach 2,5 s). */
+/* Restock: briefly highlight newly created entries (FilamentView removes the class after 2.5 s). */
 .spool-new {
   outline: 2px solid var(--good);
   outline-offset: -1px;

@@ -18,7 +18,7 @@ export interface ToolsSectionProps {
   cleanupError: string | null;
 }
 
-// Linien-Symbole (16 px, currentColor) wie im freigegebenen Mockup.
+// Line icons (16 px, currentColor) as in the approved mockup.
 function Icon({ children }: { children: ReactNode }) {
   return (
     <svg

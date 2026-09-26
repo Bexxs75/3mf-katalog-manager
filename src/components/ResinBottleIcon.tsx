@@ -1,6 +1,6 @@
 import { isValidColorHex } from '../lib/filamentColors';
 
-/** Flaschen-Symbol fuer Resin ohne eigenes Bild. */
+/** Bottle icon for resin without its own image. */
 export function ResinBottleIcon({ colorHex, size = 26 }: { colorHex: string | null; size?: number }) {
   const fill = colorHex && isValidColorHex(colorHex) ? colorHex : 'var(--plate)';
   return (

@@ -10,14 +10,14 @@ export interface CatalogFilterCriteria {
   activeCreator: string | null;
   query: string;
   sort: SortKey;
-  // Fuer die Suche in uebersetzten Namen automatischer Tags.
+  // For searching in translated names of automatic tags.
   language?: Language;
-  // Werkzeug-Ansicht der Seitenleiste; bestimmt Auswahl UND Reihenfolge.
+  // Tool view of the sidebar; determines selection AND order.
   toolView?: ToolView | null;
-  // Bezugszeitpunkt fuer "Neu hinzugefuegt" (Tests setzen ihn fest).
+  // Reference time for "Recently added" (tests pin it).
   now?: Date;
-  // Eingefrorener lastViewedAt-Stand fuer die "recent"-Ansicht (siehe
-  // useCatalogFilters); nur relevant, wenn toolView === 'recent'.
+  // Frozen lastViewedAt state for the "recent" view (see
+  // useCatalogFilters); only relevant when toolView === 'recent'.
   recentSnapshot?: RecentSnapshot;
 }
 

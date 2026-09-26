@@ -13,7 +13,7 @@ interface Props {
 
 const iso = (unixSeconds: number) => new Date(unixSeconds * 1000).toISOString();
 
-/** Status-Zeile eines angebundenen Druckers in der Druckerspalte. */
+/** Status row of a connected printer in the printer column. */
 export function PrinterLinkStatus({ printerId, link }: Props) {
   const t = useT();
   const { language } = useLanguage();
@@ -27,8 +27,8 @@ export function PrinterLinkStatus({ printerId, link }: Props) {
   let text = c.lastSyncedAt
     ? t('printerSyncedAgo').replace('{time}', () => formatRelativeTime(iso(c.lastSyncedAt as number), language))
     : t('printerNotSyncedYet');
-  // Nach einer Wiederherstellung ist `paused` gesetzt, `lastError` aber leer;
-  // ohne diesen Zweig saehe die Verbindung faelschlich gesund aus.
+  // After a restore `paused` is set but `lastError` is empty;
+  // without this branch the connection would wrongly look healthy.
   if (c.paused && c.lastError !== 'auth_required') {
     dot = 'bg-[var(--warn)]';
     text = t('printerPausedRetest');

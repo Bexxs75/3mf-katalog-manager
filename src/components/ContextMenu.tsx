@@ -34,7 +34,7 @@ export function ContextMenu({
   const t = useT();
   const [view, setView] = useState<View>('menu');
   const [baseNameDraft, setBaseNameDraft] = useState('');
-  // Beim Oeffnen des Umbenennens abgeleitet; die Endung ist nicht editierbar.
+  // Derived when the rename view opens; the extension is not editable.
   const [extension, setExtension] = useState('');
   const [renameError, setRenameError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
@@ -45,8 +45,8 @@ export function ContextMenu({
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     };
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Beim Umbenennen faengt das Eingabefeld Escape selbst ab; hier nur fuer die
-      // Menue-Ansicht.
+      // While renaming, the input handles Escape itself; this is only for the
+      // menu view.
       if (e.key === 'Escape' && view === 'menu') onClose();
     };
     document.addEventListener('mousedown', handlePointerDown);

@@ -6,8 +6,8 @@ import { STATUS_SYMBOL, roundG, slotText, spoolFillRatio, statusLabel } from '..
 
 type NeedStatus = Exclude<FilamentCheckStatus, 'no_data'>;
 
-// Farbtoken je Status: ok/swap/short nutzen die vorhandenen Statusfarben,
-// "unklar" die eigenen --unk-Tokens.
+// Color token per status: ok/swap/short use the existing status colors,
+// "unclear" its own --unk tokens.
 const TONE: Record<NeedStatus, string> = {
   ok: 'text-[var(--good)] bg-[var(--good-soft)] border-[color-mix(in_oklch,var(--good)_35%,transparent)]',
   swap: 'text-[var(--warn)] bg-[var(--warn-soft)] border-[color-mix(in_oklch,var(--warn)_35%,transparent)]',
@@ -44,8 +44,8 @@ function PlaceChip({ spool }: { spool: FilamentSpoolUse }) {
   );
 }
 
-// Duenner Fuellbalken unter der Spulen-Zeile fuer "reicht" (gruen) und
-// "reicht nicht" (rot); kein Balken ohne bekanntes Originalgewicht.
+// Thin fill bar below the spool row for "enough" (green) and
+// "not enough" (red); no bar without a known original weight.
 function FillBar({ spool, tone }: { spool: FilamentSpoolUse; tone: 'ok' | 'short' }) {
   const t = useT();
   const ratio = spoolFillRatio(spool);

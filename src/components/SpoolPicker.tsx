@@ -14,29 +14,29 @@ interface Props {
   placeholder?: string;
 }
 
-// Material · Farbe · Hersteller/Lagerort (falls vorhanden) · Restgewicht -
-// sonst sind baugleiche Spulen (gleiches Material, gleiche Farbe) in der
-// Liste nicht unterscheidbar. Wird als vollstaendiger Accessible Name fuer
-// Knopf und Optionen verwendet (unabhaengig von der sichtbaren Aufteilung).
+// Material · color · manufacturer/location (if any) · remaining weight -
+// otherwise identical spools (same material, same color) can't be told
+// apart in the list. Used as the full accessible name for button and
+// options (independent of the visible layout).
 const text = (s: FilamentSpool, language: Language) =>
   [s.material, s.color, s.manufacturer, s.location, formatStockG(s.remainingWeightG, language)].filter(Boolean).join(' · ');
 
-// Sichtbare Kurzbeschriftung im geschlossenen Knopf - Hersteller darf
-// abgeschnitten werden, das Restgewicht steht separat und bleibt immer lesbar.
+// Short visible label in the closed button - the manufacturer may be
+// truncated, the remaining weight is separate and always stays readable.
 const triggerLabel = (s: FilamentSpool) => [s.material, s.color, s.manufacturer].filter(Boolean).join(' · ');
 
-// Zweite Zeile je Option in der Liste (gedaempft): Restgewicht zuerst, dann
-// Hersteller/Lagerort - so bleibt das Gewicht auch bei langen Namen sichtbar.
+// Second line per option in the list (muted): remaining weight first, then
+// manufacturer/location - so the weight stays visible even with long names.
 const optionMeta = (s: FilamentSpool, language: Language) =>
   [formatStockG(s.remainingWeightG, language), s.manufacturer, s.location].filter(Boolean).join(' · ');
 
 const POPUP_MIN_WIDTH = 384; // 24rem
 
-/** Eigene Auswahl mit Farbfeld (native <select>-Popups ignorieren das Theme). */
+/** Custom picker with color swatch (native <select> popups ignore the theme). */
 export function SpoolPicker({ spools: allSpools, value, onChange, label, placeholder }: Props) {
   const { language } = useLanguage();
-  // Die Druckeranbindung bucht nur Filament ab; Resin-Flaschen sind nie ein
-  // Kandidat, auch wenn ein Aufrufer die volle Liste reicht.
+  // The printer connection only deducts filament; resin bottles are never a
+  // candidate, even if a caller passes the full list.
   const spools = useMemo(() => allSpools.filter((s) => s.kind !== 'resin'), [allSpools]);
   const uid = useId();
   const [open, setOpen] = useState(false);
@@ -47,24 +47,23 @@ export function SpoolPicker({ spools: allSpools, value, onChange, label, placeho
   const selected = spools.find((s) => s.id === value) ?? null;
   const optionId = (id: string) => `${uid}-${id}`;
 
-  // Beim Oeffnen (bzw. wenn sich der ausgewaehlte Wert aendert) auf die
-  // aktuelle Auswahl springen und die Liste fokussieren (Position/Schliessen
-  // uebernimmt useAnchoredPopup).
+  // On open (or when the selected value changes) jump to the current
+  // selection and focus the list (position/closing is handled by
+  // useAnchoredPopup).
   useEffect(() => {
     if (open) {
       setActiveId(value ?? spools[0]?.id ?? null);
-      // `preventScroll`, damit das Fokussieren selbst in echten Browsern
-      // keinen Scroll der Seite ausloest - sonst schliesst der eigene
-      // Scroll-Listener (in useAnchoredPopup) das Popup, kaum dass es offen
-      // ist.
+      // `preventScroll` so that focusing itself doesn't scroll the page in
+      // real browsers - otherwise our own scroll listener (in useAnchoredPopup)
+      // would close the popup as soon as it is open.
       listRef.current?.focus({ preventScroll: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, value]);
 
-  // Laedt sich die Spulenliste waehrend die Liste offen ist neu (z.B. nach
-  // einer Vorschau-Antwort), soll die Tastatur-Position NICHT zurueckspringen
-  // - nur wenn das aktive Element tatsaechlich verschwunden ist.
+  // If the spool list reloads while the list is open (e.g. after a
+  // preview answer), the keyboard position must NOT jump back
+  // - only if the active element has actually disappeared.
   useEffect(() => {
     if (!open) return;
     setActiveId((prev) => (prev !== null && spools.some((s) => s.id === prev) ? prev : (spools[0]?.id ?? null)));
@@ -128,8 +127,8 @@ export function SpoolPicker({ spools: allSpools, value, onChange, label, placeho
                 if (activeId !== null) choose(activeId);
               } else if (e.key === 'Escape') {
                 e.preventDefault();
-                // Nicht bis zum umgebenden Dialog durchreichen - Escape soll
-                // hier nur die Liste schliessen, nicht den ganzen Dialog.
+                // Don't pass it on to the surrounding dialog - Escape should
+                // only close the list here, not the whole dialog.
                 e.stopPropagation();
                 setOpen(false);
               }

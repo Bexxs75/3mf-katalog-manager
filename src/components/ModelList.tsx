@@ -26,7 +26,7 @@ export function ModelList({ models, selectedId, onSelect, onOpenDetail, onContex
   const [fileDragArmed, setFileDragArmed] = useState(false);
   const fileDragStartPos = useRef<{ x: number; y: number } | null>(null);
 
-  // Schwellenwert-Muster wie beim Datei-Drag in ModelGrid, hier fuer Zeilen.
+  // Threshold pattern as for file dragging in ModelGrid, here for rows.
   useEffect(() => {
     if (!fileDragCandidateId) return;
     const handleMouseMove = (e: MouseEvent) => {

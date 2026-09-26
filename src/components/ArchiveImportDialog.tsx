@@ -38,8 +38,8 @@ function fileName(path: string) {
   return path.split(/[\\/]/).pop() ?? path;
 }
 
-/** Eigenes Radio statt <input type="radio">: native Formularelemente
- *  ignorieren das Dark-Theme (siehe BulkCheckbox). */
+/** Custom radio instead of <input type="radio">: native form controls
+ *  ignore the dark theme (see BulkCheckbox). */
 function RadioOption({ checked, label, onSelect, disabled }: { checked: boolean; label: string; onSelect: () => void; disabled: boolean }) {
   return (
     <button
@@ -111,7 +111,7 @@ export function ArchiveImportDialog({ archives, defaultTargetDir, onCancel, onDo
     if (!targetDir) return;
     setRunning(true);
     setError(null);
-    // Anzeigen eines vorherigen Versuchs nicht stehen lassen.
+    // Don't leave the display of a previous attempt behind.
     setProgress({});
     try {
       const requests = extractable.map((a) => ({

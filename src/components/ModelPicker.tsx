@@ -10,7 +10,7 @@ export interface ModelOption {
 
 interface Props {
   models: ModelOption[];
-  /** DOM-Knoten des Auswahl-Knopfs, an dem das Popup positioniert wird. */
+  /** DOM node of the picker button the popup is positioned at. */
   anchorRef: RefObject<HTMLElement | null>;
   onChange: (fileId: string | null) => void;
   onClose: () => void;
@@ -19,13 +19,13 @@ interface Props {
 const NONE = Symbol('none');
 type OptionId = string | typeof NONE;
 
-// Mindestbreite; useAnchoredPopup nimmt die groessere von Ankerbreite und dieser.
+// Minimum width; useAnchoredPopup takes the larger of anchor width and this.
 const POPUP_MIN_WIDTH = 280;
 
 /**
- * Suchauswahl ueber alle Katalogmodelle inkl. „Kein Modell“; Pfeiltasten und
- * Enter wie bei SpoolPicker. Per Portal am Knopf (`anchorRef`) positioniert,
- * damit ein ueberlaufender Dialog das Popup nicht abschneidet.
+ * Search picker over all catalog models incl. "No model"; arrow keys and
+ * Enter as in SpoolPicker. Positioned at the button (`anchorRef`) via a
+ * portal so an overflowing dialog doesn't clip the popup.
  */
 export function ModelPicker({ models, anchorRef, onChange, onClose }: Props) {
   const t = useT();
@@ -34,21 +34,21 @@ export function ModelPicker({ models, anchorRef, onChange, onClose }: Props) {
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const focusedRef = useRef(false);
-  // Solange gemountet, gilt das Popup als offen; geschlossen wird ueber `onClose`.
+  // While mounted, the popup counts as open; it is closed via `onClose`.
   const { popupRef, style } = useAnchoredPopup<HTMLElement, HTMLDivElement>(anchorRef, true, onClose, POPUP_MIN_WIDTH);
   const hits = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return (needle ? models.filter((m) => m.name.toLowerCase().includes(needle)) : models).slice(0, 50);
   }, [models, q]);
-  // Index 0 ist immer "Kein Modell", danach die Treffer - eine gemeinsame
-  // Liste fuer die Pfeiltasten-Navigation.
+  // Index 0 is always "No model", then the hits - one shared
+  // list for arrow key navigation.
   const optionIds: OptionId[] = [NONE, ...hits.map((m) => m.id)];
 
   useEffect(() => setActive(0), [q]);
 
-  // Suchfeld fokussieren, sobald das Popup positioniert im DOM steht.
-  // `preventScroll`, sonst schliesst der Scroll-Listener von useAnchoredPopup es
-  // sofort wieder.
+  // Focus the search field as soon as the popup is positioned in the DOM.
+  // `preventScroll`, otherwise the scroll listener of useAnchoredPopup would
+  // close it right away.
   useEffect(() => {
     if (style && !focusedRef.current) {
       focusedRef.current = true;
@@ -69,8 +69,8 @@ export function ModelPicker({ models, anchorRef, onChange, onClose }: Props) {
       className="z-[60] rounded-md border border-[var(--line-strong)] bg-[var(--panel)] shadow-[var(--shadow)] p-1.5 flex flex-col gap-1"
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
-          // Nicht bis zum umgebenden Dialog durchreichen - Escape soll hier
-          // nur die Auswahl schliessen, nicht den ganzen Dialog.
+          // Don't pass it on to the surrounding dialog - Escape should only
+          // close the picker here, not the whole dialog.
           e.stopPropagation();
           onClose();
         } else if (e.key === 'ArrowDown') {

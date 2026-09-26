@@ -40,8 +40,8 @@ export function buildGroupedFolderTree(
     }
   }
 
-  // totalCount erst nach vollstaendigem Baumaufbau berechnen (haengt von
-  // bereits befuellten `children` ab, rekursiv von den Blaettern aus).
+  // Compute totalCount only after the whole tree is built (depends on
+  // already filled `children`, recursively from the leaves up).
   const fillCounts = (node: GroupedFolderNode) => {
     node.children.forEach(fillCounts);
     node.totalCount = countAll(node);

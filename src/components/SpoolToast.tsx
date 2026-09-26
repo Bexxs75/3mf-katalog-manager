@@ -4,10 +4,10 @@ import { AutocompleteInput } from './AutocompleteInput';
 
 interface Props {
   label: string;
-  /** Neuer Lagerort nach dem Herausnehmen (Stammplatz); `null` = ohne Lagerort. */
+  /** New location after unloading (home location); `null` = no location. */
   location: string | null;
   knownLocations: string[];
-  /** Fehlt er, zeigt der Hinweis nur `label` (z. B. "2 Spulen PETG · Rot angelegt"). */
+  /** If missing, the toast shows only `label` (e.g. "2 spools PETG · Red created"). */
   onChangeLocation?: (location: string) => Promise<unknown>;
   onDone: () => void;
 }
@@ -15,10 +15,10 @@ interface Props {
 const AUTO_CLOSE_MS = 5000;
 
 /**
- * Hinweis nach dem Herausnehmen einer Spule: "PLA Schwarz → zurueck nach
- * Regal 2 · Aendern". Beim Ziehen wuerde eine Nachfrage den Fluss stoeren,
- * deshalb stumm zum Stammplatz, aber hier korrigierbar. Schliesst nach 5 s,
- * ausser waehrend der Korrektur.
+ * Toast after unloading a spool: "PLA Black → back to Shelf 2 · Change".
+ * While dragging, a question would interrupt the flow, so it silently goes
+ * to the home location but can be corrected here. Closes after 5 s,
+ * except during the correction.
  */
 export function SpoolToast({ label, location, knownLocations, onChangeLocation, onDone }: Props) {
   const t = useT();

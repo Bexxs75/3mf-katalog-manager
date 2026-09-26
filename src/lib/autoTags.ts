@@ -2,10 +2,10 @@ import type { Language } from '../i18n/types';
 import type { TagCount } from '../types';
 import AUTO_TAGS from './autoTags.json';
 
-// Namentabelle der automatischen Tags, gemeinsam mit dem Rust-Backend
-// (src-tauri/src/tagging.rs liest dieselbe JSON-Datei). Die Kennung ist
-// der deutsche Name und steht so in der Datenbank; hier wird nur die
-// Anzeige uebersetzt.
+// Name table of the automatic tags, shared with the Rust backend
+// (src-tauri/src/tagging.rs reads the same JSON file). The identifier is
+// the German name and is stored like that in the database; only the
+// display is translated here.
 type AutoTagNames = Record<Language, string>;
 const TABLE: Record<string, AutoTagNames> = AUTO_TAGS;
 
@@ -19,8 +19,8 @@ for (const [canonical, names] of Object.entries(TABLE)) {
 }
 
 export function tagLabel(tag: string, language: Language): string {
-  // hasOwnProperty statt Index-Zugriff: "constructor" o.ae. lieferte sonst ein
-  // geerbtes Property (Object.hasOwn braucht ES2022, Ziel ist ES2020).
+  // hasOwnProperty instead of index access: "constructor" etc. would otherwise
+  // return an inherited property (Object.hasOwn needs ES2022, target is ES2020).
   return Object.prototype.hasOwnProperty.call(TABLE, tag) ? TABLE[tag][language] : tag;
 }
 

@@ -41,8 +41,8 @@ function disposeObject(object: THREE.Object3D) {
   });
 }
 
-// Baut aus den Rohdaten eine flache Gruppe; die Positionen kommen aus Rust
-// schon weltraum-transformiert.
+// Builds a flat group from the raw data; the positions come from Rust
+// already transformed into world space.
 function buildGroup(meshes: ParsedMesh[], material: THREE.MeshStandardMaterial): THREE.Group {
   const group = new THREE.Group();
   for (const mesh of meshes) {
@@ -73,8 +73,8 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [autoRotating, setAutoRotating] = useState(false);
 
-  // Renderer, Szene, Kamera und Licht nur einmal aufbauen: ein neuer
-  // WebGL-Kontext pro Modellwechsel bremste die App spuerbar.
+  // Set up renderer, scene, camera and light only once: a new
+  // WebGL context per model change slowed the app down noticeably.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -97,7 +97,7 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
     fill.position.set(-1, -0.4, -1);
     scene.add(fill);
 
-    // Koralle nah am App-Akzent, hebt sich in beiden Themes vom Hintergrund ab.
+    // Coral close to the app accent, stands out from the background in both themes.
     const material = new THREE.MeshStandardMaterial({
       color: 0xd0603f,
       roughness: 0.55,
@@ -141,8 +141,8 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
     };
   }, []);
 
-  // Modellwechsel: laedt die neue Geometrie und ersetzt nur das Objekt in
-  // der bereits bestehenden Szene, statt den ganzen Viewer neu aufzubauen.
+  // Model change: loads the new geometry and replaces only the object in
+  // the existing scene instead of rebuilding the whole viewer.
   useEffect(() => {
     const ctx = ctxRef.current;
     if (!ctx) return;
@@ -155,9 +155,9 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
         if (cancelled) return;
         const meshes = decodeModelGeometry(buffer);
         const object = buildGroup(meshes, ctx.material);
-        // 3MF/STL sind Z-up, OrbitControls drehen um die Welt-Y-Achse. Die feste
-        // Drehung um -90 Grad auf X macht jede Azimut-Drehung zum Drehteller um die
-        // stehende Achse des Modells.
+        // 3MF/STL are Z-up, OrbitControls rotate around the world Y axis. The fixed
+        // -90 degree rotation on X turns every azimuth rotation into a turntable
+        // around the model's upright axis.
         object.rotateX(-Math.PI / 2);
 
         if (ctx.currentObject) {
@@ -205,15 +205,15 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
     };
   }, [fileId]);
 
-  // OrbitControls pausiert autoRotate beim Ziehen selbst und setzt danach fort.
+  // OrbitControls pauses autoRotate itself while dragging and resumes afterwards.
   useEffect(() => {
     if (ctxRef.current) {
       ctxRef.current.controls.autoRotate = autoRotating;
     }
   }, [autoRotating]);
 
-  // Dreht die Kamera um 15 Grad um die Hochachse. Ueber THREE.Spherical, weil
-  // rotateLeft/rotateRight in OrbitControls privat sind.
+  // Rotates the camera by 15 degrees around the vertical axis. Via THREE.Spherical
+  // because rotateLeft/rotateRight are private in OrbitControls.
   const rotateStep = (direction: 1 | -1) => {
     const ctx = ctxRef.current;
     if (!ctx) return;

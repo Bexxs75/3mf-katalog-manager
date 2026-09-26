@@ -53,9 +53,9 @@ export function FolderTree({
       return next;
     });
 
-  // Ordner-Reihen sind nur 28px hoch: ein sofortiger Drag-Start liesse schon
-  // leichtes Verrutschen beim Klick einen echten move_folder ausloesen. Deshalb
-  // wie in ModelGrid erst ab DRAG_THRESHOLD_PX Bewegung ziehen.
+  // Folder rows are only 28px high: an immediate drag start would let even a
+  // slight slip during a click trigger a real move_folder. So, as in
+  // ModelGrid, only start dragging after DRAG_THRESHOLD_PX of movement.
   const DRAG_THRESHOLD_PX = 6;
   const [dragCandidateId, setDragCandidateId] = useState<string | null>(null);
   const dragStartPos = useRef<{ x: number; y: number } | null>(null);

@@ -6,7 +6,7 @@ export interface SlicerDto {
   executablePath: string;
 }
 
-// Der Datei-Dialog laeuft im Backend; das Frontend reicht nie einen Pfad durch.
+// The file dialog runs in the backend; the frontend never passes a path through.
 export function pickAndRegisterSlicer() {
   return invoke<SlicerDto | null>('pick_and_register_slicer');
 }
@@ -15,7 +15,7 @@ export function listRegisteredSlicers() {
   return invoke<SlicerDto[]>('list_registered_slicers');
 }
 
-// Nur die id eines registrierten Slicers; Pfad und Pruefung liegen im Backend.
+// Only the id of a registered slicer; path and validation live in the backend.
 export function openInSlicer(modelId: string, slicerId: string) {
   return invoke('open_in_slicer', { fileId: modelId, slicerId });
 }

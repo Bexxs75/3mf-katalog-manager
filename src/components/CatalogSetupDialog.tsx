@@ -30,8 +30,8 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
       const result = await invoke<ImportResultDto>('import_dropped', { paths: [path] });
       const after = await invoke<Folder[]>('list_folders');
       const newFolders = after.filter((f) => !before.some((b) => b.id === f.id)).length;
-      // Auch ohne Modelle eine Ordnerzeile anlegen - sonst gilt der
-      // Speicherort z.B. nicht als Entpack-Ziel (idempotent).
+      // Create a folder row even without models - otherwise the location
+      // doesn't count as an extraction target, for example (idempotent).
       await invoke('register_catalog_base_dir', { path });
 
       onBaseDirSet(path);

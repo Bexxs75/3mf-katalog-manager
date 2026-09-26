@@ -6,8 +6,8 @@ export type ResolvedTheme = 'light' | 'dark';
 const STORAGE_KEY = '3mf-katalog-theme';
 
 /**
- * Theme der Anwendung: "system" folgt live prefers-color-scheme, "light"/"dark"
- * sind fest. Die Auswahl liegt in localStorage.
+ * App theme: "system" follows prefers-color-scheme live, "light"/"dark"
+ * are fixed. The choice is stored in localStorage.
  */
 export function useTheme() {
   const [setting, setSetting] = useState<ThemeSetting>(() => {

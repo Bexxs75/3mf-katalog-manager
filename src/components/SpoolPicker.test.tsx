@@ -106,9 +106,9 @@ describe('SpoolPicker', () => {
     const list = screen.getByRole('listbox');
     fireEvent.keyDown(list, { key: 'ArrowDown' });
     const activeBefore = list.getAttribute('aria-activedescendant');
-    // Neues Array mit denselben Eintraegen (z.B. nach einem previewJob-Refresh
-    // aus der umgebenden PrinterJobsDialog) - die Tastatur-Position darf
-    // dabei NICHT zurueckspringen.
+    // New array with the same entries (e.g. after a previewJob refresh
+    // from the surrounding PrinterJobsDialog) - the keyboard position must
+    // NOT jump back.
     const second = [spool('1', 'PLA', 'Grau'), spool('2', 'PETG', 'Petrol')];
     rerender(
       <LanguageProvider>
@@ -128,7 +128,7 @@ describe('SpoolPicker', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: /Spule/ }));
     const list = screen.getByRole('listbox');
-    fireEvent.keyDown(list, { key: 'ArrowDown' }); // aktiv ist jetzt Spule 2 (PETG)
+    fireEvent.keyDown(list, { key: 'ArrowDown' }); // spool 2 (PETG) is active now
     rerender(
       <LanguageProvider>
         <SpoolPicker spools={[spool('1', 'PLA', 'Grau')]} value="1" onChange={onChange} label="Spule" />
@@ -139,8 +139,8 @@ describe('SpoolPicker', () => {
   });
 
   it('does not close when a scroll event originates from inside the popup list itself', () => {
-    // Echte Browser loesen beim Oeffnen Scroll-Events aus (scrollIntoView, focus),
-    // jsdom nicht; hier simuliert. Das Popup darf dadurch nicht zugehen.
+    // Real browsers fire scroll events on open (scrollIntoView, focus),
+    // jsdom doesn't; simulated here. The popup must not close because of them.
     const onChange = vi.fn();
     render(
       <LanguageProvider>
@@ -181,7 +181,7 @@ describe('SpoolPicker', () => {
   });
 
   it('opens on click and stays open (does not immediately close itself)', () => {
-    // Ein echter Klick muss oeffnen, trotz Scroll- und Fokus-Nebenwirkungen.
+    // A real click must open it, despite scroll and focus side effects.
     const onChange = vi.fn();
     render(
       <LanguageProvider>

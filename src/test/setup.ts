@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom/vitest';
 
-// jsdom hat kein matchMedia - useTheme.ts (system-Praeferenz) braucht es.
+// jsdom has no matchMedia - useTheme.ts (system preference) needs it.
 if (!window.matchMedia) {
   window.matchMedia = (query: string) => ({
     matches: false,

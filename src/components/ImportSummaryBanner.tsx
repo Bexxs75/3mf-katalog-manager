@@ -44,8 +44,8 @@ export function ImportSummaryBanner({ imported, duplicates, archives, onClose }:
     }
   }
 
-  // Fehlermeldungen bleiben stehen, bis sie weggeklickt werden - sonst
-  // verschwindet ein fehlgeschlagenes Archiv nach 5 s unbemerkt.
+  // Error messages stay until they are dismissed - otherwise a failed
+  // archive would disappear unnoticed after 5 s.
   useEffect(() => {
     if (hasProblems) return;
     const timer = setTimeout(onClose, 5000);

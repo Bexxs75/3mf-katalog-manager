@@ -79,8 +79,8 @@ function JobsWrapper({ jobs }: { jobs: PrinterJob[] }) {
   );
 }
 
-// Spiegelt App.tsx: eine einzige `usePrinters()`-Instanz, die an FilamentView
-// (und in der echten App zugleich an Rail) weitergereicht wird.
+// Mirrors App.tsx: a single `usePrinters()` instance passed to FilamentView
+// (and, in the real app, to Rail as well).
 function PrintersWrapper({ children }: { children: (printers: ReturnType<typeof usePrinters>) => ReactNode }) {
   const printers = usePrinters();
   return <>{children(printers)}</>;
@@ -105,9 +105,9 @@ describe('FilamentView with printers', () => {
   });
 
   it('counts a loaded spool\'s home location in the storage-location stat', async () => {
-    // LOADED hat `location: null` (steckt im Fach) aber `homeLocation:
-    // 'Regal 2'`; STORED liegt unter `location: 'Regal 1'` im Lager. Beide
-    // Orte muessen gezaehlt werden, nicht nur der von STORED.
+    // LOADED has `location: null` (sits in a slot) but `homeLocation:
+    // 'Regal 2'`; STORED lies under `location: 'Regal 1'` in storage. Both
+    // locations must be counted, not just the one of STORED.
     renderView();
     await waitFor(() => screen.getByTestId('slot-u1-0'));
     expect(screen.getByText('Belegte Lagerplätze').nextElementSibling).toHaveTextContent('2');
@@ -183,7 +183,7 @@ describe('FilamentView with printers', () => {
     expect(screen.queryByTestId('spool-card-store')).toBeNull();
     expect(screen.getByText('Flaschen gesamt').nextElementSibling).toHaveTextContent('1');
     expect(screen.getByText('Restbestand gesamt').nextElementSibling).toHaveTextContent('640,5 ml');
-    // Die Druckerspalte zeigt in der Resin-Ansicht nur Resin-Drucker.
+    // In the resin view the printer column shows only resin printers.
     expect(screen.queryByTestId('slot-u1-0')).toBeNull();
   });
 
@@ -273,8 +273,8 @@ describe('FilamentView with printers', () => {
   });
 
   it('does not drop a filament spool on a slot it does not fit (no request)', async () => {
-    // Filament-Ansicht: ein Resin-Drucker ist hier gar nicht sichtbar; ein
-    // Ziehen auf eine Stelle ohne passendes Ziel loest nichts aus.
+    // Filament view: a resin printer isn't visible here at all; dropping
+    // onto a spot without a matching target triggers nothing.
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === 'list_filament_spools') return Promise.resolve([STORED, RESIN]);
       if (cmd === 'list_printers') return Promise.resolve([SATURN]);
@@ -309,7 +309,7 @@ describe('FilamentView with printers', () => {
   });
 
   it('shows the total remaining stock in whole grams, without decimals from the tenth-gram sum', async () => {
-    // 620,3 g + 620,4 g = 1240,7 g, die Statistik zeigt ganze Gramm.
+    // 620.3 g + 620.4 g = 1240.7 g, the statistics show whole grams.
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === 'list_filament_spools') {
         return Promise.resolve([
@@ -330,8 +330,8 @@ describe('FilamentView with printers', () => {
 
 describe('FilamentView shares one printers instance with other consumers', () => {
   it('reflects a printer added elsewhere (e.g. the Rail "Drucker" tab) without a remount', async () => {
-    // App.tsx reicht dieselbe usePrinters()-Instanz an FilamentView UND Rail,
-    // sonst sieht Rail Aenderungen erst nach einem Remount.
+    // App.tsx passes the same usePrinters() instance to FilamentView AND Rail,
+    // otherwise Rail would only see changes after a remount.
     let printerAdded = false;
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === 'list_filament_spools') return Promise.resolve([LOADED, STORED]);
@@ -352,7 +352,7 @@ describe('FilamentView shares one printers instance with other consumers', () =>
         <PrintersWrapper>
           {(printers) => (
             <>
-              {/* Steht hier fuer einen zweiten Verbraucher derselben Instanz, z.B. Rail. */}
+              {/* Stands in for a second consumer of the same instance, e.g. Rail. */}
               <div data-testid="other-consumer">{printers.printers.map((p) => p.name).join(', ')}</div>
               <button onClick={() => printers.addPrinter('Neuer Drucker', 'Halter', 'filament')}>Drucker hinzufuegen</button>
               <FilamentView printerLink={printerLink()} printers={printers} />
@@ -369,7 +369,7 @@ describe('FilamentView shares one printers instance with other consumers', () =>
     fireEvent.click(screen.getByRole('button', { name: 'Drucker hinzufuegen' }));
 
     await waitFor(() => expect(screen.getByTestId('other-consumer')).toHaveTextContent('Neuer Drucker'));
-    // Derselbe Refresh muss auch in FilamentViews eigener Druckerspalte ankommen.
+    // The same refresh must also reach FilamentView's own printer column.
     expect(printerColumn()).toHaveTextContent('Neuer Drucker');
   });
 });
@@ -382,13 +382,13 @@ describe('FilamentView printer-jobs dialog state', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Prüfen' }));
     expect(screen.getByRole('dialog')).toBeInTheDocument();
 
-    // Liste leert sich (z.B. nach dem letzten Bestaetigen/Ignorieren) -
-    // ohne Reset bliebe der Banner dauerhaft ausgeblendet.
+    // The list empties (e.g. after the last confirm/ignore) -
+    // without a reset the banner would stay hidden for good.
     rerender(<JobsWrapper jobs={[]} />);
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 
-    // Neue Drucke kommen herein - der Dialog darf NICHT ungefragt wieder
-    // aufspringen, der Banner muss stattdessen zurueck sein.
+    // New prints arrive - the dialog must NOT pop up again unasked,
+    // the banner must be back instead.
     rerender(<JobsWrapper jobs={[printerJob({ id: '2' })]} />);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Prüfen' })).toBeInTheDocument();

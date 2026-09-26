@@ -10,7 +10,7 @@ function fireKey(key: string, target: EventTarget = window) {
   return event;
 }
 
-// Kachel mit gemockter Position: jsdom layoutet nicht.
+// Tile with a mocked position: jsdom doesn't do layout.
 function placeTile(id: string, rect: { left: number; top: number; width?: number; height?: number }) {
   const el = document.createElement('div');
   el.setAttribute(MODEL_TILE_ATTR, id);
@@ -18,8 +18,8 @@ function placeTile(id: string, rect: { left: number; top: number; width?: number
   const height = rect.height ?? 100;
   el.getBoundingClientRect = () =>
     ({ left: rect.left, top: rect.top, width, height, right: rect.left + width, bottom: rect.top + height, x: rect.left, y: rect.top, toJSON() {} }) as DOMRect;
-  // jsdom implementiert scrollIntoView nicht - fuer Tests, die pruefen wollen,
-  // ob/womit es aufgerufen wurde, muss die Kachel einen eigenen Spy bekommen.
+  // jsdom doesn't implement scrollIntoView - for tests that want to check
+  // whether/with what it was called, the tile needs its own spy.
   el.scrollIntoView = vi.fn();
   document.body.appendChild(el);
   return el;
@@ -31,7 +31,7 @@ describe('findSpatialNeighbor', () => {
   });
 
   it('finds the tile directly below in a 3-column grid', () => {
-    // Zeile 1: a b c / Zeile 2: d e f - Auswahl auf "b", "runter" muss "e" treffen.
+    // Row 1: a b c / row 2: d e f - selection on "b", "down" must hit "e".
     placeTile('a', { left: 0, top: 0 });
     placeTile('b', { left: 100, top: 0 });
     placeTile('c', { left: 200, top: 0 });
@@ -44,8 +44,8 @@ describe('findSpatialNeighbor', () => {
   });
 
   it('picks the horizontally closest tile in the next row when columns are uneven', () => {
-    // Zeile 2 hat nur 2 Kacheln: "runter" von "b" (x-Mitte 150) muss die naehere
-    // von "d" (50) und "e" (150) treffen, also "e".
+    // Row 2 has only 2 tiles: "down" from "b" (x center 150) must hit the
+    // closer of "d" (50) and "e" (150), i.e. "e".
     placeTile('a', { left: 0, top: 0 });
     placeTile('b', { left: 100, top: 0 });
     placeTile('c', { left: 200, top: 0 });
@@ -167,8 +167,8 @@ describe('useKeyboardShortcuts', () => {
   });
 
   it('ArrowUp falls back to flat list order when the selection has no rendered tile', () => {
-    // Kein Tile im DOM angelegt - findSpatialNeighbor liefert null, der Hook
-    // muss auf die einfache Listen-Reihenfolge zurueckfallen statt nichts zu tun.
+    // No tile created in the DOM - findSpatialNeighbor returns null, the hook
+    // must fall back to the plain list order instead of doing nothing.
     const { selectModel } = setup({ filteredIds: ['a', 'b', 'c'], selectedId: 'b' });
     fireKey('ArrowUp');
     expect(selectModel).toHaveBeenCalledWith('a');

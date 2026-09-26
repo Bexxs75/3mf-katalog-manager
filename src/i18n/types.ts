@@ -143,17 +143,17 @@ export interface Translations {
   resinQuantityLabel: string;
   resinQuantityHint: string;
 
-  /** Knopf an Karte/Zeile; das "＋" davor setzt die Komponente (aria-hidden). */
+  /** Button on card/row; the component adds the "＋" in front (aria-hidden). */
   filamentRestockButton: string;
-  /** `{spool}` = "Material · Farbe" */
+  /** `{spool}` = "Material · Color" */
   filamentRestockTitle: string;
   filamentRestockSubtitle: string;
   resinRestockSubtitle: string;
   filamentRestockCountLabel: string;
   filamentRestockWeightLabel: string;
-  /** Resin: Originalmenge (Nachkaufen + Formular) */
+  /** Resin: original amount (restock + form) */
   resinAmountLabel: string;
-  /** Resin: Restmenge im Formular */
+  /** Resin: remaining amount in the form */
   resinRemainingLabel: string;
   filamentRestockPriceLabel: string;
   resinRestockPriceLabel: string;
@@ -161,37 +161,37 @@ export interface Translations {
   filamentRestockIncrease: string;
   filamentRestockSubmit: PluralForms;
   resinRestockSubmit: PluralForms;
-  /** `{count}` über formatCount, `{spool}` = "Material · Farbe" */
+  /** `{count}` via formatCount, `{spool}` = "Material · Color" */
   filamentRestockDone: PluralForms;
   resinRestockDone: PluralForms;
   filamentRestockError: string;
-  /** Menge (g oder ml) fehlt oder ist nicht > 0 – Nachkaufen und Verbrauch */
+  /** Amount (g or ml) missing or not > 0 - restock and usage */
   stockInvalidAmount: string;
   filamentRestockInvalidPrice: string;
   filamentImageDropMultiple: string;
   filamentImageDropNotImage: string;
   filamentImageErrorHint: string;
   filamentImageErrorDismiss: string;
-  /** Formular-Titel und Öffnen-Knopf beim Anlegen einer Flasche (Pendant zu `filamentOpenAddPanelButton`). */
+  /** Form title and open button when adding a bottle (counterpart to `filamentOpenAddPanelButton`). */
   resinOpenAddPanelButton: string;
-  /** Formular-Titel und aria-label beim Bearbeiten einer Flasche (Pendant zu `filamentEditAria`). */
+  /** Form title and aria-label when editing a bottle (counterpart to `filamentEditAria`). */
   resinEditAria: string;
-  /** Gruppenname des Umschalters und Formularfeld "Art" */
+  /** Group name of the toggle and form field "Kind" */
   spoolKindLabel: string;
   spoolKindFilament: string;
   spoolKindResin: string;
   resinStatTotal: string;
-  /** `{amount}` = formatierte Flaschengröße */
+  /** `{amount}` = formatted bottle size */
   resinBottleFooter: string;
-  /** Knopf; das "−" davor setzt die Komponente (aria-hidden) */
+  /** Button; the component adds the "−" in front (aria-hidden) */
   resinConsumeButton: string;
-  /** `{spool}` = "Material · Farbe" */
+  /** `{spool}` = "Material · Color" */
   resinConsumeTitle: string;
-  /** `{amount}` = formatierte Restmenge */
+  /** `{amount}` = formatted remaining amount */
   resinConsumeRemaining: string;
   resinConsumeAmountLabel: string;
   resinConsumeSubmit: string;
-  /** `{amount}` = abgebuchte Menge, `{spool}` = "Material · Farbe" */
+  /** `{amount}` = deducted amount, `{spool}` = "Material · Color" */
   resinConsumeDone: string;
   resinConsumeError: string;
 
@@ -402,7 +402,7 @@ export interface Translations {
   printersClose: string;
   printersDeletePrinterConfirm: string;
   printersDeleteUnitConfirm: string;
-  /** Nur angezeigt, wenn mindestens eine Spule betroffen ist (count > 0). */
+  /** Only shown when at least one spool is affected (count > 0). */
   printersDeleteReturnHomeCount: PluralForms;
   printersReorderHint: string;
   printersKindBambuAms: string;
@@ -459,7 +459,7 @@ export interface Translations {
   printerNotSyncedYet: string;
   printerUnreachableSince: string;
   printerAuthNeeded: string;
-  /** Verbindung nach einer Sicherungswiederherstellung pausiert (kein `lastError`). */
+  /** Connection paused after a backup restore (no `lastError`). */
   printerPausedRetest: string;
   printerSyncNow: string;
   printerJobsPending: PluralForms;
@@ -469,7 +469,7 @@ export interface Translations {
   printerJobsReview: string;
   printerJobsDialogTitle: string;
   printerJobsDialogHint: string;
-  /** Einheitentext hinter der Minutenzahl der Druckdauer, z.B. „{min} min“ - bewusst gleich in allen Sprachen. */
+  /** Unit text after the number of minutes of the print duration, e.g. "{min} min" - deliberately the same in all languages. */
   printerJobsMinutes: string;
   printerJobsColSpool: string;
   printerJobsColModel: string;

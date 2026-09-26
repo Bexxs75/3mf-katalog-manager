@@ -4,11 +4,11 @@ import { invoke } from '@tauri-apps/api/core';
 import { useSlicerLauncher } from './useSlicerLauncher';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
-// Kein Ausdruckskoerper: vi.fn().mockReset() gibt die Mock-Funktion selbst
-// zurueck, und Vitest behandelt einen von einem Hook zurueckgegebenen
-// Funktionswert als automatisches Teardown, das nach dem Test erneut
-// aufgerufen wird - bei einem mit mockRejectedValue belegten Mock fuehrt
-// das zu einer scheinbar unbehandelten Ablehnung, die dem Test angelastet wird.
+// No expression body: vi.fn().mockReset() returns the mock function
+// itself, and Vitest treats a function value returned from a hook as
+// automatic teardown that is called again after the test - with a mock
+// set up with mockRejectedValue this leads to a seemingly unhandled
+// rejection that is blamed on the test.
 beforeEach(() => {
   vi.mocked(invoke).mockReset();
 });

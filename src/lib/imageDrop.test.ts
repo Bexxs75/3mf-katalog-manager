@@ -37,8 +37,8 @@ describe('isWindowsPlatform', () => {
 });
 
 describe('toCssPosition', () => {
-  // wry 0.55: WebView2 (Windows) liefert physische Pixel, WKWebView (macOS)
-  // und WebKitGTK (Linux) liefern bereits CSS-/logische Pixel.
+  // wry 0.55: WebView2 (Windows) delivers physical pixels, WKWebView (macOS)
+  // and WebKitGTK (Linux) already deliver CSS/logical pixels.
   it('Windows: divides physical pixels by devicePixelRatio', () => {
     expect(toCssPosition({ x: 400, y: 200 }, 2, true)).toEqual({ x: 200, y: 100 });
   });
@@ -61,8 +61,8 @@ describe('isOverDropZone', () => {
   });
 
   it('hit-tests the raw CSS position on macOS/Linux, dpr ignored', () => {
-    expect(isOverDropZone({ x: 200, y: 100 }, 2, false, ZONE)).toBe(true); // schon CSS-Pixel, drin
-    expect(isOverDropZone({ x: 400, y: 200 }, 2, false, ZONE)).toBe(false); // waere nur bei Division drin
+    expect(isOverDropZone({ x: 200, y: 100 }, 2, false, ZONE)).toBe(true); // already CSS pixels, inside
+    expect(isOverDropZone({ x: 400, y: 200 }, 2, false, ZONE)).toBe(false); // would only be inside when dividing
     expect(isOverDropZone({ x: 150, y: 100 }, 1, false, null)).toBe(false);
   });
 });

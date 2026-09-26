@@ -64,8 +64,8 @@ export function useBulkSelection({
 
   const bulkAddToQueue = useCallback(() => {
     const notYetQueued = models.filter((m) => selectedForBulk.has(m.id) && m.queuePosition === null);
-    // Nur die betroffenen Modelle lokal patchen statt die ganze Liste neu zu
-    // laden; das Backend ist durch addToQueue schon aktuell.
+    // Patch only the affected models locally instead of reloading the whole
+    // list; the backend is already up to date through addToQueue.
     return Promise.all(notYetQueued.map((m) => filesApi.addToQueue(m.id).then((position) => ({ id: m.id, position })))).then(
       (updates) => {
         const positionById = new Map(updates.map((u) => [u.id, u.position]));
@@ -90,8 +90,8 @@ export function useBulkSelection({
     [selectedForBulk, setModels],
   );
 
-  // Einen Tag allen ausgewaehlten Modellen ohne ihn hinzufuegen: ein addTag()
-  // pro Datei (Auswahlen sind klein), danach ein lokaler Patch.
+  // Add a tag to all selected models that don't have it: one addTag()
+  // per file (selections are small), then one local patch.
   const bulkAddTagAction = useCallback(() => {
     const tag = canonicalTag(tagDraft.trim());
     if (!tag) return Promise.resolve();
@@ -106,7 +106,7 @@ export function useBulkSelection({
     });
   }, [tagDraft, selectedForBulk, setModels, refreshTags]);
 
-  // Gegenstueck zu bulkAddTagAction; Modelle ohne den Tag werden uebersprungen.
+  // Counterpart to bulkAddTagAction; models without the tag are skipped.
   const bulkRemoveTagAction = useCallback(
     (tag: string) => {
       const ids = Array.from(selectedForBulk).filter((id) => models.find((m) => m.id === id)?.tags.includes(tag));
@@ -121,7 +121,7 @@ export function useBulkSelection({
     [models, selectedForBulk, setModels, refreshTags],
   );
 
-  // Alle Tags der Auswahl, fuer das "Tag entfernen"-Menue.
+  // All tags of the selection, for the "Remove tag" menu.
   const tagsInSelection = useMemo(() => {
     const set = new Set<string>();
     for (const m of models) {

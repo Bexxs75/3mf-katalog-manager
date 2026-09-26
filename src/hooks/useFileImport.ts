@@ -63,8 +63,8 @@ export function useFileImport({
     if (paths.length === 0) return;
     try {
       const inspected = await importExportApi.inspectArchives(paths);
-      // Ein weiterer Import bei offenem Dialog ergaenzt die Liste, statt sie
-      // zu ersetzen - bereits angezeigte Archive bleiben unveraendert.
+      // Another import while the dialog is open extends the list instead of
+      // replacing it - archives already shown stay unchanged.
       setPendingArchives((prev) => {
         if (!prev) return inspected;
         const known = new Set(prev.map((a) => a.path));
@@ -135,9 +135,9 @@ export function useFileImport({
     };
   }, [enabled, mergeImported, openArchiveDialog]);
 
-  // mergeImported wird zusaetzlich exportiert, damit Importe, die ausserhalb
-  // dieses Hooks ausgeloest werden (Ersteinrichtungsdialog), dieselbe
-  // Duplikat-Banner-Logik durchlaufen wie die Importe hier.
+  // mergeImported is exported as well so imports triggered outside
+  // this hook (first-run dialog) go through the same duplicate banner
+  // logic as the imports here.
   return {
     importBanner,
     dismissImportBanner,

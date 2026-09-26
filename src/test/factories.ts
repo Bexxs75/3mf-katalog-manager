@@ -35,7 +35,7 @@ export function makeModelFile(overrides: Partial<ModelFile> = {}): ModelFile {
   };
 }
 
-// Projiziert eine ModelFile-Fixture auf die Summary-Form (eine Fixture-Definition fuer beide).
+// Projects a ModelFile fixture onto the summary shape (one fixture definition for both).
 export function makeModelFileSummary(
   overrides: Partial<ModelFile> & { hasRenderSnapshot?: boolean } = {},
 ): ModelFileSummary {
@@ -56,8 +56,8 @@ export function makeModelFileSummary(
     queuePosition: m.queuePosition,
     thumbnailImage: m.thumbnailImage,
     renderSnapshotImage: m.renderSnapshotImage,
-    // Standard aus dem Blob abgeleitet; ueberschreibbar, um Blob und Flag
-    // auseinanderlaufen zu lassen.
+    // Default derived from the blob; can be overridden to let blob and flag
+    // diverge.
     hasRenderSnapshot: overrides.hasRenderSnapshot ?? m.renderSnapshotImage !== null,
     creator: m.creator,
     lastViewedAt: m.lastViewedAt,

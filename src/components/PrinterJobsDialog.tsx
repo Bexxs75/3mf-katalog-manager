@@ -16,7 +16,7 @@ interface Props {
   models: ModelOption[];
   link: PrinterLinkState;
   onClose: () => void;
-  /** Nach erfolgreichem Buchen (Spulen/Katalog neu laden). */
+  /** After a successful booking (reload spools/catalog). */
   onBooked: () => void;
 }
 
@@ -25,8 +25,8 @@ interface RowState {
   fileId: string | null;
   grams: number | null;
   mismatch: boolean;
-  /** Vom Nutzer gewaehlt statt vom Vorschlag uebernommen? Dann darf eine spaeter
-   * eintreffende `spools`-Liste die Wahl nicht mehr ueberschreiben. */
+  /** Chosen by the user instead of taken from the suggestion? Then a `spools`
+   * list arriving later must no longer overwrite the choice. */
   userChosenSpool: boolean;
 }
 
@@ -48,18 +48,18 @@ const stripExt = (name: string) => name.replace(/\.(b?gcode)$/i, '');
 
 export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link, onClose, onBooked }: Props) {
   const t = useT();
-  // Nur Filament kann abgebucht werden: Resin-Flaschen sind weder Vorschlag
-  // noch Auswahl (das Backend lehnt sie beim Bestaetigen ohnehin ab).
+  // Only filament can be deducted: resin bottles are neither suggestion
+  // nor choice (the backend rejects them on confirm anyway).
   const spools = useMemo(() => allSpools.filter((s) => s.kind !== 'resin'), [allSpools]);
   const { language } = useLanguage();
   const [rows, setRows] = useState<Record<string, RowState>>({});
   const [picking, setPicking] = useState<string | null>(null);
-  // Anker des gerade angeklickten Modell-Knopfs, im onClick gesetzt (einen Knopf
-  // gibt es pro Auftrag).
+  // Anchor of the model button just clicked, set in onClick (there is one
+  // button per job).
   const modelAnchorRef = useRef<HTMLElement | null>(null);
   const [failed, setFailed] = useState(0);
   const [actionError, setActionError] = useState<string | null>(null);
-  // Auftraege mit laufender Anfrage, gegen Doppelklicks und "Alle bestaetigen" dazwischen.
+  // Jobs with a running request, against double clicks and "Confirm all" in between.
   const [pending, setPending] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -70,8 +70,8 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
         if (existing) {
           let spoolId = existing.spoolId;
           if (spoolId !== null && !spools.some((s) => s.id === spoolId)) {
-            // Die gewaehlte Spule gibt es nicht mehr (geloescht oder Sicherung
-            // wiederhergestellt): Auswahl leeren.
+            // The chosen spool no longer exists (deleted or backup
+            // restored): clear the choice.
             spoolId = null;
           } else if (
             !existing.userChosenSpool &&
@@ -79,7 +79,7 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
             j.suggestedSpoolId !== null &&
             spools.some((s) => s.id === j.suggestedSpoolId)
           ) {
-            // Noch keine Nutzerwahl und der Vorschlag ist jetzt geladen: anwenden.
+            // No user choice yet and the suggestion is loaded now: apply it.
             spoolId = j.suggestedSpoolId;
           }
           next[j.id] = spoolId === existing.spoolId ? existing : { ...existing, spoolId };
@@ -98,8 +98,8 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
     });
   }, [jobs, spools]);
 
-  // Direkter Fokus auf den Dialog, damit Escape sofort wirkt (ohne
-  // vorherigen Klick ins Fenster).
+  // Focus the dialog directly so Escape works right away (without
+  // clicking into the window first).
   useEffect(() => {
     if (open) document.querySelector<HTMLElement>('[aria-labelledby="printer-jobs-title"]')?.focus();
   }, [open]);
@@ -128,7 +128,7 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
     link
       .previewJob(job.id, spoolId)
       .then((p) => {
-        // Eine veraltete Antwort darf eine inzwischen neuere Auswahl nicht ueberschreiben.
+        // A stale answer must not overwrite a newer choice made in the meantime.
         setRows((r) => {
           const current = r[job.id];
           if (!current || current.spoolId !== spoolId) return r;

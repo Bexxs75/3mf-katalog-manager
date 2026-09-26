@@ -28,7 +28,7 @@ describe('useSlicers', () => {
   });
 
   it('addSlicer goes through the backend-driven pick_and_register_slicer dialog, never a self-constructed path', async () => {
-    // addSlicer() nimmt keinen Pfad; einzige Quelle ist der Dialog im Backend.
+    // addSlicer() takes no path; the only source is the dialog in the backend.
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === 'scan_installed_slicers') return Promise.resolve([]);
       if (cmd === 'pick_and_register_slicer') {
@@ -81,7 +81,7 @@ describe('useSlicers', () => {
     });
 
     expect(result.current.addSlicerError).toBe('slicer executable already registered');
-    // Die Slicer-Liste selbst bleibt unveraendert (nichts wurde registriert).
+    // The slicer list itself stays unchanged (nothing was registered).
     expect(result.current.slicers).toEqual([]);
   });
 });
