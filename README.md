@@ -127,7 +127,7 @@ What you can check yourself:
 - [User guide](docs/benutzerhandbuch/BENUTZERHANDBUCH.md) (DE + EN), step by step with screenshots
 - [Website](https://3mfkatalog.de/en/) with FAQ
 - [Discord](https://discord.gg/abfVNfFqu3) for questions and ideas
-- Bugs: [open an issue](https://github.com/Bexxs75/3mf-katalog-manager/issues/new/choose), ask on Discord, or use the [bug report form](https://3mfkatalog.de/en/report-a-bug.html) (no account needed)
+- Bugs: in the app use Settings → Info → **Report a bug** (can attach an anonymized log file); or [open an issue](https://github.com/Bexxs75/3mf-katalog-manager/issues/new/choose), ask on Discord, or use the [bug report form](https://3mfkatalog.de/en/report-a-bug.html)
 
 ## Contributing
 

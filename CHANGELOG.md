@@ -9,6 +9,11 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ## [Unreleased]
 
+### Added
+
+- **Report a bug from the app:** "Report a bug" under Settings → Info and "Report problem" next to unexpected errors open the bug report form on 3mfkatalog.de with version and system already filled in. You decide whether to attach the log file: the app shows an anonymized preview (user name, paths, printer addresses and optionally file names replaced) and saves it to your download folder; nothing is sent by the app itself.
+- **Log file:** the app now writes a log (errors, warnings and short summaries; at most 5 files of 2 MB in the system log folder). "Detailed log" under Settings → Info adds every action with file names and turns itself off after 7 days. Errors that used to disappear silently now show "Something went wrong" with "Report problem".
+
 ### Changed
 
 - GitHub page: new README start with what the app does, a short demo GIF, download buttons, a "Is it safe to install?" section (why Windows/macOS warn, checking SHA-256, starting anyway) and the features grouped into six areas; the full list moved into a collapsible section. New CONTRIBUTING.md, Code of Conduct, translation guide, issue and pull request templates. The internal security fix report moved to docs/security/.
@@ -417,6 +422,11 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/), Ve
 Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unter der Scaffold-Versionsnummer `0.1.0`, ohne dass Meilensteine markiert wurden. Die folgenden Versionsgrenzen wurden nachträglich anhand von Entwicklungs-Tagen und natürlichen Feature-Abschlüssen (jeweils an einem Dokumentations-Commit) gezogen, keine davon wurde zum jeweiligen Zeitpunkt live getaggt oder veröffentlicht.
 
 ## [Unreleased]
+
+### Added
+
+- **Fehler melden aus der App:** „Fehler melden“ unter Einstellungen → Info und „Problem melden“ bei unerwarteten Fehlern öffnen das Formular auf 3mfkatalog.de mit bereits eingetragener Version und System. Ob die Logdatei mitgeht, entscheidest du: Die App zeigt eine anonymisierte Vorschau (Benutzername, Pfade, Drucker-Adressen und auf Wunsch Dateinamen ersetzt) und speichert sie in deinem Download-Ordner; die App selbst verschickt nichts.
+- **Logdatei:** Die App schreibt jetzt ein Protokoll (Fehler, Warnungen und kurze Zusammenfassungen; höchstens 5 Dateien à 2 MB im Log-Ordner des Systems). „Ausführliches Protokoll“ unter Einstellungen → Info ergänzt jede Aktion mit Dateinamen und schaltet sich nach 7 Tagen selbst aus. Fehler, die bisher unbemerkt verschwanden, zeigen jetzt „Etwas ist schiefgelaufen“ mit „Problem melden“.
 
 ### Changed
 

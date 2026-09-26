@@ -127,7 +127,7 @@ Was du selbst prüfen kannst:
 - [Benutzerhandbuch](docs/benutzerhandbuch/BENUTZERHANDBUCH.md) (DE + EN), Schritt für Schritt mit Bildern
 - [Webseite](https://3mfkatalog.de) mit FAQ
 - [Discord](https://discord.gg/abfVNfFqu3) für Fragen und Ideen
-- Fehler: [Issue anlegen](https://github.com/Bexxs75/3mf-katalog-manager/issues/new/choose), auf Discord fragen oder das [Formular „Fehler melden“](https://3mfkatalog.de/fehler-melden.html) nutzen (ohne Konto)
+- Fehler: in der App Einstellungen → Info → **Fehler melden** (auf Wunsch mit anonymisierter Logdatei); oder [Issue anlegen](https://github.com/Bexxs75/3mf-katalog-manager/issues/new/choose), auf Discord fragen oder das [Formular „Fehler melden“](https://3mfkatalog.de/fehler-melden.html) nutzen
 
 ## Mitmachen
 
