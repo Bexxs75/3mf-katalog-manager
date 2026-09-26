@@ -9,6 +9,7 @@ import {
   type LogPreview,
 } from '../lib/api/diagnostics';
 import { messageOf } from '../lib/errors';
+import { BUG_ICON } from './icons';
 
 const OS_LABEL: Record<BugReportInfo['os'], string> = { linux: 'Linux', windows: 'Windows', macos: 'macOS' };
 
@@ -71,6 +72,22 @@ export function BugReportDialog({ onClose }: { onClose: () => void }) {
     if (c === 'yes' && !preview) loadPreview(undefined);
   };
 
+  // Retries opening the report form after the log was already saved but the
+  // form itself failed to open (e.g. the browser didn't launch): the main
+  // button is hidden once `savedPath` is set, so this is the only way back.
+  const retryOpenForm = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await openBugReportForm(language, true);
+      if (mountedRef.current) setFailure(null);
+    } catch (e) {
+      if (mountedRef.current) setFailure(messageOf(e));
+    } finally {
+      if (mountedRef.current) setSubmitting(false);
+    }
+  };
+
   const submit = async () => {
     if (submitting) return;
     setSubmitting(true);
@@ -109,7 +126,10 @@ export function BugReportDialog({ onClose }: { onClose: () => void }) {
         onKeyDown={(e) => e.key === 'Escape' && !submitting && onClose()}
         className="w-[620px] max-w-[92vw] max-h-[90vh] overflow-auto rounded-[6px] border border-[var(--line)] bg-[var(--panel)] shadow-[var(--shadow)] p-5 text-[var(--ink)] outline-0"
       >
-        <h2 id="bug-report-title" className="text-[16px] font-bold">{t('bugReportTitle')}</h2>
+        <h2 id="bug-report-title" className="flex items-center gap-2 text-[16px] font-bold">
+          <span className="text-[var(--accent)]">{BUG_ICON}</span>
+          {t('bugReportTitle')}
+        </h2>
         {info && (
           <p className="mt-1 text-[12.5px] text-[var(--ink-2)]">
             {t('bugReportIntro').replace('{version}', info.version).replace('{os}', OS_LABEL[info.os])}
@@ -186,6 +206,16 @@ export function BugReportDialog({ onClose }: { onClose: () => void }) {
                 className="h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {choice === 'yes' && preview && !preview.empty ? t('bugReportSaveAndOpen') : t('bugReportOpenForm')}
+              </button>
+            )}
+            {savedPath && failure && (
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={retryOpenForm}
+                className="h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {t('bugReportOpenForm')}
               </button>
             )}
           </div>

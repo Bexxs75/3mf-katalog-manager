@@ -1,12 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { error as logError, info as logInfo } from '@tauri-apps/plugin-log';
 import { useLanguage } from '../i18n/LanguageContext';
+import { toAppError } from '../lib/errors';
 import { BugReportDialog } from './BugReportDialog';
 import { UnexpectedErrorToast } from './UnexpectedErrorToast';
 
 interface DiagnosticsValue {
   openBugReport: () => void;
-  reportUnexpected: (message: string) => void;
 }
 
 const DiagnosticsContext = createContext<DiagnosticsValue | null>(null);
@@ -29,6 +29,10 @@ export function DiagnosticsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const onError = (e: ErrorEvent) => reportUnexpected(`${e.message}${e.error?.stack ? `\n${e.error.stack}` : ''}`);
     const onRejection = (e: PromiseRejectionEvent) => {
+      // A rejection with an *expected* CmdError (e.g. a command's own validation
+      // error, awaited but not caught somewhere) is normal feedback, not a fault -
+      // it must not show the unexpected-error toast or be logged as one.
+      if (!toAppError(e.reason).unexpected) return;
       const r = e.reason as { message?: unknown; stack?: unknown } | undefined;
       const text = typeof r?.message === 'string' ? r.message : String(e.reason);
       reportUnexpected(typeof r?.stack === 'string' ? `${text}\n${r.stack}` : text);
@@ -42,8 +46,8 @@ export function DiagnosticsProvider({ children }: { children: ReactNode }) {
   }, [reportUnexpected]);
 
   const value = useMemo(
-    () => ({ openBugReport: () => { setToast(null); setDialogOpen(true); }, reportUnexpected }),
-    [reportUnexpected],
+    () => ({ openBugReport: () => { setToast(null); setDialogOpen(true); } }),
+    [],
   );
 
   return (

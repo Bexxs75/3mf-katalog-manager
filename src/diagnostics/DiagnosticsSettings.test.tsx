@@ -10,7 +10,7 @@ const openBugReport = vi.fn();
 
 vi.mock('./DiagnosticsContext', async () => {
   const actual = await vi.importActual<typeof import('./DiagnosticsContext')>('./DiagnosticsContext');
-  return { ...actual, useDiagnostics: () => ({ openBugReport, reportUnexpected: vi.fn() }) };
+  return { ...actual, useDiagnostics: () => ({ openBugReport }) };
 });
 
 beforeEach(() => {
@@ -49,5 +49,14 @@ describe('DiagnosticsSettings', () => {
     renderSettings();
     fireEvent.click(screen.getByText('Ordner öffnen'));
     await waitFor(() => expect(diagnosticsApi.openLogFolder).toHaveBeenCalled());
+  });
+
+  it('shows the error when opening the log folder fails', async () => {
+    // `expected: true` here so the error is shown without a "Report problem" link,
+    // which needs the real DiagnosticsProvider that this mocked test setup doesn't have.
+    vi.mocked(diagnosticsApi.openLogFolder).mockRejectedValue({ message: 'Ordner nicht gefunden', expected: true });
+    renderSettings();
+    fireEvent.click(screen.getByText('Ordner öffnen'));
+    await waitFor(() => expect(screen.getByText('Ordner nicht gefunden')).toBeInTheDocument());
   });
 });

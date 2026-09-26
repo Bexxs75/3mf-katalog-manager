@@ -51,6 +51,32 @@ describe('DiagnosticsProvider', () => {
     renderProvider();
     expect(logInfo).toHaveBeenCalledWith('UI language de');
   });
+
+  it('ignores an unhandled rejection whose reason is an expected CmdError', () => {
+    renderProvider();
+    act(() => {
+      const event = new Event('unhandledrejection') as PromiseRejectionEvent & { reason: unknown; promise: Promise<unknown> };
+      Object.defineProperty(event, 'reason', { value: { message: 'Bitte Ordner wählen', expected: true } });
+      Object.defineProperty(event, 'promise', { value: Promise.reject().catch(() => {}) });
+      window.dispatchEvent(event);
+    });
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(logError).not.toHaveBeenCalled();
+  });
+
+  it('shows the toast and logs an unhandled rejection whose reason is an unexpected CmdError', () => {
+    renderProvider();
+    act(() => {
+      const event = new Event('unhandledrejection') as PromiseRejectionEvent & { reason: unknown; promise: Promise<unknown> };
+      Object.defineProperty(event, 'reason', { value: { message: 'kaputt', expected: false } });
+      Object.defineProperty(event, 'promise', { value: Promise.reject().catch(() => {}) });
+      window.dispatchEvent(event);
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('kaputt');
+    expect(logError).toHaveBeenCalledWith(expect.stringContaining('kaputt'));
+  });
 });
 
 describe('ErrorText', () => {

@@ -201,6 +201,28 @@ describe('BugReportDialog', () => {
     await act(async () => resolveSave('/home/user/Downloads/x.txt'));
   });
 
+  it('offers a retry button to open the form when the save succeeded but opening it failed', async () => {
+    vi.mocked(diagnosticsApi.openBugReportForm).mockRejectedValueOnce({ message: 'Browser konnte nicht gestartet werden', expected: false });
+    renderDialog();
+    fireEvent.click(screen.getByText('Ja, Logdatei anhängen'));
+    await waitFor(() => expect(screen.getByRole('checkbox')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('Speichern und Formular öffnen'));
+    await waitFor(() => expect(diagnosticsApi.saveLogExport).toHaveBeenCalledWith(1));
+    await screen.findByText('Browser konnte nicht gestartet werden');
+
+    // The log was saved, so the main "save and open" button is gone - but the
+    // user must still be able to retry opening the form.
+    expect(screen.queryByText('Speichern und Formular öffnen')).not.toBeInTheDocument();
+    const retryButton = screen.getByText('Formular öffnen').closest('button')!;
+
+    vi.mocked(diagnosticsApi.openBugReportForm).mockResolvedValueOnce(undefined);
+    fireEvent.click(retryButton);
+    await waitFor(() => expect(diagnosticsApi.openBugReportForm).toHaveBeenCalledWith('de', true));
+    expect(diagnosticsApi.openBugReportForm).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(screen.queryByText('Browser konnte nicht gestartet werden')).not.toBeInTheDocument());
+  });
+
   it('still opens the form after a successful save even if the dialog unmounted meanwhile', async () => {
     let resolveSave!: (path: string) => void;
     vi.mocked(diagnosticsApi.saveLogExport).mockImplementation(
