@@ -14,6 +14,15 @@ pub struct FakeServer {
 impl FakeServer {
     /// Handler returns `None` -> the connection is kept open without a response (simulates a timeout).
     pub fn start(handler: impl Fn(&str) -> Option<(u16, Vec<u8>)> + Send + Sync + 'static) -> Self {
+        Self::start_with_clock(None, handler)
+    }
+
+    /// Like `start`, but every answer carries a `Date` header from a clock that is
+    /// `offset_s` seconds off the local one (a printer without NTP).
+    pub fn start_with_clock(
+        offset_s: Option<f64>,
+        handler: impl Fn(&str) -> Option<(u16, Vec<u8>)> + Send + Sync + 'static,
+    ) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         let requests = Arc::new(Mutex::new(Vec::new()));
@@ -40,8 +49,15 @@ impl FakeServer {
                     log.lock().unwrap().push(target.clone());
                     match handler(&target) {
                         Some((status, body)) => {
+                            let date = offset_s
+                                .and_then(|o| {
+                                    let secs = (super::sync::unix_now() + o) as i64;
+                                    chrono::DateTime::<chrono::Utc>::from_timestamp(secs, 0)
+                                })
+                                .map(|d| format!("Date: {}\r\n", d.format("%a, %d %b %Y %H:%M:%S GMT")))
+                                .unwrap_or_default();
                             let head = format!(
-                                "HTTP/1.1 {status} X\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n",
+                                "HTTP/1.1 {status} X\r\n{date}Content-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n",
                                 body.len()
                             );
                             let _ = stream.write_all(head.as_bytes());
@@ -78,6 +94,19 @@ pub fn sv08() -> FakeServer {
             "/server/info" => Some((200, fixture_bytes("server_info_v0_8_0_209.json"))),
             "/server/history/list" => Some((200, fixture_bytes("history_completed.json"))),
             p if p.starts_with("/server/files/gcodes/") => Some((200, b"\x89PNG\r\n\x1a\nfake".to_vec())),
+            _ => Some((404, b"{}".to_vec())),
+        }
+    })
+}
+
+/// Behaves like the Qidi Smart 3 from the test report of 2026-09-26: Moonraker
+/// v0.7.1 and a clock that is `offset_s` seconds off.
+pub fn qidi_smart3(offset_s: f64) -> FakeServer {
+    FakeServer::start_with_clock(Some(offset_s), |target| {
+        let path = target.split('?').next().unwrap_or("");
+        match path {
+            "/server/info" => Some((200, fixture_bytes("server_info_qidi_smart3.json"))),
+            "/server/history/list" => Some((200, fixture_bytes("history_qidi_smart3.json"))),
             _ => Some((404, b"{}".to_vec())),
         }
     })

@@ -60,7 +60,7 @@ pub fn sync_once(db: &Mutex<Connection>, make: &LinkMaker, now: f64) -> Result<u
 
         let result = make(&kind, &address).and_then(|link| {
             let info = link.test()?;
-            let jobs = link.jobs_ended_since(&info.base_url, since)?;
+            let jobs = link.jobs_ended_since(&info, since)?;
             Ok((info, jobs))
         });
 
@@ -157,6 +157,21 @@ mod tests {
         assert_eq!(c.remote_version.as_deref(), Some("v0.8.0-209-g4235789-dirty"));
     }
 
+    /// Qidi Smart 3 with its clock in 2023: prints after connecting are taken over,
+    /// with local end times, and the next pass finds nothing new.
+    #[test]
+    fn prints_of_a_printer_with_a_wrong_clock_are_taken() {
+        let offset = 1_702_314_000.0 - unix_now();
+        let server = crate::printer_link::fake_moonraker::qidi_smart3(offset);
+        // Connected at 12:50 printer time.
+        let db = db_with_connection(&server.address(), 1_702_299_000.0 - offset);
+        set_printer_link_enabled(&db.lock().unwrap(), true).unwrap();
+        assert_eq!(sync_once(&db, &*test_maker(), unix_now()).unwrap(), 4);
+        assert_eq!(sync_once(&db, &*test_maker(), unix_now()).unwrap(), 0);
+        let jobs = list_open_jobs(&db.lock().unwrap()).unwrap();
+        assert!(jobs.iter().all(|j| j.ended_at > unix_now() - 6.0 * 3600.0), "end times are local, not 2023");
+    }
+
     #[test]
     fn errors_are_recorded_per_printer() {
         let server = FakeServer::start(|_| Some((401, b"{}".to_vec())));
@@ -206,9 +221,9 @@ mod tests {
     impl PrinterLink for SwitchOffOnTest {
         fn test(&self) -> Result<ConnectionInfo, LinkError> {
             set_printer_link_enabled(&self.db.lock().unwrap(), false).unwrap();
-            Ok(ConnectionInfo { version: "v0".into(), base_url: "http://printer-1".into() })
+            Ok(ConnectionInfo { version: "v0".into(), base_url: "http://printer-1".into(), clock_offset_s: 0.0 })
         }
-        fn jobs_ended_since(&self, _base_url: &str, _since: f64) -> Result<Vec<RemoteJob>, LinkError> {
+        fn jobs_ended_since(&self, _info: &ConnectionInfo, _since: f64) -> Result<Vec<RemoteJob>, LinkError> {
             Ok(Vec::new())
         }
         fn thumbnail(&self, _base_url: &str, _path: &str) -> Result<Vec<u8>, LinkError> {
@@ -250,9 +265,9 @@ mod tests {
     impl PrinterLink for DeleteSelfOnTest {
         fn test(&self) -> Result<ConnectionInfo, LinkError> {
             store::delete_connection(&self.db.lock().unwrap(), self.printer_id).unwrap();
-            Ok(ConnectionInfo { version: "v0".into(), base_url: "http://printer-1".into() })
+            Ok(ConnectionInfo { version: "v0".into(), base_url: "http://printer-1".into(), clock_offset_s: 0.0 })
         }
-        fn jobs_ended_since(&self, _base_url: &str, _since: f64) -> Result<Vec<RemoteJob>, LinkError> {
+        fn jobs_ended_since(&self, _info: &ConnectionInfo, _since: f64) -> Result<Vec<RemoteJob>, LinkError> {
             Ok(vec![RemoteJob {
                 remote_id: "A".into(),
                 file_name: "a.gcode".into(),

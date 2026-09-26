@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 
 use super::address::{base_url, resolve, AddressPolicy};
+use super::sync::unix_now;
 use super::{ConnectionInfo, JobOutcome, LinkError, PrinterLink, RemoteJob};
 
 fn bad(msg: &str) -> LinkError {
@@ -121,6 +122,31 @@ const MAX_PAGES: usize = 40;
 /// Moonraker filters `since` by the job start; a print that started before
 /// `since` and ended after it would otherwise be missing.
 pub const LOOKBACK_S: f64 = 2.0 * 24.0 * 3600.0;
+/// Smaller clock differences are ignored: the HTTP `Date` header only has whole
+/// seconds, and a few minutes of drift don't matter for finished prints.
+pub const CLOCK_TOLERANCE_S: f64 = 300.0;
+
+/// `Date` header ("Mon, 11 Dec 2023 17:00:00 GMT") as Unix seconds.
+fn parse_http_date(value: &str) -> Option<f64> {
+    chrono::DateTime::parse_from_rfc2822(value.trim()).ok().map(|d| d.timestamp() as f64)
+}
+
+/// Printer clock minus local clock. `local_mid` is the local time halfway through
+/// the request; the header is truncated to whole seconds, hence the half second.
+fn clock_offset(printer_now: Option<f64>, local_mid: f64) -> f64 {
+    match printer_now {
+        Some(p) if (p + 0.5 - local_mid).abs() > CLOCK_TOLERANCE_S => p + 0.5 - local_mid,
+        _ => 0.0,
+    }
+}
+
+/// A response body plus the printer clock from its `Date` header (if any) and
+/// the local time halfway through the request.
+struct Fetched {
+    body: Vec<u8>,
+    printer_now: Option<f64>,
+    local_mid: f64,
+}
 
 pub struct MoonrakerLink {
     address: String,
@@ -179,6 +205,10 @@ impl MoonrakerLink {
     /// we only wait with `recv_timeout`. A still hanging helper thread finishes later
     /// and sends into the void, which is harmless.
     fn get_bytes(&self, url: reqwest::Url, limit: u64) -> Result<Vec<u8>, LinkError> {
+        self.fetch(url, limit).map(|f| f.body)
+    }
+
+    fn fetch(&self, url: reqwest::Url, limit: u64) -> Result<Fetched, LinkError> {
         let client = self.client.clone();
         let timeout = self.timeout;
         let (tx, rx) = mpsc::channel();
@@ -189,9 +219,16 @@ impl MoonrakerLink {
     }
 
     /// Network part of `get_bytes` on the helper thread: reads in chunks with its own time limit check.
-    fn fetch_bytes(client: &reqwest::blocking::Client, url: reqwest::Url, limit: u64, timeout: Duration) -> Result<Vec<u8>, LinkError> {
+    fn fetch_bytes(client: &reqwest::blocking::Client, url: reqwest::Url, limit: u64, timeout: Duration) -> Result<Fetched, LinkError> {
         let deadline = Instant::now() + timeout;
+        let sent_at = unix_now();
         let mut resp = client.get(url).send().map_err(|_| LinkError::Unreachable)?;
+        let local_mid = (sent_at + unix_now()) / 2.0;
+        let printer_now = resp
+            .headers()
+            .get(reqwest::header::DATE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(parse_http_date);
         match resp.status().as_u16() {
             401 | 403 => return Err(LinkError::AuthRequired),
             s if !(200..300).contains(&s) => return Err(LinkError::BadResponse(format!("HTTP {s}"))),
@@ -212,7 +249,7 @@ impl MoonrakerLink {
                 return Err(LinkError::BadResponse("Antwort zu gross".into()));
             }
         }
-        Ok(buf)
+        Ok(Fetched { body: buf, printer_now, local_mid })
     }
 
     fn get_json(&self, url: reqwest::Url) -> Result<Value, LinkError> {
@@ -238,8 +275,12 @@ impl PrinterLink for MoonrakerLink {
     fn test(&self) -> Result<ConnectionInfo, LinkError> {
         let mut last = LinkError::Unreachable;
         for base in self.candidate_bases()? {
-            match self.get_json(url(&base, "/server/info")?).and_then(|v| parse_server_info(&v)) {
-                Ok(version) => return Ok(ConnectionInfo { version, base_url: base }),
+            let answer = self.fetch(url(&base, "/server/info")?, MAX_JSON_BYTES).and_then(|f| {
+                let v: Value = serde_json::from_slice(&f.body).map_err(|e| LinkError::BadResponse(e.to_string()))?;
+                Ok((parse_server_info(&v)?, clock_offset(f.printer_now, f.local_mid)))
+            });
+            match answer {
+                Ok((version, clock_offset_s)) => return Ok(ConnectionInfo { version, base_url: base, clock_offset_s }),
                 Err(e @ (LinkError::AuthRequired | LinkError::HistoryMissing)) => return Err(e),
                 Err(e) => last = e,
             }
@@ -247,9 +288,13 @@ impl PrinterLink for MoonrakerLink {
         Err(last)
     }
 
-    fn jobs_ended_since(&self, base: &str, since: f64) -> Result<Vec<RemoteJob>, LinkError> {
+    fn jobs_ended_since(&self, info: &ConnectionInfo, since: f64) -> Result<Vec<RemoteJob>, LinkError> {
+        let base = info.base_url.as_str();
         self.check_base(base)?;
-        let query_since = (since - LOOKBACK_S).max(0.0);
+        // Moonraker's times come from the printer clock: shift `since` into it for
+        // the query and shift the answers back into local time.
+        let offset = info.clock_offset_s;
+        let query_since = (since + offset - LOOKBACK_S).max(0.0);
         let mut jobs = Vec::new();
         let mut start = 0usize;
         for _ in 0..MAX_PAGES {
@@ -257,7 +302,10 @@ impl PrinterLink for MoonrakerLink {
                 base,
                 &format!("/server/history/list?since={query_since}&order=asc&limit={PAGE}&start={start}"),
             )?)?)?;
-            jobs.extend(page.jobs.into_iter().filter(|j| j.ended_at > since));
+            jobs.extend(page.jobs.into_iter().filter_map(|mut j| {
+                j.ended_at -= offset;
+                (j.ended_at > since).then_some(j)
+            }));
             start += PAGE;
             if page.raw_len < PAGE || start as u64 >= page.count {
                 break;
@@ -359,6 +407,23 @@ mod parse_tests {
     }
 
     #[test]
+    fn old_moonraker_on_qidi_smart_3_is_accepted() {
+        // Real anonymous test report (Qidi Smart 3, MKS-Pi image, Moonraker v0.7.1,
+        // API 1.0.5). The printer clock is wrong: prints sliced with OrcaSlicer 2.4.2
+        // (released July 2026) end in December 2023.
+        assert_eq!(parse_server_info(&fixture("server_info_qidi_smart3.json")).unwrap(), "v0.7.1-609-gbdd0222-dirty");
+        let page = parse_history_page(&fixture("history_qidi_smart3.json")).unwrap();
+        assert_eq!(page.count, 442);
+        assert_eq!(page.jobs.len(), 5);
+        let j = page.jobs.iter().find(|j| j.remote_id == "0001B9").unwrap();
+        assert_eq!(j.outcome, JobOutcome::Completed);
+        assert_eq!(j.material.as_deref(), Some("PLA"));
+        assert_eq!(j.slicer_weight_g, Some(39.13));
+        assert!((j.used_mm - 13118.148).abs() < 0.01);
+        assert!(j.ended_at < 1_704_067_200.0, "printer clock reports 2023");
+    }
+
+    #[test]
     fn missing_result_is_a_bad_response() {
         assert!(matches!(parse_history_page(&serde_json::json!({"error": "x"})), Err(LinkError::BadResponse(_))));
     }
@@ -368,6 +433,7 @@ mod parse_tests {
 mod client_tests {
     use super::*;
     use crate::printer_link::address::AddressPolicy;
+    use crate::printer_link::fake_moonraker::qidi_smart3;
     use crate::printer_link::fake_moonraker::{fixture_bytes, sv08, FakeServer};
     use crate::printer_link::PrinterLink;
 
@@ -415,8 +481,9 @@ mod client_tests {
     fn jobs_are_filtered_by_end_time_and_query_uses_lookback() {
         let server = sv08();
         let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
-        let base = link.test().unwrap().base_url;
-        let jobs = link.jobs_ended_since(&base, 1_788_970_000.0).unwrap();
+        let info = link.test().unwrap();
+        assert_eq!(info.clock_offset_s, 0.0, "no Date header -> no correction");
+        let jobs = link.jobs_ended_since(&info, 1_788_970_000.0).unwrap();
         assert_eq!(jobs.iter().map(|j| j.remote_id.as_str()).collect::<Vec<_>>(), vec!["00003F", "00003E"]);
         let query = server.requests().into_iter().find(|r| r.starts_with("/server/history/list")).unwrap();
         let expected_since = 1_788_970_000.0 - LOOKBACK_S;
@@ -438,15 +505,55 @@ mod client_tests {
             }
         });
         let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
-        let base = link.test().unwrap().base_url;
-        assert_eq!(link.jobs_ended_since(&base, 0.0).unwrap().len(), 120);
+        let info = link.test().unwrap();
+        assert_eq!(link.jobs_ended_since(&info, 0.0).unwrap().len(), 120);
+    }
+
+    #[test]
+    fn http_dates_are_parsed() {
+        assert_eq!(parse_http_date("Mon, 11 Dec 2023 17:00:00 GMT"), Some(1_702_314_000.0));
+        assert_eq!(parse_http_date("kaputt"), None);
+    }
+
+    #[test]
+    fn small_clock_differences_are_ignored() {
+        assert_eq!(clock_offset(None, 1000.0), 0.0);
+        assert_eq!(clock_offset(Some(1000.0 + CLOCK_TOLERANCE_S - 1.0), 1000.0), 0.0);
+        assert_eq!(clock_offset(Some(1000.0 - 1_000_000.0), 1000.0), -999_999.5);
+    }
+
+    /// Qidi Smart 3 from a real test report: its clock is in December 2023 while
+    /// the prints happened in 2026. Without the correction no print was ever found.
+    #[test]
+    fn a_printer_with_a_wrong_clock_still_delivers_its_prints() {
+        let printer_now = 1_702_314_000.0; // 2023-12-11 17:00 UTC, printer time
+        let offset = printer_now - unix_now();
+        let server = qidi_smart3(offset);
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        let info = link.test().unwrap();
+        assert!((info.clock_offset_s - offset).abs() < 3.0, "{} vs {offset}", info.clock_offset_s);
+
+        // "Connected" at 12:50 printer time = that moment in local time.
+        let since_local = 1_702_299_000.0 - info.clock_offset_s;
+        let jobs = link.jobs_ended_since(&info, since_local).unwrap();
+        let mut ids: Vec<_> = jobs.iter().map(|j| j.remote_id.as_str()).collect();
+        ids.sort();
+        assert_eq!(ids, vec!["0001B6", "0001B7", "0001B8", "0001B9"]);
+        let b9 = jobs.iter().find(|j| j.remote_id == "0001B9").unwrap();
+        assert!((b9.ended_at - (1_702_311_947.72 - info.clock_offset_s)).abs() < 0.01, "ended_at in local time");
+        assert!(b9.ended_at > unix_now() - 3.0 * 3600.0, "local time is recent, not 2023");
+
+        let query = server.requests().into_iter().find(|r| r.starts_with("/server/history/list")).unwrap();
+        let queried: f64 = query.split("since=").nth(1).unwrap().split('&').next().unwrap().parse().unwrap();
+        assert!((queried - (1_702_299_000.0 - LOOKBACK_S)).abs() < 1e-3, "query uses printer time: {query}");
     }
 
     #[test]
     fn a_foreign_base_url_is_refused() {
         let server = sv08();
         let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
-        assert_eq!(link.jobs_ended_since("http://8.8.8.8", 0.0), Err(LinkError::AddressNotAllowed));
+        let foreign = ConnectionInfo { version: "v0".into(), base_url: "http://8.8.8.8".into(), clock_offset_s: 0.0 };
+        assert_eq!(link.jobs_ended_since(&foreign, 0.0), Err(LinkError::AddressNotAllowed));
     }
 
     #[test]

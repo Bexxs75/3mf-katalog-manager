@@ -1,0 +1,244 @@
+{
+  "result": {
+    "count": 442,
+    "jobs": [
+      {
+        "end_time": 1702311947.7226992,
+        "filament_used": 13118.14781000768,
+        "filename": "Datei 1.gcode",
+        "metadata": {
+          "size": 3523725,
+          "modified": 1702307676.1600037,
+          "uuid": "d1922ea5-e5bf-4fd5-a272-7da642fe49aa",
+          "slicer": "OrcaSlicer",
+          "slicer_version": "2.4.2",
+          "gcode_start_byte": 18514,
+          "gcode_end_byte": 3501162,
+          "layer_count": 125,
+          "object_height": 25,
+          "estimated_time": 4421,
+          "nozzle_diameter": 0.4,
+          "layer_height": 0.2,
+          "first_layer_height": 0.2,
+          "first_layer_extr_temp": 220,
+          "first_layer_bed_temp": 60,
+          "chamber_temp": 0,
+          "filament_name": "yourDroid - PLA - black",
+          "filament_type": "PLA",
+          "filament_total": 13118.95,
+          "filament_weight_total": 39.13,
+          "thumbnails": [
+            {
+              "width": 32,
+              "height": 32,
+              "size": 1242,
+              "relative_path": ".thumbs/bee-watering-station_PLA_1h14m-32x32.png"
+            },
+            {
+              "width": 110,
+              "height": 110,
+              "size": 4210,
+              "relative_path": ".thumbs/bee-watering-station_PLA_1h14m-110x110.png"
+            }
+          ]
+        },
+        "print_duration": 4051.7601776819993,
+        "status": "completed",
+        "start_time": 1702307676.4603715,
+        "total_duration": 4271.34387662,
+        "job_id": "0001B9",
+        "exists": true
+      },
+      {
+        "end_time": 1702307541.022959,
+        "filament_used": 7139.750959999446,
+        "filename": "Datei 2.gcode",
+        "metadata": {
+          "size": 2780648,
+          "modified": 1702301318.7120006,
+          "uuid": "60d20d16-038c-4ca9-b340-6a4c75b54f9f",
+          "slicer": "OrcaSlicer",
+          "slicer_version": "2.4.2",
+          "gcode_start_byte": 16945,
+          "gcode_end_byte": 2758090,
+          "layer_count": 50,
+          "object_height": 10,
+          "estimated_time": 2953,
+          "nozzle_diameter": 0.4,
+          "layer_height": 0.2,
+          "first_layer_height": 0.2,
+          "first_layer_extr_temp": 220,
+          "first_layer_bed_temp": 60,
+          "chamber_temp": 0,
+          "filament_name": "yourDroid - PLA - black",
+          "filament_type": "PLA",
+          "filament_total": 7140.55,
+          "filament_weight_total": 21.3,
+          "thumbnails": [
+            {
+              "width": 32,
+              "height": 32,
+              "size": 1075,
+              "relative_path": ".thumbs/biene_PLA_49m13s-32x32.png"
+            },
+            {
+              "width": 110,
+              "height": 110,
+              "size": 3223,
+              "relative_path": ".thumbs/biene_PLA_49m13s-110x110.png"
+            }
+          ]
+        },
+        "print_duration": 2550.7535413409996,
+        "status": "completed",
+        "start_time": 1702304612.4444113,
+        "total_duration": 2928.611293938,
+        "job_id": "0001B8",
+        "exists": false
+      },
+      {
+        "end_time": 1702304135.6825807,
+        "filament_used": 7139.750959999442,
+        "filename": "Datei 2.gcode",
+        "metadata": {
+          "size": 2780648,
+          "modified": 1702301318.7120006,
+          "uuid": "60d20d16-038c-4ca9-b340-6a4c75b54f9f",
+          "slicer": "OrcaSlicer",
+          "slicer_version": "2.4.2",
+          "gcode_start_byte": 16945,
+          "gcode_end_byte": 2758090,
+          "layer_count": 50,
+          "object_height": 10,
+          "estimated_time": 2953,
+          "nozzle_diameter": 0.4,
+          "layer_height": 0.2,
+          "first_layer_height": 0.2,
+          "first_layer_extr_temp": 220,
+          "first_layer_bed_temp": 60,
+          "chamber_temp": 0,
+          "filament_name": "yourDroid - PLA - black",
+          "filament_type": "PLA",
+          "filament_total": 7140.55,
+          "filament_weight_total": 21.3,
+          "thumbnails": [
+            {
+              "width": 32,
+              "height": 32,
+              "size": 1075,
+              "relative_path": ".thumbs/biene_PLA_49m13s-32x32.png"
+            },
+            {
+              "width": 110,
+              "height": 110,
+              "size": 3223,
+              "relative_path": ".thumbs/biene_PLA_49m13s-110x110.png"
+            }
+          ]
+        },
+        "print_duration": 2550.373758633,
+        "status": "completed",
+        "start_time": 1702301318.896357,
+        "total_duration": 2816.739857302,
+        "job_id": "0001B7",
+        "exists": false
+      },
+      {
+        "end_time": 1702299526.5998647,
+        "filament_used": 2768.4704799998235,
+        "filename": "Datei 3.gcode",
+        "metadata": {
+          "size": 340720,
+          "modified": 1702298552.1600027,
+          "uuid": "6075c0f1-792f-42ee-8342-5e07698cdec9",
+          "slicer": "OrcaSlicer",
+          "slicer_version": "2.4.2",
+          "gimage": "0`000<d0003=0000?<?M1FH0000n2P00000000000029:M4TC1_:4[4TL2C^6blLSA^]6b~C2a>Z4T40T2CS0200jQ;>6`L:I@U~6i4T;1]Q050TPP0X4~H990V52JTB3aa?7:80J19Y4ZH9RA;W2@@9`P142BL:ja8[6l<0B18W4PhLP@00o`3o0?l0o`3o0?l0o`3o0?l0o`3o0?l0o`3o0?l0o`3o0?l0o`3o0?l0o`3o0?l0o`3o0?l0]2lc:bl]0<Hl9h4U<`34:`48:3X0`2lW0@XU?P2nhB?P0@h~;@2j;bH142H_0;Pc0A<U<bd0]2d[0AHX>P2b;bL162Dl0;0~0A`R;@2~;bH17RHn0:Xc0B4UhB?P;@2V;B8192P_0:@m9@4V9C<0XR`1:RPj09h_9`4~9Ch0W3<1<2`]09P]:04b9Rl0US`1=BDc;@2C:`4h:3X0T2lW0CXU?02>hB?P0Ch[;@2:;bH1@2Hn08Pc0D<U<bd0Q2dR0DHX>P22?BD1B2Dc080~0D`X;@1l;bL1CRDn07Xc0E8~;@1f;BP1E2H_07@l0ELU<`1b:`5J:3X0KRlW0E`U?01~hB?P0F0[;@1X;bH1HRHm06Hc0FDU<bd0HRd[0FPX>P1P;bL1JRDc05h~0FhX;@1J;bH1L2Dn05Pc0G@~;@1D;B81MRH_058m9@5h9C<0D2`1O2Pj04`_9`5n9Ch0B^4Sh062;2d0ASXV0H@V;`14?0679C<]044[0HXX>P0n;bL1S2Dl03`~0I0[;@0h;bH1TRHn03Hc0IDU<bd0<RdR0IPX>P0`?BD1VRDc02h~0IhX;@0Z;bL1X2Dn02Pc0J@~;@0T;BP1YRH_028l0JTU<bd07b]F0JXX>P0L;bLQ9B8i0JXU?00J<f4U@RHT0JX[;@0G;H4UHRP^0JXV?P0F?X4UXRLT0JTU<bd053j19L8Y=P6Z:3X04n4Z8N219`879`6Z9C<04^4^h28V964^:<8b906W9S8Q:2d0430S8RP^HB@V`RPi0J@T=B<b@BDn010m:d8WPBDe`RLT0J7Q8N0a@c:1;2d03n4Xh2cQ;N0R:CIQ93;2:Bh1WbV3<Z4[010h>b]2>H4W0PLW0I`U:j<b`Ch0430d8cLR9RAQ;RW2:B@1VBK3<N4Qh<4c018jhBCP:R8X;V4T9P87>@6F92[38R@11c@04c3Q9N0[=b8W964U=L8V906ChB3P0`LV0@PX?@0E;clZ8RTfHB@V`RP^0I4X`bXU0@LU:R?Q8^005SSQ9n0[@RN19@879b@1SBD[`bT122I3hBCP01P`=2<g8S8THB@Y`RTf0H~b`c7Q8N011b@X@bcQ<^006S[Q8n0Z8RPiPBL21bL1R2DZ`bP122Da@c~h01``=>4~h3LR9bAQ;RS2<R@1QBH31n4Ph048:D<~=00PhB;P?bXR:CIQ92K2:3T1PR@e`bX^0@LU:T?Q9RWP028`?2]29h4U=L8W905ohB7P<L<b0@PVHn4Wh3009N4Xh2cQ;N0R:BAQ92W2:CH1OBW3:RD11b@e@b`m02Ph>bY2>H4W0PLW0GXU:l<Y0@PW<D<k;@0Z<3@a=b8V964^:<8Y905g9~<ahB3P0@PX@b`d02kQ8RCP:R8X;V4T9P87>@5d92;3:Rh11bD[@n4T8^00<33Q9N0[@RLTHBDe`RHT0G7Q8>031bH12393;>4Uh00dhBSP?bXR:CIQ93;2:2h1KbS3:RD11bDZ@cl_03Hh>b]29h4W0PLW0F`U:l<Y0@PVHn4[h2d0>30d8cLR<RAQ;RW2:CH1JC;3<BL11b@X@bcQ:^00?3[Q8n0Z8RPiHB@V0PLi0FHU:~<R90479B]3>cP0?S3Q9N0[=b8W964U=L8V905S9P<79P48:D<~=012;clZ8RTfHB@V`RP^0F0T:<<Z;P479BY3hBHYh014>3`[@RN19@879b@1GBD[`bT122IShBOP<017?B<g8RTTHB@Y`RTf0E~Y`c7Q8N011b@e@b`m04Xh>bY2>H4W0PLW0EPU:~<X0@SQ8N0a@c~]04``=34g8RHTHBhX`RTT0EDV0`OQ8>0122U3;3@0D>4R9>0Z8RP^HB@V`SDi0E8T=L<Z;P479B]3hB@Rh01B<3`[@RN19CG2hC7P905?9c73<P489T<~hBGP05KQ:>0~:R8Y=V4T<~8Y;P5=:<<Z9@479293?bl0F3Pk:d8iPBL21bL1BRD[`bT12>4Ph6?Q:n0]05X`=2<g8RHTHBhY`RTf0DLb`c4W0@PX@bcQ:^00GS[Q8n0Z8RP^HB@V0PLi0D@^:~<R90479B]3>cP0H33Q9N0[=b8W964U=L8V9051hB3P0`LV0@Pb@b`d06@_?bXR:CIQ92K2:2h1?bS3:Rh11bDZ@n4Vh2l0ISSQ9n0[@RN19@879b@1>bD[`bT122IShBOP;@1X<3@S=b8b964T:L8Y=P4i:L<ahB7P0@LT=D<~?@1~>^4Sh2XR:3V19`879`4f9B[3:048hB7P<D<k>01^<3CQ;>0g8RLTHBhX`S8T0C<V0`OQ8>0122U3;3@0L^4R9^0Z8RT^HB@V`RPi0C0T=L<Z;P479BY3hB@Yh01d<3`[@RN19CG29b@1;N4Qh373<P489T<~hBOP<01ghBSP;>4]h28Y964T:L8Y=P4[:L<Z9@479293;>4Xh01j>3~[@SV19`879`4X9B_3:@48hB3PHn4`h2d0O30d<CLR9RAQ;RS2:B@19BK3<N4Ph048:4<~hB[P083Q8RCP:R8X;V4T9P87>@4R92;3:Rh11bD[@n4Th3P0PS3Q9N0[@RLTHBDe`RHT0AoQ8>031bH12393;>4Uh026;clZ8RTfHB@b`RP^0AdX`bXU0@LU:T<o;`28>3<[@RN19`879`4J9B_3:@489V?Q:n0]08X`=2<g8S8THBhY`RTf0ALb`c4W0@LT:4<~?@2>>^4Sh2XR:3UQ92H21bL152DZ`b8T0@LU:d<k>02@<3kQ;>0g8RLTHBDX`S8T0A4V0`LV0@PY@b`d09CQ8^0o:R8Y=V4T9~8X9@4>93G3:Rh11bDZ@n4V:N00URdl:d8WPBDe`RLT0@_Q8N0a`c8122IShBOP<02IhBSP;3LR:BAQ92W2:CH12BW3:bD11b@e@b`m09`h>bY2>H4W0PLW`BDZ`bP12>4Qh353>bd0WS0d<CLR9RAQ;RS2:BAQ9P<7hB3P0@PY@b`d0:;Q8RCP:R8X;V4T9P87>B@R`bX^0@LU:d?Q92;P0:@`?2]29h4U=L8a`bH12393;>4Uh02XhBSP?bXR:CIQ93:R<H<Z9@4792Y3?bl0ZSPk:d8WPBN2<F<Y0@SQ8>1ShB_P;@2~<3@S=b8b964^:D8a8c4W0@PX@bcQ:^00~3[Q8n0Z8RPUHB@V8S4R90479B]3>cP0~S3Q9N0[=b8W964U9P48<T<~=02f;clZ8RTf0@XU:T?Q9^0_0;Ph?2]29`489V?Q9n0`0;X`=2<g8RTUPN4Qh3E3;3d0_S[Q8n0Z=b~e:3Da;4<k>030<3@aJc4SC3@0a>4Rh3_Q9^0ohDH_:N00aS3Q:N0mhBX^h03o0?l0o`3o0?l0o`3o0?l0o`3o0?l0o`3o0?l0o`3o0?l0o`3o0?l0o`3o0?l0o`3o04~0",
+          "simage": "0`0008`0002<0000?<?M1Eh000181P00000000000029:M4TbQ9<6k4TL2B]6nhK;ab=6b~C@@0;4n<0T2@P0<hKK1^52NXBZQ872Y4TH@294U0TXP0~6b@9:18?7<H9i`UU2H80Caa84VPBYPW304@9ZA9@72L:3QaY4P<10?l0o`3o0?l0o`3o0?l0o`3o0?l0o`3o0>4bhBGP;@27=H4Y;@23:bc19CD0PBdX0@TY:`1n=04<9C80NbdW0@ld:`1h=@4B9bd0MB~S0A@U=B~0LS8U0ALYhB;P070~0AXU?`1];BP17B`[06[Q9N0182Lb06L]9`4R9CD[06@o0BHYhB;P064[;04X9CD0GbdX0B~Y:`1L=04^9C80FBdW0C4d:`1F=@4d9bd0Db~S0CHU=@1A?2D1>BWQ8^00CS@1?2Db04~]:04o;2~0B3D1@RL]04D[:@549CD[048o0DPYhB;P040~0DXU?`0m;BP1CB<[03[Q9N01D2Pb03L]9`5B9N4Uh2~0=3D1ERT]034[8`5H9CD0;c`U0E~YhB;P02`d0EhU<P0Y;BL1HC@[02He0F@W;@0S:bT1IRDe:`0P?`5Z:N4Rh00N;05~9Cl06bdX0Fl~:`0HhBGP0G8W<P0E;BL^0G<U=B~04Sm1<BPT0G<YhB;P010]HD<V=P5c9CD03n4Th663:05d:B~03N4Vh2A19h<`905c9C803>4^h2Ti@BDaHbTi0G4U<B4d:`0:;n4]h2<X924T<8<X905^<28Z@BL]00X[=BXV;T4XPbHf0F~U:T8ZHBDl00X_hB7P<b<X@BhVPbP1JBN2<H7Q9N0033Xh>bHT8B@WPbHT0FDT:H8`XCD03Blb;2<i@BDaPcT1HbD~HRXUXC4l00lj8S~W924T9h<W905P9X8VXBD~8R~042oQ8>0Z:Bi19H<Y;P5M9BYR<cjQ<28d>P0C?28S:2@Q92J3:05K9h8Z;X4U:R8m:`0E=n4Th2XV=T4XPbHf0ELT<H8WXBM2hBSP01P_<R`S:44^:H<X0EDX<f8Z9H4T<B8m=`0K>SPk<2@Q92N3<2@1DRV29Z7Q8n0c8S807Rlo:RTi@BDaHbTU0DlU;68c::4V8SP]024]8R<X924T9X<X905<<88S984U;28m:`0S=n4Th2XV=T4XPbHf0DT^:X8WXBLR=3`09RoQ8N0c8bQ1;RV3:057?X8Z;X4T8b8m=`0Y>SPk9R@Q92N39R@1A2V29Z4n@^4Qh00~;n4Vh2`S>D4U<H<i0D4U;68chB?PXBTR>>4Wh00_hBOP8S~W924T<8<W904n9X8YXBD~8^4Ph2l0<COQ8>0Z:Bi1:8<Y;P4k9BZ2?Z4`8S@]03GQ8N0c8bQ1;RJ3:04i9h8Z;X4U:R8m:`0g=n4Th3~V=R4T9h<V=P4e9362<:4W@^4Qh00j;c8~8cU19BV3>@4chB?P<f8Z9H4T:B8h=`0m>S@k<2@Q92N39b@1<2J29Z4U;2;Q9^00@2oQ8>0Z:BE19C5S:Bh1;BD~HS<XXBHR=2d0@c`R8bPT8B@VPbPT0BXWPR<TPBDZ8Sd[04DghBCP:RHf@BR39SH19b@SPRNQ9b8dhBSP04P_<S<S:44^:H<X0BDnPRX^PB@a8Sdg04~j>3~V924T9h<`904R:H8VXN4Sh3<R<P1>;n4Vh2Xa>D4U<F<Y>@4O9BaR<n4Sh:4V8SSQ9n00DBdR8n4~h2@Q9323:2@17322:J4U;2;Q8>0_05<ghB3P:RH^@BR39SH16BDZPSjQ<28d?01GhB7P<b<X@BhVPbP15bN2:Rj1;RXR?B~0FN4Rh3Pk9SHQ92N39R@14b@aPS2Q?T;Q8N00G2lb;2<i@BDaPcT14N4Sh3=R:RFQ:B8h>P1O>R8k9b@Q92N39b@13RJ29Z4U;2;Q9^00HRoQ8>0Z:Bi19H<Y;P4;9BYR<cjQ9R8d;@1U?28S:2@Q92J3:2@122N2:Rj19BXR?B~0IcOQ9>0Z9SI1:8<V=Z4T8h8WXBLR=>4Xh01Z;c8~8bQ1;RV3:64nPRXUPB@a8Sdg06dj>3~`924T9h<`92V29Z7Q8n0c8S80L2lo:RTi@BDaHbaR<bRQ9R8h;@1c;B8S:2@Q9313;48S984U;2;Q8>0[07DghB_P:RHf@BPS;28WXBLR=3`0N2oQ8N0c8bQ1;RH^PB@S8Sdg07~j>3~V9<4n@^4Qh01n;c8~8n4Zh84Y8SPj084j8RXa:B=2?bl0Pb_Q8>12=>4Yh2d0Qn4Rh5`[0?l0o`3o0?l0o`3o0?l0o`3o0?l0o`370000",
+          "gcode_start_byte": 11349,
+          "gcode_end_byte": 318165,
+          "layer_count": 30,
+          "object_height": 6,
+          "estimated_time": 1019,
+          "nozzle_diameter": 0.4,
+          "layer_height": 0.2,
+          "first_layer_height": 0.2,
+          "first_layer_extr_temp": 220,
+          "first_layer_bed_temp": 60,
+          "chamber_temp": 0,
+          "filament_name": "yourDroid - PLA - black",
+          "filament_type": "PLA",
+          "filament_total": 2769.27,
+          "filament_weight_total": 8.26,
+          "thumbnails": [
+            {
+              "width": 32,
+              "height": 32,
+              "size": 1060,
+              "relative_path": ".thumbs/Deckel-mini_PLA_16m59s-32x32.png"
+            },
+            {
+              "width": 110,
+              "height": 110,
+              "size": 1688,
+              "relative_path": ".thumbs/Deckel-mini_PLA_16m59s-110x110.png"
+            }
+          ]
+        },
+        "print_duration": 735.2398536009996,
+        "status": "completed",
+        "start_time": 1702298552.2930942,
+        "total_duration": 974.2044758809998,
+        "job_id": "0001B6",
+        "exists": false
+      },
+      {
+        "end_time": 1702295589.2988882,
+        "filament_used": 5185.093860000189,
+        "filename": "Datei 4.gcode",
+        "metadata": {
+          "size": 923381,
+          "modified": 1702293252.4440002,
+          "uuid": "8fd04756-46da-44ce-a98e-e3a2745d19ea",
+          "slicer": "OrcaSlicer",
+          "slicer_version": "2.4.2",
+          "gcode_start_byte": 19059,
+          "gcode_end_byte": 900800,
+          "layer_count": 115,
+          "object_height": 23,
+          "estimated_time": 1704,
+          "nozzle_diameter": 0.4,
+          "layer_height": 0.2,
+          "first_layer_height": 0.2,
+          "first_layer_extr_temp": 220,
+          "first_layer_bed_temp": 60,
+          "chamber_temp": 0,
+          "filament_name": "yourDroid - PLA - black",
+          "filament_type": "PLA",
+          "filament_total": 5185.89,
+          "filament_weight_total": 15.47,
+          "thumbnails": [
+            {
+              "width": 32,
+              "height": 32,
+              "size": 1677,
+              "relative_path": ".thumbs/Gehaeuse-mini_PLA_28m24s-32x32.png"
+            },
+            {
+              "width": 110,
+              "height": 110,
+              "size": 2848,
+              "relative_path": ".thumbs/Gehaeuse-mini_PLA_28m24s-110x110.png"
+            }
+          ]
+        },
+        "print_duration": 1422.5612430529998,
+        "status": "completed",
+        "start_time": 1702293980.0522861,
+        "total_duration": 1609.2037058919998,
+        "job_id": "0001B5",
+        "exists": false
+      }
+    ]
+  }
+}

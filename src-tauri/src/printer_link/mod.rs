@@ -17,6 +17,10 @@ pub struct ConnectionInfo {
     pub version: String,
     /// The base that actually works, e.g. "http://192.168.1.60".
     pub base_url: String,
+    /// Printer clock minus local clock in seconds; 0 when the difference is within
+    /// the tolerance or unknown. Printers without NTP can be years off, and their
+    /// timestamps have to be shifted before they are compared with local times.
+    pub clock_offset_s: f64,
 }
 
 /// Finished or ended early (cancelled, error, crash).
@@ -79,8 +83,9 @@ pub const KIND_MOONRAKER: &str = "moonraker";
 pub trait PrinterLink: Send {
     /// Checks address and connection, returns the working base URL.
     fn test(&self) -> Result<ConnectionInfo, LinkError>;
-    /// Finished prints with `ended_at > since` (Unix seconds).
-    fn jobs_ended_since(&self, base_url: &str, since: f64) -> Result<Vec<RemoteJob>, LinkError>;
+    /// Finished prints with `ended_at > since`, both in local Unix seconds: the
+    /// adapter converts with `info.clock_offset_s` in both directions.
+    fn jobs_ended_since(&self, info: &ConnectionInfo, since: f64) -> Result<Vec<RemoteJob>, LinkError>;
     /// Thumbnail (PNG) for a path from `RemoteJob::thumbnail_path`.
     fn thumbnail(&self, base_url: &str, path: &str) -> Result<Vec<u8>, LinkError>;
 }
