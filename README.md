@@ -39,6 +39,16 @@ The buttons open the download section of the website, which always offers the ne
 | PrusaLink | planned later |
 | Languages | English, German, Spanish, French |
 
+### Tested printers
+
+| Printer | System | Checked | Result |
+|---|---|---|---|
+| Sovol SV08 | Stock Klipper | Print list and usage, deducting from the spool in the app | ✅ Confirmed in daily use |
+| Anycubic Kobra S1 with ACE Pro | Rinkhals | Print list and usage readable, matching file names to the model | ☑️ Test report checked |
+| Qidi Smart 3 | Stock Klipper | Print list and usage readable; the printer's clock was wrong | 🟡 From v0.15.0 |
+
+*Confirmed in daily use*: tried with the app on a real printer. *Test report checked*: the data from the anonymous [test form](https://3mfkatalog.de/en/printer-test.html) fits, a hands-on test is still missing. Your printer is missing? Your test adds it.
+
 ## Is it safe to install?
 
 Windows and macOS show a warning on the first start because the packages are **not code-signed**: the certificates for that cost money every year, which a free hobby project can't cover yet. The warning says "unknown publisher", not that anything harmful was found.
@@ -81,7 +91,7 @@ What you can check yourself:
 - **Resin printers** — when adding a printer you choose "Filament" or "Resin". A resin printer gets a fixed resin vat for one bottle instead of the spool holder; you insert the bottle by dragging or via the vat's menu, see its color and remaining ml, and deduct usage with "− Use".
 - **Is there enough filament?** — for sliced 3MF files, the detail page compares the filament requirement with your spools (material and similar color) and shows whether it is enough, enough only with a spool change, or how much is missing – including the matching spool and whether it is loaded in a printer. The print queue shows the status per entry and takes the combined requirement into account.
 - **Tools** — a sidebar section with the print queue, "Recently viewed", "Recently added", "Favorites" (all models marked with a heart), "Duplicates" and cleanup suggestions, each with a count; the views filter the catalog and combine with folders, tags and search.
-- **Printer connection** — optional (off by default): Klipper/Moonraker printers on your home network report the filament used by finished and aborted prints; after you confirm, it is deducted from the spool, optionally with a print log entry. Read-only, only addresses you entered yourself on your home network. Tested with a Sovol SV08, an Anycubic Kobra S1 (Rinkhals) and a Qidi Smart 3; results for more printers are collected on the [test page](https://3mfkatalog.de/en/printer-test.html).
+- **Printer connection** — optional (off by default): Klipper/Moonraker printers on your home network report the filament used by finished and aborted prints; after you confirm, it is deducted from the spool, optionally with a print log entry. Read-only, only addresses you entered yourself on your home network. See [Tested printers](#tested-printers); results for more printers are collected on the [test page](https://3mfkatalog.de/en/printer-test.html).
 - **Catalog extensions** — print-status toggle + weight per model (real value from the slicer if the 3mf has already been sliced, otherwise a rough estimate from volume × material density), sorting by "last viewed", NEW badge for recently imported models, creators filter (from the 3MF designer metadata), automatic detection of exact file duplicates on import via content hash
 - **Filament usage from the slicer** — reads the filament usage sliced in OrcaSlicer/Bambu Studio (`Metadata/slice_info.config`): real weight instead of an estimate, breakdown per build plate and filament (type, color, grams, meters) on the model detail page; "Rescan metadata" button retrieves the values afterward if an already-catalogued file was re-sliced in OrcaSlicer/Bambu Studio
 - **Material cost estimate** — for models with real slicer filament usage, an additional estimated material cost on the detail page, computed from consumption and the prices of matching spools in the filament inventory
@@ -117,7 +127,7 @@ What you can check yourself:
 - [User guide](docs/benutzerhandbuch/BENUTZERHANDBUCH.md) (DE + EN), step by step with screenshots
 - [Website](https://3mfkatalog.de/en/) with FAQ
 - [Discord](https://discord.gg/abfVNfFqu3) for questions and ideas
-- Bugs: [open an issue](https://github.com/Bexxs75/3mf-katalog-manager/issues/new/choose) or ask on Discord
+- Bugs: [open an issue](https://github.com/Bexxs75/3mf-katalog-manager/issues/new/choose), ask on Discord, or use the [bug report form](https://3mfkatalog.de/en/report-a-bug.html) (no account needed)
 
 ## Contributing
 

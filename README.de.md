@@ -39,6 +39,16 @@ Die Knöpfe öffnen den Download-Bereich der Webseite, dort gibt es immer die ne
 | PrusaLink | später geplant |
 | Sprachen | Deutsch, Englisch, Spanisch, Französisch |
 
+### Getestete Drucker
+
+| Drucker | System | Geprüft | Ergebnis |
+|---|---|---|---|
+| Sovol SV08 | Klipper ab Werk | Druckliste und Verbrauch, Abbuchen von der Spule in der App | ✅ Im Alltag bestätigt |
+| Anycubic Kobra S1 mit ACE Pro | Rinkhals | Druckliste und Verbrauch lesbar, Zuordnung der Dateinamen zum Modell | ☑️ Testbericht geprüft |
+| Qidi Smart 3 | Klipper ab Werk | Druckliste und Verbrauch lesbar; die Uhr des Druckers ging falsch | 🟡 Ab v0.15.0 |
+
+*Im Alltag bestätigt*: mit der App am eigenen Drucker ausprobiert. *Testbericht geprüft*: die Daten aus dem anonymen [Testformular](https://3mfkatalog.de/druckertest.html) passen, ein Praxistest fehlt noch. Dein Drucker fehlt? Mit deinem Test kommt er dazu.
+
 ## Ist die Installation sicher?
 
 Windows und macOS zeigen beim ersten Start eine Warnung, weil die Pakete **nicht signiert** sind: Die Zertifikate dafür kosten jedes Jahr Geld, das kann ein kostenloses Hobbyprojekt noch nicht tragen. Die Warnung bedeutet „unbekannter Herausgeber“, nicht, dass etwas Schädliches gefunden wurde.
@@ -81,7 +91,7 @@ Was du selbst prüfen kannst:
 - **Resin-Drucker** — beim Anlegen eines Druckers wählst du „Filament“ oder „Resin“. Ein Resin-Drucker bekommt statt des Spulenhalters eine feste Harzwanne für eine Flasche; du setzt sie per Ziehen oder über das Menü der Wanne ein, siehst Farbe und Rest in ml und buchst mit „− Verbrauch“ ab.
 - **Reicht das Filament?** — für geslicete 3MF-Dateien vergleicht die Detailseite den Filamentbedarf mit deinen Spulen (Material und ähnliche Farbe) und zeigt, ob er reicht, nur mit Spulenwechsel reicht oder wie viel fehlt – samt passender Spule und ob sie im Drucker steckt. Die Druck-Warteschlange zeigt den Status je Eintrag und berücksichtigt den Gesamtbedarf.
 - **Werkzeuge** — Abschnitt in der Seitenleiste mit Warteschlange, „Zuletzt angesehen“, „Neu hinzugefügt“, „Favoriten“ (alle mit Herz markierten Modelle), „Duplikate“ und Aufräum-Vorschlägen, jeweils mit Anzahl; die Ansichten filtern den Katalog und lassen sich mit Ordnern, Tags und Suche kombinieren.
-- **Druckeranbindung** — optional (standardmäßig aus): Klipper/Moonraker-Drucker im Heimnetz melden den Filamentverbrauch fertiger und abgebrochener Drucke; nach deiner Bestätigung wird er von der Spule abgebucht, auf Wunsch mit Druckprotokoll-Eintrag. Nur lesend, nur selbst eingetragene Adressen im Heimnetz. Getestet mit Sovol SV08, Anycubic Kobra S1 (Rinkhals) und Qidi Smart 3; Ergebnisse für weitere Drucker sammelt die [Testseite](https://3mfkatalog.de/druckertest.html).
+- **Druckeranbindung** — optional (standardmäßig aus): Klipper/Moonraker-Drucker im Heimnetz melden den Filamentverbrauch fertiger und abgebrochener Drucke; nach deiner Bestätigung wird er von der Spule abgebucht, auf Wunsch mit Druckprotokoll-Eintrag. Nur lesend, nur selbst eingetragene Adressen im Heimnetz. Siehe [Getestete Drucker](#getestete-drucker); Ergebnisse für weitere Drucker sammelt die [Testseite](https://3mfkatalog.de/druckertest.html).
 - **Katalog-Erweiterungen** — Druckstatus-Toggle + Gewicht pro Modell (echter Wert aus dem Slicer, falls die 3mf bereits gesliced wurde, sonst grobe Schätzung aus Volumen × Materialdichte), Sortierung nach "Zuletzt angesehen", NEU-Badge für kürzlich importierte Modelle, Creators-Filter (aus 3MF-Designer-Metadatum), automatische Erkennung exakter Datei-Duplikate beim Import per Inhalts-Hash
 - **Filamentverbrauch aus dem Slicer** — liest den in OrcaSlicer/Bambu Studio gesliceten Filamentverbrauch (`Metadata/slice_info.config`) mit aus: reales Gewicht statt Schätzung, Aufschlüsselung pro Druckplatte und Filament (Typ, Farbe, Gramm, Meter) auf der Modell-Detailseite; Button "Metadaten neu einlesen" holt die Werte nachträglich, wenn eine bereits katalogisierte Datei in OrcaSlicer/Bambu Studio nachgesliced wurde
 - **Materialkosten-Schätzung** — bei Modellen mit echtem Slicer-Filamentverbrauch zusätzlich eine geschätzte Materialkosten-Summe auf der Detailseite, berechnet aus Verbrauch und den Preisen passender Spulen im Filament-Lager
@@ -117,7 +127,7 @@ Was du selbst prüfen kannst:
 - [Benutzerhandbuch](docs/benutzerhandbuch/BENUTZERHANDBUCH.md) (DE + EN), Schritt für Schritt mit Bildern
 - [Webseite](https://3mfkatalog.de) mit FAQ
 - [Discord](https://discord.gg/abfVNfFqu3) für Fragen und Ideen
-- Fehler: [Issue anlegen](https://github.com/Bexxs75/3mf-katalog-manager/issues/new/choose) oder auf Discord fragen
+- Fehler: [Issue anlegen](https://github.com/Bexxs75/3mf-katalog-manager/issues/new/choose), auf Discord fragen oder das [Formular „Fehler melden“](https://3mfkatalog.de/fehler-melden.html) nutzen (ohne Konto)
 
 ## Mitmachen
 

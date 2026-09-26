@@ -3,6 +3,9 @@ contact_links:
   - name: Questions & chat
     url: https://discord.gg/abfVNfFqu3
     about: Ask a question or chat with the community on Discord.
+  - name: Report a bug without a GitHub account
+    url: https://3mfkatalog.de/en/report-a-bug.html
+    about: Prefer not to use GitHub? Send a bug report through the form on the website (German version at 3mfkatalog.de/fehler-melden.html).
   - name: Share printer data
     url: https://3mfkatalog.de/en/printer-test.html
     about: Have a printer with Klipper/Moonraker (or OctoPrint/Bambu Lab/PrusaLink)? Share test results on the printer test page.

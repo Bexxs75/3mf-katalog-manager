@@ -9,7 +9,7 @@ Thanks for your interest in 3MF Katalog Manager! This document collects the ways
 - **Printer test reports.** If you own a 3D printer running Klipper/Moonraker (or want to help scope OctoPrint/Bambu Lab/PrusaLink support), the [printer test page](https://3mfkatalog.de/en/printer-test.html) (German: [druckertest.html](https://3mfkatalog.de/druckertest.html)) explains what to test and how to report the result.
 - **Translations.** The UI ships in German, English, Spanish, and French. If you're fluent in one of these (especially ES/FR, which get less native review) or spot a wrong/awkward translation, see [docs/TRANSLATING.md](docs/TRANSLATING.md).
 - **Testing the installation on your platform.** Try a fresh install on Linux, Windows, or macOS (see the [Releases page](https://github.com/Bexxs75/3mf-katalog-manager/releases)) and report anything that didn't work.
-- **Bug reports.** Open a [GitHub issue](https://github.com/Bexxs75/3mf-katalog-manager/issues/new/choose) or post in [Discord](https://discord.gg/abfVNfFqu3).
+- **Bug reports.** Open a [GitHub issue](https://github.com/Bexxs75/3mf-katalog-manager/issues/new/choose), post in [Discord](https://discord.gg/abfVNfFqu3), or use the [bug report form](https://3mfkatalog.de/en/report-a-bug.html) on the website if you don't have an account.
 - **Sample files.** 3MF or G-code files (only ones you're allowed to share) that trigger parsing bugs, unusual slicer metadata, or edge cases are useful test material — attach them to an issue or share them on Discord.
 
 ## Code contributions
@@ -78,7 +78,7 @@ Danke für dein Interesse am 3MF Katalog Manager! Dieses Dokument sammelt die M�
 - **Druckertest-Berichte.** Wenn du einen 3D-Drucker mit Klipper/Moonraker besitzt (oder bei der Eingrenzung von OctoPrint-/Bambu-Lab-/PrusaLink-Unterstützung helfen willst), erklärt die [Testseite](https://3mfkatalog.de/druckertest.html) (Englisch: [printer-test.html](https://3mfkatalog.de/en/printer-test.html)), was zu testen ist und wie man das Ergebnis meldet.
 - **Übersetzungen.** Die Oberfläche gibt es auf Deutsch, Englisch, Spanisch und Französisch. Wenn du eine dieser Sprachen sicher beherrschst (besonders ES/FR bekommen weniger muttersprachliche Prüfung) oder eine falsche/holprige Übersetzung findest, siehe [docs/TRANSLATING.md](docs/TRANSLATING.md).
 - **Installation auf deiner Plattform testen.** Probiere eine frische Installation auf Linux, Windows oder macOS (siehe [Releases-Seite](https://github.com/Bexxs75/3mf-katalog-manager/releases)) und melde, was nicht funktioniert hat.
-- **Fehlerberichte.** Eröffne ein [GitHub-Issue](https://github.com/Bexxs75/3mf-katalog-manager/issues/new/choose) oder schreib im [Discord](https://discord.gg/abfVNfFqu3).
+- **Fehlerberichte.** Eröffne ein [GitHub-Issue](https://github.com/Bexxs75/3mf-katalog-manager/issues/new/choose), schreib im [Discord](https://discord.gg/abfVNfFqu3) oder nutze ohne Konto das [Formular „Fehler melden“](https://3mfkatalog.de/fehler-melden.html) auf der Webseite.
 - **Beispieldateien.** 3MF- oder G-Code-Dateien (nur solche, die du weitergeben darfst), die Parsing-Fehler, ungewöhnliche Slicer-Metadaten oder Randfälle auslösen, sind hilfreiches Testmaterial – als Issue-Anhang oder im Discord teilen.
 
 ### Code-Beiträge
