@@ -11,7 +11,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Added
 
-- **Report a bug from the app:** "Report a bug" under Settings → Info and "Report problem" next to unexpected errors open a short dialog. You decide whether to attach the log file: the app shows an anonymized preview (user name, computer name, paths, printer and other network addresses, e-mail addresses and — if you tick "Replace file names" — file names replaced) and saves it to your download folder. Afterwards the bug report form on 3mfkatalog.de opens with version and system already filled in; nothing is sent by the app itself.
+- **Report a bug from the app:** "Report a bug" under Settings → Info and "Report problem" next to unexpected errors open a short dialog. You decide whether to attach the log file: the app shows an anonymized preview (user name, computer name, home folder and catalog paths, printer and other network addresses, e-mail addresses and — if you tick "Replace file names" — file names replaced) and saves it to your download folder. Afterwards the bug report form on 3mfkatalog.de opens with version and system already filled in; nothing is sent by the app itself.
 - **Log file:** the app now writes a log (errors, warnings and short summaries; at most 5 files of 2 MB in the app's log folder). "Detailed log" under Settings → Info adds every action with file names and turns itself off after 7 days. Errors that used to disappear silently now show "Something went wrong" with "Report problem".
 
 ### Changed
@@ -425,7 +425,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Added
 
-- **Fehler melden aus der App:** „Fehler melden“ unter Einstellungen → Info und „Problem melden“ bei unerwarteten Fehlern öffnen einen kurzen Dialog. Ob die Logdatei mitgeht, entscheidest du: Die App zeigt eine anonymisierte Vorschau (Benutzername, Rechnername, Pfade, Drucker- und andere Netzwerkadressen, E-Mail-Adressen und – wenn du „Dateinamen ersetzen“ anhakst – Dateinamen ersetzt) und speichert sie in deinem Download-Ordner. Danach öffnet sich das Formular auf 3mfkatalog.de mit bereits eingetragener Version und System; die App selbst verschickt nichts.
+- **Fehler melden aus der App:** „Fehler melden“ unter Einstellungen → Info und „Problem melden“ bei unerwarteten Fehlern öffnen einen kurzen Dialog. Ob die Logdatei mitgeht, entscheidest du: Die App zeigt eine anonymisierte Vorschau (Benutzername, Rechnername, Pfade im Benutzerordner und im Katalog, Drucker- und andere Netzwerkadressen, E-Mail-Adressen und – wenn du „Dateinamen ersetzen“ anhakst – Dateinamen ersetzt) und speichert sie in deinem Download-Ordner. Danach öffnet sich das Formular auf 3mfkatalog.de mit bereits eingetragener Version und System; die App selbst verschickt nichts.
 - **Logdatei:** Die App schreibt jetzt ein Protokoll (Fehler, Warnungen und kurze Zusammenfassungen; höchstens 5 Dateien à 2 MB im Log-Ordner der App). „Ausführliches Protokoll“ unter Einstellungen → Info ergänzt jede Aktion mit Dateinamen und schaltet sich nach 7 Tagen selbst aus. Fehler, die bisher unbemerkt verschwanden, zeigen jetzt „Etwas ist schiefgelaufen“ mit „Problem melden“.
 
 ### Changed
