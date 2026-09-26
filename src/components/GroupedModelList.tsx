@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo } from 'react';
+import { useDragThreshold } from '../hooks/useDragThreshold';
 import type { ModelFile, Folder } from '../types';
 import { buildGroupedFolderTree, type GroupedFolderNode } from '../lib/groupedFolderTree';
 import { ModelList } from './ModelList';
@@ -25,7 +26,6 @@ interface Props {
   collapsedFolders: ReturnType<typeof useCollapsedFolders>;
 }
 
-const DRAG_THRESHOLD_PX = 6;
 
 export function GroupedModelList({
   models,
@@ -41,38 +41,7 @@ export function GroupedModelList({
   const t = useT();
   const { roots, noFolder } = useMemo(() => buildGroupedFolderTree(folders, models), [folders, models]);
 
-  // Threshold pattern as for folder dragging in FolderTree, for the folder header rows.
-  const [folderDragCandidateId, setFolderDragCandidateId] = useState<string | null>(null);
-  const folderDragStartPos = useRef<{ x: number; y: number } | null>(null);
-
-  useEffect(() => {
-    if (!folderDragCandidateId) return;
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!folderDragStartPos.current) return;
-      const dx = e.clientX - folderDragStartPos.current.x;
-      const dy = e.clientY - folderDragStartPos.current.y;
-      if (Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX) {
-        onDragFolderStart(folderDragCandidateId);
-        setFolderDragCandidateId(null);
-        folderDragStartPos.current = null;
-      }
-    };
-    const handleMouseUp = () => {
-      setFolderDragCandidateId(null);
-      folderDragStartPos.current = null;
-    };
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [folderDragCandidateId, onDragFolderStart]);
-
-  const handleFolderMouseDown = (e: { clientX: number; clientY: number }, id: string) => {
-    folderDragStartPos.current = { x: e.clientX, y: e.clientY };
-    setFolderDragCandidateId(id);
-  };
+  const folderDrag = useDragThreshold(onDragFolderStart);
 
   function renderNode(node: GroupedFolderNode, depth: number) {
     // totalCount is recursive: 0 means the whole subtree contains nothing under
@@ -84,7 +53,7 @@ export function GroupedModelList({
     return (
       <div key={node.folder.id} className={depth > 0 ? 'ml-3 pl-4 border-l border-[var(--line-strong)] mt-2.5' : 'mb-4'}>
         <div
-          onMouseDown={(e) => handleFolderMouseDown(e, node.folder.id)}
+          onMouseDown={(e) => folderDrag.begin(e, node.folder.id)}
           onMouseEnter={() => onFolderMouseEnter(node.folder.id)}
           onMouseLeave={() => onFolderMouseLeave(node.folder.id)}
           onClick={() => collapsedFolders.toggle(node.folder.id)}

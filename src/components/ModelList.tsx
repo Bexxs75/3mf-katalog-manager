@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useDragThreshold } from '../hooks/useDragThreshold';
 import type { ModelFile } from '../types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatBytes, formatVolumeCm3 } from '../i18n/format';
@@ -21,35 +21,7 @@ export function ModelList({ models, selectedId, onSelect, onOpenDetail, onContex
   const { language } = useLanguage();
   const t = useT();
 
-  const DRAG_THRESHOLD_PX = 6;
-  const [fileDragCandidateId, setFileDragCandidateId] = useState<string | null>(null);
-  const [fileDragArmed, setFileDragArmed] = useState(false);
-  const fileDragStartPos = useRef<{ x: number; y: number } | null>(null);
-
-  // Threshold pattern as for file dragging in ModelGrid, here for rows.
-  useEffect(() => {
-    if (!fileDragCandidateId) return;
-    const handleMouseMove = (e: MouseEvent) => {
-      if (fileDragArmed || !fileDragStartPos.current) return;
-      const dx = e.clientX - fileDragStartPos.current.x;
-      const dy = e.clientY - fileDragStartPos.current.y;
-      if (Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX) {
-        setFileDragArmed(true);
-        onDragFileStart?.(fileDragCandidateId);
-      }
-    };
-    const handleMouseUp = () => {
-      setFileDragCandidateId(null);
-      setFileDragArmed(false);
-      fileDragStartPos.current = null;
-    };
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [fileDragCandidateId, fileDragArmed, onDragFileStart]);
+  const fileDrag = useDragThreshold(onDragFileStart);
 
   return (
     <div className="border border-[var(--line)] rounded overflow-x-auto bg-[var(--panel)]">
@@ -76,12 +48,11 @@ export function ModelList({ models, selectedId, onSelect, onOpenDetail, onContex
           }}
           onMouseDown={(e) => {
             if (!onDragFileStart) return;
-            fileDragStartPos.current = { x: e.clientX, y: e.clientY };
-            setFileDragCandidateId(m.id);
+            fileDrag.begin(e, m.id);
           }}
           className={`min-w-[680px] grid gap-2.5 items-center px-3 py-2 border-b border-[var(--line)] cursor-pointer ${
             m.id === selectedId ? 'bg-[var(--accent-soft)]' : 'hover:bg-[var(--panel-2)]'
-          } ${fileDragArmed && fileDragCandidateId === m.id ? 'opacity-50' : ''}`}
+          } ${fileDrag.draggingId === m.id ? 'opacity-50' : ''}`}
           style={{ gridTemplateColumns: '24px minmax(150px,2.2fr) minmax(110px,1.6fr) 92px 82px' }}
         >
           {readOnly ? (

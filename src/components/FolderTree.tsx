@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useDragThreshold } from '../hooks/useDragThreshold';
 import type { Folder } from '../types';
 import { useT } from '../i18n/LanguageContext';
 
@@ -54,35 +55,8 @@ export function FolderTree({
     });
 
   // Folder rows are only 28px high: an immediate drag start would let even a
-  // slight slip during a click trigger a real move_folder. So, as in
-  // ModelGrid, only start dragging after DRAG_THRESHOLD_PX of movement.
-  const DRAG_THRESHOLD_PX = 6;
-  const [dragCandidateId, setDragCandidateId] = useState<string | null>(null);
-  const dragStartPos = useRef<{ x: number; y: number } | null>(null);
-
-  useEffect(() => {
-    if (!dragCandidateId) return;
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!dragStartPos.current) return;
-      const dx = e.clientX - dragStartPos.current.x;
-      const dy = e.clientY - dragStartPos.current.y;
-      if (Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX) {
-        onDragFolderStart?.(dragCandidateId);
-        setDragCandidateId(null);
-        dragStartPos.current = null;
-      }
-    };
-    const handleMouseUp = () => {
-      setDragCandidateId(null);
-      dragStartPos.current = null;
-    };
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [dragCandidateId, onDragFolderStart]);
+  // slight slip during a click trigger a real move_folder.
+  const folderDrag = useDragThreshold(onDragFolderStart);
 
   function renderNode(node: TreeNode, depth: number) {
     const isOpen = expanded.has(node.id);
@@ -90,10 +64,7 @@ export function FolderTree({
       <div key={node.id}>
         <div
           onClick={() => onSelect(node.id)}
-          onMouseDown={(e) => {
-            dragStartPos.current = { x: e.clientX, y: e.clientY };
-            setDragCandidateId(node.id);
-          }}
+          onMouseDown={(e) => folderDrag.begin(e, node.id)}
           onMouseEnter={() => onFolderMouseEnter?.(node.id)}
           onMouseLeave={() => onFolderMouseLeave?.(node.id)}
           style={{ paddingLeft: 6 + depth * 16 }}

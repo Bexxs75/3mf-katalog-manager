@@ -7,6 +7,7 @@ import { tagLabel } from '../lib/autoTags';
 import { BulkCheckbox } from './BulkCheckbox';
 import { resolveDisplayImage } from '../lib/resolveDisplayImage';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
+import { DRAG_THRESHOLD_PX, useDragThreshold } from '../hooks/useDragThreshold';
 
 interface Props {
   models: ModelFile[];
@@ -34,11 +35,9 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
   const [dragArmed, setDragArmed] = useState(false);
   const dragStartPos = useRef<{ x: number; y: number } | null>(null);
 
-  // Reordering via mouse events instead of HTML5 DnD (under Tauri/WebKitGTK
-  // dragDropEnabled intercepts native drag sessions). Only movement beyond
-  // DRAG_THRESHOLD_PX counts as dragging, otherwise a slipped click on the
-  // checkbox or star would already reorder.
-  const DRAG_THRESHOLD_PX = 6;
+  // Reordering via mouse events instead of HTML5 DnD (see useDragThreshold).
+  // Only movement beyond DRAG_THRESHOLD_PX counts as dragging, otherwise a
+  // slipped click on the checkbox or star would already reorder.
   useEffect(() => {
     if (!reorderable || dragIndex === null) return;
     const handleMouseMove = (e: MouseEvent) => {
@@ -72,41 +71,14 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
   // Cards as drag source for moving into a folder (only without
   // `reorderable`), with the same threshold. The move itself is triggered by the
   // global mouseup handler in App.tsx; here only `onDragFileStart`.
-  const [fileDragCandidateId, setFileDragCandidateId] = useState<string | null>(null);
-  const [fileDragArmed, setFileDragArmed] = useState(false);
-  const fileDragStartPos = useRef<{ x: number; y: number } | null>(null);
-
-  useEffect(() => {
-    if (reorderable || !fileDragCandidateId) return;
-    const handleMouseMove = (e: MouseEvent) => {
-      if (fileDragArmed || !fileDragStartPos.current) return;
-      const dx = e.clientX - fileDragStartPos.current.x;
-      const dy = e.clientY - fileDragStartPos.current.y;
-      if (Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX) {
-        setFileDragArmed(true);
-        onDragFileStart?.(fileDragCandidateId);
-      }
-    };
-    const handleMouseUp = () => {
-      setFileDragCandidateId(null);
-      setFileDragArmed(false);
-      fileDragStartPos.current = null;
-    };
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [reorderable, fileDragCandidateId, fileDragArmed, onDragFileStart]);
+  const fileDrag = useDragThreshold(onDragFileStart);
 
   const handleCardMouseDown = (e: { clientX: number; clientY: number }, id: string) => {
     if (reorderable) {
       dragStartPos.current = { x: e.clientX, y: e.clientY };
       setDragIndex(models.findIndex((x) => x.id === id));
     } else if (onDragFileStart) {
-      fileDragStartPos.current = { x: e.clientX, y: e.clientY };
-      setFileDragCandidateId(id);
+      fileDrag.begin(e, id);
     }
   };
 
@@ -126,7 +98,7 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
         onMouseEnter={() => reorderable && dragIndex !== null && setOverIndex(models.findIndex((x) => x.id === m.id))}
         className={`rounded-[10px] overflow-hidden border cursor-pointer ${
           m.id === selectedId ? 'border-[var(--accent)]' : 'border-[var(--line)]'
-        } ${fileDragArmed && fileDragCandidateId === m.id ? 'opacity-50' : ''}`}
+        } ${fileDrag.draggingId === m.id ? 'opacity-50' : ''}`}
       >
         <div className="relative aspect-square bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
           {!readOnly && (
@@ -228,7 +200,7 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
             onMouseEnter={() => reorderable && dragIndex !== null && setOverIndex(models.findIndex((x) => x.id === m.id))}
             className={`rounded-[10px] overflow-hidden cursor-pointer bg-[var(--panel)] shadow-[var(--shadow)] border-2 ${
               m.id === selectedId ? 'border-[var(--accent)]' : 'border-transparent'
-            } ${fileDragArmed && fileDragCandidateId === m.id ? 'opacity-50' : ''}`}
+            } ${fileDrag.draggingId === m.id ? 'opacity-50' : ''}`}
           >
             <div className="h-[5px]" style={{ background: 'linear-gradient(90deg, var(--accent), var(--accent-soft))' }} />
             <div className="relative aspect-square bg-[var(--plate)] overflow-hidden">
