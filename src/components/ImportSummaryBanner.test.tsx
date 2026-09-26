@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { LanguageProvider } from '../i18n/LanguageContext';
+import { LanguageProviderWithDiagnostics as LanguageProvider } from '../test/renderWithDiagnostics';
 import { ImportSummaryBanner } from './ImportSummaryBanner';
 import type { ArchiveOutcome } from '../types';
+
+vi.mock('@tauri-apps/plugin-log', () => ({ error: vi.fn(() => Promise.resolve()), info: vi.fn(() => Promise.resolve()) }));
 
 function outcome(overrides: Partial<ArchiveOutcome>): ArchiveOutcome {
   return {
@@ -72,5 +74,17 @@ describe('ImportSummaryBanner', () => {
       outcome({ path: '/b/model.zip', error: 'x' }),
     ]);
     expect(screen.getAllByText('model.zip fehlgeschlagen: x')).toHaveLength(2);
+  });
+
+  it('offers "Report problem" for an unexpected archive failure', () => {
+    renderBanner([outcome({ path: '/dl/kaputt.zip', extractedTo: null, error: 'beschaedigt', unexpected: true })]);
+    expect(screen.getByText('kaputt.zip fehlgeschlagen: beschaedigt')).toBeInTheDocument();
+    expect(screen.getByText('Problem melden')).toBeInTheDocument();
+  });
+
+  it('does not offer "Report problem" for an expected (or unmarked) archive failure', () => {
+    renderBanner([outcome({ path: '/dl/kaputt.zip', extractedTo: null, error: 'beschaedigt', unexpected: false })]);
+    expect(screen.getByText('kaputt.zip fehlgeschlagen: beschaedigt')).toBeInTheDocument();
+    expect(screen.queryByText('Problem melden')).not.toBeInTheDocument();
   });
 });

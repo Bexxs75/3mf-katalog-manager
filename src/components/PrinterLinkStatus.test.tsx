@@ -43,7 +43,8 @@ describe('PrinterLinkStatus', () => {
     l.syncNow = vi.fn().mockRejectedValue('offline');
     render(<LanguageProvider><PrinterLinkStatus printerId="1" link={l} /></LanguageProvider>);
     fireEvent.click(screen.getByRole('button', { name: 'Jetzt abgleichen' }));
-    expect(await screen.findByText('offline')).toBeInTheDocument();
+    const message = await screen.findByText('offline');
+    expect(message.closest('div')).toHaveTextContent('Das hat nicht geklappt: offline');
   });
 
   it('shows unreachable and auth states', () => {
