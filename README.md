@@ -2,32 +2,51 @@
 
 🇩🇪 **Deutsch:** [Deutsche Version weiter unten](#3mf-katalog-manager-deutsch)
 
-Cross-platform desktop application for cataloging and managing 3MF, STL, OBJ, and STEP files for 3D printing. Built with [Tauri](https://tauri.app/) (Rust backend) and React/TypeScript/Tailwind.
+[![Latest release](https://img.shields.io/github/v/release/Bexxs75/3mf-katalog-manager?label=release&color=ff7a5c)](https://github.com/Bexxs75/3mf-katalog-manager/releases/latest) [![CI](https://img.shields.io/github/actions/workflow/status/Bexxs75/3mf-katalog-manager/ci-checks.yml?branch=master&label=CI)](https://github.com/Bexxs75/3mf-katalog-manager/actions/workflows/ci-checks.yml) [![Downloads](https://img.shields.io/github/downloads/Bexxs75/3mf-katalog-manager/total?color=4cc38a)](https://github.com/Bexxs75/3mf-katalog-manager/releases) [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-555)](#download) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/abfVNfFqu3)
 
-**Website:** [3mfkatalog.de/en](https://3mfkatalog.de/en/) – overview, download and screenshots.
+**Your 3MF, STL and STEP collection keeps growing? The 3MF Katalog Manager catalogs the folders you already have, finds any model in seconds, shows it in 3D and connects your files with filament, print queue and print history. Everything stays on your computer: no account, no cloud.**
 
-**New here?** The [User Guide](docs/benutzerhandbuch/BENUTZERHANDBUCH.md) (DE + EN) explains every feature with screenshots, step by step, no prior knowledge of the app required.
+![Demo: search the catalog, open a model with slicer data, open it in the slicer, filament storage with AMS slots](docs/assets/demo.gif)
 
-[![Website](https://img.shields.io/badge/Website-3mfkatalog.de%2Fen-ff7a5c)](https://3mfkatalog.de/en/) [![Join Discord](https://img.shields.io/badge/Join-Discord-5865F2?logo=discord&logoColor=white)](https://discord.gg/abfVNfFqu3)
+- **100 % local** — no sign-up, no cloud, no tracking. Your files stay where they are.
+- **Your existing folders, searchable** — import folders, get automatic tags, real 3D previews and slicer data (weight, filament per plate).
+- **More than a file browser** — filament and resin storage with AMS slots, print queue, print log and an optional connection to Klipper printers.
 
-## Screenshots
+Free and open source (MIT) · Windows, macOS, Linux · English, German, Spanish, French · [Website](https://3mfkatalog.de/en/) · [User guide](docs/benutzerhandbuch/BENUTZERHANDBUCH.md)
 
-| Catalog (grid) | Grouped by folder | Settings (Info & update check) |
-|---|---|---|
-| ![Catalog in grid view](docs/benutzerhandbuch/bilder/en/02-katalog-grid.png) | ![Folder-grouped view](docs/benutzerhandbuch/bilder/en/16-ordner-ansicht.png) | ![Settings with update check](docs/benutzerhandbuch/bilder/en/20-einstellungen-info-update.png) |
+## Download
 
-## Downloads
+[![Download for Windows](https://img.shields.io/badge/Download-Windows-ff7a5c?style=for-the-badge)](https://3mfkatalog.de/en/#download) [![Download for macOS](https://img.shields.io/badge/Download-macOS-ff7a5c?style=for-the-badge)](https://3mfkatalog.de/en/#download) [![Download for Linux](https://img.shields.io/badge/Download-Linux%20AppImage-ff7a5c?style=for-the-badge)](https://3mfkatalog.de/en/#download)
 
-Prebuilt packages are on the [Releases page](https://github.com/Bexxs75/3mf-katalog-manager/releases). For Linux, Windows, and macOS, there are **two variants** to choose from:
+The buttons open the download section of the website, which always offers the newest version. All files and checksums: [latest release](https://github.com/Bexxs75/3mf-katalog-manager/releases/latest).
 
-| Variant | Includes | Size | For |
-|---|---|---|---|
-| **with STEP preview** (`-step`) | 3D preview + dimensions/volume/body count for `.stp`/`.step` files too (via Open CASCADE) | larger (bundles the OCCT libraries) | anyone cataloging STEP files who needs the preview |
-| **without STEP preview** (plain name, no suffix) | STEP files can still be cataloged (tags, search, rename, trash), just without a 3D preview/CAD metadata | smaller | anyone who only uses 3MF/STL/OBJ, or just wants to store STEP files without viewing them |
+**Which file do I need?** Windows: the `.msi`. macOS: the `.dmg` (works on Intel and Apple Silicon). Linux: the `.AppImage`. Files **with** `-step` in the name also show a 3D preview for STEP files (`.stp`/`.step`) and are larger; if you only use 3MF, STL or OBJ, take the file **without** `-step`. Both variants are otherwise identical.
 
-Both variants are otherwise feature-identical. Downloads are unsigned (see [Status](#status)).
+## Is it safe to install?
 
-## Features
+Windows and macOS show a warning on the first start because the packages are **not code-signed**: the certificates for that cost money every year, which a free hobby project can't cover yet. The warning says "unknown publisher", not that anything harmful was found.
+
+What you can check yourself:
+
+- **Open source:** every release is built from the public source code by [GitHub Actions workflows](https://github.com/Bexxs75/3mf-katalog-manager/tree/master/.github/workflows). The source of each version is the matching tag, e.g. [v0.14.0](https://github.com/Bexxs75/3mf-katalog-manager/tree/v0.14.0).
+- **Checksums:** every release contains `SHA256SUMS.txt`. Compare it with the hash of your download:
+  - Windows (PowerShell): `Get-FileHash .\3MF.Katalog.Manager_…msi -Algorithm SHA256`
+  - macOS: `shasum -a 256 3MF.Katalog.Manager_…dmg`
+  - Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`
+- **Starting anyway:** Windows SmartScreen: "More info" → "Run anyway". macOS: right-click the app → "Open"; on macOS 15 or newer: System Settings → Privacy & Security → "Open Anyway".
+- **Local only:** the app works offline. It only goes online to check GitHub for a newer version and, if you switch it on, to talk to printers on your home network.
+
+## What it does
+
+- **Find and organize models** — import files or whole folders, automatic tags, search, folders, collections, favorites, duplicates detection, trash.
+- **Understand files and metadata** — 3D preview for 3MF, STL, OBJ (and STEP), dimensions, volume, build plates, filament usage and weight from OrcaSlicer/Bambu Studio.
+- **Manage filament and resin** — spools and resin bottles with stock, location and price, printers with AMS/MMU slots, "Is there enough filament?" per model.
+- **Plan and document prints** — print queue, print status, print log with photos, estimated material cost, open in your slicer with one click.
+- **Connect printers** — optional, read-only: Klipper/Moonraker printers report the filament used, you confirm and it is deducted. OctoPrint and Bambu Lab are planned.
+- **Safe and local** — catalog backup as ZIP, archives extracted safely, Content Security Policy, no cloud.
+
+<details>
+<summary><b>All features in detail</b></summary>
 
 - **3MF, STL, OBJ, and STEP parsing** — 3MF (OPC container extraction incl. embedded thumbnail), ASCII/binary STL, and OBJ each have a 3D preview; STEP files (`.stp`/`.step`) are read through Open CASCADE and provide a 3D preview, dimensions, volume, and body count. Every platform (Linux/Windows/macOS) ships two downloads: one **with** STEP preview and one smaller one **without** (cataloging only, no 3D preview for STEP) — see [Downloads](#downloads).
 - **Automatic metadata extraction** — dimensions, volume, object count, material (if present in the 3MF)
@@ -66,7 +85,28 @@ Both variants are otherwise feature-identical. Downloads are unsigned (see [Stat
 - **Custom app icon** — isometric 3D-printing layer cube in the app's real accent colors
 - **Content Security Policy** active (no `csp: null`), source URL fields and "open in slicer" validated server-side
 
-## Status
+</details>
+
+## Screenshots
+
+| Catalog with previews | Model with slicer data |
+|---|---|
+| ![Catalog in grid view](docs/benutzerhandbuch/bilder/en/02-katalog-grid.png) | ![Model detail page](docs/benutzerhandbuch/bilder/en/04-modell-detailseite.png) |
+| **Printers and AMS slots** | **Confirming prints from a Klipper printer** |
+| ![Printers with AMS slots in the filament storage](docs/benutzerhandbuch/bilder/en/22-drucker-ams.png) | !["New prints" dialog](docs/benutzerhandbuch/bilder/en/27-neue-drucke.png) |
+
+## Help and documentation
+
+- [User guide](docs/benutzerhandbuch/BENUTZERHANDBUCH.md) (DE + EN), step by step with screenshots
+- [Website](https://3mfkatalog.de/en/) with FAQ
+- [Discord](https://discord.gg/abfVNfFqu3) for questions and ideas
+- Bugs: [open an issue](https://github.com/Bexxs75/3mf-katalog-manager/issues/new/choose) or ask on Discord
+
+## Contributing
+
+Help is welcome, and not only with code: test your printer on the [test page](https://3mfkatalog.de/en/printer-test.html), check a translation, try the installation on your system or report a bug. See [CONTRIBUTING.md](CONTRIBUTING.md), issues labeled [good first issue](https://github.com/Bexxs75/3mf-katalog-manager/labels/good%20first%20issue) and the [translation guide](docs/TRANSLATING.md).
+
+## Status and roadmap
 
 This project is under active development. The local catalog (import, parsing, tagging, search, 3D preview, multilingual UI, theming) and "open in slicer" are functional. The following is **not** yet implemented:
 
@@ -75,12 +115,7 @@ This project is under active development. The local catalog (import, parsing, ta
 - **STEP preview as a separate download**: all three platforms ship two package variants for this instead of a single one with STEP preview baked in — see [Downloads](#downloads).
 - **Code signing**: the macOS `.dmg` and Windows `.msi` packages are unsigned (no Apple Developer or Windows code-signing certificate) — Gatekeeper/SmartScreen will warn accordingly on first launch
 
-## Planned
-
-The public [roadmap](https://github.com/users/Bexxs75/projects/1/views/1?groupedBy%5BcolumnId%5D=416999698) always shows the current state and is the source of truth.
-
-- **v0.15.0** – in-app updates, test builds with a separate catalog, a "What do you print with?" setting, cataloging resin files (`.ctb`, `.goo`, `.pwmx` …), more Linux packages (.deb, .rpm, AUR)
-- **v0.16.0** – printer connection for OctoPrint and Bambu Lab (PrusaLink later). If you own such a printer, you can help on the [test page](https://3mfkatalog.de/en/printer-test.html).
+The public [roadmap](https://github.com/users/Bexxs75/projects/1/views/1?groupedBy%5BcolumnId%5D=416999698) shows what comes next.
 
 ## Tech Stack
 
@@ -134,32 +169,51 @@ The application code is licensed under MIT — see [LICENSE](LICENSE). The optio
 
 # 3MF Katalog Manager (Deutsch)
 
-Plattformunabhängige Desktop-Anwendung zur Katalogisierung und Verwaltung von 3MF-, STL-, OBJ- und STEP-Dateien für den 3D-Druck. Gebaut mit [Tauri](https://tauri.app/) (Rust-Backend) und React/TypeScript/Tailwind.
+[![Neueste Version](https://img.shields.io/github/v/release/Bexxs75/3mf-katalog-manager?label=Version&color=ff7a5c)](https://github.com/Bexxs75/3mf-katalog-manager/releases/latest) [![CI](https://img.shields.io/github/actions/workflow/status/Bexxs75/3mf-katalog-manager/ci-checks.yml?branch=master&label=CI)](https://github.com/Bexxs75/3mf-katalog-manager/actions/workflows/ci-checks.yml) [![Downloads](https://img.shields.io/github/downloads/Bexxs75/3mf-katalog-manager/total?color=4cc38a)](https://github.com/Bexxs75/3mf-katalog-manager/releases) [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-555)](#download) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/abfVNfFqu3)
 
-**Webseite:** [3mfkatalog.de](https://3mfkatalog.de) – Überblick, Download und Screenshots.
+**Deine 3MF-, STL- und STEP-Sammlung wächst? Der 3MF Katalog Manager katalogisiert deine vorhandenen Ordner, findet jedes Modell in Sekunden, zeigt es in 3D und verbindet deine Dateien mit Filament, Druckwarteschlange und Druckprotokoll. Alles bleibt auf deinem Rechner: kein Konto, keine Cloud.**
 
-**Neu hier?** Das [Benutzerhandbuch](docs/benutzerhandbuch/BENUTZERHANDBUCH.md) (DE + EN) erklärt alle Funktionen bebildert und Schritt für Schritt, ganz ohne Vorwissen über die App.
+![Demo: Katalog durchsuchen, Modell mit Slicer-Daten öffnen, im Slicer öffnen, Filamentlager mit AMS-Fächern](docs/assets/demo.gif)
 
-[![Webseite](https://img.shields.io/badge/Webseite-3mfkatalog.de-ff7a5c)](https://3mfkatalog.de) [![Join Discord](https://img.shields.io/badge/Join-Discord-5865F2?logo=discord&logoColor=white)](https://discord.gg/abfVNfFqu3)
+- **100 % lokal** — keine Anmeldung, keine Cloud, kein Tracking. Deine Dateien bleiben, wo sie sind.
+- **Deine vorhandenen Ordner, durchsuchbar** — Ordner importieren, automatische Tags, echte 3D-Vorschau und Slicer-Daten (Gewicht, Filament je Platte).
+- **Mehr als ein Dateibrowser** — Filament- und Resin-Lager mit AMS-Fächern, Druckwarteschlange, Druckprotokoll und optionale Anbindung von Klipper-Druckern.
 
-## Screenshots
+Kostenlos und Open Source (MIT) · Windows, macOS, Linux · Deutsch, Englisch, Spanisch, Französisch · [Webseite](https://3mfkatalog.de) · [Benutzerhandbuch](docs/benutzerhandbuch/BENUTZERHANDBUCH.md)
 
-| Katalog (Raster) | Nach Ordnern gruppiert | Einstellungen (Info & Update-Check) |
-|---|---|---|
-| ![Katalog in der Raster-Ansicht](docs/benutzerhandbuch/bilder/02-katalog-grid.png) | ![Nach Ordnern gruppierte Ansicht](docs/benutzerhandbuch/bilder/16-ordner-ansicht.png) | ![Einstellungen mit Update-Check](docs/benutzerhandbuch/bilder/20-einstellungen-info-update.png) |
+## Download
 
-## Downloads
+[![Download für Windows](https://img.shields.io/badge/Download-Windows-ff7a5c?style=for-the-badge)](https://3mfkatalog.de/#download) [![Download für macOS](https://img.shields.io/badge/Download-macOS-ff7a5c?style=for-the-badge)](https://3mfkatalog.de/#download) [![Download für Linux](https://img.shields.io/badge/Download-Linux%20AppImage-ff7a5c?style=for-the-badge)](https://3mfkatalog.de/#download)
 
-Fertige Pakete gibt es auf der [Releases-Seite](https://github.com/Bexxs75/3mf-katalog-manager/releases). Für Linux, Windows und macOS steht jeweils **eine von zwei Varianten** zur Wahl:
+Die Knöpfe öffnen den Download-Bereich der Webseite, dort gibt es immer die neueste Version. Alle Dateien und Prüfsummen: [neueste Version](https://github.com/Bexxs75/3mf-katalog-manager/releases/latest).
 
-| Variante | Enthält | Größe | Für wen |
-|---|---|---|---|
-| **mit STEP-Vorschau** (`-step`) | 3D-Vorschau + Abmessungen/Volumen/Körperzahl auch für `.stp`/`.step`-Dateien (via Open CASCADE) | größer (OCCT-Bibliotheken mit eingepackt) | wer STEP-Dateien katalogisiert und die Vorschau braucht |
-| **ohne STEP-Vorschau** (Standardname, kein Suffix) | STEP-Dateien lassen sich weiterhin katalogisieren (Tags, Suche, Umbenennen, Papierkorb), aber ohne 3D-Vorschau/CAD-Metadaten | kleiner | wer nur 3MF/STL/OBJ nutzt oder STEP nur ablegen, nicht ansehen will |
+**Welche Datei brauche ich?** Windows: die `.msi`. macOS: die `.dmg` (für Intel und Apple Silicon). Linux: das `.AppImage`. Dateien **mit** `-step` im Namen zeigen zusätzlich eine 3D-Vorschau für STEP-Dateien (`.stp`/`.step`) und sind größer; wer nur 3MF, STL oder OBJ nutzt, nimmt die Datei **ohne** `-step`. Sonst sind beide Varianten gleich.
 
-Beide Varianten sind ansonsten funktionsgleich. Die Downloads sind unsigniert (siehe [Status](#status-1)).
+## Ist die Installation sicher?
 
-## Funktionen
+Windows und macOS zeigen beim ersten Start eine Warnung, weil die Pakete **nicht signiert** sind: Die Zertifikate dafür kosten jedes Jahr Geld, das kann ein kostenloses Hobbyprojekt noch nicht tragen. Die Warnung bedeutet „unbekannter Herausgeber“, nicht, dass etwas Schädliches gefunden wurde.
+
+Was du selbst prüfen kannst:
+
+- **Open Source:** Jede Version wird aus dem öffentlichen Quellcode von [GitHub-Actions-Workflows](https://github.com/Bexxs75/3mf-katalog-manager/tree/master/.github/workflows) gebaut. Der Quellstand jeder Version ist das passende Tag, z. B. [v0.14.0](https://github.com/Bexxs75/3mf-katalog-manager/tree/v0.14.0).
+- **Prüfsummen:** Jede Version enthält `SHA256SUMS.txt`. Vergleiche sie mit dem Hash deines Downloads:
+  - Windows (PowerShell): `Get-FileHash .\3MF.Katalog.Manager_…msi -Algorithm SHA256`
+  - macOS: `shasum -a 256 3MF.Katalog.Manager_…dmg`
+  - Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`
+- **Trotzdem starten:** Windows-SmartScreen: „Weitere Informationen“ → „Trotzdem ausführen“. macOS: Rechtsklick auf die App → „Öffnen“; ab macOS 15: Systemeinstellungen → Datenschutz & Sicherheit → „Trotzdem öffnen“.
+- **Nur lokal:** Die App arbeitet offline. Online geht sie nur, um auf GitHub nach einer neuen Version zu sehen, und, wenn du es einschaltest, um mit Druckern im Heimnetz zu sprechen.
+
+## Was die App kann
+
+- **Modelle finden und ordnen** — Dateien oder ganze Ordner importieren, automatische Tags, Suche, Ordner, Sammlungen, Favoriten, Duplikaterkennung, Papierkorb.
+- **Dateien und Metadaten verstehen** — 3D-Vorschau für 3MF, STL, OBJ (und STEP), Maße, Volumen, Druckplatten, Filamentverbrauch und Gewicht aus OrcaSlicer/Bambu Studio.
+- **Filament und Resin verwalten** — Spulen und Resin-Flaschen mit Bestand, Lagerort und Preis, Drucker mit AMS-/MMU-Fächern, „Reicht das Filament?“ je Modell.
+- **Drucke planen und dokumentieren** — Warteschlange, Druckstatus, Druckprotokoll mit Fotos, geschätzte Materialkosten, mit einem Klick im Slicer öffnen.
+- **Drucker anbinden** — optional und nur lesend: Klipper/Moonraker-Drucker melden den Filamentverbrauch, du bestätigst, dann wird abgebucht. OctoPrint und Bambu Lab sind geplant.
+- **Sicher und lokal** — Katalog-Sicherung als ZIP, Archive werden sicher entpackt, Content Security Policy, keine Cloud.
+
+<details>
+<summary><b>Alle Funktionen im Detail</b></summary>
 
 - **3MF-, STL-, OBJ- und STEP-Parsing** — 3MF (OPC-Container-Entpackung inkl. eingebettetem Thumbnail), ASCII-/Binär-STL und OBJ jeweils mit 3D-Vorschau; STEP-Dateien (`.stp`/`.step`) werden über Open CASCADE gelesen und liefern 3D-Vorschau, Abmessungen, Volumen und Körperzahl. Für jede Plattform (Linux/Windows/macOS) gibt es zwei Downloads: eine Variante **mit** STEP-Vorschau und eine kleinere Variante **ohne** (nur Katalogisierung ohne 3D-Vorschau für STEP) — siehe [Downloads](#downloads-1).
 - **Automatische Metadaten-Extraktion** — Abmessungen, Volumen, Objektanzahl, Material (sofern in der 3MF vorhanden)
@@ -198,7 +252,28 @@ Beide Varianten sind ansonsten funktionsgleich. Die Downloads sind unsigniert (s
 - **Eigenes App-Icon** — isometrischer 3D-Druck-Layer-Würfel in den echten App-Akzentfarben
 - **Content-Security-Policy** aktiv (kein `csp: null`), Quell-URL-Felder und "In Slicer öffnen" serverseitig validiert
 
-## Status
+</details>
+
+## Screenshots
+
+| Katalog mit Vorschau | Modell mit Slicer-Daten |
+|---|---|
+| ![Katalog in der Kachelansicht](docs/benutzerhandbuch/bilder/02-katalog-grid.png) | ![Modell-Detailseite](docs/benutzerhandbuch/bilder/04-modell-detailseite.png) |
+| **Drucker und AMS-Fächer** | **Drucke vom Klipper-Drucker bestätigen** |
+| ![Drucker mit AMS-Fächern im Filament-Lager](docs/benutzerhandbuch/bilder/22-drucker-ams.png) | ![Dialog „Neue Drucke“](docs/benutzerhandbuch/bilder/27-neue-drucke.png) |
+
+## Hilfe und Dokumentation
+
+- [Benutzerhandbuch](docs/benutzerhandbuch/BENUTZERHANDBUCH.md) (DE + EN), Schritt für Schritt mit Bildern
+- [Webseite](https://3mfkatalog.de) mit FAQ
+- [Discord](https://discord.gg/abfVNfFqu3) für Fragen und Ideen
+- Fehler: [Issue anlegen](https://github.com/Bexxs75/3mf-katalog-manager/issues/new/choose) oder auf Discord fragen
+
+## Mitmachen
+
+Hilfe ist willkommen, und nicht nur beim Code: Teste deinen Drucker auf der [Testseite](https://3mfkatalog.de/druckertest.html), prüfe eine Übersetzung, probier die Installation auf deinem System aus oder melde einen Fehler. Siehe [CONTRIBUTING.md](CONTRIBUTING.md), Issues mit dem Label [good first issue](https://github.com/Bexxs75/3mf-katalog-manager/labels/good%20first%20issue) und die [Übersetzungsanleitung](docs/TRANSLATING.md).
+
+## Stand und Roadmap
 
 Dieses Projekt befindet sich in aktiver Entwicklung. Der lokale Katalog (Import, Parsing, Tagging, Suche, 3D-Vorschau, Mehrsprachigkeit, Theming) und "In Slicer öffnen" sind funktionsfähig. Folgendes ist noch **nicht** umgesetzt:
 
@@ -207,12 +282,7 @@ Dieses Projekt befindet sich in aktiver Entwicklung. Der lokale Katalog (Import,
 - **STEP-Vorschau als separater Download**: Auf allen drei Plattformen gibt es dafür zwei Paketvarianten statt einer einzigen mit fest eingebauter STEP-Vorschau — siehe [Downloads](#downloads-1).
 - **Code-Signing**: die macOS-`.dmg`- und Windows-`.msi`-Pakete sind unsigniert (kein Apple-Developer- bzw. Windows-Code-Signing-Zertifikat) — beim ersten Start warnen Gatekeeper bzw. SmartScreen entsprechend
 
-## Geplant
-
-Den aktuellen Stand zeigt immer die öffentliche [Roadmap](https://github.com/users/Bexxs75/projects/1/views/1?groupedBy%5BcolumnId%5D=416999698); sie ist maßgeblich.
-
-- **v0.15.0** – Updates direkt in der App, Test-Versionen mit eigenem Katalog, Einstellung „Womit druckst du?“, Resin-Dateien (`.ctb`, `.goo`, `.pwmx` …) katalogisieren, weitere Linux-Pakete (.deb, .rpm, AUR)
-- **v0.16.0** – Druckeranbindung für OctoPrint und Bambu Lab (PrusaLink später). Wer einen solchen Drucker hat, kann auf der [Testseite](https://3mfkatalog.de/druckertest.html) mithelfen.
+Die öffentliche [Roadmap](https://github.com/users/Bexxs75/projects/1/views/1?groupedBy%5BcolumnId%5D=416999698) zeigt, was als Nächstes kommt.
 
 ## Tech-Stack
 
