@@ -604,8 +604,12 @@ fn validate_catalog_db_bytes(
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| e.to_string())?;
             for path in paths {
+                // `.message`, not `{e}`/Display: `e` is already a `CmdError` (logged once
+                // at its creation site inside `reject_if_sensitive_path_expanded`); this
+                // just carries its text onward as part of this function's `String` error,
+                // so it isn't converted/logged a second time here.
                 reject_if_sensitive_path_expanded(Path::new(&path), &expanded_dirs)
-                    .map_err(|e| format!("Ordner-Eintrag im Archiv abgelehnt: {e}"))?;
+                    .map_err(|e| format!("Ordner-Eintrag im Archiv abgelehnt: {}", e.message))?;
             }
 
             // Cycles in folders.parent_id would send every path reconstruction into an endless loop.
@@ -651,17 +655,21 @@ fn validate_catalog_db_bytes(
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| e.to_string())?;
             for (name, path, trash_path) in rows {
+                // `.message` everywhere below, not `{e}`/Display: each `e` is already a
+                // `CmdError` (logged once at its creation site inside the nested helper);
+                // this only carries its text onward as part of this function's `String`
+                // error, so it isn't converted/logged a second time here.
                 validate_file_name(&name)
-                    .map_err(|e| format!("Datei-Eintrag im Archiv abgelehnt: {e}"))?;
+                    .map_err(|e| format!("Datei-Eintrag im Archiv abgelehnt: {}", e.message))?;
                 reject_if_sensitive_path_expanded(Path::new(&path), &expanded_dirs)
-                    .map_err(|e| format!("Datei-Eintrag im Archiv abgelehnt: {e}"))?;
+                    .map_err(|e| format!("Datei-Eintrag im Archiv abgelehnt: {}", e.message))?;
                 if let Some(trash_path) = trash_path.filter(|p| !p.trim().is_empty()) {
                     // Denylist AND containment: the denylist stays as a second barrier in case
                     // a path lands elsewhere through a symlink chain despite a matching prefix.
                     reject_if_sensitive_path_expanded(Path::new(&trash_path), &expanded_dirs)
-                        .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {e}"))?;
+                        .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {}", e.message))?;
                     reject_if_outside_trash_dir(Path::new(&trash_path), &resolved_trash_dir)
-                        .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {e}"))?;
+                        .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {}", e.message))?;
                 }
             }
             Ok(())
@@ -721,7 +729,11 @@ pub async fn import_catalog(
     }
     let settings_json = String::from_utf8(settings_bytes).map_err(|e| e.to_string())?;
 
-    validate_catalog_db_bytes(&db_bytes, &state.sensitive_dirs, &state.trash_dir)?;
+    // A rejected backup file (bad schema, corrupted DB, a path escaping the
+    // trash/sensitive-dir checks, ...) is always the user's file, not a fault
+    // here - hence `expected`, not the plain `?` (which would mark it a fault
+    // and log it at ERROR via `From<String>`).
+    validate_catalog_db_bytes(&db_bytes, &state.sensitive_dirs, &state.trash_dir).map_err(CmdError::expected)?;
 
     let tmp_db_path =
         std::env::temp_dir().join(format!("3mf-katalog-import-{}.db", std::process::id()));
@@ -1052,6 +1064,17 @@ mod tests {
     fn validate_catalog_db_bytes_rejects_garbage_bytes() {
         let result = validate_catalog_db_bytes(b"this is not a sqlite database", &[], &std::env::temp_dir());
         assert!(result.is_err());
+    }
+    #[test]
+    fn a_rejected_backup_becomes_an_expected_cmderror_at_the_import_catalog_boundary() {
+        // Same conversion `import_catalog` applies to the `validate_catalog_db_bytes`
+        // result: a bad backup file is the user's problem, not a fault, so it must
+        // come out `expected`, not the default `expected: false` of a plain String.
+        let result: CmdResult<()> =
+            validate_catalog_db_bytes(b"this is not a sqlite database", &[], &std::env::temp_dir())
+                .map_err(CmdError::expected);
+        let err = result.unwrap_err();
+        assert!(err.expected, "a rejected backup file must be reported as expected, not a fault");
     }
     fn unique_test_db_path(name: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!(

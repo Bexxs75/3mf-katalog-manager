@@ -68,6 +68,12 @@ pub(crate) fn list_printers_with_conn(conn: &Connection) -> CmdResult<Vec<Printe
 }
 
 /// Runs `f` in a transaction and only commits on success.
+///
+/// `#[track_caller]` so the `?` below reports the location of the command that
+/// called `in_tx` (e.g. `rename_printer`), not this line - otherwise every
+/// DbError->CmdError conversion routed through here would log the same
+/// uninformative `printers.rs:in_tx` location.
+#[track_caller]
 fn in_tx<T>(conn: &mut Connection, f: impl FnOnce(&Connection) -> Result<T, db::error::DbError>) -> CmdResult<T> {
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     // No `.map_err(|e| e.to_string())` here: going through `From<DbError>` directly
@@ -211,6 +217,16 @@ pub fn unload_spool(state: State<AppState>, spool_id: String, location: Option<S
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn in_tx_keeps_a_dberror_invalid_from_the_closure_marked_expected() {
+        let mut conn = db::connect_in_memory().unwrap();
+        let result: CmdResult<()> = in_tx(&mut conn, |_tx| {
+            Err(db::error::DbError::Invalid("Name darf nicht leer sein".into()))
+        });
+        let err = result.unwrap_err();
+        assert!(err.expected, "DbError::Invalid routed through in_tx must stay `expected`");
+    }
 
     fn spool(conn: &Connection, location: &str) -> String {
         db::insert_filament_spool(
