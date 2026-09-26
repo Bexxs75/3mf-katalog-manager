@@ -7,7 +7,6 @@ import type { ModelFile, Folder, SortKey } from '../types';
 export interface CatalogFilterCriteria {
   activeFolderId: string;
   activeTag: string | null;
-  activeCreator: string | null;
   query: string;
   sort: SortKey;
   // For searching in translated names of automatic tags.
@@ -26,12 +25,11 @@ export function filterAndSortModels(
   folders: Folder[],
   criteria: CatalogFilterCriteria,
 ): ModelFile[] {
-  const { activeFolderId, activeTag, activeCreator, query, sort, language = 'de', toolView = null, now, recentSnapshot } = criteria;
+  const { activeFolderId, activeTag, query, sort, language = 'de', toolView = null, now, recentSnapshot } = criteria;
   const base = toolView ? applyToolView(models, toolView, now ?? new Date(), recentSnapshot) : models;
   const matched = base
     .filter((m) => activeFolderId === 'all' || isFileInFolderOrDescendant(m.folderId, activeFolderId, folders))
     .filter((m) => !activeTag || m.tags.includes(activeTag))
-    .filter((m) => !activeCreator || m.creator === activeCreator)
     .filter((m) => {
       if (!query) return true;
       const q = query.toLowerCase();

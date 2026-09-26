@@ -10,8 +10,6 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
   const [query, setQuery] = useState('');
   const [activeFolderId, setActiveFolderId] = useState('all');
   const [activeTag, setActiveTag] = useState<string | null>(null);
-  // activeCreator is currently not set anywhere in the UI.
-  const [activeCreator] = useState<string | null>(null);
   const [toolView, setToolViewState] = useState<ToolView | null>(null);
   // Frozen when the "recent" view is (re)activated so a click on a model
   // (which updates lastViewedAt) doesn't change the order right away.
@@ -27,14 +25,13 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
       filterAndSortModels(models, folders, {
         activeFolderId,
         activeTag,
-        activeCreator,
         query,
         sort,
         language,
         toolView,
         recentSnapshot: recentSnapshot ?? undefined,
       }),
-    [models, folders, activeFolderId, activeTag, activeCreator, query, sort, language, toolView, recentSnapshot],
+    [models, folders, activeFolderId, activeTag, query, sort, language, toolView, recentSnapshot],
   );
 
   const queue = useMemo(() => selectQueuedModels(models), [models]);
@@ -45,7 +42,6 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
     query, setQuery,
     activeFolderId, setActiveFolderId,
     activeTag, setActiveTag,
-    activeCreator,
     toolView, setToolView,
     filtered,
     queue,

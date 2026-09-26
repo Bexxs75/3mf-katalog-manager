@@ -11,16 +11,6 @@ describe('catalogMeta api', () => {
     await catalogMetaApi.listTagCounts();
     expect(invoke).toHaveBeenCalledWith('list_tag_counts');
   });
-  it('listCreators', async () => {
-    vi.mocked(invoke).mockResolvedValue([]);
-    await catalogMetaApi.listCreators();
-    expect(invoke).toHaveBeenCalledWith('list_creators');
-  });
-  it('listSavedFilters', async () => {
-    vi.mocked(invoke).mockResolvedValue([]);
-    await catalogMetaApi.listSavedFilters();
-    expect(invoke).toHaveBeenCalledWith('list_saved_filters');
-  });
   it('scanInstalledSlicers', async () => {
     vi.mocked(invoke).mockResolvedValue([]);
     await catalogMetaApi.scanInstalledSlicers();

@@ -17,7 +17,6 @@ describe('useCatalogFilters', () => {
     expect(result.current).toHaveProperty('setActiveFolderId');
     expect(result.current).toHaveProperty('activeTag');
     expect(result.current).toHaveProperty('setActiveTag');
-    expect(result.current).toHaveProperty('activeCreator');
     expect(result.current).toHaveProperty('filtered');
     expect(result.current).toHaveProperty('queue');
   });

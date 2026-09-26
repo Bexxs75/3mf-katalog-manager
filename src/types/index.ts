@@ -151,21 +151,6 @@ export interface TagCount {
   colorHue: number;
 }
 
-export interface CreatorCount {
-  label: string;
-  count: number;
-}
-
-export interface SavedFilter {
-  id: string;
-  name: string;
-  folderId: string | null;
-  tag: string | null;
-  creator: string | null;
-  query: string | null;
-  sort: SortKey;
-}
-
 export type ViewMode = 'grid' | 'groupedGrid' | 'groupedList';
 export type SortKey = 'name' | 'date' | 'size' | 'vol' | 'viewed';
 

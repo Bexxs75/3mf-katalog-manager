@@ -3,7 +3,7 @@ import * as filesApi from '../lib/api/files';
 import * as foldersApi from '../lib/api/folders';
 import * as catalogMetaApi from '../lib/api/catalogMeta';
 import { canonicalTag } from '../lib/autoTags';
-import type { ModelFile, ModelFileSummary, Folder, TagCount, CreatorCount, SavedFilter, ImportResultDto } from '../types';
+import type { ModelFile, ModelFileSummary, Folder, TagCount, ImportResultDto } from '../types';
 
 // Embeds a slim `ModelFileSummary` into the full `ModelFile` shape so
 // all components see the same type. Fields not delivered
@@ -60,8 +60,6 @@ export function useCatalogStore() {
   const [models, setModels] = useState<ModelFile[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [tags, setTags] = useState<TagCount[]>([]);
-  const [creators, setCreators] = useState<CreatorCount[]>([]);
-  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([]);
   const [trashModels, setTrashModels] = useState<ModelFile[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // IDs whose full data is already loaded; refreshFiles() resets the list
@@ -153,8 +151,6 @@ export function useCatalogStore() {
     return loadSummariesWithTags().then(setModels);
   }, [loadSummariesWithTags]);
   const refreshTags = useCallback(() => catalogMetaApi.listTagCounts().then(setTags), []);
-  const refreshCreators = useCallback(() => catalogMetaApi.listCreators().then(setCreators), []);
-  const refreshSavedFilters = useCallback(() => catalogMetaApi.listSavedFilters().then(setSavedFilters), []);
   const refreshTrash = useCallback(() => filesApi.listTrash().then(setTrashModels), []);
 
   // Loads a model's full data as soon as it is needed
@@ -202,8 +198,6 @@ export function useCatalogStore() {
     });
     refreshFolders();
     refreshTags();
-    refreshCreators();
-    refreshSavedFilters();
     refreshTrash();
     // Mount only - the refreshers themselves are stable (useCallback without deps).
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -246,10 +240,9 @@ export function useCatalogStore() {
         setSelectedId(result.imported[result.imported.length - 1].id);
         refreshFolders();
         refreshTags();
-        refreshCreators();
       }
     },
-    [refreshFolders, refreshTags, refreshCreators],
+    [refreshFolders, refreshTags],
   );
 
   const applyLocalDeletion = useCallback(
@@ -258,10 +251,9 @@ export function useCatalogStore() {
       setSelectedId((prev) => (prev && deletedIds.includes(prev) ? null : prev));
       refreshFolders();
       refreshTags();
-      refreshCreators();
       refreshTrash();
     },
-    [refreshFolders, refreshTags, refreshCreators, refreshTrash],
+    [refreshFolders, refreshTags, refreshTrash],
   );
 
   // For callers where delete_files may have silently skipped IDs:
@@ -272,10 +264,9 @@ export function useCatalogStore() {
       setSelectedId((prev) => (prev && affectedIds.includes(prev) ? null : prev));
       refreshFolders();
       refreshTags();
-      refreshCreators();
       refreshTrash();
     },
-    [refreshFiles, refreshFolders, refreshTags, refreshCreators, refreshTrash],
+    [refreshFiles, refreshFolders, refreshTags, refreshTrash],
   );
 
   const restoreModel = useCallback(
@@ -286,9 +277,8 @@ export function useCatalogStore() {
         refreshFiles();
         refreshFolders();
         refreshTags();
-        refreshCreators();
       }),
-    [refreshFiles, refreshFolders, refreshTags, refreshCreators],
+    [refreshFiles, refreshFolders, refreshTags],
   );
 
   const deleteModelPermanently = useCallback(
@@ -516,12 +506,12 @@ export function useCatalogStore() {
 
   return {
     models, setModels,
-    folders, tags, creators, savedFilters, trashModels,
+    folders, tags, trashModels,
     selectedId, setSelectedId,
     skippedSnapshotIds, skipSnapshot, pendingSnapshotIds,
     rescanFeedback,
     pendingScrollToId, setPendingScrollToId,
-    refreshFolders, refreshFiles, refreshTags, refreshCreators, refreshTrash,
+    refreshFolders, refreshFiles, refreshTags, refreshTrash,
     selectModel, mergeImported, ensureFullModel,
     restoreModel, deleteModelPermanently, emptyTrashAction,
     addTag, removeTag, renameFile, deleteModel,

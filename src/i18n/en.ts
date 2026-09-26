@@ -26,7 +26,6 @@ export const en: Translations = {
   themeDescriptionSystem: 'Follows the system setting automatically.',
   themeDescriptionManual: 'Manually set to {mode}.',
   languageTitle: 'Language',
-  densityTitle: 'View',
   densityCompact: 'Compact',
   densityComfort: 'Comfort',
   densityDescriptionCompact: 'Dense, small text — fits as much as possible on screen.',
@@ -70,7 +69,6 @@ export const en: Translations = {
   confirmSlicerName: 'Confirm',
   removeSlicerAria: 'Remove slicer',
   slicerLaunchError: 'Could not start slicer:',
-  slicerAutoDetectedLabel: 'auto-detected',
   slicerPrimaryChip: 'Default',
   setPrimarySlicerAria: 'Set as default slicer',
 
@@ -92,9 +90,7 @@ export const en: Translations = {
   previewUnavailable: 'Preview unavailable',
 
 
-  filamentCatalogAria: 'Filament inventory',
   filamentDialogTitle: 'Filament Inventory',
-  filamentEmptyState: 'No spools recorded yet.',
   filamentMaterialLabel: 'Material',
   filamentManufacturerLabel: 'Manufacturer',
   filamentColorLabel: 'Color',
@@ -108,7 +104,6 @@ export const en: Translations = {
   filamentError: 'Error:',
   railCatalog: 'Catalog',
   railFilament: 'Filament storage',
-  filamentUploadImageLabel: 'Upload image',
   filamentLocationLabel: 'Storage location',
   filamentViewDashboard: 'Dashboard',
   filamentViewList: 'List',
@@ -210,7 +205,6 @@ export const en: Translations = {
   importCatalogButton: 'Import catalog',
   importCatalogConfirmQuestion: 'This replaces your entire current catalog. Continue?',
   importCatalogConfirmYes: 'Yes, replace',
-  importCatalogRestartHint: 'Catalog imported. Please restart the app now for the changes to take effect.',
   catalogSetupTitle: 'How should your catalog be organized?',
   catalogSetupIntro: 'Folders in the catalog are now real directories on your disk. If you move a file to another folder in the app, it actually gets moved there – not just reshuffled in the catalog. To keep newly imported files sensibly organized, let\'s set a fixed storage location now.',
   catalogSetupFileTypesNote: 'Only .3mf, .stl, .obj, and .stp/.step files are picked up (STEP files without a 3D preview). Packed archives (e.g. .zip, .7z, .rar) inside the adopted folder are not extracted and stay untouched – archives you add individually via "Import" or drag & drop, however, can be extracted straight into a subfolder.',
@@ -234,18 +228,15 @@ export const en: Translations = {
   catalogBaseDirOpenButton: 'Open folder',
   printLogHeading: 'Print Log',
   printLogAddButton: '+ Add entry',
-  printLogDatePlaceholder: 'Date',
   printLogNotePlaceholder: 'Note (optional)',
   printLogPhotoButton: 'Add photo',
   printLogSaveButton: 'Save',
   printLogCancelButton: 'Cancel',
   printLogEmpty: 'No entries yet.',
-  printLogDeleteButton: 'Delete',
 
   sortLastViewed: 'Last viewed',
   newBadge: 'NEW',
 
-  creatorsHeading: 'Creators',
 
   importSummaryText: '{imported} imported, {duplicates} duplicates skipped',
   archiveDialogTitle: 'Extract archives',
@@ -298,8 +289,6 @@ export const en: Translations = {
   addToQueue: 'Add to queue',
   removeFromQueue: 'Remove from queue',
   chipRemove: 'Remove {label}',
-  savedFiltersHeading: 'Saved Filters',
-  savedFilterNamePlaceholder: 'Name…',
 
   catalogCleanupTitle: 'Check catalog',
   catalogCleanupScanButton: 'Scan catalog for issues',

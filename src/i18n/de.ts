@@ -26,7 +26,6 @@ export const de: Translations = {
   themeDescriptionSystem: 'Folgt automatisch der Systemeinstellung.',
   themeDescriptionManual: 'Manuell auf {mode} festgelegt.',
   languageTitle: 'Sprache',
-  densityTitle: 'Ansicht',
   densityCompact: 'Kompakt',
   densityComfort: 'Komfort',
   densityDescriptionCompact: 'Dichte, kleine Schrift — möglichst viel auf einen Blick.',
@@ -70,7 +69,6 @@ export const de: Translations = {
   confirmSlicerName: 'Übernehmen',
   removeSlicerAria: 'Slicer entfernen',
   slicerLaunchError: 'Slicer konnte nicht gestartet werden:',
-  slicerAutoDetectedLabel: 'automatisch erkannt',
   slicerPrimaryChip: 'Standard',
   setPrimarySlicerAria: 'Als Standard-Slicer festlegen',
 
@@ -92,9 +90,7 @@ export const de: Translations = {
   previewUnavailable: 'Vorschau nicht verfügbar',
 
 
-  filamentCatalogAria: 'Filament-Lager',
   filamentDialogTitle: 'Filament-Lager',
-  filamentEmptyState: 'Noch keine Spulen erfasst.',
   filamentMaterialLabel: 'Material',
   filamentManufacturerLabel: 'Hersteller',
   filamentColorLabel: 'Farbe',
@@ -108,7 +104,6 @@ export const de: Translations = {
   filamentError: 'Fehler:',
   railCatalog: 'Katalog',
   railFilament: 'Filament-Lager',
-  filamentUploadImageLabel: 'Bild hochladen',
   filamentLocationLabel: 'Lagerort',
   filamentViewDashboard: 'Dashboard',
   filamentViewList: 'Liste',
@@ -210,7 +205,6 @@ export const de: Translations = {
   importCatalogButton: 'Katalog importieren',
   importCatalogConfirmQuestion: 'Ersetzt den kompletten aktuellen Katalog. Fortfahren?',
   importCatalogConfirmYes: 'Ja, ersetzen',
-  importCatalogRestartHint: 'Katalog importiert. Bitte die App jetzt neu starten, damit die Änderungen wirksam werden.',
   catalogSetupTitle: 'Wie soll dein Katalog organisiert sein?',
   catalogSetupIntro: 'Ordner im Katalog sind jetzt echte Verzeichnisse auf deiner Festplatte. Verschiebst du eine Datei im Programm in einen anderen Ordner, wird sie dort auch tatsächlich abgelegt – nicht nur im Katalog umsortiert. Damit neu importierte Dateien sinnvoll einsortiert werden, legen wir jetzt einen festen Speicherort fest.',
   catalogSetupFileTypesNote: 'Erfasst werden ausschließlich .3mf-, .stl-, .obj- und .stp-/.step-Dateien (STEP-Dateien ohne 3D-Vorschau). Gepackte Archive (z. B. .zip, .7z, .rar) im übernommenen Ordner werden dabei nicht entpackt und bleiben unverändert liegen – einzeln über „Importieren" oder per Drag & Drop hinzugefügte Archive entpackt die App dagegen auf Wunsch direkt in einen Unterordner.',
@@ -234,18 +228,15 @@ export const de: Translations = {
   catalogBaseDirOpenButton: 'Ordner öffnen',
   printLogHeading: 'Druckprotokoll',
   printLogAddButton: '+ Eintrag hinzufügen',
-  printLogDatePlaceholder: 'Datum',
   printLogNotePlaceholder: 'Notiz (optional)',
   printLogPhotoButton: 'Foto hinzufügen',
   printLogSaveButton: 'Speichern',
   printLogCancelButton: 'Abbrechen',
   printLogEmpty: 'Noch keine Einträge.',
-  printLogDeleteButton: 'Löschen',
 
   sortLastViewed: 'Zuletzt angesehen',
   newBadge: 'NEU',
 
-  creatorsHeading: 'Creators',
 
   importSummaryText: '{imported} importiert, {duplicates} Duplikate übersprungen',
   archiveDialogTitle: 'Archive entpacken',
@@ -298,8 +289,6 @@ export const de: Translations = {
   addToQueue: 'Zur Warteschlange hinzufügen',
   removeFromQueue: 'Aus Warteschlange entfernen',
   chipRemove: '{label} entfernen',
-  savedFiltersHeading: 'Gespeicherte Filter',
-  savedFilterNamePlaceholder: 'Name…',
 
   catalogCleanupTitle: 'Katalog prüfen',
   catalogCleanupScanButton: 'Katalog auf Probleme prüfen',

@@ -43,8 +43,6 @@ function mockInitialLoad(models = [makeModelFile({ id: 'm1' })]) {
     }
     if (cmd === 'list_folders') return Promise.resolve([]);
     if (cmd === 'list_tag_counts') return Promise.resolve([]);
-    if (cmd === 'list_creators') return Promise.resolve([]);
-    if (cmd === 'list_saved_filters') return Promise.resolve([]);
     if (cmd === 'list_trash') return Promise.resolve([]);
     return Promise.resolve(undefined);
   });
@@ -97,7 +95,7 @@ describe('useCatalogStore', () => {
 
     const { filterAndSortModels } = await import('../lib/catalogFilters');
     const filtered = filterAndSortModels(result.current.models, [], {
-      activeFolderId: 'all', activeTag: 'vase', activeCreator: null, query: '', sort: 'name',
+      activeFolderId: 'all', activeTag: 'vase', query: '', sort: 'name',
     });
     expect(filtered.map((m) => m.id)).toEqual(['m1']);
   });
@@ -257,7 +255,6 @@ describe('useCatalogStore', () => {
     const before = {
       folders: callCount('list_folders'),
       tags: callCount('list_tag_counts'),
-      creators: callCount('list_creators'),
     };
     act(() =>
       result.current.mergeImported({
@@ -270,7 +267,6 @@ describe('useCatalogStore', () => {
     await waitFor(() => {
       expect(callCount('list_folders')).toBe(before.folders + 1);
       expect(callCount('list_tag_counts')).toBe(before.tags + 1);
-      expect(callCount('list_creators')).toBe(before.creators + 1);
     });
   });
 

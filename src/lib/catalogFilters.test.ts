@@ -11,7 +11,7 @@ describe('filterAndSortModels', () => {
       makeModelFile({ id: '3', folderId: 'unrelated' }),
     ];
     const result = filterAndSortModels(models, folders, {
-      activeFolderId: 'a', activeTag: null, activeCreator: null, query: '', sort: 'name',
+      activeFolderId: 'a', activeTag: null, query: '', sort: 'name',
     });
     expect(result.map((m) => m.id)).toEqual(['1', '2']);
   });
@@ -19,7 +19,7 @@ describe('filterAndSortModels', () => {
   it('filters by tag', () => {
     const models = [makeModelFile({ id: '1', tags: ['red'] }), makeModelFile({ id: '2', tags: [] })];
     const result = filterAndSortModels(models, [], {
-      activeFolderId: 'all', activeTag: 'red', activeCreator: null, query: '', sort: 'name',
+      activeFolderId: 'all', activeTag: 'red', query: '', sort: 'name',
     });
     expect(result.map((m) => m.id)).toEqual(['1']);
   });
@@ -27,7 +27,7 @@ describe('filterAndSortModels', () => {
   it('filters by case-insensitive query', () => {
     const models = [makeModelFile({ id: '1', name: 'Benchy' }), makeModelFile({ id: '2', name: 'Vase' })];
     const result = filterAndSortModels(models, [], {
-      activeFolderId: 'all', activeTag: null, activeCreator: null, query: 'BENCH', sort: 'name',
+      activeFolderId: 'all', activeTag: null, query: 'BENCH', sort: 'name',
     });
     expect(result.map((m) => m.id)).toEqual(['1']);
   });
@@ -38,7 +38,7 @@ describe('filterAndSortModels', () => {
       makeModelFile({ id: '2', name: 'Vase', tags: ['decor'] }),
     ];
     const result = filterAndSortModels(models, [], {
-      activeFolderId: 'all', activeTag: null, activeCreator: null, query: 'bambu', sort: 'name',
+      activeFolderId: 'all', activeTag: null, query: 'bambu', sort: 'name',
     });
     expect(result.map((m) => m.id)).toEqual(['1']);
   });
@@ -49,7 +49,7 @@ describe('filterAndSortModels', () => {
       makeModelFile({ id: '2', name: 'Vase', creator: null }),
     ];
     const result = filterAndSortModels(models, [], {
-      activeFolderId: 'all', activeTag: null, activeCreator: null, query: 'carlfromup', sort: 'name',
+      activeFolderId: 'all', activeTag: null, query: 'carlfromup', sort: 'name',
     });
     expect(result.map((m) => m.id)).toEqual(['1']);
   });
@@ -60,7 +60,7 @@ describe('filterAndSortModels', () => {
       makeModelFile({ id: '2', name: 'Vase', path: '/mnt/Daten2/vase.3mf' }),
     ];
     const result = filterAndSortModels(models, [], {
-      activeFolderId: 'all', activeTag: null, activeCreator: null, query: 'sammelordner', sort: 'name',
+      activeFolderId: 'all', activeTag: null, query: 'sammelordner', sort: 'name',
     });
     expect(result.map((m) => m.id)).toEqual(['1']);
   });
@@ -71,7 +71,7 @@ describe('filterAndSortModels', () => {
       makeModelFile({ id: '2', name: 'Vase', tags: ['decor'] }),
     ];
     const result = filterAndSortModels(models, [], {
-      activeFolderId: 'all', activeTag: null, activeCreator: null, query: 'multipart', sort: 'name', language: 'en',
+      activeFolderId: 'all', activeTag: null, query: 'multipart', sort: 'name', language: 'en',
     });
     expect(result.map((m) => m.id)).toEqual(['1']);
   });
@@ -79,7 +79,7 @@ describe('filterAndSortModels', () => {
   it('query still matches the canonical auto tag name', () => {
     const models = [makeModelFile({ id: '1', name: 'Board', tags: ['mehrteilig'] })];
     const result = filterAndSortModels(models, [], {
-      activeFolderId: 'all', activeTag: null, activeCreator: null, query: 'mehrteilig', sort: 'name', language: 'en',
+      activeFolderId: 'all', activeTag: null, query: 'mehrteilig', sort: 'name', language: 'en',
     });
     expect(result.map((m) => m.id)).toEqual(['1']);
   });
@@ -90,7 +90,7 @@ describe('filterAndSortModels', () => {
       makeModelFile({ id: '2', fileSizeBytes: 100 }),
     ];
     const result = filterAndSortModels(models, [], {
-      activeFolderId: 'all', activeTag: null, activeCreator: null, query: '', sort: 'size',
+      activeFolderId: 'all', activeTag: null, query: '', sort: 'size',
     });
     expect(result.map((m) => m.id)).toEqual(['2', '1']);
   });
@@ -101,7 +101,7 @@ describe('filterAndSortModels', () => {
       makeModelFile({ id: '2', importedAt: '2026-06-01' }),
     ];
     const result = filterAndSortModels(models, [], {
-      activeFolderId: 'all', activeTag: null, activeCreator: null, query: '', sort: 'date',
+      activeFolderId: 'all', activeTag: null, query: '', sort: 'date',
     });
     expect(result.map((m) => m.id)).toEqual(['2', '1']);
   });
@@ -115,7 +115,7 @@ describe('filterAndSortModels', () => {
       makeModelFile({ id: 'd', name: 'D', lastViewedAt: '2026-09-24T00:00:00.000Z', tags: [] }),
     ];
     const result = filterAndSortModels(models, [], {
-      activeFolderId: 'all', activeTag: 'deko', activeCreator: null, query: '', sort: 'name',
+      activeFolderId: 'all', activeTag: 'deko', query: '', sort: 'name',
       toolView: 'recent', now,
     });
     expect(result.map((m) => m.id)).toEqual(['b', 'a']);
@@ -124,7 +124,7 @@ describe('filterAndSortModels', () => {
   it('sorts normally when no tool view is active', () => {
     const models = [makeModelFile({ id: '2', name: 'Zebra' }), makeModelFile({ id: '1', name: 'Adler' })];
     const result = filterAndSortModels(models, [], {
-      activeFolderId: 'all', activeTag: null, activeCreator: null, query: '', sort: 'name', toolView: null,
+      activeFolderId: 'all', activeTag: null, query: '', sort: 'name', toolView: null,
     });
     expect(result.map((m) => m.id)).toEqual(['1', '2']);
   });

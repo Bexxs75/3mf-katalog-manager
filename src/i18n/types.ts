@@ -31,7 +31,6 @@ export interface Translations {
   themeDescriptionSystem: string;
   themeDescriptionManual: string;
   languageTitle: string;
-  densityTitle: string;
   densityCompact: string;
   densityComfort: string;
   densityDescriptionCompact: string;
@@ -75,7 +74,6 @@ export interface Translations {
   confirmSlicerName: string;
   removeSlicerAria: string;
   slicerLaunchError: string;
-  slicerAutoDetectedLabel: string;
   slicerPrimaryChip: string;
   setPrimarySlicerAria: string;
 
@@ -99,9 +97,7 @@ export interface Translations {
   sortLastViewed: string;
   newBadge: string;
 
-  filamentCatalogAria: string;
   filamentDialogTitle: string;
-  filamentEmptyState: string;
   filamentMaterialLabel: string;
   filamentManufacturerLabel: string;
   filamentColorLabel: string;
@@ -115,7 +111,6 @@ export interface Translations {
   filamentError: string;
   railCatalog: string;
   railFilament: string;
-  filamentUploadImageLabel: string;
   filamentLocationLabel: string;
   filamentViewDashboard: string;
   filamentViewList: string;
@@ -231,7 +226,6 @@ export interface Translations {
   importCatalogButton: string;
   importCatalogConfirmQuestion: string;
   importCatalogConfirmYes: string;
-  importCatalogRestartHint: string;
   catalogSetupTitle: string;
   catalogSetupIntro: string;
   catalogSetupFileTypesNote: string;
@@ -255,15 +249,12 @@ export interface Translations {
   catalogBaseDirOpenButton: string;
   printLogHeading: string;
   printLogAddButton: string;
-  printLogDatePlaceholder: string;
   printLogNotePlaceholder: string;
   printLogPhotoButton: string;
   printLogSaveButton: string;
   printLogCancelButton: string;
   printLogEmpty: string;
-  printLogDeleteButton: string;
 
-  creatorsHeading: string;
 
   importSummaryText: string;
   archiveDialogTitle: string;
@@ -316,8 +307,6 @@ export interface Translations {
   addToQueue: string;
   removeFromQueue: string;
   chipRemove: string;
-  savedFiltersHeading: string;
-  savedFilterNamePlaceholder: string;
 
   catalogCleanupTitle: string;
   catalogCleanupScanButton: string;

@@ -8,7 +8,6 @@ interface UseBulkSelectionArgs {
   setModels: React.Dispatch<React.SetStateAction<ModelFile[]>>;
   refreshFolders: () => void;
   refreshTags: () => void;
-  refreshCreators: () => void;
   refreshTrash: () => void;
   bulkAddToCollection: (fileIds: string[], collectionId: string) => Promise<void>;
   bulkRemoveFromCollection: (fileIds: string[]) => Promise<void>;
@@ -19,7 +18,6 @@ export function useBulkSelection({
   setModels,
   refreshFolders,
   refreshTags,
-  refreshCreators,
   refreshTrash,
   bulkAddToCollection,
   bulkRemoveFromCollection,
@@ -57,10 +55,9 @@ export function useBulkSelection({
       clearBulkSelection();
       refreshFolders();
       refreshTags();
-      refreshCreators();
       refreshTrash();
     });
-  }, [selectedForBulk, setModels, clearBulkSelection, refreshFolders, refreshTags, refreshCreators, refreshTrash]);
+  }, [selectedForBulk, setModels, clearBulkSelection, refreshFolders, refreshTags, refreshTrash]);
 
   const bulkAddToQueue = useCallback(() => {
     const notYetQueued = models.filter((m) => selectedForBulk.has(m.id) && m.queuePosition === null);

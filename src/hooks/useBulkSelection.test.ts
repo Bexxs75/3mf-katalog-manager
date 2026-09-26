@@ -11,17 +11,16 @@ function setup(models = [makeModelFile({ id: 'm1' }), makeModelFile({ id: 'm2' }
   const setModels = vi.fn();
   const refreshFolders = vi.fn();
   const refreshTags = vi.fn();
-  const refreshCreators = vi.fn();
   const refreshTrash = vi.fn();
   const bulkAddToCollection = vi.fn().mockResolvedValue(undefined);
   const bulkRemoveFromCollection = vi.fn().mockResolvedValue(undefined);
   const hook = renderHook(() =>
     useBulkSelection({
-      models, setModels, refreshFolders, refreshTags, refreshCreators, refreshTrash,
+      models, setModels, refreshFolders, refreshTags, refreshTrash,
       bulkAddToCollection, bulkRemoveFromCollection,
     }),
   );
-  return { ...hook, setModels, refreshFolders, refreshTags, refreshCreators, refreshTrash, bulkAddToCollection, bulkRemoveFromCollection };
+  return { ...hook, setModels, refreshFolders, refreshTags, refreshTrash, bulkAddToCollection, bulkRemoveFromCollection };
 }
 
 describe('useBulkSelection', () => {
@@ -65,7 +64,6 @@ describe('useBulkSelection', () => {
   it('bulkAddToQueue only queues models not already queued', async () => {
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === 'add_to_queue') return Promise.resolve(1);
-      if (cmd === 'list_files') return Promise.resolve([]);
       return Promise.resolve(undefined);
     });
     const models = [makeModelFile({ id: 'm1', queuePosition: null }), makeModelFile({ id: 'm2', queuePosition: 1 })];

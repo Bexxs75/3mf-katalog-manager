@@ -87,13 +87,6 @@ pub struct SavedFilterInputDto {
     pub sort: String,
 }
 #[tauri::command]
-pub fn list_files(state: State<AppState>) -> CmdResult<Vec<ModelFileDto>> {
-    let conn = lock_db(&state)?;
-    let files = db::list_files(&conn).map_err(|e| e.to_string())?;
-    let spools = db::list_filament_spools(&conn).map_err(|e| e.to_string())?;
-    Ok(files.into_iter().map(|f| to_dto(f, &spools)).collect())
-}
-#[tauri::command]
 pub fn list_file_summaries(state: State<AppState>) -> CmdResult<Vec<FileSummaryDto>> {
     let conn = lock_db(&state)?;
     let summaries = db::list_file_summaries(&conn).map_err(|e| e.to_string())?;

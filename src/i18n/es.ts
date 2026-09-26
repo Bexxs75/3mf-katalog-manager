@@ -26,7 +26,6 @@ export const es: Translations = {
   themeDescriptionSystem: 'Sigue automáticamente la configuración del sistema.',
   themeDescriptionManual: 'Fijado manualmente en {mode}.',
   languageTitle: 'Idioma',
-  densityTitle: 'Vista',
   densityCompact: 'Compacta',
   densityComfort: 'Confort',
   densityDescriptionCompact: 'Densa, texto pequeño — muestra lo máximo posible.',
@@ -70,7 +69,6 @@ export const es: Translations = {
   confirmSlicerName: 'Confirmar',
   removeSlicerAria: 'Eliminar laminador',
   slicerLaunchError: 'No se pudo iniciar el laminador:',
-  slicerAutoDetectedLabel: 'detectado automáticamente',
   slicerPrimaryChip: 'Predeterminado',
   setPrimarySlicerAria: 'Establecer como laminador predeterminado',
 
@@ -92,9 +90,7 @@ export const es: Translations = {
   previewUnavailable: 'Vista previa no disponible',
 
 
-  filamentCatalogAria: 'Inventario de filamento',
   filamentDialogTitle: 'Inventario de Filamento',
-  filamentEmptyState: 'Aún no hay bobinas registradas.',
   filamentMaterialLabel: 'Material',
   filamentManufacturerLabel: 'Fabricante',
   filamentColorLabel: 'Color',
@@ -108,7 +104,6 @@ export const es: Translations = {
   filamentError: 'Error:',
   railCatalog: 'Catálogo',
   railFilament: 'Almacén de filamento',
-  filamentUploadImageLabel: 'Subir imagen',
   filamentLocationLabel: 'Ubicación',
   filamentViewDashboard: 'Panel',
   filamentViewList: 'Lista',
@@ -210,7 +205,6 @@ export const es: Translations = {
   importCatalogButton: 'Importar catálogo',
   importCatalogConfirmQuestion: 'Esto reemplaza todo tu catálogo actual. ¿Continuar?',
   importCatalogConfirmYes: 'Sí, reemplazar',
-  importCatalogRestartHint: 'Catálogo importado. Reinicia la aplicación ahora para que los cambios surtan efecto.',
   catalogSetupTitle: '¿Cómo quieres organizar tu catálogo?',
   catalogSetupIntro: 'Las carpetas del catálogo ahora son directorios reales en tu disco. Si mueves un archivo a otra carpeta en el programa, se mueve de verdad ahí, no solo se reordena en el catálogo. Para que los archivos recién importados se organicen de forma sensata, vamos a fijar ahora una ubicación de almacenamiento.',
   catalogSetupFileTypesNote: 'Solo se detectan archivos .3mf, .stl, .obj y .stp/.step (los archivos STEP no tienen vista previa 3D). Los archivos comprimidos (por ejemplo .zip, .7z, .rar) dentro de la carpeta adoptada no se descomprimen y permanecen intactos; en cambio, los que añadas individualmente mediante «Importar» o arrastrando y soltando se pueden descomprimir directamente en una subcarpeta.',
@@ -234,18 +228,15 @@ export const es: Translations = {
   catalogBaseDirOpenButton: 'Abrir carpeta',
   printLogHeading: 'Registro de impresión',
   printLogAddButton: '+ Añadir entrada',
-  printLogDatePlaceholder: 'Fecha',
   printLogNotePlaceholder: 'Nota (opcional)',
   printLogPhotoButton: 'Añadir foto',
   printLogSaveButton: 'Guardar',
   printLogCancelButton: 'Cancelar',
   printLogEmpty: 'Todavía no hay entradas.',
-  printLogDeleteButton: 'Eliminar',
 
   sortLastViewed: 'Visto recientemente',
   newBadge: 'NUEVO',
 
-  creatorsHeading: 'Creators',
 
   importSummaryText: '{imported} importados, {duplicates} duplicados omitidos',
   archiveDialogTitle: 'Descomprimir archivos',
@@ -298,8 +289,6 @@ export const es: Translations = {
   addToQueue: 'Añadir a la cola',
   removeFromQueue: 'Quitar de la cola',
   chipRemove: 'Quitar {label}',
-  savedFiltersHeading: 'Filtros guardados',
-  savedFilterNamePlaceholder: 'Nombre…',
 
   catalogCleanupTitle: 'Revisar catálogo',
   catalogCleanupScanButton: 'Buscar problemas en el catálogo',

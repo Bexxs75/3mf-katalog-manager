@@ -1,9 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { ModelFile, ModelFileSummary } from '../../types';
 
-export function listFiles() {
-  return invoke<ModelFile[]>('list_files');
-}
 // Slim catalog overview, see ModelFileSummary.
 export function listFileSummaries() {
   return invoke<ModelFileSummary[]>('list_file_summaries');

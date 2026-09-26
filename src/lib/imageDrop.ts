@@ -31,7 +31,7 @@ export function isWindowsPlatform(
   return /win/i.test(nav.userAgent ?? '') || /win/i.test(nav.platform ?? '');
 }
 
-/** Tauri liefert Drop-Positionen in physischen Pixeln; getBoundingClientRect() arbeitet in CSS-Pixeln. */
+/** Tauri delivers drop positions in physical pixels; getBoundingClientRect() works in CSS pixels. */
 export function physicalToCss(position: Point, devicePixelRatio: number): Point {
   const ratio = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1;
   return { x: position.x / ratio, y: position.y / ratio };

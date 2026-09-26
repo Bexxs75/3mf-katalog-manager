@@ -137,7 +137,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
   const stats = useMemo(() => {
     const ofKind = spools.filter((s) => s.kind === kind);
     const totalRemaining = roundTenth(ofKind.reduce((sum, s) => sum + s.remainingWeightG, 0));
-    // Geladene Spulen haben ihren Lagerort in `homeLocation`.
+    // Loaded spools keep their storage location in `homeLocation`.
     const locations = new Set(ofKind.map((s) => s.location ?? s.homeLocation).filter(Boolean)).size;
     const attention = ofKind.filter((s) => filamentStockStatus(s) !== 'ok').length;
     return { total: ofKind.length, totalRemaining, locations, attention };

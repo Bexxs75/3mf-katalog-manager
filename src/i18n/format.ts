@@ -64,7 +64,7 @@ export function formatLengthM(meters: number, language: Language): string {
   return `${nf.format(meters)} m`;
 }
 
-/** Verbrauchte Filamentlaenge eines Druckauftrags in mm (gerundet). */
+/** Filament length used by a print job in mm (rounded). */
 export function formatLengthMm(mm: number, language: Language): string {
   return `${new Intl.NumberFormat(localeFor(language)).format(Math.round(mm))} mm`;
 }
@@ -104,13 +104,6 @@ export function formatDateTime(unixSeconds: number, language: Language): string 
   const date = new Date(unixSeconds * 1000);
   if (Number.isNaN(date.getTime())) return '–';
   return new Intl.DateTimeFormat(localeFor(language), { dateStyle: 'medium', timeStyle: 'short' }).format(date);
-}
-
-/** Only the time from Unix seconds (e.g. when a connection error happened). */
-export function formatTime(unixSeconds: number, language: Language): string {
-  const date = new Date(unixSeconds * 1000);
-  if (Number.isNaN(date.getTime())) return '–';
-  return new Intl.DateTimeFormat(localeFor(language), { timeStyle: 'short' }).format(date);
 }
 
 export function formatRelativeTime(rfc3339: string, language: Language): string {

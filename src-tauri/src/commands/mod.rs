@@ -527,7 +527,7 @@ mod tests {
     #[test]
     fn estimate_material_cost_uses_single_matching_spool() {
         let slice_info = sample_slice_info_single_filament("PLA", 20.0);
-        let spools = vec![sample_spool("PLA", 1000.0, Some(20.0))]; // 0.02 pro Gramm
+        let spools = vec![sample_spool("PLA", 1000.0, Some(20.0))]; // 0.02 per gram
         let cost = estimate_material_cost(&slice_info, &spools);
         assert!((cost.total_cost.expect("cost") - 0.4).abs() < 1e-6);
         assert!(!cost.has_unpriced_filaments);
@@ -585,7 +585,7 @@ mod tests {
         let spools = vec![sample_spool("PLA", 1000.0, Some(20.0))]; // 0.02/g, no nylon in stock
         let cost = estimate_material_cost(&slice_info, &spools);
         assert!((cost.total_cost.expect("cost") - 0.4).abs() < 1e-6); // PLA share only
-        assert!(cost.has_unpriced_filaments); // Nylon fehlt
+        assert!(cost.has_unpriced_filaments); // Nylon is missing
     }
     #[test]
     fn estimate_material_cost_treats_empty_filament_type_as_unmatched_not_universal_match() {

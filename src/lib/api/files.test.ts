@@ -9,11 +9,6 @@ beforeEach(() => {
 });
 
 describe('files api', () => {
-  it('listFiles', async () => {
-    vi.mocked(invoke).mockResolvedValue([]);
-    await filesApi.listFiles();
-    expect(invoke).toHaveBeenCalledWith('list_files');
-  });
   it('listTrash', async () => {
     vi.mocked(invoke).mockResolvedValue([]);
     await filesApi.listTrash();

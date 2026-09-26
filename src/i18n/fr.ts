@@ -26,7 +26,6 @@ export const fr: Translations = {
   themeDescriptionSystem: 'Suit automatiquement le paramètre système.',
   themeDescriptionManual: 'Défini manuellement sur {mode}.',
   languageTitle: 'Langue',
-  densityTitle: 'Affichage',
   densityCompact: 'Compact',
   densityComfort: 'Confort',
   densityDescriptionCompact: 'Dense, petit texte — affiche un maximum à l\'écran.',
@@ -70,7 +69,6 @@ export const fr: Translations = {
   confirmSlicerName: 'Confirmer',
   removeSlicerAria: 'Supprimer le slicer',
   slicerLaunchError: 'Impossible de démarrer le slicer :',
-  slicerAutoDetectedLabel: 'détecté automatiquement',
   slicerPrimaryChip: 'Par défaut',
   setPrimarySlicerAria: 'Définir comme slicer par défaut',
 
@@ -92,9 +90,7 @@ export const fr: Translations = {
   previewUnavailable: 'Aperçu indisponible',
 
 
-  filamentCatalogAria: 'Stock de filament',
   filamentDialogTitle: 'Stock de Filament',
-  filamentEmptyState: 'Aucune bobine enregistrée pour le moment.',
   filamentMaterialLabel: 'Matériau',
   filamentManufacturerLabel: 'Fabricant',
   filamentColorLabel: 'Couleur',
@@ -108,7 +104,6 @@ export const fr: Translations = {
   filamentError: 'Erreur :',
   railCatalog: 'Catalogue',
   railFilament: 'Stock de filament',
-  filamentUploadImageLabel: 'Envoyer une image',
   filamentLocationLabel: 'Emplacement',
   filamentViewDashboard: 'Tableau de bord',
   filamentViewList: 'Liste',
@@ -210,7 +205,6 @@ export const fr: Translations = {
   importCatalogButton: 'Importer le catalogue',
   importCatalogConfirmQuestion: 'Cela remplace tout votre catalogue actuel. Continuer ?',
   importCatalogConfirmYes: 'Oui, remplacer',
-  importCatalogRestartHint: 'Catalogue importé. Veuillez redémarrer l\'application maintenant pour que les modifications prennent effet.',
   catalogSetupTitle: 'Comment souhaitez-vous organiser votre catalogue ?',
   catalogSetupIntro: "Les dossiers du catalogue sont désormais de vrais répertoires sur votre disque. Si vous déplacez un fichier vers un autre dossier dans l'application, il est réellement déplacé là-bas, pas seulement réorganisé dans le catalogue. Pour que les fichiers nouvellement importés soient rangés de façon cohérente, définissons maintenant un emplacement de stockage fixe.",
   catalogSetupFileTypesNote: "Seuls les fichiers .3mf, .stl, .obj et .stp/.step sont détectés (les fichiers STEP n'ont pas d'aperçu 3D). Les archives (par exemple .zip, .7z, .rar) présentes dans le dossier repris ne sont pas extraites et restent intactes – en revanche, les archives ajoutées individuellement via « Importer » ou par glisser-déposer peuvent être extraites directement dans un sous-dossier.",
@@ -234,18 +228,15 @@ export const fr: Translations = {
   catalogBaseDirOpenButton: 'Ouvrir le dossier',
   printLogHeading: "Journal d'impression",
   printLogAddButton: '+ Ajouter une entrée',
-  printLogDatePlaceholder: 'Date',
   printLogNotePlaceholder: 'Note (facultatif)',
   printLogPhotoButton: 'Ajouter une photo',
   printLogSaveButton: 'Enregistrer',
   printLogCancelButton: 'Annuler',
   printLogEmpty: "Pas encore d'entrées.",
-  printLogDeleteButton: 'Supprimer',
 
   sortLastViewed: 'Vu récemment',
   newBadge: 'NOUVEAU',
 
-  creatorsHeading: 'Creators',
 
   importSummaryText: '{imported} importés, {duplicates} doublons ignorés',
   archiveDialogTitle: 'Extraire les archives',
@@ -298,8 +289,6 @@ export const fr: Translations = {
   addToQueue: "Ajouter à la file",
   removeFromQueue: 'Retirer de la file',
   chipRemove: 'Retirer {label}',
-  savedFiltersHeading: 'Filtres enregistrés',
-  savedFilterNamePlaceholder: 'Nom…',
 
   catalogCleanupTitle: 'Vérifier le catalogue',
   catalogCleanupScanButton: 'Rechercher des problèmes',

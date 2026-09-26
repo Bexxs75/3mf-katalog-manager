@@ -71,7 +71,6 @@ export default function App() {
     setModels: store.setModels,
     refreshFolders: store.refreshFolders,
     refreshTags: store.refreshTags,
-    refreshCreators: store.refreshCreators,
     refreshTrash: store.refreshTrash,
     bulkAddToCollection: collections.bulkAddToCollection,
     bulkRemoveFromCollection: collections.bulkRemoveFromCollection,
@@ -144,7 +143,6 @@ export default function App() {
   }, [
     filters.activeFolderId,
     filters.activeTag,
-    filters.activeCreator,
     filters.query,
     collections.activeCollection,
     collections.collectionsGalleryOpen,
