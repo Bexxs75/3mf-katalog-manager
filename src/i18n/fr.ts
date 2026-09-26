@@ -481,7 +481,7 @@ export const fr: Translations = {
   bugReportTitle: 'Signaler un bug',
   bugReportIntro: "Le formulaire s'ouvre dans ton navigateur. La version ({version}) et le système ({os}) sont déjà remplis.",
   bugReportLogQuestion: 'Veux-tu nous envoyer le fichier journal ?',
-  bugReportLogExplain: 'Il nous aide à trouver le bug. Le nom d\'utilisateur, les chemins et les adresses des imprimantes sont remplacés avant. Ci-dessous, tu vois exactement ce qu\'il contient.',
+  bugReportLogExplain: 'Il nous aide à trouver le bug. Le nom d\'utilisateur, le nom de l\'ordinateur, les chemins de ton dossier utilisateur et du catalogue, ainsi que les adresses réseau et e-mail sont remplacés avant. Ci-dessous, tu vois exactement ce qu\'il contient.',
   bugReportLogYes: 'Oui, joindre le fichier journal',
   bugReportLogNo: 'Non, signaler sans fichier journal',
   bugReportReplaceFileNames: 'Remplacer les noms de fichiers',

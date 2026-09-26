@@ -8,10 +8,14 @@ vi.mock('../lib/api/diagnostics');
 
 const openBugReport = vi.fn();
 
-vi.mock('./DiagnosticsContext', async () => {
-  const actual = await vi.importActual<typeof import('./DiagnosticsContext')>('./DiagnosticsContext');
-  return { ...actual, useDiagnostics: () => ({ openBugReport }) };
-});
+// A plain (non-async) factory: an async factory that spreads `importActual`'s
+// result does not reliably apply to every consumer of this module - a nested
+// component (ReportProblemLink, reached via ErrorText) kept getting the real
+// implementation and threw "outside DiagnosticsProvider". No provider or
+// other export from this module is needed by anything under test here.
+vi.mock('./DiagnosticsContext', () => ({
+  useDiagnostics: () => ({ openBugReport }),
+}));
 
 beforeEach(() => {
   localStorage.setItem('3mf-katalog-language', 'de');
@@ -51,12 +55,23 @@ describe('DiagnosticsSettings', () => {
     await waitFor(() => expect(diagnosticsApi.openLogFolder).toHaveBeenCalled());
   });
 
-  it('shows the error when opening the log folder fails', async () => {
-    // `expected: true` here so the error is shown without a "Report problem" link,
-    // which needs the real DiagnosticsProvider that this mocked test setup doesn't have.
+  it('shows the error without a report link when opening the log folder fails with an expected error', async () => {
     vi.mocked(diagnosticsApi.openLogFolder).mockRejectedValue({ message: 'Ordner nicht gefunden', expected: true });
     renderSettings();
     fireEvent.click(screen.getByText('Ordner öffnen'));
     await waitFor(() => expect(screen.getByText('Ordner nicht gefunden')).toBeInTheDocument());
+    expect(screen.queryByText('Problem melden')).not.toBeInTheDocument();
+  });
+
+  it('shows the error and a report link when opening the log folder fails unexpectedly', async () => {
+    vi.mocked(diagnosticsApi.openLogFolder).mockRejectedValue({ message: 'Ordner nicht gefunden', expected: false });
+    renderSettings();
+    fireEvent.click(screen.getByText('Ordner öffnen'));
+    await waitFor(() => expect(screen.getByText('Ordner nicht gefunden')).toBeInTheDocument());
+
+    const reportLink = screen.getByText('Problem melden');
+    expect(reportLink).toBeInTheDocument();
+    fireEvent.click(reportLink);
+    expect(openBugReport).toHaveBeenCalled();
   });
 });

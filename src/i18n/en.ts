@@ -481,7 +481,7 @@ export const en: Translations = {
   bugReportTitle: 'Report a bug',
   bugReportIntro: 'The form opens in your browser. Version ({version}) and system ({os}) are already filled in.',
   bugReportLogQuestion: 'Do you want to send us the log file?',
-  bugReportLogExplain: 'It helps us find the bug. User name, paths and printer addresses are replaced first. Below you see exactly what it contains.',
+  bugReportLogExplain: 'It helps us find the bug. User name, computer name, paths in your user and catalog folders, network and e-mail addresses are replaced first. Below you see exactly what it contains.',
   bugReportLogYes: 'Yes, attach the log file',
   bugReportLogNo: 'No, report without log file',
   bugReportReplaceFileNames: 'Replace file names',

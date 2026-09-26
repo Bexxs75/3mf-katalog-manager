@@ -481,7 +481,7 @@ export const es: Translations = {
   bugReportTitle: 'Informar de un error',
   bugReportIntro: 'El formulario se abre en tu navegador. La versión ({version}) y el sistema ({os}) ya están rellenados.',
   bugReportLogQuestion: '¿Quieres enviarnos el archivo de registro?',
-  bugReportLogExplain: 'Nos ayuda a encontrar el error. El nombre de usuario, las rutas y las direcciones de las impresoras se sustituyen antes. Abajo ves exactamente lo que contiene.',
+  bugReportLogExplain: 'Nos ayuda a encontrar el error. El nombre de usuario, el nombre del equipo, las rutas de tu carpeta de usuario y del catálogo, así como las direcciones de red y de correo electrónico se sustituyen antes. Abajo ves exactamente lo que contiene.',
   bugReportLogYes: 'Sí, adjuntar el archivo de registro',
   bugReportLogNo: 'No, informar sin archivo de registro',
   bugReportReplaceFileNames: 'Sustituir nombres de archivo',

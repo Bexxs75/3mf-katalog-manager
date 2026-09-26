@@ -481,7 +481,7 @@ export const de: Translations = {
   bugReportTitle: 'Fehler melden',
   bugReportIntro: 'Das Formular öffnet sich gleich in deinem Browser. Version ({version}) und System ({os}) sind dort schon eingetragen.',
   bugReportLogQuestion: 'Möchtest du uns die Logdatei schicken?',
-  bugReportLogExplain: 'Sie hilft uns, den Fehler zu finden. Benutzername, Pfade und Drucker-Adressen werden vorher ersetzt. Unten siehst du genau, was drinsteht.',
+  bugReportLogExplain: 'Sie hilft uns, den Fehler zu finden. Benutzername, Rechnername, Pfade in deinem Benutzer- und Katalogordner sowie Netzwerk- und E-Mail-Adressen werden vorher ersetzt. Unten siehst du genau, was drinsteht.',
   bugReportLogYes: 'Ja, Logdatei anhängen',
   bugReportLogNo: 'Nein, ohne Logdatei melden',
   bugReportReplaceFileNames: 'Dateinamen ersetzen',
