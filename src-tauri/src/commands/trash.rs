@@ -57,7 +57,7 @@ fn delete_files_with_conn(conn: &Connection, trash_dir: &std::path::Path, file_i
         let id: i64 = match file_id.parse() {
             Ok(id) => id,
             Err(_) => {
-                eprintln!("[cleanup] Ungueltige Datei-ID uebersprungen: {file_id}");
+                eprintln!("[cleanup] skipped invalid file ID: {file_id}");
                 continue;
             }
         };

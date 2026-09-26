@@ -48,7 +48,7 @@ pub fn parse_history_page(v: &Value) -> Result<HistoryPage, LinkError> {
         .filter_map(|j| {
             let parsed = parse_job(j);
             if parsed.is_none() && j.get("status").and_then(Value::as_str) != Some("in_progress") {
-                eprintln!("[printer_link] Moonraker-Auftrag uebersprungen (unvollstaendig): {:?}", j.get("job_id"));
+                eprintln!("[printer_link] skipped incomplete Moonraker job: {:?}", j.get("job_id"));
             }
             parsed
         })
