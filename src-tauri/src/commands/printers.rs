@@ -1,8 +1,7 @@
-//! Tauri-Befehle fuer Drucker, ihre Mehrfarbeinheiten und das Einlegen/
-//! Herausnehmen von Spulen. Die Logik liegt in `db::printers`; hier nur
-//! ID-Umwandlung, Transaktionen und DTOs. Jede aendernde Operation laeuft in
-//! genau einer Transaktion, damit nie eine Spule "zwischen zwei Faechern"
-//! haengen bleibt.
+//! Tauri commands for printers, their multi-material units and loading/unloading
+//! spools. The logic lives in `db::printers`; here only ID conversion,
+//! transactions and DTOs. Every changing operation runs in exactly one
+//! transaction, so a spool never gets stuck "between two slots".
 
 use super::*;
 use db::printers as p;
@@ -23,7 +22,7 @@ pub struct MaterialUnitDto {
 pub struct PrinterDto {
     pub id: String,
     pub name: String,
-    /// "filament" oder "resin", beim Anlegen fest gewaehlt.
+    /// "filament" or "resin", fixed when the printer is added.
     pub kind: String,
     pub units: Vec<MaterialUnitDto>,
 }
@@ -68,7 +67,7 @@ pub(crate) fn list_printers_with_conn(conn: &Connection) -> CmdResult<Vec<Printe
         .collect())
 }
 
-/// Fuehrt `f` in einer Transaktion aus und committet nur bei Erfolg.
+/// Runs `f` in a transaction and only commits on success.
 fn in_tx<T>(conn: &mut Connection, f: impl FnOnce(&Connection) -> Result<T, db::error::DbError>) -> CmdResult<T> {
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let value = f(&tx).map_err(|e| e.to_string())?;
@@ -82,14 +81,13 @@ pub fn list_printers(state: State<AppState>) -> CmdResult<Vec<PrinterDto>> {
     list_printers_with_conn(&conn)
 }
 
-/// `holder_name` ist der (uebersetzte) Name der ersten Einheit: bei
-/// Filament-Druckern der Spulenhalter, bei Resin-Druckern die Harzwanne.
+/// `holder_name` is the (translated) name of the first unit: the spool holder
+/// for filament printers, the resin vat for resin printers.
 pub(crate) fn add_printer_with_conn(conn: &mut Connection, name: &str, holder_name: &str, kind: &str) -> CmdResult<PrinterDto> {
-    // Jeder Filament-Drucker bekommt direkt einen Spulenhalter (1 Fach),
-    // damit auch Drucker ohne AMS sofort eine Spule aufnehmen koennen; ein
-    // Resin-Drucker bekommt stattdessen seine einzige Einheit, die
-    // Harzwanne. Beides in einer Transaktion: scheitert die Einheit,
-    // entsteht auch kein Drucker.
+    // Every filament printer gets a spool holder (1 slot) right away, so printers
+    // without an AMS can take a spool immediately; a resin printer gets its only
+    // unit, the resin vat, instead. Both in one transaction: if the unit fails, no
+    // printer is created either.
     let id = in_tx(conn, |tx| {
         let id = p::insert_printer_of_kind(tx, name, kind)?;
         if kind == p::PRINTER_KIND_RESIN {
@@ -108,7 +106,7 @@ pub(crate) fn add_printer_with_conn(conn: &mut Connection, name: &str, holder_na
 #[tauri::command]
 pub fn add_printer(state: State<AppState>, name: String, holder_name: String, kind: Option<String>) -> CmdResult<PrinterDto> {
     let mut conn = lock_db(&state)?;
-    // Fehlt `kind` (aeltere Aufrufer), gilt Filament.
+    // If `kind` is missing (older callers), filament applies.
     let kind = kind.unwrap_or_else(|| p::PRINTER_KIND_FILAMENT.to_string());
     add_printer_with_conn(&mut conn, &name, &holder_name, &kind)
 }
@@ -120,7 +118,7 @@ pub fn rename_printer(state: State<AppState>, printer_id: String, name: String) 
     in_tx(&mut conn, |tx| p::rename_printer(tx, id, &name))
 }
 
-/// Liefert die Anzahl der Spulen, die an ihren Stammplatz zurueckkehrten.
+/// Returns the number of spools that went back to their home location.
 #[tauri::command]
 pub fn delete_printer(state: State<AppState>, printer_id: String) -> CmdResult<usize> {
     let id = parse_id(&printer_id, "Drucker")?;
@@ -201,7 +199,7 @@ pub(crate) fn unload_spool_with_conn(
     in_tx(conn, |tx| p::unload_spool(tx, spool, location.as_deref()))
 }
 
-/// Liefert den neuen Lagerort (fuer den Hinweis "zurueck nach …").
+/// Returns the new location (for the "back to ..." notice).
 #[tauri::command]
 pub fn unload_spool(state: State<AppState>, spool_id: String, location: Option<String>) -> CmdResult<Option<String>> {
     let mut conn = lock_db(&state)?;

@@ -1,4 +1,4 @@
-//! Abbuchen: Gramm berechnen, Spule/Material pruefen, Bestaetigen/Ignorieren.
+//! Deduction: compute grams, check spool/material, confirm/ignore.
 
 use std::f64::consts::PI;
 
@@ -9,7 +9,7 @@ use crate::db::models::NewPrintLogEntry;
 use crate::db::printer_link::{get_job, mark_job_confirmed, mark_job_ignored};
 use crate::db::printers::round_tenth;
 
-/// Erstes Wort in Kleinbuchstaben: "PLA Matt" -> "pla", "PETG-CF" -> "petg".
+/// First word in lowercase: "PLA Matt" -> "pla", "PETG-CF" -> "petg".
 pub fn normalize_material(m: &str) -> String {
     m.trim()
         .to_lowercase()
@@ -32,9 +32,8 @@ pub fn density_g_cm3(material: &str) -> f64 {
     }
 }
 
-/// Verbrauch in Gramm, auf 0,1 g gerundet. Bevorzugt die Slicer-Angaben
-/// (Gewicht x gefoerdert / geschaetzte Laenge), sonst Laenge x Querschnitt x
-/// Dichte.
+/// Usage in grams, rounded to 0.1 g. Prefers the slicer values (weight x
+/// extruded / estimated length), otherwise length x cross-section x density.
 pub fn grams(
     used_mm: f64,
     slicer_total_mm: Option<f64>,
@@ -79,7 +78,7 @@ pub struct SpoolInfo {
     pub remaining_weight_g: f64,
 }
 
-/// Spule im ersten belegten Fach der ersten Einheit dieses Druckers.
+/// Spool in the first occupied slot of this printer's first unit.
 pub fn suggest_spool(conn: &Connection, printer_id: i64) -> Result<Option<i64>, DbError> {
     Ok(conn
         .query_row(
@@ -92,9 +91,9 @@ pub fn suggest_spool(conn: &Connection, printer_id: i64) -> Result<Option<i64>, 
         .optional()?)
 }
 
-/// Daten einer Spule fuer die Abbuchung. Resin-Flaschen sind fuer die
-/// Druckeranbindung keine Spulen: dafuer gibt es `None`, wie fuer eine
-/// unbekannte ID - `ensure_filament` liefert vorher die passende Meldung.
+/// Spool data for the deduction. Resin bottles are not spools for the printer
+/// connection: they get `None`, like an unknown ID - `ensure_filament` returns the
+/// matching message first.
 pub fn spool_info(conn: &Connection, spool_id: i64) -> Result<Option<SpoolInfo>, DbError> {
     Ok(conn
         .query_row(
@@ -105,8 +104,8 @@ pub fn spool_info(conn: &Connection, spool_id: i64) -> Result<Option<SpoolInfo>,
         .optional()?)
 }
 
-/// Lehnt eine Resin-Flasche als Abbuch-Ziel ab (Druckeranbindung kennt nur
-/// Filament). Eine unbekannte ID laesst sie durch - das meldet `spool_info`.
+/// Rejects a resin bottle as deduction target (the printer connection only knows
+/// filament). An unknown ID passes - `spool_info` reports that.
 pub fn ensure_filament(conn: &Connection, spool_id: i64) -> Result<(), DbError> {
     let kind: Option<String> = conn
         .query_row("SELECT kind FROM filament_spools WHERE id = ?1", params![spool_id], |r| r.get(0))
@@ -132,7 +131,7 @@ fn rfc3339_from_unix(secs: f64) -> String {
         .unwrap_or_default()
 }
 
-/// Bucht einen offenen Druck in EINER Transaktion ab. Liefert die Gramm.
+/// Books an open print in ONE transaction. Returns the grams.
 pub fn confirm_job(conn: &mut Connection, d: &Decision, decided_at: &str) -> Result<f64, DbError> {
     let tx = conn.transaction()?;
     let job = get_job(&tx, d.job_id)?
@@ -178,7 +177,7 @@ pub fn ignore_job(conn: &Connection, job_id: i64, decided_at: &str) -> Result<()
     Ok(())
 }
 
-/// Jede Entscheidung in eigener Transaktion. Liefert (bestätigt, fehlgeschlagen).
+/// Each decision in its own transaction. Returns (confirmed, failed).
 pub fn confirm_many(conn: &mut Connection, decisions: &[Decision], decided_at: &str) -> (usize, usize) {
     let mut ok = 0;
     let mut failed = 0;
@@ -371,9 +370,8 @@ mod db_tests {
 
     #[test]
     fn resin_is_never_suggested_even_if_it_sat_in_a_slot() {
-        // Eine Resin-Flasche kommt ueber die App nie in ein Fach; eine
-        // praeparierte DB koennte das trotzdem enthalten. Der Vorschlag
-        // ueberspringt sie und nimmt die naechste Filament-Spule.
+        // The app never puts a resin bottle into a slot; a crafted DB could still
+        // contain one. The suggestion skips it and takes the next filament spool.
         let conn = setup();
         conn.execute_batch(
             "INSERT INTO material_units (id, printer_id, name, kind, slot_count, position) VALUES (5, 1, 'AMS', 'bambu_ams', 4, 0);

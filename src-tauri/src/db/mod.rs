@@ -3,7 +3,7 @@ pub mod models;
 mod repository;
 mod collections;
 pub mod printers;
-// Druckeranbindung: Einstellungen, Verbindungen, abgeholte Drucke.
+// Printer connection: settings, connections, fetched prints.
 pub mod printer_link;
 mod migrations;
 
@@ -32,14 +32,14 @@ pub use repository::{
 #[cfg(test)]
 pub use repository::insert_folder;
 
-// Ausserhalb der DB-Schicht nur noch in Tests genutzt.
+// Only used in tests outside the DB layer.
 #[cfg(test)]
 pub use repository::insert_file;
 
 #[cfg(test)]
 pub use repository::test_insert_minimal_file;
 
-// Produktiv nur intern von repository::init() genutzt.
+// Only used internally by repository::init() in production.
 #[cfg(test)]
 pub use repository::merge_auto_tag_aliases;
 
@@ -333,7 +333,7 @@ mod tests {
         let mut conn = connect_in_memory().expect("connect");
         let id = insert_file(&mut conn, &sample_file()).expect("insert");
 
-        // "cube" haengt nur an dieser einen Datei (siehe sample_file()).
+        // "cube" is only attached to this one file (see sample_file()).
         remove_tag_from_file(&conn, id, "cube").expect("remove tag");
 
         let tags = list_tag_counts(&conn).expect("list tags");
@@ -362,8 +362,7 @@ mod tests {
 
         delete_file(&conn, id_a).expect("delete file a");
 
-        // "cube"/"test" haengen noch an der zweiten Datei und duerfen nicht
-        // mitgeloescht werden.
+        // "cube"/"test" are still attached to the second file and must not be deleted.
         let tags = list_tag_counts(&conn).expect("list tags");
         assert!(tags.iter().any(|t| t.name == "cube"));
         assert!(tags.iter().any(|t| t.name == "test"));
@@ -373,7 +372,7 @@ mod tests {
     fn delete_unused_tags_removes_orphans_but_keeps_used_tags() {
         let mut conn = connect_in_memory().expect("connect");
         insert_file(&mut conn, &sample_file()).expect("insert");
-        // Verwaisten Tag simulieren, wie ihn fruehere Versionen hinterlassen konnten.
+        // Simulate an orphaned tag as earlier versions could leave behind.
         conn.execute(
             "INSERT INTO tags (name, color_hue) VALUES ('verwaist', 10)",
             [],
@@ -478,7 +477,7 @@ mod tests {
     fn stores_and_lists_a_filament_spool_image() {
         let conn = connect_in_memory().expect("connect");
         let mut with_image = sample_filament_spool();
-        with_image.image_png = Some(vec![137, 80, 78, 71]); // PNG-Magic-Bytes als Platzhalter-Daten
+        with_image.image_png = Some(vec![137, 80, 78, 71]); // PNG magic bytes as placeholder data
         insert_filament_spool(&conn, &with_image).expect("insert");
 
         let spools = list_filament_spools(&conn).expect("list");
@@ -691,10 +690,9 @@ mod tests {
 
     #[test]
     fn soft_delete_without_trash_path_roundtrips_for_unreachable_source_files() {
-        // Deckt den Fall ab, in dem der Original-Pfad beim Loeschen nicht
-        // erreichbar war (z.B. umbenannter Cloud-Mount) - es gibt nichts zu
-        // verschieben, trash_path bleibt NULL, der Eintrag landet trotzdem
-        // im Papierkorb statt hart geloescht zu werden.
+        // Covers the case where the original path was unreachable when deleting (e.g.
+        // a renamed cloud mount) - nothing to move, trash_path stays NULL, and the
+        // entry still goes to the trash instead of being hard-deleted.
         let mut conn = connect_in_memory().expect("connect");
         let file = sample_file();
         let id = repository::insert_file(&mut conn, &file).unwrap();
@@ -769,8 +767,8 @@ mod tests {
         let id_b = insert_file(&mut conn, &file_b).expect("insert b");
         let id_c = insert_file(&mut conn, &file_c).expect("insert c");
 
-        // Bewusst NICHT in Einfuege-/ID-Reihenfolge angefragt - simuliert eine
-        // Sammlungs-Reihenfolge, die von der files.id-Reihenfolge abweicht.
+        // Deliberately NOT requested in insert/id order - simulates a collection order
+        // that differs from the files.id order.
         let requested = vec![id_c, id_a, id_b];
         let result = list_files_by_ids(&conn, &requested).expect("query");
 
@@ -817,7 +815,7 @@ mod tests {
         let entries = list_print_log_entries(&conn, file_id).expect("list entries");
 
         assert_eq!(entries.len(), 2);
-        // neueste zuerst
+        // newest first
         assert_eq!(entries[0].id, id2);
         assert_eq!(entries[0].photo_png, Some(vec![1, 2, 3]));
         assert_eq!(entries[1].id, id1);
@@ -882,9 +880,8 @@ mod tests {
         let mut conn = connect_in_memory().expect("connect");
         let a = repository::test_insert_minimal_file(&conn, "/tmp/a.3mf", None).expect("a");
         let b = repository::test_insert_minimal_file(&conn, "/tmp/b.3mf", None).expect("b");
-        // "miniature" (nicht "mini"): "mini" ist ein mehrdeutiger Alias und
-        // wird beim Zusammenlegen bewusst nicht angefasst, siehe
-        // merge_leaves_ambiguous_aliases_untouched_but_still_merges_others.
+        // "miniature" (not "mini"): "mini" is an ambiguous alias and deliberately left
+        // alone when merging, see merge_leaves_ambiguous_aliases_untouched_but_still_merges_others.
         add_tag_to_file(&conn, a, "miniature").expect("tag a");
         add_tag_to_file(&conn, b, "miniatur").expect("tag b");
 
@@ -924,7 +921,7 @@ mod tests {
     fn merge_is_idempotent_and_leaves_other_tags_alone() {
         let mut conn = connect_in_memory().expect("connect");
         let a = repository::test_insert_minimal_file(&conn, "/tmp/a.3mf", None).expect("a");
-        // "grand format" (nicht "large"/"grande" - mehrdeutig, siehe oben).
+        // "grand format" (not "large"/"grande" - ambiguous, see above).
         add_tag_to_file(&conn, a, "grand format").expect("alias");
         add_tag_to_file(&conn, a, "Vase").expect("other");
 

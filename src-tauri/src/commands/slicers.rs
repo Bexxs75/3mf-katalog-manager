@@ -1,8 +1,8 @@
 use super::*;
 
-// AppImage exportiert beim Start diverse Umgebungsvariablen, die nur fuer die
-// eigene AppImage-Laufzeit gedacht sind und nicht an unabhaengig gestartete
-// externe Programme (Slicer) weitergegeben werden duerfen.
+// On startup the AppImage exports various environment variables meant only for
+// its own runtime; they must not be passed on to independently started external
+// programs (slicers).
 const APPIMAGE_ENV_VARS_TO_STRIP: &[&str] = &[
     "APPDIR",
     "APPIMAGE",
@@ -25,7 +25,7 @@ const APPIMAGE_ENV_VARS_TO_STRIP: &[&str] = &[
     "WEBKIT_DISABLE_DMABUF_RENDERER",
 ];
 
-/// Sicht des Frontends auf einen `registered_slicers`-Eintrag.
+/// The frontend's view of a `registered_slicers` entry.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SlicerDto {
@@ -33,15 +33,15 @@ pub struct SlicerDto {
     pub name: String,
     pub executable_path: String,
 }
-/// Kernlogik der Registrierung, ohne Dialog, damit testbar.
+/// Core logic of the registration, without a dialog, so it's testable.
 pub(crate) fn register_slicer_with_conn(conn: &Connection, name: String, executable_path: String) -> CmdResult<SlicerDto> {
     validate_slicer_path(&executable_path)?;
     let id = db::insert_registered_slicer(conn, &name, &executable_path, false).map_err(|e| e.to_string())?;
     Ok(SlicerDto { id: id.to_string(), name, executable_path })
 }
-/// Oeffnet den Datei-Dialog im Backend: der Pfad kommt nur aus der Auswahl des
-/// Nutzers, nie als String vom Frontend. async, weil ein synchroner Command auf
-/// dem Thread laeuft, den GTK fuer den Dialog braucht (Deadlock).
+/// Opens the file dialog in the backend: the path only comes from the user's
+/// pick, never as a string from the frontend. async, because a synchronous
+/// command runs on the thread GTK needs for the dialog (deadlock).
 #[tauri::command]
 pub async fn pick_and_register_slicer(app: tauri::AppHandle, state: State<'_, AppState>) -> CmdResult<Option<SlicerDto>> {
     let dialog = app.dialog().file();
@@ -71,9 +71,9 @@ pub fn list_registered_slicers(state: State<AppState>) -> CmdResult<Vec<SlicerDt
                 .collect()
         })
 }
-// `open_in_slicer` startet nur registrierte Slicer (`slicer_id`), nie einen
-// freien Pfad. Diese Pruefung laeuft bei der Registrierung und bei jedem Start
-// erneut: der Pfad muss (noch) auf eine existierende, ausfuehrbare Datei zeigen.
+// `open_in_slicer` only starts registered slicers (`slicer_id`), never a free
+// path. This check runs on registration and again on every start: the path must
+// (still) point to an existing executable file.
 fn validate_slicer_path(slicer_path: &str) -> CmdResult<()> {
     let path = Path::new(slicer_path);
     let metadata = std::fs::metadata(path)
@@ -101,8 +101,8 @@ fn validate_slicer_path(slicer_path: &str) -> CmdResult<()> {
     }
     Ok(())
 }
-/// Prueft das Modell-Argument fuer den Slicer: ein fuehrendes "-" waere ein
-/// CLI-Flag, und nur slicebare Dateien sind erlaubt.
+/// Checks the model argument for the slicer: a leading "-" would be a CLI flag,
+/// and only sliceable files are allowed.
 fn validate_slicer_target_file(file_path: &str) -> CmdResult<()> {
     let path = Path::new(file_path);
     let file_name = path
@@ -120,13 +120,13 @@ fn validate_slicer_target_file(file_path: &str) -> CmdResult<()> {
     }
     Ok(())
 }
-/// Ergebnis der Registry-/Sicherheits-Aufloesung: beide Pfade sind bereits
-/// durch `validate_slicer_path`/`validate_slicer_target_file` geprueft.
+/// Result of the registry/security resolution: both paths are already checked
+/// by `validate_slicer_path`/`validate_slicer_target_file`.
 struct ResolvedSlicerLaunch {
     executable_path: String,
     model_path: String,
 }
-/// Aufloesung und Pruefung ohne Prozessstart, damit ohne Seiteneffekt testbar.
+/// Resolution and checks without starting a process, so it's testable without side effects.
 fn resolve_registered_slicer_and_model(
     conn: &Connection,
     file_id: &str,
@@ -142,7 +142,7 @@ fn resolve_registered_slicer_and_model(
     validate_slicer_target_file(&file.path)?;
     Ok(ResolvedSlicerLaunch { executable_path: slicer.executable_path, model_path: file.path })
 }
-/// Echter Prozessstart, bewusst nicht unit-getestet.
+/// The real process start, deliberately not unit-tested.
 fn launch_slicer(resolved: &ResolvedSlicerLaunch) -> CmdResult<()> {
     let mut cmd = std::process::Command::new(&resolved.executable_path);
     cmd.arg(&resolved.model_path);
@@ -164,9 +164,8 @@ pub fn open_in_slicer(state: State<AppState>, file_id: String, slicer_id: String
     let conn = lock_db(&state)?;
     open_in_slicer_with_conn(&conn, &file_id, &slicer_id)
 }
-/// Fuehrt die Autoerkennung aus und traegt neue Slicer (`is_auto_detected`) in
-/// die Registry ein; bekannte Pfade werden uebersprungen (UNIQUE). Gibt die
-/// vollstaendige Registry zurueck.
+/// Runs the auto-detection and adds new slicers (`is_auto_detected`) to the
+/// registry; known paths are skipped (UNIQUE). Returns the complete registry.
 #[tauri::command]
 pub fn scan_installed_slicers(state: State<AppState>) -> CmdResult<Vec<SlicerDto>> {
     let conn = lock_db(&state)?;
@@ -176,9 +175,8 @@ pub fn scan_installed_slicers(state: State<AppState>) -> CmdResult<Vec<SlicerDto
         if known_paths.contains(&detected.path) {
             continue;
         }
-        // Best-effort: ein einzelner fehlschlagender Insert (z.B. Race mit
-        // einem parallelen Scan) darf die Erkennung der uebrigen Slicer
-        // nicht abbrechen.
+        // Best effort: a single failing insert (e.g. a race with a parallel scan) must
+        // not abort detecting the other slicers.
         let _ = db::insert_registered_slicer(&conn, &detected.name, &detected.path, true);
     }
     db::list_registered_slicers(&conn)
@@ -217,7 +215,7 @@ mod tests {
     }
     #[test]
     fn a_registered_slicer_resolves_to_a_validated_executable_and_model_path() {
-        // Nur die Aufloesung, ohne Prozessstart.
+        // Only the resolution, without starting a process.
         let dir = unique_test_dir("open_in_slicer_resolve");
         std::fs::create_dir_all(&dir).unwrap();
         let model_path = dir.join("model.3mf");
@@ -225,7 +223,7 @@ mod tests {
 
         let conn = db::connect_in_memory().unwrap();
         let file_id = db::test_insert_minimal_file(&conn, &model_path.to_string_lossy(), None).unwrap();
-        // current_exe() existiert und ist ausfuehrbar, auch unter Windows (/bin/true nicht).
+        // current_exe() exists and is executable, on Windows too (/bin/true isn't).
         let fake_slicer = std::env::current_exe().unwrap();
         let slicer = register_slicer_with_conn(&conn, "Test Slicer".into(), fake_slicer.to_string_lossy().to_string()).unwrap();
 
@@ -265,7 +263,7 @@ mod tests {
         assert!(bad_bare_flag.is_err(), "a bare CLI flag must be rejected");
         assert!(bad_missing.is_err(), "a non-existent file must be rejected");
         assert!(bad_dir.is_err(), "a directory must be rejected");
-        // .stp ist katalogisierbar, aber nicht im Slicer startbar.
+        // .stp can be cataloged, but not launched in a slicer.
         assert!(bad_stp.is_err(), "a .stp file must not be launchable in a slicer");
     }
 }

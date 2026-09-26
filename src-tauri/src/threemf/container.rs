@@ -17,22 +17,22 @@ const THUMBNAIL_RELATIONSHIP_TYPE: &str =
 const DEFAULT_MODEL_PATH: &str = "3D/3dmodel.model";
 const FALLBACK_THUMBNAIL_PATHS: [&str; 2] =
     ["Metadata/thumbnail.png", "3D/Thumbnails/thumbnail.png"];
-// Obergrenzen gegen Zip-Bomben (entpackte Groesse je Eintrag).
+// Limits against zip bombs (unpacked size per entry).
 const MAX_MODEL_XML_BYTES: u64 = 256 * 1024 * 1024;
 const MAX_THUMBNAIL_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_RELS_XML_BYTES: u64 = 16 * 1024 * 1024;
-/// Fuer `Metadata/model_settings.config` und `Metadata/slice_info.config`.
+/// For `Metadata/model_settings.config` and `Metadata/slice_info.config`.
 pub(super) const MAX_CONFIG_XML_BYTES: u64 = 16 * 1024 * 1024;
-/// Obergrenze fuer die Summe ALLER entpackten Ressourcen, damit viele Eintraege
-/// knapp unter ihrem Einzellimit zusammen nicht beliebig viel Speicher belegen.
+/// Limit for the sum of ALL unpacked resources, so many entries just below their
+/// individual limit can't together use arbitrary memory.
 const MAX_TOTAL_UNPACKED_BYTES: u64 = 512 * 1024 * 1024;
-/// Maximal referenzierte `.model`-Dateien (Production Extension), damit viele
-/// kleine Dateien weder das Budget umgehen noch die Aufloesung ewig dauern lassen.
+/// Maximum number of referenced `.model` files (Production Extension), so many
+/// small files neither bypass the budget nor make resolving take forever.
 const MAX_REFERENCED_MODELS: usize = 32;
 
 #[cfg(test)]
 thread_local! {
-    /// Erlaubt Tests ein kleines Gesamtbudget ohne 512-MB-Testdatei (thread-lokal).
+    /// Lets tests use a small total budget without a 512 MB test file (thread-local).
     static TEST_MAX_TOTAL_UNPACKED_BYTES: std::cell::Cell<Option<u64>> =
         const { std::cell::Cell::new(None) };
 }
@@ -59,9 +59,9 @@ fn check_total_budget(total_unpacked: u64) -> Result<(), ThreeMfError> {
 
 pub struct PackageParts {
     pub root_model: ParsedModel,
-    /// 3MF-"Production-Extension"-Dateien lagern zusaetzliche Objekte in
-    /// separaten ZIP-Eintraegen aus (referenziert via p:path). Schluessel
-    /// ist der normalisierte (kein fuehrendes '/') Eintragspfad.
+    /// 3MF "Production Extension" files store extra objects in separate ZIP
+    /// entries (referenced via p:path). The key is the normalized entry path
+    /// (no leading '/').
     pub referenced_models: HashMap<String, ParsedModel>,
     pub thumbnail: Option<Vec<u8>>,
     pub plate_count: Option<u32>,
@@ -69,10 +69,9 @@ pub struct PackageParts {
 }
 
 impl PackageParts {
-    /// Sucht ein Objekt anhand der Datei, in der es deklariert wurde
-    /// (`None` = Root-Modell) und seiner lokalen ID. Objekt-IDs sind nur
-    /// innerhalb einer einzelnen Datei eindeutig, daher die dateibezogene
-    /// Suche.
+    /// Looks up an object by the file it was declared in (`None` = root model) and
+    /// its local ID. Object IDs are only unique within a single file, hence the
+    /// per-file lookup.
     pub fn lookup_object(&self, file: Option<&str>, object_id: &str) -> Option<&Object> {
         match file {
             None => self.root_model.objects.get(object_id),
@@ -84,7 +83,7 @@ impl PackageParts {
 pub fn read_package<R: Read + Seek>(reader: R) -> Result<PackageParts, ThreeMfError> {
     let mut archive = ZipArchive::new(reader)?;
 
-    // Zaehlt JEDE aus dem ZIP gelesene Ressource, auch _rels/.rels und die Slicer-Configs.
+    // Counts EVERY resource read from the ZIP, including _rels/.rels and the slicer configs.
     let mut total_unpacked: u64 = 0;
 
     let (plate_count, plates_bytes) = super::plates::count_plates(&mut archive);
@@ -112,11 +111,9 @@ pub fn read_package<R: Read + Seek>(reader: R) -> Result<PackageParts, ThreeMfEr
     let mut queue: Vec<String> = referenced_paths(&root_model);
     let mut referenced_count: usize = 0;
 
-    // Iterative Aufloesung bis zum Fixpunkt statt eines einzelnen
-    // Durchlaufs: jede neu gelesene Datei kann selbst wieder neue,
-    // noch unbekannte p:path-Referenzen enthalten (mehrstufige
-    // Slicer-Ausgaben). `visited` verhindert Endlosschleifen bei
-    // zirkulaeren Referenzen.
+    // Resolve iteratively until a fixpoint instead of a single pass: every newly
+    // read file can contain new, unknown p:path references itself (multi-stage
+    // slicer output). `visited` prevents endless loops on circular references.
     while let Some(path) = queue.pop() {
         if !visited.insert(path.clone()) {
             continue;
@@ -127,9 +124,9 @@ pub fn read_package<R: Read + Seek>(reader: R) -> Result<PackageParts, ThreeMfEr
                 "Zu viele referenzierte Modelldateien (> {MAX_REFERENCED_MODELS})"
             )));
         }
-        // Fehlende oder kaputte Referenzen werden toleriert, ein zu grosser Eintrag
-        // aber nicht: sonst liesse sich das Limit mit knapp zu grossen Referenzen
-        // unterlaufen, die dann still fehlen.
+        // Missing or broken references are tolerated, an oversized entry is not:
+        // otherwise the limit could be bypassed with references just too large, which
+        // would then silently be missing.
         let xml = match read_entry_to_string(&mut archive, &path, MAX_MODEL_XML_BYTES) {
             Ok(xml) => xml,
             Err(err @ ThreeMfError::EntryTooLarge { .. }) => return Err(err),
@@ -177,9 +174,8 @@ pub fn read_package<R: Read + Seek>(reader: R) -> Result<PackageParts, ThreeMfEr
     })
 }
 
-/// Sammelt alle p:path-Referenzen einer geparsten Modell-Datei (sowohl aus
-/// `<build><item p:path=".."/>` als auch aus verschachtelten `<component
-/// p:path=".."/>`-Elementen).
+/// Collects all p:path references of a parsed model file (from
+/// `<build><item p:path=".."/>` as well as nested `<component p:path=".."/>`).
 fn referenced_paths(model: &ParsedModel) -> Vec<String> {
     let mut paths = Vec::new();
     for item in &model.build_items {
@@ -262,9 +258,9 @@ fn read_entry_to_bytes<R: Read + Seek>(
     Ok(contents)
 }
 
-/// Die deklarierte Groesse ist nicht vertrauenswuerdig, die Schranke ist das
-/// `Read::take` beim Lesen. Diese Pruefung liefert bei ehrlich zu grossen
-/// Eintraegen eine klare Fehlermeldung statt einer abgeschnittenen Datei.
+/// The declared size isn't trustworthy, the real barrier is `Read::take` while
+/// reading. This check gives honestly oversized entries a clear error message
+/// instead of a truncated file.
 fn reject_oversized_entry(path: &str, size: u64, max_bytes: u64) -> Result<(), ThreeMfError> {
     if size > max_bytes {
         return Err(ThreeMfError::EntryTooLarge {
@@ -372,7 +368,7 @@ mod tests {
         buf
     }
 
-    /// ZIP mit einem stark komprimierbaren Eintrag (Mini-Zip-Bombe).
+    /// ZIP with one highly compressible entry (mini zip bomb).
     fn build_zip_with_one_entry(path: &str, uncompressed_len: usize) -> Vec<u8> {
         let mut buf = Vec::new();
         {
@@ -398,7 +394,7 @@ mod tests {
         let bytes_too_big = read_entry_to_bytes(&mut archive, "big.model", 1024);
         assert!(matches!(bytes_too_big, Err(ThreeMfError::EntryTooLarge { .. })));
 
-        // Unterhalb der Grenze bleibt alles wie bisher.
+        // Below the limit everything stays as before.
         let ok = read_entry_to_bytes(&mut archive, "big.model", 8192).expect("within the cap");
         assert_eq!(ok.len(), 4096);
     }
@@ -441,8 +437,8 @@ mod tests {
             .contains_key("3D/Objects/object_2.model"));
     }
 
-    /// 3MF mit `count` winzigen referenzierten Modellen, die zusammen ein im Test
-    /// verkleinertes Gesamtbudget ueberschreiten.
+    /// 3MF with `count` tiny referenced models that together exceed a total budget
+    /// shrunk for the test.
     fn build_multi_model_3mf_exceeding_total_budget(count: usize) -> Vec<u8> {
         let root_items: String = (0..count)
             .map(|i| format!(r#"<item p:path="/3D/Objects/object_{i}.model" objectid="1"/>"#))
@@ -468,9 +464,8 @@ mod tests {
         build_multi_file_zip_with_root(&root_xml, &extra_files_ref)
     }
 
-    /// Wie `build_multi_file_zip`, erlaubt aber ein abweichendes
-    /// Root-Modell-XML (die feste `ROOT_MODEL_XML`-Konstante deckt nur
-    /// genau eine referenzierte Datei ab).
+    /// Like `build_multi_file_zip`, but allows a different root model XML (the fixed
+    /// `ROOT_MODEL_XML` constant only covers exactly one referenced file).
     fn build_multi_file_zip_with_root(root_xml: &str, extra_files: &[(&str, &str)]) -> Vec<u8> {
         let rels_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -508,7 +503,7 @@ mod tests {
 
     #[test]
     fn read_package_rejects_many_referenced_models_that_together_exceed_the_total_budget() {
-        // Jedes Modell liegt weit unter dem Einzellimit, die Summe ueber 2000 Bytes.
+        // Each model is far below the per-entry limit, the sum above 2000 bytes.
         TEST_MAX_TOTAL_UNPACKED_BYTES.with(|c| c.set(Some(2000)));
         let bytes = build_multi_model_3mf_exceeding_total_budget(10);
         let result = read_package(std::io::Cursor::new(bytes));
@@ -536,8 +531,8 @@ mod tests {
   <Relationship Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" Target="/3D/3dmodel.model"/>
 </Relationships>"#;
 
-    /// Minimales 3MF mit frei waehlbarem `_rels/.rels` und Zusatzeintraegen, um
-    /// genau eine Ressourcenart aufzublaehen.
+    /// Minimal 3MF with a custom `_rels/.rels` and extra entries, to inflate exactly
+    /// one kind of resource.
     fn build_minimal_3mf_with_entries(rels_xml: &str, extra_entries: &[(&str, &str)]) -> Vec<u8> {
         let mut buf = Vec::new();
         {
@@ -560,8 +555,8 @@ mod tests {
         buf
     }
 
-    /// Ein `_rels/.rels` unter seinem Einzellimit, aber ueber dem Gesamtbudget,
-    /// muss mitgezaehlt und abgelehnt werden.
+    /// A `_rels/.rels` below its own limit but above the total budget must be
+    /// counted and rejected.
     #[test]
     fn read_package_rejects_when_rels_alone_pushes_total_over_budget() {
         let padded_rels = format!("<!--{}-->{SMALL_RELS_XML}", "A".repeat(5000));
@@ -578,8 +573,7 @@ mod tests {
         );
     }
 
-    /// Analog zu oben, aber fuer `Metadata/model_settings.config`
-    /// (`count_plates()`).
+    /// Same as above, but for `Metadata/model_settings.config` (`count_plates()`).
     #[test]
     fn read_package_rejects_when_model_settings_config_alone_pushes_total_over_budget() {
         let padded_config = "A".repeat(5000);
@@ -599,8 +593,7 @@ mod tests {
         );
     }
 
-    /// Analog zu oben, aber fuer `Metadata/slice_info.config`
-    /// (`parse_slice_info()`).
+    /// Same as above, but for `Metadata/slice_info.config` (`parse_slice_info()`).
     #[test]
     fn read_package_rejects_when_slice_info_config_alone_pushes_total_over_budget() {
         let padded_config = "A".repeat(5000);
@@ -620,7 +613,7 @@ mod tests {
         );
     }
 
-    /// Gegenprobe: ohne Polsterung wird dasselbe Paket akzeptiert.
+    /// Counter-check: without padding the same package is accepted.
     #[test]
     fn read_package_accepts_a_tiny_package_under_the_same_small_test_budget() {
         TEST_MAX_TOTAL_UNPACKED_BYTES.with(|c| c.set(Some(1000)));
@@ -631,8 +624,8 @@ mod tests {
         assert!(result.is_ok(), "ein winziges Paket muss unter dem Testbudget akzeptiert werden");
     }
 
-    /// 3MF mit existierendem referenziertem Modell, 1 Byte ueber
-    /// `MAX_MODEL_XML_BYTES` (`Stored`, damit das Schreiben schnell geht).
+    /// 3MF with an existing referenced model 1 byte over `MAX_MODEL_XML_BYTES`
+    /// (`Stored`, so writing it is fast).
     fn build_3mf_with_oversized_referenced_model() -> Vec<u8> {
         let root_xml = r##"<?xml version="1.0" encoding="UTF-8"?>
 <model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06">
@@ -664,8 +657,7 @@ mod tests {
         buf
     }
 
-    /// Eine existierende, aber zu grosse Referenz muss mit `EntryTooLarge`
-    /// scheitern statt uebersprungen zu werden.
+    /// An existing but oversized reference must fail with `EntryTooLarge` instead of being skipped.
     #[test]
     fn read_package_hard_errors_on_an_oversized_referenced_model_instead_of_skipping_it() {
         let bytes = build_3mf_with_oversized_referenced_model();

@@ -2,13 +2,13 @@ use super::error::ObjError;
 
 type ObjGeometry = (Vec<[f64; 3]>, Vec<[u32; 3]>);
 
-/// Handgeschriebener Wavefront-OBJ-Parser (wie der STL-Parser, ohne Crate).
-/// `vt`/`vn`, `mtllib`/`usemtl` und `o`/`g`/`s` werden ignoriert; Normalen
-/// entstehen spaeter aus der Geometrie.
+/// Hand-written Wavefront OBJ parser (like the STL parser, no crate).
+/// `vt`/`vn`, `mtllib`/`usemtl` and `o`/`g`/`s` are ignored; normals are computed
+/// later from the geometry.
 ///
-/// Achsen: OBJ ist praktisch immer Y-up, intern gilt Z-up (`ModelViewer.tsx`
-/// dreht JEDE Geometrie per `rotateX(-PI/2)`). Deshalb wird hier jeder Vertex
-/// `(x, y, z)` zu `(x, -z, y)`, die Umkehrung dieser Drehung (keine Spiegelung).
+/// Axes: OBJ is practically always Y-up, internally Z-up applies (`ModelViewer.tsx`
+/// rotates EVERY geometry via `rotateX(-PI/2)`). So every vertex `(x, y, z)`
+/// becomes `(x, -z, y)` here, the inverse of that rotation (no mirroring).
 pub fn parse(text: &str) -> Result<ObjGeometry, ObjError> {
     let mut vertices: Vec<[f64; 3]> = Vec::new();
     let mut triangles: Vec<[u32; 3]> = Vec::new();
@@ -31,7 +31,7 @@ pub fn parse(text: &str) -> Result<ObjGeometry, ObjError> {
                 if coords.len() != 3 {
                     return Err(ObjError::Parse(format!("invalid vertex coordinates: {line}")));
                 }
-                // Y-up (Datei) -> internes Z-up (siehe Doc-Kommentar oben).
+                // Y-up (file) -> internal Z-up (see the doc comment above).
                 vertices.push([coords[0], -coords[2], coords[1]]);
             }
             "f" => {
@@ -43,13 +43,12 @@ pub fn parse(text: &str) -> Result<ObjGeometry, ObjError> {
                 if face_indices.len() < 3 {
                     return Err(ObjError::Parse(format!("face needs at least 3 vertices: {line}")));
                 }
-                // Fan-Triangulierung fuer N-Gon-Faces (Quads etc.) - Standard-
-                // Annahme fuer einfache OBJ-Loader, konvex vorausgesetzt.
+                // Fan triangulation for n-gon faces (quads etc.) - the standard assumption for simple OBJ loaders, convexity assumed.
                 for i in 1..face_indices.len() - 1 {
                     triangles.push([face_indices[0], face_indices[i], face_indices[i + 1]]);
                 }
             }
-            // vt/vn/o/g/s/mtllib/usemtl und alles Unbekannte: bewusst ignoriert.
+            // vt/vn/o/g/s/mtllib/usemtl and anything unknown: deliberately ignored.
             _ => {}
         }
     }
@@ -61,11 +60,10 @@ pub fn parse(text: &str) -> Result<ObjGeometry, ObjError> {
     Ok((vertices, triangles))
 }
 
-/// Ein Face-Token hat die Form `v`, `v/vt`, `v//vn` oder `v/vt/vn` - nur der
-/// erste (Vertex-)Teil wird gebraucht. Der Index kann laut OBJ-Spezifikation
-/// auch negativ/relativ sein (`-1` = zuletzt gelesener Vertex VOR dieser
-/// Face-Zeile) - in echten Exporten verbreitet genug, dass ein Parser ohne
-/// diese Unterstuetzung an realen Dateien scheitern wuerde.
+/// A face token has the form `v`, `v/vt`, `v//vn` or `v/vt/vn` - only the first
+/// (vertex) part is needed. Per the OBJ spec the index can also be
+/// negative/relative (`-1` = last vertex read BEFORE this face line) - common
+/// enough in real exports that a parser without it would fail on real files.
 fn resolve_index(token: &str, vertex_count: usize, line: &str) -> Result<u32, ObjError> {
     let vertex_part = token.split('/').next().unwrap_or(token);
     let raw: i64 = vertex_part
@@ -98,7 +96,7 @@ f 1 2 3
     #[test]
     fn parses_a_single_triangle() {
         let (vertices, triangles) = parse(TRIANGLE_OBJ).unwrap();
-        // Datei-Vertex (0,1,0) (oben in Y-up) wird intern (0,0,1).
+        // File vertex (0,1,0) (up in Y-up) becomes (0,0,1) internally.
         assert_eq!(vertices, vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
         assert_eq!(triangles, vec![[0, 1, 2]]);
     }
@@ -132,7 +130,7 @@ f 1//1 2//1 3//1
 
     #[test]
     fn normalizes_obj_y_up_to_the_apps_internal_z_up_convention() {
-        // "1 nach oben" in der Datei muss intern "1 in Z" sein, sonst kippt das Modell.
+        // "1 up" in the file must be "1 in Z" internally, otherwise the model tips over.
         let obj = "v 0.0 1.0 0.0\nv 0.0 0.0 0.0\nv 1.0 0.0 0.0\nf 1 2 3\n";
         let (vertices, _) = parse(obj).unwrap();
         assert_eq!(vertices[0], [0.0, 0.0, 1.0]);
@@ -152,8 +150,7 @@ f 1 2 3 4
 
     #[test]
     fn resolves_negative_relative_face_indices() {
-        // -1/-2/-3 beziehen sich auf die zuletzt gelesenen 3 Vertices, hier
-        // aequivalent zu "1 2 3" bei genau 3 vorhandenen Vertices.
+        // -1/-2/-3 refer to the last 3 vertices read, here equivalent to "1 2 3" with exactly 3 vertices.
         let obj = "\
 v 0.0 0.0 0.0
 v 1.0 0.0 0.0

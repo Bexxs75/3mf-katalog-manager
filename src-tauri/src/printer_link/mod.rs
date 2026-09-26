@@ -1,6 +1,6 @@
-//! Druckeranbindung: liest den Filamentverbrauch beendeter Drucke vom Drucker
-//! (zuerst Klipper/Moonraker) und bucht ihn nach Bestätigung von einer Spule
-//! ab. Nur Heimnetz, nur lesende Anfragen, standardmäßig ausgeschaltet.
+//! Printer connection: reads the filament used by finished prints from the
+//! printer (Klipper/Moonraker first) and deducts it from a spool after
+//! confirmation. Home network only, read-only requests, off by default.
 
 pub mod address;
 pub mod booking;
@@ -10,16 +10,16 @@ pub mod sync;
 #[cfg(test)]
 pub(crate) mod fake_moonraker;
 
-/// Ergebnis von "Verbindung testen".
+/// Result of "Test connection".
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConnectionInfo {
-    /// Softwareversion am Drucker, z. B. "v0.8.0-209-g4235789-dirty".
+    /// Software version on the printer, e.g. "v0.8.0-209-g4235789-dirty".
     pub version: String,
-    /// Tatsächlich funktionierende Basis, z. B. "http://192.168.1.60".
+    /// The base that actually works, e.g. "http://192.168.1.60".
     pub base_url: String,
 }
 
-/// Fertig oder vorzeitig beendet (abgebrochen, Fehler, Absturz).
+/// Finished or ended early (cancelled, error, crash).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JobOutcome {
     Completed,
@@ -35,7 +35,7 @@ impl JobOutcome {
     }
 }
 
-/// Ein beendeter Druck, wie ihn ein Drucker meldet (herstellerneutral).
+/// A finished print as a printer reports it (vendor-neutral).
 #[derive(Debug, Clone, PartialEq)]
 pub struct RemoteJob {
     pub remote_id: String,
@@ -61,7 +61,7 @@ pub enum LinkError {
 }
 
 impl LinkError {
-    /// Kennung für Datenbank und Oberfläche.
+    /// Key for the database and the UI.
     pub fn code(&self) -> &'static str {
         match self {
             LinkError::Unreachable => "unreachable",
@@ -75,14 +75,13 @@ impl LinkError {
 
 pub const KIND_MOONRAKER: &str = "moonraker";
 
-/// Gemeinsame Schnittstelle aller Druckersysteme. Blockierend; Aufrufer
-/// laufen im Hintergrund-Thread oder in `spawn_blocking`.
+/// Common interface of all printer systems. Blocking; callers run in the background thread or in `spawn_blocking`.
 pub trait PrinterLink: Send {
-    /// Prüft Adresse und Verbindung, liefert die funktionierende Basis-URL.
+    /// Checks address and connection, returns the working base URL.
     fn test(&self) -> Result<ConnectionInfo, LinkError>;
-    /// Beendete Drucke mit `ended_at > since` (Unix-Sekunden).
+    /// Finished prints with `ended_at > since` (Unix seconds).
     fn jobs_ended_since(&self, base_url: &str, since: f64) -> Result<Vec<RemoteJob>, LinkError>;
-    /// Vorschaubild (PNG) zu einem Pfad aus `RemoteJob::thumbnail_path`.
+    /// Thumbnail (PNG) for a path from `RemoteJob::thumbnail_path`.
     fn thumbnail(&self, base_url: &str, path: &str) -> Result<Vec<u8>, LinkError>;
 }
 

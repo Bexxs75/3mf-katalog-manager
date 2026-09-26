@@ -1,5 +1,5 @@
-// Gemeinsame Typen und Helfer der Tauri-Commands; die Commands selbst liegen
-// fachlich getrennt in den Untermodulen und werden hier re-exportiert.
+// Shared types and helpers of the Tauri commands; the commands themselves live
+// in the submodules by topic and are re-exported here.
 mod archives;
 mod backup;
 mod collections;
@@ -47,9 +47,9 @@ pub struct AppState {
     pub db: Mutex<Connection>,
     pub trash_dir: std::path::PathBuf,
     pub db_path: std::path::PathBuf,
-    /// Verzeichnisse, in die nie geschrieben werden darf (einmal beim Start
-    /// berechnet). Ein importiertes Backup kann `folders.path`/`files.path` auf
-    /// beliebige Orte setzen, z.B. Autostart-Ordner.
+    /// Directories that must never be written to (computed once at startup). An
+    /// imported backup can point `folders.path`/`files.path` anywhere, e.g. to
+    /// autostart folders.
     pub sensitive_dirs: Vec<std::path::PathBuf>,
 }
 pub(crate) type CmdResult<T> = Result<T, String>;
@@ -120,11 +120,11 @@ pub struct CostEstimateDto {
     pub total_cost: Option<f64>,
     pub has_unpriced_filaments: bool,
 }
-/// Schaetzt die Materialkosten: pro Filament aus `slice_info` werden Lager-Spulen
-/// gesucht, deren `material` den Typ enthaelt (ohne Farbe, die stimmt selten
-/// ueberein), und ihr Durchschnittspreis pro Gramm genommen. Filamente ohne
-/// Preis zaehlen nicht mit (0 hiesse "kostenlos"); `has_unpriced_filaments`
-/// markiert die Summe dann als unvollstaendig.
+/// Estimates the material cost: for each filament in `slice_info`, stock spools
+/// whose `material` contains the type are looked up (ignoring color, which
+/// rarely matches) and their average price per gram is used. Filaments without
+/// a price don't count (0 would mean "free"); `has_unpriced_filaments` then marks
+/// the total as incomplete.
 pub(crate) fn estimate_material_cost(
     slice_info: &threemf::SliceInfo,
     spools: &[db::models::FilamentSpoolRecord],
@@ -293,13 +293,13 @@ pub(crate) fn to_dto(file: FileRecord, spools: &[db::models::FilamentSpoolRecord
 pub(crate) fn lock_db<'a>(state: &'a State<AppState>) -> CmdResult<std::sync::MutexGuard<'a, Connection>> {
     state.db.lock().map_err(|_| "database lock poisoned".to_string())
 }
-/// Verschiebt eine Datei, ohne je eine bestehende Zieldatei zu ueberschreiben.
+/// Moves a file without ever overwriting an existing target.
 ///
-/// Immer per Kopie mit `OpenOptions::create_new(true)` (O_EXCL/CREATE_NEW):
-/// `std::fs::rename` ersetzt auf POSIX und Windows ein bestehendes Ziel, ein
-/// vorheriger `exists()`-Check waere ein TOCTOU-Fenster, und rename-no-replace
-/// gaebe es nur ueber drei plattformspezifische Syscalls. Nicht atomar im
-/// Ganzen: bei einem Absturz koennen Quelle und Ziel kurz beide existieren.
+/// Always copies with `OpenOptions::create_new(true)` (O_EXCL/CREATE_NEW):
+/// `std::fs::rename` replaces an existing target on POSIX and Windows, a prior
+/// `exists()` check would be a TOCTOU window, and rename-no-replace only exists
+/// as three platform-specific syscalls. Not atomic as a whole: after a crash,
+/// source and target can briefly both exist.
 pub(crate) fn move_file(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
     let mut dst = std::fs::OpenOptions::new()
         .write(true)
@@ -314,7 +314,7 @@ pub(crate) fn move_file(from: &std::path::Path, to: &std::path::Path) -> std::io
     })();
 
     if let Err(e) = copy_result {
-        // Eine teilweise geschriebene Zieldatei wird immer aufgeraeumt.
+        // A partially written target is always cleaned up.
         drop(dst);
         let _ = std::fs::remove_file(to);
         return Err(e);
@@ -327,19 +327,19 @@ pub(crate) fn move_file(from: &std::path::Path, to: &std::path::Path) -> std::io
     }
     Ok(())
 }
-/// Zweite Schranke neben `validate_folder_name`: prueft den aufgeloesten
-/// Zielpfad gegen sensible Systemverzeichnisse (Config, Autostart, SSH/GPG,
-/// Systemwurzeln). Greift ueberall, wo ein Pfad aus der DB an
-/// `fs::rename`/`fs::create_dir` geht, denn ein importiertes Backup kann z.B.
-/// `path = ~/.config/autostart` einschleusen.
+/// Second barrier next to `validate_folder_name`: checks the resolved target
+/// path against sensitive system directories (config, autostart, SSH/GPG, system
+/// roots). Applies wherever a path from the DB goes to
+/// `fs::rename`/`fs::create_dir`, because an imported backup can inject e.g.
+/// `path = ~/.config/autostart`.
 ///
-/// Verglichen wird der AUFGELOESTE Pfad (`resolve_path_for_sensitivity_check`),
-/// sonst liesse sich die Pruefung mit `..` oder Symlinks umgehen.
+/// The RESOLVED path is compared (`resolve_path_for_sensitivity_check`),
+/// otherwise `..` or symlinks could bypass the check.
 pub(crate) fn reject_if_sensitive_path(path: &Path, sensitive_dirs: &[PathBuf]) -> CmdResult<()> {
     reject_if_sensitive_path_expanded(path, &expand_sensitive_dirs(sensitive_dirs))
 }
-/// Ergaenzt jeden geschuetzten Ordner um seine kanonische Schreibweise (z.B.
-/// /bin -> /usr/bin). Einmal vorberechnen, wenn viele Pfade geprueft werden.
+/// Adds the canonical spelling of each protected folder (e.g. /bin -> /usr/bin).
+/// Compute once when many paths are checked.
 fn expand_sensitive_dirs(sensitive_dirs: &[PathBuf]) -> Vec<PathBuf> {
     let mut expanded = Vec::with_capacity(sensitive_dirs.len());
     for dir in sensitive_dirs {
@@ -364,10 +364,10 @@ fn reject_if_sensitive_path_expanded(path: &Path, expanded_dirs: &[PathBuf]) -> 
     }
     Ok(())
 }
-/// Containment statt Denylist: `path` muss innerhalb des Papierkorbs liegen.
-/// Sonst koennte ein Backup `trash_path = ~/Dokumente/wichtig.pdf` mit altem
-/// `deleted_at` setzen, und `purge_expired_trash_on_startup` wuerde die Datei
-/// beim naechsten Start loeschen. Beide Seiten werden aufgeloest (`..`, Symlinks).
+/// Containment instead of a denylist: `path` must lie inside the trash. Otherwise
+/// a backup could set `trash_path = ~/Documents/important.pdf` with an old
+/// `deleted_at`, and `purge_expired_trash_on_startup` would delete the file on
+/// the next start. Both sides are resolved (`..`, symlinks).
 fn reject_if_outside_trash_dir(path: &Path, resolved_trash_dir: &Path) -> CmdResult<()> {
     let resolved = resolve_path_for_sensitivity_check(path)?;
     if resolved == resolved_trash_dir || !resolved.starts_with(resolved_trash_dir) {
@@ -378,16 +378,14 @@ fn reject_if_outside_trash_dir(path: &Path, resolved_trash_dir: &Path) -> CmdRes
     }
     Ok(())
 }
-/// Loest einen Pfad so weit auf, dass der Praefix-Vergleich in
-/// `reject_if_sensitive_path` nicht durch `..`-Komponenten oder Symlinks
-/// unterlaufen werden kann. Der Pfad muss dabei NICHT existieren - er ist
-/// an vielen Aufrufstellen ein erst noch anzulegendes Ziel (neuer Ordner,
-/// Verschiebe-Ziel, frisch gewaehltes Katalog-Basisverzeichnis):
-/// - existiert der Pfad, entscheidet `canonicalize` (loest Symlinks UND `..`);
-/// - existiert er nicht, wird jede literale `..`-Komponente abgelehnt (sie
-///   koennte sonst aus dem geprueften Teilbaum herausfuehren) und stattdessen
-///   der laengste bereits existierende Vorfahre aufgeloest, an den die
-///   restlichen Komponenten woertlich angehaengt werden.
+/// Resolves a path far enough that the prefix comparison in
+/// `reject_if_sensitive_path` can't be undermined by `..` components or symlinks.
+/// The path need NOT exist - at many call sites it's a target still to be
+/// created (new folder, move target, freshly chosen catalog base directory):
+/// - if the path exists, `canonicalize` decides (resolves symlinks AND `..`);
+/// - if not, every literal `..` component is rejected (it could lead out of the
+///   checked subtree) and the longest existing ancestor is resolved instead,
+///   with the remaining components appended literally.
 fn resolve_path_for_sensitivity_check(path: &Path) -> CmdResult<PathBuf> {
     if let Ok(canonical) = path.canonicalize() {
         return Ok(canonical);
@@ -416,9 +414,9 @@ fn resolve_path_for_sensitivity_check(path: &Path) -> CmdResult<PathBuf> {
     }
     Ok(path.to_path_buf())
 }
-// Nur http(s)-Links zulassen: die URL wird im Frontend unveraendert als
-// <a href> gerendert, ein "javascript:"/"data:"-Wert wuerde dort beim Klick
-// ausgefuehrt statt navigiert (CWE-79-nah).
+// Only allow http(s) links: the frontend renders the URL unchanged as <a href>,
+// and a "javascript:"/"data:" value would be executed on click instead of
+// navigated (close to CWE-79).
 fn validate_source_url(url: Option<String>) -> CmdResult<Option<String>> {
     let Some(trimmed) = url.map(|u| u.trim().to_string()).filter(|u| !u.is_empty()) else {
         return Ok(None);
@@ -432,8 +430,8 @@ fn validate_source_url(url: Option<String>) -> CmdResult<Option<String>> {
 fn is_http_url(url: &str) -> bool {
     url.starts_with("http://") || url.starts_with("https://")
 }
-/// Lese-Pendant zu `validate_source_url`: ein importierter Katalog bringt die
-/// Spalte ungeprueft mit. Ungueltige Werte werden still verworfen.
+/// Read-side counterpart to `validate_source_url`: an imported catalog brings the
+/// column unchecked. Invalid values are silently dropped.
 fn sanitize_source_url(url: Option<String>) -> Option<String> {
     url.map(|u| u.trim().to_string())
         .filter(|u| !u.is_empty() && is_http_url(u))
@@ -450,7 +448,7 @@ pub(crate) fn unique_test_dir(name: &str) -> std::path::PathBuf {
     dir
 }
 
-/// Minimaler `FileRecord` fuer Tests, restliche Felder mit Platzhaltern.
+/// Minimal `FileRecord` for tests, remaining fields with placeholders.
 #[cfg(test)]
 pub(crate) fn sample_file_record(id: i64, content_hash: Option<&str>, imported_at: &str) -> FileRecord {
     FileRecord {
@@ -584,9 +582,9 @@ mod tests {
                 ],
             }],
         };
-        let spools = vec![sample_spool("PLA", 1000.0, Some(20.0))]; // 0.02/g, kein Nylon im Lager
+        let spools = vec![sample_spool("PLA", 1000.0, Some(20.0))]; // 0.02/g, no nylon in stock
         let cost = estimate_material_cost(&slice_info, &spools);
-        assert!((cost.total_cost.expect("cost") - 0.4).abs() < 1e-6); // nur PLA-Anteil
+        assert!((cost.total_cost.expect("cost") - 0.4).abs() < 1e-6); // PLA share only
         assert!(cost.has_unpriced_filaments); // Nylon fehlt
     }
     #[test]
@@ -604,8 +602,7 @@ mod tests {
                 }],
             }],
         };
-        // Die leere Typ-Zeichenkette darf nicht jede Spule "matchen" (jeder String
-        // enthaelt "").
+        // The empty type string must not "match" every spool (every string contains "").
         let spools = vec![
             sample_spool("PLA", 1000.0, Some(20.0)),
             sample_spool("PETG", 1000.0, Some(25.0)),
@@ -664,7 +661,7 @@ mod tests {
     #[test]
     fn to_dto_uses_slicer_weight_and_marks_source_when_slice_info_present() {
         let mut file = sample_file_record(1, None, "2026-09-13T00:00:00Z");
-        file.volume_cm3 = Some(100.0); // wuerde ohne slice_info eine Schaetzung liefern
+        file.volume_cm3 = Some(100.0); // would give an estimate without slice_info
         file.slice_info_json = Some(
             r##"{"total_weight_g":42.5,"plates":[{"plate_index":1,"weight_g":42.5,"filaments":[{"filament_type":"PLA","color":"#FFFFFFFF","used_g":42.5,"used_m":15.0}]}]}"##
                 .to_string(),
@@ -731,8 +728,8 @@ mod tests {
     }
     #[test]
     fn reject_if_sensitive_path_rejects_exact_match_and_descendants_but_not_siblings() {
-        // Bewusst kein "/home/..."-Praefix: auf macOS ist "/home" ein Automounter-
-        // Symlink und wuerde beim Kanonisieren aufgeloest.
+        // Deliberately no "/home/..." prefix: on macOS "/home" is an automounter
+        // symlink and would be resolved while canonicalizing.
         let sensitive = vec![PathBuf::from("/nonexistent-3mf-test-root/.config")];
         assert!(reject_if_sensitive_path(Path::new("/nonexistent-3mf-test-root/.config"), &sensitive).is_err());
         assert!(reject_if_sensitive_path(Path::new("/nonexistent-3mf-test-root/.config/autostart"), &sensitive).is_err());
@@ -741,8 +738,8 @@ mod tests {
     }
     #[test]
     fn reject_if_sensitive_path_rejects_parent_dir_traversal_into_sensitive_dir() {
-        // Ohne Aufloesung sagte der Praefix-Vergleich "passt nicht", obwohl der Pfad
-        // real im geschuetzten Verzeichnis landet.
+        // Without resolving, the prefix comparison would say "no match" although the
+        // path really lands in the protected directory.
         let base = unique_test_dir("reject_sensitive_traversal");
         let sensitive = base.join(".config");
         std::fs::create_dir_all(&sensitive).unwrap();
@@ -775,8 +772,8 @@ mod tests {
     }
     #[test]
     fn reject_if_sensitive_path_allows_a_not_yet_existing_fresh_catalog_dir() {
-        // Wichtigster Nicht-Regressions-Fall der Kanonisierung: das beim
-        // Einrichten gewaehlte Katalog-Basisverzeichnis existiert noch nicht.
+        // Most important non-regression case of canonicalization: the catalog base
+        // directory chosen during setup doesn't exist yet.
         let base = unique_test_dir("reject_sensitive_fresh");
         let fresh = base.join("Neuer Katalog").join("Unterordner");
         let result = reject_if_sensitive_path(&fresh, &[std::env::temp_dir().join("3mf-nichts-davon")]);
@@ -834,7 +831,7 @@ mod tests {
     }
     #[test]
     fn move_file_cleans_up_a_partially_written_destination_on_copy_failure() {
-        // Eine bei io::copy()/sync_all() gescheiterte Teil-Kopie muss immer aufgeraeumt werden.
+        // A partial copy that failed during io::copy()/sync_all() must always be cleaned up.
         let dir = unique_test_dir("move_file_partial_copy_cleanup");
         std::fs::create_dir_all(&dir).unwrap();
         let from = dir.join("source.3mf");
@@ -845,7 +842,7 @@ mod tests {
             std::fs::set_permissions(&from, std::fs::Permissions::from_mode(0o000)).unwrap();
             let to = dir.join("dest.3mf");
             let result = move_file(&from, &to);
-            // Berechtigungen zuruecksetzen, damit unique_test_dir-Cleanup (falls vorhanden) nicht blockiert.
+            // Reset permissions so the unique_test_dir cleanup (if any) isn't blocked.
             std::fs::set_permissions(&from, std::fs::Permissions::from_mode(0o644)).unwrap();
             assert!(result.is_err());
             assert!(!to.exists(), "partially written destination must be cleaned up on copy failure");

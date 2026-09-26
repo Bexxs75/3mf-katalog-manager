@@ -1,14 +1,13 @@
-//! Entpacken gepackter Modell-Downloads (zip, 7z, rar, tar + gz/bz2/xz/zst).
+//! Extracting packed model downloads (zip, 7z, rar, tar + gz/bz2/xz/zst).
 //!
-//! Reine Dateisystem-Logik ohne Tauri- oder Datenbank-Bezug, damit alles
-//! direkt unit-testbar ist. Die Tauri-Befehle dazu liegen in
-//! `commands/archives.rs`.
+//! Pure file system logic without Tauri or database dependencies, so everything
+//! is directly unit-testable. The Tauri commands live in `commands/archives.rs`.
 //!
-//! Aufbau:
-//! - `formats`: pro Format "Eintraege auflisten" und "Eintraege streamen"
-//! - `extract`: `Extractor`, die EINZIGE Stelle, die auf die Platte schreibt
-//!   (Zip-Slip-Schutz, Symlink-Verbot, Byte-Budget, Aufraeumen)
-//! - `paths`: Pfad- und Dateinamen-Bereinigung
+//! Structure:
+//! - `formats`: per format "list entries" and "stream entries"
+//! - `extract`: `Extractor`, the ONLY place that writes to disk
+//!   (zip-slip protection, no symlinks, byte budget, cleanup)
+//! - `paths`: path and file name sanitizing
 
 mod extract;
 mod formats;
@@ -21,32 +20,29 @@ pub use paths::{safe_folder_name, safe_relative_path};
 use std::fmt;
 use std::path::Path;
 
-/// Obergrenze fuer die entpackte Gesamtgroesse EINES Archivs. Wird in
-/// `inspect` gegen die Header-Angaben und beim Schreiben zusaetzlich gegen
-/// die tatsaechlich geschriebenen Bytes geprueft (Header koennen luegen).
+/// Limit for the total unpacked size of ONE archive. Checked in `inspect` against
+/// the header values and again while writing against the bytes actually written
+/// (headers can lie).
 pub const MAX_UNPACKED_BYTES: u64 = 2 * 1024 * 1024 * 1024;
-/// Obergrenze fuer die Anzahl der Eintraege EINES Archivs.
+/// Limit for the number of entries of ONE archive.
 pub const MAX_ENTRIES: usize = 10_000;
 
-/// Dateitypen, die NIE entpackt werden, obwohl sonst "alles" entpackt wird:
-/// ausfuehrbare Dateien und Skripte, Verknuepfungen, die schon beim
-/// Anzeigen des Ordners eine Netzwerkanfrage ausloesen koennen
-/// (`.lnk`/`.url`/`.scf`/`.library-ms`/`.searchconnector-ms` mit
-/// UNC-Icon-Pfad -> NTLM-Hash-Abfluss), Datentraeger-Images und
-/// Linux-/macOS-Starter. Modell-Downloads brauchen keine davon.
+/// File types that are NEVER extracted, although otherwise "everything" is:
+/// executables and scripts, shortcuts that can trigger a network request just by
+/// displaying the folder (`.lnk`/`.url`/`.scf`/`.library-ms`/`.searchconnector-ms`
+/// with a UNC icon path -> NTLM hash leak), disk images and Linux/macOS
+/// launchers. Model downloads need none of these.
 const BLOCKED_EXTENSIONS: &[&str] = &[
     "exe", "dll", "com", "scr", "pif", "cpl", "msi", "msp", "msc", "bat", "cmd", "ps1", "psm1",
     "vbs", "vbe", "js", "jse", "wsf", "wsh", "hta", "reg", "inf", "lnk", "url", "scf",
     "library-ms", "searchconnector-ms", "appref-ms", "application", "xll", "jar", "iso", "img",
     "vhd", "vhdx", "sh", "bash", "zsh", "fish", "command", "desktop", "app",
 ];
-/// Dateien, die der Datei-Manager beim blossen Oeffnen des Ordners
-/// auswertet (Icon-/Autostart-Angaben).
+/// Files the file manager evaluates just by opening the folder (icon/autostart settings).
 const BLOCKED_FILE_NAMES: &[&str] = &["desktop.ini", "autorun.inf", ".directory"];
 
-/// `true`, wenn ein (bereits bereinigter) relativer Pfad nicht entpackt
-/// werden darf. Prueft JEDE Komponente, damit auch Inhalte eines
-/// `Foo.app/`-Bundles gesperrt sind.
+/// `true` if an (already sanitized) relative path must not be extracted. Checks
+/// EVERY component, so the contents of a `Foo.app/` bundle are blocked too.
 pub fn is_blocked_path(rel: &Path) -> bool {
     rel.components().any(|component| {
         let name = component.as_os_str().to_string_lossy().to_lowercase();
@@ -72,8 +68,7 @@ pub enum ArchiveFormat {
     TarZst,
 }
 
-/// Mehrteilige Endungen stehen vor einteiligen, damit `.tar.gz` nicht nur
-/// als `.gz` (nicht unterstuetzt) erkannt wird.
+/// Multi-part extensions come before single ones, so `.tar.gz` isn't just recognized as `.gz` (unsupported).
 const SUFFIXES: &[(&str, ArchiveFormat)] = &[
     (".tar.gz", ArchiveFormat::TarGz),
     (".tar.bz2", ArchiveFormat::TarBz2),
@@ -89,8 +84,7 @@ const SUFFIXES: &[(&str, ArchiveFormat)] = &[
     (".tar", ArchiveFormat::Tar),
 ];
 
-/// Endungen fuer den Filter des Datei-Auswahldialogs (nur die letzte
-/// Endung, so wie ihn die Dialog-Plugins erwarten).
+/// Extensions for the file picker filter (only the last extension, as the dialog plugins expect).
 pub const DIALOG_EXTENSIONS: &[&str] = &[
     "zip", "7z", "rar", "tar", "gz", "tgz", "bz2", "tbz2", "xz", "txz", "zst", "tzst",
 ];
@@ -113,8 +107,8 @@ pub fn is_archive_path(path: &Path) -> bool {
     detect_format(path).is_some()
 }
 
-/// Vorgeschlagener Zielordner-Name: Dateiname ohne Archiv-Endung,
-/// bereinigt. Faellt auf "Archiv" zurueck, wenn nichts uebrig bleibt.
+/// Suggested target folder name: file name without the archive extension,
+/// sanitized. Falls back to "Archiv" if nothing is left.
 pub fn folder_name_for(path: &Path) -> String {
     let file_name = path
         .file_name()
@@ -138,15 +132,15 @@ pub fn folder_name_for(path: &Path) -> String {
 pub enum EntryKind {
     File,
     Directory,
-    /// Symlink, Hardlink, Geraetedatei, Anti-Item … - wird nie angelegt.
+    /// Symlink, hardlink, device file, anti-item ... - never created.
     Other,
 }
 
 #[derive(Debug, Clone)]
 pub struct EntryMeta {
-    /// Roher Name aus dem Archiv - NICHT vertrauenswuerdig.
+    /// Raw name from the archive - NOT trustworthy.
     pub name: String,
-    /// Groesse laut Header - NICHT vertrauenswuerdig.
+    /// Size from the header - NOT trustworthy.
     pub size: u64,
     pub kind: EntryKind,
     pub encrypted: bool,
@@ -187,8 +181,8 @@ impl From<std::io::Error> for ArchiveError {
     }
 }
 
-/// Listet die Eintraege (hoechstens `MAX_ENTRIES + 1`, damit ein
-/// Archiv mit Millionen Mini-Eintraegen nicht den Speicher fuellt).
+/// Lists the entries (at most `MAX_ENTRIES + 1`, so an archive with millions of
+/// tiny entries doesn't fill up memory).
 pub fn list_entries(path: &Path, format: ArchiveFormat) -> Result<Vec<EntryMeta>, ArchiveError> {
     formats::list(path, format)
 }
@@ -211,9 +205,9 @@ pub struct InspectSummary {
     pub unpacked_size: u64,
 }
 
-/// Prueft ein Archiv, OHNE etwas zu schreiben. `is_model` entscheidet, welche
-/// Eintraege als katalogisierbare Modelle zaehlen (vom Aufrufer uebergeben,
-/// damit dieses Modul die Import-Regeln nicht kennen muss).
+/// Checks an archive WITHOUT writing anything. `is_model` decides which entries
+/// count as catalogable models (passed in by the caller, so this module doesn't
+/// need to know the import rules).
 pub fn inspect(path: &Path, is_model: impl Fn(&Path) -> bool) -> InspectSummary {
     let empty = |status| InspectSummary {
         status,

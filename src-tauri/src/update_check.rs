@@ -14,10 +14,9 @@ fn parse_version(v: &str) -> Option<semver::Version> {
     semver::Version::parse(v).ok()
 }
 
-/// Vergleicht die laufende Version mit einem Release-Tag (z.B. "v0.7.9") nach
-/// SemVer, damit auch Vorabversionen wie "0.14.0-gharac" richtig eingeordnet
-/// werden. Ein nicht parsbarer Tag gilt als "kein Update"; die UI muss so nie
-/// zwischen beidem unterscheiden.
+/// Compares the running version with a release tag (e.g. "v0.7.9") by SemVer, so
+/// pre-releases like "0.14.0-gharac" are ordered correctly too. An unparsable tag
+/// counts as "no update"; the UI never has to tell the two apart.
 pub fn compare_versions(current: &str, latest_tag: &str, release_url: &str) -> UpdateCheckResult {
     let current_parsed = parse_version(current);
     let latest_parsed = parse_version(latest_tag);
@@ -91,8 +90,8 @@ mod tests {
 
     #[test]
     fn prerelease_current_version_is_older_than_the_matching_final_release() {
-        // "0.14.0-gharac" ist eine Vorabversion von "0.14.0" - nach SemVer-
-        // Praezedenz ist jede Vorabversion aelter als ihr finales Release.
+        // "0.14.0-gharac" is a pre-release of "0.14.0" - by SemVer precedence every
+        // pre-release is older than its final release.
         let result = compare_versions("0.14.0-gharac", "v0.14.0", "https://example.com/v0.14.0");
         assert!(result.update_available);
         assert_eq!(result.latest_version, "0.14.0");
@@ -107,9 +106,9 @@ mod tests {
 
     #[test]
     fn newer_prerelease_tag_counts_as_an_update() {
-        // GitHub liefert bei /releases/latest nie ein Pre-Release, aber die
-        // Vergleichslogik soll auch dann korrekt sein, wenn sie mit einem
-        // Pre-Release-Tag aufgerufen wird, das nach SemVer neuer ist.
+        // GitHub's /releases/latest never returns a pre-release, but the comparison
+        // should still be correct when called with a pre-release tag that is newer by
+        // SemVer.
         let result = compare_versions("0.13.1", "v0.14.0-gharac", "https://example.com/v0.14.0-gharac");
         assert!(result.update_available);
         assert_eq!(result.latest_version, "0.14.0-gharac");

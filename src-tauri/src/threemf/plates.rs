@@ -1,10 +1,10 @@
 use std::io::{Read, Seek};
 use zip::ZipArchive;
 
-/// Zaehlt die `<plate>`-Elemente in `Metadata/model_settings.config` (Bambu
-/// Studio/OrcaSlicer, kein 3MF-Standard). Fehlende oder kaputte Datei: `None`.
-/// Gelesen mit Groessenlimit (Zip-Bombe); die gelesenen Bytes kommen zurueck,
-/// damit `read_package()` sie ins Gesamtbudget einrechnet.
+/// Counts the `<plate>` elements in `Metadata/model_settings.config` (Bambu
+/// Studio/OrcaSlicer, not part of the 3MF standard). Missing or broken file:
+/// `None`. Read with a size limit (zip bomb); the bytes read are returned, so
+/// `read_package()` adds them to the total budget.
 pub fn count_plates<R: Read + Seek>(archive: &mut ZipArchive<R>) -> (Option<u32>, u64) {
     let xml = super::container::read_entry_to_string(
         archive,
@@ -73,7 +73,7 @@ mod tests {
   </plate>
 </config>"#;
 
-    /// Archiv mit zu grossem Config-Eintrag (Mini-Zip-Bombe).
+    /// Archive with an oversized config entry (mini zip bomb).
     fn build_zip_with_oversized_config(name: &str) -> ZipArchive<Cursor<Vec<u8>>> {
         let oversized = (super::super::container::MAX_CONFIG_XML_BYTES + 1) as usize;
         let mut buf = Vec::new();

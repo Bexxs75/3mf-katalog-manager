@@ -1,16 +1,14 @@
-//! Format-Adapter: pro Format "auflisten" und "an den Extractor streamen".
-//! Die Adapter kennen keine Zielpfade und schreiben nie selbst.
+//! Format adapters: per format "list entries" and "stream to the extractor".
+//! The adapters know no target paths and never write themselves.
 //!
-//! RAR wird im UnRAR-TESTMODUS in den Speicher gelesen und dann wie alle
-//! anderen Formate ueber den Extractor geschrieben. Warum nicht UnRAR selbst
-//! entpacken lassen: Das `unrar`-Crate uebergibt beim Entpacken (unter Linux
-//! auch bei `extract_with_base`) nur einen vollstaendigen Zielnamen
-//! (DestName). Damit schaltet UnRAR seine eigene Pfadpruefung ab, und
-//! RAR5-Eintraege vom Typ Datei-Kopie/Hardlink loesen ihre Quelle relativ zum
-//! Arbeitsverzeichnis des Prozesses auf - ein praepariertes Archiv koennte so
-//! beliebige lokale Dateien in den Katalog kopieren. Im Testmodus legt UnRAR
-//! keinerlei Dateien, Links oder Kopien an; solche Referenz-Eintraege liefern
-//! dort einfach keine Daten und werden uebersprungen.
+//! RAR is read into memory in UnRAR TEST MODE and then written through the
+//! extractor like every other format. Why not let UnRAR extract: the `unrar`
+//! crate only passes a complete target name (DestName) when extracting (on
+//! Linux also with `extract_with_base`). That turns off UnRAR's own path check,
+//! and RAR5 entries of type file copy/hardlink resolve their source relative to
+//! the process's working directory - a crafted archive could copy arbitrary
+//! local files into the catalog. In test mode UnRAR creates no files, links or
+//! copies at all; such reference entries simply deliver no data and are skipped.
 
 use std::fs::File;
 use std::cell::Cell;
@@ -23,11 +21,11 @@ use super::{ArchiveError, ArchiveFormat, EntryKind, EntryMeta, MAX_ENTRIES, MAX_
 
 const S_IFMT: u32 = 0o170000;
 const S_IFLNK: u32 = 0o120000;
-/// Windows-Attribut FILE_ATTRIBUTE_REPARSE_POINT (Symlinks/Junctions).
+/// Windows attribute FILE_ATTRIBUTE_REPARSE_POINT (symlinks/junctions).
 const WIN_REPARSE_POINT: u32 = 0x400;
-/// 7-Zip-Konvention: Bit 15 gesetzt = obere 16 Bit enthalten den Unix-Modus.
+/// 7-Zip convention: bit 15 set = the upper 16 bits hold the Unix mode.
 const SEVENZ_UNIX_EXTENSION: u32 = 0x8000;
-/// Obergrenze fuer EINEN RAR-Eintrag: er wird komplett im Speicher gehalten.
+/// Limit for ONE RAR entry: it is held completely in memory.
 pub(super) const MAX_RAR_ENTRY_BYTES: u64 = 1024 * 1024 * 1024;
 
 fn unreadable(e: impl std::fmt::Display) -> ArchiveError {
@@ -69,10 +67,9 @@ fn zip_meta(file: &zip::read::ZipFile<'_>) -> EntryMeta {
     }
 }
 
-/// Nur gaengige Verfahren. LZMA/XZ in ZIP sind in Modell-Downloads
-/// praktisch nie anzutreffen, ihre Dekoder reservieren aber Speicher nach
-/// der Woerterbuchgroesse im Header (bis 4 GB) - ein praepariertes Archiv
-/// koennte die App so zum Absturz bringen.
+/// Common methods only. LZMA/XZ in ZIP practically never appear in model
+/// downloads, but their decoders reserve memory according to the dictionary size
+/// in the header (up to 4 GB) - a crafted archive could crash the app that way.
 fn zip_method_allowed(file: &zip::read::ZipFile<'_>) -> bool {
     use zip::CompressionMethod;
     matches!(
@@ -105,8 +102,7 @@ fn list_zip(path: &Path) -> Result<Vec<EntryMeta>, ArchiveError> {
     let count = archive.len().min(MAX_ENTRIES + 1);
     let mut out = Vec::with_capacity(count);
     for index in 0..count {
-        // by_index_raw entschluesselt/dekomprimiert nicht - funktioniert
-        // daher auch bei verschluesselten Eintraegen.
+        // by_index_raw neither decrypts nor decompresses - so it also works for encrypted entries.
         let file = archive.by_index_raw(index).map_err(unreadable)?;
         check_zip_method(&file)?;
         out.push(zip_meta(&file));
@@ -132,17 +128,16 @@ fn extract_zip(path: &Path, ex: &mut Extractor<'_>) -> Result<(), ArchiveError> 
 
 // ---------- TAR (+ gz/bz2/xz/zst) ----------
 
-/// Obergrenze fuer den DEKOMPRIMIERTEN tar-Datenstrom: Nutzdaten plus
-/// grosszuegig bemessene Header/Padding-Bloecke. Begrenzt auch Daten, die
-/// gar nicht geschrieben werden (uebersprungene Eintraege, Auflisten in
-/// `inspect`) - sonst koennte eine "Kompressionsbombe" die App minutenlang
-/// beschaeftigen, ohne dass das Schreib-Budget je greift.
+/// Limit for the DECOMPRESSED tar stream: payload plus generously sized
+/// header/padding blocks. Also limits data that is never written (skipped
+/// entries, listing in `inspect`) - otherwise a "compression bomb" could keep the
+/// app busy for minutes without the write budget ever kicking in.
 const TAR_STREAM_LIMIT: u64 = MAX_UNPACKED_BYTES + (MAX_ENTRIES as u64 + 16) * 4096;
-/// Speichergrenze fuer den xz-Dekoder (KiB). `xz -9` braucht ~65 MiB.
+/// Memory limit for the xz decoder (KiB). `xz -9` needs ~65 MiB.
 const XZ_MEM_LIMIT_KIB: u32 = 256 * 1024;
 
-/// Liest hoechstens `remaining` Bytes und merkt sich eine Ueberschreitung,
-/// damit sie trotz der Fehler-Verpackung im tar-Crate erkennbar bleibt.
+/// Reads at most `remaining` bytes and remembers an overflow, so it stays
+/// detectable despite the error wrapping in the tar crate.
 struct LimitedReader<R> {
     inner: R,
     remaining: u64,
@@ -281,9 +276,9 @@ fn open_7z(path: &Path) -> Result<(sevenz_rust2::ArchiveReader<BufReader<File>>,
     let file = BufReader::new(File::open(path)?);
     let reader =
         sevenz_rust2::ArchiveReader::new(file, sevenz_rust2::Password::empty()).map_err(sevenz_error)?;
-    // LZMA/LZMA2 reservieren Speicher bis zur entpackten Groesse des Blocks
-    // (hoechstens Woerterbuchgroesse). Deshalb die Blockgroessen VOR dem
-    // Dekodieren begrenzen - `sevenz-rust2` selbst hat kein Speicherlimit.
+    // LZMA/LZMA2 reserve memory up to the unpacked size of the block (at most the
+    // dictionary size). So limit the block sizes BEFORE decoding - `sevenz-rust2`
+    // itself has no memory limit.
     let too_large = reader.archive().blocks.iter().any(|block| {
         block
             .coders
@@ -318,8 +313,8 @@ fn extract_7z(path: &Path, ex: &mut Extractor<'_>) -> Result<(), ArchiveError> {
     if encrypted {
         return Err(ArchiveError::Encrypted);
     }
-    // Die Bibliothek erwartet einen eigenen Fehlertyp im Callback - unseren
-    // Fehler parken wir hier und brechen mit Ok(false) ab.
+    // The library expects its own error type in the callback - we park our error
+    // here and abort with Ok(false).
     let mut failure: Option<ArchiveError> = None;
     let result = reader.for_each_entries(|entry, data| {
         let meta = sevenz_meta(entry, false);
@@ -397,16 +392,16 @@ fn list_rar(path: &Path) -> Result<Vec<EntryMeta>, ArchiveError> {
 
 #[derive(Debug, PartialEq, Eq)]
 enum RarEntryDecision {
-    /// Groesse passt - Eintrag darf in den Speicher gelesen werden.
+    /// Size fits - the entry may be read into memory.
     Read,
-    /// Gelesene Daten entsprechen dem Header - schreiben.
+    /// The data read matches the header - write it.
     Write,
-    /// Datenlaenge weicht vom Header ab (typisch: Datei-Kopie/Hardlink-
-    /// Eintraege, die im Testmodus keine Daten liefern) - nicht schreiben.
+    /// Data length differs from the header (typically file copy/hardlink entries
+    /// that deliver no data in test mode) - don't write.
     Skip,
 }
 
-/// `actual == None`: Pruefung VOR dem Lesen, `Some(len)`: danach.
+/// `actual == None`: check BEFORE reading, `Some(len)`: after.
 fn rar_entry_decision(declared: u64, actual: Option<usize>) -> Result<RarEntryDecision, ArchiveError> {
     match actual {
         None if declared > MAX_RAR_ENTRY_BYTES => Err(ArchiveError::LimitExceeded),
@@ -416,9 +411,8 @@ fn rar_entry_decision(declared: u64, actual: Option<usize>) -> Result<RarEntryDe
     }
 }
 
-/// Liest jeden RAR-Eintrag im Testmodus in den Speicher (siehe Modul-Doku)
-/// und schreibt ihn ueber den Extractor. Budget und Eintragsgroesse werden
-/// VOR dem Lesen geprueft.
+/// Reads every RAR entry into memory in test mode (see module docs) and writes
+/// it through the extractor. Budget and entry size are checked BEFORE reading.
 fn extract_rar(path: &Path, ex: &mut Extractor<'_>) -> Result<(), ArchiveError> {
     reject_multipart(path)?;
     let mut archive = unrar::Archive::new(path).open_for_processing().map_err(rar_error)?;
@@ -462,13 +456,13 @@ mod tests {
 
     #[test]
     fn rar_entry_decision_limits_size_and_skips_entries_without_matching_data() {
-        // Vor dem Lesen: zu grosse Eintraege werden gar nicht erst in den Speicher geholt.
+        // Before reading: oversized entries are never loaded into memory.
         assert!(matches!(
             rar_entry_decision(MAX_RAR_ENTRY_BYTES + 1, None),
             Err(ArchiveError::LimitExceeded)
         ));
         assert!(matches!(rar_entry_decision(MAX_RAR_ENTRY_BYTES, None), Ok(RarEntryDecision::Read)));
-        // Nach dem Lesen: Datei-Kopie/Hardlink-Eintraege haben eine Header-Groesse, aber keine Daten.
+        // After reading: file copy/hardlink entries have a header size but no data.
         assert!(matches!(rar_entry_decision(18, Some(0)), Ok(RarEntryDecision::Skip)));
         assert!(matches!(rar_entry_decision(18, Some(17)), Ok(RarEntryDecision::Skip)));
         assert!(matches!(rar_entry_decision(18, Some(18)), Ok(RarEntryDecision::Write)));

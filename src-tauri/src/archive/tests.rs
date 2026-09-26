@@ -27,7 +27,7 @@ fn is_model(path: &Path) -> bool {
         .is_some_and(|e| matches!(e.to_lowercase().as_str(), "stl" | "3mf" | "obj" | "stp" | "step"))
 }
 
-/// Inhalt, den jeder Rundlauf-Test verpackt und wieder erwartet.
+/// Content every round-trip test packs and expects back.
 const SAMPLE: &[(&str, &[u8])] = &[
     ("Benchy/benchy.stl", b"solid benchy\nendsolid benchy\n"),
     ("Benchy/README.txt", b"Lizenz: CC-BY"),
@@ -90,7 +90,7 @@ fn assert_sample_extracted(dest: &Path) {
     }
 }
 
-// ---------- Format-Erkennung & Namen ----------
+// ---------- Format detection & names ----------
 
 #[test]
 fn detect_format_prefers_multi_part_suffixes_and_ignores_case() {
@@ -114,7 +114,7 @@ fn folder_name_for_strips_archive_suffix_and_sanitizes() {
     assert_eq!(folder_name_for(Path::new("/dl/....zip")), "Archiv");
 }
 
-// ---------- Pfad-Sicherheit ----------
+// ---------- Path safety ----------
 
 #[test]
 fn safe_relative_path_rejects_traversal_absolute_and_drive_paths() {
@@ -146,13 +146,13 @@ fn sanitize_component_covers_all_windows_device_names_and_trailing_stem_padding(
     assert_eq!(sanitize_component("conout$.txt"), "_conout$.txt");
     assert_eq!(sanitize_component("COM0.stl"), "_COM0.stl");
     assert_eq!(sanitize_component("lpt0"), "_lpt0");
-    // Windows ignoriert Leerzeichen/Punkte am Ende des Stamms: "CON .txt" ist CON.
+    // Windows ignores trailing spaces/dots of the stem: "CON .txt" is CON.
     assert_eq!(sanitize_component("CON .txt"), "_CON .txt");
     assert_eq!(sanitize_component("aux..stl"), "_aux..stl");
     assert_eq!(sanitize_component("CONSOLE .txt"), "CONSOLE .txt");
 }
 
-// ---------- Rundlauf pro Format ----------
+// ---------- Round trip per format ----------
 
 fn roundtrip(archive_name: &str, build: impl FnOnce(&Path)) {
     let dir = unique_dir("roundtrip");
@@ -236,7 +236,7 @@ fn inspect_reports_too_large_for_too_many_entries() {
     assert_eq!(inspect(&path, is_model).status, InspectStatus::TooLarge);
 }
 
-// ---------- Sicherheit beim Entpacken ----------
+// ---------- Safety while extracting ----------
 
 #[test]
 fn zip_slip_entries_are_skipped_and_nothing_escapes() {
@@ -265,7 +265,7 @@ fn tar_traversal_entry_is_skipped() {
     let archive = dir.join("boese.tar");
     let mut builder = tar::Builder::new(Vec::new());
     let mut header = tar::Header::new_old();
-    // append_data lehnt ".." ab - deshalb den Namen roh ins Header-Feld.
+    // append_data rejects ".." - so write the name raw into the header field.
     let name = b"../evil.stl";
     header.as_old_mut().name[..name.len()].copy_from_slice(name);
     header.set_size(1);
@@ -330,7 +330,7 @@ fn merge_does_not_follow_an_existing_symlinked_subfolder() {
     assert_eq!(fs::read_dir(&outside).unwrap().count(), 0);
 }
 
-// ---------- Konflikte ----------
+// ---------- Conflicts ----------
 
 #[test]
 fn new_mode_refuses_an_existing_destination() {
@@ -361,7 +361,7 @@ fn merge_keeps_existing_files_byte_identical_and_counts_them() {
     assert!(dest.join("Benchy/teile/rumpf.3mf").exists());
 }
 
-// ---------- Byte-Budget & Aufraeumen ----------
+// ---------- Byte budget & cleanup ----------
 
 #[test]
 fn exceeding_the_byte_budget_aborts_and_removes_a_new_destination() {
@@ -389,7 +389,7 @@ fn exceeding_the_byte_budget_in_merge_mode_restores_the_previous_state() {
     assert_eq!(remaining, vec![std::ffi::OsString::from("alt.txt")]);
 }
 
-// ---------- Haertung ----------
+// ---------- Hardening ----------
 
 #[test]
 fn sanitize_component_neutralizes_bidi_and_zero_width_chars_and_superscript_devices() {

@@ -1,35 +1,31 @@
 #!/usr/bin/env bash
 #
-# Entfernt die zehn Display-Stack-Bibliotheken, die Tauris Standard-
-# AppImage-Bundling (ueber linuxdeploy) unnoetig mitbuendelt und die auf
-# Hosts mit neuerem Mesa zum Absturz fuehren:
+# Removes the ten display stack libraries that Tauri's default AppImage bundling
+# (via linuxdeploy) needlessly bundles and that crash on hosts with a newer Mesa:
 #
 #   Could not create default EGL display: EGL_BAD_PARAMETER. Aborting...
 #
-# Ursache: linuxdeploy's eingebaute Ausschlussliste deckt libEGL/libGL/
-# libdrm/libc bereits ab, nicht aber libwayland-*/libxkbcommon/libxcb-*/
-# libXau/libXdmcp. Die im AppImage mitgelieferte, veraltete Kopie (vom
-# Build-Runner, hier ubuntu-24.04) wird per LD_LIBRARY_PATH VOR der
-# System-Kopie des Zielrechners geladen; WebKitGTKs EGL-Initialisierung
-# scheitert dann an der Versions-Inkompatibilitaet mit dem neueren Mesa
-# des Zielrechners, obwohl die Host-Bibliotheken (Wayland 1.25+,
-# xkbcommon 1.13+) laengst ABI-kompatibel gewesen waeren.
+# Cause: linuxdeploy's built-in exclude list already covers libEGL/libGL/libdrm/
+# libc, but not libwayland-*/libxkbcommon/libxcb-*/libXau/libXdmcp. The outdated
+# copy bundled in the AppImage (from the build runner, here ubuntu-24.04) is
+# loaded via LD_LIBRARY_PATH BEFORE the target machine's system copy; WebKitGTK's
+# EGL initialization then fails on the version mismatch with the newer Mesa,
+# although the host libraries (Wayland 1.25+, xkbcommon 1.13+) would have been
+# ABI-compatible long ago.
 #
-# Verifizierter Fix (siehe github.com/tauri-apps/tauri Issue #15976,
-# unabhaengig bestaetigt an einem zweiten, nicht-Tauri-Projekt mit
-# demselben linuxdeploy-Bundling): genau diese zehn Bibliotheken aus dem
-# AppDir entfernen, bevor `appimagetool` das finale AppImage baut - der
-# Rest (glib, gstreamer, webkit2gtk selbst) bleibt unangetastet. Ein
-# Tauri-eigenes `bundle.linux.appimage.excludeLibraries`-Config-Feld ist
-# in Arbeit (PR #15662), aber in der aktuell verwendeten Tauri-Version
-# (2.11.4) noch nicht verfuegbar - deshalb dieser Nachbearbeitungsschritt
-# statt einer Config-Option.
+# Verified fix (see github.com/tauri-apps/tauri issue #15976, independently
+# confirmed on a second, non-Tauri project with the same linuxdeploy bundling):
+# remove exactly these ten libraries from the AppDir before `appimagetool` builds
+# the final AppImage - the rest (glib, gstreamer, webkit2gtk itself) stays
+# untouched. A Tauri config field `bundle.linux.appimage.excludeLibraries` is in
+# progress (PR #15662) but not available in the Tauri version in use (2.11.4) -
+# hence this post-processing step instead of a config option.
 #
 # Usage:
-#   ./src-tauri/scripts/fix-appimage-egl-linux.sh <pfad-zum-AppImage>
+#   ./src-tauri/scripts/fix-appimage-egl-linux.sh <path-to-AppImage>
 #
-# Ersetzt die Datei an Ort und Stelle (extrahieren, Bibliotheken
-# entfernen, mit appimagetool neu bauen, Original ueberschreiben).
+# Replaces the file in place (extract, remove libraries, rebuild with
+# appimagetool, overwrite the original).
 
 set -euo pipefail
 
@@ -49,9 +45,8 @@ chmod +x "$APPIMAGE_ABS"
 cd "$WORKDIR"
 "$APPIMAGE_ABS" --appimage-extract >/dev/null
 
-# Die zehn Bibliotheken aus dem verifizierten Minimal-Fix (Issue #15976) -
-# absichtlich nicht mehr und nicht weniger, um den Rest des Bundles
-# unveraendert zu lassen.
+# The ten libraries from the verified minimal fix (issue #15976) - deliberately
+# no more and no less, to leave the rest of the bundle unchanged.
 LIBS_TO_REMOVE=(
     libwayland-client.so.0
     libwayland-cursor.so.0
@@ -72,9 +67,9 @@ for lib in "${LIBS_TO_REMOVE[@]}"; do
     fi
 done
 
-# appimagetool selbst als AppImage herunterladen und ohne FUSE ausfuehren
-# (GitHub-Actions-Runner haben kein FUSE fuer AppImages im Container-Sinn,
-# --appimage-extract-and-run umgeht das zuverlaessig).
+# Download appimagetool itself as an AppImage and run it without FUSE (GitHub
+# Actions runners have no FUSE for AppImages; --appimage-extract-and-run works
+# around that reliably).
 wget -q "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage" -O appimagetool.AppImage
 chmod +x appimagetool.AppImage
 

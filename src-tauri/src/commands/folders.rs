@@ -49,9 +49,9 @@ pub fn list_folders(state: State<AppState>) -> CmdResult<Vec<FolderDto>> {
 
     Ok(dtos)
 }
-/// `name` landet in `join`/`with_file_name` und muss eine einzelne, harmlose
-/// Pfad-Komponente sein: "../../etc/x" oder "/etc/x" wuerden sonst ausserhalb
-/// des Katalogs anlegen, allein per Texteingabe (CWE-22).
+/// `name` ends up in `join`/`with_file_name` and must be a single harmless path
+/// component: "../../etc/x" or "/etc/x" would otherwise create outside the
+/// catalog, just by typing text (CWE-22).
 fn validate_folder_name(name: &str) -> CmdResult<()> {
     if name.trim().is_empty() {
         return Err("Ordnername darf nicht leer sein".to_string());
@@ -64,11 +64,10 @@ fn validate_folder_name(name: &str) -> CmdResult<()> {
     }
     Ok(())
 }
-/// Legt einen echten Ordner auf der Platte an (unterhalb eines bestehenden
-/// Ordners, oder - bei `parent_id: None` - unterhalb eines vom Nutzer per
-/// Dialog gewaehlten Basisverzeichnisses) und eine dazu passende
-/// `folders`-Zeile. Schlaegt fehl, wenn der Zielpfad bereits existiert
-/// (`std::fs::create_dir`, kein `create_dir_all`).
+/// Creates a real folder on disk (below an existing folder, or - with
+/// `parent_id: None` - below a base directory the user picked in a dialog) and a
+/// matching `folders` row. Fails if the target already exists (`std::fs::create_dir`,
+/// not `create_dir_all`).
 #[tauri::command]
 pub async fn create_folder(
     app: tauri::AppHandle,
@@ -113,7 +112,7 @@ pub async fn create_folder(
         count: 0,
     })
 }
-/// Kernlogik von `rename_folder`, ohne `State`, damit testbar.
+/// Core logic of `rename_folder`, without `State`, so it's testable.
 fn rename_folder_with_conn(
     conn: &Connection,
     id: i64,
@@ -153,16 +152,16 @@ fn rename_folder_with_conn(
     }
     Ok(())
 }
-/// Benennt einen echten Ordner auf der Platte um (`std::fs::rename`) und
-/// aktualisiert `folders.name` sowie rekursiv `folders.path`/`files.path`
-/// fuer den Ordner selbst und alle Nachfahren (beliebige Tiefe).
+/// Renames a real folder on disk (`std::fs::rename`) and updates `folders.name`
+/// plus, recursively, `folders.path`/`files.path` for the folder and all its
+/// descendants.
 #[tauri::command]
 pub fn rename_folder(state: State<AppState>, folder_id: String, name: String) -> CmdResult<()> {
     let id: i64 = folder_id.parse().map_err(|_| "invalid folder id".to_string())?;
     let conn = lock_db(&state)?;
     rename_folder_with_conn(&conn, id, name, &state.sensitive_dirs)
 }
-/// Ob `candidate_id` (direkter oder indirekter) Nachfahre von `ancestor_id` ist.
+/// Whether `candidate_id` is a (direct or indirect) descendant of `ancestor_id`.
 fn is_descendant(folders: &[db::models::FolderRecord], candidate_id: i64, ancestor_id: i64) -> bool {
     let mut current = candidate_id;
     while let Some(f) = folders.iter().find(|f| f.id == current) {
@@ -174,7 +173,7 @@ fn is_descendant(folders: &[db::models::FolderRecord], candidate_id: i64, ancest
     }
     false
 }
-/// Kernlogik von `move_folder`, ohne `State`, damit testbar.
+/// Core logic of `move_folder`, without `State`, so it's testable.
 fn move_folder_with_conn(
     conn: &Connection,
     id: i64,
@@ -182,8 +181,8 @@ fn move_folder_with_conn(
     sensitive_dirs: &[PathBuf],
 ) -> CmdResult<()> {
     let Some(target) = target else {
-        // Es gibt kein "an die Wurzel verschieben": die Platte bliebe unveraendert,
-        // die DB saehe aber keinen Parent mehr.
+        // There's no "move to root": the disk would stay unchanged, but the DB would
+        // no longer see a parent.
         return Err("Ein Ordner kann nicht ohne Zielordner verschoben werden".to_string());
     };
 
@@ -211,9 +210,9 @@ fn move_folder_with_conn(
     }
     std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())?;
 
-    // Parent und Pfade in einer Transaktion, damit die DB nie halb aktualisiert
-    // ist, waehrend die Platte schon verschoben ist. unchecked_transaction, weil
-    // nur `&Connection` vorliegt.
+    // Parent and paths in one transaction, so the DB is never half-updated while
+    // the disk has already moved. unchecked_transaction because we only have
+    // `&Connection`.
     let db_result = (|| -> Result<(), DbError> {
         let tx = conn.unchecked_transaction()?;
         db::set_folder_parent(&tx, id, target)?;
@@ -233,9 +232,8 @@ fn move_folder_with_conn(
     }
     Ok(())
 }
-/// Verschiebt einen Ordner auf der Platte unter einen anderen Elternordner und
-/// zieht `parent_id` sowie alle Pfade darunter nach. Lehnt Zyklen und
-/// `new_parent_id: None` ab.
+/// Moves a folder on disk below another parent folder and updates `parent_id`
+/// and all paths below. Rejects cycles and `new_parent_id: None`.
 #[tauri::command]
 pub fn move_folder(state: State<AppState>, folder_id: String, new_parent_id: Option<String>) -> CmdResult<()> {
     let id: i64 = folder_id.parse().map_err(|_| "invalid folder id".to_string())?;
@@ -246,8 +244,8 @@ pub fn move_folder(state: State<AppState>, folder_id: String, new_parent_id: Opt
     let conn = lock_db(&state)?;
     move_folder_with_conn(&conn, id, target, &state.sensitive_dirs)
 }
-// async, weil blocking_pick_folder() bis zum Schliessen des Dialogs blockiert.
-// Der gewaehlte Ordner gilt danach als erlaubtes Entpack-Ziel (`ApprovedTargets`).
+// async because blocking_pick_folder() blocks until the dialog closes. The
+// picked folder then counts as an allowed extraction target (`ApprovedTargets`).
 #[tauri::command]
 pub async fn pick_folder_path(
     app: tauri::AppHandle,
@@ -260,7 +258,7 @@ pub async fn pick_folder_path(
     }
     Ok(path.map(|p| p.to_string_lossy().to_string()))
 }
-/// Kernlogik von `register_catalog_base_dir`, ohne `State`, damit testbar.
+/// Core logic of `register_catalog_base_dir`, without `State`, so it's testable.
 fn register_catalog_base_dir_with_conn(conn: &Connection, dir: &Path) -> CmdResult<FolderDto> {
     if !dir.exists() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
@@ -279,8 +277,8 @@ fn register_catalog_base_dir_with_conn(conn: &Connection, dir: &Path) -> CmdResu
         count: 0,
     })
 }
-/// Registriert ein gewaehltes Basisverzeichnis als Katalog-Wurzel: legt es bei
-/// Bedarf an und sorgt idempotent fuer eine `folders`-Zeile.
+/// Registers a picked base directory as the catalog root: creates it if needed
+/// and idempotently ensures a `folders` row.
 #[tauri::command]
 pub fn register_catalog_base_dir(state: State<AppState>, path: String) -> CmdResult<FolderDto> {
     let dir = std::path::PathBuf::from(&path);
@@ -288,17 +286,17 @@ pub fn register_catalog_base_dir(state: State<AppState>, path: String) -> CmdRes
     register_catalog_base_dir_with_conn(&conn, &dir)
 }
 
-/// Wie `register_catalog_base_dir_with_conn`, aber legt NIE ein Verzeichnis
-/// an: Beim App-Start soll ein inzwischen geloeschter Speicherort nicht
-/// stillschweigend neu entstehen. `None`, wenn der Ordner fehlt.
+/// Like `register_catalog_base_dir_with_conn`, but NEVER creates a directory:
+/// at startup a storage location deleted in the meantime must not silently
+/// reappear. `None` if the folder is missing.
 fn register_existing_catalog_base_dir_with_conn(conn: &Connection, dir: &Path) -> CmdResult<Option<FolderDto>> {
     if !dir.is_dir() {
         return Ok(None);
     }
     register_catalog_base_dir_with_conn(conn, dir).map(Some)
 }
-/// Beim Start aufgerufen: stellt sicher, dass ein gesetzter Speicherort
-/// eine Ordnerzeile hat (u.a. damit er als Entpack-Ziel gilt, siehe
+/// Called at startup: makes sure a configured storage location has a folder row
+/// (among other things so it counts as an extraction target, see
 /// `target_is_approved`).
 #[tauri::command]
 pub fn register_existing_catalog_base_dir(state: State<AppState>, path: String) -> CmdResult<Option<FolderDto>> {
@@ -327,7 +325,7 @@ mod tests {
 
     #[test]
     fn register_catalog_base_dir_creates_missing_directory_and_is_idempotent() {
-        // Das Zielverzeichnis soll noch fehlen: nur den eindeutigen Pfad nutzen.
+        // The target directory should still be missing: only use the unique path.
         let base = unique_test_dir("register-base-dir");
         std::fs::remove_dir_all(&base).expect("remove freshly created test dir");
         assert!(!base.exists());
@@ -360,7 +358,7 @@ mod tests {
         let result = move_folder_with_conn(&conn, a_id, Some(b_id), &[]);
         assert!(result.is_err(), "moving A into its own descendant B must be rejected");
 
-        // Weder Platte noch DB duerfen veraendert worden sein.
+        // Neither disk nor DB may have changed.
         assert!(a_dir.exists());
         assert!(b_dir.exists());
         let folders = db::list_folders(&conn).expect("list_folders");
@@ -371,7 +369,7 @@ mod tests {
     }
     #[test]
     fn move_folder_rejects_none_target() {
-        // move_folder(id, None) muss abgelehnt werden (siehe move_folder_with_conn).
+        // move_folder(id, None) must be rejected (see move_folder_with_conn).
         let tmp = unique_test_dir("move_folder_none_target");
         let a_dir = tmp.join("A");
         let b_dir = a_dir.join("B");
@@ -393,7 +391,7 @@ mod tests {
     }
     #[test]
     fn validate_folder_name_rejects_path_traversal_and_separators() {
-        // create_folder/rename_folder duerfen `name` nie ungeprueft verwenden (CWE-22).
+        // create_folder/rename_folder must never use `name` unchecked (CWE-22).
         assert!(validate_folder_name("../etc").is_err());
         assert!(validate_folder_name("../../tmp/evil").is_err());
         assert!(validate_folder_name("a/b").is_err());
@@ -483,7 +481,7 @@ mod tests {
             std::fs::write(path, &buf).expect("write temp file");
         }
 
-        // Drei Ebenen, damit ein Rekursionsfehler in update_paths_under_folder auffaellt.
+        // Three levels, so a recursion bug in update_paths_under_folder shows up.
         let tmp = unique_test_dir("move_folder_descendants");
         let a_dir = tmp.join("A");
         let b_dir = a_dir.join("B");
@@ -553,7 +551,7 @@ mod tests {
             std::fs::write(path, &buf).expect("write temp file");
         }
 
-        // Drei Ebenen: B, C und die Datei muessen mitgezogen werden.
+        // Three levels: B, C and the file must all follow.
         let tmp = unique_test_dir("rename_folder_descendants");
         let a_dir = tmp.join("A");
         let b_dir = a_dir.join("B");
@@ -600,8 +598,8 @@ mod tests {
     }
     #[test]
     fn rename_folder_with_non_ascii_name_produces_correct_child_paths() {
-        // substr() zaehlt Zeichen, nicht Bytes: bei einem Umlaut wuerde ein
-        // Byte-Offset das Trennzeichen verschlucken ("Neumodel.3mf").
+        // substr() counts characters, not bytes: with a non-ASCII character a byte
+        // offset would swallow the separator ("Neumodel.3mf").
         use std::io::Write;
         use zip::write::SimpleFileOptions;
         use zip::ZipWriter;
@@ -659,7 +657,7 @@ mod tests {
 
         let conn = db::connect_in_memory().unwrap();
         let folder_id = db::insert_folder_with_parent(&conn, "Alt", None, &dir.join("Alt").to_string_lossy()).unwrap();
-        // folders.path ist UNIQUE: erzwingt einen DB-Fehler nach dem Umbenennen.
+        // folders.path is UNIQUE: forces a DB error after the rename.
         db::insert_folder_with_parent(&conn, "Neu", None, &dir.join("Neu").to_string_lossy()).unwrap();
 
         let result = rename_folder_with_conn(&conn, folder_id, "Neu".to_string(), &[]);

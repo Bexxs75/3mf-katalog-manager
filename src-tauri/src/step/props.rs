@@ -1,4 +1,4 @@
-//! Masse, Volumen und Koerperzahl einer Shape.
+//! Dimensions, volume and body count of a shape.
 
 use opencascade_sys::{
     b_rep_bnd_lib::BRepBndLib, b_rep_g_prop::BRepGProp, bnd::Bnd_Box_new, g_prop::GProps_new,
@@ -7,8 +7,8 @@ use opencascade_sys::{
 
 use crate::geometry::BoundingBox;
 
-/// Umschliessende Box in Millimetern. `use_triangulation = false`: die Masse
-/// werden vor der Tessellierung gebraucht und sollen exakt sein.
+/// Bounding box in millimeters. `use_triangulation = false`: the dimensions are
+/// needed before tessellation and should be exact.
 pub fn bounding_box(shape: &TopoDS_Shape) -> Option<BoundingBox> {
     let mut bnd = Bnd_Box_new();
     BRepBndLib::Add(shape, bnd.pin_mut(), false);
@@ -32,8 +32,8 @@ pub fn bounding_box(shape: &TopoDS_Shape) -> Option<BoundingBox> {
     bb.is_valid().then_some(bb)
 }
 
-/// Volumen in cm^3 - dieselbe Konvention wie in den bestehenden Parsern:
-/// Kubikmillimeter geteilt durch 1000. Offene Geometrie liefert `None`.
+/// Volume in cm^3 - same convention as the existing parsers: cubic millimeters
+/// divided by 1000. Open geometry returns `None`.
 pub fn volume_cm3(shape: &TopoDS_Shape) -> Option<f64> {
     let mut props = GProps_new();
     BRepGProp::VolumeProperties(shape, props.pin_mut(), true, false, false);
@@ -42,8 +42,8 @@ pub fn volume_cm3(shape: &TopoDS_Shape) -> Option<f64> {
     (volume_mm3 > 0.0).then_some(volume_mm3 / 1000.0)
 }
 
-/// Anzahl der SOLID-Koerper. Gibt es keine Solids, aber Geometrie, gilt sie als
-/// ein Koerper; die Baugruppenstruktur bleibt reine Metadaten-Information.
+/// Number of SOLID bodies. Without solids but with geometry, it counts as one
+/// body; the assembly structure stays pure metadata.
 pub fn body_count(shape: &TopoDS_Shape) -> usize {
     let mut solids = 0usize;
     let mut explorer = TopExp_Explorer_new(shape, TopAbs_ShapeEnum::TopAbs_SOLID);

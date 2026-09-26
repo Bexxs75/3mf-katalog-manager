@@ -4,8 +4,7 @@ use std::collections::BTreeMap;
 pub enum FileType {
     ThreeMf,
     Stl,
-    // Deckt sowohl .stp- als auch .step-Dateien ab - der DB-Wert ist
-    // unabhaengig von der urspruenglichen Endung immer "stp" (kanonisch).
+    // Covers both .stp and .step files - the DB value is always "stp" (canonical), regardless of the original extension.
     Stp,
     Obj,
 }
@@ -69,8 +68,7 @@ pub struct NewFile {
     pub slice_info_json: Option<String>,
 }
 
-/// Felder, die `rescan_file` beim erneuten Einlesen immer ueberschreibt (voller
-/// Refresh, kein Merge).
+/// Fields `rescan_file` always overwrites when re-reading (full refresh, no merge).
 pub struct ScannedMetadataUpdate {
     pub dimensions_mm: Option<[f64; 3]>,
     pub volume_cm3: Option<f64>,
@@ -89,15 +87,14 @@ pub struct FileRecord {
     pub id: i64,
     pub name: String,
     pub path: String,
-    // In DB indiziert (idx_files_file_type) fuer eine geplante, noch nicht
-    // gebaute STL/3MF-Filterung - deshalb nicht entfernt, obwohl aktuell
-    // nirgends gelesen.
+    // Indexed in the DB (idx_files_file_type) for a planned, not yet built STL/3MF
+    // filter - hence not removed, although currently never read.
     #[allow(dead_code)]
     pub file_type: FileType,
     pub folder_id: Option<i64>,
     pub origin: String,
     pub sync_status: String,
-    // Rest der entfernten Cloud-Synchronisation; Spalte bewusst nicht gedroppt.
+    // Leftover of the removed cloud sync; column deliberately not dropped.
     #[allow(dead_code)]
     pub cloud_id: Option<String>,
     pub file_size_bytes: i64,
@@ -106,8 +103,7 @@ pub struct FileRecord {
     pub object_count: Option<i64>,
     pub thumbnail_png: Option<Vec<u8>>,
     pub imported_at: String,
-    // Wird beim Import nie gesetzt (immer None) - keine echte mtime-Erfassung
-    // implementiert, Spalte existiert bereits im Schema.
+    // Never set on import (always None) - no real mtime tracking implemented, the column already exists in the schema.
     #[allow(dead_code)]
     pub file_modified_at: Option<String>,
     pub materials: Vec<MaterialRecord>,
@@ -136,7 +132,7 @@ pub struct FolderRecord {
     pub path: String,
 }
 
-/// Maschinenlokale Registry vertrauenswuerdiger Slicer (siehe `replace_catalog_db`).
+/// Machine-local registry of trusted slicers (see `replace_catalog_db`).
 #[derive(Debug, Clone)]
 pub struct RegisteredSlicer {
     pub id: i64,
@@ -158,9 +154,8 @@ pub struct CreatorCount {
     pub count: i64,
 }
 
-/// Art eines Lager-Eintrags. Bei `SPOOL_KIND_RESIN` bedeuten
-/// `original_weight_g`/`remaining_weight_g` Milliliter; Resin steckt nie in
-/// einem Filament-Fach.
+/// Kind of a stock entry. For `SPOOL_KIND_RESIN`, `original_weight_g`/
+/// `remaining_weight_g` are milliliters; resin never sits in a filament slot.
 pub const SPOOL_KIND_FILAMENT: &str = "filament";
 pub const SPOOL_KIND_RESIN: &str = "resin";
 pub const SPOOL_KINDS: &[&str] = &[SPOOL_KIND_FILAMENT, SPOOL_KIND_RESIN];
@@ -178,7 +173,7 @@ pub struct FilamentSpoolRecord {
     pub price: Option<f64>,
     pub image_png: Option<Vec<u8>>,
     pub color_hex: Option<String>,
-    /// Stammplatz, solange die Spule in einem Fach steckt (sonst `None`).
+    /// Home location while the spool sits in a slot (otherwise `None`).
     pub home_location: Option<String>,
     pub unit_id: Option<i64>,
     pub slot_index: Option<i64>,
@@ -204,7 +199,7 @@ pub struct NewFilamentSpool {
 pub struct PrinterRecord {
     pub id: i64,
     pub name: String,
-    /// "filament" oder "resin".
+    /// "filament" or "resin".
     pub kind: String,
 }
 
@@ -227,8 +222,8 @@ pub struct SavedFilterRecord {
     pub creator: Option<String>,
     pub query: Option<String>,
     pub sort: String,
-    // Nach dem Laden im Rust-Code nie gelesen, aber die Spalte selbst treibt
-    // "ORDER BY created_at" in list_saved_filters() - funktional nicht tot.
+    // Never read in Rust after loading, but the column itself drives
+    // "ORDER BY created_at" in list_saved_filters() - not actually dead.
     #[allow(dead_code)]
     pub created_at: String,
 }

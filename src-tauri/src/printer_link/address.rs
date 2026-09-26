@@ -1,5 +1,5 @@
-//! Nur Adressen im Heimnetz. Die Prüfung läuft bei jedem Verbindungsaufbau
-//! erneut, und verbunden wird zur geprüften IP (kein zweiter DNS-Lookup).
+//! Home network addresses only. The check runs again on every connection, and
+//! the connection goes to the checked IP (no second DNS lookup).
 
 use std::net::{IpAddr, ToSocketAddrs};
 
@@ -34,8 +34,8 @@ fn parse_port(s: &str) -> Result<u16, LinkError> {
     }
 }
 
-/// Zerlegt "host", "host:port", "[ipv6]:port" oder eine nackte IPv6-Adresse.
-/// Kein Schema, kein Pfad, keine Anmeldedaten.
+/// Splits "host", "host:port", "[ipv6]:port" or a bare IPv6 address.
+/// No scheme, no path, no credentials.
 pub fn split_host_port(input: &str) -> Result<(String, Option<u16>), LinkError> {
     let s = input.trim();
     if s.is_empty() || s.contains("://") || s.contains('/') || s.contains('@') || s.contains(char::is_whitespace) {
@@ -84,7 +84,7 @@ pub fn is_allowed_ip(ip: IpAddr, policy: AddressPolicy) -> bool {
     }
 }
 
-/// Löst die Adresse auf und prüft JEDE aufgelöste IP. Bevorzugt IPv4.
+/// Resolves the address and checks EVERY resolved IP. Prefers IPv4.
 pub fn resolve(input: &str, policy: AddressPolicy) -> Result<Target, LinkError> {
     let (host, port) = split_host_port(input)?;
     if let Ok(ip) = host.parse::<IpAddr>() {
@@ -105,9 +105,9 @@ pub fn resolve(input: &str, policy: AddressPolicy) -> Result<Target, LinkError> 
     Ok(Target { ip, port })
 }
 
-/// Prüfung ohne DNS (für das Wiederherstellen einer Sicherung): Syntax
-/// stimmt, und eine wörtliche IP muss im Heimnetz liegen. Namen werden
-/// erst beim nächsten Verbindungstest aufgelöst.
+/// Check without DNS (for restoring a backup): the syntax is valid and a literal
+/// IP must be on the home network. Names are only resolved at the next
+/// connection test.
 pub fn looks_valid(input: &str) -> bool {
     match split_host_port(input) {
         Ok((host, _)) => match host.parse::<IpAddr>() {

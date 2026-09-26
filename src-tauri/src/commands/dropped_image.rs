@@ -1,18 +1,17 @@
-//! Bild per Drag & Drop in das Spulenformular.
+//! Image drag & drop into the spool form.
 //!
-//! Unter `dragDropEnabled` kommen Datei-Drops nur als Tauri-Ereignis an; das
-//! Frontend kennt dann den Pfad und fragt `read_dropped_image` an. Damit daraus
-//! kein beliebiges Datei-Lesen wird (gleiches Muster wie `import_dropped` +
-//! `PendingArchives`): Das Backend merkt sich die Bildpfade selbst aus dem
-//! Fenster-Ereignis `DragDrop::Drop` (siehe `lib.rs`) und liest nur diese,
-//! jeden hoechstens einmal, mit derselben Groessen- und Formatpruefung wie der
-//! Klick-Upload (`pick_and_read_image`).
+//! With `dragDropEnabled`, file drops only arrive as a Tauri event; the frontend
+//! then knows the path and requests `read_dropped_image`. So this doesn't become
+//! arbitrary file reading (same pattern as `import_dropped` + `PendingArchives`),
+//! the backend remembers the image paths itself from the `DragDrop::Drop` window
+//! event (see `lib.rs`) and only reads those, each at most once, with the same
+//! size and format check as the click upload (`pick_and_read_image`).
 
 use super::*;
 
 use super::files::{read_image_bounded, MAX_CUSTOM_IMAGE_BYTES};
 
-/// Wie der Dateidialog-Filter von `pick_and_read_image`.
+/// Same as the file dialog filter of `pick_and_read_image`.
 const DROPPABLE_IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp"];
 
 pub(crate) fn is_droppable_image_path(path: &Path) -> bool {
@@ -22,14 +21,14 @@ pub(crate) fn is_droppable_image_path(path: &Path) -> bool {
         .is_some_and(|e| DROPPABLE_IMAGE_EXTENSIONS.contains(&e.as_str()))
 }
 
-/// Bildpfade des letzten vom Backend beobachteten Drops.
+/// Image paths of the last drop observed by the backend.
 #[derive(Default)]
 pub struct DroppedImages {
     observed: Mutex<HashSet<PathBuf>>,
 }
 
 impl DroppedImages {
-    /// Vom Fenster-Ereignis `DragDrop::Drop` aufgerufen; ersetzt den vorigen Drop.
+    /// Called from the `DragDrop::Drop` window event; replaces the previous drop.
     pub(crate) fn observe_drop(&self, paths: &[PathBuf]) {
         if let Ok(mut set) = self.observed.lock() {
             set.clear();
@@ -37,7 +36,7 @@ impl DroppedImages {
         }
     }
 
-    /// Verbraucht die Freigabe fuer `path`.
+    /// Consumes the approval for `path`.
     pub(crate) fn claim(&self, path: &Path) -> bool {
         self.observed.lock().map(|mut set| set.remove(path)).unwrap_or(false)
     }

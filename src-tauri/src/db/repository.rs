@@ -29,16 +29,15 @@ pub(crate) fn init(conn: &mut Connection) -> Result<(), DbError> {
     conn.pragma_update(None, "foreign_keys", true)?;
     conn.execute_batch(SCHEMA_SQL)?;
     super::migrations::run_migrations(conn)?;
-    // Kein Abbruch: ein Fehler hier darf den Start nicht verhindern, die
-    // Transaktion in merge_auto_tag_aliases rollt dann zurueck.
+    // Don't abort: an error here must not prevent startup; the transaction in
+    // merge_auto_tag_aliases rolls back.
     if let Err(e) = merge_auto_tag_aliases(conn) {
         eprintln!("[tags] Zusammenlegen der Namen automatischer Tags fehlgeschlagen: {e}");
     }
     Ok(())
 }
 
-// Nur fuer Tests: minimale files-Zeile (Name aus dem letzten Pfadsegment),
-// ohne den vollen `insert_file`-Weg.
+// Tests only: minimal files row (name from the last path segment), without the full `insert_file` path.
 #[cfg(test)]
 pub fn test_insert_minimal_file(conn: &Connection, path: &str, folder_id: Option<i64>) -> Result<i64, DbError> {
     let name = Path::new(path)
@@ -53,10 +52,10 @@ pub fn test_insert_minimal_file(conn: &Connection, path: &str, folder_id: Option
     Ok(conn.last_insert_rowid())
 }
 
-// Nur fuer Tests: folders-Zeile ohne parent_id und ohne echtes Verzeichnis.
+// Tests only: folders row without parent_id and without a real directory.
 #[cfg(test)]
 pub fn insert_folder(conn: &Connection, name: &str) -> Result<i64, DbError> {
-    // Synthetischer Pfad, weil `path` in Rust nicht optional ist.
+    // Synthetic path, because `path` isn't optional in Rust.
     conn.execute(
         "INSERT INTO folders (name, path) VALUES (?1, ?1)",
         params![name],
@@ -79,9 +78,8 @@ pub fn list_folders(conn: &Connection) -> Result<Vec<FolderRecord>, DbError> {
     Ok(rows)
 }
 
-/// Legt fuer jede Verzeichnisebene von `import_root` bis `dir` (beide inklusive)
-/// einen folders-Eintrag an, falls er fehlt (idempotent ueber `path`). Gibt die
-/// id von `dir` zurueck.
+/// Creates a folders row for every directory level from `import_root` to `dir`
+/// (both inclusive) if missing (idempotent via `path`). Returns the id of `dir`.
 pub fn ensure_folder_path(conn: &Connection, import_root: &Path, dir: &Path) -> Result<i64, DbError> {
     let relative = dir.strip_prefix(import_root).map_err(|_| {
         DbError::Other(format!(
@@ -110,12 +108,11 @@ pub fn ensure_folder_path(conn: &Connection, import_root: &Path, dir: &Path) -> 
     Ok(parent_id.expect("mindestens import_root wurde oben eingefuegt"))
 }
 
-/// Haengt einen bisher als Wurzel angelegten Ordner (`parent_id IS NULL`)
-/// unter den katalogisierten Ordner, dessen `path` dem Elternverzeichnis
-/// entspricht. Noetig nach dem Entpacken eines Archivs: `ensure_folder_path`
-/// legt das Import-Wurzelverzeichnis immer als Wurzel an, auch wenn sein
-/// Elternverzeichnis bereits ein Katalogordner ist. Ohne katalogisierten
-/// Elternordner oder bei bereits eingehaengten Ordnern passiert nichts.
+/// Attaches a folder created as a root (`parent_id IS NULL`) below the cataloged
+/// folder whose `path` is its parent directory. Needed after extracting an
+/// archive: `ensure_folder_path` always creates the import root as a root, even
+/// if its parent is already a catalog folder. Does nothing without a cataloged
+/// parent or for folders that are already attached.
 pub fn attach_folder_to_parent_by_path(conn: &Connection, dir: &Path) -> Result<(), DbError> {
     let Some(parent) = dir.parent() else {
         return Ok(());
@@ -135,8 +132,8 @@ fn folder_name(path: &Path) -> String {
         .unwrap_or_else(|| path.to_string_lossy().to_string())
 }
 
-/// Legt IMMER eine neue Zeile an, anders als `find_or_insert_folder`. Einen
-/// schon existierenden Zielpfad faengt `create_dir` vorher mit `AlreadyExists` ab.
+/// ALWAYS inserts a new row, unlike `find_or_insert_folder`. An existing target
+/// path is caught earlier by `create_dir` with `AlreadyExists`.
 pub fn insert_folder_with_parent(
     conn: &Connection,
     name: &str,
@@ -150,8 +147,8 @@ pub fn insert_folder_with_parent(
     Ok(conn.last_insert_rowid())
 }
 
-/// Neuer Eintrag in der maschinenlokalen Slicer-Registry. `executable_path` ist
-/// UNIQUE; die Autoerkennung prueft deshalb vorher gegen `list_registered_slicers`.
+/// New entry in the machine-local slicer registry. `executable_path` is UNIQUE;
+/// auto-detection therefore checks against `list_registered_slicers` first.
 pub fn insert_registered_slicer(
     conn: &Connection,
     name: &str,
@@ -199,7 +196,7 @@ pub fn list_registered_slicers(conn: &Connection) -> Result<Vec<RegisteredSlicer
     Ok(rows)
 }
 
-/// Aktualisiert `folder_id` und `path` nach einem physischen Verschieben.
+/// Updates `folder_id` and `path` after a physical move.
 pub fn update_file_folder(conn: &Connection, file_id: i64, folder_id: Option<i64>, path: &str) -> Result<(), DbError> {
     let affected = conn.execute(
         "UPDATE files SET folder_id = ?1, path = ?2 WHERE id = ?3",
@@ -211,7 +208,7 @@ pub fn update_file_folder(conn: &Connection, file_id: i64, folder_id: Option<i64
     Ok(())
 }
 
-/// Aktualisiert `name` und `path` nach einem physischen Umbenennen.
+/// Updates `name` and `path` after a physical rename.
 pub fn rename_file(conn: &Connection, file_id: i64, name: &str, path: &str) -> Result<(), DbError> {
     let affected = conn.execute(
         "UPDATE files SET name = ?1, path = ?2 WHERE id = ?3",
@@ -223,23 +220,20 @@ pub fn rename_file(conn: &Connection, file_id: i64, name: &str, path: &str) -> R
     Ok(())
 }
 
-/// Aktualisiert nur `name`; Umbenennen auf der Platte und Pfad-Update
-/// (`update_paths_under_folder`) passieren getrennt.
+/// Updates only `name`; renaming on disk and the path update (`update_paths_under_folder`) happen separately.
 pub fn rename_folder_name(conn: &Connection, folder_id: i64, name: &str) -> Result<(), DbError> {
     conn.execute("UPDATE folders SET name = ?1 WHERE id = ?2", params![name, folder_id])?;
     Ok(())
 }
 
-/// Aktualisiert nur `parent_id`; Verschieben auf der Platte und Pfad-Update
-/// (`update_paths_under_folder`) passieren getrennt.
+/// Updates only `parent_id`; moving on disk and the path update (`update_paths_under_folder`) happen separately.
 pub fn set_folder_parent(conn: &Connection, folder_id: i64, parent_id: Option<i64>) -> Result<(), DbError> {
     conn.execute("UPDATE folders SET parent_id = ?1 WHERE id = ?2", params![parent_id, folder_id])?;
     Ok(())
 }
 
-/// Zieht `folders.path` und `files.path` unterhalb von `folder_id` per
-/// Praefix-Ersetzung nach, nachdem sich dessen Pfad von `old_path` zu
-/// `new_path` geaendert hat.
+/// Rewrites `folders.path` and `files.path` below `folder_id` by prefix
+/// replacement after its path changed from `old_path` to `new_path`.
 pub fn update_paths_under_folder(
     conn: &Connection,
     folder_id: i64,
@@ -247,8 +241,8 @@ pub fn update_paths_under_folder(
     new_path: &str,
 ) -> Result<(), DbError> {
     conn.execute("UPDATE folders SET path = ?1 WHERE id = ?2", params![new_path, folder_id])?;
-    // length()/substr() zaehlen in SQLite Zeichen, nicht Bytes. Deshalb auch die
-    // Laenge von SQLite berechnen lassen, sonst stimmt der Offset bei Umlauten nicht.
+    // length()/substr() count characters in SQLite, not bytes. So let SQLite compute
+    // the length too, otherwise the offset is wrong for non-ASCII names.
     conn.execute(
         "UPDATE files SET path = ?1 || substr(path, length(?2) + 1) WHERE folder_id = ?3",
         params![new_path, old_path, folder_id],
@@ -261,8 +255,8 @@ pub fn update_paths_under_folder(
     drop(stmt);
 
     for (child_id, child_old_path) in children {
-        // Kein Byte-Slicing: passt die Hierarchie nicht zu den Pfaden (praepariertes
-        // Backup), wuerde das paniken und mit panic = "abort" die App beenden.
+        // No byte slicing: if the hierarchy doesn't match the paths (crafted backup),
+        // that would panic and, with panic = "abort", kill the app.
         let Some(suffix) = child_old_path.strip_prefix(old_path) else {
             return Err(DbError::Other(format!(
                 "Ordner {child_id} ({child_old_path}) liegt nicht unter {old_path}"
@@ -330,9 +324,9 @@ pub fn add_tag_to_file(conn: &Connection, file_id: i64, tag_name: &str) -> Resul
     Ok(())
 }
 
-/// Legt Tags, die in irgendeiner Sprache wie ein automatischer Tag heissen
-/// (z.B. "Multipart"), mit der deutschen Kennung zusammen. Laeuft bei jedem
-/// Oeffnen der DB, idempotent und in einer Transaktion.
+/// Merges tags named like an automatic tag in any language (e.g. "Multipart")
+/// into the German key. Runs every time the DB is opened, idempotent and in one
+/// transaction.
 pub fn merge_auto_tag_aliases(conn: &mut Connection) -> Result<usize, DbError> {
     let tx = conn.transaction()?;
     let tags: Vec<(i64, String)> = {
@@ -342,8 +336,7 @@ pub fn merge_auto_tag_aliases(conn: &mut Connection) -> Result<usize, DbError> {
     };
     let mut merged = 0;
     for (alias_id, name) in tags {
-        // Mehrdeutige Aliase ("mini" wie in "Bambu A1 mini") werden beim Start
-        // bewusst nicht zusammengelegt.
+        // Ambiguous aliases ("mini" as in "Bambu A1 mini") are deliberately not merged at startup.
         let canonical = crate::tagging::canonical_tag_unambiguous(&name);
         if canonical == name {
             continue;
@@ -384,7 +377,7 @@ pub fn remove_tag_from_file(conn: &Connection, file_id: i64, tag_name: &str) -> 
     Ok(())
 }
 
-/// Loescht einen Tag, wenn ihm keine Datei mehr zugeordnet ist.
+/// Deletes a tag once no file is assigned to it.
 fn delete_tag_if_unused(conn: &Connection, tag_id: i64) -> Result<(), DbError> {
     let count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM file_tags WHERE tag_id = ?1",
@@ -397,7 +390,7 @@ fn delete_tag_if_unused(conn: &Connection, tag_id: i64) -> Result<(), DbError> {
     Ok(())
 }
 
-/// Entfernt beim Start alle Tags ohne Datei.
+/// Removes all tags without files at startup.
 pub fn delete_unused_tags(conn: &Connection) -> Result<usize, DbError> {
     Ok(conn.execute(
         "DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM file_tags)",
@@ -441,7 +434,7 @@ pub fn list_creator_counts(conn: &Connection) -> Result<Vec<CreatorCount>, DbErr
     Ok(rows)
 }
 
-// Nur fuer Tests; der Import nutzt `insert_file_within_tx` in einer Batch-Transaktion.
+// Tests only; the import uses `insert_file_within_tx` in a batch transaction.
 #[cfg(test)]
 pub fn insert_file(conn: &mut Connection, file: &NewFile) -> Result<i64, DbError> {
     let tx = conn.transaction()?;
@@ -570,8 +563,8 @@ pub fn update_scanned_metadata(
 }
 
 pub fn delete_file(conn: &Connection, id: i64) -> Result<(), DbError> {
-    // Tag-IDs vorher merken, da file_tags per ON DELETE CASCADE mitgeloescht
-    // wird und danach nicht mehr bekannt ist, welche Tags betroffen waren.
+    // Remember the tag ids first: file_tags is removed via ON DELETE CASCADE and
+    // afterwards we'd no longer know which tags were affected.
     let mut stmt = conn.prepare("SELECT tag_id FROM file_tags WHERE file_id = ?1")?;
     let tag_ids: Vec<i64> = stmt
         .query_map(params![id], |row| row.get(0))?
@@ -689,8 +682,7 @@ pub fn get_file(conn: &Connection, id: i64) -> Result<Option<FileRecord>, DbErro
     Ok(Some(file))
 }
 
-/// Laedt mehrere Dateien mit EINER Hauptabfrage statt einer pro id (z.B. fuer
-/// grosse Sammlungen).
+/// Loads several files with ONE main query instead of one per id (e.g. for large collections).
 pub fn list_files_by_ids(conn: &Connection, ids: &[i64]) -> Result<Vec<FileRecord>, DbError> {
     if ids.is_empty() {
         return Ok(Vec::new());
@@ -717,7 +709,7 @@ pub fn list_files_by_ids(conn: &Connection, ids: &[i64]) -> Result<Vec<FileRecor
         file.tags = load_tags(conn, file.id)?;
     }
 
-    // SQL "IN" garantiert keine Reihenfolge; die Sammlungs-Position haengt aber davon ab.
+    // SQL "IN" guarantees no order, but the collection position depends on it.
     let mut by_id: std::collections::HashMap<i64, FileRecord> =
         files.into_iter().map(|f| (f.id, f)).collect();
     Ok(ids.iter().filter_map(|id| by_id.remove(id)).collect())
@@ -745,11 +737,10 @@ pub fn list_files(conn: &Connection) -> Result<Vec<FileRecord>, DbError> {
     Ok(files)
 }
 
-/// Schlanke Projektion von `files` fuer Grid und Liste: ohne
-/// `custom_image_png` und ohne Materialien, Metadaten und Tags (sonst N+1
-/// Abfragen). `thumbnail_png` und `render_snapshot_png` bleiben drin, das Grid
-/// braucht ein Bild pro Zeile; der Snapshot ist im Schnitt sogar kleiner
-/// (~9 KB gegenueber ~54 KB).
+/// Slim projection of `files` for grid and list: without `custom_image_png` and
+/// without materials, metadata and tags (otherwise N+1 queries). `thumbnail_png`
+/// and `render_snapshot_png` stay, the grid needs one image per row; the snapshot
+/// is even smaller on average (~9 KB vs. ~54 KB).
 pub struct FileSummary {
     pub id: i64,
     pub name: String,
@@ -766,11 +757,11 @@ pub struct FileSummary {
     pub queue_position: Option<i64>,
     pub thumbnail_png: Option<Vec<u8>>,
     pub render_snapshot_png: Option<Vec<u8>>,
-    // Redundant zu `render_snapshot_png`, wird im Frontend aber noch fuer die Snapshot-Warteschlange genutzt.
+    // Redundant to `render_snapshot_png`, but the frontend still uses it for the snapshot queue.
     pub has_render_snapshot: bool,
-    // Fuer den Creator-Filter der Seitenleiste.
+    // For the sidebar's creator filter.
     pub creator: Option<String>,
-    // Fuer "Zuletzt angesehen", "Duplikate" und die Sortierung 'viewed'.
+    // For "Recently viewed", "Duplicates" and the 'viewed' sort order.
     pub last_viewed_at: Option<String>,
     pub content_hash: Option<String>,
 }
@@ -821,8 +812,7 @@ pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbErro
     Ok(rows)
 }
 
-/// Alle Datei-Tag-Zuordnungen in EINER Abfrage, fuer die Tag-Filterung (die
-/// Summaries enthalten keine Tags).
+/// All file-tag assignments in ONE query, for tag filtering (the summaries have no tags).
 pub fn list_all_file_tags(conn: &Connection) -> Result<Vec<(i64, String)>, DbError> {
     let mut stmt = conn.prepare(
         "SELECT file_tags.file_id, tags.name
@@ -949,7 +939,7 @@ pub fn max_queue_position(conn: &Connection) -> Result<Option<i64>, DbError> {
     Ok(conn.query_row("SELECT MAX(queue_position) FROM files WHERE deleted_at IS NULL", [], |row| row.get(0))?)
 }
 
-/// (id, path) aller Dateien ohne content_hash, fuer `backfill_content_hashes`.
+/// (id, path) of all files without content_hash, for `backfill_content_hashes`.
 pub fn list_files_missing_content_hash(conn: &Connection) -> Result<Vec<(i64, String)>, DbError> {
     let mut stmt = conn.prepare("SELECT id, path FROM files WHERE content_hash IS NULL AND deleted_at IS NULL")?;
     let rows = stmt
@@ -1052,7 +1042,7 @@ pub fn list_filament_spools(conn: &Connection) -> Result<Vec<FilamentSpoolRecord
     Ok(rows)
 }
 
-/// Liest eine Spule inklusive Fach, damit `update_filament_spool` den echten DB-Stand zurueckgibt.
+/// Reads a spool including its slot, so `update_filament_spool` returns the real DB state.
 pub fn get_filament_spool(conn: &Connection, id: i64) -> Result<FilamentSpoolRecord, DbError> {
     conn.query_row(
         "SELECT id, material, manufacturer, color, location, diameter_mm, original_weight_g, remaining_weight_g, price, image_png,
@@ -1082,13 +1072,12 @@ pub fn get_filament_spool(conn: &Connection, id: i64) -> Result<FilamentSpoolRec
     .map_err(DbError::from)
 }
 
-/// Aendert nie das Fach einer Spule (das tun nur `load_spool`/`unload_spool`
-/// in `db::printers`). Steckt die Spule in einem Fach, ist der uebergebene
-/// Lagerort ihr Stammplatz und landet in `home_location`; `location` bleibt
-/// dann leer.
+/// Never changes a spool's slot (only `load_spool`/`unload_spool` in
+/// `db::printers` do). If the spool is loaded, the given location is its home
+/// location and goes to `home_location`; `location` then stays empty.
 pub fn update_filament_spool(conn: &Connection, id: i64, spool: &NewFilamentSpool) -> Result<(), DbError> {
-    // Ein eingelegter Eintrag behaelt seine Art: sonst laege Resin in einem
-    // Filament-Fach oder Filament in einer Harzwanne.
+    // A loaded entry keeps its kind: otherwise resin would sit in a filament slot
+    // or filament in a resin vat.
     let loaded_kind: Option<String> = conn
         .query_row(
             "SELECT kind FROM filament_spools WHERE id = ?1 AND unit_id IS NOT NULL",
@@ -1230,14 +1219,14 @@ mod tests {
         let summaries = list_file_summaries(&conn).unwrap();
 
         assert_eq!(summaries.len(), 1);
-        // Der Snapshot muss mitkommen, sonst zeigt das Grid ihn erst nach dem Oeffnen des Modells.
+        // The snapshot must be included, otherwise the grid only shows it after opening the model.
         assert_eq!(summaries[0].render_snapshot_png, Some(vec![1u8; 1024]));
         assert!(summaries[0].has_render_snapshot);
     }
 
     #[test]
     fn list_file_summaries_includes_creator() {
-        // creator muss in der Projektion sein, sonst greift der Creator-Filter nicht.
+        // creator must be in the projection, otherwise the creator filter doesn't work.
         let conn = connect_in_memory().unwrap();
         let file_id = test_insert_minimal_file(&conn, "/tmp/z.3mf", None).unwrap();
         conn.execute("UPDATE files SET creator = ?1 WHERE id = ?2", params!["CarlFromUp", file_id]).unwrap();
@@ -1280,14 +1269,14 @@ mod tests {
         assert!(!summaries[0].has_render_snapshot);
     }
 
-    // `Connection::trace` nimmt nur einen Funktionszeiger, der Zaehler lebt deshalb
-    // ausserhalb. Thread-lokal reicht: der Callback laeuft synchron, und jeder Test
-    // hat einen eigenen Thread.
+    // `Connection::trace` only takes a function pointer, so the counter lives
+    // outside. Thread-local is enough: the callback runs synchronously and every
+    // test has its own thread.
     thread_local! {
         static QUERY_TRACE_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     }
 
-    // `trace_v2` mit `SQLITE_TRACE_STMT` ersetzt das veraltete `trace`.
+    // `trace_v2` with `SQLITE_TRACE_STMT` replaces the deprecated `trace`.
     fn count_traced_query(event: rusqlite::trace::TraceEvent<'_>) {
         if matches!(event, rusqlite::trace::TraceEvent::Stmt(_, _)) {
             QUERY_TRACE_COUNT.with(|c| c.set(c.get() + 1));
@@ -1318,7 +1307,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // manuell ausfuehren: cargo test --lib -- --ignored list_file_summaries_benchmark
+    #[ignore] // run manually: cargo test --lib -- --ignored list_file_summaries_benchmark
     fn list_file_summaries_benchmark_with_5000_files() {
         let conn = connect_in_memory().unwrap();
         for i in 0..5000 {
@@ -1328,7 +1317,7 @@ mod tests {
         let summaries = list_file_summaries(&conn).unwrap();
         let elapsed = start.elapsed();
         assert_eq!(summaries.len(), 5000);
-        // Bewusst ohne Zeit-Assertion: nur zur Beobachtung mit --nocapture.
+        // Deliberately no timing assertion: only for watching with --nocapture.
         eprintln!("list_file_summaries(5000 rows): {elapsed:?}");
     }
 
@@ -1473,7 +1462,7 @@ mod tests {
         let folders = list_folders(&conn).unwrap();
         assert_eq!(folders.iter().find(|f| f.id == lonely_id).unwrap().parent_id, None);
 
-        // Bereits eingehaengte Ordner werden nicht umgehaengt.
+        // Folders that are already attached are not re-attached.
         let root = Path::new("/tmp/A");
         let nested = Path::new("/tmp/A/B");
         let nested_id = ensure_folder_path(&conn, root, nested).unwrap();
@@ -1489,8 +1478,8 @@ mod tests {
         let conn = connect_in_memory().unwrap();
         let parent = Path::new("/tmp/Katalog/A");
         let parent_id = ensure_folder_path(&conn, parent, parent).unwrap();
-        // Inkonsistente Hierarchie wie aus einem praeparierten Backup:
-        // parent_id zeigt auf A, der Pfad liegt aber woanders.
+        // Inconsistent hierarchy as from a crafted backup: parent_id points to A, but
+        // the path lies elsewhere.
         insert_folder_with_parent(&conn, "fremd", Some(parent_id), "/x").unwrap();
 
         let result = update_paths_under_folder(&conn, parent_id, "/tmp/Katalog/A", "/tmp/Katalog/B");
@@ -1501,7 +1490,7 @@ mod tests {
     fn list_files_returns_an_error_for_a_row_with_an_unparseable_file_type() {
         let conn = connect_in_memory().unwrap();
         conn.execute("PRAGMA foreign_keys = OFF", []).unwrap();
-        // ignore_check_constraints, damit der INSERT trotz CHECK in schema.sql gelingt.
+        // ignore_check_constraints, so the INSERT succeeds despite the CHECK in schema.sql.
         conn.execute("PRAGMA ignore_check_constraints = 1", []).unwrap();
         conn.execute(
             "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at) VALUES ('x', '/tmp/x.xyz', 'xyz', 1, '2026-01-01T00:00:00Z')",
@@ -1515,7 +1504,7 @@ mod tests {
 
     #[test]
     fn list_files_still_succeeds_for_rows_with_valid_file_types() {
-        // Normale 3mf/stl-Zeilen bleiben unberuehrt.
+        // Normal 3mf/stl rows stay untouched.
         let conn = connect_in_memory().unwrap();
         test_insert_minimal_file(&conn, "/tmp/a.3mf", None).unwrap();
         let result = list_files(&conn);
@@ -1540,7 +1529,7 @@ mod tests {
 
     #[test]
     fn list_file_summaries_still_succeeds_for_rows_with_valid_file_types() {
-        // Normale 3mf/stl-Zeilen bleiben unberuehrt.
+        // Normal 3mf/stl rows stay untouched.
         let conn = connect_in_memory().unwrap();
         test_insert_minimal_file(&conn, "/tmp/a.3mf", None).unwrap();
         let result = list_file_summaries(&conn);

@@ -44,10 +44,10 @@ fn get_attr(e: &BytesStart, name: &str) -> Option<String> {
     })
 }
 
-/// Liest `Metadata/slice_info.config` (Bambu Studio/OrcaSlicer, kein
-/// 3MF-Standard). Fehlende, kaputte oder plattenlose Datei: `None`. Gelesen mit
-/// Groessenlimit (Zip-Bombe); die gelesenen Bytes kommen zurueck, damit
-/// `read_package()` sie ins Gesamtbudget einrechnet.
+/// Reads `Metadata/slice_info.config` (Bambu Studio/OrcaSlicer, not part of the
+/// 3MF standard). Missing, broken or plate-less file: `None`. Read with a size
+/// limit (zip bomb); the bytes read are returned, so `read_package()` adds them to
+/// the total budget.
 pub fn parse_slice_info<R: Read + Seek>(archive: &mut ZipArchive<R>) -> (Option<SliceInfo>, u64) {
     let xml = super::container::read_entry_to_string(
         archive,
@@ -159,7 +159,7 @@ mod tests {
   </plate>
 </config>"##;
 
-    /// Archiv mit zu grossem Config-Eintrag (Mini-Zip-Bombe).
+    /// Archive with an oversized config entry (mini zip bomb).
     fn build_zip_with_oversized_config(name: &str) -> ZipArchive<Cursor<Vec<u8>>> {
         let oversized = (super::super::container::MAX_CONFIG_XML_BYTES + 1) as usize;
         let mut buf = Vec::new();

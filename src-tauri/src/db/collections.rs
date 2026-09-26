@@ -1,6 +1,6 @@
-// Repository-Funktionen fuer Sammlungen: viele-zu-viele wie Tags, aber mit
-// einer position-Spalte pro Zuordnung fuer eine manuell festlegbare
-// Reihenfolge - der eigentliche Mehrwert gegenueber einem Tag.
+// Repository functions for collections: many-to-many like tags, but with a
+// position column per assignment for a manually set order - the actual benefit
+// over a tag.
 
 use rusqlite::{params, Connection};
 
@@ -54,10 +54,9 @@ pub fn max_collection_position(conn: &Connection, collection_id: i64) -> Result<
     )?)
 }
 
-/// Fuegt eine Datei ans Ende der Sammlung an. Ist die Datei bereits
-/// zugeordnet, passiert nichts (kein Duplikat, keine Neu-Positionierung) -
-/// "INSERT OR IGNORE" nutzt dafuer den UNIQUE-Constraint auf
-/// (collection_id, file_id).
+/// Appends a file to the end of the collection. If the file is already
+/// assigned, nothing happens (no duplicate, no repositioning) - "INSERT OR
+/// IGNORE" relies on the UNIQUE constraint on (collection_id, file_id).
 pub fn add_file_to_collection(
     conn: &Connection,
     collection_id: i64,
@@ -152,7 +151,7 @@ mod tests {
         let collection_id = create_collection(&conn, "Bauvorhaben X", "2026-09-12T10:00:00Z").unwrap();
 
         add_file_to_collection(&conn, collection_id, file_id, 0).unwrap();
-        add_file_to_collection(&conn, collection_id, file_id, 5).unwrap(); // Duplikat, wird ignoriert
+        add_file_to_collection(&conn, collection_id, file_id, 5).unwrap(); // duplicate, ignored
 
         let ids = list_collection_file_ids(&conn, collection_id).unwrap();
         assert_eq!(ids, vec![file_id]);

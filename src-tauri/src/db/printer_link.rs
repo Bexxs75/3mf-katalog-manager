@@ -1,4 +1,4 @@
-//! Datenbankzugriff der Druckeranbindung: Schalter, Verbindungen, abgeholte Drucke.
+//! Database access of the printer connection: switch, connections, fetched prints.
 
 use rusqlite::{params, Connection, OptionalExtension, Row};
 
@@ -80,8 +80,8 @@ fn connection_from_row(r: &Row) -> rusqlite::Result<PrinterConnectionRecord> {
     })
 }
 
-/// Speichert eine erfolgreich getestete Verbindung. `connected_since` wird
-/// nur beim ersten Mal gesetzt ("ab jetzt"), Fehler und Pause werden gelöscht.
+/// Saves a successfully tested connection. `connected_since` is only set the
+/// first time ("from now on"); error and pause are cleared.
 pub fn save_connection_after_test(
     conn: &Connection,
     printer_id: i64,
@@ -91,7 +91,7 @@ pub fn save_connection_after_test(
     version: &str,
     now: f64,
 ) -> Result<PrinterConnectionRecord, DbError> {
-    // Resin-Drucker haben keine Druckeranbindung.
+    // Resin printers have no printer connection.
     crate::db::printers::ensure_filament_printer(conn, printer_id)?;
     conn.execute(
         "INSERT INTO printer_connections (printer_id, kind, address, base_url, remote_version, connected_since)
@@ -122,8 +122,8 @@ pub fn list_connections(conn: &Connection) -> Result<Vec<PrinterConnectionRecord
     Ok(rows)
 }
 
-/// Entfernt die Verbindung und alle noch offenen Drucke dieses Druckers.
-/// Bestätigte und ignorierte Drucke bleiben als Verlauf erhalten.
+/// Removes the connection and all still open prints of this printer.
+/// Confirmed and ignored prints stay as history.
 pub fn delete_connection(conn: &Connection, printer_id: i64) -> Result<(), DbError> {
     conn.execute("DELETE FROM printer_jobs WHERE printer_id = ?1 AND state = 'open'", params![printer_id])?;
     conn.execute("DELETE FROM printer_connections WHERE printer_id = ?1", params![printer_id])?;
@@ -140,8 +140,8 @@ pub fn record_sync_success(conn: &Connection, printer_id: i64, now: f64, base_ur
     Ok(())
 }
 
-/// Merkt sich den Fehler; `error_since` bleibt beim ersten Fehler stehen.
-/// `auth_required` pausiert die Verbindung bis zum nächsten Test.
+/// Remembers the error; `error_since` stays at the first error.
+/// `auth_required` pauses the connection until the next test.
 pub fn record_sync_error(conn: &Connection, printer_id: i64, code: &str, now: f64) -> Result<(), DbError> {
     conn.execute(
         "UPDATE printer_connections SET last_error = ?2, error_since = COALESCE(error_since, ?3),
@@ -152,9 +152,8 @@ pub fn record_sync_error(conn: &Connection, printer_id: i64, code: &str, now: f6
     Ok(())
 }
 
-/// Ab diesem Zeitpunkt (Unix-Sekunden) gelten beendete Drucke als neu:
-/// der spätere Wert aus "verbunden seit" und dem Ende des jüngsten
-/// abgeholten Drucks.
+/// From this point in time (Unix seconds) finished prints count as new: the
+/// later of "connected since" and the end of the newest fetched print.
 pub fn sync_from(conn: &Connection, printer_id: i64) -> Result<f64, DbError> {
     let since: f64 = conn.query_row(
         "SELECT MAX(c.connected_since, COALESCE((SELECT MAX(j.ended_at) FROM printer_jobs j WHERE j.printer_id = c.printer_id), 0))
@@ -165,8 +164,7 @@ pub fn sync_from(conn: &Connection, printer_id: i64) -> Result<f64, DbError> {
     Ok(since)
 }
 
-/// Fügt einen Druck ein, wenn es ihn für diesen Drucker noch nicht gibt.
-/// Liefert `true`, wenn er neu war.
+/// Inserts a print if it doesn't exist yet for this printer. Returns `true` if it was new.
 pub fn insert_job_if_new(conn: &Connection, printer_id: i64, job: &RemoteJob) -> Result<bool, DbError> {
     let changed = conn.execute(
         "INSERT OR IGNORE INTO printer_jobs (printer_id, remote_id, file_name, outcome, raw_status, ended_at,
@@ -226,7 +224,7 @@ pub fn get_job(conn: &Connection, job_id: i64) -> Result<Option<PrinterJobRecord
         .optional()?)
 }
 
-/// Nur offene Drucke. Liefert die Anzahl geänderter Zeilen (0 = nicht mehr offen).
+/// Open prints only. Returns the number of changed rows (0 = no longer open).
 pub fn mark_job_confirmed(
     conn: &Connection,
     job_id: i64,

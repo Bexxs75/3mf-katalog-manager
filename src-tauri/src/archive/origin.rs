@@ -1,14 +1,13 @@
-//! Herkunftsmarkierung ("aus dem Internet") vom Archiv auf die entpackten
-//! Dateien uebertragen. Browser markieren Downloads - Windows mit dem
-//! Alternate Data Stream `Zone.Identifier` (Mark of the Web), macOS mit dem
-//! Attribut `com.apple.quarantine`. Ohne Uebertragung verlieren die
-//! entpackten Dateien diese Markierung, und Schutzmechanismen wie
-//! SmartScreen, Office-Makroschutz oder Gatekeeper greifen nicht mehr.
-//! Linux kennt keine vergleichbare Markierung.
+//! Carries the origin mark ("from the internet") from the archive over to the
+//! extracted files. Browsers mark downloads - Windows with the alternate data
+//! stream `Zone.Identifier` (Mark of the Web), macOS with the
+//! `com.apple.quarantine` attribute. Without carrying it over, the extracted files
+//! lose this mark, and protections like SmartScreen, Office macro protection or
+//! Gatekeeper no longer apply. Linux has no comparable mark.
 
 use std::path::Path;
 
-/// Liest die Markierung des Archivs; `None`, wenn keine vorhanden ist.
+/// Reads the archive's mark; `None` if there is none.
 #[cfg(windows)]
 pub(super) fn read(archive: &Path) -> Option<Vec<u8>> {
     let mut stream = archive.as_os_str().to_owned();
@@ -16,8 +15,8 @@ pub(super) fn read(archive: &Path) -> Option<Vec<u8>> {
     std::fs::read(std::path::PathBuf::from(stream)).ok()
 }
 
-/// Schreibt die Markierung auf eine entpackte Datei. Fehler werden bewusst
-/// ignoriert (z.B. FAT32-Ziel ohne Alternate Data Streams).
+/// Writes the mark onto an extracted file. Errors are deliberately ignored
+/// (e.g. a FAT32 target without alternate data streams).
 #[cfg(windows)]
 pub(super) fn apply(target: &Path, mark: &[u8]) {
     let mut stream = target.as_os_str().to_owned();

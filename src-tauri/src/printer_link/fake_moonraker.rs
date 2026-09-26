@@ -1,5 +1,4 @@
-//! Nur für Tests: winziger HTTP/1.1-Server auf 127.0.0.1, der pro Anfrage
-//! eine Handler-Funktion (Pfad inkl. Query → Status, Body) aufruft.
+//! Tests only: tiny HTTP/1.1 server on 127.0.0.1 that calls a handler function per request (path incl. query -> status, body).
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
@@ -13,8 +12,7 @@ pub struct FakeServer {
 }
 
 impl FakeServer {
-    /// Handler liefert `None` → Verbindung wird ohne Antwort offen gehalten
-    /// (simuliert Zeitüberschreitung).
+    /// Handler returns `None` -> the connection is kept open without a response (simulates a timeout).
     pub fn start(handler: impl Fn(&str) -> Option<(u16, Vec<u8>)> + Send + Sync + 'static) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -57,7 +55,7 @@ impl FakeServer {
         FakeServer { port, requests }
     }
 
-    /// Adresse im Format der App ("127.0.0.1:PORT").
+    /// Address in the app's format ("127.0.0.1:PORT").
     pub fn address(&self) -> String {
         format!("127.0.0.1:{}", self.port)
     }
@@ -67,12 +65,12 @@ impl FakeServer {
     }
 }
 
-/// Liest eine Testdatei aus `tests/fixtures/moonraker/`.
+/// Reads a test file from `tests/fixtures/moonraker/`.
 pub fn fixture_bytes(name: &str) -> Vec<u8> {
     std::fs::read(format!("{}/tests/fixtures/moonraker/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap()
 }
 
-/// Verhält sich wie der SV08 des Testers.
+/// Behaves like the tester's SV08.
 pub fn sv08() -> FakeServer {
     FakeServer::start(|target| {
         let path = target.split('?').next().unwrap_or("");

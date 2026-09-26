@@ -2,13 +2,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    // WebKitGTK's DMA-BUF-Renderer scheitert auf manchen NVIDIA-Treibern beim
-    // Anlegen des GBM-Buffers ("Failed to create GBM buffer") und die App
-    // zeigt nur einen weissen Bildschirm. Muss vor jeglicher GTK/WebKit-
-    // Initialisierung gesetzt werden, daher ganz am Anfang von main().
+    // WebKitGTK's DMA-BUF renderer fails on some NVIDIA drivers when creating the
+    // GBM buffer ("Failed to create GBM buffer") and the app only shows a white
+    // screen. Must be set before any GTK/WebKit initialization, hence at the very
+    // start of main().
     #[cfg(target_os = "linux")]
-    // SAFETY: single-threaded, allererste Zeile von main() - kein anderer
-    // Thread liest/schreibt zu diesem Zeitpunkt Umgebungsvariablen.
+    // SAFETY: single-threaded, the very first line of main() - no other thread
+    // reads or writes environment variables at this point.
     unsafe {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }

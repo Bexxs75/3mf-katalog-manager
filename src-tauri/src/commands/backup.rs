@@ -1,8 +1,8 @@
 use super::*;
 
-/// Gegenstueck zu `validate_folder_name` fuer `files.name`: der Wert landet in
-/// `trash_dir.join(format!("{id}-{name}"))` und kann aus einem fremden Backup
-/// stammen. Ein Name wie "../../x" wuerde sonst aus dem Papierkorb herausschreiben.
+/// Counterpart to `validate_folder_name` for `files.name`: the value ends up in
+/// `trash_dir.join(format!("{id}-{name}"))` and may come from a foreign backup.
+/// A name like "../../x" would otherwise write outside the trash directory.
 fn validate_file_name(name: &str) -> CmdResult<()> {
     if name.trim().is_empty() {
         return Err("Dateiname darf nicht leer sein".to_string());
@@ -15,11 +15,9 @@ fn validate_file_name(name: &str) -> CmdResult<()> {
     }
     Ok(())
 }
-/// Exportiert den kompletten Katalogzustand (DB + Frontend-Settings) als
-/// ZIP-Datei. Nutzt SQLite's Online-Backup-API statt eines rohen
-/// Datei-Kopierens fuer die DB-Kopie: die laufende Connection kann im
-/// WAL-Modus sein, ein fs::copy koennte eine inkonsistente Zwischenstufe
-/// der Datei erwischen.
+/// Exports the complete catalog state (DB + frontend settings) as a ZIP file.
+/// Uses SQLite's online backup API instead of copying the raw file: the live
+/// connection may be in WAL mode, and fs::copy could catch an inconsistent state.
 #[tauri::command]
 pub async fn export_catalog(
     app: tauri::AppHandle,
@@ -47,10 +45,10 @@ pub async fn export_catalog(
         std::env::temp_dir().join(format!("3mf-katalog-export-{}.db", std::process::id()));
     let tmp_zip_path = dest_path.with_extension("zip.tmp");
 
-    // Als Closure, damit beide Temp-Dateien auch im Fehlerfall aufgeraeumt werden.
+    // A closure, so both temp files are cleaned up on failure too.
     let result: CmdResult<()> = (|| {
         {
-            // Exklusiv anlegen (Symlink-Race), siehe `write_temp_file_exclusive`.
+            // Create exclusively (symlink race), see `write_temp_file_exclusive`.
             std::fs::OpenOptions::new()
                 .write(true)
                 .create_new(true)
@@ -88,16 +86,16 @@ pub async fn export_catalog(
         return Err(e);
     }
 
-    // Erst nach vollstaendigem Schreiben umbenennen: nie ein halbes Archiv am Zielort.
+    // Rename only after the write finished: never a partial archive at the destination.
     if let Err(e) = std::fs::rename(&tmp_zip_path, &dest_path) {
         let _ = std::fs::remove_file(&tmp_zip_path);
         return Err(e.to_string());
     }
     Ok(())
 }
-/// Schreibt `bytes` exklusiv (`create_new`) nach `path` und setzt 0600.
-/// `fs::write` wuerde im geteilten `/tmp` einem vorab angelegten Symlink folgen
-/// und die Datei mit umask-Rechten (oft world-readable) anlegen (CWE-377, TOCTOU).
+/// Writes `bytes` exclusively (`create_new`) to `path` and sets 0600.
+/// `fs::write` would follow a pre-planted symlink in a shared `/tmp` and create
+/// the file with umask permissions (often world-readable) (CWE-377, TOCTOU).
 fn write_temp_file_exclusive(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
     let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(path)?;
@@ -106,12 +104,12 @@ fn write_temp_file_exclusive(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     crate::harden_permissions(path);
     Ok(())
 }
-/// Obergrenzen gegen Zip-Bomben beim Import.
+/// Limits against zip bombs on import.
 const MAX_IMPORT_DB_BYTES: u64 = 256 * 1024 * 1024;
 const MAX_IMPORT_SETTINGS_BYTES: u64 = 1024 * 1024;
 
-/// Die deklarierte Groesse kann luegen; hart begrenzt wird beim Lesen per
-/// `Read::take`. Diese Pruefung spart nur den Leseversuch bei ehrlich grossen Eintraegen.
+/// The declared size can lie; the hard limit is `Read::take` while reading.
+/// This check only saves the read attempt for honestly oversized entries.
 fn reject_oversized_zip_entry(name: &str, size: u64, max: u64) -> CmdResult<()> {
     if size > max {
         return Err(format!(
@@ -122,8 +120,8 @@ fn reject_oversized_zip_entry(name: &str, size: u64, max: u64) -> CmdResult<()> 
     }
     Ok(())
 }
-/// Tabellen und Spalten, die das importierte Schema enthalten muss. `table` stammt
-/// nur aus dieser Konstante, daher ist die Interpolation im PRAGMA unbedenklich.
+/// Tables and columns the imported schema must contain. `table` only comes from
+/// this constant, so interpolating it into the PRAGMA is safe.
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
     ("files", &[
         "id", "name", "path", "file_type", "folder_id", "file_size_bytes",
@@ -170,16 +168,16 @@ fn validate_expected_schema(conn: &Connection) -> Result<(), String> {
     }
     Ok(())
 }
-/// Erlaubte SQLite-Speicherklasse(n) je Rust-Lesetyp (NULL separat ueber `nullable`).
+/// Allowed SQLite storage class(es) per Rust read type (NULL separately via `nullable`).
 #[derive(Clone, Copy)]
 enum ColType {
-    /// `i64` oder `bool`: nur 'integer'.
+    /// `i64` or `bool`: 'integer' only.
     Integer,
-    /// `f64`: 'integer' oder 'real'.
+    /// `f64`: 'integer' or 'real'.
     Real,
-    /// `String` - akzeptiert NUR `typeof(...) = 'text'`.
+    /// `String`: accepts ONLY `typeof(...) = 'text'`.
     Text,
-    /// `Vec<u8>` - akzeptiert NUR `typeof(...) = 'blob'`.
+    /// `Vec<u8>`: accepts ONLY `typeof(...) = 'blob'`.
     Blob,
 }
 
@@ -197,11 +195,11 @@ impl ColType {
         allowed
     }
 }
-/// Spalten, die im Rust-Code typisiert gelesen werden, mit erlaubter
-/// Speicherklasse und NULL-Erlaubnis. Nur in ORDER BY/WHERE/Bind genutzte
-/// Spalten fehlen bewusst: dort kann kein `FromSql`-Fehler entstehen.
+/// Columns read as typed values in Rust, with their allowed storage class and
+/// whether NULL is allowed. Columns only used in ORDER BY/WHERE/binds are left out
+/// on purpose: they can't cause a `FromSql` error.
 const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
-    // files - siehe row_to_file/list_file_summaries (repository.rs).
+    // files - see row_to_file/list_file_summaries (repository.rs).
     ("files", "id", ColType::Integer, false),
     ("files", "name", ColType::Text, false),
     ("files", "path", ColType::Text, false),
@@ -232,22 +230,22 @@ const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
     ("files", "slice_info_json", ColType::Text, true),
     ("files", "deleted_at", ColType::Text, true),
     ("files", "trash_path", ColType::Text, true),
-    // folders - siehe list_folders (repository.rs).
+    // folders - see list_folders (repository.rs).
     ("folders", "id", ColType::Integer, false),
     ("folders", "name", ColType::Text, false),
     ("folders", "parent_id", ColType::Integer, true),
     ("folders", "path", ColType::Text, false),
-    // tags - siehe list_tag_counts/load_tags/get_or_create_tag (repository.rs).
+    // tags - see list_tag_counts/load_tags/get_or_create_tag (repository.rs).
     ("tags", "id", ColType::Integer, false),
     ("tags", "name", ColType::Text, false),
     ("tags", "color_hue", ColType::Integer, false),
-    // file_tags - siehe list_all_file_tags (repository.rs).
+    // file_tags - see list_all_file_tags (repository.rs).
     ("file_tags", "file_id", ColType::Integer, false),
-    // file_metadata - siehe load_metadata (repository.rs).
+    // file_metadata - see load_metadata (repository.rs).
     ("file_metadata", "label", ColType::Text, false),
     ("file_metadata", "value", ColType::Text, false),
-    // filament_spools - siehe list_filament_spools/get_filament_spool
-    // (repository.rs) sowie load_spool/unload_spool (printers.rs).
+    // filament_spools - see list_filament_spools/get_filament_spool
+    // (repository.rs) and load_spool/unload_spool (printers.rs).
     ("filament_spools", "id", ColType::Integer, false),
     ("filament_spools", "material", ColType::Text, false),
     ("filament_spools", "manufacturer", ColType::Text, true),
@@ -263,29 +261,28 @@ const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
     ("filament_spools", "unit_id", ColType::Integer, true),
     ("filament_spools", "slot_index", ColType::Integer, true),
     ("filament_spools", "kind", ColType::Text, false),
-    // printers - siehe list_printers (printers.rs).
+    // printers - see list_printers (printers.rs).
     ("printers", "id", ColType::Integer, false),
     ("printers", "name", ColType::Text, false),
     ("printers", "kind", ColType::Text, false),
-    // material_units - siehe list_units (printers.rs).
+    // material_units - see list_units (printers.rs).
     ("material_units", "id", ColType::Integer, false),
     ("material_units", "printer_id", ColType::Integer, false),
     ("material_units", "name", ColType::Text, false),
     ("material_units", "kind", ColType::Text, false),
     ("material_units", "slot_count", ColType::Integer, false),
     ("material_units", "bambu_ams_index", ColType::Integer, true),
-    // collections - siehe list_collections (collections.rs).
+    // collections - see list_collections (collections.rs).
     ("collections", "id", ColType::Integer, false),
     ("collections", "name", ColType::Text, false),
-    // collection_files - siehe list_collection_file_ids.
+    // collection_files - see list_collection_file_ids.
     ("collection_files", "file_id", ColType::Integer, false),
-    // registered_slicers - siehe list_registered_slicers/get_registered_slicer
-    // (repository.rs).
+    // registered_slicers - see list_registered_slicers/get_registered_slicer (repository.rs).
     ("registered_slicers", "id", ColType::Integer, false),
     ("registered_slicers", "name", ColType::Text, false),
     ("registered_slicers", "executable_path", ColType::Text, false),
     ("registered_slicers", "is_auto_detected", ColType::Integer, false),
-    // Druckeranbindung - siehe db/printer_link.rs (connection_from_row, job_from_row).
+    // Printer connection - see db/printer_link.rs (connection_from_row, job_from_row).
     ("app_settings", "key", ColType::Text, false),
     ("app_settings", "value", ColType::Text, false),
     ("printer_connections", "printer_id", ColType::Integer, false),
@@ -317,10 +314,10 @@ const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
     ("printer_jobs", "booked_g", ColType::Real, true),
     ("printer_jobs", "decided_at", ColType::Text, true),
 ];
-/// Prueft die Speicherklassen aus `COLUMN_TYPES`. Eine praeparierte DB kann
-/// Tabellen ohne Typ-Affinitaet mitbringen, z.B. `slot_count = 4.5`: besteht
-/// jede Wertepruefung, laesst aber `row.get::<_, i64>` beim Lesen scheitern.
-/// Laeuft deshalb vor `validate_printer_invariants`.
+/// Checks the storage classes from `COLUMN_TYPES`. A crafted DB can bring tables
+/// without type affinity, e.g. `slot_count = 4.5`: it passes every value check but
+/// makes `row.get::<_, i64>` fail on read. Therefore runs before
+/// `validate_printer_invariants`.
 fn validate_column_types(conn: &Connection) -> Result<(), String> {
     for &(table, column, col_type, nullable) in COLUMN_TYPES {
         let allowed = col_type.allowed_typeof(nullable);
@@ -339,13 +336,12 @@ fn validate_column_types(conn: &Connection) -> Result<(), String> {
     }
     Ok(())
 }
-/// Prueft die Drucker- und Fach-Invarianten direkt am Dateninhalt, weil eine
-/// importierte DB ihre CHECK-Constraints und Fremdschluessel weglassen kann.
+/// Checks the printer and slot invariants directly on the data, because an
+/// imported DB can omit its CHECK constraints and foreign keys.
 ///
-/// Jede Bedingung muss `IS NULL` explizit abdecken: ein Vergleich mit NULL
-/// ergibt UNKNOWN, `kind = NULL` erfuellt also `kind NOT IN (...)` nicht und
-/// wuerde durchrutschen, obwohl `list_printers`/`list_units` die Zeile danach
-/// bei jedem Start nicht lesen koennen.
+/// Every condition must cover `IS NULL` explicitly: a comparison with NULL is
+/// UNKNOWN, so `kind = NULL` does not satisfy `kind NOT IN (...)` and would slip
+/// through, although `list_printers`/`list_units` can't read the row afterwards.
 fn validate_printer_invariants(conn: &Connection) -> Result<(), String> {
     let bad_printers: i64 = conn
         .query_row(
@@ -387,8 +383,8 @@ fn validate_printer_invariants(conn: &Connection) -> Result<(), String> {
         );
     }
 
-    // COALESCE: faellt die Unterabfrage auf NULL, waere `slot_index >= NULL`
-    // UNKNOWN und die Zeile unsichtbar. Mit 0 schlaegt jeder Index fehl.
+    // COALESCE: if the subquery yields NULL, `slot_index >= NULL` would be UNKNOWN
+    // and the row invisible. With 0, every index fails.
     let bad_spools: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM filament_spools
@@ -436,8 +432,8 @@ fn validate_printer_invariants(conn: &Connection) -> Result<(), String> {
         return Err("Katalog-Datenbank enthaelt ungueltige Farbwerte".to_string());
     }
 
-    // Resin nur in einer Harzwanne, Filament nie. Eine praeparierte Sicherung
-    // kann die Spalte ohne CHECK mitbringen.
+    // Resin only in a resin vat, filament never. A crafted backup can bring the
+    // column without its CHECK.
     let bad_kinds: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM filament_spools
@@ -455,8 +451,8 @@ fn validate_printer_invariants(conn: &Connection) -> Result<(), String> {
         );
     }
 
-    // Harzwannen haben genau einen Platz und gehoeren nur zu Resin-Druckern;
-    // ein Resin-Drucker hat nur seine eine Harzwanne.
+    // Resin vats have exactly one slot and belong to resin printers only; a resin
+    // printer has only its one vat.
     let bad_resin_units: i64 = conn
         .query_row(
             "SELECT
@@ -476,12 +472,11 @@ fn validate_printer_invariants(conn: &Connection) -> Result<(), String> {
 
     Ok(())
 }
-/// CHECK-Werte der Druckeranbindung (eine präparierte Sicherung könnte
-/// Tabellen ohne CHECK mitbringen, falls sie vor der Migration angelegt
-/// wurden). Die Heimnetz-Prüfung der Adresse passiert beim Wiederherstellen
-/// in `sanitize_printer_connections`.
+/// CHECK values of the printer connection (a crafted backup could bring tables
+/// without CHECK if they were created before the migration). The home network
+/// check of the address happens on restore in `sanitize_printer_connections`.
 fn validate_printer_link_rows(conn: &Connection) -> Result<(), String> {
-    // Resin-Drucker haben keine Druckeranbindung.
+    // Resin printers have no printer connection.
     let bad: i64 = conn
         .query_row(
             "SELECT
@@ -499,8 +494,8 @@ fn validate_printer_link_rows(conn: &Connection) -> Result<(), String> {
     Ok(())
 }
 
-/// Beim Wiederherstellen: Verbindungen mit Adressen außerhalb des Heimnetzes
-/// verwerfen, alle übrigen pausieren, bis der Nutzer sie neu testet.
+/// On restore: drop connections with addresses outside the home network and
+/// pause all others until the user tests them again.
 fn sanitize_printer_connections(conn: &Connection) -> Result<(), String> {
     let rows: Vec<(i64, String)> = conn
         .prepare("SELECT printer_id, address FROM printer_connections")
@@ -515,10 +510,9 @@ fn sanitize_printer_connections(conn: &Connection) -> Result<(), String> {
     conn.execute("UPDATE printer_connections SET paused = 1", []).map_err(|e| e.to_string())?;
     Ok(())
 }
-/// Prueft, ob `bytes` eine brauchbare, unbedenkliche Katalog-DB sind, BEVOR
-/// die bestehende catalog.db angefasst wird: oeffnbar, erwartetes Schema,
-/// keine `folders.path` in Systemverzeichnissen und jeder `files.trash_path`
-/// innerhalb von `trash_dir`.
+/// Checks that `bytes` are a usable, safe catalog DB BEFORE the existing
+/// catalog.db is touched: opens, has the expected schema, no `folders.path` in
+/// system directories and every `files.trash_path` inside `trash_dir`.
 fn validate_catalog_db_bytes(
     bytes: &[u8],
     sensitive_dirs: &[PathBuf],
@@ -542,7 +536,7 @@ fn validate_catalog_db_bytes(
             conn.query_row("SELECT COUNT(*) FROM files", [], |row| row.get::<_, i64>(0))
                 .map_err(|e| e.to_string())?;
 
-            // quick_check erkennt strukturelle Korruption; vor jeder Migration.
+            // quick_check detects structural corruption; before any migration.
             let quick_check: String = conn
                 .query_row("PRAGMA quick_check", [], |row| row.get(0))
                 .map_err(|e| e.to_string())?;
@@ -550,9 +544,9 @@ fn validate_catalog_db_bytes(
                 return Err(format!("Katalog-Datenbank ist beschaedigt (quick_check: {quick_check})"));
             }
 
-            // Die App legt nie Trigger oder Views an. Fremde werden abgelehnt, bevor
-            // irgendetwas auf dieser DB laeuft: ein Trigger koennte sonst z.B. die
-            // Slicer-Bereinigung in `replace_catalog_db` unterlaufen.
+            // The app never creates triggers or views. Foreign ones are rejected before
+            // anything runs on this DB: a trigger could e.g. undermine the slicer cleanup
+            // in `replace_catalog_db`.
             let mut schema_stmt = conn
                 .prepare("SELECT type, name FROM sqlite_schema WHERE type IN ('trigger', 'view')")
                 .map_err(|e| e.to_string())?;
@@ -573,26 +567,24 @@ fn validate_catalog_db_bytes(
             }
             drop(schema_stmt);
 
-            // Erst migrieren, damit aeltere, legitime Backups (z.B. ohne
-            // folders.parent_id) nicht an den folgenden Pruefungen scheitern.
+            // Migrate first, so older legitimate backups (e.g. without
+            // folders.parent_id) don't fail the following checks.
             crate::db::run_migrations(&mut conn).map_err(|e| e.to_string())?;
 
-            // quick_check sagt nichts darueber, ob die Tabellen und Spalten existieren,
-            // die die App braucht.
+            // quick_check says nothing about whether the tables and columns the app needs exist.
             validate_expected_schema(&conn)?;
 
-            // Existenz reicht nicht, auch die Speicherklassen muessen stimmen
-            // (siehe `validate_column_types`).
+            // Existence isn't enough, the storage classes must match too (see `validate_column_types`).
             validate_column_types(&conn)?;
 
-            // Eine DB mit aktuellem user_version ueberspringt jede Migration und kann
-            // Tabellen ohne CHECK, FK und Unique-Index mitbringen. Ohne diese Pruefung
-            // koennte z.B. `slot_count = 1000000000` das Frontend beim Rendern haengen
-            // lassen oder zwei Spulen im selben Fach landen.
+            // A DB with a current user_version skips every migration and can bring tables
+            // without CHECK, FK and unique index. Without this check e.g.
+            // `slot_count = 1000000000` could hang the frontend while rendering, or two
+            // spools could end up in the same slot.
             validate_printer_invariants(&conn)?;
             validate_printer_link_rows(&conn)?;
 
-            // quick_check erfasst keine FK-Verletzungen; nach der Migration pruefen.
+            // quick_check doesn't catch FK violations; check them after the migration.
             conn.pragma_update(None, "foreign_keys", true).map_err(|e| e.to_string())?;
             let mut fk_stmt = conn.prepare("PRAGMA foreign_key_check").map_err(|e| e.to_string())?;
             let has_violation = fk_stmt.exists([]).map_err(|e| e.to_string())?;
@@ -614,8 +606,7 @@ fn validate_catalog_db_bytes(
                     .map_err(|e| format!("Ordner-Eintrag im Archiv abgelehnt: {e}"))?;
             }
 
-            // Zyklen in folders.parent_id wuerden jede Pfad-Rekonstruktion in eine
-            // Endlosschleife schicken.
+            // Cycles in folders.parent_id would send every path reconstruction into an endless loop.
             let mut folder_edges_stmt = conn
                 .prepare("SELECT id, parent_id FROM folders")
                 .map_err(|e| e.to_string())?;
@@ -637,7 +628,7 @@ fn validate_catalog_db_bytes(
                     current = *parent;
                     steps += 1;
                     if steps > parent_of.len() {
-                        break; // defensive Obergrenze, sollte durch seen bereits abgedeckt sein
+                        break; // defensive upper bound, `seen` should already cover this
                     }
                 }
             }
@@ -663,9 +654,8 @@ fn validate_catalog_db_bytes(
                 reject_if_sensitive_path_expanded(Path::new(&path), &expanded_dirs)
                     .map_err(|e| format!("Datei-Eintrag im Archiv abgelehnt: {e}"))?;
                 if let Some(trash_path) = trash_path.filter(|p| !p.trim().is_empty()) {
-                    // Denylist UND Containment: die Denylist bleibt als
-                    // zweite Schranke bestehen, falls ein Pfad ueber eine
-                    // Symlink-Kette trotz passender Grenze woanders landet.
+                    // Denylist AND containment: the denylist stays as a second barrier in case
+                    // a path lands elsewhere through a symlink chain despite a matching prefix.
                     reject_if_sensitive_path_expanded(Path::new(&trash_path), &expanded_dirs)
                         .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {e}"))?;
                     reject_if_outside_trash_dir(Path::new(&trash_path), &resolved_trash_dir)
@@ -684,10 +674,10 @@ pub struct ImportCatalogResultDto {
     pub imported: bool,
     pub settings_json: Option<String>,
 }
-/// Importiert einen per `export_catalog` erzeugten Export. Ersetzt die laufende
-/// `catalog.db` nur nach erfolgreicher Validierung, siehe `replace_catalog_db`.
-/// Ein Neustart wird trotzdem empfohlen, weil das Frontend nicht auf einen
-/// Katalogwechsel zur Laufzeit ausgelegt ist.
+/// Imports an export created by `export_catalog`. Replaces the running
+/// `catalog.db` only after successful validation, see `replace_catalog_db`.
+/// A restart is still recommended, because the frontend isn't built for
+/// switching catalogs at runtime.
 #[tauri::command]
 pub async fn import_catalog(
     app: tauri::AppHandle,
@@ -741,51 +731,49 @@ pub async fn import_catalog(
 
     Ok(ImportCatalogResultDto { imported: true, settings_json: Some(settings_json) })
 }
-/// Ersetzt die laufende `catalog.db` durch `new_db_path`.
+/// Replaces the running `catalog.db` with `new_db_path`.
 ///
-/// `registered_slicers` ist maschinenlokal: ein Backup darf keine fremden
-/// ausfuehrbaren Pfade einschleusen und keine lokalen Slicer loeschen. Deshalb
-/// wird die EINGEHENDE DB vollstaendig bereinigt, bevor sie aktiv wird;
-/// scheitert das, bleibt die alte DB unangetastet.
+/// `registered_slicers` is machine-local: a backup must neither inject foreign
+/// executable paths nor delete local slicers. So the INCOMING DB is fully
+/// sanitized before it becomes active; if that fails, the old DB stays untouched.
 ///
-/// Vor dem Umbenennen wird die Connection durch einen In-Memory-Platzhalter
-/// ersetzt, nur so wird das Datei-Handle geschlossen (Windows: Sharing-Violation).
-/// Die alte DB wird zu `.bak-<Zeitstempel>` umbenannt. Scheitert das Kopieren,
-/// wird sie zurueckbenannt; scheitert auch das, nennt die Fehlermeldung den
-/// Pfad der Sicherung.
+/// Before renaming, the connection is replaced by an in-memory placeholder; only
+/// that closes the file handle (Windows: sharing violation). The old DB is renamed
+/// to `.bak-<timestamp>`. If copying fails it is renamed back; if that fails too,
+/// the error message names the path of the backup.
 fn replace_catalog_db(state: &AppState, new_db_path: &Path) -> CmdResult<()> {
     replace_catalog_db_with_copy_fn(state, new_db_path, copy_file_default)
 }
-/// Nicht-generischer Wrapper, damit `std::fs::copy` als Funktionszeiger an
-/// `replace_catalog_db_with_copy_fn` passt.
+/// Non-generic wrapper so `std::fs::copy` fits as a function pointer for
+/// `replace_catalog_db_with_copy_fn`.
 fn copy_file_default(from: &Path, to: &Path) -> std::io::Result<u64> {
     std::fs::copy(from, to)
 }
-/// Kern von [`replace_catalog_db`] mit austauschbarer Kopierfunktion, damit
-/// Tests einen Fehlschlag genau im Kopierschritt erzwingen koennen (ueber
-/// Dateirechte ginge das nicht, ohne schon das Umbenennen scheitern zu lassen).
+/// Core of [`replace_catalog_db`] with an exchangeable copy function, so tests can
+/// force a failure exactly in the copy step (file permissions can't do that
+/// without already failing the rename).
 fn replace_catalog_db_with_copy_fn(
     state: &AppState,
     new_db_path: &Path,
     copy_fn: fn(&Path, &Path) -> std::io::Result<u64>,
 ) -> CmdResult<()> {
-    // Lokale Slicer aus der laufenden DB sichern, bevor etwas geaendert wird.
+    // Save the local slicers from the running DB before anything changes.
     let local_slicers = {
         let guard = state.db.lock().map_err(|_| "database lock poisoned".to_string())?;
         db::list_registered_slicers(&guard).map_err(|e| e.to_string())?
     };
 
-    // Die eingehende DB migrieren und bereinigen, solange sie noch nicht aktiv
-    // ist. Jeder Fehler hier laesst die alte DB unveraendert aktiv (fail closed).
+    // Migrate and sanitize the incoming DB while it's not active yet. Any error
+    // here leaves the old DB active and unchanged (fail closed).
     {
         let mut incoming = Connection::open(new_db_path).map_err(|e| e.to_string())?;
         crate::db::run_migrations(&mut incoming).map_err(|e| e.to_string())?;
         let tx = incoming.unchecked_transaction().map_err(|e| e.to_string())?;
         sanitize_printer_connections(&tx)?;
-        // DROP statt DELETE: ein boesartiger AFTER-DELETE-Trigger wuerde den Eintrag
-        // sonst wieder einfuegen, DROP TABLE entfernt auch die Trigger. Zweite
-        // Barriere neben der Trigger-Ablehnung in validate_catalog_db_bytes.
-        // Schema wie in migrations.rs.
+        // DROP instead of DELETE: a malicious AFTER DELETE trigger would otherwise
+        // re-insert the row; DROP TABLE removes the triggers too. Second barrier next
+        // to the trigger rejection in validate_catalog_db_bytes. Schema as in
+        // migrations.rs.
         tx.execute("DROP TABLE IF EXISTS registered_slicers", [])
             .map_err(|e| e.to_string())?;
         tx.execute(
@@ -807,7 +795,7 @@ fn replace_catalog_db_with_copy_fn(
             )
             .map_err(|e| e.to_string())?;
         }
-        // Die Anzahl muss exakt den gesicherten lokalen Slicern entsprechen.
+        // The count must match the saved local slicers exactly.
         let final_count: i64 = tx
             .query_row("SELECT COUNT(*) FROM registered_slicers", [], |row| row.get(0))
             .map_err(|e| e.to_string())?;
@@ -818,14 +806,14 @@ fn replace_catalog_db_with_copy_fn(
             ));
         }
         tx.commit().map_err(|e| e.to_string())?;
-        // Handle auf new_db_path schliessen, bevor kopiert wird.
+        // Close the handle on new_db_path before copying.
     }
 
-    // Erst jetzt die aktive DB austauschen; new_db_path ist bereits bereinigt.
+    // Only now swap the active DB; new_db_path is already sanitized.
     {
         let mut guard = state.db.lock().map_err(|_| "database lock poisoned".to_string())?;
         let placeholder = Connection::open_in_memory().map_err(|e| e.to_string())?;
-        *guard = placeholder; // alte Connection droppt hier -> OS-Handle auf catalog.db wird geschlossen
+        *guard = placeholder; // old connection drops here -> OS handle on catalog.db is closed
     }
 
     let backup_path = state.db_path.with_file_name(format!(
@@ -834,8 +822,8 @@ fn replace_catalog_db_with_copy_fn(
     ));
 
     if let Err(e) = std::fs::rename(&state.db_path, &backup_path) {
-        // Umbenennen gescheitert, Datei unveraendert: wieder verbinden, sonst bleibt
-        // die App bis zum Neustart auf dem Platzhalter.
+        // Rename failed, file unchanged: reconnect, otherwise the app stays on the
+        // placeholder until restart.
         if let Ok(mut guard) = state.db.lock() {
             if let Ok(conn) = db::connect(&state.db_path) {
                 *guard = conn;
@@ -868,8 +856,8 @@ fn replace_catalog_db_with_copy_fn(
         };
     }
 
-    // db::connect statt Connection::open: setzt foreign_keys und migriert, sonst
-    // fehlen bei aelteren Exporten Spalten bis zum Neustart.
+    // db::connect instead of Connection::open: sets foreign_keys and migrates,
+    // otherwise older exports would miss columns until restart.
     let mut guard = state.db.lock().map_err(|_| "database lock poisoned".to_string())?;
     *guard = db::connect(&state.db_path).map_err(|e| e.to_string())?;
 
@@ -912,8 +900,8 @@ pub fn scan_catalog_issues(state: State<AppState>) -> CmdResult<CatalogIssuesDto
     let files = db::list_files(&conn).map_err(|e| e.to_string())?;
     let spools = db::list_filament_spools(&conn).map_err(|e| e.to_string())?;
 
-    // Nur NotFound heisst "fehlt": PermissionDenied oder IO-Fehler (z.B. nicht
-    // eingehaengtes Netzlaufwerk) duerfen nicht zum Loeschen markieren.
+    // Only NotFound means "missing": PermissionDenied or IO errors (e.g. an
+    // unmounted network drive) must not mark files for deletion.
     let mut orphaned_ids: HashSet<i64> = HashSet::new();
     let mut orphaned: Vec<ModelFileDto> = Vec::new();
     for file in &files {
@@ -987,7 +975,7 @@ mod tests {
         let _ = std::fs::remove_file(&tmp_path);
         assert!(result.is_ok(), "expected valid catalog db to pass validation: {result:?}");
     }
-    /// Frisch migrierte Katalog-DB; `setup` kann vorher Zeilen einfuegen.
+    /// Freshly migrated catalog DB; `setup` can insert rows first.
     fn backup_test_db_with(setup: impl FnOnce(&Connection)) -> (Vec<u8>, Vec<PathBuf>, PathBuf) {
         let tmp_path = std::env::temp_dir().join(format!(
             "backup_test_db_with_{}.db",
@@ -1079,7 +1067,7 @@ mod tests {
         let tmp_path = unique_test_db_path("validate_db_fk_violation");
         {
             let conn = crate::db::connect(&tmp_path).unwrap();
-            // Datei mit folder_id, die auf keine existierende Zeile in folders zeigt.
+            // File with a folder_id that points to no existing row in folders.
             conn.execute("PRAGMA foreign_keys = OFF", []).unwrap();
             conn.execute(
                 "INSERT INTO files (name, path, file_type, folder_id, file_size_bytes, imported_at) VALUES ('x', '/tmp/x.3mf', '3mf', 999999, 1, '2026-01-01T00:00:00Z')",
@@ -1108,14 +1096,14 @@ mod tests {
     }
     #[test]
     fn validate_catalog_db_bytes_accepts_a_legitimate_pre_migration_backup() {
-        // Ein aelteres Backup ohne Migrationsspalten (z.B. folders.parent_id) muss
-        // dank Vorab-Migration akzeptiert werden.
+        // An older backup without migration columns (e.g. folders.parent_id) must be
+        // accepted thanks to the migration up front.
         let tmp_path = unique_test_db_path("validate_db_pre_migration_backup");
         {
             let conn = rusqlite::Connection::open(&tmp_path).unwrap();
             conn.execute_batch(crate::db::SCHEMA_SQL).unwrap();
-            // Bewusst KEIN run_migrations() hier - simuliert exakt den
-            // Zustand einer vor der parent_id/path-Migration exportierten DB.
+            // Deliberately NO run_migrations() here - simulates a DB exported before the
+            // parent_id/path migration.
             conn.execute(
                 "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at) VALUES ('x', '/tmp/x.3mf', '3mf', 1, '2026-01-01T00:00:00Z')",
                 [],
@@ -1156,12 +1144,12 @@ mod tests {
     }
     #[test]
     fn validate_catalog_db_bytes_rejects_a_database_missing_a_required_table() {
-        // Gueltige DB mit genau einem Defekt. `tags` statt `files`, weil `files`
-        // schon vorher per COUNT abgefragt wird; so kann nur validate_expected_schema
-        // den Fehler finden.
+        // Valid DB with exactly one defect. `tags` instead of `files`, because `files`
+        // is queried earlier via COUNT; this way only validate_expected_schema can
+        // find the error.
         let tmp_path = unique_test_db_path("validate_db_missing_table");
         {
-            let conn = crate::db::connect(&tmp_path).unwrap(); // vollstaendiges, aktuell migriertes Schema
+            let conn = crate::db::connect(&tmp_path).unwrap(); // complete, current schema
             conn.execute_batch("DROP TABLE tags;").unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
@@ -1173,19 +1161,19 @@ mod tests {
     }
     #[test]
     fn validate_catalog_db_bytes_rejects_a_database_missing_a_required_column() {
-        // Wie oben, aber mit genau einer entfernten Spalte.
+        // Same as above, but with exactly one column removed.
         let tmp_path = unique_test_db_path("validate_db_missing_column");
         {
             let conn = crate::db::connect(&tmp_path).unwrap();
-            // 'imported_at', weil DROP COLUMN keine Spalten mit UNIQUE oder Index entfernt.
+            // 'imported_at', because DROP COLUMN won't remove columns with UNIQUE or an index.
             conn.execute_batch("ALTER TABLE files DROP COLUMN imported_at;").unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
         let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
         assert!(result.is_err(), "eine 'files'-Tabelle ohne die erforderliche Spalte 'imported_at' muss abgelehnt werden");
     }
-    /// Migrierte DB mit einem Drucker und einer Einheit ("AMS A", 4 Faecher).
-    /// Ungueltige Zeilen fuegen die Tests per Roh-SQL ein, die API wuerde sie ablehnen.
+    /// Migrated DB with one printer and one unit ("AMS A", 4 slots). Tests insert
+    /// invalid rows via raw SQL, the API would reject them.
     fn printer_with_one_ams_unit(conn: &Connection) -> (i64, i64) {
         let printer_id = crate::db::printers::insert_printer(conn, "X1C").unwrap();
         let unit_id = crate::db::printers::insert_unit(conn, printer_id, "bambu_ams", "AMS A", None).unwrap();
@@ -1265,8 +1253,8 @@ mod tests {
         let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
         assert!(result.is_err(), "eine Einheit mit nicht existierendem 'printer_id' muss abgelehnt werden");
     }
-    /// `material_units` ohne NOT NULL und CHECK neu anlegen, wie in einer
-    /// praeparierten DB; sonst lehnt schon das INSERT die Testdaten ab.
+    /// Recreate `material_units` without NOT NULL and CHECK, as in a crafted DB;
+    /// otherwise the INSERT itself would reject the test data.
     fn drop_material_units_constraints(conn: &Connection) {
         conn.execute_batch(
             "DROP TABLE material_units;
@@ -1284,7 +1272,7 @@ mod tests {
     }
     #[test]
     fn validate_catalog_db_bytes_rejects_a_material_unit_with_a_null_kind() {
-        // `kind NOT IN (...)` ist bei NULL UNKNOWN, braucht also `kind IS NULL`.
+        // `kind NOT IN (...)` is UNKNOWN for NULL, so it needs `kind IS NULL`.
         let tmp_path = unique_test_db_path("validate_db_unit_null_kind");
         {
             let conn = crate::db::connect(&tmp_path).unwrap();
@@ -1358,7 +1346,7 @@ mod tests {
     }
     #[test]
     fn validate_catalog_db_bytes_rejects_a_spool_in_a_slot_of_a_unit_with_a_null_slot_count() {
-        // Deckt die COALESCE-Absicherung in `bad_spools` ab.
+        // Covers the COALESCE guard in `bad_spools`.
         let tmp_path = unique_test_db_path("validate_db_spool_slot_in_null_slot_count_unit");
         {
             let conn = crate::db::connect(&tmp_path).unwrap();
@@ -1423,7 +1411,7 @@ mod tests {
         let tmp_path = unique_test_db_path("validate_db_spool_slot_out_of_range");
         {
             let conn = crate::db::connect(&tmp_path).unwrap();
-            let (_, unit_id) = printer_with_one_ams_unit(&conn); // 4 Faecher, gueltig sind 0..=3
+            let (_, unit_id) = printer_with_one_ams_unit(&conn); // 4 slots, valid are 0..=3
             conn.execute(
                 "INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at, unit_id, slot_index)
                  VALUES ('PLA', 1.75, 1000, 1000, '2026-01-01T00:00:00Z', ?1, 4)",
@@ -1441,7 +1429,7 @@ mod tests {
         {
             let conn = crate::db::connect(&tmp_path).unwrap();
             let (_, unit_id) = printer_with_one_ams_unit(&conn);
-            // Unique-Index entfernen, wie er in einer praeparierten DB fehlen kann.
+            // Drop the unique index, as it may be missing in a crafted DB.
             conn.execute("DROP INDEX idx_filament_spools_slot", []).unwrap();
             conn.execute(
                 "INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at, unit_id, slot_index)
@@ -1505,12 +1493,12 @@ mod tests {
         let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
         assert!(result.is_ok(), "ein gueltiges Backup mit belegten Faechern muss akzeptiert werden: {result:?}");
     }
-    // ---- Speicherklassen ----
-    // Werte koennen gueltig wirken und trotzdem die falsche Speicherklasse haben
-    // (z.B. `slot_count = 4.5`); rusqlite scheitert dann beim Lesen.
+    // ---- Storage classes ----
+    // Values can look valid and still have the wrong storage class (e.g.
+    // `slot_count = 4.5`); rusqlite then fails on read.
     #[test]
     fn validate_catalog_db_bytes_rejects_a_material_unit_with_a_real_slot_count() {
-        // 4.5 bleibt trotz INTEGER-Affinitaet REAL und liegt "zwischen" 1 und 16.
+        // 4.5 stays REAL despite INTEGER affinity and lies "between" 1 and 16.
         let tmp_path = unique_test_db_path("validate_db_unit_real_slot_count");
         {
             let conn = crate::db::connect(&tmp_path).unwrap();
@@ -1526,8 +1514,8 @@ mod tests {
         let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
         assert!(result.is_err(), "eine Einheit mit 'slot_count' als REAL-Speicherklasse muss abgelehnt werden");
     }
-    /// `printers` mit untypisiertem `name` neu anlegen: ohne Affinitaet bleibt ein
-    /// INTEGER-Wert INTEGER, statt zu TEXT zu werden.
+    /// Recreate `printers` with an untyped `name`: without affinity an INTEGER value
+    /// stays INTEGER instead of becoming TEXT.
     fn drop_printers_constraints(conn: &Connection) {
         conn.execute_batch(
             "DROP TABLE printers;
@@ -1554,8 +1542,8 @@ mod tests {
     }
     #[test]
     fn validate_catalog_db_bytes_rejects_a_filament_spool_with_remaining_weight_g_stored_as_text() {
-        // Kein Constraint-Umbau noetig: INTEGER-Affinitaet konvertiert einen
-        // TEXT-Wert nur, wenn er wie eine Zahl AUSSIEHT - 'viel' bleibt TEXT.
+        // No constraint rebuild needed: INTEGER affinity only converts a TEXT value
+        // if it LOOKS like a number - 'viel' stays TEXT.
         let tmp_path = unique_test_db_path("validate_db_spool_text_remaining_weight");
         {
             let conn = crate::db::connect(&tmp_path).unwrap();
@@ -1570,7 +1558,7 @@ mod tests {
         let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
         assert!(result.is_err(), "eine Spule mit 'remaining_weight_g' als TEXT-Speicherklasse muss abgelehnt werden");
     }
-    /// `filament_spools` ohne NOT NULL neu anlegen (siehe `drop_material_units_constraints`).
+    /// Recreate `filament_spools` without NOT NULL (see `drop_material_units_constraints`).
     fn drop_filament_spools_constraints(conn: &Connection) {
         conn.execute_batch(
             "DROP TABLE filament_spools;
@@ -1586,7 +1574,7 @@ mod tests {
     }
     #[test]
     fn validate_catalog_db_bytes_rejects_a_filament_spool_with_a_null_material() {
-        // `material` ist in Rust ein nicht-optionaler String; NULL faengt nur die Typpruefung.
+        // `material` is a non-optional String in Rust; only the type check catches NULL.
         let tmp_path = unique_test_db_path("validate_db_spool_null_material");
         {
             let conn = crate::db::connect(&tmp_path).unwrap();
@@ -1604,9 +1592,9 @@ mod tests {
     }
     #[test]
     fn validate_catalog_db_bytes_rejects_a_folder_with_name_stored_as_blob() {
-        // Ein BLOB bleibt trotz TEXT-Affinitaet BLOB. `folders.name` statt
-        // `files.name`, weil Letzteres schon vorher gelesen wird; so prueft der Test
-        // nur validate_column_types.
+        // A BLOB stays BLOB despite TEXT affinity. `folders.name` instead of
+        // `files.name`, because the latter is read earlier; this way the test only
+        // covers validate_column_types.
         let tmp_path = unique_test_db_path("validate_db_folder_blob_name");
         {
             let conn = crate::db::connect(&tmp_path).unwrap();
@@ -1622,7 +1610,7 @@ mod tests {
     }
     #[test]
     fn validate_catalog_db_bytes_accepts_a_full_catalog_with_data_in_every_table() {
-        // Ein normal befuellter Katalog (Daten in jeder Tabelle) darf nicht abgelehnt werden.
+        // A normally filled catalog (data in every table) must not be rejected.
         let tmp_path = unique_test_db_path("validate_db_full_catalog");
         {
             let mut conn = crate::db::connect(&tmp_path).unwrap();
@@ -1709,7 +1697,7 @@ mod tests {
     }
     #[test]
     fn column_types_covers_known_non_optional_columns_read_as_rust_values() {
-        // Diese typisiert gelesenen Spalten muss COLUMN_TYPES mindestens enthalten.
+        // COLUMN_TYPES must contain at least these typed columns.
         let must_have: &[(&str, &str)] = &[
             ("files", "name"), ("files", "path"), ("files", "file_type"), ("files", "imported_at"), ("files", "favorite"),
             ("folders", "name"), ("folders", "path"),
@@ -1736,13 +1724,13 @@ mod tests {
         let dir = unique_test_dir("replace_catalog_db_success");
         let db_path = dir.join("catalog.db");
 
-        // "Alte" laufende DB: leerer Katalog.
+        // "Old" running DB: empty catalog.
         let old_conn = crate::db::connect(&db_path).expect("connect creates schema");
         drop(old_conn);
         let old_bytes = std::fs::read(&db_path).expect("read old db bytes");
 
-        // "Neue" DB (simuliert das aus dem Zip entpackte catalog.db) mit
-        // einem Datensatz, damit sich alt/neu unterscheiden lassen.
+        // "New" DB (simulates the catalog.db extracted from the zip) with one record,
+        // so old and new can be told apart.
         let new_db_path = dir.join("incoming_catalog.db");
         let new_conn = crate::db::connect(&new_db_path).expect("connect creates schema");
         new_conn
@@ -1756,7 +1744,7 @@ mod tests {
         let new_bytes = std::fs::read(&new_db_path).expect("read new db bytes");
         assert_ne!(old_bytes, new_bytes, "old and new db content must differ for this test to be meaningful");
 
-        // AppState haelt zunaechst die "alte" Connection auf db_path.
+        // AppState initially holds the "old" connection on db_path.
         let running_conn = crate::db::connect(&db_path).expect("reopen db for AppState");
         let state = AppState {
             db: Mutex::new(running_conn),
@@ -1768,8 +1756,8 @@ mod tests {
         let result = replace_catalog_db(&state, &new_db_path);
         assert!(result.is_ok(), "expected successful replacement: {result:?}");
 
-        // Alte DB wurde zu genau einer .bak-* Datei umbenannt (nicht geloescht)
-        // und ihr Inhalt entspricht dem alten Katalog.
+        // The old DB was renamed to exactly one .bak-* file (not deleted) and its
+        // content matches the old catalog.
         let bak_entries: Vec<_> = std::fs::read_dir(&dir)
             .unwrap()
             .filter_map(|e| e.ok())
@@ -1779,12 +1767,12 @@ mod tests {
         let bak_bytes = std::fs::read(bak_entries[0].path()).expect("read backup db bytes");
         assert_eq!(bak_bytes, old_bytes, "backup file must contain the old db content");
 
-        // Kein Byte-Vergleich moeglich: die Bereinigung schreibt die eingehende DB
-        // vor dem Kopieren um. Deshalb inhaltlich pruefen.
+        // No byte comparison possible: sanitizing rewrites the incoming DB before
+        // copying. So check the content instead.
         let installed_bytes = std::fs::read(&db_path).expect("read installed db bytes");
         assert_ne!(installed_bytes, old_bytes, "db_path must no longer contain the old db content");
 
-        // Die Connection zeigt auf den neuen Inhalt, nicht auf den Platzhalter.
+        // The connection points to the new content, not the placeholder.
         let guard = state.db.lock().unwrap();
         let count: i64 =
             guard.query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0)).unwrap();
@@ -1795,8 +1783,8 @@ mod tests {
     }
     #[test]
     fn replace_catalog_db_fails_closed_when_the_incoming_db_path_does_not_exist() {
-        // Eine fehlende Datei legt Connection::open als leere DB an; die Migration
-        // scheitert dann, bevor der alte Katalog angefasst wird.
+        // A missing file makes Connection::open create an empty DB; the migration
+        // then fails before the old catalog is touched.
         let dir = unique_test_dir("replace_catalog_db_missing_incoming");
         let db_path = dir.join("catalog.db");
 
@@ -1811,7 +1799,7 @@ mod tests {
         drop(old_conn);
         let old_bytes = std::fs::read(&db_path).expect("read old db bytes");
 
-        // Existiert absichtlich nicht.
+        // Doesn't exist on purpose.
         let missing_new_db_path = dir.join("does_not_exist.db");
 
         let running_conn = crate::db::connect(&db_path).expect("reopen db for AppState");
@@ -1825,8 +1813,8 @@ mod tests {
         let result = replace_catalog_db(&state, &missing_new_db_path);
         assert!(result.is_err(), "expected an error when the new db file is missing");
 
-        // Es wurde ueberhaupt kein .bak-* angelegt - das Fail-Closed greift
-        // VOR dem ersten Rename, state.db_path wurde nie angefasst.
+        // No .bak-* was created at all - fail-closed kicks in BEFORE the first
+        // rename, state.db_path was never touched.
         let bak_entries: Vec<_> = std::fs::read_dir(&dir)
             .unwrap()
             .filter_map(|e| e.ok())
@@ -1837,7 +1825,7 @@ mod tests {
         let restored_bytes = std::fs::read(&db_path).expect("read db bytes");
         assert_eq!(restored_bytes, old_bytes, "old db content must be completely untouched");
 
-        // Die Connection wurde nie ausgetauscht, die alte DB ist weiter sichtbar.
+        // The connection was never swapped, the old DB is still visible.
         let guard = state.db.lock().unwrap();
         let count: i64 =
             guard.query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0)).unwrap();
@@ -1848,9 +1836,8 @@ mod tests {
     }
     #[test]
     fn replace_catalog_db_restores_backup_when_the_copy_step_fails_for_a_valid_sanitized_incoming_db() {
-        // Prueft den Rueckbau, wenn genau `fs::copy` scheitert. Ueber Dateirechte
-        // laesst sich das nicht erzwingen (dann scheitert schon das Umbenennen),
-        // deshalb mit einer fehlschlagenden `copy_fn`.
+        // Checks the rollback when exactly `fs::copy` fails. File permissions can't
+        // force this (the rename would fail first), hence a failing `copy_fn`.
         let dir = unique_test_dir("replace_catalog_db_copy_step_fails");
         let db_path = dir.join("catalog.db");
 
@@ -1865,7 +1852,7 @@ mod tests {
         drop(old_conn);
         let old_bytes = std::fs::read(&db_path).expect("read old db bytes");
 
-        // Gueltige eingehende DB, damit wirklich der Kopierschritt scheitert.
+        // A valid incoming DB, so the copy step really is what fails.
         let new_db_path = dir.join("incoming_catalog.db");
         let new_conn = crate::db::connect(&new_db_path).expect("connect creates schema");
         new_conn
@@ -1895,9 +1882,8 @@ mod tests {
             "expected error to mention successful restoration, got: {err}"
         );
 
-        // Alte DB wurde nach dem fehlgeschlagenen Kopieren wieder an ihren
-        // urspruenglichen Platz zurueckbenannt - kein .bak-* liegt mehr da,
-        // db_path enthaelt wieder den alten Inhalt.
+        // After the failed copy, the old DB was renamed back to its original place -
+        // no .bak-* is left and db_path holds the old content again.
         let bak_entries: Vec<_> = std::fs::read_dir(&dir)
             .unwrap()
             .filter_map(|e| e.ok())
@@ -1908,8 +1894,8 @@ mod tests {
         let restored_bytes = std::fs::read(&db_path).expect("read restored db bytes");
         assert_eq!(restored_bytes, old_bytes, "restored db must match the original content");
 
-        // Die Connection liest wieder die alte DB, weder den Platzhalter noch die
-        // nie aktivierte eingehende DB.
+        // The connection reads the old DB again, neither the placeholder nor the
+        // never-activated incoming DB.
         let guard = state.db.lock().unwrap();
         let count: i64 =
             guard.query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0)).unwrap();
@@ -1927,21 +1913,21 @@ mod tests {
     }
     #[test]
     fn restoring_a_catalog_backup_does_not_overwrite_the_local_slicer_registry() {
-        // Ein Restore darf registered_slicers weder uebernehmen noch vermischen.
+        // A restore must neither adopt nor merge registered_slicers.
         let dir = unique_test_dir("restore_preserves_local_slicers");
         let db_path = dir.join("catalog.db");
         let trash_dir = dir.join("trash");
         std::fs::create_dir_all(&trash_dir).unwrap();
 
-        // current_exe() ist auf jeder Plattform ein existierender, ausfuehrbarer Pfad.
+        // current_exe() is an existing, executable path on every platform.
         let local_executable = std::env::current_exe().unwrap();
         let conn = crate::db::connect(&db_path).unwrap();
         register_slicer_with_conn(&conn, "Lokaler Slicer".into(), local_executable.to_string_lossy().to_string()).unwrap();
         drop(conn);
 
-        // Backup mit fremdem Slicer, direkt eingefuegt: register_slicer_with_conn
-        // wuerde den nicht existierenden Pfad ablehnen, ein manipuliertes Backup hat
-        // diese Pruefung aber nie durchlaufen.
+        // Backup with a foreign slicer, inserted directly: register_slicer_with_conn
+        // would reject the non-existent path, but a manipulated backup never went
+        // through that check.
         let backup_db_path = dir.join("incoming.db");
         let backup_conn = crate::db::connect(&backup_db_path).unwrap();
         db::insert_registered_slicer(&backup_conn, "Fremder Slicer", "/tmp/attacker-binary", false).unwrap();
@@ -1971,11 +1957,10 @@ mod tests {
     }
     #[test]
     fn replace_catalog_db_never_activates_an_unsanitized_incoming_database() {
-        // Scheitert die Bereinigung, darf die fremde DB nie aktiv werden.
-        // Fehler-Injektion: `registered_slicers` als VIEW, dann laesst DROP TABLE sie
-        // stehen und CREATE TABLE scheitert am Namenskonflikt. Bewusst ohne
-        // validate_catalog_db_bytes (das Views ablehnt), um diese Barriere isoliert
-        // zu pruefen.
+        // If sanitizing fails, the foreign DB must never become active.
+        // Fault injection: `registered_slicers` as a VIEW, so DROP TABLE leaves it and
+        // CREATE TABLE fails on the name conflict. Deliberately without
+        // validate_catalog_db_bytes (which rejects views) to test this barrier alone.
         let dir = unique_test_dir("restore_fail_closed");
         let db_path = dir.join("catalog.db");
         let trash_dir = dir.join("trash");
@@ -1989,10 +1974,9 @@ mod tests {
         let backup_db_path = dir.join("incoming.db");
         let backup_conn = rusqlite::Connection::open(&backup_db_path).unwrap();
         backup_conn.execute_batch(crate::db::SCHEMA_SQL).unwrap();
-        // Absichtlich VOR jeder Migration: registered_slicers existiert hier
-        // NICHT als Tabelle, sondern als View mit einer Zeile, die als
-        // "fremder Slicer" durchgehen wuerde, WENN die Sanierung faelschlich
-        // erfolgreich waere.
+        // Deliberately BEFORE any migration: registered_slicers is NOT a table here
+        // but a view with one row that would pass as a "foreign slicer" IF the
+        // sanitizing wrongly succeeded.
         backup_conn.execute_batch(
             "CREATE VIEW registered_slicers AS
              SELECT 1 AS id, 'Fremder Slicer' AS name, '/tmp/attacker-binary' AS executable_path, 0 AS is_auto_detected;",
@@ -2038,7 +2022,7 @@ mod tests {
     }
     #[test]
     fn group_duplicates_excludes_orphaned_member_leaving_no_group() {
-        // Is one of two same-hash files missing on disk, no group may form: the
+        // If one of two same-hash files is missing on disk, no group may form: the
         // missing file could otherwise become the "keep" anchor while the last real
         // copy is pre-checked for deletion.
         let orphaned = sample_file_record(1, Some("hash-a"), "2026-09-01T00:00:00Z");
@@ -2077,14 +2061,13 @@ mod tests {
     }
     #[test]
     fn validate_catalog_db_bytes_rejects_folder_path_in_sensitive_directory() {
-        // Ein technisch gueltiges Backup mit `folders.path` in einem geschuetzten
-        // Verzeichnis muss abgelehnt werden.
+        // A technically valid backup with `folders.path` in a protected directory must be rejected.
         let tmp_path = std::env::temp_dir().join(format!(
             "validate_catalog_db_sensitive_test_{}.db",
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
         ));
-        // Echtes Verzeichnis: sonst wird nur der gepruefte Pfad aufgeloest (macOS:
-        // /tmp -> /private/tmp) und der Praefixvergleich scheitert am Testaufbau.
+        // A real directory: otherwise only the checked path gets resolved (macOS:
+        // /tmp -> /private/tmp) and the prefix comparison fails because of the test setup.
         let sensitive_root = unique_test_dir("3mf-test-sensitive-root");
         {
             let conn = crate::db::connect(&tmp_path).expect("connect creates a valid schema");
@@ -2100,7 +2083,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&sensitive_root);
         assert!(result.is_err(), "must reject an imported catalog whose folder path lies in a sensitive directory");
     }
-    /// Gueltige Katalog-DB mit genau einer angepassten `files`-Zeile, als Roh-Bytes.
+    /// Valid catalog DB with exactly one adjusted `files` row, as raw bytes.
     fn catalog_db_bytes_with_file_row(
         name: &str,
         path: &str,
@@ -2139,7 +2122,7 @@ mod tests {
     }
     #[test]
     fn validate_catalog_db_bytes_rejects_file_name_with_path_traversal() {
-        // `files.name` landet in `trash_dir.join(...)`; "../" wuerde herausschreiben.
+        // `files.name` ends up in `trash_dir.join(...)`; "../" would write outside.
         let dir = unique_test_dir("validate_catalog_db_files_name");
         let bytes = catalog_db_bytes_with_file_row(
             "../../../.config/autostart/evil.desktop",
@@ -2152,8 +2135,8 @@ mod tests {
     }
     #[test]
     fn validate_catalog_db_bytes_rejects_file_path_in_sensitive_directory() {
-        // Als echtes Verzeichnis angelegt, nicht nur als Pfad-String -
-        // siehe Begruendung in `..._rejects_folder_path_in_sensitive_directory`.
+        // Created as a real directory, not just a path string - see
+        // `..._rejects_folder_path_in_sensitive_directory`.
         let sensitive_root = unique_test_dir("3mf-test-sensitive-file-path");
         let bytes = catalog_db_bytes_with_file_row(
             "modell.3mf",
@@ -2166,8 +2149,8 @@ mod tests {
     }
     #[test]
     fn validate_catalog_db_bytes_rejects_trash_path_outside_the_real_trash_dir() {
-        // `~/Dokumente/...` steht auf keiner Denylist, `purge_expired_trash_on_startup`
-        // haette die Datei beim naechsten Start trotzdem geloescht.
+        // `~/Documents/...` is on no denylist, but `purge_expired_trash_on_startup`
+        // would still have deleted the file on the next start.
         let dir = unique_test_dir("validate_catalog_db_trash_containment");
         let trash_dir = dir.join("trash");
         std::fs::create_dir_all(&trash_dir).expect("create trash dir");
@@ -2188,7 +2171,7 @@ mod tests {
     }
     #[test]
     fn validate_catalog_db_bytes_accepts_trash_path_inside_the_real_trash_dir() {
-        // Gegenprobe: ein echtes Backup dieser App muss importierbar bleiben.
+        // Counter-check: a genuine backup of this app must stay importable.
         let dir = unique_test_dir("validate_catalog_db_trash_containment_ok");
         let trash_dir = dir.join("trash");
         std::fs::create_dir_all(&trash_dir).expect("create trash dir");
@@ -2204,8 +2187,8 @@ mod tests {
     }
     #[test]
     fn validate_catalog_db_bytes_rejects_trash_path_escaping_the_trash_dir_via_parent_components() {
-        // `<trash_dir>/../opfer.pdf` besteht den rohen Praefixvergleich; der Pfad
-        // wird deshalb vorher aufgeloest.
+        // `<trash_dir>/../victim.pdf` passes the raw prefix comparison; the path is
+        // therefore resolved first.
         let dir = unique_test_dir("validate_catalog_db_trash_containment_dotdot");
         let trash_dir = dir.join("trash");
         std::fs::create_dir_all(&trash_dir).expect("create trash dir");
@@ -2225,21 +2208,21 @@ mod tests {
     }
     #[test]
     fn validate_catalog_db_bytes_rejects_trash_path_in_sensitive_directory() {
-        // `files.trash_path` geht ungefragt an `fs::remove_file` - unter
-        // anderem in `purge_expired_trash_on_startup`, das beim App-Start
-        // ganz ohne Nutzer-Interaktion laeuft.
+        // `files.trash_path` goes straight to `fs::remove_file` - among others in
+        // `purge_expired_trash_on_startup`, which runs at startup without any user
+        // interaction.
         let dir = unique_test_dir("validate_catalog_db_trash_path");
-        // Als echtes Verzeichnis angelegt, nicht nur als Pfad-String -
-        // siehe Begruendung in `..._rejects_folder_path_in_sensitive_directory`.
+        // Created as a real directory, not just a path string - see
+        // `..._rejects_folder_path_in_sensitive_directory`.
         let sensitive_root = unique_test_dir("3mf-test-sensitive-trash-path");
         let bytes = catalog_db_bytes_with_file_row(
             "modell.3mf",
             &dir.join("modell.3mf").to_string_lossy(),
             Some(&sensitive_root.join("wichtig.conf").to_string_lossy()),
         );
-        // trash_dir bewusst auf temp_dir gesetzt: der praeparierte trash_path
-        // liegt darin, die Containment-Pruefung greift also NICHT - dieser
-        // Test prueft weiterhin genau die Denylist.
+        // trash_dir deliberately set to temp_dir: the crafted trash_path lies inside,
+        // so the containment check does NOT apply - this test still covers exactly
+        // the denylist.
         let result = validate_catalog_db_bytes(&bytes, std::slice::from_ref(&sensitive_root), &std::env::temp_dir());
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::remove_dir_all(&sensitive_root);
@@ -2283,8 +2266,8 @@ mod tests {
                     VALUES ('PLA', 1.75, 1000, 600, '2026-09-01');",
             )
             .unwrap();
-            // Vor Schritt 36 (Nachhol-Schritt fuer `kind`); Schritt 37
-            // (Resin-Drucker) kam spaeter dazu und laeuft danach mit.
+            // Before step 36 (catch-up step for `kind`); step 37 (resin printers) came
+            // later and runs after it.
             assert!(version >= 36);
             conn.pragma_update(None, "user_version", 35).unwrap();
         });
@@ -2292,9 +2275,9 @@ mod tests {
         assert!(result.is_ok(), "aeltere Sicherung ohne kind muss gehen: {result:?}");
     }
 
-    /// Eine v0.13.1-Sicherung (user_version 32) hat `kind`, aber keine
-    /// Druckeranbindungs-Tabellen. Pruefung und Wiederherstellung laufen nur ueber
-    /// `run_migrations`, die Schritte 33-35 muessen sie also selbst anlegen.
+    /// A v0.13.1 backup (user_version 32) has `kind` but no printer connection
+    /// tables. Checking and restoring only use `run_migrations`, so steps 33-35 must
+    /// create them themselves.
     #[test]
     fn a_v0131_backup_without_printer_link_tables_validates_and_restores() {
         const V0131_SCHEMA_VERSION: i64 = 32;
@@ -2338,8 +2321,8 @@ mod tests {
         let restored = replace_catalog_db(&state, &incoming_path);
         assert!(restored.is_ok(), "v0.13.1-Sicherung muss sich wiederherstellen lassen: {restored:?}");
 
-        // Die installierte Datei selbst (nicht nur die per `init` geoeffnete
-        // Verbindung) hat danach alle Tabellen und die aktuelle Version.
+        // The installed file itself (not just the connection opened via `init`) then
+        // has all tables and the current version.
         let installed = Connection::open(&db_path).unwrap();
         for table in ["app_settings", "printer_connections", "printer_jobs"] {
             assert!(table_exists(&installed, table), "{table} fehlt nach der Wiederherstellung");
@@ -2395,7 +2378,7 @@ mod tests {
         assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_err());
     }
 
-    // ---- Resin-Drucker ----
+    // ---- Resin printers ----
 
     fn resin_bottle(conn: &Connection) -> i64 {
         crate::db::insert_filament_spool(
@@ -2434,10 +2417,10 @@ mod tests {
         assert!(result.is_ok(), "gueltiger Resin-Drucker muss durchgehen: {result:?}");
     }
 
-    /// Sicherung aus v0.13.x/fruehem v0.14.0 (user_version 36): `printers`
-    /// ohne `kind`, `material_units` mit dem alten CHECK, eine Spule im Fach.
-    /// Muss durch Schritt 37 migriert und akzeptiert werden; der
-    /// Tabellen-Rebuild darf die Spule nicht aus dem Fach werfen.
+    /// Backup from v0.13.x/early v0.14.0 (user_version 36): `printers` without
+    /// `kind`, `material_units` with the old CHECK, one spool in a slot. Must be
+    /// migrated and accepted by step 37; the table rebuild must not throw the spool
+    /// out of its slot.
     #[test]
     fn validate_catalog_db_bytes_accepts_an_old_backup_without_printer_kind_and_keeps_loaded_spools() {
         let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
@@ -2497,8 +2480,8 @@ mod tests {
         let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash);
         assert!(result.is_ok(), "alte Sicherung ohne printers.kind muss gehen: {result:?}");
 
-        // Und die Wiederherstellung (gleicher Weg: run_migrations auf der
-        // Kopie) behaelt die Spule im Fach.
+        // And the restore (same path: run_migrations on the copy) keeps the spool in
+        // its slot.
         let path = unique_test_db_path("old_backup_restore_resin_step");
         std::fs::write(&path, &bytes).unwrap();
         let mut conn = Connection::open(&path).unwrap();

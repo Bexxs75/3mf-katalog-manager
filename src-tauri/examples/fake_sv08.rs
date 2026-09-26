@@ -1,10 +1,10 @@
-//! Nachgebauter Sovol SV08 für den Klicktest der Druckeranbindung.
+//! Simulated Sovol SV08 for manually testing the printer connection.
 //!   cargo run --no-default-features --example fake_sv08 -- 8125
-//! Lauscht auf allen Schnittstellen. In der App die LAN-IP dieses Rechners
-//! mit Port eintragen, z. B. 192.168.1.20:8125 (Loopback ist in der App
-//! absichtlich gesperrt). Jeder Aufruf von "neuer Druck" per
+//! Listens on all interfaces. In the app, enter this machine's LAN IP with the
+//! port, e.g. 192.168.1.20:8125 (loopback is blocked in the app on purpose).
+//! Every call of
 //!   curl http://127.0.0.1:8125/fake/new?status=completed
-//! fügt einen weiteren beendeten Druck hinzu (status=cancelled für Abbruch).
+//! adds another finished print (status=cancelled for an aborted one).
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;

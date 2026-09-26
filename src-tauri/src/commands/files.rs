@@ -1,12 +1,12 @@
 use super::*;
 
 pub(crate) const MAX_CUSTOM_IMAGE_BYTES: usize = 5 * 1024 * 1024;
-// Base64 blaeht um 4/3 auf: Obergrenze fuer den noch kodierten String in `set_render_snapshot`.
+// Base64 inflates by 4/3: limit for the still encoded string in `set_render_snapshot`.
 const MAX_RENDER_SNAPSHOT_BASE64_BYTES: usize = MAX_CUSTOM_IMAGE_BYTES / 3 * 4 + 4;
 
-/// Schlanke Projektion von `ModelFileDto` fuer Grid und Liste: ohne
-/// `customImage`, `materials` und `tags`, die laedt nur die Detailseite ueber
-/// `list_files_by_ids([id])` nach.
+/// Slim projection of `ModelFileDto` for grid and list: without `customImage`,
+/// `materials` and `tags`, which only the detail page loads via
+/// `list_files_by_ids([id])`.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileSummaryDto {
@@ -14,7 +14,7 @@ pub struct FileSummaryDto {
     pub name: String,
     pub path: String,
     pub file_type: String,
-    // Leerer String = kein Ordner, wie in `ModelFileDto.folder_id` und im Frontend.
+    // Empty string = no folder, as in `ModelFileDto.folder_id` and the frontend.
     pub folder_id: String,
     pub file_size_bytes: i64,
     pub dimensions_mm: Option<[f64; 3]>,
@@ -26,8 +26,7 @@ pub struct FileSummaryDto {
     pub queue_position: Option<i64>,
     pub thumbnail_image: Option<String>,
     pub render_snapshot_image: Option<String>,
-    // Praktisch redundant, seit renderSnapshotImage selbst mitgeliefert
-    // wird - siehe Kommentar an `db::FileSummary::has_render_snapshot`.
+    // Practically redundant since renderSnapshotImage itself is sent - see `db::FileSummary::has_render_snapshot`.
     pub has_render_snapshot: bool,
     pub creator: Option<String>,
     pub last_viewed_at: Option<String>,
@@ -45,8 +44,8 @@ pub struct TagCountDto {
 pub struct ImportResultDto {
     pub imported: Vec<ModelFileDto>,
     pub duplicate_count: i64,
-    /// Einzeln gewaehlte/gezogene Archive - werden NICHT hier importiert,
-    /// sondern vom Frontend ueber den Entpack-Dialog behandelt.
+    /// Individually picked/dropped archives - NOT imported here, but handled by the
+    /// frontend through the extract dialog.
     pub pending_archives: Vec<String>,
 }
 #[derive(Debug, Serialize)]
@@ -123,8 +122,8 @@ pub fn list_file_summaries(state: State<AppState>) -> CmdResult<Vec<FileSummaryD
         })
         .collect())
 }
-/// Alle Datei-Tag-Zuordnungen in einer Abfrage, weil `list_file_summaries`
-/// keine Tags liefert; das Frontend fuehrt sie fuer die Tag-Filterung zusammen.
+/// All file-tag assignments in one query, because `list_file_summaries` has no
+/// tags; the frontend merges them for tag filtering.
 #[tauri::command]
 pub fn list_all_file_tags(state: State<AppState>) -> CmdResult<HashMap<String, Vec<String>>> {
     let conn = lock_db(&state)?;
@@ -135,8 +134,7 @@ pub fn list_all_file_tags(state: State<AppState>) -> CmdResult<HashMap<String, V
     }
     Ok(by_file)
 }
-/// Laedt die vollen Modelldaten, die `list_file_summaries` nicht liefert
-/// (die Detailseite ruft das mit einer einzelnen id auf).
+/// Loads the full model data `list_file_summaries` doesn't include (the detail page calls it with a single id).
 #[tauri::command]
 pub fn list_files_by_ids(state: State<AppState>, ids: Vec<String>) -> CmdResult<Vec<ModelFileDto>> {
     let conn = lock_db(&state)?;
@@ -250,9 +248,9 @@ pub fn delete_print_log_entry(state: State<AppState>, entry_id: String) -> CmdRe
     let conn = lock_db(&state)?;
     db::delete_print_log_entry(&conn, id).map_err(|e| e.to_string())
 }
-/// Liest eine vom Nutzer gewaehlte Bilddatei mit Groessenlimit, direkt ueber
-/// einen auf `max_bytes + 1` begrenzten Reader statt einer Vorabpruefung per
-/// metadata(): so gilt das Limit auch, wenn die Datei waehrenddessen waechst.
+/// Reads a user-picked image file with a size limit, directly through a reader
+/// capped at `max_bytes + 1` instead of checking metadata() first: so the limit
+/// holds even if the file grows meanwhile.
 pub(crate) fn read_image_bounded(path: &std::path::Path, max_bytes: u64) -> CmdResult<Vec<u8>> {
     use std::io::Read;
     let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
@@ -284,9 +282,9 @@ pub async fn pick_and_read_image(app: tauri::AppHandle) -> CmdResult<Option<Stri
         base64::engine::general_purpose::STANDARD.encode(bytes),
     ))
 }
-/// Kernlogik von `add_tag`: Namen automatischer Tags werden in jeder Sprache
-/// auf die Kennung normalisiert, damit z.B. "Multipart" keinen zweiten Tag
-/// neben "mehrteilig" anlegt.
+/// Core logic of `add_tag`: names of automatic tags in any language are
+/// normalized to their key, so e.g. "Multipart" doesn't create a second tag next
+/// to "mehrteilig".
 fn add_tag_with_conn(conn: &Connection, file_id: i64, tag: &str) -> CmdResult<()> {
     db::add_tag_to_file(conn, file_id, &tagging::canonical_tag(tag)).map_err(|e| e.to_string())
 }
@@ -301,13 +299,12 @@ pub fn add_tag(state: State<AppState>, file_id: String, tag: String) -> CmdResul
 pub fn remove_tag(state: State<AppState>, file_id: String, tag: String) -> CmdResult<()> {
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
-    // Keine Normalisierung hier (anders als add_tag): das Frontend sendet
-    // immer den tatsaechlich gespeicherten Namen - eine Normalisierung
-    // wuerde einen Alias-Tag (z. B. den mehrdeutigen "mini") unentfernbar
-    // machen, sobald er nicht (mehr) der Kennung entspricht.
+    // No normalization here (unlike add_tag): the frontend always sends the name
+    // actually stored - normalizing would make an alias tag (e.g. the ambiguous
+    // "mini") impossible to remove once it no longer matches the key.
     db::remove_tag_from_file(&conn, id, &tag).map_err(|e| e.to_string())
 }
-/// Kernlogik von `move_file_to_folder`, ohne `State`, damit testbar.
+/// Core logic of `move_file_to_folder`, without `State`, so it's testable.
 fn move_file_to_folder_with_conn(
     conn: &Connection,
     file_id: i64,
@@ -341,8 +338,8 @@ fn move_file_to_folder_with_conn(
     if let Err(db_err) =
         db::update_file_folder(conn, file_id, folder_id, &new_path.to_string_lossy())
     {
-        // Physischen Move rueckgaengig machen, damit Dateisystem und DB nicht
-        // auseinanderlaufen. move_file ueberschreibt nie etwas.
+        // Undo the physical move so file system and DB don't drift apart. move_file
+        // never overwrites anything.
         if let Err(rollback_err) = move_file(&new_path, &old_path) {
             return Err(format!(
                 "DB-Update fehlgeschlagen ({db_err}) UND Rollback der Dateiverschiebung fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}, DB verweist weiter auf {}",
@@ -354,8 +351,8 @@ fn move_file_to_folder_with_conn(
     }
     Ok(())
 }
-/// Verschiebt eine Datei in das Verzeichnis eines Zielordners und aktualisiert
-/// `folder_id`/`path`. `folder_id: None` laesst sie am aktuellen Ort.
+/// Moves a file into a target folder's directory and updates `folder_id`/`path`.
+/// `folder_id: None` leaves it where it is.
 #[tauri::command]
 pub fn move_file_to_folder(
     state: State<AppState>,
@@ -374,8 +371,8 @@ pub fn move_file_to_folder(
     let sensitive_dirs = state.sensitive_dirs.clone();
     move_file_to_folder_with_conn(&conn, id, target_id, &sensitive_dirs)
 }
-/// `name` landet in `with_file_name` und muss eine einzelne, harmlose
-/// Pfad-Komponente sein (CWE-22, wie `validate_folder_name`).
+/// `name` ends up in `with_file_name` and must be a single harmless path
+/// component (CWE-22, like `validate_folder_name`).
 fn validate_file_name(name: &str) -> CmdResult<()> {
     if name.trim().is_empty() {
         return Err("Dateiname darf nicht leer sein".to_string());
@@ -388,8 +385,8 @@ fn validate_file_name(name: &str) -> CmdResult<()> {
     }
     Ok(())
 }
-/// Kernlogik von `rename_file`, ohne `State`, damit testbar. `fs::rename` statt
-/// `move_file`, weil Quelle und Ziel im selben Verzeichnis liegen.
+/// Core logic of `rename_file`, without `State`, so it's testable. `fs::rename`
+/// instead of `move_file`, because source and target are in the same directory.
 fn rename_file_with_conn(
     conn: &Connection,
     id: i64,
@@ -418,7 +415,7 @@ fn rename_file_with_conn(
     std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())?;
 
     if let Err(db_err) = db::rename_file(conn, id, &new_name, &new_path.to_string_lossy()) {
-        // Umbenennung rueckgaengig machen, damit Dateisystem und DB nicht auseinanderlaufen.
+        // Undo the rename so file system and DB don't drift apart.
         if let Err(rollback_err) = std::fs::rename(&new_path, &old_path) {
             return Err(format!(
                 "DB-Update fehlgeschlagen ({db_err}) UND Rollback der Datei-Umbenennung fehlgeschlagen ({rollback_err}) - Datei heisst jetzt {}, DB verweist weiter auf {}",
@@ -430,8 +427,8 @@ fn rename_file_with_conn(
     }
     Ok(())
 }
-/// Benennt eine echte Datei auf der Platte um (`std::fs::rename`, gleiches
-/// Verzeichnis) und aktualisiert `name`/`path` in der DB entsprechend.
+/// Renames a real file on disk (`std::fs::rename`, same directory) and updates
+/// `name`/`path` in the DB accordingly.
 #[tauri::command]
 pub fn rename_file(state: State<AppState>, file_id: String, name: String) -> CmdResult<()> {
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
@@ -485,9 +482,9 @@ pub fn reorder_queue(state: State<AppState>, updates: Vec<QueuePositionUpdate>) 
     let mut conn = lock_db(&state)?;
     reorder_queue_with_conn(&mut conn, updates)
 }
-/// Kernlogik von `reorder_queue`, ohne `State`, damit testbar. Alle ids werden
-/// vorab geprueft und alle Updates laufen in einer Transaktion: nie ein halb
-/// angewendeter Batch.
+/// Core logic of `reorder_queue`, without `State`, so it's testable. All ids are
+/// checked up front and all updates run in one transaction: never a half-applied
+/// batch.
 fn reorder_queue_with_conn(
     conn: &mut Connection,
     updates: Vec<QueuePositionUpdate>,
@@ -549,8 +546,8 @@ pub fn set_render_snapshot(
 ) -> CmdResult<()> {
     use base64::Engine;
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
-    // Obergrenze wie bei `upload_custom_image`. Erst die Base64-Laenge pruefen,
-    // damit ein riesiger String gar nicht erst dekodiert wird.
+    // Same limit as `upload_custom_image`. Check the base64 length first, so a
+    // huge string is never decoded.
     if image_base64.len() > MAX_RENDER_SNAPSHOT_BASE64_BYTES {
         return Err(format!(
             "Bild ist zu groß - maximal {} MB erlaubt",
@@ -592,9 +589,8 @@ pub(crate) fn is_supported_extension(path: &Path) -> bool {
         })
         .unwrap_or(false)
 }
-/// Enger als [`is_supported_extension`]: STEP ist katalogisierbar, aber die
-/// meisten Slicer koennen es nicht importieren. OBJ ist ein druckfertiges Mesh
-/// und deshalb erlaubt.
+/// Stricter than [`is_supported_extension`]: STEP can be cataloged, but most
+/// slicers can't import it. OBJ is a print-ready mesh and therefore allowed.
 pub(crate) fn is_sliceable_extension(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
@@ -619,9 +615,9 @@ pub(crate) fn compute_content_hash(path: &Path) -> CmdResult<String> {
     }
     Ok(format!("{:x}", hasher.finalize()))
 }
-/// Einmaliger Backfill von content_hash beim Start fuer Dateien, die vor
-/// Einfuehrung der Spalte importiert wurden. Braucht Dateizugriff und laeuft
-/// deshalb hier statt in db::init. Fehlende Dateien werden geloggt und uebersprungen.
+/// One-time content_hash backfill at startup for files imported before the
+/// column existed. Needs file access, so it runs here instead of in db::init.
+/// Missing files are logged and skipped.
 pub(crate) fn backfill_content_hashes(conn: &Connection) {
     let missing = match db::list_files_missing_content_hash(conn) {
         Ok(rows) => rows,
@@ -644,10 +640,10 @@ pub(crate) fn backfill_content_hashes(conn: &Connection) {
         }
     }
 }
-/// Sammelt rekursiv alle unterstuetzten Dateien unter `path`; unlesbare
-/// Verzeichnisse werden uebersprungen. Folgt bewusst KEINEN Symlinks, weder auf
-/// Verzeichnisse (Endlosrekursion, Dateien ausserhalb der Auswahl) noch auf
-/// Dateien. Die Pruefung steht vor `is_dir()`, weil `is_dir()` Symlinks folgt.
+/// Recursively collects all supported files under `path`; unreadable
+/// directories are skipped. Deliberately follows NO symlinks, neither to
+/// directories (endless recursion, files outside the selection) nor to files.
+/// The check comes before `is_dir()`, because `is_dir()` follows symlinks.
 fn collect_supported_files(path: &Path, out: &mut Vec<PathBuf>) {
     if path.is_symlink() {
         return;
@@ -663,9 +659,8 @@ fn collect_supported_files(path: &Path, out: &mut Vec<PathBuf>) {
         out.push(path.to_path_buf());
     }
 }
-/// Einzige Stelle, an der die STEP-Vorschau im Metadaten-Pfad sichtbar wird.
-/// Bei jedem Fehler bleibt die Datei katalogisierbar und erhaelt nur keine
-/// automatisch ermittelten Metadaten.
+/// The only place where the STEP preview shows up in the metadata path. On any
+/// error the file stays catalogable and just gets no automatic metadata.
 #[cfg(feature = "step-preview")]
 fn step_metadata(path: &Path) -> (Option<[f64; 3]>, Option<f64>, Option<i64>) {
     match crate::step::parse_step_file(path) {
@@ -686,7 +681,7 @@ fn step_metadata(_path: &Path) -> (Option<[f64; 3]>, Option<f64>, Option<i64>) {
     (None, None, None)
 }
 
-/// Geometrie fuer die STEP-Vorschau; ohne das Feature zeigt die Ansicht den Platzhalter.
+/// Geometry for the STEP preview; without the feature the view shows the placeholder.
 #[cfg(feature = "step-preview")]
 fn step_geometry(path: &Path) -> CmdResult<Vec<RenderMesh>> {
     crate::step::parse_step_geometry(path).map_err(|e| e.to_string())
@@ -837,9 +832,9 @@ pub(crate) fn import_one(
     let spools = db::list_filament_spools(conn).map_err(|e| e.to_string())?;
     Ok(to_dto(file, &spools))
 }
-/// Liest eine katalogisierte Datei erneut ein und ueberschreibt alle daraus
-/// abgeleiteten Spalten, z.B. nachdem sie im Slicer neu gesliced wurde. Fehlt
-/// die Datei, bricht die Funktion ab, bevor die DB veraendert wird.
+/// Re-reads a cataloged file and overwrites all columns derived from it, e.g.
+/// after it was re-sliced. If the file is missing, it aborts before the DB is
+/// changed.
 pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFileDto> {
     let existing = db::get_file(conn, id)
         .map_err(|e| e.to_string())?
@@ -958,7 +953,7 @@ pub(crate) fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) 
     let mut imported = Vec::new();
     let mut duplicate_count = 0i64;
 
-    // Eine Transaktion fuer den ganzen Batch: SQLite fsynct bei jedem Commit.
+    // One transaction for the whole batch: SQLite fsyncs on every commit.
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
     for root in roots {
@@ -1009,8 +1004,8 @@ pub(crate) fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) 
             match import_one(&tx, &path, None, Some(content_hash), folder_id) {
                 Ok(dto) => imported.push(dto),
                 Err(e) if e.contains("UNIQUE constraint failed") => {
-                    // Der Pfad gehoert noch einer Papierkorb-Zeile (files.path ist UNIQUE);
-                    // fuer den Nutzer ist das ein Duplikat.
+                    // The path still belongs to a trash row (files.path is UNIQUE); for the
+                    // user this is a duplicate.
                     duplicate_count += 1;
                 }
                 Err(e) => eprintln!("[import] Import fehlgeschlagen für {path_str}: {e}"),
@@ -1025,8 +1020,8 @@ pub(crate) fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) 
         pending_archives: Vec::new(),
     })
 }
-/// Trennt Archive (echte Dateien mit Archiv-Endung) von allem anderen. Ein
-/// VERZEICHNIS namens `x.zip` bleibt beim normalen Import.
+/// Separates archives (real files with an archive extension) from everything
+/// else. A DIRECTORY named `x.zip` stays in the normal import.
 fn split_archives(paths: Vec<PathBuf>) -> (Vec<PathBuf>, Vec<String>) {
     let (archives, others): (Vec<PathBuf>, Vec<PathBuf>) = paths
         .into_iter()
@@ -1045,8 +1040,8 @@ pub async fn import_files(
     state: State<'_, AppState>,
     pending: State<'_, PendingArchives>,
 ) -> CmdResult<ImportResultDto> {
-    // Ein gemeinsamer Filter statt zwei: unter GTK zeigt der Dialog sonst
-    // nur den ersten Filter an, Archive waeren erst nach Umschalten sichtbar.
+    // One combined filter instead of two: under GTK the dialog only shows the
+    // first filter, archives would only be visible after switching.
     let mut extensions = vec!["3mf", "stl", "stp", "step", "obj"];
     extensions.extend_from_slice(crate::archive::DIALOG_EXTENSIONS);
     let picked = app
@@ -1097,16 +1092,16 @@ pub fn import_dropped(
 ) -> CmdResult<ImportResultDto> {
     let (models, archives) = split_archives(paths.into_iter().map(PathBuf::from).collect());
     let mut result = import_many(&state, models)?;
-    // Archive nur, wenn das Backend den Drop selbst beobachtet hat (siehe
-    // `on_window_event` in lib.rs); andere Archiv-Pfade werden ignoriert.
+    // Archives only if the backend observed the drop itself (see `on_window_event`
+    // in lib.rs); other archive paths are ignored.
     result.pending_archives = pending.claim_dropped(archives);
     Ok(result)
 }
-/// Oeffnet einen Pfad im Datei-Manager des Systems.
+/// Opens a path in the system file manager.
 #[tauri::command]
 pub fn open_in_file_manager(path: String) -> CmdResult<()> {
-    // Nur existierende Verzeichnisse: ein Pfad mit fuehrendem "-" koennte sonst
-    // von xdg-open/open/explorer als Option gelesen werden.
+    // Only existing directories: a path starting with "-" could otherwise be read
+    // as an option by xdg-open/open/explorer.
     if !std::path::Path::new(&path).is_dir() {
         return Err("Pfad ist kein existierendes Verzeichnis".to_string());
     }
@@ -1121,15 +1116,13 @@ pub fn open_in_file_manager(path: String) -> CmdResult<()> {
     cmd.arg(&path).spawn().map_err(|e| e.to_string())?;
     Ok(())
 }
-// Encodiert die extrahierte Geometrie als einzelnen Binaerstrom fuer
-// tauri::ipc::Response: 4 Bytes Headerlaenge (u32 LE), dann ein mit
-// Leerzeichen auf ein Vielfaches von 4 Bytes aufgepolsterter JSON-Header,
-// gefolgt von den rohen Float32/Uint32-Puffern je Mesh in Header-
-// Reihenfolge. Jeder Abschnitt (Position/Normale/Index) besteht
-// ausschliesslich aus 4-Byte-Elementen, daher bleibt der laufende Offset
-// nach jedem Mesh automatisch ein Vielfaches von 4 - keine zusaetzliche
-// Ausrichtungs-Behandlung noetig (siehe auch die Wire-Format-Beschreibung
-// in src/lib/parseModelGeometry.ts auf der Frontend-Seite).
+// Encodes the extracted geometry as a single binary stream for
+// tauri::ipc::Response: 4 bytes header length (u32 LE), then a JSON header
+// padded with spaces to a multiple of 4 bytes, followed by the raw
+// Float32/Uint32 buffers per mesh in header order. Every section
+// (position/normal/index) consists only of 4-byte elements, so the running
+// offset stays a multiple of 4 after each mesh - no extra alignment handling
+// needed (see also the wire format description in src/lib/parseModelGeometry.ts).
 fn encode_render_meshes(meshes: &[RenderMesh]) -> Vec<u8> {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
@@ -1195,8 +1188,8 @@ pub async fn get_model_geometry(
 ) -> Result<tauri::ipc::Response, String> {
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
 
-    // Der MutexGuard muss per Scope vor dem .await enden; ein drop() reicht dem
-    // Compiler nicht (rust-lang/rust#57478), der Handler waere sonst nicht Send.
+    // The MutexGuard must end by scope before the .await; drop() isn't enough for
+    // the compiler (rust-lang/rust#57478), the handler wouldn't be Send otherwise.
     let file = {
         let conn = lock_db(&state)?;
         db::get_file(&conn, id)
@@ -1469,8 +1462,8 @@ mod tests {
     }
     #[test]
     fn import_one_succeeds_inside_an_already_open_transaction() {
-        // import_many_with_conn oeffnet eine Transaktion fuer den ganzen Batch;
-        // import_one darf darin keine eigene oeffnen.
+        // import_many_with_conn opens one transaction for the whole batch; import_one
+        // must not open its own inside it.
         use std::io::Write;
         use zip::write::SimpleFileOptions;
         use zip::ZipWriter;
@@ -1722,8 +1715,8 @@ mod tests {
         let conn = crate::db::connect_in_memory().expect("connect");
         let file_id =
             db::test_insert_minimal_file(&conn, &old_path.to_string_lossy(), None).unwrap();
-        // Die Zeile bleibt, ein Trigger laesst nur das UPDATE scheitern, nachdem die
-        // Datei umbenannt wurde (sonst bricht get_file() vorher ab).
+        // The row stays; a trigger only makes the UPDATE fail after the file was
+        // renamed (otherwise get_file() would abort first).
         conn.execute_batch(&format!(
             "CREATE TRIGGER block_rename BEFORE UPDATE ON files
              WHEN NEW.id = {file_id}
@@ -1847,9 +1840,8 @@ mod tests {
         let hash_before = before.content_hash.clone();
         let size_before = before.file_size_bytes;
 
-        // Ueberschreibt die Datei am selben Pfad mit ANDEREM Inhalt (echtes
-        // Re-Slicing simulieren) - die eingebettete slice_info.config macht
-        // die Bytes garantiert unterschiedlich lang.
+        // Overwrites the file at the same path with DIFFERENT content (simulates a real
+        // re-slice) - the embedded slice_info.config guarantees a different length.
         let slice_info_xml = r##"<?xml version="1.0" encoding="UTF-8"?>
 <config>
   <plate>
@@ -1890,7 +1882,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         let path = std::env::temp_dir().join(format!("rescan_missing_test_{nanos}.3mf"));
-        // Nie geschrieben - Datei existiert nicht auf der Platte.
+        // Never written - the file doesn't exist on disk.
 
         let mut conn = crate::db::connect_in_memory().expect("connect");
         let mut new_file = sample_new_file_for_rescan_test(&path);
@@ -1936,7 +1928,7 @@ mod tests {
     fn add_and_list_print_log_entry_roundtrips_through_dto() {
         let mut conn = crate::db::connect_in_memory().expect("connect");
         let file = sample_file_record(1, None, "2026-09-13T00:00:00Z");
-        // add_print_log_entry braucht eine echte file_id.
+        // add_print_log_entry needs a real file_id.
         let _ = file;
         let new_file = crate::db::models::NewFile {
             name: "cube.3mf".to_string(),
@@ -2005,8 +1997,8 @@ mod tests {
         .unwrap();
         let file_id =
             db::test_insert_minimal_file(&conn, &src_path.to_string_lossy(), None).unwrap();
-        // Zweite Zeile mit genau dem Zielpfad: files.path ist UNIQUE, das DB-Update
-        // scheitert also erst nach dem physischen Move.
+        // A second row with exactly the target path: files.path is UNIQUE, so the DB
+        // update only fails after the physical move.
         db::test_insert_minimal_file(
             &conn,
             &colliding_target_path.to_string_lossy(),
@@ -2045,8 +2037,8 @@ mod tests {
         std::os::unix::fs::symlink(&dir, dir.join("again")).unwrap();
 
         let mut out = Vec::new();
-        // Muss terminieren (kein Stack Overflow / keine Endlosschleife) und
-        // darf cube.3mf trotzdem genau einmal finden.
+        // Must terminate (no stack overflow / endless loop) and still find cube.3mf
+        // exactly once.
         collect_supported_files(&dir, &mut out);
 
         assert_eq!(out.len(), 1);
@@ -2112,7 +2104,7 @@ mod tests {
     }
     #[test]
     fn compute_content_hash_does_not_allocate_proportional_to_file_size() {
-        // Rauchtest: 50 MB muessen ohne Panik oder OOM hashen.
+        // Smoke test: 50 MB must hash without panic or OOM.
         let path = unique_test_dir("hash_large").join("big.bin");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         let chunk = vec![0xABu8; 1024 * 1024];
@@ -2121,7 +2113,7 @@ mod tests {
             std::io::Write::write_all(&mut file, &chunk).unwrap();
         }
         let hash = compute_content_hash(&path).unwrap();
-        // 50 MB pro Lauf: sofort wieder weg, /tmp ist haeufig ein RAM-tmpfs.
+        // 50 MB per run: remove right away, /tmp is often a RAM tmpfs.
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
         assert_eq!(hash.len(), 64);
     }
@@ -2130,7 +2122,7 @@ mod tests {
         let mut conn = db::connect_in_memory().unwrap();
         let id1 = db::test_insert_minimal_file(&conn, "/tmp/1.3mf", None).unwrap();
         let id2 = db::test_insert_minimal_file(&conn, "/tmp/2.3mf", None).unwrap();
-        // id 999999 existiert nicht; keines der gueltigen Updates darf committed sein.
+        // id 999999 doesn't exist; none of the valid updates may be committed.
         let updates = vec![
             QueuePositionUpdate {
                 file_id: id1.to_string(),
@@ -2190,9 +2182,8 @@ mod tests {
     #[test]
     fn queue_reorder_batch_rolls_back_an_already_applied_earlier_update_when_a_later_one_fails_inside_the_transaction(
     ) {
-        // Die Variante oben scheitert schon in der Vorabpruefung. Hier scheitert per
-        // Trigger das zweite Update innerhalb der Transaktion; das erste muss
-        // zurueckgerollt sein.
+        // The variant above already fails in the up-front check. Here a trigger makes
+        // the second update fail inside the transaction; the first must be rolled back.
         let mut conn = db::connect_in_memory().unwrap();
         let id1 = db::test_insert_minimal_file(&conn, "/tmp/1.3mf", None).unwrap();
         let id2 = db::test_insert_minimal_file(&conn, "/tmp/2.3mf", None).unwrap();
@@ -2254,7 +2245,7 @@ mod tests {
     }
     #[test]
     fn is_sliceable_extension_rejects_stp_and_step() {
-        // Katalogisierbar, aber nicht im Slicer oeffenbar.
+        // Catalogable, but can't be opened in a slicer.
         assert!(!is_sliceable_extension(Path::new("teil.stp")));
         assert!(!is_sliceable_extension(Path::new("teil.step")));
         assert!(is_sliceable_extension(Path::new("teil.3mf")));
@@ -2262,7 +2253,7 @@ mod tests {
     }
     #[test]
     fn is_supported_and_sliceable_extension_both_accept_obj() {
-        // OBJ muss in beiden Checks true sein.
+        // OBJ must be true in both checks.
         assert!(is_supported_extension(Path::new("teil.obj")));
         assert!(is_supported_extension(Path::new("teil.OBJ")));
         assert!(is_sliceable_extension(Path::new("teil.obj")));
@@ -2304,8 +2295,8 @@ mod tests {
     }
     #[test]
     fn import_one_catalogs_a_step_file_under_the_same_canonical_file_type_as_stp() {
-        // .stp und .step muessen auf denselben kanonischen DB-Wert ("stp")
-        // mappen, unabhaengig von der urspruenglichen Dateiendung.
+        // .stp and .step must map to the same canonical DB value ("stp"), regardless
+        // of the original extension.
         let path = unique_test_dir("import_step").join("teil.step");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, b"ISO-10303-21;\nHEADER;\nENDSEC;\nEND-ISO-10303-21;").unwrap();
@@ -2356,7 +2347,7 @@ mod tests {
         assert_eq!(stored.file_type, FileType::Obj);
         assert_eq!(stored.dimensions_mm, Some([10.0, 10.0, 10.0]));
         assert!(stored.volume_cm3.unwrap() > 0.0);
-        // Das Vorschaubild entsteht erst im Frontend (Snapshot), wie bei STL.
+        // The preview image is created later in the frontend (snapshot), as for STL.
         assert_eq!(stored.thumbnail_png, None);
     }
     #[test]
@@ -2395,10 +2386,9 @@ mod tests {
     }
     #[test]
     fn add_tag_still_maps_the_ambiguous_alias_mini_when_typed_by_hand() {
-        // Die Mehrdeutigkeit von "mini" (siehe tagging::AMBIGUOUS_ALIASES)
-        // gilt nur fuer automatische Quellen (Dateinamen/Material) - bei
-        // manueller Eingabe ueber add_tag bleibt "mini" weiterhin ein Alias
-        // fuer "miniatur".
+        // The ambiguity of "mini" (see tagging::AMBIGUOUS_ALIASES) only applies to
+        // automatic sources (file names/material) - typed in manually via add_tag,
+        // "mini" stays an alias for "miniatur".
         let conn = crate::db::connect_in_memory().expect("connect");
         let id = crate::db::test_insert_minimal_file(&conn, "/tmp/add_tag_mini.3mf", None).expect("insert");
 

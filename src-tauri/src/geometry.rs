@@ -58,8 +58,8 @@ pub struct RenderMesh {
     pub normals: Option<Vec<[f32; 3]>>,
 }
 
-/// Flache Normale pro Dreieck fuer alle drei Ecken, wie three.js'
-/// `computeVertexNormals()` bei nicht-indizierter Geometrie (bisheriges STL-Shading).
+/// Flat normal per triangle for all three corners, like three.js'
+/// `computeVertexNormals()` for non-indexed geometry (the previous STL shading).
 pub fn compute_flat_normals(vertices: &[[f64; 3]], triangles: &[[u32; 3]]) -> Vec<[f32; 3]> {
     let mut normals = vec![[0.0f32; 3]; vertices.len()];
     for tri in triangles {
@@ -98,8 +98,8 @@ mod tests {
 
     #[test]
     fn compute_flat_normals_returns_outward_unit_normal_for_single_triangle() {
-        // Dreieck in der xy-Ebene (z=0); erwartete Normale gemaess der
-        // (C-B) x (A-B) - Konvention (siehe Kommentar an compute_flat_normals).
+        // Triangle in the xy plane (z=0); expected normal per the (C-B) x (A-B)
+        // convention (see compute_flat_normals).
         let vertices = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]];
         let triangles = [[0u32, 1, 2]];
 

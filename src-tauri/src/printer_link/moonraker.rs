@@ -1,5 +1,4 @@
-//! Klipper/Moonraker: `/server/info` und `/server/history/list` lesen.
-//! Nur lesende GET-Anfragen.
+//! Klipper/Moonraker: reads `/server/info` and `/server/history/list`. Read-only GET requests.
 
 use std::io::Read;
 use std::sync::mpsc;
@@ -14,7 +13,7 @@ fn bad(msg: &str) -> LinkError {
     LinkError::BadResponse(msg.to_string())
 }
 
-/// Liefert die Moonraker-Version. Verlangt die Komponente `history`.
+/// Returns the Moonraker version. Requires the `history` component.
 pub fn parse_server_info(v: &Value) -> Result<String, LinkError> {
     let result = v.get("result").ok_or_else(|| bad("result fehlt"))?;
     let version = result
@@ -32,11 +31,11 @@ pub fn parse_server_info(v: &Value) -> Result<String, LinkError> {
 }
 
 pub struct HistoryPage {
-    /// Gesamtzahl laut Drucker (für das Blättern).
+    /// Total count according to the printer (for paging).
     pub count: u64,
-    /// Anzahl Einträge auf dieser Seite, auch übersprungene.
+    /// Number of entries on this page, including skipped ones.
     pub raw_len: usize,
-    /// Beendete, lesbare Drucke dieser Seite.
+    /// Finished, readable prints on this page.
     pub jobs: Vec<RemoteJob>,
 }
 
@@ -61,7 +60,7 @@ fn positive(v: Option<&Value>) -> Option<f64> {
     v.and_then(Value::as_f64).filter(|x| *x > 0.0)
 }
 
-/// `None` = nicht übernehmen (läuft noch oder Pflichtfeld fehlt).
+/// `None` = don't take over (still running or a required field is missing).
 fn parse_job(j: &Value) -> Option<RemoteJob> {
     let status = j.get("status")?.as_str()?;
     if status == "in_progress" {
@@ -119,16 +118,16 @@ pub const MAX_JSON_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_THUMB_BYTES: u64 = 512 * 1024;
 const PAGE: usize = 50;
 const MAX_PAGES: usize = 40;
-/// Moonraker filtert `since` nach dem Auftragsbeginn; ein Druck, der vor
-/// `since` begann und danach endete, würde sonst fehlen.
+/// Moonraker filters `since` by the job start; a print that started before
+/// `since` and ended after it would otherwise be missing.
 pub const LOOKBACK_S: f64 = 2.0 * 24.0 * 3600.0;
 
 pub struct MoonrakerLink {
     address: String,
     policy: AddressPolicy,
     client: reqwest::blocking::Client,
-    /// Gesamtzeitlimit einer Anfrage inkl. Koerper; in Produktion `TIMEOUT` (5 s),
-    /// Tests setzen per `new_with_timeout` ein kuerzeres.
+    /// Total time limit of a request including the body; `TIMEOUT` (5 s) in
+    /// production, tests set a shorter one via `new_with_timeout`.
     timeout: Duration,
 }
 
@@ -137,7 +136,7 @@ impl MoonrakerLink {
         Self::with_timeout(address, policy, TIMEOUT)
     }
 
-    /// Nur fuer Tests: eigenes Zeitlimit statt der festen 5 s der Produktion.
+    /// Tests only: own time limit instead of production's fixed 5 s.
     #[cfg(test)]
     pub(crate) fn new_with_timeout(address: &str, policy: AddressPolicy, timeout: Duration) -> Self {
         Self::with_timeout(address, policy, timeout)
@@ -147,9 +146,8 @@ impl MoonrakerLink {
         let client = reqwest::blocking::Client::builder()
             .timeout(timeout)
             .connect_timeout(timeout)
-            // Nie den System-Proxy (HTTP_PROXY/ALL_PROXY) benutzen: die
-            // Anfrage muss an die bereits geprüfte `Target.ip` gehen, nicht
-            // an einen Proxy, der eine ganz andere Adresse anspricht.
+            // Never use the system proxy (HTTP_PROXY/ALL_PROXY): the request must go to the
+            // already checked `Target.ip`, not to a proxy that talks to a different address.
             .no_proxy()
             .redirect(reqwest::redirect::Policy::none())
             .build()
@@ -157,8 +155,7 @@ impl MoonrakerLink {
         MoonrakerLink { address: address.to_string(), policy, client, timeout }
     }
 
-    /// Zuerst Port 80 (Mainsail/nginx), dann 7125 (Moonraker direkt), außer
-    /// die Adresse nennt selbst einen Port.
+    /// First port 80 (Mainsail/nginx), then 7125 (Moonraker directly), unless the address names a port itself.
     fn candidate_bases(&self) -> Result<Vec<String>, LinkError> {
         let target = resolve(&self.address, self.policy)?;
         Ok(match target.port {
@@ -175,13 +172,12 @@ impl MoonrakerLink {
         }
     }
 
-    /// Holt Kopfzeilen und Koerper mit harter Gesamt-Obergrenze `self.timeout`.
+    /// Fetches headers and body with a hard total limit of `self.timeout`.
     ///
-    /// reqwest gibt jedem einzelnen `read()` ein frisches Zeitlimit; ein
-    /// troepfelnder Drucker koennte so ein Vielfaches davon erreichen. Deshalb
-    /// laeuft die Anfrage auf einem Hilfs-Thread, und hier wird nur mit
-    /// `recv_timeout` gewartet. Ein noch haengender Hilfs-Thread laeuft spaeter
-    /// aus und sendet ins Leere, das ist unschaedlich.
+    /// reqwest gives every single `read()` a fresh time limit; a trickling printer
+    /// could reach a multiple of it. So the request runs on a helper thread, and here
+    /// we only wait with `recv_timeout`. A still hanging helper thread finishes later
+    /// and sends into the void, which is harmless.
     fn get_bytes(&self, url: reqwest::Url, limit: u64) -> Result<Vec<u8>, LinkError> {
         let client = self.client.clone();
         let timeout = self.timeout;
@@ -192,7 +188,7 @@ impl MoonrakerLink {
         rx.recv_timeout(timeout).unwrap_or(Err(LinkError::Unreachable))
     }
 
-    /// Netzwerkteil von `get_bytes` auf dem Hilfs-Thread: liest in Stuecken mit eigenem Zeitlimit-Check.
+    /// Network part of `get_bytes` on the helper thread: reads in chunks with its own time limit check.
     fn fetch_bytes(client: &reqwest::blocking::Client, url: reqwest::Url, limit: u64, timeout: Duration) -> Result<Vec<u8>, LinkError> {
         let deadline = Instant::now() + timeout;
         let mut resp = client.get(url).send().map_err(|_| LinkError::Unreachable)?;
@@ -349,9 +345,9 @@ mod parse_tests {
 
     #[test]
     fn rinkhals_on_anycubic_kobra_s1_is_accepted() {
-        // Echter, anonymer Testbericht (Anycubic Kobra S1, Rinkhals, ACE Pro):
-        // Moonraker-Version nur "?", Dateien im Ordner .3mf_temp/, Materialliste
-        // aller ACE-Fächer in filament_type.
+        // Real anonymous test report (Anycubic Kobra S1, Rinkhals, ACE Pro): Moonraker
+        // version only "?", files in the .3mf_temp/ folder, material list of all ACE
+        // slots in filament_type.
         assert_eq!(parse_server_info(&fixture("server_info_rinkhals_kobra_s1.json")).unwrap(), "?");
         let page = parse_history_page(&fixture("history_rinkhals_kobra_s1.json")).unwrap();
         assert_eq!(page.jobs.len(), 2);
@@ -401,7 +397,7 @@ mod client_tests {
 
     #[test]
     fn unreachable_port_is_reported() {
-        // Port 1 auf Loopback ist praktisch immer geschlossen.
+        // Port 1 on loopback is practically always closed.
         let link = MoonrakerLink::new("127.0.0.1:1", AddressPolicy::TEST);
         assert_eq!(link.test(), Err(LinkError::Unreachable));
     }
@@ -473,7 +469,7 @@ mod client_tests {
         assert!(matches!(link.test(), Err(LinkError::BadResponse(_))));
     }
 
-    /// Ein troepfelnder Drucker darf `get_bytes` nicht unbegrenzt blockieren.
+    /// A trickling printer must not block `get_bytes` indefinitely.
     #[test]
     fn a_dripping_body_times_out_as_unreachable_within_the_overall_deadline() {
         use std::io::{BufRead, BufReader, Write};
@@ -490,7 +486,7 @@ mod client_tests {
                     break;
                 }
             }
-            // Grosse Content-Length ankuendigen, dann alle 30 ms ein Byte.
+            // Announce a large Content-Length, then one byte every 30 ms.
             let head = "HTTP/1.1 200 X\r\nContent-Length: 1000000\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n";
             if stream.write_all(head.as_bytes()).is_err() {
                 return;
@@ -508,8 +504,8 @@ mod client_tests {
         assert!(started.elapsed() < std::time::Duration::from_secs(2), "{:?}", started.elapsed());
     }
 
-    /// Ein einzelnes haengendes `read()` kurz vor Ablauf darf das Zeitlimit nicht
-    /// verlaengern: erstes Byte nach ~100 ms, dann 140 ms Pause bei 150 ms Limit.
+    /// A single hanging `read()` shortly before the deadline must not extend the time
+    /// limit: first byte after ~100 ms, then a 140 ms pause with a 150 ms limit.
     #[test]
     fn a_single_stalled_read_still_returns_unreachable_within_the_overall_deadline() {
         use std::io::{BufRead, BufReader, Write};
@@ -534,9 +530,8 @@ mod client_tests {
             if stream.write_all(b" ").is_err() {
                 return;
             }
-            // Der naechste `read()`-Aufruf haengt jetzt ~140 ms - laenger als
-            // das verbleibende Zeitbudget (150 ms Gesamtlimit minus ~100 ms
-            // bereits verstrichen).
+            // The next `read()` call now hangs for ~140 ms - longer than the remaining
+            // budget (150 ms total limit minus ~100 ms already elapsed).
             std::thread::sleep(std::time::Duration::from_millis(140));
             let _ = stream.write_all(b" ");
         });

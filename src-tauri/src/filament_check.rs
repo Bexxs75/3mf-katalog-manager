@@ -1,6 +1,6 @@
-//! "Reicht das Filament?": vergleicht den Filamentbedarf gesliceter Modelle
-//! mit den Spulen im Lager bzw. in den Druckerfaechern. Reine Funktionen ohne
-//! DB-Zugriff; den Tauri-Befehl gibt es in `commands/filament.rs`.
+//! "Is there enough filament?": compares the filament needs of sliced models with
+//! the spools in storage and in the printer slots. Pure functions without DB
+//! access; the Tauri command lives in `commands/filament.rs`.
 
 use std::collections::HashMap;
 
@@ -8,16 +8,16 @@ use serde::Serialize;
 
 use crate::threemf::SliceInfo;
 
-/// Groesster CIEDE2000-Abstand, bei dem zwei Farben noch als "dieselbe" gelten
-/// (Rot/Weinrot ~12,8 ja, Weiss/Beige ~15,1 nein).
+/// Largest CIEDE2000 distance at which two colors still count as "the same"
+/// (red/wine red ~12.8 yes, white/beige ~15.1 no).
 pub const COLOR_MATCH_MAX_DELTA_E: f64 = 14.0;
 
-/// Toleranz fuer Gewichtsvergleiche in Gramm, gegen Rundungsrauschen aus
-/// aufsummierten/abgezogenen Fliesskommazahlen (z. B. 3 x 11.1 g != exakt 33.3 g).
+/// Tolerance for weight comparisons in grams, against rounding noise from summed
+/// or subtracted floats (e.g. 3 x 11.1 g != exactly 33.3 g).
 const EPS: f64 = 1e-6;
 
-/// "#RRGGBB" oder "#RRGGBBAA" (Gross/klein egal, Leerzeichen rundherum egal)
-/// -> "#RRGGBB" in Grossbuchstaben; sonst None.
+/// "#RRGGBB" or "#RRGGBBAA" (case and surrounding whitespace don't matter)
+/// -> "#RRGGBB" in uppercase; otherwise None.
 pub(crate) fn color_key(hex: &str) -> Option<String> {
     let h = hex.trim().strip_prefix('#')?;
     if !(h.len() == 6 || h.len() == 8) || !h.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -43,7 +43,7 @@ fn to_lab((r, g, b): (f64, f64, f64)) -> (f64, f64, f64) {
     (116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz))
 }
 
-/// Farbabstand CIEDE2000 zweier Hex-Farben; None bei ungueltigem Hex.
+/// CIEDE2000 color distance of two hex colors; None for invalid hex.
 pub fn delta_e_2000(a: &str, b: &str) -> Option<f64> {
     let (l1, a1, b1) = to_lab(parse_rgb(a)?);
     let (l2, a2, b2) = to_lab(parse_rgb(b)?);
@@ -97,12 +97,12 @@ pub fn delta_e_2000(a: &str, b: &str) -> Option<f64> {
     Some(((dl / sl).powi(2) + (dc / sc).powi(2) + (dh / sh).powi(2) + rt * (dc / sc) * (dh / sh)).sqrt())
 }
 
-/// Kleinbuchstaben, nur Buchstaben und Ziffern ("PETG-HF" -> "petghf").
+/// Lowercase, letters and digits only ("PETG-HF" -> "petghf").
 pub(crate) fn norm(s: &str) -> String {
     s.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect()
 }
 
-/// Passt eine Spule im Material? "PLA Silk" enthaelt "PLA", "PETG HF" == "PETG-HF".
+/// Does a spool's material match? "PLA Silk" contains "PLA", "PETG HF" == "PETG-HF".
 pub fn material_matches(spool_material: &str, filament_type: &str) -> bool {
     let wanted = norm(filament_type);
     !wanted.is_empty() && norm(spool_material).contains(&wanted)
@@ -119,7 +119,7 @@ pub enum CheckStatus {
 }
 
 impl CheckStatus {
-    /// Rangfolge fuer den Modellstatus: der schlechteste Bedarf gewinnt.
+    /// Ranking for the model status: the worst need wins.
     fn severity(self) -> u8 {
         match self {
             CheckStatus::Ok | CheckStatus::NoData => 0,
@@ -191,8 +191,7 @@ struct Need {
     needed_g: f64,
 }
 
-/// Summiert den Bedarf ueber alle Platten, gruppiert nach (norm(Typ), Farbe);
-/// Reihenfolge = erstes Auftreten.
+/// Sums the needs over all plates, grouped by (norm(type), color); order = first occurrence.
 fn collect_needs(slice: &SliceInfo) -> Vec<Need> {
     let mut needs: Vec<Need> = Vec::new();
     for plate in &slice.plates {
@@ -238,17 +237,16 @@ fn spool_use(s: &SpoolInput, available: f64) -> SpoolUse {
     }
 }
 
-/// Noch verfuegbares Gewicht einer Spule im gedachten Abbuchungsstand.
+/// Weight still available on a spool in the hypothetical deduction state.
 fn left(s: &SpoolInput, available: &HashMap<String, f64>) -> f64 {
     available.get(&s.id).copied().unwrap_or(0.0)
 }
 
 fn check_need(need: &Need, spools: &[SpoolInput], available: &mut HashMap<String, f64>) -> NeedCheck {
-    // Kandidaten werden am gespeicherten remaining_g gefiltert, nicht am schon
-    // gedanklich abgebuchten Stand (left()): eine Spule, die ein frueherer
-    // Warteschlangen-Eintrag geleert hat, bleibt Kandidat, damit ein spaeterer
-    // Bedarf als "short" (mit korrektem Fehlbetrag) statt faelschlich
-    // "unknown" gemeldet wird. left() bleibt die Quelle fuer die Betraege.
+    // Candidates are filtered by the stored remaining_g, not the hypothetically
+    // deducted state (left()): a spool emptied by an earlier queue entry stays a
+    // candidate, so a later need is reported as "short" (with the correct shortfall)
+    // instead of wrongly as "unknown". left() stays the source for the amounts.
     let material_ok: Vec<&SpoolInput> = spools
         .iter()
         .filter(|s| s.remaining_g > 0.0 && material_matches(&s.material, &need.filament_type))
@@ -298,8 +296,8 @@ fn check_need(need: &Need, spools: &[SpoolInput], available: &mut HashMap<String
         let before = left(single, available);
         result.status = CheckStatus::Ok;
         result.spools.push(spool_use(single, before));
-        // .max(0.0): before kann wegen der EPS-Toleranz oben minimal unter
-        // need.needed_g liegen, das Ergebnis bleibt nicht negativ.
+        // .max(0.0): because of the EPS tolerance above, `before` can be slightly below
+        // need.needed_g; the result doesn't go negative.
         available.insert(single.id.clone(), (before - need.needed_g).max(0.0));
         return result;
     }
@@ -313,8 +311,8 @@ fn check_need(need: &Need, spools: &[SpoolInput], available: &mut HashMap<String
                 break;
             }
             let before = left(s, available);
-            // Eine bereits geleerte Spule (z. B. durch einen frueheren
-            // Warteschlangen-Eintrag) wird nicht als Wechselpartner genannt.
+            // A spool already emptied (e.g. by an earlier queue entry) isn't named as a
+            // swap partner.
             if before <= 0.0 {
                 continue;
             }
@@ -326,8 +324,8 @@ fn check_need(need: &Need, spools: &[SpoolInput], available: &mut HashMap<String
     } else {
         result.status = CheckStatus::Short;
         result.missing_g = (need.needed_g - total).max(0.0);
-        // Alle Treffer werden genannt, auch eine dabei bereits geleerte Spule
-        // (remaining 0) - konsistent mit "alle Treffer werden auf 0 abgebucht".
+        // All matches are named, including a spool emptied along the way (remaining 0) -
+        // consistent with "all matches are deducted to 0".
         for s in hits {
             result.spools.push(spool_use(s, left(s, available)));
             available.insert(s.id.clone(), 0.0);
@@ -336,8 +334,8 @@ fn check_need(need: &Need, spools: &[SpoolInput], available: &mut HashMap<String
     result
 }
 
-/// Prueft Modelle in der uebergebenen Reihenfolge (= Warteschlange) mit einem
-/// gemeinsamen, nur gedachten Abbuchungsstand. Aendert nichts in der DB.
+/// Checks models in the given order (= queue) with a shared, purely hypothetical
+/// deduction state. Changes nothing in the DB.
 pub fn check_models(models: &[(String, Option<SliceInfo>)], spools: &[SpoolInput]) -> Vec<ModelCheck> {
     let mut available: HashMap<String, f64> = spools.iter().map(|s| (s.id.clone(), s.remaining_g.max(0.0))).collect();
     models
@@ -605,8 +603,8 @@ mod tests {
 
     #[test]
     fn drained_spool_still_counts_as_short_instead_of_unknown() {
-        // Eine vom ersten Eintrag geleerte Spule muss beim zweiten als "short" (mit
-        // korrektem Fehlbetrag) gemeldet werden, nicht als "unknown".
+        // A spool emptied by the first entry must be reported as "short" (with the
+        // correct shortfall) for the second one, not as "unknown".
         let models = vec![
             ("1".to_string(), one_plate(&fil("PLA", RED, 150.0))),
             ("2".to_string(), one_plate(&fil("PLA", RED, 50.0))),
@@ -620,7 +618,7 @@ mod tests {
 
     #[test]
     fn spool_emptied_by_ok_entry_yields_short_not_unknown_for_the_next_entry() {
-        // Die erste Pruefung passt genau, die zweite muss trotzdem "short" melden.
+        // The first check fits exactly, the second must still report "short".
         let models = vec![
             ("1".to_string(), one_plate(&fil("PLA", RED, 100.0))),
             ("2".to_string(), one_plate(&fil("PLA", RED, 30.0))),
@@ -633,15 +631,15 @@ mod tests {
 
     #[test]
     fn drained_spool_is_not_listed_as_a_swap_partner() {
-        // Eine geleerte, eingelegte Spule bleibt Kandidat, darf im Swap-Fall aber
-        // nicht mit 0 g als Wechselpartner erscheinen (sie sortiert zuerst).
+        // An emptied, loaded spool stays a candidate, but must not appear as a swap
+        // partner with 0 g in the swap case (it sorts first).
         let spools = [
             spool("loaded", "PLA", Some(RED), 100.0, true),
             spool("full", "PLA", Some(RED), 90.0, false),
             spool("extra", "PLA", Some(RED), 90.0, false),
         ];
         let mut available: HashMap<String, f64> = spools.iter().map(|s| (s.id.clone(), s.remaining_g)).collect();
-        available.insert("loaded".to_string(), 0.0); // durch einen frueheren Eintrag schon geleert
+        available.insert("loaded".to_string(), 0.0); // already emptied by an earlier entry
         let need = Need { filament_type: "PLA".to_string(), color: color_key(RED), needed_g: 150.0 };
         let result = check_need(&need, &spools, &mut available);
         assert_eq!(result.status, CheckStatus::Swap);
@@ -651,7 +649,7 @@ mod tests {
 
     #[test]
     fn tiny_float_rounding_still_counts_as_ok() {
-        // 3 x 11.1 g summiert kann minimal von 33.3 abweichen.
+        // 3 x 11.1 g summed can differ slightly from 33.3.
         let json = format!("{},{},{}", fil("PLA", RED, 11.1), fil("PLA", RED, 11.1), fil("PLA", RED, 11.1));
         let r = check_one(one_plate(&json), &[spool("a", "PLA", Some(RED), 33.3, false)]);
         assert_eq!(r.status, CheckStatus::Ok);

@@ -10,18 +10,17 @@ use super::{
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ExtractStats {
     pub written_files: u32,
-    /// Beim Zusammenfuehren: Datei existierte schon und wurde NICHT angefasst.
+    /// When merging: the file already existed and was NOT touched.
     pub existing_skipped: u32,
-    /// Unsichere oder nicht anlegbare Eintraege (Zip-Slip, Links, geschuetzte
-    /// Zielpfade, …).
+    /// Unsafe or impossible entries (zip slip, links, protected target paths, ...).
     pub unsafe_skipped: u32,
-    /// Gesperrte Dateitypen (ausfuehrbare Dateien, Verknuepfungen, …).
+    /// Blocked file types (executables, shortcuts, ...).
     pub blocked_skipped: u32,
 }
 
-/// Ergebnis eines erfolgreichen Entpackens. Haelt die Liste aller in diesem
-/// Durchlauf neu angelegten Pfade, damit der Aufrufer bei einem SPAETEREN
-/// Fehler (z.B. Datenbank) trotzdem vollstaendig aufraeumen kann.
+/// Result of a successful extraction. Keeps the list of all paths created in
+/// this run, so the caller can still clean up completely after a LATER error
+/// (e.g. in the database).
 #[derive(Debug)]
 pub struct Extraction {
     pub stats: ExtractStats,
@@ -29,9 +28,8 @@ pub struct Extraction {
 }
 
 impl Extraction {
-    /// Entfernt alles, was dieser Durchlauf angelegt hat - in umgekehrter
-    /// Reihenfolge, sodass Ordner erst nach ihrem Inhalt entfernt werden.
-    /// Vorher vorhandene Dateien/Ordner werden nie angefasst.
+    /// Removes everything this run created - in reverse order, so folders are removed
+    /// after their content. Files/folders that existed before are never touched.
     pub fn rollback(self) {
         remove_created(&self.created);
     }
@@ -51,16 +49,16 @@ fn remove_created(created: &[PathBuf]) {
     }
 }
 
-/// Einzige Stelle, die beim Entpacken auf die Platte schreibt.
+/// The only place that writes to disk while extracting.
 pub(super) struct Extractor<'g> {
     root: PathBuf,
     byte_limit: u64,
     written_bytes: u64,
     entries_seen: usize,
-    /// `false` = Pfad liegt in einem geschuetzten Bereich (vom Aufrufer
-    /// entschieden, siehe `commands::reject_if_sensitive_path`).
+    /// `false` = the path is in a protected area (decided by the caller, see
+    /// `commands::reject_if_sensitive_path`).
     guard: &'g dyn Fn(&Path) -> bool,
-    /// Herkunftsmarkierung des Archivs, wird auf jede Datei uebertragen.
+    /// Origin mark of the archive, copied onto every file.
     origin_mark: Option<Vec<u8>>,
     created: Vec<PathBuf>,
     stats: ExtractStats,
@@ -106,10 +104,10 @@ impl<'g> Extractor<'g> {
         Ok(extractor)
     }
 
-    /// Legt `rel` (relativ zu `root`) Ebene fuer Ebene an. `false`, wenn eine
-    /// Ebene schon als Datei oder Symlink existiert oder geschuetzt ist - dann
-    /// darf NICHTS darunter geschrieben werden (sonst koennte ein vom Nutzer
-    /// angelegter Symlink im Zusammenfuehren-Ordner das Ziel umlenken).
+    /// Creates `rel` (relative to `root`) level by level. `false` if a level already
+    /// exists as a file or symlink or is protected - then NOTHING may be written below
+    /// it (otherwise a user-created symlink in the merge folder could redirect the
+    /// target).
     fn ensure_dir(&mut self, rel: &Path) -> Result<bool, ArchiveError> {
         let mut current = self.root.clone();
         for component in rel.components() {
@@ -129,10 +127,9 @@ impl<'g> Extractor<'g> {
         Ok(true)
     }
 
-    /// Zielpfad fuer einen Datei-Eintrag, oder `None`, wenn er uebersprungen
-    /// wird. Ordner-Eintraege werden hier direkt angelegt. Zaehlt JEDEN
-    /// Eintrag gegen `MAX_ENTRIES` - auch wenn `inspect` schon geprueft hat,
-    /// denn das Archiv kann seitdem ausgetauscht worden sein.
+    /// Target path for a file entry, or `None` if it is skipped. Folder entries are
+    /// created here directly. Counts EVERY entry against `MAX_ENTRIES` - even though
+    /// `inspect` already checked, the archive may have been replaced since.
     pub(super) fn prepare(&mut self, meta: &EntryMeta) -> Result<Option<PathBuf>, ArchiveError> {
         self.entries_seen += 1;
         if self.entries_seen > MAX_ENTRIES {
@@ -177,13 +174,13 @@ impl<'g> Extractor<'g> {
         Ok(Some(target))
     }
 
-    /// Schreibt gestreamt und zaehlt die TATSAECHLICH geschriebenen Bytes
-    /// gegen das Budget. `create_new` garantiert, dass nie etwas
-    /// ueberschrieben und kein Symlink am Ziel verfolgt wird.
+    /// Writes streamed and counts the ACTUALLY written bytes against the budget.
+    /// `create_new` guarantees that nothing is overwritten and no symlink at the
+    /// target is followed.
     pub(super) fn write_from(&mut self, target: &Path, reader: &mut dyn Read) -> Result<(), ArchiveError> {
         let mut options = OpenOptions::new();
         options.write(true).create_new(true);
-        // Nie ausfuehrbar, egal was das Archiv an Rechten mitbringt.
+        // Never executable, whatever permissions the archive brings.
         #[cfg(unix)]
         std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o644);
         let mut file = options.open(target)?;
@@ -212,14 +209,13 @@ impl<'g> Extractor<'g> {
         self.stats.written_files += 1;
     }
 
-    /// Zaehlt einen Eintrag, den ein Format-Adapter nach `prepare` doch nicht
-    /// schreiben darf (z.B. RAR-Referenz-Eintrag ohne Daten).
+    /// Counts an entry a format adapter may not write after `prepare` after all
+    /// (e.g. a RAR reference entry without data).
     pub(super) fn skip_unsafe(&mut self) {
         self.stats.unsafe_skipped += 1;
     }
 
-    /// Prueft, ob `size` Bytes innerhalb des verbleibenden Budgets passen.
-    /// Wird VOR dem Schreiben aufgerufen, um Overrun zu verhindern.
+    /// Checks whether `size` bytes fit into the remaining budget. Called BEFORE writing to prevent an overrun.
     pub(super) fn ensure_budget_for(&self, size: u64) -> Result<(), ArchiveError> {
         if self.written_bytes.saturating_add(size) > self.byte_limit {
             return Err(ArchiveError::LimitExceeded);
@@ -228,11 +224,10 @@ impl<'g> Extractor<'g> {
     }
 }
 
-/// Entpackt `archive` nach `dest`. Bei `merge == false` darf `dest` noch
-/// nicht existieren. `guard` wird fuer `dest` und jeden neu anzulegenden
-/// Pfad gefragt (`false` = geschuetzt, nicht anlegen). Bei JEDEM Fehler wird
-/// alles, was dieser Durchlauf angelegt hat, wieder entfernt, bevor der
-/// Fehler zurueckkommt.
+/// Extracts `archive` to `dest`. With `merge == false`, `dest` must not exist
+/// yet. `guard` is asked for `dest` and every path to be created (`false` =
+/// protected, don't create). On ANY error, everything this run created is removed
+/// before the error is returned.
 pub fn extract_archive(
     archive: &Path,
     format: ArchiveFormat,

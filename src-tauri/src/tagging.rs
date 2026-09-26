@@ -17,9 +17,9 @@ const FILENAME_STOPWORDS: &[&str] = &[
     "untitled", "sans", "titre",
 ];
 
-// Gemeinsame Namentabelle der automatischen Tags mit dem Frontend
-// (src/lib/autoTags.json). Die Kennung (Schluessel) ist der deutsche Name
-// und das, was in der Datenbank steht; das Frontend uebersetzt nur die Anzeige.
+// Name table of the automatic tags, shared with the frontend
+// (src/lib/autoTags.json). The key is the German name and is what the database
+// stores; the frontend only translates the display.
 const AUTO_TAGS_JSON: &str = include_str!("../../src/lib/autoTags.json");
 
 #[derive(Debug, Deserialize)]
@@ -46,9 +46,9 @@ fn alias_key(name: &str) -> String {
     name.trim().to_lowercase()
 }
 
-/// Bildet einen Namen eines automatischen Tags in irgendeiner Sprache
-/// (Gross-/Kleinschreibung und Leerzeichen rundherum egal) auf die Kennung
-/// ab, z. B. "Multipart" -> "mehrteilig". Alle anderen Tags bleiben unveraendert.
+/// Maps the name of an automatic tag in any language (case and surrounding
+/// whitespace don't matter) to its key, e.g. "Multipart" -> "mehrteilig". All
+/// other tags stay unchanged.
 pub fn canonical_tag(name: &str) -> String {
     let key = alias_key(name);
     auto_tags()
@@ -58,8 +58,8 @@ pub fn canonical_tag(name: &str) -> String {
         .unwrap_or_else(|| name.to_string())
 }
 
-/// Mehrdeutige Aliase: "mini" steht z.B. auch in "Bambu A1 mini", "large" und
-/// "grande" tauchen auch sonst in Dateinamen auf. Vergleich ueber `alias_key`.
+/// Ambiguous aliases: "mini" also appears e.g. in "Bambu A1 mini", and "large"
+/// and "grande" show up in file names otherwise too. Compared via `alias_key`.
 const AMBIGUOUS_ALIASES: &[&str] = &["mini", "large", "grande"];
 
 fn is_ambiguous_alias(name: &str) -> bool {
@@ -67,12 +67,10 @@ fn is_ambiguous_alias(name: &str) -> bool {
     AMBIGUOUS_ALIASES.iter().any(|alias| *alias == key)
 }
 
-/// Wie [`canonical_tag`], bildet aber die mehrdeutigen Aliase aus
-/// `AMBIGUOUS_ALIASES` NICHT ab - der Eingabewert kommt dann unveraendert
-/// zurueck. Gedacht fuer alle automatischen Quellen (Dateinamen-Token,
-/// Materialnamen, Zusammenlegen beim Start); die manuelle Eingabe
-/// (`add_tag`-Befehl, Frontend `canonicalTag`) nutzt weiterhin die volle
-/// `canonical_tag`.
+/// Like [`canonical_tag`], but does NOT map the ambiguous aliases from
+/// `AMBIGUOUS_ALIASES` - the input is returned unchanged. Meant for all automatic
+/// sources (file name tokens, material names, merging at startup); manual input
+/// (`add_tag` command, frontend `canonicalTag`) still uses the full `canonical_tag`.
 pub fn canonical_tag_unambiguous(name: &str) -> String {
     if is_ambiguous_alias(name) {
         return name.to_string();
@@ -167,9 +165,9 @@ fn material_tags(materials: &[MaterialRecord]) -> Vec<String> {
         .collect();
     tags.dedup();
 
-    // `contains`-Check statt blindem Push: ein Materialname kann selbst
-    // schon auf "mehrfarbig" abgebildet worden sein (z. B. Materialname
-    // "Multicolor"), ein zweiter Eintrag waere sonst ein Duplikat.
+    // `contains` check instead of a blind push: a material name may already have
+    // been mapped to "mehrfarbig" (e.g. the material name "Multicolor"), a second
+    // entry would be a duplicate.
     if tags.len() > 1 && !tags.contains(&"mehrfarbig".to_string()) {
         tags.push("mehrfarbig".to_string());
     }
@@ -217,7 +215,7 @@ mod tests {
 
     #[test]
     fn works_the_same_for_an_stp_filename_as_any_other_extension() {
-        // Tag-Vorschlaege haengen nicht von der Dateiendung ab.
+        // Tag suggestions don't depend on the file extension.
         let tags = suggest_tags(&ctx("kabelhalter_v3_final.stp", None, None, &[]));
         assert_eq!(tags, vec!["kabelhalter".to_string()]);
     }

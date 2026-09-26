@@ -19,11 +19,11 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [features]
-# Einziges Default-Feature. Der Build OHNE STEP-Vorschau entsteht mit
-# `--no-default-features`; er braucht dann weder OCCT noch cmake und enthaelt
-# keinen LGPL-Anteil (kommerzieller Build, siehe THIRD-PARTY-LICENSES.md).
-# WICHTIG: Das muss das einzige Default-Feature bleiben - kaeme ein zweites
-# dazu, wuerde `--no-default-features` dieses mit abschalten.
+# The only default feature. The build WITHOUT the STEP preview uses
+# `--no-default-features`; it then needs neither OCCT nor cmake and contains no
+# LGPL part (commercial build, see THIRD-PARTY-LICENSES.md).
+# IMPORTANT: this must stay the only default feature - a second one would be
+# turned off by `--no-default-features` as well.
 default = ["step-preview"]
 step-preview = ["dep:cxx", "dep:opencascade-sys"]
 
@@ -33,19 +33,17 @@ tauri-plugin-dialog = { version = "2", default-features = false, features = ["xd
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 zip = "2"
-# Archive beim Import entpacken (siehe src/archive/). Bewusst reine
-# Rust-Dekoder fuer xz/zstd (lzma-rust2, ruzstd), damit keine weiteren
-# C-Bibliotheken in die drei Plattform-Builds kommen.
+# Extracting archives on import (see src/archive/). Deliberately pure Rust
+# decoders for xz/zstd (lzma-rust2, ruzstd), so no further C libraries end up in
+# the three platform builds.
 tar = "0.4"
 flate2 = "1"
 bzip2 = "0.6"
 lzma-rust2 = { version = "0.21", default-features = false, features = ["std", "xz", "optimization"] }
 ruzstd = "0.9"
-# 7z: reines Rust. Ohne "aes256" - verschluesselte 7z werden nur erkannt
-# (AES-Coder im Block), nicht entpackt.
+# 7z: pure Rust. Without "aes256" - encrypted 7z archives are only detected (AES coder in the block), not extracted.
 sevenz-rust2 = { version = "0.23", default-features = false, features = ["bzip2", "ppmd", "util"] }
-# RAR: bindet den offiziellen UnRAR-Quellcode (C++) ein. Lizenz siehe
-# THIRD-PARTY-LICENSES.md (Freeware, keine OSI-Lizenz).
+# RAR: embeds the official UnRAR source code (C++). License see THIRD-PARTY-LICENSES.md (freeware, not an OSI license).
 unrar = "0.5"
 quick-xml = "0.41"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
@@ -53,32 +51,30 @@ rusqlite = { version = "0.40.2", features = ["bundled", "backup", "trace"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 base64 = "0.22"
 sha2 = "0.10"
-# Update-Check: echter SemVer-Vergleich (auch fuer Vorabversionen wie
-# "0.14.0-gharac"), statt der frueheren handgeschriebenen major.minor.patch-
-# Auswertung, die Pre-Release-Suffixe gar nicht kannte.
+# Update check: real SemVer comparison (also for pre-releases like
+# "0.14.0-gharac").
 semver = "1"
 cxx = { version = "1", optional = true }
-# STEP-Vorschau (Version 2): rohe OCCT-Bindings. Bewusst OHNE das Feature
-# `builtin` - das wuerde OCCT aus dem Quelltext bauen und STATISCH linken, was
-# die LGPL-Pflicht ausloest (relinkbare Objektdateien an jeden Empfaenger).
-# Dynamisch gelinkt bleibt OCCT austauschbar; siehe THIRD-PARTY-LICENSES.md.
+# STEP preview: raw OCCT bindings. Deliberately WITHOUT the `builtin` feature -
+# that would build OCCT from source and link it STATICALLY, which triggers the
+# LGPL obligation (relinkable object files for every recipient). Linked
+# dynamically, OCCT stays replaceable; see THIRD-PARTY-LICENSES.md.
 opencascade-sys = { version = "0.3", optional = true }
 
-# Nur macOS: Quarantaene-Attribut des Archivs auf entpackte Dateien
-# uebertragen (siehe src/archive/origin.rs).
+# macOS only: carry the archive's quarantine attribute over to extracted files (see src/archive/origin.rs).
 [target.'cfg(target_os = "macos")'.dependencies]
 xattr = "1"
 
 [dev-dependencies]
-# Nur fuer Tests: xz-Archive erzeugen.
+# Tests only: create xz archives.
 lzma-rust2 = { version = "0.21", default-features = false, features = ["std", "xz", "optimization", "encoder"] }
-# Nur fuer Tests: 7z-Archive (auch verschluesselte) erzeugen.
+# Tests only: create 7z archives (including encrypted ones).
 sevenz-rust2 = { version = "0.23", default-features = false, features = ["bzip2", "ppmd", "util", "compress", "aes256"] }
 
-# Der Patch ersetzt die crates.io-Fassung durch die geforkte Kopie in
-# `vendor/opencascade-sys` - noetig, weil 0.3.0 gegen OCCT 7.9 nicht uebersetzt.
-# Nur zwei Aenderungen gegenueber upstream (TopoDS-Namensraum, CMake-Mindest-
-# version); Begruendung und Pflegehinweise stehen in
+# The patch replaces the crates.io version with the forked copy in
+# `vendor/opencascade-sys` - needed because 0.3.0 doesn't compile against OCCT
+# 7.9. Only two changes compared to upstream (TopoDS namespace, CMake minimum
+# version); rationale and maintenance notes are in
 # `vendor/opencascade-sys/VENDORING.md`.
 [patch.crates-io]
 opencascade-sys = { path = "vendor/opencascade-sys" }

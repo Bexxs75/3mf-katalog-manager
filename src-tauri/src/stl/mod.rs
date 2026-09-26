@@ -171,10 +171,9 @@ mod tests {
             assert!((len - 1.0).abs() < 1e-4, "normal not unit length: {n:?}");
         }
 
-        // Dreieck 2 (0-indiziert) ist CUBE_TRIANGLES[2] = [4,5,6], die
-        // Deckflaeche bei z=10 - von Hand nachgerechnet
-        // (cb=(C-B)=[0,10,0], ab=(A-B)=[-10,0,0], cb x ab = [0,0,100])
-        // muss die Normale nach [0,0,1] zeigen.
+        // Triangle 2 (0-indexed) is CUBE_TRIANGLES[2] = [4,5,6], the top face at z=10
+        // - computed by hand (cb=(C-B)=[0,10,0], ab=(A-B)=[-10,0,0], cb x ab = [0,0,100]),
+        // the normal must point to [0,0,1].
         let top_face_normal = normals[6];
         assert!(top_face_normal[0].abs() < 1e-4, "unexpected: {top_face_normal:?}");
         assert!(top_face_normal[1].abs() < 1e-4, "unexpected: {top_face_normal:?}");

@@ -1,10 +1,8 @@
--- parent_id/path wurden nachtraeglich zur bereits bestehenden Tabelle
--- hinzugefuegt - CREATE TABLE IF NOT EXISTS aendert eine schon vorhandene
--- Tabelle nicht. Die beiden Spalten kommen additiv ueber die versionierten
--- Migrationen in db/migrations.rs (siehe MIGRATIONS/CURRENT_SCHEMA_VERSION
--- dort), gleiches Muster wie bei filament_spools/files. Frueher liefen diese
--- ALTER-TABLE-Schritte unversioniert in repository.rs::init() - Task 2 hat
--- sie in ein richtiges Migrations-Framework ueberfuehrt.
+-- parent_id/path were added to the already existing table later -
+-- CREATE TABLE IF NOT EXISTS doesn't alter an existing table. Both columns are
+-- added via the versioned migrations in db/migrations.rs (see
+-- MIGRATIONS/CURRENT_SCHEMA_VERSION there), same pattern as for
+-- filament_spools/files.
 CREATE TABLE IF NOT EXISTS folders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL
@@ -24,11 +22,10 @@ CREATE TABLE IF NOT EXISTS files (
     folder_id INTEGER REFERENCES folders (id) ON DELETE SET NULL,
     origin TEXT NOT NULL DEFAULT 'local'
         CHECK (origin IN ('local')),
-    -- sync_status/cloud_id sind Relikte der entfernten Cloud-Anbindung
-    -- (Google Drive u.a. - zu instabil, siehe CHANGELOG). Absichtlich nicht
-    -- per Migration entfernt (kein DROP-COLUMN-Muster in diesem Projekt,
-    -- Risiko fuer Bestands-DBs), bleiben bis zu einer sauberen Neukonzeption
-    -- inert (immer 'local-only'/NULL, kein Code liest/schreibt sie mehr).
+    -- sync_status/cloud_id are leftovers of the removed cloud integration (Google
+    -- Drive among others - too unstable, see CHANGELOG). Deliberately not removed
+    -- via a migration (no DROP COLUMN pattern in this project, risk for existing
+    -- DBs); they stay inert (always 'local-only'/NULL, no code reads or writes them).
     sync_status TEXT NOT NULL DEFAULT 'local-only'
         CHECK (sync_status IN ('synced', 'outdated', 'local-only', 'cloud-only')),
     cloud_id TEXT,

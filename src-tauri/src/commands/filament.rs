@@ -15,15 +15,14 @@ pub struct FilamentSpoolDto {
     pub image_png: Option<String>,
     #[serde(default)]
     pub color_hex: Option<String>,
-    /// Nur lesend: Stammplatz, Einheit und Fach aendern sich ausschliesslich
-    /// ueber `load_spool`/`unload_spool` (commands/printers.rs).
+    /// Read-only: home location, unit and slot only change via `load_spool`/`unload_spool` (commands/printers.rs).
     #[serde(default)]
     pub home_location: Option<String>,
     #[serde(default)]
     pub unit_id: Option<String>,
     #[serde(default)]
     pub slot_index: Option<i64>,
-    /// "filament" oder "resin"; fehlt es (aeltere Aufrufer), gilt "filament".
+    /// "filament" or "resin"; if missing (older callers), "filament" applies.
     #[serde(default = "default_spool_kind")]
     pub kind: String,
 }
@@ -47,7 +46,7 @@ fn validate_spool_kind(kind: &str) -> CmdResult<()> {
         Err(format!("ungueltige Art: {kind}"))
     }
 }
-/// Baut das DTO aus dem echten Datenbankstand (siehe `update_filament_spool`).
+/// Builds the DTO from the real database state (see `update_filament_spool`).
 fn spool_record_to_dto(s: db::models::FilamentSpoolRecord) -> FilamentSpoolDto {
     use base64::Engine;
     FilamentSpoolDto {
@@ -100,8 +99,7 @@ pub fn add_filament_spool(state: State<AppState>, spool: FilamentSpoolDto) -> Cm
     let conn = lock_db(&state)?;
     let new_spool = filament_dto_to_record(&spool);
     let id = db::insert_filament_spool(&conn, &new_spool).map_err(|e| e.to_string())?;
-    // Neue Spulen liegen immer im Lager, auch wenn der Aufrufer ein Fach
-    // mitschickt.
+    // New spools always go to storage, even if the caller sends a slot.
     Ok(FilamentSpoolDto {
         id: id.to_string(),
         color_hex: new_spool.color_hex,
@@ -111,8 +109,8 @@ pub fn add_filament_spool(state: State<AppState>, spool: FilamentSpoolDto) -> Cm
         ..spool
     })
 }
-/// Gibt den frisch gelesenen DB-Stand zurueck, nicht das DTO des Aufrufers: der
-/// Farbwert wird normalisiert, Fach-Felder aendern sich ueber diesen Weg nie.
+/// Returns the freshly read DB state, not the caller's DTO: the color value is
+/// normalized, and slot fields never change this way.
 #[tauri::command]
 pub fn update_filament_spool(state: State<AppState>, spool: FilamentSpoolDto) -> CmdResult<FilamentSpoolDto> {
     validate_spool_kind(&spool.kind)?;
@@ -131,16 +129,15 @@ pub fn delete_filament_spool(state: State<AppState>, spool_id: String) -> CmdRes
     db::delete_filament_spool(&conn, id).map_err(|e| e.to_string())
 }
 
-/// Obergrenze fuer "Nachkaufen" (1 bis 20).
+/// Limit for "Restock" (1 to 20).
 pub(crate) const RESTOCK_MAX_COUNT: i64 = 20;
 
-/// Kernlogik von `restock_filament_spool` (Test-Huelle wie andere `*_with_conn`).
-/// Legt `count` neue, volle Eintraege nach dem Vorbild der Vorlage an. Kopiert
-/// werden Art, Material, Hersteller, Farbname, Farbwert, Bild und Durchmesser;
-/// NICHT kopiert werden Fach (`unit_id`/`slot_index`) und Stammplatz - neue
-/// Spulen/Flaschen liegen immer im Lager. `weight` ist Gramm (Filament) bzw.
-/// Milliliter (Resin), auf 0,1 gerundet. Alles in EINER Transaktion:
-/// scheitert eine Einfuegung, wird nichts angelegt.
+/// Core logic of `restock_filament_spool` (test shell like other `*_with_conn`).
+/// Creates `count` new, full entries modeled on the template. Copies kind,
+/// material, manufacturer, color name, color value, image and diameter; does NOT
+/// copy the slot (`unit_id`/`slot_index`) or home location - new spools/bottles
+/// always go to storage. `weight` is grams (filament) or milliliters (resin),
+/// rounded to 0.1. All in ONE transaction: if one insert fails, nothing is created.
 pub(crate) fn restock_filament_spool_with_conn(
     conn: &mut Connection,
     template_id: &str,
@@ -197,8 +194,8 @@ pub(crate) fn restock_filament_spool_with_conn(
     Ok(created)
 }
 
-/// "Nachkaufen". `async` + `spawn_blocking`: bis zu 20 Einfuegungen mit
-/// Bild-Blob sollen den UI-Thread nicht blockieren.
+/// "Restock". `async` + `spawn_blocking`: up to 20 inserts with an image blob
+/// must not block the UI thread.
 #[tauri::command]
 pub async fn restock_filament_spool(
     app: tauri::AppHandle,
@@ -218,9 +215,9 @@ pub async fn restock_filament_spool(
     .map_err(|e| e.to_string())?
 }
 
-/// Kernlogik von `consume_resin` ("− Verbrauch"): zieht `amount_ml` (auf 0,1 ml
-/// gerundet, > 0) vom Rest einer Resin-Flasche ab, nie unter 0. Eine
-/// Transaktion; nur fuer Resin (Filament wird ueber Drucke/Formular gepflegt).
+/// Core logic of `consume_resin` ("− Use"): subtracts `amount_ml` (rounded to
+/// 0.1 ml, > 0) from a resin bottle's remainder, never below 0. One transaction;
+/// resin only (filament is tracked via prints/the form).
 pub(crate) fn consume_resin_with_conn(conn: &mut Connection, spool_id: &str, amount_ml: f64) -> CmdResult<FilamentSpoolDto> {
     let id: i64 = spool_id.parse().map_err(|_| "invalid spool id".to_string())?;
     let amount = db::printers::round_tenth(amount_ml);
@@ -261,10 +258,9 @@ pub async fn consume_resin(app: tauri::AppHandle, spool_id: String, amount_ml: f
     .map_err(|e| e.to_string())?
 }
 
-/// Kernlogik von `check_filament` (Test-Huelle wie andere `*_with_conn`):
-/// laedt Slicer-Daten der Modelle in der uebergebenen Reihenfolge, alle Spulen
-/// und die Namen von Drucker/Einheit fuer eingelegte Spulen. Unbekannte,
-/// geloeschte oder ungueltige IDs werden uebersprungen.
+/// Core logic of `check_filament` (test shell like other `*_with_conn`): loads the
+/// slicer data of the models in the given order, all spools and the printer/unit
+/// names of loaded spools. Unknown, deleted or invalid IDs are skipped.
 pub(crate) fn check_filament_with_conn(
     conn: &Connection,
     file_ids: &[String],
@@ -290,7 +286,7 @@ pub(crate) fn check_filament_with_conn(
     let spools = db::list_filament_spools(conn)
         .map_err(|e| e.to_string())?
         .into_iter()
-        // "Reicht das Filament?" (und das Warteschlangen-Symbol) nur mit Filament.
+        // "Is there enough filament?" (and the queue symbol) only with filament.
         .filter(|s| s.kind == db::models::SPOOL_KIND_FILAMENT)
         .map(|s| {
             let slot = match (s.unit_id, s.slot_index) {
@@ -508,7 +504,7 @@ mod tests {
     fn restock_creates_full_spools_in_storage_with_the_template_data() {
         let mut conn = crate::db::connect_in_memory().expect("connect");
         let template = restock_template(&conn, "filament");
-        // Vorlage steckt im Drucker: Fach und Stammplatz duerfen NICHT kopiert werden.
+        // The template is loaded in a printer: slot and home location must NOT be copied.
         let printer = crate::db::printers::insert_printer(&conn, "X1C").expect("printer");
         let unit = crate::db::printers::insert_unit(&conn, printer, "bambu_ams", "AMS 1", None).expect("unit");
         crate::db::printers::load_spool(&conn, template, unit, 0).expect("load");
@@ -609,7 +605,7 @@ mod tests {
     fn restock_rolls_back_every_insert_when_one_fails() {
         let mut conn = crate::db::connect_in_memory().expect("connect");
         let template = restock_template(&conn, "filament").to_string();
-        // Laesst die dritte neue Spule scheitern (1 Vorlage + 2 neue = 3 Zeilen).
+        // Makes the third new spool fail (1 template + 2 new = 3 rows).
         conn.execute_batch(
             "CREATE TEMP TRIGGER restock_fail BEFORE INSERT ON filament_spools
              WHEN (SELECT COUNT(*) FROM filament_spools) >= 3
@@ -634,7 +630,7 @@ mod tests {
     #[test]
     fn consume_resin_deducts_rounded_to_a_tenth() {
         let mut conn = crate::db::connect_in_memory().expect("connect");
-        let bottle = restock_template(&conn, "resin"); // 120 ml Rest
+        let bottle = restock_template(&conn, "resin"); // 120 ml left
 
         let updated = consume_resin_with_conn(&mut conn, &bottle.to_string(), 45.44).expect("consume");
 
@@ -705,8 +701,8 @@ mod tests {
         assert!(result[0].needs[0].spools.is_empty(), "Resin darf nie als passende Spule auftauchen");
     }
 
-    /// Auch eine Flasche in der Harzwanne eines Resin-Druckers zaehlt nie fuer
-    /// "Reicht das Filament?" (und damit das Warteschlangen-Symbol).
+    /// A bottle in a resin printer's vat never counts for "Is there enough
+    /// filament?" (and therefore the queue symbol) either.
     #[test]
     fn check_filament_ignores_a_bottle_in_a_resin_vat() {
         let conn = crate::db::connect_in_memory().expect("connect");

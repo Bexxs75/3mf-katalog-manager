@@ -1,5 +1,4 @@
-//! Tauri-Befehle der Druckeranbindung. Netzwerkarbeit läuft in
-//! `spawn_blocking`, die Datenbank wird dabei nicht gesperrt.
+//! Tauri commands of the printer connection. Network work runs in `spawn_blocking`, the database isn't locked meanwhile.
 
 use super::*;
 use serde::Deserialize;
@@ -189,10 +188,10 @@ pub(crate) fn preview_printer_job_with_conn(conn: &Connection, job_id: &str, spo
     })
 }
 
-/// Sperre vor `test_printer_connection`: ist die Druckeranbindung aus, geht kein
-/// Paket an einen Drucker, auch nicht beim Test. `Some(...)` = Ergebnis direkt
-/// zurueckgeben, `None` = weitermachen. Resin-Drucker und unbekannte IDs geben
-/// einen Fehler, bevor etwas ins Netz geht.
+/// Gate before `test_printer_connection`: if the printer connection is off, not a
+/// single packet goes to a printer, not even for the test. `Some(...)` = return the
+/// result directly, `None` = continue. Resin printers and unknown IDs give an
+/// error before anything goes to the network.
 pub(crate) fn test_printer_connection_gate_with_conn(conn: &Connection, printer_id: i64) -> CmdResult<Option<TestResultDto>> {
     db::printers::ensure_filament_printer(conn, printer_id).map_err(|e| e.to_string())?;
     if store::printer_link_enabled(conn).map_err(|e| e.to_string())? {
@@ -286,9 +285,9 @@ pub fn sync_printers_now(app: tauri::AppHandle) -> CmdResult<()> {
     Ok(())
 }
 
-// async + spawn_blocking, weil pro offenem Druck mehrere Abfragen laufen.
-// `State` kann nicht in die `'static`-Closure, deshalb das `AppHandle` (wie im
-// Hintergrund-Abgleich).
+// async + spawn_blocking, because several queries run per open print. `State`
+// can't move into the `'static` closure, hence the `AppHandle` (as in the
+// background sync).
 #[tauri::command]
 pub async fn list_open_printer_jobs(app: tauri::AppHandle) -> CmdResult<Vec<OpenPrinterJobDto>> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -306,9 +305,9 @@ pub fn preview_printer_job(state: State<AppState>, job_id: String, spool_id: Str
     preview_printer_job_with_conn(&conn, &job_id, &spool_id)
 }
 
-/// Entscheidet ohne Netzwerkzugriff, ob ein Vorschaubild geholt werden darf:
-/// `None` bei ausgeschaltetem Schalter, fehlendem Druck/Pfad/Verbindung oder
-/// pausierter Verbindung (die hebt nur ein erneuter Verbindungstest auf).
+/// Decides without network access whether a thumbnail may be fetched: `None` if
+/// the switch is off, the print/path/connection is missing or the connection is
+/// paused (only a new connection test lifts that).
 pub(crate) fn thumbnail_fetch_plan_with_conn(
     conn: &Connection,
     job_id: &str,
@@ -352,7 +351,7 @@ pub fn ignore_printer_job(state: State<AppState>, job_id: String) -> CmdResult<(
     booking::ignore_job(&conn, id(&job_id, "Druck")?, &now_rfc3339()).map_err(|e| e.to_string())
 }
 
-// async aus demselben Grund wie `list_open_printer_jobs`.
+// async for the same reason as `list_open_printer_jobs`.
 #[tauri::command]
 pub async fn confirm_printer_jobs(app: tauri::AppHandle, decisions: Vec<JobDecisionDto>) -> CmdResult<ConfirmResultDto> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -476,7 +475,7 @@ mod tests {
         assert!(preview_printer_job_with_conn(&conn, "x", "100").is_err());
     }
 
-    // Der Schalter muss JEDEN Netzwerkzugriff sperren, nicht nur den Abgleich.
+    // The switch must block EVERY network access, not just the sync.
     #[test]
     fn test_connection_is_blocked_while_switched_off() {
         let conn = setup();
@@ -507,7 +506,7 @@ mod tests {
         assert!(test_printer_connection_gate_with_conn(&conn, 999).is_err());
     }
 
-    // Pausierte Verbindungen liefern erst nach erneutem Test wieder Vorschaubilder.
+    // Paused connections only deliver thumbnails again after a new test.
     #[test]
     fn thumbnail_plan_is_none_while_switch_is_off() {
         let conn = setup();

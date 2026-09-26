@@ -1,20 +1,20 @@
 use std::path::PathBuf;
 
-/// Unter Windows reservierte Geraetenamen - gelten dort auch mit Endung
-/// (`CON.txt`). Wird auf allen Plattformen angewendet, damit ein Katalog
-/// beim Umzug auf Windows gueltig bleibt.
+/// Device names reserved on Windows - they apply there with an extension too
+/// (`CON.txt`). Applied on all platforms, so a catalog stays valid when moved to
+/// Windows.
 const RESERVED_NAMES: &[&str] = &[
     "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
     "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9", "COM0", "LPT0",
     "CONIN$", "CONOUT$",
-    // Windows behandelt auch die hochgestellten Ziffern als Geraetenamen.
+    // Windows also treats the superscript digits as device names.
     "COM\u{b9}", "COM\u{b2}", "COM\u{b3}", "LPT\u{b9}", "LPT\u{b2}", "LPT\u{b3}",
 ];
 
-/// Unsichtbare Unicode-Formatzeichen (Zero-Width, Bidi-Steuerzeichen wie
-/// U+202E "Right-to-Left Override"). Damit laesst sich eine Endung
-/// verschleiern ("rechnung\u{202E}lts.exe" wird als "rechnungexe.stl"
-/// angezeigt) - `char::is_control` erfasst diese Zeichen nicht.
+/// Invisible Unicode format characters (zero-width, bidi controls like U+202E
+/// "Right-to-Left Override"). They can disguise an extension
+/// ("invoice\u{202E}lts.exe" is displayed as "invoiceexe.stl") -
+/// `char::is_control` doesn't catch them.
 fn is_invisible_format_char(c: char) -> bool {
     matches!(
         c,
@@ -26,10 +26,9 @@ fn is_invisible_format_char(c: char) -> bool {
     )
 }
 
-/// Bereinigt EINE Pfadkomponente: Steuerzeichen und `<>:"|?*/\` werden zu
-/// `_`, abschliessende Punkte/Leerzeichen entfallen (Windows verwirft sie
-/// stillschweigend), reservierte Geraetenamen bekommen ein `_` vorangestellt.
-/// Kann einen leeren String liefern (z.B. fuer "..." oder " ").
+/// Sanitizes ONE path component: control characters and `<>:"|?*/\` become `_`,
+/// trailing dots/spaces are dropped (Windows silently discards them), reserved
+/// device names get a leading `_`. Can return an empty string (e.g. for "..." or " ").
 pub fn sanitize_component(part: &str) -> String {
     let mut clean: String = part
         .chars()
@@ -47,7 +46,7 @@ pub fn sanitize_component(part: &str) -> String {
     while clean.ends_with('.') || clean.ends_with(' ') {
         clean.pop();
     }
-    // Windows ignoriert Leerzeichen/Punkte am Ende des Stamms ("CON .txt" = CON).
+    // Windows ignores trailing spaces/dots of the stem ("CON .txt" = CON).
     let stem = clean
         .split('.')
         .next()
@@ -60,18 +59,17 @@ pub fn sanitize_component(part: &str) -> String {
     clean
 }
 
-/// Name fuer den Zielordner eines Archivs: wie `sanitize_component`, aber
-/// ohne fuehrende Punkte. Sonst wuerde "`.local.zip`" beim Zusammenfuehren
-/// im Home-Verzeichnis zu `~/.local` - und ein Eintrag
-/// `share/applications/x.desktop` landete im Anwendungsmenue.
+/// Name for an archive's target folder: like `sanitize_component`, but without
+/// leading dots. Otherwise "`.local.zip`" merged into the home directory would
+/// become `~/.local` - and an entry `share/applications/x.desktop` would end up in
+/// the application menu.
 pub fn safe_folder_name(name: &str) -> String {
     sanitize_component(name).trim_start_matches('.').to_string()
 }
 
-/// Wandelt einen (nicht vertrauenswuerdigen) Eintragsnamen aus einem Archiv
-/// in einen sicheren RELATIVEN Pfad um. `None` bedeutet: Eintrag
-/// ueberspringen (Zip-Slip-Versuch, absoluter Pfad, Laufwerksbuchstabe,
-/// UNC-Pfad, leerer Name).
+/// Turns an (untrusted) entry name from an archive into a safe RELATIVE path.
+/// `None` means: skip the entry (zip slip attempt, absolute path, drive letter,
+/// UNC path, empty name).
 pub fn safe_relative_path(name: &str) -> Option<PathBuf> {
     let normalized = name.replace('\\', "/");
     if normalized.starts_with('/') {

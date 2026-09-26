@@ -5,9 +5,9 @@ const GITHUB_API_LATEST_RELEASE_URL: &str =
     "https://api.github.com/repos/Bexxs75/3mf-katalog-manager/releases/latest";
 const DISCORD_INVITE_URL: &str = "https://discord.gg/abfVNfFqu3";
 
-// Nur Links auf das eigene GitHub-Repo werden geöffnet, obwohl die URL aus
-// einer vertrauten Quelle (GitHub-API) stammt - Defense-in-depth, falls die
-// API-Antwort je manipuliert/geproxyt wird oder sich das Feld-Schema ändert.
+// Only links to our own GitHub repo are opened, although the URL comes from a
+// trusted source (GitHub API) - defense in depth in case the API response is ever
+// manipulated/proxied or the field schema changes.
 fn validate_release_url(url: &str) -> Result<(), String> {
     if url == GITHUB_REPO_URL_PREFIX.trim_end_matches('/') || url.starts_with(GITHUB_REPO_URL_PREFIX) {
         Ok(())
@@ -15,8 +15,7 @@ fn validate_release_url(url: &str) -> Result<(), String> {
         Err("URL zeigt nicht auf das erwartete GitHub-Repository".to_string())
     }
 }
-/// Eigene Version sofort und ohne Netzwerk, damit die UI nicht auf
-/// `check_for_update` (bis 5 s) warten muss.
+/// Own version immediately and without network, so the UI doesn't wait for `check_for_update` (up to 5 s).
 #[tauri::command]
 pub fn get_app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
@@ -36,7 +35,7 @@ pub async fn check_for_update() -> CmdResult<update_check::UpdateCheckResult> {
 
     let response = match client.get(GITHUB_API_LATEST_RELEASE_URL).send().await {
         Ok(r) => r,
-        // Netzwerkfehler: still als "kein Update" behandeln, nie ein Fehlerdialog.
+        // Network error: silently treat as "no update", never an error dialog.
         Err(_) => return Ok(update_check::compare_versions(current, current, "")),
     };
 
@@ -68,7 +67,7 @@ pub fn open_release_url(url: String) -> CmdResult<()> {
     Ok(())
 }
 
-// Keine URL vom Frontend: der Discord-Link ist statisch.
+// No URL from the frontend: the Discord link is static.
 #[tauri::command]
 pub fn open_discord_invite() -> CmdResult<()> {
     #[cfg(target_os = "linux")]

@@ -1,16 +1,16 @@
-// Drucker, Mehrfarbeinheiten (AMS, CFS, MMU, externe Spule …) und die
-// Belegung ihrer Faecher mit Spulen aus dem Filament-Lager. Eine Spule steckt
-// entweder in genau einem Fach (`unit_id` + `slot_index` gesetzt, ihr
-// Lagerort liegt dann als Stammplatz in `home_location`) oder liegt im Lager
-// (`location`). Nur die Funktionen hier aendern diese Zuordnung.
+// Printers, their multi-material units (AMS, CFS, MMU, external spool ...) and
+// which stock spools sit in their slots. A spool is either in exactly one slot
+// (`unit_id` + `slot_index` set, its storage location kept as home location in
+// `home_location`) or in storage (`location`). Only the functions here change
+// that assignment.
 
 use rusqlite::{params, Connection, OptionalExtension};
 
 use super::error::DbError;
 use super::models::{MaterialUnitRecord, PrinterRecord};
 
-/// Farbnamen (deutsch/englisch, klein geschrieben) → Farbwert. Dieselben
-/// Werte wie die Palette im Frontend (`src/lib/filamentColors.ts`).
+/// Color names (German/English, lowercase) -> color value. Same values as the
+/// frontend palette (`src/lib/filamentColors.ts`).
 const COLOR_NAMES: &[(&str, &str)] = &[
     ("schwarz", "#1a1a1a"),
     ("black", "#1a1a1a"),
@@ -53,10 +53,10 @@ const COLOR_NAMES: &[(&str, &str)] = &[
     ("clear", "#e8eef0"),
 ];
 
-/// Ordnet einem freien Farbnamen einen Farbwert zu, z.B. "Galaxy Black" →
-/// Schwarz, "Dunkelblau" → Blau. Woerter werden von hinten gesucht, weil die
-/// eigentliche Farbe meist am Ende steht ("Silk Gold"). Deutsche Komposita
-/// ("Dunkelrot") werden ueber das Wortende erkannt.
+/// Maps a free-form color name to a color value, e.g. "Galaxy Black" -> black,
+/// "Dunkelblau" -> blue. Words are searched from the end, because the actual
+/// color usually comes last ("Silk Gold"). German compounds ("Dunkelrot") are
+/// recognized by their ending.
 pub fn color_hex_for_name(name: &str) -> Option<&'static str> {
     let lower = name.to_lowercase();
     let words: Vec<&str> = lower
@@ -79,20 +79,19 @@ pub fn color_hex_for_name(name: &str) -> Option<&'static str> {
     None
 }
 
-/// `#rrggbb` (Gross-/Kleinschreibung egal).
+/// `#rrggbb` (case-insensitive).
 pub fn is_valid_color_hex(value: &str) -> bool {
     value.len() == 7
         && value.starts_with('#')
         && value[1..].chars().all(|c| c.is_ascii_hexdigit())
 }
 
-/// Rundet auf eine Nachkommastelle (Gramm-Angaben im Filament-Lager).
+/// Rounds to one decimal place (gram values in the filament stock).
 pub fn round_tenth(x: f64) -> f64 {
     (x * 10.0).round() / 10.0
 }
 
-/// Migrationsschritt: setzt `color_hex` fuer alle Spulen ohne Farbwert, deren
-/// Farbname bekannt ist. Idempotent.
+/// Migration step: sets `color_hex` for all spools without a color value whose color name is known. Idempotent.
 pub fn backfill_color_hex(conn: &Connection) -> Result<(), DbError> {
     let mut stmt =
         conn.prepare("SELECT id, color FROM filament_spools WHERE color_hex IS NULL AND color IS NOT NULL")?;
@@ -123,22 +122,22 @@ pub const UNIT_KINDS: &[&str] = &[
     "resin_vat",
 ];
 
-/// Druckerart; wird beim Anlegen gewaehlt und ist danach fest.
+/// Printer kind; chosen when adding and fixed afterwards.
 pub const PRINTER_KIND_FILAMENT: &str = "filament";
 pub const PRINTER_KIND_RESIN: &str = "resin";
 pub const PRINTER_KINDS: &[&str] = &[PRINTER_KIND_FILAMENT, PRINTER_KIND_RESIN];
 
-/// Einzige Einheit eines Resin-Druckers: die Harzwanne mit genau einem Platz.
-/// Sie entsteht nur ueber `insert_resin_vat` und ist weder umbenennbar noch
-/// loeschbar. Resin-Flaschen duerfen nur hierhin, Filament nie.
+/// The only unit of a resin printer: the resin vat with exactly one slot. It is
+/// only created via `insert_resin_vat` and can't be renamed or deleted. Only resin
+/// bottles may go here, never filament.
 pub const UNIT_KIND_RESIN_VAT: &str = "resin_vat";
 
 const MAX_NAME_LEN: usize = 60;
 const MAX_SLOTS: i64 = 16;
-/// Bambu nummeriert AMS und AMS lite pro Drucker mit 0-3.
+/// Bambu numbers AMS and AMS lite per printer as 0-3.
 const MAX_BAMBU_AMS: i64 = 4;
 
-/// Feste Fachanzahl der Vorlagen; `None` = frei waehlbar ("Eigene…").
+/// Fixed slot count of the templates; `None` = free choice ("Custom...").
 pub fn template_slot_count(kind: &str) -> Option<i64> {
     match kind {
         "bambu_ams" | "bambu_ams_lite" | "creality_cfs" | "anycubic_ace" => Some(4),
@@ -198,15 +197,14 @@ fn get_unit(conn: &Connection, unit_id: i64) -> Result<MaterialUnitRecord, DbErr
         .ok_or_else(|| DbError::Other(format!("Einheit {unit_id} existiert nicht")))
 }
 
-/// Legt einen Filament-Drucker an (Kurzform fuer Tests; die App geht ueber
-/// `insert_printer_of_kind`).
+/// Adds a filament printer (shorthand for tests; the app uses `insert_printer_of_kind`).
 #[cfg(test)]
 pub fn insert_printer(conn: &Connection, name: &str) -> Result<i64, DbError> {
     insert_printer_of_kind(conn, name, PRINTER_KIND_FILAMENT)
 }
 
-/// Legt einen Drucker der Art `kind` ("filament"/"resin") an - ohne
-/// Einheiten; die legt der Aufrufer in derselben Transaktion an.
+/// Adds a printer of kind `kind` ("filament"/"resin") - without units; the
+/// caller creates those in the same transaction.
 pub fn insert_printer_of_kind(conn: &Connection, name: &str, kind: &str) -> Result<i64, DbError> {
     if !PRINTER_KINDS.contains(&kind) {
         return Err(DbError::Other(format!("unbekannte Druckerart: {kind}")));
@@ -219,15 +217,15 @@ pub fn insert_printer_of_kind(conn: &Connection, name: &str, kind: &str) -> Resu
     Ok(conn.last_insert_rowid())
 }
 
-/// Art des Druckers; Fehler, wenn es ihn nicht gibt.
+/// Kind of the printer; error if it doesn't exist.
 pub fn printer_kind(conn: &Connection, printer_id: i64) -> Result<String, DbError> {
     conn.query_row("SELECT kind FROM printers WHERE id = ?1", params![printer_id], |r| r.get(0))
         .optional()?
         .ok_or_else(|| DbError::Other(format!("Drucker {printer_id} existiert nicht")))
 }
 
-/// Druckeranbindung, "Reicht das Filament?" usw. gibt es nur fuer
-/// Filament-Drucker. Lehnt Resin-Drucker und unbekannte IDs ab.
+/// The printer connection, "Is there enough filament?" etc. only exist for
+/// filament printers. Rejects resin printers and unknown IDs.
 pub fn ensure_filament_printer(conn: &Connection, printer_id: i64) -> Result<(), DbError> {
     if printer_kind(conn, printer_id)? == PRINTER_KIND_RESIN {
         return Err(DbError::Other("Resin-Drucker haben keine Druckeranbindung".into()));
@@ -235,8 +233,8 @@ pub fn ensure_filament_printer(conn: &Connection, printer_id: i64) -> Result<(),
     Ok(())
 }
 
-/// Legt die Harzwanne (1 Platz) eines Resin-Druckers an. Nur fuer
-/// Resin-Drucker und nur einmal pro Drucker. Aufrufer haelt eine Transaktion.
+/// Creates the resin vat (1 slot) of a resin printer. Only for resin printers
+/// and only once per printer. The caller holds a transaction.
 pub fn insert_resin_vat(conn: &Connection, printer_id: i64, name: &str) -> Result<i64, DbError> {
     if printer_kind(conn, printer_id)? != PRINTER_KIND_RESIN {
         return Err(DbError::Other("Eine Harzwanne gibt es nur bei Resin-Druckern".into()));
@@ -258,8 +256,7 @@ pub fn rename_printer(conn: &Connection, printer_id: i64, name: &str) -> Result<
     Ok(())
 }
 
-/// Legt alle Spulen, die die Bedingung erfuellen, zurueck an ihren
-/// Stammplatz. Liefert die Anzahl.
+/// Returns all spools matching the condition to their home location. Returns the count.
 fn return_spools_home(conn: &Connection, where_clause: &str, args: &[&dyn rusqlite::ToSql]) -> Result<usize, DbError> {
     let sql = format!(
         "UPDATE filament_spools
@@ -269,8 +266,8 @@ fn return_spools_home(conn: &Connection, where_clause: &str, args: &[&dyn rusqli
     Ok(conn.execute(&sql, args)?)
 }
 
-/// Loescht einen Drucker samt Einheiten; deren Spulen kehren vorher an ihren
-/// Stammplatz zurueck. Aufrufer muss eine Transaktion halten.
+/// Deletes a printer with its units; their spools first return to their home
+/// location. The caller must hold a transaction.
 pub fn delete_printer(conn: &Connection, printer_id: i64) -> Result<usize, DbError> {
     let returned = return_spools_home(
         conn,
@@ -284,11 +281,10 @@ pub fn delete_printer(conn: &Connection, printer_id: i64) -> Result<usize, DbErr
     Ok(returned)
 }
 
-/// Fuegt einem Filament-Drucker eine Einheit hinzu. Vorlagen haben eine
-/// feste Fachanzahl (der Parameter wird dann ignoriert); AMS/AMS lite
-/// bekommen die naechste freie Bambu-AMS-Nummer des Druckers. Harzwannen
-/// entstehen nur ueber `insert_resin_vat`, Resin-Drucker bekommen keine
-/// weiteren Einheiten.
+/// Adds a unit to a filament printer. Templates have a fixed slot count (the
+/// parameter is then ignored); AMS/AMS lite get the printer's next free Bambu AMS
+/// number. Resin vats are only created via `insert_resin_vat`, resin printers get
+/// no further units.
 pub fn insert_unit(
     conn: &Connection,
     printer_id: i64,
@@ -349,9 +345,8 @@ fn insert_unit_row(
     Ok(conn.last_insert_rowid())
 }
 
-/// Aendert Name und (nur bei "custom") Fachanzahl. Spulen in wegfallenden
-/// Faechern kehren an ihren Stammplatz zurueck. Aufrufer haelt eine
-/// Transaktion.
+/// Changes the name and (only for "custom") the slot count. Spools in removed
+/// slots return to their home location. The caller holds a transaction.
 pub fn update_unit(conn: &Connection, unit_id: i64, name: &str, slot_count: Option<i64>) -> Result<usize, DbError> {
     let unit = get_unit(conn, unit_id)?;
     if unit.kind == UNIT_KIND_RESIN_VAT {
@@ -373,8 +368,8 @@ pub fn update_unit(conn: &Connection, unit_id: i64, name: &str, slot_count: Opti
     Ok(returned)
 }
 
-/// Loescht eine Einheit; ihre Spulen kehren vorher an ihren Stammplatz
-/// zurueck. Aufrufer haelt eine Transaktion.
+/// Deletes a unit; its spools first return to their home location. The caller
+/// holds a transaction.
 pub fn delete_unit(conn: &Connection, unit_id: i64) -> Result<usize, DbError> {
     if get_unit(conn, unit_id)?.kind == UNIT_KIND_RESIN_VAT {
         return Err(DbError::Other("Die Harzwanne kann nicht geloescht werden".into()));
@@ -384,8 +379,7 @@ pub fn delete_unit(conn: &Connection, unit_id: i64) -> Result<usize, DbError> {
     Ok(returned)
 }
 
-/// Setzt die Reihenfolge der Einheiten eines Druckers. `unit_ids` muss genau
-/// dessen Einheiten enthalten.
+/// Sets the order of a printer's units. `unit_ids` must contain exactly its units.
 pub fn reorder_units(conn: &Connection, printer_id: i64, unit_ids: &[i64]) -> Result<(), DbError> {
     let mut current: Vec<i64> = list_units(conn)?
         .into_iter()
@@ -406,15 +400,14 @@ pub fn reorder_units(conn: &Connection, printer_id: i64, unit_ids: &[i64]) -> Re
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoadOutcome {
-    /// Spule, die das Fach vorher belegt hat und an ihren Stammplatz zurueckging.
+    /// Spool that occupied the slot before and went back to its home location.
     pub displaced_spool_id: Option<i64>,
 }
 
-/// Legt eine Spule in ein Fach. Belegtes Fach → die bisherige Spule kehrt an
-/// ihren Stammplatz zurueck (Tausch). Steckt die Spule schon in einem
-/// anderen Fach, wird sie verschoben und behaelt ihren Stammplatz; kommt sie
-/// aus dem Lager, wird ihr Lagerort zum Stammplatz. Aufrufer haelt eine
-/// Transaktion.
+/// Puts a spool into a slot. Occupied slot -> the previous spool returns to its
+/// home location (swap). If the spool already sits in another slot, it moves and
+/// keeps its home location; coming from storage, its location becomes the home
+/// location. The caller holds a transaction.
 pub fn load_spool(conn: &Connection, spool_id: i64, unit_id: i64, slot_index: i64) -> Result<LoadOutcome, DbError> {
     let unit = get_unit(conn, unit_id)?;
     if slot_index < 0 || slot_index >= unit.slot_count {
@@ -428,8 +421,8 @@ pub fn load_spool(conn: &Connection, spool_id: i64, unit_id: i64, slot_index: i6
         )
         .optional()?
         .ok_or_else(|| DbError::Other(format!("Spule {spool_id} existiert nicht")))?;
-    // Resin-Flaschen nur in eine Harzwanne, Filament nie. Eine Harzwanne gibt es
-    // nur an Resin-Druckern (`insert_resin_vat`).
+    // Resin bottles only into a resin vat, filament never. Resin vats only exist
+    // on resin printers (`insert_resin_vat`).
     let is_resin = kind == crate::db::models::SPOOL_KIND_RESIN;
     let is_vat = unit.kind == UNIT_KIND_RESIN_VAT;
     if is_resin && !is_vat {
@@ -467,9 +460,8 @@ pub fn load_spool(conn: &Connection, spool_id: i64, unit_id: i64, slot_index: i6
     Ok(LoadOutcome { displaced_spool_id: occupant })
 }
 
-/// Nimmt eine Spule aus ihrem Fach. Ziel ist `location` (falls nicht leer)
-/// oder ihr Stammplatz. Liefert den neuen Lagerort. Aufrufer haelt eine
-/// Transaktion.
+/// Takes a spool out of its slot. The target is `location` (if not empty) or its
+/// home location. Returns the new location. The caller holds a transaction.
 pub fn unload_spool(conn: &Connection, spool_id: i64, location: Option<&str>) -> Result<Option<String>, DbError> {
     let (unit_id, home): (Option<i64>, Option<String>) = conn
         .query_row(
@@ -520,9 +512,9 @@ mod tests {
         assert!(!is_valid_color_hex("#1a1a1a; DROP"));
     }
 
-    /// Alte Datenbank (vor den Drucker-Migrationen) mit Spulen: nach der
-    /// Migration liegen alle Spulen weiter im Lager, bekannte Farbnamen haben
-    /// einen Farbwert, die neuen Tabellen und der Fach-Index existieren.
+    /// Old database (before the printer migrations) with spools: after migrating,
+    /// all spools are still in storage, known color names have a color value, and
+    /// the new tables and the slot index exist.
     #[test]
     fn migrating_an_old_catalog_keeps_spools_in_storage_and_backfills_colors() {
         let mut conn = Connection::open_in_memory().unwrap();
@@ -808,7 +800,7 @@ mod tests {
         .unwrap()
     }
 
-    /// Resin-Drucker samt Harzwanne (wie `add_printer` sie anlegt).
+    /// Resin printer with its vat (as `add_printer` creates it).
     fn saturn_with_vat(conn: &Connection) -> (i64, i64) {
         let printer = insert_printer_of_kind(conn, "Saturn 4", PRINTER_KIND_RESIN).unwrap();
         let vat = insert_resin_vat(conn, printer, "Harzwanne").unwrap();

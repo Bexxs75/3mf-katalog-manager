@@ -1,11 +1,9 @@
-# cargo-deny-Konfiguration.
+# cargo-deny configuration.
 #
-# Fokus dieser Konfiguration liegt bewusst auf "advisories" (echte
-# Sicherheits-Lücken und zurückgezogene ("yanked") Crates) - das ist der
-# Teil, der in security-audit.yml automatisiert läuft. "licenses", "bans"
-# und "sources" sind bewusst minimal/permissiv gehalten (siehe unten) und
-# wurden nicht mit einer vollständigen Lizenz-Allowlist ausgearbeitet;
-# das war für dieses Aufräumpaket nicht der Auftrag.
+# The focus is deliberately on "advisories" (real security vulnerabilities and
+# yanked crates) - that's the part running automatically in security-audit.yml.
+# "licenses", "bans" and "sources" are deliberately kept minimal/permissive (see
+# below) and don't contain a fully curated license allow list.
 
 [graph]
 targets = []
@@ -15,39 +13,36 @@ no-default-features = false
 [advisories]
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
-# Echte Sicherheits-Advisories und zurückgezogene Crates sollen den Build
-# brechen (cargo deny check advisories). "unmaintained"/"unsound"-Meldungen
-# werden bewusst nicht global stummgeschaltet, sondern einzeln unten unter
-# "ignore" mit Begründung aufgeführt - sie kommen ausnahmslos aus Tauris
-# GTK3-Stack (Linux-Backend) bzw. dessen Abhängigkeiten und sind transitiv,
-# also nicht durch ein `cargo update` in diesem Repo behebbar.
+# Real security advisories and yanked crates should break the build
+# (cargo deny check advisories). "unmaintained"/"unsound" reports are not
+# silenced globally but listed individually under "ignore" with a reason - they
+# all come from Tauri's GTK3 stack (Linux backend) or its dependencies and are
+# transitive, so a `cargo update` in this repo can't fix them.
 yanked = "deny"
 ignore = [
-    # proc-macro-error ist unmaintained; kommt transitiv über glib-macros ->
-    # glib -> atk -> gtk -> muda -> tauri (Linux-Fenstermenü-Unterbau).
+    # proc-macro-error is unmaintained; comes in transitively via glib-macros ->
+    # glib -> atk -> gtk -> muda -> tauri (Linux window menu internals).
     "RUSTSEC-2024-0370",
-    # unic-char-property ist unmaintained; kommt transitiv über
+    # unic-char-property is unmaintained; comes in transitively via
     # unic-ucd-ident -> urlpattern -> tauri-utils -> tauri.
     "RUSTSEC-2025-0081",
-    # unic-char-range ist unmaintained; gleiche Abhängigkeitskette wie oben.
+    # unic-char-range is unmaintained; same dependency chain as above.
     "RUSTSEC-2025-0075",
-    # unic-common ist unmaintained; gleiche Abhängigkeitskette wie oben.
+    # unic-common is unmaintained; same dependency chain as above.
     "RUSTSEC-2025-0080",
-    # unic-ucd-ident ist unmaintained; kommt transitiv über urlpattern ->
-    # tauri-utils -> tauri.
+    # unic-ucd-ident is unmaintained; comes in transitively via urlpattern -> tauri-utils -> tauri.
     "RUSTSEC-2025-0100",
-    # unic-ucd-version ist unmaintained; gleiche Abhängigkeitskette wie oben.
+    # unic-ucd-version is unmaintained; same dependency chain as above.
     "RUSTSEC-2025-0098",
 ]
 
 [licenses]
-# Bewusst keine sorgfältig kuratierte Lizenz-Policy: die Liste unten sind
-# schlicht alle SPDX-Bezeichner, die in der aktuellen Abhängigkeits-
-# Baumausgabe von `cargo deny check licenses` auftauchen (inkl. LGPL-2.1
-# von opencascade-sys/OCCT - siehe THIRD-PARTY-LICENSES.md, dynamisch
-# gelinkt, bewusste Projektentscheidung). Eine echte, bewusst geprüfte
-# Lizenz-Allowlist ist ein eigenes, separates Vorhaben (siehe Bericht) -
-# diese Liste soll nur den heutigen Stand grün halten.
+# Deliberately not a carefully curated license policy: the list below is simply
+# every SPDX identifier appearing in the current dependency tree output of
+# `cargo deny check licenses` (including LGPL-2.1 of opencascade-sys/OCCT - see
+# THIRD-PARTY-LICENSES.md, dynamically linked, a deliberate project decision). A
+# properly reviewed license allow list is a separate task; this list only keeps
+# today's state green.
 allow = [
     "0BSD",
     "Apache-2.0",
@@ -71,9 +66,8 @@ allow = [
 confidence-threshold = 0.8
 
 [bans]
-# Mehrfache Versionen derselben Crate (z.B. durch unterschiedliche
-# transitive Abhängigkeiten von Tauri-Plugins) sind in diesem Repo normal
-# und werden nicht als Fehler behandelt.
+# Multiple versions of the same crate (e.g. from different transitive
+# dependencies of Tauri plugins) are normal in this repo and not an error.
 multiple-versions = "allow"
 wildcards = "allow"
 deny = []

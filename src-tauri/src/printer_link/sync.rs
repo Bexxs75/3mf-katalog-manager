@@ -1,6 +1,5 @@
-//! Abgleich: holt beendete Drucke aller angebundenen Drucker. Die
-//! Datenbank wird nur für kurze Lese-/Schreibschritte gesperrt, nie während
-//! einer Netzwerkabfrage.
+//! Sync: fetches finished prints of all connected printers. The database is only
+//! locked for short read/write steps, never during a network request.
 
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::Mutex;
@@ -26,8 +25,7 @@ fn lock(db: &Mutex<Connection>) -> Result<std::sync::MutexGuard<'_, Connection>,
     db.lock().map_err(|_| DbError::Other("database lock poisoned".into()))
 }
 
-/// Ein Durchlauf über alle nicht pausierten Verbindungen. Liefert die Zahl
-/// neu übernommener Drucke.
+/// One pass over all non-paused connections. Returns the number of newly taken over prints.
 pub fn sync_once(db: &Mutex<Connection>, make: &LinkMaker, now: f64) -> Result<usize, DbError> {
     let plan: Vec<(i64, String, String, f64)> = {
         let conn = lock(db)?;
@@ -44,13 +42,11 @@ pub fn sync_once(db: &Mutex<Connection>, make: &LinkMaker, now: f64) -> Result<u
 
     let mut new_jobs = 0;
     for (printer_id, kind, address, since) in plan {
-        // Der Plan wurde einmal zu Beginn erstellt; eine einzelne
-        // Netzwerkabfrage (`test()`) kann Sekunden dauern. Bevor der
-        // naechste Drucker kontaktiert wird, deshalb erneut kurz pruefen:
-        // wurde der Schalter inzwischen ausgeschaltet, endet der gesamte
-        // Durchlauf sofort (kein Paket mehr an irgendeinen Drucker); wurde
-        // nur diese eine Verbindung entfernt oder pausiert, wird nur sie
-        // uebersprungen.
+        // The plan was made once at the start; a single network request (`test()`) can
+        // take seconds. So check again briefly before contacting the next printer: if
+        // the switch was turned off meanwhile, the whole pass ends immediately (no more
+        // packets to any printer); if only this connection was removed or paused, only
+        // it is skipped.
         {
             let conn = lock(db)?;
             if !store::printer_link_enabled(&conn)? {
@@ -69,8 +65,8 @@ pub fn sync_once(db: &Mutex<Connection>, make: &LinkMaker, now: f64) -> Result<u
         });
 
         let conn = lock(db)?;
-        // Die Verbindung kann waehrend der Netzwerkabfrage entfernt worden
-        // sein; dann darf das Ergebnis nicht mehr geschrieben werden.
+        // The connection may have been removed during the network request; then the
+        // result must not be written anymore.
         if store::get_connection(&conn, printer_id)?.is_none() {
             continue;
         }
@@ -89,7 +85,7 @@ pub fn sync_once(db: &Mutex<Connection>, make: &LinkMaker, now: f64) -> Result<u
     Ok(new_jobs)
 }
 
-/// Weckt den Hintergrund-Abgleich sofort (Knopf, Schalter, neue Verbindung).
+/// Wakes the background sync immediately (button, switch, new connection).
 pub struct SyncWaker(pub mpsc::Sender<()>);
 
 impl SyncWaker {
@@ -170,7 +166,7 @@ mod tests {
         let c = get_connection(&db.lock().unwrap(), 1).unwrap().unwrap();
         assert_eq!(c.last_error.as_deref(), Some("auth_required"));
         assert!(c.paused);
-        // pausierte Verbindung wird nicht mehr abgefragt
+        // a paused connection is no longer queried
         let before = server.requests().len();
         sync_once(&db, &*test_maker(), 6.0).unwrap();
         assert_eq!(server.requests().len(), before);
@@ -200,10 +196,9 @@ mod tests {
         assert_eq!(sync_once(&db, &*test_maker(), 1100.0).unwrap(), 1);
     }
 
-    /// `test()` des ersten Druckers schaltet die Verbindung mittendrin aus.
-    /// Der zweite Drucker darf dann nicht mehr kontaktiert werden - der
-    /// Schalter wird laut Vorgabe pro Drucker im Durchlauf erneut geprueft,
-    /// nicht nur einmal beim Erstellen des Plans.
+    /// `test()` of the first printer turns the connection off midway. The second
+    /// printer must then not be contacted - the switch is checked again per printer
+    /// during the pass, not just once when the plan is made.
     struct SwitchOffOnTest {
         db: Arc<Mutex<Connection>>,
     }
@@ -245,9 +240,8 @@ mod tests {
         assert!(server2.requests().is_empty());
     }
 
-    /// Die Verbindung verschwindet waehrend der Netzwerkabfrage (z. B. weil
-    /// der Benutzer den Drucker in der Zwischenzeit entfernt hat). Der
-    /// zurueckkommende Druck darf dann nicht mehr geschrieben werden.
+    /// The connection disappears during the network request (e.g. because the user
+    /// removed the printer meanwhile). The returning print must then not be written.
     struct DeleteSelfOnTest {
         db: Arc<Mutex<Connection>>,
         printer_id: i64,

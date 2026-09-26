@@ -1,4 +1,4 @@
-//! STEP-Datei -> TopoDS_Shape.
+//! STEP file -> TopoDS_Shape.
 
 use std::path::Path;
 
@@ -11,10 +11,9 @@ use opencascade_sys::{
 
 use super::StepError;
 
-/// Liest eine STEP-Datei vollstaendig in eine Shape.
+/// Reads a STEP file completely into a shape.
 ///
-/// Bewusst pfadbasiert: OCCT liest die Datei selbst, es wird kein Byte-Puffer
-/// durchgereicht.
+/// Deliberately path-based: OCCT reads the file itself, no byte buffer is passed.
 pub fn read_shape(path: &Path) -> Result<cxx::UniquePtr<TopoDS_Shape>, StepError> {
     let mut reader = STEPControl_Reader_new();
     let status = read_step(reader.pin_mut(), path.to_string_lossy().into_owned());

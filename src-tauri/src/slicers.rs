@@ -1,9 +1,8 @@
-// Sucht bekannte 3D-Drucker-Slicer (Bambu Studio, OrcaSlicer, PrusaSlicer,
-// SuperSlicer, UltiMaker Cura) an typischen Installationsorten des
-// Betriebssystems. Rein lesend, best-effort: ein nicht lesbarer oder nicht
-// existierender Ordner wird uebersprungen, nie propagiert - detect_slicers()
-// gibt daher immer ein Vec zurueck (leer, wenn nichts gefunden wurde), nie
-// ein Result.
+// Looks for known 3D printing slicers (Bambu Studio, OrcaSlicer, PrusaSlicer,
+// SuperSlicer, UltiMaker Cura) in the operating system's typical install
+// locations. Read-only, best effort: an unreadable or missing folder is skipped,
+// never propagated - detect_slicers() therefore always returns a Vec (empty if
+// nothing was found), never a Result.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -205,9 +204,9 @@ fn is_cura_folder_name(name: &str) -> bool {
     name.starts_with("Ultimaker Cura") || name.starts_with("UltiMaker Cura")
 }
 
-// macOS-Apps sind Bundles (`Name.app/Contents/MacOS/Binaerdatei`) mit teils
-// anderer Schreibweise, deshalb eine eigene Zuordnung (Namen aus den
-// offiziellen macOS-Downloads).
+// macOS apps are bundles (`Name.app/Contents/MacOS/binary`) with partly
+// different spelling, hence a separate mapping (names from the official macOS
+// downloads).
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 const MACOS_FIXED_LOCATIONS: &[(&str, &str, &str)] = &[
     ("Bambu Studio", "BambuStudio.app", "BambuStudio"),
@@ -402,9 +401,8 @@ mod tests {
 
     #[test]
     fn detect_slicers_returns_without_panicking() {
-        // Best-effort auf dem echten System, in dem die Tests laufen: darf
-        // leer sein, muss aber immer zurueckkehren statt zu paniken, egal
-        // welche Slicer lokal installiert sind.
+        // Best effort on the real system the tests run on: may be empty, but must
+        // always return instead of panicking, whatever slicers are installed locally.
         let _ = detect_slicers();
     }
 }

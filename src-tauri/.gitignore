@@ -6,15 +6,15 @@
 # will have schema files for capabilities auto-completion
 /gen/schemas
 
-# Cloud-OAuth-Zugangsdaten, niemals committen
+# Cloud OAuth credentials, never commit
 /cloud.config.json
 
-# Windows: zur Build-Zeit aus vcpkg gestagte OCCT-Laufzeit-DLLs (siehe
-# scripts/stage-occt-dlls.ps1). Werden bewusst nicht committet - siehe
-# vendor/opencascade-sys/VENDORING.md fuer die Begruendung.
+# Windows: OCCT runtime DLLs staged from vcpkg at build time (see
+# scripts/stage-occt-dlls.ps1). Deliberately not committed - see
+# vendor/opencascade-sys/VENDORING.md for the rationale.
 /occt-runtime/
 
-# vcpkg-Installationsausgabe bei lokalem Bauen im Manifest-Verzeichnis
-# (siehe occt-vcpkg-manifest/README.md). Nur das Manifest selbst ist Teil
-# des Repos, nicht die daraus gebauten Bibliotheken.
+# vcpkg install output when building locally in the manifest directory (see
+# occt-vcpkg-manifest/README.md). Only the manifest itself is part of the repo,
+# not the libraries built from it.
 /occt-vcpkg-manifest/vcpkg_installed/

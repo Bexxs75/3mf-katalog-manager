@@ -14,28 +14,28 @@ use crate::geometry::{compute_flat_normals, RenderMesh};
 
 use super::{StepError, DEFLECTION_DIVISOR, DEFLECTION_MAX_MM, DEFLECTION_MIN_MM};
 
-/// Toleranz aus der Bounding-Box-Diagonale: fein genug fuer kleine Teile,
-/// sparsam genug fuer grosse. Planare Flaechen sind davon unberuehrt.
+/// Tolerance from the bounding box diagonal: fine enough for small parts,
+/// economical enough for large ones. Planar faces are unaffected.
 pub fn deflection_for(diagonal_mm: f64) -> f64 {
     (diagonal_mm / DEFLECTION_DIVISOR).clamp(DEFLECTION_MIN_MM, DEFLECTION_MAX_MM)
 }
 
-/// Tesselliert die Shape und liefert eine flache Dreiecksliste: je Dreieck drei
-/// Eckpunkte in Weltkoordinaten. Die Liste ist absichtlich nicht indiziert,
-/// damit jede Flaeche ihre eigene flache Normale behalten kann.
+/// Tessellates the shape and returns a flat triangle list: three corners per
+/// triangle in world coordinates. The list is deliberately not indexed, so every
+/// face can keep its own flat normal.
 pub fn raw_triangles(shape: &TopoDS_Shape, deflection: f64) -> Result<Vec<[f64; 3]>, StepError> {
     raw_triangles_limited(shape, deflection, usize::MAX)
 }
 
-/// Wie [`raw_triangles`], bricht aber schon beim Lesen des ersten Dreiecks ueber
-/// der Grenze ab. So muss eine pathologische STEP-Datei nicht erst vollstaendig
-/// in einen riesigen Rust-Vektor kopiert werden, bevor die Begrenzung greift.
+/// Like [`raw_triangles`], but aborts as soon as the first triangle over the limit
+/// is read. So a pathological STEP file doesn't have to be copied completely into
+/// a huge Rust vector before the limit kicks in.
 pub(crate) fn raw_triangles_limited(
     shape: &TopoDS_Shape,
     deflection: f64,
     max_triangles: usize,
 ) -> Result<Vec<[f64; 3]>, StepError> {
-    // Bewusst nur EIN Mesh fuer die ganze Datei, auch bei mehreren Koerpern.
+    // Deliberately only ONE mesh for the whole file, even with several bodies.
     let mesh = IncrementalMesh_new(shape, deflection);
     if !mesh.IsDone() {
         return Err(StepError::TessellationFailed);
@@ -72,8 +72,7 @@ pub(crate) fn raw_triangles_limited(
                     corners[(corner_index - 1) as usize] = [point.X(), point.Y(), point.Z()];
                 }
 
-                // Umgekehrte Flaechen brauchen die umgekehrte Windung, damit die
-                // daraus berechneten Normalen nach aussen zeigen.
+                // Reversed faces need the reversed winding, so the normals computed from them point outwards.
                 if reversed {
                     corners.swap(1, 2);
                 }
@@ -91,9 +90,9 @@ pub(crate) fn raw_triangles_limited(
     Ok(positions)
 }
 
-/// Dreiecksliste -> RenderMesh: Positionen sind bereits die Dreiecksecken,
-/// die Indizes sind deshalb trivial, die Normalen kommen aus der vorhandenen
-/// Flachnormalenberechnung.
+/// Triangle list -> RenderMesh: the positions already are the triangle corners,
+/// so the indices are trivial; the normals come from the existing flat normal
+/// computation.
 pub fn to_render_mesh(positions: &[[f64; 3]]) -> RenderMesh {
     let indices: Vec<[u32; 3]> = (0..positions.len() / 3)
         .map(|i| {

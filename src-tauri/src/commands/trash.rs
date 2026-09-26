@@ -1,6 +1,6 @@
 use super::*;
 
-/// Kernlogik von `delete_file` mit bereits geladenem `FileRecord`, ohne `State`, damit testbar.
+/// Core logic of `delete_file` with an already loaded `FileRecord`, without `State`, so it's testable.
 fn delete_file_with_conn(
     conn: &Connection,
     file: &db::models::FileRecord,
@@ -9,10 +9,9 @@ fn delete_file_with_conn(
 ) -> CmdResult<()> {
     match std::fs::metadata(&file.path) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            // Pfad nicht erreichbar (umbenannter Ordner, nicht eingehaengtes Laufwerk):
-            // nichts zu verschieben, aber trotzdem nur weich loeschen, denn die Datei
-            // ist meist nicht wirklich weg. Andere Fehler wie PermissionDenied laufen
-            // in den Fehlerpfad unten.
+            // Path unreachable (renamed folder, unmounted drive): nothing to move, but
+            // still only soft-delete, because the file is usually not really gone. Other
+            // errors like PermissionDenied go through the error path below.
             let deleted_at = chrono::Utc::now().to_rfc3339();
             return db::soft_delete_file(conn, id, None, &deleted_at).map_err(|e| e.to_string());
         }
@@ -25,8 +24,8 @@ fn delete_file_with_conn(
 
     let deleted_at = chrono::Utc::now().to_rfc3339();
     if let Err(db_err) = db::soft_delete_file(conn, id, Some(&trash_path.to_string_lossy()), &deleted_at) {
-        // Datei aus dem Papierkorb zurueckholen, wenn die DB sie nicht als geloescht
-        // markieren konnte; sonst verschwindet sie fuer den Nutzer.
+        // Move the file back out of the trash if the DB couldn't mark it as deleted;
+        // otherwise it would vanish for the user.
         if let Err(rollback_err) = move_file(&trash_path, std::path::Path::new(&file.path)) {
             return Err(format!(
                 "DB-Update fehlgeschlagen ({db_err}) UND Rollback aus dem Papierkorb fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}, DB fuehrt sie weiterhin als aktiv unter {}",
@@ -52,7 +51,7 @@ pub fn delete_files(state: State<AppState>, file_ids: Vec<String>) -> CmdResult<
     let conn = lock_db(&state)?;
     delete_files_with_conn(&conn, &state.trash_dir, file_ids)
 }
-/// Kernlogik von `delete_files`, ohne `State`, damit testbar.
+/// Core logic of `delete_files`, without `State`, so it's testable.
 fn delete_files_with_conn(conn: &Connection, trash_dir: &std::path::Path, file_ids: Vec<String>) -> CmdResult<()> {
     for file_id in file_ids {
         let id: i64 = match file_id.parse() {
@@ -62,9 +61,8 @@ fn delete_files_with_conn(conn: &Connection, trash_dir: &std::path::Path, file_i
                 continue;
             }
         };
-        // Bereinigungs-Batch: eine zwischenzeitlich bereits geloeschte Datei
-        // (z.B. doppelt in der Auswahl) wird uebersprungen statt den ganzen
-        // Batch abzubrechen.
+        // Cleanup batch: a file deleted in the meantime (e.g. twice in the selection)
+        // is skipped instead of aborting the whole batch.
         let file = match db::get_file(conn, id) {
             Ok(Some(file)) => file,
             Ok(None) => continue,
@@ -73,9 +71,9 @@ fn delete_files_with_conn(conn: &Connection, trash_dir: &std::path::Path, file_i
                 continue;
             }
         };
-        // Einzelfehler loggen und weitermachen, damit das Frontend danach sauber neu
-        // laden kann. Dieselbe Funktion wie beim Einzel-Loeschen, damit auch hier die
-        // Rueckhol-Kompensation greift.
+        // Log single errors and continue, so the frontend can reload cleanly
+        // afterwards. Same function as for single deletes, so the move-back
+        // compensation applies here too.
         if let Err(e) = delete_file_with_conn(conn, &file, id, trash_dir) {
             eprintln!("[cleanup] Loeschen fehlgeschlagen fuer Datei-ID {id}: {e}");
         }
@@ -89,7 +87,7 @@ pub fn list_trash(state: State<AppState>) -> CmdResult<Vec<ModelFileDto>> {
     let spools = db::list_filament_spools(&conn).map_err(|e| e.to_string())?;
     Ok(files.into_iter().map(|f| to_dto(f, &spools)).collect())
 }
-/// Kernlogik von `restore_file` mit bereits geladenem `FileRecord`, ohne `State`, damit testbar.
+/// Core logic of `restore_file` with an already loaded `FileRecord`, without `State`, so it's testable.
 fn restore_file_with_conn(
     conn: &Connection,
     file: &db::models::FileRecord,
@@ -100,8 +98,8 @@ fn restore_file_with_conn(
     }
 
     let Some(trash_path) = file.trash_path.clone() else {
-        // Ohne trash_path war die Datei schon beim Loeschen nicht erreichbar: nur den
-        // Eintrag wieder sichtbar machen.
+        // Without trash_path the file was already unreachable when deleted: just make
+        // the entry visible again.
         return db::restore_file(conn, id, None).map_err(|e| e.to_string());
     };
 
@@ -124,7 +122,7 @@ fn restore_file_with_conn(
     let new_path_str = target_path.to_string_lossy().to_string();
     let new_path_arg = if new_path_str == file.path { None } else { Some(new_path_str.as_str()) };
     if let Err(db_err) = db::restore_file(conn, id, new_path_arg) {
-        // Zurueck in den Papierkorb, wenn die DB die Wiederherstellung nicht vermerken konnte.
+        // Back into the trash if the DB couldn't record the restore.
         if let Err(rollback_err) = move_file(&target_path, std::path::Path::new(&trash_path)) {
             return Err(format!(
                 "DB-Update fehlgeschlagen ({db_err}) UND Rollback in den Papierkorb fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}, DB fuehrt sie weiterhin als geloescht",
@@ -182,8 +180,8 @@ pub fn empty_trash(state: State<AppState>) -> CmdResult<()> {
     }
     Ok(())
 }
-/// Beim Start: entfernt Papierkorb-Eintraege, die aelter als 7 Tage sind.
-/// Einzelfehler werden geloggt und uebersprungen.
+/// At startup: removes trash entries older than 7 days. Single errors are
+/// logged and skipped.
 pub fn purge_expired_trash_on_startup(conn: &Connection) {
     let cutoff = (chrono::Utc::now() - chrono::Duration::days(7)).to_rfc3339();
     let expired = match db::purge_expired_trash(conn, &cutoff) {
@@ -214,7 +212,7 @@ mod tests {
 
     #[test]
     fn delete_file_compensates_when_soft_delete_fails() {
-        // Die Kompensation muss greifen, wenn soft_delete_file NACH dem Move scheitert.
+        // The compensation must kick in when soft_delete_file fails AFTER the move.
         let dir = unique_test_dir("delete_file_compensation");
         std::fs::create_dir_all(&dir).unwrap();
         let src_path = dir.join("model.3mf");
@@ -222,8 +220,8 @@ mod tests {
 
         let conn = db::connect_in_memory().unwrap();
         let file_id = db::test_insert_minimal_file(&conn, &src_path.to_string_lossy(), None).unwrap();
-        // Zeile vorher hart loeschen: das UPDATE trifft 0 Zeilen, der FileRecord ist
-        // aber schon geladen.
+        // Hard-delete the row first: the UPDATE hits 0 rows, but the FileRecord is
+        // already loaded.
         let file = db::get_file(&conn, file_id).unwrap().unwrap();
         db::delete_file(&conn, file_id).unwrap();
 
@@ -236,8 +234,8 @@ mod tests {
     }
     #[test]
     fn bulk_delete_compensates_for_one_failing_file_without_stranding_it_in_trash() {
-        // Mehrfachauswahl: fuer Datei 2 scheitert das UPDATE. Datei 1 landet im
-        // Papierkorb, Datei 2 wieder am Originalort, der Aufruf gelingt trotzdem.
+        // Multi-select: the UPDATE fails for file 2. File 1 ends up in the trash,
+        // file 2 back at its original place, and the call still succeeds.
         let dir = unique_test_dir("bulk_delete_compensation");
         std::fs::create_dir_all(&dir).unwrap();
         let trash_dir = unique_test_dir("bulk_delete_compensation_trash");
@@ -252,9 +250,8 @@ mod tests {
         let id1 = db::test_insert_minimal_file(&conn, &path1.to_string_lossy(), None).unwrap();
         let id2 = db::test_insert_minimal_file(&conn, &path2.to_string_lossy(), None).unwrap();
 
-        // Ein Trigger laesst nur das UPDATE fuer id2 scheitern, nachdem die Datei
-        // verschoben wurde (hart loeschen ginge nicht, dann wuerde sie vorher
-        // uebersprungen).
+        // A trigger makes only the UPDATE for id2 fail after the file was moved
+        // (a hard delete wouldn't work, the file would be skipped earlier).
         conn.execute_batch(&format!(
             "CREATE TRIGGER block_soft_delete_id2 BEFORE UPDATE ON files
              WHEN NEW.id = {id2} AND NEW.deleted_at IS NOT NULL
@@ -266,12 +263,12 @@ mod tests {
 
         assert!(result.is_ok(), "bulk delete must not fail the whole batch on one item's error: {result:?}");
 
-        // id1: regulaer im Papierkorb gelandet.
+        // id1: landed in the trash as usual.
         let file1 = db::get_file(&conn, id1).unwrap().unwrap();
         assert!(file1.deleted_at.is_some(), "file 1 must be soft-deleted");
         assert!(!path1.exists(), "file 1 must have been moved into the trash");
 
-        // id2 muss zurueck am Originalort liegen, nicht verwaist im Papierkorb.
+        // id2 must be back at its original place, not orphaned in the trash.
         assert!(path2.exists(), "file 2 must be moved back out of trash after the compensating rollback");
         let trash_entry = trash_dir.join(format!("{id2}-model2.3mf"));
         assert!(!trash_entry.exists(), "file 2 must not remain stranded in the trash directory");
@@ -293,8 +290,8 @@ mod tests {
         let deleted_at = chrono::Utc::now().to_rfc3339();
         db::soft_delete_file(&conn, file_id, Some(&trash_path.to_string_lossy()), &deleted_at).unwrap();
 
-        // Der Trigger laesst genau den Wechsel von geloescht zu wiederhergestellt
-        // scheitern, nachdem die Datei schon zurueckverschoben wurde.
+        // The trigger fails exactly the change from deleted to restored, after the
+        // file was already moved back.
         conn.execute_batch(
             "CREATE TRIGGER block_restore BEFORE UPDATE ON files
              WHEN NEW.deleted_at IS NULL AND OLD.deleted_at IS NOT NULL

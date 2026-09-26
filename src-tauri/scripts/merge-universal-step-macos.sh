@@ -1,29 +1,25 @@
 #!/usr/bin/env bash
 #
-# Kombiniert zwei bereits einzeln gebaute und dylib-gebuendelte
-# Single-Arch-.app-Bundles (arm64 + x86_64, jeweils via
-# bundle-occt-dylibs-macos.sh vorbereitet) zu einem echten Universal-
-# .app-Bundle: Hauptbinary UND jede OCCT-/Homebrew-.dylib in
-# Contents/Frameworks werden per `lipo -create` zu einer Fat-Datei
-# kombiniert.
+# Combines two separately built and dylib-bundled single-arch .app bundles
+# (arm64 + x86_64, each prepared via bundle-occt-dylibs-macos.sh) into a real
+# universal .app bundle: the main binary AND every OCCT/Homebrew .dylib in
+# Contents/Frameworks are combined into a fat file via `lipo -create`.
 #
-# Notwendig, weil Homebrew OCCT nur einzelarchitektur-rein ausliefert
-# (kein universal-apple-darwin-Bottle existiert) - der STEP-Build kann
-# deshalb nicht wie der STEP-freie Build einfach per
-# `tauri build --target universal-apple-darwin` in einem Rutsch gebaut
-# werden. Stattdessen: einmal fuer aarch64-apple-darwin bauen (native
-# Homebrew-OCCT unter /opt/homebrew), einmal fuer x86_64-apple-darwin
-# (Homebrew-OCCT unter /usr/local, eigener Intel-Runner), beide Male
-# dylib-buendeln, und erst danach hier zu einem echten Universal-Bundle
-# zusammenfuehren.
+# Needed because Homebrew ships OCCT single-architecture only (there is no
+# universal-apple-darwin bottle) - so unlike the STEP-free build, the STEP build
+# can't simply be built in one go with `tauri build --target universal-apple-darwin`.
+# Instead: build once for aarch64-apple-darwin (native Homebrew OCCT under
+# /opt/homebrew), once for x86_64-apple-darwin (Homebrew OCCT under /usr/local,
+# separate Intel runner), bundle the dylibs both times, and only then merge them
+# here into a real universal bundle.
 #
 # Usage:
 #   ./src-tauri/scripts/merge-universal-step-macos.sh \
 #       <arm64.app> <x86_64.app> <output.app>
 #
-# <arm64.app> dient als Vorlage (Info.plist/Resources/Icons sind
-# architekturunabhaengig identisch) - nur die Hauptbinary und die
-# Frameworks/*.dylib-Dateien werden ersetzt.
+# <arm64.app> serves as the template (Info.plist/Resources/icons are identical
+# across architectures) - only the main binary and the Frameworks/*.dylib files
+# are replaced.
 
 set -euo pipefail
 
@@ -55,9 +51,9 @@ X64_FRAMEWORKS="$X64_APP/Contents/Frameworks"
 OUT_FRAMEWORKS="$OUTPUT_APP/Contents/Frameworks"
 mkdir -p "$OUT_FRAMEWORKS"
 
-# Vereinigungsmenge aller Dylib-Namen aus beiden Seiten - im Normalfall
-# identisch (dieselben OCCT-/tbb-Transitivabhaengigkeiten auf beiden
-# Architekturen), aber defensiv als Vereinigung behandelt.
+# Union of all dylib names from both sides - normally identical (the same
+# OCCT/tbb transitive dependencies on both architectures), but handled
+# defensively as a union.
 ALL_DYLIBS="$(
     { find "$ARM64_FRAMEWORKS" -maxdepth 1 -name '*.dylib' -exec basename {} \; 2>/dev/null; \
       find "$X64_FRAMEWORKS" -maxdepth 1 -name '*.dylib' -exec basename {} \; 2>/dev/null; } \

@@ -1,4 +1,4 @@
-//! Ordnet einen G-Code-Dateinamen einem Katalogmodell zu.
+//! Maps a G-code file name to a catalog model.
 
 use std::collections::HashSet;
 
@@ -59,15 +59,15 @@ fn is_layer_token(w: &str) -> bool {
     }
 }
 
-/// "plate(01)" wie ihn der Anycubic-Slicer anhaengt.
+/// "plate(01)" as appended by the Anycubic slicer.
 fn is_plate_token(w: &str) -> bool {
     w.strip_prefix("plate(")
         .and_then(|r| r.strip_suffix(')'))
         .is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
 }
 
-/// Wie `normalize_name`, zusaetzlich werden angehaengte Slicer-Teile
-/// (Druckzeit, Schichthoehe, Material, "plate N") von hinten entfernt.
+/// Like `normalize_name`, additionally strips appended slicer parts (print time,
+/// layer height, material, "plate N") from the end.
 pub fn normalize_gcode_name(name: &str) -> String {
     let normalized = normalize_name(name);
     let mut words: Vec<&str> = normalized.split(' ').collect();
@@ -106,8 +106,8 @@ pub fn best_match(gcode_file_name: &str, candidates: &[Candidate]) -> Option<Mod
         let overlap = common as f64 / g_words.len() as f64;
         let (shorter, longer) = if n.len() <= g.len() { (&n, &g) } else { (&g, &n) };
         let prefix = shorter.chars().count() >= 6 && longer.starts_with(shorter.as_str());
-        // Katalogname steckt als ganze Woerter im G-Code-Namen, z. B. wenn der
-        // Slicer Druckermodell oder Datum davorsetzt ("S1_<Name>_PLA_12m.gcode").
+        // The catalog name appears as whole words in the G-code name, e.g. when the
+        // slicer prepends the printer model or a date ("S1_<name>_PLA_12m.gcode").
         let contained = n.chars().count() >= 6 && format!(" {g} ").contains(&format!(" {n} "));
         let qualifies = (overlap >= 0.6 && common >= 2) || prefix || contained;
         if !qualifies {
@@ -182,7 +182,7 @@ mod tests {
 
     #[test]
     fn catalog_name_inside_a_prefixed_gcode_name_is_unsure() {
-        // Anycubic-Slicer (Kobra S1) setzt Druckermodell oder Datum/Uhrzeit vor den Namen.
+        // The Anycubic slicer (Kobra S1) prepends the printer model or date/time to the name.
         let cands = [c(5, "OrcaToleranceTest.3mf", "2026-09-01T00:00:00Z"), c(6, "Kabelclip.stl", "2026-09-01T00:00:00Z")];
         let m = best_match("S1_OrcaToleranceTest_PLA_12m28s.gcode", &cands).unwrap();
         assert_eq!((m.file_id, m.kind), (5, MatchKind::Unsure));

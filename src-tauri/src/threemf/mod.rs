@@ -38,26 +38,24 @@ pub fn parse_3mf_file(path: &Path) -> Result<ThreeMfDocument, ThreeMfError> {
     parse_3mf_reader(file)
 }
 
-// Nur von Tests genutzt (Produktivcode liest ausschliesslich von Datei-Pfaden
-// ueber parse_3mf_file), aber praktisch fuer In-Memory-Testfixtures.
+// Only used by tests (production code only reads from file paths via
+// parse_3mf_file), but handy for in-memory test fixtures.
 #[cfg(test)]
 pub fn parse_3mf_bytes(bytes: &[u8]) -> Result<ThreeMfDocument, ThreeMfError> {
     parse_3mf_reader(std::io::Cursor::new(bytes))
 }
 
-/// Liest und loest das 3MF-Paket unter `path` vollstaendig auf (inklusive
-/// per p:path referenzierter Objekt-Dateien) und extrahiert daraus
-/// render-fertige Mesh-Daten - Positionen bereits weltraum-transformiert,
-/// Normalen bleiben `None` (entspricht dem bisherigen Verhalten von
-/// three.js' ThreeMFLoader, der fuer 3MF nie Normalen gesetzt hat).
+/// Reads and fully resolves the 3MF package at `path` (including object files
+/// referenced via p:path) and extracts render-ready mesh data from it - positions
+/// already world-transformed, normals stay `None` (matching the previous behavior
+/// of three.js' ThreeMFLoader, which never set normals for 3MF).
 pub fn extract_render_meshes_from_path(path: &Path) -> Result<Vec<RenderMesh>, ThreeMfError> {
     let file = File::open(path)?;
     let package = container::read_package(file)?;
     extract_render_meshes(&package)
 }
 
-/// Maximale Verschachtelungstiefe der Komponentenkette, gegen Stack-Overflow
-/// bei extrem tiefen (azyklischen) Graphen.
+/// Maximum nesting depth of the component chain, against stack overflow with extremely deep (acyclic) graphs.
 const MAX_COMPONENT_DEPTH: usize = 256;
 
 pub fn extract_render_meshes(package: &PackageParts) -> Result<Vec<RenderMesh>, ThreeMfError> {
@@ -563,7 +561,7 @@ mod tests {
 </config>"##;
 
         let mut buf = build_test_3mf();
-        // Eigenes Archiv mit Slice-Info-Eintrag; fertige Zip-Bytes lassen sich nicht ergaenzen.
+        // Own archive with a slice info entry; finished zip bytes can't be extended.
         buf.clear();
         {
             let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buf));
@@ -591,12 +589,12 @@ mod tests {
         assert!(doc.slice_info.is_none());
     }
 
-    // --- Zyklen und Tiefe der Komponenten ---
+    // --- Component cycles and depth ---
 
-    /// Baut ein minimales 3MF-Zip-Archiv (Content_Types, _rels/.rels, ein
-    /// einziges 3D/3dmodel.model) rund um das gegebene `<model>`-XML, analog
-    /// zu `build_test_3mf()`, aber ohne Thumbnail/Materialien - fuer Tests,
-    /// denen es nur um die Objekt-/Komponentenstruktur geht.
+    /// Builds a minimal 3MF zip archive (Content_Types, _rels/.rels, a single
+    /// 3D/3dmodel.model) around the given `<model>` XML, like `build_test_3mf()` but
+    /// without thumbnail/materials - for tests that only care about the
+    /// object/component structure.
     fn build_zip_with_model_xml(model_xml: &str) -> Vec<u8> {
         let rels_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -627,10 +625,9 @@ mod tests {
         buf
     }
 
-    /// Baut ein Zip-Archiv mit `count` verkettenten Objekten (Objekt 1
-    /// referenziert Objekt 2, Objekt 2 referenziert Objekt 3, ..., das letzte
-    /// Objekt hat keine Komponenten mehr) - azyklisch, aber ggf. tiefer als
-    /// `MAX_COMPONENT_DEPTH`.
+    /// Builds a zip archive with `count` chained objects (object 1 references
+    /// object 2, object 2 references object 3, ..., the last object has no components)
+    /// - acyclic, but possibly deeper than `MAX_COMPONENT_DEPTH`.
     fn build_zip_with_deeply_chained_objects(count: usize) -> Vec<u8> {
         let mut resources = String::new();
         for i in 1..=count {

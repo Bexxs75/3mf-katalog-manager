@@ -1,9 +1,8 @@
-//! STEP-Vorschau ueber Open CASCADE.
+//! STEP preview via Open CASCADE.
 //!
-//! Liest eine STEP-Datei in eine TopoDS_Shape, tesselliert sie und baut daraus
-//! EIN RenderMesh im bestehenden Format (nicht-indiziert, flache Normalen).
-//! Alles liegt hinter dem Feature `step-preview`; ohne das Feature werden
-//! STEP-Dateien nur katalogisiert.
+//! Reads a STEP file into a TopoDS_Shape, tessellates it and builds ONE RenderMesh
+//! from it in the existing format (non-indexed, flat normals). Everything lives
+//! behind the `step-preview` feature; without it, STEP files are only cataloged.
 
 pub mod mesh;
 pub mod props;
@@ -13,20 +12,19 @@ use std::{fmt, path::Path};
 
 use crate::geometry::RenderMesh;
 
-/// Obergrenze fuer die Dateigroesse, ab der gar nicht erst geparst wird.
-/// Gilt fuer Metadaten UND Geometrie, damit ein Importlauf ueber eine sehr
-/// grosse Datei nicht haengt.
+/// File size limit above which parsing isn't even attempted. Applies to
+/// metadata AND geometry, so an import over a very large file doesn't hang.
 pub const MAX_PARSE_BYTES: u64 = 64 * 1024 * 1024;
 
-/// Toleranz fuer die Tessellierung, aus der Bounding-Box-Diagonale abgeleitet.
+/// Tessellation tolerance, derived from the bounding box diagonal.
 pub const DEFLECTION_DIVISOR: f64 = 500.0;
 pub const DEFLECTION_MIN_MM: f64 = 0.01;
 pub const DEFLECTION_MAX_MM: f64 = 1.0;
 
-/// Obergrenze fuer die Dreieckszahl eines Netzes.
+/// Limit for the triangle count of a mesh.
 pub const MAX_TRIANGLES: usize = 1_500_000;
 
-/// Faktor, um den die Toleranz im zweiten, groberen Versuch erhoeht wird.
+/// Factor by which the tolerance is increased in the second, coarser attempt.
 pub const RETRY_DEFLECTION_FACTOR: f64 = 4.0;
 
 #[derive(Debug)]
@@ -62,8 +60,7 @@ impl fmt::Display for StepError {
 
 impl std::error::Error for StepError {}
 
-/// Reine Groessenpruefung, damit die 64-MB-Regel ohne eine 64-MB-Datei
-/// getestet werden kann.
+/// Pure size check, so the 64 MB rule can be tested without a 64 MB file.
 pub fn check_size(bytes: u64, limit: u64) -> Result<(), StepError> {
     if bytes > limit {
         Err(StepError::TooLarge { bytes, limit })
@@ -72,7 +69,7 @@ pub fn check_size(bytes: u64, limit: u64) -> Result<(), StepError> {
     }
 }
 
-/// Metadaten einer STEP-Datei fuer die bestehenden Import-/Rescan-Pfade.
+/// Metadata of a STEP file for the existing import/rescan paths.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StepDocument {
     pub dimensions_mm: Option<[f64; 3]>,
@@ -80,8 +77,8 @@ pub struct StepDocument {
     pub object_count: usize,
 }
 
-/// Liest die Metadaten. Ein Fehler wird vom Aufrufer bewusst zu leeren
-/// Metadaten herabgestuft, damit die Datei trotzdem im Katalog bleibt.
+/// Reads the metadata. The caller deliberately downgrades an error to empty
+/// metadata, so the file still stays in the catalog.
 pub fn parse_step_file(path: &Path) -> Result<StepDocument, StepError> {
     let bytes = std::fs::metadata(path).map_err(StepError::Io)?.len();
     check_size(bytes, MAX_PARSE_BYTES)?;
@@ -95,7 +92,7 @@ pub fn parse_step_file(path: &Path) -> Result<StepDocument, StepError> {
     })
 }
 
-/// Liefert bewusst genau ein Netz fuer die gesamte Datei, auch bei Baugruppen.
+/// Deliberately returns exactly one mesh for the whole file, even for assemblies.
 pub fn parse_step_geometry(path: &Path) -> Result<Vec<RenderMesh>, StepError> {
     let bytes = std::fs::metadata(path).map_err(StepError::Io)?.len();
     check_size(bytes, MAX_PARSE_BYTES)?;
@@ -111,11 +108,9 @@ pub fn parse_step_geometry(path: &Path) -> Result<Vec<RenderMesh>, StepError> {
     let deflection = mesh::deflection_for(diagonal);
     let triangles = match mesh::raw_triangles_limited(&shape, deflection, MAX_TRIANGLES) {
         Ok(triangles) => triangles,
-        // Ein groberer zweiter Versuch ist fuer eine Vorschau besser als ein
-        // kompletter Ausfall bei einer detailreichen Baugruppe. OCCT ersetzt
-        // eine feinere vorhandene Triangulation nur dann, wenn das fuer die
-        // angeforderte Genauigkeit noetig ist; deshalb lesen wir fuer den
-        // zweiten Versuch die Shape frisch ein.
+        // A coarser second attempt is better for a preview than a complete failure on
+        // a detailed assembly. OCCT only replaces an existing finer triangulation if the
+        // requested precision needs it; so we read the shape fresh for the second attempt.
         Err(StepError::TooComplex { .. }) => {
             let shape = reader::read_shape(path)?;
             mesh::raw_triangles_limited(

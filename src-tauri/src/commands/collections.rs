@@ -69,9 +69,9 @@ pub fn reorder_collection(state: State<AppState>, collection_id: String, updates
     let mut conn = lock_db(&state)?;
     reorder_collection_with_conn(&mut conn, cid, updates)
 }
-/// Kernlogik von `reorder_collection`, ohne `State`, damit testbar. Alle ids
-/// werden vorab geprueft (existieren und sind Mitglied), alle Updates laufen in
-/// einer Transaktion (siehe `reorder_queue_with_conn`).
+/// Core logic of `reorder_collection`, without `State`, so it's testable. All ids
+/// are checked up front (exist and are members), all updates run in one
+/// transaction (see `reorder_queue_with_conn`).
 fn reorder_collection_with_conn(
     conn: &mut Connection,
     collection_id: i64,
@@ -120,8 +120,7 @@ mod tests {
         let cid = db::create_collection(&conn, "Testset", &created_at).unwrap();
         db::add_file_to_collection(&conn, cid, id1, 0).unwrap();
         db::add_file_to_collection(&conn, cid, id2, 1).unwrap();
-        // id 999999 ist kein Mitglied dieser Collection - erzwingt einen
-        // Fehler "in der Mitte" des Batches.
+        // id 999999 is not a member of this collection - forces an error "in the middle" of the batch.
         let updates = vec![
             CollectionPositionUpdate { file_id: id1.to_string(), position: 5 },
             CollectionPositionUpdate { file_id: "999999".to_string(), position: 6 },
@@ -132,8 +131,7 @@ mod tests {
 
         assert!(result.is_err());
         let ids = db::list_collection_file_ids(&conn, cid).unwrap();
-        // Positionen unveraendert (0 und 1), keines der gueltigen Updates
-        // (5 und 7) darf committed sein.
+        // Positions unchanged (0 and 1), none of the valid updates (5 and 7) may be committed.
         assert_eq!(ids, vec![id1, id2], "Reihenfolge/Positionen duerfen nach fehlgeschlagenem Batch unveraendert sein");
     }
     #[test]
@@ -157,7 +155,7 @@ mod tests {
     }
     #[test]
     fn collection_reorder_batch_rolls_back_an_already_applied_earlier_update_when_a_later_one_fails_inside_the_transaction() {
-        // Fehler per Trigger innerhalb der Transaktion, nach bestandener Vorabpruefung.
+        // Error via trigger inside the transaction, after the up-front check passed.
         let mut conn = db::connect_in_memory().unwrap();
         let id1 = db::test_insert_minimal_file(&conn, "/tmp/1.3mf", None).unwrap();
         let id2 = db::test_insert_minimal_file(&conn, "/tmp/2.3mf", None).unwrap();

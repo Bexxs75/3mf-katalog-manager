@@ -7,15 +7,14 @@ pub enum ThreeMfError {
     Xml(quick_xml::Error),
     MissingRootModel,
     InvalidTransform(String),
-    /// Ein ZIP-Eintrag ueberschreitet die erlaubte entpackte Groesse (Zip-Bombe).
+    /// A ZIP entry exceeds the allowed unpacked size (zip bomb).
     EntryTooLarge { path: String, size: u64, max: u64 },
-    /// Objekte referenzieren sich gegenseitig ueber <component>-Elemente.
+    /// Objects reference each other via <component> elements.
     ComponentCycle,
-    /// Komponentenkette ueberschreitet MAX_COMPONENT_DEPTH, obwohl
-    /// azyklisch - Schutz gegen extrem tiefe, aber gueltige Graphen.
+    /// The component chain exceeds MAX_COMPONENT_DEPTH although acyclic - protects against extremely deep but valid graphs.
     MaxDepthExceeded,
-    /// Die Summe aller entpackten Ressourcen ueberschreitet das Gesamtbudget, oder
-    /// es wurden zu viele referenzierte Modelldateien geladen.
+    /// The sum of all unpacked resources exceeds the total budget, or too many
+    /// referenced model files were loaded.
     ResourceLimitExceeded(String),
 }
 

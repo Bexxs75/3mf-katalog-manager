@@ -25,8 +25,8 @@ fn is_binary(bytes: &[u8]) -> bool {
     bytes.len() == BINARY_HEADER_LEN + 4 + count * BINARY_FACET_LEN
 }
 
-// Bounds-geprueft statt bytes[80..84] + unwrap(): so gibt es auch ohne
-// vorheriges is_binary() einen Fehler statt einer Panik.
+// Bounds-checked instead of bytes[80..84] + unwrap(): this way even without a
+// prior is_binary() the result is an error instead of a panic.
 fn read_facet_count(bytes: &[u8]) -> Option<usize> {
     let slice = bytes.get(BINARY_HEADER_LEN..BINARY_HEADER_LEN + 4)?;
     Some(u32::from_le_bytes(slice.try_into().unwrap()) as usize)

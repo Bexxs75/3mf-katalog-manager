@@ -27,7 +27,7 @@ docs/superpowers/
 *.sw?
 .worktrees/
 
-# Plugin-Artefakte (ruflo-core MCP), nicht Teil des Projekts
+# Plugin artifacts (ruflo-core MCP), not part of the project
 .claude-flow/
 .claude/
 .swarm/

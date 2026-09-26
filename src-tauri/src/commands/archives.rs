@@ -1,7 +1,7 @@
-//! Tauri-Befehle zum Entpacken EINZELN importierter Archive (Dateidialog,
-//! Drag & Drop). Die Archivlogik selbst liegt in `crate::archive`; hier
-//! passieren nur Ablaufsteuerung, Katalog-Import und das optionale Loeschen
-//! des Originals. Der Ordner-Import entpackt bewusst nichts.
+//! Tauri commands for extracting INDIVIDUALLY imported archives (file dialog,
+//! drag & drop). The archive logic itself lives in `crate::archive`; here only
+//! flow control, catalog import and the optional deletion of the original
+//! happen. The folder import deliberately extracts nothing.
 
 use super::*;
 use super::files::{import_many_with_conn, is_supported_extension};
@@ -93,22 +93,21 @@ struct ArchiveProgressDto {
     state: &'static str,
 }
 
-/// Serverseitige Freigabeliste: Nur Archive, die der Nutzer tatsaechlich
-/// per Dateidialog oder Drag & Drop hereingegeben hat, duerfen entpackt
-/// (und ggf. geloescht) werden - jedes hoechstens einmal. Ohne diese Liste
-/// koennte ein kompromittiertes Frontend beliebige Dateien mit
-/// Archiv-Endung entpacken und loeschen lassen.
+/// Server-side allow list: only archives the user actually brought in via the
+/// file dialog or drag & drop may be extracted (and possibly deleted) - each at
+/// most once. Without this list a compromised frontend could have arbitrary files
+/// with an archive extension extracted and deleted.
 ///
-/// `observed_drops` haelt Archive, die das BACKEND selbst als Drag & Drop
-/// gesehen hat (Fenster-Ereignis, siehe `lib.rs`). `import_dropped` darf nur
-/// diese freigeben - die Pfadliste des Frontends allein reicht dafuer nicht.
+/// `observed_drops` holds archives the BACKEND itself saw as drag & drop (window
+/// event, see `lib.rs`). `import_dropped` may only approve those - the
+/// frontend's path list alone isn't enough.
 #[derive(Default)]
 pub struct PendingArchives {
     pending: std::sync::Mutex<HashSet<PathBuf>>,
     observed_drops: std::sync::Mutex<HashSet<PathBuf>>,
 }
 
-/// Gleiche Regel wie `split_archives`: echte Datei mit Archiv-Endung.
+/// Same rule as `split_archives`: a real file with an archive extension.
 fn is_archive_file(path: &Path) -> bool {
     path.is_file() && archive::is_archive_path(path)
 }
@@ -120,16 +119,16 @@ impl PendingArchives {
         }
     }
 
-    /// Vom Fenster-Ereignis `DragDrop::Drop` aufgerufen.
+    /// Called from the `DragDrop::Drop` window event.
     pub(crate) fn observe_drop(&self, paths: &[PathBuf]) {
         if let Ok(mut set) = self.observed_drops.lock() {
             set.extend(paths.iter().filter(|p| is_archive_file(p)).cloned());
         }
     }
 
-    /// Uebernimmt aus `archives` nur die vom Backend beobachteten Drops in
-    /// die Freigabeliste (und verbraucht die Beobachtung); alle anderen
-    /// werden verworfen. Liefert die uebernommenen Pfade.
+    /// Moves only the drops observed by the backend from `archives` into the allow
+    /// list (consuming the observation); all others are discarded. Returns the
+    /// approved paths.
     pub(crate) fn claim_dropped(&self, archives: Vec<String>) -> Vec<String> {
         let claimed: Vec<String> = match self.observed_drops.lock() {
             Ok(mut observed) => archives
@@ -179,10 +178,9 @@ impl PendingArchives {
     }
 }
 
-/// Ordner, die der Nutzer im nativen Ordner-Dialog (`pick_folder_path`)
-/// gewaehlt hat. Zusammen mit den Katalogordnern die einzigen erlaubten
-/// Entpack-Ziele - ein kompromittiertes Frontend kann so kein beliebiges
-/// Ziel (z.B. das Home-Verzeichnis) unterschieben.
+/// Folders the user picked in the native folder dialog (`pick_folder_path`).
+/// Together with the catalog folders the only allowed extraction targets - so a
+/// compromised frontend can't slip in an arbitrary target (e.g. the home directory).
 #[derive(Default)]
 pub struct ApprovedTargets(std::sync::Mutex<HashSet<PathBuf>>);
 
@@ -198,8 +196,7 @@ impl ApprovedTargets {
     }
 }
 
-/// `true`, wenn `target` exakt ein Katalogordner ist oder in der App
-/// gewaehlt wurde.
+/// `true` if `target` is exactly a catalog folder or was picked in the app.
 pub(crate) fn target_is_approved(conn: &Connection, approved: &ApprovedTargets, target: &Path) -> bool {
     if approved.contains(target) {
         return true;
@@ -210,10 +207,9 @@ pub(crate) fn target_is_approved(conn: &Connection, approved: &ApprovedTargets, 
         .unwrap_or(false)
 }
 
-/// Lehnt `path` ab, wenn er ein geschuetztes Verzeichnis ENTHAELT (Vorfahr
-/// ist). Sonst waeren z.B. das Home-Verzeichnis (Vorfahr von ~/.ssh) oder
-/// `/` als Zusammenfuehren-Ziel moeglich und Eintraege wie `.bash_profile`
-/// landeten dort.
+/// Rejects `path` if it CONTAINS a protected directory (is an ancestor).
+/// Otherwise e.g. the home directory (ancestor of ~/.ssh) or `/` could be a merge
+/// target, and entries like `.bash_profile` would land there.
 fn reject_if_ancestor_of_sensitive(path: &Path, expanded_sensitive: &[PathBuf]) -> CmdResult<()> {
     let resolved = resolve_path_for_sensitivity_check(path)?;
     match expanded_sensitive
@@ -228,7 +224,7 @@ fn reject_if_ancestor_of_sensitive(path: &Path, expanded_sensitive: &[PathBuf]) 
     }
 }
 
-/// Alle Pruefungen des Zielordners, die NICHTS verbrauchen oder schreiben.
+/// All target folder checks that consume or write NOTHING.
 fn check_target_location(target_dir: &Path, expanded_sensitive: &[PathBuf]) -> CmdResult<()> {
     if !target_dir.is_dir() {
         return Err(format!("Zielordner existiert nicht: {}", target_dir.display()));
@@ -237,8 +233,7 @@ fn check_target_location(target_dir: &Path, expanded_sensitive: &[PathBuf]) -> C
     reject_if_ancestor_of_sensitive(target_dir, expanded_sensitive)
 }
 
-/// Groesse und Aenderungszeit (ms) - dient als "unveraendert seit
-/// inspect?"-Pruefung vor dem Loeschen des Originals.
+/// Size and modification time (ms) - an "unchanged since inspect?" check before deleting the original.
 fn file_fingerprint(path: &Path) -> Option<(u64, i64)> {
     let meta = std::fs::metadata(path).ok()?;
     let modified = meta
@@ -272,7 +267,7 @@ pub(crate) fn inspect_one(path: &Path) -> ArchiveInfoDto {
     }
 }
 
-/// Erster freier Name `name`, `name (2)`, `name (3)`, … unter `target_dir`.
+/// First free name `name`, `name (2)`, `name (3)`, ... under `target_dir`.
 pub(crate) fn unique_destination(target_dir: &Path, folder_name: &str) -> PathBuf {
     let first = target_dir.join(folder_name);
     if !path_exists(&first) {
@@ -284,19 +279,18 @@ pub(crate) fn unique_destination(target_dir: &Path, folder_name: &str) -> PathBu
         .expect("unendliche Folge liefert immer einen freien Namen")
 }
 
-/// Import eines frisch entpackten Ordners in den Katalog: bestehender
-/// Ordner-Import plus Einhaengen unter den Ziel-Katalogordner.
+/// Imports a freshly extracted folder into the catalog: the existing folder
+/// import plus attaching it below the target catalog folder.
 pub(crate) fn import_extracted_dir(conn: &mut Connection, dir: &Path) -> CmdResult<ImportResultDto> {
     let result = import_many_with_conn(conn, vec![dir.to_path_buf()])?;
-    // Nur kosmetisch (Ordnerbaum) - ein Fehler hier soll den bereits
-    // erfolgreichen Import nicht rueckgaengig machen.
+    // Only cosmetic (folder tree) - an error here must not undo the successful import.
     if let Err(e) = db::attach_folder_to_parent_by_path(conn, dir) {
         eprintln!("[archive] Einhaengen von {} fehlgeschlagen: {e}", dir.display());
     }
     Ok(result)
 }
 
-/// Unveraenderliche Parameter eines `extract_archives`-Durchlaufs.
+/// Fixed parameters of one `extract_archives` run.
 struct ExtractContext<'a> {
     expanded_sensitive: &'a [PathBuf],
     target_dir: &'a Path,
@@ -319,7 +313,7 @@ fn extract_one(
         outcome.error = Some("Archivformat wird nicht unterstuetzt".to_string());
         return outcome;
     };
-    // Der Name kommt vom Frontend - erneut bereinigen, nie mit "." beginnend.
+    // The name comes from the frontend - sanitize again, never starting with ".".
     let clean_name = archive::safe_folder_name(&request.folder_name);
     let folder_name = if clean_name.is_empty() {
         archive::folder_name_for(archive_path)
@@ -340,9 +334,9 @@ fn extract_one(
     }
 
     on_progress(&request.path, "extracting");
-    // Jeder einzelne neue Pfad wird gegen die Schutzliste geprueft, nicht
-    // nur `dest`: zweite Verteidigungslinie, falls ein geschuetzter Ordner
-    // unterhalb von `dest` erst nach der Pruefung oben entsteht.
+    // Every single new path is checked against the protection list, not just
+    // `dest`: second line of defense in case a protected folder below `dest` only
+    // appears after the check above.
     let guard = |p: &Path| reject_if_sensitive_path_expanded(p, ctx.expanded_sensitive).is_ok();
     let extraction = match archive::extract_archive(archive_path, format, &dest, merge, MAX_UNPACKED_BYTES, &guard) {
         Ok(extraction) => extraction,
@@ -371,7 +365,7 @@ fn extract_one(
     if ctx.delete_archive {
         let not_extracted = outcome.existing_skipped + outcome.unsafe_skipped + outcome.blocked_skipped;
         if not_extracted > 0 {
-            // Sonst ginge der Inhalt der uebersprungenen Eintraege verloren.
+            // Otherwise the content of the skipped entries would be lost.
             outcome.delete_error =
                 Some(format!("Archiv behalten: {not_extracted} Eintraege wurden nicht entpackt"));
             return outcome;
@@ -394,10 +388,9 @@ fn extract_one(
     outcome
 }
 
-/// Kern von `extract_archives`, ohne Tauri-State, damit direkt testbar.
-/// `import_dir` importiert einen entpackten Ordner (im Befehl: mit
-/// DB-Sperre NUR fuer diesen Schritt, damit das Entpacken grosser Archive
-/// die App nicht blockiert).
+/// Core of `extract_archives`, without Tauri state, so it's directly testable.
+/// `import_dir` imports an extracted folder (in the command: with the DB lock
+/// ONLY for that step, so extracting large archives doesn't block the app).
 pub(crate) fn extract_archives_core(
     sensitive_dirs: &[PathBuf],
     target_dir: &Path,
@@ -406,7 +399,7 @@ pub(crate) fn extract_archives_core(
     mut import_dir: impl FnMut(&Path) -> CmdResult<ImportResultDto>,
     mut on_progress: impl FnMut(&str, &'static str),
 ) -> CmdResult<ArchiveImportResultDto> {
-    // Einmal vorberechnen - der Guard laeuft fuer jeden Eintrag.
+    // Compute once - the guard runs for every entry.
     let expanded_sensitive = expand_sensitive_dirs(sensitive_dirs);
     check_target_location(target_dir, &expanded_sensitive)?;
     let ctx = ExtractContext {
@@ -428,12 +421,10 @@ pub(crate) fn extract_archives_core(
     Ok(result)
 }
 
-/// Ablauf von `extract_archives`: ZUERST alle Zielordner-Pruefungen, erst
-/// danach werden die Archive aus der Freigabeliste verbraucht. So kann der
-/// Nutzer nach einem abgelehnten Ziel mit einem anderen Ordner erneut
-/// starten.
-/// `extract` fuehrt das eigentliche Entpacken der freigegebenen Anfragen
-/// aus (im Befehl: `extract_archives_core`).
+/// Flow of `extract_archives`: FIRST all target folder checks, only then are the
+/// archives consumed from the allow list. So after a rejected target the user
+/// can start again with a different folder. `extract` does the actual
+/// extraction of the approved requests (in the command: `extract_archives_core`).
 pub(crate) fn authorize_and_extract(
     pending: &PendingArchives,
     sensitive_dirs: &[PathBuf],
@@ -509,8 +500,7 @@ mod tests {
     use super::*;
     use std::io::Write;
 
-    /// Kleinste gueltige ASCII-STL (ein Dreieck), damit der echte Import
-    /// die Datei annimmt.
+    /// Smallest valid ASCII STL (one triangle), so the real import accepts the file.
     const STL: &[u8] = b"solid t\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 1 0 0\nvertex 0 1 0\nendloop\nendfacet\nendsolid t\n";
 
     fn make_zip(path: &Path, entries: &[(&str, &[u8])]) {
@@ -701,8 +691,8 @@ mod tests {
 
     #[test]
     fn merging_into_a_folder_that_contains_a_protected_path_is_refused() {
-        // ".local.zip"-Angriff: das Ziel ist erlaubt, `dest` enthaelt aber einen
-        // geschuetzten Bereich; dann wird gar nichts entpackt.
+        // ".local.zip" attack: the target is allowed, but `dest` contains a protected
+        // area; then nothing is extracted at all.
         let dir = unique_test_dir("archives_guard");
         let target = dir.join("Home");
         let protected = target.join("Drache/share/applications");
@@ -841,7 +831,7 @@ mod tests {
         assert_eq!(rejected.len(), 1);
         assert_eq!(rejected[0].path, s(&foreign));
 
-        // Eine Beobachtung gilt nur fuer EINEN import_dropped-Aufruf.
+        // An observation only counts for ONE import_dropped call.
         assert!(pending.claim_dropped(vec![s(&dropped)]).is_empty());
     }
 
@@ -886,7 +876,7 @@ mod tests {
         assert!(first.unwrap_err().contains("nicht ueber die App ausgewaehlt"));
         assert!(!target.join("Drache").exists());
 
-        // Fehlender Zielordner: ebenfalls nichts verbraucht.
+        // Missing target folder: nothing consumed either.
         let missing = authorize_and_extract(
             &pending,
             &[],
@@ -921,7 +911,7 @@ mod tests {
         make_zip(&archive, &[(".bash_profile", b"boese"), ("a.stl", STL)]);
         let mut conn = crate::db::connect_in_memory().unwrap();
 
-        // Zielordner = Home selbst (Vorfahr von ~/.ssh).
+        // Target folder = home itself (ancestor of ~/.ssh).
         let as_target = extract_archives_core(
             std::slice::from_ref(&ssh),
             &home,
@@ -932,9 +922,8 @@ mod tests {
         );
         assert!(as_target.is_err());
 
-        // Zusammenfuehren in einen Unterordner, der per Symlink auf "Home"
-        // zeigt: das Ziel selbst ist unverdaechtig, `dest` loest aber zu
-        // einem Vorfahren von ~/.ssh auf.
+        // Merging into a subfolder that symlinks to "home": the target itself looks
+        // harmless, but `dest` resolves to an ancestor of ~/.ssh.
         #[cfg(unix)]
         {
             let katalog = dir.join("Katalog");

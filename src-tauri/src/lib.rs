@@ -4,7 +4,7 @@ mod db;
 mod filament_check;
 mod geometry;
 mod obj;
-// Druckeranbindung: Verbindungs- und Abgleichlogik.
+// Printer connection: connection and sync logic.
 mod printer_link;
 mod slicers;
 #[cfg(feature = "step-preview")]
@@ -18,7 +18,7 @@ use std::sync::Mutex;
 
 use tauri::Manager;
 
-// Datenverzeichnis nur fuer den eigenen Benutzer (relevant auf Mehrbenutzer-Systemen).
+// Data directory for the own user only (relevant on multi-user systems).
 #[cfg(unix)]
 pub(crate) fn harden_permissions(path: &std::path::Path) {
     use std::os::unix::fs::PermissionsExt;
@@ -31,8 +31,8 @@ pub(crate) fn harden_permissions(path: &std::path::Path) {
 #[cfg(not(unix))]
 pub(crate) fn harden_permissions(_path: &std::path::Path) {}
 
-// Verzeichnisse, in die Ordner- und Datei-Operationen nie schreiben duerfen
-// (siehe `commands::reject_if_sensitive_path`); einmal beim Start berechnet.
+// Directories that folder and file operations must never write to (see
+// `commands::reject_if_sensitive_path`); computed once at startup.
 fn sensitive_dirs(app: &tauri::AppHandle) -> Vec<std::path::PathBuf> {
     let mut dirs = Vec::new();
     if let Ok(d) = app.path().config_dir() {
@@ -64,7 +64,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            // Version im Fenstertitel direkt aus Cargo.toml.
+            // Version in the window title, taken straight from Cargo.toml.
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_title(&format!("3MF Katalog Manager {}", env!("CARGO_PKG_VERSION")));
             }
@@ -96,13 +96,11 @@ pub fn run() {
             app.manage(commands::DroppedImages::default());
             Ok(())
         })
-        // Drops vom Backend selbst beobachten: `import_dropped` gibt nur
-        // Archive frei, die hier gesehen wurden (sonst koennte ein
-        // kompromittiertes Frontend beliebige Pfade als "Drop" melden).
-        // Annahme zur Reihenfolge: Dieser Handler laeuft synchron im selben
-        // Event-Loop-Durchlauf, in dem Tauri das Drop-Ereignis an das
-        // Frontend weiterreicht - der darauf folgende IPC-Aufruf
-        // `import_dropped` wird daher immer erst danach verarbeitet.
+        // Observe drops in the backend itself: `import_dropped` only approves archives
+        // seen here (otherwise a compromised frontend could report arbitrary paths as a
+        // "drop"). Ordering assumption: this handler runs synchronously in the same
+        // event loop iteration in which Tauri forwards the drop event to the frontend -
+        // the following IPC call `import_dropped` is therefore always processed after it.
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
                 if let Some(pending) = window.try_state::<commands::PendingArchives>() {
