@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { error as logError, info as logInfo } from '@tauri-apps/plugin-log';
 import { useLanguage } from '../i18n/LanguageContext';
+import { BugReportDialog } from './BugReportDialog';
 import { UnexpectedErrorToast } from './UnexpectedErrorToast';
 
 interface DiagnosticsValue {
@@ -49,7 +50,7 @@ export function DiagnosticsProvider({ children }: { children: ReactNode }) {
     <DiagnosticsContext.Provider value={value}>
       {children}
       {toast && <UnexpectedErrorToast message={toast.split('\n')[0]} onClose={() => setToast(null)} />}
-      {dialogOpen && null}
+      {dialogOpen && <BugReportDialog onClose={() => setDialogOpen(false)} />}
     </DiagnosticsContext.Provider>
   );
 }

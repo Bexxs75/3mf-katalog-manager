@@ -7,6 +7,7 @@ import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
 import type { Language } from '../i18n/types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
+import { DiagnosticsSettings } from '../diagnostics/DiagnosticsSettings';
 import { PrinterLinkSettings } from './PrinterLinkSettings';
 
 type MainView = 'catalog' | 'filament' | 'trash';
@@ -433,6 +434,7 @@ export function Rail({
                 >
                   {updateInfo.checking ? t('infoCheckingForUpdate') : t('infoCheckForUpdateButton')}
                 </button>
+                <DiagnosticsSettings />
                 <div className="flex justify-between text-[11.5px] py-2 border-t border-[var(--line)] mt-3 text-[var(--ink-2)]">
                   <span>{t('infoSourceCodeLabel')}</span>
                   <span
