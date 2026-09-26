@@ -1,137 +1,6 @@
 # 3MF Katalog Manager
 
-Plattformunabhängige Desktop-Anwendung zur Katalogisierung und Verwaltung von 3MF-, STL-, OBJ- und STEP-Dateien für den 3D-Druck. Gebaut mit [Tauri](https://tauri.app/) (Rust-Backend) und React/TypeScript/Tailwind.
-
-**Webseite:** [3mfkatalog.de](https://3mfkatalog.de) – Überblick, Download und Screenshots.
-
-**Neu hier?** Das [Benutzerhandbuch](docs/benutzerhandbuch/BENUTZERHANDBUCH.md) (DE + EN) erklärt alle Funktionen bebildert und Schritt für Schritt, ganz ohne Vorwissen über die App.
-
-[![Webseite](https://img.shields.io/badge/Webseite-3mfkatalog.de-ff7a5c)](https://3mfkatalog.de) [![Join Discord](https://img.shields.io/badge/Join-Discord-5865F2?logo=discord&logoColor=white)](https://discord.gg/abfVNfFqu3)
-
-## Screenshots
-
-| Katalog (Raster) | Nach Ordnern gruppiert | Einstellungen (Info & Update-Check) |
-|---|---|---|
-| ![Katalog in der Raster-Ansicht](docs/benutzerhandbuch/bilder/02-katalog-grid.png) | ![Nach Ordnern gruppierte Ansicht](docs/benutzerhandbuch/bilder/16-ordner-ansicht.png) | ![Einstellungen mit Update-Check](docs/benutzerhandbuch/bilder/20-einstellungen-info-update.png) |
-
-## Downloads
-
-Fertige Pakete gibt es auf der [Releases-Seite](https://github.com/Bexxs75/3mf-katalog-manager/releases). Für Linux, Windows und macOS steht jeweils **eine von zwei Varianten** zur Wahl:
-
-| Variante | Enthält | Größe | Für wen |
-|---|---|---|---|
-| **mit STEP-Vorschau** (`-step`) | 3D-Vorschau + Abmessungen/Volumen/Körperzahl auch für `.stp`/`.step`-Dateien (via Open CASCADE) | größer (OCCT-Bibliotheken mit eingepackt) | wer STEP-Dateien katalogisiert und die Vorschau braucht |
-| **ohne STEP-Vorschau** (Standardname, kein Suffix) | STEP-Dateien lassen sich weiterhin katalogisieren (Tags, Suche, Umbenennen, Papierkorb), aber ohne 3D-Vorschau/CAD-Metadaten | kleiner | wer nur 3MF/STL/OBJ nutzt oder STEP nur ablegen, nicht ansehen will |
-
-Beide Varianten sind ansonsten funktionsgleich. Die Downloads sind unsigniert (siehe [Status](#status)).
-
-## Funktionen
-
-- **3MF-, STL-, OBJ- und STEP-Parsing** — 3MF (OPC-Container-Entpackung inkl. eingebettetem Thumbnail), ASCII-/Binär-STL und OBJ jeweils mit 3D-Vorschau; STEP-Dateien (`.stp`/`.step`) werden über Open CASCADE gelesen und liefern 3D-Vorschau, Abmessungen, Volumen und Körperzahl. Für jede Plattform (Linux/Windows/macOS) gibt es zwei Downloads: eine Variante **mit** STEP-Vorschau und eine kleinere Variante **ohne** (nur Katalogisierung ohne 3D-Vorschau für STEP) — siehe [Downloads](#downloads).
-- **Automatische Metadaten-Extraktion** — Abmessungen, Volumen, Objektanzahl, Material (sofern in der 3MF vorhanden)
-- **Automatische Hashtag-Generierung** — Vorschläge aus Dateiname, Geometrie-Merkmalen und Slicer-Profildaten, vom Nutzer editierbar
-- **3D-Live-Vorschau** — three.js-Rendering direkt aus der Mesh-Geometrie, wenn kein eingebettetes Thumbnail vorhanden ist
-- **Tag- und Ordnerverwaltung**, Suche und Filterung
-- **Import** einzelner Dateien oder ganzer Ordner (inkl. Unterordner) per Dialog oder Drag & Drop, über ein gemeinsames Dropdown-Menü in der Kopfzeile
-- **Komfort-Ansicht** — alternative, deutlich lesbarere Oberfläche (größere Schrift, Grafiken und Bedienelemente) neben der bestehenden kompakten Ansicht, umschaltbar im Einstellungen-Panel; Favorit-Kennzeichnung je Modell in beiden Ansichten
-- **In Slicer öffnen** — beliebig viele selbst hinterlegte Slicer-Programme (herstellerunabhängig) direkt aus dem Katalog heraus starten
-- **Mehrsprachige Oberfläche** — Deutsch, Englisch, Spanisch, Französisch, umschaltbar zur Laufzeit
-- **Hell-/Dunkel-Theme** mit System-Erkennung und manueller Auswahl, persistiert lokal
-- **Filament-Lager** — eigenständige Verwaltung deiner Filamentspulen (Material, Hersteller, Farbe, Lagerort, Durchmesser, Ursprungs-/Restgewicht, Preis) mit Autocomplete für Material/Hersteller/Lagerort, unabhängig vom Modell-Katalog; umschaltbar zwischen Karten-Dashboard (Bestandsbalken, Statusfarbe) und sortierbarer Inventarliste, inkl. Statistik-Leiste und Status-Filter; beim Neuanlegen lassen sich mehrere identische Spulen auf einmal erfassen (jede mit eigenem, unabhängig verfolgtem Restbestand); „＋ Nachkaufen“ auf der Karte bzw. „＋“ in der Listenzeile legt 1 bis 20 neue, volle Spulen mit denselben Daten an; ein Doppelklick auf Karte oder Zeile öffnet das Bearbeiten-Formular; Restgewichte auf 0,1 g genau; Spulenbild per Klick oder Drag & Drop (PNG, JPG oder WebP bis 5 MB); Spulen ohne Bild zeigen in der Liste ein Spulen-Symbol in ihrer Farbe
-- **Resin im Lager** — der Umschalter „Filament | Resin“ oben im Filament-Lager wechselt zu deinen Resin-Flaschen: Mengen in ml, eigene Kennzahlen („Flaschen gesamt“), Vorschläge für Resin-Material und -Hersteller, „− Verbrauch“ zum Abbuchen verbrauchter Milliliter und Nachkaufen wie bei Spulen; neue Einträge bekommen die Art des gewählten Bereichs. Resin kommt nie in ein Filament-Fach, sondern nur in die Harzwanne eines Resin-Druckers, und zählt nicht bei „Reicht das Filament?“ und der Materialkosten-Schätzung.
-- **Drucker & AMS-Fächer** — Drucker und ihre Mehrfarbeinheiten (Bambu AMS, AMS lite, AMS HT, Creality CFS, Prusa MMU3, Anycubic ACE Pro, Spulenhalter oder eigene mit frei wählbarer Fachanzahl) anlegen und Spulen per Drag & Drop oder Klick in die Fächer legen. Jeder neue Drucker bekommt automatisch einen Spulenhalter, sodass auch Drucker ohne AMS sofort eine Spule aufnehmen. Spulen im Drucker erscheinen getrennt vom Lager in einer eigenen Spalte; beim Herausnehmen kehren sie automatisch an ihren Stammplatz zurück. Spulen haben einen echten Farbwert (Palette oder Hex) zusätzlich zum Farbnamen.
-- **Resin-Drucker** — beim Anlegen eines Druckers wählst du „Filament“ oder „Resin“. Ein Resin-Drucker bekommt statt des Spulenhalters eine feste Harzwanne für eine Flasche; du setzt sie per Ziehen oder über das Menü der Wanne ein, siehst Farbe und Rest in ml und buchst mit „− Verbrauch“ ab.
-- **Reicht das Filament?** — für geslicete 3MF-Dateien vergleicht die Detailseite den Filamentbedarf mit deinen Spulen (Material und ähnliche Farbe) und zeigt, ob er reicht, nur mit Spulenwechsel reicht oder wie viel fehlt – samt passender Spule und ob sie im Drucker steckt. Die Druck-Warteschlange zeigt den Status je Eintrag und berücksichtigt den Gesamtbedarf.
-- **Werkzeuge** — Abschnitt in der Seitenleiste mit Warteschlange, „Zuletzt angesehen“, „Neu hinzugefügt“, „Favoriten“ (alle mit Herz markierten Modelle), „Duplikate“ und Aufräum-Vorschlägen, jeweils mit Anzahl; die Ansichten filtern den Katalog und lassen sich mit Ordnern, Tags und Suche kombinieren.
-- **Druckeranbindung** — optional (standardmäßig aus): Klipper/Moonraker-Drucker im Heimnetz melden den Filamentverbrauch fertiger und abgebrochener Drucke; nach deiner Bestätigung wird er von der Spule abgebucht, auf Wunsch mit Druckprotokoll-Eintrag. Nur lesend, nur selbst eingetragene Adressen im Heimnetz. Getestet mit Sovol SV08 und Anycubic Kobra S1 (Rinkhals); Ergebnisse für weitere Drucker sammelt die [Testseite](https://3mfkatalog.de/druckertest.html).
-- **Katalog-Erweiterungen** — Druckstatus-Toggle + Gewicht pro Modell (echter Wert aus dem Slicer, falls die 3mf bereits gesliced wurde, sonst grobe Schätzung aus Volumen × Materialdichte), Sortierung nach "Zuletzt angesehen", NEU-Badge für kürzlich importierte Modelle, Creators-Filter (aus 3MF-Designer-Metadatum), automatische Erkennung exakter Datei-Duplikate beim Import per Inhalts-Hash
-- **Filamentverbrauch aus dem Slicer** — liest den in OrcaSlicer/Bambu Studio gesliceten Filamentverbrauch (`Metadata/slice_info.config`) mit aus: reales Gewicht statt Schätzung, Aufschlüsselung pro Druckplatte und Filament (Typ, Farbe, Gramm, Meter) auf der Modell-Detailseite; Button "Metadaten neu einlesen" holt die Werte nachträglich, wenn eine bereits katalogisierte Datei in OrcaSlicer/Bambu Studio nachgesliced wurde
-- **Materialkosten-Schätzung** — bei Modellen mit echtem Slicer-Filamentverbrauch zusätzlich eine geschätzte Materialkosten-Summe auf der Detailseite, berechnet aus Verbrauch und den Preisen passender Spulen im Filament-Lager
-- **Druckprotokoll** — zusätzlich zum Druckstatus-Toggle ein Protokoll mehrerer Druckversuche pro Modell (Datum, Notiz, Foto), unabhängig vom Druckstatus
-- **Katalog-Backup** — kompletter Katalog (Datenbank + Einstellungen) als ZIP exportierbar und wieder importierbar, mit automatischer Sicherung der bestehenden Datenbank vor jedem Import
-- **Archive direkt entpacken** — einzeln importierte oder hineingezogene Archive (`.zip`, `.7z`, `.rar`, `.tar`, `.tar.gz`/`.tgz`, `.tar.bz2`, `.tar.xz`, `.tar.zst`) werden nach Rückfrage in einen Unterordner entpackt und die enthaltenen Modelle katalogisiert. Zielordner, Umgang mit bereits vorhandenen Ordnern und das Löschen des Original-Archivs entscheidest du im Dialog; nichts wird überschrieben. Aus Sicherheitsgründen werden Programme, Skripte und Verknüpfungen aus Archiven nie entpackt. Passwortgeschützte und mehrteilige Archive werden erkannt, aber nicht entpackt.
-- **Modell-Thumbnails** — Raster-Ansicht zeigt ein echtes Bild pro Modell (eigenes Upload, eingebettetes 3MF-Thumbnail oder automatisch aus der 3D-Live-Vorschau erzeugter Snapshot), zusätzlich pro Modell eine Quelle als Link hinterlegbar
-- **Warteschlange** — geordnete, per Drag & Drop sortierbare Liste ("als Nächstes drucken") in eigener Sidebar-Sektion, automatisches Entfernen beim Markieren als gedruckt
-- **Gespeicherte Filter** — häufig genutzte Kombinationen aus Ordner/Tag/Creator/Suche/Sortierung unter einem Namen speichern und per Klick wieder anwenden
-- **Aufräum-Vorschläge** — manuell auslösbarer Katalog-Scan findet verwaiste Dateipfade und Bestands-Duplikate, Bereinigung per Auswahl-Dialog
-- **Modell-Detailseite** — vollflächige Ansicht (Doppelklick auf ein Modell) mit großer 3D-Vorschau, allen Metadaten und Druckplatten-Anzahl bei Bambu-Studio-/OrcaSlicer-Dateien; eigene Dreh-Steuerelemente (Auto-Rotation + 15°-Schritt-Buttons) zusätzlich zum freien Maus-Ziehen
-- **Papierkorb** — gelöschte Modelle bleiben 7 Tage wiederherstellbar statt sofort entfernt zu werden, eigene Ansicht mit Mengen-Badge
-- **Mehrfachauswahl** — Checkboxen in der Katalogübersicht, "Alle auswählen", Aktionsleiste für Warteschlange/Sammlung/Druckstatus/Tags/Löschen über mehrere Modelle gleichzeitig
-- **Tastaturkürzel** — `/` fokussiert die Suche, Pfeiltasten navigieren räumlich im Raster (Hoch/Runter springt zur nächsten Zeile), Leertaste schaltet die Mehrfachauswahl-Checkbox um, Entf/Rücktaste öffnet bei aktiver Mehrfachauswahl die Löschen-Bestätigung
-- **Umbenennen** — Modelle direkt per Kontextmenü umbenennen; die Dateiendung bleibt dabei fest
-- **Automatische Slicer-Erkennung** — durchsucht beim Start bekannte Installationsorte (Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura auf Linux/Windows) und ergänzt Treffer automatisch; manuelles Hinzufügen für Custom-Forks bleibt möglich
-- **Bevorzugte Ansicht** — Einstellung, ob Katalog und Detailseite standardmäßig das eingebettete Datei-Bild oder eine gerenderte 3D-Ansicht zeigen; fehlende Schnappschüsse werden bei Bedarf automatisch im Hintergrund nachgerendert
-- **Sammlungen** — dritter Organisationsmechanismus neben Ordnern und Tags: mehrere Modelle explizit zu einem Projekt zusammenfassen, mit manuell festlegbarer Reihenfolge (Drag & Drop); Erstellung über Mehrfachauswahl
-- **Eigenes App-Icon** — isometrischer 3D-Druck-Layer-Würfel in den echten App-Akzentfarben
-- **Content-Security-Policy** aktiv (kein `csp: null`), Quell-URL-Felder und "In Slicer öffnen" serverseitig validiert
-
-## Status
-
-Dieses Projekt befindet sich in aktiver Entwicklung. Der lokale Katalog (Import, Parsing, Tagging, Suche, 3D-Vorschau, Mehrsprachigkeit, Theming) und "In Slicer öffnen" sind funktionsfähig. Folgendes ist noch **nicht** umgesetzt:
-
-- **Cloud-Anbindung** (Google Drive u. a.): war vorhanden, wurde aber wieder entfernt — zu instabil/fehleranfällig für den Alltagsgebrauch. Wird bei Gelegenheit sauber neu konzipiert, siehe CHANGELOG
-- **"In Slicer öffnen" bei manuell hinzugefügten Slicern unter macOS**: für automatisch erkannte Slicer (Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura) funktioniert das Öffnen zuverlässig, da die Erkennung bereits die richtige, direkt ausführbare Programmdatei innerhalb des `.app`-Bundles findet. Bei manuell hinzugefügten Slicern muss im Dateidialog gezielt diese Datei ausgewählt werden, nicht das `.app`-Bundle selbst
-- **STEP-Vorschau als separater Download**: Auf allen drei Plattformen gibt es dafür zwei Paketvarianten statt einer einzigen mit fest eingebauter STEP-Vorschau — siehe [Downloads](#downloads).
-- **Code-Signing**: die macOS-`.dmg`- und Windows-`.msi`-Pakete sind unsigniert (kein Apple-Developer- bzw. Windows-Code-Signing-Zertifikat) — beim ersten Start warnen Gatekeeper bzw. SmartScreen entsprechend
-
-## Geplant
-
-Den aktuellen Stand zeigt immer die öffentliche [Roadmap](https://github.com/users/Bexxs75/projects/1/views/1?groupedBy%5BcolumnId%5D=416999698); sie ist maßgeblich.
-
-- **v0.15.0** – Updates direkt in der App, Test-Versionen mit eigenem Katalog, Einstellung „Womit druckst du?“, Resin-Dateien (`.ctb`, `.goo`, `.pwmx` …) katalogisieren, weitere Linux-Pakete (.deb, .rpm, AUR)
-- **v0.16.0** – Druckeranbindung für OctoPrint und Bambu Lab (PrusaLink später). Wer einen solchen Drucker hat, kann auf der [Testseite](https://3mfkatalog.de/druckertest.html) mithelfen.
-
-## Tech-Stack
-
-- **Framework:** Tauri 2 (Rust-Backend, WebView-Frontend)
-- **Frontend:** React 19, TypeScript, Tailwind CSS, Vite
-- **3D-Rendering:** three.js
-- **Datenbank:** SQLite (`rusqlite`)
-
-## Entwicklung
-
-Voraussetzungen: Node.js, Rust-Toolchain (`cargo`), sowie die [Tauri-Systemabhängigkeiten](https://tauri.app/start/prerequisites/) für dein Betriebssystem. Für die standardmäßig aktivierte STEP-Vorschau wird zusätzlich Open CASCADE 7.8 oder 7.9 als dynamische Systembibliothek einschließlich Entwicklungsdateien benötigt.
-
-```bash
-npm install
-npm run tauri dev
-```
-
-Ohne OCCT beziehungsweise für eine Fassung ohne STEP-Vorschau:
-
-```bash
-npm run tauri dev -- -- --no-default-features
-# oder: npm run tauri build -- -- --no-default-features
-```
-
-Backend-Tests:
-
-```bash
-cd src-tauri
-cargo test
-```
-
-Produktions-Build (Typprüfung + Vite-Build):
-
-```bash
-npm run build
-```
-
-## Projektstruktur
-
-```
-src/               React-Frontend (Komponenten, i18n, Hooks, Typen)
-src-tauri/         Rust-Backend (Tauri-Commands, DB, Parser für 3MF/STL/OBJ/STEP, Tagging)
-docs/              Zusätzliche Dokumentation
-```
-
-## Lizenz
-
-Der Anwendungscode steht unter MIT — siehe [LICENSE](LICENSE). Die optionale STEP-Vorschau bindet Open CASCADE dynamisch unter LGPL-2.1 mit Open-CASCADE-Ausnahme ein. Details, Lizenztexte und Quellenhinweise stehen in [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md).
-
----
-
-# 3MF Katalog Manager (English)
+🇩🇪 **Deutsch:** [Deutsche Version weiter unten](#3mf-katalog-manager-deutsch)
 
 Cross-platform desktop application for cataloging and managing 3MF, STL, OBJ, and STEP files for 3D printing. Built with [Tauri](https://tauri.app/) (Rust backend) and React/TypeScript/Tailwind.
 
@@ -156,11 +25,11 @@ Prebuilt packages are on the [Releases page](https://github.com/Bexxs75/3mf-kata
 | **with STEP preview** (`-step`) | 3D preview + dimensions/volume/body count for `.stp`/`.step` files too (via Open CASCADE) | larger (bundles the OCCT libraries) | anyone cataloging STEP files who needs the preview |
 | **without STEP preview** (plain name, no suffix) | STEP files can still be cataloged (tags, search, rename, trash), just without a 3D preview/CAD metadata | smaller | anyone who only uses 3MF/STL/OBJ, or just wants to store STEP files without viewing them |
 
-Both variants are otherwise feature-identical. Downloads are unsigned (see [Status](#status-1)).
+Both variants are otherwise feature-identical. Downloads are unsigned (see [Status](#status)).
 
 ## Features
 
-- **3MF, STL, OBJ, and STEP parsing** — 3MF (OPC container extraction incl. embedded thumbnail), ASCII/binary STL, and OBJ each have a 3D preview; STEP files (`.stp`/`.step`) are read through Open CASCADE and provide a 3D preview, dimensions, volume, and body count. Every platform (Linux/Windows/macOS) ships two downloads: one **with** STEP preview and one smaller one **without** (cataloging only, no 3D preview for STEP) — see [Downloads](#downloads-1).
+- **3MF, STL, OBJ, and STEP parsing** — 3MF (OPC container extraction incl. embedded thumbnail), ASCII/binary STL, and OBJ each have a 3D preview; STEP files (`.stp`/`.step`) are read through Open CASCADE and provide a 3D preview, dimensions, volume, and body count. Every platform (Linux/Windows/macOS) ships two downloads: one **with** STEP preview and one smaller one **without** (cataloging only, no 3D preview for STEP) — see [Downloads](#downloads).
 - **Automatic metadata extraction** — dimensions, volume, object count, material (if present in the 3MF)
 - **Automatic hashtag generation** — suggestions from filename, geometry features, and slicer profile data, editable by the user
 - **Live 3D preview** — three.js rendering directly from the mesh geometry when no embedded thumbnail is available
@@ -204,7 +73,7 @@ This project is under active development. The local catalog (import, parsing, ta
 
 - **Cloud integration** (Google Drive etc.): existed previously but was removed again — too unstable/error-prone for everyday use. Will be cleanly redesigned at some point, see CHANGELOG
 - **"Open in slicer" for manually added slicers on macOS**: opening works reliably for automatically detected slicers (Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura), since detection already finds the correct, directly executable program file inside the `.app` bundle. For manually added slicers, that same file needs to be selected in the file picker, not the `.app` bundle itself
-- **STEP preview as a separate download**: all three platforms ship two package variants for this instead of a single one with STEP preview baked in — see [Downloads](#downloads-1).
+- **STEP preview as a separate download**: all three platforms ship two package variants for this instead of a single one with STEP preview baked in — see [Downloads](#downloads).
 - **Code signing**: the macOS `.dmg` and Windows `.msi` packages are unsigned (no Apple Developer or Windows code-signing certificate) — Gatekeeper/SmartScreen will warn accordingly on first launch
 
 ## Planned
@@ -261,3 +130,136 @@ docs/              Additional documentation
 ## License
 
 The application code is licensed under MIT — see [LICENSE](LICENSE). The optional STEP preview dynamically links Open CASCADE under LGPL-2.1 with the Open CASCADE exception. See [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) for details, full license texts, and source information.
+
+---
+
+# 3MF Katalog Manager (Deutsch)
+
+Plattformunabhängige Desktop-Anwendung zur Katalogisierung und Verwaltung von 3MF-, STL-, OBJ- und STEP-Dateien für den 3D-Druck. Gebaut mit [Tauri](https://tauri.app/) (Rust-Backend) und React/TypeScript/Tailwind.
+
+**Webseite:** [3mfkatalog.de](https://3mfkatalog.de) – Überblick, Download und Screenshots.
+
+**Neu hier?** Das [Benutzerhandbuch](docs/benutzerhandbuch/BENUTZERHANDBUCH.md) (DE + EN) erklärt alle Funktionen bebildert und Schritt für Schritt, ganz ohne Vorwissen über die App.
+
+[![Webseite](https://img.shields.io/badge/Webseite-3mfkatalog.de-ff7a5c)](https://3mfkatalog.de) [![Join Discord](https://img.shields.io/badge/Join-Discord-5865F2?logo=discord&logoColor=white)](https://discord.gg/abfVNfFqu3)
+
+## Screenshots
+
+| Katalog (Raster) | Nach Ordnern gruppiert | Einstellungen (Info & Update-Check) |
+|---|---|---|
+| ![Katalog in der Raster-Ansicht](docs/benutzerhandbuch/bilder/02-katalog-grid.png) | ![Nach Ordnern gruppierte Ansicht](docs/benutzerhandbuch/bilder/16-ordner-ansicht.png) | ![Einstellungen mit Update-Check](docs/benutzerhandbuch/bilder/20-einstellungen-info-update.png) |
+
+## Downloads
+
+Fertige Pakete gibt es auf der [Releases-Seite](https://github.com/Bexxs75/3mf-katalog-manager/releases). Für Linux, Windows und macOS steht jeweils **eine von zwei Varianten** zur Wahl:
+
+| Variante | Enthält | Größe | Für wen |
+|---|---|---|---|
+| **mit STEP-Vorschau** (`-step`) | 3D-Vorschau + Abmessungen/Volumen/Körperzahl auch für `.stp`/`.step`-Dateien (via Open CASCADE) | größer (OCCT-Bibliotheken mit eingepackt) | wer STEP-Dateien katalogisiert und die Vorschau braucht |
+| **ohne STEP-Vorschau** (Standardname, kein Suffix) | STEP-Dateien lassen sich weiterhin katalogisieren (Tags, Suche, Umbenennen, Papierkorb), aber ohne 3D-Vorschau/CAD-Metadaten | kleiner | wer nur 3MF/STL/OBJ nutzt oder STEP nur ablegen, nicht ansehen will |
+
+Beide Varianten sind ansonsten funktionsgleich. Die Downloads sind unsigniert (siehe [Status](#status-1)).
+
+## Funktionen
+
+- **3MF-, STL-, OBJ- und STEP-Parsing** — 3MF (OPC-Container-Entpackung inkl. eingebettetem Thumbnail), ASCII-/Binär-STL und OBJ jeweils mit 3D-Vorschau; STEP-Dateien (`.stp`/`.step`) werden über Open CASCADE gelesen und liefern 3D-Vorschau, Abmessungen, Volumen und Körperzahl. Für jede Plattform (Linux/Windows/macOS) gibt es zwei Downloads: eine Variante **mit** STEP-Vorschau und eine kleinere Variante **ohne** (nur Katalogisierung ohne 3D-Vorschau für STEP) — siehe [Downloads](#downloads-1).
+- **Automatische Metadaten-Extraktion** — Abmessungen, Volumen, Objektanzahl, Material (sofern in der 3MF vorhanden)
+- **Automatische Hashtag-Generierung** — Vorschläge aus Dateiname, Geometrie-Merkmalen und Slicer-Profildaten, vom Nutzer editierbar
+- **3D-Live-Vorschau** — three.js-Rendering direkt aus der Mesh-Geometrie, wenn kein eingebettetes Thumbnail vorhanden ist
+- **Tag- und Ordnerverwaltung**, Suche und Filterung
+- **Import** einzelner Dateien oder ganzer Ordner (inkl. Unterordner) per Dialog oder Drag & Drop, über ein gemeinsames Dropdown-Menü in der Kopfzeile
+- **Komfort-Ansicht** — alternative, deutlich lesbarere Oberfläche (größere Schrift, Grafiken und Bedienelemente) neben der bestehenden kompakten Ansicht, umschaltbar im Einstellungen-Panel; Favorit-Kennzeichnung je Modell in beiden Ansichten
+- **In Slicer öffnen** — beliebig viele selbst hinterlegte Slicer-Programme (herstellerunabhängig) direkt aus dem Katalog heraus starten
+- **Mehrsprachige Oberfläche** — Deutsch, Englisch, Spanisch, Französisch, umschaltbar zur Laufzeit
+- **Hell-/Dunkel-Theme** mit System-Erkennung und manueller Auswahl, persistiert lokal
+- **Filament-Lager** — eigenständige Verwaltung deiner Filamentspulen (Material, Hersteller, Farbe, Lagerort, Durchmesser, Ursprungs-/Restgewicht, Preis) mit Autocomplete für Material/Hersteller/Lagerort, unabhängig vom Modell-Katalog; umschaltbar zwischen Karten-Dashboard (Bestandsbalken, Statusfarbe) und sortierbarer Inventarliste, inkl. Statistik-Leiste und Status-Filter; beim Neuanlegen lassen sich mehrere identische Spulen auf einmal erfassen (jede mit eigenem, unabhängig verfolgtem Restbestand); „＋ Nachkaufen“ auf der Karte bzw. „＋“ in der Listenzeile legt 1 bis 20 neue, volle Spulen mit denselben Daten an; ein Doppelklick auf Karte oder Zeile öffnet das Bearbeiten-Formular; Restgewichte auf 0,1 g genau; Spulenbild per Klick oder Drag & Drop (PNG, JPG oder WebP bis 5 MB); Spulen ohne Bild zeigen in der Liste ein Spulen-Symbol in ihrer Farbe
+- **Resin im Lager** — der Umschalter „Filament | Resin“ oben im Filament-Lager wechselt zu deinen Resin-Flaschen: Mengen in ml, eigene Kennzahlen („Flaschen gesamt“), Vorschläge für Resin-Material und -Hersteller, „− Verbrauch“ zum Abbuchen verbrauchter Milliliter und Nachkaufen wie bei Spulen; neue Einträge bekommen die Art des gewählten Bereichs. Resin kommt nie in ein Filament-Fach, sondern nur in die Harzwanne eines Resin-Druckers, und zählt nicht bei „Reicht das Filament?“ und der Materialkosten-Schätzung.
+- **Drucker & AMS-Fächer** — Drucker und ihre Mehrfarbeinheiten (Bambu AMS, AMS lite, AMS HT, Creality CFS, Prusa MMU3, Anycubic ACE Pro, Spulenhalter oder eigene mit frei wählbarer Fachanzahl) anlegen und Spulen per Drag & Drop oder Klick in die Fächer legen. Jeder neue Drucker bekommt automatisch einen Spulenhalter, sodass auch Drucker ohne AMS sofort eine Spule aufnehmen. Spulen im Drucker erscheinen getrennt vom Lager in einer eigenen Spalte; beim Herausnehmen kehren sie automatisch an ihren Stammplatz zurück. Spulen haben einen echten Farbwert (Palette oder Hex) zusätzlich zum Farbnamen.
+- **Resin-Drucker** — beim Anlegen eines Druckers wählst du „Filament“ oder „Resin“. Ein Resin-Drucker bekommt statt des Spulenhalters eine feste Harzwanne für eine Flasche; du setzt sie per Ziehen oder über das Menü der Wanne ein, siehst Farbe und Rest in ml und buchst mit „− Verbrauch“ ab.
+- **Reicht das Filament?** — für geslicete 3MF-Dateien vergleicht die Detailseite den Filamentbedarf mit deinen Spulen (Material und ähnliche Farbe) und zeigt, ob er reicht, nur mit Spulenwechsel reicht oder wie viel fehlt – samt passender Spule und ob sie im Drucker steckt. Die Druck-Warteschlange zeigt den Status je Eintrag und berücksichtigt den Gesamtbedarf.
+- **Werkzeuge** — Abschnitt in der Seitenleiste mit Warteschlange, „Zuletzt angesehen“, „Neu hinzugefügt“, „Favoriten“ (alle mit Herz markierten Modelle), „Duplikate“ und Aufräum-Vorschlägen, jeweils mit Anzahl; die Ansichten filtern den Katalog und lassen sich mit Ordnern, Tags und Suche kombinieren.
+- **Druckeranbindung** — optional (standardmäßig aus): Klipper/Moonraker-Drucker im Heimnetz melden den Filamentverbrauch fertiger und abgebrochener Drucke; nach deiner Bestätigung wird er von der Spule abgebucht, auf Wunsch mit Druckprotokoll-Eintrag. Nur lesend, nur selbst eingetragene Adressen im Heimnetz. Getestet mit Sovol SV08 und Anycubic Kobra S1 (Rinkhals); Ergebnisse für weitere Drucker sammelt die [Testseite](https://3mfkatalog.de/druckertest.html).
+- **Katalog-Erweiterungen** — Druckstatus-Toggle + Gewicht pro Modell (echter Wert aus dem Slicer, falls die 3mf bereits gesliced wurde, sonst grobe Schätzung aus Volumen × Materialdichte), Sortierung nach "Zuletzt angesehen", NEU-Badge für kürzlich importierte Modelle, Creators-Filter (aus 3MF-Designer-Metadatum), automatische Erkennung exakter Datei-Duplikate beim Import per Inhalts-Hash
+- **Filamentverbrauch aus dem Slicer** — liest den in OrcaSlicer/Bambu Studio gesliceten Filamentverbrauch (`Metadata/slice_info.config`) mit aus: reales Gewicht statt Schätzung, Aufschlüsselung pro Druckplatte und Filament (Typ, Farbe, Gramm, Meter) auf der Modell-Detailseite; Button "Metadaten neu einlesen" holt die Werte nachträglich, wenn eine bereits katalogisierte Datei in OrcaSlicer/Bambu Studio nachgesliced wurde
+- **Materialkosten-Schätzung** — bei Modellen mit echtem Slicer-Filamentverbrauch zusätzlich eine geschätzte Materialkosten-Summe auf der Detailseite, berechnet aus Verbrauch und den Preisen passender Spulen im Filament-Lager
+- **Druckprotokoll** — zusätzlich zum Druckstatus-Toggle ein Protokoll mehrerer Druckversuche pro Modell (Datum, Notiz, Foto), unabhängig vom Druckstatus
+- **Katalog-Backup** — kompletter Katalog (Datenbank + Einstellungen) als ZIP exportierbar und wieder importierbar, mit automatischer Sicherung der bestehenden Datenbank vor jedem Import
+- **Archive direkt entpacken** — einzeln importierte oder hineingezogene Archive (`.zip`, `.7z`, `.rar`, `.tar`, `.tar.gz`/`.tgz`, `.tar.bz2`, `.tar.xz`, `.tar.zst`) werden nach Rückfrage in einen Unterordner entpackt und die enthaltenen Modelle katalogisiert. Zielordner, Umgang mit bereits vorhandenen Ordnern und das Löschen des Original-Archivs entscheidest du im Dialog; nichts wird überschrieben. Aus Sicherheitsgründen werden Programme, Skripte und Verknüpfungen aus Archiven nie entpackt. Passwortgeschützte und mehrteilige Archive werden erkannt, aber nicht entpackt.
+- **Modell-Thumbnails** — Raster-Ansicht zeigt ein echtes Bild pro Modell (eigenes Upload, eingebettetes 3MF-Thumbnail oder automatisch aus der 3D-Live-Vorschau erzeugter Snapshot), zusätzlich pro Modell eine Quelle als Link hinterlegbar
+- **Warteschlange** — geordnete, per Drag & Drop sortierbare Liste ("als Nächstes drucken") in eigener Sidebar-Sektion, automatisches Entfernen beim Markieren als gedruckt
+- **Gespeicherte Filter** — häufig genutzte Kombinationen aus Ordner/Tag/Creator/Suche/Sortierung unter einem Namen speichern und per Klick wieder anwenden
+- **Aufräum-Vorschläge** — manuell auslösbarer Katalog-Scan findet verwaiste Dateipfade und Bestands-Duplikate, Bereinigung per Auswahl-Dialog
+- **Modell-Detailseite** — vollflächige Ansicht (Doppelklick auf ein Modell) mit großer 3D-Vorschau, allen Metadaten und Druckplatten-Anzahl bei Bambu-Studio-/OrcaSlicer-Dateien; eigene Dreh-Steuerelemente (Auto-Rotation + 15°-Schritt-Buttons) zusätzlich zum freien Maus-Ziehen
+- **Papierkorb** — gelöschte Modelle bleiben 7 Tage wiederherstellbar statt sofort entfernt zu werden, eigene Ansicht mit Mengen-Badge
+- **Mehrfachauswahl** — Checkboxen in der Katalogübersicht, "Alle auswählen", Aktionsleiste für Warteschlange/Sammlung/Druckstatus/Tags/Löschen über mehrere Modelle gleichzeitig
+- **Tastaturkürzel** — `/` fokussiert die Suche, Pfeiltasten navigieren räumlich im Raster (Hoch/Runter springt zur nächsten Zeile), Leertaste schaltet die Mehrfachauswahl-Checkbox um, Entf/Rücktaste öffnet bei aktiver Mehrfachauswahl die Löschen-Bestätigung
+- **Umbenennen** — Modelle direkt per Kontextmenü umbenennen; die Dateiendung bleibt dabei fest
+- **Automatische Slicer-Erkennung** — durchsucht beim Start bekannte Installationsorte (Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura auf Linux/Windows) und ergänzt Treffer automatisch; manuelles Hinzufügen für Custom-Forks bleibt möglich
+- **Bevorzugte Ansicht** — Einstellung, ob Katalog und Detailseite standardmäßig das eingebettete Datei-Bild oder eine gerenderte 3D-Ansicht zeigen; fehlende Schnappschüsse werden bei Bedarf automatisch im Hintergrund nachgerendert
+- **Sammlungen** — dritter Organisationsmechanismus neben Ordnern und Tags: mehrere Modelle explizit zu einem Projekt zusammenfassen, mit manuell festlegbarer Reihenfolge (Drag & Drop); Erstellung über Mehrfachauswahl
+- **Eigenes App-Icon** — isometrischer 3D-Druck-Layer-Würfel in den echten App-Akzentfarben
+- **Content-Security-Policy** aktiv (kein `csp: null`), Quell-URL-Felder und "In Slicer öffnen" serverseitig validiert
+
+## Status
+
+Dieses Projekt befindet sich in aktiver Entwicklung. Der lokale Katalog (Import, Parsing, Tagging, Suche, 3D-Vorschau, Mehrsprachigkeit, Theming) und "In Slicer öffnen" sind funktionsfähig. Folgendes ist noch **nicht** umgesetzt:
+
+- **Cloud-Anbindung** (Google Drive u. a.): war vorhanden, wurde aber wieder entfernt — zu instabil/fehleranfällig für den Alltagsgebrauch. Wird bei Gelegenheit sauber neu konzipiert, siehe CHANGELOG
+- **"In Slicer öffnen" bei manuell hinzugefügten Slicern unter macOS**: für automatisch erkannte Slicer (Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura) funktioniert das Öffnen zuverlässig, da die Erkennung bereits die richtige, direkt ausführbare Programmdatei innerhalb des `.app`-Bundles findet. Bei manuell hinzugefügten Slicern muss im Dateidialog gezielt diese Datei ausgewählt werden, nicht das `.app`-Bundle selbst
+- **STEP-Vorschau als separater Download**: Auf allen drei Plattformen gibt es dafür zwei Paketvarianten statt einer einzigen mit fest eingebauter STEP-Vorschau — siehe [Downloads](#downloads-1).
+- **Code-Signing**: die macOS-`.dmg`- und Windows-`.msi`-Pakete sind unsigniert (kein Apple-Developer- bzw. Windows-Code-Signing-Zertifikat) — beim ersten Start warnen Gatekeeper bzw. SmartScreen entsprechend
+
+## Geplant
+
+Den aktuellen Stand zeigt immer die öffentliche [Roadmap](https://github.com/users/Bexxs75/projects/1/views/1?groupedBy%5BcolumnId%5D=416999698); sie ist maßgeblich.
+
+- **v0.15.0** – Updates direkt in der App, Test-Versionen mit eigenem Katalog, Einstellung „Womit druckst du?“, Resin-Dateien (`.ctb`, `.goo`, `.pwmx` …) katalogisieren, weitere Linux-Pakete (.deb, .rpm, AUR)
+- **v0.16.0** – Druckeranbindung für OctoPrint und Bambu Lab (PrusaLink später). Wer einen solchen Drucker hat, kann auf der [Testseite](https://3mfkatalog.de/druckertest.html) mithelfen.
+
+## Tech-Stack
+
+- **Framework:** Tauri 2 (Rust-Backend, WebView-Frontend)
+- **Frontend:** React 19, TypeScript, Tailwind CSS, Vite
+- **3D-Rendering:** three.js
+- **Datenbank:** SQLite (`rusqlite`)
+
+## Entwicklung
+
+Voraussetzungen: Node.js, Rust-Toolchain (`cargo`), sowie die [Tauri-Systemabhängigkeiten](https://tauri.app/start/prerequisites/) für dein Betriebssystem. Für die standardmäßig aktivierte STEP-Vorschau wird zusätzlich Open CASCADE 7.8 oder 7.9 als dynamische Systembibliothek einschließlich Entwicklungsdateien benötigt.
+
+```bash
+npm install
+npm run tauri dev
+```
+
+Ohne OCCT beziehungsweise für eine Fassung ohne STEP-Vorschau:
+
+```bash
+npm run tauri dev -- -- --no-default-features
+# oder: npm run tauri build -- -- --no-default-features
+```
+
+Backend-Tests:
+
+```bash
+cd src-tauri
+cargo test
+```
+
+Produktions-Build (Typprüfung + Vite-Build):
+
+```bash
+npm run build
+```
+
+## Projektstruktur
+
+```
+src/               React-Frontend (Komponenten, i18n, Hooks, Typen)
+src-tauri/         Rust-Backend (Tauri-Commands, DB, Parser für 3MF/STL/OBJ/STEP, Tagging)
+docs/              Zusätzliche Dokumentation
+```
+
+## Lizenz
+
+Der Anwendungscode steht unter MIT — siehe [LICENSE](LICENSE). Die optionale STEP-Vorschau bindet Open CASCADE dynamisch unter LGPL-2.1 mit Open-CASCADE-Ausnahme ein. Details, Lizenztexte und Quellenhinweise stehen in [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md).

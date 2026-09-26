@@ -1,400 +1,6 @@
 # Changelog
 
-Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
-Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/), Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
-
-Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unter der Scaffold-Versionsnummer `0.1.0`, ohne dass Meilensteine markiert wurden. Die folgenden Versionsgrenzen wurden nachträglich anhand von Entwicklungs-Tagen und natürlichen Feature-Abschlüssen (jeweils an einem Dokumentations-Commit) gezogen, keine davon wurde zum jeweiligen Zeitpunkt live getaggt oder veröffentlicht.
-
-## [Unreleased]
-
-### Changed
-
-- Dokumentation: README und Benutzerhandbuch nennen die Resin-Drucker, die mit der Druckeranbindung getesteten Drucker (Sovol SV08, Anycubic Kobra S1 mit Rinkhals) und die aktuelle Roadmap. Die Linux-Installation beschreibt jetzt die AppImage-Datei statt eines `.tar.gz`-Archivs, und eine neue FAQ erklärt, warum man vor einem Update eine Sicherung anlegen sollte.
-- Benutzerhandbuch: Alle Bilder zeigen jetzt v0.14.0 (3D-Vorschau in Koralle), dazu neue Bilder zu Resin-Druckern, „Drucker verwalten“, der Druckeranbindung (Hinweis und Dialog „Neue Drucke“) und Einstellungen → Drucker.
-- Die automatische CI-Prüfung läuft jetzt mit Node 24; mit Node 20 startete die Test-Umgebung nicht.
-
-## [0.14.0] - 2026-09-26
-
-### Added
-
-- **Druckeranbindung (Klipper/Moonraker):** Neuer Einstellungs-Reiter „Drucker“ mit dem Schalter „Druckeranbindung“ (standardmäßig aus). Pro Drucker lassen sich unter „Drucker verwalten“ Typ und Adresse eintragen und testen. Die App fragt angebundene Drucker beim Start, alle 5 Minuten und per Knopf nach beendeten Drucken, liest den tatsächlich geförderten Filamentverbrauch (bei abgebrochenen Drucken nur bis zum Abbruch) und rechnet ihn in Gramm um. Im Filament-Lager erscheint dann „N neue Drucke warten auf Bestätigung“: Im Dialog lassen sich pro Druck Spule (vorgeschlagen: die im Drucker eingelegte) und Katalogmodell (Vorschlag über den Dateinamen) prüfen, bestätigen oder ignorieren. Erst beim Bestätigen wird abgebucht; mit Modell entsteht zusätzlich ein Druckprotokoll-Eintrag, und das Modell wird als gedruckt markiert. Abgebucht werden nur Drucke, die nach dem ersten Verbinden enden. Die App spricht nur mit selbst eingetragenen Adressen im Heimnetz, liest nur und verändert am Drucker nichts. Getestet mit einem Sovol SV08. Resin-Flaschen werden von der Druckeranbindung nie vorgeschlagen oder abgebucht.
-- **Resin-Drucker mit Harzwanne:** Unter „Drucker verwalten“ wählst du beim Anlegen neben dem Namen „Filament“ oder „Resin“; die Art ist danach fest, bestehende Drucker sind Filament-Drucker. Ein Resin-Drucker bekommt statt des Spulenhalters genau eine „Harzwanne“ für eine Flasche, die sich weder umbenennen noch löschen lässt; weitere Einheiten und die Druckeranbindung gibt es für ihn nicht. In der Ansicht „Resin“ des Filament-Lagers steht er in der rechten Spalte: Eine Flasche setzt du per Ziehen oder über das Menü der Wanne ein (es listet nur Resin-Flaschen), die Wanne zeigt Flasche, Farbe und Rest in ml, „Herausnehmen“ bringt sie an ihren Stammplatz zurück, und „− Verbrauch“ gibt es auch für die eingesetzte Flasche. „Reicht das Filament?“, Kostenschätzung und Warteschlangen-Symbol berücksichtigen Resin-Drucker nicht.
-
-### Changed
-
-- Resin-Flaschen passen nur noch in die Harzwanne eines Resin-Druckers, Filament-Spulen nie in eine Harzwanne. Beim Ziehen wird ein unpassendes Fach nicht mehr hervorgehoben, das Fach-Menü zeigt nur passende Einträge, und ein eingelegter Eintrag lässt sich erst nach dem Herausnehmen auf die andere Art umstellen. In der rechten Spalte des Filament-Lagers erscheinen je nach Ansicht nur Filament- oder nur Resin-Drucker. Ältere Kataloge und Sicherungen werden beim Öffnen automatisch umgestellt.
-- Druckeranbindung: Das passende Katalogmodell wird auch vorgeschlagen, wenn der Slicer Druckermodell oder Datum vor den Dateinamen setzt oder die Platte als „plate(01)“ anhängt (z. B. Anycubic Kobra S1 mit Rinkhals, Dank an einen anonymen Tester).
-- Die Update-Prüfung erkennt jetzt auch Vorschauversionen (z. B. „0.14.0-gharac") korrekt als älter als das zugehörige fertige Release, statt nie ein Update zu melden.
-- Interne Qualitätsprüfungen: Testcode ist jetzt clippy-sauber, dazu ein automatischer CI-Prüflauf (TypeScript, Tests, Clippy) sowie eine wöchentliche Abhängigkeits-Sicherheitsprüfung (cargo-deny, npm audit).
-
-## [0.13.1] - 2026-09-25
-
-### Added
-
-- Filament-Lager: **Resin**. Oben im Lager schaltet „Filament | Resin" zwischen Spulen und Resin-Flaschen um; die App merkt sich die Auswahl. Übersicht, Liste, Suche, Filter und Kennzahlen gelten für die gewählte Art („Flaschen gesamt", Mengen in ml). Resin-Flaschen zeigen ein Flaschen-Symbol, den Rest in ml und die Flaschengröße statt des Durchmessers; der Status (vorrätig/niedrig/leer) folgt denselben Regeln. Über „− Verbrauch" buchst du verbrauchte Milliliter ab (auf 0,1 ml genau, nie unter 0). Neue Einträge bekommen die Art des gerade gewählten Bereichs (kein Umschalter im Formular), Material und Hersteller schlagen passende Werte vor; bei Resin heißt die Menge „Inhalt (ml)", der Durchmesser entfällt. Resin kommt nie in ein Druckerfach und zählt nicht bei „Reicht das Filament?", der Materialkosten-Schätzung, dem Filament-Symbol der Warteschlange und den Gramm-Summen. Alle bisherigen Einträge bleiben Filament; auch ältere Sicherungen lassen sich weiter einspielen.
-- Filament-Lager: **Nachkaufen**. Jede Karte hat unten links den Knopf „＋ Nachkaufen", jede Zeile der Listenansicht einen „＋"-Knopf. Ein kleines Fenster legt 1 bis 20 neue, volle Spulen bzw. Flaschen mit denselben Daten an (Art, Material, Hersteller, Farbname, Farbwert, Bild, Durchmesser). Menge, Preis je Stück und Lagerort sind mit den Werten der Vorlage vorbelegt (Lagerort: ihr Stammplatz, falls sie gerade im Drucker steckt) und lassen sich vorher ändern. Neue Einträge liegen immer im Lager. Alles wird in einem Schritt angelegt: Schlägt etwas fehl (z. B. weil die Vorlage inzwischen gelöscht wurde), entsteht kein einziger. Die neuen Karten sind danach kurz grün umrandet, eine Meldung nennt die Anzahl. Escape oder ein Klick daneben schließt das Fenster, ohne etwas anzulegen.
-- Filament-Lager: Ein **Doppelklick** auf eine Karte oder eine Tabellenzeile öffnet das Bearbeiten-Formular (wie ✎). Doppelklicks auf Knöpfe lösen das nicht aus.
-- Filament-Lager: Restgewichte werden auf 0,1 g genau gespeichert und angezeigt.
-
-### Changed
-
-- Die 3D-Vorschau zeigt Modelle jetzt in Koralle statt in Beige. Sie heben sich damit im hellen wie im dunklen Design deutlich vom Hintergrund ab.
-
-### Fixed
-
-- Filament-Lager: Das Bildfeld im Spulenformular („Bild hierher ziehen oder klicken") nimmt jetzt auch per **Drag & Drop** hineingezogene Bilder an; bisher funktionierte nur Klicken. Erlaubt ist genau eine PNG-, JPG- oder WebP-Datei bis 5 MB (wie beim Klick-Upload). Das Feld hebt sich beim Darüberziehen hervor. Bei mehreren Dateien, einer anderen Datei oder einem zu großen Bild erscheint der Hinweis direkt unter dem Bildfeld, und „Speichern" lässt das Formular offen, bis ein anderes Bild gewählt oder der Hinweis geschlossen wird. Ein Drop im Filament-Lager startet nie einen Modell-Import.
-- Filament-Lager, Listenansicht: Spulen ohne eigenes Bild zeigen ein Spulen-Symbol in der Spulenfarbe statt eines leeren Kästchens, das wie eine Checkbox aussah.
-
-## [0.13.0] - 2026-09-24
-
-### Added
-
-- Archive direkt entpacken: Über „Importieren → Dateien…" oder per Drag & Drop hinzugefügte Archive (`.zip`, `.7z`, `.rar` (RAR4/RAR5), `.tar`, `.tar.gz`/`.tgz`, `.tar.bz2`/`.tbz2`, `.tar.xz`/`.txz`, `.tar.zst`/`.tzst`) öffnen einen Dialog: Zielordner (vorbelegt mit dem aktiven Katalogordner bzw. dem Speicherort), je Archiv ein eigener Unterordner, bei bereits vorhandenem Ordner Wahl zwischen „neuer nummerierter Ordner" und „zusammenführen" (vorhandene Dateien bleiben unverändert), optional Löschen der Original-Archive nach dem Entpacken (standardmäßig aus; ein Archiv wird nur gelöscht, wenn alle Einträge entpackt wurden – wurde etwas übersprungen, bleibt es liegen und das Ergebnis-Banner nennt den Grund). Enthaltene Bilder, Anleitungen und Lizenzdateien bleiben neben den Modellen erhalten. Der Ordner-Import entpackt weiterhin nichts.
-- Schutz beim Entpacken: Einträge mit `..`, absoluten Pfaden oder Laufwerksbuchstaben (Zip-Slip) sowie Symlinks werden übersprungen. Ausführbare Dateien, Skripte und Verknüpfungen (`.exe`, `.bat`, `.ps1`, `.lnk`, `.url`, `desktop.ini`, `.desktop`, `.app` u. a.) werden grundsätzlich nicht entpackt. Kein Eintrag darf in geschützte Systembereiche schreiben, entpackte Dateien sind nie ausführbar, und die „Aus dem Internet"-Markierung des Downloads (Windows Mark-of-the-Web, macOS-Quarantäne) wird auf die entpackten Dateien übertragen. Pro Archiv gelten höchstens 2 GB entpackt und 10 000 Einträge (auch gegen gefälschte Größenangaben), dazu Speichergrenzen für die Dekompression. RAR-Einträge werden einzeln im Speicher entpackt; ein Eintrag über 1 GB lässt das ganze Archiv scheitern (bereits Entpacktes wird entfernt). Datei-Verweise in RAR-Archiven (mit `rar -oi` erzeugte Datei-Kopie-/Hardlink-Einträge) übernehmen nie den Inhalt der referenzierten Datei: Sie werden übersprungen, ergeben bei Größe 0 eine leere Datei oder lassen bei einem Prüfsummenfehler das ganze Archiv scheitern. Entpackt werden nur Archive, die tatsächlich über den Dateidialog oder per Drag & Drop hereingekommen sind (vom Backend selbst geprüft). Als Zielordner sind nur Katalogordner oder ein in einem Ordner-Auswahldialog der App gewählter Ordner möglich; Ordner, die geschützte Bereiche enthalten (z. B. das Home-Verzeichnis selbst), sind als Ziel gesperrt. Bei einem Fehler wird alles bereits Entpackte wieder entfernt.
-- Filament-Lager: **Drucker & AMS-Fächer**. Drucker und ihre Mehrfarbeinheiten lassen sich über „Drucker verwalten" anlegen – mit Vorlagen für Bambu AMS/AMS lite/AMS HT, Creality CFS, Prusa MMU3, Anycubic ACE Pro und Spulenhalter oder als eigene Einheit mit 1–16 Fächern; Name und Reihenfolge änderbar; jeder neue Drucker erhält automatisch einen Spulenhalter (1 Fach), damit auch Drucker ohne AMS direkt eine Spule aufnehmen. Spulen kommen per Drag & Drop oder über das Menü am Fach hinein; bei einem belegten Fach kehrt die Spule, die schon im Fach steckt, an ihren Stammplatz zurück, von Fach zu Fach wird verschoben. Eingelegte Spulen stehen in einer eigenen Spalte rechts neben dem Lager und zählen weiter im Gesamtbestand. Beim Herausnehmen kehrt eine Spule automatisch an ihren Stammplatz zurück (Hinweis mit „Ändern"). Löschen einer Einheit oder eines Druckers schickt deren Spulen ebenfalls zurück.
-- Filament-Lager: Spulen haben jetzt einen **Farbwert** (Palette mit 16 gängigen Filamentfarben oder Hex-Eingabe) zusätzlich zum Farbnamen; bekannte Farbnamen bestehender Spulen (z. B. „Schwarz", „Galaxy Black", „Dunkelblau") werden beim Update automatisch umgesetzt.
-- Automatische Tags in der Oberflächensprache: Die beim Import vergebenen Tags „mehrteilig", „miniatur", „grossformat" und „mehrfarbig" erscheinen jetzt auf Englisch (multipart, mini, large, multicolor), Spanisch und Französisch, wenn die Oberfläche so eingestellt ist. Die Suche findet sie unter beiden Namen. Wer einen dieser Namen in einer anderen Sprache von Hand eingibt (z. B. „Multipart"), bekommt den vorhandenen Tag statt eines zweiten. Bereits vorhandene Tags mit solchen Namen (etwa aus Dateinamen) werden beim nächsten Start einmalig mit dem automatischen Tag zusammengelegt, auch in gespeicherten Filtern – außer den mehrdeutigen Wörtern „mini", „large" und „grande", die nur bei Eingabe von Hand dem automatischen Tag zugeordnet werden.
-- Beim Vorschlagen von Tags aus Dateinamen werden jetzt auch englische, spanische und französische Füllwörter ignoriert (z. B. „untitled", „copia", „nouveau").
-- Filament-Lager: **„Reicht das Filament?“** – für in Bambu Studio oder OrcaSlicer geslicete 3MF-Dateien vergleicht die Detailseite den Filamentbedarf (über alle Platten zusammengezählt) mit deinen Spulen: gleiches Material und ähnliche Farbe (Farbabstand CIEDE2000). Pro Filament zeigt sie „reicht“, „reicht mit Spulenwechsel“, „reicht nicht“ (mit Fehlmenge) oder „unklar“, dazu die passende Spule mit Restgewicht und ob sie im Drucker steckt (Drucker · Einheit · Fach) oder wo sie liegt. Die Druck-Warteschlange zeigt den Status als Symbol je Eintrag und rechnet von oben nach unten mit dem Gesamtbedarf. Es wird nichts abgebucht.
-- **Werkzeuge in der Seitenleiste:** Ein neuer Abschnitt bündelt die Warteschlange (aufklappbar, wie bisher mit Ziehen zum Umsortieren), die Ansichten „Zuletzt angesehen“ (die 20 zuletzt angesehenen Modelle), „Neu hinzugefügt“ (letzte 7 Tage), „Favoriten“ (alle mit Herz markierten Modelle, alphabetisch) und „Duplikate“ (Modelle mit identischem Dateiinhalt, gruppiert) sowie die Aufräum-Vorschläge – jeweils mit Anzahl. Filament-Lager und Papierkorb bleiben wie bisher in der linken Leiste. Eine gewählte Ansicht erscheint oben als Filter-Chip und lässt sich mit Ordnern, Tags und Suche kombinieren.
-
-### Fixed
-
-- Robustheit: Das Umbenennen oder Verschieben von Ordnern beendet die App bei einer inkonsistenten Ordnerhierarchie (z. B. aus einem präparierten Katalog-Backup) nicht mehr abrupt, sondern bricht mit einer Fehlermeldung ab.
-- Katalog-Sicherung: Beim Import werden jetzt auch die Datentypen aller Spalten geprüft; eine präparierte Sicherung mit falschen Werten (z. B. Text statt Zahl) wird abgelehnt, statt danach Ladefehler zu verursachen.
-- Die Sortierung „Zuletzt angesehen“ berücksichtigt jetzt alle Modelle, nicht nur die in dieser Sitzung bereits geöffneten.
-
-## [0.12.1] - 2026-09-23
-
-### Fixed
-
-- Die App startete nicht mehr (Absturz direkt nach dem Öffnen, ohne Fehlermeldung), wenn der Katalog noch Einträge aus der früheren Google-Drive-Anbindung enthielt (entfernt in v0.5.0). Die mit v0.11.0 eingeführte Datenbank-Migration für STEP/OBJ baut die Dateitabelle mit einer strengeren Prüfung neu auf und scheiterte an diesen Einträgen („CHECK constraint failed: origin IN ('local')"). Solche Einträge werden jetzt während der Migration in normale lokale Einträge umgewandelt – Tags, Sammlungen und alle übrigen Daten bleiben erhalten. Der Katalog selbst war nie beschädigt: die fehlgeschlagene Migration wurde jeweils vollständig zurückgerollt.
-- Enthält außerdem die nach v0.12.0 bereits still in die Downloads eingespielten Build-Korrekturen: Linux-AppImage startet wieder auf Systemen mit neuerem Mesa (EGL-Absturz durch mitgebündelte, veraltete Wayland-/X11-Bibliotheken) und ein echtes Universal-DMG (Apple Silicon + Intel) für macOS.
-
-## [0.12.0] - 2026-09-21
-
-### Added
-
-- STEP-Vorschau (`.stp`/`.step`) gibt es jetzt auf **allen drei Plattformen** — Linux, Windows und macOS. Für jede Plattform stehen zwei Downloadvarianten bereit: eine mit STEP-Vorschau (Dateiname mit `-step`-Zusatz, enthält Open CASCADE Technology/OCCT) und eine kleinere ohne (STEP-Dateien lassen sich weiterhin katalogisieren — Tags, Suche, Umbenennen, Papierkorb —, nur eben ohne 3D-Vorschau und automatisch ermittelte Abmessungen/Volumen/Körperzahl). Baugruppen werden bewusst als ein gemeinsames Vorschaunetz dargestellt; STEP lässt sich weiterhin nicht direkt im Slicer öffnen. Fehlerhafte oder zu große STEP-Dateien bleiben ohne automatisch ermittelte Metadaten im Katalog, statt den Import abzubrechen.
-- Windows: MSI mit gebündelten OCCT-DLLs (`build-windows-step.yml`, OCCT-Build über ein gepinntes vcpkg-Manifest). macOS: DMG mit den OCCT-`.dylib`s direkt im App-Bundle (`build-macos-step.yml`, per `dylibbundler` auf `@executable_path`-relative Pfade umgeschrieben). Beide auf echten Zielsystemen ohne vorinstalliertes OCCT verifiziert — die App startet und die STEP-Vorschau funktioniert, auch ohne dass OCCT auf dem Zielrechner separat installiert ist.
-- Die OCCT-Anbindung ist ein abschaltbares Cargo-Feature (`step-preview`, per Default aktiv) und lässt sich mit `--no-default-features` vollständig aus dem Build entfernen — genau das erzeugt die kleinere Downloadvariante ohne STEP-Vorschau.
-- Automatische Slicer-Erkennung durchsucht jetzt auch unter macOS bekannte Installationsorte (Bambu Studio, OrcaSlicer u. a.), analog zur bisherigen Linux-/Windows-Unterstützung.
-- Open CASCADE wird dynamisch unter LGPL-2.1 mit Open-CASCADE-Ausnahme eingebunden. Vollständige Lizenztexte, Quellenhinweise und der dokumentierte `opencascade-sys`-Kompatibilitäts-Fork werden mit dem Quellcode beziehungsweise Programmpaket bereitgestellt; Details stehen in `THIRD-PARTY-LICENSES.md`.
-
-### Fixed
-
-- Die Zeile "Drittanbieter-Lizenzen" im Info-Tab der Einstellungen brach bei Label und Wert auf zwei Zeilen um, anders als die übrigen Zeilen dort — Text auf allen vier Sprachen gekürzt.
-- Vier Security-Unit-Tests für die Prüfung auf geschützte Systemverzeichnisse schlugen auf macOS fehl, weil `/home` dort ein Automounter-Symlink auf `/System/Volumes/Data/home` ist und `/var` ein Symlink auf `/private/var` — ein reiner Testbug (nicht-existente Testpfade wurden nur einseitig kanonisiert), kein Fehler in der eigentlichen Prüflogik.
-
-## [0.11.0] - 2026-09-20
-
-### Added
-
-- STEP-Dateien (`.stp`/`.step`) können jetzt katalogisiert werden — wie 3MF/STL mit Tags, Suche, Umbenennen, Verschieben und Papierkorb, allerdings (noch) ohne 3D-Vorschau, da STEP parametrische CAD-Geometrie statt eines Dreiecksnetzes ist. STEP-Dateien lassen sich bewusst nicht direkt im Slicer öffnen, da die meisten Slicer kein rohes STEP importieren können.
-- OBJ-Dateien (`.obj`) können jetzt katalogisiert werden — inklusive vollwertiger 3D-Vorschau, da OBJ (anders als STEP) ein reines Dreiecksnetz ist. OBJ-Dateien lassen sich wie 3MF/STL direkt im Slicer öffnen.
-
-## [0.10.1] - 2026-09-20
-
-### Fixed
-
-- Pfeiltasten-Navigation im Raster scrollte nicht mit, wenn die neu ausgewählte Kachel den sichtbaren Bereich verließ — man navigierte "blind" weiter, ohne zu sehen, welches Modell gerade ausgewählt ist.
-
-## [0.10.0] - 2026-09-20
-
-### Added
-
-- Modelle lassen sich jetzt direkt umbenennen: Kontextmenü → "Umbenennen", inline im selben Popup wie die Löschen-Bestätigung. Die Dateiendung (.3mf/.stl) wird dabei fest angezeigt und ist nicht editierbar. Verschiebt eine Umbenennung das Modell (Standardsortierung nach Name) aus dem sichtbaren Bereich, scrollt die Ansicht automatisch dorthin.
-- Echte Pfeiltasten-Navigation im Raster: Hoch/Runter springt jetzt anhand der tatsächlich gerenderten Kachel-Position zur nächsten Zeile, statt nur zum nächsten/vorherigen Element in der Liste (vorher verhielt sich Runter wie Rechts).
-- Leertaste schaltet die Mehrfachauswahl-Checkbox des aktuell ausgewählten Modells um.
-
-## [0.9.0] - 2026-09-20
-
-### Added
-
-- Tastaturkürzel: `/` fokussiert die Suche, Pfeiltasten wechseln die Auswahl innerhalb der aktuell gefilterten/sortierten Modell-Liste, Entf/Rücktaste öffnet bei aktiver Mehrfachauswahl die bestehende Löschen-Bestätigung (löscht nicht direkt). Alle drei greifen nicht, solange der Fokus in einem Eingabefeld liegt.
-- Mehrfachauswahl-Leiste: Tags lassen sich jetzt für mehrere ausgewählte Modelle gleichzeitig hinzufügen ("Tag hinzufügen") oder entfernen ("Tag entfernen", Dropdown mit allen in der Auswahl vorkommenden Tags) — bisher musste dafür jedes Modell einzeln geöffnet werden.
-- Suche durchsucht jetzt zusätzlich zum Dateinamen auch Tags, Ersteller und den Dateipfad.
-
-### Fixed
-
-- Slicer-Name in den Einstellungen konnte bei langen Namen fast vollständig verschwinden (z. B. auf "B.." verkürzt), weil er sich mit dem "Standard"-Badge eine Zeile ohne Mindestbreite teilte ([GitHub Issue #10](https://github.com/Bexxs75/3mf-katalog-manager/issues/10)). Der Name steht jetzt immer in einer eigenen, vollbreiten Zeile; das Badge steht in der Zeile darunter vor dem Programmpfad.
-- Der Creator-Filter (Sidebar) lief für jedes nur per schlanker Katalog-Übersicht geladene Modell ins Leere, da `creator` in dieser Projektion bislang fehlte und im Frontend hartcodiert `null` war — dieselbe Fehlerklasse wie der bereits behobene 3D-Vorschau-Bug. Betraf effektiv den gesamten Katalog, bis ein Modell einzeln geöffnet wurde.
-
-### Removed
-
-- Import-Option "Ordner als Sammlung importieren" entfernt: seit Ordner echte Dateisystem-Verzeichnisse sind, legte diese Option ohnehin schon zusätzlich einen normalen Ordner an (identisch zu "Ordner...") und packte die Dateien zusätzlich in eine Sammlung — der ursprüngliche Zweck (irgendeine Gruppierung erzwingen, als Ordner noch rein virtuell waren) ist damit entfallen. Sammlungen lassen sich weiterhin über die Mehrfachauswahl-Aktionsleiste ("Zu Sammlung hinzufügen") anlegen.
-
-## [0.8.1] - 2026-09-20
-
-### Security
-
-- Interne Härtung nach dem [Senior-Code-Review vom 2026-09-19](docs/superpowers/plans/2026-09-19-senior-code-review-fixes.md) (14 Aufgaben plus Abschluss-Review): Datenbank-Migrationen laufen jetzt über ein richtiges, versioniertes Migrations-System (`db/migrations.rs`) statt stillschweigend ausgeführter `ALTER TABLE`-Anweisungen; mehrere Fehlerpfade beim Löschen/Wiederherstellen aus dem Papierkorb (Einzel- und Mehrfachauswahl) holen eine bereits physisch verschobene Datei jetzt zuverlässig zurück, falls der zugehörige Datenbank-Eintrag nicht aktualisiert werden konnte, statt sie verwaist liegen zu lassen. Keine sichtbare Funktionsänderung, rein interne Robustheit.
-
-### Changed
-
-- Die Slicer-Registrierung (Name, Programmpfad, automatisch erkannt oder manuell hinzugefügt) lebt jetzt in der Katalog-Datenbank statt in localStorage. Beim ersten Start nach dem Update werden nur automatisch erkennbare Slicer (Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura an bekannten Installationsorten) erneut per Startup-Scan gefunden; manuell hinzugefügte, individuelle Programmpfade werden beim Upgrade NICHT übernommen und müssen bei Bedarf neu eingerichtet werden. Beim Wiederherstellen eines Katalog-Backups bleiben lokal registrierte Slicer unverändert erhalten; Slicer-Einträge, die im Backup selbst enthalten waren (z.B. von einem anderen Rechner), werden dabei NICHT übernommen und müssen bei Bedarf manuell neu hinzugefügt werden — lokale Slicer-Konfiguration geht durch ein Backup-Restore also nie verloren.
-- Der zuvor beim Export exportierte, aber nirgends mehr benötigte localStorage-Schlüssel für die alte, lokale Slicer-Liste wird nicht mehr in Katalog-Backups aufgenommen (konnte dort einen maschinenlokalen Programmpfad hinterlassen).
-
-### Fixed
-
-- Katalog-Übersicht (Raster/Ordner/Liste) zeigte bereits im Hintergrund gerenderte 3D-Vorschauen nicht an, solange ein Modell nicht einzeln geöffnet wurde: die schlanke Summary-Abfrage für die Übersicht ließ den gerenderten Snapshot bewusst weg (in der Annahme, er sei "der große Blob"), obwohl er im Schnitt kleiner ist als das ohnehin mitgelieferte eingebettete Vorschaubild (~8,9 KB vs. ~54 KB). Modelle ohne eigenes Vorschaubild (z. B. STL-Dateien) zeigten deshalb dauerhaft nur den leeren "3D Vorschau"-Platzhalter, obwohl in der Datenbank längst ein fertiger Snapshot lag.
-
-## [0.8.0] - 2026-09-19
-
-### Added
-
-- Neue Ansicht "Ordner": Modelle können nach Ordnern gruppiert angezeigt werden (als Kachel-Raster oder Zeilen-Liste), verschachtelte Unterordner eingerückt mit Verbindungslinie, einzeln einklappbar (Zustand bleibt erhalten). Ordner-Kopfzeilen und Dateien lassen sich innerhalb dieser Ansicht direkt per Maus verschieben, genau wie bisher schon in der Seitenleiste.
-- Update-Check: Beim Start wird einmalig still geprüft, ob auf GitHub eine neuere Version vorliegt (kein automatischer Download); bei neuerer Version erscheint ein wegklickbarer Hinweis unten rechts, zusätzlich manuell im neuen "Info"-Tab der Einstellungen abrufbar.
-
-### Changed
-
-- Einstellungen in 4 Reiter aufgeteilt (Allgemein, Slicer, Katalog, Info) statt einer einzigen scrollenden Liste; die Dichte-Einstellung (Kompakt/Komfort) ist jetzt Teil von "Erscheinungsbild" statt eines eigenen Abschnitts.
-
-## [0.7.8] - 2026-09-19
-
-### Changed
-
-- Frontend-Refactor: `App.tsx` (vormals 1148 Zeilen, 48 State-/Effect-Hooks, 29 inline `invoke()`-Aufrufe) in fokussierte Hooks (`useCatalogStore`, `useCatalogFilters`, `useCollections`, `useBulkSelection`, `useFileImport`, `useFolderDragAndDrop`, `useCatalogBackup`, `useCatalogCleanup`, `useSlicerLauncher`), einen typisierten `src/lib/api/*`-Wrapper um alle Tauri-Commands und drei ausgelagerte Komponenten (`TrashView`, `CatalogWorkspace`, `BulkActionToolbar`) aufgeteilt. `App.tsx` ist damit auf rund 310 Zeilen reine Komposition geschrumpft. Erste automatisierte Frontend-Testsuite (Vitest + Testing Library) eingeführt. Keine Verhaltensänderung
-
-### Security
-
-- Allgemeine ISO-27000-orientierte Sicherheitsprüfung des gesamten Codebase durchgeführt ([Security-Review 2026-09-19](docs/security/security-review-2026-09-19.md)). Vier Hoch-Findings behoben, alle auf dieselbe Ursache zurückgehend: importierte Katalog-Backups wurden nur teilweise als nicht vertrauenswürdig behandelt.
-  - Slicer-Startliste aus fremdem Backup konnte beliebiges Programm startbar machen (z.B. `/bin/sh`) — wird beim Import jetzt übersprungen, übrige Einstellungen gegen eine Werte-Whitelist geprüft (CWE-829)
-  - `files.name`/`trash_path` aus importiertem Katalog konnten beliebiges Schreiben bzw. automatisches Löschen fremder Dateien auslösen — jetzt vollständig validiert bzw. auf das echte Trash-Verzeichnis eingegrenzt (CWE-22, CWE-829)
-  - `source_url` wurde nur beim Schreiben, nicht beim Lesen validiert — ein `javascript:`-Link hätte beim Klick Code im App-Kontext ausführen können, jetzt beidseitig (Backend + Frontend) gefiltert
-  - Kein Größenlimit beim Entpacken von 3MF-/Backup-Zip-Einträgen (Zip-Bomb-Risiko) — jetzt auf 16-256 MB je nach Eintragstyp begrenzt, Prüfung vor dem vollständigen Dekomprimieren
-  - Zusätzlich behoben: Pfadprüfung ohne Kanonisierung (umgehbar via `../`/Symlinks), fehlende Validierung des Slicer-Datei-Arguments, fehlendes Größenlimit bei Render-Snapshots
-  - Ungenutzte Datei mit Klartext-Google-OAuth-Credentials (Rest der 2026-09-12 entfernten Cloud-Integration) gelöscht
-
-### Fixed
-
-- Ordner per Drag & Drop verschieben markierte ungewollt Text in der Sidebar (mausbasiertes Drag&Drop statt natives HTML5-DnD); der gezogene Ordner war zudem visuell nicht von den anderen zu unterscheiden — zeigt jetzt reduzierte Deckkraft während des Ziehens
-
-## [0.7.7] - 2026-09-18
-
-### Security
-
-- Importierte Katalog-Backups (`import_catalog`) konnten `folders.path`/`files.path` auf beliebige Orte setzen, die anschließend ungeprüft an `fs::rename`/`fs::create_dir` weitergereicht wurden (`create_folder`, `rename_folder`, `move_folder`, `move_file_to_folder`) — ein präpariertes Backup-ZIP hätte so z.B. Autostart-Verzeichnisse als Ziel unterschieben können ([Security-Review 2026-09-18](docs/security/security-review-2026-09-18.md), Finding 1, CWE-829). Neue Prüfung `reject_if_sensitive_path` lehnt Ziele in bekannten sensiblen Systemverzeichnissen (Config-/Autostart-/SSH-/Systemverzeichnisse) ab, sowohl direkt beim Import als auch bei jeder späteren Ordner-/Datei-Verschiebung
-- Temporäre Katalog-Datenbank-Kopien beim Export/Import (`export_catalog`, `import_catalog`) landeten mit vorhersagbaren, PID-basierten Namen und Standard-Berechtigungen im geteilten `/tmp` (CWE-377) — auf Mehrbenutzer-Systemen von anderen lokalen Nutzern mitlesbar bzw. per Symlink-Race angreifbar. Werden jetzt exklusiv angelegt (`create_new`, schlägt fehl statt einem vorhandenen Symlink zu folgen) und wie `catalog.db` auf `0600` gehärtet
-
-### Added
-
-- GitHub-Actions-Workflows `build-macos.yml` und `build-windows.yml` (nur manuell per `workflow_dispatch` auslösbar): bauen unsignierte `.dmg`- bzw. `.msi`-Pakete komplett auf GitHubs eigenen Cloud-Runnern, ohne dass der lokale Rechner eine Mac- oder Windows-Toolchain braucht. Beide Ausgaben wurden nachträglich dem bestehenden [v0.7.6-Release](https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v0.7.6) hinzugefügt, das damit jetzt Linux, macOS und Windows abdeckt
-- Bebildertes Benutzerhandbuch (`docs/benutzerhandbuch/BENUTZERHANDBUCH.md`, zweisprachig DE+EN) für Einsteiger ohne Vorwissen über die App, von der README aus verlinkt. Alle Screenshots zeigen frei erfundene Beispieldaten (Modelle, Filamentspulen) mit deutscher UI-Beschriftung, keine echten Nutzerdaten
-
-## [0.7.6] - 2026-09-16
-
-### Added
-
-- Standard-Slicer: ein Radio-Button pro Zeile in den Einstellungen legt fest, welcher Slicer "In Slicer öffnen" verwendet ([GitHub Issue #7](https://github.com/Bexxs75/3mf-katalog-manager/issues/7)). Ersetzt die bisherige implizite "zuletzt verwendet"-Logik (`lastUsedId`, bei jedem Klick still überschrieben) durch eine sichtbare, selbst gewählte Voreinstellung (`primaryId`). Bestehende `lastUsedId`-Werte aus localStorage werden beim ersten Laden einmalig als initialer Standard übernommen. Der allererste konfigurierte Slicer wird automatisch zum Standard
-
-### Changed
-
-- `DetailPanel.tsx`: der Split-Button+Dropdown zum spontanen Umschalten des Ziel-Slicers entfällt zugunsten des neuen Standard-Slicers — konsistentes Verhalten an allen drei Einstiegspunkten (Kontextmenü, Detailpanel, Detailseite), die jetzt alle denselben, in den Einstellungen festgelegten Slicer verwenden. Das Kontextmenü brauchte dafür keine Änderung, da es schon vorher ohne feste Slicer-Auswahl aufgerufen wurde
-
-## [0.7.5] - 2026-09-16
-
-### Fixed
-
-- Listen- und Grid-Ansicht: Scrollen bis ans Ende ließ sich unter Linux (WebKitGTK) noch weiter über den Inhalt hinaus ziehen (elastischer Rubber-Band-Overscroll), statt am Ende zu stoppen ([GitHub Issue #5](https://github.com/Bexxs75/3mf-katalog-manager/issues/5)). Der v0.7.4-Fix (`overscroll-behavior: contain` an den beiden Haupt-Scroll-Containern) reichte nicht aus, da dabei der komplette Fensterinhalt (auch Header/Sidebar außerhalb dieser Container) sichtbar mitwanderte — laut Spezifikation verhindert `contain` nur die Weitergabe an Eltern-Elemente, nicht den Bounce-Effekt auf der Seite selbst. Jetzt zusätzlich `overscroll-behavior: none` auf `html`/`body` gesetzt, was den Seiten-Bounce auf Root-Ebene unterbindet
-
-### Reverted
-
-- Der Pinch-Zoom-Fix aus v0.7.4 ([GitHub Issue #6](https://github.com/Bexxs75/3mf-katalog-manager/issues/6)) wurde zurückgenommen: nach weiterer Analyse stellte sich heraus, dass die beobachtete Vergrößerung eine Bildschirm-/Trackpad-Zoomfunktion des Notebooks selbst war (Betriebssystem-Ebene), kein Bug der App. Der globale `wheel`-Listener in `App.tsx` löste ohnehin nicht die tatsächliche Ursache und wurde daher wieder entfernt, statt unnötig Komplexität für ein Nicht-Problem der App zu behalten
-
-## [0.7.3] - 2026-09-13
-
-### Fixed
-
-- 3D-Vorschau: Modelle ließen sich per Maus nicht mehr sauber um die eigene stehende Achse drehen — 3MF/STL-Geometrie liegt Z-up vor (Druckplatte = XY-Ebene, Z = Druckhöhe), Three.js/OrbitControls gehen aber von Y-up aus. Dadurch lag die stehende Achse der Figur quer zur Kamera-Drehachse: freies Ziehen kippte sie seitlich um, statt sie wie einen Drehteller zu drehen. Die Modell-Geometrie wird beim Laden jetzt einmalig um -90° um die X-Achse gedreht, wodurch jede Drehung (Maus-Drag, Auto-Rotation, Pfeil-Buttons) die Figur aufrecht hält und dabei frei geneigt werden kann
-
-## [0.7.2] - 2026-09-13
-
-### Fixed
-
-- Import vieler Dateien auf einmal (Ordner-Import) war spürbar langsam: jede importierte Datei öffnete und committete bisher ihre eigene Datenbank-Transaktion, und SQLite fsynct bei jedem Commit — bei einem Ordner mit vielen Modellen summierte sich das zu vielen einzelnen Festplatten-Synchronisationen nacheinander. Der komplette Batch läuft jetzt in einer einzigen Transaktion mit einem Commit am Ende
-
-## [0.7.1] - 2026-09-13
-
-### Security
-
-- Path-Traversal in `create_folder`/`rename_folder` behoben (CWE-22, gefunden bei Review gegen ISO/IEC 27002 A.8.28): der Ordnername wurde ungeprüft in Pfad-Operationen übernommen, wodurch z. B. `../../etc/x` oder ein absoluter Pfad einen echten Verzeichnis-Vorgang weit außerhalb des Katalog-Ordnerbaums hätte auslösen können — bei `create_folder` direkt über das "+ Neuer Ordner"-Eingabefeld erreichbar. Neuer gemeinsamer Validierungs-Helfer lehnt Pfad-Trenner, `.`/`..` sowie leere Namen ab. Zusätzlich prüft `open_in_file_manager` jetzt, dass der übergebene Pfad ein echtes existierendes Verzeichnis ist
-
-## [0.7.0] - 2026-09-13
-
-### Added
-
-- Materialkosten-Schätzung: bei Modellen mit echtem Slicer-Filamentverbrauch zeigt die Detailseite jetzt zusätzlich eine geschätzte Materialkosten-Summe, berechnet aus dem Verbrauch je Filament und dem Durchschnittspreis passender Spulen im Filament-Lager (Materialtyp-Abgleich, Farbe wird bewusst nicht berücksichtigt); fehlt ein Preis, wird das klar als "unbekannt" ausgewiesen statt als 0
-- Druckprotokoll: auf der Modell-Detailseite lässt sich jetzt zusätzlich zum bestehenden Druckstatus-Toggle ein Protokoll mehrerer Druckversuche führen — Datum, optionale Notiz, optionales Foto pro Eintrag, bewusst unabhängig vom Druckstatus (keine automatische Ableitung in beide Richtungen)
-- Katalog-Backup (Export/Import): neue Sektion im Einstellungen-Panel sichert die komplette Katalog-Datenbank plus Einstellungen (Theme, Sprache, Slicer-Liste, Ansicht) als ZIP-Datei; Import (mit Bestätigungsabfrage, da destruktiv) ersetzt den aktuellen Katalog sicher — die alte Datenbank wird nie gelöscht, nur als `.bak-<Zeitstempel>` beiseitegelegt, mit automatischer Wiederherstellung bei einem fehlgeschlagenen Import; nach erfolgreichem Import lädt die App automatisch neu, damit keine veralteten Modell-IDs im Katalog stehen bleiben
-- Navigationsleiste (links, feste Icon-Leiste) ersetzt den bisherigen Katalog/Filament-Lager-Wechsel-Button im Header sowie das Papierkorb-Icon; die Zahnrad-Einstellungen wandern ebenfalls dorthin. Design als klickbarer HTML-Prototyp mit Nutzer-Feedback abgestimmt
-- Echte Ordnerstruktur: Ordner im Katalog bilden jetzt echte Verzeichnisse auf der Platte ab. Import einer Ordnerstruktur legt automatisch eine passende Hierarchie in der Datenbank an (rekursiv, inkl. Unterordner), die Sidebar zeigt einen auf-/zuklappbaren Ordner-Baum statt der bisherigen (praktisch immer leeren) flachen Liste. Dateien und Ordner lassen sich per Drag & Drop **physisch** verschieben — inklusive rekursivem Pfad-Update für alle betroffenen Unterordner/Dateien und Schutz vor Verschieben in den eigenen Unterordner; neuer "+ Neuer Ordner"-Button legt echte Verzeichnisse an
-- Sammlungen sind jetzt Teil der linken Sidebar (mit "alle anzeigen"-Galerie und Inline-Anlage) statt eines separaten Reiters im Inhaltsbereich
-- Katalog-Speicherort-Ersteinrichtung: Dialog beim ersten Start (und jederzeit über die Einstellungen erreichbar) erklärt die neue Ordner-Bedeutung und bietet an, eine bestehende Ordnerstruktur zu übernehmen oder einen neuen, auch leeren Speicherort einzurichten — mit Hinweis, welche Dateitypen erfasst werden (.3mf/.stl) und dass bereits gepackte Archive (z. B. .zip) nicht berücksichtigt werden. "Dateien importieren" platziert Einzeldateien danach im gerade aktiven Ordner bzw. im konfigurierten Speicherort, statt immer in der Wurzel zu landen. Neuer Button "Ordner im Dateimanager öffnen" (Dialog und Einstellungen)
-
-### Changed
-
-- Kartenradius zwischen Katalog, Sammlungen-Galerie und Filament-Lager vereinheitlicht (10px, unabhängig von der UI-Dichte)
-- Kopfzeile ("3MF Katalog Manager") geht jetzt über die volle Fensterbreite, die Navigationsleiste beginnt erst darunter
-- Sidebar: Abschnitte "Creators" und "Gespeicherte Filter" entfernt (unnötig geworden), "Tags" steht jetzt vor der Warteschlange
-
-### Fixed
-
-- 3D-Live-Vorschau schlug bei sehr großen Modellen (mehrere hunderttausend bis über eine Million Vertices) im Release-Build stumm fehl ("Vorschau nicht verfügbar"): Tauri liefert große IPC-Binärantworten über einen separaten internen `fetch()` aus, den die Content-Security-Policy ohne explizite `connect-src`-Direktive blockierte. Betraf nur außergewöhnlich große Dateien, kleinere 3mf-Modelle waren nie betroffen
-
-## [0.6.0] - 2026-09-13
-
-Erster getaggter Release. Die einzelnen Abschnitte unten stammen aus mehreren Entwicklungstagen (2026-09-12 und 2026-09-13), siehe Hinweis oben zur rückwirkenden Versionierung.
-
-### Added
-
-- Filamentverbrauch aus gesliceten OrcaSlicer/Bambu-Studio-3mf-Dateien: liest `Metadata/slice_info.config` beim Import mit aus und zeigt auf der Modell-Detailseite das echte, vom Slicer berechnete Gewicht statt der bisherigen groben Schätzung aus Volumen × Materialdichte — inklusive Aufschlüsselung pro Druckplatte und Filament (Typ, Farbe, Gramm, Meter). Neuer Button "Metadaten neu einlesen" liest eine bereits katalogisierte Datei erneut vom Pfad ein, falls sie inzwischen in OrcaSlicer/Bambu Studio gesliced und überschrieben wurde (inkl. sichtbarer Erfolgsmeldung, Fehler/Erfolg sind pro Modell gescoped). Bewusst außerhalb des Scopes: Live-Drucker-Anbindung, Headless-Slicing, automatischer Abzug vom Filament-Lager
-- Filament-Lager, Neugestaltung (nach Nutzer-Feedback "nicht gut/intuitiv" + Mockup-Review mit 3 Vorschlägen): neues Feld **Lagerort** (Autocomplete aus bereits verwendeten Standorten); lokaler **Dashboard/Liste**-Umschalter direkt im Filament-Lager (Kartenraster mit Bestandsbalken/Statusfarbe bzw. sortierbare Tabelle im Stil einer Lagerverwaltungssoftware); Statistik-Leiste (Spulen gesamt, Restbestand, belegte Lagerplätze, niedrig/leer) und Status-Filter-Chips (Niedrig/Leer); neue Theme-Tokens `--good`/`--warn`/`--crit` für eigenständige Statusfarben; Anlage-Formular als seitliches Panel mit Abschnitten (Bild/Identifikation/Lagerung/Bestand) statt der bisherigen gequetschten 7-Felder-Leiste, inkl. Live-Vorschau des Bestandsbalkens; "Anzahl Spulen"-Stepper beim Neuanlegen legt mehrere unabhängige Spulen mit denselben Werten gleichzeitig an
-- Filament-Lager: kuratierte Autocomplete-Vorschlagsliste gängiger FDM-Materialien (PLA, PETG, ABS, ASA, TPU, Nylon, PC, PEEK, Carbon-Fiber-Varianten u. a.) und Filament-Hersteller (Bambu Lab, Prusament, Polymaker, eSUN, SUNLU, Fillamentum, ColorFabb u. a.) für Material-/Hersteller-Felder; eigene, themekonforme `AutocompleteInput`-Komponente
-- Neues App-Icon: isometrischer 3D-Druck-Layer-Würfel, Farben direkt aus den echten Theme-Tokens (oklch → sRGB) berechnet, ersetzt das generische Tauri-Standard-Icon auf allen Plattformen
-- Content-Security-Policy aktiviert (`tauri.conf.json`)
-- Windows-`.msi`-Build auf einer Windows-11-VM (QEMU/KVM) end-to-end verifiziert: Build, Installation, Icon-Extraktion aus der installierten `.exe` zur visuellen Kontrolle
-
-### Changed
-
-- App-Anzeigename (Fenstertitel, Installer-/Taskleisten-Name) von "mf-katalog-manager" auf "3MF Katalog Manager" korrigiert — ein Cargo-Crate-Name darf nicht mit einer Ziffer beginnen, weshalb beim allerersten Projekt-Scaffold "mf-katalog-manager" statt "3mf-katalog-manager" gewählt wurde. App-Identifier und Datenordner sind unverändert
-- Quell-URL-Bearbeitung im Detailbereich (Seitenpanel kompakt/komfortabel, Modell-Detailseite) in einen gemeinsamen `useEditableSourceUrl`-Hook zusammengeführt, vorher dreifach mit identischer Logik dupliziert
-
-### Security
-
-- Vollständiges Code-Review (Senior-Dev-Review gegen OWASP Top 10 / CWE / ISO 27002 A.8.28), dokumentiert in [GitHub Issue #1](https://github.com/Bexxs75/3mf-katalog-manager/issues/1): Content-Security-Policy war komplett deaktiviert (`csp: null`) — jetzt auf eine restriktive Policy (`default-src 'self'`, `img-src` erlaubt `data:` für Base64-Thumbnails) gesetzt; die Quell-URL eines Modells akzeptiert serverseitig nur noch `http(s)://`-Links (verhinderte, dass ein `javascript:`/`data:`-Wert als klickbarer `<a href>` im WebView landet); "In Slicer öffnen" prüft vor dem Start, dass der übergebene Pfad auf eine existierende, ausführbare Datei zeigt, statt jeden String klaglos an `process::Command` zu übergeben
-- App-Datenverzeichnis (`0700`) und `catalog.db` (`0600`) werden unter Unix beim Start gehärtet (ISO 27002 A.8.28)
-- Diverses Aufräumen aus demselben Review (niedrige Priorität, keine Sicherheitswirkung): toter Tauri-Demo-Command (`greet`) entfernt, deprecated `quick_xml`-Attribut-API (`unescape_value` → `normalized_value`) ersetzt, STL-Parser liest den Facet-Count jetzt über denselben bounds-geprüften Zugriff wie die restlichen Werte statt sich implizit auf die Aufrufreihenfolge zu verlassen, mehrere ungenutzte Codepfade entfernt oder als "nur Test"/"bewusst beibehalten" markiert
-
-### Fixed
-
-- Dreh-Buttons im 3D-Viewer der Detailseite: Hover-Effekt (`bg-white/10`) im hellen Theme praktisch unsichtbar, jetzt themekonform über einen Token; fehlendes `cursor-pointer` an allen drei Buttons ergänzt
-- Sammlungen, sechs zurückgestellte Minor-Findings: Plural-Anzeige der Modell-Kartenanzahl nutzte keine echten Pluralformen; toter i18n-Schlüssel `backToCollectionsLabel` entfernt; Mehrfachauswahl blieb beim Wechsel zwischen Ansichten/Sammlungen bestehen; "Ordner als Sammlung importieren" erfasste Datei-Duplikate an einem anderen Pfad nicht; Drag-Umsortieren startete ohne Toleranzschwelle von jeder Stelle der Karte aus; `list_collection_files` lud pro Modell einzeln (N+1) statt gebündelt
-- Filament-Autocomplete: erste Version nutzte ein natives `<input list>`/`<datalist>`, dessen Vorschlags-Popup vom Betriebssystem/WebKit gerendert wird und sich nicht an das dunkle App-Theme anpassen lässt (erschien als weißes System-Popup) — durch die eigene, themekonforme `AutocompleteInput`-Komponente ersetzt
-- "Anzahl Spulen"-Feld im Filament-Anlage-Formular zeigte gleichzeitig die eigenen -/+-Buttons und die nativen Browser-Spinner-Pfeile des Zahlenfelds — native Spinner per CSS ausgeblendet
-
-## [0.5.0] - 2026-09-12
-
-### Added
-
-- Datei-/Ordnerdialoge nutzen das native XDG-Desktop-Portal statt eines generischen GTK-Dialogs — auf KDE erscheint z. B. der echte Kirigami-Dialog mit Dolphins Ordnersortierung
-- Modell-Detailseite: vollflächige Ansicht (Doppelklick auf ein Modell) mit großer 3D-Vorschau, allen Metadaten und Druckplatten-Anzahl bei Bambu-Studio-/OrcaSlicer-3MF-Dateien (Best-Effort-Erkennung); das bisherige Seitenpanel bleibt für schnelle Einzelauswahl weiter bestehen
-- Dreh-Steuerelemente im 3D-Viewer der Detailseite: Play/Pause-Button für automatische Dauerdrehung plus ←/→-Buttons für 15°-Schritte, zusätzlich zum freien Maus-Ziehen; Auto-Rotation pausiert automatisch bei eigener Maus-Interaktion
-- Papierkorb statt sofortigem Hart-Löschen: gelöschte Modelle werden zunächst in ein Papierkorb-Verzeichnis verschoben und bleiben dort wiederherstellbar (eigene Papierkorb-Ansicht über neues Header-Icon mit Mengen-Badge, inkl. 3D-Vorschau); endgültiges Löschen sowie "Papierkorb leeren" räumen Datei und Katalog-Eintrag danach dauerhaft weg
-- Mehrfachauswahl in der Katalogübersicht: Checkbox je Karte/Zeile, "Alle auswählen" (respektiert aktive Filter), Aktionsleiste für Warteschlange, Druckstatus und Löschen (mit Bestätigung) über mehrere markierte Modelle gleichzeitig
-- Sidebar: Tags und Creators starten eingeklappt und zeigen sich als kompakte, umbrechende Chips statt langer Zeilenlisten; Tags mit nur einem Treffer werden standardmäßig ausgeblendet (aktiv ausgewählte Tags bleiben sichtbar)
-- Kontextmenü (Rechtsklick auf eine Karte) bietet jetzt auch "Gedruckt"/"Nicht gedruckt" direkt an
-- Automatische Slicer-Erkennung: durchsucht beim Start bekannte Installationsorte für Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer und UltiMaker Cura (PATH, `/opt`, Flatpak-Exports, gängige AppImage-Ablageorte auf Linux; `Program Files`/`Program Files (x86)` auf Windows) und ergänzt Treffer automatisch (Label "automatisch erkannt"); manuelles Hinzufügen für Custom-Forks bleibt bestehen
-- Einstellung "Bevorzugte Ansicht" (Zahnrad-Menü): legt fest, ob Katalog-Karten und die Modell-Detailseite standardmäßig das eingebettete Datei-Bild oder eine gerenderte 3D-Ansicht bevorzugen; bei "Gerenderte Ansicht" rendert die App fehlende 3D-Schnappschüsse automatisch und sequenziell im Hintergrund nach, eine einzelne nicht ladbare Datei blockiert dabei nicht die restliche Warteschlange
-- Sammlungen: dritter Organisationsmechanismus neben Ordnern und Tags — viele-zu-viele Zuordnung wie Tags, aber mit manuell festlegbarer Reihenfolge (Drag & Drop). Erstellung über die Mehrfachauswahl-Aktionsleiste ("Zu Sammlung hinzufügen") oder per neuer Import-Option "Ordner als Sammlung importieren". Neuer Reiter "Sammlungen" neben "Alle Modelle" öffnet eine Kartenübersicht aller Sammlungen (umbenennen/löschen möglich); Klick auf eine Sammlung zeigt ihre Modelle in fester Reihenfolge. In den Papierkorb verschobene Modelle werden in Sammlungen korrekt ausgeblendet und tauchen nach dem Wiederherstellen automatisch wieder auf
-
-### Changed
-
-- Bildquellen einer Datei (eigenes Upload, eingebettetes 3MF-/STL-Thumbnail, gerenderter 3D-Snapshot) werden nicht mehr serverseitig zu einem festen `displayImage` priorisiert, sondern getrennt ans Frontend geliefert — die Priorisierung entscheidet die neue "Bevorzugte Ansicht"-Einstellung
-- Modell-Detailseite: Betrachter-Spalte (Bild/3D-Vorschau) bei sehr breiten Bildschirmen (z. B. 3440×1440) ca. 25 % größer, Metadaten-Spalte rechts bleibt dabei unverändert
-- Sortieren-Dropdown eigenständig im dunklen Theme gestylt (Popover-Muster wie die bestehende Slicer-Auswahl) statt eines nativen `<select>`-Elements mit hellem Systemhintergrund und falscher Schriftart
-
-### Removed
-
-- Cloud-Anbindung (Google Drive) komplett entfernt: Backend-Modul `src-tauri/src/cloud/` inkl. aller 7 Tauri-Commands, `tauri-plugin-opener`-Abhängigkeit sowie `oauth2`/`keyring`/`reqwest`/`async-trait`/`tokio` aus `Cargo.toml`; Frontend-UI (Cloud-Konten-Sidebar-Sektion, Cloud-Import-Option, Sync-Status-Anzeigen, Herkunfts-Badges) und zugehörige i18n-Keys entfernt. `cloud_accounts`-Tabelle und der `sync_status`/`cloud_id`-Teil des `origin`-Wertebereichs aus `schema.sql` entfernt bzw. auf `'local'` reduziert (nur für Neuinstallationen wirksam — bestehende Datenbanken behalten die inerten Spalten `sync_status`/`cloud_id`, da dieses Projekt kein `DROP COLUMN`-Migrationsmuster hat). Grund: die Google-Drive-Integration war trotz mehrfacher Nacharbeit im Alltag zu instabil/fehleranfällig und band zu viel Aufmerksamkeit von wichtigeren Themen ab
-
-### Fixed
-
-- Weißer Bildschirm beim Start auf Systemen mit NVIDIA-Grafikkarte (proprietärer Treiber): WebKitGTKs standardmäßiges DMA-BUF-Hardware-Rendering ist mit dem NVIDIA-Treiber inkompatibel (`Failed to create GBM buffer`) — App setzt jetzt automatisch beim Start die nötige Umgebungsvariable
-- Externe Slicer (z. B. OrcaSlicer) starteten nicht zuverlässig aus der App heraus, wenn der hinterlegte Pfad auf ein `AppRun`-Startskript zeigte: die App vererbte ihre eigene AppImage-interne Umgebung ungefiltert an den gestarteten Prozess — diese Variablen werden jetzt vor dem Start externer Programme entfernt
-- Bambu Studio wurde auf Arch/CachyOS-AUR-Installationen von der automatischen Slicer-Erkennung nicht gefunden, da das AUR-Paket die Binärdatei als `bambustudio` installiert — als dritte Namensvariante ergänzt
-- Papierkorb-Bug: zeigte der Katalog-Pfad einer Datei nicht mehr auf einen erreichbaren Ort, landete die Datei beim Löschen bisher sofort unwiderruflich verloren statt im Papierkorb
-- Automatisches Hintergrund-Nachrendern fehlender 3D-Schnappschüsse: eine einzelne nicht ladbare Datei blockierte zuvor die gesamte Warteschlange dauerhaft; fehlerhafte Dateien werden jetzt übersprungen. Jede beendete Hintergrund-Rendering-Instanz gibt ihren WebGL-Kontext jetzt explizit frei
-- Sammlungen: in den Papierkorb verschobene Modelle blieben in der Sammlungs-Detailansicht sichtbar und wurden in der Modellanzahl mitgezählt; Sidebar-Filter verließen die Sammlungsansicht nicht beim Anklicken; die Listenansicht zeigte bei aktiver Sammlung weiterhin den kompletten Katalog
-
-## [0.4.0] - 2026-09-11
-
-### Added
-
-- Komfort-Ansicht als Alternative zur bestehenden kompakten Oberfläche: deutlich größere Schrift, Grafiken und Bedienelemente (Karten-Layout angelehnt an printables.com/model), umschaltbar im Einstellungen-Panel, Standard bleibt die kompakte Ansicht
-- Favorit-Merkmal je Modell (Herz-Icon), in beiden Ansichten sichtbar
-- Import-Button in der Kopfzeile öffnet jetzt immer direkt das Dropdown-Menü statt eines Split-Buttons mit Sofort-Aktion
-
-### Security
-
-- `quick-xml` von 0.36.2 auf 0.41.0 angehoben: schließt zwei Denial-of-Service-Schwachstellen (RUSTSEC-2026-0194, RUSTSEC-2026-0195, je CVSS 7.5/Hoch — quadratische Laufzeit bei doppelten Attributnamen bzw. unbegrenzte Speicherallokation bei Namespace-Deklarationen), erreichbar über eine präparierte `.3mf`-Datei beim normalen Import. Gefunden im Security-Review vom 2026-09-11 (`docs/security/security-review-2026-09-11.md`), per `cargo audit` bestätigt behoben
-
-### Fixed
-
-- Komfort-Ansicht wirkte in Kopfzeile, Seitenleiste, Listenansicht, Filament-Lager, Kontextmenü, Aufräum-Dialog und Import-Banner überhaupt nicht: Tailwind kompilierte die Klasse `text-[var(--font-size-X)]` als Text-*Farbe* statt Schriftgröße, behoben durch expliziten Typ-Hinweis `text-[length:var(--font-size-X)]`; zusätzlich nutzten Ordner-/Tag-/Creator-Namen in der Seitenleiste bislang Tailwinds feste `text-xs`-Klasse statt eines Tokens (neuer Token `--font-size-item`)
-- Sidebar-Einträge (Ordner/Tags/Creators) skalierten nicht mit der Komfort-Ansicht
-
-## [0.3.0] - 2026-09-10
-
-### Added
-
-- Filament-Lager: eigenständige Spulenverwaltung (Material, Hersteller, Farbe, Durchmesser, Ursprungs-/Restgewicht, Preis, Bild-Upload) über ein neues Header-Icon erreichbar, unabhängig vom Modell-Katalog
-- Vier kleine Katalog-Erweiterungen: Druckstatus-Toggle + aus Volumen/Material geschätztes Gewicht pro Modell, Sortierung nach "Zuletzt angesehen" + NEU-Badge für kürzlich importierte Modelle, Creators als eigene Sidebar-Filterkategorie (aus dem beim 3MF-Import geparsten Designer-Metadatum), automatische Erkennung exakter Datei-Duplikate beim Import (SHA-256-Inhalts-Hash) mit Zusammenfassungsmeldung
-- Modell-Thumbnails im Raster: Bild-Priorität eigenes Upload > eingebettetes 3MF-Thumbnail > automatisch erzeugter 3D-Snapshot > Platzhalter; zusätzlich pro Modell eine Quelle als Link hinterlegbar
-- Tags- und Creators-Sektionen in der Sidebar sind einzeln einklappbar
-- Warteschlange ("als Nächstes drucken"): geordnete, per Drag & Drop sortierbare Liste in eigener einklappbarer Sidebar-Sektion; automatisches Entfernen beim Markieren als gedruckt
-- Gespeicherte Filter: aktuelle Kombination aus Ordner/Tag/Creator/Suche/Sortierung unter einem Namen speichern, per Klick wieder anwenden
-- Aufräum-Vorschläge: manuell auslösbarer Katalog-Scan findet verwaiste Dateipfade und Bestands-Duplikate; Ergebnis-Dialog mit Einzelauswahl, ältestes Duplikat je Gruppe bleibt vorausgewählt
-
-### Fixed
-
-- Aufräum-Vorschläge: eine Datei, die gleichzeitig verwaist UND Teil einer Duplikat-Gruppe war, konnte im Auswahl-Dialog als "wird behalten" markiert und trotzdem gelöscht werden — verwaiste Dateien werden jetzt vor der Duplikat-Gruppierung ausgeschlossen; zusätzlich brach das Löschen bei einem Dateisystemfehler die ganze Auswahl vorzeitig ab statt einzelne Fehler zu überspringen
-- Warteschlange: Drag & Drop zum Neusortieren reagierte nicht — natives HTML5-Drag&Drop kollidierte unter WebKitGTK mit Tauris Fenster-Ebene-Erkennung für Datei-Import per OS-Drop; auf reine Maus-Events umgestellt
-
-## [0.2.0] - 2026-09-09
-
-### Added
-
-- Vollständige Mehrsprachigkeit (Deutsch/Englisch/Spanisch/Französisch): eigenes Context-basiertes i18n-System ohne externe Bibliothek, `Translations`-Interface erzwingt Vollständigkeit der Wörterbücher zur Compile-Zeit, Sprachumschalter im Einstellungen-Panel, Persistenz in localStorage
-- Lokalisierte Formatierung (Datum, Uhrzeit relativ, Dateigröße, Volumen, Abmessungen) über `Intl`-APIs im Frontend
-- Google-Drive-Anbindung: OAuth2-PKCE-Verbindung, Token-Speicherung im OS-Schlüsselbund, Datei-/Ordnerauswahl über Googles offizielles Picker-Widget, Import mit Duplikat-Erkennung und Sync-Status-Anzeige je Datei (später in 0.5.0 wieder vollständig entfernt)
-- Native Rust-seitige Geometrie-Extraktion für die 3D-Vorschau: ZIP-Entpacken und Mesh-Parsing laufen jetzt vollständig im Backend statt im Frontend über three.js-Loader/`DOMParser`
-- "In Slicer öffnen": Nutzer hinterlegt beliebig viele eigene Slicer-Programmpfade, Split-Button für Hauptauswahl/Wechsel, Kontextmenü-Eintrag für den zuletzt genutzten Slicer
-- Hochladen zu Google Drive: lokale Dateien lassen sich zu Google Drive hochladen, inkl. Zielordner-Auswahl über das Picker-Widget
-
-### Changed
-
-- Backend liefert nur noch rohe, unformatierte Modelldaten (`ModelFileDto`); serverseitige, deutsch-only Formatierung entfernt und durch frontendseitige, sprachabhängige Formatierung ersetzt
-- Google-Drive-OAuth-Scope `drive.readonly` entfernt, nur noch `drive.file` + `userinfo.email`: `drive.readonly` ist ein "restricted scope" und hätte für die Google-Verifizierung ein kostenpflichtiges CASA-Sicherheitsaudit erfordert
-
-### Fixed
-
-- CSS-`@import`-Reihenfolge und Rust-Abhängigkeiten fixiert
-- Verwaiste Tags (letzte Datei mit diesem Tag gelöscht) blieben in Datenbank und Sidebar stehen
-- Aus Google Drive importierte Dateien übernahmen den internen Cache-Dateinamen statt des echten Drive-Dateinamens
-- Google-Drive-Konto verbinden/trennen und jeder authentifizierte Cloud-Aufruf blockierten kurzzeitig den Tokio-Worker- bzw. IPC-Dispatch-Thread durch synchrones D-Bus-IPC zum Schlüsselbund — über `spawn_blocking` entkoppelt
-
-## [0.1.0] - 2026-09-08
-
-Initialer Scaffold und Kern-Katalog.
-
-### Added
-
-- Tauri-Projektgerüst mit integriertem React/TypeScript/Tailwind-UI-Paket
-- Eigenständiges 3MF-Parsing-Modul (OPC-Container, Model-XML, eingebettetes Thumbnail)
-- Eigenständiges STL-Parsing-Modul (ASCII und Binär)
-- SQLite-Katalogdatenbank (Schema, Modelle, Repository)
-- Automatische Tagging-Heuristiken (Dateiname, Geometrie-Merkmale)
-- Tauri-Command-Bridge: Frontend nutzt echte Backend-Daten statt Beispieldaten
-- 3D-Live-Vorschau im Detailbereich mittels three.js
-- Import-Workflow: Dateidialog, Ordnerauswahl, Drag-and-Drop
-- Löschfunktion für Modelle mit Bestätigungsdialog und Kontextmenü
-
-### Fixed
-
-- Sortierung nach Datum und Dateigröße korrigiert
-
-## Known Limitations (Stand 0.6.0)
-
-- Keine Cloud-Anbindung (siehe "Removed" in 0.5.0) — nur lokaler Dateisystem-Import
-- "In Slicer öffnen" unterstützt macOS nicht (`.app`-Bundles benötigen einen anderen Start-Mechanismus als Windows/Linux-Executables)
-- Windows-`.msi`-Build ist manuell verifiziert, aber nicht Teil einer automatisierten Pipeline; macOS-Paket (`.dmg`) sowie Code-Signing für beide Plattformen stehen noch aus
-- CI/CD-Pipeline (GitHub Actions) noch nicht eingerichtet
-- Keine automatisierten Frontend-Tests (nur Backend/Rust-Tests)
-
----
-
-# Changelog (English)
+🇩🇪 **Deutsch:** [Deutsche Fassung weiter unten](#changelog-deutsch)
 
 All notable changes to this project are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versioning follows [Semantic Versioning](https://semver.org/).
@@ -408,6 +14,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - Documentation: the README and the user guide now mention resin printers, the printers tested with the printer connection (Sovol SV08, Anycubic Kobra S1 running Rinkhals) and the current roadmap. The Linux installation now describes the AppImage file instead of a `.tar.gz` archive, and a new FAQ explains why you should create a backup before updating.
 - User guide: all images now show v0.14.0 (coral 3D preview), plus new images of resin printers, "Manage printers", the printer connection (notice and "New prints" dialog) and Settings → Printers.
 - The automatic CI check now runs on Node 24; with Node 20 the test environment didn't start.
+- README, changelog and user guide now show the English text first, followed by the German version.
+- Code: all comments and developer log messages are now in English. Removed unused code (translations no UI used anymore, the creator and saved-filter lists that were loaded but never shown, an obsolete backend command) and merged duplicated drag-and-drop and inventory helpers. No visible change in the app.
 
 ## [0.14.0] - 2026-09-26
 
@@ -787,3 +395,401 @@ Initial scaffold and core catalog.
 - The Windows `.msi` build is manually verified but not part of an automated pipeline; a macOS package (`.dmg`) and code signing for both platforms are still outstanding
 - CI/CD pipeline (GitHub Actions) not yet set up
 - No automated frontend tests (backend/Rust tests only)
+
+---
+
+# Changelog (Deutsch)
+
+Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
+Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/), Versionierung nach [Semantic Versioning](https://semver.org/lang/de/).
+
+Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unter der Scaffold-Versionsnummer `0.1.0`, ohne dass Meilensteine markiert wurden. Die folgenden Versionsgrenzen wurden nachträglich anhand von Entwicklungs-Tagen und natürlichen Feature-Abschlüssen (jeweils an einem Dokumentations-Commit) gezogen, keine davon wurde zum jeweiligen Zeitpunkt live getaggt oder veröffentlicht.
+
+## [Unreleased]
+
+### Changed
+
+- Dokumentation: README und Benutzerhandbuch nennen die Resin-Drucker, die mit der Druckeranbindung getesteten Drucker (Sovol SV08, Anycubic Kobra S1 mit Rinkhals) und die aktuelle Roadmap. Die Linux-Installation beschreibt jetzt die AppImage-Datei statt eines `.tar.gz`-Archivs, und eine neue FAQ erklärt, warum man vor einem Update eine Sicherung anlegen sollte.
+- Benutzerhandbuch: Alle Bilder zeigen jetzt v0.14.0 (3D-Vorschau in Koralle), dazu neue Bilder zu Resin-Druckern, „Drucker verwalten“, der Druckeranbindung (Hinweis und Dialog „Neue Drucke“) und Einstellungen → Drucker.
+- Die automatische CI-Prüfung läuft jetzt mit Node 24; mit Node 20 startete die Test-Umgebung nicht.
+- README, Changelog und Benutzerhandbuch zeigen jetzt zuerst den englischen Text, danach die deutsche Fassung.
+- Code: Alle Kommentare und Entwickler-Logmeldungen sind jetzt englisch. Ungenutzter Code wurde entfernt (Übersetzungen, die keine Oberfläche mehr verwendet, die Ersteller- und Filterlisten, die geladen, aber nie angezeigt wurden, ein veralteter Backend-Befehl), doppelte Hilfsfunktionen für Drag & Drop und das Lager wurden zusammengeführt. In der App ändert sich dadurch nichts Sichtbares.
+
+## [0.14.0] - 2026-09-26
+
+### Added
+
+- **Druckeranbindung (Klipper/Moonraker):** Neuer Einstellungs-Reiter „Drucker“ mit dem Schalter „Druckeranbindung“ (standardmäßig aus). Pro Drucker lassen sich unter „Drucker verwalten“ Typ und Adresse eintragen und testen. Die App fragt angebundene Drucker beim Start, alle 5 Minuten und per Knopf nach beendeten Drucken, liest den tatsächlich geförderten Filamentverbrauch (bei abgebrochenen Drucken nur bis zum Abbruch) und rechnet ihn in Gramm um. Im Filament-Lager erscheint dann „N neue Drucke warten auf Bestätigung“: Im Dialog lassen sich pro Druck Spule (vorgeschlagen: die im Drucker eingelegte) und Katalogmodell (Vorschlag über den Dateinamen) prüfen, bestätigen oder ignorieren. Erst beim Bestätigen wird abgebucht; mit Modell entsteht zusätzlich ein Druckprotokoll-Eintrag, und das Modell wird als gedruckt markiert. Abgebucht werden nur Drucke, die nach dem ersten Verbinden enden. Die App spricht nur mit selbst eingetragenen Adressen im Heimnetz, liest nur und verändert am Drucker nichts. Getestet mit einem Sovol SV08. Resin-Flaschen werden von der Druckeranbindung nie vorgeschlagen oder abgebucht.
+- **Resin-Drucker mit Harzwanne:** Unter „Drucker verwalten“ wählst du beim Anlegen neben dem Namen „Filament“ oder „Resin“; die Art ist danach fest, bestehende Drucker sind Filament-Drucker. Ein Resin-Drucker bekommt statt des Spulenhalters genau eine „Harzwanne“ für eine Flasche, die sich weder umbenennen noch löschen lässt; weitere Einheiten und die Druckeranbindung gibt es für ihn nicht. In der Ansicht „Resin“ des Filament-Lagers steht er in der rechten Spalte: Eine Flasche setzt du per Ziehen oder über das Menü der Wanne ein (es listet nur Resin-Flaschen), die Wanne zeigt Flasche, Farbe und Rest in ml, „Herausnehmen“ bringt sie an ihren Stammplatz zurück, und „− Verbrauch“ gibt es auch für die eingesetzte Flasche. „Reicht das Filament?“, Kostenschätzung und Warteschlangen-Symbol berücksichtigen Resin-Drucker nicht.
+
+### Changed
+
+- Resin-Flaschen passen nur noch in die Harzwanne eines Resin-Druckers, Filament-Spulen nie in eine Harzwanne. Beim Ziehen wird ein unpassendes Fach nicht mehr hervorgehoben, das Fach-Menü zeigt nur passende Einträge, und ein eingelegter Eintrag lässt sich erst nach dem Herausnehmen auf die andere Art umstellen. In der rechten Spalte des Filament-Lagers erscheinen je nach Ansicht nur Filament- oder nur Resin-Drucker. Ältere Kataloge und Sicherungen werden beim Öffnen automatisch umgestellt.
+- Druckeranbindung: Das passende Katalogmodell wird auch vorgeschlagen, wenn der Slicer Druckermodell oder Datum vor den Dateinamen setzt oder die Platte als „plate(01)“ anhängt (z. B. Anycubic Kobra S1 mit Rinkhals, Dank an einen anonymen Tester).
+- Die Update-Prüfung erkennt jetzt auch Vorschauversionen (z. B. „0.14.0-gharac") korrekt als älter als das zugehörige fertige Release, statt nie ein Update zu melden.
+- Interne Qualitätsprüfungen: Testcode ist jetzt clippy-sauber, dazu ein automatischer CI-Prüflauf (TypeScript, Tests, Clippy) sowie eine wöchentliche Abhängigkeits-Sicherheitsprüfung (cargo-deny, npm audit).
+
+## [0.13.1] - 2026-09-25
+
+### Added
+
+- Filament-Lager: **Resin**. Oben im Lager schaltet „Filament | Resin" zwischen Spulen und Resin-Flaschen um; die App merkt sich die Auswahl. Übersicht, Liste, Suche, Filter und Kennzahlen gelten für die gewählte Art („Flaschen gesamt", Mengen in ml). Resin-Flaschen zeigen ein Flaschen-Symbol, den Rest in ml und die Flaschengröße statt des Durchmessers; der Status (vorrätig/niedrig/leer) folgt denselben Regeln. Über „− Verbrauch" buchst du verbrauchte Milliliter ab (auf 0,1 ml genau, nie unter 0). Neue Einträge bekommen die Art des gerade gewählten Bereichs (kein Umschalter im Formular), Material und Hersteller schlagen passende Werte vor; bei Resin heißt die Menge „Inhalt (ml)", der Durchmesser entfällt. Resin kommt nie in ein Druckerfach und zählt nicht bei „Reicht das Filament?", der Materialkosten-Schätzung, dem Filament-Symbol der Warteschlange und den Gramm-Summen. Alle bisherigen Einträge bleiben Filament; auch ältere Sicherungen lassen sich weiter einspielen.
+- Filament-Lager: **Nachkaufen**. Jede Karte hat unten links den Knopf „＋ Nachkaufen", jede Zeile der Listenansicht einen „＋"-Knopf. Ein kleines Fenster legt 1 bis 20 neue, volle Spulen bzw. Flaschen mit denselben Daten an (Art, Material, Hersteller, Farbname, Farbwert, Bild, Durchmesser). Menge, Preis je Stück und Lagerort sind mit den Werten der Vorlage vorbelegt (Lagerort: ihr Stammplatz, falls sie gerade im Drucker steckt) und lassen sich vorher ändern. Neue Einträge liegen immer im Lager. Alles wird in einem Schritt angelegt: Schlägt etwas fehl (z. B. weil die Vorlage inzwischen gelöscht wurde), entsteht kein einziger. Die neuen Karten sind danach kurz grün umrandet, eine Meldung nennt die Anzahl. Escape oder ein Klick daneben schließt das Fenster, ohne etwas anzulegen.
+- Filament-Lager: Ein **Doppelklick** auf eine Karte oder eine Tabellenzeile öffnet das Bearbeiten-Formular (wie ✎). Doppelklicks auf Knöpfe lösen das nicht aus.
+- Filament-Lager: Restgewichte werden auf 0,1 g genau gespeichert und angezeigt.
+
+### Changed
+
+- Die 3D-Vorschau zeigt Modelle jetzt in Koralle statt in Beige. Sie heben sich damit im hellen wie im dunklen Design deutlich vom Hintergrund ab.
+
+### Fixed
+
+- Filament-Lager: Das Bildfeld im Spulenformular („Bild hierher ziehen oder klicken") nimmt jetzt auch per **Drag & Drop** hineingezogene Bilder an; bisher funktionierte nur Klicken. Erlaubt ist genau eine PNG-, JPG- oder WebP-Datei bis 5 MB (wie beim Klick-Upload). Das Feld hebt sich beim Darüberziehen hervor. Bei mehreren Dateien, einer anderen Datei oder einem zu großen Bild erscheint der Hinweis direkt unter dem Bildfeld, und „Speichern" lässt das Formular offen, bis ein anderes Bild gewählt oder der Hinweis geschlossen wird. Ein Drop im Filament-Lager startet nie einen Modell-Import.
+- Filament-Lager, Listenansicht: Spulen ohne eigenes Bild zeigen ein Spulen-Symbol in der Spulenfarbe statt eines leeren Kästchens, das wie eine Checkbox aussah.
+
+## [0.13.0] - 2026-09-24
+
+### Added
+
+- Archive direkt entpacken: Über „Importieren → Dateien…" oder per Drag & Drop hinzugefügte Archive (`.zip`, `.7z`, `.rar` (RAR4/RAR5), `.tar`, `.tar.gz`/`.tgz`, `.tar.bz2`/`.tbz2`, `.tar.xz`/`.txz`, `.tar.zst`/`.tzst`) öffnen einen Dialog: Zielordner (vorbelegt mit dem aktiven Katalogordner bzw. dem Speicherort), je Archiv ein eigener Unterordner, bei bereits vorhandenem Ordner Wahl zwischen „neuer nummerierter Ordner" und „zusammenführen" (vorhandene Dateien bleiben unverändert), optional Löschen der Original-Archive nach dem Entpacken (standardmäßig aus; ein Archiv wird nur gelöscht, wenn alle Einträge entpackt wurden – wurde etwas übersprungen, bleibt es liegen und das Ergebnis-Banner nennt den Grund). Enthaltene Bilder, Anleitungen und Lizenzdateien bleiben neben den Modellen erhalten. Der Ordner-Import entpackt weiterhin nichts.
+- Schutz beim Entpacken: Einträge mit `..`, absoluten Pfaden oder Laufwerksbuchstaben (Zip-Slip) sowie Symlinks werden übersprungen. Ausführbare Dateien, Skripte und Verknüpfungen (`.exe`, `.bat`, `.ps1`, `.lnk`, `.url`, `desktop.ini`, `.desktop`, `.app` u. a.) werden grundsätzlich nicht entpackt. Kein Eintrag darf in geschützte Systembereiche schreiben, entpackte Dateien sind nie ausführbar, und die „Aus dem Internet"-Markierung des Downloads (Windows Mark-of-the-Web, macOS-Quarantäne) wird auf die entpackten Dateien übertragen. Pro Archiv gelten höchstens 2 GB entpackt und 10 000 Einträge (auch gegen gefälschte Größenangaben), dazu Speichergrenzen für die Dekompression. RAR-Einträge werden einzeln im Speicher entpackt; ein Eintrag über 1 GB lässt das ganze Archiv scheitern (bereits Entpacktes wird entfernt). Datei-Verweise in RAR-Archiven (mit `rar -oi` erzeugte Datei-Kopie-/Hardlink-Einträge) übernehmen nie den Inhalt der referenzierten Datei: Sie werden übersprungen, ergeben bei Größe 0 eine leere Datei oder lassen bei einem Prüfsummenfehler das ganze Archiv scheitern. Entpackt werden nur Archive, die tatsächlich über den Dateidialog oder per Drag & Drop hereingekommen sind (vom Backend selbst geprüft). Als Zielordner sind nur Katalogordner oder ein in einem Ordner-Auswahldialog der App gewählter Ordner möglich; Ordner, die geschützte Bereiche enthalten (z. B. das Home-Verzeichnis selbst), sind als Ziel gesperrt. Bei einem Fehler wird alles bereits Entpackte wieder entfernt.
+- Filament-Lager: **Drucker & AMS-Fächer**. Drucker und ihre Mehrfarbeinheiten lassen sich über „Drucker verwalten" anlegen – mit Vorlagen für Bambu AMS/AMS lite/AMS HT, Creality CFS, Prusa MMU3, Anycubic ACE Pro und Spulenhalter oder als eigene Einheit mit 1–16 Fächern; Name und Reihenfolge änderbar; jeder neue Drucker erhält automatisch einen Spulenhalter (1 Fach), damit auch Drucker ohne AMS direkt eine Spule aufnehmen. Spulen kommen per Drag & Drop oder über das Menü am Fach hinein; bei einem belegten Fach kehrt die Spule, die schon im Fach steckt, an ihren Stammplatz zurück, von Fach zu Fach wird verschoben. Eingelegte Spulen stehen in einer eigenen Spalte rechts neben dem Lager und zählen weiter im Gesamtbestand. Beim Herausnehmen kehrt eine Spule automatisch an ihren Stammplatz zurück (Hinweis mit „Ändern"). Löschen einer Einheit oder eines Druckers schickt deren Spulen ebenfalls zurück.
+- Filament-Lager: Spulen haben jetzt einen **Farbwert** (Palette mit 16 gängigen Filamentfarben oder Hex-Eingabe) zusätzlich zum Farbnamen; bekannte Farbnamen bestehender Spulen (z. B. „Schwarz", „Galaxy Black", „Dunkelblau") werden beim Update automatisch umgesetzt.
+- Automatische Tags in der Oberflächensprache: Die beim Import vergebenen Tags „mehrteilig", „miniatur", „grossformat" und „mehrfarbig" erscheinen jetzt auf Englisch (multipart, mini, large, multicolor), Spanisch und Französisch, wenn die Oberfläche so eingestellt ist. Die Suche findet sie unter beiden Namen. Wer einen dieser Namen in einer anderen Sprache von Hand eingibt (z. B. „Multipart"), bekommt den vorhandenen Tag statt eines zweiten. Bereits vorhandene Tags mit solchen Namen (etwa aus Dateinamen) werden beim nächsten Start einmalig mit dem automatischen Tag zusammengelegt, auch in gespeicherten Filtern – außer den mehrdeutigen Wörtern „mini", „large" und „grande", die nur bei Eingabe von Hand dem automatischen Tag zugeordnet werden.
+- Beim Vorschlagen von Tags aus Dateinamen werden jetzt auch englische, spanische und französische Füllwörter ignoriert (z. B. „untitled", „copia", „nouveau").
+- Filament-Lager: **„Reicht das Filament?“** – für in Bambu Studio oder OrcaSlicer geslicete 3MF-Dateien vergleicht die Detailseite den Filamentbedarf (über alle Platten zusammengezählt) mit deinen Spulen: gleiches Material und ähnliche Farbe (Farbabstand CIEDE2000). Pro Filament zeigt sie „reicht“, „reicht mit Spulenwechsel“, „reicht nicht“ (mit Fehlmenge) oder „unklar“, dazu die passende Spule mit Restgewicht und ob sie im Drucker steckt (Drucker · Einheit · Fach) oder wo sie liegt. Die Druck-Warteschlange zeigt den Status als Symbol je Eintrag und rechnet von oben nach unten mit dem Gesamtbedarf. Es wird nichts abgebucht.
+- **Werkzeuge in der Seitenleiste:** Ein neuer Abschnitt bündelt die Warteschlange (aufklappbar, wie bisher mit Ziehen zum Umsortieren), die Ansichten „Zuletzt angesehen“ (die 20 zuletzt angesehenen Modelle), „Neu hinzugefügt“ (letzte 7 Tage), „Favoriten“ (alle mit Herz markierten Modelle, alphabetisch) und „Duplikate“ (Modelle mit identischem Dateiinhalt, gruppiert) sowie die Aufräum-Vorschläge – jeweils mit Anzahl. Filament-Lager und Papierkorb bleiben wie bisher in der linken Leiste. Eine gewählte Ansicht erscheint oben als Filter-Chip und lässt sich mit Ordnern, Tags und Suche kombinieren.
+
+### Fixed
+
+- Robustheit: Das Umbenennen oder Verschieben von Ordnern beendet die App bei einer inkonsistenten Ordnerhierarchie (z. B. aus einem präparierten Katalog-Backup) nicht mehr abrupt, sondern bricht mit einer Fehlermeldung ab.
+- Katalog-Sicherung: Beim Import werden jetzt auch die Datentypen aller Spalten geprüft; eine präparierte Sicherung mit falschen Werten (z. B. Text statt Zahl) wird abgelehnt, statt danach Ladefehler zu verursachen.
+- Die Sortierung „Zuletzt angesehen“ berücksichtigt jetzt alle Modelle, nicht nur die in dieser Sitzung bereits geöffneten.
+
+## [0.12.1] - 2026-09-23
+
+### Fixed
+
+- Die App startete nicht mehr (Absturz direkt nach dem Öffnen, ohne Fehlermeldung), wenn der Katalog noch Einträge aus der früheren Google-Drive-Anbindung enthielt (entfernt in v0.5.0). Die mit v0.11.0 eingeführte Datenbank-Migration für STEP/OBJ baut die Dateitabelle mit einer strengeren Prüfung neu auf und scheiterte an diesen Einträgen („CHECK constraint failed: origin IN ('local')"). Solche Einträge werden jetzt während der Migration in normale lokale Einträge umgewandelt – Tags, Sammlungen und alle übrigen Daten bleiben erhalten. Der Katalog selbst war nie beschädigt: die fehlgeschlagene Migration wurde jeweils vollständig zurückgerollt.
+- Enthält außerdem die nach v0.12.0 bereits still in die Downloads eingespielten Build-Korrekturen: Linux-AppImage startet wieder auf Systemen mit neuerem Mesa (EGL-Absturz durch mitgebündelte, veraltete Wayland-/X11-Bibliotheken) und ein echtes Universal-DMG (Apple Silicon + Intel) für macOS.
+
+## [0.12.0] - 2026-09-21
+
+### Added
+
+- STEP-Vorschau (`.stp`/`.step`) gibt es jetzt auf **allen drei Plattformen** — Linux, Windows und macOS. Für jede Plattform stehen zwei Downloadvarianten bereit: eine mit STEP-Vorschau (Dateiname mit `-step`-Zusatz, enthält Open CASCADE Technology/OCCT) und eine kleinere ohne (STEP-Dateien lassen sich weiterhin katalogisieren — Tags, Suche, Umbenennen, Papierkorb —, nur eben ohne 3D-Vorschau und automatisch ermittelte Abmessungen/Volumen/Körperzahl). Baugruppen werden bewusst als ein gemeinsames Vorschaunetz dargestellt; STEP lässt sich weiterhin nicht direkt im Slicer öffnen. Fehlerhafte oder zu große STEP-Dateien bleiben ohne automatisch ermittelte Metadaten im Katalog, statt den Import abzubrechen.
+- Windows: MSI mit gebündelten OCCT-DLLs (`build-windows-step.yml`, OCCT-Build über ein gepinntes vcpkg-Manifest). macOS: DMG mit den OCCT-`.dylib`s direkt im App-Bundle (`build-macos-step.yml`, per `dylibbundler` auf `@executable_path`-relative Pfade umgeschrieben). Beide auf echten Zielsystemen ohne vorinstalliertes OCCT verifiziert — die App startet und die STEP-Vorschau funktioniert, auch ohne dass OCCT auf dem Zielrechner separat installiert ist.
+- Die OCCT-Anbindung ist ein abschaltbares Cargo-Feature (`step-preview`, per Default aktiv) und lässt sich mit `--no-default-features` vollständig aus dem Build entfernen — genau das erzeugt die kleinere Downloadvariante ohne STEP-Vorschau.
+- Automatische Slicer-Erkennung durchsucht jetzt auch unter macOS bekannte Installationsorte (Bambu Studio, OrcaSlicer u. a.), analog zur bisherigen Linux-/Windows-Unterstützung.
+- Open CASCADE wird dynamisch unter LGPL-2.1 mit Open-CASCADE-Ausnahme eingebunden. Vollständige Lizenztexte, Quellenhinweise und der dokumentierte `opencascade-sys`-Kompatibilitäts-Fork werden mit dem Quellcode beziehungsweise Programmpaket bereitgestellt; Details stehen in `THIRD-PARTY-LICENSES.md`.
+
+### Fixed
+
+- Die Zeile "Drittanbieter-Lizenzen" im Info-Tab der Einstellungen brach bei Label und Wert auf zwei Zeilen um, anders als die übrigen Zeilen dort — Text auf allen vier Sprachen gekürzt.
+- Vier Security-Unit-Tests für die Prüfung auf geschützte Systemverzeichnisse schlugen auf macOS fehl, weil `/home` dort ein Automounter-Symlink auf `/System/Volumes/Data/home` ist und `/var` ein Symlink auf `/private/var` — ein reiner Testbug (nicht-existente Testpfade wurden nur einseitig kanonisiert), kein Fehler in der eigentlichen Prüflogik.
+
+## [0.11.0] - 2026-09-20
+
+### Added
+
+- STEP-Dateien (`.stp`/`.step`) können jetzt katalogisiert werden — wie 3MF/STL mit Tags, Suche, Umbenennen, Verschieben und Papierkorb, allerdings (noch) ohne 3D-Vorschau, da STEP parametrische CAD-Geometrie statt eines Dreiecksnetzes ist. STEP-Dateien lassen sich bewusst nicht direkt im Slicer öffnen, da die meisten Slicer kein rohes STEP importieren können.
+- OBJ-Dateien (`.obj`) können jetzt katalogisiert werden — inklusive vollwertiger 3D-Vorschau, da OBJ (anders als STEP) ein reines Dreiecksnetz ist. OBJ-Dateien lassen sich wie 3MF/STL direkt im Slicer öffnen.
+
+## [0.10.1] - 2026-09-20
+
+### Fixed
+
+- Pfeiltasten-Navigation im Raster scrollte nicht mit, wenn die neu ausgewählte Kachel den sichtbaren Bereich verließ — man navigierte "blind" weiter, ohne zu sehen, welches Modell gerade ausgewählt ist.
+
+## [0.10.0] - 2026-09-20
+
+### Added
+
+- Modelle lassen sich jetzt direkt umbenennen: Kontextmenü → "Umbenennen", inline im selben Popup wie die Löschen-Bestätigung. Die Dateiendung (.3mf/.stl) wird dabei fest angezeigt und ist nicht editierbar. Verschiebt eine Umbenennung das Modell (Standardsortierung nach Name) aus dem sichtbaren Bereich, scrollt die Ansicht automatisch dorthin.
+- Echte Pfeiltasten-Navigation im Raster: Hoch/Runter springt jetzt anhand der tatsächlich gerenderten Kachel-Position zur nächsten Zeile, statt nur zum nächsten/vorherigen Element in der Liste (vorher verhielt sich Runter wie Rechts).
+- Leertaste schaltet die Mehrfachauswahl-Checkbox des aktuell ausgewählten Modells um.
+
+## [0.9.0] - 2026-09-20
+
+### Added
+
+- Tastaturkürzel: `/` fokussiert die Suche, Pfeiltasten wechseln die Auswahl innerhalb der aktuell gefilterten/sortierten Modell-Liste, Entf/Rücktaste öffnet bei aktiver Mehrfachauswahl die bestehende Löschen-Bestätigung (löscht nicht direkt). Alle drei greifen nicht, solange der Fokus in einem Eingabefeld liegt.
+- Mehrfachauswahl-Leiste: Tags lassen sich jetzt für mehrere ausgewählte Modelle gleichzeitig hinzufügen ("Tag hinzufügen") oder entfernen ("Tag entfernen", Dropdown mit allen in der Auswahl vorkommenden Tags) — bisher musste dafür jedes Modell einzeln geöffnet werden.
+- Suche durchsucht jetzt zusätzlich zum Dateinamen auch Tags, Ersteller und den Dateipfad.
+
+### Fixed
+
+- Slicer-Name in den Einstellungen konnte bei langen Namen fast vollständig verschwinden (z. B. auf "B.." verkürzt), weil er sich mit dem "Standard"-Badge eine Zeile ohne Mindestbreite teilte ([GitHub Issue #10](https://github.com/Bexxs75/3mf-katalog-manager/issues/10)). Der Name steht jetzt immer in einer eigenen, vollbreiten Zeile; das Badge steht in der Zeile darunter vor dem Programmpfad.
+- Der Creator-Filter (Sidebar) lief für jedes nur per schlanker Katalog-Übersicht geladene Modell ins Leere, da `creator` in dieser Projektion bislang fehlte und im Frontend hartcodiert `null` war — dieselbe Fehlerklasse wie der bereits behobene 3D-Vorschau-Bug. Betraf effektiv den gesamten Katalog, bis ein Modell einzeln geöffnet wurde.
+
+### Removed
+
+- Import-Option "Ordner als Sammlung importieren" entfernt: seit Ordner echte Dateisystem-Verzeichnisse sind, legte diese Option ohnehin schon zusätzlich einen normalen Ordner an (identisch zu "Ordner...") und packte die Dateien zusätzlich in eine Sammlung — der ursprüngliche Zweck (irgendeine Gruppierung erzwingen, als Ordner noch rein virtuell waren) ist damit entfallen. Sammlungen lassen sich weiterhin über die Mehrfachauswahl-Aktionsleiste ("Zu Sammlung hinzufügen") anlegen.
+
+## [0.8.1] - 2026-09-20
+
+### Security
+
+- Interne Härtung nach dem [Senior-Code-Review vom 2026-09-19](docs/superpowers/plans/2026-09-19-senior-code-review-fixes.md) (14 Aufgaben plus Abschluss-Review): Datenbank-Migrationen laufen jetzt über ein richtiges, versioniertes Migrations-System (`db/migrations.rs`) statt stillschweigend ausgeführter `ALTER TABLE`-Anweisungen; mehrere Fehlerpfade beim Löschen/Wiederherstellen aus dem Papierkorb (Einzel- und Mehrfachauswahl) holen eine bereits physisch verschobene Datei jetzt zuverlässig zurück, falls der zugehörige Datenbank-Eintrag nicht aktualisiert werden konnte, statt sie verwaist liegen zu lassen. Keine sichtbare Funktionsänderung, rein interne Robustheit.
+
+### Changed
+
+- Die Slicer-Registrierung (Name, Programmpfad, automatisch erkannt oder manuell hinzugefügt) lebt jetzt in der Katalog-Datenbank statt in localStorage. Beim ersten Start nach dem Update werden nur automatisch erkennbare Slicer (Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura an bekannten Installationsorten) erneut per Startup-Scan gefunden; manuell hinzugefügte, individuelle Programmpfade werden beim Upgrade NICHT übernommen und müssen bei Bedarf neu eingerichtet werden. Beim Wiederherstellen eines Katalog-Backups bleiben lokal registrierte Slicer unverändert erhalten; Slicer-Einträge, die im Backup selbst enthalten waren (z.B. von einem anderen Rechner), werden dabei NICHT übernommen und müssen bei Bedarf manuell neu hinzugefügt werden — lokale Slicer-Konfiguration geht durch ein Backup-Restore also nie verloren.
+- Der zuvor beim Export exportierte, aber nirgends mehr benötigte localStorage-Schlüssel für die alte, lokale Slicer-Liste wird nicht mehr in Katalog-Backups aufgenommen (konnte dort einen maschinenlokalen Programmpfad hinterlassen).
+
+### Fixed
+
+- Katalog-Übersicht (Raster/Ordner/Liste) zeigte bereits im Hintergrund gerenderte 3D-Vorschauen nicht an, solange ein Modell nicht einzeln geöffnet wurde: die schlanke Summary-Abfrage für die Übersicht ließ den gerenderten Snapshot bewusst weg (in der Annahme, er sei "der große Blob"), obwohl er im Schnitt kleiner ist als das ohnehin mitgelieferte eingebettete Vorschaubild (~8,9 KB vs. ~54 KB). Modelle ohne eigenes Vorschaubild (z. B. STL-Dateien) zeigten deshalb dauerhaft nur den leeren "3D Vorschau"-Platzhalter, obwohl in der Datenbank längst ein fertiger Snapshot lag.
+
+## [0.8.0] - 2026-09-19
+
+### Added
+
+- Neue Ansicht "Ordner": Modelle können nach Ordnern gruppiert angezeigt werden (als Kachel-Raster oder Zeilen-Liste), verschachtelte Unterordner eingerückt mit Verbindungslinie, einzeln einklappbar (Zustand bleibt erhalten). Ordner-Kopfzeilen und Dateien lassen sich innerhalb dieser Ansicht direkt per Maus verschieben, genau wie bisher schon in der Seitenleiste.
+- Update-Check: Beim Start wird einmalig still geprüft, ob auf GitHub eine neuere Version vorliegt (kein automatischer Download); bei neuerer Version erscheint ein wegklickbarer Hinweis unten rechts, zusätzlich manuell im neuen "Info"-Tab der Einstellungen abrufbar.
+
+### Changed
+
+- Einstellungen in 4 Reiter aufgeteilt (Allgemein, Slicer, Katalog, Info) statt einer einzigen scrollenden Liste; die Dichte-Einstellung (Kompakt/Komfort) ist jetzt Teil von "Erscheinungsbild" statt eines eigenen Abschnitts.
+
+## [0.7.8] - 2026-09-19
+
+### Changed
+
+- Frontend-Refactor: `App.tsx` (vormals 1148 Zeilen, 48 State-/Effect-Hooks, 29 inline `invoke()`-Aufrufe) in fokussierte Hooks (`useCatalogStore`, `useCatalogFilters`, `useCollections`, `useBulkSelection`, `useFileImport`, `useFolderDragAndDrop`, `useCatalogBackup`, `useCatalogCleanup`, `useSlicerLauncher`), einen typisierten `src/lib/api/*`-Wrapper um alle Tauri-Commands und drei ausgelagerte Komponenten (`TrashView`, `CatalogWorkspace`, `BulkActionToolbar`) aufgeteilt. `App.tsx` ist damit auf rund 310 Zeilen reine Komposition geschrumpft. Erste automatisierte Frontend-Testsuite (Vitest + Testing Library) eingeführt. Keine Verhaltensänderung
+
+### Security
+
+- Allgemeine ISO-27000-orientierte Sicherheitsprüfung des gesamten Codebase durchgeführt ([Security-Review 2026-09-19](docs/security/security-review-2026-09-19.md)). Vier Hoch-Findings behoben, alle auf dieselbe Ursache zurückgehend: importierte Katalog-Backups wurden nur teilweise als nicht vertrauenswürdig behandelt.
+  - Slicer-Startliste aus fremdem Backup konnte beliebiges Programm startbar machen (z.B. `/bin/sh`) — wird beim Import jetzt übersprungen, übrige Einstellungen gegen eine Werte-Whitelist geprüft (CWE-829)
+  - `files.name`/`trash_path` aus importiertem Katalog konnten beliebiges Schreiben bzw. automatisches Löschen fremder Dateien auslösen — jetzt vollständig validiert bzw. auf das echte Trash-Verzeichnis eingegrenzt (CWE-22, CWE-829)
+  - `source_url` wurde nur beim Schreiben, nicht beim Lesen validiert — ein `javascript:`-Link hätte beim Klick Code im App-Kontext ausführen können, jetzt beidseitig (Backend + Frontend) gefiltert
+  - Kein Größenlimit beim Entpacken von 3MF-/Backup-Zip-Einträgen (Zip-Bomb-Risiko) — jetzt auf 16-256 MB je nach Eintragstyp begrenzt, Prüfung vor dem vollständigen Dekomprimieren
+  - Zusätzlich behoben: Pfadprüfung ohne Kanonisierung (umgehbar via `../`/Symlinks), fehlende Validierung des Slicer-Datei-Arguments, fehlendes Größenlimit bei Render-Snapshots
+  - Ungenutzte Datei mit Klartext-Google-OAuth-Credentials (Rest der 2026-09-12 entfernten Cloud-Integration) gelöscht
+
+### Fixed
+
+- Ordner per Drag & Drop verschieben markierte ungewollt Text in der Sidebar (mausbasiertes Drag&Drop statt natives HTML5-DnD); der gezogene Ordner war zudem visuell nicht von den anderen zu unterscheiden — zeigt jetzt reduzierte Deckkraft während des Ziehens
+
+## [0.7.7] - 2026-09-18
+
+### Security
+
+- Importierte Katalog-Backups (`import_catalog`) konnten `folders.path`/`files.path` auf beliebige Orte setzen, die anschließend ungeprüft an `fs::rename`/`fs::create_dir` weitergereicht wurden (`create_folder`, `rename_folder`, `move_folder`, `move_file_to_folder`) — ein präpariertes Backup-ZIP hätte so z.B. Autostart-Verzeichnisse als Ziel unterschieben können ([Security-Review 2026-09-18](docs/security/security-review-2026-09-18.md), Finding 1, CWE-829). Neue Prüfung `reject_if_sensitive_path` lehnt Ziele in bekannten sensiblen Systemverzeichnissen (Config-/Autostart-/SSH-/Systemverzeichnisse) ab, sowohl direkt beim Import als auch bei jeder späteren Ordner-/Datei-Verschiebung
+- Temporäre Katalog-Datenbank-Kopien beim Export/Import (`export_catalog`, `import_catalog`) landeten mit vorhersagbaren, PID-basierten Namen und Standard-Berechtigungen im geteilten `/tmp` (CWE-377) — auf Mehrbenutzer-Systemen von anderen lokalen Nutzern mitlesbar bzw. per Symlink-Race angreifbar. Werden jetzt exklusiv angelegt (`create_new`, schlägt fehl statt einem vorhandenen Symlink zu folgen) und wie `catalog.db` auf `0600` gehärtet
+
+### Added
+
+- GitHub-Actions-Workflows `build-macos.yml` und `build-windows.yml` (nur manuell per `workflow_dispatch` auslösbar): bauen unsignierte `.dmg`- bzw. `.msi`-Pakete komplett auf GitHubs eigenen Cloud-Runnern, ohne dass der lokale Rechner eine Mac- oder Windows-Toolchain braucht. Beide Ausgaben wurden nachträglich dem bestehenden [v0.7.6-Release](https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v0.7.6) hinzugefügt, das damit jetzt Linux, macOS und Windows abdeckt
+- Bebildertes Benutzerhandbuch (`docs/benutzerhandbuch/BENUTZERHANDBUCH.md`, zweisprachig DE+EN) für Einsteiger ohne Vorwissen über die App, von der README aus verlinkt. Alle Screenshots zeigen frei erfundene Beispieldaten (Modelle, Filamentspulen) mit deutscher UI-Beschriftung, keine echten Nutzerdaten
+
+## [0.7.6] - 2026-09-16
+
+### Added
+
+- Standard-Slicer: ein Radio-Button pro Zeile in den Einstellungen legt fest, welcher Slicer "In Slicer öffnen" verwendet ([GitHub Issue #7](https://github.com/Bexxs75/3mf-katalog-manager/issues/7)). Ersetzt die bisherige implizite "zuletzt verwendet"-Logik (`lastUsedId`, bei jedem Klick still überschrieben) durch eine sichtbare, selbst gewählte Voreinstellung (`primaryId`). Bestehende `lastUsedId`-Werte aus localStorage werden beim ersten Laden einmalig als initialer Standard übernommen. Der allererste konfigurierte Slicer wird automatisch zum Standard
+
+### Changed
+
+- `DetailPanel.tsx`: der Split-Button+Dropdown zum spontanen Umschalten des Ziel-Slicers entfällt zugunsten des neuen Standard-Slicers — konsistentes Verhalten an allen drei Einstiegspunkten (Kontextmenü, Detailpanel, Detailseite), die jetzt alle denselben, in den Einstellungen festgelegten Slicer verwenden. Das Kontextmenü brauchte dafür keine Änderung, da es schon vorher ohne feste Slicer-Auswahl aufgerufen wurde
+
+## [0.7.5] - 2026-09-16
+
+### Fixed
+
+- Listen- und Grid-Ansicht: Scrollen bis ans Ende ließ sich unter Linux (WebKitGTK) noch weiter über den Inhalt hinaus ziehen (elastischer Rubber-Band-Overscroll), statt am Ende zu stoppen ([GitHub Issue #5](https://github.com/Bexxs75/3mf-katalog-manager/issues/5)). Der v0.7.4-Fix (`overscroll-behavior: contain` an den beiden Haupt-Scroll-Containern) reichte nicht aus, da dabei der komplette Fensterinhalt (auch Header/Sidebar außerhalb dieser Container) sichtbar mitwanderte — laut Spezifikation verhindert `contain` nur die Weitergabe an Eltern-Elemente, nicht den Bounce-Effekt auf der Seite selbst. Jetzt zusätzlich `overscroll-behavior: none` auf `html`/`body` gesetzt, was den Seiten-Bounce auf Root-Ebene unterbindet
+
+### Reverted
+
+- Der Pinch-Zoom-Fix aus v0.7.4 ([GitHub Issue #6](https://github.com/Bexxs75/3mf-katalog-manager/issues/6)) wurde zurückgenommen: nach weiterer Analyse stellte sich heraus, dass die beobachtete Vergrößerung eine Bildschirm-/Trackpad-Zoomfunktion des Notebooks selbst war (Betriebssystem-Ebene), kein Bug der App. Der globale `wheel`-Listener in `App.tsx` löste ohnehin nicht die tatsächliche Ursache und wurde daher wieder entfernt, statt unnötig Komplexität für ein Nicht-Problem der App zu behalten
+
+## [0.7.3] - 2026-09-13
+
+### Fixed
+
+- 3D-Vorschau: Modelle ließen sich per Maus nicht mehr sauber um die eigene stehende Achse drehen — 3MF/STL-Geometrie liegt Z-up vor (Druckplatte = XY-Ebene, Z = Druckhöhe), Three.js/OrbitControls gehen aber von Y-up aus. Dadurch lag die stehende Achse der Figur quer zur Kamera-Drehachse: freies Ziehen kippte sie seitlich um, statt sie wie einen Drehteller zu drehen. Die Modell-Geometrie wird beim Laden jetzt einmalig um -90° um die X-Achse gedreht, wodurch jede Drehung (Maus-Drag, Auto-Rotation, Pfeil-Buttons) die Figur aufrecht hält und dabei frei geneigt werden kann
+
+## [0.7.2] - 2026-09-13
+
+### Fixed
+
+- Import vieler Dateien auf einmal (Ordner-Import) war spürbar langsam: jede importierte Datei öffnete und committete bisher ihre eigene Datenbank-Transaktion, und SQLite fsynct bei jedem Commit — bei einem Ordner mit vielen Modellen summierte sich das zu vielen einzelnen Festplatten-Synchronisationen nacheinander. Der komplette Batch läuft jetzt in einer einzigen Transaktion mit einem Commit am Ende
+
+## [0.7.1] - 2026-09-13
+
+### Security
+
+- Path-Traversal in `create_folder`/`rename_folder` behoben (CWE-22, gefunden bei Review gegen ISO/IEC 27002 A.8.28): der Ordnername wurde ungeprüft in Pfad-Operationen übernommen, wodurch z. B. `../../etc/x` oder ein absoluter Pfad einen echten Verzeichnis-Vorgang weit außerhalb des Katalog-Ordnerbaums hätte auslösen können — bei `create_folder` direkt über das "+ Neuer Ordner"-Eingabefeld erreichbar. Neuer gemeinsamer Validierungs-Helfer lehnt Pfad-Trenner, `.`/`..` sowie leere Namen ab. Zusätzlich prüft `open_in_file_manager` jetzt, dass der übergebene Pfad ein echtes existierendes Verzeichnis ist
+
+## [0.7.0] - 2026-09-13
+
+### Added
+
+- Materialkosten-Schätzung: bei Modellen mit echtem Slicer-Filamentverbrauch zeigt die Detailseite jetzt zusätzlich eine geschätzte Materialkosten-Summe, berechnet aus dem Verbrauch je Filament und dem Durchschnittspreis passender Spulen im Filament-Lager (Materialtyp-Abgleich, Farbe wird bewusst nicht berücksichtigt); fehlt ein Preis, wird das klar als "unbekannt" ausgewiesen statt als 0
+- Druckprotokoll: auf der Modell-Detailseite lässt sich jetzt zusätzlich zum bestehenden Druckstatus-Toggle ein Protokoll mehrerer Druckversuche führen — Datum, optionale Notiz, optionales Foto pro Eintrag, bewusst unabhängig vom Druckstatus (keine automatische Ableitung in beide Richtungen)
+- Katalog-Backup (Export/Import): neue Sektion im Einstellungen-Panel sichert die komplette Katalog-Datenbank plus Einstellungen (Theme, Sprache, Slicer-Liste, Ansicht) als ZIP-Datei; Import (mit Bestätigungsabfrage, da destruktiv) ersetzt den aktuellen Katalog sicher — die alte Datenbank wird nie gelöscht, nur als `.bak-<Zeitstempel>` beiseitegelegt, mit automatischer Wiederherstellung bei einem fehlgeschlagenen Import; nach erfolgreichem Import lädt die App automatisch neu, damit keine veralteten Modell-IDs im Katalog stehen bleiben
+- Navigationsleiste (links, feste Icon-Leiste) ersetzt den bisherigen Katalog/Filament-Lager-Wechsel-Button im Header sowie das Papierkorb-Icon; die Zahnrad-Einstellungen wandern ebenfalls dorthin. Design als klickbarer HTML-Prototyp mit Nutzer-Feedback abgestimmt
+- Echte Ordnerstruktur: Ordner im Katalog bilden jetzt echte Verzeichnisse auf der Platte ab. Import einer Ordnerstruktur legt automatisch eine passende Hierarchie in der Datenbank an (rekursiv, inkl. Unterordner), die Sidebar zeigt einen auf-/zuklappbaren Ordner-Baum statt der bisherigen (praktisch immer leeren) flachen Liste. Dateien und Ordner lassen sich per Drag & Drop **physisch** verschieben — inklusive rekursivem Pfad-Update für alle betroffenen Unterordner/Dateien und Schutz vor Verschieben in den eigenen Unterordner; neuer "+ Neuer Ordner"-Button legt echte Verzeichnisse an
+- Sammlungen sind jetzt Teil der linken Sidebar (mit "alle anzeigen"-Galerie und Inline-Anlage) statt eines separaten Reiters im Inhaltsbereich
+- Katalog-Speicherort-Ersteinrichtung: Dialog beim ersten Start (und jederzeit über die Einstellungen erreichbar) erklärt die neue Ordner-Bedeutung und bietet an, eine bestehende Ordnerstruktur zu übernehmen oder einen neuen, auch leeren Speicherort einzurichten — mit Hinweis, welche Dateitypen erfasst werden (.3mf/.stl) und dass bereits gepackte Archive (z. B. .zip) nicht berücksichtigt werden. "Dateien importieren" platziert Einzeldateien danach im gerade aktiven Ordner bzw. im konfigurierten Speicherort, statt immer in der Wurzel zu landen. Neuer Button "Ordner im Dateimanager öffnen" (Dialog und Einstellungen)
+
+### Changed
+
+- Kartenradius zwischen Katalog, Sammlungen-Galerie und Filament-Lager vereinheitlicht (10px, unabhängig von der UI-Dichte)
+- Kopfzeile ("3MF Katalog Manager") geht jetzt über die volle Fensterbreite, die Navigationsleiste beginnt erst darunter
+- Sidebar: Abschnitte "Creators" und "Gespeicherte Filter" entfernt (unnötig geworden), "Tags" steht jetzt vor der Warteschlange
+
+### Fixed
+
+- 3D-Live-Vorschau schlug bei sehr großen Modellen (mehrere hunderttausend bis über eine Million Vertices) im Release-Build stumm fehl ("Vorschau nicht verfügbar"): Tauri liefert große IPC-Binärantworten über einen separaten internen `fetch()` aus, den die Content-Security-Policy ohne explizite `connect-src`-Direktive blockierte. Betraf nur außergewöhnlich große Dateien, kleinere 3mf-Modelle waren nie betroffen
+
+## [0.6.0] - 2026-09-13
+
+Erster getaggter Release. Die einzelnen Abschnitte unten stammen aus mehreren Entwicklungstagen (2026-09-12 und 2026-09-13), siehe Hinweis oben zur rückwirkenden Versionierung.
+
+### Added
+
+- Filamentverbrauch aus gesliceten OrcaSlicer/Bambu-Studio-3mf-Dateien: liest `Metadata/slice_info.config` beim Import mit aus und zeigt auf der Modell-Detailseite das echte, vom Slicer berechnete Gewicht statt der bisherigen groben Schätzung aus Volumen × Materialdichte — inklusive Aufschlüsselung pro Druckplatte und Filament (Typ, Farbe, Gramm, Meter). Neuer Button "Metadaten neu einlesen" liest eine bereits katalogisierte Datei erneut vom Pfad ein, falls sie inzwischen in OrcaSlicer/Bambu Studio gesliced und überschrieben wurde (inkl. sichtbarer Erfolgsmeldung, Fehler/Erfolg sind pro Modell gescoped). Bewusst außerhalb des Scopes: Live-Drucker-Anbindung, Headless-Slicing, automatischer Abzug vom Filament-Lager
+- Filament-Lager, Neugestaltung (nach Nutzer-Feedback "nicht gut/intuitiv" + Mockup-Review mit 3 Vorschlägen): neues Feld **Lagerort** (Autocomplete aus bereits verwendeten Standorten); lokaler **Dashboard/Liste**-Umschalter direkt im Filament-Lager (Kartenraster mit Bestandsbalken/Statusfarbe bzw. sortierbare Tabelle im Stil einer Lagerverwaltungssoftware); Statistik-Leiste (Spulen gesamt, Restbestand, belegte Lagerplätze, niedrig/leer) und Status-Filter-Chips (Niedrig/Leer); neue Theme-Tokens `--good`/`--warn`/`--crit` für eigenständige Statusfarben; Anlage-Formular als seitliches Panel mit Abschnitten (Bild/Identifikation/Lagerung/Bestand) statt der bisherigen gequetschten 7-Felder-Leiste, inkl. Live-Vorschau des Bestandsbalkens; "Anzahl Spulen"-Stepper beim Neuanlegen legt mehrere unabhängige Spulen mit denselben Werten gleichzeitig an
+- Filament-Lager: kuratierte Autocomplete-Vorschlagsliste gängiger FDM-Materialien (PLA, PETG, ABS, ASA, TPU, Nylon, PC, PEEK, Carbon-Fiber-Varianten u. a.) und Filament-Hersteller (Bambu Lab, Prusament, Polymaker, eSUN, SUNLU, Fillamentum, ColorFabb u. a.) für Material-/Hersteller-Felder; eigene, themekonforme `AutocompleteInput`-Komponente
+- Neues App-Icon: isometrischer 3D-Druck-Layer-Würfel, Farben direkt aus den echten Theme-Tokens (oklch → sRGB) berechnet, ersetzt das generische Tauri-Standard-Icon auf allen Plattformen
+- Content-Security-Policy aktiviert (`tauri.conf.json`)
+- Windows-`.msi`-Build auf einer Windows-11-VM (QEMU/KVM) end-to-end verifiziert: Build, Installation, Icon-Extraktion aus der installierten `.exe` zur visuellen Kontrolle
+
+### Changed
+
+- App-Anzeigename (Fenstertitel, Installer-/Taskleisten-Name) von "mf-katalog-manager" auf "3MF Katalog Manager" korrigiert — ein Cargo-Crate-Name darf nicht mit einer Ziffer beginnen, weshalb beim allerersten Projekt-Scaffold "mf-katalog-manager" statt "3mf-katalog-manager" gewählt wurde. App-Identifier und Datenordner sind unverändert
+- Quell-URL-Bearbeitung im Detailbereich (Seitenpanel kompakt/komfortabel, Modell-Detailseite) in einen gemeinsamen `useEditableSourceUrl`-Hook zusammengeführt, vorher dreifach mit identischer Logik dupliziert
+
+### Security
+
+- Vollständiges Code-Review (Senior-Dev-Review gegen OWASP Top 10 / CWE / ISO 27002 A.8.28), dokumentiert in [GitHub Issue #1](https://github.com/Bexxs75/3mf-katalog-manager/issues/1): Content-Security-Policy war komplett deaktiviert (`csp: null`) — jetzt auf eine restriktive Policy (`default-src 'self'`, `img-src` erlaubt `data:` für Base64-Thumbnails) gesetzt; die Quell-URL eines Modells akzeptiert serverseitig nur noch `http(s)://`-Links (verhinderte, dass ein `javascript:`/`data:`-Wert als klickbarer `<a href>` im WebView landet); "In Slicer öffnen" prüft vor dem Start, dass der übergebene Pfad auf eine existierende, ausführbare Datei zeigt, statt jeden String klaglos an `process::Command` zu übergeben
+- App-Datenverzeichnis (`0700`) und `catalog.db` (`0600`) werden unter Unix beim Start gehärtet (ISO 27002 A.8.28)
+- Diverses Aufräumen aus demselben Review (niedrige Priorität, keine Sicherheitswirkung): toter Tauri-Demo-Command (`greet`) entfernt, deprecated `quick_xml`-Attribut-API (`unescape_value` → `normalized_value`) ersetzt, STL-Parser liest den Facet-Count jetzt über denselben bounds-geprüften Zugriff wie die restlichen Werte statt sich implizit auf die Aufrufreihenfolge zu verlassen, mehrere ungenutzte Codepfade entfernt oder als "nur Test"/"bewusst beibehalten" markiert
+
+### Fixed
+
+- Dreh-Buttons im 3D-Viewer der Detailseite: Hover-Effekt (`bg-white/10`) im hellen Theme praktisch unsichtbar, jetzt themekonform über einen Token; fehlendes `cursor-pointer` an allen drei Buttons ergänzt
+- Sammlungen, sechs zurückgestellte Minor-Findings: Plural-Anzeige der Modell-Kartenanzahl nutzte keine echten Pluralformen; toter i18n-Schlüssel `backToCollectionsLabel` entfernt; Mehrfachauswahl blieb beim Wechsel zwischen Ansichten/Sammlungen bestehen; "Ordner als Sammlung importieren" erfasste Datei-Duplikate an einem anderen Pfad nicht; Drag-Umsortieren startete ohne Toleranzschwelle von jeder Stelle der Karte aus; `list_collection_files` lud pro Modell einzeln (N+1) statt gebündelt
+- Filament-Autocomplete: erste Version nutzte ein natives `<input list>`/`<datalist>`, dessen Vorschlags-Popup vom Betriebssystem/WebKit gerendert wird und sich nicht an das dunkle App-Theme anpassen lässt (erschien als weißes System-Popup) — durch die eigene, themekonforme `AutocompleteInput`-Komponente ersetzt
+- "Anzahl Spulen"-Feld im Filament-Anlage-Formular zeigte gleichzeitig die eigenen -/+-Buttons und die nativen Browser-Spinner-Pfeile des Zahlenfelds — native Spinner per CSS ausgeblendet
+
+## [0.5.0] - 2026-09-12
+
+### Added
+
+- Datei-/Ordnerdialoge nutzen das native XDG-Desktop-Portal statt eines generischen GTK-Dialogs — auf KDE erscheint z. B. der echte Kirigami-Dialog mit Dolphins Ordnersortierung
+- Modell-Detailseite: vollflächige Ansicht (Doppelklick auf ein Modell) mit großer 3D-Vorschau, allen Metadaten und Druckplatten-Anzahl bei Bambu-Studio-/OrcaSlicer-3MF-Dateien (Best-Effort-Erkennung); das bisherige Seitenpanel bleibt für schnelle Einzelauswahl weiter bestehen
+- Dreh-Steuerelemente im 3D-Viewer der Detailseite: Play/Pause-Button für automatische Dauerdrehung plus ←/→-Buttons für 15°-Schritte, zusätzlich zum freien Maus-Ziehen; Auto-Rotation pausiert automatisch bei eigener Maus-Interaktion
+- Papierkorb statt sofortigem Hart-Löschen: gelöschte Modelle werden zunächst in ein Papierkorb-Verzeichnis verschoben und bleiben dort wiederherstellbar (eigene Papierkorb-Ansicht über neues Header-Icon mit Mengen-Badge, inkl. 3D-Vorschau); endgültiges Löschen sowie "Papierkorb leeren" räumen Datei und Katalog-Eintrag danach dauerhaft weg
+- Mehrfachauswahl in der Katalogübersicht: Checkbox je Karte/Zeile, "Alle auswählen" (respektiert aktive Filter), Aktionsleiste für Warteschlange, Druckstatus und Löschen (mit Bestätigung) über mehrere markierte Modelle gleichzeitig
+- Sidebar: Tags und Creators starten eingeklappt und zeigen sich als kompakte, umbrechende Chips statt langer Zeilenlisten; Tags mit nur einem Treffer werden standardmäßig ausgeblendet (aktiv ausgewählte Tags bleiben sichtbar)
+- Kontextmenü (Rechtsklick auf eine Karte) bietet jetzt auch "Gedruckt"/"Nicht gedruckt" direkt an
+- Automatische Slicer-Erkennung: durchsucht beim Start bekannte Installationsorte für Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer und UltiMaker Cura (PATH, `/opt`, Flatpak-Exports, gängige AppImage-Ablageorte auf Linux; `Program Files`/`Program Files (x86)` auf Windows) und ergänzt Treffer automatisch (Label "automatisch erkannt"); manuelles Hinzufügen für Custom-Forks bleibt bestehen
+- Einstellung "Bevorzugte Ansicht" (Zahnrad-Menü): legt fest, ob Katalog-Karten und die Modell-Detailseite standardmäßig das eingebettete Datei-Bild oder eine gerenderte 3D-Ansicht bevorzugen; bei "Gerenderte Ansicht" rendert die App fehlende 3D-Schnappschüsse automatisch und sequenziell im Hintergrund nach, eine einzelne nicht ladbare Datei blockiert dabei nicht die restliche Warteschlange
+- Sammlungen: dritter Organisationsmechanismus neben Ordnern und Tags — viele-zu-viele Zuordnung wie Tags, aber mit manuell festlegbarer Reihenfolge (Drag & Drop). Erstellung über die Mehrfachauswahl-Aktionsleiste ("Zu Sammlung hinzufügen") oder per neuer Import-Option "Ordner als Sammlung importieren". Neuer Reiter "Sammlungen" neben "Alle Modelle" öffnet eine Kartenübersicht aller Sammlungen (umbenennen/löschen möglich); Klick auf eine Sammlung zeigt ihre Modelle in fester Reihenfolge. In den Papierkorb verschobene Modelle werden in Sammlungen korrekt ausgeblendet und tauchen nach dem Wiederherstellen automatisch wieder auf
+
+### Changed
+
+- Bildquellen einer Datei (eigenes Upload, eingebettetes 3MF-/STL-Thumbnail, gerenderter 3D-Snapshot) werden nicht mehr serverseitig zu einem festen `displayImage` priorisiert, sondern getrennt ans Frontend geliefert — die Priorisierung entscheidet die neue "Bevorzugte Ansicht"-Einstellung
+- Modell-Detailseite: Betrachter-Spalte (Bild/3D-Vorschau) bei sehr breiten Bildschirmen (z. B. 3440×1440) ca. 25 % größer, Metadaten-Spalte rechts bleibt dabei unverändert
+- Sortieren-Dropdown eigenständig im dunklen Theme gestylt (Popover-Muster wie die bestehende Slicer-Auswahl) statt eines nativen `<select>`-Elements mit hellem Systemhintergrund und falscher Schriftart
+
+### Removed
+
+- Cloud-Anbindung (Google Drive) komplett entfernt: Backend-Modul `src-tauri/src/cloud/` inkl. aller 7 Tauri-Commands, `tauri-plugin-opener`-Abhängigkeit sowie `oauth2`/`keyring`/`reqwest`/`async-trait`/`tokio` aus `Cargo.toml`; Frontend-UI (Cloud-Konten-Sidebar-Sektion, Cloud-Import-Option, Sync-Status-Anzeigen, Herkunfts-Badges) und zugehörige i18n-Keys entfernt. `cloud_accounts`-Tabelle und der `sync_status`/`cloud_id`-Teil des `origin`-Wertebereichs aus `schema.sql` entfernt bzw. auf `'local'` reduziert (nur für Neuinstallationen wirksam — bestehende Datenbanken behalten die inerten Spalten `sync_status`/`cloud_id`, da dieses Projekt kein `DROP COLUMN`-Migrationsmuster hat). Grund: die Google-Drive-Integration war trotz mehrfacher Nacharbeit im Alltag zu instabil/fehleranfällig und band zu viel Aufmerksamkeit von wichtigeren Themen ab
+
+### Fixed
+
+- Weißer Bildschirm beim Start auf Systemen mit NVIDIA-Grafikkarte (proprietärer Treiber): WebKitGTKs standardmäßiges DMA-BUF-Hardware-Rendering ist mit dem NVIDIA-Treiber inkompatibel (`Failed to create GBM buffer`) — App setzt jetzt automatisch beim Start die nötige Umgebungsvariable
+- Externe Slicer (z. B. OrcaSlicer) starteten nicht zuverlässig aus der App heraus, wenn der hinterlegte Pfad auf ein `AppRun`-Startskript zeigte: die App vererbte ihre eigene AppImage-interne Umgebung ungefiltert an den gestarteten Prozess — diese Variablen werden jetzt vor dem Start externer Programme entfernt
+- Bambu Studio wurde auf Arch/CachyOS-AUR-Installationen von der automatischen Slicer-Erkennung nicht gefunden, da das AUR-Paket die Binärdatei als `bambustudio` installiert — als dritte Namensvariante ergänzt
+- Papierkorb-Bug: zeigte der Katalog-Pfad einer Datei nicht mehr auf einen erreichbaren Ort, landete die Datei beim Löschen bisher sofort unwiderruflich verloren statt im Papierkorb
+- Automatisches Hintergrund-Nachrendern fehlender 3D-Schnappschüsse: eine einzelne nicht ladbare Datei blockierte zuvor die gesamte Warteschlange dauerhaft; fehlerhafte Dateien werden jetzt übersprungen. Jede beendete Hintergrund-Rendering-Instanz gibt ihren WebGL-Kontext jetzt explizit frei
+- Sammlungen: in den Papierkorb verschobene Modelle blieben in der Sammlungs-Detailansicht sichtbar und wurden in der Modellanzahl mitgezählt; Sidebar-Filter verließen die Sammlungsansicht nicht beim Anklicken; die Listenansicht zeigte bei aktiver Sammlung weiterhin den kompletten Katalog
+
+## [0.4.0] - 2026-09-11
+
+### Added
+
+- Komfort-Ansicht als Alternative zur bestehenden kompakten Oberfläche: deutlich größere Schrift, Grafiken und Bedienelemente (Karten-Layout angelehnt an printables.com/model), umschaltbar im Einstellungen-Panel, Standard bleibt die kompakte Ansicht
+- Favorit-Merkmal je Modell (Herz-Icon), in beiden Ansichten sichtbar
+- Import-Button in der Kopfzeile öffnet jetzt immer direkt das Dropdown-Menü statt eines Split-Buttons mit Sofort-Aktion
+
+### Security
+
+- `quick-xml` von 0.36.2 auf 0.41.0 angehoben: schließt zwei Denial-of-Service-Schwachstellen (RUSTSEC-2026-0194, RUSTSEC-2026-0195, je CVSS 7.5/Hoch — quadratische Laufzeit bei doppelten Attributnamen bzw. unbegrenzte Speicherallokation bei Namespace-Deklarationen), erreichbar über eine präparierte `.3mf`-Datei beim normalen Import. Gefunden im Security-Review vom 2026-09-11 (`docs/security/security-review-2026-09-11.md`), per `cargo audit` bestätigt behoben
+
+### Fixed
+
+- Komfort-Ansicht wirkte in Kopfzeile, Seitenleiste, Listenansicht, Filament-Lager, Kontextmenü, Aufräum-Dialog und Import-Banner überhaupt nicht: Tailwind kompilierte die Klasse `text-[var(--font-size-X)]` als Text-*Farbe* statt Schriftgröße, behoben durch expliziten Typ-Hinweis `text-[length:var(--font-size-X)]`; zusätzlich nutzten Ordner-/Tag-/Creator-Namen in der Seitenleiste bislang Tailwinds feste `text-xs`-Klasse statt eines Tokens (neuer Token `--font-size-item`)
+- Sidebar-Einträge (Ordner/Tags/Creators) skalierten nicht mit der Komfort-Ansicht
+
+## [0.3.0] - 2026-09-10
+
+### Added
+
+- Filament-Lager: eigenständige Spulenverwaltung (Material, Hersteller, Farbe, Durchmesser, Ursprungs-/Restgewicht, Preis, Bild-Upload) über ein neues Header-Icon erreichbar, unabhängig vom Modell-Katalog
+- Vier kleine Katalog-Erweiterungen: Druckstatus-Toggle + aus Volumen/Material geschätztes Gewicht pro Modell, Sortierung nach "Zuletzt angesehen" + NEU-Badge für kürzlich importierte Modelle, Creators als eigene Sidebar-Filterkategorie (aus dem beim 3MF-Import geparsten Designer-Metadatum), automatische Erkennung exakter Datei-Duplikate beim Import (SHA-256-Inhalts-Hash) mit Zusammenfassungsmeldung
+- Modell-Thumbnails im Raster: Bild-Priorität eigenes Upload > eingebettetes 3MF-Thumbnail > automatisch erzeugter 3D-Snapshot > Platzhalter; zusätzlich pro Modell eine Quelle als Link hinterlegbar
+- Tags- und Creators-Sektionen in der Sidebar sind einzeln einklappbar
+- Warteschlange ("als Nächstes drucken"): geordnete, per Drag & Drop sortierbare Liste in eigener einklappbarer Sidebar-Sektion; automatisches Entfernen beim Markieren als gedruckt
+- Gespeicherte Filter: aktuelle Kombination aus Ordner/Tag/Creator/Suche/Sortierung unter einem Namen speichern, per Klick wieder anwenden
+- Aufräum-Vorschläge: manuell auslösbarer Katalog-Scan findet verwaiste Dateipfade und Bestands-Duplikate; Ergebnis-Dialog mit Einzelauswahl, ältestes Duplikat je Gruppe bleibt vorausgewählt
+
+### Fixed
+
+- Aufräum-Vorschläge: eine Datei, die gleichzeitig verwaist UND Teil einer Duplikat-Gruppe war, konnte im Auswahl-Dialog als "wird behalten" markiert und trotzdem gelöscht werden — verwaiste Dateien werden jetzt vor der Duplikat-Gruppierung ausgeschlossen; zusätzlich brach das Löschen bei einem Dateisystemfehler die ganze Auswahl vorzeitig ab statt einzelne Fehler zu überspringen
+- Warteschlange: Drag & Drop zum Neusortieren reagierte nicht — natives HTML5-Drag&Drop kollidierte unter WebKitGTK mit Tauris Fenster-Ebene-Erkennung für Datei-Import per OS-Drop; auf reine Maus-Events umgestellt
+
+## [0.2.0] - 2026-09-09
+
+### Added
+
+- Vollständige Mehrsprachigkeit (Deutsch/Englisch/Spanisch/Französisch): eigenes Context-basiertes i18n-System ohne externe Bibliothek, `Translations`-Interface erzwingt Vollständigkeit der Wörterbücher zur Compile-Zeit, Sprachumschalter im Einstellungen-Panel, Persistenz in localStorage
+- Lokalisierte Formatierung (Datum, Uhrzeit relativ, Dateigröße, Volumen, Abmessungen) über `Intl`-APIs im Frontend
+- Google-Drive-Anbindung: OAuth2-PKCE-Verbindung, Token-Speicherung im OS-Schlüsselbund, Datei-/Ordnerauswahl über Googles offizielles Picker-Widget, Import mit Duplikat-Erkennung und Sync-Status-Anzeige je Datei (später in 0.5.0 wieder vollständig entfernt)
+- Native Rust-seitige Geometrie-Extraktion für die 3D-Vorschau: ZIP-Entpacken und Mesh-Parsing laufen jetzt vollständig im Backend statt im Frontend über three.js-Loader/`DOMParser`
+- "In Slicer öffnen": Nutzer hinterlegt beliebig viele eigene Slicer-Programmpfade, Split-Button für Hauptauswahl/Wechsel, Kontextmenü-Eintrag für den zuletzt genutzten Slicer
+- Hochladen zu Google Drive: lokale Dateien lassen sich zu Google Drive hochladen, inkl. Zielordner-Auswahl über das Picker-Widget
+
+### Changed
+
+- Backend liefert nur noch rohe, unformatierte Modelldaten (`ModelFileDto`); serverseitige, deutsch-only Formatierung entfernt und durch frontendseitige, sprachabhängige Formatierung ersetzt
+- Google-Drive-OAuth-Scope `drive.readonly` entfernt, nur noch `drive.file` + `userinfo.email`: `drive.readonly` ist ein "restricted scope" und hätte für die Google-Verifizierung ein kostenpflichtiges CASA-Sicherheitsaudit erfordert
+
+### Fixed
+
+- CSS-`@import`-Reihenfolge und Rust-Abhängigkeiten fixiert
+- Verwaiste Tags (letzte Datei mit diesem Tag gelöscht) blieben in Datenbank und Sidebar stehen
+- Aus Google Drive importierte Dateien übernahmen den internen Cache-Dateinamen statt des echten Drive-Dateinamens
+- Google-Drive-Konto verbinden/trennen und jeder authentifizierte Cloud-Aufruf blockierten kurzzeitig den Tokio-Worker- bzw. IPC-Dispatch-Thread durch synchrones D-Bus-IPC zum Schlüsselbund — über `spawn_blocking` entkoppelt
+
+## [0.1.0] - 2026-09-08
+
+Initialer Scaffold und Kern-Katalog.
+
+### Added
+
+- Tauri-Projektgerüst mit integriertem React/TypeScript/Tailwind-UI-Paket
+- Eigenständiges 3MF-Parsing-Modul (OPC-Container, Model-XML, eingebettetes Thumbnail)
+- Eigenständiges STL-Parsing-Modul (ASCII und Binär)
+- SQLite-Katalogdatenbank (Schema, Modelle, Repository)
+- Automatische Tagging-Heuristiken (Dateiname, Geometrie-Merkmale)
+- Tauri-Command-Bridge: Frontend nutzt echte Backend-Daten statt Beispieldaten
+- 3D-Live-Vorschau im Detailbereich mittels three.js
+- Import-Workflow: Dateidialog, Ordnerauswahl, Drag-and-Drop
+- Löschfunktion für Modelle mit Bestätigungsdialog und Kontextmenü
+
+### Fixed
+
+- Sortierung nach Datum und Dateigröße korrigiert
+
+## Known Limitations (Stand 0.6.0)
+
+- Keine Cloud-Anbindung (siehe "Removed" in 0.5.0) — nur lokaler Dateisystem-Import
+- "In Slicer öffnen" unterstützt macOS nicht (`.app`-Bundles benötigen einen anderen Start-Mechanismus als Windows/Linux-Executables)
+- Windows-`.msi`-Build ist manuell verifiziert, aber nicht Teil einer automatisierten Pipeline; macOS-Paket (`.dmg`) sowie Code-Signing für beide Plattformen stehen noch aus
+- CI/CD-Pipeline (GitHub Actions) noch nicht eingerichtet
+- Keine automatisierten Frontend-Tests (nur Backend/Rust-Tests)
