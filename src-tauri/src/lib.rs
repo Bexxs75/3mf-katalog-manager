@@ -109,7 +109,7 @@ pub fn run() {
             harden_permissions(&app_data_dir);
             let db_path = app_data_dir.join("catalog.db");
             let conn = db::connect(&db_path)?;
-            log::set_max_level(log::LevelFilter::Info);
+            commands::apply_verbose_state(&conn);
             diagnostics::log_startup(&conn);
             harden_permissions(&db_path);
             if let Err(e) = db::delete_unused_tags(&conn) {
@@ -125,6 +125,17 @@ pub fn run() {
                 trash_dir,
                 db_path,
                 sensitive_dirs,
+            });
+            // Re-checks the verbose-logging switch hourly so it turns itself off
+            // within an hour of expiring, even on a long-running session.
+            let verbose_handle = app.handle().clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(std::time::Duration::from_secs(3600));
+                if let Some(state) = verbose_handle.try_state::<commands::AppState>() {
+                    if let Ok(conn) = state.db.lock() {
+                        commands::apply_verbose_state(&conn);
+                    }
+                }
             });
             app.manage(commands::PendingArchives::default());
             app.manage(commands::ApprovedTargets::default());
@@ -240,6 +251,8 @@ pub fn run() {
             commands::check_for_update,
             commands::open_release_url,
             commands::open_discord_invite,
+            commands::get_verbose_logging,
+            commands::set_verbose_logging,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

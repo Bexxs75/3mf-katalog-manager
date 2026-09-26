@@ -3,6 +3,7 @@
 mod archives;
 mod backup;
 mod collections;
+mod diagnostics;
 mod dropped_image;
 mod error;
 mod files;
@@ -17,6 +18,7 @@ mod trash;
 pub use archives::*;
 pub use backup::*;
 pub use collections::*;
+pub use diagnostics::*;
 pub use dropped_image::*;
 pub use error::*;
 pub use files::*;
