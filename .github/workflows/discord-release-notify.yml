@@ -18,21 +18,19 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_INPUT: ${{ inputs.tag }}
-          # Nie direkt als ${{ ... }} in den Skript-Text interpolieren - der
-          # Release-Body ist Repo-Inhalt (potenziell von jedem mit
-          # Release-Rechten gesetzt) und wuerde sonst VOR der Bash-Ausfuehrung
-          # in den Skript-Text eingesetzt: Backticks/$(...) darin liefen dann
-          # als Code auf dem Runner, mit Zugriff auf alle Secrets (klassische
-          # GitHub-Actions-Command-Injection). Env-Variablen umgehen das, da
-          # bash sie erst zur Laufzeit als reinen String einsetzt.
+          # Never interpolate directly as ${{ ... }} into the script text - the release
+          # body is repo content (potentially set by anyone with release rights) and
+          # would otherwise be inserted into the script text BEFORE bash runs: backticks
+          # or $(...) in it would run as code on the runner, with access to all secrets
+          # (classic GitHub Actions command injection). Env variables avoid that, because
+          # bash only inserts them at runtime as plain strings.
           EVENT_NAME: ${{ github.event.release.name }}
           EVENT_URL: ${{ github.event.release.html_url }}
           EVENT_TAG: ${{ github.event.release.tag_name }}
           EVENT_BODY: ${{ github.event.release.body }}
         run: |
-          # workflow_dispatch (manuelles erneutes Posten) hat kein
-          # github.event.release - Daten dann per API zum angegebenen Tag
-          # nachladen, sonst kommen sie direkt aus dem release-Event.
+          # workflow_dispatch (manual re-post) has no github.event.release - then load the
+          # data for the given tag via the API, otherwise it comes from the release event.
           if [ -n "$TAG_INPUT" ]; then
             DATA=$(gh api "repos/${{ github.repository }}/releases/tags/$TAG_INPUT")
             echo "name=$(echo "$DATA" | jq -r '.name')" >> "$GITHUB_OUTPUT"

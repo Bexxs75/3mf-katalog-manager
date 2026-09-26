@@ -27,8 +27,8 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      # STEP-Vorschau bleibt aus, bis OCCT samt austauschbaren DLLs verifiziert
-      # paketiert werden kann. So enthaelt dieser Build keinen LGPL-Anteil.
+      # The STEP preview stays off until OCCT can be packaged with verified,
+      # replaceable DLLs. This way the build contains no LGPL part.
       - name: Build Tauri app (Windows MSI, without STEP preview)
         uses: tauri-apps/tauri-action@v0
         env:

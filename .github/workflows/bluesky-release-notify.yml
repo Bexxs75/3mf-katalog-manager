@@ -18,9 +18,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_INPUT: ${{ inputs.tag }}
-          # Gleiche Vorsicht wie in discord-release-notify.yml: Release-Name/
-          # -Body sind Repo-Inhalt, deshalb ueber env statt direkter
-          # ${{ }}-Interpolation in den Skript-Text (Command-Injection-Schutz).
+          # Same caution as in discord-release-notify.yml: release name/body are repo
+          # content, so pass them via env instead of ${{ }} interpolation into the
+          # script text (command injection protection).
           EVENT_NAME: ${{ github.event.release.name }}
           EVENT_URL: ${{ github.event.release.html_url }}
           EVENT_TAG: ${{ github.event.release.tag_name }}
@@ -55,10 +55,9 @@ jobs:
           RELEASE_BODY: ${{ steps.release.outputs.body }}
           TAG_NAME: ${{ steps.release.outputs.tag }}
         run: |
-          # jq schneidet Strings zeichenweise (Unicode-Codepoints), nicht
-          # byteweise wie `head -c` - bei einem so knappen Limit (300
-          # Zeichen) wichtig, um Emojis/Umlaute nicht mittendrin abzuschneiden
-          # und dadurch ungueltiges UTF-8 zu erzeugen.
+          # jq cuts strings by character (Unicode code points), not by byte like
+          # `head -c` - important with such a tight limit (300 characters), so emojis or
+          # umlauts aren't cut in half, producing invalid UTF-8.
           TITLE="${RELEASE_NAME:-$TAG_NAME}"
           FIRST_LINE=$(echo "$RELEASE_BODY" | grep -v '^$' | grep -v '^##' | head -1)
 
@@ -85,7 +84,7 @@ jobs:
           POST_TEXT: ${{ steps.post.outputs.text }}
           POST_URL: ${{ steps.post.outputs.url }}
         run: |
-          # 1. Session erstellen (App-Passwort, NICHT das Hauptpasswort).
+          # 1. Create a session (app password, NOT the main password).
           SESSION=$(curl -sS -f -X POST \
             -H "Content-Type: application/json" \
             -d "$(jq -n --arg id "$BLUESKY_HANDLE" --arg pw "$BLUESKY_APP_PASSWORD" '{identifier:$id, password:$pw}')" \
@@ -93,11 +92,10 @@ jobs:
           ACCESS_JWT=$(echo "$SESSION" | jq -r '.accessJwt')
           DID=$(echo "$SESSION" | jq -r '.did')
 
-          # 2. Byte-Offsets des Links innerhalb des Post-Texts ermitteln -
-          # Facets (klickbare Links) werden von Bluesky ueber UTF-8-Byte-
-          # Positionen referenziert, nicht ueber Zeichen-Indizes. `wc -c`
-          # zaehlt immer Bytes (unabhaengig vom Locale), genau das wird hier
-          # gebraucht.
+          # 2. Determine the byte offsets of the link inside the post text - Bluesky
+          # facets (clickable links) reference UTF-8 byte positions, not character
+          # indices. `wc -c` always counts bytes (regardless of locale), which is
+          # exactly what's needed here.
           PREFIX="${POST_TEXT%%"$POST_URL"*}"
           BYTE_START=$(printf '%s' "$PREFIX" | wc -c)
           URL_BYTES=$(printf '%s' "$POST_URL" | wc -c)

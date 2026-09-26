@@ -4,13 +4,12 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  # Baut je eine Single-Arch-Version auf ihrem jeweils nativen Runner - jede
-  # Architektur bekommt ihre eigene, echte Homebrew-Installation (kein
-  # Rosetta-Trick: Homebrews Installer verweigert sich seit einer neueren
-  # Version explizit, unter Rosetta/x86_64-Emulation auf einem Apple-
-  # Silicon-Host zu installieren - "Homebrew on macOS is only supported on
-  # Apple Silicon processors!"). Zwei getrennte, echte Runner umgehen dieses
-  # Problem sauber, statt es zu umschiffen.
+  # Builds one single-arch version per native runner - every architecture gets
+  # its own real Homebrew installation (no Rosetta trick: newer versions of the
+  # Homebrew installer explicitly refuse to install under Rosetta/x86_64
+  # emulation on an Apple Silicon host - "Homebrew on macOS is only supported on
+  # Apple Silicon processors!"). Two separate real runners avoid the problem
+  # cleanly instead of working around it.
   build-single-arch:
     strategy:
       fail-fast: false
@@ -45,10 +44,9 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      # Jeder Runner liefert ueber seine eigene, native Homebrew-Installation
-      # (arm64 unter /opt/homebrew, x86_64 unter /usr/local) automatisch die
-      # zur jeweiligen Host-Architektur passende OCCT-Version - kein
-      # Cross-Installations-Trick noetig.
+      # Each runner's own native Homebrew installation (arm64 under /opt/homebrew,
+      # x86_64 under /usr/local) automatically provides the OCCT build for its host
+      # architecture - no cross-install trick needed.
       - name: Install OCCT + dylibbundler via Homebrew
         run: brew install opencascade dylibbundler
 
@@ -70,10 +68,10 @@ jobs:
           path: src-tauri/target/${{ matrix.target }}/release/bundle/macos/3MF Katalog Manager.app
           if-no-files-found: error
 
-  # Fuehrt beide Single-Arch-.app-Bundles zu einem echten Universal-Bundle
-  # zusammen (lipo fuer Hauptbinary UND jede einzelne OCCT-/Homebrew-.dylib)
-  # und packt daraus die finale DMG. Laeuft auf einem beliebigen macOS-
-  # Runner (arm64 reicht, lipo/hdiutil sind architekturunabhaengige Tools).
+  # Merges both single-arch .app bundles into a real universal bundle (lipo for
+  # the main binary AND every single OCCT/Homebrew .dylib) and packs the final DMG
+  # from it. Runs on any macOS runner (arm64 is enough, lipo/hdiutil are
+  # architecture-independent tools).
   merge-and-package:
     needs: build-single-arch
     runs-on: macos-15
@@ -93,11 +91,9 @@ jobs:
           name: macos-app-x86_64-apple-darwin
           path: x64-app/3MF Katalog Manager.app
 
-      # actions/download-artifact zieht Datei-Berechtigungen (insbesondere
-      # das ausfuehrbar-Bit der Hauptbinary) nicht zuverlaessig durch - vor
-      # dem Zusammenfuehren wiederherstellen, sonst schlaegt `lipo` auf
-      # einer nicht-ausfuehrbaren "Binary" mit einem irrefuehrenden Fehler
-      # fehl.
+      # actions/download-artifact doesn't reliably keep file permissions (especially
+      # the main binary's executable bit) - restore them before merging, otherwise
+      # `lipo` fails on a non-executable "binary" with a misleading error.
       - name: Restore executable bits
         run: |
           chmod +x "arm64-app/3MF Katalog Manager.app/Contents/MacOS/"*

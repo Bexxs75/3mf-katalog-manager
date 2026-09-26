@@ -55,8 +55,8 @@ jobs:
       - name: Frontend-Tests (vitest)
         run: npx vitest run
 
-      # Frontend-Build wird gebraucht, weil tauri::generate_context!() beim
-      # Rust-Build/-Test das dist-Verzeichnis (frontendDist) einbettet.
+      # The frontend build is needed because tauri::generate_context!() embeds the
+      # dist directory (frontendDist) during the Rust build/test.
       - name: Frontend bauen (dist fuer tauri::generate_context)
         run: npm run build
 

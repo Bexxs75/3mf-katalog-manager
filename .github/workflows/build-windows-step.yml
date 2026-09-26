@@ -3,8 +3,8 @@ name: Build Windows MSI (with STEP preview)
 on:
   workflow_dispatch: {}
 
-# packages: write fuer den vcpkg-Binary-Cache in GitHub Packages (NuGet),
-# siehe Schritt "Setup vcpkg binary cache" unten.
+# packages: write for the vcpkg binary cache in GitHub Packages (NuGet), see the
+# "Setup vcpkg binary cache" step below.
 permissions:
   contents: read
   packages: write
@@ -36,20 +36,19 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      # windows-latest bringt MSVC Build Tools und CMake bereits mit.
+      # windows-latest already includes the MSVC build tools and CMake.
       #
-      # OCCT gibt es fuer Windows nicht als Systempaket, deshalb ueber vcpkg gebaut,
-      # gepinnt in src-tauri/occt-vcpkg-manifest/vcpkg.json.
+      # OCCT isn't available as a system package on Windows, so it's built via vcpkg,
+      # pinned in src-tauri/occt-vcpkg-manifest/vcpkg.json.
       #
-      # lukka/run-vcpkg richtet nur das vcpkg-Tool ein (RUNVCPKG_VCPKG_ROOT);
-      # "vcpkg install" rufen wir danach selbst mit festem --x-install-root auf,
-      # weil der Staging-Schritt diesen vorhersagbaren Pfad braucht (siehe
-      # VENDORING.md).
+      # lukka/run-vcpkg only sets up the vcpkg tool (RUNVCPKG_VCPKG_ROOT); we then call
+      # "vcpkg install" ourselves with a fixed --x-install-root, because the staging
+      # step needs that predictable path (see VENDORING.md).
       #
-      # Binary-Cache: vcpkg legt die fertigen Pakete als NuGet-Pakete in GitHub
-      # Packages dieses Repos ab (das x-gha-Backend gibt es nicht mehr). Anders als
-      # der Actions-Cache verfaellt das nicht nach 7 Tagen. Neu gebaut (~1,1 h) wird
-      # nur bei neuer OCCT-Version, neuem vcpkg-Commit oder Triplet.
+      # Binary cache: vcpkg stores the finished packages as NuGet packages in this
+      # repo's GitHub Packages (the x-gha backend no longer exists). Unlike the
+      # Actions cache, it doesn't expire after 7 days. A rebuild (~1.1 h) only happens
+      # for a new OCCT version, vcpkg commit or triplet.
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
@@ -67,7 +66,7 @@ jobs:
       - name: Build OCCT 7.9.3 via vcpkg manifest
         working-directory: src-tauri/occt-vcpkg-manifest
         env:
-          # Ueberschreibt das von lukka/run-vcpkg gesetzte (entfernte) x-gha.
+          # Overrides the (removed) x-gha source set by lukka/run-vcpkg.
           VCPKG_BINARY_SOURCES: clear;nuget,${{ env.VCPKG_NUGET_FEED }},readwrite
         run: |
           & "$env:RUNVCPKG_VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows --x-install-root vcpkg_installed

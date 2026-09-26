@@ -42,18 +42,17 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      # Kein OCCT-PPA-Schritt hier (anders als build-linux.yml) - diese
-      # Variante baut ohne die STEP-Vorschau, deshalb keine OCCT-Abhaengigkeit.
+      # No OCCT PPA step here (unlike build-linux.yml) - this variant builds without
+      # the STEP preview, so there's no OCCT dependency.
       - name: Build Tauri app (AppImage, without STEP preview)
         env:
           NO_STRIP: "1"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run tauri build -- --bundles appimage -- --no-default-features
 
-      # Siehe build-linux.yml fuer die ausfuehrliche Begruendung: Tauris
-      # Standard-AppImage-Bundling buendelt veraltete Display-Stack-
-      # Bibliotheken mit, die auf Zielrechnern mit neuerem Mesa die
-      # EGL-Initialisierung zum Absturz bringen.
+      # See build-linux.yml for the full rationale: Tauri's default AppImage bundling
+      # includes outdated display stack libraries that crash the EGL initialization on
+      # target machines with a newer Mesa.
       - name: Fix AppImage EGL crash (exclude bundled display-stack libs)
         run: |
           APPIMAGE=$(find src-tauri/target/release/bundle/appimage -name "*.AppImage")

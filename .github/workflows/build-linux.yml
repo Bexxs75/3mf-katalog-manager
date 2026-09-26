@@ -39,11 +39,10 @@ jobs:
             librsvg2-dev \
             cmake
 
-      # ubuntu-24.04 (noble) liefert ueber apt nur OCCT 7.6.3, das die
-      # freigegebene Version (7.8 oder 7.9) nicht erfuellt. Die
-      # FreeCAD-Maintainer-PPA stellt OCCT 7.8.1 fuer Noble bereit.
-      # Vor jeder Aenderung hier: Paketnamen/Version auf dem echten Runner
-      # gegenpruefen, die PPA kann ihren Inhalt aendern.
+      # ubuntu-24.04 (noble) only ships OCCT 7.6.3 via apt, which doesn't meet the
+      # supported version (7.8 or 7.9). The FreeCAD maintainers PPA provides OCCT
+      # 7.8.1 for noble. Before any change here: verify package names/version on the
+      # real runner, the PPA can change its content.
       - name: Install OCCT 7.8 (dynamic libraries) from FreeCAD maintainers PPA
         run: |
           sudo add-apt-repository -y ppa:freecad-maintainers/occt-releases
@@ -59,24 +58,22 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      # linuxdeploy's mitgeliefertes `strip` kennt neuere ELF-SHT_RELR-
-      # Sektionen nicht (bestaetigter lokaler Befund auf CachyOS/Arch).
-      # NO_STRIP=1 ist ein offizieller linuxdeploy-Schalter und laesst die
-      # Binaries ungestrippt, statt den Bundling-Schritt fehlschlagen zu
-      # lassen. Auf Ubuntu trat der Fehler lokal nicht auf, aber der
-      # Schalter ist harmlos und haelt den Build reproduzierbar sicher.
+      # linuxdeploy's bundled `strip` doesn't know newer ELF SHT_RELR sections
+      # (confirmed locally on CachyOS/Arch). NO_STRIP=1 is an official linuxdeploy
+      # switch that leaves the binaries unstripped instead of failing the bundling
+      # step. The error didn't occur on Ubuntu locally, but the switch is harmless
+      # and keeps the build reliably reproducible.
       - name: Build Tauri app (AppImage, with STEP preview)
         env:
           NO_STRIP: "1"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run tauri build -- --bundles appimage
 
-      # Tauris Standard-AppImage-Bundling (linuxdeploy) buendelt veraltete
-      # libwayland-*/libxkbcommon/libxcb-*/libXau/libXdmcp mit, die auf
-      # Zielrechnern mit neuerem Mesa die EGL-Initialisierung von WebKitGTK
-      # zum Absturz bringen ("Could not create default EGL display:
-      # EGL_BAD_PARAMETER. Aborting..."). Siehe Skript-Kommentar und
-      # github.com/tauri-apps/tauri Issue #15976 fuer Details/Verifikation.
+      # Tauri's default AppImage bundling (linuxdeploy) includes outdated
+      # libwayland-*/libxkbcommon/libxcb-*/libXau/libXdmcp that crash WebKitGTK's EGL
+      # initialization on target machines with a newer Mesa ("Could not create default
+      # EGL display: EGL_BAD_PARAMETER. Aborting..."). See the script comment and
+      # github.com/tauri-apps/tauri issue #15976 for details/verification.
       - name: Fix AppImage EGL crash (exclude bundled display-stack libs)
         run: |
           APPIMAGE=$(find src-tauri/target/release/bundle/appimage -name "*.AppImage")

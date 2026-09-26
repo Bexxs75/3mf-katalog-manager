@@ -4,10 +4,10 @@ on:
   issues:
     types: [opened]
 
-# Kein workflow_dispatch zum erneuten Posten hier - dafuer gibt es das
-# separate Nachimport-Skript (discord-setup/import-github-issues.js), das
-# beliebige bestehende Issues gezielt (mit Vorschau) nachtragen kann, statt
-# blind "das zuletzt geoeffnete Issue nochmal posten" anzubieten.
+# No workflow_dispatch for re-posting here - the separate import script
+# (discord-setup/import-github-issues.js) can add any existing issues
+# selectively (with a preview) instead of blindly re-posting "the last opened
+# issue".
 
 jobs:
   notify:
@@ -16,10 +16,9 @@ jobs:
       - name: Determine target forum channel from labels
         id: target
         env:
-          # Nur Namen der Labels, keine Freitext-Issue-Inhalte - unkritisch
-          # fuer Command-Injection, trotzdem ueber env statt direkter
-          # ${{ }}-Interpolation in den Skript-Text (gleiche Vorsicht wie in
-          # discord-release-notify.yml).
+          # Only label names, no free-text issue content - not critical for command
+          # injection, but still via env instead of ${{ }} interpolation into the script
+          # text (same caution as in discord-release-notify.yml).
           LABELS_JSON: ${{ toJson(github.event.issue.labels.*.name) }}
         run: |
           HAS_BUG=$(echo "$LABELS_JSON" | jq 'any(. == "bug")')
@@ -34,11 +33,10 @@ jobs:
             echo "tag_id=1551177231689064540" >> "$GITHUB_OUTPUT"        # Offen/Open
             echo "skip=false" >> "$GITHUB_OUTPUT"
           else
-            # Weder "bug" noch "enhancement" gelabelt (z.B. nur "question"/
-            # "documentation") - bewusst NICHT posten statt in den falschen
-            # Kanal zu raten. Kann bei Bedarf spaeter per
-            # import-github-issues.js gezielt nachgetragen werden, sobald
-            # ein passendes Label gesetzt wurde.
+            # Labeled neither "bug" nor "enhancement" (e.g. only "question"/
+            # "documentation") - deliberately NOT posted instead of guessing the wrong
+            # channel. Can be added later via import-github-issues.js once a matching
+            # label is set.
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -54,12 +52,11 @@ jobs:
           ISSUE_BODY: ${{ github.event.issue.body }}
           ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
         run: |
-          # Discord-Thread-Namen sind auf 100 Zeichen begrenzt.
+          # Discord thread names are limited to 100 characters.
           THREAD_NAME=$(echo "#$ISSUE_NUMBER $ISSUE_TITLE" | head -c 100)
 
-          # Forum-Post-Inhalt auf 2000 Zeichen begrenzt (normale
-          # Message-Content-Grenze, gilt auch fuer die Startnachricht eines
-          # Forum-Threads).
+          # Forum post content is limited to 2000 characters (normal message content
+          # limit, also applies to a forum thread's starter message).
           BODY=$(echo "$ISSUE_BODY" | head -c 1700)
           CONTENT=$(printf '**Importiert von GitHub-Issue #%s** von @%s\n%s\n\n%s' \
             "$ISSUE_NUMBER" "$ISSUE_AUTHOR" "$ISSUE_URL" "$BODY")

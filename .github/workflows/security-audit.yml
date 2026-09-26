@@ -2,7 +2,7 @@ name: Security-Audit (Abhängigkeiten)
 
 on:
   schedule:
-    # Montags 06:00 UTC
+    # Mondays 06:00 UTC
     - cron: "0 6 * * 1"
   workflow_dispatch: {}
   push:
