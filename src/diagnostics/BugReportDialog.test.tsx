@@ -10,12 +10,12 @@ vi.mock('../lib/api/diagnostics');
 const INFO = { version: '0.15.0', os: 'linux' as const };
 
 function renderDialog(onClose: () => void = vi.fn()) {
-  render(
+  const { unmount } = render(
     <LanguageProvider>
       <BugReportDialog onClose={onClose} />
     </LanguageProvider>,
   );
-  return onClose;
+  return { onClose, unmount };
 }
 
 function openButton() {
@@ -173,12 +173,51 @@ describe('BugReportDialog', () => {
     outside.focus();
     expect(document.activeElement).toBe(outside);
 
-    const onClose = renderDialog();
+    const { onClose } = renderDialog();
     // The dialog focuses itself on mount, same as the other dialogs in the app.
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('dialog')));
 
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
     expect(onClose).toHaveBeenCalled();
     outside.remove();
+  });
+
+  it('ignores Escape while a save is in flight', async () => {
+    let resolveSave!: (path: string) => void;
+    vi.mocked(diagnosticsApi.saveLogExport).mockImplementation(
+      () => new Promise((resolve) => { resolveSave = resolve; }),
+    );
+    const { onClose } = renderDialog();
+    fireEvent.click(screen.getByText('Ja, Logdatei anhängen'));
+    await waitFor(() => expect(screen.getByRole('checkbox')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('Speichern und Formular öffnen'));
+    await waitFor(() => expect(diagnosticsApi.saveLogExport).toHaveBeenCalled());
+
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    await act(async () => resolveSave('/home/user/Downloads/x.txt'));
+  });
+
+  it('still opens the form after a successful save even if the dialog unmounted meanwhile', async () => {
+    let resolveSave!: (path: string) => void;
+    vi.mocked(diagnosticsApi.saveLogExport).mockImplementation(
+      () => new Promise((resolve) => { resolveSave = resolve; }),
+    );
+    const { unmount } = renderDialog();
+    fireEvent.click(screen.getByText('Ja, Logdatei anhängen'));
+    await waitFor(() => expect(screen.getByRole('checkbox')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('Speichern und Formular öffnen'));
+    await waitFor(() => expect(diagnosticsApi.saveLogExport).toHaveBeenCalled());
+
+    // The dialog goes away (e.g. the whole app unmounts) before the save
+    // resolves; the browser tab must still open once it does.
+    unmount();
+    await act(async () => resolveSave('/home/user/Downloads/x.txt'));
+
+    expect(diagnosticsApi.openBugReportForm).toHaveBeenCalledWith('de', true);
   });
 });

@@ -77,13 +77,14 @@ export function BugReportDialog({ onClose }: { onClose: () => void }) {
     try {
       if (choice === 'yes' && preview && !preview.empty) {
         const path = await saveLogExport(preview.id);
-        if (!mountedRef.current) return;
-        setSavedPath(path);
+        // The mounted check must only guard setState, never skip opening the
+        // form: once the log is saved, the browser tab has to open even if
+        // Escape unmounted the dialog while the save was in flight.
+        if (mountedRef.current) setSavedPath(path);
         await openBugReportForm(language, true);
       } else {
         await openBugReportForm(language, false);
-        if (!mountedRef.current) return;
-        onClose();
+        if (mountedRef.current) onClose();
       }
     } catch (e) {
       if (mountedRef.current) setFailure(messageOf(e));
@@ -105,7 +106,7 @@ export function BugReportDialog({ onClose }: { onClose: () => void }) {
         aria-modal="true"
         aria-labelledby="bug-report-title"
         tabIndex={-1}
-        onKeyDown={(e) => e.key === 'Escape' && onClose()}
+        onKeyDown={(e) => e.key === 'Escape' && !submitting && onClose()}
         className="w-[620px] max-w-[92vw] max-h-[90vh] overflow-auto rounded-[6px] border border-[var(--line)] bg-[var(--panel)] shadow-[var(--shadow)] p-5 text-[var(--ink)] outline-0"
       >
         <h2 id="bug-report-title" className="text-[16px] font-bold">{t('bugReportTitle')}</h2>

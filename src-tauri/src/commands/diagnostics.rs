@@ -149,8 +149,11 @@ pub fn preview_log_export(
     replace_file_names: Option<bool>,
 ) -> CmdResult<LogPreviewDto> {
     use tauri::Manager;
-    // Reserved before the (comparatively slow) read+anonymize below, so ids
-    // reflect call order even when a later call's result arrives first.
+    // Reserved before the (comparatively slow) read+anonymize below; this
+    // only makes a *newer* id likely for a *later* call - it's not a
+    // guarantee. Correctness doesn't depend on that ordering: it comes from
+    // `store_if_newer`/`take_for_save` requiring an exact id match, so a
+    // save can never write anything but the id it was actually given.
     let id = diag.reserve_preview_id();
     let dir = app.path().app_log_dir().map_err(|e| e.to_string())?;
     let raw = export::collect_tail(&export::read_logs(&dir), export::EXPORT_LIMIT);
