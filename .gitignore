@@ -35,3 +35,5 @@ ruvector.db
 agentdb.rvf
 agentdb.rvf.lock
 __pycache__/
+# Local analysis notes (feasibility studies, research) — not published
+docs/intern/
