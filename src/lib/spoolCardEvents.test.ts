@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isFromInteractiveElement } from './spoolCardEvents';
+import { isFromInteractiveElement, startsOnButton } from './spoolCardEvents';
 
 function card() {
   const root = document.createElement('div');
@@ -41,5 +41,21 @@ describe('isFromInteractiveElement', () => {
     const textNode = outside.firstChild!;
     expect(textNode.nodeType).toBe(Node.TEXT_NODE);
     expect(isFromInteractiveElement({ target: textNode, currentTarget: root })).toBe(true);
+  });
+});
+
+describe('startsOnButton', () => {
+  it('detects buttons, including a text node inside a button', () => {
+    const root = card();
+    const button = root.querySelector('button')!;
+    expect(startsOnButton({ target: button })).toBe(true);
+    expect(startsOnButton({ target: button.firstChild })).toBe(true);
+  });
+
+  it('lets drags start on plain card content', () => {
+    const root = card();
+    expect(startsOnButton({ target: root.querySelector('.text') })).toBe(false);
+    expect(startsOnButton({ target: root.querySelector('.text')!.firstChild })).toBe(false);
+    expect(startsOnButton({ target: null })).toBe(false);
   });
 });

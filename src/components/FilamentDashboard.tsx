@@ -2,9 +2,9 @@ import type { MouseEvent as ReactMouseEvent } from 'react';
 import { useT, useLanguage } from '../i18n/LanguageContext';
 import { formatSpoolAmount, formatVolumeMl, formatDiameterMm, formatPrice } from '../i18n/format';
 import type { FilamentSpool } from '../types';
-import { filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus';
+import { STOCK_BADGE_CLASS, STOCK_BAR_CLASS, filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus';
 import { isValidColorHex } from '../lib/filamentColors';
-import { isFromInteractiveElement } from '../lib/spoolCardEvents';
+import { isFromInteractiveElement, startsOnButton } from '../lib/spoolCardEvents';
 import { ResinBottleIcon } from './ResinBottleIcon';
 
 interface Props {
@@ -27,23 +27,6 @@ interface Props {
   /** Entries just created via restock, briefly highlighted. */
   highlightIds?: ReadonlySet<string>;
 }
-
-// No dragging when the mouse down lands on a button of the card/row
-// (edit, delete, confirm).
-function startsOnButton(event: ReactMouseEvent): boolean {
-  return (event.target as HTMLElement).closest('button') !== null;
-}
-
-const statusClass: Record<string, string> = {
-  ok: 'bg-[var(--good-soft)] text-[var(--good)]',
-  low: 'bg-[var(--warn-soft)] text-[var(--warn)]',
-  empty: 'bg-[var(--crit-soft)] text-[var(--crit)]',
-};
-const barClass: Record<string, string> = {
-  ok: 'bg-[var(--good)]',
-  low: 'bg-[var(--warn)]',
-  empty: 'bg-[var(--crit)]',
-};
 
 export function FilamentDashboard({
   spools,
@@ -125,7 +108,7 @@ export function FilamentDashboard({
                 <span className="inline-flex items-center gap-1.5 font-mono-ui text-[11px] font-semibold px-2 py-1 rounded-md bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)] truncate">
                   📍 {spool.location || t('noValue')}
                 </span>
-                <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide flex-none ${statusClass[status]}`}>
+                <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide flex-none ${STOCK_BADGE_CLASS[status]}`}>
                   {statusLabel(status)}
                 </span>
               </div>
@@ -136,7 +119,7 @@ export function FilamentDashboard({
                   <span>{pct}%</span>
                 </div>
                 <div className="h-1.5 rounded-full bg-[var(--plate)] overflow-hidden">
-                  <div className={`h-full rounded-full ${barClass[status]}`} style={{ width: `${pct}%` }} />
+                  <div className={`h-full rounded-full ${STOCK_BAR_CLASS[status]}`} style={{ width: `${pct}%` }} />
                 </div>
               </div>
 
