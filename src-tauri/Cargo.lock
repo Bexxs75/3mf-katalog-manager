@@ -2477,6 +2477,7 @@ dependencies = [
  "opencascade-sys",
  "os_info",
  "quick-xml 0.41.0",
+ "regex",
  "reqwest 0.12.28",
  "rusqlite",
  "ruzstd",
