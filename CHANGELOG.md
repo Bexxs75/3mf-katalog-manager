@@ -10,6 +10,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ### Changed
 
 - Dokumentation: README und Benutzerhandbuch nennen die Resin-Drucker, die mit der Druckeranbindung getesteten Drucker (Sovol SV08, Anycubic Kobra S1 mit Rinkhals) und die aktuelle Roadmap. Die Linux-Installation beschreibt jetzt die AppImage-Datei statt eines `.tar.gz`-Archivs, und eine neue FAQ erklärt, warum man vor einem Update eine Sicherung anlegen sollte.
+- Benutzerhandbuch: Alle Bilder zeigen jetzt v0.14.0 (3D-Vorschau in Koralle), dazu neue Bilder zu Resin-Druckern, „Drucker verwalten“, der Druckeranbindung (Hinweis und Dialog „Neue Drucke“) und Einstellungen → Drucker.
 - Die automatische CI-Prüfung läuft jetzt mit Node 24; mit Node 20 startete die Test-Umgebung nicht.
 
 ## [0.14.0] - 2026-09-26
@@ -405,6 +406,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 ### Changed
 
 - Documentation: the README and the user guide now mention resin printers, the printers tested with the printer connection (Sovol SV08, Anycubic Kobra S1 running Rinkhals) and the current roadmap. The Linux installation now describes the AppImage file instead of a `.tar.gz` archive, and a new FAQ explains why you should create a backup before updating.
+- User guide: all images now show v0.14.0 (coral 3D preview), plus new images of resin printers, "Manage printers", the printer connection (notice and "New prints" dialog) and Settings → Printers.
 - The automatic CI check now runs on Node 24; with Node 20 the test environment didn't start.
 
 ## [0.14.0] - 2026-09-26

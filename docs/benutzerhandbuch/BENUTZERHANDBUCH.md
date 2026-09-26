@@ -4,8 +4,8 @@ Dieses Handbuch richtet sich an alle, die den 3MF Katalog Manager zum ersten Mal
 sich mit der App noch nicht auskennen. Es erklärt Schritt für Schritt, wie du Modelle
 importierst, organisierst, druckfertig machst und dein Filament-Lager verwaltest.
 
-> **Hinweis zu den Bildern in diesem Handbuch:** Alle Screenshots zeigen die App (Version 0.13.0;
-> die ersten drei Bilder zum Filament-Lager und das Resin-Bild Version 0.13.1) mit einem erfundenen
+> **Hinweis zu den Bildern in diesem Handbuch:** Alle Screenshots zeigen die App (Version 0.14.0)
+> mit einem erfundenen
 > Demo-Katalog (Modelle wie "Rakete" oder "Spiralvase", erfundene Filamentspulen, Resin-Flaschen
 > und Hersteller) — keine echten Nutzerdaten. Die Optik entspricht exakt dem, was du in der App
 > siehst; nur der Inhalt ist zu Demonstrationszwecken erfunden.
@@ -393,10 +393,14 @@ nur Resin-Drucker.
 
 ### Resin-Drucker
 
+![Resin-Ansicht mit Resin-Drucker und Harzwanne](bilder/24-resin-drucker.png)
+
 Wählst du beim Anlegen "Resin", bekommt der Drucker statt des Spulenhalters genau eine
 **Harzwanne** mit Platz für eine Flasche. Sie lässt sich weder umbenennen noch löschen, und
 weitere Einheiten gibt es bei Resin-Druckern nicht; den Drucker selbst kannst du umbenennen und
 löschen wie jeden anderen.
+
+![Drucker verwalten mit Filament- und Resin-Druckern](bilder/25-drucker-verwalten.png)
 
 - In der Ansicht "Resin" des Lagers steht der Resin-Drucker in der rechten Spalte. Die Wanne
   zeigt die eingesetzte Flasche mit Farbe, Rest in ml und Füllbalken.
@@ -440,6 +444,10 @@ Klipper-Drucker sollten genauso funktionieren; wenn du deinen testen möchtest, 
    "Bestätigen" (einzeln oder über "Alle N bestätigen") wird das Gewicht von der Spule
    abgebucht; mit ausgewähltem Modell entsteht zusätzlich ein Eintrag im Druckprotokoll und das
    Modell wird als gedruckt markiert. "Ignorieren" verwirft den Vorschlag ohne zu buchen.
+
+![Filament-Lager mit Hinweis auf neue Drucke und Verbindungsstatus](bilder/26-druckeranbindung-lager.png)
+
+![Dialog „Neue Drucke“](bilder/27-neue-drucke.png)
 
 ## Druckprotokoll
 
@@ -495,6 +503,8 @@ fest, welcher Slicer beim Öffnen eines Modells als **Standard** verwendet wird.
   im Dateimanager zu öffnen.
 
 ### Drucker
+
+![Einstellungen: Drucker](bilder/28-einstellungen-drucker.png)
 
 Hier schaltest du die Druckeranbindung ein oder aus (standardmäßig aus) und siehst auf einen
 Blick den Status jedes angebundenen Druckers ("Klipper · verbunden", "Klipper · Fehler" oder
@@ -584,8 +594,8 @@ This guide is for anyone using the 3MF Katalog Manager for the first time and no
 with the app. It walks you step by step through importing, organizing, and preparing your models
 for printing, and managing your filament stock.
 
-> **About the screenshots in this guide:** all screenshots show the app (version 0.13.0; the first
-> three filament stock images and the resin image version 0.13.1) with its interface set to English
+> **About the screenshots in this guide:** all screenshots show the app (version 0.14.0) with its
+> interface set to English
 > and a made-up demo catalog (models like "Rocket" or "Spiral Vase", made-up filament spools, resin
 > bottles and brands) — no real user data. The layout is exactly what you'll see in the app; only
 > the content is for demonstration purposes.
@@ -956,9 +966,13 @@ only resin printers.
 
 ### Resin printers
 
+![Resin view with a resin printer and its resin vat](bilder/en/24-resin-drucker.png)
+
 If you choose "Resin" when adding a printer, it gets exactly one **resin vat** with room for one
 bottle instead of the spool holder. The vat can't be renamed or deleted, and resin printers
 can't have any other units; the printer itself can be renamed and deleted like any other.
+
+![Manage printers with filament and resin printers](bilder/en/25-drucker-verwalten.png)
 
 - In the "Resin" view of the stock, the resin printer appears in the right-hand column. The vat
   shows the inserted bottle with its color, the remaining ml and a fill bar.
@@ -1001,6 +1015,10 @@ Klipper printers should work the same way; if you want to test yours, the
    "Confirm all N") deducts the weight from the spool; with a model selected, this also adds a
    print log entry and marks the model as printed. "Ignore" discards the suggestion without
    booking anything.
+
+![Filament stock with the new-prints notice and connection status](bilder/en/26-druckeranbindung-lager.png)
+
+!["New prints" dialog](bilder/en/27-neue-drucke.png)
 
 ## Print log
 
@@ -1055,6 +1073,8 @@ including self-built or modified versions. The radio button sets which slicer is
   directly in the file manager.
 
 ### Printers
+
+![Settings: Printers](bilder/en/28-einstellungen-drucker.png)
 
 This is where you switch the printer connection on or off (off by default) and see the status
 of every connected printer at a glance ("Klipper · connected", "Klipper · error", or "not
