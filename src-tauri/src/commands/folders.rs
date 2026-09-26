@@ -54,13 +54,13 @@ pub fn list_folders(state: State<AppState>) -> CmdResult<Vec<FolderDto>> {
 /// catalog, just by typing text (CWE-22).
 fn validate_folder_name(name: &str) -> CmdResult<()> {
     if name.trim().is_empty() {
-        return Err("Ordnername darf nicht leer sein".to_string());
+        return Err(CmdError::expected("Ordnername darf nicht leer sein"));
     }
     if name.contains('/') || name.contains('\\') {
-        return Err("Ordnername darf keine Pfad-Trennzeichen enthalten".to_string());
+        return Err(CmdError::expected("Ordnername darf keine Pfad-Trennzeichen enthalten"));
     }
     if name == "." || name == ".." {
-        return Err("Ungueltiger Ordnername".to_string());
+        return Err(CmdError::expected("Ungueltiger Ordnername"));
     }
     Ok(())
 }
@@ -91,7 +91,7 @@ pub async fn create_folder(
             None => {
                 let picked = app.dialog().file().blocking_pick_folder();
                 let Some(picked) = picked else {
-                    return Err("cancelled".to_string());
+                    return Err(CmdError::expected("cancelled"));
                 };
                 picked.into_path().map_err(|e| e.to_string())?.join(&name)
             }
@@ -129,7 +129,7 @@ fn rename_folder_with_conn(
     reject_if_sensitive_path(&new_path, sensitive_dirs)?;
 
     if new_path.exists() {
-        return Err(format!("Zielordner existiert bereits: {}", new_path.display()));
+        return Err(CmdError::expected(format!("Zielordner existiert bereits: {}", new_path.display())));
     }
     std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())?;
 
@@ -146,9 +146,10 @@ fn rename_folder_with_conn(
                 "DB-Update fehlgeschlagen ({db_err}) UND Rollback der Ordner-Umbenennung fehlgeschlagen ({rollback_err}) - Ordner heisst jetzt {}, DB verweist teilweise noch auf {}",
                 new_path.display(),
                 old_path.display()
-            ));
+            )
+            .into());
         }
-        return Err(db_err.to_string());
+        return Err(db_err.to_string().into());
     }
     Ok(())
 }
@@ -183,14 +184,14 @@ fn move_folder_with_conn(
     let Some(target) = target else {
         // There's no "move to root": the disk would stay unchanged, but the DB would
         // no longer see a parent.
-        return Err("Ein Ordner kann nicht ohne Zielordner verschoben werden".to_string());
+        return Err("Ein Ordner kann nicht ohne Zielordner verschoben werden".into());
     };
 
     let folders = db::list_folders(conn).map_err(|e| e.to_string())?;
     let folder = folders.iter().find(|f| f.id == id).ok_or_else(|| "folder not found".to_string())?.clone();
 
     if target == id || is_descendant(&folders, target, id) {
-        return Err("Ein Ordner kann nicht in einen eigenen Unterordner verschoben werden".to_string());
+        return Err(CmdError::expected("Ein Ordner kann nicht in einen eigenen Unterordner verschoben werden"));
     }
 
     let new_parent_path = folders
@@ -206,7 +207,7 @@ fn move_folder_with_conn(
     reject_if_sensitive_path(&new_path, sensitive_dirs)?;
 
     if new_path.exists() {
-        return Err(format!("Zielordner existiert bereits: {}", new_path.display()));
+        return Err(CmdError::expected(format!("Zielordner existiert bereits: {}", new_path.display())));
     }
     std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())?;
 
@@ -226,9 +227,10 @@ fn move_folder_with_conn(
                 "DB-Update fehlgeschlagen ({db_err}) UND Rollback des Ordner-Moves fehlgeschlagen ({rollback_err}) - Ordner liegt jetzt unter {}, DB verweist teilweise noch auf {}",
                 new_path.display(),
                 old_path.display()
-            ));
+            )
+            .into());
         }
-        return Err(db_err.to_string());
+        return Err(db_err.to_string().into());
     }
     Ok(())
 }

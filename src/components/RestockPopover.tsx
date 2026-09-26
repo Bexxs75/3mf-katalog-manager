@@ -12,6 +12,7 @@ import {
   validateRestockInput,
 } from '../lib/filamentRestock';
 import { restockFilamentSpool } from '../lib/api/filament';
+import { messageOf } from '../lib/errors';
 import { AutocompleteInput } from './AutocompleteInput';
 import { SpoolPopoverShell, fieldClass } from './SpoolPopoverShell';
 
@@ -61,7 +62,7 @@ export function RestockPopover({ spool, anchor, knownLocations, onClose, onCreat
     restockFilamentSpool(spool.id, value.count, value.weight, value.price, value.location)
       .then((created) => onCreated(created))
       .catch((e) => {
-        setError(`${t('filamentRestockError')} (${String(e)})`);
+        setError(`${t('filamentRestockError')} (${messageOf(e)})`);
         setBusy(false);
       });
   };

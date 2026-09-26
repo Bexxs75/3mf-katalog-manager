@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatBytes } from '../i18n/format';
 import * as importExportApi from '../lib/api/importExport';
+import { messageOf } from '../lib/errors';
 import { BulkCheckbox } from './BulkCheckbox';
 import type {
   ArchiveImportResult,
@@ -87,7 +88,7 @@ export function ArchiveImportDialog({ archives, defaultTargetDir, onCancel, onDo
         if (cancelled) return;
         setConflicts(Object.fromEntries(extractable.map((a, i) => [a.path, flags[i] ?? false])));
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(messageOf(e)));
     return () => {
       cancelled = true;
     };
@@ -124,7 +125,7 @@ export function ArchiveImportDialog({ archives, defaultTargetDir, onCancel, onDo
       const result = await importExportApi.extractArchives(targetDir, requests, deleteArchives);
       onDone(result);
     } catch (e) {
-      setError(String(e));
+      setError(messageOf(e));
       setRunning(false);
     }
   };

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import * as importExportApi from '../lib/api/importExport';
 import * as foldersApi from '../lib/api/folders';
+import { messageOf } from '../lib/errors';
 import type { ArchiveImportResult, ArchiveInfo, ArchiveOutcome, ImportResultDto, Folder } from '../types';
 
 interface UseFileImportArgs {
@@ -82,7 +83,7 @@ export function useFileImport({
           blockedSkipped: 0,
           archiveDeleted: false,
           deleteError: null,
-          error: String(e),
+          error: messageOf(e),
         })),
       });
     }

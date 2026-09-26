@@ -1,8 +1,12 @@
 /**
- * Error message from a rejected promise. Tauri commands often reject with
- * a plain string instead of an `Error` object, hence no `e.message`
- * without this safeguard.
+ * Error message from a rejected promise. Tauri commands reject with a
+ * `CmdError` object (`{ message, expected }`) or, in a few older spots, a
+ * plain string; `Error` objects also have a string `message`. Without this
+ * safeguard, `String(e)` would show "[object Object]" for a `CmdError`.
  */
 export function messageOf(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
+  if (typeof e === 'object' && e !== null && typeof (e as { message?: unknown }).message === 'string') {
+    return (e as { message: string }).message;
+  }
+  return String(e);
 }

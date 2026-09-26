@@ -219,7 +219,8 @@ fn reject_if_ancestor_of_sensitive(path: &Path, expanded_sensitive: &[PathBuf]) 
         Some(dir) => Err(format!(
             "Zielpfad enthaelt ein geschuetztes Verzeichnis ({}) und wird abgelehnt",
             dir.display()
-        )),
+        )
+        .into()),
         None => Ok(()),
     }
 }
@@ -227,7 +228,7 @@ fn reject_if_ancestor_of_sensitive(path: &Path, expanded_sensitive: &[PathBuf]) 
 /// All target folder checks that consume or write NOTHING.
 fn check_target_location(target_dir: &Path, expanded_sensitive: &[PathBuf]) -> CmdResult<()> {
     if !target_dir.is_dir() {
-        return Err(format!("Zielordner existiert nicht: {}", target_dir.display()));
+        return Err(CmdError::expected(format!("Zielordner existiert nicht: {}", target_dir.display())));
     }
     reject_if_sensitive_path_expanded(target_dir, expanded_sensitive)?;
     reject_if_ancestor_of_sensitive(target_dir, expanded_sensitive)
@@ -329,7 +330,7 @@ fn extract_one(
     if let Err(e) = reject_if_sensitive_path_expanded(&dest, ctx.expanded_sensitive)
         .and_then(|()| reject_if_ancestor_of_sensitive(&dest, ctx.expanded_sensitive))
     {
-        outcome.error = Some(e);
+        outcome.error = Some(e.message);
         return outcome;
     }
 
@@ -354,7 +355,7 @@ fn extract_one(
         Ok(imported) => imported,
         Err(e) => {
             extraction.rollback();
-            outcome.error = Some(e);
+            outcome.error = Some(e.message);
             return outcome;
         }
     };
@@ -435,7 +436,7 @@ pub(crate) fn authorize_and_extract(
 ) -> CmdResult<ArchiveImportResultDto> {
     check_target_location(target_dir, &expand_sensitive_dirs(sensitive_dirs))?;
     if !target_approved {
-        return Err("Zielordner wurde nicht ueber die App ausgewaehlt".to_string());
+        return Err("Zielordner wurde nicht ueber die App ausgewaehlt".into());
     }
     let (allowed, rejected) = pending.take_authorized(requests);
     let mut result = extract(allowed)?;
@@ -981,7 +982,7 @@ mod tests {
             &target,
             vec![plain_request(&archive)],
             true,
-            |_| Err("Datenbank weg".to_string()),
+            |_| Err("Datenbank weg".into()),
             |_, _| {},
         )
         .unwrap();

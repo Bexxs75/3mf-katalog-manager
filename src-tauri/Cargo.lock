@@ -2436,6 +2436,7 @@ dependencies = [
  "chrono",
  "cxx",
  "flate2",
+ "log",
  "lzma-rust2",
  "opencascade-sys",
  "quick-xml 0.41.0",

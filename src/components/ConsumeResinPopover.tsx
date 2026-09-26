@@ -5,6 +5,7 @@ import type { FilamentSpool } from '../types';
 import { restockSpoolLabel } from '../lib/filamentRestock';
 import { parseConsumeAmount } from '../lib/resinConsume';
 import { consumeResin } from '../lib/api/filament';
+import { messageOf } from '../lib/errors';
 import { SpoolPopoverShell, fieldClass } from './SpoolPopoverShell';
 
 interface Props {
@@ -42,7 +43,7 @@ export function ConsumeResinPopover({ spool, anchor, onClose, onConsumed }: Prop
     consumeResin(spool.id, ml)
       .then((updated) => onConsumed(updated))
       .catch((e) => {
-        setError(`${t('resinConsumeError')} (${String(e)})`);
+        setError(`${t('resinConsumeError')} (${messageOf(e)})`);
         setBusy(false);
       });
   };

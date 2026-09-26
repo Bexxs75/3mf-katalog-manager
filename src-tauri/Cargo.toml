@@ -54,6 +54,7 @@ sha2 = "0.10"
 # Update check: real SemVer comparison (also for pre-releases like
 # "0.14.0-gharac").
 semver = "1"
+log = "0.4"
 cxx = { version = "1", optional = true }
 # STEP preview: raw OCCT bindings. Deliberately WITHOUT the `builtin` feature -
 # that would build OCCT from source and link it STATICALLY, which triggers the

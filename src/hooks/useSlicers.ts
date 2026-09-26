@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as catalogMetaApi from '../lib/api/catalogMeta';
 import * as slicerApi from '../lib/api/slicer';
+import { messageOf } from '../lib/errors';
 import type { SlicerDto } from '../lib/api/slicer';
 import type { SlicerConfig } from '../types';
 
@@ -66,7 +67,7 @@ export function useSlicers() {
       return picked;
     } catch (e) {
       console.error('[slicer-register] registration failed:', e);
-      setAddSlicerError(String(e));
+      setAddSlicerError(messageOf(e));
       return null;
     }
   }, [applyRegistry]);

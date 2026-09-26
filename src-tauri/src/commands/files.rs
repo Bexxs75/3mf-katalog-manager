@@ -164,7 +164,8 @@ pub fn add_print_log_entry(
                 "Bild ist zu groß ({:.1} MB) - maximal {} MB erlaubt",
                 bytes.len() as f64 / (1024.0 * 1024.0),
                 MAX_CUSTOM_IMAGE_BYTES / (1024 * 1024)
-            ));
+            )
+            .into());
         }
     }
 
@@ -189,7 +190,7 @@ pub fn delete_print_log_entry(state: State<AppState>, entry_id: String) -> CmdRe
         .parse()
         .map_err(|_| "invalid entry id".to_string())?;
     let conn = lock_db(&state)?;
-    db::delete_print_log_entry(&conn, id).map_err(|e| e.to_string())
+    db::delete_print_log_entry(&conn, id).map_err(|e| e.to_string().into())
 }
 /// Reads a user-picked image file with a size limit, directly through a reader
 /// capped at `max_bytes + 1` instead of checking metadata() first: so the limit
@@ -203,7 +204,7 @@ pub(crate) fn read_image_bounded(path: &std::path::Path, max_bytes: u64) -> CmdR
         .read_to_end(&mut buffer)
         .map_err(|e| e.to_string())?;
     if buffer.len() as u64 > max_bytes {
-        return Err(format!("Bilddatei ist zu gross (> {max_bytes} Bytes)"));
+        return Err(CmdError::expected(format!("Bilddatei ist zu gross (> {max_bytes} Bytes)")));
     }
     Ok(buffer)
 }
@@ -229,7 +230,7 @@ pub async fn pick_and_read_image(app: tauri::AppHandle) -> CmdResult<Option<Stri
 /// normalized to their key, so e.g. "Multipart" doesn't create a second tag next
 /// to "mehrteilig".
 fn add_tag_with_conn(conn: &Connection, file_id: i64, tag: &str) -> CmdResult<()> {
-    db::add_tag_to_file(conn, file_id, &tagging::canonical_tag(tag)).map_err(|e| e.to_string())
+    db::add_tag_to_file(conn, file_id, &tagging::canonical_tag(tag)).map_err(|e| e.to_string().into())
 }
 
 #[tauri::command]
@@ -245,7 +246,7 @@ pub fn remove_tag(state: State<AppState>, file_id: String, tag: String) -> CmdRe
     // No normalization here (unlike add_tag): the frontend always sends the name
     // actually stored - normalizing would make an alias tag (e.g. the ambiguous
     // "mini") impossible to remove once it no longer matches the key.
-    db::remove_tag_from_file(&conn, id, &tag).map_err(|e| e.to_string())
+    db::remove_tag_from_file(&conn, id, &tag).map_err(|e| e.to_string().into())
 }
 /// Core logic of `move_file_to_folder`, without `State`, so it's testable.
 fn move_file_to_folder_with_conn(
@@ -288,9 +289,10 @@ fn move_file_to_folder_with_conn(
                 "DB-Update fehlgeschlagen ({db_err}) UND Rollback der Dateiverschiebung fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}, DB verweist weiter auf {}",
                 new_path.display(),
                 old_path.display()
-            ));
+            )
+            .into());
         }
-        return Err(db_err.to_string());
+        return Err(db_err.to_string().into());
     }
     Ok(())
 }
@@ -318,13 +320,13 @@ pub fn move_file_to_folder(
 /// component (CWE-22, like `validate_folder_name`).
 fn validate_file_name(name: &str) -> CmdResult<()> {
     if name.trim().is_empty() {
-        return Err("Dateiname darf nicht leer sein".to_string());
+        return Err(CmdError::expected("Dateiname darf nicht leer sein"));
     }
     if name.contains('/') || name.contains('\\') {
-        return Err("Dateiname darf keine Pfad-Trennzeichen enthalten".to_string());
+        return Err(CmdError::expected("Dateiname darf keine Pfad-Trennzeichen enthalten"));
     }
     if name == "." || name == ".." {
-        return Err("Ungueltiger Dateiname".to_string());
+        return Err(CmdError::expected("Ungueltiger Dateiname"));
     }
     Ok(())
 }
@@ -350,10 +352,10 @@ fn rename_file_with_conn(
         return Ok(());
     }
     if new_path.exists() {
-        return Err(format!(
+        return Err(CmdError::expected(format!(
             "Zieldatei existiert bereits: {}",
             new_path.display()
-        ));
+        )));
     }
     std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())?;
 
@@ -364,9 +366,10 @@ fn rename_file_with_conn(
                 "DB-Update fehlgeschlagen ({db_err}) UND Rollback der Datei-Umbenennung fehlgeschlagen ({rollback_err}) - Datei heisst jetzt {}, DB verweist weiter auf {}",
                 new_path.display(),
                 old_path.display()
-            ));
+            )
+            .into());
         }
-        return Err(db_err.to_string());
+        return Err(db_err.to_string().into());
     }
     Ok(())
 }
@@ -383,19 +386,19 @@ pub fn rename_file(state: State<AppState>, file_id: String, name: String) -> Cmd
 pub fn set_print_status(state: State<AppState>, file_id: String, status: String) -> CmdResult<()> {
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
-    db::set_print_status(&conn, id, &status).map_err(|e| e.to_string())
+    db::set_print_status(&conn, id, &status).map_err(|e| e.to_string().into())
 }
 #[tauri::command]
 pub fn set_favorite(state: State<AppState>, file_id: String, favorite: bool) -> CmdResult<()> {
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
-    db::set_favorite(&conn, id, favorite).map_err(|e| e.to_string())
+    db::set_favorite(&conn, id, favorite).map_err(|e| e.to_string().into())
 }
 #[tauri::command]
 pub fn mark_file_viewed(state: State<AppState>, file_id: String) -> CmdResult<()> {
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
-    db::mark_file_viewed(&conn, id).map_err(|e| e.to_string())
+    db::mark_file_viewed(&conn, id).map_err(|e| e.to_string().into())
 }
 #[tauri::command]
 pub fn add_to_queue(state: State<AppState>, file_id: String) -> CmdResult<i64> {
@@ -412,7 +415,7 @@ pub fn add_to_queue(state: State<AppState>, file_id: String) -> CmdResult<i64> {
 pub fn remove_from_queue(state: State<AppState>, file_id: String) -> CmdResult<()> {
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
-    db::set_queue_position(&conn, id, None).map_err(|e| e.to_string())
+    db::set_queue_position(&conn, id, None).map_err(|e| e.to_string().into())
 }
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -441,7 +444,8 @@ fn reorder_queue_with_conn(
         if db::get_file(conn, id).map_err(|e| e.to_string())?.is_none() {
             return Err(format!(
                 "Datei mit id {id} nicht gefunden - Batch wird nicht angewendet"
-            ));
+            )
+            .into());
         }
         parsed.push((id, update.position));
     }
@@ -495,7 +499,8 @@ pub fn set_render_snapshot(
         return Err(format!(
             "Bild ist zu groß - maximal {} MB erlaubt",
             MAX_CUSTOM_IMAGE_BYTES / (1024 * 1024)
-        ));
+        )
+        .into());
     }
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(&image_base64)
@@ -505,10 +510,11 @@ pub fn set_render_snapshot(
             "Bild ist zu groß ({:.1} MB) - maximal {} MB erlaubt",
             bytes.len() as f64 / (1024.0 * 1024.0),
             MAX_CUSTOM_IMAGE_BYTES / (1024 * 1024)
-        ));
+        )
+        .into());
     }
     let conn = lock_db(&state)?;
-    db::set_render_snapshot_png(&conn, id, &bytes).map_err(|e| e.to_string())
+    db::set_render_snapshot_png(&conn, id, &bytes).map_err(|e| e.to_string().into())
 }
 #[tauri::command]
 pub fn set_source_url(
@@ -519,7 +525,7 @@ pub fn set_source_url(
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let url = validate_source_url(url)?;
     let conn = lock_db(&state)?;
-    db::set_source_url(&conn, id, url.as_deref()).map_err(|e| e.to_string())
+    db::set_source_url(&conn, id, url.as_deref()).map_err(|e| e.to_string().into())
 }
 pub(crate) fn is_supported_extension(path: &Path) -> bool {
     path.extension()
@@ -632,7 +638,7 @@ fn step_geometry(path: &Path) -> CmdResult<Vec<RenderMesh>> {
 
 #[cfg(not(feature = "step-preview"))]
 fn step_geometry(_path: &Path) -> CmdResult<Vec<RenderMesh>> {
-    Err("STEP-Vorschau ist in diesem Build nicht enthalten".to_string())
+    Err("STEP-Vorschau ist in diesem Build nicht enthalten".into())
 }
 
 pub(crate) fn import_one(
@@ -727,7 +733,7 @@ pub(crate) fn import_one(
                 None,
             )
         }
-        _ => return Err("nicht unterstütztes Dateiformat".to_string()),
+        _ => return Err(CmdError::expected("nicht unterstütztes Dateiformat")),
     };
 
     let tags = tagging::suggest_tags(&TaggingContext {
@@ -784,7 +790,7 @@ pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFile
         .ok_or_else(|| "Datei nicht im Katalog gefunden".to_string())?;
     let path = Path::new(&existing.path);
     if !path.exists() {
-        return Err(format!("Datei nicht gefunden: {}", existing.path));
+        return Err(CmdError::expected(format!("Datei nicht gefunden: {}", existing.path)));
     }
     let extension = path
         .extension()
@@ -862,7 +868,7 @@ pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFile
                 content_hash,
             }
         }
-        _ => return Err("nicht unterstütztes Dateiformat".to_string()),
+        _ => return Err(CmdError::expected("nicht unterstütztes Dateiformat")),
     };
 
     db::update_scanned_metadata(conn, id, &update).map_err(|e| e.to_string())?;
@@ -1046,7 +1052,7 @@ pub fn open_in_file_manager(path: String) -> CmdResult<()> {
     // Only existing directories: a path starting with "-" could otherwise be read
     // as an option by xdg-open/open/explorer.
     if !std::path::Path::new(&path).is_dir() {
-        return Err("Pfad ist kein existierendes Verzeichnis".to_string());
+        return Err(CmdError::expected("Pfad ist kein existierendes Verzeichnis"));
     }
 
     #[cfg(target_os = "linux")]
@@ -1128,7 +1134,7 @@ fn encode_render_meshes(meshes: &[RenderMesh]) -> Vec<u8> {
 pub async fn get_model_geometry(
     state: State<'_, AppState>,
     file_id: String,
-) -> Result<tauri::ipc::Response, String> {
+) -> CmdResult<tauri::ipc::Response> {
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
 
     // The MutexGuard must end by scope before the .await; drop() isn't enough for
@@ -1159,9 +1165,9 @@ pub async fn get_model_geometry(
                 let mesh = obj::parse_obj_geometry(&bytes).map_err(|e| e.to_string())?;
                 Ok(vec![mesh])
             }
-            "3mf" => threemf::extract_render_meshes_from_path(&path).map_err(|e| e.to_string()),
+            "3mf" => threemf::extract_render_meshes_from_path(&path).map_err(|e| e.to_string().into()),
             "stp" | "step" => step_geometry(&path),
-            other => Err(format!("nicht unterstütztes Dateiformat: {other}")),
+            other => Err(CmdError::expected(format!("nicht unterstütztes Dateiformat: {other}"))),
         }
     })
     .await

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { messageOf } from '../lib/errors';
 
 export interface PrintLogEntry {
   id: string;
@@ -25,7 +26,7 @@ export function usePrintLog(fileId: string) {
         setEntries(result);
         setError(null);
       })
-      .catch((e) => setError(String(e)))
+      .catch((e) => setError(messageOf(e)))
       .finally(() => setLoading(false));
   }, [fileId]);
 

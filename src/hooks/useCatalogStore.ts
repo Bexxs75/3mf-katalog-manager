@@ -3,6 +3,7 @@ import * as filesApi from '../lib/api/files';
 import * as foldersApi from '../lib/api/folders';
 import * as catalogMetaApi from '../lib/api/catalogMeta';
 import { canonicalTag } from '../lib/autoTags';
+import { messageOf } from '../lib/errors';
 import type { ModelFile, ModelFileSummary, Folder, TagCount, ImportResultDto } from '../types';
 
 // Embeds a slim `ModelFileSummary` into the full `ModelFile` shape so
@@ -500,7 +501,7 @@ export function useCatalogStore() {
       })
       .catch((e) => {
         console.error('[rescan] rescan failed:', e);
-        setRescanFeedback({ fileId: id, status: 'error', message: String(e) });
+        setRescanFeedback({ fileId: id, status: 'error', message: messageOf(e) });
       });
   }, []);
 

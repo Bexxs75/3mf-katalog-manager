@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import * as api from '../lib/api/printerLink';
+import { messageOf } from '../lib/errors';
 import type { JobDecision, PrinterConnection, PrinterJob } from '../types';
 
 /**
@@ -34,7 +35,7 @@ export function usePrinterLink() {
       setJobs(open);
       setError(null);
     } catch (e) {
-      if (mounted.current) setError(String(e));
+      if (mounted.current) setError(messageOf(e));
     }
   }, []);
 

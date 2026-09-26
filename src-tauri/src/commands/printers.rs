@@ -34,7 +34,7 @@ pub struct LoadResultDto {
 }
 
 fn parse_id(value: &str, what: &str) -> CmdResult<i64> {
-    value.parse().map_err(|_| format!("ungueltige {what}-ID"))
+    value.parse().map_err(|_| format!("ungueltige {what}-ID").into())
 }
 
 fn unit_dto(u: db::models::MaterialUnitRecord) -> MaterialUnitDto {
@@ -70,7 +70,9 @@ pub(crate) fn list_printers_with_conn(conn: &Connection) -> CmdResult<Vec<Printe
 /// Runs `f` in a transaction and only commits on success.
 fn in_tx<T>(conn: &mut Connection, f: impl FnOnce(&Connection) -> Result<T, db::error::DbError>) -> CmdResult<T> {
     let tx = conn.transaction().map_err(|e| e.to_string())?;
-    let value = f(&tx).map_err(|e| e.to_string())?;
+    // No `.map_err(|e| e.to_string())` here: going through `From<DbError>` directly
+    // keeps `DbError::Invalid` (e.g. a rejected printer/unit name) marked `expected`.
+    let value = f(&tx)?;
     tx.commit().map_err(|e| e.to_string())?;
     Ok(value)
 }
@@ -100,7 +102,7 @@ pub(crate) fn add_printer_with_conn(conn: &mut Connection, name: &str, holder_na
     list_printers_with_conn(conn)?
         .into_iter()
         .find(|printer| printer.id == id.to_string())
-        .ok_or_else(|| "Drucker nach dem Anlegen nicht gefunden".to_string())
+        .ok_or_else(|| "Drucker nach dem Anlegen nicht gefunden".into())
 }
 
 #[tauri::command]
@@ -142,7 +144,7 @@ pub fn add_unit(
         .into_iter()
         .find(|u| u.id == id)
         .map(unit_dto)
-        .ok_or_else(|| "Einheit nach dem Anlegen nicht gefunden".to_string())
+        .ok_or_else(|| "Einheit nach dem Anlegen nicht gefunden".into())
 }
 
 #[tauri::command]

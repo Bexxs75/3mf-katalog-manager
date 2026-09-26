@@ -7,6 +7,7 @@ import { filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus
 import { useImageDropZone } from '../hooks/useImageDropZone';
 import { readDroppedImage } from '../lib/api/filament';
 import type { ImageDropRejection } from '../lib/imageDrop';
+import { messageOf } from '../lib/errors';
 import { AutocompleteInput } from './AutocompleteInput';
 import { ColorPicker } from './ColorPicker';
 
@@ -96,7 +97,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
         setImageError(null);
         setForm((prev) => ({ ...prev, imagePng: base64 }));
       })
-      .catch((e) => setImageError(String(e)));
+      .catch((e) => setImageError(messageOf(e)));
   };
 
   const handleDroppedImage = useCallback((path: string) => {
@@ -105,7 +106,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
         setImageError(null);
         setForm((prev) => ({ ...prev, imagePng: base64 }));
       })
-      .catch((e) => setImageError(String(e)));
+      .catch((e) => setImageError(messageOf(e)));
   }, []);
 
   const handleRejectedDrop = useCallback(
@@ -158,7 +159,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
       onSaved();
       onClose();
     } catch (e) {
-      setError(String(e));
+      setError(messageOf(e));
     }
   };
 

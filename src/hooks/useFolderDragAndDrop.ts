@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as foldersApi from '../lib/api/folders';
 import { isFolderSelfOrDescendant } from '../lib/folderTree';
+import { messageOf } from '../lib/errors';
 import type { ModelFile, Folder } from '../types';
 
 interface Refreshers {
@@ -51,7 +52,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
         .catch((e) => {
           console.error('[folders] creating failed:', e);
           // Show the error next to the folder tree; catalogBackupError would be invisible without an open panel.
-          setMoveToast({ from: name, to: String(e), error: true });
+          setMoveToast({ from: name, to: messageOf(e), error: true });
         }),
     [refreshFolders],
   );
@@ -76,7 +77,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
         })
         .catch((e) => {
           console.error('[folders] moving file failed:', e);
-          setMoveToast({ from: file.name, to: String(e), error: true });
+          setMoveToast({ from: file.name, to: messageOf(e), error: true });
         });
     };
     document.addEventListener('mouseup', handleMouseUp);
@@ -106,7 +107,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
         })
         .catch((e) => {
           console.error('[folders] moving folder failed:', e);
-          setMoveToast({ from: folder.name, to: String(e), error: true });
+          setMoveToast({ from: folder.name, to: messageOf(e), error: true });
         });
     };
     document.addEventListener('mouseup', handleMouseUp);

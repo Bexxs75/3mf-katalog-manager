@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as printersApi from '../lib/api/printers';
+import { messageOf } from '../lib/errors';
 import type { Printer, PrinterKind, UnitKind } from '../types';
 
 /**
@@ -19,7 +20,7 @@ export function usePrinters() {
           setPrinters(result);
           setError(null);
         })
-        .catch((e) => setError(String(e))),
+        .catch((e) => setError(messageOf(e))),
     [],
   );
 
@@ -35,7 +36,7 @@ export function usePrinters() {
           return result;
         })
         .catch((e) => {
-          setError(String(e));
+          setError(messageOf(e));
           throw e;
         }),
     [refresh],

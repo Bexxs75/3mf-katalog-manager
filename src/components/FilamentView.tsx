@@ -24,6 +24,7 @@ import type { PrintersState } from '../hooks/usePrinters';
 import { useSpoolDragAndDrop } from '../hooks/useSpoolDragAndDrop';
 import * as printersApi from '../lib/api/printers';
 import { isInStorage, spoolFitsUnit, spoolLabel } from '../lib/filamentSlots';
+import { messageOf } from '../lib/errors';
 
 type LayoutMode = 'dashboard' | 'list';
 type StatusFilter = 'low' | 'empty' | null;
@@ -98,7 +99,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
         setSpools(result);
         setError(null);
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(messageOf(e)));
   };
 
   useEffect(refresh, []);
@@ -160,7 +161,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
         setConfirmDeleteId(null);
         refresh();
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(messageOf(e)));
   };
 
   const toggleStatusFilter = (val: StatusFilter) => setStatusFilter((prev) => (prev === val ? null : val));
@@ -173,7 +174,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
       printersApi
         .loadSpool(spoolId, unitId, slotIndex)
         .then(() => refresh())
-        .catch((e) => setError(String(e)));
+        .catch((e) => setError(messageOf(e)));
     },
     [fitsUnit],
   );
@@ -187,7 +188,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
           setToast({ type: 'unload', spoolId, label: spool ? spoolLabel(spool) : '', location });
           refresh();
         })
-        .catch((e) => setError(String(e)));
+        .catch((e) => setError(messageOf(e)));
     },
     [spools],
   );
@@ -197,7 +198,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
     if (!spool) return Promise.resolve();
     return invoke('update_filament_spool', { spool: { ...spool, location } })
       .then(() => refresh())
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(messageOf(e)));
   };
 
   const dismissToast = useCallback(() => setToast(null), []);

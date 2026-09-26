@@ -5,13 +5,13 @@ use super::*;
 /// A name like "../../x" would otherwise write outside the trash directory.
 fn validate_file_name(name: &str) -> CmdResult<()> {
     if name.trim().is_empty() {
-        return Err("Dateiname darf nicht leer sein".to_string());
+        return Err(CmdError::expected("Dateiname darf nicht leer sein"));
     }
     if name.contains('/') || name.contains('\\') {
-        return Err("Dateiname darf keine Pfad-Trennzeichen enthalten".to_string());
+        return Err(CmdError::expected("Dateiname darf keine Pfad-Trennzeichen enthalten"));
     }
     if name.contains("..") {
-        return Err("Dateiname darf keine \"..\"-Folge enthalten".to_string());
+        return Err(CmdError::expected("Dateiname darf keine \"..\"-Folge enthalten"));
     }
     Ok(())
 }
@@ -89,7 +89,7 @@ pub async fn export_catalog(
     // Rename only after the write finished: never a partial archive at the destination.
     if let Err(e) = std::fs::rename(&tmp_zip_path, &dest_path) {
         let _ = std::fs::remove_file(&tmp_zip_path);
-        return Err(e.to_string());
+        return Err(e.to_string().into());
     }
     Ok(())
 }
@@ -116,7 +116,8 @@ fn reject_oversized_zip_entry(name: &str, size: u64, max: u64) -> CmdResult<()> 
             "Eintrag \"{name}\" im Archiv ist zu groß ({:.1} MB) - maximal {} MB erlaubt",
             size as f64 / (1024.0 * 1024.0),
             max / (1024 * 1024)
-        ));
+        )
+        .into());
     }
     Ok(())
 }
@@ -532,7 +533,8 @@ fn validate_catalog_db_bytes(
         .map_err(|e| e.to_string())
         .and_then(|mut conn| {
             let expanded_dirs = expand_sensitive_dirs(sensitive_dirs);
-            let resolved_trash_dir = resolve_path_for_sensitivity_check(trash_dir)?;
+            let resolved_trash_dir =
+                resolve_path_for_sensitivity_check(trash_dir).map_err(|e| e.to_string())?;
             conn.query_row("SELECT COUNT(*) FROM files", [], |row| row.get::<_, i64>(0))
                 .map_err(|e| e.to_string())?;
 
@@ -803,7 +805,8 @@ fn replace_catalog_db_with_copy_fn(
             return Err(format!(
                 "Sanierung von registered_slicers ergab eine unerwartete Zeilenzahl ({final_count} statt {}) - Restore abgebrochen",
                 local_slicers.len()
-            ));
+            )
+            .into());
         }
         tx.commit().map_err(|e| e.to_string())?;
         // Close the handle on new_db_path before copying.
@@ -829,7 +832,7 @@ fn replace_catalog_db_with_copy_fn(
                 *guard = conn;
             }
         }
-        return Err(e.to_string());
+        return Err(e.to_string().into());
     }
 
     if let Err(e) = copy_fn(new_db_path, &state.db_path) {
@@ -844,7 +847,8 @@ fn replace_catalog_db_with_copy_fn(
         return match restore_result {
             Ok(()) => Err(format!(
                 "Kopieren der neuen Datenbank fehlgeschlagen, alter Katalog wiederhergestellt: {e}"
-            )),
+            )
+            .into()),
             Err(restore_err) => Err(format!(
                 "Kopieren der neuen Datenbank fehlgeschlagen UND Wiederherstellung der alten \
                  Datenbank fehlgeschlagen ({restore_err}). Die vorherige Datenbank liegt noch \
@@ -852,7 +856,8 @@ fn replace_catalog_db_with_copy_fn(
                  starten. Ursprünglicher Fehler: {e}",
                 backup_path.display(),
                 state.db_path.display()
-            )),
+            )
+            .into()),
         };
     }
 

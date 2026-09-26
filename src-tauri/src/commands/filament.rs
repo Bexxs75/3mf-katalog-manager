@@ -29,7 +29,7 @@ pub struct FilamentSpoolDto {
 fn validate_color_hex(color_hex: &Option<String>) -> CmdResult<()> {
     match color_hex {
         Some(value) if !db::printers::is_valid_color_hex(value) => {
-            Err(format!("ungueltiger Farbwert: {value}"))
+            Err(format!("ungueltiger Farbwert: {value}").into())
         }
         _ => Ok(()),
     }
@@ -43,7 +43,7 @@ fn validate_spool_kind(kind: &str) -> CmdResult<()> {
     if db::models::SPOOL_KINDS.contains(&kind) {
         Ok(())
     } else {
-        Err(format!("ungueltige Art: {kind}"))
+        Err(format!("ungueltige Art: {kind}").into())
     }
 }
 /// Builds the DTO from the real database state (see `update_filament_spool`).
@@ -126,7 +126,7 @@ pub fn update_filament_spool(state: State<AppState>, spool: FilamentSpoolDto) ->
 pub fn delete_filament_spool(state: State<AppState>, spool_id: String) -> CmdResult<()> {
     let id: i64 = spool_id.parse().map_err(|_| "invalid spool id".to_string())?;
     let conn = lock_db(&state)?;
-    db::delete_filament_spool(&conn, id).map_err(|e| e.to_string())
+    db::delete_filament_spool(&conn, id).map_err(|e| e.to_string().into())
 }
 
 /// Limit for "Restock" (1 to 20).
@@ -148,15 +148,15 @@ pub(crate) fn restock_filament_spool_with_conn(
 ) -> CmdResult<Vec<FilamentSpoolDto>> {
     let template_id: i64 = template_id.parse().map_err(|_| "invalid spool id".to_string())?;
     if !(1..=RESTOCK_MAX_COUNT).contains(&count) {
-        return Err(format!("Anzahl muss zwischen 1 und {RESTOCK_MAX_COUNT} liegen"));
+        return Err(CmdError::expected(format!("Anzahl muss zwischen 1 und {RESTOCK_MAX_COUNT} liegen")));
     }
     let weight = db::printers::round_tenth(weight);
     if !weight.is_finite() || weight <= 0.0 {
-        return Err("Menge muss groesser als 0 sein".to_string());
+        return Err(CmdError::expected("Menge muss groesser als 0 sein"));
     }
     if let Some(value) = price {
         if !value.is_finite() || value < 0.0 {
-            return Err("ungueltiger Preis".to_string());
+            return Err(CmdError::expected("ungueltiger Preis"));
         }
     }
     let location = location
@@ -167,9 +167,9 @@ pub(crate) fn restock_filament_spool_with_conn(
     let template = match db::get_filament_spool(&tx, template_id) {
         Ok(record) => record,
         Err(DbError::Sqlite(rusqlite::Error::QueryReturnedNoRows)) => {
-            return Err("Vorlage nicht gefunden (die Spule wurde inzwischen geloescht)".to_string());
+            return Err(CmdError::expected("Vorlage nicht gefunden (die Spule wurde inzwischen geloescht)"));
         }
-        Err(e) => return Err(e.to_string()),
+        Err(e) => return Err(e.to_string().into()),
     };
     let new_spool = db::models::NewFilamentSpool {
         material: template.material,
@@ -222,18 +222,18 @@ pub(crate) fn consume_resin_with_conn(conn: &mut Connection, spool_id: &str, amo
     let id: i64 = spool_id.parse().map_err(|_| "invalid spool id".to_string())?;
     let amount = db::printers::round_tenth(amount_ml);
     if !amount.is_finite() || amount <= 0.0 {
-        return Err("Verbrauch muss groesser als 0 sein".to_string());
+        return Err(CmdError::expected("Verbrauch muss groesser als 0 sein"));
     }
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let spool = match db::get_filament_spool(&tx, id) {
         Ok(record) => record,
         Err(DbError::Sqlite(rusqlite::Error::QueryReturnedNoRows)) => {
-            return Err("Flasche nicht gefunden (wurde sie inzwischen geloescht?)".to_string());
+            return Err(CmdError::expected("Flasche nicht gefunden (wurde sie inzwischen geloescht?)"));
         }
-        Err(e) => return Err(e.to_string()),
+        Err(e) => return Err(e.to_string().into()),
     };
     if spool.kind != db::models::SPOOL_KIND_RESIN {
-        return Err("Verbrauch abbuchen gibt es nur fuer Resin".to_string());
+        return Err("Verbrauch abbuchen gibt es nur fuer Resin".into());
     }
     let remaining = db::printers::round_tenth((spool.remaining_weight_g - amount).max(0.0));
     tx.execute(

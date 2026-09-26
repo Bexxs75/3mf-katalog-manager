@@ -24,20 +24,21 @@ pub fn list_collections(state: State<AppState>) -> CmdResult<Vec<CollectionDto>>
 pub fn create_collection(state: State<AppState>, name: String) -> CmdResult<CollectionDto> {
     let conn = lock_db(&state)?;
     let created_at = chrono::Utc::now().to_rfc3339();
-    let id = db::create_collection(&conn, &name, &created_at).map_err(|e| e.to_string())?;
+    let id = db::create_collection(&conn, &name, &created_at)?;
     Ok(CollectionDto { id: id.to_string(), name, model_count: 0 })
 }
 #[tauri::command]
 pub fn rename_collection(state: State<AppState>, collection_id: String, name: String) -> CmdResult<()> {
     let id: i64 = collection_id.parse().map_err(|_| "invalid collection id".to_string())?;
     let conn = lock_db(&state)?;
-    db::rename_collection(&conn, id, &name).map_err(|e| e.to_string())
+    db::rename_collection(&conn, id, &name)?;
+    Ok(())
 }
 #[tauri::command]
 pub fn delete_collection(state: State<AppState>, collection_id: String) -> CmdResult<()> {
     let id: i64 = collection_id.parse().map_err(|_| "invalid collection id".to_string())?;
     let conn = lock_db(&state)?;
-    db::delete_collection(&conn, id).map_err(|e| e.to_string())
+    db::delete_collection(&conn, id).map_err(|e| e.to_string().into())
 }
 #[tauri::command]
 pub fn add_files_to_collection(state: State<AppState>, collection_id: String, file_ids: Vec<String>) -> CmdResult<()> {
@@ -55,7 +56,7 @@ pub fn remove_file_from_collection(state: State<AppState>, collection_id: String
     let cid: i64 = collection_id.parse().map_err(|_| "invalid collection id".to_string())?;
     let fid: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
-    db::remove_file_from_collection(&conn, cid, fid).map_err(|e| e.to_string())
+    db::remove_file_from_collection(&conn, cid, fid).map_err(|e| e.to_string().into())
 }
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -85,7 +86,8 @@ fn reorder_collection_with_conn(
         if !member_ids.contains(&fid) {
             return Err(format!(
                 "Datei mit id {fid} ist nicht Teil der Collection {collection_id} - Batch wird nicht angewendet"
-            ));
+            )
+            .into());
         }
         parsed.push((fid, update.position));
     }

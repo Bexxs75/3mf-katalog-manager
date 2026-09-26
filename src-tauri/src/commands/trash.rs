@@ -13,9 +13,9 @@ fn delete_file_with_conn(
             // still only soft-delete, because the file is usually not really gone. Other
             // errors like PermissionDenied go through the error path below.
             let deleted_at = chrono::Utc::now().to_rfc3339();
-            return db::soft_delete_file(conn, id, None, &deleted_at).map_err(|e| e.to_string());
+            return db::soft_delete_file(conn, id, None, &deleted_at).map_err(|e| e.to_string().into());
         }
-        Err(e) => return Err(e.to_string()),
+        Err(e) => return Err(e.to_string().into()),
         Ok(_) => {}
     }
 
@@ -31,9 +31,10 @@ fn delete_file_with_conn(
                 "DB-Update fehlgeschlagen ({db_err}) UND Rollback aus dem Papierkorb fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}, DB fuehrt sie weiterhin als aktiv unter {}",
                 trash_path.display(),
                 file.path
-            ));
+            )
+            .into());
         }
-        return Err(db_err.to_string());
+        return Err(db_err.to_string().into());
     }
     Ok(())
 }
@@ -94,13 +95,13 @@ fn restore_file_with_conn(
     id: i64,
 ) -> CmdResult<()> {
     if file.deleted_at.is_none() {
-        return Err("file is not in trash".to_string());
+        return Err("file is not in trash".into());
     }
 
     let Some(trash_path) = file.trash_path.clone() else {
         // Without trash_path the file was already unreachable when deleted: just make
         // the entry visible again.
-        return db::restore_file(conn, id, None).map_err(|e| e.to_string());
+        return db::restore_file(conn, id, None).map_err(|e| e.to_string().into());
     };
 
     let original = std::path::Path::new(&file.path);
@@ -127,9 +128,10 @@ fn restore_file_with_conn(
             return Err(format!(
                 "DB-Update fehlgeschlagen ({db_err}) UND Rollback in den Papierkorb fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}, DB fuehrt sie weiterhin als geloescht",
                 target_path.display()
-            ));
+            )
+            .into());
         }
-        return Err(db_err.to_string());
+        return Err(db_err.to_string().into());
     }
     Ok(())
 }
@@ -150,16 +152,16 @@ pub fn delete_file_permanently(state: State<AppState>, file_id: String) -> CmdRe
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "file not found".to_string())?;
     if file.deleted_at.is_none() {
-        return Err("file is not in trash".to_string());
+        return Err("file is not in trash".into());
     }
     if let Some(trash_path) = &file.trash_path {
         if let Err(e) = std::fs::remove_file(trash_path) {
             if e.kind() != std::io::ErrorKind::NotFound {
-                return Err(e.to_string());
+                return Err(e.to_string().into());
             }
         }
     }
-    db::delete_file(&conn, id).map_err(|e| e.to_string())
+    db::delete_file(&conn, id).map_err(|e| e.to_string().into())
 }
 #[tauri::command]
 pub fn empty_trash(state: State<AppState>) -> CmdResult<()> {

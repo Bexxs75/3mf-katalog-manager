@@ -64,7 +64,7 @@ pub async fn pick_and_register_slicer(app: tauri::AppHandle, state: State<'_, Ap
 pub fn list_registered_slicers(state: State<AppState>) -> CmdResult<Vec<SlicerDto>> {
     let conn = lock_db(&state)?;
     db::list_registered_slicers(&conn)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string().into())
         .map(|rows| {
             rows.into_iter()
                 .map(|r| SlicerDto { id: r.id.to_string(), name: r.name, executable_path: r.executable_path })
@@ -79,13 +79,13 @@ fn validate_slicer_path(slicer_path: &str) -> CmdResult<()> {
     let metadata = std::fs::metadata(path)
         .map_err(|_| "slicer executable not found".to_string())?;
     if !metadata.is_file() {
-        return Err("slicer path is not a file".to_string());
+        return Err(CmdError::expected("slicer path is not a file"));
     }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         if metadata.permissions().mode() & 0o111 == 0 {
-            return Err("slicer path is not executable".to_string());
+            return Err(CmdError::expected("slicer path is not executable"));
         }
     }
     #[cfg(windows)]
@@ -96,7 +96,7 @@ fn validate_slicer_path(slicer_path: &str) -> CmdResult<()> {
             .map(|e| e.eq_ignore_ascii_case("exe"))
             .unwrap_or(false);
         if !is_exe {
-            return Err("slicer path must be an .exe file".to_string());
+            return Err(CmdError::expected("slicer path must be an .exe file"));
         }
     }
     Ok(())
@@ -110,13 +110,13 @@ fn validate_slicer_target_file(file_path: &str) -> CmdResult<()> {
         .and_then(|n| n.to_str())
         .ok_or_else(|| "invalid model file path".to_string())?;
     if file_path.starts_with('-') || file_name.starts_with('-') {
-        return Err("model file path must not start with '-'".to_string());
+        return Err("model file path must not start with '-'".into());
     }
     if !is_sliceable_extension(path) {
-        return Err("model file must be a .3mf or .stl file".to_string());
+        return Err("model file must be a .3mf or .stl file".into());
     }
     if !std::fs::metadata(path).map(|m| m.is_file()).unwrap_or(false) {
-        return Err("model file not found".to_string());
+        return Err("model file not found".into());
     }
     Ok(())
 }
@@ -180,7 +180,7 @@ pub fn scan_installed_slicers(state: State<AppState>) -> CmdResult<Vec<SlicerDto
         let _ = db::insert_registered_slicer(&conn, &detected.name, &detected.path, true);
     }
     db::list_registered_slicers(&conn)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string().into())
         .map(|rows| {
             rows.into_iter()
                 .map(|r| SlicerDto { id: r.id.to_string(), name: r.name, executable_path: r.executable_path })

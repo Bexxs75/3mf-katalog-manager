@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useT } from '../i18n/LanguageContext';
 import type { ImportResultDto, Folder } from '../types';
+import { messageOf } from '../lib/errors';
 
 interface Props {
   onClose: () => void;
@@ -38,7 +39,7 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
       onImported(result);
       setDone({ kind: 'adopt', path, files: result.imported.length, folders: newFolders });
     } catch (e) {
-      setError(String(e));
+      setError(messageOf(e));
     } finally {
       setBusy(null);
     }
@@ -54,7 +55,7 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
       onBaseDirSet(path);
       setDone({ kind: 'new', path });
     } catch (e) {
-      setError(String(e));
+      setError(messageOf(e));
     } finally {
       setBusy(null);
     }

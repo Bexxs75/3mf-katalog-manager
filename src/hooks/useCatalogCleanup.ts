@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import * as cleanupApi from '../lib/api/cleanup';
+import { messageOf } from '../lib/errors';
 import * as filesApi from '../lib/api/files';
 import type { CatalogIssues } from '../types';
 
@@ -20,7 +21,7 @@ export function useCatalogCleanup() {
       })
       .catch((e) => {
         console.error('[cleanup] scan failed:', e);
-        setCleanupError(String(e));
+        setCleanupError(messageOf(e));
       })
       .finally(() => setCleanupScanning(false));
   }, []);
@@ -38,7 +39,7 @@ export function useCatalogCleanup() {
         })
         .catch((e) => {
           console.error('[cleanup] deleting failed:', e);
-          setCleanupError(String(e));
+          setCleanupError(messageOf(e));
         }),
     [],
   );
