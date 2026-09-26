@@ -72,21 +72,10 @@ pub fn read_logs(dir: &Path) -> Vec<String> {
         .collect()
 }
 
-pub fn free_file_name(dir: &Path, date: &str) -> PathBuf {
-    let first = dir.join(format!("3mf-katalog-log-{date}.txt"));
-    if !first.exists() {
-        return first;
-    }
-    (2..)
-        .map(|n| dir.join(format!("3mf-katalog-log-{date}-{n}.txt")))
-        .find(|p| !p.exists())
-        .expect("unbounded range always yields a free name")
-}
-
-/// Same name sequence as `free_file_name`, but writes atomically: a name that
-/// gets taken between checking and writing (e.g. a double click on "save") is
-/// skipped instead of overwritten, never truncating a file that appeared in
-/// between.
+/// Writes to `3mf-katalog-log-<date>.txt`, counting up to `-2`, `-3`, … when a
+/// name is taken; atomically, so a name that gets taken between checking and
+/// writing (e.g. a double click on "save") is skipped instead of overwritten,
+/// never truncating a file that appeared in the meantime.
 pub fn write_new_export(dir: &Path, date: &str, contents: &str) -> std::io::Result<PathBuf> {
     const MAX_ATTEMPTS: u32 = 10_000;
     for n in 0..MAX_ATTEMPTS {
@@ -144,17 +133,6 @@ mod tests {
     fn debug_detection() {
         assert!(contains_debug("2026-10-03 10:00:00 DEBUG [datei] x"));
         assert!(!contains_debug("2026-10-03 10:00:00 INFO  [datei] debug x"));
-    }
-
-    #[test]
-    fn free_file_name_counts_up() {
-        let dir = std::env::temp_dir().join(format!("3mf-free-name-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let first = free_file_name(&dir, "2026-10-03");
-        assert_eq!(first.file_name().unwrap(), "3mf-katalog-log-2026-10-03.txt");
-        std::fs::write(&first, "x").unwrap();
-        assert_eq!(free_file_name(&dir, "2026-10-03").file_name().unwrap(), "3mf-katalog-log-2026-10-03-2.txt");
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
