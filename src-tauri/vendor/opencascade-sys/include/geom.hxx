@@ -7,13 +7,13 @@
 #include <Geom_TrimmedCurve.hxx>
 #include <bindings_common.hxx>
 
-// Alle new_Handle_X-artigen Konstruktionen hier bauen ueber den Zeiger-/
-// Kopier-Konstruktor von Handle_X selbst statt ueber einen separat
-// allozierten opencascade::handle<T>* bzw. eine opencascade::handle<T>-
-// Kopie: Auf MSVC ist Handle_X eine von opencascade::handle<T> ABGELEITETE
-// Klasse (C++/CLI-Kompatibilitaet, siehe Standard_Handle.hxx), auf anderen
-// Compilern nur ein Typalias. Der direkte Handle_X-Konstruktor funktioniert
-// identisch auf beiden Varianten - siehe VENDORING.md.
+// All new_Handle_X-style constructions here go through the pointer/copy
+// constructor of Handle_X itself instead of a separately allocated
+// opencascade::handle<T>* or an opencascade::handle<T> copy: on MSVC
+// Handle_X is a class DERIVED from opencascade::handle<T> (C++/CLI
+// compatibility, see Standard_Handle.hxx), on other compilers just a type
+// alias. The direct Handle_X constructor works identically on both
+// variants - see VENDORING.md.
 inline std::unique_ptr<Handle_Geom_CylindricalSurface> Geom_CylindricalSurface_new(const gp_Ax3 &axis, double radius) {
   return std::unique_ptr<Handle_Geom_CylindricalSurface>(
       new Handle_Geom_CylindricalSurface(new Geom_CylindricalSurface(axis, radius)));

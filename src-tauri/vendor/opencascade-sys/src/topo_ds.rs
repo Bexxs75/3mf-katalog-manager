@@ -122,13 +122,12 @@ unsafe impl Send for inner::TopoDS_Solid {}
 unsafe impl Send for inner::TopoDS_Compound {}
 unsafe impl Send for inner::TopoDS_Shape {}
 
-/// OCCT 7.9 hat `TopoDS` von einer Klasse zu einem Namensraum gemacht; cxx kann
-/// weder einen Typ-Alias noch eine `#[namespace = "TopoDS"]`-Bindung bilden, die
-/// beide OCCT-Versionen gleichzeitig abdeckt (siehe die `topods_cast_*`-Shims in
-/// topo_ds.hxx, die das versionsunabhaengig loesen). Die Cast-Funktionen rufen
-/// deshalb diese Shims auf und werden hier unter dem gewohnten Pfad
-/// `TopoDS::Face(...)` angeboten. Patch gegenueber upstream 0.3.0 - siehe
-/// VENDORING.md.
+/// OCCT 7.9 turned `TopoDS` from a class into a namespace; cxx can form
+/// neither a type alias nor a `#[namespace = "TopoDS"]` binding that covers
+/// both OCCT versions at once (see the `topods_cast_*` shims in
+/// topo_ds.hxx, which solve this version-independently). The cast functions
+/// therefore call these shims and are offered here under the familiar path
+/// `TopoDS::Face(...)`. Patch against upstream 0.3.0 - see VENDORING.md.
 pub struct TopoDS;
 
 #[allow(non_snake_case)]

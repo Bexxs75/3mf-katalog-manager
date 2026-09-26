@@ -34,3 +34,4 @@ docs/superpowers/
 ruvector.db
 agentdb.rvf
 agentdb.rvf.lock
+__pycache__/

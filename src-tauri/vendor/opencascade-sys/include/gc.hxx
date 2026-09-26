@@ -9,12 +9,11 @@ inline std::unique_ptr<Handle_Geom_TrimmedCurve> GC_MakeSegment_Value(const GC_M
 
 inline std::unique_ptr<Handle_Geom2d_TrimmedCurve> GCE2d_MakeSegment_point_point(const gp_Pnt2d &p1,
                                                                                  const gp_Pnt2d &p2) {
-  // GCE2d_MakeSegment gibt ein CONST opencascade::handle<T> zurueck - direkt
-  // an den Handle_T-Konstruktor durchgereicht schlaegt die Ueberladungs-
-  // aufloesung auf MSVC fehl (Move-Ctor lehnt const rvalue ab, Deduktion
-  // fuer den const&-Ctor findet nicht zuverlaessig hin). Der Umweg ueber
-  // eine nicht-konstante lokale Variable macht daraus ein gewoehnliches
-  // Lvalue, das eindeutig aufloest - auf beiden Compilern.
+  // GCE2d_MakeSegment returns a CONST opencascade::handle<T> - passed straight
+  // to the Handle_T constructor, overload resolution fails on MSVC (the move
+  // ctor rejects a const rvalue, deduction for the const& ctor doesn't
+  // reliably get there). The detour via a non-const local variable turns it
+  // into a plain lvalue that resolves unambiguously - on both compilers.
   opencascade::handle<Geom2d_TrimmedCurve> result = GCE2d_MakeSegment(p1, p2);
   return std::unique_ptr<Handle_Geom2d_TrimmedCurve>(new Handle_Geom2d_TrimmedCurve(result));
 }
