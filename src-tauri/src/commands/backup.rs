@@ -110,17 +110,56 @@ const MAX_IMPORT_DB_BYTES: u64 = 256 * 1024 * 1024;
 const MAX_IMPORT_SETTINGS_BYTES: u64 = 1024 * 1024;
 
 /// The declared size can lie; the hard limit is `Read::take` while reading.
-/// This check only saves the read attempt for honestly oversized entries.
+/// This check only saves the read attempt for honestly oversized entries. An
+/// oversized entry is about the archive the user picked, not a fault here.
 fn reject_oversized_zip_entry(name: &str, size: u64, max: u64) -> CmdResult<()> {
     if size > max {
-        return Err(format!(
+        return Err(CmdError::expected(format!(
             "Eintrag \"{name}\" im Archiv ist zu groß ({:.1} MB) - maximal {} MB erlaubt",
             size as f64 / (1024.0 * 1024.0),
             max / (1024 * 1024)
-        )
-        .into());
+        )));
     }
     Ok(())
+}
+/// Reads the two entries a catalog backup ZIP must contain. Generic over the
+/// reader so this is unit-testable with an in-memory `Cursor` instead of a real
+/// file. Every failure here is about the archive the user picked (wrong file,
+/// backup from an unrelated app, truncated download, ...), never a fault of
+/// this app - hence `CmdError::expected` throughout, not a plain `?`.
+fn read_catalog_archive<R: std::io::Read + std::io::Seek>(reader: R) -> CmdResult<(Vec<u8>, String)> {
+    use std::io::Read as _;
+
+    let mut archive = zip::ZipArchive::new(reader)
+        .map_err(|_| CmdError::expected("Die Datei ist kein gültiges Katalog-Backup (keine ZIP-Datei)"))?;
+
+    let mut db_bytes = Vec::new();
+    {
+        let entry = archive
+            .by_name("catalog.db")
+            .map_err(|_| CmdError::expected("Archiv enthält keine catalog.db"))?;
+        reject_oversized_zip_entry("catalog.db", entry.size(), MAX_IMPORT_DB_BYTES)?;
+        entry
+            .take(MAX_IMPORT_DB_BYTES)
+            .read_to_end(&mut db_bytes)
+            .map_err(|e| e.to_string())?;
+    }
+
+    let mut settings_bytes = Vec::new();
+    {
+        let entry = archive
+            .by_name("settings.json")
+            .map_err(|_| CmdError::expected("Archiv enthält keine settings.json"))?;
+        reject_oversized_zip_entry("settings.json", entry.size(), MAX_IMPORT_SETTINGS_BYTES)?;
+        entry
+            .take(MAX_IMPORT_SETTINGS_BYTES)
+            .read_to_end(&mut settings_bytes)
+            .map_err(|e| e.to_string())?;
+    }
+    let settings_json = String::from_utf8(settings_bytes)
+        .map_err(|_| CmdError::expected("settings.json im Archiv ist nicht gültiges UTF-8"))?;
+
+    Ok((db_bytes, settings_json))
 }
 /// Tables and columns the imported schema must contain. `table` only comes from
 /// this constant, so interpolating it into the PRAGMA is safe.
@@ -703,8 +742,6 @@ pub async fn import_catalog(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> CmdResult<ImportCatalogResultDto> {
-    use std::io::Read;
-
     let picked = app.dialog().file().add_filter("ZIP-Archiv", &["zip"]).blocking_pick_file();
     let Some(picked) = picked else {
         return Ok(ImportCatalogResultDto { imported: false, settings_json: None });
@@ -712,32 +749,7 @@ pub async fn import_catalog(
     let archive_path = picked.into_path().map_err(|e| e.to_string())?;
 
     let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
-    let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
-
-    let mut db_bytes = Vec::new();
-    {
-        let entry = archive
-            .by_name("catalog.db")
-            .map_err(|_| "Archiv enthält keine catalog.db".to_string())?;
-        reject_oversized_zip_entry("catalog.db", entry.size(), MAX_IMPORT_DB_BYTES)?;
-        entry
-            .take(MAX_IMPORT_DB_BYTES)
-            .read_to_end(&mut db_bytes)
-            .map_err(|e| e.to_string())?;
-    }
-
-    let mut settings_bytes = Vec::new();
-    {
-        let entry = archive
-            .by_name("settings.json")
-            .map_err(|_| "Archiv enthält keine settings.json".to_string())?;
-        reject_oversized_zip_entry("settings.json", entry.size(), MAX_IMPORT_SETTINGS_BYTES)?;
-        entry
-            .take(MAX_IMPORT_SETTINGS_BYTES)
-            .read_to_end(&mut settings_bytes)
-            .map_err(|e| e.to_string())?;
-    }
-    let settings_json = String::from_utf8(settings_bytes).map_err(|e| e.to_string())?;
+    let (db_bytes, settings_json) = read_catalog_archive(file)?;
 
     validate_backup_for_import(&db_bytes, &state.sensitive_dirs, &state.trash_dir)?;
 
@@ -2282,7 +2294,53 @@ mod tests {
     fn reject_oversized_zip_entry_uses_the_declared_uncompressed_size() {
         assert!(reject_oversized_zip_entry("catalog.db", 10, 100).is_ok());
         assert!(reject_oversized_zip_entry("catalog.db", 100, 100).is_ok());
-        assert!(reject_oversized_zip_entry("catalog.db", 101, 100).is_err());
+        let err = reject_oversized_zip_entry("catalog.db", 101, 100).unwrap_err();
+        assert!(err.expected, "an oversized entry is about the user's archive, not a fault");
+    }
+
+    fn zip_bytes_with(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        use std::io::Write;
+        let mut buf = Vec::new();
+        {
+            let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+            let options = zip::write::SimpleFileOptions::default();
+            for (name, contents) in entries {
+                zip.start_file(*name, options).unwrap();
+                zip.write_all(contents).unwrap();
+            }
+            zip.finish().unwrap();
+        }
+        buf
+    }
+
+    #[test]
+    fn read_catalog_archive_rejects_a_file_that_is_not_a_zip_at_all() {
+        let err = read_catalog_archive(std::io::Cursor::new(b"not a zip file".to_vec())).unwrap_err();
+        assert!(err.expected, "a non-ZIP file is the user's file, not a fault");
+    }
+
+    #[test]
+    fn read_catalog_archive_rejects_a_zip_without_catalog_db() {
+        let buf = zip_bytes_with(&[("settings.json", b"{}")]);
+        let err = read_catalog_archive(std::io::Cursor::new(buf)).unwrap_err();
+        assert!(err.expected, "a ZIP missing catalog.db is the user's file, not a fault");
+        assert_eq!(err.message, "Archiv enthält keine catalog.db");
+    }
+
+    #[test]
+    fn read_catalog_archive_rejects_a_zip_without_settings_json() {
+        let buf = zip_bytes_with(&[("catalog.db", b"fake db bytes")]);
+        let err = read_catalog_archive(std::io::Cursor::new(buf)).unwrap_err();
+        assert!(err.expected, "a ZIP missing settings.json is the user's file, not a fault");
+        assert_eq!(err.message, "Archiv enthält keine settings.json");
+    }
+
+    #[test]
+    fn read_catalog_archive_returns_both_entries_when_present() {
+        let buf = zip_bytes_with(&[("catalog.db", b"fake db bytes"), ("settings.json", br#"{"a":1}"#)]);
+        let (db_bytes, settings_json) = read_catalog_archive(std::io::Cursor::new(buf)).expect("both entries present");
+        assert_eq!(db_bytes, b"fake db bytes");
+        assert_eq!(settings_json, r#"{"a":1}"#);
     }
 
     #[test]
