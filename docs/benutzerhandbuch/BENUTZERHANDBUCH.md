@@ -57,8 +57,8 @@ Plattform gibt es dort zwei Varianten:
 Ansonsten sind beide Varianten identisch. Wer keine STEP-Dateien verwendet, kann bedenkenlos die
 kleinere Variante ohne `-step` nehmen.
 
-- **Linux:** `.tar.gz`-Archiv entpacken, die enthaltene `.AppImage`-Datei ausführbar machen und
-  starten.
+- **Linux:** die `.AppImage`-Datei herunterladen, ausführbar machen (Rechtsklick → Eigenschaften
+  oder `chmod +x`) und starten.
 - **Windows:** `.msi`-Installer ausführen. Das Paket ist unsigniert (kein
   Windows-Code-Signing-Zertifikat) — SmartScreen warnt beim ersten Start. Über "Weitere
   Informationen" → "Trotzdem ausführen" fortfahren.
@@ -420,6 +420,9 @@ den Filamentverbrauch fertiger und abgebrochener Drucke selbst ablesen, statt da
 Hand einträgst. Das ist standardmäßig **ausgeschaltet** und rein lesend: Die App sendet nur
 Abfragen, nie einen Befehl, und spricht nur mit Adressen, die du selbst im Heimnetz einträgst.
 Für Resin-Drucker gibt es keine Anbindung: Bei ihnen fehlt der Abschnitt "Verbindung".
+Getestet ist die Anbindung mit einem Sovol SV08 und einem Anycubic Kobra S1 mit Rinkhals. Andere
+Klipper-Drucker sollten genauso funktionieren; wenn du deinen testen möchtest, hilft die
+[Testseite](https://3mfkatalog.de/druckertest.html).
 
 1. **Einstellungen → Drucker** → Schalter "Druckeranbindung" einschalten.
 2. **Filament-Lager → Drucker verwalten** → beim gewünschten Drucker unter "Verbindung" die
@@ -538,6 +541,8 @@ unwiderruflich überschreibt.
   warnen beim ersten Start (siehe [Installation](#installation) für den Weg drumherum).
 - Es gibt **keine Cloud-Anbindung** — der Katalog ist bewusst rein lokal, eine frühere
   Google-Drive-Anbindung wurde wieder entfernt, weil sie im Alltag zu instabil war.
+- Die **Druckeranbindung** gibt es bisher nur für Klipper/Moonraker. OctoPrint und Bambu Lab sind
+  geplant, PrusaLink später.
 
 ## Häufige Fragen (FAQ)
 
@@ -558,6 +563,13 @@ Bei der Ersteinrichtung "Bestehende Ordnerstruktur übernehmen" wählen (siehe
 Nicht automatisch/synchronisiert — dafür gibt es aktuell keine Cloud-Anbindung (siehe
 [Bekannte Einschränkungen](#bekannte-einschränkungen)). Über "Katalog-Backup" (Export/Import)
 lässt sich der Katalog aber manuell auf einen anderen Rechner übertragen.
+
+**Kann ich nach einem Update wieder zur alten Version zurück?**
+Meist nicht mit demselben Katalog: Neue Versionen erweitern beim ersten Start die
+Katalog-Datenbank (zuletzt v0.14.0 für Druckeranbindung und Resin-Drucker), und ältere Versionen
+können sie danach nicht mehr öffnen. Leg deshalb vor einem Update unter **Einstellungen →
+Katalog** eine Sicherung an (siehe [Katalog sichern und wiederherstellen](#katalog-sichern-und-wiederherstellen-backup)).
+Mit ihr kannst du in der alten Version weiterarbeiten.
 
 **Warum wirkt das Feld "Quelle" auf manchen Systemen etwas seltsam, wenn keine URL hinterlegt
 ist?** Das ist lediglich ein Platzhaltertext ("https://…") mit einem kleinen Stift-Symbol zum
@@ -625,8 +637,8 @@ are two variants:
 Otherwise the two variants are identical. If you don't use STEP files, the smaller variant without
 `-step` is the safe choice.
 
-- **Linux:** extract the `.tar.gz` archive, make the included `.AppImage` file executable, and
-  run it.
+- **Linux:** download the `.AppImage` file, make it executable (right-click → Properties or
+  `chmod +x`), and run it.
 - **Windows:** run the `.msi` installer. The package is unsigned (no Windows code-signing
   certificate) — SmartScreen will warn on first launch. Click "More info" → "Run anyway" to
   continue.
@@ -970,6 +982,9 @@ read the filament used by finished and aborted prints itself, instead of you ent
 hand. This is **off by default** and read-only: the app only sends queries, never a command, and
 only talks to addresses you enter yourself on your home network.
 Resin printers can't be connected: they have no "Connection" section.
+The connection has been tested with a Sovol SV08 and an Anycubic Kobra S1 running Rinkhals. Other
+Klipper printers should work the same way; if you want to test yours, the
+[test page](https://3mfkatalog.de/en/printer-test.html) helps.
 
 1. **Settings → Printers** → switch on "Printer connection".
 2. **Filament stock → Manage printers** → for the printer you want, enter the address under
@@ -1084,6 +1099,8 @@ overwrites anything irreversibly.
   it).
 - There is **no cloud connection** — the catalog is deliberately local-only; an earlier Google
   Drive integration was removed again because it was too unstable in everyday use.
+- The **printer connection** currently supports Klipper/Moonraker only. OctoPrint and Bambu Lab
+  are planned, PrusaLink later.
 
 ## Frequently asked questions (FAQ)
 
@@ -1104,6 +1121,13 @@ Choose "Use existing folder structure" during initial setup (see
 Not automatically/synced — there's currently no cloud connection for that (see
 [Known limitations](#known-limitations)). But "Catalog backup" (export/import) lets you transfer
 the catalog to another computer manually.
+
+**Can I go back to the old version after an update?**
+Usually not with the same catalog: new versions extend the catalog database on first start
+(most recently v0.14.0 for the printer connection and resin printers), and older versions can't
+open it afterwards. So create a backup under **Settings → Catalog** before updating (see
+[Backing up and restoring your catalog](#backing-up-and-restoring-your-catalog)). You can keep
+working with it in the old version.
 
 **Why does the "Source" field look a bit odd on some systems when no URL is set?**
 That's just placeholder text ("https://…") with a small pencil icon next to it for editing —

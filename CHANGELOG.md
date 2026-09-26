@@ -5,6 +5,13 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/), Ve
 
 Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unter der Scaffold-Versionsnummer `0.1.0`, ohne dass Meilensteine markiert wurden. Die folgenden Versionsgrenzen wurden nachträglich anhand von Entwicklungs-Tagen und natürlichen Feature-Abschlüssen (jeweils an einem Dokumentations-Commit) gezogen, keine davon wurde zum jeweiligen Zeitpunkt live getaggt oder veröffentlicht.
 
+## [Unreleased]
+
+### Changed
+
+- Dokumentation: README und Benutzerhandbuch nennen die Resin-Drucker, die mit der Druckeranbindung getesteten Drucker (Sovol SV08, Anycubic Kobra S1 mit Rinkhals) und die aktuelle Roadmap. Die Linux-Installation beschreibt jetzt die AppImage-Datei statt eines `.tar.gz`-Archivs, und eine neue FAQ erklärt, warum man vor einem Update eine Sicherung anlegen sollte.
+- Die automatische CI-Prüfung läuft jetzt mit Node 24; mit Node 20 startete die Test-Umgebung nicht.
+
 ## [0.14.0] - 2026-09-26
 
 ### Added
@@ -392,6 +399,13 @@ All notable changes to this project are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), versioning follows [Semantic Versioning](https://semver.org/).
 
 Versioned retroactively on 2026-09-12: the project ran entirely under the scaffold version number `0.1.0` until then, without marked milestones. The following version boundaries were drawn afterward based on development days and natural feature completions (each at a documentation commit); none of them was actually tagged or released live at the time.
+
+## [Unreleased]
+
+### Changed
+
+- Documentation: the README and the user guide now mention resin printers, the printers tested with the printer connection (Sovol SV08, Anycubic Kobra S1 running Rinkhals) and the current roadmap. The Linux installation now describes the AppImage file instead of a `.tar.gz` archive, and a new FAQ explains why you should create a backup before updating.
+- The automatic CI check now runs on Node 24; with Node 20 the test environment didn't start.
 
 ## [0.14.0] - 2026-09-26
 
