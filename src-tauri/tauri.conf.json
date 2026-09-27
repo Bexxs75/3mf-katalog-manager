@@ -26,6 +26,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "macOS": {
+      "signingIdentity": "-"
+    },
     "license": "MIT",
     "licenseFile": "../LICENSE",
     "resources": {

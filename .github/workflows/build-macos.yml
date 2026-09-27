@@ -40,6 +40,11 @@ jobs:
         with:
           args: --target universal-apple-darwin -- --no-default-features
 
+      # bundle.macOS.signingIdentity "-" makes Tauri sign ad hoc; an app
+      # without a valid signature is reported as "damaged" on Apple Silicon.
+      - name: Verify the ad-hoc signature
+        run: codesign --verify --deep --strict --verbose=2 "src-tauri/target/universal-apple-darwin/release/bundle/macos/3MF Katalog Manager.app"
+
       # The updater installs a .app.tar.gz on macOS, not the DMG. COPYFILE_DISABLE
       # keeps macOS tar from adding AppleDouble "._*" files, which would otherwise
       # end up inside the installed bundle.

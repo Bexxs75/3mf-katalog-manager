@@ -108,6 +108,17 @@ jobs:
             "x64-app/3MF Katalog Manager.app" \
             "universal-app/3MF Katalog Manager.app"
 
+      # dylibbundler (install_name_tool) and lipo invalidate the linker's
+      # ad-hoc signatures. Without a valid signature, macOS on Apple Silicon
+      # reports a downloaded app as "damaged" and refuses to open it, so the
+      # merged bundle is signed ad hoc again: libraries first, then the app.
+      - name: Ad-hoc sign the universal .app
+        run: |
+          APP="universal-app/3MF Katalog Manager.app"
+          find "$APP/Contents/Frameworks" -name '*.dylib' -exec codesign --force --sign - {} \;
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
       # The updater installs a .app.tar.gz on macOS, not the DMG. COPYFILE_DISABLE
       # keeps macOS tar from adding AppleDouble "._*" files, which would otherwise
       # end up inside the installed bundle.
