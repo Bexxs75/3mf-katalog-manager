@@ -146,6 +146,15 @@ describe('UpdatePanel', () => {
     expect(screen.getByText('Test-Version – eigener Katalog, getrennt von deiner normalen App.')).toBeInTheDocument();
   });
 
+  it('shows the preview note even with no update pending (up to date / checking)', () => {
+    const view = makeView({
+      preview: true,
+      info: { currentVersion: '0.15.0', availableVersion: null, releaseUrl: null, canInstall: true, lastUpdate: null },
+    });
+    renderPanel(view);
+    expect(screen.getByText('Test-Version – eigener Katalog, getrennt von deiner normalen App.')).toBeInTheDocument();
+  });
+
   it('shows no preview note on a normal build', () => {
     const view = makeView({
       preview: false,

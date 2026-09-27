@@ -28,6 +28,11 @@ export function UpdatePanel({ view }: { view: UpdaterView }) {
   return (
     <>
       <div className="text-center mb-3">
+        {/* Shown in every state (checking, up to date, update available, error, ...) -
+            a preview build's Info tab needs to say so regardless of what the updater is doing. */}
+        {view.preview && (
+          <div className="mb-2 font-mono-ui text-[10.5px] text-[var(--ink-3)]">{t('updatePreviewNote')}</div>
+        )}
         <div className="text-[13.5px] font-bold">3MF Katalog Manager</div>
         <div className="mt-0.5 font-mono-ui text-[10.5px] text-[var(--ink-3)]">
           {t('infoAppVersionLabel').replace('{version}', view.currentVersion)}
@@ -37,9 +42,6 @@ export function UpdatePanel({ view }: { view: UpdaterView }) {
             className="mt-2.5 p-2.5 rounded-[5px] text-left"
             style={{ background: 'var(--panel-2)', border: '1px solid var(--line)' }}
           >
-            {view.preview && (
-              <div className="mb-1.5 font-mono-ui text-[10.5px] text-[var(--ink-3)]">{t('updatePreviewNote')}</div>
-            )}
             <UpdateStateBody view={view} state={state} variant="panel" />
           </div>
         ) : (
