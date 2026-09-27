@@ -25,21 +25,38 @@ const linkBtn = 'text-[12px] font-semibold text-[var(--accent)] hover:underline 
 /**
  * Content for the current update state - shared between the toast (a floating
  * popup) and the Info tab panel (an inline box), which show the same text and
- * actions in different containers.
+ * actions for every state except "available": the panel's box only shows the
+ * title and actions there (no body copy), so `variant` trims that one case.
  */
-export function UpdateStateBody({ view, state }: { view: UpdaterView; state: UpdateDisplayState }) {
+export function UpdateStateBody({
+  view,
+  state,
+  variant = 'toast',
+}: {
+  view: UpdaterView;
+  state: UpdateDisplayState;
+  variant?: 'toast' | 'panel';
+}) {
   const t = useT();
   const version = view.info?.availableVersion ?? '';
 
   if (state === 'available') {
+    const canInstall = view.info?.canInstall ?? false;
     return (
       <>
-        <div className="text-[13px] font-semibold">{t('updateAvailableTitle').replace('{version}', version)}</div>
-        <div className="mt-1 text-[12px] text-[var(--ink-2)] leading-snug">
-          {t('updateAvailableBody').replace('{current}', view.info?.currentVersion ?? '')}
+        <div
+          className="text-[13px] font-semibold"
+          style={variant === 'panel' ? { color: 'var(--good, var(--accent))' } : undefined}
+        >
+          {t('updateAvailableTitle').replace('{version}', version)}
         </div>
+        {variant === 'toast' && (
+          <div className="mt-1 text-[12px] text-[var(--ink-2)] leading-snug">
+            {t('updateAvailableBody').replace('{current}', view.currentVersion)}
+          </div>
+        )}
         <div className="mt-2 flex items-center gap-3 flex-wrap">
-          {view.info?.canInstall ? (
+          {canInstall ? (
             <button onClick={view.startUpdate} className={primaryBtn}>
               {t('updateNowButton')}
             </button>
@@ -52,6 +69,13 @@ export function UpdateStateBody({ view, state }: { view: UpdaterView; state: Upd
             {t('updateWhatsNew')}
           </button>
         </div>
+        {/* Opening the download page is the only action offered when self-install
+            isn't possible, so a failure to open it must be visible right here. */}
+        {!canInstall && view.notesError && (
+          <div className="mt-1 text-[12px] text-[var(--ink-2)]">
+            <ErrorText error={view.notesError} />
+          </div>
+        )}
       </>
     );
   }
@@ -60,7 +84,7 @@ export function UpdateStateBody({ view, state }: { view: UpdaterView; state: Upd
     const progress = view.progress;
     const doneMb = toMb(progress?.downloaded ?? 0);
     const totalMb = progress?.total != null ? toMb(progress.total) : null;
-    const percent = progress?.total ? Math.round((progress.downloaded / progress.total) * 100) : 0;
+    const percent = progress?.total ? Math.round((progress.downloaded / progress.total) * 100) : null;
     return (
       <>
         <div className="text-[13px] font-semibold">{t('updateDownloadingTitle').replace('{version}', version)}</div>
@@ -68,10 +92,13 @@ export function UpdateStateBody({ view, state }: { view: UpdaterView; state: Upd
           role="progressbar"
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-valuenow={percent}
+          {...(percent !== null ? { 'aria-valuenow': percent } : {})}
           className="mt-2 h-2 w-full rounded-full bg-[var(--panel-2)] border border-[var(--line)] overflow-hidden"
         >
-          <div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${percent}%` }} />
+          <div
+            className={`h-full rounded-full bg-[var(--accent)] ${percent === null ? 'animate-pulse' : ''}`}
+            style={{ width: percent !== null ? `${percent}%` : '100%' }}
+          />
         </div>
         <div className="mt-1 font-mono-ui text-[11px] text-[var(--ink-3)]">
           {totalMb !== null
@@ -132,7 +159,10 @@ export function UpdateStateBody({ view, state }: { view: UpdaterView; state: Upd
 export function UpdateToast({ view }: { view: UpdaterView }) {
   const state = updateDisplayState(view);
   if (!state) return null;
-  if (state === 'available' && view.dismissed) return null;
+  // "available" and "error" are the only states with a close button; once
+  // dismissed the toast disappears even though the failed update (still
+  // actionable from the Info panel) stays in `phase === 'error'` otherwise.
+  if (view.dismissed && (state === 'available' || state === 'error')) return null;
   const isError = state === 'error';
 
   return (
@@ -144,7 +174,7 @@ export function UpdateToast({ view }: { view: UpdaterView }) {
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <UpdateStateBody view={view} state={state} />
+          <UpdateStateBody view={view} state={state} variant="toast" />
         </div>
         {(state === 'available' || state === 'error') && (
           <span

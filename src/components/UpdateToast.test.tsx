@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
+import { useState } from 'react';
 import { LanguageProviderWithDiagnostics as LanguageProvider } from '../test/renderWithDiagnostics';
 import { UpdateToast } from './UpdateToast';
 import type { UpdaterView } from '../hooks/useUpdater';
@@ -8,10 +9,12 @@ vi.mock('@tauri-apps/plugin-log', () => ({ error: vi.fn(() => Promise.resolve())
 
 function makeView(overrides: Partial<UpdaterView> = {}): UpdaterView {
   return {
+    currentVersion: '0.15.0',
     info: null,
     phase: 'idle',
     progress: null,
     error: null,
+    notesError: null,
     dismissed: false,
     checkNow: vi.fn(),
     startUpdate: vi.fn(),
@@ -25,7 +28,7 @@ function makeView(overrides: Partial<UpdaterView> = {}): UpdaterView {
 }
 
 function renderToast(view: UpdaterView) {
-  render(
+  return render(
     <LanguageProvider>
       <UpdateToast view={view} />
     </LanguageProvider>,
@@ -34,13 +37,18 @@ function renderToast(view: UpdaterView) {
 
 describe('UpdateToast', () => {
   it('renders nothing when there is no available update and no active phase', () => {
-    renderToast(makeView());
-    expect(screen.queryByText(/verfügbar/)).not.toBeInTheDocument();
+    const { container } = renderToast(makeView());
+    expect(container).toBeEmptyDOMElement();
   });
 
   it('renders nothing when the available update was dismissed', () => {
-    renderToast(makeView({ info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null }, dismissed: true }));
-    expect(screen.queryByText('Version 0.15.1 ist verfügbar')).not.toBeInTheDocument();
+    const { container } = renderToast(
+      makeView({
+        info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null },
+        dismissed: true,
+      }),
+    );
+    expect(container).toBeEmptyDOMElement();
   });
 
   it('available state: shows title, body and calls startUpdate/openNotes/dismiss', () => {
@@ -71,6 +79,16 @@ describe('UpdateToast', () => {
     expect(view.openNotes).toHaveBeenCalled();
   });
 
+  it('available state without canInstall: a failed openNotes shows the error and "Problem melden"', () => {
+    const view = makeView({
+      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: 'https://example.com', canInstall: false, lastUpdate: null },
+      notesError: { message: 'Konnte die Seite nicht öffnen', unexpected: true },
+    });
+    renderToast(view);
+    expect(screen.getByText('Konnte die Seite nicht öffnen')).toBeInTheDocument();
+    expect(screen.getByText('Problem melden')).toBeInTheDocument();
+  });
+
   it('downloading state: shows progress with a rounded percentage and MB values', () => {
     const view = makeView({
       phase: 'downloading',
@@ -85,7 +103,7 @@ describe('UpdateToast', () => {
     expect(bar).toHaveAttribute('aria-valuenow', '45');
   });
 
-  it('downloading state with unknown total: shows only the downloaded MB', () => {
+  it('downloading state with unknown total: shows only the downloaded MB and an indeterminate bar', () => {
     const view = makeView({
       phase: 'downloading',
       info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null },
@@ -93,6 +111,8 @@ describe('UpdateToast', () => {
     });
     renderToast(view);
     expect(screen.getByText('5 MB geladen')).toBeInTheDocument();
+    const bar = screen.getByRole('progressbar');
+    expect(bar).not.toHaveAttribute('aria-valuenow');
   });
 
   it('ready state: restart-and-install calls install, later calls later', () => {
@@ -120,22 +140,46 @@ describe('UpdateToast', () => {
     expect(screen.getByText('update-backups/catalog-vor-0.15.1.db')).toBeInTheDocument();
   });
 
-  it('error state: shows the error message and retry calls view.retry, not startUpdate', () => {
+  it('error state: shows the error message, "Problem melden" for an unexpected error, and retry calls view.retry (not startUpdate)', () => {
     const view = makeView({
       phase: 'error',
       info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null },
-      error: { message: 'Sicherung fehlgeschlagen', unexpected: false },
+      error: { message: 'Sicherung fehlgeschlagen', unexpected: true },
     });
     renderToast(view);
     expect(screen.getByText('Update fehlgeschlagen')).toBeInTheDocument();
     expect(screen.getByText('Sicherung fehlgeschlagen')).toBeInTheDocument();
+    expect(screen.getByText('Problem melden')).toBeInTheDocument();
     expect(screen.getByText('Es wurde nichts installiert, deine Version und dein Katalog sind unverändert.')).toBeInTheDocument();
 
     screen.getByText('Erneut versuchen').click();
     expect(view.retry).toHaveBeenCalled();
     expect(view.startUpdate).not.toHaveBeenCalled();
+  });
 
-    screen.getByText('✕').click();
-    expect(view.dismiss).toHaveBeenCalled();
+  it('clicking ✕ on the error toast actually hides it, unlike phase alone which would keep it visible', () => {
+    // A plain `view` object can't simulate the toast disappearing on its own -
+    // wrap it in a tiny stateful harness so `dismiss` really flips `dismissed`,
+    // the same way the real hook's setter would.
+    function Harness() {
+      const [dismissed, setDismissed] = useState(false);
+      const view = makeView({
+        phase: 'error',
+        info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null },
+        error: { message: 'Sicherung fehlgeschlagen', unexpected: true },
+        dismissed,
+        dismiss: () => setDismissed(true),
+      });
+      return <UpdateToast view={view} />;
+    }
+    const { container } = render(
+      <LanguageProvider>
+        <Harness />
+      </LanguageProvider>,
+    );
+    expect(screen.getByText('Update fehlgeschlagen')).toBeInTheDocument();
+    act(() => screen.getByText('✕').click());
+    expect(screen.queryByText('Update fehlgeschlagen')).not.toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
   });
 });
