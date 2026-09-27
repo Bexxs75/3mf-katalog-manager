@@ -362,6 +362,7 @@ export const de: Translations = {
   updateFailedTitle: 'Update fehlgeschlagen',
   updateFailedBody: 'Es wurde nichts installiert, deine Version und dein Katalog sind unverändert.',
   updateRetryButton: 'Erneut versuchen',
+  updateDismissAria: 'Hinweis schließen',
   updateLastInfo: 'Aktualisiert am {date} · Sicherung: {file}',
   printersColumnTitle: 'Drucker',
   printersManageButton: 'Drucker verwalten',

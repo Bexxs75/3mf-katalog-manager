@@ -91,6 +91,20 @@ describe('useUpdater', () => {
     await waitFor(() => expect(result.current.phase).toBe('ready'));
   });
 
+  it('startUpdate adopts the version actually downloaded, e.g. when it differs from the last check', async () => {
+    vi.mocked(api.checkAppUpdate).mockResolvedValue(mockInfo({ availableVersion: '0.15.1' }));
+    vi.mocked(api.downloadAppUpdate).mockResolvedValue('0.15.2');
+    const { result } = renderHook(() => useUpdater());
+    await waitFor(() => expect(result.current.info?.availableVersion).toBe('0.15.1'));
+
+    act(() => result.current.startUpdate());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    expect(result.current.info?.availableVersion).toBe('0.15.2');
+    expect(result.current.info?.releaseUrl).toBe(
+      'https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v0.15.2',
+    );
+  });
+
   it('a rejected download sets phase "error" with an AppError', async () => {
     vi.mocked(api.downloadAppUpdate).mockRejectedValue({ message: 'Download fehlgeschlagen', expected: false });
     const { result } = renderHook(() => useUpdater());

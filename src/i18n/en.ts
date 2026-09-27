@@ -362,6 +362,7 @@ export const en: Translations = {
   updateFailedTitle: 'Update failed',
   updateFailedBody: 'Nothing was installed; your version and your catalog are unchanged.',
   updateRetryButton: 'Try again',
+  updateDismissAria: 'Close notice',
   updateLastInfo: 'Updated on {date} · Backup: {file}',
   printersColumnTitle: 'Printers',
   printersManageButton: 'Manage printers',

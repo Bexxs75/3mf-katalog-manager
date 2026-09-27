@@ -3,9 +3,10 @@ use super::*;
 const GITHUB_REPO_URL_PREFIX: &str = "https://github.com/Bexxs75/3mf-katalog-manager/";
 const DISCORD_INVITE_URL: &str = "https://discord.gg/abfVNfFqu3";
 
-// Only links to our own GitHub repo are opened, although the URL comes from a
-// trusted source (GitHub API) - defense in depth in case the API response is ever
-// manipulated/proxied or the field schema changes.
+// The frontend passes this URL in (release notes link, Discord/report links go
+// through their own dedicated commands), so it's untrusted input as far as this
+// command is concerned. Restricting it to our own repo keeps "open external URL"
+// from becoming an arbitrary-URL opener for whatever the renderer ends up holding.
 fn validate_release_url(url: &str) -> Result<(), String> {
     if url == GITHUB_REPO_URL_PREFIX.trim_end_matches('/') || url.starts_with(GITHUB_REPO_URL_PREFIX) {
         Ok(())

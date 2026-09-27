@@ -32,24 +32,27 @@ pub struct DownloadProgress {
     pub total: Option<u64>,
 }
 
-async fn fetch_update(app: &tauri::AppHandle) -> Result<Option<tauri_plugin_updater::Update>, String> {
+// Kept as the plugin's own error type (not stringified) so callers can tell a
+// transport hiccup apart from a broken manifest - see `is_transport_error` below.
+async fn fetch_update(app: &tauri::AppHandle) -> Result<Option<tauri_plugin_updater::Update>, tauri_plugin_updater::Error> {
     let override_value = std::env::var(updater::ENDPOINT_ENV).ok();
     let url = updater::endpoint(cfg!(feature = "step-preview"), cfg!(debug_assertions), override_value.as_deref());
-    let url = url.parse().map_err(|e| format!("{e}"))?;
+    let url = url.parse()?;
     let mut builder = app.updater_builder();
     if cfg!(debug_assertions) {
         if let Some(key) = std::env::var(updater::PUBKEY_ENV).ok().filter(|k| !k.trim().is_empty()) {
             builder = builder.pubkey(key);
         }
     }
-    builder
-        .endpoints(vec![url])
-        .map_err(|e| e.to_string())?
-        .build()
-        .map_err(|e| e.to_string())?
-        .check()
-        .await
-        .map_err(|e| e.to_string())
+    builder.endpoints(vec![url])?.build()?.check().await
+}
+
+/// A plain network/transport hiccup (offline, DNS, TLS, a dropped connection, ...)
+/// is routine and not worth more than an info line. Anything else reaching this
+/// point - an unparsable body, a missing platform entry, a malformed endpoint URL -
+/// means our own release process shipped something broken and deserves a warning.
+fn is_transport_error(e: &tauri_plugin_updater::Error) -> bool {
+    matches!(e, tauri_plugin_updater::Error::Reqwest(_) | tauri_plugin_updater::Error::Network(_))
 }
 
 fn current_os() -> &'static str {
@@ -76,8 +79,12 @@ pub async fn check_app_update(app: tauri::AppHandle, state: State<'_, AppState>)
             None
         }
         // No visible error for the check itself: offline users should not be bothered.
-        Err(e) => {
+        Err(e) if is_transport_error(&e) => {
             log::info!(target: "update", "Update-Check nicht möglich: {e}");
+            None
+        }
+        Err(e) => {
+            log::warn!(target: "update", "Update-Check nicht möglich: {e}");
             None
         }
     };
@@ -211,5 +218,16 @@ mod tests {
         let mut pending = Some(42);
         assert_eq!(take_pending_if_backup_ok(&mut pending, true), Some(42));
         assert_eq!(pending, None);
+    }
+
+    #[test]
+    fn network_errors_are_transport_errors() {
+        assert!(is_transport_error(&tauri_plugin_updater::Error::Network("offline".into())));
+    }
+
+    #[test]
+    fn a_broken_manifest_is_not_a_transport_error() {
+        assert!(!is_transport_error(&tauri_plugin_updater::Error::ReleaseNotFound));
+        assert!(!is_transport_error(&tauri_plugin_updater::Error::EmptyEndpoints));
     }
 }

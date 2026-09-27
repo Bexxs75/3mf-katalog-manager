@@ -1,5 +1,6 @@
 import { useT } from '../i18n/LanguageContext';
 import { ErrorText } from '../diagnostics/ErrorText';
+import { discardAppUpdate } from '../lib/api/updater';
 import type { UpdaterView } from '../hooks/useUpdater';
 
 export type UpdateDisplayState = 'available' | 'downloading' | 'ready' | 'installing' | 'error';
@@ -157,6 +158,7 @@ export function UpdateStateBody({
 }
 
 export function UpdateToast({ view }: { view: UpdaterView }) {
+  const t = useT();
   const state = updateDisplayState(view);
   if (!state) return null;
   // "available" and "error" are the only states with a close button; once
@@ -164,6 +166,18 @@ export function UpdateToast({ view }: { view: UpdaterView }) {
   // actionable from the Info panel) stays in `phase === 'error'` otherwise.
   if (view.dismissed && (state === 'available' || state === 'error')) return null;
   const isError = state === 'error';
+
+  // Dismissing an "available" offer just hides the toast - nothing was downloaded
+  // yet. Dismissing an error can leave an already-downloaded ~100 MB package sitting
+  // in memory (e.g. a failed backup kept it for a install retry); discard it here so
+  // it doesn't linger just because the user closed the toast instead of retrying. If
+  // there was nothing pending, the backend call is a no-op.
+  const handleDismiss = () => {
+    view.dismiss();
+    if (isError) {
+      discardAppUpdate().catch((e) => console.warn('[updater] could not discard the pending update:', e));
+    }
+  };
 
   return (
     <div
@@ -177,12 +191,14 @@ export function UpdateToast({ view }: { view: UpdaterView }) {
           <UpdateStateBody view={view} state={state} variant="toast" />
         </div>
         {(state === 'available' || state === 'error') && (
-          <span
-            onClick={view.dismiss}
-            className="w-4 h-4 grid place-items-center rounded-full cursor-pointer text-[length:var(--font-size-meta)] text-[var(--ink-3)] hover:bg-[var(--panel-2)]"
+          <button
+            type="button"
+            onClick={handleDismiss}
+            aria-label={t('updateDismissAria')}
+            className="w-4 h-4 grid place-items-center rounded-full cursor-pointer text-[length:var(--font-size-meta)] text-[var(--ink-3)] hover:bg-[var(--panel-2)] bg-transparent border-0 p-0"
           >
             ✕
-          </span>
+          </button>
         )}
       </div>
     </div>

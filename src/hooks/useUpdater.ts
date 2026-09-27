@@ -5,12 +5,20 @@ import { toAppError, type AppError } from '../lib/errors';
 
 export type UpdatePhase = 'idle' | 'checking' | 'downloading' | 'ready' | 'installing' | 'error';
 
-/** Which action to retry after a failure - the backend keeps a downloaded update on a
- * failed backup/install, so retrying must not re-download it needlessly. */
+/** Which action to retry after a failure. The backend only keeps a downloaded update
+ * on a failed backup; a failed install consumes it, so `install()` below falls back
+ * to a fresh download in that case instead of retrying the install itself. */
 type FailedStep = 'download' | 'install';
 
 /** A recheck must not race an update that is already in flight. */
 const BUSY_PHASES: UpdatePhase[] = ['downloading', 'ready', 'installing'];
+
+/** Mirrors the backend's `updater::release_page`. Needed because a download can
+ * resolve to a version other than the one from the last check (e.g. a newer
+ * release went up in between), and the notes link must follow it. */
+function releasePage(version: string): string {
+  return `https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v${version}`;
+}
 
 export interface UpdaterView {
   /** Loaded immediately via `getAppVersion`, independent of `info` (which only
@@ -92,8 +100,13 @@ export function useUpdater(): UpdaterView {
     setPhase('downloading');
     api
       .downloadAppUpdate(setProgress)
-      .then(() => {
+      .then((version) => {
         downloadBusyRef.current = false;
+        // The download can resolve to a different version than the last check
+        // showed (e.g. a newer release went up meanwhile) - the "ready" and
+        // "installing" texts, and the notes link, must reflect what was
+        // actually downloaded and will actually be installed.
+        setInfo((prev) => (prev ? { ...prev, availableVersion: version, releaseUrl: releasePage(version) } : prev));
         setPhase('ready');
       })
       .catch((e) => {

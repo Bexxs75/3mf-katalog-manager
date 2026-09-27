@@ -1,11 +1,13 @@
-import { describe, expect, it, vi } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { render, screen, act, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { LanguageProviderWithDiagnostics as LanguageProvider } from '../test/renderWithDiagnostics';
 import { UpdateToast } from './UpdateToast';
+import * as api from '../lib/api/updater';
 import type { UpdaterView } from '../hooks/useUpdater';
 
 vi.mock('@tauri-apps/plugin-log', () => ({ error: vi.fn(() => Promise.resolve()), info: vi.fn(() => Promise.resolve()) }));
+vi.mock('../lib/api/updater', () => ({ discardAppUpdate: vi.fn() }));
 
 function makeView(overrides: Partial<UpdaterView> = {}): UpdaterView {
   return {
@@ -36,6 +38,10 @@ function renderToast(view: UpdaterView) {
 }
 
 describe('UpdateToast', () => {
+  beforeEach(() => {
+    vi.mocked(api.discardAppUpdate).mockReset().mockResolvedValue(undefined);
+  });
+
   it('renders nothing when there is no available update and no active phase', () => {
     const { container } = renderToast(makeView());
     expect(container).toBeEmptyDOMElement();
@@ -65,8 +71,12 @@ describe('UpdateToast', () => {
     screen.getByText('Was ist neu?').click();
     expect(view.openNotes).toHaveBeenCalled();
 
-    screen.getByText('✕').click();
+    const closeButton = screen.getByRole('button', { name: 'Hinweis schließen' });
+    closeButton.click();
     expect(view.dismiss).toHaveBeenCalled();
+    // Nothing was downloaded yet for a plain "available" offer, so dismissing it
+    // must not try to discard a pending update.
+    expect(api.discardAppUpdate).not.toHaveBeenCalled();
   });
 
   it('available state without canInstall: primary button goes to the download page', () => {
@@ -178,8 +188,36 @@ describe('UpdateToast', () => {
       </LanguageProvider>,
     );
     expect(screen.getByText('Update fehlgeschlagen')).toBeInTheDocument();
-    act(() => screen.getByText('✕').click());
+    act(() => screen.getByRole('button', { name: 'Hinweis schließen' }).click());
     expect(screen.queryByText('Update fehlgeschlagen')).not.toBeInTheDocument();
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it('dismissing the error toast discards the pending update so it does not linger in memory', async () => {
+    const view = makeView({
+      phase: 'error',
+      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null },
+      error: { message: 'Sicherung fehlgeschlagen', unexpected: true },
+    });
+    renderToast(view);
+
+    screen.getByRole('button', { name: 'Hinweis schließen' }).click();
+    expect(view.dismiss).toHaveBeenCalled();
+    await waitFor(() => expect(api.discardAppUpdate).toHaveBeenCalled());
+  });
+
+  it('a failed discard on dismiss is only logged, not surfaced', async () => {
+    vi.mocked(api.discardAppUpdate).mockRejectedValue(new Error('ipc down'));
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const view = makeView({
+      phase: 'error',
+      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null },
+      error: { message: 'Sicherung fehlgeschlagen', unexpected: true },
+    });
+    renderToast(view);
+
+    screen.getByRole('button', { name: 'Hinweis schließen' }).click();
+    await waitFor(() => expect(warnSpy).toHaveBeenCalled());
+    warnSpy.mockRestore();
   });
 });

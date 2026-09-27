@@ -29,7 +29,12 @@ pub fn create(conn: &Connection, dir: &Path, version: &str) -> Result<PathBuf, S
         .map_err(|e| e.to_string())?;
     drop(dst);
     crate::harden_permissions(&path);
-    prune(dir, KEEP).map_err(|e| e.to_string())?;
+    // A stray old backup that can't be deleted (e.g. permissions, a locked file on
+    // Windows) must not block this install forever: the new backup above already
+    // succeeded, so just leave the surplus for the next prune to try again.
+    if let Err(e) = prune(dir, KEEP) {
+        log::warn!(target: "update", "Alte Sicherungen konnten nicht aufgeräumt werden: {e}");
+    }
     Ok(path)
 }
 
@@ -93,6 +98,36 @@ mod tests {
         let mut left: Vec<String> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
         left.sort();
         assert_eq!(left, ["catalog-vor-0.15.2.db", "catalog-vor-0.15.3.db", "catalog-vor-0.15.4.db", "fremd.txt"]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_backup_that_cannot_be_pruned_does_not_fail_the_install() {
+        let conn = crate::db::connect_in_memory().unwrap();
+        let dir = tmp("prune-stuck");
+        std::fs::create_dir_all(&dir).unwrap();
+        let base = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
+        // A directory where a backup file is expected can't be removed with
+        // `remove_file` (EISDIR on Linux) - stands in for any old backup that
+        // can't be deleted, e.g. because of permissions or a lock held elsewhere.
+        let stuck = dir.join(file_name("0.1"));
+        std::fs::create_dir(&stuck).unwrap();
+        std::fs::File::open(&stuck).unwrap().set_modified(base).unwrap();
+        for (i, v) in ["0.2", "0.3"].iter().enumerate() {
+            let p = dir.join(file_name(v));
+            std::fs::write(&p, b"x").unwrap();
+            std::fs::File::options()
+                .write(true)
+                .open(&p)
+                .unwrap()
+                .set_modified(base + std::time::Duration::from_secs((i + 1) as u64 * 60))
+                .unwrap();
+        }
+        // Adding the 4th backup pushes the count past KEEP=3, so prune() must try
+        // to remove the oldest one - the stuck directory - and fail to do so.
+        let path = create(&conn, &dir, "0.4").expect("a prune failure must not fail the backup itself");
+        assert_eq!(path.file_name().unwrap(), "catalog-vor-0.4.db");
+        assert!(stuck.exists(), "the undeletable entry must still be there");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

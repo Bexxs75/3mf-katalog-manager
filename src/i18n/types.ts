@@ -386,6 +386,7 @@ export interface Translations {
   updateFailedTitle: string;
   updateFailedBody: string;
   updateRetryButton: string;
+  updateDismissAria: string;
   /** `{date}`, `{file}` */
   updateLastInfo: string;
   printersColumnTitle: string;

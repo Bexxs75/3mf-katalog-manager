@@ -362,6 +362,7 @@ export const fr: Translations = {
   updateFailedTitle: 'Échec de la mise à jour',
   updateFailedBody: "Rien n'a été installé ; ta version et ton catalogue sont inchangés.",
   updateRetryButton: 'Réessayer',
+  updateDismissAria: 'Fermer l’avis',
   updateLastInfo: 'Mis à jour le {date} · Sauvegarde : {file}',
   printersColumnTitle: 'Imprimantes',
   printersManageButton: 'Gérer les imprimantes',

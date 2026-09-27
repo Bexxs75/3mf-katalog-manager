@@ -362,6 +362,7 @@ export const es: Translations = {
   updateFailedTitle: 'La actualización ha fallado',
   updateFailedBody: 'No se ha instalado nada; tu versión y tu catálogo no han cambiado.',
   updateRetryButton: 'Reintentar',
+  updateDismissAria: 'Cerrar aviso',
   updateLastInfo: 'Actualizado el {date} · Copia: {file}',
   printersColumnTitle: 'Impresoras',
   printersManageButton: 'Gestionar impresoras',

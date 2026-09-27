@@ -556,8 +556,9 @@ Before installing an update this way, the app copies your catalog database to
 - macOS: `~/Library/Application Support/com.thebexxs.mfkatalogmanager/update-backups`
 - Linux: `~/.local/share/com.thebexxs.mfkatalogmanager/update-backups`
 
-The last 3 backups are kept; older ones are removed automatically. To go back to the version you
-had before:
+The last 3 backups are kept; older ones are removed automatically. `<version>` in the file name
+is the version you updated *to*, not the one before it - the file itself holds your catalog from
+before that update. To go back to the version you had before:
 
 1. Close the app.
 2. Install the previous version from the [releases
@@ -1202,8 +1203,9 @@ Vor der Installation eines Updates auf diesem Weg kopiert die App deine Katalog-
 - macOS: `~/Library/Application Support/com.thebexxs.mfkatalogmanager/update-backups`
 - Linux: `~/.local/share/com.thebexxs.mfkatalogmanager/update-backups`
 
-Die letzten 3 Sicherungen bleiben erhalten, ältere werden automatisch entfernt. So kommst du
-zurück zur vorherigen Version:
+Die letzten 3 Sicherungen bleiben erhalten, ältere werden automatisch entfernt. `<Version>` im
+Dateinamen ist die Version, auf die du aktualisiert hast, nicht die davor - die Datei selbst
+enthält deinen Katalog von vor diesem Update. So kommst du zurück zur vorherigen Version:
 
 1. Schließe die App.
 2. Installiere die vorherige Version von der
