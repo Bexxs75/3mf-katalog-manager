@@ -29,9 +29,10 @@ for printing, and managing your filament stock.
 13. [Print log](#print-log)
 14. [The trash](#the-trash)
 15. [Settings](#settings)
-16. [Backing up and restoring your catalog](#backing-up-and-restoring-your-catalog)
-17. [Known limitations](#known-limitations)
-18. [Frequently asked questions (FAQ)](#frequently-asked-questions-faq)
+16. [Updating](#updating)
+17. [Backing up and restoring your catalog](#backing-up-and-restoring-your-catalog)
+18. [Known limitations](#known-limitations)
+19. [Frequently asked questions (FAQ)](#frequently-asked-questions-faq)
 
 ---
 
@@ -501,12 +502,9 @@ details. Resin printers don't appear here.
 ![Settings: Info with update check](bilder/en/20-einstellungen-info-update.png)
 
 Shows the installed version plus links to the source code, application license, and third-party
-licenses. On startup, the app
-silently checks once in the background whether a newer version is available on GitHub —
-**nothing is downloaded automatically**. If a newer version exists, a dismissible hint appears
-bottom-right with a "Download" button that opens the matching release page in your default
-browser. You can check the same status here in the Info tab any time, including a "Check for
-updates" button for a manual check.
+licenses, and the same update information described in [Updating](#updating) below: whether a
+newer version is available, a "Check for updates again" button for a manual check, and — after
+installing one from within the app — the date and backup file name of that update.
 
 Below in the screenshot, you can see an example of the **light** vs. **dark** theme side by side:
 
@@ -518,6 +516,55 @@ Below in the screenshot, you can see an example of the **light** vs. **dark** th
 Settings → Info → **Report a bug** (or **Report problem** next to an unexpected error) opens a short dialog. First decide whether to send the log file. With **Yes** you see exactly what will be in it: user name, computer name, home folder and catalog paths, printer and other network addresses, e-mail addresses and — if you tick "Replace file names" — file names are replaced. **Save and open form** puts `3mf-katalog-log-<date>.txt` into your download folder and opens the form on 3mfkatalog.de with version and system filled in; attach the file there under "Log file". The app never sends anything by itself.
 
 **Detailed log:** only needed if we ask for it. It additionally records every action with file names and turns itself off after 7 days. **Open folder** shows the log files.
+
+## Updating
+
+On startup the app checks once in the background whether a newer version is available. The
+result shows up in two places with the same content: a dismissible toast in the bottom-right
+corner, and the Info tab under Settings (see [Info](#info) above), where "Check for updates
+again" repeats the check any time.
+
+**On Windows, macOS, and the Linux AppImage**, when a newer version is found:
+
+1. **"Version X.Y.Z is available"** — "Update now" downloads it (its signature is checked
+   before anything else happens); "What's new?" opens the release notes on GitHub.
+2. **Downloading** — a progress bar shows the download; you can keep working in the app while
+   it runs.
+3. **"Update X.Y.Z is ready"** — "Restart and install" backs up your catalog database, then
+   closes the app, installs the update, and restarts it. On Windows, installation itself just
+   shows a small progress bar; you don't need to click anything there.
+4. **"Later"** discards the downloaded update without installing it — nothing changes. If you
+   decide to update afterwards, click "Update now" again; it downloads the file a second time.
+5. If the backup or the install fails, "Update failed" appears with "Nothing was installed;
+   your version and your catalog are unchanged." and a "Try again" button. The app never
+   installs an update without a successful backup first.
+
+**Package installs on Linux (`.deb`, `.rpm`) and development builds** can't replace themselves
+this way — only the AppImage can. There, the button reads "Go to download page" instead and
+opens the release on GitHub, where you install the new version the way you normally would for
+your package.
+
+Once an update has installed successfully, the Info tab shows a short note ("Updated on \<date\>
+· Backup: \<file\>") until the next update.
+
+### Restoring a backup after an update
+
+Before installing an update this way, the app copies your catalog database to
+`update-backups/catalog-vor-<version>.db` inside the app's data folder:
+
+- Windows: `%APPDATA%\com.thebexxs.mfkatalogmanager\update-backups`
+- macOS: `~/Library/Application Support/com.thebexxs.mfkatalogmanager/update-backups`
+- Linux: `~/.local/share/com.thebexxs.mfkatalogmanager/update-backups`
+
+The last 3 backups are kept; older ones are removed automatically. To go back to the version you
+had before:
+
+1. Close the app.
+2. Install the previous version from the [releases
+   page](https://github.com/Bexxs75/3mf-katalog-manager/releases).
+3. In the folder above, copy `catalog-vor-<version>.db` over `catalog.db`, which sits in the
+   same app data folder (one level up from `update-backups`), while the app is closed.
+4. Start the app again.
 
 ## Backing up and restoring your catalog
 
@@ -563,11 +610,13 @@ Not automatically/synced — there's currently no cloud connection for that (see
 the catalog to another computer manually.
 
 **Can I go back to the old version after an update?**
-Usually not with the same catalog: new versions extend the catalog database on first start
-(most recently v0.14.0 for the printer connection and resin printers), and older versions can't
-open it afterwards. So create a backup under **Settings → Catalog** before updating (see
-[Backing up and restoring your catalog](#backing-up-and-restoring-your-catalog)). You can keep
-working with it in the old version.
+Only with a backup: new versions can extend the catalog database on first start (most recently
+v0.14.0 for the printer connection and resin printers), and older versions can't open it
+afterwards. Updating from within the app (see [Updating](#updating)) backs up your catalog
+automatically first — see [Restoring a backup after an
+update](#restoring-a-backup-after-an-update) to go back. Updating by hand (for example from 0.14
+or older to 0.15.0) has no automatic backup, so create one yourself first under **Settings →
+Catalog** (see [Backing up and restoring your catalog](#backing-up-and-restoring-your-catalog)).
 
 **Why does the "Source" field look a bit odd on some systems when no URL is set?**
 That's just placeholder text ("https://…") with a small pencil icon next to it for editing —
@@ -605,9 +654,10 @@ importierst, organisierst, druckfertig machst und dein Filament-Lager verwaltest
 13. [Druckprotokoll](#druckprotokoll)
 14. [Der Papierkorb](#der-papierkorb)
 15. [Einstellungen](#einstellungen)
-16. [Katalog sichern und wiederherstellen (Backup)](#katalog-sichern-und-wiederherstellen-backup)
-17. [Bekannte Einschränkungen](#bekannte-einschränkungen)
-18. [Häufige Fragen (FAQ)](#häufige-fragen-faq)
+16. [Aktualisieren](#aktualisieren)
+17. [Katalog sichern und wiederherstellen (Backup)](#katalog-sichern-und-wiederherstellen-backup)
+18. [Bekannte Einschränkungen](#bekannte-einschränkungen)
+19. [Häufige Fragen (FAQ)](#häufige-fragen-faq)
 
 ---
 
@@ -1095,12 +1145,10 @@ Blick den Status jedes angebundenen Druckers ("Klipper · verbunden", "Klipper �
 ![Einstellungen: Info mit Update-Check](bilder/20-einstellungen-info-update.png)
 
 Zeigt die installierte Version sowie Links zu Quellcode, Anwendungslizenz und den Lizenzen der
-Drittanbieter-Komponenten. Beim Start der App wird
-einmalig im Hintergrund still geprüft, ob auf GitHub eine neuere Version vorliegt — es wird
-**nichts automatisch heruntergeladen**. Ist eine neuere Version verfügbar, erscheint unten rechts
-ein wegklickbarer Hinweis mit einem "Herunterladen"-Knopf, der die passende Release-Seite im
-Standardbrowser öffnet. Denselben Status siehst du jederzeit auch hier im Info-Tab, inklusive
-einem Knopf "Erneut nach Updates suchen" für eine manuelle Prüfung.
+Drittanbieter-Komponenten, außerdem dieselben Update-Informationen wie im Abschnitt
+[Aktualisieren](#aktualisieren) weiter unten: ob eine neuere Version verfügbar ist, den Knopf
+„Erneut nach Updates suchen“ für eine manuelle Prüfung, und – nach einem Update aus der App –
+Datum und Sicherungsdatei dieses Updates.
 
 Unten im Screenshot siehst du ein Beispiel für das **Hell**- bzw. **Dunkel**-Theme im direkten
 Vergleich:
@@ -1113,6 +1161,57 @@ Vergleich:
 Einstellungen → Info → **Fehler melden** (oder **Problem melden** neben einem unerwarteten Fehler) öffnet einen kurzen Dialog. Zuerst entscheidest du, ob die Logdatei mitgeht. Bei **Ja** siehst du genau, was drinsteht: Benutzername, Rechnername, Pfade im Benutzerordner und im Katalog, Drucker- und andere Netzwerkadressen, E-Mail-Adressen und – wenn du „Dateinamen ersetzen“ anhakst – Dateinamen werden ersetzt. **Speichern und Formular öffnen** legt `3mf-katalog-log-<Datum>.txt` in deinen Download-Ordner und öffnet das Formular auf 3mfkatalog.de mit eingetragener Version und System; dort hängst du die Datei unter „Logdatei“ an. Die App selbst verschickt nichts.
 
 **Ausführliches Protokoll:** nur nötig, wenn wir dich darum bitten. Es schreibt zusätzlich jede Aktion mit Dateinamen mit und schaltet sich nach 7 Tagen selbst aus. **Ordner öffnen** zeigt die Protokolldateien.
+
+## Aktualisieren
+
+Beim Start prüft die App einmalig im Hintergrund, ob eine neuere Version verfügbar ist. Das
+Ergebnis zeigt sich an zwei Stellen mit demselben Inhalt: als wegklickbarer Hinweis unten rechts
+und im Info-Tab der Einstellungen (siehe [Info](#info) weiter oben), wo „Erneut nach Updates
+suchen“ die Prüfung jederzeit wiederholt.
+
+**Unter Windows, macOS und der Linux-AppImage** läuft ein gefundenes Update so ab:
+
+1. **„Version X.Y.Z ist verfügbar“** — „Jetzt aktualisieren“ lädt es herunter (die Signatur
+   wird zuerst geprüft); „Was ist neu?“ öffnet die Release-Notes auf GitHub.
+2. **Download** — ein Fortschrittsbalken zeigt den Ladevorgang; du kannst währenddessen
+   weiterarbeiten.
+3. **„Update X.Y.Z ist bereit“** — „Neu starten und installieren“ sichert zuerst deinen
+   Katalog, schließt dann die App, installiert das Update und startet neu. Unter Windows zeigt
+   die Installation selbst nur einen kleinen Fortschrittsbalken; dort musst du nichts anklicken.
+4. **„Später“** verwirft das heruntergeladene Update, ohne es zu installieren — es ändert sich
+   nichts. Willst du danach doch aktualisieren, klick erneut auf „Jetzt aktualisieren“; die App
+   lädt die Datei dann noch einmal herunter.
+5. Schlägt die Sicherung oder die Installation fehl, erscheint „Update fehlgeschlagen“ mit „Es
+   wurde nichts installiert, deine Version und dein Katalog sind unverändert.“ und einem Knopf
+   „Erneut versuchen“. Ohne erfolgreiche Sicherung installiert die App nie ein Update.
+
+**Paket-Installationen unter Linux (`.deb`, `.rpm`) und Entwicklungs-Builds** können sich nicht
+selbst ersetzen — das kann nur die AppImage. Dort steht statt „Jetzt aktualisieren“ der Knopf
+„Zur Download-Seite“, der das Release auf GitHub öffnet; dort installierst du die neue Version
+wie für dein Paket üblich.
+
+Nach einem erfolgreichen Update zeigt der Info-Tab bis zum nächsten Update einen kurzen Hinweis
+(„Aktualisiert am \<Datum\> · Sicherung: \<Datei\>“).
+
+### Wiederherstellen einer Sicherung nach einem Update
+
+Vor der Installation eines Updates auf diesem Weg kopiert die App deine Katalog-Datenbank nach
+`update-backups/catalog-vor-<Version>.db` im Datenordner der App:
+
+- Windows: `%APPDATA%\com.thebexxs.mfkatalogmanager\update-backups`
+- macOS: `~/Library/Application Support/com.thebexxs.mfkatalogmanager/update-backups`
+- Linux: `~/.local/share/com.thebexxs.mfkatalogmanager/update-backups`
+
+Die letzten 3 Sicherungen bleiben erhalten, ältere werden automatisch entfernt. So kommst du
+zurück zur vorherigen Version:
+
+1. Schließe die App.
+2. Installiere die vorherige Version von der
+   [Releases-Seite](https://github.com/Bexxs75/3mf-katalog-manager/releases).
+3. Kopiere im Ordner oben `catalog-vor-<Version>.db` über `catalog.db`, die im selben
+   Datenordner der App liegt (eine Ebene über `update-backups`) – während die App geschlossen
+   ist.
+4. Starte die App wieder.
 
 ## Katalog sichern und wiederherstellen (Backup)
 
@@ -1159,11 +1258,14 @@ Nicht automatisch/synchronisiert — dafür gibt es aktuell keine Cloud-Anbindun
 lässt sich der Katalog aber manuell auf einen anderen Rechner übertragen.
 
 **Kann ich nach einem Update wieder zur alten Version zurück?**
-Meist nicht mit demselben Katalog: Neue Versionen erweitern beim ersten Start die
-Katalog-Datenbank (zuletzt v0.14.0 für Druckeranbindung und Resin-Drucker), und ältere Versionen
-können sie danach nicht mehr öffnen. Leg deshalb vor einem Update unter **Einstellungen →
-Katalog** eine Sicherung an (siehe [Katalog sichern und wiederherstellen](#katalog-sichern-und-wiederherstellen-backup)).
-Mit ihr kannst du in der alten Version weiterarbeiten.
+Nur mit einer Sicherung: Neue Versionen können beim ersten Start die Katalog-Datenbank erweitern
+(zuletzt v0.14.0 für Druckeranbindung und Resin-Drucker), und ältere Versionen können sie danach
+nicht mehr öffnen. Ein Update aus der App heraus (siehe [Aktualisieren](#aktualisieren)) sichert
+deinen Katalog automatisch vorher — siehe [Wiederherstellen einer Sicherung nach einem
+Update](#wiederherstellen-einer-sicherung-nach-einem-update) für den Weg zurück. Ein Update von
+Hand (zum Beispiel von 0.14 oder älter auf 0.15.0) sichert nichts automatisch, leg dafür selbst
+vorher eine Sicherung unter **Einstellungen → Katalog** an (siehe [Katalog sichern und
+wiederherstellen](#katalog-sichern-und-wiederherstellen-backup)).
 
 **Warum wirkt das Feld "Quelle" auf manchen Systemen etwas seltsam, wenn keine URL hinterlegt
 ist?** Das ist lediglich ein Platzhaltertext ("https://…") mit einem kleinen Stift-Symbol zum

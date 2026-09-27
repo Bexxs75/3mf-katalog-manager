@@ -63,6 +63,12 @@ Was du selbst prüfen kannst:
 - **Trotzdem starten:** Windows-SmartScreen: „Weitere Informationen“ → „Trotzdem ausführen“. macOS: Rechtsklick auf die App → „Öffnen“; ab macOS 15: Systemeinstellungen → Datenschutz & Sicherheit → „Trotzdem öffnen“.
 - **Nur lokal:** Die App arbeitet offline. Online geht sie nur, um auf GitHub nach einer neuen Version zu sehen, und, wenn du es einschaltest, um mit Druckern im Heimnetz zu sprechen.
 
+## Updates
+
+Ab v0.15.0 prüft die App beim Start auf Updates und kann sie unter Windows, macOS und der Linux-AppImage selbst installieren. „Jetzt aktualisieren“ lädt das signierte Paket herunter, sichert vorher deine Katalog-Datenbank (die letzten 3 Sicherungen bleiben erhalten, in `update-backups` im Datenordner der App) und installiert es, nachdem du auf „Neu starten und installieren“ klickst. Bei Linux-`.deb`/`.rpm`-Installationen erscheint stattdessen der Knopf „Zur Download-Seite“, weil sich nur die AppImage selbst ersetzen kann.
+
+Installationen von 0.14 oder älter müssen einmal von Hand auf 0.15.0 aktualisiert werden – lade sie von der [Webseite](https://3mfkatalog.de/#download) oder dem [neuesten Release](https://github.com/Bexxs75/3mf-katalog-manager/releases/latest) herunter; ab 0.15.0 aktualisiert sich die App dann selbst. Details, auch zum Wiederherstellen einer Sicherung: [Benutzerhandbuch](docs/benutzerhandbuch/BENUTZERHANDBUCH.md#aktualisieren).
+
 ## Was die App kann
 
 - **Modelle finden und ordnen** — Dateien oder ganze Ordner importieren, automatische Tags, Suche, Ordner, Sammlungen, Favoriten, Duplikaterkennung, Papierkorb.

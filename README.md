@@ -63,6 +63,12 @@ What you can check yourself:
 - **Starting anyway:** Windows SmartScreen: "More info" → "Run anyway". macOS: right-click the app → "Open"; on macOS 15 or newer: System Settings → Privacy & Security → "Open Anyway".
 - **Local only:** the app works offline. It only goes online to check GitHub for a newer version and, if you switch it on, to talk to printers on your home network.
 
+## Updates
+
+From v0.15.0 the app checks for updates on startup and can install them itself on Windows, macOS, and the Linux AppImage. "Update now" downloads the signed package, backs up your catalog database first (the last 3 backups are kept, in `update-backups` inside the app's data folder), and installs it after you click "Restart and install". Linux `.deb`/`.rpm` installs show a "Go to download page" button instead, since only the AppImage can replace itself.
+
+Installations of 0.14 or older have to be updated once by hand — download 0.15.0 from the [website](https://3mfkatalog.de/en/#download) or the [latest release](https://github.com/Bexxs75/3mf-katalog-manager/releases/latest); every version from 0.15.0 onward then updates itself. Details, including how to restore a backup: [user guide](docs/benutzerhandbuch/BENUTZERHANDBUCH.md#updating).
+
 ## What it does
 
 - **Find and organize models** — import files or whole folders, automatic tags, search, folders, collections, favorites, duplicates detection, trash.

@@ -67,6 +67,10 @@ Issues labeled [`good first issue`](https://github.com/Bexxs75/3mf-katalog-manag
 
 Please **don't** open a public issue for a security vulnerability. Email **info@3mfkatalog.de** instead so it can be fixed before it's public. Details: [SECURITY.md](SECURITY.md).
 
+### Maintainer notes: the updater signing key
+
+The in-app updater checks a signature made with a private key kept in GitHub Actions secrets and in offline copies outside the repo — not something a regular contribution needs to touch. If that key were ever lost, every existing installation would need a new key to keep verifying updates, and users would have to reinstall once by hand to get it.
+
 ---
 
 ## Mitwirken (Deutsch)
@@ -135,3 +139,7 @@ Issues mit dem Label [`good first issue`](https://github.com/Bexxs75/3mf-katalog
 #### Sicherheitslücken
 
 Bitte **kein** öffentliches Issue für eine Sicherheitslücke eröffnen. Schreib stattdessen an **info@3mfkatalog.de**, damit sie behoben werden kann, bevor sie öffentlich wird. Details: [SECURITY.md](SECURITY.md#sicherheitsrichtlinie-deutsch).
+
+#### Hinweis für Maintainer:innen: der Signaturschlüssel des Updaters
+
+Der Updater in der App prüft eine Signatur, die mit einem privaten Schlüssel erstellt wurde. Dieser liegt in den GitHub-Actions-Secrets und in offline aufbewahrten Kopien außerhalb des Repos – normale Beiträge müssen ihn nicht anfassen. Ginge dieser Schlüssel verloren, bräuchte jede bestehende Installation einen neuen Schlüssel, um weiterhin Updates prüfen zu können, und Nutzer müssten einmal von Hand neu installieren.

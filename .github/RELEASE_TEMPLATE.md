@@ -1,8 +1,9 @@
 <!--
 Release notes template (EN first, then DE). Title: "vX.Y.Z — <English> / <Deutsch>".
-Copy into the GitHub release, fill in the <…> parts, keep the full changelog lists in the <details> blocks.
-The release workflow creates this draft with renamed, signed files, latest*.json and SHA256SUMS.txt.
+How to release: run the "Release (draft)" workflow with the version → fill this draft's body from this template (fill in the <…> parts, keep the full changelog lists in the <details> blocks) → set the title as above → publish the draft.
+The release workflow creates the draft with renamed, signed files, latest*.json and SHA256SUMS.txt.
 Re-running it for the same version creates a second draft: delete the old one first.
+latest.json only reaches users once the draft is published — that's what makes the update visible to the in-app updater.
 -->
 ![3MF Katalog Manager demo](https://github.com/Bexxs75/3mf-katalog-manager/raw/master/docs/assets/demo.gif)
 
