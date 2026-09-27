@@ -107,9 +107,10 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            // Version in the window title, taken straight from Cargo.toml.
+            // Product name from the active config (differs for the preview variant) plus
+            // the version, taken straight from Cargo.toml.
             if let Some(window) = app.get_webview_window("main") {
-                let _ = window.set_title(&format!("3MF Katalog Manager {}", env!("CARGO_PKG_VERSION")));
+                let _ = window.set_title(&format!("{} {}", app.package_info().name, env!("CARGO_PKG_VERSION")));
             }
 
             let app_data_dir = app.path().app_data_dir()?;
@@ -258,6 +259,7 @@ pub fn run() {
             commands::reorder_collection,
             commands::list_collection_files,
             commands::get_app_version,
+            commands::is_preview_build,
             commands::check_app_update,
             commands::download_app_update,
             commands::discard_app_update,

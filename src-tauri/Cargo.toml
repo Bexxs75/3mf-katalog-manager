@@ -26,6 +26,8 @@ tauri-build = { version = "2", features = [] }
 # turned off by `--no-default-features` as well.
 default = ["step-preview"]
 step-preview = ["dep:cxx", "dep:opencascade-sys"]
+# Test versions: own update channel (see tauri.preview.conf.json for the own identifier).
+preview = []
 
 [dependencies]
 tauri = { version = "2", features = [] }

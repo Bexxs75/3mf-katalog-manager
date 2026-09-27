@@ -1,0 +1,10 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "3MF Katalog Manager Preview",
+  "identifier": "com.thebexxs.mfkatalogmanager.preview",
+  "app": {
+    "windows": [
+      { "title": "3MF Katalog Manager Preview", "width": 1000, "height": 600, "minWidth": 900, "maximized": true }
+    ]
+  }
+}

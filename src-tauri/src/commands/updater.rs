@@ -36,7 +36,12 @@ pub struct DownloadProgress {
 // transport hiccup apart from a broken manifest - see `is_transport_error` below.
 async fn fetch_update(app: &tauri::AppHandle) -> Result<Option<tauri_plugin_updater::Update>, tauri_plugin_updater::Error> {
     let override_value = std::env::var(updater::ENDPOINT_ENV).ok();
-    let url = updater::endpoint(cfg!(feature = "step-preview"), cfg!(debug_assertions), override_value.as_deref());
+    let url = updater::endpoint(
+        cfg!(feature = "step-preview"),
+        cfg!(feature = "preview"),
+        cfg!(debug_assertions),
+        override_value.as_deref(),
+    );
     let url = url.parse()?;
     let mut builder = app.updater_builder();
     if cfg!(debug_assertions) {
@@ -90,7 +95,7 @@ pub async fn check_app_update(app: tauri::AppHandle, state: State<'_, AppState>)
     };
     Ok(UpdateInfoDto {
         current_version: current.to_string(),
-        release_url: available.as_deref().map(updater::release_page),
+        release_url: available.as_deref().map(|v| updater::release_page(v, cfg!(feature = "preview"))),
         available_version: available,
         can_install: updater::can_self_install(current_os(), std::env::var("APPIMAGE").ok().as_deref()),
         last_update: updater::visible_last_update(stored, current),

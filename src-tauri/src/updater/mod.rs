@@ -7,24 +7,40 @@ use serde::{Deserialize, Serialize};
 pub const ENDPOINT: &str = "https://github.com/Bexxs75/3mf-katalog-manager/releases/latest/download/latest.json";
 pub const ENDPOINT_STEP: &str =
     "https://github.com/Bexxs75/3mf-katalog-manager/releases/latest/download/latest-step.json";
+pub const ENDPOINT_PREVIEW: &str =
+    "https://github.com/Bexxs75/3mf-katalog-manager/releases/download/preview/latest-preview.json";
+pub const ENDPOINT_PREVIEW_STEP: &str =
+    "https://github.com/Bexxs75/3mf-katalog-manager/releases/download/preview/latest-preview-step.json";
+pub const PREVIEW_RELEASE_PAGE: &str = "https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/preview";
 pub const ENDPOINT_ENV: &str = "MFK_UPDATE_ENDPOINT";
 /// Debug builds only: public key for updates signed with a throwaway test key.
 pub const PUBKEY_ENV: &str = "MFK_UPDATE_PUBKEY";
 pub const LAST_UPDATE_KEY: &str = "last_update_info";
 
-/// A STEP build must only ever update to a STEP build and vice versa, so the
-/// variant picks the endpoint. The override exists for local update tests.
-pub fn endpoint(step: bool, allow_override: bool, override_value: Option<&str>) -> String {
+/// A STEP build must only ever update to a STEP build and vice versa, and a test
+/// version only from the preview channel (its own catalog must never be replaced
+/// by the normal app). The override exists for local update tests.
+pub fn endpoint(step: bool, preview: bool, allow_override: bool, override_value: Option<&str>) -> String {
     if allow_override {
         if let Some(v) = override_value.map(str::trim).filter(|v| !v.is_empty()) {
             return v.to_string();
         }
     }
-    if step { ENDPOINT_STEP } else { ENDPOINT }.to_string()
+    match (preview, step) {
+        (false, false) => ENDPOINT,
+        (false, true) => ENDPOINT_STEP,
+        (true, false) => ENDPOINT_PREVIEW,
+        (true, true) => ENDPOINT_PREVIEW_STEP,
+    }
+    .to_string()
 }
 
-pub fn release_page(version: &str) -> String {
-    format!("https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v{version}")
+pub fn release_page(version: &str, preview: bool) -> String {
+    if preview {
+        PREVIEW_RELEASE_PAGE.to_string()
+    } else {
+        format!("https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v{version}")
+    }
 }
 
 /// On Linux only the AppImage can replace itself; the `APPIMAGE` variable is set
@@ -50,27 +66,32 @@ mod tests {
     use super::*;
 
     #[test]
-    fn endpoint_follows_the_variant() {
-        assert_eq!(endpoint(false, false, None), ENDPOINT);
-        assert_eq!(endpoint(true, false, None), ENDPOINT_STEP);
+    fn endpoint_follows_variant_and_channel() {
+        assert_eq!(endpoint(false, false, false, None), ENDPOINT);
+        assert_eq!(endpoint(true, false, false, None), ENDPOINT_STEP);
+        assert_eq!(endpoint(false, true, false, None), ENDPOINT_PREVIEW);
+        assert_eq!(endpoint(true, true, false, None), ENDPOINT_PREVIEW_STEP);
     }
 
     #[test]
     fn override_only_when_allowed_and_not_empty() {
-        assert_eq!(
-            endpoint(false, true, Some("http://127.0.0.1:8765/latest.json")),
-            "http://127.0.0.1:8765/latest.json"
-        );
-        assert_eq!(endpoint(false, false, Some("http://127.0.0.1:8765/latest.json")), ENDPOINT);
-        assert_eq!(endpoint(true, true, Some("  ")), ENDPOINT_STEP);
+        assert_eq!(endpoint(false, true, true, Some("http://127.0.0.1:8765/latest.json")), "http://127.0.0.1:8765/latest.json");
+        assert_eq!(endpoint(false, false, false, Some("http://x/latest.json")), ENDPOINT);
+        assert_eq!(endpoint(false, false, true, Some("  ")), ENDPOINT);
     }
 
     #[test]
-    fn release_page_points_to_the_tag() {
-        assert_eq!(
-            release_page("0.15.1"),
-            "https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v0.15.1"
-        );
+    fn preview_endpoints_never_point_to_the_normal_channel() {
+        for e in [ENDPOINT_PREVIEW, ENDPOINT_PREVIEW_STEP] {
+            assert!(e.contains("/releases/download/preview/"));
+            assert!(!e.contains("/releases/latest/"));
+        }
+    }
+
+    #[test]
+    fn release_page_points_to_the_tag_or_the_preview_release() {
+        assert_eq!(release_page("0.15.1", false), "https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v0.15.1");
+        assert_eq!(release_page("0.15.0-2", true), "https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/preview");
     }
 
     #[test]

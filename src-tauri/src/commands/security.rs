@@ -31,6 +31,12 @@ pub(crate) fn open_external(target: &str) -> CmdResult<()> {
 pub fn get_app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
+
+/// Lets the UI say that this is a test version with its own catalog.
+#[tauri::command]
+pub fn is_preview_build() -> bool {
+    cfg!(feature = "preview")
+}
 #[tauri::command]
 pub fn open_release_url(url: String) -> CmdResult<()> {
     validate_release_url(&url)?;
