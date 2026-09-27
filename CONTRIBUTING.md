@@ -71,6 +71,14 @@ Please **don't** open a public issue for a security vulnerability. Email **info@
 
 The in-app updater checks a signature made with a private key kept in GitHub Actions secrets and in offline copies outside the repo — not something a regular contribution needs to touch. If that key were ever lost, every existing installation would need a new key to keep verifying updates, and users would have to reinstall once by hand to get it.
 
+### Maintainer notes: publishing a test version
+
+1. Write the scenarios for the testers in `docs/tests/<version>.md` (format in `docs/tests/README.md`). The version is `x.y.z-n` with a numeric `n`, e.g. `0.15.0-2`.
+2. Run the workflow "Preview (test version)" with that version (tick "STEP" for the STEP variants), or push the tag `preview-<version>` (`preview-<version>-step` for all six variants).
+3. The workflow replaces the files of the pre-release `preview`. Installed test versions offer the update on their next start; testers download new installs, the test guide PDF and the result sheet from that release.
+
+Test versions use their own identifier (`com.thebexxs.mfkatalogmanager.preview`), so they never touch the catalog of the normal app.
+
 ---
 
 ## Mitwirken (Deutsch)
@@ -143,3 +151,11 @@ Bitte **kein** öffentliches Issue für eine Sicherheitslücke eröffnen. Schrei
 #### Hinweis für Maintainer:innen: der Signaturschlüssel des Updaters
 
 Der Updater in der App prüft eine Signatur, die mit einem privaten Schlüssel erstellt wurde. Dieser liegt in den GitHub-Actions-Secrets und in offline aufbewahrten Kopien außerhalb des Repos – normale Beiträge müssen ihn nicht anfassen. Ginge dieser Schlüssel verloren, bräuchte jede bestehende Installation einen neuen Schlüssel, um weiterhin Updates prüfen zu können, und Nutzer müssten einmal von Hand neu installieren.
+
+#### Hinweis für Maintainer:innen: eine Test-Version veröffentlichen
+
+1. Die Szenarien für die Tester in `docs/tests/<version>.md` schreiben (Format in `docs/tests/README.md`). Die Version hat die Form `x.y.z-n` mit einer Zahl als `n`, z. B. `0.15.0-2`.
+2. Den Workflow „Preview (test version)“ mit dieser Version starten („STEP“ ankreuzen für die STEP-Varianten) oder den Tag `preview-<version>` pushen (`preview-<version>-step` für alle sechs Varianten).
+3. Der Workflow ersetzt die Dateien im Vorab-Release `preview`. Installierte Test-Versionen bieten das Update beim nächsten Start an; neue Installationen, die Testanleitung (PDF) und den Ergebnisbogen laden Tester aus diesem Release.
+
+Test-Versionen haben einen eigenen Identifier (`com.thebexxs.mfkatalogmanager.preview`) und berühren den Katalog der normalen App nie.
