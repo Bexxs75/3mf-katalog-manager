@@ -64,7 +64,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 20
       # Only the final packages; the single-arch .app bundles of the STEP macOS
       # build are intermediate artifacts and not needed here.
       - name: Download all build artifacts
@@ -75,14 +75,15 @@ jobs:
       - name: Readable file names
         run: python3 tools/release_assets.py rename "$VERSION" artifacts dist
       # `tauri signer sign` writes the signature next to the file as <file>.sig,
-      # which is where the manifest step looks for it.
+      # which is where the manifest step looks for it. The CLI version is pinned
+      # (same as package-lock.json) because this step hands it the private key.
       - name: Sign the update packages
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           for f in dist/*.msi dist/*.app.tar.gz dist/*.AppImage; do
-            npx --yes @tauri-apps/cli@2 signer sign "$f"
+            npx --yes @tauri-apps/cli@2.11.4 signer sign "$f"
           done
       - name: Updater manifests
         run: python3 tools/release_assets.py latest-json "$VERSION" dist
@@ -97,5 +98,7 @@ jobs:
         run: |
           PRE=""
           case "$VERSION" in *-*) PRE="--prerelease";; esac
+          # The title is only a placeholder: set "vX.Y.Z — <English> / <Deutsch>"
+          # (see RELEASE_TEMPLATE.md) before publishing the draft.
           gh release create "v$VERSION" --draft $PRE --target "${{ github.sha }}" \
             --title "v$VERSION" --notes-file .github/RELEASE_TEMPLATE.md dist/*

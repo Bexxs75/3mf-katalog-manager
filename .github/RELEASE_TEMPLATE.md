@@ -1,8 +1,8 @@
 <!--
 Release notes template (EN first, then DE). Title: "vX.Y.Z — <English> / <Deutsch>".
 Copy into the GitHub release, fill in the <…> parts, keep the full changelog lists in the <details> blocks.
-Rename the CI artifacts to the file names in the download table before uploading (from v0.15.0 on;
-the Tauri names like "_x64_en-US.msi" suggest an English-only app). SHA256SUMS.txt is created after renaming.
+The release workflow creates this draft with renamed, signed files, latest*.json and SHA256SUMS.txt.
+Re-running it for the same version creates a second draft: delete the old one first.
 -->
 ![3MF Katalog Manager demo](https://github.com/Bexxs75/3mf-katalog-manager/raw/master/docs/assets/demo.gif)
 
