@@ -34,7 +34,9 @@ Erwartet: Die App zeigt einen leeren Katalog.
 Hinweis: Optional, Text in einer Zeile.
 ```
 
-- `# <text>` starts a chapter.
+- `# <text>` starts a chapter. Only `## <ID> · <title>` blocks are rendered —
+  any text between a chapter heading and its first scenario is dropped, so a
+  chapter-level note belongs in a scenario's own `Hinweis:` instead.
 - `## <ID> · <title>` starts a scenario inside the current chapter.
 - `Nur:` (optional) restricts the scenario to a comma-separated list of
   platforms (`windows`, `macos`, `linux`); omitted means all platforms.
@@ -48,6 +50,10 @@ shipping a broken guide.
 
 ## Placeholders
 
-Building blocks and the guide title may use `{{version}}`, `{{produkt}}`,
-`{{datenordner}}`, `{{logordner}}`, `{{paket}}`, `{{release}}` and
-`{{formular}}`; an unknown placeholder fails the build.
+Building blocks, the guide title and scenario text (title, steps, `Erwartet:`,
+`Hinweis:`) may use `{{version}}`, `{{produkt}}`, `{{datenordner}}`,
+`{{logordner}}`, `{{paket}}`, `{{release}}` and `{{formular}}`; an unknown
+placeholder fails the build. Prefer writing a scenario's expectation with a
+concrete value; reach for a placeholder only when the same scenario applies
+to every platform but the correct value genuinely differs per platform (e.g.
+a data-folder path).

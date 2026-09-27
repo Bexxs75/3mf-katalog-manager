@@ -41,6 +41,19 @@ class Fill(unittest.TestCase):
         self.assertIn("com.thebexxs.mfkatalogmanager.preview", v["datenordner"])
         self.assertIn("version=0.15.0-2", v["formular"])
 
+class FillScenarioText(unittest.TestCase):
+    def test_substitutes_placeholders_in_place(self):
+        ch = ta.parse_scenarios("# K\n\n## U5 · Sicherung\nSchritte:\n1. Öffne {{datenordner}}.\nErwartet: Datei {{version}}.db liegt dort.\n")
+        ta.fill_scenario_text(ch, {"datenordner": "/x/y", "version": "0.15.0-2"})
+        s = ch[0].scenarios[0]
+        self.assertEqual(s.steps, ["Öffne /x/y."])
+        self.assertEqual(s.expected, "Datei 0.15.0-2.db liegt dort.")
+
+    def test_unknown_placeholder_in_scenario_text_fails(self):
+        ch = ta.parse_scenarios("# K\n\n## U5 · X\nSchritte:\n1. a\nErwartet: {{unbekannt}}\n")
+        with self.assertRaisesRegex(ValueError, "unbekannt"):
+            ta.fill_scenario_text(ch, {"version": "1"})
+
 class Changelog(unittest.TestCase):
     def test_german_part_of_unreleased(self):
         text = "# Changelog\n\n## [Unreleased]\n\n### Added\n- **Update:** EN text\n\n## [0.14.0]\n- old\n\n# Changelog (Deutsch)\n\n## [Unreleased]\n\n### Hinzugefügt\n- **Update:** DE-Text\n\n## [0.14.0]\n- alt\n"

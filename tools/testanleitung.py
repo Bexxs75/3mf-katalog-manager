@@ -94,6 +94,20 @@ def _finish_scenario(scenario):
         raise ValueError(f"Szenario {scenario.id}: Erwartet oder Schritte fehlen")
 
 
+def fill_scenario_text(chapters, values):
+    """Fill {{name}} placeholders in scenario text (title, steps, expected,
+    note) with the platform's values, in place. Lets a scenario that applies
+    to all platforms name a path that actually differs per platform (e.g.
+    {{datenordner}}) instead of forcing a platform-specific copy."""
+    for chapter in chapters:
+        for s in chapter.scenarios:
+            s.title = fill(s.title, values)
+            s.steps = [fill(step, values) for step in s.steps]
+            s.expected = fill(s.expected, values)
+            if s.note:
+                s.note = fill(s.note, values)
+
+
 PLACEHOLDER_RE = re.compile(r"\{\{(\w+)\}\}")
 
 
@@ -225,6 +239,7 @@ def build(version, platform, out_dir, root=".", pdf=False):
     if not scenario_path.is_file():
         raise ValueError(f"Szenario-Datei fehlt: {scenario_path}")
     chapters = parse_scenarios(scenario_path.read_text(encoding="utf-8"))
+    fill_scenario_text(chapters, values)
 
     bausteine_dir = root / "docs/tests/bausteine"
 
