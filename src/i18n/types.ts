@@ -356,16 +356,38 @@ export interface Translations {
   settingsTabInfo: string;
   infoAppVersionLabel: string;
   infoUpToDateLabel: string;
-  infoUpdateAvailableLabel: string;
   infoCheckForUpdateButton: string;
   infoCheckingForUpdate: string;
-  infoViewReleaseNotes: string;
   infoSourceCodeLabel: string;
   infoCommunityLabel: string;
   infoLicenseLabel: string;
   infoThirdPartyLicensesLabel: string;
-  updateToastText: string;
-  updateToastDownloadLabel: string;
+  /** `{version}` */
+  updateAvailableTitle: string;
+  /** `{current}` */
+  updateAvailableBody: string;
+  updateNowButton: string;
+  updateWhatsNew: string;
+  updateDownloadPageButton: string;
+  /** `{version}` */
+  updateDownloadingTitle: string;
+  /** `{done}`, `{total}`, `{percent}` */
+  updateDownloadingProgress: string;
+  /** `{done}` */
+  updateDownloadingProgressUnknown: string;
+  updateDownloadingHint: string;
+  /** `{version}` */
+  updateReadyTitle: string;
+  updateReadyBody: string;
+  updateRestartButton: string;
+  updateLaterButton: string;
+  updateInstallingTitle: string;
+  updateInstallingBody: string;
+  updateFailedTitle: string;
+  updateFailedBody: string;
+  updateRetryButton: string;
+  /** `{date}`, `{file}` */
+  updateLastInfo: string;
   printersColumnTitle: string;
   printersManageButton: string;
   printersEmptyHint: string;

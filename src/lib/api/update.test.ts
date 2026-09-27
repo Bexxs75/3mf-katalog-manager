@@ -6,17 +6,11 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 beforeEach(() => { vi.mocked(invoke).mockReset(); });
 
 describe('update api', () => {
-  it('checkForUpdate', async () => {
-    const result = {
-      currentVersion: '0.7.8',
-      latestVersion: '0.7.9',
-      updateAvailable: true,
-      releaseUrl: 'https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v0.7.9',
-    };
-    vi.mocked(invoke).mockResolvedValue(result);
-    const actual = await updateApi.checkForUpdate();
-    expect(invoke).toHaveBeenCalledWith('check_for_update');
-    expect(actual).toEqual(result);
+  it('getAppVersion', async () => {
+    vi.mocked(invoke).mockResolvedValue('0.15.0');
+    const actual = await updateApi.getAppVersion();
+    expect(invoke).toHaveBeenCalledWith('get_app_version');
+    expect(actual).toBe('0.15.0');
   });
 
   it('openReleaseUrl', async () => {

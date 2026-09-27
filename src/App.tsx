@@ -11,7 +11,7 @@ import { MoveToast } from './components/MoveToast';
 import { CatalogSetupDialog } from './components/CatalogSetupDialog';
 import { TrashView } from './components/TrashView';
 import { CatalogWorkspace } from './components/CatalogWorkspace';
-import { UpdateAvailableToast } from './components/UpdateAvailableToast';
+import { UpdateToast } from './components/UpdateToast';
 import { useTheme } from './hooks/useTheme';
 import { useUiDensity } from './hooks/UiDensityContext';
 import { useSlicers } from './hooks/useSlicers';
@@ -27,7 +27,7 @@ import { useCatalogBackup } from './hooks/useCatalogBackup';
 import { useCatalogCleanup } from './hooks/useCatalogCleanup';
 import { useBulkSelection } from './hooks/useBulkSelection';
 import { useSlicerLauncher } from './hooks/useSlicerLauncher';
-import { useUpdateCheck } from './hooks/useUpdateCheck';
+import { useUpdater } from './hooks/useUpdater';
 import { useKeyboardShortcuts, MODEL_TILE_ATTR } from './hooks/useKeyboardShortcuts';
 import { usePrinterLink } from './hooks/usePrinterLink';
 import { usePrinters } from './hooks/usePrinters';
@@ -78,7 +78,7 @@ export default function App() {
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const slicerLauncher = useSlicerLauncher(slicers, primaryId, () => setSettingsOpen(true));
-  const update = useUpdateCheck();
+  const update = useUpdater();
 
   const [setupDialogOpen, setSetupDialogOpen] = useState(!setupSeen);
   const [detailModelId, setDetailModelId] = useState<string | null>(null);
@@ -204,14 +204,7 @@ export default function App() {
           onOpenCatalogSetup={() => setSetupDialogOpen(true)}
           printerLink={printerLink}
           printerList={printers.printers}
-          updateInfo={{
-            currentVersion: update.currentVersion,
-            latestVersion: update.latestVersion,
-            updateAvailable: update.updateAvailable,
-            checking: update.checking,
-            checkNow: update.checkNow,
-            download: update.download,
-          }}
+          update={update}
         />
         <div className="flex-1 min-w-0 flex flex-col min-h-0">
           {mainView === 'trash' ? (
@@ -353,13 +346,7 @@ export default function App() {
             />
           )}
 
-          {update.updateAvailable && !update.dismissed && (
-            <UpdateAvailableToast
-              latestVersion={update.latestVersion}
-              onDownload={update.download}
-              onDismiss={update.dismiss}
-            />
-          )}
+          <UpdateToast view={update} />
 
           {cleanup.cleanupDialogOpen && cleanup.cleanupIssues && (
             <CatalogCleanupDialog

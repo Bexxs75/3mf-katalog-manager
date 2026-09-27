@@ -11,6 +11,8 @@ import { DiagnosticsSettings } from '../diagnostics/DiagnosticsSettings';
 import { PrinterLinkSettings } from './PrinterLinkSettings';
 import type { AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
+import type { UpdaterView } from '../hooks/useUpdater';
+import { UpdatePanel } from './UpdatePanel';
 
 type MainView = 'catalog' | 'filament' | 'trash';
 
@@ -42,14 +44,7 @@ interface Props {
   onOpenCatalogSetup: () => void;
   printerLink: PrinterLinkState;
   printerList: Printer[];
-  updateInfo: {
-    currentVersion: string;
-    latestVersion: string;
-    updateAvailable: boolean;
-    checking: boolean;
-    checkNow: () => void;
-    download: () => void;
-  };
+  update: UpdaterView;
 }
 
 const railBtnBase =
@@ -97,7 +92,7 @@ export function Rail({
   onOpenCatalogSetup,
   printerLink,
   printerList,
-  updateInfo,
+  update,
 }: Props) {
   const t = useT();
   const { language, setLanguage } = useLanguage();
@@ -406,36 +401,7 @@ export function Rail({
 
             {activeSettingsTab === 'info' && (
               <>
-                <div className="text-center mb-3">
-                  <div className="text-[13.5px] font-bold">3MF Katalog Manager</div>
-                  <div className="mt-0.5 font-mono-ui text-[10.5px] text-[var(--ink-3)]">
-                    {t('infoAppVersionLabel').replace('{version}', updateInfo.currentVersion)}
-                  </div>
-                  {updateInfo.updateAvailable ? (
-                    <div className="mt-2.5 p-2.5 rounded-[5px]" style={{ background: 'var(--good-soft, var(--accent-soft))', border: '1px solid var(--line)' }}>
-                      <div className="text-[12.5px] font-semibold" style={{ color: 'var(--good, var(--accent))' }}>
-                        {t('infoUpdateAvailableLabel').replace('{version}', updateInfo.latestVersion)}
-                      </div>
-                      <button
-                        onClick={updateInfo.download}
-                        className="mt-2 h-7 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12px] font-semibold cursor-pointer"
-                      >
-                        {t('infoViewReleaseNotes')}
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="mt-2 font-mono-ui text-[10.5px] text-[var(--ink-3)]">{t('infoUpToDateLabel')}</div>
-                  )}
-                </div>
-                <button
-                  onClick={updateInfo.checkNow}
-                  disabled={updateInfo.checking}
-                  className={`h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] ${
-                    updateInfo.checking ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]'
-                  }`}
-                >
-                  {updateInfo.checking ? t('infoCheckingForUpdate') : t('infoCheckForUpdateButton')}
-                </button>
+                <UpdatePanel view={update} />
                 <DiagnosticsSettings />
                 <div className="flex justify-between text-[11.5px] py-2 border-t border-[var(--line)] mt-3 text-[var(--ink-2)]">
                   <span>{t('infoSourceCodeLabel')}</span>
