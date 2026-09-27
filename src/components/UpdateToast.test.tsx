@@ -25,6 +25,7 @@ function makeView(overrides: Partial<UpdaterView> = {}): UpdaterView {
     later: vi.fn(),
     dismiss: vi.fn(),
     openNotes: vi.fn(),
+    preview: false,
     ...overrides,
   };
 }

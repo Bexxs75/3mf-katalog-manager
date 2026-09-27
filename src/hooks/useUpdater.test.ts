@@ -13,6 +13,7 @@ vi.mock('../lib/api/updater', () => ({
 vi.mock('../lib/api/update', () => ({
   getAppVersion: vi.fn(),
   openReleaseUrl: vi.fn(),
+  isPreviewBuild: vi.fn(),
 }));
 
 function mockInfo(overrides: Partial<api.UpdateInfo> = {}): api.UpdateInfo {
@@ -33,6 +34,7 @@ beforeEach(() => {
   vi.mocked(api.installAppUpdate).mockReset();
   vi.mocked(updateApi.getAppVersion).mockReset().mockResolvedValue('0.15.0');
   vi.mocked(updateApi.openReleaseUrl).mockReset().mockResolvedValue(undefined);
+  vi.mocked(updateApi.isPreviewBuild).mockReset().mockResolvedValue(false);
 });
 
 describe('useUpdater', () => {
@@ -236,6 +238,26 @@ describe('useUpdater', () => {
 
     act(() => result.current.openNotes());
     expect(updateApi.openReleaseUrl).toHaveBeenCalledWith('https://example.com/v0.15.1');
+  });
+
+  it('preview is false by default and true once isPreviewBuild resolves true', async () => {
+    vi.mocked(updateApi.isPreviewBuild).mockResolvedValue(true);
+    const { result } = renderHook(() => useUpdater());
+    expect(result.current.preview).toBe(false);
+    await waitFor(() => expect(result.current.preview).toBe(true));
+  });
+
+  it('on a preview build, a download release URL points at the shared preview release page', async () => {
+    vi.mocked(updateApi.isPreviewBuild).mockResolvedValue(true);
+    vi.mocked(api.downloadAppUpdate).mockResolvedValue('0.15.0-2');
+    const { result } = renderHook(() => useUpdater());
+    await waitFor(() => expect(result.current.preview).toBe(true));
+
+    act(() => result.current.startUpdate());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    expect(result.current.info?.releaseUrl).toBe(
+      'https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/preview',
+    );
   });
 
   it('a failed openNotes is surfaced via notesError, not the general error phase', async () => {

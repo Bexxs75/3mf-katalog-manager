@@ -364,6 +364,7 @@ export const fr: Translations = {
   updateRetryButton: 'Réessayer',
   updateDismissAria: 'Fermer l’avis',
   updateLastInfo: 'Mis à jour le {date} · Sauvegarde : {file}',
+  updatePreviewNote: 'Version de test – catalogue séparé de ton application habituelle.',
   printersColumnTitle: 'Imprimantes',
   printersManageButton: 'Gérer les imprimantes',
   printersEmptyHint: 'Ajoute ton imprimante et ses unités AMS pour voir quelle bobine se trouve dans quel emplacement.',

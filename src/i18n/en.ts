@@ -364,6 +364,7 @@ export const en: Translations = {
   updateRetryButton: 'Try again',
   updateDismissAria: 'Close notice',
   updateLastInfo: 'Updated on {date} · Backup: {file}',
+  updatePreviewNote: 'Test version – own catalog, separate from your normal app.',
   printersColumnTitle: 'Printers',
   printersManageButton: 'Manage printers',
   printersEmptyHint: 'Add your printer and its AMS units to see which spool is loaded in which slot.',

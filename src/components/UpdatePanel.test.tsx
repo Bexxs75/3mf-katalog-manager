@@ -22,6 +22,7 @@ function makeView(overrides: Partial<UpdaterView> = {}): UpdaterView {
     later: vi.fn(),
     dismiss: vi.fn(),
     openNotes: vi.fn(),
+    preview: false,
     ...overrides,
   };
 }
@@ -134,5 +135,25 @@ describe('UpdatePanel', () => {
   it('shows no last-update line when there is none', () => {
     renderPanel(makeView({ info: { currentVersion: '0.15.0', availableVersion: null, releaseUrl: null, canInstall: true, lastUpdate: null } }));
     expect(screen.queryByText(/Sicherung:/)).not.toBeInTheDocument();
+  });
+
+  it('shows the preview note as the first line of the update box on a preview build', () => {
+    const view = makeView({
+      preview: true,
+      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: 'https://example.com', canInstall: true, lastUpdate: null },
+    });
+    renderPanel(view);
+    expect(screen.getByText('Test-Version – eigener Katalog, getrennt von deiner normalen App.')).toBeInTheDocument();
+  });
+
+  it('shows no preview note on a normal build', () => {
+    const view = makeView({
+      preview: false,
+      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: 'https://example.com', canInstall: true, lastUpdate: null },
+    });
+    renderPanel(view);
+    expect(
+      screen.queryByText('Test-Version – eigener Katalog, getrennt von deiner normalen App.'),
+    ).not.toBeInTheDocument();
   });
 });

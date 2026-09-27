@@ -364,6 +364,7 @@ export const de: Translations = {
   updateRetryButton: 'Erneut versuchen',
   updateDismissAria: 'Hinweis schließen',
   updateLastInfo: 'Aktualisiert am {date} · Sicherung: {file}',
+  updatePreviewNote: 'Test-Version – eigener Katalog, getrennt von deiner normalen App.',
   printersColumnTitle: 'Drucker',
   printersManageButton: 'Drucker verwalten',
   printersEmptyHint: 'Lege deinen Drucker und seine AMS an, um zu sehen, welche Spule in welchem Fach steckt.',

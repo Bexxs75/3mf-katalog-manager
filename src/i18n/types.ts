@@ -389,6 +389,7 @@ export interface Translations {
   updateDismissAria: string;
   /** `{date}`, `{file}` */
   updateLastInfo: string;
+  updatePreviewNote: string;
   printersColumnTitle: string;
   printersManageButton: string;
   printersEmptyHint: string;

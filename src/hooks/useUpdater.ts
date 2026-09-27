@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as api from '../lib/api/updater';
-import { getAppVersion, openReleaseUrl } from '../lib/api/update';
+import { getAppVersion, isPreviewBuild, openReleaseUrl } from '../lib/api/update';
 import { toAppError, type AppError } from '../lib/errors';
 
 export type UpdatePhase = 'idle' | 'checking' | 'downloading' | 'ready' | 'installing' | 'error';
@@ -15,9 +15,13 @@ const BUSY_PHASES: UpdatePhase[] = ['downloading', 'ready', 'installing'];
 
 /** Mirrors the backend's `updater::release_page`. Needed because a download can
  * resolve to a version other than the one from the last check (e.g. a newer
- * release went up in between), and the notes link must follow it. */
-function releasePage(version: string): string {
-  return `https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v${version}`;
+ * release went up in between), and the notes link must follow it. All preview
+ * builds share one release regardless of their `x.y.z-n` version, so `preview`
+ * routes to the fixed preview tag instead of a per-version one. */
+function releasePage(version: string, preview: boolean): string {
+  return preview
+    ? 'https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/preview'
+    : `https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v${version}`;
 }
 
 export interface UpdaterView {
@@ -40,6 +44,8 @@ export interface UpdaterView {
   later: () => void;
   dismiss: () => void;
   openNotes: () => void;
+  /** Whether this binary is a preview build, loaded once via `isPreviewBuild`. */
+  preview: boolean;
 }
 
 export function isUpdateCheckDisabled(phase: UpdatePhase): boolean {
@@ -55,11 +61,17 @@ export function useUpdater(): UpdaterView {
   const [notesError, setNotesError] = useState<AppError | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const [failedStep, setFailedStep] = useState<FailedStep | null>(null);
+  const [preview, setPreview] = useState(false);
 
   // Read without adding `phase` to checkNow's dependencies, which would recreate
   // it (and re-fire the mount effect below) on every phase change.
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
+
+  // Same reasoning as phaseRef: startUpdate below has no deps, so it reads this
+  // instead of closing over a stale `preview` from the render it was created in.
+  const previewRef = useRef(preview);
+  previewRef.current = preview;
 
   // Plain (non-state) in-flight guards: a state-based check would still let a
   // second call through when both happen before React re-renders (e.g. two
@@ -87,6 +99,9 @@ export function useUpdater(): UpdaterView {
     getAppVersion()
       .then(setCurrentVersion)
       .catch((e) => console.warn('[updater] could not determine the app version:', e));
+    isPreviewBuild()
+      .then(setPreview)
+      .catch((e) => console.warn('[updater] could not determine the build kind:', e));
     checkNow();
   }, [checkNow]);
 
@@ -106,7 +121,9 @@ export function useUpdater(): UpdaterView {
         // showed (e.g. a newer release went up meanwhile) - the "ready" and
         // "installing" texts, and the notes link, must reflect what was
         // actually downloaded and will actually be installed.
-        setInfo((prev) => (prev ? { ...prev, availableVersion: version, releaseUrl: releasePage(version) } : prev));
+        setInfo((prev) =>
+          prev ? { ...prev, availableVersion: version, releaseUrl: releasePage(version, previewRef.current) } : prev,
+        );
         setPhase('ready');
       })
       .catch((e) => {
@@ -178,5 +195,6 @@ export function useUpdater(): UpdaterView {
     later,
     dismiss,
     openNotes,
+    preview,
   };
 }

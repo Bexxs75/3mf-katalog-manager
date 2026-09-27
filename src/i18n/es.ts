@@ -364,6 +364,7 @@ export const es: Translations = {
   updateRetryButton: 'Reintentar',
   updateDismissAria: 'Cerrar aviso',
   updateLastInfo: 'Actualizado el {date} · Copia: {file}',
+  updatePreviewNote: 'Versión de prueba: catálogo propio, separado de tu app normal.',
   printersColumnTitle: 'Impresoras',
   printersManageButton: 'Gestionar impresoras',
   printersEmptyHint: 'Añade tu impresora y sus unidades AMS para ver qué bobina está en cada ranura.',

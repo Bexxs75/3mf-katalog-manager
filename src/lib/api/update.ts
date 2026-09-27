@@ -7,3 +7,5 @@ export function getAppVersion() {
 export function openReleaseUrl(url: string) {
   return invoke('open_release_url', { url });
 }
+
+export const isPreviewBuild = () => invoke<boolean>('is_preview_build');
