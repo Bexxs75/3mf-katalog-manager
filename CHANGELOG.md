@@ -33,6 +33,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- Right-clicking outside text fields no longer opens the built-in browser menu ("Reload", "Back", "Print" …). "Reload" looked like "refresh the catalog" but only reloaded the interface. In text fields and on selected text the menu stays for copy and paste.
 - Printer connection: with multi-material units (AMS, ACE, MMU) the suggested material is now the one that was used most in the print, not simply the first loaded slot (e.g. PETG instead of PLA for a print that used 66 g PETG and 0.35 g PLA).
 - Printer connection: prints that used no filament at all (e.g. cancelled right at the start) are no longer offered as "new print" with 0 g.
 - Printer connection: the catalog model is now also found when the Anycubic slicer (Kobra S1) names the file like "Axle Cleaning Tool_plate_1(1)", "slide(01)" or with a date in front ("0926-1506-…"); such files used to be suggested only as unsure or not at all. Found through a second anonymous test report of an Anycubic Kobra S1 with Rinkhals.
@@ -452,6 +453,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Fixed
 
+- Ein Rechtsklick außerhalb von Textfeldern öffnet nicht mehr das eingebaute Browser-Menü („Aktualisieren“, „Zurück“, „Drucken“ …). „Aktualisieren“ sah aus wie „Katalog neu einlesen“, lud aber nur die Oberfläche neu. In Textfeldern und auf markiertem Text bleibt das Menü zum Kopieren und Einfügen.
 - Druckeranbindung: Bei Mehrfarb-Einheiten (AMS, ACE, MMU) wird jetzt das Material vorgeschlagen, das im Druck am meisten verbraucht wurde, statt einfach das des ersten Fachs (z. B. PETG statt PLA bei einem Druck mit 66 g PETG und 0,35 g PLA).
 - Druckeranbindung: Drucke ohne jeden Filamentverbrauch (z. B. direkt am Anfang abgebrochen) erscheinen nicht mehr als „neuer Druck“ mit 0 g.
 - Druckeranbindung: Das Katalogmodell wird jetzt auch gefunden, wenn der Anycubic-Slicer (Kobra S1) die Datei zum Beispiel „Axle Cleaning Tool_plate_1(1)“ oder „slide(01)“ nennt oder ein Datum voranstellt („0926-1506-…“); solche Dateien wurden bisher nur als unsicher oder gar nicht vorgeschlagen. Gefunden durch einen zweiten anonymen Testbericht eines Anycubic Kobra S1 mit Rinkhals.
