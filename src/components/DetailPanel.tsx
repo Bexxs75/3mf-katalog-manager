@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ModelFile } from '../types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
-import { ModelViewer } from './ModelViewer';
+import { ModelPreview } from './ModelPreview';
 import { useUiDensity } from '../hooks/UiDensityContext';
 import { buildMetaRows } from '../lib/modelMetadata';
 import { isSafeHttpUrl } from '../lib/safeUrl';
@@ -91,7 +91,7 @@ export function DetailPanel({
         </div>
 
         <div className="relative aspect-[4/3] bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
-          <ModelViewer fileId={model.id} needsSnapshot={false} onSnapshotCaptured={() => {}} />
+          <ModelPreview model={model} needsSnapshot={false} onSnapshotCaptured={() => {}} />
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 pt-3.5 pb-1">
@@ -148,8 +148,8 @@ export function DetailPanel({
                 'repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 11px)',
             }}
           />
-          <ModelViewer
-            fileId={model.id}
+          <ModelPreview
+            model={model}
             needsSnapshot={model.renderSnapshotImage === null}
             onSnapshotCaptured={onSnapshotCaptured}
           />
@@ -353,8 +353,8 @@ export function DetailPanel({
                 'repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 12px)',
             }}
           />
-          <ModelViewer
-            fileId={model.id}
+          <ModelPreview
+            model={model}
             needsSnapshot={model.renderSnapshotImage === null}
             onSnapshotCaptured={onSnapshotCaptured}
           />

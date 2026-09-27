@@ -89,6 +89,12 @@ export const en: Translations = {
   loadingPreview: 'Loading preview …',
   previewUnavailable: 'Preview unavailable',
 
+  stepHintTitle: 'No 3D preview for STEP files',
+  stepHintTextBefore: 'This variant shows STEP files without a 3D preview. The variant ',
+  stepHintVariantBold: 'with STEP preview',
+  stepHintTextAfter: ' shows them – your catalog is kept when you switch.',
+  stepHintButton: 'Get the variant with STEP preview',
+
 
   filamentDialogTitle: 'Filament Inventory',
   filamentMaterialLabel: 'Material',

@@ -2,6 +2,19 @@ use super::*;
 
 const GITHUB_REPO_URL_PREFIX: &str = "https://github.com/Bexxs75/3mf-katalog-manager/";
 const DISCORD_INVITE_URL: &str = "https://discord.gg/abfVNfFqu3";
+// The website reads these two query/hash parts to preselect the STEP variant
+// in its download section (`?step=1#download`); only the German page and the
+// English one exist, so every non-German language falls back to English.
+const STEP_DOWNLOAD_URL_DE: &str = "https://3mfkatalog.de/?step=1#download";
+const STEP_DOWNLOAD_URL_EN: &str = "https://3mfkatalog.de/en/?step=1#download";
+
+fn step_download_url(lang: &str) -> &'static str {
+    if lang == "de" {
+        STEP_DOWNLOAD_URL_DE
+    } else {
+        STEP_DOWNLOAD_URL_EN
+    }
+}
 
 // The frontend passes this URL in (release notes link, Discord/report links go
 // through their own dedicated commands), so it's untrusted input as far as this
@@ -36,6 +49,20 @@ pub fn get_app_version() -> String {
 #[tauri::command]
 pub fn is_preview_build() -> bool {
     cfg!(feature = "preview")
+}
+
+/// Lets the UI show an explanation instead of a generic error when a STEP
+/// file has no 3D preview in this build.
+#[tauri::command]
+pub fn has_step_preview() -> bool {
+    cfg!(feature = "step-preview")
+}
+
+// No URL from the frontend: only the UI's current language selects between
+// the two fixed download URLs.
+#[tauri::command]
+pub fn open_step_download(lang: String) -> CmdResult<()> {
+    open_external(step_download_url(&lang))
 }
 #[tauri::command]
 pub fn open_release_url(url: String) -> CmdResult<()> {
@@ -83,5 +110,30 @@ mod update_command_tests {
     fn accepts_the_repo_root_url_with_and_without_trailing_slash() {
         assert!(validate_release_url("https://github.com/Bexxs75/3mf-katalog-manager").is_ok());
         assert!(validate_release_url("https://github.com/Bexxs75/3mf-katalog-manager/").is_ok());
+    }
+}
+
+#[cfg(test)]
+mod step_download_tests {
+    use super::*;
+
+    #[test]
+    fn only_german_gets_the_german_download_page() {
+        assert_eq!(step_download_url("de"), STEP_DOWNLOAD_URL_DE);
+    }
+
+    #[test]
+    fn every_other_language_falls_back_to_english() {
+        for lang in ["en", "es", "fr", "", "de-DE", "pt"] {
+            assert_eq!(step_download_url(lang), STEP_DOWNLOAD_URL_EN);
+        }
+    }
+
+    // The frontend must not be able to steer this at all - unlike
+    // `open_release_url`, there is no `url` parameter to validate.
+    #[test]
+    fn the_command_takes_a_language_and_nothing_else() {
+        fn assert_signature(_f: fn(String) -> CmdResult<()>) {}
+        assert_signature(open_step_download);
     }
 }

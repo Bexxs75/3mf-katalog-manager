@@ -242,6 +242,13 @@ estimated material-cost total if matching spools are on record in the filament s
 "Re-scan metadata" button re-fetches these values later on, in case you sliced an already
 cataloged file after the fact.
 
+In the standard variant (without STEP preview, see [Installation](#installation)), opening a STEP
+file shows a short note in the preview area instead of a broken-looking error: this variant shows
+STEP files without a 3D preview, with a "Get the variant with STEP preview" button that opens
+3mfkatalog.de's download section with that variant preselected — installing it keeps your catalog
+and settings. The catalog card still shows the placeholder; the note only appears once you open the
+preview.
+
 At the bottom left you can mark the model as **printed** and add it to the **queue**. The **heart**
 marks it as a favorite; you find all favorites under "Tools → Favorites".
 
@@ -911,6 +918,13 @@ Aufschlüsselung pro Druckplatte und Filament sowie einer geschätzten Materialk
 passende Spulen im Filament-Lager hinterlegt sind. Über den "Metadaten neu einlesen"-Knopf holst du
 diese Werte nachträglich nach, falls du eine bereits katalogisierte Datei erst später im Slicer
 nachgesliced hast.
+
+In der Standard-Variante (ohne STEP-Vorschau, siehe [Installation](#installation-1)) zeigt der
+Vorschaubereich beim Öffnen einer STEP-Datei statt einer nach Fehler aussehenden Meldung einen
+kurzen Hinweis: Diese Variante zeigt STEP-Dateien ohne 3D-Vorschau, dazu der Knopf „Variante mit
+STEP-Vorschau laden“, der den Download-Bereich auf 3mfkatalog.de mit vorausgewählter Variante
+öffnet – dein Katalog und deine Einstellungen bleiben beim Installieren erhalten. Die Katalogkarte
+zeigt weiterhin den Platzhalter; der Hinweis erscheint erst, wenn du die Vorschau öffnest.
 
 Unten links kannst du das Modell als **gedruckt** markieren und es zur **Warteschlange**
 hinzufügen. Mit dem **Herz** markierst du es als Favorit; alle Favoriten findest du unter

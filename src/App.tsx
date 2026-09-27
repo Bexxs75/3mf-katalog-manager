@@ -29,6 +29,7 @@ import { useCatalogCleanup } from './hooks/useCatalogCleanup';
 import { useBulkSelection } from './hooks/useBulkSelection';
 import { useSlicerLauncher } from './hooks/useSlicerLauncher';
 import { useUpdater } from './hooks/useUpdater';
+import { useHasStepPreview } from './hooks/useHasStepPreview';
 import { useKeyboardShortcuts, MODEL_TILE_ATTR } from './hooks/useKeyboardShortcuts';
 import { usePrinterLink } from './hooks/usePrinterLink';
 import { usePrinters } from './hooks/usePrinters';
@@ -149,9 +150,12 @@ export default function App() {
     collections.collectionsGalleryOpen,
   ]);
 
+  // Unconfirmed (null) is treated as "no STEP support yet" - one skipped tick
+  // for a real STEP-preview build is cheaper than a guaranteed failed attempt.
+  const hasStepPreview = useHasStepPreview() ?? false;
   const snapshotIds = useMemo(
-    () => snapshotQueue(store.models, store.pendingSnapshotIds, displayPreference),
-    [store.models, store.pendingSnapshotIds, displayPreference],
+    () => snapshotQueue(store.models, store.pendingSnapshotIds, displayPreference, hasStepPreview),
+    [store.models, store.pendingSnapshotIds, displayPreference, hasStepPreview],
   );
 
   return (

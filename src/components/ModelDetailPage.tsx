@@ -4,7 +4,7 @@ import type { ModelFile, SlicerConfig, Collection } from '../types';
 import { useT, useLanguage } from '../i18n/LanguageContext';
 import { buildMetaRows } from '../lib/modelMetadata';
 import { isSafeHttpUrl } from '../lib/safeUrl';
-import { ModelViewer } from './ModelViewer';
+import { ModelPreview } from './ModelPreview';
 import { resolveDisplayImage } from '../lib/resolveDisplayImage';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import { useEditableSourceUrl } from '../hooks/useEditableSourceUrl';
@@ -141,8 +141,8 @@ export function ModelDetailPage({
             {showCustomImage && resolvedImage ? (
               <img src={resolvedImage} alt={model.name} className="absolute inset-0 w-full h-full object-contain" />
             ) : (
-              <ModelViewer
-                fileId={model.id}
+              <ModelPreview
+                model={model}
                 needsSnapshot={model.renderSnapshotImage === null}
                 onSnapshotCaptured={onSnapshotCaptured}
                 showRotationControls
