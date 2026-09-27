@@ -14,6 +14,7 @@ mod stl;
 mod tagging;
 mod threemf;
 mod update_check;
+mod updater;
 
 use std::sync::Mutex;
 
@@ -104,6 +105,7 @@ pub fn run() {
                 })
                 .build(),
         )
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // Version in the window title, taken straight from Cargo.toml.

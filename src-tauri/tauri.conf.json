@@ -39,5 +39,12 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDIwQzU2MDQwNjdFRjlGMDUKUldRRm4rOW5RR0RGSUhxaFc5TEwxK0ppZnJCUjY2eXdVWGhtK0k5cjdPcGdnbFkyOS8razNkT0QK",
+      "endpoints": ["https://github.com/Bexxs75/3mf-katalog-manager/releases/latest/download/latest.json"],
+      "windows": { "installMode": "passive" }
+    }
   }
 }
