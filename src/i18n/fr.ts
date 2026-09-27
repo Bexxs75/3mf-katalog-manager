@@ -95,7 +95,6 @@ export const fr: Translations = {
   stepHintTextAfter: ' les affiche – ton catalogue est conservé lors du changement.',
   stepHintButton: 'Télécharger la variante avec aperçu STEP',
 
-
   filamentDialogTitle: 'Stock de Filament',
   filamentMaterialLabel: 'Matériau',
   filamentManufacturerLabel: 'Fabricant',

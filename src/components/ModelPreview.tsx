@@ -21,8 +21,11 @@ interface Props {
 export function ModelPreview({ model, needsSnapshot, onSnapshotCaptured, onError, showRotationControls }: Props) {
   const hasStepPreview = useHasStepPreview();
 
-  if (isStepFilePath(model.path) && hasStepPreview === false) {
-    return <StepPreviewHint />;
+  if (isStepFilePath(model.path)) {
+    // Until the build's capabilities are known, mounting the viewer would
+    // already fire the geometry request (and possibly flash its error).
+    if (hasStepPreview === null) return null;
+    if (hasStepPreview === false) return <StepPreviewHint />;
   }
 
   return (

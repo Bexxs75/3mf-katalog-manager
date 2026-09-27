@@ -64,6 +64,7 @@ pub fn has_step_preview() -> bool {
 pub fn open_step_download(lang: String) -> CmdResult<()> {
     open_external(step_download_url(&lang))
 }
+
 #[tauri::command]
 pub fn open_release_url(url: String) -> CmdResult<()> {
     validate_release_url(&url)?;

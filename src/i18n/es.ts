@@ -95,7 +95,6 @@ export const es: Translations = {
   stepHintTextAfter: ' sí la muestra – tu catálogo se conserva al cambiar.',
   stepHintButton: 'Descargar la variante con vista previa STEP',
 
-
   filamentDialogTitle: 'Inventario de Filamento',
   filamentMaterialLabel: 'Material',
   filamentManufacturerLabel: 'Fabricante',

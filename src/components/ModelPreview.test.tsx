@@ -42,6 +42,23 @@ describe('ModelPreview', () => {
     expect(invoke).not.toHaveBeenCalledWith('get_model_geometry', expect.anything());
   });
 
+  it('mounts nothing for a STEP file while the build capabilities are still unknown', async () => {
+    let resolve: (v: boolean) => void = () => {};
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === 'has_step_preview' ? new Promise<boolean>((r) => { resolve = r; }) : Promise.reject(new Error(cmd)),
+    );
+    render(
+      <LanguageProvider>
+        <ModelPreview model={makeModelFile({ id: 'm1', path: '/catalog/teil.STEP' })} needsSnapshot={false} onSnapshotCaptured={() => {}} />
+      </LanguageProvider>,
+    );
+    expect(screen.queryByTestId('model-viewer')).not.toBeInTheDocument();
+    expect(screen.queryByText('Keine 3D-Vorschau für STEP-Dateien')).not.toBeInTheDocument();
+    resolve(false);
+    await waitFor(() => expect(screen.getByText('Keine 3D-Vorschau für STEP-Dateien')).toBeInTheDocument());
+    expect(screen.queryByTestId('model-viewer')).not.toBeInTheDocument();
+  });
+
   it('renders the real viewer for a STEP file when this build has STEP support', async () => {
     renderPreview(true);
     await waitFor(() => expect(screen.getByTestId('model-viewer')).toBeInTheDocument());

@@ -95,7 +95,6 @@ export const en: Translations = {
   stepHintTextAfter: ' shows them – your catalog is kept when you switch.',
   stepHintButton: 'Get the variant with STEP preview',
 
-
   filamentDialogTitle: 'Filament Inventory',
   filamentMaterialLabel: 'Material',
   filamentManufacturerLabel: 'Manufacturer',
