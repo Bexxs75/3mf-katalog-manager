@@ -650,6 +650,9 @@ fn step_geometry(_path: &Path) -> CmdResult<Vec<RenderMesh>> {
     Err(CmdError::expected("STEP-Vorschau ist in diesem Build nicht enthalten"))
 }
 
+/// Reads and stores a single file in one step. Imports go through
+/// [`import_many_in_batches`], which splits the two; tests use this shortcut.
+#[cfg(test)]
 pub(crate) fn import_one(
     conn: &Connection,
     path: &Path,
@@ -657,6 +660,16 @@ pub(crate) fn import_one(
     content_hash: Option<String>,
     folder_id: Option<i64>,
 ) -> CmdResult<ModelFileDto> {
+    let mut new_file = read_model_file(path, display_name)?;
+    new_file.content_hash = content_hash;
+    new_file.folder_id = folder_id;
+    store_model_file(conn, &new_file)
+}
+
+/// Reads and parses a model file into the row to insert, without touching the
+/// database. This is the slow part of an import (whole file read, geometry
+/// parsed), so batch imports run it without holding the database lock.
+fn read_model_file(path: &Path, display_name: Option<&str>) -> CmdResult<NewFile> {
     let file_name = display_name.map(|n| n.to_string()).unwrap_or_else(|| {
         path.file_name()
             .and_then(|n| n.to_str())
@@ -752,11 +765,11 @@ pub(crate) fn import_one(
         materials: &materials,
     });
 
-    let new_file = NewFile {
+    Ok(NewFile {
         name: file_name,
         path: path.to_string_lossy().to_string(),
         file_type,
-        folder_id,
+        folder_id: None,
         origin: "local".to_string(),
         cloud_id: None,
         sync_status: "local-only".to_string(),
@@ -773,7 +786,7 @@ pub(crate) fn import_one(
         print_status: "not_printed".to_string(),
         last_viewed_at: None,
         creator: metadata.get("Designer").cloned(),
-        content_hash,
+        content_hash: None,
         render_snapshot_png: None,
         custom_image_png: None,
         source_url: None,
@@ -781,9 +794,12 @@ pub(crate) fn import_one(
         favorite: false,
         plate_count,
         slice_info_json,
-    };
+    })
+}
 
-    let id = match db::insert_file_within_tx(conn, &new_file) {
+/// Inserts a row prepared by [`read_model_file`] and returns it as a DTO.
+fn store_model_file(conn: &Connection, new_file: &NewFile) -> CmdResult<ModelFileDto> {
+    let id = match db::insert_file_within_tx(conn, new_file) {
         Ok(id) => id,
         // The path still belongs to a trash row (files.path is UNIQUE, even for
         // soft-deleted rows): for the user this is just a normal duplicate, not a fault.
@@ -908,31 +924,73 @@ pub fn rescan_file_metadata(state: State<AppState>, file_id: String) -> CmdResul
 /// rest. A single unreadable/unparsable file is logged and skipped rather
 /// than aborting the whole batch.
 fn import_many(state: &State<AppState>, roots: Vec<PathBuf>) -> CmdResult<ImportResultDto> {
-    let mut conn = lock_db(state)?;
-    import_many_with_conn(&mut conn, roots)
+    let mut db: &Mutex<Connection> = &state.db;
+    import_many_in_batches(&mut db, roots)
 }
-/// Core of [`import_many`], parameterized over a plain [`Connection`] instead
-/// of a Tauri-managed `State` so it is directly unit-testable (a
-/// `State<AppState>` cannot be constructed outside of a running Tauri app).
+/// [`import_many`] on a connection the caller already holds, e.g. while
+/// extracting an archive or in unit tests (a `State<AppState>` cannot be
+/// constructed outside of a running Tauri app).
 pub(crate) fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) -> CmdResult<ImportResultDto> {
-    let mut seen = HashSet::new();
-    let mut imported = Vec::new();
-    let mut duplicate_count = 0i64;
+    let mut db: &mut Connection = conn;
+    import_many_in_batches(&mut db, roots)
+}
 
-    // One transaction for the whole batch: SQLite fsyncs on every commit.
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
+/// Files stored per transaction. SQLite fsyncs on every commit, so one commit
+/// per file would be slow; one commit for the whole import would hold the lock
+/// for minutes.
+const IMPORT_BATCH_SIZE: usize = 25;
+
+/// How a batch import reaches the database. With the app's shared connection
+/// every call locks it only for its own duration: the UI thread keeps
+/// answering while files are read (a synchronous command waiting for the lock
+/// freezes the window).
+pub(crate) trait ImportDb {
+    fn with_conn<R>(&mut self, f: impl FnOnce(&mut Connection) -> CmdResult<R>) -> CmdResult<R>;
+}
+impl ImportDb for &Mutex<Connection> {
+    fn with_conn<R>(&mut self, f: impl FnOnce(&mut Connection) -> CmdResult<R>) -> CmdResult<R> {
+        let mut conn = self.lock().map_err(|_| "database lock poisoned".to_string())?;
+        f(&mut conn)
+    }
+}
+impl ImportDb for &mut Connection {
+    fn with_conn<R>(&mut self, f: impl FnOnce(&mut Connection) -> CmdResult<R>) -> CmdResult<R> {
+        f(self)
+    }
+}
+
+/// A parsed file waiting to be stored with the next batch.
+struct PendingImport {
+    path: PathBuf,
+    /// Set for folder imports: the root the file's subfolders are mirrored from.
+    folder_root: Option<PathBuf>,
+    new_file: NewFile,
+}
+
+fn import_many_in_batches(db: &mut impl ImportDb, roots: Vec<PathBuf>) -> CmdResult<ImportResultDto> {
+    let mut seen_paths = HashSet::new();
+    let mut seen_hashes = HashSet::new();
+    let mut result = ImportResultDto {
+        imported: Vec::new(),
+        duplicate_count: 0,
+        // Archives aren't known here: they're split off and attached by the
+        // `#[tauri::command]` callers (`import_files`/`import_dropped`) once
+        // `import_many`/`import_many_with_conn` has returned.
+        pending_archives: Vec::new(),
+    };
+    let mut batch = Vec::with_capacity(IMPORT_BATCH_SIZE);
 
     for root in roots {
-        let is_folder_root = root.is_dir();
+        let folder_root = root.is_dir().then(|| root.clone());
         let mut candidates = Vec::new();
         collect_supported_files(&root, &mut candidates);
 
         for path in candidates {
             let path_str = path.to_string_lossy().to_string();
-            if !seen.insert(path_str.clone()) {
+            if !seen_paths.insert(path_str.clone()) {
                 continue;
             }
-            match db::file_exists_by_path(&tx, &path_str) {
+            match db.with_conn(|conn| db::file_exists_by_path(conn, &path_str).map_err(|e| e.to_string().into())) {
                 Ok(true) => continue,
                 Ok(false) => {}
                 Err(e) => {
@@ -950,9 +1008,13 @@ pub(crate) fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) 
                     continue;
                 }
             };
-            match db::file_exists_by_hash(&tx, &content_hash) {
+            if seen_hashes.contains(&content_hash) {
+                result.duplicate_count += 1;
+                continue;
+            }
+            match db.with_conn(|conn| db::file_exists_by_hash(conn, &content_hash).map_err(|e| e.to_string().into())) {
                 Ok(true) => {
-                    duplicate_count += 1;
+                    result.duplicate_count += 1;
                     continue;
                 }
                 Ok(false) => {}
@@ -962,38 +1024,62 @@ pub(crate) fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) 
                 }
             }
 
-            let folder_id = if is_folder_root {
-                path.parent()
-                    .and_then(|dir| db::ensure_folder_path(&tx, &root, dir).ok())
-            } else {
-                None
+            let mut new_file = match read_model_file(&path, None) {
+                Ok(f) => f,
+                Err(e) => {
+                    log::warn!(target: "import", "übersprungen: {path_str}: {e}");
+                    continue;
+                }
             };
-
-            match import_one(&tx, &path, None, Some(content_hash), folder_id) {
-                Ok(dto) => {
-                    log::debug!(target: "import", "{}", path.display());
-                    imported.push(dto);
-                }
-                Err(e) if e.contains("UNIQUE constraint failed") => {
-                    // The path still belongs to a trash row (files.path is UNIQUE); for the
-                    // user this is a duplicate. import_one already logged this at Info.
-                    duplicate_count += 1;
-                }
-                // import_one already logged the fault itself; this is just the
-                // (expected) consequence for the batch.
-                Err(e) => log::warn!(target: "import", "übersprungen: {path_str}: {e}"),
+            seen_hashes.insert(content_hash.clone());
+            new_file.content_hash = Some(content_hash);
+            batch.push(PendingImport { path, folder_root: folder_root.clone(), new_file });
+            if batch.len() >= IMPORT_BATCH_SIZE {
+                store_batch(db, &mut batch, &mut result)?;
             }
         }
     }
+    store_batch(db, &mut batch, &mut result)?;
+    Ok(result)
+}
 
-    tx.commit().map_err(|e| e.to_string())?;
-    Ok(ImportResultDto {
-        imported,
-        duplicate_count,
-        // Archives aren't known here: they're split off and attached by the
-        // `#[tauri::command]` callers (`import_files`/`import_dropped`) once
-        // `import_many`/`import_many_with_conn` has returned.
-        pending_archives: Vec::new(),
+/// Stores the pending files in one transaction and empties `batch`.
+fn store_batch(db: &mut impl ImportDb, batch: &mut Vec<PendingImport>, result: &mut ImportResultDto) -> CmdResult<()> {
+    if batch.is_empty() {
+        return Ok(());
+    }
+    let pending = std::mem::take(batch);
+    db.with_conn(|conn| {
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        for PendingImport { path, folder_root, mut new_file } in pending {
+            // The lock was free since the checks above: another import may have
+            // stored the same file in the meantime.
+            if db::file_exists_by_path(&tx, &new_file.path).unwrap_or(false) {
+                continue;
+            }
+            if let Some(hash) = &new_file.content_hash {
+                if db::file_exists_by_hash(&tx, hash).unwrap_or(false) {
+                    result.duplicate_count += 1;
+                    continue;
+                }
+            }
+            new_file.folder_id = folder_root
+                .as_deref()
+                .and_then(|root| path.parent().and_then(|dir| db::ensure_folder_path(&tx, root, dir).ok()));
+            match store_model_file(&tx, &new_file) {
+                Ok(dto) => {
+                    log::debug!(target: "import", "{}", path.display());
+                    result.imported.push(dto);
+                }
+                Err(e) if e.contains("UNIQUE constraint failed") => {
+                    // The path still belongs to a trash row (files.path is UNIQUE); for the
+                    // user this is a duplicate.
+                    result.duplicate_count += 1;
+                }
+                Err(e) => log::warn!(target: "import", "übersprungen: {}: {e}", path.display()),
+            }
+        }
+        tx.commit().map_err(|e| e.to_string().into())
     })
 }
 /// One-line summary logged exactly once per user-triggered import, by the
@@ -1077,20 +1163,24 @@ pub async fn import_folder(
     log::info!(target: "import", "{}", import_summary(&result, started.elapsed().as_secs_f64()));
     Ok(result)
 }
+/// Also used by the setup dialog to adopt an existing catalog folder, which can
+/// hold thousands of files. `async` + `spawn_blocking`: a synchronous command
+/// runs on the UI thread and would freeze the window for the whole import.
 #[tauri::command]
-pub fn import_dropped(
-    state: State<AppState>,
-    pending: State<PendingArchives>,
-    paths: Vec<String>,
-) -> CmdResult<ImportResultDto> {
-    let (models, archives) = split_archives(paths.into_iter().map(PathBuf::from).collect());
-    let started = std::time::Instant::now();
-    let mut result = import_many(&state, models)?;
-    // Archives only if the backend observed the drop itself (see `on_window_event`
-    // in lib.rs); other archive paths are ignored.
-    result.pending_archives = pending.claim_dropped(archives);
-    log::info!(target: "import", "{}", import_summary(&result, started.elapsed().as_secs_f64()));
-    Ok(result)
+pub async fn import_dropped(app: tauri::AppHandle, paths: Vec<String>) -> CmdResult<ImportResultDto> {
+    use tauri::Manager;
+    tauri::async_runtime::spawn_blocking(move || {
+        let (models, archives) = split_archives(paths.into_iter().map(PathBuf::from).collect());
+        let started = std::time::Instant::now();
+        let mut result = import_many(&app.state::<AppState>(), models)?;
+        // Archives only if the backend observed the drop itself (see `on_window_event`
+        // in lib.rs); other archive paths are ignored.
+        result.pending_archives = app.state::<PendingArchives>().claim_dropped(archives);
+        log::info!(target: "import", "{}", import_summary(&result, started.elapsed().as_secs_f64()));
+        Ok(result)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 /// Opens a path in the system file manager.
 #[tauri::command]
@@ -2405,5 +2495,116 @@ mod tests {
             archives,
             vec![zip.to_string_lossy().to_string(), tgz.to_string_lossy().to_string()]
         );
+    }
+
+    /// Binary STL with one triangle; `seed` makes the content (and hash) unique.
+    fn write_binary_stl(path: &Path, seed: u32) {
+        let mut bytes = vec![0u8; 80];
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        let s = seed as f32;
+        for v in [0.0f32, 0.0, 1.0, 0.0, 0.0, s, 10.0, 0.0, s, 0.0, 10.0, s + 1.0] {
+            bytes.extend_from_slice(&v.to_le_bytes());
+        }
+        bytes.extend_from_slice(&0u16.to_le_bytes());
+        std::fs::write(path, bytes).expect("write stl");
+    }
+
+    /// Counts database accesses; every access locks the mutex only for its own duration.
+    struct CountingDb<'a> {
+        db: &'a Mutex<Connection>,
+        accesses: usize,
+    }
+    impl ImportDb for CountingDb<'_> {
+        fn with_conn<R>(&mut self, f: impl FnOnce(&mut Connection) -> CmdResult<R>) -> CmdResult<R> {
+            self.accesses += 1;
+            let mut conn = self.db.lock().expect("lock");
+            f(&mut conn)
+        }
+    }
+
+    #[test]
+    fn batch_import_stores_in_several_short_transactions() {
+        let tmp = unique_test_dir("import_batches");
+        let count = IMPORT_BATCH_SIZE * 2 + 3;
+        for i in 0..count {
+            write_binary_stl(&tmp.join(format!("part_{i}.stl")), i as u32);
+        }
+        let db = Mutex::new(crate::db::connect_in_memory().expect("connect"));
+        let mut counting = CountingDb { db: &db, accesses: 0 };
+
+        let result = import_many_in_batches(&mut counting, vec![tmp.clone()]).expect("import");
+
+        assert_eq!(result.imported.len(), count);
+        // Three stored batches plus the short per-file duplicate checks: the lock
+        // is taken many times instead of once for the whole import.
+        assert!(counting.accesses > count, "only {} database accesses", counting.accesses);
+        assert_eq!(db::list_files(&db.lock().unwrap()).unwrap().len(), count);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn database_stays_available_while_a_batch_import_runs() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+
+        let tmp = unique_test_dir("import_concurrent_lock");
+        for i in 0..400u32 {
+            write_binary_stl(&tmp.join(format!("part_{i}.stl")), i);
+        }
+        let db = Arc::new(Mutex::new(crate::db::connect_in_memory().expect("connect")));
+        let done = Arc::new(AtomicBool::new(false));
+
+        let worker = {
+            let (db, done, tmp) = (db.clone(), done.clone(), tmp.clone());
+            std::thread::spawn(move || {
+                let mut access: &Mutex<Connection> = &db;
+                let result = import_many_in_batches(&mut access, vec![tmp]);
+                done.store(true, Ordering::SeqCst);
+                result
+            })
+        };
+        // Wait until the import has stored its first batch, then another caller
+        // (like the UI thread) must get the lock before the import is finished.
+        while !done.load(Ordering::SeqCst) {
+            if db.lock().map(|c| db::list_files(&c).map(|f| !f.is_empty()).unwrap_or(false)).unwrap_or(false) {
+                break;
+            }
+            std::thread::yield_now();
+        }
+        assert!(!done.load(Ordering::SeqCst), "the import held the database until it was finished");
+
+        let result = worker.join().expect("worker").expect("import");
+        assert_eq!(result.imported.len(), 400);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn identical_files_in_one_import_count_as_duplicates() {
+        let tmp = unique_test_dir("import_same_content");
+        write_binary_stl(&tmp.join("a.stl"), 7);
+        write_binary_stl(&tmp.join("b.stl"), 7);
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+
+        let result = import_many_with_conn(&mut conn, vec![tmp.clone()]).expect("import");
+
+        assert_eq!(result.imported.len(), 1);
+        assert_eq!(result.duplicate_count, 1);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn importing_the_same_folder_again_adds_nothing() {
+        let tmp = unique_test_dir("import_twice");
+        for i in 0..3u32 {
+            write_binary_stl(&tmp.join(format!("part_{i}.stl")), i);
+        }
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+
+        import_many_with_conn(&mut conn, vec![tmp.clone()]).expect("first import");
+        let again = import_many_with_conn(&mut conn, vec![tmp.clone()]).expect("second import");
+
+        assert!(again.imported.is_empty());
+        assert_eq!(db::list_files(&conn).unwrap().len(), 3);
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }
