@@ -46,6 +46,20 @@ pub fn read_bounded(path: &Path, max: u64) -> std::io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
+/// Creates `path` exclusively (never follows a symlink, never replaces a file)
+/// and, on Unix, readable only by the owner from the first moment on - a
+/// chmod afterwards leaves a window in which others can open the file.
+pub fn create_new_private(path: &Path) -> std::io::Result<File> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options.open(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -113,5 +127,23 @@ mod tests {
                 .expect("parsers must not hang on /dev/zero or a FIFO");
             assert_eq!(results, [true; 4]);
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_private_file_is_0600_from_the_start_and_never_replaces_anything() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = unique_test_dir("private_new");
+        let path = dir.join("a.db");
+        let file = create_new_private(&path).unwrap();
+        assert_eq!(file.metadata().unwrap().permissions().mode() & 0o777, 0o600);
+        assert_eq!(create_new_private(&path).unwrap_err().kind(), ErrorKind::AlreadyExists);
+
+        let target = dir.join("victim.txt");
+        std::fs::write(&target, b"KEEP").unwrap();
+        let link = dir.join("link.db");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(create_new_private(&link).is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"KEEP");
     }
 }

@@ -24,7 +24,6 @@ pub async fn export_catalog(
     state: State<'_, AppState>,
     settings_json: String,
 ) -> CmdResult<()> {
-    use std::io::Write;
 
     let picked = app
         .dialog()
@@ -43,17 +42,13 @@ pub async fn export_catalog(
 
     let backup_db_path =
         std::env::temp_dir().join(format!("3mf-katalog-export-{}.db", std::process::id()));
-    let tmp_zip_path = dest_path.with_extension("zip.tmp");
 
     // A closure, so both temp files are cleaned up on failure too.
     let result: CmdResult<()> = (|| {
         {
-            // Create exclusively (symlink race), see `write_temp_file_exclusive`.
-            std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&backup_db_path)
-                .map_err(|e| e.to_string())?;
+            // Exclusive and private from the start (symlink race, readable copy of
+            // the catalog), see `safe_file::create_new_private`.
+            crate::safe_file::create_new_private(&backup_db_path).map_err(|e| e.to_string())?;
             crate::harden_permissions(&backup_db_path);
 
             let conn = lock_db(&state)?;
@@ -65,41 +60,57 @@ pub async fn export_catalog(
                 .map_err(|e| e.to_string())?;
         }
 
-        let zip_file = std::fs::File::create(&tmp_zip_path).map_err(|e| e.to_string())?;
-        let mut zip = zip::ZipWriter::new(zip_file);
-        let options = zip::write::SimpleFileOptions::default();
-
-        zip.start_file("catalog.db", options).map_err(|e| e.to_string())?;
         let db_bytes = std::fs::read(&backup_db_path).map_err(|e| e.to_string())?;
-        zip.write_all(&db_bytes).map_err(|e| e.to_string())?;
-
-        zip.start_file("settings.json", options).map_err(|e| e.to_string())?;
-        zip.write_all(settings_json.as_bytes()).map_err(|e| e.to_string())?;
-
-        zip.finish().map_err(|e| e.to_string())?;
+        write_zip_atomically(&dest_path, &[("catalog.db", &db_bytes), ("settings.json", settings_json.as_bytes())])
+            .map_err(|e| e.to_string())?;
         Ok(())
     })();
 
     let _ = std::fs::remove_file(&backup_db_path);
-    if let Err(e) = result {
-        let _ = std::fs::remove_file(&tmp_zip_path);
-        return Err(e);
-    }
-
-    // Rename only after the write finished: never a partial archive at the destination.
-    if let Err(e) = std::fs::rename(&tmp_zip_path, &dest_path) {
-        let _ = std::fs::remove_file(&tmp_zip_path);
-        return Err(e.to_string().into());
-    }
+    result?;
     log::info!(target: "backup", "Sicherung erstellt");
     Ok(())
+}
+/// Writes a ZIP with `entries` to `dest` via a private temp file next to it and
+/// renames it into place only when complete: never a partial archive at the
+/// destination. The temp name is unpredictable and created exclusively, so a
+/// symlink planted under a guessable name can't redirect the write.
+fn write_zip_atomically(dest: &Path, entries: &[(&str, &[u8])]) -> std::io::Result<()> {
+    use std::io::Write;
+    let parent = dest.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let base = dest.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    let (tmp_path, file) = (0..16)
+        .find_map(|attempt| {
+            let candidate = parent.join(format!(".{base}.{}-{nanos}-{attempt}.tmp", std::process::id()));
+            crate::safe_file::create_new_private(&candidate).ok().map(|f| (candidate, f))
+        })
+        .ok_or_else(|| std::io::Error::other("no temp file for the backup could be created"))?;
+
+    let written = (|| {
+        let mut zip = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default();
+        for (name, bytes) in entries {
+            zip.start_file(*name, options).map_err(std::io::Error::other)?;
+            zip.write_all(bytes)?;
+        }
+        zip.finish().map_err(std::io::Error::other)?.sync_all()?;
+        std::fs::rename(&tmp_path, dest)
+    })();
+    if written.is_err() {
+        let _ = std::fs::remove_file(&tmp_path);
+    }
+    written
 }
 /// Writes `bytes` exclusively (`create_new`) to `path` and sets 0600.
 /// `fs::write` would follow a pre-planted symlink in a shared `/tmp` and create
 /// the file with umask permissions (often world-readable) (CWE-377, TOCTOU).
 fn write_temp_file_exclusive(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
-    let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(path)?;
+    let mut file = crate::safe_file::create_new_private(path)?;
     file.write_all(bytes)?;
     drop(file);
     crate::harden_permissions(path);
@@ -1208,6 +1219,38 @@ mod tests {
         });
         rx.recv_timeout(std::time::Duration::from_secs(5))
             .expect("the validation must reject the database before running its SQL")
+    }
+    #[cfg(unix)]
+    #[test]
+    fn backup_zip_ignores_a_planted_temp_symlink_and_is_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = unique_test_dir("backup_zip_symlink");
+        let dest = dir.join("backup.zip");
+        let victim = dir.join("victim.txt");
+        std::fs::write(&victim, b"KEEP").unwrap();
+        std::os::unix::fs::symlink(&victim, dir.join("backup.zip.tmp")).unwrap();
+
+        write_zip_atomically(&dest, &[("catalog.db", b"DB"), ("settings.json", b"{}")]).unwrap();
+
+        assert_eq!(std::fs::read(&victim).unwrap(), b"KEEP");
+        assert_eq!(std::fs::metadata(&dest).unwrap().permissions().mode() & 0o777, 0o600);
+        let mut zip = zip::ZipArchive::new(std::fs::File::open(&dest).unwrap()).unwrap();
+        assert_eq!(zip.len(), 2);
+        assert_eq!(zip.by_name("catalog.db").unwrap().size(), 2);
+        let leftovers: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .filter(|n| n.ends_with(".tmp") && n != "backup.zip.tmp")
+            .collect();
+        assert!(leftovers.is_empty(), "{leftovers:?}");
+    }
+    #[cfg(unix)]
+    #[test]
+    fn temp_copy_for_validation_is_private_from_the_start() {
+        use std::os::unix::fs::PermissionsExt;
+        let path = unique_test_dir("temp_exclusive").join("check.db");
+        write_temp_file_exclusive(&path, b"x").unwrap();
+        assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
     }
     #[test]
     fn validate_catalog_db_bytes_rejects_an_endless_view_named_files_without_running_it() {
