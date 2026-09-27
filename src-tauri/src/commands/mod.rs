@@ -14,6 +14,7 @@ mod printers;
 mod security;
 mod slicers;
 mod trash;
+mod updater;
 
 pub use archives::*;
 pub use backup::*;
@@ -29,6 +30,7 @@ pub use printers::*;
 pub use security::*;
 pub use slicers::*;
 pub use trash::*;
+pub use updater::*;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -45,7 +47,7 @@ use crate::db::{self, models::FileRecord};
 use crate::geometry::RenderMesh;
 use crate::slicers::detect_slicers;
 use crate::tagging::{self, TaggingContext};
-use crate::{obj, stl, threemf, update_check};
+use crate::{obj, stl, threemf};
 
 pub struct AppState {
     pub db: Mutex<Connection>,

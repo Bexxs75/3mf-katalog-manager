@@ -1,0 +1,184 @@
+//! Tauri commands for updating the app from within itself: check the manifest,
+//! download the signed package with progress, discard it, or back up the
+//! catalog and install it.
+use super::*;
+use tauri::ipc::Channel;
+use tauri::Manager;
+use tauri_plugin_updater::UpdaterExt;
+
+use crate::db::printer_link::{get_setting, set_setting};
+use crate::updater::{self, backup, LastUpdateInfo};
+
+#[derive(Default)]
+pub struct UpdaterState {
+    /// Downloaded and signature-checked update waiting for "restart and install".
+    pending: Mutex<Option<(tauri_plugin_updater::Update, Vec<u8>)>>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateInfoDto {
+    pub current_version: String,
+    pub available_version: Option<String>,
+    pub release_url: Option<String>,
+    pub can_install: bool,
+    pub last_update: Option<LastUpdateInfo>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadProgress {
+    pub downloaded: u64,
+    pub total: Option<u64>,
+}
+
+async fn fetch_update(app: &tauri::AppHandle) -> Result<Option<tauri_plugin_updater::Update>, String> {
+    let override_value = std::env::var(updater::ENDPOINT_ENV).ok();
+    let url = updater::endpoint(cfg!(feature = "step-preview"), cfg!(debug_assertions), override_value.as_deref());
+    let url = url.parse().map_err(|e| format!("{e}"))?;
+    let mut builder = app.updater_builder();
+    if cfg!(debug_assertions) {
+        if let Some(key) = std::env::var(updater::PUBKEY_ENV).ok().filter(|k| !k.trim().is_empty()) {
+            builder = builder.pubkey(key);
+        }
+    }
+    builder
+        .endpoints(vec![url])
+        .map_err(|e| e.to_string())?
+        .build()
+        .map_err(|e| e.to_string())?
+        .check()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+fn current_os() -> &'static str {
+    crate::diagnostics::form_url::current_os()
+}
+
+#[tauri::command]
+pub async fn check_app_update(app: tauri::AppHandle, state: State<'_, AppState>) -> CmdResult<UpdateInfoDto> {
+    let current = env!("CARGO_PKG_VERSION");
+    let stored = {
+        let conn = lock_db(&state)?;
+        get_setting(&conn, updater::LAST_UPDATE_KEY)
+            .ok()
+            .flatten()
+            .and_then(|raw| serde_json::from_str::<LastUpdateInfo>(&raw).ok())
+    };
+    let available = match fetch_update(&app).await {
+        Ok(Some(u)) => {
+            log::info!(target: "update", "Update-Check: installiert {current}, verfügbar {}", u.version);
+            Some(u.version)
+        }
+        Ok(None) => {
+            log::info!(target: "update", "Update-Check: {current} ist aktuell");
+            None
+        }
+        // No visible error for the check itself: offline users should not be bothered.
+        Err(e) => {
+            log::info!(target: "update", "Update-Check nicht möglich: {e}");
+            None
+        }
+    };
+    Ok(UpdateInfoDto {
+        current_version: current.to_string(),
+        release_url: available.as_deref().map(updater::release_page),
+        available_version: available,
+        can_install: updater::can_self_install(current_os(), std::env::var("APPIMAGE").ok().as_deref()),
+        last_update: updater::visible_last_update(stored, current),
+    })
+}
+
+#[tauri::command]
+pub async fn download_app_update(
+    app: tauri::AppHandle,
+    pending: State<'_, UpdaterState>,
+    on_progress: Channel<DownloadProgress>,
+) -> CmdResult<String> {
+    let update = fetch_update(&app)
+        .await
+        .map_err(|e| format!("Update-Prüfung fehlgeschlagen: {e}"))?
+        .ok_or_else(|| CmdError::expected("Es ist kein Update mehr verfügbar"))?;
+    log::info!(target: "update", "Download von {} gestartet", update.version);
+    let mut downloaded = 0u64;
+    let bytes = update
+        .download(
+            |chunk, total| {
+                downloaded += chunk as u64;
+                let _ = on_progress.send(DownloadProgress { downloaded, total });
+            },
+            || {},
+        )
+        .await
+        .map_err(|e| format!("Download fehlgeschlagen: {e}"))?;
+    log::info!(target: "update", "Download von {} fertig ({} Bytes, Signatur geprüft)", update.version, bytes.len());
+    let version = update.version.clone();
+    *pending.pending.lock().map_err(|_| "update lock poisoned".to_string())? = Some((update, bytes));
+    Ok(version)
+}
+
+#[tauri::command]
+pub fn discard_app_update(pending: State<UpdaterState>) -> CmdResult<()> {
+    *pending.pending.lock().map_err(|_| "update lock poisoned".to_string())? = None;
+    log::info!(target: "update", "Heruntergeladenes Update verworfen");
+    Ok(())
+}
+
+#[tauri::command]
+pub fn install_app_update(app: tauri::AppHandle, state: State<AppState>, pending: State<UpdaterState>) -> CmdResult<()> {
+    let (update, bytes) = pending
+        .pending
+        .lock()
+        .map_err(|_| "update lock poisoned".to_string())?
+        .take()
+        .ok_or_else(|| CmdError::expected("Es liegt kein heruntergeladenes Update vor"))?;
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("update-backups");
+    {
+        let conn = lock_db(&state)?;
+        let path = backup::create(&conn, &dir, &update.version)
+            .map_err(|e| format!("Sicherung fehlgeschlagen, das Update wurde nicht installiert: {e}"))?;
+        let info = LastUpdateInfo {
+            version: update.version.clone(),
+            date: chrono::Local::now().format("%Y-%m-%d").to_string(),
+            backup_file: backup::file_name(&update.version),
+        };
+        let json = serde_json::to_string(&info).map_err(|e| e.to_string())?;
+        set_setting(&conn, updater::LAST_UPDATE_KEY, &json).map_err(|e| e.to_string())?;
+        log::info!(target: "update", "Katalog gesichert: {}", path.display());
+    }
+    log::info!(target: "update", "Installation von {} gestartet", update.version);
+    update.install(bytes).map_err(|e| format!("Installation fehlgeschlagen: {e}"))?;
+    // Windows exits inside install() and the installer restarts the app; on macOS
+    // and Linux the new bundle is in place and we restart into it.
+    app.restart();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn update_info_dto_is_camel_case() {
+        let dto = UpdateInfoDto {
+            current_version: "0.15.0".into(),
+            available_version: Some("0.15.1".into()),
+            release_url: Some("https://example.com".into()),
+            can_install: true,
+            last_update: None,
+        };
+        let json = serde_json::to_value(&dto).unwrap();
+        let obj = json.as_object().unwrap();
+        assert!(obj.contains_key("currentVersion"));
+        assert!(obj.contains_key("availableVersion"));
+        assert!(obj.contains_key("releaseUrl"));
+        assert!(obj.contains_key("canInstall"));
+        assert!(obj.contains_key("lastUpdate"));
+    }
+
+    #[test]
+    fn download_progress_is_camel_case() {
+        let progress = DownloadProgress { downloaded: 5, total: Some(10) };
+        assert_eq!(serde_json::to_string(&progress).unwrap(), r#"{"downloaded":5,"total":10}"#);
+    }
+}

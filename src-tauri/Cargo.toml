@@ -51,9 +51,6 @@ rusqlite = { version = "0.40.2", features = ["bundled", "backup", "trace"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 base64 = "0.22"
 sha2 = "0.10"
-# Update check: real SemVer comparison (also for pre-releases like
-# "0.14.0-gharac").
-semver = "1"
 log = "0.4"
 tauri-plugin-log = "2.9"
 tauri-plugin-updater = "2.13"

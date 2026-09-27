@@ -4,18 +4,13 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::Connection;
 
-// The updater command that calls this is added once the update flow lands;
-// until then it is exercised only by the unit tests below.
-#[allow(dead_code)]
 pub const KEEP: usize = 3;
 const PREFIX: &str = "catalog-vor-";
 
-#[allow(dead_code)]
 pub fn file_name(version: &str) -> String {
     format!("{PREFIX}{version}.db")
 }
 
-#[allow(dead_code)]
 pub fn create(conn: &Connection, dir: &Path, version: &str) -> Result<PathBuf, String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     crate::harden_permissions(dir);
@@ -34,7 +29,6 @@ pub fn create(conn: &Connection, dir: &Path, version: &str) -> Result<PathBuf, S
     Ok(path)
 }
 
-#[allow(dead_code)]
 pub fn prune(dir: &Path, keep: usize) -> std::io::Result<()> {
     let mut backups: Vec<(std::time::SystemTime, PathBuf)> = std::fs::read_dir(dir)?
         .flatten()

@@ -1,8 +1,6 @@
 use super::*;
 
 const GITHUB_REPO_URL_PREFIX: &str = "https://github.com/Bexxs75/3mf-katalog-manager/";
-const GITHUB_API_LATEST_RELEASE_URL: &str =
-    "https://api.github.com/repos/Bexxs75/3mf-katalog-manager/releases/latest";
 const DISCORD_INVITE_URL: &str = "https://discord.gg/abfVNfFqu3";
 
 // Only links to our own GitHub repo are opened, although the URL comes from a
@@ -27,51 +25,10 @@ pub(crate) fn open_external(target: &str) -> CmdResult<()> {
     cmd.arg(target).spawn().map_err(|e| e.to_string())?;
     Ok(())
 }
-/// Own version immediately and without network, so the UI doesn't wait for `check_for_update` (up to 5 s).
+/// Own version immediately and without network, so the UI doesn't wait on `check_app_update`.
 #[tauri::command]
 pub fn get_app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
-}
-#[tauri::command]
-pub async fn check_for_update() -> CmdResult<update_check::UpdateCheckResult> {
-    let current = env!("CARGO_PKG_VERSION");
-
-    let client = match reqwest::Client::builder()
-        .user_agent("3mf-katalog-manager-update-check")
-        .timeout(std::time::Duration::from_secs(5))
-        .build()
-    {
-        Ok(c) => c,
-        Err(_) => return Ok(update_check::compare_versions(current, current, "")),
-    };
-
-    let response = match client.get(GITHUB_API_LATEST_RELEASE_URL).send().await {
-        Ok(r) => r,
-        // Network error: silently treat as "no update", never an error dialog.
-        Err(_) => {
-            log::info!(target: "update", "Update-Check: keine Verbindung");
-            return Ok(update_check::compare_versions(current, current, ""));
-        }
-    };
-
-    #[derive(serde::Deserialize)]
-    struct GithubRelease {
-        tag_name: String,
-        html_url: String,
-    }
-
-    let release: GithubRelease = match response.json().await {
-        Ok(r) => r,
-        // Not a network error (a response did arrive) but still no usable version
-        // to compare against - same silent "no update" outcome for the user.
-        Err(_) => {
-            log::info!(target: "update", "Update-Check: Antwort nicht lesbar");
-            return Ok(update_check::compare_versions(current, current, ""));
-        }
-    };
-
-    log::info!(target: "update", "Update-Check: installiert {current}, neueste {}", release.tag_name);
-    Ok(update_check::compare_versions(current, &release.tag_name, &release.html_url))
 }
 #[tauri::command]
 pub fn open_release_url(url: String) -> CmdResult<()> {

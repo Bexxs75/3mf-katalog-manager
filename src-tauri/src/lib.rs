@@ -13,7 +13,6 @@ pub mod step;
 mod stl;
 mod tagging;
 mod threemf;
-mod update_check;
 mod updater;
 
 use std::sync::Mutex;
@@ -152,6 +151,7 @@ pub fn run() {
             app.manage(waker);
             app.manage(commands::DroppedImages::default());
             app.manage(commands::DiagnosticsState::default());
+            app.manage(commands::UpdaterState::default());
             Ok(())
         })
         // Observe drops in the backend itself: `import_dropped` only approves archives
@@ -258,7 +258,10 @@ pub fn run() {
             commands::reorder_collection,
             commands::list_collection_files,
             commands::get_app_version,
-            commands::check_for_update,
+            commands::check_app_update,
+            commands::download_app_update,
+            commands::discard_app_update,
+            commands::install_app_update,
             commands::open_release_url,
             commands::open_discord_invite,
             commands::get_verbose_logging,

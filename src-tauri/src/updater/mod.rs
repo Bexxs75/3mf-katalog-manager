@@ -4,24 +4,16 @@ pub mod backup;
 
 use serde::{Deserialize, Serialize};
 
-// The commands that call these are added once the updater UI lands; until then
-// they are exercised only by the unit tests below.
-#[allow(dead_code)]
 pub const ENDPOINT: &str = "https://github.com/Bexxs75/3mf-katalog-manager/releases/latest/download/latest.json";
-#[allow(dead_code)]
 pub const ENDPOINT_STEP: &str =
     "https://github.com/Bexxs75/3mf-katalog-manager/releases/latest/download/latest-step.json";
-#[allow(dead_code)]
 pub const ENDPOINT_ENV: &str = "MFK_UPDATE_ENDPOINT";
 /// Debug builds only: public key for updates signed with a throwaway test key.
-#[allow(dead_code)]
 pub const PUBKEY_ENV: &str = "MFK_UPDATE_PUBKEY";
-#[allow(dead_code)]
 pub const LAST_UPDATE_KEY: &str = "last_update_info";
 
 /// A STEP build must only ever update to a STEP build and vice versa, so the
 /// variant picks the endpoint. The override exists for local update tests.
-#[allow(dead_code)]
 pub fn endpoint(step: bool, allow_override: bool, override_value: Option<&str>) -> String {
     if allow_override {
         if let Some(v) = override_value.map(str::trim).filter(|v| !v.is_empty()) {
@@ -31,19 +23,16 @@ pub fn endpoint(step: bool, allow_override: bool, override_value: Option<&str>) 
     if step { ENDPOINT_STEP } else { ENDPOINT }.to_string()
 }
 
-#[allow(dead_code)]
 pub fn release_page(version: &str) -> String {
     format!("https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v{version}")
 }
 
 /// On Linux only the AppImage can replace itself; the `APPIMAGE` variable is set
 /// by the AppImage runtime. Package-manager installs update through the package manager.
-#[allow(dead_code)]
 pub fn can_self_install(os: &str, appimage_env: Option<&str>) -> bool {
     os != "linux" || appimage_env.is_some_and(|v| !v.is_empty())
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LastUpdateInfo {
@@ -52,7 +41,6 @@ pub struct LastUpdateInfo {
     pub backup_file: String,
 }
 
-#[allow(dead_code)]
 pub fn visible_last_update(stored: Option<LastUpdateInfo>, current_version: &str) -> Option<LastUpdateInfo> {
     stored.filter(|i| i.version == current_version)
 }
