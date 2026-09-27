@@ -1294,12 +1294,14 @@ pub async fn get_model_geometry(
     let meshes = tauri::async_runtime::spawn_blocking(move || -> CmdResult<Vec<RenderMesh>> {
         match extension.as_str() {
             "stl" => {
-                let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+                let bytes = crate::safe_file::read_bounded(&path, crate::safe_file::MAX_MODEL_FILE_BYTES)
+                    .map_err(|e| e.to_string())?;
                 let mesh = stl::parse_stl_geometry(&bytes).map_err(|e| e.to_string())?;
                 Ok(vec![mesh])
             }
             "obj" => {
-                let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+                let bytes = crate::safe_file::read_bounded(&path, crate::safe_file::MAX_MODEL_FILE_BYTES)
+                    .map_err(|e| e.to_string())?;
                 let mesh = obj::parse_obj_geometry(&bytes).map_err(|e| e.to_string())?;
                 Ok(vec![mesh])
             }

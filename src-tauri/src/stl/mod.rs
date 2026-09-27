@@ -15,7 +15,7 @@ pub struct StlDocument {
 
 #[allow(dead_code)]
 pub fn parse_stl_file(path: &Path) -> Result<StlDocument, StlError> {
-    let bytes = std::fs::read(path)?;
+    let bytes = crate::safe_file::read_bounded(path, crate::safe_file::MAX_MODEL_FILE_BYTES)?;
     parse_stl_bytes(&bytes)
 }
 

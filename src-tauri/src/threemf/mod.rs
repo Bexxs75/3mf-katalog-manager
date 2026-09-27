@@ -6,7 +6,6 @@ pub mod plates;
 pub mod slice_info;
 
 use std::collections::BTreeMap;
-use std::fs::File;
 use std::path::Path;
 
 pub use error::ThreeMfError;
@@ -34,7 +33,7 @@ pub struct ThreeMfDocument {
 }
 
 pub fn parse_3mf_file(path: &Path) -> Result<ThreeMfDocument, ThreeMfError> {
-    let file = File::open(path)?;
+    let file = crate::safe_file::open_regular(path)?;
     parse_3mf_reader(file)
 }
 
@@ -50,7 +49,7 @@ pub fn parse_3mf_bytes(bytes: &[u8]) -> Result<ThreeMfDocument, ThreeMfError> {
 /// already world-transformed, normals stay `None` (matching the previous behavior
 /// of three.js' ThreeMFLoader, which never set normals for 3MF).
 pub fn extract_render_meshes_from_path(path: &Path) -> Result<Vec<RenderMesh>, ThreeMfError> {
-    let file = File::open(path)?;
+    let file = crate::safe_file::open_regular(path)?;
     let package = container::read_package(file)?;
     extract_render_meshes(&package)
 }
