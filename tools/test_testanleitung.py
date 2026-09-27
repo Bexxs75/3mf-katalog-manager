@@ -54,6 +54,13 @@ class Fill(unittest.TestCase):
         self.assertEqual(v["paket"], "3MF-Katalog-Manager-Preview-0.15.0-2-Windows-x64.msi")
         self.assertIn("com.thebexxs.mfkatalogmanager.preview", v["datenordner"])
         self.assertIn("version=0.15.0-2", v["formular"])
+        # Log paths match Tauri's app_log_dir (see tauri-plugin-log's
+        # TargetKind::LogDir), which is NOT "<data folder>/logs" on Windows/macOS.
+        self.assertEqual(v["logordner"], r"%LOCALAPPDATA%\com.thebexxs.mfkatalogmanager.preview\logs")
+        macos = ta.platform_values("0.15.0-2", "macos")
+        self.assertEqual(macos["logordner"], "~/Library/Logs/com.thebexxs.mfkatalogmanager.preview")
+        linux = ta.platform_values("0.15.0-2", "linux")
+        self.assertEqual(linux["logordner"], "~/.local/share/com.thebexxs.mfkatalogmanager.preview/logs")
 
 class FillScenarioText(unittest.TestCase):
     def test_substitutes_placeholders_in_place(self):
@@ -74,6 +81,24 @@ class Changelog(unittest.TestCase):
         self.assertIn("DE-Text", ta.changelog_unreleased_de(text))
         self.assertNotIn("alt", ta.changelog_unreleased_de(text))
         self.assertNotIn("EN text", ta.changelog_unreleased_de(text))
+
+class ScenarioHtml(unittest.TestCase):
+    def test_backticks_become_code_and_no_raw_html_passes(self):
+        s = ta.Scenario(
+            id="P1", title="Mit `code`",
+            steps=["Nutze `$f = [System.IO.File]::Open(\"<Katalog>\\x.3mf\")`."],
+            expected="Zeigt `<script>alert(1)</script>` nicht aus.",
+            note="Auch `hier`.", only=set(),
+        )
+        out = ta._scenario_html(s)
+        self.assertIn("<code>code</code>", out)
+        self.assertIn("<code>$f = [System.IO.File]::Open(&quot;&lt;Katalog&gt;\\x.3mf&quot;)</code>", out)
+        self.assertIn("<code>hier</code>", out)
+        # The angle brackets inside a backtick span must stay escaped text, not
+        # turn into real tags - that was the whole bug (raw HTML from user text).
+        self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", out)
+        self.assertNotIn("<script>", out)
+        self.assertNotIn("<Katalog>", out)
 
 class Build(unittest.TestCase):
     def test_html_and_csv(self):

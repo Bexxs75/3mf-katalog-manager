@@ -74,7 +74,7 @@ The in-app updater checks a signature made with a private key kept in GitHub Act
 ### Maintainer notes: publishing a test version
 
 1. Write the scenarios for the testers in `docs/tests/<version>.md` (format in `docs/tests/README.md`). The version is `x.y.z-n` with a numeric `n`, e.g. `0.15.0-2`.
-2. Run the workflow "Preview (test version)" with that version (tick "STEP" for the STEP variants), or push the tag `preview-<version>` (`preview-<version>-step` for all six variants).
+2. Run the workflow "Preview (test version)" with that version (tick "Also build the STEP variants" for the STEP variants), or push the tag `preview-<version>` (`preview-<version>-step` for all six variants). A run without STEP keeps the previously published STEP files in place, so testers on a STEP build stay on their version until the next STEP run.
 3. The workflow replaces the files of the pre-release `preview`. Installed test versions offer the update on their next start; testers download new installs, the test guide PDF and the result sheet from that release.
 
 Test versions use their own identifier (`com.thebexxs.mfkatalogmanager.preview`), so they never touch the catalog of the normal app.
@@ -155,7 +155,7 @@ Der Updater in der App prüft eine Signatur, die mit einem privaten Schlüssel e
 #### Hinweis für Maintainer:innen: eine Test-Version veröffentlichen
 
 1. Die Szenarien für die Tester in `docs/tests/<version>.md` schreiben (Format in `docs/tests/README.md`). Die Version hat die Form `x.y.z-n` mit einer Zahl als `n`, z. B. `0.15.0-2`.
-2. Den Workflow „Preview (test version)“ mit dieser Version starten („STEP“ ankreuzen für die STEP-Varianten) oder den Tag `preview-<version>` pushen (`preview-<version>-step` für alle sechs Varianten).
+2. Den Workflow „Preview (test version)“ mit dieser Version starten („Also build the STEP variants“ ankreuzen für die STEP-Varianten) oder den Tag `preview-<version>` pushen (`preview-<version>-step` für alle sechs Varianten). Ein Lauf ohne STEP lässt die zuvor veröffentlichten STEP-Dateien unangetastet, sodass Tester mit einer STEP-Version bis zum nächsten STEP-Lauf auf ihrer Version bleiben.
 3. Der Workflow ersetzt die Dateien im Vorab-Release `preview`. Installierte Test-Versionen bieten das Update beim nächsten Start an; neue Installationen, die Testanleitung (PDF) und den Ergebnisbogen laden Tester aus diesem Release.
 
 Test-Versionen haben einen eigenen Identifier (`com.thebexxs.mfkatalogmanager.preview`) und berühren den Katalog der normalen App nie.

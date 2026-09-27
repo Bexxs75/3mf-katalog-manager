@@ -90,7 +90,7 @@ class Preview(unittest.TestCase):
 
     def test_check_preview(self):
         ra.check_preview("0.15.0-2")
-        for bad in ("0.15.0", "0.15.0-rc.1", "v0.15.0-2"):
+        for bad in ("0.15.0", "0.15.0-rc.1", "v0.15.0-2", "0.15.0-01", "0.15.0-1\n", "256.0.0-1", "0.15.0-70000"):
             with self.assertRaises(SystemExit): ra.check_preview(bad)
         with tempfile.TemporaryDirectory() as t:
             p = pathlib.Path(t, "latest-preview.json"); p.write_text(json.dumps({"version": "0.15.0-3"}))
@@ -115,17 +115,24 @@ class Preview(unittest.TestCase):
     def test_set_version(self):
         with tempfile.TemporaryDirectory() as t:
             r = pathlib.Path(t); (r / "src-tauri").mkdir()
-            (r / "src-tauri/Cargo.toml").write_text('[package]\nname = "mf-katalog-manager"\nversion = "0.14.0"\n\n[dependencies]\nserde = { version = "1" }\n')
-            (r / "src-tauri/tauri.conf.json").write_text(json.dumps({"productName": "x", "version": "0.14.0"}, indent=2))
-            (r / "package.json").write_text(json.dumps({"name": "mf-katalog-manager", "version": "0.14.0"}, indent=2))
-            (r / "src-tauri/Cargo.lock").write_text('[[package]]\nname = "serde"\nversion = "1.0.0"\n\n[[package]]\nname = "mf-katalog-manager"\nversion = "0.14.0"\n')
+            (r / "src-tauri/Cargo.toml").write_text('[package]\nname = "mf-katalog-manager"\nversion = "0.14.0"\n\n[dependencies]\nserde = { version = "1" }\n', encoding="utf-8")
+            (r / "src-tauri/tauri.conf.json").write_text(
+                json.dumps({"productName": "3MF Katalog Manager – Prüfung", "version": "0.14.0"}, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            (r / "package.json").write_text(json.dumps({"name": "mf-katalog-manager", "version": "0.14.0"}, indent=2), encoding="utf-8")
+            (r / "src-tauri/Cargo.lock").write_text('[[package]]\nname = "serde"\nversion = "1.0.0"\n\n[[package]]\nname = "mf-katalog-manager"\nversion = "0.14.0"\n', encoding="utf-8")
             ra.set_version("0.15.0-2", r)
             ra.check_version("0.15.0-2", r)
-            self.assertEqual(json.loads((r / "package.json").read_text())["version"], "0.15.0-2")
-            lock = (r / "src-tauri/Cargo.lock").read_text()
+            self.assertEqual(json.loads((r / "package.json").read_text(encoding="utf-8"))["version"], "0.15.0-2")
+            lock = (r / "src-tauri/Cargo.lock").read_text(encoding="utf-8")
             self.assertIn('name = "mf-katalog-manager"\nversion = "0.15.0-2"', lock)
             self.assertIn('name = "serde"\nversion = "1.0.0"', lock)
-            self.assertIn('serde = { version = "1" }', (r / "src-tauri/Cargo.toml").read_text())
+            self.assertIn('serde = { version = "1" }', (r / "src-tauri/Cargo.toml").read_text(encoding="utf-8"))
+            # ensure_ascii=False: the umlaut/en dash stay literal UTF-8, not \uXXXX escapes.
+            conf_text = (r / "src-tauri/tauri.conf.json").read_text(encoding="utf-8")
+            self.assertIn("3MF Katalog Manager – Prüfung", conf_text)
+            self.assertNotIn("\\u", conf_text)
 
 if __name__ == "__main__":
     unittest.main()

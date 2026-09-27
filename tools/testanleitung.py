@@ -15,12 +15,16 @@ PRODUCT = "3MF Katalog Manager Preview"
 IDENTIFIER = "com.thebexxs.mfkatalogmanager.preview"
 REPO = "Bexxs75/3mf-katalog-manager"
 PLATFORM_NAMES = {"windows": "Windows", "macos": "macOS", "linux": "Linux"}
-# (release_assets platform key, package extension, data-folder path template).
-# Paths mirror docs/benutzerhandbuch/BENUTZERHANDBUCH.md, with the preview identifier.
+# (release_assets platform key, package extension, data-folder path template,
+# log-folder path template). Data-folder paths mirror
+# docs/benutzerhandbuch/BENUTZERHANDBUCH.md, with the preview identifier. The
+# log folder is a separate location: it comes from Tauri's app_log_dir (see
+# the tauri_plugin_log::TargetKind::LogDir target in src-tauri/src/lib.rs),
+# which on Windows and macOS is not simply "<data-folder>/logs".
 PLATFORM_INFO = {
-    "windows": ("Windows-x64", ".msi", r"%APPDATA%\{id}"),
-    "macos": ("macOS-universal", ".dmg", "~/Library/Application Support/{id}"),
-    "linux": ("Linux-x86_64", ".AppImage", "~/.local/share/{id}"),
+    "windows": ("Windows-x64", ".msi", r"%APPDATA%\{id}", r"%LOCALAPPDATA%\{id}\logs"),
+    "macos": ("macOS-universal", ".dmg", "~/Library/Application Support/{id}", "~/Library/Logs/{id}"),
+    "linux": ("Linux-x86_64", ".AppImage", "~/.local/share/{id}", "~/.local/share/{id}/logs"),
 }
 
 
@@ -131,9 +135,9 @@ def fill(template, values):
 
 
 def platform_values(version, platform):
-    asset_platform, ext, path_template = PLATFORM_INFO[platform]
+    asset_platform, ext, path_template, log_template = PLATFORM_INFO[platform]
     datenordner = path_template.format(id=IDENTIFIER)
-    logordner = datenordner + ("\\logs" if platform == "windows" else "/logs")
+    logordner = log_template.format(id=IDENTIFIER)
     paket = release_assets.asset_name(version, asset_platform, False, ext, preview=True)
     return {
         "version": version,
@@ -224,12 +228,16 @@ li { margin: 2pt 0; }
 
 
 def _scenario_html(s):
-    steps_html = "<ol>" + "".join(f"<li>{html.escape(step)}</li>" for step in s.steps) + "</ol>"
-    note_html = f'<p><span class="lbl">Hinweis:</span> {html.escape(s.note)}</p>' if s.note else ""
+    # Steps/expected/note may contain a `command` (e.g. the PowerShell one-liner in
+    # P1), so they go through the same inline Markdown renderer as building blocks
+    # and the changelog, rather than a plain html.escape that would leave the
+    # backticks in place and print literally instead of rendering as <code>.
+    steps_html = "<ol>" + "".join(f"<li>{_markdown_inline(step)}</li>" for step in s.steps) + "</ol>"
+    note_html = f'<p><span class="lbl">Hinweis:</span> {_markdown_inline(s.note)}</p>' if s.note else ""
     return (
-        f'<div class="szenario"><h3>{html.escape(s.id)} · {html.escape(s.title)}</h3>'
+        f'<div class="szenario"><h3>{html.escape(s.id)} · {_markdown_inline(s.title)}</h3>'
         f'<p><span class="lbl">Schritte:</span></p>{steps_html}'
-        f'<p><span class="lbl">Erwartet:</span> {html.escape(s.expected)}</p>'
+        f'<p><span class="lbl">Erwartet:</span> {_markdown_inline(s.expected)}</p>'
         f"{note_html}"
         '<div class="ergebnis">Ergebnis: &#9744; OK &#9744; Fehler – Notiz: ______________________________</div>'
         "</div>"

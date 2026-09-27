@@ -22,6 +22,13 @@ on:
 permissions:
   contents: read
 
+# Publishing rewrites and prunes the shared "preview" release's assets, so two
+# runs at once could interleave their uploads/deletes into a broken release;
+# queue instead of racing them, and never cancel a run partway through that.
+concurrency:
+  group: preview-channel
+  cancel-in-progress: false
+
 jobs:
   params:
     runs-on: ubuntu-24.04
@@ -46,11 +53,23 @@ jobs:
           else
             V="$IN_VERSION"; S="$IN_STEP"
           fi
-          gh release download preview -R "$GITHUB_REPOSITORY" -p latest-preview.json -O current.json 2>/dev/null || true
+          R="$GITHUB_REPOSITORY"
+          # No "preview" release yet is normal (the very first run); a release that
+          # exists but happens to have no latest-preview.json (e.g. only STEP was
+          # ever published) is also fine. Only a download that fails for another
+          # reason (rate limit, network) should stop the run.
+          if gh release view preview -R "$R" >/dev/null 2>&1; then
+            if gh release view preview -R "$R" --json assets -q '.assets[].name' | grep -qxF latest-preview.json; then
+              gh release download preview -R "$R" -p latest-preview.json -O current.json \
+                || { echo "cannot read the published manifest"; exit 1; }
+            fi
+          fi
           python3 tools/release_assets.py check-preview "$V" current.json
           # The test guide is built only after all builds; fail now instead of
-          # after an hour of building.
+          # after an hour of building - this also catches a scenario file that
+          # testanleitung.py cannot parse (missing block, unknown placeholder, ...).
           test -f "docs/tests/$V.md" || { echo "docs/tests/$V.md is missing"; exit 1; }
+          python3 tools/testanleitung.py "$V" linux "$RUNNER_TEMP/guide-check"
           echo "version=$V" >> "$GITHUB_OUTPUT"; echo "step=$S" >> "$GITHUB_OUTPUT"
 
   windows:
@@ -126,7 +145,21 @@ jobs:
           for p in windows macos linux; do python3 tools/testanleitung.py "$VERSION" "$p" guide --pdf; done
           cp guide/*.pdf guide/*.csv dist/
       - name: Checksums
-        run: cd dist && sha256sum -- * > SHA256SUMS.txt
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist
+          sha256sum -- * > SHA256SUMS.txt
+          # A run without STEP never regenerates those checksums, but the
+          # previous STEP files stay published (see below) - carry their lines
+          # over so SHA256SUMS.txt still lists every file the release has.
+          if [ "$STEP" != "true" ] && gh release view preview -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release download preview -R "$GITHUB_REPOSITORY" -p SHA256SUMS.txt -O previous-SHA256SUMS.txt 2>/dev/null || true
+            if [ -f previous-SHA256SUMS.txt ]; then
+              grep -- '-STEP\.' previous-SHA256SUMS.txt >> SHA256SUMS.txt || true
+              rm previous-SHA256SUMS.txt
+            fi
+          fi
       # Order matters: new packages first, the manifests (which point at them)
       # next, old files last - an update check never sees a manifest whose
       # files are missing.

@@ -10,7 +10,10 @@ PRODUCT = "3MF-Katalog-Manager"
 PRODUCT_PREVIEW = "3MF-Katalog-Manager-Preview"
 PREVIEW_TAG = "preview"
 # Numeric build number keeps the Windows MSI happy (it rejects non-numeric pre-release parts).
-PREVIEW_VERSION = re.compile(r"^\d+\.\d+\.\d+-\d+$")
+# ASCII digits only (\d also matches other-script decimal digits) and no leading
+# zeros other than a bare "0", matched with fullmatch so stray characters -
+# including a trailing newline - can't sneak past the check.
+PREVIEW_VERSION = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-(0|[1-9][0-9]*)")
 # (artifact name from the build workflows, extension, platform part of the name, STEP?)
 ARTIFACTS = [
     ("3mf-katalog-manager-windows-msi", ".msi", "Windows-x64", False),
@@ -99,8 +102,16 @@ def version_key(version):
     return (int(x), int(y), int(z), int(n) if n is not None else float("inf"))
 
 def check_preview(version, manifest_path=None):
-    if not PREVIEW_VERSION.match(version):
+    m = PREVIEW_VERSION.fullmatch(version)
+    if not m:
         fail(f"invalid preview version {version}")
+    major, minor, patch, pre = (int(g) for g in m.groups())
+    # The Windows MSI version field packs major/minor into 8 bits each and
+    # patch into 16 bits; the pre-release build number is stored separately
+    # but is also capped at 16 bits. A version outside these bounds would
+    # fail (or silently truncate) when the MSI is built.
+    if major > 255 or minor > 255 or patch > 65535 or pre > 65535:
+        fail(f"preview version {version} is out of range for an MSI version (major/minor <= 255, patch/build <= 65535)")
     if manifest_path is None:
         return
     manifest_path = pathlib.Path(manifest_path)
@@ -120,33 +131,36 @@ def set_version(version, root="."):
     root = pathlib.Path(root)
 
     cargo_path = root / "src-tauri" / "Cargo.toml"
-    prefix, _, rest = cargo_path.read_text().partition("[package]")
+    prefix, _, rest = cargo_path.read_text(encoding="utf-8").partition("[package]")
     package, sep, suffix = rest.partition("\n[")
     name_match = re.search(r'^name\s*=\s*"([^"]+)"', package, re.M)
     if not name_match:
         fail(f"{cargo_path} has no [package] name")
     package_name = name_match.group(1)
     package = re.sub(r'^version\s*=\s*"[^"]+"', f'version = "{version}"', package, count=1, flags=re.M)
-    cargo_path.write_text(prefix + "[package]" + package + sep + suffix, newline="\n")
+    cargo_path.write_text(prefix + "[package]" + package + sep + suffix, encoding="utf-8", newline="\n")
 
     conf_path = root / "src-tauri" / "tauri.conf.json"
-    conf = json.loads(conf_path.read_text())
+    conf = json.loads(conf_path.read_text(encoding="utf-8"))
     conf["version"] = version
-    conf_path.write_text(json.dumps(conf, indent=2) + "\n", newline="\n")
+    # ensure_ascii=False keeps non-ASCII text (e.g. an umlaut in productName)
+    # as literal UTF-8 instead of \uXXXX escapes, matching how the file
+    # already reads before this rewrite.
+    conf_path.write_text(json.dumps(conf, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
 
     pkg_path = root / "package.json"
-    pkg = json.loads(pkg_path.read_text())
+    pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
     pkg["version"] = version
-    pkg_path.write_text(json.dumps(pkg, indent=2) + "\n", newline="\n")
+    pkg_path.write_text(json.dumps(pkg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
 
     # Only the root package's version line is rewritten; dependency entries
     # that happen to share a version string (e.g. "1.0.0") must stay put.
     lock_path = root / "src-tauri" / "Cargo.lock"
     pattern = re.compile(r'(name = "' + re.escape(package_name) + r'"\nversion = ")[^"]+(")')
-    lock_text, count = pattern.subn(lambda m: m.group(1) + version + m.group(2), lock_path.read_text(), count=1)
+    lock_text, count = pattern.subn(lambda m: m.group(1) + version + m.group(2), lock_path.read_text(encoding="utf-8"), count=1)
     if count != 1:
         fail(f"could not find root package {package_name} in {lock_path}")
-    lock_path.write_text(lock_text, newline="\n")
+    lock_path.write_text(lock_text, encoding="utf-8", newline="\n")
 
 def main(argv):
     cmd, *args = argv
