@@ -44,7 +44,7 @@ The buttons open the download section of the website, which always offers the ne
 | Printer | System | Checked | Result |
 |---|---|---|---|
 | Sovol SV08 | Stock Klipper | Print list and usage, deducting from the spool in the app | ✅ Confirmed in daily use |
-| Anycubic Kobra S1 with ACE Pro | Rinkhals | Print list and usage readable, matching file names to the model | ☑️ Test report checked |
+| Anycubic Kobra S1 with ACE Pro / ACE Pro 2 | Rinkhals | Print list and usage readable, matching file names to the model | ☑️ Test report checked |
 | Qidi Smart 3 | Stock Klipper | Print list and usage readable; the printer's clock was wrong | 🟡 From v0.15.0 |
 
 *Confirmed in daily use*: tried with the app on a real printer. *Test report checked*: the data from the anonymous [test form](https://3mfkatalog.de/en/printer-test.html) fits, a hands-on test is still missing. Your printer is missing? Your test adds it.

@@ -44,7 +44,7 @@ Die Knöpfe öffnen den Download-Bereich der Webseite, dort gibt es immer die ne
 | Drucker | System | Geprüft | Ergebnis |
 |---|---|---|---|
 | Sovol SV08 | Klipper ab Werk | Druckliste und Verbrauch, Abbuchen von der Spule in der App | ✅ Im Alltag bestätigt |
-| Anycubic Kobra S1 mit ACE Pro | Rinkhals | Druckliste und Verbrauch lesbar, Zuordnung der Dateinamen zum Modell | ☑️ Testbericht geprüft |
+| Anycubic Kobra S1 mit ACE Pro / ACE Pro 2 | Rinkhals | Druckliste und Verbrauch lesbar, Zuordnung der Dateinamen zum Modell | ☑️ Testbericht geprüft |
 | Qidi Smart 3 | Klipper ab Werk | Druckliste und Verbrauch lesbar; die Uhr des Druckers ging falsch | 🟡 Ab v0.15.0 |
 
 *Im Alltag bestätigt*: mit der App am eigenen Drucker ausprobiert. *Testbericht geprüft*: die Daten aus dem anonymen [Testformular](https://3mfkatalog.de/druckertest.html) passen, ein Praxistest fehlt noch. Dein Drucker fehlt? Mit deinem Test kommt er dazu.
