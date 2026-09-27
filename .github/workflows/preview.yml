@@ -48,6 +48,9 @@ jobs:
           fi
           gh release download preview -R "$GITHUB_REPOSITORY" -p latest-preview.json -O current.json 2>/dev/null || true
           python3 tools/release_assets.py check-preview "$V" current.json
+          # The test guide is built only after all builds; fail now instead of
+          # after an hour of building.
+          test -f "docs/tests/$V.md" || { echo "docs/tests/$V.md is missing"; exit 1; }
           echo "version=$V" >> "$GITHUB_OUTPUT"; echo "step=$S" >> "$GITHUB_OUTPUT"
 
   windows:
@@ -139,7 +142,12 @@ jobs:
           gh release upload preview -R "$R" --clobber $(ls dist/* | grep -v 'latest-preview')
           gh release upload preview -R "$R" --clobber dist/latest-preview*.json
           KEEP=$(cd dist && ls)
+          # A run without STEP leaves the previous STEP files and their manifest
+          # in place, so installed STEP test versions keep a working channel.
           gh release view preview -R "$R" --json assets -q '.assets[].name' | while read -r a; do
+            if [ "$STEP" != "true" ]; then
+              case "$a" in *-STEP.*|latest-preview-step.json) continue;; esac
+            fi
             echo "$KEEP" | grep -qxF "$a" || gh release delete-asset preview "$a" -R "$R" --yes
           done
           gh release edit preview -R "$R" --prerelease --title "Test-Version $VERSION / Test version $VERSION" \

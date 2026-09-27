@@ -30,6 +30,20 @@ class Parse(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "E9"):
             ta.parse_scenarios("# K\n\n## E9 · X\nSchritte:\n1. a\n")
 
+class ParseErrors(unittest.TestCase):
+    def test_scenario_without_chapter(self):
+        with self.assertRaisesRegex(ValueError, "E1"):
+            ta.parse_scenarios("## E1 · X\nSchritte:\n1. a\nErwartet: b\n")
+
+    def test_text_outside_a_scenario_is_an_error(self):
+        with self.assertRaisesRegex(ValueError, "Einleitung"):
+            ta.parse_scenarios("# K\n\nEinleitung zum Kapitel.\n\n## E1 · X\nSchritte:\n1. a\nErwartet: b\n")
+
+    def test_last_scenario_of_a_chapter_is_checked(self):
+        with self.assertRaisesRegex(ValueError, "E1"):
+            ta.parse_scenarios("# K\n\n## E1 · X\nSchritte:\n1. a\n\n# L\n\n## E2 · Y\nSchritte:\n1. a\nErwartet: b\n")
+
+
 class Fill(unittest.TestCase):
     def test_unknown_placeholder_fails(self):
         with self.assertRaisesRegex(ValueError, "unbekannt"):

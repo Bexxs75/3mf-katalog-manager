@@ -118,7 +118,7 @@ pub struct LogPreviewDto {
 #[tauri::command]
 pub fn get_bug_report_info() -> BugReportInfoDto {
     BugReportInfoDto {
-        version: form_url::core_version(env!("CARGO_PKG_VERSION")).to_string(),
+        version: form_url::form_version(env!("CARGO_PKG_VERSION")).to_string(),
         os: form_url::current_os().to_string(),
     }
 }

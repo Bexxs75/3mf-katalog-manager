@@ -35,8 +35,8 @@ Hinweis: Optional, Text in einer Zeile.
 ```
 
 - `# <text>` starts a chapter. Only `## <ID> · <title>` blocks are rendered —
-  any text between a chapter heading and its first scenario is dropped, so a
-  chapter-level note belongs in a scenario's own `Hinweis:` instead.
+  text between a chapter heading and its first scenario is rejected with an
+  error, so a chapter-level note belongs in a scenario's own `Hinweis:`.
 - `## <ID> · <title>` starts a scenario inside the current chapter.
 - `Nur:` (optional) restricts the scenario to a comma-separated list of
   platforms (`windows`, `macos`, `linux`); omitted means all platforms.

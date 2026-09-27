@@ -1,7 +1,15 @@
 //! Link to the bug report form on 3mfkatalog.de with version and system filled in.
 
-pub fn core_version(v: &str) -> &str {
-    v.split(['-', '+']).next().unwrap_or(v)
+/// The form accepts `x.y.z` and test versions `x.y.z-n` (numeric n), so a
+/// report from a test version stays recognisable. Build metadata and other
+/// pre-release labels are cut, because the form would reject them.
+pub fn form_version(v: &str) -> &str {
+    let without_build = v.split('+').next().unwrap_or(v);
+    match without_build.split_once('-') {
+        Some((_, pre)) if !pre.is_empty() && pre.len() <= 5 && pre.bytes().all(|b| b.is_ascii_digit()) => without_build,
+        Some((core, _)) => core,
+        None => without_build,
+    }
 }
 
 pub fn current_os() -> &'static str {
@@ -22,7 +30,7 @@ pub fn bug_report_url(lang: &str, version: &str, os: &str, with_log: bool) -> St
     } else {
         "https://3mfkatalog.de/en/report-a-bug.html"
     };
-    let mut url = format!("{page}?version={}&os={os}", core_version(version));
+    let mut url = format!("{page}?version={}&os={os}", form_version(version));
     if with_log {
         url.push_str("&log=1");
     }
@@ -50,9 +58,12 @@ mod tests {
     }
 
     #[test]
-    fn prerelease_suffix_is_cut() {
-        assert_eq!(core_version("0.15.0-test"), "0.15.0");
-        assert_eq!(core_version("0.15.0+build.3"), "0.15.0");
-        assert_eq!(core_version("0.15.0"), "0.15.0");
+    fn test_versions_are_kept_other_suffixes_are_cut() {
+        assert_eq!(form_version("0.15.0-2"), "0.15.0-2");
+        assert_eq!(form_version("0.15.0-2+build.3"), "0.15.0-2");
+        assert_eq!(form_version("0.15.0-test"), "0.15.0");
+        assert_eq!(form_version("0.15.0-123456"), "0.15.0");
+        assert_eq!(form_version("0.15.0+build.3"), "0.15.0");
+        assert_eq!(form_version("0.15.0"), "0.15.0");
     }
 }

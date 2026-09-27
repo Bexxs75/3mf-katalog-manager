@@ -54,6 +54,8 @@ def parse_scenarios(text):
         line = raw_line.rstrip()
         m = CHAPTER_RE.match(line)
         if m:
+            if scenario is not None:
+                _finish_scenario(scenario)
             chapter = Chapter(title=m.group(1), scenarios=[])
             chapters.append(chapter)
             scenario = None
@@ -63,12 +65,18 @@ def parse_scenarios(text):
         if m:
             if scenario is not None:
                 _finish_scenario(scenario)
+            if chapter is None:
+                raise ValueError(f"Szenario {m.group(1)}: kein Kapitel (# …) davor")
             scenario = Scenario(id=m.group(1), title=m.group(2), steps=[], expected="", note="", only=set())
             chapter.scenarios.append(scenario)
             section = None
             continue
         if scenario is None:
-            continue  # blank lines / text before the first scenario
+            # Free text between a chapter heading and its first scenario would
+            # never reach the guide, so it is an error rather than lost silently.
+            if line.strip():
+                raise ValueError(f"Text ohne Szenario wird nicht übernommen: {line.strip()[:60]}")
+            continue
         if line.startswith("Nur:"):
             scenario.only = {p.strip() for p in line[len("Nur:"):].split(",") if p.strip()}
             section = None

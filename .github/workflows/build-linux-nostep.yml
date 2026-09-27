@@ -61,7 +61,7 @@ jobs:
       - name: Set the build version
         if: ${{ inputs.version != '' }}
         shell: bash
-        run: $(command -v python3 || command -v python) tools/release_assets.py set-version "$VERSION"
+        run: $(command -v python || command -v python3) tools/release_assets.py set-version "$VERSION"
         env:
           VERSION: ${{ inputs.version }}
 
