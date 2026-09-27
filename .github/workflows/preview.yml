@@ -69,7 +69,9 @@ jobs:
           # after an hour of building - this also catches a scenario file that
           # testanleitung.py cannot parse (missing block, unknown placeholder, ...).
           test -f "docs/tests/$V.md" || { echo "docs/tests/$V.md is missing"; exit 1; }
-          python3 tools/testanleitung.py "$V" linux "$RUNNER_TEMP/guide-check"
+          test -f "docs/tests/$V.en.md" || { echo "docs/tests/$V.en.md is missing"; exit 1; }
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends python3-openpyxl
+          for l in de en; do python3 tools/testanleitung.py "$V" linux "$RUNNER_TEMP/guide-check" --lang=$l; done
           echo "version=$V" >> "$GITHUB_OUTPUT"; echo "step=$S" >> "$GITHUB_OUTPUT"
 
   windows:
@@ -142,8 +144,11 @@ jobs:
           python3 tools/release_assets.py latest-json "$VERSION" dist $FLAGS
       - name: Test guide
         run: |
-          for p in windows macos linux; do python3 tools/testanleitung.py "$VERSION" "$p" guide --pdf; done
-          cp guide/*.pdf guide/*.csv dist/
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends python3-openpyxl
+          for l in de en; do
+            for p in windows macos linux; do python3 tools/testanleitung.py "$VERSION" "$p" guide --pdf --lang=$l; done
+          done
+          cp guide/*.pdf guide/*.xlsx dist/
       - name: Checksums
         env:
           GH_TOKEN: ${{ github.token }}

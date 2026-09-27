@@ -1,4 +1,5 @@
-import csv, pathlib, tempfile, unittest
+import pathlib, tempfile, unittest
+from openpyxl import load_workbook
 import testanleitung as ta
 
 SAMPLE = """# 3 · Einrichten
@@ -76,11 +77,19 @@ class FillScenarioText(unittest.TestCase):
             ta.fill_scenario_text(ch, {"version": "1"})
 
 class Changelog(unittest.TestCase):
+    TEXT = "# Changelog\n\n## [Unreleased]\n\n### Added\n- **Update:** EN text\n\n## [0.14.0]\n- old\n\n# Changelog (Deutsch)\n\n## [Unreleased]\n\n### Hinzugefügt\n- **Update:** DE-Text\n\n## [0.14.0]\n- alt\n"
+
     def test_german_part_of_unreleased(self):
-        text = "# Changelog\n\n## [Unreleased]\n\n### Added\n- **Update:** EN text\n\n## [0.14.0]\n- old\n\n# Changelog (Deutsch)\n\n## [Unreleased]\n\n### Hinzugefügt\n- **Update:** DE-Text\n\n## [0.14.0]\n- alt\n"
-        self.assertIn("DE-Text", ta.changelog_unreleased_de(text))
-        self.assertNotIn("alt", ta.changelog_unreleased_de(text))
-        self.assertNotIn("EN text", ta.changelog_unreleased_de(text))
+        de = ta.changelog_unreleased(self.TEXT, "de")
+        self.assertIn("DE-Text", de)
+        self.assertNotIn("alt", de)
+        self.assertNotIn("EN text", de)
+
+    def test_english_part_of_unreleased(self):
+        en = ta.changelog_unreleased(self.TEXT, "en")
+        self.assertIn("EN text", en)
+        self.assertNotIn("old", en)
+        self.assertNotIn("DE-Text", en)
 
 class ScenarioHtml(unittest.TestCase):
     def test_backticks_become_code_and_no_raw_html_passes(self):
@@ -100,21 +109,113 @@ class ScenarioHtml(unittest.TestCase):
         self.assertNotIn("<script>", out)
         self.assertNotIn("<Katalog>", out)
 
+SAMPLE_EN = """# 3 · Setup
+
+## E2 · First start
+Only: windows
+Steps:
+1. Start the app.
+2. Choose the folder.
+Expected: Empty catalog.
+Note: Only the first time.
+
+## E3 · Backup
+Steps:
+1. Restore the backup.
+Expected: Filament is there.
+"""
+
+
+def make_root(t, english=SAMPLE_EN):
+    root = pathlib.Path(t)
+    for folder in ("docs/tests/bausteine", "docs/tests/bausteine/en"):
+        (root / folder).mkdir(parents=True, exist_ok=True)
+        for platform in ("windows", "linux"):
+            for name in (f"installieren-{platform}", "daten", "fehler-melden", f"deinstallieren-{platform}"):
+                (root / folder / f"{name}.md").write_text(f"Baustein {name} {{{{version}}}} {{{{formular}}}}\n")
+    (root / "docs/tests/0.15.0-2.md").write_text(SAMPLE)
+    if english is not None:
+        (root / "docs/tests/0.15.0-2.en.md").write_text(english)
+    (root / "CHANGELOG.md").write_text("## [Unreleased]\n### Added\n- New\n\n# Changelog (Deutsch)\n\n## [Unreleased]\n### Hinzugefügt\n- Neu\n")
+    return root
+
+
+def sheet_rows(path):
+    return [[c for c in row] for row in load_workbook(path).active.iter_rows(values_only=True)]
+
+
 class Build(unittest.TestCase):
-    def test_html_and_csv(self):
+    def test_german_guide_points_to_the_sheet(self):
         with tempfile.TemporaryDirectory() as t:
-            root = pathlib.Path(t)
-            (root / "docs/tests/bausteine").mkdir(parents=True)
-            for name in ("installieren-windows", "daten", "fehler-melden", "deinstallieren-windows"):
-                (root / f"docs/tests/bausteine/{name}.md").write_text(f"Baustein {name} {{{{version}}}}\n")
-            (root / "docs/tests/0.15.0-2.md").write_text(SAMPLE)
-            (root / "CHANGELOG.md").write_text("## [Unreleased]\n### Hinzugefügt\n- Neu\n")
+            root = make_root(t)
             out = root / "out"
-            ta.build("0.15.0-2", "windows", out, root=root, pdf=False)
-            html = (out / "Testanleitung-0.15.0-2-Windows.html").read_text()
-            self.assertIn("Erster Start", html); self.assertIn("Baustein daten 0.15.0-2", html)
-            rows = list(csv.reader((out / "Ergebnisbogen-0.15.0-2.csv").open(encoding="utf-8-sig")))
-            self.assertEqual(rows[0][:2], ["ID", "Titel"]); self.assertEqual([r[0] for r in rows[1:]], ["E2", "E3"])
+            html_path, sheet_path = ta.build("0.15.0-2", "windows", out, root=root)
+            html = html_path.read_text()
+            self.assertEqual(html_path.name, "Testanleitung-0.15.0-2-Windows.html")
+            self.assertEqual(sheet_path.name, "Ergebnisbogen-0.15.0-2-Windows.xlsx")
+            self.assertIn("Erster Start", html)
+            self.assertIn("Baustein daten 0.15.0-2 https://3mfkatalog.de/fehler-melden.html", html)
+            self.assertIn("Ergebnisbogen-0.15.0-2-Windows.xlsx", html)
+            self.assertIn("Zeile E2", html)
+            self.assertNotIn("&#9744;", html)  # no checkboxes that can't be ticked in a PDF
+            self.assertIn("Neu", html)
+
+    def test_english_guide_and_sheet(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = make_root(t)
+            html_path, sheet_path = ta.build("0.15.0-2", "windows", root / "out", root=root, lang="en")
+            html = html_path.read_text()
+            self.assertEqual(html_path.name, "Test-Guide-0.15.0-2-Windows.html")
+            self.assertIn("First start", html)
+            self.assertIn("Steps:", html)
+            self.assertIn("https://3mfkatalog.de/en/report-a-bug.html?version=0.15.0-2&amp;os=windows", html)
+            self.assertIn("New", html)
+            self.assertNotIn("Neu", html)
+            rows = sheet_rows(sheet_path)
+            self.assertIn(("No.", "Test", "Result", "Note"), [tuple(r) for r in rows])
+
+    def test_sheet_lists_only_the_platforms_scenarios(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = make_root(t)
+            _, windows = ta.build("0.15.0-2", "windows", root / "out", root=root)
+            _, linux = ta.build("0.15.0-2", "linux", root / "out", root=root)
+            ids = lambda path: [r[0] for r in sheet_rows(path) if r[0] in ("E2", "E3")]
+            self.assertEqual(ids(windows), ["E2", "E3"])
+            self.assertEqual(ids(linux), ["E3"])
+            labels = [r[0] for r in sheet_rows(linux)]
+            self.assertIn("Sitzung", labels)
+            self.assertNotIn("Windows-Version", labels)
+
+    def test_result_list_and_summary(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = make_root(t)
+            _, sheet_path = ta.build("0.15.0-2", "windows", root / "out", root=root)
+            ws = load_workbook(sheet_path).active
+            lists = [dv.formula1 for dv in ws.data_validations.dataValidation]
+            self.assertIn('"OK,Fehler,Übersprungen"', lists)
+            formulas = [ws.cell(r, 3).value for r in range(1, ws.max_row + 1)]
+            self.assertTrue(any(str(f).startswith("=COUNTIF(") for f in formulas))
+
+    def test_english_scenarios_must_match_the_german_ids(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = make_root(t, english=SAMPLE_EN.replace("## E3 · Backup", "## E4 · Backup"))
+            with self.assertRaisesRegex(ValueError, "passen nicht"):
+                ta.build("0.15.0-2", "windows", root / "out", root=root, lang="en")
+
+    def test_missing_english_scenario_file(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = make_root(t, english=None)
+            with self.assertRaisesRegex(ValueError, "Szenario-Datei fehlt"):
+                ta.build("0.15.0-2", "windows", root / "out", root=root, lang="en")
+
+
+class EnglishParse(unittest.TestCase):
+    def test_english_keywords(self):
+        ch = ta.parse_scenarios(SAMPLE_EN)
+        self.assertEqual(ch[0].scenarios[0].only, {"windows"})
+        self.assertEqual(ch[0].scenarios[0].steps, ["Start the app.", "Choose the folder."])
+        self.assertEqual(ch[0].scenarios[0].note, "Only the first time.")
+
 
 if __name__ == "__main__":
     unittest.main()

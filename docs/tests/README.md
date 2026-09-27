@@ -1,26 +1,42 @@
 # Test guide generator
 
-`tools/testanleitung.py` builds a German test guide (HTML, optionally PDF) and a
-CSV result sheet for a preview version, from:
+`tools/testanleitung.py` builds a test guide (HTML, optionally PDF) and a
+result sheet (.xlsx) per platform and language (German, English) for a preview
+version, from:
 
-- the fixed building blocks in `docs/tests/bausteine/` (installing, data
-  folders, reporting a bug, uninstalling — one file per platform where the
-  text differs),
-- the German `[Unreleased]` part of `CHANGELOG.md` ("what's new"),
-- a scenario file `docs/tests/<version>.md` (test steps, written per release).
+- the fixed building blocks in `docs/tests/bausteine/` (German) and
+  `docs/tests/bausteine/en/` (English): installing, data folders, reporting a
+  bug, uninstalling — one file per platform where the text differs,
+- the `[Unreleased]` part of `CHANGELOG.md` in that language ("what's new"),
+- a scenario file per language: `docs/tests/<version>.md` (German) and
+  `docs/tests/<version>.en.md` (English). Both must list the same scenario IDs
+  in the same order, with the same `Nur:`/`Only:` restrictions; the English
+  build fails otherwise. English scenarios quote the English UI texts; messages
+  the backend only knows in German are quoted in German with a note.
+
+The result sheet needs `openpyxl` (`python3-openpyxl` on Debian/Ubuntu).
 
 ## CLI
 
 ```
-python3 tools/testanleitung.py <version> <windows|macos|linux> <out_dir> [--pdf]
+python3 tools/testanleitung.py <version> <windows|macos|linux> <out_dir> [--pdf] [--lang=de|en]
 ```
 
-Writes `<out_dir>/Testanleitung-<version>-<Windows|macOS|Linux>.html` (and
-`.pdf` with `--pdf`, rendered with headless Chromium/Chrome) and
-`<out_dir>/Ergebnisbogen-<version>.csv` (one row per scenario, across all
-platforms).
+German (default) writes `Testanleitung-<version>-<Windows|macOS|Linux>.html`
+(and `.pdf` with `--pdf`, rendered with headless Chromium/Chrome) and
+`Ergebnisbogen-<version>-<platform>.xlsx`; English writes
+`Test-Guide-<version>-<platform>.html/.pdf` and
+`Result-Sheet-<version>-<platform>.xlsx`.
+
+The sheet lists only the scenarios for that platform, grouped by chapter, with
+a result list (OK / failed / skipped, coloured), a note column, device fields
+that fit the platform (e.g. chip on macOS, session on Linux) and a summary.
+The guide has no checkboxes: it points to the sheet row of every scenario.
 
 ## Scenario file format
+
+German keywords are `Nur:`, `Schritte:`, `Erwartet:`, `Hinweis:`; English
+files use `Only:`, `Steps:`, `Expected:`, `Note:`.
 
 ```markdown
 # 3 · Einrichten
