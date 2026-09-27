@@ -242,6 +242,23 @@ export interface Translations {
   catalogSetupOpenFolderButton: string;
   catalogSetupDoneButton: string;
   catalogSetupError: string;
+  catalogSetupNewParentLabel: string;
+  catalogSetupNewParentNone: string;
+  catalogSetupNewPickParentButton: string;
+  catalogSetupNewNameLabel: string;
+  catalogSetupNewDefaultName: string;
+  catalogSetupNewWillCreate: string;
+  catalogSetupNewExists: string;
+  catalogSetupNewPickExistingBefore: string;
+  catalogSetupNewPickExistingLink: string;
+  catalogSetupNewPickExistingAfter: string;
+  catalogSetupBack: string;
+  catalogSetupNewCreateButton: string;
+  catalogSetupNameEmpty: string;
+  /** `{char}` = the first character that is not allowed */
+  catalogSetupNameInvalidChar: string;
+  catalogSetupNameReserved: string;
+  catalogSetupNameTrailing: string;
   catalogBaseDirSectionTitle: string;
   catalogBaseDirNotSet: string;
   catalogBaseDirChangeButton: string;
@@ -524,6 +541,11 @@ export interface Translations {
   infoVerboseLoggingOn: string;
   infoLogFilesLabel: string;
   infoOpenFolder: string;
+  infoFoldersHeading: string;
+  infoOpenDataFolder: string;
+  infoOpenDataFolderHint: string;
+  infoOpenLogFolder: string;
+  infoOpenLogFolderHint: string;
   bugReportTitle: string;
   /** `{version}`, `{os}` */
   bugReportIntro: string;

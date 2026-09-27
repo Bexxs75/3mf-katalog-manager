@@ -41,6 +41,12 @@ describe('diagnostics api', () => {
     expect(invoke).toHaveBeenCalledWith('open_log_folder');
   });
 
+  it('openDataFolder', async () => {
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    await diagnosticsApi.openDataFolder();
+    expect(invoke).toHaveBeenCalledWith('open_data_folder');
+  });
+
   it('openBugReportForm', async () => {
     vi.mocked(invoke).mockResolvedValue(undefined);
     await diagnosticsApi.openBugReportForm('de', true);

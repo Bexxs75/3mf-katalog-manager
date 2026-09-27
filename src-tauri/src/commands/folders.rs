@@ -306,6 +306,128 @@ pub fn register_existing_catalog_base_dir(state: State<AppState>, path: String) 
     register_existing_catalog_base_dir_with_conn(&conn, Path::new(&path))
 }
 
+// Windows forbids these in file names. They are rejected on every OS so a
+// catalog set up on Linux or macOS keeps working after a move to Windows.
+const FORBIDDEN_DIR_NAME_CHARS: &[char] = &['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
+
+// Device names Windows refuses as file or folder names, also with an extension.
+const WINDOWS_RESERVED_NAMES: &[&str] = &[
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1",
+    "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+];
+
+/// Name of a new catalog folder, typed freely by the user. Must be exactly one
+/// harmless path component, otherwise "../x" or "/etc/x" would create the folder
+/// outside the chosen place (CWE-22). The frontend shows the same rules as a hint,
+/// this check is the one that counts.
+fn validate_new_catalog_dir_name(name: &str) -> CmdResult<()> {
+    if name.trim().is_empty() {
+        return Err(CmdError::expected("Der Ordnername darf nicht leer sein"));
+    }
+    if let Some(c) = name.chars().find(|c| FORBIDDEN_DIR_NAME_CHARS.contains(c) || c.is_control()) {
+        let shown = if c.is_control() { format!("U+{:04X}", c as u32) } else { c.to_string() };
+        return Err(CmdError::expected(format!("Dieses Zeichen ist in Ordnernamen nicht erlaubt: {shown}")));
+    }
+    if name == "." || name == ".." {
+        return Err(CmdError::expected("Dieser Ordnername ist nicht erlaubt"));
+    }
+    if name.ends_with('.') || name.ends_with(' ') {
+        return Err(CmdError::expected("Ordnernamen dürfen nicht mit einem Punkt oder Leerzeichen enden"));
+    }
+    let stem = name.split('.').next().unwrap_or(name).trim_end().to_ascii_uppercase();
+    if WINDOWS_RESERVED_NAMES.contains(&stem.as_str()) {
+        return Err(CmdError::expected("Dieser Ordnername ist unter Windows reserviert"));
+    }
+    // Defence in depth: whatever slipped through above must still be a single
+    // plain component, never a root, prefix or parent reference.
+    let mut components = Path::new(name).components();
+    if !matches!((components.next(), components.next()), (Some(std::path::Component::Normal(_)), None)) {
+        return Err(CmdError::expected("Dieser Ordnername ist nicht erlaubt"));
+    }
+    Ok(())
+}
+
+/// Full path of the new catalog folder. The parent must have come from the
+/// backend (folder picker or the Documents suggestion): a compromised frontend
+/// could otherwise create folders anywhere the user can write.
+fn new_catalog_dir_target(approved: &ApprovedTargets, parent: &Path, name: &str) -> CmdResult<PathBuf> {
+    validate_new_catalog_dir_name(name)?;
+    if !approved.contains(parent) {
+        return Err("Der übergeordnete Ordner wurde nicht in der App ausgewählt".into());
+    }
+    Ok(parent.join(name))
+}
+
+/// Creates the catalog folder, or reuses it if it already exists (the user may
+/// simply retype the name of a folder they created by hand). The result counts
+/// as picked in the app, like a folder from `pick_folder_path`.
+fn create_catalog_dir_at(
+    approved: &ApprovedTargets,
+    sensitive_dirs: &[PathBuf],
+    parent: &Path,
+    name: &str,
+) -> CmdResult<PathBuf> {
+    let target = new_catalog_dir_target(approved, parent, name)?;
+    reject_if_sensitive_path(&target, sensitive_dirs)?;
+    if target.is_dir() {
+        log::info!(target: "setup", "Katalog-Ordner existiert bereits und wird verwendet");
+    } else if target.exists() {
+        return Err(CmdError::expected("Unter diesem Namen gibt es dort schon eine Datei"));
+    } else {
+        // create_dir, not create_dir_all: a parent deleted in the meantime must
+        // not be recreated behind the user's back.
+        std::fs::create_dir(&target).map_err(|e| e.to_string())?;
+        log::info!(target: "setup", "Katalog-Ordner angelegt");
+    }
+    approved.approve(&target);
+    Ok(target)
+}
+
+/// Suggested place for a new catalog folder: the user's Documents folder, if
+/// the system has one. Approved right here, because the frontend passes it
+/// back to `create_catalog_dir` like a picked folder.
+#[tauri::command]
+pub fn default_catalog_parent(app: tauri::AppHandle, approved: State<'_, ApprovedTargets>) -> Option<String> {
+    use tauri::Manager;
+    let dir = app.path().document_dir().ok().filter(|d| d.is_dir())?;
+    approved.approve(&dir);
+    Some(dir.to_string_lossy().into_owned())
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogDirPreview {
+    pub path: String,
+    pub exists: bool,
+}
+
+/// Shows what `create_catalog_dir` would do, before anything happens on disk.
+/// The path is joined here so it uses the separator of the running OS.
+#[tauri::command]
+pub fn preview_catalog_dir(
+    approved: State<'_, ApprovedTargets>,
+    parent: String,
+    name: String,
+) -> CmdResult<CatalogDirPreview> {
+    let target = new_catalog_dir_target(&approved, Path::new(&parent), &name)?;
+    Ok(CatalogDirPreview { exists: target.is_dir(), path: target.to_string_lossy().into_owned() })
+}
+
+/// Creates (or reuses) the folder `name` inside an approved `parent` and returns
+/// its path; the caller then registers it with `register_catalog_base_dir`.
+/// The OS folder picker can't create folders everywhere (e.g. GTK on Linux),
+/// so the app does it itself.
+#[tauri::command]
+pub fn create_catalog_dir(
+    state: State<'_, AppState>,
+    approved: State<'_, ApprovedTargets>,
+    parent: String,
+    name: String,
+) -> CmdResult<String> {
+    create_catalog_dir_at(&approved, &state.sensitive_dirs, Path::new(&parent), &name)
+        .map(|p| p.to_string_lossy().into_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -667,5 +789,102 @@ mod tests {
         assert!(result.is_err());
         assert!(dir.join("Alt").exists(), "folder must be renamed back after the DB update failed");
         assert!(!dir.join("Neu").is_dir() || std::fs::read_dir(dir.join("Neu")).unwrap().count() == 0);
+    }
+
+    #[test]
+    fn new_catalog_dir_name_accepts_ordinary_names() {
+        for name in ["3D-Katalog", "Meine Modelle", "Catálogo 3D", ".versteckt", "a.b"] {
+            assert!(validate_new_catalog_dir_name(name).is_ok(), "{name} should be allowed");
+        }
+    }
+
+    #[test]
+    fn new_catalog_dir_name_rejects_empty_forbidden_and_reserved_names() {
+        for name in ["", "   ", "a/b", "a\\b", "3D:Katalog", "a*", "a?", "a\"b", "a<b", "a>b", "a|b", "a\u{7}b", ".", "..", "Katalog.", "Katalog ", "CON", "nul.txt", "Com1"] {
+            let err = validate_new_catalog_dir_name(name).expect_err(name);
+            assert!(err.expected, "{name} is a user mistake, not a fault");
+        }
+        assert_eq!(
+            validate_new_catalog_dir_name("3D:Katalog").unwrap_err(),
+            "Dieses Zeichen ist in Ordnernamen nicht erlaubt: :"
+        );
+    }
+
+    #[test]
+    fn new_catalog_dir_cannot_escape_the_parent() {
+        let base = unique_test_dir("catalog_dir_traversal");
+        let parent = base.join("eltern");
+        std::fs::create_dir_all(&parent).unwrap();
+        let approved = ApprovedTargets::default();
+        approved.approve(&parent);
+
+        for name in ["..", "../raus", "/tmp/raus", "..\\raus"] {
+            assert!(create_catalog_dir_at(&approved, &[], &parent, name).is_err(), "{name} must be rejected");
+        }
+        assert!(!base.join("raus").exists());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn new_catalog_dir_requires_a_parent_picked_in_the_app() {
+        let parent = unique_test_dir("catalog_dir_unapproved");
+        let approved = ApprovedTargets::default();
+
+        let err = create_catalog_dir_at(&approved, &[], &parent, "3D-Katalog").unwrap_err();
+        assert!(!err.expected, "an unapproved parent means a misbehaving frontend");
+        assert!(!parent.join("3D-Katalog").exists());
+        let _ = std::fs::remove_dir_all(&parent);
+    }
+
+    #[test]
+    fn new_catalog_dir_is_created_and_approved() {
+        let parent = unique_test_dir("catalog_dir_create");
+        let approved = ApprovedTargets::default();
+        approved.approve(&parent);
+
+        let created = create_catalog_dir_at(&approved, &[], &parent, "3D-Katalog").unwrap();
+        assert_eq!(created, parent.join("3D-Katalog"));
+        assert!(created.is_dir());
+        assert!(approved.contains(&created), "the new folder counts as picked in the app");
+        let _ = std::fs::remove_dir_all(&parent);
+    }
+
+    #[test]
+    fn existing_catalog_dir_is_reused_without_error() {
+        let parent = unique_test_dir("catalog_dir_reuse");
+        std::fs::create_dir(parent.join("3D-Katalog")).unwrap();
+        std::fs::write(parent.join("3D-Katalog").join("model.3mf"), b"x").unwrap();
+        let approved = ApprovedTargets::default();
+        approved.approve(&parent);
+
+        let preview = new_catalog_dir_target(&approved, &parent, "3D-Katalog").unwrap();
+        assert!(preview.is_dir());
+        let reused = create_catalog_dir_at(&approved, &[], &parent, "3D-Katalog").unwrap();
+        assert_eq!(reused, parent.join("3D-Katalog"));
+        assert!(reused.join("model.3mf").exists(), "existing content stays untouched");
+        let _ = std::fs::remove_dir_all(&parent);
+    }
+
+    #[test]
+    fn a_file_with_the_catalog_dir_name_is_an_expected_error() {
+        let parent = unique_test_dir("catalog_dir_file");
+        std::fs::write(parent.join("3D-Katalog"), b"x").unwrap();
+        let approved = ApprovedTargets::default();
+        approved.approve(&parent);
+
+        let err = create_catalog_dir_at(&approved, &[], &parent, "3D-Katalog").unwrap_err();
+        assert!(err.expected);
+        let _ = std::fs::remove_dir_all(&parent);
+    }
+
+    #[test]
+    fn new_catalog_dir_inside_a_sensitive_dir_is_rejected() {
+        let parent = unique_test_dir("catalog_dir_sensitive");
+        let approved = ApprovedTargets::default();
+        approved.approve(&parent);
+
+        assert!(create_catalog_dir_at(&approved, std::slice::from_ref(&parent), &parent, "3D-Katalog").is_err());
+        assert!(!parent.join("3D-Katalog").exists());
+        let _ = std::fs::remove_dir_all(&parent);
     }
 }

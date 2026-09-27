@@ -34,6 +34,8 @@ export const saveLogExport = (id: number) => invoke<string>('save_log_export', {
 
 export const openLogFolder = () => invoke<void>('open_log_folder');
 
+export const openDataFolder = () => invoke<void>('open_data_folder');
+
 export const openBugReportForm = (lang: string, withLog: boolean) =>
   invoke<void>('open_bug_report_form', { lang, withLog });
 

@@ -191,7 +191,7 @@ impl ApprovedTargets {
         }
     }
 
-    fn contains(&self, path: &Path) -> bool {
+    pub(crate) fn contains(&self, path: &Path) -> bool {
         self.0.lock().map(|set| set.contains(path)).unwrap_or(false)
     }
 }

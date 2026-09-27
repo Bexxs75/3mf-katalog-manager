@@ -206,6 +206,16 @@ pub fn open_log_folder(app: tauri::AppHandle) -> CmdResult<()> {
     super::security::open_external(&dir.to_string_lossy())
 }
 
+// Separate from the log folder: on Windows and macOS logs live in a different
+// system folder than the catalog and the backups taken before updates.
+#[tauri::command]
+pub fn open_data_folder(app: tauri::AppHandle) -> CmdResult<()> {
+    use tauri::Manager;
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    super::security::open_external(&dir.to_string_lossy())
+}
+
 #[tauri::command]
 pub fn open_bug_report_form(lang: String, with_log: bool) -> CmdResult<()> {
     let url = form_url::bug_report_url(&lang, env!("CARGO_PKG_VERSION"), form_url::current_os(), with_log);

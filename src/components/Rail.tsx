@@ -8,6 +8,7 @@ import type { PrinterLinkState } from '../hooks/usePrinterLink';
 import type { Language } from '../i18n/types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { DiagnosticsSettings } from '../diagnostics/DiagnosticsSettings';
+import { InfoFolders } from '../diagnostics/InfoFolders';
 import { PrinterLinkSettings } from './PrinterLinkSettings';
 import type { AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
@@ -403,6 +404,7 @@ export function Rail({
               <>
                 <UpdatePanel view={update} />
                 <DiagnosticsSettings />
+                <InfoFolders />
                 <div className="flex justify-between text-[11.5px] py-2 border-t border-[var(--line)] mt-3 text-[var(--ink-2)]">
                   <span>{t('infoSourceCodeLabel')}</span>
                   <span

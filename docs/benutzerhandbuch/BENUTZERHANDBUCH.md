@@ -82,8 +82,14 @@ re-sorted within the catalog. You have two options:
 - **Use existing folder structure** — if you already organize your print files in folders,
   choose the top-level folder. The catalog adopts the complete structure including
   subfolders and automatically imports every `.3mf`/`.stl`/`.obj`/`.stp`/`.step` file it contains.
-- **Set up a new location** — pick a (possibly empty) folder where the catalog will store newly
-  imported files from now on.
+- **Set up a new location** — a folder where the catalog will store newly imported files from
+  now on. Under "Where should the catalog folder go?" your Documents folder is suggested; "Choose
+  place …" picks another one. Under "Name of the new folder" you type the name (suggested: "3D
+  Catalog"). The line below shows the full path before anything happens; "Create folder and set
+  up" creates the folder and uses it. If a folder with that name already exists there, the app
+  says so and uses it as it is. Names with characters that aren't allowed in folder names
+  (`/ \ : * ? " < > |`) are rejected with a hint. If you'd rather use a folder you already have,
+  click "pick an existing folder directly".
 
 You can change this choice at any time in Settings under "Catalog location". The dialog can also
 be skipped via "Set up later".
@@ -486,7 +492,7 @@ including self-built or modified versions. The radio button sets which slicer is
   dialog.
 - **Catalog backup** — see the next section.
 - **Catalog location** — shows the current base directory and lets you change it or open it
-  directly in the file manager.
+  directly in the file manager. Changing it opens the same dialog as the initial setup.
 
 ### Printers
 
@@ -506,6 +512,11 @@ Shows the installed version plus links to the source code, application license, 
 licenses, and the same update information described in [Updating](#updating) below: whether a
 newer version is available, a "Check for updates again" button for a manual check, and — after
 installing one from within the app — the date and backup file name of that update.
+
+Under **Folders**, **Open data folder** opens the folder with your catalog and the backups taken
+before updates (`update-backups`), and **Open log folder** opens the folder with the log files.
+There are two buttons because on Windows and macOS the log files are kept in a different system
+folder than the catalog.
 
 Below in the screenshot, you can see an example of the **light** vs. **dark** theme side by side:
 
@@ -711,8 +722,15 @@ tatsächlich abgelegt, nicht nur im Katalog umsortiert. Du hast zwei Möglichkei
 - **Bestehende Ordnerstruktur übernehmen** — wenn du deine Druckdateien schon in Ordnern
   organisierst, wählst du den obersten Ordner aus. Der Katalog übernimmt die komplette Struktur
   inklusive Unterordner und importiert alle enthaltenen `.3mf`-/`.stl`-/`.obj`-/`.stp`-/`.step`-Dateien automatisch.
-- **Neuen Ort einrichten** — du legst einen (auch leeren) Ordner fest, in dem der Katalog ab
-  jetzt neu importierte Dateien ablegt.
+- **Neuen Ort einrichten** — ein Ordner, in dem der Katalog ab jetzt neu importierte Dateien
+  ablegt. Unter „Wo soll der Katalog-Ordner liegen?“ ist dein Dokumente-Ordner vorgeschlagen;
+  „Ort wählen …“ wählt einen anderen. Unter „Name des neuen Ordners“ tippst du den Namen ein
+  (Vorschlag: „3D-Katalog“). Die Zeile darunter zeigt den ganzen Pfad, bevor etwas passiert;
+  „Ordner anlegen und einrichten“ legt den Ordner an und verwendet ihn. Gibt es dort schon einen
+  Ordner mit diesem Namen, sagt die App das und verwendet ihn so, wie er ist. Namen mit Zeichen,
+  die in Ordnernamen nicht erlaubt sind (`/ \ : * ? " < > |`), lehnt sie mit einem Hinweis ab.
+  Willst du lieber einen Ordner nehmen, den du schon hast, klickst du auf „einen vorhandenen
+  Ordner direkt wählen“.
 
 Du kannst diese Wahl jederzeit in den Einstellungen unter "Katalog-Speicherort" ändern. Über
 "Später einrichten" lässt sich der Dialog auch überspringen.
@@ -1132,7 +1150,7 @@ fest, welcher Slicer beim Öffnen eines Modells als **Standard** verwendet wird.
   Bereinigung per Auswahl-Dialog.
 - **Katalog-Backup** — siehe nächster Abschnitt.
 - **Katalog-Speicherort** — zeigt den aktuellen Basisordner und erlaubt, ihn zu ändern oder direkt
-  im Dateimanager zu öffnen.
+  im Dateimanager zu öffnen. Ändern öffnet denselben Dialog wie bei der Ersteinrichtung.
 
 ### Drucker
 
@@ -1153,6 +1171,11 @@ Drittanbieter-Komponenten, außerdem dieselben Update-Informationen wie im Absch
 [Aktualisieren](#aktualisieren) weiter unten: ob eine neuere Version verfügbar ist, den Knopf
 „Erneut nach Updates suchen“ für eine manuelle Prüfung, und – nach einem Update aus der App –
 Datum und Sicherungsdatei dieses Updates.
+
+Unter **Ordner** öffnet **Datenordner öffnen** den Ordner mit deinem Katalog und den Sicherungen
+vor Updates (`update-backups`), **Log-Ordner öffnen** den Ordner mit den Logdateien. Es sind zwei
+Knöpfe, weil Windows und macOS die Logdateien in einem anderen Systemordner ablegen als den
+Katalog.
 
 Unten im Screenshot siehst du ein Beispiel für das **Hell**- bzw. **Dunkel**-Theme im direkten
 Vergleich:
