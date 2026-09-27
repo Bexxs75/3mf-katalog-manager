@@ -156,7 +156,7 @@ jobs:
           if [ "$STEP" != "true" ] && gh release view preview -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release download preview -R "$GITHUB_REPOSITORY" -p SHA256SUMS.txt -O previous-SHA256SUMS.txt 2>/dev/null || true
             if [ -f previous-SHA256SUMS.txt ]; then
-              grep -- '-STEP\.' previous-SHA256SUMS.txt >> SHA256SUMS.txt || true
+              grep -E -- '-STEP\.| latest-preview-step\.json$' previous-SHA256SUMS.txt >> SHA256SUMS.txt || true
               rm previous-SHA256SUMS.txt
             fi
           fi
