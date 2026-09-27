@@ -2,8 +2,17 @@ name: Build Windows MSI (with STEP preview)
 
 on:
   workflow_dispatch: {}
-  # Also called by release.yml, which builds every variant in one run.
-  workflow_call: {}
+  # Also called by release.yml, which builds every variant in one run, and by
+  # preview.yml, which builds the separately installed test app.
+  workflow_call:
+    inputs:
+      preview:
+        type: boolean
+        default: false
+      # Empty keeps the version from Cargo.toml/tauri.conf.json.
+      version:
+        type: string
+        default: ""
 
 # packages: write for the vcpkg binary cache in GitHub Packages (NuGet), see the
 # "Setup vcpkg binary cache" step below.
@@ -17,6 +26,10 @@ env:
 jobs:
   build-windows-step:
     runs-on: windows-latest
+    env:
+      APP_NAME: ${{ inputs.preview && '3MF Katalog Manager Preview' || '3MF Katalog Manager' }}
+      PREVIEW_CONFIG: ${{ inputs.preview && '--config src-tauri/tauri.preview.conf.json' || '' }}
+      PREVIEW_FEATURES: ${{ inputs.preview && '--features preview' || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -78,11 +91,23 @@ jobs:
         run: |
           .\src-tauri\scripts\stage-occt-dlls.ps1 -VcpkgInstalledDir "${{ github.workspace }}\src-tauri\occt-vcpkg-manifest\vcpkg_installed\x64-windows"
 
+      # Test versions are numbered at build time instead of being committed.
+      - name: Set the build version
+        if: ${{ inputs.version != '' }}
+        shell: bash
+        run: $(command -v python3 || command -v python) tools/release_assets.py set-version "$VERSION"
+        env:
+          VERSION: ${{ inputs.version }}
+
+      # bash instead of PowerShell: the preview flags must split into separate
+      # arguments, which PowerShell would pass on as a single quoted one. Tauri
+      # merges several --config overlays in the given order.
       - name: Build Tauri app (Windows MSI, with STEP preview)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CMAKE_PREFIX_PATH: ${{ github.workspace }}\src-tauri\occt-vcpkg-manifest\vcpkg_installed\x64-windows
-        run: npm run tauri build -- --bundles msi --config src-tauri\tauri.windows-step.conf.json
+        shell: bash
+        run: npm run tauri build -- --bundles msi --config src-tauri/tauri.windows-step.conf.json $PREVIEW_CONFIG -- $PREVIEW_FEATURES
 
       - name: Upload MSI artifact
         uses: actions/upload-artifact@v4

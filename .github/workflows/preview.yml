@@ -1,0 +1,146 @@
+name: Preview (test version)
+
+# Builds a test version ("3MF Katalog Manager Preview", own identifier and catalog)
+# and replaces the files of the fixed pre-release `preview`. Test versions update
+# only from this channel. Runs by hand, or by pushing a tag preview-<version>
+# (add -step for the STEP variants) - the tag route works before this file is on
+# the default branch.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Test version x.y.z-n (numeric n), e.g. 0.15.0-2"
+        required: true
+        type: string
+      step:
+        description: "Also build the STEP variants"
+        type: boolean
+        default: false
+  push:
+    tags: ["preview-*"]
+
+permissions:
+  contents: read
+
+jobs:
+  params:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.p.outputs.version }}
+      step: ${{ steps.p.outputs.step }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: p
+        env:
+          IN_VERSION: ${{ inputs.version }}
+          IN_STEP: ${{ inputs.step }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$EVENT" = "push" ]; then
+            V="${REF_NAME#preview-}"; S=false
+            case "$V" in *-step) V="${V%-step}"; S=true;; esac
+          else
+            V="$IN_VERSION"; S="$IN_STEP"
+          fi
+          gh release download preview -R "$GITHUB_REPOSITORY" -p latest-preview.json -O current.json 2>/dev/null || true
+          python3 tools/release_assets.py check-preview "$V" current.json
+          echo "version=$V" >> "$GITHUB_OUTPUT"; echo "step=$S" >> "$GITHUB_OUTPUT"
+
+  windows:
+    needs: params
+    uses: ./.github/workflows/build-windows.yml
+    with: { preview: true, version: "${{ needs.params.outputs.version }}" }
+  macos:
+    needs: params
+    uses: ./.github/workflows/build-macos.yml
+    with: { preview: true, version: "${{ needs.params.outputs.version }}" }
+  linux:
+    needs: params
+    uses: ./.github/workflows/build-linux-nostep.yml
+    with: { preview: true, version: "${{ needs.params.outputs.version }}" }
+  windows-step:
+    needs: params
+    if: needs.params.outputs.step == 'true'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/build-windows-step.yml
+    with: { preview: true, version: "${{ needs.params.outputs.version }}" }
+  macos-step:
+    needs: params
+    if: needs.params.outputs.step == 'true'
+    uses: ./.github/workflows/build-macos-step.yml
+    with: { preview: true, version: "${{ needs.params.outputs.version }}" }
+  linux-step:
+    needs: params
+    if: needs.params.outputs.step == 'true'
+    uses: ./.github/workflows/build-linux.yml
+    with: { preview: true, version: "${{ needs.params.outputs.version }}" }
+
+  publish:
+    needs: [params, windows, macos, linux, windows-step, macos-step, linux-step]
+    if: ${{ !failure() && !cancelled() }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.params.outputs.version }}
+      STEP: ${{ needs.params.outputs.step }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: 3mf-katalog-manager-*
+          path: artifacts
+      - name: Readable file names
+        run: |
+          FLAGS="--preview"; [ "$STEP" = "true" ] || FLAGS="$FLAGS --no-step"
+          python3 tools/release_assets.py rename "$VERSION" artifacts dist $FLAGS
+      # Pinned because this step receives the private key.
+      - name: Sign the update packages
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          for f in dist/*.msi dist/*.app.tar.gz dist/*.AppImage; do
+            npx --yes @tauri-apps/cli@2.11.4 signer sign "$f"
+          done
+      - name: Updater manifests
+        run: |
+          FLAGS="--preview"; [ "$STEP" = "true" ] || FLAGS="$FLAGS --no-step"
+          python3 tools/release_assets.py latest-json "$VERSION" dist $FLAGS
+      - name: Test guide
+        run: |
+          for p in windows macos linux; do python3 tools/testanleitung.py "$VERSION" "$p" guide --pdf; done
+          cp guide/*.pdf guide/*.csv dist/
+      - name: Checksums
+        run: cd dist && sha256sum -- * > SHA256SUMS.txt
+      # Order matters: new packages first, the manifests (which point at them)
+      # next, old files last - an update check never sees a manifest whose
+      # files are missing.
+      - name: Publish to the preview channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          R="$GITHUB_REPOSITORY"
+          if ! gh release view preview -R "$R" >/dev/null 2>&1; then
+            gh release create preview -R "$R" --prerelease --target "${{ github.sha }}" \
+              --title "Test-Version / Test version" --notes "Test versions only. See the test guide PDF."
+          fi
+          gh release upload preview -R "$R" --clobber $(ls dist/* | grep -v 'latest-preview')
+          gh release upload preview -R "$R" --clobber dist/latest-preview*.json
+          KEEP=$(cd dist && ls)
+          gh release view preview -R "$R" --json assets -q '.assets[].name' | while read -r a; do
+            echo "$KEEP" | grep -qxF "$a" || gh release delete-asset preview "$a" -R "$R" --yes
+          done
+          gh release edit preview -R "$R" --prerelease --title "Test-Version $VERSION / Test version $VERSION" \
+            --notes "Test version $VERSION of 3MF Katalog Manager Preview (own catalog, separate from the normal app). Test guide: Testanleitung-$VERSION-*.pdf"

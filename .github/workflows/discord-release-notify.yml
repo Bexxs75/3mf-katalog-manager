@@ -11,6 +11,8 @@ on:
 
 jobs:
   notify:
+    # The fixed pre-release `preview` carries test versions, not a release to announce.
+    if: github.event_name != 'release' || github.event.release.tag_name != 'preview'
     runs-on: ubuntu-latest
     steps:
       - name: Resolve release data
