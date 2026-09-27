@@ -57,8 +57,42 @@ pub fn extract_render_meshes_from_path(path: &Path) -> Result<Vec<RenderMesh>, T
 /// Maximum nesting depth of the component chain, against stack overflow with extremely deep (acyclic) graphs.
 const MAX_COMPONENT_DEPTH: usize = 256;
 
+/// Work allowed for resolving one package's component graph. The depth limit
+/// alone doesn't bound the work: an object that references the same child
+/// twice on each of 30 levels is tiny but expands to 2^30 instances.
+/// Instancing the same object on several branches is legitimate, so this is a
+/// budget and not a "visited" set.
+const MAX_OBJECT_VISITS: usize = 100_000;
+const MAX_INSTANCED_VERTICES: usize = 30_000_000;
+
+struct WorkBudget {
+    visits_left: usize,
+    vertices_left: usize,
+}
+
+impl WorkBudget {
+    fn new() -> Self {
+        Self { visits_left: MAX_OBJECT_VISITS, vertices_left: MAX_INSTANCED_VERTICES }
+    }
+
+    fn visit(&mut self) -> Result<(), ThreeMfError> {
+        self.visits_left = self.visits_left.checked_sub(1).ok_or_else(|| {
+            ThreeMfError::ResourceLimitExceeded(format!("more than {MAX_OBJECT_VISITS} object instances"))
+        })?;
+        Ok(())
+    }
+
+    fn vertices(&mut self, count: usize) -> Result<(), ThreeMfError> {
+        self.vertices_left = self.vertices_left.checked_sub(count).ok_or_else(|| {
+            ThreeMfError::ResourceLimitExceeded(format!("more than {MAX_INSTANCED_VERTICES} instanced vertices"))
+        })?;
+        Ok(())
+    }
+}
+
 pub fn extract_render_meshes(package: &PackageParts) -> Result<Vec<RenderMesh>, ThreeMfError> {
     let mut meshes = Vec::new();
+    let mut budget = WorkBudget::new();
     for item in &package.root_model.build_items {
         let transform = item.transform.unwrap_or_else(Matrix3x4::identity);
         let mut path = Vec::new();
@@ -69,11 +103,13 @@ pub fn extract_render_meshes(package: &PackageParts) -> Result<Vec<RenderMesh>, 
             &transform,
             &mut meshes,
             &mut path,
+            &mut budget,
         )?;
     }
     Ok(meshes)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn collect_render_meshes(
     package: &PackageParts,
     file: Option<&str>,
@@ -81,7 +117,9 @@ fn collect_render_meshes(
     transform: &Matrix3x4,
     out: &mut Vec<RenderMesh>,
     path: &mut Vec<(Option<String>, String)>,
+    budget: &mut WorkBudget,
 ) -> Result<(), ThreeMfError> {
+    budget.visit()?;
     let key = (file.map(str::to_string), object_id.to_string());
     if path.contains(&key) {
         return Err(ThreeMfError::ComponentCycle);
@@ -101,6 +139,7 @@ fn collect_render_meshes(
     if is_model_geometry {
         if let Some(mesh) = &object.mesh {
             if !mesh.triangles.is_empty() {
+                budget.vertices(mesh.vertices.len())?;
                 let positions: Vec<[f32; 3]> = mesh
                     .vertices
                     .iter()
@@ -129,6 +168,7 @@ fn collect_render_meshes(
             &child_transform,
             out,
             path,
+            budget,
         )?;
     }
 
@@ -170,6 +210,7 @@ fn resolve_geometry(package: &PackageParts) -> Result<(BoundingBox, f64), ThreeM
     let mut bbox = BoundingBox::empty();
     let mut volume_mm3 = 0.0;
 
+    let mut budget = WorkBudget::new();
     for item in &package.root_model.build_items {
         let transform = item.transform.unwrap_or_else(Matrix3x4::identity);
         let mut path = Vec::new();
@@ -181,6 +222,7 @@ fn resolve_geometry(package: &PackageParts) -> Result<(BoundingBox, f64), ThreeM
             &mut bbox,
             &mut volume_mm3,
             &mut path,
+            &mut budget,
         )?;
     }
 
@@ -196,7 +238,9 @@ fn accumulate_object(
     bbox: &mut BoundingBox,
     volume_mm3: &mut f64,
     path: &mut Vec<(Option<String>, String)>,
+    budget: &mut WorkBudget,
 ) -> Result<(), ThreeMfError> {
+    budget.visit()?;
     let key = (file.map(str::to_string), object_id.to_string());
     if path.contains(&key) {
         return Err(ThreeMfError::ComponentCycle);
@@ -218,6 +262,7 @@ fn accumulate_object(
 
     if is_model_geometry {
         if let Some(mesh) = &object.mesh {
+            budget.vertices(mesh.vertices.len())?;
             let world_vertices: Vec<[f64; 3]> = mesh
                 .vertices
                 .iter()
@@ -242,6 +287,7 @@ fn accumulate_object(
             bbox,
             volume_mm3,
             path,
+            budget,
         )?;
     }
 
@@ -594,6 +640,39 @@ mod tests {
     /// 3D/3dmodel.model) around the given `<model>` XML, like `build_test_3mf()` but
     /// without thumbnail/materials - for tests that only care about the
     /// object/component structure.
+    /// Every level references the level below twice: tiny file, 2^depth leaves.
+    fn doubling_graph_model(depth: u32) -> String {
+        let mut objects = String::from(r#"<object id="1" type="model"><mesh><vertices><vertex x="0" y="0" z="0"/><vertex x="1" y="0" z="0"/><vertex x="0" y="1" z="0"/></vertices><triangles><triangle v1="0" v2="1" v3="2"/></triangles></mesh></object>"#);
+        for id in 2..=depth + 1 {
+            objects.push_str(&format!(
+                r#"<object id="{id}" type="model"><components><component objectid="{c}"/><component objectid="{c}"/></components></object>"#,
+                c = id - 1
+            ));
+        }
+        format!(
+            r#"<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources>{objects}</resources><build><item objectid="{}"/></build></model>"#,
+            depth + 1
+        )
+    }
+
+    #[test]
+    fn exponential_component_graph_hits_the_work_budget_quickly() {
+        let bytes = build_zip_with_model_xml(&doubling_graph_model(30));
+        let started = std::time::Instant::now();
+        assert!(matches!(parse_3mf_bytes(&bytes), Err(ThreeMfError::ResourceLimitExceeded(_))));
+        let package = container::read_package(std::io::Cursor::new(bytes)).unwrap();
+        assert!(matches!(extract_render_meshes(&package), Err(ThreeMfError::ResourceLimitExceeded(_))));
+        assert!(started.elapsed() < std::time::Duration::from_secs(5), "took {:?}", started.elapsed());
+    }
+
+    #[test]
+    fn many_legitimate_instances_below_the_budget_still_work() {
+        let bytes = build_zip_with_model_xml(&doubling_graph_model(10));
+        assert!(parse_3mf_bytes(&bytes).is_ok());
+        let package = container::read_package(std::io::Cursor::new(bytes)).unwrap();
+        assert_eq!(extract_render_meshes(&package).unwrap().len(), 1024);
+    }
+
     #[test]
     fn invalid_triangle_index_is_an_error_not_a_crash() {
         let model = r#"<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources><object id="1" type="model"><mesh><vertices><vertex x="0" y="0" z="0"/></vertices><triangles><triangle v1="0" v2="1" v3="0"/></triangles></mesh></object></resources><build><item objectid="1"/></build></model>"#;
