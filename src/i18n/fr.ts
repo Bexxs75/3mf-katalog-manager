@@ -33,7 +33,7 @@ export const fr: Translations = {
   displayPreferenceTitle: 'Vue préférée',
   displayPreferenceThumbnail: 'Image',
   displayPreferenceRender: 'Vue 3D',
-  displayPreferenceDescriptionThumbnail: "Affiche en priorité l'aperçu intégré au fichier.",
+  displayPreferenceDescriptionThumbnail: "Affiche en priorité l'aperçu intégré au fichier. Les fichiers sans image propre (p. ex. STL, OBJ) reçoivent automatiquement une vue rendue.",
   displayPreferenceDescriptionRender: 'Affiche en priorité une vue 3D rendue ; les captures manquantes sont générées automatiquement en arrière-plan.',
   rotateLeftAria: 'Tourner à gauche',
   rotateRightAria: 'Tourner à droite',

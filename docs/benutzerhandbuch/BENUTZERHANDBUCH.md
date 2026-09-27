@@ -463,8 +463,9 @@ The gear icon at the bottom of the navigation rail opens Settings. They're split
   it, the density setting: "Compact" (dense, small text, a lot at a glance) or "Comfort" (larger
   text, graphics, and controls, noticeably easier to read).
 - **Preferred view** — whether the catalog and the detail page default to the stored preview
-  image or the rendered 3D view. Missing snapshots are automatically re-rendered in the
-  background as needed.
+  image or the rendered 3D view. Missing snapshots are rendered automatically in the
+  background, one file after another. With "Image", this happens for files without an image of
+  their own (e.g. STL, OBJ).
 - **Language** — German, English, Spanish, or French, effective immediately without a restart.
 
 ### Slicer
@@ -594,8 +595,9 @@ overwrites anything irreversibly.
 
 **Why do some models show only a dotted pattern instead of a preview image?**
 The model has neither an uploaded image of its own, nor a thumbnail embedded in the file, nor has
-a 3D snapshot been generated for it yet. Open the model in the 3D view once, or upload your own
-image via "Upload image" on the detail page.
+a 3D snapshot been generated for it yet. The app renders missing snapshots in the background one
+after another, so with many new files this can take a few minutes. To see it right away, open the
+model once, or upload your own image via "Upload image" on the detail page.
 
 **I accidentally deleted a file — is it gone?**
 No, as long as fewer than 7 days have passed: it sits in the trash and can be restored from
@@ -1107,8 +1109,9 @@ fünf Reiter aufgeteilt: **Allgemein**, **Slicer**, **Katalog**, **Drucker** und
   gestellt. Direkt darunter die Dichte-Einstellung: "Kompakt" (dicht, kleine Schrift, viel auf
   einen Blick) oder "Komfort" (größere Schrift, Grafiken und Bedienelemente, deutlich lesbarer).
 - **Bevorzugte Ansicht** — ob Katalog und Detailseite standardmäßig das hinterlegte Vorschaubild
-  oder die gerenderte 3D-Ansicht zeigen. Fehlende Schnappschüsse werden bei Bedarf automatisch im
-  Hintergrund nachgerendert.
+  oder die gerenderte 3D-Ansicht zeigen. Fehlende Schnappschüsse werden automatisch im Hintergrund
+  nachgerendert, eine Datei nach der anderen. Bei „Bild“ passiert das für Dateien ohne eigenes Bild
+  (z. B. STL, OBJ).
 - **Sprache** — Deutsch, Englisch, Spanisch oder Französisch, sofort wirksam ohne Neustart.
 
 ### Slicer
@@ -1243,8 +1246,10 @@ unwiderruflich überschreibt.
 
 **Warum sehe ich bei manchen Modellen nur ein gepunktetes Muster statt eines Vorschaubilds?**
 Das Modell hat weder ein eigenes hochgeladenes Bild, noch ein in der Datei eingebettetes
-Thumbnail, noch wurde bisher ein 3D-Schnappschuss dafür erzeugt. Öffne das Modell einmal in der
-3D-Ansicht, oder lade unter "Bild hochladen" auf der Detailseite ein eigenes Bild hoch.
+Thumbnail, noch wurde bisher ein 3D-Schnappschuss dafür erzeugt. Die App rendert fehlende
+Schnappschüsse nacheinander im Hintergrund, bei vielen neuen Dateien kann das ein paar Minuten
+dauern. Sofort geht es, wenn du das Modell einmal öffnest oder unter "Bild hochladen" auf der
+Detailseite ein eigenes Bild hochlädst.
 
 **Ich habe eine Datei versehentlich gelöscht — ist sie weg?**
 Nein, solange keine 7 Tage vergangen sind: Sie liegt im Papierkorb und lässt sich von dort

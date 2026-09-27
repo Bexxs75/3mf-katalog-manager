@@ -33,7 +33,7 @@ export const es: Translations = {
   displayPreferenceTitle: 'Vista preferida',
   displayPreferenceThumbnail: 'Imagen',
   displayPreferenceRender: 'Vista 3D',
-  displayPreferenceDescriptionThumbnail: 'Muestra preferentemente la imagen de vista previa guardada en el archivo.',
+  displayPreferenceDescriptionThumbnail: 'Muestra preferentemente la imagen de vista previa guardada en el archivo. Los archivos sin imagen propia (p. ej. STL, OBJ) reciben automáticamente una vista renderizada.',
   displayPreferenceDescriptionRender: 'Muestra preferentemente una vista 3D renderizada; las capturas faltantes se generan automáticamente en segundo plano.',
   rotateLeftAria: 'Girar a la izquierda',
   rotateRightAria: 'Girar a la derecha',

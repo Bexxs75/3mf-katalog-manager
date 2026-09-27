@@ -33,6 +33,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- STL and OBJ files now get their preview image automatically in the background after import, also with the setting "Preferred view: Image" – before, they showed the placeholder until opened once. Files are rendered one after another; 3MF files keep the image they bring.
 - Right-clicking outside text fields no longer opens the built-in browser menu ("Reload", "Back", "Print" …). "Reload" looked like "refresh the catalog" but only reloaded the interface. In text fields and on selected text the menu stays for copy and paste.
 - Printer connection: with multi-material units (AMS, ACE, MMU) the suggested material is now the one that was used most in the print, not simply the first loaded slot (e.g. PETG instead of PLA for a print that used 66 g PETG and 0.35 g PLA).
 - Printer connection: prints that used no filament at all (e.g. cancelled right at the start) are no longer offered as "new print" with 0 g.
@@ -453,6 +454,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Fixed
 
+- STL- und OBJ-Dateien bekommen ihr Vorschaubild jetzt nach dem Import automatisch im Hintergrund, auch mit der Einstellung „Bevorzugte Ansicht: Bild“ – vorher zeigten sie den Platzhalter, bis man sie einmal öffnete. Die Dateien werden nacheinander gerendert; 3MF-Dateien behalten ihr mitgebrachtes Bild.
 - Ein Rechtsklick außerhalb von Textfeldern öffnet nicht mehr das eingebaute Browser-Menü („Aktualisieren“, „Zurück“, „Drucken“ …). „Aktualisieren“ sah aus wie „Katalog neu einlesen“, lud aber nur die Oberfläche neu. In Textfeldern und auf markiertem Text bleibt das Menü zum Kopieren und Einfügen.
 - Druckeranbindung: Bei Mehrfarb-Einheiten (AMS, ACE, MMU) wird jetzt das Material vorgeschlagen, das im Druck am meisten verbraucht wurde, statt einfach das des ersten Fachs (z. B. PETG statt PLA bei einem Druck mit 66 g PETG und 0,35 g PLA).
 - Druckeranbindung: Drucke ohne jeden Filamentverbrauch (z. B. direkt am Anfang abgebrochen) erscheinen nicht mehr als „neuer Druck“ mit 0 g.

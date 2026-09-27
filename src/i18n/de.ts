@@ -33,7 +33,7 @@ export const de: Translations = {
   displayPreferenceTitle: 'Bevorzugte Ansicht',
   displayPreferenceThumbnail: 'Bild',
   displayPreferenceRender: '3D-Ansicht',
-  displayPreferenceDescriptionThumbnail: 'Zeigt bevorzugt das in der Datei hinterlegte Vorschaubild.',
+  displayPreferenceDescriptionThumbnail: 'Zeigt bevorzugt das in der Datei hinterlegte Vorschaubild. Dateien ohne eigenes Bild (z. B. STL, OBJ) bekommen automatisch eine gerenderte Ansicht.',
   displayPreferenceDescriptionRender: 'Zeigt bevorzugt eine gerenderte 3D-Ansicht; fehlende Schnappschüsse werden automatisch im Hintergrund nachgerendert.',
   rotateLeftAria: 'Nach links drehen',
   rotateRightAria: 'Nach rechts drehen',

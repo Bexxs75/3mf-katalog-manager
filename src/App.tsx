@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Header } from './components/Header';
+import { snapshotQueue } from './lib/snapshotQueue';
 import { Rail } from './components/Rail';
 import { ContextMenu } from './components/ContextMenu';
 import { FilamentView } from './components/FilamentView';
@@ -148,17 +149,22 @@ export default function App() {
     collections.collectionsGalleryOpen,
   ]);
 
+  const snapshotIds = useMemo(
+    () => snapshotQueue(store.models, store.pendingSnapshotIds, displayPreference),
+    [store.models, store.pendingSnapshotIds, displayPreference],
+  );
+
   return (
     <div
       className="h-screen min-h-[620px] flex flex-col bg-[var(--bg)] text-[var(--ink)] overflow-hidden"
       style={{ fontSize: 14 }}
     >
-      {displayPreference === 'render' && store.pendingSnapshotIds.length > 0 && (
+      {snapshotIds.length > 0 && (
         <BackgroundSnapshotRenderer
-          key={store.pendingSnapshotIds[0]}
-          fileId={store.pendingSnapshotIds[0]}
-          onSnapshotCaptured={(base64) => store.captureRenderSnapshot(store.pendingSnapshotIds[0], base64)}
-          onError={() => store.skipSnapshot(store.pendingSnapshotIds[0])}
+          key={snapshotIds[0]}
+          fileId={snapshotIds[0]}
+          onSnapshotCaptured={(base64) => store.captureRenderSnapshot(snapshotIds[0], base64)}
+          onError={() => store.skipSnapshot(snapshotIds[0])}
         />
       )}
       <Header

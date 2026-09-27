@@ -33,7 +33,7 @@ export const en: Translations = {
   displayPreferenceTitle: 'Preferred view',
   displayPreferenceThumbnail: 'Image',
   displayPreferenceRender: '3D view',
-  displayPreferenceDescriptionThumbnail: 'Prefers the thumbnail image stored inside the file.',
+  displayPreferenceDescriptionThumbnail: 'Prefers the thumbnail image stored inside the file. Files without an image of their own (e.g. STL, OBJ) get a rendered view automatically.',
   displayPreferenceDescriptionRender: 'Prefers a rendered 3D view; missing snapshots are rendered automatically in the background.',
   rotateLeftAria: 'Rotate left',
   rotateRightAria: 'Rotate right',
