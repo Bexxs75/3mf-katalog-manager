@@ -117,7 +117,11 @@ pub fn best_match(gcode_file_name: &str, candidates: &[Candidate]) -> Option<Mod
         return Some(ModelMatch { file_id: c.file_id, file_name: c.name.clone(), kind: MatchKind::Sure });
     }
 
-    let mut best: Option<(f64, usize, &Candidate)> = None;
+    // Ranking: a catalog name that appears completely in the G-code name comes first;
+    // then the share of common words among all words of both names, so a word that
+    // only the catalog name has ("blade" for a "hilt" print) counts against it; then
+    // the closer length.
+    let mut best: Option<(bool, f64, usize, &Candidate)> = None;
     for c in candidates {
         let n = normalize_name(&c.name);
         let n_words: HashSet<&str> = n.split(' ').collect();
@@ -132,17 +136,20 @@ pub fn best_match(gcode_file_name: &str, candidates: &[Candidate]) -> Option<Mod
         if !qualifies {
             continue;
         }
-        let score = if prefix || contained { overlap.max(0.6) } else { overlap };
+        let whole_name = prefix || contained;
+        let similarity = common as f64 / g_words.union(&n_words).count() as f64;
         let distance = n.len().abs_diff(g.len());
         let better = match best {
             None => true,
-            Some((s, d, _)) => score > s || (score == s && distance < d),
+            Some((w, s, d, _)) => {
+                (whole_name, similarity) > (w, s) || (whole_name == w && similarity == s && distance < d)
+            }
         };
         if better {
-            best = Some((score, distance, c));
+            best = Some((whole_name, similarity, distance, c));
         }
     }
-    best.map(|(_, _, c)| ModelMatch { file_id: c.file_id, file_name: c.name.clone(), kind: MatchKind::Unsure })
+    best.map(|(_, _, _, c)| ModelMatch { file_id: c.file_id, file_name: c.name.clone(), kind: MatchKind::Unsure })
 }
 
 #[cfg(test)]
@@ -186,6 +193,27 @@ mod tests {
         assert_eq!((m.file_id, m.kind), (1, MatchKind::Sure));
         let m = best_match("0926-1506-slide(01)_PETG_0.12_2h56m50s.gcode", &cands).unwrap();
         assert_eq!((m.file_id, m.kind), (2, MatchKind::Sure));
+    }
+
+    #[test]
+    fn third_kobra_s1_report_file_names() {
+        assert_eq!(
+            normalize_gcode_name("0927-1447-Crysknife Blade_120pc_plate(01)_PLA_0.12_3h25m13s.gcode"),
+            "crysknife blade 120pc"
+        );
+        assert_eq!(normalize_gcode_name("0927-0935-Assembly_plate(01)_PLA_0.2_3h46m18s.gcode"), "assembly");
+        let cands = [
+            c(1, "Assembly.3mf", "2026-09-01T00:00:00Z"),
+            c(2, "Crysknife Blade_120pc.3mf", "2026-09-01T00:00:00Z"),
+            c(3, "Crysknife Hilt.3mf", "2026-09-01T00:00:00Z"),
+        ];
+        let m = best_match("0927-0935-Assembly_plate(01)_PLA_0.2_3h46m18s.gcode", &cands).unwrap();
+        assert_eq!((m.file_id, m.kind), (1, MatchKind::Sure));
+        let m = best_match("0927-1447-Crysknife Blade_120pc_plate(01)_PLA_0.12_3h25m13s.gcode", &cands).unwrap();
+        assert_eq!((m.file_id, m.kind), (2, MatchKind::Sure));
+        // The catalog name without the "_120pc" project suffix is found, but only as a guess.
+        let m = best_match("0927-2032-Crysknife Hilt_120pc_plate(02)_PLA_0.12_17h7m17s.gcode", &cands).unwrap();
+        assert_eq!((m.file_id, m.kind), (3, MatchKind::Unsure));
     }
 
     #[test]

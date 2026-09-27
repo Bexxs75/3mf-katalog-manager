@@ -451,6 +451,33 @@ mod parse_tests {
     }
 
     #[test]
+    fn third_kobra_s1_report_offers_prints_whose_file_was_deleted() {
+        // Real test report (Anycubic Kobra S1, current Rinkhals, ACE Pro 2): the printer
+        // deletes finished files from .3mf_temp ("exists": false), so Moonraker keeps only
+        // size and mtime - no material, no slicer weight. Such prints are still offered;
+        // the grams then come from the length and the chosen spool.
+        assert_eq!(parse_server_info(&fixture("server_info_rinkhals_kobra_s1_ace2.json")).unwrap(), "?");
+        let page = parse_history_page(&fixture("history_rinkhals_kobra_s1_ace2.json")).unwrap();
+        assert_eq!(page.count, 5);
+        let ids: Vec<&str> = page.jobs.iter().map(|j| j.remote_id.as_str()).collect();
+        assert_eq!(ids, ["00025B", "00025A", "000259", "000258"], "the running print is not offered");
+
+        let blade = &page.jobs[0];
+        assert_eq!(blade.file_name, "0927-1447-Crysknife Blade_120pc_plate(01)_PLA_0.12_3h25m13s.gcode");
+        assert_eq!(blade.outcome, JobOutcome::Completed);
+        assert_eq!(blade.used_mm, 11023.0);
+        assert_eq!((blade.material.as_deref(), blade.slicer_weight_g, blade.thumbnail_path.as_deref()), (None, None, None));
+        let g = crate::printer_link::booking::grams(blade.used_mm, blade.slicer_total_mm, blade.slicer_weight_g, 1.75, "PLA");
+        assert!((32.0..34.0).contains(&g), "PLA 1.75 mm, 11 m: {g}");
+
+        // Cancelled prints still have their file and therefore the full metadata.
+        let cancelled = &page.jobs[2];
+        assert_eq!(cancelled.outcome, JobOutcome::Partial);
+        assert_eq!(cancelled.material.as_deref(), Some("PLA"));
+        assert_eq!(cancelled.slicer_weight_g, Some(88.02));
+    }
+
+    #[test]
     fn material_follows_the_heaviest_slot() {
         let job = |types: &str, weights: serde_json::Value| {
             parse_job(&serde_json::json!({"end_time": 2.0, "filament_used": 10.0, "filename": "x.gcode",
