@@ -2,6 +2,8 @@ name: Build Windows MSI (with STEP preview)
 
 on:
   workflow_dispatch: {}
+  # Also called by release.yml, which builds every variant in one run.
+  workflow_call: {}
 
 # packages: write for the vcpkg binary cache in GitHub Packages (NuGet), see the
 # "Setup vcpkg binary cache" step below.

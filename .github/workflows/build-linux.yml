@@ -2,6 +2,8 @@ name: Build Linux AppImage (with STEP preview)
 
 on:
   workflow_dispatch: {}
+  # Also called by release.yml, which builds every variant in one run.
+  workflow_call: {}
 
 jobs:
   build-linux:

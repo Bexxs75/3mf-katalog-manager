@@ -2,6 +2,8 @@ name: Build macOS DMG
 
 on:
   workflow_dispatch: {}
+  # Also called by release.yml, which builds every variant in one run.
+  workflow_call: {}
 
 jobs:
   build-macos:
@@ -37,6 +39,21 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           args: --target universal-apple-darwin -- --no-default-features
+
+      # The updater installs a .app.tar.gz on macOS, not the DMG. COPYFILE_DISABLE
+      # keeps macOS tar from adding AppleDouble "._*" files, which would otherwise
+      # end up inside the installed bundle.
+      - name: Pack the universal app for the updater
+        env:
+          COPYFILE_DISABLE: "1"
+        run: tar -czf "$RUNNER_TEMP/updater.app.tar.gz" -C "src-tauri/target/universal-apple-darwin/release/bundle/macos" "3MF Katalog Manager.app"
+
+      - name: Upload updater archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: 3mf-katalog-manager-macos-updater
+          path: ${{ runner.temp }}/updater.app.tar.gz
+          if-no-files-found: error
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4

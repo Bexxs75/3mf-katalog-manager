@@ -2,6 +2,8 @@ name: Build macOS DMG (with STEP preview)
 
 on:
   workflow_dispatch: {}
+  # Also called by release.yml, which builds every variant in one run.
+  workflow_call: {}
 
 jobs:
   # Builds one single-arch version per native runner - every architecture gets
@@ -105,6 +107,21 @@ jobs:
             "arm64-app/3MF Katalog Manager.app" \
             "x64-app/3MF Katalog Manager.app" \
             "universal-app/3MF Katalog Manager.app"
+
+      # The updater installs a .app.tar.gz on macOS, not the DMG. COPYFILE_DISABLE
+      # keeps macOS tar from adding AppleDouble "._*" files, which would otherwise
+      # end up inside the installed bundle.
+      - name: Pack the universal app for the updater
+        env:
+          COPYFILE_DISABLE: "1"
+        run: tar -czf "$RUNNER_TEMP/updater-step.app.tar.gz" -C "universal-app" "3MF Katalog Manager.app"
+
+      - name: Upload updater archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: 3mf-katalog-manager-macos-updater-step
+          path: ${{ runner.temp }}/updater-step.app.tar.gz
+          if-no-files-found: error
 
       - name: Package DMG from the universal .app
         run: |
