@@ -52,13 +52,14 @@ The app is available for Linux, Windows, and macOS (see the project's
 [releases page](https://github.com/Bexxs75/3mf-katalog-manager/releases)). For each platform there
 are two variants:
 
-- Filename **with** the `-step` suffix: includes the 3D preview for STEP files (`.stp`/`.step`),
-  at the cost of a larger download.
-- Filename **without** that suffix: smaller download; STEP files can still be cataloged (tags,
+- **With STEP preview** ("step"/"STEP" in the file name): includes the 3D preview for STEP files
+  (`.stp`/`.step`), at the cost of a larger download.
+- **Standard** (without that part): smaller download; STEP files can still be cataloged (tags,
   search, rename, trash), just without the 3D preview.
 
-Otherwise the two variants are identical. If you don't use STEP files, the smaller variant without
-`-step` is the safe choice.
+Otherwise the two variants are identical. When in doubt, take the variant with STEP preview — the
+size difference hardly matters, and you won't miss the preview later. To switch variants, install
+the other one; your catalog is kept.
 
 - **Linux:** download the `.AppImage` file, make it executable (right-click → Properties or
   `chmod +x`), and run it.
@@ -67,7 +68,26 @@ Otherwise the two variants are identical. If you don't use STEP files, the small
   continue.
 - **macOS:** open the `.dmg` file and drag the app into your Applications folder. This package is
   also unsigned (no Apple Developer certificate) — Gatekeeper will block the first launch.
-  Right-click the app → "Open" and confirm in the dialog to start it anyway.
+  Right-click the app → "Open" and confirm in the dialog to start it anyway. If macOS says the app
+  "is damaged and can't be opened", move it to the Applications folder first and then run
+  `xattr -cr "/Applications/3MF Katalog Manager.app"` in the Terminal.
+
+### Uninstalling
+
+Uninstalling removes the program, but deliberately **keeps your catalog, settings and logs** — so a
+reinstall or a manual update doesn't lose anything. To remove everything, delete these folders
+afterwards (Settings → Info → "Open data folder" / "Open log folder" shows them while the app is
+still installed):
+
+- **Windows:** `%APPDATA%\com.thebexxs.mfkatalogmanager` and
+  `%LOCALAPPDATA%\com.thebexxs.mfkatalogmanager` (logs and interface cache)
+- **macOS:** `~/Library/Application Support/com.thebexxs.mfkatalogmanager`,
+  `~/Library/Logs/com.thebexxs.mfkatalogmanager` and, if present,
+  `~/Library/Caches/com.thebexxs.mfkatalogmanager` and `~/Library/WebKit/com.thebexxs.mfkatalogmanager`
+- **Linux:** `~/.local/share/com.thebexxs.mfkatalogmanager` (catalog, settings, logs) and, if
+  present, `~/.cache/com.thebexxs.mfkatalogmanager`
+
+Your model files themselves are never touched — they stay in your catalog folder.
 
 ## Getting started
 
@@ -692,13 +712,14 @@ Die App steht für Linux, Windows und macOS zum Download bereit (siehe die
 [Releases-Seite](https://github.com/Bexxs75/3mf-katalog-manager/releases) des Projekts). Für jede
 Plattform gibt es dort zwei Varianten:
 
-- Dateiname **mit** dem Zusatz `-step`: enthält die 3D-Vorschau für STEP-Dateien (`.stp`/`.step`),
-  dafür etwas größer.
-- Dateiname **ohne** diesen Zusatz: kleinerer Download, STEP-Dateien lassen sich weiterhin
+- **Mit STEP-Vorschau** („step“/„STEP“ im Dateinamen): enthält die 3D-Vorschau für STEP-Dateien
+  (`.stp`/`.step`), dafür etwas größer.
+- **Standard** (ohne diesen Zusatz): kleinerer Download, STEP-Dateien lassen sich weiterhin
   katalogisieren (Tags, Suche, Umbenennen, Papierkorb), nur eben ohne 3D-Vorschau dafür.
 
-Ansonsten sind beide Varianten identisch. Wer keine STEP-Dateien verwendet, kann bedenkenlos die
-kleinere Variante ohne `-step` nehmen.
+Ansonsten sind beide Varianten identisch. Im Zweifel nimm die Variante mit STEP-Vorschau – der
+Größenunterschied spielt kaum eine Rolle, und du vermisst die Vorschau später nicht. Zum Wechseln
+installierst du einfach die andere Variante, dein Katalog bleibt erhalten.
 
 - **Linux:** die `.AppImage`-Datei herunterladen, ausführbar machen (Rechtsklick → Eigenschaften
   oder `chmod +x`) und starten.
@@ -708,7 +729,26 @@ kleinere Variante ohne `-step` nehmen.
 - **macOS:** `.dmg`-Datei öffnen und die App in den Programme-Ordner ziehen. Auch hier ist das
   Paket unsigniert (kein Apple-Developer-Zertifikat) — Gatekeeper blockiert den ersten Start.
   Mit Rechtsklick auf die App → "Öffnen" und im Dialog bestätigen lässt sie sich trotzdem
-  starten.
+  starten. Meldet macOS, die App sei „beschädigt und kann nicht geöffnet werden“, zieh sie zuerst
+  in den Programme-Ordner und führe dann im Terminal
+  `xattr -cr "/Applications/3MF Katalog Manager.app"` aus.
+
+### Deinstallieren
+
+Beim Deinstallieren wird das Programm entfernt, **Katalog, Einstellungen und Logs bleiben aber
+absichtlich erhalten** – so geht bei einer Neuinstallation oder einem Update von Hand nichts
+verloren. Willst du alles loswerden, lösch danach diese Ordner (solange die App noch installiert
+ist, zeigt Einstellungen → Info → „Datenordner öffnen“ / „Log-Ordner öffnen“ sie dir):
+
+- **Windows:** `%APPDATA%\com.thebexxs.mfkatalogmanager` und
+  `%LOCALAPPDATA%\com.thebexxs.mfkatalogmanager` (Logs und Zwischenspeicher der Oberfläche)
+- **macOS:** `~/Library/Application Support/com.thebexxs.mfkatalogmanager`,
+  `~/Library/Logs/com.thebexxs.mfkatalogmanager` und, falls vorhanden,
+  `~/Library/Caches/com.thebexxs.mfkatalogmanager` und `~/Library/WebKit/com.thebexxs.mfkatalogmanager`
+- **Linux:** `~/.local/share/com.thebexxs.mfkatalogmanager` (Katalog, Einstellungen, Logs) und,
+  falls vorhanden, `~/.cache/com.thebexxs.mfkatalogmanager`
+
+Deine Modelldateien selbst werden nie angefasst – sie bleiben in deinem Katalog-Ordner.
 
 ## Erste Schritte
 

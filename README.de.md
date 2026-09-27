@@ -62,6 +62,8 @@ Was du selbst prüfen kannst:
   - Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`
 - **Trotzdem starten:** Windows-SmartScreen: „Weitere Informationen“ → „Trotzdem ausführen“. macOS: Rechtsklick auf die App → „Öffnen“; ab macOS 15: Systemeinstellungen → Datenschutz & Sicherheit → „Trotzdem öffnen“.
 - **Nur lokal:** Die App arbeitet offline. Online geht sie nur, um auf GitHub nach einer neuen Version zu sehen, um sie herunterzuladen, wenn du aktualisierst, und, wenn du es einschaltest, um mit Druckern im Heimnetz zu sprechen.
+- **Virenscanner** wie Avast oder AVG blockieren neue, nicht signierte Programme manchmal vorsorglich. Stell die Datei aus der Quarantäne wieder her und trag den Installationsordner als Ausnahme ein; vorher kannst du die Datei bei [VirusTotal](https://www.virustotal.com) prüfen.
+- **Deinstallieren** entfernt das Programm, Katalog, Einstellungen und Logs bleiben aber absichtlich erhalten. Welche Ordner du löschen musst, um alles zu entfernen, steht im [Benutzerhandbuch](docs/benutzerhandbuch/BENUTZERHANDBUCH.md#deinstallieren).
 
 ## Updates
 

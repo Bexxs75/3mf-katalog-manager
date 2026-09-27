@@ -62,6 +62,8 @@ What you can check yourself:
   - Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`
 - **Starting anyway:** Windows SmartScreen: "More info" → "Run anyway". macOS: right-click the app → "Open"; on macOS 15 or newer: System Settings → Privacy & Security → "Open Anyway".
 - **Local only:** the app works offline. It only goes online to check GitHub for a newer version, to download it when you choose to update, and, if you switch it on, to talk to printers on your home network.
+- **Antivirus programs** such as Avast or AVG sometimes block new, unsigned programs as a precaution. Restore the file from quarantine and add the installation folder as an exception; you can check the file on [VirusTotal](https://www.virustotal.com) first.
+- **Uninstalling** removes the program but keeps your catalog, settings and logs on purpose. The [user guide](docs/benutzerhandbuch/BENUTZERHANDBUCH.md#uninstalling) lists the folders to delete if you want everything gone.
 
 ## Updates
 
