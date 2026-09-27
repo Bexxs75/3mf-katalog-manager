@@ -104,11 +104,17 @@ def check_preview(version, manifest_path=None):
     if manifest_path is None:
         return
     manifest_path = pathlib.Path(manifest_path)
-    if not manifest_path.is_file():
-        return  # nothing published yet under this channel, so anything goes
-    manifest = json.loads(manifest_path.read_text())
-    if version_key(version) < version_key(manifest["version"]):
-        fail(f"version {version} is older than the published preview {manifest['version']}")
+    # Missing or empty: nothing published yet under this channel (a failed
+    # download may still leave an empty file), so anything goes.
+    if not manifest_path.is_file() or not manifest_path.read_text().strip():
+        return
+    try:
+        published = json.loads(manifest_path.read_text())["version"]
+        published_key = version_key(published)
+    except (ValueError, KeyError, TypeError) as e:
+        fail(f"cannot read the published preview manifest {manifest_path}: {e}")
+    if version_key(version) < published_key:
+        fail(f"version {version} is older than the published preview {published}")
 
 def set_version(version, root="."):
     root = pathlib.Path(root)
@@ -147,6 +153,9 @@ def main(argv):
     preview = "--preview" in args
     no_step = "--no-step" in args
     args = [a for a in args if a not in ("--preview", "--no-step")]
+    unknown = [a for a in args if a.startswith("--")]
+    if unknown:
+        fail(f"unknown option {' '.join(unknown)}")
     commands = {
         "rename": lambda *a: rename(*a, preview=preview, step=not no_step),
         "latest-json": lambda *a: latest_json(*a, preview=preview, step=not no_step),

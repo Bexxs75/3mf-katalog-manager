@@ -100,6 +100,18 @@ class Preview(unittest.TestCase):
             self.assertLess(ra.version_key("0.15.0-10"), ra.version_key("0.15.1-1"))
             self.assertLess(ra.version_key("0.15.0-2"), ra.version_key("0.15.0-10"))
 
+    def test_check_preview_manifest_edge_cases(self):
+        with tempfile.TemporaryDirectory() as t:
+            p = pathlib.Path(t, "latest-preview.json")
+            p.write_text("")
+            ra.check_preview("0.15.0-2", p)   # empty file = nothing published yet
+            for broken in ("<html>404</html>", json.dumps({"pub_date": "x"}), json.dumps({"version": "abc"})):
+                p.write_text(broken)
+                with self.assertRaises(SystemExit): ra.check_preview("0.15.0-2", p)
+
+    def test_unknown_option_fails(self):
+        with self.assertRaises(SystemExit): ra.main(["rename", "--foo", "0.15.0", "a", "b"])
+
     def test_set_version(self):
         with tempfile.TemporaryDirectory() as t:
             r = pathlib.Path(t); (r / "src-tauri").mkdir()
