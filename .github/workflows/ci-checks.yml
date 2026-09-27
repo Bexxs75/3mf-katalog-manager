@@ -67,3 +67,6 @@ jobs:
       - name: Rust tests
         working-directory: src-tauri
         run: cargo test --no-default-features
+
+      - name: Release tool tests (unittest)
+        run: python3 -m unittest discover -s tools -p 'test_release_assets.py'
