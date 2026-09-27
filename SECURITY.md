@@ -32,7 +32,7 @@ Please give us a reasonable amount of time to release a fix before you disclose 
 
 ## Scope
 
-The desktop app (this repository) and the website [3mfkatalog.de](https://3mfkatalog.de). The app works locally; it only goes online to check GitHub for a new version and, if you switch it on, to read printers on your home network.
+The desktop app (this repository) and the website [3mfkatalog.de](https://3mfkatalog.de). The app works locally; it only goes online to check GitHub for a new version, to download it when you choose to update, and, if you switch it on, to read printers on your home network.
 
 ---
 
@@ -68,4 +68,4 @@ Bitte gib uns angemessen Zeit für eine Korrektur, bevor du das Problem öffentl
 
 ### Geltungsbereich
 
-Die Desktop-App (dieses Repository) und die Webseite [3mfkatalog.de](https://3mfkatalog.de). Die App arbeitet lokal; online geht sie nur, um auf GitHub nach einer neuen Version zu sehen, und, wenn du es einschaltest, um Drucker im Heimnetz auszulesen.
+Die Desktop-App (dieses Repository) und die Webseite [3mfkatalog.de](https://3mfkatalog.de). Die App arbeitet lokal; online geht sie nur, um auf GitHub nach einer neuen Version zu sehen, um sie herunterzuladen, wenn du aktualisierst, und, wenn du es einschaltest, um Drucker im Heimnetz auszulesen.

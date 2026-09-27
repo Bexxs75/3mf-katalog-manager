@@ -61,7 +61,7 @@ What you can check yourself:
   - macOS: `shasum -a 256 3MF.Katalog.Manager_…dmg`
   - Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`
 - **Starting anyway:** Windows SmartScreen: "More info" → "Run anyway". macOS: right-click the app → "Open"; on macOS 15 or newer: System Settings → Privacy & Security → "Open Anyway".
-- **Local only:** the app works offline. It only goes online to check GitHub for a newer version and, if you switch it on, to talk to printers on your home network.
+- **Local only:** the app works offline. It only goes online to check GitHub for a newer version, to download it when you choose to update, and, if you switch it on, to talk to printers on your home network.
 
 ## Updates
 

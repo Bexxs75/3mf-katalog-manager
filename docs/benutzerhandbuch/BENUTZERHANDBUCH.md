@@ -526,8 +526,8 @@ again" repeats the check any time.
 
 **On Windows, macOS, and the Linux AppImage**, when a newer version is found:
 
-1. **"Version X.Y.Z is available"** — "Update now" downloads it (its signature is checked
-   before anything else happens); "What's new?" opens the release notes on GitHub.
+1. **"Version X.Y.Z is available"** — "Update now" downloads it; the app checks its
+   signature before the update can be installed; "What's new?" opens the release notes on GitHub.
 2. **Downloading** — a progress bar shows the download; you can keep working in the app while
    it runs.
 3. **"Update X.Y.Z is ready"** — "Restart and install" backs up your catalog database, then
@@ -539,7 +539,7 @@ again" repeats the check any time.
    your version and your catalog are unchanged." and a "Try again" button. The app never
    installs an update without a successful backup first.
 
-**Package installs on Linux (`.deb`, `.rpm`) and development builds** can't replace themselves
+**Package installs on Linux (`.deb`, `.rpm`) and other Linux runs outside an AppImage** can't replace themselves
 this way — only the AppImage can. There, the button reads "Go to download page" instead and
 opens the release on GitHub, where you install the new version the way you normally would for
 your package.
@@ -1171,8 +1171,8 @@ suchen“ die Prüfung jederzeit wiederholt.
 
 **Unter Windows, macOS und der Linux-AppImage** läuft ein gefundenes Update so ab:
 
-1. **„Version X.Y.Z ist verfügbar“** — „Jetzt aktualisieren“ lädt es herunter (die Signatur
-   wird zuerst geprüft); „Was ist neu?“ öffnet die Release-Notes auf GitHub.
+1. **„Version X.Y.Z ist verfügbar“** — „Jetzt aktualisieren“ lädt es herunter; die App prüft
+   die Signatur, bevor das Update installiert werden kann; „Was ist neu?“ öffnet die Release-Notes auf GitHub.
 2. **Download** — ein Fortschrittsbalken zeigt den Ladevorgang; du kannst währenddessen
    weiterarbeiten.
 3. **„Update X.Y.Z ist bereit“** — „Neu starten und installieren“ sichert zuerst deinen
@@ -1185,7 +1185,7 @@ suchen“ die Prüfung jederzeit wiederholt.
    wurde nichts installiert, deine Version und dein Katalog sind unverändert.“ und einem Knopf
    „Erneut versuchen“. Ohne erfolgreiche Sicherung installiert die App nie ein Update.
 
-**Paket-Installationen unter Linux (`.deb`, `.rpm`) und Entwicklungs-Builds** können sich nicht
+**Paket-Installationen unter Linux (`.deb`, `.rpm`) und andere Linux-Starts außerhalb einer AppImage** können sich nicht
 selbst ersetzen — das kann nur die AppImage. Dort steht statt „Jetzt aktualisieren“ der Knopf
 „Zur Download-Seite“, der das Release auf GitHub öffnet; dort installierst du die neue Version
 wie für dein Paket üblich.
