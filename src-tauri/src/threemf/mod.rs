@@ -595,6 +595,15 @@ mod tests {
     /// 3D/3dmodel.model) around the given `<model>` XML, like `build_test_3mf()` but
     /// without thumbnail/materials - for tests that only care about the
     /// object/component structure.
+    #[test]
+    fn invalid_triangle_index_is_an_error_not_a_crash() {
+        let model = r#"<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources><object id="1" type="model"><mesh><vertices><vertex x="0" y="0" z="0"/></vertices><triangles><triangle v1="0" v2="1" v3="0"/></triangles></mesh></object></resources><build><item objectid="1"/></build></model>"#;
+        let bytes = build_zip_with_model_xml(model);
+        assert!(matches!(parse_3mf_bytes(&bytes), Err(ThreeMfError::InvalidGeometry(_))));
+        let package = container::read_package(std::io::Cursor::new(bytes));
+        assert!(package.is_err() || extract_render_meshes(&package.unwrap()).is_err());
+    }
+
     fn build_zip_with_model_xml(model_xml: &str) -> Vec<u8> {
         let rels_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">

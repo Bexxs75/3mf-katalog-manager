@@ -16,6 +16,9 @@ pub enum ThreeMfError {
     /// The sum of all unpacked resources exceeds the total budget, or too many
     /// referenced model files were loaded.
     ResourceLimitExceeded(String),
+    /// A mesh references a vertex that doesn't exist or has a non-finite
+    /// coordinate; using it would index out of bounds.
+    InvalidGeometry(String),
 }
 
 impl fmt::Display for ThreeMfError {
@@ -26,6 +29,7 @@ impl fmt::Display for ThreeMfError {
             ThreeMfError::Xml(e) => write!(f, "XML error: {e}"),
             ThreeMfError::MissingRootModel => write!(f, "no root 3D model part found in package"),
             ThreeMfError::InvalidTransform(s) => write!(f, "invalid transform attribute: {s}"),
+            ThreeMfError::InvalidGeometry(s) => write!(f, "invalid mesh: {s}"),
             ThreeMfError::EntryTooLarge { path, size, max } => write!(
                 f,
                 "package entry \"{path}\" is too large ({size} bytes, maximum {max} bytes)"

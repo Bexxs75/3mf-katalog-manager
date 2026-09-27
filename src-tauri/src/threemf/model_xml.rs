@@ -110,10 +110,13 @@ fn handle_start(ctx: &mut ParseCtx, name: &str, e: &BytesStart) -> Result<(), Th
         "triangle" => {
             if ctx.in_triangles {
                 if let Some(mesh) = ctx.current_mesh.as_mut() {
-                    let v1 = get_attr(e, "v1").and_then(|v| v.parse().ok()).unwrap_or(0);
-                    let v2 = get_attr(e, "v2").and_then(|v| v.parse().ok()).unwrap_or(0);
-                    let v3 = get_attr(e, "v3").and_then(|v| v.parse().ok()).unwrap_or(0);
-                    mesh.triangles.push([v1, v2, v3]);
+                    // A missing or unreadable index must not silently become vertex 0.
+                    let index = |name: &str| {
+                        get_attr(e, name).and_then(|v| v.trim().parse::<u32>().ok()).ok_or_else(|| {
+                            ThreeMfError::InvalidGeometry(format!("triangle without a valid {name}"))
+                        })
+                    };
+                    mesh.triangles.push([index("v1")?, index("v2")?, index("v3")?]);
                 }
             }
         }
@@ -224,7 +227,27 @@ pub fn parse_model_xml(xml: &str) -> Result<ParsedModel, ThreeMfError> {
         }
     }
 
+    for (id, object) in &ctx.model.objects {
+        if let Some(mesh) = &object.mesh {
+            validate_mesh(id, mesh)?;
+        }
+    }
     Ok(ctx.model)
+}
+
+/// Every consumer (volume, bounding box, render meshes) indexes `vertices` with
+/// the triangle indices, so a model from an untrusted file is checked once here.
+fn validate_mesh(object_id: &str, mesh: &Mesh) -> Result<(), ThreeMfError> {
+    if mesh.vertices.iter().flatten().any(|c| !c.is_finite()) {
+        return Err(ThreeMfError::InvalidGeometry(format!("object {object_id}: non-finite coordinate")));
+    }
+    let vertex_count = mesh.vertices.len();
+    if let Some(bad) = mesh.triangles.iter().flatten().find(|&&i| i as usize >= vertex_count) {
+        return Err(ThreeMfError::InvalidGeometry(format!(
+            "object {object_id}: vertex index {bad} with {vertex_count} vertices"
+        )));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -262,5 +285,56 @@ mod tests {
             Some("3D/Objects/object_1.model")
         );
         assert_eq!(model.build_items[1].path, None);
+    }
+
+    fn mesh_model(vertices: &str, triangles: &str) -> String {
+        format!(
+            r#"<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources><object id="1" type="model"><mesh><vertices>{vertices}</vertices><triangles>{triangles}</triangles></mesh></object></resources><build><item objectid="1"/></build></model>"#
+        )
+    }
+
+    const THREE_VERTICES: &str = r#"<vertex x="0" y="0" z="0"/><vertex x="1" y="0" z="0"/><vertex x="0" y="1" z="0"/>"#;
+
+    #[test]
+    fn valid_triangle_is_accepted() {
+        let model = parse_model_xml(&mesh_model(THREE_VERTICES, r#"<triangle v1="0" v2="1" v3="2"/>"#))
+            .expect("valid mesh");
+        assert_eq!(model.objects["1"].mesh.as_ref().unwrap().triangles, vec![[0, 1, 2]]);
+    }
+
+    #[test]
+    fn triangle_index_past_the_last_vertex_is_rejected() {
+        let xml = mesh_model(r#"<vertex x="0" y="0" z="0"/>"#, r#"<triangle v1="0" v2="1" v3="0"/>"#);
+        assert!(matches!(parse_model_xml(&xml), Err(ThreeMfError::InvalidGeometry(_))));
+    }
+
+    #[test]
+    fn triangle_with_huge_index_is_rejected() {
+        let xml = mesh_model(THREE_VERTICES, r#"<triangle v1="0" v2="1" v3="4294967295"/>"#);
+        assert!(matches!(parse_model_xml(&xml), Err(ThreeMfError::InvalidGeometry(_))));
+    }
+
+    #[test]
+    fn triangle_without_vertices_is_rejected() {
+        let xml = mesh_model("", r#"<triangle v1="0" v2="0" v3="0"/>"#);
+        assert!(matches!(parse_model_xml(&xml), Err(ThreeMfError::InvalidGeometry(_))));
+    }
+
+    #[test]
+    fn missing_or_negative_index_is_rejected_instead_of_becoming_zero() {
+        for triangle in [r#"<triangle v1="0" v3="2"/>"#, r#"<triangle v1="0" v2="-1" v3="2"/>"#] {
+            let xml = mesh_model(THREE_VERTICES, triangle);
+            assert!(
+                matches!(parse_model_xml(&xml), Err(ThreeMfError::InvalidGeometry(_))),
+                "{triangle}"
+            );
+        }
+    }
+
+    #[test]
+    fn non_finite_coordinate_is_rejected() {
+        let vertices = r#"<vertex x="0" y="0" z="0"/><vertex x="NaN" y="0" z="0"/><vertex x="0" y="inf" z="0"/>"#;
+        let xml = mesh_model(vertices, r#"<triangle v1="0" v2="1" v3="2"/>"#);
+        assert!(matches!(parse_model_xml(&xml), Err(ThreeMfError::InvalidGeometry(_))));
     }
 }
