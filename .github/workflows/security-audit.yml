@@ -5,9 +5,27 @@ on:
     # Mondays 06:00 UTC
     - cron: "0 6 * * 1"
   workflow_dispatch: {}
+  # Every change to a manifest or lockfile, on either side, and to the
+  # workflows themselves - not only Cargo.lock.
   push:
     paths:
+      - "package.json"
+      - "package-lock.json"
+      - "src-tauri/Cargo.toml"
       - "src-tauri/Cargo.lock"
+      - "src-tauri/deny.toml"
+      - ".github/workflows/**"
+  pull_request:
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - "src-tauri/Cargo.toml"
+      - "src-tauri/Cargo.lock"
+      - "src-tauri/deny.toml"
+      - ".github/workflows/**"
+
+permissions:
+  contents: read
 
 jobs:
   cargo-deny:
