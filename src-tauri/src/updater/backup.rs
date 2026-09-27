@@ -19,9 +19,13 @@ pub fn create(conn: &Connection, dir: &Path, version: &str) -> Result<PathBuf, S
         std::fs::remove_file(&path).map_err(|e| e.to_string())?;
     }
     let mut dst = Connection::open(&path).map_err(|e| e.to_string())?;
+    // A page budget covering the whole database, so the copy finishes in a single
+    // step: `run_to_completion` sleeps `pause_between_pages` after every step that
+    // isn't the last one, and the caller already holds the catalog lock for the
+    // duration, so there is no concurrent writer for that pause to make room for.
     rusqlite::backup::Backup::new(conn, &mut dst)
         .map_err(|e| e.to_string())?
-        .run_to_completion(5, std::time::Duration::from_millis(250), None)
+        .run_to_completion(i32::MAX, std::time::Duration::from_millis(250), None)
         .map_err(|e| e.to_string())?;
     drop(dst);
     crate::harden_permissions(&path);

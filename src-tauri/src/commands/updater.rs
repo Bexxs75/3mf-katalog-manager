@@ -125,32 +125,49 @@ pub fn discard_app_update(pending: State<UpdaterState>) -> CmdResult<()> {
     Ok(())
 }
 
-#[tauri::command]
+/// A failed backup must not lose the downloaded update: only a successful backup may
+/// consume the pending slot, so a failure leaves the download in place for the next
+/// "restart and install" click to retry without fetching it again.
+fn take_pending_if_backup_ok<T>(pending: &mut Option<T>, backup_succeeded: bool) -> Option<T> {
+    if backup_succeeded { pending.take() } else { None }
+}
+
+// `async`: the backup below holds the catalog lock and, however briefly, does file and
+// SQLite work that must not run on the main/UI thread, which is where a plain
+// `#[tauri::command]` executes.
+#[tauri::command(async)]
 pub fn install_app_update(app: tauri::AppHandle, state: State<AppState>, pending: State<UpdaterState>) -> CmdResult<()> {
-    let (update, bytes) = pending
-        .pending
-        .lock()
-        .map_err(|_| "update lock poisoned".to_string())?
-        .take()
-        .ok_or_else(|| CmdError::expected("Es liegt kein heruntergeladenes Update vor"))?;
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("update-backups");
-    {
+    let mut guard = pending.pending.lock().map_err(|_| "update lock poisoned".to_string())?;
+    let version = guard
+        .as_ref()
+        .map(|(update, _)| update.version.clone())
+        .ok_or_else(|| CmdError::expected("Es liegt kein heruntergeladenes Update vor"))?;
+
+    let backup_result: Result<PathBuf, String> = {
         let conn = lock_db(&state)?;
-        let path = backup::create(&conn, &dir, &update.version)
-            .map_err(|e| format!("Sicherung fehlgeschlagen, das Update wurde nicht installiert: {e}"))?;
-        let info = LastUpdateInfo {
-            version: update.version.clone(),
-            date: chrono::Local::now().format("%Y-%m-%d").to_string(),
-            backup_file: backup::file_name(&update.version),
-        };
-        let json = serde_json::to_string(&info).map_err(|e| e.to_string())?;
-        set_setting(&conn, updater::LAST_UPDATE_KEY, &json).map_err(|e| e.to_string())?;
-        log::info!(target: "update", "Katalog gesichert: {}", path.display());
-    }
+        backup::create(&conn, &dir, &version).and_then(|path| {
+            let info = LastUpdateInfo {
+                version: version.clone(),
+                date: chrono::Local::now().format("%Y-%m-%d").to_string(),
+                backup_file: backup::file_name(&version),
+            };
+            let json = serde_json::to_string(&info).map_err(|e| e.to_string())?;
+            set_setting(&conn, updater::LAST_UPDATE_KEY, &json).map_err(|e| e.to_string())?;
+            Ok(path)
+        })
+    };
+    let taken = take_pending_if_backup_ok(&mut guard, backup_result.is_ok());
+    drop(guard);
+    let path = backup_result.map_err(|e| format!("Sicherung fehlgeschlagen, das Update wurde nicht installiert: {e}"))?;
+    let (update, bytes) =
+        taken.expect("pending update is still present: the backup succeeded and the lock was held throughout");
+    log::info!(target: "update", "Katalog gesichert: {}", path.display());
     log::info!(target: "update", "Installation von {} gestartet", update.version);
     update.install(bytes).map_err(|e| format!("Installation fehlgeschlagen: {e}"))?;
     // Windows exits inside install() and the installer restarts the app; on macOS
-    // and Linux the new bundle is in place and we restart into it.
+    // and Linux the new bundle is in place and we restart into it. Off the main
+    // thread (see the `async` attribute above), this still restarts reliably.
     app.restart();
 }
 
@@ -180,5 +197,19 @@ mod tests {
     fn download_progress_is_camel_case() {
         let progress = DownloadProgress { downloaded: 5, total: Some(10) };
         assert_eq!(serde_json::to_string(&progress).unwrap(), r#"{"downloaded":5,"total":10}"#);
+    }
+
+    #[test]
+    fn a_failed_backup_leaves_the_pending_update_in_place() {
+        let mut pending = Some(42);
+        assert_eq!(take_pending_if_backup_ok(&mut pending, false), None);
+        assert_eq!(pending, Some(42));
+    }
+
+    #[test]
+    fn a_successful_backup_takes_the_pending_update() {
+        let mut pending = Some(42);
+        assert_eq!(take_pending_if_backup_ok(&mut pending, true), Some(42));
+        assert_eq!(pending, None);
     }
 }
