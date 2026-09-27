@@ -38,6 +38,11 @@ jobs:
         with:
           args: --target universal-apple-darwin -- --no-default-features
 
+      # bundle.macOS.signingIdentity "-" makes Tauri sign ad hoc; an app
+      # without a valid signature is reported as "damaged" on Apple Silicon.
+      - name: Verify the ad-hoc signature
+        run: codesign --verify --deep --strict --verbose=2 "src-tauri/target/universal-apple-darwin/release/bundle/macos/3MF Katalog Manager.app"
+
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
