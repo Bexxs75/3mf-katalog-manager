@@ -72,6 +72,10 @@ opencascade-sys = { version = "0.3", optional = true }
 [target.'cfg(target_os = "macos")'.dependencies]
 xattr = "1"
 
+# Unix: open model files non-blocking so a FIFO can't hang the app (see src/safe_file.rs).
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 # Tests only: create xz archives.
 lzma-rust2 = { version = "0.21", default-features = false, features = ["std", "xz", "optimization", "encoder"] }

@@ -553,7 +553,9 @@ pub(crate) fn compute_content_hash(path: &Path) -> CmdResult<String> {
     use std::io::Read;
 
     const CHUNK_SIZE: usize = 1024 * 1024;
-    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    // Paths can come from an imported backup: `/dev/zero` would be read forever,
+    // a FIFO would block the startup backfill.
+    let file = crate::safe_file::open_regular(path).map_err(|e| e.to_string())?;
     let mut reader = std::io::BufReader::new(file);
     let mut hasher = Sha256::new();
     let mut buffer = vec![0u8; CHUNK_SIZE];
@@ -1943,6 +1945,31 @@ mod tests {
         let result = rescan_file(&mut conn, id);
         assert!(result.is_err());
     }
+    #[cfg(unix)]
+    #[test]
+    fn hash_backfill_skips_devices_and_fifos_instead_of_hanging() {
+        let fifo = unique_test_dir("backfill_fifo").join("pipe.stl");
+        let c_path = std::ffi::CString::new(fifo.to_str().unwrap()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) }, 0);
+
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let conn = crate::db::connect_in_memory().expect("connect");
+            for path in [std::path::Path::new("/dev/zero"), fifo.as_path()] {
+                let tx = conn.unchecked_transaction().unwrap();
+                db::insert_file_within_tx(&tx, &sample_new_file_for_rescan_test(path)).unwrap();
+                tx.commit().unwrap();
+            }
+            backfill_content_hashes(&conn);
+            let still_missing = db::list_files_missing_content_hash(&conn).unwrap().len();
+            let _ = done_tx.send(still_missing);
+        });
+        let still_missing = done_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("the backfill must not hang on /dev/zero or a FIFO");
+        assert_eq!(still_missing, 2, "neither path gets a hash");
+    }
+
     fn sample_new_file_for_rescan_test(path: &std::path::Path) -> NewFile {
         NewFile {
             name: "missing.3mf".to_string(),

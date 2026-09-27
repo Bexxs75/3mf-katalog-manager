@@ -7,6 +7,7 @@ mod geometry;
 mod obj;
 // Printer connection: connection and sync logic.
 mod printer_link;
+mod safe_file;
 mod slicers;
 #[cfg(feature = "step-preview")]
 pub mod step;
@@ -56,7 +57,7 @@ fn sensitive_dirs(app: &tauri::AppHandle) -> Vec<std::path::PathBuf> {
         dirs.push(home.join("Library"));
     }
     #[cfg(target_os = "linux")]
-    for root in ["/etc", "/usr", "/bin", "/sbin", "/boot", "/root", "/var", "/sys", "/proc"] {
+    for root in ["/etc", "/usr", "/bin", "/sbin", "/boot", "/root", "/var", "/sys", "/proc", "/dev"] {
         dirs.push(std::path::PathBuf::from(root));
     }
     #[cfg(target_os = "windows")]
