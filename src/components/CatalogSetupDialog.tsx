@@ -13,18 +13,33 @@ interface Props {
   onBaseDirSet: (path: string) => void;
 }
 
+type CatalogDirState = 'new' | 'existingDir' | 'existingFile' | 'link';
+
 interface CatalogDirPreview {
   path: string;
-  exists: boolean;
+  state: CatalogDirState;
+}
+
+/** A preview remembers what it was computed for, so a stale one never decides. */
+interface PreviewFor extends CatalogDirPreview {
+  parent: string;
+  name: string;
 }
 
 const PROBLEM_TEXT: Record<
   Exclude<FolderNameProblem['kind'], 'char'>,
-  'catalogSetupNameEmpty' | 'catalogSetupNameReserved' | 'catalogSetupNameTrailing'
+  'catalogSetupNameEmpty' | 'catalogSetupNameReserved' | 'catalogSetupNameTrailing' | 'catalogSetupNameTooLong'
 > = {
   empty: 'catalogSetupNameEmpty',
   reserved: 'catalogSetupNameReserved',
   trailing: 'catalogSetupNameTrailing',
+  tooLong: 'catalogSetupNameTooLong',
+};
+
+// States in which the name can't be used; the UI explains them in its own words.
+const BLOCKING_TEXT: Partial<Record<CatalogDirState, 'catalogSetupNewExistingFile' | 'catalogSetupNewLink'>> = {
+  existingFile: 'catalogSetupNewExistingFile',
+  link: 'catalogSetupNewLink',
 };
 
 type Done =
@@ -42,9 +57,12 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
   const [parent, setParent] = useState<string | null>(null);
   const [parentLoaded, setParentLoaded] = useState(false);
   const [name, setName] = useState(() => t('catalogSetupNewDefaultName'));
-  const [preview, setPreview] = useState<CatalogDirPreview | null>(null);
+  const [preview, setPreview] = useState<PreviewFor | null>(null);
+  const [previewError, setPreviewError] = useState<AppError | null>(null);
   const problem = folderNameProblem(name);
   const nameValid = problem === null;
+  const previewIsCurrent = preview !== null && preview.parent === parent && preview.name === name;
+  const blockingText = previewIsCurrent ? BLOCKING_TEXT[preview.state] : undefined;
 
   useEffect(() => {
     if (!newForm || parentLoaded) return;
@@ -64,13 +82,27 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
     };
   }, [newForm, parentLoaded]);
 
+  const loadPreview = (forParent: string, forName: string) =>
+    invoke<CatalogDirPreview>('preview_catalog_dir', { parent: forParent, name: forName }).then(
+      (p): PreviewFor => ({ ...p, parent: forParent, name: forName }),
+    );
+
+  // The previous preview stays visible until the next one arrives, so the
+  // result line doesn't flicker while typing.
   useEffect(() => {
-    setPreview(null);
     if (!newForm || !parent || !nameValid) return;
     let cancelled = false;
-    invoke<CatalogDirPreview>('preview_catalog_dir', { parent, name })
-      .then((p) => !cancelled && setPreview(p))
-      .catch((e) => console.error('[catalog-setup] preview failed:', e));
+    loadPreview(parent, name)
+      .then((p) => {
+        if (cancelled) return;
+        setPreview(p);
+        setPreviewError(null);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setPreview(null);
+        setPreviewError(toAppError(e));
+      });
     return () => {
       cancelled = true;
     };
@@ -78,10 +110,10 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
 
   const adoptExisting = async () => {
     setError(null);
-    const path = await invoke<string | null>('pick_folder_path');
-    if (!path) return;
-    setBusy('adopt');
     try {
+      const path = await invoke<string | null>('pick_folder_path');
+      if (!path) return;
+      setBusy('adopt');
       const before = await invoke<Folder[]>('list_folders');
       const result = await invoke<ImportResultDto>('import_dropped', { paths: [path] });
       const after = await invoke<Folder[]>('list_folders');
@@ -109,10 +141,10 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
   // Picks an existing folder directly and uses it as it is.
   const setupNewFromPicker = async () => {
     setError(null);
-    const path = await invoke<string | null>('pick_folder_path');
-    if (!path) return;
-    setBusy('new');
     try {
+      const path = await invoke<string | null>('pick_folder_path');
+      if (!path) return;
+      setBusy('new');
       await registerNew(path);
     } catch (e) {
       setError(toAppError(e));
@@ -139,7 +171,12 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
       const path = await invoke<string>('create_catalog_dir', { parent, name });
       await registerNew(path);
     } catch (e) {
-      setError(toAppError(e));
+      // Something may have appeared under that name meanwhile: then the
+      // translated hint from a fresh preview explains it better than the
+      // backend message.
+      const fresh = await loadPreview(parent, name).catch(() => null);
+      if (fresh && BLOCKING_TEXT[fresh.state]) setPreview(fresh);
+      else setError(toAppError(e));
     } finally {
       setBusy(null);
     }
@@ -254,20 +291,28 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
                 className={`w-full text-[13px] px-2.5 py-[7px] rounded-[6px] border bg-[var(--panel)] text-[var(--ink)] outline-none ${problem ? 'border-[var(--accent)]' : 'border-[var(--line-strong)] focus:border-[var(--accent)]'}`}
               />
               {problemText && <div className="mt-2 text-[12px] text-[var(--accent)]">{problemText}</div>}
-              {!problem && preview && (
+              {!problem && blockingText && <div className="mt-2 text-[12px] text-[var(--accent)]">{t(blockingText)}</div>}
+              {!problem && !blockingText && preview && (
                 <div className="mt-3 px-3 py-2 rounded-[8px] bg-[var(--accent-soft)] text-[12.5px] text-[var(--ink)] break-all">
-                  {preview.exists ? t('catalogSetupNewExists') : t('catalogSetupNewWillCreate')}{' '}
+                  {preview.state === 'existingDir' ? t('catalogSetupNewExists') : t('catalogSetupNewWillCreate')}{' '}
                   <code className="font-mono-ui text-[12px]">{preview.path}</code>
+                </div>
+              )}
+              {!problem && previewError && (
+                <div className="mt-2 font-mono-ui text-[11px] text-[var(--accent)] break-words">
+                  <ErrorText error={previewError} />
                 </div>
               )}
               <div className="mt-2 text-[12px] text-[var(--ink-2)]">
                 {t('catalogSetupNewPickExistingBefore')}{' '}
-                <span
-                  onClick={busy === null ? setupNewFromPicker : undefined}
-                  className={`underline ${busy === null ? 'cursor-pointer hover:text-[var(--accent)]' : 'opacity-50'}`}
+                <button
+                  type="button"
+                  onClick={setupNewFromPicker}
+                  disabled={busy !== null}
+                  className="p-0 border-0 bg-transparent text-inherit underline cursor-pointer hover:text-[var(--accent)] disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {t('catalogSetupNewPickExistingLink')}
-                </span>{' '}
+                </button>{' '}
                 {t('catalogSetupNewPickExistingAfter')}
               </div>
             </div>
@@ -304,7 +349,7 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
                     <button
                       type="button"
                       onClick={createAndSetupNew}
-                      disabled={busy !== null || !parent || problem !== null}
+                      disabled={busy !== null || !parent || problem !== null || blockingText !== undefined}
                       className="h-8 px-3 rounded-[6px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {t('catalogSetupNewCreateButton')}

@@ -178,8 +178,9 @@ impl PendingArchives {
     }
 }
 
-/// Folders the user picked in the native folder dialog (`pick_folder_path`).
-/// Together with the catalog folders the only allowed extraction targets - so a
+/// Folders the user picked in the native folder dialog (`pick_folder_path`) or
+/// created during catalog setup (`create_catalog_dir`). Together with the
+/// catalog folders the only allowed extraction targets - so a
 /// compromised frontend can't slip in an arbitrary target (e.g. the home directory).
 #[derive(Default)]
 pub struct ApprovedTargets(std::sync::Mutex<HashSet<PathBuf>>);

@@ -26,7 +26,17 @@ describe('folderNameProblem', () => {
     expect(folderNameProblem('..')).toEqual({ kind: 'reserved' });
     expect(folderNameProblem('CON')).toEqual({ kind: 'reserved' });
     expect(folderNameProblem('nul.txt')).toEqual({ kind: 'reserved' });
+    for (const name of ['CONIN$', 'conout$.log', 'COM¹', 'lpt³', 'Com9']) {
+      expect(folderNameProblem(name)).toEqual({ kind: 'reserved' });
+    }
+    expect(folderNameProblem('CONSOLE')).toBeNull();
     expect(folderNameProblem('Katalog.')).toEqual({ kind: 'trailing' });
     expect(folderNameProblem('Katalog ')).toEqual({ kind: 'trailing' });
+  });
+
+  it('limits names to 255 bytes, not characters', () => {
+    expect(folderNameProblem('a'.repeat(255))).toBeNull();
+    expect(folderNameProblem('a'.repeat(256))).toEqual({ kind: 'tooLong' });
+    expect(folderNameProblem('ä'.repeat(128))).toEqual({ kind: 'tooLong' });
   });
 });

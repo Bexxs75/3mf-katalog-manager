@@ -259,6 +259,9 @@ export interface Translations {
   catalogSetupNameInvalidChar: string;
   catalogSetupNameReserved: string;
   catalogSetupNameTrailing: string;
+  catalogSetupNameTooLong: string;
+  catalogSetupNewExistingFile: string;
+  catalogSetupNewLink: string;
   catalogBaseDirSectionTitle: string;
   catalogBaseDirNotSet: string;
   catalogBaseDirChangeButton: string;
@@ -539,8 +542,6 @@ export interface Translations {
   infoVerboseLoggingHint: string;
   /** `{date}` = local date the setting turns itself off */
   infoVerboseLoggingOn: string;
-  infoLogFilesLabel: string;
-  infoOpenFolder: string;
   infoFoldersHeading: string;
   infoOpenDataFolder: string;
   infoOpenDataFolderHint: string;

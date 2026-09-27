@@ -87,7 +87,8 @@ re-sorted within the catalog. You have two options:
   place …" picks another one. Under "Name of the new folder" you type the name (suggested: "3D
   Catalog"). The line below shows the full path before anything happens; "Create folder and set
   up" creates the folder and uses it. If a folder with that name already exists there, the app
-  says so and uses it as it is. Names with characters that aren't allowed in folder names
+  says so and uses it as it is; if there is a file or a link (shortcut) with that name instead, you
+  have to choose another name. Names with characters that aren't allowed in folder names
   (`/ \ : * ? " < > |`) are rejected with a hint. If you'd rather use a folder you already have,
   click "pick an existing folder directly".
 
@@ -527,7 +528,7 @@ Below in the screenshot, you can see an example of the **light** vs. **dark** th
 
 Settings → Info → **Report a bug** (or **Report problem** next to an unexpected error) opens a short dialog. First decide whether to send the log file. With **Yes** you see exactly what will be in it: user name, computer name, home folder and catalog paths, printer and other network addresses, e-mail addresses and — if you tick "Replace file names" — file names are replaced. **Save and open form** puts `3mf-katalog-log-<date>.txt` into your download folder and opens the form on 3mfkatalog.de with version and system filled in; attach the file there under "Log file". The app never sends anything by itself.
 
-**Detailed log:** only needed if we ask for it. It additionally records every action with file names and turns itself off after 7 days. **Open folder** shows the log files.
+**Detailed log:** only needed if we ask for it. It additionally records every action with file names and turns itself off after 7 days. **Open log folder** (under **Folders**, see [Info](#info)) shows the log files.
 
 ## Updating
 
@@ -727,7 +728,8 @@ tatsächlich abgelegt, nicht nur im Katalog umsortiert. Du hast zwei Möglichkei
   „Ort wählen …“ wählt einen anderen. Unter „Name des neuen Ordners“ tippst du den Namen ein
   (Vorschlag: „3D-Katalog“). Die Zeile darunter zeigt den ganzen Pfad, bevor etwas passiert;
   „Ordner anlegen und einrichten“ legt den Ordner an und verwendet ihn. Gibt es dort schon einen
-  Ordner mit diesem Namen, sagt die App das und verwendet ihn so, wie er ist. Namen mit Zeichen,
+  Ordner mit diesem Namen, sagt die App das und verwendet ihn so, wie er ist; liegt dort stattdessen eine Datei oder eine Verknüpfung mit diesem
+  Namen, musst du einen anderen Namen wählen. Namen mit Zeichen,
   die in Ordnernamen nicht erlaubt sind (`/ \ : * ? " < > |`), lehnt sie mit einem Hinweis ab.
   Willst du lieber einen Ordner nehmen, den du schon hast, klickst du auf „einen vorhandenen
   Ordner direkt wählen“.
@@ -1187,7 +1189,7 @@ Vergleich:
 
 Einstellungen → Info → **Fehler melden** (oder **Problem melden** neben einem unerwarteten Fehler) öffnet einen kurzen Dialog. Zuerst entscheidest du, ob die Logdatei mitgeht. Bei **Ja** siehst du genau, was drinsteht: Benutzername, Rechnername, Pfade im Benutzerordner und im Katalog, Drucker- und andere Netzwerkadressen, E-Mail-Adressen und – wenn du „Dateinamen ersetzen“ anhakst – Dateinamen werden ersetzt. **Speichern und Formular öffnen** legt `3mf-katalog-log-<Datum>.txt` in deinen Download-Ordner und öffnet das Formular auf 3mfkatalog.de mit eingetragener Version und System; dort hängst du die Datei unter „Logdatei“ an. Die App selbst verschickt nichts.
 
-**Ausführliches Protokoll:** nur nötig, wenn wir dich darum bitten. Es schreibt zusätzlich jede Aktion mit Dateinamen mit und schaltet sich nach 7 Tagen selbst aus. **Ordner öffnen** zeigt die Protokolldateien.
+**Ausführliches Protokoll:** nur nötig, wenn wir dich darum bitten. Es schreibt zusätzlich jede Aktion mit Dateinamen mit und schaltet sich nach 7 Tagen selbst aus. **Log-Ordner öffnen** (unter **Ordner**, siehe [Info](#info)) zeigt die Protokolldateien.
 
 ## Aktualisieren
 

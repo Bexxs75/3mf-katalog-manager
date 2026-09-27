@@ -22,7 +22,6 @@ beforeEach(() => {
   openBugReport.mockClear();
   vi.mocked(diagnosticsApi.getVerboseLogging).mockResolvedValue({ enabled: false, untilMs: null });
   vi.mocked(diagnosticsApi.setVerboseLogging).mockResolvedValue({ enabled: true, untilMs: Date.parse('2026-10-03') });
-  vi.mocked(diagnosticsApi.openLogFolder).mockResolvedValue(undefined);
 });
 
 function renderSettings() {
@@ -47,31 +46,5 @@ describe('DiagnosticsSettings', () => {
     fireEvent.click(screen.getByRole('switch'));
     await waitFor(() => expect(diagnosticsApi.setVerboseLogging).toHaveBeenCalledWith(true));
     await waitFor(() => expect(screen.getByText(/Eingeschaltet/)).toBeInTheDocument());
-  });
-
-  it('opens the log folder', async () => {
-    renderSettings();
-    fireEvent.click(screen.getByText('Ordner öffnen'));
-    await waitFor(() => expect(diagnosticsApi.openLogFolder).toHaveBeenCalled());
-  });
-
-  it('shows the error without a report link when opening the log folder fails with an expected error', async () => {
-    vi.mocked(diagnosticsApi.openLogFolder).mockRejectedValue({ message: 'Ordner nicht gefunden', expected: true });
-    renderSettings();
-    fireEvent.click(screen.getByText('Ordner öffnen'));
-    await waitFor(() => expect(screen.getByText('Ordner nicht gefunden')).toBeInTheDocument());
-    expect(screen.queryByText('Problem melden')).not.toBeInTheDocument();
-  });
-
-  it('shows the error and a report link when opening the log folder fails unexpectedly', async () => {
-    vi.mocked(diagnosticsApi.openLogFolder).mockRejectedValue({ message: 'Ordner nicht gefunden', expected: false });
-    renderSettings();
-    fireEvent.click(screen.getByText('Ordner öffnen'));
-    await waitFor(() => expect(screen.getByText('Ordner nicht gefunden')).toBeInTheDocument());
-
-    const reportLink = screen.getByText('Problem melden');
-    expect(reportLink).toBeInTheDocument();
-    fireEvent.click(reportLink);
-    expect(openBugReport).toHaveBeenCalled();
   });
 });

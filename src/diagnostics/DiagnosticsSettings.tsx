@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
-import { getVerboseLogging, openLogFolder, setVerboseLogging, type VerboseLogging } from '../lib/api/diagnostics';
+import { getVerboseLogging, setVerboseLogging, type VerboseLogging } from '../lib/api/diagnostics';
 import { ToggleSwitch } from '../components/ToggleSwitch';
-import { toAppError, type AppError } from '../lib/errors';
 import { useDiagnostics } from './DiagnosticsContext';
-import { ErrorText } from './ErrorText';
 import { BUG_ICON } from './icons';
 
 export function DiagnosticsSettings() {
@@ -12,7 +10,6 @@ export function DiagnosticsSettings() {
   const { language } = useLanguage();
   const { openBugReport } = useDiagnostics();
   const [verbose, setVerbose] = useState<VerboseLogging>({ enabled: false, untilMs: null });
-  const [folderError, setFolderError] = useState<AppError | null>(null);
   const mountedRef = useRef(true);
 
   useEffect(
@@ -59,24 +56,6 @@ export function DiagnosticsSettings() {
         <p className={`mt-1 text-[10.5px] leading-[1.4] ${verbose.enabled ? 'text-[var(--warn)]' : 'text-[var(--ink-3)]'}`}>
           {verbose.enabled ? t('infoVerboseLoggingOn').replace('{date}', until) : t('infoVerboseLoggingHint')}
         </p>
-        <div className="mt-1.5 flex justify-between text-[11.5px] text-[var(--ink-2)]">
-          <span>{t('infoLogFilesLabel')}</span>
-          <button
-            type="button"
-            onClick={() => {
-              setFolderError(null);
-              openLogFolder().catch((e) => mountedRef.current && setFolderError(toAppError(e)));
-            }}
-            className="underline cursor-pointer bg-transparent border-0 p-0 text-[var(--ink-2)]"
-          >
-            {t('infoOpenFolder')}
-          </button>
-        </div>
-        {folderError && (
-          <p className="mt-1 text-[10.5px] leading-[1.4] text-[var(--warn)]">
-            <ErrorText error={folderError} />
-          </p>
-        )}
       </div>
     </>
   );

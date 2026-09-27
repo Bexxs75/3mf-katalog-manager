@@ -148,6 +148,7 @@ pub fn run() {
             });
             app.manage(commands::PendingArchives::default());
             app.manage(commands::ApprovedTargets::default());
+            app.manage(commands::ApprovedCatalogParents::default());
             let waker = printer_link::sync::spawn_background(app.handle().clone());
             app.manage(waker);
             app.manage(commands::DroppedImages::default());

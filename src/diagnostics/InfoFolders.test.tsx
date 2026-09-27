@@ -57,4 +57,12 @@ describe('InfoFolders', () => {
     await waitFor(() => expect(screen.getByText('kein Dateimanager')).toBeInTheDocument());
     expect(screen.getByText('Problem melden')).toBeInTheDocument();
   });
+
+  it('shows an expected error without a report link', async () => {
+    vi.mocked(diagnosticsApi.openLogFolder).mockRejectedValue({ message: 'Ordner nicht gefunden', expected: true });
+    renderFolders();
+    fireEvent.click(screen.getByText('Log-Ordner öffnen'));
+    await waitFor(() => expect(screen.getByText('Ordner nicht gefunden')).toBeInTheDocument());
+    expect(screen.queryByText('Problem melden')).not.toBeInTheDocument();
+  });
 });

@@ -5,16 +5,22 @@ export type FolderNameProblem =
   | { kind: 'empty' }
   | { kind: 'char'; char: string }
   | { kind: 'reserved' }
-  | { kind: 'trailing' };
+  | { kind: 'trailing' }
+  | { kind: 'tooLong' };
 
 // Forbidden on Windows; rejected everywhere so a catalog keeps working after a move.
 const FORBIDDEN_CHARS = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
 
+// Windows also treats the superscript digits ¹²³ like 1, 2, 3 here.
+const PORT_SUFFIXES = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '¹', '²', '³'];
 const WINDOWS_RESERVED = new Set([
-  'CON', 'PRN', 'AUX', 'NUL',
-  ...Array.from({ length: 9 }, (_, i) => `COM${i + 1}`),
-  ...Array.from({ length: 9 }, (_, i) => `LPT${i + 1}`),
+  'CON', 'PRN', 'AUX', 'NUL', 'CONIN$', 'CONOUT$',
+  ...PORT_SUFFIXES.map((d) => `COM${d}`),
+  ...PORT_SUFFIXES.map((d) => `LPT${d}`),
 ]);
+
+// Most file systems allow at most 255 bytes per name component.
+const MAX_NAME_BYTES = 255;
 
 function isControl(ch: string): boolean {
   const code = ch.codePointAt(0) ?? 0;
@@ -30,6 +36,7 @@ export function folderNameProblem(name: string): FolderNameProblem | null {
       return { kind: 'char', char: `U+${hex}` };
     }
   }
+  if (new TextEncoder().encode(name).length > MAX_NAME_BYTES) return { kind: 'tooLong' };
   if (name === '.' || name === '..') return { kind: 'reserved' };
   if (name.endsWith('.') || name.endsWith(' ')) return { kind: 'trailing' };
   if (WINDOWS_RESERVED.has(name.split('.')[0].trimEnd().toUpperCase())) return { kind: 'reserved' };
