@@ -575,22 +575,17 @@ fn validate_catalog_db_bytes(
             let expanded_dirs = expand_sensitive_dirs(sensitive_dirs);
             let resolved_trash_dir =
                 resolve_path_for_sensitivity_check(trash_dir).map_err(|e| e.to_string())?;
-            conn.query_row("SELECT COUNT(*) FROM files", [], |row| row.get::<_, i64>(0))
-                .map_err(|e| e.to_string())?;
-
-            // quick_check detects structural corruption; before any migration.
-            let quick_check: String = conn
-                .query_row("PRAGMA quick_check", [], |row| row.get(0))
-                .map_err(|e| e.to_string())?;
-            if quick_check != "ok" {
-                return Err(format!("Katalog-Datenbank ist beschaedigt (quick_check: {quick_check})"));
-            }
-
-            // The app never creates triggers or views. Foreign ones are rejected before
-            // anything runs on this DB: a trigger could e.g. undermine the slicer cleanup
-            // in `replace_catalog_db`.
+            // Views, triggers and virtual tables run SQL or code from the foreign file
+            // as soon as they are queried - a recursive view named `files` never
+            // finishes. The app creates none of them, so they are rejected by
+            // looking only at sqlite_schema, before any other statement touches the data.
+            conn.pragma_update(None, "trusted_schema", false).map_err(|e| e.to_string())?;
             let mut schema_stmt = conn
-                .prepare("SELECT type, name FROM sqlite_schema WHERE type IN ('trigger', 'view')")
+                .prepare(
+                    "SELECT type, name FROM sqlite_schema
+                     WHERE type IN ('trigger', 'view')
+                        OR (type = 'table' AND sql LIKE 'CREATE VIRTUAL TABLE%')",
+                )
                 .map_err(|e| e.to_string())?;
             let unexpected_schema_objects: Vec<(String, String)> = schema_stmt
                 .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
@@ -608,6 +603,17 @@ fn validate_catalog_db_bytes(
                 ));
             }
             drop(schema_stmt);
+
+            conn.query_row("SELECT COUNT(*) FROM files", [], |row| row.get::<_, i64>(0))
+                .map_err(|e| e.to_string())?;
+
+            // quick_check detects structural corruption; before any migration.
+            let quick_check: String = conn
+                .query_row("PRAGMA quick_check", [], |row| row.get(0))
+                .map_err(|e| e.to_string())?;
+            if quick_check != "ok" {
+                return Err(format!("Katalog-Datenbank ist beschaedigt (quick_check: {quick_check})"));
+            }
 
             // Migrate first, so older legitimate backups (e.g. without
             // folders.parent_id) don't fail the following checks.
@@ -1192,6 +1198,46 @@ mod tests {
         let bytes = std::fs::read(&tmp_path).unwrap();
         let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
         assert!(result.is_err(), "eine importierte Datenbank mit einer eingeschleusten View muss abgelehnt werden");
+    }
+    /// Runs the validation on a thread; a query that never ends fails the test
+    /// instead of hanging it.
+    fn validate_with_timeout(bytes: Vec<u8>) -> Result<(), String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash")));
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(5))
+            .expect("the validation must reject the database before running its SQL")
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_an_endless_view_named_files_without_running_it() {
+        let tmp_path = unique_test_db_path("validate_db_endless_view");
+        {
+            let conn = rusqlite::Connection::open(&tmp_path).unwrap();
+            conn.execute_batch(
+                "CREATE VIEW files AS WITH RECURSIVE r(x) AS (VALUES(1) UNION ALL SELECT x + 1 FROM r) SELECT x FROM r;",
+            )
+            .unwrap();
+        }
+        let result = validate_with_timeout(std::fs::read(&tmp_path).unwrap());
+        assert!(result.is_err());
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_virtual_table() {
+        let tmp_path = unique_test_db_path("validate_db_virtual_table");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            conn.execute_batch("CREATE VIRTUAL TABLE evil USING json_each('[1,2]');").ok();
+            conn.execute_batch("CREATE VIRTUAL TABLE evil2 USING fts5(x);").ok();
+            let virtual_tables: i64 = conn
+                .query_row("SELECT COUNT(*) FROM sqlite_schema WHERE sql LIKE 'CREATE VIRTUAL TABLE%'", [], |r| r.get(0))
+                .unwrap();
+            if virtual_tables == 0 {
+                return; // this SQLite build offers no virtual table module to test with
+            }
+        }
+        let result = validate_with_timeout(std::fs::read(&tmp_path).unwrap());
+        assert!(result.is_err());
     }
     #[test]
     fn validate_catalog_db_bytes_rejects_a_database_missing_a_required_table() {
