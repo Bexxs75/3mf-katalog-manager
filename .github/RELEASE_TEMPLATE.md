@@ -3,6 +3,8 @@ Release notes template (EN first, then DE). Title: "vX.Y.Z — <English> / <Deut
 How to release: run the "Release (draft)" workflow with the version → fill this draft's body from this template (fill in the <…> parts, keep the full changelog lists in the <details> blocks) → set the title as above → publish the draft.
 The release workflow creates the draft with renamed, signed files, latest*.json and SHA256SUMS.txt.
 Re-running it for the same version creates a second draft: delete the old one first.
+Test releases use a numeric pre-release like 0.15.0-1: the Windows MSI rejects "rc.1". The workflow can only be
+started by hand once release.yml is on the default branch.
 latest.json only reaches users once the draft is published — that's what makes the update visible to the in-app updater.
 -->
 ![3MF Katalog Manager demo](https://github.com/Bexxs75/3mf-katalog-manager/raw/master/docs/assets/demo.gif)

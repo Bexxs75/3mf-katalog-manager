@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version without v, e.g. 0.15.0 or 0.15.0-rc.1"
+        description: "Version without v, e.g. 0.15.0 or 0.15.0-1 (MSI needs a numeric pre-release)"
         required: true
         type: string
 
@@ -89,7 +89,7 @@ jobs:
         run: python3 tools/release_assets.py latest-json "$VERSION" dist
       - name: Checksums
         run: cd dist && sha256sum -- * > SHA256SUMS.txt
-      # A version with a hyphen (e.g. 0.15.0-rc.1) is marked as pre-release, so
+      # A version with a hyphen (e.g. 0.15.0-1) is marked as pre-release, so
       # releases/latest - and with it the updater - keeps pointing at the last
       # stable version.
       - name: Create draft release
