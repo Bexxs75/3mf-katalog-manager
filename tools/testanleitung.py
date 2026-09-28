@@ -45,6 +45,7 @@ LANGS = {
         "guide_title": "{produkt} {version} – Testanleitung ({platform})",
         "form": "https://3mfkatalog.de/fehler-melden.html",
         "headings": ("Was ist neu", "Installieren", "Datenorte", "Fehler melden", "Deinstallieren"),
+        "testdata_heading": "Testdaten vorbereiten",
         "steps": "Schritte:",
         "expected": "Erwartet:",
         "note": "Hinweis:",
@@ -87,6 +88,7 @@ LANGS = {
         "guide_title": "{produkt} {version} – Test guide ({platform})",
         "form": "https://3mfkatalog.de/en/report-a-bug.html",
         "headings": ("What's new", "Installing", "Where the data is", "Reporting a bug", "Uninstalling"),
+        "testdata_heading": "Preparing the test data",
         "steps": "Steps:",
         "expected": "Expected:",
         "note": "Note:",
@@ -375,6 +377,7 @@ def platform_values(version, platform, lang="de"):
         "paket": paket,
         "release": f"https://github.com/{REPO}/releases/tag/preview",
         "formular": f"{LANGS[lang]['form']}?version={version}&os={platform}",
+        "testdaten": f"https://github.com/{REPO}/releases/download/preview/3MF-Testdaten.zip",
     }
 
 
@@ -537,6 +540,8 @@ def build(version, platform, out_dir, root=".", pdf=False, lang="de"):
 {changelog_html}
 <h2>{install_h}</h2>
 {baustein(f"installieren-{platform}")}
+<h2>{t["testdata_heading"]}</h2>
+{baustein(f"testdaten-{platform}")}
 <h2>{data_h}</h2>
 {baustein("daten")}
 {''.join(chapters_html)}
@@ -551,17 +556,22 @@ def build(version, platform, out_dir, root=".", pdf=False, lang="de"):
 
     sheet_path = out_dir / sheet_name
     write_result_sheet(sheet_path, chapters, version, platform, lang)
-    build_assistant(out_dir, chapters, version, platform, lang, baustein(f"installieren-{platform}"))
+    a = ASSISTANT_TEXT[lang]
+    build_assistant(out_dir, chapters, version, platform, lang, [
+        (a["install"], baustein(f"installieren-{platform}")),
+        (t["testdata_heading"], baustein(f"testdaten-{platform}")),
+    ])
 
     if pdf:
         render_pdf(html_path, html_path.with_suffix(".pdf"))
     return html_path, sheet_path
 
 
-def build_assistant(out_dir, chapters, version, platform, lang, install_html):
+def build_assistant(out_dir, chapters, version, platform, lang, prep):
     """Writes the interactive test assistant: a standalone HTML file that shows
     one test at a time, keeps its progress in the browser and saves the answers
-    as a text file. `chapters` are already filtered for the platform and filled."""
+    as a text file. `chapters` are already filtered for the platform and filled;
+    `prep` lists the (title, html) screens shown before the first test."""
     a = ASSISTANT_TEXT[lang]
     platform_name = PLATFORM_NAMES[platform]
     tests = [
@@ -584,7 +594,7 @@ def build_assistant(out_dir, chapters, version, platform, lang, install_html):
     variants = {"label": variant_field[0], "choices": [{"key": k, "label": v} for k, v in zip(VARIANTS, variant_field[2])]}
     title = a["title"].format(produkt=PRODUCT, version=version, platform=platform_name)
     data = {
-        "text": a, "tests": tests, "fields": fields, "variants": variants, "install": install_html, "title": title,
+        "text": a, "tests": tests, "fields": fields, "variants": variants, "prep": [{"title": ti, "html": h} for ti, h in prep], "title": title,
         "version": version, "platform": platform_name,
         "resultFile": a["result_file"].format(version=version, platform=platform_name),
         "storageKey": f"3mf-testassistent-{version}-{platform}-{lang}",
@@ -762,6 +772,7 @@ ASSISTANT_TEMPLATE = """<!doctype html>
 @media (prefers-color-scheme:dark){:root{--bg:#1d1917;--surface:#282220;--ink:#f1e9e4;--muted:#b3a39a;--line:#3d3431;--accent:#e0714f;--accent-ink:#1d1917;
 --accent-soft:#3a2721;--ok:#6cc08b;--ok-soft:#1f3326;--bad:#f08a80;--bad-soft:#3d2220;--skip:#d6c27a;--skip-soft:#353019;--code:#332b28;color-scheme:dark}}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:"Segoe UI",system-ui,-apple-system,Arial,sans-serif;font-size:17px;line-height:1.5;padding:20px 16px 48px}
 .wrap{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
 header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
@@ -825,7 +836,7 @@ table{width:100%;border-collapse:collapse;font-size:15px}td{padding:8px 6px;bord
 <script id="data" type="application/json">__DATA__</script>
 <script>
 const D = JSON.parse(document.getElementById("data").textContent), T = D.text;
-const fresh = () => ({ started:false, prepDone:false, index:0, results:{}, done:{}, device:{}, variant:"", secs:{}, shown:null });
+const fresh = () => ({ started:false, prepDone:false, prepStep:0, index:0, results:{}, done:{}, device:{}, variant:"", secs:{}, shown:null });
 let state = Object.assign(fresh(), load() || {});
 let TESTS = [];
 // Tests for the other download variant are left out (and listed as not applicable).
@@ -871,10 +882,13 @@ function renderStart(){
   document.getElementById("go").onclick = () => { state.started = true; save(); render(); };
 }
 function renderPrep(){
-  view.innerHTML = '<section class="card install"><div class="eyebrow">' + esc(T.prep) + '</div><h1>' + esc(T.install) + '</h1>' + D.install
-    + '<button class="primary" id="prepOk">' + esc(T.prep_done) + '</button></section>';
+  const i = Math.min(state.prepStep || 0, D.prep.length - 1), p = D.prep[i];
+  view.innerHTML = '<section class="card install"><div class="eyebrow">' + esc(T.prep) + ' ' + (i + 1) + '/' + D.prep.length + '</div><h1>' + esc(p.title) + '</h1>' + p.html
+    + '<button class="primary" id="prepOk">' + esc(T.prep_done) + '</button>'
+    + (i > 0 ? '<div class="nav"><button class="linkbtn" id="prepBack">' + esc(T.back) + '</button></div>' : '') + '</section>';
   view.querySelectorAll("a").forEach(a => { a.target = "_blank"; a.rel = "noopener"; });
-  document.getElementById("prepOk").onclick = () => { state.prepDone = true; save(); render(); };
+  document.getElementById("prepOk").onclick = () => { state.prepStep = i + 1; if (state.prepStep >= D.prep.length) state.prepDone = true; save(); render(); window.scrollTo(0, 0); };
+  if (i > 0) document.getElementById("prepBack").onclick = () => { state.prepStep = i - 1; save(); render(); };
 }
 function renderTest(t){
   if (!state.shown || state.shown.id !== t.id) { state.shown = { id:t.id, at:Date.now() }; save(); }

@@ -131,7 +131,7 @@ def make_root(t, english=SAMPLE_EN):
     for folder in ("docs/tests/bausteine", "docs/tests/bausteine/en"):
         (root / folder).mkdir(parents=True, exist_ok=True)
         for platform in ("windows", "linux"):
-            for name in (f"installieren-{platform}", "daten", "fehler-melden", f"deinstallieren-{platform}"):
+            for name in (f"installieren-{platform}", f"testdaten-{platform}", "daten", "fehler-melden", f"deinstallieren-{platform}"):
                 (root / folder / f"{name}.md").write_text(f"Baustein {name} {{{{version}}}} {{{{formular}}}}\n")
     (root / "docs/tests/0.15.0-2.md").write_text(SAMPLE)
     if english is not None:
@@ -236,7 +236,9 @@ class Assistant(unittest.TestCase):
             self.assertEqual([s["t"] for s in data["tests"][0]["steps"]], ["Die App starten.", "Den Ordner wählen."])
             self.assertEqual(data["tests"][0]["note"], "Nur beim ersten Mal.")
             self.assertEqual(data["resultFile"], "Testergebnis-0.15.0-2-Windows.txt")
-            self.assertIn("Baustein installieren-windows 0.15.0-2", data["install"])
+            self.assertEqual([s["title"] for s in data["prep"]], ["App installieren", "Testdaten vorbereiten"])
+            self.assertIn("Baustein installieren-windows 0.15.0-2", data["prep"][0]["html"])
+            self.assertIn("Baustein testdaten-windows 0.15.0-2", data["prep"][1]["html"])
             self.assertIn("Virenschutz", [f["label"] for f in data["fields"]])
             self.assertIn('<html lang="de">', text)
 
@@ -282,6 +284,8 @@ class Build(unittest.TestCase):
             self.assertEqual(sheet_path.name, "Ergebnisbogen-0.15.0-2-Windows.xlsx")
             self.assertIn("Erster Start", html)
             self.assertIn("Baustein daten 0.15.0-2 https://3mfkatalog.de/fehler-melden.html", html)
+            self.assertIn("Testdaten vorbereiten", html)
+            self.assertIn("Baustein testdaten-windows", html)
             self.assertIn("Ergebnisbogen-0.15.0-2-Windows.xlsx", html)
             self.assertIn("Zeile E2", html)
             self.assertNotIn("&#9744;", html)  # no checkboxes that can't be ticked in a PDF

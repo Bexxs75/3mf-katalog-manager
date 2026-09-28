@@ -7,6 +7,10 @@ version, from:
 - the fixed building blocks in `docs/tests/bausteine/` (German) and
   `docs/tests/bausteine/en/` (English): installing, data folders, reporting a
   bug, uninstalling — one file per platform where the text differs,
+- `testdaten-<platform>.md` in the same folders: how to get and extract
+  `3MF-Testdaten.zip` (sample catalog, archives and broken files). The ZIP is
+  uploaded by hand to the `preview` release (`{{testdaten}}` links to it);
+  preview.yml keeps it and its checksum across runs,
 - the `[Unreleased]` part of `CHANGELOG.md` in that language ("what's new"),
 - a scenario file per language: `docs/tests/<version>.md` (German) and
   `docs/tests/<version>.en.md` (English). Both must list the same scenario IDs

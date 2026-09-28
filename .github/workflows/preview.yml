@@ -165,6 +165,15 @@ jobs:
               rm previous-SHA256SUMS.txt
             fi
           fi
+          # The test data ZIP is uploaded by hand and kept across runs (see the
+          # publish step), so its checksum line is carried over as well.
+          if gh release view preview -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release download preview -R "$GITHUB_REPOSITORY" -p SHA256SUMS.txt -O previous-SHA256SUMS.txt 2>/dev/null || true
+            if [ -f previous-SHA256SUMS.txt ]; then
+              grep -E -- ' 3MF-Testdaten\.zip$' previous-SHA256SUMS.txt >> SHA256SUMS.txt || true
+              rm previous-SHA256SUMS.txt
+            fi
+          fi
       # Order matters: new packages first, the manifests (which point at them)
       # next, old files last - an update check never sees a manifest whose
       # files are missing.
@@ -183,6 +192,7 @@ jobs:
           # A run without STEP leaves the previous STEP files and their manifest
           # in place, so installed STEP test versions keep a working channel.
           gh release view preview -R "$R" --json assets -q '.assets[].name' | while read -r a; do
+            [ "$a" = "3MF-Testdaten.zip" ] && continue
             if [ "$STEP" != "true" ]; then
               case "$a" in *-STEP.*|latest-preview-step.json) continue;; esac
             fi
