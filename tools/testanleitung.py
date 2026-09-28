@@ -914,10 +914,11 @@ function renderPrep(){
   const body = p.html.replace(/<p>__DOWNLOAD__/, '<div class="dl">' + button + '</div><p>').replace(/__PAKET__/g, esc(pkg.name));
   view.innerHTML = '<section class="card install"><div class="eyebrow">' + esc(T.prep) + ' ' + (i + 1) + '/' + D.prep.length + '</div><h1>' + esc(p.title) + '</h1>' + body
     + '<button class="primary" id="prepOk">' + esc(T.prep_done) + '</button>'
-    + (i > 0 ? '<div class="nav"><button class="linkbtn" id="prepBack">' + esc(T.back) + '</button></div>' : '') + '</section>';
+    + '<div class="nav">' + (i > 0 ? '<button class="linkbtn" id="prepBack">' + esc(T.back) + '</button>' : '<span></span>') + resetBox() + '</div></section>';
   view.querySelectorAll("a").forEach(a => { a.target = "_blank"; a.rel = "noopener"; });
   document.getElementById("prepOk").onclick = () => { state.prepStep = i + 1; if (state.prepStep >= D.prep.length) state.prepDone = true; save(); render(); window.scrollTo(0, 0); };
   if (i > 0) document.getElementById("prepBack").onclick = () => { state.prepStep = i - 1; save(); render(); };
+  wireReset();
 }
 function renderTest(t){
   if (!state.shown || state.shown.id !== t.id) { state.shown = { id:t.id, at:Date.now() }; save(); }
@@ -931,7 +932,7 @@ function renderTest(t){
     + (t.note ? '<div class="note"><span class="lbl">' + esc(T.note) + '</span>' + t.note + '</div>' : '')
     + '<p class="q">' + esc(T.question) + '</p><div class="actions">'
     + '<button class="b-ok" data-s="ok">✅ ' + esc(T.ok) + '</button><button class="b-bad" data-s="bad">❌ ' + esc(T.bad) + '</button><button class="b-skip" data-s="skip">⏭ ' + esc(T.skip) + '</button></div>'
-    + '<div id="follow"></div><div class="nav"><button class="linkbtn" id="back"' + (state.index === 0 ? ' hidden' : '') + '>' + esc(T.back) + '</button></div></section>';
+    + '<div id="follow"></div><div class="nav"><button class="linkbtn" id="back">' + esc(T.back) + '</button>' + resetBox() + '</div></section>';
   view.querySelectorAll("a").forEach(a => { a.target = "_blank"; a.rel = "noopener"; });
   view.querySelectorAll("ol.steps li").forEach(li => {
     const toggle = () => { const i = +li.dataset.i, d = state.done[t.id] || (state.done[t.id] = []), k = d.indexOf(i); k < 0 ? d.push(i) : d.splice(k, 1); li.classList.toggle("done"); save(); };
@@ -940,7 +941,11 @@ function renderTest(t){
   });
   view.querySelectorAll(".expect img").forEach(im => im.onclick = () => zoom(im.src));
   view.querySelectorAll(".actions button").forEach(b => b.onclick = () => choose(t, b.dataset.s));
-  document.getElementById("back").onclick = () => { state.index--; save(); render(); };
+  document.getElementById("back").onclick = () => {
+    if (state.index === 0) { state.prepDone = false; state.prepStep = D.prep.length - 1; } else state.index--;
+    save(); render(); window.scrollTo(0, 0);
+  };
+  wireReset();
   if (r) { view.querySelector('.actions [data-s="' + r.s + '"]').classList.add("sel"); if (r.s !== "ok") choose(t, r.s, true); }
 }
 function choose(t, s, restoring){
@@ -959,6 +964,17 @@ function choose(t, s, restoring){
     sel.onchange = upd; upd(); c.onclick = () => { track(t); state.results[t.id] = { s:"skip", text:sel.value }; next(); };
     if (!restoring) sel.focus();
   }
+}
+// "Start over" on every screen after the start page, always behind a confirmation.
+const resetBox = () => '<span id="resetBox"><button class="linkbtn" id="reset">' + esc(T.reset) + '</button></span>';
+function wireReset(){
+  const r = document.getElementById("reset"); if (!r) return;
+  r.onclick = () => {
+    const box = document.getElementById("resetBox");
+    box.innerHTML = esc(T.reset_confirm) + ' <button class="linkbtn" id="resetYes">' + esc(T.reset_yes) + '</button> <button class="linkbtn" id="resetNo">' + esc(T.reset_no) + '</button>';
+    document.getElementById("resetYes").onclick = () => { try { localStorage.removeItem(D.storageKey); } catch (e) {} state = fresh(); applyVariant(); save(); render(); window.scrollTo(0, 0); };
+    document.getElementById("resetNo").onclick = () => { box.innerHTML = resetBox().replace(/^<span id="resetBox">|<\/span>$/g, ""); wireReset(); };
+  };
 }
 function next(){ state.index++; save(); render(); window.scrollTo(0, 0); }
 function zoom(src){
@@ -989,7 +1005,7 @@ function renderSummary(){
         + (f.choices.length ? '<select data-f="' + i + '"><option value=""></option>' + f.choices.map(x => '<option' + (state.device[i] === x ? ' selected' : '') + '>' + esc(x) + '</option>').join("") + '</select>'
                             : '<input data-f="' + i + '" placeholder="' + esc(f.hint) + '" value="' + esc(state.device[i] || "") + '">') + '</label>').join("") + '</div>'
     + '<p>' + esc(T.final) + '</p><button class="primary" id="saveRes">' + esc(T.save) + '</button><p class="saved" id="saved" hidden></p>'
-    + '<div class="nav"><button class="linkbtn" id="back">' + esc(T.back_last) + '</button><span id="resetBox"><button class="linkbtn" id="reset">' + esc(T.reset) + '</button></span></div></section>';
+    + '<div class="nav"><button class="linkbtn" id="back">' + esc(T.back_last) + '</button>' + resetBox() + '</div></section>';
   view.querySelectorAll("[data-f]").forEach(el => el.oninput = el.onchange = () => { state.device[el.dataset.f] = el.value; save(); });
   document.getElementById("saveRes").onclick = () => {
     const blob = new Blob(["﻿" + resultText()], { type:"text/plain;charset=utf-8" }), a = document.createElement("a");
@@ -998,13 +1014,9 @@ function renderSummary(){
     const s = document.getElementById("saved"); s.textContent = T.saved.replace("{file}", D.resultFile); s.hidden = false;
   };
   document.getElementById("back").onclick = () => { state.index = TESTS.length - 1; save(); render(); };
-  document.getElementById("reset").onclick = () => {
-    const box = document.getElementById("resetBox");
-    box.innerHTML = esc(T.reset_confirm) + ' <button class="linkbtn" id="resetYes">' + esc(T.reset_yes) + '</button> <button class="linkbtn" id="resetNo">' + esc(T.reset_no) + '</button>';
-    document.getElementById("resetYes").onclick = () => { state = fresh(); save(); render(); };
-    document.getElementById("resetNo").onclick = () => render();
-  };
+  wireReset();
 }
+
 document.addEventListener("keydown", e => {
   if (e.key === "Escape") { const o = document.querySelector(".lightbox"); if (o) { o.remove(); return; } }
   if (document.querySelector(".lightbox")) return;
