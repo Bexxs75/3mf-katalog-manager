@@ -19,14 +19,21 @@ import zoneinfo
 
 OWNER, NUMBER = "Bexxs75", 1
 BOARD = "https://github.com/users/Bexxs75/projects/1/views/1?groupedBy%5BcolumnId%5D=416999698"
-VERSIONS = ["v0.14.0", "v0.15.0", "v0.16.0", "Später"]
+# Sent as the description of an embed: a plain message allows only 2000
+# characters, which the roadmap outgrew with five planned versions.
+EMBED_LIMIT = 4096
 ICON = {"Done": "✅", "In Progress": "🔧", "Todo": "▫️"}
 PRIO_EN = {"Hoch": "high", "Mittel": "medium", "Niedrig": "low"}
 
-QUERY = """query($o:String!,$n:Int!){user(login:$o){projectV2(number:$n){items(first:100){nodes{
-  content{... on DraftIssue{title} ... on Issue{title}}
-  fieldValues(first:20){nodes{... on ProjectV2ItemFieldSingleSelectValue{name field{... on ProjectV2SingleSelectField{name}}}}}
-}}}}}"""
+# The version order comes from the project's "Version" field, so new versions
+# show up without changing this script.
+QUERY = """query($o:String!,$n:Int!){user(login:$o){projectV2(number:$n){
+  field(name:"Version"){... on ProjectV2SingleSelectField{options{name}}}
+  items(first:100){nodes{
+    content{... on DraftIssue{title} ... on Issue{title}}
+    fieldValues(first:20){nodes{... on ProjectV2ItemFieldSingleSelectValue{name field{... on ProjectV2SingleSelectField{name}}}}}
+  }}
+}}}"""
 
 
 def fetch_items(token):
@@ -40,13 +47,14 @@ def fetch_items(token):
     project = (data.get("data") or {}).get("user", {}).get("projectV2")
     if not project:
         sys.exit("Projekt nicht lesbar (Token ohne Projektzugriff?)")
+    versions = [o["name"] for o in (project.get("field") or {}).get("options", [])]
     items = []
     for node in project["items"]["nodes"]:
         title = (node.get("content") or {}).get("title")
         fields = {v["field"]["name"]: v["name"] for v in node["fieldValues"]["nodes"] if v and v.get("field")}
-        if title and fields.get("Version") in VERSIONS:
+        if title and fields.get("Version") in versions:
             items.append({"title": title, **fields})
-    return items
+    return versions, items
 
 
 def split_title(title, lang):
@@ -54,14 +62,29 @@ def split_title(title, lang):
     return (de if lang == "de" else (en or de)).strip()
 
 
-def render(items, lang):
+def release_marker(version, group):
+    """The "vX veröffentlicht / released" entry of a finished version, else None.
+
+    A released version is shown as this one line: Discord allows 2000 characters
+    per message, and the done items are on the board anyway.
+    """
+    if not group or any(i.get("Status") != "Done" for i in group):
+        return None
+    return next((i for i in group if i["title"].startswith(version)), None)
+
+
+def render(versions, items, lang):
     today = datetime.datetime.now(zoneinfo.ZoneInfo("Europe/Berlin")).date()
     head = (f"🗺️ **Roadmap** · Stand {today:%d.%m.%Y}" if lang == "de"
             else f"🗺️ **Roadmap** · as of {today:%Y-%m-%d}")
     lines = [head]
-    for version in VERSIONS:
+    for version in versions:
         group = [i for i in items if i.get("Version") == version]
         if not group:
+            continue
+        marker = release_marker(version, group)
+        if marker:
+            lines.append(f"\n✅ **{split_title(marker['title'], lang)}**")
             continue
         label = version if version != "Später" else ("Später" if lang == "de" else "Later")
         lines.append(f"\n**{label}**")
@@ -75,13 +98,15 @@ def render(items, lang):
     link = (f"Komplette Roadmap: <{BOARD}>" if lang == "de" else f"Full roadmap: <{BOARD}>")
     lines += ["", legend, link]
     text = "\n".join(lines)
-    if len(text) > 2000:
-        sys.exit(f"Nachricht ({lang}) hat {len(text)} Zeichen, Discord erlaubt 2000")
+    if len(text) > EMBED_LIMIT:
+        sys.exit(f"Nachricht ({lang}) hat {len(text)} Zeichen, Discord erlaubt {EMBED_LIMIT}")
     return text
 
 
 def edit(webhook, message_id, content):
-    body = json.dumps({"content": content, "allowed_mentions": {"parse": []}}).encode()
+    # "content": "" clears the plain text of messages written before the switch to an embed.
+    body = json.dumps({"content": "", "embeds": [{"description": content}],
+                       "allowed_mentions": {"parse": []}}).encode()
     req = urllib.request.Request(f"{webhook}/messages/{message_id}", body,
                                  {"Content-Type": "application/json", "User-Agent": "3mf-roadmap-sync"}, method="PATCH")
     with urllib.request.urlopen(req, timeout=30) as r:
@@ -89,13 +114,13 @@ def edit(webhook, message_id, content):
 
 
 def main():
-    items = fetch_items(os.environ["GH_TOKEN"])
+    versions, items = fetch_items(os.environ["GH_TOKEN"])
     if not items:
         # Never write an empty roadmap: the GitHub Actions default token can't see the
         # items of a user project.
         sys.exit("Keine Einträge gelesen - Token ohne Projektzugriff? (Secret ROADMAP_READ_TOKEN)")
     for lang in ("de", "en"):
-        text = render(items, lang)
+        text = render(versions, items, lang)
         if os.environ.get("DRY_RUN"):
             print(f"--- {lang} ({len(text)} Zeichen)\n{text}\n")
         else:
