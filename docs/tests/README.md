@@ -19,7 +19,9 @@ language (`Testassistent-<version>-<platform>.html`,
 `Test-Assistant-<version>-<platform>.html`): a standalone offline page that
 shows the install block and then one scenario at a time with "works /
 doesn't work / skip" buttons, keeps its progress in the browser and saves the
-answers (plus the optional device fields of the result sheet) as
+answers (plus the variant, the active test time overall and per scenario, capped at
+30 minutes per scenario so breaks don't count, and the optional device fields of the
+result sheet) as
 `Testergebnis-…txt` / `Test-Result-…txt`. It uses the same scenario files, so
 there is nothing extra to write.
 
@@ -68,6 +70,10 @@ Hinweis: Optional, Text in einer Zeile.
 - `Schritte:` is followed by numbered lines (`1. …`, `2. …`, …).
 - `Erwartet:` (required, one line) is the expected result.
 - `Hinweis:` (optional, one line) is an extra note shown with the scenario.
+- `Variante:` / `Variant:` (optional) `standard` or `step`: the scenario only
+  applies to that download variant. The assistant asks for the variant at the
+  start, leaves the other variant's scenarios out and lists them as not
+  applicable; the guide shows a note.
 
 ### Screenshots
 

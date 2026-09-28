@@ -39,6 +39,7 @@ LANGS = {
         "bausteine": "bausteine",
         "bilder": "bilder",
         "result_image": "So sieht es richtig aus",
+        "variant_only": {"standard": "Nur für die Variante ohne STEP-Vorschau.", "step": "Nur für die Variante mit STEP-Vorschau."},
         "guide_file": "Testanleitung-{version}-{platform}",
         "sheet_file": "Ergebnisbogen-{version}-{platform}.xlsx",
         "guide_title": "{produkt} {version} – Testanleitung ({platform})",
@@ -80,6 +81,7 @@ LANGS = {
         "bausteine": "bausteine/en",
         "bilder": "bilder/en",
         "result_image": "This is what it should look like",
+        "variant_only": {"standard": "Only for the variant without STEP preview.", "step": "Only for the variant with STEP preview."},
         "guide_file": "Test-Guide-{version}-{platform}",
         "sheet_file": "Result-Sheet-{version}-{platform}.xlsx",
         "guide_title": "{produkt} {version} – Test guide ({platform})",
@@ -138,6 +140,10 @@ ASSISTANT_TEXT = {
         "tip": "Tipp: Klick einen Schritt an, wenn du ihn erledigt hast.",
         "expected": "Das sollte passieren", "note": "Hinweis", "question": "Hat es geklappt?",
         "result_image": "So sieht es richtig aus", "zoom_close": "Klicken oder Esc zum Schließen",
+        "variant_q": "Welche Variante hast du installiert?",
+        "variant_hint": "Steht im Namen der heruntergeladenen Datei: mit „-STEP“ ist es die Variante mit STEP-Vorschau.",
+        "time_total": "Aktive Testzeit: {min} Minuten", "time_one": "{min} Min.", "time_lt1": "unter 1 Min.",
+        "na": "nicht zutreffend (andere Variante)",
         "ok": "Klappt", "bad": "Klappt nicht", "skip": "Überspringen",
         "why": "Was ist stattdessen passiert?", "why_ph": "z. B. „Es kam die Meldung …“ oder „Der Ordner erschien nicht links“",
         "save_next": "Speichern und weiter", "skip_q": "Warum überspringst du diesen Test?", "choose": "Bitte wählen …",
@@ -150,7 +156,7 @@ ASSISTANT_TEXT = {
         "save": "Ergebnis speichern", "saved": "Gespeichert als „{file}“ in deinem Download-Ordner.",
         "back_last": "← Letzten Test ändern", "reset": "Von vorn beginnen",
         "reset_confirm": "Wirklich alle Antworten löschen?", "reset_yes": "Ja, alles löschen", "reset_no": "Abbrechen",
-        "result_head": "Testergebnis", "status": {"ok": "OK", "bad": "FEHLER", "skip": "ÜBERSPRUNGEN", "open": "OFFEN"},
+        "result_head": "Testergebnis", "status": {"ok": "OK", "bad": "FEHLER", "skip": "ÜBERSPRUNGEN", "open": "OFFEN", "na": "NICHT ZUTREFFEND"},
     },
     "en": {
         "file": "Test-Assistant-{version}-{platform}.html",
@@ -168,6 +174,10 @@ ASSISTANT_TEXT = {
         "tip": "Tip: click a step once you have done it.",
         "expected": "This should happen", "note": "Note", "question": "Did it work?",
         "result_image": "This is what it should look like", "zoom_close": "Click or press Esc to close",
+        "variant_q": "Which variant did you install?",
+        "variant_hint": "It is in the name of the downloaded file: with \"-STEP\" it is the variant with STEP preview.",
+        "time_total": "Active test time: {min} minutes", "time_one": "{min} min", "time_lt1": "under 1 min",
+        "na": "not applicable (other variant)",
         "ok": "Works", "bad": "Doesn't work", "skip": "Skip",
         "why": "What happened instead?", "why_ph": "e.g. \"The message … appeared\" or \"The folder didn't show up on the left\"",
         "save_next": "Save and continue", "skip_q": "Why are you skipping this test?", "choose": "Please choose …",
@@ -180,7 +190,7 @@ ASSISTANT_TEXT = {
         "save": "Save result", "saved": "Saved as \"{file}\" in your Downloads folder.",
         "back_last": "← Change the last test", "reset": "Start over",
         "reset_confirm": "Really delete all answers?", "reset_yes": "Yes, delete everything", "reset_no": "Cancel",
-        "result_head": "Test result", "status": {"ok": "OK", "bad": "FAILED", "skip": "SKIPPED", "open": "OPEN"},
+        "result_head": "Test result", "status": {"ok": "OK", "bad": "FAILED", "skip": "SKIPPED", "open": "OPEN", "na": "NOT APPLICABLE"},
     },
 }
 
@@ -196,6 +206,8 @@ class Scenario:
     # step index -> (image name, caption); an image belongs to the step above it
     step_images: dict = dataclasses.field(default_factory=dict)
     result_image: tuple = None
+    # "standard" or "step": the scenario only applies to that download variant
+    variant: str = ""
 
 
 @dataclasses.dataclass
@@ -211,7 +223,9 @@ FIELD_KEYWORDS = {
     "Erwartet": "expected", "Expected": "expected",
     "Hinweis": "note", "Note": "note",
     "Bild-Ergebnis": "result_image", "Result image": "result_image",
+    "Variante": "variant", "Variant": "variant",
 }
+VARIANTS = ("standard", "step")
 # "Bild:"/"Image:" lines under a step attach a screenshot to that step.
 STEP_IMAGE_RE = re.compile(r"^\s+(?:Bild|Image):\s*(\S+)\s*(?:·\s*(.*?))?\s*$")
 IMAGE_SPEC_RE = re.compile(r"^(\S+)\s*(?:·\s*(.*?))?\s*$")
@@ -270,6 +284,11 @@ def parse_scenarios(text):
             section = None
         elif field == "note":
             scenario.note = rest.strip()
+            section = None
+        elif field == "variant":
+            scenario.variant = rest.strip().lower()
+            if scenario.variant not in VARIANTS:
+                raise ValueError(f"Szenario {scenario.id}: Variante muss standard oder step sein")
             section = None
         elif field == "result_image":
             spec = IMAGE_SPEC_RE.match(rest.strip())
@@ -438,6 +457,7 @@ code { font-family: Consolas, monospace; font-size: 9.5pt; background: #f4f1ee; 
 .bogen { border-left: 3px solid #c4502f; background: #fbf1ec; padding: 6px 10px; margin: 8pt 0 12pt; }
 ol, ul { margin: 3pt 0 3pt 18pt; padding: 0; }
 li { margin: 2pt 0; }
+.variante { font-weight: 600; color: #8a5a47; }
 .bild { margin: 4pt 0 6pt; page-break-inside: avoid; }
 .bild img { max-width: 100%; max-height: 95mm; border: 1px solid #e5ddd6; border-radius: 4px; }
 .bild figcaption { font-size: 9pt; font-weight: 600; color: #b3261e; }
@@ -461,6 +481,8 @@ def _scenario_html(s, lang="de"):
         for i, step in enumerate(s.steps)) + "</ol>"
     result_html = figure((s.result_image[0], f'{t["result_image"]}: {s.result_image[1]}' if s.result_image[1] else t["result_image"]), " ok") if s.result_image else ""
     note_html = f'<p><span class="lbl">{t["note"]}</span> {_markdown_inline(s.note)}</p>' if s.note else ""
+    if s.variant:
+        note_html = f'<p class="variante">{html.escape(t["variant_only"][s.variant])}</p>' + note_html
     # No checkbox to tick here: a PDF can't be filled in, results go into the sheet.
     return (
         f'<div class="szenario"><h3>{html.escape(s.id)} · {_markdown_inline(s.title)}</h3>'
@@ -550,14 +572,19 @@ def build_assistant(out_dir, chapters, version, platform, lang, install_html):
                    for i, step in enumerate(s.steps)],
          "expected": _markdown_inline(s.expected), "note": _markdown_inline(s.note) if s.note else "",
          "resultImg": s.result_image[0] if s.result_image else "",
-         "resultCap": _markdown_inline(s.result_image[1]) if s.result_image else ""}
+         "resultCap": _markdown_inline(s.result_image[1]) if s.result_image else "", "variant": s.variant}
         for c in chapters for s in c.scenarios
     ]
+    # The variant is asked at the start and the time is recorded, so the sheet's
+    # "App-Variante" and "Datum" fields are left out here.
+    variant_field, date_field = LANGS[lang]["fields"]["common"][0], LANGS[lang]["fields"]["common"][1]
     fields = [{"label": label, "hint": hint or "", "choices": list(choices or [])}
-              for label, hint, choices in LANGS[lang]["fields"][platform] + LANGS[lang]["fields"]["common"]]
+              for label, hint, choices in LANGS[lang]["fields"][platform] + LANGS[lang]["fields"]["common"]
+              if label not in (variant_field[0], date_field[0])]
+    variants = {"label": variant_field[0], "choices": [{"key": k, "label": v} for k, v in zip(VARIANTS, variant_field[2])]}
     title = a["title"].format(produkt=PRODUCT, version=version, platform=platform_name)
     data = {
-        "text": a, "tests": tests, "fields": fields, "install": install_html, "title": title,
+        "text": a, "tests": tests, "fields": fields, "variants": variants, "install": install_html, "title": title,
         "version": version, "platform": platform_name,
         "resultFile": a["result_file"].format(version=version, platform=platform_name),
         "storageKey": f"3mf-testassistent-{version}-{platform}-{lang}",
@@ -583,8 +610,8 @@ def load_scenarios(root, version, lang):
 
     chapters = read(LANGS[lang]["scenario_suffix"])
     if lang != "de":
-        ids = [(s.id, sorted(s.only)) for c in chapters for s in c.scenarios]
-        german = [(s.id, sorted(s.only)) for c in read(LANGS["de"]["scenario_suffix"]) for s in c.scenarios]
+        ids = [(s.id, sorted(s.only), s.variant) for c in chapters for s in c.scenarios]
+        german = [(s.id, sorted(s.only), s.variant) for c in read(LANGS["de"]["scenario_suffix"]) for s in c.scenarios]
         if ids != german:
             raise ValueError(f"Szenarien ({lang}) passen nicht zur deutschen Datei: {ids} statt {german}")
     return chapters
@@ -784,6 +811,8 @@ textarea{min-height:96px;resize:vertical}
 table{width:100%;border-collapse:collapse;font-size:15px}td{padding:8px 6px;border-top:1px solid var(--line);vertical-align:top}td:first-child{white-space:nowrap;font-weight:600}
 .tag{font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px;white-space:nowrap}
 .t-ok{background:var(--ok-soft);color:var(--ok)}.t-bad{background:var(--bad-soft);color:var(--bad)}.t-skip{background:var(--skip-soft);color:var(--skip)}.t-open{background:var(--bg);color:var(--muted)}
+.variants{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media (max-width:520px){.variants{grid-template-columns:1fr}}
+.variants button.sel{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
 .fields{display:grid;gap:10px}.fields label{font-size:14px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
 .saved{color:var(--ok);font-weight:600}
 @media (prefers-reduced-motion:reduce){.bar i{transition:none}}
@@ -795,9 +824,23 @@ table{width:100%;border-collapse:collapse;font-size:15px}td{padding:8px 6px;bord
 </div>
 <script id="data" type="application/json">__DATA__</script>
 <script>
-const D = JSON.parse(document.getElementById("data").textContent), T = D.text, TESTS = D.tests;
-const fresh = () => ({ started:false, prepDone:false, index:0, results:{}, done:{}, device:{} });
-let state = load() || fresh();
+const D = JSON.parse(document.getElementById("data").textContent), T = D.text;
+const fresh = () => ({ started:false, prepDone:false, index:0, results:{}, done:{}, device:{}, variant:"", secs:{}, shown:null });
+let state = Object.assign(fresh(), load() || {});
+let TESTS = [];
+// Tests for the other download variant are left out (and listed as not applicable).
+function applyVariant(){ TESTS = D.tests.filter(t => !t.variant || t.variant === state.variant); }
+applyVariant();
+const MAX_MS = 30 * 60 * 1000;
+// Time on the current test, capped so a break or an open laptop overnight doesn't count.
+function track(t){
+  const now = Date.now(), s = state.shown && state.shown.id === t.id ? Math.min(now - state.shown.at, MAX_MS) : 0;
+  state.secs[t.id] = (state.secs[t.id] || 0) + s; state.shown = { id:t.id, at:now };
+}
+const mins = ms => Math.round(ms / 60000);
+const oneTime = ms => ms < 60000 ? T.time_lt1 : T.time_one.replace("{min}", mins(ms));
+const totalMs = () => TESTS.reduce((a, t) => a + (state.secs[t.id] || 0), 0);
+const variantLabel = () => { const v = D.variants.choices.find(c => c.key === state.variant); return v ? v.label : ""; };
 function load(){ try { return JSON.parse(localStorage.getItem(D.storageKey)); } catch(e) { return null; } }
 function save(){ try { localStorage.setItem(D.storageKey, JSON.stringify(state)); } catch(e) {} }
 const view = document.getElementById("view");
@@ -807,7 +850,7 @@ function progress(){
   const p = document.getElementById("progress"); p.hidden = !state.started || !state.prepDone; if (p.hidden) return;
   const i = Math.min(state.index, TESTS.length), c = counts();
   document.getElementById("progText").textContent = i >= TESTS.length ? T.all_done : T.test_of.replace("{n}", i+1).replace("{total}", TESTS.length);
-  document.getElementById("progCounts").textContent = "✅ " + c.ok + " · ❌ " + c.bad + " · ⏭ " + c.skip;
+  document.getElementById("progCounts").textContent = variantLabel() + " · ✅ " + c.ok + " · ❌ " + c.bad + " · ⏭ " + c.skip;
   document.getElementById("barFill").style.width = (Object.keys(state.results).length / TESTS.length * 100) + "%";
 }
 function render(){
@@ -820,7 +863,11 @@ function render(){
 function renderStart(){
   const resume = Object.keys(state.results).length > 0 || state.prepDone;
   view.innerHTML = '<section class="card"><div class="eyebrow">' + esc(T.eyebrow) + '</div><h1>' + esc(T.hello.replace("{version}", D.version)) + '</h1><ul>'
-    + T.intro.map(x => '<li>' + esc(x) + '</li>').join("") + '</ul><button class="primary" id="go">' + esc(resume ? T.resume : T.start) + '</button></section>';
+    + T.intro.map(x => '<li>' + esc(x) + '</li>').join("") + '</ul>'
+    + '<p class="q">' + esc(T.variant_q) + '</p><div class="variants">' + D.variants.choices.map(c => '<button data-v="' + c.key + '" class="' + (state.variant === c.key ? "sel" : "") + '">' + esc(c.label) + '</button>').join("") + '</div>'
+    + '<div class="tip" style="margin-top:0">' + esc(T.variant_hint) + '</div>'
+    + '<button class="primary" id="go"' + (state.variant ? '' : ' disabled') + '>' + esc(resume ? T.resume : T.start) + '</button></section>';
+  view.querySelectorAll(".variants button").forEach(b => b.onclick = () => { state.variant = b.dataset.v; applyVariant(); if (state.index > TESTS.length) state.index = TESTS.length; save(); renderStart(); });
   document.getElementById("go").onclick = () => { state.started = true; save(); render(); };
 }
 function renderPrep(){
@@ -830,6 +877,7 @@ function renderPrep(){
   document.getElementById("prepOk").onclick = () => { state.prepDone = true; save(); render(); };
 }
 function renderTest(t){
+  if (!state.shown || state.shown.id !== t.id) { state.shown = { id:t.id, at:Date.now() }; save(); }
   const r = state.results[t.id], doneSteps = state.done[t.id] || [];
   view.innerHTML = '<section class="card"><div class="eyebrow">' + esc(t.chapter) + '</div><h1><span class="id">' + esc(t.id) + '</span>' + t.title + '</h1>'
     + '<ol class="steps">' + t.steps.map((s, i) => '<li tabindex="0" data-i="' + i + '" class="' + (doneSteps.includes(i) ? "done" : "") + '"><div class="stext">' + s.t
@@ -855,17 +903,17 @@ function renderTest(t){
 function choose(t, s, restoring){
   view.querySelectorAll(".actions button").forEach(b => b.classList.toggle("sel", b.dataset.s === s));
   const f = document.getElementById("follow"), prev = state.results[t.id] && state.results[t.id].s === s ? state.results[t.id] : null;
-  if (s === "ok") { state.results[t.id] = { s:"ok" }; next(); return; }
+  if (s === "ok") { track(t); state.results[t.id] = { s:"ok" }; next(); return; }
   if (s === "bad") {
     f.innerHTML = '<div class="followup"><label class="q" for="why">' + esc(T.why) + '</label><textarea id="why" placeholder="' + esc(T.why_ph) + '">' + esc(prev ? prev.text : "") + '</textarea><button class="primary" id="cont" disabled>' + esc(T.save_next) + '</button></div>';
     const ta = document.getElementById("why"), c = document.getElementById("cont"), upd = () => c.disabled = ta.value.trim().length < 5;
-    ta.oninput = upd; upd(); c.onclick = () => { state.results[t.id] = { s:"bad", text:ta.value.trim() }; next(); };
+    ta.oninput = upd; upd(); c.onclick = () => { track(t); state.results[t.id] = { s:"bad", text:ta.value.trim() }; next(); };
     if (!restoring) ta.focus();
   } else {
     f.innerHTML = '<div class="followup"><label class="q" for="reason">' + esc(T.skip_q) + '</label><select id="reason"><option value="">' + esc(T.choose) + '</option>'
       + T.skip_reasons.map(x => '<option' + (prev && prev.text === x ? ' selected' : '') + '>' + esc(x) + '</option>').join("") + '</select><button class="primary" id="cont" disabled>' + esc(T.next) + '</button></div>';
     const sel = document.getElementById("reason"), c = document.getElementById("cont"), upd = () => c.disabled = !sel.value;
-    sel.onchange = upd; upd(); c.onclick = () => { state.results[t.id] = { s:"skip", text:sel.value }; next(); };
+    sel.onchange = upd; upd(); c.onclick = () => { track(t); state.results[t.id] = { s:"skip", text:sel.value }; next(); };
     if (!restoring) sel.focus();
   }
 }
@@ -876,15 +924,21 @@ function zoom(src){
 }
 function plain(h){ const d = document.createElement("div"); d.innerHTML = h; return d.textContent; }
 function resultText(){
-  const lines = [D.title, T.result_head + " · " + new Date().toLocaleString(), ""];
+  const lines = [D.title, T.result_head + " · " + new Date().toLocaleString(), T.time_total.replace("{min}", mins(totalMs())), ""];
+  lines.push(D.variants.label + ": " + variantLabel());
   D.fields.forEach((f, i) => { const v = (state.device[i] || "").trim(); if (v) lines.push(f.label + ": " + v); });
   lines.push("");
-  TESTS.forEach(t => { const r = state.results[t.id]; lines.push(t.id + " " + plain(t.title) + ": " + T.status[r ? r.s : "open"] + (r && r.text ? " – " + r.text : "")); });
+  D.tests.forEach(t => {
+    if (!TESTS.includes(t)) { lines.push(t.id + " " + plain(t.title) + ": " + T.status.na); return; }
+    const r = state.results[t.id];
+    lines.push(t.id + " " + plain(t.title) + ": " + T.status[r ? r.s : "open"] + (r && r.text ? " – " + r.text : "") + (r ? " (" + oneTime(state.secs[t.id] || 0) + ")" : ""));
+  });
   return lines.join("\\r\\n") + "\\r\\n";
 }
 function renderSummary(){
   const c = counts();
   view.innerHTML = '<section class="card"><div class="eyebrow">' + esc(T.done_eyebrow) + '</div><h1>' + esc(T.done) + '</h1>'
+    + '<p>' + esc(T.time_total.replace("{min}", mins(totalMs()))) + '</p>'
     + '<div class="sum"><div class="s-ok"><b>' + c.ok + '</b>' + esc(T.labels.ok) + '</div><div class="s-bad"><b>' + c.bad + '</b>' + esc(T.labels.bad) + '</div><div class="s-skip"><b>' + c.skip + '</b>' + esc(T.labels.skip) + '</div></div>'
     + '<div style="overflow-x:auto"><table><tbody>' + TESTS.map(t => { const r = state.results[t.id], k = r ? r.s : "open";
         return '<tr><td>' + esc(t.id) + '</td><td>' + t.title + (r && r.text ? '<br><span style="color:var(--muted)">' + esc(r.text) + '</span>' : '') + '</td><td><span class="tag t-' + k + '">' + esc(T.labels[k]) + '</span></td></tr>'; }).join("") + '</tbody></table></div>'

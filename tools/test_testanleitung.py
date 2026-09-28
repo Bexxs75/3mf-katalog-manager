@@ -195,6 +195,37 @@ Bild-Ergebnis: leer · so sieht es aus
                 ta.build("0.15.0-2", "windows", root / "out", root=root)
 
 
+class Variant(unittest.TestCase):
+    ONLY_STANDARD = SAMPLE.replace("## E3 · Backup\n", "## E3 · Backup\nVariante: standard\n")
+
+    def test_parse_variant(self):
+        e3 = ta.parse_scenarios(self.ONLY_STANDARD)[0].scenarios[1]
+        self.assertEqual(e3.variant, "standard")
+        with self.assertRaisesRegex(ValueError, "E3.*Variante"):
+            ta.parse_scenarios(self.ONLY_STANDARD.replace("Variante: standard", "Variante: gross"))
+
+    def test_guide_and_assistant_know_the_variant(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = make_root(t, english=None)
+            (root / "docs/tests/0.15.0-2.md").write_text(self.ONLY_STANDARD)
+            html_path, _ = ta.build("0.15.0-2", "windows", root / "out", root=root)
+            self.assertIn("Nur für die Variante ohne STEP-Vorschau.", html_path.read_text())
+            _, data = assistant_data(root / "out" / "Testassistent-0.15.0-2-Windows.html")
+            self.assertEqual([s["variant"] for s in data["tests"]], ["", "standard"])
+            self.assertEqual([c["key"] for c in data["variants"]["choices"]], ["standard", "step"])
+            labels = [f["label"] for f in data["fields"]]
+            self.assertNotIn("Datum", labels)
+            self.assertNotIn("App-Variante", labels)
+            self.assertIn("Virenschutz", labels)
+
+    def test_english_variant_must_match(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = make_root(t)
+            (root / "docs/tests/0.15.0-2.md").write_text(self.ONLY_STANDARD)
+            with self.assertRaises(ValueError):
+                ta.build("0.15.0-2", "windows", root / "out", root=root, lang="en")
+
+
 class Assistant(unittest.TestCase):
     def test_german_assistant_is_written_next_to_the_guide(self):
         with tempfile.TemporaryDirectory() as t:
