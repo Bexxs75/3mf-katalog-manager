@@ -148,9 +148,9 @@ jobs:
           for l in de en; do
             for p in windows macos linux; do python3 tools/testanleitung.py "$VERSION" "$p" guide --lang=$l --assistant-only $NOSTEP; done
           done
-          cp guide/Testassistent-*.html guide/Test-Assistant-*.html dist/
-          # Copies without the version keep the same link across test versions
-          # (website, Discord, forum posts): Testassistent-Windows.html etc.
+          # Published without the version so the links stay the same across test
+          # versions (website, Discord, forum posts): Testassistent-Windows.html etc.
+          # The website reads the version from the installer names instead.
           for f in guide/Testassistent-*.html guide/Test-Assistant-*.html; do
             b=$(basename "$f"); cp "$f" "dist/${b/-$VERSION/}"
           done

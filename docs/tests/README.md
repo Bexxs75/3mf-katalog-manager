@@ -1,8 +1,10 @@
 # Test guide generator
 
 **Testers only get the interactive test assistant** (`Testassistent-…html` /
-`Test-Assistant-…html`, built with `--assistant-only`, which is what
-preview.yml publishes). It guides them from downloading the right installer
+`Test-Assistant-…html`, built with `--assistant-only`). preview.yml publishes
+it without the version in the name (`Testassistent-Windows.html`, …), so links
+on the website, in Discord and in forum posts stay valid; 3mfkatalog.de reads
+the version from the installer names. It guides them from downloading the right installer
 to sending the result file to testing@3mfkatalog.de. The PDF guide and the
 result sheet described below can still be built locally but are no longer
 published.
