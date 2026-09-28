@@ -139,7 +139,7 @@ Installationen von 0.14 oder älter müssen einmal von Hand auf 0.15.0 aktualisi
 
 ## Mitmachen
 
-Hilfe ist willkommen, und nicht nur beim Code: Teste deinen Drucker auf der [Testseite](https://3mfkatalog.de/druckertest.html), prüfe eine Übersetzung, probier die Installation auf deinem System aus oder melde einen Fehler. Siehe [CONTRIBUTING.md](CONTRIBUTING.md), Issues mit dem Label [good first issue](https://github.com/Bexxs75/3mf-katalog-manager/labels/good%20first%20issue) und die [Übersetzungsanleitung](docs/TRANSLATING.md).
+Hilfe ist willkommen, und nicht nur beim Code: [Teste die nächste Version vorab](https://3mfkatalog.de/vorab-testen.html) (eigener Katalog, berührt deine Installation nicht; ein Testassistent führt dich durch), teste deinen Drucker auf der [Testseite](https://3mfkatalog.de/druckertest.html), prüfe eine Übersetzung, probier die Installation auf deinem System aus oder melde einen Fehler. Siehe [CONTRIBUTING.md](CONTRIBUTING.md), Issues mit dem Label [good first issue](https://github.com/Bexxs75/3mf-katalog-manager/labels/good%20first%20issue) und die [Übersetzungsanleitung](docs/TRANSLATING.md).
 
 ## Stand und Roadmap
 

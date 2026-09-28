@@ -139,7 +139,7 @@ Installations of 0.14 or older have to be updated once by hand — download 0.15
 
 ## Contributing
 
-Help is welcome, and not only with code: test your printer on the [test page](https://3mfkatalog.de/en/printer-test.html), check a translation, try the installation on your system or report a bug. See [CONTRIBUTING.md](CONTRIBUTING.md), issues labeled [good first issue](https://github.com/Bexxs75/3mf-katalog-manager/labels/good%20first%20issue) and the [translation guide](docs/TRANSLATING.md).
+Help is welcome, and not only with code: [try the test version](https://3mfkatalog.de/en/test-version.html) of the next release (own catalog, doesn't touch your installation; a guided test assistant walks you through it), test your printer on the [test page](https://3mfkatalog.de/en/printer-test.html), check a translation, try the installation on your system or report a bug. See [CONTRIBUTING.md](CONTRIBUTING.md), issues labeled [good first issue](https://github.com/Bexxs75/3mf-katalog-manager/labels/good%20first%20issue) and the [translation guide](docs/TRANSLATING.md).
 
 ## Status and roadmap
 
