@@ -226,6 +226,34 @@ class Variant(unittest.TestCase):
                 ta.build("0.15.0-2", "windows", root / "out", root=root, lang="en")
 
 
+class Download(unittest.TestCase):
+    def build(self, root, step=True, platform="windows"):
+        (root / f"docs/tests/bausteine/installieren-{platform}.md").write_text("{{download}}\n\n`chmod +x {{paket}}`\n")
+        return ta.build("0.15.0-2", platform, root / "out", root=root, step=step)
+
+    def test_guide_names_both_packages_and_assistant_gets_links(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = make_root(t)
+            html_path, _ = self.build(root)
+            html = html_path.read_text()
+            self.assertIn("3MF-Katalog-Manager-Preview-0.15.0-2-Windows-x64.msi", html)
+            self.assertIn("3MF-Katalog-Manager-Preview-0.15.0-2-Windows-x64-STEP.msi", html)
+            _, data = assistant_data(root / "out" / "Testassistent-0.15.0-2-Windows.html")
+            self.assertEqual(data["packages"]["step"]["url"],
+                             "https://github.com/Bexxs75/3mf-katalog-manager/releases/download/preview/3MF-Katalog-Manager-Preview-0.15.0-2-Windows-x64-STEP.msi")
+            self.assertIn("__DOWNLOAD__", data["prep"][0]["html"])
+            self.assertIn("chmod +x __PAKET__", data["prep"][0]["html"])
+
+    def test_without_step_only_the_standard_package(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = make_root(t)
+            html_path, _ = self.build(root, step=False, platform="linux")
+            self.assertNotIn("-STEP.AppImage", html_path.read_text())
+            _, data = assistant_data(root / "out" / "Testassistent-0.15.0-2-Linux.html")
+            self.assertIsNone(data["packages"]["step"])
+            self.assertTrue(data["packages"]["standard"]["name"].endswith("Linux-x86_64.AppImage"))
+
+
 class Assistant(unittest.TestCase):
     def test_german_assistant_is_written_next_to_the_guide(self):
         with tempfile.TemporaryDirectory() as t:

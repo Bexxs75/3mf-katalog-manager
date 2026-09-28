@@ -1,7 +1,9 @@
-Download `{{paket}}` from the [preview release page]({{release}}).
+{{download}}
 
-Make the file executable and start it:
+Make the file executable: in a terminal with
 
-`chmod +x {{paket}}`
+`chmod +x ~/Downloads/{{paket}}`
 
-After that you can start the file with a double-click or from the terminal.
+or in the file manager with right-click → **Properties** → tick **Allow executing file as program** or **Executable**.
+
+Then start the app with a double-click on the file.

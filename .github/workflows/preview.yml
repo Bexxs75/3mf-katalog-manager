@@ -71,6 +71,8 @@ jobs:
           test -f "docs/tests/$V.md" || { echo "docs/tests/$V.md is missing"; exit 1; }
           test -f "docs/tests/$V.en.md" || { echo "docs/tests/$V.en.md is missing"; exit 1; }
           sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends python3-openpyxl
+          # Without STEP builds the guides and the assistant only offer the standard packages.
+          NOSTEP=""; [ "$STEP" = "true" ] || NOSTEP="--no-step"
           for l in de en; do python3 tools/testanleitung.py "$V" linux "$RUNNER_TEMP/guide-check" --lang=$l; done
           echo "version=$V" >> "$GITHUB_OUTPUT"; echo "step=$S" >> "$GITHUB_OUTPUT"
 
@@ -146,7 +148,7 @@ jobs:
         run: |
           sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends python3-openpyxl
           for l in de en; do
-            for p in windows macos linux; do python3 tools/testanleitung.py "$VERSION" "$p" guide --pdf --lang=$l; done
+            for p in windows macos linux; do python3 tools/testanleitung.py "$VERSION" "$p" guide --pdf --lang=$l $NOSTEP; done
           done
           cp guide/*.pdf guide/*.xlsx guide/Testassistent-*.html guide/Test-Assistant-*.html dist/
       - name: Checksums

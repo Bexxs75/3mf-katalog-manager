@@ -1,7 +1,9 @@
-Lade `{{paket}}` von der [Vorschau-Release-Seite]({{release}}) herunter.
+{{download}}
 
-Mache die Datei ausführbar und starte sie:
+Mache die Datei ausführbar: im Terminal mit
 
-`chmod +x {{paket}}`
+`chmod +x ~/Downloads/{{paket}}`
 
-Danach kannst du die Datei per Doppelklick oder aus dem Terminal starten.
+oder im Dateimanager per Rechtsklick → **Eigenschaften** → **Als Programm ausführen** bzw. **Ausführbar** anhaken.
+
+Danach startest du die App per Doppelklick auf die Datei.

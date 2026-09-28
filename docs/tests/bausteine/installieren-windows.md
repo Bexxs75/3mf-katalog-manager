@@ -1,4 +1,4 @@
-Lade `{{paket}}` von der [Vorschau-Release-Seite]({{release}}) herunter.
+{{download}}
 
 Windows zeigt beim ersten Start wahrscheinlich „Der Computer wurde durch Windows geschützt“. Klicke auf **Weitere Informationen** und dann auf **Trotzdem ausführen**. Installiere mit den Standardeinstellungen.
 

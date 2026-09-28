@@ -1,4 +1,4 @@
-Download `{{paket}}` from the [preview release page]({{release}}).
+{{download}}
 
 On the first start Windows will probably show "Windows protected your PC". Click **More info** and then **Run anyway**. Install with the default settings.
 

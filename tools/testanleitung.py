@@ -46,6 +46,8 @@ LANGS = {
         "form": "https://3mfkatalog.de/fehler-melden.html",
         "headings": ("Was ist neu", "Installieren", "Datenorte", "Fehler melden", "Deinstallieren"),
         "testdata_heading": "Testdaten vorbereiten",
+        "download_both": "Lade `{paket}` von der [Vorschau-Release-Seite]({release}) herunter (Variante mit STEP-Vorschau: `{paket_step}`).",
+        "download_one": "Lade `{paket}` von der [Vorschau-Release-Seite]({release}) herunter.",
         "steps": "Schritte:",
         "expected": "Erwartet:",
         "note": "Hinweis:",
@@ -89,6 +91,8 @@ LANGS = {
         "form": "https://3mfkatalog.de/en/report-a-bug.html",
         "headings": ("What's new", "Installing", "Where the data is", "Reporting a bug", "Uninstalling"),
         "testdata_heading": "Preparing the test data",
+        "download_both": "Download `{paket}` from the [preview release page]({release}) (variant with STEP preview: `{paket_step}`).",
+        "download_one": "Download `{paket}` from the [preview release page]({release}).",
         "steps": "Steps:",
         "expected": "Expected:",
         "note": "Note:",
@@ -142,8 +146,10 @@ ASSISTANT_TEXT = {
         "tip": "Tipp: Klick einen Schritt an, wenn du ihn erledigt hast.",
         "expected": "Das sollte passieren", "note": "Hinweis", "question": "Hat es geklappt?",
         "result_image": "So sieht es richtig aus", "zoom_close": "Klicken oder Esc zum Schließen",
-        "variant_q": "Welche Variante hast du installiert?",
-        "variant_hint": "Steht im Namen der heruntergeladenen Datei: mit „-STEP“ ist es die Variante mit STEP-Vorschau.",
+        "variant_q": "Welche Variante sollst du testen?",
+        "variant_hint": "Wenn dir nichts anderes gesagt wurde, nimm „Standard“. Die Variante mit STEP-Vorschau ist größer und zeigt zusätzlich STEP-Dateien (.stp/.step) in 3D.",
+        "no_step": "In dieser Test-Version gibt es keine Variante mit STEP-Vorschau.",
+        "download_btn": "Installationsdatei herunterladen", "download_note": "Die Datei landet in deinem Download-Ordner.",
         "time_total": "Aktive Testzeit: {min} Minuten", "time_one": "{min} Min.", "time_lt1": "unter 1 Min.",
         "na": "nicht zutreffend (andere Variante)",
         "ok": "Klappt", "bad": "Klappt nicht", "skip": "Überspringen",
@@ -176,8 +182,10 @@ ASSISTANT_TEXT = {
         "tip": "Tip: click a step once you have done it.",
         "expected": "This should happen", "note": "Note", "question": "Did it work?",
         "result_image": "This is what it should look like", "zoom_close": "Click or press Esc to close",
-        "variant_q": "Which variant did you install?",
-        "variant_hint": "It is in the name of the downloaded file: with \"-STEP\" it is the variant with STEP preview.",
+        "variant_q": "Which variant should you test?",
+        "variant_hint": "If nobody told you otherwise, choose \"Standard\". The variant with STEP preview is bigger and also shows STEP files (.stp/.step) in 3D.",
+        "no_step": "This test version has no variant with STEP preview.",
+        "download_btn": "Download the installer", "download_note": "The file goes to your Downloads folder.",
         "time_total": "Active test time: {min} minutes", "time_one": "{min} min", "time_lt1": "under 1 min",
         "na": "not applicable (other variant)",
         "ok": "Works", "bad": "Doesn't work", "skip": "Skip",
@@ -369,12 +377,14 @@ def platform_values(version, platform, lang="de"):
     datenordner = path_template.format(id=IDENTIFIER)
     logordner = log_template.format(id=IDENTIFIER)
     paket = release_assets.asset_name(version, asset_platform, False, ext, preview=True)
+    paket_step = release_assets.asset_name(version, asset_platform, True, ext, preview=True)
     return {
         "version": version,
         "produkt": PRODUCT,
         "datenordner": datenordner,
         "logordner": logordner,
         "paket": paket,
+        "paket_step": paket_step,
         "release": f"https://github.com/{REPO}/releases/tag/preview",
         "formular": f"{LANGS[lang]['form']}?version={version}&os={platform}",
         "testdaten": f"https://github.com/{REPO}/releases/download/preview/3MF-Testdaten.zip",
@@ -497,24 +507,26 @@ def _scenario_html(s, lang="de"):
     )
 
 
-def build(version, platform, out_dir, root=".", pdf=False, lang="de"):
+def build(version, platform, out_dir, root=".", pdf=False, lang="de", step=True):
     root = pathlib.Path(root)
     out_dir = pathlib.Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     t = LANGS[lang]
     platform_name = PLATFORM_NAMES[platform]
     values = platform_values(version, platform, lang)
+    # Test versions built without STEP only have the standard packages.
+    values["download"] = t["download_both" if step else "download_one"].format(**values)
 
     chapters = load_scenarios(root, version, lang)
     fill_scenario_text(chapters, values)
 
     bausteine_dir = root / "docs/tests" / t["bausteine"]
 
-    def baustein(name):
+    def baustein(name, overrides=None):
         path = bausteine_dir / f"{name}.md"
         if not path.is_file():
             raise ValueError(f"Baustein fehlt: {path}")
-        return markdown_to_html(fill(path.read_text(encoding="utf-8"), values))
+        return markdown_to_html(fill(path.read_text(encoding="utf-8"), {**values, **(overrides or {})}))
 
     changelog_path = root / "CHANGELOG.md"
     changelog_html = (
@@ -557,17 +569,25 @@ def build(version, platform, out_dir, root=".", pdf=False, lang="de"):
     sheet_path = out_dir / sheet_name
     write_result_sheet(sheet_path, chapters, version, platform, lang)
     a = ASSISTANT_TEXT[lang]
+    # The assistant puts a download button for the chosen variant where the
+    # install text names the package; the page swaps in the real file name.
     build_assistant(out_dir, chapters, version, platform, lang, [
-        (a["install"], baustein(f"installieren-{platform}")),
+        (a["install"], baustein(f"installieren-{platform}", {"download": "__DOWNLOAD__", "paket": "__PAKET__"})),
         (t["testdata_heading"], baustein(f"testdaten-{platform}")),
-    ])
+    ], packages(values, step))
 
     if pdf:
         render_pdf(html_path, html_path.with_suffix(".pdf"))
     return html_path, sheet_path
 
 
-def build_assistant(out_dir, chapters, version, platform, lang, prep):
+def packages(values, step):
+    url = lambda name: f"https://github.com/{REPO}/releases/download/preview/{name}"
+    return {"standard": {"name": values["paket"], "url": url(values["paket"])},
+            "step": {"name": values["paket_step"], "url": url(values["paket_step"])} if step else None}
+
+
+def build_assistant(out_dir, chapters, version, platform, lang, prep, packages):
     """Writes the interactive test assistant: a standalone HTML file that shows
     one test at a time, keeps its progress in the browser and saves the answers
     as a text file. `chapters` are already filtered for the platform and filled;
@@ -594,7 +614,7 @@ def build_assistant(out_dir, chapters, version, platform, lang, prep):
     variants = {"label": variant_field[0], "choices": [{"key": k, "label": v} for k, v in zip(VARIANTS, variant_field[2])]}
     title = a["title"].format(produkt=PRODUCT, version=version, platform=platform_name)
     data = {
-        "text": a, "tests": tests, "fields": fields, "variants": variants, "prep": [{"title": ti, "html": h} for ti, h in prep], "title": title,
+        "text": a, "tests": tests, "fields": fields, "variants": variants, "packages": packages, "prep": [{"title": ti, "html": h} for ti, h in prep], "title": title,
         "version": version, "platform": platform_name,
         "resultFile": a["result_file"].format(version=version, platform=platform_name),
         "storageKey": f"3mf-testassistent-{version}-{platform}-{lang}",
@@ -802,6 +822,11 @@ ol.steps li.done img{opacity:.55}
 .lbl{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);display:block;margin-bottom:4px}
 .note{border:1px solid var(--line);border-radius:8px;padding:12px 16px;font-size:15px}.note .lbl{color:var(--muted)}
 .install h3{font-size:18px;margin:0}
+.download{display:flex;flex-direction:column;align-items:center;gap:4px;padding:16px;border-radius:12px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:19px;text-decoration:none;text-align:center}
+.download span{font-weight:400;font-size:13px;opacity:.9;overflow-wrap:anywhere}
+.download:hover{filter:brightness(1.08)}
+.dl{display:flex;flex-direction:column;gap:6px}
+.variants button:disabled{opacity:.4;cursor:not-allowed}
 code{font-family:Consolas,ui-monospace,monospace;background:var(--code);padding:1px 5px;border-radius:4px;font-size:.92em;overflow-wrap:anywhere}
 a{color:var(--accent)}
 .q{font-weight:600}
@@ -838,6 +863,7 @@ table{width:100%;border-collapse:collapse;font-size:15px}td{padding:8px 6px;bord
 const D = JSON.parse(document.getElementById("data").textContent), T = D.text;
 const fresh = () => ({ started:false, prepDone:false, prepStep:0, index:0, results:{}, done:{}, device:{}, variant:"", secs:{}, shown:null });
 let state = Object.assign(fresh(), load() || {});
+if (state.variant && !D.packages[state.variant]) state.variant = "";
 let TESTS = [];
 // Tests for the other download variant are left out (and listed as not applicable).
 function applyVariant(){ TESTS = D.tests.filter(t => !t.variant || t.variant === state.variant); }
@@ -875,15 +901,18 @@ function renderStart(){
   const resume = Object.keys(state.results).length > 0 || state.prepDone;
   view.innerHTML = '<section class="card"><div class="eyebrow">' + esc(T.eyebrow) + '</div><h1>' + esc(T.hello.replace("{version}", D.version)) + '</h1><ul>'
     + T.intro.map(x => '<li>' + esc(x) + '</li>').join("") + '</ul>'
-    + '<p class="q">' + esc(T.variant_q) + '</p><div class="variants">' + D.variants.choices.map(c => '<button data-v="' + c.key + '" class="' + (state.variant === c.key ? "sel" : "") + '">' + esc(c.label) + '</button>').join("") + '</div>'
-    + '<div class="tip" style="margin-top:0">' + esc(T.variant_hint) + '</div>'
+    + '<p class="q">' + esc(T.variant_q) + '</p><div class="variants">' + D.variants.choices.map(c => '<button data-v="' + c.key + '" class="' + (state.variant === c.key ? "sel" : "") + '"' + (D.packages[c.key] ? '' : ' disabled') + '>' + esc(c.label) + '</button>').join("") + '</div>'
+    + '<div class="tip" style="margin-top:0">' + esc(T.variant_hint) + (D.packages.step ? '' : ' ' + esc(T.no_step)) + '</div>'
     + '<button class="primary" id="go"' + (state.variant ? '' : ' disabled') + '>' + esc(resume ? T.resume : T.start) + '</button></section>';
   view.querySelectorAll(".variants button").forEach(b => b.onclick = () => { state.variant = b.dataset.v; applyVariant(); if (state.index > TESTS.length) state.index = TESTS.length; save(); renderStart(); });
   document.getElementById("go").onclick = () => { state.started = true; save(); render(); };
 }
 function renderPrep(){
   const i = Math.min(state.prepStep || 0, D.prep.length - 1), p = D.prep[i];
-  view.innerHTML = '<section class="card install"><div class="eyebrow">' + esc(T.prep) + ' ' + (i + 1) + '/' + D.prep.length + '</div><h1>' + esc(p.title) + '</h1>' + p.html
+  const pkg = D.packages[state.variant] || D.packages.standard;
+  const button = '<a class="download" href="' + esc(pkg.url) + '" download>⬇ ' + esc(T.download_btn) + '<span>' + esc(pkg.name) + '</span></a><div class="tip" style="margin-top:0">' + esc(T.download_note) + '</div>';
+  const body = p.html.replace(/<p>__DOWNLOAD__/, '<div class="dl">' + button + '</div><p>').replace(/__PAKET__/g, esc(pkg.name));
+  view.innerHTML = '<section class="card install"><div class="eyebrow">' + esc(T.prep) + ' ' + (i + 1) + '/' + D.prep.length + '</div><h1>' + esc(p.title) + '</h1>' + body
     + '<button class="primary" id="prepOk">' + esc(T.prep_done) + '</button>'
     + (i > 0 ? '<div class="nav"><button class="linkbtn" id="prepBack">' + esc(T.back) + '</button></div>' : '') + '</section>';
   view.querySelectorAll("a").forEach(a => { a.target = "_blank"; a.rel = "noopener"; });
@@ -1007,7 +1036,7 @@ def main(argv):
     flags = [a for a in argv if a.startswith("--")]
     lang = next((f.split("=", 1)[1] for f in flags if f.startswith("--lang=")), "de")
     if len(args) < 3:
-        print("usage: testanleitung.py <version> <windows|macos|linux> <out_dir> [--pdf] [--lang=de|en]",
+        print("usage: testanleitung.py <version> <windows|macos|linux> <out_dir> [--pdf] [--lang=de|en] [--no-step]",
               file=sys.stderr)
         return 1
     version, platform, out_dir = args[0], args[1], args[2]
@@ -1016,7 +1045,7 @@ def main(argv):
             raise ValueError(f"Unbekannte Plattform: {platform}")
         if lang not in LANGS:
             raise ValueError(f"Unbekannte Sprache: {lang}")
-        build(version, platform, out_dir, pdf="--pdf" in flags, lang=lang)
+        build(version, platform, out_dir, pdf="--pdf" in flags, lang=lang, step="--no-step" not in flags)
     except ValueError as e:
         print(f"testanleitung: {e}", file=sys.stderr)
         return 1

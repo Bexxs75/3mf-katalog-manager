@@ -1,4 +1,4 @@
-Lade `{{paket}}` von der [Vorschau-Release-Seite]({{release}}) herunter. Es ist eine DMG-Datei.
+{{download}} Es ist eine DMG-Datei.
 
 Öffne die DMG-Datei und ziehe die App in den Ordner „Programme“.
 

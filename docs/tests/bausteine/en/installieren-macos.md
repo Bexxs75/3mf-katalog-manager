@@ -1,4 +1,4 @@
-Download `{{paket}}` from the [preview release page]({{release}}). It is a DMG file.
+{{download}} It is a DMG file.
 
 Open the DMG file and drag the app into the "Applications" folder.
 
