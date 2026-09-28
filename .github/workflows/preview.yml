@@ -148,7 +148,7 @@ jobs:
           for l in de en; do
             for p in windows macos linux; do python3 tools/testanleitung.py "$VERSION" "$p" guide --pdf --lang=$l; done
           done
-          cp guide/*.pdf guide/*.xlsx dist/
+          cp guide/*.pdf guide/*.xlsx guide/Testassistent-*.html guide/Test-Assistant-*.html dist/
       - name: Checksums
         env:
           GH_TOKEN: ${{ github.token }}
@@ -189,4 +189,4 @@ jobs:
             echo "$KEEP" | grep -qxF "$a" || gh release delete-asset preview "$a" -R "$R" --yes
           done
           gh release edit preview -R "$R" --prerelease --title "Test-Version $VERSION / Test version $VERSION" \
-            --notes "Test version $VERSION of 3MF Katalog Manager Preview (own catalog, separate from the normal app). Test guide: Testanleitung-$VERSION-*.pdf"
+            --notes "Test version $VERSION of 3MF Katalog Manager Preview (own catalog, separate from the normal app). Easiest: open Testassistent-$VERSION-<system>.html (EN: Test-Assistant-…) and follow it step by step. Test guide: Testanleitung-$VERSION-*.pdf"

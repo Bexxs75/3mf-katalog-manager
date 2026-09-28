@@ -7,7 +7,7 @@ building blocks, the "Unreleased" part of CHANGELOG.md in that language and a
 per-version scenario file. Run with `-s tools` so `import release_assets`
 resolves. Needs openpyxl for the result sheet.
 """
-import copy, dataclasses, html, pathlib, re, shutil, subprocess, sys
+import copy, dataclasses, html, json, pathlib, re, shutil, subprocess, sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import release_assets
@@ -111,6 +111,70 @@ LANGS = {
                        ("Date", None, None),
                        ("Name or Discord (optional)", None, None)],
         },
+    },
+}
+
+
+# Texts of the interactive test assistant (one test per screen, results saved
+# as a text file). Kept apart from LANGS because only the assistant uses them.
+ASSISTANT_TEXT = {
+    "de": {
+        "file": "Testassistent-{version}-{platform}.html",
+        "result_file": "Testergebnis-{version}-{platform}.txt",
+        "title": "{produkt} {version} – Testassistent ({platform})",
+        "eyebrow": "Testassistent",
+        "hello": "Hallo! Wir testen zusammen die Test-Version {version}.",
+        "intro": ["Du bekommst immer nur einen Test auf einmal. Mach die Schritte der Reihe nach und sag danach, ob es geklappt hat.",
+                  "Du kannst jederzeit aufhören. Wenn du diese Datei wieder öffnest, geht es an derselben Stelle weiter.",
+                  "Wenn etwas nicht klappt, schreib kurz dazu, was stattdessen passiert ist.",
+                  "Am Ende speicherst du das Ergebnis als Datei und schickst sie per E-Mail oder im Discord-Testkanal."],
+        "start": "Los geht’s", "resume": "Weitermachen",
+        "prep": "Vorbereitung", "install": "App installieren", "prep_done": "Erledigt, weiter",
+        "test_of": "Test {n} von {total}", "all_done": "Alle Tests erledigt",
+        "tip": "Tipp: Klick einen Schritt an, wenn du ihn erledigt hast.",
+        "expected": "Das sollte passieren", "note": "Hinweis", "question": "Hat es geklappt?",
+        "ok": "Klappt", "bad": "Klappt nicht", "skip": "Überspringen",
+        "why": "Was ist stattdessen passiert?", "why_ph": "z. B. „Es kam die Meldung …“ oder „Der Ordner erschien nicht links“",
+        "save_next": "Speichern und weiter", "skip_q": "Warum überspringst du diesen Test?", "choose": "Bitte wählen …",
+        "skip_reasons": ["Das kann ich nicht testen (z. B. fehlt mir das Nötige)", "Ich weiß nicht, wie das geht", "Anderer Grund"],
+        "next": "Weiter", "back": "← Zurück",
+        "done_eyebrow": "Geschafft", "done": "Danke! Alle Tests sind durch.",
+        "labels": {"ok": "klappt", "bad": "klappt nicht", "skip": "übersprungen", "open": "offen"},
+        "device": "Zum Schluss noch kurz zu deinem Gerät (freiwillig):",
+        "final": "Letzter Schritt: Speichere das Ergebnis und schick die Datei per E-Mail oder im Discord-Testkanal.",
+        "save": "Ergebnis speichern", "saved": "Gespeichert als „{file}“ in deinem Download-Ordner.",
+        "back_last": "← Letzten Test ändern", "reset": "Von vorn beginnen",
+        "reset_confirm": "Wirklich alle Antworten löschen?", "reset_yes": "Ja, alles löschen", "reset_no": "Abbrechen",
+        "result_head": "Testergebnis", "status": {"ok": "OK", "bad": "FEHLER", "skip": "ÜBERSPRUNGEN", "open": "OFFEN"},
+    },
+    "en": {
+        "file": "Test-Assistant-{version}-{platform}.html",
+        "result_file": "Test-Result-{version}-{platform}.txt",
+        "title": "{produkt} {version} – Test assistant ({platform})",
+        "eyebrow": "Test assistant",
+        "hello": "Hi! Let's test version {version} together.",
+        "intro": ["You get one test at a time. Do the steps in order, then tell us whether it worked.",
+                  "You can stop at any time. When you open this file again, it continues where you left off.",
+                  "If something doesn't work, write briefly what happened instead.",
+                  "At the end you save the result as a file and send it by e-mail or in the Discord test channel."],
+        "start": "Let's go", "resume": "Continue",
+        "prep": "Preparation", "install": "Install the app", "prep_done": "Done, next",
+        "test_of": "Test {n} of {total}", "all_done": "All tests done",
+        "tip": "Tip: click a step once you have done it.",
+        "expected": "This should happen", "note": "Note", "question": "Did it work?",
+        "ok": "Works", "bad": "Doesn't work", "skip": "Skip",
+        "why": "What happened instead?", "why_ph": "e.g. \"The message … appeared\" or \"The folder didn't show up on the left\"",
+        "save_next": "Save and continue", "skip_q": "Why are you skipping this test?", "choose": "Please choose …",
+        "skip_reasons": ["I can't test this (e.g. I don't have what it needs)", "I don't know how to do this", "Other reason"],
+        "next": "Next", "back": "← Back",
+        "done_eyebrow": "Done", "done": "Thank you! All tests are done.",
+        "labels": {"ok": "works", "bad": "doesn't work", "skip": "skipped", "open": "open"},
+        "device": "Finally, a few details about your device (optional):",
+        "final": "Last step: save the result and send the file by e-mail or in the Discord test channel.",
+        "save": "Save result", "saved": "Saved as \"{file}\" in your Downloads folder.",
+        "back_last": "← Change the last test", "reset": "Start over",
+        "reset_confirm": "Really delete all answers?", "reset_yes": "Yes, delete everything", "reset_no": "Cancel",
+        "result_head": "Test result", "status": {"ok": "OK", "bad": "FAILED", "skip": "SKIPPED", "open": "OPEN"},
     },
 }
 
@@ -403,10 +467,42 @@ def build(version, platform, out_dir, root=".", pdf=False, lang="de"):
 
     sheet_path = out_dir / sheet_name
     write_result_sheet(sheet_path, chapters, version, platform, lang)
+    build_assistant(out_dir, chapters, version, platform, lang, baustein(f"installieren-{platform}"))
 
     if pdf:
         render_pdf(html_path, html_path.with_suffix(".pdf"))
     return html_path, sheet_path
+
+
+def build_assistant(out_dir, chapters, version, platform, lang, install_html):
+    """Writes the interactive test assistant: a standalone HTML file that shows
+    one test at a time, keeps its progress in the browser and saves the answers
+    as a text file. `chapters` are already filtered for the platform and filled."""
+    a = ASSISTANT_TEXT[lang]
+    platform_name = PLATFORM_NAMES[platform]
+    tests = [
+        {"id": s.id, "chapter": c.title, "title": _markdown_inline(s.title),
+         "steps": [_markdown_inline(step) for step in s.steps],
+         "expected": _markdown_inline(s.expected), "note": _markdown_inline(s.note) if s.note else ""}
+        for c in chapters for s in c.scenarios
+    ]
+    fields = [{"label": label, "hint": hint or "", "choices": list(choices or [])}
+              for label, hint, choices in LANGS[lang]["fields"][platform] + LANGS[lang]["fields"]["common"]]
+    title = a["title"].format(produkt=PRODUCT, version=version, platform=platform_name)
+    data = {
+        "text": a, "tests": tests, "fields": fields, "install": install_html, "title": title,
+        "version": version, "platform": platform_name,
+        "resultFile": a["result_file"].format(version=version, platform=platform_name),
+        "storageKey": f"3mf-testassistent-{version}-{platform}-{lang}",
+    }
+    # "</" inside the JSON would end the <script> element early.
+    payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
+    page = (ASSISTANT_TEMPLATE.replace("__LANG__", lang).replace("__TITLE__", html.escape(title))
+            .replace("__PRODUCT__", html.escape(PRODUCT)).replace("__VERSION__", html.escape(version))
+            .replace("__PLATFORM__", html.escape(platform_name)).replace("__DATA__", payload))
+    path = out_dir / a["file"].format(version=version, platform=platform_name)
+    path.write_text(page, encoding="utf-8")
+    return path
 
 
 def load_scenarios(root, version, lang):
@@ -558,6 +654,186 @@ def write_result_sheet(path, chapters, version, platform, lang):
     ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0
     ws.sheet_properties.pageSetUpPr.fitToPage = True
     wb.save(path)
+
+
+# Standalone page of the test assistant. Offline by design: no external fonts
+# or scripts, so it works from a double-click in the Downloads folder.
+ASSISTANT_TEMPLATE = """<!doctype html>
+<html lang="__LANG__"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+:root{--bg:#f6f2ef;--surface:#fff;--ink:#2b2320;--muted:#7a6a62;--line:#e5ddd6;--accent:#c4502f;--accent-ink:#fff;--accent-soft:#fbf1ec;
+--ok:#2f7d4f;--ok-soft:#e6f3eb;--bad:#b3261e;--bad-soft:#fbe9e7;--skip:#8a7a3c;--skip-soft:#f6f1dc;--code:#f4f1ee;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#1d1917;--surface:#282220;--ink:#f1e9e4;--muted:#b3a39a;--line:#3d3431;--accent:#e0714f;--accent-ink:#1d1917;
+--accent-soft:#3a2721;--ok:#6cc08b;--ok-soft:#1f3326;--bad:#f08a80;--bad-soft:#3d2220;--skip:#d6c27a;--skip-soft:#353019;--code:#332b28;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Segoe UI",system-ui,-apple-system,Arial,sans-serif;font-size:17px;line-height:1.5;padding:20px 16px 48px}
+.wrap{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.brand{font-weight:700}.brand span{color:var(--muted);font-weight:400}
+.platform{font-size:13px;padding:3px 10px;border-radius:99px;background:var(--accent-soft);color:var(--accent);font-weight:600;letter-spacing:.03em;text-transform:uppercase}
+.progress{display:flex;flex-direction:column;gap:6px}.progress .row{display:flex;justify-content:space-between;font-size:14px;color:var(--muted);font-variant-numeric:tabular-nums}
+.bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden}.bar i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .3s}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:18px}
+.eyebrow{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+h1{font-size:26px;line-height:1.25;margin:0}h1 .id{color:var(--accent);margin-right:6px}
+.card p{margin:0}.card ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+ol.steps{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px;counter-reset:s}
+ol.steps li{counter-increment:s;display:grid;grid-template-columns:34px 1fr;gap:12px;align-items:start;cursor:pointer;padding:8px;border-radius:10px}
+ol.steps li:hover{background:var(--bg)}
+ol.steps li::before{content:counter(s);width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:15px;background:var(--accent-soft);color:var(--accent)}
+ol.steps li.done{color:var(--muted)}ol.steps li.done::before{content:"\\2713";background:var(--ok-soft);color:var(--ok)}
+.tip{font-size:13px;color:var(--muted);margin-top:-8px}
+.expect{background:var(--accent-soft);border-left:4px solid var(--accent);border-radius:8px;padding:14px 16px}
+.lbl{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);display:block;margin-bottom:4px}
+.note{border:1px solid var(--line);border-radius:8px;padding:12px 16px;font-size:15px}.note .lbl{color:var(--muted)}
+.install h3{font-size:18px;margin:0}
+code{font-family:Consolas,ui-monospace,monospace;background:var(--code);padding:1px 5px;border-radius:4px;font-size:.92em;overflow-wrap:anywhere}
+a{color:var(--accent)}
+.q{font-weight:600}
+.actions{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media (max-width:520px){.actions{grid-template-columns:1fr}}
+button{font:inherit;cursor:pointer;border-radius:10px;border:2px solid var(--line);background:var(--surface);color:var(--ink);padding:14px 12px;font-weight:600}
+button:focus-visible,textarea:focus-visible,select:focus-visible,input:focus-visible,li:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.b-ok{border-color:var(--ok);color:var(--ok)}.b-ok:hover,.b-ok.sel{background:var(--ok-soft)}
+.b-bad{border-color:var(--bad);color:var(--bad)}.b-bad:hover,.b-bad.sel{background:var(--bad-soft)}
+.b-skip{border-color:var(--skip);color:var(--skip)}.b-skip:hover,.b-skip.sel{background:var(--skip-soft)}
+.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}.primary:disabled{opacity:.45;cursor:not-allowed}
+.followup{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:16px}
+textarea,select,input{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;width:100%}
+textarea{min-height:96px;resize:vertical}
+.nav{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.linkbtn{background:none;border:none;padding:6px 0;color:var(--muted);font-weight:500;text-decoration:underline;text-underline-offset:3px}
+.sum{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.sum div{border-radius:10px;padding:12px;text-align:center}.sum b{display:block;font-size:28px;line-height:1.1}
+.s-ok{background:var(--ok-soft);color:var(--ok)}.s-bad{background:var(--bad-soft);color:var(--bad)}.s-skip{background:var(--skip-soft);color:var(--skip)}
+table{width:100%;border-collapse:collapse;font-size:15px}td{padding:8px 6px;border-top:1px solid var(--line);vertical-align:top}td:first-child{white-space:nowrap;font-weight:600}
+.tag{font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px;white-space:nowrap}
+.t-ok{background:var(--ok-soft);color:var(--ok)}.t-bad{background:var(--bad-soft);color:var(--bad)}.t-skip{background:var(--skip-soft);color:var(--skip)}.t-open{background:var(--bg);color:var(--muted)}
+.fields{display:grid;gap:10px}.fields label{font-size:14px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+.saved{color:var(--ok);font-weight:600}
+@media (prefers-reduced-motion:reduce){.bar i{transition:none}}
+</style></head><body>
+<div class="wrap">
+<header><div class="brand">__PRODUCT__ <span>· __VERSION__</span></div><div class="platform">__PLATFORM__</div></header>
+<div class="progress" id="progress" hidden><div class="row"><span id="progText"></span><span id="progCounts"></span></div><div class="bar"><i id="barFill"></i></div></div>
+<main id="view"></main>
+</div>
+<script id="data" type="application/json">__DATA__</script>
+<script>
+const D = JSON.parse(document.getElementById("data").textContent), T = D.text, TESTS = D.tests;
+const fresh = () => ({ started:false, prepDone:false, index:0, results:{}, done:{}, device:{} });
+let state = load() || fresh();
+function load(){ try { return JSON.parse(localStorage.getItem(D.storageKey)); } catch(e) { return null; } }
+function save(){ try { localStorage.setItem(D.storageKey, JSON.stringify(state)); } catch(e) {} }
+const view = document.getElementById("view");
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const counts = () => { const r = Object.values(state.results); return { ok:r.filter(x=>x.s==="ok").length, bad:r.filter(x=>x.s==="bad").length, skip:r.filter(x=>x.s==="skip").length }; };
+function progress(){
+  const p = document.getElementById("progress"); p.hidden = !state.started || !state.prepDone; if (p.hidden) return;
+  const i = Math.min(state.index, TESTS.length), c = counts();
+  document.getElementById("progText").textContent = i >= TESTS.length ? T.all_done : T.test_of.replace("{n}", i+1).replace("{total}", TESTS.length);
+  document.getElementById("progCounts").textContent = "✅ " + c.ok + " · ❌ " + c.bad + " · ⏭ " + c.skip;
+  document.getElementById("barFill").style.width = (Object.keys(state.results).length / TESTS.length * 100) + "%";
+}
+function render(){
+  progress();
+  if (!state.started) return renderStart();
+  if (!state.prepDone) return renderPrep();
+  if (state.index >= TESTS.length) return renderSummary();
+  renderTest(TESTS[state.index]);
+}
+function renderStart(){
+  const resume = Object.keys(state.results).length > 0 || state.prepDone;
+  view.innerHTML = '<section class="card"><div class="eyebrow">' + esc(T.eyebrow) + '</div><h1>' + esc(T.hello.replace("{version}", D.version)) + '</h1><ul>'
+    + T.intro.map(x => '<li>' + esc(x) + '</li>').join("") + '</ul><button class="primary" id="go">' + esc(resume ? T.resume : T.start) + '</button></section>';
+  document.getElementById("go").onclick = () => { state.started = true; save(); render(); };
+}
+function renderPrep(){
+  view.innerHTML = '<section class="card install"><div class="eyebrow">' + esc(T.prep) + '</div><h1>' + esc(T.install) + '</h1>' + D.install
+    + '<button class="primary" id="prepOk">' + esc(T.prep_done) + '</button></section>';
+  view.querySelectorAll("a").forEach(a => { a.target = "_blank"; a.rel = "noopener"; });
+  document.getElementById("prepOk").onclick = () => { state.prepDone = true; save(); render(); };
+}
+function renderTest(t){
+  const r = state.results[t.id], doneSteps = state.done[t.id] || [];
+  view.innerHTML = '<section class="card"><div class="eyebrow">' + esc(t.chapter) + '</div><h1><span class="id">' + esc(t.id) + '</span>' + t.title + '</h1>'
+    + '<ol class="steps">' + t.steps.map((s, i) => '<li tabindex="0" data-i="' + i + '" class="' + (doneSteps.includes(i) ? "done" : "") + '">' + s + '</li>').join("") + '</ol>'
+    + '<div class="tip">' + esc(T.tip) + '</div>'
+    + '<div class="expect"><span class="lbl">' + esc(T.expected) + '</span>' + t.expected + '</div>'
+    + (t.note ? '<div class="note"><span class="lbl">' + esc(T.note) + '</span>' + t.note + '</div>' : '')
+    + '<p class="q">' + esc(T.question) + '</p><div class="actions">'
+    + '<button class="b-ok" data-s="ok">✅ ' + esc(T.ok) + '</button><button class="b-bad" data-s="bad">❌ ' + esc(T.bad) + '</button><button class="b-skip" data-s="skip">⏭ ' + esc(T.skip) + '</button></div>'
+    + '<div id="follow"></div><div class="nav"><button class="linkbtn" id="back"' + (state.index === 0 ? ' hidden' : '') + '>' + esc(T.back) + '</button></div></section>';
+  view.querySelectorAll("a").forEach(a => { a.target = "_blank"; a.rel = "noopener"; });
+  view.querySelectorAll("ol.steps li").forEach(li => {
+    const toggle = () => { const i = +li.dataset.i, d = state.done[t.id] || (state.done[t.id] = []), k = d.indexOf(i); k < 0 ? d.push(i) : d.splice(k, 1); li.classList.toggle("done"); save(); };
+    li.onclick = e => { if (e.target.closest("a")) return; toggle(); };
+    li.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } };
+  });
+  view.querySelectorAll(".actions button").forEach(b => b.onclick = () => choose(t, b.dataset.s));
+  document.getElementById("back").onclick = () => { state.index--; save(); render(); };
+  if (r) { view.querySelector('.actions [data-s="' + r.s + '"]').classList.add("sel"); if (r.s !== "ok") choose(t, r.s, true); }
+}
+function choose(t, s, restoring){
+  view.querySelectorAll(".actions button").forEach(b => b.classList.toggle("sel", b.dataset.s === s));
+  const f = document.getElementById("follow"), prev = state.results[t.id] && state.results[t.id].s === s ? state.results[t.id] : null;
+  if (s === "ok") { state.results[t.id] = { s:"ok" }; next(); return; }
+  if (s === "bad") {
+    f.innerHTML = '<div class="followup"><label class="q" for="why">' + esc(T.why) + '</label><textarea id="why" placeholder="' + esc(T.why_ph) + '">' + esc(prev ? prev.text : "") + '</textarea><button class="primary" id="cont" disabled>' + esc(T.save_next) + '</button></div>';
+    const ta = document.getElementById("why"), c = document.getElementById("cont"), upd = () => c.disabled = ta.value.trim().length < 5;
+    ta.oninput = upd; upd(); c.onclick = () => { state.results[t.id] = { s:"bad", text:ta.value.trim() }; next(); };
+    if (!restoring) ta.focus();
+  } else {
+    f.innerHTML = '<div class="followup"><label class="q" for="reason">' + esc(T.skip_q) + '</label><select id="reason"><option value="">' + esc(T.choose) + '</option>'
+      + T.skip_reasons.map(x => '<option' + (prev && prev.text === x ? ' selected' : '') + '>' + esc(x) + '</option>').join("") + '</select><button class="primary" id="cont" disabled>' + esc(T.next) + '</button></div>';
+    const sel = document.getElementById("reason"), c = document.getElementById("cont"), upd = () => c.disabled = !sel.value;
+    sel.onchange = upd; upd(); c.onclick = () => { state.results[t.id] = { s:"skip", text:sel.value }; next(); };
+    if (!restoring) sel.focus();
+  }
+}
+function next(){ state.index++; save(); render(); window.scrollTo(0, 0); }
+function plain(h){ const d = document.createElement("div"); d.innerHTML = h; return d.textContent; }
+function resultText(){
+  const lines = [D.title, T.result_head + " · " + new Date().toLocaleString(), ""];
+  D.fields.forEach((f, i) => { const v = (state.device[i] || "").trim(); if (v) lines.push(f.label + ": " + v); });
+  lines.push("");
+  TESTS.forEach(t => { const r = state.results[t.id]; lines.push(t.id + " " + plain(t.title) + ": " + T.status[r ? r.s : "open"] + (r && r.text ? " – " + r.text : "")); });
+  return lines.join("\\r\\n") + "\\r\\n";
+}
+function renderSummary(){
+  const c = counts();
+  view.innerHTML = '<section class="card"><div class="eyebrow">' + esc(T.done_eyebrow) + '</div><h1>' + esc(T.done) + '</h1>'
+    + '<div class="sum"><div class="s-ok"><b>' + c.ok + '</b>' + esc(T.labels.ok) + '</div><div class="s-bad"><b>' + c.bad + '</b>' + esc(T.labels.bad) + '</div><div class="s-skip"><b>' + c.skip + '</b>' + esc(T.labels.skip) + '</div></div>'
+    + '<div style="overflow-x:auto"><table><tbody>' + TESTS.map(t => { const r = state.results[t.id], k = r ? r.s : "open";
+        return '<tr><td>' + esc(t.id) + '</td><td>' + t.title + (r && r.text ? '<br><span style="color:var(--muted)">' + esc(r.text) + '</span>' : '') + '</td><td><span class="tag t-' + k + '">' + esc(T.labels[k]) + '</span></td></tr>'; }).join("") + '</tbody></table></div>'
+    + '<p class="q">' + esc(T.device) + '</p><div class="fields">' + D.fields.map((f, i) => '<label>' + esc(f.label)
+        + (f.choices.length ? '<select data-f="' + i + '"><option value=""></option>' + f.choices.map(x => '<option' + (state.device[i] === x ? ' selected' : '') + '>' + esc(x) + '</option>').join("") + '</select>'
+                            : '<input data-f="' + i + '" placeholder="' + esc(f.hint) + '" value="' + esc(state.device[i] || "") + '">') + '</label>').join("") + '</div>'
+    + '<p>' + esc(T.final) + '</p><button class="primary" id="saveRes">' + esc(T.save) + '</button><p class="saved" id="saved" hidden></p>'
+    + '<div class="nav"><button class="linkbtn" id="back">' + esc(T.back_last) + '</button><span id="resetBox"><button class="linkbtn" id="reset">' + esc(T.reset) + '</button></span></div></section>';
+  view.querySelectorAll("[data-f]").forEach(el => el.oninput = el.onchange = () => { state.device[el.dataset.f] = el.value; save(); });
+  document.getElementById("saveRes").onclick = () => {
+    const blob = new Blob(["﻿" + resultText()], { type:"text/plain;charset=utf-8" }), a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = D.resultFile; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    const s = document.getElementById("saved"); s.textContent = T.saved.replace("{file}", D.resultFile); s.hidden = false;
+  };
+  document.getElementById("back").onclick = () => { state.index = TESTS.length - 1; save(); render(); };
+  document.getElementById("reset").onclick = () => {
+    const box = document.getElementById("resetBox");
+    box.innerHTML = esc(T.reset_confirm) + ' <button class="linkbtn" id="resetYes">' + esc(T.reset_yes) + '</button> <button class="linkbtn" id="resetNo">' + esc(T.reset_no) + '</button>';
+    document.getElementById("resetYes").onclick = () => { state = fresh(); save(); render(); };
+    document.getElementById("resetNo").onclick = () => render();
+  };
+}
+document.addEventListener("keydown", e => {
+  if (!state.started || !state.prepDone || state.index >= TESTS.length) return;
+  if (["TEXTAREA","SELECT","INPUT"].includes(document.activeElement && document.activeElement.tagName)) return;
+  const m = { "1":"ok", "2":"bad", "3":"skip" }[e.key]; if (m) choose(TESTS[state.index], m);
+});
+render();
+</script></body></html>
+"""
 
 
 CHROMIUM_CANDIDATES = ["chromium", "google-chrome", "google-chrome-stable", "/usr/bin/chromium"]

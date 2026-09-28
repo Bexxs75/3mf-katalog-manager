@@ -14,6 +14,15 @@ version, from:
   build fails otherwise. English scenarios quote the English UI texts; messages
   the backend only knows in German are quoted in German with a note.
 
+Each build also writes an interactive **test assistant** per platform and
+language (`Testassistent-<version>-<platform>.html`,
+`Test-Assistant-<version>-<platform>.html`): a standalone offline page that
+shows the install block and then one scenario at a time with "works /
+doesn't work / skip" buttons, keeps its progress in the browser and saves the
+answers (plus the optional device fields of the result sheet) as
+`Testergebnis-…txt` / `Test-Result-…txt`. It uses the same scenario files, so
+there is nothing extra to write.
+
 The result sheet needs `openpyxl` (`python3-openpyxl` on Debian/Ubuntu).
 
 ## CLI

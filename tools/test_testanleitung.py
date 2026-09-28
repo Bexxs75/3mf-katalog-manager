@@ -1,4 +1,4 @@
-import pathlib, tempfile, unittest
+import json, pathlib, tempfile, unittest
 from openpyxl import load_workbook
 import testanleitung as ta
 
@@ -138,6 +138,53 @@ def make_root(t, english=SAMPLE_EN):
         (root / "docs/tests/0.15.0-2.en.md").write_text(english)
     (root / "CHANGELOG.md").write_text("## [Unreleased]\n### Added\n- New\n\n# Changelog (Deutsch)\n\n## [Unreleased]\n### Hinzugefügt\n- Neu\n")
     return root
+
+
+def assistant_data(path):
+    text = path.read_text(encoding="utf-8")
+    start = text.index('<script id="data" type="application/json">') + len('<script id="data" type="application/json">')
+    return text, json.loads(text[start:text.index("</script>", start)])
+
+
+class Assistant(unittest.TestCase):
+    def test_german_assistant_is_written_next_to_the_guide(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = make_root(t)
+            ta.build("0.15.0-2", "windows", root / "out", root=root)
+            text, data = assistant_data(root / "out" / "Testassistent-0.15.0-2-Windows.html")
+            self.assertEqual([s["id"] for s in data["tests"]], ["E2", "E3"])
+            self.assertEqual(data["tests"][0]["steps"], ["Die App starten.", "Den Ordner wählen."])
+            self.assertEqual(data["tests"][0]["note"], "Nur beim ersten Mal.")
+            self.assertEqual(data["resultFile"], "Testergebnis-0.15.0-2-Windows.txt")
+            self.assertIn("Baustein installieren-windows 0.15.0-2", data["install"])
+            self.assertIn("Virenschutz", [f["label"] for f in data["fields"]])
+            self.assertIn('<html lang="de">', text)
+
+    def test_english_assistant(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = make_root(t)
+            ta.build("0.15.0-2", "windows", root / "out", root=root, lang="en")
+            text, data = assistant_data(root / "out" / "Test-Assistant-0.15.0-2-Windows.html")
+            self.assertEqual(data["tests"][0]["title"], "First start")
+            self.assertEqual(data["text"]["ok"], "Works")
+            self.assertEqual(data["resultFile"], "Test-Result-0.15.0-2-Windows.txt")
+
+    def test_assistant_lists_only_the_platforms_scenarios(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = make_root(t)
+            ta.build("0.15.0-2", "linux", root / "out", root=root)
+            _, data = assistant_data(root / "out" / "Testassistent-0.15.0-2-Linux.html")
+            self.assertEqual([s["id"] for s in data["tests"]], ["E3"])
+            self.assertIn("Sitzung", [f["label"] for f in data["fields"]])
+
+    def test_scenario_text_cannot_end_the_script_or_inject_html(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = make_root(t)
+            (root / "docs/tests/0.15.0-2.md").write_text(SAMPLE.replace("Leerer Katalog.", "Kein `</script><b>x</b>` zu sehen."))
+            ta.build("0.15.0-2", "windows", root / "out", root=root)
+            text, data = assistant_data(root / "out" / "Testassistent-0.15.0-2-Windows.html")
+            self.assertEqual(text.count("</script>"), 2)
+            self.assertIn("<code>&lt;/script&gt;&lt;b&gt;x&lt;/b&gt;</code>", data["tests"][0]["expected"])
 
 
 def sheet_rows(path):
