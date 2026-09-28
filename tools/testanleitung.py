@@ -841,6 +841,11 @@ button:focus-visible,textarea:focus-visible,select:focus-visible,input:focus-vis
 textarea,select,input{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;width:100%}
 textarea{min-height:96px;resize:vertical}
 .nav{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.confirm{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.confirm-btns{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.confirm button{padding:8px 14px;font-size:15px}
+.b-yes{border-color:var(--bad);background:var(--bad);color:var(--surface)}.b-yes:hover{filter:brightness(1.1)}
+.b-no{border-color:var(--ok);background:var(--ok);color:var(--surface)}.b-no:hover{filter:brightness(1.1)}
 .linkbtn{background:none;border:none;padding:6px 0;color:var(--muted);font-weight:500;text-decoration:underline;text-underline-offset:3px}
 .sum{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.sum div{border-radius:10px;padding:12px;text-align:center}.sum b{display:block;font-size:28px;line-height:1.1}
 .s-ok{background:var(--ok-soft);color:var(--ok)}.s-bad{background:var(--bad-soft);color:var(--bad)}.s-skip{background:var(--skip-soft);color:var(--skip)}
@@ -971,7 +976,9 @@ function wireReset(){
   const r = document.getElementById("reset"); if (!r) return;
   r.onclick = () => {
     const box = document.getElementById("resetBox");
-    box.innerHTML = esc(T.reset_confirm) + ' <button class="linkbtn" id="resetYes">' + esc(T.reset_yes) + '</button> <button class="linkbtn" id="resetNo">' + esc(T.reset_no) + '</button>';
+    box.innerHTML = '<span class="confirm"><span class="q">' + esc(T.reset_confirm) + '</span><span class="confirm-btns">'
+      + '<button class="b-yes" id="resetYes">' + esc(T.reset_yes) + '</button><button class="b-no" id="resetNo">' + esc(T.reset_no) + '</button></span></span>';
+    document.getElementById("resetNo").focus();
     document.getElementById("resetYes").onclick = () => { try { localStorage.removeItem(D.storageKey); } catch (e) {} state = fresh(); applyVariant(); save(); render(); window.scrollTo(0, 0); };
     document.getElementById("resetNo").onclick = () => { box.innerHTML = resetBox().replace(/^<span id="resetBox">|<\/span>$/g, ""); wireReset(); };
   };
