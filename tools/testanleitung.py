@@ -852,7 +852,7 @@ ol.steps li.done{color:var(--muted)}ol.steps li.done::before{content:"\\2713";ba
 .tip{font-size:13px;color:var(--muted);margin-top:-8px}
 .stext{display:flex;flex-direction:column;gap:10px;min-width:0}
 .shot{margin:0;display:flex;flex-direction:column;gap:6px}
-.shot img{display:block;max-width:100%;border:1px solid var(--line);border-radius:8px;cursor:zoom-in;background:#fff}
+.shot img{display:block;max-width:100%;height:auto;border:1px solid var(--line);border-radius:8px;cursor:zoom-in;background:#fff}
 .shot figcaption{font-size:14px;font-weight:600;color:var(--bad)}
 .shot.ok{margin-top:10px}.shot.ok figcaption{color:var(--ok)}
 ol.steps li.done img{opacity:.55}
@@ -994,6 +994,12 @@ function renderTest(t){
     li.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } };
   });
   view.querySelectorAll(".expect img").forEach(im => im.onclick = () => zoom(im.src));
+  // Screenshots are taken at 1.5x pixel density: show them at their real size
+  // instead of stretching small crops to the full width.
+  view.querySelectorAll(".shot img").forEach(im => {
+    const fit = () => { if (im.naturalWidth) im.style.width = Math.round(im.naturalWidth / 1.5) + "px"; };
+    im.complete ? fit() : im.addEventListener("load", fit);
+  });
   view.querySelectorAll(".actions button").forEach(b => b.onclick = () => choose(t, b.dataset.s));
   document.getElementById("back").onclick = () => {
     if (state.index === 0) { state.prepDone = false; state.prepStep = D.prep.length - 1; } else state.index--;
