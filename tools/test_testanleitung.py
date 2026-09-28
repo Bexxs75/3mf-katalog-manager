@@ -1,4 +1,4 @@
-import json, pathlib, tempfile, unittest
+import base64, json, pathlib, tempfile, unittest
 from openpyxl import load_workbook
 import testanleitung as ta
 
@@ -146,6 +146,55 @@ def assistant_data(path):
     return text, json.loads(text[start:text.index("</script>", start)])
 
 
+class Images(unittest.TestCase):
+    WITH_IMAGES = """# 3 · Einrichten
+
+## E2 · Erster Start
+Schritte:
+1. Zahnrad klicken.
+   Bild: zahnrad · ① Zahnrad
+2. Weiter.
+Erwartet: Leerer Katalog.
+Bild-Ergebnis: leer · so sieht es aus
+"""
+
+    def test_parse_step_and_result_images(self):
+        s = ta.parse_scenarios(self.WITH_IMAGES)[0].scenarios[0]
+        self.assertEqual(s.steps, ["Zahnrad klicken.", "Weiter."])
+        self.assertEqual(s.step_images, {0: ("zahnrad", "① Zahnrad")})
+        self.assertEqual(s.result_image, ("leer", "so sieht es aus"))
+
+    def test_platform_picture_wins_and_both_outputs_embed_it(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = make_root(t)
+            (root / "docs/tests/0.15.0-2.md").write_text(self.WITH_IMAGES)
+            (root / "docs/tests/0.15.0-2.en.md").write_text(self.WITH_IMAGES.replace("Schritte:", "Steps:").replace("Erwartet:", "Expected:")
+                                                            .replace("   Bild:", "   Image:").replace("Bild-Ergebnis:", "Result image:"))
+            bilder = root / "docs/tests/bilder"
+            bilder.mkdir()
+            (bilder / "zahnrad.webp").write_bytes(b"ALL")
+            (bilder / "zahnrad.windows.webp").write_bytes(b"WIN")
+            (bilder / "leer.webp").write_bytes(b"EMPTY")
+            html_path, _ = ta.build("0.15.0-2", "windows", root / "out", root=root)
+            win = "data:image/webp;base64," + base64.b64encode(b"WIN").decode()
+            self.assertIn(win, html_path.read_text())
+            self.assertIn("So sieht es richtig aus", html_path.read_text())
+            _, data = assistant_data(root / "out" / "Testassistent-0.15.0-2-Windows.html")
+            self.assertEqual(data["tests"][0]["steps"][0]["img"], win)
+            self.assertEqual(data["tests"][0]["steps"][1]["img"], "")
+            self.assertEqual(data["tests"][0]["resultImg"], "data:image/webp;base64," + base64.b64encode(b"EMPTY").decode())
+            ta.build("0.15.0-2", "linux", root / "out", root=root)
+            _, linux = assistant_data(root / "out" / "Testassistent-0.15.0-2-Linux.html")
+            self.assertEqual(linux["tests"][0]["steps"][0]["img"], "data:image/webp;base64," + base64.b64encode(b"ALL").decode())
+
+    def test_missing_picture_fails_with_the_scenario_id(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = make_root(t)
+            (root / "docs/tests/0.15.0-2.md").write_text(self.WITH_IMAGES)
+            with self.assertRaisesRegex(ValueError, "E2.*Bild fehlt"):
+                ta.build("0.15.0-2", "windows", root / "out", root=root)
+
+
 class Assistant(unittest.TestCase):
     def test_german_assistant_is_written_next_to_the_guide(self):
         with tempfile.TemporaryDirectory() as t:
@@ -153,7 +202,7 @@ class Assistant(unittest.TestCase):
             ta.build("0.15.0-2", "windows", root / "out", root=root)
             text, data = assistant_data(root / "out" / "Testassistent-0.15.0-2-Windows.html")
             self.assertEqual([s["id"] for s in data["tests"]], ["E2", "E3"])
-            self.assertEqual(data["tests"][0]["steps"], ["Die App starten.", "Den Ordner wählen."])
+            self.assertEqual([s["t"] for s in data["tests"][0]["steps"]], ["Die App starten.", "Den Ordner wählen."])
             self.assertEqual(data["tests"][0]["note"], "Nur beim ersten Mal.")
             self.assertEqual(data["resultFile"], "Testergebnis-0.15.0-2-Windows.txt")
             self.assertIn("Baustein installieren-windows 0.15.0-2", data["install"])

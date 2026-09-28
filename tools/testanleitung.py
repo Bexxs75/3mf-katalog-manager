@@ -7,7 +7,7 @@ building blocks, the "Unreleased" part of CHANGELOG.md in that language and a
 per-version scenario file. Run with `-s tools` so `import release_assets`
 resolves. Needs openpyxl for the result sheet.
 """
-import copy, dataclasses, html, json, pathlib, re, shutil, subprocess, sys
+import base64, copy, dataclasses, html, json, pathlib, re, shutil, subprocess, sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import release_assets
@@ -37,6 +37,8 @@ LANGS = {
     "de": {
         "scenario_suffix": ".md",
         "bausteine": "bausteine",
+        "bilder": "bilder",
+        "result_image": "So sieht es richtig aus",
         "guide_file": "Testanleitung-{version}-{platform}",
         "sheet_file": "Ergebnisbogen-{version}-{platform}.xlsx",
         "guide_title": "{produkt} {version} – Testanleitung ({platform})",
@@ -76,6 +78,8 @@ LANGS = {
     "en": {
         "scenario_suffix": ".en.md",
         "bausteine": "bausteine/en",
+        "bilder": "bilder/en",
+        "result_image": "This is what it should look like",
         "guide_file": "Test-Guide-{version}-{platform}",
         "sheet_file": "Result-Sheet-{version}-{platform}.xlsx",
         "guide_title": "{produkt} {version} – Test guide ({platform})",
@@ -133,6 +137,7 @@ ASSISTANT_TEXT = {
         "test_of": "Test {n} von {total}", "all_done": "Alle Tests erledigt",
         "tip": "Tipp: Klick einen Schritt an, wenn du ihn erledigt hast.",
         "expected": "Das sollte passieren", "note": "Hinweis", "question": "Hat es geklappt?",
+        "result_image": "So sieht es richtig aus", "zoom_close": "Klicken oder Esc zum Schließen",
         "ok": "Klappt", "bad": "Klappt nicht", "skip": "Überspringen",
         "why": "Was ist stattdessen passiert?", "why_ph": "z. B. „Es kam die Meldung …“ oder „Der Ordner erschien nicht links“",
         "save_next": "Speichern und weiter", "skip_q": "Warum überspringst du diesen Test?", "choose": "Bitte wählen …",
@@ -162,6 +167,7 @@ ASSISTANT_TEXT = {
         "test_of": "Test {n} of {total}", "all_done": "All tests done",
         "tip": "Tip: click a step once you have done it.",
         "expected": "This should happen", "note": "Note", "question": "Did it work?",
+        "result_image": "This is what it should look like", "zoom_close": "Click or press Esc to close",
         "ok": "Works", "bad": "Doesn't work", "skip": "Skip",
         "why": "What happened instead?", "why_ph": "e.g. \"The message … appeared\" or \"The folder didn't show up on the left\"",
         "save_next": "Save and continue", "skip_q": "Why are you skipping this test?", "choose": "Please choose …",
@@ -187,6 +193,9 @@ class Scenario:
     expected: str
     note: str
     only: set
+    # step index -> (image name, caption); an image belongs to the step above it
+    step_images: dict = dataclasses.field(default_factory=dict)
+    result_image: tuple = None
 
 
 @dataclasses.dataclass
@@ -201,7 +210,11 @@ FIELD_KEYWORDS = {
     "Schritte": "steps", "Steps": "steps",
     "Erwartet": "expected", "Expected": "expected",
     "Hinweis": "note", "Note": "note",
+    "Bild-Ergebnis": "result_image", "Result image": "result_image",
 }
+# "Bild:"/"Image:" lines under a step attach a screenshot to that step.
+STEP_IMAGE_RE = re.compile(r"^\s+(?:Bild|Image):\s*(\S+)\s*(?:·\s*(.*?))?\s*$")
+IMAGE_SPEC_RE = re.compile(r"^(\S+)\s*(?:·\s*(.*?))?\s*$")
 CHAPTER_RE = re.compile(r"^#\s+(.+?)\s*$")
 SCENARIO_RE = re.compile(r"^##\s+(\S+)\s*·\s*(.+?)\s*$")
 
@@ -239,6 +252,12 @@ def parse_scenarios(text):
             if line.strip():
                 raise ValueError(f"Text ohne Szenario wird nicht übernommen: {line.strip()[:60]}")
             continue
+        img_m = STEP_IMAGE_RE.match(line)
+        if img_m and section == "steps":
+            if not scenario.steps:
+                raise ValueError(f"Szenario {scenario.id}: Bild ohne Schritt davor")
+            scenario.step_images[len(scenario.steps) - 1] = (img_m.group(1), img_m.group(2) or "")
+            continue
         keyword, _, rest = line.partition(":")
         field = FIELD_KEYWORDS.get(keyword) if _ else None
         if field == "only":
@@ -251,6 +270,12 @@ def parse_scenarios(text):
             section = None
         elif field == "note":
             scenario.note = rest.strip()
+            section = None
+        elif field == "result_image":
+            spec = IMAGE_SPEC_RE.match(rest.strip())
+            if not spec:
+                raise ValueError(f"Szenario {scenario.id}: Bild-Ergebnis ohne Namen")
+            scenario.result_image = (spec.group(1), spec.group(2) or "")
             section = None
         elif section == "steps":
             step_m = re.match(r"^\d+\.\s*(.+)$", line)
@@ -266,6 +291,27 @@ def _finish_scenario(scenario):
         raise ValueError(f"Szenario {scenario.id}: Erwartet/Expected oder Schritte/Steps fehlen")
 
 
+def attach_images(chapters, root, lang, platform):
+    """Replace the image names of every scenario with data URIs. Screenshots
+    live in docs/tests/bilder/ (German UI) and bilder/en/ (English UI); a
+    platform-specific file `<name>.<platform>.webp` wins over `<name>.webp`,
+    for pictures that show a path. A referenced picture that doesn't exist is
+    an error, so a typo never ships a guide with a missing step picture."""
+    folder = root / "docs/tests" / LANGS[lang]["bilder"]
+
+    def uri(name, scenario_id):
+        for candidate in (folder / f"{name}.{platform}.webp", folder / f"{name}.webp"):
+            if candidate.is_file():
+                return "data:image/webp;base64," + base64.b64encode(candidate.read_bytes()).decode("ascii")
+        raise ValueError(f"Szenario {scenario_id}: Bild fehlt: {folder / name}.webp")
+
+    for chapter in chapters:
+        for s in chapter.scenarios:
+            s.step_images = {i: (uri(name, s.id), cap) for i, (name, cap) in s.step_images.items()}
+            if s.result_image:
+                s.result_image = (uri(s.result_image[0], s.id), s.result_image[1])
+
+
 def fill_scenario_text(chapters, values):
     """Fill {{name}} placeholders in scenario text (title, steps, expected,
     note) with the platform's values, in place. Lets a scenario that applies
@@ -278,6 +324,9 @@ def fill_scenario_text(chapters, values):
             s.expected = fill(s.expected, values)
             if s.note:
                 s.note = fill(s.note, values)
+            s.step_images = {i: (name, fill(cap, values)) for i, (name, cap) in s.step_images.items()}
+            if s.result_image:
+                s.result_image = (s.result_image[0], fill(s.result_image[1], values))
 
 
 PLACEHOLDER_RE = re.compile(r"\{\{(\w+)\}\}")
@@ -389,6 +438,10 @@ code { font-family: Consolas, monospace; font-size: 9.5pt; background: #f4f1ee; 
 .bogen { border-left: 3px solid #c4502f; background: #fbf1ec; padding: 6px 10px; margin: 8pt 0 12pt; }
 ol, ul { margin: 3pt 0 3pt 18pt; padding: 0; }
 li { margin: 2pt 0; }
+.bild { margin: 4pt 0 6pt; page-break-inside: avoid; }
+.bild img { max-width: 100%; max-height: 95mm; border: 1px solid #e5ddd6; border-radius: 4px; }
+.bild figcaption { font-size: 9pt; font-weight: 600; color: #b3261e; }
+.bild.ok figcaption { color: #2f7d4f; }
 """
 
 
@@ -398,14 +451,22 @@ def _scenario_html(s, lang="de"):
     # and the changelog, rather than a plain html.escape that would leave the
     # backticks in place and print literally instead of rendering as <code>.
     t = LANGS[lang]
-    steps_html = "<ol>" + "".join(f"<li>{_markdown_inline(step)}</li>" for step in s.steps) + "</ol>"
+    def figure(image, css=""):
+        src, cap = image
+        return (f'<figure class="bild{css}"><img src="{src}" alt="{html.escape(cap)}">'
+                + (f"<figcaption>{_markdown_inline(cap)}</figcaption>" if cap else "") + "</figure>")
+
+    steps_html = "<ol>" + "".join(
+        f"<li>{_markdown_inline(step)}{figure(s.step_images[i]) if i in s.step_images else ''}</li>"
+        for i, step in enumerate(s.steps)) + "</ol>"
+    result_html = figure((s.result_image[0], f'{t["result_image"]}: {s.result_image[1]}' if s.result_image[1] else t["result_image"]), " ok") if s.result_image else ""
     note_html = f'<p><span class="lbl">{t["note"]}</span> {_markdown_inline(s.note)}</p>' if s.note else ""
     # No checkbox to tick here: a PDF can't be filled in, results go into the sheet.
     return (
         f'<div class="szenario"><h3>{html.escape(s.id)} · {_markdown_inline(s.title)}</h3>'
         f'<p><span class="lbl">{t["steps"]}</span></p>{steps_html}'
         f'<p><span class="lbl">{t["expected"]}</span> {_markdown_inline(s.expected)}</p>'
-        f"{note_html}"
+        f"{result_html}{note_html}"
         f'<div class="ergebnis">→ {html.escape(t["result_hint"].format(id=s.id))}</div>'
         "</div>"
     )
@@ -437,6 +498,7 @@ def build(version, platform, out_dir, root=".", pdf=False, lang="de"):
     )
 
     chapters = platform_chapters(chapters, platform)
+    attach_images(chapters, root, lang, platform)
     chapters_html = [
         f"<h2>{html.escape(c.title)}</h2>" + "\n".join(_scenario_html(s, lang) for s in c.scenarios)
         for c in chapters
@@ -482,8 +544,13 @@ def build_assistant(out_dir, chapters, version, platform, lang, install_html):
     platform_name = PLATFORM_NAMES[platform]
     tests = [
         {"id": s.id, "chapter": c.title, "title": _markdown_inline(s.title),
-         "steps": [_markdown_inline(step) for step in s.steps],
-         "expected": _markdown_inline(s.expected), "note": _markdown_inline(s.note) if s.note else ""}
+         "steps": [{"t": _markdown_inline(step),
+                    "img": s.step_images[i][0] if i in s.step_images else "",
+                    "cap": _markdown_inline(s.step_images[i][1]) if i in s.step_images else ""}
+                   for i, step in enumerate(s.steps)],
+         "expected": _markdown_inline(s.expected), "note": _markdown_inline(s.note) if s.note else "",
+         "resultImg": s.result_image[0] if s.result_image else "",
+         "resultCap": _markdown_inline(s.result_image[1]) if s.result_image else ""}
         for c in chapters for s in c.scenarios
     ]
     fields = [{"label": label, "hint": hint or "", "choices": list(choices or [])}
@@ -685,6 +752,14 @@ ol.steps li:hover{background:var(--bg)}
 ol.steps li::before{content:counter(s);width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:15px;background:var(--accent-soft);color:var(--accent)}
 ol.steps li.done{color:var(--muted)}ol.steps li.done::before{content:"\\2713";background:var(--ok-soft);color:var(--ok)}
 .tip{font-size:13px;color:var(--muted);margin-top:-8px}
+.stext{display:flex;flex-direction:column;gap:10px;min-width:0}
+.shot{margin:0;display:flex;flex-direction:column;gap:6px}
+.shot img{display:block;max-width:100%;border:1px solid var(--line);border-radius:8px;cursor:zoom-in;background:#fff}
+.shot figcaption{font-size:14px;font-weight:600;color:var(--bad)}
+.shot.ok{margin-top:10px}.shot.ok figcaption{color:var(--ok)}
+ol.steps li.done img{opacity:.55}
+.lightbox{position:fixed;inset:0;background:rgba(0,0,0,.82);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:16px;z-index:10;cursor:zoom-out}
+.lightbox img{max-width:100%;max-height:88vh;border-radius:8px;background:#fff}.lightbox span{color:#fff;font-size:14px}
 .expect{background:var(--accent-soft);border-left:4px solid var(--accent);border-radius:8px;padding:14px 16px}
 .lbl{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);display:block;margin-bottom:4px}
 .note{border:1px solid var(--line);border-radius:8px;padding:12px 16px;font-size:15px}.note .lbl{color:var(--muted)}
@@ -757,9 +832,11 @@ function renderPrep(){
 function renderTest(t){
   const r = state.results[t.id], doneSteps = state.done[t.id] || [];
   view.innerHTML = '<section class="card"><div class="eyebrow">' + esc(t.chapter) + '</div><h1><span class="id">' + esc(t.id) + '</span>' + t.title + '</h1>'
-    + '<ol class="steps">' + t.steps.map((s, i) => '<li tabindex="0" data-i="' + i + '" class="' + (doneSteps.includes(i) ? "done" : "") + '">' + s + '</li>').join("") + '</ol>'
+    + '<ol class="steps">' + t.steps.map((s, i) => '<li tabindex="0" data-i="' + i + '" class="' + (doneSteps.includes(i) ? "done" : "") + '"><div class="stext">' + s.t
+        + (s.img ? '<figure class="shot"><img src="' + s.img + '" alt=""><figcaption>' + s.cap + '</figcaption></figure>' : '') + '</div></li>').join("") + '</ol>'
     + '<div class="tip">' + esc(T.tip) + '</div>'
-    + '<div class="expect"><span class="lbl">' + esc(T.expected) + '</span>' + t.expected + '</div>'
+    + '<div class="expect"><span class="lbl">' + esc(T.expected) + '</span>' + t.expected
+        + (t.resultImg ? '<figure class="shot ok"><img src="' + t.resultImg + '" alt=""><figcaption>\u2705 ' + esc(T.result_image) + (t.resultCap ? ': ' + t.resultCap : '') + '</figcaption></figure>' : '') + '</div>'
     + (t.note ? '<div class="note"><span class="lbl">' + esc(T.note) + '</span>' + t.note + '</div>' : '')
     + '<p class="q">' + esc(T.question) + '</p><div class="actions">'
     + '<button class="b-ok" data-s="ok">✅ ' + esc(T.ok) + '</button><button class="b-bad" data-s="bad">❌ ' + esc(T.bad) + '</button><button class="b-skip" data-s="skip">⏭ ' + esc(T.skip) + '</button></div>'
@@ -767,9 +844,10 @@ function renderTest(t){
   view.querySelectorAll("a").forEach(a => { a.target = "_blank"; a.rel = "noopener"; });
   view.querySelectorAll("ol.steps li").forEach(li => {
     const toggle = () => { const i = +li.dataset.i, d = state.done[t.id] || (state.done[t.id] = []), k = d.indexOf(i); k < 0 ? d.push(i) : d.splice(k, 1); li.classList.toggle("done"); save(); };
-    li.onclick = e => { if (e.target.closest("a")) return; toggle(); };
+    li.onclick = e => { if (e.target.closest("a")) return; if (e.target.tagName === "IMG") { zoom(e.target.src); return; } toggle(); };
     li.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } };
   });
+  view.querySelectorAll(".expect img").forEach(im => im.onclick = () => zoom(im.src));
   view.querySelectorAll(".actions button").forEach(b => b.onclick = () => choose(t, b.dataset.s));
   document.getElementById("back").onclick = () => { state.index--; save(); render(); };
   if (r) { view.querySelector('.actions [data-s="' + r.s + '"]').classList.add("sel"); if (r.s !== "ok") choose(t, r.s, true); }
@@ -792,6 +870,10 @@ function choose(t, s, restoring){
   }
 }
 function next(){ state.index++; save(); render(); window.scrollTo(0, 0); }
+function zoom(src){
+  const o = document.createElement("div"); o.className = "lightbox";
+  o.innerHTML = '<img src="' + src + '" alt=""><span>' + esc(T.zoom_close) + '</span>'; o.onclick = () => o.remove(); document.body.appendChild(o);
+}
 function plain(h){ const d = document.createElement("div"); d.innerHTML = h; return d.textContent; }
 function resultText(){
   const lines = [D.title, T.result_head + " · " + new Date().toLocaleString(), ""];
@@ -827,6 +909,8 @@ function renderSummary(){
   };
 }
 document.addEventListener("keydown", e => {
+  if (e.key === "Escape") { const o = document.querySelector(".lightbox"); if (o) { o.remove(); return; } }
+  if (document.querySelector(".lightbox")) return;
   if (!state.started || !state.prepDone || state.index >= TESTS.length) return;
   if (["TEXTAREA","SELECT","INPUT"].includes(document.activeElement && document.activeElement.tagName)) return;
   const m = { "1":"ok", "2":"bad", "3":"skip" }[e.key]; if (m) choose(TESTS[state.index], m);

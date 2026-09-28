@@ -69,6 +69,23 @@ Hinweis: Optional, Text in einer Zeile.
 - `Erwartet:` (required, one line) is the expected result.
 - `Hinweis:` (optional, one line) is an extra note shown with the scenario.
 
+### Screenshots
+
+A step can carry a screenshot: an indented line right below the step,
+`   Bild: <name> · <caption>` (English files: `   Image: …`). The expected
+result can have one too: `Bild-Ergebnis: <name> · <caption>` (`Result image:`),
+shown as "So sieht es richtig aus" / "This is what it should look like".
+Pictures are `docs/tests/bilder/<name>.webp` (German UI) and
+`docs/tests/bilder/en/<name>.webp` (English UI); `<name>.<platform>.webp`
+wins over `<name>.webp` for pictures that show a path. A missing picture fails
+the build. They are embedded in both the PDF guide and the test assistant.
+
+The pictures are taken from the real frontend (production build) with demo
+data and red numbered frames that count the clicks, by
+`take_testassistent.py` in the screenshot pipeline next to the handbook
+pictures (`~/Projekte/3mf-demo-katalog/shots/`, see its docstring). Retake
+them when the UI of a shown screen changes.
+
 A missing `Erwartet:` or an empty step list raises an error naming the
 scenario's ID, so a scenario file with a typo fails the build instead of
 shipping a broken guide.
