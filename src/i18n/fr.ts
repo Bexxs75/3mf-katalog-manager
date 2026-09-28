@@ -263,6 +263,10 @@ export const fr: Translations = {
 
 
   importSummaryText: '{imported} importés, {duplicates} doublons ignorés',
+  importSkippedEmpty: '{count} fichiers vides non importés : {names}',
+  importSkippedInvalid: '{count} fichiers endommagés ou sans modèle lisible : {names}',
+  importSkippedFailed: "{count} fichiers n'ont pas pu être enregistrés : {names}",
+  importSkippedMore: '+{count} autres',
   archiveDialogTitle: 'Extraire les archives',
   archiveTargetLabel: 'Dossier de destination',
   archiveTargetChange: 'Modifier…',

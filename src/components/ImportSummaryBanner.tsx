@@ -1,24 +1,48 @@
 import { useEffect } from 'react';
 import { useT } from '../i18n/LanguageContext';
-import type { ArchiveOutcome } from '../types';
+import type { ArchiveOutcome, SkipReason, SkippedFile } from '../types';
 import { ReportProblemLink } from '../diagnostics/ReportProblemLink';
 
 interface Props {
   imported: number;
   duplicates: number;
   archives?: ArchiveOutcome[];
+  skipped?: SkippedFile[];
   onClose: () => void;
 }
+
+// Names shown per reason; a large folder can hold hundreds of broken files.
+const MAX_NAMES = 3;
+
+const SKIP_TEXT = {
+  empty: 'importSkippedEmpty',
+  invalid: 'importSkippedInvalid',
+  failed: 'importSkippedFailed',
+} as const;
 
 function fileName(path: string) {
   return path.split(/[\\/]/).pop() ?? path;
 }
 
-export function ImportSummaryBanner({ imported, duplicates, archives, onClose }: Props) {
+export function ImportSummaryBanner({ imported, duplicates, archives, skipped, onClose }: Props) {
   const t = useT();
 
   const lines: { key: string; text: string; unexpected?: boolean }[] = [];
   let hasProblems = false;
+  for (const reason of ['empty', 'invalid', 'failed'] as SkipReason[]) {
+    const names = (skipped ?? []).filter((s) => s.reason === reason).map((s) => fileName(s.path));
+    if (names.length === 0) continue;
+    hasProblems = true;
+    let list = names.slice(0, MAX_NAMES).join(', ');
+    if (names.length > MAX_NAMES) {
+      list += ' ' + t('importSkippedMore').replace('{count}', String(names.length - MAX_NAMES));
+    }
+    lines.push({
+      key: `skipped:${reason}`,
+      text: t(SKIP_TEXT[reason]).replace('{count}', String(names.length)).replace('{names}', list),
+      unexpected: reason === 'failed',
+    });
+  }
   if (archives) {
     const existing = archives.reduce((sum, a) => sum + a.existingSkipped, 0);
     const unsafe = archives.reduce((sum, a) => sum + a.unsafeSkipped, 0);

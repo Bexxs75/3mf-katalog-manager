@@ -3,7 +3,7 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import * as importExportApi from '../lib/api/importExport';
 import * as foldersApi from '../lib/api/folders';
 import { toAppError } from '../lib/errors';
-import type { ArchiveImportResult, ArchiveInfo, ArchiveOutcome, ImportResultDto, Folder } from '../types';
+import type { ArchiveImportResult, ArchiveInfo, ArchiveOutcome, ImportResultDto, Folder, SkippedFile } from '../types';
 
 interface UseFileImportArgs {
   enabled: boolean;
@@ -23,15 +23,16 @@ export function useFileImport({
   refreshFiles,
 }: UseFileImportArgs) {
   const [importBanner, setImportBanner] = useState<
-    { imported: number; duplicates: number; archives?: ArchiveOutcome[] } | null
+    { imported: number; duplicates: number; archives?: ArchiveOutcome[]; skipped?: SkippedFile[] } | null
   >(null);
   const [pendingArchives, setPendingArchives] = useState<ArchiveInfo[] | null>(null);
 
   const mergeImported = useCallback(
     (result: ImportResultDto) => {
       onImported(result);
-      if (result.duplicateCount > 0) {
-        setImportBanner({ imported: result.imported.length, duplicates: result.duplicateCount });
+      const skipped = result.skipped ?? [];
+      if (result.duplicateCount > 0 || skipped.length > 0) {
+        setImportBanner({ imported: result.imported.length, duplicates: result.duplicateCount, skipped });
       }
     },
     [onImported],
@@ -76,6 +77,7 @@ export function useFileImport({
       setImportBanner({
         imported: result.imported.length,
         duplicates: result.duplicateCount,
+        skipped: result.skipped,
         archives: paths.map((path) => ({
           path,
           extractedTo: null,
@@ -94,11 +96,12 @@ export function useFileImport({
   const finishArchives = useCallback(
     (result: ArchiveImportResult) => {
       setPendingArchives(null);
-      onImported({ imported: result.imported, duplicateCount: result.duplicateCount });
+      onImported({ imported: result.imported, duplicateCount: result.duplicateCount, skipped: result.skipped });
       setImportBanner({
         imported: result.imported.length,
         duplicates: result.duplicateCount,
         archives: result.archives,
+        skipped: result.skipped,
       });
       refreshFolders();
     },

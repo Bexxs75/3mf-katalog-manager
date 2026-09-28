@@ -343,6 +343,7 @@ export default function App() {
               imported={fileImport.importBanner.imported}
               duplicates={fileImport.importBanner.duplicates}
               archives={fileImport.importBanner.archives}
+              skipped={fileImport.importBanner.skipped}
               onClose={fileImport.dismissImportBanner}
             />
           )}

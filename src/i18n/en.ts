@@ -263,6 +263,10 @@ export const en: Translations = {
 
 
   importSummaryText: '{imported} imported, {duplicates} duplicates skipped',
+  importSkippedEmpty: '{count} empty files not imported: {names}',
+  importSkippedInvalid: '{count} files damaged or without a readable model: {names}',
+  importSkippedFailed: '{count} files could not be saved: {names}',
+  importSkippedMore: '+{count} more',
   archiveDialogTitle: 'Extract archives',
   archiveTargetLabel: 'Target folder',
   archiveTargetChange: 'Change…',

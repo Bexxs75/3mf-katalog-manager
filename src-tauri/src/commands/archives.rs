@@ -4,7 +4,7 @@
 //! happen. The folder import deliberately extracts nothing.
 
 use super::*;
-use super::files::{import_many_with_conn, is_supported_extension};
+use super::files::{import_many_with_conn, is_supported_extension, SkippedFileDto};
 
 use serde::Deserialize;
 use tauri::Emitter;
@@ -84,6 +84,8 @@ pub struct ArchiveImportResultDto {
     pub imported: Vec<ModelFileDto>,
     pub duplicate_count: i64,
     pub archives: Vec<ArchiveOutcomeDto>,
+    /// Extracted files that could not be imported.
+    pub skipped: Vec<SkippedFileDto>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -362,6 +364,7 @@ fn extract_one(
     };
     result.duplicate_count += imported.duplicate_count;
     result.imported.extend(imported.imported);
+    result.skipped.extend(imported.skipped);
     outcome.extracted_to = Some(dest.to_string_lossy().to_string());
 
     if ctx.delete_archive {
@@ -414,6 +417,7 @@ pub(crate) fn extract_archives_core(
         imported: Vec::new(),
         duplicate_count: 0,
         archives: Vec::new(),
+        skipped: Vec::new(),
     };
     for request in &requests {
         let outcome = extract_one(&ctx, request, &mut result, &mut import_dir, &mut on_progress);

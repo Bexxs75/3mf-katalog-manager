@@ -263,6 +263,10 @@ export const de: Translations = {
 
 
   importSummaryText: '{imported} importiert, {duplicates} Duplikate übersprungen',
+  importSkippedEmpty: '{count} leere Dateien nicht importiert: {names}',
+  importSkippedInvalid: '{count} Dateien beschädigt oder ohne lesbares Modell: {names}',
+  importSkippedFailed: '{count} Dateien konnten nicht gespeichert werden: {names}',
+  importSkippedMore: '+{count} weitere',
   archiveDialogTitle: 'Archive entpacken',
   archiveTargetLabel: 'Zielordner',
   archiveTargetChange: 'Ändern…',

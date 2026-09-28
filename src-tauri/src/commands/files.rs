@@ -47,6 +47,26 @@ pub struct ImportResultDto {
     /// Individually picked/dropped archives - NOT imported here, but handled by the
     /// frontend through the extract dialog.
     pub pending_archives: Vec<String>,
+    /// Files that could not be imported, so the UI can name them.
+    pub skipped: Vec<SkippedFileDto>,
+}
+/// Why a file was left out of an import. The UI shows a translated text per
+/// reason; the detailed error only goes to the log.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SkipReason {
+    /// The file has 0 bytes.
+    Empty,
+    /// Not a usable model: damaged, a different format, no geometry, or not readable.
+    Invalid,
+    /// The catalog could not store it - an app-side error worth a problem report.
+    Failed,
+}
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkippedFileDto {
+    pub path: String,
+    pub reason: SkipReason,
 }
 #[tauri::command]
 pub fn list_file_summaries(state: State<AppState>) -> CmdResult<Vec<FileSummaryDto>> {
@@ -979,6 +999,7 @@ fn import_many_in_batches(db: &mut impl ImportDb, roots: Vec<PathBuf>) -> CmdRes
         // `#[tauri::command]` callers (`import_files`/`import_dropped`) once
         // `import_many`/`import_many_with_conn` has returned.
         pending_archives: Vec::new(),
+        skipped: Vec::new(),
     };
     let mut batch = Vec::with_capacity(IMPORT_BATCH_SIZE);
 
@@ -997,8 +1018,14 @@ fn import_many_in_batches(db: &mut impl ImportDb, roots: Vec<PathBuf>) -> CmdRes
                 Ok(false) => {}
                 Err(e) => {
                     log::error!(target: "import", "duplicate check failed for {path_str}: {e}");
+                    result.skip(path_str, SkipReason::Failed);
                     continue;
                 }
+            }
+            if std::fs::metadata(&path).is_ok_and(|m| m.len() == 0) {
+                log::warn!(target: "import", "übersprungen (leere Datei): {path_str}");
+                result.skip(path_str, SkipReason::Empty);
+                continue;
             }
 
             let content_hash = match compute_content_hash(&path) {
@@ -1007,6 +1034,7 @@ fn import_many_in_batches(db: &mut impl ImportDb, roots: Vec<PathBuf>) -> CmdRes
                 // (expected) consequence for the batch.
                 Err(e) => {
                     log::warn!(target: "import", "übersprungen (Hashing fehlgeschlagen): {path_str}: {e}");
+                    result.skip(path_str, SkipReason::Invalid);
                     continue;
                 }
             };
@@ -1022,6 +1050,7 @@ fn import_many_in_batches(db: &mut impl ImportDb, roots: Vec<PathBuf>) -> CmdRes
                 Ok(false) => {}
                 Err(e) => {
                     log::error!(target: "import", "duplicate check (hash) failed for {path_str}: {e}");
+                    result.skip(path_str, SkipReason::Failed);
                     continue;
                 }
             }
@@ -1030,6 +1059,7 @@ fn import_many_in_batches(db: &mut impl ImportDb, roots: Vec<PathBuf>) -> CmdRes
                 Ok(f) => f,
                 Err(e) => {
                     log::warn!(target: "import", "übersprungen: {path_str}: {e}");
+                    result.skip(path_str, SkipReason::Invalid);
                     continue;
                 }
             };
@@ -1043,6 +1073,12 @@ fn import_many_in_batches(db: &mut impl ImportDb, roots: Vec<PathBuf>) -> CmdRes
     }
     store_batch(db, &mut batch, &mut result)?;
     Ok(result)
+}
+
+impl ImportResultDto {
+    fn skip(&mut self, path: String, reason: SkipReason) {
+        self.skipped.push(SkippedFileDto { path, reason });
+    }
 }
 
 /// Stores the pending files in one transaction and empties `batch`.
@@ -1078,7 +1114,10 @@ fn store_batch(db: &mut impl ImportDb, batch: &mut Vec<PendingImport>, result: &
                     // user this is a duplicate.
                     result.duplicate_count += 1;
                 }
-                Err(e) => log::warn!(target: "import", "übersprungen: {}: {e}", path.display()),
+                Err(e) => {
+                    log::error!(target: "import", "speichern fehlgeschlagen: {}: {e}", path.display());
+                    result.skip(path.to_string_lossy().to_string(), SkipReason::Failed);
+                }
             }
         }
         tx.commit().map_err(|e| e.to_string().into())
@@ -1089,9 +1128,10 @@ fn store_batch(db: &mut impl ImportDb, batch: &mut Vec<PendingImport>, result: &
 /// attached the real pending-archive count to `result`.
 fn import_summary(result: &ImportResultDto, secs: f64) -> String {
     format!(
-        "{} importiert, {} Duplikate, {} Archive offen, {:.1} s",
+        "{} importiert, {} Duplikate, {} übersprungen, {} Archive offen, {:.1} s",
         result.imported.len(),
         result.duplicate_count,
+        result.skipped.len(),
         result.pending_archives.len(),
         secs
     )
@@ -1131,6 +1171,7 @@ pub async fn import_files(
             imported: Vec::new(),
             duplicate_count: 0,
             pending_archives: Vec::new(),
+            skipped: Vec::new(),
         });
     };
     let paths = picked
@@ -1157,6 +1198,7 @@ pub async fn import_folder(
             imported: Vec::new(),
             duplicate_count: 0,
             pending_archives: Vec::new(),
+            skipped: Vec::new(),
         });
     };
     let path = picked.into_path().map_err(|e| e.to_string())?;
@@ -1326,10 +1368,11 @@ mod tests {
             imported: Vec::new(),
             duplicate_count: 3,
             pending_archives: vec!["a.zip".to_string(), "b.zip".to_string()],
+            skipped: vec![SkippedFileDto { path: "x.stl".to_string(), reason: SkipReason::Empty }],
         };
         assert_eq!(
             import_summary(&result, 1.34),
-            "0 importiert, 3 Duplikate, 2 Archive offen, 1.3 s"
+            "0 importiert, 3 Duplikate, 1 übersprungen, 2 Archive offen, 1.3 s"
         );
     }
 
@@ -2618,6 +2661,35 @@ mod tests {
 
         assert_eq!(result.imported.len(), 1);
         assert_eq!(result.duplicate_count, 1);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn unreadable_files_are_reported_instead_of_skipped_silently() {
+        let tmp = unique_test_dir("import_skipped");
+        write_binary_stl(&tmp.join("good.stl"), 1);
+        std::fs::write(tmp.join("empty.stl"), b"").unwrap();
+        std::fs::write(tmp.join("no_triangles.stl"), b"solid x\nendsolid x\n").unwrap();
+        std::fs::write(tmp.join("broken.3mf"), b"not a zip").unwrap();
+        let mut conn = crate::db::connect_in_memory().expect("connect");
+
+        let result = import_many_with_conn(&mut conn, vec![tmp.clone()]).expect("import");
+
+        assert_eq!(result.imported.len(), 1);
+        let mut skipped: Vec<(String, SkipReason)> = result
+            .skipped
+            .iter()
+            .map(|s| (Path::new(&s.path).file_name().unwrap().to_string_lossy().to_string(), s.reason))
+            .collect();
+        skipped.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(
+            skipped,
+            vec![
+                ("broken.3mf".to_string(), SkipReason::Invalid),
+                ("empty.stl".to_string(), SkipReason::Empty),
+                ("no_triangles.stl".to_string(), SkipReason::Invalid),
+            ]
+        );
         let _ = std::fs::remove_dir_all(&tmp);
     }
 

@@ -150,6 +150,16 @@ mod tests {
     }
 
     #[test]
+    fn rejects_stl_without_triangles() {
+        let mut empty_binary = vec![0u8; 80];
+        empty_binary.extend_from_slice(&0u32.to_le_bytes());
+        for bytes in [Vec::new(), b"solid empty\nendsolid empty\n".to_vec(), b"hello".to_vec(), empty_binary] {
+            let result = parse_stl_bytes(&bytes);
+            assert!(matches!(result, Err(StlError::Parse(_))), "accepted {} bytes without triangles", bytes.len());
+        }
+    }
+
+    #[test]
     fn rejects_malformed_ascii() {
         let bytes = b"solid broken\n  facet normal 0 0 0\n    outer loop\n      vertex 0 0\n    endloop\n  endfacet\nendsolid broken\n".to_vec();
         let result = parse_stl_bytes(&bytes);

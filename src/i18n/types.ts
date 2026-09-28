@@ -285,6 +285,10 @@ export interface Translations {
 
 
   importSummaryText: string;
+  importSkippedEmpty: string;
+  importSkippedInvalid: string;
+  importSkippedFailed: string;
+  importSkippedMore: string;
   archiveDialogTitle: string;
   archiveTargetLabel: string;
   archiveTargetChange: string;

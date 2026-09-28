@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { LanguageProviderWithDiagnostics as LanguageProvider } from '../test/renderWithDiagnostics';
 import { ImportSummaryBanner } from './ImportSummaryBanner';
-import type { ArchiveOutcome } from '../types';
+import type { ArchiveOutcome, SkippedFile } from '../types';
 
 vi.mock('@tauri-apps/plugin-log', () => ({ error: vi.fn(() => Promise.resolve()), info: vi.fn(() => Promise.resolve()) }));
 
@@ -86,5 +86,37 @@ describe('ImportSummaryBanner', () => {
     renderBanner([outcome({ path: '/dl/kaputt.zip', extractedTo: null, error: 'beschaedigt', unexpected: false })]);
     expect(screen.getByText('kaputt.zip fehlgeschlagen: beschaedigt')).toBeInTheDocument();
     expect(screen.queryByText('Problem melden')).not.toBeInTheDocument();
+  });
+
+  it('names skipped files per reason, shortens long lists and stays open', () => {
+    vi.useFakeTimers();
+    const onClose = vi.fn();
+    const skipped: SkippedFile[] = [
+      { path: '/k/leer.stl', reason: 'empty' },
+      ...['a', 'b', 'c', 'd', 'e'].map((n) => ({ path: `/k/${n}.3mf`, reason: 'invalid' as const })),
+    ];
+    render(
+      <LanguageProvider>
+        <ImportSummaryBanner imported={0} duplicates={0} skipped={skipped} onClose={onClose} />
+      </LanguageProvider>,
+    );
+    expect(screen.getByText('1 leere Dateien nicht importiert: leer.stl')).toBeInTheDocument();
+    expect(
+      screen.getByText('5 Dateien beschädigt oder ohne lesbares Modell: a.3mf, b.3mf, c.3mf +2 weitere'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Problem melden')).not.toBeInTheDocument();
+    vi.advanceTimersByTime(6000);
+    expect(onClose).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('offers "Report problem" when the catalog could not store a file', () => {
+    render(
+      <LanguageProvider>
+        <ImportSummaryBanner imported={0} duplicates={0} skipped={[{ path: '/k/x.stl', reason: 'failed' }]} onClose={vi.fn()} />
+      </LanguageProvider>,
+    );
+    expect(screen.getByText('1 Dateien konnten nicht gespeichert werden: x.stl')).toBeInTheDocument();
+    expect(screen.getByText('Problem melden')).toBeInTheDocument();
   });
 });

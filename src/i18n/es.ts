@@ -263,6 +263,10 @@ export const es: Translations = {
 
 
   importSummaryText: '{imported} importados, {duplicates} duplicados omitidos',
+  importSkippedEmpty: '{count} archivos vacíos no importados: {names}',
+  importSkippedInvalid: '{count} archivos dañados o sin modelo legible: {names}',
+  importSkippedFailed: '{count} archivos no se pudieron guardar: {names}',
+  importSkippedMore: '+{count} más',
   archiveDialogTitle: 'Descomprimir archivos',
   archiveTargetLabel: 'Carpeta de destino',
   archiveTargetChange: 'Cambiar…',
