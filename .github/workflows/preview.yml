@@ -149,10 +149,13 @@ jobs:
             for p in windows macos linux; do python3 tools/testanleitung.py "$VERSION" "$p" guide --lang=$l --assistant-only $NOSTEP; done
           done
           # Published without the version so the links stay the same across test
-          # versions (website, Discord, forum posts): Testassistent-Windows.html etc.
+          # versions (website, Discord, forum posts), with the language in the name:
+          # Testassistent-DE-Windows.html, Test-Assistant-EN-Windows.html, ...
           # The website reads the version from the installer names instead.
           for f in guide/Testassistent-*.html guide/Test-Assistant-*.html; do
-            b=$(basename "$f"); cp "$f" "dist/${b/-$VERSION/}"
+            b=$(basename "$f"); b="${b/-$VERSION/}"
+            b="${b/Testassistent-/Testassistent-DE-}"; b="${b/Test-Assistant-/Test-Assistant-EN-}"
+            cp "$f" "dist/$b"
           done
       - name: Checksums
         env:
@@ -204,4 +207,4 @@ jobs:
             echo "$KEEP" | grep -qxF "$a" || gh release delete-asset preview "$a" -R "$R" --yes
           done
           gh release edit preview -R "$R" --prerelease --title "Test-Version $VERSION / Test version $VERSION" \
-            --notes "Test version $VERSION of 3MF Katalog Manager Preview (own catalog, separate from the normal app). Download Testassistent-<system>.html (EN: Test-Assistant-<system>.html) and open it with a double-click: it guides you step by step, from the download to sending the result."
+            --notes "Test version $VERSION of 3MF Katalog Manager Preview (own catalog, separate from the normal app). Download Testassistent-DE-<system>.html (English: Test-Assistant-EN-<system>.html) and open it with a double-click: it guides you step by step, from the download to sending the result."

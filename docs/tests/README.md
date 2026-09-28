@@ -2,7 +2,8 @@
 
 **Testers only get the interactive test assistant** (`Testassistent-…html` /
 `Test-Assistant-…html`, built with `--assistant-only`). preview.yml publishes
-it without the version in the name (`Testassistent-Windows.html`, …), so links
+it without the version and with the language in the name
+(`Testassistent-DE-Windows.html`, `Test-Assistant-EN-Windows.html`, …), so links
 on the website, in Discord and in forum posts stay valid; 3mfkatalog.de reads
 the version from the installer names. It guides them from downloading the right installer
 to sending the result file to testing@3mfkatalog.de. The PDF guide and the
