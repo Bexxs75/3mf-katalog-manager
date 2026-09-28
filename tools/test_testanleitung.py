@@ -254,6 +254,18 @@ class Download(unittest.TestCase):
             self.assertTrue(data["packages"]["standard"]["name"].endswith("Linux-x86_64.AppImage"))
 
 
+class AssistantOnly(unittest.TestCase):
+    def test_writes_only_the_assistant(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = make_root(t)
+            path, sheet = ta.build("0.15.0-2", "windows", root / "out", root=root, assistant_only=True)
+            self.assertIsNone(sheet)
+            self.assertEqual(sorted(p.name for p in (root / "out").iterdir()), ["Testassistent-0.15.0-2-Windows.html"])
+            self.assertEqual(path.name, "Testassistent-0.15.0-2-Windows.html")
+            _, data = assistant_data(path)
+            self.assertEqual(data["email"], "testing@3mfkatalog.de")
+
+
 class Assistant(unittest.TestCase):
     def test_german_assistant_is_written_next_to_the_guide(self):
         with tempfile.TemporaryDirectory() as t:

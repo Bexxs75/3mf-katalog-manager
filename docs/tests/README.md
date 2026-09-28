@@ -1,5 +1,12 @@
 # Test guide generator
 
+**Testers only get the interactive test assistant** (`Testassistent-…html` /
+`Test-Assistant-…html`, built with `--assistant-only`, which is what
+preview.yml publishes). It guides them from downloading the right installer
+to sending the result file to testing@3mfkatalog.de. The PDF guide and the
+result sheet described below can still be built locally but are no longer
+published.
+
 `tools/testanleitung.py` builds a test guide (HTML, optionally PDF) and a
 result sheet (.xlsx) per platform and language (German, English) for a preview
 version, from:

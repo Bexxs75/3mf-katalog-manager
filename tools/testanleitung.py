@@ -15,6 +15,8 @@ import release_assets
 PRODUCT = "3MF Katalog Manager Preview"
 IDENTIFIER = "com.thebexxs.mfkatalogmanager.preview"
 REPO = "Bexxs75/3mf-katalog-manager"
+# Test results go to this alias, where they are triaged automatically.
+TEST_EMAIL = "testing@3mfkatalog.de"
 PLATFORM_NAMES = {"windows": "Windows", "macos": "macOS", "linux": "Linux"}
 # (release_assets platform key, package extension, data-folder path template,
 # log-folder path template). Data-folder paths mirror
@@ -52,7 +54,8 @@ LANGS = {
         "expected": "Erwartet:",
         "note": "Hinweis:",
         "sheet_intro": ("Trag deine Ergebnisse im Ergebnisbogen ein ({sheet}). Er öffnet sich mit Excel, "
-                        "Numbers oder LibreOffice. Diese Anleitung ist nur zum Lesen."),
+                        "Numbers oder LibreOffice. Diese Anleitung ist nur zum Lesen. Den ausgefüllten Bogen "
+                        "schickst du per E-Mail an " + TEST_EMAIL + "."),
         "result_hint": "Ergebnis im Ergebnisbogen eintragen, Zeile {id}",
         "sheet_title": "{produkt} {version} · Ergebnisbogen {platform}",
         "sheet_tab": "Ergebnisbogen",
@@ -97,7 +100,8 @@ LANGS = {
         "expected": "Expected:",
         "note": "Note:",
         "sheet_intro": ("Enter your results in the result sheet ({sheet}). It opens in Excel, Numbers or "
-                        "LibreOffice. This guide is for reading only."),
+                        "LibreOffice. This guide is for reading only. Send the filled-in sheet by e-mail to "
+                        + TEST_EMAIL + "."),
         "result_hint": "Enter the result in the result sheet, row {id}",
         "sheet_title": "{produkt} {version} · Result sheet {platform}",
         "sheet_tab": "Result sheet",
@@ -140,7 +144,7 @@ ASSISTANT_TEXT = {
         "intro": [["Ein Test nach dem anderen", "Mach die Schritte der Reihe nach und sag danach, ob es geklappt hat."],
                   ["Pause? Kein Problem", "Öffnest du diese Datei wieder, geht es an derselben Stelle weiter."],
                   ["Klappt etwas nicht?", "Schreib kurz dazu, was stattdessen passiert ist. Genau das hilft uns."],
-                  ["Zum Schluss", "Ergebnis als Datei speichern und per E-Mail oder im Discord-Testkanal schicken."]],
+                  ["Zum Schluss", "Ergebnis als Datei speichern und per E-Mail an {email} schicken."]],
         "start": "Los geht’s", "resume": "Weitermachen",
         "prep": "Vorbereitung", "install": "App installieren", "prep_done": "Erledigt, weiter",
         "test_of": "Test {n} von {total}", "all_done": "Alle Tests erledigt",
@@ -162,7 +166,10 @@ ASSISTANT_TEXT = {
         "done_sub": "Du hast uns damit richtig geholfen. Jetzt nur noch das Ergebnis speichern und abschicken.",
         "labels": {"ok": "klappt", "bad": "klappt nicht", "skip": "übersprungen", "open": "offen"},
         "device": "Zum Schluss noch kurz zu deinem Gerät (freiwillig):",
-        "final": "Letzter Schritt: Speichere das Ergebnis und schick die Datei per E-Mail oder im Discord-Testkanal.",
+        "final": "Letzter Schritt: Speichere das Ergebnis und schick die Datei per E-Mail an {email}.",
+        "mail_btn": "E-Mail-Programm öffnen", "mail_subject": "Testergebnis {version} {platform} ({variant})",
+        "mail_body": "Hallo,\n\nim Anhang mein Testergebnis.\n\n(Bitte die Datei {file} aus dem Download-Ordner anhängen.)",
+        "mail_hint": "Die Datei hängst du selbst an, sie liegt in deinem Download-Ordner. Kein E-Mail-Programm? Schick sie einfach von deinem Mail-Konto im Browser an {email}.",
         "save": "Ergebnis speichern", "saved": "Gespeichert als „{file}“ in deinem Download-Ordner.",
         "back_last": "← Letzten Test ändern", "reset": "Von vorn beginnen",
         "reset_confirm": "Wirklich alle Antworten löschen?", "reset_yes": "Ja, alles löschen", "reset_no": "Abbrechen",
@@ -178,7 +185,7 @@ ASSISTANT_TEXT = {
         "intro": [["One test at a time", "Do the steps in order, then tell us whether it worked."],
                   ["Need a break? No problem", "When you open this file again, it continues where you left off."],
                   ["Something doesn't work?", "Write briefly what happened instead. That's exactly what helps us."],
-                  ["At the end", "Save the result as a file and send it by e-mail or in the Discord test channel."]],
+                  ["At the end", "Save the result as a file and send it by e-mail to {email}."]],
         "start": "Let's go", "resume": "Continue",
         "prep": "Preparation", "install": "Install the app", "prep_done": "Done, next",
         "test_of": "Test {n} of {total}", "all_done": "All tests done",
@@ -200,7 +207,10 @@ ASSISTANT_TEXT = {
         "done_sub": "You've really helped us. Now just save the result and send it.",
         "labels": {"ok": "works", "bad": "doesn't work", "skip": "skipped", "open": "open"},
         "device": "Finally, a few details about your device (optional):",
-        "final": "Last step: save the result and send the file by e-mail or in the Discord test channel.",
+        "final": "Last step: save the result and send the file by e-mail to {email}.",
+        "mail_btn": "Open your e-mail program", "mail_subject": "Test result {version} {platform} ({variant})",
+        "mail_body": "Hello,\n\nattached is my test result.\n\n(Please attach the file {file} from your Downloads folder.)",
+        "mail_hint": "You attach the file yourself, it's in your Downloads folder. No e-mail program? Just send it from your webmail to {email}.",
         "save": "Save result", "saved": "Saved as \"{file}\" in your Downloads folder.",
         "back_last": "← Change the last test", "reset": "Start over",
         "reset_confirm": "Really delete all answers?", "reset_yes": "Yes, delete everything", "reset_no": "Cancel",
@@ -511,7 +521,7 @@ def _scenario_html(s, lang="de"):
     )
 
 
-def build(version, platform, out_dir, root=".", pdf=False, lang="de", step=True):
+def build(version, platform, out_dir, root=".", pdf=False, lang="de", step=True, assistant_only=False):
     root = pathlib.Path(root)
     out_dir = pathlib.Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -567,18 +577,22 @@ def build(version, platform, out_dir, root=".", pdf=False, lang="de", step=True)
 {baustein(f"deinstallieren-{platform}")}
 </body></html>
 """
+    a = ASSISTANT_TEXT[lang]
+    # The assistant puts a download button for the chosen variant where the
+    # install text names the package; the page swaps in the real file name.
+    assistant_path = build_assistant(out_dir, chapters, version, platform, lang, [
+        (a["install"], baustein(f"installieren-{platform}", {"download": "__DOWNLOAD__", "paket": "__PAKET__"})),
+        (t["testdata_heading"], baustein(f"testdaten-{platform}")),
+    ], packages(values, step))
+    # Testers only get the assistant; the guide and sheet remain for local use.
+    if assistant_only:
+        return assistant_path, None
+
     html_path = out_dir / (t["guide_file"].format(version=version, platform=platform_name) + ".html")
     html_path.write_text(page, encoding="utf-8")
 
     sheet_path = out_dir / sheet_name
     write_result_sheet(sheet_path, chapters, version, platform, lang)
-    a = ASSISTANT_TEXT[lang]
-    # The assistant puts a download button for the chosen variant where the
-    # install text names the package; the page swaps in the real file name.
-    build_assistant(out_dir, chapters, version, platform, lang, [
-        (a["install"], baustein(f"installieren-{platform}", {"download": "__DOWNLOAD__", "paket": "__PAKET__"})),
-        (t["testdata_heading"], baustein(f"testdaten-{platform}")),
-    ], packages(values, step))
 
     if pdf:
         render_pdf(html_path, html_path.with_suffix(".pdf"))
@@ -621,6 +635,7 @@ def build_assistant(out_dir, chapters, version, platform, lang, prep, packages):
         "text": a, "tests": tests, "fields": fields, "variants": variants, "packages": packages, "prep": [{"title": ti, "html": h} for ti, h in prep], "title": title,
         "version": version, "platform": platform_name,
         "resultFile": a["result_file"].format(version=version, platform=platform_name),
+        "email": TEST_EMAIL,
         "storageKey": f"3mf-testassistent-{version}-{platform}-{lang}",
     }
     # "</" inside the JSON would end the <script> element early.
@@ -850,6 +865,8 @@ ol.steps li.done img{opacity:.55}
 .download{display:flex;flex-direction:column;align-items:center;gap:4px;padding:16px;border-radius:12px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:19px;text-decoration:none;text-align:center}
 .download span{font-weight:400;font-size:13px;opacity:.9;overflow-wrap:anywhere}
 .download:hover{filter:brightness(1.08)}
+.mailbtn{display:flex;flex-direction:column;align-items:center;gap:2px;padding:12px;border-radius:10px;border:2px solid var(--accent);color:var(--accent);font-weight:700;text-decoration:none;text-align:center}
+.mailbtn span{font-weight:400;font-size:14px}.mailbtn:hover{background:var(--accent-soft)}
 .dl{display:flex;flex-direction:column;gap:6px}
 .variants button:disabled{opacity:.4;cursor:not-allowed}
 code{font-family:Consolas,ui-monospace,monospace;background:var(--code);padding:1px 5px;border-radius:4px;font-size:.92em;overflow-wrap:anywhere}
@@ -892,6 +909,8 @@ table{width:100%;border-collapse:collapse;font-size:15px}td{padding:8px 6px;bord
 <script>__FIGUREN__</script>
 <script>
 const D = JSON.parse(document.getElementById("data").textContent), T = D.text;
+["final", "mail_hint"].forEach(k => T[k] = T[k].split("{email}").join(D.email));
+T.intro = T.intro.map(x => [x[0], x[1].split("{email}").join(D.email)]);
 // One of the website's mascots (figuren.js), picked at random like on 3mfkatalog.de.
 const FIGURE = window.MMKFiguren ? window.MMKFiguren.random() : null;
 const mascot = pose => FIGURE ? '<span class="pose-' + pose + '">' + window.MMKFiguren.svg(FIGURE, pose) + '</span>' : '';
@@ -1010,13 +1029,17 @@ function wireReset(){
       + '<button class="b-yes" id="resetYes">' + esc(T.reset_yes) + '</button><button class="b-no" id="resetNo">' + esc(T.reset_no) + '</button></span></span>';
     document.getElementById("resetNo").focus();
     document.getElementById("resetYes").onclick = () => { try { localStorage.removeItem(D.storageKey); } catch (e) {} state = fresh(); applyVariant(); save(); render(); window.scrollTo(0, 0); };
-    document.getElementById("resetNo").onclick = () => { box.innerHTML = resetBox().replace(/^<span id="resetBox">|<\/span>$/g, ""); wireReset(); };
+    document.getElementById("resetNo").onclick = () => { box.innerHTML = resetBox().replace(/^<span id="resetBox">|<\\/span>$/g, ""); wireReset(); };
   };
 }
 function next(){ state.index++; save(); render(); window.scrollTo(0, 0); }
 function zoom(src){
   const o = document.createElement("div"); o.className = "lightbox";
   o.innerHTML = '<img src="' + src + '" alt=""><span>' + esc(T.zoom_close) + '</span>'; o.onclick = () => o.remove(); document.body.appendChild(o);
+}
+function mailto(){
+  const fill = s => s.replace("{version}", D.version).replace("{platform}", D.platform).replace("{variant}", variantLabel()).replace("{file}", D.resultFile);
+  return "mailto:" + D.email + "?subject=" + encodeURIComponent(fill(T.mail_subject)) + "&body=" + encodeURIComponent(fill(T.mail_body));
 }
 function plain(h){ const d = document.createElement("div"); d.innerHTML = h; return d.textContent; }
 function resultText(){
@@ -1042,6 +1065,7 @@ function renderSummary(){
         + (f.choices.length ? '<select data-f="' + i + '"><option value=""></option>' + f.choices.map(x => '<option' + (state.device[i] === x ? ' selected' : '') + '>' + esc(x) + '</option>').join("") + '</select>'
                             : '<input data-f="' + i + '" placeholder="' + esc(f.hint) + '" value="' + esc(state.device[i] || "") + '">') + '</label>').join("") + '</div>'
     + '<p>' + esc(T.final) + '</p><button class="primary" id="saveRes">' + esc(T.save) + '</button><p class="saved" id="saved" hidden></p>'
+    + '<a class="mailbtn" href="' + esc(mailto()) + '">✉ ' + esc(T.mail_btn) + '<span>' + esc(D.email) + '</span></a><div class="tip" style="margin-top:0">' + esc(T.mail_hint) + '</div>'
     + '<div class="nav"><button class="linkbtn" id="back">' + esc(T.back_last) + '</button>' + resetBox() + '</div></section>';
   view.querySelectorAll("[data-f]").forEach(el => el.oninput = el.onchange = () => { state.device[el.dataset.f] = el.value; save(); });
   document.getElementById("saveRes").onclick = () => {
@@ -1085,7 +1109,7 @@ def main(argv):
     flags = [a for a in argv if a.startswith("--")]
     lang = next((f.split("=", 1)[1] for f in flags if f.startswith("--lang=")), "de")
     if len(args) < 3:
-        print("usage: testanleitung.py <version> <windows|macos|linux> <out_dir> [--pdf] [--lang=de|en] [--no-step]",
+        print("usage: testanleitung.py <version> <windows|macos|linux> <out_dir> [--pdf] [--lang=de|en] [--no-step] [--assistant-only]",
               file=sys.stderr)
         return 1
     version, platform, out_dir = args[0], args[1], args[2]
@@ -1094,7 +1118,8 @@ def main(argv):
             raise ValueError(f"Unbekannte Plattform: {platform}")
         if lang not in LANGS:
             raise ValueError(f"Unbekannte Sprache: {lang}")
-        build(version, platform, out_dir, pdf="--pdf" in flags, lang=lang, step="--no-step" not in flags)
+        build(version, platform, out_dir, pdf="--pdf" in flags, lang=lang, step="--no-step" not in flags,
+              assistant_only="--assistant-only" in flags)
     except ValueError as e:
         print(f"testanleitung: {e}", file=sys.stderr)
         return 1

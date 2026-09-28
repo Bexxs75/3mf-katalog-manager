@@ -65,15 +65,12 @@ jobs:
             fi
           fi
           python3 tools/release_assets.py check-preview "$V" current.json
-          # The test guide is built only after all builds; fail now instead of
+          # The test assistant is built only after all builds; fail now instead of
           # after an hour of building - this also catches a scenario file that
-          # testanleitung.py cannot parse (missing block, unknown placeholder, ...).
+          # testanleitung.py cannot parse (missing block, picture or placeholder, ...).
           test -f "docs/tests/$V.md" || { echo "docs/tests/$V.md is missing"; exit 1; }
           test -f "docs/tests/$V.en.md" || { echo "docs/tests/$V.en.md is missing"; exit 1; }
-          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends python3-openpyxl
-          # Without STEP builds the guides and the assistant only offer the standard packages.
-          NOSTEP=""; [ "$STEP" = "true" ] || NOSTEP="--no-step"
-          for l in de en; do python3 tools/testanleitung.py "$V" linux "$RUNNER_TEMP/guide-check" --lang=$l; done
+          for l in de en; do python3 tools/testanleitung.py "$V" linux "$RUNNER_TEMP/guide-check" --lang=$l --assistant-only; done
           echo "version=$V" >> "$GITHUB_OUTPUT"; echo "step=$S" >> "$GITHUB_OUTPUT"
 
   windows:
@@ -144,13 +141,14 @@ jobs:
         run: |
           FLAGS="--preview"; [ "$STEP" = "true" ] || FLAGS="$FLAGS --no-step"
           python3 tools/release_assets.py latest-json "$VERSION" dist $FLAGS
-      - name: Test guide
+      # Testers get only the interactive test assistant (one HTML per system and language).
+      - name: Test assistant
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends python3-openpyxl
+          NOSTEP=""; [ "$STEP" = "true" ] || NOSTEP="--no-step"
           for l in de en; do
-            for p in windows macos linux; do python3 tools/testanleitung.py "$VERSION" "$p" guide --pdf --lang=$l $NOSTEP; done
+            for p in windows macos linux; do python3 tools/testanleitung.py "$VERSION" "$p" guide --lang=$l --assistant-only $NOSTEP; done
           done
-          cp guide/*.pdf guide/*.xlsx guide/Testassistent-*.html guide/Test-Assistant-*.html dist/
+          cp guide/Testassistent-*.html guide/Test-Assistant-*.html dist/
       - name: Checksums
         env:
           GH_TOKEN: ${{ github.token }}
@@ -201,4 +199,4 @@ jobs:
             echo "$KEEP" | grep -qxF "$a" || gh release delete-asset preview "$a" -R "$R" --yes
           done
           gh release edit preview -R "$R" --prerelease --title "Test-Version $VERSION / Test version $VERSION" \
-            --notes "Test version $VERSION of 3MF Katalog Manager Preview (own catalog, separate from the normal app). Easiest: open Testassistent-$VERSION-<system>.html (EN: Test-Assistant-…) and follow it step by step. Test guide: Testanleitung-$VERSION-*.pdf"
+            --notes "Test version $VERSION of 3MF Katalog Manager Preview (own catalog, separate from the normal app). Download Testassistent-$VERSION-<system>.html (EN: Test-Assistant-…) and open it with a double-click: it guides you step by step, from the download to sending the result."
