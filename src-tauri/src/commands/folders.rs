@@ -1,5 +1,7 @@
 use super::*;
 
+pub(super) const SETTING_CATALOG_BASE_DIR: &str = "catalog_base_dir";
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FolderDto {
@@ -293,7 +295,11 @@ fn register_picked_catalog_base_dir(
         return Err("Der Ordner wurde nicht in der App ausgewählt".into());
     }
     reject_if_sensitive_path(dir, sensitive_dirs)?;
-    register_catalog_base_dir_with_conn(conn, dir)
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let folder = register_catalog_base_dir_with_conn(&tx, dir)?;
+    db::printer_link::set_setting(&tx, SETTING_CATALOG_BASE_DIR, &folder.path).map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(folder)
 }
 /// Registers a picked base directory as the catalog root: creates it if needed
 /// and idempotently ensures a `folders` row.
@@ -311,11 +317,30 @@ pub fn register_catalog_base_dir(
 /// Like `register_catalog_base_dir_with_conn`, but NEVER creates a directory:
 /// at startup a storage location deleted in the meantime must not silently
 /// reappear. `None` if the folder is missing.
-fn register_existing_catalog_base_dir_with_conn(conn: &Connection, dir: &Path) -> CmdResult<Option<FolderDto>> {
+pub(super) fn register_existing_catalog_base_dir_with_conn(conn: &Connection, dir: &Path, sensitive_dirs: &[PathBuf]) -> CmdResult<Option<FolderDto>> {
+    reject_if_sensitive_path(dir, sensitive_dirs)?;
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let saved = db::printer_link::get_setting(&tx, SETTING_CATALOG_BASE_DIR).map_err(|e| e.to_string())?;
+    if saved.as_deref().is_some_and(|saved| saved != dir.to_string_lossy()) {
+        return Err("Der Katalog-Speicherort stimmt nicht mit dem registrierten Pfad überein".into());
+    }
     if !dir.is_dir() {
         return Ok(None);
     }
-    register_catalog_base_dir_with_conn(conn, dir).map(Some)
+    // Startup must never create a directory, even if it disappears after is_dir.
+    let id = db::ensure_folder_path(&tx, dir, dir).map_err(|e| e.to_string())?;
+    let folder = db::list_folders(&tx).map_err(|e| e.to_string())?
+        .into_iter().find(|folder| folder.id == id).ok_or_else(|| "folder not found".to_string())?;
+    let folder = FolderDto {
+        id: folder.id.to_string(),
+        name: folder.name,
+        path: folder.path,
+        parent_id: folder.parent_id.map(|id| id.to_string()),
+        count: 0,
+    };
+    db::printer_link::set_setting(&tx, SETTING_CATALOG_BASE_DIR, &folder.path).map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(Some(folder))
 }
 /// Called at startup: makes sure a configured storage location has a folder row
 /// (among other things so it counts as an extraction target, see
@@ -323,7 +348,7 @@ fn register_existing_catalog_base_dir_with_conn(conn: &Connection, dir: &Path) -
 #[tauri::command]
 pub fn register_existing_catalog_base_dir(state: State<AppState>, path: String) -> CmdResult<Option<FolderDto>> {
     let conn = lock_db(&state)?;
-    register_existing_catalog_base_dir_with_conn(&conn, Path::new(&path))
+    register_existing_catalog_base_dir_with_conn(&conn, Path::new(&path), &state.sensitive_dirs)
 }
 
 // Windows forbids these in file names. They are rejected on every OS so a
@@ -557,16 +582,61 @@ mod tests {
     use super::*;
 
     #[test]
+    fn startup_registration_remembers_first_path_and_accepts_saved_path() {
+        let conn = db::connect_in_memory().unwrap();
+        let dir = unique_test_dir("startup_first_path");
+        let first = register_existing_catalog_base_dir_with_conn(&conn, &dir, &[]).unwrap().unwrap();
+        assert_eq!(db::printer_link::get_setting(&conn, "catalog_base_dir").unwrap(), Some(first.path.clone()));
+        let second = register_existing_catalog_base_dir_with_conn(&conn, &dir, &[]).unwrap().unwrap();
+        assert_eq!(first.id, second.id);
+    }
+
+    #[test]
+    fn startup_registration_rejects_different_saved_path_even_with_existing_row() {
+        let conn = db::connect_in_memory().unwrap();
+        let dir = unique_test_dir("startup_wrong_path");
+        db::printer_link::set_setting(&conn, "catalog_base_dir", "/saved/catalog").unwrap();
+        assert!(register_existing_catalog_base_dir_with_conn(&conn, &dir, &[]).is_err());
+        assert!(db::list_folders(&conn).unwrap().is_empty());
+        db::ensure_folder_path(&conn, &dir, &dir).unwrap();
+        assert!(register_existing_catalog_base_dir_with_conn(&conn, &dir, &[]).is_err());
+        assert_eq!(db::printer_link::get_setting(&conn, "catalog_base_dir").unwrap().as_deref(), Some("/saved/catalog"));
+    }
+
+    #[test]
+    fn startup_registration_rejects_sensitive_path_before_first_adoption() {
+        let conn = db::connect_in_memory().unwrap();
+        let dir = unique_test_dir("startup_sensitive_path");
+        assert!(register_existing_catalog_base_dir_with_conn(&conn, &dir, std::slice::from_ref(&dir)).is_err());
+        assert!(db::list_folders(&conn).unwrap().is_empty());
+        assert_eq!(db::printer_link::get_setting(&conn, "catalog_base_dir").unwrap(), None);
+        db::ensure_folder_path(&conn, &dir, &dir).unwrap();
+        db::printer_link::set_setting(&conn, "catalog_base_dir", &dir.to_string_lossy()).unwrap();
+        assert!(register_existing_catalog_base_dir_with_conn(&conn, &dir, std::slice::from_ref(&dir)).is_err());
+    }
+
+    #[test]
+    fn picked_registration_overwrites_saved_path() {
+        let conn = db::connect_in_memory().unwrap();
+        let dir = unique_test_dir("picked_replaces_saved_path");
+        db::printer_link::set_setting(&conn, "catalog_base_dir", "/old/catalog").unwrap();
+        let approved = ApprovedTargets::default();
+        approved.approve(&dir);
+        let folder = register_picked_catalog_base_dir(&conn, &approved, &[], &dir).unwrap();
+        assert_eq!(db::printer_link::get_setting(&conn, "catalog_base_dir").unwrap(), Some(folder.path));
+    }
+
+    #[test]
     fn startup_registration_of_the_base_dir_never_creates_a_missing_directory() {
         let conn = crate::db::connect_in_memory().expect("connect");
         let missing = unique_test_dir("register-existing-missing");
         std::fs::remove_dir_all(&missing).unwrap();
-        assert!(register_existing_catalog_base_dir_with_conn(&conn, &missing).unwrap().is_none());
+        assert!(register_existing_catalog_base_dir_with_conn(&conn, &missing, &[]).unwrap().is_none());
         assert!(!missing.exists(), "Startaufruf darf keinen Ordner anlegen");
 
         let existing = unique_test_dir("register-existing-present");
-        let first = register_existing_catalog_base_dir_with_conn(&conn, &existing).unwrap().unwrap();
-        let second = register_existing_catalog_base_dir_with_conn(&conn, &existing).unwrap().unwrap();
+        let first = register_existing_catalog_base_dir_with_conn(&conn, &existing, &[]).unwrap().unwrap();
+        let second = register_existing_catalog_base_dir_with_conn(&conn, &existing, &[]).unwrap().unwrap();
         assert_eq!(first.id, second.id, "idempotent");
         assert_eq!(first.path, existing.to_string_lossy());
     }

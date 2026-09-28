@@ -820,6 +820,12 @@ fn replace_catalog_db_with_copy_fn(
         crate::db::run_migrations(&mut incoming).map_err(|e| e.to_string())?;
         let tx = incoming.unchecked_transaction().map_err(|e| e.to_string())?;
         sanitize_printer_connections(&tx)?;
+        // The frontend keeps its current localStorage location across restores.
+        // Allow startup to adopt that location instead of one from the backup.
+        tx.execute(
+            "DELETE FROM app_settings WHERE key = ?1",
+            [super::folders::SETTING_CATALOG_BASE_DIR],
+        ).map_err(|e| e.to_string())?;
         // DROP instead of DELETE: a malicious AFTER DELETE trigger would otherwise
         // re-insert the row; DROP TABLE removes the triggers too. Second barrier next
         // to the trigger rejection in validate_catalog_db_bytes. Schema as in
@@ -1859,6 +1865,34 @@ mod tests {
             );
         }
     }
+    #[test]
+    fn restore_forgets_catalog_location_and_allows_current_location() {
+        for saved in [Some("/backup/location-a"), None] {
+            let dir = unique_test_dir("restore_catalog_location");
+            let db_path = dir.join("catalog.db");
+            let state = AppState {
+                db: Mutex::new(db::connect(&db_path).unwrap()),
+                trash_dir: dir.join("trash"),
+                db_path,
+                sensitive_dirs: Vec::new(),
+            };
+            let incoming_path = dir.join("incoming.db");
+            let incoming = db::connect(&incoming_path).unwrap();
+            if let Some(saved) = saved {
+                db::printer_link::set_setting(&incoming, "catalog_base_dir", saved).unwrap();
+            }
+            drop(incoming);
+            replace_catalog_db(&state, &incoming_path).unwrap();
+            let conn = state.db.lock().unwrap();
+            assert_eq!(db::printer_link::get_setting(&conn, "catalog_base_dir").unwrap(), None);
+            let current = dir.join("location-b");
+            std::fs::create_dir(&current).unwrap();
+            let folder = super::super::folders::register_existing_catalog_base_dir_with_conn(&conn, &current, &[]).unwrap().unwrap();
+            assert_eq!(folder.path, current.to_string_lossy());
+            assert_eq!(db::printer_link::get_setting(&conn, "catalog_base_dir").unwrap(), Some(folder.path));
+        }
+    }
+
     #[test]
     fn replace_catalog_db_backs_up_old_db_and_installs_new_one() {
         let dir = unique_test_dir("replace_catalog_db_success");

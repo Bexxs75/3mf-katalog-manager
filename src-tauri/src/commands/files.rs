@@ -947,14 +947,26 @@ pub fn rescan_file_metadata(state: State<AppState>, file_id: String) -> CmdResul
 /// than aborting the whole batch.
 fn import_many(state: &State<AppState>, roots: Vec<PathBuf>) -> CmdResult<ImportResultDto> {
     let mut db: &Mutex<Connection> = &state.db;
-    import_many_in_batches(&mut db, roots)
+    import_many_in_batches(&mut db, roots, ImportMode::Batched)
 }
-/// [`import_many`] on a connection the caller already holds, e.g. while
-/// extracting an archive or in unit tests (a `State<AppState>` cannot be
-/// constructed outside of a running Tauri app).
+/// Batched import on a held connection for unit tests; commands use `State`.
+#[cfg(test)]
 pub(crate) fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) -> CmdResult<ImportResultDto> {
     let mut db: &mut Connection = conn;
-    import_many_in_batches(&mut db, roots)
+    import_many_in_batches(&mut db, roots, ImportMode::Batched)
+}
+
+/// Archive extraction removes the entire directory on failure, so all its
+/// catalog writes must succeed together.
+pub(crate) fn import_many_with_conn_atomic(conn: &mut Connection, roots: Vec<PathBuf>) -> CmdResult<ImportResultDto> {
+    let mut db: &mut Connection = conn;
+    import_many_in_batches(&mut db, roots, ImportMode::Atomic)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ImportMode {
+    Batched,
+    Atomic,
 }
 
 /// Files stored per transaction. SQLite fsyncs on every commit, so one commit
@@ -989,7 +1001,7 @@ struct PendingImport {
     new_file: NewFile,
 }
 
-fn import_many_in_batches(db: &mut impl ImportDb, roots: Vec<PathBuf>) -> CmdResult<ImportResultDto> {
+fn import_many_in_batches(db: &mut impl ImportDb, roots: Vec<PathBuf>, mode: ImportMode) -> CmdResult<ImportResultDto> {
     let mut seen_paths = HashSet::new();
     let mut seen_hashes = HashSet::new();
     let mut result = ImportResultDto {
@@ -1066,12 +1078,12 @@ fn import_many_in_batches(db: &mut impl ImportDb, roots: Vec<PathBuf>) -> CmdRes
             seen_hashes.insert(content_hash.clone());
             new_file.content_hash = Some(content_hash);
             batch.push(PendingImport { path, folder_root: folder_root.clone(), new_file });
-            if batch.len() >= IMPORT_BATCH_SIZE {
-                store_batch(db, &mut batch, &mut result)?;
+            if mode == ImportMode::Batched && batch.len() >= IMPORT_BATCH_SIZE {
+                store_batch(db, &mut batch, &mut result, mode)?;
             }
         }
     }
-    store_batch(db, &mut batch, &mut result)?;
+    store_batch(db, &mut batch, &mut result, mode)?;
     Ok(result)
 }
 
@@ -1082,7 +1094,7 @@ impl ImportResultDto {
 }
 
 /// Stores the pending files in one transaction and empties `batch`.
-fn store_batch(db: &mut impl ImportDb, batch: &mut Vec<PendingImport>, result: &mut ImportResultDto) -> CmdResult<()> {
+fn store_batch(db: &mut impl ImportDb, batch: &mut Vec<PendingImport>, result: &mut ImportResultDto, mode: ImportMode) -> CmdResult<()> {
     if batch.is_empty() {
         return Ok(());
     }
@@ -1101,9 +1113,14 @@ fn store_batch(db: &mut impl ImportDb, batch: &mut Vec<PendingImport>, result: &
                     continue;
                 }
             }
-            new_file.folder_id = folder_root
-                .as_deref()
-                .and_then(|root| path.parent().and_then(|dir| db::ensure_folder_path(&tx, root, dir).ok()));
+            new_file.folder_id = match folder_root.as_deref().zip(path.parent()) {
+                Some((root, dir)) => match db::ensure_folder_path(&tx, root, dir) {
+                    Ok(id) => Some(id),
+                    Err(e) if mode == ImportMode::Atomic => return Err(e.to_string().into()),
+                    Err(_) => None,
+                },
+                None => None,
+            };
             match store_model_file(&tx, &new_file) {
                 Ok(dto) => {
                     log::debug!(target: "import", "{}", path.display());
@@ -1116,6 +1133,9 @@ fn store_batch(db: &mut impl ImportDb, batch: &mut Vec<PendingImport>, result: &
                 }
                 Err(e) => {
                     log::error!(target: "import", "speichern fehlgeschlagen: {}: {e}", path.display());
+                    if mode == ImportMode::Atomic {
+                        return Err(e);
+                    }
                     result.skip(path.to_string_lossy().to_string(), SkipReason::Failed);
                 }
             }
@@ -1207,6 +1227,40 @@ pub async fn import_folder(
     log::info!(target: "import", "{}", import_summary(&result, started.elapsed().as_secs_f64()));
     Ok(result)
 }
+/// Shared drop processing, independent of Tauri so authorization and its
+/// database effects can be tested together.
+fn import_dropped_paths(
+    paths: Vec<PathBuf>,
+    pending: &PendingArchives,
+    approved: &ApprovedTargets,
+    sensitive_dirs: &[PathBuf],
+    import: impl FnOnce(Vec<PathBuf>) -> CmdResult<ImportResultDto>,
+) -> CmdResult<ImportResultDto> {
+    let (models, archives) = split_archives(paths);
+    let mut skipped = Vec::new();
+    let models = models.into_iter().filter(|path| {
+        if !path.is_dir() {
+            return true;
+        }
+        // Consume the observation even when sensitive or already picker-approved.
+        let observed = pending.claim_dropped_directory(path);
+        let safe = reject_if_sensitive_path(path, sensitive_dirs).is_ok();
+        if safe && (observed || approved.contains(path)) {
+            return true;
+        }
+        log::warn!(target: "import", "directory import rejected (sensitive or not approved): {}", path.display());
+        skipped.push(SkippedFileDto {
+            path: path.to_string_lossy().to_string(),
+            reason: SkipReason::Failed,
+        });
+        false
+    }).collect();
+    let mut result = import(models)?;
+    result.skipped.extend(skipped);
+    result.pending_archives = pending.claim_dropped(archives);
+    Ok(result)
+}
+
 /// Also used by the setup dialog to adopt an existing catalog folder, which can
 /// hold thousands of files. `async` + `spawn_blocking`: a synchronous command
 /// runs on the UI thread and would freeze the window for the whole import.
@@ -1214,12 +1268,15 @@ pub async fn import_folder(
 pub async fn import_dropped(app: tauri::AppHandle, paths: Vec<String>) -> CmdResult<ImportResultDto> {
     use tauri::Manager;
     tauri::async_runtime::spawn_blocking(move || {
-        let (models, archives) = split_archives(paths.into_iter().map(PathBuf::from).collect());
         let started = std::time::Instant::now();
-        let mut result = import_many(&app.state::<AppState>(), models)?;
-        // Archives only if the backend observed the drop itself (see `on_window_event`
-        // in lib.rs); other archive paths are ignored.
-        result.pending_archives = app.state::<PendingArchives>().claim_dropped(archives);
+        let state = app.state::<AppState>();
+        let result = import_dropped_paths(
+            paths.into_iter().map(PathBuf::from).collect(),
+            &app.state::<PendingArchives>(),
+            &app.state::<ApprovedTargets>(),
+            &state.sensitive_dirs,
+            |models| import_many(&state, models),
+        )?;
         log::info!(target: "import", "{}", import_summary(&result, started.elapsed().as_secs_f64()));
         Ok(result)
     })
@@ -2581,6 +2638,144 @@ mod tests {
         std::fs::write(path, bytes).expect("write stl");
     }
 
+    #[test]
+    fn dropped_directory_requires_observation_or_picker_approval() {
+        let dir = unique_test_dir("drop_unapproved_directory");
+        write_binary_stl(&dir.join("model.stl"), 1);
+        let mut conn = db::connect_in_memory().unwrap();
+        let result = import_dropped_paths(
+            vec![dir.clone()], &PendingArchives::default(), &ApprovedTargets::default(), &[],
+            |paths| import_many_with_conn(&mut conn, paths),
+        ).unwrap();
+        assert!(result.imported.is_empty());
+        assert!(db::list_files(&conn).unwrap().is_empty());
+        assert!(db::list_folders(&conn).unwrap().is_empty());
+        assert_eq!(result.skipped.len(), 1);
+        assert_eq!(result.skipped[0].path, dir.to_string_lossy());
+        assert_eq!(result.skipped[0].reason, SkipReason::Failed);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn dropped_directory_observation_is_consumed_by_import() {
+        let dir = unique_test_dir("drop_observed_directory");
+        write_binary_stl(&dir.join("model.stl"), 1);
+        let pending = PendingArchives::default();
+        pending.observe_drop(std::slice::from_ref(&dir));
+        let approved = ApprovedTargets::default();
+        let mut conn = db::connect_in_memory().unwrap();
+        let first = import_dropped_paths(vec![dir.clone()], &pending, &approved, &[],
+            |paths| import_many_with_conn(&mut conn, paths)).unwrap();
+        assert_eq!(first.imported.len(), 1);
+        assert_eq!(db::list_folders(&conn).unwrap().len(), 1);
+        // A fresh catalog proves the second call is rejected by authorization,
+        // not merely skipped because the model is already imported.
+        let mut second_conn = db::connect_in_memory().unwrap();
+        let second = import_dropped_paths(vec![dir.clone()], &pending, &approved, &[],
+            |paths| import_many_with_conn(&mut second_conn, paths)).unwrap();
+        assert!(second.imported.is_empty());
+        assert_eq!(second.skipped.len(), 1);
+        assert_eq!(second.skipped[0].reason, SkipReason::Failed);
+        assert!(db::list_folders(&second_conn).unwrap().is_empty());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn dropped_directory_from_picker_is_imported() {
+        let dir = unique_test_dir("drop_picked_directory");
+        write_binary_stl(&dir.join("model.stl"), 1);
+        let approved = ApprovedTargets::default();
+        approved.approve(&dir);
+        let mut conn = db::connect_in_memory().unwrap();
+        let result = import_dropped_paths(vec![dir.clone()], &PendingArchives::default(), &approved, &[],
+            |paths| import_many_with_conn(&mut conn, paths)).unwrap();
+        assert_eq!(result.imported.len(), 1);
+        assert!(result.skipped.is_empty());
+        assert_eq!(db::list_folders(&conn).unwrap().len(), 1);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn dropped_directory_sensitive_path_is_rejected_even_when_observed_and_approved() {
+        let dir = unique_test_dir("drop_sensitive_directory");
+        write_binary_stl(&dir.join("model.stl"), 1);
+        let pending = PendingArchives::default();
+        pending.observe_drop(std::slice::from_ref(&dir));
+        let approved = ApprovedTargets::default();
+        approved.approve(&dir);
+        let mut conn = db::connect_in_memory().unwrap();
+        let result = import_dropped_paths(vec![dir.clone()], &pending, &approved, std::slice::from_ref(&dir),
+            |paths| import_many_with_conn(&mut conn, paths)).unwrap();
+        assert!(result.imported.is_empty());
+        assert_eq!(result.skipped.len(), 1);
+        assert_eq!(result.skipped[0].reason, SkipReason::Failed);
+        assert!(db::list_files(&conn).unwrap().is_empty());
+        assert!(db::list_folders(&conn).unwrap().is_empty());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn dropped_individual_model_does_not_require_directory_authorization() {
+        let dir = unique_test_dir("drop_individual_model");
+        let model = dir.join("model.stl");
+        write_binary_stl(&model, 1);
+        let mut conn = db::connect_in_memory().unwrap();
+        let result = import_dropped_paths(vec![model], &PendingArchives::default(), &ApprovedTargets::default(), &[],
+            |paths| import_many_with_conn(&mut conn, paths)).unwrap();
+        assert_eq!(result.imported.len(), 1);
+        assert!(result.skipped.is_empty());
+        assert!(db::list_folders(&conn).unwrap().is_empty());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    fn assert_archive_import_rolls_back(sql: &str, expected_error: &str) {
+        let tmp = unique_test_dir("archive_atomic_failure");
+        for i in 0..30 {
+            write_binary_stl(&tmp.join(format!("part_{i}.stl")), i);
+        }
+        let mut conn = crate::db::connect_in_memory().unwrap();
+        conn.execute_batch(sql).unwrap();
+        let result = super::super::archives::import_extracted_dir(&mut conn, &tmp);
+        assert!(result.is_err(), "archive import must fail");
+        assert!(result.unwrap_err().to_string().contains(expected_error));
+        assert!(db::list_files(&conn).unwrap().is_empty());
+        assert!(db::list_folders(&conn).unwrap().is_empty());
+        assert!(conn.is_autocommit());
+        std::fs::remove_dir_all(tmp).unwrap();
+    }
+
+    #[test]
+    fn archive_import_rolls_back_statement_failure_after_26_models() {
+        assert_archive_import_rolls_back(
+            "CREATE TRIGGER fail_late BEFORE INSERT ON files
+             WHEN (SELECT COUNT(*) FROM files) >= 26
+             BEGIN SELECT RAISE(ABORT, 'forced late insert failure'); END;",
+            "forced late insert failure",
+        );
+    }
+
+    #[test]
+    fn archive_import_rolls_back_commit_failure_after_26_models() {
+        // Inserts succeed; only COMMIT checks this deferred foreign key.
+        assert_archive_import_rolls_back(
+            "CREATE TABLE commit_failure (file_id INTEGER REFERENCES files(id)
+                 DEFERRABLE INITIALLY DEFERRED);
+             CREATE TRIGGER fail_commit AFTER INSERT ON files
+             WHEN (SELECT COUNT(*) FROM files) = 27
+             BEGIN INSERT INTO commit_failure VALUES (-1); END;",
+            "FOREIGN KEY constraint failed",
+        );
+    }
+
+    #[test]
+    fn archive_import_rolls_back_folder_failure() {
+        assert_archive_import_rolls_back(
+            "CREATE TRIGGER fail_folder BEFORE INSERT ON folders
+             BEGIN SELECT RAISE(ABORT, 'forced folder failure'); END;",
+            "forced folder failure",
+        );
+    }
+
     /// Counts database accesses; every access locks the mutex only for its own duration.
     struct CountingDb<'a> {
         db: &'a Mutex<Connection>,
@@ -2604,7 +2799,7 @@ mod tests {
         let db = Mutex::new(crate::db::connect_in_memory().expect("connect"));
         let mut counting = CountingDb { db: &db, accesses: 0 };
 
-        let result = import_many_in_batches(&mut counting, vec![tmp.clone()]).expect("import");
+        let result = import_many_in_batches(&mut counting, vec![tmp.clone()], ImportMode::Batched).expect("import");
 
         assert_eq!(result.imported.len(), count);
         // Three stored batches plus the short per-file duplicate checks: the lock
@@ -2630,7 +2825,7 @@ mod tests {
             let (db, done, tmp) = (db.clone(), done.clone(), tmp.clone());
             std::thread::spawn(move || {
                 let mut access: &Mutex<Connection> = &db;
-                let result = import_many_in_batches(&mut access, vec![tmp]);
+                let result = import_many_in_batches(&mut access, vec![tmp], ImportMode::Batched);
                 done.store(true, Ordering::SeqCst);
                 result
             })

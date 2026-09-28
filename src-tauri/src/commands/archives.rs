@@ -4,7 +4,7 @@
 //! happen. The folder import deliberately extracts nothing.
 
 use super::*;
-use super::files::{import_many_with_conn, is_supported_extension, SkippedFileDto};
+use super::files::{import_many_with_conn_atomic, is_supported_extension, SkippedFileDto};
 
 use serde::Deserialize;
 use tauri::Emitter;
@@ -107,6 +107,9 @@ struct ArchiveProgressDto {
 pub struct PendingArchives {
     pending: std::sync::Mutex<HashSet<PathBuf>>,
     observed_drops: std::sync::Mutex<HashSet<PathBuf>>,
+    // Directory roots authorize folder-row creation during import, separately
+    // from the archives that may be extracted.
+    observed_directory_drops: std::sync::Mutex<HashSet<PathBuf>>,
 }
 
 /// Same rule as `split_archives`: a real file with an archive extension.
@@ -126,6 +129,17 @@ impl PendingArchives {
         if let Ok(mut set) = self.observed_drops.lock() {
             set.extend(paths.iter().filter(|p| is_archive_file(p)).cloned());
         }
+        if let Ok(mut set) = self.observed_directory_drops.lock() {
+            set.extend(paths.iter().filter(|p| p.is_dir()).cloned());
+        }
+    }
+
+    /// Consumes one backend-observed directory drop; frontend paths alone do
+    /// not authorize creating catalog folder rows.
+    pub(crate) fn claim_dropped_directory(&self, path: &Path) -> bool {
+        self.observed_directory_drops.lock()
+            .map(|mut observed| observed.remove(path))
+            .unwrap_or(false)
     }
 
     /// Moves only the drops observed by the backend from `archives` into the allow
@@ -286,7 +300,7 @@ pub(crate) fn unique_destination(target_dir: &Path, folder_name: &str) -> PathBu
 /// Imports a freshly extracted folder into the catalog: the existing folder
 /// import plus attaching it below the target catalog folder.
 pub(crate) fn import_extracted_dir(conn: &mut Connection, dir: &Path) -> CmdResult<ImportResultDto> {
-    let result = import_many_with_conn(conn, vec![dir.to_path_buf()])?;
+    let result = import_many_with_conn_atomic(conn, vec![dir.to_path_buf()])?;
     // Only cosmetic (folder tree) - an error here must not undo the successful import.
     if let Err(e) = db::attach_folder_to_parent_by_path(conn, dir) {
         log::error!(target: "archive", "mounting {} failed: {e}", dir.display());

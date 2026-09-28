@@ -1,6 +1,6 @@
 <!--
 Release notes template (EN first, then DE). Title: "vX.Y.Z — <English> / <Deutsch>".
-How to release: run the "Release (draft)" workflow with the version → fill this draft's body from this template (fill in the <…> parts, keep the full changelog lists in the <details> blocks) → set the title as above → publish the draft.
+How to release: set the version with `python3 tools/release_assets.py set-version X.Y.Z` and commit the version changes (otherwise `check-version` in release.yml fails) → run the "Release (draft)" workflow with the version → fill this draft's body from this template (fill in the <…> parts, keep the full changelog lists in the <details> blocks) → set the title as above → publish the draft.
 The release workflow creates the draft with renamed, signed files, latest*.json and SHA256SUMS.txt.
 Re-running it for the same version creates a second draft: delete the old one first.
 Test versions for testers go through preview.yml (release `preview`), not through this template.
