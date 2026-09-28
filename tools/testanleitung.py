@@ -135,11 +135,12 @@ ASSISTANT_TEXT = {
         "result_file": "Testergebnis-{version}-{platform}.txt",
         "title": "{produkt} {version} – Testassistent ({platform})",
         "eyebrow": "Testassistent",
-        "hello": "Hallo! Wir testen zusammen die Test-Version {version}.",
-        "intro": ["Du bekommst immer nur einen Test auf einmal. Mach die Schritte der Reihe nach und sag danach, ob es geklappt hat.",
-                  "Du kannst jederzeit aufhören. Wenn du diese Datei wieder öffnest, geht es an derselben Stelle weiter.",
-                  "Wenn etwas nicht klappt, schreib kurz dazu, was stattdessen passiert ist.",
-                  "Am Ende speicherst du das Ergebnis als Datei und schickst sie per E-Mail oder im Discord-Testkanal."],
+        "hello": "Hallo! Schön, dass du mittestest.",
+        "sub": "Wir gehen die Test-Version zusammen durch, Schritt für Schritt.",
+        "intro": [["Ein Test nach dem anderen", "Mach die Schritte der Reihe nach und sag danach, ob es geklappt hat."],
+                  ["Pause? Kein Problem", "Öffnest du diese Datei wieder, geht es an derselben Stelle weiter."],
+                  ["Klappt etwas nicht?", "Schreib kurz dazu, was stattdessen passiert ist. Genau das hilft uns."],
+                  ["Zum Schluss", "Ergebnis als Datei speichern und per E-Mail oder im Discord-Testkanal schicken."]],
         "start": "Los geht’s", "resume": "Weitermachen",
         "prep": "Vorbereitung", "install": "App installieren", "prep_done": "Erledigt, weiter",
         "test_of": "Test {n} von {total}", "all_done": "Alle Tests erledigt",
@@ -158,6 +159,7 @@ ASSISTANT_TEXT = {
         "skip_reasons": ["Das kann ich nicht testen (z. B. fehlt mir das Nötige)", "Ich weiß nicht, wie das geht", "Anderer Grund"],
         "next": "Weiter", "back": "← Zurück",
         "done_eyebrow": "Geschafft", "done": "Danke! Alle Tests sind durch.",
+        "done_sub": "Du hast uns damit richtig geholfen. Jetzt nur noch das Ergebnis speichern und abschicken.",
         "labels": {"ok": "klappt", "bad": "klappt nicht", "skip": "übersprungen", "open": "offen"},
         "device": "Zum Schluss noch kurz zu deinem Gerät (freiwillig):",
         "final": "Letzter Schritt: Speichere das Ergebnis und schick die Datei per E-Mail oder im Discord-Testkanal.",
@@ -171,11 +173,12 @@ ASSISTANT_TEXT = {
         "result_file": "Test-Result-{version}-{platform}.txt",
         "title": "{produkt} {version} – Test assistant ({platform})",
         "eyebrow": "Test assistant",
-        "hello": "Hi! Let's test version {version} together.",
-        "intro": ["You get one test at a time. Do the steps in order, then tell us whether it worked.",
-                  "You can stop at any time. When you open this file again, it continues where you left off.",
-                  "If something doesn't work, write briefly what happened instead.",
-                  "At the end you save the result as a file and send it by e-mail or in the Discord test channel."],
+        "hello": "Hi! Great that you're testing with us.",
+        "sub": "We'll go through the test version together, step by step.",
+        "intro": [["One test at a time", "Do the steps in order, then tell us whether it worked."],
+                  ["Need a break? No problem", "When you open this file again, it continues where you left off."],
+                  ["Something doesn't work?", "Write briefly what happened instead. That's exactly what helps us."],
+                  ["At the end", "Save the result as a file and send it by e-mail or in the Discord test channel."]],
         "start": "Let's go", "resume": "Continue",
         "prep": "Preparation", "install": "Install the app", "prep_done": "Done, next",
         "test_of": "Test {n} of {total}", "all_done": "All tests done",
@@ -194,6 +197,7 @@ ASSISTANT_TEXT = {
         "skip_reasons": ["I can't test this (e.g. I don't have what it needs)", "I don't know how to do this", "Other reason"],
         "next": "Next", "back": "← Back",
         "done_eyebrow": "Done", "done": "Thank you! All tests are done.",
+        "done_sub": "You've really helped us. Now just save the result and send it.",
         "labels": {"ok": "works", "bad": "doesn't work", "skip": "skipped", "open": "open"},
         "device": "Finally, a few details about your device (optional):",
         "final": "Last step: save the result and send the file by e-mail or in the Discord test channel.",
@@ -623,7 +627,8 @@ def build_assistant(out_dir, chapters, version, platform, lang, prep, packages):
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     page = (ASSISTANT_TEMPLATE.replace("__LANG__", lang).replace("__TITLE__", html.escape(title))
             .replace("__PRODUCT__", html.escape(PRODUCT)).replace("__VERSION__", html.escape(version))
-            .replace("__PLATFORM__", html.escape(platform_name)).replace("__DATA__", payload))
+            .replace("__PLATFORM__", html.escape(platform_name)).replace("__DATA__", payload)
+            .replace("__FIGUREN__", FIGUREN_JS.read_text(encoding="utf-8").replace("</", "<\\/")))
     path = out_dir / a["file"].format(version=version, platform=platform_name)
     path.write_text(page, encoding="utf-8")
     return path
@@ -780,6 +785,9 @@ def write_result_sheet(path, chapters, version, platform, lang):
     wb.save(path)
 
 
+# The website's mascots (copy of 3mf-katalog-webseite/figuren.js, keep in sync).
+FIGUREN_JS = pathlib.Path(__file__).resolve().parent / "figuren.js"
+
 # Standalone page of the test assistant. Offline by design: no external fonts
 # or scripts, so it works from a double-click in the Downloads folder.
 ASSISTANT_TEMPLATE = """<!doctype html>
@@ -803,7 +811,24 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;fl
 .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:18px}
 .eyebrow{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
 h1{font-size:26px;line-height:1.25;margin:0}h1 .id{color:var(--accent);margin-right:6px}
-.card p{margin:0}.card ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+.card p{margin:0}
+.hero{display:flex;align-items:center;gap:22px}
+.hero .fig{width:118px;height:134px;flex:none;overflow:visible;filter:drop-shadow(0 10px 16px rgba(60,40,30,.28))}
+.hero h1{margin-bottom:6px}.hero p{color:var(--muted)}
+.chip{display:inline-block;white-space:nowrap;font-size:14px;font-weight:700;padding:3px 10px;border-radius:99px;background:var(--accent-soft);color:var(--accent);margin-top:10px}
+@media (max-width:520px){.hero{flex-direction:column;text-align:center}}
+@media (prefers-color-scheme:dark){.hero .fig{filter:none}}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media (max-width:560px){.tiles{grid-template-columns:1fr}}
+.tile{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--bg);display:flex;flex-direction:column;gap:4px}
+.tile b{font-size:16px}.tile span{font-size:15px;color:var(--muted);line-height:1.45}
+.section{border-top:1px solid var(--line);padding-top:18px;display:flex;flex-direction:column;gap:12px}
+.pose-point .arm{transform-box:fill-box;transform-origin:center;animation:poke 2.4s ease-in-out infinite}
+@keyframes poke{0%,70%,100%{transform:scale(1)}78%{transform:scale(1.14)}86%{transform:scale(1)}92%{transform:scale(1.1)}}
+.pose-thumbs .arm{transform-box:fill-box;transform-origin:center;animation:wipp 2.6s ease-in-out infinite}
+@keyframes wipp{0%,70%,100%{transform:translateY(0)}78%{transform:translateY(-6px)}86%{transform:translateY(0)}92%{transform:translateY(-4px)}}
+.fig .blink{animation:blink 4s infinite;transform-box:fill-box;transform-origin:center}
+@keyframes blink{0%,94%,100%{transform:scaleY(1)}96%{transform:scaleY(.1)}}
+@media (prefers-reduced-motion:reduce){.fig .arm,.fig .blink{animation:none}}.card ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
 ol.steps{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px;counter-reset:s}
 ol.steps li{counter-increment:s;display:grid;grid-template-columns:34px 1fr;gap:12px;align-items:start;cursor:pointer;padding:8px;border-radius:10px}
 ol.steps li:hover{background:var(--bg)}
@@ -864,8 +889,12 @@ table{width:100%;border-collapse:collapse;font-size:15px}td{padding:8px 6px;bord
 <main id="view"></main>
 </div>
 <script id="data" type="application/json">__DATA__</script>
+<script>__FIGUREN__</script>
 <script>
 const D = JSON.parse(document.getElementById("data").textContent), T = D.text;
+// One of the website's mascots (figuren.js), picked at random like on 3mfkatalog.de.
+const FIGURE = window.MMKFiguren ? window.MMKFiguren.random() : null;
+const mascot = pose => FIGURE ? '<span class="pose-' + pose + '">' + window.MMKFiguren.svg(FIGURE, pose) + '</span>' : '';
 const fresh = () => ({ started:false, prepDone:false, prepStep:0, index:0, results:{}, done:{}, device:{}, variant:"", secs:{}, shown:null });
 let state = Object.assign(fresh(), load() || {});
 if (state.variant && !D.packages[state.variant]) state.variant = "";
@@ -904,11 +933,12 @@ function render(){
 }
 function renderStart(){
   const resume = Object.keys(state.results).length > 0 || state.prepDone;
-  view.innerHTML = '<section class="card"><div class="eyebrow">' + esc(T.eyebrow) + '</div><h1>' + esc(T.hello.replace("{version}", D.version)) + '</h1><ul>'
-    + T.intro.map(x => '<li>' + esc(x) + '</li>').join("") + '</ul>'
-    + '<p class="q">' + esc(T.variant_q) + '</p><div class="variants">' + D.variants.choices.map(c => '<button data-v="' + c.key + '" class="' + (state.variant === c.key ? "sel" : "") + '"' + (D.packages[c.key] ? '' : ' disabled') + '>' + esc(c.label) + '</button>').join("") + '</div>'
+  view.innerHTML = '<section class="card"><div class="hero">' + mascot("point") + '<div><div class="eyebrow">' + esc(T.eyebrow) + '</div><h1>' + esc(T.hello) + '</h1>'
+    + '<p>' + esc(T.sub) + '</p><span class="chip">' + esc(D.version) + ' · ' + esc(D.platform) + '</span></div></div>'
+    + '<div class="tiles">' + T.intro.map(x => '<div class="tile"><b>' + esc(x[0]) + '</b><span>' + esc(x[1]) + '</span></div>').join("") + '</div>'
+    + '<div class="section"><p class="q">' + esc(T.variant_q) + '</p><div class="variants">' + D.variants.choices.map(c => '<button data-v="' + c.key + '" class="' + (state.variant === c.key ? "sel" : "") + '"' + (D.packages[c.key] ? '' : ' disabled') + '>' + esc(c.label) + '</button>').join("") + '</div>'
     + '<div class="tip" style="margin-top:0">' + esc(T.variant_hint) + (D.packages.step ? '' : ' ' + esc(T.no_step)) + '</div>'
-    + '<button class="primary" id="go"' + (state.variant ? '' : ' disabled') + '>' + esc(resume ? T.resume : T.start) + '</button></section>';
+    + '<button class="primary" id="go"' + (state.variant ? '' : ' disabled') + '>' + esc(resume ? T.resume : T.start) + '</button></div></section>';
   view.querySelectorAll(".variants button").forEach(b => b.onclick = () => { state.variant = b.dataset.v; applyVariant(); if (state.index > TESTS.length) state.index = TESTS.length; save(); renderStart(); });
   document.getElementById("go").onclick = () => { state.started = true; save(); render(); };
 }
@@ -1003,7 +1033,7 @@ function resultText(){
 }
 function renderSummary(){
   const c = counts();
-  view.innerHTML = '<section class="card"><div class="eyebrow">' + esc(T.done_eyebrow) + '</div><h1>' + esc(T.done) + '</h1>'
+  view.innerHTML = '<section class="card"><div class="hero">' + mascot("thumbs") + '<div><div class="eyebrow">' + esc(T.done_eyebrow) + '</div><h1>' + esc(T.done) + '</h1><p>' + esc(T.done_sub) + '</p></div></div>'
     + '<p>' + esc(T.time_total.replace("{min}", mins(totalMs()))) + '</p>'
     + '<div class="sum"><div class="s-ok"><b>' + c.ok + '</b>' + esc(T.labels.ok) + '</div><div class="s-bad"><b>' + c.bad + '</b>' + esc(T.labels.bad) + '</div><div class="s-skip"><b>' + c.skip + '</b>' + esc(T.labels.skip) + '</div></div>'
     + '<div style="overflow-x:auto"><table><tbody>' + TESTS.map(t => { const r = state.results[t.id], k = r ? r.s : "open";

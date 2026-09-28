@@ -293,7 +293,7 @@ class Assistant(unittest.TestCase):
             (root / "docs/tests/0.15.0-2.md").write_text(SAMPLE.replace("Leerer Katalog.", "Kein `</script><b>x</b>` zu sehen."))
             ta.build("0.15.0-2", "windows", root / "out", root=root)
             text, data = assistant_data(root / "out" / "Testassistent-0.15.0-2-Windows.html")
-            self.assertEqual(text.count("</script>"), 2)
+            self.assertEqual(text.count("</script>"), 3)  # data, mascots, page
             self.assertIn("<code>&lt;/script&gt;&lt;b&gt;x&lt;/b&gt;</code>", data["tests"][0]["expected"])
 
 
