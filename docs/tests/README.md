@@ -126,5 +126,5 @@ a data-folder path).
 2. Retake the screenshots **before** tagging: raise `VERSION`/`NEXT` in `3mf-demo-katalog/shots/take_testassistent.py`, run `vite build` + `vite preview --port 1420` and headless Chromium on port 9333, shoot German and English.
 3. Commit, push, then push the tag `preview-<version>-step` and watch the "Preview (test version)" workflow.
 4. Check the `preview` release: all packages and signatures, both manifests on the new version, spot checks against `SHA256SUMS.txt`, the assistants contain the new notes.
-5. Update the Discord beta channel: change the pinned test call (German and English) to the new version with a short "New since …" paragraph, and post a short notice per language (scripts in `discord-setup/`, e.g. `edit-beta-test-0150-9-20260929.js`; dry run first, 2000-character limit).
+5. Update the Discord category "🧪 BETA-TEST": in #🇩🇪-beta-ankündigungen and #🇬🇧-beta-announcements, edit the test call at the top to the new version with a short "New since …" paragraph, and post a short notice below it. #🧪-beta-testing is for questions only; no announcements there (scripts in `discord-setup/`, e.g. `post-beta-bereich-0150-10-20260929.js`; dry run first, 2000-character limit).
 6. The website picks up the new version by itself (`preview.php`, 15-minute cache).
