@@ -1,3 +1,4 @@
+import { CatalogResetSection } from './CatalogResetSection';
 import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { Printer, SlicerConfig } from '../types';
@@ -38,7 +39,10 @@ interface Props {
   onScanCatalogIssues: () => void;
   cleanupScanning: boolean;
   cleanupError: AppError | null;
-  onExportCatalog: () => void;
+  onExportCatalog: () => Promise<boolean>;
+  catalogModelCount: number;
+  catalogFolderCount: number;
+  onCatalogReset: () => void;
   onImportCatalog: () => void;
   catalogBackupError: AppError | null;
   catalogBaseDir: string | null;
@@ -87,6 +91,9 @@ export function Rail({
   cleanupScanning,
   cleanupError,
   onExportCatalog,
+  catalogModelCount,
+  catalogFolderCount,
+  onCatalogReset,
   onImportCatalog,
   catalogBackupError,
   catalogBaseDir,
@@ -373,6 +380,8 @@ export function Rail({
                   </div>
                 )}
 
+                <CatalogResetSection modelCount={catalogModelCount} folderCount={catalogFolderCount}
+                  onExport={onExportCatalog} onReset={onCatalogReset} backupError={catalogBackupError} />
                 <div className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-2">{t('catalogBaseDirSectionTitle')}</div>
                 <div className="font-mono-ui text-[10.5px] text-[var(--ink-3)] truncate mb-1.5">
                   {catalogBaseDir ?? t('catalogBaseDirNotSet')}

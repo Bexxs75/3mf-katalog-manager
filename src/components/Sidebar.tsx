@@ -18,6 +18,7 @@ interface Props {
   queueFilament?: Map<string, FilamentCheck> | null;
   folders: Folder[];
   totalModelCount: number;
+  onCatalogRemoved?: () => void;
   activeFolderId: string;
   onFolderSelect: (id: string) => void;
   onCreateFolder: (parentId: string | null, name: string) => void;
@@ -53,6 +54,7 @@ export function Sidebar({
   queueFilament,
   folders,
   totalModelCount,
+  onCatalogRemoved,
   activeFolderId,
   onFolderSelect,
   onCreateFolder,
@@ -133,6 +135,7 @@ export function Sidebar({
           totalModelCount={totalModelCount}
           activeFolderId={activeFolderId}
           onSelect={onFolderSelect}
+          onRemoved={onCatalogRemoved}
           dragOverFolderId={dragOverFolderId}
           draggedFolderId={draggedFolderId}
           onFolderMouseEnter={onFolderMouseEnter}

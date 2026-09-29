@@ -409,6 +409,10 @@ fn validate_new_catalog_dir_name(name: &str) -> CmdResult<()> {
 pub struct ApprovedCatalogParents(std::sync::Mutex<HashSet<PathBuf>>);
 
 impl ApprovedCatalogParents {
+    pub(crate) fn clear(&self) {
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    }
+
     fn approve(&self, path: &Path) {
         if let Ok(mut set) = self.0.lock() {
             set.insert(path.to_path_buf());

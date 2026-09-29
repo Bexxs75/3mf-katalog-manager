@@ -50,6 +50,8 @@ interface CatalogWorkspaceProps {
   confirmBulkDelete: boolean;
   setConfirmBulkDelete: (value: boolean) => void;
   bulkDelete: () => void;
+  bulkRemove?: () => Promise<void>;
+  onCatalogRemoved?: () => void;
   selectAllVisible: () => void;
   clearBulkSelection: () => void;
   bulkAddToQueue: () => void;
@@ -134,6 +136,8 @@ export function CatalogWorkspace({
   confirmBulkDelete,
   setConfirmBulkDelete,
   bulkDelete,
+  bulkRemove,
+  onCatalogRemoved,
   selectAllVisible,
   clearBulkSelection,
   bulkAddToQueue,
@@ -213,6 +217,7 @@ export function CatalogWorkspace({
         queueFilament={queueFilament.checks}
         folders={folders}
         totalModelCount={models.length}
+        onCatalogRemoved={onCatalogRemoved}
         activeFolderId={activeFolderId}
         onFolderSelect={(id) => {
           setActiveFolderId(id);
@@ -303,6 +308,7 @@ export function CatalogWorkspace({
             onBulkRemoveFromCollection={bulkRemoveFromCollection}
             onBulkSetPrintStatus={bulkSetPrintStatus}
             onBulkDelete={bulkDelete}
+            onBulkRemove={bulkRemove}
             addTagMenuOpen={addTagMenuOpen}
             onAddTagMenuOpenChange={setAddTagMenuOpen}
             tagDraft={tagDraft}

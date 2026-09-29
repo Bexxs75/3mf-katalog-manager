@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { messageOf } from '../lib/errors';
 import type { Collection } from '../types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { tagLabel } from '../lib/autoTags';
@@ -17,6 +19,7 @@ interface BulkActionToolbarProps {
   onBulkRemoveFromCollection: () => void;
   onBulkSetPrintStatus: (status: 'printed' | 'not_printed') => void;
   onBulkDelete: () => void;
+  onBulkRemove?: () => Promise<void>;
   addTagMenuOpen: boolean;
   onAddTagMenuOpenChange: (value: boolean) => void;
   tagDraft: string;
@@ -43,6 +46,7 @@ export function BulkActionToolbar({
   onBulkRemoveFromCollection,
   onBulkSetPrintStatus,
   onBulkDelete,
+  onBulkRemove,
   addTagMenuOpen,
   onAddTagMenuOpenChange,
   tagDraft,
@@ -54,10 +58,27 @@ export function BulkActionToolbar({
   onBulkRemoveTag,
 }: BulkActionToolbarProps) {
   const t = useT();
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const { language } = useLanguage();
   return (
     <div className="flex-none flex items-center gap-2 px-4 py-2 border-b border-[var(--line)] bg-[var(--panel-2)]">
-      {confirmBulkDelete ? (
+      {confirmRemove ? (
+        <div className="flex flex-wrap items-center gap-2" onKeyDown={(e) => { if (e.key === 'Escape' && !busy) setConfirmRemove(false); }}>
+          <span className="text-[12.5px] font-medium text-[var(--ink)]">{t('removeModelsQuestion').replace('{count}', String(selectedCount))}</span>
+          <span className="text-[12px] text-[var(--ink-2)]">{t('removeModelHint')}</span>
+          {error && <span role="alert" className="font-mono-ui text-[length:var(--font-size-meta)] text-[var(--accent)]">{error}</span>}
+          <button className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50" disabled={busy} onClick={() => setConfirmRemove(false)}>{t('cancel')}</button>
+          <button className="h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer disabled:opacity-50" autoFocus disabled={busy} onClick={async () => {
+            if (!onBulkRemove) return;
+            setBusy(true); setError(null);
+            try { await onBulkRemove(); setConfirmRemove(false); }
+            catch (e) { setError(messageOf(e)); }
+            finally { setBusy(false); }
+          }}>{t('removeEntry')}</button>
+        </div>
+      ) : confirmBulkDelete ? (
         <>
           <span className="text-[12.5px] font-medium text-[var(--ink)]">
             {t('bulkDeleteConfirmQuestion').replace('{count}', String(selectedCount))}
@@ -186,6 +207,7 @@ export function BulkActionToolbar({
           <button onClick={() => onBulkSetPrintStatus('not_printed')} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]">
             {t('notPrintedLabel')}
           </button>
+          {onBulkRemove && <button className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]" onClick={() => { setError(null); setConfirmRemove(true); }}>{t('removeCatalogShort')}</button>}
           <button onClick={() => onConfirmBulkDeleteChange(true)} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-red-400 text-[12.5px] font-semibold cursor-pointer hover:border-red-400">
             {t('delete')}
           </button>

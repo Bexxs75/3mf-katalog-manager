@@ -316,3 +316,31 @@ mod tests {
         assert!(still_deleted.is_some(), "db must still show the file as deleted after the failed restore");
     }
 }
+
+#[cfg(test)]
+mod catalog_removal_restore_tests {
+    use super::*;
+
+    #[test]
+    fn restore_from_trash_after_removing_its_catalog_folder() {
+        let conn = db::connect_in_memory().unwrap();
+        let dir = unique_test_dir("restore_after_catalog_removal");
+        let models = dir.join("models");
+        let trash = dir.join("trash");
+        std::fs::create_dir_all(&models).unwrap();
+        std::fs::create_dir_all(&trash).unwrap();
+        let path = models.join("model.stl");
+        std::fs::write(&path, b"original model bytes").unwrap();
+        let folder = db::insert_folder_with_parent(&conn, "models", None, models.to_str().unwrap()).unwrap();
+        let id = db::test_insert_minimal_file(&conn, path.to_str().unwrap(), Some(folder)).unwrap();
+        delete_file_with_conn(&conn, &db::get_file(&conn, id).unwrap().unwrap(), id, &trash).unwrap();
+        super::super::catalog_removal::remove_folder_with_conn(&conn, &folder.to_string()).unwrap();
+        let trashed = db::get_file(&conn, id).unwrap().unwrap();
+        assert_eq!(trashed.folder_id, None);
+        assert!(trashed.deleted_at.is_some());
+        restore_file_with_conn(&conn, &trashed, id).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"original model bytes");
+        assert!(db::get_file(&conn, id).unwrap().unwrap().deleted_at.is_none());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}

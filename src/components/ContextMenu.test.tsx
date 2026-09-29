@@ -41,3 +41,16 @@ describe('ContextMenu rename', () => {
     expect(screen.queryByText(/object Object/)).toBeNull();
   });
 });
+
+it('confirms catalog removal separately from deletion and focuses Remove', async () => {
+  const onRemove = vi.fn().mockResolvedValue(undefined);
+  render(<LanguageProvider><ContextMenu x={0} y={0} onClose={() => {}} onOpenInSlicer={() => {}}
+    onDelete={() => {}} onRemove={onRemove} inQueue={false} onToggleQueue={() => {}}
+    printed={false} onTogglePrintStatus={() => {}} currentName="Cube.stl" onRename={async () => {}} /></LanguageProvider>);
+  fireEvent.click(screen.getByText('Aus dem Katalog entfernen'));
+  expect(screen.getByText('„Cube.stl“ aus dem Katalog entfernen?')).toBeTruthy();
+  expect(screen.getByText(/Die Datei bleibt unverändert auf der Festplatte/)).toBeTruthy();
+  expect(document.activeElement).toBe(screen.getByText('Entfernen'));
+  fireEvent.click(screen.getByText('Entfernen'));
+  expect(onRemove).toHaveBeenCalledOnce();
+});

@@ -23,7 +23,7 @@ pub async fn export_catalog(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     settings_json: String,
-) -> CmdResult<()> {
+) -> CmdResult<bool> {
 
     let picked = app
         .dialog()
@@ -36,12 +36,12 @@ pub async fn export_catalog(
         .blocking_save_file();
 
     let Some(picked) = picked else {
-        return Ok(());
+        return Ok(false);
     };
     let dest_path = picked.into_path().map_err(|e| e.to_string())?;
     write_catalog_backup(&state.db, &dest_path, &settings_json)?;
     log::info!(target: "backup", "Sicherung erstellt");
-    Ok(())
+    Ok(true)
 }
 
 /// Writes the backup ZIP (consistent snapshot of the catalog DB plus the

@@ -1,3 +1,4 @@
+import { invoke } from '@tauri-apps/api/core';
 import { useEffect, useMemo, useState } from 'react';
 import { Header } from './components/Header';
 import { snapshotQueue } from './lib/snapshotQueue';
@@ -40,7 +41,7 @@ export default function App() {
   const { density, setDensity } = useUiDensity();
   const { slicers, primaryId, addSlicer, addSlicerError, removeSlicer, setPrimary } = useSlicers();
   const { preference: displayPreference, setPreference: setDisplayPreference } = useDisplayPreference();
-  const { catalogBaseDir, setCatalogBaseDir, setupSeen, markSetupSeen } = useCatalogBaseDir();
+  const { catalogBaseDir, setCatalogBaseDir, setupSeen, markSetupSeen, resetCatalogSetup } = useCatalogBaseDir();
   const printerLink = usePrinterLink();
   const printers = usePrinters();
 
@@ -86,6 +87,36 @@ export default function App() {
   const [detailModelId, setDetailModelId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number } | null>(null);
   const [confirmEmptyTrash, setConfirmEmptyTrash] = useState(false);
+
+  const refreshAfterRemoval = (includeActiveCollection = true) => {
+    store.setSelectedId(null);
+    setDetailModelId(null);
+    bulk.clearBulkSelection();
+    void Promise.all([store.refreshFiles(), store.refreshFolders(), store.refreshTags(),
+      store.refreshTrash(), collections.refreshCollections(), printerLink.refresh(),
+      ...(includeActiveCollection && collections.activeCollection ? [collections.refreshCollectionModels(collections.activeCollection)] : []),
+    ]).catch((e) => console.error('[catalog] refresh after removal failed:', e));
+  };
+  const removeCatalogModels = async (fileIds: string[]) => {
+    await invoke('remove_files_from_catalog', { fileIds });
+    store.setModels((models) => models.filter((model) => !fileIds.includes(model.id)));
+    refreshAfterRemoval();
+  };
+  const finishCatalogReset = () => {
+    resetCatalogSetup();
+    collections.setActiveCollection(null);
+    collections.setCollectionsGalleryOpen(false);
+    filters.setActiveFolderId('all');
+    filters.setActiveTag(null);
+    filters.setQuery('');
+    filters.setToolView(null);
+    setContextMenu(null);
+    setSettingsOpen(false);
+    setMainView('catalog');
+    store.setModels([]);
+    refreshAfterRemoval(false);
+    setSetupDialogOpen(true);
+  };
 
   const changeMainView = (v: 'catalog' | 'filament' | 'trash') => {
     setMainView(v);
@@ -211,6 +242,9 @@ export default function App() {
           onImportCatalog={() => backup.importCatalog(() => window.location.reload())}
           catalogBackupError={backup.catalogBackupError}
           catalogBaseDir={catalogBaseDir}
+          catalogModelCount={store.models.length}
+          catalogFolderCount={store.folders.length}
+          onCatalogReset={finishCatalogReset}
           onOpenCatalogSetup={() => setSetupDialogOpen(true)}
           printerLink={printerLink}
           printerList={printers.printers}
@@ -265,6 +299,8 @@ export default function App() {
               confirmBulkDelete={bulk.confirmBulkDelete}
               setConfirmBulkDelete={bulk.setConfirmBulkDelete}
               bulkDelete={bulk.bulkDelete}
+              bulkRemove={() => removeCatalogModels(Array.from(bulk.selectedForBulk))}
+              onCatalogRemoved={refreshAfterRemoval}
               selectAllVisible={() => bulk.selectAllVisible(filters.filtered.map((m) => m.id))}
               clearBulkSelection={bulk.clearBulkSelection}
               bulkAddToQueue={bulk.bulkAddToQueue}
@@ -325,6 +361,7 @@ export default function App() {
               onClose={() => setContextMenu(null)}
               onOpenInSlicer={() => slicerLauncher.openInSlicer(contextMenu.modelId)}
               onDelete={() => store.deleteModel(contextMenu.modelId)}
+              onRemove={() => removeCatalogModels([contextMenu.modelId])}
               inQueue={contextModel.queuePosition !== null}
               onToggleQueue={() =>
                 contextModel.queuePosition !== null

@@ -121,3 +121,13 @@ describe('useCatalogBackup', () => {
     expect(result.current.catalogBackupError).toEqual({ message: 'bad zip', unexpected: true });
   });
 });
+
+it('reports whether export actually saved a backup', async () => {
+  const { result } = renderHook(() => useCatalogBackup());
+  for (const saved of [false, true]) {
+    vi.mocked(invoke).mockResolvedValueOnce(saved);
+    await act(async () => expect(await result.current.exportCatalog()).toBe(saved));
+  }
+  vi.mocked(invoke).mockRejectedValueOnce('disk full');
+  await act(async () => expect(await result.current.exportCatalog()).toBe(false));
+});

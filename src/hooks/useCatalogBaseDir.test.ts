@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
-import { useRegisterCatalogBaseDirOnStartup } from './useCatalogBaseDir';
+import { useCatalogBaseDir, useRegisterCatalogBaseDirOnStartup } from './useCatalogBaseDir';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
@@ -43,4 +43,15 @@ describe('useRegisterCatalogBaseDirOnStartup', () => {
     await waitFor(() => expect(error).toHaveBeenCalled());
     error.mockRestore();
   });
+});
+
+it('clears the stored location and first-run decision after resetting the catalog', async () => {
+  localStorage.setItem('3mf-katalog-base-dir', '/old');
+  localStorage.setItem('3mf-katalog-setup-seen', '1');
+  const { result } = renderHook(() => useCatalogBaseDir());
+  await act(async () => result.current.resetCatalogSetup());
+  expect(result.current.catalogBaseDir).toBeNull();
+  expect(result.current.setupSeen).toBe(false);
+  expect(localStorage.getItem('3mf-katalog-base-dir')).toBeNull();
+  expect(localStorage.getItem('3mf-katalog-setup-seen')).toBeNull();
 });

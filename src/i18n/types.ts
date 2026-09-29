@@ -6,6 +6,30 @@ export interface PluralForms {
 }
 
 export interface Translations {
+  removeCatalog: string;
+  removeCatalogShort: string;
+  removeEntry: string;
+  removeModelQuestion: string;
+  removeModelsQuestion: string;
+  removeModelHint: string;
+  removeFolderQuestion: string;
+  removeFolderList: string;
+  removeFolderModels: string;
+  removeFolderSafe: string;
+  removeFolderReimport: string;
+  catalogBaseProtected: string;
+  resetCatalog: string;
+  resetCatalogHint: string;
+  resetCatalogQuestion: string;
+  resetCatalogDetails: string;
+  resetSafeFiles: string;
+  resetSafeInventory: string;
+  resetSafeTrash: string;
+  resetBackupTip: string;
+  resetBackupFirst: string;
+  resetBackupDone: string;
+  resetConfirm: string;
+
   import: string;
   importFilesOption: string;
   importFolderOption: string;

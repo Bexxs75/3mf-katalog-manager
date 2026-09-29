@@ -41,6 +41,7 @@ export function useCatalogBackup() {
     return importExportApi.exportCatalog(JSON.stringify(settings)).catch((e) => {
       console.error('[catalog-backup] export failed:', e);
       setCatalogBackupError(toAppError(e));
+      return false;
     });
   }, []);
 

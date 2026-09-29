@@ -202,6 +202,10 @@ impl PendingArchives {
 pub struct ApprovedTargets(std::sync::Mutex<HashSet<PathBuf>>);
 
 impl ApprovedTargets {
+    pub(crate) fn clear(&self) {
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    }
+
     pub(crate) fn approve(&self, path: &Path) {
         if let Ok(mut set) = self.0.lock() {
             set.insert(path.to_path_buf());

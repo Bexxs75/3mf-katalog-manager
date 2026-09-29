@@ -100,6 +100,7 @@ export function useCollections() {
     setCollectionsGalleryOpen,
     collectionModels,
     refreshCollections,
+    refreshCollectionModels,
     reorderCollection,
     createCollection,
     renameCollection,

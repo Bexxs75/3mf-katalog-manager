@@ -1,3 +1,5 @@
+mod catalog_removal;
+pub use catalog_removal::*;
 // Shared types and helpers of the Tauri commands; the commands themselves live
 // in the submodules by topic and are re-exported here.
 mod archives;
