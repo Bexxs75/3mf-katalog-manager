@@ -39,19 +39,27 @@ pub async fn export_catalog(
         return Ok(());
     };
     let dest_path = picked.into_path().map_err(|e| e.to_string())?;
+    write_catalog_backup(&state.db, &dest_path, &settings_json)?;
+    log::info!(target: "backup", "Sicherung erstellt");
+    Ok(())
+}
 
-    let backup_db_path =
-        std::env::temp_dir().join(format!("3mf-katalog-export-{}.db", std::process::id()));
+/// Writes the backup ZIP (consistent snapshot of the catalog DB plus the
+/// frontend settings) to `dest`. The DB is locked only for the snapshot.
+fn write_catalog_backup(db: &std::sync::Mutex<Connection>, dest: &Path, settings_json: &str) -> CmdResult<()> {
+    // Exclusive and private from the start (symlink race, readable copy of the
+    // catalog), under a fresh name per export, see `safe_file::create_private_temp`.
+    let (backup_db_path, backup_db_file) =
+        crate::safe_file::create_private_temp(&std::env::temp_dir(), "3mf-katalog-export", ".db")
+            .map_err(|e| e.to_string())?;
+    drop(backup_db_file);
 
     // A closure, so both temp files are cleaned up on failure too.
     let result: CmdResult<()> = (|| {
         {
-            // Exclusive and private from the start (symlink race, readable copy of
-            // the catalog), see `safe_file::create_new_private`.
-            crate::safe_file::create_new_private(&backup_db_path).map_err(|e| e.to_string())?;
             crate::harden_permissions(&backup_db_path);
 
-            let conn = lock_db(&state)?;
+            let conn = db.lock().map_err(|_| CmdError::from("database lock poisoned"))?;
             let mut dst = Connection::open(&backup_db_path).map_err(|e| e.to_string())?;
             let backup =
                 rusqlite::backup::Backup::new(&conn, &mut dst).map_err(|e| e.to_string())?;
@@ -61,16 +69,15 @@ pub async fn export_catalog(
         }
 
         let db_bytes = std::fs::read(&backup_db_path).map_err(|e| e.to_string())?;
-        write_zip_atomically(&dest_path, &[("catalog.db", &db_bytes), ("settings.json", settings_json.as_bytes())])
+        write_zip_atomically(dest, &[("catalog.db", &db_bytes), ("settings.json", settings_json.as_bytes())])
             .map_err(|e| e.to_string())?;
         Ok(())
     })();
 
     let _ = std::fs::remove_file(&backup_db_path);
-    result?;
-    log::info!(target: "backup", "Sicherung erstellt");
-    Ok(())
+    result
 }
+
 /// Writes a ZIP with `entries` to `dest` via a private temp file next to it and
 /// renames it into place only when complete: never a partial archive at the
 /// destination. The temp name is unpredictable and created exclusively, so a
@@ -79,16 +86,7 @@ fn write_zip_atomically(dest: &Path, entries: &[(&str, &[u8])]) -> std::io::Resu
     use std::io::Write;
     let parent = dest.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
     let base = dest.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or_default();
-    let (tmp_path, file) = (0..16)
-        .find_map(|attempt| {
-            let candidate = parent.join(format!(".{base}.{}-{nanos}-{attempt}.tmp", std::process::id()));
-            crate::safe_file::create_new_private(&candidate).ok().map(|f| (candidate, f))
-        })
-        .ok_or_else(|| std::io::Error::other("no temp file for the backup could be created"))?;
+    let (tmp_path, file) = crate::safe_file::create_private_temp(parent, &format!(".{base}"), ".tmp")?;
 
     let written = (|| {
         let mut zip = zip::ZipWriter::new(file);
@@ -1226,6 +1224,24 @@ mod tests {
         rx.recv_timeout(std::time::Duration::from_secs(5))
             .expect("the validation must reject the database before running its SQL")
     }
+    #[test]
+    fn catalog_backup_works_when_an_old_temp_db_with_the_same_name_exists() {
+        // A leftover or a second export in the same process must not make the
+        // export fail with "File exists".
+        let stale = std::env::temp_dir().join(format!("3mf-katalog-export-{}.db", std::process::id()));
+        std::fs::write(&stale, b"leftover").unwrap();
+        let db = std::sync::Mutex::new(crate::db::connect_in_memory().unwrap());
+        let dest = unique_test_dir("backup_stale_temp").join("backup.zip");
+
+        let result = write_catalog_backup(&db, &dest, "{}");
+        let _ = std::fs::remove_file(&stale);
+
+        result.unwrap();
+        let mut zip = zip::ZipArchive::new(std::fs::File::open(&dest).unwrap()).unwrap();
+        assert!(zip.by_name("catalog.db").is_ok());
+        assert!(zip.by_name("settings.json").is_ok());
+    }
+
     #[cfg(unix)]
     #[test]
     fn backup_zip_ignores_a_planted_temp_symlink_and_is_private() {

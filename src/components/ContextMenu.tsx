@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import { splitFileName } from '../lib/fileName';
+import { messageOf } from '../lib/errors';
 
 interface Props {
   x: number;
@@ -74,7 +75,7 @@ export function ContextMenu({
       .then(() => onClose())
       .catch((e) => {
         setRenaming(false);
-        setRenameError(`${t('renameError')} ${e}`);
+        setRenameError(`${t('renameError')} ${messageOf(e)}`);
       });
   };
 

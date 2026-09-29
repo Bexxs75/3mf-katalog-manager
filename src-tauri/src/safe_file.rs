@@ -60,6 +60,26 @@ pub fn create_new_private(path: &Path) -> std::io::Result<File> {
     options.open(path)
 }
 
+/// Creates a new private file `<prefix>.<pid>-<nanos>-<n><suffix>` in `dir`.
+/// A fixed name would collide with a leftover or a second run in the same
+/// process (`create_new` then fails with "File exists"); a name taken by
+/// someone else (e.g. a planted symlink) is skipped, never opened.
+pub fn create_private_temp(dir: &Path, prefix: &str, suffix: &str) -> std::io::Result<(std::path::PathBuf, File)> {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    let mut last_err = None;
+    for attempt in 0..16 {
+        let candidate = dir.join(format!("{prefix}.{}-{nanos}-{attempt}{suffix}", std::process::id()));
+        match create_new_private(&candidate) {
+            Ok(file) => return Ok((candidate, file)),
+            Err(e) => last_err = Some(e),
+        }
+    }
+    Err(last_err.unwrap_or_else(|| std::io::Error::other("no temp file could be created")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
