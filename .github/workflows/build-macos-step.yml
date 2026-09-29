@@ -133,6 +133,11 @@ jobs:
             "x64-app/$APP_NAME.app" \
             "universal-app/$APP_NAME.app"
 
+      # A duplicate LC_RPATH makes dyld refuse the library at launch
+      # ("Library missing"), so the build stops here instead of shipping it.
+      - name: Check for duplicate LC_RPATH entries
+        run: ./src-tauri/scripts/dedupe-rpaths-macos.sh --check "universal-app/$APP_NAME.app"
+
       # dylibbundler (install_name_tool) and lipo invalidate the linker's
       # ad-hoc signatures. Without a valid signature, macOS on Apple Silicon
       # reports a downloaded app as "damaged" and refuses to open it, so the

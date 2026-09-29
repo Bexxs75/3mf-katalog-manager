@@ -225,6 +225,15 @@ komplett umbenannt/entfernt, App per `HOME`-Override in isolierter Umgebung
 gestartet, STEP-Datei importiert, 3D-Vorschau erschien — sowohl direkt aus dem
 `.app`-Bundle als auch aus einer gemounteten, tatsächlich gebauten DMG heraus.
 
+**Doppelter LC_RPATH:** `dylibbundler` trägt seinen `-p`-Pfad bei `libtbb`
+und `libtbbmalloc` zweimal ein. Neuere macOS-Versionen (gemeldet auf Sequoia
+15.7) laden eine Bibliothek mit doppeltem LC_RPATH nicht und melden
+„Library missing … (duplicate LC_RPATH …)“, obwohl die Datei da ist.
+Deshalb ruft das Bundle-Skript danach
+`src-tauri/scripts/dedupe-rpaths-macos.sh` auf, und `build-macos-step.yml`
+prüft das fertige universelle Bundle mit `--check` und bricht bei einem
+doppelten Eintrag ab.
+
 ## Was der Fork **nicht** ändert
 
 - Kein `builtin`-Feature, kein `occt-sys`. OCCT wird **dynamisch** gelinkt

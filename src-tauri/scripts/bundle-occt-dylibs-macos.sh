@@ -51,5 +51,9 @@ dylibbundler -od -b \
     -d "$FRAMEWORKS_DIR/" \
     -p "@executable_path/../Frameworks/"
 
+# dylibbundler writes the -p rpath twice into some libraries (libtbb);
+# macOS refuses to load a library with a duplicate LC_RPATH.
+"$(dirname "$0")/dedupe-rpaths-macos.sh" "$APP_PATH"
+
 count=$(find "$FRAMEWORKS_DIR" -name '*.dylib' | wc -l | tr -d ' ')
 echo "Bundled $count dylibs into '$FRAMEWORKS_DIR'."
