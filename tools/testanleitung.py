@@ -148,6 +148,8 @@ ASSISTANT_TEXT = {
         "start": "Los geht’s", "resume": "Weitermachen",
         "prep": "Vorbereitung", "install": "App installieren", "prep_done": "Erledigt, weiter",
         "test_of": "Test {n} von {total}", "all_done": "Alle Tests erledigt",
+        "chapters_btn": "Kapitel", "chapters_title": "Zu einem Kapitel springen",
+        "chapters_hint": "Übersprungene Tests bleiben offen. Du kannst jederzeit hierher zurück und sie nachholen.",
         "tip": "Tipp: Klick einen Schritt an, wenn du ihn erledigt hast.",
         "expected": "Das sollte passieren", "note": "Hinweis", "question": "Hat es geklappt?",
         "result_image": "So sieht es richtig aus", "zoom_close": "Klicken oder Esc zum Schließen",
@@ -189,6 +191,8 @@ ASSISTANT_TEXT = {
         "start": "Let's go", "resume": "Continue",
         "prep": "Preparation", "install": "Install the app", "prep_done": "Done, next",
         "test_of": "Test {n} of {total}", "all_done": "All tests done",
+        "chapters_btn": "Chapters", "chapters_title": "Jump to a chapter",
+        "chapters_hint": "Tests you jump over stay open. You can come back here at any time and do them later.",
         "tip": "Tip: click a step once you have done it.",
         "expected": "This should happen", "note": "Note", "question": "Did it work?",
         "result_image": "This is what it should look like", "zoom_close": "Click or press Esc to close",
@@ -822,6 +826,22 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;fl
 .brand{font-weight:700}.brand span{color:var(--muted);font-weight:400}
 .platform{font-size:13px;padding:3px 10px;border-radius:99px;background:var(--accent-soft);color:var(--accent);font-weight:600;letter-spacing:.03em;text-transform:uppercase}
 .progress{display:flex;flex-direction:column;gap:6px}.progress .row{display:flex;justify-content:space-between;font-size:14px;color:var(--muted);font-variant-numeric:tabular-nums}
+.shell{display:flex;justify-content:center;align-items:flex-start;gap:24px}
+.shell>.wrap{flex:1 1 720px;max-width:720px;min-width:0;margin:0}
+header .left{display:flex;align-items:center;gap:10px;min-width:0}
+.burger{padding:6px 10px;font-size:18px;line-height:1;border-radius:8px}
+.chaps{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 10px;display:flex;flex-direction:column;gap:4px}
+.chaps.side{position:sticky;top:20px;flex:0 0 260px;max-height:calc(100vh - 40px);overflow:auto}
+.chaps.drawer{position:fixed;top:0;left:0;bottom:0;width:min(320px,86vw);z-index:20;border-radius:0 14px 14px 0;overflow:auto;padding-top:18px;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+.backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:19}
+.chaps .lbl{margin:0 6px 2px}.chaps .tip{margin:0 6px 8px;font-size:12.5px}
+.chaps button{display:flex;flex-direction:column;align-items:stretch;gap:5px;text-align:left;padding:8px 10px;font-weight:600;font-size:14.5px;border-width:1px;border-color:transparent;background:none;border-radius:8px}
+.chaps button:hover{background:var(--bg)}
+.chaps button .top{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.chaps button .top span{font-weight:400;font-size:12.5px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.chaps button .mini{height:4px;border-radius:99px;background:var(--line);overflow:hidden}.chaps button .mini i{display:block;height:100%;background:var(--accent)}
+.chaps button.cur{border-color:var(--accent);background:var(--accent-soft)}
+.chaps button.full .top span{color:var(--ok)}.chaps button.full .mini i{background:var(--ok)}
 .bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden}.bar i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .3s}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:18px}
 .eyebrow{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
@@ -900,11 +920,15 @@ table{width:100%;border-collapse:collapse;font-size:15px}td{padding:8px 6px;bord
 .saved{color:var(--ok);font-weight:600}
 @media (prefers-reduced-motion:reduce){.bar i{transition:none}}
 </style></head><body>
+<div class="shell">
+<nav class="chaps" id="chaps" hidden></nav>
 <div class="wrap">
-<header><div class="brand">__PRODUCT__ <span>· __VERSION__</span></div><div class="platform">__PLATFORM__</div></header>
+<header><div class="left"><button class="burger" id="chapBtn" hidden aria-expanded="false" aria-controls="chaps"></button><div class="brand">__PRODUCT__ <span>· __VERSION__</span></div></div><div class="platform">__PLATFORM__</div></header>
 <div class="progress" id="progress" hidden><div class="row"><span id="progText"></span><span id="progCounts"></span></div><div class="bar"><i id="barFill"></i></div></div>
 <main id="view"></main>
 </div>
+</div>
+<div class="backdrop" id="chapBack" hidden></div>
 <script id="data" type="application/json">__DATA__</script>
 <script>__FIGUREN__</script>
 <script>
@@ -943,8 +967,43 @@ function progress(){
   document.getElementById("progCounts").textContent = variantLabel() + " · ✅ " + c.ok + " · ❌ " + c.bad + " · ⏭ " + c.skip;
   document.getElementById("barFill").style.width = (Object.keys(state.results).length / TESTS.length * 100) + "%";
 }
+// Chapters in test order, so a tester can jump straight to e.g. the new tests
+// of this version. Answers stay where they are; jumped-over tests stay open.
+function chapterList(){
+  const out = [];
+  TESTS.forEach((t, i) => { let c = out[out.length - 1]; if (!c || c.title !== t.chapter) out.push(c = { title:t.chapter, first:i, ids:[] }); c.ids.push(t.id); });
+  return out;
+}
+// Fixed list left of the test on wide screens; on narrow screens a ☰ button
+// opens the same list as a drawer from the left.
+const wide = window.matchMedia("(min-width: 1060px)");
+let navOpen = false;
+function renderChapters(){
+  const nav = document.getElementById("chaps"), btn = document.getElementById("chapBtn"), back = document.getElementById("chapBack");
+  const avail = state.started && state.prepDone, side = wide.matches;
+  if (!avail || side) navOpen = false;
+  btn.hidden = !avail || side; btn.textContent = "☰"; btn.title = T.chapters_title; btn.setAttribute("aria-label", T.chapters_title); btn.setAttribute("aria-expanded", String(navOpen));
+  nav.hidden = !avail || !(side || navOpen); back.hidden = !navOpen;
+  nav.className = "chaps " + (side ? "side" : "drawer");
+  if (nav.hidden) return;
+  const cur = TESTS[state.index] ? TESTS[state.index].chapter : null, list = chapterList();
+  nav.innerHTML = '<span class="lbl">' + esc(T.chapters_btn) + '</span><p class="tip">' + esc(T.chapters_hint) + '</p>'
+    + list.map((c, k) => { const done = c.ids.filter(id => state.results[id]).length;
+        return '<button data-k="' + k + '" class="' + (c.title === cur ? "cur" : "") + (done === c.ids.length ? " full" : "") + '"' + (c.title === cur ? ' aria-current="true"' : '') + '><span class="top">' + esc(c.title)
+          + '<span>' + done + '/' + c.ids.length + '</span></span><span class="mini"><i style="width:' + (done / c.ids.length * 100) + '%"></i></span></button>'; }).join("");
+  nav.querySelectorAll("button").forEach(b => b.onclick = () => {
+    const c = list[+b.dataset.k], open = c.ids.findIndex(id => !state.results[id]);
+    state.index = c.first + (open < 0 ? 0 : open); navOpen = false; save(); render(); window.scrollTo(0, 0);
+  });
+}
+function setNav(open){ navOpen = open; renderChapters(); if (open) document.querySelector("#chaps button")?.focus(); else document.getElementById("chapBtn").focus(); }
+document.getElementById("chapBtn").onclick = () => setNav(!navOpen);
+document.getElementById("chapBack").onclick = () => setNav(false);
+document.addEventListener("keydown", e => { if (e.key === "Escape" && navOpen) setNav(false); });
+wide.addEventListener("change", renderChapters);
 function render(){
   progress();
+  renderChapters();
   if (!state.started) return renderStart();
   if (!state.prepDone) return renderPrep();
   if (state.index >= TESTS.length) return renderSummary();
