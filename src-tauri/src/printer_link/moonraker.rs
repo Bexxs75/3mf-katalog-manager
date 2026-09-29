@@ -433,6 +433,27 @@ mod parse_tests {
     }
 
     #[test]
+    fn creality_k2_plus_is_accepted() {
+        // Real test report (Creality K2 Plus, firmware 1.1.6.1 rooted, CFS): Moonraker
+        // version only "?", API 1.4.0, no slicer metadata (no weight, no material), one
+        // cancelled print and one entry whose file no longer exists.
+        assert_eq!(parse_server_info(&fixture("server_info_creality_k2_plus.json")).unwrap(), "?");
+        let page = parse_history_page(&fixture("history_creality_k2_plus.json")).unwrap();
+        assert_eq!(page.count, 5);
+        assert_eq!(page.jobs.len(), 5);
+        let first = &page.jobs[0];
+        assert_eq!(first.remote_id, "0001D9");
+        assert_eq!(first.file_name, "Datei 1.gcode");
+        assert_eq!(first.outcome, JobOutcome::Completed);
+        assert_eq!(first.material, None);
+        assert_eq!(first.slicer_weight_g, None);
+        assert!((first.used_mm - 1447.8456).abs() < 0.01);
+        let cancelled = page.jobs.iter().find(|j| j.file_name == "Datei 4.gcode").unwrap();
+        assert_ne!(cancelled.outcome, JobOutcome::Completed);
+        assert!(cancelled.used_mm > 300.0);
+    }
+
+    #[test]
     fn second_kobra_s1_report_skips_a_print_without_usage() {
         // Real test report (Anycubic Kobra S1, Rinkhals, ACE Pro): a print cancelled right
         // at the start reports 0 mm; there is nothing to deduct, so it is not offered.

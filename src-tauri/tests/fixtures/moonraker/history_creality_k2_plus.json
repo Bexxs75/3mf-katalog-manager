@@ -1,0 +1,122 @@
+{
+  "result": {
+    "count": 5,
+    "jobs": [
+      {
+        "job_id": "0001D9",
+        "user": "No User",
+        "filename": "Datei 1.gcode",
+        "status": "completed",
+        "start_time": 1790523154.9732711,
+        "end_time": 1790524354.498055,
+        "print_duration": 1157.881670844,
+        "total_duration": 1199.6842656970002,
+        "filament_used": 1447.8456100000014,
+        "metadata": {
+          "size": 313186,
+          "modified": 1790522768.2416577,
+          "uuid": "25077285-0c32-48f4-aa4b-8d32a288a287",
+          "slicer": "Unknown",
+          "gcode_start_byte": 8310,
+          "gcode_end_byte": 280581,
+          "object_height": 3,
+          "first_layer_height": 0.245
+        },
+        "auxiliary_data": [],
+        "exists": true
+      },
+      {
+        "job_id": "0001D8",
+        "user": "No User",
+        "filename": "Datei 2.gcode",
+        "status": "completed",
+        "start_time": 1790357403.417256,
+        "end_time": 1790358300.6429884,
+        "print_duration": 870.9514836239996,
+        "total_duration": 897.3508085119997,
+        "filament_used": 1171.1303599998719,
+        "metadata": {
+          "size": 823389,
+          "modified": 1790357226.5758324,
+          "uuid": "1ecd052b-03ed-4ab3-8711-1ad0f55dff01",
+          "slicer": "Unknown",
+          "gcode_start_byte": 10737,
+          "gcode_end_byte": 790780,
+          "object_height": 6.025,
+          "first_layer_height": 0.245
+        },
+        "auxiliary_data": [],
+        "exists": true
+      },
+      {
+        "job_id": "0001D7",
+        "user": "No User",
+        "filename": "Datei 2.gcode",
+        "status": "completed",
+        "start_time": 1790356060.7181349,
+        "end_time": 1790356958.9165733,
+        "print_duration": 871.033450207,
+        "total_duration": 898.2117220950004,
+        "filament_used": 1171.1303599998957,
+        "metadata": {
+          "size": 823389,
+          "modified": 1790355882.1071415,
+          "uuid": "e652994e-a6e6-4e9b-a8ec-a496ff1c7480",
+          "slicer": "Unknown",
+          "gcode_start_byte": 10737,
+          "gcode_end_byte": 790780,
+          "object_height": 6.025,
+          "first_layer_height": 0.245
+        },
+        "auxiliary_data": [],
+        "exists": false
+      },
+      {
+        "job_id": "0001D6",
+        "user": "No User",
+        "filename": "Datei 3.gcode",
+        "status": "completed",
+        "start_time": 1790354722.6483352,
+        "end_time": 1790355413.2639136,
+        "print_duration": 665.2901593589999,
+        "total_duration": 690.6656023709999,
+        "filament_used": 1070.3560200000259,
+        "metadata": {
+          "size": 437060,
+          "modified": 1790354558.594495,
+          "uuid": "a36cb02d-ec08-42b0-821a-a4fc14c531a8",
+          "slicer": "Unknown",
+          "gcode_start_byte": 10407,
+          "gcode_end_byte": 404452,
+          "object_height": 3.025,
+          "first_layer_height": 0.245
+        },
+        "auxiliary_data": [],
+        "exists": true
+      },
+      {
+        "job_id": "0001D5",
+        "user": "No User",
+        "filename": "Datei 4.gcode",
+        "status": "cancelled",
+        "start_time": 1790354213.0103474,
+        "end_time": 1790354492.4666953,
+        "print_duration": 252.22501274500002,
+        "total_duration": 279.391969592,
+        "filament_used": 344.60992999999826,
+        "metadata": {
+          "size": 430970,
+          "modified": 1790353994.6451666,
+          "uuid": "c3529429-72e4-4f12-a55f-5e2f60797497",
+          "slicer": "Unknown",
+          "gcode_start_byte": 10407,
+          "gcode_end_byte": 398555,
+          "object_height": 3,
+          "first_layer_height": 0.2
+        },
+        "auxiliary_data": [],
+        "exists": true
+      }
+    ]
+  }
+}

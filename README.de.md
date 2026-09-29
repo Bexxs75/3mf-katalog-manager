@@ -46,6 +46,7 @@ Die Knöpfe öffnen den Download-Bereich der Webseite, dort gibt es immer die ne
 | Sovol SV08 | Klipper ab Werk | Druckliste und Verbrauch, Abbuchen von der Spule in der App | ✅ Im Alltag bestätigt |
 | Anycubic Kobra S1 mit ACE Pro / ACE Pro 2 | Rinkhals | Druckliste und Verbrauch lesbar, Zuordnung der Dateinamen zum Modell | ☑️ Testbericht geprüft |
 | Qidi Smart 3 | Klipper ab Werk | Druckliste und Verbrauch lesbar; die Uhr des Druckers ging falsch | 🟡 Ab v0.15.0 |
+| Creality K2 Plus (mit CFS) | Creality-Klipper 1.1.6.1, gerootet | Druckliste und Verbrauch lesbar; Material und Gewicht liefert der Slicer nicht, die Spule wird von Hand gewählt | ☑️ Testbericht geprüft |
 
 *Im Alltag bestätigt*: mit der App am eigenen Drucker ausprobiert. *Testbericht geprüft*: die Daten aus dem anonymen [Testformular](https://3mfkatalog.de/druckertest.html) passen, ein Praxistest fehlt noch. Dein Drucker fehlt? Mit deinem Test kommt er dazu.
 
