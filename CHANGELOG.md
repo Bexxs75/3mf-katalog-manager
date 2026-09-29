@@ -38,6 +38,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- Fonts: the interface now actually uses its fonts Barlow and IBM Plex Mono. They were meant to load from Google Fonts, which the app's own security policy blocks, so every system showed substitute fonts (e.g. Arial and Consolas on Windows). Both fonts now ship with the app (SIL Open Font License, see THIRD-PARTY-LICENSES.md); nothing is loaded from the internet. Reported in a forum as "narrow text in two or three different fonts".
 - Archive import: if saving fails, all catalog entries from that archive are rolled back together, so no entries remain for files removed during cleanup.
 - Import: files that can't be imported are no longer skipped silently. The import summary now names them, grouped by reason (empty file, damaged or no readable model, could not be saved – the last one with "Report problem") and stays open until you close it. Empty STL files and STL files without any triangles are no longer added to the catalog as models. Found in the Windows test run.
 - STL and OBJ files now get their preview image automatically in the background after import, also with the setting "Preferred view: Image" – before, they showed the placeholder until opened once. Files are rendered one after another; 3MF files keep the image they bring.
@@ -469,6 +470,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Fixed
 
+- Schriften: Die Oberfläche nutzt jetzt wirklich ihre Schriften Barlow und IBM Plex Mono. Sie sollten von Google Fonts geladen werden, was die eigene Sicherheitsrichtlinie der App aber blockiert – deshalb zeigte jedes System Ersatzschriften (unter Windows z. B. Arial und Consolas). Beide Schriften liegen jetzt im Programm (SIL Open Font License, siehe THIRD-PARTY-LICENSES.md); aus dem Internet wird nichts geladen. In einem Forum als „enge Schrift in zwei, drei verschiedenen Schriftarten“ gemeldet.
 - Archiv-Import: Schlägt das Speichern fehl, werden alle Katalogeinträge dieses Archivs gemeinsam zurückgerollt. So bleiben keine Einträge für Dateien zurück, die beim Aufräumen entfernt wurden.
 - Import: Dateien, die sich nicht importieren lassen, werden nicht mehr stillschweigend übersprungen. Die Import-Zusammenfassung nennt sie jetzt, sortiert nach Grund (leere Datei, beschädigt oder kein lesbares Modell, konnte nicht gespeichert werden – Letzteres mit „Problem melden“), und bleibt offen, bis man sie schließt. Leere STL-Dateien und STL-Dateien ohne ein einziges Dreieck landen nicht mehr als Modell im Katalog. Gefunden im Windows-Testlauf.
 - STL- und OBJ-Dateien bekommen ihr Vorschaubild jetzt nach dem Import automatisch im Hintergrund, auch mit der Einstellung „Bevorzugte Ansicht: Bild“ – vorher zeigten sie den Platzhalter, bis man sie einmal öffnete. Die Dateien werden nacheinander gerendert; 3MF-Dateien behalten ihr mitgebrachtes Bild.
