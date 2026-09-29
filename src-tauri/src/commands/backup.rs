@@ -63,8 +63,11 @@ fn write_catalog_backup(db: &std::sync::Mutex<Connection>, dest: &Path, settings
             let mut dst = Connection::open(&backup_db_path).map_err(|e| e.to_string())?;
             let backup =
                 rusqlite::backup::Backup::new(&conn, &mut dst).map_err(|e| e.to_string())?;
+            // One step for the whole database: `run_to_completion` sleeps after
+            // every step that isn't the last, while the catalog lock (and with it
+            // every synchronous command of the UI) waits - see updater/backup.rs.
             backup
-                .run_to_completion(5, std::time::Duration::from_millis(250), None)
+                .run_to_completion(i32::MAX, std::time::Duration::from_millis(250), None)
                 .map_err(|e| e.to_string())?;
         }
 
@@ -1224,6 +1227,35 @@ mod tests {
         rx.recv_timeout(std::time::Duration::from_secs(5))
             .expect("the validation must reject the database before running its SQL")
     }
+    #[test]
+    fn catalog_backup_copies_in_one_step_without_pauses() {
+        // The catalog lock is held for the whole copy and the UI's synchronous
+        // commands wait for it; a copy with pauses between pages froze the app
+        // for minutes on catalogs with many embedded preview images.
+        let conn = crate::db::connect_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE blobs(b BLOB);").unwrap();
+        let blob = vec![7u8; 60 * 1024];
+        for _ in 0..20 {
+            conn.execute("INSERT INTO blobs(b) VALUES (?1)", [&blob]).unwrap();
+        }
+        let db = std::sync::Mutex::new(conn);
+        let dest = unique_test_dir("backup_one_step").join("backup.zip");
+
+        let started = std::time::Instant::now();
+        write_catalog_backup(&db, &dest, "{}").unwrap();
+
+        assert!(started.elapsed() < std::time::Duration::from_secs(2), "export took {:?}", started.elapsed());
+        let mut zip = zip::ZipArchive::new(std::fs::File::open(&dest).unwrap()).unwrap();
+        let mut bytes = Vec::new();
+        std::io::Read::read_to_end(&mut zip.by_name("catalog.db").unwrap(), &mut bytes).unwrap();
+        let copy = dest.with_file_name("copy.db");
+        std::fs::write(&copy, bytes).unwrap();
+        let copied = Connection::open(&copy).unwrap();
+        let (rows, total): (i64, i64) =
+            copied.query_row("SELECT count(*), sum(length(b)) FROM blobs", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!((rows, total), (20, 20 * 60 * 1024));
+    }
+
     #[test]
     fn catalog_backup_works_when_an_old_temp_db_with_the_same_name_exists() {
         // A leftover or a second export in the same process must not make the
