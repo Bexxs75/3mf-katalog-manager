@@ -38,6 +38,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- macOS: Apple Silicon Macs no longer report the downloaded app as "damaged" and refuse to open it (right-click → "Open" didn't help either). The app is now signed ad hoc during the build; the first start still shows the usual warning for apps from the internet. The DMGs of v0.14.0 were already replaced with fixed builds on 2026-09-27. Reported by a tester.
 - macOS: the variant with STEP preview no longer fails to start on newer macOS versions (reported on Sequoia 15.7) with "Library missing … libtbb". Two bundled libraries (libtbb, libtbbmalloc) listed their search path twice, and macOS refuses to load such a library. The build now removes the duplicate and stops if one is left. The standard variant was not affected. Reported in a forum.
 - Fonts: the interface now actually uses its fonts Barlow and IBM Plex Mono. They were meant to load from Google Fonts, which the app's own security policy blocks, so every system showed substitute fonts (e.g. Arial and Consolas on Windows). Both fonts now ship with the app (SIL Open Font License, see THIRD-PARTY-LICENSES.md); nothing is loaded from the internet. Reported in a forum as "narrow text in two or three different fonts".
 - Archive import: if saving fails, all catalog entries from that archive are rolled back together, so no entries remain for files removed during cleanup.
@@ -471,6 +472,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Fixed
 
+- macOS: Apple-Silicon-Macs melden die heruntergeladene App nicht mehr als „beschädigt“ und verweigern das Öffnen (auch Rechtsklick → „Öffnen“ half nicht). Die App wird jetzt beim Build ad hoc signiert; beim ersten Start kommt weiterhin die übliche Warnung für Apps aus dem Internet. Die DMGs von v0.14.0 wurden bereits am 27.09.2026 durch korrigierte Builds ersetzt. Von einem Tester gemeldet.
 - macOS: Die Variante mit STEP-Vorschau startet auf neueren macOS-Versionen (gemeldet auf Sequoia 15.7) wieder, statt mit „Library missing … libtbb“ abzubrechen. Zwei mitgelieferte Bibliotheken (libtbb, libtbbmalloc) enthielten ihren Suchpfad doppelt, und macOS lädt eine solche Bibliothek nicht. Der Build entfernt den doppelten Eintrag jetzt und bricht ab, falls doch einer übrig bleibt. Die Standard-Variante war nicht betroffen. In einem Forum gemeldet.
 - Schriften: Die Oberfläche nutzt jetzt wirklich ihre Schriften Barlow und IBM Plex Mono. Sie sollten von Google Fonts geladen werden, was die eigene Sicherheitsrichtlinie der App aber blockiert – deshalb zeigte jedes System Ersatzschriften (unter Windows z. B. Arial und Consolas). Beide Schriften liegen jetzt im Programm (SIL Open Font License, siehe THIRD-PARTY-LICENSES.md); aus dem Internet wird nichts geladen. In einem Forum als „enge Schrift in zwei, drei verschiedenen Schriftarten“ gemeldet.
 - Archiv-Import: Schlägt das Speichern fehl, werden alle Katalogeinträge dieses Archivs gemeinsam zurückgerollt. So bleiben keine Einträge für Dateien zurück, die beim Aufräumen entfernt wurden.
