@@ -587,6 +587,13 @@ your package.
 Once an update has installed successfully, the Info tab shows a short note ("Updated on \<date\>
 · Backup: \<file\>") until the next update.
 
+**If the check fails** (no internet, or a firewall or antivirus program blocks it), the Info tab
+says "Couldn't check for updates. Please check your internet connection or firewall." instead of
+"You're on the latest version." Some security programs, for example Kaspersky or TinyWall, block
+the request without telling you: allow 3MF Katalog Manager internet access there. The app only
+downloads a small file with the current version number. You can also download a new version from
+[3mfkatalog.de](https://3mfkatalog.de/) at any time and install it over the old one; your catalog is kept.
+
 ### Restoring a backup after an update
 
 Before installing an update this way, the app copies your catalog database to
@@ -1275,6 +1282,14 @@ wie für dein Paket üblich.
 
 Nach einem erfolgreichen Update zeigt der Info-Tab bis zum nächsten Update einen kurzen Hinweis
 („Aktualisiert am \<Datum\> · Sicherung: \<Datei\>“).
+
+**Klappt die Prüfung nicht** (kein Internet, oder eine Firewall bzw. ein Virenschutz blockiert sie),
+steht im Info-Tab „Update-Prüfung nicht möglich. Bitte Internetverbindung oder Firewall prüfen.“
+statt „Du hast die aktuelle Version.“. Manche Schutzprogramme, zum Beispiel Kaspersky oder TinyWall,
+blockieren die Anfrage, ohne es zu melden: Gib dort dem 3MF Katalog Manager den Internetzugriff frei.
+Die App lädt dabei nur eine kleine Datei mit der aktuellen Versionsnummer. Eine neue Version kannst du
+auch jederzeit auf [3mfkatalog.de](https://3mfkatalog.de/) herunterladen und einfach über die alte
+installieren; dein Katalog bleibt erhalten.
 
 ### Wiederherstellen einer Sicherung nach einem Update
 
