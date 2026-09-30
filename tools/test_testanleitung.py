@@ -57,7 +57,8 @@ class Fill(unittest.TestCase):
         self.assertIn("version=0.15.0-2", v["formular"])
         # Log paths match Tauri's app_log_dir (see tauri-plugin-log's
         # TargetKind::LogDir), which is NOT "<data folder>/logs" on Windows/macOS.
-        self.assertEqual(v["logordner"], r"%LOCALAPPDATA%\com.thebexxs.mfkatalogmanager.preview\logs")
+        # Spelled out, because testers read %LOCALAPPDATA% as part of the path.
+        self.assertEqual(v["logordner"], r"C:\Users\<dein Name>\AppData\Local\com.thebexxs.mfkatalogmanager.preview\logs")
         macos = ta.platform_values("0.15.0-2", "macos")
         self.assertEqual(macos["logordner"], "~/Library/Logs/com.thebexxs.mfkatalogmanager.preview")
         linux = ta.platform_values("0.15.0-2", "linux")
@@ -290,6 +291,49 @@ class Assistant(unittest.TestCase):
             self.assertEqual(data["tests"][0]["title"], "First start")
             self.assertEqual(data["text"]["ok"], "Works")
             self.assertEqual(data["resultFile"], "Test-Result-0.15.0-2-Windows.txt")
+
+    SCOPES = """# 3 · Einrichten
+
+## E2 · Erster Start
+Schritte:
+1. Starten.
+Erwartet: Leer.
+
+# 5 · Kaputte Dateien
+
+## K1 · Kaputte Modelle
+Schritte:
+1. Importieren.
+Erwartet: Meldung.
+
+# 12 · Neu in 0.15.0-2
+
+## N13 · Neues
+Schritte:
+1. Klicken.
+Erwartet: Geht.
+
+# 13 · Update testen
+
+## U1 · Update-Meldung
+Schritte:
+1. Starten.
+Erwartet: Meldung.
+"""
+
+    def test_scope_levels_and_expert_chapter_before_the_update(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = make_root(t, english=None)
+            (root / "docs/tests/0.15.0-2.md").write_text(self.SCOPES)
+            ta.build("0.15.0-2", "windows", root / "out", root=root)
+            _, data = assistant_data(root / "out" / "Testassistent-0.15.0-2-Windows.html")
+            got = [(s["id"], s["level"], s["chapter"]) for s in data["tests"]]
+            self.assertEqual(got, [
+                ("E2", "short", "3 · Einrichten"),
+                ("N13", "new", "12 · Neu in 0.15.0-2"),
+                ("K1", "expert", "Für Profis (optional)"),
+                ("U1", "new", "13 · Update testen"),
+            ])
 
     def test_assistant_lists_only_the_platforms_scenarios(self):
         with tempfile.TemporaryDirectory() as t:

@@ -39,6 +39,16 @@ result sheet) as
 `Testergebnis-…txt` / `Test-Result-…txt`. It uses the same scenario files, so
 there is nothing extra to write.
 
+The assistant starts by asking for the scope: **Just what's new** (the newest
+"Neu in …" chapter plus the update tests, suggested automatically to testers who
+already have progress stored for an earlier test version), **Short test**
+(setup, basic functions, F1/F2, what's new, update) or **Full test**
+(everything). Tests that need more than clicking around (`EXPERT_TESTS` in
+`tools/testanleitung.py`: broken files, the PowerShell lock test, log details)
+move to an optional chapter "Für Profis / For experts" just before the update
+tests and are only part of the full test.
+
+
 The result sheet needs `openpyxl` (`python3-openpyxl` on Debian/Ubuntu).
 
 ## CLI

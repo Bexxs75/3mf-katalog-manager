@@ -14,6 +14,9 @@ import release_assets
 
 PRODUCT = "3MF Katalog Manager Preview"
 IDENTIFIER = "com.thebexxs.mfkatalogmanager.preview"
+# Tests that need more than clicking around (broken files, PowerShell, log details).
+EXPERT_TESTS = {"E5", "K1", "K2", "K3", "K4", "K5", "K6", "P1", "F3", "F4", "F5", "F6", "F7", "N3", "N5"}
+NEW_CHAPTER_RE = re.compile(r"(Neu in|New in) \d")
 REPO = "Bexxs75/3mf-katalog-manager"
 # Test results go to this alias, where they are triaged automatically.
 TEST_EMAIL = "testing@3mfkatalog.de"
@@ -25,7 +28,8 @@ PLATFORM_NAMES = {"windows": "Windows", "macos": "macOS", "linux": "Linux"}
 # the tauri_plugin_log::TargetKind::LogDir target in src-tauri/src/lib.rs),
 # which on Windows and macOS is not simply "<data-folder>/logs".
 PLATFORM_INFO = {
-    "windows": ("Windows-x64", ".msi", r"%APPDATA%\{id}", r"%LOCALAPPDATA%\{id}\logs"),
+    # Spelled out instead of %APPDATA%: testers read the variable as part of the path.
+    "windows": ("Windows-x64", ".msi", r"C:\Users\<dein Name>\AppData\Roaming\{id}", r"C:\Users\<dein Name>\AppData\Local\{id}\logs"),
     "macos": ("macOS-universal", ".dmg", "~/Library/Application Support/{id}", "~/Library/Logs/{id}"),
     "linux": ("Linux-x86_64", ".AppImage", "~/.local/share/{id}", "~/.local/share/{id}/logs"),
 }
@@ -148,6 +152,15 @@ ASSISTANT_TEXT = {
         "start": "Los geht’s", "resume": "Weitermachen",
         "prep": "Vorbereitung", "install": "App installieren", "prep_done": "Erledigt, weiter",
         "test_of": "Test {n} von {total}", "all_done": "Alle Tests erledigt",
+        "mode_q": "Wie viel Zeit hast du?",
+        "modes": {"new": ["Nur das Neue", "Die Tests zu dieser Test-Version und das Update."],
+                  "short": ["Kurztest", "Einrichten, Grundfunktionen, Neues und Update."],
+                  "full": ["Volltest", "Alles, am Ende optional die Profi-Tests."]},
+        "mode_meta": "{n} Tests · ca. {min} Min.",
+        "mode_returning": "Du hast schon eine frühere Test-Version getestet, deshalb reicht meist „Nur das Neue“.",
+        "mode_update_note": "Dazu kommen jeweils ein paar kurze Update-Tests, sobald die nächste Test-Version erscheint.",
+        "mode_label": "Umfang",
+        "profi_chapter": "Für Profis (optional)",
         "chapters_btn": "Kapitel", "chapters_title": "Zu einem Kapitel springen",
         "chapters_hint": "Übersprungene Tests bleiben offen. Du kannst jederzeit hierher zurück und sie nachholen.",
         "tip": "Tipp: Klick einen Schritt an, wenn du ihn erledigt hast.",
@@ -191,6 +204,15 @@ ASSISTANT_TEXT = {
         "start": "Let's go", "resume": "Continue",
         "prep": "Preparation", "install": "Install the app", "prep_done": "Done, next",
         "test_of": "Test {n} of {total}", "all_done": "All tests done",
+        "mode_q": "How much time do you have?",
+        "modes": {"new": ["Just what's new", "The tests for this test version and the update."],
+                  "short": ["Short test", "Setup, basics, what's new and the update."],
+                  "full": ["Full test", "Everything, with optional expert tests at the end."]},
+        "mode_meta": "{n} tests · about {min} min",
+        "mode_returning": "You already tested an earlier test version, so \"Just what's new\" is usually enough.",
+        "mode_update_note": "Each option also has a few short update tests once the next test version is out.",
+        "mode_label": "Scope",
+        "profi_chapter": "For experts (optional)",
         "chapters_btn": "Chapters", "chapters_title": "Jump to a chapter",
         "chapters_hint": "Tests you jump over stay open. You can come back here at any time and do them later.",
         "tip": "Tip: click a step once you have done it.",
@@ -392,8 +414,9 @@ def fill(template, values):
 
 def platform_values(version, platform, lang="de"):
     asset_platform, ext, path_template, log_template = PLATFORM_INFO[platform]
-    datenordner = path_template.format(id=IDENTIFIER)
-    logordner = log_template.format(id=IDENTIFIER)
+    name = "<your name>" if lang == "en" else "<dein Name>"
+    datenordner = path_template.format(id=IDENTIFIER).replace("<dein Name>", name)
+    logordner = log_template.format(id=IDENTIFIER).replace("<dein Name>", name)
     paket = release_assets.asset_name(version, asset_platform, False, ext, preview=True)
     paket_step = release_assets.asset_name(version, asset_platform, True, ext, preview=True)
     return {
@@ -616,8 +639,23 @@ def build_assistant(out_dir, chapters, version, platform, lang, prep, packages):
     `prep` lists the (title, html) screens shown before the first test."""
     a = ASSISTANT_TEXT[lang]
     platform_name = PLATFORM_NAMES[platform]
+    # Scope of each test: the newest "new in" chapter is what returning testers
+    # need; setup, basics, the bug report form and the update make the short test;
+    # broken files, the lock test and log details go to an optional expert chapter.
+    newest = next((c.title for c in reversed(chapters) if NEW_CHAPTER_RE.search(c.title)), None)
+
+    def level(c, s):
+        if c.title == newest or s.id.startswith("U"):
+            return "new"
+        if s.id in EXPERT_TESTS:
+            return "expert"
+        if s.id[0] in "EG" or s.id in ("F1", "F2"):
+            return "short"
+        return "full"
+
     tests = [
-        {"id": s.id, "chapter": c.title, "title": _markdown_inline(s.title),
+        {"id": s.id, "chapter": a["profi_chapter"] if level(c, s) == "expert" else c.title, "level": level(c, s),
+         "title": _markdown_inline(s.title),
          "steps": [{"t": _markdown_inline(step),
                     "img": s.step_images[i][0] if i in s.step_images else "",
                     "cap": _markdown_inline(s.step_images[i][1]) if i in s.step_images else ""}
@@ -627,6 +665,11 @@ def build_assistant(out_dir, chapters, version, platform, lang, prep, packages):
          "resultCap": _markdown_inline(s.result_image[1]) if s.result_image else "", "variant": s.variant}
         for c in chapters for s in c.scenarios
     ]
+    # Expert tests move to their own chapter just before the update tests.
+    expert = [t for t in tests if t["level"] == "expert"]
+    rest = [t for t in tests if t["level"] != "expert"]
+    first_update = next((i for i, t in enumerate(rest) if t["id"].startswith("U")), len(rest))
+    tests = rest[:first_update] + expert + rest[first_update:]
     # The variant is asked at the start and the time is recorded, so the sheet's
     # "App-Variante" and "Datum" fields are left out here.
     variant_field, date_field = LANGS[lang]["fields"]["common"][0], LANGS[lang]["fields"]["common"][1]
@@ -915,6 +958,11 @@ table{width:100%;border-collapse:collapse;font-size:15px}td{padding:8px 6px;bord
 .tag{font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px;white-space:nowrap}
 .t-ok{background:var(--ok-soft);color:var(--ok)}.t-bad{background:var(--bad-soft);color:var(--bad)}.t-skip{background:var(--skip-soft);color:var(--skip)}.t-open{background:var(--bg);color:var(--muted)}
 .variants{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media (max-width:520px){.variants{grid-template-columns:1fr}}
+.modes{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media (max-width:620px){.modes{grid-template-columns:1fr}}
+.modes button{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left}
+.modes button span{font-weight:400;font-size:14px;color:var(--muted);line-height:1.35}
+.modes button em{font-style:normal;font-size:13px;color:var(--accent);font-variant-numeric:tabular-nums}
+.modes button.sel{border-color:var(--accent);background:var(--accent-soft)}
 .variants button.sel{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
 .fields{display:grid;gap:10px}.fields label{font-size:14px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
 .saved{color:var(--ok);font-weight:600}
@@ -938,12 +986,23 @@ T.intro = T.intro.map(x => [x[0], x[1].split("{email}").join(D.email)]);
 // One of the website's mascots (figuren.js), picked at random like on 3mfkatalog.de.
 const FIGURE = window.MMKFiguren ? window.MMKFiguren.random() : null;
 const mascot = pose => FIGURE ? '<span class="pose-' + pose + '">' + window.MMKFiguren.svg(FIGURE, pose) + '</span>' : '';
-const fresh = () => ({ started:false, prepDone:false, prepStep:0, index:0, results:{}, done:{}, device:{}, variant:"", secs:{}, shown:null });
+const fresh = () => ({ started:false, prepDone:false, prepStep:0, index:0, results:{}, done:{}, device:{}, variant:"", mode:"", secs:{}, shown:null });
 let state = Object.assign(fresh(), load() || {});
+if (!state.mode && !state.started && returningTester()) state.mode = "new";
 if (state.variant && !D.packages[state.variant]) state.variant = "";
 let TESTS = [];
 // Tests for the other download variant are left out (and listed as not applicable).
-function applyVariant(){ TESTS = D.tests.filter(t => !t.variant || t.variant === state.variant); }
+const IN_MODE = { new:["new"], short:["new","short"], full:["new","short","full","expert"] };
+const inMode = (t, mode) => (IN_MODE[mode] || IN_MODE.full).includes(t.level);
+function applyVariant(){ TESTS = D.tests.filter(t => (!t.variant || t.variant === state.variant) && inMode(t, state.mode)); }
+// A tester who already has progress stored for another test version is a returning tester.
+function returningTester(){
+  try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith("3mf-testassistent-") && k !== D.storageKey) return true; } } catch (e) {}
+  return false;
+}
+// Update tests (U…) only happen once the next test version is out, so they are
+// left out of the count and time shown when choosing the scope.
+const modeCount = m => D.tests.filter(t => !t.id.startsWith("U") && (!t.variant || t.variant === (state.variant || "standard")) && inMode(t, m)).length;
 applyVariant();
 const MAX_MS = 30 * 60 * 1000;
 // Time on the current test, capped so a break or an open laptop overnight doesn't count.
@@ -1014,10 +1073,15 @@ function renderStart(){
   view.innerHTML = '<section class="card"><div class="hero">' + mascot("point") + '<div><div class="eyebrow">' + esc(T.eyebrow) + '</div><h1>' + esc(T.hello) + '</h1>'
     + '<p>' + esc(T.sub) + '</p><span class="chip">' + esc(D.version) + ' · ' + esc(D.platform) + '</span></div></div>'
     + '<div class="tiles">' + T.intro.map(x => '<div class="tile"><b>' + esc(x[0]) + '</b><span>' + esc(x[1]) + '</span></div>').join("") + '</div>'
+    + '<div class="section"><p class="q">' + esc(T.mode_q) + '</p>'
+    + (returningTester() ? '<div class="tip" style="margin-top:0">' + esc(T.mode_returning) + '</div>' : '')
+    + '<div class="modes">' + ["new", "short", "full"].map(m => '<button data-m="' + m + '" class="' + (state.mode === m ? "sel" : "") + '"><b>' + esc(T.modes[m][0]) + '</b><span>' + esc(T.modes[m][1]) + '</span><em>'
+        + esc(T.mode_meta.replace("{n}", modeCount(m)).replace("{min}", Math.max(5, Math.round(modeCount(m) * 3.5 / 5) * 5))) + '</em></button>').join("") + '</div><div class="tip" style="margin-top:0">' + esc(T.mode_update_note) + '</div></div>'
     + '<div class="section"><p class="q">' + esc(T.variant_q) + '</p><div class="variants">' + D.variants.choices.map(c => '<button data-v="' + c.key + '" class="' + (state.variant === c.key ? "sel" : "") + '"' + (D.packages[c.key] ? '' : ' disabled') + '>' + esc(c.label) + '</button>').join("") + '</div>'
     + '<div class="tip" style="margin-top:0">' + esc(T.variant_hint) + (D.packages.step ? '' : ' ' + esc(T.no_step)) + '</div>'
-    + '<button class="primary" id="go"' + (state.variant ? '' : ' disabled') + '>' + esc(resume ? T.resume : T.start) + '</button></div></section>';
+    + '<button class="primary" id="go"' + (state.variant && state.mode ? '' : ' disabled') + '>' + esc(resume ? T.resume : T.start) + '</button></div></section>';
   view.querySelectorAll(".variants button").forEach(b => b.onclick = () => { state.variant = b.dataset.v; applyVariant(); if (state.index > TESTS.length) state.index = TESTS.length; save(); renderStart(); });
+  view.querySelectorAll(".modes button").forEach(b => b.onclick = () => { state.mode = b.dataset.m; applyVariant(); if (state.index > TESTS.length) state.index = TESTS.length; save(); renderStart(); });
   document.getElementById("go").onclick = () => { state.started = true; save(); render(); };
 }
 function renderPrep(){
@@ -1110,6 +1174,7 @@ function plain(h){ const d = document.createElement("div"); d.innerHTML = h; ret
 function resultText(){
   const lines = [D.title, T.result_head + " · " + new Date().toLocaleString(), T.time_total.replace("{min}", mins(totalMs())), ""];
   lines.push(D.variants.label + ": " + variantLabel());
+  if (state.mode) lines.push(T.mode_label + ": " + T.modes[state.mode][0]);
   D.fields.forEach((f, i) => { const v = (state.device[i] || "").trim(); if (v) lines.push(f.label + ": " + v); });
   lines.push("");
   D.tests.forEach(t => {
