@@ -40,6 +40,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- 3D preview: on systems without WebGL (for example virtual machines without graphics acceleration, some remote desktop sessions or blocked graphics drivers) the app no longer shows only "Something went wrong" after an import, also not after reloading. The preview now says "Preview unavailable" and everything else keeps working. Found in a macOS test VM.
 - Windows: the app now also starts on a freshly installed Windows. Since v0.13.0 it needed the Microsoft Visual C++ runtime (msvcp140.dll), which only exists if another program installed it; the runtime files now ship with the app.
 - Windows: "Report a bug" and other links now open in the browser. Before, some Windows systems opened the "Documents" folder in Explorer instead.
 - Extracting an archive whose models are all already in the catalog no longer leaves a folder on disk. Before, every retry created another "Name (2)", "Name (3)" folder; the archive is kept.
@@ -481,6 +482,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Fixed
 
+- 3D-Vorschau: Auf Systemen ohne WebGL (zum Beispiel virtuelle Maschinen ohne Grafikbeschleunigung, manche Remote-Desktop-Sitzungen oder gesperrte Grafiktreiber) zeigt die App nach einem Import nicht mehr nur „Etwas ist schiefgelaufen“, auch nicht nach dem Neuladen. Die Vorschau meldet jetzt „Vorschau nicht verfügbar“, alles andere funktioniert weiter. Gefunden in einer macOS-Test-VM.
 - Windows: Die App startet jetzt auch auf einem frisch installierten Windows. Seit v0.13.0 brauchte sie die Microsoft Visual C++ Laufzeit (msvcp140.dll), die nur vorhanden ist, wenn ein anderes Programm sie installiert hat; die Laufzeit-Dateien werden jetzt mitgeliefert.
 - Windows: „Fehler melden“ und andere Links öffnen jetzt im Browser. Vorher öffnete sich auf manchen Windows-Systemen stattdessen der Ordner „Dokumente“ im Explorer.
 - Beim Entpacken eines Archivs, dessen Modelle alle schon im Katalog sind, bleibt kein Ordner mehr auf der Festplatte zurück. Vorher legte jeder weitere Versuch einen neuen Ordner „Name (2)“, „Name (3)“ an; das Archiv bleibt erhalten.
