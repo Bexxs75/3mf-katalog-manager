@@ -10,6 +10,13 @@ to sending the result file to testing@3mfkatalog.de. The PDF guide and the
 result sheet described below can still be built locally but are no longer
 published.
 
+**Silent test versions:** for a small fix, run preview.yml by hand with
+`publish` switched off. It builds every installer as usual but leaves the
+`preview` release alone: testers keep the current test version and get no
+update. The installers stay as run artifacts (`gh run download <run id>`) for
+testing in our own VMs; the fix reaches testers with the next published test
+version. The scenario file for the silent version is still required.
+
 `tools/testanleitung.py` builds a test guide (HTML, optionally PDF) and a
 result sheet (.xlsx) per platform and language (German, English) for a preview
 version, from:

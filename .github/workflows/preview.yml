@@ -16,6 +16,10 @@ on:
         description: "Also build the STEP variants"
         type: boolean
         default: false
+      publish:
+        description: "Publish to the preview channel (off: build only, files stay as run artifacts for testing in own VMs; testers get no update)"
+        type: boolean
+        default: true
   push:
     tags: ["preview-*"]
 
@@ -106,7 +110,7 @@ jobs:
 
   publish:
     needs: [params, windows, macos, linux, windows-step, macos-step, linux-step]
-    if: ${{ !failure() && !cancelled() }}
+    if: ${{ !failure() && !cancelled() && (github.event_name == 'push' || inputs.publish) }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
