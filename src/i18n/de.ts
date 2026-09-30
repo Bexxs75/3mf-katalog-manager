@@ -390,6 +390,7 @@ export const de: Translations = {
   settingsTabInfo: 'Info',
   infoAppVersionLabel: 'Version {version}',
   infoUpToDateLabel: 'Du hast die aktuelle Version.',
+  infoUpdateCheckFailed: 'Update-Prüfung nicht möglich. Bitte Internetverbindung oder Firewall prüfen.',
   infoCheckForUpdateButton: 'Erneut nach Updates suchen',
   infoCheckingForUpdate: 'Suche läuft…',
   infoSourceCodeLabel: 'Quellcode',

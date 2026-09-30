@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 
 use rusqlite::{params, Connection, OptionalExtension};
 
@@ -123,6 +123,27 @@ pub fn attach_folder_to_parent_by_path(conn: &Connection, dir: &Path) -> Result<
            AND EXISTS (SELECT 1 FROM folders WHERE path = ?2)",
         params![dir.to_string_lossy().to_string(), parent.to_string_lossy().to_string()],
     )?;
+    Ok(())
+}
+
+/// Highest folder id in use. Ids are AUTOINCREMENT, so every row inserted
+/// afterwards has a larger id.
+pub fn max_folder_id(conn: &Connection) -> Result<i64, DbError> {
+    Ok(conn.query_row("SELECT COALESCE(MAX(id), 0) FROM folders", [], |r| r.get(0))?)
+}
+
+/// Drops the catalog rows of the given folders, but only rows inserted after
+/// `known_max_id` and without files. Used when an extraction is undone because
+/// nothing new reached the catalog: an older row for the same path (e.g. a
+/// folder deleted outside the app) and its subfolders must stay.
+pub fn remove_new_folder_rows(conn: &Connection, dirs: &[PathBuf], known_max_id: i64) -> Result<(), DbError> {
+    for dir in dirs.iter().rev() {
+        conn.execute(
+            "DELETE FROM folders WHERE path = ?1 AND id > ?2
+               AND NOT EXISTS (SELECT 1 FROM files WHERE files.folder_id = folders.id)",
+            params![dir.to_string_lossy().to_string(), known_max_id],
+        )?;
+    }
     Ok(())
 }
 

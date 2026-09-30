@@ -28,7 +28,7 @@ fn validate_release_url(url: &str) -> Result<(), String> {
     }
 }
 
-/// Opens a URL or folder with the system default handler.
+/// Opens a folder in the system file manager.
 pub(crate) fn open_external(target: &str) -> CmdResult<()> {
     #[cfg(target_os = "linux")]
     let mut cmd = std::process::Command::new("xdg-open");
@@ -37,6 +37,29 @@ pub(crate) fn open_external(target: &str) -> CmdResult<()> {
     #[cfg(target_os = "windows")]
     let mut cmd = std::process::Command::new("explorer");
     cmd.arg(target).spawn().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Program and arguments that open `url` in the default browser. On Windows,
+/// `explorer <url>` is unreliable: a tester's explorer opened "Documents"
+/// instead of the browser for our form URL with `?…&…`. The URL protocol
+/// handler behind `rundll32 url.dll,FileProtocolHandler` goes through the
+/// shell's normal "open this link" path and takes the URL as one argument.
+fn url_opener(os: &str, url: &str) -> (&'static str, Vec<String>) {
+    match os {
+        "windows" => ("rundll32", vec!["url.dll,FileProtocolHandler".to_string(), url.to_string()]),
+        "macos" => ("open", vec![url.to_string()]),
+        _ => ("xdg-open", vec![url.to_string()]),
+    }
+}
+
+/// Opens an http(s) URL in the default browser.
+pub(crate) fn open_url(url: &str) -> CmdResult<()> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err(CmdError::expected("Nur Web-Adressen können im Browser geöffnet werden"));
+    }
+    let (program, args) = url_opener(crate::diagnostics::form_url::current_os(), url);
+    std::process::Command::new(program).args(args).spawn().map_err(|e| e.to_string())?;
     Ok(())
 }
 /// Own version immediately and without network, so the UI doesn't wait on `check_app_update`.
@@ -62,19 +85,19 @@ pub fn has_step_preview() -> bool {
 // the two fixed download URLs.
 #[tauri::command]
 pub fn open_step_download(lang: String) -> CmdResult<()> {
-    open_external(step_download_url(&lang))
+    open_url(step_download_url(&lang))
 }
 
 #[tauri::command]
 pub fn open_release_url(url: String) -> CmdResult<()> {
     validate_release_url(&url)?;
-    open_external(&url)
+    open_url(&url)
 }
 
 // No URL from the frontend: the Discord link is static.
 #[tauri::command]
 pub fn open_discord_invite() -> CmdResult<()> {
-    open_external(DISCORD_INVITE_URL)
+    open_url(DISCORD_INVITE_URL)
 }
 
 #[cfg(test)]
@@ -111,6 +134,32 @@ mod update_command_tests {
     fn accepts_the_repo_root_url_with_and_without_trailing_slash() {
         assert!(validate_release_url("https://github.com/Bexxs75/3mf-katalog-manager").is_ok());
         assert!(validate_release_url("https://github.com/Bexxs75/3mf-katalog-manager/").is_ok());
+    }
+}
+
+#[cfg(test)]
+mod url_opener_tests {
+    use super::*;
+
+    const FORM: &str = "https://3mfkatalog.de/fehler-melden.html?version=0.15.0-10&os=windows&log=1";
+
+    #[test]
+    fn windows_uses_the_url_protocol_handler_not_explorer() {
+        let (program, args) = url_opener("windows", FORM);
+        assert_eq!(program, "rundll32");
+        assert_eq!(args, vec!["url.dll,FileProtocolHandler".to_string(), FORM.to_string()]);
+    }
+
+    #[test]
+    fn macos_and_linux_pass_the_url_unchanged() {
+        assert_eq!(url_opener("macos", FORM), ("open", vec![FORM.to_string()]));
+        assert_eq!(url_opener("linux", FORM), ("xdg-open", vec![FORM.to_string()]));
+    }
+
+    #[test]
+    fn only_web_addresses_are_opened_as_urls() {
+        assert!(open_url("file:///C:/Windows").is_err());
+        assert!(open_url("C:\\Users").is_err());
     }
 }
 

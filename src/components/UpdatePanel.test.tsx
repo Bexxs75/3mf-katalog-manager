@@ -44,13 +44,19 @@ describe('UpdatePanel', () => {
   });
 
   it('shows "up to date" only once the check has answered and found nothing newer', () => {
-    renderPanel(makeView({ info: { currentVersion: '0.15.0', availableVersion: null, releaseUrl: null, canInstall: true, lastUpdate: null } }));
+    renderPanel(makeView({ info: { currentVersion: '0.15.0', availableVersion: null, releaseUrl: null, canInstall: true, lastUpdate: null, checkFailed: false } }));
     expect(screen.getByText('Du hast die aktuelle Version.')).toBeInTheDocument();
+  });
+
+  it('says the check failed instead of "up to date" when it could not reach the server', () => {
+    renderPanel(makeView({ info: { currentVersion: '0.15.0', availableVersion: null, releaseUrl: null, canInstall: true, lastUpdate: null, checkFailed: true } }));
+    expect(screen.getByText('Update-Prüfung nicht möglich. Bitte Internetverbindung oder Firewall prüfen.')).toBeInTheDocument();
+    expect(screen.queryByText('Du hast die aktuelle Version.')).not.toBeInTheDocument();
   });
 
   it('available box shows only the title and actions, no body text (matches the mockup)', () => {
     const view = makeView({
-      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: 'https://example.com', canInstall: true, lastUpdate: null },
+      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: 'https://example.com', canInstall: true, lastUpdate: null, checkFailed: false },
     });
     renderPanel(view);
     expect(screen.getByText('Version 0.15.1 ist verfügbar')).toBeInTheDocument();
@@ -61,7 +67,7 @@ describe('UpdatePanel', () => {
 
   it('canInstall = false shows "Zur Download-Seite" instead of the install button', () => {
     const view = makeView({
-      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: 'https://example.com', canInstall: false, lastUpdate: null },
+      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: 'https://example.com', canInstall: false, lastUpdate: null, checkFailed: false },
     });
     renderPanel(view);
     expect(screen.queryByText('Jetzt aktualisieren')).not.toBeInTheDocument();
@@ -71,7 +77,7 @@ describe('UpdatePanel', () => {
   it('shows download progress inline while downloading', () => {
     const view = makeView({
       phase: 'downloading',
-      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null },
+      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null, checkFailed: false },
       progress: { downloaded: 48 * 1024 * 1024, total: 106 * 1024 * 1024 },
     });
     renderPanel(view);
@@ -82,7 +88,7 @@ describe('UpdatePanel', () => {
   it('shows "Problem melden" for an unexpected error, same as the toast', () => {
     const view = makeView({
       phase: 'error',
-      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null },
+      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null, checkFailed: false },
       error: { message: 'Sicherung fehlgeschlagen', unexpected: true },
     });
     renderPanel(view);
@@ -124,6 +130,7 @@ describe('UpdatePanel', () => {
           releaseUrl: null,
           canInstall: true,
           lastUpdate: { version: '0.15.1', date: '2026-10-03', backupFile: 'catalog-vor-0.15.1.db' },
+          checkFailed: false,
         },
       }),
     );
@@ -133,14 +140,14 @@ describe('UpdatePanel', () => {
   });
 
   it('shows no last-update line when there is none', () => {
-    renderPanel(makeView({ info: { currentVersion: '0.15.0', availableVersion: null, releaseUrl: null, canInstall: true, lastUpdate: null } }));
+    renderPanel(makeView({ info: { currentVersion: '0.15.0', availableVersion: null, releaseUrl: null, canInstall: true, lastUpdate: null, checkFailed: false } }));
     expect(screen.queryByText(/Sicherung:/)).not.toBeInTheDocument();
   });
 
   it('shows the preview note as the first line of the update box on a preview build', () => {
     const view = makeView({
       preview: true,
-      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: 'https://example.com', canInstall: true, lastUpdate: null },
+      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: 'https://example.com', canInstall: true, lastUpdate: null, checkFailed: false },
     });
     renderPanel(view);
     expect(screen.getByText('Test-Version – eigener Katalog, getrennt von deiner normalen App.')).toBeInTheDocument();
@@ -149,7 +156,7 @@ describe('UpdatePanel', () => {
   it('shows the preview note even with no update pending (up to date / checking)', () => {
     const view = makeView({
       preview: true,
-      info: { currentVersion: '0.15.0', availableVersion: null, releaseUrl: null, canInstall: true, lastUpdate: null },
+      info: { currentVersion: '0.15.0', availableVersion: null, releaseUrl: null, canInstall: true, lastUpdate: null, checkFailed: false },
     });
     renderPanel(view);
     expect(screen.getByText('Test-Version – eigener Katalog, getrennt von deiner normalen App.')).toBeInTheDocument();
@@ -158,7 +165,7 @@ describe('UpdatePanel', () => {
   it('shows no preview note on a normal build', () => {
     const view = makeView({
       preview: false,
-      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: 'https://example.com', canInstall: true, lastUpdate: null },
+      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: 'https://example.com', canInstall: true, lastUpdate: null, checkFailed: false },
     });
     renderPanel(view);
     expect(

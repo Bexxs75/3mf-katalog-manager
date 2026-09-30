@@ -40,6 +40,9 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- Windows: "Report a bug" and other links now open in the browser. Before, some Windows systems opened the "Documents" folder in Explorer instead.
+- Extracting an archive whose models are all already in the catalog no longer leaves a folder on disk. Before, every retry created another "Name (2)", "Name (3)" folder; the archive is kept.
+- When the update check fails (offline, firewall), the Info tab now says so instead of claiming the latest version is installed.
 - Exporting the catalog no longer freezes the app. The copy of the catalog paused a quarter of a second after every few database pages while the rest of the app waited for it; a catalog with around 120 preview images took about a minute and a half, during which the window stopped responding (macOS: spinning beachball). The export now takes a moment. Found through a tester report of a freeze on macOS.
 - macOS: Apple Silicon Macs no longer report the downloaded app as "damaged" and refuse to open it (right-click → "Open" didn't help either). The app is now signed ad hoc during the build; the first start still shows the usual warning for apps from the internet. The DMGs of v0.14.0 were already replaced with fixed builds on 2026-09-27. Reported by a tester.
 - macOS: the variant with STEP preview no longer fails to start on newer macOS versions (reported on Sequoia 15.7) with "Library missing … libtbb". Two bundled libraries (libtbb, libtbbmalloc) listed their search path twice, and macOS refuses to load such a library. The build now removes the duplicate and stops if one is left. The standard variant was not affected. Reported in a forum.
@@ -477,6 +480,9 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Fixed
 
+- Windows: „Fehler melden“ und andere Links öffnen jetzt im Browser. Vorher öffnete sich auf manchen Windows-Systemen stattdessen der Ordner „Dokumente“ im Explorer.
+- Beim Entpacken eines Archivs, dessen Modelle alle schon im Katalog sind, bleibt kein Ordner mehr auf der Festplatte zurück. Vorher legte jeder weitere Versuch einen neuen Ordner „Name (2)“, „Name (3)“ an; das Archiv bleibt erhalten.
+- Schlägt die Update-Prüfung fehl (offline, Firewall), sagt der Info-Reiter das jetzt, statt zu behaupten, die aktuelle Version sei installiert.
 - Den Katalog zu exportieren friert die App nicht mehr ein. Die Kopie des Katalogs machte nach jeweils wenigen Datenbankseiten eine Viertelsekunde Pause, während der Rest der App darauf wartete; ein Katalog mit rund 120 Vorschaubildern brauchte so etwa anderthalb Minuten, in denen das Fenster nicht reagierte (macOS: Beachball). Der Export dauert jetzt nur noch einen Moment. Gefunden über die Meldung einer Testerin zu einem Einfrieren unter macOS.
 - macOS: Apple-Silicon-Macs melden die heruntergeladene App nicht mehr als „beschädigt“ und verweigern das Öffnen (auch Rechtsklick → „Öffnen“ half nicht). Die App wird jetzt beim Build ad hoc signiert; beim ersten Start kommt weiterhin die übliche Warnung für Apps aus dem Internet. Die DMGs von v0.14.0 wurden bereits am 27.09.2026 durch korrigierte Builds ersetzt. Von einem Tester gemeldet.
 - macOS: Die Variante mit STEP-Vorschau startet auf neueren macOS-Versionen (gemeldet auf Sequoia 15.7) wieder, statt mit „Library missing … libtbb“ abzubrechen. Zwei mitgelieferte Bibliotheken (libtbb, libtbbmalloc) enthielten ihren Suchpfad doppelt, und macOS lädt eine solche Bibliothek nicht. Der Build entfernt den doppelten Eintrag jetzt und bricht ab, falls doch einer übrig bleibt. Die Standard-Variante war nicht betroffen. In einem Forum gemeldet.

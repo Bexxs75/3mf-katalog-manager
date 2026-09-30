@@ -12,6 +12,8 @@ export interface UpdateInfo {
   releaseUrl: string | null;
   canInstall: boolean;
   lastUpdate: LastUpdate | null;
+  /** The check itself failed (offline, firewall, ...). */
+  checkFailed: boolean;
 }
 
 export interface DownloadProgress {

@@ -2735,7 +2735,7 @@ mod tests {
         }
         let mut conn = crate::db::connect_in_memory().unwrap();
         conn.execute_batch(sql).unwrap();
-        let result = super::super::archives::import_extracted_dir(&mut conn, &tmp);
+        let result = super::super::archives::import_extracted_dir(&mut conn, &tmp, &[]);
         assert!(result.is_err(), "archive import must fail");
         assert!(result.unwrap_err().to_string().contains(expected_error));
         assert!(db::list_files(&conn).unwrap().is_empty());

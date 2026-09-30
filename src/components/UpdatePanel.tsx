@@ -49,7 +49,9 @@ export function UpdatePanel({ view }: { view: UpdaterView }) {
           // (info !== null); before that, just the version is shown.
           view.info && (
             <>
-              <div className="mt-2 font-mono-ui text-[10.5px] text-[var(--ink-3)]">{t('infoUpToDateLabel')}</div>
+              <div className="mt-2 font-mono-ui text-[10.5px] text-[var(--ink-3)]">
+                {view.info.checkFailed ? t('infoUpdateCheckFailed') : t('infoUpToDateLabel')}
+              </div>
               {view.info.lastUpdate && (
                 <div className="mt-1 font-mono-ui text-[10.5px] text-[var(--ink-3)]">
                   {t('updateLastInfo')

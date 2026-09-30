@@ -390,6 +390,7 @@ export const es: Translations = {
   settingsTabInfo: 'Información',
   infoAppVersionLabel: 'Versión {version}',
   infoUpToDateLabel: 'Tienes la versión más reciente.',
+  infoUpdateCheckFailed: 'No se pudo buscar actualizaciones. Revisa tu conexión a internet o el cortafuegos.',
   infoCheckForUpdateButton: 'Buscar actualizaciones de nuevo',
   infoCheckingForUpdate: 'Buscando…',
   infoSourceCodeLabel: 'Código fuente',

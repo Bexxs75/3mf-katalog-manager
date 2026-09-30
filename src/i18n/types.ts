@@ -412,6 +412,7 @@ export interface Translations {
   settingsTabInfo: string;
   infoAppVersionLabel: string;
   infoUpToDateLabel: string;
+  infoUpdateCheckFailed: string;
   infoCheckForUpdateButton: string;
   infoCheckingForUpdate: string;
   infoSourceCodeLabel: string;

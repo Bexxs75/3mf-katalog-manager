@@ -23,6 +23,7 @@ function mockInfo(overrides: Partial<api.UpdateInfo> = {}): api.UpdateInfo {
     releaseUrl: null,
     canInstall: true,
     lastUpdate: null,
+    checkFailed: false,
     ...overrides,
   };
 }

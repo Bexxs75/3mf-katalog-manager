@@ -23,6 +23,9 @@ pub struct UpdateInfoDto {
     pub release_url: Option<String>,
     pub can_install: bool,
     pub last_update: Option<LastUpdateInfo>,
+    /// The check itself failed (offline, firewall, ...). The start-up toast stays
+    /// silent about it, but the Info tab must not claim "up to date".
+    pub check_failed: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -74,23 +77,23 @@ pub async fn check_app_update(app: tauri::AppHandle, state: State<'_, AppState>)
             .flatten()
             .and_then(|raw| serde_json::from_str::<LastUpdateInfo>(&raw).ok())
     };
-    let available = match fetch_update(&app).await {
+    let (available, check_failed) = match fetch_update(&app).await {
         Ok(Some(u)) => {
             log::info!(target: "update", "Update-Check: installiert {current}, verfügbar {}", u.version);
-            Some(u.version)
+            (Some(u.version), false)
         }
         Ok(None) => {
             log::info!(target: "update", "Update-Check: {current} ist aktuell");
-            None
+            (None, false)
         }
-        // No visible error for the check itself: offline users should not be bothered.
+        // No toast for the check itself: offline users should not be bothered.
         Err(e) if is_transport_error(&e) => {
             log::info!(target: "update", "Update-Check nicht möglich: {e}");
-            None
+            (None, true)
         }
         Err(e) => {
             log::warn!(target: "update", "Update-Check nicht möglich: {e}");
-            None
+            (None, true)
         }
     };
     Ok(UpdateInfoDto {
@@ -99,6 +102,7 @@ pub async fn check_app_update(app: tauri::AppHandle, state: State<'_, AppState>)
         available_version: available,
         can_install: updater::can_self_install(current_os(), std::env::var("APPIMAGE").ok().as_deref()),
         last_update: updater::visible_last_update(stored, current),
+        check_failed,
     })
 }
 
@@ -195,6 +199,7 @@ mod tests {
             release_url: Some("https://example.com".into()),
             can_install: true,
             last_update: None,
+            check_failed: false,
         };
         let json = serde_json::to_value(&dto).unwrap();
         let obj = json.as_object().unwrap();
@@ -203,6 +208,7 @@ mod tests {
         assert!(obj.contains_key("releaseUrl"));
         assert!(obj.contains_key("canInstall"));
         assert!(obj.contains_key("lastUpdate"));
+        assert!(obj.contains_key("checkFailed"));
     }
 
     #[test]

@@ -51,7 +51,7 @@ describe('UpdateToast', () => {
   it('renders nothing when the available update was dismissed', () => {
     const { container } = renderToast(
       makeView({
-        info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null },
+        info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null, checkFailed: false },
         dismissed: true,
       }),
     );
@@ -60,7 +60,7 @@ describe('UpdateToast', () => {
 
   it('available state: shows title, body and calls startUpdate/openNotes/dismiss', () => {
     const view = makeView({
-      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: 'https://example.com', canInstall: true, lastUpdate: null },
+      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: 'https://example.com', canInstall: true, lastUpdate: null, checkFailed: false },
     });
     renderToast(view);
     expect(screen.getByText('Version 0.15.1 ist verfügbar')).toBeInTheDocument();
@@ -82,7 +82,7 @@ describe('UpdateToast', () => {
 
   it('available state without canInstall: primary button goes to the download page', () => {
     const view = makeView({
-      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: 'https://example.com', canInstall: false, lastUpdate: null },
+      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: 'https://example.com', canInstall: false, lastUpdate: null, checkFailed: false },
     });
     renderToast(view);
     expect(screen.queryByText('Jetzt aktualisieren')).not.toBeInTheDocument();
@@ -92,7 +92,7 @@ describe('UpdateToast', () => {
 
   it('available state without canInstall: a failed openNotes shows the error and "Problem melden"', () => {
     const view = makeView({
-      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: 'https://example.com', canInstall: false, lastUpdate: null },
+      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: 'https://example.com', canInstall: false, lastUpdate: null, checkFailed: false },
       notesError: { message: 'Konnte die Seite nicht öffnen', unexpected: true },
     });
     renderToast(view);
@@ -103,7 +103,7 @@ describe('UpdateToast', () => {
   it('downloading state: shows progress with a rounded percentage and MB values', () => {
     const view = makeView({
       phase: 'downloading',
-      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null },
+      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null, checkFailed: false },
       progress: { downloaded: 48 * 1024 * 1024, total: 106 * 1024 * 1024 },
     });
     renderToast(view);
@@ -117,7 +117,7 @@ describe('UpdateToast', () => {
   it('downloading state with unknown total: shows only the downloaded MB and an indeterminate bar', () => {
     const view = makeView({
       phase: 'downloading',
-      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null },
+      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null, checkFailed: false },
       progress: { downloaded: 5 * 1024 * 1024, total: null },
     });
     renderToast(view);
@@ -129,7 +129,7 @@ describe('UpdateToast', () => {
   it('ready state: restart-and-install calls install, later calls later', () => {
     const view = makeView({
       phase: 'ready',
-      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null },
+      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null, checkFailed: false },
     });
     renderToast(view);
     expect(screen.getByText('Update 0.15.1 ist bereit')).toBeInTheDocument();
@@ -144,7 +144,7 @@ describe('UpdateToast', () => {
   it('installing state: shows the backup file path', () => {
     const view = makeView({
       phase: 'installing',
-      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null },
+      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null, checkFailed: false },
     });
     renderToast(view);
     expect(screen.getByText('Katalog wird gesichert …')).toBeInTheDocument();
@@ -154,7 +154,7 @@ describe('UpdateToast', () => {
   it('error state: shows the error message, "Problem melden" for an unexpected error, and retry calls view.retry (not startUpdate)', () => {
     const view = makeView({
       phase: 'error',
-      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null },
+      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null, checkFailed: false },
       error: { message: 'Sicherung fehlgeschlagen', unexpected: true },
     });
     renderToast(view);
@@ -176,7 +176,7 @@ describe('UpdateToast', () => {
       const [dismissed, setDismissed] = useState(false);
       const view = makeView({
         phase: 'error',
-        info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null },
+        info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null, checkFailed: false },
         error: { message: 'Sicherung fehlgeschlagen', unexpected: true },
         dismissed,
         dismiss: () => setDismissed(true),
@@ -197,7 +197,7 @@ describe('UpdateToast', () => {
   it('dismissing the error toast discards the pending update so it does not linger in memory', async () => {
     const view = makeView({
       phase: 'error',
-      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null },
+      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null, checkFailed: false },
       error: { message: 'Sicherung fehlgeschlagen', unexpected: true },
     });
     renderToast(view);
@@ -212,7 +212,7 @@ describe('UpdateToast', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const view = makeView({
       phase: 'error',
-      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null },
+      info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null, checkFailed: false },
       error: { message: 'Sicherung fehlgeschlagen', unexpected: true },
     });
     renderToast(view);

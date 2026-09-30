@@ -219,7 +219,7 @@ pub fn open_data_folder(app: tauri::AppHandle) -> CmdResult<()> {
 #[tauri::command]
 pub fn open_bug_report_form(lang: String, with_log: bool) -> CmdResult<()> {
     let url = form_url::bug_report_url(&lang, env!("CARGO_PKG_VERSION"), form_url::current_os(), with_log);
-    super::security::open_external(&url)
+    super::security::open_url(&url)
 }
 
 #[cfg(test)]
