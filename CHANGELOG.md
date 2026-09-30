@@ -40,6 +40,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- Selection bar: in narrow windows (e.g. with 125 % display scaling) the buttons now wrap onto a second row. Before, "Remove from catalog" and "Delete" were hidden under the details panel and could not be clicked. Escape now also closes the "Add tag", "Remove tag" and collection menus of the bar; before, a stray click after trying to close the menu could remove a tag. Found in the Windows test.
 - 3D preview: on systems without WebGL (for example virtual machines without graphics acceleration, some remote desktop sessions or blocked graphics drivers) the app no longer shows only "Something went wrong" after an import, also not after reloading. The preview now says "Preview unavailable" and everything else keeps working. Found in a macOS test VM.
 - Windows: the app now also starts on a freshly installed Windows. Since v0.13.0 it needed the Microsoft Visual C++ runtime (msvcp140.dll), which only exists if another program installed it; the runtime files now ship with the app.
 - Windows: "Report a bug" and other links now open in the browser. Before, some Windows systems opened the "Documents" folder in Explorer instead.
@@ -482,6 +483,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Fixed
 
+- Auswahlleiste: In schmalen Fenstern (z. B. mit 125 % Anzeigeskalierung) brechen die Knöpfe jetzt in eine zweite Zeile um. Vorher lagen „Aus Katalog entfernen“ und „Löschen“ unter dem Detailbereich und waren nicht erreichbar. Escape schließt jetzt auch die Menüs „Tag hinzufügen“, „Tag entfernen“ und „Zu Sammlung hinzufügen“; vorher konnte ein weiterer Klick nach dem Schließversuch ungewollt ein Tag entfernen. Gefunden im Windows-Test.
 - 3D-Vorschau: Auf Systemen ohne WebGL (zum Beispiel virtuelle Maschinen ohne Grafikbeschleunigung, manche Remote-Desktop-Sitzungen oder gesperrte Grafiktreiber) zeigt die App nach einem Import nicht mehr nur „Etwas ist schiefgelaufen“, auch nicht nach dem Neuladen. Die Vorschau meldet jetzt „Vorschau nicht verfügbar“, alles andere funktioniert weiter. Gefunden in einer macOS-Test-VM.
 - Windows: Die App startet jetzt auch auf einem frisch installierten Windows. Seit v0.13.0 brauchte sie die Microsoft Visual C++ Laufzeit (msvcp140.dll), die nur vorhanden ist, wenn ein anderes Programm sie installiert hat; die Laufzeit-Dateien werden jetzt mitgeliefert.
 - Windows: „Fehler melden“ und andere Links öffnen jetzt im Browser. Vorher öffnete sich auf manchen Windows-Systemen stattdessen der Ordner „Dokumente“ im Explorer.

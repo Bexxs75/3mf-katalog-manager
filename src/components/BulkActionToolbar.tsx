@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { messageOf } from '../lib/errors';
 import type { Collection } from '../types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
@@ -61,9 +61,24 @@ export function BulkActionToolbar({
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // The menus stay open until they are closed explicitly; without Escape a
+  // stray click after trying to dismiss one lands on a menu entry, e.g. removes a tag.
+  const anyMenuOpen = addToCollectionMenuOpen || addTagMenuOpen || removeTagMenuOpen;
+  useEffect(() => {
+    if (!anyMenuOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      onAddToCollectionMenuOpenChange(false);
+      onAddTagMenuOpenChange(false);
+      onRemoveTagMenuOpenChange(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [anyMenuOpen, onAddToCollectionMenuOpenChange, onAddTagMenuOpenChange, onRemoveTagMenuOpenChange]);
   const { language } = useLanguage();
   return (
-    <div className="flex-none flex items-center gap-2 px-4 py-2 border-b border-[var(--line)] bg-[var(--panel-2)]">
+    <div className="flex-none flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--line)] bg-[var(--panel-2)] [&_button]:whitespace-nowrap">
       {confirmRemove ? (
         <div className="flex flex-wrap items-center gap-2" onKeyDown={(e) => { if (e.key === 'Escape' && !busy) setConfirmRemove(false); }}>
           <span className="text-[12.5px] font-medium text-[var(--ink)]">{t('removeModelsQuestion').replace('{count}', String(selectedCount))}</span>
