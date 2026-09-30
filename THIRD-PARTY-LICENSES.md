@@ -69,6 +69,20 @@ Der vollständige Lizenztext wird im Programmpaket mitgeliefert:
 
 - `LICENSES/UnRAR.txt`
 
+## Microsoft Visual C++ Laufzeit (nur Windows)
+
+Die Windows-Pakete enthalten neben dem Programm die Dateien `msvcp140*.dll`,
+`vcruntime140*.dll` und `concrt140.dll` aus dem Microsoft Visual C++
+Redistributable. Die UnRAR-Bibliothek (und in der STEP-Variante OCCT) ist in
+C++ geschrieben und braucht sie; auf einem frisch installierten Windows fehlen
+sie sonst.
+
+- **Lizenz:** Microsoft-Software-Lizenzbedingungen für Visual Studio. Die
+  Dateien gehören zum dort ausdrücklich zur Weitergabe freigegebenen
+  „Distributable Code“ und werden unverändert zusammen mit dem Programm
+  weitergegeben.
+- **Quelle:** <https://learn.microsoft.com/cpp/windows/redistributing-visual-cpp-files>
+
 ## Schriften: Barlow und IBM Plex Mono
 
 Die Oberfläche nutzt die Schriften **Barlow** (Copyright 2017 The Barlow Project

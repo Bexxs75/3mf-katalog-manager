@@ -45,6 +45,8 @@ Production build (type checking + Vite build):
 npm run build
 ```
 
+On Windows, run `.\src-tauri\scripts\stage-vc-runtime.ps1` once before `npm run tauri dev` or `npm run tauri build`. It copies the Visual C++ runtime DLLs that the Windows bundle ships next to the app; without them the Tauri build stops with a missing-resource error.
+
 ### Running tests
 
 - **Frontend tests:** `npx vitest run` (or `npm test`, which runs the same command). Type checking alone: `npx tsc --noEmit`.
@@ -125,6 +127,8 @@ Produktions-Build (Typprüfung + Vite-Build):
 ```bash
 npm run build
 ```
+
+Unter Windows vor `npm run tauri dev` oder `npm run tauri build` einmal `.\src-tauri\scripts\stage-vc-runtime.ps1` ausführen. Das Skript kopiert die Visual-C++-Laufzeit-DLLs, die das Windows-Paket neben der App mitliefert; ohne sie bricht der Tauri-Build mit einer fehlenden Ressource ab.
 
 #### Tests ausführen
 

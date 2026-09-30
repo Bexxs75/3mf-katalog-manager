@@ -50,6 +50,12 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
 
+      # The C++ runtime ships next to the app: a fresh Windows lacks
+      # msvcp140.dll, which the RAR support needs (see the script).
+      - name: Stage VC++ runtime DLLs
+        shell: pwsh
+        run: .\src-tauri\scripts\stage-vc-runtime.ps1
+
       # The STEP preview stays off until OCCT can be packaged with verified,
       # replaceable DLLs. This way the build contains no LGPL part.
       - name: Build Tauri app (Windows MSI, without STEP preview)

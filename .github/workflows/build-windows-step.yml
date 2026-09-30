@@ -87,6 +87,12 @@ jobs:
           & "$env:RUNVCPKG_VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows --x-install-root vcpkg_installed
           if ($LASTEXITCODE -ne 0) { throw "vcpkg install failed with exit code $LASTEXITCODE" }
 
+      # The C++ runtime ships next to the app: a fresh Windows lacks
+      # msvcp140.dll, which the RAR support and the OCCT DLLs need (see the script).
+      - name: Stage VC++ runtime DLLs
+        shell: pwsh
+        run: .\src-tauri\scripts\stage-vc-runtime.ps1
+
       - name: Stage OCCT runtime DLLs
         run: |
           .\src-tauri\scripts\stage-occt-dlls.ps1 -VcpkgInstalledDir "${{ github.workspace }}\src-tauri\occt-vcpkg-manifest\vcpkg_installed\x64-windows"

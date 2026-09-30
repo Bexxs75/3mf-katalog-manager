@@ -40,6 +40,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- Windows: the app now also starts on a freshly installed Windows. Since v0.13.0 it needed the Microsoft Visual C++ runtime (msvcp140.dll), which only exists if another program installed it; the runtime files now ship with the app.
 - Windows: "Report a bug" and other links now open in the browser. Before, some Windows systems opened the "Documents" folder in Explorer instead.
 - Extracting an archive whose models are all already in the catalog no longer leaves a folder on disk. Before, every retry created another "Name (2)", "Name (3)" folder; the archive is kept.
 - When the update check fails (offline, firewall), the Info tab now says so instead of claiming the latest version is installed.
@@ -480,6 +481,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Fixed
 
+- Windows: Die App startet jetzt auch auf einem frisch installierten Windows. Seit v0.13.0 brauchte sie die Microsoft Visual C++ Laufzeit (msvcp140.dll), die nur vorhanden ist, wenn ein anderes Programm sie installiert hat; die Laufzeit-Dateien werden jetzt mitgeliefert.
 - Windows: „Fehler melden“ und andere Links öffnen jetzt im Browser. Vorher öffnete sich auf manchen Windows-Systemen stattdessen der Ordner „Dokumente“ im Explorer.
 - Beim Entpacken eines Archivs, dessen Modelle alle schon im Katalog sind, bleibt kein Ordner mehr auf der Festplatte zurück. Vorher legte jeder weitere Versuch einen neuen Ordner „Name (2)“, „Name (3)“ an; das Archiv bleibt erhalten.
 - Schlägt die Update-Prüfung fehl (offline, Firewall), sagt der Info-Reiter das jetzt, statt zu behaupten, die aktuelle Version sei installiert.
