@@ -70,13 +70,22 @@ export function BulkActionToolbar({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      // A confirmation replaces the bar's buttons, so a menu that was left open
+      // behind it is invisible; cancelling the visible confirmation comes first.
+      if (confirmRemove) {
+        if (!busy) setConfirmRemove(false);
+        return;
+      }
+      if (confirmBulkDelete) {
+        onConfirmBulkDeleteChange(false);
+        return;
+      }
       if (anyMenuOpen) {
         onAddToCollectionMenuOpenChange(false);
         onAddTagMenuOpenChange(false);
         onRemoveTagMenuOpenChange(false);
         return;
       }
-      if (confirmRemove || confirmBulkDelete) return;
       const target = e.target;
       if (target instanceof HTMLElement && (
         // Only text entry: Chromium-based WebViews focus the card checkbox on click,
@@ -88,12 +97,12 @@ export function BulkActionToolbar({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [anyMenuOpen, confirmRemove, confirmBulkDelete, onClearSelection, onAddToCollectionMenuOpenChange, onAddTagMenuOpenChange, onRemoveTagMenuOpenChange]);
+  }, [anyMenuOpen, confirmRemove, confirmBulkDelete, busy, onConfirmBulkDeleteChange, onClearSelection, onAddToCollectionMenuOpenChange, onAddTagMenuOpenChange, onRemoveTagMenuOpenChange]);
   const { language } = useLanguage();
   return (
     <div className="flex-none flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--line)] bg-[var(--panel-2)] [&_button]:whitespace-nowrap">
       {confirmRemove ? (
-        <div className="flex flex-wrap items-center gap-2" onKeyDown={(e) => { if (e.key === 'Escape' && !busy) setConfirmRemove(false); }}>
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-[12.5px] font-medium text-[var(--ink)]">{t('removeModelsQuestion').replace('{count}', String(selectedCount))}</span>
           <span className="text-[12px] text-[var(--ink-2)]">{t('removeModelHint')}</span>
           {error && <span role="alert" className="font-mono-ui text-[length:var(--font-size-meta)] text-[var(--accent)]">{error}</span>}

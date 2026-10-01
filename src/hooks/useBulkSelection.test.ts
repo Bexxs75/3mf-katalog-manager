@@ -24,6 +24,35 @@ function setup(models = [makeModelFile({ id: 'm1' }), makeModelFile({ id: 'm2' }
 }
 
 describe('useBulkSelection', () => {
+  it.each([
+    ['setAddToCollectionMenuOpen', 'setAddTagMenuOpen', 'addTagMenuOpen'],
+    ['setRemoveTagMenuOpen', 'setAddTagMenuOpen', 'addTagMenuOpen'],
+    ['setAddTagMenuOpen', 'setAddToCollectionMenuOpen', 'addToCollectionMenuOpen'],
+    ['setRemoveTagMenuOpen', 'setAddToCollectionMenuOpen', 'addToCollectionMenuOpen'],
+    ['setAddToCollectionMenuOpen', 'setRemoveTagMenuOpen', 'removeTagMenuOpen'],
+    ['setAddTagMenuOpen', 'setRemoveTagMenuOpen', 'removeTagMenuOpen'],
+  ] as const)('opening with %s then %s leaves only %s open', (openFirst, openNext, expected) => {
+    const { result } = setup();
+    act(() => result.current[openFirst](true));
+    act(() => result.current[openNext](true));
+    for (const menu of ['addToCollectionMenuOpen', 'addTagMenuOpen', 'removeTagMenuOpen'] as const) {
+      expect(result.current[menu]).toBe(menu === expected);
+    }
+    act(() => result.current[openNext](false));
+    expect(result.current.addToCollectionMenuOpen).toBe(false);
+    expect(result.current.addTagMenuOpen).toBe(false);
+    expect(result.current.removeTagMenuOpen).toBe(false);
+  });
+
+  it('clearBulkSelection closes every menu, including the collection menu', () => {
+    const { result } = setup();
+    act(() => result.current.setAddToCollectionMenuOpen(true));
+    act(() => result.current.clearBulkSelection());
+    expect(result.current.addToCollectionMenuOpen).toBe(false);
+    expect(result.current.addTagMenuOpen).toBe(false);
+    expect(result.current.removeTagMenuOpen).toBe(false);
+  });
+
   it('toggleBulkSelect adds and removes ids', () => {
     const { result } = setup();
     act(() => result.current.toggleBulkSelect('m1'));

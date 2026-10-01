@@ -72,9 +72,11 @@ describe('BulkActionToolbar', () => {
     expect(props.onAddToCollectionMenuOpenChange).not.toHaveBeenCalled();
   });
 
-  it('keeps the selection during bulk delete confirmation', () => {
+  it('cancels bulk delete confirmation without clearing the selection', () => {
     const { props } = renderToolbar({ confirmBulkDelete: true });
     fireEvent.keyDown(window, { key: 'Escape' });
+    expect(props.onConfirmBulkDeleteChange).toHaveBeenCalledExactlyOnceWith(false);
+    expect(props.onBulkDelete).not.toHaveBeenCalled();
     expect(props.onClearSelection).not.toHaveBeenCalled();
   });
 
@@ -86,6 +88,33 @@ describe('BulkActionToolbar', () => {
     expect(props.onClearSelection).not.toHaveBeenCalled();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(props.onClearSelection).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels remove confirmation with focus outside the bar before clearing selection', () => {
+    const { props } = renderToolbar();
+    fireEvent.click(screen.getByRole('button', { name: 'Aus Katalog entfernen' }));
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    try {
+      outside.focus();
+      expect(outside).toHaveFocus();
+      fireEvent.keyDown(outside, { key: 'Escape' });
+      expect(screen.getByRole('button', { name: 'Aus Katalog entfernen' })).toBeInTheDocument();
+      expect(props.onClearSelection).not.toHaveBeenCalled();
+      expect(props.onBulkRemove).not.toHaveBeenCalled();
+      fireEvent.keyDown(outside, { key: 'Escape' });
+      expect(props.onClearSelection).toHaveBeenCalledTimes(1);
+    } finally {
+      outside.remove();
+    }
+  });
+
+  it('cancels a visible delete confirmation before a menu left open behind it', () => {
+    const { props } = renderToolbar({ confirmBulkDelete: true, removeTagMenuOpen: true });
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(props.onConfirmBulkDeleteChange).toHaveBeenCalledExactlyOnceWith(false);
+    expect(props.onRemoveTagMenuOpenChange).not.toHaveBeenCalled();
+    expect(props.onClearSelection).not.toHaveBeenCalled();
   });
 
   it('closes the tag input menu without clearing the selection', () => {
