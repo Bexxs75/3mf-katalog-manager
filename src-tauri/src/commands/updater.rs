@@ -2,6 +2,8 @@
 //! download the signed package with progress, discard it, or back up the
 //! catalog and install it.
 use super::*;
+use std::future::Future;
+use std::time::Duration;
 use tauri::ipc::Channel;
 use tauri::Manager;
 use tauri_plugin_updater::UpdaterExt;
@@ -52,7 +54,51 @@ async fn fetch_update(app: &tauri::AppHandle) -> Result<Option<tauri_plugin_upda
             builder = builder.pubkey(key);
         }
     }
-    builder.endpoints(vec![url])?.build()?.check().await
+    let updater = builder.endpoints(vec![url])?.build()?;
+    retry_once(
+        || updater.check(),
+        is_transport_error,
+        Duration::from_secs(2),
+        |e| log::info!(target: "update", "Update-Prüfung fehlgeschlagen, neuer Versuch in 2 s: {}", error_chain(e)),
+    )
+    .await
+}
+
+async fn retry_once<T, E, F, Fut>(
+    mut op: F,
+    is_retryable: impl Fn(&E) -> bool,
+    delay: Duration,
+    on_retry: impl FnOnce(&E),
+) -> Result<T, E>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T, E>>,
+{
+    match op().await {
+        Err(e) if is_retryable(&e) => {
+            on_retry(&e);
+            // Keep the pause off the async workers; a failed wait must not suppress the retry.
+            let _ = tauri::async_runtime::spawn_blocking(move || std::thread::sleep(delay)).await;
+            op().await
+        }
+        result => result,
+    }
+}
+
+fn error_chain(e: &dyn std::error::Error) -> String {
+    let mut previous = e.to_string();
+    let mut chain = previous.clone();
+    let mut source = e.source();
+    while let Some(cause) = source {
+        let message = cause.to_string();
+        if message != previous {
+            chain.push_str(": ");
+            chain.push_str(&message);
+        }
+        previous = message;
+        source = cause.source();
+    }
+    chain
 }
 
 /// A plain network/transport hiccup (offline, DNS, TLS, a dropped connection, ...)
@@ -88,11 +134,11 @@ pub async fn check_app_update(app: tauri::AppHandle, state: State<'_, AppState>)
         }
         // No toast for the check itself: offline users should not be bothered.
         Err(e) if is_transport_error(&e) => {
-            log::info!(target: "update", "Update-Check nicht möglich: {e}");
+            log::info!(target: "update", "Update-Check nicht möglich: {}", error_chain(&e));
             (None, true)
         }
         Err(e) => {
-            log::warn!(target: "update", "Update-Check nicht möglich: {e}");
+            log::warn!(target: "update", "Update-Check nicht möglich: {}", error_chain(&e));
             (None, true)
         }
     };
@@ -114,7 +160,7 @@ pub async fn download_app_update(
 ) -> CmdResult<String> {
     let update = fetch_update(&app)
         .await
-        .map_err(|e| format!("Update-Prüfung fehlgeschlagen: {e}"))?
+        .map_err(|e| format!("Update-Prüfung fehlgeschlagen: {}", error_chain(&e)))?
         .ok_or_else(|| CmdError::expected("Es ist kein Update mehr verfügbar"))?;
     log::info!(target: "update", "Download von {} gestartet", update.version);
     let mut downloaded = 0u64;
@@ -190,6 +236,105 @@ pub fn install_app_update(app: tauri::AppHandle, state: State<AppState>, pending
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn run_retry(
+        outcomes: Vec<Result<u8, tauri_plugin_updater::Error>>,
+    ) -> (Result<u8, tauri_plugin_updater::Error>, usize, Vec<String>) {
+        let mut outcomes = outcomes.into_iter();
+        let mut calls = 0;
+        let mut notifications = Vec::new();
+        let result = tauri::async_runtime::block_on(retry_once(
+            || {
+                calls += 1;
+                std::future::ready(outcomes.next().expect("unexpected extra attempt"))
+            },
+            is_transport_error,
+            std::time::Duration::ZERO,
+            |e| notifications.push(e.to_string()),
+        ));
+        (result, calls, notifications)
+    }
+
+    #[test]
+    fn retry_once_succeeds_on_first_attempt() {
+        let (result, calls, notifications) = run_retry(vec![Ok(42)]);
+        assert_eq!(result.unwrap(), 42);
+        assert_eq!(calls, 1);
+        assert!(notifications.is_empty());
+    }
+
+    #[test]
+    fn retry_once_recovers_from_transport_error() {
+        let error = tauri_plugin_updater::Error::Network("offline".into());
+        let message = error.to_string();
+        let (result, calls, notifications) = run_retry(vec![Err(error), Ok(42)]);
+        assert_eq!(result.unwrap(), 42);
+        assert_eq!(calls, 2);
+        assert_eq!(notifications, vec![message]);
+    }
+
+    #[test]
+    fn retry_once_does_not_retry_non_transport_error() {
+        let (result, calls, notifications) = run_retry(vec![Err(tauri_plugin_updater::Error::ReleaseNotFound)]);
+        assert!(matches!(result, Err(tauri_plugin_updater::Error::ReleaseNotFound)));
+        assert_eq!(calls, 1);
+        assert!(notifications.is_empty());
+    }
+
+    #[test]
+    fn retry_once_returns_second_transport_error() {
+        let first = tauri_plugin_updater::Error::Network("first".into());
+        let message = first.to_string();
+        let (result, calls, notifications) = run_retry(vec![
+            Err(first),
+            Err(tauri_plugin_updater::Error::Network("second".into())),
+        ]);
+        assert!(matches!(result, Err(tauri_plugin_updater::Error::Network(message)) if message == "second"));
+        assert_eq!(calls, 2);
+        assert_eq!(notifications, vec![message]);
+    }
+
+    #[derive(Debug)]
+    struct NestedError {
+        message: &'static str,
+        source: Option<Box<NestedError>>,
+    }
+
+    impl std::fmt::Display for NestedError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(self.message)
+        }
+    }
+
+    impl std::error::Error for NestedError {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            self.source.as_deref().map(|e| e as &dyn std::error::Error)
+        }
+    }
+
+    #[test]
+    fn error_chain_includes_nested_causes() {
+        let error = NestedError {
+            message: "request failed",
+            source: Some(Box::new(NestedError {
+                message: "connection failed",
+                source: Some(Box::new(NestedError { message: "DNS failure", source: None })),
+            })),
+        };
+        assert_eq!(error_chain(&error), "request failed: connection failed: DNS failure");
+    }
+
+    #[test]
+    fn error_chain_skips_adjacent_duplicates_and_keeps_later_causes() {
+        let error = NestedError {
+            message: "request failed",
+            source: Some(Box::new(NestedError {
+                message: "request failed",
+                source: Some(Box::new(NestedError { message: "DNS failure", source: None })),
+            })),
+        };
+        assert_eq!(error_chain(&error), "request failed: DNS failure");
+    }
 
     #[test]
     fn update_info_dto_is_camel_case() {
