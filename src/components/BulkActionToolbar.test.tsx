@@ -109,12 +109,40 @@ describe('BulkActionToolbar', () => {
     }
   });
 
-  it('cancels a visible delete confirmation before a menu left open behind it', () => {
-    const { props } = renderToolbar({ confirmBulkDelete: true, removeTagMenuOpen: true });
+  it.each([
+    ['delete', { confirmBulkDelete: true }],
+    ['remove', {}],
+  ] as const)('closes open menus when the %s confirmation opens', (kind, overrides) => {
+    const { props } = renderToolbar({ ...overrides, removeTagMenuOpen: kind === 'delete' });
+    if (kind === 'remove') {
+      fireEvent.click(screen.getByRole('button', { name: 'Aus Katalog entfernen' }));
+    }
+    expect(props.onRemoveTagMenuOpenChange).toHaveBeenCalledWith(false);
+    expect(props.onAddTagMenuOpenChange).toHaveBeenCalledWith(false);
+    expect(props.onAddToCollectionMenuOpenChange).toHaveBeenCalledWith(false);
+    expect(props.onClearSelection).not.toHaveBeenCalled();
+  });
+
+  it('closes menus first, then the confirmation, then the selection, one per Escape', () => {
+    const { props, view } = renderToolbar({ removeTagMenuOpen: true });
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(props.onRemoveTagMenuOpenChange).toHaveBeenCalledWith(false);
+    expect(props.onConfirmBulkDeleteChange).not.toHaveBeenCalled();
+    view.rerender(
+      <LanguageProvider>
+        <BulkActionToolbar {...props} removeTagMenuOpen={false} confirmBulkDelete />
+      </LanguageProvider>,
+    );
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(props.onConfirmBulkDeleteChange).toHaveBeenCalledExactlyOnceWith(false);
-    expect(props.onRemoveTagMenuOpenChange).not.toHaveBeenCalled();
     expect(props.onClearSelection).not.toHaveBeenCalled();
+    view.rerender(
+      <LanguageProvider>
+        <BulkActionToolbar {...props} removeTagMenuOpen={false} confirmBulkDelete={false} />
+      </LanguageProvider>,
+    );
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(props.onClearSelection).toHaveBeenCalledTimes(1);
   });
 
   it('closes the tag input menu without clearing the selection', () => {

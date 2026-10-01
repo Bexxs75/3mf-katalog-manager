@@ -70,20 +70,18 @@ export function BulkActionToolbar({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      // A confirmation replaces the bar's buttons, so a menu that was left open
-      // behind it is invisible; cancelling the visible confirmation comes first.
+      if (anyMenuOpen) {
+        onAddToCollectionMenuOpenChange(false);
+        onAddTagMenuOpenChange(false);
+        onRemoveTagMenuOpenChange(false);
+        return;
+      }
       if (confirmRemove) {
         if (!busy) setConfirmRemove(false);
         return;
       }
       if (confirmBulkDelete) {
         onConfirmBulkDeleteChange(false);
-        return;
-      }
-      if (anyMenuOpen) {
-        onAddToCollectionMenuOpenChange(false);
-        onAddTagMenuOpenChange(false);
-        onRemoveTagMenuOpenChange(false);
         return;
       }
       const target = e.target;
@@ -98,6 +96,16 @@ export function BulkActionToolbar({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [anyMenuOpen, confirmRemove, confirmBulkDelete, busy, onConfirmBulkDeleteChange, onClearSelection, onAddToCollectionMenuOpenChange, onAddTagMenuOpenChange, onRemoveTagMenuOpenChange]);
+  // A confirmation replaces the bar's buttons, so a menu left open behind it
+  // would be invisible: Escape would seem to do nothing, and the menu would
+  // reappear after cancelling. Opening a confirmation therefore closes the menus.
+  const confirmationOpen = confirmRemove || confirmBulkDelete;
+  useEffect(() => {
+    if (!confirmationOpen) return;
+    onAddToCollectionMenuOpenChange(false);
+    onAddTagMenuOpenChange(false);
+    onRemoveTagMenuOpenChange(false);
+  }, [confirmationOpen, onAddToCollectionMenuOpenChange, onAddTagMenuOpenChange, onRemoveTagMenuOpenChange]);
   const { language } = useLanguage();
   return (
     <div className="flex-none flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--line)] bg-[var(--panel-2)] [&_button]:whitespace-nowrap">
