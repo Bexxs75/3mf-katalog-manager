@@ -31,6 +31,8 @@ interface BulkActionToolbarProps {
   onBulkRemoveTag: (tag: string) => void;
 }
 
+const TEXT_ENTRY = 'textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="range"]):not([type="color"]):not([type="file"])';
+
 export function BulkActionToolbar({
   selectedCount,
   confirmBulkDelete,
@@ -77,7 +79,9 @@ export function BulkActionToolbar({
       if (confirmRemove || confirmBulkDelete) return;
       const target = e.target;
       if (target instanceof HTMLElement && (
-        target.matches('input, textarea') || target.isContentEditable ||
+        // Only text entry: Chromium-based WebViews focus the card checkbox on click,
+        // and Escape right after ticking must still clear the selection.
+        target.matches(TEXT_ENTRY) || target.isContentEditable ||
         target.closest('[contenteditable]:not([contenteditable="false"])')
       )) return;
       onClearSelection();

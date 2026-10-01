@@ -109,6 +109,20 @@ describe('BulkActionToolbar', () => {
     }
   });
 
+  it('clears the selection with Escape while a card checkbox has focus', () => {
+    const { props } = renderToolbar();
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    document.body.appendChild(checkbox);
+    try {
+      checkbox.focus();
+      fireEvent.keyDown(checkbox, { key: 'Escape' });
+      expect(props.onClearSelection).toHaveBeenCalledTimes(1);
+    } finally {
+      checkbox.remove();
+    }
+  });
+
   it('wraps onto further rows so "remove from catalog" and "delete" stay reachable in narrow windows', () => {
     renderToolbar();
     const remove = screen.getByRole('button', { name: 'Aus Katalog entfernen' });
