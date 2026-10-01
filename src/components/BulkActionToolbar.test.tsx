@@ -44,19 +44,69 @@ function renderToolbar(overrides: Partial<Parameters<typeof BulkActionToolbar>[0
 }
 
 describe('BulkActionToolbar', () => {
-  it('closes an open menu with Escape instead of leaving it under the next click', () => {
-    const { props } = renderToolbar({ removeTagMenuOpen: true });
+  it.each([
+    ['removeTagMenuOpen', 'onRemoveTagMenuOpenChange'],
+    ['addTagMenuOpen', 'onAddTagMenuOpenChange'],
+    ['addToCollectionMenuOpen', 'onAddToCollectionMenuOpenChange'],
+  ] as const)('closes %s on the first Escape and clears on the second', (menu, onChange) => {
+    const { props, view } = renderToolbar({ [menu]: true });
     fireEvent.keyDown(window, { key: 'Escape' });
-    expect(props.onRemoveTagMenuOpenChange).toHaveBeenCalledWith(false);
+    expect(props[onChange]).toHaveBeenCalledWith(false);
     expect(props.onBulkRemoveTag).not.toHaveBeenCalled();
+    expect(props.onClearSelection).not.toHaveBeenCalled();
+    view.rerender(
+      <LanguageProvider>
+        <BulkActionToolbar {...props} {...{ [menu]: false }} />
+      </LanguageProvider>,
+    );
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(props.onClearSelection).toHaveBeenCalledTimes(1);
   });
 
-  it('does not react to Escape while no menu is open', () => {
+  it('clears the selection once with Escape while no menu is open', () => {
     const { props } = renderToolbar();
     fireEvent.keyDown(window, { key: 'Escape' });
+    expect(props.onClearSelection).toHaveBeenCalledTimes(1);
     expect(props.onRemoveTagMenuOpenChange).not.toHaveBeenCalled();
     expect(props.onAddTagMenuOpenChange).not.toHaveBeenCalled();
     expect(props.onAddToCollectionMenuOpenChange).not.toHaveBeenCalled();
+  });
+
+  it('keeps the selection during bulk delete confirmation', () => {
+    const { props } = renderToolbar({ confirmBulkDelete: true });
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(props.onClearSelection).not.toHaveBeenCalled();
+  });
+
+  it('cancels remove confirmation without clearing until the next Escape', () => {
+    const { props } = renderToolbar();
+    fireEvent.click(screen.getByRole('button', { name: 'Aus Katalog entfernen' }));
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Abbrechen' }), { key: 'Escape' });
+    expect(screen.getByRole('button', { name: 'Aus Katalog entfernen' })).toBeInTheDocument();
+    expect(props.onClearSelection).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(props.onClearSelection).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes the tag input menu without clearing the selection', () => {
+    const { props } = renderToolbar({ addTagMenuOpen: true });
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
+    expect(props.onAddTagMenuOpenChange).toHaveBeenCalledWith(false);
+    expect(props.onClearSelection).not.toHaveBeenCalled();
+  });
+
+  it.each(['input', 'textarea', 'contenteditable'])('ignores Escape from %s with no menu open', (kind) => {
+    const { props } = renderToolbar();
+    const editor = document.createElement(kind === 'contenteditable' ? 'div' : kind);
+    if (kind === 'contenteditable') editor.setAttribute('contenteditable', 'true');
+    const target = kind === 'contenteditable' ? editor.appendChild(document.createElement('span')) : editor;
+    document.body.appendChild(editor);
+    try {
+      fireEvent.keyDown(target, { key: 'Escape' });
+      expect(props.onClearSelection).not.toHaveBeenCalled();
+    } finally {
+      editor.remove();
+    }
   });
 
   it('wraps onto further rows so "remove from catalog" and "delete" stay reachable in narrow windows', () => {

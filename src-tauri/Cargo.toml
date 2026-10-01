@@ -57,6 +57,7 @@ log = "0.4"
 tauri-plugin-log = "2.9"
 tauri-plugin-updater = "2.13"
 regex = "1"
+unicode-normalization = "0.1.25"
 # Startup header line: OS name/version next to the app version.
 os_info = "3"
 # Anonymizing the host name in a log export before it leaves the computer.

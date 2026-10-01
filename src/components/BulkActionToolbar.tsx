@@ -66,16 +66,25 @@ export function BulkActionToolbar({
   // stray click after trying to dismiss one lands on a menu entry, e.g. removes a tag.
   const anyMenuOpen = addToCollectionMenuOpen || addTagMenuOpen || removeTagMenuOpen;
   useEffect(() => {
-    if (!anyMenuOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      onAddToCollectionMenuOpenChange(false);
-      onAddTagMenuOpenChange(false);
-      onRemoveTagMenuOpenChange(false);
+      if (anyMenuOpen) {
+        onAddToCollectionMenuOpenChange(false);
+        onAddTagMenuOpenChange(false);
+        onRemoveTagMenuOpenChange(false);
+        return;
+      }
+      if (confirmRemove || confirmBulkDelete) return;
+      const target = e.target;
+      if (target instanceof HTMLElement && (
+        target.matches('input, textarea') || target.isContentEditable ||
+        target.closest('[contenteditable]:not([contenteditable="false"])')
+      )) return;
+      onClearSelection();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [anyMenuOpen, onAddToCollectionMenuOpenChange, onAddTagMenuOpenChange, onRemoveTagMenuOpenChange]);
+  }, [anyMenuOpen, confirmRemove, confirmBulkDelete, onClearSelection, onAddToCollectionMenuOpenChange, onAddTagMenuOpenChange, onRemoveTagMenuOpenChange]);
   const { language } = useLanguage();
   return (
     <div className="flex-none flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--line)] bg-[var(--panel-2)] [&_button]:whitespace-nowrap">
