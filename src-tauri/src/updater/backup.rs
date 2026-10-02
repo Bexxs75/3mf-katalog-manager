@@ -32,20 +32,34 @@ pub fn create(conn: &Connection, dir: &Path, version: &str) -> Result<PathBuf, S
     // A stray old backup that can't be deleted (e.g. permissions, a locked file on
     // Windows) must not block this install forever: the new backup above already
     // succeeded, so just leave the surplus for the next prune to try again.
-    if let Err(e) = prune(dir, KEEP) {
+    if let Err(e) = prune_preserving(dir, KEEP, Some(&path)) {
         log::warn!(target: "update", "Alte Sicherungen konnten nicht aufgeräumt werden: {e}");
     }
     Ok(path)
 }
 
+// Keep the unprotected entry point available for callers pruning outside create().
+#[allow(dead_code)]
 pub fn prune(dir: &Path, keep: usize) -> std::io::Result<()> {
+    prune_preserving(dir, keep, None)
+}
+
+fn prune_preserving(dir: &Path, keep: usize, protected: Option<&Path>) -> std::io::Result<()> {
+    // Reserve a slot for the new backup even if its timestamps look older.
+    let keep = keep.saturating_sub(usize::from(protected.is_some()));
     let mut backups: Vec<(std::time::SystemTime, PathBuf)> = std::fs::read_dir(dir)?
         .flatten()
         .map(|e| e.path())
+        .filter(|p| protected != Some(p.as_path()))
         .filter(|p| {
             p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with(PREFIX) && n.ends_with(".db"))
         })
-        .filter_map(|p| Some((std::fs::metadata(&p).ok()?.modified().ok()?, p)))
+        .filter_map(|p| {
+            let metadata = std::fs::metadata(&p).ok()?;
+            // Opening an old backup elsewhere can change its modification time.
+            let time = metadata.created().or_else(|_| metadata.modified()).ok()?;
+            Some((time, p))
+        })
         .collect();
     backups.sort();
     let excess = backups.len().saturating_sub(keep);
@@ -98,6 +112,63 @@ mod tests {
         let mut left: Vec<String> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
         left.sort();
         assert_eq!(left, ["catalog-vor-0.15.2.db", "catalog-vor-0.15.3.db", "catalog-vor-0.15.4.db", "fremd.txt"]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn keeps_newest_created_backups_after_old_backups_are_modified() {
+        let dir = tmp("prune-created");
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut paths = Vec::new();
+        for version in ["1", "2", "3", "4"] {
+            let path = dir.join(file_name(version));
+            std::fs::write(&path, b"x").unwrap();
+            if std::fs::metadata(&path).unwrap().created().is_err() {
+                std::fs::remove_dir_all(&dir).unwrap();
+                return;
+            }
+            paths.push(path);
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(3600);
+        for path in &paths[..2] {
+            std::fs::File::options().write(true).open(path).unwrap().set_modified(later).unwrap();
+        }
+
+        prune(&dir, KEEP).unwrap();
+
+        assert!(!paths[0].exists());
+        for path in &paths[1..] {
+            assert!(path.exists());
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn preserves_just_created_backup_even_with_oldest_timestamps() {
+        let dir = tmp("prune-protected");
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut paths = Vec::new();
+        let base = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
+        for (i, version) in ["1", "2", "3", "4"].iter().enumerate() {
+            let path = dir.join(file_name(version));
+            std::fs::write(&path, b"x").unwrap();
+            std::fs::File::options()
+                .write(true)
+                .open(&path)
+                .unwrap()
+                .set_modified(base + std::time::Duration::from_secs(i as u64 * 60))
+                .unwrap();
+            paths.push(path);
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+
+        prune_preserving(&dir, KEEP, Some(&paths[0])).unwrap();
+
+        assert!(paths[0].exists());
+        assert!(!paths[1].exists());
+        assert!(paths[2].exists());
+        assert!(paths[3].exists());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

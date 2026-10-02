@@ -40,6 +40,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- Update backups: when tidying up old backups, the app now keeps the most recently created ones. Before, opening an older backup in another program could make the app delete a newer one instead. Found in the Windows test.
 - Update check: if the connection to GitHub drops briefly, the app now tries again automatically once instead of reporting that the check failed. The log now names the exact cause of a failed check. Found in the Windows test.
 - Automatic tags on macOS: umlauts in file names could produce broken tags such as "#hne". Newly imported files now get complete tags; existing tags stay unchanged and can be removed by hand. Found in the macOS test.
 - Selection bar: in narrow windows (e.g. with 125 % display scaling) the buttons now wrap onto a second row. Before, "Remove from catalog" and "Delete" were hidden under the details panel and could not be clicked. Escape now also closes the "Add tag", "Remove tag" and collection menus of the bar; before, a stray click after trying to close the menu could remove a tag. Escape now also clears the selection when no menu is open, also right after ticking a box. Escape also cancels the "Delete" and "Remove from catalog" confirmations of the bar, and only one of its menus is open at a time. Found in the Windows and macOS tests.
@@ -485,6 +486,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Fixed
 
+- Sicherungen vor Updates: Beim Aufräumen behält die App jetzt die zuletzt angelegten Sicherungen. Vorher konnte das Öffnen einer älteren Sicherung in einem anderen Programm dazu führen, dass stattdessen eine neuere gelöscht wurde. Gefunden im Windows-Test.
 - Update-Prüfung: Bricht die Verbindung zu GitHub kurz ab, versucht es die App jetzt automatisch noch einmal, statt zu melden, dass die Prüfung nicht möglich war. Die Logdatei nennt jetzt die genaue Ursache einer fehlgeschlagenen Prüfung. Gefunden im Windows-Test.
 - Automatische Tags auf macOS: Umlaute in Dateinamen konnten zerlegte Tags wie „#hne“ erzeugen. Neu importierte Dateien erhalten jetzt vollständige Tags; bestehende Tags bleiben unverändert und können von Hand entfernt werden. Gefunden im macOS-Test.
 - Auswahlleiste: In schmalen Fenstern (z. B. mit 125 % Anzeigeskalierung) brechen die Knöpfe jetzt in eine zweite Zeile um. Vorher lagen „Aus Katalog entfernen“ und „Löschen“ unter dem Detailbereich und waren nicht erreichbar. Escape schließt jetzt auch die Menüs „Tag hinzufügen“, „Tag entfernen“ und „Zu Sammlung hinzufügen“; vorher konnte ein weiterer Klick nach dem Schließversuch ungewollt ein Tag entfernen. Escape hebt jetzt auch die Auswahl auf, wenn kein Menü geöffnet ist, auch direkt nach dem Häkchen. Escape bricht auch die Rückfragen „Löschen“ und „Aus Katalog entfernen“ der Leiste ab, und es ist jeweils nur eines ihrer Menüs geöffnet. Gefunden im Windows- und macOS-Test.
