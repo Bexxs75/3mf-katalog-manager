@@ -9,6 +9,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-03
+
 ### Added
 
 - **Remove from catalog / Reset catalog:** remove individual models, selections or folders from the catalog without changing files on disk. Reset clears models, folders, tags and collections while keeping trash entries, filament stock, printers, printer jobs, slicers and other settings. Deleting folders from disk will follow later.
@@ -455,7 +457,9 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ## [Unreleased]
 
-### Neu
+## [0.15.0] - 2026-10-03
+
+### Added
 
 - **Aus dem Katalog entfernen / Katalog zurücksetzen:** Einzelne Modelle, eine Auswahl oder Ordner aus dem Katalog entfernen, ohne Dateien auf der Festplatte zu verändern. Zurücksetzen leert Modelle, Ordner, Tags und Sammlungen; Papierkorb-Einträge, Filament-Lager, Drucker, Druckerjobs, Slicer und übrige Einstellungen bleiben. Echtes Löschen von Ordnern auf der Festplatte folgt später.
 
