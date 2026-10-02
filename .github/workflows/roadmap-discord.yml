@@ -1,8 +1,8 @@
 name: Roadmap to Discord
 
 # Mirrors the public GitHub roadmap (project 1) into the Discord channel
-# #🗺️-roadmap. Edits two existing webhook messages (DE, EN) and never posts new
-# ones - so no notifications on every run. Changes to a user project don't
+# #🗺️-roadmap. Edits four existing webhook messages (two per language) and never
+# posts new ones - so no notifications on every run. Changes to a user project don't
 # trigger workflows, hence daily, after every release and manually.
 
 on:
@@ -27,6 +27,6 @@ jobs:
           # A separate read-only token (read:project), in case the default token can't read the user project.
           GH_TOKEN: ${{ secrets.ROADMAP_READ_TOKEN || github.token }}
           DISCORD_ROADMAP_WEBHOOK: ${{ secrets.DISCORD_ROADMAP_WEBHOOK }}
-          DISCORD_ROADMAP_MSG_DE: ${{ vars.DISCORD_ROADMAP_MSG_DE }}
-          DISCORD_ROADMAP_MSG_EN: ${{ vars.DISCORD_ROADMAP_MSG_EN }}
+          # DE part 1, DE part 2, EN part 1, EN part 2 (order in the channel)
+          DISCORD_ROADMAP_MSGS: ${{ vars.DISCORD_ROADMAP_MSGS }}
         run: python3 .github/scripts/roadmap_discord.py
