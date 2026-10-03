@@ -1,11 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
-import { LanguageProvider } from '../i18n/LanguageContext';
+import { LanguageProviderWithDiagnostics as LanguageProvider } from '../test/renderWithDiagnostics';
 import { FilamentSpoolForm } from './FilamentSpoolForm';
 import type { FilamentSpool, SpoolKind } from '../types';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
+vi.mock('@tauri-apps/plugin-log', () => ({ error: vi.fn(() => Promise.resolve()), info: vi.fn(() => Promise.resolve()) }));
 
 const drop = vi.hoisted(() => ({ handler: null as null | ((event: { payload: unknown }) => void) }));
 vi.mock('@tauri-apps/api/webview', () => ({
@@ -198,5 +199,21 @@ describe('FilamentSpoolForm', () => {
     act(() => drop.handler?.({ payload: { type: 'drop', paths: ['/a.png', '/b.png'], position: { x: 10, y: 10 } } }));
     expect(screen.getByText(/Bitte nur ein Bild hineinziehen\./)).toBeInTheDocument();
     expect(invoke).not.toHaveBeenCalledWith('read_dropped_image', expect.anything());
+  });
+
+  it('offers "Report problem" for an unexpected save error but not for an expected one', async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === 'update_filament_spool' ? Promise.reject({ message: 'x', expected: false }) : Promise.resolve(undefined),
+    );
+    renderForm(LOADED);
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await screen.findByText('Problem melden');
+
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === 'update_filament_spool' ? Promise.reject({ message: 'x', expected: true }) : Promise.resolve(undefined),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(screen.queryByText('Problem melden')).not.toBeInTheDocument());
+    expect(screen.getByText('x')).toBeInTheDocument();
   });
 });

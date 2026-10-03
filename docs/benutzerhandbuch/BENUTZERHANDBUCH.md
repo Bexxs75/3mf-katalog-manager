@@ -29,9 +29,10 @@ for printing, and managing your filament stock.
 13. [Print log](#print-log)
 14. [The trash](#the-trash)
 15. [Settings](#settings)
-16. [Backing up and restoring your catalog](#backing-up-and-restoring-your-catalog)
-17. [Known limitations](#known-limitations)
-18. [Frequently asked questions (FAQ)](#frequently-asked-questions-faq)
+16. [Updating](#updating)
+17. [Backing up and restoring your catalog](#backing-up-and-restoring-your-catalog)
+18. [Known limitations](#known-limitations)
+19. [Frequently asked questions (FAQ)](#frequently-asked-questions-faq)
 
 ---
 
@@ -51,13 +52,14 @@ The app is available for Linux, Windows, and macOS (see the project's
 [releases page](https://github.com/Bexxs75/3mf-katalog-manager/releases)). For each platform there
 are two variants:
 
-- Filename **with** the `-step` suffix: includes the 3D preview for STEP files (`.stp`/`.step`),
-  at the cost of a larger download.
-- Filename **without** that suffix: smaller download; STEP files can still be cataloged (tags,
+- **With STEP preview** ("step"/"STEP" in the file name): includes the 3D preview for STEP files
+  (`.stp`/`.step`), at the cost of a larger download.
+- **Standard** (without that part): smaller download; STEP files can still be cataloged (tags,
   search, rename, trash), just without the 3D preview.
 
-Otherwise the two variants are identical. If you don't use STEP files, the smaller variant without
-`-step` is the safe choice.
+Otherwise the two variants are identical. When in doubt, take the variant with STEP preview — the
+size difference hardly matters, and you won't miss the preview later. To switch variants, install
+the other one; your catalog is kept.
 
 - **Linux:** download the `.AppImage` file, make it executable (right-click → Properties or
   `chmod +x`), and run it.
@@ -66,7 +68,26 @@ Otherwise the two variants are identical. If you don't use STEP files, the small
   continue.
 - **macOS:** open the `.dmg` file and drag the app into your Applications folder. This package is
   also unsigned (no Apple Developer certificate) — Gatekeeper will block the first launch.
-  Right-click the app → "Open" and confirm in the dialog to start it anyway.
+  Right-click the app → "Open" and confirm in the dialog to start it anyway. If macOS says the app
+  "is damaged and can't be opened", move it to the Applications folder first and then run
+  `xattr -cr "/Applications/3MF Katalog Manager.app"` in the Terminal.
+
+### Uninstalling
+
+Uninstalling removes the program, but deliberately **keeps your catalog, settings and logs** — so a
+reinstall or a manual update doesn't lose anything. To remove everything, delete these folders
+afterwards (Settings → Info → "Open data folder" / "Open log folder" shows them while the app is
+still installed):
+
+- **Windows:** `%APPDATA%\com.thebexxs.mfkatalogmanager` and
+  `%LOCALAPPDATA%\com.thebexxs.mfkatalogmanager` (logs and interface cache)
+- **macOS:** `~/Library/Application Support/com.thebexxs.mfkatalogmanager`,
+  `~/Library/Logs/com.thebexxs.mfkatalogmanager` and, if present,
+  `~/Library/Caches/com.thebexxs.mfkatalogmanager` and `~/Library/WebKit/com.thebexxs.mfkatalogmanager`
+- **Linux:** `~/.local/share/com.thebexxs.mfkatalogmanager` (catalog, settings, logs) and, if
+  present, `~/.cache/com.thebexxs.mfkatalogmanager`
+
+Your model files themselves are never touched — they stay in your catalog folder.
 
 ## Getting started
 
@@ -81,8 +102,15 @@ re-sorted within the catalog. You have two options:
 - **Use existing folder structure** — if you already organize your print files in folders,
   choose the top-level folder. The catalog adopts the complete structure including
   subfolders and automatically imports every `.3mf`/`.stl`/`.obj`/`.stp`/`.step` file it contains.
-- **Set up a new location** — pick a (possibly empty) folder where the catalog will store newly
-  imported files from now on.
+- **Set up a new location** — a folder where the catalog will store newly imported files from
+  now on. Under "Where should the catalog folder go?" your Documents folder is suggested; "Choose
+  place …" picks another one. Under "Name of the new folder" you type the name (suggested: "3D
+  Catalog"). The line below shows the full path before anything happens; "Create folder and set
+  up" creates the folder and uses it. If a folder with that name already exists there, the app
+  says so and uses it as it is; if there is a file or a link (shortcut) with that name instead, you
+  have to choose another name. Names with characters that aren't allowed in folder names
+  (`/ \ : * ? " < > |`) are rejected with a hint. If you'd rather use a folder you already have,
+  click "pick an existing folder directly".
 
 You can change this choice at any time in Settings under "Catalog location". The dialog can also
 be skipped via "Set up later".
@@ -213,6 +241,13 @@ only roughly estimating it — including a breakdown per print plate and filamen
 estimated material-cost total if matching spools are on record in the filament stock. The
 "Re-scan metadata" button re-fetches these values later on, in case you sliced an already
 cataloged file after the fact.
+
+In the standard variant (without STEP preview, see [Installation](#installation)), opening a STEP
+file shows a short note in the preview area instead of a broken-looking error: this variant shows
+STEP files without a 3D preview, with a "Get the variant with STEP preview" button that opens
+3mfkatalog.de's download section with that variant preselected — installing it keeps your catalog
+and settings. The catalog card still shows the placeholder; the note only appears once you open the
+preview.
 
 At the bottom left you can mark the model as **printed** and add it to the **queue**. The **heart**
 marks it as a favorite; you find all favorites under "Tools → Favorites".
@@ -462,8 +497,9 @@ The gear icon at the bottom of the navigation rail opens Settings. They're split
   it, the density setting: "Compact" (dense, small text, a lot at a glance) or "Comfort" (larger
   text, graphics, and controls, noticeably easier to read).
 - **Preferred view** — whether the catalog and the detail page default to the stored preview
-  image or the rendered 3D view. Missing snapshots are automatically re-rendered in the
-  background as needed.
+  image or the rendered 3D view. Missing snapshots are rendered automatically in the
+  background, one file after another. With "Image", this happens for files without an image of
+  their own (e.g. STL, OBJ).
 - **Language** — German, English, Spanish, or French, effective immediately without a restart.
 
 ### Slicer
@@ -484,7 +520,7 @@ including self-built or modified versions. The radio button sets which slicer is
   dialog.
 - **Catalog backup** — see the next section.
 - **Catalog location** — shows the current base directory and lets you change it or open it
-  directly in the file manager.
+  directly in the file manager. Changing it opens the same dialog as the initial setup.
 
 ### Printers
 
@@ -501,17 +537,82 @@ details. Resin printers don't appear here.
 ![Settings: Info with update check](bilder/en/20-einstellungen-info-update.png)
 
 Shows the installed version plus links to the source code, application license, and third-party
-licenses. On startup, the app
-silently checks once in the background whether a newer version is available on GitHub —
-**nothing is downloaded automatically**. If a newer version exists, a dismissible hint appears
-bottom-right with a "Download" button that opens the matching release page in your default
-browser. You can check the same status here in the Info tab any time, including a "Check for
-updates" button for a manual check.
+licenses, and the same update information described in [Updating](#updating) below: whether a
+newer version is available, a "Check for updates again" button for a manual check, and — after
+installing one from within the app — the date and backup file name of that update.
+
+Under **Folders**, **Open data folder** opens the folder with your catalog and the backups taken
+before updates (`update-backups`), and **Open log folder** opens the folder with the log files.
+There are two buttons because on Windows and macOS the log files are kept in a different system
+folder than the catalog.
 
 Below in the screenshot, you can see an example of the **light** vs. **dark** theme side by side:
 
 ![Catalog in dark theme](bilder/en/14-dark-mode.png)
 ![Catalog in light theme](bilder/en/15-hell-mode-bonus.png)
+
+### Reporting a bug
+
+Settings → Info → **Report a bug** (or **Report problem** next to an unexpected error) opens a short dialog. First decide whether to send the log file. With **Yes** you see exactly what will be in it: user name, computer name, home folder and catalog paths, printer and other network addresses, e-mail addresses and — if you tick "Replace file names" — file names are replaced. **Save and open form** puts `3mf-katalog-log-<date>.txt` into your download folder and opens the form on 3mfkatalog.de with version and system filled in; attach the file there under "Log file". The app never sends anything by itself.
+
+**Detailed log:** only needed if we ask for it. It additionally records every action with file names and turns itself off after 7 days. **Open log folder** (under **Folders**, see [Info](#info)) shows the log files.
+
+## Updating
+
+On startup the app checks once in the background whether a newer version is available. The
+result shows up in two places with the same content: a dismissible toast in the bottom-right
+corner, and the Info tab under Settings (see [Info](#info) above), where "Check for updates
+again" repeats the check any time.
+
+**On Windows, macOS, and the Linux AppImage**, when a newer version is found:
+
+1. **"Version X.Y.Z is available"** — "Update now" downloads it; the app checks its
+   signature before the update can be installed; "What's new?" opens the release notes on GitHub.
+2. **Downloading** — a progress bar shows the download; you can keep working in the app while
+   it runs.
+3. **"Update X.Y.Z is ready"** — "Restart and install" backs up your catalog database, then
+   closes the app, installs the update, and restarts it. On Windows, installation itself just
+   shows a small progress bar; you don't need to click anything there.
+4. **"Later"** discards the downloaded update without installing it — nothing changes. If you
+   decide to update afterwards, click "Update now" again; it downloads the file a second time.
+5. If the backup or the install fails, "Update failed" appears with "Nothing was installed;
+   your version and your catalog are unchanged." and a "Try again" button. The app never
+   installs an update without a successful backup first.
+
+**Package installs on Linux (`.deb`, `.rpm`) and other Linux runs outside an AppImage** can't replace themselves
+this way — only the AppImage can. There, the button reads "Go to download page" instead and
+opens the release on GitHub, where you install the new version the way you normally would for
+your package.
+
+Once an update has installed successfully, the Info tab shows a short note ("Updated on \<date\>
+· Backup: \<file\>") until the next update.
+
+**If the check fails** (no internet, or a firewall or antivirus program blocks it), the Info tab
+says "Couldn't check for updates. Please check your internet connection or firewall." instead of
+"You're on the latest version." Some security programs, for example Kaspersky or TinyWall, block
+the request without telling you: allow 3MF Katalog Manager internet access there. The app only
+downloads a small file with the current version number. You can also download a new version from
+[3mfkatalog.de](https://3mfkatalog.de/) at any time and install it over the old one; your catalog is kept.
+
+### Restoring a backup after an update
+
+Before installing an update this way, the app copies your catalog database to
+`update-backups/catalog-vor-<version>.db` inside the app's data folder:
+
+- Windows: `%APPDATA%\com.thebexxs.mfkatalogmanager\update-backups`
+- macOS: `~/Library/Application Support/com.thebexxs.mfkatalogmanager/update-backups`
+- Linux: `~/.local/share/com.thebexxs.mfkatalogmanager/update-backups`
+
+The last 3 backups are kept; older ones are removed automatically. `<version>` in the file name
+is the version you updated *to*, not the one before it - the file itself holds your catalog from
+before that update. To go back to the version you had before:
+
+1. Close the app.
+2. Install the previous version from the [releases
+   page](https://github.com/Bexxs75/3mf-katalog-manager/releases).
+3. In the folder above, copy `catalog-vor-<version>.db` over `catalog.db`, which sits in the
+   same app data folder (one level up from `update-backups`), while the app is closed.
+4. Start the app again.
 
 ## Backing up and restoring your catalog
 
@@ -540,8 +641,9 @@ overwrites anything irreversibly.
 
 **Why do some models show only a dotted pattern instead of a preview image?**
 The model has neither an uploaded image of its own, nor a thumbnail embedded in the file, nor has
-a 3D snapshot been generated for it yet. Open the model in the 3D view once, or upload your own
-image via "Upload image" on the detail page.
+a 3D snapshot been generated for it yet. The app renders missing snapshots in the background one
+after another, so with many new files this can take a few minutes. To see it right away, open the
+model once, or upload your own image via "Upload image" on the detail page.
 
 **I accidentally deleted a file — is it gone?**
 No, as long as fewer than 7 days have passed: it sits in the trash and can be restored from
@@ -557,11 +659,13 @@ Not automatically/synced — there's currently no cloud connection for that (see
 the catalog to another computer manually.
 
 **Can I go back to the old version after an update?**
-Usually not with the same catalog: new versions extend the catalog database on first start
-(most recently v0.14.0 for the printer connection and resin printers), and older versions can't
-open it afterwards. So create a backup under **Settings → Catalog** before updating (see
-[Backing up and restoring your catalog](#backing-up-and-restoring-your-catalog)). You can keep
-working with it in the old version.
+Only with a backup: new versions can extend the catalog database on first start (most recently
+v0.14.0 for the printer connection and resin printers), and older versions can't open it
+afterwards. Updating from within the app (see [Updating](#updating)) backs up your catalog
+automatically first — see [Restoring a backup after an
+update](#restoring-a-backup-after-an-update) to go back. Updating by hand (for example from 0.14
+or older to 0.15.0) has no automatic backup, so create one yourself first under **Settings →
+Catalog** (see [Backing up and restoring your catalog](#backing-up-and-restoring-your-catalog)).
 
 **Why does the "Source" field look a bit odd on some systems when no URL is set?**
 That's just placeholder text ("https://…") with a small pencil icon next to it for editing —
@@ -599,9 +703,10 @@ importierst, organisierst, druckfertig machst und dein Filament-Lager verwaltest
 13. [Druckprotokoll](#druckprotokoll)
 14. [Der Papierkorb](#der-papierkorb)
 15. [Einstellungen](#einstellungen)
-16. [Katalog sichern und wiederherstellen (Backup)](#katalog-sichern-und-wiederherstellen-backup)
-17. [Bekannte Einschränkungen](#bekannte-einschränkungen)
-18. [Häufige Fragen (FAQ)](#häufige-fragen-faq)
+16. [Aktualisieren](#aktualisieren)
+17. [Katalog sichern und wiederherstellen (Backup)](#katalog-sichern-und-wiederherstellen-backup)
+18. [Bekannte Einschränkungen](#bekannte-einschränkungen)
+19. [Häufige Fragen (FAQ)](#häufige-fragen-faq)
 
 ---
 
@@ -621,13 +726,14 @@ Die App steht für Linux, Windows und macOS zum Download bereit (siehe die
 [Releases-Seite](https://github.com/Bexxs75/3mf-katalog-manager/releases) des Projekts). Für jede
 Plattform gibt es dort zwei Varianten:
 
-- Dateiname **mit** dem Zusatz `-step`: enthält die 3D-Vorschau für STEP-Dateien (`.stp`/`.step`),
-  dafür etwas größer.
-- Dateiname **ohne** diesen Zusatz: kleinerer Download, STEP-Dateien lassen sich weiterhin
+- **Mit STEP-Vorschau** („step“/„STEP“ im Dateinamen): enthält die 3D-Vorschau für STEP-Dateien
+  (`.stp`/`.step`), dafür etwas größer.
+- **Standard** (ohne diesen Zusatz): kleinerer Download, STEP-Dateien lassen sich weiterhin
   katalogisieren (Tags, Suche, Umbenennen, Papierkorb), nur eben ohne 3D-Vorschau dafür.
 
-Ansonsten sind beide Varianten identisch. Wer keine STEP-Dateien verwendet, kann bedenkenlos die
-kleinere Variante ohne `-step` nehmen.
+Ansonsten sind beide Varianten identisch. Im Zweifel nimm die Variante mit STEP-Vorschau – der
+Größenunterschied spielt kaum eine Rolle, und du vermisst die Vorschau später nicht. Zum Wechseln
+installierst du einfach die andere Variante, dein Katalog bleibt erhalten.
 
 - **Linux:** die `.AppImage`-Datei herunterladen, ausführbar machen (Rechtsklick → Eigenschaften
   oder `chmod +x`) und starten.
@@ -637,7 +743,26 @@ kleinere Variante ohne `-step` nehmen.
 - **macOS:** `.dmg`-Datei öffnen und die App in den Programme-Ordner ziehen. Auch hier ist das
   Paket unsigniert (kein Apple-Developer-Zertifikat) — Gatekeeper blockiert den ersten Start.
   Mit Rechtsklick auf die App → "Öffnen" und im Dialog bestätigen lässt sie sich trotzdem
-  starten.
+  starten. Meldet macOS, die App sei „beschädigt und kann nicht geöffnet werden“, zieh sie zuerst
+  in den Programme-Ordner und führe dann im Terminal
+  `xattr -cr "/Applications/3MF Katalog Manager.app"` aus.
+
+### Deinstallieren
+
+Beim Deinstallieren wird das Programm entfernt, **Katalog, Einstellungen und Logs bleiben aber
+absichtlich erhalten** – so geht bei einer Neuinstallation oder einem Update von Hand nichts
+verloren. Willst du alles loswerden, lösch danach diese Ordner (solange die App noch installiert
+ist, zeigt Einstellungen → Info → „Datenordner öffnen“ / „Log-Ordner öffnen“ sie dir):
+
+- **Windows:** `%APPDATA%\com.thebexxs.mfkatalogmanager` und
+  `%LOCALAPPDATA%\com.thebexxs.mfkatalogmanager` (Logs und Zwischenspeicher der Oberfläche)
+- **macOS:** `~/Library/Application Support/com.thebexxs.mfkatalogmanager`,
+  `~/Library/Logs/com.thebexxs.mfkatalogmanager` und, falls vorhanden,
+  `~/Library/Caches/com.thebexxs.mfkatalogmanager` und `~/Library/WebKit/com.thebexxs.mfkatalogmanager`
+- **Linux:** `~/.local/share/com.thebexxs.mfkatalogmanager` (Katalog, Einstellungen, Logs) und,
+  falls vorhanden, `~/.cache/com.thebexxs.mfkatalogmanager`
+
+Deine Modelldateien selbst werden nie angefasst – sie bleiben in deinem Katalog-Ordner.
 
 ## Erste Schritte
 
@@ -652,8 +777,16 @@ tatsächlich abgelegt, nicht nur im Katalog umsortiert. Du hast zwei Möglichkei
 - **Bestehende Ordnerstruktur übernehmen** — wenn du deine Druckdateien schon in Ordnern
   organisierst, wählst du den obersten Ordner aus. Der Katalog übernimmt die komplette Struktur
   inklusive Unterordner und importiert alle enthaltenen `.3mf`-/`.stl`-/`.obj`-/`.stp`-/`.step`-Dateien automatisch.
-- **Neuen Ort einrichten** — du legst einen (auch leeren) Ordner fest, in dem der Katalog ab
-  jetzt neu importierte Dateien ablegt.
+- **Neuen Ort einrichten** — ein Ordner, in dem der Katalog ab jetzt neu importierte Dateien
+  ablegt. Unter „Wo soll der Katalog-Ordner liegen?“ ist dein Dokumente-Ordner vorgeschlagen;
+  „Ort wählen …“ wählt einen anderen. Unter „Name des neuen Ordners“ tippst du den Namen ein
+  (Vorschlag: „3D-Katalog“). Die Zeile darunter zeigt den ganzen Pfad, bevor etwas passiert;
+  „Ordner anlegen und einrichten“ legt den Ordner an und verwendet ihn. Gibt es dort schon einen
+  Ordner mit diesem Namen, sagt die App das und verwendet ihn so, wie er ist; liegt dort stattdessen eine Datei oder eine Verknüpfung mit diesem
+  Namen, musst du einen anderen Namen wählen. Namen mit Zeichen,
+  die in Ordnernamen nicht erlaubt sind (`/ \ : * ? " < > |`), lehnt sie mit einem Hinweis ab.
+  Willst du lieber einen Ordner nehmen, den du schon hast, klickst du auf „einen vorhandenen
+  Ordner direkt wählen“.
 
 Du kannst diese Wahl jederzeit in den Einstellungen unter "Katalog-Speicherort" ändern. Über
 "Später einrichten" lässt sich der Dialog auch überspringen.
@@ -792,6 +925,13 @@ Aufschlüsselung pro Druckplatte und Filament sowie einer geschätzten Materialk
 passende Spulen im Filament-Lager hinterlegt sind. Über den "Metadaten neu einlesen"-Knopf holst du
 diese Werte nachträglich nach, falls du eine bereits katalogisierte Datei erst später im Slicer
 nachgesliced hast.
+
+In der Standard-Variante (ohne STEP-Vorschau, siehe [Installation](#installation-1)) zeigt der
+Vorschaubereich beim Öffnen einer STEP-Datei statt einer nach Fehler aussehenden Meldung einen
+kurzen Hinweis: Diese Variante zeigt STEP-Dateien ohne 3D-Vorschau, dazu der Knopf „Variante mit
+STEP-Vorschau laden“, der den Download-Bereich auf 3mfkatalog.de mit vorausgewählter Variante
+öffnet – dein Katalog und deine Einstellungen bleiben beim Installieren erhalten. Die Katalogkarte
+zeigt weiterhin den Platzhalter; der Hinweis erscheint erst, wenn du die Vorschau öffnest.
 
 Unten links kannst du das Modell als **gedruckt** markieren und es zur **Warteschlange**
 hinzufügen. Mit dem **Herz** markierst du es als Favorit; alle Favoriten findest du unter
@@ -1050,8 +1190,9 @@ fünf Reiter aufgeteilt: **Allgemein**, **Slicer**, **Katalog**, **Drucker** und
   gestellt. Direkt darunter die Dichte-Einstellung: "Kompakt" (dicht, kleine Schrift, viel auf
   einen Blick) oder "Komfort" (größere Schrift, Grafiken und Bedienelemente, deutlich lesbarer).
 - **Bevorzugte Ansicht** — ob Katalog und Detailseite standardmäßig das hinterlegte Vorschaubild
-  oder die gerenderte 3D-Ansicht zeigen. Fehlende Schnappschüsse werden bei Bedarf automatisch im
-  Hintergrund nachgerendert.
+  oder die gerenderte 3D-Ansicht zeigen. Fehlende Schnappschüsse werden automatisch im Hintergrund
+  nachgerendert, eine Datei nach der anderen. Bei „Bild“ passiert das für Dateien ohne eigenes Bild
+  (z. B. STL, OBJ).
 - **Sprache** — Deutsch, Englisch, Spanisch oder Französisch, sofort wirksam ohne Neustart.
 
 ### Slicer
@@ -1072,7 +1213,7 @@ fest, welcher Slicer beim Öffnen eines Modells als **Standard** verwendet wird.
   Bereinigung per Auswahl-Dialog.
 - **Katalog-Backup** — siehe nächster Abschnitt.
 - **Katalog-Speicherort** — zeigt den aktuellen Basisordner und erlaubt, ihn zu ändern oder direkt
-  im Dateimanager zu öffnen.
+  im Dateimanager zu öffnen. Ändern öffnet denselben Dialog wie bei der Ersteinrichtung.
 
 ### Drucker
 
@@ -1089,18 +1230,87 @@ Blick den Status jedes angebundenen Druckers ("Klipper · verbunden", "Klipper �
 ![Einstellungen: Info mit Update-Check](bilder/20-einstellungen-info-update.png)
 
 Zeigt die installierte Version sowie Links zu Quellcode, Anwendungslizenz und den Lizenzen der
-Drittanbieter-Komponenten. Beim Start der App wird
-einmalig im Hintergrund still geprüft, ob auf GitHub eine neuere Version vorliegt — es wird
-**nichts automatisch heruntergeladen**. Ist eine neuere Version verfügbar, erscheint unten rechts
-ein wegklickbarer Hinweis mit einem "Herunterladen"-Knopf, der die passende Release-Seite im
-Standardbrowser öffnet. Denselben Status siehst du jederzeit auch hier im Info-Tab, inklusive
-einem Knopf "Erneut nach Updates suchen" für eine manuelle Prüfung.
+Drittanbieter-Komponenten, außerdem dieselben Update-Informationen wie im Abschnitt
+[Aktualisieren](#aktualisieren) weiter unten: ob eine neuere Version verfügbar ist, den Knopf
+„Erneut nach Updates suchen“ für eine manuelle Prüfung, und – nach einem Update aus der App –
+Datum und Sicherungsdatei dieses Updates.
+
+Unter **Ordner** öffnet **Datenordner öffnen** den Ordner mit deinem Katalog und den Sicherungen
+vor Updates (`update-backups`), **Log-Ordner öffnen** den Ordner mit den Logdateien. Es sind zwei
+Knöpfe, weil Windows und macOS die Logdateien in einem anderen Systemordner ablegen als den
+Katalog.
 
 Unten im Screenshot siehst du ein Beispiel für das **Hell**- bzw. **Dunkel**-Theme im direkten
 Vergleich:
 
 ![Katalog im Dunkel-Theme](bilder/14-dark-mode.png)
 ![Katalog im Hell-Theme](bilder/15-hell-mode-bonus.png)
+
+### Fehler melden
+
+Einstellungen → Info → **Fehler melden** (oder **Problem melden** neben einem unerwarteten Fehler) öffnet einen kurzen Dialog. Zuerst entscheidest du, ob die Logdatei mitgeht. Bei **Ja** siehst du genau, was drinsteht: Benutzername, Rechnername, Pfade im Benutzerordner und im Katalog, Drucker- und andere Netzwerkadressen, E-Mail-Adressen und – wenn du „Dateinamen ersetzen“ anhakst – Dateinamen werden ersetzt. **Speichern und Formular öffnen** legt `3mf-katalog-log-<Datum>.txt` in deinen Download-Ordner und öffnet das Formular auf 3mfkatalog.de mit eingetragener Version und System; dort hängst du die Datei unter „Logdatei“ an. Die App selbst verschickt nichts.
+
+**Ausführliches Protokoll:** nur nötig, wenn wir dich darum bitten. Es schreibt zusätzlich jede Aktion mit Dateinamen mit und schaltet sich nach 7 Tagen selbst aus. **Log-Ordner öffnen** (unter **Ordner**, siehe [Info](#info)) zeigt die Protokolldateien.
+
+## Aktualisieren
+
+Beim Start prüft die App einmalig im Hintergrund, ob eine neuere Version verfügbar ist. Das
+Ergebnis zeigt sich an zwei Stellen mit demselben Inhalt: als wegklickbarer Hinweis unten rechts
+und im Info-Tab der Einstellungen (siehe [Info](#info) weiter oben), wo „Erneut nach Updates
+suchen“ die Prüfung jederzeit wiederholt.
+
+**Unter Windows, macOS und der Linux-AppImage** läuft ein gefundenes Update so ab:
+
+1. **„Version X.Y.Z ist verfügbar“** — „Jetzt aktualisieren“ lädt es herunter; die App prüft
+   die Signatur, bevor das Update installiert werden kann; „Was ist neu?“ öffnet die Release-Notes auf GitHub.
+2. **Download** — ein Fortschrittsbalken zeigt den Ladevorgang; du kannst währenddessen
+   weiterarbeiten.
+3. **„Update X.Y.Z ist bereit“** — „Neu starten und installieren“ sichert zuerst deinen
+   Katalog, schließt dann die App, installiert das Update und startet neu. Unter Windows zeigt
+   die Installation selbst nur einen kleinen Fortschrittsbalken; dort musst du nichts anklicken.
+4. **„Später“** verwirft das heruntergeladene Update, ohne es zu installieren — es ändert sich
+   nichts. Willst du danach doch aktualisieren, klick erneut auf „Jetzt aktualisieren“; die App
+   lädt die Datei dann noch einmal herunter.
+5. Schlägt die Sicherung oder die Installation fehl, erscheint „Update fehlgeschlagen“ mit „Es
+   wurde nichts installiert, deine Version und dein Katalog sind unverändert.“ und einem Knopf
+   „Erneut versuchen“. Ohne erfolgreiche Sicherung installiert die App nie ein Update.
+
+**Paket-Installationen unter Linux (`.deb`, `.rpm`) und andere Linux-Starts außerhalb einer AppImage** können sich nicht
+selbst ersetzen — das kann nur die AppImage. Dort steht statt „Jetzt aktualisieren“ der Knopf
+„Zur Download-Seite“, der das Release auf GitHub öffnet; dort installierst du die neue Version
+wie für dein Paket üblich.
+
+Nach einem erfolgreichen Update zeigt der Info-Tab bis zum nächsten Update einen kurzen Hinweis
+(„Aktualisiert am \<Datum\> · Sicherung: \<Datei\>“).
+
+**Klappt die Prüfung nicht** (kein Internet, oder eine Firewall bzw. ein Virenschutz blockiert sie),
+steht im Info-Tab „Update-Prüfung nicht möglich. Bitte Internetverbindung oder Firewall prüfen.“
+statt „Du hast die aktuelle Version.“. Manche Schutzprogramme, zum Beispiel Kaspersky oder TinyWall,
+blockieren die Anfrage, ohne es zu melden: Gib dort dem 3MF Katalog Manager den Internetzugriff frei.
+Die App lädt dabei nur eine kleine Datei mit der aktuellen Versionsnummer. Eine neue Version kannst du
+auch jederzeit auf [3mfkatalog.de](https://3mfkatalog.de/) herunterladen und einfach über die alte
+installieren; dein Katalog bleibt erhalten.
+
+### Wiederherstellen einer Sicherung nach einem Update
+
+Vor der Installation eines Updates auf diesem Weg kopiert die App deine Katalog-Datenbank nach
+`update-backups/catalog-vor-<Version>.db` im Datenordner der App:
+
+- Windows: `%APPDATA%\com.thebexxs.mfkatalogmanager\update-backups`
+- macOS: `~/Library/Application Support/com.thebexxs.mfkatalogmanager/update-backups`
+- Linux: `~/.local/share/com.thebexxs.mfkatalogmanager/update-backups`
+
+Die letzten 3 Sicherungen bleiben erhalten, ältere werden automatisch entfernt. `<Version>` im
+Dateinamen ist die Version, auf die du aktualisiert hast, nicht die davor - die Datei selbst
+enthält deinen Katalog von vor diesem Update. So kommst du zurück zur vorherigen Version:
+
+1. Schließe die App.
+2. Installiere die vorherige Version von der
+   [Releases-Seite](https://github.com/Bexxs75/3mf-katalog-manager/releases).
+3. Kopiere im Ordner oben `catalog-vor-<Version>.db` über `catalog.db`, die im selben
+   Datenordner der App liegt (eine Ebene über `update-backups`) – während die App geschlossen
+   ist.
+4. Starte die App wieder.
 
 ## Katalog sichern und wiederherstellen (Backup)
 
@@ -1130,8 +1340,10 @@ unwiderruflich überschreibt.
 
 **Warum sehe ich bei manchen Modellen nur ein gepunktetes Muster statt eines Vorschaubilds?**
 Das Modell hat weder ein eigenes hochgeladenes Bild, noch ein in der Datei eingebettetes
-Thumbnail, noch wurde bisher ein 3D-Schnappschuss dafür erzeugt. Öffne das Modell einmal in der
-3D-Ansicht, oder lade unter "Bild hochladen" auf der Detailseite ein eigenes Bild hoch.
+Thumbnail, noch wurde bisher ein 3D-Schnappschuss dafür erzeugt. Die App rendert fehlende
+Schnappschüsse nacheinander im Hintergrund, bei vielen neuen Dateien kann das ein paar Minuten
+dauern. Sofort geht es, wenn du das Modell einmal öffnest oder unter "Bild hochladen" auf der
+Detailseite ein eigenes Bild hochlädst.
 
 **Ich habe eine Datei versehentlich gelöscht — ist sie weg?**
 Nein, solange keine 7 Tage vergangen sind: Sie liegt im Papierkorb und lässt sich von dort
@@ -1147,11 +1359,14 @@ Nicht automatisch/synchronisiert — dafür gibt es aktuell keine Cloud-Anbindun
 lässt sich der Katalog aber manuell auf einen anderen Rechner übertragen.
 
 **Kann ich nach einem Update wieder zur alten Version zurück?**
-Meist nicht mit demselben Katalog: Neue Versionen erweitern beim ersten Start die
-Katalog-Datenbank (zuletzt v0.14.0 für Druckeranbindung und Resin-Drucker), und ältere Versionen
-können sie danach nicht mehr öffnen. Leg deshalb vor einem Update unter **Einstellungen →
-Katalog** eine Sicherung an (siehe [Katalog sichern und wiederherstellen](#katalog-sichern-und-wiederherstellen-backup)).
-Mit ihr kannst du in der alten Version weiterarbeiten.
+Nur mit einer Sicherung: Neue Versionen können beim ersten Start die Katalog-Datenbank erweitern
+(zuletzt v0.14.0 für Druckeranbindung und Resin-Drucker), und ältere Versionen können sie danach
+nicht mehr öffnen. Ein Update aus der App heraus (siehe [Aktualisieren](#aktualisieren)) sichert
+deinen Katalog automatisch vorher — siehe [Wiederherstellen einer Sicherung nach einem
+Update](#wiederherstellen-einer-sicherung-nach-einem-update) für den Weg zurück. Ein Update von
+Hand (zum Beispiel von 0.14 oder älter auf 0.15.0) sichert nichts automatisch, leg dafür selbst
+vorher eine Sicherung unter **Einstellungen → Katalog** an (siehe [Katalog sichern und
+wiederherstellen](#katalog-sichern-und-wiederherstellen-backup)).
 
 **Warum wirkt das Feld "Quelle" auf manchen Systemen etwas seltsam, wenn keine URL hinterlegt
 ist?** Das ist lediglich ein Platzhaltertext ("https://…") mit einem kleinen Stift-Symbol zum

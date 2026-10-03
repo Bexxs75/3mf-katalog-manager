@@ -67,3 +67,10 @@ jobs:
       - name: Rust tests
         working-directory: src-tauri
         run: cargo test --no-default-features
+
+      # The test guide generator writes the result sheet with openpyxl; Ubuntu's
+      # package, because pip may not install into the system Python (PEP 668).
+      - name: Release tool tests (unittest)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends python3-openpyxl
+          python3 -m unittest discover -s tools -p 'test_*.py'

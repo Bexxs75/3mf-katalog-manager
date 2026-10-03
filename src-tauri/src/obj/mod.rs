@@ -14,7 +14,7 @@ pub struct ObjDocument {
 }
 
 pub fn parse_obj_file(path: &Path) -> Result<ObjDocument, ObjError> {
-    let bytes = std::fs::read(path)?;
+    let bytes = crate::safe_file::read_bounded(path, crate::safe_file::MAX_MODEL_FILE_BYTES)?;
     parse_obj_bytes(&bytes)
 }
 

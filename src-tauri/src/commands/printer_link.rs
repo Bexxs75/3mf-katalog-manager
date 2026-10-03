@@ -87,7 +87,7 @@ pub struct ConfirmResultDto {
 }
 
 fn id(value: &str, what: &str) -> CmdResult<i64> {
-    value.parse().map_err(|_| format!("ungueltige {what}-ID"))
+    value.parse().map_err(|_| format!("ungueltige {what}-ID").into())
 }
 
 fn connection_dto(c: store::PrinterConnectionRecord) -> PrinterConnectionDto {
@@ -221,7 +221,7 @@ pub(crate) fn confirm_printer_jobs_with_conn(conn: &mut Connection, decisions: V
 #[tauri::command]
 pub fn get_printer_link_enabled(state: State<AppState>) -> CmdResult<bool> {
     let conn = lock_db(&state)?;
-    store::printer_link_enabled(&conn).map_err(|e| e.to_string())
+    store::printer_link_enabled(&conn).map_err(|e| e.to_string().into())
 }
 
 #[tauri::command]
@@ -268,6 +268,7 @@ pub async fn test_printer_connection(
             store::save_connection_after_test(&conn, pid, &kind, address.trim(), &info.base_url, &info.version, unix_now())
                 .map_err(|e| e.to_string())?;
             store::set_clock_offset(&conn, pid, info.clock_offset_s).map_err(|e| e.to_string())?;
+            log::info!(target: "drucker", "Uhr des Druckers weicht {:.0} s ab", info.clock_offset_s);
             let saved = store::get_connection(&conn, pid)
                 .map_err(|e| e.to_string())?
                 .ok_or_else(|| "Verbindung fehlt nach dem Speichern".to_string())?;
@@ -282,7 +283,7 @@ pub async fn test_printer_connection(
 #[tauri::command]
 pub fn remove_printer_connection(state: State<AppState>, printer_id: String) -> CmdResult<()> {
     let conn = lock_db(&state)?;
-    store::delete_connection(&conn, id(&printer_id, "Drucker")?).map_err(|e| e.to_string())
+    store::delete_connection(&conn, id(&printer_id, "Drucker")?).map_err(|e| e.to_string().into())
 }
 
 #[tauri::command]
@@ -354,7 +355,7 @@ pub async fn get_printer_job_thumbnail(state: State<'_, AppState>, job_id: Strin
 #[tauri::command]
 pub fn ignore_printer_job(state: State<AppState>, job_id: String) -> CmdResult<()> {
     let conn = lock_db(&state)?;
-    booking::ignore_job(&conn, id(&job_id, "Druck")?, &now_rfc3339()).map_err(|e| e.to_string())
+    booking::ignore_job(&conn, id(&job_id, "Druck")?, &now_rfc3339()).map_err(|e| e.to_string().into())
 }
 
 // async for the same reason as `list_open_printer_jobs`.

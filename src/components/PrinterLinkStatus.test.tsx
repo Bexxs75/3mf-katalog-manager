@@ -1,10 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { LanguageProvider } from '../i18n/LanguageContext';
+import { LanguageProviderWithDiagnostics as LanguageProvider } from '../test/renderWithDiagnostics';
 import { PrinterLinkStatus } from './PrinterLinkStatus';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
 import type { PrinterConnection } from '../types';
 
+vi.mock('@tauri-apps/plugin-log', () => ({ error: vi.fn(() => Promise.resolve()), info: vi.fn(() => Promise.resolve()) }));
 beforeEach(() => localStorage.setItem('3mf-katalog-language', 'de'));
 
 const base: PrinterConnection = {
@@ -42,7 +43,8 @@ describe('PrinterLinkStatus', () => {
     l.syncNow = vi.fn().mockRejectedValue('offline');
     render(<LanguageProvider><PrinterLinkStatus printerId="1" link={l} /></LanguageProvider>);
     fireEvent.click(screen.getByRole('button', { name: 'Jetzt abgleichen' }));
-    expect(await screen.findByText('Das hat nicht geklappt: offline')).toBeInTheDocument();
+    const message = await screen.findByText('offline');
+    expect(message.closest('div')).toHaveTextContent('Das hat nicht geklappt: offline');
   });
 
   it('shows unreachable and auth states', () => {

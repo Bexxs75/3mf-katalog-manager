@@ -41,7 +41,7 @@ describe('usePrinters', () => {
       await result.current.addUnit('p1', 'bambu_ams', 'AMS E', null).catch((e) => { thrown = e; });
     });
     expect(thrown).toBe('Ein Drucker kann hoechstens 4 AMS haben');
-    expect(result.current.error).toBe('Ein Drucker kann hoechstens 4 AMS haben');
+    expect(result.current.error).toEqual({ message: 'Ein Drucker kann hoechstens 4 AMS haben', unexpected: true });
   });
 
   it('passes the printer kind when adding a printer', async () => {

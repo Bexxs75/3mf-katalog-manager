@@ -3,6 +3,7 @@ import * as filesApi from '../lib/api/files';
 import * as foldersApi from '../lib/api/folders';
 import * as catalogMetaApi from '../lib/api/catalogMeta';
 import { canonicalTag } from '../lib/autoTags';
+import { toAppError } from '../lib/errors';
 import type { ModelFile, ModelFileSummary, Folder, TagCount, ImportResultDto } from '../types';
 
 // Embeds a slim `ModelFileSummary` into the full `ModelFile` shape so
@@ -72,7 +73,7 @@ export function useCatalogStore() {
   // Per model ID, so feedback for model A doesn't stay under model B
   // when the user switches the detail page.
   const [rescanFeedback, setRescanFeedback] = useState<
-    { fileId: string; status: 'success' | 'error'; message?: string } | null
+    { fileId: string; status: 'success' | 'error'; message?: string; unexpected?: boolean } | null
   >(null);
   // One-shot scroll request after the next commit (see renameFile);
   // App.tsx resets it to null afterwards.
@@ -500,7 +501,8 @@ export function useCatalogStore() {
       })
       .catch((e) => {
         console.error('[rescan] rescan failed:', e);
-        setRescanFeedback({ fileId: id, status: 'error', message: String(e) });
+        const err = toAppError(e);
+        setRescanFeedback({ fileId: id, status: 'error', message: err.message, unexpected: err.unexpected });
       });
   }, []);
 

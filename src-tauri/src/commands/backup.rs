@@ -5,13 +5,13 @@ use super::*;
 /// A name like "../../x" would otherwise write outside the trash directory.
 fn validate_file_name(name: &str) -> CmdResult<()> {
     if name.trim().is_empty() {
-        return Err("Dateiname darf nicht leer sein".to_string());
+        return Err(CmdError::expected("Dateiname darf nicht leer sein"));
     }
     if name.contains('/') || name.contains('\\') {
-        return Err("Dateiname darf keine Pfad-Trennzeichen enthalten".to_string());
+        return Err(CmdError::expected("Dateiname darf keine Pfad-Trennzeichen enthalten"));
     }
     if name.contains("..") {
-        return Err("Dateiname darf keine \"..\"-Folge enthalten".to_string());
+        return Err(CmdError::expected("Dateiname darf keine \"..\"-Folge enthalten"));
     }
     Ok(())
 }
@@ -23,8 +23,7 @@ pub async fn export_catalog(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     settings_json: String,
-) -> CmdResult<()> {
-    use std::io::Write;
+) -> CmdResult<bool> {
 
     let picked = app
         .dialog()
@@ -37,68 +36,82 @@ pub async fn export_catalog(
         .blocking_save_file();
 
     let Some(picked) = picked else {
-        return Ok(());
+        return Ok(false);
     };
     let dest_path = picked.into_path().map_err(|e| e.to_string())?;
+    write_catalog_backup(&state.db, &dest_path, &settings_json)?;
+    log::info!(target: "backup", "Sicherung erstellt");
+    Ok(true)
+}
 
-    let backup_db_path =
-        std::env::temp_dir().join(format!("3mf-katalog-export-{}.db", std::process::id()));
-    let tmp_zip_path = dest_path.with_extension("zip.tmp");
+/// Writes the backup ZIP (consistent snapshot of the catalog DB plus the
+/// frontend settings) to `dest`. The DB is locked only for the snapshot.
+fn write_catalog_backup(db: &std::sync::Mutex<Connection>, dest: &Path, settings_json: &str) -> CmdResult<()> {
+    // Exclusive and private from the start (symlink race, readable copy of the
+    // catalog), under a fresh name per export, see `safe_file::create_private_temp`.
+    let (backup_db_path, backup_db_file) =
+        crate::safe_file::create_private_temp(&std::env::temp_dir(), "3mf-katalog-export", ".db")
+            .map_err(|e| e.to_string())?;
+    drop(backup_db_file);
 
     // A closure, so both temp files are cleaned up on failure too.
     let result: CmdResult<()> = (|| {
         {
-            // Create exclusively (symlink race), see `write_temp_file_exclusive`.
-            std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&backup_db_path)
-                .map_err(|e| e.to_string())?;
             crate::harden_permissions(&backup_db_path);
 
-            let conn = lock_db(&state)?;
+            let conn = db.lock().map_err(|_| CmdError::from("database lock poisoned"))?;
             let mut dst = Connection::open(&backup_db_path).map_err(|e| e.to_string())?;
             let backup =
                 rusqlite::backup::Backup::new(&conn, &mut dst).map_err(|e| e.to_string())?;
+            // One step for the whole database: `run_to_completion` sleeps after
+            // every step that isn't the last, while the catalog lock (and with it
+            // every synchronous command of the UI) waits - see updater/backup.rs.
             backup
-                .run_to_completion(5, std::time::Duration::from_millis(250), None)
+                .run_to_completion(i32::MAX, std::time::Duration::from_millis(250), None)
                 .map_err(|e| e.to_string())?;
         }
 
-        let zip_file = std::fs::File::create(&tmp_zip_path).map_err(|e| e.to_string())?;
-        let mut zip = zip::ZipWriter::new(zip_file);
-        let options = zip::write::SimpleFileOptions::default();
-
-        zip.start_file("catalog.db", options).map_err(|e| e.to_string())?;
         let db_bytes = std::fs::read(&backup_db_path).map_err(|e| e.to_string())?;
-        zip.write_all(&db_bytes).map_err(|e| e.to_string())?;
-
-        zip.start_file("settings.json", options).map_err(|e| e.to_string())?;
-        zip.write_all(settings_json.as_bytes()).map_err(|e| e.to_string())?;
-
-        zip.finish().map_err(|e| e.to_string())?;
+        write_zip_atomically(dest, &[("catalog.db", &db_bytes), ("settings.json", settings_json.as_bytes())])
+            .map_err(|e| e.to_string())?;
         Ok(())
     })();
 
     let _ = std::fs::remove_file(&backup_db_path);
-    if let Err(e) = result {
-        let _ = std::fs::remove_file(&tmp_zip_path);
-        return Err(e);
-    }
+    result
+}
 
-    // Rename only after the write finished: never a partial archive at the destination.
-    if let Err(e) = std::fs::rename(&tmp_zip_path, &dest_path) {
-        let _ = std::fs::remove_file(&tmp_zip_path);
-        return Err(e.to_string());
+/// Writes a ZIP with `entries` to `dest` via a private temp file next to it and
+/// renames it into place only when complete: never a partial archive at the
+/// destination. The temp name is unpredictable and created exclusively, so a
+/// symlink planted under a guessable name can't redirect the write.
+fn write_zip_atomically(dest: &Path, entries: &[(&str, &[u8])]) -> std::io::Result<()> {
+    use std::io::Write;
+    let parent = dest.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let base = dest.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let (tmp_path, file) = crate::safe_file::create_private_temp(parent, &format!(".{base}"), ".tmp")?;
+
+    let written = (|| {
+        let mut zip = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default();
+        for (name, bytes) in entries {
+            zip.start_file(*name, options).map_err(std::io::Error::other)?;
+            zip.write_all(bytes)?;
+        }
+        zip.finish().map_err(std::io::Error::other)?.sync_all()?;
+        std::fs::rename(&tmp_path, dest)
+    })();
+    if written.is_err() {
+        let _ = std::fs::remove_file(&tmp_path);
     }
-    Ok(())
+    written
 }
 /// Writes `bytes` exclusively (`create_new`) to `path` and sets 0600.
 /// `fs::write` would follow a pre-planted symlink in a shared `/tmp` and create
 /// the file with umask permissions (often world-readable) (CWE-377, TOCTOU).
 fn write_temp_file_exclusive(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
-    let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(path)?;
+    let mut file = crate::safe_file::create_new_private(path)?;
     file.write_all(bytes)?;
     drop(file);
     crate::harden_permissions(path);
@@ -109,16 +122,56 @@ const MAX_IMPORT_DB_BYTES: u64 = 256 * 1024 * 1024;
 const MAX_IMPORT_SETTINGS_BYTES: u64 = 1024 * 1024;
 
 /// The declared size can lie; the hard limit is `Read::take` while reading.
-/// This check only saves the read attempt for honestly oversized entries.
+/// This check only saves the read attempt for honestly oversized entries. An
+/// oversized entry is about the archive the user picked, not a fault here.
 fn reject_oversized_zip_entry(name: &str, size: u64, max: u64) -> CmdResult<()> {
     if size > max {
-        return Err(format!(
+        return Err(CmdError::expected(format!(
             "Eintrag \"{name}\" im Archiv ist zu groß ({:.1} MB) - maximal {} MB erlaubt",
             size as f64 / (1024.0 * 1024.0),
             max / (1024 * 1024)
-        ));
+        )));
     }
     Ok(())
+}
+/// Reads the two entries a catalog backup ZIP must contain. Generic over the
+/// reader so this is unit-testable with an in-memory `Cursor` instead of a real
+/// file. Every failure here is about the archive the user picked (wrong file,
+/// backup from an unrelated app, truncated download, ...), never a fault of
+/// this app - hence `CmdError::expected` throughout, not a plain `?`.
+fn read_catalog_archive<R: std::io::Read + std::io::Seek>(reader: R) -> CmdResult<(Vec<u8>, String)> {
+    use std::io::Read as _;
+
+    let mut archive = zip::ZipArchive::new(reader)
+        .map_err(|_| CmdError::expected("Die Datei ist kein gültiges Katalog-Backup (keine ZIP-Datei)"))?;
+
+    let mut db_bytes = Vec::new();
+    {
+        let entry = archive
+            .by_name("catalog.db")
+            .map_err(|_| CmdError::expected("Archiv enthält keine catalog.db"))?;
+        reject_oversized_zip_entry("catalog.db", entry.size(), MAX_IMPORT_DB_BYTES)?;
+        entry
+            .take(MAX_IMPORT_DB_BYTES)
+            .read_to_end(&mut db_bytes)
+            .map_err(|e| e.to_string())?;
+    }
+
+    let mut settings_bytes = Vec::new();
+    {
+        let entry = archive
+            .by_name("settings.json")
+            .map_err(|_| CmdError::expected("Archiv enthält keine settings.json"))?;
+        reject_oversized_zip_entry("settings.json", entry.size(), MAX_IMPORT_SETTINGS_BYTES)?;
+        entry
+            .take(MAX_IMPORT_SETTINGS_BYTES)
+            .read_to_end(&mut settings_bytes)
+            .map_err(|e| e.to_string())?;
+    }
+    let settings_json = String::from_utf8(settings_bytes)
+        .map_err(|_| CmdError::expected("settings.json im Archiv ist nicht gültiges UTF-8"))?;
+
+    Ok((db_bytes, settings_json))
 }
 /// Tables and columns the imported schema must contain. `table` only comes from
 /// this constant, so interpolating it into the PRAGMA is safe.
@@ -532,23 +585,25 @@ fn validate_catalog_db_bytes(
         .map_err(|e| e.to_string())
         .and_then(|mut conn| {
             let expanded_dirs = expand_sensitive_dirs(sensitive_dirs);
-            let resolved_trash_dir = resolve_path_for_sensitivity_check(trash_dir)?;
-            conn.query_row("SELECT COUNT(*) FROM files", [], |row| row.get::<_, i64>(0))
-                .map_err(|e| e.to_string())?;
-
-            // quick_check detects structural corruption; before any migration.
-            let quick_check: String = conn
-                .query_row("PRAGMA quick_check", [], |row| row.get(0))
-                .map_err(|e| e.to_string())?;
-            if quick_check != "ok" {
-                return Err(format!("Katalog-Datenbank ist beschaedigt (quick_check: {quick_check})"));
-            }
-
-            // The app never creates triggers or views. Foreign ones are rejected before
-            // anything runs on this DB: a trigger could e.g. undermine the slicer cleanup
-            // in `replace_catalog_db`.
+            let resolved_trash_dir =
+                resolve_path_for_sensitivity_check(trash_dir).map_err(|e| e.to_string())?;
+            // The app's trash lives under sensitive data dirs; containment still guards it.
+            let trash_denylist: Vec<PathBuf> = expanded_dirs
+                .iter()
+                .filter(|dir| !resolved_trash_dir.starts_with(dir))
+                .cloned()
+                .collect();
+            // Views, triggers and virtual tables run SQL or code from the foreign file
+            // as soon as they are queried - a recursive view named `files` never
+            // finishes. The app creates none of them, so they are rejected by
+            // looking only at sqlite_schema, before any other statement touches the data.
+            conn.pragma_update(None, "trusted_schema", false).map_err(|e| e.to_string())?;
             let mut schema_stmt = conn
-                .prepare("SELECT type, name FROM sqlite_schema WHERE type IN ('trigger', 'view')")
+                .prepare(
+                    "SELECT type, name FROM sqlite_schema
+                     WHERE type IN ('trigger', 'view')
+                        OR (type = 'table' AND sql LIKE 'CREATE VIRTUAL TABLE%')",
+                )
                 .map_err(|e| e.to_string())?;
             let unexpected_schema_objects: Vec<(String, String)> = schema_stmt
                 .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
@@ -566,6 +621,17 @@ fn validate_catalog_db_bytes(
                 ));
             }
             drop(schema_stmt);
+
+            conn.query_row("SELECT COUNT(*) FROM files", [], |row| row.get::<_, i64>(0))
+                .map_err(|e| e.to_string())?;
+
+            // quick_check detects structural corruption; before any migration.
+            let quick_check: String = conn
+                .query_row("PRAGMA quick_check", [], |row| row.get(0))
+                .map_err(|e| e.to_string())?;
+            if quick_check != "ok" {
+                return Err(format!("Katalog-Datenbank ist beschaedigt (quick_check: {quick_check})"));
+            }
 
             // Migrate first, so older legitimate backups (e.g. without
             // folders.parent_id) don't fail the following checks.
@@ -602,8 +668,12 @@ fn validate_catalog_db_bytes(
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| e.to_string())?;
             for path in paths {
+                // `.message`, not `{e}`/Display: `e` is already a `CmdError` (logged once
+                // at its creation site inside `reject_if_sensitive_path_expanded`); this
+                // just carries its text onward as part of this function's `String` error,
+                // so it isn't converted/logged a second time here.
                 reject_if_sensitive_path_expanded(Path::new(&path), &expanded_dirs)
-                    .map_err(|e| format!("Ordner-Eintrag im Archiv abgelehnt: {e}"))?;
+                    .map_err(|e| format!("Ordner-Eintrag im Archiv abgelehnt: {}", e.message))?;
             }
 
             // Cycles in folders.parent_id would send every path reconstruction into an endless loop.
@@ -649,17 +719,22 @@ fn validate_catalog_db_bytes(
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| e.to_string())?;
             for (name, path, trash_path) in rows {
+                // `.message` everywhere below, not `{e}`/Display: each `e` is already a
+                // `CmdError` (logged once at its creation site inside the nested helper);
+                // this only carries its text onward as part of this function's `String`
+                // error, so it isn't converted/logged a second time here.
                 validate_file_name(&name)
-                    .map_err(|e| format!("Datei-Eintrag im Archiv abgelehnt: {e}"))?;
+                    .map_err(|e| format!("Datei-Eintrag im Archiv abgelehnt: {}", e.message))?;
                 reject_if_sensitive_path_expanded(Path::new(&path), &expanded_dirs)
-                    .map_err(|e| format!("Datei-Eintrag im Archiv abgelehnt: {e}"))?;
+                    .map_err(|e| format!("Datei-Eintrag im Archiv abgelehnt: {}", e.message))?;
                 if let Some(trash_path) = trash_path.filter(|p| !p.trim().is_empty()) {
-                    // Denylist AND containment: the denylist stays as a second barrier in case
-                    // a path lands elsewhere through a symlink chain despite a matching prefix.
-                    reject_if_sensitive_path_expanded(Path::new(&trash_path), &expanded_dirs)
-                        .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {e}"))?;
+                    // Denylist AND containment. The denylist skips the trash dir's ancestors
+                    // (`trash_denylist`, e.g. the data dir), so it only blocks unrelated
+                    // sensitive dirs like ~/.ssh or /etc; containment alone guards the rest.
+                    reject_if_sensitive_path_expanded(Path::new(&trash_path), &trash_denylist)
+                        .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {}", e.message))?;
                     reject_if_outside_trash_dir(Path::new(&trash_path), &resolved_trash_dir)
-                        .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {e}"))?;
+                        .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {}", e.message))?;
                 }
             }
             Ok(())
@@ -667,6 +742,15 @@ fn validate_catalog_db_bytes(
 
     let _ = std::fs::remove_file(&tmp_path);
     result.map_err(|e| format!("Archiv enthält keine gültige Katalog-Datenbank: {e}"))
+}
+/// Boundary used by `import_catalog`: a rejected backup file (bad schema,
+/// corrupted DB, a path escaping the trash/sensitive-dir checks, ...) is always
+/// the user's file, not a fault here - hence `expected`, not a plain `?` (which
+/// would mark it a fault and log it at ERROR via `From<String>`). Extracted so
+/// this conversion is exercised by a test instead of only living inline in the
+/// `#[tauri::command]`.
+fn validate_backup_for_import(bytes: &[u8], sensitive_dirs: &[PathBuf], trash_dir: &Path) -> CmdResult<()> {
+    validate_catalog_db_bytes(bytes, sensitive_dirs, trash_dir).map_err(CmdError::expected)
 }
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -683,8 +767,6 @@ pub async fn import_catalog(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> CmdResult<ImportCatalogResultDto> {
-    use std::io::Read;
-
     let picked = app.dialog().file().add_filter("ZIP-Archiv", &["zip"]).blocking_pick_file();
     let Some(picked) = picked else {
         return Ok(ImportCatalogResultDto { imported: false, settings_json: None });
@@ -692,34 +774,9 @@ pub async fn import_catalog(
     let archive_path = picked.into_path().map_err(|e| e.to_string())?;
 
     let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
-    let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+    let (db_bytes, settings_json) = read_catalog_archive(file)?;
 
-    let mut db_bytes = Vec::new();
-    {
-        let entry = archive
-            .by_name("catalog.db")
-            .map_err(|_| "Archiv enthält keine catalog.db".to_string())?;
-        reject_oversized_zip_entry("catalog.db", entry.size(), MAX_IMPORT_DB_BYTES)?;
-        entry
-            .take(MAX_IMPORT_DB_BYTES)
-            .read_to_end(&mut db_bytes)
-            .map_err(|e| e.to_string())?;
-    }
-
-    let mut settings_bytes = Vec::new();
-    {
-        let entry = archive
-            .by_name("settings.json")
-            .map_err(|_| "Archiv enthält keine settings.json".to_string())?;
-        reject_oversized_zip_entry("settings.json", entry.size(), MAX_IMPORT_SETTINGS_BYTES)?;
-        entry
-            .take(MAX_IMPORT_SETTINGS_BYTES)
-            .read_to_end(&mut settings_bytes)
-            .map_err(|e| e.to_string())?;
-    }
-    let settings_json = String::from_utf8(settings_bytes).map_err(|e| e.to_string())?;
-
-    validate_catalog_db_bytes(&db_bytes, &state.sensitive_dirs, &state.trash_dir)?;
+    validate_backup_for_import(&db_bytes, &state.sensitive_dirs, &state.trash_dir)?;
 
     let tmp_db_path =
         std::env::temp_dir().join(format!("3mf-katalog-import-{}.db", std::process::id()));
@@ -729,6 +786,7 @@ pub async fn import_catalog(
     let _ = std::fs::remove_file(&tmp_db_path);
     replace_result?;
 
+    log::info!(target: "backup", "Sicherung wiederhergestellt");
     Ok(ImportCatalogResultDto { imported: true, settings_json: Some(settings_json) })
 }
 /// Replaces the running `catalog.db` with `new_db_path`.
@@ -770,6 +828,12 @@ fn replace_catalog_db_with_copy_fn(
         crate::db::run_migrations(&mut incoming).map_err(|e| e.to_string())?;
         let tx = incoming.unchecked_transaction().map_err(|e| e.to_string())?;
         sanitize_printer_connections(&tx)?;
+        // The frontend keeps its current localStorage location across restores.
+        // Allow startup to adopt that location instead of one from the backup.
+        tx.execute(
+            "DELETE FROM app_settings WHERE key = ?1",
+            [super::folders::SETTING_CATALOG_BASE_DIR],
+        ).map_err(|e| e.to_string())?;
         // DROP instead of DELETE: a malicious AFTER DELETE trigger would otherwise
         // re-insert the row; DROP TABLE removes the triggers too. Second barrier next
         // to the trigger rejection in validate_catalog_db_bytes. Schema as in
@@ -803,7 +867,8 @@ fn replace_catalog_db_with_copy_fn(
             return Err(format!(
                 "Sanierung von registered_slicers ergab eine unerwartete Zeilenzahl ({final_count} statt {}) - Restore abgebrochen",
                 local_slicers.len()
-            ));
+            )
+            .into());
         }
         tx.commit().map_err(|e| e.to_string())?;
         // Close the handle on new_db_path before copying.
@@ -829,7 +894,7 @@ fn replace_catalog_db_with_copy_fn(
                 *guard = conn;
             }
         }
-        return Err(e.to_string());
+        return Err(e.to_string().into());
     }
 
     if let Err(e) = copy_fn(new_db_path, &state.db_path) {
@@ -844,7 +909,8 @@ fn replace_catalog_db_with_copy_fn(
         return match restore_result {
             Ok(()) => Err(format!(
                 "Kopieren der neuen Datenbank fehlgeschlagen, alter Katalog wiederhergestellt: {e}"
-            )),
+            )
+            .into()),
             Err(restore_err) => Err(format!(
                 "Kopieren der neuen Datenbank fehlgeschlagen UND Wiederherstellung der alten \
                  Datenbank fehlgeschlagen ({restore_err}). Die vorherige Datenbank liegt noch \
@@ -852,7 +918,8 @@ fn replace_catalog_db_with_copy_fn(
                  starten. Ursprünglicher Fehler: {e}",
                 backup_path.display(),
                 state.db_path.display()
-            )),
+            )
+            .into()),
         };
     }
 
@@ -1048,6 +1115,21 @@ mod tests {
         let result = validate_catalog_db_bytes(b"this is not a sqlite database", &[], &std::env::temp_dir());
         assert!(result.is_err());
     }
+    #[test]
+    fn validate_backup_for_import_reports_a_rejected_backup_as_expected() {
+        // Exercises the real boundary `import_catalog` calls, not a hand-copied
+        // conversion: a bad backup file is the user's problem, not a fault, so it
+        // must come out `expected`, not the default `expected: false` of a plain
+        // String, and the message must still be the validation text.
+        let err = validate_backup_for_import(b"this is not a sqlite database", &[], &std::env::temp_dir())
+            .unwrap_err();
+        assert!(err.expected, "a rejected backup file must be reported as expected, not a fault");
+        assert!(
+            err.message.contains("Katalog-Datenbank"),
+            "message should still be the validation text, was: {}",
+            err.message
+        );
+    }
     fn unique_test_db_path(name: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
             "{name}_{}.db",
@@ -1141,6 +1223,125 @@ mod tests {
         let bytes = std::fs::read(&tmp_path).unwrap();
         let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
         assert!(result.is_err(), "eine importierte Datenbank mit einer eingeschleusten View muss abgelehnt werden");
+    }
+    /// Runs the validation on a thread; a query that never ends fails the test
+    /// instead of hanging it.
+    fn validate_with_timeout(bytes: Vec<u8>) -> Result<(), String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash")));
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(5))
+            .expect("the validation must reject the database before running its SQL")
+    }
+    #[test]
+    fn catalog_backup_copies_in_one_step_without_pauses() {
+        // The catalog lock is held for the whole copy and the UI's synchronous
+        // commands wait for it; a copy with pauses between pages froze the app
+        // for minutes on catalogs with many embedded preview images.
+        let conn = crate::db::connect_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE blobs(b BLOB);").unwrap();
+        let blob = vec![7u8; 60 * 1024];
+        for _ in 0..20 {
+            conn.execute("INSERT INTO blobs(b) VALUES (?1)", [&blob]).unwrap();
+        }
+        let db = std::sync::Mutex::new(conn);
+        let dest = unique_test_dir("backup_one_step").join("backup.zip");
+
+        let started = std::time::Instant::now();
+        write_catalog_backup(&db, &dest, "{}").unwrap();
+
+        assert!(started.elapsed() < std::time::Duration::from_secs(2), "export took {:?}", started.elapsed());
+        let mut zip = zip::ZipArchive::new(std::fs::File::open(&dest).unwrap()).unwrap();
+        let mut bytes = Vec::new();
+        std::io::Read::read_to_end(&mut zip.by_name("catalog.db").unwrap(), &mut bytes).unwrap();
+        let copy = dest.with_file_name("copy.db");
+        std::fs::write(&copy, bytes).unwrap();
+        let copied = Connection::open(&copy).unwrap();
+        let (rows, total): (i64, i64) =
+            copied.query_row("SELECT count(*), sum(length(b)) FROM blobs", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!((rows, total), (20, 20 * 60 * 1024));
+    }
+
+    #[test]
+    fn catalog_backup_works_when_an_old_temp_db_with_the_same_name_exists() {
+        // A leftover or a second export in the same process must not make the
+        // export fail with "File exists".
+        let stale = std::env::temp_dir().join(format!("3mf-katalog-export-{}.db", std::process::id()));
+        std::fs::write(&stale, b"leftover").unwrap();
+        let db = std::sync::Mutex::new(crate::db::connect_in_memory().unwrap());
+        let dest = unique_test_dir("backup_stale_temp").join("backup.zip");
+
+        let result = write_catalog_backup(&db, &dest, "{}");
+        let _ = std::fs::remove_file(&stale);
+
+        result.unwrap();
+        let mut zip = zip::ZipArchive::new(std::fs::File::open(&dest).unwrap()).unwrap();
+        assert!(zip.by_name("catalog.db").is_ok());
+        assert!(zip.by_name("settings.json").is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn backup_zip_ignores_a_planted_temp_symlink_and_is_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = unique_test_dir("backup_zip_symlink");
+        let dest = dir.join("backup.zip");
+        let victim = dir.join("victim.txt");
+        std::fs::write(&victim, b"KEEP").unwrap();
+        std::os::unix::fs::symlink(&victim, dir.join("backup.zip.tmp")).unwrap();
+
+        write_zip_atomically(&dest, &[("catalog.db", b"DB"), ("settings.json", b"{}")]).unwrap();
+
+        assert_eq!(std::fs::read(&victim).unwrap(), b"KEEP");
+        assert_eq!(std::fs::metadata(&dest).unwrap().permissions().mode() & 0o777, 0o600);
+        let mut zip = zip::ZipArchive::new(std::fs::File::open(&dest).unwrap()).unwrap();
+        assert_eq!(zip.len(), 2);
+        assert_eq!(zip.by_name("catalog.db").unwrap().size(), 2);
+        let leftovers: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .filter(|n| n.ends_with(".tmp") && n != "backup.zip.tmp")
+            .collect();
+        assert!(leftovers.is_empty(), "{leftovers:?}");
+    }
+    #[cfg(unix)]
+    #[test]
+    fn temp_copy_for_validation_is_private_from_the_start() {
+        use std::os::unix::fs::PermissionsExt;
+        let path = unique_test_dir("temp_exclusive").join("check.db");
+        write_temp_file_exclusive(&path, b"x").unwrap();
+        assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_an_endless_view_named_files_without_running_it() {
+        let tmp_path = unique_test_db_path("validate_db_endless_view");
+        {
+            let conn = rusqlite::Connection::open(&tmp_path).unwrap();
+            conn.execute_batch(
+                "CREATE VIEW files AS WITH RECURSIVE r(x) AS (VALUES(1) UNION ALL SELECT x + 1 FROM r) SELECT x FROM r;",
+            )
+            .unwrap();
+        }
+        let result = validate_with_timeout(std::fs::read(&tmp_path).unwrap());
+        assert!(result.is_err());
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_a_virtual_table() {
+        let tmp_path = unique_test_db_path("validate_db_virtual_table");
+        {
+            let conn = crate::db::connect(&tmp_path).unwrap();
+            conn.execute_batch("CREATE VIRTUAL TABLE evil USING json_each('[1,2]');").ok();
+            conn.execute_batch("CREATE VIRTUAL TABLE evil2 USING fts5(x);").ok();
+            let virtual_tables: i64 = conn
+                .query_row("SELECT COUNT(*) FROM sqlite_schema WHERE sql LIKE 'CREATE VIRTUAL TABLE%'", [], |r| r.get(0))
+                .unwrap();
+            if virtual_tables == 0 {
+                return; // this SQLite build offers no virtual table module to test with
+            }
+        }
+        let result = validate_with_timeout(std::fs::read(&tmp_path).unwrap());
+        assert!(result.is_err());
     }
     #[test]
     fn validate_catalog_db_bytes_rejects_a_database_missing_a_required_table() {
@@ -1720,6 +1921,34 @@ mod tests {
         }
     }
     #[test]
+    fn restore_forgets_catalog_location_and_allows_current_location() {
+        for saved in [Some("/backup/location-a"), None] {
+            let dir = unique_test_dir("restore_catalog_location");
+            let db_path = dir.join("catalog.db");
+            let state = AppState {
+                db: Mutex::new(db::connect(&db_path).unwrap()),
+                trash_dir: dir.join("trash"),
+                db_path,
+                sensitive_dirs: Vec::new(),
+            };
+            let incoming_path = dir.join("incoming.db");
+            let incoming = db::connect(&incoming_path).unwrap();
+            if let Some(saved) = saved {
+                db::printer_link::set_setting(&incoming, "catalog_base_dir", saved).unwrap();
+            }
+            drop(incoming);
+            replace_catalog_db(&state, &incoming_path).unwrap();
+            let conn = state.db.lock().unwrap();
+            assert_eq!(db::printer_link::get_setting(&conn, "catalog_base_dir").unwrap(), None);
+            let current = dir.join("location-b");
+            std::fs::create_dir(&current).unwrap();
+            let folder = super::super::folders::register_existing_catalog_base_dir_with_conn(&conn, &current, &[]).unwrap().unwrap();
+            assert_eq!(folder.path, current.to_string_lossy());
+            assert_eq!(db::printer_link::get_setting(&conn, "catalog_base_dir").unwrap(), Some(folder.path));
+        }
+    }
+
+    #[test]
     fn replace_catalog_db_backs_up_old_db_and_installs_new_one() {
         let dir = unique_test_dir("replace_catalog_db_success");
         let db_path = dir.join("catalog.db");
@@ -2186,6 +2415,54 @@ mod tests {
         assert!(result.is_ok(), "a legitimate backup must still import: {result:?}");
     }
     #[test]
+    fn validate_catalog_db_bytes_accepts_trash_path_under_sensitive_ancestor() {
+        let dir = unique_test_dir("validate_catalog_db_trash_sensitive_ancestor_ok");
+        let sensitive_root = dir.join("sensitive");
+        let trash_dir = sensitive_root.join("app/trash");
+        std::fs::create_dir_all(&trash_dir).expect("create trash dir");
+
+        let bytes = catalog_db_bytes_with_file_row(
+            "modell.3mf",
+            &dir.join("modell.3mf").to_string_lossy(),
+            Some(&trash_dir.join("1-modell.3mf").to_string_lossy()),
+        );
+        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root], &trash_dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(result.is_ok(), "a legitimate backup must import with a sensitive trash ancestor: {result:?}");
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_trash_path_outside_trash_under_sensitive_ancestor() {
+        let dir = unique_test_dir("validate_catalog_db_trash_sensitive_ancestor_outside");
+        let sensitive_root = dir.join("sensitive");
+        let trash_dir = sensitive_root.join("app/trash");
+        std::fs::create_dir_all(&trash_dir).expect("create trash dir");
+
+        let bytes = catalog_db_bytes_with_file_row(
+            "modell.3mf",
+            &dir.join("modell.3mf").to_string_lossy(),
+            Some(&sensitive_root.join("other/x.conf").to_string_lossy()),
+        );
+        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root], &trash_dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(result.is_err(), "must reject a trash_path outside trash even under a sensitive ancestor: {result:?}");
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_trash_path_escaping_to_sensitive_ancestor() {
+        let dir = unique_test_dir("validate_catalog_db_trash_sensitive_ancestor_dotdot");
+        let sensitive_root = dir.join("sensitive");
+        let trash_dir = sensitive_root.join("app/trash");
+        std::fs::create_dir_all(&trash_dir).expect("create trash dir");
+
+        let bytes = catalog_db_bytes_with_file_row(
+            "modell.3mf",
+            &dir.join("modell.3mf").to_string_lossy(),
+            Some(&trash_dir.join("../../x.conf").to_string_lossy()),
+        );
+        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root], &trash_dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(result.is_err(), "must reject a trash_path escaping to a sensitive ancestor via parent components: {result:?}");
+    }
+    #[test]
     fn validate_catalog_db_bytes_rejects_trash_path_escaping_the_trash_dir_via_parent_components() {
         // `<trash_dir>/../victim.pdf` passes the raw prefix comparison; the path is
         // therefore resolved first.
@@ -2243,7 +2520,53 @@ mod tests {
     fn reject_oversized_zip_entry_uses_the_declared_uncompressed_size() {
         assert!(reject_oversized_zip_entry("catalog.db", 10, 100).is_ok());
         assert!(reject_oversized_zip_entry("catalog.db", 100, 100).is_ok());
-        assert!(reject_oversized_zip_entry("catalog.db", 101, 100).is_err());
+        let err = reject_oversized_zip_entry("catalog.db", 101, 100).unwrap_err();
+        assert!(err.expected, "an oversized entry is about the user's archive, not a fault");
+    }
+
+    fn zip_bytes_with(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        use std::io::Write;
+        let mut buf = Vec::new();
+        {
+            let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+            let options = zip::write::SimpleFileOptions::default();
+            for (name, contents) in entries {
+                zip.start_file(*name, options).unwrap();
+                zip.write_all(contents).unwrap();
+            }
+            zip.finish().unwrap();
+        }
+        buf
+    }
+
+    #[test]
+    fn read_catalog_archive_rejects_a_file_that_is_not_a_zip_at_all() {
+        let err = read_catalog_archive(std::io::Cursor::new(b"not a zip file".to_vec())).unwrap_err();
+        assert!(err.expected, "a non-ZIP file is the user's file, not a fault");
+    }
+
+    #[test]
+    fn read_catalog_archive_rejects_a_zip_without_catalog_db() {
+        let buf = zip_bytes_with(&[("settings.json", b"{}")]);
+        let err = read_catalog_archive(std::io::Cursor::new(buf)).unwrap_err();
+        assert!(err.expected, "a ZIP missing catalog.db is the user's file, not a fault");
+        assert_eq!(err.message, "Archiv enthält keine catalog.db");
+    }
+
+    #[test]
+    fn read_catalog_archive_rejects_a_zip_without_settings_json() {
+        let buf = zip_bytes_with(&[("catalog.db", b"fake db bytes")]);
+        let err = read_catalog_archive(std::io::Cursor::new(buf)).unwrap_err();
+        assert!(err.expected, "a ZIP missing settings.json is the user's file, not a fault");
+        assert_eq!(err.message, "Archiv enthält keine settings.json");
+    }
+
+    #[test]
+    fn read_catalog_archive_returns_both_entries_when_present() {
+        let buf = zip_bytes_with(&[("catalog.db", b"fake db bytes"), ("settings.json", br#"{"a":1}"#)]);
+        let (db_bytes, settings_json) = read_catalog_archive(std::io::Cursor::new(buf)).expect("both entries present");
+        assert_eq!(db_bytes, b"fake db bytes");
+        assert_eq!(settings_json, r#"{"a":1}"#);
     }
 
     #[test]

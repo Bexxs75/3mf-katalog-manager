@@ -2,10 +2,25 @@ name: Build macOS DMG
 
 on:
   workflow_dispatch: {}
+  # Also called by release.yml, which builds every variant in one run, and by
+  # preview.yml, which builds the separately installed test app.
+  workflow_call:
+    inputs:
+      preview:
+        type: boolean
+        default: false
+      # Empty keeps the version from Cargo.toml/tauri.conf.json.
+      version:
+        type: string
+        default: ""
 
 jobs:
   build-macos:
     runs-on: macos-latest
+    env:
+      APP_NAME: ${{ inputs.preview && '3MF Katalog Manager Preview' || '3MF Katalog Manager' }}
+      PREVIEW_CONFIG: ${{ inputs.preview && '--config src-tauri/tauri.preview.conf.json' || '' }}
+      PREVIEW_FEATURES: ${{ inputs.preview && '--features preview' || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,6 +44,14 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      # Test versions are numbered at build time instead of being committed.
+      - name: Set the build version
+        if: ${{ inputs.version != '' }}
+        shell: bash
+        run: $(command -v python || command -v python3) tools/release_assets.py set-version "$VERSION"
+        env:
+          VERSION: ${{ inputs.version }}
+
       # Homebrew only provides OCCT for the host architecture. Until a replaceable
       # universal OCCT package exists, STEP stays off here.
       - name: Build Tauri app (universal macOS binary, without STEP preview)
@@ -36,7 +59,27 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          args: --target universal-apple-darwin -- --no-default-features
+          args: --target universal-apple-darwin ${{ env.PREVIEW_CONFIG }} -- --no-default-features ${{ env.PREVIEW_FEATURES }}
+
+      # bundle.macOS.signingIdentity "-" makes Tauri sign ad hoc; an app
+      # without a valid signature is reported as "damaged" on Apple Silicon.
+      - name: Verify the ad-hoc signature
+        run: codesign --verify --deep --strict --verbose=2 "src-tauri/target/universal-apple-darwin/release/bundle/macos/$APP_NAME.app"
+
+      # The updater installs a .app.tar.gz on macOS, not the DMG. COPYFILE_DISABLE
+      # keeps macOS tar from adding AppleDouble "._*" files, which would otherwise
+      # end up inside the installed bundle.
+      - name: Pack the universal app for the updater
+        env:
+          COPYFILE_DISABLE: "1"
+        run: tar -czf "$RUNNER_TEMP/updater.app.tar.gz" -C "src-tauri/target/universal-apple-darwin/release/bundle/macos" "$APP_NAME.app"
+
+      - name: Upload updater archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: 3mf-katalog-manager-macos-updater
+          path: ${{ runner.temp }}/updater.app.tar.gz
+          if-no-files-found: error
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4

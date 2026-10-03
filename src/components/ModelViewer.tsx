@@ -57,6 +57,12 @@ function buildGroup(meshes: ParsedMesh[], material: THREE.MeshStandardMaterial):
   return group;
 }
 
+// Without WebGL (VMs without GPU passthrough, some remote desktops, blocked
+// GPU drivers) creating the renderer throws. Remembered per session so the
+// background snapshot queue fails each file immediately instead of trying a
+// new context for every model.
+let webglUnavailable = false;
+
 interface ViewerContext {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
@@ -79,9 +85,20 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
     const container = containerRef.current;
     if (!container) return;
 
+    let renderer: THREE.WebGLRenderer;
+    try {
+      if (webglUnavailable) throw new Error('WebGL unavailable');
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+    } catch (err) {
+      if (!webglUnavailable) console.error('[ModelViewer] WebGL not available:', err);
+      webglUnavailable = true;
+      setStatus('error');
+      onError?.();
+      return;
+    }
+
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(window.devicePixelRatio);
     container.appendChild(renderer.domElement);
 

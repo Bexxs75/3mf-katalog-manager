@@ -4,7 +4,7 @@
 //! happen. The folder import deliberately extracts nothing.
 
 use super::*;
-use super::files::{import_many_with_conn, is_supported_extension};
+use super::files::{import_many_with_conn_atomic, is_supported_extension, SkippedFileDto};
 
 use serde::Deserialize;
 use tauri::Emitter;
@@ -84,6 +84,8 @@ pub struct ArchiveImportResultDto {
     pub imported: Vec<ModelFileDto>,
     pub duplicate_count: i64,
     pub archives: Vec<ArchiveOutcomeDto>,
+    /// Extracted files that could not be imported.
+    pub skipped: Vec<SkippedFileDto>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -105,6 +107,9 @@ struct ArchiveProgressDto {
 pub struct PendingArchives {
     pending: std::sync::Mutex<HashSet<PathBuf>>,
     observed_drops: std::sync::Mutex<HashSet<PathBuf>>,
+    // Directory roots authorize folder-row creation during import, separately
+    // from the archives that may be extracted.
+    observed_directory_drops: std::sync::Mutex<HashSet<PathBuf>>,
 }
 
 /// Same rule as `split_archives`: a real file with an archive extension.
@@ -124,6 +129,17 @@ impl PendingArchives {
         if let Ok(mut set) = self.observed_drops.lock() {
             set.extend(paths.iter().filter(|p| is_archive_file(p)).cloned());
         }
+        if let Ok(mut set) = self.observed_directory_drops.lock() {
+            set.extend(paths.iter().filter(|p| p.is_dir()).cloned());
+        }
+    }
+
+    /// Consumes one backend-observed directory drop; frontend paths alone do
+    /// not authorize creating catalog folder rows.
+    pub(crate) fn claim_dropped_directory(&self, path: &Path) -> bool {
+        self.observed_directory_drops.lock()
+            .map(|mut observed| observed.remove(path))
+            .unwrap_or(false)
     }
 
     /// Moves only the drops observed by the backend from `archives` into the allow
@@ -178,20 +194,25 @@ impl PendingArchives {
     }
 }
 
-/// Folders the user picked in the native folder dialog (`pick_folder_path`).
-/// Together with the catalog folders the only allowed extraction targets - so a
+/// Folders the user picked in the native folder dialog (`pick_folder_path`) or
+/// created during catalog setup (`create_catalog_dir`). Together with the
+/// catalog folders the only allowed extraction targets - so a
 /// compromised frontend can't slip in an arbitrary target (e.g. the home directory).
 #[derive(Default)]
 pub struct ApprovedTargets(std::sync::Mutex<HashSet<PathBuf>>);
 
 impl ApprovedTargets {
+    pub(crate) fn clear(&self) {
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    }
+
     pub(crate) fn approve(&self, path: &Path) {
         if let Ok(mut set) = self.0.lock() {
             set.insert(path.to_path_buf());
         }
     }
 
-    fn contains(&self, path: &Path) -> bool {
+    pub(crate) fn contains(&self, path: &Path) -> bool {
         self.0.lock().map(|set| set.contains(path)).unwrap_or(false)
     }
 }
@@ -219,7 +240,8 @@ fn reject_if_ancestor_of_sensitive(path: &Path, expanded_sensitive: &[PathBuf]) 
         Some(dir) => Err(format!(
             "Zielpfad enthaelt ein geschuetztes Verzeichnis ({}) und wird abgelehnt",
             dir.display()
-        )),
+        )
+        .into()),
         None => Ok(()),
     }
 }
@@ -227,7 +249,7 @@ fn reject_if_ancestor_of_sensitive(path: &Path, expanded_sensitive: &[PathBuf]) 
 /// All target folder checks that consume or write NOTHING.
 fn check_target_location(target_dir: &Path, expanded_sensitive: &[PathBuf]) -> CmdResult<()> {
     if !target_dir.is_dir() {
-        return Err(format!("Zielordner existiert nicht: {}", target_dir.display()));
+        return Err(CmdError::expected(format!("Zielordner existiert nicht: {}", target_dir.display())));
     }
     reject_if_sensitive_path_expanded(target_dir, expanded_sensitive)?;
     reject_if_ancestor_of_sensitive(target_dir, expanded_sensitive)
@@ -280,12 +302,19 @@ pub(crate) fn unique_destination(target_dir: &Path, folder_name: &str) -> PathBu
 }
 
 /// Imports a freshly extracted folder into the catalog: the existing folder
-/// import plus attaching it below the target catalog folder.
-pub(crate) fn import_extracted_dir(conn: &mut Connection, dir: &Path) -> CmdResult<ImportResultDto> {
-    let result = import_many_with_conn(conn, vec![dir.to_path_buf()])?;
+/// import plus attaching it below the target catalog folder. `created_dirs` are
+/// the folders the extraction made; if nothing new reached the catalog, the
+/// caller removes them from disk, so their catalog rows go as well.
+pub(crate) fn import_extracted_dir(conn: &mut Connection, dir: &Path, created_dirs: &[PathBuf]) -> CmdResult<ImportResultDto> {
+    let known_max_id = db::max_folder_id(conn).map_err(|e| e.to_string())?;
+    let result = import_many_with_conn_atomic(conn, vec![dir.to_path_buf()])?;
+    if result.imported.is_empty() {
+        db::remove_new_folder_rows(conn, created_dirs, known_max_id).map_err(|e| e.to_string())?;
+        return Ok(result);
+    }
     // Only cosmetic (folder tree) - an error here must not undo the successful import.
     if let Err(e) = db::attach_folder_to_parent_by_path(conn, dir) {
-        eprintln!("[archive] mounting {} failed: {e}", dir.display());
+        log::error!(target: "archive", "mounting {} failed: {e}", dir.display());
     }
     Ok(result)
 }
@@ -301,7 +330,7 @@ fn extract_one(
     ctx: &ExtractContext<'_>,
     request: &ArchiveRequest,
     result: &mut ArchiveImportResultDto,
-    import_dir: &mut impl FnMut(&Path) -> CmdResult<ImportResultDto>,
+    import_dir: &mut impl FnMut(&Path, &[PathBuf]) -> CmdResult<ImportResultDto>,
     on_progress: &mut impl FnMut(&str, &'static str),
 ) -> ArchiveOutcomeDto {
     let mut outcome = ArchiveOutcomeDto {
@@ -329,7 +358,7 @@ fn extract_one(
     if let Err(e) = reject_if_sensitive_path_expanded(&dest, ctx.expanded_sensitive)
         .and_then(|()| reject_if_ancestor_of_sensitive(&dest, ctx.expanded_sensitive))
     {
-        outcome.error = Some(e);
+        outcome.error = Some(e.message);
         return outcome;
     }
 
@@ -350,16 +379,28 @@ fn extract_one(
     outcome.blocked_skipped = extraction.stats.blocked_skipped;
 
     on_progress(&request.path, "importing");
-    let imported = match import_dir(&dest) {
+    let imported = match import_dir(&dest, &extraction.created_dirs()) {
         Ok(imported) => imported,
         Err(e) => {
             extraction.rollback();
-            outcome.error = Some(e);
+            outcome.error = Some(e.message);
             return outcome;
         }
     };
+    let nothing_new = imported.imported.is_empty();
     result.duplicate_count += imported.duplicate_count;
     result.imported.extend(imported.imported);
+    result.skipped.extend(imported.skipped);
+    if nothing_new {
+        // Only duplicates or unreadable files: keep nothing on disk, otherwise every
+        // retry leaves another "Name (2)", "Name (3)" folder behind. The archive
+        // stays, since nothing was taken from it.
+        extraction.rollback();
+        if ctx.delete_archive {
+            outcome.delete_error = Some("Archiv behalten: nichts Neues fuer den Katalog".to_string());
+        }
+        return outcome;
+    }
     outcome.extracted_to = Some(dest.to_string_lossy().to_string());
 
     if ctx.delete_archive {
@@ -396,7 +437,7 @@ pub(crate) fn extract_archives_core(
     target_dir: &Path,
     requests: Vec<ArchiveRequest>,
     delete_archives: bool,
-    mut import_dir: impl FnMut(&Path) -> CmdResult<ImportResultDto>,
+    mut import_dir: impl FnMut(&Path, &[PathBuf]) -> CmdResult<ImportResultDto>,
     mut on_progress: impl FnMut(&str, &'static str),
 ) -> CmdResult<ArchiveImportResultDto> {
     // Compute once - the guard runs for every entry.
@@ -412,6 +453,7 @@ pub(crate) fn extract_archives_core(
         imported: Vec::new(),
         duplicate_count: 0,
         archives: Vec::new(),
+        skipped: Vec::new(),
     };
     for request in &requests {
         let outcome = extract_one(&ctx, request, &mut result, &mut import_dir, &mut on_progress);
@@ -435,7 +477,7 @@ pub(crate) fn authorize_and_extract(
 ) -> CmdResult<ArchiveImportResultDto> {
     check_target_location(target_dir, &expand_sensitive_dirs(sensitive_dirs))?;
     if !target_approved {
-        return Err("Zielordner wurde nicht ueber die App ausgewaehlt".to_string());
+        return Err("Zielordner wurde nicht ueber die App ausgewaehlt".into());
     }
     let (allowed, rejected) = pending.take_authorized(requests);
     let mut result = extract(allowed)?;
@@ -478,9 +520,9 @@ pub async fn extract_archives(
             target,
             allowed,
             delete_archives,
-            |dir| {
+            |dir, created| {
                 let mut conn = lock_db(&state)?;
-                import_extracted_dir(&mut conn, dir)
+                import_extracted_dir(&mut conn, dir, created)
             },
             |path, stage| {
                 let _ = app.emit(
@@ -502,6 +544,7 @@ mod tests {
 
     /// Smallest valid ASCII STL (one triangle), so the real import accepts the file.
     const STL: &[u8] = b"solid t\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 1 0 0\nvertex 0 1 0\nendloop\nendfacet\nendsolid t\n";
+    const STL_OTHER: &[u8] = b"solid u\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 2 0 0\nvertex 0 2 0\nendloop\nendfacet\nendsolid u\n";
 
     fn make_zip(path: &Path, entries: &[(&str, &[u8])]) {
         let mut zip = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
@@ -534,7 +577,7 @@ mod tests {
             target,
             requests,
             delete,
-            |dir| import_extracted_dir(conn, dir),
+            |dir, c| import_extracted_dir(conn, dir, c),
             |_, _| {},
         )
         .expect("extract_archives_core")
@@ -577,6 +620,64 @@ mod tests {
         let folders = db::list_folders(&conn).unwrap();
         let sub = folders.iter().find(|f| f.path == target.join("Drache").to_string_lossy()).unwrap();
         assert_eq!(sub.parent_id, Some(target_id));
+    }
+
+    #[test]
+    fn an_archive_with_nothing_new_leaves_no_folder_behind() {
+        let dir = unique_test_dir("archives_nothing_new");
+        let target = dir.join("Katalog");
+        std::fs::create_dir_all(&target).unwrap();
+        let archive = dir.join("Drache.zip");
+        make_zip(&archive, &[("Teile/koerper.stl", STL), ("liesmich.txt", b"x")]);
+
+        let mut conn = crate::db::connect_in_memory().unwrap();
+        db::ensure_folder_path(&conn, &target, &target).unwrap();
+        let info = inspect_one(&archive);
+        let first = run(&mut conn, &target, vec![request_for(&info, ConflictMode::New)], false);
+        assert_eq!(first.imported.len(), 1);
+
+        // The same archive again: every model is a duplicate.
+        let second = run(&mut conn, &target, vec![request_for(&info, ConflictMode::New)], true);
+        assert!(second.imported.is_empty());
+        assert_eq!(second.duplicate_count, 1);
+        let outcome = &second.archives[0];
+        assert_eq!(outcome.error, None);
+        assert_eq!(outcome.extracted_to, None);
+        assert!(!target.join("Drache (2)").exists(), "nothing new, so nothing may stay on disk");
+        assert!(archive.exists(), "the archive stays when nothing was taken from it");
+        assert!(outcome.delete_error.is_some());
+        let paths: Vec<String> = db::list_folders(&conn).unwrap().into_iter().map(|f| f.path).collect();
+        assert!(!paths.iter().any(|p| p.contains("Drache (2)")), "no folder row for the removed folder: {paths:?}");
+        // The first extraction is untouched.
+        assert!(target.join("Drache/Teile/koerper.stl").exists());
+    }
+
+    #[test]
+    fn undoing_an_extraction_keeps_older_folder_rows_for_the_same_path() {
+        let dir = unique_test_dir("archives_keep_old_rows");
+        let target = dir.join("Katalog");
+        std::fs::create_dir_all(&target).unwrap();
+        let archive = dir.join("Drache.zip");
+        make_zip(&archive, &[("koerper.stl", STL)]);
+
+        let mut conn = crate::db::connect_in_memory().unwrap();
+        db::ensure_folder_path(&conn, &target, &target).unwrap();
+        let info = inspect_one(&archive);
+        run(&mut conn, &target, vec![request_for(&info, ConflictMode::New)], false);
+
+        // An older catalog row for "Drache (2)" with a subfolder that holds a file,
+        // whose directory was deleted outside the app.
+        let old = target.join("Drache (2)");
+        let old_id = db::ensure_folder_path(&conn, &target, &old).unwrap();
+        let sub_id = db::ensure_folder_path(&conn, &target, &old.join("Teile")).unwrap();
+        crate::db::test_insert_minimal_file(&conn, &old.join("Teile/alt.stl").to_string_lossy(), Some(sub_id)).unwrap();
+
+        let second = run(&mut conn, &target, vec![request_for(&info, ConflictMode::New)], false);
+        assert!(second.imported.is_empty());
+        assert!(!old.exists());
+        let ids: Vec<i64> = db::list_folders(&conn).unwrap().into_iter().map(|f| f.id).collect();
+        assert!(ids.contains(&old_id), "the older row must stay");
+        assert!(ids.contains(&sub_id), "its subfolder with a file must stay");
     }
 
     #[test]
@@ -624,7 +725,8 @@ mod tests {
         let kept = dir.join("Behalten.zip");
         let deleted = dir.join("Weg.zip");
         make_zip(&kept, &[("a.stl", STL)]);
-        make_zip(&deleted, &[("b.stl", STL)]);
+        // A different model, otherwise the second archive holds only a duplicate and stays.
+        make_zip(&deleted, &[("b.stl", STL_OTHER)]);
 
         let mut conn = crate::db::connect_in_memory().unwrap();
         let mut stale = request_for(&inspect_one(&kept), ConflictMode::New);
@@ -682,7 +784,7 @@ mod tests {
             &target,
             vec![request],
             false,
-            |d| import_extracted_dir(&mut conn, d),
+            |d, c| import_extracted_dir(&mut conn, d, c),
             |_, _| {},
         );
         assert!(result.is_err());
@@ -707,7 +809,7 @@ mod tests {
             &dir,
             vec![request],
             false,
-            |d| import_extracted_dir(&mut conn, d),
+            |d, c| import_extracted_dir(&mut conn, d, c),
             |_, _| {},
         );
         assert!(result.is_err(), "Ziel 'Home' enthaelt den geschuetzten Ordner");
@@ -719,7 +821,7 @@ mod tests {
             &target,
             vec![request],
             false,
-            |d| import_extracted_dir(&mut conn, d),
+            |d, c| import_extracted_dir(&mut conn, d, c),
             |_, _| {},
         );
         assert!(result.is_err(), "auch der Zielordner selbst ist Vorfahr");
@@ -799,7 +901,7 @@ mod tests {
     }
 
     fn run_core(conn: &mut Connection, target: &Path, requests: Vec<ArchiveRequest>) -> CmdResult<ArchiveImportResultDto> {
-        extract_archives_core(&[], target, requests, false, |d| import_extracted_dir(conn, d), |_, _| {})
+        extract_archives_core(&[], target, requests, false, |d, c| import_extracted_dir(conn, d, c), |_, _| {})
     }
 
     fn plain_request(path: &Path) -> ArchiveRequest {
@@ -917,7 +1019,7 @@ mod tests {
             &home,
             vec![plain_request(&archive)],
             false,
-            |d| import_extracted_dir(&mut conn, d),
+            |d, c| import_extracted_dir(&mut conn, d, c),
             |_, _| {},
         );
         assert!(as_target.is_err());
@@ -936,7 +1038,7 @@ mod tests {
                 &katalog,
                 vec![request],
                 false,
-                |d| import_extracted_dir(&mut conn, d),
+                |d, c| import_extracted_dir(&mut conn, d, c),
                 |_, _| {},
             )
             .unwrap();
@@ -981,7 +1083,7 @@ mod tests {
             &target,
             vec![plain_request(&archive)],
             true,
-            |_| Err("Datenbank weg".to_string()),
+            |_, _| Err("Datenbank weg".into()),
             |_, _| {},
         )
         .unwrap();

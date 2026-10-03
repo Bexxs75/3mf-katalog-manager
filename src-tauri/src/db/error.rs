@@ -4,6 +4,8 @@ use std::fmt;
 pub enum DbError {
     Sqlite(rusqlite::Error),
     Other(String),
+    /// Rejected user input (e.g. an empty name): normal feedback, not a fault.
+    Invalid(String),
 }
 
 impl fmt::Display for DbError {
@@ -11,6 +13,7 @@ impl fmt::Display for DbError {
         match self {
             DbError::Sqlite(e) => write!(f, "database error: {e}"),
             DbError::Other(msg) => write!(f, "{msg}"),
+            DbError::Invalid(msg) => write!(f, "{msg}"),
         }
     }
 }

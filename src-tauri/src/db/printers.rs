@@ -154,10 +154,10 @@ fn uses_bambu_ams_index(kind: &str) -> bool {
 fn clean_name(name: &str) -> Result<String, DbError> {
     let trimmed = name.trim();
     if trimmed.is_empty() {
-        return Err(DbError::Other("Name darf nicht leer sein".into()));
+        return Err(DbError::Invalid("Name darf nicht leer sein".into()));
     }
     if trimmed.chars().count() > MAX_NAME_LEN {
-        return Err(DbError::Other(format!("Name darf hoechstens {MAX_NAME_LEN} Zeichen haben")));
+        return Err(DbError::Invalid(format!("Name darf hoechstens {MAX_NAME_LEN} Zeichen haben")));
     }
     Ok(trimmed.to_string())
 }

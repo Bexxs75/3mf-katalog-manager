@@ -45,6 +45,8 @@ Production build (type checking + Vite build):
 npm run build
 ```
 
+On Windows, run `.\src-tauri\scripts\stage-vc-runtime.ps1` once before `npm run tauri dev` or `npm run tauri build`. It copies the Visual C++ runtime DLLs that the Windows bundle ships next to the app; without them the Tauri build stops with a missing-resource error.
+
 ### Running tests
 
 - **Frontend tests:** `npx vitest run` (or `npm test`, which runs the same command). Type checking alone: `npx tsc --noEmit`.
@@ -66,6 +68,18 @@ Issues labeled [`good first issue`](https://github.com/Bexxs75/3mf-katalog-manag
 ### Security issues
 
 Please **don't** open a public issue for a security vulnerability. Email **info@3mfkatalog.de** instead so it can be fixed before it's public. Details: [SECURITY.md](SECURITY.md).
+
+### Maintainer notes: the updater signing key
+
+The in-app updater checks a signature made with a private key kept in GitHub Actions secrets and in offline copies outside the repo — not something a regular contribution needs to touch. If that key were ever lost, every existing installation would need a new key to keep verifying updates, and users would have to reinstall once by hand to get it.
+
+### Maintainer notes: publishing a test version
+
+1. Write the scenarios for the testers in `docs/tests/<version>.md` (format in `docs/tests/README.md`). The version is `x.y.z-n` with a numeric `n`, e.g. `0.15.0-2`.
+2. Run the workflow "Preview (test version)" with that version (tick "Also build the STEP variants" for the STEP variants), or push the tag `preview-<version>` (`preview-<version>-step` for all six variants). A run without STEP keeps the previously published STEP files in place, so testers on a STEP build stay on their version until the next STEP run.
+3. The workflow replaces the files of the pre-release `preview`. Installed test versions offer the update on their next start; testers download new installs, the test guide PDF and the result sheet from that release.
+
+Test versions use their own identifier (`com.thebexxs.mfkatalogmanager.preview`), so they never touch the catalog of the normal app.
 
 ---
 
@@ -114,6 +128,8 @@ Produktions-Build (Typprüfung + Vite-Build):
 npm run build
 ```
 
+Unter Windows vor `npm run tauri dev` oder `npm run tauri build` einmal `.\src-tauri\scripts\stage-vc-runtime.ps1` ausführen. Das Skript kopiert die Visual-C++-Laufzeit-DLLs, die das Windows-Paket neben der App mitliefert; ohne sie bricht der Tauri-Build mit einer fehlenden Ressource ab.
+
 #### Tests ausführen
 
 - **Frontend-Tests:** `npx vitest run` (oder `npm test`, ruft denselben Befehl auf). Nur Typprüfung: `npx tsc --noEmit`.
@@ -135,3 +151,15 @@ Issues mit dem Label [`good first issue`](https://github.com/Bexxs75/3mf-katalog
 #### Sicherheitslücken
 
 Bitte **kein** öffentliches Issue für eine Sicherheitslücke eröffnen. Schreib stattdessen an **info@3mfkatalog.de**, damit sie behoben werden kann, bevor sie öffentlich wird. Details: [SECURITY.md](SECURITY.md#sicherheitsrichtlinie-deutsch).
+
+#### Hinweis für Maintainer:innen: der Signaturschlüssel des Updaters
+
+Der Updater in der App prüft eine Signatur, die mit einem privaten Schlüssel erstellt wurde. Dieser liegt in den GitHub-Actions-Secrets und in offline aufbewahrten Kopien außerhalb des Repos – normale Beiträge müssen ihn nicht anfassen. Ginge dieser Schlüssel verloren, bräuchte jede bestehende Installation einen neuen Schlüssel, um weiterhin Updates prüfen zu können, und Nutzer müssten einmal von Hand neu installieren.
+
+#### Hinweis für Maintainer:innen: eine Test-Version veröffentlichen
+
+1. Die Szenarien für die Tester in `docs/tests/<version>.md` schreiben (Format in `docs/tests/README.md`). Die Version hat die Form `x.y.z-n` mit einer Zahl als `n`, z. B. `0.15.0-2`.
+2. Den Workflow „Preview (test version)“ mit dieser Version starten („Also build the STEP variants“ ankreuzen für die STEP-Varianten) oder den Tag `preview-<version>` pushen (`preview-<version>-step` für alle sechs Varianten). Ein Lauf ohne STEP lässt die zuvor veröffentlichten STEP-Dateien unangetastet, sodass Tester mit einer STEP-Version bis zum nächsten STEP-Lauf auf ihrer Version bleiben.
+3. Der Workflow ersetzt die Dateien im Vorab-Release `preview`. Installierte Test-Versionen bieten das Update beim nächsten Start an; neue Installationen, die Testanleitung (PDF) und den Ergebnisbogen laden Tester aus diesem Release.
+
+Test-Versionen haben einen eigenen Identifier (`com.thebexxs.mfkatalogmanager.preview`) und berühren den Katalog der normalen App nie.

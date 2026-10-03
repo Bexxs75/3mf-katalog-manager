@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import { splitFileName } from '../lib/fileName';
+import { messageOf } from '../lib/errors';
 
 interface Props {
   x: number;
@@ -8,6 +9,7 @@ interface Props {
   onClose: () => void;
   onOpenInSlicer: () => void;
   onDelete: () => void;
+  onRemove?: () => Promise<void>;
   inQueue: boolean;
   onToggleQueue: () => void;
   printed: boolean;
@@ -16,7 +18,7 @@ interface Props {
   onRename: (newName: string) => Promise<void>;
 }
 
-type View = 'menu' | 'confirmDelete' | 'rename';
+type View = 'menu' | 'confirmDelete' | 'confirmRemove' | 'rename';
 
 export function ContextMenu({
   x,
@@ -24,6 +26,7 @@ export function ContextMenu({
   onClose,
   onOpenInSlicer,
   onDelete,
+  onRemove,
   inQueue,
   onToggleQueue,
   printed,
@@ -47,7 +50,10 @@ export function ContextMenu({
     const handleKeyDown = (e: KeyboardEvent) => {
       // While renaming, the input handles Escape itself; this is only for the
       // menu view.
-      if (e.key === 'Escape' && view === 'menu') onClose();
+      if (e.key === 'Escape') {
+        if (view === 'menu') onClose();
+        else if (view === 'confirmRemove') setView('menu');
+      }
     };
     document.addEventListener('mousedown', handlePointerDown);
     document.addEventListener('keydown', handleKeyDown);
@@ -74,7 +80,7 @@ export function ContextMenu({
       .then(() => onClose())
       .catch((e) => {
         setRenaming(false);
-        setRenameError(`${t('renameError')} ${e}`);
+        setRenameError(`${t('renameError')} ${messageOf(e)}`);
       });
   };
 
@@ -84,7 +90,22 @@ export function ContextMenu({
       className="fixed z-50 min-w-[172px] rounded-[4px] border border-[var(--line-strong)] bg-[var(--panel)] shadow-lg overflow-hidden"
       style={{ left: x, top: y }}
     >
-      {view === 'confirmDelete' ? (
+      {view === 'confirmRemove' ? (
+        <div className="px-3 py-2.5 max-w-[260px]" aria-busy={renaming}>
+          <div className="text-[12px] font-medium text-[var(--ink)] pb-1">{t('removeModelQuestion').replace('{name}', currentName)}</div>
+          <div className="text-[11.5px] leading-snug text-[var(--ink-2)] pb-2">{t('removeModelHint')}</div>
+          {renameError && <div role="alert" className="pb-1.5 font-mono-ui text-[10px] text-[var(--accent)] break-words">{renameError}</div>}
+          <div className="flex gap-1.5">
+            <button className="flex-1 h-7 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[11.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50" disabled={renaming} onClick={() => setView('menu')}>{t('cancel')}</button>
+            <button className="flex-1 h-7 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[11.5px] font-semibold cursor-pointer disabled:opacity-50" autoFocus disabled={renaming} onClick={async () => {
+              if (!onRemove) return;
+              setRenaming(true); setRenameError(null);
+              try { await onRemove(); onClose(); }
+              catch (e) { setRenameError(messageOf(e)); setRenaming(false); }
+            }}>{t('removeEntry')}</button>
+          </div>
+        </div>
+      ) : view === 'confirmDelete' ? (
         <div className="px-3 py-2.5">
           <div className="text-[12px] font-medium text-[var(--ink)] pb-2">{t('deleteConfirmQuestion')}</div>
           <div className="flex gap-1.5">
@@ -197,6 +218,13 @@ export function ContextMenu({
           >
             {t('renameLabel')}
           </button>
+          {onRemove && <>
+            <div className="border-t border-[var(--line)]" />
+            <button onClick={() => { setRenameError(null); setView('confirmRemove'); }}
+              className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]">
+              {t('removeCatalog')}
+            </button>
+          </>}
           <button
             onClick={() => setView('confirmDelete')}
             className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]"

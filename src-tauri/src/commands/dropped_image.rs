@@ -46,10 +46,10 @@ pub(crate) fn read_dropped_image_with(images: &DroppedImages, path: &str) -> Cmd
     use base64::Engine;
     let path = PathBuf::from(path);
     if !is_droppable_image_path(&path) {
-        return Err("Nur PNG-, JPG- oder WebP-Bilder werden unterstuetzt".to_string());
+        return Err(CmdError::expected("Nur PNG-, JPG- oder WebP-Bilder werden unterstuetzt"));
     }
     if !images.claim(&path) {
-        return Err("Bild wurde nicht per Drag & Drop uebergeben".to_string());
+        return Err("Bild wurde nicht per Drag & Drop uebergeben".into());
     }
     let bytes = read_image_bounded(&path, MAX_CUSTOM_IMAGE_BYTES as u64)?;
     Ok(base64::engine::general_purpose::STANDARD.encode(bytes))

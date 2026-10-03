@@ -27,7 +27,7 @@ describe('useCatalogCleanup', () => {
     await act(async () => {
       await result.current.scanCatalogIssues();
     });
-    expect(result.current.cleanupError).toBe('scan failed');
+    expect(result.current.cleanupError).toEqual({ message: 'scan failed', unexpected: true });
     expect(result.current.cleanupDialogOpen).toBe(false);
   });
 
@@ -52,6 +52,6 @@ describe('useCatalogCleanup', () => {
       await result.current.deleteSelectedCleanupFiles(['m1'], onDeleted);
     });
     expect(onDeleted).not.toHaveBeenCalled();
-    expect(result.current.cleanupError).toBe('delete failed');
+    expect(result.current.cleanupError).toEqual({ message: 'delete failed', unexpected: true });
   });
 });

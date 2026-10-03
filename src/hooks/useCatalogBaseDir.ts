@@ -29,7 +29,13 @@ export function useCatalogBaseDir() {
     localStorage.setItem(SETUP_SEEN_KEY, '1');
   }, []);
 
-  return { catalogBaseDir, setCatalogBaseDir, setupSeen, markSetupSeen };
+  const resetCatalogSetup = useCallback(() => {
+    setCatalogBaseDir(null);
+    setSetupSeenState(false);
+    localStorage.removeItem(SETUP_SEEN_KEY);
+  }, [setCatalogBaseDir]);
+
+  return { catalogBaseDir, setCatalogBaseDir, setupSeen, markSetupSeen, resetCatalogSetup };
 }
 
 /**

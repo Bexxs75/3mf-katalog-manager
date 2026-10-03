@@ -24,6 +24,8 @@ import type { PrintersState } from '../hooks/usePrinters';
 import { useSpoolDragAndDrop } from '../hooks/useSpoolDragAndDrop';
 import * as printersApi from '../lib/api/printers';
 import { isInStorage, spoolFitsUnit, spoolLabel } from '../lib/filamentSlots';
+import { toAppError, type AppError } from '../lib/errors';
+import { ErrorText } from '../diagnostics/ErrorText';
 
 type LayoutMode = 'dashboard' | 'list';
 type StatusFilter = 'low' | 'empty' | null;
@@ -50,7 +52,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
   const t = useT();
   const { language } = useLanguage();
   const [spools, setSpools] = useState<FilamentSpool[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<AppError | null>(null);
   const [layout, setLayout] = useState<LayoutMode>('dashboard');
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(null);
@@ -98,7 +100,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
         setSpools(result);
         setError(null);
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(toAppError(e)));
   };
 
   useEffect(refresh, []);
@@ -160,7 +162,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
         setConfirmDeleteId(null);
         refresh();
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(toAppError(e)));
   };
 
   const toggleStatusFilter = (val: StatusFilter) => setStatusFilter((prev) => (prev === val ? null : val));
@@ -173,7 +175,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
       printersApi
         .loadSpool(spoolId, unitId, slotIndex)
         .then(() => refresh())
-        .catch((e) => setError(String(e)));
+        .catch((e) => setError(toAppError(e)));
     },
     [fitsUnit],
   );
@@ -187,7 +189,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
           setToast({ type: 'unload', spoolId, label: spool ? spoolLabel(spool) : '', location });
           refresh();
         })
-        .catch((e) => setError(String(e)));
+        .catch((e) => setError(toAppError(e)));
     },
     [spools],
   );
@@ -197,7 +199,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
     if (!spool) return Promise.resolve();
     return invoke('update_filament_spool', { spool: { ...spool, location } })
       .then(() => refresh())
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(toAppError(e)));
   };
 
   const dismissToast = useCallback(() => setToast(null), []);
@@ -257,7 +259,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
         />
         {error && (
           <div className="text-[length:var(--font-size-title)] text-[var(--accent)] break-words">
-            {t('filamentError')} {error}
+            {t('filamentError')} <ErrorText error={error} />
           </div>
         )}
 

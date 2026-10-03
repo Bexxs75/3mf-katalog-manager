@@ -44,8 +44,9 @@ The buttons open the download section of the website, which always offers the ne
 | Printer | System | Checked | Result |
 |---|---|---|---|
 | Sovol SV08 | Stock Klipper | Print list and usage, deducting from the spool in the app | ✅ Confirmed in daily use |
-| Anycubic Kobra S1 with ACE Pro | Rinkhals | Print list and usage readable, matching file names to the model | ☑️ Test report checked |
+| Anycubic Kobra S1 with ACE Pro / ACE Pro 2 | Rinkhals | Print list and usage readable, matching file names to the model | ☑️ Test report checked |
 | Qidi Smart 3 | Stock Klipper | Print list and usage readable; the printer's clock was wrong | 🟡 From v0.15.0 |
+| Creality K2 Plus (with CFS) | Creality Klipper 1.1.6.1, rooted | Print list and usage readable; no material or weight from the slicer, so the spool is chosen by hand | ☑️ Test report checked |
 
 *Confirmed in daily use*: tried with the app on a real printer. *Test report checked*: the data from the anonymous [test form](https://3mfkatalog.de/en/printer-test.html) fits, a hands-on test is still missing. Your printer is missing? Your test adds it.
 
@@ -61,7 +62,15 @@ What you can check yourself:
   - macOS: `shasum -a 256 3MF.Katalog.Manager_…dmg`
   - Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`
 - **Starting anyway:** Windows SmartScreen: "More info" → "Run anyway". macOS: right-click the app → "Open"; on macOS 15 or newer: System Settings → Privacy & Security → "Open Anyway".
-- **Local only:** the app works offline. It only goes online to check GitHub for a newer version and, if you switch it on, to talk to printers on your home network.
+- **Local only:** the app works offline. It only goes online to check GitHub for a newer version, to download it when you choose to update, and, if you switch it on, to talk to printers on your home network.
+- **Antivirus programs** such as Avast or AVG sometimes block new, unsigned programs as a precaution. Restore the file from quarantine and add the installation folder as an exception; you can check the file on [VirusTotal](https://www.virustotal.com) first.
+- **Uninstalling** removes the program but keeps your catalog, settings and logs on purpose. The [user guide](docs/benutzerhandbuch/BENUTZERHANDBUCH.md#uninstalling) lists the folders to delete if you want everything gone.
+
+## Updates
+
+From v0.15.0 the app checks for updates on startup and can install them itself on Windows, macOS, and the Linux AppImage. "Update now" downloads the signed package, backs up your catalog database first (the last 3 backups are kept, in `update-backups` inside the app's data folder), and installs it after you click "Restart and install". Linux `.deb`/`.rpm` installs show a "Go to download page" button instead, since only the AppImage can replace itself.
+
+Installations of 0.14 or older have to be updated once by hand — download 0.15.0 from the [website](https://3mfkatalog.de/en/#download) or the [latest release](https://github.com/Bexxs75/3mf-katalog-manager/releases/latest); every version from 0.15.0 onward then updates itself. Details, including how to restore a backup: [user guide](docs/benutzerhandbuch/BENUTZERHANDBUCH.md#updating).
 
 ## What it does
 
@@ -127,11 +136,11 @@ What you can check yourself:
 - [User guide](docs/benutzerhandbuch/BENUTZERHANDBUCH.md) (DE + EN), step by step with screenshots
 - [Website](https://3mfkatalog.de/en/) with FAQ
 - [Discord](https://discord.gg/abfVNfFqu3) for questions and ideas
-- Bugs: [open an issue](https://github.com/Bexxs75/3mf-katalog-manager/issues/new/choose), ask on Discord, or use the [bug report form](https://3mfkatalog.de/en/report-a-bug.html) (no account needed)
+- Bugs: in the app use Settings → Info → **Report a bug** (can attach an anonymized log file); or [open an issue](https://github.com/Bexxs75/3mf-katalog-manager/issues/new/choose), ask on Discord, or use the [bug report form](https://3mfkatalog.de/en/report-a-bug.html)
 
 ## Contributing
 
-Help is welcome, and not only with code: test your printer on the [test page](https://3mfkatalog.de/en/printer-test.html), check a translation, try the installation on your system or report a bug. See [CONTRIBUTING.md](CONTRIBUTING.md), issues labeled [good first issue](https://github.com/Bexxs75/3mf-katalog-manager/labels/good%20first%20issue) and the [translation guide](docs/TRANSLATING.md).
+Help is welcome, and not only with code: [try the test version](https://3mfkatalog.de/en/test-version.html) of the next release (own catalog, doesn't touch your installation; a guided test assistant walks you through it), test your printer on the [test page](https://3mfkatalog.de/en/printer-test.html), check a translation, try the installation on your system or report a bug. See [CONTRIBUTING.md](CONTRIBUTING.md), issues labeled [good first issue](https://github.com/Bexxs75/3mf-katalog-manager/labels/good%20first%20issue) and the [translation guide](docs/TRANSLATING.md).
 
 ## Status and roadmap
 

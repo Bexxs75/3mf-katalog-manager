@@ -33,7 +33,7 @@ describe('useCatalogBackup', () => {
     await act(async () => {
       await result.current.exportCatalog();
     });
-    expect(result.current.catalogBackupError).toBe('disk full');
+    expect(result.current.catalogBackupError).toEqual({ message: 'disk full', unexpected: true });
   });
 
   it('importCatalog restores settings and calls onImported when imported=true', async () => {
@@ -118,6 +118,16 @@ describe('useCatalogBackup', () => {
     await act(async () => {
       await result.current.importCatalog(vi.fn());
     });
-    expect(result.current.catalogBackupError).toBe('bad zip');
+    expect(result.current.catalogBackupError).toEqual({ message: 'bad zip', unexpected: true });
   });
+});
+
+it('reports whether export actually saved a backup', async () => {
+  const { result } = renderHook(() => useCatalogBackup());
+  for (const saved of [false, true]) {
+    vi.mocked(invoke).mockResolvedValueOnce(saved);
+    await act(async () => expect(await result.current.exportCatalog()).toBe(saved));
+  }
+  vi.mocked(invoke).mockRejectedValueOnce('disk full');
+  await act(async () => expect(await result.current.exportCatalog()).toBe(false));
 });

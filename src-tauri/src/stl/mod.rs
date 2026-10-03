@@ -15,7 +15,7 @@ pub struct StlDocument {
 
 #[allow(dead_code)]
 pub fn parse_stl_file(path: &Path) -> Result<StlDocument, StlError> {
-    let bytes = std::fs::read(path)?;
+    let bytes = crate::safe_file::read_bounded(path, crate::safe_file::MAX_MODEL_FILE_BYTES)?;
     parse_stl_bytes(&bytes)
 }
 
@@ -147,6 +147,16 @@ mod tests {
         }
         let volume = doc.volume_cm3.expect("volume present");
         assert!((volume - 1.0).abs() < 1e-4, "unexpected volume: {volume}");
+    }
+
+    #[test]
+    fn rejects_stl_without_triangles() {
+        let mut empty_binary = vec![0u8; 80];
+        empty_binary.extend_from_slice(&0u32.to_le_bytes());
+        for bytes in [Vec::new(), b"solid empty\nendsolid empty\n".to_vec(), b"hello".to_vec(), empty_binary] {
+            let result = parse_stl_bytes(&bytes);
+            assert!(matches!(result, Err(StlError::Parse(_))), "accepted {} bytes without triangles", bytes.len());
+        }
     }
 
     #[test]

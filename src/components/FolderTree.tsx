@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { FolderCatalogMenu } from './FolderCatalogMenu';
+import { useMemo, useRef, useState } from 'react';
 import { useDragThreshold } from '../hooks/useDragThreshold';
 import type { Folder } from '../types';
 import { useT } from '../i18n/LanguageContext';
@@ -12,6 +13,7 @@ interface Props {
   totalModelCount: number;
   activeFolderId: string;
   onSelect: (id: string) => void;
+  onRemoved?: () => void;
   dragOverFolderId?: string | null;
   draggedFolderId?: string | null;
   onFolderMouseEnter?: (id: string) => void;
@@ -37,6 +39,7 @@ export function FolderTree({
   totalModelCount,
   activeFolderId,
   onSelect,
+  onRemoved,
   dragOverFolderId = null,
   draggedFolderId = null,
   onFolderMouseEnter,
@@ -44,6 +47,9 @@ export function FolderTree({
   onDragFolderStart,
 }: Props) {
   const t = useT();
+  const [menu, setMenu] = useState<{ id: string; name: string; x: number; y: number } | null>(null);
+  const returnFocus = useRef<HTMLElement | null>(null);
+  const allModelsRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const tree = useMemo(() => buildTree(folders), [folders]);
 
@@ -63,6 +69,16 @@ export function FolderTree({
     return (
       <div key={node.id}>
         <div
+          tabIndex={0}
+          role="button"
+          onContextMenu={(e) => { e.preventDefault(); returnFocus.current = e.currentTarget; setMenu({ id: node.id, name: node.name, x: e.clientX, y: e.clientY }); }}
+          onKeyDown={(e) => {
+            if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+              e.preventDefault(); e.stopPropagation(); returnFocus.current = e.currentTarget;
+              const rect = e.currentTarget.getBoundingClientRect();
+              setMenu({ id: node.id, name: node.name, x: rect.left, y: rect.bottom });
+            } else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onSelect(node.id); }
+          }}
           onClick={() => onSelect(node.id)}
           onMouseDown={(e) => folderDrag.begin(e, node.id)}
           onMouseEnter={() => onFolderMouseEnter?.(node.id)}
@@ -99,6 +115,10 @@ export function FolderTree({
   return (
     <div>
       <div
+        ref={allModelsRef}
+        tabIndex={0}
+        role="button"
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onSelect('all'); } }}
         onClick={() => onSelect('all')}
         className={`flex items-center gap-2 h-7 px-1.5 rounded-[7px] cursor-pointer text-[12.5px] ${
           activeFolderId === 'all'
@@ -110,6 +130,18 @@ export function FolderTree({
         <span className="font-mono-ui text-[10.5px] text-[var(--ink-3)]">{totalModelCount}</span>
       </div>
       {tree.map((n) => renderNode(n, 0))}
+      {menu && <FolderCatalogMenu folderId={menu.id} name={menu.name} x={menu.x} y={menu.y}
+        returnFocus={returnFocus} onClose={() => setMenu(null)} onRemoved={() => {
+          let active = folders.find((f) => f.id === activeFolderId);
+          const seen = new Set<string>();
+          while (active && !seen.has(active.id)) {
+            if (active.id === menu.id) { onSelect('all'); break; }
+            seen.add(active.id); active = folders.find((f) => f.id === active?.parentId);
+          }
+          returnFocus.current = allModelsRef.current;
+          allModelsRef.current?.focus();
+          onRemoved?.();
+        }} /> }
     </div>
   );
 }

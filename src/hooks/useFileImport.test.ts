@@ -42,7 +42,7 @@ describe('useFileImport', () => {
     await act(async () => result.current.importFiles());
     expect(invoke).toHaveBeenCalledWith('import_files');
     expect(onImported).toHaveBeenCalledWith({ imported: [{ id: 'm1' }], duplicateCount: 2 });
-    expect(result.current.importBanner).toEqual({ imported: 1, duplicates: 2 });
+    expect(result.current.importBanner).toEqual({ imported: 1, duplicates: 2, skipped: [] });
   });
 
   it('importFiles does not show a banner when there are no duplicates', async () => {
@@ -50,6 +50,14 @@ describe('useFileImport', () => {
     const { result } = setup();
     await act(async () => result.current.importFiles());
     expect(result.current.importBanner).toBeNull();
+  });
+
+  it('importFiles shows a banner when files were skipped, even without duplicates', async () => {
+    const skipped = [{ path: '/k/leer.stl', reason: 'empty' }];
+    vi.mocked(invoke).mockResolvedValue({ imported: [], duplicateCount: 0, skipped });
+    const { result } = setup();
+    await act(async () => result.current.importFiles());
+    expect(result.current.importBanner).toEqual({ imported: 0, duplicates: 0, skipped });
   });
 
   it('importFiles auto-files into the base-dir folder when catalogBaseDir is set and no folder is active', async () => {
@@ -153,6 +161,7 @@ describe('useFileImport', () => {
           archiveDeleted: false,
           deleteError: null,
           error: 'kaputt',
+          unexpected: true,
         },
       ],
     });

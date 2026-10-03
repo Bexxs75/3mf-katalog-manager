@@ -44,8 +44,9 @@ Die Knöpfe öffnen den Download-Bereich der Webseite, dort gibt es immer die ne
 | Drucker | System | Geprüft | Ergebnis |
 |---|---|---|---|
 | Sovol SV08 | Klipper ab Werk | Druckliste und Verbrauch, Abbuchen von der Spule in der App | ✅ Im Alltag bestätigt |
-| Anycubic Kobra S1 mit ACE Pro | Rinkhals | Druckliste und Verbrauch lesbar, Zuordnung der Dateinamen zum Modell | ☑️ Testbericht geprüft |
+| Anycubic Kobra S1 mit ACE Pro / ACE Pro 2 | Rinkhals | Druckliste und Verbrauch lesbar, Zuordnung der Dateinamen zum Modell | ☑️ Testbericht geprüft |
 | Qidi Smart 3 | Klipper ab Werk | Druckliste und Verbrauch lesbar; die Uhr des Druckers ging falsch | 🟡 Ab v0.15.0 |
+| Creality K2 Plus (mit CFS) | Creality-Klipper 1.1.6.1, gerootet | Druckliste und Verbrauch lesbar; Material und Gewicht liefert der Slicer nicht, die Spule wird von Hand gewählt | ☑️ Testbericht geprüft |
 
 *Im Alltag bestätigt*: mit der App am eigenen Drucker ausprobiert. *Testbericht geprüft*: die Daten aus dem anonymen [Testformular](https://3mfkatalog.de/druckertest.html) passen, ein Praxistest fehlt noch. Dein Drucker fehlt? Mit deinem Test kommt er dazu.
 
@@ -61,7 +62,15 @@ Was du selbst prüfen kannst:
   - macOS: `shasum -a 256 3MF.Katalog.Manager_…dmg`
   - Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`
 - **Trotzdem starten:** Windows-SmartScreen: „Weitere Informationen“ → „Trotzdem ausführen“. macOS: Rechtsklick auf die App → „Öffnen“; ab macOS 15: Systemeinstellungen → Datenschutz & Sicherheit → „Trotzdem öffnen“.
-- **Nur lokal:** Die App arbeitet offline. Online geht sie nur, um auf GitHub nach einer neuen Version zu sehen, und, wenn du es einschaltest, um mit Druckern im Heimnetz zu sprechen.
+- **Nur lokal:** Die App arbeitet offline. Online geht sie nur, um auf GitHub nach einer neuen Version zu sehen, um sie herunterzuladen, wenn du aktualisierst, und, wenn du es einschaltest, um mit Druckern im Heimnetz zu sprechen.
+- **Virenscanner** wie Avast oder AVG blockieren neue, nicht signierte Programme manchmal vorsorglich. Stell die Datei aus der Quarantäne wieder her und trag den Installationsordner als Ausnahme ein; vorher kannst du die Datei bei [VirusTotal](https://www.virustotal.com) prüfen.
+- **Deinstallieren** entfernt das Programm, Katalog, Einstellungen und Logs bleiben aber absichtlich erhalten. Welche Ordner du löschen musst, um alles zu entfernen, steht im [Benutzerhandbuch](docs/benutzerhandbuch/BENUTZERHANDBUCH.md#deinstallieren).
+
+## Updates
+
+Ab v0.15.0 prüft die App beim Start auf Updates und kann sie unter Windows, macOS und der Linux-AppImage selbst installieren. „Jetzt aktualisieren“ lädt das signierte Paket herunter, sichert vorher deine Katalog-Datenbank (die letzten 3 Sicherungen bleiben erhalten, in `update-backups` im Datenordner der App) und installiert es, nachdem du auf „Neu starten und installieren“ klickst. Bei Linux-`.deb`/`.rpm`-Installationen erscheint stattdessen der Knopf „Zur Download-Seite“, weil sich nur die AppImage selbst ersetzen kann.
+
+Installationen von 0.14 oder älter müssen einmal von Hand auf 0.15.0 aktualisiert werden – lade sie von der [Webseite](https://3mfkatalog.de/#download) oder dem [neuesten Release](https://github.com/Bexxs75/3mf-katalog-manager/releases/latest) herunter; ab 0.15.0 aktualisiert sich die App dann selbst. Details, auch zum Wiederherstellen einer Sicherung: [Benutzerhandbuch](docs/benutzerhandbuch/BENUTZERHANDBUCH.md#aktualisieren).
 
 ## Was die App kann
 
@@ -127,11 +136,11 @@ Was du selbst prüfen kannst:
 - [Benutzerhandbuch](docs/benutzerhandbuch/BENUTZERHANDBUCH.md) (DE + EN), Schritt für Schritt mit Bildern
 - [Webseite](https://3mfkatalog.de) mit FAQ
 - [Discord](https://discord.gg/abfVNfFqu3) für Fragen und Ideen
-- Fehler: [Issue anlegen](https://github.com/Bexxs75/3mf-katalog-manager/issues/new/choose), auf Discord fragen oder das [Formular „Fehler melden“](https://3mfkatalog.de/fehler-melden.html) nutzen (ohne Konto)
+- Fehler: in der App Einstellungen → Info → **Fehler melden** (auf Wunsch mit anonymisierter Logdatei); oder [Issue anlegen](https://github.com/Bexxs75/3mf-katalog-manager/issues/new/choose), auf Discord fragen oder das [Formular „Fehler melden“](https://3mfkatalog.de/fehler-melden.html) nutzen
 
 ## Mitmachen
 
-Hilfe ist willkommen, und nicht nur beim Code: Teste deinen Drucker auf der [Testseite](https://3mfkatalog.de/druckertest.html), prüfe eine Übersetzung, probier die Installation auf deinem System aus oder melde einen Fehler. Siehe [CONTRIBUTING.md](CONTRIBUTING.md), Issues mit dem Label [good first issue](https://github.com/Bexxs75/3mf-katalog-manager/labels/good%20first%20issue) und die [Übersetzungsanleitung](docs/TRANSLATING.md).
+Hilfe ist willkommen, und nicht nur beim Code: [Teste die nächste Version vorab](https://3mfkatalog.de/vorab-testen.html) (eigener Katalog, berührt deine Installation nicht; ein Testassistent führt dich durch), teste deinen Drucker auf der [Testseite](https://3mfkatalog.de/druckertest.html), prüfe eine Übersetzung, probier die Installation auf deinem System aus oder melde einen Fehler. Siehe [CONTRIBUTING.md](CONTRIBUTING.md), Issues mit dem Label [good first issue](https://github.com/Bexxs75/3mf-katalog-manager/labels/good%20first%20issue) und die [Übersetzungsanleitung](docs/TRANSLATING.md).
 
 ## Stand und Roadmap
 

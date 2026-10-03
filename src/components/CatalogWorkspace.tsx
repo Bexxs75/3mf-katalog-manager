@@ -15,6 +15,7 @@ import { tagLabel } from '../lib/autoTags';
 import { useFilamentCheck } from '../hooks/useFilamentCheck';
 import { selectFromQueue } from '../lib/queueSelect';
 import { toolCounts as computeToolCounts, TOOL_VIEW_LABEL_KEY, type ToolView } from '../lib/toolViews';
+import type { AppError } from '../lib/errors';
 
 interface CatalogWorkspaceProps {
   query: string;
@@ -49,6 +50,8 @@ interface CatalogWorkspaceProps {
   confirmBulkDelete: boolean;
   setConfirmBulkDelete: (value: boolean) => void;
   bulkDelete: () => void;
+  bulkRemove?: () => Promise<void>;
+  onCatalogRemoved?: () => void;
   selectAllVisible: () => void;
   clearBulkSelection: () => void;
   bulkAddToQueue: () => void;
@@ -80,8 +83,8 @@ interface CatalogWorkspaceProps {
   rescanMetadata: (id: string) => void;
   addModelToCollection: (fileId: string, collectionId: string) => void;
   slicers: SlicerConfig[];
-  slicerError: string | null;
-  rescanFeedback: { fileId: string; status: 'success' | 'error'; message?: string } | null;
+  slicerError: AppError | null;
+  rescanFeedback: { fileId: string; status: 'success' | 'error'; message?: string; unexpected?: boolean } | null;
   displayPreference: DisplayPreference;
   view: ViewMode;
   filtered: ModelFile[];
@@ -97,7 +100,7 @@ interface CatalogWorkspaceProps {
   setToolView: (v: ToolView | null) => void;
   onOpenCleanup: () => void;
   cleanupScanning: boolean;
-  cleanupError: string | null;
+  cleanupError: AppError | null;
 }
 
 export function CatalogWorkspace({
@@ -133,6 +136,8 @@ export function CatalogWorkspace({
   confirmBulkDelete,
   setConfirmBulkDelete,
   bulkDelete,
+  bulkRemove,
+  onCatalogRemoved,
   selectAllVisible,
   clearBulkSelection,
   bulkAddToQueue,
@@ -212,6 +217,7 @@ export function CatalogWorkspace({
         queueFilament={queueFilament.checks}
         folders={folders}
         totalModelCount={models.length}
+        onCatalogRemoved={onCatalogRemoved}
         activeFolderId={activeFolderId}
         onFolderSelect={(id) => {
           setActiveFolderId(id);
@@ -302,6 +308,7 @@ export function CatalogWorkspace({
             onBulkRemoveFromCollection={bulkRemoveFromCollection}
             onBulkSetPrintStatus={bulkSetPrintStatus}
             onBulkDelete={bulkDelete}
+            onBulkRemove={bulkRemove}
             addTagMenuOpen={addTagMenuOpen}
             onAddTagMenuOpenChange={setAddTagMenuOpen}
             tagDraft={tagDraft}
@@ -351,7 +358,7 @@ export function CatalogWorkspace({
             slicerError={slicerError}
             rescanError={
               rescanFeedback?.fileId === detailModel.id && rescanFeedback.status === 'error'
-                ? rescanFeedback.message ?? null
+                ? { message: rescanFeedback.message ?? '', unexpected: rescanFeedback.unexpected ?? false }
                 : null
             }
             rescanSuccess={rescanFeedback?.fileId === detailModel.id && rescanFeedback.status === 'success'}

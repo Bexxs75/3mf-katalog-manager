@@ -24,10 +24,21 @@ export function useBulkSelection({
 }: UseBulkSelectionArgs) {
   const [selectedForBulk, setSelectedForBulk] = useState<Set<string>>(new Set());
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
-  const [addToCollectionMenuOpen, setAddToCollectionMenuOpen] = useState(false);
-  const [addTagMenuOpen, setAddTagMenuOpen] = useState(false);
+  // A single menu state prevents overlapping menus for every caller.
+  const [openMenu, setOpenMenu] = useState<'collection' | 'addTag' | 'removeTag' | null>(null);
+  const addToCollectionMenuOpen = openMenu === 'collection';
+  const addTagMenuOpen = openMenu === 'addTag';
+  const removeTagMenuOpen = openMenu === 'removeTag';
+  const setAddToCollectionMenuOpen = useCallback((value: boolean) => {
+    setOpenMenu((current) => value ? 'collection' : current === 'collection' ? null : current);
+  }, []);
+  const setAddTagMenuOpen = useCallback((value: boolean) => {
+    setOpenMenu((current) => value ? 'addTag' : current === 'addTag' ? null : current);
+  }, []);
+  const setRemoveTagMenuOpen = useCallback((value: boolean) => {
+    setOpenMenu((current) => value ? 'removeTag' : current === 'removeTag' ? null : current);
+  }, []);
   const [tagDraft, setTagDraft] = useState('');
-  const [removeTagMenuOpen, setRemoveTagMenuOpen] = useState(false);
 
   const toggleBulkSelect = useCallback((id: string) => {
     setSelectedForBulk((prev) => {
@@ -43,9 +54,8 @@ export function useBulkSelection({
   const clearBulkSelection = useCallback(() => {
     setSelectedForBulk(new Set());
     setConfirmBulkDelete(false);
-    setAddTagMenuOpen(false);
+    setOpenMenu(null);
     setTagDraft('');
-    setRemoveTagMenuOpen(false);
   }, []);
 
   const bulkDelete = useCallback(() => {
@@ -101,7 +111,7 @@ export function useBulkSelection({
       setTagDraft('');
       setAddTagMenuOpen(false);
     });
-  }, [tagDraft, selectedForBulk, setModels, refreshTags]);
+  }, [tagDraft, selectedForBulk, setModels, refreshTags, setAddTagMenuOpen]);
 
   // Counterpart to bulkAddTagAction; models without the tag are skipped.
   const bulkRemoveTagAction = useCallback(
@@ -115,7 +125,7 @@ export function useBulkSelection({
         setRemoveTagMenuOpen(false);
       });
     },
-    [models, selectedForBulk, setModels, refreshTags],
+    [models, selectedForBulk, setModels, refreshTags, setRemoveTagMenuOpen],
   );
 
   // All tags of the selection, for the "Remove tag" menu.

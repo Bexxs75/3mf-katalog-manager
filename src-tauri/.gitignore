@@ -13,6 +13,7 @@
 # scripts/stage-occt-dlls.ps1). Deliberately not committed - see
 # vendor/opencascade-sys/VENDORING.md for the rationale.
 /occt-runtime/
+/vc-runtime/
 
 # vcpkg install output when building locally in the manifest directory (see
 # occt-vcpkg-manifest/README.md). Only the manifest itself is part of the repo,

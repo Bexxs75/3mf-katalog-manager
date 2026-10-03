@@ -1,0 +1,106 @@
+name: Release (draft)
+
+# Builds all six variants in one run, gives the files readable names, signs the
+# update packages, writes the updater manifests and creates a DRAFT release.
+# Nothing becomes visible to users (or to the in-app updater) until the draft is
+# published by hand.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version without v, e.g. 0.15.0 or 0.15.0-1 (MSI needs a numeric pre-release)"
+        required: true
+        type: string
+
+# Read-only by default; only the jobs that need more ask for it.
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      # Passed through env instead of being pasted into the script, so the input
+      # can never be interpreted as shell code.
+      - name: Version matches Cargo.toml and tauri.conf.json
+        env:
+          VERSION: ${{ inputs.version }}
+        run: python3 tools/release_assets.py check-version "$VERSION"
+
+  windows:
+    needs: verify
+    uses: ./.github/workflows/build-windows.yml
+  windows-step:
+    needs: verify
+    # A called workflow can never get more rights than its caller grants; this
+    # build keeps its vcpkg binary cache in GitHub Packages.
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/build-windows-step.yml
+  macos:
+    needs: verify
+    uses: ./.github/workflows/build-macos.yml
+  macos-step:
+    needs: verify
+    uses: ./.github/workflows/build-macos-step.yml
+  linux:
+    needs: verify
+    uses: ./.github/workflows/build-linux-nostep.yml
+  linux-step:
+    needs: verify
+    uses: ./.github/workflows/build-linux.yml
+
+  assemble:
+    needs: [windows, windows-step, macos, macos-step, linux, linux-step]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # Only the final packages; the single-arch .app bundles of the STEP macOS
+      # build are intermediate artifacts and not needed here.
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: 3mf-katalog-manager-*
+          path: artifacts
+      - name: Readable file names
+        run: python3 tools/release_assets.py rename "$VERSION" artifacts dist
+      # `tauri signer sign` writes the signature next to the file as <file>.sig,
+      # which is where the manifest step looks for it. The CLI version is pinned
+      # (same as package-lock.json) because this step hands it the private key.
+      - name: Sign the update packages
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          for f in dist/*.msi dist/*.app.tar.gz dist/*.AppImage; do
+            npx --yes @tauri-apps/cli@2.11.4 signer sign "$f"
+          done
+      - name: Updater manifests
+        run: python3 tools/release_assets.py latest-json "$VERSION" dist
+      - name: Checksums
+        run: cd dist && sha256sum -- * > SHA256SUMS.txt
+      # A version with a hyphen (e.g. 0.15.0-1) is marked as pre-release, so
+      # releases/latest - and with it the updater - keeps pointing at the last
+      # stable version.
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PRE=""
+          case "$VERSION" in *-*) PRE="--prerelease";; esac
+          # The title is only a placeholder: set "vX.Y.Z — <English> / <Deutsch>"
+          # (see RELEASE_TEMPLATE.md) before publishing the draft.
+          gh release create "v$VERSION" --draft $PRE --target "${{ github.sha }}" \
+            --title "v$VERSION" --notes-file .github/RELEASE_TEMPLATE.md dist/*

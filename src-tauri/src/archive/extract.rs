@@ -28,6 +28,11 @@ pub struct Extraction {
 }
 
 impl Extraction {
+    /// Folders this run created (not the ones that existed before, e.g. when merging).
+    pub fn created_dirs(&self) -> Vec<PathBuf> {
+        self.created.iter().filter(|p| p.is_dir()).cloned().collect()
+    }
+
     /// Removes everything this run created - in reverse order, so folders are removed
     /// after their content. Files/folders that existed before are never touched.
     pub fn rollback(self) {

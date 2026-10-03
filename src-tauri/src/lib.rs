@@ -1,18 +1,20 @@
 mod archive;
 mod commands;
 mod db;
+pub mod diagnostics;
 mod filament_check;
 mod geometry;
 mod obj;
 // Printer connection: connection and sync logic.
 mod printer_link;
+mod safe_file;
 mod slicers;
 #[cfg(feature = "step-preview")]
 pub mod step;
 mod stl;
 mod tagging;
 mod threemf;
-mod update_check;
+mod updater;
 
 use std::sync::Mutex;
 
@@ -24,12 +26,18 @@ pub(crate) fn harden_permissions(path: &std::path::Path) {
     use std::os::unix::fs::PermissionsExt;
     let mode = if path.is_dir() { 0o700 } else { 0o600 };
     if let Err(e) = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)) {
-        eprintln!("[startup] could not harden file permissions for {path:?}: {e}");
+        log::error!(target: "startup", "could not harden file permissions for {path:?}: {e}");
     }
 }
 
 #[cfg(not(unix))]
 pub(crate) fn harden_permissions(_path: &std::path::Path) {}
+
+/// Indents continuation lines of a multi-line log message (e.g. a stack
+/// trace) so they read as part of the same entry, not as separate log lines.
+fn indent_continuation_lines(message: &str) -> String {
+    message.replace('\n', "\n    ")
+}
 
 // Directories that folder and file operations must never write to (see
 // `commands::reject_if_sensitive_path`); computed once at startup.
@@ -49,7 +57,7 @@ fn sensitive_dirs(app: &tauri::AppHandle) -> Vec<std::path::PathBuf> {
         dirs.push(home.join("Library"));
     }
     #[cfg(target_os = "linux")]
-    for root in ["/etc", "/usr", "/bin", "/sbin", "/boot", "/root", "/var", "/sys", "/proc"] {
+    for root in ["/etc", "/usr", "/bin", "/sbin", "/boot", "/root", "/var", "/sys", "/proc", "/dev"] {
         dirs.push(std::path::PathBuf::from(root));
     }
     #[cfg(target_os = "windows")]
@@ -62,11 +70,48 @@ fn sensitive_dirs(app: &tauri::AppHandle) -> Vec<std::path::PathBuf> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .clear_targets()
+                .target(tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir { file_name: None }))
+                .target(tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stderr))
+                // Debug passes the plugin; the effective level is set at runtime with
+                // log::set_max_level (verbose mode), see diagnostics::verbose.
+                .level(log::LevelFilter::Debug)
+                .level_for("tauri", log::LevelFilter::Info)
+                .level_for("tao", log::LevelFilter::Warn)
+                .level_for("wry", log::LevelFilter::Warn)
+                .level_for("reqwest", log::LevelFilter::Warn)
+                .level_for("hyper", log::LevelFilter::Warn)
+                .level_for("hyper_util", log::LevelFilter::Warn)
+                .level_for("rustls", log::LevelFilter::Warn)
+                .level_for("h2", log::LevelFilter::Warn)
+                .level_for("mio", log::LevelFilter::Warn)
+                .level_for("tokio", log::LevelFilter::Warn)
+                .level_for("tracing", log::LevelFilter::Warn)
+                .level_for("rusqlite", log::LevelFilter::Warn)
+                .max_file_size(2_000_000)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(4))
+                .timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal)
+                .format(|out, message, record| {
+                    let message = indent_continuation_lines(&message.to_string());
+                    out.finish(format_args!(
+                        "{} {:<5} [{}] {}",
+                        chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                        record.level(),
+                        record.target(),
+                        message
+                    ))
+                })
+                .build(),
+        )
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            // Version in the window title, taken straight from Cargo.toml.
+            // Product name from the active config (differs for the preview variant) plus
+            // the version, taken straight from Cargo.toml.
             if let Some(window) = app.get_webview_window("main") {
-                let _ = window.set_title(&format!("3MF Katalog Manager {}", env!("CARGO_PKG_VERSION")));
+                let _ = window.set_title(&format!("{} {}", app.package_info().name, env!("CARGO_PKG_VERSION")));
             }
 
             let app_data_dir = app.path().app_data_dir()?;
@@ -74,9 +119,11 @@ pub fn run() {
             harden_permissions(&app_data_dir);
             let db_path = app_data_dir.join("catalog.db");
             let conn = db::connect(&db_path)?;
+            commands::apply_verbose_state(&conn);
+            diagnostics::log_startup(&conn);
             harden_permissions(&db_path);
             if let Err(e) = db::delete_unused_tags(&conn) {
-                eprintln!("[startup] cleaning up orphaned tags failed: {e}");
+                log::error!(target: "startup", "cleaning up orphaned tags failed: {e}");
             }
             commands::backfill_content_hashes(&conn);
             let trash_dir = app_data_dir.join("trash");
@@ -89,11 +136,25 @@ pub fn run() {
                 db_path,
                 sensitive_dirs,
             });
+            // Re-checks the verbose-logging switch hourly so it turns itself off
+            // within an hour of expiring, even on a long-running session.
+            let verbose_handle = app.handle().clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(std::time::Duration::from_secs(3600));
+                if let Some(state) = verbose_handle.try_state::<commands::AppState>() {
+                    if let Ok(conn) = state.db.lock() {
+                        commands::apply_verbose_state(&conn);
+                    }
+                }
+            });
             app.manage(commands::PendingArchives::default());
             app.manage(commands::ApprovedTargets::default());
+            app.manage(commands::ApprovedCatalogParents::default());
             let waker = printer_link::sync::spawn_background(app.handle().clone());
             app.manage(waker);
             app.manage(commands::DroppedImages::default());
+            app.manage(commands::DiagnosticsState::default());
+            app.manage(commands::UpdaterState::default());
             Ok(())
         })
         // Observe drops in the backend itself: `import_dropped` only approves archives
@@ -124,6 +185,10 @@ pub fn run() {
             commands::pick_folder_path,
             commands::register_catalog_base_dir,
             commands::register_existing_catalog_base_dir,
+            commands::default_catalog_parent,
+            commands::preview_catalog_dir,
+            commands::create_catalog_dir,
+            commands::open_data_folder,
             commands::open_in_file_manager,
             commands::list_tag_counts,
             commands::list_filament_spools,
@@ -187,6 +252,10 @@ pub fn run() {
             commands::scan_installed_slicers,
             commands::scan_catalog_issues,
             commands::delete_files,
+            commands::remove_files_from_catalog,
+            commands::folder_removal_summary,
+            commands::remove_folder_from_catalog,
+            commands::reset_catalog,
             commands::list_trash,
             commands::restore_file,
             commands::delete_file_permanently,
@@ -200,10 +269,37 @@ pub fn run() {
             commands::reorder_collection,
             commands::list_collection_files,
             commands::get_app_version,
-            commands::check_for_update,
+            commands::is_preview_build,
+            commands::has_step_preview,
+            commands::open_step_download,
+            commands::check_app_update,
+            commands::download_app_update,
+            commands::discard_app_update,
+            commands::install_app_update,
             commands::open_release_url,
             commands::open_discord_invite,
+            commands::get_verbose_logging,
+            commands::set_verbose_logging,
+            commands::get_bug_report_info,
+            commands::preview_log_export,
+            commands::save_log_export,
+            commands::open_log_folder,
+            commands::open_bug_report_form,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn continuation_lines_are_indented() {
+        assert_eq!(indent_continuation_lines("single line"), "single line");
+        assert_eq!(
+            indent_continuation_lines("panic message\nat src/lib.rs:1\nat main"),
+            "panic message\n    at src/lib.rs:1\n    at main"
+        );
+    }
 }

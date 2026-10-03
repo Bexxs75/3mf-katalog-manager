@@ -1,10 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { LanguageProvider } from '../i18n/LanguageContext';
+import { LanguageProviderWithDiagnostics as LanguageProvider } from '../test/renderWithDiagnostics';
 import { PrinterLinkSettings } from './PrinterLinkSettings';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
 import type { Printer } from '../types';
 
+vi.mock('@tauri-apps/plugin-log', () => ({ error: vi.fn(() => Promise.resolve()), info: vi.fn(() => Promise.resolve()) }));
 beforeEach(() => localStorage.setItem('3mf-katalog-language', 'de'));
 
 function link(over: Partial<PrinterLinkState> = {}): PrinterLinkState {
@@ -55,13 +56,13 @@ describe('PrinterLinkSettings', () => {
     const l = link({ setEnabled: vi.fn().mockRejectedValue('offline') });
     render(<LanguageProvider><PrinterLinkSettings link={l} printers={printers} /></LanguageProvider>);
     fireEvent.click(screen.getByRole('switch', { name: 'Druckeranbindung' }));
-    expect(await screen.findByText('Das hat nicht geklappt: offline')).toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Das hat nicht geklappt: offline');
   });
 
   it('shows the background loading error from the printer link', () => {
-    const l = link({ error: 'Netzwerk kaputt' });
+    const l = link({ error: { message: 'Netzwerk kaputt', unexpected: true } });
     render(<LanguageProvider><PrinterLinkSettings link={l} printers={printers} /></LanguageProvider>);
-    expect(screen.getByText('Das hat nicht geklappt: Netzwerk kaputt')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Das hat nicht geklappt: Netzwerk kaputt');
   });
 
   it('does not list resin printers, they have no printer connection', () => {

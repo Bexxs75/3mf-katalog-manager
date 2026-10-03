@@ -4,7 +4,7 @@ import type { ModelFile, SlicerConfig, Collection } from '../types';
 import { useT, useLanguage } from '../i18n/LanguageContext';
 import { buildMetaRows } from '../lib/modelMetadata';
 import { isSafeHttpUrl } from '../lib/safeUrl';
-import { ModelViewer } from './ModelViewer';
+import { ModelPreview } from './ModelPreview';
 import { resolveDisplayImage } from '../lib/resolveDisplayImage';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import { useEditableSourceUrl } from '../hooks/useEditableSourceUrl';
@@ -13,6 +13,8 @@ import { useFilamentCheck } from '../hooks/useFilamentCheck';
 import { formatWeightG, formatLengthM, formatPrice } from '../i18n/format';
 import { tagLabel } from '../lib/autoTags';
 import { FilamentCheckSection } from './FilamentCheckSection';
+import type { AppError } from '../lib/errors';
+import { ErrorText } from '../diagnostics/ErrorText';
 
 interface Props {
   model: ModelFile;
@@ -31,8 +33,8 @@ interface Props {
   onAddToCollection: (collectionId: string) => void;
   collections: Collection[];
   slicers: SlicerConfig[];
-  slicerError: string | null;
-  rescanError: string | null;
+  slicerError: AppError | null;
+  rescanError: AppError | null;
   rescanSuccess: boolean;
   displayPreference: DisplayPreference;
 }
@@ -139,8 +141,8 @@ export function ModelDetailPage({
             {showCustomImage && resolvedImage ? (
               <img src={resolvedImage} alt={model.name} className="absolute inset-0 w-full h-full object-contain" />
             ) : (
-              <ModelViewer
-                fileId={model.id}
+              <ModelPreview
+                model={model}
                 needsSnapshot={model.renderSnapshotImage === null}
                 onSnapshotCaptured={onSnapshotCaptured}
                 showRotationControls
@@ -420,7 +422,7 @@ export function ModelDetailPage({
             ))}
           </div>
         )}
-        {printLogError && <p className="text-[12.5px] text-red-400">{printLogError}</p>}
+        {printLogError && <p className="text-[12.5px] text-red-400"><ErrorText error={printLogError} /></p>}
       </div>
 
       <footer className="flex items-center justify-between gap-4 flex-wrap rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-4 py-3.5 mt-auto">
@@ -474,8 +476,8 @@ export function ModelDetailPage({
           </button>
         </div>
       </footer>
-      {slicerError && <p className="text-[12.5px] text-red-400">{slicerError}</p>}
-      {rescanError && <p className="text-[12.5px] text-red-400">{rescanError}</p>}
+      {slicerError && <p className="text-[12.5px] text-red-400"><ErrorText error={slicerError} /></p>}
+      {rescanError && <p className="text-[12.5px] text-red-400"><ErrorText error={rescanError} /></p>}
       {rescanSuccess && (
         <p className="text-[12.5px] text-[var(--good,var(--accent))]">{t('rescanMetadataSuccess')}</p>
       )}

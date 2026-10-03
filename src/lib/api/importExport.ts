@@ -11,7 +11,7 @@ export function importDropped(paths: string[]) {
   return invoke<ImportResultDto>('import_dropped', { paths });
 }
 export function exportCatalog(settingsJson: string) {
-  return invoke('export_catalog', { settingsJson });
+  return invoke<boolean>('export_catalog', { settingsJson });
 }
 export function importCatalog() {
   return invoke<{ imported: boolean; settingsJson: string | null }>('import_catalog');

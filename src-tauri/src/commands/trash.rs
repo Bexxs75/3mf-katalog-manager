@@ -13,9 +13,9 @@ fn delete_file_with_conn(
             // still only soft-delete, because the file is usually not really gone. Other
             // errors like PermissionDenied go through the error path below.
             let deleted_at = chrono::Utc::now().to_rfc3339();
-            return db::soft_delete_file(conn, id, None, &deleted_at).map_err(|e| e.to_string());
+            return db::soft_delete_file(conn, id, None, &deleted_at).map_err(|e| e.to_string().into());
         }
-        Err(e) => return Err(e.to_string()),
+        Err(e) => return Err(e.to_string().into()),
         Ok(_) => {}
     }
 
@@ -31,10 +31,12 @@ fn delete_file_with_conn(
                 "DB-Update fehlgeschlagen ({db_err}) UND Rollback aus dem Papierkorb fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}, DB fuehrt sie weiterhin als aktiv unter {}",
                 trash_path.display(),
                 file.path
-            ));
+            )
+            .into());
         }
-        return Err(db_err.to_string());
+        return Err(db_err.to_string().into());
     }
+    log::debug!(target: "datei", "in den Papierkorb: {}", file.path);
     Ok(())
 }
 #[tauri::command]
@@ -57,7 +59,7 @@ fn delete_files_with_conn(conn: &Connection, trash_dir: &std::path::Path, file_i
         let id: i64 = match file_id.parse() {
             Ok(id) => id,
             Err(_) => {
-                eprintln!("[cleanup] skipped invalid file ID: {file_id}");
+                log::warn!(target: "cleanup", "skipped invalid file ID: {file_id}");
                 continue;
             }
         };
@@ -67,15 +69,16 @@ fn delete_files_with_conn(conn: &Connection, trash_dir: &std::path::Path, file_i
             Ok(Some(file)) => file,
             Ok(None) => continue,
             Err(e) => {
-                eprintln!("[cleanup] could not load file ID {id}: {e}");
+                log::error!(target: "cleanup", "could not load file ID {id}: {e}");
                 continue;
             }
         };
         // Log single errors and continue, so the frontend can reload cleanly
         // afterwards. Same function as for single deletes, so the move-back
-        // compensation applies here too.
+        // compensation applies here too. delete_file_with_conn already logged the
+        // fault itself; this is just the (expected) consequence for the batch.
         if let Err(e) = delete_file_with_conn(conn, &file, id, trash_dir) {
-            eprintln!("[cleanup] deleting failed for file ID {id}: {e}");
+            log::warn!(target: "cleanup", "übersprungen: {} ({e})", file.path);
         }
     }
     Ok(())
@@ -94,13 +97,13 @@ fn restore_file_with_conn(
     id: i64,
 ) -> CmdResult<()> {
     if file.deleted_at.is_none() {
-        return Err("file is not in trash".to_string());
+        return Err("file is not in trash".into());
     }
 
     let Some(trash_path) = file.trash_path.clone() else {
         // Without trash_path the file was already unreachable when deleted: just make
         // the entry visible again.
-        return db::restore_file(conn, id, None).map_err(|e| e.to_string());
+        return db::restore_file(conn, id, None).map_err(|e| e.to_string().into());
     };
 
     let original = std::path::Path::new(&file.path);
@@ -127,10 +130,12 @@ fn restore_file_with_conn(
             return Err(format!(
                 "DB-Update fehlgeschlagen ({db_err}) UND Rollback in den Papierkorb fehlgeschlagen ({rollback_err}) - Datei liegt jetzt unter {}, DB fuehrt sie weiterhin als geloescht",
                 target_path.display()
-            ));
+            )
+            .into());
         }
-        return Err(db_err.to_string());
+        return Err(db_err.to_string().into());
     }
+    log::debug!(target: "datei", "wiederhergestellt: {} -> {}", trash_path, target_path.display());
     Ok(())
 }
 #[tauri::command]
@@ -150,16 +155,16 @@ pub fn delete_file_permanently(state: State<AppState>, file_id: String) -> CmdRe
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "file not found".to_string())?;
     if file.deleted_at.is_none() {
-        return Err("file is not in trash".to_string());
+        return Err("file is not in trash".into());
     }
     if let Some(trash_path) = &file.trash_path {
         if let Err(e) = std::fs::remove_file(trash_path) {
             if e.kind() != std::io::ErrorKind::NotFound {
-                return Err(e.to_string());
+                return Err(e.to_string().into());
             }
         }
     }
-    db::delete_file(&conn, id).map_err(|e| e.to_string())
+    db::delete_file(&conn, id).map_err(|e| e.to_string().into())
 }
 #[tauri::command]
 pub fn empty_trash(state: State<AppState>) -> CmdResult<()> {
@@ -169,13 +174,13 @@ pub fn empty_trash(state: State<AppState>) -> CmdResult<()> {
         if let Some(trash_path) = &file.trash_path {
             if let Err(e) = std::fs::remove_file(trash_path) {
                 if e.kind() != std::io::ErrorKind::NotFound {
-                    eprintln!("[trash] removing failed for file ID {}: {e}", file.id);
+                    log::error!(target: "trash", "removing failed for file ID {}: {e}", file.id);
                     continue;
                 }
             }
         }
         if let Err(e) = db::delete_file(&conn, file.id) {
-            eprintln!("[trash] could not delete DB row for file ID {}: {e}", file.id);
+            log::error!(target: "trash", "could not delete DB row for file ID {}: {e}", file.id);
         }
     }
     Ok(())
@@ -187,7 +192,7 @@ pub fn purge_expired_trash_on_startup(conn: &Connection) {
     let expired = match db::purge_expired_trash(conn, &cutoff) {
         Ok(files) => files,
         Err(e) => {
-            eprintln!("[startup] trash cleanup: query failed: {e}");
+            log::error!(target: "startup", "trash cleanup: query failed: {e}");
             return;
         }
     };
@@ -195,13 +200,13 @@ pub fn purge_expired_trash_on_startup(conn: &Connection) {
         if let Some(trash_path) = &file.trash_path {
             if let Err(e) = std::fs::remove_file(trash_path) {
                 if e.kind() != std::io::ErrorKind::NotFound {
-                    eprintln!("[startup] trash cleanup: file failed for ID {}: {e}", file.id);
+                    log::error!(target: "startup", "trash cleanup: file failed for ID {}: {e}", file.id);
                     continue;
                 }
             }
         }
         if let Err(e) = db::delete_file(conn, file.id) {
-            eprintln!("[startup] trash cleanup: DB row failed for ID {}: {e}", file.id);
+            log::error!(target: "startup", "trash cleanup: DB row failed for ID {}: {e}", file.id);
         }
     }
 }
@@ -309,5 +314,33 @@ mod tests {
             .query_row("SELECT deleted_at FROM files WHERE id = ?1", [file_id], |r| r.get(0))
             .unwrap();
         assert!(still_deleted.is_some(), "db must still show the file as deleted after the failed restore");
+    }
+}
+
+#[cfg(test)]
+mod catalog_removal_restore_tests {
+    use super::*;
+
+    #[test]
+    fn restore_from_trash_after_removing_its_catalog_folder() {
+        let conn = db::connect_in_memory().unwrap();
+        let dir = unique_test_dir("restore_after_catalog_removal");
+        let models = dir.join("models");
+        let trash = dir.join("trash");
+        std::fs::create_dir_all(&models).unwrap();
+        std::fs::create_dir_all(&trash).unwrap();
+        let path = models.join("model.stl");
+        std::fs::write(&path, b"original model bytes").unwrap();
+        let folder = db::insert_folder_with_parent(&conn, "models", None, models.to_str().unwrap()).unwrap();
+        let id = db::test_insert_minimal_file(&conn, path.to_str().unwrap(), Some(folder)).unwrap();
+        delete_file_with_conn(&conn, &db::get_file(&conn, id).unwrap().unwrap(), id, &trash).unwrap();
+        super::super::catalog_removal::remove_folder_with_conn(&conn, &folder.to_string()).unwrap();
+        let trashed = db::get_file(&conn, id).unwrap().unwrap();
+        assert_eq!(trashed.folder_id, None);
+        assert!(trashed.deleted_at.is_some());
+        restore_file_with_conn(&conn, &trashed, id).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"original model bytes");
+        assert!(db::get_file(&conn, id).unwrap().unwrap().deleted_at.is_none());
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

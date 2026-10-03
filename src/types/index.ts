@@ -94,10 +94,18 @@ export interface Folder {
   count: number;
 }
 
+export type SkipReason = 'empty' | 'invalid' | 'failed';
+
+export interface SkippedFile {
+  path: string;
+  reason: SkipReason;
+}
+
 export interface ImportResultDto {
   imported: ModelFile[];
   duplicateCount: number;
   pendingArchives?: string[];
+  skipped?: SkippedFile[];
 }
 
 export type ArchiveStatus = 'ok' | 'noModels' | 'tooLarge' | 'encrypted' | 'unreadable' | 'unsupported';
@@ -132,12 +140,15 @@ export interface ArchiveOutcome {
   archiveDeleted: boolean;
   deleteError: string | null;
   error: string | null;
+  /** Only set when `error` came from a frontend-side catch (see useFileImport); offers "Report problem". */
+  unexpected?: boolean;
 }
 
 export interface ArchiveImportResult {
   imported: ModelFile[];
   duplicateCount: number;
   archives: ArchiveOutcome[];
+  skipped?: SkippedFile[];
 }
 
 export interface ArchiveProgress {

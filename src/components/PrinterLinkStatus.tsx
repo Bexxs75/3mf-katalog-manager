@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatCount } from '../i18n/types';
 import { formatDateTime, formatRelativeTime } from '../i18n/format';
-import { messageOf } from '../lib/errors';
+import { toAppError, type AppError } from '../lib/errors';
 import { errorKey } from './PrinterConnectionSection';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
+import { ErrorText } from '../diagnostics/ErrorText';
 
 interface Props {
   printerId: string;
@@ -17,7 +18,7 @@ const iso = (unixSeconds: number) => new Date(unixSeconds * 1000).toISOString();
 export function PrinterLinkStatus({ printerId, link }: Props) {
   const t = useT();
   const { language } = useLanguage();
-  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<AppError | null>(null);
   if (!link.enabled) return null;
   const c = link.connections.find((x) => x.printerId === printerId);
   if (!c) return null;
@@ -54,7 +55,7 @@ export function PrinterLinkStatus({ printerId, link }: Props) {
           title={t('printerSyncNow')}
           onClick={() => {
             setSyncError(null);
-            Promise.resolve(link.syncNow()).catch((e) => setSyncError(messageOf(e)));
+            Promise.resolve(link.syncNow()).catch((e) => setSyncError(toAppError(e)));
           }}
           className="ml-auto h-5 px-1.5 rounded border border-[var(--line)] text-[var(--ink-2)] hover:border-[var(--accent)] cursor-pointer"
         >
@@ -68,7 +69,8 @@ export function PrinterLinkStatus({ printerId, link }: Props) {
       )}
       {syncError && (
         <div className="text-[11px] text-[var(--crit)]">
-          {t('printerConnectionActionFailed').replace('{message}', () => syncError)}
+          {t('printerConnectionActionFailed').replace('{message}', '')}
+          <ErrorText error={syncError} />
         </div>
       )}
     </div>

@@ -6,6 +6,30 @@ export interface PluralForms {
 }
 
 export interface Translations {
+  removeCatalog: string;
+  removeCatalogShort: string;
+  removeEntry: string;
+  removeModelQuestion: string;
+  removeModelsQuestion: string;
+  removeModelHint: string;
+  removeFolderQuestion: string;
+  removeFolderList: string;
+  removeFolderModels: string;
+  removeFolderSafe: string;
+  removeFolderReimport: string;
+  catalogBaseProtected: string;
+  resetCatalog: string;
+  resetCatalogHint: string;
+  resetCatalogQuestion: string;
+  resetCatalogDetails: string;
+  resetSafeFiles: string;
+  resetSafeInventory: string;
+  resetSafeTrash: string;
+  resetBackupTip: string;
+  resetBackupFirst: string;
+  resetBackupDone: string;
+  resetConfirm: string;
+
   import: string;
   importFilesOption: string;
   importFolderOption: string;
@@ -93,6 +117,14 @@ export interface Translations {
 
   loadingPreview: string;
   previewUnavailable: string;
+
+  // Shown instead of `previewUnavailable` for STEP files in a build without
+  // STEP support - this isn't a broken preview, just a build the user can switch.
+  stepHintTitle: string;
+  stepHintTextBefore: string;
+  stepHintVariantBold: string;
+  stepHintTextAfter: string;
+  stepHintButton: string;
 
   sortLastViewed: string;
   newBadge: string;
@@ -242,6 +274,26 @@ export interface Translations {
   catalogSetupOpenFolderButton: string;
   catalogSetupDoneButton: string;
   catalogSetupError: string;
+  catalogSetupNewParentLabel: string;
+  catalogSetupNewParentNone: string;
+  catalogSetupNewPickParentButton: string;
+  catalogSetupNewNameLabel: string;
+  catalogSetupNewDefaultName: string;
+  catalogSetupNewWillCreate: string;
+  catalogSetupNewExists: string;
+  catalogSetupNewPickExistingBefore: string;
+  catalogSetupNewPickExistingLink: string;
+  catalogSetupNewPickExistingAfter: string;
+  catalogSetupBack: string;
+  catalogSetupNewCreateButton: string;
+  catalogSetupNameEmpty: string;
+  /** `{char}` = the first character that is not allowed */
+  catalogSetupNameInvalidChar: string;
+  catalogSetupNameReserved: string;
+  catalogSetupNameTrailing: string;
+  catalogSetupNameTooLong: string;
+  catalogSetupNewExistingFile: string;
+  catalogSetupNewLink: string;
   catalogBaseDirSectionTitle: string;
   catalogBaseDirNotSet: string;
   catalogBaseDirChangeButton: string;
@@ -257,6 +309,10 @@ export interface Translations {
 
 
   importSummaryText: string;
+  importSkippedEmpty: string;
+  importSkippedInvalid: string;
+  importSkippedFailed: string;
+  importSkippedMore: string;
   archiveDialogTitle: string;
   archiveTargetLabel: string;
   archiveTargetChange: string;
@@ -356,16 +412,41 @@ export interface Translations {
   settingsTabInfo: string;
   infoAppVersionLabel: string;
   infoUpToDateLabel: string;
-  infoUpdateAvailableLabel: string;
+  infoUpdateCheckFailed: string;
   infoCheckForUpdateButton: string;
   infoCheckingForUpdate: string;
-  infoViewReleaseNotes: string;
   infoSourceCodeLabel: string;
   infoCommunityLabel: string;
   infoLicenseLabel: string;
   infoThirdPartyLicensesLabel: string;
-  updateToastText: string;
-  updateToastDownloadLabel: string;
+  /** `{version}` */
+  updateAvailableTitle: string;
+  /** `{current}` */
+  updateAvailableBody: string;
+  updateNowButton: string;
+  updateWhatsNew: string;
+  updateDownloadPageButton: string;
+  /** `{version}` */
+  updateDownloadingTitle: string;
+  /** `{done}`, `{total}`, `{percent}` */
+  updateDownloadingProgress: string;
+  /** `{done}` */
+  updateDownloadingProgressUnknown: string;
+  updateDownloadingHint: string;
+  /** `{version}` */
+  updateReadyTitle: string;
+  updateReadyBody: string;
+  updateRestartButton: string;
+  updateLaterButton: string;
+  updateInstallingTitle: string;
+  updateInstallingBody: string;
+  updateFailedTitle: string;
+  updateFailedBody: string;
+  updateRetryButton: string;
+  updateDismissAria: string;
+  /** `{date}`, `{file}` */
+  updateLastInfo: string;
+  updatePreviewNote: string;
   printersColumnTitle: string;
   printersManageButton: string;
   printersEmptyHint: string;
@@ -491,6 +572,39 @@ export interface Translations {
   printerJobsConfirmAll: string;
   printerJobsTotal: string;
   printerJobsConfirmFailed: PluralForms;
+
+  infoReportBugButton: string;
+  infoDiagnosticsHeading: string;
+  infoVerboseLoggingLabel: string;
+  infoVerboseLoggingHint: string;
+  /** `{date}` = local date the setting turns itself off */
+  infoVerboseLoggingOn: string;
+  infoFoldersHeading: string;
+  infoOpenDataFolder: string;
+  infoOpenDataFolderHint: string;
+  infoOpenLogFolder: string;
+  infoOpenLogFolderHint: string;
+  bugReportTitle: string;
+  /** `{version}`, `{os}` */
+  bugReportIntro: string;
+  bugReportLogQuestion: string;
+  bugReportLogExplain: string;
+  bugReportLogYes: string;
+  bugReportLogNo: string;
+  bugReportReplaceFileNames: string;
+  /** `{path}` = saved log file path */
+  bugReportSavedTo: string;
+  bugReportOriginalsUnchanged: string;
+  bugReportSaveAndOpen: string;
+  bugReportOpenForm: string;
+  bugReportCancel: string;
+  bugReportClose: string;
+  bugReportLoading: string;
+  bugReportEmptyLog: string;
+  unexpectedErrorTitle: string;
+  unexpectedErrorText: string;
+  reportProblemLink: string;
+  errorBoundaryReload: string;
 }
 
 export function formatCount(forms: PluralForms, n: number): string {

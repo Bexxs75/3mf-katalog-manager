@@ -37,6 +37,6 @@ describe('useSlicerLauncher', () => {
     const slicers = [{ id: 's1', name: 'Orca', path: '/usr/bin/orca' }];
     const { result } = renderHook(() => useSlicerLauncher(slicers, 's1', vi.fn()));
     act(() => result.current.openInSlicer('m1'));
-    await waitFor(() => expect(result.current.slicerError).toBe('not found'));
+    await waitFor(() => expect(result.current.slicerError).toEqual({ message: 'not found', unexpected: true }));
   });
 });

@@ -69,6 +69,35 @@ Der vollständige Lizenztext wird im Programmpaket mitgeliefert:
 
 - `LICENSES/UnRAR.txt`
 
+## Microsoft Visual C++ Laufzeit (nur Windows)
+
+Die Windows-Pakete enthalten neben dem Programm die Dateien `msvcp140*.dll`,
+`vcruntime140*.dll` und `concrt140.dll` aus dem Microsoft Visual C++
+Redistributable. Die UnRAR-Bibliothek (und in der STEP-Variante OCCT) ist in
+C++ geschrieben und braucht sie; auf einem frisch installierten Windows fehlen
+sie sonst.
+
+- **Lizenz:** Microsoft-Software-Lizenzbedingungen für Visual Studio. Die
+  Dateien gehören zum dort ausdrücklich zur Weitergabe freigegebenen
+  „Distributable Code“ und werden unverändert zusammen mit dem Programm
+  weitergegeben.
+- **Quelle:** <https://learn.microsoft.com/cpp/windows/redistributing-visual-cpp-files>
+
+## Schriften: Barlow und IBM Plex Mono
+
+Die Oberfläche nutzt die Schriften **Barlow** (Copyright 2017 The Barlow Project
+Authors) und **IBM Plex Mono** (Copyright 2017 IBM Corp.). Beide liegen im
+Programm selbst (eingebunden über die npm-Pakete `@fontsource/barlow` und
+`@fontsource/ibm-plex-mono`), es wird nichts aus dem Internet nachgeladen.
+
+- **Lizenz:** SIL Open Font License 1.1.
+- **Quellen:** <https://github.com/jpt/barlow>, <https://github.com/IBM/plex>.
+
+Die vollständigen Lizenztexte werden im Programmpaket mitgeliefert:
+
+- `LICENSES/Barlow-OFL.txt`
+- `LICENSES/IBM-Plex-Mono-OFL.txt`
+
 ## Weitere Entpack-Bibliotheken
 
 `zip`, `tar`, `flate2`, `bzip2`, `lzma-rust2`, `ruzstd` und `sevenz-rust2` stehen

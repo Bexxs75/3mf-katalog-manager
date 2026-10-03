@@ -2,6 +2,17 @@ name: Build macOS DMG (with STEP preview)
 
 on:
   workflow_dispatch: {}
+  # Also called by release.yml, which builds every variant in one run, and by
+  # preview.yml, which builds the separately installed test app.
+  workflow_call:
+    inputs:
+      preview:
+        type: boolean
+        default: false
+      # Empty keeps the version from Cargo.toml/tauri.conf.json.
+      version:
+        type: string
+        default: ""
 
 jobs:
   # Builds one single-arch version per native runner - every architecture gets
@@ -20,6 +31,10 @@ jobs:
           - target: x86_64-apple-darwin
             runner: macos-15-intel
     runs-on: ${{ matrix.runner }}
+    env:
+      APP_NAME: ${{ inputs.preview && '3MF Katalog Manager Preview' || '3MF Katalog Manager' }}
+      PREVIEW_CONFIG: ${{ inputs.preview && '--config src-tauri/tauri.preview.conf.json' || '' }}
+      PREVIEW_FEATURES: ${{ inputs.preview && '--features preview' || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -50,22 +65,30 @@ jobs:
       - name: Install OCCT + dylibbundler via Homebrew
         run: brew install opencascade dylibbundler
 
+      # Test versions are numbered at build time instead of being committed.
+      - name: Set the build version
+        if: ${{ inputs.version != '' }}
+        shell: bash
+        run: $(command -v python || command -v python3) tools/release_assets.py set-version "$VERSION"
+        env:
+          VERSION: ${{ inputs.version }}
+
       - name: Build Tauri app (with STEP preview)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           export CMAKE_PREFIX_PATH="$(brew --prefix opencascade)"
-          npm run tauri build -- --target ${{ matrix.target }} --bundles app
+          npm run tauri build -- --target ${{ matrix.target }} --bundles app $PREVIEW_CONFIG -- $PREVIEW_FEATURES
 
       - name: Bundle OCCT dylibs into the .app
         run: |
-          ./src-tauri/scripts/bundle-occt-dylibs-macos.sh "src-tauri/target/${{ matrix.target }}/release/bundle/macos/3MF Katalog Manager.app"
+          ./src-tauri/scripts/bundle-occt-dylibs-macos.sh "src-tauri/target/${{ matrix.target }}/release/bundle/macos/$APP_NAME.app"
 
       - name: Upload single-arch .app artifact
         uses: actions/upload-artifact@v4
         with:
           name: macos-app-${{ matrix.target }}
-          path: src-tauri/target/${{ matrix.target }}/release/bundle/macos/3MF Katalog Manager.app
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/macos/${{ env.APP_NAME }}.app
           if-no-files-found: error
 
   # Merges both single-arch .app bundles into a real universal bundle (lipo for
@@ -75,6 +98,10 @@ jobs:
   merge-and-package:
     needs: build-single-arch
     runs-on: macos-15
+    env:
+      APP_NAME: ${{ inputs.preview && '3MF Katalog Manager Preview' || '3MF Katalog Manager' }}
+      PREVIEW_CONFIG: ${{ inputs.preview && '--config src-tauri/tauri.preview.conf.json' || '' }}
+      PREVIEW_FEATURES: ${{ inputs.preview && '--features preview' || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -83,34 +110,65 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: macos-app-aarch64-apple-darwin
-          path: arm64-app/3MF Katalog Manager.app
+          path: arm64-app/${{ env.APP_NAME }}.app
 
       - name: Download x86_64 .app artifact
         uses: actions/download-artifact@v4
         with:
           name: macos-app-x86_64-apple-darwin
-          path: x64-app/3MF Katalog Manager.app
+          path: x64-app/${{ env.APP_NAME }}.app
 
       # actions/download-artifact doesn't reliably keep file permissions (especially
       # the main binary's executable bit) - restore them before merging, otherwise
       # `lipo` fails on a non-executable "binary" with a misleading error.
       - name: Restore executable bits
         run: |
-          chmod +x "arm64-app/3MF Katalog Manager.app/Contents/MacOS/"*
-          chmod +x "x64-app/3MF Katalog Manager.app/Contents/MacOS/"*
+          chmod +x "arm64-app/$APP_NAME.app/Contents/MacOS/"*
+          chmod +x "x64-app/$APP_NAME.app/Contents/MacOS/"*
 
       - name: Merge arm64 + x86_64 into one universal .app
         run: |
           ./src-tauri/scripts/merge-universal-step-macos.sh \
-            "arm64-app/3MF Katalog Manager.app" \
-            "x64-app/3MF Katalog Manager.app" \
-            "universal-app/3MF Katalog Manager.app"
+            "arm64-app/$APP_NAME.app" \
+            "x64-app/$APP_NAME.app" \
+            "universal-app/$APP_NAME.app"
+
+      # A duplicate LC_RPATH makes dyld refuse the library at launch
+      # ("Library missing"), so the build stops here instead of shipping it.
+      - name: Check for duplicate LC_RPATH entries
+        run: ./src-tauri/scripts/dedupe-rpaths-macos.sh --check "universal-app/$APP_NAME.app"
+
+      # dylibbundler (install_name_tool) and lipo invalidate the linker's
+      # ad-hoc signatures. Without a valid signature, macOS on Apple Silicon
+      # reports a downloaded app as "damaged" and refuses to open it, so the
+      # merged bundle is signed ad hoc again: libraries first, then the app.
+      - name: Ad-hoc sign the universal .app
+        run: |
+          APP="universal-app/$APP_NAME.app"
+          find "$APP/Contents/Frameworks" -name '*.dylib' -exec codesign --force --sign - {} \;
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+      # The updater installs a .app.tar.gz on macOS, not the DMG. COPYFILE_DISABLE
+      # keeps macOS tar from adding AppleDouble "._*" files, which would otherwise
+      # end up inside the installed bundle.
+      - name: Pack the universal app for the updater
+        env:
+          COPYFILE_DISABLE: "1"
+        run: tar -czf "$RUNNER_TEMP/updater-step.app.tar.gz" -C "universal-app" "$APP_NAME.app"
+
+      - name: Upload updater archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: 3mf-katalog-manager-macos-updater-step
+          path: ${{ runner.temp }}/updater-step.app.tar.gz
+          if-no-files-found: error
 
       - name: Package DMG from the universal .app
         run: |
           mkdir -p dmg-out
-          hdiutil create -volname "3MF Katalog Manager" \
-            -srcfolder "universal-app/3MF Katalog Manager.app" \
+          hdiutil create -volname "$APP_NAME" \
+            -srcfolder "universal-app/$APP_NAME.app" \
             -ov -format UDZO \
             "dmg-out/3MF Katalog Manager_universal-step.dmg"
 

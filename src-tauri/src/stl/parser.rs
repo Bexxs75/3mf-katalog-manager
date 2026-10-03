@@ -6,13 +6,19 @@ const BINARY_FACET_LEN: usize = 50;
 type StlGeometry = (Vec<[f64; 3]>, Vec<[u32; 3]>);
 
 pub fn parse(bytes: &[u8]) -> Result<StlGeometry, StlError> {
-    if is_binary(bytes) {
-        parse_binary(bytes)
+    let geometry = if is_binary(bytes) {
+        parse_binary(bytes)?
     } else {
         let text = std::str::from_utf8(bytes)
             .map_err(|_| StlError::Parse("not valid ASCII/UTF-8 STL text".to_string()))?;
-        parse_ascii(text)
+        parse_ascii(text)?
+    };
+    // Any text without "vertex" lines parses as ASCII STL, so an empty or
+    // unrelated file would otherwise end up in the catalog as a model.
+    if geometry.1.is_empty() {
+        return Err(StlError::Parse("no triangles found".to_string()));
     }
+    Ok(geometry)
 }
 
 // A binary STL's size is fully determined by its facet count, so matching

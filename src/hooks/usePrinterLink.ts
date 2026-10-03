@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import * as api from '../lib/api/printerLink';
+import { toAppError, type AppError } from '../lib/errors';
 import type { JobDecision, PrinterConnection, PrinterJob } from '../types';
 
 /**
@@ -11,7 +12,7 @@ export function usePrinterLink() {
   const [enabled, setEnabledState] = useState(false);
   const [connections, setConnections] = useState<PrinterConnection[]>([]);
   const [jobs, setJobs] = useState<PrinterJob[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<AppError | null>(null);
   // Prevents setState after unmount; set in effects so StrictMode works.
   const mounted = useRef(false);
   useEffect(() => {
@@ -34,7 +35,7 @@ export function usePrinterLink() {
       setJobs(open);
       setError(null);
     } catch (e) {
-      if (mounted.current) setError(String(e));
+      if (mounted.current) setError(toAppError(e));
     }
   }, []);
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as catalogMetaApi from '../lib/api/catalogMeta';
 import * as slicerApi from '../lib/api/slicer';
+import { toAppError, type AppError } from '../lib/errors';
 import type { SlicerDto } from '../lib/api/slicer';
 import type { SlicerConfig } from '../types';
 
@@ -32,7 +33,7 @@ export function useSlicers() {
     () => localStorage.getItem(PRIMARY_ID_STORAGE_KEY),
   );
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(loadHiddenIds);
-  const [addSlicerError, setAddSlicerError] = useState<string | null>(null);
+  const [addSlicerError, setAddSlicerError] = useState<AppError | null>(null);
 
   const applyRegistry = useCallback((rows: SlicerDto[]) => {
     setSlicers(rows.map(toSlicerConfig));
@@ -66,7 +67,7 @@ export function useSlicers() {
       return picked;
     } catch (e) {
       console.error('[slicer-register] registration failed:', e);
-      setAddSlicerError(String(e));
+      setAddSlicerError(toAppError(e));
       return null;
     }
   }, [applyRegistry]);

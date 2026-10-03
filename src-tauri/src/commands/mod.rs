@@ -1,9 +1,13 @@
+mod catalog_removal;
+pub use catalog_removal::*;
 // Shared types and helpers of the Tauri commands; the commands themselves live
 // in the submodules by topic and are re-exported here.
 mod archives;
 mod backup;
 mod collections;
+mod diagnostics;
 mod dropped_image;
+mod error;
 mod files;
 mod filament;
 mod folders;
@@ -12,11 +16,14 @@ mod printers;
 mod security;
 mod slicers;
 mod trash;
+mod updater;
 
 pub use archives::*;
 pub use backup::*;
 pub use collections::*;
+pub use diagnostics::*;
 pub use dropped_image::*;
+pub use error::*;
 pub use files::*;
 pub use filament::*;
 pub use folders::*;
@@ -25,6 +32,7 @@ pub use printers::*;
 pub use security::*;
 pub use slicers::*;
 pub use trash::*;
+pub use updater::*;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -41,7 +49,7 @@ use crate::db::{self, models::FileRecord};
 use crate::geometry::RenderMesh;
 use crate::slicers::detect_slicers;
 use crate::tagging::{self, TaggingContext};
-use crate::{obj, stl, threemf, update_check};
+use crate::{obj, stl, threemf};
 
 pub struct AppState {
     pub db: Mutex<Connection>,
@@ -52,7 +60,7 @@ pub struct AppState {
     /// autostart folders.
     pub sensitive_dirs: Vec<std::path::PathBuf>,
 }
-pub(crate) type CmdResult<T> = Result<T, String>;
+pub(crate) type CmdResult<T> = Result<T, CmdError>;
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelFileDto {
@@ -291,7 +299,7 @@ pub(crate) fn to_dto(file: FileRecord, spools: &[db::models::FilamentSpoolRecord
     }
 }
 pub(crate) fn lock_db<'a>(state: &'a State<AppState>) -> CmdResult<std::sync::MutexGuard<'a, Connection>> {
-    state.db.lock().map_err(|_| "database lock poisoned".to_string())
+    state.db.lock().map_err(|_| "database lock poisoned".into())
 }
 /// Moves a file without ever overwriting an existing target.
 ///
@@ -359,7 +367,8 @@ fn reject_if_sensitive_path_expanded(path: &Path, expanded_dirs: &[PathBuf]) -> 
             return Err(format!(
                 "Zielpfad liegt in einem geschuetzten Systemverzeichnis ({}) und wird abgelehnt",
                 dir.display()
-            ));
+            )
+            .into());
         }
     }
     Ok(())
@@ -374,7 +383,8 @@ fn reject_if_outside_trash_dir(path: &Path, resolved_trash_dir: &Path) -> CmdRes
         return Err(format!(
             "Papierkorb-Pfad liegt ausserhalb des Papierkorb-Verzeichnisses ({}) und wird abgelehnt",
             resolved_trash_dir.display()
-        ));
+        )
+        .into());
     }
     Ok(())
 }
@@ -395,7 +405,7 @@ fn resolve_path_for_sensitivity_check(path: &Path) -> CmdResult<PathBuf> {
         .any(|c| matches!(c, std::path::Component::ParentDir))
     {
         return Err(
-            "Pfad enthaelt \"..\"-Komponenten und wird abgelehnt".to_string(),
+            "Pfad enthaelt \"..\"-Komponenten und wird abgelehnt".into(),
         );
     }
 
@@ -424,7 +434,7 @@ fn validate_source_url(url: Option<String>) -> CmdResult<Option<String>> {
     if is_http_url(&trimmed) {
         Ok(Some(trimmed))
     } else {
-        Err("source URL must start with http:// or https://".to_string())
+        Err(CmdError::expected("source URL must start with http:// or https://"))
     }
 }
 fn is_http_url(url: &str) -> bool {

@@ -49,7 +49,7 @@ pub fn parse_history_page(v: &Value) -> Result<HistoryPage, LinkError> {
         .filter_map(|j| {
             let parsed = parse_job(j);
             if parsed.is_none() && j.get("status").and_then(Value::as_str) != Some("in_progress") {
-                eprintln!("[printer_link] skipped incomplete Moonraker job: {:?}", j.get("job_id"));
+                log::warn!(target: "drucker", "skipped incomplete Moonraker job: {:?}", j.get("job_id"));
             }
             parsed
         })
@@ -243,6 +243,9 @@ impl MoonrakerLink {
     fn fetch_bytes(client: &reqwest::blocking::Client, url: reqwest::Url, limit: u64, timeout: Duration) -> Result<Fetched, LinkError> {
         let deadline = Instant::now() + timeout;
         let sent_at = unix_now();
+        // Path only, never the host (a printer's LAN address) or the query string
+        // (can carry the `since` timestamp, not secret but still noise).
+        let path = url.path().to_string();
         let mut resp = client.get(url).send().map_err(|_| LinkError::Unreachable)?;
         let local_mid = (sent_at + unix_now()) / 2.0;
         let printer_now = resp
@@ -250,7 +253,9 @@ impl MoonrakerLink {
             .get(reqwest::header::DATE)
             .and_then(|v| v.to_str().ok())
             .and_then(parse_http_date);
-        match resp.status().as_u16() {
+        let status = resp.status().as_u16();
+        log::debug!(target: "drucker", "GET {path} -> {status}");
+        match status {
             401 | 403 => return Err(LinkError::AuthRequired),
             s if !(200..300).contains(&s) => return Err(LinkError::BadResponse(format!("HTTP {s}"))),
             _ => {}
@@ -428,6 +433,27 @@ mod parse_tests {
     }
 
     #[test]
+    fn creality_k2_plus_is_accepted() {
+        // Real test report (Creality K2 Plus, firmware 1.1.6.1 rooted, CFS): Moonraker
+        // version only "?", API 1.4.0, no slicer metadata (no weight, no material), one
+        // cancelled print and one entry whose file no longer exists.
+        assert_eq!(parse_server_info(&fixture("server_info_creality_k2_plus.json")).unwrap(), "?");
+        let page = parse_history_page(&fixture("history_creality_k2_plus.json")).unwrap();
+        assert_eq!(page.count, 5);
+        assert_eq!(page.jobs.len(), 5);
+        let first = &page.jobs[0];
+        assert_eq!(first.remote_id, "0001D9");
+        assert_eq!(first.file_name, "Datei 1.gcode");
+        assert_eq!(first.outcome, JobOutcome::Completed);
+        assert_eq!(first.material, None);
+        assert_eq!(first.slicer_weight_g, None);
+        assert!((first.used_mm - 1447.8456).abs() < 0.01);
+        let cancelled = page.jobs.iter().find(|j| j.file_name == "Datei 4.gcode").unwrap();
+        assert_ne!(cancelled.outcome, JobOutcome::Completed);
+        assert!(cancelled.used_mm > 300.0);
+    }
+
+    #[test]
     fn second_kobra_s1_report_skips_a_print_without_usage() {
         // Real test report (Anycubic Kobra S1, Rinkhals, ACE Pro): a print cancelled right
         // at the start reports 0 mm; there is nothing to deduct, so it is not offered.
@@ -443,6 +469,33 @@ mod parse_tests {
         assert_eq!(page.jobs[1].file_name, "Axle Cleaning Tool_plate_1(1).gcode");
         // "PLA;PETG" with weights [0.35, 66.34]: almost everything was PETG.
         assert_eq!(slide.material.as_deref(), Some("PETG"));
+    }
+
+    #[test]
+    fn third_kobra_s1_report_offers_prints_whose_file_was_deleted() {
+        // Real test report (Anycubic Kobra S1, current Rinkhals, ACE Pro 2): the printer
+        // deletes finished files from .3mf_temp ("exists": false), so Moonraker keeps only
+        // size and mtime - no material, no slicer weight. Such prints are still offered;
+        // the grams then come from the length and the chosen spool.
+        assert_eq!(parse_server_info(&fixture("server_info_rinkhals_kobra_s1_ace2.json")).unwrap(), "?");
+        let page = parse_history_page(&fixture("history_rinkhals_kobra_s1_ace2.json")).unwrap();
+        assert_eq!(page.count, 5);
+        let ids: Vec<&str> = page.jobs.iter().map(|j| j.remote_id.as_str()).collect();
+        assert_eq!(ids, ["00025B", "00025A", "000259", "000258"], "the running print is not offered");
+
+        let blade = &page.jobs[0];
+        assert_eq!(blade.file_name, "0927-1447-Crysknife Blade_120pc_plate(01)_PLA_0.12_3h25m13s.gcode");
+        assert_eq!(blade.outcome, JobOutcome::Completed);
+        assert_eq!(blade.used_mm, 11023.0);
+        assert_eq!((blade.material.as_deref(), blade.slicer_weight_g, blade.thumbnail_path.as_deref()), (None, None, None));
+        let g = crate::printer_link::booking::grams(blade.used_mm, blade.slicer_total_mm, blade.slicer_weight_g, 1.75, "PLA");
+        assert!((32.0..34.0).contains(&g), "PLA 1.75 mm, 11 m: {g}");
+
+        // Cancelled prints still have their file and therefore the full metadata.
+        let cancelled = &page.jobs[2];
+        assert_eq!(cancelled.outcome, JobOutcome::Partial);
+        assert_eq!(cancelled.material.as_deref(), Some("PLA"));
+        assert_eq!(cancelled.slicer_weight_g, Some(88.02));
     }
 
     #[test]

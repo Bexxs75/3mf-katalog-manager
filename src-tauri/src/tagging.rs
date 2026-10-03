@@ -3,6 +3,7 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use serde::Deserialize;
+use unicode_normalization::UnicodeNormalization;
 
 use crate::db::models::MaterialRecord;
 
@@ -110,6 +111,8 @@ fn filename_tags(file_name: &str) -> Vec<String> {
         .and_then(|s| s.to_str())
         .unwrap_or(file_name);
 
+    // Compose decomposed accents so they do not become token separators.
+    let stem: String = stem.nfc().collect();
     stem.split(|c: char| !c.is_alphanumeric())
         .map(|token| token.to_lowercase())
         .filter(|token| is_meaningful_token(token))
@@ -205,6 +208,22 @@ mod tests {
     fn extracts_meaningful_filename_tokens() {
         let tags = suggest_tags(&ctx("Kabelhalter_v3_final.3mf", None, None, &[]));
         assert_eq!(tags, vec!["kabelhalter".to_string()]);
+    }
+
+    #[test]
+    fn decomposed_filename_umlauts_match_composed_tags() {
+        for (nfd, nfc, expected) in [
+            ("Zahnrad 20 Za\u{308}hne.3mf", "Zahnrad 20 Zähne.3mf", "zähne"),
+            ("Einplatinen-Geha\u{308}use.3mf", "Einplatinen-Gehäuse.3mf", "gehäuse"),
+            ("Handysta\u{308}nder.3mf", "Handyständer.3mf", "handyständer"),
+        ] {
+            let tags = filename_tags(nfd);
+            assert_eq!(tags, filename_tags(nfc));
+            assert!(tags.iter().any(|tag| tag == expected));
+            for fragment in ["hne", "geha", "use", "nder"] {
+                assert!(!tags.iter().any(|tag| tag == fragment));
+            }
+        }
     }
 
     #[test]

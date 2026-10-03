@@ -185,7 +185,7 @@ pub fn confirm_many(conn: &mut Connection, decisions: &[Decision], decided_at: &
         match confirm_job(conn, d, decided_at) {
             Ok(_) => ok += 1,
             Err(e) => {
-                eprintln!("[printer_link] confirming print {} failed: {e}", d.job_id);
+                log::error!(target: "drucker", "confirming print {} failed: {e}", d.job_id);
                 failed += 1;
             }
         }

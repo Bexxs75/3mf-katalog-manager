@@ -2,10 +2,25 @@ name: Build Linux AppImage (without STEP preview)
 
 on:
   workflow_dispatch: {}
+  # Also called by release.yml, which builds every variant in one run, and by
+  # preview.yml, which builds the separately installed test app.
+  workflow_call:
+    inputs:
+      preview:
+        type: boolean
+        default: false
+      # Empty keeps the version from Cargo.toml/tauri.conf.json.
+      version:
+        type: string
+        default: ""
 
 jobs:
   build-linux-nostep:
     runs-on: ubuntu-24.04
+    env:
+      APP_NAME: ${{ inputs.preview && '3MF Katalog Manager Preview' || '3MF Katalog Manager' }}
+      PREVIEW_CONFIG: ${{ inputs.preview && '--config src-tauri/tauri.preview.conf.json' || '' }}
+      PREVIEW_FEATURES: ${{ inputs.preview && '--features preview' || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,13 +57,21 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      # Test versions are numbered at build time instead of being committed.
+      - name: Set the build version
+        if: ${{ inputs.version != '' }}
+        shell: bash
+        run: $(command -v python || command -v python3) tools/release_assets.py set-version "$VERSION"
+        env:
+          VERSION: ${{ inputs.version }}
+
       # No OCCT PPA step here (unlike build-linux.yml) - this variant builds without
       # the STEP preview, so there's no OCCT dependency.
       - name: Build Tauri app (AppImage, without STEP preview)
         env:
           NO_STRIP: "1"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run tauri build -- --bundles appimage -- --no-default-features
+        run: npm run tauri build -- --bundles appimage $PREVIEW_CONFIG -- --no-default-features $PREVIEW_FEATURES
 
       # See build-linux.yml for the full rationale: Tauri's default AppImage bundling
       # includes outdated display stack libraries that crash the EGL initialization on

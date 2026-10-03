@@ -5,6 +5,7 @@ import type { FilamentSpool } from '../types';
 import { restockSpoolLabel } from '../lib/filamentRestock';
 import { parseConsumeAmount } from '../lib/resinConsume';
 import { consumeResin } from '../lib/api/filament';
+import { expectedError, messageOf, toAppError, type AppError } from '../lib/errors';
 import { SpoolPopoverShell, fieldClass } from './SpoolPopoverShell';
 
 interface Props {
@@ -25,7 +26,7 @@ export function ConsumeResinPopover({ spool, anchor, onClose, onConsumed }: Prop
   const { language } = useLanguage();
   const id = useId();
   const [amount, setAmount] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<AppError | null>(null);
   const [busy, setBusy] = useState(false);
 
   const title = t('resinConsumeTitle').replace('{spool}', restockSpoolLabel(spool));
@@ -34,7 +35,7 @@ export function ConsumeResinPopover({ spool, anchor, onClose, onConsumed }: Prop
     if (busy) return;
     const ml = parseConsumeAmount(amount);
     if (ml === null) {
-      setError(t('stockInvalidAmount'));
+      setError(expectedError(t('stockInvalidAmount')));
       return;
     }
     setError(null);
@@ -42,7 +43,7 @@ export function ConsumeResinPopover({ spool, anchor, onClose, onConsumed }: Prop
     consumeResin(spool.id, ml)
       .then((updated) => onConsumed(updated))
       .catch((e) => {
-        setError(`${t('resinConsumeError')} (${String(e)})`);
+        setError({ ...toAppError(e), message: `${t('resinConsumeError')} (${messageOf(e)})` });
         setBusy(false);
       });
   };

@@ -2,6 +2,8 @@ import { useMemo, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } fro
 import { createPortal } from 'react-dom';
 import { useT } from '../i18n/LanguageContext';
 import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
+import type { AppError } from '../lib/errors';
+import { ErrorText } from '../diagnostics/ErrorText';
 
 export const fieldClass =
   'w-full min-w-0 h-7 px-2 rounded-md border border-[var(--line-strong)] bg-[var(--panel-2)] text-[var(--ink)] text-[12.5px] outline-0 focus:border-[var(--accent)]';
@@ -14,7 +16,7 @@ interface Props {
   minWidth: number;
   title: string;
   subtitle: string;
-  error: string | null;
+  error: AppError | null;
   busy: boolean;
   submitLabel: ReactNode;
   onSubmit: () => void;
@@ -87,7 +89,7 @@ export function SpoolPopoverShell({
 
       {error && (
         <div role="alert" className="text-[11.5px] text-[var(--accent)] break-words">
-          {error}
+          <ErrorText error={error} />
         </div>
       )}
 

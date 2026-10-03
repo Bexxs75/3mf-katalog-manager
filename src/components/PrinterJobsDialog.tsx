@@ -2,12 +2,13 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatCount } from '../i18n/types';
 import { formatDateTime, formatDurationMinutes, formatLengthMm, formatStockG } from '../i18n/format';
-import { messageOf } from '../lib/errors';
+import { toAppError, type AppError } from '../lib/errors';
 import { getPrinterJobThumbnail } from '../lib/api/printerLink';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
 import type { FilamentSpool, PrinterJob } from '../types';
 import { ModelPicker, type ModelOption } from './ModelPicker';
 import { SpoolPicker } from './SpoolPicker';
+import { ErrorText } from '../diagnostics/ErrorText';
 
 interface Props {
   open: boolean;
@@ -58,7 +59,7 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
   // button per job).
   const modelAnchorRef = useRef<HTMLElement | null>(null);
   const [failed, setFailed] = useState(0);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<AppError | null>(null);
   // Jobs with a running request, against double clicks and "Confirm all" in between.
   const [pending, setPending] = useState<Set<string>>(new Set());
 
@@ -135,7 +136,7 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
           return { ...r, [job.id]: { ...current, grams: p.grams, mismatch: p.materialMismatch } };
         });
       })
-      .catch((e) => setActionError(messageOf(e)));
+      .catch((e) => setActionError(toAppError(e)));
   };
 
   const confirm = (ids: string[]) => {
@@ -154,7 +155,7 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
         if (r.confirmed > 0) onBooked();
       } catch (e) {
         setFailed(0);
-        setActionError(messageOf(e));
+        setActionError(toAppError(e));
       }
     });
   };
@@ -165,7 +166,7 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
       try {
         await link.ignoreJob(jobId);
       } catch (e) {
-        setActionError(messageOf(e));
+        setActionError(toAppError(e));
       }
     });
 
@@ -309,7 +310,12 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
               .replace('{grams}', () => formatStockG(Math.round(total * 10) / 10, language))
               .replace('{rest}', () => restText || '–')}
             {failed > 0 && <span className="block text-[var(--crit)]">{formatCount(t('printerJobsConfirmFailed'), failed)}</span>}
-            {actionError && <span role="alert" className="block text-[var(--crit)]">{t('printerConnectionActionFailed').replace('{message}', () => actionError)}</span>}
+            {actionError && (
+              <span role="alert" className="block text-[var(--crit)]">
+                {t('printerConnectionActionFailed').replace('{message}', '')}
+                <ErrorText error={actionError} />
+              </span>
+            )}
           </span>
           <div className="flex gap-2.5">
             <button type="button" onClick={onClose} className="h-8 px-3 rounded-md border border-[var(--line-strong)] text-[12.5px] cursor-pointer">

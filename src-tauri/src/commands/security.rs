@@ -1,13 +1,25 @@
 use super::*;
 
 const GITHUB_REPO_URL_PREFIX: &str = "https://github.com/Bexxs75/3mf-katalog-manager/";
-const GITHUB_API_LATEST_RELEASE_URL: &str =
-    "https://api.github.com/repos/Bexxs75/3mf-katalog-manager/releases/latest";
 const DISCORD_INVITE_URL: &str = "https://discord.gg/abfVNfFqu3";
+// The website reads these two query/hash parts to preselect the STEP variant
+// in its download section (`?step=1#download`); only the German page and the
+// English one exist, so every non-German language falls back to English.
+const STEP_DOWNLOAD_URL_DE: &str = "https://3mfkatalog.de/?step=1#download";
+const STEP_DOWNLOAD_URL_EN: &str = "https://3mfkatalog.de/en/?step=1#download";
 
-// Only links to our own GitHub repo are opened, although the URL comes from a
-// trusted source (GitHub API) - defense in depth in case the API response is ever
-// manipulated/proxied or the field schema changes.
+fn step_download_url(lang: &str) -> &'static str {
+    if lang == "de" {
+        STEP_DOWNLOAD_URL_DE
+    } else {
+        STEP_DOWNLOAD_URL_EN
+    }
+}
+
+// The frontend passes this URL in (release notes link, Discord/report links go
+// through their own dedicated commands), so it's untrusted input as far as this
+// command is concerned. Restricting it to our own repo keeps "open external URL"
+// from becoming an arbitrary-URL opener for whatever the renderer ends up holding.
 fn validate_release_url(url: &str) -> Result<(), String> {
     if url == GITHUB_REPO_URL_PREFIX.trim_end_matches('/') || url.starts_with(GITHUB_REPO_URL_PREFIX) {
         Ok(())
@@ -15,70 +27,77 @@ fn validate_release_url(url: &str) -> Result<(), String> {
         Err("URL zeigt nicht auf das erwartete GitHub-Repository".to_string())
     }
 }
-/// Own version immediately and without network, so the UI doesn't wait for `check_for_update` (up to 5 s).
-#[tauri::command]
-pub fn get_app_version() -> String {
-    env!("CARGO_PKG_VERSION").to_string()
-}
-#[tauri::command]
-pub async fn check_for_update() -> CmdResult<update_check::UpdateCheckResult> {
-    let current = env!("CARGO_PKG_VERSION");
 
-    let client = match reqwest::Client::builder()
-        .user_agent("3mf-katalog-manager-update-check")
-        .timeout(std::time::Duration::from_secs(5))
-        .build()
-    {
-        Ok(c) => c,
-        Err(_) => return Ok(update_check::compare_versions(current, current, "")),
-    };
-
-    let response = match client.get(GITHUB_API_LATEST_RELEASE_URL).send().await {
-        Ok(r) => r,
-        // Network error: silently treat as "no update", never an error dialog.
-        Err(_) => return Ok(update_check::compare_versions(current, current, "")),
-    };
-
-    #[derive(serde::Deserialize)]
-    struct GithubRelease {
-        tag_name: String,
-        html_url: String,
-    }
-
-    let release: GithubRelease = match response.json().await {
-        Ok(r) => r,
-        Err(_) => return Ok(update_check::compare_versions(current, current, "")),
-    };
-
-    Ok(update_check::compare_versions(current, &release.tag_name, &release.html_url))
-}
-#[tauri::command]
-pub fn open_release_url(url: String) -> CmdResult<()> {
-    validate_release_url(&url)?;
-
+/// Opens a folder in the system file manager.
+pub(crate) fn open_external(target: &str) -> CmdResult<()> {
     #[cfg(target_os = "linux")]
     let mut cmd = std::process::Command::new("xdg-open");
     #[cfg(target_os = "macos")]
     let mut cmd = std::process::Command::new("open");
     #[cfg(target_os = "windows")]
     let mut cmd = std::process::Command::new("explorer");
-
-    cmd.arg(&url).spawn().map_err(|e| e.to_string())?;
+    cmd.arg(target).spawn().map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Program and arguments that open `url` in the default browser. On Windows,
+/// `explorer <url>` is unreliable: a tester's explorer opened "Documents"
+/// instead of the browser for our form URL with `?…&…`. The URL protocol
+/// handler behind `rundll32 url.dll,FileProtocolHandler` goes through the
+/// shell's normal "open this link" path and takes the URL as one argument.
+fn url_opener(os: &str, url: &str) -> (&'static str, Vec<String>) {
+    match os {
+        "windows" => ("rundll32", vec!["url.dll,FileProtocolHandler".to_string(), url.to_string()]),
+        "macos" => ("open", vec![url.to_string()]),
+        _ => ("xdg-open", vec![url.to_string()]),
+    }
+}
+
+/// Opens an http(s) URL in the default browser.
+pub(crate) fn open_url(url: &str) -> CmdResult<()> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err(CmdError::expected("Nur Web-Adressen können im Browser geöffnet werden"));
+    }
+    let (program, args) = url_opener(crate::diagnostics::form_url::current_os(), url);
+    std::process::Command::new(program).args(args).spawn().map_err(|e| e.to_string())?;
+    Ok(())
+}
+/// Own version immediately and without network, so the UI doesn't wait on `check_app_update`.
+#[tauri::command]
+pub fn get_app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
+/// Lets the UI say that this is a test version with its own catalog.
+#[tauri::command]
+pub fn is_preview_build() -> bool {
+    cfg!(feature = "preview")
+}
+
+/// Lets the UI show an explanation instead of a generic error when a STEP
+/// file has no 3D preview in this build.
+#[tauri::command]
+pub fn has_step_preview() -> bool {
+    cfg!(feature = "step-preview")
+}
+
+// No URL from the frontend: only the UI's current language selects between
+// the two fixed download URLs.
+#[tauri::command]
+pub fn open_step_download(lang: String) -> CmdResult<()> {
+    open_url(step_download_url(&lang))
+}
+
+#[tauri::command]
+pub fn open_release_url(url: String) -> CmdResult<()> {
+    validate_release_url(&url)?;
+    open_url(&url)
 }
 
 // No URL from the frontend: the Discord link is static.
 #[tauri::command]
 pub fn open_discord_invite() -> CmdResult<()> {
-    #[cfg(target_os = "linux")]
-    let mut cmd = std::process::Command::new("xdg-open");
-    #[cfg(target_os = "macos")]
-    let mut cmd = std::process::Command::new("open");
-    #[cfg(target_os = "windows")]
-    let mut cmd = std::process::Command::new("explorer");
-
-    cmd.arg(DISCORD_INVITE_URL).spawn().map_err(|e| e.to_string())?;
-    Ok(())
+    open_url(DISCORD_INVITE_URL)
 }
 
 #[cfg(test)]
@@ -115,5 +134,56 @@ mod update_command_tests {
     fn accepts_the_repo_root_url_with_and_without_trailing_slash() {
         assert!(validate_release_url("https://github.com/Bexxs75/3mf-katalog-manager").is_ok());
         assert!(validate_release_url("https://github.com/Bexxs75/3mf-katalog-manager/").is_ok());
+    }
+}
+
+#[cfg(test)]
+mod url_opener_tests {
+    use super::*;
+
+    const FORM: &str = "https://3mfkatalog.de/fehler-melden.html?version=0.15.0-10&os=windows&log=1";
+
+    #[test]
+    fn windows_uses_the_url_protocol_handler_not_explorer() {
+        let (program, args) = url_opener("windows", FORM);
+        assert_eq!(program, "rundll32");
+        assert_eq!(args, vec!["url.dll,FileProtocolHandler".to_string(), FORM.to_string()]);
+    }
+
+    #[test]
+    fn macos_and_linux_pass_the_url_unchanged() {
+        assert_eq!(url_opener("macos", FORM), ("open", vec![FORM.to_string()]));
+        assert_eq!(url_opener("linux", FORM), ("xdg-open", vec![FORM.to_string()]));
+    }
+
+    #[test]
+    fn only_web_addresses_are_opened_as_urls() {
+        assert!(open_url("file:///C:/Windows").is_err());
+        assert!(open_url("C:\\Users").is_err());
+    }
+}
+
+#[cfg(test)]
+mod step_download_tests {
+    use super::*;
+
+    #[test]
+    fn only_german_gets_the_german_download_page() {
+        assert_eq!(step_download_url("de"), STEP_DOWNLOAD_URL_DE);
+    }
+
+    #[test]
+    fn every_other_language_falls_back_to_english() {
+        for lang in ["en", "es", "fr", "", "de-DE", "pt"] {
+            assert_eq!(step_download_url(lang), STEP_DOWNLOAD_URL_EN);
+        }
+    }
+
+    // The frontend must not be able to steer this at all - unlike
+    // `open_release_url`, there is no `url` parameter to validate.
+    #[test]
+    fn the_command_takes_a_language_and_nothing_else() {
+        fn assert_signature(_f: fn(String) -> CmdResult<()>) {}
+        assert_signature(open_step_download);
     }
 }

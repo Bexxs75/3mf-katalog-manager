@@ -131,16 +131,14 @@ pub fn read_package<R: Read + Seek>(reader: R) -> Result<PackageParts, ThreeMfEr
             Ok(xml) => xml,
             Err(err @ ThreeMfError::EntryTooLarge { .. }) => return Err(err),
             Err(_) => {
-                eprintln!(
-                    "[3mf] referenced model file not found, skipped: {path}"
-                );
+                log::warn!(target: "3mf", "referenced model file not found, skipped: {path}");
                 continue;
             }
         };
         total_unpacked += xml.len() as u64;
         check_total_budget(total_unpacked)?;
         let Ok(parsed) = parse_model_xml(&xml) else {
-            eprintln!("[3mf] referenced model file not parseable, skipped: {path}");
+            log::warn!(target: "3mf", "referenced model file not parseable, skipped: {path}");
             continue;
         };
         for referenced in referenced_paths(&parsed) {

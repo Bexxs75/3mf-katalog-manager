@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { useEffect, useMemo, useState } from 'react';
 import { Header } from './components/Header';
+import { snapshotQueue } from './lib/snapshotQueue';
 import { Rail } from './components/Rail';
 import { ContextMenu } from './components/ContextMenu';
 import { FilamentView } from './components/FilamentView';
@@ -11,7 +13,7 @@ import { MoveToast } from './components/MoveToast';
 import { CatalogSetupDialog } from './components/CatalogSetupDialog';
 import { TrashView } from './components/TrashView';
 import { CatalogWorkspace } from './components/CatalogWorkspace';
-import { UpdateAvailableToast } from './components/UpdateAvailableToast';
+import { UpdateToast } from './components/UpdateToast';
 import { useTheme } from './hooks/useTheme';
 import { useUiDensity } from './hooks/UiDensityContext';
 import { useSlicers } from './hooks/useSlicers';
@@ -27,7 +29,8 @@ import { useCatalogBackup } from './hooks/useCatalogBackup';
 import { useCatalogCleanup } from './hooks/useCatalogCleanup';
 import { useBulkSelection } from './hooks/useBulkSelection';
 import { useSlicerLauncher } from './hooks/useSlicerLauncher';
-import { useUpdateCheck } from './hooks/useUpdateCheck';
+import { useUpdater } from './hooks/useUpdater';
+import { useHasStepPreview } from './hooks/useHasStepPreview';
 import { useKeyboardShortcuts, MODEL_TILE_ATTR } from './hooks/useKeyboardShortcuts';
 import { usePrinterLink } from './hooks/usePrinterLink';
 import { usePrinters } from './hooks/usePrinters';
@@ -38,7 +41,7 @@ export default function App() {
   const { density, setDensity } = useUiDensity();
   const { slicers, primaryId, addSlicer, addSlicerError, removeSlicer, setPrimary } = useSlicers();
   const { preference: displayPreference, setPreference: setDisplayPreference } = useDisplayPreference();
-  const { catalogBaseDir, setCatalogBaseDir, setupSeen, markSetupSeen } = useCatalogBaseDir();
+  const { catalogBaseDir, setCatalogBaseDir, setupSeen, markSetupSeen, resetCatalogSetup } = useCatalogBaseDir();
   const printerLink = usePrinterLink();
   const printers = usePrinters();
 
@@ -78,12 +81,42 @@ export default function App() {
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const slicerLauncher = useSlicerLauncher(slicers, primaryId, () => setSettingsOpen(true));
-  const update = useUpdateCheck();
+  const update = useUpdater();
 
   const [setupDialogOpen, setSetupDialogOpen] = useState(!setupSeen);
   const [detailModelId, setDetailModelId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number } | null>(null);
   const [confirmEmptyTrash, setConfirmEmptyTrash] = useState(false);
+
+  const refreshAfterRemoval = (includeActiveCollection = true) => {
+    store.setSelectedId(null);
+    setDetailModelId(null);
+    bulk.clearBulkSelection();
+    void Promise.all([store.refreshFiles(), store.refreshFolders(), store.refreshTags(),
+      store.refreshTrash(), collections.refreshCollections(), printerLink.refresh(),
+      ...(includeActiveCollection && collections.activeCollection ? [collections.refreshCollectionModels(collections.activeCollection)] : []),
+    ]).catch((e) => console.error('[catalog] refresh after removal failed:', e));
+  };
+  const removeCatalogModels = async (fileIds: string[]) => {
+    await invoke('remove_files_from_catalog', { fileIds });
+    store.setModels((models) => models.filter((model) => !fileIds.includes(model.id)));
+    refreshAfterRemoval();
+  };
+  const finishCatalogReset = () => {
+    resetCatalogSetup();
+    collections.setActiveCollection(null);
+    collections.setCollectionsGalleryOpen(false);
+    filters.setActiveFolderId('all');
+    filters.setActiveTag(null);
+    filters.setQuery('');
+    filters.setToolView(null);
+    setContextMenu(null);
+    setSettingsOpen(false);
+    setMainView('catalog');
+    store.setModels([]);
+    refreshAfterRemoval(false);
+    setSetupDialogOpen(true);
+  };
 
   const changeMainView = (v: 'catalog' | 'filament' | 'trash') => {
     setMainView(v);
@@ -148,17 +181,25 @@ export default function App() {
     collections.collectionsGalleryOpen,
   ]);
 
+  // Unconfirmed (null) is treated as "no STEP support yet" - one skipped tick
+  // for a real STEP-preview build is cheaper than a guaranteed failed attempt.
+  const hasStepPreview = useHasStepPreview() ?? false;
+  const snapshotIds = useMemo(
+    () => snapshotQueue(store.models, store.pendingSnapshotIds, displayPreference, hasStepPreview),
+    [store.models, store.pendingSnapshotIds, displayPreference, hasStepPreview],
+  );
+
   return (
     <div
       className="h-screen min-h-[620px] flex flex-col bg-[var(--bg)] text-[var(--ink)] overflow-hidden"
       style={{ fontSize: 14 }}
     >
-      {displayPreference === 'render' && store.pendingSnapshotIds.length > 0 && (
+      {snapshotIds.length > 0 && (
         <BackgroundSnapshotRenderer
-          key={store.pendingSnapshotIds[0]}
-          fileId={store.pendingSnapshotIds[0]}
-          onSnapshotCaptured={(base64) => store.captureRenderSnapshot(store.pendingSnapshotIds[0], base64)}
-          onError={() => store.skipSnapshot(store.pendingSnapshotIds[0])}
+          key={snapshotIds[0]}
+          fileId={snapshotIds[0]}
+          onSnapshotCaptured={(base64) => store.captureRenderSnapshot(snapshotIds[0], base64)}
+          onError={() => store.skipSnapshot(snapshotIds[0])}
         />
       )}
       <Header
@@ -201,17 +242,13 @@ export default function App() {
           onImportCatalog={() => backup.importCatalog(() => window.location.reload())}
           catalogBackupError={backup.catalogBackupError}
           catalogBaseDir={catalogBaseDir}
+          catalogModelCount={store.models.length}
+          catalogFolderCount={store.folders.length}
+          onCatalogReset={finishCatalogReset}
           onOpenCatalogSetup={() => setSetupDialogOpen(true)}
           printerLink={printerLink}
           printerList={printers.printers}
-          updateInfo={{
-            currentVersion: update.currentVersion,
-            latestVersion: update.latestVersion,
-            updateAvailable: update.updateAvailable,
-            checking: update.checking,
-            checkNow: update.checkNow,
-            download: update.download,
-          }}
+          update={update}
         />
         <div className="flex-1 min-w-0 flex flex-col min-h-0">
           {mainView === 'trash' ? (
@@ -262,6 +299,8 @@ export default function App() {
               confirmBulkDelete={bulk.confirmBulkDelete}
               setConfirmBulkDelete={bulk.setConfirmBulkDelete}
               bulkDelete={bulk.bulkDelete}
+              bulkRemove={() => removeCatalogModels(Array.from(bulk.selectedForBulk))}
+              onCatalogRemoved={refreshAfterRemoval}
               selectAllVisible={() => bulk.selectAllVisible(filters.filtered.map((m) => m.id))}
               clearBulkSelection={bulk.clearBulkSelection}
               bulkAddToQueue={bulk.bulkAddToQueue}
@@ -322,6 +361,7 @@ export default function App() {
               onClose={() => setContextMenu(null)}
               onOpenInSlicer={() => slicerLauncher.openInSlicer(contextMenu.modelId)}
               onDelete={() => store.deleteModel(contextMenu.modelId)}
+              onRemove={() => removeCatalogModels([contextMenu.modelId])}
               inQueue={contextModel.queuePosition !== null}
               onToggleQueue={() =>
                 contextModel.queuePosition !== null
@@ -340,6 +380,7 @@ export default function App() {
               imported={fileImport.importBanner.imported}
               duplicates={fileImport.importBanner.duplicates}
               archives={fileImport.importBanner.archives}
+              skipped={fileImport.importBanner.skipped}
               onClose={fileImport.dismissImportBanner}
             />
           )}
@@ -353,13 +394,7 @@ export default function App() {
             />
           )}
 
-          {update.updateAvailable && !update.dismissed && (
-            <UpdateAvailableToast
-              latestVersion={update.latestVersion}
-              onDownload={update.download}
-              onDismiss={update.dismiss}
-            />
-          )}
+          <UpdateToast view={update} />
 
           {cleanup.cleanupDialogOpen && cleanup.cleanupIssues && (
             <CatalogCleanupDialog
@@ -374,6 +409,7 @@ export default function App() {
               from={dragDrop.moveToast.from}
               to={dragDrop.moveToast.to}
               error={dragDrop.moveToast.error}
+              unexpected={dragDrop.moveToast.unexpected}
               onDone={dragDrop.dismissMoveToast}
             />
           )}

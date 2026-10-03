@@ -6,6 +6,7 @@ import { FolderTree } from './FolderTree';
 import { sortTagsForDisplay, tagLabel } from '../lib/autoTags';
 import { ToolsSection } from './ToolsSection';
 import type { ToolCounts, ToolView } from '../lib/toolViews';
+import type { AppError } from '../lib/errors';
 
 interface Props {
   query: string;
@@ -17,6 +18,7 @@ interface Props {
   queueFilament?: Map<string, FilamentCheck> | null;
   folders: Folder[];
   totalModelCount: number;
+  onCatalogRemoved?: () => void;
   activeFolderId: string;
   onFolderSelect: (id: string) => void;
   onCreateFolder: (parentId: string | null, name: string) => void;
@@ -39,7 +41,7 @@ interface Props {
   toolCounts: ToolCounts;
   onOpenCleanup: () => void;
   cleanupScanning: boolean;
-  cleanupError: string | null;
+  cleanupError: AppError | null;
 }
 
 export function Sidebar({
@@ -52,6 +54,7 @@ export function Sidebar({
   queueFilament,
   folders,
   totalModelCount,
+  onCatalogRemoved,
   activeFolderId,
   onFolderSelect,
   onCreateFolder,
@@ -132,6 +135,7 @@ export function Sidebar({
           totalModelCount={totalModelCount}
           activeFolderId={activeFolderId}
           onSelect={onFolderSelect}
+          onRemoved={onCatalogRemoved}
           dragOverFolderId={dragOverFolderId}
           draggedFolderId={draggedFolderId}
           onFolderMouseEnter={onFolderMouseEnter}

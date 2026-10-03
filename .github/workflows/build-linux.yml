@@ -2,10 +2,25 @@ name: Build Linux AppImage (with STEP preview)
 
 on:
   workflow_dispatch: {}
+  # Also called by release.yml, which builds every variant in one run, and by
+  # preview.yml, which builds the separately installed test app.
+  workflow_call:
+    inputs:
+      preview:
+        type: boolean
+        default: false
+      # Empty keeps the version from Cargo.toml/tauri.conf.json.
+      version:
+        type: string
+        default: ""
 
 jobs:
   build-linux:
     runs-on: ubuntu-24.04
+    env:
+      APP_NAME: ${{ inputs.preview && '3MF Katalog Manager Preview' || '3MF Katalog Manager' }}
+      PREVIEW_CONFIG: ${{ inputs.preview && '--config src-tauri/tauri.preview.conf.json' || '' }}
+      PREVIEW_FEATURES: ${{ inputs.preview && '--features preview' || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -58,6 +73,14 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      # Test versions are numbered at build time instead of being committed.
+      - name: Set the build version
+        if: ${{ inputs.version != '' }}
+        shell: bash
+        run: $(command -v python || command -v python3) tools/release_assets.py set-version "$VERSION"
+        env:
+          VERSION: ${{ inputs.version }}
+
       # linuxdeploy's bundled `strip` doesn't know newer ELF SHT_RELR sections
       # (confirmed locally on CachyOS/Arch). NO_STRIP=1 is an official linuxdeploy
       # switch that leaves the binaries unstripped instead of failing the bundling
@@ -67,7 +90,7 @@ jobs:
         env:
           NO_STRIP: "1"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run tauri build -- --bundles appimage
+        run: npm run tauri build -- --bundles appimage $PREVIEW_CONFIG -- $PREVIEW_FEATURES
 
       # Tauri's default AppImage bundling (linuxdeploy) includes outdated
       # libwayland-*/libxkbcommon/libxcb-*/libXau/libXdmcp that crash WebKitGTK's EGL

@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
 import type { ModelFile } from '../types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
-import { ModelViewer } from './ModelViewer';
+import { ModelPreview } from './ModelPreview';
 import { useUiDensity } from '../hooks/UiDensityContext';
 import { buildMetaRows } from '../lib/modelMetadata';
 import { isSafeHttpUrl } from '../lib/safeUrl';
 import { formatDate } from '../i18n/format';
 import { useEditableSourceUrl } from '../hooks/useEditableSourceUrl';
 import { tagLabel } from '../lib/autoTags';
+import type { AppError } from '../lib/errors';
+import { ErrorText } from '../diagnostics/ErrorText';
 
 interface Props {
   model: ModelFile | null;
@@ -24,7 +26,7 @@ interface Props {
   onSnapshotCaptured: (base64: string) => void;
   onSetSourceUrl: (fileId: string, url: string | null) => void;
   onOpenInSlicer: () => void;
-  slicerError: string | null;
+  slicerError: AppError | null;
 }
 
 export function DetailPanel({
@@ -89,7 +91,7 @@ export function DetailPanel({
         </div>
 
         <div className="relative aspect-[4/3] bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
-          <ModelViewer fileId={model.id} needsSnapshot={false} onSnapshotCaptured={() => {}} />
+          <ModelPreview model={model} needsSnapshot={false} onSnapshotCaptured={() => {}} />
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 pt-3.5 pb-1">
@@ -146,8 +148,8 @@ export function DetailPanel({
                 'repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 11px)',
             }}
           />
-          <ModelViewer
-            fileId={model.id}
+          <ModelPreview
+            model={model}
             needsSnapshot={model.renderSnapshotImage === null}
             onSnapshotCaptured={onSnapshotCaptured}
           />
@@ -289,7 +291,7 @@ export function DetailPanel({
       <div className="flex-none px-4 py-3 border-t border-[var(--line)] bg-[var(--panel-2)]">
         {slicerError && (
           <div className="pb-2 font-mono-ui text-[10px] text-[var(--accent)] break-words">
-            {t('slicerLaunchError')} {slicerError}
+            {t('slicerLaunchError')} <ErrorText error={slicerError} />
           </div>
         )}
         <div className="flex gap-2">
@@ -351,8 +353,8 @@ export function DetailPanel({
                 'repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 12px)',
             }}
           />
-          <ModelViewer
-            fileId={model.id}
+          <ModelPreview
+            model={model}
             needsSnapshot={model.renderSnapshotImage === null}
             onSnapshotCaptured={onSnapshotCaptured}
           />
@@ -468,7 +470,7 @@ export function DetailPanel({
       <div className="flex-none px-[18px] py-4 border-t border-[var(--line)] bg-[var(--panel-2)] flex flex-col gap-2">
         {slicerError && (
           <div className="text-[var(--accent)] break-words" style={{ fontSize: 'var(--font-size-meta)' }}>
-            {t('slicerLaunchError')} {slicerError}
+            {t('slicerLaunchError')} <ErrorText error={slicerError} />
           </div>
         )}
         {confirmDelete ? (
