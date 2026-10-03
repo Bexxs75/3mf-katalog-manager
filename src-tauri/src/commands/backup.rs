@@ -587,6 +587,12 @@ fn validate_catalog_db_bytes(
             let expanded_dirs = expand_sensitive_dirs(sensitive_dirs);
             let resolved_trash_dir =
                 resolve_path_for_sensitivity_check(trash_dir).map_err(|e| e.to_string())?;
+            // The app's trash lives under sensitive data dirs; containment still guards it.
+            let trash_denylist: Vec<PathBuf> = expanded_dirs
+                .iter()
+                .filter(|dir| !resolved_trash_dir.starts_with(dir))
+                .cloned()
+                .collect();
             // Views, triggers and virtual tables run SQL or code from the foreign file
             // as soon as they are queried - a recursive view named `files` never
             // finishes. The app creates none of them, so they are rejected by
@@ -722,9 +728,10 @@ fn validate_catalog_db_bytes(
                 reject_if_sensitive_path_expanded(Path::new(&path), &expanded_dirs)
                     .map_err(|e| format!("Datei-Eintrag im Archiv abgelehnt: {}", e.message))?;
                 if let Some(trash_path) = trash_path.filter(|p| !p.trim().is_empty()) {
-                    // Denylist AND containment: the denylist stays as a second barrier in case
-                    // a path lands elsewhere through a symlink chain despite a matching prefix.
-                    reject_if_sensitive_path_expanded(Path::new(&trash_path), &expanded_dirs)
+                    // Denylist AND containment. The denylist skips the trash dir's ancestors
+                    // (`trash_denylist`, e.g. the data dir), so it only blocks unrelated
+                    // sensitive dirs like ~/.ssh or /etc; containment alone guards the rest.
+                    reject_if_sensitive_path_expanded(Path::new(&trash_path), &trash_denylist)
                         .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {}", e.message))?;
                     reject_if_outside_trash_dir(Path::new(&trash_path), &resolved_trash_dir)
                         .map_err(|e| format!("Papierkorb-Eintrag im Archiv abgelehnt: {}", e.message))?;
@@ -2406,6 +2413,54 @@ mod tests {
         let result = validate_catalog_db_bytes(&bytes, &[], &trash_dir);
         let _ = std::fs::remove_dir_all(&dir);
         assert!(result.is_ok(), "a legitimate backup must still import: {result:?}");
+    }
+    #[test]
+    fn validate_catalog_db_bytes_accepts_trash_path_under_sensitive_ancestor() {
+        let dir = unique_test_dir("validate_catalog_db_trash_sensitive_ancestor_ok");
+        let sensitive_root = dir.join("sensitive");
+        let trash_dir = sensitive_root.join("app/trash");
+        std::fs::create_dir_all(&trash_dir).expect("create trash dir");
+
+        let bytes = catalog_db_bytes_with_file_row(
+            "modell.3mf",
+            &dir.join("modell.3mf").to_string_lossy(),
+            Some(&trash_dir.join("1-modell.3mf").to_string_lossy()),
+        );
+        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root], &trash_dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(result.is_ok(), "a legitimate backup must import with a sensitive trash ancestor: {result:?}");
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_trash_path_outside_trash_under_sensitive_ancestor() {
+        let dir = unique_test_dir("validate_catalog_db_trash_sensitive_ancestor_outside");
+        let sensitive_root = dir.join("sensitive");
+        let trash_dir = sensitive_root.join("app/trash");
+        std::fs::create_dir_all(&trash_dir).expect("create trash dir");
+
+        let bytes = catalog_db_bytes_with_file_row(
+            "modell.3mf",
+            &dir.join("modell.3mf").to_string_lossy(),
+            Some(&sensitive_root.join("other/x.conf").to_string_lossy()),
+        );
+        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root], &trash_dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(result.is_err(), "must reject a trash_path outside trash even under a sensitive ancestor: {result:?}");
+    }
+    #[test]
+    fn validate_catalog_db_bytes_rejects_trash_path_escaping_to_sensitive_ancestor() {
+        let dir = unique_test_dir("validate_catalog_db_trash_sensitive_ancestor_dotdot");
+        let sensitive_root = dir.join("sensitive");
+        let trash_dir = sensitive_root.join("app/trash");
+        std::fs::create_dir_all(&trash_dir).expect("create trash dir");
+
+        let bytes = catalog_db_bytes_with_file_row(
+            "modell.3mf",
+            &dir.join("modell.3mf").to_string_lossy(),
+            Some(&trash_dir.join("../../x.conf").to_string_lossy()),
+        );
+        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root], &trash_dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(result.is_err(), "must reject a trash_path escaping to a sensitive ancestor via parent components: {result:?}");
     }
     #[test]
     fn validate_catalog_db_bytes_rejects_trash_path_escaping_the_trash_dir_via_parent_components() {
