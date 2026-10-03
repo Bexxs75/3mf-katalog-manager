@@ -204,7 +204,7 @@ explorer, with subfolders indented and a continuous connecting line:
 
 Each folder header shows the total number of files it contains, including all subfolders.
 Clicking a header collapses or expands that folder — the state persists across app restarts.
-Files with no folder appear as a final "No folder" section. Both folder headers and individual
+Files with no folder appear as a final "No Folder" section. Both folder headers and individual
 files can be dragged directly within this view, exactly like in the sidebar — moving something
 here also moves it on disk immediately.
 
