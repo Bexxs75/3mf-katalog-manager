@@ -10,6 +10,8 @@ Umgebung:
   DISCORD_ROADMAP_WEBHOOK  Webhook-URL (Secret)
   DISCORD_ROADMAP_MSGS     IDs der vier Nachrichten in Kanal-Reihenfolge:
                            DE Teil 1, DE Teil 2, EN Teil 1, EN Teil 2
+  DISCORD_ROADMAP_WEBHOOK_DE/EN  Optional: getrennte Sprach-Webhooks (beide setzen)
+  DISCORD_ROADMAP_MSGS_DE/EN     Dann je zwei IDs: Teil 1, Teil 2
   DRY_RUN=1                nur ausgeben, nichts an Discord senden
 """
 import datetime
@@ -17,6 +19,7 @@ import json
 import os
 import sys
 import urllib.request
+import urllib.error
 import zoneinfo
 
 OWNER, NUMBER = "Bexxs75", 1
@@ -143,7 +146,28 @@ def edit(webhook, message_id, content):
         r.read()
 
 
+def targets(env):
+    """Validate the complete routing configuration before making any writes."""
+    split_names = [f"DISCORD_ROADMAP_{kind}_{lang}"
+                   for lang in ("DE", "EN") for kind in ("WEBHOOK", "MSGS")]
+    split = any(env.get(name, "").strip() for name in split_names)
+    groups = [("_DE", 2), ("_EN", 2)] if split else [("", 4)]
+    result = []
+    for suffix, count in groups:
+        hook = env.get(f"DISCORD_ROADMAP_WEBHOOK{suffix}", "").strip().rstrip("/")
+        ids = [s.strip() for s in env.get(f"DISCORD_ROADMAP_MSGS{suffix}", "").split(",")]
+        if not hook or len(ids) != count or any(not i.isascii() or not i.isdigit() for i in ids):
+            raise ValueError(f"DISCORD_ROADMAP_WEBHOOK{suffix} und {count} gültige DISCORD_ROADMAP_MSGS{suffix} benötigt")
+        result.extend((hook, message_id) for message_id in ids)
+    if split and result[0][0] == result[2][0]:
+        raise ValueError("Sprach-Webhooks müssen verschieden sein")
+    if len({message_id for _, message_id in result}) != 4:
+        raise ValueError("Roadmap-Nachrichten-IDs müssen verschieden sein")
+    return result
+
+
 def main():
+    destinations = targets(os.environ) if not os.environ.get("DRY_RUN") else None
     versions, items = fetch_items(os.environ["GH_TOKEN"])
     if not items:
         # Never write an empty roadmap: the GitHub Actions default token can't see the
@@ -155,13 +179,18 @@ def main():
         for text in texts:
             print(f"--- ({len(text)} Zeichen)\n{text}\n")
         return
-    ids = [x.strip() for x in os.environ.get("DISCORD_ROADMAP_MSGS", "").split(",") if x.strip()]
-    if len(ids) != 4:
-        sys.exit("DISCORD_ROADMAP_MSGS braucht 4 Nachrichten-IDs: DE 1, DE 2, EN 1, EN 2")
-    for message_id, text, name in zip(ids, texts, ("de 1", "de 2", "en 1", "en 2")):
-        edit(os.environ["DISCORD_ROADMAP_WEBHOOK"], message_id, text)
+    for (webhook, message_id), text, name in zip(destinations, texts, ("de 1", "de 2", "en 1", "en 2")):
+        edit(webhook, message_id, text)
         print(f"{name}: aktualisiert ({len(text)} Zeichen)")
 
 
+
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except urllib.error.HTTPError as exc:
+        sys.exit(f"HTTP-Fehler {exc.code}; keine Webhook-URL wird protokolliert")
+    except (urllib.error.URLError, TimeoutError):
+        sys.exit("Netzwerkfehler beim Roadmap-Abgleich")
+    except (ValueError, KeyError):
+        sys.exit("Ungültige Roadmap-Daten oder unvollständige Webhook-Konfiguration")
