@@ -42,6 +42,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- Catalog backup: a backup taken while the trash held a file can now be imported again. Before, the import rejected it, also the backup offered before "Reset catalog". The bug existed since v0.7.8.
 - Update backups: when tidying up old backups, the app now keeps the most recently created ones. Before, opening an older backup in another program could make the app delete a newer one instead. Found in the Windows test.
 - Update check: if the connection to GitHub drops briefly, the app now tries again automatically once instead of reporting that the check failed. The log now names the exact cause of a failed check. Found in the Windows test.
 - Automatic tags on macOS: umlauts in file names could produce broken tags such as "#hne". Newly imported files now get complete tags; existing tags stay unchanged and can be removed by hand. Found in the macOS test.
@@ -490,6 +491,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Fixed
 
+- Katalog-Backup: Eine Sicherung, die angelegt wurde, während Dateien im Papierkorb lagen, lässt sich jetzt wieder einspielen. Vorher lehnte der Import sie mit „Papierkorb-Eintrag im Archiv abgelehnt“ ab, auch die Sicherung, die „Katalog zurücksetzen“ anbietet. Der Fehler bestand seit v0.7.8.
 - Sicherungen vor Updates: Beim Aufräumen behält die App jetzt die zuletzt angelegten Sicherungen. Vorher konnte das Öffnen einer älteren Sicherung in einem anderen Programm dazu führen, dass stattdessen eine neuere gelöscht wurde. Gefunden im Windows-Test.
 - Update-Prüfung: Bricht die Verbindung zu GitHub kurz ab, versucht es die App jetzt automatisch noch einmal, statt zu melden, dass die Prüfung nicht möglich war. Die Logdatei nennt jetzt die genaue Ursache einer fehlgeschlagenen Prüfung. Gefunden im Windows-Test.
 - Automatische Tags auf macOS: Umlaute in Dateinamen konnten zerlegte Tags wie „#hne“ erzeugen. Neu importierte Dateien erhalten jetzt vollständige Tags; bestehende Tags bleiben unverändert und können von Hand entfernt werden. Gefunden im macOS-Test.
