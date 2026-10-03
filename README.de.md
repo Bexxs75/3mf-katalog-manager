@@ -20,7 +20,7 @@ Kostenlos und Open Source (MIT) · Windows, macOS, Linux · Deutsch, Englisch, S
 
 Die Knöpfe öffnen den Download-Bereich der Webseite, dort gibt es immer die neueste Version. Alle Dateien und Prüfsummen: [neueste Version](https://github.com/Bexxs75/3mf-katalog-manager/releases/latest).
 
-**Welche Datei brauche ich?** Windows: die `.msi`. macOS: die `.dmg` (für Intel und Apple Silicon). Linux: das `.AppImage`. Dateien **mit** `-step` im Namen zeigen zusätzlich eine 3D-Vorschau für STEP-Dateien (`.stp`/`.step`) und sind größer; wer nur 3MF, STL oder OBJ nutzt, nimmt die Datei **ohne** `-step`. Sonst sind beide Varianten gleich.
+**Welche Datei brauche ich?** Windows: die `.msi`. macOS: die `.dmg` (für Intel und Apple Silicon). Linux: das `.AppImage`. Dateien **mit** `-STEP` im Namen zeigen zusätzlich eine 3D-Vorschau für STEP-Dateien (`.stp`/`.step`) und sind größer; wer nur 3MF, STL oder OBJ nutzt, nimmt die Datei **ohne** `-STEP`. Sonst sind beide Varianten gleich.
 
 ## Kompatibilität
 
@@ -30,7 +30,7 @@ Die Knöpfe öffnen den Download-Bereich der Webseite, dort gibt es immer die ne
 | macOS, Intel und Apple Silicon (`.dmg`) | verfügbar, unsigniert |
 | Linux (`.AppImage`) | verfügbar; `.deb`, `.rpm` und AUR geplant |
 | 3MF, STL, OBJ | Katalog und 3D-Vorschau |
-| STEP (`.stp`/`.step`) | Katalog; 3D-Vorschau mit dem `-step`-Download |
+| STEP (`.stp`/`.step`) | Katalog; 3D-Vorschau mit dem `-STEP`-Download |
 | OrcaSlicer / Bambu Studio 3MF | Filamentverbrauch und Gewicht je Platte unterstützt |
 | Im Slicer öffnen | Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura werden erkannt, weitere lassen sich eintragen |
 | Klipper / Moonraker | verfügbar; [weitere Druckermodelle gesucht](https://3mfkatalog.de/druckertest.html) |
@@ -56,10 +56,10 @@ Windows und macOS zeigen beim ersten Start eine Warnung, weil die Pakete **nicht
 
 Was du selbst prüfen kannst:
 
-- **Open Source:** Jede Version wird aus dem öffentlichen Quellcode von [GitHub-Actions-Workflows](https://github.com/Bexxs75/3mf-katalog-manager/tree/master/.github/workflows) gebaut. Der Quellstand jeder Version ist das passende Tag, z. B. [v0.14.0](https://github.com/Bexxs75/3mf-katalog-manager/tree/v0.14.0).
+- **Open Source:** Jede Version wird aus dem öffentlichen Quellcode von [GitHub-Actions-Workflows](https://github.com/Bexxs75/3mf-katalog-manager/tree/master/.github/workflows) gebaut. Der Quellstand jeder Version ist das passende Tag, z. B. [v0.15.0](https://github.com/Bexxs75/3mf-katalog-manager/tree/v0.15.0).
 - **Prüfsummen:** Jede Version enthält `SHA256SUMS.txt`. Vergleiche sie mit dem Hash deines Downloads:
-  - Windows (PowerShell): `Get-FileHash .\3MF.Katalog.Manager_…msi -Algorithm SHA256`
-  - macOS: `shasum -a 256 3MF.Katalog.Manager_…dmg`
+  - Windows (PowerShell): `Get-FileHash .\3MF-Katalog-Manager-0.15.0-Windows-x64.msi -Algorithm SHA256`
+  - macOS: `shasum -a 256 3MF-Katalog-Manager-0.15.0-macOS-universal.dmg`
   - Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`
 - **Trotzdem starten:** Windows-SmartScreen: „Weitere Informationen“ → „Trotzdem ausführen“. macOS: Rechtsklick auf die App → „Öffnen“; ab macOS 15: Systemeinstellungen → Datenschutz & Sicherheit → „Trotzdem öffnen“.
 - **Nur lokal:** Die App arbeitet offline. Online geht sie nur, um auf GitHub nach einer neuen Version zu sehen, um sie herunterzuladen, wenn du aktualisierst, und, wenn du es einschaltest, um mit Druckern im Heimnetz zu sprechen.
@@ -68,13 +68,14 @@ Was du selbst prüfen kannst:
 
 ## Updates
 
-Ab v0.15.0 prüft die App beim Start auf Updates und kann sie unter Windows, macOS und der Linux-AppImage selbst installieren. „Jetzt aktualisieren“ lädt das signierte Paket herunter, sichert vorher deine Katalog-Datenbank (die letzten 3 Sicherungen bleiben erhalten, in `update-backups` im Datenordner der App) und installiert es, nachdem du auf „Neu starten und installieren“ klickst. Bei Linux-`.deb`/`.rpm`-Installationen erscheint stattdessen der Knopf „Zur Download-Seite“, weil sich nur die AppImage selbst ersetzen kann.
+Ab v0.15.0 prüft die App beim Start auf Updates und kann sie unter Windows, macOS und der Linux-AppImage selbst installieren. „Jetzt aktualisieren“ lädt das signierte Paket herunter. „Neu starten und installieren“ sichert zuerst deine Katalog-Datenbank (die letzten 3 Sicherungen bleiben erhalten, in `update-backups` im Datenordner der App) und installiert dann das Update. Bei Linux-`.deb`/`.rpm`-Installationen erscheint stattdessen der Knopf „Zur Download-Seite“, weil sich nur die AppImage selbst ersetzen kann.
 
 Installationen von 0.14 oder älter müssen einmal von Hand auf 0.15.0 aktualisiert werden – lade sie von der [Webseite](https://3mfkatalog.de/#download) oder dem [neuesten Release](https://github.com/Bexxs75/3mf-katalog-manager/releases/latest) herunter; ab 0.15.0 aktualisiert sich die App dann selbst. Details, auch zum Wiederherstellen einer Sicherung: [Benutzerhandbuch](docs/benutzerhandbuch/BENUTZERHANDBUCH.md#aktualisieren).
 
 ## Was die App kann
 
 - **Modelle finden und ordnen** — Dateien oder ganze Ordner importieren, automatische Tags, Suche, Ordner, Sammlungen, Favoriten, Duplikaterkennung, Papierkorb.
+- **Aus dem Katalog entfernen / Katalog zurücksetzen** — Modelle oder Ordner entfernen oder den Katalog leeren, ohne Dateien auf der Festplatte zu ändern.
 - **Dateien und Metadaten verstehen** — 3D-Vorschau für 3MF, STL, OBJ (und STEP), Maße, Volumen, Druckplatten, Filamentverbrauch und Gewicht aus OrcaSlicer/Bambu Studio.
 - **Filament und Resin verwalten** — Spulen und Resin-Flaschen mit Bestand, Lagerort und Preis, Drucker mit AMS-/MMU-Fächern, „Reicht das Filament?“ je Modell.
 - **Drucke planen und dokumentieren** — Warteschlange, Druckstatus, Druckprotokoll mit Fotos, geschätzte Materialkosten, mit einem Klick im Slicer öffnen.
@@ -101,7 +102,7 @@ Installationen von 0.14 oder älter müssen einmal von Hand auf 0.15.0 aktualisi
 - **Reicht das Filament?** — für geslicete 3MF-Dateien vergleicht die Detailseite den Filamentbedarf mit deinen Spulen (Material und ähnliche Farbe) und zeigt, ob er reicht, nur mit Spulenwechsel reicht oder wie viel fehlt – samt passender Spule und ob sie im Drucker steckt. Die Druck-Warteschlange zeigt den Status je Eintrag und berücksichtigt den Gesamtbedarf.
 - **Werkzeuge** — Abschnitt in der Seitenleiste mit Warteschlange, „Zuletzt angesehen“, „Neu hinzugefügt“, „Favoriten“ (alle mit Herz markierten Modelle), „Duplikate“ und Aufräum-Vorschlägen, jeweils mit Anzahl; die Ansichten filtern den Katalog und lassen sich mit Ordnern, Tags und Suche kombinieren.
 - **Druckeranbindung** — optional (standardmäßig aus): Klipper/Moonraker-Drucker im Heimnetz melden den Filamentverbrauch fertiger und abgebrochener Drucke; nach deiner Bestätigung wird er von der Spule abgebucht, auf Wunsch mit Druckprotokoll-Eintrag. Nur lesend, nur selbst eingetragene Adressen im Heimnetz. Siehe [Getestete Drucker](#getestete-drucker); Ergebnisse für weitere Drucker sammelt die [Testseite](https://3mfkatalog.de/druckertest.html).
-- **Katalog-Erweiterungen** — Druckstatus-Toggle + Gewicht pro Modell (echter Wert aus dem Slicer, falls die 3mf bereits gesliced wurde, sonst grobe Schätzung aus Volumen × Materialdichte), Sortierung nach "Zuletzt angesehen", NEU-Badge für kürzlich importierte Modelle, Creators-Filter (aus 3MF-Designer-Metadatum), automatische Erkennung exakter Datei-Duplikate beim Import per Inhalts-Hash
+- **Katalog-Erweiterungen** — Druckstatus-Toggle + Gewicht pro Modell (echter Wert aus dem Slicer, falls die 3mf bereits gesliced wurde, sonst grobe Schätzung aus Volumen × Materialdichte), Sortierung nach "Zuletzt angesehen", NEU-Badge für kürzlich importierte Modelle, automatische Erkennung exakter Datei-Duplikate beim Import per Inhalts-Hash
 - **Filamentverbrauch aus dem Slicer** — liest den in OrcaSlicer/Bambu Studio gesliceten Filamentverbrauch (`Metadata/slice_info.config`) mit aus: reales Gewicht statt Schätzung, Aufschlüsselung pro Druckplatte und Filament (Typ, Farbe, Gramm, Meter) auf der Modell-Detailseite; Button "Metadaten neu einlesen" holt die Werte nachträglich, wenn eine bereits katalogisierte Datei in OrcaSlicer/Bambu Studio nachgesliced wurde
 - **Materialkosten-Schätzung** — bei Modellen mit echtem Slicer-Filamentverbrauch zusätzlich eine geschätzte Materialkosten-Summe auf der Detailseite, berechnet aus Verbrauch und den Preisen passender Spulen im Filament-Lager
 - **Druckprotokoll** — zusätzlich zum Druckstatus-Toggle ein Protokoll mehrerer Druckversuche pro Modell (Datum, Notiz, Foto), unabhängig vom Druckstatus

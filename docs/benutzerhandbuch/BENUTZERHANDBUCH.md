@@ -6,7 +6,7 @@ This guide is for anyone using the 3MF Katalog Manager for the first time and no
 with the app. It walks you step by step through importing, organizing, and preparing your models
 for printing, and managing your filament stock.
 
-> **About the screenshots in this guide:** all screenshots show the app (version 0.14.0) with its
+> **About the screenshots in this guide:** screenshots show the app with its
 > interface set to English
 > and a made-up demo catalog (models like "Rocket" or "Spiral Vase", made-up filament spools, resin
 > bottles and brands) — no real user data. The layout is exactly what you'll see in the app; only
@@ -52,10 +52,18 @@ The app is available for Linux, Windows, and macOS (see the project's
 [releases page](https://github.com/Bexxs75/3mf-katalog-manager/releases)). For each platform there
 are two variants:
 
-- **With STEP preview** ("step"/"STEP" in the file name): includes the 3D preview for STEP files
+- **With STEP preview** ("-STEP" in the file name): includes the 3D preview for STEP files
   (`.stp`/`.step`), at the cost of a larger download.
 - **Standard** (without that part): smaller download; STEP files can still be cataloged (tags,
   search, rename, trash), just without the 3D preview.
+
+The v0.15.0 downloads use these names; the STEP variant adds `-STEP` before the extension:
+
+| Platform | Standard download |
+|---|---|
+| Windows | `3MF-Katalog-Manager-0.15.0-Windows-x64.msi` |
+| macOS | `3MF-Katalog-Manager-0.15.0-macOS-universal.dmg` |
+| Linux | `3MF-Katalog-Manager-0.15.0-Linux-x86_64.AppImage` |
 
 Otherwise the two variants are identical. When in doubt, take the variant with STEP preview — the
 size difference hardly matters, and you won't miss the preview later. To switch variants, install
@@ -269,6 +277,25 @@ every tag present in the selection), mark it printed/not printed, or delete it t
 multi-selection active, the Delete/Backspace key also opens the delete confirmation directly:
 
 ![Multi-select with action bar](bilder/en/06-mehrfachauswahl.png)
+
+### Remove from catalog
+
+Use **Remove from catalog** in a model's context menu or in the selection bar to remove
+catalog entries. The confirmation names the model or shows the number of selected models.
+Confirm with **Remove**. The files on disk stay unchanged; the models are not moved to the trash.
+
+Right-click a folder and choose **Remove from catalog** to remove it and its catalog subtree.
+The confirmation shows the folder name, the number of subfolders (excluding the selected folder),
+and the number of models in the whole subtree (excluding trash entries). Removing them also
+removes their tag assignments and print log entries. Folders and files on disk stay unchanged,
+and you can import them again later. Existing trash entries are kept.
+
+![Remove a folder from the catalog](bilder/en/31-aus-katalog-entfernen.png)
+
+Removing the catalog location folder or one of its ancestors in the catalog is refused. The
+message reads:
+
+> This is the catalog location. To empty it, use “Reset catalog” in Settings.
 
 ## Collections
 
@@ -522,6 +549,23 @@ including self-built or modified versions. The radio button sets which slicer is
 - **Catalog location** — shows the current base directory and lets you change it or open it
   directly in the file manager. Changing it opens the same dialog as the initial setup.
 
+#### Reset catalog
+
+Under Settings → Catalog, **Reset catalog …** opens a confirmation with the number of models
+outside the trash and the total number of catalog folders. **Reset** clears those models and
+folders, all tags and collections, and the removed models' metadata, queue entries and print log.
+Files and folders on disk stay unchanged.
+
+Trash entries remain, but lose their folder, tag and collection assignments. Filament and resin
+stock, printers and their connections, printer jobs, slicers and other settings are kept.
+Printer jobs lose their links to catalog models, including models in the trash.
+
+Use **Back up first …** to export a catalog backup before resetting; **✓ Backed up** confirms
+success. The backup is optional. After resetting, the setup dialog opens again so you can set up
+the catalog location anew.
+
+![Reset catalog confirmation](bilder/en/32-katalog-zuruecksetzen.png)
+
 ### Printers
 
 ![Settings: Printers](bilder/en/28-einstellungen-drucker.png)
@@ -536,26 +580,31 @@ details. Resin printers don't appear here.
 
 ![Settings: Info with update check](bilder/en/20-einstellungen-info-update.png)
 
-Shows the installed version plus links to the source code, application license, and third-party
+Shows the installed version, the MIT license, and links to the source code, Discord and third-party
 licenses, and the same update information described in [Updating](#updating) below: whether a
 newer version is available, a "Check for updates again" button for a manual check, and — after
 installing one from within the app — the date and backup file name of that update.
 
-Under **Folders**, **Open data folder** opens the folder with your catalog and the backups taken
+The check button shows **Checking…** while checking; afterwards the tab shows the result or a
+check failure. **Report a bug** and **Detailed log** are also here (see [Reporting a bug](#reporting-a-bug)).
+
+Under **FOLDERS**, **Open data folder** opens the folder with your catalog and the backups taken
 before updates (`update-backups`), and **Open log folder** opens the folder with the log files.
 There are two buttons because on Windows and macOS the log files are kept in a different system
 folder than the catalog.
 
-Below in the screenshot, you can see an example of the **light** vs. **dark** theme side by side:
+The following screenshots compare the **light** and **dark** themes:
 
 ![Catalog in dark theme](bilder/en/14-dark-mode.png)
 ![Catalog in light theme](bilder/en/15-hell-mode-bonus.png)
 
 ### Reporting a bug
 
+![Report a bug](bilder/en/30-fehler-melden.png)
+
 Settings → Info → **Report a bug** (or **Report problem** next to an unexpected error) opens a short dialog. First decide whether to send the log file. With **Yes** you see exactly what will be in it: user name, computer name, home folder and catalog paths, printer and other network addresses, e-mail addresses and — if you tick "Replace file names" — file names are replaced. **Save and open form** puts `3mf-katalog-log-<date>.txt` into your download folder and opens the form on 3mfkatalog.de with version and system filled in; attach the file there under "Log file". The app never sends anything by itself.
 
-**Detailed log:** only needed if we ask for it. It additionally records every action with file names and turns itself off after 7 days. **Open log folder** (under **Folders**, see [Info](#info)) shows the log files.
+**Detailed log:** only needed if we ask for it. It additionally records every action with file names and turns itself off after 7 days. **Open log folder** (under **FOLDERS**, see [Info](#info)) shows the log files.
 
 ## Updating
 
@@ -568,6 +617,9 @@ again" repeats the check any time.
 
 1. **"Version X.Y.Z is available"** — "Update now" downloads it; the app checks its
    signature before the update can be installed; "What's new?" opens the release notes on GitHub.
+
+   ![Update available](bilder/en/29-update-verfuegbar.png)
+
 2. **Downloading** — a progress bar shows the download; you can keep working in the app while
    it runs.
 3. **"Update X.Y.Z is ready"** — "Restart and install" backs up your catalog database, then
@@ -659,8 +711,8 @@ Not automatically/synced — there's currently no cloud connection for that (see
 the catalog to another computer manually.
 
 **Can I go back to the old version after an update?**
-Only with a backup: new versions can extend the catalog database on first start (most recently
-v0.14.0 for the printer connection and resin printers), and older versions can't open it
+Only with a backup: new versions can change the catalog database on first start (v0.15.0
+removes the obsolete saved-filters table), and older versions can't open it
 afterwards. Updating from within the app (see [Updating](#updating)) backs up your catalog
 automatically first — see [Restoring a backup after an
 update](#restoring-a-backup-after-an-update) to go back. Updating by hand (for example from 0.14
@@ -680,7 +732,7 @@ Dieses Handbuch richtet sich an alle, die den 3MF Katalog Manager zum ersten Mal
 sich mit der App noch nicht auskennen. Es erklärt Schritt für Schritt, wie du Modelle
 importierst, organisierst, druckfertig machst und dein Filament-Lager verwaltest.
 
-> **Hinweis zu den Bildern in diesem Handbuch:** Alle Screenshots zeigen die App (Version 0.14.0)
+> **Hinweis zu den Bildern in diesem Handbuch:** Die Screenshots zeigen die App
 > mit einem erfundenen
 > Demo-Katalog (Modelle wie "Rakete" oder "Spiralvase", erfundene Filamentspulen, Resin-Flaschen
 > und Hersteller) — keine echten Nutzerdaten. Die Optik entspricht exakt dem, was du in der App
@@ -726,10 +778,18 @@ Die App steht für Linux, Windows und macOS zum Download bereit (siehe die
 [Releases-Seite](https://github.com/Bexxs75/3mf-katalog-manager/releases) des Projekts). Für jede
 Plattform gibt es dort zwei Varianten:
 
-- **Mit STEP-Vorschau** („step“/„STEP“ im Dateinamen): enthält die 3D-Vorschau für STEP-Dateien
+- **Mit STEP-Vorschau** („-STEP“ im Dateinamen): enthält die 3D-Vorschau für STEP-Dateien
   (`.stp`/`.step`), dafür etwas größer.
 - **Standard** (ohne diesen Zusatz): kleinerer Download, STEP-Dateien lassen sich weiterhin
   katalogisieren (Tags, Suche, Umbenennen, Papierkorb), nur eben ohne 3D-Vorschau dafür.
+
+Die Downloads für v0.15.0 heißen wie folgt; die STEP-Variante ergänzt `-STEP` vor der Dateiendung:
+
+| Plattform | Standard-Download |
+|---|---|
+| Windows | `3MF-Katalog-Manager-0.15.0-Windows-x64.msi` |
+| macOS | `3MF-Katalog-Manager-0.15.0-macOS-universal.dmg` |
+| Linux | `3MF-Katalog-Manager-0.15.0-Linux-x86_64.AppImage` |
 
 Ansonsten sind beide Varianten identisch. Im Zweifel nimm die Variante mit STEP-Vorschau – der
 Größenunterschied spielt kaum eine Rolle, und du vermisst die Vorschau später nicht. Zum Wechseln
@@ -956,6 +1016,27 @@ der Auswahl vorkommenden Tags), als gedruckt/nicht gedruckt markieren oder lösc
 aktiver Mehrfachauswahl öffnet auch die Taste Entf/Rücktaste direkt die Löschen-Bestätigung:
 
 ![Mehrfachauswahl mit Aktionsleiste](bilder/06-mehrfachauswahl.png)
+
+### Aus dem Katalog entfernen
+
+Mit **Aus dem Katalog entfernen** im Modell-Kontextmenü oder **Aus Katalog entfernen** in der
+Auswahlleiste entfernst du Katalogeinträge. Die Bestätigung nennt das Modell oder die Anzahl der
+ausgewählten Modelle. Bestätige mit **Entfernen**. Die Dateien auf der Festplatte bleiben
+unverändert; die Modelle werden nicht in den Papierkorb verschoben.
+
+Klicke mit der rechten Maustaste auf einen Ordner und wähle **Aus dem Katalog entfernen**, um ihn
+und seinen Katalog-Unterbaum zu entfernen. Die Bestätigung zeigt den Ordnernamen, die Anzahl der
+Unterordner (ohne den gewählten Ordner) und die Anzahl der Modelle im gesamten Unterbaum (ohne
+Papierkorb-Einträge). Dabei verschwinden auch deren Tag-Zuordnungen und Einträge im Druckprotokoll.
+Ordner und Dateien auf der Festplatte bleiben unverändert und können später wieder importiert
+werden. Vorhandene Papierkorb-Einträge bleiben erhalten.
+
+![Ordner aus dem Katalog entfernen](bilder/31-aus-katalog-entfernen.png)
+
+Der Katalog-Speicherort und seine übergeordneten Ordner im Katalog lassen sich nicht entfernen.
+Die Meldung lautet:
+
+> Das ist der Speicherort des Katalogs. Zum Leeren „Katalog zurücksetzen“ in den Einstellungen verwenden.
 
 ## Sammlungen
 
@@ -1215,6 +1296,24 @@ fest, welcher Slicer beim Öffnen eines Modells als **Standard** verwendet wird.
 - **Katalog-Speicherort** — zeigt den aktuellen Basisordner und erlaubt, ihn zu ändern oder direkt
   im Dateimanager zu öffnen. Ändern öffnet denselben Dialog wie bei der Ersteinrichtung.
 
+#### Katalog zurücksetzen
+
+Unter Einstellungen → Katalog öffnet **Katalog zurücksetzen …** eine Bestätigung mit der Anzahl
+der Modelle außerhalb des Papierkorbs und aller Katalogordner. **Zurücksetzen** entfernt diese
+Modelle und Ordner, alle Tags und Sammlungen sowie die Metadaten, Warteschlangen-Einträge und das
+Druckprotokoll der entfernten Modelle. Dateien und Ordner auf der Festplatte bleiben unverändert.
+
+Papierkorb-Einträge bleiben erhalten, verlieren aber ihre Ordner-, Tag- und Sammlungszuordnungen.
+Filament- und Resin-Lager, Drucker samt Anbindungen, Druckeraufträge, Slicer und andere Einstellungen
+bleiben erhalten. Druckeraufträge verlieren ihre Verknüpfung zu Katalogmodellen, auch zu Modellen
+im Papierkorb.
+
+Mit **Erst sichern …** exportierst du vor dem Zurücksetzen ein Katalog-Backup; **✓ Gesichert**
+bestätigt den Erfolg. Die Sicherung ist optional. Nach dem Zurücksetzen öffnet sich der
+Einrichtungsdialog erneut, damit du den Katalog-Speicherort neu einrichten kannst.
+
+![Bestätigung zum Zurücksetzen des Katalogs](bilder/32-katalog-zuruecksetzen.png)
+
 ### Drucker
 
 ![Einstellungen: Drucker](bilder/28-einstellungen-drucker.png)
@@ -1229,40 +1328,48 @@ Blick den Status jedes angebundenen Druckers ("Klipper · verbunden", "Klipper �
 
 ![Einstellungen: Info mit Update-Check](bilder/20-einstellungen-info-update.png)
 
-Zeigt die installierte Version sowie Links zu Quellcode, Anwendungslizenz und den Lizenzen der
+Zeigt die installierte Version, die MIT-Lizenz sowie Links zu Quellcode, Discord und den Lizenzen der
 Drittanbieter-Komponenten, außerdem dieselben Update-Informationen wie im Abschnitt
 [Aktualisieren](#aktualisieren) weiter unten: ob eine neuere Version verfügbar ist, den Knopf
 „Erneut nach Updates suchen“ für eine manuelle Prüfung, und – nach einem Update aus der App –
 Datum und Sicherungsdatei dieses Updates.
 
-Unter **Ordner** öffnet **Datenordner öffnen** den Ordner mit deinem Katalog und den Sicherungen
+Während der Prüfung zeigt der Knopf **Suche läuft…**; danach zeigt der Reiter das Ergebnis oder
+einen Fehler bei der Prüfung. Hier findest du auch **Fehler melden** und **Ausführliches Protokoll**
+(siehe [Fehler melden](#fehler-melden)).
+
+Unter **ORDNER** öffnet **Datenordner öffnen** den Ordner mit deinem Katalog und den Sicherungen
 vor Updates (`update-backups`), **Log-Ordner öffnen** den Ordner mit den Logdateien. Es sind zwei
 Knöpfe, weil Windows und macOS die Logdateien in einem anderen Systemordner ablegen als den
 Katalog.
 
-Unten im Screenshot siehst du ein Beispiel für das **Hell**- bzw. **Dunkel**-Theme im direkten
-Vergleich:
+Die folgenden Screenshots zeigen das **Hell**- und **Dunkel**-Theme im Vergleich:
 
 ![Katalog im Dunkel-Theme](bilder/14-dark-mode.png)
 ![Katalog im Hell-Theme](bilder/15-hell-mode-bonus.png)
 
 ### Fehler melden
 
+![Fehler melden](bilder/30-fehler-melden.png)
+
 Einstellungen → Info → **Fehler melden** (oder **Problem melden** neben einem unerwarteten Fehler) öffnet einen kurzen Dialog. Zuerst entscheidest du, ob die Logdatei mitgeht. Bei **Ja** siehst du genau, was drinsteht: Benutzername, Rechnername, Pfade im Benutzerordner und im Katalog, Drucker- und andere Netzwerkadressen, E-Mail-Adressen und – wenn du „Dateinamen ersetzen“ anhakst – Dateinamen werden ersetzt. **Speichern und Formular öffnen** legt `3mf-katalog-log-<Datum>.txt` in deinen Download-Ordner und öffnet das Formular auf 3mfkatalog.de mit eingetragener Version und System; dort hängst du die Datei unter „Logdatei“ an. Die App selbst verschickt nichts.
 
-**Ausführliches Protokoll:** nur nötig, wenn wir dich darum bitten. Es schreibt zusätzlich jede Aktion mit Dateinamen mit und schaltet sich nach 7 Tagen selbst aus. **Log-Ordner öffnen** (unter **Ordner**, siehe [Info](#info)) zeigt die Protokolldateien.
+**Ausführliches Protokoll:** nur nötig, wenn wir dich darum bitten. Es schreibt zusätzlich jede Aktion mit Dateinamen mit und schaltet sich nach 7 Tagen selbst aus. **Log-Ordner öffnen** (unter **ORDNER**, siehe [Info](#info-1)) zeigt die Protokolldateien.
 
 ## Aktualisieren
 
 Beim Start prüft die App einmalig im Hintergrund, ob eine neuere Version verfügbar ist. Das
 Ergebnis zeigt sich an zwei Stellen mit demselben Inhalt: als wegklickbarer Hinweis unten rechts
-und im Info-Tab der Einstellungen (siehe [Info](#info) weiter oben), wo „Erneut nach Updates
+und im Info-Tab der Einstellungen (siehe [Info](#info-1) weiter oben), wo „Erneut nach Updates
 suchen“ die Prüfung jederzeit wiederholt.
 
 **Unter Windows, macOS und der Linux-AppImage** läuft ein gefundenes Update so ab:
 
 1. **„Version X.Y.Z ist verfügbar“** — „Jetzt aktualisieren“ lädt es herunter; die App prüft
    die Signatur, bevor das Update installiert werden kann; „Was ist neu?“ öffnet die Release-Notes auf GitHub.
+
+   ![Update verfügbar](bilder/29-update-verfuegbar.png)
+
 2. **Download** — ein Fortschrittsbalken zeigt den Ladevorgang; du kannst währenddessen
    weiterarbeiten.
 3. **„Update X.Y.Z ist bereit“** — „Neu starten und installieren“ sichert zuerst deinen
@@ -1359,8 +1466,8 @@ Nicht automatisch/synchronisiert — dafür gibt es aktuell keine Cloud-Anbindun
 lässt sich der Katalog aber manuell auf einen anderen Rechner übertragen.
 
 **Kann ich nach einem Update wieder zur alten Version zurück?**
-Nur mit einer Sicherung: Neue Versionen können beim ersten Start die Katalog-Datenbank erweitern
-(zuletzt v0.14.0 für Druckeranbindung und Resin-Drucker), und ältere Versionen können sie danach
+Nur mit einer Sicherung: Neue Versionen können beim ersten Start die Katalog-Datenbank ändern
+(v0.15.0 entfernt die veraltete Tabelle für gespeicherte Filter), und ältere Versionen können sie danach
 nicht mehr öffnen. Ein Update aus der App heraus (siehe [Aktualisieren](#aktualisieren)) sichert
 deinen Katalog automatisch vorher — siehe [Wiederherstellen einer Sicherung nach einem
 Update](#wiederherstellen-einer-sicherung-nach-einem-update) für den Weg zurück. Ein Update von
