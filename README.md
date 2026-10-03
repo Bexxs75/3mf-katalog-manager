@@ -44,11 +44,11 @@ The buttons open the download section of the website, which always offers the ne
 | Printer | System | Checked | Result |
 |---|---|---|---|
 | Sovol SV08 | Stock Klipper | Print list and usage, deducting from the spool in the app | ✅ Confirmed in daily use |
-| Anycubic Kobra S1 with ACE Pro / ACE Pro 2 | Rinkhals | Print list and usage readable, matching file names to the model | ☑️ Test report checked |
+| Anycubic Kobra S1 with ACE Pro / ACE Pro 2 | Rinkhals | Print list and usage, deducting from the spool, matching file names to the model; cancelled prints are deducted with the actual amount; two printers side by side | ✅ Confirmed in long-term use (2 printers) |
 | Qidi Smart 3 | Stock Klipper | Print list and usage readable; the printer's clock was wrong | 🟡 From v0.15.0 |
 | Creality K2 Plus (with CFS) | Creality Klipper 1.1.6.1, rooted | Print list and usage readable; no material or weight from the slicer, so the spool is chosen by hand | ☑️ Test report checked |
 
-*Confirmed in daily use*: tried with the app on a real printer. *Test report checked*: the data from the anonymous [test form](https://3mfkatalog.de/en/printer-test.html) fits, a hands-on test is still missing. Your printer is missing? Your test adds it.
+*Confirmed in daily use*: tried with the app on a real printer. *Confirmed in long-term use*: used by users in everyday printing over a longer period and reported back. *Test report checked*: the data from the anonymous [test form](https://3mfkatalog.de/en/printer-test.html) fits, a hands-on test is still missing. Your printer is missing? Your test adds it.
 
 ## Is it safe to install?
 
