@@ -40,3 +40,6 @@ docs/intern/
 
 # Graphify-Wissensgraph (lokal, nicht versionieren)
 graphify-out/
+
+# Ruflo/Agent-Skills auf Projektebene (lokal, nicht versionieren)
+.agents/
