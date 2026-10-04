@@ -1,3 +1,4 @@
+import { EmptyCatalogTips } from './KeyboardTipsDialog';
 import { detailNeighbor, type DetailDirection } from '../hooks/useDetailNavigation';
 import { useImportLock } from '../hooks/ImportLockContext';
 import type { useFolderExpansion } from '../hooks/useFolderExpansion';
@@ -23,6 +24,7 @@ import { toolCounts as computeToolCounts, TOOL_VIEW_LABEL_KEY, type ToolView } f
 import type { AppError } from '../lib/errors';
 
 interface CatalogWorkspaceProps {
+  onOpenTips?: () => void;
   importRow?: ReactNode;
   expansion: ReturnType<typeof useFolderExpansion>;
   catalogKey?: string | null;
@@ -119,6 +121,7 @@ interface CatalogWorkspaceProps {
 }
 
 export function CatalogWorkspace({
+  onOpenTips,
   importRow,
   expansion,
   catalogKey,
@@ -449,7 +452,7 @@ export function CatalogWorkspace({
           />
         ) : (
           <div ref={node => { containerRef.current = node; scrollRef(node); }} data-catalog-scroller onScroll={event => { savedScroll.current = event.currentTarget.scrollTop; }} className="flex-1 overflow-y-auto overscroll-contain p-4">
-            {toolOnly && displayedModels.length === 0 ? (
+            {models.length === 0 && onOpenTips ? <EmptyCatalogTips onOpenTips={onOpenTips} /> : toolOnly && displayedModels.length === 0 ? (
               <div className="font-mono-ui text-[length:var(--font-size-item)] text-[var(--ink-3)] px-1.5 py-8 text-center">
                 {t('toolViewEmpty')}
               </div>

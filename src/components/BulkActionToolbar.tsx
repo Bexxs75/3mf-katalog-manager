@@ -1,3 +1,4 @@
+import { shouldIgnoreCatalogShortcut } from '../lib/keyboardGuard';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useRef, useState } from 'react';
 import { messageOf } from '../lib/errors';
@@ -31,8 +32,6 @@ interface BulkActionToolbarProps {
   tagsInSelection: string[];
   onBulkRemoveTag: (tag: string) => void;
 }
-
-const TEXT_ENTRY = 'textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="range"]):not([type="color"]):not([type="file"])';
 
 export function BulkActionToolbar({
   selectedCount,
@@ -87,7 +86,7 @@ export function BulkActionToolbar({
   const anyMenuOpen = addToCollectionMenuOpen || addTagMenuOpen || removeTagMenuOpen;
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      if (shouldIgnoreCatalogShortcut(e, { allowInteractive: anyMenuOpen || confirmRemove || confirmBulkDelete, allowMenus: anyMenuOpen, preserveEscapeSelection: !anyMenuOpen && !confirmRemove && !confirmBulkDelete })) return;
       if (e.key !== 'Escape') return;
       if (anyMenuOpen) {
         (addToCollectionMenuOpen ? collectionRef : addTagMenuOpen ? addTagRef : removeTagRef).current?.focus();
@@ -104,13 +103,6 @@ export function BulkActionToolbar({
         onConfirmBulkDeleteChange(false);
         return;
       }
-      const target = e.target;
-      if (target instanceof HTMLElement && (
-        // Only text entry: Chromium-based WebViews focus the card checkbox on click,
-        // and Escape right after ticking must still clear the selection.
-        target.matches(TEXT_ENTRY) || target.isContentEditable ||
-        target.closest('[contenteditable]:not([contenteditable="false"])')
-      )) return;
       onClearSelection();
     };
     window.addEventListener('keydown', onKeyDown);
@@ -185,7 +177,7 @@ export function BulkActionToolbar({
               {t('addToCollectionLabel')}
             </button>
             {addToCollectionMenuOpen && (
-              <div className="absolute top-9 left-0 min-w-[220px] max-w-[360px] py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
+              <div data-navigation-menu className="absolute top-9 left-0 min-w-[220px] max-w-[360px] py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
                 {collections.map((c) => (
                   <button
                     key={c.id}
@@ -223,7 +215,7 @@ export function BulkActionToolbar({
               {t('bulkAddTagLabel')}
             </button>
             {addTagMenuOpen && (
-              <div className="absolute top-9 left-0 flex items-center gap-1.5 p-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
+              <div data-navigation-menu className="absolute top-9 left-0 flex items-center gap-1.5 p-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
                 <input
                   value={tagDraft}
                   onChange={(e) => onTagDraftChange(e.target.value)}
@@ -249,7 +241,7 @@ export function BulkActionToolbar({
               {t('bulkRemoveTagLabel')}
             </button>
             {removeTagMenuOpen && (
-              <div className="absolute top-9 left-0 min-w-[160px] max-w-[300px] py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
+              <div data-navigation-menu className="absolute top-9 left-0 min-w-[160px] max-w-[300px] py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
                 {tagsInSelection.map((tag) => (
                   <button
                     key={tag}

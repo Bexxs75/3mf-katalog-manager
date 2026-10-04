@@ -250,3 +250,75 @@ describe('useKeyboardShortcuts', () => {
     expect(openBulkDeleteConfirm).not.toHaveBeenCalled();
   });
 });
+
+
+describe('P16 regressions A–E', () => {
+  afterEach(() => { document.body.innerHTML = ''; });
+  it('A: Space on the import button preserves native activation', () => {
+    const button = document.createElement('button'); document.body.append(button); button.focus();
+    const { toggleBulkSelect } = setup({ selectedId: 'a' });
+    expect(fireKey(' ', button).defaultPrevented).toBe(false);
+    expect(toggleBulkSelect).not.toHaveBeenCalled();
+  });
+  it('B: an open sort menu blocks catalog arrows', () => {
+    const menu = document.createElement('div'); menu.setAttribute('role', 'menu'); document.body.append(menu);
+    const { selectModel } = setup({ selectedId: 'a' }); fireKey('ArrowRight');
+    expect(selectModel).not.toHaveBeenCalled();
+  });
+  it('C: Enter opens the selected model', () => {
+    const onOpenDetail = vi.fn(); setup({ selectedId: 'a', ...{ onOpenDetail } }); fireKey('Enter');
+    expect(onOpenDetail).toHaveBeenCalledWith('a');
+  });
+  it('D: modified arrows preserve system shortcuts', () => {
+    const { selectModel } = setup({ selectedId: 'a' });
+    for (const modifier of ['altKey', 'ctrlKey']) window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', [modifier]: true }));
+    expect(selectModel).not.toHaveBeenCalled();
+  });
+  it('E: folder tree arrows do not move the model selection', () => {
+    const tree = document.createElement('div'); tree.setAttribute('role', 'treeitem'); tree.tabIndex = 0; document.body.append(tree); tree.focus();
+    const { selectModel } = setup({ selectedId: 'a' }); fireKey('ArrowRight', tree);
+    expect(selectModel).not.toHaveBeenCalled();
+  });
+});
+
+describe('P16 shortcuts', () => {
+  afterEach(() => { document.body.innerHTML = ''; vi.unstubAllGlobals(); });
+  function key(key: string, options: KeyboardEventInit = {}, target: EventTarget = window) {
+    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...options }); target.dispatchEvent(event); return event;
+  }
+  it.each(['Win32', 'MacIntel'])('uses only the platform modifier for A and F on %s', platform => {
+    vi.stubGlobal('navigator', { platform }); const mac = platform === 'MacIntel';
+    const selectAllVisible = vi.fn(); setup({ selectAllVisible });
+    key('a', mac ? { ctrlKey: true } : { metaKey: true }); key('a', { ctrlKey: true, metaKey: true });
+    expect(selectAllVisible).not.toHaveBeenCalled();
+    expect(key('a', mac ? { metaKey: true } : { ctrlKey: true }).defaultPrevented).toBe(true);
+    expect(selectAllVisible).toHaveBeenCalledOnce();
+    const input = document.createElement('input'); input.id = SEARCH_INPUT_ID; input.value = 'query'; const other = document.createElement('input'); document.body.append(input, other); other.focus();
+    key('a', mac ? { metaKey: true } : { ctrlKey: true }, other); expect(selectAllVisible).toHaveBeenCalledOnce();
+    expect(key('f', mac ? { metaKey: true } : { ctrlKey: true }, other).defaultPrevented).toBe(true);
+    expect(input).toHaveFocus(); expect(input.selectionStart).toBe(0); expect(input.selectionEnd).toBe(5);
+  });
+  it('Home and End select the boundaries and Shift does not change selection', () => {
+    const { selectModel } = setup({ selectedId: 'b' }); key('Home'); key('End');
+    expect(selectModel.mock.calls).toEqual([['a'], ['c']]); key('Home', { shiftKey: true }); key('ArrowRight', { shiftKey: true }); expect(selectModel).toHaveBeenCalledTimes(2);
+  });
+  it('ignores repeated deletion and accepts Cmd+Backspace only on macOS', () => {
+    vi.stubGlobal('navigator', { platform: 'MacIntel' }); const { openBulkDeleteConfirm } = setup({ hasBulkSelection: true });
+    key('Delete', { repeat: true }); key('Backspace', { metaKey: true, repeat: true }); expect(openBulkDeleteConfirm).not.toHaveBeenCalled();
+    key('Backspace', { metaKey: true }); expect(openBulkDeleteConfirm).toHaveBeenCalledOnce();
+  });
+  it('disabling single keys blocks slash, help, Space and deletion but preserves Ctrl+A and Enter', () => {
+    vi.stubGlobal('navigator', { platform: 'Linux' }); const onOpenTips = vi.fn(); const selectAllVisible = vi.fn(); const onOpenDetail = vi.fn();
+    const input = document.createElement('input'); input.id = SEARCH_INPUT_ID; document.body.append(input);
+    const result = setup({ selectedId: 'a', hasBulkSelection: true, singleKeyShortcuts: false, onOpenTips, selectAllVisible, onOpenDetail });
+    for (const value of ['/', '?', ' ', 'Delete', 'Backspace']) expect(key(value).defaultPrevented).toBe(false);
+    expect(input).not.toHaveFocus(); expect(onOpenTips).not.toHaveBeenCalled(); expect(result.toggleBulkSelect).not.toHaveBeenCalled(); expect(result.openBulkDeleteConfirm).not.toHaveBeenCalled();
+    key('a', { ctrlKey: true }); expect(selectAllVisible).toHaveBeenCalledOnce(); key('Enter'); expect(onOpenDetail).toHaveBeenCalledWith('a');
+  });
+  it('opens help with shifted ? but keeps Enter and select all out of detail views', () => {
+    vi.stubGlobal('navigator', { platform: 'Linux' }); const onOpenTips = vi.fn(); const onOpenDetail = vi.fn(); const selectAllVisible = vi.fn();
+    setup({ selectedId: 'a', navigationEnabled: false, onOpenTips, onOpenDetail, selectAllVisible });
+    key('?', { shiftKey: true }); expect(onOpenTips).toHaveBeenCalledOnce(); key('Enter'); key('a', { ctrlKey: true });
+    expect(onOpenDetail).not.toHaveBeenCalled(); expect(selectAllVisible).not.toHaveBeenCalled();
+  });
+});

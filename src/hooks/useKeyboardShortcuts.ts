@@ -1,3 +1,4 @@
+import { shouldIgnoreCatalogShortcut, hasPlatformModifier, isMacPlatform } from '../lib/keyboardGuard';
 import { useContext, useEffect } from 'react';
 import { ModelLayoutContext, type ModelLayout } from './ModelLayoutContext';
 
@@ -11,6 +12,10 @@ interface UseKeyboardShortcutsArgs {
   // Order of the currently visible models (after filter/sort) -
   // basis for left/right (plain list order) and the fallback for
   // up/down if the spatial search finds nothing.
+  onOpenDetail?: (id: string) => void;
+  selectAllVisible?: () => void;
+  onOpenTips?: () => void;
+  singleKeyShortcuts?: boolean;
   filteredIds: string[];
   selectedId: string | null;
   selectModel: (id: string) => void;
@@ -36,11 +41,6 @@ export function scrollTileIntoView(id: string, layout?: ModelLayout): void {
     return;
   }
   document.querySelector<HTMLElement>(`[${MODEL_TILE_ATTR}="${CSS.escape(id)}"]`)?.scrollIntoView?.({ block: 'nearest' });
-}
-
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
 }
 
 // Tolerance in pixels within which two tile centers still count as the
@@ -95,6 +95,7 @@ export function findSpatialNeighbor(
  * delete directly). Ignored while focus is in an input field.
  */
 export function useKeyboardShortcuts({
+  onOpenDetail, selectAllVisible, onOpenTips, singleKeyShortcuts = true,
   filteredIds,
   selectedId,
   selectModel,
@@ -106,24 +107,25 @@ export function useKeyboardShortcuts({
   const registry = useContext(ModelLayoutContext);
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
-      if (isTypingTarget(e.target)) return;
-
-      if (e.key === '/') {
-        e.preventDefault();
-        document.getElementById(SEARCH_INPUT_ID)?.focus();
+      const platformModifier = hasPlatformModifier(e);
+      const search = platformModifier && e.key.toLowerCase() === 'f';
+      const selectAll = platformModifier && e.key.toLowerCase() === 'a';
+      const macDelete = isMacPlatform() && platformModifier && e.key === 'Backspace';
+      if (shouldIgnoreCatalogShortcut(e, { allowModifiers: search || selectAll || macDelete, allowInteractive: search })) return;
+      if (search || (singleKeyShortcuts && e.key === '/')) {
+        const input = document.getElementById(SEARCH_INPUT_ID) as HTMLInputElement | null;
+        if (input) { e.preventDefault(); input.focus(); input.select(); }
         return;
       }
-
-      if ((e.key === 'Delete' || e.key === 'Backspace') && hasBulkSelection) {
-        e.preventDefault();
-        openBulkDeleteConfirm();
-        return;
-      }
-
+      if (singleKeyShortcuts && e.key === '?') { e.preventDefault(); onOpenTips?.(); return; }
       if (!navigationEnabled) return;
+      if (selectAll) { e.preventDefault(); selectAllVisible?.(); return; }
+      if (e.key === 'Enter' && selectedId) { e.preventDefault(); onOpenDetail?.(selectedId); return; }
+      if ((macDelete || (singleKeyShortcuts && (e.key === 'Delete' || e.key === 'Backspace'))) && hasBulkSelection && !e.repeat) {
+        e.preventDefault(); openBulkDeleteConfirm(); return;
+      }
 
-      if (e.key === ' ' && selectedId) {
+      if (singleKeyShortcuts && e.key === ' ' && selectedId) {
         e.preventDefault();
         toggleBulkSelect(selectedId);
         return;
@@ -131,12 +133,17 @@ export function useKeyboardShortcuts({
 
       const isHorizontal = e.key === 'ArrowLeft' || e.key === 'ArrowRight';
       const isVertical = e.key === 'ArrowUp' || e.key === 'ArrowDown';
-      if (!isHorizontal && !isVertical) return;
+      const isBoundary = e.key === 'Home' || e.key === 'End';
+      if (!isHorizontal && !isVertical && !isBoundary) return;
       if (filteredIds.length === 0) return;
 
       const layouts = [...(registry?.layouts.values() ?? [])].sort((a, b) => (a.offsetTop ?? 0) - (b.offsetTop ?? 0));
       const layout = layouts.find(section => section.order.includes(selectedId ?? '')) ?? layouts[0];
       const order = layout ? layouts.flatMap(section => section.order) : filteredIds;
+      if (isBoundary) {
+        const id = order[e.key === 'Home' ? 0 : order.length - 1];
+        e.preventDefault(); selectModel(id); scrollTileIntoView(id, layouts.find(section => section.order.includes(id))); return;
+      }
       if (isVertical && selectedId) {
         const localIndex = layout?.order.indexOf(selectedId) ?? -1;
         const expectedId = layout?.order[localIndex + (e.key === 'ArrowDown' ? layout.columns : -layout.columns)];
@@ -163,5 +170,5 @@ export function useKeyboardShortcuts({
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [registry, filteredIds, selectedId, selectModel, hasBulkSelection, openBulkDeleteConfirm, navigationEnabled, toggleBulkSelect]);
+  }, [onOpenDetail, selectAllVisible, onOpenTips, singleKeyShortcuts, registry, filteredIds, selectedId, selectModel, hasBulkSelection, openBulkDeleteConfirm, navigationEnabled, toggleBulkSelect]);
 }

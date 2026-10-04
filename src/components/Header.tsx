@@ -1,3 +1,4 @@
+import { useMenuKeyboard } from '../hooks/useMenuKeyboard';
 import { Icon } from './Icon';
 import { useEffect, useRef, useState } from 'react';
 import { useDismissableMenu } from '../hooks/useDismissableMenu';
@@ -22,6 +23,7 @@ interface Props {
   onImportFiles: () => void;
   onImportFolder: () => void;
   detailOpen?: boolean;
+  onOpenTips?: () => void;
   mainView: MainView;
 }
 
@@ -45,7 +47,7 @@ export function Header({
   count,
   onImportFiles,
   onImportFolder,
-  mainView,
+  mainView, onOpenTips,
   detailOpen = false,
 }: Props) {
   const t = useT();
@@ -57,6 +59,8 @@ export function Header({
   const sortRef = useRef<HTMLDivElement>(null);
   const importTriggerRef = useRef<HTMLButtonElement>(null);
   const sortTriggerRef = useRef<HTMLButtonElement>(null);
+  const importKeyboard = useMenuKeyboard(importMenuOpen, setImportMenuOpen, importRef);
+  const sortKeyboard = useMenuKeyboard(sortMenuOpen, setSortMenuOpen, sortRef);
   useDismissableMenu(importMenuOpen, setImportMenuOpen, importRef, importTriggerRef);
   useDismissableMenu(sortMenuOpen, setSortMenuOpen, sortRef, sortTriggerRef);
   useEffect(() => {
@@ -96,6 +100,8 @@ export function Header({
       <div ref={importRef} className="relative flex">
         <button
           ref={importTriggerRef}
+          aria-haspopup="menu"
+          onKeyDown={event => { if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) setSortMenuOpen(false); importKeyboard.onTriggerKeyDown(event); }}
           aria-expanded={importMenuOpen}
           onClick={() => { setSortMenuOpen(false); setImportMenuOpen((o) => !o); }}
           className="flex items-center gap-2 h-8 pl-[13px] pr-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[length:var(--font-size-body)] font-semibold cursor-pointer hover:brightness-110"
@@ -106,13 +112,14 @@ export function Header({
         </button>
 
         {importMenuOpen && (
-          <div data-navigation-menu className="absolute top-10 left-0 w-[300px] py-1 bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)] z-40">
+          <div data-navigation-menu role="menu" onKeyDown={importKeyboard.onMenuKeyDown} className="absolute top-10 left-0 w-[300px] py-1 bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)] z-40">
             <div className="m-2 p-2 border border-dashed border-[var(--line-strong)] rounded bg-[var(--panel-2)] text-[12px] text-[var(--ink-2)] leading-relaxed" aria-live="polite">
               <b>{t(importSource === 'files' ? 'impMenuFiles' : 'impMenuFolder')}</b>{' '}
               {importSource === 'folder' ? t('impMenuFolderHint') : importTargetName ? <>{t('impMenuMove')} <b>{importTargetName}</b> {t(importTargetIsRoot ? 'impMenuRoot' : 'impMenuActive')}</> : t('impMenuStay')}
               <div className="font-mono-ui text-[11px] text-[var(--ink-3)]">{t(importSource === 'files' ? 'impMenuFixed' : 'impMenuNoMove')}</div>
             </div>
             <button
+              role="menuitem" tabIndex={-1}
               onMouseEnter={() => setImportSource('files')} onFocus={() => setImportSource('files')}
               onClick={() => {
                 setImportMenuOpen(false);
@@ -123,6 +130,7 @@ export function Header({
               {t('importFilesOption')}
             </button>
             <button
+              role="menuitem" tabIndex={-1}
               onMouseEnter={() => setImportSource('folder')} onFocus={() => setImportSource('folder')}
               onClick={() => {
                 setImportMenuOpen(false);
@@ -143,6 +151,7 @@ export function Header({
         <div ref={sortRef} className="relative">
           <button
             ref={sortTriggerRef}
+            onKeyDown={event => { if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) setImportMenuOpen(false); sortKeyboard.onTriggerKeyDown(event); }}
             aria-haspopup="menu"
             aria-expanded={sortMenuOpen}
             onClick={() => { setImportMenuOpen(false); setSortMenuOpen((o) => !o); }}
@@ -153,11 +162,11 @@ export function Header({
             <span className="text-compact-label leading-none text-[var(--ink-3)]">▾</span>
           </button>
           {sortMenuOpen && (
-            <div data-navigation-menu role="menu" className="absolute top-9 left-0 min-w-[280px] w-max py-1 bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)] z-40">
+            <div data-navigation-menu role="menu" onKeyDown={sortKeyboard.onMenuKeyDown} className="absolute top-9 left-0 min-w-[280px] w-max py-1 bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)] z-40">
               {sortOptions.map((opt) => (
                 <button
                   key={opt.value}
-                  role="menuitemradio"
+                  role="menuitemradio" tabIndex={-1}
                   aria-checked={opt.value === sort}
                   onClick={() => {
                     onSortChange(opt.value, opt.value === sort ? sortDirection : defaultSortDirection(opt.value));
@@ -176,7 +185,7 @@ export function Header({
               <div role="separator" className="h-px bg-[var(--line)] m-1" />
               <div role="group" aria-label={t('sortDirection')} className="flex gap-1 p-1.5">
                 {(['asc', 'desc'] as const).map((direction, index) => (
-                  <button key={direction} aria-pressed={sortDirection === direction}
+                  <button key={direction} role="menuitemradio" tabIndex={-1} aria-checked={sortDirection === direction} aria-pressed={sortDirection === direction}
                     onClick={() => onSortDirectionChange(direction)}
                     className={`flex-1 whitespace-nowrap h-[30px] px-2 rounded border text-[12.5px] font-semibold cursor-pointer ${sortDirection === direction
                       ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent-soft)]'
@@ -229,6 +238,8 @@ export function Header({
         </span>
       )}
 
+      <button onClick={onOpenTips} aria-label={t('keyboardTipsTitle')} title={t('keyboardTipsTitle')}
+        className="shrink-0 w-8 h-8 rounded-full border border-[var(--line-strong)] text-[var(--ink-2)] hover:text-[var(--accent)] cursor-pointer">?</button>
     </header>
   );
 }

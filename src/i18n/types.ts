@@ -6,6 +6,51 @@ export interface PluralForms {
 }
 
 export interface Translations {
+  keyboardTipsTitle: string;
+  keyboardTab: string;
+  tipsTab: string;
+  keyboardCatalog: string;
+  keyboardDetail: string;
+  keyboardSearch: string;
+  keyboardNavigate: string;
+  keyboardToggle: string;
+  keyboardSelectAll: string;
+  keyboardDelete: string;
+  keyboardEscape: string;
+  keyboardEnter: string;
+  keyboardBoundary: string;
+  keyboardDetailNavigate: string;
+  keyboardOpenTips: string;
+  keyboardFooter: string;
+  singleKeyShortcutsTitle: string;
+  singleKeyShortcutsDescription: string;
+  keyboardSpace: string;
+  keyboardDeleteKey: string;
+  keyboardHomeEnd: string;
+  keyboardCtrl: string;
+  tipDragTitle: string;
+  tipDragText: string;
+  tipBulkTitle: string;
+  tipBulkText: string;
+  tipContextTitle: string;
+  tipContextText: string;
+  tipSortTitle: string;
+  tipSortText: string;
+  tipFiltersTitle: string;
+  tipFiltersText: string;
+  tipSidebarTitle: string;
+  tipSidebarText: string;
+  tipSinglesTitle: string;
+  tipSinglesText: string;
+  emptyCatalogTitle: string;
+  emptyCatalogText: string;
+  emptySelectTitle: string;
+  emptySelectText: string;
+  emptyContextTitle: string;
+  emptyContextText: string;
+  emptySearchTitle: string;
+  emptySearchText: string;
+
   filterBarAria: string;
   filterBarHeading: string;
   filterBarView: string;

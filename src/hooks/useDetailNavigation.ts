@@ -1,3 +1,4 @@
+import { shouldIgnoreCatalogShortcut } from '../lib/keyboardGuard';
 import { useEffect } from 'react';
 
 export type DetailDirection = 'previous' | 'next';
@@ -14,12 +15,8 @@ export function useDetailNavigation(
 ) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!navigate || event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      if (!navigate || shouldIgnoreCatalogShortcut(event) || isEditing()) return;
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-      if (document.querySelector('[role="dialog"][aria-modal="true"], [data-navigation-menu], [role="menu"], .menu')) return;
-      const blockedTarget = (target: EventTarget | null) => target instanceof Element &&
-        !!target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [data-detail-viewer], [role="slider"], [role="separator"], [role="listbox"]');
-      if (blockedTarget(event.target) || blockedTarget(document.activeElement) || isEditing()) return;
       event.preventDefault();
       navigate(event.key === 'ArrowLeft' ? 'previous' : 'next');
     };

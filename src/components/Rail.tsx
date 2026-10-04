@@ -17,6 +17,9 @@ import type { UpdaterView } from '../hooks/useUpdater';
 import { UpdatePanel } from './UpdatePanel';
 
 interface Props {
+  singleKeyShortcuts?: boolean;
+  onSingleKeyShortcutsChange?: (enabled: boolean) => void;
+  onOpenTips?: () => void;
   mainView: MainView;
   onMainViewChange: (v: MainView) => void;
   trashCount: number;
@@ -66,6 +69,7 @@ const LANGUAGE_LABELS: Record<Language, string> = {
 };
 
 export function Rail({
+  singleKeyShortcuts = true, onSingleKeyShortcutsChange, onOpenTips,
   mainView,
   onMainViewChange,
   trashCount,
@@ -223,6 +227,10 @@ export function Rail({
 
             {activeSettingsTab === 'general' && (
               <>
+                <button role="switch" aria-checked={singleKeyShortcuts} onClick={() => onSingleKeyShortcutsChange?.(!singleKeyShortcuts)} className="w-full text-left border border-[var(--line)] rounded p-2 mb-2 cursor-pointer">
+                  <span aria-hidden="true">{singleKeyShortcuts ? '✓ ' : '○ '}</span>{t('singleKeyShortcutsTitle')}
+                </button>
+                <p className="text-[12px] text-[var(--ink-2)] mb-4">{t('singleKeyShortcutsDescription')}</p>
                 <div className="mb-4 p-2 border border-[var(--line)] rounded text-[12px]">
                   <p>{t('settingsPrintersMovedHint')}</p>
                   <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] mt-2 text-[var(--accent)] focus-visible:outline-2" onClick={() => {
@@ -448,6 +456,7 @@ export function Rail({
 
             {activeSettingsTab === 'info' && (
               <>
+                <button onClick={onOpenTips} className="w-full h-8 border border-[var(--line-strong)] rounded cursor-pointer mb-3">{t('keyboardTipsTitle')}</button>
                 <UpdatePanel view={update} />
                 <DiagnosticsSettings />
                 <InfoFolders />

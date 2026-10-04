@@ -1,3 +1,5 @@
+import { KeyboardTipsDialog } from './components/KeyboardTipsDialog';
+import { useSingleKeyShortcuts } from './hooks/useSingleKeyShortcuts';
 import { ModelLayoutContext } from './hooks/ModelLayoutContext';
 import { useModelImages } from './hooks/useModelImages';
 import { ImportLockContext } from './hooks/ImportLockContext';
@@ -114,6 +116,8 @@ export default function App() {
     bulkRemoveFromCollection: collections.bulkRemoveFromCollection,
   });
 
+  const [tipsOpen, setTipsOpen] = useState(false);
+  const [singleKeyShortcuts, setSingleKeyShortcuts] = useSingleKeyShortcuts();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const slicerLauncher = useSlicerLauncher(slicers, primaryId, () => setSettingsOpen(true));
   const update = useUpdater();
@@ -189,6 +193,10 @@ export default function App() {
   };
 
   useKeyboardShortcuts({
+    singleKeyShortcuts,
+    onOpenTips: () => setTipsOpen(true),
+    onOpenDetail: setDetailModelId,
+    selectAllVisible: () => bulk.selectAllVisible(filteredIds),
     filteredIds,
     selectedId: store.selectedId,
     selectModel: store.selectModel,
@@ -257,7 +265,9 @@ export default function App() {
           onError={() => store.skipSnapshot(snapshotIds[0])}
         />
       )}
+      {tipsOpen && <KeyboardTipsDialog onClose={() => setTipsOpen(false)} />}
       <Header
+        onOpenTips={() => setTipsOpen(true)}
         allFoldersCollapsed={allFoldersCollapsed}
         onToggleAllFolders={toggleAllFolders}
         detailOpen={detailModelId !== null}
@@ -278,6 +288,9 @@ export default function App() {
 
       <div className="flex-1 flex flex-row min-h-0">
         <Rail
+          singleKeyShortcuts={singleKeyShortcuts}
+          onSingleKeyShortcutsChange={setSingleKeyShortcuts}
+          onOpenTips={() => setTipsOpen(true)}
           mainView={mainView}
           onMainViewChange={changeMainView}
           trashCount={store.trashModels.length}
@@ -326,6 +339,7 @@ export default function App() {
             />
           ) : mainView === 'catalog' ? (
             <CatalogWorkspace
+              onOpenTips={() => setTipsOpen(true)}
               catalogKey={catalogBaseDir}
               onNavigateDetail={navigateDetail}
               importRow={<>

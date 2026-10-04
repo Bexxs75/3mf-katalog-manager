@@ -31,19 +31,19 @@ describe('Header menus', () => {
     setup(); fireEvent.click(sortButton()); fireEvent.click(importButton());
     expect(screen.queryByRole('menuitemradio', { name: 'Dateigröße' })).not.toBeInTheDocument();
     fireEvent.mouseDown(document.body);
-    expect(screen.queryByRole('button', { name: 'Dateien...' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Dateien...' })).not.toBeInTheDocument();
     const trigger = importButton(); fireEvent.click(trigger); fireEvent.keyDown(window, { key: 'Escape' });
     expect(trigger).toHaveFocus();
     fireEvent.click(trigger); fireEvent.click(sortButton());
-    expect(screen.queryByRole('button', { name: 'Dateien...' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Dateien...' })).not.toBeInTheDocument();
   });
   it('keeps sort open after selecting and closes after import selection', () => {
     setup(); fireEvent.click(sortButton()); fireEvent.click(screen.getByRole('menuitemradio', { name: 'Dateigröße' }));
     expect(props.onSortChange).toHaveBeenCalledWith('size', 'desc');
     expect(screen.getByRole('menuitemradio', { name: 'Dateigröße' })).toBeInTheDocument();
-    fireEvent.click(importButton()); fireEvent.click(screen.getByRole('button', { name: 'Dateien...' }));
+    fireEvent.click(importButton()); fireEvent.click(screen.getByRole('menuitem', { name: 'Dateien...' }));
     expect(props.onImportFiles).toHaveBeenCalled();
-    expect(screen.queryByRole('button', { name: 'Dateien...' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Dateien...' })).not.toBeInTheDocument();
   });
   it('closes menus on detail opening and main view changes', () => {
     const result = setup(); fireEvent.click(sortButton());
@@ -52,7 +52,7 @@ describe('Header menus', () => {
     fireEvent.click(importButton());
     result.rerender(<LanguageProvider><Header {...props} mainView="trash" /></LanguageProvider>);
     result.rerender(<LanguageProvider><Header {...props} /></LanguageProvider>);
-    expect(screen.queryByRole('button', { name: 'Dateien...' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Dateien...' })).not.toBeInTheDocument();
   });
 });
 
@@ -67,18 +67,18 @@ it.each([
   const onSortChange = vi.fn(); const onSortDirectionChange = vi.fn();
   const result = render(<LanguageProvider><Header {...props} onSortChange={onSortChange} onSortDirectionChange={onSortDirectionChange} /></LanguageProvider>);
   fireEvent.click(sortButton());
-  expect(screen.getAllByRole('menuitemradio')).toHaveLength(6);
+  expect(screen.getAllByRole('menuitemradio')).toHaveLength(8);
   expect(screen.getByRole('group', { name: 'Richtung' })).toBeVisible();
   fireEvent.click(screen.getByRole('menuitemradio', { name: sort === 'modified' ? /Änderungsdatum\s*neu/ : label }));
   expect(onSortChange).toHaveBeenCalledWith(sort, direction);
   result.rerender(<LanguageProvider><Header {...props} sort={sort} sortDirection={direction} onSortChange={onSortChange} onSortDirectionChange={onSortDirectionChange} /></LanguageProvider>);
   expect(screen.getByRole('menuitemradio', { name: sort === 'modified' ? /Änderungsdatum\s*neu/ : label })).toHaveAttribute('aria-checked', 'true');
   expect(screen.getByRole('button', { name: `${sort === 'modified' ? 'Änderungsdatum' : label}${direction === 'asc' ? '↑' : '↓'}▾` })).toBeVisible();
-  expect(screen.getByRole('button', { name: `${direction === 'asc' ? '↑' : '↓'} ${direction === 'asc' ? asc : desc}` })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByRole('menuitemradio', { name: `${direction === 'asc' ? '↑' : '↓'} ${direction === 'asc' ? asc : desc}` })).toHaveAttribute('aria-pressed', 'true');
   onSortChange.mockClear();
-  fireEvent.click(screen.getByRole('button', { name: `↑ ${asc}` }));
+  fireEvent.click(screen.getByRole('menuitemradio', { name: `↑ ${asc}` }));
   expect(onSortDirectionChange).toHaveBeenCalledWith('asc');
-  fireEvent.click(screen.getByRole('button', { name: `↓ ${desc}` }));
+  fireEvent.click(screen.getByRole('menuitemradio', { name: `↓ ${desc}` }));
   expect(onSortDirectionChange).toHaveBeenLastCalledWith('desc');
   expect(onSortChange).not.toHaveBeenCalled();
   expect(screen.getByRole('menu')).toBeVisible();
@@ -88,4 +88,15 @@ it('closes the sort menu when the catalog view changes', () => {
   const result = setup(); fireEvent.click(sortButton());
   result.rerender(<LanguageProvider><Header {...props} view="groupedGrid" /></LanguageProvider>);
   expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+});
+
+it.each(['sort', 'import'])('supports keyboard opening, cyclic arrows, boundaries and Tab for %s', kind => {
+  setup(); const trigger = kind === 'sort' ? sortButton() : importButton(); trigger.focus();
+  fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+  const items = screen.getAllByRole(kind === 'sort' ? 'menuitemradio' : 'menuitem');
+  expect(items[0]).toHaveFocus(); fireEvent.keyDown(items[0], { key: 'ArrowUp' }); expect(items[items.length - 1]).toHaveFocus();
+  fireEvent.keyDown(items[items.length - 1]!, { key: 'ArrowDown' }); expect(items[0]).toHaveFocus();
+  fireEvent.keyDown(items[0], { key: 'End' }); expect(items[items.length - 1]).toHaveFocus();
+  fireEvent.keyDown(items[items.length - 1]!, { key: 'Home' }); expect(items[0]).toHaveFocus();
+  fireEvent.keyDown(items[0], { key: 'Tab' }); expect(screen.queryByRole('menu')).toBeNull();
 });
