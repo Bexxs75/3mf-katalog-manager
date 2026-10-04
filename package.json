@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "gen:icons": "node scripts/gen-icons.mjs",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",

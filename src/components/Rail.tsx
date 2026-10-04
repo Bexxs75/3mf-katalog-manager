@@ -1,3 +1,4 @@
+import { Icon } from './Icon';
 import { CatalogResetSection } from './CatalogResetSection';
 import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -53,7 +54,7 @@ interface Props {
 }
 
 const railBtnBase =
-  'relative w-[42px] h-[42px] rounded-[10px] border border-transparent grid place-items-center cursor-pointer text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--panel-2)]';
+  'relative w-[42px] h-[42px] rounded-[10px] border border-transparent grid place-items-center cursor-pointer text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--panel-2)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]';
 const railBtnActive =
   'text-[var(--accent)] bg-[var(--accent-soft)] border-[color-mix(in_oklch,var(--accent)_30%,transparent)]';
 
@@ -116,12 +117,7 @@ export function Rail({
           aria-label={t('railCatalog')}
           className={`${railBtnBase} ${mainView === 'catalog' ? railBtnActive : ''}`}
         >
-          <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor">
-            <rect x="3" y="3" width="7" height="7" rx="1.5" />
-            <rect x="14" y="3" width="7" height="7" rx="1.5" />
-            <rect x="3" y="14" width="7" height="7" rx="1.5" />
-            <rect x="14" y="14" width="7" height="7" rx="1.5" />
-          </svg>
+          <Icon name="catalog" />
         </button>
         <button
           onClick={() => onMainViewChange('filament')}
@@ -129,9 +125,7 @@ export function Rail({
           aria-label={t('railFilament')}
           className={`${railBtnBase} ${mainView === 'filament' ? railBtnActive : ''}`}
         >
-          <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor" fillRule="evenodd">
-            <path d="M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 1 0 0-17ZM12 9a3 3 0 1 0 0 6 3 3 0 1 0 0-6Z" />
-          </svg>
+          <Icon name="spool" />
         </button>
         <button
           onClick={() => onMainViewChange('trash')}
@@ -139,9 +133,7 @@ export function Rail({
           aria-label={t('trashHeading')}
           className={`${railBtnBase} ${mainView === 'trash' ? railBtnActive : ''}`}
         >
-          <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12ZM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4Z" />
-          </svg>
+          <Icon name="trash" />
           {trashCount > 0 && (
             <span className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-[3px] rounded-full bg-[var(--accent)] text-[var(--accent-ink)] text-[9px] font-bold font-mono-ui grid place-items-center">
               {trashCount}
@@ -159,9 +151,7 @@ export function Rail({
           aria-label={t('settingsTitle')}
           className={`${railBtnBase} ${railBtnActive}`}
         >
-          <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor" fillRule="evenodd">
-            <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.3 7.3 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L1.66 8.88a.5.5 0 0 0 .12.64l2.03 1.58a7.5 7.5 0 0 0 0 1.88l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .6.22l2.39-.96c.49.38 1.03.7 1.62.94l.36 2.54a.5.5 0 0 0 .5.42h3.84a.5.5 0 0 0 .5-.42l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96a.5.5 0 0 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.6a3.6 3.6 0 1 1 0-7.2 3.6 3.6 0 0 1 0 7.2Z" />
-          </svg>
+          <Icon name="settings" />
         </button>
 
         {settingsOpen && (
