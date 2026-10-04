@@ -49,9 +49,11 @@ export function Header({
         <span className="text-[15px] font-bold tracking-[0.06em] uppercase">
           3MF Katalog
         </span>
-        <span className="font-mono-ui text-[11px] text-[var(--accent)] tracking-[0.08em]">
-          MANAGER
-        </span>
+        {mainView === 'filament' && (
+          <span className="font-mono-ui text-[11px] text-[var(--accent)] tracking-[0.08em]">
+            MATERIAL MANAGER
+          </span>
+        )}
       </div>
 
       {mainView === 'catalog' && (

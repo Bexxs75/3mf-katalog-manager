@@ -41,9 +41,9 @@ describe('ToolsSection', () => {
     expect(row('Aufräum-Vorschläge')).toBeInTheDocument();
   });
 
-  it('leaves filament storage and trash to the left rail', () => {
+  it('leaves Material Manager and trash to the left rail', () => {
     setup();
-    expect(screen.queryByRole('button', { name: /Filament-Lager/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Material Manager/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Papierkorb/ })).not.toBeInTheDocument();
   });
 

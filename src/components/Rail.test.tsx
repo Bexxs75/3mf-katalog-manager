@@ -37,7 +37,7 @@ function renderRail(mainView: 'catalog' | 'filament' | 'trash' = 'catalog', tras
 }
 
 const buttons = [
-  ['Katalog', 'catalog'], ['Filament-Lager', 'spool'],
+  ['Katalog', 'catalog'], ['Material Manager', 'spool'],
   ['Papierkorb', 'trash'], ['Einstellungen', 'settings'],
 ] as const;
 
@@ -62,7 +62,7 @@ describe('Rail', () => {
   });
 
   it.each([
-    ['Katalog', 'catalog'], ['Filament-Lager', 'filament'], ['Papierkorb', 'trash'],
+    ['Katalog', 'catalog'], ['Material Manager', 'filament'], ['Papierkorb', 'trash'],
   ] as const)('keeps %s active and dispatches its view on click', (label, view) => {
     const props = renderRail(view);
     const button = screen.getByRole('button', { name: label });

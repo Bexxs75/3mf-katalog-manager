@@ -25,7 +25,7 @@ for printing, and managing your filament stock.
 9. [Collections](#collections)
 10. [Tools in the sidebar](#tools-in-the-sidebar)
 11. [Opening models directly in your slicer](#opening-models-directly-in-your-slicer)
-12. [The filament stock](#the-filament-stock)
+12. [The Material Manager](#the-material-manager)
 13. [Print log](#print-log)
 14. [The trash](#the-trash)
 15. [Settings](#settings)
@@ -123,7 +123,7 @@ file manager afterwards.
 
 ![Catalog in grid view](bilder/en/02-katalog-grid.png)
 
-- **Far left, the narrow navigation rail:** switches between the catalog, the filament stock, and
+- **Far left, the narrow navigation rail:** switches between the catalog, the Material Manager, and
   the trash (with an item-count badge). The gear icon for Settings sits at the very bottom.
 - **Sidebar:** a search field, followed by your folder tree with a model count per folder, your
   collections, your tags, and your print queue.
@@ -238,7 +238,7 @@ followed by a **source** field (e.g. a link to the model's origin page) and your
 the option to add or remove more. If the file has already been sliced in OrcaSlicer or Bambu
 Studio, the app reads the real filament weight straight from the slicer's metadata instead of
 only roughly estimating it — including a breakdown per print plate and filament, plus an
-estimated material-cost total if matching spools are on record in the filament stock. The
+estimated material-cost total if matching spools are on record in the Material Manager. The
 "Re-scan metadata" button re-fetches these values later on, in case you sliced an already
 cataloged file after the fact.
 
@@ -297,7 +297,7 @@ Click its heading to collapse it.
 - **Cleanup suggestions** — checks the catalog for missing files and duplicates.
 
 A selected view appears as a filter chip at the top and can be combined with folders, tags and
-search. Clicking the view again or the ✕ on the chip removes it. Filament storage and trash are
+search. Clicking the view again or the ✕ on the chip removes it. Material Manager and trash are
 still reached via the icons in the left rail.
 
 ## Opening models directly in your slicer
@@ -310,12 +310,12 @@ which of them is your **default slicer**, is configured in Settings (see below).
 > manually instead, you need to select the program file **inside** the `.app` bundle in the
 > picker (not the bundle itself) — see [Known limitations](#known-limitations).
 
-## The filament stock
+## The Material Manager
 
-The filament stock is an independent manager for your filament spools, separate from the model
+The Material Manager is an independent manager for your filament spools, separate from the model
 catalog. You reach it via the second icon in the navigation rail on the far left.
 
-![Filament stock dashboard](bilder/en/08-filament-dashboard.png)
+![Material Manager dashboard](bilder/en/08-filament-dashboard.png)
 
 At the top is a stats bar (total spools, total remaining weight, occupied storage locations,
 spools with low/empty stock). Each spool card shows material, manufacturer, color, storage
@@ -362,7 +362,7 @@ below 0. Resin bottles never go into a filament slot, only into the resin vat of
 (see [Resin printers](#resin-printers)), and are left out of "Is there enough filament?" and the
 material cost.
 
-![Resin bottles in the filament stock](bilder/en/12-resin-bottles.png)
+![Resin bottles in the Material Manager](bilder/en/12-resin-bottles.png)
 
 ### Is there enough filament?
 
@@ -447,7 +447,7 @@ Klipper printers should work the same way; if you want to test yours, the
 [test page](https://3mfkatalog.de/en/printer-test.html) helps.
 
 1. **Settings → Printers** → switch on "Printer connection".
-2. **Filament stock → Manage printers** → for the printer you want, enter the address under
+2. **Material Manager → Manage printers** → for the printer you want, enter the address under
    "Connection" (the same IP or name you'd use to open Mainsail in a browser) → "Test
    connection". If it works, the app shows the version and port, plus the point in time from
    which prints will be deducted — older prints are left alone. If the printer reports "Login
@@ -456,8 +456,8 @@ Klipper printers should work the same way; if you want to test yours, the
    corrects the difference automatically, but it's better to turn on time sync (NTP) on the
    printer.
 3. After that, the app automatically asks the printer for newly finished prints at startup,
-   every 5 minutes, and via the "↻" button next to its status. If there are any, the filament
-   stock shows the hint "N new prints waiting for confirmation" with a "Review" button.
+   every 5 minutes, and via the "↻" button next to its status. If there are any, the Material
+   Manager shows the hint "N new prints waiting for confirmation" with a "Review" button.
 4. In the "New prints" dialog that opens, you see the usage in grams per print, plus a
    suggested spool (the one loaded in the printer, if known) and a suggested catalog model
    (matched from the file name) — both can be changed. Only "Confirm" (individually or via
@@ -465,7 +465,7 @@ Klipper printers should work the same way; if you want to test yours, the
    print log entry and marks the model as printed. "Ignore" discards the suggestion without
    booking anything.
 
-![Filament stock with the new-prints notice and connection status](bilder/en/26-druckeranbindung-lager.png)
+![Material Manager with the new-prints notice and connection status](bilder/en/26-druckeranbindung-lager.png)
 
 !["New prints" dialog](bilder/en/27-neue-drucke.png)
 
@@ -528,7 +528,7 @@ including self-built or modified versions. The radio button sets which slicer is
 
 This is where you switch the printer connection on or off (off by default) and see the status
 of every connected printer at a glance ("Klipper · connected", "Klipper · error", or "not
-connected"). Address and connection test are entered per printer in the filament stock under
+connected"). Address and connection test are entered per printer in the Material Manager under
 "Manage printers" — see the [Printer connection](#printer-connection) section above for
 details. Resin printers don't appear here.
 
@@ -678,7 +678,7 @@ not a bug.
 
 Dieses Handbuch richtet sich an alle, die den 3MF Katalog Manager zum ersten Mal benutzen und
 sich mit der App noch nicht auskennen. Es erklärt Schritt für Schritt, wie du Modelle
-importierst, organisierst, druckfertig machst und dein Filament-Lager verwaltest.
+importierst, organisierst, druckfertig machst und deine Spulen im Material Manager verwaltest.
 
 > **Hinweis zu den Bildern in diesem Handbuch:** Alle Screenshots zeigen die App (Version 0.14.0)
 > mit einem erfundenen
@@ -699,7 +699,7 @@ importierst, organisierst, druckfertig machst und dein Filament-Lager verwaltest
 9. [Sammlungen](#sammlungen)
 10. [Werkzeuge in der Seitenleiste](#werkzeuge-in-der-seitenleiste)
 11. [Modelle direkt im Slicer öffnen](#modelle-direkt-im-slicer-öffnen)
-12. [Das Filament-Lager](#das-filament-lager)
+12. [Der Material Manager](#der-material-manager)
 13. [Druckprotokoll](#druckprotokoll)
 14. [Der Papierkorb](#der-papierkorb)
 15. [Einstellungen](#einstellungen)
@@ -799,7 +799,7 @@ Einrichtung direkt über den Katalog im Dateimanager.
 
 ![Katalog in der Raster-Ansicht](bilder/02-katalog-grid.png)
 
-- **Ganz links, die schmale Navigationsleiste:** wechselt zwischen Katalog, Filament-Lager und
+- **Ganz links, die schmale Navigationsleiste:** wechselt zwischen Katalog, Material Manager und
   Papierkorb (mit Mengen-Badge). Ganz unten befindet sich das Zahnrad-Symbol für die
   Einstellungen.
 - **Seitenleiste (Sidebar):** Suchfeld, darunter dein Ordnerbaum mit Anzahl der Modelle pro
@@ -922,7 +922,7 @@ Modell-Herkunftsseite) sowie deine Hashtags mit Möglichkeit, weitere hinzuzufü
 entfernen. Wurde die Datei bereits in OrcaSlicer oder Bambu Studio gesliced, liest die App das
 reale Filamentgewicht direkt aus den Slicer-Metadaten statt es nur grob zu schätzen — inklusive
 Aufschlüsselung pro Druckplatte und Filament sowie einer geschätzten Materialkosten-Summe, wenn
-passende Spulen im Filament-Lager hinterlegt sind. Über den "Metadaten neu einlesen"-Knopf holst du
+passende Spulen im Material Manager hinterlegt sind. Über den "Metadaten neu einlesen"-Knopf holst du
 diese Werte nachträglich nach, falls du eine bereits katalogisierte Datei erst später im Slicer
 nachgesliced hast.
 
@@ -986,7 +986,7 @@ Unten in der Seitenleiste bündelt der Bereich **Werkzeuge** mehrere Hilfen, jew
 
 Eine gewählte Ansicht erscheint oben als Filter-Chip und lässt sich mit Ordnern, Tags und Suche
 kombinieren. Ein zweiter Klick auf die Ansicht oder das ✕ am Chip hebt sie wieder auf.
-Filament-Lager und Papierkorb erreichst du wie gewohnt über die Symbole in der linken Leiste.
+Material Manager und Papierkorb erreichst du wie gewohnt über die Symbole in der linken Leiste.
 
 ## Modelle direkt im Slicer öffnen
 
@@ -999,12 +999,12 @@ welcher davon dein **Standard-Slicer** ist, richtest du in den Einstellungen ein
 > **innerhalb** des `.app`-Bundles auswählen (nicht das Bundle selbst) — siehe
 > [Bekannte Einschränkungen](#bekannte-einschränkungen).
 
-## Das Filament-Lager
+## Der Material Manager
 
-Das Filament-Lager ist eine eigenständige Verwaltung für deine Filamentspulen, unabhängig vom
-Modell-Katalog. Du erreichst es über das zweite Symbol in der Navigationsleiste ganz links.
+Der Material Manager ist eine eigenständige Verwaltung für deine Filamentspulen, unabhängig vom
+Modell-Katalog. Du erreichst ihn über das zweite Symbol in der Navigationsleiste ganz links.
 
-![Filament-Lager Dashboard](bilder/08-filament-dashboard.png)
+![Material Manager Dashboard](bilder/08-filament-dashboard.png)
 
 Oben siehst du eine Statistik-Leiste (Spulen gesamt, Restbestand gesamt, belegte Lagerplätze,
 Spulen mit niedrigem/leerem Bestand). Jede Spulen-Karte zeigt Material, Hersteller, Farbe,
@@ -1052,7 +1052,7 @@ sinkt nie unter 0. Resin-Flaschen kommen nie in ein Filament-Fach, sondern nur i
 eines Resin-Druckers (siehe [Resin-Drucker](#resin-drucker)), und zählen nicht bei „Reicht das
 Filament?" und den Materialkosten.
 
-![Resin-Flaschen im Filament-Lager](bilder/12-resin-flaschen.png)
+![Resin-Flaschen im Material Manager](bilder/12-resin-flaschen.png)
 
 ### Reicht das Filament?
 
@@ -1139,7 +1139,7 @@ Klipper-Drucker sollten genauso funktionieren; wenn du deinen testen möchtest, 
 [Testseite](https://3mfkatalog.de/druckertest.html).
 
 1. **Einstellungen → Drucker** → Schalter "Druckeranbindung" einschalten.
-2. **Filament-Lager → Drucker verwalten** → beim gewünschten Drucker unter "Verbindung" die
+2. **Material Manager → Drucker verwalten** → beim gewünschten Drucker unter "Verbindung" die
    Adresse eintragen (dieselbe IP oder denselben Namen, mit dem du z. B. Mainsail im Browser
    öffnest) → "Verbindung testen". Klappt es, zeigt die App Version und Port sowie ab welchem
    Zeitpunkt Drucke abgebucht werden — ältere Drucke bleiben unberührt. Meldet der Drucker
@@ -1149,7 +1149,7 @@ Klipper-Drucker sollten genauso funktionieren; wenn du deinen testen möchtest, 
    ist aber, am Drucker den Zeitabgleich (NTP) einzuschalten.
 3. Danach fragt die App den Drucker beim Start, alle 5 Minuten und über den "↻"-Knopf neben
    seinem Status automatisch nach neu beendeten Drucken. Gibt es welche, erscheint im
-   Filament-Lager der Hinweis "N neue Drucke warten auf Bestätigung" mit einem Knopf "Prüfen".
+   Material Manager der Hinweis "N neue Drucke warten auf Bestätigung" mit einem Knopf "Prüfen".
 4. Im sich öffnenden Dialog "Neue Drucke" siehst du pro Druck den Verbrauch in Gramm, dazu je
    eine vorgeschlagene Spule (die im Drucker eingelegte, falls bekannt) und ein vorgeschlagenes
    Katalogmodell (über den Dateinamen ermittelt) — beides lässt sich ändern. Erst mit
@@ -1157,7 +1157,7 @@ Klipper-Drucker sollten genauso funktionieren; wenn du deinen testen möchtest, 
    abgebucht; mit ausgewähltem Modell entsteht zusätzlich ein Eintrag im Druckprotokoll und das
    Modell wird als gedruckt markiert. "Ignorieren" verwirft den Vorschlag ohne zu buchen.
 
-![Filament-Lager mit Hinweis auf neue Drucke und Verbindungsstatus](bilder/26-druckeranbindung-lager.png)
+![Material Manager mit Hinweis auf neue Drucke und Verbindungsstatus](bilder/26-druckeranbindung-lager.png)
 
 ![Dialog „Neue Drucke“](bilder/27-neue-drucke.png)
 
@@ -1221,7 +1221,7 @@ fest, welcher Slicer beim Öffnen eines Modells als **Standard** verwendet wird.
 
 Hier schaltest du die Druckeranbindung ein oder aus (standardmäßig aus) und siehst auf einen
 Blick den Status jedes angebundenen Druckers ("Klipper · verbunden", "Klipper · Fehler" oder
-"nicht angebunden"). Adresse und Verbindungstest trägst du pro Drucker im Filament-Lager unter
+"nicht angebunden"). Adresse und Verbindungstest trägst du pro Drucker im Material Manager unter
 "Drucker verwalten" ein — Details dazu im Abschnitt
 [Druckeranbindung](#druckeranbindung) weiter oben. Resin-Drucker erscheinen hier nicht.
 
