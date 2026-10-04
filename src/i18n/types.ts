@@ -91,9 +91,7 @@ export interface Translations {
   impMenuNoMove: string;
 
   importActiveError: string;
-  pmUnitCount: PluralForms;
   pmConnected: string;
-  pmNotConnected: string;
   pmConnectionError: string;
 
   railPrinters: string;
@@ -106,11 +104,25 @@ export interface Translations {
   pmEmptyBody: string;
   pmAddFirst: string;
   pmAddPrinter: string;
-  pmReorderHint: string;
-  pmPrinterCard: string;
   pmUnits: string;
   pmConnection: string;
   pmJobs: string;
+  pmPrinters: string;
+  pmHardware: string;
+  pmLink: string;
+  pmInactive: string;
+  pmNotLinked: string;
+  pmNoConnection: string;
+  pmConnectionType: string;
+  pmHost: string;
+  pmApiKey: string;
+  pmApiPlaceholder: string;
+  pmWhatHappens: string;
+  pmSyncInterval: string;
+  pmSwitchedOff: string;
+  pmToggleList: string;
+  pmSetupConnection: string;
+  pmOccupied: string;
   pmName: string;
   pmKind: string;
   pmFixed: string;
@@ -125,10 +137,8 @@ export interface Translations {
   pmResinNoConnection: string;
   pmLinkOff: string;
   pmFutureConnections: string;
-  pmNoJobs: string;
   pmConfirmJobs: string;
   pmFile: string;
-  pmOutcome: string;
   pmDuration: string;
   pmUsage: string;
   pmStatus: string;
@@ -646,16 +656,9 @@ export interface Translations {
   filamentHomeLocationLabel: string;
   printersUnitSlotCount: PluralForms;
   settingsTabPrinters: string;
-  printerLinkTitle: string;
   printerLinkDescription: string;
-  printerLinkStatusConnected: string;
-  printerLinkStatusNotLinked: string;
-  printerLinkStatusError: string;
   printerLinkManageHint: string;
-  printerConnectionTitle: string;
-  printerConnectionType: string;
   printerConnectionTypeMoonraker: string;
-  printerConnectionAddress: string;
   printerConnectionPort: string;
   printerConnectionTest: string;
   printerConnectionTesting: string;

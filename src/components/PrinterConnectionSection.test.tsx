@@ -29,8 +29,8 @@ describe('PrinterConnectionSection', () => {
   it('tests the typed address and shows the success', async () => {
     const l = link({ ok: true, error: null, connection: okConnection });
     renderIt(l);
-    fireEvent.change(screen.getByLabelText('Adresse (IP oder Name)'), { target: { value: '192.168.1.60' } });
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Verbindung testen' })));
+    fireEvent.change(screen.getByLabelText('Hostname oder IP-Adresse'), { target: { value: '192.168.1.60' } });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: /Verbindung (testen|einrichten)/ })));
     expect(l.testConnection).toHaveBeenCalledWith('1', '192.168.1.60');
     expect(screen.getByText('Verbunden')).toBeInTheDocument();
     expect(screen.getByText(/v0\.8\.0-209 · Port 80/)).toBeInTheDocument();
@@ -44,8 +44,8 @@ describe('PrinterConnectionSection', () => {
     ['disabled', /Die Druckeranbindung ist ausgeschaltet/],
   ])('explains the error %s', async (code, text) => {
     renderIt(link({ ok: false, error: code, connection: null }));
-    fireEvent.change(screen.getByLabelText('Adresse (IP oder Name)'), { target: { value: '10.0.0.9' } });
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Verbindung testen' })));
+    fireEvent.change(screen.getByLabelText('Hostname oder IP-Adresse'), { target: { value: '10.0.0.9' } });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: /Verbindung (testen|einrichten)/ })));
     expect(screen.getByText(text)).toBeInTheDocument();
   });
 
@@ -60,9 +60,9 @@ describe('PrinterConnectionSection', () => {
     const l = link(undefined);
     l.testConnection = vi.fn().mockRejectedValue(new Error('lock poisoned'));
     renderIt(l);
-    fireEvent.change(screen.getByLabelText('Adresse (IP oder Name)'), { target: { value: '10.0.0.9' } });
+    fireEvent.change(screen.getByLabelText('Hostname oder IP-Adresse'), { target: { value: '10.0.0.9' } });
     await expect(
-      act(async () => fireEvent.click(screen.getByRole('button', { name: 'Verbindung testen' }))),
+      act(async () => fireEvent.click(screen.getByRole('button', { name: /Verbindung (testen|einrichten)/ }))),
     ).resolves.not.toThrow();
     expect(screen.getByRole('alert')).toHaveTextContent('Das hat nicht geklappt: lock poisoned');
   });
@@ -81,8 +81,8 @@ describe('PrinterConnectionSection', () => {
     const l = link(undefined);
     l.testConnection = vi.fn().mockRejectedValue({ message: 'x', expected: false });
     renderIt(l);
-    fireEvent.change(screen.getByLabelText('Adresse (IP oder Name)'), { target: { value: '10.0.0.9' } });
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Verbindung testen' })));
+    fireEvent.change(screen.getByLabelText('Hostname oder IP-Adresse'), { target: { value: '10.0.0.9' } });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: /Verbindung (testen|einrichten)/ })));
     expect(screen.getByText('Problem melden')).toBeInTheDocument();
   });
 
@@ -90,8 +90,8 @@ describe('PrinterConnectionSection', () => {
     const l = link(undefined);
     l.testConnection = vi.fn().mockRejectedValue({ message: 'x', expected: true });
     renderIt(l);
-    fireEvent.change(screen.getByLabelText('Adresse (IP oder Name)'), { target: { value: '10.0.0.9' } });
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Verbindung testen' })));
+    fireEvent.change(screen.getByLabelText('Hostname oder IP-Adresse'), { target: { value: '10.0.0.9' } });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: /Verbindung (testen|einrichten)/ })));
     expect(screen.getByRole('alert')).toHaveTextContent('x');
     expect(screen.queryByText('Problem melden')).not.toBeInTheDocument();
   });
@@ -128,8 +128,8 @@ describe('PrinterConnectionSection', () => {
     const freshConnection: PrinterConnection = { ...okConnection, remoteVersion: 'v0.9.0-fresh' };
     const l = link({ ok: true, error: null, connection: freshConnection });
     const { rerender } = renderIt(l, null);
-    fireEvent.change(screen.getByLabelText('Adresse (IP oder Name)'), { target: { value: '192.168.1.60' } });
-    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Verbindung testen' })));
+    fireEvent.change(screen.getByLabelText('Hostname oder IP-Adresse'), { target: { value: '192.168.1.60' } });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: /Verbindung (testen|einrichten)/ })));
     expect(screen.getByText(/v0\.9\.0-fresh/)).toBeInTheDocument();
     const staleConnection: PrinterConnection = { ...okConnection, remoteVersion: null };
     rerender(
@@ -166,4 +166,17 @@ describe('clockOffsetParts', () => {
     expect(clockOffsetParts(-(365.25 * 86400 + 10 * 86400))).toEqual([['years', 1]]);
     expect(clockOffsetParts(90 * 86400)).toEqual([['months', 2]]);
   });
+});
+
+it('keeps the saved connection removable while global sync is off', async () => {
+  const l = { ...link(null), enabled: false };
+  renderIt(l, okConnection);
+  expect(screen.queryByText('Verbunden')).toBeNull();
+  expect(screen.getByText(/Schalte unten in der Druckerliste/)).toBeInTheDocument();
+  expect(screen.getByLabelText('Hostname oder IP-Adresse')).toHaveValue(okConnection.address);
+  expect(screen.getByRole('button', { name: 'Verbindung testen' })).toBeDisabled();
+  expect(screen.getByLabelText('API-Schlüssel')).toBeDisabled();
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Verbindung entfernen' })));
+  expect(l.removeConnection).toHaveBeenCalledWith('1');
+  expect(l.testConnection).not.toHaveBeenCalled();
 });

@@ -58,9 +58,9 @@ export function clockOffsetParts(offsetS: number): Array<[ClockUnit, number]> {
 const fieldClass =
   'h-8 px-2 rounded-md border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] outline-0 text-[12.5px] font-mono-ui focus:border-[var(--accent)] min-w-0';
 const smallButton =
-  'h-7 px-2 rounded-[4px] border border-[var(--line-strong)] text-[11.5px] text-[var(--ink-2)] hover:border-[var(--accent)] cursor-pointer disabled:opacity-50';
+  'max-[639px]:w-full h-8 px-3 rounded-[4px] border border-[var(--line-strong)] text-[11.5px] text-[var(--ink-2)] hover:border-[var(--accent)] cursor-pointer disabled:opacity-50';
 
-/** Connection of a printer (type, address, test). Only visible with the printer connection enabled. */
+/** Connection of a printer (type, address, test). The global switch controls testing and sync. */
 export function PrinterConnectionSection({ printerId, connection, link }: Props) {
   const t = useT();
   const { language } = useLanguage();
@@ -128,17 +128,17 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
     .map(([unit, n]) => formatCount(unitForms[unit], n))
     .reduce((a, b) => t('printerClockAnd').replace('{a}', () => a).replace('{b}', () => b));
   const localNow = Date.now() / 1000;
+  const effectiveError = error ?? current?.lastError;
 
   return (
-    <div className="mt-3 rounded-md border border-[var(--line)] bg-[var(--panel)] p-3 flex flex-col gap-2.5">
-      <div className="font-mono-ui text-[10.5px] uppercase tracking-[0.12em] text-[var(--ink-3)]">{t('printerConnectionTitle')}</div>
-      <div className="grid grid-cols-1 sm:grid-cols-[170px_minmax(0,1fr)] gap-2">
+    <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="flex flex-col gap-1 min-w-0">
-          <span className="text-[11.5px] text-[var(--ink-2)]">{t('printerConnectionType')}</span>
+          <span className="text-[11.5px] text-[var(--ink-2)]">{t('pmConnectionType')}</span>
           <div className={`${fieldClass} flex items-center font-sans min-w-0`}>{t('printerConnectionTypeMoonraker')}</div>
         </div>
         <label className="flex flex-col gap-1 min-w-0">
-          <span className="text-[11.5px] text-[var(--ink-2)]">{t('printerConnectionAddress')}</span>
+          <span className="text-[11.5px] text-[var(--ink-2)]">{t('pmHost')}</span>
           <input
             className={`${fieldClass} w-full min-w-0 placeholder:text-[var(--ink-3)]`}
             value={address}
@@ -148,30 +148,26 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
             autoComplete="off"
           />
         </label>
+        <label className="flex flex-col gap-1 min-w-0">
+          <span className="text-[11.5px] text-[var(--ink-2)]">{t('pmApiKey')}</span>
+          <input disabled className={`${fieldClass} disabled:bg-[var(--panel-2)]`} placeholder={t('pmApiPlaceholder')} />
+        </label>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className={smallButton} disabled={testing || address.trim() === ''} onClick={runTest}>
-          {testing ? t('printerConnectionTesting') : t('printerConnectionTest')}
-        </button>
-        {current && (
-          <button type="button" className={smallButton} disabled={removing} onClick={runRemove}>
-            {t('printerConnectionRemove')}
-          </button>
-        )}
-      </div>
+      {!link.enabled ? <div className="rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-3"><b>{t('pmSwitchedOff')}</b><p>{t('pmLinkOff')}</p></div> :
+        !current && !error && <div className="rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-3"><b>{t('pmNotLinked')}</b></div>}
       {actionError && (
-        <div role="alert" className="border-l-[3px] border-[var(--crit)] pl-2.5 text-[12px] text-[var(--ink-2)]">
+        <div role="alert" className="rounded-lg bg-[var(--crit-soft)] p-3 text-[12px] text-[var(--crit)]">
           {t('printerConnectionActionFailed').replace('{message}', '')}
           <ErrorText error={actionError} />
         </div>
       )}
-      {error && (
-        <div role="alert" className="border-l-[3px] border-[var(--crit)] pl-2.5 text-[12px] text-[var(--ink-2)]">
-          {t(errorKey[error])}
+      {link.enabled && (error || current?.lastError || current?.paused) && (
+        <div role="alert" className="rounded-lg bg-[var(--crit-soft)] p-3 text-[12px] text-[var(--crit)]">
+          <b>{t('pmConnectionError')}</b><p>{effectiveError ? t(errorKey[effectiveError]) : t('printerPausedRetest')}</p>
         </div>
       )}
-      {!error && current && !current.paused && !current.lastError && (
-        <div className="border-l-[3px] border-[var(--good)] pl-2.5 flex flex-col gap-0.5">
+      {link.enabled && !error && current && !current.paused && !current.lastError && (
+        <div className="rounded-lg bg-[var(--good-soft)] p-3 text-[var(--good)] flex flex-col gap-0.5">
           <b className="text-[12.5px]">{t('printerConnectionOk')}</b>
           <span className="font-mono-ui text-[11px] text-[var(--ink-2)]">
             {t('printerConnectionOkDetail')
@@ -181,7 +177,7 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
           <span className="text-[11.5px] text-[var(--ink-2)]">{t('printerConnectionSince').replace('{date}', since)}</span>
         </div>
       )}
-      {!error && current && !current.paused && !current.lastError && Math.abs(clockOffset) >= CLOCK_NOTE_MIN_S && (
+      {link.enabled && !error && current && !current.paused && !current.lastError && Math.abs(clockOffset) >= CLOCK_NOTE_MIN_S && (
         <div role="status" className="border-l-[3px] border-[var(--warn)] pl-2.5 flex flex-col gap-0.5">
           <b className="text-[12.5px]">{t('printerClockOffTitle')}</b>
           <span className="font-mono-ui text-[11px] text-[var(--ink)]">
@@ -192,6 +188,16 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
           <span className="text-[11.5px] text-[var(--ink-2)]">{t('printerClockOffBody').replace('{amount}', () => clockAmount)}</span>
         </div>
       )}
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" className={smallButton} disabled={!link.enabled || testing || address.trim() === ''} onClick={runTest}>
+          {testing ? t('printerConnectionTesting') : t(current ? 'printerConnectionTest' : 'pmSetupConnection')}
+        </button>
+        {current && (
+          <button type="button" className={smallButton} disabled={removing} onClick={runRemove}>
+            {t('printerConnectionRemove')}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
