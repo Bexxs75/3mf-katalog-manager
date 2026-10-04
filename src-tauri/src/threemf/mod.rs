@@ -5,12 +5,12 @@ pub mod model_xml;
 pub mod plates;
 pub mod slice_info;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 pub use error::ThreeMfError;
 pub use slice_info::SliceInfo;
-use crate::geometry::{BoundingBox, RenderMesh};
+use crate::geometry::{BoundingBox, RenderMesh, RenderColor, RenderGroup};
 use container::PackageParts;
 use geometry::Matrix3x4;
 
@@ -50,7 +50,7 @@ pub fn parse_3mf_bytes(bytes: &[u8]) -> Result<ThreeMfDocument, ThreeMfError> {
 /// of three.js' ThreeMFLoader, which never set normals for 3MF).
 pub fn extract_render_meshes_from_path(path: &Path) -> Result<Vec<RenderMesh>, ThreeMfError> {
     let file = crate::safe_file::open_regular(path)?;
-    let package = container::read_package(file)?;
+    let package = container::read_geometry_package(file)?;
     extract_render_meshes(&package)
 }
 
@@ -148,10 +148,15 @@ fn collect_render_meshes(
                         [x as f32, y as f32, z as f32]
                     })
                     .collect();
+                let model = match file {
+                    None => &package.root_model,
+                    Some(path) => &package.referenced_models[path],
+                };
+                let (indices, groups, palette) = material_indices(model, object, mesh);
                 out.push(RenderMesh {
-                    positions,
-                    indices: mesh.triangles.clone(),
+                    positions, indices, groups, palette,
                     normals: None,
+                    object_name: object.name.clone(),
                 });
             }
         }
@@ -174,6 +179,48 @@ fn collect_render_meshes(
 
     path.pop();
     Ok(())
+}
+
+fn material_indices(
+    model: &model_xml::ParsedModel,
+    object: &model_xml::Object,
+    mesh: &model_xml::Mesh,
+) -> (Vec<[u32; 3]>, Vec<RenderGroup>, Vec<RenderColor>) {
+    let mut palette = Vec::new();
+    let mut palette_indices = HashMap::new();
+    let mut resolved = HashMap::new();
+    let mut buckets: BTreeMap<Option<usize>, Vec<[u32; 3]>> = BTreeMap::new();
+    for (i, tri) in mesh.triangles.iter().enumerate() {
+        let property = mesh.properties.get(i);
+        // A triangle can inherit the property group while overriding its index.
+        let pid = property.and_then(|p| p.0.as_deref()).or(object.pid.as_deref());
+        let index = property.and_then(|p| p.1).or(object.pindex);
+        // Resolve each property once, rather than allocating a color per triangle.
+        let color_index = *resolved.entry((pid, index)).or_insert_with(|| {
+            let material = pid.zip(index)
+                .and_then(|(pid, index)| model.material_groups.get(pid)?.get(index))?;
+            let c = material.display_color.as_deref()?;
+            if !matches!(c.len(), 7 | 9) || !c.starts_with('#')
+                || !c[1..].bytes().all(|b| b.is_ascii_hexdigit()) {
+                return None;
+            }
+            let color = RenderColor { name: material.name.clone(), color: c[..7].to_ascii_lowercase() };
+            if let Some(index) = palette_indices.get(&color) { return Some(*index); }
+            let index = palette.len();
+            palette_indices.insert(color.clone(), index);
+            palette.push(color);
+            Some(index)
+        });
+        buckets.entry(color_index).or_default().push(*tri);
+    }
+    if palette.is_empty() { return (mesh.triangles.clone(), Vec::new(), palette); }
+    let mut indices = Vec::with_capacity(mesh.triangles.len());
+    let mut groups = Vec::new();
+    for (color_index, triangles) in buckets {
+        groups.push(RenderGroup { start: indices.len() * 3, count: triangles.len() * 3, color_index });
+        indices.extend(triangles);
+    }
+    (indices, groups, palette)
 }
 
 fn parse_3mf_reader<R: std::io::Read + std::io::Seek>(
@@ -857,5 +904,59 @@ mod tests {
             result,
             Err(ThreeMfError::ComponentCycle) | Err(ThreeMfError::MaxDepthExceeded)
         ));
+    }
+}
+
+#[cfg(test)]
+mod render_material_tests {
+    use super::*;
+
+    fn render(properties: &str, triangles: &str) -> Vec<RenderMesh> {
+        let xml = format!(r##"<model><resources>
+        <basematerials id="1"><base name="Red" displaycolor="#FF000080"/>
+        <base name="Blue" displaycolor="#0000FF"/><base name="Bad" displaycolor="oops"/>
+        <base name="Missing"/></basematerials>
+        <colorgroup id="2"><color color="#00FF00"/></colorgroup>
+        <object id="3" name="Body" {properties}><mesh><vertices>
+        <vertex x="0"/><vertex x="1"/><vertex y="1"/><vertex z="1"/>
+        </vertices><triangles>{triangles}</triangles></mesh></object></resources>
+        <build><item objectid="3"/></build></model>"##);
+        let package = PackageParts { root_model: model_xml::parse_model_xml(&xml).unwrap(),
+            referenced_models: Default::default(), thumbnail: None, plate_count: None, slice_info: None };
+        extract_render_meshes(&package).unwrap()
+    }
+
+    #[test]
+    fn resolves_object_color_ignoring_alpha() {
+        let meshes = render(r#"pid="1" pindex="0""#, r#"<triangle v1="0" v2="1" v3="2"/>"#);
+        assert_eq!(meshes[0].palette, vec![RenderColor { name: "Red".into(), color: "#ff0000".into() }]);
+        assert_eq!(meshes[0].groups, vec![RenderGroup { start: 0, count: 3, color_index: Some(0) }]);
+        assert_eq!(meshes[0].object_name.as_deref(), Some("Body"));
+    }
+
+    #[test]
+    fn triangle_override_buckets_indices_without_duplicating_vertices() {
+        let meshes = render(r#"pid="1" pindex="0""#, r#"
+            <triangle v1="0" v2="1" v3="2"/>
+            <triangle v1="0" v2="2" v3="3" p1="1"/>
+            <triangle v1="0" v2="3" v3="1"/>
+            <triangle v1="1" v2="2" v3="3" pid="2" p1="0"/>"#);
+        let mesh = &meshes[0];
+        assert_eq!(mesh.positions.len(), 4);
+        assert_eq!(mesh.palette[1].color, "#0000ff");
+        assert_eq!(mesh.groups, vec![RenderGroup { start: 0, count: 3, color_index: None },
+            RenderGroup { start: 3, count: 6, color_index: Some(0) },
+            RenderGroup { start: 9, count: 3, color_index: Some(1) }]);
+        assert_eq!(mesh.indices, vec![[1,2,3], [0,1,2], [0,3,1], [0,2,3]]);
+    }
+
+    #[test]
+    fn invalid_missing_and_unknown_property_groups_have_no_color() {
+        for properties in ["", r#"pid="1" pindex="2""#, r#"pid="1" pindex="3""#,
+            r#"pid="1" pindex="99""#, r#"pid="2" pindex="0""#] {
+            let meshes = render(properties, r#"<triangle v1="0" v2="1" v3="2"/>"#);
+            assert!(meshes[0].palette.is_empty(), "{properties}");
+            assert!(meshes[0].groups.is_empty());
+        }
     }
 }

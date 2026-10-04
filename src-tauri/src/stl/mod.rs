@@ -48,6 +48,7 @@ pub fn parse_stl_geometry(bytes: &[u8]) -> Result<crate::geometry::RenderMesh, S
         positions,
         indices: triangles,
         normals: Some(normals),
+        ..Default::default()
     })
 }
 

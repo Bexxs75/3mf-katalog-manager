@@ -68,6 +68,7 @@ interface CatalogWorkspaceProps {
   bulkDelete: () => void;
   bulkRemove?: () => Promise<void>;
   onCatalogRemoved?: () => void;
+  onRemoveModelFromCatalog?: (id: string) => Promise<void>;
   selectAllVisible: () => void;
   clearBulkSelection: () => void;
   bulkAddToQueue: () => void;
@@ -165,6 +166,7 @@ export function CatalogWorkspace({
   bulkDelete,
   bulkRemove,
   onCatalogRemoved,
+  onRemoveModelFromCatalog,
   selectAllVisible,
   clearBulkSelection,
   bulkAddToQueue,
@@ -438,6 +440,7 @@ export function CatalogWorkspace({
             onSnapshotCaptured={(base64) => captureRenderSnapshot(detailModel.id, base64)}
             onSetSourceUrl={(fileId, url) => setModelSourceUrl(fileId, url)}
             onOpenInSlicer={() => openInSlicer(detailModel.id)}
+            onRemoveFromCatalog={onRemoveModelFromCatalog ? () => onRemoveModelFromCatalog(detailModel.id) : undefined}
             onRescanMetadata={() => rescanMetadata(detailModel.id)}
             onAddToCollection={(collectionId) => addModelToCollection(detailModel.id, collectionId)}
             collections={collections}
@@ -544,6 +547,8 @@ export function CatalogWorkspace({
           onSnapshotCaptured={(base64) => selected && captureRenderSnapshot(selected.id, base64)}
           onSetSourceUrl={(fileId, url) => setModelSourceUrl(fileId, url)}
           onOpenInSlicer={() => selected && openInSlicer(selected.id)}
+          hasSlicer={slicers.length > 0}
+          onRemoveFromCatalog={selected && onRemoveModelFromCatalog ? () => onRemoveModelFromCatalog(selected.id) : undefined}
           slicerError={slicerError}
         />
       )}

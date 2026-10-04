@@ -12,15 +12,26 @@ use crate::db::error::DbError;
 pub struct CmdError {
     pub message: String,
     pub expected: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<GeometryErrorCode>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GeometryErrorCode { NotFound, Unreadable, TooLarge, Unsupported }
+
 impl CmdError {
+    pub fn with_code(mut self, code: GeometryErrorCode) -> Self {
+        self.code = Some(code);
+        self
+    }
+
     #[track_caller]
     pub fn expected(message: impl Into<String>) -> Self {
         let message = message.into();
         let at = std::panic::Location::caller();
         log::info!(target: "cmd", "{message} ({}:{})", at.file(), at.line());
-        Self { message, expected: true }
+        Self { message, expected: true, code: None }
     }
 }
 
@@ -29,7 +40,7 @@ impl From<String> for CmdError {
     fn from(message: String) -> Self {
         let at = std::panic::Location::caller();
         log::error!(target: "cmd", "{message} ({}:{})", at.file(), at.line());
-        Self { message, expected: false }
+        Self { message, expected: false, code: None }
     }
 }
 
@@ -88,7 +99,7 @@ mod tests {
     #[test]
     fn string_becomes_unexpected() {
         let e: CmdError = "boom".to_string().into();
-        assert_eq!(e, CmdError { message: "boom".into(), expected: false });
+        assert_eq!(e, CmdError { message: "boom".into(), expected: false, code: None });
     }
 
     #[test]
@@ -106,6 +117,14 @@ mod tests {
     fn serializes_message_and_expected() {
         let json = serde_json::to_string(&CmdError::expected("x")).unwrap();
         assert_eq!(json, r#"{"message":"x","expected":true}"#);
+    }
+
+    #[test]
+    fn optional_geometry_code_preserves_message_and_expected() {
+        let error = CmdError::expected("missing").with_code(GeometryErrorCode::NotFound);
+        assert_eq!(serde_json::to_value(error).unwrap(), serde_json::json!({
+            "message": "missing", "expected": true, "code": "notFound"
+        }));
     }
 
     #[test]

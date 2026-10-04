@@ -40,6 +40,7 @@ interface Props {
   onSnapshotCaptured: (base64: string) => void;
   onSetSourceUrl: (fileId: string, url: string | null) => void;
   onOpenInSlicer: () => void;
+  onRemoveFromCatalog?: () => Promise<void>;
   onRescanMetadata: () => void;
   onAddToCollection: (collectionId: string) => void;
   collections: Collection[];
@@ -68,6 +69,7 @@ export function ModelDetailPage({
   onSnapshotCaptured,
   onSetSourceUrl,
   onOpenInSlicer,
+  onRemoveFromCatalog,
   onRescanMetadata,
   onAddToCollection,
   collections,
@@ -193,6 +195,8 @@ export function ModelDetailPage({
                 model={model}
                 needsSnapshot={!(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
                 onSnapshotCaptured={onSnapshotCaptured}
+                onOpenInSlicer={slicers.length ? onOpenInSlicer : undefined}
+                onRemoveFromCatalog={onRemoveFromCatalog}
                 showRotationControls
               />
             )}

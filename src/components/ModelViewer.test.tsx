@@ -34,11 +34,11 @@ function renderViewer(fileId: string, onError: () => void) {
 }
 
 describe('ModelViewer without WebGL', () => {
-  it('shows "preview unavailable" instead of crashing the app', async () => {
+  it('shows a WebGL explanation instead of crashing the app', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const onError = vi.fn();
     renderViewer('a', onError);
-    await waitFor(() => expect(screen.getByText('Vorschau nicht verfügbar')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Die 3D-Ansicht wird auf diesem Rechner nicht unterstützt')).toBeInTheDocument());
     expect(onError).toHaveBeenCalledTimes(1);
     expect(invoke).not.toHaveBeenCalledWith('get_model_geometry', expect.anything());
   });

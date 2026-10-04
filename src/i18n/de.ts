@@ -1,6 +1,30 @@
 import type { Translations } from './types';
 
 export const de: Translations = {
+  viewerOpenSlicer: "Im Slicer öffnen",
+  viewerUnknownText: "Öffne die Datei im Slicer oder melde das Problem.",
+  viewerUnreadableCompact: "Versuche, die Datei im Slicer zu öffnen.",
+  viewerTooLargeCompact: "Nutze das Vorschaubild oder öffne das Modell im Slicer.",
+  viewerNoWebGLCompact: "Nutze das Vorschaubild oder öffne die Datei im Slicer.",
+
+  viewerFileColors: "Dateifarben",
+  viewerSingleColor: "Einfarbig",
+  viewerColorsLegend: "Farben der Datei",
+  viewerFit: "Einpassen",
+  viewerReset: "Ansicht zurücksetzen",
+  viewerNotFoundTitle: "Die Datei wurde nicht gefunden",
+  viewerNotFoundText: "Prüfe den Speicherort oder entferne den Eintrag aus dem Katalog.",
+  viewerUnreadableTitle: "Die Datei lässt sich nicht lesen",
+  viewerUnreadableText: "Sie ist beschädigt oder enthält keine darstellbare Geometrie. Versuche, sie im Slicer zu öffnen.",
+  viewerTooLargeTitle: "Das Modell ist für die 3D-Ansicht zu groß",
+  viewerTooLargeText: "Es überschreitet die Grenzen der App. Nutze das Vorschaubild oder öffne es im Slicer.",
+  viewerNoWebGLTitle: "Die 3D-Ansicht wird auf diesem Rechner nicht unterstützt",
+  viewerNoWebGLText: "WebGL ist nicht verfügbar. Nutze das Vorschaubild oder öffne die Datei im Slicer.",
+  viewerUnsupportedTitle: "Dieser Dateityp unterstützt keine 3D-Vorschau",
+  viewerUnsupportedText: "Öffne die Datei in einem geeigneten Programm.",
+  viewerOpenFolder: "Im Dateimanager öffnen",
+  viewerLoading: "3D-Ansicht wird geladen …",
+
   keyboardTipsTitle: "Tastenkürzel und Tipps",
   keyboardTab: "Tastenkürzel",
   tipsTab: "Tipps",

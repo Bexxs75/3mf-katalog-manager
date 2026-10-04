@@ -51,6 +51,7 @@ pub fn parse_obj_geometry(bytes: &[u8]) -> Result<crate::geometry::RenderMesh, O
         positions,
         indices: triangles,
         normals: Some(normals),
+        ..Default::default()
     })
 }
 

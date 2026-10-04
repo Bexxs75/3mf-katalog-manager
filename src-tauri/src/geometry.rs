@@ -51,11 +51,28 @@ pub fn signed_volume(vertices: &[[f64; 3]], triangles: &[[u32; 3]]) -> f64 {
     sum / 6.0
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct RenderMesh {
     pub positions: Vec<[f32; 3]>,
     pub indices: Vec<[u32; 3]>,
     pub normals: Option<Vec<[f32; 3]>>,
+    pub object_name: Option<String>,
+    pub groups: Vec<RenderGroup>,
+    pub palette: Vec<RenderColor>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenderGroup {
+    pub start: usize,
+    pub count: usize,
+    pub color_index: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct RenderColor {
+    pub name: String,
+    pub color: String,
 }
 
 /// Flat normal per triangle for all three corners, like three.js'
@@ -129,6 +146,7 @@ mod tests {
             positions: vec![[0.0, 0.0, 0.0]],
             indices: vec![],
             normals: None,
+            ..Default::default()
         };
         let b = a.clone();
         assert_eq!(a, b);

@@ -1,6 +1,30 @@
 import type { Translations } from './types';
 
 export const es: Translations = {
+  viewerOpenSlicer: "Abrir en el laminador",
+  viewerUnknownText: "Abre el archivo en el laminador o informa del problema.",
+  viewerUnreadableCompact: "Prueba a abrir el archivo en el laminador.",
+  viewerTooLargeCompact: "Usa la imagen de vista previa o abre el modelo en el laminador.",
+  viewerNoWebGLCompact: "Usa la imagen de vista previa o abre el archivo en el laminador.",
+
+  viewerFileColors: "Colores del archivo",
+  viewerSingleColor: "Un solo color",
+  viewerColorsLegend: "Colores del archivo",
+  viewerFit: "Ajustar modelo",
+  viewerReset: "Restablecer vista",
+  viewerNotFoundTitle: "No se ha encontrado el archivo",
+  viewerNotFoundText: "Comprueba su ubicación o quita la entrada del catálogo.",
+  viewerUnreadableTitle: "No se puede leer el archivo",
+  viewerUnreadableText: "Está dañado o no contiene geometría visible. Prueba a abrirlo en el laminador.",
+  viewerTooLargeTitle: "El modelo es demasiado grande para la vista 3D",
+  viewerTooLargeText: "Supera los límites de la aplicación. Usa la imagen de vista previa o ábrelo en el laminador.",
+  viewerNoWebGLTitle: "La vista 3D no es compatible con este equipo",
+  viewerNoWebGLText: "WebGL no está disponible. Usa la imagen de vista previa o abre el archivo en el laminador.",
+  viewerUnsupportedTitle: "Este tipo de archivo no tiene vista previa 3D",
+  viewerUnsupportedText: "Abre el archivo en un programa adecuado.",
+  viewerOpenFolder: "Abrir en el gestor de archivos",
+  viewerLoading: "Cargando vista 3D …",
+
   keyboardTipsTitle: "Atajos de teclado y consejos",
   keyboardTab: "Atajos de teclado",
   tipsTab: "Consejos",

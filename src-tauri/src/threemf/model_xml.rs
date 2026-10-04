@@ -11,6 +11,7 @@ use super::geometry::Matrix3x4;
 pub struct Mesh {
     pub vertices: Vec<[f64; 3]>,
     pub triangles: Vec<[u32; 3]>,
+    pub properties: Vec<(Option<String>, Option<usize>)>,
 }
 
 #[derive(Debug, Clone)]
@@ -23,6 +24,9 @@ pub struct Component {
 #[derive(Debug, Default, Clone)]
 pub struct Object {
     pub object_type: Option<String>,
+    pub name: Option<String>,
+    pub pid: Option<String>,
+    pub pindex: Option<usize>,
     pub mesh: Option<Mesh>,
     pub components: Vec<Component>,
 }
@@ -46,6 +50,7 @@ pub struct ParsedModel {
     pub build_items: Vec<BuildItem>,
     pub metadata: BTreeMap<String, String>,
     pub materials: Vec<Material>,
+    pub material_groups: HashMap<String, Vec<Material>>,
 }
 
 fn local_name(qname: &[u8]) -> &str {
@@ -74,6 +79,7 @@ struct ParseCtx {
     in_vertices: bool,
     in_triangles: bool,
     current_basematerials: Option<Vec<Material>>,
+    basematerials_id: String,
     pending_metadata_name: Option<String>,
     metadata_text: String,
 }
@@ -87,6 +93,9 @@ fn handle_start(ctx: &mut ParseCtx, name: &str, e: &BytesStart) -> Result<(), Th
                 id,
                 Object {
                     object_type,
+                    name: get_attr(e, "name"),
+                    pid: get_attr(e, "pid"),
+                    pindex: get_attr(e, "pindex").and_then(|v| v.parse().ok()),
                     mesh: None,
                     components: Vec::new(),
                 },
@@ -117,6 +126,7 @@ fn handle_start(ctx: &mut ParseCtx, name: &str, e: &BytesStart) -> Result<(), Th
                         })
                     };
                     mesh.triangles.push([index("v1")?, index("v2")?, index("v3")?]);
+                    mesh.properties.push((get_attr(e, "pid"), get_attr(e, "p1").and_then(|v| v.parse().ok())));
                 }
             }
         }
@@ -147,6 +157,7 @@ fn handle_start(ctx: &mut ParseCtx, name: &str, e: &BytesStart) -> Result<(), Th
             });
         }
         "basematerials" => {
+            ctx.basematerials_id = get_attr(e, "id").unwrap_or_default();
             ctx.current_basematerials = Some(Vec::new());
         }
         "base" => {
@@ -184,7 +195,8 @@ fn handle_end(ctx: &mut ParseCtx, name: &str) {
         }
         "basematerials" => {
             if let Some(materials) = ctx.current_basematerials.take() {
-                ctx.model.materials.extend(materials);
+                ctx.model.materials.extend(materials.clone());
+                ctx.model.material_groups.insert(ctx.basematerials_id.clone(), materials);
             }
         }
         "metadata" => {
@@ -336,5 +348,26 @@ mod tests {
         let vertices = r#"<vertex x="0" y="0" z="0"/><vertex x="NaN" y="0" z="0"/><vertex x="0" y="inf" z="0"/>"#;
         let xml = mesh_model(vertices, r#"<triangle v1="0" v2="1" v3="2"/>"#);
         assert!(matches!(parse_model_xml(&xml), Err(ThreeMfError::InvalidGeometry(_))));
+    }
+}
+
+#[cfg(test)]
+mod material_tests {
+    use super::*;
+
+    #[test]
+    fn records_object_and_triangle_properties_and_group_ids() {
+        let model = parse_model_xml(r##"<model><resources>
+          <basematerials id="7"><base name="Red" displaycolor="#FF000080"/></basematerials>
+          <object id="1" name="Body" pid="7" pindex="0"><mesh><vertices>
+          <vertex x="0"/><vertex x="1"/><vertex y="1"/>
+          </vertices><triangles><triangle v1="0" v2="1" v3="2" pid="8" p1="1"/>
+          </triangles></mesh></object></resources></model>"##).unwrap();
+        let obj = &model.objects["1"];
+        assert_eq!(obj.name.as_deref(), Some("Body"));
+        assert_eq!(obj.pid.as_deref(), Some("7"));
+        assert_eq!(obj.pindex, Some(0));
+        assert_eq!(obj.mesh.as_ref().unwrap().properties, vec![(Some("8".into()), Some(1))]);
+        assert_eq!(model.material_groups["7"][0].display_color.as_deref(), Some("#FF000080"));
     }
 }

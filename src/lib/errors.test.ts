@@ -36,3 +36,11 @@ describe('errors', () => {
     expect(toAppError({ message: 'x' })).toEqual({ message: 'x', unexpected: true });
   });
 });
+
+it('preserves geometry codes and the expected flag without reading messages', () => {
+  expect(toAppError({ message: 'anything', code: 'tooLarge', expected: true }))
+    .toEqual({ message: 'anything', code: 'tooLarge', unexpected: false });
+  expect(toAppError({ message: 'anything', code: 'unreadable', expected: false }))
+    .toEqual({ message: 'anything', code: 'unreadable', unexpected: true });
+  expect(toAppError({ message: 'file too large', expected: false }).code).toBeUndefined();
+});

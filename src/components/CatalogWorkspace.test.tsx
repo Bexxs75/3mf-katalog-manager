@@ -17,7 +17,7 @@ it.each(['grid','groupedGrid','groupedList'] as const)('blocks file and folder m
   const file = makeModelFile({id:'m1', name:'Cube.stl', folderId:'a'});
   const onDragFileStart = vi.fn(), onDragFolderStart = vi.fn();
   // Sidebar and detail have separate tests; this fixture exercises workspace routing to the real model views.
-  const props = { queue:[], models:[file], filtered:[file], collectionModels:[], folders:[{id:'a',name:'Folder A',path:'/a',parentId:null,count:1}], selectedForBulk:new Set<string>(), detailModel:null, selected:null, activeCollection:null, activeTag:null, toolView:null, view, tags:[], collections:[], sidebarWidth:{width:242}, collapsedFolders:{isCollapsed:()=>false,toggle:vi.fn()}, displayPreference:'thumbnail', selectModel:vi.fn(), setContextMenu:vi.fn(), toggleFavorite:vi.fn(), onDragFileStart, onDragFolderStart, importRow:<div data-testid="import-row">Import</div> } as unknown as ComponentProps<typeof CatalogWorkspace>;
+  const props = { slicers:[], queue:[], models:[file], filtered:[file], collectionModels:[], folders:[{id:'a',name:'Folder A',path:'/a',parentId:null,count:1}], selectedForBulk:new Set<string>(), detailModel:null, selected:null, activeCollection:null, activeTag:null, toolView:null, view, tags:[], collections:[], sidebarWidth:{width:242}, collapsedFolders:{isCollapsed:()=>false,toggle:vi.fn()}, displayPreference:'thumbnail', selectModel:vi.fn(), setContextMenu:vi.fn(), toggleFavorite:vi.fn(), onDragFileStart, onDragFolderStart, importRow:<div data-testid="import-row">Import</div> } as unknown as ComponentProps<typeof CatalogWorkspace>;
   const ui = (locked: boolean) => <LanguageProvider><UiDensityProvider><ImportLockContext.Provider value={locked}><CatalogWorkspace {...props} /></ImportLockContext.Provider></UiDensityProvider></LanguageProvider>;
   const {rerender,container}=render(ui(true));
   const cube=screen.getByText('Cube.stl');
@@ -39,7 +39,7 @@ it('restores the window after detail return and resets on view, query and filter
     const top = this.dataset.catalogScroller !== undefined ? 0 : -(this.closest<HTMLElement>('[data-catalog-scroller]')?.scrollTop ?? 0);
     return { top, left: 0, width: 800, height: this.dataset.modelId ? 100 : 0 } as DOMRect;
   });
-  const props = { query: '', activeFolderId: 'all', queue: [], models: files, filtered: files, collectionModels: [], folders: [], selectedForBulk: new Set<string>(), detailModel: null, selected: null, activeCollection: null, activeTag: null, toolView: null, view: 'grid', tags: [], collections: [], sidebarWidth: { width: 242 }, collapsedFolders: { isCollapsed: () => false, toggle: vi.fn() }, displayPreference: 'thumbnail', selectModel: vi.fn(), setContextMenu: vi.fn(), toggleFavorite: vi.fn() } as unknown as ComponentProps<typeof CatalogWorkspace>;
+  const props = { query: '', activeFolderId: 'all', slicers: [], queue: [], models: files, filtered: files, collectionModels: [], folders: [], selectedForBulk: new Set<string>(), detailModel: null, selected: null, activeCollection: null, activeTag: null, toolView: null, view: 'grid', tags: [], collections: [], sidebarWidth: { width: 242 }, collapsedFolders: { isCollapsed: () => false, toggle: vi.fn() }, displayPreference: 'thumbnail', selectModel: vi.fn(), setContextMenu: vi.fn(), toggleFavorite: vi.fn() } as unknown as ComponentProps<typeof CatalogWorkspace>;
   const ui = (extra: Partial<ComponentProps<typeof CatalogWorkspace>> = {}) => <LanguageProvider><UiDensityProvider><CatalogWorkspace {...props} {...extra} /></UiDensityProvider></LanguageProvider>;
   const { container, rerender } = render(ui());
   await waitFor(() => expect(container.querySelectorAll('[data-model-id]')).toHaveLength(24));
@@ -67,7 +67,7 @@ it('restores the window after detail return and resets on view, query and filter
 
 function filterWorkspace(extra: Partial<ComponentProps<typeof CatalogWorkspace>> = {}) {
   const files = [makeModelFile({id: 'one'}), makeModelFile({id: 'two'})];
-  const props = { query: '', activeFolderId: 'all', queue: [], models: files, filtered: [files[0]],
+  const props = { query: '', activeFolderId: 'all', slicers: [], queue: [], models: files, filtered: [files[0]],
     collectionModels: [], folders: [{id: 'a', name: 'Folder A', path: '/a', parentId: null, count: 1}],
     selectedForBulk: new Set<string>(), detailModel: null, selected: null, activeCollection: null,
     activeTag: null, toolView: null, view: 'grid', sort: 'modified', tags: [], collections: [{id: 'c', name: 'Kitchen', modelCount: 0}],

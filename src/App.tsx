@@ -396,6 +396,7 @@ export default function App() {
               bulkDelete={bulk.bulkDelete}
               bulkRemove={() => removeCatalogModels(Array.from(bulk.selectedForBulk))}
               onCatalogRemoved={refreshAfterRemoval}
+              onRemoveModelFromCatalog={(id) => removeCatalogModels([id])}
               selectAllVisible={() => bulk.selectAllVisible(filters.filtered.map((m) => m.id))}
               clearBulkSelection={bulk.clearBulkSelection}
               bulkAddToQueue={bulk.bulkAddToQueue}

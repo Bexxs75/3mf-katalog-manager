@@ -700,7 +700,17 @@ fn step_metadata(_path: &Path) -> (Option<[f64; 3]>, Option<f64>, Option<i64>) {
 fn step_geometry(path: &Path) -> CmdResult<Vec<RenderMesh>> {
     // Same treatment as the sibling "3mf" arm in get_model_geometry: an
     // unreadable file is an unexpected CmdError, not CmdError::expected.
-    crate::step::parse_step_geometry(path).map_err(|e| e.to_string().into())
+    crate::step::parse_step_geometry(path).map_err(|e| {
+        use super::error::GeometryErrorCode as Code;
+        let code = match &e {
+            crate::step::StepError::TooLarge { .. } | crate::step::StepError::TooComplex { .. } => Code::TooLarge,
+            crate::step::StepError::Io(e) if e.kind() == std::io::ErrorKind::NotFound => Code::NotFound,
+            _ => Code::Unreadable,
+        };
+        if matches!(code, Code::TooLarge | Code::NotFound) {
+            CmdError::expected(e.to_string()).with_code(code)
+        } else { CmdError::from(e.to_string()).with_code(code) }
+    })
 }
 
 #[cfg(not(feature = "step-preview"))]
@@ -708,7 +718,7 @@ fn step_geometry(_path: &Path) -> CmdResult<Vec<RenderMesh>> {
     // Not a bug: this build was made without STEP support. The frontend
     // already avoids this call for STEP files and shows an explanation
     // instead - this stays only as a safety net.
-    Err(CmdError::expected("STEP-Vorschau ist in diesem Build nicht enthalten"))
+    Err(CmdError::expected("STEP-Vorschau ist in diesem Build nicht enthalten").with_code(super::error::GeometryErrorCode::Unsupported))
 }
 
 /// A missing or unsupported filesystem timestamp never prevents import.
@@ -1446,25 +1456,31 @@ pub fn open_in_file_manager(path: String) -> CmdResult<()> {
 // offset stays a multiple of 4 after each mesh - no extra alignment handling
 // needed (see also the wire format description in src/lib/parseModelGeometry.ts).
 fn encode_render_meshes(meshes: &[RenderMesh]) -> Vec<u8> {
-    #[derive(Serialize)]
-    #[serde(rename_all = "camelCase")]
-    struct MeshHeaderEntry {
-        vertex_count: usize,
-        has_normal: bool,
-        index_count: usize,
-    }
-
-    let headers: Vec<MeshHeaderEntry> = meshes
-        .iter()
-        .map(|m| MeshHeaderEntry {
-            vertex_count: m.positions.len(),
-            has_normal: m.normals.is_some(),
-            index_count: m.indices.len() * 3,
-        })
-        .collect();
-
-    let mut header_json =
-        serde_json::to_vec(&headers).expect("mesh header serialization cannot fail");
+    let mut palette: Vec<crate::geometry::RenderColor> = Vec::new();
+    let mut palette_indices = std::collections::HashMap::new();
+    let headers: Vec<serde_json::Value> = meshes.iter().map(|m| {
+        let local_indices: Vec<usize> = m.palette.iter().map(|color| {
+            *palette_indices.entry(color).or_insert_with(|| {
+                let index = palette.len();
+                palette.push(color.clone());
+                index
+            })
+        }).collect();
+        let mut header = serde_json::json!({
+            "vertexCount": m.positions.len(), "hasNormal": m.normals.is_some(),
+            "indexCount": m.indices.len() * 3,
+        });
+        if let Some(name) = &m.object_name { header["objectName"] = name.clone().into(); }
+        if !m.groups.is_empty() {
+            header["groups"] = serde_json::json!(m.groups.iter().map(|g| crate::geometry::RenderGroup {
+                start: g.start, count: g.count,
+                color_index: g.color_index.map(|i| local_indices[i]),
+            }).collect::<Vec<_>>());
+        }
+        header
+    }).collect();
+    let mut header_json = serde_json::to_vec(&serde_json::json!({ "meshes": headers, "palette": palette }))
+        .expect("mesh header serialization cannot fail");
     while !(4 + header_json.len()).is_multiple_of(4) {
         header_json.push(b' ');
     }
@@ -1503,51 +1519,76 @@ fn encode_render_meshes(meshes: &[RenderMesh]) -> Vec<u8> {
 
     out
 }
+fn geometry_io_error(e: std::io::Error) -> CmdError {
+    use super::error::GeometryErrorCode as Code;
+    let code = if e.kind() == std::io::ErrorKind::NotFound { Code::NotFound } else { Code::Unreadable };
+    if matches!(code, Code::TooLarge | Code::NotFound) {
+        CmdError::expected(e.to_string()).with_code(code)
+    } else {
+        CmdError::from(e.to_string()).with_code(code)
+    }
+}
+
+fn geometry_3mf_error(e: threemf::ThreeMfError) -> CmdError {
+    use super::error::GeometryErrorCode as Code;
+    let code = match &e {
+        threemf::ThreeMfError::EntryTooLarge { .. } | threemf::ThreeMfError::ResourceLimitExceeded(_)
+        | threemf::ThreeMfError::MaxDepthExceeded => Code::TooLarge,
+        threemf::ThreeMfError::Io(e) if e.kind() == std::io::ErrorKind::NotFound => Code::NotFound,
+        _ => Code::Unreadable,
+    };
+    if matches!(code, Code::TooLarge | Code::NotFound) {
+        CmdError::expected(e.to_string()).with_code(code)
+    } else {
+        CmdError::from(e.to_string()).with_code(code)
+    }
+}
+
+// Retains the existing safe-file budget and open-handle type check, while
+// distinguishing its size failures without inspecting error text.
+fn read_geometry_bytes(path: &Path) -> CmdResult<Vec<u8>> {
+    use std::io::Read;
+    let file = crate::safe_file::open_regular(path).map_err(geometry_io_error)?;
+    let max = crate::safe_file::MAX_MODEL_FILE_BYTES;
+    let too_large = || CmdError::expected(format!("Datei überschreitet {max} Bytes"))
+        .with_code(super::error::GeometryErrorCode::TooLarge);
+    if file.metadata().map_err(geometry_io_error)?.len() > max { return Err(too_large()); }
+    let mut bytes = Vec::new();
+    file.take(max + 1).read_to_end(&mut bytes).map_err(geometry_io_error)?;
+    if bytes.len() as u64 > max { return Err(too_large()); }
+    Ok(bytes)
+}
+
+fn load_geometry(path: &Path) -> CmdResult<Vec<RenderMesh>> {
+    use super::error::GeometryErrorCode as Code;
+    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    let unreadable = |e: String| CmdError::from(e).with_code(Code::Unreadable);
+    let meshes = match extension.as_str() {
+        "stl" => vec![stl::parse_stl_geometry(&read_geometry_bytes(path)?).map_err(|e| unreadable(e.to_string()))?],
+        "obj" => vec![obj::parse_obj_geometry(&read_geometry_bytes(path)?).map_err(|e| unreadable(e.to_string()))?],
+        "3mf" => threemf::extract_render_meshes_from_path(path).map_err(geometry_3mf_error)?,
+        "stp" | "step" => step_geometry(path)?,
+        _ => return Err(CmdError::expected(format!("nicht unterstütztes Dateiformat: {extension}")).with_code(Code::Unsupported)),
+    };
+    if meshes.iter().all(|m| m.indices.is_empty() || m.positions.is_empty()) {
+        return Err(unreadable("Keine darstellbare Geometrie".into()));
+    }
+    Ok(meshes)
+}
+
 #[tauri::command]
 pub async fn get_model_geometry(
-    state: State<'_, AppState>,
-    file_id: String,
+    state: State<'_, AppState>, file_id: String,
 ) -> CmdResult<tauri::ipc::Response> {
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
-
-    // The MutexGuard must end by scope before the .await; drop() isn't enough for
-    // the compiler (rust-lang/rust#57478), the handler wouldn't be Send otherwise.
     let file = {
         let conn = lock_db(&state)?;
-        db::get_file(&conn, id)
-            .map_err(|e| e.to_string())?
-            .ok_or_else(|| "file not found".to_string())?
+        db::get_file(&conn, id).map_err(|e| e.to_string())?
+            .ok_or_else(|| CmdError::expected("file not found").with_code(super::error::GeometryErrorCode::NotFound))?
     };
-
     let path = PathBuf::from(file.trash_path.as_deref().unwrap_or(&file.path));
-    let extension = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.to_lowercase())
-        .ok_or_else(|| "file has no extension".to_string())?;
-
-    let meshes = tauri::async_runtime::spawn_blocking(move || -> CmdResult<Vec<RenderMesh>> {
-        match extension.as_str() {
-            "stl" => {
-                let bytes = crate::safe_file::read_bounded(&path, crate::safe_file::MAX_MODEL_FILE_BYTES)
-                    .map_err(|e| e.to_string())?;
-                let mesh = stl::parse_stl_geometry(&bytes).map_err(|e| e.to_string())?;
-                Ok(vec![mesh])
-            }
-            "obj" => {
-                let bytes = crate::safe_file::read_bounded(&path, crate::safe_file::MAX_MODEL_FILE_BYTES)
-                    .map_err(|e| e.to_string())?;
-                let mesh = obj::parse_obj_geometry(&bytes).map_err(|e| e.to_string())?;
-                Ok(vec![mesh])
-            }
-            "3mf" => threemf::extract_render_meshes_from_path(&path).map_err(|e| e.to_string().into()),
-            "stp" | "step" => step_geometry(&path),
-            other => Err(CmdError::expected(format!("nicht unterstütztes Dateiformat: {other}"))),
-        }
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-
+    let meshes = tauri::async_runtime::spawn_blocking(move || load_geometry(&path))
+        .await.map_err(|e| e.to_string())??;
     Ok(tauri::ipc::Response::new(encode_render_meshes(&meshes)))
 }
 
@@ -1623,7 +1664,8 @@ mod tests {
     fn decode_for_test(bytes: &[u8]) -> Vec<DecodedMesh> {
         let header_len = u32::from_le_bytes(bytes[0..4].try_into().unwrap()) as usize;
         let header_json = std::str::from_utf8(&bytes[4..4 + header_len]).unwrap();
-        let headers: Vec<HeaderEntryForTest> = serde_json::from_str(header_json).unwrap();
+        let header: serde_json::Value = serde_json::from_str(header_json).unwrap();
+        let headers: Vec<HeaderEntryForTest> = serde_json::from_value(header["meshes"].clone()).unwrap();
 
         let mut offset = 4 + header_len;
         let mut result = Vec::new();
@@ -1674,6 +1716,7 @@ mod tests {
                 positions: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
                 indices: vec![[0, 1, 2]],
                 normals: Some(vec![[0.0, 0.0, 1.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0]]),
+                ..Default::default()
             },
             RenderMesh {
                 positions: vec![
@@ -1684,6 +1727,7 @@ mod tests {
                 ],
                 indices: vec![[0, 1, 2], [0, 1, 3]],
                 normals: None,
+                ..Default::default()
             },
         ];
 
@@ -1699,6 +1743,68 @@ mod tests {
         assert_eq!(decoded[1].1, None);
         assert_eq!(decoded[1].2, vec![0, 1, 2, 0, 1, 3]);
     }
+    #[test]
+    fn encode_render_meshes_roundtrips_material_groups_and_global_palette() {
+        use crate::geometry::{RenderColor, RenderGroup};
+        let red = RenderColor { name: "Rötlich".into(), color: "#ff0000".into() };
+        let blue = RenderColor { name: "Blue".into(), color: "#0000ff".into() };
+        let a = RenderMesh {
+            positions: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            indices: vec![[0, 1, 2], [0, 2, 1]],
+            object_name: Some("Töpfchen".into()),
+            groups: vec![RenderGroup { start: 0, count: 3, color_index: None },
+                RenderGroup { start: 3, count: 3, color_index: Some(0) }],
+            palette: vec![red.clone()], ..Default::default()
+        };
+        let b = RenderMesh { palette: vec![blue.clone(), red.clone()],
+            groups: vec![RenderGroup { start: 0, count: 3, color_index: Some(0) },
+                RenderGroup { start: 3, count: 3, color_index: Some(1) }], ..a.clone() };
+        let bytes = encode_render_meshes(&[a.clone(), b.clone()]);
+        let decoded = decode_for_test(&bytes);
+        assert_eq!(decoded[0].0, a.positions);
+        assert_eq!(decoded[1].2, vec![0, 1, 2, 0, 2, 1]);
+        let length = u32::from_le_bytes(bytes[..4].try_into().unwrap()) as usize;
+        assert_eq!((4 + length) % 4, 0);
+        let header: serde_json::Value = serde_json::from_slice(&bytes[4..4+length]).unwrap();
+        let palette: Vec<RenderColor> = serde_json::from_value(header["palette"].clone()).unwrap();
+        assert_eq!(palette, vec![red, blue]);
+        let groups: Vec<RenderGroup> = serde_json::from_value(header["meshes"][0]["groups"].clone()).unwrap();
+        assert_eq!(groups, a.groups);
+        let groups: Vec<RenderGroup> = serde_json::from_value(header["meshes"][1]["groups"].clone()).unwrap();
+        assert_eq!(groups[0].color_index, Some(1));
+        assert_eq!(groups[1].color_index, Some(0));
+        assert_eq!(header["meshes"][0]["objectName"], "Töpfchen");
+    }
+
+    #[test]
+    fn geometry_errors_keep_typed_codes_without_parsing_messages() {
+        use super::super::error::GeometryErrorCode as Code;
+        for error in [threemf::ThreeMfError::MaxDepthExceeded,
+            threemf::ThreeMfError::ResourceLimitExceeded("arbitrary text".into()),
+            threemf::ThreeMfError::EntryTooLarge { path: "x".into(), size: 2, max: 1 }] {
+            assert_eq!(geometry_3mf_error(error).code, Some(Code::TooLarge));
+        }
+        assert_eq!(geometry_3mf_error(threemf::ThreeMfError::ComponentCycle).code, Some(Code::Unreadable));
+        assert_eq!(geometry_io_error(std::io::Error::from(std::io::ErrorKind::NotFound)).code, Some(Code::NotFound));
+        assert_eq!(geometry_io_error(std::io::Error::from(std::io::ErrorKind::PermissionDenied)).code, Some(Code::Unreadable));
+    }
+
+    #[test]
+    fn geometry_loader_distinguishes_missing_oversized_empty_and_unsupported_files() {
+        use super::super::error::GeometryErrorCode as Code;
+        let dir = super::super::unique_test_dir("viewer_error_codes");
+        assert_eq!(load_geometry(&dir.join("missing.stl")).unwrap_err().code, Some(Code::NotFound));
+        assert_eq!(load_geometry(&dir.join("x.unknown")).unwrap_err().code, Some(Code::Unsupported));
+        let path = dir.join("empty.stl");
+        std::fs::write(&path, b"solid empty\nendsolid empty").unwrap();
+        assert_eq!(load_geometry(&path).unwrap_err().code, Some(Code::Unreadable));
+        let path = dir.join("too-large.obj");
+        let file = std::fs::File::create(&path).unwrap();
+        file.set_len(crate::safe_file::MAX_MODEL_FILE_BYTES + 1).unwrap();
+        assert_eq!(load_geometry(&path).unwrap_err().code, Some(Code::TooLarge));
+        std::fs::remove_file(path).unwrap();
+    }
+
     #[test]
     fn encode_render_meshes_handles_empty_mesh_list() {
         let bytes = encode_render_meshes(&[]);

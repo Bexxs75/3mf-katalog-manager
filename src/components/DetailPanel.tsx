@@ -29,6 +29,8 @@ interface Props {
   onSnapshotCaptured: (base64: string) => void;
   onSetSourceUrl: (fileId: string, url: string | null) => void;
   onOpenInSlicer: () => void;
+  onRemoveFromCatalog?: () => Promise<void>;
+  hasSlicer?: boolean;
   slicerError: AppError | null;
 }
 
@@ -48,6 +50,8 @@ export function DetailPanel({
   onSnapshotCaptured,
   onSetSourceUrl,
   onOpenInSlicer,
+  onRemoveFromCatalog,
+  hasSlicer,
   slicerError,
 }: Props) {
   const { language } = useLanguage();
@@ -149,6 +153,8 @@ export function DetailPanel({
           <ModelPreview
             model={model}
             needsSnapshot={!(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
+            onOpenInSlicer={hasSlicer ? onOpenInSlicer : undefined}
+            onRemoveFromCatalog={onRemoveFromCatalog}
             onSnapshotCaptured={onSnapshotCaptured}
           />
           <div className="absolute left-2.5 bottom-2 font-mono-ui text-[9.5px] tracking-[0.08em] uppercase text-[var(--ink-3)] pointer-events-none">
@@ -355,6 +361,8 @@ export function DetailPanel({
           <ModelPreview
             model={model}
             needsSnapshot={!(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
+            onOpenInSlicer={hasSlicer ? onOpenInSlicer : undefined}
+            onRemoveFromCatalog={onRemoveFromCatalog}
             onSnapshotCaptured={onSnapshotCaptured}
           />
           <button

@@ -1,6 +1,30 @@
 import type { Translations } from './types';
 
 export const fr: Translations = {
+  viewerOpenSlicer: "Ouvrir dans le trancheur",
+  viewerUnknownText: "Ouvre le fichier dans le trancheur ou signale le problème.",
+  viewerUnreadableCompact: "Essaie d’ouvrir le fichier dans le trancheur.",
+  viewerTooLargeCompact: "Utilise l’image d’aperçu ou ouvre le modèle dans le trancheur.",
+  viewerNoWebGLCompact: "Utilise l’image d’aperçu ou ouvre le fichier dans le trancheur.",
+
+  viewerFileColors: "Couleurs du fichier",
+  viewerSingleColor: "Couleur unique",
+  viewerColorsLegend: "Couleurs du fichier",
+  viewerFit: "Ajuster le modèle",
+  viewerReset: "Réinitialiser la vue",
+  viewerNotFoundTitle: "Le fichier est introuvable",
+  viewerNotFoundText: "Vérifie son emplacement ou retire l’entrée du catalogue.",
+  viewerUnreadableTitle: "Le fichier ne peut pas être lu",
+  viewerUnreadableText: "Il est endommagé ou ne contient aucune géométrie affichable. Essaie de l’ouvrir dans le trancheur.",
+  viewerTooLargeTitle: "Le modèle est trop grand pour la vue 3D",
+  viewerTooLargeText: "Il dépasse les limites de l’application. Utilise l’image d’aperçu ou ouvre-le dans le trancheur.",
+  viewerNoWebGLTitle: "La vue 3D n’est pas prise en charge sur cet ordinateur",
+  viewerNoWebGLText: "WebGL est indisponible. Utilise l’image d’aperçu ou ouvre le fichier dans le trancheur.",
+  viewerUnsupportedTitle: "Ce type de fichier n’a pas d’aperçu 3D",
+  viewerUnsupportedText: "Ouvre le fichier dans un programme adapté.",
+  viewerOpenFolder: "Ouvrir dans le gestionnaire de fichiers",
+  viewerLoading: "Chargement de la vue 3D …",
+
   keyboardTipsTitle: "Raccourcis clavier et conseils",
   keyboardTab: "Raccourcis clavier",
   tipsTab: "Conseils",

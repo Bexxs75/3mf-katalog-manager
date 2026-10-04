@@ -1,6 +1,30 @@
 import type { Translations } from './types';
 
 export const en: Translations = {
+  viewerOpenSlicer: "Open in slicer",
+  viewerUnknownText: "Open the file in your slicer or report the problem.",
+  viewerUnreadableCompact: "Try opening the file in your slicer.",
+  viewerTooLargeCompact: "Use the preview image or open the model in your slicer.",
+  viewerNoWebGLCompact: "Use the preview image or open the file in your slicer.",
+
+  viewerFileColors: "File colors",
+  viewerSingleColor: "Single color",
+  viewerColorsLegend: "Colors in the file",
+  viewerFit: "Fit model",
+  viewerReset: "Reset view",
+  viewerNotFoundTitle: "The file was not found",
+  viewerNotFoundText: "Check its location or remove the entry from the catalog.",
+  viewerUnreadableTitle: "The file cannot be read",
+  viewerUnreadableText: "It is damaged or has no displayable geometry. Try opening it in your slicer.",
+  viewerTooLargeTitle: "The model is too large for the 3D view",
+  viewerTooLargeText: "It exceeds the app’s limits. Use the preview image or open it in your slicer.",
+  viewerNoWebGLTitle: "The 3D view is not supported on this computer",
+  viewerNoWebGLText: "WebGL is unavailable. Use the preview image or open the file in your slicer.",
+  viewerUnsupportedTitle: "This file type has no 3D preview",
+  viewerUnsupportedText: "Open the file in a suitable program.",
+  viewerOpenFolder: "Open in file manager",
+  viewerLoading: "Loading 3D view …",
+
   keyboardTipsTitle: "Keyboard shortcuts and tips",
   keyboardTab: "Keyboard shortcuts",
   tipsTab: "Tips",

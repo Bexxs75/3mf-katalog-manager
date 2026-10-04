@@ -81,6 +81,15 @@ impl PackageParts {
 }
 
 pub fn read_package<R: Read + Seek>(reader: R) -> Result<PackageParts, ThreeMfError> {
+    read_package_inner(reader, false)
+}
+
+/// Geometry needs the original limit error; metadata import retains its fallback.
+pub fn read_geometry_package<R: Read + Seek>(reader: R) -> Result<PackageParts, ThreeMfError> {
+    read_package_inner(reader, true)
+}
+
+fn read_package_inner<R: Read + Seek>(reader: R, geometry: bool) -> Result<PackageParts, ThreeMfError> {
     let mut archive = ZipArchive::new(reader)?;
 
     // Counts EVERY resource read from the ZIP, including _rels/.rels and the slicer configs.
@@ -99,9 +108,15 @@ pub fn read_package<R: Read + Seek>(reader: R) -> Result<PackageParts, ThreeMfEr
     check_total_budget(total_unpacked)?;
     let model_path = model_path.unwrap_or_else(|| DEFAULT_MODEL_PATH.to_string());
 
-    let root_xml = read_entry_to_string(&mut archive, &model_path, MAX_MODEL_XML_BYTES)
-        .or_else(|_| read_entry_to_string(&mut archive, DEFAULT_MODEL_PATH, MAX_MODEL_XML_BYTES))
-        .map_err(|_| ThreeMfError::MissingRootModel)?;
+    let root_xml = match read_entry_to_string(&mut archive, &model_path, MAX_MODEL_XML_BYTES) {
+        Ok(xml) => xml,
+        Err(err @ ThreeMfError::EntryTooLarge { .. }) if geometry => return Err(err),
+        Err(_) => match read_entry_to_string(&mut archive, DEFAULT_MODEL_PATH, MAX_MODEL_XML_BYTES) {
+            Ok(xml) => xml,
+            Err(err @ ThreeMfError::EntryTooLarge { .. }) if geometry => return Err(err),
+            Err(_) => return Err(ThreeMfError::MissingRootModel),
+        },
+    };
     total_unpacked += root_xml.len() as u64;
     check_total_budget(total_unpacked)?;
     let root_model = parse_model_xml(&root_xml)?;
@@ -376,6 +391,20 @@ mod tests {
             zip.finish().unwrap();
         }
         buf
+    }
+
+    #[test]
+    fn oversized_root_model_keeps_its_size_error() {
+        let mut bytes = build_zip_with_one_entry(DEFAULT_MODEL_PATH, 4);
+        // Honest size rejection happens before decompression; no large allocation
+        // is necessary to exercise the root-model fallback.
+        let central = bytes.windows(4).position(|w| w == b"PK\x01\x02").unwrap();
+        let local = bytes.windows(4).position(|w| w == b"PK\x03\x04").unwrap();
+        let size = ((MAX_MODEL_XML_BYTES + 1) as u32).to_le_bytes();
+        bytes[central + 24..central + 28].copy_from_slice(&size);
+        bytes[local + 22..local + 26].copy_from_slice(&size);
+        assert!(matches!(read_geometry_package(std::io::Cursor::new(&bytes)), Err(ThreeMfError::EntryTooLarge { .. })));
+        assert!(matches!(read_package(std::io::Cursor::new(bytes)), Err(ThreeMfError::MissingRootModel)));
     }
 
     #[test]

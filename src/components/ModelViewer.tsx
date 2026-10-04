@@ -4,9 +4,12 @@ import { invoke } from '@tauri-apps/api/core';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { decodeModelGeometry } from '../lib/parseModelGeometry';
-import type { ParsedMesh } from '../lib/parseModelGeometry';
+import type { ParsedMesh, GeometryColor } from '../lib/parseModelGeometry';
+import { toAppError, type AppError } from '../lib/errors';
+import { ViewerErrorCard, type ViewerActions } from './ViewerErrorCard';
+import { createViewerFloor, gridColor } from '../lib/viewerFloor';
 
-interface Props {
+interface Props extends ViewerActions {
   fileId: string;
   needsSnapshot: boolean;
   onSnapshotCaptured: (base64: string) => void;
@@ -22,7 +25,8 @@ function frameObject(object: THREE.Object3D, camera: THREE.PerspectiveCamera, co
   object.position.sub(center);
 
   const radius = Math.max(size.x, size.y, size.z, 1) * 0.65;
-  const distance = radius / Math.sin((camera.fov * Math.PI) / 360);
+  const halfFov = (camera.fov * Math.PI) / 360;
+  const distance = radius / Math.sin(Math.min(halfFov, Math.atan(Math.tan(halfFov) * camera.aspect)));
 
   camera.position.set(distance, distance * 0.8, distance);
   camera.near = distance / 100;
@@ -43,7 +47,7 @@ function disposeObject(object: THREE.Object3D) {
 
 // Builds a flat group from the raw data; the positions come from Rust
 // already transformed into world space.
-function buildGroup(meshes: ParsedMesh[], material: THREE.MeshStandardMaterial): THREE.Group {
+function buildGroup(meshes: ParsedMesh[], material: THREE.MeshStandardMaterial, colors: THREE.MeshStandardMaterial[] = []): THREE.Group {
   const group = new THREE.Group();
   for (const mesh of meshes) {
     const geometry = new THREE.BufferGeometry();
@@ -52,7 +56,13 @@ function buildGroup(meshes: ParsedMesh[], material: THREE.MeshStandardMaterial):
       geometry.setAttribute('normal', new THREE.BufferAttribute(mesh.normal, 3));
     }
     geometry.setIndex(new THREE.BufferAttribute(mesh.index, 1));
-    group.add(new THREE.Mesh(geometry, material));
+    for (const range of mesh.groups ?? []) {
+      geometry.addGroup(range.start, range.count, range.colorIndex === null ? 0 : range.colorIndex + 1);
+    }
+    const fileMaterials = mesh.groups?.length ? [material, ...colors] : material;
+    const child = new THREE.Mesh(geometry, fileMaterials);
+    child.userData.fileMaterials = fileMaterials;
+    group.add(child);
   }
   return group;
 }
@@ -70,14 +80,21 @@ interface ViewerContext {
   controls: OrbitControls;
   material: THREE.MeshStandardMaterial;
   currentObject: THREE.Object3D | null;
+  colorMaterials: THREE.MeshStandardMaterial[];
+  floor: ReturnType<typeof createViewerFloor>;
 }
 
-export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError, showRotationControls }: Props) {
+export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError, showRotationControls, model, onOpenInSlicer, onRemoveFromCatalog }: Props) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const ctxRef = useRef<ViewerContext | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [autoRotating, setAutoRotating] = useState(false);
+  const [fileColors, setFileColors] = useState(true);
+  const [palette, setPalette] = useState<GeometryColor[]>([]);
+  const [legend, setLegend] = useState<{ colorIndex: number; objectName?: string }[]>([]);
+  const [error, setError] = useState<AppError | null>(null);
+  const [noWebGL, setNoWebGL] = useState(false);
 
   // Set up renderer, scene, camera and light only once: a new
   // WebGL context per model change slowed the app down noticeably.
@@ -93,6 +110,7 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
       if (!webglUnavailable) console.error('[ModelViewer] WebGL not available:', err);
       webglUnavailable = true;
       setStatus('error');
+      setNoWebGL(true);
       onError?.();
       return;
     }
@@ -100,17 +118,18 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 1000);
     renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
     container.appendChild(renderer.domElement);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x706458, 1.0));
     const key = new THREE.DirectionalLight(0xffffff, 1.1);
-    key.position.set(1, 1.4, 1);
+    key.position.set(2, 3, 0.5);
     scene.add(key);
-    const fill = new THREE.DirectionalLight(0xffffff, 0.4);
+    const fill = new THREE.DirectionalLight(0xffffff, 0.15);
     fill.position.set(-1, -0.4, -1);
     scene.add(fill);
 
@@ -119,7 +138,16 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
       color: 0xd0603f,
       roughness: 0.55,
       metalness: 0.05,
+      flatShading: true,
     });
+
+    const floor = createViewerFloor(container);
+    scene.add(floor);
+    const themeObserver = new MutationObserver(() => {
+      floor.material.uniforms.gridColor.value.copy(gridColor(container));
+    });
+    const appRoot = container.closest('[data-app]');
+    if (appRoot) themeObserver.observe(appRoot, { attributes: true, attributeFilter: ['data-app'] });
 
     const resize = () => {
       const { clientWidth, clientHeight } = container;
@@ -141,11 +169,15 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
     };
     animate();
 
-    ctxRef.current = { scene, camera, renderer, controls, material, currentObject: null };
+    ctxRef.current = { scene, camera, renderer, controls, material, currentObject: null, colorMaterials: [], floor };
 
     return () => {
       cancelAnimationFrame(frameHandle);
       resizeObserver.disconnect();
+      themeObserver.disconnect();
+      floor.geometry.dispose();
+      floor.material.dispose();
+      ctxRef.current?.colorMaterials.forEach(m => m.dispose());
       controls.dispose();
       if (ctxRef.current?.currentObject) {
         disposeObject(ctxRef.current.currentObject);
@@ -166,12 +198,35 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
 
     let cancelled = false;
     setStatus('loading');
+    setError(null);
+    setFileColors(true);
+    setPalette([]);
+    setLegend([]);
+    ctx.floor.visible = false;
+    if (ctx.currentObject) {
+      ctx.scene.remove(ctx.currentObject);
+      disposeObject(ctx.currentObject);
+      ctx.currentObject = null;
+    }
+    ctx.colorMaterials.forEach(m => m.dispose());
+    ctx.colorMaterials = [];
 
     invoke<ArrayBuffer>('get_model_geometry', { fileId })
       .then((buffer) => {
         if (cancelled) return;
-        const meshes = decodeModelGeometry(buffer);
-        const object = buildGroup(meshes, ctx.material);
+        const { meshes, palette } = decodeModelGeometry(buffer);
+        ctx.colorMaterials = palette.map(color => new THREE.MeshStandardMaterial({
+          color: color.color, roughness: 0.55, metalness: 0.05, flatShading: true,
+        }));
+        const object = buildGroup(meshes, ctx.material, ctx.colorMaterials);
+        setPalette(palette);
+        const entries: { colorIndex: number; objectName?: string }[] = [];
+        for (const mesh of meshes) for (const range of mesh.groups ?? []) {
+          if (range.colorIndex !== null && !entries.some(e => e.colorIndex === range.colorIndex && e.objectName === mesh.objectName)) {
+            entries.push({ colorIndex: range.colorIndex, objectName: mesh.objectName });
+          }
+        }
+        setLegend(entries);
         // 3MF/STL are Z-up, OrbitControls rotate around the world Y axis. The fixed
         // -90 degree rotation on X turns every azimuth rotation into a turntable
         // around the model's upright axis.
@@ -191,6 +246,12 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
           ctx.renderer.setSize(container.clientWidth, container.clientHeight);
         }
         frameObject(object, ctx.camera, ctx.controls);
+        const box = new THREE.Box3().setFromObject(object);
+        const size = box.getSize(new THREE.Vector3());
+        const floorSize = Math.max(size.x, size.y, size.z, 1) * 1.6;
+        ctx.floor.scale.set(floorSize, floorSize, 1);
+        ctx.floor.position.set(0, box.min.y - floorSize * 0.0001, 0);
+        ctx.floor.visible = true;
         setStatus('ready');
 
         if (needsSnapshot) {
@@ -213,6 +274,7 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
         console.error('[ModelViewer] loading failed:', err);
         if (!cancelled) {
           setStatus('error');
+          setError(toAppError(err));
           onError?.();
         }
       });
@@ -221,6 +283,18 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
       cancelled = true;
     };
   }, [fileId]);
+
+  useEffect(() => {
+    const ctx = ctxRef.current;
+    ctx?.currentObject?.traverse(child => {
+      if (child instanceof THREE.Mesh) child.material = fileColors ? child.userData.fileMaterials : ctx.material;
+    });
+  }, [fileColors]);
+
+  const fit = () => {
+    const ctx = ctxRef.current;
+    if (ctx?.currentObject) frameObject(ctx.currentObject, ctx.camera, ctx.controls);
+  };
 
   // OrbitControls pauses autoRotate itself while dragging and resumes afterwards.
   useEffect(() => {
@@ -247,17 +321,33 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
     <div className="relative w-full h-full">
       <div ref={containerRef} className="absolute inset-0" />
       {status === 'loading' && (
-        <div className="absolute inset-0 grid place-items-center font-mono-ui text-[11px] text-[var(--ink-3)] pointer-events-none">
-          {t('loadingPreview')}
+        <div className="absolute inset-0 grid place-items-center pointer-events-none">
+          <div role="status" className="flex flex-col items-center gap-2 text-[13.5px] text-[var(--ink-2)]">
+            <span className="viewer-spinner" aria-hidden="true" />{t('viewerLoading')}
+          </div>
         </div>
       )}
-      {status === 'error' && (
-        <div className="absolute inset-0 grid place-items-center font-mono-ui text-[11px] text-[var(--ink-3)] pointer-events-none px-4 text-center">
-          {t('previewUnavailable')}
-        </div>
-      )}
+      {status === 'error' && <ViewerErrorCard key={fileId} error={error} noWebGL={noWebGL} compact={!showRotationControls}
+        model={model} onOpenInSlicer={onOpenInSlicer} onRemoveFromCatalog={onRemoveFromCatalog} />}
+      {showRotationControls && status === 'ready' && <>
+        <button className="viewer-pill absolute top-3 left-3" onClick={() => { setAutoRotating(false); fit(); }}>{t('viewerReset')}</button>
+        {palette.length > 0 && <>
+          <div role="group" aria-label={t('viewerColorsLegend')} className="viewer-toggle absolute top-14 right-3">
+            <button aria-pressed={fileColors} onClick={() => setFileColors(true)}>{t('viewerFileColors')}</button>
+            <button aria-pressed={!fileColors} onClick={() => setFileColors(false)}>{t('viewerSingleColor')}</button>
+          </div>
+          {fileColors && <div className="viewer-legend absolute bottom-14 left-3">
+            <div className="font-mono-ui uppercase text-[10.5px] text-[var(--ink-3)]">{t('viewerColorsLegend')}</div>
+            {legend.map(entry => <div className="flex items-center gap-2" key={`${entry.colorIndex}:${entry.objectName}`}>
+              <span className="w-3.5 h-3.5 rounded-full border border-[var(--line-strong)] shrink-0" style={{ background: palette[entry.colorIndex].color }} />
+              <span>{palette[entry.colorIndex].name}</span><small className="text-[11.5px] text-[var(--ink-3)]">{entry.objectName}</small>
+            </div>)}
+          </div>}
+        </>}
+      </>}
       {showRotationControls && status === 'ready' && (
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[var(--panel-2)] border border-[var(--line)] rounded-full p-1 shadow-[var(--shadow)]">
+          <button className="viewer-pill" onClick={fit}>{t('viewerFit')}</button>
           <button
             onClick={() => rotateStep(-1)}
             title={t('rotateLeftAria')}

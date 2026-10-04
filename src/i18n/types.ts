@@ -6,6 +6,30 @@ export interface PluralForms {
 }
 
 export interface Translations {
+  viewerOpenSlicer: string;
+  viewerUnknownText: string;
+  viewerUnreadableCompact: string;
+  viewerTooLargeCompact: string;
+  viewerNoWebGLCompact: string;
+
+  viewerFileColors: string;
+  viewerSingleColor: string;
+  viewerColorsLegend: string;
+  viewerFit: string;
+  viewerReset: string;
+  viewerNotFoundTitle: string;
+  viewerNotFoundText: string;
+  viewerUnreadableTitle: string;
+  viewerUnreadableText: string;
+  viewerTooLargeTitle: string;
+  viewerTooLargeText: string;
+  viewerNoWebGLTitle: string;
+  viewerNoWebGLText: string;
+  viewerUnsupportedTitle: string;
+  viewerUnsupportedText: string;
+  viewerOpenFolder: string;
+  viewerLoading: string;
+
   keyboardTipsTitle: string;
   keyboardTab: string;
   tipsTab: string;

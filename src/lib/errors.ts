@@ -1,11 +1,15 @@
 /** Error shown in the UI; `unexpected` decides whether "Report problem" is offered. */
+export type GeometryErrorCode = 'notFound' | 'unreadable' | 'tooLarge' | 'unsupported';
+
 export interface AppError {
   message: string;
+  code?: GeometryErrorCode;
   unexpected: boolean;
 }
 
 interface CmdError {
   message: string;
+  code?: GeometryErrorCode;
   expected: boolean;
 }
 
@@ -36,7 +40,11 @@ export function messageOf(e: unknown): string {
 
 /** Turns any rejection into an `AppError`; only a `CmdError` with `expected: true` counts as expected. */
 export function toAppError(e: unknown): AppError {
-  return { message: messageOf(e), unexpected: isCmdError(e) ? !e.expected : true };
+  const result: AppError = { message: messageOf(e), unexpected: isCmdError(e) ? !e.expected : true };
+  if (isCmdError(e) && ['notFound', 'unreadable', 'tooLarge', 'unsupported'].includes(e.code ?? '')) {
+    result.code = e.code;
+  }
+  return result;
 }
 
 /** Builds an expected error for frontend-side validation (no backend command involved). */

@@ -108,6 +108,7 @@ pub fn to_render_mesh(positions: &[[f64; 3]]) -> RenderMesh {
             .collect(),
         normals: Some(compute_flat_normals(positions, &indices)),
         indices,
+        ..Default::default()
     }
 }
 
