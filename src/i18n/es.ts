@@ -727,6 +727,7 @@ export const es: Translations = {
   printerNotSyncedYet: 'aún sin sincronizar',
   printerUnreachableSince: 'inaccesible desde {time}',
   printerAuthNeeded: 'requiere inicio de sesión',
+  printerErrorUnknown: "La conexión con la impresora ha fallado. Comprueba la dirección y la red y vuelve a probar la conexión.",
   printerPausedRetest: 'en pausa – vuelve a probar la conexión',
   printerSyncNow: 'Sincronizar ahora',
   printerJobsPending: { one: '{count} impresión por confirmar', other: '{count} impresiones por confirmar' },

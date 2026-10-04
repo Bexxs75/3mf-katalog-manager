@@ -727,6 +727,7 @@ export const en: Translations = {
   printerNotSyncedYet: 'not synced yet',
   printerUnreachableSince: 'unreachable since {time}',
   printerAuthNeeded: 'login required',
+  printerErrorUnknown: "The connection to the printer failed. Check the address and the network, then test the connection again.",
   printerPausedRetest: 'paused – please test the connection again',
   printerSyncNow: 'Sync now',
   printerJobsPending: { one: '{count} print to confirm', other: '{count} prints to confirm' },

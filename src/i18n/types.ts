@@ -759,6 +759,8 @@ export interface Translations {
   printerNotSyncedYet: string;
   printerUnreachableSince: string;
   printerAuthNeeded: string;
+  /** Fallback when the backend reports a connection error code the UI does not know. */
+  printerErrorUnknown: string;
   /** Connection paused after a backup restore (no `lastError`). */
   printerPausedRetest: string;
   printerSyncNow: string;

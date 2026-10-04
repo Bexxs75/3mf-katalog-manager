@@ -727,6 +727,7 @@ export const de: Translations = {
   printerNotSyncedYet: 'noch nicht abgeglichen',
   printerUnreachableSince: 'nicht erreichbar seit {time}',
   printerAuthNeeded: 'Anmeldung nötig',
+  printerErrorUnknown: "Die Verbindung zum Drucker ist fehlgeschlagen. Prüfe Adresse und Netzwerk und teste die Verbindung erneut.",
   printerPausedRetest: 'pausiert – bitte Verbindung neu testen',
   printerSyncNow: 'Jetzt abgleichen',
   printerJobsPending: { one: '{count} Druck zu bestätigen', other: '{count} Drucke zu bestätigen' },

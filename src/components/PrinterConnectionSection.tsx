@@ -31,6 +31,11 @@ export const errorKey: Record<PrinterConnectionError, PrinterErrorKey> = {
   disabled: 'printerErrorDisabled',
 };
 
+/** Never returns an empty text, even for a code this version does not know. */
+export function errorKeyFor(code: string): PrinterErrorKey {
+  return (errorKey as Record<string, PrinterErrorKey>)[code] ?? 'printerErrorUnknown';
+}
+
 function portOf(baseUrl: string | null): string {
   if (!baseUrl) return '';
   const m = baseUrl.match(/:(\d+)$/);
@@ -163,7 +168,7 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
       )}
       {link.enabled && (error || current?.lastError || current?.paused) && (
         <div role="alert" className="rounded-lg bg-[var(--crit-soft)] p-3 text-[12px] text-[var(--crit)]">
-          <b>{t('pmConnectionError')}</b><p>{effectiveError ? t(errorKey[effectiveError]) : t('printerPausedRetest')}</p>
+          <b>{t('pmConnectionError')}</b><p>{effectiveError ? t(errorKeyFor(effectiveError)) : t('printerPausedRetest')}</p>
         </div>
       )}
       {link.enabled && !error && current && !current.paused && !current.lastError && (

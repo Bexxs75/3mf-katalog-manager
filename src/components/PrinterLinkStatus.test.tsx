@@ -22,6 +22,12 @@ function link(c: PrinterConnection | null, jobs = 0): PrinterLinkState {
 }
 
 describe('PrinterLinkStatus', () => {
+  it('shows a readable text for an error code this version does not know', () => {
+    const unknown = { ...base, lastError: 'something_new' } as unknown as PrinterConnection;
+    render(<LanguageProvider><PrinterLinkStatus printerId="1" link={link(unknown)} /></LanguageProvider>);
+    expect(screen.getByText(/Die Verbindung zum Drucker ist fehlgeschlagen/)).toBeInTheDocument();
+  });
+
   it('renders nothing for printers without connection', () => {
     const { container } = render(<LanguageProvider><PrinterLinkStatus printerId="1" link={link(null)} /></LanguageProvider>);
     expect(container).toBeEmptyDOMElement();
