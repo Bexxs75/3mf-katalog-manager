@@ -767,6 +767,7 @@ pub async fn import_catalog(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> CmdResult<ImportCatalogResultDto> {
+    let _catalog_share = state.import_jobs.gate.exclusive()?;
     let picked = app.dialog().file().add_filter("ZIP-Archiv", &["zip"]).blocking_pick_file();
     let Some(picked) = picked else {
         return Ok(ImportCatalogResultDto { imported: false, settings_json: None });
@@ -1926,6 +1927,7 @@ mod tests {
             let dir = unique_test_dir("restore_catalog_location");
             let db_path = dir.join("catalog.db");
             let state = AppState {
+                import_jobs: ImportJobs::default(),
                 db: Mutex::new(db::connect(&db_path).unwrap()),
                 trash_dir: dir.join("trash"),
                 db_path,
@@ -1976,6 +1978,7 @@ mod tests {
         // AppState initially holds the "old" connection on db_path.
         let running_conn = crate::db::connect(&db_path).expect("reopen db for AppState");
         let state = AppState {
+            import_jobs: ImportJobs::default(),
             db: Mutex::new(running_conn),
             trash_dir: dir.join("trash"),
             db_path: db_path.clone(),
@@ -2033,6 +2036,7 @@ mod tests {
 
         let running_conn = crate::db::connect(&db_path).expect("reopen db for AppState");
         let state = AppState {
+            import_jobs: ImportJobs::default(),
             db: Mutex::new(running_conn),
             trash_dir: dir.join("trash"),
             db_path: db_path.clone(),
@@ -2095,6 +2099,7 @@ mod tests {
 
         let running_conn = crate::db::connect(&db_path).expect("reopen db for AppState");
         let state = AppState {
+            import_jobs: ImportJobs::default(),
             db: Mutex::new(running_conn),
             trash_dir: dir.join("trash"),
             db_path: db_path.clone(),
@@ -2164,6 +2169,7 @@ mod tests {
         let backup_bytes = std::fs::read(&backup_db_path).unwrap();
 
         let state = AppState {
+            import_jobs: ImportJobs::default(),
             db: std::sync::Mutex::new(crate::db::connect(&db_path).unwrap()),
             trash_dir: trash_dir.clone(),
             db_path: db_path.clone(),
@@ -2214,6 +2220,7 @@ mod tests {
         let backup_bytes = std::fs::read(&backup_db_path).unwrap();
 
         let state = AppState {
+            import_jobs: ImportJobs::default(),
             db: std::sync::Mutex::new(crate::db::connect(&db_path).unwrap()),
             trash_dir: trash_dir.clone(),
             db_path: db_path.clone(),
@@ -2636,6 +2643,7 @@ mod tests {
 
         let db_path = dir.join("catalog.db");
         let state = AppState {
+            import_jobs: ImportJobs::default(),
             db: Mutex::new(crate::db::connect(&db_path).expect("connect running db")),
             trash_dir: dir.join("trash"),
             db_path: db_path.clone(),

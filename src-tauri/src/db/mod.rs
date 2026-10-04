@@ -10,7 +10,7 @@ mod migrations;
 pub use migrations::run_migrations;
 
 pub use repository::{
-    add_tag_to_file, attach_folder_to_parent_by_path, max_folder_id, remove_new_folder_rows, connect, delete_file, delete_filament_spool, delete_print_log_entry,
+    add_tag_to_file, attach_folder_to_parent_by_path, connect, delete_file, delete_filament_spool, delete_print_log_entry,
     delete_unused_tags, ensure_folder_path,
     file_exists_by_hash, file_exists_by_path, get_file, get_filament_spool,
     get_registered_slicer,
@@ -911,3 +911,6 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 }
+
+#[cfg(test)]
+pub use repository::{max_folder_id, remove_new_folder_rows};

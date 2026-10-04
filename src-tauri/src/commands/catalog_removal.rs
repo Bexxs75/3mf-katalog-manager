@@ -138,6 +138,7 @@ pub async fn remove_files_from_catalog(
 ) -> CmdResult<usize> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
+        let _catalog_share = state.import_jobs.gate.exclusive()?;
         let conn = lock_db(&state)?;
         remove_files_with_conn(&conn, file_ids)
     })
@@ -166,6 +167,7 @@ pub async fn remove_folder_from_catalog(
 ) -> CmdResult<CatalogRemovalCount> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
+        let _catalog_share = state.import_jobs.gate.exclusive()?;
         let conn = lock_db(&state)?;
         remove_folder_with_conn(&conn, &folder_id)
     })
@@ -177,6 +179,7 @@ pub async fn remove_folder_from_catalog(
 pub async fn reset_catalog(app: tauri::AppHandle) -> CmdResult<CatalogRemovalCount> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
+        let _catalog_share = state.import_jobs.gate.exclusive()?;
         let conn = lock_db(&state)?;
         let result = reset_with_conn(&conn)?;
         app.state::<ApprovedTargets>().clear();

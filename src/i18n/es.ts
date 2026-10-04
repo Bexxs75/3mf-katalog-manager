@@ -1,6 +1,7 @@
 import type { Translations } from './types';
 
 export const es: Translations = {
+  importActiveError: 'Importación en curso: espera o cancélala.',
   archiveInnerFolderSkipped: 'Se omitió la carpeta interior «{name}»',
   tagSuggestionsAria: 'Sugerencias de etiquetas',
   dropHereLabel: "soltar aquí",

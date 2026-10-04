@@ -42,6 +42,8 @@ pub struct TagCountDto {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportResultDto {
+    #[serde(skip)]
+    pub(super) duplicate_entries: Vec<super::import_jobs::DuplicateEntry>,
     pub imported: Vec<ModelFileDto>,
     pub duplicate_count: i64,
     /// Individually picked/dropped archives - NOT imported here, but handled by the
@@ -269,7 +271,7 @@ pub fn remove_tag(state: State<AppState>, file_id: String, tag: String) -> CmdRe
     db::remove_tag_from_file(&conn, id, &tag).map_err(|e| e.to_string().into())
 }
 /// Core logic of `move_file_to_folder`, without `State`, so it's testable.
-fn move_file_to_folder_with_conn(
+pub(super) fn move_file_to_folder_with_conn(
     conn: &Connection,
     file_id: i64,
     folder_id: Option<i64>,
@@ -325,6 +327,7 @@ pub fn move_file_to_folder(
     file_id: String,
     folder_id: Option<String>,
 ) -> CmdResult<()> {
+    let _catalog_share = state.import_jobs.gate.exclusive()?;
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let target_id: Option<i64> = folder_id
         .map(|s| {
@@ -399,6 +402,7 @@ fn rename_file_with_conn(
 /// `name`/`path` in the DB accordingly.
 #[tauri::command]
 pub fn rename_file(state: State<AppState>, file_id: String, name: String) -> CmdResult<()> {
+    let _catalog_share = state.import_jobs.gate.exclusive()?;
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
     let sensitive_dirs = state.sensitive_dirs.clone();
@@ -619,7 +623,7 @@ pub(crate) fn backfill_content_hashes(conn: &Connection) {
 /// directories are skipped. Deliberately follows NO symlinks, neither to
 /// directories (endless recursion, files outside the selection) nor to files.
 /// The check comes before `is_dir()`, because `is_dir()` follows symlinks.
-fn collect_supported_files(path: &Path, out: &mut Vec<PathBuf>) {
+pub(super) fn collect_supported_files(path: &Path, out: &mut Vec<PathBuf>) {
     if path.is_symlink() {
         return;
     }
@@ -691,7 +695,7 @@ pub(crate) fn import_one(
 /// Reads and parses a model file into the row to insert, without touching the
 /// database. This is the slow part of an import (whole file read, geometry
 /// parsed), so batch imports run it without holding the database lock.
-fn read_model_file(path: &Path, display_name: Option<&str>) -> CmdResult<NewFile> {
+pub(super) fn read_model_file(path: &Path, display_name: Option<&str>) -> CmdResult<NewFile> {
     let file_name = display_name.map(|n| n.to_string()).unwrap_or_else(|| {
         path.file_name()
             .and_then(|n| n.to_str())
@@ -820,6 +824,7 @@ fn read_model_file(path: &Path, display_name: Option<&str>) -> CmdResult<NewFile
 }
 
 /// Inserts a row prepared by [`read_model_file`] and returns it as a DTO.
+#[cfg(test)]
 fn store_model_file(conn: &Connection, new_file: &NewFile) -> CmdResult<ModelFileDto> {
     let id = match db::insert_file_within_tx(conn, new_file) {
         Ok(id) => id,
@@ -945,26 +950,29 @@ pub fn rescan_file_metadata(state: State<AppState>, file_id: String) -> CmdResul
 /// they contain, skips paths already present in the catalog, and imports the
 /// rest. A single unreadable/unparsable file is logged and skipped rather
 /// than aborting the whole batch.
-fn import_many(state: &State<AppState>, roots: Vec<PathBuf>) -> CmdResult<ImportResultDto> {
-    let mut db: &Mutex<Connection> = &state.db;
-    import_many_in_batches(&mut db, roots, ImportMode::Batched)
-}
 /// Batched import on a held connection for unit tests; commands use `State`.
 #[cfg(test)]
-pub(crate) fn import_many_with_conn(conn: &mut Connection, roots: Vec<PathBuf>) -> CmdResult<ImportResultDto> {
+pub(crate) fn import_many_with_conn(
+    conn: &mut Connection,
+    roots: Vec<PathBuf>,
+) -> CmdResult<ImportResultDto> {
     let mut db: &mut Connection = conn;
     import_many_in_batches(&mut db, roots, ImportMode::Batched)
 }
 
 /// Archive extraction removes the entire directory on failure, so all its
 /// catalog writes must succeed together.
-pub(crate) fn import_many_with_conn_atomic(conn: &mut Connection, roots: Vec<PathBuf>) -> CmdResult<ImportResultDto> {
+#[cfg(test)]
+pub(crate) fn import_many_with_conn_atomic(
+    conn: &mut Connection,
+    roots: Vec<PathBuf>,
+) -> CmdResult<ImportResultDto> {
     let mut db: &mut Connection = conn;
     import_many_in_batches(&mut db, roots, ImportMode::Atomic)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum ImportMode {
+pub(super) enum ImportMode {
     Batched,
     Atomic,
 }
@@ -979,11 +987,20 @@ const IMPORT_BATCH_SIZE: usize = 25;
 /// answering while files are read (a synchronous command waiting for the lock
 /// freezes the window).
 pub(crate) trait ImportDb {
+    fn read_file(&mut self, path: &Path) -> CmdResult<NewFile> {
+        read_model_file(path, None)
+    }
+    fn report_in_flight(&self, _count: usize) {}
+    fn savepoint_control(&self) -> fn(&Connection, &str) -> rusqlite::Result<()> {
+        |conn, sql| conn.execute_batch(sql)
+    }
     fn with_conn<R>(&mut self, f: impl FnOnce(&mut Connection) -> CmdResult<R>) -> CmdResult<R>;
 }
 impl ImportDb for &Mutex<Connection> {
     fn with_conn<R>(&mut self, f: impl FnOnce(&mut Connection) -> CmdResult<R>) -> CmdResult<R> {
-        let mut conn = self.lock().map_err(|_| "database lock poisoned".to_string())?;
+        let mut conn = self
+            .lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
         f(&mut conn)
     }
 }
@@ -994,17 +1011,40 @@ impl ImportDb for &mut Connection {
 }
 
 /// A parsed file waiting to be stored with the next batch.
-struct PendingImport {
-    path: PathBuf,
+pub(super) struct PendingImport {
+    pub(super) path: PathBuf,
     /// Set for folder imports: the root the file's subfolders are mirrored from.
-    folder_root: Option<PathBuf>,
-    new_file: NewFile,
+    pub(super) folder_root: Option<PathBuf>,
+    pub(super) new_file: NewFile,
 }
 
-fn import_many_in_batches(db: &mut impl ImportDb, roots: Vec<PathBuf>, mode: ImportMode) -> CmdResult<ImportResultDto> {
+#[cfg(test)]
+fn import_many_in_batches(
+    db: &mut impl ImportDb,
+    roots: Vec<PathBuf>,
+    mode: ImportMode,
+) -> CmdResult<ImportResultDto> {
+    import_many_controlled(db, roots, mode, None)
+}
+#[cfg(test)]
+pub(super) fn import_many_controlled(
+    db: &mut impl ImportDb,
+    roots: Vec<PathBuf>,
+    mode: ImportMode,
+    cancel: Option<&std::sync::atomic::AtomicBool>,
+) -> CmdResult<ImportResultDto> {
+    import_many_selected(db, roots, mode, cancel, None)
+}
+pub(super) fn import_many_selected(
+    db: &mut impl ImportDb,
+    roots: Vec<PathBuf>,
+    mode: ImportMode,
+    cancel: Option<&std::sync::atomic::AtomicBool>,
+    selected: Option<&[PathBuf]>,
+) -> CmdResult<ImportResultDto> {
     let mut seen_paths = HashSet::new();
-    let mut seen_hashes = HashSet::new();
     let mut result = ImportResultDto {
+        duplicate_entries: Vec::new(),
         imported: Vec::new(),
         duplicate_count: 0,
         // Archives aren't known here: they're split off and attached by the
@@ -1021,17 +1061,37 @@ fn import_many_in_batches(db: &mut impl ImportDb, roots: Vec<PathBuf>, mode: Imp
         collect_supported_files(&root, &mut candidates);
 
         for path in candidates {
+            if selected.is_some_and(|paths| !paths.contains(&path)) {
+                continue;
+            }
+            if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Acquire)) {
+                return Err(CmdError::expected("cancelled"));
+            }
             let path_str = path.to_string_lossy().to_string();
             if !seen_paths.insert(path_str.clone()) {
                 continue;
             }
-            match db.with_conn(|conn| db::file_exists_by_path(conn, &path_str).map_err(|e| e.to_string().into())) {
-                Ok(true) => continue,
-                Ok(false) => {}
-                Err(e) => {
-                    log::error!(target: "import", "duplicate check failed for {path_str}: {e}");
-                    result.skip(path_str, SkipReason::Failed);
-                    continue;
+            if mode != ImportMode::Atomic {
+                match db.with_conn(|conn| {
+                    db::file_exists_by_path(conn, &path_str).map_err(|e| e.to_string().into())
+                }) {
+                    Ok(true) => {
+                        result.duplicate_count += 1;
+                        result
+                            .duplicate_entries
+                            .push(super::import_jobs::DuplicateEntry {
+                                path: path_str.clone(),
+                                kind: "path".into(),
+                                existing_file_id: None,
+                            });
+                        continue;
+                    }
+                    Ok(false) => {}
+                    Err(e) => {
+                        log::error!(target: "import", "duplicate check failed for {path_str}: {e}");
+                        result.skip(path_str, SkipReason::Failed);
+                        continue;
+                    }
                 }
             }
             if std::fs::metadata(&path).is_ok_and(|m| m.len() == 0) {
@@ -1050,24 +1110,30 @@ fn import_many_in_batches(db: &mut impl ImportDb, roots: Vec<PathBuf>, mode: Imp
                     continue;
                 }
             };
-            if seen_hashes.contains(&content_hash) {
-                result.duplicate_count += 1;
-                continue;
-            }
-            match db.with_conn(|conn| db::file_exists_by_hash(conn, &content_hash).map_err(|e| e.to_string().into())) {
-                Ok(true) => {
-                    result.duplicate_count += 1;
-                    continue;
+            if mode != ImportMode::Atomic {
+                match db.with_conn(|conn| {
+                    db::file_exists_by_hash(conn, &content_hash).map_err(|e| e.to_string().into())
+                }) {
+                    Ok(true) => {
+                        result.duplicate_count += 1;
+                        result
+                            .duplicate_entries
+                            .push(super::import_jobs::DuplicateEntry {
+                                path: path_str.clone(),
+                                kind: "hash".into(),
+                                existing_file_id: None,
+                            });
+                        continue;
+                    }
+                    Ok(false) => {}
+                    Err(e) => {
+                        log::error!(target: "import", "duplicate check (hash) failed for {path_str}: {e}");
+                        result.skip(path_str, SkipReason::Failed);
+                        continue;
+                    }
                 }
-                Ok(false) => {}
-                Err(e) => {
-                    log::error!(target: "import", "duplicate check (hash) failed for {path_str}: {e}");
-                    result.skip(path_str, SkipReason::Failed);
-                    continue;
-                }
             }
-
-            let mut new_file = match read_model_file(&path, None) {
+            let mut new_file = match db.read_file(&path) {
                 Ok(f) => f,
                 Err(e) => {
                     log::warn!(target: "import", "übersprungen: {path_str}: {e}");
@@ -1075,15 +1141,27 @@ fn import_many_in_batches(db: &mut impl ImportDb, roots: Vec<PathBuf>, mode: Imp
                     continue;
                 }
             };
-            seen_hashes.insert(content_hash.clone());
             new_file.content_hash = Some(content_hash);
-            batch.push(PendingImport { path, folder_root: folder_root.clone(), new_file });
+            batch.push(PendingImport {
+                path,
+                folder_root: folder_root.clone(),
+                new_file,
+            });
+            db.report_in_flight(batch.len());
             if mode == ImportMode::Batched && batch.len() >= IMPORT_BATCH_SIZE {
                 store_batch(db, &mut batch, &mut result, mode)?;
             }
         }
     }
-    store_batch(db, &mut batch, &mut result, mode)?;
+    if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Acquire)) {
+        return Err(CmdError::expected("cancelled"));
+    }
+    if mode == ImportMode::Atomic {
+        let (local, _) = store_transaction_controlled(db, &mut batch, mode, cancel);
+        merge_import_result(&mut result, local?.0);
+    } else {
+        store_batch(db, &mut batch, &mut result, mode)?;
+    }
     Ok(result)
 }
 
@@ -1094,59 +1172,161 @@ impl ImportResultDto {
 }
 
 /// Stores the pending files in one transaction and empties `batch`.
-fn store_batch(db: &mut impl ImportDb, batch: &mut Vec<PendingImport>, result: &mut ImportResultDto, mode: ImportMode) -> CmdResult<()> {
+pub(super) fn store_batch(
+    db: &mut impl ImportDb,
+    batch: &mut Vec<PendingImport>,
+    result: &mut ImportResultDto,
+    mode: ImportMode,
+) -> CmdResult<()> {
+    store_batch_detailed(db, batch, result, mode, &mut Vec::new())
+}
+pub(super) fn store_batch_detailed(
+    db: &mut impl ImportDb,
+    batch: &mut Vec<PendingImport>,
+    result: &mut ImportResultDto,
+    mode: ImportMode,
+    duplicates: &mut Vec<super::import_jobs::DuplicateEntry>,
+) -> CmdResult<()> {
     if batch.is_empty() {
         return Ok(());
     }
-    let pending = std::mem::take(batch);
-    db.with_conn(|conn| {
-        let tx = conn.transaction().map_err(|e| e.to_string())?;
-        for PendingImport { path, folder_root, mut new_file } in pending {
-            // The lock was free since the checks above: another import may have
-            // stored the same file in the meantime.
-            if db::file_exists_by_path(&tx, &new_file.path).unwrap_or(false) {
-                continue;
-            }
-            if let Some(hash) = &new_file.content_hash {
-                if db::file_exists_by_hash(&tx, hash).unwrap_or(false) {
-                    result.duplicate_count += 1;
-                    continue;
-                }
-            }
-            new_file.folder_id = match folder_root.as_deref().zip(path.parent()) {
-                Some((root, dir)) => match db::ensure_folder_path(&tx, root, dir) {
-                    Ok(id) => Some(id),
-                    Err(e) if mode == ImportMode::Atomic => return Err(e.to_string().into()),
-                    Err(_) => None,
-                },
-                None => None,
-            };
-            match store_model_file(&tx, &new_file) {
-                Ok(dto) => {
-                    log::debug!(target: "import", "{}", path.display());
-                    result.imported.push(dto);
-                }
-                Err(e) if e.contains("UNIQUE constraint failed") => {
-                    // The path still belongs to a trash row (files.path is UNIQUE); for the
-                    // user this is a duplicate.
-                    result.duplicate_count += 1;
-                }
-                Err(e) => {
-                    log::error!(target: "import", "speichern fehlgeschlagen: {}: {e}", path.display());
-                    if mode == ImportMode::Atomic {
-                        return Err(e);
+    let (attempt, commit_failed) = store_transaction(db, batch, mode);
+    match attempt {
+        Ok((local, committed_duplicates)) => {
+            merge_import_result(result, local);
+            duplicates.extend(committed_duplicates);
+        }
+        Err(_) if commit_failed && mode == ImportMode::Batched => {
+            for pending in batch.iter_mut() {
+                let (single, single_commit_failed) =
+                    store_transaction(db, std::slice::from_mut(pending), mode);
+                match single {
+                    Ok((local, committed_duplicates)) => {
+                        merge_import_result(result, local);
+                        duplicates.extend(committed_duplicates);
                     }
-                    result.skip(path.to_string_lossy().to_string(), SkipReason::Failed);
+                    Err(error) if single_commit_failed && error.expected => result.skip(
+                        pending.path.to_string_lossy().into_owned(),
+                        SkipReason::Failed,
+                    ),
+                    Err(error) => return Err(error),
                 }
             }
         }
-        tx.commit().map_err(|e| e.to_string().into())
-    })
+        Err(error) => return Err(error),
+    }
+    batch.clear();
+    Ok(())
 }
+
+pub(super) fn empty_import_result() -> ImportResultDto {
+    ImportResultDto {
+        duplicate_entries: Vec::new(),
+        imported: Vec::new(),
+        duplicate_count: 0,
+        pending_archives: Vec::new(),
+        skipped: Vec::new(),
+    }
+}
+fn merge_import_result(result: &mut ImportResultDto, local: ImportResultDto) {
+    result.imported.extend(local.imported);
+    result.skipped.extend(local.skipped);
+    result.duplicate_count += local.duplicate_count;
+    result.duplicate_entries.extend(local.duplicate_entries);
+}
+fn database_error(error: impl std::fmt::Display) -> CmdError {
+    format!("database: {error}").into()
+}
+fn file_statement_error(error: &DbError) -> bool {
+    matches!(error, DbError::Invalid(_))
+        || matches!(error,
+        DbError::Sqlite(rusqlite::Error::SqliteFailure(code, _))
+        if code.code == rusqlite::ErrorCode::ConstraintViolation)
+}
+/// Only committed results escape this function. Keeping the inputs borrowed
+/// lets the caller recover a failed commit without re-reading the files.
+fn store_transaction(
+    db: &mut impl ImportDb,
+    pending: &mut [PendingImport],
+    mode: ImportMode,
+) -> (
+    CmdResult<(ImportResultDto, Vec<super::import_jobs::DuplicateEntry>)>,
+    bool,
+) {
+    store_transaction_controlled(db, pending, mode, None)
+}
+fn store_transaction_controlled(
+    db: &mut impl ImportDb,
+    pending: &mut [PendingImport],
+    mode: ImportMode,
+    cancel: Option<&std::sync::atomic::AtomicBool>,
+) -> (
+    CmdResult<(ImportResultDto, Vec<super::import_jobs::DuplicateEntry>)>,
+    bool,
+) {
+    let control = db.savepoint_control();
+    let mut commit_failed = false;
+    let result = db.with_conn(|conn| {
+        let mut local = empty_import_result();
+        let mut duplicates = Vec::new();
+        let tx = conn.transaction().map_err(database_error)?;
+        for item in pending {
+            if tx.query_row("SELECT EXISTS(SELECT 1 FROM files WHERE path = ?1)", [&item.new_file.path], |row| row.get::<_, bool>(0)).map_err(database_error)? {
+                local.duplicate_count += 1;
+                duplicates.push(super::import_jobs::DuplicateEntry { path: item.new_file.path.clone(), kind: "path".into(), existing_file_id: None });
+                continue;
+            }
+            if let Some(hash) = &item.new_file.content_hash {
+                if db::file_exists_by_hash(&tx, hash).map_err(database_error)? {
+                    local.duplicate_count += 1;
+                    duplicates.push(super::import_jobs::DuplicateEntry { path: item.new_file.path.clone(), kind: "hash".into(), existing_file_id: None });
+                    continue;
+                }
+            }
+            control(&tx, "SAVEPOINT import_file").map_err(database_error)?;
+            let stored: Result<ModelFileDto, DbError> = (|| {
+                item.new_file.folder_id = match item.folder_root.as_deref().zip(item.path.parent()) {
+                    Some((root, dir)) => Some(db::ensure_folder_path(&tx, root, dir)?),
+                    None => None,
+                };
+                let id = db::insert_file_within_tx(&tx, &item.new_file)?;
+                let file = db::get_file(&tx, id)?.ok_or_else(|| DbError::Other("imported file missing".into()))?;
+                let spools = db::list_filament_spools(&tx)?;
+                Ok(to_dto(file, &spools))
+            })();
+            match stored {
+                Ok(dto) => {
+                    control(&tx, "RELEASE import_file").map_err(database_error)?;
+                    local.imported.push(dto);
+                }
+                Err(error) => {
+                    control(&tx, "ROLLBACK TO import_file; RELEASE import_file").map_err(database_error)?;
+                    if mode == ImportMode::Atomic || !file_statement_error(&error) { return Err(database_error(error)); }
+                    local.skip(item.path.to_string_lossy().into_owned(), SkipReason::Failed);
+                }
+            }
+        }
+        if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Acquire)) { return Err(CmdError::expected("cancelled")); }
+        if let Err(error) = tx.commit() {
+            // rusqlite rolls back on Drop after a rejected COMMIT. Never retry
+            // unless the connection confirms that transaction has ended.
+            if !conn.is_autocommit() {
+                conn.execute_batch("ROLLBACK").map_err(database_error)?;
+            }
+            commit_failed = true;
+            let file_related = matches!(&error, rusqlite::Error::SqliteFailure(code, _) if code.code == rusqlite::ErrorCode::ConstraintViolation);
+            return Err(if file_related { CmdError::expected(format!("database: {error}")) } else { database_error(error) });
+        }
+        local.duplicate_entries = duplicates.clone();
+        Ok((local, duplicates))
+    });
+    (result, commit_failed)
+}
+
 /// One-line summary logged exactly once per user-triggered import, by the
 /// callers (`import_files`/`import_folder`/`import_dropped`) after they've
 /// attached the real pending-archive count to `result`.
-fn import_summary(result: &ImportResultDto, secs: f64) -> String {
+pub(super) fn import_summary(result: &ImportResultDto, secs: f64) -> String {
     format!(
         "{} importiert, {} Duplikate, {} übersprungen, {} Archive offen, {:.1} s",
         result.imported.len(),
@@ -1158,6 +1338,7 @@ fn import_summary(result: &ImportResultDto, secs: f64) -> String {
 }
 /// Separates archives (real files with an archive extension) from everything
 /// else. A DIRECTORY named `x.zip` stays in the normal import.
+#[cfg(test)]
 fn split_archives(paths: Vec<PathBuf>) -> (Vec<PathBuf>, Vec<String>) {
     let (archives, others): (Vec<PathBuf>, Vec<PathBuf>) = paths
         .into_iter()
@@ -1171,94 +1352,20 @@ fn split_archives(paths: Vec<PathBuf>) -> (Vec<PathBuf>, Vec<String>) {
     )
 }
 #[tauri::command]
-pub async fn import_files(
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-    pending: State<'_, PendingArchives>,
-) -> CmdResult<ImportResultDto> {
-    // One combined filter instead of two: under GTK the dialog only shows the
-    // first filter, archives would only be visible after switching.
-    let mut extensions = vec!["3mf", "stl", "stp", "step", "obj"];
-    extensions.extend_from_slice(crate::archive::DIALOG_EXTENSIONS);
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter("3D-Modelle & Archive", &extensions)
-        .blocking_pick_files();
-
-    let Some(picked) = picked else {
-        return Ok(ImportResultDto {
-            imported: Vec::new(),
-            duplicate_count: 0,
-            pending_archives: Vec::new(),
-            skipped: Vec::new(),
-        });
-    };
-    let paths = picked
-        .into_iter()
-        .filter_map(|p| p.into_path().ok())
-        .collect();
-    let (models, archives) = split_archives(paths);
-    let started = std::time::Instant::now();
-    let mut result = import_many(&state, models)?;
-    pending.register(&archives);
-    result.pending_archives = archives;
-    log::info!(target: "import", "{}", import_summary(&result, started.elapsed().as_secs_f64()));
-    Ok(result)
+pub async fn import_files(app: tauri::AppHandle, target_folder_id: Option<String>) -> CmdResult<ImportResultDto> {
+    super::import_jobs::legacy_models(app, ImportSource::Files, None, target_folder_id).await
 }
 #[tauri::command]
-pub async fn import_folder(
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-) -> CmdResult<ImportResultDto> {
-    let picked = app.dialog().file().blocking_pick_folder();
-
-    let Some(picked) = picked else {
-        return Ok(ImportResultDto {
-            imported: Vec::new(),
-            duplicate_count: 0,
-            pending_archives: Vec::new(),
-            skipped: Vec::new(),
-        });
-    };
-    let path = picked.into_path().map_err(|e| e.to_string())?;
-    let started = std::time::Instant::now();
-    let result = import_many(&state, vec![path])?;
-    log::info!(target: "import", "{}", import_summary(&result, started.elapsed().as_secs_f64()));
-    Ok(result)
+pub async fn import_folder(app: tauri::AppHandle) -> CmdResult<ImportResultDto> {
+    super::import_jobs::legacy_models(app, ImportSource::Folder, None, None).await
 }
-/// Shared drop processing, independent of Tauri so authorization and its
-/// database effects can be tested together.
+#[cfg(test)]
 fn import_dropped_paths(
-    paths: Vec<PathBuf>,
-    pending: &PendingArchives,
-    approved: &ApprovedTargets,
-    sensitive_dirs: &[PathBuf],
+    paths: Vec<PathBuf>, service: &ImportJobs, sensitive: &[PathBuf],
     import: impl FnOnce(Vec<PathBuf>) -> CmdResult<ImportResultDto>,
 ) -> CmdResult<ImportResultDto> {
-    let (models, archives) = split_archives(paths);
-    let mut skipped = Vec::new();
-    let models = models.into_iter().filter(|path| {
-        if !path.is_dir() {
-            return true;
-        }
-        // Consume the observation even when sensitive or already picker-approved.
-        let observed = pending.claim_dropped_directory(path);
-        let safe = reject_if_sensitive_path(path, sensitive_dirs).is_ok();
-        if safe && (observed || approved.contains(path)) {
-            return true;
-        }
-        log::warn!(target: "import", "directory import rejected (sensitive or not approved): {}", path.display());
-        skipped.push(SkippedFileDto {
-            path: path.to_string_lossy().to_string(),
-            reason: SkipReason::Failed,
-        });
-        false
-    }).collect();
-    let mut result = import(models)?;
-    result.skipped.extend(skipped);
-    result.pending_archives = pending.claim_dropped(archives);
-    Ok(result)
+    service.authorize_models(ImportSource::Dropped, &paths, true, sensitive)?;
+    import(paths)
 }
 
 /// Also used by the setup dialog to adopt an existing catalog folder, which can
@@ -1266,22 +1373,7 @@ fn import_dropped_paths(
 /// runs on the UI thread and would freeze the window for the whole import.
 #[tauri::command]
 pub async fn import_dropped(app: tauri::AppHandle, paths: Vec<String>) -> CmdResult<ImportResultDto> {
-    use tauri::Manager;
-    tauri::async_runtime::spawn_blocking(move || {
-        let started = std::time::Instant::now();
-        let state = app.state::<AppState>();
-        let result = import_dropped_paths(
-            paths.into_iter().map(PathBuf::from).collect(),
-            &app.state::<PendingArchives>(),
-            &app.state::<ApprovedTargets>(),
-            &state.sensitive_dirs,
-            |models| import_many(&state, models),
-        )?;
-        log::info!(target: "import", "{}", import_summary(&result, started.elapsed().as_secs_f64()));
-        Ok(result)
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    super::import_jobs::legacy_models(app, ImportSource::Dropped, Some(paths.into_iter().map(PathBuf::from).collect()), None).await
 }
 /// Opens a path in the system file manager.
 #[tauri::command]
@@ -1422,6 +1514,7 @@ mod tests {
     #[test]
     fn import_summary_reports_the_real_pending_archive_count() {
         let result = ImportResultDto {
+            duplicate_entries: Vec::new(),
             imported: Vec::new(),
             duplicate_count: 3,
             pending_archives: vec!["a.zip".to_string(), "b.zip".to_string()],
@@ -2643,88 +2736,59 @@ mod tests {
         let dir = unique_test_dir("drop_unapproved_directory");
         write_binary_stl(&dir.join("model.stl"), 1);
         let mut conn = db::connect_in_memory().unwrap();
-        let result = import_dropped_paths(
-            vec![dir.clone()], &PendingArchives::default(), &ApprovedTargets::default(), &[],
-            |paths| import_many_with_conn(&mut conn, paths),
-        ).unwrap();
-        assert!(result.imported.is_empty());
+        let error = import_dropped_paths(vec![dir.clone()], &ImportJobs::default(), &[],
+            |paths| import_many_with_conn(&mut conn, paths)).unwrap_err();
+        assert_eq!(error.message, "unauthorized");
         assert!(db::list_files(&conn).unwrap().is_empty());
         assert!(db::list_folders(&conn).unwrap().is_empty());
-        assert_eq!(result.skipped.len(), 1);
-        assert_eq!(result.skipped[0].path, dir.to_string_lossy());
-        assert_eq!(result.skipped[0].reason, SkipReason::Failed);
         std::fs::remove_dir_all(dir).unwrap();
     }
-
     #[test]
     fn dropped_directory_observation_is_consumed_by_import() {
         let dir = unique_test_dir("drop_observed_directory");
         write_binary_stl(&dir.join("model.stl"), 1);
-        let pending = PendingArchives::default();
-        pending.observe_drop(std::slice::from_ref(&dir));
-        let approved = ApprovedTargets::default();
+        let service = ImportJobs::default(); service.observe_drop(std::slice::from_ref(&dir));
         let mut conn = db::connect_in_memory().unwrap();
-        let first = import_dropped_paths(vec![dir.clone()], &pending, &approved, &[],
-            |paths| import_many_with_conn(&mut conn, paths)).unwrap();
+        let first = import_dropped_paths(vec![dir.clone()], &service, &[], |paths| import_many_with_conn(&mut conn, paths)).unwrap();
         assert_eq!(first.imported.len(), 1);
         assert_eq!(db::list_folders(&conn).unwrap().len(), 1);
-        // A fresh catalog proves the second call is rejected by authorization,
-        // not merely skipped because the model is already imported.
         let mut second_conn = db::connect_in_memory().unwrap();
-        let second = import_dropped_paths(vec![dir.clone()], &pending, &approved, &[],
-            |paths| import_many_with_conn(&mut second_conn, paths)).unwrap();
-        assert!(second.imported.is_empty());
-        assert_eq!(second.skipped.len(), 1);
-        assert_eq!(second.skipped[0].reason, SkipReason::Failed);
+        let error = import_dropped_paths(vec![dir.clone()], &service, &[], |paths| import_many_with_conn(&mut second_conn, paths)).unwrap_err();
+        assert_eq!(error.message, "unauthorized");
         assert!(db::list_folders(&second_conn).unwrap().is_empty());
         std::fs::remove_dir_all(dir).unwrap();
     }
-
     #[test]
     fn dropped_directory_from_picker_is_imported() {
         let dir = unique_test_dir("drop_picked_directory");
         write_binary_stl(&dir.join("model.stl"), 1);
-        let approved = ApprovedTargets::default();
-        approved.approve(&dir);
+        let service = ImportJobs::default(); service.observe_picker(&dir);
         let mut conn = db::connect_in_memory().unwrap();
-        let result = import_dropped_paths(vec![dir.clone()], &PendingArchives::default(), &approved, &[],
-            |paths| import_many_with_conn(&mut conn, paths)).unwrap();
-        assert_eq!(result.imported.len(), 1);
-        assert!(result.skipped.is_empty());
+        let result = import_dropped_paths(vec![dir.clone()], &service, &[], |paths| import_many_with_conn(&mut conn, paths)).unwrap();
+        assert_eq!(result.imported.len(), 1); assert!(result.skipped.is_empty());
         assert_eq!(db::list_folders(&conn).unwrap().len(), 1);
         std::fs::remove_dir_all(dir).unwrap();
     }
-
     #[test]
     fn dropped_directory_sensitive_path_is_rejected_even_when_observed_and_approved() {
         let dir = unique_test_dir("drop_sensitive_directory");
         write_binary_stl(&dir.join("model.stl"), 1);
-        let pending = PendingArchives::default();
-        pending.observe_drop(std::slice::from_ref(&dir));
-        let approved = ApprovedTargets::default();
-        approved.approve(&dir);
+        let service = ImportJobs::default(); service.observe_drop(std::slice::from_ref(&dir)); service.observe_picker(&dir);
         let mut conn = db::connect_in_memory().unwrap();
-        let result = import_dropped_paths(vec![dir.clone()], &pending, &approved, std::slice::from_ref(&dir),
-            |paths| import_many_with_conn(&mut conn, paths)).unwrap();
-        assert!(result.imported.is_empty());
-        assert_eq!(result.skipped.len(), 1);
-        assert_eq!(result.skipped[0].reason, SkipReason::Failed);
-        assert!(db::list_files(&conn).unwrap().is_empty());
-        assert!(db::list_folders(&conn).unwrap().is_empty());
+        let error = import_dropped_paths(vec![dir.clone()], &service, std::slice::from_ref(&dir), |paths| import_many_with_conn(&mut conn, paths)).unwrap_err();
+        assert_eq!(error.message, "unauthorized");
+        assert!(db::list_files(&conn).unwrap().is_empty()); assert!(db::list_folders(&conn).unwrap().is_empty());
         std::fs::remove_dir_all(dir).unwrap();
     }
-
     #[test]
-    fn dropped_individual_model_does_not_require_directory_authorization() {
-        let dir = unique_test_dir("drop_individual_model");
-        let model = dir.join("model.stl");
-        write_binary_stl(&model, 1);
-        let mut conn = db::connect_in_memory().unwrap();
-        let result = import_dropped_paths(vec![model], &PendingArchives::default(), &ApprovedTargets::default(), &[],
-            |paths| import_many_with_conn(&mut conn, paths)).unwrap();
-        assert_eq!(result.imported.len(), 1);
-        assert!(result.skipped.is_empty());
-        assert!(db::list_folders(&conn).unwrap().is_empty());
+    fn dropped_individual_model_requires_backend_observation() {
+        let dir = unique_test_dir("drop_individual_model"); let model = dir.join("model.stl"); write_binary_stl(&model, 1);
+        let mut conn = db::connect_in_memory().unwrap(); let service = ImportJobs::default();
+        let error = import_dropped_paths(vec![model.clone()], &service, &[], |paths| import_many_with_conn(&mut conn, paths)).unwrap_err();
+        assert_eq!(error.message, "unauthorized"); assert!(db::list_files(&conn).unwrap().is_empty());
+        service.observe_drop(std::slice::from_ref(&model));
+        let result = import_dropped_paths(vec![model], &service, &[], |paths| import_many_with_conn(&mut conn, paths)).unwrap();
+        assert_eq!(result.imported.len(), 1); assert!(result.skipped.is_empty()); assert!(db::list_folders(&conn).unwrap().is_empty());
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -2904,3 +2968,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }
+
+#[cfg(test)]
+#[path = "import_batch_tests.rs"]
+mod import_batch_tests;

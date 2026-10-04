@@ -6,6 +6,7 @@ export interface PluralForms {
 }
 
 export interface Translations {
+  importActiveError: string;
   archiveInnerFolderSkipped: string;
   tagSuggestionsAria: string;
   dropHereLabel: string;

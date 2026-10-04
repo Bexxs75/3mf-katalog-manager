@@ -1,6 +1,7 @@
 import type { Translations } from './types';
 
 export const fr: Translations = {
+  importActiveError: 'Importation en cours : veuillez patienter ou l’annuler.',
   archiveInnerFolderSkipped: 'Le dossier intérieur « {name} » a été ignoré',
   tagSuggestionsAria: 'Suggestions de tags',
   dropHereLabel: "déposer ici",

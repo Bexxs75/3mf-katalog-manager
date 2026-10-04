@@ -9,6 +9,7 @@ use super::{
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ExtractStats {
+    pub skipped_entries: Vec<(String, String)>,
     pub written_files: u32,
     /// When merging: the file already existed and was NOT touched.
     pub existing_skipped: u32,
@@ -29,11 +30,7 @@ pub struct Extraction {
 }
 
 impl Extraction {
-    /// Folders this run created (not the ones that existed before, e.g. when merging).
-    pub fn created_dirs(&self) -> Vec<PathBuf> {
-        self.created.iter().filter(|p| p.is_dir()).cloned().collect()
-    }
-
+    pub fn created_paths(&self) -> &[PathBuf] { &self.created }
     /// Removes everything this run created - in reverse order, so folders are removed
     /// after their content. Files/folders that existed before are never touched.
     pub fn rollback(self) {
@@ -43,14 +40,15 @@ impl Extraction {
 
 fn remove_created(created: &[PathBuf]) {
     for path in created.iter().rev() {
-        match fs::symlink_metadata(path) {
-            Ok(meta) if meta.is_dir() => {
-                let _ = fs::remove_dir(path);
+        let result = match fs::symlink_metadata(path) {
+            Ok(meta) if meta.is_dir() => fs::remove_dir(path),
+            Ok(_) => fs::remove_file(path),
+            Err(error) => Err(error),
+        };
+        if let Err(error) = result {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                log::warn!(target: "archive", "Rollback konnte {} nicht entfernen: {error}", path.display());
             }
-            Ok(_) => {
-                let _ = fs::remove_file(path);
-            }
-            Err(_) => {}
         }
     }
 }
@@ -182,14 +180,17 @@ impl<'g> Extractor<'g> {
         // absolute path or traversal into an acceptable destination.
         let Some(original) = safe_relative_path(&meta.name) else {
             self.stats.unsafe_skipped += 1;
+            self.stats.skipped_entries.push((meta.name.clone(), "unsafe".into()));
             return Ok(None);
         };
         if meta.kind == EntryKind::Other {
             self.stats.unsafe_skipped += 1;
+            self.stats.skipped_entries.push((meta.name.clone(), "unsafe".into()));
             return Ok(None);
         }
         if is_blocked_path(&original) {
             self.stats.blocked_skipped += 1;
+            self.stats.skipped_entries.push((meta.name.clone(), "blocked".into()));
             return Ok(None);
         }
         if meta.kind == EntryKind::Directory
@@ -199,15 +200,18 @@ impl<'g> Extractor<'g> {
         }
         let Some(rel) = safe_relative_path(name) else {
             self.stats.unsafe_skipped += 1;
+            self.stats.skipped_entries.push((meta.name.clone(), "unsafe".into()));
             return Ok(None);
         };
         if is_blocked_path(&rel) {
             self.stats.blocked_skipped += 1;
+            self.stats.skipped_entries.push((meta.name.clone(), "blocked".into()));
             return Ok(None);
         }
         if meta.kind == EntryKind::Directory {
             if !self.ensure_dir(&rel)? {
                 self.stats.unsafe_skipped += 1;
+            self.stats.skipped_entries.push((meta.name.clone(), "unsafe".into()));
             }
             return Ok(None);
         }
@@ -217,16 +221,19 @@ impl<'g> Extractor<'g> {
         if let Some(parent) = rel.parent() {
             if !self.ensure_dir(parent)? {
                 self.stats.unsafe_skipped += 1;
+            self.stats.skipped_entries.push((meta.name.clone(), "unsafe".into()));
                 return Ok(None);
             }
         }
         let target = self.root.join(&rel);
         if fs::symlink_metadata(&target).is_ok() {
             self.stats.existing_skipped += 1;
+            self.stats.skipped_entries.push((meta.name.clone(), "existing".into()));
             return Ok(None);
         }
         if !(self.guard)(&target) {
             self.stats.unsafe_skipped += 1;
+            self.stats.skipped_entries.push((meta.name.clone(), "unsafe".into()));
             return Ok(None);
         }
         Ok(Some(target))
@@ -269,7 +276,8 @@ impl<'g> Extractor<'g> {
 
     /// Counts an entry a format adapter may not write after `prepare` after all
     /// (e.g. a RAR reference entry without data).
-    pub(super) fn skip_unsafe(&mut self) {
+    pub(super) fn skip_unsafe(&mut self, name: &str) {
+        self.stats.skipped_entries.push((name.into(), "unsafe".into()));
         self.stats.unsafe_skipped += 1;
     }
 

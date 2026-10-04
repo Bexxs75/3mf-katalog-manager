@@ -60,7 +60,7 @@ describe('useFileImport', () => {
     expect(result.current.importBanner).toEqual({ imported: 0, duplicates: 0, skipped });
   });
 
-  it('importFiles auto-files into the base-dir folder when catalogBaseDir is set and no folder is active', async () => {
+  it('importFiles lets the backend place files into the catalog root and refreshes the catalog', async () => {
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === 'import_files') return Promise.resolve({ imported: [{ id: 'm1' }], duplicateCount: 0 });
       if (cmd === 'list_folders') return Promise.resolve([{ id: 'f1', path: '/base', parentId: null }]);
@@ -68,7 +68,8 @@ describe('useFileImport', () => {
     });
     const { result, refreshFolders, refreshFiles } = setup({ catalogBaseDir: '/base' });
     await act(async () => result.current.importFiles());
-    expect(invoke).toHaveBeenCalledWith('move_file_to_folder', { fileId: 'm1', folderId: 'f1' });
+    expect(invoke).toHaveBeenCalledWith('import_files');
+    expect(invoke).not.toHaveBeenCalledWith('move_file_to_folder', expect.anything());
     expect(refreshFolders).toHaveBeenCalled();
     expect(refreshFiles).toHaveBeenCalled();
   });
@@ -187,4 +188,39 @@ describe('useFileImport', () => {
     act(() => dnd.handler?.({ payload: { type: 'drop', paths: ['/home/u/spule.png'], position: { x: 1, y: 1 } } }));
     expect(invoke).not.toHaveBeenCalledWith('import_dropped', expect.anything());
   });
+});
+
+it('captures the target before an in-flight import even if the active folder changes', async () => {
+  let resolve!: (value: unknown) => void;
+  vi.mocked(invoke).mockImplementation(cmd => cmd === 'import_files' ? new Promise(r => { resolve = r; }) : Promise.resolve(undefined));
+  const onImported = vi.fn(); const refreshFolders = vi.fn(); const refreshFiles = vi.fn();
+  const { result, rerender } = renderHook(({ folder }) => useFileImport({ enabled: true, catalogBaseDir: '/base', activeFolderId: folder, onImported, refreshFolders, refreshFiles }), { initialProps: { folder: 'first' } });
+  let pending!: Promise<void>;
+  act(() => { pending = result.current.importFiles(); });
+  rerender({ folder: 'second' });
+  await act(async () => { resolve({ imported: [], duplicateCount: 0 }); await pending; });
+  expect(invoke).toHaveBeenCalledWith('import_files', { targetFolderId: 'first' });
+  expect(invoke).not.toHaveBeenCalledWith('move_file_to_folder', expect.anything());
+  expect(refreshFiles).toHaveBeenCalled();
+});
+
+it('reloads the catalog even when the wrapper reports a terminal database failure', async () => {
+  vi.mocked(invoke).mockRejectedValue({ message: 'database unavailable', expected: false });
+  const { result, refreshFiles, refreshFolders } = setup();
+  await act(async () => { await expect(result.current.importFiles()).rejects.toEqual({ message: 'database unavailable', expected: false }); });
+  expect(refreshFiles).toHaveBeenCalledTimes(1);
+  expect(refreshFolders).toHaveBeenCalledTimes(1);
+});
+
+it('discards archive grants when the archive dialog is cancelled', async () => {
+  vi.mocked(invoke).mockImplementation(cmd => {
+    if (cmd === 'import_files') return Promise.resolve({ imported: [], duplicateCount: 0, pendingArchives: ['/a.zip'] });
+    if (cmd === 'inspect_archives') return Promise.resolve([{ path: '/a.zip', status: 'ok' }]);
+    return Promise.resolve(undefined);
+  });
+  const { result } = setup();
+  await act(async () => { await result.current.importFiles(); });
+  act(() => result.current.cancelArchives());
+  expect(result.current.pendingArchives).toBeNull();
+  expect(invoke).toHaveBeenCalledWith('discard_archive_imports', { paths: ['/a.zip'] });
 });

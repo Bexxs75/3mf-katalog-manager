@@ -1,6 +1,7 @@
 import type { Translations } from './types';
 
 export const en: Translations = {
+  importActiveError: 'Import in progress – please wait or cancel it.',
   archiveInnerFolderSkipped: 'Inner folder “{name}” was skipped',
   tagSuggestionsAria: 'Tag suggestions',
   dropHereLabel: "drop here",

@@ -160,6 +160,7 @@ fn rename_folder_with_conn(
 /// descendants.
 #[tauri::command]
 pub fn rename_folder(state: State<AppState>, folder_id: String, name: String) -> CmdResult<()> {
+    let _catalog_share = state.import_jobs.gate.exclusive()?;
     let id: i64 = folder_id.parse().map_err(|_| "invalid folder id".to_string())?;
     let conn = lock_db(&state)?;
     rename_folder_with_conn(&conn, id, name, &state.sensitive_dirs)
@@ -240,6 +241,7 @@ fn move_folder_with_conn(
 /// and all paths below. Rejects cycles and `new_parent_id: None`.
 #[tauri::command]
 pub fn move_folder(state: State<AppState>, folder_id: String, new_parent_id: Option<String>) -> CmdResult<()> {
+    let _catalog_share = state.import_jobs.gate.exclusive()?;
     let id: i64 = folder_id.parse().map_err(|_| "invalid folder id".to_string())?;
     let target: Option<i64> = new_parent_id
         .map(|s| s.parse::<i64>().map_err(|_| "invalid folder id".to_string()))
@@ -259,6 +261,8 @@ pub async fn pick_folder_path(
     let path = picked.and_then(|p| p.into_path().ok());
     if let Some(path) = &path {
         approved.approve(path);
+        use tauri::Manager;
+        app.state::<AppState>().import_jobs.observe_picker(path);
     }
     Ok(path.map(|p| p.to_string_lossy().to_string()))
 }

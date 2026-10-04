@@ -4,10 +4,11 @@
 //! happen. The folder import deliberately extracts nothing.
 
 use super::*;
-use super::files::{import_many_with_conn_atomic, is_supported_extension, SkippedFileDto};
+use super::files::{is_supported_extension, SkippedFileDto};
+#[cfg(test)]
+use super::files::import_many_with_conn_atomic;
 
 use serde::Deserialize;
-use tauri::Emitter;
 
 use crate::archive::{self, InspectStatus, MAX_UNPACKED_BYTES};
 
@@ -55,7 +56,7 @@ pub enum ConflictMode {
     Merge,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArchiveRequest {
     pub path: String,
@@ -65,9 +66,18 @@ pub struct ArchiveRequest {
     pub expected_modified_unix_ms: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct ArchiveModels {
+    pub imported: Vec<ModelFileDto>,
+    pub duplicates: Vec<serde_json::Value>,
+    pub skipped: Vec<serde_json::Value>,
+}
+
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ArchiveOutcomeDto {
+    #[serde(skip)]
+    pub models: ArchiveModels,
     pub path: String,
     pub extracted_to: Option<String>,
     pub stripped_root: Option<String>,
@@ -87,112 +97,6 @@ pub struct ArchiveImportResultDto {
     pub archives: Vec<ArchiveOutcomeDto>,
     /// Extracted files that could not be imported.
     pub skipped: Vec<SkippedFileDto>,
-}
-
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct ArchiveProgressDto {
-    path: String,
-    state: &'static str,
-}
-
-/// Server-side allow list: only archives the user actually brought in via the
-/// file dialog or drag & drop may be extracted (and possibly deleted) - each at
-/// most once. Without this list a compromised frontend could have arbitrary files
-/// with an archive extension extracted and deleted.
-///
-/// `observed_drops` holds archives the BACKEND itself saw as drag & drop (window
-/// event, see `lib.rs`). `import_dropped` may only approve those - the
-/// frontend's path list alone isn't enough.
-#[derive(Default)]
-pub struct PendingArchives {
-    pending: std::sync::Mutex<HashSet<PathBuf>>,
-    observed_drops: std::sync::Mutex<HashSet<PathBuf>>,
-    // Directory roots authorize folder-row creation during import, separately
-    // from the archives that may be extracted.
-    observed_directory_drops: std::sync::Mutex<HashSet<PathBuf>>,
-}
-
-/// Same rule as `split_archives`: a real file with an archive extension.
-fn is_archive_file(path: &Path) -> bool {
-    path.is_file() && archive::is_archive_path(path)
-}
-
-impl PendingArchives {
-    pub(crate) fn register(&self, paths: &[String]) {
-        if let Ok(mut set) = self.pending.lock() {
-            set.extend(paths.iter().map(PathBuf::from));
-        }
-    }
-
-    /// Called from the `DragDrop::Drop` window event.
-    pub(crate) fn observe_drop(&self, paths: &[PathBuf]) {
-        if let Ok(mut set) = self.observed_drops.lock() {
-            set.extend(paths.iter().filter(|p| is_archive_file(p)).cloned());
-        }
-        if let Ok(mut set) = self.observed_directory_drops.lock() {
-            set.extend(paths.iter().filter(|p| p.is_dir()).cloned());
-        }
-    }
-
-    /// Consumes one backend-observed directory drop; frontend paths alone do
-    /// not authorize creating catalog folder rows.
-    pub(crate) fn claim_dropped_directory(&self, path: &Path) -> bool {
-        self.observed_directory_drops.lock()
-            .map(|mut observed| observed.remove(path))
-            .unwrap_or(false)
-    }
-
-    /// Moves only the drops observed by the backend from `archives` into the allow
-    /// list (consuming the observation); all others are discarded. Returns the
-    /// approved paths.
-    pub(crate) fn claim_dropped(&self, archives: Vec<String>) -> Vec<String> {
-        let claimed: Vec<String> = match self.observed_drops.lock() {
-            Ok(mut observed) => archives
-                .into_iter()
-                .filter(|p| observed.remove(Path::new(p)))
-                .collect(),
-            Err(_) => Vec::new(),
-        };
-        self.register(&claimed);
-        claimed
-    }
-
-    pub(crate) fn take_authorized(
-        &self,
-        requests: Vec<ArchiveRequest>,
-    ) -> (Vec<ArchiveRequest>, Vec<ArchiveOutcomeDto>) {
-        let mut allowed = Vec::new();
-        let mut rejected = Vec::new();
-        let mut set = match self.pending.lock() {
-            Ok(set) => set,
-            Err(_) => {
-                return (
-                    Vec::new(),
-                    requests
-                        .into_iter()
-                        .map(|r| ArchiveOutcomeDto {
-                            path: r.path,
-                            error: Some("interner Fehler (Sperre)".to_string()),
-                            ..Default::default()
-                        })
-                        .collect(),
-                )
-            }
-        };
-        for request in requests {
-            if set.remove(Path::new(&request.path)) {
-                allowed.push(request);
-            } else {
-                rejected.push(ArchiveOutcomeDto {
-                    path: request.path,
-                    error: Some("Archiv wurde nicht ueber den Import freigegeben".to_string()),
-                    ..Default::default()
-                });
-            }
-        }
-        (allowed, rejected)
-    }
 }
 
 /// Folders the user picked in the native folder dialog (`pick_folder_path`) or
@@ -248,7 +152,7 @@ fn reject_if_ancestor_of_sensitive(path: &Path, expanded_sensitive: &[PathBuf]) 
 }
 
 /// All target folder checks that consume or write NOTHING.
-fn check_target_location(target_dir: &Path, expanded_sensitive: &[PathBuf]) -> CmdResult<()> {
+pub(super) fn check_target_location(target_dir: &Path, expanded_sensitive: &[PathBuf]) -> CmdResult<()> {
     if !target_dir.is_dir() {
         return Err(CmdError::expected(format!("Zielordner existiert nicht: {}", target_dir.display())));
     }
@@ -306,9 +210,11 @@ pub(crate) fn unique_destination(target_dir: &Path, folder_name: &str) -> PathBu
 /// import plus attaching it below the target catalog folder. `created_dirs` are
 /// the folders the extraction made; if nothing new reached the catalog, the
 /// caller removes them from disk, so their catalog rows go as well.
+#[cfg(test)]
 pub(crate) fn import_extracted_dir(conn: &mut Connection, dir: &Path, created_dirs: &[PathBuf]) -> CmdResult<ImportResultDto> {
     let known_max_id = db::max_folder_id(conn).map_err(|e| e.to_string())?;
-    let result = import_many_with_conn_atomic(conn, vec![dir.to_path_buf()])?;
+    let result = if created_dirs.is_empty() { import_many_with_conn_atomic(conn, vec![dir.to_path_buf()])? }
+        else { super::files::import_many_selected(&mut &mut *conn, vec![dir.to_path_buf()], super::files::ImportMode::Atomic, None, Some(created_dirs))? };
     if result.imported.is_empty() {
         db::remove_new_folder_rows(conn, created_dirs, known_max_id).map_err(|e| e.to_string())?;
         return Ok(result);
@@ -322,6 +228,7 @@ pub(crate) fn import_extracted_dir(conn: &mut Connection, dir: &Path, created_di
 
 /// Fixed parameters of one `extract_archives` run.
 struct ExtractContext<'a> {
+    cancel: Option<&'a std::sync::atomic::AtomicBool>,
     expanded_sensitive: &'a [PathBuf],
     target_dir: &'a Path,
     delete_archive: bool,
@@ -367,20 +274,24 @@ fn extract_one(
     // Every single new path is checked against the protection list, not just
     // `dest`: second line of defense in case a protected folder below `dest` only
     // appears after the check above.
-    let guard = |p: &Path| reject_if_sensitive_path_expanded(p, ctx.expanded_sensitive).is_ok();
+    let guard = |p: &Path| !ctx.cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Acquire)) && reject_if_sensitive_path_expanded(p, ctx.expanded_sensitive).is_ok();
     let extraction = match archive::extract_archive(archive_path, format, &dest, merge, MAX_UNPACKED_BYTES, &guard) {
         Ok(extraction) => extraction,
         Err(e) => {
-            outcome.error = Some(e.to_string());
+            outcome.error = Some(if ctx.cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Acquire)) { "cancelled".into() } else { e.to_string() });
             return outcome;
         }
     };
-    outcome.existing_skipped = extraction.stats.existing_skipped;
-    outcome.unsafe_skipped = extraction.stats.unsafe_skipped;
-    outcome.blocked_skipped = extraction.stats.blocked_skipped;
+    outcome.existing_skipped = extraction.stats.skipped_entries.iter().filter(|(_, reason)| reason == "existing").count() as u32;
+    outcome.unsafe_skipped = extraction.stats.skipped_entries.iter().filter(|(_, reason)| reason == "unsafe").count() as u32;
+    outcome.blocked_skipped = extraction.stats.skipped_entries.iter().filter(|(_, reason)| reason == "blocked").count() as u32;
 
+    outcome.models.skipped = extraction.stats.skipped_entries.iter().map(|(path, reason)| serde_json::json!({"entryPath":path,"reason":reason})).collect();
+    if ctx.cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Acquire)) {
+        extraction.rollback(); outcome.error = Some("cancelled".into()); return outcome;
+    }
     on_progress(&request.path, "importing");
-    let imported = match import_dir(&dest, &extraction.created_dirs()) {
+    let imported = match import_dir(&dest, extraction.created_paths()) {
         Ok(imported) => imported,
         Err(e) => {
             extraction.rollback();
@@ -388,8 +299,15 @@ fn extract_one(
             return outcome;
         }
     };
+    let entry_path = |path: &str| {
+        let rel = Path::new(path).strip_prefix(&dest).unwrap_or(Path::new(path)).to_string_lossy().replace('\\', "/");
+        match &extraction.stripped_root { Some(root) => format!("{root}/{rel}"), None => rel }
+    };
+    outcome.models.imported = imported.imported.clone();
+    outcome.models.skipped.extend(imported.skipped.iter().map(|file| serde_json::json!({"entryPath":entry_path(&file.path),"reason":file.reason})));
+    outcome.models.duplicates = imported.duplicate_entries.iter().map(|entry| serde_json::json!({"entryPath":entry_path(&entry.path), "kind":entry.kind})).collect();
     let nothing_new = imported.imported.is_empty();
-    result.duplicate_count += imported.duplicate_count;
+    result.duplicate_count += outcome.models.duplicates.len() as i64;
     result.imported.extend(imported.imported);
     result.skipped.extend(imported.skipped);
     if nothing_new {
@@ -434,6 +352,7 @@ fn extract_one(
 /// Core of `extract_archives`, without Tauri state, so it's directly testable.
 /// `import_dir` imports an extracted folder (in the command: with the DB lock
 /// ONLY for that step, so extracting large archives doesn't block the app).
+#[cfg(test)]
 pub(crate) fn extract_archives_core(
     sensitive_dirs: &[PathBuf],
     target_dir: &Path,
@@ -442,10 +361,18 @@ pub(crate) fn extract_archives_core(
     mut import_dir: impl FnMut(&Path, &[PathBuf]) -> CmdResult<ImportResultDto>,
     mut on_progress: impl FnMut(&str, &'static str),
 ) -> CmdResult<ArchiveImportResultDto> {
+    extract_archives_controlled(sensitive_dirs, target_dir, requests, delete_archives, &mut import_dir, &mut on_progress, None)
+}
+pub(super) fn extract_archives_controlled(
+    sensitive_dirs: &[PathBuf], target_dir: &Path, requests: Vec<ArchiveRequest>, delete_archives: bool,
+    mut import_dir: impl FnMut(&Path, &[PathBuf]) -> CmdResult<ImportResultDto>,
+    mut on_progress: impl FnMut(&str, &'static str), cancel: Option<&std::sync::atomic::AtomicBool>,
+) -> CmdResult<ArchiveImportResultDto> {
     // Compute once - the guard runs for every entry.
     let expanded_sensitive = expand_sensitive_dirs(sensitive_dirs);
     check_target_location(target_dir, &expanded_sensitive)?;
     let ctx = ExtractContext {
+        cancel,
         expanded_sensitive: &expanded_sensitive,
         target_dir,
         delete_archive: delete_archives,
@@ -458,32 +385,14 @@ pub(crate) fn extract_archives_core(
         skipped: Vec::new(),
     };
     for request in &requests {
+        if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Acquire)) {
+            result.archives.push(ArchiveOutcomeDto { path: request.path.clone(), error: Some("notStarted".into()), ..Default::default() });
+            continue;
+        }
         let outcome = extract_one(&ctx, request, &mut result, &mut import_dir, &mut on_progress);
         on_progress(&request.path, if outcome.error.is_some() { "failed" } else { "done" });
         result.archives.push(outcome);
     }
-    Ok(result)
-}
-
-/// Flow of `extract_archives`: FIRST all target folder checks, only then are the
-/// archives consumed from the allow list. So after a rejected target the user
-/// can start again with a different folder. `extract` does the actual
-/// extraction of the approved requests (in the command: `extract_archives_core`).
-pub(crate) fn authorize_and_extract(
-    pending: &PendingArchives,
-    sensitive_dirs: &[PathBuf],
-    target_dir: &Path,
-    target_approved: bool,
-    requests: Vec<ArchiveRequest>,
-    extract: impl FnOnce(Vec<ArchiveRequest>) -> CmdResult<ArchiveImportResultDto>,
-) -> CmdResult<ArchiveImportResultDto> {
-    check_target_location(target_dir, &expand_sensitive_dirs(sensitive_dirs))?;
-    if !target_approved {
-        return Err("Zielordner wurde nicht ueber die App ausgewaehlt".into());
-    }
-    let (allowed, rejected) = pending.take_authorized(requests);
-    let mut result = extract(allowed)?;
-    result.archives.extend(rejected);
     Ok(result)
 }
 
@@ -504,39 +413,11 @@ pub fn archive_target_conflicts(target_dir: String, folder_names: Vec<String>) -
 #[tauri::command]
 pub async fn extract_archives(
     app: tauri::AppHandle,
-    state: State<'_, AppState>,
-    pending: State<'_, PendingArchives>,
-    approved: State<'_, ApprovedTargets>,
     target_dir: String,
     requests: Vec<ArchiveRequest>,
     delete_archives: bool,
 ) -> CmdResult<ArchiveImportResultDto> {
-    let target = Path::new(&target_dir);
-    let target_approved = {
-        let conn = lock_db(&state)?;
-        target_is_approved(&conn, &approved, target)
-    };
-    authorize_and_extract(&pending, &state.sensitive_dirs, target, target_approved, requests, |allowed| {
-        extract_archives_core(
-            &state.sensitive_dirs,
-            target,
-            allowed,
-            delete_archives,
-            |dir, created| {
-                let mut conn = lock_db(&state)?;
-                import_extracted_dir(&mut conn, dir, created)
-            },
-            |path, stage| {
-                let _ = app.emit(
-                    "archive-progress",
-                    ArchiveProgressDto {
-                        path: path.to_string(),
-                        state: stage,
-                    },
-                );
-            },
-        )
-    })
+    super::import_jobs::legacy_archives(app, target_dir, requests, delete_archives).await
 }
 
 #[cfg(test)]
@@ -899,27 +780,13 @@ mod tests {
 
     #[test]
     fn only_registered_archives_are_authorized_and_only_once() {
-        let pending = PendingArchives::default();
-        pending.register(&["/dl/a.zip".to_string()]);
-        let request = |path: &str| ArchiveRequest {
-            path: path.to_string(),
-            folder_name: "x".to_string(),
-            on_conflict: ConflictMode::New,
-            expected_size: 0,
-            expected_modified_unix_ms: 0,
-        };
+        let dir = unique_test_dir("archives_single_use");
+        let archive = dir.join("a.zip"); make_zip(&archive, &[("a.stl", STL)]);
+        let service = ImportJobs::default(); let parent = service.test_handoff(vec![archive.clone()]);
+        assert!(service.authorize_archives(&[], &dir, true, &[plain_request(&archive), ArchiveRequest { path: "/foreign.zip".into(), ..plain_request(&archive) }], Some(&parent)).is_err());
+        assert_eq!(service.authorize_archives(&[], &dir, true, &[plain_request(&archive)], Some(&parent)).unwrap(), Some(parent.clone()));
+        assert!(service.authorize_archives(&[], &dir, true, &[plain_request(&archive)], Some(&parent)).is_err());
 
-        let (allowed, rejected) =
-            pending.take_authorized(vec![request("/dl/a.zip"), request("/home/u/wichtig.zip")]);
-        assert_eq!(allowed.len(), 1);
-        assert_eq!(allowed[0].path, "/dl/a.zip");
-        assert_eq!(rejected.len(), 1);
-        assert_eq!(rejected[0].path, "/home/u/wichtig.zip");
-        assert!(rejected[0].error.is_some());
-
-        let (allowed_again, rejected_again) = pending.take_authorized(vec![request("/dl/a.zip")]);
-        assert!(allowed_again.is_empty());
-        assert_eq!(rejected_again.len(), 1);
     }
 
     fn run_core(conn: &mut Connection, target: &Path, requests: Vec<ArchiveRequest>) -> CmdResult<ArchiveImportResultDto> {
@@ -941,22 +808,15 @@ mod tests {
         make_zip(&foreign, &[("a.stl", STL)]);
         std::fs::write(&model, STL).unwrap();
 
-        let pending = PendingArchives::default();
-        pending.observe_drop(&[dropped.clone(), model.clone(), dir.join("fehlt.zip")]);
+        let service = ImportJobs::default();
+        service.observe_drop(&[dropped.clone(), model.clone(), dir.join("fehlt.zip")]);
+        assert!(service.authorize_models(ImportSource::Dropped, &[dropped.clone(), foreign.clone()], false, &[]).is_err(), "foreign input rejects the entire job");
+        assert_eq!(service.authorize_models(ImportSource::Dropped, &[dropped.clone(), model], false, &[]).unwrap(), ImportSource::Dropped);
+        let parent = service.test_handoff(vec![dropped.clone()]);
+        assert!(service.authorize_archives(&[], &dir, true, &[plain_request(&foreign)], Some(&parent)).is_err());
+        assert_eq!(service.authorize_archives(&[], &dir, true, &[plain_request(&dropped)], Some(&parent)).unwrap(), Some(parent));
+        assert!(service.authorize_models(ImportSource::Dropped, &[dropped], false, &[]).is_err());
 
-        let s = |p: &Path| p.to_string_lossy().to_string();
-        let claimed = pending.claim_dropped(vec![s(&dropped), s(&foreign)]);
-        assert_eq!(claimed, vec![s(&dropped)], "nur beobachtete Archive werden uebernommen");
-
-        let (allowed, rejected) =
-            pending.take_authorized(vec![plain_request(&dropped), plain_request(&foreign)]);
-        assert_eq!(allowed.len(), 1);
-        assert_eq!(allowed[0].path, s(&dropped));
-        assert_eq!(rejected.len(), 1);
-        assert_eq!(rejected[0].path, s(&foreign));
-
-        // An observation only counts for ONE import_dropped call.
-        assert!(pending.claim_dropped(vec![s(&dropped)]).is_empty());
     }
 
     #[test]
@@ -985,41 +845,17 @@ mod tests {
         std::fs::create_dir_all(&target).unwrap();
         let archive = dir.join("Drache.zip");
         make_zip(&archive, &[("koerper.stl", STL)]);
-        let pending = PendingArchives::default();
-        pending.register(&[archive.to_string_lossy().to_string()]);
+        let service = ImportJobs::default();
+        let parent = service.test_handoff(vec![archive.clone()]);
 
         let mut conn = crate::db::connect_in_memory().unwrap();
-        let first = authorize_and_extract(
-            &pending,
-            &[],
-            &target,
-            false,
-            vec![plain_request(&archive)],
-            |allowed| run_core(&mut conn, &target, allowed),
-        );
+        let first = service.authorize_archives(&[], &target, false, &[plain_request(&archive)], Some(&parent));
         assert!(first.unwrap_err().contains("nicht ueber die App ausgewaehlt"));
         assert!(!target.join("Drache").exists());
-
-        // Missing target folder: nothing consumed either.
-        let missing = authorize_and_extract(
-            &pending,
-            &[],
-            &dir.join("gibt-es-nicht"),
-            true,
-            vec![plain_request(&archive)],
-            |allowed| run_core(&mut conn, &target, allowed),
-        );
+        let missing = service.authorize_archives(&[], &dir.join("gibt-es-nicht"), true, &[plain_request(&archive)], Some(&parent));
         assert!(missing.is_err());
-
-        let retry = authorize_and_extract(
-            &pending,
-            &[],
-            &target,
-            true,
-            vec![plain_request(&archive)],
-            |allowed| run_core(&mut conn, &target, allowed),
-        )
-        .expect("zweiter Versuch mit gueltigem Ziel");
+        assert_eq!(service.authorize_archives(&[], &target, true, &[plain_request(&archive)], Some(&parent)).unwrap(), Some(parent));
+        let retry = run_core(&mut conn, &target, vec![plain_request(&archive)]).expect("zweiter Versuch mit gueltigem Ziel");
         assert_eq!(retry.archives.len(), 1);
         assert_eq!(retry.archives[0].error, None, "{:?}", retry.archives[0].error);
         assert!(target.join("Drache/koerper.stl").exists());
@@ -1117,3 +953,7 @@ mod tests {
         assert!(archive.exists());
     }
 }
+
+#[cfg(test)]
+#[path = "import_archive_tests.rs"]
+mod import_archive_tests;

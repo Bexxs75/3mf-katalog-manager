@@ -41,6 +41,7 @@ fn delete_file_with_conn(
 }
 #[tauri::command]
 pub fn delete_file(state: State<AppState>, file_id: String) -> CmdResult<()> {
+    let _catalog_share = state.import_jobs.gate.exclusive()?;
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
     let file = db::get_file(&conn, id)
@@ -50,6 +51,7 @@ pub fn delete_file(state: State<AppState>, file_id: String) -> CmdResult<()> {
 }
 #[tauri::command]
 pub fn delete_files(state: State<AppState>, file_ids: Vec<String>) -> CmdResult<()> {
+    let _catalog_share = state.import_jobs.gate.exclusive()?;
     let conn = lock_db(&state)?;
     delete_files_with_conn(&conn, &state.trash_dir, file_ids)
 }
@@ -140,6 +142,7 @@ fn restore_file_with_conn(
 }
 #[tauri::command]
 pub fn restore_file(state: State<AppState>, file_id: String) -> CmdResult<()> {
+    let _catalog_share = state.import_jobs.gate.exclusive()?;
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
     let file = db::get_file(&conn, id)
@@ -149,6 +152,7 @@ pub fn restore_file(state: State<AppState>, file_id: String) -> CmdResult<()> {
 }
 #[tauri::command]
 pub fn delete_file_permanently(state: State<AppState>, file_id: String) -> CmdResult<()> {
+    let _catalog_share = state.import_jobs.gate.exclusive()?;
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
     let file = db::get_file(&conn, id)
@@ -168,6 +172,7 @@ pub fn delete_file_permanently(state: State<AppState>, file_id: String) -> CmdRe
 }
 #[tauri::command]
 pub fn empty_trash(state: State<AppState>) -> CmdResult<()> {
+    let _catalog_share = state.import_jobs.gate.exclusive()?;
     let conn = lock_db(&state)?;
     let files = db::list_trash(&conn).map_err(|e| e.to_string())?;
     for file in files {

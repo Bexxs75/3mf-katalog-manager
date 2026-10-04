@@ -425,7 +425,7 @@ fn extract_rar(path: &Path, ex: &mut Extractor<'_>) -> Result<(), ArchiveError> 
                 let (data, next) = header.read().map_err(rar_error)?;
                 match rar_entry_decision(meta.size, Some(data.len()))? {
                     RarEntryDecision::Write => ex.write_from(&target, &mut &data[..])?,
-                    _ => ex.skip_unsafe(),
+                    _ => ex.skip_unsafe(&meta.name),
                 }
                 next
             }

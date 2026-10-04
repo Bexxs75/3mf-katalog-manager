@@ -1,6 +1,7 @@
 import type { Translations } from './types';
 
 export const de: Translations = {
+  importActiveError: 'Import läuft – bitte warten oder abbrechen.',
   archiveInnerFolderSkipped: 'Innerer Ordner „{name}“ wurde übersprungen',
   tagSuggestionsAria: 'Tag-Vorschläge',
   dropHereLabel: "hierher",

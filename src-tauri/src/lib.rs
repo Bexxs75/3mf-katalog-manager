@@ -131,6 +131,7 @@ pub fn run() {
             commands::purge_expired_trash_on_startup(&conn);
             let sensitive_dirs = sensitive_dirs(app.handle());
             app.manage(commands::AppState {
+                import_jobs: commands::ImportJobs::for_app(app.handle().clone()),
                 db: Mutex::new(conn),
                 trash_dir,
                 db_path,
@@ -147,7 +148,6 @@ pub fn run() {
                     }
                 }
             });
-            app.manage(commands::PendingArchives::default());
             app.manage(commands::ApprovedTargets::default());
             app.manage(commands::ApprovedCatalogParents::default());
             let waker = printer_link::sync::spawn_background(app.handle().clone());
@@ -157,22 +157,28 @@ pub fn run() {
             app.manage(commands::UpdaterState::default());
             Ok(())
         })
-        // Observe drops in the backend itself: `import_dropped` only approves archives
-        // seen here (otherwise a compromised frontend could report arbitrary paths as a
+        // Observe every dropped path in the backend: import authorization is based
+        // on this single-use, expiring proof (otherwise a compromised frontend could report arbitrary paths as a
         // "drop"). Ordering assumption: this handler runs synchronously in the same
         // event loop iteration in which Tauri forwards the drop event to the frontend -
         // the following IPC call `import_dropped` is therefore always processed after it.
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
-                if let Some(pending) = window.try_state::<commands::PendingArchives>() {
-                    pending.observe_drop(paths);
-                }
+                window.state::<commands::AppState>().import_jobs.observe_drop(paths);
                 if let Some(images) = window.try_state::<commands::DroppedImages>() {
                     images.observe_drop(paths);
                 }
             }
         })
         .invoke_handler(tauri::generate_handler![
+            commands::discard_archive_imports,
+            commands::start_import,
+            commands::start_dropped_import,
+            commands::start_adopt_import,
+            commands::start_archive_import,
+            commands::cancel_import,
+            commands::get_import_result,
+            commands::get_import_state,
             commands::list_file_summaries,
             commands::list_all_file_tags,
             commands::list_files_by_ids,

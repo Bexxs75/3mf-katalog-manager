@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import * as importExportApi from '../lib/api/importExport';
-import * as foldersApi from '../lib/api/folders';
 import { toAppError } from '../lib/errors';
-import type { ArchiveImportResult, ArchiveInfo, ArchiveOutcome, ImportResultDto, Folder, SkippedFile } from '../types';
+import type { ArchiveImportResult, ArchiveInfo, ArchiveOutcome, ImportResultDto, SkippedFile } from '../types';
 
 interface UseFileImportArgs {
   enabled: boolean;
@@ -16,7 +15,6 @@ interface UseFileImportArgs {
 
 export function useFileImport({
   enabled,
-  catalogBaseDir,
   activeFolderId,
   onImported,
   refreshFolders,
@@ -36,28 +34,6 @@ export function useFileImport({
       }
     },
     [onImported],
-  );
-
-  const autoFileIntoBaseDir = useCallback(
-    async (result: ImportResultDto) => {
-      if (!catalogBaseDir || result.imported.length === 0) return;
-      let targetFolder: string | undefined = activeFolderId !== 'all' ? activeFolderId : undefined;
-      if (!targetFolder) {
-        const freshFolders: Folder[] = await foldersApi.listFolders();
-        targetFolder = freshFolders.find((f) => f.path === catalogBaseDir && !f.parentId)?.id;
-      }
-      if (!targetFolder) return;
-      await Promise.all(
-        result.imported.map((file) =>
-          foldersApi.moveFileToFolder(file.id, targetFolder!).catch((e) =>
-            console.error('[import] placing into folder failed:', e),
-          ),
-        ),
-      );
-      refreshFolders();
-      refreshFiles();
-    },
-    [catalogBaseDir, activeFolderId, refreshFolders, refreshFiles],
   );
 
   const openArchiveDialog = useCallback(async (result: ImportResultDto) => {
@@ -105,25 +81,28 @@ export function useFileImport({
         skipped: result.skipped,
       });
       refreshFolders();
+      refreshFiles();
     },
-    [onImported, refreshFolders],
+    [onImported, refreshFolders, refreshFiles],
   );
 
-  const cancelArchives = useCallback(() => setPendingArchives(null), []);
+  const cancelArchives = useCallback(() => {
+    if (pendingArchives?.length) void importExportApi.discardArchiveImports(pendingArchives.map(a => a.path)).catch(console.error);
+    setPendingArchives(null);
+  }, [pendingArchives]);
 
   const importFiles = useCallback(
     () =>
-      importExportApi.importFiles().then(async (result) => {
+      importExportApi.importFiles(activeFolderId === 'all' ? undefined : activeFolderId).then(async (result) => {
         mergeImported(result);
-        await autoFileIntoBaseDir(result);
         await openArchiveDialog(result);
-      }),
-    [mergeImported, autoFileIntoBaseDir, openArchiveDialog],
+      }).finally(() => { refreshFolders(); refreshFiles(); }),
+    [activeFolderId, mergeImported, openArchiveDialog, refreshFolders, refreshFiles],
   );
 
   const importFolder = useCallback(
-    () => importExportApi.importFolder().then(mergeImported),
-    [mergeImported],
+    () => importExportApi.importFolder().then(mergeImported).finally(() => { refreshFolders(); refreshFiles(); }),
+    [mergeImported, refreshFolders, refreshFiles],
   );
 
   const dismissImportBanner = useCallback(() => setImportBanner(null), []);
@@ -135,12 +114,12 @@ export function useFileImport({
       importExportApi.importDropped(event.payload.paths).then(async (result) => {
         mergeImported(result);
         await openArchiveDialog(result);
-      });
+      }).finally(() => { refreshFolders(); refreshFiles(); });
     });
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [enabled, mergeImported, openArchiveDialog]);
+  }, [enabled, mergeImported, openArchiveDialog, refreshFolders, refreshFiles]);
 
   // mergeImported is exported as well so imports triggered outside
   // this hook (first-run dialog) go through the same duplicate banner

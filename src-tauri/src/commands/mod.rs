@@ -9,6 +9,8 @@ mod diagnostics;
 mod dropped_image;
 mod error;
 mod files;
+mod import_jobs;
+pub use import_jobs::*;
 mod filament;
 mod folders;
 mod printer_link;
@@ -52,6 +54,7 @@ use crate::tagging::{self, TaggingContext};
 use crate::{obj, stl, threemf};
 
 pub struct AppState {
+    pub import_jobs: ImportJobs,
     pub db: Mutex<Connection>,
     pub trash_dir: std::path::PathBuf,
     pub db_path: std::path::PathBuf,
@@ -61,7 +64,7 @@ pub struct AppState {
     pub sensitive_dirs: Vec<std::path::PathBuf>,
 }
 pub(crate) type CmdResult<T> = Result<T, CmdError>;
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelFileDto {
     pub id: String,
@@ -94,13 +97,13 @@ pub struct ModelFileDto {
     pub cost_estimate: Option<CostEstimateDto>,
     pub deleted_at: Option<String>,
 }
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MaterialDto {
     pub name: String,
     pub display_color: Option<String>,
 }
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FilamentUsageDto {
     #[serde(rename = "type")]
@@ -109,20 +112,20 @@ pub struct FilamentUsageDto {
     pub used_g: f64,
     pub used_m: f64,
 }
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlateFilamentUsageDto {
     pub plate_index: u32,
     pub weight_g: f64,
     pub filaments: Vec<FilamentUsageDto>,
 }
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SliceInfoDto {
     pub total_weight_g: f64,
     pub plates: Vec<PlateFilamentUsageDto>,
 }
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CostEstimateDto {
     pub total_cost: Option<f64>,

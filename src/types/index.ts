@@ -340,3 +340,51 @@ export interface ConfirmResult {
   confirmed: number;
   failed: number;
 }
+
+export type ImportSource = 'files' | 'folder' | 'dropped' | 'setupAdopt' | 'archive';
+export type ImportState = 'queued' | 'scanning' | 'importing' | 'placing' | 'cancelling' | 'cancelled' | 'finished' | 'failed';
+export interface ImportCounts {
+  imported: number;
+  importedNotPlaced: number;
+  duplicate: number;
+  skipped: number;
+  archive: number;
+  known: number;
+}
+export interface ImportArchiveModels {
+  imported: ModelFile[];
+  duplicates: { entryPath: string; kind: 'path' | 'hash' }[];
+  skipped: { entryPath: string; reason: 'unsafe' | 'blocked' | 'existing' | 'empty' | 'invalid' | 'failed' }[];
+}
+export type ImportArchiveResult =
+  | { path: string; state: 'pending'; grantId: string }
+  | (ArchiveOutcome & { state: 'finished' | 'failed'; models: ImportArchiveModels });
+export interface ImportJobResult {
+  jobId: string;
+  source: ImportSource;
+  state: 'finished' | 'cancelled' | 'failed';
+  parentJobId: string | null;
+  jobError: { kind: 'database' | 'unauthorized' | 'targetMissing' | 'internal'; message: string } | null;
+  scanComplete: boolean;
+  placementRequired: boolean;
+  groups: {
+    imported: { path: string; fileId: string; folderId: string | null }[];
+    importedNotPlaced: { path: string; fileId: string; reason: 'cancelled' | 'targetMissing' | 'moveFailed' | 'protected' | 'jobFailed' }[];
+    duplicate: { path: string; kind: 'path' | 'hash'; existingFileId?: string | null }[];
+    skipped: { path: string; reason: SkipReason | 'unsupported' | 'notStarted' }[];
+    archive: ImportArchiveResult[];
+  };
+  counts: ImportCounts;
+}
+export interface ImportProgress {
+  jobId: string;
+  state: ImportState;
+  scanComplete: boolean;
+  total: number | null;
+  done: number;
+  inFlight: number;
+  counts: ImportCounts;
+  current: string | null;
+  elapsedMs: number;
+}
+export interface StartedImport { jobId: string | null }
