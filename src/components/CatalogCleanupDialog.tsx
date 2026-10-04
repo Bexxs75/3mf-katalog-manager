@@ -1,3 +1,4 @@
+import { useModalDialog } from '../hooks/useModalDialog';
 import { useState } from 'react';
 import type { CatalogIssues } from '../types';
 import { useT } from '../i18n/LanguageContext';
@@ -32,9 +33,11 @@ export function CatalogCleanupDialog({ issues, onClose, onDelete }: Props) {
 
   const hasIssues = issues.orphaned.length > 0 || issues.duplicateGroups.length > 0;
 
+  const dialogRef = useModalDialog({ open: true, onClose, initialFocus: '[data-initial-focus]' });
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-[480px] max-h-[80vh] flex flex-col bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)]">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={t('cleanupDialogTitle')} tabIndex={-1} className="w-[480px] max-h-[80vh] flex flex-col bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)]">
         <div className="flex-none px-4 py-3 border-b border-[var(--line)] flex items-center justify-between">
           <span className="text-[14px] font-semibold">{t('cleanupDialogTitle')}</span>
           <span onClick={onClose} className="cursor-pointer text-[var(--ink-3)] hover:text-[var(--accent)]">
@@ -90,6 +93,7 @@ export function CatalogCleanupDialog({ issues, onClose, onDelete }: Props) {
 
         <div className="flex-none px-4 py-3 border-t border-[var(--line)] flex justify-end gap-2">
           <button
+            data-initial-focus
             onClick={onClose}
             className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[length:var(--font-size-title)] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >

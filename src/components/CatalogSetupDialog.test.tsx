@@ -14,6 +14,37 @@ beforeEach(() => {
 });
 
 describe('CatalogSetupDialog', () => {
+  it('offers Later as a keyboard-accessible button that defers setup', () => {
+    const onLater = vi.fn();
+    render(<LanguageProvider><CatalogSetupDialog onClose={vi.fn()} onLater={onLater}
+      onImported={vi.fn()} onBaseDirSet={vi.fn()} /></LanguageProvider>);
+    fireEvent.click(screen.getByRole('button', { name: de.catalogSetupLater }));
+    expect(onLater).toHaveBeenCalledOnce();
+  });
+
+  it('defers setup with Escape', () => {
+    const onLater = vi.fn();
+    render(<LanguageProvider><CatalogSetupDialog onClose={vi.fn()} onLater={onLater}
+      onImported={vi.fn()} onBaseDirSet={vi.fn()} /></LanguageProvider>);
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    expect(onLater).toHaveBeenCalledOnce();
+  });
+
+  it('disables Later and ignores Escape while adoption is busy', async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === 'pick_folder_path' ? Promise.resolve('/modelle') : new Promise(() => {}),
+    );
+    const onLater = vi.fn();
+    render(<LanguageProvider><CatalogSetupDialog onClose={vi.fn()} onLater={onLater}
+      onImported={vi.fn()} onBaseDirSet={vi.fn()} /></LanguageProvider>);
+    fireEvent.click(screen.getByText(de.catalogSetupAdoptTitle));
+    const later = screen.getByRole('button', { name: de.catalogSetupLater });
+    await waitFor(() => expect(later).toBeDisabled());
+    fireEvent.click(later);
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    expect(onLater).not.toHaveBeenCalled();
+  });
+
   it('registers an adopted folder as catalog base dir, even when it contains no models', async () => {
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === 'pick_folder_path') return Promise.resolve('/modelle');

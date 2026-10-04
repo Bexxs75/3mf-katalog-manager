@@ -1,3 +1,4 @@
+import { useModalDialog } from '../hooks/useModalDialog';
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useT } from '../i18n/LanguageContext';
@@ -75,6 +76,7 @@ function toForm(spool: FilamentSpool): FormState {
 
 export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSaved, defaultKind = 'filament' }: Props) {
   const t = useT();
+  const dialogRef = useModalDialog<HTMLElement>({ open, onClose });
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [error, setError] = useState<AppError | null>(null);
   // Rejected image (too large, not an image, several files): shown right at
@@ -176,12 +178,18 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
   return (
     <>
       <div
+        data-modal-backdrop
         className={`fixed inset-0 bg-black/45 transition-opacity duration-150 z-40 ${
           open ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
         onClick={onClose}
       />
       <aside
+        ref={dialogRef}
+        role={open ? "dialog" : undefined}
+        aria-modal={open ? true : undefined}
+        tabIndex={-1}
+        aria-label={t(editing ? (resin ? 'resinEditAria' : 'filamentEditAria') : (resin ? 'resinOpenAddPanelButton' : 'filamentOpenAddPanelButton'))}
         aria-hidden={!open}
         // `inert` (not just aria-hidden) so the always-mounted, off-canvas panel's
         // controls are also unreachable by keyboard/Tab while closed (WCAG 4.1.2).

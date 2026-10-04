@@ -174,8 +174,8 @@ describe('BugReportDialog', () => {
     expect(document.activeElement).toBe(outside);
 
     const { onClose } = renderDialog();
-    // The dialog focuses itself on mount, same as the other dialogs in the app.
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('dialog')));
+    // Opening moves focus to the first useful control in the dialog.
+    await waitFor(() => expect(screen.getByRole('dialog')).toContainElement(document.activeElement as HTMLElement));
 
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
     expect(onClose).toHaveBeenCalled();

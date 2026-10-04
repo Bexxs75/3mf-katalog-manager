@@ -97,6 +97,7 @@ export function useKeyboardShortcuts({
 }: UseKeyboardShortcutsArgs) {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       if (isTypingTarget(e.target)) return;
 
       if (e.key === '/') {

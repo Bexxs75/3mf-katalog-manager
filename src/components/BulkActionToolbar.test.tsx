@@ -187,3 +187,13 @@ describe('BulkActionToolbar', () => {
     expect(bar?.className).toContain('flex-wrap');
   });
 });
+
+it('focuses Cancel in the inline remove confirmation and restores the remove button on Escape', () => {
+  const { props } = renderToolbar();
+  const trigger = screen.getByRole('button', { name: 'Aus Katalog entfernen' });
+  trigger.focus(); fireEvent.click(trigger);
+  expect(screen.getByRole('button', { name: 'Abbrechen' })).toHaveFocus();
+  fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+  expect(screen.getByRole('button', { name: 'Aus Katalog entfernen' })).toHaveFocus();
+  expect(props.onBulkRemove).not.toHaveBeenCalled();
+});

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
@@ -6,7 +7,7 @@ import { icons } from './icons.generated';
 
 beforeEach(() => localStorage.setItem('3mf-katalog-language', 'de'));
 
-function renderRail(mainView: 'catalog' | 'filament' | 'trash' = 'catalog', trashCount = 3) {
+function renderRail(mainView: 'catalog' | 'filament' | 'trash' = 'catalog', trashCount = 3, controlledSettings = false) {
   const props: Parameters<typeof Rail>[0] = {
     mainView, trashCount, onMainViewChange: vi.fn(),
     settingsOpen: false, onSettingsOpenChange: vi.fn(),
@@ -32,7 +33,14 @@ function renderRail(mainView: 'catalog' | 'filament' | 'trash' = 'catalog', tras
       later: vi.fn(), dismiss: vi.fn(), openNotes: vi.fn(),
     },
   };
-  render(<LanguageProvider><Rail {...props} /></LanguageProvider>);
+  function ControlledRail() {
+    const [settingsOpen, setSettingsOpen] = useState(false);
+    return <Rail {...props} settingsOpen={settingsOpen} onSettingsOpenChange={(open) => {
+      props.onSettingsOpenChange(open);
+      setSettingsOpen(open);
+    }} />;
+  }
+  render(<LanguageProvider>{controlledSettings ? <ControlledRail /> : <Rail {...props} />}</LanguageProvider>);
   return props;
 }
 
@@ -80,4 +88,61 @@ describe('Rail', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Einstellungen' }));
     expect(props.onSettingsOpenChange).toHaveBeenCalledExactlyOnceWith(true);
   });
+});
+
+describe('Rail nonmodal settings keyboard behavior', () => {
+  it.each(['Enter', ' '])('focuses the first panel button when opened with %s', (key) => {
+    const props = renderRail('catalog', 0, true);
+    const gear = screen.getByRole('button', { name: 'Einstellungen' });
+    gear.focus();
+    fireEvent.keyDown(gear, { key });
+    // Native buttons synthesize a click with detail=0 for keyboard activation.
+    fireEvent.click(gear, { detail: 0 });
+    expect(props.onSettingsOpenChange).toHaveBeenCalledWith(true);
+    expect(screen.getByRole('button', { name: 'Allgemein' })).toHaveFocus();
+  });
+
+  it('closes with Escape inside the panel and returns focus to the gear', () => {
+    const props = renderRail('catalog', 0, true);
+    const gear = screen.getByRole('button', { name: 'Einstellungen' });
+    fireEvent.click(gear);
+    const first = screen.getByRole('button', { name: 'Allgemein' });
+    first.focus();
+    fireEvent.keyDown(first, { key: 'Escape' });
+    expect(props.onSettingsOpenChange).toHaveBeenLastCalledWith(false);
+    expect(screen.queryByRole('button', { name: 'Allgemein' })).not.toBeInTheDocument();
+    expect(gear).toHaveFocus();
+  });
+
+  it('keeps settings open when Escape is pressed outside and does not trap Tab', () => {
+    const props = renderRail('catalog', 0, true);
+    fireEvent.click(screen.getByRole('button', { name: 'Einstellungen' }));
+    const first = screen.getByRole('button', { name: 'Allgemein' });
+    first.focus();
+    expect(fireEvent.keyDown(first, { key: 'Tab', shiftKey: true })).toBe(true);
+    const last = screen.getByRole('button', { name: 'Français' });
+    last.focus();
+    expect(fireEvent.keyDown(last, { key: 'Tab' })).toBe(true);
+    const catalog = screen.getByLabelText('Katalog');
+    catalog.focus();
+    fireEvent.keyDown(catalog, { key: 'Escape' });
+    expect(props.onSettingsOpenChange).not.toHaveBeenCalledWith(false);
+    expect(first).toBeInTheDocument();
+    expect(catalog).toHaveFocus();
+    expect(document.querySelector('[role="dialog"][aria-modal="true"]')).toBeNull();
+  });
+});
+
+it('Escape in a portalled catalog confirmation leaves settings open and restores its trigger', () => {
+  const props = renderRail('catalog', 0, true);
+  fireEvent.click(screen.getByRole('button', { name: 'Einstellungen' }), { detail: 0 });
+  const catalogButtons = screen.getAllByRole('button', { name: 'Katalog' });
+  fireEvent.click(catalogButtons[catalogButtons.length - 1]);
+  const trigger = screen.getByRole('button', { name: 'Katalog zurücksetzen …' });
+  trigger.focus(); fireEvent.click(trigger);
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(props.onSettingsOpenChange).not.toHaveBeenCalledWith(false);
+  expect(trigger).toHaveFocus();
 });

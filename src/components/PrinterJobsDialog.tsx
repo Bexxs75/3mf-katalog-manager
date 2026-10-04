@@ -1,3 +1,4 @@
+import { useModalDialog } from '../hooks/useModalDialog';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatCount } from '../i18n/types';
@@ -99,11 +100,7 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
     });
   }, [jobs, spools]);
 
-  // Focus the dialog directly so Escape works right away (without
-  // clicking into the window first).
-  useEffect(() => {
-    if (open) document.querySelector<HTMLElement>('[aria-labelledby="printer-jobs-title"]')?.focus();
-  }, [open]);
+  const dialogRef = useModalDialog({ open, onClose });
 
   const spoolById = useMemo(() => new Map(spools.map((s) => [s.id, s])), [spools]);
   const modelById = useMemo(() => new Map(models.map((m) => [m.id, m])), [models]);
@@ -186,11 +183,11 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="printer-jobs-title"
         tabIndex={-1}
-        onKeyDown={(e) => e.key === 'Escape' && onClose()}
         className="w-full max-w-[1040px] max-h-[90vh] flex flex-col rounded-[10px] border border-[var(--line-strong)] bg-[var(--panel)] shadow-[var(--shadow)] outline-0"
       >
         <div className="flex items-start justify-between gap-4 px-[18px] py-4 border-b border-[var(--line)]">

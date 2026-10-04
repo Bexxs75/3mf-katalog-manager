@@ -106,7 +106,7 @@ export function Sidebar({
   return (
     <aside className="flex-none w-[242px] flex flex-col min-h-0 bg-[var(--panel)] border-r border-[var(--line)]">
       <div className="p-3 pb-2.5 border-b border-[var(--line)]">
-        <div className="flex items-center gap-1.5 h-8 px-2.5 rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)]">
+        <div className="flex items-center gap-1.5 h-8 px-2.5 rounded-[3px] border border-[var(--line)] focus-within:border-[var(--accent)] bg-[var(--panel-2)]">
           <span className="font-mono-ui text-xs text-[var(--ink-3)]">⌕</span>
           <input
             id={SEARCH_INPUT_ID}

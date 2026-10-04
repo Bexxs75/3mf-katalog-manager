@@ -159,6 +159,7 @@ export default function App() {
   useEffect(() => {
     if (!detailModelId) return;
     const onKeyDown = (e: KeyboardEvent) => {
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       if (e.key !== 'Escape') return;
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;

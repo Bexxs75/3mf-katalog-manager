@@ -96,6 +96,19 @@ function setup(overrides: Partial<Parameters<typeof useKeyboardShortcuts>[0]> = 
 }
 
 describe('useKeyboardShortcuts', () => {
+  it('blocks search, selection, bulk delete and space while a modal exists', () => {
+    const input = document.createElement('input'); input.id = SEARCH_INPUT_ID;
+    const modal = document.createElement('div'); modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true');
+    document.body.append(input, modal);
+    const args = setup({ hasBulkSelection: true, selectedId: 'a' });
+    for (const key of ['/', 'ArrowRight', 'ArrowDown', ' ', 'Delete']) fireKey(key);
+    expect(document.activeElement).not.toBe(input);
+    expect(args.selectModel).not.toHaveBeenCalled();
+    expect(args.toggleBulkSelect).not.toHaveBeenCalled();
+    expect(args.openBulkDeleteConfirm).not.toHaveBeenCalled();
+    modal.remove(); input.remove();
+  });
+
   let searchInput: HTMLInputElement;
 
   beforeEach(() => {

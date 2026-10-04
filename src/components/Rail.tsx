@@ -1,6 +1,6 @@
 import { Icon } from './Icon';
 import { CatalogResetSection } from './CatalogResetSection';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { Printer, SlicerConfig } from '../types';
 import type { ThemeSetting } from '../hooks/useTheme';
@@ -108,6 +108,16 @@ export function Rail({
   const [confirmImportCatalog, setConfirmImportCatalog] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState<'general' | 'slicer' | 'catalog' | 'printers' | 'info'>('general');
 
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  const settingsPanelRef = useRef<HTMLDivElement>(null);
+  const keyboardOpen = useRef(false);
+  useEffect(() => {
+    if (settingsOpen && keyboardOpen.current) {
+      settingsPanelRef.current?.querySelector<HTMLElement>('button:not(:disabled), input:not(:disabled)')?.focus();
+      keyboardOpen.current = false;
+    }
+  }, [settingsOpen]);
+
   return (
     <nav className="flex-none w-[60px] flex flex-col items-center pt-3.5 pb-2.5 bg-[var(--panel-2)] border-r border-[var(--line)]">
       <div className="flex flex-col gap-1.5">
@@ -146,7 +156,11 @@ export function Rail({
 
       <div className="relative shrink-0">
         <button
-          onClick={() => onSettingsOpenChange(!settingsOpen)}
+          ref={settingsButtonRef}
+          onClick={(event) => {
+            keyboardOpen.current = event.detail === 0 && !settingsOpen;
+            onSettingsOpenChange(!settingsOpen);
+          }}
           title={t('settingsTitle')}
           aria-label={t('settingsTitle')}
           className={`${railBtnBase} ${railBtnActive}`}
@@ -155,7 +169,15 @@ export function Rail({
         </button>
 
         {settingsOpen && (
-          <div className="absolute bottom-0 left-12 w-[300px] p-[14px] bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40 max-h-[calc(100vh-80px)] overflow-y-auto">
+          <div ref={settingsPanelRef} onKeyDown={(event) => {
+            if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              event.stopPropagation();
+              onSettingsOpenChange(false);
+              settingsButtonRef.current?.focus();
+            }
+          }} className="absolute bottom-0 left-12 w-[300px] p-[14px] bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40 max-h-[calc(100vh-80px)] overflow-y-auto">
             <div className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)] mb-2.5">
               {t('settingsTitle')}
             </div>

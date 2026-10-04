@@ -1,3 +1,4 @@
+import { useModalDialog } from '../hooks/useModalDialog';
 import { useEffect, useMemo, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { useLanguage, useT } from '../i18n/LanguageContext';
@@ -146,9 +147,11 @@ export function ArchiveImportDialog({ archives, defaultTargetDir, onCancel, onDo
     }
   };
 
+  const dialogRef = useModalDialog({ open: true, onClose: onCancel, busy: running });
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-[520px] max-h-[80vh] flex flex-col bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)]">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={t('archiveDialogTitle')} tabIndex={-1} className="w-[520px] max-h-[80vh] flex flex-col bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)]">
         <div className="flex-none px-4 py-3 border-b border-[var(--line)] text-[14px] font-semibold">
           {t('archiveDialogTitle')}
         </div>

@@ -1,3 +1,4 @@
+import { useModalDialog } from '../hooks/useModalDialog';
 import { useEffect, useRef, useState } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import {
@@ -23,7 +24,7 @@ export function BugReportDialog({ onClose }: { onClose: () => void }) {
   const [submitting, setSubmitting] = useState(false);
   const [savedPath, setSavedPath] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useModalDialog({ open: true, onClose, busy: submitting });
   const mountedRef = useRef(true);
   // Monotonic per-dialog request id: only the reply matching the request
   // that is currently in flight may ever update `preview`, so a slow reply
@@ -36,12 +37,6 @@ export function BugReportDialog({ onClose }: { onClose: () => void }) {
     },
     [],
   );
-
-  // Focus the dialog itself right away so Escape works without first
-  // clicking into it (same pattern as PrinterJobsDialog).
-  useEffect(() => {
-    dialogRef.current?.focus();
-  }, []);
 
   useEffect(() => {
     getBugReportInfo()
@@ -123,7 +118,6 @@ export function BugReportDialog({ onClose }: { onClose: () => void }) {
         aria-modal="true"
         aria-labelledby="bug-report-title"
         tabIndex={-1}
-        onKeyDown={(e) => e.key === 'Escape' && !submitting && onClose()}
         className="w-[620px] max-w-[92vw] max-h-[90vh] overflow-auto rounded-[6px] border border-[var(--line)] bg-[var(--panel)] shadow-[var(--shadow)] p-5 text-[var(--ink)] outline-0"
       >
         <h2 id="bug-report-title" className="flex items-center gap-2 text-[16px] font-bold">

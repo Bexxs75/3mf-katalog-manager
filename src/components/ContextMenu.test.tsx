@@ -42,7 +42,7 @@ describe('ContextMenu rename', () => {
   });
 });
 
-it('confirms catalog removal separately from deletion and focuses Remove', async () => {
+it('confirms catalog removal separately from deletion and focuses Cancel', async () => {
   const onRemove = vi.fn().mockResolvedValue(undefined);
   render(<LanguageProvider><ContextMenu x={0} y={0} onClose={() => {}} onOpenInSlicer={() => {}}
     onDelete={() => {}} onRemove={onRemove} inQueue={false} onToggleQueue={() => {}}
@@ -50,7 +50,41 @@ it('confirms catalog removal separately from deletion and focuses Remove', async
   fireEvent.click(screen.getByText('Aus dem Katalog entfernen'));
   expect(screen.getByText('„Cube.stl“ aus dem Katalog entfernen?')).toBeTruthy();
   expect(screen.getByText(/Die Datei bleibt unverändert auf der Festplatte/)).toBeTruthy();
-  expect(document.activeElement).toBe(screen.getByText('Entfernen'));
+  expect(document.activeElement).toBe(screen.getByText('Abbrechen'));
   fireEvent.click(screen.getByText('Entfernen'));
   expect(onRemove).toHaveBeenCalledOnce();
+});
+
+function renderKeyboardMenu() {
+  const onDelete = vi.fn();
+  const onRemove = vi.fn().mockResolvedValue(undefined);
+  const onRename = vi.fn().mockResolvedValue(undefined);
+  const onClose = vi.fn();
+  const result = render(<LanguageProvider><ContextMenu x={0} y={0} onClose={onClose}
+    onOpenInSlicer={vi.fn()} onDelete={onDelete} onRemove={onRemove}
+    inQueue={false} onToggleQueue={vi.fn()} printed={false} onTogglePrintStatus={vi.fn()}
+    currentName="Cube.stl" onRename={onRename} /></LanguageProvider>);
+  return { ...result, onDelete, onRemove, onRename, onClose };
+}
+
+describe('ContextMenu keyboard cancellation', () => {
+  it('focuses Cancel when entering the delete confirmation', () => {
+    renderKeyboardMenu();
+    fireEvent.click(screen.getByRole('button', { name: 'Löschen' }));
+    expect(screen.getByRole('button', { name: 'Abbrechen' })).toHaveFocus();
+  });
+
+  it.each(['Löschen', 'Aus dem Katalog entfernen', 'Umbenennen'])('cancels %s with Escape and keeps focus in the menu', (label) => {
+    const { container, onDelete, onRemove, onRename } = renderKeyboardMenu();
+    fireEvent.click(screen.getByRole('button', { name: label }));
+    const cancel = screen.getByRole('button', { name: 'Abbrechen' });
+    cancel.focus();
+    fireEvent.keyDown(cancel, { key: 'Escape' });
+    expect(screen.queryByRole('button', { name: 'Abbrechen' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Umbenennen' })).toBeInTheDocument();
+    expect(container.contains(document.activeElement)).toBe(true);
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(onRemove).not.toHaveBeenCalled();
+    expect(onRename).not.toHaveBeenCalled();
+  });
 });

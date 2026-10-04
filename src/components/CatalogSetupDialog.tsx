@@ -1,3 +1,4 @@
+import { useModalDialog } from '../hooks/useModalDialog';
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useT } from '../i18n/LanguageContext';
@@ -192,9 +193,11 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
     invoke('open_in_file_manager', { path }).catch((e) => console.error('[catalog-setup] opening folder failed:', e));
   };
 
+  const dialogRef = useModalDialog({ open: true, onClose: onLater, busy: busy !== null });
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-[560px] max-h-[80vh] flex flex-col bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] overflow-y-auto">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={t('catalogSetupTitle')} tabIndex={-1} className="w-[560px] max-h-[80vh] flex flex-col bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] overflow-y-auto">
         <div className="px-5 py-4">
           <div className="text-[16px] font-semibold mb-2.5">{t('catalogSetupTitle')}</div>
           <p className="text-[13px] leading-relaxed text-[var(--ink-2)] mb-4">{t('catalogSetupIntro')}</p>
@@ -327,12 +330,14 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
           {!done && (
             <>
               <div className="flex items-center justify-between">
-                <span
-                  onClick={busy === null ? onLater : undefined}
-                  className={`text-[12px] text-[var(--ink-3)] underline ${busy === null ? 'cursor-pointer hover:text-[var(--accent)]' : 'opacity-50'}`}
+                <button
+                  type="button"
+                  onClick={onLater}
+                  disabled={busy !== null}
+                  className="h-8 px-3 rounded-[6px] border border-[var(--line-strong)] text-[12.5px] text-[var(--ink-2)] hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {t('catalogSetupLater')}
-                </span>
+                </button>
                 {newForm && (
                   <span className="flex gap-2">
                     <button

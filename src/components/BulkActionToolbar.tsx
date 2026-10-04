@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { messageOf } from '../lib/errors';
 import type { Collection } from '../types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
@@ -64,13 +64,31 @@ export function BulkActionToolbar({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const removeRef = useRef<HTMLButtonElement>(null);
+  const deleteRef = useRef<HTMLButtonElement>(null);
+  const collectionRef = useRef<HTMLButtonElement>(null);
+  const addTagRef = useRef<HTMLButtonElement>(null);
+  const removeTagRef = useRef<HTMLButtonElement>(null);
+  const previousConfirmation = useRef<'remove' | 'delete' | null>(null);
+  useEffect(() => {
+    const current = confirmRemove ? 'remove' : confirmBulkDelete ? 'delete' : null;
+    if (current) cancelRef.current?.focus();
+    else if (previousConfirmation.current) {
+      (previousConfirmation.current === 'remove' ? removeRef : deleteRef).current?.focus();
+    }
+    previousConfirmation.current = current;
+  }, [confirmRemove, confirmBulkDelete]);
+
   // The menus stay open until they are closed explicitly; without Escape a
   // stray click after trying to dismiss one lands on a menu entry, e.g. removes a tag.
   const anyMenuOpen = addToCollectionMenuOpen || addTagMenuOpen || removeTagMenuOpen;
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       if (e.key !== 'Escape') return;
       if (anyMenuOpen) {
+        (addToCollectionMenuOpen ? collectionRef : addTagMenuOpen ? addTagRef : removeTagRef).current?.focus();
         onAddToCollectionMenuOpenChange(false);
         onAddTagMenuOpenChange(false);
         onRemoveTagMenuOpenChange(false);
@@ -114,8 +132,8 @@ export function BulkActionToolbar({
           <span className="text-[12.5px] font-medium text-[var(--ink)]">{t('removeModelsQuestion').replace('{count}', String(selectedCount))}</span>
           <span className="text-[12px] text-[var(--ink-2)]">{t('removeModelHint')}</span>
           {error && <span role="alert" className="font-mono-ui text-[length:var(--font-size-meta)] text-[var(--accent)]">{error}</span>}
-          <button className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50" disabled={busy} onClick={() => setConfirmRemove(false)}>{t('cancel')}</button>
-          <button className="h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer disabled:opacity-50" autoFocus disabled={busy} onClick={async () => {
+          <button ref={cancelRef} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50" disabled={busy} onClick={() => setConfirmRemove(false)}>{t('cancel')}</button>
+          <button className="h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer disabled:opacity-50" disabled={busy} onClick={async () => {
             if (!onBulkRemove) return;
             setBusy(true); setError(null);
             try { await onBulkRemove(); setConfirmRemove(false); }
@@ -129,6 +147,7 @@ export function BulkActionToolbar({
             {t('bulkDeleteConfirmQuestion').replace('{count}', String(selectedCount))}
           </span>
           <button
+            ref={cancelRef}
             onClick={() => onConfirmBulkDeleteChange(false)}
             className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
@@ -158,7 +177,7 @@ export function BulkActionToolbar({
           </button>
           <div className="relative">
             <button
-              onClick={() => onAddToCollectionMenuOpenChange(!addToCollectionMenuOpen)}
+              ref={collectionRef} onClick={() => onAddToCollectionMenuOpenChange(!addToCollectionMenuOpen)}
               className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]"
             >
               {t('addToCollectionLabel')}
@@ -196,7 +215,7 @@ export function BulkActionToolbar({
           )}
           <div className="relative">
             <button
-              onClick={() => onAddTagMenuOpenChange(!addTagMenuOpen)}
+              ref={addTagRef} onClick={() => onAddTagMenuOpenChange(!addTagMenuOpen)}
               className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]"
             >
               {t('bulkAddTagLabel')}
@@ -222,7 +241,7 @@ export function BulkActionToolbar({
           </div>
           <div className="relative">
             <button
-              onClick={() => onRemoveTagMenuOpenChange(!removeTagMenuOpen)}
+              ref={removeTagRef} onClick={() => onRemoveTagMenuOpenChange(!removeTagMenuOpen)}
               className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]"
             >
               {t('bulkRemoveTagLabel')}
@@ -252,8 +271,8 @@ export function BulkActionToolbar({
           <button onClick={() => onBulkSetPrintStatus('not_printed')} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]">
             {t('notPrintedLabel')}
           </button>
-          {onBulkRemove && <button className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]" onClick={() => { setError(null); setConfirmRemove(true); }}>{t('removeCatalogShort')}</button>}
-          <button onClick={() => onConfirmBulkDeleteChange(true)} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-red-400 text-[12.5px] font-semibold cursor-pointer hover:border-red-400">
+          {onBulkRemove && <button className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]" ref={removeRef} onClick={() => { setError(null); setConfirmRemove(true); }}>{t('removeCatalogShort')}</button>}
+          <button ref={deleteRef} onClick={() => onConfirmBulkDeleteChange(true)} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-red-400 text-[12.5px] font-semibold cursor-pointer hover:border-red-400">
             {t('delete')}
           </button>
         </>

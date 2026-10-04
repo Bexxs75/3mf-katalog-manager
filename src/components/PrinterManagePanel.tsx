@@ -1,3 +1,4 @@
+import { useModalDialog } from '../hooks/useModalDialog';
 import { useEffect, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import { formatCount } from '../i18n/types';
@@ -88,6 +89,7 @@ function Stepper({ value, onChange, label }: { value: number; onChange: (n: numb
 /** Side panel for creating and maintaining printers and their units. */
 export function PrinterManagePanel({ open, printers, spools, error, actions, onClose, onSpoolsChanged, printerLink }: Props) {
   const t = useT();
+  const dialogRef = useModalDialog<HTMLElement>({ open, onClose });
   const [newPrinter, setNewPrinter] = useState('');
   const [newPrinterKind, setNewPrinterKind] = useState<PrinterKind>('filament');
   const [renaming, setRenaming] = useState<{ id: string; kind: 'printer' | 'unit'; value: string } | null>(null);
@@ -222,13 +224,19 @@ export function PrinterManagePanel({ open, printers, spools, error, actions, onC
   return (
     <>
       <div
+        data-modal-backdrop
         className={`fixed inset-0 bg-black/45 transition-opacity duration-150 z-40 ${
           open ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
         onClick={onClose}
       />
       <aside
+        ref={dialogRef}
+        role={open ? "dialog" : undefined}
+        aria-modal={open ? true : undefined}
+        tabIndex={-1}
         aria-label={t('printersManageTitle')}
+        inert={!open}
         aria-hidden={!open}
         className={`fixed top-0 right-0 bottom-0 w-full max-w-[400px] bg-[var(--panel)] border-l border-[var(--line)] shadow-[var(--shadow)] z-50 flex flex-col transition-transform duration-200 ${
           open ? 'translate-x-0' : 'translate-x-full'

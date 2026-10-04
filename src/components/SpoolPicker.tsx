@@ -59,7 +59,7 @@ export function SpoolPicker({ spools: allSpools, value, onChange, label, placeho
       listRef.current?.focus({ preventScroll: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, value]);
+  }, [open, value, popup]);
 
   // If the spool list reloads while the list is open (e.g. after a
   // preview answer), the keyboard position must NOT jump back

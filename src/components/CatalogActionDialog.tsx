@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, type ReactNode, type RefObject } from 'react';
+import { useModalDialog } from '../hooks/useModalDialog';
+import { useId, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 
 /** Shared keyboard boundary for catalog-only confirmations. */
@@ -8,45 +9,8 @@ export function CatalogActionDialog({ title, children, onClose, returnFocus }: {
   onClose: () => void;
   returnFocus?: RefObject<HTMLElement | null>;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
+  const ref = useModalDialog({ open: true, onClose, returnFocus, initialFocus: '[data-initial-focus]' });
   const titleId = useId();
-  const close = useRef(onClose);
-  close.current = onClose;
-  useEffect(() => {
-    const previous = returnFocus?.current ?? document.activeElement as HTMLElement | null;
-    const dialog = ref.current!;
-    (dialog.querySelector<HTMLElement>('[data-initial-focus]') ?? dialog).focus();
-    const keydown = (event: KeyboardEvent) => {
-      // Keep global catalog shortcuts from acting behind this modal.
-      event.stopPropagation();
-      if (event.key === 'Escape') {
-        event.preventDefault(); event.stopPropagation(); close.current();
-      }
-      if (event.key === 'Tab') {
-        const buttons = Array.from(dialog.querySelectorAll<HTMLElement>('button:not(:disabled), [href], input:not(:disabled), [tabindex="0"]'));
-        const first = buttons[0]; const last = buttons[buttons.length - 1];
-        if (!first) { event.preventDefault(); dialog.focus(); }
-        else if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
-          event.preventDefault(); last.focus();
-        } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
-          event.preventDefault(); first.focus();
-        }
-      }
-    };
-    const focusin = (event: FocusEvent) => {
-      if (!dialog.contains(event.target as Node)) {
-        (dialog.querySelector<HTMLElement>('button:not(:disabled)') ?? dialog).focus();
-      }
-    };
-    document.addEventListener('keydown', keydown, true);
-    document.addEventListener('focusin', focusin);
-    return () => {
-      document.removeEventListener('keydown', keydown, true);
-      document.removeEventListener('focusin', focusin);
-      const target = returnFocus?.current ?? previous;
-      if (target?.isConnected) target.focus();
-    };
-  }, [returnFocus]);
   return createPortal(
     <div className="fixed inset-0 z-[100] bg-black/45 flex items-center justify-center p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}

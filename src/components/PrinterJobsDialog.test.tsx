@@ -292,3 +292,21 @@ describe('PrinterJobsDialog', () => {
     expect(screen.getByRole('button', { name: /PETG · Petrol/ })).toBeInTheDocument();
   });
 });
+
+it('keeps portalled model and spool pickers usable inside the modal and returns their focus', () => {
+  const close = vi.fn();
+  renderDialog(link([job({})]), close);
+  const modelButton = screen.getByRole('button', { name: /Distanzhülse 13,40mm/ });
+  modelButton.focus(); fireEvent.click(modelButton);
+  const search = screen.getByRole('combobox');
+  expect(search).toHaveFocus();
+  fireEvent.keyDown(search, { key: 'Escape' });
+  expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+  expect(modelButton).toHaveFocus(); expect(close).not.toHaveBeenCalled();
+  const spoolButton = screen.getByRole('button', { name: /PLA.*Grau/ });
+  spoolButton.focus(); fireEvent.click(spoolButton);
+  const list = screen.getByRole('listbox');
+  expect(list).toHaveFocus();
+  fireEvent.keyDown(list, { key: 'Escape' });
+  expect(spoolButton).toHaveFocus(); expect(close).not.toHaveBeenCalled();
+});

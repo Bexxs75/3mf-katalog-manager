@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { registerDialogPopup } from './useModalDialog';
+import { useLayoutEffect, useEffect, useRef, useState, type RefObject } from 'react';
 
 // Fixed-positioned popup via portal in document.body so overflowing dialog
 // scroll containers don't clip it (SpoolPicker, ModelPicker).
@@ -38,6 +39,18 @@ export function useAnchoredPopup<Anchor extends HTMLElement, Popup extends HTMLE
 ): { popupRef: RefObject<Popup | null>; style: AnchoredPopupStyle | null } {
   const popupRef = useRef<Popup>(null);
   const [style, setStyle] = useState<AnchoredPopupStyle | null>(null);
+
+  useLayoutEffect(() => {
+    const popup = popupRef.current;
+    const anchor = anchorRef.current;
+    if (open && popup && anchor) return registerDialogPopup(popup, anchor);
+  }, [open, style, anchorRef]);
+
+  useEffect(() => {
+    if (!open) return;
+    const anchor = anchorRef.current;
+    return () => { if (anchor?.isConnected) anchor.focus({ preventScroll: true }); };
+  }, [open, anchorRef]);
 
   // Keep the latest onClose reference so the listeners aren't re-registered on every render.
   const onCloseRef = useRef(onClose);

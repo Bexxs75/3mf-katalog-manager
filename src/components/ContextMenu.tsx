@@ -44,15 +44,25 @@ export function ContextMenu({
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    return () => { if (previous?.isConnected) previous.focus(); };
+  }, []);
+
+  useEffect(() => {
+    // The first button in either confirmation is the safe cancel action.
+    ref.current?.querySelector<HTMLElement>(view === 'rename' ? 'input' : 'button')?.focus();
+  }, [view]);
+
+  useEffect(() => {
     const handlePointerDown = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     };
     const handleKeyDown = (e: KeyboardEvent) => {
-      // While renaming, the input handles Escape itself; this is only for the
-      // menu view.
       if (e.key === 'Escape') {
         if (view === 'menu') onClose();
-        else if (view === 'confirmRemove') setView('menu');
+        else { setView('menu'); setRenameError(null); }
+        e.preventDefault();
+        e.stopPropagation();
       }
     };
     document.addEventListener('mousedown', handlePointerDown);
@@ -97,7 +107,7 @@ export function ContextMenu({
           {renameError && <div role="alert" className="pb-1.5 font-mono-ui text-[10px] text-[var(--accent)] break-words">{renameError}</div>}
           <div className="flex gap-1.5">
             <button className="flex-1 h-7 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[11.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50" disabled={renaming} onClick={() => setView('menu')}>{t('cancel')}</button>
-            <button className="flex-1 h-7 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[11.5px] font-semibold cursor-pointer disabled:opacity-50" autoFocus disabled={renaming} onClick={async () => {
+            <button className="flex-1 h-7 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[11.5px] font-semibold cursor-pointer disabled:opacity-50" disabled={renaming} onClick={async () => {
               if (!onRemove) return;
               setRenaming(true); setRenameError(null);
               try { await onRemove(); onClose(); }
