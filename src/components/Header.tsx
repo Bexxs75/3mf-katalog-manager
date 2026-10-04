@@ -239,7 +239,7 @@ export function Header({
       )}
 
       <button onClick={onOpenTips} aria-label={t('keyboardTipsTitle')} title={t('keyboardTipsTitle')}
-        className="shrink-0 w-8 h-8 rounded-full border border-[var(--line-strong)] text-[var(--ink-2)] hover:text-[var(--accent)] cursor-pointer">?</button>
+        className="shrink-0 w-8 h-8 grid place-items-center rounded-[6px] text-[var(--ink-2)] hover:text-[var(--accent)] hover:bg-[var(--panel-2)] cursor-pointer"><Icon name="help" size={22} /></button>
     </header>
   );
 }

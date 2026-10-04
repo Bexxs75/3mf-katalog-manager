@@ -15,6 +15,7 @@ export const icons: Record<IconName, string> = {
   "filter": "<path d=\"M3 4h18l-7 8v7l-4 2v-9L3 4Z\"/>",
   "folder": "<path d=\"M3 6V4h6l3 3h9v13H3V6Z\"/>",
   "fullscreen": "<path d=\"M3 9V3h6m6 0h6v6M3 15v6h6m6 0h6v-6\"/>",
+  "help": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7\"/><circle cx=\"12\" cy=\"17\" r=\"1\" fill=\"currentColor\" stroke=\"none\"/>",
   "import": "<path d=\"M12 2v12m-4-4 4 4 4-4M3 14v7h18v-7\"/>",
   "info": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 11v6\"/><circle cx=\"12\" cy=\"7.5\" r=\"1\" fill=\"currentColor\" stroke=\"none\"/>",
   "layers": "<path d=\"m3 7 9-4 9 4-9 4-9-4Zm0 6 9 4 9-4M3 18l9 4 9-4\"/>",

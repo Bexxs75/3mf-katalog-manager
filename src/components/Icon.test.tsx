@@ -12,8 +12,8 @@ const sources = Object.fromEntries(Object.entries(sourceFiles).map(([path, sourc
 const names = Object.keys(sources).map((file) => file.slice(0, -4)) as IconName[];
 
 describe('Icon', () => {
-  it('covers exactly the 35 approved source names', () => {
-    expect(names).toHaveLength(35);
+  it('covers exactly the 36 approved source names', () => {
+    expect(names).toHaveLength(36);
     expect(Object.keys(icons).sort()).toEqual([...names].sort());
   });
 
