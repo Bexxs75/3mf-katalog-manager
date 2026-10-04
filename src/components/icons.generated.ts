@@ -8,6 +8,8 @@ export const icons: Record<IconName, string> = {
   "catalog": "<rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"/>",
   "check": "<path d=\"m4 12 5 5L20 6\"/>",
   "close": "<path d=\"m5 5 14 14M19 5 5 19\"/>",
+  "collapse-all": "<path d=\"m7 9 5-5 5 5M7 15l5 5 5-5\"/>",
+  "expand-all": "<path d=\"m7 4 5 5 5-5M7 20l5-5 5 5\"/>",
   "export": "<path d=\"M12 14V2m-4 4 4-4 4 4M3 14v7h18v-7\"/>",
   "favorite": "<path d=\"m12 3 2.8 5.6 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.5l6.2-.9L12 3Z\"/>",
   "filter": "<path d=\"M3 4h18l-7 8v7l-4 2v-9L3 4Z\"/>",

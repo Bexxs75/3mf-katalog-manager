@@ -1,9 +1,12 @@
+import { Icon } from './Icon';
 import { useState } from 'react';
 import type { ViewMode, SortKey } from '../types';
 import { formatCount } from '../i18n/types';
 import { useT } from '../i18n/LanguageContext';
 
 interface Props {
+  allFoldersCollapsed: boolean;
+  onToggleAllFolders: () => void;
   view: ViewMode;
   onViewChange: (v: ViewMode) => void;
   sort: SortKey;
@@ -21,6 +24,8 @@ const segActive = 'bg-[var(--accent)] text-[var(--accent-ink)]';
 const segInactive = 'text-[var(--ink-2)] hover:text-[var(--ink)]';
 
 export function Header({
+  allFoldersCollapsed,
+  onToggleAllFolders,
   view,
   onViewChange,
   sort,
@@ -148,6 +153,13 @@ export function Header({
         </button>
       </div>
 
+      {(view === 'groupedGrid' || view === 'groupedList') && (
+        <button type="button" onClick={onToggleAllFolders}
+          className="h-[30px] px-2 rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink)] text-[length:var(--font-size-body)] cursor-pointer flex items-center gap-1.5">
+          <Icon name={allFoldersCollapsed ? 'expand-all' : 'collapse-all'} size={16} />
+          {t(allFoldersCollapsed ? 'expandAllFolders' : 'collapseAllFolders')}
+        </button>
+      )}
       </>
       )}
 

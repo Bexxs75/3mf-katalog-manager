@@ -2,7 +2,11 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import { LanguageProviderWithDiagnostics as Provider } from '../test/renderWithDiagnostics';
-import { FolderTree } from './FolderTree';
+import { FolderTree as FolderTreeComponent } from './FolderTree';
+import { useFolderExpansion } from '../hooks/useFolderExpansion';
+function FolderTree(props: Omit<Parameters<typeof FolderTreeComponent>[0], 'expansion'>) {
+  return <FolderTreeComponent {...props} expansion={useFolderExpansion()} />;
+}
 import { CatalogResetSection } from './CatalogResetSection';
 import { BulkActionToolbar } from './BulkActionToolbar';
 

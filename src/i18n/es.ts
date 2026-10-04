@@ -1,6 +1,11 @@
 import type { Translations } from './types';
 
 export const es: Translations = {
+  collapseAllFolders: 'Contraer todas las carpetas',
+  expandAllFolders: 'Expandir todas las carpetas',
+  sidebarResizeHandle: 'Ancho de la barra lateral',
+  settingsClose: 'Cerrar ajustes',
+
   removeCatalog: "Quitar del catálogo",
   removeCatalogShort: "Quitar del catálogo",
   removeEntry: "Quitar",

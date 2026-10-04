@@ -1,3 +1,4 @@
+import type { useFolderExpansion } from '../hooks/useFolderExpansion';
 import { FolderCatalogMenu } from './FolderCatalogMenu';
 import { useMemo, useRef, useState } from 'react';
 import { useDragThreshold } from '../hooks/useDragThreshold';
@@ -9,6 +10,7 @@ interface TreeNode extends Folder {
 }
 
 interface Props {
+  expansion: ReturnType<typeof useFolderExpansion>;
   folders: Folder[];
   totalModelCount: number;
   activeFolderId: string;
@@ -35,6 +37,7 @@ function buildTree(folders: Folder[]): TreeNode[] {
 }
 
 export function FolderTree({
+  expansion,
   folders,
   totalModelCount,
   activeFolderId,
@@ -50,22 +53,14 @@ export function FolderTree({
   const [menu, setMenu] = useState<{ id: string; name: string; x: number; y: number } | null>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const allModelsRef = useRef<HTMLDivElement>(null);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const tree = useMemo(() => buildTree(folders), [folders]);
-
-  const toggle = (id: string) =>
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
 
   // Folder rows are only 28px high: an immediate drag start would let even a
   // slight slip during a click trigger a real move_folder.
   const folderDrag = useDragThreshold(onDragFolderStart);
 
   function renderNode(node: TreeNode, depth: number) {
-    const isOpen = expanded.has(node.id);
+    const isOpen = expansion.isExpanded(node.id);
     return (
       <div key={node.id}>
         <div
@@ -98,7 +93,7 @@ export function FolderTree({
             onClick={(e) => {
               if (node.children.length === 0) return;
               e.stopPropagation();
-              toggle(node.id);
+              expansion.toggle(node.id);
             }}
             className={`w-3.5 text-[9px] text-[var(--ink-3)] ${node.children.length === 0 ? 'invisible' : ''}`}
           >

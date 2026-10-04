@@ -146,3 +146,36 @@ it('Escape in a portalled catalog confirmation leaves settings open and restores
   expect(props.onSettingsOpenChange).not.toHaveBeenCalledWith(false);
   expect(trigger).toHaveFocus();
 });
+
+it('closes settings with the cross and restores focus to the gear', () => {
+  const props = renderRail('catalog', 0, true);
+  const gear = screen.getByRole('button', { name: 'Einstellungen' });
+  fireEvent.click(gear);
+  const close = screen.getByRole('button', { name: 'Einstellungen schließen' });
+  expect(close.closest('[style]')?.getAttribute('style')).toContain('var(--sidebar-width');
+  fireEvent.click(close);
+  expect(props.onSettingsOpenChange).toHaveBeenLastCalledWith(false);
+  expect(screen.queryByRole('button', { name: 'Einstellungen schließen' })).toBeNull();
+  expect(gear).toHaveFocus();
+});
+
+it.each(['catalog', 'filament', 'trash'] as const)('measures the panel offset in %s including the rail border and bottom padding', (mainView) => {
+  const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+    if (this.tagName === 'NAV') return { right: 60 } as DOMRect;
+    return { left: 8.5, bottom: window.innerHeight - 10 } as DOMRect;
+  });
+  try {
+    renderRail(mainView, 0, true);
+    fireEvent.click(screen.getByRole('button', { name: 'Einstellungen' }));
+    const panel = screen.getByRole('button', { name: 'Einstellungen schließen' }).closest('[style]') as HTMLElement;
+    expect(panel.style.left).toBe('calc(51.5px + var(--sidebar-width, 0px) + 10px)');
+    expect(panel.style.bottom).toBe('0px');
+    rect.mockImplementation(function (this: HTMLElement) {
+      if (this.tagName === 'NAV') return { right: 60 } as DOMRect;
+      return { left: 8, bottom: window.innerHeight + 20 } as DOMRect;
+    });
+    fireEvent(window, new Event('resize'));
+    expect(panel.style.left).toBe('calc(52px + var(--sidebar-width, 0px) + 10px)');
+    expect(panel.style.bottom).toBe('30px');
+  } finally { rect.mockRestore(); }
+});

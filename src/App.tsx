@@ -1,5 +1,7 @@
+import { useFolderExpansion } from './hooks/useFolderExpansion';
+import { useSidebarWidth } from './hooks/useSidebarWidth';
 import { invoke } from '@tauri-apps/api/core';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { Header } from './components/Header';
 import { snapshotQueue } from './lib/snapshotQueue';
 import { Rail } from './components/Rail';
@@ -23,7 +25,7 @@ import { useCatalogStore } from './hooks/useCatalogStore';
 import { useCatalogFilters } from './hooks/useCatalogFilters';
 import { useCollections } from './hooks/useCollections';
 import { useFolderDragAndDrop } from './hooks/useFolderDragAndDrop';
-import { useCollapsedFolders } from './hooks/useCollapsedFolders';
+import { NO_FOLDER_COLLAPSE_KEY, useCollapsedFolders } from './hooks/useCollapsedFolders';
 import { useFileImport } from './hooks/useFileImport';
 import { useCatalogBackup } from './hooks/useCatalogBackup';
 import { useCatalogCleanup } from './hooks/useCatalogCleanup';
@@ -55,6 +57,25 @@ export default function App() {
     refreshFiles: store.refreshFiles,
   });
   const collapsedFolders = useCollapsedFolders();
+  const expansion = useFolderExpansion();
+  const sidebarWidth = useSidebarWidth();
+  // Models without a folder form their own group in the folder views, so
+  // "everything collapsed" has to include that group when it exists.
+  const folderIds = new Set(store.folders.map((folder) => folder.id));
+  const hasNoFolderGroup = store.models.some((model) => !folderIds.has(model.folderId));
+  const allFoldersCollapsed = expansion.expanded.size === 0
+    && store.folders.every((folder) => collapsedFolders.isCollapsed(folder.id))
+    && (!hasNoFolderGroup || collapsedFolders.isCollapsed(NO_FOLDER_COLLAPSE_KEY));
+  const toggleAllFolders = () => {
+    if (allFoldersCollapsed) {
+      const parents = new Set(store.folders.map((folder) => folder.parentId));
+      expansion.setAll(store.folders.filter((folder) => parents.has(folder.id)).map((folder) => folder.id), true);
+      collapsedFolders.expandAll();
+    } else {
+      expansion.setAll([], false);
+      collapsedFolders.collapseAll(store.folders.map((folder) => folder.id));
+    }
+  };
 
   const [mainView, setMainView] = useState<'catalog' | 'filament' | 'trash'>('catalog');
   const archiveTargetDefault =
@@ -193,7 +214,7 @@ export default function App() {
   return (
     <div
       className="h-screen min-h-[620px] flex flex-col bg-[var(--bg)] text-[var(--ink)] overflow-hidden"
-      style={{ fontSize: 14 }}
+      style={{ fontSize: 14, '--sidebar-width': `${mainView === 'catalog' ? sidebarWidth.width : 0}px` } as CSSProperties}
     >
       {snapshotIds.length > 0 && (
         <BackgroundSnapshotRenderer
@@ -204,6 +225,8 @@ export default function App() {
         />
       )}
       <Header
+        allFoldersCollapsed={allFoldersCollapsed}
+        onToggleAllFolders={toggleAllFolders}
         view={filters.view}
         onViewChange={filters.setView}
         sort={filters.sort}
@@ -267,6 +290,10 @@ export default function App() {
             />
           ) : mainView === 'catalog' ? (
             <CatalogWorkspace
+              expansion={expansion}
+              sidebarWidth={sidebarWidth}
+              allFoldersCollapsed={allFoldersCollapsed}
+              onToggleAllFolders={toggleAllFolders}
               query={filters.query}
               setQuery={filters.setQuery}
               setActiveCollection={collections.setActiveCollection}

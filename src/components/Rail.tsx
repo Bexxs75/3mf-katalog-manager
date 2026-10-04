@@ -1,6 +1,6 @@
 import { Icon } from './Icon';
 import { CatalogResetSection } from './CatalogResetSection';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { Printer, SlicerConfig } from '../types';
 import type { ThemeSetting } from '../hooks/useTheme';
@@ -108,6 +108,24 @@ export function Rail({
   const [confirmImportCatalog, setConfirmImportCatalog] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState<'general' | 'slicer' | 'catalog' | 'printers' | 'info'>('general');
 
+  const railRef = useRef<HTMLElement>(null);
+  const settingsWrapperRef = useRef<HTMLDivElement>(null);
+  const [panelOffset, setPanelOffset] = useState({ left: 0, bottom: 10 });
+  useLayoutEffect(() => {
+    if (!settingsOpen) return;
+    const measure = () => {
+      const rail = railRef.current?.getBoundingClientRect();
+      const wrapper = settingsWrapperRef.current?.getBoundingClientRect();
+      if (!rail || !wrapper) return;
+      // Measure the containing block: the rail border affects centering,
+      // and its bottom padding already contributes to the viewport gap.
+      setPanelOffset({ left: rail.right - wrapper.left, bottom: wrapper.bottom - window.innerHeight + 10 });
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [settingsOpen]);
+
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const settingsPanelRef = useRef<HTMLDivElement>(null);
   const keyboardOpen = useRef(false);
@@ -119,7 +137,7 @@ export function Rail({
   }, [settingsOpen]);
 
   return (
-    <nav className="flex-none w-[60px] flex flex-col items-center pt-3.5 pb-2.5 bg-[var(--panel-2)] border-r border-[var(--line)]">
+    <nav ref={railRef} className="flex-none w-[60px] flex flex-col items-center pt-3.5 pb-2.5 bg-[var(--panel-2)] border-r border-[var(--line)]">
       <div className="flex flex-col gap-1.5">
         <button
           onClick={() => onMainViewChange('catalog')}
@@ -154,7 +172,7 @@ export function Rail({
 
       <div className="flex-1" />
 
-      <div className="relative shrink-0">
+      <div ref={settingsWrapperRef} className="relative shrink-0">
         <button
           ref={settingsButtonRef}
           onClick={(event) => {
@@ -177,7 +195,8 @@ export function Rail({
               onSettingsOpenChange(false);
               settingsButtonRef.current?.focus();
             }
-          }} className="absolute bottom-0 left-12 w-[300px] p-[14px] bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40 max-h-[calc(100vh-80px)] overflow-y-auto">
+          }} style={{ left: `calc(${panelOffset.left}px + var(--sidebar-width, 0px) + 10px)`, bottom: panelOffset.bottom }}
+          className="absolute w-[300px] p-[14px] bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40 max-h-[calc(100vh-80px)] overflow-y-auto">
             <div className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)] mb-2.5">
               {t('settingsTitle')}
             </div>
@@ -198,6 +217,12 @@ export function Rail({
                 </button>
               ))}
             </div>
+
+            <button type="button" aria-label={t('settingsClose')} title={t('settingsClose')}
+              onClick={() => { onSettingsOpenChange(false); settingsButtonRef.current?.focus(); }}
+              className="absolute top-[10px] right-[10px] w-[22px] h-[22px] grid place-items-center rounded-[3px] text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--panel-2)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]">
+              <Icon name="close" size={16} />
+            </button>
 
             {activeSettingsTab === 'general' && (
               <>

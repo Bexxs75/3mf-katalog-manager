@@ -1,21 +1,91 @@
-import { expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { beforeEach, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { Sidebar } from './Sidebar';
+import { useFolderExpansion } from '../hooks/useFolderExpansion';
+import { useCollapsedFolders } from '../hooks/useCollapsedFolders';
+import { useSidebarWidth } from '../hooks/useSidebarWidth';
+
+beforeEach(() => { localStorage.clear(); localStorage.setItem('3mf-katalog-language', 'de'); });
+
+function Harness() {
+  const expansion = useFolderExpansion();
+  const collapsed = useCollapsedFolders();
+  const sidebarWidth = useSidebarWidth();
+  const allCollapsed = expansion.expanded.size === 0 && ['a', 'b'].every(collapsed.isCollapsed);
+  return <>
+    <output data-testid="group-state">{String(collapsed.isCollapsed('a'))}</output>
+    <Sidebar expansion={expansion} width={sidebarWidth.width} setWidth={sidebarWidth.setWidth} resetWidth={sidebarWidth.reset}
+      allFoldersCollapsed={allCollapsed} onToggleAllFolders={() => {
+        if (allCollapsed) { expansion.setAll(['a'], true); collapsed.expandAll(); }
+        else { expansion.setAll([], false); collapsed.collapseAll(['a', 'b']); }
+      }}
+      {...baseProps} />
+  </>;
+}
+const baseProps = {
+  query: '', onQueryChange: vi.fn(), queue: [], onQueueReorder: vi.fn(),
+  onQueueRemove: vi.fn(), onQueueSelect: vi.fn(), totalModelCount: 1,
+  folders: [
+    { id: 'a', name: 'Parent', parentId: null, path: '/a', count: 1 },
+    { id: 'b', name: 'Child', parentId: 'a', path: '/a/b', count: 1 },
+  ],
+  activeFolderId: 'a', onFolderSelect: vi.fn(), onCreateFolder: vi.fn(),
+  tags: [], activeTag: null, onTagSelect: vi.fn(), collections: [],
+  activeCollection: null, collectionsGalleryOpen: false, onSelectCollection: vi.fn(),
+  onOpenCollectionsGallery: vi.fn(), onCreateCollection: vi.fn(), toolView: null,
+  onToolViewChange: vi.fn(), toolCounts: { recent: 0, new: 0, favorites: 0, duplicateGroups: 0 },
+  onOpenCleanup: vi.fn(), cleanupScanning: false, cleanupError: null,
+};
 
 it('shows search focus on the wrapper, including programmatic focus', () => {
-  render(<LanguageProvider><Sidebar
-    query="" onQueryChange={vi.fn()} queue={[]} onQueueReorder={vi.fn()}
-    onQueueRemove={vi.fn()} onQueueSelect={vi.fn()} folders={[]} totalModelCount={0}
-    activeFolderId="all" onFolderSelect={vi.fn()} onCreateFolder={vi.fn()}
-    tags={[]} activeTag={null} onTagSelect={vi.fn()} collections={[]}
-    activeCollection={null} collectionsGalleryOpen={false} onSelectCollection={vi.fn()}
-    onOpenCollectionsGallery={vi.fn()} onCreateCollection={vi.fn()} toolView={null}
-    onToolViewChange={vi.fn()} toolCounts={{ recent: 0, new: 0, favorites: 0, duplicateGroups: 0 }}
-    onOpenCleanup={vi.fn()} cleanupScanning={false} cleanupError={null}
-  /></LanguageProvider>);
+  render(<LanguageProvider><Harness /></LanguageProvider>);
   const search = screen.getByRole('textbox');
   search.focus();
   expect(search).toHaveFocus();
   expect(search.parentElement).toHaveClass('focus-within:border-[var(--accent)]');
+});
+
+it('toggles both folder locations and preserves the selected folder', () => {
+  render(<LanguageProvider><Harness /></LanguageProvider>);
+  fireEvent.click(screen.getByRole('button', { name: 'Alle Ordner zuklappen' }));
+  expect(screen.getByTestId('group-state')).toHaveTextContent('true');
+  expect(screen.queryByText('Child')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Alle Ordner aufklappen' }));
+  expect(screen.getByText('Child')).toBeVisible();
+  expect(screen.getByTestId('group-state')).toHaveTextContent('false');
+  expect(screen.getByText('Parent').parentElement).toHaveClass('font-semibold');
+  expect(baseProps.onFolderSelect).not.toHaveBeenCalled();
+});
+
+it('resizes by keyboard and double-click, exposing the current width', () => {
+  render(<LanguageProvider><Harness /></LanguageProvider>);
+  const handle = screen.getByRole('separator', { name: 'Breite der Seitenleiste' });
+  expect(handle).toHaveAttribute('tabindex', '0');
+  expect(handle).toHaveAttribute('aria-orientation', 'vertical');
+  expect(handle).toHaveAttribute('aria-valuenow', '242');
+  for (const [key, value] of [['ArrowRight', 258], ['ArrowLeft', 242], ['Home', 180], ['End', 420]]) {
+    fireEvent.keyDown(handle, { key });
+    expect(handle).toHaveAttribute('aria-valuenow', String(value));
+  }
+  fireEvent.doubleClick(handle);
+  expect(handle).toHaveAttribute('aria-valuenow', '242');
+});
+
+it('drags using window events and restores selection on release and unmount', () => {
+  document.body.style.userSelect = 'text';
+  const { unmount } = render(<LanguageProvider><Harness /></LanguageProvider>);
+  const handle = screen.getByRole('separator');
+  fireEvent.mouseDown(handle, { button: 0, clientX: 302 });
+  expect(document.body.style.userSelect).toBe('none');
+  fireEvent.mouseMove(window, { clientX: 352 });
+  expect(handle).toHaveAttribute('aria-valuenow', '292');
+  fireEvent.mouseUp(window);
+  expect(document.body.style.userSelect).toBe('text');
+  fireEvent.mouseMove(window, { clientX: 400 });
+  expect(handle).toHaveAttribute('aria-valuenow', '292');
+  fireEvent.mouseDown(handle, { button: 0, clientX: 352 });
+  unmount();
+  expect(document.body.style.userSelect).toBe('text');
+  document.body.style.userSelect = '';
 });

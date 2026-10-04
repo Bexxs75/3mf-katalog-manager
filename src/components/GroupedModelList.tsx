@@ -4,9 +4,7 @@ import type { ModelFile, Folder } from '../types';
 import { buildGroupedFolderTree, type GroupedFolderNode } from '../lib/groupedFolderTree';
 import { ModelList } from './ModelList';
 import { useT } from '../i18n/LanguageContext';
-import type { useCollapsedFolders } from '../hooks/useCollapsedFolders';
-
-const NO_FOLDER_COLLAPSE_KEY = 'no-folder';
+import { NO_FOLDER_COLLAPSE_KEY, type useCollapsedFolders } from '../hooks/useCollapsedFolders';
 
 interface Props {
   models: ModelFile[];

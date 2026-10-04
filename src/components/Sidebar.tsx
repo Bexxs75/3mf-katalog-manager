@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import type { useFolderExpansion } from '../hooks/useFolderExpansion';
+import { SIDEBAR_MIN, SIDEBAR_MAX, SIDEBAR_STEP } from '../hooks/useSidebarWidth';
+import { Icon } from './Icon';
+import { useEffect, useRef, useState } from 'react';
 import type { Folder, TagCount, ModelFile, Collection, FilamentCheck } from '../types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { SEARCH_INPUT_ID } from '../hooks/useKeyboardShortcuts';
@@ -9,6 +12,12 @@ import type { ToolCounts, ToolView } from '../lib/toolViews';
 import type { AppError } from '../lib/errors';
 
 interface Props {
+  expansion: ReturnType<typeof useFolderExpansion>;
+  allFoldersCollapsed: boolean;
+  onToggleAllFolders: () => void;
+  width: number;
+  setWidth: (width: number) => void;
+  resetWidth: () => void;
   query: string;
   onQueryChange: (q: string) => void;
   queue: ModelFile[];
@@ -45,6 +54,12 @@ interface Props {
 }
 
 export function Sidebar({
+  expansion,
+  allFoldersCollapsed,
+  onToggleAllFolders,
+  width,
+  setWidth,
+  resetWidth,
   query,
   onQueryChange,
   queue,
@@ -80,6 +95,10 @@ export function Sidebar({
   cleanupError,
 }: Props) {
   const t = useT();
+  const [dragging, setDragging] = useState(false);
+  const stopDrag = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopDrag.current?.(), []);
+  const toggleLabel = t(allFoldersCollapsed ? 'expandAllFolders' : 'collapseAllFolders');
   const { language } = useLanguage();
   const [tagsCollapsed, setTagsCollapsed] = useState(true);
   const [creatingFolder, setCreatingFolder] = useState(false);
@@ -104,7 +123,47 @@ export function Sidebar({
   };
 
   return (
-    <aside className="flex-none w-[242px] flex flex-col min-h-0 bg-[var(--panel)] border-r border-[var(--line)]">
+    <aside style={{ width }} className="relative flex-none flex flex-col min-h-0 bg-[var(--panel)] border-r border-[var(--line)]">
+      <div
+        role="separator" aria-orientation="vertical" aria-label={t('sidebarResizeHandle')}
+        aria-valuemin={SIDEBAR_MIN} aria-valuemax={SIDEBAR_MAX} aria-valuenow={width} tabIndex={0}
+        className={`group absolute top-0 bottom-0 -right-1 w-2 z-30 cursor-col-resize outline-none ${dragging ? 'is-dragging' : ''}`}
+        onDoubleClick={resetWidth}
+        onKeyDown={(event) => {
+          const next = { ArrowLeft: width - SIDEBAR_STEP, ArrowRight: width + SIDEBAR_STEP,
+            Home: SIDEBAR_MIN, End: SIDEBAR_MAX }[event.key];
+          if (next === undefined) return;
+          event.preventDefault();
+          event.stopPropagation();
+          setWidth(next);
+        }}
+        onMouseDown={(event) => {
+          if (event.button !== 0) return;
+          event.preventDefault();
+          event.currentTarget.focus();
+          stopDrag.current?.();
+          const startX = event.clientX;
+          const startWidth = width;
+          const previousSelect = document.body.style.userSelect;
+          const move = (moveEvent: MouseEvent) => setWidth(startWidth + moveEvent.clientX - startX);
+          const stop = () => {
+            window.removeEventListener('mousemove', move);
+            window.removeEventListener('mouseup', stop);
+            window.removeEventListener('blur', stop);
+            document.body.style.userSelect = previousSelect;
+            stopDrag.current = null;
+            setDragging(false);
+          };
+          stopDrag.current = stop;
+          document.body.style.userSelect = 'none';
+          setDragging(true);
+          window.addEventListener('mousemove', move);
+          window.addEventListener('mouseup', stop);
+          window.addEventListener('blur', stop);
+        }}
+      >
+        <span className="absolute inset-y-0 left-[3px] w-0.5 bg-[var(--accent)] opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 group-[.is-dragging]:opacity-100" />
+      </div>
       <div className="p-3 pb-2.5 border-b border-[var(--line)]">
         <div className="flex items-center gap-1.5 h-8 px-2.5 rounded-[3px] border border-[var(--line)] focus-within:border-[var(--accent)] bg-[var(--panel-2)]">
           <span className="font-mono-ui text-xs text-[var(--ink-3)]">⌕</span>
@@ -129,8 +188,13 @@ export function Sidebar({
           <span className="pointer-events-none absolute top-[20px] right-0 z-20 w-[200px] rounded-[8px] bg-[var(--ink)] px-2.5 py-2 text-[11px] font-sans font-medium leading-[1.4] text-[var(--bg)] opacity-0 -translate-y-0.5 transition-opacity transition-transform group-hover:opacity-100 group-hover:translate-y-0">
             {t('foldersInfoTooltip')}
           </span>
+          <button type="button" aria-label={toggleLabel} title={toggleLabel} onClick={onToggleAllFolders}
+            className="ml-auto shrink-0 w-[22px] h-[22px] grid place-items-center rounded-[3px] text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--panel-2)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]">
+            <Icon name={allFoldersCollapsed ? 'expand-all' : 'collapse-all'} size={16} />
+          </button>
         </div>
         <FolderTree
+          expansion={expansion}
           folders={folders}
           totalModelCount={totalModelCount}
           activeFolderId={activeFolderId}

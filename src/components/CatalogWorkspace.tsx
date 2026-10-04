@@ -1,3 +1,5 @@
+import type { useFolderExpansion } from '../hooks/useFolderExpansion';
+import type { useSidebarWidth } from '../hooks/useSidebarWidth';
 import { useMemo } from 'react';
 import { Sidebar } from './Sidebar';
 import { ModelGrid } from './ModelGrid';
@@ -18,6 +20,10 @@ import { toolCounts as computeToolCounts, TOOL_VIEW_LABEL_KEY, type ToolView } f
 import type { AppError } from '../lib/errors';
 
 interface CatalogWorkspaceProps {
+  expansion: ReturnType<typeof useFolderExpansion>;
+  sidebarWidth: ReturnType<typeof useSidebarWidth>;
+  allFoldersCollapsed: boolean;
+  onToggleAllFolders: () => void;
   query: string;
   setQuery: (q: string) => void;
   setActiveCollection: (id: string | null) => void;
@@ -104,6 +110,10 @@ interface CatalogWorkspaceProps {
 }
 
 export function CatalogWorkspace({
+  expansion,
+  sidebarWidth,
+  allFoldersCollapsed,
+  onToggleAllFolders,
   query,
   setQuery,
   setActiveCollection,
@@ -202,6 +212,12 @@ export function CatalogWorkspace({
   return (
     <div className="flex-1 flex min-h-0">
       <Sidebar
+        expansion={expansion}
+        width={sidebarWidth.width}
+        setWidth={sidebarWidth.setWidth}
+        resetWidth={sidebarWidth.reset}
+        allFoldersCollapsed={allFoldersCollapsed}
+        onToggleAllFolders={onToggleAllFolders}
         query={query}
         onQueryChange={(q) => {
           setQuery(q);

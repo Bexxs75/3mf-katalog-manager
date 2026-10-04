@@ -31,3 +31,13 @@ describe('useCollapsedFolders', () => {
     expect(result.current.isCollapsed('a')).toBe(false);
   });
 });
+
+it('collapses every supplied folder plus unfiled models, then clears all', () => {
+  const { result } = renderHook(useCollapsedFolders);
+  act(() => result.current.collapseAll(['a', 'b']));
+  for (const id of ['a', 'b', 'no-folder']) expect(result.current.isCollapsed(id)).toBe(true);
+  expect(result.current.collapsedCount).toBe(3);
+  act(() => result.current.expandAll());
+  expect(result.current.collapsedCount).toBe(0);
+  expect(renderHook(useCollapsedFolders).result.current.collapsedCount).toBe(0);
+});

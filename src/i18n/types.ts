@@ -6,6 +6,11 @@ export interface PluralForms {
 }
 
 export interface Translations {
+  collapseAllFolders: string;
+  expandAllFolders: string;
+  sidebarResizeHandle: string;
+  settingsClose: string;
+
   removeCatalog: string;
   removeCatalogShort: string;
   removeEntry: string;
