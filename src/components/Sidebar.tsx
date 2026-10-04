@@ -225,11 +225,12 @@ export function Sidebar({
 
       <div className="flex-1 overflow-y-auto px-2 py-3">
         <div className="group relative flex items-center gap-1 px-1.5 pb-2">
-          <span className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)]">
+          <span className="inline-flex items-center gap-1.5 font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)]">
+            <Icon name="folder" size={16} />
             {t('foldersHeading')}
           </span>
-          <span className="w-[13px] h-[13px] rounded-full border border-[var(--ink-3)] grid place-items-center font-mono-ui text-compact-label text-[var(--ink-3)] cursor-default">
-            i
+          <span className="grid place-items-center text-[var(--ink-3)] cursor-default">
+            <Icon name="info" size={16} />
           </span>
           <span className="pointer-events-none absolute top-[20px] right-0 z-20 w-[200px] rounded-[8px] bg-[var(--ink)] px-2.5 py-2 text-[11px] font-sans font-medium leading-[1.4] text-[var(--bg)] opacity-0 -translate-y-0.5 transition-opacity transition-transform group-hover:opacity-100 group-hover:translate-y-0">
             {t('foldersInfoTooltip')}
@@ -286,7 +287,8 @@ export function Sidebar({
         )}
 
         <div className="flex items-center justify-between px-1.5 pt-[18px] pb-2">
-          <span ref={collectionsHeading} tabIndex={-1} className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)]">
+          <span ref={collectionsHeading} tabIndex={-1} className="inline-flex items-center gap-1.5 font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)]">
+            <Icon name="layers" size={16} />
             {t('collectionsTab')}
           </span>
           <span
@@ -368,7 +370,8 @@ export function Sidebar({
           onClick={() => setTagsCollapsed((c) => !c)}
           className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex items-center justify-between px-1.5 pt-[18px] pb-2 cursor-pointer"
         >
-          <span className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)]">
+          <span className="inline-flex items-center gap-1.5 font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)]">
+            <Icon name="tag" size={16} />
             {t('tagsHeading')}
           </span>
           <span className="font-mono-ui text-[length:var(--font-size-label)] leading-none text-[var(--ink-3)]">
