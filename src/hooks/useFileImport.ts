@@ -18,7 +18,7 @@ export interface ImportJobMeta { jobId: string; source: ImportSource; targetName
 const storageKey = 'catalog-import-jobs';
 const terminal = (state: string) => ['finished', 'cancelled', 'failed'].includes(state);
 const emptyCounts = { imported: 0, importedNotPlaced: 0, duplicate: 0, skipped: 0, archive: 0, known: 0 };
-const initialProgress = (jobId: string): ImportProgress => ({ jobId, state: 'queued', scanComplete: false, total: null, done: 0, inFlight: 0, counts: emptyCounts, current: null, elapsedMs: 0 });
+const initialProgress = (jobId: string): ImportProgress => ({ jobId, state: 'queued', scanComplete: false, total: null, found: 0, done: 0, inFlight: 0, counts: emptyCounts, current: null, elapsedMs: 0 });
 
 export function useFileImport(args: UseFileImportArgs) {
   const latest = useRef(args); latest.current = args;

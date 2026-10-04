@@ -6,12 +6,22 @@ fn scan_candidates(
     roots: &[PathBuf],
     limit: usize,
 ) -> Vec<(PathBuf, Option<PathBuf>)> {
+    scan_candidates_observed(job, roots, limit, || {})
+}
+
+fn scan_candidates_observed(
+    job: &ImportJob,
+    roots: &[PathBuf],
+    limit: usize,
+    mut observe: impl FnMut(),
+) -> Vec<(PathBuf, Option<PathBuf>)> {
     fn visit(
         job: &ImportJob,
         path: &Path,
         root: Option<&Path>,
         out: &mut Vec<(PathBuf, Option<PathBuf>)>,
         limit: usize,
+        observe: &mut impl FnMut(),
     ) -> bool {
         if job.cancel.load(Ordering::Acquire) || out.len() >= limit {
             return false;
@@ -20,15 +30,22 @@ fn scan_candidates(
             return true;
         }
         if path.is_dir() {
+            job.data.lock().unwrap().current = Some(path.to_string_lossy().into_owned());
+            observe();
             if let Ok(entries) = std::fs::read_dir(path) {
                 for entry in entries.flatten() {
-                    if !visit(job, &entry.path(), root, out, limit) {
+                    if !visit(job, &entry.path(), root, out, limit, observe) {
                         return false;
                     }
                 }
             }
         } else if root.is_none() || files::is_supported_extension(path) {
             out.push((path.to_path_buf(), root.map(Path::to_path_buf)));
+            let mut data = job.data.lock().unwrap();
+            data.known = out.len();
+            data.current = path.parent().map(|p| p.to_string_lossy().into_owned());
+            drop(data);
+            observe();
         }
         true
     }
@@ -41,6 +58,7 @@ fn scan_candidates(
             root.is_dir().then_some(root.as_path()),
             &mut out,
             limit,
+            &mut observe,
         ) {
             complete = false;
             break;
@@ -53,6 +71,7 @@ fn scan_candidates(
         .map(|(path, _)| path.to_string_lossy().into_owned())
         .collect();
     data.scan_complete = complete;
+    data.current = None;
     if !complete {
         job.cancel.store(true, Ordering::Release);
     }
@@ -332,8 +351,12 @@ pub(super) fn run_models(
 }
 
 pub(super) fn heartbeat(job: Arc<ImportJob>) {
+    heartbeat_with_wait(job, || std::thread::sleep(Duration::from_millis(250)));
+}
+
+fn heartbeat_with_wait(job: Arc<ImportJob>, mut wait: impl FnMut()) {
     while !job.progress().state.terminal() {
-        std::thread::sleep(Duration::from_millis(250));
+        wait();
         if job.progress().state.terminal() {
             break;
         }
@@ -484,5 +507,97 @@ impl files::ImportDb for ArchiveJobDb<'_> {
     }
     fn report_in_flight(&self, count: usize) {
         self.job.data.lock().unwrap().in_flight = count;
+    }
+}
+
+#[cfg(test)]
+mod scan_tests {
+    use super::*;
+    use std::sync::mpsc;
+
+    #[derive(Default)]
+    struct Clock(AtomicU64);
+    impl ImportClock for Clock {
+        fn now_ms(&self) -> u64 {
+            self.0.load(Ordering::Relaxed)
+        }
+    }
+    #[derive(Default)]
+    struct Events(Mutex<Vec<serde_json::Value>>);
+    impl ImportEvents for Events {
+        fn emit(&self, name: &str, payload: serde_json::Value) {
+            if name == "import://progress" {
+                self.0.lock().unwrap().push(payload);
+            }
+        }
+    }
+
+    #[test]
+    fn scanning_heartbeat_reports_growing_found_with_injected_clock_and_limit() {
+        for limit in [2, usize::MAX] {
+            let dir =
+                std::env::temp_dir().join(format!("scan_found_{}_{}", std::process::id(), limit));
+            std::fs::create_dir_all(&dir).unwrap();
+            for i in 0..3 {
+                std::fs::write(dir.join(format!("{i}.stl")), b"stl").unwrap();
+            }
+            std::fs::write(dir.join("ignored.txt"), b"text").unwrap();
+            let clock = Arc::new(Clock::default());
+            let events = Arc::new(Events::default());
+            let service = ImportJobs {
+                clock: clock.clone(),
+                events: events.clone(),
+                scan_limit: limit,
+                ..ImportJobs::default()
+            };
+            let job = service
+                .enqueue(ImportSource::Folder, None, false, None)
+                .unwrap();
+            service.next().unwrap();
+            let (visited_tx, visited_rx) = mpsc::channel();
+            let (resume_tx, resume_rx) = mpsc::channel();
+            std::thread::scope(|scope| {
+                let scan_job = job.clone();
+                let scan_dir = dir.clone();
+                let scan_limit = service.scan_limit;
+                scope.spawn(move || {
+                    let candidates =
+                        scan_candidates_observed(&scan_job, &[scan_dir], scan_limit, || {
+                            visited_tx.send(()).unwrap();
+                            resume_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+                        });
+                    assert_eq!(candidates.len(), limit.min(3));
+                    scan_job.finish(None);
+                    drop(visited_tx);
+                });
+                let mut paused = false;
+                heartbeat_with_wait(job.clone(), || {
+                    if paused {
+                        resume_tx.send(()).unwrap();
+                    }
+                    paused = visited_rx.recv_timeout(Duration::from_secs(5)).is_ok();
+                    clock.0.fetch_add(250, Ordering::Relaxed);
+                });
+            });
+            let recorded = events.0.lock().unwrap();
+            let scanning: Vec<_> = recorded
+                .iter()
+                .filter(|p| p["state"] == "scanning" && p["elapsedMs"] != 0)
+                .collect();
+            let found: Vec<_> = scanning
+                .iter()
+                .map(|p| p["found"].as_u64().unwrap())
+                .collect();
+            assert_eq!(found, (0..=limit.min(3) as u64).collect::<Vec<_>>());
+            for (i, payload) in scanning.iter().enumerate() {
+                assert!(payload["total"].is_null());
+                assert_eq!(payload["done"], 0);
+                assert_eq!(payload["current"], dir.to_string_lossy().as_ref());
+                assert_eq!(payload["elapsedMs"], (i as u64 + 1) * 250);
+            }
+            assert_eq!(job.progress().found, limit.min(3));
+            assert_eq!(job.progress().scan_complete, limit == usize::MAX);
+            std::fs::remove_dir_all(dir).unwrap();
+        }
     }
 }

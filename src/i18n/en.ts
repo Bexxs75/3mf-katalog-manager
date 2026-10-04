@@ -6,6 +6,8 @@ export const en: Translations = {
   detailPosition: "{index} of {total}",
   tagSearchPlaceholder: "Filter tags …",
   tagSearchEmpty: "No tags found",
+  detailKeepEditing: "Keep editing",
+  detailDiscardAndGo: "Discard and switch",
   detailDiscardEdits: "Discard pending edits and switch models?",
 
   importLockedHint: "Locked during an import",

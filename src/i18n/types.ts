@@ -12,6 +12,8 @@ export interface Translations {
   tagSearchPlaceholder: string;
   tagSearchEmpty: string;
   detailDiscardEdits: string;
+  detailKeepEditing: string;
+  detailDiscardAndGo: string;
 
   importLockedHint: string;
   impScanning: string;

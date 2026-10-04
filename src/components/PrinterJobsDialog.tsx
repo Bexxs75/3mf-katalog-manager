@@ -136,7 +136,7 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
       .catch((e) => setActionError(toAppError(e)));
   };
 
-  const confirm = (ids: string[]) => {
+  const confirmJobs = (ids: string[]) => {
     const decisions = ids
       .map((id) => ({ id, row: rows[id] }))
       .filter(({ row }) => row?.spoolId)
@@ -281,7 +281,7 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
                     <button
                       type="button"
                       disabled={!row.spoolId || busy}
-                      onClick={() => confirm([job.id])}
+                      onClick={() => confirmJobs([job.id])}
                       className="h-7 px-2 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12px] font-semibold cursor-pointer disabled:opacity-50"
                     >
                       {t('printerJobConfirm')}
@@ -321,7 +321,7 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
             <button
               type="button"
               disabled={allConfirmDisabled}
-              onClick={() => confirm(bookable.map((j) => j.id))}
+              onClick={() => confirmJobs(bookable.map((j) => j.id))}
               className="h-8 px-3 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-bold cursor-pointer disabled:opacity-50"
             >
               {t('printerJobsConfirmAll').replace('{count}', () => String(bookable.length))}

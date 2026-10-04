@@ -38,18 +38,18 @@ it('renders position and labelled buttons and respects both boundaries and a sin
 
 it('blocks draft navigation by keyboard and requires confirmation by button without losing a rejected draft', () => {
   const onNavigate = vi.fn();
-  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
   render(<LanguageProvider><ModelDetailPage {...props} onNavigate={onNavigate} hasPrevious hasNext /></LanguageProvider>);
   const input = screen.getByRole('combobox');
   fireEvent.change(input, {target: {value: 'pending tag'}});
   fireEvent.keyDown(window, {key: 'ArrowRight'});
   expect(onNavigate).not.toHaveBeenCalled();
   fireEvent.click(screen.getByLabelText('Nächstes Modell'));
-  expect(confirm).toHaveBeenCalledOnce();
+  expect(screen.getByRole('button', {name: 'Weiter bearbeiten'})).toHaveFocus();
+  fireEvent.click(screen.getByRole('button', {name: 'Weiter bearbeiten'}));
   expect(onNavigate).not.toHaveBeenCalled();
   expect(input).toHaveValue('pending tag');
-  confirm.mockReturnValue(true);
   fireEvent.click(screen.getByLabelText('Nächstes Modell'));
+  fireEvent.click(screen.getByRole('button', {name: 'Verwerfen und wechseln'}));
   expect(onNavigate).toHaveBeenCalledWith('next');
 });
 
@@ -67,19 +67,25 @@ it('gives viewer controls priority and keeps close behavior', () => {
 
 it('protects source editing and an open print-log form even after focus leaves the input', () => {
   const onNavigate = vi.fn();
-  vi.spyOn(window, 'confirm').mockReturnValue(false);
   render(<LanguageProvider><ModelDetailPage {...props} onNavigate={onNavigate} hasPrevious hasNext /></LanguageProvider>);
   fireEvent.click(screen.getByText(/https:\/\//));
+  const source = screen.getByPlaceholderText('https://…');
+  fireEvent.change(source, {target: {value: 'https://draft.example/model'}});
   fireEvent.keyDown(window, {key: 'ArrowRight'});
   expect(onNavigate).not.toHaveBeenCalled();
   fireEvent.click(screen.getByLabelText('Nächstes Modell'));
-  expect(window.confirm).toHaveBeenCalledOnce();
+  expect(screen.getByRole('dialog')).toBeVisible();
+  expect(props.onSetSourceUrl).not.toHaveBeenCalled();
+  fireEvent.keyDown(document, {key: 'Escape'});
+  expect(screen.getByLabelText('Nächstes Modell')).toHaveFocus();
+  expect(source).toHaveValue('https://draft.example/model');
   expect(onNavigate).not.toHaveBeenCalled();
   fireEvent.keyDown(screen.getByPlaceholderText('https://…'), {key: 'Escape'});
   fireEvent.click(screen.getByText('+ Eintrag hinzufügen'));
   fireEvent.keyDown(window, {key: 'ArrowRight'});
   expect(onNavigate).not.toHaveBeenCalled();
   fireEvent.click(screen.getByLabelText('Nächstes Modell'));
-  expect(window.confirm).toHaveBeenCalledTimes(2);
+  expect(screen.getByRole('dialog')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', {name: 'Weiter bearbeiten'}));
   expect(onNavigate).not.toHaveBeenCalled();
 });

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { CatalogActionDialog, catalogActionButton } from './CatalogActionDialog';
 import type { Collection } from '../types';
 import { useT } from '../i18n/LanguageContext';
 import { formatCount } from '../i18n/types';
@@ -13,6 +14,8 @@ interface Props {
 
 export function CollectionsGallery({ collections, onSelect, onCreate, onRename, onDelete }: Props) {
   const t = useT();
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const deleteTrigger = useRef<HTMLButtonElement | null>(null);
   const [creating, setCreating] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -68,16 +71,18 @@ export function CollectionsGallery({ collections, onSelect, onCreate, onRename, 
                   >
                     ✎
                   </span>
-                  <span
+                  <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (window.confirm(t('deleteCollectionConfirmQuestion'))) onDelete(c.id);
+                      deleteTrigger.current = e.currentTarget;
+                      setDeletingId(c.id);
                     }}
                     aria-label={t('deleteCollectionConfirmQuestion')}
                     className="w-5 h-5 grid place-items-center rounded-full cursor-pointer text-[var(--ink-3)] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
                   >
                     ✕
-                  </span>
+                  </button>
                 </div>
               </div>
             )}
@@ -114,6 +119,12 @@ export function CollectionsGallery({ collections, onSelect, onCreate, onRename, 
           </button>
         )}
       </div>
+      {deletingId !== null && <CatalogActionDialog title={t('deleteCollectionConfirmQuestion')} returnFocus={deleteTrigger} onClose={() => setDeletingId(null)}>
+        <div className="flex justify-end gap-2">
+          <button data-initial-focus className={catalogActionButton} onClick={() => setDeletingId(null)}>{t('cancel')}</button>
+          <button className={catalogActionButton} onClick={() => { onDelete(deletingId); setDeletingId(null); }}>{t('delete')}</button>
+        </div>
+      </CatalogActionDialog>}
     </div>
   );
 }

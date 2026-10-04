@@ -29,9 +29,9 @@ it('dismisses on close and returns focus from details on Escape', () => {
   fireEvent.keyDown(document,{key:'Escape'}); expect(screen.queryByRole('dialog')).toBeNull(); expect(screen.getByRole('button',{name:'Details'})).toHaveFocus();
   fireEvent.click(screen.getByRole('button',{name:'Schließen'})); expect(screen.queryByRole('status')).toBeNull();
 });
-it('does not mislabel processed counts as scan discoveries', () => {
-  render(<LanguageProvider><ImportProgressRow progress={{...importProgress,state:'scanning',total:null,counts:{...importProgress.counts,known:0}}} meta={{jobId:'j1',source:'dropped'}} result={null} queued={0} onCancel={vi.fn()} onDismiss={vi.fn()} /></LanguageProvider>);
-  expect(screen.getByText('Dateien werden gesucht …')).toBeVisible(); expect(screen.queryByText(/0 Dateien gefunden/)).toBeNull();
+it('shows scan discoveries and the current folder independently of processed counts', () => {
+  render(<LanguageProvider><ImportProgressRow progress={{...importProgress,state:'scanning',total:null,found:217,current:'/models/kitchen',counts:{...importProgress.counts,known:0}}} meta={{jobId:'j1',source:'dropped'}} result={null} queued={0} onCancel={vi.fn()} onDismiss={vi.fn()} /></LanguageProvider>);
+  expect(screen.getByText('217 Dateien gefunden … · /models/kitchen')).toBeVisible(); expect(screen.getByRole('progressbar')).not.toHaveAttribute('aria-valuenow');
 });
 it('reports an incomplete scan on job failure as well as cancellation', () => {
   render(<LanguageProvider><ImportProgressRow progress={{...importProgress,state:'failed'}} meta={{jobId:'j1',source:'files'}} result={{...importResult,state:'failed',scanComplete:false,jobError:{kind:'database',message:'Datenbank nicht erreichbar'}}} queued={0} onCancel={vi.fn()} onDismiss={vi.fn()} /></LanguageProvider>);

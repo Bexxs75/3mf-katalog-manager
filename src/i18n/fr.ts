@@ -6,6 +6,8 @@ export const fr: Translations = {
   detailPosition: "{index} sur {total}",
   tagSearchPlaceholder: "Filtrer les tags …",
   tagSearchEmpty: "Aucun tag trouvé",
+  detailKeepEditing: "Continuer à modifier",
+  detailDiscardAndGo: "Abandonner et changer",
   detailDiscardEdits: "Abandonner les modifications en cours et changer de modèle ?",
 
   importLockedHint: "Verrouillé pendant un import",

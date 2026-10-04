@@ -403,6 +403,7 @@ export interface ImportProgress {
   state: ImportState;
   scanComplete: boolean;
   total: number | null;
+  found: number;
   done: number;
   inFlight: number;
   counts: ImportCounts;
