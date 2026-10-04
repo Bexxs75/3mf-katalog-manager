@@ -163,11 +163,26 @@ fn clean_name(name: &str) -> Result<String, DbError> {
 }
 
 pub fn list_printers(conn: &Connection) -> Result<Vec<PrinterRecord>, DbError> {
-    let mut stmt = conn.prepare("SELECT id, name, kind FROM printers ORDER BY position, id")?;
+    let mut stmt = conn.prepare("SELECT id, name, kind, manufacturer, model, nozzle_mm, bed_x_mm, bed_y_mm, bed_z_mm FROM printers ORDER BY position, id")?;
     let rows = stmt
-        .query_map([], |r| Ok(PrinterRecord { id: r.get(0)?, name: r.get(1)?, kind: r.get(2)? }))?
+        .query_map([], |r| Ok(PrinterRecord { id: r.get(0)?, name: r.get(1)?, kind: r.get(2)?, manufacturer: r.get(3)?, model: r.get(4)?, nozzle_mm: r.get(5)?, bed_x_mm: r.get(6)?, bed_y_mm: r.get(7)?, bed_z_mm: r.get(8)? }))?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rows)
+}
+
+/// The caller supplies a transaction; reject missing, foreign or duplicate IDs before writing.
+pub fn reorder_printers(conn: &Connection, ids: &[i64]) -> Result<(), DbError> {
+    let mut current: Vec<i64> = list_printers(conn)?.into_iter().map(|p| p.id).collect();
+    let mut requested = ids.to_vec();
+    current.sort_unstable();
+    requested.sort_unstable();
+    if current != requested {
+        return Err(DbError::Invalid("Reihenfolge muss alle Drucker genau einmal enthalten".into()));
+    }
+    for (position, id) in ids.iter().enumerate() {
+        conn.execute("UPDATE printers SET position = ?1 WHERE id = ?2", params![position as i64, id])?;
+    }
+    Ok(())
 }
 
 pub fn list_units(conn: &Connection) -> Result<Vec<MaterialUnitRecord>, DbError> {

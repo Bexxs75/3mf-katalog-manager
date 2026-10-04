@@ -16,7 +16,7 @@ const SATURN: Printer = {
   id: 'p9',
   name: 'Saturn 4',
   kind: 'resin',
-  units: [{ id: 'vat', printerId: 'p9', name: 'Harzwanne', kind: 'resin_vat', slotCount: 1, bambuAmsIndex: null }],
+  manufacturer: null, model: null, nozzleMm: null, bedXMm: null, bedYMm: null, bedZMm: null, units: [{ id: 'vat', printerId: 'p9', name: 'Harzwanne', kind: 'resin_vat', slotCount: 1, bambuAmsIndex: null }],
 };
 
 const BOTTLE = spool({
@@ -28,7 +28,7 @@ const X1C: Printer = {
   id: 'p1',
   name: 'X1C',
   kind: 'filament',
-  units: [{ id: 'u1', printerId: 'p1', name: 'AMS A', kind: 'bambu_ams', slotCount: 4, bambuAmsIndex: 0 }],
+  manufacturer: null, model: null, nozzleMm: null, bedXMm: null, bedYMm: null, bedZMm: null, units: [{ id: 'u1', printerId: 'p1', name: 'AMS A', kind: 'bambu_ams', slotCount: 4, bambuAmsIndex: 0 }],
 };
 
 function renderColumn(props: Partial<Parameters<typeof PrinterColumn>[0]> = {}) {
@@ -63,13 +63,13 @@ function renderColumn(props: Partial<Parameters<typeof PrinterColumn>[0]> = {}) 
 describe('PrinterColumn', () => {
   it('shows an empty state with a button to add a printer', () => {
     const { onManage } = renderColumn({ printers: [] });
-    fireEvent.click(screen.getByRole('button', { name: 'Drucker anlegen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Zum Printer Manager' }));
     expect(onManage).toHaveBeenCalled();
   });
 
   it('tells how to add slots to a printer without units and opens the management on click', () => {
-    const handlers = renderColumn({ printers: [{ id: 'p2', name: 'A1 mini', kind: 'filament', units: [] }] });
-    const hint = screen.getByRole('button', { name: 'Keine Fächer – über „Drucker verwalten“ hinzufügen' });
+    const handlers = renderColumn({ printers: [{ id: 'p2', name: 'A1 mini', kind: 'filament', manufacturer: null, model: null, nozzleMm: null, bedXMm: null, bedYMm: null, bedZMm: null, units: [] }] });
+    const hint = screen.getByRole('button', { name: 'Keine Fächer – im Printer Manager hinzufügen' });
     fireEvent.click(hint);
     expect(handlers.onManage).toHaveBeenCalled();
   });
@@ -136,8 +136,8 @@ describe('PrinterColumn', () => {
 
   it('shows the resin empty hint when there is no resin printer yet', () => {
     const { onManage } = renderColumn({ printers: [X1C], kind: 'resin' });
-    expect(screen.getByText(/welches Harz gerade in der Wanne ist/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Drucker anlegen' }));
+    expect(screen.getByText(/Noch keine Drucker. Lege sie im Printer Manager an/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Zum Printer Manager' }));
     expect(onManage).toHaveBeenCalled();
   });
 
@@ -233,4 +233,15 @@ describe('PrinterColumn', () => {
     fireEvent.click(screen.getByTestId('slot-u1-0'));
     expect(screen.queryByRole('button', { name: '− Verbrauch' })).toBeNull();
   });
+});
+
+it('passes the selected printer ID to Printer Manager', () => {
+  const handlers = renderColumn();
+  fireEvent.click(screen.getByRole('button', { name: 'In der Druckerverwaltung bearbeiten' }));
+  expect(handlers.onManage).toHaveBeenCalledWith('p1');
+});
+
+it('focuses a printer reached from Printer Manager', () => {
+  renderColumn({ focusPrinterId: 'p1' });
+  expect(screen.getByLabelText('X1C')).toHaveFocus();
 });

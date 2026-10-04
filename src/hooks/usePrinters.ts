@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as printersApi from '../lib/api/printers';
 import { toAppError, type AppError } from '../lib/errors';
-import type { Printer, PrinterKind, UnitKind } from '../types';
+import type { PrinterDetails, Printer, PrinterKind, UnitKind } from '../types';
 
 /**
  * Printers and their multi-color units. Every change reloads the list;
@@ -49,6 +49,8 @@ export function usePrinters() {
     addPrinter: (name: string, holderName: string, kind: PrinterKind) =>
       run(printersApi.addPrinter(name, holderName, kind)),
     renamePrinter: (printerId: string, name: string) => run(printersApi.renamePrinter(printerId, name)),
+    updateDetails: (id: string, details: PrinterDetails) => run(printersApi.updatePrinterDetails(id, details)),
+    reorderPrinters: (ids: string[]) => run(printersApi.reorderPrinters(ids)),
     deletePrinter: (printerId: string) => run(printersApi.deletePrinter(printerId)),
     addUnit: (printerId: string, kind: UnitKind, name: string, slotCount: number | null) =>
       run(printersApi.addUnit(printerId, kind, name, slotCount)),
@@ -60,7 +62,7 @@ export function usePrinters() {
 }
 
 /**
- * A single instance in App.tsx, passed to Rail and FilamentView so both
+ * A single instance in App.tsx, passed to PrinterManagerView and FilamentView so both
  * see the same state.
  */
 export type PrintersState = ReturnType<typeof usePrinters>;

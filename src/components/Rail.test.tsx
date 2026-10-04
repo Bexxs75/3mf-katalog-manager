@@ -7,7 +7,7 @@ import { icons } from './icons.generated';
 
 beforeEach(() => localStorage.setItem('3mf-katalog-language', 'de'));
 
-function renderRail(mainView: 'catalog' | 'filament' | 'trash' = 'catalog', trashCount = 3, controlledSettings = false) {
+function renderRail(mainView: 'catalog' | 'filament' | 'printers' | 'trash' = 'catalog', trashCount = 3, controlledSettings = false) {
   const props: Parameters<typeof Rail>[0] = {
     mainView, trashCount, onMainViewChange: vi.fn(),
     settingsOpen: false, onSettingsOpenChange: vi.fn(),
@@ -19,13 +19,7 @@ function renderRail(mainView: 'catalog' | 'filament' | 'trash' = 'catalog', tras
     onScanCatalogIssues: vi.fn(), cleanupScanning: false, cleanupError: null,
     onExportCatalog: vi.fn(async () => true), catalogModelCount: 0, catalogFolderCount: 0,
     onCatalogReset: vi.fn(), onImportCatalog: vi.fn(), catalogBackupError: null,
-    catalogBaseDir: null, onOpenCatalogSetup: vi.fn(), printerList: [],
-    printerLink: {
-      enabled: false, connections: [], jobs: [], error: null,
-      refresh: vi.fn(), setEnabled: vi.fn(), testConnection: vi.fn(),
-      removeConnection: vi.fn(), syncNow: vi.fn(), ignoreJob: vi.fn(),
-      confirmJobs: vi.fn(), previewJob: vi.fn(),
-    },
+    catalogBaseDir: null, onOpenCatalogSetup: vi.fn(),
     update: {
       currentVersion: '0.15.0', info: null, phase: 'idle', progress: null,
       error: null, notesError: null, dismissed: false, preview: false,
@@ -46,14 +40,14 @@ function renderRail(mainView: 'catalog' | 'filament' | 'trash' = 'catalog', tras
 
 const buttons = [
   ['Katalog', 'catalog'], ['Material Manager', 'spool'],
-  ['Papierkorb', 'trash'], ['Einstellungen', 'settings'],
+  ['Printer Manager', 'printer'], ['Papierkorb', 'trash'], ['Einstellungen', 'settings'],
 ] as const;
 
 describe('Rail', () => {
-  it('keeps four named 42px buttons in order with their approved 24px icons and focus style', () => {
+  it('keeps five named 42px buttons in order with their approved 24px icons and focus style', () => {
     renderRail();
     const rendered = within(screen.getByRole('navigation')).getAllByRole('button');
-    expect(rendered).toHaveLength(4);
+    expect(rendered).toHaveLength(5);
     buttons.forEach(([label, name], index) => {
       const button = rendered[index];
       expect(button).toHaveAttribute('aria-label', label);
@@ -66,16 +60,16 @@ describe('Rail', () => {
       expected.innerHTML = icons[name];
       expect(svg?.innerHTML).toBe(expected.innerHTML);
     });
-    expect(within(rendered[2]).getByText('3')).toHaveClass('absolute', '-top-1', '-right-1');
+    expect(within(rendered[3]).getByText('3')).toHaveClass('absolute', '-top-1', '-right-1');
   });
 
   it.each([
-    ['Katalog', 'catalog'], ['Material Manager', 'filament'], ['Papierkorb', 'trash'],
+    ['Katalog', 'catalog'], ['Material Manager', 'filament'], ['Printer Manager', 'printers'], ['Papierkorb', 'trash'],
   ] as const)('keeps %s active and dispatches its view on click', (label, view) => {
     const props = renderRail(view);
     const button = screen.getByRole('button', { name: label });
     expect(button).toHaveClass('text-[var(--accent)]');
-    for (const [other] of buttons.slice(0, 3)) {
+    for (const [other] of buttons.slice(0, 4)) {
       if (other !== label) expect(screen.getByRole('button', { name: other })).not.toHaveClass('text-[var(--accent)]');
     }
     fireEvent.click(button);
@@ -178,4 +172,14 @@ it.each(['catalog', 'filament', 'trash'] as const)('measures the panel offset in
     expect(panel.style.left).toBe('calc(52px + var(--sidebar-width, 0px) + 10px)');
     expect(panel.style.bottom).toBe('30px');
   } finally { rect.mockRestore(); }
+});
+
+it('moves printer settings to General and opens Printer Manager', () => {
+  const props = renderRail('catalog', 0, true);
+  fireEvent.click(screen.getByRole('button', { name: 'Einstellungen' }));
+  expect(screen.queryByRole('button', { name: 'Drucker' })).toBeNull();
+  expect(screen.getByText('Drucker findest du jetzt im Printer Manager in der linken Leiste.')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Printer Manager öffnen' }));
+  expect(props.onMainViewChange).toHaveBeenCalledWith('printers');
+  expect(props.onSettingsOpenChange).toHaveBeenLastCalledWith(false);
 });

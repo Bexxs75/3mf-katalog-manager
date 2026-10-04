@@ -220,7 +220,29 @@ export interface MaterialUnit {
   bambuAmsIndex: number | null;
 }
 
-export interface Printer {
+export interface PrinterDetails {
+  manufacturer: string | null;
+  model: string | null;
+  nozzleMm: number | null;
+  bedXMm: number | null;
+  bedYMm: number | null;
+  bedZMm: number | null;
+}
+
+export type MainView = 'catalog' | 'filament' | 'printers' | 'trash';
+export interface PrinterNavigation { printerId?: string; reviewJobs?: boolean }
+
+export interface PrinterHistoryJob {
+  id: string;
+  fileName: string;
+  outcome: 'completed' | 'partial';
+  printDurationS: number;
+  usedMm: number;
+  grams: number | null;
+  state: 'open' | 'confirmed' | 'ignored';
+}
+
+export interface Printer extends PrinterDetails {
   id: string;
   name: string;
   kind: PrinterKind;

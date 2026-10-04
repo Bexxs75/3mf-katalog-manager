@@ -1,3 +1,5 @@
+import { PrinterManagerView } from './components/PrinterManagerView';
+import type { MainView, PrinterNavigation } from './types';
 import { DragGhost } from './components/DragGhost';
 import { DragDropTip } from './components/DragDropTip';
 import { resolveDisplayImage } from './lib/resolveDisplayImage';
@@ -80,7 +82,7 @@ export default function App() {
     }
   };
 
-  const [mainView, setMainView] = useState<'catalog' | 'filament' | 'trash'>('catalog');
+  const [mainView, setMainView] = useState<MainView>('catalog');
   const archiveTargetDefault =
     store.folders.find((f) => f.id === filters.activeFolderId)?.path ?? catalogBaseDir;
   const fileImport = useFileImport({
@@ -142,7 +144,9 @@ export default function App() {
     setSetupDialogOpen(true);
   };
 
-  const changeMainView = (v: 'catalog' | 'filament' | 'trash') => {
+  const [printerContext, setPrinterContext] = useState<PrinterNavigation>({});
+  const changeMainView = (v: MainView, context: PrinterNavigation = {}) => {
+    setPrinterContext(context);
     setMainView(v);
     store.setSelectedId(null);
     bulk.clearBulkSelection();
@@ -276,8 +280,6 @@ export default function App() {
           catalogFolderCount={store.folders.length}
           onCatalogReset={finishCatalogReset}
           onOpenCatalogSetup={() => setSetupDialogOpen(true)}
-          printerLink={printerLink}
-          printerList={printers.printers}
           update={update}
         />
         <div className="relative flex-1 min-w-0 flex flex-col min-h-0">
@@ -385,8 +387,12 @@ export default function App() {
               cleanupScanning={cleanup.cleanupScanning}
               cleanupError={cleanup.cleanupError}
             />
+          ) : mainView === 'printers' ? (
+            <PrinterManagerView printers={printers} printerLink={printerLink} printerId={printerContext.printerId}
+              onMaterial={context => changeMainView('filament', context)} />
           ) : (
-            <FilamentView printerLink={printerLink} printers={printers} onCatalogChanged={store.refreshFiles} />
+            <FilamentView printerLink={printerLink} printers={printers} onCatalogChanged={store.refreshFiles}
+              printerContext={printerContext} onPrinterManager={printerId => changeMainView('printers', { printerId })} />
           )}
 
           {contextMenu && contextModel && (

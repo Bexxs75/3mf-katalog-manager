@@ -195,6 +195,12 @@ pub struct PrinterRecord {
     pub name: String,
     /// "filament" or "resin".
     pub kind: String,
+    pub manufacturer: Option<String>,
+    pub model: Option<String>,
+    pub nozzle_mm: Option<f64>,
+    pub bed_x_mm: Option<f64>,
+    pub bed_y_mm: Option<f64>,
+    pub bed_z_mm: Option<f64>,
 }
 
 #[derive(Debug, Clone)]

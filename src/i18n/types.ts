@@ -7,6 +7,53 @@ export interface PluralForms {
 
 export interface Translations {
   importActiveError: string;
+  pmUnitCount: PluralForms;
+  pmConnected: string;
+  pmNotConnected: string;
+  pmConnectionError: string;
+
+  railPrinters: string;
+  settingsPrintersMovedHint: string;
+  pmOpen: string;
+  pmGo: string;
+  pmEditLink: string;
+  pmMaterialEmpty: string;
+  pmEmptyTitle: string;
+  pmEmptyBody: string;
+  pmAddFirst: string;
+  pmAddPrinter: string;
+  pmReorderHint: string;
+  pmGeneral: string;
+  pmUnits: string;
+  pmConnection: string;
+  pmJobs: string;
+  pmName: string;
+  pmKind: string;
+  pmFixed: string;
+  pmManufacturer: string;
+  pmModel: string;
+  pmNozzle: string;
+  pmBed: string;
+  pmBedHint: string;
+  pmEdit: string;
+  pmLoadSpools: string;
+  pmUnitsHint: string;
+  pmResinNoConnection: string;
+  pmLinkOff: string;
+  pmFutureConnections: string;
+  pmNoJobs: string;
+  pmConfirmJobs: string;
+  pmFile: string;
+  pmOutcome: string;
+  pmDuration: string;
+  pmUsage: string;
+  pmStatus: string;
+  pmBooked: string;
+  pmIgnored: string;
+  pmDeletePrinter: string;
+  pmInvalidNozzle: string;
+  pmInvalidBed: string;
+
   archiveInnerFolderSkipped: string;
   tagSuggestionsAria: string;
   dropHereLabel: string;

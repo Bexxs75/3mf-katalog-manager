@@ -31,14 +31,14 @@ const X1C: Printer = {
   id: 'p1',
   name: 'X1C',
   kind: 'filament',
-  units: [{ id: 'u1', printerId: 'p1', name: 'AMS A', kind: 'bambu_ams', slotCount: 4, bambuAmsIndex: 0 }],
+  manufacturer: null, model: null, nozzleMm: null, bedXMm: null, bedYMm: null, bedZMm: null, units: [{ id: 'u1', printerId: 'p1', name: 'AMS A', kind: 'bambu_ams', slotCount: 4, bambuAmsIndex: 0 }],
 };
 
 const SATURN: Printer = {
   id: 'p9',
   name: 'Saturn 4',
   kind: 'resin',
-  units: [{ id: 'vat', printerId: 'p9', name: 'Harzwanne', kind: 'resin_vat', slotCount: 1, bambuAmsIndex: null }],
+  manufacturer: null, model: null, nozzleMm: null, bedXMm: null, bedYMm: null, bedZMm: null, units: [{ id: 'vat', printerId: 'p9', name: 'Harzwanne', kind: 'resin_vat', slotCount: 1, bambuAmsIndex: null }],
 };
 
 beforeEach(() => {
@@ -336,7 +336,7 @@ describe('FilamentView shares one printers instance with other consumers', () =>
     vi.mocked(invoke).mockImplementation((cmd: string) => {
       if (cmd === 'list_filament_spools') return Promise.resolve([LOADED, STORED]);
       if (cmd === 'list_printers') {
-        return Promise.resolve(printerAdded ? [X1C, { id: 'p2', name: 'Neuer Drucker', kind: 'filament', units: [] }] : [X1C]);
+        return Promise.resolve(printerAdded ? [X1C, { id: 'p2', name: 'Neuer Drucker', kind: 'filament', manufacturer: null, model: null, nozzleMm: null, bedXMm: null, bedYMm: null, bedZMm: null, units: [] }] : [X1C]);
       }
       if (cmd === 'add_printer') {
         printerAdded = true;
@@ -393,4 +393,25 @@ describe('FilamentView printer-jobs dialog state', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Prüfen' })).toBeInTheDocument();
   });
+});
+
+it('navigates to Printer Manager with a printer ID without opening the old panel', async () => {
+  const navigate = vi.fn();
+  render(<LanguageProvider><PrintersWrapper>{printers => <FilamentView printerLink={printerLink()} printers={printers} onPrinterManager={navigate} />}</PrintersWrapper></LanguageProvider>);
+  fireEvent.click(await screen.findByRole('button', { name: 'In der Druckerverwaltung bearbeiten' }));
+  expect(navigate).toHaveBeenCalledWith('p1');
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+it('switches to and focuses a resin printer when the shared list loads after navigation', async () => {
+  vi.mocked(invoke).mockImplementation(async cmd => cmd === 'list_printers' ? [X1C, SATURN] : cmd === 'list_filament_spools' ? [RESIN] : []);
+  render(<LanguageProvider><PrintersWrapper>{printers => <FilamentView printerLink={printerLink()} printers={printers} printerContext={{ printerId: 'p9' }} />}</PrintersWrapper></LanguageProvider>);
+  await waitFor(() => expect(screen.getByLabelText('Saturn 4')).toHaveFocus());
+  expect(screen.queryByTestId('slot-u1-0')).toBeNull();
+});
+
+it('opens the print review dialog immediately when navigated from history', async () => {
+  const l = { ...printerLink(), enabled: true, jobs: [printerJob({})] };
+  render(<LanguageProvider><PrintersWrapper>{printers => <FilamentView printerLink={l} printers={printers} printerContext={{ printerId: 'p1', reviewJobs: true }} />}</PrintersWrapper></LanguageProvider>);
+  expect(await screen.findByRole('dialog', { name: 'Neue Drucke' })).toBeInTheDocument();
 });

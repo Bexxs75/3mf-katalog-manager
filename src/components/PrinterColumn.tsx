@@ -28,7 +28,8 @@ interface Props {
   onEditSpool: (spool: FilamentSpool) => void;
   /** "− Usage" for the bottle in a resin vat (stays on the bottle). */
   onConsume?: (spool: FilamentSpool, anchor: HTMLElement) => void;
-  onManage: () => void;
+  onManage: (printerId?: string) => void;
+  focusPrinterId?: string;
   printerLink?: PrinterLinkState;
 }
 
@@ -58,11 +59,18 @@ export function PrinterColumn({
   onEditSpool,
   onConsume,
   onManage,
+  focusPrinterId,
   printerLink,
 }: Props) {
   const t = useT();
   const { language } = useLanguage();
   const [menu, setMenu] = useState<OpenMenu | null>(null);
+  const printerCards = useRef(new Map<string, HTMLDivElement>());
+  useEffect(() => {
+    const card = focusPrinterId ? printerCards.current.get(focusPrinterId) : null;
+    card?.scrollIntoView?.({ block: 'nearest' });
+    card?.focus();
+  }, [focusPrinterId, kind, printers]);
   const slotButtons = useRef(new Map<string, HTMLButtonElement>());
   const bySlot = useMemo(() => spoolsBySlot(spools), [spools]);
   const storage = useMemo(() => spools.filter(isInStorage), [spools]);
@@ -192,39 +200,33 @@ export function PrinterColumn({
     <aside className="w-full lg:w-[260px] flex-none flex flex-col gap-3" aria-label={t('printersColumnTitle')}>
       <div className="flex items-center justify-between">
         <span className="text-[10px] uppercase tracking-wider font-bold text-[var(--ink-3)]">{t('printersColumnTitle')}</span>
-        {visiblePrinters.length > 0 && (
-          <button
-            type="button"
-            onClick={onManage}
-            className="text-[11.5px] text-[var(--ink-3)] hover:text-[var(--accent)] cursor-pointer"
-          >
-            {t('printersManageButton')}
-          </button>
-        )}
       </div>
 
       {visiblePrinters.length === 0 ? (
         <div className="rounded-lg border border-dashed border-[var(--line-strong)] p-3 text-[12px] text-[var(--ink-3)] flex flex-col gap-2">
-          <span>{kind === 'resin' ? t('printersResinEmptyHint') : t('printersEmptyHint')}</span>
+          <span>{t('pmMaterialEmpty')}</span>
           <button
             type="button"
-            onClick={onManage}
+            onClick={() => onManage()}
             className="self-start h-8 px-3 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12px] font-bold cursor-pointer"
           >
-            {t('printersAddFirstButton')}
+            {t('pmGo')}
           </button>
         </div>
       ) : (
         visiblePrinters.map((printer) => (
-          <div key={printer.id} className="flex flex-col gap-2">
+          <div key={printer.id} tabIndex={-1} aria-label={printer.name}
+            ref={el => { if (el) printerCards.current.set(printer.id, el); else printerCards.current.delete(printer.id); }}
+            className="flex flex-col gap-2 focus:outline-2 focus:outline-[var(--accent)]">
             <div className="text-[12.5px] font-bold">{printer.name}</div>
+            <button className="text-left text-[11.5px] text-[var(--accent)] focus-visible:outline-2" onClick={() => onManage(printer.id)}>{t('pmEditLink')}</button>
             {/* Resin printers have no printer connection. */}
             {printerLink && printer.kind !== 'resin' && <PrinterLinkStatus printerId={printer.id} link={printerLink} />}
             {printer.units.map(renderUnit)}
             {printer.units.length === 0 && (
               <button
                 type="button"
-                onClick={onManage}
+                onClick={() => onManage(printer.id)}
                 className="self-start text-left text-[11.5px] text-[var(--ink-3)] hover:text-[var(--accent)] cursor-pointer"
               >
                 {t('printersNoUnitsHint')}
