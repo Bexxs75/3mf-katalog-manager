@@ -52,6 +52,19 @@ describe('DiagnosticsProvider', () => {
     expect(logInfo).toHaveBeenCalledWith('UI language de');
   });
 
+  it.each([
+    'ResizeObserver loop completed with undelivered notifications.',
+    'ResizeObserver loop limit exceeded',
+  ])('ignores the harmless browser notice "%s"', (message) => {
+    renderProvider();
+    act(() => {
+      window.dispatchEvent(new ErrorEvent('error', { message }));
+    });
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(logError).not.toHaveBeenCalled();
+  });
+
   it('ignores an unhandled rejection whose reason is an expected CmdError', () => {
     renderProvider();
     act(() => {

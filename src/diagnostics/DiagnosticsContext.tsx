@@ -27,7 +27,11 @@ export function DiagnosticsProvider({ children }: { children: ReactNode }) {
 
   // Errors nobody catches would otherwise vanish silently.
   useEffect(() => {
-    const onError = (e: ErrorEvent) => reportUnexpected(`${e.message}${e.error?.stack ? `\n${e.error.stack}` : ''}`);
+    // The browser reports this when a resize callback changes layout again within the
+    // same frame. It is harmless by specification and says nothing about a fault.
+    const isResizeLoopNotice = (message: string) =>
+      /^ResizeObserver loop (completed with undelivered notifications|limit exceeded)/.test(message);
+    const onError = (e: ErrorEvent) => isResizeLoopNotice(e.message) || reportUnexpected(`${e.message}${e.error?.stack ? `\n${e.error.stack}` : ''}`);
     const onRejection = (e: PromiseRejectionEvent) => {
       // A rejection with an *expected* CmdError (e.g. a command's own validation
       // error, awaited but not caught somewhere) is normal feedback, not a fault -

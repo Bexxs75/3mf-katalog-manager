@@ -61,7 +61,11 @@ jobs:
           # `head -c` - important with such a tight limit (300 characters), so emojis or
           # umlauts aren't cut in half, producing invalid UTF-8.
           TITLE="${RELEASE_NAME:-$TAG_NAME}"
-          FIRST_LINE=$(echo "$RELEASE_BODY" | grep -v '^$' | grep -v '^##' | head -1)
+          # First plain line of the notes: skip headings, images (the template starts
+          # with the demo GIF), HTML, rules, tables and quotes; then drop list markers,
+          # bold/code marks and link targets so the post reads as plain text.
+          FIRST_LINE=$(echo "$RELEASE_BODY" | grep -Ev '^[[:space:]]*$' | grep -Ev '^(#|!|<|---|\||>)' | head -1 \
+            | sed -E 's/^[-*] +//; s/\*\*//g; s/`//g; s/\[([^]]*)\]\([^)]*\)/\1/g')
 
           TEXT=$(jq -rn \
             --arg title "$TITLE" \

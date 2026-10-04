@@ -148,7 +148,7 @@ export function ModelDetailPage({
   };
 
   return (
-    <div ref={pageRef} className="flex-1 min-w-0 overflow-y-auto p-6 flex flex-col gap-6 max-w-[1600px] w-full mx-auto">
+    <div ref={pageRef} className="flex-1 min-w-0 overflow-y-auto [scrollbar-gutter:stable] p-6 flex flex-col gap-6 max-w-[1600px] w-full mx-auto">
       {pendingNavigation !== null && <CatalogActionDialog title={t('detailDiscardEdits')} returnFocus={navigationTrigger} onClose={() => setPendingNavigation(null)}>
         <div className="flex justify-end gap-2">
           <button data-initial-focus className={catalogActionButton} onClick={() => setPendingNavigation(null)}>{t('detailKeepEditing')}</button>
