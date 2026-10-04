@@ -1,3 +1,4 @@
+import { dismissDragDropTip } from '../lib/dragDropTip';
 import { useCallback, useEffect, useState } from 'react';
 import * as foldersApi from '../lib/api/folders';
 import { isFolderSelfOrDescendant } from '../lib/folderTree';
@@ -28,13 +29,17 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
   const handleFolderMouseEnter = useCallback(
     (id: string) => {
       if (!draggedFileId && !draggedFolderId) return;
+      if (draggedFileId && models.find((model) => model.id === draggedFileId)?.folderId === id) {
+        setDragOverFolderId(null);
+        return;
+      }
       if (draggedFolderId && isFolderSelfOrDescendant(id, draggedFolderId, folders)) {
         setDragOverFolderId(null);
         return;
       }
       setDragOverFolderId(id);
     },
-    [draggedFileId, draggedFolderId, folders],
+    [draggedFileId, draggedFolderId, folders, models],
   );
 
   // Only reset if no other row is the target already: a late mouseleave
@@ -72,6 +77,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
       foldersApi
         .moveFileToFolder(fileId, folderId)
         .then(() => {
+          dismissDragDropTip();
           setMoveToast({ from: file.name, to: targetFolder.path });
           refreshFolders();
           refreshFiles();

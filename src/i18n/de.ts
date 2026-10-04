@@ -1,6 +1,11 @@
 import type { Translations } from './types';
 
 export const de: Translations = {
+  dropHereLabel: "hierher",
+  dndTipTitle: "Tipp: Dateien per Ziehen verschieben",
+  dndTipBody: "Zieh eine Modellkarte auf einen Ordner links oder auf eine Ordnergruppe. Die Datei wird dann auch auf der Festplatte verschoben.",
+  dndTipDismiss: "Verstanden",
+
   collapseAllFolders: 'Alle Ordner zuklappen',
   expandAllFolders: 'Alle Ordner aufklappen',
   sidebarResizeHandle: 'Breite der Seitenleiste',

@@ -37,6 +37,7 @@ interface CatalogWorkspaceProps {
   activeFolderId: string;
   setActiveFolderId: (id: string) => void;
   onCreateFolder: (parentId: string | null, name: string) => void;
+  draggedFileId?: string | null;
   dragOverFolderId: string | null;
   draggedFolderId: string | null;
   handleFolderMouseEnter: (id: string) => void;
@@ -127,6 +128,7 @@ export function CatalogWorkspace({
   activeFolderId,
   setActiveFolderId,
   onCreateFolder,
+  draggedFileId = null,
   dragOverFolderId,
   draggedFolderId,
   handleFolderMouseEnter,
@@ -243,6 +245,8 @@ export function CatalogWorkspace({
         onCreateFolder={onCreateFolder}
         dragOverFolderId={dragOverFolderId}
         draggedFolderId={draggedFolderId}
+        draggedFileId={draggedFileId}
+        draggedFileFolderId={models.find((model) => model.id === draggedFileId)?.folderId}
         onFolderMouseEnter={handleFolderMouseEnter}
         onFolderMouseLeave={handleFolderMouseLeave}
         onDragFolderStart={onDragFolderStart}
@@ -415,6 +419,8 @@ export function CatalogWorkspace({
                 displayPreference={displayPreference}
                 onDragFileStart={onDragFileStart}
                 draggedFolderId={draggedFolderId}
+                draggedFileId={draggedFileId}
+                draggedFileFolderId={models.find((model) => model.id === draggedFileId)?.folderId}
                 dragOverFolderId={dragOverFolderId}
                 onDragFolderStart={onDragFolderStart}
                 onFolderMouseEnter={handleFolderMouseEnter}
@@ -433,6 +439,8 @@ export function CatalogWorkspace({
                 onToggleBulkSelect={toggleBulkSelect}
                 onDragFileStart={onDragFileStart}
                 draggedFolderId={draggedFolderId}
+                draggedFileId={draggedFileId}
+                draggedFileFolderId={models.find((model) => model.id === draggedFileId)?.folderId}
                 dragOverFolderId={dragOverFolderId}
                 onDragFolderStart={onDragFolderStart}
                 onFolderMouseEnter={handleFolderMouseEnter}

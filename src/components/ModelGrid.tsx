@@ -1,3 +1,4 @@
+import { DragGrip } from './DragGrip';
 import { useEffect, useRef, useState } from 'react';
 import type { ModelFile } from '../types';
 import { useT, useLanguage } from '../i18n/LanguageContext';
@@ -77,7 +78,7 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
     if (reorderable) {
       dragStartPos.current = { x: e.clientX, y: e.clientY };
       setDragIndex(models.findIndex((x) => x.id === id));
-    } else if (onDragFileStart) {
+    } else if (onDragFileStart && !readOnly) {
       fileDrag.begin(e, id);
     }
   };
@@ -96,11 +97,12 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
         }}
         onMouseDown={(e) => handleCardMouseDown(e, m.id)}
         onMouseEnter={() => reorderable && dragIndex !== null && setOverIndex(models.findIndex((x) => x.id === m.id))}
-        className={`rounded-[10px] overflow-hidden border cursor-pointer ${
+        className={`group rounded-[10px] overflow-hidden border cursor-pointer ${
           m.id === selectedId ? 'border-[var(--accent)]' : 'border-[var(--line)]'
         } ${fileDrag.draggingId === m.id ? 'opacity-50' : ''}`}
       >
         <div className="relative aspect-square bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
+          {onDragFileStart && !readOnly && !reorderable && <DragGrip className="absolute top-1.5 right-9 z-10" />}
           {!readOnly && (
             <BulkCheckbox
               checked={selectedForBulk.has(m.id)}
@@ -198,12 +200,13 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
             }}
             onMouseDown={(e) => handleCardMouseDown(e, m.id)}
             onMouseEnter={() => reorderable && dragIndex !== null && setOverIndex(models.findIndex((x) => x.id === m.id))}
-            className={`rounded-[10px] overflow-hidden cursor-pointer bg-[var(--panel)] shadow-[var(--shadow)] border-2 ${
+            className={`group rounded-[10px] overflow-hidden cursor-pointer bg-[var(--panel)] shadow-[var(--shadow)] border-2 ${
               m.id === selectedId ? 'border-[var(--accent)]' : 'border-transparent'
             } ${fileDrag.draggingId === m.id ? 'opacity-50' : ''}`}
           >
             <div className="h-[5px]" style={{ background: 'linear-gradient(90deg, var(--accent), var(--accent-soft))' }} />
             <div className="relative aspect-square bg-[var(--plate)] overflow-hidden">
+              {onDragFileStart && !readOnly && !reorderable && <DragGrip className="absolute top-1.5 right-9 z-10" />}
               {!readOnly && (
                 <BulkCheckbox
                   checked={selectedForBulk.has(m.id)}

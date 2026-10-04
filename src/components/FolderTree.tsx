@@ -1,6 +1,6 @@
 import type { useFolderExpansion } from '../hooks/useFolderExpansion';
 import { FolderCatalogMenu } from './FolderCatalogMenu';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDragThreshold } from '../hooks/useDragThreshold';
 import type { Folder } from '../types';
 import { useT } from '../i18n/LanguageContext';
@@ -16,6 +16,8 @@ interface Props {
   activeFolderId: string;
   onSelect: (id: string) => void;
   onRemoved?: () => void;
+  draggedFileId?: string | null;
+  draggedFileFolderId?: string | null;
   dragOverFolderId?: string | null;
   draggedFolderId?: string | null;
   onFolderMouseEnter?: (id: string) => void;
@@ -43,6 +45,8 @@ export function FolderTree({
   activeFolderId,
   onSelect,
   onRemoved,
+  draggedFileId = null,
+  draggedFileFolderId = null,
   dragOverFolderId = null,
   draggedFolderId = null,
   onFolderMouseEnter,
@@ -59,8 +63,20 @@ export function FolderTree({
   // slight slip during a click trigger a real move_folder.
   const folderDrag = useDragThreshold(onDragFolderStart);
 
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const { isExpanded, expand } = expansion;
+  useEffect(() => {
+    if ((!draggedFileId && !draggedFolderId) || !hoveredId || isExpanded(hoveredId) || !folders.some((folder) => folder.parentId === hoveredId)) return;
+    const timer = window.setTimeout(() => expand(hoveredId), 600);
+    const cancel = () => { window.clearTimeout(timer); setHoveredId(null); };
+    window.addEventListener('mouseup', cancel);
+    return () => { window.clearTimeout(timer); window.removeEventListener('mouseup', cancel); };
+  }, [hoveredId, draggedFileId, draggedFolderId, folders, isExpanded, expand]);
+
   function renderNode(node: TreeNode, depth: number) {
     const isOpen = expansion.isExpanded(node.id);
+    const validFileTarget = !!draggedFileId && node.id !== draggedFileFolderId;
+    const isDraggedOver = dragOverFolderId === node.id && (!draggedFileId || validFileTarget);
     return (
       <div key={node.id}>
         <div
@@ -76,15 +92,15 @@ export function FolderTree({
           }}
           onClick={() => onSelect(node.id)}
           onMouseDown={(e) => folderDrag.begin(e, node.id)}
-          onMouseEnter={() => onFolderMouseEnter?.(node.id)}
-          onMouseLeave={() => onFolderMouseLeave?.(node.id)}
+          onMouseEnter={() => { setHoveredId(node.id); onFolderMouseEnter?.(node.id); }}
+          onMouseLeave={() => { setHoveredId((current) => current === node.id ? null : current); onFolderMouseLeave?.(node.id); }}
           style={{ paddingLeft: 6 + depth * 16 }}
           className={`flex items-center gap-1.5 h-7 pr-2 rounded-[7px] cursor-pointer select-none text-[12.5px] border ${
             node.id === activeFolderId
-              ? 'bg-[var(--accent-soft)] text-[var(--accent)] font-semibold border-transparent'
-              : 'text-[var(--ink-2)] hover:bg-[var(--panel-2)] hover:text-[var(--ink)] border-transparent'
+              ? 'bg-[var(--accent-soft)] text-[var(--accent)] font-semibold'
+              : 'text-[var(--ink-2)] hover:bg-[var(--panel-2)] hover:text-[var(--ink)]'
           } ${
-            dragOverFolderId === node.id ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : ''
+            isDraggedOver ? 'border-[var(--accent)] bg-[var(--accent-soft)] shadow-[0_0_0_2px_var(--accent-soft)]' : validFileTarget ? 'border-dashed border-[var(--line-strong)]' : 'border-transparent'
           } ${
             draggedFolderId === node.id ? 'opacity-40' : ''
           }`}
@@ -101,6 +117,7 @@ export function FolderTree({
           </span>
           <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{node.name}</span>
           <span className="font-mono-ui text-[10.5px] text-[var(--ink-3)]">{node.count}</span>
+          {isDraggedOver && <span className="font-mono-ui text-[10px] text-[var(--accent)]">{t('dropHereLabel')}</span>}
         </div>
         {isOpen && node.children.map((c) => renderNode(c, depth + 1))}
       </div>

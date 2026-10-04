@@ -1,6 +1,11 @@
 import type { Translations } from './types';
 
 export const en: Translations = {
+  dropHereLabel: "drop here",
+  dndTipTitle: "Tip: move files by dragging",
+  dndTipBody: "Drag a model card onto a folder on the left or onto a folder group. The file is moved on disk as well.",
+  dndTipDismiss: "Got it",
+
   collapseAllFolders: 'Collapse all folders',
   expandAllFolders: 'Expand all folders',
   sidebarResizeHandle: 'Sidebar width',

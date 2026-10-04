@@ -1,3 +1,4 @@
+import { DragGrip } from './DragGrip';
 import { useDragThreshold } from '../hooks/useDragThreshold';
 import type { ModelFile } from '../types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
@@ -47,10 +48,10 @@ export function ModelList({ models, selectedId, onSelect, onOpenDetail, onContex
             onContextMenu(m.id, e.clientX, e.clientY);
           }}
           onMouseDown={(e) => {
-            if (!onDragFileStart) return;
+            if (!onDragFileStart || readOnly) return;
             fileDrag.begin(e, m.id);
           }}
-          className={`min-w-[680px] grid gap-2.5 items-center px-3 py-2 border-b border-[var(--line)] cursor-pointer ${
+          className={`group min-w-[680px] grid gap-2.5 items-center px-3 py-2 border-b border-[var(--line)] cursor-pointer ${
             m.id === selectedId ? 'bg-[var(--accent-soft)]' : 'hover:bg-[var(--panel-2)]'
           } ${fileDrag.draggingId === m.id ? 'opacity-50' : ''}`}
           style={{ gridTemplateColumns: '24px minmax(150px,2.2fr) minmax(110px,1.6fr) 92px 82px' }}
@@ -64,8 +65,9 @@ export function ModelList({ models, selectedId, onSelect, onOpenDetail, onContex
               className="justify-self-center"
             />
           )}
-          <span className="text-[length:var(--font-size-body)] font-medium overflow-hidden text-ellipsis whitespace-nowrap">
-            {m.name}
+          <span className="flex items-center gap-1.5 min-w-0">
+            {onDragFileStart && !readOnly && <DragGrip />}
+            <span className="text-[length:var(--font-size-body)] font-medium truncate">{m.name}</span>
           </span>
           <span className="flex gap-1 overflow-hidden">
             {m.tags.map((tag) => (

@@ -6,6 +6,11 @@ export interface PluralForms {
 }
 
 export interface Translations {
+  dropHereLabel: string;
+  dndTipTitle: string;
+  dndTipBody: string;
+  dndTipDismiss: string;
+
   collapseAllFolders: string;
   expandAllFolders: string;
   sidebarResizeHandle: string;

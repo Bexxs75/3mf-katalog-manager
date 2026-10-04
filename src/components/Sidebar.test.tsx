@@ -1,5 +1,5 @@
-import { beforeEach, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { Sidebar } from './Sidebar';
 import { useFolderExpansion } from '../hooks/useFolderExpansion';
@@ -8,7 +8,7 @@ import { useSidebarWidth } from '../hooks/useSidebarWidth';
 
 beforeEach(() => { localStorage.clear(); localStorage.setItem('3mf-katalog-language', 'de'); });
 
-function Harness() {
+function Harness({ draggedFileId = null }: { draggedFileId?: string | null }) {
   const expansion = useFolderExpansion();
   const collapsed = useCollapsedFolders();
   const sidebarWidth = useSidebarWidth();
@@ -20,7 +20,7 @@ function Harness() {
         if (allCollapsed) { expansion.setAll(['a'], true); collapsed.expandAll(); }
         else { expansion.setAll([], false); collapsed.collapseAll(['a', 'b']); }
       }}
-      {...baseProps} />
+      {...baseProps} draggedFileId={draggedFileId} />
   </>;
 }
 const baseProps = {
@@ -88,4 +88,31 @@ it('drags using window events and restores selection on release and unmount', ()
   unmount();
   expect(document.body.style.userSelect).toBe('text');
   document.body.style.userSelect = '';
+});
+
+
+afterEach(() => vi.useRealTimers());
+it('expands after 600 ms of dragging, and cancels on leave or release', () => {
+  vi.useFakeTimers();
+  const { rerender } = render(<LanguageProvider><Harness draggedFileId="m1" /></LanguageProvider>);
+  const parent = () => screen.getByText('Parent').parentElement!;
+  fireEvent.mouseEnter(parent());
+  act(() => vi.advanceTimersByTime(599));
+  expect(screen.queryByText('Child')).toBeNull();
+  fireEvent.mouseLeave(parent());
+  act(() => vi.advanceTimersByTime(1));
+  expect(screen.queryByText('Child')).toBeNull();
+  fireEvent.mouseEnter(parent());
+  fireEvent.mouseUp(window);
+  act(() => vi.advanceTimersByTime(600));
+  expect(screen.queryByText('Child')).toBeNull();
+  fireEvent.mouseLeave(parent());
+  fireEvent.mouseEnter(parent());
+  act(() => vi.advanceTimersByTime(600));
+  expect(screen.getByText('Child')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Alle Ordner zuklappen' }));
+  rerender(<LanguageProvider><Harness /></LanguageProvider>);
+  fireEvent.mouseEnter(parent());
+  act(() => vi.advanceTimersByTime(600));
+  expect(screen.queryByText('Child')).toBeNull();
 });

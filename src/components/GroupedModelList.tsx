@@ -16,6 +16,8 @@ interface Props {
   selectedForBulk: Set<string>;
   onToggleBulkSelect: (id: string) => void;
   onDragFileStart?: (id: string) => void;
+  draggedFileId?: string | null;
+  draggedFileFolderId?: string | null;
   draggedFolderId: string | null;
   dragOverFolderId: string | null;
   onDragFolderStart: (id: string) => void;
@@ -28,6 +30,8 @@ interface Props {
 export function GroupedModelList({
   models,
   folders,
+  draggedFileId = null,
+  draggedFileFolderId = null,
   draggedFolderId,
   dragOverFolderId,
   onDragFolderStart,
@@ -44,9 +48,10 @@ export function GroupedModelList({
   function renderNode(node: GroupedFolderNode, depth: number) {
     // totalCount is recursive: 0 means the whole subtree contains nothing under
     // the filter (otherwise a wall of empty header rows).
-    if (node.totalCount === 0) return null;
+    if (node.totalCount === 0 && !draggedFileId) return null;
     const isCollapsed = collapsedFolders.isCollapsed(node.folder.id);
-    const isDraggedOver = dragOverFolderId === node.folder.id;
+    const validFileTarget = !!draggedFileId && node.folder.id !== draggedFileFolderId;
+    const isDraggedOver = dragOverFolderId === node.folder.id && (!draggedFileId || validFileTarget);
     const isBeingDragged = draggedFolderId === node.folder.id;
     return (
       <div key={node.folder.id} className={depth > 0 ? 'ml-3 pl-4 border-l border-[var(--line-strong)] mt-2.5' : 'mb-4'}>
@@ -56,7 +61,7 @@ export function GroupedModelList({
           onMouseLeave={() => onFolderMouseLeave(node.folder.id)}
           onClick={() => collapsedFolders.toggle(node.folder.id)}
           className={`flex items-center gap-2 py-1.5 cursor-pointer select-none rounded-[4px] ${
-            isDraggedOver ? 'bg-[var(--accent-soft)] border border-[var(--accent)]' : ''
+            isDraggedOver ? 'bg-[var(--accent-soft)] border border-[var(--accent)] shadow-[0_0_0_2px_var(--accent-soft)]' : validFileTarget ? 'border border-dashed border-[var(--line-strong)]' : 'border border-transparent'
           } ${isBeingDragged ? 'opacity-40' : ''}`}
         >
           <span className={`text-[9px] text-[var(--ink-3)] transition-transform ${isCollapsed ? '-rotate-90' : ''}`}>▾</span>
@@ -64,6 +69,7 @@ export function GroupedModelList({
           <span className="text-[13px] font-semibold">{node.folder.name}</span>
           <span className="font-mono-ui text-[10px] text-[var(--ink-3)]">{node.totalCount}</span>
           <span className="flex-1 h-px bg-[var(--line)]" />
+          {isDraggedOver && <span className="font-mono-ui text-[10px] text-[var(--accent)]">{t('dropHereLabel')}</span>}
         </div>
         {!isCollapsed && (
           <div className="mt-2">

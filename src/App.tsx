@@ -1,7 +1,10 @@
+import { DragGhost } from './components/DragGhost';
+import { DragDropTip } from './components/DragDropTip';
+import { resolveDisplayImage } from './lib/resolveDisplayImage';
 import { useFolderExpansion } from './hooks/useFolderExpansion';
 import { useSidebarWidth } from './hooks/useSidebarWidth';
 import { invoke } from '@tauri-apps/api/core';
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Header } from './components/Header';
 import { snapshotQueue } from './lib/snapshotQueue';
 import { Rail } from './components/Rail';
@@ -146,6 +149,8 @@ export default function App() {
     if (v === 'trash') store.refreshTrash();
   };
 
+  const dragPointer = useRef<{ x: number; y: number } | null>(null);
+  const draggedModel = store.models.find((model) => model.id === dragDrop.draggedFileId);
   const selected = store.models.find((m) => m.id === store.selectedId) ?? null;
   const detailModel = detailModelId ? store.models.find((m) => m.id === detailModelId) ?? null : null;
   const contextModel = contextMenu ? store.models.find((m) => m.id === contextMenu.modelId) ?? null : null;
@@ -214,6 +219,7 @@ export default function App() {
   return (
     <div
       className="h-screen min-h-[620px] flex flex-col bg-[var(--bg)] text-[var(--ink)] overflow-hidden"
+      onMouseMoveCapture={(event) => { dragPointer.current = { x: event.clientX, y: event.clientY }; }}
       style={{ fontSize: 14, '--sidebar-width': `${mainView === 'catalog' ? sidebarWidth.width : 0}px` } as CSSProperties}
     >
       {snapshotIds.length > 0 && (
@@ -274,7 +280,7 @@ export default function App() {
           printerList={printers.printers}
           update={update}
         />
-        <div className="flex-1 min-w-0 flex flex-col min-h-0">
+        <div className="relative flex-1 min-w-0 flex flex-col min-h-0">
           {mainView === 'trash' ? (
             <TrashView
               trashModels={store.trashModels}
@@ -307,6 +313,7 @@ export default function App() {
               activeFolderId={filters.activeFolderId}
               setActiveFolderId={filters.setActiveFolderId}
               onCreateFolder={dragDrop.onCreateFolder}
+              draggedFileId={dragDrop.draggedFileId}
               dragOverFolderId={dragDrop.dragOverFolderId}
               draggedFolderId={dragDrop.draggedFolderId}
               handleFolderMouseEnter={dragDrop.handleFolderMouseEnter}
@@ -432,6 +439,8 @@ export default function App() {
             />
           )}
 
+          {mainView === 'catalog' && <DragDropTip modelCount={store.models.length} folderCount={store.folders.length} />}
+          {draggedModel && <DragGhost initialPosition={dragPointer.current} key={draggedModel.id} name={draggedModel.name} image={resolveDisplayImage(draggedModel, displayPreference)} />}
           {dragDrop.moveToast && (
             <MoveToast
               from={dragDrop.moveToast.from}

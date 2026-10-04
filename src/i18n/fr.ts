@@ -1,6 +1,11 @@
 import type { Translations } from './types';
 
 export const fr: Translations = {
+  dropHereLabel: "déposer ici",
+  dndTipTitle: "Astuce : déplace les fichiers en les faisant glisser",
+  dndTipBody: "Fais glisser une carte de modèle sur un dossier à gauche ou sur un groupe de dossiers. Le fichier est aussi déplacé sur le disque.",
+  dndTipDismiss: "Compris",
+
   collapseAllFolders: 'Replier tous les dossiers',
   expandAllFolders: 'Déplier tous les dossiers',
   sidebarResizeHandle: 'Largeur du panneau latéral',
