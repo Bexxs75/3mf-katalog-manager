@@ -180,6 +180,7 @@ pub fn run() {
             commands::get_import_result,
             commands::get_import_state,
             commands::list_file_summaries,
+            commands::list_file_images,
             commands::list_all_file_tags,
             commands::list_files_by_ids,
             commands::list_folders,

@@ -1,3 +1,5 @@
+import { useMemo, type RefObject } from 'react';
+import { useModelWindow } from '../hooks/useModelWindow';
 import { DragGrip } from './DragGrip';
 import { useDragThreshold } from '../hooks/useDragThreshold';
 import type { ModelFile } from '../types';
@@ -8,6 +10,8 @@ import { tagLabel } from '../lib/autoTags';
 
 interface Props {
   models: ModelFile[];
+  containerRef?: RefObject<HTMLDivElement | null>;
+  windowed?: boolean;
   selectedId: string | null;
   onSelect: (id: string) => void;
   onOpenDetail: (id: string) => void;
@@ -18,10 +22,13 @@ interface Props {
   onDragFileStart?: (id: string) => void;
 }
 
-export function ModelList({ models, selectedId, onSelect, onOpenDetail, onContextMenu, readOnly, selectedForBulk, onToggleBulkSelect, onDragFileStart }: Props) {
+export function ModelList({ containerRef, windowed = true, models, selectedId, onSelect, onOpenDetail, onContextMenu, readOnly, selectedForBulk, onToggleBulkSelect, onDragFileStart }: Props) {
   const { language } = useLanguage();
   const t = useT();
 
+  const ids = useMemo(() => models.map(model => model.id), [models]);
+  const window = useModelWindow({ ids, containerRef, gap: 0, fallbackHeight: 43, disabled: !windowed });
+  const visible = models.slice(window.startIndex, window.endIndex);
   const fileDrag = useDragThreshold(onDragFileStart);
 
   return (
@@ -36,7 +43,9 @@ export function ModelList({ models, selectedId, onSelect, onOpenDetail, onContex
         <span>{t('columnVolume')}</span>
         <span>{t('columnSize')}</span>
       </div>
-      {models.map((m) => (
+      <div ref={window.rootRef}>
+      <div data-window-spacer="top" aria-hidden="true" style={{ height: window.topSpacer }} />
+      {visible.map((m) => (
         <div
           key={m.id}
           data-model-id={m.id}
@@ -87,6 +96,8 @@ export function ModelList({ models, selectedId, onSelect, onOpenDetail, onContex
           </span>
         </div>
       ))}
+      <div data-window-spacer="bottom" aria-hidden="true" style={{ height: window.bottomSpacer }} />
+      </div>
     </div>
   );
 }

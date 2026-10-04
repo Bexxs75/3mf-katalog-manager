@@ -1,9 +1,12 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { ModelFile, ModelFileSummary } from '../../types';
+import type { ModelFile, ModelFileSummary, ModelImages } from '../../types';
 
 // Slim catalog overview, see ModelFileSummary.
 export function listFileSummaries() {
   return invoke<ModelFileSummary[]>('list_file_summaries');
+}
+export function listFileImages(ids: string[]) {
+  return invoke<ModelImages[]>('list_file_images', { ids });
 }
 // All file-tag mappings in one query (the summaries contain no tags).
 export function listAllFileTags() {

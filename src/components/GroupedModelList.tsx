@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, type RefObject } from 'react';
 import { useDragThreshold } from '../hooks/useDragThreshold';
 import type { ModelFile, Folder } from '../types';
 import { buildGroupedFolderTree, type GroupedFolderNode } from '../lib/groupedFolderTree';
@@ -8,6 +8,7 @@ import { NO_FOLDER_COLLAPSE_KEY, type useCollapsedFolders } from '../hooks/useCo
 
 interface Props {
   models: ModelFile[];
+  containerRef?: RefObject<HTMLDivElement | null>;
   folders: Folder[];
   selectedId: string | null;
   onSelect: (id: string) => void;
@@ -74,7 +75,7 @@ export function GroupedModelList({
         {!isCollapsed && (
           <div className="mt-2">
             {node.children.map((child) => renderNode(child, depth + 1))}
-            {node.files.length > 0 && <ModelList models={node.files} {...modelListProps} />}
+            {node.files.length > 0 && <ModelList windowed={node.files.length > 60} models={node.files} {...modelListProps} />}
           </div>
         )}
       </div>
@@ -100,7 +101,7 @@ export function GroupedModelList({
           </div>
           {!noFolderCollapsed && (
             <div className="mt-2">
-              <ModelList models={noFolder} {...modelListProps} />
+              <ModelList windowed={noFolder.length > 60} models={noFolder} {...modelListProps} />
             </div>
           )}
         </div>

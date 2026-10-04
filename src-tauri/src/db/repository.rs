@@ -743,10 +743,7 @@ pub fn list_files(conn: &Connection) -> Result<Vec<FileRecord>, DbError> {
     Ok(files)
 }
 
-/// Slim projection of `files` for grid and list: without `custom_image_png` and
-/// without materials, metadata and tags (otherwise N+1 queries). `thumbnail_png`
-/// and `render_snapshot_png` stay, the grid needs one image per row; the snapshot
-/// is even smaller on average (~9 KB vs. ~54 KB).
+/// Catalog metadata without image blobs or per-file child queries.
 pub struct FileSummary {
     pub id: i64,
     pub name: String,
@@ -761,9 +758,7 @@ pub struct FileSummary {
     pub print_status: String,
     pub favorite: bool,
     pub queue_position: Option<i64>,
-    pub thumbnail_png: Option<Vec<u8>>,
-    pub render_snapshot_png: Option<Vec<u8>>,
-    // Redundant to `render_snapshot_png`, but the frontend still uses it for the snapshot queue.
+    pub has_thumbnail: bool,
     pub has_render_snapshot: bool,
     // For the sidebar's creator filter.
     pub creator: Option<String>,
@@ -777,7 +772,7 @@ pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbErro
         "SELECT id, name, path, file_type, folder_id, file_size_bytes,
                 dimension_x_mm, dimension_y_mm, dimension_z_mm, volume_cm3,
                 object_count, imported_at, print_status, favorite,
-                queue_position, thumbnail_png, render_snapshot_png,
+                queue_position, thumbnail_png IS NOT NULL AS has_thumbnail,
                 render_snapshot_png IS NOT NULL AS has_render_snapshot, creator,
                 last_viewed_at, content_hash
          FROM files WHERE deleted_at IS NULL ORDER BY name",
@@ -806,15 +801,36 @@ pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbErro
                 print_status: row.get(12)?,
                 favorite: row.get::<_, i64>(13)? != 0,
                 queue_position: row.get(14)?,
-                thumbnail_png: row.get(15)?,
-                render_snapshot_png: row.get(16)?,
-                has_render_snapshot: row.get::<_, i64>(17)? != 0,
-                creator: row.get(18)?,
-                last_viewed_at: row.get(19)?,
-                content_hash: row.get(20)?,
+                has_thumbnail: row.get::<_, i64>(15)? != 0,
+                has_render_snapshot: row.get::<_, i64>(16)? != 0,
+                creator: row.get(17)?,
+                last_viewed_at: row.get(18)?,
+                content_hash: row.get(19)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+pub struct FileImages {
+    pub id: i64,
+    pub thumbnail_png: Option<Vec<u8>>,
+    pub render_snapshot_png: Option<Vec<u8>>,
+    pub custom_image_png: Option<Vec<u8>>,
+}
+
+pub fn list_file_images(conn: &Connection, ids: &[i64]) -> Result<Vec<FileImages>, DbError> {
+    if ids.len() > 200 {
+        return Err(DbError::Other("at most 200 image IDs per batch".to_string()));
+    }
+    if ids.is_empty() { return Ok(Vec::new()); }
+    let placeholders = vec!["?"; ids.len()].join(",");
+    let mut stmt = conn.prepare(&format!(
+        "SELECT id, thumbnail_png, render_snapshot_png, custom_image_png FROM files WHERE id IN ({placeholders})"
+    ))?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(ids.iter()), |row| Ok(FileImages {
+        id: row.get(0)?, thumbnail_png: row.get(1)?, render_snapshot_png: row.get(2)?, custom_image_png: row.get(3)?,
+    }))?.collect::<Result<Vec<_>, _>>()?;
     Ok(rows)
 }
 
@@ -1170,19 +1186,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn list_file_summaries_includes_render_snapshot_but_omits_custom_image() {
+    fn list_file_images_limits_batches_and_ignores_unknown_ids() {
+        let conn = connect_in_memory().unwrap();
+        let id = test_insert_minimal_file(&conn, "/tmp/images.3mf", None).unwrap();
+        conn.execute("UPDATE files SET thumbnail_png = ?1, render_snapshot_png = ?2, custom_image_png = ?3 WHERE id = ?4",
+            params![vec![1u8; 10], vec![2u8; 20], vec![3u8; 30], id]).unwrap();
+        let images = list_file_images(&conn, &[id, id + 999]).unwrap();
+        assert_eq!(images.len(), 1);
+        assert_eq!(images[0].id, id);
+        assert_eq!(images[0].thumbnail_png, Some(vec![1u8; 10]));
+        assert_eq!(images[0].render_snapshot_png, Some(vec![2u8; 20]));
+        assert_eq!(images[0].custom_image_png, Some(vec![3u8; 30]));
+        assert!(list_file_images(&conn, &[]).unwrap().is_empty());
+        assert!(list_file_images(&conn, &vec![id; 200]).is_ok());
+        assert!(list_file_images(&conn, &vec![id; 201]).is_err());
+    }
+
+    #[test]
+    fn list_file_summaries_reports_image_presence_without_blobs() {
         let conn = connect_in_memory().unwrap();
         let file_id = test_insert_minimal_file(&conn, "/tmp/x.3mf", None).unwrap();
         conn.execute(
-            "UPDATE files SET render_snapshot_png = ?1, custom_image_png = ?2 WHERE id = ?3",
-            params![vec![1u8; 1024], vec![2u8; 1024], file_id],
+            "UPDATE files SET render_snapshot_png = ?1, custom_image_png = ?2, thumbnail_png = ?3 WHERE id = ?4",
+            params![vec![1u8; 1024], vec![2u8; 1024], vec![3u8; 1024], file_id],
         ).unwrap();
 
         let summaries = list_file_summaries(&conn).unwrap();
 
         assert_eq!(summaries.len(), 1);
-        // The snapshot must be included, otherwise the grid only shows it after opening the model.
-        assert_eq!(summaries[0].render_snapshot_png, Some(vec![1u8; 1024]));
+        assert!(summaries[0].has_thumbnail);
         assert!(summaries[0].has_render_snapshot);
     }
 
@@ -1229,6 +1261,7 @@ mod tests {
 
         assert_eq!(summaries.len(), 1);
         assert!(!summaries[0].has_render_snapshot);
+        assert!(!summaries[0].has_thumbnail);
     }
 
     // `Connection::trace` only takes a function pointer, so the counter lives

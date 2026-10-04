@@ -148,7 +148,7 @@ export function DetailPanel({
           />
           <ModelPreview
             model={model}
-            needsSnapshot={model.renderSnapshotImage === null}
+            needsSnapshot={!(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
             onSnapshotCaptured={onSnapshotCaptured}
           />
           <div className="absolute left-2.5 bottom-2 font-mono-ui text-[9.5px] tracking-[0.08em] uppercase text-[var(--ink-3)] pointer-events-none">
@@ -354,7 +354,7 @@ export function DetailPanel({
           />
           <ModelPreview
             model={model}
-            needsSnapshot={model.renderSnapshotImage === null}
+            needsSnapshot={!(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
             onSnapshotCaptured={onSnapshotCaptured}
           />
           <button

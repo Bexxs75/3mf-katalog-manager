@@ -54,8 +54,7 @@ export function makeModelFileSummary(
     printStatus: m.printStatus,
     favorite: m.favorite,
     queuePosition: m.queuePosition,
-    thumbnailImage: m.thumbnailImage,
-    renderSnapshotImage: m.renderSnapshotImage,
+    hasThumbnail: overrides.hasThumbnail ?? m.thumbnailImage !== null,
     // Default derived from the blob; can be overridden to let blob and flag
     // diverge.
     hasRenderSnapshot: overrides.hasRenderSnapshot ?? m.renderSnapshotImage !== null,

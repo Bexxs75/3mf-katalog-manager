@@ -1,5 +1,7 @@
+import { useModelImages } from '../hooks/useModelImages';
+import { useModelWindow } from '../hooks/useModelWindow';
 import { DragGrip } from './DragGrip';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { ModelFile } from '../types';
 import { useT, useLanguage } from '../i18n/LanguageContext';
 import { useUiDensity } from '../hooks/UiDensityContext';
@@ -12,6 +14,8 @@ import { DRAG_THRESHOLD_PX, useDragThreshold } from '../hooks/useDragThreshold';
 
 interface Props {
   models: ModelFile[];
+  containerRef?: RefObject<HTMLDivElement | null>;
+  windowed?: boolean;
   selectedId: string | null;
   onSelect: (id: string) => void;
   onOpenDetail: (id: string) => void;
@@ -26,10 +30,17 @@ interface Props {
   onDragFileStart?: (id: string) => void;
 }
 
-export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContextMenu, onToggleFavorite, readOnly, selectedForBulk, onToggleBulkSelect, displayPreference, reorderable, onReorder, onDragFileStart }: Props) {
+export function ModelGrid({ containerRef, windowed = true, models, selectedId, onSelect, onOpenDetail, onContextMenu, onToggleFavorite, readOnly, selectedForBulk, onToggleBulkSelect, displayPreference, reorderable, onReorder, onDragFileStart }: Props) {
   const t = useT();
   const { density } = useUiDensity();
   const { language } = useLanguage();
+
+  const ids = useMemo(() => models.map(model => model.id), [models]);
+  const window = useModelWindow({ ids, containerRef, minWidth: density === 'comfort' ? 220 : 178, gap: 14,
+    fallbackHeight: density === 'comfort' ? 350 : 265, disabled: reorderable || !windowed });
+  const visible = models.slice(window.startIndex, window.endIndex);
+  const images = useModelImages(ids.slice(window.imageStartIndex, window.imageEndIndex));
+  const imageFor = (model: ModelFile) => resolveDisplayImage(model, displayPreference, images.get(model.id));
 
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
@@ -110,9 +121,9 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
               className="absolute top-1.5 right-1.5 z-10"
             />
           )}
-          {resolveDisplayImage(m, displayPreference) ? (
+          {imageFor(m) ? (
             <img
-              src={resolveDisplayImage(m, displayPreference) ?? undefined}
+              src={imageFor(m) ?? undefined}
               alt=""
               className="absolute inset-0 w-full h-full object-cover"
             />
@@ -182,11 +193,14 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
   }
 
   return (
+    <div ref={window.rootRef}>
+      {window.emptyHeight !== null ? <div data-window-spacer="empty" style={{ height: window.emptyHeight }} /> : <>
+      <div data-window-spacer="top" aria-hidden="true" style={{ height: window.topSpacer }} />
     <div
       className="grid gap-3.5"
-      style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${density === 'comfort' ? 220 : 178}px, 1fr))` }}
+      style={{ gridTemplateColumns: `repeat(${window.columns}, minmax(0, 1fr))` }}
     >
-      {models.map((m) =>
+      {visible.map((m) =>
         density === 'comfort' ? (
           <div
             key={m.id}
@@ -214,8 +228,8 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
                   className="absolute top-1.5 right-1.5 z-10"
                 />
               )}
-              {resolveDisplayImage(m, displayPreference) ? (
-                <img src={resolveDisplayImage(m, displayPreference) ?? undefined} alt="" className="absolute inset-0 w-full h-full object-cover" />
+              {imageFor(m) ? (
+                <img src={imageFor(m) ?? undefined} alt="" className="absolute inset-0 w-full h-full object-cover" />
               ) : (
                 <>
                   <div
@@ -293,6 +307,9 @@ export function ModelGrid({ models, selectedId, onSelect, onOpenDetail, onContex
           renderCompactCard(m)
         ),
       )}
+    </div>
+      <div data-window-spacer="bottom" aria-hidden="true" style={{ height: window.bottomSpacer }} />
+      </>}
     </div>
   );
 }

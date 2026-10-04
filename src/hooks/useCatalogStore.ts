@@ -1,3 +1,4 @@
+import { clearModelImages, invalidateModelImages } from './useModelImages';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as filesApi from '../lib/api/files';
 import * as foldersApi from '../lib/api/folders';
@@ -35,8 +36,10 @@ function summaryToModelFile(s: ModelFileSummary): ModelFile {
     contentHash: s.contentHash,
     creator: s.creator,
     customImage: null,
-    thumbnailImage: s.thumbnailImage,
-    renderSnapshotImage: s.renderSnapshotImage,
+    thumbnailImage: null,
+    renderSnapshotImage: null,
+    hasThumbnail: s.hasThumbnail,
+    hasRenderSnapshot: s.hasRenderSnapshot,
     sourceUrl: null,
     queuePosition: s.queuePosition,
     favorite: s.favorite,
@@ -113,7 +116,7 @@ export function useCatalogStore() {
       // Only take it if no new mutation started during the await and no
       // newer resync has already taken a more current state.
       if (fresh && pendingMutationCounts[key] === undefined && mutationEpochs[key] === epochAtResyncStart) {
-        setModels((prev) => prev.map((m) => (m.id === id ? { ...m, ...fresh } : m)));
+        setModels((prev) => prev.map((m) => (m.id === id ? { ...m, ...fresh, hasThumbnail: fresh.thumbnailImage !== null, hasRenderSnapshot: fresh.renderSnapshotImage !== null } : m)));
       }
     } catch (e) {
       console.error(`[resync] reloading ${key} failed:`, e);
@@ -140,6 +143,7 @@ export function useCatalogStore() {
   // merge the tags in on the client (for tag filtering).
   const loadSummariesWithTags = useCallback(() => {
     return Promise.all([filesApi.listFileSummaries(), filesApi.listAllFileTags()]).then(([summaries, tagsByFileId]) => {
+      clearModelImages();
       setSummaryConfirmedSnapshotIds(new Set(summaries.filter((s) => s.hasRenderSnapshot).map((s) => s.id)));
       return summaries.map((s) => ({ ...summaryToModelFile(s), tags: tagsByFileId[s.id] ?? [] }));
     });
@@ -453,6 +457,7 @@ export function useCatalogStore() {
       .uploadCustomImage(id)
       .then((customImage) => {
         if (customImage === null) return;
+        invalidateModelImages(id);
         setModels((prev) => prev.map((m) => (m.id === id ? { ...m, customImage } : m)));
       })
       .catch((e) => {
@@ -462,11 +467,12 @@ export function useCatalogStore() {
 
   const captureRenderSnapshot = useCallback((id: string, base64: string) => {
     const renderSnapshotImage = `data:image/png;base64,${base64}`;
-    setModels((prev) => prev.map((m) => (m.id === id ? { ...m, renderSnapshotImage } : m)));
+    setModels((prev) => prev.map((m) => (m.id === id ? { ...m, renderSnapshotImage, hasRenderSnapshot: true } : m)));
     const key = `renderSnapshot:${id}`;
     beginMutation(key);
     filesApi
       .setRenderSnapshot(id, base64)
+      .then(() => invalidateModelImages(id))
       .catch((e) => {
         console.error('[render-snapshot] saving failed:', e);
       })
@@ -494,6 +500,7 @@ export function useCatalogStore() {
     filesApi
       .rescanFileMetadata(id)
       .then((updated) => {
+        invalidateModelImages(id);
         setModels((prev) => prev.map((m) => (m.id === id ? updated : m)));
         // rescan_file_metadata already returns the full ModelFile record.
         setFullyLoadedIds((prev) => new Set(prev).add(id));

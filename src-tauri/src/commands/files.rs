@@ -24,9 +24,7 @@ pub struct FileSummaryDto {
     pub print_status: String,
     pub favorite: bool,
     pub queue_position: Option<i64>,
-    pub thumbnail_image: Option<String>,
-    pub render_snapshot_image: Option<String>,
-    // Practically redundant since renderSnapshotImage itself is sent - see `db::FileSummary::has_render_snapshot`.
+    pub has_thumbnail: bool,
     pub has_render_snapshot: bool,
     pub creator: Option<String>,
     pub last_viewed_at: Option<String>,
@@ -90,8 +88,7 @@ pub fn list_file_summaries(state: State<AppState>) -> CmdResult<Vec<FileSummaryD
             print_status: s.print_status,
             favorite: s.favorite,
             queue_position: s.queue_position,
-            thumbnail_image: encode_image(s.thumbnail_png),
-            render_snapshot_image: encode_image(s.render_snapshot_png),
+            has_thumbnail: s.has_thumbnail,
             has_render_snapshot: s.has_render_snapshot,
             creator: s.creator,
             last_viewed_at: s.last_viewed_at,
@@ -99,6 +96,42 @@ pub fn list_file_summaries(state: State<AppState>) -> CmdResult<Vec<FileSummaryD
         })
         .collect())
 }
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileImagesDto {
+    pub id: String,
+    pub thumbnail_image: Option<String>,
+    pub render_snapshot_image: Option<String>,
+    pub custom_image: Option<String>,
+}
+
+#[tauri::command]
+pub async fn list_file_images(app: tauri::AppHandle, ids: Vec<String>) -> CmdResult<Vec<FileImagesDto>> {
+    if ids.len() > 200 {
+        return Err("at most 200 image IDs per batch".into());
+    }
+    let parsed = ids.iter()
+        .map(|id| id.parse::<i64>().map_err(|_| format!("invalid file id: {id}")))
+        .collect::<Result<Vec<_>, _>>()?;
+    use tauri::Manager;
+    tauri::async_runtime::spawn_blocking(move || -> CmdResult<Vec<FileImagesDto>> {
+        let images = {
+            let state = app.state::<AppState>();
+            let conn = lock_db(&state)?;
+            db::list_file_images(&conn, &parsed).map_err(|e| e.to_string())?
+        };
+        // Encoding can be expensive for uploaded images; release the DB lock first.
+        Ok(images.into_iter().map(|images| FileImagesDto {
+            id: images.id.to_string(),
+            thumbnail_image: encode_image(images.thumbnail_png),
+            render_snapshot_image: encode_image(images.render_snapshot_png),
+            custom_image: encode_image(images.custom_image_png),
+        }).collect())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// All file-tag assignments in one query, because `list_file_summaries` has no
 /// tags; the frontend merges them for tag filtering.
 #[tauri::command]
@@ -1510,6 +1543,23 @@ pub async fn get_model_geometry(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn summary_serialization_has_presence_flags_and_no_image_fields() {
+        let summary = FileSummaryDto {
+            id: "1".into(), name: "test".into(), path: "/tmp/test.stl".into(), file_type: "stl".into(),
+            folder_id: String::new(), file_size_bytes: 10, dimensions_mm: None, volume_cm3: None,
+            object_count: None, imported_at: String::new(), print_status: "not_printed".into(),
+            favorite: false, queue_position: None, has_thumbnail: true, has_render_snapshot: false,
+            creator: None, last_viewed_at: None, content_hash: None,
+        };
+        let json = serde_json::to_value(summary).unwrap();
+        assert_eq!(json["hasThumbnail"], true);
+        assert_eq!(json["hasRenderSnapshot"], false);
+        assert!(json.get("thumbnailImage").is_none());
+        assert!(json.get("renderSnapshotImage").is_none());
+        assert!(json.get("customImage").is_none());
+    }
 
     #[test]
     fn import_summary_reports_the_real_pending_archive_count() {

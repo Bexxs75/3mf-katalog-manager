@@ -2,7 +2,7 @@ import { detailNeighbor, type DetailDirection } from '../hooks/useDetailNavigati
 import { useImportLock } from '../hooks/ImportLockContext';
 import type { useFolderExpansion } from '../hooks/useFolderExpansion';
 import type { useSidebarWidth } from '../hooks/useSidebarWidth';
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useRef, useLayoutEffect, type ReactNode } from 'react';
 import { Sidebar } from './Sidebar';
 import { ModelGrid } from './ModelGrid';
 import { GroupedModelGrid } from './GroupedModelGrid';
@@ -208,6 +208,20 @@ export function CatalogWorkspace({
   cleanupScanning,
   cleanupError,
 }: CatalogWorkspaceProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const savedScroll = useRef(0);
+  const wasDetail = useRef(false);
+  const resetKey = JSON.stringify([view, activeFolderId, activeTag, activeCollection, toolView, query]);
+  const previousResetKey = useRef(resetKey);
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (container) {
+      container.scrollTop = previousResetKey.current !== resetKey ? 0 : wasDetail.current ? savedScroll.current : container.scrollTop;
+      container.dispatchEvent(new Event('scroll'));
+    }
+    previousResetKey.current = resetKey;
+    wasDetail.current = !!detailModel;
+  }, [resetKey, !!detailModel]);
   const { language } = useLanguage();
   const { jobActive } = useImportLock();
   const t = useT();
@@ -404,13 +418,14 @@ export function CatalogWorkspace({
             displayPreference={displayPreference}
           />
         ) : (
-          <div className="flex-1 overflow-y-auto overscroll-contain p-4">
+          <div ref={containerRef} data-catalog-scroller onScroll={event => { savedScroll.current = event.currentTarget.scrollTop; }} className="flex-1 overflow-y-auto overscroll-contain p-4">
             {toolView && filtered.length === 0 && !activeCollection ? (
               <div className="font-mono-ui text-[length:var(--font-size-item)] text-[var(--ink-3)] px-1.5 py-8 text-center">
                 {t('toolViewEmpty')}
               </div>
             ) : view === 'grid' ? (
               <ModelGrid
+                containerRef={containerRef}
                 models={activeCollection ? collectionModels : filtered}
                 selectedId={selectedId}
                 onSelect={selectModel}
@@ -426,6 +441,7 @@ export function CatalogWorkspace({
               />
             ) : view === 'groupedGrid' ? (
               <GroupedModelGrid
+                containerRef={containerRef}
                 models={activeCollection ? collectionModels : filtered}
                 folders={folders}
                 selectedId={selectedId}
@@ -448,6 +464,7 @@ export function CatalogWorkspace({
               />
             ) : (
               <GroupedModelList
+                containerRef={containerRef}
                 models={activeCollection ? collectionModels : filtered}
                 folders={folders}
                 selectedId={selectedId}

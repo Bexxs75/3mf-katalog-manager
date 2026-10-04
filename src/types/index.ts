@@ -25,7 +25,16 @@ export interface CostEstimate {
   hasUnpricedFilaments: boolean;
 }
 
+export interface ModelImages {
+  id: string;
+  thumbnailImage: string | null;
+  renderSnapshotImage: string | null;
+  customImage: string | null;
+}
+
 export interface ModelFile {
+  hasThumbnail?: boolean;
+  hasRenderSnapshot?: boolean;
   id: string;
   name: string;
   path: string;
@@ -77,9 +86,7 @@ export interface ModelFileSummary {
   printStatus: 'not_printed' | 'printed';
   favorite: boolean;
   queuePosition: number | null;
-  thumbnailImage: string | null;
-  renderSnapshotImage: string | null;
-  // Redundant to renderSnapshotImage, see `db::FileSummary`.
+  hasThumbnail: boolean;
   hasRenderSnapshot: boolean;
   creator: string | null;
   lastViewedAt: string | null;

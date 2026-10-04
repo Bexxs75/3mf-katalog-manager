@@ -10,7 +10,7 @@ import { isStepFilePath } from './stepFile';
  * queuing them would only produce a guaranteed failure.
  */
 export function snapshotQueue(
-  models: { id: string; path: string; thumbnailImage: string | null }[],
+  models: { id: string; path: string; thumbnailImage: string | null; hasThumbnail?: boolean }[],
   pendingIds: string[],
   preference: DisplayPreference,
   hasStepPreview: boolean,
@@ -22,6 +22,6 @@ export function snapshotQueue(
     return !model || !isStepFilePath(model.path);
   });
   if (preference === 'render') return renderable;
-  const withoutImage = new Set(models.filter((m) => !m.thumbnailImage).map((m) => m.id));
+  const withoutImage = new Set(models.filter((m) => !(m.hasThumbnail ?? !!m.thumbnailImage)).map((m) => m.id));
   return renderable.filter((id) => withoutImage.has(id));
 }

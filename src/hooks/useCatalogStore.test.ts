@@ -285,14 +285,14 @@ describe('useCatalogStore', () => {
     expect(result.current.pendingSnapshotIds).toEqual(['m3']);
   });
 
-  it('Finding 1 + Bugfix 2026-09-20: a model with a saved snapshot loaded only via the summary path is never pending and shows its snapshot', async () => {
-    // m1 already has a snapshot: the image must come from the summary right away,
-    // and m1 must not be in pendingSnapshotIds.
+  it('Finding 1 + Bugfix 2026-09-20: a saved snapshot is reported by the summary without loading its bytes', async () => {
+    // Image presence prevents redundant background rendering before lazy image loading.
     mockInitialLoad([makeModelFile({ id: 'm1', renderSnapshotImage: 'data:image/png;base64,yy' })]);
     const { result } = renderHook(() => useCatalogStore());
     await waitFor(() => expect(result.current.models).toHaveLength(1));
 
-    expect(result.current.models[0].renderSnapshotImage).toBe('data:image/png;base64,yy');
+    expect(result.current.models[0].renderSnapshotImage).toBeNull();
+    expect(result.current.models[0].hasRenderSnapshot).toBe(true);
     expect(result.current.pendingSnapshotIds).toEqual([]);
   });
 
@@ -621,4 +621,16 @@ describe('useCatalogStore', () => {
       expect(result.current.models.find((m) => m.id === modelId)?.favorite).toBe(true);
     });
   });
+});
+it('restores snapshot presence after a failed save is reconciled with the database', async () => {
+  mockInitialLoad([makeModelFile({ id: 'snapshot-failure' })]);
+  vi.mocked(filesApi.setRenderSnapshot).mockRejectedValueOnce(new Error('save failed'));
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const { result } = renderHook(() => useCatalogStore());
+  await waitFor(() => expect(result.current.models).toHaveLength(1));
+  act(() => result.current.captureRenderSnapshot('snapshot-failure', 'test'));
+  expect(result.current.models[0].hasRenderSnapshot).toBe(true);
+  await waitFor(() => expect(result.current.models[0].hasRenderSnapshot).toBe(false));
+  expect(result.current.models[0].renderSnapshotImage).toBeNull();
+  log.mockRestore();
 });

@@ -1,3 +1,4 @@
+import { useModelImages } from '../hooks/useModelImages';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useRef, useState } from 'react';
 import { CatalogActionDialog, catalogActionButton } from './CatalogActionDialog';
@@ -91,9 +92,10 @@ export function ModelDetailPage({
     handleKeyDown: handleSourceKeyDown,
     handleBlur: handleSourceBlur,
   } = useEditableSourceUrl(model, onSetSourceUrl);
-  const resolvedImage = resolveDisplayImage(model, displayPreference);
+  const images = useModelImages([model.id]);
+  const resolvedImage = resolveDisplayImage(model, displayPreference, images.get(model.id));
   const [showCustomImage, setShowCustomImage] = useState(
-    () => displayPreference === 'thumbnail' && resolvedImage !== null,
+    () => displayPreference === 'thumbnail',
   );
 
   const rows = buildMetaRows(model, t, language);
@@ -189,7 +191,7 @@ export function ModelDetailPage({
             ) : (
               <ModelPreview
                 model={model}
-                needsSnapshot={model.renderSnapshotImage === null}
+                needsSnapshot={!(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
                 onSnapshotCaptured={onSnapshotCaptured}
                 showRotationControls
               />

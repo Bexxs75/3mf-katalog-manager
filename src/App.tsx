@@ -1,3 +1,5 @@
+import { ModelLayoutContext } from './hooks/ModelLayoutContext';
+import { useModelImages } from './hooks/useModelImages';
 import { ImportLockContext } from './hooks/ImportLockContext';
 import { PrinterManagerView } from './components/PrinterManagerView';
 import type { MainView, PrinterNavigation } from './types';
@@ -8,7 +10,7 @@ import { useFolderExpansion } from './hooks/useFolderExpansion';
 import { detailNeighbor, type DetailDirection } from './hooks/useDetailNavigation';
 import { useSidebarWidth } from './hooks/useSidebarWidth';
 import { invoke } from '@tauri-apps/api/core';
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Header } from './components/Header';
 import { snapshotQueue } from './lib/snapshotQueue';
 import { Rail } from './components/Rail';
@@ -42,12 +44,13 @@ import { useBulkSelection } from './hooks/useBulkSelection';
 import { useSlicerLauncher } from './hooks/useSlicerLauncher';
 import { useUpdater } from './hooks/useUpdater';
 import { useHasStepPreview } from './hooks/useHasStepPreview';
-import { useKeyboardShortcuts, MODEL_TILE_ATTR } from './hooks/useKeyboardShortcuts';
+import { useKeyboardShortcuts, scrollTileIntoView } from './hooks/useKeyboardShortcuts';
 import { usePrinterLink } from './hooks/usePrinterLink';
 import { usePrinters } from './hooks/usePrinters';
 import { useLanguage } from './i18n/LanguageContext';
 
 export default function App() {
+  const layouts = useContext(ModelLayoutContext);
   const { setting, setTheme } = useTheme();
   const { density, setDensity } = useUiDensity();
   const { slicers, primaryId, addSlicer, addSlicerError, removeSlicer, setPrimary } = useSlicers();
@@ -161,6 +164,7 @@ export default function App() {
 
   const dragPointer = useRef<{ x: number; y: number } | null>(null);
   const draggedModel = store.models.find((model) => model.id === dragDrop.draggedFileId);
+  const draggedImages = useModelImages(draggedModel ? [draggedModel.id] : []);
   const selected = store.models.find((m) => m.id === store.selectedId) ?? null;
   const detailModel = detailModelId ? store.models.find((m) => m.id === detailModelId) ?? null : null;
   const contextModel = contextMenu ? store.models.find((m) => m.id === contextMenu.modelId) ?? null : null;
@@ -196,10 +200,10 @@ export default function App() {
     // at its new position (see renameFile).
     if (!store.pendingScrollToId) return;
     const id = store.pendingScrollToId;
-    document.querySelector(`[${MODEL_TILE_ATTR}="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    scrollTileIntoView(id, [...(layouts?.layouts.values() ?? [])].find(layout => layout.order.includes(id)));
     store.setPendingScrollToId(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store.pendingScrollToId]);
+  }, [layouts, store.pendingScrollToId]);
 
   useEffect(() => {
     if (!detailModelId) return;
@@ -478,7 +482,7 @@ export default function App() {
           )}
 
           {mainView === 'catalog' && <DragDropTip modelCount={store.models.length} folderCount={store.folders.length} />}
-          {draggedModel && <DragGhost initialPosition={dragPointer.current} key={draggedModel.id} name={draggedModel.name} image={resolveDisplayImage(draggedModel, displayPreference)} />}
+          {draggedModel && <DragGhost initialPosition={dragPointer.current} key={draggedModel.id} name={draggedModel.name} image={resolveDisplayImage(draggedModel, displayPreference, draggedImages.get(draggedModel.id))} />}
           {dragDrop.moveToast && (
             <MoveToast
               from={dragDrop.moveToast.from}

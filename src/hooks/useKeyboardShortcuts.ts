@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useContext, useEffect } from 'react';
+import { ModelLayoutContext, type ModelLayout } from './ModelLayoutContext';
 
 export const SEARCH_INPUT_ID = 'catalog-search-input';
 // Set by ModelGrid/ModelList on every model tile/row (see there) -
@@ -26,7 +27,14 @@ interface UseKeyboardShortcutsArgs {
 // (keyboard navigation can hit an id whose tile isn't in the DOM right now,
 // see the findSpatialNeighbor fallback) and the method itself
 // (jsdom in tests doesn't implement scrollIntoView) can be missing.
-function scrollTileIntoView(id: string): void {
+export function scrollTileIntoView(id: string, layout?: ModelLayout): void {
+  if (layout) {
+    layout.scrollToIndex(layout.order.indexOf(id));
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>(`[${MODEL_TILE_ATTR}="${CSS.escape(id)}"]`)?.scrollIntoView?.({ block: 'nearest' });
+    }));
+    return;
+  }
   document.querySelector<HTMLElement>(`[${MODEL_TILE_ATTR}="${CSS.escape(id)}"]`)?.scrollIntoView?.({ block: 'nearest' });
 }
 
@@ -95,6 +103,7 @@ export function useKeyboardShortcuts({
   navigationEnabled,
   toggleBulkSelect,
 }: UseKeyboardShortcutsArgs) {
+  const registry = useContext(ModelLayoutContext);
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
@@ -125,27 +134,34 @@ export function useKeyboardShortcuts({
       if (!isHorizontal && !isVertical) return;
       if (filteredIds.length === 0) return;
 
+      const layouts = [...(registry?.layouts.values() ?? [])].sort((a, b) => (a.offsetTop ?? 0) - (b.offsetTop ?? 0));
+      const layout = layouts.find(section => section.order.includes(selectedId ?? '')) ?? layouts[0];
+      const order = layout ? layouts.flatMap(section => section.order) : filteredIds;
       if (isVertical && selectedId) {
-        const spatialTarget = findSpatialNeighbor(document, selectedId, e.key === 'ArrowDown' ? 'down' : 'up');
+        const localIndex = layout?.order.indexOf(selectedId) ?? -1;
+        const expectedId = layout?.order[localIndex + (e.key === 'ArrowDown' ? layout.columns : -layout.columns)];
+        const missingNeighbor = expectedId && !document.querySelector(`[${MODEL_TILE_ATTR}="${CSS.escape(expectedId)}"]`);
+        const spatialTarget = missingNeighbor ? null : findSpatialNeighbor(document, selectedId, e.key === 'ArrowDown' ? 'down' : 'up');
         if (spatialTarget) {
           e.preventDefault();
           selectModel(spatialTarget);
-          scrollTileIntoView(spatialTarget);
+          scrollTileIntoView(spatialTarget, [...(registry?.layouts.values() ?? [])].find(section => section.order.includes(spatialTarget)));
           return;
         }
-        // No spatial hit (e.g. collapsed folder): flat order.
+        // Offscreen rows use the measured column count.
       }
 
       const isNext = e.key === 'ArrowRight' || e.key === 'ArrowDown';
-      const currentIndex = selectedId ? filteredIds.indexOf(selectedId) : -1;
-      const nextIndex = currentIndex === -1 ? 0 : currentIndex + (isNext ? 1 : -1);
-      if (nextIndex < 0 || nextIndex >= filteredIds.length) return;
+      const currentIndex = selectedId ? order.indexOf(selectedId) : -1;
+      const step = isVertical ? layout?.columns ?? 1 : 1;
+      const nextIndex = currentIndex === -1 ? 0 : currentIndex + (isNext ? step : -step);
+      if (nextIndex < 0 || nextIndex >= order.length) return;
       e.preventDefault();
-      selectModel(filteredIds[nextIndex]);
-      scrollTileIntoView(filteredIds[nextIndex]);
+      selectModel(order[nextIndex]);
+      scrollTileIntoView(order[nextIndex], [...(registry?.layouts.values() ?? [])].find(section => section.order.includes(order[nextIndex])));
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [filteredIds, selectedId, selectModel, hasBulkSelection, openBulkDeleteConfirm, navigationEnabled, toggleBulkSelect]);
+  }, [registry, filteredIds, selectedId, selectModel, hasBulkSelection, openBulkDeleteConfirm, navigationEnabled, toggleBulkSelect]);
 }

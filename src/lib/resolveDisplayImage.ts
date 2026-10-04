@@ -11,7 +11,8 @@ interface ImageSources {
  * wins, then the "Preferred view" setting decides, with the respective
  * other automatic source as fallback.
  */
-export function resolveDisplayImage(model: ImageSources, preference: DisplayPreference): string | null {
+export function resolveDisplayImage(model: ImageSources, preference: DisplayPreference, images?: ImageSources): string | null {
+  model = images ?? model;
   if (model.customImage) return model.customImage;
   return preference === 'render'
     ? model.renderSnapshotImage ?? model.thumbnailImage
