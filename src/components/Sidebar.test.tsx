@@ -129,3 +129,44 @@ it('locks new folder, cleanup, and folder drag during an import', () => {
   fireEvent.mouseDown(screen.getByText('Parent'),{clientX:10,clientY:10}); fireEvent.mouseMove(document,{clientX:40,clientY:40});
   expect(baseProps.onDragFolderStart).not.toHaveBeenCalled();
 });
+
+it('filters expanded tags, includes rare matches and handles Enter, clear and Escape', () => {
+  const onTagSelect = vi.fn();
+  const tags = [{label: 'BÄREN', count: 1, colorHue: 12}, {label: 'Zubehör', count: 2, colorHue: 30}];
+  render(<LanguageProvider><Sidebar {...baseProps} tags={tags} onTagSelect={onTagSelect}
+    expansion={{expanded: new Set<string>(), toggle: vi.fn(), isExpanded: () => false, setAll: vi.fn(), expand: vi.fn()}}
+    width={242} setWidth={vi.fn()} resetWidth={vi.fn()} allFoldersCollapsed onToggleAllFolders={vi.fn()} /></LanguageProvider>);
+  expect(screen.queryByPlaceholderText('Tags filtern …')).toBeNull();
+  fireEvent.click(screen.getByText('Tags'));
+  const input = screen.getByPlaceholderText('Tags filtern …');
+  expect(screen.queryByText('#BÄREN')).toBeNull();
+  fireEvent.change(input, {target: {value: 'bär'}});
+  expect(screen.getByText('#BÄREN')).toBeVisible();
+  expect(screen.queryByText('#Zubehör')).toBeNull();
+  fireEvent.keyDown(input, {key: 'Enter'});
+  expect(onTagSelect).toHaveBeenCalledWith('BÄREN');
+  fireEvent.click(screen.getByLabelText('Tags filtern … Löschen'));
+  expect(input).toHaveValue('');
+  fireEvent.change(input, {target: {value: 'xyz'}});
+  expect(screen.getByText('Keine Tags gefunden')).toBeVisible();
+  fireEvent.click(screen.getByText('Tags'));
+  fireEvent.click(screen.getByText('Tags'));
+  expect(screen.getByPlaceholderText('Tags filtern …')).toHaveValue('xyz');
+  fireEvent.keyDown(screen.getByPlaceholderText('Tags filtern …'), {key: 'Escape'});
+  expect(screen.getByPlaceholderText('Tags filtern …')).toHaveValue('');
+});
+
+it('resets tag search only when the catalog changes and retains the active rare tag', () => {
+  const tags = [{label: 'Rare', count: 1, colorHue: 20}, {label: 'Alpha', count: 3, colorHue: 30}];
+  const page = (catalogKey: string) => <LanguageProvider><Sidebar {...baseProps} catalogKey={catalogKey}
+    tags={tags} activeTag="Rare" expansion={{expanded: new Set<string>(), toggle: vi.fn(), isExpanded: () => false, setAll: vi.fn(), expand: vi.fn()}}
+    width={242} setWidth={vi.fn()} resetWidth={vi.fn()} allFoldersCollapsed onToggleAllFolders={vi.fn()} /></LanguageProvider>;
+  const {rerender} = render(page('one'));
+  fireEvent.click(screen.getByText('Tags'));
+  expect(screen.getByText('#Rare')).toHaveClass('text-[var(--accent)]');
+  fireEvent.change(screen.getByPlaceholderText('Tags filtern …'), {target: {value: 'Alpha'}});
+  rerender(page('one'));
+  expect(screen.getByPlaceholderText('Tags filtern …')).toHaveValue('Alpha');
+  rerender(page('two'));
+  expect(screen.getByPlaceholderText('Tags filtern …')).toHaveValue('');
+});

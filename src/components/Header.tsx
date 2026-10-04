@@ -79,7 +79,7 @@ export function Header({
         </button>
 
         {importMenuOpen && (
-          <div className="absolute top-10 left-0 w-[300px] py-1 bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)] z-40">
+          <div data-navigation-menu className="absolute top-10 left-0 w-[300px] py-1 bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)] z-40">
             <div className="m-2 p-2 border border-dashed border-[var(--line-strong)] rounded bg-[var(--panel-2)] text-[12px] text-[var(--ink-2)] leading-relaxed" aria-live="polite">
               <b>{t(importSource === 'files' ? 'impMenuFiles' : 'impMenuFolder')}</b>{' '}
               {importSource === 'folder' ? t('impMenuFolderHint') : importTargetName ? <>{t('impMenuMove')} <b>{importTargetName}</b> {t(importTargetIsRoot ? 'impMenuRoot' : 'impMenuActive')}</> : t('impMenuStay')}
@@ -122,7 +122,7 @@ export function Header({
             <span className="text-[9px] leading-none text-[var(--ink-3)]">▾</span>
           </button>
           {sortMenuOpen && (
-            <div className="absolute top-9 left-0 w-[300px] py-1 bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)] z-40">
+            <div data-navigation-menu className="absolute top-9 left-0 w-[300px] py-1 bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)] z-40">
               {sortOptions.map((opt) => (
                 <button
                   key={opt.value}

@@ -5,6 +5,7 @@ import { DragGhost } from './components/DragGhost';
 import { DragDropTip } from './components/DragDropTip';
 import { resolveDisplayImage } from './lib/resolveDisplayImage';
 import { useFolderExpansion } from './hooks/useFolderExpansion';
+import { detailNeighbor, type DetailDirection } from './hooks/useDetailNavigation';
 import { useSidebarWidth } from './hooks/useSidebarWidth';
 import { invoke } from '@tauri-apps/api/core';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
@@ -171,8 +172,17 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detailModelId]);
 
+  const filteredIds = filters.filtered.map(model => model.id);
+  const navigateDetail = (direction: DetailDirection) => {
+    const id = detailNeighbor(filteredIds, detailModelId, direction);
+    if (!id) return;
+    store.selectModel(id);
+    store.ensureFullModel(id);
+    setDetailModelId(id);
+  };
+
   useKeyboardShortcuts({
-    filteredIds: filters.filtered.map((m) => m.id),
+    filteredIds,
     selectedId: store.selectedId,
     selectModel: store.selectModel,
     hasBulkSelection: bulk.selectedForBulk.size > 0,
@@ -306,6 +316,8 @@ export default function App() {
             />
           ) : mainView === 'catalog' ? (
             <CatalogWorkspace
+              catalogKey={catalogBaseDir}
+              onNavigateDetail={navigateDetail}
               importRow={<>
                 {fileImport.progress && fileImport.meta && <ImportProgressRow
                   key={fileImport.jobId}

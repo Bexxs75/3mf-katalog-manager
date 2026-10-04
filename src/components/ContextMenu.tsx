@@ -99,6 +99,7 @@ export function ContextMenu({
 
   return (
     <div
+      data-navigation-menu
       ref={ref}
       className="fixed z-50 min-w-[172px] rounded-[4px] border border-[var(--line-strong)] bg-[var(--panel)] shadow-lg overflow-hidden"
       style={{ left: x, top: y }}

@@ -1,6 +1,13 @@
 import type { Translations } from './types';
 
 export const de: Translations = {
+  detailPrevious: "Vorheriges Modell",
+  detailNext: "Nächstes Modell",
+  detailPosition: "{index} von {total}",
+  tagSearchPlaceholder: "Tags filtern …",
+  tagSearchEmpty: "Keine Tags gefunden",
+  detailDiscardEdits: "Laufende Eingaben verwerfen und das Modell wechseln?",
+
   importLockedHint: "Während eines Imports gesperrt",
   impScanning: "Suche",
   impImporting: "Importiert",

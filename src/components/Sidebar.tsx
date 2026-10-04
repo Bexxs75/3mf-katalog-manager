@@ -7,12 +7,13 @@ import type { Folder, TagCount, ModelFile, Collection, FilamentCheck } from '../
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { SEARCH_INPUT_ID } from '../hooks/useKeyboardShortcuts';
 import { FolderTree } from './FolderTree';
-import { sortTagsForDisplay, tagLabel } from '../lib/autoTags';
+import { sortTagsForDisplay, tagLabel, tagMatches } from '../lib/autoTags';
 import { ToolsSection } from './ToolsSection';
 import type { ToolCounts, ToolView } from '../lib/toolViews';
 import type { AppError } from '../lib/errors';
 
 interface Props {
+  catalogKey?: string | null;
   expansion: ReturnType<typeof useFolderExpansion>;
   allFoldersCollapsed: boolean;
   onToggleAllFolders: () => void;
@@ -57,6 +58,7 @@ interface Props {
 }
 
 export function Sidebar({
+  catalogKey,
   expansion,
   allFoldersCollapsed,
   onToggleAllFolders,
@@ -106,6 +108,11 @@ export function Sidebar({
   useEffect(() => () => stopDrag.current?.(), []);
   const toggleLabel = t(allFoldersCollapsed ? 'expandAllFolders' : 'collapseAllFolders');
   const { language } = useLanguage();
+  const [tagQuery, setTagQuery] = useState('');
+  useEffect(() => setTagQuery(''), [catalogKey]);
+  const visibleTags = sortTagsForDisplay(tags, language).filter(tag => tagQuery.trim()
+    ? tagMatches(tag.label, tagQuery.trim(), language)
+    : tag.count >= 2 || tag.label === activeTag);
   const [tagsCollapsed, setTagsCollapsed] = useState(true);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [folderNameDraft, setFolderNameDraft] = useState('');
@@ -313,11 +320,22 @@ export function Sidebar({
           </span>
         </div>
         {!tagsCollapsed && (
-          <div className="flex flex-wrap gap-1.5 px-1.5 pb-1">
-            {sortTagsForDisplay(tags, language)
-              .filter((tag) => tag.count >= 2 || tag.label === activeTag)
-              .map((tag) => (
-              <span
+          <div className="px-1.5 pb-1">
+            <div className="flex items-center h-[26px] mb-2 rounded border border-[var(--line)] bg-[var(--panel-2)] focus-within:border-[var(--accent)]">
+              <input value={tagQuery} onChange={event => setTagQuery(event.target.value)}
+                placeholder={t('tagSearchPlaceholder')} aria-label={t('tagSearchPlaceholder')}
+                className="w-full min-w-0 bg-transparent px-2 text-[12px] outline-none"
+                onKeyDown={event => {
+                  if (event.key === 'Escape') { event.stopPropagation(); setTagQuery(''); }
+                  if (event.key === 'Enter' && visibleTags[0]) { event.preventDefault(); onTagSelect(visibleTags[0].label); }
+                }} />
+              {tagQuery && <button aria-label={`${t('tagSearchPlaceholder')} ${t('delete')}`} onClick={() => setTagQuery('')}
+                className="px-1 text-[var(--ink-3)]"><Icon name="close" size={14} /></button>}
+            </div>
+            {visibleTags.length === 0 && tagQuery.trim() && <p className="text-[12px] text-[var(--ink-3)]">{t('tagSearchEmpty')}</p>}
+            <div className="flex flex-wrap gap-1.5">
+            {visibleTags.map((tag) => (
+              <button
                 key={tag.label}
                 onClick={() => onTagSelect(activeTag === tag.label ? null : tag.label)}
                 className={`inline-flex items-center gap-1.5 h-6 px-2 rounded-full border cursor-pointer font-mono-ui text-[11.5px] ${
@@ -332,8 +350,9 @@ export function Sidebar({
                 />
                 #{tagLabel(tag.label, language)}
                 <span className="text-[var(--ink-3)]">{tag.count}</span>
-              </span>
+              </button>
             ))}
+            </div>
           </div>
         )}
 

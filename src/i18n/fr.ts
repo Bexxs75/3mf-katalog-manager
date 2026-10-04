@@ -1,6 +1,13 @@
 import type { Translations } from './types';
 
 export const fr: Translations = {
+  detailPrevious: "Modèle précédent",
+  detailNext: "Modèle suivant",
+  detailPosition: "{index} sur {total}",
+  tagSearchPlaceholder: "Filtrer les tags …",
+  tagSearchEmpty: "Aucun tag trouvé",
+  detailDiscardEdits: "Abandonner les modifications en cours et changer de modèle ?",
+
   importLockedHint: "Verrouillé pendant un import",
   impScanning: "Recherche",
   impImporting: "Importation",

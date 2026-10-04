@@ -1,5 +1,7 @@
 import { useImportLock } from '../hooks/ImportLockContext';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { Icon } from './Icon';
+import { useDetailNavigation, type DetailDirection } from '../hooks/useDetailNavigation';
 import { TagInput } from './TagInput';
 import { invoke } from '@tauri-apps/api/core';
 import type { ModelFile, SlicerConfig, Collection } from '../types';
@@ -22,6 +24,10 @@ interface Props {
   allTags: string[];
   model: ModelFile;
   onClose: () => void;
+  onNavigate?: (direction: DetailDirection) => void;
+  hasPrevious: boolean;
+  hasNext: boolean;
+  position?: { index: number; total: number };
   onAddTag: (tag: string) => void;
   onRemoveTag: (tag: string) => void;
   onDelete: () => void;
@@ -46,6 +52,10 @@ export function ModelDetailPage({
   model,
   allTags,
   onClose,
+  onNavigate,
+  hasPrevious,
+  hasNext,
+  position,
   onAddTag,
   onRemoveTag,
   onDelete,
@@ -65,6 +75,7 @@ export function ModelDetailPage({
   rescanSuccess,
   displayPreference,
 }: Props) {
+  const pageRef = useRef<HTMLDivElement>(null);
   const { lockProps } = useImportLock();
   const t = useT();
   const { language } = useLanguage();
@@ -99,6 +110,19 @@ export function ModelDetailPage({
   const [printLogNote, setPrintLogNote] = useState('');
   const [printLogPhoto, setPrintLogPhoto] = useState<string | null>(null);
 
+  const isEditing = () => editingSource || showPrintLogForm ||
+    Array.from(pageRef.current?.querySelectorAll<HTMLInputElement>('input') ?? [])
+      .some(input => input.value.trim() !== '');
+  const navigate = (direction: DetailDirection) => {
+    if ((direction === 'previous' ? hasPrevious : hasNext)) onNavigate?.(direction);
+  };
+  useDetailNavigation(onNavigate ? navigate : undefined, isEditing);
+  const navigateByButton = (direction: DetailDirection) => {
+    if (isEditing() && !window.confirm(t('detailDiscardEdits'))) return;
+    navigate(direction);
+  };
+  const navigationButtonClass = 'relative flex-none w-[42px] h-[42px] rounded-[10px] border border-transparent grid place-items-center cursor-pointer text-[var(--ink-3)] hover:text-[var(--ink)] hover:bg-[var(--panel-2)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] disabled:opacity-40 disabled:cursor-default';
+
   const submitPrintLogEntry = () => {
     addPrintLogEntry(new Date(printLogDate).toISOString(), printLogNote.trim() || null, printLogPhoto)
       .then(() => {
@@ -117,7 +141,7 @@ export function ModelDetailPage({
   };
 
   return (
-    <div className="flex-1 min-w-0 overflow-y-auto p-6 flex flex-col gap-6 max-w-[1600px] w-full mx-auto">
+    <div ref={pageRef} className="flex-1 min-w-0 overflow-y-auto p-6 flex flex-col gap-6 max-w-[1600px] w-full mx-auto">
       <header className="flex items-start gap-4">
         <button
           onClick={onClose}
@@ -128,6 +152,15 @@ export function ModelDetailPage({
             <path d="M19 12H5M11 18l-6-6 6-6" />
           </svg>
         </button>
+        <button className={navigationButtonClass} aria-label={t('detailPrevious')} title={t('detailPrevious')}
+          disabled={!hasPrevious || !onNavigate} onMouseDown={event => event.preventDefault()}
+          onClick={() => navigateByButton('previous')}><Icon name="previous" /></button>
+        {position && <span className="font-mono-ui text-[12px] text-[var(--ink-3)] self-center whitespace-nowrap">
+          {t('detailPosition').replace('{index}', String(position.index)).replace('{total}', String(position.total))}
+        </span>}
+        <button className={navigationButtonClass} aria-label={t('detailNext')} title={t('detailNext')}
+          disabled={!hasNext || !onNavigate} onMouseDown={event => event.preventDefault()}
+          onClick={() => navigateByButton('next')}><Icon name="next" /></button>
         <h1 className="flex-1 min-w-0 text-[1.5rem] font-semibold leading-tight break-words">
           {model.name}
         </h1>
@@ -135,7 +168,11 @@ export function ModelDetailPage({
 
       <div className="flex gap-7 flex-wrap items-start">
         <div className="flex-1 min-w-[320px]">
-          <div className="relative aspect-[4/3] rounded-[10px] border border-[var(--line)] bg-[var(--plate)] overflow-hidden">
+          <div data-detail-viewer tabIndex={0}
+            onPointerDown={event => {
+              if (event.target === event.currentTarget || event.target instanceof HTMLCanvasElement) event.currentTarget.focus();
+            }}
+            className="relative aspect-[4/3] rounded-[10px] border border-[var(--line)] bg-[var(--plate)] overflow-hidden">
             {showCustomImage && resolvedImage ? (
               <img src={resolvedImage} alt={model.name} className="absolute inset-0 w-full h-full object-contain" />
             ) : (
@@ -444,7 +481,7 @@ export function ModelDetailPage({
               {t('addToCollectionLabel')}
             </button>
             {addToCollectionMenuOpen && (
-              <div className="absolute bottom-11 right-0 min-w-[220px] max-w-[360px] py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
+              <div data-navigation-menu className="absolute bottom-11 right-0 min-w-[220px] max-w-[360px] py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
                 {collections.map((c) => (
                   <button
                     key={c.id}

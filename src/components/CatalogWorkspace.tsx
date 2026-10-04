@@ -1,3 +1,4 @@
+import { detailNeighbor, type DetailDirection } from '../hooks/useDetailNavigation';
 import { useImportLock } from '../hooks/ImportLockContext';
 import type { useFolderExpansion } from '../hooks/useFolderExpansion';
 import type { useSidebarWidth } from '../hooks/useSidebarWidth';
@@ -23,6 +24,8 @@ import type { AppError } from '../lib/errors';
 interface CatalogWorkspaceProps {
   importRow?: ReactNode;
   expansion: ReturnType<typeof useFolderExpansion>;
+  catalogKey?: string | null;
+  onNavigateDetail?: (direction: DetailDirection) => void;
   sidebarWidth: ReturnType<typeof useSidebarWidth>;
   allFoldersCollapsed: boolean;
   onToggleAllFolders: () => void;
@@ -115,6 +118,8 @@ interface CatalogWorkspaceProps {
 export function CatalogWorkspace({
   importRow,
   expansion,
+  catalogKey,
+  onNavigateDetail,
   sidebarWidth,
   allFoldersCollapsed,
   onToggleAllFolders,
@@ -218,6 +223,7 @@ export function CatalogWorkspace({
   return (
     <div className="flex-1 flex min-h-0">
       <Sidebar
+        catalogKey={catalogKey}
         expansion={expansion}
         width={sidebarWidth.width}
         setWidth={sidebarWidth.setWidth}
@@ -359,6 +365,13 @@ export function CatalogWorkspace({
           />
         ) : detailModel ? (
           <ModelDetailPage
+            key={detailModel.id}
+            onNavigate={onNavigateDetail}
+            hasPrevious={detailNeighbor(filtered.map(model => model.id), detailModel.id, 'previous') !== null}
+            hasNext={detailNeighbor(filtered.map(model => model.id), detailModel.id, 'next') !== null}
+            position={filtered.some(model => model.id === detailModel.id)
+              ? { index: filtered.findIndex(model => model.id === detailModel.id) + 1, total: filtered.length }
+              : undefined}
             allTags={tags.map(tag => tag.label)}
             model={detailModel}
             onClose={() => setDetailModelId(null)}

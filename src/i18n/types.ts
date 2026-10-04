@@ -6,6 +6,13 @@ export interface PluralForms {
 }
 
 export interface Translations {
+  detailPrevious: string;
+  detailNext: string;
+  detailPosition: string;
+  tagSearchPlaceholder: string;
+  tagSearchEmpty: string;
+  detailDiscardEdits: string;
+
   importLockedHint: string;
   impScanning: string;
   impImporting: string;

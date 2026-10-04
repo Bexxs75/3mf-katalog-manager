@@ -1,6 +1,13 @@
 import type { Translations } from './types';
 
 export const es: Translations = {
+  detailPrevious: "Modelo anterior",
+  detailNext: "Modelo siguiente",
+  detailPosition: "{index} de {total}",
+  tagSearchPlaceholder: "Filtrar etiquetas …",
+  tagSearchEmpty: "No se encontraron etiquetas",
+  detailDiscardEdits: "¿Descartar los cambios pendientes y cambiar de modelo?",
+
   importLockedHint: "Bloqueado durante una importación",
   impScanning: "Buscando",
   impImporting: "Importando",

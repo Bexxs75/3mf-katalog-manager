@@ -1,0 +1,85 @@
+import { fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, expect, it, vi } from 'vitest';
+import { ModelDetailPage } from './ModelDetailPage';
+import { LanguageProvider } from '../i18n/LanguageContext';
+import { makeModelFile } from '../test/factories';
+
+vi.mock('./ModelPreview', () => ({ ModelPreview: () => <button>Viewer control</button> }));
+vi.mock('../hooks/usePrintLog', () => ({ usePrintLog: () => ({ entries: [], error: null }) }));
+vi.mock('../hooks/useFilamentCheck', () => ({ useFilamentCheck: () => ({}) }));
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(() => Promise.resolve([])), convertFileSrc: (s: string) => s }));
+
+beforeEach(() => { localStorage.setItem('3mf-katalog-language', 'de'); vi.restoreAllMocks(); });
+const props = {
+  model: makeModelFile(), allTags: [], onClose: vi.fn(), onAddTag: vi.fn(), onRemoveTag: vi.fn(),
+  onDelete: vi.fn(), onTogglePrintStatus: vi.fn(), onToggleFavorite: vi.fn(), onToggleQueue: vi.fn(),
+  onUploadImage: vi.fn(), onSnapshotCaptured: vi.fn(), onSetSourceUrl: vi.fn(), onOpenInSlicer: vi.fn(),
+  onRescanMetadata: vi.fn(), onAddToCollection: vi.fn(), collections: [], slicers: [], slicerError: null,
+  rescanError: null, rescanSuccess: false, displayPreference: 'thumbnail' as const,
+};
+
+it('renders position and labelled buttons and respects both boundaries and a single model', () => {
+  const onNavigate = vi.fn();
+  const page = (hasPrevious: boolean, hasNext: boolean) => <LanguageProvider><ModelDetailPage {...props}
+    onNavigate={onNavigate} hasPrevious={hasPrevious} hasNext={hasNext} position={{index: 3, total: 148}} /></LanguageProvider>;
+  const { rerender } = render(page(true, true));
+  expect(screen.getByText('3 von 148')).toBeVisible();
+  fireEvent.click(screen.getByLabelText('Vorheriges Modell'));
+  fireEvent.click(screen.getByLabelText('Nächstes Modell'));
+  expect(onNavigate.mock.calls).toEqual([['previous'], ['next']]);
+  rerender(page(false, true));
+  expect(screen.getByLabelText('Vorheriges Modell')).toBeDisabled();
+  rerender(page(true, false));
+  expect(screen.getByLabelText('Nächstes Modell')).toBeDisabled();
+  rerender(page(false, false));
+  expect(screen.getByLabelText('Vorheriges Modell')).toBeDisabled();
+  expect(screen.getByLabelText('Nächstes Modell')).toBeDisabled();
+});
+
+it('blocks draft navigation by keyboard and requires confirmation by button without losing a rejected draft', () => {
+  const onNavigate = vi.fn();
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  render(<LanguageProvider><ModelDetailPage {...props} onNavigate={onNavigate} hasPrevious hasNext /></LanguageProvider>);
+  const input = screen.getByRole('combobox');
+  fireEvent.change(input, {target: {value: 'pending tag'}});
+  fireEvent.keyDown(window, {key: 'ArrowRight'});
+  expect(onNavigate).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByLabelText('Nächstes Modell'));
+  expect(confirm).toHaveBeenCalledOnce();
+  expect(onNavigate).not.toHaveBeenCalled();
+  expect(input).toHaveValue('pending tag');
+  confirm.mockReturnValue(true);
+  fireEvent.click(screen.getByLabelText('Nächstes Modell'));
+  expect(onNavigate).toHaveBeenCalledWith('next');
+});
+
+it('gives viewer controls priority and keeps close behavior', () => {
+  const onNavigate = vi.fn();
+  const onClose = vi.fn();
+  render(<LanguageProvider><ModelDetailPage {...props} onClose={onClose} onNavigate={onNavigate} hasPrevious hasNext /></LanguageProvider>);
+  fireEvent.keyDown(screen.getByText('Viewer control'), {key: 'ArrowRight'});
+  expect(onNavigate).not.toHaveBeenCalled();
+  fireEvent.keyDown(window, {key: 'ArrowRight'});
+  expect(onNavigate).toHaveBeenCalledWith('next');
+  fireEvent.click(screen.getByTitle('Zurück zum Katalog'));
+  expect(onClose).toHaveBeenCalledOnce();
+});
+
+it('protects source editing and an open print-log form even after focus leaves the input', () => {
+  const onNavigate = vi.fn();
+  vi.spyOn(window, 'confirm').mockReturnValue(false);
+  render(<LanguageProvider><ModelDetailPage {...props} onNavigate={onNavigate} hasPrevious hasNext /></LanguageProvider>);
+  fireEvent.click(screen.getByText(/https:\/\//));
+  fireEvent.keyDown(window, {key: 'ArrowRight'});
+  expect(onNavigate).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByLabelText('Nächstes Modell'));
+  expect(window.confirm).toHaveBeenCalledOnce();
+  expect(onNavigate).not.toHaveBeenCalled();
+  fireEvent.keyDown(screen.getByPlaceholderText('https://…'), {key: 'Escape'});
+  fireEvent.click(screen.getByText('+ Eintrag hinzufügen'));
+  fireEvent.keyDown(window, {key: 'ArrowRight'});
+  expect(onNavigate).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByLabelText('Nächstes Modell'));
+  expect(window.confirm).toHaveBeenCalledTimes(2);
+  expect(onNavigate).not.toHaveBeenCalled();
+});

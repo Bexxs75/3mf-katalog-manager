@@ -25,7 +25,7 @@ describe('tag inputs in both detail views', () => {
       onOpenInSlicer: vi.fn(), slicerError: null,
     };
     render(<LanguageProvider><UiDensityProvider>
-      {view === 'page' ? <ModelDetailPage {...props} onClose={onClose} onRescanMetadata={vi.fn()}
+      {view === 'page' ? <ModelDetailPage hasPrevious={false} hasNext={false} {...props} onClose={onClose} onRescanMetadata={vi.fn()}
         onAddToCollection={vi.fn()} collections={[]} slicers={[]} rescanError={null}
         rescanSuccess={false} displayPreference="thumbnail" /> : <DetailPanel {...props} />}
     </UiDensityProvider></LanguageProvider>);
