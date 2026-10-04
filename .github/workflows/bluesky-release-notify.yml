@@ -69,7 +69,12 @@ jobs:
             --arg url "$RELEASE_URL" \
             '
             def clip(n): if (length > n) then .[0:n] + "…" else . end;
-            "🚀 " + $title + " ist da!\n\n" + ($excerpt | clip(150)) + "\n\n" + $url
+            # Whole post ≤ 300 graphemes: the excerpt gets what title and URL leave
+            # over (v0.15.1 failed with 400 because a long bilingual title plus a
+            # 150-character excerpt went past the limit).
+            ($title | clip(120)) as $t
+            | ([40, 290 - ($t | length) - ($url | length) - 12] | max) as $room
+            | "🚀 " + $t + " ist da!\n\n" + ($excerpt | clip($room)) + "\n\n" + $url
             ')
 
           {
@@ -79,7 +84,24 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "url=$RELEASE_URL" >> "$GITHUB_OUTPUT"
 
+      - name: Skip if this release was already posted
+        id: dedupe
+        env:
+          BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
+          POST_URL: ${{ steps.post.outputs.url }}
+        run: |
+          # The author feed is public; a post that already carries this release URL
+          # means the announcement went out (e.g. a manual re-run after a failure).
+          FEED=$(curl -sS "https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?actor=${BLUESKY_HANDLE}&limit=30&filter=posts_no_replies" || echo '{}')
+          if echo "$FEED" | jq -e --arg url "$POST_URL" '[.feed[]?.post.record.text // ""] | any(contains($url))' >/dev/null; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Release already posted on Bluesky ($POST_URL), skipping."
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Post to Bluesky
+        if: steps.dedupe.outputs.already != 'true'
         env:
           BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
           BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}

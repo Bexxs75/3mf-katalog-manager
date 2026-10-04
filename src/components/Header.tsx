@@ -1,5 +1,6 @@
 import { Icon } from './Icon';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useDismissableMenu } from '../hooks/useDismissableMenu';
 import type { MainView, ViewMode, SortKey } from '../types';
 import { formatCount } from '../i18n/types';
 import { useT } from '../i18n/LanguageContext';
@@ -17,6 +18,7 @@ interface Props {
   count: number;
   onImportFiles: () => void;
   onImportFolder: () => void;
+  detailOpen?: boolean;
   mainView: MainView;
 }
 
@@ -39,11 +41,23 @@ export function Header({
   onImportFiles,
   onImportFolder,
   mainView,
+  detailOpen = false,
 }: Props) {
   const t = useT();
   const [importSource, setImportSource] = useState<'files' | 'folder'>('files');
   const [importMenuOpen, setImportMenuOpen] = useState(false);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
+
+  const importRef = useRef<HTMLDivElement>(null);
+  const sortRef = useRef<HTMLDivElement>(null);
+  const importTriggerRef = useRef<HTMLButtonElement>(null);
+  const sortTriggerRef = useRef<HTMLButtonElement>(null);
+  useDismissableMenu(importMenuOpen, setImportMenuOpen, importRef, importTriggerRef);
+  useDismissableMenu(sortMenuOpen, setSortMenuOpen, sortRef, sortTriggerRef);
+  useEffect(() => {
+    setImportMenuOpen(false);
+    setSortMenuOpen(false);
+  }, [detailOpen, mainView]);
 
   const sortOptions: { value: SortKey; label: string }[] = [
     { value: 'name', label: t('sortName') },
@@ -68,9 +82,11 @@ export function Header({
 
       {mainView === 'catalog' && (
       <>
-      <div className="relative flex">
+      <div ref={importRef} className="relative flex">
         <button
-          onClick={() => setImportMenuOpen((o) => !o)}
+          ref={importTriggerRef}
+          aria-expanded={importMenuOpen}
+          onClick={() => { setSortMenuOpen(false); setImportMenuOpen((o) => !o); }}
           className="flex items-center gap-2 h-8 pl-[13px] pr-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[length:var(--font-size-body)] font-semibold cursor-pointer hover:brightness-110"
         >
           <span className="font-mono-ui text-sm leading-none">+</span>
@@ -113,9 +129,11 @@ export function Header({
         <span className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.1em] uppercase text-[var(--ink-3)]">
           {t('sortLabel')}
         </span>
-        <div className="relative">
+        <div ref={sortRef} className="relative">
           <button
-            onClick={() => setSortMenuOpen((o) => !o)}
+            ref={sortTriggerRef}
+            aria-expanded={sortMenuOpen}
+            onClick={() => { setImportMenuOpen(false); setSortMenuOpen((o) => !o); }}
             className="h-[30px] px-2 rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink)] text-[length:var(--font-size-body)] cursor-pointer flex items-center gap-1.5"
           >
             {sortOptions.find((o) => o.value === sort)?.label}

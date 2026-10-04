@@ -3,6 +3,7 @@ import { useImportLock } from '../hooks/ImportLockContext';
 import type { useFolderExpansion } from '../hooks/useFolderExpansion';
 import type { useSidebarWidth } from '../hooks/useSidebarWidth';
 import { useMemo, useRef, useLayoutEffect, type ReactNode } from 'react';
+import { useCatalogScroll } from '../hooks/useCatalogScroll';
 import { Sidebar } from './Sidebar';
 import { ModelGrid } from './ModelGrid';
 import { GroupedModelGrid } from './GroupedModelGrid';
@@ -11,7 +12,7 @@ import { DetailPanel } from './DetailPanel';
 import { ModelDetailPage } from './ModelDetailPage';
 import { CollectionsGallery } from './CollectionsGallery';
 import { BulkActionToolbar } from './BulkActionToolbar';
-import type { ModelFile, Folder, TagCount, ViewMode, Collection, SlicerConfig } from '../types';
+import type { ModelFile, Folder, TagCount, ViewMode, SortKey, Collection, SlicerConfig } from '../types';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import type { useCollapsedFolders } from '../hooks/useCollapsedFolders';
 import { useLanguage, useT } from '../i18n/LanguageContext';
@@ -99,6 +100,7 @@ interface CatalogWorkspaceProps {
   rescanFeedback: { fileId: string; status: 'success' | 'error'; message?: string; unexpected?: boolean } | null;
   displayPreference: DisplayPreference;
   view: ViewMode;
+  sort: SortKey;
   filtered: ModelFile[];
   collectionModels: ModelFile[];
   selectedId: string | null;
@@ -193,6 +195,7 @@ export function CatalogWorkspace({
   rescanFeedback,
   displayPreference,
   view,
+  sort,
   filtered,
   collectionModels,
   selectedId,
@@ -215,8 +218,11 @@ export function CatalogWorkspace({
   const previousResetKey = useRef(resetKey);
   useLayoutEffect(() => {
     const container = containerRef.current;
+    const keyChanged = previousResetKey.current !== resetKey;
+    // A view or filter change while the detail page is open must not restore the old position.
+    if (keyChanged) savedScroll.current = 0;
     if (container) {
-      container.scrollTop = previousResetKey.current !== resetKey ? 0 : wasDetail.current ? savedScroll.current : container.scrollTop;
+      container.scrollTop = keyChanged ? 0 : wasDetail.current ? savedScroll.current : container.scrollTop;
       container.dispatchEvent(new Event('scroll'));
     }
     previousResetKey.current = resetKey;
@@ -225,6 +231,9 @@ export function CatalogWorkspace({
   const { language } = useLanguage();
   const { jobActive } = useImportLock();
   const t = useT();
+  const scrollRef = useCatalogScroll(detailModel !== null, JSON.stringify([
+    view, sort, language, query, activeFolderId, activeTag, activeCollection, collectionsGalleryOpen, toolView,
+  ]), selectedId);
   const queueFilament = useFilamentCheck(
     queue.map((m) => m.id),
     // Forces a reload when the slicer data of a queue entry changes
@@ -418,7 +427,7 @@ export function CatalogWorkspace({
             displayPreference={displayPreference}
           />
         ) : (
-          <div ref={containerRef} data-catalog-scroller onScroll={event => { savedScroll.current = event.currentTarget.scrollTop; }} className="flex-1 overflow-y-auto overscroll-contain p-4">
+          <div ref={node => { containerRef.current = node; scrollRef(node); }} data-catalog-scroller onScroll={event => { savedScroll.current = event.currentTarget.scrollTop; }} className="flex-1 overflow-y-auto overscroll-contain p-4">
             {toolView && filtered.length === 0 && !activeCollection ? (
               <div className="font-mono-ui text-[length:var(--font-size-item)] text-[var(--ink-3)] px-1.5 py-8 text-center">
                 {t('toolViewEmpty')}

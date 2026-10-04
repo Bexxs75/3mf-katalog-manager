@@ -9,6 +9,14 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ## [Unreleased]
 
+## [0.15.2] - 2026-10-04
+
+### Fixed
+
+- Returning from model details keeps your catalog scroll position and selected model in grid, folder and list views.
+- Sort and import menus now close when clicking outside, pressing Escape, opening the other menu or changing pages. Escape returns focus to the menu button.
+- Old broken umlaut tags from file names are repaired once on startup: matching fragments are removed per file and missing complete file-name tags are added.
+
 ## [0.15.1] - 2026-10-04
 
 ### Fixed
@@ -464,6 +472,14 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/), Ve
 Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unter der Scaffold-Versionsnummer `0.1.0`, ohne dass Meilensteine markiert wurden. Die folgenden Versionsgrenzen wurden nachträglich anhand von Entwicklungs-Tagen und natürlichen Feature-Abschlüssen (jeweils an einem Dokumentations-Commit) gezogen, keine davon wurde zum jeweiligen Zeitpunkt live getaggt oder veröffentlicht.
 
 ## [Unreleased]
+
+## [0.15.2] - 2026-10-04
+
+### Behoben
+
+- Beim Zurückgehen aus den Modelldetails bleiben Scrollposition und ausgewähltes Modell in Raster-, Ordner- und Listenansicht erhalten.
+- Sortier- und Importmenü schließen jetzt bei Außenklick, Escape, Öffnen des anderen Menüs oder Seitenwechsel. Escape setzt den Fokus zurück auf den Menüknopf.
+- Alte Umlaut-Bruchstück-Tags aus Dateinamen werden einmalig beim Start bereinigt: passende Bruchstücke werden pro Datei entfernt und fehlende vollständige Dateinamen-Tags ergänzt.
 
 ## [0.15.1] - 2026-10-04
 

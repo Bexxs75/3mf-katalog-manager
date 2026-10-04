@@ -113,12 +113,25 @@ fn filename_tags(file_name: &str) -> Vec<String> {
 
     // Compose decomposed accents so they do not become token separators.
     let stem: String = stem.nfc().collect();
+    tokenize_filename_stem(&stem)
+}
+
+fn tokenize_filename_stem(stem: &str) -> Vec<String> {
     stem.split(|c: char| !c.is_alphanumeric())
         .map(|token| token.to_lowercase())
         .filter(|token| is_meaningful_token(token))
         .map(|token| canonical_tag_unambiguous(&token))
         .take(MAX_FILENAME_TAGS)
         .collect()
+}
+
+/// Reconstruct the old decomposed-name output using the same token limits and aliases.
+pub(crate) fn filename_tag_fragments(file_name: &str) -> (Vec<String>, Vec<String>) {
+    let stem = Path::new(file_name).file_stem().and_then(|s| s.to_str()).unwrap_or(file_name);
+    let old = tokenize_filename_stem(&stem.nfd().collect::<String>());
+    let correct = filename_tags(file_name);
+    let fragments = old.into_iter().filter(|tag| !correct.contains(tag)).collect();
+    (fragments, correct)
 }
 
 fn is_meaningful_token(token: &str) -> bool {

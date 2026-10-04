@@ -257,6 +257,7 @@ export default function App() {
       <Header
         allFoldersCollapsed={allFoldersCollapsed}
         onToggleAllFolders={toggleAllFolders}
+        detailOpen={detailModelId !== null}
         view={filters.view}
         onViewChange={filters.setView}
         sort={filters.sort}
@@ -410,6 +411,7 @@ export default function App() {
               rescanFeedback={store.rescanFeedback}
               displayPreference={displayPreference}
               view={filters.view}
+              sort={filters.sort}
               filtered={filters.filtered}
               collectionModels={collections.collectionModels}
               selectedId={store.selectedId}
