@@ -45,14 +45,12 @@ LANGS = {
         "bausteine": "bausteine",
         "bilder": "bilder",
         "result_image": "So sieht es richtig aus",
-        "variant_only": {"standard": "Nur für die Variante ohne STEP-Vorschau.", "step": "Nur für die Variante mit STEP-Vorschau."},
         "guide_file": "Testanleitung-{version}-{platform}",
         "sheet_file": "Ergebnisbogen-{version}-{platform}.xlsx",
         "guide_title": "{produkt} {version} – Testanleitung ({platform})",
         "form": "https://3mfkatalog.de/fehler-melden.html",
         "headings": ("Was ist neu", "Installieren", "Datenorte", "Fehler melden", "Deinstallieren"),
         "testdata_heading": "Testdaten vorbereiten",
-        "download_both": "Lade `{paket}` von der [Vorschau-Release-Seite]({release}) herunter (Variante mit STEP-Vorschau: `{paket_step}`).",
         "download_one": "Lade `{paket}` von der [Vorschau-Release-Seite]({release}) herunter.",
         "steps": "Schritte:",
         "expected": "Erwartet:",
@@ -81,8 +79,7 @@ LANGS = {
                       ("Distribution und Version", "z. B. Fedora 44, Linux Mint 22", None),
                       ("Desktop", "z. B. KDE Plasma, GNOME, Cinnamon", None),
                       ("Sitzung", None, ("Wayland", "X11"))],
-            "common": [("App-Variante", None, ("Standard", "mit STEP-Vorschau")),
-                       ("Datum", None, None),
+            "common": [("Datum", None, None),
                        ("Name oder Discord (freiwillig)", None, None)],
         },
     },
@@ -91,14 +88,12 @@ LANGS = {
         "bausteine": "bausteine/en",
         "bilder": "bilder/en",
         "result_image": "This is what it should look like",
-        "variant_only": {"standard": "Only for the variant without STEP preview.", "step": "Only for the variant with STEP preview."},
         "guide_file": "Test-Guide-{version}-{platform}",
         "sheet_file": "Result-Sheet-{version}-{platform}.xlsx",
         "guide_title": "{produkt} {version} – Test guide ({platform})",
         "form": "https://3mfkatalog.de/en/report-a-bug.html",
         "headings": ("What's new", "Installing", "Where the data is", "Reporting a bug", "Uninstalling"),
         "testdata_heading": "Preparing the test data",
-        "download_both": "Download `{paket}` from the [preview release page]({release}) (variant with STEP preview: `{paket_step}`).",
         "download_one": "Download `{paket}` from the [preview release page]({release}).",
         "steps": "Steps:",
         "expected": "Expected:",
@@ -127,8 +122,7 @@ LANGS = {
                       ("Distribution and version", "e.g. Fedora 44, Linux Mint 22", None),
                       ("Desktop", "e.g. KDE Plasma, GNOME, Cinnamon", None),
                       ("Session", None, ("Wayland", "X11"))],
-            "common": [("App variant", None, ("Standard", "with STEP preview")),
-                       ("Date", None, None),
+            "common": [("Date", None, None),
                        ("Name or Discord (optional)", None, None)],
         },
     },
@@ -166,12 +160,9 @@ ASSISTANT_TEXT = {
         "tip": "Tipp: Klick einen Schritt an, wenn du ihn erledigt hast.",
         "expected": "Das sollte passieren", "note": "Hinweis", "question": "Hat es geklappt?",
         "result_image": "So sieht es richtig aus", "zoom_close": "Klicken oder Esc zum Schließen",
-        "variant_q": "Welche Variante sollst du testen?",
-        "variant_hint": "Wenn dir nichts anderes gesagt wurde, nimm „Standard“. Die Variante mit STEP-Vorschau ist größer und zeigt zusätzlich STEP-Dateien (.stp/.step) in 3D.",
-        "no_step": "In dieser Test-Version gibt es keine Variante mit STEP-Vorschau.",
         "download_btn": "Installationsdatei herunterladen", "download_note": "Die Datei landet in deinem Download-Ordner.",
         "time_total": "Aktive Testzeit: {min} Minuten", "time_one": "{min} Min.", "time_lt1": "unter 1 Min.",
-        "na": "nicht zutreffend (andere Variante)",
+        "na": "nicht zutreffend (anderer Testumfang)",
         "ok": "Klappt", "bad": "Klappt nicht", "skip": "Überspringen",
         "why": "Was ist stattdessen passiert?", "why_ph": "z. B. „Es kam die Meldung …“ oder „Der Ordner erschien nicht links“",
         "save_next": "Speichern und weiter", "skip_q": "Warum überspringst du diesen Test?", "choose": "Bitte wählen …",
@@ -182,7 +173,7 @@ ASSISTANT_TEXT = {
         "labels": {"ok": "klappt", "bad": "klappt nicht", "skip": "übersprungen", "open": "offen"},
         "device": "Zum Schluss noch kurz zu deinem Gerät (freiwillig):",
         "final": "Letzter Schritt: Speichere das Ergebnis und schick die Datei per E-Mail an {email}.",
-        "mail_btn": "E-Mail-Programm öffnen", "mail_subject": "Testergebnis {version} {platform} ({variant})",
+        "mail_btn": "E-Mail-Programm öffnen", "mail_subject": "Testergebnis {version} {platform}",
         "mail_body": "Hallo,\n\nim Anhang mein Testergebnis.\n\n(Bitte die Datei {file} aus dem Download-Ordner anhängen.)",
         "mail_hint": "Die Datei hängst du selbst an, sie liegt in deinem Download-Ordner. Kein E-Mail-Programm? Schick sie einfach von deinem Mail-Konto im Browser an {email}.",
         "save": "Ergebnis speichern", "saved": "Gespeichert als „{file}“ in deinem Download-Ordner.",
@@ -218,12 +209,9 @@ ASSISTANT_TEXT = {
         "tip": "Tip: click a step once you have done it.",
         "expected": "This should happen", "note": "Note", "question": "Did it work?",
         "result_image": "This is what it should look like", "zoom_close": "Click or press Esc to close",
-        "variant_q": "Which variant should you test?",
-        "variant_hint": "If nobody told you otherwise, choose \"Standard\". The variant with STEP preview is bigger and also shows STEP files (.stp/.step) in 3D.",
-        "no_step": "This test version has no variant with STEP preview.",
         "download_btn": "Download the installer", "download_note": "The file goes to your Downloads folder.",
         "time_total": "Active test time: {min} minutes", "time_one": "{min} min", "time_lt1": "under 1 min",
-        "na": "not applicable (other variant)",
+        "na": "not applicable (other test scope)",
         "ok": "Works", "bad": "Doesn't work", "skip": "Skip",
         "why": "What happened instead?", "why_ph": "e.g. \"The message … appeared\" or \"The folder didn't show up on the left\"",
         "save_next": "Save and continue", "skip_q": "Why are you skipping this test?", "choose": "Please choose …",
@@ -234,7 +222,7 @@ ASSISTANT_TEXT = {
         "labels": {"ok": "works", "bad": "doesn't work", "skip": "skipped", "open": "open"},
         "device": "Finally, a few details about your device (optional):",
         "final": "Last step: save the result and send the file by e-mail to {email}.",
-        "mail_btn": "Open your e-mail program", "mail_subject": "Test result {version} {platform} ({variant})",
+        "mail_btn": "Open your e-mail program", "mail_subject": "Test result {version} {platform}",
         "mail_body": "Hello,\n\nattached is my test result.\n\n(Please attach the file {file} from your Downloads folder.)",
         "mail_hint": "You attach the file yourself, it's in your Downloads folder. No e-mail program? Just send it from your webmail to {email}.",
         "save": "Save result", "saved": "Saved as \"{file}\" in your Downloads folder.",
@@ -256,7 +244,7 @@ class Scenario:
     # step index -> (image name, caption); an image belongs to the step above it
     step_images: dict = dataclasses.field(default_factory=dict)
     result_image: tuple = None
-    # "standard" or "step": the scenario only applies to that download variant
+    # Archived variant markers remain readable; build() applies STEP scenarios to everyone.
     variant: str = ""
 
 
@@ -417,15 +405,13 @@ def platform_values(version, platform, lang="de"):
     name = "<your name>" if lang == "en" else "<dein Name>"
     datenordner = path_template.format(id=IDENTIFIER).replace("<dein Name>", name)
     logordner = log_template.format(id=IDENTIFIER).replace("<dein Name>", name)
-    paket = release_assets.asset_name(version, asset_platform, False, ext, preview=True)
-    paket_step = release_assets.asset_name(version, asset_platform, True, ext, preview=True)
+    paket = release_assets.asset_name(version, asset_platform, ext, preview=True)
     return {
         "version": version,
         "produkt": PRODUCT,
         "datenordner": datenordner,
         "logordner": logordner,
         "paket": paket,
-        "paket_step": paket_step,
         "release": f"https://github.com/{REPO}/releases/tag/preview",
         "formular": f"{LANGS[lang]['form']}?version={version}&os={platform}",
         "testdaten": f"https://github.com/{REPO}/releases/download/preview/3MF-Testdaten.zip",
@@ -511,7 +497,6 @@ code { font-family: Consolas, monospace; font-size: 9.5pt; background: #f4f1ee; 
 .bogen { border-left: 3px solid #c4502f; background: #fbf1ec; padding: 6px 10px; margin: 8pt 0 12pt; }
 ol, ul { margin: 3pt 0 3pt 18pt; padding: 0; }
 li { margin: 2pt 0; }
-.variante { font-weight: 600; color: #8a5a47; }
 .bild { margin: 4pt 0 6pt; page-break-inside: avoid; }
 .bild img { max-width: 100%; max-height: 95mm; border: 1px solid #e5ddd6; border-radius: 4px; }
 .bild figcaption { font-size: 9pt; font-weight: 600; color: #b3261e; }
@@ -535,8 +520,6 @@ def _scenario_html(s, lang="de"):
         for i, step in enumerate(s.steps)) + "</ol>"
     result_html = figure((s.result_image[0], f'{t["result_image"]}: {s.result_image[1]}' if s.result_image[1] else t["result_image"]), " ok") if s.result_image else ""
     note_html = f'<p><span class="lbl">{t["note"]}</span> {_markdown_inline(s.note)}</p>' if s.note else ""
-    if s.variant:
-        note_html = f'<p class="variante">{html.escape(t["variant_only"][s.variant])}</p>' + note_html
     # No checkbox to tick here: a PDF can't be filled in, results go into the sheet.
     return (
         f'<div class="szenario"><h3>{html.escape(s.id)} · {_markdown_inline(s.title)}</h3>'
@@ -548,15 +531,14 @@ def _scenario_html(s, lang="de"):
     )
 
 
-def build(version, platform, out_dir, root=".", pdf=False, lang="de", step=True, assistant_only=False):
+def build(version, platform, out_dir, root=".", pdf=False, lang="de", assistant_only=False):
     root = pathlib.Path(root)
     out_dir = pathlib.Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     t = LANGS[lang]
     platform_name = PLATFORM_NAMES[platform]
     values = platform_values(version, platform, lang)
-    # Test versions built without STEP only have the standard packages.
-    values["download"] = t["download_both" if step else "download_one"].format(**values)
+    values["download"] = t["download_one"].format(**values)
 
     chapters = load_scenarios(root, version, lang)
     fill_scenario_text(chapters, values)
@@ -576,6 +558,11 @@ def build(version, platform, out_dir, root=".", pdf=False, lang="de", step=True,
     )
 
     chapters = platform_chapters(chapters, platform)
+    # Keep parsing archived variant markers; only STEP-capable scenarios apply.
+    for chapter in chapters:
+        chapter.scenarios = [s for s in chapter.scenarios if s.variant != "standard"]
+        for scenario in chapter.scenarios:
+            scenario.variant = ""
     attach_images(chapters, root, lang, platform)
     chapters_html = [
         f"<h2>{html.escape(c.title)}</h2>" + "\n".join(_scenario_html(s, lang) for s in c.scenarios)
@@ -605,12 +592,12 @@ def build(version, platform, out_dir, root=".", pdf=False, lang="de", step=True,
 </body></html>
 """
     a = ASSISTANT_TEXT[lang]
-    # The assistant puts a download button for the chosen variant where the
+    # The assistant puts a download button for the system where the
     # install text names the package; the page swaps in the real file name.
     assistant_path = build_assistant(out_dir, chapters, version, platform, lang, [
         (a["install"], baustein(f"installieren-{platform}", {"download": "__DOWNLOAD__", "paket": "__PAKET__"})),
         (t["testdata_heading"], baustein(f"testdaten-{platform}")),
-    ], packages(values, step))
+    ], packages(values))
     # Testers only get the assistant; the guide and sheet remain for local use.
     if assistant_only:
         return assistant_path, None
@@ -626,10 +613,8 @@ def build(version, platform, out_dir, root=".", pdf=False, lang="de", step=True,
     return html_path, sheet_path
 
 
-def packages(values, step):
-    url = lambda name: f"https://github.com/{REPO}/releases/download/preview/{name}"
-    return {"standard": {"name": values["paket"], "url": url(values["paket"])},
-            "step": {"name": values["paket_step"], "url": url(values["paket_step"])} if step else None}
+def packages(values):
+    return {"name": values["paket"], "url": f"https://github.com/{REPO}/releases/download/preview/{values['paket']}"}
 
 
 def build_assistant(out_dir, chapters, version, platform, lang, prep, packages):
@@ -662,7 +647,7 @@ def build_assistant(out_dir, chapters, version, platform, lang, prep, packages):
                    for i, step in enumerate(s.steps)],
          "expected": _markdown_inline(s.expected), "note": _markdown_inline(s.note) if s.note else "",
          "resultImg": s.result_image[0] if s.result_image else "",
-         "resultCap": _markdown_inline(s.result_image[1]) if s.result_image else "", "variant": s.variant}
+         "resultCap": _markdown_inline(s.result_image[1]) if s.result_image else ""}
         for c in chapters for s in c.scenarios
     ]
     # Expert tests move to their own chapter just before the update tests.
@@ -670,16 +655,14 @@ def build_assistant(out_dir, chapters, version, platform, lang, prep, packages):
     rest = [t for t in tests if t["level"] != "expert"]
     first_update = next((i for i, t in enumerate(rest) if t["id"].startswith("U")), len(rest))
     tests = rest[:first_update] + expert + rest[first_update:]
-    # The variant is asked at the start and the time is recorded, so the sheet's
-    # "App-Variante" and "Datum" fields are left out here.
-    variant_field, date_field = LANGS[lang]["fields"]["common"][0], LANGS[lang]["fields"]["common"][1]
+    # The assistant records the date automatically.
+    date_field = LANGS[lang]["fields"]["common"][0]
     fields = [{"label": label, "hint": hint or "", "choices": list(choices or [])}
               for label, hint, choices in LANGS[lang]["fields"][platform] + LANGS[lang]["fields"]["common"]
-              if label not in (variant_field[0], date_field[0])]
-    variants = {"label": variant_field[0], "choices": [{"key": k, "label": v} for k, v in zip(VARIANTS, variant_field[2])]}
+              if label != date_field[0]]
     title = a["title"].format(produkt=PRODUCT, version=version, platform=platform_name)
     data = {
-        "text": a, "tests": tests, "fields": fields, "variants": variants, "packages": packages, "prep": [{"title": ti, "html": h} for ti, h in prep], "title": title,
+        "text": a, "tests": tests, "fields": fields, "package": packages, "prep": [{"title": ti, "html": h} for ti, h in prep], "title": title,
         "version": version, "platform": platform_name,
         "resultFile": a["result_file"].format(version=version, platform=platform_name),
         "email": TEST_EMAIL,
@@ -931,7 +914,6 @@ ol.steps li.done img{opacity:.55}
 .mailbtn{display:flex;flex-direction:column;align-items:center;gap:2px;padding:12px;border-radius:10px;border:2px solid var(--accent);color:var(--accent);font-weight:700;text-decoration:none;text-align:center}
 .mailbtn span{font-weight:400;font-size:14px}.mailbtn:hover{background:var(--accent-soft)}
 .dl{display:flex;flex-direction:column;gap:6px}
-.variants button:disabled{opacity:.4;cursor:not-allowed}
 code{font-family:Consolas,ui-monospace,monospace;background:var(--code);padding:1px 5px;border-radius:4px;font-size:.92em;overflow-wrap:anywhere}
 a{color:var(--accent)}
 .q{font-weight:600}
@@ -957,13 +939,11 @@ textarea{min-height:96px;resize:vertical}
 table{width:100%;border-collapse:collapse;font-size:15px}td{padding:8px 6px;border-top:1px solid var(--line);vertical-align:top}td:first-child{white-space:nowrap;font-weight:600}
 .tag{font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px;white-space:nowrap}
 .t-ok{background:var(--ok-soft);color:var(--ok)}.t-bad{background:var(--bad-soft);color:var(--bad)}.t-skip{background:var(--skip-soft);color:var(--skip)}.t-open{background:var(--bg);color:var(--muted)}
-.variants{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media (max-width:520px){.variants{grid-template-columns:1fr}}
 .modes{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media (max-width:620px){.modes{grid-template-columns:1fr}}
 .modes button{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left}
 .modes button span{font-weight:400;font-size:14px;color:var(--muted);line-height:1.35}
 .modes button em{font-style:normal;font-size:13px;color:var(--accent);font-variant-numeric:tabular-nums}
 .modes button.sel{border-color:var(--accent);background:var(--accent-soft)}
-.variants button.sel{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
 .fields{display:grid;gap:10px}.fields label{font-size:14px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
 .saved{color:var(--ok);font-weight:600}
 @media (prefers-reduced-motion:reduce){.bar i{transition:none}}
@@ -986,15 +966,14 @@ T.intro = T.intro.map(x => [x[0], x[1].split("{email}").join(D.email)]);
 // One of the website's mascots (figuren.js), picked at random like on 3mfkatalog.de.
 const FIGURE = window.MMKFiguren ? window.MMKFiguren.random() : null;
 const mascot = pose => FIGURE ? '<span class="pose-' + pose + '">' + window.MMKFiguren.svg(FIGURE, pose) + '</span>' : '';
-const fresh = () => ({ started:false, prepDone:false, prepStep:0, index:0, results:{}, done:{}, device:{}, variant:"", mode:"", secs:{}, shown:null });
+const fresh = () => ({ started:false, prepDone:false, prepStep:0, index:0, results:{}, done:{}, device:{}, mode:"", secs:{}, shown:null });
 let state = Object.assign(fresh(), load() || {});
 if (!state.mode && !state.started && returningTester()) state.mode = "new";
-if (state.variant && !D.packages[state.variant]) state.variant = "";
 let TESTS = [];
-// Tests for the other download variant are left out (and listed as not applicable).
+// The selected test scope determines which scenarios are shown.
 const IN_MODE = { new:["new"], short:["new","short"], full:["new","short","full","expert"] };
 const inMode = (t, mode) => (IN_MODE[mode] || IN_MODE.full).includes(t.level);
-function applyVariant(){ TESTS = D.tests.filter(t => (!t.variant || t.variant === state.variant) && inMode(t, state.mode)); }
+function applyMode(){ TESTS = D.tests.filter(t => inMode(t, state.mode)); }
 // A tester who already has progress stored for another test version is a returning tester.
 function returningTester(){
   try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith("3mf-testassistent-") && k !== D.storageKey) return true; } } catch (e) {}
@@ -1002,8 +981,8 @@ function returningTester(){
 }
 // Update tests (U…) only happen once the next test version is out, so they are
 // left out of the count and time shown when choosing the scope.
-const modeCount = m => D.tests.filter(t => !t.id.startsWith("U") && (!t.variant || t.variant === (state.variant || "standard")) && inMode(t, m)).length;
-applyVariant();
+const modeCount = m => D.tests.filter(t => !t.id.startsWith("U") && inMode(t, m)).length;
+applyMode();
 const MAX_MS = 30 * 60 * 1000;
 // Time on the current test, capped so a break or an open laptop overnight doesn't count.
 function track(t){
@@ -1013,7 +992,6 @@ function track(t){
 const mins = ms => Math.round(ms / 60000);
 const oneTime = ms => ms < 60000 ? T.time_lt1 : T.time_one.replace("{min}", mins(ms));
 const totalMs = () => TESTS.reduce((a, t) => a + (state.secs[t.id] || 0), 0);
-const variantLabel = () => { const v = D.variants.choices.find(c => c.key === state.variant); return v ? v.label : ""; };
 function load(){ try { return JSON.parse(localStorage.getItem(D.storageKey)); } catch(e) { return null; } }
 function save(){ try { localStorage.setItem(D.storageKey, JSON.stringify(state)); } catch(e) {} }
 const view = document.getElementById("view");
@@ -1023,7 +1001,7 @@ function progress(){
   const p = document.getElementById("progress"); p.hidden = !state.started || !state.prepDone; if (p.hidden) return;
   const i = Math.min(state.index, TESTS.length), c = counts();
   document.getElementById("progText").textContent = i >= TESTS.length ? T.all_done : T.test_of.replace("{n}", i+1).replace("{total}", TESTS.length);
-  document.getElementById("progCounts").textContent = variantLabel() + " · ✅ " + c.ok + " · ❌ " + c.bad + " · ⏭ " + c.skip;
+  document.getElementById("progCounts").textContent = "✅ " + c.ok + " · ❌ " + c.bad + " · ⏭ " + c.skip;
   document.getElementById("barFill").style.width = (Object.keys(state.results).length / TESTS.length * 100) + "%";
 }
 // Chapters in test order, so a tester can jump straight to e.g. the new tests
@@ -1077,16 +1055,13 @@ function renderStart(){
     + (returningTester() ? '<div class="tip" style="margin-top:0">' + esc(T.mode_returning) + '</div>' : '')
     + '<div class="modes">' + ["new", "short", "full"].map(m => '<button data-m="' + m + '" class="' + (state.mode === m ? "sel" : "") + '"><b>' + esc(T.modes[m][0]) + '</b><span>' + esc(T.modes[m][1]) + '</span><em>'
         + esc(T.mode_meta.replace("{n}", modeCount(m)).replace("{min}", Math.max(5, Math.round(modeCount(m) * 3.5 / 5) * 5))) + '</em></button>').join("") + '</div><div class="tip" style="margin-top:0">' + esc(T.mode_update_note) + '</div></div>'
-    + '<div class="section"><p class="q">' + esc(T.variant_q) + '</p><div class="variants">' + D.variants.choices.map(c => '<button data-v="' + c.key + '" class="' + (state.variant === c.key ? "sel" : "") + '"' + (D.packages[c.key] ? '' : ' disabled') + '>' + esc(c.label) + '</button>').join("") + '</div>'
-    + '<div class="tip" style="margin-top:0">' + esc(T.variant_hint) + (D.packages.step ? '' : ' ' + esc(T.no_step)) + '</div>'
-    + '<button class="primary" id="go"' + (state.variant && state.mode ? '' : ' disabled') + '>' + esc(resume ? T.resume : T.start) + '</button></div></section>';
-  view.querySelectorAll(".variants button").forEach(b => b.onclick = () => { state.variant = b.dataset.v; applyVariant(); if (state.index > TESTS.length) state.index = TESTS.length; save(); renderStart(); });
-  view.querySelectorAll(".modes button").forEach(b => b.onclick = () => { state.mode = b.dataset.m; applyVariant(); if (state.index > TESTS.length) state.index = TESTS.length; save(); renderStart(); });
+    + '<div class="section"><button class="primary" id="go"' + (state.mode ? '' : ' disabled') + '>' + esc(resume ? T.resume : T.start) + '</button></div></section>';
+  view.querySelectorAll(".modes button").forEach(b => b.onclick = () => { state.mode = b.dataset.m; applyMode(); if (state.index > TESTS.length) state.index = TESTS.length; save(); renderStart(); });
   document.getElementById("go").onclick = () => { state.started = true; save(); render(); };
 }
 function renderPrep(){
   const i = Math.min(state.prepStep || 0, D.prep.length - 1), p = D.prep[i];
-  const pkg = D.packages[state.variant] || D.packages.standard;
+  const pkg = D.package;
   const button = '<a class="download" href="' + esc(pkg.url) + '" download>⬇ ' + esc(T.download_btn) + '<span>' + esc(pkg.name) + '</span></a><div class="tip" style="margin-top:0">' + esc(T.download_note) + '</div>';
   const body = p.html.replace(/<p>__DOWNLOAD__/, '<div class="dl">' + button + '</div><p>').replace(/__PAKET__/g, esc(pkg.name));
   view.innerHTML = '<section class="card install"><div class="eyebrow">' + esc(T.prep) + ' ' + (i + 1) + '/' + D.prep.length + '</div><h1>' + esc(p.title) + '</h1>' + body
@@ -1157,7 +1132,7 @@ function wireReset(){
     box.innerHTML = '<span class="confirm"><span class="q">' + esc(T.reset_confirm) + '</span><span class="confirm-btns">'
       + '<button class="b-yes" id="resetYes">' + esc(T.reset_yes) + '</button><button class="b-no" id="resetNo">' + esc(T.reset_no) + '</button></span></span>';
     document.getElementById("resetNo").focus();
-    document.getElementById("resetYes").onclick = () => { try { localStorage.removeItem(D.storageKey); } catch (e) {} state = fresh(); applyVariant(); save(); render(); window.scrollTo(0, 0); };
+    document.getElementById("resetYes").onclick = () => { try { localStorage.removeItem(D.storageKey); } catch (e) {} state = fresh(); applyMode(); save(); render(); window.scrollTo(0, 0); };
     document.getElementById("resetNo").onclick = () => { box.innerHTML = resetBox().replace(/^<span id="resetBox">|<\\/span>$/g, ""); wireReset(); };
   };
 }
@@ -1167,13 +1142,12 @@ function zoom(src){
   o.innerHTML = '<img src="' + src + '" alt=""><span>' + esc(T.zoom_close) + '</span>'; o.onclick = () => o.remove(); document.body.appendChild(o);
 }
 function mailto(){
-  const fill = s => s.replace("{version}", D.version).replace("{platform}", D.platform).replace("{variant}", variantLabel()).replace("{file}", D.resultFile);
+  const fill = s => s.replace("{version}", D.version).replace("{platform}", D.platform).replace("{file}", D.resultFile);
   return "mailto:" + D.email + "?subject=" + encodeURIComponent(fill(T.mail_subject)) + "&body=" + encodeURIComponent(fill(T.mail_body));
 }
 function plain(h){ const d = document.createElement("div"); d.innerHTML = h; return d.textContent; }
 function resultText(){
   const lines = [D.title, T.result_head + " · " + new Date().toLocaleString(), T.time_total.replace("{min}", mins(totalMs())), ""];
-  lines.push(D.variants.label + ": " + variantLabel());
   if (state.mode) lines.push(T.mode_label + ": " + T.modes[state.mode][0]);
   D.fields.forEach((f, i) => { const v = (state.device[i] || "").trim(); if (v) lines.push(f.label + ": " + v); });
   lines.push("");
@@ -1239,16 +1213,19 @@ def main(argv):
     flags = [a for a in argv if a.startswith("--")]
     lang = next((f.split("=", 1)[1] for f in flags if f.startswith("--lang=")), "de")
     if len(args) < 3:
-        print("usage: testanleitung.py <version> <windows|macos|linux> <out_dir> [--pdf] [--lang=de|en] [--no-step] [--assistant-only]",
+        print("usage: testanleitung.py <version> <windows|macos|linux> <out_dir> [--pdf] [--lang=de|en] [--assistant-only]",
               file=sys.stderr)
         return 1
     version, platform, out_dir = args[0], args[1], args[2]
     try:
+        unknown = [f for f in flags if f not in ("--pdf", "--assistant-only") and not f.startswith("--lang=")]
+        if unknown:
+            raise ValueError(f"Unbekannte Option: {' '.join(unknown)}")
         if platform not in PLATFORM_NAMES:
             raise ValueError(f"Unbekannte Plattform: {platform}")
         if lang not in LANGS:
             raise ValueError(f"Unbekannte Sprache: {lang}")
-        build(version, platform, out_dir, pdf="--pdf" in flags, lang=lang, step="--no-step" not in flags,
+        build(version, platform, out_dir, pdf="--pdf" in flags, lang=lang,
               assistant_only="--assistant-only" in flags)
     except ValueError as e:
         print(f"testanleitung: {e}", file=sys.stderr)

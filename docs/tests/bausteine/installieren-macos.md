@@ -1,4 +1,6 @@
-{{download}} Es ist eine DMG-Datei.
+{{download}}
+
+Die STEP-Vorschau ist in diesem Installer enthalten. Es ist eine DMG-Datei.
 
 Öffne die DMG-Datei und ziehe die App in den Ordner „Programme“.
 

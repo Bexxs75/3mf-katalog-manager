@@ -1,6 +1,6 @@
 name: Release (draft)
 
-# Builds all six variants in one run, gives the files readable names, signs the
+# Builds the three STEP packages in one run, gives the files readable names, signs the
 # update packages, writes the updater manifests and creates a DRAFT release.
 # Nothing becomes visible to users (or to the in-app updater) until the draft is
 # published by hand.
@@ -29,9 +29,6 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: python3 tools/release_assets.py check-version "$VERSION"
 
-  windows:
-    needs: verify
-    uses: ./.github/workflows/build-windows.yml
   windows-step:
     needs: verify
     # A called workflow can never get more rights than its caller grants; this
@@ -40,21 +37,15 @@ jobs:
       contents: read
       packages: write
     uses: ./.github/workflows/build-windows-step.yml
-  macos:
-    needs: verify
-    uses: ./.github/workflows/build-macos.yml
   macos-step:
     needs: verify
     uses: ./.github/workflows/build-macos-step.yml
-  linux:
-    needs: verify
-    uses: ./.github/workflows/build-linux-nostep.yml
   linux-step:
     needs: verify
     uses: ./.github/workflows/build-linux.yml
 
   assemble:
-    needs: [windows, windows-step, macos, macos-step, linux, linux-step]
+    needs: [windows-step, macos-step, linux-step]
     runs-on: ubuntu-24.04
     permissions:
       contents: write

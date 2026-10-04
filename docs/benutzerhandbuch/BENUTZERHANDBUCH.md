@@ -41,7 +41,7 @@ for printing, and managing your filament stock.
 The 3MF Katalog Manager is a desktop application for keeping a large collection of 3D-printing
 files (`.3mf`, `.stl`, `.obj`, and CAD source files in `.stp`/`.step` format) organized: with preview images, folders, tags, search, a dedicated
 stock manager for your filament spools, and a one-click way to open a model in your slicer of
-choice. In the variant with STEP preview (see [Installation](#installation)), Open CASCADE also
+choice. From v0.16.0, STEP preview is included in every download: Open CASCADE also
 provides a 3D preview and extracts dimensions, volume, and body count from STEP files. Everything
 runs locally on your machine — there's no cloud connection, and your data never leaves your
 computer.
@@ -49,25 +49,15 @@ computer.
 ## Installation
 
 The app is available for Linux, Windows, and macOS (see the project's
-[releases page](https://github.com/Bexxs75/3mf-katalog-manager/releases)). For each platform there
-are two variants:
+[releases page](https://github.com/Bexxs75/3mf-katalog-manager/releases)). From v0.16.0 there is one download per platform, always including STEP preview
+(`.stp`/`.step`). It is larger than the former standard package and has no `-STEP`
+suffix. Users of the former standard package receive it with their next in-app update.
 
-- **With STEP preview** ("-STEP" in the file name): includes the 3D preview for STEP files
-  (`.stp`/`.step`), at the cost of a larger download.
-- **Standard** (without that part): smaller download; STEP files can still be cataloged (tags,
-  search, rename, trash), just without the 3D preview.
-
-The v0.15.0 downloads use these names; the STEP variant adds `-STEP` before the extension:
-
-| Platform | Standard download |
+| Platform | Download |
 |---|---|
-| Windows | `3MF-Katalog-Manager-0.15.0-Windows-x64.msi` |
-| macOS | `3MF-Katalog-Manager-0.15.0-macOS-universal.dmg` |
-| Linux | `3MF-Katalog-Manager-0.15.0-Linux-x86_64.AppImage` |
-
-Otherwise the two variants are identical. When in doubt, take the variant with STEP preview — the
-size difference hardly matters, and you won't miss the preview later. To switch variants, install
-the other one; your catalog is kept.
+| Windows | `3MF-Katalog-Manager-0.16.0-Windows-x64.msi` |
+| macOS | `3MF-Katalog-Manager-0.16.0-macOS-universal.dmg` |
+| Linux | `3MF-Katalog-Manager-0.16.0-Linux-x86_64.AppImage` |
 
 - **Linux:** download the `.AppImage` file, make it executable (right-click → Properties or
   `chmod +x`), and run it.
@@ -249,13 +239,6 @@ only roughly estimating it — including a breakdown per print plate and filamen
 estimated material-cost total if matching spools are on record in the Material Manager. The
 "Re-scan metadata" button re-fetches these values later on, in case you sliced an already
 cataloged file after the fact.
-
-In the standard variant (without STEP preview, see [Installation](#installation)), opening a STEP
-file shows a short note in the preview area instead of a broken-looking error: this variant shows
-STEP files without a 3D preview, with a "Get the variant with STEP preview" button that opens
-3mfkatalog.de's download section with that variant preselected — installing it keeps your catalog
-and settings. The catalog card still shows the placeholder; the note only appears once you open the
-preview.
 
 At the bottom left you can mark the model as **printed** and add it to the **queue**. The **heart**
 marks it as a favorite; you find all favorites under "Tools → Favorites".
@@ -767,33 +750,22 @@ importierst, organisierst, druckfertig machst und deine Spulen im Material Manag
 Der 3MF Katalog Manager ist ein Desktop-Programm, mit dem du eine große Sammlung von
 3D-Druck-Dateien (`.3mf`, `.stl`, `.obj` sowie CAD-Quelldateien im `.stp`-/`.step`-Format) übersichtlich verwalten kannst: mit Vorschaubildern,
 Ordnern, Tags, Suche, einem eigenen Lager für deine Filamentspulen und einem direkten Weg, ein
-Modell mit einem Klick in deinem Slicer-Programm zu öffnen. In der Variante mit STEP-Vorschau
-(siehe [Installation](#installation-1)) erzeugt Open CASCADE auch für STEP-Dateien eine 3D-Vorschau
+Modell mit einem Klick in deinem Slicer-Programm zu öffnen. Ab v0.16.0 ist die STEP-Vorschau in jedem Download enthalten: Open CASCADE erzeugt auch für STEP-Dateien eine 3D-Vorschau
 und liest Maße, Volumen und Körperzahl aus. Alles läuft lokal auf deinem Rechner — es gibt keine
 Cloud-Anbindung, deine Daten verlassen deinen Computer nicht.
 
 ## Installation
 
 Die App steht für Linux, Windows und macOS zum Download bereit (siehe die
-[Releases-Seite](https://github.com/Bexxs75/3mf-katalog-manager/releases) des Projekts). Für jede
-Plattform gibt es dort zwei Varianten:
+[Releases-Seite](https://github.com/Bexxs75/3mf-katalog-manager/releases) des Projekts). Ab v0.16.0 gibt es einen Download je Plattform, immer mit STEP-Vorschau
+(`.stp`/`.step`). Er ist größer als das bisherige Standardpaket und hat keinen
+`-STEP`-Zusatz. Nutzer des bisherigen Standardpakets erhalten ihn beim nächsten Update in der App.
 
-- **Mit STEP-Vorschau** („-STEP“ im Dateinamen): enthält die 3D-Vorschau für STEP-Dateien
-  (`.stp`/`.step`), dafür etwas größer.
-- **Standard** (ohne diesen Zusatz): kleinerer Download, STEP-Dateien lassen sich weiterhin
-  katalogisieren (Tags, Suche, Umbenennen, Papierkorb), nur eben ohne 3D-Vorschau dafür.
-
-Die Downloads für v0.15.0 heißen wie folgt; die STEP-Variante ergänzt `-STEP` vor der Dateiendung:
-
-| Plattform | Standard-Download |
+| Plattform | Download |
 |---|---|
-| Windows | `3MF-Katalog-Manager-0.15.0-Windows-x64.msi` |
-| macOS | `3MF-Katalog-Manager-0.15.0-macOS-universal.dmg` |
-| Linux | `3MF-Katalog-Manager-0.15.0-Linux-x86_64.AppImage` |
-
-Ansonsten sind beide Varianten identisch. Im Zweifel nimm die Variante mit STEP-Vorschau – der
-Größenunterschied spielt kaum eine Rolle, und du vermisst die Vorschau später nicht. Zum Wechseln
-installierst du einfach die andere Variante, dein Katalog bleibt erhalten.
+| Windows | `3MF-Katalog-Manager-0.16.0-Windows-x64.msi` |
+| macOS | `3MF-Katalog-Manager-0.16.0-macOS-universal.dmg` |
+| Linux | `3MF-Katalog-Manager-0.16.0-Linux-x86_64.AppImage` |
 
 - **Linux:** die `.AppImage`-Datei herunterladen, ausführbar machen (Rechtsklick → Eigenschaften
   oder `chmod +x`) und starten.
@@ -985,13 +957,6 @@ Aufschlüsselung pro Druckplatte und Filament sowie einer geschätzten Materialk
 passende Spulen im Material Manager hinterlegt sind. Über den "Metadaten neu einlesen"-Knopf holst du
 diese Werte nachträglich nach, falls du eine bereits katalogisierte Datei erst später im Slicer
 nachgesliced hast.
-
-In der Standard-Variante (ohne STEP-Vorschau, siehe [Installation](#installation-1)) zeigt der
-Vorschaubereich beim Öffnen einer STEP-Datei statt einer nach Fehler aussehenden Meldung einen
-kurzen Hinweis: Diese Variante zeigt STEP-Dateien ohne 3D-Vorschau, dazu der Knopf „Variante mit
-STEP-Vorschau laden“, der den Download-Bereich auf 3mfkatalog.de mit vorausgewählter Variante
-öffnet – dein Katalog und deine Einstellungen bleiben beim Installieren erhalten. Die Katalogkarte
-zeigt weiterhin den Platzhalter; der Hinweis erscheint erst, wenn du die Vorschau öffnest.
 
 Unten links kannst du das Modell als **gedruckt** markieren und es zur **Warteschlange**
 hinzufügen. Mit dem **Herz** markierst du es als Favorit; alle Favoriten findest du unter

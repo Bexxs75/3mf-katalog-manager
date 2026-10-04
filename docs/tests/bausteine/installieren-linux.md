@@ -1,5 +1,7 @@
 {{download}}
 
+Die STEP-Vorschau ist in diesem Installer enthalten.
+
 Mache die Datei ausführbar: im Terminal mit
 
 `chmod +x ~/Downloads/{{paket}}`

@@ -9,6 +9,10 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ## [Unreleased]
 
+### Changed
+
+- From v0.16.0, there is only one download per system, always including STEP preview. The file is larger than the former standard package and its name has no `-STEP` suffix. Users of the former standard variant receive it automatically with their next in-app update.
+
 ## [0.15.3] - 2026-10-04
 
 ### Fixed
@@ -477,6 +481,10 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/), Ve
 Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unter der Scaffold-Versionsnummer `0.1.0`, ohne dass Meilensteine markiert wurden. Die folgenden Versionsgrenzen wurden nachträglich anhand von Entwicklungs-Tagen und natürlichen Feature-Abschlüssen (jeweils an einem Dokumentations-Commit) gezogen, keine davon wurde zum jeweiligen Zeitpunkt live getaggt oder veröffentlicht.
 
 ## [Unreleased]
+
+### Geändert
+
+- Ab v0.16.0 gibt es nur noch eine Download-Variante pro System, immer mit STEP-Vorschau. Die Datei ist größer als das bisherige Standardpaket und ihr Name hat keinen `-STEP`-Zusatz. Nutzer der bisherigen Standardvariante erhalten sie automatisch beim nächsten Update in der App.
 
 ## [0.15.3] - 2026-10-04
 

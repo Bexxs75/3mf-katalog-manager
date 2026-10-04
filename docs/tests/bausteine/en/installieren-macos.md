@@ -1,4 +1,6 @@
-{{download}} It is a DMG file.
+{{download}}
+
+STEP preview is included in this installer. It is a DMG file.
 
 Open the DMG file and drag the app into the "Applications" folder.
 

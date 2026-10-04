@@ -205,19 +205,27 @@ class Variant(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "E3.*Variante"):
             ta.parse_scenarios(self.ONLY_STANDARD.replace("Variante: standard", "Variante: gross"))
 
-    def test_guide_and_assistant_know_the_variant(self):
+    def test_step_scenarios_apply_to_everyone(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = make_root(t, english=None)
+            (root / "docs/tests/0.15.0-2.md").write_text(self.ONLY_STANDARD.replace("standard", "step"))
+            html_path, sheet_path = ta.build("0.15.0-2", "windows", root / "out", root=root)
+            html, data = assistant_data(root / "out" / "Testassistent-0.15.0-2-Windows.html")
+            self.assertEqual([s["id"] for s in data["tests"]], ["E2", "E3"])
+            self.assertNotIn("variants", data)
+            self.assertNotIn("data-v=", html)
+            self.assertNotIn("Nur für die Variante", html_path.read_text())
+            self.assertNotIn("App-Variante", [f["label"] for f in data["fields"]])
+            sheet = load_workbook(sheet_path).active
+            self.assertNotIn("App-Variante", [c.value for row in sheet for c in row])
+
+    def test_obsolete_standard_scenario_is_omitted(self):
         with tempfile.TemporaryDirectory() as t:
             root = make_root(t, english=None)
             (root / "docs/tests/0.15.0-2.md").write_text(self.ONLY_STANDARD)
-            html_path, _ = ta.build("0.15.0-2", "windows", root / "out", root=root)
-            self.assertIn("Nur für die Variante ohne STEP-Vorschau.", html_path.read_text())
+            ta.build("0.15.0-2", "windows", root / "out", root=root)
             _, data = assistant_data(root / "out" / "Testassistent-0.15.0-2-Windows.html")
-            self.assertEqual([s["variant"] for s in data["tests"]], ["", "standard"])
-            self.assertEqual([c["key"] for c in data["variants"]["choices"]], ["standard", "step"])
-            labels = [f["label"] for f in data["fields"]]
-            self.assertNotIn("Datum", labels)
-            self.assertNotIn("App-Variante", labels)
-            self.assertIn("Virenschutz", labels)
+            self.assertEqual([s["id"] for s in data["tests"]], ["E2"])
 
     def test_english_variant_must_match(self):
         with tempfile.TemporaryDirectory() as t:
@@ -228,31 +236,30 @@ class Variant(unittest.TestCase):
 
 
 class Download(unittest.TestCase):
-    def build(self, root, step=True, platform="windows"):
+    def build(self, root, platform="windows"):
         (root / f"docs/tests/bausteine/installieren-{platform}.md").write_text("{{download}}\n\n`chmod +x {{paket}}`\n")
-        return ta.build("0.15.0-2", platform, root / "out", root=root, step=step)
+        return ta.build("0.15.0-2", platform, root / "out", root=root)
 
-    def test_guide_names_both_packages_and_assistant_gets_links(self):
+    def test_single_package_and_assistant_download_link(self):
         with tempfile.TemporaryDirectory() as t:
             root = make_root(t)
             html_path, _ = self.build(root)
             html = html_path.read_text()
             self.assertIn("3MF-Katalog-Manager-Preview-0.15.0-2-Windows-x64.msi", html)
-            self.assertIn("3MF-Katalog-Manager-Preview-0.15.0-2-Windows-x64-STEP.msi", html)
+            self.assertNotIn("-STEP.msi", html)
             _, data = assistant_data(root / "out" / "Testassistent-0.15.0-2-Windows.html")
-            self.assertEqual(data["packages"]["step"]["url"],
-                             "https://github.com/Bexxs75/3mf-katalog-manager/releases/download/preview/3MF-Katalog-Manager-Preview-0.15.0-2-Windows-x64-STEP.msi")
+            self.assertEqual(data["package"]["url"],
+                             "https://github.com/Bexxs75/3mf-katalog-manager/releases/download/preview/3MF-Katalog-Manager-Preview-0.15.0-2-Windows-x64.msi")
             self.assertIn("__DOWNLOAD__", data["prep"][0]["html"])
             self.assertIn("chmod +x __PAKET__", data["prep"][0]["html"])
 
-    def test_without_step_only_the_standard_package(self):
+    def test_linux_has_one_package(self):
         with tempfile.TemporaryDirectory() as t:
             root = make_root(t)
-            html_path, _ = self.build(root, step=False, platform="linux")
+            html_path, _ = self.build(root, platform="linux")
             self.assertNotIn("-STEP.AppImage", html_path.read_text())
             _, data = assistant_data(root / "out" / "Testassistent-0.15.0-2-Linux.html")
-            self.assertIsNone(data["packages"]["step"])
-            self.assertTrue(data["packages"]["standard"]["name"].endswith("Linux-x86_64.AppImage"))
+            self.assertTrue(data["package"]["name"].endswith("Linux-x86_64.AppImage"))
 
 
 class AssistantOnly(unittest.TestCase):

@@ -20,7 +20,7 @@ Free and open source (MIT) · Windows, macOS, Linux · English, German, Spanish,
 
 The buttons open the download section of the website, which always offers the newest version. All files and checksums: [latest release](https://github.com/Bexxs75/3mf-katalog-manager/releases/latest).
 
-**Which file do I need?** Windows: the `.msi`. macOS: the `.dmg` (works on Intel and Apple Silicon). Linux: the `.AppImage`. Files **with** `-STEP` in the name also show a 3D preview for STEP files (`.stp`/`.step`) and are larger; if you only use 3MF, STL or OBJ, take the file **without** `-STEP`. Both variants are otherwise identical.
+From v0.16.0, there is one download per system: Windows `.msi`, macOS `.dmg` (Intel and Apple Silicon), Linux `.AppImage`. STEP preview is always included, making the download larger than the former standard package. File names have no `-STEP` suffix. Existing standard installations receive it through the next in-app update.
 
 ## Compatibility
 
@@ -30,7 +30,7 @@ The buttons open the download section of the website, which always offers the ne
 | macOS, Intel and Apple Silicon (`.dmg`) | available, unsigned |
 | Linux (`.AppImage`) | available; `.deb`, `.rpm` and AUR planned |
 | 3MF, STL, OBJ | catalog and 3D preview |
-| STEP (`.stp`/`.step`) | catalog; 3D preview with the `-STEP` download |
+| STEP (`.stp`/`.step`) | catalog and 3D preview (included from v0.16.0) |
 | OrcaSlicer / Bambu Studio 3MF | filament usage and weight per plate supported |
 | Open in slicer | Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura detected automatically, others can be added |
 | Klipper / Moonraker | available; [more printer models wanted](https://3mfkatalog.de/en/printer-test.html) |
@@ -58,8 +58,8 @@ What you can check yourself:
 
 - **Open source:** every release is built from the public source code by [GitHub Actions workflows](https://github.com/Bexxs75/3mf-katalog-manager/tree/master/.github/workflows). The source of each version is the matching tag, e.g. [v0.15.0](https://github.com/Bexxs75/3mf-katalog-manager/tree/v0.15.0).
 - **Checksums:** every release contains `SHA256SUMS.txt`. Compare it with the hash of your download:
-  - Windows (PowerShell): `Get-FileHash .\3MF-Katalog-Manager-0.15.0-Windows-x64.msi -Algorithm SHA256`
-  - macOS: `shasum -a 256 3MF-Katalog-Manager-0.15.0-macOS-universal.dmg`
+  - Windows (PowerShell): `Get-FileHash .\3MF-Katalog-Manager-0.16.0-Windows-x64.msi -Algorithm SHA256`
+  - macOS: `shasum -a 256 3MF-Katalog-Manager-0.16.0-macOS-universal.dmg`
   - Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`
 - **Starting anyway:** Windows SmartScreen: "More info" → "Run anyway". macOS: right-click the app → "Open"; on macOS 15 or newer: System Settings → Privacy & Security → "Open Anyway".
 - **Local only:** the app works offline. It only goes online to check GitHub for a newer version, to download it when you choose to update, and, if you switch it on, to talk to printers on your home network.
@@ -85,7 +85,7 @@ Installations of 0.14 or older have to be updated once by hand — download 0.15
 <details>
 <summary><b>All features in detail</b></summary>
 
-- **3MF, STL, OBJ, and STEP parsing** — 3MF (OPC container extraction incl. embedded thumbnail), ASCII/binary STL, and OBJ each have a 3D preview; STEP files (`.stp`/`.step`) are read through Open CASCADE and provide a 3D preview, dimensions, volume, and body count. Every platform (Linux/Windows/macOS) ships two downloads: one **with** STEP preview and one smaller one **without** (cataloging only, no 3D preview for STEP) — see [Downloads](#downloads).
+- **3MF, STL, OBJ, and STEP parsing** — 3MF (OPC container extraction incl. embedded thumbnail), ASCII/binary STL, and OBJ each have a 3D preview; STEP files (`.stp`/`.step`) are read through Open CASCADE and provide a 3D preview, dimensions, volume, and body count. From v0.16.0, every platform (Linux/Windows/macOS) ships one download with STEP preview included — see [Downloads](#downloads).
 - **Automatic metadata extraction** — dimensions, volume, object count, material (if present in the 3MF)
 - **Automatic hashtag generation** — suggestions from filename, geometry features, and slicer profile data, editable by the user
 - **Live 3D preview** — three.js rendering directly from the mesh geometry when no embedded thumbnail is available
@@ -149,7 +149,6 @@ This project is under active development. The local catalog (import, parsing, ta
 
 - **Cloud integration** (Google Drive etc.): existed previously but was removed again — too unstable/error-prone for everyday use. Will be cleanly redesigned at some point, see CHANGELOG
 - **"Open in slicer" for manually added slicers on macOS**: opening works reliably for automatically detected slicers (Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura), since detection already finds the correct, directly executable program file inside the `.app` bundle. For manually added slicers, that same file needs to be selected in the file picker, not the `.app` bundle itself
-- **STEP preview as a separate download**: all three platforms ship two package variants for this instead of a single one with STEP preview baked in — see [Downloads](#downloads).
 - **Code signing**: the macOS `.dmg` and Windows `.msi` packages are unsigned (no Apple Developer or Windows code-signing certificate) — Gatekeeper/SmartScreen will warn accordingly on first launch
 
 The public [roadmap](https://github.com/users/Bexxs75/projects/1/views/1?groupedBy%5BcolumnId%5D=416999698) shows what comes next.

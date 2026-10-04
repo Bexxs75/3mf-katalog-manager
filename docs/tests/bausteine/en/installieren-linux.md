@@ -1,5 +1,7 @@
 {{download}}
 
+STEP preview is included in this installer.
+
 Make the file executable: in a terminal with
 
 `chmod +x ~/Downloads/{{paket}}`

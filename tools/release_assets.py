@@ -14,16 +14,12 @@ PREVIEW_TAG = "preview"
 # zeros other than a bare "0", matched with fullmatch so stray characters -
 # including a trailing newline - can't sneak past the check.
 PREVIEW_VERSION = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-(0|[1-9][0-9]*)")
-# (artifact name from the build workflows, extension, platform part of the name, STEP?)
+# (artifact name from the build workflows, extension, platform part of the name)
 ARTIFACTS = [
-    ("3mf-katalog-manager-windows-msi", ".msi", "Windows-x64", False),
-    ("3mf-katalog-manager-windows-msi-step", ".msi", "Windows-x64", True),
-    ("3mf-katalog-manager-macos-dmg", ".dmg", "macOS-universal", False),
-    ("3mf-katalog-manager-macos-dmg-universal-step", ".dmg", "macOS-universal", True),
-    ("3mf-katalog-manager-macos-updater", ".app.tar.gz", "macOS-universal", False),
-    ("3mf-katalog-manager-macos-updater-step", ".app.tar.gz", "macOS-universal", True),
-    ("3mf-katalog-manager-linux-appimage", ".AppImage", "Linux-x86_64", False),
-    ("3mf-katalog-manager-linux-appimage-step", ".AppImage", "Linux-x86_64", True),
+    ("3mf-katalog-manager-windows-msi-step", ".msi", "Windows-x64"),
+    ("3mf-katalog-manager-macos-dmg-universal-step", ".dmg", "macOS-universal"),
+    ("3mf-katalog-manager-macos-updater-step", ".app.tar.gz", "macOS-universal"),
+    ("3mf-katalog-manager-linux-appimage-step", ".AppImage", "Linux-x86_64"),
 ]
 # Updater platform key -> (platform part, extension). Apple Silicon and Intel share the universal bundle.
 UPDATE_TARGETS = {
@@ -37,50 +33,45 @@ def fail(msg):
     print(f"release_assets: {msg}", file=sys.stderr)
     raise SystemExit(1)
 
-def asset_name(version, platform, step, ext, preview=False):
+def asset_name(version, platform, ext, preview=False):
     product = PRODUCT_PREVIEW if preview else PRODUCT
-    return f"{product}-{version}-{platform}{'-STEP' if step else ''}{ext}"
+    return f"{product}-{version}-{platform}{ext}"
 
-def rename(version, artifacts_dir, out_dir, preview=False, step=True):
+def rename(version, artifacts_dir, out_dir, preview=False):
     out = pathlib.Path(out_dir); out.mkdir(parents=True, exist_ok=True)
-    for art, ext, platform, art_step in ARTIFACTS:
-        if art_step and not step:
-            continue  # no-STEP preview builds never produce the STEP artifacts
+    for art, ext, platform in ARTIFACTS:
         found = [p for p in pathlib.Path(artifacts_dir, art).glob(f"*{ext}")] if pathlib.Path(artifacts_dir, art).is_dir() else []
         if len(found) != 1:
             fail(f"expected exactly one *{ext} in {art}, found {len(found)}")
-        shutil.copy2(found[0], out / asset_name(version, platform, art_step, ext, preview=preview))
+        shutil.copy2(found[0], out / asset_name(version, platform, ext, preview=preview))
 
-def latest_json(version, out_dir, now=None, preview=False, step=True):
+def latest_json(version, out_dir, now=None, preview=False):
     now = now or datetime.datetime.now(datetime.timezone.utc)
     out = pathlib.Path(out_dir)
     # Preview builds live on their own tag, separate from tagged releases, so
     # neither manifest nor asset URLs overlap between the two update channels.
     tag = PREVIEW_TAG if preview else f"v{version}"
-    if preview:
-        variants = ((False, "latest-preview.json"), (True, "latest-preview-step.json"))
-    else:
-        variants = ((False, "latest.json"), (True, "latest-step.json"))
-    for is_step, file in variants:
-        if is_step and not step:
-            continue
-        platforms = {}
-        for key, (platform, ext) in UPDATE_TARGETS.items():
-            name = asset_name(version, platform, is_step, ext, preview=preview)
-            sig = out / f"{name}.sig"
-            if not (out / name).is_file() or not sig.is_file():
-                fail(f"missing {name} or its signature")
-            platforms[key] = {
-                "signature": sig.read_text().strip(),
-                "url": f"https://github.com/{REPO}/releases/download/{tag}/{name}",
-            }
-        manifest = {
-            "version": version,
-            "notes": f"https://github.com/{REPO}/releases/tag/{tag}",
-            "pub_date": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "platforms": platforms,
+    files = ("latest-preview.json", "latest-preview-step.json") if preview else ("latest.json", "latest-step.json")
+    platforms = {}
+    for key, (platform, ext) in UPDATE_TARGETS.items():
+        name = asset_name(version, platform, ext, preview=preview)
+        sig = out / f"{name}.sig"
+        if not (out / name).is_file() or not sig.is_file():
+            fail(f"missing {name} or its signature")
+        platforms[key] = {
+            "signature": sig.read_text().strip(),
+            "url": f"https://github.com/{REPO}/releases/download/{tag}/{name}",
         }
-        (out / file).write_text(json.dumps(manifest, indent=2) + "\n")
+    manifest = {
+        "version": version,
+        "notes": f"https://github.com/{REPO}/releases/tag/{tag}",
+        "pub_date": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "platforms": platforms,
+    }
+    # Installed standard and STEP builds retain their original manifest URLs.
+    content = json.dumps(manifest, indent=2) + "\n"
+    for file in files:
+        (out / file).write_text(content)
 
 def check_version(version, root="."):
     cargo = pathlib.Path(root, "src-tauri", "Cargo.toml").read_text()
@@ -165,14 +156,13 @@ def set_version(version, root="."):
 def main(argv):
     cmd, *args = argv
     preview = "--preview" in args
-    no_step = "--no-step" in args
-    args = [a for a in args if a not in ("--preview", "--no-step")]
+    args = [a for a in args if a != "--preview"]
     unknown = [a for a in args if a.startswith("--")]
     if unknown:
         fail(f"unknown option {' '.join(unknown)}")
     commands = {
-        "rename": lambda *a: rename(*a, preview=preview, step=not no_step),
-        "latest-json": lambda *a: latest_json(*a, preview=preview, step=not no_step),
+        "rename": lambda *a: rename(*a, preview=preview),
+        "latest-json": lambda *a: latest_json(*a, preview=preview),
         "check-version": check_version,
         "check-preview": check_preview,
         "set-version": set_version,

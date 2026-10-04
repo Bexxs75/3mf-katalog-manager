@@ -3,8 +3,7 @@ name: Preview (test version)
 # Builds a test version ("3MF Katalog Manager Preview", own identifier and catalog)
 # and replaces the files of the fixed pre-release `preview`. Test versions update
 # only from this channel. Runs by hand, or by pushing a tag preview-<version>
-# (add -step for the STEP variants) - the tag route works before this file is on
-# the default branch.
+# - the tag route works before this file is on the default branch.
 on:
   workflow_dispatch:
     inputs:
@@ -12,10 +11,6 @@ on:
         description: "Test version x.y.z-n (numeric n), e.g. 0.15.0-2"
         required: true
         type: string
-      step:
-        description: "Also build the STEP variants"
-        type: boolean
-        default: false
       publish:
         description: "Publish to the preview channel (off: build only, files stay as run artifacts for testing in own VMs; testers get no update)"
         type: boolean
@@ -38,7 +33,6 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.p.outputs.version }}
-      step: ${{ steps.p.outputs.step }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,52 +40,39 @@ jobs:
       - id: p
         env:
           IN_VERSION: ${{ inputs.version }}
-          IN_STEP: ${{ inputs.step }}
           REF_NAME: ${{ github.ref_name }}
           EVENT: ${{ github.event_name }}
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ "$EVENT" = "push" ]; then
-            V="${REF_NAME#preview-}"; S=false
-            case "$V" in *-step) V="${V%-step}"; S=true;; esac
+            V="${REF_NAME#preview-}"
           else
-            V="$IN_VERSION"; S="$IN_STEP"
+            V="$IN_VERSION"
           fi
           R="$GITHUB_REPOSITORY"
-          # No "preview" release yet is normal (the very first run); a release that
-          # exists but happens to have no latest-preview.json (e.g. only STEP was
-          # ever published) is also fine. Only a download that fails for another
-          # reason (rate limit, network) should stop the run.
+          # Old channels may have different versions for standard and STEP;
+          # reject a downgrade against either published manifest.
+          python3 tools/release_assets.py check-preview "$V"
           if gh release view preview -R "$R" >/dev/null 2>&1; then
-            if gh release view preview -R "$R" --json assets -q '.assets[].name' | grep -qxF latest-preview.json; then
-              gh release download preview -R "$R" -p latest-preview.json -O current.json \
-                || { echo "cannot read the published manifest"; exit 1; }
-            fi
+            ASSETS=$(gh release view preview -R "$R" --json assets -q '.assets[].name')
+            for M in latest-preview.json latest-preview-step.json; do
+              if echo "$ASSETS" | grep -qxF "$M"; then
+                gh release download preview -R "$R" -p "$M" -O "$M" \
+                  || { echo "cannot read the published manifest $M"; exit 1; }
+                python3 tools/release_assets.py check-preview "$V" "$M"
+              fi
+            done
           fi
-          python3 tools/release_assets.py check-preview "$V" current.json
           # The test assistant is built only after all builds; fail now instead of
           # after an hour of building - this also catches a scenario file that
           # testanleitung.py cannot parse (missing block, picture or placeholder, ...).
           test -f "docs/tests/$V.md" || { echo "docs/tests/$V.md is missing"; exit 1; }
           test -f "docs/tests/$V.en.md" || { echo "docs/tests/$V.en.md is missing"; exit 1; }
           for l in de en; do python3 tools/testanleitung.py "$V" linux "$RUNNER_TEMP/guide-check" --lang=$l --assistant-only; done
-          echo "version=$V" >> "$GITHUB_OUTPUT"; echo "step=$S" >> "$GITHUB_OUTPUT"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
 
-  windows:
-    needs: params
-    uses: ./.github/workflows/build-windows.yml
-    with: { preview: true, version: "${{ needs.params.outputs.version }}" }
-  macos:
-    needs: params
-    uses: ./.github/workflows/build-macos.yml
-    with: { preview: true, version: "${{ needs.params.outputs.version }}" }
-  linux:
-    needs: params
-    uses: ./.github/workflows/build-linux-nostep.yml
-    with: { preview: true, version: "${{ needs.params.outputs.version }}" }
   windows-step:
     needs: params
-    if: needs.params.outputs.step == 'true'
     permissions:
       contents: read
       packages: write
@@ -99,24 +80,21 @@ jobs:
     with: { preview: true, version: "${{ needs.params.outputs.version }}" }
   macos-step:
     needs: params
-    if: needs.params.outputs.step == 'true'
     uses: ./.github/workflows/build-macos-step.yml
     with: { preview: true, version: "${{ needs.params.outputs.version }}" }
   linux-step:
     needs: params
-    if: needs.params.outputs.step == 'true'
     uses: ./.github/workflows/build-linux.yml
     with: { preview: true, version: "${{ needs.params.outputs.version }}" }
 
   publish:
-    needs: [params, windows, macos, linux, windows-step, macos-step, linux-step]
+    needs: [params, windows-step, macos-step, linux-step]
     if: ${{ !failure() && !cancelled() && (github.event_name == 'push' || inputs.publish) }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     env:
       VERSION: ${{ needs.params.outputs.version }}
-      STEP: ${{ needs.params.outputs.step }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -130,8 +108,7 @@ jobs:
           path: artifacts
       - name: Readable file names
         run: |
-          FLAGS="--preview"; [ "$STEP" = "true" ] || FLAGS="$FLAGS --no-step"
-          python3 tools/release_assets.py rename "$VERSION" artifacts dist $FLAGS
+          python3 tools/release_assets.py rename "$VERSION" artifacts dist --preview
       # Pinned because this step receives the private key.
       - name: Sign the update packages
         env:
@@ -143,14 +120,12 @@ jobs:
           done
       - name: Updater manifests
         run: |
-          FLAGS="--preview"; [ "$STEP" = "true" ] || FLAGS="$FLAGS --no-step"
-          python3 tools/release_assets.py latest-json "$VERSION" dist $FLAGS
+          python3 tools/release_assets.py latest-json "$VERSION" dist --preview
       # Testers get only the interactive test assistant (one HTML per system and language).
       - name: Test assistant
         run: |
-          NOSTEP=""; [ "$STEP" = "true" ] || NOSTEP="--no-step"
           for l in de en; do
-            for p in windows macos linux; do python3 tools/testanleitung.py "$VERSION" "$p" guide --lang=$l --assistant-only $NOSTEP; done
+            for p in windows macos linux; do python3 tools/testanleitung.py "$VERSION" "$p" guide --lang=$l --assistant-only; done
           done
           # Published without the version so the links stay the same across test
           # versions (website, Discord, forum posts), with the language in the name:
@@ -167,16 +142,6 @@ jobs:
         run: |
           cd dist
           sha256sum -- * > SHA256SUMS.txt
-          # A run without STEP never regenerates those checksums, but the
-          # previous STEP files stay published (see below) - carry their lines
-          # over so SHA256SUMS.txt still lists every file the release has.
-          if [ "$STEP" != "true" ] && gh release view preview -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release download preview -R "$GITHUB_REPOSITORY" -p SHA256SUMS.txt -O previous-SHA256SUMS.txt 2>/dev/null || true
-            if [ -f previous-SHA256SUMS.txt ]; then
-              grep -E -- '-STEP\.| latest-preview-step\.json$' previous-SHA256SUMS.txt >> SHA256SUMS.txt || true
-              rm previous-SHA256SUMS.txt
-            fi
-          fi
           # The test data ZIP is uploaded by hand and kept across runs (see the
           # publish step), so its checksum line is carried over as well.
           if gh release view preview -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
@@ -196,18 +161,13 @@ jobs:
           R="$GITHUB_REPOSITORY"
           if ! gh release view preview -R "$R" >/dev/null 2>&1; then
             gh release create preview -R "$R" --prerelease --target "${{ github.sha }}" \
-              --title "Test-Version / Test version" --notes "Test versions only. See the test guide PDF."
+              --title "Test-Version / Test version" --notes "Test versions only. See the test assistant HTML."
           fi
           gh release upload preview -R "$R" --clobber $(ls dist/* | grep -v 'latest-preview')
           gh release upload preview -R "$R" --clobber dist/latest-preview*.json
           KEEP=$(cd dist && ls)
-          # A run without STEP leaves the previous STEP files and their manifest
-          # in place, so installed STEP test versions keep a working channel.
           gh release view preview -R "$R" --json assets -q '.assets[].name' | while read -r a; do
             [ "$a" = "3MF-Testdaten.zip" ] && continue
-            if [ "$STEP" != "true" ]; then
-              case "$a" in *-STEP.*|latest-preview-step.json) continue;; esac
-            fi
             echo "$KEEP" | grep -qxF "$a" || gh release delete-asset preview "$a" -R "$R" --yes
           done
           gh release edit preview -R "$R" --prerelease --title "Test-Version $VERSION / Test version $VERSION" \

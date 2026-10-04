@@ -3,32 +3,32 @@ import release_assets as ra   # run with -s tools, so tools/ is on sys.path
 
 class Names(unittest.TestCase):
     def test_asset_names(self):
-        self.assertEqual(ra.asset_name("0.15.0", "Windows-x64", False, ".msi"), "3MF-Katalog-Manager-0.15.0-Windows-x64.msi")
-        self.assertEqual(ra.asset_name("0.15.0", "macOS-universal", True, ".app.tar.gz"), "3MF-Katalog-Manager-0.15.0-macOS-universal-STEP.app.tar.gz")
+        self.assertEqual(ra.asset_name("0.15.0", "Windows-x64", ".msi"), "3MF-Katalog-Manager-0.15.0-Windows-x64.msi")
+        self.assertEqual(ra.asset_name("0.15.0", "macOS-universal", ".app.tar.gz"), "3MF-Katalog-Manager-0.15.0-macOS-universal.app.tar.gz")
 
 class Rename(unittest.TestCase):
     def test_copies_each_artifact_under_its_new_name(self):
         with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as o:
-            for art, ext, _, _ in ra.ARTIFACTS:
+            for art, ext, _ in ra.ARTIFACTS:
                 d = pathlib.Path(a, art); d.mkdir()
                 (d / f"whatever{ext}").write_bytes(b"x")
             ra.rename("0.15.0", a, o)
             names = sorted(p.name for p in pathlib.Path(o).iterdir())
-            self.assertIn("3MF-Katalog-Manager-0.15.0-Linux-x86_64-STEP.AppImage", names)
+            self.assertIn("3MF-Katalog-Manager-0.15.0-Linux-x86_64.AppImage", names)
             self.assertEqual(len(names), len(ra.ARTIFACTS))
+            self.assertFalse(any("-STEP" in name for name in names))
     def test_missing_artifact_fails(self):
         with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as o:
             with self.assertRaises(SystemExit):
                 ra.rename("0.15.0", a, o)
 
 class LatestJson(unittest.TestCase):
-    def test_both_variants_with_signatures(self):
+    def test_identical_manifests_with_signatures(self):
         with tempfile.TemporaryDirectory() as o:
-            for step in (False, True):
-                for plat, ext in (("Windows-x64", ".msi"), ("macOS-universal", ".app.tar.gz"), ("Linux-x86_64", ".AppImage")):
-                    n = ra.asset_name("0.15.0", plat, step, ext)
-                    pathlib.Path(o, n).write_bytes(b"x")
-                    pathlib.Path(o, n + ".sig").write_text(f"SIG-{n}")
+            for plat, ext in (("Windows-x64", ".msi"), ("macOS-universal", ".app.tar.gz"), ("Linux-x86_64", ".AppImage")):
+                n = ra.asset_name("0.15.0", plat, ext)
+                pathlib.Path(o, n).write_bytes(b"x")
+                pathlib.Path(o, n + ".sig").write_text(f"SIG-{n}")
             ra.latest_json("0.15.0", o, now=datetime.datetime(2026, 10, 3, 12, 0, tzinfo=datetime.timezone.utc))
             plain = json.loads(pathlib.Path(o, "latest.json").read_text())
             step = json.loads(pathlib.Path(o, "latest-step.json").read_text())
@@ -40,11 +40,19 @@ class LatestJson(unittest.TestCase):
             self.assertEqual(w["url"], "https://github.com/Bexxs75/3mf-katalog-manager/releases/download/v0.15.0/3MF-Katalog-Manager-0.15.0-Windows-x64.msi")
             self.assertEqual(w["signature"], "SIG-3MF-Katalog-Manager-0.15.0-Windows-x64.msi")
             self.assertEqual(plain["platforms"]["darwin-aarch64"], plain["platforms"]["darwin-x86_64"])
-            self.assertTrue(step["platforms"]["linux-x86_64"]["url"].endswith("-Linux-x86_64-STEP.AppImage"))
+            self.assertEqual(plain, step)
+            self.assertEqual(pathlib.Path(o, "latest.json").read_bytes(), pathlib.Path(o, "latest-step.json").read_bytes())
+            self.assertFalse(any("-STEP" in p.name for p in pathlib.Path(o).iterdir()))
     def test_missing_signature_fails(self):
         with tempfile.TemporaryDirectory() as o:
+            for platform, ext in set(ra.UPDATE_TARGETS.values()):
+                name = ra.asset_name("0.16.0", platform, ext)
+                pathlib.Path(o, name).write_bytes(b"x")
+                pathlib.Path(o, name + ".sig").write_text("SIG")
+            pathlib.Path(o, "3MF-Katalog-Manager-0.16.0-Linux-x86_64.AppImage.sig").unlink()
             with self.assertRaises(SystemExit):
-                ra.latest_json("0.15.0", o)
+                ra.latest_json("0.16.0", o)
+            self.assertFalse(pathlib.Path(o, "latest.json").exists())
 
 class Version(unittest.TestCase):
     def test_reads_versions(self):
@@ -58,35 +66,32 @@ class Version(unittest.TestCase):
 
 class Preview(unittest.TestCase):
     def test_preview_names(self):
-        self.assertEqual(ra.asset_name("0.15.0-2", "Windows-x64", False, ".msi", preview=True),
+        self.assertEqual(ra.asset_name("0.15.0-2", "Windows-x64", ".msi", preview=True),
                          "3MF-Katalog-Manager-Preview-0.15.0-2-Windows-x64.msi")
 
-    def _files(self, d, version, preview, steps):
-        for step in steps:
-            for plat, ext in (("Windows-x64", ".msi"), ("macOS-universal", ".app.tar.gz"), ("Linux-x86_64", ".AppImage")):
-                n = ra.asset_name(version, plat, step, ext, preview=preview)
-                (d / n).write_text("x"); (d / (n + ".sig")).write_text("SIG-" + n)
+    def _files(self, d, version, preview):
+        for plat, ext in (("Windows-x64", ".msi"), ("macOS-universal", ".app.tar.gz"), ("Linux-x86_64", ".AppImage")):
+            n = ra.asset_name(version, plat, ext, preview=preview)
+            (d / n).write_text("x"); (d / (n + ".sig")).write_text("SIG-" + n)
 
     def test_preview_manifest_urls_and_names(self):
         with tempfile.TemporaryDirectory() as t:
-            d = pathlib.Path(t); self._files(d, "0.15.0-2", True, (False,))
-            ra.latest_json("0.15.0-2", d, now=datetime.datetime(2026, 10, 3, tzinfo=datetime.timezone.utc), preview=True, step=False)
+            d = pathlib.Path(t); self._files(d, "0.15.0-2", True)
+            ra.latest_json("0.15.0-2", d, now=datetime.datetime(2026, 10, 3, tzinfo=datetime.timezone.utc), preview=True)
             m = json.loads((d / "latest-preview.json").read_text())
-            self.assertFalse((d / "latest-preview-step.json").exists())
+            self.assertEqual((d / "latest-preview.json").read_bytes(), (d / "latest-preview-step.json").read_bytes())
             self.assertEqual(m["notes"], "https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/preview")
             self.assertEqual(m["platforms"]["linux-x86_64"]["url"],
                 "https://github.com/Bexxs75/3mf-katalog-manager/releases/download/preview/3MF-Katalog-Manager-Preview-0.15.0-2-Linux-x86_64.AppImage")
             self.assertFalse((d / "latest.json").exists())
 
-    def test_rename_without_step_ignores_step_artifacts(self):
+    def test_missing_package_with_signature_fails(self):
         with tempfile.TemporaryDirectory() as t:
-            src = pathlib.Path(t, "a"); out = pathlib.Path(t, "o")
-            for art, ext, _p, step in ra.ARTIFACTS:
-                if not step:
-                    (src / art).mkdir(parents=True); (src / art / f"x{ext}").write_text("x")
-            ra.rename("0.15.0-2", src, out, preview=True, step=False)
-            self.assertEqual(len(list(out.iterdir())), 4)
-            self.assertTrue((out / "3MF-Katalog-Manager-Preview-0.15.0-2-macOS-universal.dmg").exists())
+            d = pathlib.Path(t)
+            self._files(d, "0.16.0-1", True)
+            next(d.glob("*.msi")).unlink()
+            with self.assertRaises(SystemExit):
+                ra.latest_json("0.16.0-1", d, preview=True)
 
     def test_check_preview(self):
         ra.check_preview("0.15.0-2")
@@ -108,6 +113,15 @@ class Preview(unittest.TestCase):
             for broken in ("<html>404</html>", json.dumps({"pub_date": "x"}), json.dumps({"version": "abc"})):
                 p.write_text(broken)
                 with self.assertRaises(SystemExit): ra.check_preview("0.15.0-2", p)
+
+    def test_each_old_preview_manifest_prevents_a_downgrade(self):
+        with tempfile.TemporaryDirectory() as t:
+            for name in ("latest-preview.json", "latest-preview-step.json"):
+                path = pathlib.Path(t, name)
+                path.write_text(json.dumps({"version": "0.16.0-3"}))
+                with self.assertRaises(SystemExit):
+                    ra.check_preview("0.16.0-2", path)
+                ra.check_preview("0.16.0-3", path)
 
     def test_unknown_option_fails(self):
         with self.assertRaises(SystemExit): ra.main(["rename", "--foo", "0.15.0", "a", "b"])
