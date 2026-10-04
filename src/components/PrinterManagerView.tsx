@@ -30,7 +30,10 @@ export function PrinterManagerView({ printers: state, printerLink, printerId, on
   useEffect(() => { setSelected(printerId); }, [printerId]);
   const printer = state.printers.find(p => p.id === selected) ?? state.printers[0];
   const order = usePrinterReorder(state.printers.map(p => p.id), state.reorderPrinters);
+  // Centered column with a maximum width: on wide windows the printer page
+  // would otherwise stretch form fields across the whole screen.
   return <main aria-label={t('railPrinters')} className="flex-1 min-w-0 min-h-0 overflow-auto text-[13px]">
+    <div className="max-w-[1180px] w-full mx-auto">
     <div className="p-4 border-b border-[var(--line)] flex flex-wrap items-start gap-4">
       <h1 className="font-bold text-[16px]">Printer Manager</h1>
       <div className="ml-auto max-w-xl"><PrinterLinkControl link={printerLink} printers={state.printers} /></div>
@@ -64,6 +67,7 @@ export function PrinterManagerView({ printers: state, printerLink, printerId, on
       <PrinterDetail key={printer.id} printer={printer} state={state} link={printerLink} onMaterial={onMaterial} />
     </div>}
     {adding && <AddPrinter state={state} onClose={() => setAdding(false)} onAdded={setSelected} />}
+    </div>
   </main>;
 }
 
