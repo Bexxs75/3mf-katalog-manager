@@ -425,6 +425,7 @@ export const de: Translations = {
   printLogEmpty: 'Noch keine Einträge.',
 
   sortLastViewed: 'Zuletzt angesehen',
+  cardMoreTags: '{n} weitere Tags',
   newBadge: 'NEU',
 
 

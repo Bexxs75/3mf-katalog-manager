@@ -89,3 +89,17 @@ it('scrolls an offscreen card into view after the next rendered window', async (
   await waitFor(() => expect(scroll).toHaveBeenCalledWith({ block: 'nearest' }));
   delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;
 });
+
+it.each(['compact', 'comfort'])('accounts exactly for all measured rows and gaps (%s)', density => {
+  localStorage.setItem('3mf-katalog-density', density);
+  const { container } = render(<Harness />);
+  const cards = container.querySelectorAll('[data-model-id]');
+  const columns = density === 'comfort' ? 3 : 4;
+  const totalRows = Math.ceil(models.length / columns);
+  const visibleRows = Math.ceil(cards.length / columns);
+  const spacer = (position: string) => parseFloat(container.querySelector<HTMLElement>(`[data-window-spacer="${position}"]`)!.style.height);
+  // The measured card is 100px, each row stride includes the 14px grid gap.
+  expect(spacer('top')).toBe(0);
+  expect(spacer('bottom')).toBe((totalRows - visibleRows) * 114);
+  expect(spacer('top') + visibleRows * 114 + spacer('bottom')).toBe(totalRows * 114);
+});

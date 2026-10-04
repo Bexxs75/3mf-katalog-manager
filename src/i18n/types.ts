@@ -271,6 +271,7 @@ export interface Translations {
   stepHintButton: string;
 
   sortLastViewed: string;
+  cardMoreTags: string;
   newBadge: string;
 
   filamentDialogTitle: string;

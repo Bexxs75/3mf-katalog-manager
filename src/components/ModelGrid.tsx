@@ -1,7 +1,7 @@
 import { useModelImages } from '../hooks/useModelImages';
 import { useModelWindow } from '../hooks/useModelWindow';
 import { DragGrip } from './DragGrip';
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { ModelFile } from '../types';
 import { useT, useLanguage } from '../i18n/LanguageContext';
 import { useUiDensity } from '../hooks/UiDensityContext';
@@ -30,11 +30,65 @@ interface Props {
   onDragFileStart?: (id: string) => void;
 }
 
+function CardTags({ tags, comfort }: { tags: string[]; comfort: boolean }) {
+  const { language } = useLanguage();
+  const t = useT();
+  const rowRef = useRef<HTMLDivElement>(null);
+  const probeRef = useRef<HTMLSpanElement>(null);
+  const [hiddenCount, setHiddenCount] = useState(0);
+  const chipClass = comfort
+    ? 'shrink-0 whitespace-nowrap px-2.5 py-1 rounded-full bg-[var(--panel-2)] text-[var(--ink-2)]'
+    : 'shrink-0 whitespace-nowrap font-mono-ui text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)]';
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    const probe = probeRef.current;
+    if (!row || !probe) return;
+    const chips = [...row.querySelectorAll<HTMLElement>('[data-tag-index]')];
+    const measure = () => {
+      const width = row.clientWidth;
+      const end = (index: number) => chips[index].offsetLeft + chips[index].offsetWidth;
+      let visible = chips.length;
+      if (visible && end(visible - 1) > width) {
+        // Reserve the actual counter width, including changes at digit boundaries.
+        do {
+          visible--;
+          probe.textContent = `+${chips.length - visible}`;
+        } while (visible > 0 && end(visible - 1) + (comfort ? 6 : 4) + probe.offsetWidth > width);
+      }
+      setHiddenCount(chips.length - visible);
+    };
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(row);
+    chips.forEach(chip => observer?.observe(chip));
+    return () => observer?.disconnect();
+  }, [tags, language, comfort]);
+  const title = `${t('cardMoreTags').replace('{n}', String(hiddenCount))}: ${tags.map(tag => tagLabel(tag, language)).join(', ')}`;
+  return <div ref={rowRef} data-card-tags className={`relative flex flex-nowrap overflow-hidden shrink-0 ${comfort ? 'gap-1.5' : 'gap-1'}`}
+    style={{ height: comfort ? 28 : 21, fontSize: comfort ? 'var(--font-size-meta)' : undefined, lineHeight: comfort ? '20px' : '15px' }}>
+    {tags.map((tag, index) => <span key={tag} data-tag-index={index} className={chipClass}
+      style={{ visibility: index >= tags.length - hiddenCount ? 'hidden' : undefined }} aria-hidden={index >= tags.length - hiddenCount || undefined}>
+      #{tagLabel(tag, language)}
+    </span>)}
+    <span ref={probeRef} data-tag-counter-probe aria-hidden="true" className={`${chipClass} absolute right-0 invisible`}>+{tags.length}</span>
+    {hiddenCount > 0 && <span data-more-tags className={`${chipClass} absolute right-0`} title={title} aria-label={title}>+{hiddenCount}</span>}
+  </div>;
+}
+
+function CardMeta({ model, comfort }: { model: ModelFile; comfort: boolean }) {
+  const { language } = useLanguage();
+  return <div className="flex items-center gap-3 text-[var(--ink-3)] font-medium overflow-hidden whitespace-nowrap shrink-0"
+    style={{ height: comfort ? 20 : 15, lineHeight: comfort ? '20px' : '15px', fontSize: 'var(--font-size-meta)' }}>
+    {model.materials[0] && <span className="truncate">📦 {model.materials[0].name}</span>}
+    {model.estimatedWeightG !== null && <span className="shrink-0">⚖ {model.weightSource === 'slicer'
+      ? formatWeightG(model.estimatedWeightG, language)
+      : `≈ ${formatWeightG(model.estimatedWeightG, language)}`}</span>}
+  </div>;
+}
+
 export function ModelGrid({ containerRef, windowed = true, models, selectedId, onSelect, onOpenDetail, onContextMenu, onToggleFavorite, readOnly, selectedForBulk, onToggleBulkSelect, displayPreference, reorderable, onReorder, onDragFileStart }: Props) {
   const t = useT();
   const { density } = useUiDensity();
-  const { language } = useLanguage();
-
   const ids = useMemo(() => models.map(model => model.id), [models]);
   const window = useModelWindow({ ids, containerRef, minWidth: density === 'comfort' ? 220 : 178, gap: 14,
     fallbackHeight: density === 'comfort' ? 350 : 265, disabled: reorderable || !windowed });
@@ -173,20 +227,12 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
             </button>
           )}
         </div>
-        <div className="flex flex-col gap-1.5 px-2.5 py-2.5 bg-[var(--panel)]">
-          <div className="text-[12.5px] font-semibold overflow-hidden text-ellipsis whitespace-nowrap">
+        <div data-card-metadata className="flex flex-col gap-1.5 px-2.5 py-2.5 bg-[var(--panel)]" style={{ height: 88 }}>
+          <div className="text-[12.5px] font-semibold overflow-hidden text-ellipsis whitespace-nowrap shrink-0" style={{ height: 19, lineHeight: '19px' }}>
             {m.name}
           </div>
-          <div className="flex flex-wrap gap-1">
-            {m.tags.map((tag) => (
-              <span
-                key={tag}
-                className="font-mono-ui text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)]"
-              >
-                #{tagLabel(tag, language)}
-              </span>
-            ))}
-          </div>
+          <CardMeta model={m} comfort={false} />
+          <CardTags tags={m.tags} comfort={false} />
         </div>
       </div>
     );
@@ -270,37 +316,15 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
                 </button>
               )}
             </div>
-            <div className="flex flex-col gap-2" style={{ padding: 'var(--space-card-pad)' }}>
+            <div data-card-metadata className="flex flex-col gap-2" style={{ padding: 'var(--space-card-pad)', height: 124 }}>
               <div
-                className="font-bold overflow-hidden text-ellipsis whitespace-nowrap"
-                style={{ fontSize: 'var(--font-size-title)' }}
+                className="font-bold overflow-hidden text-ellipsis whitespace-nowrap shrink-0"
+                style={{ fontSize: 'var(--font-size-title)', height: 26, lineHeight: '26px' }}
               >
                 {m.name}
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {m.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="px-2.5 py-1 rounded-full bg-[var(--panel-2)] text-[var(--ink-2)]"
-                    style={{ fontSize: 'var(--font-size-meta)' }}
-                  >
-                    #{tagLabel(tag, language)}
-                  </span>
-                ))}
-              </div>
-              <div
-                className="flex items-center gap-3 text-[var(--ink-3)] font-medium"
-                style={{ fontSize: 'var(--font-size-meta)' }}
-              >
-                {m.materials[0] && <span>📦 {m.materials[0].name}</span>}
-                {m.estimatedWeightG !== null && (
-                  <span>
-                    ⚖ {m.weightSource === 'slicer'
-                      ? formatWeightG(m.estimatedWeightG, language)
-                      : `≈ ${formatWeightG(m.estimatedWeightG, language)}`}
-                  </span>
-                )}
-              </div>
+              <CardMeta model={m} comfort />
+              <CardTags tags={m.tags} comfort />
             </div>
           </div>
         ) : (
