@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { TagInput } from './TagInput';
 import type { ModelFile } from '../types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { ModelPreview } from './ModelPreview';
@@ -12,6 +13,7 @@ import type { AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 
 interface Props {
+  allTags: string[];
   model: ModelFile | null;
   trashMode?: boolean;
   onRestore?: () => void;
@@ -31,6 +33,7 @@ interface Props {
 
 export function DetailPanel({
   model,
+  allTags,
   trashMode,
   onRestore,
   onDeletePermanently,
@@ -49,7 +52,6 @@ export function DetailPanel({
   const { language } = useLanguage();
   const t = useT();
   const { density } = useUiDensity();
-  const [draft, setDraft] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const {
     editing: editingSourceUrl,
@@ -71,12 +73,6 @@ export function DetailPanel({
       </aside>
     );
   }
-
-  const submitDraft = () => {
-    const value = draft.trim().replace(/^#/, '');
-    if (value) onAddTag(value);
-    setDraft('');
-  };
 
   if (trashMode) {
     const rows = buildMetaRows(model, t, language);
@@ -277,12 +273,13 @@ export function DetailPanel({
                 </span>
               </span>
             ))}
-            <input
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && submitDraft()}
-              placeholder={t('addTagPlaceholder')}
-              className="h-6 w-[118px] px-2.5 rounded-full border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 font-mono-ui text-[11.5px]"
+            <TagInput
+              key={model.id}
+              allTags={allTags}
+              tags={model.tags}
+              onAddTag={onAddTag}
+              stripHash
+              inputClassName="h-6 w-[118px] px-2.5 rounded-full border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 font-mono-ui text-[11.5px]"
             />
           </div>
         </div>
@@ -396,13 +393,14 @@ export function DetailPanel({
               </span>
             </span>
           ))}
-          <input
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && submitDraft()}
-            placeholder={t('addTagPlaceholder')}
-            className="px-2.5 py-1 rounded-full border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0"
-            style={{ fontSize: 'var(--font-size-meta)' }}
+          <TagInput
+            key={model.id}
+            allTags={allTags}
+            tags={model.tags}
+            onAddTag={onAddTag}
+            stripHash
+            inputClassName="px-2.5 py-1 rounded-full border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0"
+            inputStyle={{ fontSize: 'var(--font-size-meta)' }}
           />
         </div>
 

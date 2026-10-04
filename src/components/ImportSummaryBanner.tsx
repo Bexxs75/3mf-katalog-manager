@@ -53,6 +53,9 @@ export function ImportSummaryBanner({ imported, duplicates, archives, skipped, o
     if (blocked > 0) lines.push({ key: 'blocked', text: t('archiveSummaryBlockedSkipped').replace('{count}', String(blocked)) });
     if (deleted > 0) lines.push({ key: 'deleted', text: t('archiveSummaryDeleted').replace('{count}', String(deleted)) });
     for (const a of archives) {
+      if (a.strippedRoot) {
+        lines.push({ key: `stripped:${a.path}`, text: t('archiveInnerFolderSkipped').replace('{name}', a.strippedRoot) });
+      }
       if (a.error) {
         hasProblems = true;
         lines.push({

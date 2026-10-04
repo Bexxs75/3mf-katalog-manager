@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { TagInput } from './TagInput';
 import { invoke } from '@tauri-apps/api/core';
 import type { ModelFile, SlicerConfig, Collection } from '../types';
 import { useT, useLanguage } from '../i18n/LanguageContext';
@@ -17,6 +18,7 @@ import type { AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 
 interface Props {
+  allTags: string[];
   model: ModelFile;
   onClose: () => void;
   onAddTag: (tag: string) => void;
@@ -41,6 +43,7 @@ interface Props {
 
 export function ModelDetailPage({
   model,
+  allTags,
   onClose,
   onAddTag,
   onRemoveTag,
@@ -64,7 +67,6 @@ export function ModelDetailPage({
   const t = useT();
   const { language } = useLanguage();
   const [addToCollectionMenuOpen, setAddToCollectionMenuOpen] = useState(false);
-  const [tagDraft, setTagDraft] = useState('');
   const {
     editing: editingSource,
     draft: sourceDraft,
@@ -83,12 +85,6 @@ export function ModelDetailPage({
     model.sliceInfo ? [model.id] : [],
     JSON.stringify(model.sliceInfo ?? null),
   );
-
-  const submitTag = () => {
-    const value = tagDraft.trim();
-    if (value) onAddTag(value);
-    setTagDraft('');
-  };
 
   const {
     entries: printLogEntries,
@@ -230,12 +226,13 @@ export function ModelDetailPage({
                     <button onClick={() => onRemoveTag(tag)} className="text-[var(--ink-3)]">✕</button>
                   </span>
                 ))}
-                <input
-                  value={tagDraft}
-                  onChange={(e) => setTagDraft(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && submitTag()}
-                  placeholder={t('addTagPlaceholder')}
-                  className="font-mono-ui text-[12px] px-2.5 py-1 rounded-full bg-transparent border border-dashed border-[var(--line)] text-[var(--ink-3)] w-32"
+                <TagInput
+                  key={model.id}
+                  allTags={allTags}
+                  tags={model.tags}
+                  onAddTag={onAddTag}
+                  onEscape={onClose}
+                  inputClassName="font-mono-ui text-[12px] px-2.5 py-1 rounded-full bg-transparent border border-dashed border-[var(--line)] text-[var(--ink-3)] w-32"
                 />
               </div>
             </div>

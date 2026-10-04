@@ -24,6 +24,7 @@ pub struct ExtractStats {
 #[derive(Debug)]
 pub struct Extraction {
     pub stats: ExtractStats,
+    pub stripped_root: Option<String>,
     created: Vec<PathBuf>,
 }
 
@@ -54,9 +55,40 @@ fn remove_created(created: &[PathBuf]) {
     }
 }
 
+/// Metadata does not decide whether a download has one enclosing folder.
+/// It is still extracted/blocked by the normal rules, without losing content.
+fn is_platform_metadata(name: &str) -> bool {
+    name.split('/').any(|part| {
+        matches!(part.to_ascii_lowercase().as_str(), "__macosx" | ".ds_store" | "thumbs.db" | "desktop.ini")
+    })
+}
+
+fn single_root(entries: &[EntryMeta]) -> Option<String> {
+    let mut root: Option<String> = None;
+    for entry in entries {
+        let name = entry.name.replace('\\', "/");
+        if is_platform_metadata(&name) {
+            continue;
+        }
+        let (first, rest) = name.split_once('/').unwrap_or((&name, ""));
+        if first.is_empty() || first == "." || first == ".."
+            || (rest.is_empty() && entry.kind != EntryKind::Directory)
+        {
+            return None;
+        }
+        match &root {
+            Some(root) if root != first => return None,
+            None => root = Some(first.to_string()),
+            _ => {}
+        }
+    }
+    root
+}
+
 /// The only place that writes to disk while extracting.
 pub(super) struct Extractor<'g> {
     root: PathBuf,
+    stripped_root: Option<String>,
     byte_limit: u64,
     written_bytes: u64,
     entries_seen: usize,
@@ -85,6 +117,7 @@ impl<'g> Extractor<'g> {
         }
         let mut extractor = Extractor {
             root: root.to_path_buf(),
+            stripped_root: None,
             byte_limit,
             written_bytes: 0,
             entries_seen: 0,
@@ -140,7 +173,14 @@ impl<'g> Extractor<'g> {
         if self.entries_seen > MAX_ENTRIES {
             return Err(ArchiveError::TooManyEntries);
         }
-        let Some(rel) = safe_relative_path(&meta.name) else {
+        let normalized = meta.name.replace('\\', "/");
+        let stripped = self.stripped_root.as_ref().and_then(|root| {
+            normalized.strip_prefix(&format!("{root}/"))
+        });
+        let name = stripped.unwrap_or(&normalized);
+        // Check the original too: stripping must not turn an executable bundle,
+        // absolute path or traversal into an acceptable destination.
+        let Some(original) = safe_relative_path(&meta.name) else {
             self.stats.unsafe_skipped += 1;
             return Ok(None);
         };
@@ -148,6 +188,19 @@ impl<'g> Extractor<'g> {
             self.stats.unsafe_skipped += 1;
             return Ok(None);
         }
+        if is_blocked_path(&original) {
+            self.stats.blocked_skipped += 1;
+            return Ok(None);
+        }
+        if meta.kind == EntryKind::Directory
+            && (stripped == Some("") || self.stripped_root.as_deref() == Some(normalized.as_str()))
+        {
+            return Ok(None);
+        }
+        let Some(rel) = safe_relative_path(name) else {
+            self.stats.unsafe_skipped += 1;
+            return Ok(None);
+        };
         if is_blocked_path(&rel) {
             self.stats.blocked_skipped += 1;
             return Ok(None);
@@ -241,10 +294,17 @@ pub fn extract_archive(
     byte_limit: u64,
     guard: &dyn Fn(&Path) -> bool,
 ) -> Result<Extraction, ArchiveError> {
+    let entries = formats::list(archive, format)?;
+    if entries.len() > MAX_ENTRIES {
+        return Err(ArchiveError::TooManyEntries);
+    }
+    let stripped_root = single_root(&entries);
     let mut extractor = Extractor::new(dest, merge, byte_limit, guard, origin::read(archive))?;
+    extractor.stripped_root = stripped_root;
     match formats::extract(archive, format, &mut extractor) {
         Ok(()) => Ok(Extraction {
             stats: extractor.stats,
+            stripped_root: extractor.stripped_root,
             created: extractor.created,
         }),
         Err(e) => {

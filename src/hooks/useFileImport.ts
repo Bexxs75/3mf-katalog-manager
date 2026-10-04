@@ -81,6 +81,7 @@ export function useFileImport({
         archives: paths.map((path) => ({
           path,
           extractedTo: null,
+          strippedRoot: null,
           existingSkipped: 0,
           unsafeSkipped: 0,
           blockedSkipped: 0,

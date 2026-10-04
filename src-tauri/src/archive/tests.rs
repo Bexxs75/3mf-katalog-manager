@@ -86,7 +86,7 @@ fn make_tar(path: &Path, format: ArchiveFormat, entries: &[(&str, &[u8])]) {
 
 fn assert_sample_extracted(dest: &Path) {
     for (name, data) in SAMPLE {
-        assert_eq!(fs::read(dest.join(name)).unwrap(), *data, "{name}");
+        assert_eq!(fs::read(dest.join(name.strip_prefix("Benchy/").unwrap())).unwrap(), *data, "{name}");
     }
 }
 
@@ -167,6 +167,7 @@ fn roundtrip(archive_name: &str, build: impl FnOnce(&Path)) {
     let dest = dir.join("ziel");
     let extraction = extract_archive(&archive, format, &dest, false, MAX_UNPACKED_BYTES, &allow_all).unwrap();
     assert_eq!(extraction.stats.written_files, 3, "{archive_name}");
+    assert_eq!(extraction.stripped_root.as_deref(), Some("Benchy"));
     assert_sample_extracted(&dest);
 }
 
@@ -322,7 +323,9 @@ fn merge_does_not_follow_an_existing_symlinked_subfolder() {
     std::os::unix::fs::symlink(&outside, dest.join("Benchy")).unwrap();
 
     let archive = dir.join("a.zip");
-    make_zip(&archive, SAMPLE);
+    let names: Vec<String> = SAMPLE.iter().map(|(name, _)| format!("Download/{name}")).collect();
+    let entries: Vec<(&str, &[u8])> = names.iter().zip(SAMPLE).map(|(name, (_, data))| (name.as_str(), *data)).collect();
+    make_zip(&archive, &entries);
     let stats = extract_archive(&archive, ArchiveFormat::Zip, &dest, true, MAX_UNPACKED_BYTES, &allow_all)
         .unwrap()
         .stats;
@@ -349,16 +352,16 @@ fn merge_keeps_existing_files_byte_identical_and_counts_them() {
     let archive = dir.join("a.zip");
     make_zip(&archive, SAMPLE);
     let dest = dir.join("ziel");
-    fs::create_dir_all(dest.join("Benchy")).unwrap();
-    fs::write(dest.join("Benchy/benchy.stl"), b"MEINE VERSION").unwrap();
+    fs::create_dir_all(&dest).unwrap();
+    fs::write(dest.join("benchy.stl"), b"MEINE VERSION").unwrap();
 
     let stats = extract_archive(&archive, ArchiveFormat::Zip, &dest, true, MAX_UNPACKED_BYTES, &allow_all)
         .unwrap()
         .stats;
     assert_eq!(stats.existing_skipped, 1);
     assert_eq!(stats.written_files, 2);
-    assert_eq!(fs::read(dest.join("Benchy/benchy.stl")).unwrap(), b"MEINE VERSION");
-    assert!(dest.join("Benchy/teile/rumpf.3mf").exists());
+    assert_eq!(fs::read(dest.join("benchy.stl")).unwrap(), b"MEINE VERSION");
+    assert!(dest.join("teile/rumpf.3mf").exists());
 }
 
 // ---------- Byte budget & cleanup ----------
@@ -564,14 +567,14 @@ fn skipped_entries_in_a_solid_7z_do_not_corrupt_later_entries() {
     let archive = dir.join("a.7z");
     make_7z(&archive, SAMPLE, None);
     let dest = dir.join("ziel");
-    fs::create_dir_all(dest.join("Benchy")).unwrap();
-    fs::write(dest.join("Benchy/README.txt"), b"vorher").unwrap();
+    fs::create_dir_all(&dest).unwrap();
+    fs::write(dest.join("README.txt"), b"vorher").unwrap();
     let stats = extract_archive(&archive, ArchiveFormat::SevenZ, &dest, true, MAX_UNPACKED_BYTES, &allow_all)
         .unwrap()
         .stats;
     assert_eq!(stats.existing_skipped, 1);
-    assert_eq!(fs::read(dest.join("Benchy/benchy.stl")).unwrap(), SAMPLE[0].1);
-    assert_eq!(fs::read(dest.join("Benchy/teile/rumpf.3mf")).unwrap(), SAMPLE[2].1);
+    assert_eq!(fs::read(dest.join("benchy.stl")).unwrap(), SAMPLE[0].1);
+    assert_eq!(fs::read(dest.join("teile/rumpf.3mf")).unwrap(), SAMPLE[2].1);
 }
 
 #[test]
@@ -597,4 +600,102 @@ fn rar_budget_check_prevents_oversized_entry() {
     let result = extract_archive(&fixture("rar5-solid.rar"), ArchiveFormat::Rar, &dest, false, 10, &allow_all);
     assert!(matches!(result, Err(ArchiveError::LimitExceeded)));
     assert!(!dest.exists(), "Destination should not be created on budget exceeded");
+}
+
+#[test]
+fn strips_single_root_in_zip_and_all_tar_formats() {
+    for format in [ArchiveFormat::Zip, ArchiveFormat::Tar, ArchiveFormat::TarGz,
+        ArchiveFormat::TarBz2, ArchiveFormat::TarXz, ArchiveFormat::TarZst] {
+        let dir = unique_dir("single_root");
+        let archive = dir.join("Anderer-Name.archive");
+        let entries: &[(&str, &[u8])] = &[("Garten-Paket/a.3mf", b"a"), ("Garten-Paket/sub/b.stl", b"b")];
+        if format == ArchiveFormat::Zip { make_zip(&archive, entries); }
+        else { make_tar(&archive, format, entries); }
+        let dest = dir.join("ziel");
+        let extraction = extract_archive(&archive, format, &dest, false, MAX_UNPACKED_BYTES, &allow_all).unwrap();
+        assert_eq!(extraction.stripped_root.as_deref(), Some("Garten-Paket"));
+        assert_eq!(fs::read(dest.join("a.3mf")).unwrap(), b"a");
+        assert_eq!(fs::read(dest.join("sub/b.stl")).unwrap(), b"b");
+        assert!(!dest.join("Garten-Paket").exists());
+        extraction.rollback();
+        assert!(!dest.exists());
+    }
+}
+
+#[test]
+fn root_detection_ignores_platform_metadata() {
+    let dir = unique_dir("root_metadata");
+    let archive = dir.join("a.zip");
+    make_zip(&archive, &[("__MACOSX/._a", b"meta"), (".DS_Store", b"meta"),
+        ("Thumbs.db", b"meta"), ("desktop.ini", b"meta"), ("Garten-Paket/a.3mf", b"a")]);
+    let dest = dir.join("ziel");
+    let extraction = extract_archive(&archive, ArchiveFormat::Zip, &dest, false, MAX_UNPACKED_BYTES, &allow_all).unwrap();
+    assert_eq!(fs::read(dest.join("a.3mf")).unwrap(), b"a");
+    assert!(!dest.join("Garten-Paket").exists());
+    assert_eq!(extraction.stats.blocked_skipped, 1);
+}
+
+#[test]
+fn preserves_multiple_roots_and_top_level_files() {
+    for entries in [vec![("A/a.3mf", b"a".as_slice()), ("B/b.stl", b"b".as_slice())],
+        vec![("a.3mf", b"a".as_slice()), ("B/b.stl", b"b".as_slice())],
+        vec![("a.3mf", b"a".as_slice())]] {
+        let dir = unique_dir("multiple_roots");
+        let archive = dir.join("a.zip");
+        make_zip(&archive, &entries);
+        let dest = dir.join("ziel");
+        extract_archive(&archive, ArchiveFormat::Zip, &dest, false, MAX_UNPACKED_BYTES, &allow_all).unwrap();
+        for (name, bytes) in entries { assert_eq!(fs::read(dest.join(name)).unwrap(), bytes); }
+    }
+}
+
+#[test]
+fn stripped_paths_still_reject_traversal_absolute_drives_and_executables() {
+    let dir = unique_dir("strip_security");
+    let archive = dir.join("a.zip");
+    make_zip(&archive, &[("Garten-Paket/../x", b"bad"), ("Garten-Paket//absolute.stl", b"bad"),
+        ("Garten-Paket/C:/drive.stl", b"bad"), ("Garten-Paket/run.exe", b"bad"), ("Garten-Paket/a.3mf", b"a")]);
+    let dest = dir.join("ziel");
+    let extraction = extract_archive(&archive, ArchiveFormat::Zip, &dest, false, MAX_UNPACKED_BYTES, &allow_all).unwrap();
+    assert_eq!(extraction.stats.unsafe_skipped, 3);
+    assert_eq!(extraction.stats.blocked_skipped, 1);
+    assert_eq!(fs::read(dest.join("a.3mf")).unwrap(), b"a");
+    assert!(!dir.join("x").exists());
+    assert_eq!(fs::read_dir(&dest).unwrap().count(), 1);
+}
+
+#[test]
+fn explicit_root_directory_and_windows_separators_are_stripped() {
+    let dir = unique_dir("explicit_root");
+    let archive = dir.join("a.zip");
+    let mut zip = zip::ZipWriter::new(fs::File::create(&archive).unwrap());
+    zip.add_directory("Garten-Paket/", zip::write::SimpleFileOptions::default()).unwrap();
+    zip.start_file("Garten-Paket\\sub\\a.stl", zip::write::SimpleFileOptions::default()).unwrap();
+    zip.write_all(b"a").unwrap();
+    zip.finish().unwrap();
+    let dest = dir.join("ziel");
+    let extraction = extract_archive(&archive, ArchiveFormat::Zip, &dest, false, MAX_UNPACKED_BYTES, &allow_all).unwrap();
+    assert_eq!(extraction.stripped_root.as_deref(), Some("Garten-Paket"));
+    assert_eq!(extraction.stats.unsafe_skipped, 0);
+    assert_eq!(fs::read(dest.join("sub/a.stl")).unwrap(), b"a");
+    assert!(!dest.join("Garten-Paket").exists());
+}
+
+#[test]
+fn stripping_does_not_unblock_executable_bundles_or_protected_targets() {
+    let dir = unique_dir("root_guards");
+    let archive = dir.join("a.zip");
+    make_zip(&archive, &[("Start.app/a.stl", b"bad")]);
+    let dest = dir.join("blocked");
+    let extraction = extract_archive(&archive, ArchiveFormat::Zip, &dest, false, MAX_UNPACKED_BYTES, &allow_all).unwrap();
+    assert_eq!(extraction.stats.blocked_skipped, 1);
+    assert_eq!(extraction.stats.written_files, 0);
+
+    make_zip(&archive, &[("Garten-Paket/geschuetzt/a.stl", b"bad"), ("Garten-Paket/a.stl", b"a")]);
+    let dest = dir.join("protected");
+    let guard = |path: &Path| !path.components().any(|c| c.as_os_str() == "geschuetzt");
+    let extraction = extract_archive(&archive, ArchiveFormat::Zip, &dest, false, MAX_UNPACKED_BYTES, &guard).unwrap();
+    assert_eq!(extraction.stats.unsafe_skipped, 1);
+    assert_eq!(extraction.stats.written_files, 1);
+    assert!(!dest.join("geschuetzt").exists());
 }

@@ -354,6 +354,7 @@ export function CatalogWorkspace({
           />
         ) : detailModel ? (
           <ModelDetailPage
+            allTags={tags.map(tag => tag.label)}
             model={detailModel}
             onClose={() => setDetailModelId(null)}
             onAddTag={(t) => addTag(detailModel.id, t)}
@@ -454,6 +455,7 @@ export function CatalogWorkspace({
 
       {!detailModel && (
         <DetailPanel
+          allTags={tags.map(tag => tag.label)}
           model={selected}
           onAddTag={(t) => selected && addTag(selected.id, t)}
           onRemoveTag={(t) => selected && removeTag(selected.id, t)}

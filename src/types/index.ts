@@ -134,6 +134,7 @@ export interface ArchiveRequest {
 export interface ArchiveOutcome {
   path: string;
   extractedTo: string | null;
+  strippedRoot: string | null;
   existingSkipped: number;
   unsafeSkipped: number;
   blockedSkipped: number;

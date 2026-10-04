@@ -284,6 +284,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
               <div>
                 <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t('filamentMaterialLabel')}</label>
                 <AutocompleteInput
+                  maxSuggestions={Infinity}
                   value={form.material}
                   onChange={(v) => setForm((f) => ({ ...f, material: v }))}
                   options={resin ? RESIN_MATERIALS : FILAMENT_MATERIALS}
@@ -294,6 +295,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
               <div>
                 <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t('filamentManufacturerLabel')}</label>
                 <AutocompleteInput
+                  maxSuggestions={Infinity}
                   value={form.manufacturer}
                   onChange={(v) => setForm((f) => ({ ...f, manufacturer: v }))}
                   options={resin ? RESIN_MANUFACTURERS : FILAMENT_MANUFACTURERS}
@@ -355,6 +357,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
               {editing?.unitId ? t('filamentHomeLocationLabel') : t('filamentLocationLabel')}
             </label>
             <AutocompleteInput
+              maxSuggestions={Infinity}
               value={form.location}
               onChange={(v) => setForm((f) => ({ ...f, location: v }))}
               options={knownLocations}

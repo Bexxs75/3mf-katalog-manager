@@ -132,6 +132,7 @@ export function RestockPopover({ spool, anchor, knownLocations, onClose, onCreat
 
         <span className={labelClass}>{t('filamentLocationLabel')}</span>
         <AutocompleteInput
+          maxSuggestions={Infinity}
           value={location}
           onChange={setLocation}
           options={knownLocations}

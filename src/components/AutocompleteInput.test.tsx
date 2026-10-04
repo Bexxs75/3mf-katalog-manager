@@ -40,3 +40,19 @@ describe('AutocompleteInput', () => {
     expect(onParentKeyDown).toHaveBeenCalledTimes(1);
   });
 });
+
+it('honors a custom suggestion limit', () => {
+  render(<AutocompleteInput value="" onChange={vi.fn()} options={['a', 'b', 'c']} maxSuggestions={2} />);
+  fireEvent.focus(screen.getByRole('textbox'));
+  expect(screen.getAllByRole('option')).toHaveLength(2);
+});
+
+it('retains initial selection and unlimited lists when requested by existing callers', () => {
+  const onChange = vi.fn();
+  render(<AutocompleteInput value="" onChange={onChange} options={Array.from({ length: 12 }, (_, i) => `Regal ${i}`)} maxSuggestions={Infinity} />);
+  const input = screen.getByRole('textbox');
+  fireEvent.focus(input);
+  expect(screen.getAllByRole('option')).toHaveLength(12);
+  fireEvent.keyDown(input, { key: 'Enter' });
+  expect(onChange).toHaveBeenCalledWith('Regal 0');
+});

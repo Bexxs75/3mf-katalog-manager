@@ -100,6 +100,7 @@ export function TrashView({
         </div>
       </main>
       <DetailPanel
+        allTags={[]}
         model={trashModels.find((m) => m.id === selectedId) ?? null}
         trashMode
         onRestore={() => selectedId && onRestore(selectedId)}

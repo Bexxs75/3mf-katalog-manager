@@ -1,6 +1,8 @@
 import type { Translations } from './types';
 
 export const fr: Translations = {
+  archiveInnerFolderSkipped: 'Le dossier intérieur « {name} » a été ignoré',
+  tagSuggestionsAria: 'Suggestions de tags',
   dropHereLabel: "déposer ici",
   dndTipTitle: "Astuce : déplace les fichiers en les faisant glisser",
   dndTipBody: "Fais glisser une carte de modèle sur un dossier à gauche ou sur un groupe de dossiers. Le fichier est aussi déplacé sur le disque.",

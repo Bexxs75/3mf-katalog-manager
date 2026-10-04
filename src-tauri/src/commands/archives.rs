@@ -70,6 +70,7 @@ pub struct ArchiveRequest {
 pub struct ArchiveOutcomeDto {
     pub path: String,
     pub extracted_to: Option<String>,
+    pub stripped_root: Option<String>,
     pub existing_skipped: u32,
     pub unsafe_skipped: u32,
     pub blocked_skipped: u32,
@@ -401,6 +402,7 @@ fn extract_one(
         }
         return outcome;
     }
+    outcome.stripped_root = extraction.stripped_root.clone();
     outcome.extracted_to = Some(dest.to_string_lossy().to_string());
 
     if ctx.delete_archive {
@@ -595,6 +597,26 @@ mod tests {
         assert_eq!(info.entry_count, 2);
         assert_eq!(info.suggested_folder_name, "Drache_v2");
         assert_eq!(info.file_size, std::fs::metadata(&archive).unwrap().len());
+    }
+
+    #[test]
+    fn extracted_root_is_reported_without_changing_the_target_folder_name() {
+        let dir = unique_test_dir("archives_stripped_root");
+        let target = dir.join("Katalog");
+        std::fs::create_dir_all(&target).unwrap();
+        let archive = dir.join("Drache.zip");
+        make_zip(&archive, &[("Garten-Paket/koerper.stl", STL)]);
+        let mut conn = crate::db::connect_in_memory().unwrap();
+        let info = inspect_one(&archive);
+        assert_eq!(info.suggested_folder_name, "Drache");
+        let result = run(&mut conn, &target, vec![request_for(&info, ConflictMode::New)], false);
+        assert_eq!(result.imported.len(), 1);
+        let outcome = &result.archives[0];
+        assert_eq!(outcome.error, None);
+        assert_eq!(outcome.stripped_root.as_deref(), Some("Garten-Paket"));
+        assert!(target.join("Drache/koerper.stl").exists());
+        assert!(!target.join("Drache/Garten-Paket").exists());
+        assert_eq!(serde_json::to_value(outcome).unwrap()["strippedRoot"], "Garten-Paket");
     }
 
     #[test]

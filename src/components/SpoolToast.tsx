@@ -48,6 +48,7 @@ export function SpoolToast({ label, location, knownLocations, onChangeLocation, 
           <>
             <span className="w-44 text-[var(--ink)]">
               <AutocompleteInput
+                maxSuggestions={Infinity}
                 value={draft}
                 onChange={setDraft}
                 options={knownLocations}

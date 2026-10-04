@@ -6,6 +6,8 @@ export interface PluralForms {
 }
 
 export interface Translations {
+  archiveInnerFolderSkipped: string;
+  tagSuggestionsAria: string;
   dropHereLabel: string;
   dndTipTitle: string;
   dndTipBody: string;

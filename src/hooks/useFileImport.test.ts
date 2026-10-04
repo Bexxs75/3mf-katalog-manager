@@ -131,7 +131,7 @@ describe('useFileImport', () => {
     });
     const { result, onImported, refreshFolders } = setup();
     await act(async () => result.current.importFiles());
-    const outcome = { path: '/dl/a.zip', extractedTo: '/k/a', existingSkipped: 0, unsafeSkipped: 0, blockedSkipped: 0, archiveDeleted: false, deleteError: null, error: null };
+    const outcome = { path: '/dl/a.zip', extractedTo: '/k/a', strippedRoot: null, existingSkipped: 0, unsafeSkipped: 0, blockedSkipped: 0, archiveDeleted: false, deleteError: null, error: null };
     act(() => result.current.finishArchives({ imported: [{ id: 'm1' }] as never, duplicateCount: 0, archives: [outcome] }));
     expect(onImported).toHaveBeenCalledWith({ imported: [{ id: 'm1' }], duplicateCount: 0 });
     expect(refreshFolders).toHaveBeenCalled();
@@ -155,6 +155,7 @@ describe('useFileImport', () => {
         {
           path: '/dl/a.zip',
           extractedTo: null,
+          strippedRoot: null,
           existingSkipped: 0,
           unsafeSkipped: 0,
           blockedSkipped: 0,

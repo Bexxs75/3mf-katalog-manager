@@ -10,6 +10,7 @@ function outcome(overrides: Partial<ArchiveOutcome>): ArchiveOutcome {
   return {
     path: '/dl/a.zip',
     extractedTo: '/k/a',
+    strippedRoot: null,
     existingSkipped: 0,
     unsafeSkipped: 0,
     blockedSkipped: 0,
@@ -119,4 +120,10 @@ describe('ImportSummaryBanner', () => {
     expect(screen.getByText('1 Dateien konnten nicht gespeichert werden: x.stl')).toBeInTheDocument();
     expect(screen.getByText('Problem melden')).toBeInTheDocument();
   });
+});
+
+it('shows the stripped folder only when the result supplies it', () => {
+  renderBanner([outcome({ strippedRoot: 'Garten-Paket' }), outcome({ path: '/dl/b.zip' })]);
+  expect(screen.getByText('Innerer Ordner „Garten-Paket“ wurde übersprungen')).toBeInTheDocument();
+  expect(screen.getAllByRole('listitem')).toHaveLength(1);
 });

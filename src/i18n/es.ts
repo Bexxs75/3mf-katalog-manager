@@ -1,6 +1,8 @@
 import type { Translations } from './types';
 
 export const es: Translations = {
+  archiveInnerFolderSkipped: 'Se omitió la carpeta interior «{name}»',
+  tagSuggestionsAria: 'Sugerencias de etiquetas',
   dropHereLabel: "soltar aquí",
   dndTipTitle: "Consejo: mueve archivos arrastrándolos",
   dndTipBody: "Arrastra una tarjeta de modelo a una carpeta de la izquierda o a un grupo de carpetas. El archivo también se mueve en el disco.",

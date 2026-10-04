@@ -1,6 +1,8 @@
 import type { Translations } from './types';
 
 export const en: Translations = {
+  archiveInnerFolderSkipped: 'Inner folder “{name}” was skipped',
+  tagSuggestionsAria: 'Tag suggestions',
   dropHereLabel: "drop here",
   dndTipTitle: "Tip: move files by dragging",
   dndTipBody: "Drag a model card onto a folder on the left or onto a folder group. The file is moved on disk as well.",
