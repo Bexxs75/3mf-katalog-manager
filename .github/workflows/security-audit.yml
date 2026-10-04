@@ -52,5 +52,12 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: npm audit (high/critical only)
-        run: npm audit --audit-level=high
+      # Hard gate: only what ships inside the app. Build tooling (Tailwind,
+      # Vite, Vitest …) is checked below without failing the run, because
+      # advisories there often have no patched release for weeks and would
+      # otherwise hide real findings in the runtime dependencies.
+      - name: npm audit, runtime dependencies (high/critical fails the run)
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: npm audit, all dependencies (report only)
+        run: npm audit --audit-level=high || echo "::warning::npm audit found high/critical advisories in dev dependencies (see log); runtime dependencies are clean."
