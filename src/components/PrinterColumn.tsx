@@ -199,7 +199,7 @@ export function PrinterColumn({
   return (
     <aside className="w-full lg:w-[260px] flex-none flex flex-col gap-3" aria-label={t('printersColumnTitle')}>
       <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-wider font-bold text-[var(--ink-3)]">{t('printersColumnTitle')}</span>
+        <span className="text-compact-meta uppercase tracking-wider font-bold text-[var(--ink-3)]">{t('printersColumnTitle')}</span>
       </div>
 
       {visiblePrinters.length === 0 ? (
@@ -208,7 +208,7 @@ export function PrinterColumn({
           <button
             type="button"
             onClick={() => onManage()}
-            className="self-start h-8 px-3 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12px] font-bold cursor-pointer"
+            className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] self-start h-8 px-3 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12px] font-bold cursor-pointer"
           >
             {t('pmGo')}
           </button>
@@ -219,7 +219,7 @@ export function PrinterColumn({
             ref={el => { if (el) printerCards.current.set(printer.id, el); else printerCards.current.delete(printer.id); }}
             className="flex flex-col gap-2 focus:outline-2 focus:outline-[var(--accent)]">
             <div className="text-[12.5px] font-bold">{printer.name}</div>
-            <button className="text-left text-[11.5px] text-[var(--accent)] focus-visible:outline-2" onClick={() => onManage(printer.id)}>{t('pmEditLink')}</button>
+            <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-left text-[11.5px] text-[var(--accent)] focus-visible:outline-2" onClick={() => onManage(printer.id)}>{t('pmEditLink')}</button>
             {/* Resin printers have no printer connection. */}
             {printerLink && printer.kind !== 'resin' && <PrinterLinkStatus printerId={printer.id} link={printerLink} />}
             {printer.units.map(renderUnit)}
@@ -307,7 +307,7 @@ function SlotMenu({ spool, storage, vat, onClose, onLoad, onUnload, onEdit, onCo
           <div className="border-t border-[var(--line)] my-1" />
         </>
       )}
-      <div className="px-2.5 pt-1 pb-1.5 text-[10px] uppercase tracking-wider font-bold text-[var(--ink-3)]">
+      <div className="px-2.5 pt-1 pb-1.5 text-compact-meta uppercase tracking-wider font-bold text-[var(--ink-3)]">
         {vat ? t('printersVatMenuLoad') : t('printersSlotMenuLoad')}
       </div>
       <div className="px-2 pb-1.5">

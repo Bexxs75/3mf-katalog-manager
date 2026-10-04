@@ -28,7 +28,7 @@ export function PrinterLinkControl({ link }: Props) {
         </div>
       </div>
       <div className="max-[1023px]:group-data-[collapsed=true]:hidden">
-        <button type="button" className="text-[12px] text-[var(--ink-2)] underline underline-offset-2 focus-visible:outline-2"
+        <button type="button" className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[12px] text-[var(--ink-2)] underline underline-offset-2 focus-visible:outline-2"
           aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{t('pmWhatHappens')}</button>
         {expanded && <p className="mt-2 text-[12px] text-[var(--ink-2)]">{t('printerLinkDescription')}</p>}
       </div>

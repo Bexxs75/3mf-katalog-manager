@@ -68,13 +68,13 @@ export function PrinterUnitsSection({ printer, spools, actions, onChanged, onMat
           style={{ background: !spool ? 'repeating-linear-gradient(45deg, transparent 0 3px, var(--line) 3px 4px)' : spool.colorHex && isValidColorHex(spool.colorHex) ? spool.colorHex : 'var(--unk-soft)' }} />;
       })}</div>
       {unit.kind !== 'resin_vat' && <div className="flex flex-wrap gap-1.5 max-[639px]:w-full">
-        <button className={`${pmButton} !border-transparent max-[639px]:w-full`} onClick={() => setEditing(unit)}>{t('pmEdit')}</button>
-        <button className={`${pmButton} !border-transparent text-[var(--ink-2)] max-[639px]:w-full`} aria-label={`${t('printersDelete')} ${unit.name}`} onClick={() => setDeleting(unit)}>{t('printersDelete')}</button>
+        <button className={`${pmButton} !border-transparent hover:bg-[var(--panel-2)] max-[639px]:w-full`} onClick={() => setEditing(unit)}>{t('pmEdit')}</button>
+        <button className={`${pmButton} !border-transparent hover:bg-[var(--panel-2)] text-[var(--ink-2)] max-[639px]:w-full`} aria-label={`${t('printersDelete')} ${unit.name}`} onClick={() => setDeleting(unit)}>{t('printersDelete')}</button>
       </div>}
     </div>)}
     <div className="flex flex-wrap items-center justify-between gap-3 mt-2">
-      <button className="text-[var(--accent)] focus-visible:outline-2 max-[639px]:w-full" onClick={onMaterial}>{t('pmLoadSpools')}</button>
-      {printer.kind !== 'resin' && <button className={`${pmButton} !border-transparent max-[639px]:w-full`} onClick={() => setEditing('new')}>+ {t('printersAddUnitButton')}</button>}
+      <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--accent)] focus-visible:outline-2 max-[639px]:w-full" onClick={onMaterial}>{t('pmLoadSpools')}</button>
+      {printer.kind !== 'resin' && <button className={`${pmButton} !border-transparent hover:bg-[var(--panel-2)] max-[639px]:w-full`} onClick={() => setEditing('new')}>+ {t('printersAddUnitButton')}</button>}
     </div>
     {printer.kind === 'resin' && <p className="text-[var(--ink-3)] mt-2">{t('printersResinPrinterNote')}</p>}
     {editing && <UnitDialog printer={printer} unit={editing === 'new' ? null : editing} actions={actions}

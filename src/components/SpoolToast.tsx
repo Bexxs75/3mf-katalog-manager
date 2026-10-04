@@ -56,7 +56,7 @@ export function SpoolToast({ label, location, knownLocations, onChangeLocation, 
                 className="w-full h-7 px-2 rounded-[4px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12px] outline-0"
               />
             </span>
-            <button type="button" onClick={save} className="font-bold underline cursor-pointer">
+            <button type="button" onClick={save} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] font-bold underline cursor-pointer">
               OK
             </button>
           </>
@@ -68,7 +68,7 @@ export function SpoolToast({ label, location, knownLocations, onChangeLocation, 
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="font-bold underline cursor-pointer flex-none"
+              className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] font-bold underline cursor-pointer flex-none"
             >
               {t('printersChangeLocation')}
             </button>

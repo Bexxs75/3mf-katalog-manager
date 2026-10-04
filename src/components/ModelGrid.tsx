@@ -38,7 +38,7 @@ function CardTags({ tags, comfort }: { tags: string[]; comfort: boolean }) {
   const [hiddenCount, setHiddenCount] = useState(0);
   const chipClass = comfort
     ? 'shrink-0 whitespace-nowrap px-2.5 py-1 rounded-full bg-[var(--panel-2)] text-[var(--ink-2)]'
-    : 'shrink-0 whitespace-nowrap font-mono-ui text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)]';
+    : 'shrink-0 whitespace-nowrap font-mono-ui text-compact-meta px-1.5 py-0.5 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)]';
   useLayoutEffect(() => {
     const row = rowRef.current;
     const probe = probeRef.current;
@@ -162,7 +162,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
         }}
         onMouseDown={(e) => handleCardMouseDown(e, m.id)}
         onMouseEnter={() => reorderable && dragIndex !== null && setOverIndex(models.findIndex((x) => x.id === m.id))}
-        className={`group rounded-[10px] overflow-hidden border cursor-pointer ${
+        className={`hover:border-[var(--accent)] group rounded-[10px] overflow-hidden border cursor-pointer ${
           m.id === selectedId ? 'border-[var(--accent)]' : 'border-[var(--line)]'
         } ${fileDrag.draggingId === m.id ? 'opacity-50' : ''}`}
       >
@@ -193,7 +193,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
               <div className="absolute inset-0 grid place-items-center">
                 <div className="flex flex-col items-center gap-1.5">
                   <div className="w-[52px] h-[52px] border border-dashed border-[var(--line-strong)] rotate-45" />
-                  <div className="font-mono-ui text-[9px] tracking-[0.08em] uppercase text-[var(--ink-3)]">
+                  <div className="font-mono-ui text-compact-label tracking-[0.08em] uppercase text-[var(--ink-3)]">
                     {t('previewLabel3d')}
                   </div>
                 </div>
@@ -201,12 +201,12 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
             </>
           )}
           {Date.now() - new Date(m.importedAt).getTime() < 24 * 60 * 60 * 1000 && (
-            <div className="absolute left-[7px] top-[7px] font-mono-ui text-[9px] px-1 py-0.5 rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]">
+            <div className="absolute left-[7px] top-[7px] font-mono-ui text-compact-label px-1 py-0.5 rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]">
               {t('newBadge')}
             </div>
           )}
           {m.printStatus === 'printed' && (
-            <div className="absolute right-[7px] bottom-[7px] font-mono-ui text-[9px] px-1 py-0.5 rounded border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]">
+            <div className="absolute right-[7px] bottom-[7px] font-mono-ui text-compact-label px-1 py-0.5 rounded border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]">
               ✓ {t('printedBadge')}
             </div>
           )}
@@ -217,7 +217,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
                 onToggleFavorite(m.id);
               }}
               aria-label={m.favorite ? t('favoriteRemove') : t('favoriteAdd')}
-              className={`absolute left-[7px] bottom-[7px] font-mono-ui text-[9px] px-1 py-0.5 rounded border cursor-pointer ${
+              className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] absolute left-[7px] bottom-[7px] font-mono-ui text-compact-label px-1 py-0.5 rounded border cursor-pointer ${
                 m.favorite
                   ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
                   : 'border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]'
@@ -260,7 +260,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
             }}
             onMouseDown={(e) => handleCardMouseDown(e, m.id)}
             onMouseEnter={() => reorderable && dragIndex !== null && setOverIndex(models.findIndex((x) => x.id === m.id))}
-            className={`group rounded-[10px] overflow-hidden cursor-pointer bg-[var(--panel)] shadow-[var(--shadow)] border-2 ${
+            className={`hover:border-[var(--accent)] group rounded-[10px] overflow-hidden cursor-pointer bg-[var(--panel)] shadow-[var(--shadow)] border-2 ${
               m.id === selectedId ? 'border-[var(--accent)]' : 'border-transparent'
             } ${fileDrag.draggingId === m.id ? 'opacity-50' : ''}`}
           >
@@ -308,7 +308,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
                   }}
                   aria-label={m.favorite ? t('favoriteRemove') : t('favoriteAdd')}
                   style={{ width: 'var(--icon-badge-size)', height: 'var(--icon-badge-size)' }}
-                  className={`absolute right-2.5 bottom-2.5 rounded-full grid place-items-center bg-[var(--panel)]/90 shadow-[var(--shadow)] cursor-pointer text-[17px] ${
+                  className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] absolute right-2.5 bottom-2.5 rounded-full grid place-items-center bg-[var(--panel)]/90 shadow-[var(--shadow)] cursor-pointer text-[17px] ${
                     m.favorite ? 'text-[var(--accent)]' : 'text-[var(--ink-3)]'
                   }`}
                 >

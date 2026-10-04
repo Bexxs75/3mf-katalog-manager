@@ -140,9 +140,11 @@ export function Sidebar({
   const { language } = useLanguage();
   const [tagQuery, setTagQuery] = useState('');
   useEffect(() => setTagQuery(''), [catalogKey]);
+  const [showSingleTags, setShowSingleTags] = useState(false);
+  const hiddenSingleCount = tags.filter(tag => tag.count === 1 && tag.label !== activeTag).length;
   const visibleTags = sortTagsForDisplay(tags, language).filter(tag => tagQuery.trim()
     ? tagMatches(tag.label, tagQuery.trim(), language)
-    : tag.count >= 2 || tag.label === activeTag);
+    : tag.count >= 2 || tag.label === activeTag || (showSingleTags && tag.count === 1));
   const [tagsCollapsed, setTagsCollapsed] = useState(true);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [folderNameDraft, setFolderNameDraft] = useState('');
@@ -226,7 +228,7 @@ export function Sidebar({
           <span className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)]">
             {t('foldersHeading')}
           </span>
-          <span className="w-[13px] h-[13px] rounded-full border border-[var(--ink-3)] grid place-items-center font-mono-ui text-[9px] text-[var(--ink-3)] cursor-default">
+          <span className="w-[13px] h-[13px] rounded-full border border-[var(--ink-3)] grid place-items-center font-mono-ui text-compact-label text-[var(--ink-3)] cursor-default">
             i
           </span>
           <span className="pointer-events-none absolute top-[20px] right-0 z-20 w-[200px] rounded-[8px] bg-[var(--ink)] px-2.5 py-2 text-[11px] font-sans font-medium leading-[1.4] text-[var(--bg)] opacity-0 -translate-y-0.5 transition-opacity transition-transform group-hover:opacity-100 group-hover:translate-y-0">
@@ -317,7 +319,7 @@ export function Sidebar({
             }}
             className={`flex items-center gap-2 h-7 px-1.5 rounded-[3px] cursor-pointer text-[length:var(--font-size-item)] ${
               !collectionsGalleryOpen && activeCollection === c.id
-                ? 'bg-[var(--accent-soft)] text-[var(--accent)] font-semibold'
+                ? 'bg-[var(--accent-soft)] text-[var(--accent)] font-semibold hover:text-[var(--ink)]'
                 : 'text-[var(--ink-2)] hover:text-[var(--ink)]'
             }`}
           >
@@ -364,7 +366,7 @@ export function Sidebar({
 
         <div
           onClick={() => setTagsCollapsed((c) => !c)}
-          className="flex items-center justify-between px-1.5 pt-[18px] pb-2 cursor-pointer"
+          className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex items-center justify-between px-1.5 pt-[18px] pb-2 cursor-pointer"
         >
           <span className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)]">
             {t('tagsHeading')}
@@ -384,7 +386,7 @@ export function Sidebar({
                   if (event.key === 'Enter' && visibleTags[0]) { event.preventDefault(); onTagSelect(visibleTags[0].label); }
                 }} />
               {tagQuery && <button aria-label={`${t('tagSearchPlaceholder')} ${t('delete')}`} onClick={() => setTagQuery('')}
-                className="px-1 text-[var(--ink-3)]"><Icon name="close" size={14} /></button>}
+                className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] px-1 text-[var(--ink-3)]"><Icon name="close" size={14} /></button>}
             </div>
             {visibleTags.length === 0 && tagQuery.trim() && <p className="text-[12px] text-[var(--ink-3)]">{t('tagSearchEmpty')}</p>}
             <div className="flex flex-wrap gap-1.5">
@@ -394,7 +396,7 @@ export function Sidebar({
                 onClick={() => onTagSelect(activeTag === tag.label ? null : tag.label)}
                 className={`inline-flex items-center gap-1.5 h-6 px-2 rounded-full border cursor-pointer font-mono-ui text-[11.5px] ${
                   activeTag === tag.label
-                    ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
+                    ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] hover:text-[var(--ink)]'
                     : 'border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink-2)] hover:text-[var(--ink)]'
                 }`}
               >
@@ -407,6 +409,12 @@ export function Sidebar({
               </button>
             ))}
             </div>
+            {hiddenSingleCount > 0 && !tagQuery.trim() && (
+              <button type="button" aria-expanded={showSingleTags} onClick={() => setShowSingleTags(show => !show)}
+                className="mt-2 text-left font-mono-ui text-[length:var(--font-size-meta)] text-[var(--ink-2)] hover:text-[var(--ink)] cursor-pointer">
+                {showSingleTags ? t('tagsHideSingles') : t('tagsShowSingles').replace('{count}', String(hiddenSingleCount))}
+              </button>
+            )}
           </div>
         )}
 

@@ -82,7 +82,7 @@ export function FilamentDashboard({
                 </span>
               ) : (
                 <span
-                  className="w-9 h-9 rounded-md flex-none grid place-items-center text-[9px] font-bold text-[var(--ink-3)] bg-[var(--plate)] border border-[var(--line)]"
+                  className="w-9 h-9 rounded-md flex-none grid place-items-center text-compact-label font-bold text-[var(--ink-3)] bg-[var(--plate)] border border-[var(--line)]"
                 >
                   {spool.material.slice(0, 3).toUpperCase()}
                 </span>
@@ -109,7 +109,7 @@ export function FilamentDashboard({
                 <span className="inline-flex items-center gap-1.5 font-mono-ui text-[11px] font-semibold px-2 py-1 rounded-md bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)] truncate">
                   📍 {spool.location || t('noValue')}
                 </span>
-                <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide flex-none ${STOCK_BADGE_CLASS[status]}`}>
+                <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-compact-meta font-bold uppercase tracking-wide flex-none ${STOCK_BADGE_CLASS[status]}`}>
                   {statusLabel(status)}
                 </span>
               </div>
@@ -138,13 +138,13 @@ export function FilamentDashboard({
                   <span className="flex-1 text-[10.5px] text-[var(--ink)]">{t('deleteConfirmQuestion')}</span>
                   <button
                     onClick={onCancelDelete}
-                    className="h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[10.5px] cursor-pointer"
+                    className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[10.5px] cursor-pointer"
                   >
                     {t('cancel')}
                   </button>
                   <button
                     onClick={() => onConfirmDelete(spool.id)}
-                    className="h-6 px-1.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[10.5px] cursor-pointer"
+                    className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-6 px-1.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[10.5px] cursor-pointer"
                   >
                     {t('delete')}
                   </button>

@@ -195,7 +195,7 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
             <h2 id="printer-jobs-title" className="text-[17px] font-semibold">{t('printerJobsDialogTitle')}</h2>
             <p className="text-[13px] text-[var(--ink-2)]">{t('printerJobsDialogHint')}</p>
           </div>
-          <button type="button" aria-label={t('printersClose')} onClick={onClose} className="text-[var(--ink-2)] cursor-pointer">✕</button>
+          <button type="button" aria-label={t('printersClose')} onClick={onClose} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-2)] cursor-pointer">✕</button>
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -245,7 +245,7 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
                         modelAnchorRef.current = e.currentTarget;
                         setPicking(picking === job.id ? null : job.id);
                       }}
-                      className="flex items-center gap-2 rounded-md border border-dashed border-[var(--line-strong)] px-2 py-1.5 text-[12.5px] text-left cursor-pointer"
+                      className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex items-center gap-2 rounded-md border border-dashed border-[var(--line-strong)] px-2 py-1.5 text-[12.5px] text-left cursor-pointer"
                     >
                       {model ? (
                         <>
@@ -282,7 +282,7 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
                       type="button"
                       disabled={!row.spoolId || busy}
                       onClick={() => confirmJobs([job.id])}
-                      className="h-7 px-2 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12px] font-semibold cursor-pointer disabled:opacity-50"
+                      className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-7 px-2 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12px] font-semibold cursor-pointer disabled:opacity-50"
                     >
                       {t('printerJobConfirm')}
                     </button>
@@ -290,7 +290,7 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
                       type="button"
                       disabled={busy}
                       onClick={() => ignore(job.id)}
-                      className="h-7 px-2 text-[12px] text-[var(--ink-2)] cursor-pointer disabled:opacity-50"
+                      className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-7 px-2 text-[12px] text-[var(--ink-2)] cursor-pointer disabled:opacity-50"
                     >
                       {t('printerJobIgnore')}
                     </button>
@@ -315,14 +315,14 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
             )}
           </span>
           <div className="flex gap-2.5">
-            <button type="button" onClick={onClose} className="h-8 px-3 rounded-md border border-[var(--line-strong)] text-[12.5px] cursor-pointer">
+            <button type="button" onClick={onClose} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-md border border-[var(--line-strong)] text-[12.5px] cursor-pointer">
               {t('printerJobsLater')}
             </button>
             <button
               type="button"
               disabled={allConfirmDisabled}
               onClick={() => confirmJobs(bookable.map((j) => j.id))}
-              className="h-8 px-3 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-bold cursor-pointer disabled:opacity-50"
+              className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-bold cursor-pointer disabled:opacity-50"
             >
               {t('printerJobsConfirmAll').replace('{count}', () => String(bookable.length))}
             </button>

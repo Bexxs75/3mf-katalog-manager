@@ -55,7 +55,7 @@ export function FolderCatalogMenu({ folderId, name, x, y, onClose, onRemoved, re
     {error && <div role="alert"><ErrorText error={error} /></div>}
     <div className="flex gap-2 justify-end">
       <button data-initial-focus className={catalogActionButton} disabled={busy} onClick={onClose}>{t('cancel')}</button>
-      <button className={`${catalogActionBase} border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)]`} disabled={busy || !summary} {...lockProps} onClick={async () => {
+      <button className={`${catalogActionBase} hover:bg-[var(--panel-2)] hover:text-[var(--ink)] border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)]`} disabled={busy || !summary} {...lockProps} onClick={async () => {
         setBusy(true); setError(null);
         try { await invoke('remove_folder_from_catalog', { folderId }); onRemoved(); onClose(); }
         catch (e) {

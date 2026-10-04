@@ -6,6 +6,23 @@ export interface PluralForms {
 }
 
 export interface Translations {
+  filterBarAria: string;
+  filterBarHeading: string;
+  filterBarView: string;
+  filterBarCollection: string;
+  filterBarFolder: string;
+  filterBarTag: string;
+  filterBarSearch: string;
+  filterBarClearAll: string;
+  filterBarCount: string;
+  filterBarEmptyTitle: string;
+  filterBarEmptyText: string;
+  filterBarRemoveFolder: string;
+  filterBarRemoveCollection: string;
+  filterBarRemoveSearch: string;
+  tagsShowSingles: string;
+  tagsHideSingles: string;
+
   detailPrevious: string;
   detailNext: string;
   detailPosition: string;

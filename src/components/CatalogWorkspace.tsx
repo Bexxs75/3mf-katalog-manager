@@ -30,6 +30,7 @@ interface CatalogWorkspaceProps {
   sidebarWidth: ReturnType<typeof useSidebarWidth>;
   allFoldersCollapsed: boolean;
   onToggleAllFolders: () => void;
+  onClearFilters: () => void;
   query: string;
   setQuery: (q: string) => void;
   setActiveCollection: (id: string | null) => void;
@@ -125,6 +126,7 @@ export function CatalogWorkspace({
   sidebarWidth,
   allFoldersCollapsed,
   onToggleAllFolders,
+  onClearFilters,
   query,
   setQuery,
   setActiveCollection,
@@ -243,6 +245,23 @@ export function CatalogWorkspace({
   );
   // Counts over the whole catalog (without folder/tag/search) so they stay stable.
   const counts = useMemo(() => computeToolCounts(models, new Date()), [models]);
+  const displayedModels = activeCollection ? collectionModels : filtered;
+  const collectionName = collections.find(c => c.id === activeCollection)?.name ?? activeCollection ?? '';
+  const folderName = folders.find(f => f.id === activeFolderId)?.name ?? activeFolderId;
+  const chips = [
+    ...(toolView ? [{kind: 'filterBarView' as const, value: t(TOOL_VIEW_LABEL_KEY[toolView]),
+      removeLabel: t('chipRemove').replace('{label}', t(TOOL_VIEW_LABEL_KEY[toolView])), remove: () => setToolView(null)}] : []),
+    ...(activeCollection ? [{kind: 'filterBarCollection' as const, value: collectionName,
+      removeLabel: t('filterBarRemoveCollection').replace('{label}', collectionName), remove: () => setActiveCollection(null)}] : []),
+    ...(activeFolderId && activeFolderId !== 'all' ? [{kind: 'filterBarFolder' as const, value: folderName,
+      removeLabel: t('filterBarRemoveFolder').replace('{label}', folderName), remove: () => setActiveFolderId('all')}] : []),
+    ...(activeTag ? [{kind: 'filterBarTag' as const, value: `#${tagLabel(activeTag, language)}`,
+      removeLabel: t('chipRemove').replace('{label}', `#${tagLabel(activeTag, language)}`), remove: () => setActiveTag(null)}] : []),
+    ...(query ? [{kind: 'filterBarSearch' as const, value: query,
+      removeLabel: t('filterBarRemoveSearch').replace('{label}', query), remove: () => setQuery('')}] : []),
+  ];
+  const clearButtonClass = 'px-2.5 py-1 rounded-[5px] border border-[var(--accent)] text-[var(--accent)] text-[length:var(--font-size-control)] font-semibold hover:bg-[var(--accent-soft)] cursor-pointer';
+  const toolOnly = toolView && !activeCollection && activeFolderId === 'all' && !activeTag && !query;
   return (
     <div className="flex-1 flex min-h-0">
       <Sidebar
@@ -328,29 +347,24 @@ export function CatalogWorkspace({
 
       <main className="flex-1 min-w-0 flex flex-col min-h-0">
         {importRow}
-        {(activeTag || toolView) && (
-          <div className="flex-none h-[38px] flex items-center gap-2.5 px-4 border-b border-[var(--line)] bg-[var(--bg)]">
-            {toolView && (
-              <button
-                type="button"
-                onClick={() => setToolView(null)}
-                aria-label={t('chipRemove').replace('{label}', t(TOOL_VIEW_LABEL_KEY[toolView]))}
-                className="flex items-center gap-1.5 h-[22px] px-2 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] font-mono-ui text-[11px] cursor-pointer"
-              >
-                {t(TOOL_VIEW_LABEL_KEY[toolView])} ✕
-              </button>
-            )}
-            {activeTag && (
-              <button
-                type="button"
-                onClick={() => setActiveTag(null)}
-                aria-label={t('chipRemove').replace('{label}', `#${tagLabel(activeTag, language)}`)}
-                className="flex items-center gap-1.5 h-[22px] px-2 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] font-mono-ui text-[11px] cursor-pointer"
-              >
-                #{tagLabel(activeTag, language)} ✕
-              </button>
-            )}
-          </div>
+        {chips.length > 0 && (
+          <section aria-label={t('filterBarAria')} className="flex-none flex flex-wrap items-center gap-x-2 gap-y-1.5 px-4 py-2 border-b border-[var(--line)] bg-[var(--bg)]">
+            <span className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.1em] uppercase text-[var(--ink-3)]">{t('filterBarHeading')}</span>
+            {chips.map(chip => (
+              <span key={chip.kind} className="inline-flex max-w-full items-center gap-1.5 pl-2 pr-1 py-0.5 rounded-full border border-[var(--line-strong)] bg-[var(--panel)] text-[length:var(--font-size-control)]">
+                <span data-filter-kind className="font-mono-ui text-[length:var(--font-size-label)] tracking-[0.06em] uppercase text-[var(--ink-3)]">{t(chip.kind)}</span>
+                <b className="min-w-0 break-words font-semibold">{chip.value}</b>
+                <button type="button" onClick={chip.remove} aria-label={chip.removeLabel}
+                  className="flex-none w-5 h-5 grid place-items-center rounded-full text-[var(--ink-3)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] cursor-pointer">✕</button>
+              </span>
+            ))}
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <span aria-live="polite" className="font-mono-ui text-[length:var(--font-size-meta)] text-[var(--ink-2)] tabular-nums">
+                {t('filterBarCount').replace('{count}', String(displayedModels.length)).replace('{total}', String(models.length))}
+              </span>
+              <button type="button" onClick={onClearFilters} className={clearButtonClass}>{t('filterBarClearAll')}</button>
+            </div>
+          </section>
         )}
 
         {!detailModel && selectedForBulk.size > 0 && (
@@ -435,9 +449,15 @@ export function CatalogWorkspace({
           />
         ) : (
           <div ref={node => { containerRef.current = node; scrollRef(node); }} data-catalog-scroller onScroll={event => { savedScroll.current = event.currentTarget.scrollTop; }} className="flex-1 overflow-y-auto overscroll-contain p-4">
-            {toolView && filtered.length === 0 && !activeCollection ? (
+            {toolOnly && displayedModels.length === 0 ? (
               <div className="font-mono-ui text-[length:var(--font-size-item)] text-[var(--ink-3)] px-1.5 py-8 text-center">
                 {t('toolViewEmpty')}
+              </div>
+            ) : chips.length > 0 && displayedModels.length === 0 ? (
+              <div className="flex flex-col items-center gap-2.5 border border-dashed border-[var(--line-strong)] rounded-[10px] px-5 py-8 text-center">
+                <h3 className="font-semibold text-[length:var(--font-size-body)]">{t('filterBarEmptyTitle')}</h3>
+                <p className="max-w-[48ch] text-[length:var(--font-size-body)] text-[var(--ink-2)]">{t('filterBarEmptyText').replace('{total}', String(models.length))}</p>
+                <button type="button" onClick={onClearFilters} className={clearButtonClass}>{t('filterBarClearAll')}</button>
               </div>
             ) : view === 'grid' ? (
               <ModelGrid

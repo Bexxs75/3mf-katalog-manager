@@ -91,7 +91,7 @@ export function SpoolPicker({ spools: allSpools, value, onChange, label, placeho
         aria-expanded={open}
         aria-label={`${label}: ${selected ? text(selected, language) : placeholder ?? ''}`}
         onClick={() => setOpen((o) => !o)}
-        className="w-full h-8 px-2 flex items-center gap-2 rounded-md border border-[var(--line-strong)] bg-[var(--panel-2)] text-[12.5px] text-left cursor-pointer"
+        className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] w-full h-8 px-2 flex items-center gap-2 rounded-md border border-[var(--line-strong)] bg-[var(--panel-2)] text-[12.5px] text-left cursor-pointer"
       >
         {selected ? (
           <>
@@ -102,7 +102,7 @@ export function SpoolPicker({ spools: allSpools, value, onChange, label, placeho
         ) : (
           <span className="text-[var(--ink-3)] truncate flex-1">{placeholder}</span>
         )}
-        <span className="flex-none text-[10px] text-[var(--ink-3)]">▾</span>
+        <span className="flex-none text-compact-meta text-[var(--ink-3)]">▾</span>
       </button>
       {open &&
         popup &&

@@ -135,7 +135,7 @@ export function BulkActionToolbar({
           <span className="text-[12px] text-[var(--ink-2)]">{t('removeModelHint')}</span>
           {error && <span role="alert" className="font-mono-ui text-[length:var(--font-size-meta)] text-[var(--accent)]">{error}</span>}
           <button ref={cancelRef} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50" disabled={busy} onClick={() => setConfirmRemove(false)}>{t('cancel')}</button>
-          <button className="h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer disabled:opacity-50" disabled={busy} {...lockProps} onClick={async () => {
+          <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer disabled:opacity-50" disabled={busy} {...lockProps} onClick={async () => {
             if (!onBulkRemove) return;
             setBusy(true); setError(null);
             try { await onBulkRemove(); setConfirmRemove(false); }
@@ -157,7 +157,7 @@ export function BulkActionToolbar({
           </button>
           <button {...lockProps}
             onClick={onBulkDelete}
-            className="h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
+            className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
           >
             {t('delete')}
           </button>
@@ -234,7 +234,7 @@ export function BulkActionToolbar({
                 />
                 <button
                   onClick={onSubmitBulkAddTag}
-                  className="h-7 px-2.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[11.5px] font-semibold cursor-pointer whitespace-nowrap"
+                  className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-7 px-2.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[11.5px] font-semibold cursor-pointer whitespace-nowrap"
                 >
                   {t('confirmSlicerName')}
                 </button>

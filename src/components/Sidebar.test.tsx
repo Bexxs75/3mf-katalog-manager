@@ -275,3 +275,31 @@ it('shows rename errors and retains the draft for correction', async () => {
   expect(screen.getByRole('alert')).toHaveTextContent('Invalid name');
   expect(input).toHaveValue('New'); expect(input).toBeEnabled();
 });
+
+
+it('reveals and hides single-model tags in alphabetical order with the correct count', () => {
+  const tags = [{label: 'Zulu', count: 1, colorHue: 20}, {label: 'Beta', count: 3, colorHue: 30}, {label: 'Alpha', count: 1, colorHue: 50}];
+  render(<LanguageProvider><Sidebar {...baseProps} tags={tags}
+    expansion={{expanded: new Set<string>(), toggle: vi.fn(), isExpanded: () => false, setAll: vi.fn(), expand: vi.fn()}}
+    width={242} setWidth={vi.fn()} resetWidth={vi.fn()} allFoldersCollapsed onToggleAllFolders={vi.fn()} /></LanguageProvider>);
+  fireEvent.click(screen.getByText('Tags'));
+  const toggle = screen.getByRole('button', {name: '2 weitere Tags mit nur einem Modell anzeigen'});
+  expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.queryByText('#Alpha')).toBeNull();
+  fireEvent.click(toggle);
+  expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  expect(toggle).toHaveTextContent('Nur Tags mit mindestens 2 Modellen anzeigen');
+  expect(Array.from(screen.getByText('#Alpha').parentElement!.querySelectorAll('button')).map(node => node.textContent?.replace(/[0-9]/g, '').trim())).toEqual(['#Alpha', '#Beta', '#Zulu']);
+  fireEvent.change(screen.getByPlaceholderText('Tags filtern …'), {target: {value: 'Alpha'}});
+  expect(screen.queryByRole('button', {name: 'Nur Tags mit mindestens 2 Modellen anzeigen'})).toBeNull();
+  expect(screen.getByText('#Alpha')).toBeVisible();
+  fireEvent.change(screen.getByPlaceholderText('Tags filtern …'), {target: {value: ''}});
+  fireEvent.click(screen.getByRole('button', {name: 'Nur Tags mit mindestens 2 Modellen anzeigen'}));
+  expect(screen.queryByText('#Alpha')).toBeNull();
+});
+
+it('has no single-model tag toggle when there are no single-model tags', () => {
+  render(<LanguageProvider><Harness /></LanguageProvider>);
+  fireEvent.click(screen.getByText('Tags'));
+  expect(screen.queryByRole('button', {name: /weitere Tags/})).toBeNull();
+});

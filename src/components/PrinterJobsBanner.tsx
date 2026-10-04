@@ -29,7 +29,7 @@ export function PrinterJobsBanner({ jobs, onReview }: Props) {
       <button
         type="button"
         onClick={onReview}
-        className="h-8 px-3 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12px] font-bold cursor-pointer"
+        className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12px] font-bold cursor-pointer"
       >
         {t('printerJobsReview')}
       </button>

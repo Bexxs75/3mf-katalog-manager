@@ -110,3 +110,61 @@ it.each([false, true])('deletes through the sidebar hook, preserves models and r
   else expect(screen.getByRole('main')).toHaveTextContent('Kept.stl');
   expect(invoke).not.toHaveBeenCalledWith('delete_file', expect.anything());
 });
+
+it('clears folder, tag, search and tool filters through App setters while retaining view and sorting', async () => {
+  const folders = [makeFolder({id: 'a', name: 'Folder A'})];
+  const files = [makeModelFileSummary({id: 'one', name: 'Cube', folderId: 'a', favorite: true}),
+    makeModelFileSummary({id: 'two', name: 'Sphere', folderId: 'a'})];
+  const fallback = vi.mocked(invoke).getMockImplementation()!;
+  vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+    if (cmd === 'list_folders') return folders;
+    if (cmd === 'list_file_summaries') return files;
+    if (cmd === 'list_all_file_tags') return {one: ['test'], two: ['test']};
+    if (cmd === 'list_tag_counts') return [{label: 'test', count: 2, colorHue: 20}];
+    return fallback(cmd, args);
+  });
+  await act(async () => render(<LanguageProviderWithDiagnostics><UiDensityProvider><App /></UiDensityProvider></LanguageProviderWithDiagnostics>));
+  const sidebar = within(screen.getByRole('separator').closest('aside')!);
+  const header = within(screen.getByRole('banner'));
+  fireEvent.click(header.getByRole('button', {name: de.viewList}));
+  fireEvent.click(header.getByRole('button', {name: /↑/}));
+  fireEvent.click(header.getByRole('menuitemradio', {name: de.sortSize}));
+  fireEvent.keyDown(document, {key: 'Escape'});
+  const sortBefore = header.getByRole('button', {name: /↓/}).textContent;
+  fireEvent.click(sidebar.getByRole('button', {name: /Folder A/}));
+  fireEvent.click(sidebar.getByText(de.tagsHeading));
+  fireEvent.click(sidebar.getByRole('button', {name: /#test/}));
+  fireEvent.change(sidebar.getByPlaceholderText(de.searchPlaceholder), {target: {value: 'Cube'}});
+  fireEvent.click(sidebar.getByRole('button', {name: /Favoriten/}));
+  expect(screen.getByRole('region', {name: de.filterBarAria}).querySelectorAll('[data-filter-kind]')).toHaveLength(4);
+  fireEvent.click(screen.getByRole('button', {name: de.filterBarClearAll}));
+  expect(screen.queryByRole('region', {name: de.filterBarAria})).toBeNull();
+  expect(sidebar.getByPlaceholderText(de.searchPlaceholder)).toHaveValue('');
+  expect(sidebar.getByRole('button', {name: /Alle Modelle/})).toHaveClass('font-semibold');
+  expect(sidebar.getByRole('button', {name: /Favoriten/})).toHaveAttribute('aria-pressed', 'false');
+  expect(sidebar.getByRole('button', {name: /#test/})).not.toHaveClass('text-[var(--accent)]');
+  expect(header.getByRole('button', {name: de.viewList})).toHaveClass('bg-[var(--accent)]');
+  expect(header.getByRole('button', {name: /↓/})).toHaveTextContent(sortBefore!);
+  expect(screen.getByRole('main')).toHaveTextContent('Sphere');
+  expect(invoke).not.toHaveBeenCalledWith('reset_catalog');
+});
+
+it('clears an active collection without resetting the catalog', async () => {
+  const model = makeModelFileSummary({name: 'Cube'});
+  const fallback = vi.mocked(invoke).getMockImplementation()!;
+  vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+    if (cmd === 'list_collections') return [{id: 'c1', name: 'Kitchen', modelCount: 1}];
+    if (cmd === 'list_file_summaries') return [model];
+    if (cmd === 'list_collection_files') return [makeModelFile({name: 'Cube'})];
+    if (cmd === 'list_all_file_tags') return {};
+    return fallback(cmd, args);
+  });
+  await act(async () => render(<LanguageProviderWithDiagnostics><UiDensityProvider><App /></UiDensityProvider></LanguageProviderWithDiagnostics>));
+  const sidebar = within(screen.getByRole('separator').closest('aside')!);
+  await act(async () => fireEvent.click(sidebar.getByRole('button', {name: 'Kitchen'})));
+  fireEvent.click(screen.getByRole('button', {name: de.filterBarClearAll}));
+  expect(screen.queryByRole('region', {name: de.filterBarAria})).toBeNull();
+  expect(sidebar.getByRole('button', {name: 'Kitchen'})).not.toHaveClass('font-semibold');
+  expect(screen.getByRole('main')).toHaveTextContent('Cube');
+  expect(invoke).not.toHaveBeenCalledWith('reset_catalog');
+});

@@ -150,7 +150,7 @@ export function Header({
           >
             {sortOptions.find((o) => o.value === sort)?.label}
             <span className="font-mono-ui text-[var(--accent)]">{sortDirection === 'asc' ? '↑' : '↓'}</span>
-            <span className="text-[9px] leading-none text-[var(--ink-3)]">▾</span>
+            <span className="text-compact-label leading-none text-[var(--ink-3)]">▾</span>
           </button>
           {sortMenuOpen && (
             <div data-navigation-menu role="menu" className="absolute top-9 left-0 min-w-[280px] w-max py-1 bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)] z-40">

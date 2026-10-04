@@ -68,7 +68,7 @@ const ICONS = {
 const rowBase =
   'w-full flex items-center gap-2.5 h-7 px-1.5 rounded-[5px] text-left text-[length:var(--font-size-item)] cursor-pointer disabled:cursor-default disabled:opacity-50';
 const rowIdle = 'text-[var(--ink-2)] hover:bg-[var(--panel-2)] hover:text-[var(--ink)]';
-const rowActive = 'bg-[var(--accent-soft)] text-[var(--accent)]';
+const rowActive = 'bg-[var(--accent-soft)] text-[var(--accent)] hover:text-[var(--ink)]';
 
 function Count({ value, active }: { value: number; active?: boolean }) {
   return (
@@ -116,7 +116,7 @@ export function ToolsSection(props: ToolsSectionProps) {
         type="button"
         aria-expanded={!collapsed}
         onClick={() => setCollapsed((c) => !c)}
-        className="w-full flex items-center justify-between px-1.5 pt-[18px] pb-2 cursor-pointer bg-transparent border-0 text-left"
+        className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] w-full flex items-center justify-between px-1.5 pt-[18px] pb-2 cursor-pointer bg-transparent border-0 text-left"
       >
         <span className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)]">
           {t('toolsHeading')}

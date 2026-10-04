@@ -55,7 +55,7 @@ const railBtnActive =
 
 const segBase =
   'h-[26px] px-3 rounded-[2px] text-[length:var(--font-size-control)] font-medium cursor-pointer transition-colors';
-const segActive = 'bg-[var(--accent)] text-[var(--accent-ink)]';
+const segActive = 'bg-[var(--accent)] text-[var(--accent-ink)] hover:bg-[var(--panel-2)] hover:text-[var(--ink)]';
 const segInactive = 'text-[var(--ink-2)] hover:text-[var(--ink)]';
 
 const LANGUAGE_LABELS: Record<Language, string> = {
@@ -161,7 +161,7 @@ export function Rail({
         >
           <Icon name="trash" />
           {trashCount > 0 && (
-            <span className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-[3px] rounded-full bg-[var(--accent)] text-[var(--accent-ink)] text-[9px] font-bold font-mono-ui grid place-items-center">
+            <span className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-[3px] rounded-full bg-[var(--accent)] text-[var(--accent-ink)] text-compact-label font-bold font-mono-ui grid place-items-center">
               {trashCount}
             </span>
           )}
@@ -225,7 +225,7 @@ export function Rail({
               <>
                 <div className="mb-4 p-2 border border-[var(--line)] rounded text-[12px]">
                   <p>{t('settingsPrintersMovedHint')}</p>
-                  <button className="mt-2 text-[var(--accent)] focus-visible:outline-2" onClick={() => {
+                  <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] mt-2 text-[var(--accent)] focus-visible:outline-2" onClick={() => {
                     onSettingsOpenChange(false); onMainViewChange('printers');
                   }}>{t('pmOpen')}</button>
                 </div>
@@ -314,7 +314,7 @@ export function Rail({
                           <button
                             onClick={() => onSetPrimarySlicer(s.id)}
                             aria-label={t('setPrimarySlicerAria')}
-                            className="flex-none w-3.5 h-3.5 rounded-full border cursor-pointer grid place-items-center"
+                            className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-none w-3.5 h-3.5 rounded-full border cursor-pointer grid place-items-center"
                             style={{ borderColor: isPrimary ? 'var(--accent)' : 'var(--line-strong)' }}
                           >
                             {isPrimary && <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent)' }} />}
@@ -323,7 +323,7 @@ export function Rail({
                             <div className="text-[length:var(--font-size-title)] text-[var(--ink)] truncate">{s.name}</div>
                             <div className="flex items-center gap-1.5">
                               {isPrimary && (
-                                <span className="flex-none font-mono-ui text-[9px] tracking-[0.08em] uppercase px-1.5 rounded-full" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                                <span className="flex-none font-mono-ui text-compact-label tracking-[0.08em] uppercase px-1.5 rounded-full" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
                                   {t('slicerPrimaryChip')}
                                 </span>
                               )}
@@ -464,7 +464,7 @@ export function Rail({
                   <span>{t('infoCommunityLabel')}</span>
                   <span
                     onClick={() => invoke('open_discord_invite').catch(() => {})}
-                    className="flex items-center gap-1 cursor-pointer font-semibold"
+                    className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex items-center gap-1 cursor-pointer font-semibold"
                     style={{ color: '#5865F2' }}
                   >
                     <svg width="13" height="13" viewBox="0 0 127.14 96.36" fill="currentColor">

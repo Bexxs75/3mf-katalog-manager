@@ -137,14 +137,17 @@ export default function App() {
     store.setModels((models) => models.filter((model) => !fileIds.includes(model.id)));
     refreshAfterRemoval();
   };
-  const finishCatalogReset = () => {
-    resetCatalogSetup();
+  const clearCatalogFilters = () => {
     collections.setActiveCollection(null);
     collections.setCollectionsGalleryOpen(false);
     filters.setActiveFolderId('all');
     filters.setActiveTag(null);
     filters.setQuery('');
     filters.setToolView(null);
+  };
+  const finishCatalogReset = () => {
+    resetCatalogSetup();
+    clearCatalogFilters();
     setContextMenu(null);
     setSettingsOpen(false);
     setMainView('catalog');
@@ -342,6 +345,7 @@ export default function App() {
               sidebarWidth={sidebarWidth}
               allFoldersCollapsed={allFoldersCollapsed}
               onToggleAllFolders={toggleAllFolders}
+              onClearFilters={clearCatalogFilters}
               query={filters.query}
               setQuery={filters.setQuery}
               setActiveCollection={collections.setActiveCollection}

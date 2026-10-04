@@ -1,6 +1,23 @@
 import type { Translations } from './types';
 
 export const en: Translations = {
+  filterBarAria: "Active filters",
+  filterBarHeading: "Filters",
+  filterBarView: "View",
+  filterBarCollection: "Collection",
+  filterBarFolder: "Folder",
+  filterBarTag: "Tag",
+  filterBarSearch: "Search",
+  filterBarClearAll: "Clear all",
+  filterBarCount: "{count} of {total}",
+  filterBarEmptyTitle: "No model matches these filters",
+  filterBarEmptyText: "Remove a filter or clear them all to see all {total} models again.",
+  filterBarRemoveFolder: "Remove folder filter {label}",
+  filterBarRemoveCollection: "Remove collection filter {label}",
+  filterBarRemoveSearch: "Remove search filter {label}",
+  tagsShowSingles: "Show {count} more tags with only one model",
+  tagsHideSingles: "Show only tags with at least 2 models",
+
   detailPrevious: "Previous model",
   detailNext: "Next model",
   detailPosition: "{index} of {total}",

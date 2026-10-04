@@ -225,7 +225,7 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
                 </button>
                 <button
                   onClick={onClose}
-                  className="h-8 px-3 rounded-[6px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
+                  className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-[6px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
                 >
                   {t('catalogSetupDoneButton')}
                 </button>
@@ -355,7 +355,7 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
                       type="button"
                       onClick={createAndSetupNew}
                       disabled={busy !== null || !parent || problem !== null || blockingText !== undefined}
-                      className="h-8 px-3 rounded-[6px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-[6px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {t('catalogSetupNewCreateButton')}
                     </button>

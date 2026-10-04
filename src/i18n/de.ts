@@ -1,6 +1,23 @@
 import type { Translations } from './types';
 
 export const de: Translations = {
+  filterBarAria: "Aktive Filter",
+  filterBarHeading: "Filter",
+  filterBarView: "Ansicht",
+  filterBarCollection: "Sammlung",
+  filterBarFolder: "Ordner",
+  filterBarTag: "Tag",
+  filterBarSearch: "Suche",
+  filterBarClearAll: "Alle löschen",
+  filterBarCount: "{count} von {total}",
+  filterBarEmptyTitle: "Kein Modell passt zu diesen Filtern",
+  filterBarEmptyText: "Entferne einen Filter oder setze alle zurück, um wieder alle {total} Modelle zu sehen.",
+  filterBarRemoveFolder: "Ordnerfilter {label} entfernen",
+  filterBarRemoveCollection: "Sammlungsfilter {label} entfernen",
+  filterBarRemoveSearch: "Suchfilter {label} entfernen",
+  tagsShowSingles: "{count} weitere Tags mit nur einem Modell anzeigen",
+  tagsHideSingles: "Nur Tags mit mindestens 2 Modellen anzeigen",
+
   detailPrevious: "Vorheriges Modell",
   detailNext: "Nächstes Modell",
   detailPosition: "{index} von {total}",

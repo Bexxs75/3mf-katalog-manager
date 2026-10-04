@@ -71,7 +71,7 @@ export function ColorPicker({ value, onChange }: Props) {
             tabIndex={index === focusableIndex ? 0 : -1}
             onClick={() => onChange(hex)}
             onKeyDown={(e) => handleKeyDown(e, index)}
-            className={`w-6 h-6 rounded-[4px] border border-[var(--line-strong)] cursor-pointer ${
+            className={`hover:border-[var(--accent)] w-6 h-6 rounded-[4px] border border-[var(--line-strong)] cursor-pointer ${
               value === hex ? 'outline outline-2 outline-offset-1 outline-[var(--accent)]' : ''
             }`}
             style={{ backgroundColor: hex }}

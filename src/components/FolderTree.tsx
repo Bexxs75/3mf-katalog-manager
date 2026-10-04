@@ -99,7 +99,7 @@ export function FolderTree({
           style={{ paddingLeft: 6 + depth * 16 }}
           className={`flex items-center gap-1.5 h-7 pr-2 rounded-[7px] cursor-pointer select-none text-[12.5px] border ${
             node.id === activeFolderId
-              ? 'bg-[var(--accent-soft)] text-[var(--accent)] font-semibold'
+              ? 'bg-[var(--accent-soft)] text-[var(--accent)] font-semibold hover:text-[var(--ink)]'
               : 'text-[var(--ink-2)] hover:bg-[var(--panel-2)] hover:text-[var(--ink)]'
           } ${
             isDraggedOver ? 'border-[var(--accent)] bg-[var(--accent-soft)] shadow-[0_0_0_2px_var(--accent-soft)]' : validFileTarget ? 'border-dashed border-[var(--line-strong)]' : 'border-transparent'
@@ -113,13 +113,13 @@ export function FolderTree({
               e.stopPropagation();
               expansion.toggle(node.id);
             }}
-            className={`w-3.5 text-[9px] text-[var(--ink-3)] ${node.children.length === 0 ? 'invisible' : ''}`}
+            className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] w-3.5 text-compact-label text-[var(--ink-3)] ${node.children.length === 0 ? 'invisible' : ''}`}
           >
             {isOpen ? '▾' : '▸'}
           </span>
           <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{node.name}</span>
           <span className="font-mono-ui text-[10.5px] text-[var(--ink-3)]">{node.count}</span>
-          {isDraggedOver && <span className="font-mono-ui text-[10px] text-[var(--accent)]">{t('dropHereLabel')}</span>}
+          {isDraggedOver && <span className="font-mono-ui text-compact-meta text-[var(--accent)]">{t('dropHereLabel')}</span>}
         </div>
         {isOpen && node.children.map((c) => renderNode(c, depth + 1))}
       </div>
@@ -136,7 +136,7 @@ export function FolderTree({
         onClick={() => onSelect('all')}
         className={`flex items-center gap-2 h-7 px-1.5 rounded-[7px] cursor-pointer text-[12.5px] ${
           activeFolderId === 'all'
-            ? 'bg-[var(--accent-soft)] text-[var(--accent)] font-semibold'
+            ? 'bg-[var(--accent-soft)] text-[var(--accent)] font-semibold hover:text-[var(--ink)]'
             : 'text-[var(--ink-2)] hover:bg-[var(--panel-2)] hover:text-[var(--ink)]'
         }`}
       >

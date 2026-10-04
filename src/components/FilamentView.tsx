@@ -242,7 +242,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
   const storageIsTarget = drag.draggingFromSlot !== null && drag.target?.kind === 'storage';
 
   const segBase = 'h-8 px-3.5 rounded-[6px] text-[12.5px] font-semibold cursor-pointer';
-  const segActive = 'bg-[var(--panel)] text-[var(--ink)] shadow-[var(--shadow)]';
+  const segActive = 'bg-[var(--panel)] text-[var(--ink)] shadow-[var(--shadow)] hover:bg-[var(--panel-2)]';
   const segInactive = 'text-[var(--ink-3)] hover:text-[var(--ink)]';
 
   return (
@@ -274,11 +274,11 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
           <div className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3.5 py-2.5">
-            <div className="text-[10px] uppercase tracking-wider font-bold text-[var(--ink-3)] mb-1.5">{kind === 'resin' ? t('resinStatTotal') : t('filamentStatTotal')}</div>
+            <div className="text-compact-meta uppercase tracking-wider font-bold text-[var(--ink-3)] mb-1.5">{kind === 'resin' ? t('resinStatTotal') : t('filamentStatTotal')}</div>
             <div className="font-mono-ui text-[19px] font-bold tabular-nums">{stats.total}</div>
           </div>
           <div className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3.5 py-2.5">
-            <div className="text-[10px] uppercase tracking-wider font-bold text-[var(--ink-3)] mb-1.5">{t('filamentStatRemaining')}</div>
+            <div className="text-compact-meta uppercase tracking-wider font-bold text-[var(--ink-3)] mb-1.5">{t('filamentStatRemaining')}</div>
             {/* Filament: sum over remaining weights precise to 0.1 g, rounded to
                 whole grams (printer connection spec). Resin: milliliters, precise to 0.1 ml. */}
             <div className="font-mono-ui text-[19px] font-bold tabular-nums">
@@ -288,11 +288,11 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
             </div>
           </div>
           <div className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3.5 py-2.5">
-            <div className="text-[10px] uppercase tracking-wider font-bold text-[var(--ink-3)] mb-1.5">{t('filamentStatLocations')}</div>
+            <div className="text-compact-meta uppercase tracking-wider font-bold text-[var(--ink-3)] mb-1.5">{t('filamentStatLocations')}</div>
             <div className="font-mono-ui text-[19px] font-bold tabular-nums">{stats.locations}</div>
           </div>
           <div className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3.5 py-2.5">
-            <div className="text-[10px] uppercase tracking-wider font-bold text-[var(--ink-3)] mb-1.5">{t('filamentStatAttention')}</div>
+            <div className="text-compact-meta uppercase tracking-wider font-bold text-[var(--ink-3)] mb-1.5">{t('filamentStatAttention')}</div>
             <div className={`font-mono-ui text-[19px] font-bold tabular-nums ${stats.attention > 0 ? 'text-[var(--warn)]' : ''}`}>
               {stats.attention}
             </div>
@@ -348,7 +348,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
 
           <button
             onClick={openAddPanel}
-            className="ml-auto h-8 px-3.5 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-bold cursor-pointer flex items-center gap-1.5"
+            className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] ml-auto h-8 px-3.5 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-bold cursor-pointer flex items-center gap-1.5"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6"><path d="M12 5v14M5 12h14" /></svg>
             {kind === 'resin' ? t('resinOpenAddPanelButton') : t('filamentOpenAddPanelButton')}

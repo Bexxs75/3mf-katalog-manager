@@ -56,7 +56,7 @@ export function TrashView({
               </button>
               <button {...lockProps}
                 onClick={onEmptyTrash}
-                className="h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
+                className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
               >
                 {t('emptyTrashButton')}
               </button>

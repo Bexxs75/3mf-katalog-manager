@@ -93,7 +93,7 @@ export function DetailPanel({
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 pt-3.5 pb-1">
-          <div className="font-mono-ui text-[10px] tracking-[0.12em] uppercase text-[var(--ink-3)] pb-2">
+          <div className="font-mono-ui text-compact-meta tracking-[0.12em] uppercase text-[var(--ink-3)] pb-2">
             {t('metadataHeading')}
           </div>
           {rows.map((row) => (
@@ -119,7 +119,7 @@ export function DetailPanel({
             </button>
             <button {...lockProps}
               onClick={onDeletePermanently}
-              className="flex-1 h-8 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
+              className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 h-8 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
             >
               {t('deletePermanentlyLabel')}
             </button>
@@ -200,7 +200,7 @@ export function DetailPanel({
         </div>
 
         <div className="px-4 pt-3.5 pb-1">
-          <div className="font-mono-ui text-[10px] tracking-[0.12em] uppercase text-[var(--ink-3)] pb-2">
+          <div className="font-mono-ui text-compact-meta tracking-[0.12em] uppercase text-[var(--ink-3)] pb-2">
             {t('metadataHeading')}
           </div>
           {buildMetaRows(model, t, language).map((row) => (
@@ -248,7 +248,7 @@ export function DetailPanel({
               )}
               <span
                 onClick={startEditingSourceUrl}
-                className="flex-none w-4 h-4 grid place-items-center rounded-full cursor-pointer text-[10px] text-[var(--ink-3)] hover:bg-[var(--panel-2)]"
+                className="flex-none w-4 h-4 grid place-items-center rounded-full cursor-pointer text-compact-meta text-[var(--ink-3)] hover:bg-[var(--panel-2)]"
               >
                 ✎
               </span>
@@ -257,7 +257,7 @@ export function DetailPanel({
         </div>
 
         <div className="px-4 pt-[18px] pb-5">
-          <div className="font-mono-ui text-[10px] tracking-[0.12em] uppercase text-[var(--ink-3)] pb-2.5">
+          <div className="font-mono-ui text-compact-meta tracking-[0.12em] uppercase text-[var(--ink-3)] pb-2.5">
             {t('hashtagsHeading')}
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -269,7 +269,7 @@ export function DetailPanel({
                 #{tagLabel(tag, language)}
                 <span
                   onClick={() => onRemoveTag(tag)}
-                  className="w-4 h-4 grid place-items-center rounded-full cursor-pointer text-[10px] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
+                  className="w-4 h-4 grid place-items-center rounded-full cursor-pointer text-compact-meta hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
                 >
                   ✕
                 </span>
@@ -289,7 +289,7 @@ export function DetailPanel({
 
       <div className="flex-none px-4 py-3 border-t border-[var(--line)] bg-[var(--panel-2)]">
         {slicerError && (
-          <div className="pb-2 font-mono-ui text-[10px] text-[var(--accent)] break-words">
+          <div className="pb-2 font-mono-ui text-compact-meta text-[var(--accent)] break-words">
             {t('slicerLaunchError')} <ErrorText error={slicerError} />
           </div>
         )}
@@ -310,7 +310,7 @@ export function DetailPanel({
                   setConfirmDelete(false);
                   onDelete();
                 }}
-                className="flex-none h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
+                className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-none h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
               >
                 {t('delete')}
               </button>
@@ -373,7 +373,7 @@ export function DetailPanel({
           <button
             onClick={onToggleFavorite}
             aria-label={model.favorite ? t('favoriteRemove') : t('favoriteAdd')}
-            className={`flex-none text-[19px] ${model.favorite ? 'text-[var(--accent)]' : 'text-[var(--ink-3)]'}`}
+            className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-none text-[19px] ${model.favorite ? 'text-[var(--accent)]' : 'text-[var(--ink-3)]'}`}
           >
             {model.favorite ? '♥' : '♡'}
           </button>
@@ -480,7 +480,7 @@ export function DetailPanel({
             </span>
             <button
               onClick={() => setConfirmDelete(false)}
-              className="h-10 px-4 rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] font-semibold cursor-pointer"
+              className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-10 px-4 rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] font-semibold cursor-pointer"
               style={{ fontSize: 'var(--font-size-body)' }}
             >
               {t('cancel')}
@@ -490,7 +490,7 @@ export function DetailPanel({
                 setConfirmDelete(false);
                 onDelete();
               }}
-              className="h-10 px-4 rounded-lg bg-[var(--accent)] text-[var(--accent-ink)] font-semibold cursor-pointer"
+              className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-10 px-4 rounded-lg bg-[var(--accent)] text-[var(--accent-ink)] font-semibold cursor-pointer"
               style={{ fontSize: 'var(--font-size-body)' }}
             >
               {t('delete')}
@@ -500,7 +500,7 @@ export function DetailPanel({
           <>
             <button
               onClick={() => onOpenInSlicer()}
-              className="flex-1 h-11 px-4 flex items-center gap-2.5 justify-center font-bold cursor-pointer bg-[var(--accent)] text-[var(--accent-ink)] rounded-lg"
+              className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 h-11 px-4 flex items-center gap-2.5 justify-center font-bold cursor-pointer bg-[var(--accent)] text-[var(--accent-ink)] rounded-lg"
               style={{ fontSize: 'var(--font-size-body)' }}
             >
               🖨 {t('openInSlicer')}

@@ -104,7 +104,7 @@ export function FilamentTable({
               <th
                 key={col.key}
                 onClick={() => toggleSort(col.key)}
-                className="text-left text-[10.5px] uppercase tracking-wider font-bold text-[var(--ink-3)] px-3 py-2.5 border-b border-[var(--line)] bg-[var(--panel-2)] cursor-pointer whitespace-nowrap select-none"
+                className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-left text-[10.5px] uppercase tracking-wider font-bold text-[var(--ink-3)] px-3 py-2.5 border-b border-[var(--line)] bg-[var(--panel-2)] cursor-pointer whitespace-nowrap select-none"
               >
                 {col.label}{' '}
                 <span className={sortKey === col.key ? 'text-[var(--accent)] opacity-100' : 'opacity-30'}>
@@ -180,7 +180,7 @@ export function FilamentTable({
                   {spool.price !== null ? formatPrice(spool.price, language) : t('noValue')}
                 </td>
                 <td className="px-3 py-2.5 border-b border-[var(--line)]">
-                  <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide ${STOCK_BADGE_CLASS[status]}`}>
+                  <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-compact-meta font-bold uppercase tracking-wide ${STOCK_BADGE_CLASS[status]}`}>
                     {statusLabel(status)}
                   </span>
                 </td>
@@ -189,13 +189,13 @@ export function FilamentTable({
                     <span className="inline-flex items-center gap-1.5">
                       <button
                         onClick={onCancelDelete}
-                        className="h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[10.5px] cursor-pointer"
+                        className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[10.5px] cursor-pointer"
                       >
                         {t('cancel')}
                       </button>
                       <button
                         onClick={() => onConfirmDelete(spool.id)}
-                        className="h-6 px-1.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[10.5px] cursor-pointer"
+                        className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-6 px-1.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[10.5px] cursor-pointer"
                       >
                         {t('delete')}
                       </button>

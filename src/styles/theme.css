@@ -34,8 +34,8 @@ body { font-family: 'Barlow', Helvetica, sans-serif; }
   --line-strong: oklch(0.82 0.008 60);
   --ink: oklch(0.245 0.01 45);
   --ink-2: oklch(0.505 0.01 50);
-  --ink-3: oklch(0.645 0.008 50);
-  --accent: oklch(0.565 0.165 30);
+  --ink-3: oklch(0.544 0.008 50);
+  --accent: oklch(0.545 0.165 30);
   --accent-ink: oklch(0.99 0.01 30);
   --accent-soft: oklch(0.945 0.03 30);
   --plate: oklch(0.915 0.006 60);
@@ -47,11 +47,11 @@ body { font-family: 'Barlow', Helvetica, sans-serif; }
      from --accent (30deg) so "status" isn't confused with "brand/primary
      action". --good also covers the existing
      var(--good,var(--accent)) fallback in the print status badge. */
-  --good: oklch(0.52 0.13 150);
+  --good: oklch(0.515 0.13 150);
   --good-soft: oklch(0.94 0.045 150);
-  --warn: oklch(0.62 0.14 80);
+  --warn: oklch(0.528 0.14 80);
   --warn-soft: oklch(0.94 0.05 85);
-  --crit: oklch(0.55 0.18 18);
+  --crit: oklch(0.539 0.18 18);
   --crit-soft: oklch(0.94 0.045 18);
   --sel: oklch(0.935 0.014 250);
   --sel-line: oklch(0.65 0.05 250);
@@ -69,7 +69,7 @@ body { font-family: 'Barlow', Helvetica, sans-serif; }
   --line-strong: oklch(0.375 0.01 60);
   --ink: oklch(0.945 0.005 60);
   --ink-2: oklch(0.715 0.008 60);
-  --ink-3: oklch(0.555 0.01 60);
+  --ink-3: oklch(0.617 0.01 60);
   --accent: oklch(0.735 0.155 34);
   --accent-ink: oklch(0.17 0.03 30);
   --accent-soft: oklch(0.285 0.05 32);
@@ -82,7 +82,7 @@ body { font-family: 'Barlow', Helvetica, sans-serif; }
   --good-soft: oklch(0.28 0.05 150);
   --warn: oklch(0.8 0.15 85);
   --warn-soft: oklch(0.3 0.06 85);
-  --crit: oklch(0.68 0.19 15);
+  --crit: oklch(0.684 0.19 15);
   --crit-soft: oklch(0.3 0.06 15);
   --sel: oklch(0.285 0.014 250);
   --sel-line: oklch(0.5 0.03 250);
@@ -95,8 +95,8 @@ body { font-family: 'Barlow', Helvetica, sans-serif; }
 :root {
   --font-size-title: 12.5px;
   --font-size-body: 13px;
-  --font-size-meta: 10px;
-  --font-size-label: 9px;
+  --font-size-meta: 11px;
+  --font-size-label: 10px;
   --font-size-control: 12.5px;
   --font-size-item: 12px;
   --space-card-pad: 0.625rem;
@@ -141,3 +141,11 @@ body { font-family: 'Barlow', Helvetica, sans-serif; }
 [data-app] { --pm-master-width: 64px; }
 @media (min-width: 1024px) { [data-app] { --pm-master-width: 260px; } }
 @media (min-width: 1400px) { [data-app] { --pm-master-width: 300px; } }
+
+/* Raise legacy small text only in compact density; preserve its comfort sizes. */
+@layer utilities {
+  .text-compact-label { font-size: var(--font-size-label); }
+  .text-compact-meta { font-size: var(--font-size-meta); }
+  [data-density="comfort"] .text-compact-label { font-size: 9px; }
+  [data-density="comfort"] .text-compact-meta { font-size: 10px; }
+}

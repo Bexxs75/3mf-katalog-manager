@@ -27,7 +27,7 @@ export function StepPreviewHint() {
                 console.warn('[step-hint] could not open the download page:', e),
               )
             }
-            className="h-8 px-3 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
+            className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
           >
             {t('stepHintButton')}
           </button>

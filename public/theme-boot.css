@@ -1,0 +1,9 @@
+/* First-frame colors: keep these values in sync with src/styles/theme.css. */
+html, body {
+  background: oklch(0.965 0.004 60);
+  color: oklch(0.245 0.01 45);
+}
+html[data-app="dark"], html[data-app="dark"] body {
+  background: oklch(0.165 0.005 60);
+  color: oklch(0.945 0.005 60);
+}

@@ -104,7 +104,7 @@ export function CatalogCleanupDialog({ issues, onClose, onDelete }: Props) {
           <button
             onClick={() => onDelete(Array.from(checked))}
             disabled={checked.size === 0} {...lockProps}
-            className={`h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[length:var(--font-size-title)] font-semibold ${
+            className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[length:var(--font-size-title)] font-semibold ${
               checked.size === 0 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
             }`}
           >

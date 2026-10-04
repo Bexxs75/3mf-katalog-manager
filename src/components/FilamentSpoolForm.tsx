@@ -225,7 +225,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
           )}
 
           <div>
-            <p className="text-[10px] uppercase tracking-wider font-bold text-[var(--ink-3)] mb-2">
+            <p className="text-compact-meta uppercase tracking-wider font-bold text-[var(--ink-3)] mb-2">
               {t('filamentSectionImage')}
             </p>
             <button
@@ -277,7 +277,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
           </div>
 
           <div>
-            <p className="text-[10px] uppercase tracking-wider font-bold text-[var(--ink-3)] mb-2">
+            <p className="text-compact-meta uppercase tracking-wider font-bold text-[var(--ink-3)] mb-2">
               {t('filamentSectionIdentification')}
             </p>
             <div className="flex flex-col gap-2.5">
@@ -350,7 +350,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
           </div>
 
           <div>
-            <p className="text-[10px] uppercase tracking-wider font-bold text-[var(--ink-3)] mb-2">
+            <p className="text-compact-meta uppercase tracking-wider font-bold text-[var(--ink-3)] mb-2">
               {t('filamentSectionStorage')}
             </p>
             <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">
@@ -367,7 +367,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
           </div>
 
           <div>
-            <p className="text-[10px] uppercase tracking-wider font-bold text-[var(--ink-3)] mb-2">
+            <p className="text-compact-meta uppercase tracking-wider font-bold text-[var(--ink-3)] mb-2">
               {t('filamentSectionStock')}
             </p>
             <div className="grid grid-cols-2 gap-2.5">
@@ -439,7 +439,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
           <button
             onClick={submit}
             disabled={!form.material.trim()}
-            className="w-full h-10 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[13.5px] font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] w-full h-10 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[13.5px] font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {editing
               ? t('filamentSaveButton')

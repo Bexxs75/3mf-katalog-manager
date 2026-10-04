@@ -71,7 +71,7 @@ export function PrinterManagerView({ printers: state, printerLink, printerId, on
           const status = printerStatus(p, printerLink.enabled, conn);
           const active = printer?.id === p.id;
           return <li key={p.id} onMouseEnter={() => order.enter(p.id)}
-            className={`group/item rounded-lg border flex items-center ${active ? 'border-[var(--sel-line)] bg-[var(--sel)]' : order.over === p.id ? 'border-[var(--sel-line)] bg-[var(--panel-2)]' : 'border-transparent hover:bg-[var(--panel-2)]'}`}>
+            className={`group/item rounded-lg border flex items-center ${active ? 'border-[var(--sel-line)] bg-[var(--sel)] hover:bg-[var(--panel-2)]' : order.over === p.id ? 'border-[var(--sel-line)] bg-[var(--panel-2)]' : 'border-transparent hover:bg-[var(--panel-2)]'}`}>
             <div className="flex w-full items-center">
               <button className={`px-1 py-3 cursor-grab text-[var(--ink-3)] focus-visible:outline-2 focus-visible:opacity-100 group-hover/item:opacity-80 max-[1023px]:group-data-[collapsed=true]:hidden ${active ? 'opacity-80' : 'opacity-0'}`}
                 aria-label={`${t('printersReorderHint')} ${p.name}`} onMouseDown={e => { if (e.button === 0) order.begin(e, p.id); }} onKeyDown={e => order.key(e, p.id)}>⋮⋮</button>
@@ -163,7 +163,7 @@ function PrinterDetail({ printer, state, link, onMaterial }: {
           <PrinterStatusBadge status={printerStatus(printer, link.enabled, connection)} />
         </div>
       </div>
-    </>} deleteAction={<button type="button" className={`${pmButton} !border-transparent text-[var(--crit)] max-[639px]:w-full`} disabled={!spoolsReady} onClick={() => setDeleting(true)}>{t('pmDeletePrinter')}</button>} />
+    </>} deleteAction={<button type="button" className={`${pmButton} !border-transparent hover:bg-[var(--panel-2)] text-[var(--crit)] max-[639px]:w-full`} disabled={!spoolsReady} onClick={() => setDeleting(true)}>{t('pmDeletePrinter')}</button>} />
     <Card title={t('pmConnection')}>
       {printer.kind === 'resin' ? <div className="rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-3"><b>{t('pmNotLinked')}</b><p>{t('pmResinNoConnection')}</p></div> :
         <PrinterConnectionSection printerId={printer.id} link={link} connection={connection ?? null} />}

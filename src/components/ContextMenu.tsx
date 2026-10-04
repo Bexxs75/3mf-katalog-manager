@@ -81,10 +81,10 @@ function ModelContextMenu({
         <div className="px-3 py-2.5 max-w-[260px]" aria-busy={renaming}>
           <div className="text-[12px] font-medium text-[var(--ink)] pb-1">{t('removeModelQuestion').replace('{name}', currentName)}</div>
           <div className="text-[11.5px] leading-snug text-[var(--ink-2)] pb-2">{t('removeModelHint')}</div>
-          {renameError && <div role="alert" className="pb-1.5 font-mono-ui text-[10px] text-[var(--accent)] break-words">{renameError}</div>}
+          {renameError && <div role="alert" className="pb-1.5 font-mono-ui text-compact-meta text-[var(--accent)] break-words">{renameError}</div>}
           <div className="flex gap-1.5">
             <button className="flex-1 h-7 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[11.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50" disabled={renaming} onClick={() => setView('menu')}>{t('cancel')}</button>
-            <button className="flex-1 h-7 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[11.5px] font-semibold cursor-pointer disabled:opacity-50" disabled={renaming} {...lockProps} onClick={async () => {
+            <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 h-7 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[11.5px] font-semibold cursor-pointer disabled:opacity-50" disabled={renaming} {...lockProps} onClick={async () => {
               if (!onRemove) return;
               setRenaming(true); setRenameError(null);
               try { await onRemove(); onClose(); }
@@ -107,7 +107,7 @@ function ModelContextMenu({
                 onDelete();
                 onClose();
               }}
-              className="flex-1 h-7 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[11.5px] font-semibold cursor-pointer"
+              className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 h-7 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[11.5px] font-semibold cursor-pointer"
             >
               {t('delete')}
             </button>
@@ -141,7 +141,7 @@ function ModelContextMenu({
             )}
           </div>
           {renameError && (
-            <div className="pb-1.5 font-mono-ui text-[10px] text-[var(--accent)] break-words">
+            <div className="pb-1.5 font-mono-ui text-compact-meta text-[var(--accent)] break-words">
               {renameError}
             </div>
           )}
@@ -159,7 +159,7 @@ function ModelContextMenu({
             <button
               onClick={submitRename}
               disabled={renaming} {...lockProps}
-              className="flex-1 h-7 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[11.5px] font-semibold cursor-pointer"
+              className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 h-7 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[11.5px] font-semibold cursor-pointer"
             >
               {t('confirmSlicerName')}
             </button>

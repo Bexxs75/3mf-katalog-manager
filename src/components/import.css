@@ -38,3 +38,5 @@
 
 .import-counts .warn{color:var(--warn)}
 .import-counts .crit{color:var(--crit)}
+
+.import-actions button:hover:not(:disabled), .import-result button:hover { background: var(--panel-2); color: var(--ink); }

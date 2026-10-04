@@ -200,13 +200,13 @@ export function ModelDetailPage({
               <div className="absolute top-3 right-3 flex bg-[var(--panel-2)] border border-[var(--line)] rounded-full overflow-hidden font-mono-ui text-[11.5px]">
                 <button
                   onClick={() => setShowCustomImage(false)}
-                  className={`px-3.5 py-1.5 ${!showCustomImage ? 'bg-[var(--accent)] text-[var(--accent-ink)] font-semibold' : 'text-[var(--ink-3)]'}`}
+                  className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] px-3.5 py-1.5 ${!showCustomImage ? 'bg-[var(--accent)] text-[var(--accent-ink)] font-semibold' : 'text-[var(--ink-3)]'}`}
                 >
                   {t('detailViewer3d')}
                 </button>
                 <button
                   onClick={() => setShowCustomImage(true)}
-                  className={`px-3.5 py-1.5 ${showCustomImage ? 'bg-[var(--accent)] text-[var(--accent-ink)] font-semibold' : 'text-[var(--ink-3)]'}`}
+                  className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] px-3.5 py-1.5 ${showCustomImage ? 'bg-[var(--accent)] text-[var(--accent-ink)] font-semibold' : 'text-[var(--ink-3)]'}`}
                 >
                   {t('detailViewerImage')}
                 </button>
@@ -258,10 +258,10 @@ export function ModelDetailPage({
                     // Not an http(s) value: plain text, never a clickable link.
                     <span className="text-[var(--ink-2)]">{model.sourceUrl}</span>
                   )}{' '}
-                  <button onClick={startEditingSource} className="text-[var(--ink-3)]">✎</button>
+                  <button onClick={startEditingSource} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)]">✎</button>
                 </span>
               ) : (
-                <button onClick={startEditingSource} className="text-[var(--ink-3)] underline decoration-dotted">
+                <button onClick={startEditingSource} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)] underline decoration-dotted">
                   {t('sourceUrlPlaceholder')} ✎
                 </button>
               )}
@@ -275,7 +275,7 @@ export function ModelDetailPage({
                 {model.tags.map((tag) => (
                   <span key={tag} className="font-mono-ui text-[12px] px-2.5 py-1 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)]">
                     #{tagLabel(tag, language)}{' '}
-                    <button onClick={() => onRemoveTag(tag)} className="text-[var(--ink-3)]">✕</button>
+                    <button onClick={() => onRemoveTag(tag)} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)]">✕</button>
                   </span>
                 ))}
                 <TagInput
@@ -293,7 +293,7 @@ export function ModelDetailPage({
           <div className="flex flex-wrap gap-2 items-center">
             <button
               onClick={onTogglePrintStatus}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12.5px] font-semibold ${
+              className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12.5px] font-semibold ${
                 model.printStatus === 'printed'
                   ? 'bg-[var(--good-soft,var(--accent-soft))] text-[var(--good,var(--accent))]'
                   : 'bg-[var(--panel-2)] text-[var(--ink-2)] border border-[var(--line)]'
@@ -305,7 +305,7 @@ export function ModelDetailPage({
               onClick={onToggleFavorite}
               aria-label={model.favorite ? t('favoriteRemove') : t('favoriteAdd')}
               title={model.favorite ? t('favoriteRemove') : t('favoriteAdd')}
-              className={`w-9 h-9 rounded-md border grid place-items-center ${
+              className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] w-9 h-9 rounded-md border grid place-items-center ${
                 model.favorite ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent-soft)]' : 'border-[var(--line)] text-[var(--ink-2)]'
               }`}
             >
@@ -424,13 +424,13 @@ export function ModelDetailPage({
                   setPrintLogNote('');
                   setPrintLogPhoto(null);
                 }}
-                className="h-7 px-3 rounded-[3px] border border-[var(--line)] bg-transparent text-[var(--ink-2)] text-[12px]"
+                className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-7 px-3 rounded-[3px] border border-[var(--line)] bg-transparent text-[var(--ink-2)] text-[12px]"
               >
                 {t('printLogCancelButton')}
               </button>
               <button
                 onClick={submitPrintLogEntry}
-                className="h-7 px-3 rounded-[3px] bg-[var(--accent)] text-[var(--accent-ink)] text-[12px] font-semibold"
+                className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-7 px-3 rounded-[3px] bg-[var(--accent)] text-[var(--accent-ink)] text-[12px] font-semibold"
               >
                 {t('printLogSaveButton')}
               </button>
@@ -519,7 +519,7 @@ export function ModelDetailPage({
           <button
             onClick={() => onOpenInSlicer()}
             disabled={slicers.length === 0}
-            className="px-4 py-2 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-[13px] font-semibold disabled:opacity-50"
+            className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] px-4 py-2 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-[13px] font-semibold disabled:opacity-50"
           >
             {t('openInSlicer')} ↗
           </button>

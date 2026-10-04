@@ -53,7 +53,7 @@ function RadioOption({ checked, label, onSelect, disabled }: { checked: boolean;
       aria-checked={checked}
       disabled={disabled}
       onClick={onSelect}
-      className="flex items-center gap-2 py-0.5 text-left text-[length:var(--font-size-meta)] text-[var(--ink-2)] disabled:opacity-60"
+      className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex items-center gap-2 py-0.5 text-left text-[length:var(--font-size-meta)] text-[var(--ink-2)] disabled:opacity-60"
     >
       <span
         className={`w-3.5 h-3.5 rounded-full border grid place-items-center ${
@@ -227,7 +227,7 @@ export function ArchiveImportDialog({ archives, defaultTargetDir, onCancel, onDo
         <div className="flex-none px-4 py-3 border-t border-[var(--line)] flex items-center gap-2">
           <BulkCheckbox checked={deleteArchives} onToggle={() => !running && setDeleteArchives((v) => !v)} />
           <span
-            className="flex-1 cursor-pointer text-[length:var(--font-size-title)]"
+            className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 cursor-pointer text-[length:var(--font-size-title)]"
             onClick={() => !running && setDeleteArchives((v) => !v)}
           >
             {t('archiveDeleteAfter')}
@@ -244,7 +244,7 @@ export function ArchiveImportDialog({ archives, defaultTargetDir, onCancel, onDo
             type="button"
             disabled={running || !targetDir || extractable.length === 0}
             onClick={start}
-            className="px-3 py-1.5 rounded-[4px] bg-[var(--accent)] text-[var(--accent-ink)] disabled:opacity-60"
+            className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] px-3 py-1.5 rounded-[4px] bg-[var(--accent)] text-[var(--accent-ink)] disabled:opacity-60"
           >
             {t('archiveExtractButton').replace('{count}', String(extractable.length))}
           </button>

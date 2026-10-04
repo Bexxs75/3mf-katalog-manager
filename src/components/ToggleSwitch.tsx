@@ -22,7 +22,7 @@ export function ToggleSwitch({ checked, onChange, label, disabled }: Props) {
           toggle();
         }
       }}
-      className={`relative flex-none w-9 h-5 rounded-full transition-colors cursor-pointer disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${
+      className={`hover:outline hover:outline-2 hover:outline-[var(--ink-3)] relative flex-none w-9 h-5 rounded-full transition-colors cursor-pointer disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${
         checked ? 'bg-[var(--accent)]' : 'bg-[var(--line-strong)]'
       }`}
     >
