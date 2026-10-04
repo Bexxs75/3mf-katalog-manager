@@ -1,6 +1,7 @@
+import { useImportLock } from '../hooks/ImportLockContext';
 import type { useFolderExpansion } from '../hooks/useFolderExpansion';
 import type { useSidebarWidth } from '../hooks/useSidebarWidth';
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { Sidebar } from './Sidebar';
 import { ModelGrid } from './ModelGrid';
 import { GroupedModelGrid } from './GroupedModelGrid';
@@ -20,6 +21,7 @@ import { toolCounts as computeToolCounts, TOOL_VIEW_LABEL_KEY, type ToolView } f
 import type { AppError } from '../lib/errors';
 
 interface CatalogWorkspaceProps {
+  importRow?: ReactNode;
   expansion: ReturnType<typeof useFolderExpansion>;
   sidebarWidth: ReturnType<typeof useSidebarWidth>;
   allFoldersCollapsed: boolean;
@@ -111,6 +113,7 @@ interface CatalogWorkspaceProps {
 }
 
 export function CatalogWorkspace({
+  importRow,
   expansion,
   sidebarWidth,
   allFoldersCollapsed,
@@ -201,6 +204,7 @@ export function CatalogWorkspace({
   cleanupError,
 }: CatalogWorkspaceProps) {
   const { language } = useLanguage();
+  const { jobActive } = useImportLock();
   const t = useT();
   const queueFilament = useFilamentCheck(
     queue.map((m) => m.id),
@@ -249,7 +253,7 @@ export function CatalogWorkspace({
         draggedFileFolderId={models.find((model) => model.id === draggedFileId)?.folderId}
         onFolderMouseEnter={handleFolderMouseEnter}
         onFolderMouseLeave={handleFolderMouseLeave}
-        onDragFolderStart={onDragFolderStart}
+        onDragFolderStart={jobActive ? () => {} : onDragFolderStart}
         tags={tags}
         activeTag={activeTag}
         onTagSelect={(tag) => {
@@ -287,6 +291,7 @@ export function CatalogWorkspace({
       />
 
       <main className="flex-1 min-w-0 flex flex-col min-h-0">
+        {importRow}
         {(activeTag || toolView) && (
           <div className="flex-none h-[38px] flex items-center gap-2.5 px-4 border-b border-[var(--line)] bg-[var(--bg)]">
             {toolView && (
@@ -404,7 +409,7 @@ export function CatalogWorkspace({
                 displayPreference={displayPreference}
                 reorderable={activeCollection !== null}
                 onReorder={reorderCollection}
-                onDragFileStart={onDragFileStart}
+                onDragFileStart={jobActive ? undefined : onDragFileStart}
               />
             ) : view === 'groupedGrid' ? (
               <GroupedModelGrid
@@ -418,12 +423,12 @@ export function CatalogWorkspace({
                 selectedForBulk={selectedForBulk}
                 onToggleBulkSelect={toggleBulkSelect}
                 displayPreference={displayPreference}
-                onDragFileStart={onDragFileStart}
+                onDragFileStart={jobActive ? undefined : onDragFileStart}
                 draggedFolderId={draggedFolderId}
                 draggedFileId={draggedFileId}
                 draggedFileFolderId={models.find((model) => model.id === draggedFileId)?.folderId}
                 dragOverFolderId={dragOverFolderId}
-                onDragFolderStart={onDragFolderStart}
+                onDragFolderStart={jobActive ? () => {} : onDragFolderStart}
                 onFolderMouseEnter={handleFolderMouseEnter}
                 onFolderMouseLeave={handleFolderMouseLeave}
                 collapsedFolders={collapsedFolders}
@@ -438,12 +443,12 @@ export function CatalogWorkspace({
                 onContextMenu={(id, x, y) => setContextMenu({ modelId: id, x, y })}
                 selectedForBulk={selectedForBulk}
                 onToggleBulkSelect={toggleBulkSelect}
-                onDragFileStart={onDragFileStart}
+                onDragFileStart={jobActive ? undefined : onDragFileStart}
                 draggedFolderId={draggedFolderId}
                 draggedFileId={draggedFileId}
                 draggedFileFolderId={models.find((model) => model.id === draggedFileId)?.folderId}
                 dragOverFolderId={dragOverFolderId}
-                onDragFolderStart={onDragFolderStart}
+                onDragFolderStart={jobActive ? () => {} : onDragFolderStart}
                 onFolderMouseEnter={handleFolderMouseEnter}
                 onFolderMouseLeave={handleFolderMouseLeave}
                 collapsedFolders={collapsedFolders}

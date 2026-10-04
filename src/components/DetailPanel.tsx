@@ -1,3 +1,4 @@
+import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useState } from 'react';
 import { TagInput } from './TagInput';
 import type { ModelFile } from '../types';
@@ -50,6 +51,7 @@ export function DetailPanel({
   slicerError,
 }: Props) {
   const { language } = useLanguage();
+  const { lockProps } = useImportLock();
   const t = useT();
   const { density } = useUiDensity();
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -109,13 +111,13 @@ export function DetailPanel({
             </p>
           )}
           <div className="flex gap-2">
-            <button
+            <button {...lockProps}
               onClick={onRestore}
               className="flex-1 h-8 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
             >
               {t('restoreLabel')}
             </button>
-            <button
+            <button {...lockProps}
               onClick={onDeletePermanently}
               className="flex-1 h-8 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
             >
@@ -303,7 +305,7 @@ export function DetailPanel({
               >
                 {t('cancel')}
               </button>
-              <button
+              <button {...lockProps}
                 onClick={() => {
                   setConfirmDelete(false);
                   onDelete();
@@ -321,7 +323,7 @@ export function DetailPanel({
               >
                 {t('openInSlicer')}
               </button>
-              <button
+              <button {...lockProps}
                 onClick={() => setConfirmDelete(true)}
                 aria-label={t('deleteAriaLabel')}
                 className="flex-none w-[34px] h-8 grid place-items-center rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] font-mono-ui cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
@@ -483,7 +485,7 @@ export function DetailPanel({
             >
               {t('cancel')}
             </button>
-            <button
+            <button {...lockProps}
               onClick={() => {
                 setConfirmDelete(false);
                 onDelete();
@@ -517,7 +519,7 @@ export function DetailPanel({
             >
               {model.printStatus === 'printed' ? `✓ ${t('markAsNotPrinted')}` : `${t('markAsPrinted')}`}
             </button>
-            <button
+            <button {...lockProps}
               onClick={() => setConfirmDelete(true)}
               aria-label={t('deleteAriaLabel')}
               className="h-9 rounded-lg text-[var(--ink-3)] hover:text-[var(--accent)] cursor-pointer"

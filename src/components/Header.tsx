@@ -5,6 +5,8 @@ import { formatCount } from '../i18n/types';
 import { useT } from '../i18n/LanguageContext';
 
 interface Props {
+  importTargetName?: string;
+  importTargetIsRoot?: boolean;
   allFoldersCollapsed: boolean;
   onToggleAllFolders: () => void;
   view: ViewMode;
@@ -24,6 +26,8 @@ const segActive = 'bg-[var(--accent)] text-[var(--accent-ink)]';
 const segInactive = 'text-[var(--ink-2)] hover:text-[var(--ink)]';
 
 export function Header({
+  importTargetName,
+  importTargetIsRoot = false,
   allFoldersCollapsed,
   onToggleAllFolders,
   view,
@@ -37,6 +41,7 @@ export function Header({
   mainView,
 }: Props) {
   const t = useT();
+  const [importSource, setImportSource] = useState<'files' | 'folder'>('files');
   const [importMenuOpen, setImportMenuOpen] = useState(false);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
 
@@ -74,8 +79,14 @@ export function Header({
         </button>
 
         {importMenuOpen && (
-          <div className="absolute top-10 left-0 w-[176px] py-1 bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)] z-40">
+          <div className="absolute top-10 left-0 w-[300px] py-1 bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)] z-40">
+            <div className="m-2 p-2 border border-dashed border-[var(--line-strong)] rounded bg-[var(--panel-2)] text-[12px] text-[var(--ink-2)] leading-relaxed" aria-live="polite">
+              <b>{t(importSource === 'files' ? 'impMenuFiles' : 'impMenuFolder')}</b>{' '}
+              {importSource === 'folder' ? t('impMenuFolderHint') : importTargetName ? <>{t('impMenuMove')} <b>{importTargetName}</b> {t(importTargetIsRoot ? 'impMenuRoot' : 'impMenuActive')}</> : t('impMenuStay')}
+              <div className="font-mono-ui text-[11px] text-[var(--ink-3)]">{t(importSource === 'files' ? 'impMenuFixed' : 'impMenuNoMove')}</div>
+            </div>
             <button
+              onMouseEnter={() => setImportSource('files')} onFocus={() => setImportSource('files')}
               onClick={() => {
                 setImportMenuOpen(false);
                 onImportFiles();
@@ -85,6 +96,7 @@ export function Header({
               {t('importFilesOption')}
             </button>
             <button
+              onMouseEnter={() => setImportSource('folder')} onFocus={() => setImportSource('folder')}
               onClick={() => {
                 setImportMenuOpen(false);
                 onImportFolder();
@@ -110,7 +122,7 @@ export function Header({
             <span className="text-[9px] leading-none text-[var(--ink-3)]">▾</span>
           </button>
           {sortMenuOpen && (
-            <div className="absolute top-9 left-0 w-[176px] py-1 bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)] z-40">
+            <div className="absolute top-9 left-0 w-[300px] py-1 bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)] z-40">
               {sortOptions.map((opt) => (
                 <button
                   key={opt.value}

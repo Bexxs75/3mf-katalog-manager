@@ -1,3 +1,4 @@
+import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import { splitFileName } from '../lib/fileName';
@@ -34,6 +35,7 @@ export function ContextMenu({
   currentName,
   onRename,
 }: Props) {
+  const { lockProps } = useImportLock();
   const t = useT();
   const [view, setView] = useState<View>('menu');
   const [baseNameDraft, setBaseNameDraft] = useState('');
@@ -74,6 +76,7 @@ export function ContextMenu({
   }, [onClose, view]);
 
   const submitRename = () => {
+    if (lockProps.disabled) return;
     const trimmedBase = baseNameDraft.trim();
     if (!trimmedBase) {
       setRenameError(t('renameEmptyNameError'));
@@ -107,7 +110,7 @@ export function ContextMenu({
           {renameError && <div role="alert" className="pb-1.5 font-mono-ui text-[10px] text-[var(--accent)] break-words">{renameError}</div>}
           <div className="flex gap-1.5">
             <button className="flex-1 h-7 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[11.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50" disabled={renaming} onClick={() => setView('menu')}>{t('cancel')}</button>
-            <button className="flex-1 h-7 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[11.5px] font-semibold cursor-pointer disabled:opacity-50" disabled={renaming} onClick={async () => {
+            <button className="flex-1 h-7 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[11.5px] font-semibold cursor-pointer disabled:opacity-50" disabled={renaming} {...lockProps} onClick={async () => {
               if (!onRemove) return;
               setRenaming(true); setRenameError(null);
               try { await onRemove(); onClose(); }
@@ -125,7 +128,7 @@ export function ContextMenu({
             >
               {t('cancel')}
             </button>
-            <button
+            <button {...lockProps}
               onClick={() => {
                 onDelete();
                 onClose();
@@ -181,7 +184,7 @@ export function ContextMenu({
             </button>
             <button
               onClick={submitRename}
-              disabled={renaming}
+              disabled={renaming} {...lockProps}
               className="flex-1 h-7 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[11.5px] font-semibold cursor-pointer"
             >
               {t('confirmSlicerName')}
@@ -217,7 +220,7 @@ export function ContextMenu({
           >
             {printed ? t('notPrintedLabel') : t('printedBadge')}
           </button>
-          <button
+          <button {...lockProps}
             onClick={() => {
               const { base, extension: ext } = splitFileName(currentName);
               setBaseNameDraft(base);
@@ -230,12 +233,12 @@ export function ContextMenu({
           </button>
           {onRemove && <>
             <div className="border-t border-[var(--line)]" />
-            <button onClick={() => { setRenameError(null); setView('confirmRemove'); }}
+            <button {...lockProps} onClick={() => { setRenameError(null); setView('confirmRemove'); }}
               className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]">
               {t('removeCatalog')}
             </button>
           </>}
-          <button
+          <button {...lockProps}
             onClick={() => setView('confirmDelete')}
             className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]"
           >

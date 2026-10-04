@@ -9,6 +9,7 @@ import { BulkCheckbox } from './BulkCheckbox';
 import { ErrorText } from '../diagnostics/ErrorText';
 import type {
   ArchiveImportResult,
+  ArchiveRequest,
   ArchiveInfo,
   ArchiveProgress,
   ArchiveStatus,
@@ -19,7 +20,8 @@ interface Props {
   archives: ArchiveInfo[];
   defaultTargetDir: string | null;
   onCancel: () => void;
-  onDone: (result: ArchiveImportResult) => void;
+  onDone?: (result: ArchiveImportResult) => void;
+  onStart?: (targetDir: string, requests: ArchiveRequest[], deleteArchives: boolean) => Promise<void>;
 }
 
 type StatusKey =
@@ -65,7 +67,7 @@ function RadioOption({ checked, label, onSelect, disabled }: { checked: boolean;
   );
 }
 
-export function ArchiveImportDialog({ archives, defaultTargetDir, onCancel, onDone }: Props) {
+export function ArchiveImportDialog({ archives, defaultTargetDir, onCancel, onDone, onStart }: Props) {
   const t = useT();
   const { language } = useLanguage();
   const [targetDir, setTargetDir] = useState<string | null>(defaultTargetDir);
@@ -124,8 +126,11 @@ export function ArchiveImportDialog({ archives, defaultTargetDir, onCancel, onDo
         expectedSize: a.fileSize,
         expectedModifiedUnixMs: a.modifiedUnixMs,
       }));
-      const result = await importExportApi.extractArchives(targetDir, requests, deleteArchives);
-      onDone(result);
+      if (onStart) await onStart(targetDir, requests, deleteArchives);
+      else {
+        const result = await importExportApi.extractArchives(targetDir, requests, deleteArchives);
+        onDone?.(result);
+      }
     } catch (e) {
       setError(toAppError(e));
       setRunning(false);

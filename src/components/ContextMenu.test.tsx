@@ -1,3 +1,4 @@
+import { ImportLockContext } from '../hooks/ImportLockContext';
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { LanguageProviderWithDiagnostics as LanguageProvider } from '../test/renderWithDiagnostics';
@@ -87,4 +88,11 @@ describe('ContextMenu keyboard cancellation', () => {
     expect(onRemove).not.toHaveBeenCalled();
     expect(onRename).not.toHaveBeenCalled();
   });
+});
+
+it('disables rename, removal and trash while import is active', () => {
+  render(<LanguageProvider><ImportLockContext.Provider value={true}><ContextMenu x={0} y={0} onClose={vi.fn()} onDelete={vi.fn()} onRemove={vi.fn()} onOpenInSlicer={vi.fn()} inQueue={false} onToggleQueue={vi.fn()} printed={false} onTogglePrintStatus={vi.fn()} currentName="a.stl" onRename={vi.fn()} /></ImportLockContext.Provider></LanguageProvider>);
+  for (const name of [/Umbenennen/, /Katalog entfernen/, /^Löschen$/]) {
+    const button = screen.getByRole('button',{name}); expect(button).toBeDisabled(); expect(button).toHaveAttribute('title','Während eines Imports gesperrt');
+  }
 });

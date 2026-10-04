@@ -1,3 +1,4 @@
+import { useImportLock } from '../hooks/ImportLockContext';
 import { ModelGrid } from './ModelGrid';
 import { ModelList } from './ModelList';
 import { DetailPanel } from './DetailPanel';
@@ -30,6 +31,7 @@ export function TrashView({
   onDeletePermanently,
   displayPreference,
 }: TrashViewProps) {
+  const { lockProps } = useImportLock();
   const t = useT();
   // The trash doesn't support folder grouping (deleted files no longer
   // "belong" to an active folder context) - falls back to the respective
@@ -52,7 +54,7 @@ export function TrashView({
               >
                 {t('cancel')}
               </button>
-              <button
+              <button {...lockProps}
                 onClick={onEmptyTrash}
                 className="h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
               >
@@ -62,7 +64,7 @@ export function TrashView({
           ) : (
             <button
               onClick={() => onConfirmEmptyTrashChange(true)}
-              disabled={trashModels.length === 0}
+              disabled={trashModels.length === 0} {...lockProps}
               className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer disabled:opacity-50 hover:border-[var(--accent)] hover:text-[var(--accent)]"
             >
               {t('emptyTrashButton')}

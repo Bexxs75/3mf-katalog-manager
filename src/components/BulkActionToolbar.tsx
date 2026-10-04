@@ -1,3 +1,4 @@
+import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useRef, useState } from 'react';
 import { messageOf } from '../lib/errors';
 import type { Collection } from '../types';
@@ -59,6 +60,7 @@ export function BulkActionToolbar({
   tagsInSelection,
   onBulkRemoveTag,
 }: BulkActionToolbarProps) {
+  const { lockProps } = useImportLock();
   const t = useT();
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -133,7 +135,7 @@ export function BulkActionToolbar({
           <span className="text-[12px] text-[var(--ink-2)]">{t('removeModelHint')}</span>
           {error && <span role="alert" className="font-mono-ui text-[length:var(--font-size-meta)] text-[var(--accent)]">{error}</span>}
           <button ref={cancelRef} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50" disabled={busy} onClick={() => setConfirmRemove(false)}>{t('cancel')}</button>
-          <button className="h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer disabled:opacity-50" disabled={busy} onClick={async () => {
+          <button className="h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer disabled:opacity-50" disabled={busy} {...lockProps} onClick={async () => {
             if (!onBulkRemove) return;
             setBusy(true); setError(null);
             try { await onBulkRemove(); setConfirmRemove(false); }
@@ -153,7 +155,7 @@ export function BulkActionToolbar({
           >
             {t('cancel')}
           </button>
-          <button
+          <button {...lockProps}
             onClick={onBulkDelete}
             className="h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
           >
@@ -271,8 +273,8 @@ export function BulkActionToolbar({
           <button onClick={() => onBulkSetPrintStatus('not_printed')} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]">
             {t('notPrintedLabel')}
           </button>
-          {onBulkRemove && <button className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]" ref={removeRef} onClick={() => { setError(null); setConfirmRemove(true); }}>{t('removeCatalogShort')}</button>}
-          <button ref={deleteRef} onClick={() => onConfirmBulkDeleteChange(true)} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-red-400 text-[12.5px] font-semibold cursor-pointer hover:border-red-400">
+          {onBulkRemove && <button {...lockProps} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]" ref={removeRef} onClick={() => { setError(null); setConfirmRemove(true); }}>{t('removeCatalogShort')}</button>}
+          <button {...lockProps} ref={deleteRef} onClick={() => onConfirmBulkDeleteChange(true)} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-red-400 text-[12.5px] font-semibold cursor-pointer hover:border-red-400">
             {t('delete')}
           </button>
         </>

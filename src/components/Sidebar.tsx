@@ -1,3 +1,4 @@
+import { useImportLock } from '../hooks/ImportLockContext';
 import type { useFolderExpansion } from '../hooks/useFolderExpansion';
 import { SIDEBAR_MIN, SIDEBAR_MAX, SIDEBAR_STEP } from '../hooks/useSidebarWidth';
 import { Icon } from './Icon';
@@ -98,6 +99,7 @@ export function Sidebar({
   cleanupScanning,
   cleanupError,
 }: Props) {
+  const { jobActive, lockProps } = useImportLock();
   const t = useT();
   const [dragging, setDragging] = useState(false);
   const stopDrag = useRef<(() => void) | null>(null);
@@ -120,6 +122,7 @@ export function Sidebar({
   // Inline input instead of window.prompt. The folder is created below the
   // active folder, at the root for "All models".
   const submitCreateFolder = () => {
+    if (jobActive) return;
     const value = folderNameDraft.trim();
     if (value) onCreateFolder(activeFolderId === 'all' ? null : activeFolderId, value);
     setFolderNameDraft('');
@@ -210,12 +213,13 @@ export function Sidebar({
           draggedFolderId={draggedFolderId}
           onFolderMouseEnter={onFolderMouseEnter}
           onFolderMouseLeave={onFolderMouseLeave}
-          onDragFolderStart={onDragFolderStart}
+          onDragFolderStart={jobActive ? undefined : onDragFolderStart}
         />
         {creatingFolder ? (
           <div className="flex items-center gap-1.5 px-1.5 pt-1 pb-1">
             <input
               value={folderNameDraft}
+              {...lockProps}
               onChange={(e) => setFolderNameDraft(e.target.value)}
               onBlur={submitCreateFolder}
               onKeyDown={(e) => {
@@ -231,7 +235,7 @@ export function Sidebar({
             />
           </div>
         ) : (
-          <div
+          <button type="button" {...lockProps}
             onClick={() => {
               setCreatingFolder(true);
               setFolderNameDraft('');
@@ -239,7 +243,7 @@ export function Sidebar({
             className="flex items-center h-7 px-1.5 rounded-[3px] border border-dashed border-[var(--line-strong)] cursor-pointer font-mono-ui text-[11.5px] text-[var(--ink-3)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
             {t('createFolderLabel')}
-          </div>
+          </button>
         )}
 
         <div className="flex items-center justify-between px-1.5 pt-[18px] pb-2">

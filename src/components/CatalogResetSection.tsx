@@ -1,3 +1,4 @@
+import { useImportLock } from '../hooks/ImportLockContext';
 import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useT } from '../i18n/LanguageContext';
@@ -9,6 +10,7 @@ export function CatalogResetSection({ modelCount, folderCount, onExport, onReset
   modelCount: number; folderCount: number; onExport: () => Promise<boolean>;
   onReset: () => void; backupError?: AppError | null;
 }) {
+  const { lockProps } = useImportLock();
   const t = useT();
   const [open, setOpen] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -16,7 +18,7 @@ export function CatalogResetSection({ modelCount, folderCount, onExport, onReset
   const [error, setError] = useState<AppError | null>(null);
   return <section className="mt-4">
     <h3 className="text-[length:var(--font-size-body)] font-semibold mb-2">{t('resetCatalog')}</h3>
-    <button className={`h-7 w-full rounded-[3px] border border-dashed border-[var(--crit)] bg-transparent text-[var(--crit)] text-[12px] cursor-pointer`} onClick={() => { setSaved(false); setError(null); setOpen(true); }}>{t('resetCatalog')} …</button>
+    <button {...lockProps} className={`h-7 w-full rounded-[3px] border border-dashed border-[var(--crit)] bg-transparent text-[var(--crit)] text-[12px] cursor-pointer`} onClick={() => { setSaved(false); setError(null); setOpen(true); }}>{t('resetCatalog')} …</button>
     <p className="text-[length:var(--font-size-meta)] text-[var(--ink-3)] mt-1.5">{t('resetCatalogHint')}</p>
     {open && <CatalogActionDialog title={t('resetCatalogQuestion')} onClose={() => { if (!busy) setOpen(false); }}>
       <p>{t('resetCatalogDetails').replace('{models}', String(modelCount)).replace('{folders}', String(folderCount))}</p>
@@ -32,7 +34,7 @@ export function CatalogResetSection({ modelCount, folderCount, onExport, onReset
           finally { setBusy(false); }
         }}>{saved ? t('resetBackupDone') : t('resetBackupFirst')}</button>
         <button data-initial-focus className={catalogActionButton} disabled={busy} onClick={() => setOpen(false)}>{t('cancel')}</button>
-        <button className={`${catalogActionBase} border-[var(--crit)] bg-[var(--crit)] text-white`} disabled={busy} onClick={async () => {
+        <button className={`${catalogActionBase} border-[var(--crit)] bg-[var(--crit)] text-white`} disabled={busy} {...lockProps} onClick={async () => {
           setBusy(true); setError(null);
           try { await invoke('reset_catalog'); setOpen(false); onReset(); }
           catch (e) { setError(toAppError(e)); }

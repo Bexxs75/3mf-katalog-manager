@@ -1,3 +1,4 @@
+import { useImportLock } from '../hooks/ImportLockContext';
 import { useModalDialog } from '../hooks/useModalDialog';
 import { useState } from 'react';
 import type { CatalogIssues } from '../types';
@@ -19,6 +20,7 @@ function initialSelection(issues: CatalogIssues): Set<string> {
 }
 
 export function CatalogCleanupDialog({ issues, onClose, onDelete }: Props) {
+  const { lockProps } = useImportLock();
   const t = useT();
   const [checked, setChecked] = useState<Set<string>>(() => initialSelection(issues));
 
@@ -101,7 +103,7 @@ export function CatalogCleanupDialog({ issues, onClose, onDelete }: Props) {
           </button>
           <button
             onClick={() => onDelete(Array.from(checked))}
-            disabled={checked.size === 0}
+            disabled={checked.size === 0} {...lockProps}
             className={`h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[length:var(--font-size-title)] font-semibold ${
               checked.size === 0 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
             }`}

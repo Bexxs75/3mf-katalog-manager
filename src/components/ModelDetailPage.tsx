@@ -1,3 +1,4 @@
+import { useImportLock } from '../hooks/ImportLockContext';
 import { useState } from 'react';
 import { TagInput } from './TagInput';
 import { invoke } from '@tauri-apps/api/core';
@@ -64,6 +65,7 @@ export function ModelDetailPage({
   rescanSuccess,
   displayPreference,
 }: Props) {
+  const { lockProps } = useImportLock();
   const t = useT();
   const { language } = useLanguage();
   const [addToCollectionMenuOpen, setAddToCollectionMenuOpen] = useState(false);
@@ -425,7 +427,7 @@ export function ModelDetailPage({
       <footer className="flex items-center justify-between gap-4 flex-wrap rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-4 py-3.5 mt-auto">
         <span className="font-mono-ui text-[12px] text-[var(--ink-3)] break-all">{model.path}</span>
         <div className="flex gap-2.5 items-center flex-none">
-          <button onClick={onDelete} className="px-4 py-2 rounded-md border border-[var(--line)] text-[13px] font-semibold text-red-400 hover:border-red-400">
+          <button {...lockProps} onClick={onDelete} className="px-4 py-2 rounded-md border border-[var(--line)] text-[13px] font-semibold text-red-400 hover:border-red-400">
             {t('delete')}
           </button>
           <button

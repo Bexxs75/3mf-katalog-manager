@@ -1,3 +1,4 @@
+import { useImportLock } from '../hooks/ImportLockContext';
 import type { useFolderExpansion } from '../hooks/useFolderExpansion';
 import { FolderCatalogMenu } from './FolderCatalogMenu';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -53,6 +54,7 @@ export function FolderTree({
   onFolderMouseLeave,
   onDragFolderStart,
 }: Props) {
+  const { jobActive } = useImportLock();
   const t = useT();
   const [menu, setMenu] = useState<{ id: string; name: string; x: number; y: number } | null>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
@@ -61,7 +63,7 @@ export function FolderTree({
 
   // Folder rows are only 28px high: an immediate drag start would let even a
   // slight slip during a click trigger a real move_folder.
-  const folderDrag = useDragThreshold(onDragFolderStart);
+  const folderDrag = useDragThreshold(jobActive ? undefined : onDragFolderStart);
 
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const { isExpanded, expand } = expansion;

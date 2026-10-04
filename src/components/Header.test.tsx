@@ -58,3 +58,14 @@ it('labels Printer Manager and hides all catalog controls', () => {
   expect(screen.getByText('PRINTER MANAGER')).toBeInTheDocument();
   expect(screen.queryAllByRole('button')).toHaveLength(0);
 });
+
+it.each([undefined, 'Küche'])('explains the target for file and folder actions: %s', target => {
+  render(<LanguageProvider><Header mainView="catalog" view="grid" sort="name" count={0} onViewChange={vi.fn()} onSortChange={vi.fn()} onImportFiles={vi.fn()} onImportFolder={vi.fn()} allFoldersCollapsed={false} onToggleAllFolders={vi.fn()} importTargetName={target} /></LanguageProvider>);
+  fireEvent.click(screen.getByRole('button', {name: /Importieren/}));
+  expect(screen.getByText(/Ziel wird beim Start festgehalten/)).toBeVisible();
+  if (target) expect(screen.getByText('Küche')).toBeVisible();
+  else expect(screen.getByText('Ausgewählte Dateien werden katalogisiert und bleiben an ihrem Ort.')).toBeVisible();
+  const folder = screen.getByRole('button', {name: 'Ordner...'});
+  fireEvent.focus(folder); expect(screen.getByText('Dateien bleiben an ihrem Ort, Unterordner werden als Katalogordner übernommen.')).toBeVisible();
+  fireEvent.mouseEnter(screen.getByRole('button', {name: 'Dateien...'})); expect(screen.getByText(/Ziel wird beim Start festgehalten/)).toBeVisible();
+});

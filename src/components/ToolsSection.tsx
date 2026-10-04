@@ -1,3 +1,4 @@
+import { useImportLock } from '../hooks/ImportLockContext';
 import { useState, type ReactNode } from 'react';
 import type { FilamentCheck, ModelFile } from '../types';
 import { useT } from '../i18n/LanguageContext';
@@ -88,6 +89,7 @@ function Hint({ children }: { children: ReactNode }) {
 }
 
 export function ToolsSection(props: ToolsSectionProps) {
+  const { lockProps } = useImportLock();
   const t = useT();
   const [collapsed, setCollapsed] = useState(false);
   const [queueOpen, setQueueOpen] = useState(true);
@@ -152,7 +154,7 @@ export function ToolsSection(props: ToolsSectionProps) {
           {viewRow('duplicates', ICONS.duplicates, t('toolDuplicates'), props.counts.duplicateGroups)}
           <button
             type="button"
-            disabled={props.cleanupScanning}
+            disabled={props.cleanupScanning} {...lockProps}
             onClick={props.onOpenCleanup}
             className={`${rowBase} ${rowIdle}`}
           >

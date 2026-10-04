@@ -138,3 +138,11 @@ describe('ArchiveImportDialog', () => {
     expect(invoke).not.toHaveBeenCalledWith('extract_archives', expect.anything());
   });
 });
+
+it('hands catalog archive requests to the job callback instead of the legacy wrapper', async () => {
+  mockBackend({}); const onStart=vi.fn().mockResolvedValue(undefined);
+  render(<LanguageProvider><ArchiveImportDialog archives={ARCHIVES} defaultTargetDir="/katalog" onCancel={vi.fn()} onStart={onStart} /></LanguageProvider>);
+  await act(async () => fireEvent.click(screen.getByRole('button',{name:'Entpacken (2)'})));
+  expect(onStart).toHaveBeenCalledWith('/katalog', expect.arrayContaining([expect.objectContaining({path:'/dl/Benchy.zip',folderName:'Benchy'})]),false);
+  expect(invoke).not.toHaveBeenCalledWith('extract_archives',expect.anything());
+});

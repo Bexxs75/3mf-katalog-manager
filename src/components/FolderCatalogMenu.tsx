@@ -1,3 +1,4 @@
+import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { invoke } from '@tauri-apps/api/core';
@@ -11,6 +12,7 @@ export function FolderCatalogMenu({ folderId, name, x, y, onClose, onRemoved, re
   folderId: string; name: string; x: number; y: number;
   onClose: () => void; onRemoved: () => void; returnFocus: RefObject<HTMLElement | null>;
 }) {
+  const { lockProps } = useImportLock();
   const t = useT();
   const [dialog, setDialog] = useState(false);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -40,7 +42,7 @@ export function FolderCatalogMenu({ folderId, name, x, y, onClose, onRemoved, re
   if (!dialog) return createPortal(
     <div ref={menu} role="menu" className="fixed z-50 min-w-[200px] overflow-hidden rounded-[4px] border border-[var(--line-strong)] bg-[var(--panel)] shadow-lg"
       style={{ left: Math.max(0, Math.min(x, window.innerWidth - 260)), top: Math.max(0, Math.min(y, window.innerHeight - 50)) }}>
-      <button role="menuitem" className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)] focus-visible:bg-[var(--panel-2)] outline-none" onClick={() => setDialog(true)}>{t('removeCatalog')}</button>
+      <button {...lockProps} role="menuitem" className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)] focus-visible:bg-[var(--panel-2)] outline-none" onClick={() => setDialog(true)}>{t('removeCatalog')}</button>
     </div>, document.body,
   );
   return <CatalogActionDialog title={t('removeFolderQuestion').replace('{name}', summary?.name ?? name)} onClose={() => { if (!busy) onClose(); }} returnFocus={returnFocus}>
@@ -53,7 +55,7 @@ export function FolderCatalogMenu({ folderId, name, x, y, onClose, onRemoved, re
     {error && <div role="alert"><ErrorText error={error} /></div>}
     <div className="flex gap-2 justify-end">
       <button data-initial-focus className={catalogActionButton} disabled={busy} onClick={onClose}>{t('cancel')}</button>
-      <button className={`${catalogActionBase} border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)]`} disabled={busy || !summary} onClick={async () => {
+      <button className={`${catalogActionBase} border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)]`} disabled={busy || !summary} {...lockProps} onClick={async () => {
         setBusy(true); setError(null);
         try { await invoke('remove_folder_from_catalog', { folderId }); onRemoved(); onClose(); }
         catch (e) {

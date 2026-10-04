@@ -1,3 +1,4 @@
+import { useImportLock } from '../hooks/ImportLockContext';
 import { Icon } from './Icon';
 import { CatalogResetSection } from './CatalogResetSection';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -95,6 +96,7 @@ export function Rail({
   onOpenCatalogSetup,
   update,
 }: Props) {
+  const { lockProps } = useImportLock();
   const t = useT();
   const { language, setLanguage } = useLanguage();
   const [confirmImportCatalog, setConfirmImportCatalog] = useState(false);
@@ -361,7 +363,7 @@ export function Rail({
                 <div className="text-[length:var(--font-size-body)] font-semibold mb-2">{t('catalogCleanupTitle')}</div>
                 <button
                   onClick={onScanCatalogIssues}
-                  disabled={cleanupScanning}
+                  disabled={cleanupScanning} {...lockProps}
                   className={`h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] ${
                     cleanupScanning ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]'
                   }`}
@@ -387,7 +389,7 @@ export function Rail({
                       {t('importCatalogConfirmQuestion')}
                     </div>
                     <div className="flex gap-1.5">
-                      <button
+                      <button {...lockProps}
                         onClick={() => {
                           setConfirmImportCatalog(false);
                           onImportCatalog();
@@ -405,7 +407,7 @@ export function Rail({
                     </div>
                   </div>
                 ) : (
-                  <button
+                  <button {...lockProps}
                     onClick={() => setConfirmImportCatalog(true)}
                     className="mt-1.5 h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
                   >

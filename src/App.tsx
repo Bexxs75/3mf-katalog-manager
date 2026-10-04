@@ -1,3 +1,4 @@
+import { ImportLockContext } from './hooks/ImportLockContext';
 import { PrinterManagerView } from './components/PrinterManagerView';
 import type { MainView, PrinterNavigation } from './types';
 import { DragGhost } from './components/DragGhost';
@@ -12,6 +13,8 @@ import { snapshotQueue } from './lib/snapshotQueue';
 import { Rail } from './components/Rail';
 import { ContextMenu } from './components/ContextMenu';
 import { FilamentView } from './components/FilamentView';
+import { ImportProgressRow } from './components/ImportProgressRow';
+import { ErrorText } from './diagnostics/ErrorText';
 import { ImportSummaryBanner } from './components/ImportSummaryBanner';
 import { ArchiveImportDialog } from './components/ArchiveImportDialog';
 import { CatalogCleanupDialog } from './components/CatalogCleanupDialog';
@@ -89,6 +92,8 @@ export default function App() {
     enabled: mainView === 'catalog',
     catalogBaseDir,
     activeFolderId: filters.activeFolderId,
+    rootFolderId: store.folders.find(f => f.path === catalogBaseDir)?.id,
+    targetName: store.folders.find(f => f.id === filters.activeFolderId)?.name ?? catalogBaseDir ?? undefined,
     onImported: store.mergeImported,
     refreshFolders: store.refreshFolders,
     refreshFiles: store.refreshFiles,
@@ -171,7 +176,7 @@ export default function App() {
     selectedId: store.selectedId,
     selectModel: store.selectModel,
     hasBulkSelection: bulk.selectedForBulk.size > 0,
-    openBulkDeleteConfirm: () => bulk.setConfirmBulkDelete(true),
+    openBulkDeleteConfirm: () => { if (!fileImport.jobActive) bulk.setConfirmBulkDelete(true); },
     navigationEnabled: mainView === 'catalog' && !detailModelId && !collections.collectionsGalleryOpen,
     toggleBulkSelect: bulk.toggleBulkSelect,
   });
@@ -221,6 +226,7 @@ export default function App() {
   );
 
   return (
+    <ImportLockContext.Provider value={fileImport.jobActive}>
     <div
       className="h-screen min-h-[620px] flex flex-col bg-[var(--bg)] text-[var(--ink)] overflow-hidden"
       onMouseMoveCapture={(event) => { dragPointer.current = { x: event.clientX, y: event.clientY }; }}
@@ -243,6 +249,8 @@ export default function App() {
         onSortChange={filters.setSort}
         hideSortControl={collections.activeCollection !== null || filters.toolView !== null}
         count={filters.filtered.length}
+        importTargetName={catalogBaseDir ? store.folders.find(f => f.id === filters.activeFolderId)?.name ?? catalogBaseDir : undefined}
+        importTargetIsRoot={filters.activeFolderId === 'all'}
         onImportFiles={fileImport.importFiles}
         onImportFolder={fileImport.importFolder}
         mainView={mainView}
@@ -298,6 +306,19 @@ export default function App() {
             />
           ) : mainView === 'catalog' ? (
             <CatalogWorkspace
+              importRow={<>
+                {fileImport.progress && fileImport.meta && <ImportProgressRow
+                  key={fileImport.jobId}
+                  progress={fileImport.progress}
+                  meta={fileImport.meta}
+                  result={fileImport.result?.jobId === fileImport.jobId ? fileImport.result : null}
+                  queued={fileImport.queued}
+                  onCancel={fileImport.cancel}
+                  onDismiss={fileImport.dismiss}
+                  onSelectModel={setDetailModelId}
+                />}
+                {fileImport.error && <div role="alert"><ErrorText error={fileImport.error} /></div>}
+              </>}
               expansion={expansion}
               sidebarWidth={sidebarWidth}
               allFoldersCollapsed={allFoldersCollapsed}
@@ -420,7 +441,6 @@ export default function App() {
             <ImportSummaryBanner
               imported={fileImport.importBanner.imported}
               duplicates={fileImport.importBanner.duplicates}
-              archives={fileImport.importBanner.archives}
               skipped={fileImport.importBanner.skipped}
               onClose={fileImport.dismissImportBanner}
             />
@@ -431,7 +451,7 @@ export default function App() {
               archives={fileImport.pendingArchives}
               defaultTargetDir={archiveTargetDefault}
               onCancel={fileImport.cancelArchives}
-              onDone={fileImport.finishArchives}
+              onStart={fileImport.startArchives}
             />
           )}
 
@@ -476,5 +496,6 @@ export default function App() {
         />
       )}
     </div>
+    </ImportLockContext.Provider>
   );
 }

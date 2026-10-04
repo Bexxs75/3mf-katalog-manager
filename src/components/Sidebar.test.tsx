@@ -1,3 +1,4 @@
+import { ImportLockContext } from '../hooks/ImportLockContext';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
@@ -24,7 +25,7 @@ function Harness({ draggedFileId = null }: { draggedFileId?: string | null }) {
   </>;
 }
 const baseProps = {
-  query: '', onQueryChange: vi.fn(), queue: [], onQueueReorder: vi.fn(),
+  onDragFolderStart: vi.fn(), query: '', onQueryChange: vi.fn(), queue: [], onQueueReorder: vi.fn(),
   onQueueRemove: vi.fn(), onQueueSelect: vi.fn(), totalModelCount: 1,
   folders: [
     { id: 'a', name: 'Parent', parentId: null, path: '/a', count: 1 },
@@ -115,4 +116,16 @@ it('expands after 600 ms of dragging, and cancels on leave or release', () => {
   fireEvent.mouseEnter(parent());
   act(() => vi.advanceTimersByTime(600));
   expect(screen.queryByText('Child')).toBeNull();
+});
+
+it('locks new folder, cleanup, and folder drag during an import', () => {
+  baseProps.onDragFolderStart.mockClear();
+  render(<LanguageProvider><ImportLockContext.Provider value={true}><Harness /></ImportLockContext.Provider></LanguageProvider>);
+  const create = screen.getByRole('button', {name: /Neuer Ordner/});
+  expect(create).toBeDisabled(); expect(create).toHaveAttribute('title','Während eines Imports gesperrt');
+  const tools = screen.getByRole('button',{name:/Werkzeuge/});
+  if (tools.getAttribute('aria-expanded') === 'false') fireEvent.click(tools);
+  const cleanup = screen.getByRole('button', {name: /Aufräum/}); expect(cleanup).toBeDisabled(); expect(cleanup).toHaveAttribute('title','Während eines Imports gesperrt');
+  fireEvent.mouseDown(screen.getByText('Parent'),{clientX:10,clientY:10}); fireEvent.mouseMove(document,{clientX:40,clientY:40});
+  expect(baseProps.onDragFolderStart).not.toHaveBeenCalled();
 });
