@@ -242,7 +242,7 @@ export default function App() {
   return (
     <ImportLockContext.Provider value={fileImport.jobActive}>
     <div
-      className="h-screen min-h-[620px] flex flex-col bg-[var(--bg)] text-[var(--ink)] overflow-hidden"
+      className="h-screen flex flex-col bg-[var(--bg)] text-[var(--ink)] overflow-hidden"
       onMouseMoveCapture={(event) => { dragPointer.current = { x: event.clientX, y: event.clientY }; }}
       style={{ fontSize: 14, '--sidebar-width': `${mainView === 'catalog' ? sidebarWidth.width : 0}px` } as CSSProperties}
     >

@@ -20,7 +20,7 @@ Free and open source (MIT) · Windows, macOS, Linux · English, German, Spanish,
 
 The buttons open the download section of the website, which always offers the newest version. All files and checksums: [latest release](https://github.com/Bexxs75/3mf-katalog-manager/releases/latest).
 
-**Which file do I need?** Windows: the `.msi`. macOS: the `.dmg` (works on Intel and Apple Silicon). Linux: the `.AppImage`. Files **with** `-step` in the name also show a 3D preview for STEP files (`.stp`/`.step`) and are larger; if you only use 3MF, STL or OBJ, take the file **without** `-step`. Both variants are otherwise identical.
+**Which file do I need?** Windows: the `.msi`. macOS: the `.dmg` (works on Intel and Apple Silicon). Linux: the `.AppImage`. Files **with** `-STEP` in the name also show a 3D preview for STEP files (`.stp`/`.step`) and are larger; if you only use 3MF, STL or OBJ, take the file **without** `-STEP`. Both variants are otherwise identical.
 
 ## Compatibility
 
@@ -30,7 +30,7 @@ The buttons open the download section of the website, which always offers the ne
 | macOS, Intel and Apple Silicon (`.dmg`) | available, unsigned |
 | Linux (`.AppImage`) | available; `.deb`, `.rpm` and AUR planned |
 | 3MF, STL, OBJ | catalog and 3D preview |
-| STEP (`.stp`/`.step`) | catalog; 3D preview with the `-step` download |
+| STEP (`.stp`/`.step`) | catalog; 3D preview with the `-STEP` download |
 | OrcaSlicer / Bambu Studio 3MF | filament usage and weight per plate supported |
 | Open in slicer | Bambu Studio, OrcaSlicer, PrusaSlicer, SuperSlicer, UltiMaker Cura detected automatically, others can be added |
 | Klipper / Moonraker | available; [more printer models wanted](https://3mfkatalog.de/en/printer-test.html) |
@@ -44,11 +44,11 @@ The buttons open the download section of the website, which always offers the ne
 | Printer | System | Checked | Result |
 |---|---|---|---|
 | Sovol SV08 | Stock Klipper | Print list and usage, deducting from the spool in the app | ✅ Confirmed in daily use |
-| Anycubic Kobra S1 with ACE Pro / ACE Pro 2 | Rinkhals | Print list and usage readable, matching file names to the model | ☑️ Test report checked |
+| Anycubic Kobra S1 with ACE Pro / ACE Pro 2 | Rinkhals | Print list and usage, deducting from the spool, matching file names to the model; cancelled prints are deducted with the actual amount; two printers side by side | ✅ Confirmed in long-term use (2 printers) |
 | Qidi Smart 3 | Stock Klipper | Print list and usage readable; the printer's clock was wrong | 🟡 From v0.15.0 |
 | Creality K2 Plus (with CFS) | Creality Klipper 1.1.6.1, rooted | Print list and usage readable; no material or weight from the slicer, so the spool is chosen by hand | ☑️ Test report checked |
 
-*Confirmed in daily use*: tried with the app on a real printer. *Test report checked*: the data from the anonymous [test form](https://3mfkatalog.de/en/printer-test.html) fits, a hands-on test is still missing. Your printer is missing? Your test adds it.
+*Confirmed in daily use*: tried with the app on a real printer. *Confirmed in long-term use*: used by users in everyday printing over a longer period and reported back. *Test report checked*: the data from the anonymous [test form](https://3mfkatalog.de/en/printer-test.html) fits, a hands-on test is still missing. Your printer is missing? Your test adds it.
 
 ## Is it safe to install?
 
@@ -56,10 +56,10 @@ Windows and macOS show a warning on the first start because the packages are **n
 
 What you can check yourself:
 
-- **Open source:** every release is built from the public source code by [GitHub Actions workflows](https://github.com/Bexxs75/3mf-katalog-manager/tree/master/.github/workflows). The source of each version is the matching tag, e.g. [v0.14.0](https://github.com/Bexxs75/3mf-katalog-manager/tree/v0.14.0).
+- **Open source:** every release is built from the public source code by [GitHub Actions workflows](https://github.com/Bexxs75/3mf-katalog-manager/tree/master/.github/workflows). The source of each version is the matching tag, e.g. [v0.15.0](https://github.com/Bexxs75/3mf-katalog-manager/tree/v0.15.0).
 - **Checksums:** every release contains `SHA256SUMS.txt`. Compare it with the hash of your download:
-  - Windows (PowerShell): `Get-FileHash .\3MF.Katalog.Manager_…msi -Algorithm SHA256`
-  - macOS: `shasum -a 256 3MF.Katalog.Manager_…dmg`
+  - Windows (PowerShell): `Get-FileHash .\3MF-Katalog-Manager-0.15.0-Windows-x64.msi -Algorithm SHA256`
+  - macOS: `shasum -a 256 3MF-Katalog-Manager-0.15.0-macOS-universal.dmg`
   - Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`
 - **Starting anyway:** Windows SmartScreen: "More info" → "Run anyway". macOS: right-click the app → "Open"; on macOS 15 or newer: System Settings → Privacy & Security → "Open Anyway".
 - **Local only:** the app works offline. It only goes online to check GitHub for a newer version, to download it when you choose to update, and, if you switch it on, to talk to printers on your home network.
@@ -68,13 +68,14 @@ What you can check yourself:
 
 ## Updates
 
-From v0.15.0 the app checks for updates on startup and can install them itself on Windows, macOS, and the Linux AppImage. "Update now" downloads the signed package, backs up your catalog database first (the last 3 backups are kept, in `update-backups` inside the app's data folder), and installs it after you click "Restart and install". Linux `.deb`/`.rpm` installs show a "Go to download page" button instead, since only the AppImage can replace itself.
+From v0.15.0 the app checks for updates on startup and can install them itself on Windows, macOS, and the Linux AppImage. "Update now" downloads the signed package. "Restart and install" first backs up your catalog database (the last 3 backups are kept, in `update-backups` inside the app's data folder), then installs the update. Linux `.deb`/`.rpm` installs show a "Go to download page" button instead, since only the AppImage can replace itself.
 
 Installations of 0.14 or older have to be updated once by hand — download 0.15.0 from the [website](https://3mfkatalog.de/en/#download) or the [latest release](https://github.com/Bexxs75/3mf-katalog-manager/releases/latest); every version from 0.15.0 onward then updates itself. Details, including how to restore a backup: [user guide](docs/benutzerhandbuch/BENUTZERHANDBUCH.md#updating).
 
 ## What it does
 
 - **Find and organize models** — import files or whole folders, automatic tags, search, folders, collections, favorites, duplicates detection, trash.
+- **Remove from catalog / Reset catalog** — remove models or folders, or empty the catalog, without changing files on disk.
 - **Understand files and metadata** — 3D preview for 3MF, STL, OBJ (and STEP), dimensions, volume, build plates, filament usage and weight from OrcaSlicer/Bambu Studio.
 - **Manage filament and resin** — spools and resin bottles with stock, location and price, printers with AMS/MMU slots, "Is there enough filament?" per model.
 - **Plan and document prints** — print queue, print status, print log with photos, estimated material cost, open in your slicer with one click.
@@ -101,7 +102,7 @@ Installations of 0.14 or older have to be updated once by hand — download 0.15
 - **Is there enough filament?** — for sliced 3MF files, the detail page compares the filament requirement with your spools (material and similar color) and shows whether it is enough, enough only with a spool change, or how much is missing – including the matching spool and whether it is loaded in a printer. The print queue shows the status per entry and takes the combined requirement into account.
 - **Tools** — a sidebar section with the print queue, "Recently viewed", "Recently added", "Favorites" (all models marked with a heart), "Duplicates" and cleanup suggestions, each with a count; the views filter the catalog and combine with folders, tags and search.
 - **Printer connection** — optional (off by default): Klipper/Moonraker printers on your home network report the filament used by finished and aborted prints; after you confirm, it is deducted from the spool, optionally with a print log entry. Read-only, only addresses you entered yourself on your home network. See [Tested printers](#tested-printers); results for more printers are collected on the [test page](https://3mfkatalog.de/en/printer-test.html).
-- **Catalog extensions** — print-status toggle + weight per model (real value from the slicer if the 3mf has already been sliced, otherwise a rough estimate from volume × material density), sorting by "last viewed", NEW badge for recently imported models, creators filter (from the 3MF designer metadata), automatic detection of exact file duplicates on import via content hash
+- **Catalog extensions** — print-status toggle + weight per model (real value from the slicer if the 3mf has already been sliced, otherwise a rough estimate from volume × material density), sorting by "last viewed", NEW badge for recently imported models, automatic detection of exact file duplicates on import via content hash
 - **Filament usage from the slicer** — reads the filament usage sliced in OrcaSlicer/Bambu Studio (`Metadata/slice_info.config`): real weight instead of an estimate, breakdown per build plate and filament (type, color, grams, meters) on the model detail page; "Rescan metadata" button retrieves the values afterward if an already-catalogued file was re-sliced in OrcaSlicer/Bambu Studio
 - **Material cost estimate** — for models with real slicer filament usage, an additional estimated material cost on the detail page, computed from consumption and the prices of matching spools in the Material Manager
 - **Print log** — in addition to the print-status toggle, a log of multiple print attempts per model (date, note, photo), independent of print status
