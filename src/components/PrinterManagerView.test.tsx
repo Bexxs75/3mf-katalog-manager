@@ -277,7 +277,7 @@ it('uses viewport breakpoints for the icon rail and closes the overlay with Esca
   const master = screen.getByRole('complementary');
   const root = master.parentElement!;
   const menu = within(master).getByRole('button', { name: 'Druckerliste ein- oder ausklappen' });
-  expect(root).toHaveClass('grid-cols-[64px_minmax(0,1fr)]', 'min-[1024px]:grid-cols-[260px_minmax(0,1fr)]', 'min-[1400px]:grid-cols-[300px_minmax(0,1fr)]');
+  expect(root).toHaveClass('grid-cols-[var(--pm-master-width)_minmax(0,1fr)]');
   expect(screen.getByRole('main')).toHaveClass('col-start-2');
   fireEvent.click(menu);
   expect(menu).toHaveAttribute('aria-expanded', 'true');

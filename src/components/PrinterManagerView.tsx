@@ -54,7 +54,7 @@ export function PrinterManagerView({ printers: state, printerLink, printerId, on
     document.addEventListener('keydown', close);
     return () => document.removeEventListener('keydown', close);
   }, [open]);
-  return <div aria-label={t('railPrinters')} data-list-open={open} className="relative flex-1 min-w-0 min-h-0 grid grid-cols-[64px_minmax(0,1fr)] min-[1024px]:grid-cols-[260px_minmax(0,1fr)] min-[1400px]:grid-cols-[300px_minmax(0,1fr)] text-[13px]">
+  return <div aria-label={t('railPrinters')} data-list-open={open} className="relative flex-1 min-w-0 min-h-0 grid grid-cols-[var(--pm-master-width)_minmax(0,1fr)] text-[13px]">
     {open && <button aria-label={t('pmToggleList')} className="absolute inset-0 left-[300px] z-20 bg-[var(--scrim)] min-[1024px]:hidden"
       onClick={() => { setOpen(false); menuRef.current?.focus(); }} />}
     <aside aria-label={t('pmPrinters')} data-collapsed={!open}

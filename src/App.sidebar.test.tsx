@@ -5,7 +5,7 @@ import App from './App';
 import { LanguageProviderWithDiagnostics } from './test/renderWithDiagnostics';
 import { UiDensityProvider } from './hooks/UiDensityContext';
 import { de } from './i18n/de';
-import { makeFolder, makeModelFileSummary } from './test/factories';
+import { makeFolder, makeModelFile, makeModelFileSummary } from './test/factories';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(), convertFileSrc: (path: string) => path }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
@@ -77,4 +77,36 @@ it('uses the visible sidebar width for the panel and zero in trash and Material 
   }
   fireEvent.click(screen.getByRole('button', { name: de.railCatalog }));
   expect(root.style.getPropertyValue('--sidebar-width')).toBe('420px');
+});
+
+it('assigns the shared printer master width to the settings offset in Printer Manager', async () => {
+  const { container } = await act(async () => render(<LanguageProviderWithDiagnostics><UiDensityProvider><App /></UiDensityProvider></LanguageProviderWithDiagnostics>));
+  await act(async () => fireEvent.click(screen.getByRole('button', {name: de.railPrinters})));
+  expect((container.firstElementChild as HTMLElement).style.getPropertyValue('--sidebar-width')).toBe('var(--pm-master-width)');
+  expect(container.querySelector('[data-list-open]')).toHaveClass('grid-cols-[var(--pm-master-width)_minmax(0,1fr)]');
+});
+
+it.each([false, true])('deletes through the sidebar hook, preserves models and retains gallery=%s', async (galleryOpen) => {
+  let collections = [{id: 'c1', name: 'Kitchen', modelCount: 1}];
+  const model = makeModelFile({name: 'Kept.stl'});
+  const fallback = vi.mocked(invoke).getMockImplementation()!;
+  vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+    if (cmd === 'list_collections') return collections;
+    if (cmd === 'list_file_summaries' || cmd === 'list_collection_files') return [model];
+    if (cmd === 'list_all_file_tags') return {};
+    if (cmd === 'delete_collection') { collections = []; return; }
+    return fallback(cmd, args);
+  });
+  await act(async () => render(<LanguageProviderWithDiagnostics><UiDensityProvider><App /></UiDensityProvider></LanguageProviderWithDiagnostics>));
+  const sidebar = within(screen.getByRole('separator').closest('aside')!);
+  await act(async () => fireEvent.click(sidebar.getByRole('button', {name: 'Kitchen'})));
+  if (galleryOpen) fireEvent.click(sidebar.getByText(de.viewAllCollectionsLabel));
+  fireEvent.contextMenu(sidebar.getByRole('button', {name: 'Kitchen'}));
+  fireEvent.click(screen.getByRole('button', {name: de.delete}));
+  await act(async () => fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', {name: de.delete})));
+  expect(invoke).toHaveBeenCalledWith('delete_collection', {collectionId: 'c1'});
+  expect(sidebar.queryByRole('button', {name: 'Kitchen'})).toBeNull();
+  if (galleryOpen) expect(screen.getByText(de.noCollectionsEmptyState)).toBeVisible();
+  else expect(screen.getByRole('main')).toHaveTextContent('Kept.stl');
+  expect(invoke).not.toHaveBeenCalledWith('delete_file', expect.anything());
 });

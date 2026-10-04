@@ -57,7 +57,7 @@ interface CatalogWorkspaceProps {
   collectionsGalleryOpen: boolean;
   createCollection: (name: string) => void;
   renameCollection: (id: string, name: string) => void;
-  deleteCollection: (id: string) => void;
+  deleteCollection: (id: string) => void | Promise<void>;
   detailModel: ModelFile | null;
   selectedForBulk: Set<string>;
   confirmBulkDelete: boolean;
@@ -304,6 +304,13 @@ export function CatalogWorkspace({
           setToolView(null);
         }}
         onCreateCollection={createCollection}
+        onRenameCollection={renameCollection}
+        onDeleteCollection={async (id) => {
+          await deleteCollection(id);
+          if (activeCollection === id && !collectionsGalleryOpen) {
+            setActiveFolderId('all'); setActiveTag(null); setToolView(null);
+          }
+        }}
         toolView={toolView}
         onToolViewChange={(v) => {
           setToolView(v);

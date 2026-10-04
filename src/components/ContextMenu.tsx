@@ -1,5 +1,5 @@
 import { useImportLock } from '../hooks/ImportLockContext';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import { splitFileName } from '../lib/fileName';
 import { messageOf } from '../lib/errors';
@@ -21,7 +21,7 @@ interface Props {
 
 type View = 'menu' | 'confirmDelete' | 'confirmRemove' | 'rename';
 
-export function ContextMenu({
+function ModelContextMenu({
   x,
   y,
   onClose,
@@ -46,34 +46,8 @@ export function ContextMenu({
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null;
-    return () => { if (previous?.isConnected) previous.focus(); };
-  }, []);
-
-  useEffect(() => {
-    // The first button in either confirmation is the safe cancel action.
     ref.current?.querySelector<HTMLElement>(view === 'rename' ? 'input' : 'button')?.focus();
   }, [view]);
-
-  useEffect(() => {
-    const handlePointerDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (view === 'menu') onClose();
-        else { setView('menu'); setRenameError(null); }
-        e.preventDefault();
-        e.stopPropagation();
-      }
-    };
-    document.addEventListener('mousedown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [onClose, view]);
 
   const submitRename = () => {
     if (lockProps.disabled) return;
@@ -98,12 +72,11 @@ export function ContextMenu({
   };
 
   return (
-    <div
-      data-navigation-menu
-      ref={ref}
-      className="fixed z-50 min-w-[172px] rounded-[4px] border border-[var(--line-strong)] bg-[var(--panel)] shadow-lg overflow-hidden"
-      style={{ left: x, top: y }}
-    >
+    <ContextMenuFrame x={x} y={y} onClose={onClose} onEscape={() => {
+      if (view === 'menu') onClose();
+      else { setView('menu'); setRenameError(null); }
+    }}>
+    <div ref={ref}>
       {view === 'confirmRemove' ? (
         <div className="px-3 py-2.5 max-w-[260px]" aria-busy={renaming}>
           <div className="text-[12px] font-medium text-[var(--ink)] pb-1">{t('removeModelQuestion').replace('{name}', currentName)}</div>
@@ -248,5 +221,58 @@ export function ContextMenu({
         </>
       )}
     </div>
+    </ContextMenuFrame>
   );
+}
+
+interface CollectionMenuProps {
+  x: number;
+  y: number;
+  onClose: () => void;
+  collectionActions: { onRename: () => void; onDelete: () => void };
+}
+
+export function ContextMenu(props: Props | CollectionMenuProps) {
+  const { lockProps } = useImportLock();
+  const t = useT();
+  if (!('collectionActions' in props)) return <ModelContextMenu {...props} />;
+  return <ContextMenuFrame x={props.x} y={props.y} onClose={props.onClose}>
+    <button {...lockProps} onClick={props.collectionActions.onRename}
+      className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)] disabled:opacity-50">{t('renameLabel')}</button>
+    <button {...lockProps} onClick={props.collectionActions.onDelete}
+      className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--crit)] cursor-pointer hover:bg-[var(--panel-2)] disabled:opacity-50">{t('delete')}</button>
+  </ContextMenuFrame>;
+}
+
+function ContextMenuFrame({ x, y, onClose, onEscape = onClose, children }: {
+  x: number; y: number; onClose: () => void; onEscape?: () => void; children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ left: x, top: y });
+  useLayoutEffect(() => {
+    const menu = ref.current;
+    if (!menu) return;
+    const bounds = menu.getBoundingClientRect();
+    setPosition({ left: Math.max(0, Math.min(x, window.innerWidth - bounds.width)),
+      top: Math.max(0, Math.min(y, window.innerHeight - bounds.height)) });
+  }, [x, y, children]);
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    ref.current?.querySelector<HTMLElement>('button:not(:disabled)')?.focus();
+    return () => { if (previous?.isConnected) previous.focus(); };
+  }, []);
+  useEffect(() => {
+    const pointer = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) onClose();
+    };
+    const key = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onEscape(); }
+    };
+    document.addEventListener('mousedown', pointer);
+    document.addEventListener('keydown', key);
+    return () => { document.removeEventListener('mousedown', pointer); document.removeEventListener('keydown', key); };
+  }, [onClose, onEscape]);
+  return <div data-navigation-menu ref={ref}
+    className="fixed z-50 min-w-[172px] max-w-[100vw] max-h-[100vh] rounded-[4px] border border-[var(--line-strong)] bg-[var(--panel)] shadow-lg overflow-auto"
+    style={position}>{children}</div>;
 }

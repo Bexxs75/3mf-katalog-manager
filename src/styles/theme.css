@@ -136,3 +136,8 @@ body { font-family: 'Barlow', Helvetica, sans-serif; }
     animation: none;
   }
 }
+
+/* Shared by the printer master list and the settings panel offset. */
+[data-app] { --pm-master-width: 64px; }
+@media (min-width: 1024px) { [data-app] { --pm-master-width: 260px; } }
+@media (min-width: 1400px) { [data-app] { --pm-master-width: 300px; } }

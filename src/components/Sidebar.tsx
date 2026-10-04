@@ -1,6 +1,9 @@
 import { useImportLock } from '../hooks/ImportLockContext';
 import type { useFolderExpansion } from '../hooks/useFolderExpansion';
 import { SIDEBAR_MIN, SIDEBAR_MAX, SIDEBAR_STEP } from '../hooks/useSidebarWidth';
+import { ContextMenu } from './ContextMenu';
+import { CatalogActionDialog, catalogActionButton } from './CatalogActionDialog';
+import { messageOf } from '../lib/errors';
 import { Icon } from './Icon';
 import { useEffect, useRef, useState } from 'react';
 import type { Folder, TagCount, ModelFile, Collection, FilamentCheck } from '../types';
@@ -49,6 +52,8 @@ interface Props {
   onSelectCollection: (id: string) => void;
   onOpenCollectionsGallery: () => void;
   onCreateCollection: (name: string) => void;
+  onRenameCollection: (id: string, name: string) => void | Promise<void>;
+  onDeleteCollection: (id: string) => void | Promise<void>;
   toolView: ToolView | null;
   onToolViewChange: (v: ToolView | null) => void;
   toolCounts: ToolCounts;
@@ -94,6 +99,8 @@ export function Sidebar({
   onSelectCollection,
   onOpenCollectionsGallery,
   onCreateCollection,
+  onRenameCollection,
+  onDeleteCollection,
   toolView,
   onToolViewChange,
   toolCounts,
@@ -102,6 +109,29 @@ export function Sidebar({
   cleanupError,
 }: Props) {
   const { jobActive, lockProps } = useImportLock();
+  const [collectionMenu, setCollectionMenu] = useState<{ collection: Collection; x: number; y: number } | null>(null);
+  const [deletingCollection, setDeletingCollection] = useState<Collection | null>(null);
+  const [renamingCollection, setRenamingCollection] = useState<Collection | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  const [collectionError, setCollectionError] = useState<string | null>(null);
+  const [collectionBusy, setCollectionBusy] = useState(false);
+  const collectionTrigger = useRef<HTMLElement | null>(null);
+  const collectionsHeading = useRef<HTMLSpanElement>(null);
+  const renameInput = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (renamingCollection) renameInput.current?.focus(); }, [renamingCollection]);
+  const closeCollectionDialog = () => { if (!collectionBusy) { setDeletingCollection(null); setCollectionError(null); } };
+  const submitCollectionRename = async () => {
+    if (jobActive || collectionBusy || !renamingCollection) return;
+    const name = renameDraft.trim();
+    if (!name || name === renamingCollection.name) {
+      setRenamingCollection(null); collectionTrigger.current?.focus(); return;
+    }
+    setCollectionBusy(true); setCollectionError(null);
+    try { await onRenameCollection(renamingCollection.id, name); setRenamingCollection(null); collectionTrigger.current?.focus(); }
+    catch (error) { setCollectionError(messageOf(error)); }
+    finally { setCollectionBusy(false); }
+  };
+
   const t = useT();
   const [dragging, setDragging] = useState(false);
   const stopDrag = useRef<(() => void) | null>(null);
@@ -254,7 +284,7 @@ export function Sidebar({
         )}
 
         <div className="flex items-center justify-between px-1.5 pt-[18px] pb-2">
-          <span className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)]">
+          <span ref={collectionsHeading} tabIndex={-1} className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)]">
             {t('collectionsTab')}
           </span>
           <span
@@ -267,14 +297,38 @@ export function Sidebar({
         {collections.map((c) => (
           <div
             key={c.id}
-            onClick={() => onSelectCollection(c.id)}
+            role="button"
+            tabIndex={0}
+            aria-label={c.name}
+            onClick={() => { if (renamingCollection?.id !== c.id) onSelectCollection(c.id); }}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              if (renamingCollection) return;
+              event.currentTarget.focus(); collectionTrigger.current = event.currentTarget;
+              setCollectionMenu({ collection: c, x: event.clientX, y: event.clientY });
+            }}
+            onKeyDown={(event) => {
+              if (event.target !== event.currentTarget) return;
+              if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+                event.preventDefault(); event.currentTarget.focus(); collectionTrigger.current = event.currentTarget;
+                const bounds = event.currentTarget.getBoundingClientRect();
+                setCollectionMenu({ collection: c, x: bounds.left, y: bounds.bottom });
+              } else if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectCollection(c.id); }
+            }}
             className={`flex items-center gap-2 h-7 px-1.5 rounded-[3px] cursor-pointer text-[length:var(--font-size-item)] ${
               !collectionsGalleryOpen && activeCollection === c.id
                 ? 'bg-[var(--accent-soft)] text-[var(--accent)] font-semibold'
                 : 'text-[var(--ink-2)] hover:text-[var(--ink)]'
             }`}
           >
-            <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{c.name}</span>
+            {renamingCollection?.id === c.id ? <input ref={renameInput} aria-label={t('renameCollectionAria')}
+              value={renameDraft} onChange={event => setRenameDraft(event.target.value)} disabled={collectionBusy || jobActive}
+              onClick={event => event.stopPropagation()}
+              onKeyDown={event => {
+                if (event.key === 'Enter') { event.preventDefault(); void submitCollectionRename(); }
+                if (event.key === 'Escape') { event.stopPropagation(); if (!collectionBusy) { setRenamingCollection(null); setCollectionError(null); collectionTrigger.current?.focus(); } }
+              }} className="flex-1 min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] text-[11.5px]" />
+              : <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{c.name}</span>}
             <span className="font-mono-ui text-[11px] text-[var(--ink-3)]">{c.modelCount}</span>
           </div>
         ))}
@@ -370,6 +424,28 @@ export function Sidebar({
           cleanupError={cleanupError}
         />
       </div>
+      {collectionError && !deletingCollection && <p role="alert" className="px-3 text-[var(--crit)]">{collectionError}</p>}
+      {collectionMenu && <ContextMenu x={collectionMenu.x} y={collectionMenu.y} onClose={() => setCollectionMenu(null)}
+        collectionActions={{
+          onRename: () => { if (jobActive) return; setCollectionError(null); setRenameDraft(collectionMenu.collection.name); setRenamingCollection(collectionMenu.collection); setCollectionMenu(null); },
+          onDelete: () => { if (jobActive) return; setCollectionError(null); setDeletingCollection(collectionMenu.collection); setCollectionMenu(null); },
+        }} />}
+      {deletingCollection && <CatalogActionDialog title={t('deleteCollectionConfirmQuestion')} returnFocus={collectionTrigger} onClose={closeCollectionDialog}>
+        {collectionError && <p role="alert">{collectionError}</p>}
+        <div className="flex justify-end gap-2">
+          <button data-initial-focus className={catalogActionButton} disabled={collectionBusy} onClick={closeCollectionDialog}>{t('cancel')}</button>
+          <button className={catalogActionButton} {...lockProps} disabled={jobActive || collectionBusy} onClick={async () => {
+            if (jobActive || collectionBusy) return;
+            setCollectionBusy(true); setCollectionError(null);
+            try {
+              await onDeleteCollection(deletingCollection.id);
+              collectionTrigger.current = collectionsHeading.current;
+              setDeletingCollection(null);
+            } catch (error) { setCollectionError(messageOf(error)); }
+            finally { setCollectionBusy(false); }
+          }}>{t('delete')}</button>
+        </div>
+      </CatalogActionDialog>}
     </aside>
   );
 }
