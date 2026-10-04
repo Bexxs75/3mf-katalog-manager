@@ -9,6 +9,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ## [Unreleased]
 
+## [0.15.3] - 2026-10-04
+
 ### Fixed
 - Linux: the message "Something went wrong – ResizeObserver loop completed with undelivered notifications" and the flickering technical data when clicking a model no longer appear. In a window height band of about 8 pixels, the preview in the right panel kept changing its height (4:3 ratio) as the scrollbar appeared and disappeared, which made the layout oscillate endlessly. The preview now has a fixed height, the model page reserves room for its scrollbar, and the harmless browser notice is no longer shown as an error. Reported by a user on Linux Mint 22.3.
 
@@ -475,6 +477,8 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/), Ve
 Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unter der Scaffold-Versionsnummer `0.1.0`, ohne dass Meilensteine markiert wurden. Die folgenden Versionsgrenzen wurden nachträglich anhand von Entwicklungs-Tagen und natürlichen Feature-Abschlüssen (jeweils an einem Dokumentations-Commit) gezogen, keine davon wurde zum jeweiligen Zeitpunkt live getaggt oder veröffentlicht.
 
 ## [Unreleased]
+
+## [0.15.3] - 2026-10-04
 
 ### Behoben
 - Linux: Die Meldung „Etwas ist schiefgelaufen – ResizeObserver loop completed with undelivered notifications“ und das Flimmern der technischen Daten beim Anklicken eines Modells erscheinen nicht mehr. In einem Höhenbereich des Fensters von etwa 8 Pixeln änderte die Vorschau im rechten Seitenfeld (Verhältnis 4:3) ihre Höhe, sobald die Scrollleiste erschien oder verschwand, und das Layout schaukelte sich endlos auf. Die Vorschau hat jetzt eine feste Höhe, die Modellseite reserviert Platz für ihre Scrollleiste, und die harmlose Browsermeldung wird nicht mehr als Fehler angezeigt. Gemeldet von einem Nutzer unter Linux Mint 22.3.
