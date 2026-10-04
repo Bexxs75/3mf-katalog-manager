@@ -90,7 +90,7 @@ export function DetailPanel({
           <div className="font-mono-ui text-[10.5px] text-[var(--ink-3)] pt-1.5">{model.path}</div>
         </div>
 
-        <div className="relative aspect-[4/3] bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
+        <div className="relative h-[248px] bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
           <ModelPreview model={model} needsSnapshot={false} onSnapshotCaptured={() => {}} />
         </div>
 
@@ -140,7 +140,7 @@ export function DetailPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="relative aspect-[4/3] bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
+        <div className="relative h-[248px] bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
           <div
             className="absolute inset-0"
             style={{
@@ -345,7 +345,7 @@ export function DetailPanel({
       style={{ width: '380px' }}
     >
       <div className="flex-1 overflow-y-auto">
-        <div className="relative aspect-[4/3] bg-[var(--plate)] overflow-hidden">
+        <div className="relative h-[284px] bg-[var(--plate)] overflow-hidden">
           <div
             className="absolute inset-0"
             style={{
