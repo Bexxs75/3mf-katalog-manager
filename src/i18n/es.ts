@@ -101,7 +101,7 @@ export const es: Translations = {
   pmAddPrinter: "+ Añadir impresora",
   pmReorderHint: "Arrastra para cambiar el orden. También se aplica en Material Manager.",
   pmUnitCount: {"one": "{count} unidad", "other": "{count} unidades"},
-  pmGeneral: "General",
+  pmPrinterCard: "Impresora",
   pmUnits: "Unidades de material",
   pmConnection: "Conexión",
   pmJobs: "Trabajos de impresión",

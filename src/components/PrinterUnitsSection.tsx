@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Icon } from './Icon';
 import { useT } from '../i18n/LanguageContext';
 import { formatCount } from '../i18n/types';
 import { UNIT_TEMPLATES, isValidColorHex } from '../lib/filamentColors';
@@ -51,26 +52,29 @@ export function PrinterUnitsSection({ printer, spools, actions, onChanged, onMat
   const count = deleting ? spools.filter(s => s.unitId === deleting.id).length : 0;
   return <>
     {printer.units.map(unit => <div key={unit.id} onMouseEnter={() => order.enter(unit.id)}
-      className={`my-2 p-3 rounded border ${order.over === unit.id ? 'border-[var(--accent)]' : 'border-[var(--line)]'}`}>
-      <div className="flex items-center gap-2 mb-2">
-        {unit.kind !== 'resin_vat' && <button type="button" className={pmButton} aria-label={`${t('printersReorderHint')} ${unit.name}`}
-          onMouseDown={e => { if (e.button === 0) order.begin(e, unit.id); }} onKeyDown={e => order.key(e, unit.id)}>⋮⋮</button>}
-        <span className="font-semibold flex-1">{unit.kind === 'resin_vat' ? t('printersKindResinVat') : unit.name}
-          <span className="font-normal text-[var(--ink-3)] ml-2">{t(KIND_LABEL[unit.kind])} · {formatCount(t('printersUnitSlotCount'), unit.slotCount)}</span>
-        </span>
-        {unit.kind !== 'resin_vat' && <>
+      className={`rounded border overflow-hidden grid grid-cols-[118px_minmax(0,1fr)] ${order.over === unit.id ? 'border-[var(--accent)]' : 'border-[var(--line)]'}`}>
+      <div className="w-[118px] bg-[var(--panel-2)] border-r border-[var(--line)] p-2.5 flex flex-col items-center justify-center gap-1.5 text-center">
+        <Icon name={unit.kind === 'external' ? 'spool' : unit.kind === 'resin_vat' ? 'resin' : 'ams'} size={24} />
+        <span className="font-bold break-words max-w-full">{unit.kind === 'resin_vat' ? t('printersKindResinVat') : unit.name}</span>
+        <span className="text-[10.5px] text-[var(--ink-3)]">{t(KIND_LABEL[unit.kind])} · {formatCount(t('printersUnitSlotCount'), unit.slotCount)}</span>
+      </div>
+      <div className="min-w-0 flex flex-wrap items-center">
+        <div className="flex flex-wrap gap-2 p-2.5 min-w-0">{Array.from({ length: Math.min(16, unit.slotCount) }, (_, i) => {
+          const spool = spools.find(s => s.unitId === unit.id && s.slotIndex === i);
+          const label = `${i + 1} · ${spool ? [spool.material, spool.color].filter(Boolean).join(' · ') : t('printersSlotEmpty')}`;
+          return <div key={i} title={label} className="w-16 flex flex-col items-center gap-1 text-center text-[10.5px] text-[var(--ink-2)] break-words">
+            <span aria-hidden className="w-[30px] h-[30px] rounded-full border-2 border-[var(--line-strong)] shrink-0"
+              style={{ background: !spool ? 'repeating-linear-gradient(45deg, transparent 0 3px, var(--line) 3px 4px)' : spool.colorHex && isValidColorHex(spool.colorHex) ? spool.colorHex : undefined }} />
+            <span className="max-w-full">{label}</span>
+          </div>;
+        })}</div>
+        {unit.kind !== 'resin_vat' && <div className="ml-auto flex flex-wrap gap-1.5 p-2.5">
           <button className={pmButton} onClick={() => setEditing(unit)}>{t('pmEdit')}</button>
           <button className={pmButton} aria-label={`${t('printersDelete')} ${unit.name}`} onClick={() => setDeleting(unit)}>{t('printersDelete')}</button>
-        </>}
+          <button type="button" className={pmButton} aria-label={`${t('printersReorderHint')} ${unit.name}`}
+            onMouseDown={e => { if (e.button === 0) order.begin(e, unit.id); }} onKeyDown={e => order.key(e, unit.id)}>⋮⋮</button>
+        </div>}
       </div>
-      <div className="flex flex-wrap gap-2">{Array.from({ length: Math.min(16, unit.slotCount) }, (_, i) => {
-        const spool = spools.find(s => s.unitId === unit.id && s.slotIndex === i);
-        return <div key={i} className="flex items-center gap-2 px-2 py-1 border border-[var(--line)] rounded text-[12px]">
-          <span aria-hidden className="w-3 h-3 rounded-full border border-[var(--line-strong)]"
-            style={{ background: spool?.colorHex && isValidColorHex(spool.colorHex) ? spool.colorHex : undefined }} />
-          {i + 1} · {spool ? [spool.material, spool.color].filter(Boolean).join(' · ') : t('printersSlotEmpty')}
-        </div>;
-      })}</div>
     </div>)}
     <div className="flex flex-wrap gap-3 mt-3">
       {printer.kind !== 'resin' && <button className={pmButton} onClick={() => setEditing('new')}>+ {t('printersAddUnitButton')}</button>}

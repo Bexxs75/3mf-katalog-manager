@@ -101,7 +101,7 @@ export const de: Translations = {
   pmAddPrinter: "+ Drucker hinzufügen",
   pmReorderHint: "Reihenfolge per Ziehen änderbar. Sie gilt auch im Material Manager.",
   pmUnitCount: {"one": "{count} Einheit", "other": "{count} Einheiten"},
-  pmGeneral: "Allgemein",
+  pmPrinterCard: "Drucker",
   pmUnits: "Materialeinheiten",
   pmConnection: "Verbindung",
   pmJobs: "Druckaufträge",

@@ -54,8 +54,8 @@ function setup(printerId?: string, printerLink = link()) {
   render(<LanguageProvider><Wrapper /></LanguageProvider>);
   return { onMaterial, printerLink };
 }
-const general = () => screen.getByRole('heading', { name: '1 Allgemein' }).closest('section')!;
-const units = () => screen.getByRole('heading', { name: '2 Materialeinheiten' }).closest('section')!;
+const general = () => screen.getByRole('heading', { name: /^1 Drucker:/ }).closest('section')!;
+const units = () => screen.getByRole('heading', { name: '3 Materialeinheiten' }).closest('section')!;
 
 it('shows the empty state and creates a resin printer through the keyboard form', async () => {
   list = []; setup();
@@ -73,7 +73,7 @@ it('shows the empty state and creates a resin printer through the keyboard form'
 it('shows list, all four sections and read-only slots; selects the other printer', async () => {
   setup();
   await screen.findByText('1 · PLA · Rot');
-  for (const title of ['1 Allgemein', '2 Materialeinheiten', '3 Verbindung', '4 Druckaufträge']) expect(screen.getByRole('heading', { name: title })).toBeInTheDocument();
+  for (const title of ['1 Drucker: Qidi', '2 Verbindung', '3 Materialeinheiten', '4 Druckaufträge']) expect(screen.getByRole('heading', { name: title })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /Qidi Filament · 2 Einheiten · 5 Fächer/ })).toHaveAttribute('aria-current', 'true');
   expect(screen.queryByRole('button', { name: /1 · PLA/ })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: /Saturn Resin/ }));
@@ -250,4 +250,12 @@ it('edits custom slot counts through the modal and does not allow fixed vat chan
   fireEvent.click(screen.getByRole('button', { name: /Saturn Resin/ }));
   await waitFor(() => expect(within(units()).getByRole('button', { name: 'Spulen einlegen im Material Manager →' })).toBeInTheDocument());
   expect(within(units()).getAllByRole('button')).toHaveLength(1);
+});
+
+it('keeps material and color names in slot titles and deletion inside the printer card', async () => {
+  setup();
+  const slot = await screen.findByTitle('1 · PLA · Rot');
+  expect(slot).toHaveTextContent('1 · PLA · Rot');
+  expect(within(units()).getByTitle('2 · leer')).toHaveTextContent('2 · leer');
+  expect(within(general()).getByRole('button', { name: 'Drucker löschen' })).toBeInTheDocument();
 });

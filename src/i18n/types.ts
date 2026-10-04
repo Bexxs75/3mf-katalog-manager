@@ -107,7 +107,7 @@ export interface Translations {
   pmAddFirst: string;
   pmAddPrinter: string;
   pmReorderHint: string;
-  pmGeneral: string;
+  pmPrinterCard: string;
   pmUnits: string;
   pmConnection: string;
   pmJobs: string;
