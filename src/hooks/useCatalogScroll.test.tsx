@@ -13,6 +13,16 @@ function Workspace() {
 describe('catalog return scroll', () => {
   it('restores container scrollTop 1200 after detail closes', () => {
     render(<Workspace />); screen.getByTestId('scroll').scrollTop = 1200;
+    fireEvent.scroll(screen.getByTestId('scroll'));
+    fireEvent.click(screen.getByText('detail')); fireEvent.click(screen.getByText('detail'));
+    expect(screen.getByTestId('scroll').scrollTop).toBe(1200);
+  });
+  it('restores the tracked position even if scrollTop is clamped at unmount', () => {
+    render(<Workspace />);
+    const container = screen.getByTestId('scroll');
+    container.scrollTop = 1200;
+    fireEvent.scroll(container);
+    container.scrollTop = 16;
     fireEvent.click(screen.getByText('detail')); fireEvent.click(screen.getByText('detail'));
     expect(screen.getByTestId('scroll').scrollTop).toBe(1200);
   });

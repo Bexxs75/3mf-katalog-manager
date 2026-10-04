@@ -96,7 +96,7 @@ const scrollContainer = (container: HTMLElement) => container.querySelector<HTML
 describe('CatalogWorkspace detail return', () => {
   it.each(['grid', 'groupedGrid', 'groupedList'] as const)('keeps scroll and selection in %s', (initialView) => {
     const { container } = render(<Workspace initialView={initialView} />);
-    scrollContainer(container).scrollTop = 1200;
+    scrollContainer(container).scrollTop = 1200; fireEvent.scroll(scrollContainer(container));
     const tile = container.querySelector<HTMLElement>('[data-model-id="1"]')!;
     fireEvent.click(tile); fireEvent.doubleClick(tile);
     expect(scrollContainer(container)).toBeNull();
@@ -106,7 +106,7 @@ describe('CatalogWorkspace detail return', () => {
   });
   it.each(['Ansicht wechseln', 'Filter wechseln'])('does not restore after %s during details', (button) => {
     const { container } = render(<Workspace initialView="grid" />);
-    scrollContainer(container).scrollTop = 1200;
+    scrollContainer(container).scrollTop = 1200; fireEvent.scroll(scrollContainer(container));
     fireEvent.doubleClick(container.querySelector('[data-model-id="1"]')!);
     fireEvent.click(screen.getByText(button)); fireEvent.click(screen.getByText('Zurück'));
     expect(scrollContainer(container).scrollTop).toBe(0);
