@@ -1,5 +1,6 @@
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useState } from 'react';
+import { TagDot } from './TagDot';
 import { TagInput } from './TagInput';
 import type { ModelFile } from '../types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
@@ -15,6 +16,8 @@ import { ErrorText } from '../diagnostics/ErrorText';
 
 interface Props {
   allTags: string[];
+  /** Color hue per tag label, so tag chips show the same dot as in the sidebar. */
+  tagHues?: Record<string, number>;
   model: ModelFile | null;
   trashMode?: boolean;
   onRestore?: () => void;
@@ -37,6 +40,7 @@ interface Props {
 export function DetailPanel({
   model,
   allTags,
+  tagHues,
   trashMode,
   onRestore,
   onDeletePermanently,
@@ -272,6 +276,7 @@ export function DetailPanel({
                 key={tag}
                 className="inline-flex items-center gap-1.5 h-6 pl-2.5 pr-1 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] font-mono-ui text-[11.5px]"
               >
+                <TagDot hue={tagHues?.[tag]} />
                 #{tagLabel(tag, language)}
                 <span
                   onClick={() => onRemoveTag(tag)}
@@ -393,6 +398,7 @@ export function DetailPanel({
               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]"
               style={{ fontSize: 'var(--font-size-meta)' }}
             >
+              <TagDot hue={tagHues?.[tag]} />
               #{tagLabel(tag, language)}
               <span
                 onClick={() => onRemoveTag(tag)}

@@ -5,6 +5,7 @@ import { ContextMenu } from './ContextMenu';
 import { CatalogActionDialog, catalogActionButton } from './CatalogActionDialog';
 import { messageOf } from '../lib/errors';
 import { Icon } from './Icon';
+import { TagDot } from './TagDot';
 import { useEffect, useRef, useState } from 'react';
 import type { Folder, TagCount, ModelFile, Collection, FilamentCheck } from '../types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
@@ -403,10 +404,7 @@ export function Sidebar({
                     : 'border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink-2)] hover:text-[var(--ink)]'
                 }`}
               >
-                <span
-                  className="w-[6px] h-[6px] rounded-full flex-none"
-                  style={{ background: `oklch(0.62 0.14 ${tag.colorHue})` }}
-                />
+                <TagDot hue={tag.colorHue} />
                 #{tagLabel(tag.label, language)}
                 <span className="text-[var(--ink-3)]">{tag.count}</span>
               </button>

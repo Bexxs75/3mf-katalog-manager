@@ -250,6 +250,7 @@ export function CatalogWorkspace({
   );
   // Counts over the whole catalog (without folder/tag/search) so they stay stable.
   const counts = useMemo(() => computeToolCounts(models, new Date()), [models]);
+  const tagHues = useMemo(() => Object.fromEntries(tags.map(tag => [tag.label, tag.colorHue])), [tags]);
   const displayedModels = activeCollection ? collectionModels : filtered;
   const collectionName = collections.find(c => c.id === activeCollection)?.name ?? activeCollection ?? '';
   const folderName = folders.find(f => f.id === activeFolderId)?.name ?? activeFolderId;
@@ -423,6 +424,7 @@ export function CatalogWorkspace({
               ? { index: filtered.findIndex(model => model.id === detailModel.id) + 1, total: filtered.length }
               : undefined}
             allTags={tags.map(tag => tag.label)}
+            tagHues={tagHues}
             model={detailModel}
             onClose={() => setDetailModelId(null)}
             onAddTag={(t) => addTag(detailModel.id, t)}
@@ -534,6 +536,7 @@ export function CatalogWorkspace({
       {!detailModel && (
         <DetailPanel
           allTags={tags.map(tag => tag.label)}
+          tagHues={tagHues}
           model={selected}
           onAddTag={(t) => selected && addTag(selected.id, t)}
           onRemoveTag={(t) => selected && removeTag(selected.id, t)}

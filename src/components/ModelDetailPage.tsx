@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { CatalogActionDialog, catalogActionButton } from './CatalogActionDialog';
 import { Icon } from './Icon';
 import { useDetailNavigation, type DetailDirection } from '../hooks/useDetailNavigation';
+import { TagDot } from './TagDot';
 import { TagInput } from './TagInput';
 import { invoke } from '@tauri-apps/api/core';
 import type { ModelFile, SlicerConfig, Collection } from '../types';
@@ -24,6 +25,8 @@ import { ErrorText } from '../diagnostics/ErrorText';
 
 interface Props {
   allTags: string[];
+  /** Color hue per tag label, so tag chips show the same dot as in the sidebar. */
+  tagHues?: Record<string, number>;
   model: ModelFile;
   onClose: () => void;
   onNavigate?: (direction: DetailDirection) => void;
@@ -54,6 +57,7 @@ interface Props {
 export function ModelDetailPage({
   model,
   allTags,
+  tagHues,
   onClose,
   onNavigate,
   hasPrevious,
@@ -277,7 +281,8 @@ export function ModelDetailPage({
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {model.tags.map((tag) => (
-                  <span key={tag} className="font-mono-ui text-[12px] px-2.5 py-1 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)]">
+                  <span key={tag} className="inline-flex items-center gap-1.5 font-mono-ui text-[12px] px-2.5 py-1 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)]">
+                    <TagDot hue={tagHues?.[tag]} />
                     #{tagLabel(tag, language)}{' '}
                     <button onClick={() => onRemoveTag(tag)} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)]">✕</button>
                   </span>
