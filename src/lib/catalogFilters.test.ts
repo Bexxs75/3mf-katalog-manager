@@ -90,7 +90,7 @@ describe('filterAndSortModels', () => {
       makeModelFile({ id: '2', fileSizeBytes: 100 }),
     ];
     const result = filterAndSortModels(models, [], {
-      activeFolderId: 'all', activeTag: null, query: '', sort: 'size',
+      activeFolderId: 'all', activeTag: null, query: '', sort: 'size', sortDirection: 'asc',
     });
     expect(result.map((m) => m.id)).toEqual(['2', '1']);
   });
@@ -101,7 +101,7 @@ describe('filterAndSortModels', () => {
       makeModelFile({ id: '2', importedAt: '2026-06-01' }),
     ];
     const result = filterAndSortModels(models, [], {
-      activeFolderId: 'all', activeTag: null, query: '', sort: 'date',
+      activeFolderId: 'all', activeTag: null, query: '', sort: 'imported',
     });
     expect(result.map((m) => m.id)).toEqual(['2', '1']);
   });
@@ -140,4 +140,50 @@ describe('selectQueuedModels', () => {
     const result = selectQueuedModels(models);
     expect(result.map((m) => m.id)).toEqual(['3', '1']);
   });
+});
+
+describe('sort directions', () => {
+  const criteria = { activeFolderId: 'all', activeTag: null, query: '' };
+  it.each(['name', 'imported', 'modified', 'size', 'vol', 'viewed'] as const)('sorts %s both ways', sort => {
+    const models = [
+      makeModelFile({ id: 'high', name: 'Z', importedAt: '2026-02-01', fileModifiedAt: '2026-02-01', lastViewedAt: '2026-02-01', fileSizeBytes: 20, volumeCm3: 20 }),
+      makeModelFile({ id: 'low', name: 'A', importedAt: '2026-01-01', fileModifiedAt: '2026-01-01', lastViewedAt: '2026-01-01', fileSizeBytes: 10, volumeCm3: 10 }),
+    ];
+    expect(filterAndSortModels(models, [], { ...criteria, sort, sortDirection: 'asc' }).map(m => m.id)).toEqual(['low', 'high']);
+    expect(filterAndSortModels(models, [], { ...criteria, sort, sortDirection: 'desc' }).map(m => m.id)).toEqual(['high', 'low']);
+    expect(models.map(m => m.id)).toEqual(['high', 'low']);
+  });
+  it.each(['modified', 'viewed', 'vol'] as const)('keeps missing %s last and ties alphabetical both ways', sort => {
+    const models = [
+      makeModelFile({ id: 'missingZ', name: 'Z' }),
+      makeModelFile({ id: 'knownZ', name: 'Z', fileModifiedAt: '2026-01-01', lastViewedAt: '2026-01-01', volumeCm3: 0 }),
+      makeModelFile({ id: 'missingA', name: 'A' }),
+      makeModelFile({ id: 'knownA', name: 'A', fileModifiedAt: '2026-01-01', lastViewedAt: '2026-01-01', volumeCm3: 0 }),
+    ];
+    for (const sortDirection of ['asc', 'desc'] as const) {
+      expect(filterAndSortModels(models, [], { ...criteria, sort, sortDirection }).map(m => m.id)).toEqual(['knownA', 'knownZ', 'missingA', 'missingZ']);
+    }
+  });
+  it.each(['imported', 'size'] as const)('breaks %s ties by name both ways', sort => {
+    const models = [makeModelFile({ name: 'Z' }), makeModelFile({ name: 'A' })];
+    for (const sortDirection of ['asc', 'desc'] as const) {
+      expect(filterAndSortModels(models, [], { ...criteria, sort, sortDirection }).map(m => m.name)).toEqual(['A', 'Z']);
+    }
+  });
+});
+
+it('sorts modified dates independently of import dates', () => {
+  const models = [
+    makeModelFile({ id: 'old', importedAt: '2026-02-01', fileModifiedAt: '2026-01-01' }),
+    makeModelFile({ id: 'new', importedAt: '2026-01-01', fileModifiedAt: '2026-02-01' }),
+  ];
+  expect(filterAndSortModels(models, [], { activeFolderId: 'all', activeTag: null, query: '', sort: 'modified', sortDirection: 'desc' }).map(m => m.id)).toEqual(['new', 'old']);
+});
+
+it.each(['asc', 'desc'] as const)('ignores the selected sort and %s direction in tool views', sortDirection => {
+  const models = [
+    makeModelFile({ id: 'old', name: 'A', volumeCm3: 20, lastViewedAt: '2026-01-01' }),
+    makeModelFile({ id: 'new', name: 'Z', volumeCm3: 10, lastViewedAt: '2026-02-01' }),
+  ];
+  expect(filterAndSortModels(models, [], { activeFolderId: 'all', activeTag: null, query: '', sort: 'vol', sortDirection, toolView: 'recent' }).map(m => m.id)).toEqual(['new', 'old']);
 });

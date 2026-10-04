@@ -173,7 +173,7 @@ export interface TagCount {
 }
 
 export type ViewMode = 'grid' | 'groupedGrid' | 'groupedList';
-export type SortKey = 'name' | 'date' | 'size' | 'vol' | 'viewed';
+export type SortKey = 'name' | 'imported' | 'modified' | 'size' | 'vol' | 'viewed';
 
 // Entry of the slicer registry in the backend; `id` is the database id.
 export interface SlicerConfig {
@@ -420,3 +420,5 @@ export interface ImportProgress {
   elapsedMs: number;
 }
 export interface StartedImport { jobId: string | null }
+
+export type SortDirection = 'asc' | 'desc';

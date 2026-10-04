@@ -1,12 +1,19 @@
 import { useMemo, useState } from 'react';
 import type { Language } from '../i18n/types';
-import type { ModelFile, Folder, ViewMode, SortKey } from '../types';
+import type { ModelFile, Folder, ViewMode, SortKey, SortDirection } from '../types';
 import type { RecentSnapshot, ToolView } from '../lib/toolViews';
-import { filterAndSortModels, selectQueuedModels } from '../lib/catalogFilters';
+import { defaultSortDirection, filterAndSortModels, selectQueuedModels } from '../lib/catalogFilters';
 
 export function useCatalogFilters(models: ModelFile[], folders: Folder[], language: Language = 'de') {
   const [view, setView] = useState<ViewMode>('grid');
-  const [sort, setSort] = useState<SortKey>('name');
+  const [sorting, setSorting] = useState<{ sort: SortKey; sortDirection: SortDirection }>({ sort: 'name', sortDirection: 'asc' });
+  const { sort, sortDirection } = sorting;
+  const setSort = (next: SortKey) => {
+    setSorting(current => next === current.sort ? current : { sort: next, sortDirection: defaultSortDirection(next) });
+  };
+  const setSortDirection = (direction: SortDirection) => {
+    setSorting(current => ({ ...current, sortDirection: direction }));
+  };
   const [query, setQuery] = useState('');
   const [activeFolderId, setActiveFolderId] = useState('all');
   const [activeTag, setActiveTag] = useState<string | null>(null);
@@ -27,18 +34,19 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
         activeTag,
         query,
         sort,
+        sortDirection,
         language,
         toolView,
         recentSnapshot: recentSnapshot ?? undefined,
       }),
-    [models, folders, activeFolderId, activeTag, query, sort, language, toolView, recentSnapshot],
+    [models, folders, activeFolderId, activeTag, query, sort, sortDirection, language, toolView, recentSnapshot],
   );
 
   const queue = useMemo(() => selectQueuedModels(models), [models]);
 
   return {
     view, setView,
-    sort, setSort,
+    sort, setSort, sortDirection, setSortDirection,
     query, setQuery,
     activeFolderId, setActiveFolderId,
     activeTag, setActiveTag,

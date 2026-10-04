@@ -190,7 +190,18 @@ export interface Translations {
 
   sortLabel: string;
   sortName: string;
-  sortDate: string;
+  sortImported: string;
+  sortModified: string;
+  sortModifiedNew: string;
+  sortDirection: string;
+  sortNameAsc: string;
+  sortNameDesc: string;
+  sortDateAsc: string;
+  sortDateDesc: string;
+  sortSizeAsc: string;
+  sortSizeDesc: string;
+  sortVolumeAsc: string;
+  sortVolumeDesc: string;
   sortSize: string;
   sortVolume: string;
 

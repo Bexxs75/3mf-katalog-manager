@@ -2,13 +2,14 @@ import { isFileInFolderOrDescendant } from './folderTree';
 import { tagMatches } from './autoTags';
 import { applyToolView, type RecentSnapshot, type ToolView } from './toolViews';
 import type { Language } from '../i18n/types';
-import type { ModelFile, Folder, SortKey } from '../types';
+import type { ModelFile, Folder, SortKey, SortDirection } from '../types';
 
 export interface CatalogFilterCriteria {
   activeFolderId: string;
   activeTag: string | null;
   query: string;
   sort: SortKey;
+  sortDirection?: SortDirection;
   // For searching in translated names of automatic tags.
   language?: Language;
   // Tool view of the sidebar; determines selection AND order.
@@ -19,6 +20,28 @@ export interface CatalogFilterCriteria {
   // useCatalogFilters); only relevant when toolView === 'recent'.
   recentSnapshot?: RecentSnapshot;
 }
+
+export function defaultSortDirection(sort: SortKey): SortDirection {
+  return sort === 'name' ? 'asc' : 'desc';
+}
+
+const sortValues: Record<SortKey, (model: ModelFile) => string | number | null> = {
+  name: m => m.name,
+  imported: m => m.importedAt,
+  modified: m => m.fileModifiedAt,
+  size: m => m.fileSizeBytes,
+  vol: m => m.volumeCm3,
+  viewed: m => m.lastViewedAt,
+};
+
+const sortComparators: Record<SortKey, (a: ModelFile, b: ModelFile) => number> = {
+  name: (a, b) => a.name.localeCompare(b.name),
+  imported: (a, b) => a.importedAt.localeCompare(b.importedAt),
+  modified: (a, b) => (a.fileModifiedAt ?? '').localeCompare(b.fileModifiedAt ?? ''),
+  size: (a, b) => a.fileSizeBytes - b.fileSizeBytes,
+  vol: (a, b) => (a.volumeCm3 ?? 0) - (b.volumeCm3 ?? 0),
+  viewed: (a, b) => (a.lastViewedAt ?? '').localeCompare(b.lastViewedAt ?? ''),
+};
 
 export function filterAndSortModels(
   models: ModelFile[],
@@ -41,12 +64,14 @@ export function filterAndSortModels(
       );
     });
   if (toolView) return matched;
+  const sign = (criteria.sortDirection ?? defaultSortDirection(sort)) === 'asc' ? 1 : -1;
   return matched.sort((a, b) => {
-    if (sort === 'name') return a.name.localeCompare(b.name);
-    if (sort === 'size') return a.fileSizeBytes - b.fileSizeBytes;
-    if (sort === 'date') return b.importedAt.localeCompare(a.importedAt);
-    if (sort === 'viewed') return (b.lastViewedAt ?? '').localeCompare(a.lastViewedAt ?? '');
-    return 0;
+    const x = sortValues[sort](a);
+    const y = sortValues[sort](b);
+    if (x == null && y == null) return a.name.localeCompare(b.name);
+    if (x == null) return 1;
+    if (y == null) return -1;
+    return sortComparators[sort](a, b) * sign || a.name.localeCompare(b.name);
   });
 }
 

@@ -262,6 +262,8 @@ export default function App() {
         onViewChange={filters.setView}
         sort={filters.sort}
         onSortChange={filters.setSort}
+        sortDirection={filters.sortDirection}
+        onSortDirectionChange={filters.setSortDirection}
         hideSortControl={collections.activeCollection !== null || filters.toolView !== null}
         count={filters.filtered.length}
         importTargetName={catalogBaseDir ? store.folders.find(f => f.id === filters.activeFolderId)?.name ?? catalogBaseDir : undefined}

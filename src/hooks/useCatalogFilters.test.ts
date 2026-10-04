@@ -113,3 +113,16 @@ describe('useCatalogFilters', () => {
     expect(result.current.filtered.map((m) => m.id)).toEqual(['a', 'b']);
   });
 });
+
+it('resets direction only when the sort key changes', () => {
+  const { result } = renderHook(() => useCatalogFilters([], []));
+  expect(result.current.sortDirection).toBe('asc');
+  for (const key of ['imported', 'modified', 'size', 'vol', 'viewed', 'name'] as const) {
+    act(() => result.current.setSort(key));
+    expect(result.current.sortDirection).toBe(key === 'name' ? 'asc' : 'desc');
+    act(() => result.current.setSortDirection(key === 'name' ? 'desc' : 'asc'));
+    act(() => result.current.setSort(key));
+    expect(result.current.sortDirection).toBe(key === 'name' ? 'desc' : 'asc');
+    expect(result.current.sort).toBe(key);
+  }
+});

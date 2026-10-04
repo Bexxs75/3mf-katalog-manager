@@ -1,7 +1,8 @@
 import { Icon } from './Icon';
 import { useEffect, useRef, useState } from 'react';
 import { useDismissableMenu } from '../hooks/useDismissableMenu';
-import type { MainView, ViewMode, SortKey } from '../types';
+import type { MainView, ViewMode, SortKey, SortDirection } from '../types';
+import { defaultSortDirection } from '../lib/catalogFilters';
 import { formatCount } from '../i18n/types';
 import { useT } from '../i18n/LanguageContext';
 
@@ -13,7 +14,9 @@ interface Props {
   view: ViewMode;
   onViewChange: (v: ViewMode) => void;
   sort: SortKey;
-  onSortChange: (s: SortKey) => void;
+  sortDirection: SortDirection;
+  onSortChange: (s: SortKey, direction: SortDirection) => void;
+  onSortDirectionChange: (direction: SortDirection) => void;
   hideSortControl?: boolean;
   count: number;
   onImportFiles: () => void;
@@ -36,6 +39,8 @@ export function Header({
   onViewChange,
   sort,
   onSortChange,
+  sortDirection,
+  onSortDirectionChange,
   hideSortControl,
   count,
   onImportFiles,
@@ -57,15 +62,21 @@ export function Header({
   useEffect(() => {
     setImportMenuOpen(false);
     setSortMenuOpen(false);
-  }, [detailOpen, mainView]);
+  }, [detailOpen, mainView, view]);
 
   const sortOptions: { value: SortKey; label: string }[] = [
     { value: 'name', label: t('sortName') },
-    { value: 'date', label: t('sortDate') },
+    { value: 'imported', label: t('sortImported') },
+    { value: 'modified', label: t('sortModified') },
     { value: 'size', label: t('sortSize') },
     { value: 'vol', label: t('sortVolume') },
     { value: 'viewed', label: t('sortLastViewed') },
   ];
+
+  const directionLabels = sort === 'name' ? [t('sortNameAsc'), t('sortNameDesc')]
+    : sort === 'size' ? [t('sortSizeAsc'), t('sortSizeDesc')]
+    : sort === 'vol' ? [t('sortVolumeAsc'), t('sortVolumeDesc')]
+    : [t('sortDateAsc'), t('sortDateDesc')];
 
   return (
     <header className="flex-none h-[54px] flex items-center gap-[18px] px-[14px] bg-[var(--panel)] border-b border-[var(--line)]">
@@ -132,31 +143,48 @@ export function Header({
         <div ref={sortRef} className="relative">
           <button
             ref={sortTriggerRef}
+            aria-haspopup="menu"
             aria-expanded={sortMenuOpen}
             onClick={() => { setImportMenuOpen(false); setSortMenuOpen((o) => !o); }}
             className="h-[30px] px-2 rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink)] text-[length:var(--font-size-body)] cursor-pointer flex items-center gap-1.5"
           >
             {sortOptions.find((o) => o.value === sort)?.label}
+            <span className="font-mono-ui text-[var(--accent)]">{sortDirection === 'asc' ? '↑' : '↓'}</span>
             <span className="text-[9px] leading-none text-[var(--ink-3)]">▾</span>
           </button>
           {sortMenuOpen && (
-            <div data-navigation-menu className="absolute top-9 left-0 w-[300px] py-1 bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)] z-40">
+            <div data-navigation-menu role="menu" className="absolute top-9 left-0 min-w-[280px] w-max py-1 bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)] z-40">
               {sortOptions.map((opt) => (
                 <button
                   key={opt.value}
+                  role="menuitemradio"
+                  aria-checked={opt.value === sort}
                   onClick={() => {
-                    onSortChange(opt.value);
-                    setSortMenuOpen(false);
+                    onSortChange(opt.value, opt.value === sort ? sortDirection : defaultSortDirection(opt.value));
                   }}
-                  className={`w-full text-left px-3 py-1.5 text-[13px] cursor-pointer ${
+                  className={`flex items-center gap-2 w-full text-left px-3 py-1.5 text-[13px] cursor-pointer ${
                     opt.value === sort
                       ? 'text-[var(--accent)] font-semibold bg-[var(--accent-soft)]'
                       : 'text-[var(--ink)] hover:bg-[var(--panel-2)]'
                   }`}
                 >
-                  {opt.label}
+                  <span aria-hidden="true" className="w-[14px] text-[var(--accent)]">{opt.value === sort ? '✓' : ''}</span>
+                  <span>{opt.label}</span>
+                  {opt.value === 'modified' && <small className="ml-auto font-mono-ui text-[10.5px] text-[var(--ink-3)]">{t('sortModifiedNew')}</small>}
                 </button>
               ))}
+              <div role="separator" className="h-px bg-[var(--line)] m-1" />
+              <div role="group" aria-label={t('sortDirection')} className="flex gap-1 p-1.5">
+                {(['asc', 'desc'] as const).map((direction, index) => (
+                  <button key={direction} aria-pressed={sortDirection === direction}
+                    onClick={() => onSortDirectionChange(direction)}
+                    className={`flex-1 whitespace-nowrap h-[30px] px-2 rounded border text-[12.5px] font-semibold cursor-pointer ${sortDirection === direction
+                      ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent-soft)]'
+                      : 'border-[var(--line)] text-[var(--ink-2)] hover:bg-[var(--panel-2)]'}`}>
+                    {direction === 'asc' ? '↑' : '↓'} {directionLabels[index]}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>

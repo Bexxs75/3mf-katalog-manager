@@ -9,7 +9,7 @@ function renderHeader(mainView: 'catalog' | 'filament' | 'trash') {
   return render(
     <LanguageProvider>
       <Header
-        mainView={mainView} view="grid" sort="name" count={0}
+        mainView={mainView} view="grid" sort="name" sortDirection="asc" onSortDirectionChange={vi.fn()} count={0}
         onViewChange={vi.fn()} onSortChange={vi.fn()}
         onImportFiles={vi.fn()} onImportFolder={vi.fn()}
         allFoldersCollapsed={false} onToggleAllFolders={vi.fn()}
@@ -37,7 +37,7 @@ describe('Header', () => {
 
 it.each(['grid', 'groupedGrid', 'groupedList'] as const)('shows the global toggle only in folder views: %s', (view) => {
   const onToggle = vi.fn();
-  const props = { mainView: 'catalog' as const, view, sort: 'name' as const, count: 0,
+  const props = { mainView: 'catalog' as const, view, sort: 'name' as const, sortDirection: 'asc' as const, onSortDirectionChange: vi.fn(), count: 0,
     onViewChange: vi.fn(), onSortChange: vi.fn(), onImportFiles: vi.fn(), onImportFolder: vi.fn(),
     allFoldersCollapsed: false, onToggleAllFolders: onToggle };
   const { rerender } = render(<LanguageProvider><Header {...props} /></LanguageProvider>);
@@ -53,14 +53,14 @@ it.each(['grid', 'groupedGrid', 'groupedList'] as const)('shows the global toggl
 
 it('labels Printer Manager and hides all catalog controls', () => {
   render(<LanguageProvider><Header mainView="printers" allFoldersCollapsed={false} onToggleAllFolders={vi.fn()}
-    view="grid" onViewChange={vi.fn()} sort="name" onSortChange={vi.fn()} count={0}
+    view="grid" onViewChange={vi.fn()} sort="name" sortDirection="asc" onSortDirectionChange={vi.fn()} onSortChange={vi.fn()} count={0}
     onImportFiles={vi.fn()} onImportFolder={vi.fn()} /></LanguageProvider>);
   expect(screen.getByText('PRINTER MANAGER')).toBeInTheDocument();
   expect(screen.queryAllByRole('button')).toHaveLength(0);
 });
 
 it.each([undefined, 'Küche'])('explains the target for file and folder actions: %s', target => {
-  render(<LanguageProvider><Header mainView="catalog" view="grid" sort="name" count={0} onViewChange={vi.fn()} onSortChange={vi.fn()} onImportFiles={vi.fn()} onImportFolder={vi.fn()} allFoldersCollapsed={false} onToggleAllFolders={vi.fn()} importTargetName={target} /></LanguageProvider>);
+  render(<LanguageProvider><Header mainView="catalog" view="grid" sort="name" sortDirection="asc" onSortDirectionChange={vi.fn()} count={0} onViewChange={vi.fn()} onSortChange={vi.fn()} onImportFiles={vi.fn()} onImportFolder={vi.fn()} allFoldersCollapsed={false} onToggleAllFolders={vi.fn()} importTargetName={target} /></LanguageProvider>);
   fireEvent.click(screen.getByRole('button', {name: /Importieren/}));
   expect(screen.getByText(/Ziel wird beim Start festgehalten/)).toBeVisible();
   if (target) expect(screen.getByText('Küche')).toBeVisible();
