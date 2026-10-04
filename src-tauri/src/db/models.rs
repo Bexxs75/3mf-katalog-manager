@@ -70,6 +70,7 @@ pub struct NewFile {
 
 /// Fields `rescan_file` always overwrites when re-reading (full refresh, no merge).
 pub struct ScannedMetadataUpdate {
+    pub file_modified_at: Option<String>,
     pub dimensions_mm: Option<[f64; 3]>,
     pub volume_cm3: Option<f64>,
     pub object_count: Option<i64>,

@@ -66,6 +66,18 @@ describe('useCatalogStore', () => {
     expect(result.current.selectedId).toBe('m1');
   });
 
+  it('preserves disk timestamps and nulls when embedding summaries', async () => {
+    const fileModifiedAt = '2023-11-14T22:13:20+00:00';
+    mockInitialLoad([
+      makeModelFile({ id: 'dated', fileModifiedAt }),
+      makeModelFile({ id: 'missing', fileModifiedAt: null }),
+    ]);
+    const { result } = renderHook(() => useCatalogStore());
+    await waitFor(() => expect(result.current.models).toHaveLength(2));
+    expect(result.current.models.find((m) => m.id === 'dated')?.fileModifiedAt).toBe(fileModifiedAt);
+    expect(result.current.models.find((m) => m.id === 'missing')?.fileModifiedAt).toBeNull();
+  });
+
   it('togglePrintStatus flips status and clears queuePosition when marking printed', async () => {
     mockInitialLoad([makeModelFile({ id: 'm1', printStatus: 'not_printed', queuePosition: 2 })]);
     const { result } = renderHook(() => useCatalogStore());

@@ -34,6 +34,14 @@ impl CatalogGate {
             exclusive: false,
         }
     }
+    /// Background maintenance yields to queued/running imports and mutations.
+    pub(crate) fn try_background_exclusive(self: &Arc<Self>) -> Result<Option<CatalogShare>, DbError> {
+        let mut state = self.state.lock().map_err(|_| DbError::Other("Katalogsperre beschädigt".into()))?;
+        if state.0 != 0 || state.1 { return Ok(None); }
+        state.1 = true;
+        Ok(Some(CatalogShare { gate: self.clone(), exclusive: true }))
+    }
+
     pub fn exclusive(self: &Arc<Self>) -> CmdResult<CatalogShare> {
         let mut state = self.state.lock().map_err(|_| "catalog gate poisoned")?;
         loop {

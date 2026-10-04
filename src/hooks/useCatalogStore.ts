@@ -27,6 +27,7 @@ function summaryToModelFile(s: ModelFileSummary): ModelFile {
     materials: [],
     fileSizeBytes: s.fileSizeBytes,
     importedAt: s.importedAt,
+    fileModifiedAt: s.fileModifiedAt,
     printStatus: s.printStatus,
     estimatedWeightG: null,
     weightSource: 'estimated',

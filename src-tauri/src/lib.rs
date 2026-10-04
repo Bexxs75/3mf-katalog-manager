@@ -144,6 +144,12 @@ pub fn run() {
                 db_path,
                 sensitive_dirs,
             });
+            let modified_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                if let Some(state) = modified_handle.try_state::<commands::AppState>() {
+                    commands::backfill_file_modified_at(&state);
+                }
+            });
             // Re-checks the verbose-logging switch hourly so it turns itself off
             // within an hour of expiring, even on a long-running session.
             let verbose_handle = app.handle().clone();

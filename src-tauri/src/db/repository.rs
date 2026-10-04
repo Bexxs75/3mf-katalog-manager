@@ -539,12 +539,12 @@ pub fn update_scanned_metadata(
         "UPDATE files SET
             dimension_x_mm = ?1, dimension_y_mm = ?2, dimension_z_mm = ?3,
             volume_cm3 = ?4, object_count = ?5, thumbnail_png = ?6,
-            plate_count = ?7, slice_info_json = ?8, file_size_bytes = ?9, content_hash = ?10
+            plate_count = ?7, slice_info_json = ?8, file_size_bytes = ?9, content_hash = ?10, file_modified_at = ?12
          WHERE id = ?11",
         params![
             dim_x, dim_y, dim_z, update.volume_cm3, update.object_count,
             update.thumbnail_png, update.plate_count, update.slice_info_json,
-            update.file_size_bytes, update.content_hash, file_id,
+            update.file_size_bytes, update.content_hash, file_id, update.file_modified_at,
         ],
     )?;
 
@@ -755,6 +755,7 @@ pub struct FileSummary {
     pub volume_cm3: Option<f64>,
     pub object_count: Option<i64>,
     pub imported_at: String,
+    pub file_modified_at: Option<String>,
     pub print_status: String,
     pub favorite: bool,
     pub queue_position: Option<i64>,
@@ -774,7 +775,7 @@ pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbErro
                 object_count, imported_at, print_status, favorite,
                 queue_position, thumbnail_png IS NOT NULL AS has_thumbnail,
                 render_snapshot_png IS NOT NULL AS has_render_snapshot, creator,
-                last_viewed_at, content_hash
+                last_viewed_at, content_hash, file_modified_at
          FROM files WHERE deleted_at IS NULL ORDER BY name",
     )?;
     let rows = stmt
@@ -806,6 +807,7 @@ pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbErro
                 creator: row.get(17)?,
                 last_viewed_at: row.get(18)?,
                 content_hash: row.get(19)?,
+                file_modified_at: row.get(20)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;

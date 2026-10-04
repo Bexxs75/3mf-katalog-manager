@@ -49,6 +49,7 @@ export interface ModelFile {
   materials: { name: string; displayColor: string | null }[];
   fileSizeBytes: number;
   importedAt: string;
+  fileModifiedAt: string | null;
   printStatus: 'not_printed' | 'printed';
   estimatedWeightG: number | null;
   weightSource: 'slicer' | 'estimated';
@@ -83,6 +84,7 @@ export interface ModelFileSummary {
   volumeCm3: number | null;
   objectCount: number | null;
   importedAt: string;
+  fileModifiedAt: string | null;
   printStatus: 'not_printed' | 'printed';
   favorite: boolean;
   queuePosition: number | null;

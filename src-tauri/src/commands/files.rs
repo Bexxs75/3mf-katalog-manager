@@ -21,6 +21,7 @@ pub struct FileSummaryDto {
     pub volume_cm3: Option<f64>,
     pub object_count: Option<i64>,
     pub imported_at: String,
+    pub file_modified_at: Option<String>,
     pub print_status: String,
     pub favorite: bool,
     pub queue_position: Option<i64>,
@@ -85,6 +86,7 @@ pub fn list_file_summaries(state: State<AppState>) -> CmdResult<Vec<FileSummaryD
             volume_cm3: s.volume_cm3,
             object_count: s.object_count,
             imported_at: s.imported_at,
+            file_modified_at: s.file_modified_at,
             print_status: s.print_status,
             favorite: s.favorite,
             queue_position: s.queue_position,
@@ -709,8 +711,13 @@ fn step_geometry(_path: &Path) -> CmdResult<Vec<RenderMesh>> {
     Err(CmdError::expected("STEP-Vorschau ist in diesem Build nicht enthalten"))
 }
 
-/// Reads and stores a single file in one step. Imports go through
-/// [`import_many_in_batches`], which splits the two; tests use this shortcut.
+/// A missing or unsupported filesystem timestamp never prevents import.
+pub(crate) fn disk_modified_at(path: &Path) -> Option<String> {
+    std::fs::metadata(path).ok()?.modified().ok()
+        .map(|time| chrono::DateTime::<chrono::Utc>::from(time).to_rfc3339())
+}
+
+/// Reads and stores a single file in one step; tests use this shortcut.
 #[cfg(test)]
 pub(crate) fn import_one(
     conn: &Connection,
@@ -838,7 +845,7 @@ pub(super) fn read_model_file(path: &Path, display_name: Option<&str>) -> CmdRes
         object_count,
         thumbnail_png,
         imported_at: chrono::Utc::now().to_rfc3339(),
-        file_modified_at: None,
+        file_modified_at: disk_modified_at(path),
         materials,
         metadata: metadata.clone(),
         tags,
@@ -913,6 +920,7 @@ pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFile
                     .collect(),
                 metadata: doc.metadata,
                 file_size_bytes,
+                file_modified_at: disk_modified_at(path),
                 content_hash,
             }
         }
@@ -928,6 +936,7 @@ pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFile
                 materials: Vec::new(),
                 metadata: BTreeMap::new(),
                 file_size_bytes,
+                file_modified_at: disk_modified_at(path),
                 content_hash,
             }
         }
@@ -943,6 +952,7 @@ pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFile
                 materials: Vec::new(),
                 metadata: BTreeMap::new(),
                 file_size_bytes,
+                file_modified_at: disk_modified_at(path),
                 content_hash,
             }
         }
@@ -958,6 +968,7 @@ pub(crate) fn rescan_file(conn: &mut Connection, id: i64) -> CmdResult<ModelFile
                 materials: Vec::new(),
                 metadata: BTreeMap::new(),
                 file_size_bytes,
+                file_modified_at: disk_modified_at(path),
                 content_hash,
             }
         }
@@ -1549,16 +1560,40 @@ mod tests {
         let summary = FileSummaryDto {
             id: "1".into(), name: "test".into(), path: "/tmp/test.stl".into(), file_type: "stl".into(),
             folder_id: String::new(), file_size_bytes: 10, dimensions_mm: None, volume_cm3: None,
-            object_count: None, imported_at: String::new(), print_status: "not_printed".into(),
+            object_count: None, imported_at: String::new(), file_modified_at: Some("2023-11-14T22:13:20+00:00".into()), print_status: "not_printed".into(),
             favorite: false, queue_position: None, has_thumbnail: true, has_render_snapshot: false,
             creator: None, last_viewed_at: None, content_hash: None,
         };
         let json = serde_json::to_value(summary).unwrap();
+        assert_eq!(json["fileModifiedAt"], "2023-11-14T22:13:20+00:00");
         assert_eq!(json["hasThumbnail"], true);
         assert_eq!(json["hasRenderSnapshot"], false);
         assert!(json.get("thumbnailImage").is_none());
         assert!(json.get("renderSnapshotImage").is_none());
         assert!(json.get("customImage").is_none());
+    }
+
+    #[test]
+    fn import_and_rescan_store_disk_modified_time() {
+        let dir = unique_test_dir("modified_time");
+        let path = dir.join("model.stp");
+        std::fs::write(&path, b"ISO-10303-21;").unwrap();
+        let first = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
+        std::fs::File::options().write(true).open(&path).unwrap().set_modified(first).unwrap();
+        let mut conn = db::connect_in_memory().unwrap();
+        let dto = import_one(&conn, &path, None, None, None).unwrap();
+        let id = dto.id.parse().unwrap();
+        assert_eq!(db::get_file(&conn, id).unwrap().unwrap().file_modified_at,
+            Some(chrono::DateTime::<chrono::Utc>::from(first).to_rfc3339()));
+        let second = first + std::time::Duration::from_secs(3600);
+        std::fs::File::options().write(true).open(&path).unwrap().set_modified(second).unwrap();
+        rescan_file(&mut conn, id).unwrap();
+        let expected = Some(chrono::DateTime::<chrono::Utc>::from(second).to_rfc3339());
+        assert_eq!(db::get_file(&conn, id).unwrap().unwrap().file_modified_at, expected);
+        assert_eq!(db::list_file_summaries(&conn).unwrap()[0].file_modified_at, expected);
+        let full = to_dto(db::get_file(&conn, id).unwrap().unwrap(), &[]);
+        assert_eq!(serde_json::to_value(full).unwrap()["fileModifiedAt"], expected.unwrap());
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

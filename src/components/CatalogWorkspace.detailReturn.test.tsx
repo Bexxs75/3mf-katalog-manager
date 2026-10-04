@@ -14,7 +14,7 @@ const model: ModelFile = {
   id: '1', name: 'Zahnrad.3mf', path: '/tmp/Zahnrad.3mf', folderId: '', tags: [],
   origin: 'local', sync: 'local-only', dimensionsMm: null, volumeCm3: null,
   objectCount: null, plateCount: null, materials: [], fileSizeBytes: 100,
-  importedAt: '2026-10-01T00:00:00Z', printStatus: 'not_printed', estimatedWeightG: null,
+  fileModifiedAt: null, importedAt: '2026-10-01T00:00:00Z', printStatus: 'not_printed', estimatedWeightG: null,
   weightSource: 'estimated', sliceInfo: null, costEstimate: null, lastViewedAt: null,
   contentHash: null, creator: null, customImage: null, thumbnailImage: null,
   renderSnapshotImage: null, sourceUrl: null, queuePosition: null, favorite: false, deletedAt: null,

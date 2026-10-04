@@ -9,6 +9,8 @@ mod diagnostics;
 mod dropped_image;
 mod error;
 mod files;
+mod file_modified_backfill;
+pub(crate) use file_modified_backfill::backfill_file_modified_at;
 mod import_jobs;
 pub use import_jobs::*;
 mod filament;
@@ -80,6 +82,7 @@ pub struct ModelFileDto {
     pub materials: Vec<MaterialDto>,
     pub file_size_bytes: i64,
     pub imported_at: String,
+    pub file_modified_at: Option<String>,
     pub print_status: String,
     pub estimated_weight_g: Option<f64>,
     pub last_viewed_at: Option<String>,
@@ -283,6 +286,7 @@ pub(crate) fn to_dto(file: FileRecord, spools: &[db::models::FilamentSpoolRecord
             .collect(),
         file_size_bytes: file.file_size_bytes,
         imported_at: file.imported_at,
+        file_modified_at: file.file_modified_at,
         print_status: file.print_status,
         estimated_weight_g,
         last_viewed_at: file.last_viewed_at,
