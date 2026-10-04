@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useCatalogScroll } from '../hooks/useCatalogScroll';
 import { Sidebar } from './Sidebar';
 import { ModelGrid } from './ModelGrid';
 import { GroupedModelGrid } from './GroupedModelGrid';
@@ -7,7 +8,7 @@ import { DetailPanel } from './DetailPanel';
 import { ModelDetailPage } from './ModelDetailPage';
 import { CollectionsGallery } from './CollectionsGallery';
 import { BulkActionToolbar } from './BulkActionToolbar';
-import type { ModelFile, Folder, TagCount, ViewMode, Collection, SlicerConfig } from '../types';
+import type { ModelFile, Folder, TagCount, ViewMode, SortKey, Collection, SlicerConfig } from '../types';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import type { useCollapsedFolders } from '../hooks/useCollapsedFolders';
 import { useLanguage, useT } from '../i18n/LanguageContext';
@@ -87,6 +88,7 @@ interface CatalogWorkspaceProps {
   rescanFeedback: { fileId: string; status: 'success' | 'error'; message?: string; unexpected?: boolean } | null;
   displayPreference: DisplayPreference;
   view: ViewMode;
+  sort: SortKey;
   filtered: ModelFile[];
   collectionModels: ModelFile[];
   selectedId: string | null;
@@ -173,6 +175,7 @@ export function CatalogWorkspace({
   rescanFeedback,
   displayPreference,
   view,
+  sort,
   filtered,
   collectionModels,
   selectedId,
@@ -190,6 +193,9 @@ export function CatalogWorkspace({
 }: CatalogWorkspaceProps) {
   const { language } = useLanguage();
   const t = useT();
+  const scrollRef = useCatalogScroll(detailModel !== null, JSON.stringify([
+    view, sort, language, query, activeFolderId, activeTag, activeCollection, collectionsGalleryOpen, toolView,
+  ]), selectedId);
   const queueFilament = useFilamentCheck(
     queue.map((m) => m.id),
     // Forces a reload when the slicer data of a queue entry changes
@@ -365,7 +371,7 @@ export function CatalogWorkspace({
             displayPreference={displayPreference}
           />
         ) : (
-          <div className="flex-1 overflow-y-auto overscroll-contain p-4">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain p-4">
             {toolView && filtered.length === 0 && !activeCollection ? (
               <div className="font-mono-ui text-[length:var(--font-size-item)] text-[var(--ink-3)] px-1.5 py-8 text-center">
                 {t('toolViewEmpty')}

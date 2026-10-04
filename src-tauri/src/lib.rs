@@ -118,10 +118,17 @@ pub fn run() {
             std::fs::create_dir_all(&app_data_dir)?;
             harden_permissions(&app_data_dir);
             let db_path = app_data_dir.join("catalog.db");
-            let conn = db::connect(&db_path)?;
+            let mut conn = db::connect(&db_path)?;
             commands::apply_verbose_state(&conn);
             diagnostics::log_startup(&conn);
             harden_permissions(&db_path);
+            match db::cleanup_tag_fragments(&mut conn) {
+                Ok(Some((files, removed, added))) => {
+                    log::info!(target: "startup", "Umlaut-Bruchstück-Tags bereinigt: {files} Dateien, {removed} Tags entfernt, {added} ergänzt");
+                }
+                Ok(None) => {}
+                Err(e) => log::error!(target: "startup", "cleaning up filename tag fragments failed: {e}"),
+            }
             if let Err(e) = db::delete_unused_tags(&conn) {
                 log::error!(target: "startup", "cleaning up orphaned tags failed: {e}");
             }

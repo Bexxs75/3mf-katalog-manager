@@ -2,6 +2,8 @@ pub mod error;
 pub mod models;
 mod repository;
 mod collections;
+mod tag_fragments;
+pub use tag_fragments::cleanup_tag_fragments;
 pub mod printers;
 // Printer connection: settings, connections, fetched prints.
 pub mod printer_link;
