@@ -9,6 +9,13 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-10-04
+
+### Fixed
+
+- List view: selecting and scrolling through a large catalog no longer creates an extra outer scrollbar that can move the whole interface out of the window and leave a blank area. Scrolling remains inside the model list.
+- Small windows: the app layout now fits the window height instead of forcing a minimum height of 620 pixels and creating an outer scrollbar.
+
 ## [0.15.0] - 2026-10-03
 
 ### Added
@@ -457,6 +464,13 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/), Ve
 Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unter der Scaffold-Versionsnummer `0.1.0`, ohne dass Meilensteine markiert wurden. Die folgenden Versionsgrenzen wurden nachträglich anhand von Entwicklungs-Tagen und natürlichen Feature-Abschlüssen (jeweils an einem Dokumentations-Commit) gezogen, keine davon wurde zum jeweiligen Zeitpunkt live getaggt oder veröffentlicht.
 
 ## [Unreleased]
+
+## [0.15.1] - 2026-10-04
+
+### Behoben
+
+- Listenansicht: Beim Auswählen und Scrollen in einem großen Katalog entsteht keine zusätzliche äußere Scrollleiste mehr, die die gesamte Oberfläche aus dem Fenster schieben und eine leere Fläche hinterlassen kann. Das Scrollen bleibt innerhalb der Modellliste.
+- Kleine Fenster: Die Oberfläche passt sich jetzt an die Fensterhöhe an, statt mindestens 620 Pixel Höhe zu erzwingen und dadurch eine äußere Scrollleiste zu erzeugen.
 
 ## [0.15.0] - 2026-10-03
 

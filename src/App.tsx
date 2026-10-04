@@ -191,7 +191,7 @@ export default function App() {
 
   return (
     <div
-      className="h-screen min-h-[620px] flex flex-col bg-[var(--bg)] text-[var(--ink)] overflow-hidden"
+      className="h-screen flex flex-col bg-[var(--bg)] text-[var(--ink)] overflow-hidden"
       style={{ fontSize: 14 }}
     >
       {snapshotIds.length > 0 && (
