@@ -409,6 +409,7 @@ export function CatalogWorkspace({
             onCreate={createCollection}
             onRename={renameCollection}
             onDelete={deleteCollection}
+            onBack={() => setCollectionsGalleryOpen(false)}
           />
         ) : detailModel ? (
           <ModelDetailPage

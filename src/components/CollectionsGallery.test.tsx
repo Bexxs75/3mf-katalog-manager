@@ -7,7 +7,7 @@ it('deletes only on confirmation and returns focus after safe dismissal', () => 
   localStorage.setItem('3mf-katalog-language', 'de');
   const onDelete = vi.fn(); const onSelect = vi.fn();
   render(<LanguageProvider><CollectionsGallery collections={[{id:'c1', name:'Kitchen', modelCount:2}]}
-    onDelete={onDelete} onSelect={onSelect} onCreate={vi.fn()} onRename={vi.fn()} /></LanguageProvider>);
+    onDelete={onDelete} onSelect={onSelect} onCreate={vi.fn()} onRename={vi.fn()} onBack={vi.fn()} /></LanguageProvider>);
   const trigger = screen.getByLabelText(/Sammlung wirklich löschen/);
   fireEvent.click(trigger);
   expect(screen.getByRole('dialog')).toHaveAttribute('aria-modal', 'true');
@@ -21,4 +21,13 @@ it('deletes only on confirmation and returns focus after safe dismissal', () => 
   fireEvent.click(trigger);
   fireEvent.click(screen.getByRole('button', {name:'Löschen'}));
   expect(onDelete).toHaveBeenCalledExactlyOnceWith('c1');
+});
+
+it('offers a back button that leaves the gallery, also when no collection exists', () => {
+  localStorage.setItem('3mf-katalog-language', 'de');
+  const onBack = vi.fn();
+  render(<LanguageProvider><CollectionsGallery collections={[]} onDelete={vi.fn()} onSelect={vi.fn()}
+    onCreate={vi.fn()} onRename={vi.fn()} onBack={onBack} /></LanguageProvider>);
+  fireEvent.click(screen.getByRole('button', {name:'Zurück zum Katalog'}));
+  expect(onBack).toHaveBeenCalledTimes(1);
 });
