@@ -2,22 +2,18 @@ import { Icon } from './Icon';
 import { CatalogResetSection } from './CatalogResetSection';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import type { Printer, SlicerConfig } from '../types';
+import type { MainView, SlicerConfig } from '../types';
 import type { ThemeSetting } from '../hooks/useTheme';
 import type { UiDensity } from '../hooks/UiDensityContext';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
-import type { PrinterLinkState } from '../hooks/usePrinterLink';
 import type { Language } from '../i18n/types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { DiagnosticsSettings } from '../diagnostics/DiagnosticsSettings';
 import { InfoFolders } from '../diagnostics/InfoFolders';
-import { PrinterLinkSettings } from './PrinterLinkSettings';
 import type { AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 import type { UpdaterView } from '../hooks/useUpdater';
 import { UpdatePanel } from './UpdatePanel';
-
-type MainView = 'catalog' | 'filament' | 'trash';
 
 interface Props {
   mainView: MainView;
@@ -48,8 +44,6 @@ interface Props {
   catalogBackupError: AppError | null;
   catalogBaseDir: string | null;
   onOpenCatalogSetup: () => void;
-  printerLink: PrinterLinkState;
-  printerList: Printer[];
   update: UpdaterView;
 }
 
@@ -99,14 +93,12 @@ export function Rail({
   catalogBackupError,
   catalogBaseDir,
   onOpenCatalogSetup,
-  printerLink,
-  printerList,
   update,
 }: Props) {
   const t = useT();
   const { language, setLanguage } = useLanguage();
   const [confirmImportCatalog, setConfirmImportCatalog] = useState(false);
-  const [activeSettingsTab, setActiveSettingsTab] = useState<'general' | 'slicer' | 'catalog' | 'printers' | 'info'>('general');
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'general' | 'slicer' | 'catalog' | 'info'>('general');
 
   const railRef = useRef<HTMLElement>(null);
   const settingsWrapperRef = useRef<HTMLDivElement>(null);
@@ -154,6 +146,10 @@ export function Rail({
           className={`${railBtnBase} ${mainView === 'filament' ? railBtnActive : ''}`}
         >
           <Icon name="spool" />
+        </button>
+        <button onClick={() => onMainViewChange('printers')} title={t('railPrinters')} aria-label={t('railPrinters')}
+          className={`${railBtnBase} ${mainView === 'printers' ? railBtnActive : ''}`}>
+          <Icon name="printer" />
         </button>
         <button
           onClick={() => onMainViewChange('trash')}
@@ -205,7 +201,6 @@ export function Rail({
                 ['general', t('settingsTabGeneral')],
                 ['slicer', t('settingsTabSlicer')],
                 ['catalog', t('settingsTabCatalog')],
-                ['printers', t('settingsTabPrinters')],
                 ['info', t('settingsTabInfo')],
               ] as const).map(([key, label]) => (
                 <button
@@ -226,6 +221,12 @@ export function Rail({
 
             {activeSettingsTab === 'general' && (
               <>
+                <div className="mb-4 p-2 border border-[var(--line)] rounded text-[12px]">
+                  <p>{t('settingsPrintersMovedHint')}</p>
+                  <button className="mt-2 text-[var(--accent)] focus-visible:outline-2" onClick={() => {
+                    onSettingsOpenChange(false); onMainViewChange('printers');
+                  }}>{t('pmOpen')}</button>
+                </div>
                 <div className="text-[length:var(--font-size-body)] font-semibold mb-2">{t('appearanceTitle')}</div>
                 <div className="flex p-0.5 gap-0.5 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)]">
                   {(['system', 'light', 'dark'] as ThemeSetting[]).map((opt) => (
@@ -442,9 +443,6 @@ export function Rail({
               </>
             )}
 
-            {activeSettingsTab === 'printers' && (
-              <PrinterLinkSettings link={printerLink} printers={printerList} />
-            )}
 
             {activeSettingsTab === 'info' && (
               <>

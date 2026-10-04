@@ -1,3 +1,4 @@
+import type { PrinterNavigation } from '../types';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useLanguage, useT } from '../i18n/LanguageContext';
@@ -15,7 +16,6 @@ import { FilamentSpoolForm } from './FilamentSpoolForm';
 import { PrinterColumn } from './PrinterColumn';
 import { PrinterJobsBanner } from './PrinterJobsBanner';
 import { PrinterJobsDialog } from './PrinterJobsDialog';
-import { PrinterManagePanel } from './PrinterManagePanel';
 import { SpoolToast } from './SpoolToast';
 import { RestockPopover } from './RestockPopover';
 import { ConsumeResinPopover } from './ConsumeResinPopover';
@@ -41,14 +41,16 @@ type ToastState =
   | { type: 'message'; label: string };
 
 interface Props {
+  printerContext?: PrinterNavigation;
+  onPrinterManager?: (printerId?: string) => void;
   printerLink: PrinterLinkState;
-  /** Shared instance with Rail so changes show up everywhere immediately. */
+  /** Shared instance with Printer Manager so changes show up everywhere immediately. */
   printers: PrintersState;
   /** Reload the catalog (e.g. print status/queue) after prints are confirmed. */
   onCatalogChanged?: () => void;
 }
 
-export function FilamentView({ printerLink, printers, onCatalogChanged }: Props) {
+export function FilamentView({ printerLink, printers, onCatalogChanged, printerContext, onPrinterManager }: Props) {
   const t = useT();
   const { language } = useLanguage();
   const [spools, setSpools] = useState<FilamentSpool[]>([]);
@@ -59,13 +61,16 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [editingSpool, setEditingSpool] = useState<FilamentSpool | null>(null);
-  const [manageOpen, setManageOpen] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [popover, setPopover] = useState<PopoverState | null>(null);
   const [highlightIds, setHighlightIds] = useState<ReadonlySet<string>>(() => new Set());
-  const [kind, setKindState] = useState<SpoolKind>(loadSpoolKind);
+  const [kind, setKindState] = useState<SpoolKind>(() => printers.printers.find(p => p.id === printerContext?.printerId)?.kind ?? loadSpoolKind());
   // Hides the hint banner as soon as the confirmation dialog is open.
-  const [jobsOpen, setJobsOpen] = useState(false);
+  const [jobsOpen, setJobsOpen] = useState(printerContext?.reviewJobs ?? false);
+  useEffect(() => {
+    const target = printers.printers.find(p => p.id === printerContext?.printerId);
+    if (target) setKindState(target.kind);
+  }, [printerContext?.printerId, printers.printers]);
   const [models, setModels] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => {
@@ -404,7 +409,8 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
         onUnload={unloadSpool}
         onEditSpool={openEditPanel}
         onConsume={(spool, anchor) => togglePopover('consume', spool, anchor)}
-        onManage={() => setManageOpen(true)}
+        onManage={id => onPrinterManager?.(id)}
+        focusPrinterId={printerContext?.printerId}
         printerLink={printerLink}
       />
       </div>
@@ -455,17 +461,6 @@ export function FilamentView({ printerLink, printers, onCatalogChanged }: Props)
           onConsumed={handleConsumed}
         />
       )}
-
-      <PrinterManagePanel
-        open={manageOpen}
-        printers={printers.printers}
-        spools={spools}
-        error={printers.error}
-        actions={printers}
-        onClose={() => setManageOpen(false)}
-        onSpoolsChanged={refresh}
-        printerLink={printerLink}
-      />
 
       <FilamentSpoolForm
         open={panelOpen}

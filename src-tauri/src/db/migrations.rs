@@ -119,6 +119,12 @@ const MIGRATIONS: &[MigrationStep] = &[
     MigrationStep::Simple(|c| exec(c, "DROP TABLE IF EXISTS saved_filters")),
     // Printer clock minus local clock, measured on every test and sync (printers without NTP).
     MigrationStep::Simple(|c| exec(c, "ALTER TABLE printer_connections ADD COLUMN clock_offset_s REAL NOT NULL DEFAULT 0")),
+    MigrationStep::Simple(|c| exec(c, "ALTER TABLE printers ADD COLUMN manufacturer TEXT")),
+    MigrationStep::Simple(|c| exec(c, "ALTER TABLE printers ADD COLUMN model TEXT")),
+    MigrationStep::Simple(|c| exec(c, "ALTER TABLE printers ADD COLUMN nozzle_mm REAL")),
+    MigrationStep::Simple(|c| exec(c, "ALTER TABLE printers ADD COLUMN bed_x_mm REAL")),
+    MigrationStep::Simple(|c| exec(c, "ALTER TABLE printers ADD COLUMN bed_y_mm REAL")),
+    MigrationStep::Simple(|c| exec(c, "ALTER TABLE printers ADD COLUMN bed_z_mm REAL")),
 ];
 
 /// Derived from [`MIGRATIONS`] so the two can never drift apart.
@@ -385,6 +391,21 @@ fn run_migrations_with(conn: &mut Connection, migrations: &[MigrationStep], targ
 mod tests {
     use super::*;
     use rusqlite::Connection;
+
+    #[test]
+    fn printer_details_upgrade_from_44_preserves_data() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        run_migrations_with(&mut conn, &MIGRATIONS[..44], 44).unwrap();
+        conn.execute("INSERT INTO printers (id, name, position, kind) VALUES (7, 'Old printer', 3, 'filament')", []).unwrap();
+        run_migrations(&mut conn).unwrap();
+        let old: (String, i64, String) = conn.query_row("SELECT name, position, kind FROM printers WHERE id=7", [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap();
+        assert_eq!(old, ("Old printer".into(), 3, "filament".into()));
+        for column in ["manufacturer", "model", "nozzle_mm", "bed_x_mm", "bed_y_mm", "bed_z_mm"] {
+            let value: Option<String> = conn.query_row(&format!("SELECT {column} FROM printers WHERE id=7"), [], |r| r.get(0)).unwrap();
+            assert!(value.is_none());
+        }
+    }
 
     #[test]
     fn migrating_a_fresh_in_memory_db_reaches_current_schema_version() {
@@ -678,21 +699,10 @@ mod tests {
     #[test]
     fn the_kind_migration_marks_existing_spools_as_filament_and_checks_the_value() {
         let mut conn = Connection::open_in_memory().unwrap();
-        // State before the kind step: filament_spools without the kind column.
-        conn.execute_batch(
-            "CREATE TABLE filament_spools (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                material TEXT NOT NULL, manufacturer TEXT, color TEXT, location TEXT,
-                diameter_mm REAL NOT NULL, original_weight_g INTEGER NOT NULL,
-                remaining_weight_g INTEGER NOT NULL, price REAL, image_png BLOB,
-                created_at TEXT NOT NULL, unit_id INTEGER, slot_index INTEGER,
-                home_location TEXT, color_hex TEXT
-            );
-            INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at)
-                VALUES ('PLA', 1.75, 1000, 600, '2026-01-01');",
-        )
-        .unwrap();
-        conn.pragma_update(None, "user_version", KIND_MIGRATION_VERSION - 1).unwrap();
+        // Build the complete historical schema, including printer tables created before `kind`.
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        run_migrations_with(&mut conn, &MIGRATIONS[..(KIND_MIGRATION_VERSION - 1) as usize], KIND_MIGRATION_VERSION - 1).unwrap();
+        conn.execute("INSERT INTO filament_spools (material, diameter_mm, original_weight_g, remaining_weight_g, created_at) VALUES ('PLA', 1.75, 1000, 600, '2026-01-01')", []).unwrap();
 
         run_migrations(&mut conn).unwrap();
 
@@ -710,7 +720,7 @@ mod tests {
     #[test]
     fn the_kind_step_stays_at_the_shipped_position_32() {
         assert_eq!(KIND_MIGRATION_VERSION, 32);
-        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION);
+        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 6);
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         // Only run the steps up to and including 32.

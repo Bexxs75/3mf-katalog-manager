@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { MaterialUnit, Printer, PrinterKind, UnitKind } from '../../types';
+import type { MaterialUnit, PrinterDetails, PrinterHistoryJob, Printer, PrinterKind, UnitKind } from '../../types';
 
 export function listPrinters() {
   return invoke<Printer[]>('list_printers');
@@ -37,4 +37,14 @@ export function loadSpool(spoolId: string, unitId: string, slotIndex: number) {
 /** Returns the new location (home location or `location`). */
 export function unloadSpool(spoolId: string, location: string | null) {
   return invoke<string | null>('unload_spool', { spoolId, location });
+}
+
+export function updatePrinterDetails(id: string, details: PrinterDetails) {
+  return invoke<void>('update_printer_details', { id, details });
+}
+export function reorderPrinters(ids: string[]) {
+  return invoke<void>('reorder_printers', { ids });
+}
+export function listPrinterHistory(printerId: string) {
+  return invoke<PrinterHistoryJob[]>('list_printer_history', { printerId });
 }

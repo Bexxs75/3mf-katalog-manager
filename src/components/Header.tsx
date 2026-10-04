@@ -1,6 +1,6 @@
 import { Icon } from './Icon';
 import { useState } from 'react';
-import type { ViewMode, SortKey } from '../types';
+import type { MainView, ViewMode, SortKey } from '../types';
 import { formatCount } from '../i18n/types';
 import { useT } from '../i18n/LanguageContext';
 
@@ -15,7 +15,7 @@ interface Props {
   count: number;
   onImportFiles: () => void;
   onImportFolder: () => void;
-  mainView: 'catalog' | 'filament' | 'trash';
+  mainView: MainView;
 }
 
 const segBase =
@@ -54,9 +54,9 @@ export function Header({
         <span className="text-[15px] font-bold tracking-[0.06em] uppercase">
           3MF Katalog
         </span>
-        {mainView === 'filament' && (
+        {(mainView === 'filament' || mainView === 'printers') && (
           <span className="font-mono-ui text-[11px] text-[var(--accent)] tracking-[0.08em]">
-            MATERIAL MANAGER
+            {mainView === 'printers' ? 'PRINTER MANAGER' : 'MATERIAL MANAGER'}
           </span>
         )}
       </div>

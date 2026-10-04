@@ -50,3 +50,11 @@ it.each(['grid', 'groupedGrid', 'groupedList'] as const)('shows the global toggl
     expect(screen.getByRole('button', { name: 'Alle Ordner aufklappen' })).toBeVisible();
   }
 });
+
+it('labels Printer Manager and hides all catalog controls', () => {
+  render(<LanguageProvider><Header mainView="printers" allFoldersCollapsed={false} onToggleAllFolders={vi.fn()}
+    view="grid" onViewChange={vi.fn()} sort="name" onSortChange={vi.fn()} count={0}
+    onImportFiles={vi.fn()} onImportFolder={vi.fn()} /></LanguageProvider>);
+  expect(screen.getByText('PRINTER MANAGER')).toBeInTheDocument();
+  expect(screen.queryAllByRole('button')).toHaveLength(0);
+});

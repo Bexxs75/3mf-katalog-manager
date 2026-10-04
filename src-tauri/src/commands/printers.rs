@@ -5,6 +5,7 @@
 
 use super::*;
 use db::printers as p;
+use serde::Deserialize;
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -25,6 +26,12 @@ pub struct PrinterDto {
     /// "filament" or "resin", fixed when the printer is added.
     pub kind: String,
     pub units: Vec<MaterialUnitDto>,
+    pub manufacturer: Option<String>,
+    pub model: Option<String>,
+    pub nozzle_mm: Option<f64>,
+    pub bed_x_mm: Option<f64>,
+    pub bed_y_mm: Option<f64>,
+    pub bed_z_mm: Option<f64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -57,6 +64,12 @@ pub(crate) fn list_printers_with_conn(conn: &Connection) -> CmdResult<Vec<Printe
             id: printer.id.to_string(),
             name: printer.name,
             kind: printer.kind,
+            manufacturer: printer.manufacturer,
+            model: printer.model,
+            nozzle_mm: printer.nozzle_mm,
+            bed_x_mm: printer.bed_x_mm,
+            bed_y_mm: printer.bed_y_mm,
+            bed_z_mm: printer.bed_z_mm,
             units: units
                 .iter()
                 .filter(|u| u.printer_id == printer.id)
@@ -124,6 +137,53 @@ pub fn rename_printer(state: State<AppState>, printer_id: String, name: String) 
     let id = parse_id(&printer_id, "Drucker")?;
     let mut conn = lock_db(&state)?;
     in_tx(&mut conn, |tx| p::rename_printer(tx, id, &name))
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PrinterDetails {
+    pub manufacturer: Option<String>,
+    pub model: Option<String>,
+    pub nozzle_mm: Option<f64>,
+    pub bed_x_mm: Option<f64>,
+    pub bed_y_mm: Option<f64>,
+    pub bed_z_mm: Option<f64>,
+}
+
+fn update_printer_details_with_conn(conn: &mut Connection, id: i64, details: PrinterDetails) -> CmdResult<()> {
+    for (value, min, max, label) in [
+        (details.nozzle_mm, 0.1, 2.0, "Düse"),
+        (details.bed_x_mm, 1.0, 2000.0, "Bauraum X"),
+        (details.bed_y_mm, 1.0, 2000.0, "Bauraum Y"),
+        (details.bed_z_mm, 1.0, 2000.0, "Bauraum Z"),
+    ] {
+        if value.is_some_and(|v| !v.is_finite() || v < min || v > max) {
+            return Err(CmdError::expected(format!("{label} muss zwischen {min} und {max} mm liegen")));
+        }
+    }
+    let clean = |s: Option<String>| s.map(|s| s.trim().to_owned()).filter(|s| !s.is_empty());
+    in_tx(conn, |tx| {
+        let changed = tx.execute(
+            "UPDATE printers SET manufacturer=?1, model=?2, nozzle_mm=?3, bed_x_mm=?4, bed_y_mm=?5, bed_z_mm=?6 WHERE id=?7",
+            rusqlite::params![clean(details.manufacturer), clean(details.model), details.nozzle_mm, details.bed_x_mm, details.bed_y_mm, details.bed_z_mm, id],
+        )?;
+        if changed == 0 { return Err(db::error::DbError::Invalid("Drucker nicht gefunden".into())); }
+        Ok(())
+    })
+}
+
+#[tauri::command]
+pub fn update_printer_details(state: State<AppState>, id: String, details: PrinterDetails) -> CmdResult<()> {
+    let id = parse_id(&id, "Drucker")?;
+    let mut conn = lock_db(&state)?;
+    update_printer_details_with_conn(&mut conn, id, details)
+}
+
+#[tauri::command]
+pub fn reorder_printers(state: State<AppState>, ids: Vec<String>) -> CmdResult<()> {
+    let ids = ids.iter().map(|id| parse_id(id, "Drucker")).collect::<CmdResult<Vec<_>>>()?;
+    let mut conn = lock_db(&state)?;
+    in_tx(&mut conn, |tx| p::reorder_printers(tx, &ids))
 }
 
 /// Returns the number of spools that went back to their home location.
@@ -214,9 +274,110 @@ pub fn unload_spool(state: State<AppState>, spool_id: String, location: Option<S
     unload_spool_with_conn(&mut conn, &spool_id, location)
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrinterHistoryJobDto {
+    id: String,
+    file_name: String,
+    outcome: String,
+    print_duration_s: f64,
+    used_mm: f64,
+    grams: Option<f64>,
+    state: String,
+}
+
+fn list_printer_history_with_conn(conn: &Connection, printer_id: i64) -> CmdResult<Vec<PrinterHistoryJobDto>> {
+    let mut stmt = conn.prepare("SELECT id, file_name, outcome, print_duration_s, used_mm, booked_g, state FROM printer_jobs WHERE printer_id=?1 ORDER BY ended_at DESC, id DESC").map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([printer_id], |r| Ok(PrinterHistoryJobDto {
+        id: r.get::<_, i64>(0)?.to_string(), file_name: r.get(1)?, outcome: r.get(2)?,
+        print_duration_s: r.get(3)?, used_mm: r.get(4)?, grams: r.get(5)?, state: r.get(6)?,
+    })).map_err(|e| e.to_string())?.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+    Ok(rows)
+}
+
+#[tauri::command]
+pub fn list_printer_history(state: State<AppState>, printer_id: String) -> CmdResult<Vec<PrinterHistoryJobDto>> {
+    let conn = lock_db(&state)?;
+    list_printer_history_with_conn(&conn, parse_id(&printer_id, "Drucker")?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn history_contains_all_states_but_only_the_requested_printer() {
+        let mut conn = db::connect_in_memory().unwrap();
+        let a: i64 = add_printer_with_conn(&mut conn, "A", "Holder", "filament").unwrap().id.parse().unwrap();
+        let b: i64 = add_printer_with_conn(&mut conn, "B", "Holder", "filament").unwrap().id.parse().unwrap();
+        for (printer, remote, state, grams) in [(a, "1", "open", None), (a, "2", "confirmed", Some(18.4)), (a, "3", "ignored", None), (b, "4", "open", None)] {
+            conn.execute("INSERT INTO printer_jobs (printer_id, remote_id, file_name, outcome, raw_status, ended_at, print_duration_s, used_mm, state, booked_g) VALUES (?1, ?2, 'test.gcode', 'completed', 'completed', ?2, 120, 100, ?3, ?4)", rusqlite::params![printer, remote, state, grams]).unwrap();
+        }
+        let jobs = list_printer_history_with_conn(&conn, a).unwrap();
+        assert_eq!(jobs.len(), 3);
+        assert_eq!(jobs.iter().map(|j| j.state.as_str()).collect::<Vec<_>>(), vec!["ignored", "confirmed", "open"]);
+        assert_eq!(jobs[1].grams, Some(18.4));
+        assert_eq!(list_printer_history_with_conn(&conn, b).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn details_dto_uses_the_frontend_field_names() {
+        let details: PrinterDetails = serde_json::from_value(serde_json::json!({
+            "manufacturer": null, "model": "X", "nozzleMm": 0.4, "bedXMm": 200.0, "bedYMm": 201.0, "bedZMm": 202.0
+        })).unwrap();
+        let mut conn = db::connect_in_memory().unwrap();
+        let p = add_printer_with_conn(&mut conn, "A", "Holder", "filament").unwrap();
+        update_printer_details_with_conn(&mut conn, p.id.parse().unwrap(), details).unwrap();
+        let value = serde_json::to_value(list_printers_with_conn(&conn).unwrap().remove(0)).unwrap();
+        assert_eq!(value["nozzleMm"], 0.4);
+        assert_eq!(value["bedXMm"], 200.0);
+        assert_eq!(value["bedYMm"], 201.0);
+        assert_eq!(value["bedZMm"], 202.0);
+    }
+
+    #[test]
+    fn printer_details_validate_boundaries_and_clear_nulls() {
+        let mut conn = db::connect_in_memory().unwrap();
+        let printer = add_printer_with_conn(&mut conn, "Test", "Holder", "filament").unwrap();
+        let id = printer.id.parse().unwrap();
+        for nozzle in [0.1, 2.0] {
+            let details = PrinterDetails { manufacturer: Some(" Qidi ".into()), model: Some(" ".into()), nozzle_mm: Some(nozzle), bed_x_mm: Some(1.0), bed_y_mm: Some(2000.0), bed_z_mm: None };
+            update_printer_details_with_conn(&mut conn, id, details).unwrap();
+            let result = list_printers_with_conn(&conn).unwrap().remove(0);
+            assert_eq!(result.manufacturer.as_deref(), Some("Qidi"));
+            assert_eq!(result.model, None);
+            assert_eq!(result.nozzle_mm, Some(nozzle));
+            assert_eq!(result.bed_x_mm, Some(1.0));
+            assert_eq!(result.bed_y_mm, Some(2000.0));
+        }
+        for nozzle in [0.099, 2.001, f64::NAN, f64::INFINITY] {
+            assert!(update_printer_details_with_conn(&mut conn, id, PrinterDetails { nozzle_mm: Some(nozzle), ..Default::default() }).unwrap_err().expected);
+        }
+        for axis in 0..3 {
+            for value in [0.9, 2000.1, f64::NAN] {
+                let mut details = PrinterDetails::default();
+                match axis { 0 => details.bed_x_mm = Some(value), 1 => details.bed_y_mm = Some(value), _ => details.bed_z_mm = Some(value) };
+                assert!(update_printer_details_with_conn(&mut conn, id, details).unwrap_err().expected);
+            }
+        }
+        update_printer_details_with_conn(&mut conn, id, PrinterDetails::default()).unwrap();
+        let cleared = list_printers_with_conn(&conn).unwrap().remove(0);
+        assert!(cleared.manufacturer.is_none() && cleared.nozzle_mm.is_none() && cleared.bed_y_mm.is_none());
+        assert!(update_printer_details_with_conn(&mut conn, 999, PrinterDetails::default()).unwrap_err().expected);
+    }
+
+    #[test]
+    fn reorder_printers_requires_exact_permutation() {
+        let mut conn = db::connect_in_memory().unwrap();
+        let a: i64 = add_printer_with_conn(&mut conn, "A", "Holder", "filament").unwrap().id.parse().unwrap();
+        let b: i64 = add_printer_with_conn(&mut conn, "B", "Vat", "resin").unwrap().id.parse().unwrap();
+        in_tx(&mut conn, |tx| p::reorder_printers(tx, &[b, a])).unwrap();
+        assert_eq!(list_printers_with_conn(&conn).unwrap()[0].name, "B");
+        for ids in [vec![a], vec![a, a], vec![a, 999]] {
+            assert!(in_tx(&mut conn, |tx| p::reorder_printers(tx, &ids)).unwrap_err().expected);
+            assert_eq!(list_printers_with_conn(&conn).unwrap()[0].name, "B");
+        }
+    }
 
     #[test]
     fn in_tx_keeps_a_dberror_invalid_from_the_closure_marked_expected() {

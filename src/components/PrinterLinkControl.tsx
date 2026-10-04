@@ -11,8 +11,8 @@ interface Props {
   printers: Printer[];
 }
 
-/** Content of the "Printers" settings tab. */
-export function PrinterLinkSettings({ link, printers }: Props) {
+/** Global printer connection switch and status list in Printer Manager. */
+export function PrinterLinkControl({ link, printers }: Props) {
   const t = useT();
   const [actionError, setActionError] = useState<AppError | null>(null);
   // Resin printers have no printer connection.
@@ -66,9 +66,6 @@ export function PrinterLinkSettings({ link, printers }: Props) {
             );
           })}
         </ul>
-      )}
-      {link.enabled && (
-        <p className="font-mono-ui text-[10.5px] leading-relaxed text-[var(--ink-3)]">{t('printerLinkManageHint')}</p>
       )}
     </div>
   );
