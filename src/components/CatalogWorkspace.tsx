@@ -404,17 +404,17 @@ export function CatalogWorkspace({
         {importRow}
         {chips.length > 0 && (
           <section aria-label={t('filterBarAria')} className="flex-none flex flex-wrap items-center gap-x-2 gap-y-1.5 px-4 py-2 border-b border-[var(--line)] bg-[var(--bg)]">
-            <span className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.1em] uppercase text-[var(--ink-3)]">{t('filterBarHeading')}</span>
+            <span className="ui-label text-[var(--ink-3)]">{t('filterBarHeading')}</span>
             {chips.map(chip => (
               <span key={chip.kind} className="inline-flex max-w-full items-center gap-1.5 pl-2 pr-1 py-0.5 rounded-full border border-[var(--line-strong)] bg-[var(--panel)] text-[length:var(--font-size-control)]">
-                <span data-filter-kind className="font-mono-ui text-[length:var(--font-size-label)] tracking-[0.06em] uppercase text-[var(--ink-3)]">{t(chip.kind)}</span>
+                <span data-filter-kind className="ui-label text-[var(--ink-3)]">{t(chip.kind)}</span>
                 <b className="min-w-0 break-words font-semibold">{chip.value}</b>
                 <button type="button" onClick={chip.remove} aria-label={chip.removeLabel}
-                  className="flex-none w-5 h-5 grid place-items-center rounded-full text-[var(--ink-3)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] cursor-pointer">✕</button>
+                  className="flex-none w-5 h-5 grid place-items-center rounded-full text-[var(--ink-3)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] cursor-pointer"><Icon name="close" size={14} /></button>
               </span>
             ))}
             <div className="ml-auto flex flex-wrap items-center gap-2">
-              <span aria-live="polite" className="font-mono-ui text-[length:var(--font-size-meta)] text-[var(--ink-2)] tabular-nums">
+              <span aria-live="polite" className="font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--ink-2)] tabular-nums">
                 {t('filterBarCount').replace('{count}', String(displayedModels.length)).replace('{total}', String(models.length))}
               </span>
               <button type="button" onClick={onClearFilters} className={clearButtonClass}>{t('filterBarClearAll')}</button>
@@ -512,7 +512,7 @@ export function CatalogWorkspace({
               !target.closest('[data-model-id], button, input, a, [role="button"], [role="row"], [data-folder-header], [data-model-list-header], [data-navigation-menu]')) closeDetails();
           }} onScroll={event => { savedScroll.current = event.currentTarget.scrollTop; }} className="flex-1 overflow-y-auto overscroll-contain p-4">
             {models.length === 0 && onOpenTips ? <EmptyCatalogTips onOpenTips={onOpenTips} /> : toolOnly && displayedModels.length === 0 ? (
-              <div className="font-mono-ui text-[length:var(--font-size-item)] text-[var(--ink-3)] px-1.5 py-8 text-center">
+              <div className="font-medium tabular-nums text-[length:var(--font-size-item)] text-[var(--ink-3)] px-1.5 py-8 text-center">
                 {t('toolViewEmpty')}
               </div>
             ) : chips.length > 0 && displayedModels.length === 0 ? (

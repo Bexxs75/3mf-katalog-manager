@@ -1,3 +1,4 @@
+import { Icon } from './Icon';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useState } from 'react';
 import { StatusBadges } from './StatusBadges';
@@ -84,7 +85,7 @@ export function DetailPanel({
 
   if (!model) {
     return (
-      <aside role={trashMode ? undefined : "presentation"} className="flex-none w-[336px] flex items-center justify-center bg-[var(--panel)] border-l border-[var(--line)] text-[var(--ink-3)] text-[13px] px-6 text-center">
+      <aside role={trashMode ? undefined : "presentation"} className="flex-none w-[336px] flex items-center justify-center bg-[var(--panel)] border-l border-[var(--line)] text-[var(--ink-3)] text-body px-6 text-center">
         {t('emptyStateText')}
       </aside>
     );
@@ -98,8 +99,8 @@ export function DetailPanel({
     return (
       <aside className="flex-none w-[336px] flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]">
         <div className="flex-none px-4 pt-3.5 pb-3 border-b border-[var(--line)]">
-          <div className="text-[14.5px] font-semibold leading-tight break-words">{model.name}</div>
-          <div className="font-mono-ui text-[10.5px] text-[var(--ink-3)] pt-1.5">{model.path}</div>
+          <div className="text-body font-semibold leading-tight break-words">{model.name}</div>
+          <div className="font-code text-caption text-[var(--ink-3)] pt-1.5">{model.path}</div>
         </div>
 
         <div className="relative h-[248px] bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
@@ -107,33 +108,33 @@ export function DetailPanel({
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 pt-3.5 pb-1">
-          <div className="font-mono-ui text-compact-meta tracking-[0.12em] uppercase text-[var(--ink-3)] pb-2">
+          <div className="text-compact-meta ui-label text-[var(--ink-3)] pb-2">
             {t('metadataHeading')}
           </div>
           {rows.map((row) => (
             <div key={row.label} className="flex items-baseline gap-3 py-1.5 border-b border-[var(--line)]">
-              <span className="flex-none w-[108px] text-[12.5px] text-[var(--ink-2)]">{row.label}</span>
-              <span className="flex-1 font-mono-ui text-xs text-right">{row.value}</span>
+              <span className="flex-none w-[108px] text-small text-[var(--ink-2)]">{row.label}</span>
+              <span className="flex-1 font-medium tabular-nums text-small text-right">{row.value}</span>
             </div>
           ))}
         </div>
 
         <div className="flex-none px-4 py-3 border-t border-[var(--line)] bg-[var(--panel-2)] flex flex-col gap-2">
           {expiryDate && (
-            <p className="font-mono-ui text-[10.5px] text-[var(--ink-3)]">
+            <p className="font-medium tabular-nums text-caption text-[var(--ink-3)]">
               {t('trashExpiryHint').replace('{date}', formatDate(expiryDate.toISOString(), language))}
             </p>
           )}
           <div className="flex gap-2">
             <button {...lockProps}
               onClick={onRestore}
-              className="flex-1 h-8 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              className="flex-1 h-8 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
             >
               {t('restoreLabel')}
             </button>
             <button {...lockProps}
               onClick={onDeletePermanently}
-              className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 h-8 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
+              className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 h-8 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer"
             >
               {t('deletePermanentlyLabel')}
             </button>
@@ -147,9 +148,9 @@ export function DetailPanel({
     return (
     <aside role={trashMode ? undefined : "presentation"} className="flex-none w-[336px] flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]">
       <div className="flex-none px-4 pt-3.5 pb-3 border-b border-[var(--line)]">
-        <div className="text-[14.5px] font-semibold leading-tight break-words">{model.name}</div>
+        <div className="text-body font-semibold leading-tight break-words">{model.name}</div>
         <StatusBadges model={model} filament={filament} lastPrinter={lastPrinter} />
-        <div className="font-mono-ui text-[10.5px] text-[var(--ink-3)] pt-1.5">{model.path}</div>
+        <div className="font-code text-caption text-[var(--ink-3)] pt-1.5">{model.path}</div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -168,56 +169,56 @@ export function DetailPanel({
             onRemoveFromCatalog={onRemoveFromCatalog}
             onSnapshotCaptured={onSnapshotCaptured}
           />
-          <div className="absolute left-2.5 bottom-2 font-mono-ui text-[9.5px] tracking-[0.08em] uppercase text-[var(--ink-3)] pointer-events-none">
+          <div className="absolute left-2.5 bottom-2 ui-label text-[var(--ink-3)] pointer-events-none">
             {t('dragToRotate')}
           </div>
           <button
             onClick={onUploadImage}
-            className="absolute right-2.5 top-2.5 h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-[11.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            className="absolute right-2.5 top-2.5 h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
             {t('uploadModelImageLabel')}
           </button>
         </div>
 
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--line)]">
-          <span className="flex-1 text-[12.5px] font-medium">
+          <span className="flex-1 text-small font-medium">
             {model.printStatus === 'printed' ? t('printedBadge') : t('notPrintedLabel')}
           </span>
           <button
             onClick={onTogglePrintStatus}
-            className="h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-[11.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            className="h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
             {model.printStatus === 'printed' ? t('markAsNotPrinted') : t('markAsPrinted')}
           </button>
         </div>
 
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--line)]">
-          <span className="flex-1 text-[12.5px] font-medium">
+          <span className="flex-1 text-small font-medium">
             {model.favorite ? t('favoriteRemove') : t('favoriteAdd')}
           </span>
           <button
             onClick={onToggleFavorite}
             aria-label={model.favorite ? t('favoriteRemove') : t('favoriteAdd')}
-            className="h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-[11.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            className="h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
-            {model.favorite ? '♥' : '♡'}
+            <Icon name="favorite" size={14} fill={model.favorite  ? 'currentColor' : 'none'} />
           </button>
         </div>
 
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--line)]">
-          <span className="flex-1 text-[12.5px] font-medium">
+          <span className="flex-1 text-small font-medium">
             {model.queuePosition !== null ? t('inQueueLabel') : t('notInQueueLabel')}
           </span>
           <button
             onClick={onToggleQueue}
-            className="h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-[11.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            className="h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
             {model.queuePosition !== null ? t('removeFromQueue') : t('addToQueue')}
           </button>
         </div>
 
         <div className="px-4 pt-3.5 pb-1">
-          <div className="font-mono-ui text-compact-meta tracking-[0.12em] uppercase text-[var(--ink-3)] pb-2">
+          <div className="text-compact-meta ui-label text-[var(--ink-3)] pb-2">
             {t('metadataHeading')}
           </div>
           {buildMetaRows(model, t, language).filter(row => !model.materials.length || row.label !== t('metaMaterial')).map((row) => (
@@ -225,17 +226,17 @@ export function DetailPanel({
               key={row.label}
               className="flex items-baseline gap-3 py-1.5 border-b border-[var(--line)]"
             >
-              <span className="flex-none w-[108px] text-[12.5px] text-[var(--ink-2)]">
+              <span className="flex-none w-[108px] text-small text-[var(--ink-2)]">
                 {row.label}
               </span>
-              <span className="flex-1 font-mono-ui text-xs text-right">{row.value}</span>
+              <span className="flex-1 font-medium tabular-nums text-small text-right">{row.value}</span>
             </div>
           ))}
           <div className="flex items-baseline gap-3 py-1.5 border-b border-[var(--line)]">
-            <span className="flex-none w-[108px] text-[12.5px] text-[var(--ink-2)]">
+            <span className="flex-none w-[108px] text-small text-[var(--ink-2)]">
               {t('metaSourceUrl')}
             </span>
-            <span className="flex-1 flex items-center justify-end gap-1.5 min-w-0 font-mono-ui text-xs">
+            <span className="flex-1 flex items-center justify-end gap-1.5 min-w-0 font-medium tabular-nums text-small">
               {editingSourceUrl ? (
                 <input
                   value={sourceUrlDraft}
@@ -244,7 +245,7 @@ export function DetailPanel({
                   onBlur={handleSourceUrlBlur}
                   autoFocus
                   placeholder={t('sourceUrlPlaceholder')}
-                  className="flex-1 min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 font-mono-ui text-xs"
+                  className="flex-1 min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 font-medium tabular-nums text-small"
                 />
               ) : isSafeHttpUrl(model.sourceUrl) ? (
                 <a
@@ -267,21 +268,21 @@ export function DetailPanel({
                 onClick={startEditingSourceUrl}
                 className="flex-none w-4 h-4 grid place-items-center rounded-full cursor-pointer text-compact-meta text-[var(--ink-3)] hover:bg-[var(--panel-2)]"
               >
-                ✎
+                <Icon name="edit" size={14} />
               </span>
             </span>
           </div>
         </div>
 
         <div className="px-4 pt-[18px] pb-5">
-          <div className="font-mono-ui text-compact-meta tracking-[0.12em] uppercase text-[var(--ink-3)] pb-2.5">
+          <div className="text-compact-meta ui-label text-[var(--ink-3)] pb-2.5">
             {t('hashtagsHeading')}
           </div>
           <div className="flex flex-wrap gap-1.5">
             {model.tags.map((tag) => (
               <span
                 key={tag}
-                className="inline-flex items-center gap-1.5 h-6 pl-2.5 pr-1 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] font-mono-ui text-[11.5px]"
+                className="inline-flex items-center gap-1.5 h-6 pl-2.5 pr-1 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] font-medium tabular-nums text-caption"
               >
                 <TagDot hue={tagHues?.[tag]} />
                 #{tagLabel(tag, language)}
@@ -289,7 +290,7 @@ export function DetailPanel({
                   onClick={() => onRemoveTag(tag)}
                   className="w-4 h-4 grid place-items-center rounded-full cursor-pointer text-compact-meta hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
                 >
-                  ✕
+                  <Icon name="close" size={14} />
                 </span>
               </span>
             ))}
@@ -299,7 +300,7 @@ export function DetailPanel({
               tags={model.tags}
               onAddTag={onAddTag}
               stripHash
-              inputClassName="h-6 w-[118px] px-2.5 rounded-full border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 font-mono-ui text-[11.5px]"
+              inputClassName="h-6 w-[118px] px-2.5 rounded-full border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 font-medium tabular-nums text-caption"
             />
           </div>
         </div>
@@ -307,19 +308,19 @@ export function DetailPanel({
 
       <div className="flex-none px-4 py-3 border-t border-[var(--line)] bg-[var(--panel-2)]">
         {slicerError && (
-          <div className="pb-2 font-mono-ui text-compact-meta text-[var(--accent)] break-words">
+          <div className="pb-2 font-medium tabular-nums text-compact-meta text-[var(--accent)] break-words">
             {t('slicerLaunchError')} <ErrorText error={slicerError} />
           </div>
         )}
         <div className="flex gap-2">
           {confirmDelete ? (
             <>
-              <span className="flex-1 flex items-center text-[12.5px] font-medium text-[var(--ink)]">
+              <span className="flex-1 flex items-center text-small font-medium text-[var(--ink)]">
                 {t('deleteConfirmQuestion')}
               </span>
               <button
                 onClick={() => setConfirmDelete(false)}
-                className="flex-none h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                className="flex-none h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
               >
                 {t('cancel')}
               </button>
@@ -328,7 +329,7 @@ export function DetailPanel({
                   setConfirmDelete(false);
                   onDelete();
                 }}
-                className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-none h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
+                className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-none h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer"
               >
                 {t('delete')}
               </button>
@@ -337,16 +338,16 @@ export function DetailPanel({
             <>
               <button
                 onClick={() => onOpenInSlicer()}
-                className="flex-1 min-w-0 h-8 px-2 truncate rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                className="flex-1 min-w-0 h-8 px-2 truncate rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
               >
                 {t('openInSlicer')}
               </button>
               <button {...lockProps}
                 onClick={() => setConfirmDelete(true)}
                 aria-label={t('deleteAriaLabel')}
-                className="flex-none w-[34px] h-8 grid place-items-center rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] font-mono-ui cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                className="flex-none w-[34px] h-8 grid place-items-center rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] font-medium tabular-nums cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
               >
-                ✕
+                <Icon name="close" size={14} />
               </button>
             </>
           )}
@@ -387,15 +388,15 @@ export function DetailPanel({
         </div>
 
         <div className="px-[18px] pt-4 pb-1 flex items-start justify-between gap-3">
-          <div className="font-extrabold leading-tight break-words" style={{ fontSize: 'var(--font-size-title)' }}>
+          <div className="font-semibold leading-tight break-words" style={{ fontSize: 'var(--font-size-title)' }}>
             {model.name}
           </div>
           <button
             onClick={onToggleFavorite}
             aria-label={model.favorite ? t('favoriteRemove') : t('favoriteAdd')}
-            className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-none text-[19px] ${model.favorite ? 'text-[var(--accent)]' : 'text-[var(--ink-3)]'}`}
+            className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-none text-heading ${model.favorite ? 'text-[var(--accent)]' : 'text-[var(--ink-3)]'}`}
           >
-            {model.favorite ? '♥' : '♡'}
+            <Icon name="favorite" size={14} fill={model.favorite  ? 'currentColor' : 'none'} />
           </button>
         </div>
         <div className="px-[18px]"><StatusBadges model={model} filament={filament} lastPrinter={lastPrinter} /></div>
@@ -413,7 +414,7 @@ export function DetailPanel({
                 className="w-4 h-4 grid place-items-center rounded-full cursor-pointer hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
                 style={{ fontSize: 'var(--font-size-label)' }}
               >
-                ✕
+                <Icon name="close" size={14} />
               </span>
             </span>
           ))}
@@ -430,7 +431,7 @@ export function DetailPanel({
 
         <div className="px-[18px] pb-4 border-t border-[var(--line)] pt-3.5">
           <div
-            className="font-bold uppercase tracking-wide text-[var(--ink-3)] mb-2.5"
+            className="ui-label text-[var(--ink-3)] mb-2.5"
             style={{ fontSize: 'var(--font-size-label)' }}
           >
             {t('metadataHeading')}
@@ -481,7 +482,7 @@ export function DetailPanel({
                   className="flex-none w-5 h-5 grid place-items-center rounded-full cursor-pointer text-[var(--ink-3)] hover:bg-[var(--panel-2)]"
                   style={{ fontSize: 'var(--font-size-label)' }}
                 >
-                  ✎
+                  <Icon name="edit" size={14} />
                 </span>
               </span>
             )}
@@ -539,7 +540,7 @@ export function DetailPanel({
               className="h-11 px-4 flex items-center justify-center gap-2.5 rounded-lg bg-[var(--panel-2)] font-semibold cursor-pointer hover:text-[var(--accent)]"
               style={{ fontSize: 'var(--font-size-body)' }}
             >
-              {model.printStatus === 'printed' ? `✓ ${t('markAsNotPrinted')}` : `${t('markAsPrinted')}`}
+              {model.printStatus === 'printed' && <Icon name="check" size={14} />}{t(model.printStatus === 'printed' ? 'markAsNotPrinted' : 'markAsPrinted')}
             </button>
             <button {...lockProps}
               onClick={() => setConfirmDelete(true)}

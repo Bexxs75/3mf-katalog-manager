@@ -322,7 +322,7 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
       <div ref={containerRef} className="absolute inset-0" />
       {status === 'loading' && (
         <div className="absolute inset-0 grid place-items-center pointer-events-none">
-          <div role="status" className="flex flex-col items-center gap-2 text-[13.5px] text-[var(--ink-2)]">
+          <div role="status" className="flex flex-col items-center gap-2 text-body text-[var(--ink-2)]">
             <span className="viewer-spinner" aria-hidden="true" />{t('viewerLoading')}
           </div>
         </div>
@@ -337,10 +337,10 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
             <button aria-pressed={!fileColors} onClick={() => setFileColors(false)}>{t('viewerSingleColor')}</button>
           </div>
           {fileColors && <div className="viewer-legend absolute bottom-14 left-3">
-            <div className="font-mono-ui uppercase text-[10.5px] text-[var(--ink-3)]">{t('viewerColorsLegend')}</div>
+            <div className="ui-label text-[var(--ink-3)]">{t('viewerColorsLegend')}</div>
             {legend.map(entry => <div className="flex items-center gap-2" key={`${entry.colorIndex}:${entry.objectName}`}>
               <span className="w-3.5 h-3.5 rounded-full border border-[var(--line-strong)] shrink-0" style={{ background: palette[entry.colorIndex].color }} />
-              <span>{palette[entry.colorIndex].name}</span><small className="text-[11.5px] text-[var(--ink-3)]">{entry.objectName}</small>
+              <span>{palette[entry.colorIndex].name}</span><small className="text-caption text-[var(--ink-3)]">{entry.objectName}</small>
             </div>)}
           </div>}
         </>}

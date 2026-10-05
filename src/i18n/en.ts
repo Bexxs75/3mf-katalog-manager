@@ -275,7 +275,7 @@ export const en: Translations = {
   resetSafeTrash: "The trash stays as it is",
   resetBackupTip: "Tip: A backup lets you restore everything.",
   resetBackupFirst: "Back up first …",
-  resetBackupDone: "✓ Backed up",
+  resetBackupDone: "Backed up",
   resetConfirm: "Reset",
 
   import: 'Import',

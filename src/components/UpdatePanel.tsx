@@ -31,11 +31,11 @@ export function UpdatePanel({ view }: { view: UpdaterView }) {
         {/* Shown in every state (checking, up to date, update available, error, ...) -
             a preview build's Info tab needs to say so regardless of what the updater is doing. */}
         {view.preview && (
-          <div className="mb-2 font-mono-ui text-[10.5px] text-[var(--ink-3)]">{t('updatePreviewNote')}</div>
+          <div className="mb-2 font-medium tabular-nums text-caption text-[var(--ink-3)]">{t('updatePreviewNote')}</div>
         )}
-        <div className="text-[13.5px] font-bold">3MF Katalog Manager</div>
-        <div className="mt-0.5 font-mono-ui text-[10.5px] text-[var(--ink-3)]">
-          {t('infoAppVersionLabel').replace('{version}', view.currentVersion)}
+        <div className="text-body font-bold">3MF Katalog Manager</div>
+        <div className="mt-0.5 text-caption text-[var(--ink-3)]">
+          {t('infoAppVersionLabel').split('{version}').map((part, index) => <span key={index}>{index > 0 && <span className="font-code">{view.currentVersion}</span>}{part}</span>)}
         </div>
         {state ? (
           <div
@@ -49,11 +49,11 @@ export function UpdatePanel({ view }: { view: UpdaterView }) {
           // (info !== null); before that, just the version is shown.
           view.info && (
             <>
-              <div className="mt-2 font-mono-ui text-[10.5px] text-[var(--ink-3)]">
+              <div className="mt-2 font-medium tabular-nums text-caption text-[var(--ink-3)]">
                 {view.info.checkFailed ? t('infoUpdateCheckFailed') : t('infoUpToDateLabel')}
               </div>
               {view.info.lastUpdate && (
-                <div className="mt-1 font-mono-ui text-[10.5px] text-[var(--ink-3)]">
+                <div className="mt-1 font-medium tabular-nums text-caption text-[var(--ink-3)]">
                   {t('updateLastInfo')
                     .replace('{date}', formatLastUpdateDate(view.info.lastUpdate.date, language))
                     .replace('{file}', view.info.lastUpdate.backupFile)}
@@ -66,7 +66,7 @@ export function UpdatePanel({ view }: { view: UpdaterView }) {
       <button
         onClick={view.checkNow}
         disabled={isUpdateCheckDisabled(view.phase)}
-        className={`h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] ${
+        className={`h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-small ${
           isUpdateCheckDisabled(view.phase) ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]'
         }`}
       >

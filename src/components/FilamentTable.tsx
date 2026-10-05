@@ -1,3 +1,4 @@
+import { Icon } from './Icon';
 import { useState } from 'react';
 import { useT, useLanguage } from '../i18n/LanguageContext';
 import { formatSpoolAmount, formatDiameterMm, formatPrice } from '../i18n/format';
@@ -92,27 +93,27 @@ export function FilamentTable({
   const visibleColumns = kind === 'resin' ? columns.filter((c) => c.key !== 'diameterMm') : columns;
 
   if (spools.length === 0) {
-    return <div className="text-[13px] text-[var(--ink-3)]">{t('filamentNoResults')}</div>;
+    return <div className="text-body text-[var(--ink-3)]">{t('filamentNoResults')}</div>;
   }
 
   return (
     <div className="rounded-[10px] border border-[var(--line)] bg-[var(--panel)] overflow-hidden overflow-x-auto">
-      <table className="w-full border-collapse text-[12.5px]">
+      <table className="w-full border-collapse text-small">
         <thead>
           <tr>
             {visibleColumns.map((col) => (
               <th
                 key={col.key}
                 onClick={() => toggleSort(col.key)}
-                className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-left text-[10.5px] uppercase tracking-wider font-bold text-[var(--ink-3)] px-3 py-2.5 border-b border-[var(--line)] bg-[var(--panel-2)] cursor-pointer whitespace-nowrap select-none"
+                className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-left ui-label text-[var(--ink-3)] px-3 py-2.5 border-b border-[var(--line)] bg-[var(--panel-2)] cursor-pointer whitespace-nowrap select-none"
               >
                 {col.label}{' '}
                 <span className={sortKey === col.key ? 'text-[var(--accent)] opacity-100' : 'opacity-30'}>
-                  {sortKey === col.key && sortDir === -1 ? '▴' : '▾'}
+                  <Icon name="chevron" size={14} className={sortKey === col.key && sortDir === -1  ? 'rotate-180' : ''} />
                 </span>
               </th>
             ))}
-            <th className="text-left text-[10.5px] uppercase tracking-wider font-bold text-[var(--ink-3)] px-3 py-2.5 border-b border-[var(--line)] bg-[var(--panel-2)]">
+            <th className="text-left ui-label text-[var(--ink-3)] px-3 py-2.5 border-b border-[var(--line)] bg-[var(--panel-2)]">
               {t('filamentColumnStatus')}
             </th>
             <th className="border-b border-[var(--line)] bg-[var(--panel-2)]" />
@@ -160,15 +161,15 @@ export function FilamentTable({
                   </span>
                 </td>
                 <td className="px-3 py-2.5 border-b border-[var(--line)]">
-                  <span className="font-mono-ui text-[11px] font-semibold px-2 py-1 rounded-md bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)] whitespace-nowrap">
+                  <span className="tabular-nums text-caption font-semibold px-2 py-1 rounded-md bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)] whitespace-nowrap">
                     {spool.location || t('noValue')}
                   </span>
                 </td>
                 {spool.kind !== 'resin' && (
-                  <td className="px-3 py-2.5 border-b border-[var(--line)] font-mono-ui text-[var(--ink-2)]">{formatDiameterMm(spool.diameterMm, language)}</td>
+                  <td className="px-3 py-2.5 border-b border-[var(--line)] font-medium tabular-nums text-[var(--ink-2)]">{formatDiameterMm(spool.diameterMm, language)}</td>
                 )}
                 <td className="px-3 py-2.5 border-b border-[var(--line)] min-w-[130px]">
-                  <div className="flex justify-between font-mono-ui text-[10.5px] text-[var(--ink-3)] mb-1">
+                  <div className="flex justify-between font-medium tabular-nums text-caption text-[var(--ink-3)] mb-1">
                     <span>{formatSpoolAmount(spool.remainingWeightG, spool.kind, language)}</span>
                     <span>{pct}%</span>
                   </div>
@@ -176,11 +177,11 @@ export function FilamentTable({
                     <div className={`h-full rounded-full ${STOCK_BAR_CLASS[status]}`} style={{ width: `${pct}%` }} />
                   </div>
                 </td>
-                <td className="px-3 py-2.5 border-b border-[var(--line)] font-mono-ui text-right text-[var(--ink-2)]">
+                <td className="px-3 py-2.5 border-b border-[var(--line)] font-medium tabular-nums text-right text-[var(--ink-2)]">
                   {spool.price !== null ? formatPrice(spool.price, language) : t('noValue')}
                 </td>
                 <td className="px-3 py-2.5 border-b border-[var(--line)]">
-                  <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-compact-meta font-bold uppercase tracking-wide ${STOCK_BADGE_CLASS[status]}`}>
+                  <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-compact-meta font-semibold uppercase ${STOCK_BADGE_CLASS[status]}`}>
                     {statusLabel(status)}
                   </span>
                 </td>
@@ -189,13 +190,13 @@ export function FilamentTable({
                     <span className="inline-flex items-center gap-1.5">
                       <button
                         onClick={onCancelDelete}
-                        className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[10.5px] cursor-pointer"
+                        className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-caption cursor-pointer"
                       >
                         {t('cancel')}
                       </button>
                       <button
                         onClick={() => onConfirmDelete(spool.id)}
-                        className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-6 px-1.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[10.5px] cursor-pointer"
+                        className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-6 px-1.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-caption cursor-pointer"
                       >
                         {t('delete')}
                       </button>
@@ -210,9 +211,9 @@ export function FilamentTable({
                           title={t('resinConsumeButton')}
                           aria-haspopup="dialog"
                           aria-expanded={consumeOpenId === spool.id}
-                          className="w-6 h-6 grid place-items-center rounded-full text-[12px] text-[var(--ink-3)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] cursor-pointer"
+                          className="w-6 h-6 grid place-items-center rounded-full text-caption text-[var(--ink-3)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] cursor-pointer"
                         >
-                          −
+                          <Icon name="minus" size={14} />
                         </button>
                       )}
                       {onRestock && (
@@ -223,24 +224,24 @@ export function FilamentTable({
                           title={t('filamentRestockButton')}
                           aria-haspopup="dialog"
                           aria-expanded={restockOpenId === spool.id}
-                          className="w-6 h-6 grid place-items-center rounded-full text-[12px] text-[var(--ink-3)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] cursor-pointer"
+                          className="w-6 h-6 grid place-items-center rounded-full text-caption text-[var(--ink-3)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] cursor-pointer"
                         >
-                          ＋
+                          <Icon name="plus" size={14} />
                         </button>
                       )}
                       <button
                         onClick={() => onEdit(spool)}
                         aria-label={t('filamentEditAria')}
-                        className="w-6 h-6 grid place-items-center rounded-full text-[11px] text-[var(--ink-3)] hover:bg-[var(--panel)] cursor-pointer"
+                        className="w-6 h-6 grid place-items-center rounded-full text-caption text-[var(--ink-3)] hover:bg-[var(--panel)] cursor-pointer"
                       >
-                        ✎
+                        <Icon name="edit" size={14} />
                       </button>
                       <button
                         onClick={() => onRequestDelete(spool.id)}
                         aria-label={t('deleteAriaLabel')}
-                        className="w-6 h-6 grid place-items-center rounded-full text-[11px] text-[var(--ink-3)] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)] cursor-pointer"
+                        className="w-6 h-6 grid place-items-center rounded-full text-caption text-[var(--ink-3)] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)] cursor-pointer"
                       >
-                        ✕
+                        <Icon name="close" size={14} />
                       </button>
                     </span>
                   )}

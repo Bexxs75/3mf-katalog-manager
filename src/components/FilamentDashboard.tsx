@@ -1,3 +1,4 @@
+import { Icon } from './Icon';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { useT, useLanguage } from '../i18n/LanguageContext';
 import { formatSpoolAmount, formatVolumeMl, formatDiameterMm, formatPrice } from '../i18n/format';
@@ -47,7 +48,7 @@ export function FilamentDashboard({
   const { language } = useLanguage();
 
   if (spools.length === 0) {
-    return <div className="text-[13px] text-[var(--ink-3)]">{t('filamentNoResults')}</div>;
+    return <div className="text-body text-[var(--ink-3)]">{t('filamentNoResults')}</div>;
   }
 
   const statusLabel = (st: string) =>
@@ -88,7 +89,7 @@ export function FilamentDashboard({
                 </span>
               )}
               <div className="min-w-0 flex-1">
-                <div className="text-[13.5px] font-bold truncate flex items-center gap-1.5">
+                <div className="text-body font-bold truncate flex items-center gap-1.5">
                   {spool.colorHex && isValidColorHex(spool.colorHex) && (
                     <span
                       className="w-3 h-3 rounded-full border border-[var(--line-strong)] flex-none"
@@ -98,7 +99,7 @@ export function FilamentDashboard({
                   )}
                   {spool.material}
                 </div>
-                <div className="text-[11.5px] text-[var(--ink-3)] truncate">
+                <div className="text-caption text-[var(--ink-3)] truncate">
                   {[spool.manufacturer, spool.color].filter(Boolean).join(' · ') || t('noValue')}
                 </div>
               </div>
@@ -106,16 +107,16 @@ export function FilamentDashboard({
 
             <div className="px-3 pb-3 flex flex-col gap-2">
               <div className="flex items-center justify-between gap-2">
-                <span className="inline-flex items-center gap-1.5 font-mono-ui text-[11px] font-semibold px-2 py-1 rounded-md bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)] truncate">
+                <span className="inline-flex items-center gap-1.5 tabular-nums text-caption font-semibold px-2 py-1 rounded-md bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)] truncate">
                   📍 {spool.location || t('noValue')}
                 </span>
-                <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-compact-meta font-bold uppercase tracking-wide flex-none ${STOCK_BADGE_CLASS[status]}`}>
+                <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-compact-meta font-semibold uppercase flex-none ${STOCK_BADGE_CLASS[status]}`}>
                   {statusLabel(status)}
                 </span>
               </div>
 
               <div>
-                <div className="flex justify-between font-mono-ui text-[11px] text-[var(--ink-2)] mb-1">
+                <div className="flex justify-between font-medium tabular-nums text-caption text-[var(--ink-2)] mb-1">
                   <span>{formatSpoolAmount(spool.remainingWeightG, spool.kind, language)}</span>
                   <span>{pct}%</span>
                 </div>
@@ -124,27 +125,27 @@ export function FilamentDashboard({
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-2 border-t border-[var(--line)] text-[11.5px] text-[var(--ink-3)]">
+              <div className="flex items-center justify-between pt-2 border-t border-[var(--line)] text-caption text-[var(--ink-3)]">
                 <span>
                   {spool.kind === 'resin'
                     ? t('resinBottleFooter').replace('{amount}', formatVolumeMl(spool.originalWeightG, language))
                     : formatDiameterMm(spool.diameterMm, language)}
                 </span>
-                {spool.price !== null && <span className="font-mono-ui text-[var(--ink-2)] font-semibold">{formatPrice(spool.price, language)}</span>}
+                {spool.price !== null && <span className="tabular-nums text-[var(--ink-2)] font-semibold">{formatPrice(spool.price, language)}</span>}
               </div>
 
               {confirmDeleteId === spool.id ? (
                 <div className="flex items-center gap-1.5">
-                  <span className="flex-1 text-[10.5px] text-[var(--ink)]">{t('deleteConfirmQuestion')}</span>
+                  <span className="flex-1 text-caption text-[var(--ink)]">{t('deleteConfirmQuestion')}</span>
                   <button
                     onClick={onCancelDelete}
-                    className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[10.5px] cursor-pointer"
+                    className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-caption cursor-pointer"
                   >
                     {t('cancel')}
                   </button>
                   <button
                     onClick={() => onConfirmDelete(spool.id)}
-                    className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-6 px-1.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[10.5px] cursor-pointer"
+                    className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-6 px-1.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-caption cursor-pointer"
                   >
                     {t('delete')}
                   </button>
@@ -158,9 +159,9 @@ export function FilamentDashboard({
                         onClick={(e) => onConsume(spool, e.currentTarget)}
                         aria-haspopup="dialog"
                         aria-expanded={consumeOpenId === spool.id}
-                        className="h-6 px-2 inline-flex items-center gap-1 rounded-full text-[11px] font-semibold text-[var(--ink-2)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] cursor-pointer"
+                        className="h-6 px-2 inline-flex items-center gap-1 rounded-full text-caption font-semibold text-[var(--ink-2)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] cursor-pointer"
                       >
-                        <span aria-hidden>−</span>
+                        <span aria-hidden><Icon name="minus" size={14} /></span>
                         {t('resinConsumeButton')}
                       </button>
                     )}
@@ -170,9 +171,9 @@ export function FilamentDashboard({
                         onClick={(e) => onRestock(spool, e.currentTarget)}
                         aria-haspopup="dialog"
                         aria-expanded={restockOpenId === spool.id}
-                        className="h-6 px-2 inline-flex items-center gap-1 rounded-full text-[11px] font-semibold text-[var(--ink-2)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] cursor-pointer"
+                        className="h-6 px-2 inline-flex items-center gap-1 rounded-full text-caption font-semibold text-[var(--ink-2)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] cursor-pointer"
                       >
-                        <span aria-hidden>＋</span>
+                        <span aria-hidden><Icon name="plus" size={14} /></span>
                         {t('filamentRestockButton')}
                       </button>
                     )}
@@ -180,16 +181,16 @@ export function FilamentDashboard({
                   <button
                     onClick={() => onEdit(spool)}
                     aria-label={t('filamentEditAria')}
-                    className="w-6 h-6 grid place-items-center rounded-full text-[11px] text-[var(--ink-3)] hover:bg-[var(--panel-2)] cursor-pointer"
+                    className="w-6 h-6 grid place-items-center rounded-full text-caption text-[var(--ink-3)] hover:bg-[var(--panel-2)] cursor-pointer"
                   >
-                    ✎
+                    <Icon name="edit" size={14} />
                   </button>
                   <button
                     onClick={() => onRequestDelete(spool.id)}
                     aria-label={t('deleteAriaLabel')}
-                    className="w-6 h-6 grid place-items-center rounded-full text-[11px] text-[var(--ink-3)] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)] cursor-pointer"
+                    className="w-6 h-6 grid place-items-center rounded-full text-caption text-[var(--ink-3)] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)] cursor-pointer"
                   >
-                    ✕
+                    <Icon name="close" size={14} />
                   </button>
                 </div>
               )}

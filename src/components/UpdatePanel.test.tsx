@@ -38,7 +38,7 @@ function renderPanel(view: UpdaterView) {
 describe('UpdatePanel', () => {
   it('shows the running version immediately, before the check has answered', () => {
     renderPanel(makeView({ info: null }));
-    expect(screen.getByText('Version 0.15.0')).toBeInTheDocument();
+    expect(screen.getByText('0.15.0')).toBeInTheDocument();
     // No claim either way yet - the check hasn't come back.
     expect(screen.queryByText('Du hast die aktuelle Version.')).not.toBeInTheDocument();
   });

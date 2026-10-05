@@ -40,7 +40,7 @@ export function SpoolToast({ label, location, knownLocations, onChangeLocation, 
   return (
     <div
       role="status"
-      className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 max-w-[min(92vw,460px)] px-4 py-2.5 rounded-[6px] border border-[var(--line-strong)] bg-[var(--ink)] text-[var(--bg)] text-[12.5px] shadow-[var(--shadow)] flex items-center gap-2"
+      className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 max-w-[min(92vw,460px)] px-4 py-2.5 rounded-[6px] border border-[var(--line-strong)] bg-[var(--ink)] text-[var(--bg)] text-small shadow-[var(--shadow)] flex items-center gap-2"
     >
       <span className="font-semibold truncate">{label}</span>
       {onChangeLocation &&
@@ -53,7 +53,7 @@ export function SpoolToast({ label, location, knownLocations, onChangeLocation, 
                 onChange={setDraft}
                 options={knownLocations}
                 placeholder={t('printersLocationPlaceholder')}
-                className="w-full h-7 px-2 rounded-[4px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12px] outline-0"
+                className="w-full h-7 px-2 rounded-[4px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small outline-0"
               />
             </span>
             <button type="button" onClick={save} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] font-bold underline cursor-pointer">

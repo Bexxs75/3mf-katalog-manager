@@ -1,3 +1,4 @@
+import { Icon } from './Icon';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useModalDialog } from '../hooks/useModalDialog';
 import { useState } from 'react';
@@ -41,9 +42,9 @@ export function CatalogCleanupDialog({ issues, onClose, onDelete }: Props) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={t('cleanupDialogTitle')} tabIndex={-1} className="w-[480px] max-h-[80vh] flex flex-col bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)]">
         <div className="flex-none px-4 py-3 border-b border-[var(--line)] flex items-center justify-between">
-          <span className="text-[14px] font-semibold">{t('cleanupDialogTitle')}</span>
+          <span className="text-body font-semibold">{t('cleanupDialogTitle')}</span>
           <span onClick={onClose} className="cursor-pointer text-[var(--ink-3)] hover:text-[var(--accent)]">
-            ✕
+            <Icon name="close" size={14} />
           </span>
         </div>
 
@@ -52,14 +53,14 @@ export function CatalogCleanupDialog({ issues, onClose, onDelete }: Props) {
 
           {issues.orphaned.length > 0 && (
             <div className="pb-4">
-              <div className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)] pb-2">
+              <div className="ui-label text-[var(--ink-3)] pb-2">
                 {t('cleanupOrphanedHeading')}
               </div>
               {issues.orphaned.map((model) => (
                 <label key={model.id} className="flex items-center gap-2 py-1 text-[length:var(--font-size-title)] cursor-pointer">
                   <input type="checkbox" checked={checked.has(model.id)} onChange={() => toggle(model.id)} />
                   <span className="flex-1 truncate">{model.name}</span>
-                  <span className="font-mono-ui text-[10.5px] text-[var(--ink-3)] truncate max-w-[160px]">
+                  <span className="font-code text-[var(--ink-3)] truncate max-w-[160px]">
                     {model.path}
                   </span>
                 </label>
@@ -69,7 +70,7 @@ export function CatalogCleanupDialog({ issues, onClose, onDelete }: Props) {
 
           {issues.duplicateGroups.map((group, groupIndex) => (
             <div key={groupIndex} className="pb-4">
-              <div className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)] pb-2">
+              <div className="ui-label text-[var(--ink-3)] pb-2">
                 {t('cleanupDuplicateGroupHeading')} {groupIndex + 1}
               </div>
               {group.map((model, index) => (
@@ -85,7 +86,7 @@ export function CatalogCleanupDialog({ issues, onClose, onDelete }: Props) {
                   />
                   <span className="flex-1 truncate">{model.name}</span>
                   {index === 0 && (
-                    <span className="font-mono-ui text-[length:var(--font-size-meta)] text-[var(--ink-3)]">{t('cleanupKeepOldest')}</span>
+                    <span className="font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--ink-3)]">{t('cleanupKeepOldest')}</span>
                   )}
                 </label>
               ))}

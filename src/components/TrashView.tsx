@@ -42,21 +42,21 @@ export function TrashView({
     <div className="flex flex-1 min-h-0">
       <main className="flex-1 min-w-0 flex flex-col">
         <div className="flex-none flex items-center justify-between px-4 py-3 border-b border-[var(--line)]">
-          <h1 className="text-[15px] font-semibold">{t('trashHeading')}</h1>
+          <h1 className="text-title font-semibold">{t('trashHeading')}</h1>
           {confirmEmptyTrash ? (
             <div className="flex items-center gap-2">
-              <span className="text-[12.5px] font-medium text-[var(--ink)]">
+              <span className="text-small font-medium text-[var(--ink)]">
                 {t('emptyTrashConfirmQuestion')}
               </span>
               <button
                 onClick={() => onConfirmEmptyTrashChange(false)}
-                className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
               >
                 {t('cancel')}
               </button>
               <button {...lockProps}
                 onClick={onEmptyTrash}
-                className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
+                className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer"
               >
                 {t('emptyTrashButton')}
               </button>
@@ -65,7 +65,7 @@ export function TrashView({
             <button
               onClick={() => onConfirmEmptyTrashChange(true)}
               disabled={trashModels.length === 0} {...lockProps}
-              className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer disabled:opacity-50 hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer disabled:opacity-50 hover:border-[var(--accent)] hover:text-[var(--accent)]"
             >
               {t('emptyTrashButton')}
             </button>
@@ -73,7 +73,7 @@ export function TrashView({
         </div>
         <div className="flex-1 overflow-y-auto overscroll-contain p-4">
           {trashModels.length === 0 ? (
-            <p className="font-mono-ui text-[12.5px] text-[var(--ink-3)]">{t('trashEmptyState')}</p>
+            <p className="font-medium tabular-nums text-small text-[var(--ink-3)]">{t('trashEmptyState')}</p>
           ) : effectiveIsGrid ? (
             <ModelGrid
               models={trashModels}

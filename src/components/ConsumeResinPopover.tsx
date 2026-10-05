@@ -69,7 +69,7 @@ export function ConsumeResinPopover({ spool, anchor, onClose, onConsumed }: Prop
       onKeyDown={onKeyDown}
     >
       <div className="grid grid-cols-[auto_1fr] gap-x-2.5 items-center">
-        <label htmlFor={`${id}-amount`} className="text-[12px] text-[var(--ink-2)]">
+        <label htmlFor={`${id}-amount`} className="text-small text-[var(--ink-2)]">
           {t('resinConsumeAmountLabel')}
         </label>
         <input

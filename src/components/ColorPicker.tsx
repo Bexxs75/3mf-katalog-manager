@@ -90,13 +90,13 @@ export function ColorPicker({ value, onChange }: Props) {
           placeholder="#1a1a1a"
           maxLength={7}
           aria-label={t('filamentColorValueLabel')}
-          className="w-28 h-8 px-2 rounded-md border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] font-mono-ui text-[12.5px] outline-0 focus:border-[var(--accent)]"
+          className="w-28 h-8 px-2 rounded-md border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] font-medium tabular-nums text-small outline-0 focus:border-[var(--accent)]"
         />
         {value && (
           <button
             type="button"
             onClick={() => onChange(null)}
-            className="text-[11.5px] text-[var(--ink-3)] hover:text-[var(--accent)] cursor-pointer"
+            className="text-caption text-[var(--ink-3)] hover:text-[var(--accent)] cursor-pointer"
           >
             {t('filamentColorNone')}
           </button>

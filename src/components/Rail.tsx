@@ -168,7 +168,7 @@ export function Rail({
         >
           <Icon name="trash" />
           {trashCount > 0 && (
-            <span className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-[3px] rounded-full bg-[var(--accent)] text-[var(--accent-ink)] text-compact-label font-bold font-mono-ui grid place-items-center">
+            <span className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-[3px] rounded-full bg-[var(--accent)] text-[var(--accent-ink)] text-compact-label font-semibold tabular-nums grid place-items-center">
               {trashCount}
             </span>
           )}
@@ -202,7 +202,7 @@ export function Rail({
             }
           }} style={{ left: `calc(${panelOffset.left}px + var(--sidebar-width, 0px) + 10px)`, bottom: panelOffset.bottom }}
           className="absolute w-[300px] p-[14px] bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40 max-h-[calc(100vh-80px)] overflow-y-auto">
-            <div className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)] mb-2.5">
+            <div className="ui-label text-[var(--ink-3)] mb-2.5">
               {t('settingsTitle')}
             </div>
             <div className="flex p-0.5 gap-0.5 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)] mb-3">
@@ -215,7 +215,7 @@ export function Rail({
                 <button
                   key={key}
                   onClick={() => setActiveSettingsTab(key)}
-                  className={`${segBase} flex-1 !h-[24px] !px-1 text-[11.5px] ${activeSettingsTab === key ? segActive : segInactive}`}
+                  className={`${segBase} flex-1 !h-[24px] !px-1 text-caption ${activeSettingsTab === key ? segActive : segInactive}`}
                 >
                   {label}
                 </button>
@@ -231,10 +231,10 @@ export function Rail({
             {activeSettingsTab === 'general' && (
               <>
                 <button role="switch" aria-checked={singleKeyShortcuts} onClick={() => onSingleKeyShortcutsChange?.(!singleKeyShortcuts)} className="w-full text-left border border-[var(--line)] rounded p-2 mb-2 cursor-pointer">
-                  <span aria-hidden="true">{singleKeyShortcuts ? '✓ ' : '○ '}</span>{t('singleKeyShortcutsTitle')}
+                  <span aria-hidden="true">{singleKeyShortcuts ? <Icon name="check" size={14} /> : '○ '}</span>{t('singleKeyShortcutsTitle')}
                 </button>
-                <p className="text-[12px] text-[var(--ink-2)] mb-4">{t('singleKeyShortcutsDescription')}</p>
-                <div className="mb-4 p-2 border border-[var(--line)] rounded text-[12px]">
+                <p className="text-small text-[var(--ink-2)] mb-4">{t('singleKeyShortcutsDescription')}</p>
+                <div className="mb-4 p-2 border border-[var(--line)] rounded text-small">
                   <p>{t('settingsPrintersMovedHint')}</p>
                   <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] mt-2 text-[var(--accent)] focus-visible:outline-2" onClick={() => {
                     onSettingsOpenChange(false); onMainViewChange('printers');
@@ -252,7 +252,7 @@ export function Rail({
                     </button>
                   ))}
                 </div>
-                <div className="mt-2 font-mono-ui text-[10.5px] leading-relaxed text-[var(--ink-3)]">
+                <div className="mt-2 font-medium tabular-nums text-caption leading-relaxed text-[var(--ink-3)]">
                   {themeSetting === 'system'
                     ? t('themeDescriptionSystem')
                     : t('themeDescriptionManual').replace(
@@ -272,7 +272,7 @@ export function Rail({
                     </button>
                   ))}
                 </div>
-                <div className="mt-2 font-mono-ui text-[10.5px] leading-relaxed text-[var(--ink-3)]">
+                <div className="mt-2 font-medium tabular-nums text-caption leading-relaxed text-[var(--ink-3)]">
                   {uiDensity === 'compact' ? t('densityDescriptionCompact') : t('densityDescriptionComfort')}
                 </div>
 
@@ -294,7 +294,7 @@ export function Rail({
                     </button>
                   ))}
                 </div>
-                <div className="mt-2 font-mono-ui text-[10.5px] leading-relaxed text-[var(--ink-3)]">
+                <div className="mt-2 font-medium tabular-nums text-caption leading-relaxed text-[var(--ink-3)]">
                   {displayPreference === 'thumbnail'
                     ? t('displayPreferenceDescriptionThumbnail')
                     : t('displayPreferenceDescriptionRender')}
@@ -319,7 +319,7 @@ export function Rail({
               <>
                 <div className="text-[length:var(--font-size-body)] font-semibold mb-2">{t('slicerSectionTitle')}</div>
                 {slicers.length === 0 ? (
-                  <div className="font-mono-ui text-[10.5px] text-[var(--ink-3)]">
+                  <div className="font-medium tabular-nums text-caption text-[var(--ink-3)]">
                     {t('noSlicersConfigured')}
                   </div>
                 ) : (
@@ -340,11 +340,11 @@ export function Rail({
                             <div className="text-[length:var(--font-size-title)] text-[var(--ink)] truncate">{s.name}</div>
                             <div className="flex items-center gap-1.5">
                               {isPrimary && (
-                                <span className="flex-none font-mono-ui text-compact-label tracking-[0.08em] uppercase px-1.5 rounded-full" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                                <span className="flex-none text-compact-label ui-label px-1.5 rounded-full" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
                                   {t('slicerPrimaryChip')}
                                 </span>
                               )}
-                              <div className="flex-1 min-w-0 font-mono-ui text-[length:var(--font-size-meta)] text-[var(--ink-3)] truncate">
+                              <div className="flex-1 min-w-0 font-code text-[var(--ink-3)] truncate">
                                 {s.path}
                               </div>
                             </div>
@@ -354,7 +354,7 @@ export function Rail({
                             aria-label={t('removeSlicerAria')}
                             className="w-4 h-4 grid place-items-center rounded-full cursor-pointer text-[length:var(--font-size-meta)] text-[var(--ink-3)] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
                           >
-                            ✕
+                            <Icon name="close" size={14} />
                           </span>
                         </div>
                       );
@@ -363,12 +363,12 @@ export function Rail({
                 )}
                 <button
                   onClick={onAddSlicer}
-                  className="mt-2 h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                  className="mt-2 h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-small cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
                 >
-                  + {t('addSlicer')}
+                  <Icon name="plus" size={14} /> {t('addSlicer')}
                 </button>
                 {addSlicerError && (
-                  <div className="mt-1.5 font-mono-ui text-[length:var(--font-size-meta)] text-[var(--accent)] break-words">
+                  <div className="mt-1.5 font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--accent)] break-words">
                     {t('addSlicerError')} <ErrorText error={addSlicerError} />
                   </div>
                 )}
@@ -381,14 +381,14 @@ export function Rail({
                 <button
                   onClick={onScanCatalogIssues}
                   disabled={cleanupScanning} {...lockProps}
-                  className={`h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] ${
+                  className={`h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-small ${
                     cleanupScanning ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]'
                   }`}
                 >
                   {cleanupScanning ? t('catalogCleanupScanning') : t('catalogCleanupScanButton')}
                 </button>
                 {cleanupError && (
-                  <div className="mt-1.5 font-mono-ui text-[length:var(--font-size-meta)] text-[var(--accent)] break-words">
+                  <div className="mt-1.5 font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--accent)] break-words">
                     {t('catalogCleanupError')} <ErrorText error={cleanupError} />
                   </div>
                 )}
@@ -396,13 +396,13 @@ export function Rail({
                 <div className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-2">{t('catalogBackupTitle')}</div>
                 <button
                   onClick={onExportCatalog}
-                  className="h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                  className="h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-small cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
                 >
                   {t('exportCatalogButton')}
                 </button>
                 {confirmImportCatalog ? (
                   <div className="mt-1.5 flex flex-col gap-1.5">
-                    <div className="font-mono-ui text-[10.5px] text-[var(--ink-2)]">
+                    <div className="font-medium tabular-nums text-caption text-[var(--ink-2)]">
                       {t('importCatalogConfirmQuestion')}
                     </div>
                     <div className="flex gap-1.5">
@@ -411,13 +411,13 @@ export function Rail({
                           setConfirmImportCatalog(false);
                           onImportCatalog();
                         }}
-                        className="flex-1 h-7 rounded-[3px] border border-red-400 bg-transparent text-red-400 text-[12px] cursor-pointer hover:bg-red-400/10"
+                        className="flex-1 h-7 rounded-[3px] border border-red-400 bg-transparent text-red-400 text-small cursor-pointer hover:bg-red-400/10"
                       >
                         {t('importCatalogConfirmYes')}
                       </button>
                       <button
                         onClick={() => setConfirmImportCatalog(false)}
-                        className="flex-1 h-7 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] cursor-pointer hover:border-[var(--accent)]"
+                        className="flex-1 h-7 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-small cursor-pointer hover:border-[var(--accent)]"
                       >
                         {t('cancel')}
                       </button>
@@ -426,13 +426,13 @@ export function Rail({
                 ) : (
                   <button {...lockProps}
                     onClick={() => setConfirmImportCatalog(true)}
-                    className="mt-1.5 h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                    className="mt-1.5 h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-small cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
                   >
                     {t('importCatalogButton')}
                   </button>
                 )}
                 {catalogBackupError && (
-                  <div className="mt-1.5 font-mono-ui text-[length:var(--font-size-meta)] text-[var(--accent)] break-words">
+                  <div className="mt-1.5 font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--accent)] break-words">
                     <ErrorText error={catalogBackupError} />
                   </div>
                 )}
@@ -440,20 +440,20 @@ export function Rail({
                 <CatalogResetSection modelCount={catalogModelCount} folderCount={catalogFolderCount}
                   onExport={onExportCatalog} onReset={onCatalogReset} backupError={catalogBackupError} />
                 <div className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-2">{t('catalogBaseDirSectionTitle')}</div>
-                <div className="font-mono-ui text-[10.5px] text-[var(--ink-3)] truncate mb-1.5">
+                <div className={`${catalogBaseDir ? 'font-code' : 'text-caption'} text-[var(--ink-3)] truncate mb-1.5`}>
                   {catalogBaseDir ?? t('catalogBaseDirNotSet')}
                 </div>
                 <div className="flex gap-1.5">
                   <button
                     onClick={onOpenCatalogSetup}
-                    className="flex-1 h-7 rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                    className="flex-1 h-7 rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-small cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
                   >
                     {catalogBaseDir ? t('catalogBaseDirChangeButton') : t('catalogBaseDirSetupButton')}
                   </button>
                   {catalogBaseDir && (
                     <button
                       onClick={() => invoke('open_in_file_manager', { path: catalogBaseDir })}
-                      className="flex-1 h-7 rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                      className="flex-1 h-7 rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-small cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
                     >
                       {t('catalogBaseDirOpenButton')}
                     </button>
@@ -469,7 +469,7 @@ export function Rail({
                 <UpdatePanel view={update} />
                 <DiagnosticsSettings />
                 <InfoFolders />
-                <div className="flex justify-between text-[11.5px] py-2 border-t border-[var(--line)] mt-3 text-[var(--ink-2)]">
+                <div className="flex justify-between text-caption py-2 border-t border-[var(--line)] mt-3 text-[var(--ink-2)]">
                   <span>{t('infoSourceCodeLabel')}</span>
                   <span
                     onClick={() => invoke('open_release_url', { url: 'https://github.com/Bexxs75/3mf-katalog-manager/' }).catch(() => {})}
@@ -478,7 +478,7 @@ export function Rail({
                     GitHub
                   </span>
                 </div>
-                <div className="flex justify-between items-center text-[11.5px] py-2 border-t border-[var(--line)] text-[var(--ink-2)]">
+                <div className="flex justify-between items-center text-caption py-2 border-t border-[var(--line)] text-[var(--ink-2)]">
                   <span>{t('infoCommunityLabel')}</span>
                   <span
                     onClick={() => invoke('open_discord_invite').catch(() => {})}
@@ -491,11 +491,11 @@ export function Rail({
                     Discord
                   </span>
                 </div>
-                <div className="flex justify-between text-[11.5px] py-1 border-t border-[var(--line)] text-[var(--ink-2)]">
+                <div className="flex justify-between text-caption py-1 border-t border-[var(--line)] text-[var(--ink-2)]">
                   <span>{t('infoLicenseLabel')}</span>
                   <span>MIT</span>
                 </div>
-                <div className="flex justify-between text-[11.5px] py-1 text-[var(--ink-2)]">
+                <div className="flex justify-between text-caption py-1 text-[var(--ink-2)]">
                   <span>{t('infoThirdPartyLicensesLabel')}</span>
                   {/* Stacked instead of side by side so label and values don't wrap. */}
                   <span className="flex flex-col items-end">

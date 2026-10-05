@@ -94,7 +94,7 @@ export function ModelPicker({ models, anchorRef, onChange, onClose }: Props) {
         aria-expanded
         aria-controls={`${uid}-listbox`}
         aria-activedescendant={domId(activeId)}
-        className="h-7 px-2 rounded border border-[var(--line-strong)] bg-[var(--panel-2)] text-[12.5px] outline-0 focus:border-[var(--accent)]"
+        className="h-7 px-2 rounded border border-[var(--line-strong)] bg-[var(--panel-2)] text-small outline-0 focus:border-[var(--accent)]"
       />
       <ul id={`${uid}-listbox`} role="listbox" aria-label={t('printerJobsColModel')} className="max-h-52 overflow-y-auto flex flex-col gap-0.5">
         <li
@@ -102,7 +102,7 @@ export function ModelPicker({ models, anchorRef, onChange, onClose }: Props) {
           role="option"
           aria-selected={active === 0}
           onClick={() => choose(NONE)}
-          className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] shrink-0 text-left px-2 py-1 text-[12.5px] text-[var(--ink-3)] rounded cursor-pointer ${active === 0 ? 'bg-[var(--panel-2)]' : ''}`}
+          className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] shrink-0 text-left px-2 py-1 text-small text-[var(--ink-3)] rounded cursor-pointer ${active === 0 ? 'bg-[var(--panel-2)]' : ''}`}
         >
           {t('printerJobModelNoModel')}
         </li>
@@ -113,7 +113,7 @@ export function ModelPicker({ models, anchorRef, onChange, onClose }: Props) {
             role="option"
             aria-selected={active === i + 1}
             onClick={() => choose(m.id)}
-            className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] shrink-0 px-2 py-1 text-[12.5px] rounded truncate cursor-pointer ${active === i + 1 ? 'bg-[var(--panel-2)]' : ''}`}
+            className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] shrink-0 px-2 py-1 text-small rounded truncate cursor-pointer ${active === i + 1 ? 'bg-[var(--panel-2)]' : ''}`}
           >
             {m.name}
           </li>

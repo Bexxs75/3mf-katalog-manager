@@ -88,11 +88,11 @@ export function Header({
   return (
     <header className="flex-none h-[54px] flex items-center gap-[18px] px-[14px] bg-[var(--panel)] border-b border-[var(--line)]">
       <div className="flex items-baseline gap-2 pr-1.5">
-        <span className="text-[15px] font-bold tracking-[0.06em] uppercase">
+        <span className="text-title font-semibold uppercase">
           3MF Katalog
         </span>
         {(mainView === 'filament' || mainView === 'printers') && (
-          <span className="font-mono-ui text-[11px] text-[var(--accent)] tracking-[0.08em]">
+          <span className="ui-label text-[var(--accent)]">
             {mainView === 'printers' ? 'PRINTER MANAGER' : 'MATERIAL MANAGER'}
           </span>
         )}
@@ -109,17 +109,17 @@ export function Header({
           onClick={() => { setSortMenuOpen(false); setImportMenuOpen((o) => !o); }}
           className="flex items-center gap-2 h-8 pl-[13px] pr-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[length:var(--font-size-body)] font-semibold cursor-pointer hover:brightness-110"
         >
-          <span className="font-mono-ui text-sm leading-none">+</span>
+          <span className="font-medium tabular-nums text-body leading-none"><Icon name="plus" size={14} /></span>
           <span>{t('import')}</span>
-          <span className="text-[length:var(--font-size-label)] leading-none">▾</span>
+          <span className="text-[length:var(--font-size-label)] leading-none"><Icon name="chevron" size={14} /></span>
         </button>
 
         {importMenuOpen && (
           <div data-navigation-menu role="menu" onKeyDown={importKeyboard.onMenuKeyDown} className="absolute top-10 left-0 w-[300px] py-1 bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)] z-40">
-            <div className="m-2 p-2 border border-dashed border-[var(--line-strong)] rounded bg-[var(--panel-2)] text-[12px] text-[var(--ink-2)] leading-relaxed" aria-live="polite">
+            <div className="m-2 p-2 border border-dashed border-[var(--line-strong)] rounded bg-[var(--panel-2)] text-small text-[var(--ink-2)] leading-relaxed" aria-live="polite">
               <b>{t(importSource === 'files' ? 'impMenuFiles' : 'impMenuFolder')}</b>{' '}
               {importSource === 'folder' ? t('impMenuFolderHint') : importTargetName ? <>{t('impMenuMove')} <b>{importTargetName}</b> {t(importTargetIsRoot ? 'impMenuRoot' : 'impMenuActive')}</> : t('impMenuStay')}
-              <div className="font-mono-ui text-[11px] text-[var(--ink-3)]">{t(importSource === 'files' ? 'impMenuFixed' : 'impMenuNoMove')}</div>
+              <div className="font-medium tabular-nums text-caption text-[var(--ink-3)]">{t(importSource === 'files' ? 'impMenuFixed' : 'impMenuNoMove')}</div>
             </div>
             <button
               role="menuitem" tabIndex={-1}
@@ -148,7 +148,7 @@ export function Header({
       </div>
 
       <div className="flex items-center gap-1.5" style={hideSortControl ? { display: 'none' } : undefined}>
-        <span className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.1em] uppercase text-[var(--ink-3)]">
+        <span className="ui-label text-[var(--ink-3)]">
           {t('sortLabel')}
         </span>
         <div ref={sortRef} className="relative">
@@ -161,8 +161,8 @@ export function Header({
             className="h-[30px] px-2 rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink)] text-[length:var(--font-size-body)] cursor-pointer flex items-center gap-1.5"
           >
             {sortOptions.find((o) => o.value === sort)?.label}
-            <span className="font-mono-ui text-[var(--accent)]">{sortDirection === 'asc' ? '↑' : '↓'}</span>
-            <span className="text-compact-label leading-none text-[var(--ink-3)]">▾</span>
+            <span className="font-medium tabular-nums text-[var(--accent)]"><Icon name={sortDirection === 'asc'  ? 'arrow-up' : 'arrow-down'} size={14} /></span>
+            <span className="text-compact-label leading-none text-[var(--ink-3)]"><Icon name="chevron" size={14} /></span>
           </button>
           {sortMenuOpen && (
             <div data-navigation-menu role="menu" onKeyDown={sortKeyboard.onMenuKeyDown} className="absolute top-9 left-0 min-w-[280px] w-max py-1 bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)] z-40">
@@ -174,15 +174,15 @@ export function Header({
                   onClick={() => {
                     onSortChange(opt.value, opt.value === sort ? sortDirection : defaultSortDirection(opt.value));
                   }}
-                  className={`flex items-center gap-2 w-full text-left px-3 py-1.5 text-[13px] cursor-pointer ${
+                  className={`flex items-center gap-2 w-full text-left px-3 py-1.5 text-body cursor-pointer ${
                     opt.value === sort
                       ? 'text-[var(--accent)] font-semibold bg-[var(--accent-soft)]'
                       : 'text-[var(--ink)] hover:bg-[var(--panel-2)]'
                   }`}
                 >
-                  <span aria-hidden="true" className="w-[14px] text-[var(--accent)]">{opt.value === sort ? '✓' : ''}</span>
+                  <span aria-hidden="true" className="w-[14px] text-[var(--accent)]">{opt.value === sort  ? <Icon name="check" size={14} /> : null}</span>
                   <span>{opt.label}</span>
-                  {opt.value === 'modified' && <small className="ml-auto font-mono-ui text-[10.5px] text-[var(--ink-3)]">{t('sortModifiedNew')}</small>}
+                  {opt.value === 'modified' && <small className="ml-auto font-medium tabular-nums text-caption text-[var(--ink-3)]">{t('sortModifiedNew')}</small>}
                 </button>
               ))}
               <div role="separator" className="h-px bg-[var(--line)] m-1" />
@@ -190,10 +190,10 @@ export function Header({
                 {(['asc', 'desc'] as const).map((direction, index) => (
                   <button key={direction} role="menuitemradio" tabIndex={-1} aria-checked={sortDirection === direction} aria-pressed={sortDirection === direction}
                     onClick={() => onSortDirectionChange(direction)}
-                    className={`flex-1 whitespace-nowrap h-[30px] px-2 rounded border text-[12.5px] font-semibold cursor-pointer ${sortDirection === direction
+                    className={`flex-1 whitespace-nowrap h-[30px] px-2 rounded border text-small font-semibold cursor-pointer ${sortDirection === direction
                       ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent-soft)]'
                       : 'border-[var(--line)] text-[var(--ink-2)] hover:bg-[var(--panel-2)]'}`}>
-                    {direction === 'asc' ? '↑' : '↓'} {directionLabels[index]}
+                    <Icon name={direction === 'asc'  ? 'arrow-up' : 'arrow-down'} size={14} /> {directionLabels[index]}
                   </button>
                 ))}
               </div>
@@ -236,7 +236,7 @@ export function Header({
       <div className="flex-1" />
 
       {mainView === 'catalog' && (
-        <span className="shrink-0 font-mono-ui text-[11px] text-[var(--ink-3)]">
+        <span className="shrink-0 font-medium tabular-nums text-caption text-[var(--ink-3)]">
           {formatCount(t('filesCount'), count)}
         </span>
       )}

@@ -33,7 +33,7 @@ it('shows optional badges in the specified order', () => {
   show({ model: makeModelFile({ printStatus: 'printed', favorite: true, queuePosition: 0, materials: [{ name: 'PLA', displayColor: null }] }),
     filament: { fileId: '1', status: 'ok', needs: [] } as FilamentCheck,
     lastPrinter: { printerName: 'Printer A', endedAt: Date.now() / 1000 - 3 * 86400 } });
-  expect(screen.getAllByRole('listitem').map(node => node.textContent)).toEqual(['Gedruckt', 'PLA', '✓Filament reicht', 'Favorit', 'In Warteschlange', 'Printer A · vor 3 Tagen']);
+  expect(screen.getAllByRole('listitem').map(node => node.textContent)).toEqual(['Gedruckt', 'PLA', 'Filament reicht', 'Favorit', 'In Warteschlange', 'Printer A · vor 3 Tagen']);
 });
 it('omits optional badges when absent', () => {
   show();

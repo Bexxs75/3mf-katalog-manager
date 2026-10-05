@@ -1,3 +1,4 @@
+import { Icon } from './Icon';
 import { useT } from '../i18n/LanguageContext';
 import { ErrorText } from '../diagnostics/ErrorText';
 import { discardAppUpdate } from '../lib/api/updater';
@@ -19,9 +20,9 @@ function toMb(bytes: number): number {
 }
 
 const primaryBtn =
-  'hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-7 px-2.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12px] font-semibold cursor-pointer';
-const secondaryBtn = 'hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-[12px] cursor-pointer';
-const linkBtn = 'text-[12px] font-semibold text-[var(--accent)] hover:underline cursor-pointer bg-transparent border-0 p-0';
+  'hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-7 px-2.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer';
+const secondaryBtn = 'hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-small cursor-pointer';
+const linkBtn = 'text-small font-semibold text-[var(--accent)] hover:underline cursor-pointer bg-transparent border-0 p-0';
 
 /**
  * Content for the current update state - shared between the toast (a floating
@@ -46,13 +47,13 @@ export function UpdateStateBody({
     return (
       <>
         <div
-          className="text-[13px] font-semibold"
+          className="text-body font-semibold"
           style={variant === 'panel' ? { color: 'var(--good, var(--accent))' } : undefined}
         >
           {t('updateAvailableTitle').replace('{version}', version)}
         </div>
         {variant === 'toast' && (
-          <div className="mt-1 text-[12px] text-[var(--ink-2)] leading-snug">
+          <div className="mt-1 text-small text-[var(--ink-2)] leading-snug">
             {t('updateAvailableBody').replace('{current}', view.currentVersion)}
           </div>
         )}
@@ -73,7 +74,7 @@ export function UpdateStateBody({
         {/* Opening the download page is the only action offered when self-install
             isn't possible, so a failure to open it must be visible right here. */}
         {!canInstall && view.notesError && (
-          <div className="mt-1 text-[12px] text-[var(--ink-2)]">
+          <div className="mt-1 text-small text-[var(--ink-2)]">
             <ErrorText error={view.notesError} />
           </div>
         )}
@@ -88,7 +89,7 @@ export function UpdateStateBody({
     const percent = progress?.total ? Math.round((progress.downloaded / progress.total) * 100) : null;
     return (
       <>
-        <div className="text-[13px] font-semibold">{t('updateDownloadingTitle').replace('{version}', version)}</div>
+        <div className="text-body font-semibold">{t('updateDownloadingTitle').replace('{version}', version)}</div>
         <div
           role="progressbar"
           aria-valuemin={0}
@@ -101,7 +102,7 @@ export function UpdateStateBody({
             style={{ width: percent !== null ? `${percent}%` : '100%' }}
           />
         </div>
-        <div className="mt-1 font-mono-ui text-[11px] text-[var(--ink-3)]">
+        <div className="mt-1 font-medium tabular-nums text-caption text-[var(--ink-3)]">
           {totalMb !== null
             ? t('updateDownloadingProgress')
                 .replace('{done}', String(doneMb))
@@ -109,7 +110,7 @@ export function UpdateStateBody({
                 .replace('{percent}', String(percent))
             : t('updateDownloadingProgressUnknown').replace('{done}', String(doneMb))}
         </div>
-        <div className="mt-1 text-[12px] text-[var(--ink-2)]">{t('updateDownloadingHint')}</div>
+        <div className="mt-1 text-small text-[var(--ink-2)]">{t('updateDownloadingHint')}</div>
       </>
     );
   }
@@ -117,8 +118,8 @@ export function UpdateStateBody({
   if (state === 'ready') {
     return (
       <>
-        <div className="text-[13px] font-semibold">{t('updateReadyTitle').replace('{version}', version)}</div>
-        <div className="mt-1 text-[12px] text-[var(--ink-2)] leading-snug">{t('updateReadyBody')}</div>
+        <div className="text-body font-semibold">{t('updateReadyTitle').replace('{version}', version)}</div>
+        <div className="mt-1 text-small text-[var(--ink-2)] leading-snug">{t('updateReadyBody')}</div>
         <div className="mt-2 flex gap-2">
           <button onClick={view.install} className={primaryBtn}>
             {t('updateRestartButton')}
@@ -134,20 +135,20 @@ export function UpdateStateBody({
   if (state === 'installing') {
     return (
       <>
-        <div className="text-[13px] font-semibold">{t('updateInstallingTitle')}</div>
-        <div className="mt-1 font-mono-ui text-[11px] text-[var(--ink-3)]">{`update-backups/catalog-vor-${version}.db`}</div>
-        <div className="mt-1 text-[12px] text-[var(--ink-2)]">{t('updateInstallingBody')}</div>
+        <div className="text-body font-semibold">{t('updateInstallingTitle')}</div>
+        <div className="mt-1 font-code text-caption text-[var(--ink-3)]">{`update-backups/catalog-vor-${version}.db`}</div>
+        <div className="mt-1 text-small text-[var(--ink-2)]">{t('updateInstallingBody')}</div>
       </>
     );
   }
 
   return (
     <>
-      <div className="text-[13px] font-semibold">{t('updateFailedTitle')}</div>
-      <div className="mt-0.5 text-[12px] text-[var(--ink-2)]">
+      <div className="text-body font-semibold">{t('updateFailedTitle')}</div>
+      <div className="mt-0.5 text-small text-[var(--ink-2)]">
         <ErrorText error={view.error} />
       </div>
-      <div className="mt-0.5 text-[12px] text-[var(--ink-2)]">{t('updateFailedBody')}</div>
+      <div className="mt-0.5 text-small text-[var(--ink-2)]">{t('updateFailedBody')}</div>
       <div className="mt-2">
         <button onClick={view.retry} className={primaryBtn}>
           {t('updateRetryButton')}
@@ -197,7 +198,7 @@ export function UpdateToast({ view }: { view: UpdaterView }) {
             aria-label={t('updateDismissAria')}
             className="w-4 h-4 grid place-items-center rounded-full cursor-pointer text-[length:var(--font-size-meta)] text-[var(--ink-3)] hover:bg-[var(--panel-2)] bg-transparent border-0 p-0"
           >
-            ✕
+            <Icon name="close" size={14} />
           </button>
         )}
       </div>

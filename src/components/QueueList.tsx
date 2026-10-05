@@ -1,3 +1,4 @@
+import { Icon } from './Icon';
 import { useEffect, useState } from 'react';
 import type { FilamentCheck, ModelFile } from '../types';
 import { useT } from '../i18n/LanguageContext';
@@ -42,7 +43,7 @@ export function QueueList({ queue, onQueueReorder, onQueueRemove, onQueueSelect,
   return (
     <>
       {queue.length === 0 && (
-        <div className="px-1.5 pb-2 font-mono-ui text-[10.5px] text-[var(--ink-3)]">
+        <div className="px-1.5 pb-2 font-medium tabular-nums text-caption text-[var(--ink-3)]">
           {t('queueEmptyState')}
         </div>
       )}
@@ -64,21 +65,21 @@ export function QueueList({ queue, onQueueReorder, onQueueRemove, onQueueSelect,
               : ''
           } text-[var(--ink-2)] hover:text-[var(--ink)]`}
         >
-          <span className="font-mono-ui text-[length:var(--font-size-meta)] text-[var(--ink-3)] w-3.5">{index + 1}</span>
+          <span className="font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--ink-3)] w-3.5">{index + 1}</span>
           <QueueFilamentSymbol check={queueFilament?.get(model.id)} />
           <span className="flex-1 text-[length:var(--font-size-item)] overflow-hidden text-ellipsis whitespace-nowrap">
             {model.name}
           </span>
-          <span
+          <button type="button" aria-label={t('removeFromQueue')}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               onQueueRemove(model.id);
             }}
-            className="font-mono-ui text-[length:var(--font-size-meta)] text-[var(--ink-3)] cursor-pointer hover:text-[var(--accent)]"
+            className="font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--ink-3)] cursor-pointer hover:text-[var(--accent)]"
           >
-            ✕
-          </span>
+            <Icon name="close" size={14} />
+          </button>
         </div>
       ))}
     </>

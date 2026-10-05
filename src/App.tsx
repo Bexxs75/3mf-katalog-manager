@@ -257,7 +257,7 @@ export default function App() {
     <div
       className="h-screen flex flex-col bg-[var(--bg)] text-[var(--ink)] overflow-hidden"
       onMouseMoveCapture={(event) => { dragPointer.current = { x: event.clientX, y: event.clientY }; }}
-      style={{ fontSize: 14, '--sidebar-width': mainView === 'printers' ? 'var(--pm-master-width)' : `${mainView === 'catalog' ? sidebarWidth.width : 0}px` } as CSSProperties}
+      style={{ fontSize: 'var(--fs-body)', '--sidebar-width': mainView === 'printers' ? 'var(--pm-master-width)' : `${mainView === 'catalog' ? sidebarWidth.width : 0}px` } as CSSProperties}
     >
       {snapshotIds.length > 0 && (
         <BackgroundSnapshotRenderer

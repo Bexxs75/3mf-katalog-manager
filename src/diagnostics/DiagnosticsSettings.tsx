@@ -34,14 +34,14 @@ export function DiagnosticsSettings() {
       <button
         type="button"
         onClick={openBugReport}
-        className="mt-2 h-8 w-full flex items-center justify-center gap-2 rounded-[3px] border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] text-[12px] font-semibold cursor-pointer"
+        className="mt-2 h-8 w-full flex items-center justify-center gap-2 rounded-[3px] border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] text-small font-semibold cursor-pointer"
       >
         {BUG_ICON}
         {t('infoReportBugButton')}
       </button>
       <div className="mt-3 pt-3 border-t border-[var(--line)]">
-        <div className="font-mono-ui text-[10px] tracking-[0.14em] text-[var(--ink-3)]">{t('infoDiagnosticsHeading')}</div>
-        <div className="mt-2 flex items-center justify-between text-[11.5px] text-[var(--ink)]">
+        <div className="ui-label text-[var(--ink-3)]">{t('infoDiagnosticsHeading')}</div>
+        <div className="mt-2 flex items-center justify-between text-caption text-[var(--ink)]">
           <span>{t('infoVerboseLoggingLabel')}</span>
           <ToggleSwitch
             checked={verbose.enabled}
@@ -53,7 +53,7 @@ export function DiagnosticsSettings() {
             }
           />
         </div>
-        <p className={`mt-1 text-[10.5px] leading-[1.4] ${verbose.enabled ? 'text-[var(--warn)]' : 'text-[var(--ink-3)]'}`}>
+        <p className={`mt-1 text-caption leading-[1.4] ${verbose.enabled ? 'text-[var(--warn)]' : 'text-[var(--ink-3)]'}`}>
           {verbose.enabled ? t('infoVerboseLoggingOn').replace('{date}', until) : t('infoVerboseLoggingHint')}
         </p>
       </div>

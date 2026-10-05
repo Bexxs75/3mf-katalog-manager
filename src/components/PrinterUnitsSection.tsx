@@ -74,7 +74,7 @@ export function PrinterUnitsSection({ printer, spools, actions, onChanged, onMat
     </div>)}
     <div className="flex flex-wrap items-center justify-between gap-3 mt-2">
       <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--accent)] focus-visible:outline-2 max-[639px]:w-full" onClick={onMaterial}>{t('pmLoadSpools')}</button>
-      {printer.kind !== 'resin' && <button className={`${pmButton} !border-transparent hover:bg-[var(--panel-2)] max-[639px]:w-full`} onClick={() => setEditing('new')}>+ {t('printersAddUnitButton')}</button>}
+      {printer.kind !== 'resin' && <button className={`${pmButton} !border-transparent hover:bg-[var(--panel-2)] max-[639px]:w-full`} onClick={() => setEditing('new')}><Icon name="plus" size={14} /> {t('printersAddUnitButton')}</button>}
     </div>
     {printer.kind === 'resin' && <p className="text-[var(--ink-3)] mt-2">{t('printersResinPrinterNote')}</p>}
     {editing && <UnitDialog printer={printer} unit={editing === 'new' ? null : editing} actions={actions}

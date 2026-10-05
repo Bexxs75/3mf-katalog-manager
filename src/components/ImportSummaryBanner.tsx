@@ -1,3 +1,4 @@
+import { Icon } from './Icon';
 import { useEffect } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import type { ArchiveOutcome, SkipReason, SkippedFile } from '../types';
@@ -104,7 +105,7 @@ export function ImportSummaryBanner({ imported, duplicates, archives, skipped, o
         onClick={onClose}
         className="w-4 h-4 grid place-items-center rounded-full cursor-pointer text-[length:var(--font-size-meta)] text-[var(--ink-3)] hover:bg-[var(--panel-2)]"
       >
-        ✕
+        <Icon name="close" size={14} />
       </span>
     </div>
   );

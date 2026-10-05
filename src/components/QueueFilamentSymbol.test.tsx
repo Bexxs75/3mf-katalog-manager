@@ -25,7 +25,8 @@ describe('QueueFilamentSymbol', () => {
     ['no_data', '–'],
   ] as const)('shows %s as %s', (status, symbol) => {
     renderSymbol({ fileId: '1', status, needs: [] });
-    expect(screen.getByText(symbol)).toBeInTheDocument();
+    if (status === 'unknown') expect(screen.getByText(symbol)).toBeInTheDocument();
+    else expect(screen.getByRole('img').querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
   });
 
   it('carries the tooltip text', () => {
@@ -34,6 +35,6 @@ describe('QueueFilamentSymbol', () => {
       status: 'short',
       needs: [{ filamentType: 'PLA Silk', color: null, neededG: 31.5, status: 'short', missingG: 13.5, spools: [], possible: [] }],
     });
-    expect(screen.getByText('✗')).toHaveAttribute('title', 'PLA Silk: es fehlen 13,5 g');
+    expect(screen.getByRole('img')).toHaveAttribute('title', 'PLA Silk: es fehlen 13,5 g');
   });
 });

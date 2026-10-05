@@ -1,3 +1,4 @@
+import { Icon } from './Icon';
 import { useRef, useState } from 'react';
 import { CatalogActionDialog, catalogActionButton } from './CatalogActionDialog';
 import type { Collection } from '../types';
@@ -46,10 +47,10 @@ export function CollectionsGallery({ collections, onSelect, onCreate, onRename, 
         <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M19 12H5M11 18l-6-6 6-6" />
         </svg>
-        <span className="font-medium text-[13px]">{t('backToCatalog')}</span>
+        <span className="font-medium text-body">{t('backToCatalog')}</span>
       </button>
       {collections.length === 0 && !creating ? (
-        <p className="font-mono-ui text-[12.5px] text-[var(--ink-3)]">{t('noCollectionsEmptyState')}</p>
+        <p className="font-medium tabular-nums text-small text-[var(--ink-3)]">{t('noCollectionsEmptyState')}</p>
       ) : null}
       <div className="grid gap-3.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
         {collections.map((c) => (
@@ -66,11 +67,11 @@ export function CollectionsGallery({ collections, onSelect, onCreate, onRename, 
                 onChange={(e) => setRenameDraft(e.target.value)}
                 onBlur={() => submitRename(c.id)}
                 onKeyDown={(e) => e.key === 'Enter' && submitRename(c.id)}
-                className="bg-[var(--panel-2)] border border-[var(--line-strong)] rounded px-2 py-1 text-[13px]"
+                className="bg-[var(--panel-2)] border border-[var(--line-strong)] rounded px-2 py-1 text-body"
               />
             ) : (
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[14px] font-semibold text-[var(--ink)] truncate">{c.name}</span>
+                <span className="text-body font-semibold text-[var(--ink)] truncate">{c.name}</span>
                 <div className="flex items-center gap-1 flex-none">
                   <span
                     onClick={(e) => {
@@ -81,7 +82,7 @@ export function CollectionsGallery({ collections, onSelect, onCreate, onRename, 
                     aria-label={t('renameCollectionAria')}
                     className="w-5 h-5 grid place-items-center rounded-full cursor-pointer text-[var(--ink-3)] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
                   >
-                    ✎
+                    <Icon name="edit" size={14} />
                   </span>
                   <button
                     type="button"
@@ -93,12 +94,12 @@ export function CollectionsGallery({ collections, onSelect, onCreate, onRename, 
                     aria-label={t('deleteCollectionConfirmQuestion')}
                     className="w-5 h-5 grid place-items-center rounded-full cursor-pointer text-[var(--ink-3)] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
                   >
-                    ✕
+                    <Icon name="close" size={14} />
                   </button>
                 </div>
               </div>
             )}
-            <span className="font-mono-ui text-[11px] text-[var(--ink-3)]">
+            <span className="font-medium tabular-nums text-caption text-[var(--ink-3)]">
               {formatCount(t('modelCountLabel'), c.modelCount)}
             </span>
           </div>
@@ -119,15 +120,15 @@ export function CollectionsGallery({ collections, onSelect, onCreate, onRename, 
                 }
               }}
               placeholder={t('newCollectionPlaceholder')}
-              className="bg-[var(--panel-2)] border border-[var(--line-strong)] rounded px-2 py-1 text-[13px]"
+              className="bg-[var(--panel-2)] border border-[var(--line-strong)] rounded px-2 py-1 text-body"
             />
           </div>
         ) : (
           <button
             onClick={() => setCreating(true)}
-            className="rounded-[10px] border-2 border-dashed border-[var(--line-strong)] p-4 flex items-center justify-center text-[13px] font-semibold text-[var(--ink-2)] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] min-h-[76px]"
-          >
-            {t('createCollectionLabel')}
+            className="rounded-[10px] border-2 border-dashed border-[var(--line-strong)] p-4 flex items-center justify-center text-body font-semibold text-[var(--ink-2)] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] min-h-[76px]"
+           aria-label={t('createCollectionLabel')}>
+            <Icon name="plus" size={14} /> {t('createCollectionLabel').replace(/^\+\s*/, '')}
           </button>
         )}
       </div>

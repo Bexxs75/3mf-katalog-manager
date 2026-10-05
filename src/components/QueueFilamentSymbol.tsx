@@ -1,6 +1,7 @@
+import { FilamentStatusSymbol } from './FilamentStatusSymbol';
 import type { FilamentCheck, FilamentCheckStatus } from '../types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
-import { STATUS_SYMBOL, queueTooltip } from '../lib/filamentCheck';
+import { queueTooltip } from '../lib/filamentCheck';
 
 const TONE: Record<FilamentCheckStatus, string> = {
   ok: 'text-[var(--good)] bg-[var(--good-soft)] border-transparent',
@@ -20,9 +21,9 @@ export function QueueFilamentSymbol({ check }: { check: FilamentCheck | undefine
       role="img"
       aria-label={tooltip}
       title={tooltip}
-      className={`inline-grid place-items-center w-[18px] h-[18px] rounded-[5px] border font-mono-ui text-[11px] font-semibold flex-none ${TONE[check.status]}`}
+      className={`inline-grid place-items-center w-[18px] h-[18px] rounded-[5px] border tabular-nums text-caption font-semibold flex-none ${TONE[check.status]}`}
     >
-      {STATUS_SYMBOL[check.status]}
+      <FilamentStatusSymbol status={check.status} />
     </span>
   );
 }

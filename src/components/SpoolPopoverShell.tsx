@@ -6,8 +6,8 @@ import type { AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 
 export const fieldClass =
-  'w-full min-w-0 h-7 px-2 rounded-md border border-[var(--line-strong)] bg-[var(--panel-2)] text-[var(--ink)] text-[12.5px] outline-0 focus:border-[var(--accent)]';
-export const buttonClass = 'h-[30px] px-3 rounded-md text-[12.5px] font-semibold cursor-pointer border';
+  'w-full min-w-0 h-7 px-2 rounded-md border border-[var(--line-strong)] bg-[var(--panel-2)] text-[var(--ink)] text-small outline-0 focus:border-[var(--accent)]';
+export const buttonClass = 'h-[30px] px-3 rounded-md text-small font-semibold cursor-pointer border';
 
 interface Props {
   /** The button the popover hangs on. */
@@ -81,14 +81,14 @@ export function SpoolPopoverShell({
       className="z-[60] rounded-[10px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] shadow-[var(--shadow)] p-3.5 flex flex-col gap-2.5"
     >
       <div>
-        <h3 className="text-[13px] font-bold m-0">{title}</h3>
-        <p className="text-[11.5px] text-[var(--ink-3)] m-0">{subtitle}</p>
+        <h3 className="text-body font-bold m-0">{title}</h3>
+        <p className="text-caption text-[var(--ink-3)] m-0">{subtitle}</p>
       </div>
 
       {children}
 
       {error && (
-        <div role="alert" className="text-[11.5px] text-[var(--accent)] break-words">
+        <div role="alert" className="text-caption text-[var(--accent)] break-words">
           <ErrorText error={error} />
         </div>
       )}

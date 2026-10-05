@@ -1,3 +1,4 @@
+import { Icon } from './Icon';
 import { useModalDialog } from '../hooks/useModalDialog';
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -199,19 +200,19 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={t('catalogSetupTitle')} tabIndex={-1} className="w-[560px] max-h-[80vh] flex flex-col bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] overflow-y-auto">
         <div className="px-5 py-4">
-          <div className="text-[16px] font-semibold mb-2.5">{t('catalogSetupTitle')}</div>
-          <p className="text-[13px] leading-relaxed text-[var(--ink-2)] mb-4">{t('catalogSetupIntro')}</p>
+          <div className="text-title font-semibold mb-2.5">{t('catalogSetupTitle')}</div>
+          <p className="text-body leading-relaxed text-[var(--ink-2)] mb-4">{t('catalogSetupIntro')}</p>
 
           {!done && (
-            <div className="mb-4 p-3 rounded-[8px] border border-dashed border-[var(--line-strong)] text-[12px] leading-relaxed text-[var(--ink-2)]">
+            <div className="mb-4 p-3 rounded-[8px] border border-dashed border-[var(--line-strong)] text-small leading-relaxed text-[var(--ink-2)]">
               {t('catalogSetupFileTypesNote')}
             </div>
           )}
 
           {done ? (
             <div className="mb-4 p-4 rounded-[10px] border-2 border-[var(--good)] bg-[var(--good-soft)]">
-              <div className="text-[13px] font-semibold text-[var(--good)] mb-3">
-                ✓{' '}
+              <div className="text-body font-semibold text-[var(--good)] mb-3">
+                <Icon name="check" size={14} />{' '}
                 {done.kind === 'adopt'
                   ? t('catalogSetupAdoptSummary').replace('{files}', String(done.files)).replace('{folders}', String(done.folders))
                   : t('catalogSetupNewSummary').replace('{path}', done.path)}
@@ -219,13 +220,13 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
               <div className="flex gap-2">
                 <button
                   onClick={() => openFolder(done.path)}
-                  className="h-8 px-3 rounded-[6px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                  className="h-8 px-3 rounded-[6px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
                 >
                   {t('catalogSetupOpenFolderButton')}
                 </button>
                 <button
                   onClick={onClose}
-                  className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-[6px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
+                  className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-[6px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer"
                 >
                   {t('catalogSetupDoneButton')}
                 </button>
@@ -238,8 +239,8 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
                 disabled={busy !== null}
                 className="text-left p-4 rounded-[10px] border-2 border-[var(--line)] hover:border-[var(--accent)] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer bg-[var(--panel-2)]"
               >
-                <div className="text-[13.5px] font-semibold mb-1.5">{t('catalogSetupAdoptTitle')}</div>
-                <div className="text-[12px] leading-relaxed text-[var(--ink-2)]">
+                <div className="text-body font-semibold mb-1.5">{t('catalogSetupAdoptTitle')}</div>
+                <div className="text-small leading-relaxed text-[var(--ink-2)]">
                   {busy === 'adopt' ? t('catalogSetupImporting') : t('catalogSetupAdoptDescription')}
                 </div>
               </button>
@@ -252,8 +253,8 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
                 aria-pressed={newForm}
                 className={`text-left p-4 rounded-[10px] border-2 ${newForm ? 'border-[var(--accent)]' : 'border-[var(--line)]'} hover:border-[var(--accent)] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer bg-[var(--panel-2)]`}
               >
-                <div className="text-[13.5px] font-semibold mb-1.5">{t('catalogSetupNewTitle')}</div>
-                <div className="text-[12px] leading-relaxed text-[var(--ink-2)]">
+                <div className="text-body font-semibold mb-1.5">{t('catalogSetupNewTitle')}</div>
+                <div className="text-small leading-relaxed text-[var(--ink-2)]">
                   {busy === 'new' ? t('catalogSetupSettingUp') : t('catalogSetupNewDescription')}
                 </div>
               </button>
@@ -262,14 +263,14 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
 
           {!done && newForm && (
             <div className="mb-4">
-              <label className="block text-[12px] font-semibold text-[var(--ink-2)] mb-1.5">
+              <label className="block text-small font-semibold text-[var(--ink-2)] mb-1.5">
                 {t('catalogSetupNewParentLabel')}
               </label>
               <div className="flex gap-2 items-center">
                 <div
                   data-testid="catalog-setup-parent"
                   title={parent ?? undefined}
-                  className={`flex-1 min-w-0 font-mono-ui text-[12px] px-2.5 py-[7px] border border-[var(--line)] rounded-[6px] bg-[var(--panel-2)] truncate ${parent ? 'text-[var(--ink)]' : 'text-[var(--ink-3)]'}`}
+                  className={`flex-1 min-w-0 ${parent ? 'font-code' : ''} text-small px-2.5 py-[7px] border border-[var(--line)] rounded-[6px] bg-[var(--panel-2)] truncate ${parent ? 'text-[var(--ink)]' : 'text-[var(--ink-3)]'}`}
                 >
                   {parent ?? t('catalogSetupNewParentNone')}
                 </div>
@@ -277,12 +278,12 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
                   type="button"
                   onClick={pickParent}
                   disabled={busy !== null}
-                  className="h-8 px-3 rounded-[6px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold whitespace-nowrap cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="h-8 px-3 rounded-[6px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold whitespace-nowrap cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {t('catalogSetupNewPickParentButton')}
                 </button>
               </div>
-              <label htmlFor="catalog-setup-name" className="block text-[12px] font-semibold text-[var(--ink-2)] mt-3 mb-1.5">
+              <label htmlFor="catalog-setup-name" className="block text-small font-semibold text-[var(--ink-2)] mt-3 mb-1.5">
                 {t('catalogSetupNewNameLabel')}
               </label>
               <input
@@ -291,22 +292,22 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
                 onChange={(e) => setName(e.target.value)}
                 disabled={busy !== null}
                 aria-invalid={problem !== null}
-                className={`w-full text-[13px] px-2.5 py-[7px] rounded-[6px] border bg-[var(--panel)] text-[var(--ink)] outline-none ${problem ? 'border-[var(--accent)]' : 'border-[var(--line-strong)] focus:border-[var(--accent)]'}`}
+                className={`w-full text-body px-2.5 py-[7px] rounded-[6px] border bg-[var(--panel)] text-[var(--ink)] outline-none ${problem ? 'border-[var(--accent)]' : 'border-[var(--line-strong)] focus:border-[var(--accent)]'}`}
               />
-              {problemText && <div className="mt-2 text-[12px] text-[var(--accent)]">{problemText}</div>}
-              {!problem && blockingText && <div className="mt-2 text-[12px] text-[var(--accent)]">{t(blockingText)}</div>}
+              {problemText && <div className="mt-2 text-small text-[var(--accent)]">{problemText}</div>}
+              {!problem && blockingText && <div className="mt-2 text-small text-[var(--accent)]">{t(blockingText)}</div>}
               {!problem && !blockingText && preview && (
-                <div className="mt-3 px-3 py-2 rounded-[8px] bg-[var(--accent-soft)] text-[12.5px] text-[var(--ink)] break-all">
+                <div className="mt-3 px-3 py-2 rounded-[8px] bg-[var(--accent-soft)] text-small text-[var(--ink)] break-all">
                   {preview.state === 'existingDir' ? t('catalogSetupNewExists') : t('catalogSetupNewWillCreate')}{' '}
-                  <code className="font-mono-ui text-[12px]">{preview.path}</code>
+                  <code className="font-code text-small">{preview.path}</code>
                 </div>
               )}
               {!problem && previewError && (
-                <div className="mt-2 font-mono-ui text-[11px] text-[var(--accent)] break-words">
+                <div className="mt-2 font-medium tabular-nums text-caption text-[var(--accent)] break-words">
                   <ErrorText error={previewError} />
                 </div>
               )}
-              <div className="mt-2 text-[12px] text-[var(--ink-2)]">
+              <div className="mt-2 text-small text-[var(--ink-2)]">
                 {t('catalogSetupNewPickExistingBefore')}{' '}
                 <button
                   type="button"
@@ -322,7 +323,7 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
           )}
 
           {error && (
-            <div className="mb-3 font-mono-ui text-[11px] text-[var(--accent)] break-words">
+            <div className="mb-3 font-medium tabular-nums text-caption text-[var(--accent)] break-words">
               {t('catalogSetupError')} <ErrorText error={error} />
             </div>
           )}
@@ -334,7 +335,7 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
                   type="button"
                   onClick={onLater}
                   disabled={busy !== null}
-                  className="h-8 px-3 rounded-[6px] border border-[var(--line-strong)] text-[12.5px] text-[var(--ink-2)] hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="h-8 px-3 rounded-[6px] border border-[var(--line-strong)] text-small text-[var(--ink-2)] hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {t('catalogSetupLater')}
                 </button>
@@ -347,7 +348,7 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
                         setNewForm(false);
                       }}
                       disabled={busy !== null}
-                      className="h-8 px-3 rounded-[6px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="h-8 px-3 rounded-[6px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {t('catalogSetupBack')}
                     </button>
@@ -355,14 +356,14 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
                       type="button"
                       onClick={createAndSetupNew}
                       disabled={busy !== null || !parent || problem !== null || blockingText !== undefined}
-                      className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-[6px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-[6px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {t('catalogSetupNewCreateButton')}
                     </button>
                   </span>
                 )}
               </div>
-              <p className="mt-3 text-[11px] text-[var(--ink-3)]">{t('catalogSetupFootnote')}</p>
+              <p className="mt-3 text-caption text-[var(--ink-3)]">{t('catalogSetupFootnote')}</p>
             </>
           )}
         </div>

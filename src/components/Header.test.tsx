@@ -30,7 +30,7 @@ describe('Header', () => {
     expect(screen.getByText('3MF Katalog')).toBeVisible();
     expect(screen.getByText('MATERIAL MANAGER')).toBeVisible();
     expect(screen.getByText('MATERIAL MANAGER')).toHaveClass(
-      'font-mono-ui', 'text-[11px]', 'text-[var(--accent)]', 'tracking-[0.08em]',
+      'ui-label', 'text-[var(--accent)]',
     );
   });
 });

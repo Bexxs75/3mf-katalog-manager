@@ -73,12 +73,12 @@ it.each([
   expect(onSortChange).toHaveBeenCalledWith(sort, direction);
   result.rerender(<LanguageProvider><Header {...props} sort={sort} sortDirection={direction} onSortChange={onSortChange} onSortDirectionChange={onSortDirectionChange} /></LanguageProvider>);
   expect(screen.getByRole('menuitemradio', { name: sort === 'modified' ? /Änderungsdatum\s*neu/ : label })).toHaveAttribute('aria-checked', 'true');
-  expect(screen.getByRole('button', { name: `${sort === 'modified' ? 'Änderungsdatum' : label}${direction === 'asc' ? '↑' : '↓'}▾` })).toBeVisible();
-  expect(screen.getByRole('menuitemradio', { name: `${direction === 'asc' ? '↑' : '↓'} ${direction === 'asc' ? asc : desc}` })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByRole('button', { name: `${sort === 'modified' ? 'Änderungsdatum' : label}` })).toBeVisible();
+  expect(screen.getByRole('menuitemradio', { name: `${direction === 'asc' ? asc : desc}` })).toHaveAttribute('aria-pressed', 'true');
   onSortChange.mockClear();
-  fireEvent.click(screen.getByRole('menuitemradio', { name: `↑ ${asc}` }));
+  fireEvent.click(screen.getByRole('menuitemradio', { name: asc }));
   expect(onSortDirectionChange).toHaveBeenCalledWith('asc');
-  fireEvent.click(screen.getByRole('menuitemradio', { name: `↓ ${desc}` }));
+  fireEvent.click(screen.getByRole('menuitemradio', { name: desc }));
   expect(onSortDirectionChange).toHaveBeenLastCalledWith('desc');
   expect(onSortChange).not.toHaveBeenCalled();
   expect(screen.getByRole('menu')).toBeVisible();

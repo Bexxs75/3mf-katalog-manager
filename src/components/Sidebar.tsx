@@ -213,7 +213,7 @@ export function Sidebar({
       </div>
       <div className="p-3 pb-2.5 border-b border-[var(--line)]">
         <div className="flex items-center gap-1.5 h-8 px-2.5 rounded-[3px] border border-[var(--line)] focus-within:border-[var(--accent)] bg-[var(--panel-2)]">
-          <span className="font-mono-ui text-xs text-[var(--ink-3)]">⌕</span>
+          <span className="font-medium tabular-nums text-small text-[var(--ink-3)]"><Icon name="search" size={14} /></span>
           <input
             id={SEARCH_INPUT_ID}
             value={query}
@@ -226,14 +226,14 @@ export function Sidebar({
 
       <div className="flex-1 overflow-y-auto px-2 py-3">
         <div className="group relative flex items-center gap-1 px-1.5 pb-2">
-          <span className="inline-flex items-center gap-1.5 font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)]">
+          <span className="inline-flex items-center gap-1.5 ui-label text-[var(--ink-3)]">
             <Icon name="folder" size={16} />
             {t('foldersHeading')}
           </span>
           <span className="grid place-items-center text-[var(--ink-3)] cursor-default">
             <Icon name="info" size={16} />
           </span>
-          <span className="pointer-events-none absolute top-[20px] right-0 z-20 w-[200px] rounded-[8px] bg-[var(--ink)] px-2.5 py-2 text-[11px] font-sans font-medium leading-[1.4] text-[var(--bg)] opacity-0 -translate-y-0.5 transition-opacity transition-transform group-hover:opacity-100 group-hover:translate-y-0">
+          <span className="pointer-events-none absolute top-[20px] right-0 z-20 w-[200px] rounded-[8px] bg-[var(--ink)] px-2.5 py-2 text-caption font-sans font-medium leading-[1.4] text-[var(--bg)] opacity-0 -translate-y-0.5 transition-opacity transition-transform group-hover:opacity-100 group-hover:translate-y-0">
             {t('foldersInfoTooltip')}
           </span>
           <button type="button" aria-label={toggleLabel} title={toggleLabel} onClick={onToggleAllFolders}
@@ -272,7 +272,7 @@ export function Sidebar({
               }}
               autoFocus
               placeholder={t('newFolderPlaceholder')}
-              className="flex-1 min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-[11.5px]"
+              className="flex-1 min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-caption"
             />
           </div>
         ) : (
@@ -281,20 +281,20 @@ export function Sidebar({
               setCreatingFolder(true);
               setFolderNameDraft('');
             }}
-            className="flex items-center h-7 px-1.5 rounded-[3px] border border-dashed border-[var(--line-strong)] cursor-pointer font-mono-ui text-[11.5px] text-[var(--ink-3)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
-          >
-            {t('createFolderLabel')}
+            className="flex items-center h-7 px-1.5 rounded-[3px] border border-dashed border-[var(--line-strong)] cursor-pointer font-medium tabular-nums text-caption text-[var(--ink-3)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+           aria-label={t('createFolderLabel')}>
+            <Icon name="plus" size={14} /> {t('createFolderLabel').replace(/^\+\s*/, '')}
           </button>
         )}
 
         <div className="flex items-center justify-between px-1.5 pt-[18px] pb-2">
-          <span ref={collectionsHeading} tabIndex={-1} className="inline-flex items-center gap-1.5 font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)]">
+          <span ref={collectionsHeading} tabIndex={-1} className="inline-flex items-center gap-1.5 ui-label text-[var(--ink-3)]">
             <Icon name="layers" size={16} />
             {t('collectionsTab')}
           </span>
           <span
             onClick={onOpenCollectionsGallery}
-            className="font-mono-ui text-[10.5px] text-[var(--accent)] cursor-pointer hover:underline"
+            className="font-medium tabular-nums text-caption text-[var(--accent)] cursor-pointer hover:underline"
           >
             {t('viewAllCollectionsLabel')}
           </span>
@@ -332,9 +332,9 @@ export function Sidebar({
               onKeyDown={event => {
                 if (event.key === 'Enter') { event.preventDefault(); void submitCollectionRename(); }
                 if (event.key === 'Escape') { event.stopPropagation(); if (!collectionBusy) { setRenamingCollection(null); setCollectionError(null); collectionTrigger.current?.focus(); } }
-              }} className="flex-1 min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] text-[11.5px]" />
+              }} className="flex-1 min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] text-caption" />
               : <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{c.name}</span>}
-            <span className="font-mono-ui text-[11px] text-[var(--ink-3)]">{c.modelCount}</span>
+            <span className="font-medium tabular-nums text-caption text-[var(--ink-3)]">{c.modelCount}</span>
           </div>
         ))}
         {creatingCollection ? (
@@ -352,7 +352,7 @@ export function Sidebar({
               }}
               autoFocus
               placeholder={t('newCollectionPlaceholder')}
-              className="flex-1 min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-[11.5px]"
+              className="flex-1 min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-caption"
             />
           </div>
         ) : (
@@ -361,7 +361,7 @@ export function Sidebar({
               setCreatingCollection(true);
               setCollectionNameDraft('');
             }}
-            className="flex items-center h-7 px-1.5 rounded-[3px] border border-dashed border-[var(--line-strong)] cursor-pointer font-mono-ui text-[11.5px] text-[var(--ink-3)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            className="flex items-center h-7 px-1.5 rounded-[3px] border border-dashed border-[var(--line-strong)] cursor-pointer font-medium tabular-nums text-caption text-[var(--ink-3)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
             {t('createCollectionLabel')}
           </div>
@@ -371,12 +371,12 @@ export function Sidebar({
           onClick={() => setTagsCollapsed((c) => !c)}
           className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex items-center justify-between px-1.5 pt-[18px] pb-2 cursor-pointer"
         >
-          <span className="inline-flex items-center gap-1.5 font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)]">
+          <span className="inline-flex items-center gap-1.5 ui-label text-[var(--ink-3)]">
             <Icon name="tag" size={16} />
             {t('tagsHeading')}
           </span>
-          <span className="font-mono-ui text-[length:var(--font-size-label)] leading-none text-[var(--ink-3)]">
-            {tagsCollapsed ? '▾' : '▴'}
+          <span className="font-medium tabular-nums text-[length:var(--font-size-label)] leading-none text-[var(--ink-3)]">
+            <Icon name="chevron" size={14} className={tagsCollapsed  ? '' : 'rotate-180'} />
           </span>
         </div>
         {!tagsCollapsed && (
@@ -384,7 +384,7 @@ export function Sidebar({
             <div className="flex items-center h-[26px] mb-2 rounded border border-[var(--line)] bg-[var(--panel-2)] focus-within:border-[var(--accent)]">
               <input value={tagQuery} onChange={event => setTagQuery(event.target.value)}
                 placeholder={t('tagSearchPlaceholder')} aria-label={t('tagSearchPlaceholder')}
-                className="w-full min-w-0 bg-transparent px-2 text-[12px] outline-none"
+                className="w-full min-w-0 bg-transparent px-2 text-small outline-none"
                 onKeyDown={event => {
                   if (event.key === 'Escape') { event.stopPropagation(); setTagQuery(''); }
                   if (event.key === 'Enter' && visibleTags[0]) { event.preventDefault(); onTagSelect(visibleTags[0].label); }
@@ -392,13 +392,13 @@ export function Sidebar({
               {tagQuery && <button aria-label={`${t('tagSearchPlaceholder')} ${t('delete')}`} onClick={() => setTagQuery('')}
                 className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] px-1 text-[var(--ink-3)]"><Icon name="close" size={14} /></button>}
             </div>
-            {visibleTags.length === 0 && tagQuery.trim() && <p className="text-[12px] text-[var(--ink-3)]">{t('tagSearchEmpty')}</p>}
+            {visibleTags.length === 0 && tagQuery.trim() && <p className="text-small text-[var(--ink-3)]">{t('tagSearchEmpty')}</p>}
             <div className="flex flex-wrap gap-1.5">
             {visibleTags.map((tag) => (
               <button
                 key={tag.label}
                 onClick={() => onTagSelect(activeTag === tag.label ? null : tag.label)}
-                className={`inline-flex items-center gap-1.5 h-6 px-2 rounded-full border cursor-pointer font-mono-ui text-[11.5px] ${
+                className={`inline-flex items-center gap-1.5 h-6 px-2 rounded-full border cursor-pointer font-medium tabular-nums text-caption ${
                   activeTag === tag.label
                     ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] hover:text-[var(--ink)]'
                     : 'border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink-2)] hover:text-[var(--ink)]'
@@ -412,7 +412,7 @@ export function Sidebar({
             </div>
             {hiddenSingleCount > 0 && !tagQuery.trim() && (
               <button type="button" aria-expanded={showSingleTags} onClick={() => setShowSingleTags(show => !show)}
-                className="mt-2 text-left font-mono-ui text-[length:var(--font-size-meta)] text-[var(--ink-2)] hover:text-[var(--ink)] cursor-pointer">
+                className="mt-2 text-left font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--ink-2)] hover:text-[var(--ink)] cursor-pointer">
                 {showSingleTags ? t('tagsHideSingles') : t('tagsShowSingles').replace('{count}', String(hiddenSingleCount))}
               </button>
             )}

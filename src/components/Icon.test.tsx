@@ -12,8 +12,8 @@ const sources = Object.fromEntries(Object.entries(sourceFiles).map(([path, sourc
 const names = Object.keys(sources).map((file) => file.slice(0, -4)) as IconName[];
 
 describe('Icon', () => {
-  it('covers exactly the 37 approved source names', () => {
-    expect(names).toHaveLength(37);
+  it('covers exactly the 48 approved source names', () => {
+    expect(names).toHaveLength(48);
     expect(Object.keys(icons).sort()).toEqual([...names].sort());
   });
 
@@ -36,6 +36,13 @@ describe('Icon', () => {
     [...svg.children].forEach((child, index) => {
       expect(child.isEqualNode(source.children[index])).toBe(true);
     });
+  });
+
+  it('fills a selected favorite without changing its geometry or accessible name', () => {
+    const { container } = render(<Icon name="favorite" fill="currentColor" />);
+    expect(container.querySelector('svg')).toHaveAttribute('fill', 'currentColor');
+    expect(container.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+    expect(container.querySelector('path')).toHaveAttribute('d', expect.any(String));
   });
 
   it('accepts a custom size and className', () => {

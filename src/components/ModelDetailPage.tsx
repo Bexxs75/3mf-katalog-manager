@@ -174,7 +174,7 @@ export function ModelDetailPage({
         <button className={navigationButtonClass} aria-label={t('detailPrevious')} title={t('detailPrevious')}
           disabled={!hasPrevious || !onNavigate} onMouseDown={event => event.preventDefault()}
           onClick={event => navigateByButton('previous', event.currentTarget)}><Icon name="previous" /></button>
-        {position && <span className="font-mono-ui text-[12px] text-[var(--ink-3)] self-center whitespace-nowrap">
+        {position && <span className="font-medium tabular-nums text-small text-[var(--ink-3)] self-center whitespace-nowrap">
           {t('detailPosition').replace('{index}', String(position.index)).replace('{total}', String(position.total))}
         </span>}
         <button className={navigationButtonClass} aria-label={t('detailNext')} title={t('detailNext')}
@@ -205,7 +205,7 @@ export function ModelDetailPage({
               />
             )}
             {resolvedImage && (
-              <div className="absolute top-3 right-3 flex bg-[var(--panel-2)] border border-[var(--line)] rounded-full overflow-hidden font-mono-ui text-[11.5px]">
+              <div className="absolute top-3 right-3 flex bg-[var(--panel-2)] border border-[var(--line)] rounded-full overflow-hidden font-medium tabular-nums text-caption">
                 <button
                   onClick={() => setShowCustomImage(false)}
                   className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] px-3.5 py-1.5 ${!showCustomImage ? 'bg-[var(--accent)] text-[var(--accent-ink)] font-semibold' : 'text-[var(--ink-3)]'}`}
@@ -223,7 +223,7 @@ export function ModelDetailPage({
           </div>
           <button
             onClick={onUploadImage}
-            className="mt-2 h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12px] font-semibold hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            className="mt-2 h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
             {t('uploadModelImageLabel')}
           </button>
@@ -234,17 +234,17 @@ export function ModelDetailPage({
             {rows.map((row) => (
               <div
                 key={row.label}
-                className="flex justify-between items-baseline gap-4 py-2 border-b border-[var(--line)] last:border-b-0 text-[13.5px]"
+                className="flex justify-between items-baseline gap-4 py-2 border-b border-[var(--line)] last:border-b-0 text-body"
               >
                 <span className="text-[var(--ink-3)]">{row.label}</span>
-                <span className="font-mono-ui tabular-nums text-right">{row.value}</span>
+                <span className="font-medium tabular-nums tabular-nums text-right">{row.value}</span>
               </div>
             ))}
-            <div className="flex justify-between items-baseline gap-4 py-2 border-b border-[var(--line)] text-[13.5px]">
+            <div className="flex justify-between items-baseline gap-4 py-2 border-b border-[var(--line)] text-body">
               <span className="text-[var(--ink-3)]">{t('metaCreator')}</span>
-              <span className="font-mono-ui text-right">{model.creator ?? t('noValue')}</span>
+              <span className="font-medium tabular-nums text-right">{model.creator ?? t('noValue')}</span>
             </div>
-            <div className="flex justify-between items-baseline gap-4 py-2 text-[13.5px]">
+            <div className="flex justify-between items-baseline gap-4 py-2 text-body">
               <span className="text-[var(--ink-3)]">{t('metaSourceUrl')}</span>
               {editingSource ? (
                 <input
@@ -254,7 +254,7 @@ export function ModelDetailPage({
                   onBlur={() => { if (pendingNavigation === null) handleSourceBlur(); }}
                   onKeyDown={handleSourceKeyDown}
                   placeholder={t('sourceUrlPlaceholder')}
-                  className="flex-1 min-w-0 bg-[var(--panel-2)] border border-[var(--line-strong)] rounded px-2 py-1 text-[13px]"
+                  className="flex-1 min-w-0 bg-[var(--panel-2)] border border-[var(--line-strong)] rounded px-2 py-1 text-body"
                 />
               ) : model.sourceUrl ? (
                 <span className="text-right">
@@ -266,25 +266,25 @@ export function ModelDetailPage({
                     // Not an http(s) value: plain text, never a clickable link.
                     <span className="text-[var(--ink-2)]">{model.sourceUrl}</span>
                   )}{' '}
-                  <button onClick={startEditingSource} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)]">✎</button>
+                  <button aria-label={t('pmEdit')} onClick={startEditingSource} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)]"><Icon name="edit" size={14} /></button>
                 </span>
               ) : (
                 <button onClick={startEditingSource} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)] underline decoration-dotted">
-                  {t('sourceUrlPlaceholder')} ✎
+                  {t('sourceUrlPlaceholder')} <Icon name="edit" size={14} />
                 </button>
               )}
             </div>
 
             <div className="mt-4">
-              <p className="font-mono-ui text-[10.5px] tracking-[0.06em] uppercase text-[var(--ink-3)] mb-2">
+              <p className="ui-label text-[var(--ink-3)] mb-2">
                 {t('hashtagsHeading')}
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {model.tags.map((tag) => (
-                  <span key={tag} className="inline-flex items-center gap-1.5 font-mono-ui text-[12px] px-2.5 py-1 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)]">
+                  <span key={tag} className="inline-flex items-center gap-1.5 font-medium tabular-nums text-small px-2.5 py-1 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)]">
                     <TagDot hue={tagHues?.[tag]} />
                     #{tagLabel(tag, language)}{' '}
-                    <button onClick={() => onRemoveTag(tag)} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)]">✕</button>
+                    <button aria-label={t('chipRemove').replace('{label}', tag)} onClick={() => onRemoveTag(tag)} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)]"><Icon name="close" size={14} /></button>
                   </span>
                 ))}
                 <TagInput
@@ -293,7 +293,7 @@ export function ModelDetailPage({
                   tags={model.tags}
                   onAddTag={onAddTag}
                   onEscape={onClose}
-                  inputClassName="font-mono-ui text-[12px] px-2.5 py-1 rounded-full bg-transparent border border-dashed border-[var(--line)] text-[var(--ink-3)] w-32"
+                  inputClassName="font-medium tabular-nums text-small px-2.5 py-1 rounded-full bg-transparent border border-dashed border-[var(--line)] text-[var(--ink-3)] w-32"
                 />
               </div>
             </div>
@@ -302,7 +302,7 @@ export function ModelDetailPage({
           <div className="flex flex-wrap gap-2 items-center">
             <button
               onClick={onTogglePrintStatus}
-              className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12.5px] font-semibold ${
+              className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-small font-semibold ${
                 model.printStatus === 'printed'
                   ? 'bg-[var(--good-soft,var(--accent-soft))] text-[var(--good,var(--accent))]'
                   : 'bg-[var(--panel-2)] text-[var(--ink-2)] border border-[var(--line)]'
@@ -318,10 +318,10 @@ export function ModelDetailPage({
                 model.favorite ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent-soft)]' : 'border-[var(--line)] text-[var(--ink-2)]'
               }`}
             >
-              ♥
+              <Icon name="favorite" size={14} fill="currentColor" />
             </button>
-            <button onClick={onToggleQueue} className="text-[13px] font-semibold text-[var(--ink-2)] hover:text-[var(--ink)]">
-              {model.queuePosition !== null ? t('removeFromQueue') : `+ ${t('addToQueue')}`}
+            <button onClick={onToggleQueue} className="text-body font-semibold text-[var(--ink-2)] hover:text-[var(--ink)]">
+              {model.queuePosition === null && <Icon name="plus" size={14} />}{t(model.queuePosition !== null ? 'removeFromQueue' : 'addToQueue')}
             </button>
           </div>
         </div>
@@ -329,18 +329,18 @@ export function ModelDetailPage({
 
       {model.sliceInfo && (
         <div className="rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-5 py-4">
-          <p className="font-mono-ui text-[10.5px] tracking-[0.06em] uppercase text-[var(--ink-3)] mb-3">
+          <p className="ui-label text-[var(--ink-3)] mb-3">
             {t('sliceFilamentHeading')}
           </p>
           <div className="flex flex-col gap-3">
             {model.sliceInfo.plates.map((plate) => (
               <div key={plate.plateIndex}>
-                <p className="text-[12.5px] font-semibold text-[var(--ink-2)] mb-1.5">
+                <p className="text-small font-semibold text-[var(--ink-2)] mb-1.5">
                   {t('sliceFilamentPlateLabel').replace('{index}', String(plate.plateIndex))}
                 </p>
                 <div className="flex flex-col gap-1">
                   {plate.filaments.map((filament, i) => (
-                    <div key={i} className="flex items-center gap-2 text-[13px]">
+                    <div key={i} className="flex items-center gap-2 text-body">
                       {filament.color && (
                         <span
                           className="w-3 h-3 rounded-full border border-[var(--line)] flex-none"
@@ -348,7 +348,7 @@ export function ModelDetailPage({
                         />
                       )}
                       <span className="text-[var(--ink-2)]">{filament.type}</span>
-                      <span className="font-mono-ui tabular-nums text-[var(--ink-3)]">
+                      <span className="font-medium tabular-nums tabular-nums text-[var(--ink-3)]">
                         {formatWeightG(filament.usedG, language)} · {formatLengthM(filament.usedM, language)}
                       </span>
                     </div>
@@ -362,7 +362,7 @@ export function ModelDetailPage({
             error={filamentCheck.error}
           />
           {model.costEstimate && (
-            <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-[var(--line)] text-[13px]">
+            <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-[var(--line)] text-body">
               <span className="text-[var(--ink-3)]">
                 {t('metaCostEstimate')}
                 {model.costEstimate.hasUnpricedFilaments && (
@@ -371,7 +371,7 @@ export function ModelDetailPage({
                   </span>
                 )}
               </span>
-              <span className="font-mono-ui tabular-nums">
+              <span className="font-medium tabular-nums tabular-nums">
                 {model.costEstimate.totalCost === null
                   ? t('noValue')
                   : formatPrice(model.costEstimate.totalCost, language)}
@@ -383,15 +383,15 @@ export function ModelDetailPage({
 
       <div className="rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-5 py-4">
         <div className="flex items-center justify-between mb-3">
-          <p className="font-mono-ui text-[10.5px] tracking-[0.06em] uppercase text-[var(--ink-3)]">
+          <p className="ui-label text-[var(--ink-3)]">
             {t('printLogHeading')}
           </p>
           {!showPrintLogForm && (
             <button
               onClick={() => setShowPrintLogForm(true)}
-              className="text-[12px] font-semibold text-[var(--accent)] hover:underline"
-            >
-              {t('printLogAddButton')}
+              className="text-small font-semibold text-[var(--accent)] hover:underline"
+             aria-label={t('printLogAddButton')}>
+              <Icon name="plus" size={14} /> {t('printLogAddButton').replace(/^\+\s*/, '')}
             </button>
           )}
         </div>
@@ -402,19 +402,19 @@ export function ModelDetailPage({
               type="date"
               value={printLogDate}
               onChange={(e) => setPrintLogDate(e.target.value)}
-              className="bg-[var(--panel-2)] border border-[var(--line)] rounded px-2 py-1 text-[13px]"
+              className="bg-[var(--panel-2)] border border-[var(--line)] rounded px-2 py-1 text-body"
             />
             <textarea
               value={printLogNote}
               onChange={(e) => setPrintLogNote(e.target.value)}
               placeholder={t('printLogNotePlaceholder')}
               rows={2}
-              className="bg-[var(--panel-2)] border border-[var(--line)] rounded px-2 py-1 text-[13px] resize-none"
+              className="bg-[var(--panel-2)] border border-[var(--line)] rounded px-2 py-1 text-body resize-none"
             />
             <div className="flex items-center gap-2">
               <button
                 onClick={pickPrintLogPhoto}
-                className="h-7 px-3 rounded-[3px] border border-[var(--line)] bg-transparent text-[var(--ink-2)] text-[12px] hover:border-[var(--accent)]"
+                className="h-7 px-3 rounded-[3px] border border-[var(--line)] bg-transparent text-[var(--ink-2)] text-small hover:border-[var(--accent)]"
               >
                 {t('printLogPhotoButton')}
               </button>
@@ -433,13 +433,13 @@ export function ModelDetailPage({
                   setPrintLogNote('');
                   setPrintLogPhoto(null);
                 }}
-                className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-7 px-3 rounded-[3px] border border-[var(--line)] bg-transparent text-[var(--ink-2)] text-[12px]"
+                className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-7 px-3 rounded-[3px] border border-[var(--line)] bg-transparent text-[var(--ink-2)] text-small"
               >
                 {t('printLogCancelButton')}
               </button>
               <button
                 onClick={submitPrintLogEntry}
-                className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-7 px-3 rounded-[3px] bg-[var(--accent)] text-[var(--accent-ink)] text-[12px] font-semibold"
+                className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-7 px-3 rounded-[3px] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold"
               >
                 {t('printLogSaveButton')}
               </button>
@@ -448,11 +448,11 @@ export function ModelDetailPage({
         )}
 
         {printLogEntries.length === 0 ? (
-          <p className="text-[13px] text-[var(--ink-3)]">{t('printLogEmpty')}</p>
+          <p className="text-body text-[var(--ink-3)]">{t('printLogEmpty')}</p>
         ) : (
           <div className="flex flex-col gap-2.5">
             {printLogEntries.map((entry) => (
-              <div key={entry.id} className="flex items-start gap-2.5 text-[13px]">
+              <div key={entry.id} className="flex items-start gap-2.5 text-body">
                 {entry.photoImage && (
                   <img
                     src={entry.photoImage}
@@ -461,7 +461,7 @@ export function ModelDetailPage({
                   />
                 )}
                 <div className="flex-1 min-w-0">
-                  <div className="font-mono-ui text-[var(--ink-3)]">
+                  <div className="font-medium tabular-nums text-[var(--ink-3)]">
                     {new Date(entry.printedAt).toLocaleDateString(language, { timeZone: 'UTC' })}
                   </div>
                   {entry.note && <div className="text-[var(--ink-2)]">{entry.note}</div>}
@@ -474,31 +474,31 @@ export function ModelDetailPage({
                   }
                   className="text-[var(--ink-3)] hover:text-red-400 flex-none"
                 >
-                  ✕
+                  <Icon name="close" size={14} />
                 </button>
               </div>
             ))}
           </div>
         )}
-        {printLogError && <p className="text-[12.5px] text-red-400"><ErrorText error={printLogError} /></p>}
+        {printLogError && <p className="text-small text-red-400"><ErrorText error={printLogError} /></p>}
       </div>
 
       <footer className="flex items-center justify-between gap-4 flex-wrap rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-4 py-3.5 mt-auto">
-        <span className="font-mono-ui text-[12px] text-[var(--ink-3)] break-all">{model.path}</span>
+        <span className="font-code text-small text-[var(--ink-3)] break-all">{model.path}</span>
         <div className="flex gap-2.5 items-center flex-none">
-          <button {...lockProps} onClick={onDelete} className="px-4 py-2 rounded-md border border-[var(--line)] text-[13px] font-semibold text-red-400 hover:border-red-400">
+          <button {...lockProps} onClick={onDelete} className="px-4 py-2 rounded-md border border-[var(--line)] text-body font-semibold text-red-400 hover:border-red-400">
             {t('delete')}
           </button>
           <button
             onClick={onRescanMetadata}
-            className="px-4 py-2 rounded-md border border-[var(--line)] text-[13px] font-semibold text-[var(--ink-2)] hover:border-[var(--line-strong)]"
+            className="px-4 py-2 rounded-md border border-[var(--line)] text-body font-semibold text-[var(--ink-2)] hover:border-[var(--line-strong)]"
           >
             {t('rescanMetadataButton')}
           </button>
           <div className="relative">
             <button
               onClick={() => setAddToCollectionMenuOpen((prev) => !prev)}
-              className="px-4 py-2 rounded-md border border-[var(--line)] text-[13px] font-semibold text-[var(--ink-2)] hover:border-[var(--line-strong)]"
+              className="px-4 py-2 rounded-md border border-[var(--line)] text-body font-semibold text-[var(--ink-2)] hover:border-[var(--line-strong)]"
             >
               {t('addToCollectionLabel')}
             </button>
@@ -512,13 +512,13 @@ export function ModelDetailPage({
                       onAddToCollection(c.id);
                       setAddToCollectionMenuOpen(false);
                     }}
-                    className="w-full text-left px-3 py-1.5 text-[13px] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis"
+                    className="w-full text-left px-3 py-1.5 text-body text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis"
                   >
                     {c.name}
                   </button>
                 ))}
                 {collections.length === 0 && (
-                  <div className="px-3 py-1.5 font-mono-ui text-[11px] text-[var(--ink-3)]">
+                  <div className="px-3 py-1.5 font-medium tabular-nums text-caption text-[var(--ink-3)]">
                     {t('noCollectionsEmptyState')}
                   </div>
                 )}
@@ -528,16 +528,16 @@ export function ModelDetailPage({
           <button
             onClick={() => onOpenInSlicer()}
             disabled={slicers.length === 0}
-            className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] px-4 py-2 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-[13px] font-semibold disabled:opacity-50"
+            className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] px-4 py-2 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-body font-semibold disabled:opacity-50"
           >
-            {t('openInSlicer')} ↗
+            {t('openInSlicer')} <Icon name="external" size={14} />
           </button>
         </div>
       </footer>
-      {slicerError && <p className="text-[12.5px] text-red-400"><ErrorText error={slicerError} /></p>}
-      {rescanError && <p className="text-[12.5px] text-red-400"><ErrorText error={rescanError} /></p>}
+      {slicerError && <p className="text-small text-red-400"><ErrorText error={slicerError} /></p>}
+      {rescanError && <p className="text-small text-red-400"><ErrorText error={rescanError} /></p>}
       {rescanSuccess && (
-        <p className="text-[12.5px] text-[var(--good,var(--accent))]">{t('rescanMetadataSuccess')}</p>
+        <p className="text-small text-[var(--good,var(--accent))]">{t('rescanMetadataSuccess')}</p>
       )}
     </div>
   );

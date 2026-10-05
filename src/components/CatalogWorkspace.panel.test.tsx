@@ -1,7 +1,7 @@
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useState, type ComponentProps } from 'react';
 import { beforeEach, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { CatalogWorkspace } from './CatalogWorkspace';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { UiDensityProvider } from '../hooks/UiDensityContext';
@@ -83,7 +83,7 @@ it('uses the window media query for overlay and drops duplicate material metadat
     setup(); fireEvent.click(screen.getByText('Cube'));
     expect(screen.getByRole('complementary')).toHaveClass('detail-panel-overlay');
     expect(screen.queryByText('Material')).toBeNull();
-    expect(screen.getByText('PLA')).toBeVisible();
+    expect(within(screen.getByRole('complementary')).getByText('PLA')).toBeVisible();
   } finally { window.matchMedia = original; }
 });
 
@@ -97,7 +97,7 @@ it.each(['compact', 'comfort'])('shows material only in badges at density %s', d
   localStorage.setItem('3mf-katalog-density', density);
   setup(); fireEvent.click(screen.getByText('Cube'));
   expect(screen.queryByText('Material')).toBeNull();
-  expect(screen.getByText('PLA')).toBeVisible();
+  expect(within(screen.getByRole('complementary')).getByText('PLA')).toBeVisible();
 });
 it.each(['groupedGrid', 'groupedList'] as const)('does not close when clicking a group header in %s', view => {
   setup({ view }); fireEvent.click(screen.getByText('Cube'));

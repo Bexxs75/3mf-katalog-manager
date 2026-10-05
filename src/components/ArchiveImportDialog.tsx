@@ -157,13 +157,13 @@ export function ArchiveImportDialog({ archives, defaultTargetDir, onCancel, onDo
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={t('archiveDialogTitle')} tabIndex={-1} className="w-[520px] max-h-[80vh] flex flex-col bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)]">
-        <div className="flex-none px-4 py-3 border-b border-[var(--line)] text-[14px] font-semibold">
+        <div className="flex-none px-4 py-3 border-b border-[var(--line)] text-body font-semibold">
           {t('archiveDialogTitle')}
         </div>
 
         <div className="flex-none px-4 py-3 border-b border-[var(--line)] flex items-center gap-2 text-[length:var(--font-size-title)]">
           <span className="text-[var(--ink-3)]">{t('archiveTargetLabel')}:</span>
-          <span className="flex-1 truncate font-mono-ui text-[length:var(--font-size-meta)]">
+          <span className={`flex-1 truncate ${targetDir ? 'font-code' : 'text-caption'}`}>
             {targetDir ?? t('archiveTargetMissing')}
           </span>
           <button

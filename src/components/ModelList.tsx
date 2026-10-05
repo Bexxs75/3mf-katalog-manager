@@ -34,7 +34,7 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
   return (
     <div className="border border-[var(--line)] rounded overflow-x-auto bg-[var(--panel)]">
       <div
-        data-model-list-header className="min-w-[680px] grid gap-2.5 items-center px-3 py-2 bg-[var(--panel-2)] border-b border-[var(--line)] font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.1em] uppercase text-[var(--ink-3)]"
+        data-model-list-header className="min-w-[680px] grid gap-2.5 items-center px-3 py-2 bg-[var(--panel-2)] border-b border-[var(--line)] ui-label text-[var(--ink-3)]"
         style={{ gridTemplateColumns: '24px minmax(150px,2.2fr) minmax(110px,1.6fr) 92px 82px' }}
       >
         <span />
@@ -83,16 +83,16 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
             {m.tags.map((tag) => (
               <span
                 key={tag}
-                className="font-mono-ui text-[length:var(--font-size-meta)] px-1.5 py-0.5 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)] whitespace-nowrap"
+                className="font-medium tabular-nums text-[length:var(--font-size-meta)] px-1.5 py-0.5 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)] whitespace-nowrap"
               >
                 #{tagLabel(tag, language)}
               </span>
             ))}
           </span>
-          <span className="font-mono-ui text-[11.5px] text-[var(--ink-2)]">
+          <span className="font-medium tabular-nums text-caption text-[var(--ink-2)]">
             {formatVolumeCm3(m.volumeCm3, language)}
           </span>
-          <span className="font-mono-ui text-[11.5px] text-[var(--ink-2)]">
+          <span className="font-medium tabular-nums text-caption text-[var(--ink-2)]">
             {formatBytes(m.fileSizeBytes, language)}
           </span>
         </div>

@@ -128,7 +128,7 @@ export function AutocompleteInput({
                 selectOption(option);
               }}
               onMouseEnter={() => setHighlighted(i)}
-              className={`px-2.5 py-1.5 text-[13px] cursor-pointer ${
+              className={`px-2.5 py-1.5 text-body cursor-pointer ${
                 i === highlighted ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'text-[var(--ink)]'
               }`}
             >

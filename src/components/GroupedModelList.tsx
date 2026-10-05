@@ -1,3 +1,4 @@
+import { Icon } from './Icon';
 import { useMemo, type RefObject } from 'react';
 import { useDragThreshold } from '../hooks/useDragThreshold';
 import type { ModelFile, Folder } from '../types';
@@ -65,12 +66,12 @@ export function GroupedModelList({
             isDraggedOver ? 'bg-[var(--accent-soft)] border border-[var(--accent)] shadow-[0_0_0_2px_var(--accent-soft)]' : validFileTarget ? 'border border-dashed border-[var(--line-strong)]' : 'border border-transparent'
           } ${isBeingDragged ? 'opacity-40' : ''}`}
         >
-          <span className={`text-compact-label text-[var(--ink-3)] transition-transform ${isCollapsed ? '-rotate-90' : ''}`}>▾</span>
-          <span className="text-[13px]">📁</span>
-          <span className="text-[13px] font-semibold">{node.folder.name}</span>
-          <span className="font-mono-ui text-compact-meta text-[var(--ink-3)]">{node.totalCount}</span>
+          <span className={`text-compact-label text-[var(--ink-3)] transition-transform ${isCollapsed ? '-rotate-90' : ''}`}><Icon name="chevron" size={14} /></span>
+          <span className="text-body">📁</span>
+          <span className="text-body font-semibold">{node.folder.name}</span>
+          <span className="font-medium tabular-nums text-compact-meta text-[var(--ink-3)]">{node.totalCount}</span>
           <span className="flex-1 h-px bg-[var(--line)]" />
-          {isDraggedOver && <span className="font-mono-ui text-compact-meta text-[var(--accent)]">{t('dropHereLabel')}</span>}
+          {isDraggedOver && <span className="font-medium tabular-nums text-compact-meta text-[var(--accent)]">{t('dropHereLabel')}</span>}
         </div>
         {!isCollapsed && (
           <div className="mt-2">
@@ -93,10 +94,10 @@ export function GroupedModelList({
             data-folder-header onClick={() => collapsedFolders.toggle(NO_FOLDER_COLLAPSE_KEY)}
             className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex items-center gap-2 py-1.5 cursor-pointer select-none rounded-[4px]"
           >
-            <span className={`text-compact-label text-[var(--ink-3)] transition-transform ${noFolderCollapsed ? '-rotate-90' : ''}`}>▾</span>
-            <span className="text-[13px] opacity-40">📄</span>
-            <span className="text-[13px] font-semibold italic text-[var(--ink-2)]">{t('noFolderLabel')}</span>
-            <span className="font-mono-ui text-compact-meta text-[var(--ink-3)]">{noFolder.length}</span>
+            <span className={`text-compact-label text-[var(--ink-3)] transition-transform ${noFolderCollapsed ? '-rotate-90' : ''}`}><Icon name="chevron" size={14} /></span>
+            <span className="text-body opacity-40">📄</span>
+            <span className="text-body font-semibold italic text-[var(--ink-2)]">{t('noFolderLabel')}</span>
+            <span className="font-medium tabular-nums text-compact-meta text-[var(--ink-3)]">{noFolder.length}</span>
             <span className="flex-1 h-px bg-[var(--line)]" />
           </div>
           {!noFolderCollapsed && (

@@ -46,7 +46,7 @@ export function PrinterLinkStatus({ printerId, link }: Props) {
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-2 text-[11.5px] text-[var(--ink-2)]">
+      <div className="flex items-center gap-2 text-caption text-[var(--ink-2)]">
         <span className={`w-2 h-2 rounded-full flex-none ${dot}`} />
         <span className="truncate">{text}</span>
         <button
@@ -63,12 +63,12 @@ export function PrinterLinkStatus({ printerId, link }: Props) {
         </button>
       </div>
       {pending > 0 && (
-        <div className="text-[11.5px] text-[var(--accent)]">
+        <div className="text-caption text-[var(--accent)]">
           <span aria-hidden>●</span> {formatCount(t('printerJobsPending'), pending)}
         </div>
       )}
       {syncError && (
-        <div className="text-[11px] text-[var(--crit)]">
+        <div className="text-caption text-[var(--crit)]">
           {t('printerConnectionActionFailed').replace('{message}', '')}
           <ErrorText error={syncError} />
         </div>

@@ -1,3 +1,4 @@
+import { Icon } from './Icon';
 import { useModalDialog } from '../hooks/useModalDialog';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
@@ -192,10 +193,10 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
       >
         <div className="flex items-start justify-between gap-4 px-[18px] py-4 border-b border-[var(--line)]">
           <div>
-            <h2 id="printer-jobs-title" className="text-[17px] font-semibold">{t('printerJobsDialogTitle')}</h2>
-            <p className="text-[13px] text-[var(--ink-2)]">{t('printerJobsDialogHint')}</p>
+            <h2 id="printer-jobs-title" className="text-title font-semibold">{t('printerJobsDialogTitle')}</h2>
+            <p className="text-body text-[var(--ink-2)]">{t('printerJobsDialogHint')}</p>
           </div>
-          <button type="button" aria-label={t('printersClose')} onClick={onClose} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-2)] cursor-pointer">✕</button>
+          <button type="button" aria-label={t('printersClose')} onClick={onClose} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-2)] cursor-pointer"><Icon name="close" size={14} /></button>
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -208,34 +209,34 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
             const busy = pending.has(job.id);
             const chip =
               job.outcome === 'completed'
-                ? <span className="font-mono-ui text-[11px] font-semibold px-1.5 py-0.5 rounded bg-[var(--good-soft)] text-[var(--good)]">{t('printerJobCompleted')}</span>
-                : <span className="font-mono-ui text-[11px] font-semibold px-1.5 py-0.5 rounded bg-[var(--warn-soft)] text-[var(--warn)]">
+                ? <span className="tabular-nums text-caption font-semibold px-1.5 py-0.5 rounded bg-[var(--good-soft)] text-[var(--good)]">{t('printerJobCompleted')}</span>
+                : <span className="tabular-nums text-caption font-semibold px-1.5 py-0.5 rounded bg-[var(--warn-soft)] text-[var(--warn)]">
                     {job.partialPercent !== null ? t('printerJobPartialPercent').replace('{percent}', () => String(job.partialPercent)) : t('printerJobPartial')}
                   </span>;
             return (
               <Fragment key={job.id}>
                 {showHeader && multiplePrinters && (
-                  <div className="px-[18px] pt-3 font-mono-ui text-[11px] uppercase tracking-[0.12em] text-[var(--ink-3)]">{job.printerName}</div>
+                  <div className="px-[18px] pt-3 ui-label text-[var(--ink-3)]">{job.printerName}</div>
                 )}
                 <div className="grid grid-cols-[56px_minmax(160px,1.3fr)_100px_minmax(160px,1fr)_minmax(180px,1.1fr)_120px] gap-3.5 px-[18px] py-3.5 border-b border-[var(--line)] items-start">
                   <Thumb job={job} />
                   <div className="min-w-0">
-                    <div className="font-semibold text-[13.5px] break-words">{stripExt(job.fileName)}</div>
-                    <div className="font-mono-ui text-[11.5px] text-[var(--ink-3)] mt-0.5">
+                    <div className="font-semibold text-body break-words">{stripExt(job.fileName)}</div>
+                    <div className="font-medium tabular-nums text-caption text-[var(--ink-3)] mt-0.5">
                       {formatDateTime(job.endedAt, language)} · {t('printerJobsMinutes').replace('{min}', () => formatDurationMinutes(job.printDurationS, language))}
                     </div>
                     <div className="mt-1.5">{chip}</div>
                   </div>
-                  <div className="font-mono-ui text-[15px] font-semibold">
+                  <div className="tabular-nums text-title font-semibold">
                     {row.grams !== null ? formatStockG(row.grams, language) : '–'}
-                    <small className="block text-[11px] font-normal text-[var(--ink-3)]">{formatLengthMm(job.usedMm, language)}</small>
+                    <small className="block text-caption font-normal text-[var(--ink-3)]">{formatLengthMm(job.usedMm, language)}</small>
                   </div>
                   <div className="flex flex-col gap-1">
                     <SpoolPicker spools={spools} value={row.spoolId} onChange={(id) => setSpool(job, id)} label={t('printerJobsColSpool')} placeholder={t('printerJobChooseSpool')} />
                     {row.mismatch && spool && job.material ? (
-                      <span className="text-[12px] text-[var(--warn)]">⚠ {t('printerJobMaterialWarning').replace('{job}', () => job.material as string).replace('{spool}', () => spool.material)}</span>
+                      <span className="text-small text-[var(--warn)]"><Icon name="warning" size={14} /> {t('printerJobMaterialWarning').replace('{job}', () => job.material as string).replace('{spool}', () => spool.material)}</span>
                     ) : row.spoolId && row.spoolId === job.suggestedSpoolId ? (
-                      <span className="text-[11.5px] text-[var(--ink-3)]">{t('printerJobLoadedIn').replace('{printer}', () => job.printerName)}</span>
+                      <span className="text-caption text-[var(--ink-3)]">{t('printerJobLoadedIn').replace('{printer}', () => job.printerName)}</span>
                     ) : null}
                   </div>
                   <div className="relative flex flex-col gap-1">
@@ -245,24 +246,24 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
                         modelAnchorRef.current = e.currentTarget;
                         setPicking(picking === job.id ? null : job.id);
                       }}
-                      className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex items-center gap-2 rounded-md border border-dashed border-[var(--line-strong)] px-2 py-1.5 text-[12.5px] text-left cursor-pointer"
+                      className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex items-center gap-2 rounded-md border border-dashed border-[var(--line-strong)] px-2 py-1.5 text-small text-left cursor-pointer"
                     >
                       {model ? (
                         <>
                           <span className={isSuggestedModel && job.modelMatch?.sure ? 'text-[var(--good)]' : 'text-[var(--ink-3)]'}>
-                            {isSuggestedModel && job.modelMatch?.sure ? '✓' : '?'}
+                            {isSuggestedModel && job.modelMatch?.sure  ? <Icon name="check" size={14} /> : '?'}
                           </span>
                           <span className="truncate">{model.name}</span>
-                          <span className="ml-auto font-mono-ui text-[11px] text-[var(--ink-3)]">{t('printerJobModelChange')}</span>
+                          <span className="ml-auto font-medium tabular-nums text-caption text-[var(--ink-3)]">{t('printerJobModelChange')}</span>
                         </>
                       ) : (
                         <>
                           <span className="text-[var(--ink-3)]">{t('printerJobModelNone')}</span>
-                          <span className="ml-auto font-mono-ui text-[11px] text-[var(--ink-3)]">{t('printerJobModelChoose')}</span>
+                          <span className="ml-auto font-medium tabular-nums text-caption text-[var(--ink-3)]">{t('printerJobModelChoose')}</span>
                         </>
                       )}
                     </button>
-                    <span className="text-[11.5px] text-[var(--ink-3)]">
+                    <span className="text-caption text-[var(--ink-3)]">
                       {model ? (isSuggestedModel && !job.modelMatch?.sure ? t('printerJobModelUnsureHint') : t('printerJobModelSureHint')) : t('printerJobModelNoneHint')}
                     </span>
                     {picking === job.id && (
@@ -282,7 +283,7 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
                       type="button"
                       disabled={!row.spoolId || busy}
                       onClick={() => confirmJobs([job.id])}
-                      className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-7 px-2 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12px] font-semibold cursor-pointer disabled:opacity-50"
+                      className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-7 px-2 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer disabled:opacity-50"
                     >
                       {t('printerJobConfirm')}
                     </button>
@@ -290,7 +291,7 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
                       type="button"
                       disabled={busy}
                       onClick={() => ignore(job.id)}
-                      className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-7 px-2 text-[12px] text-[var(--ink-2)] cursor-pointer disabled:opacity-50"
+                      className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-7 px-2 text-small text-[var(--ink-2)] cursor-pointer disabled:opacity-50"
                     >
                       {t('printerJobIgnore')}
                     </button>
@@ -302,7 +303,7 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3 px-[18px] py-3 bg-[var(--panel-2)] rounded-b-[10px]">
-          <span className="text-[13px] text-[var(--ink-2)]">
+          <span className="text-body text-[var(--ink-2)]">
             {t('printerJobsTotal')
               .replace('{grams}', () => formatStockG(Math.round(total * 10) / 10, language))
               .replace('{rest}', () => restText || '–')}
@@ -315,14 +316,14 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
             )}
           </span>
           <div className="flex gap-2.5">
-            <button type="button" onClick={onClose} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-md border border-[var(--line-strong)] text-[12.5px] cursor-pointer">
+            <button type="button" onClick={onClose} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-md border border-[var(--line-strong)] text-small cursor-pointer">
               {t('printerJobsLater')}
             </button>
             <button
               type="button"
               disabled={allConfirmDisabled}
               onClick={() => confirmJobs(bookable.map((j) => j.id))}
-              className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-bold cursor-pointer disabled:opacity-50"
+              className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-bold cursor-pointer disabled:opacity-50"
             >
               {t('printerJobsConfirmAll').replace('{count}', () => String(bookable.length))}
             </button>

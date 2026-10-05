@@ -1,3 +1,4 @@
+import { Icon } from './Icon';
 import { useId, useMemo, useState } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatCount } from '../i18n/types';
@@ -26,9 +27,9 @@ interface Props {
 }
 
 const POPUP_MIN_WIDTH = 300;
-const labelClass = 'text-[12px] text-[var(--ink-2)]';
+const labelClass = 'text-small text-[var(--ink-2)]';
 const stepButtonClass =
-  'w-7 h-7 bg-[var(--panel-2)] text-[var(--ink)] text-[14px] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-[var(--accent)]';
+  'w-7 h-7 bg-[var(--panel-2)] text-[var(--ink)] text-body cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-[var(--accent)]';
 
 /**
  * "Restock": creates N new, full spools or resin bottles modeled on
@@ -89,9 +90,9 @@ export function RestockPopover({ spool, anchor, knownLocations, onClose, onCreat
             onClick={() => setCount((c) => clampRestockCount(c - 1))}
             className={stepButtonClass}
           >
-            −
+            <Icon name="minus" size={14} />
           </button>
-          <output aria-live="polite" className="w-9 text-center font-mono-ui text-[13px] font-semibold">
+          <output aria-live="polite" className="w-9 text-center tabular-nums text-body font-semibold">
             {count}
           </output>
           <button
@@ -102,7 +103,7 @@ export function RestockPopover({ spool, anchor, knownLocations, onClose, onCreat
             onClick={() => setCount((c) => clampRestockCount(c + 1))}
             className={stepButtonClass}
           >
-            +
+            <Icon name="plus" size={14} />
           </button>
         </span>
 

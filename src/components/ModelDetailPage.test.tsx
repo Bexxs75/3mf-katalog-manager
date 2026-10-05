@@ -81,7 +81,7 @@ it('protects source editing and an open print-log form even after focus leaves t
   expect(source).toHaveValue('https://draft.example/model');
   expect(onNavigate).not.toHaveBeenCalled();
   fireEvent.keyDown(screen.getByPlaceholderText('https://…'), {key: 'Escape'});
-  fireEvent.click(screen.getByText('+ Eintrag hinzufügen'));
+  fireEvent.click(screen.getByRole('button', { name: '+ Eintrag hinzufügen' }));
   fireEvent.keyDown(window, {key: 'ArrowRight'});
   expect(onNavigate).not.toHaveBeenCalled();
   fireEvent.click(screen.getByLabelText('Nächstes Modell'));

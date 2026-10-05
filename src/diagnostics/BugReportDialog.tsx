@@ -106,7 +106,7 @@ export function BugReportDialog({ onClose }: { onClose: () => void }) {
   };
 
   const optionClass = (on: boolean) =>
-    `flex-1 flex items-center gap-2 px-3 py-2 rounded-[4px] border text-[12.5px] cursor-pointer ${
+    `flex-1 flex items-center gap-2 px-3 py-2 rounded-[4px] border text-small cursor-pointer ${
       on ? 'border-[var(--accent)] text-[var(--ink)]' : 'border-[var(--line-strong)] text-[var(--ink-2)]'
     }`;
 
@@ -120,19 +120,19 @@ export function BugReportDialog({ onClose }: { onClose: () => void }) {
         tabIndex={-1}
         className="w-[620px] max-w-[92vw] max-h-[90vh] overflow-auto rounded-[6px] border border-[var(--line)] bg-[var(--panel)] shadow-[var(--shadow)] p-5 text-[var(--ink)] outline-0"
       >
-        <h2 id="bug-report-title" className="flex items-center gap-2 text-[16px] font-bold">
+        <h2 id="bug-report-title" className="flex items-center gap-2 text-title font-bold">
           <span className="text-[var(--accent)]">{BUG_ICON}</span>
           {t('bugReportTitle')}
         </h2>
         {info && (
-          <p className="mt-1 text-[12.5px] text-[var(--ink-2)]">
+          <p className="mt-1 text-small text-[var(--ink-2)]">
             {t('bugReportIntro').replace('{version}', info.version).replace('{os}', OS_LABEL[info.os])}
           </p>
         )}
         <fieldset className="mt-4 p-3 rounded-[5px] border border-[var(--line)] bg-[var(--panel-2)]">
           <legend className="sr-only">{t('bugReportLogQuestion')}</legend>
-          <div className="text-[13px] font-semibold">{t('bugReportLogQuestion')}</div>
-          <p className="mt-1 text-[12px] text-[var(--ink-2)]">{t('bugReportLogExplain')}</p>
+          <div className="text-body font-semibold">{t('bugReportLogQuestion')}</div>
+          <p className="mt-1 text-small text-[var(--ink-2)]">{t('bugReportLogExplain')}</p>
           <div className="mt-2.5 flex gap-2">
             <label className={optionClass(choice === 'yes')}>
               <input type="radio" name="bug-log" checked={choice === 'yes'} onChange={() => choose('yes')} className="accent-[var(--accent)]" />
@@ -147,11 +147,11 @@ export function BugReportDialog({ onClose }: { onClose: () => void }) {
 
         {choice === 'yes' && (
           <div className="mt-3">
-            {loading && <div className="text-[12px] text-[var(--ink-3)]">{t('bugReportLoading')}</div>}
-            {preview?.empty && <div className="text-[12px] text-[var(--ink-3)]">{t('bugReportEmptyLog')}</div>}
+            {loading && <div className="text-small text-[var(--ink-3)]">{t('bugReportLoading')}</div>}
+            {preview?.empty && <div className="text-small text-[var(--ink-3)]">{t('bugReportEmptyLog')}</div>}
             {preview && !preview.empty && (
               <>
-                <pre className="h-[200px] overflow-auto p-2.5 rounded-[5px] border border-[var(--line)] bg-[var(--bg)] font-mono-ui text-[10.5px] leading-[1.55] text-[var(--ink-2)] whitespace-pre">
+                <pre className="h-[200px] overflow-auto p-2.5 rounded-[5px] border border-[var(--line)] bg-[var(--bg)] font-code text-caption leading-[1.55] text-[var(--ink-2)] whitespace-pre">
                   {preview.segments.map((s, i) =>
                     s.replaced ? (
                       <mark key={i} className="bg-[var(--accent-soft)] text-[var(--accent)] rounded-[2px] px-[1px]">{s.text}</mark>
@@ -160,7 +160,7 @@ export function BugReportDialog({ onClose }: { onClose: () => void }) {
                     ),
                   )}
                 </pre>
-                <label className="mt-2 flex items-center gap-2 text-[12.5px] text-[var(--ink-2)] cursor-pointer">
+                <label className="mt-2 flex items-center gap-2 text-small text-[var(--ink-2)] cursor-pointer">
                   <input
                     type="checkbox"
                     checked={preview.replaceFileNames}
@@ -175,20 +175,20 @@ export function BugReportDialog({ onClose }: { onClose: () => void }) {
         )}
 
         {savedPath && (
-          <div className="mt-3 p-2.5 rounded-[5px] border border-[var(--good)] bg-[var(--good-soft)] text-[12px]">
+          <div className="mt-3 p-2.5 rounded-[5px] border border-[var(--good)] bg-[var(--good-soft)] text-small">
             {t('bugReportSavedTo').replace('{path}', savedPath)}
           </div>
         )}
-        {failure && <div className="mt-3 text-[12px] text-[var(--crit)]">{failure}</div>}
+        {failure && <div className="mt-3 text-small text-[var(--crit)]">{failure}</div>}
 
         <div className="mt-4 flex items-center justify-between gap-3">
-          <span className="text-[11px] text-[var(--ink-3)]">{choice === 'yes' ? t('bugReportOriginalsUnchanged') : ''}</span>
+          <span className="text-caption text-[var(--ink-3)]">{choice === 'yes' ? t('bugReportOriginalsUnchanged') : ''}</span>
           <div className="flex gap-2">
             <button
               type="button"
               disabled={submitting}
               onClick={onClose}
-              className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] text-[12.5px] text-[var(--ink-2)] cursor-pointer bg-transparent disabled:opacity-40 disabled:cursor-not-allowed"
+              className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] text-small text-[var(--ink-2)] cursor-pointer bg-transparent disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {savedPath ? t('bugReportClose') : t('bugReportCancel')}
             </button>
@@ -197,7 +197,7 @@ export function BugReportDialog({ onClose }: { onClose: () => void }) {
                 type="button"
                 disabled={submitting || choice === null || (choice === 'yes' && (loading || !preview))}
                 onClick={submit}
-                className="h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                className="h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {choice === 'yes' && preview && !preview.empty ? t('bugReportSaveAndOpen') : t('bugReportOpenForm')}
               </button>
@@ -207,7 +207,7 @@ export function BugReportDialog({ onClose }: { onClose: () => void }) {
                 type="button"
                 disabled={submitting}
                 onClick={retryOpenForm}
-                className="h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                className="h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {t('bugReportOpenForm')}
               </button>

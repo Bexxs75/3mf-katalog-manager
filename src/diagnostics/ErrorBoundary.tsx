@@ -37,9 +37,9 @@ export function CrashFallback({ onReload }: { onReload: () => void }) {
   return (
     <div data-app={theme} className="h-screen grid place-items-center bg-[var(--bg)] text-[var(--ink)]">
       <div className="text-center">
-        <div className="text-[15px] font-semibold">{t('unexpectedErrorTitle')}</div>
-        <div className="mt-1 text-[12.5px] text-[var(--ink-2)]">{t('unexpectedErrorText')}</div>
-        <div className="mt-3 flex gap-3 justify-center text-[12.5px]">
+        <div className="text-title font-semibold">{t('unexpectedErrorTitle')}</div>
+        <div className="mt-1 text-small text-[var(--ink-2)]">{t('unexpectedErrorText')}</div>
+        <div className="mt-3 flex gap-3 justify-center text-small">
           <ReportProblemLink />
           <button
             type="button"

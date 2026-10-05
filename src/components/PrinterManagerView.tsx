@@ -28,9 +28,9 @@ function Card({ title, aside, children, busy }: {
   title: string; aside?: ReactNode; children: ReactNode; busy?: boolean;
 }) {
   return <section aria-busy={busy} className="min-w-0 rounded-lg border border-[var(--line)] bg-[var(--panel)] overflow-hidden">
-    <h2 className="px-[18px] pt-3.5 text-[15px] font-bold flex items-center gap-2">
+    <h2 className="px-[18px] pt-3.5 text-title font-bold flex items-center gap-2">
       {title}
-      {aside != null && <span aria-hidden="true" className="ml-auto font-mono-ui text-[var(--ink-3)] text-[11px] font-normal">{aside}</span>}
+      {aside != null && <span aria-hidden="true" className="ml-auto tabular-nums text-[var(--ink-3)] text-caption font-normal">{aside}</span>}
     </h2>
     <div className="p-3.5 flex flex-col gap-2.5">{children}</div>
   </section>;
@@ -54,16 +54,16 @@ export function PrinterManagerView({ printers: state, printerLink, printerId, on
     document.addEventListener('keydown', close);
     return () => document.removeEventListener('keydown', close);
   }, [open]);
-  return <div aria-label={t('railPrinters')} data-list-open={open} className="relative flex-1 min-w-0 min-h-0 grid grid-cols-[var(--pm-master-width)_minmax(0,1fr)] text-[13px]">
+  return <div aria-label={t('railPrinters')} data-list-open={open} className="relative flex-1 min-w-0 min-h-0 grid grid-cols-[var(--pm-master-width)_minmax(0,1fr)] text-body">
     {open && <button aria-label={t('pmToggleList')} className="absolute inset-0 left-[300px] z-20 bg-[var(--scrim)] min-[1024px]:hidden"
       onClick={() => { setOpen(false); menuRef.current?.focus(); }} />}
     <aside aria-label={t('pmPrinters')} data-collapsed={!open}
       className={`group col-start-1 row-start-1 min-h-0 min-w-0 flex flex-col border-r border-[var(--line)] bg-[var(--panel)] ${open ? 'max-[1023px]:absolute max-[1023px]:inset-y-0 max-[1023px]:left-0 max-[1023px]:w-[300px] max-[1023px]:z-30 max-[1023px]:[box-shadow:var(--shadow)]' : ''}`}>
       <div className="flex items-center gap-2 p-3 max-[1023px]:group-data-[collapsed=true]:justify-center">
         <button type="button" ref={menuRef} aria-label={t('pmToggleList')} aria-expanded={open} className={`${pmButton} min-[1024px]:hidden !px-2`} onClick={() => setOpen(!open)}><Icon name={open ? 'collapse-all' : 'expand-all'} /></button>
-        <h2 className="flex-1 uppercase font-mono-ui text-[11px] text-[var(--ink-3)] max-[1023px]:group-data-[collapsed=true]:hidden">{t('pmPrinters')}</h2>
+        <h2 className="flex-1 ui-label text-[var(--ink-3)] max-[1023px]:group-data-[collapsed=true]:hidden">{t('pmPrinters')}</h2>
         <span className="text-[var(--ink-3)] max-[1023px]:group-data-[collapsed=true]:hidden">{state.printers.length}</span>
-        <button type="button" className={`${pmButton} !px-2 max-[1023px]:group-data-[collapsed=true]:hidden`} aria-label={t('pmAddPrinter')} title={t('pmAddPrinter')} onClick={() => setAdding(true)}>+</button>
+        <button type="button" className={`${pmButton} !px-2 max-[1023px]:group-data-[collapsed=true]:hidden`} aria-label={t('pmAddPrinter')} title={t('pmAddPrinter')} onClick={() => setAdding(true)}><Icon name="plus" size={14} /></button>
       </div>
       <ul className="flex-1 min-h-0 overflow-auto px-2 space-y-0.5">
         {state.printers.map((p, index) => {
@@ -91,7 +91,7 @@ export function PrinterManagerView({ printers: state, printerLink, printerId, on
                 <span className="min-w-0 flex-1 max-[1023px]:group-data-[collapsed=true]:hidden">
                   <b className="block truncate">{p.name}</b>
                   <span className="flex items-center gap-2 mt-1 min-w-0"><PrinterStatusBadge status={status} />
-                    <span className="truncate font-mono-ui text-[10.5px] text-[var(--ink-3)]">{p.kind === 'resin' ? t('spoolKindResin') : conn?.address ?? t('pmNoConnection')}</span>
+                    <span className="truncate text-caption text-[var(--ink-3)]">{p.kind === 'resin' ? t('spoolKindResin') : conn?.address ? <span className="font-code">{conn.address}</span> : t('pmNoConnection')}</span>
                   </span>
                 </span>
                 <span aria-hidden="true" className={`hidden max-[1023px]:group-data-[collapsed=true]:block absolute right-1 top-1 rounded-full w-2 h-2 ${printerStatusColors[status]}`}><span className="block w-full h-full rounded-full bg-current" /></span>
@@ -107,7 +107,7 @@ export function PrinterManagerView({ printers: state, printerLink, printerId, on
       {!printer ? <section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] flex flex-col items-center gap-4 px-3.5 py-10 text-center">
         <Icon name="printer" size={24} /><h1 className="font-bold">{t('pmEmptyTitle')}</h1>
         <p className="max-w-lg text-[var(--ink-3)]">{t('pmEmptyBody')}</p>
-        <button className={pmButton} onClick={() => setAdding(true)}>{t('pmAddFirst')}</button>
+        <button className={pmButton} onClick={() => setAdding(true)} aria-label={t('pmAddFirst')}><Icon name="plus" size={14} /> {t('pmAddFirst').replace(/^\+\s*/, '')}</button>
       </section> : <PrinterDetail key={printer.id} printer={printer} state={state} link={printerLink} onMaterial={onMaterial} />}
     </main>
     {adding && <AddPrinter state={state} onClose={() => setAdding(false)} onAdded={id => { setSelected(id); setOpen(false); }} />}
@@ -156,10 +156,10 @@ function PrinterDetail({ printer, state, link, onMaterial }: {
     {error && <div role="alert" className="p-3 text-[var(--crit)] min-[1320px]:col-span-2"><ErrorText error={error} /></div>}
     <General printer={printer} state={state} header={<>
       <div className="w-12 h-12 shrink-0 rounded-lg border border-[var(--line)] bg-[var(--panel)] grid place-items-center"><Icon name={printer.kind === 'resin' ? 'resin' : 'printer'} /></div>
-      <div className="flex-1 min-w-0"><h1 className="text-[22px] font-bold break-words">{printer.name}</h1>
+      <div className="flex-1 min-w-0"><h1 className="text-heading font-bold break-words">{printer.name}</h1>
         <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[var(--ink-2)]">
           <span>{t(printer.kind === 'resin' ? 'spoolKindResin' : 'spoolKindFilament')}</span>
-          {connection && printer.kind !== 'resin' && <><span>{t('printerConnectionTypeMoonraker')}</span><span className="font-mono-ui text-[12px]">{connection.address}</span></>}
+          {connection && printer.kind !== 'resin' && <><span>{t('printerConnectionTypeMoonraker')}</span><span className="font-code text-small">{connection.address}</span></>}
           <PrinterStatusBadge status={printerStatus(printer, link.enabled, connection)} />
         </div>
       </div>
@@ -174,8 +174,8 @@ function PrinterDetail({ printer, state, link, onMaterial }: {
         onChanged={() => setRevision(n => n + 1)} onMaterial={() => onMaterial({ printerId: printer.id })} />}
     </Card>
     {jobs.length > 0 && <Card title={t('pmJobs')}>
-      <div className="overflow-auto"><table className="w-full text-left text-[12px]">
-        <thead className="font-mono-ui text-[10.5px] uppercase tracking-[.08em] text-[var(--ink-3)]"><tr>{(['pmFile', 'pmDuration', 'pmUsage', 'pmStatus'] as const).map(k => <th className="p-2 border-b border-[var(--line)]" key={k}>{t(k)}</th>)}</tr></thead>
+      <div className="overflow-auto"><table className="w-full text-left text-small">
+        <thead className="ui-label text-[var(--ink-3)]"><tr>{(['pmFile', 'pmDuration', 'pmUsage', 'pmStatus'] as const).map(k => <th className="p-2 border-b border-[var(--line)]" key={k}>{t(k)}</th>)}</tr></thead>
         <tbody>{jobs.map(j => {
           const grams = j.grams ?? link.jobs.find(open => open.id === j.id)?.grams;
           return <tr key={j.id}>
@@ -233,8 +233,8 @@ function General({ printer, state, header, deleteAction }: { printer: Printer; s
       <div>{t('pmKind')}<div className="mt-1 px-2 py-1.5 rounded border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink-2)]">{t(printer.kind === 'resin' ? 'spoolKindResin' : 'spoolKindFilament')} {t('pmFixed')}</div></div>
       {field('manufacturer', t('pmManufacturer'))}{field('model', t('pmModel'))}
       <div className="sm:col-span-2 flex flex-wrap items-end gap-5 max-[639px]:flex-col max-[639px]:items-stretch">
-        {printer.kind === 'filament' && <label className="min-w-0">{t('pmNozzle')}<div className="flex items-center gap-1.5"><input aria-label={t('pmNozzle')} className={`${pmField} !w-[9ch] max-[639px]:!w-full text-right font-mono-ui`} value={displayed.nozzleMm} readOnly={!editing} onChange={e => setDraft({ ...draft, nozzleMm: e.target.value })} /><span className="text-[var(--ink-3)] font-mono-ui text-[11px]">mm</span></div></label>}
-        <fieldset className="min-w-0"><legend>{t('pmBed')}</legend><div className="flex items-center gap-1.5 max-[639px]:flex-col max-[639px]:items-stretch">{(['bedXMm', 'bedYMm', 'bedZMm'] as const).map((key, i) => <span className="flex items-center gap-1.5 min-w-0" key={key}><input aria-label={`${t('pmBed')} ${'XYZ'[i]}`} className={`${pmField} !w-[9ch] max-[639px]:!w-full text-right font-mono-ui`} value={displayed[key]} readOnly={!editing} onChange={e => setDraft({ ...draft, [key]: e.target.value })} />{i < 2 && <span className="text-[var(--ink-3)] max-[639px]:hidden">×</span>}</span>)}<span className="font-mono-ui text-[11px] text-[var(--ink-3)]">mm</span></div></fieldset>
+        {printer.kind === 'filament' && <label className="min-w-0">{t('pmNozzle')}<div className="flex items-center gap-1.5"><input aria-label={t('pmNozzle')} className={`${pmField} !w-[9ch] max-[639px]:!w-full text-right font-medium tabular-nums`} value={displayed.nozzleMm} readOnly={!editing} onChange={e => setDraft({ ...draft, nozzleMm: e.target.value })} /><span className="text-[var(--ink-3)] font-medium tabular-nums text-caption">mm</span></div></label>}
+        <fieldset className="min-w-0"><legend>{t('pmBed')}</legend><div className="flex items-center gap-1.5 max-[639px]:flex-col max-[639px]:items-stretch">{(['bedXMm', 'bedYMm', 'bedZMm'] as const).map((key, i) => <span className="flex items-center gap-1.5 min-w-0" key={key}><input aria-label={`${t('pmBed')} ${'XYZ'[i]}`} className={`${pmField} !w-[9ch] max-[639px]:!w-full text-right font-medium tabular-nums`} value={displayed[key]} readOnly={!editing} onChange={e => setDraft({ ...draft, [key]: e.target.value })} />{i < 2 && <span className="text-[var(--ink-3)] max-[639px]:hidden">×</span>}</span>)}<span className="font-medium tabular-nums text-caption text-[var(--ink-3)]">mm</span></div></fieldset>
       </div>
     </fieldset>
     <p className="text-[var(--ink-3)] mt-3">{t('pmBedHint')}</p>

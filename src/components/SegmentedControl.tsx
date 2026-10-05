@@ -27,7 +27,7 @@ export function SegmentedControl<T extends string>({ label, options, value, onCh
             onClick={() => {
               if (!active) onChange(option.value);
             }}
-            className={`h-8 px-3.5 rounded-[6px] text-[12.5px] font-semibold cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 ${
+            className={`h-8 px-3.5 rounded-[6px] text-small font-semibold cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 ${
               active ? 'bg-[var(--panel)] text-[var(--ink)] shadow-[var(--shadow)]' : 'text-[var(--ink-3)] hover:text-[var(--ink)]'
             }`}
           >

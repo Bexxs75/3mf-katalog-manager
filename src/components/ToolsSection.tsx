@@ -1,3 +1,4 @@
+import { Icon as SharedIcon } from './Icon';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useState, type ReactNode } from 'react';
 import type { FilamentCheck, ModelFile } from '../types';
@@ -73,7 +74,7 @@ const rowActive = 'bg-[var(--accent-soft)] text-[var(--accent)] hover:text-[var(
 function Count({ value, active }: { value: number; active?: boolean }) {
   return (
     <span
-      className={`ml-auto font-mono-ui text-[length:var(--font-size-meta)] ${active ? 'text-[var(--accent)]' : 'text-[var(--ink-3)]'}`}
+      className={`ml-auto font-medium tabular-nums text-[length:var(--font-size-meta)] ${active ? 'text-[var(--accent)]' : 'text-[var(--ink-3)]'}`}
     >
       {value}
     </span>
@@ -82,7 +83,7 @@ function Count({ value, active }: { value: number; active?: boolean }) {
 
 function Hint({ children }: { children: ReactNode }) {
   return (
-    <span aria-hidden="true" className="ml-auto font-mono-ui text-[length:var(--font-size-meta)] text-[var(--ink-3)]">
+    <span aria-hidden="true" className="ml-auto font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--ink-3)]">
       {children}
     </span>
   );
@@ -118,11 +119,11 @@ export function ToolsSection(props: ToolsSectionProps) {
         onClick={() => setCollapsed((c) => !c)}
         className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] w-full flex items-center justify-between px-1.5 pt-[18px] pb-2 cursor-pointer bg-transparent border-0 text-left"
       >
-        <span className="font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.12em] uppercase text-[var(--ink-3)]">
+        <span className="ui-label text-[var(--ink-3)]">
           {t('toolsHeading')}
         </span>
-        <span className="font-mono-ui text-[length:var(--font-size-label)] leading-none text-[var(--ink-3)]">
-          {collapsed ? '▾' : '▴'}
+        <span className="font-medium tabular-nums text-[length:var(--font-size-label)] leading-none text-[var(--ink-3)]">
+          <SharedIcon name="chevron" size={14} className={collapsed  ? '' : 'rotate-180'} />
         </span>
       </button>
       {!collapsed && (
@@ -160,7 +161,7 @@ export function ToolsSection(props: ToolsSectionProps) {
           >
             <Icon>{ICONS.cleanup}</Icon>
             <span>{t('cleanupDialogTitle')}</span>
-            <Hint>↗</Hint>
+            <Hint><SharedIcon name="external" size={14} /></Hint>
           </button>
           {props.cleanupError && (
             <div role="alert" className="px-1.5 pl-[32px] text-[length:var(--font-size-meta)] text-[var(--crit)]">

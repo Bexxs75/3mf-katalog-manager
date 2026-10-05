@@ -44,7 +44,7 @@ describe('QueueList', () => {
 
   it('removes an entry via ✕ without selecting it', () => {
     const props = setup();
-    fireEvent.click(screen.getAllByText('✕')[0]);
+    fireEvent.click(screen.getAllByRole('button')[0]);
     expect(props.onQueueRemove).toHaveBeenCalledWith('a');
     expect(props.onQueueSelect).not.toHaveBeenCalled();
   });

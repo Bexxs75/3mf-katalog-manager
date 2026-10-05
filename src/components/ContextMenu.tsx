@@ -79,12 +79,12 @@ function ModelContextMenu({
     <div ref={ref}>
       {view === 'confirmRemove' ? (
         <div className="px-3 py-2.5 max-w-[260px]" aria-busy={renaming}>
-          <div className="text-[12px] font-medium text-[var(--ink)] pb-1">{t('removeModelQuestion').replace('{name}', currentName)}</div>
-          <div className="text-[11.5px] leading-snug text-[var(--ink-2)] pb-2">{t('removeModelHint')}</div>
-          {renameError && <div role="alert" className="pb-1.5 font-mono-ui text-compact-meta text-[var(--accent)] break-words">{renameError}</div>}
+          <div className="text-small font-medium text-[var(--ink)] pb-1">{t('removeModelQuestion').replace('{name}', currentName)}</div>
+          <div className="text-caption leading-snug text-[var(--ink-2)] pb-2">{t('removeModelHint')}</div>
+          {renameError && <div role="alert" className="pb-1.5 font-medium tabular-nums text-compact-meta text-[var(--accent)] break-words">{renameError}</div>}
           <div className="flex gap-1.5">
-            <button className="flex-1 h-7 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[11.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50" disabled={renaming} onClick={() => setView('menu')}>{t('cancel')}</button>
-            <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 h-7 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[11.5px] font-semibold cursor-pointer disabled:opacity-50" disabled={renaming} {...lockProps} onClick={async () => {
+            <button className="flex-1 h-7 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50" disabled={renaming} onClick={() => setView('menu')}>{t('cancel')}</button>
+            <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 h-7 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-caption font-semibold cursor-pointer disabled:opacity-50" disabled={renaming} {...lockProps} onClick={async () => {
               if (!onRemove) return;
               setRenaming(true); setRenameError(null);
               try { await onRemove(); onClose(); }
@@ -94,11 +94,11 @@ function ModelContextMenu({
         </div>
       ) : view === 'confirmDelete' ? (
         <div className="px-3 py-2.5">
-          <div className="text-[12px] font-medium text-[var(--ink)] pb-2">{t('deleteConfirmQuestion')}</div>
+          <div className="text-small font-medium text-[var(--ink)] pb-2">{t('deleteConfirmQuestion')}</div>
           <div className="flex gap-1.5">
             <button
               onClick={() => setView('menu')}
-              className="flex-1 h-7 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[11.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              className="flex-1 h-7 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
             >
               {t('cancel')}
             </button>
@@ -107,7 +107,7 @@ function ModelContextMenu({
                 onDelete();
                 onClose();
               }}
-              className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 h-7 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[11.5px] font-semibold cursor-pointer"
+              className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 h-7 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-caption font-semibold cursor-pointer"
             >
               {t('delete')}
             </button>
@@ -129,19 +129,19 @@ function ModelContextMenu({
               }}
               autoFocus
               disabled={renaming}
-              className="flex-1 min-w-0 h-7 px-2 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-[12.5px]"
+              className="flex-1 min-w-0 h-7 px-2 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-small"
             />
             {extension && (
               <span
                 title={t('renameExtensionLockedHint')}
-                className="flex-none font-mono-ui text-[12px] text-[var(--ink-3)]"
+                className="flex-none font-medium tabular-nums text-small text-[var(--ink-3)]"
               >
                 {extension}
               </span>
             )}
           </div>
           {renameError && (
-            <div className="pb-1.5 font-mono-ui text-compact-meta text-[var(--accent)] break-words">
+            <div className="pb-1.5 font-medium tabular-nums text-compact-meta text-[var(--accent)] break-words">
               {renameError}
             </div>
           )}
@@ -152,14 +152,14 @@ function ModelContextMenu({
                 setRenameError(null);
               }}
               disabled={renaming}
-              className="flex-1 h-7 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[11.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              className="flex-1 h-7 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
             >
               {t('cancel')}
             </button>
             <button
               onClick={submitRename}
               disabled={renaming} {...lockProps}
-              className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 h-7 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[11.5px] font-semibold cursor-pointer"
+              className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 h-7 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-caption font-semibold cursor-pointer"
             >
               {t('confirmSlicerName')}
             </button>

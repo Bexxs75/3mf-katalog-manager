@@ -14,7 +14,7 @@ export const printerStatusColors = {
 
 export function PrinterStatusBadge({ status }: { status: keyof typeof printerStatusColors }) {
   const t = useT();
-  return <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-1 text-[11.5px] font-semibold ${printerStatusColors[status]}`}>
+  return <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-1 text-caption font-semibold ${printerStatusColors[status]}`}>
     <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-current" />{t(status)}
   </span>;
 }

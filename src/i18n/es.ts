@@ -275,7 +275,7 @@ export const es: Translations = {
   resetSafeTrash: "La papelera permanece como está",
   resetBackupTip: "Consejo: Una copia de seguridad permite restaurarlo todo.",
   resetBackupFirst: "Crear una copia primero …",
-  resetBackupDone: "✓ Copia guardada",
+  resetBackupDone: "Copia guardada",
   resetConfirm: "Restablecer",
 
   import: 'Importar',

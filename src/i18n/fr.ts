@@ -275,7 +275,7 @@ export const fr: Translations = {
   resetSafeTrash: "La corbeille reste telle quelle",
   resetBackupTip: "Conseil : Une sauvegarde permet de tout restaurer.",
   resetBackupFirst: "Sauvegarder d’abord …",
-  resetBackupDone: "✓ Sauvegardé",
+  resetBackupDone: "Sauvegardé",
   resetConfirm: "Réinitialiser",
 
   import: 'Importer',

@@ -24,22 +24,22 @@ export function PrinterLinkControl({ link }: Props) {
         <ToggleSwitch checked={link.enabled} onChange={toggle} label={t('pmLink')} />
         <div className="max-[1023px]:group-data-[collapsed=true]:hidden">
           <b>{t('pmLink')}</b>
-          <p className="text-[11.5px] text-[var(--ink-3)]">{t(link.enabled ? 'pmSyncInterval' : 'pmSwitchedOff')}</p>
+          <p className="text-caption text-[var(--ink-3)]">{t(link.enabled ? 'pmSyncInterval' : 'pmSwitchedOff')}</p>
         </div>
       </div>
       <div className="max-[1023px]:group-data-[collapsed=true]:hidden">
-        <button type="button" className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[12px] text-[var(--ink-2)] underline underline-offset-2 focus-visible:outline-2"
+        <button type="button" className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-small text-[var(--ink-2)] underline underline-offset-2 focus-visible:outline-2"
           aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{t('pmWhatHappens')}</button>
-        {expanded && <p className="mt-2 text-[12px] text-[var(--ink-2)]">{t('printerLinkDescription')}</p>}
+        {expanded && <p className="mt-2 text-small text-[var(--ink-2)]">{t('printerLinkDescription')}</p>}
       </div>
       {actionError && (
-        <div role="alert" className="text-[12px] text-[var(--crit)]">
+        <div role="alert" className="text-small text-[var(--crit)]">
           {t('printerConnectionActionFailed').replace('{message}', '')}
           <ErrorText error={actionError} />
         </div>
       )}
       {link.error && (
-        <div role="alert" className="text-[12px] text-[var(--crit)]">
+        <div role="alert" className="text-small text-[var(--crit)]">
           {t('printerConnectionActionFailed').replace('{message}', '')}
           <ErrorText error={link.error} />
         </div>

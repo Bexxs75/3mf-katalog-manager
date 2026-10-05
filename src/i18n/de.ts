@@ -275,7 +275,7 @@ export const de: Translations = {
   resetSafeTrash: "Der Papierkorb bleibt, wie er ist",
   resetBackupTip: "Tipp: Mit einer Sicherung kannst du alles wiederherstellen.",
   resetBackupFirst: "Erst sichern …",
-  resetBackupDone: "✓ Gesichert",
+  resetBackupDone: "Gesichert",
   resetConfirm: "Zurücksetzen",
 
   import: 'Importieren',

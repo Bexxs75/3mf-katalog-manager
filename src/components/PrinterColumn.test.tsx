@@ -224,14 +224,14 @@ describe('PrinterColumn', () => {
       onConsume,
     });
     fireEvent.click(screen.getByTestId('slot-vat-0'));
-    fireEvent.click(screen.getByRole('button', { name: '− Verbrauch' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Verbrauch' }));
     expect(onConsume).toHaveBeenCalledWith(expect.objectContaining({ id: 'bottle' }), screen.getByTestId('slot-vat-0'));
   });
 
   it('offers no "− Verbrauch" in the menu of a filament slot', () => {
     renderColumn({ onConsume: vi.fn() });
     fireEvent.click(screen.getByTestId('slot-u1-0'));
-    expect(screen.queryByRole('button', { name: '− Verbrauch' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Verbrauch' })).toBeNull();
   });
 });
 

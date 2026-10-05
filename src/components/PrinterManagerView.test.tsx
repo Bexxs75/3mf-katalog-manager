@@ -191,7 +191,7 @@ describe('unit management replacing PrinterManagePanel', () => {
   });
   it('adds custom units with name and slots, and cancels with Escape', async () => {
     setup(); await screen.findByTitle('1 · PLA · Rot');
-    fireEvent.click(screen.getByRole('button', { name: '+ Einheit hinzufügen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Einheit hinzufügen' }));
     let dialog = screen.getByRole('dialog');
     fireEvent.click(within(dialog).getByRole('button', { name: /Eigene/ }));
     fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Qidi Box' } });
@@ -199,7 +199,7 @@ describe('unit management replacing PrinterManagePanel', () => {
     fireEvent.submit(dialog.querySelector('form')!);
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('add_unit', { printerId: '1', kind: 'custom', name: 'Qidi Box', slotCount: 6 }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    fireEvent.click(screen.getByRole('button', { name: '+ Einheit hinzufügen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Einheit hinzufügen' }));
     dialog = screen.getByRole('dialog'); fireEvent.keyDown(dialog, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
   });
@@ -222,7 +222,7 @@ it.each([
   ['Spulenhalter', 'external', 'Spulenhalter 2'],
 ])('adds the %s template with its suggested name', async (label, kind, name) => {
   setup(); await screen.findByTitle('1 · PLA · Rot');
-  fireEvent.click(screen.getByRole('button', { name: '+ Einheit hinzufügen' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Einheit hinzufügen' }));
   const dialog = screen.getByRole('dialog');
   fireEvent.click(within(dialog).getByRole('button', { name: `${label} · ${kind === 'external' ? 1 : 4}` }));
   expect(within(dialog).getByLabelText('Name')).toHaveValue(name);

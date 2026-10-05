@@ -66,7 +66,7 @@ describe('reset catalog', () => {
     expect(screen.getByText(/alle 4 Modelle, 2 Ordner/)).toBeTruthy();
     expect(invoke).not.toHaveBeenCalled();
     fireEvent.click(screen.getByText('Erst sichern …'));
-    expect(await screen.findByText('✓ Gesichert')).toBeDisabled();
+    expect(await screen.findByText('Gesichert')).toBeDisabled();
     fireEvent.click(screen.getByText('Zurücksetzen'));
     await waitFor(() => expect(onReset).toHaveBeenCalledOnce());
     expect(invoke).toHaveBeenCalledWith('reset_catalog');
@@ -77,7 +77,7 @@ describe('reset catalog', () => {
     fireEvent.click(screen.getByText('Katalog zurücksetzen …'));
     fireEvent.click(screen.getByText('Erst sichern …'));
     await waitFor(() => expect(screen.getByText('Erst sichern …')).not.toBeDisabled());
-    expect(screen.queryByText('✓ Gesichert')).toBeNull();
+    expect(screen.queryByText('Gesichert')).toBeNull();
   });
 });
 

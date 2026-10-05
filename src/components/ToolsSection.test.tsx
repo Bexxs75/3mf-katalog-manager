@@ -27,7 +27,7 @@ function setup(over: Partial<ToolsSectionProps> = {}) {
   return props;
 }
 
-const row = (label: string) => screen.getByRole('button', { name: new RegExp(label) });
+const row = (label: string) => screen.getByRole('button', { name: new RegExp(`^${label}`) });
 
 describe('ToolsSection', () => {
   it('shows all entries with their counts', () => {

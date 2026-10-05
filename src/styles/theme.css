@@ -92,27 +92,42 @@ body { font-family: 'Barlow', Helvetica, sans-serif; }
   --unk-soft: oklch(0.28 0.02 250);
 }
 
-.font-mono-ui { font-family: 'IBM Plex Mono', monospace; }
+.font-code { font-family: 'IBM Plex Mono', monospace; font-weight: 400; font-size: var(--fs-caption); }
+.ui-label, .import-table-scroll th { font-weight: 600; text-transform: uppercase; letter-spacing: .07em; font-size: var(--fs-caption); }
+code, pre, kbd, samp, button, input, select, textarea, option, input::placeholder, textarea::placeholder { font-family: inherit; }
+/* Portals and native controls inherit the same family as body despite the Tailwind reset. */
+html { font-family: 'Barlow', Helvetica, sans-serif; }
+.ui-icon { display: inline-block; vertical-align: middle; flex-shrink: 0; }
 
 :root {
-  --font-size-title: 12.5px;
-  --font-size-body: 13px;
-  --font-size-meta: 11px;
-  --font-size-label: 10px;
-  --font-size-control: 12.5px;
-  --font-size-item: 12px;
+  --fs-caption: 11.5px;
+  --fs-small: 12.5px;
+  --fs-body: 13.5px;
+  --fs-title: 16px;
+  --fs-heading: 22px;
+  --font-size-title: var(--fs-body);
+  --font-size-body: var(--fs-body);
+  --font-size-meta: var(--fs-caption);
+  --font-size-label: var(--fs-caption);
+  --font-size-control: var(--fs-small);
+  --font-size-item: var(--fs-small);
   --space-card-pad: 0.625rem;
   --radius-card: 4px;
   --icon-badge-size: 1.125rem;
 }
 
 [data-density="comfort"] {
-  --font-size-title: 17px;
-  --font-size-body: 14.5px;
-  --font-size-meta: 13px;
-  --font-size-label: 11px;
-  --font-size-control: 14px;
-  --font-size-item: 14.5px;
+  --fs-caption: 13px;
+  --fs-small: 14px;
+  --fs-body: 15px;
+  --fs-title: 18px;
+  --fs-heading: 24px;
+  --font-size-title: var(--fs-body);
+  --font-size-body: var(--fs-body);
+  --font-size-meta: var(--fs-caption);
+  --font-size-label: var(--fs-caption);
+  --font-size-control: var(--fs-small);
+  --font-size-item: var(--fs-small);
   --space-card-pad: 1rem;
   --radius-card: 14px;
   --icon-badge-size: 2.375rem;
@@ -144,23 +159,21 @@ body { font-family: 'Barlow', Helvetica, sans-serif; }
 @media (min-width: 1024px) { [data-app] { --pm-master-width: 260px; } }
 @media (min-width: 1400px) { [data-app] { --pm-master-width: 300px; } }
 
-/* Raise legacy small text only in compact density; preserve its comfort sizes. */
+/* Legacy utilities share the density-aware caption stage. */
 @layer utilities {
   .text-compact-label { font-size: var(--font-size-label); }
   .text-compact-meta { font-size: var(--font-size-meta); }
-  [data-density="comfort"] .text-compact-label { font-size: 9px; }
-  [data-density="comfort"] .text-compact-meta { font-size: 10px; }
 }
 
 /* Viewer controls stay readable regardless of catalog density. */
 .viewer-toggle { display: inline-flex; padding: 3px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 999px; box-shadow: var(--shadow); }
-.viewer-toggle button { height: 30px; padding-inline: 15px; border-radius: 999px; font-size: 14px; font-weight: 700; color: var(--ink); cursor: pointer; }
+.viewer-toggle button { height: 30px; padding-inline: 15px; border-radius: 999px; font-size:var(--fs-body); font-weight: 700; color: var(--ink); cursor: pointer; }
 .viewer-toggle button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
-.viewer-pill { height: 32px; padding-inline: 13px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--panel); color: var(--ink); font-size: 14px; font-weight: 700; cursor: pointer; }
-.viewer-legend { max-width: min(230px, calc(100% - 24px)); max-height: 35%; overflow: auto; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow); font-size: 12.5px; display: flex; flex-direction: column; gap: 5px; }
+.viewer-pill { height: 32px; padding-inline: 13px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--panel); color: var(--ink); font-size:var(--fs-body); font-weight: 700; cursor: pointer; }
+.viewer-legend { max-width: min(230px, calc(100% - 24px)); max-height: 35%; overflow: auto; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow); font-size:var(--fs-small); display: flex; flex-direction: column; gap: 5px; }
 .viewer-error-card { width: 100%; max-width: 46ch; padding: 18px 20px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 10px; }
-.viewer-error-card h3 { font-size: 15px; font-weight: 700; }
-.viewer-error-card p { font-size: 13.5px; color: var(--ink-2); margin: 0; }
+.viewer-error-card h3 { font-size:var(--fs-title); font-weight: 700; }
+.viewer-error-card p { font-size:var(--fs-body); color: var(--ink-2); margin: 0; }
 .viewer-error-compact { padding: 10px 12px; gap: 6px; }
 .viewer-error-icon { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; }
 .viewer-spinner { width: 26px; height: 26px; border-radius: 50%; border: 3px solid var(--line-strong); border-top-color: var(--accent); animation: viewer-spin 1s linear infinite; }
@@ -168,7 +181,7 @@ body { font-family: 'Barlow', Helvetica, sans-serif; }
 @media (prefers-reduced-motion: reduce) { .viewer-spinner { animation: none; } }
 
 .status-badges { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0; }
-.status-badge { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--panel-2); color: var(--ink-2); font-size: 12.5px; font-weight: 500; overflow-wrap: anywhere; }
+.status-badge { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--panel-2); color: var(--ink-2); font-size:var(--fs-caption); font-weight: 600; overflow-wrap: anywhere; }
 .status-badge svg { flex: none; }
 .status-good { color: var(--good); background: var(--good-soft); border-color: var(--good); }
 .status-warn { color: var(--warn); background: var(--warn-soft); border-color: var(--warn); }

@@ -1,3 +1,4 @@
+import { Icon } from './Icon';
 import { useModelImages } from '../hooks/useModelImages';
 import { useModelWindow } from '../hooks/useModelWindow';
 import { DragGrip } from './DragGrip';
@@ -37,8 +38,8 @@ function CardTags({ tags, comfort }: { tags: string[]; comfort: boolean }) {
   const probeRef = useRef<HTMLSpanElement>(null);
   const [hiddenCount, setHiddenCount] = useState(0);
   const chipClass = comfort
-    ? 'shrink-0 whitespace-nowrap px-2.5 py-1 rounded-full bg-[var(--panel-2)] text-[var(--ink-2)]'
-    : 'shrink-0 whitespace-nowrap font-mono-ui text-compact-meta px-1.5 py-0.5 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)]';
+    ? 'shrink-0 whitespace-nowrap font-medium text-caption px-2.5 py-1 rounded-full bg-[var(--panel-2)] text-[var(--ink-2)]'
+    : 'shrink-0 whitespace-nowrap font-medium tabular-nums text-compact-meta px-1.5 py-0.5 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)]';
   useLayoutEffect(() => {
     const row = rowRef.current;
     const probe = probeRef.current;
@@ -79,8 +80,8 @@ function CardMeta({ model, comfort }: { model: ModelFile; comfort: boolean }) {
   const { language } = useLanguage();
   return <div className="flex items-center gap-3 text-[var(--ink-3)] font-medium overflow-hidden whitespace-nowrap shrink-0"
     style={{ height: comfort ? 20 : 15, lineHeight: comfort ? '20px' : '15px', fontSize: 'var(--font-size-meta)' }}>
-    {model.materials[0] && <span className="truncate">📦 {model.materials[0].name}</span>}
-    {model.estimatedWeightG !== null && <span className="shrink-0">⚖ {model.weightSource === 'slicer'
+    {model.materials[0] && <span className="truncate"><Icon name="box" size={14} /> {model.materials[0].name}</span>}
+    {model.estimatedWeightG !== null && <span className="shrink-0"><Icon name="weight" size={14} /> {model.weightSource === 'slicer'
       ? formatWeightG(model.estimatedWeightG, language)
       : `≈ ${formatWeightG(model.estimatedWeightG, language)}`}</span>}
   </div>;
@@ -194,7 +195,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
               <div className="absolute inset-0 grid place-items-center">
                 <div className="flex flex-col items-center gap-1.5">
                   <div className="w-[52px] h-[52px] border border-dashed border-[var(--line-strong)] rotate-45" />
-                  <div className="font-mono-ui text-compact-label tracking-[0.08em] uppercase text-[var(--ink-3)]">
+                  <div className="text-compact-label ui-label text-[var(--ink-3)]">
                     {t('previewLabel3d')}
                   </div>
                 </div>
@@ -202,13 +203,13 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
             </>
           )}
           {Date.now() - new Date(m.importedAt).getTime() < 24 * 60 * 60 * 1000 && (
-            <div className="absolute left-[7px] top-[7px] font-mono-ui text-compact-label px-1 py-0.5 rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]">
+            <div className="absolute left-[7px] top-[7px] font-semibold text-caption px-1 py-0.5 rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]">
               {t('newBadge')}
             </div>
           )}
           {m.printStatus === 'printed' && (
-            <div className="absolute right-[7px] bottom-[7px] font-mono-ui text-compact-label px-1 py-0.5 rounded border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]">
-              ✓ {t('printedBadge')}
+            <div className="absolute right-[7px] bottom-[7px] font-semibold text-caption px-1 py-0.5 rounded border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]">
+              <Icon name="check" size={14} /> {t('printedBadge')}
             </div>
           )}
           {!readOnly && (
@@ -218,18 +219,18 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
                 onToggleFavorite(m.id);
               }}
               aria-label={m.favorite ? t('favoriteRemove') : t('favoriteAdd')}
-              className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] absolute left-[7px] bottom-[7px] font-mono-ui text-compact-label px-1 py-0.5 rounded border cursor-pointer ${
+              className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] absolute left-[7px] bottom-[7px] font-semibold text-caption px-1 py-0.5 rounded border cursor-pointer ${
                 m.favorite
                   ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
                   : 'border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]'
               }`}
             >
-              {m.favorite ? '♥' : '♡'}
+              <Icon name="favorite" size={14} fill={m.favorite  ? 'currentColor' : 'none'} />
             </button>
           )}
         </div>
         <div data-card-metadata className="flex flex-col gap-1.5 px-2.5 py-2.5 bg-[var(--panel)]" style={{ height: 88 }}>
-          <div className="text-[12.5px] font-semibold overflow-hidden text-ellipsis whitespace-nowrap shrink-0" style={{ height: 19, lineHeight: '19px' }}>
+          <div className="text-small font-semibold overflow-hidden text-ellipsis whitespace-nowrap shrink-0" style={{ height: 19, lineHeight: '19px' }}>
             {m.name}
           </div>
           <CardMeta model={m} comfort={false} />
@@ -293,13 +294,13 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
                 </>
               )}
               {Date.now() - new Date(m.importedAt).getTime() < 24 * 60 * 60 * 1000 && (
-                <div className="absolute left-2.5 top-2.5 font-semibold text-[11px] px-2.5 py-1 rounded-lg bg-[var(--panel)] text-[var(--accent)] shadow-[var(--shadow)]">
+                <div className="absolute left-2.5 top-2.5 font-semibold text-caption px-2.5 py-1 rounded-lg bg-[var(--panel)] text-[var(--accent)] shadow-[var(--shadow)]">
                   {t('newBadge')}
                 </div>
               )}
               {m.printStatus === 'printed' && (
-                <div className="absolute left-2.5 bottom-2.5 font-semibold text-[11px] px-2.5 py-1 rounded-lg bg-[var(--panel)] text-[var(--accent)] shadow-[var(--shadow)]">
-                  ✓ {t('printedBadge')}
+                <div className="absolute left-2.5 bottom-2.5 font-semibold text-caption px-2.5 py-1 rounded-lg bg-[var(--panel)] text-[var(--accent)] shadow-[var(--shadow)]">
+                  <Icon name="check" size={14} /> {t('printedBadge')}
                 </div>
               )}
               {!readOnly && (
@@ -310,11 +311,11 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
                   }}
                   aria-label={m.favorite ? t('favoriteRemove') : t('favoriteAdd')}
                   style={{ width: 'var(--icon-badge-size)', height: 'var(--icon-badge-size)' }}
-                  className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] absolute right-2.5 bottom-2.5 rounded-full grid place-items-center bg-[var(--panel)]/90 shadow-[var(--shadow)] cursor-pointer text-[17px] ${
+                  className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] absolute right-2.5 bottom-2.5 rounded-full grid place-items-center bg-[var(--panel)]/90 shadow-[var(--shadow)] cursor-pointer text-title ${
                     m.favorite ? 'text-[var(--accent)]' : 'text-[var(--ink-3)]'
                   }`}
                 >
-                  {m.favorite ? '♥' : '♡'}
+                  <Icon name="favorite" size={14} fill={m.favorite  ? 'currentColor' : 'none'} />
                 </button>
               )}
             </div>

@@ -1,3 +1,4 @@
+import { Icon } from './Icon';
 import { useImportLock } from '../hooks/ImportLockContext';
 import type { useFolderExpansion } from '../hooks/useFolderExpansion';
 import { FolderCatalogMenu } from './FolderCatalogMenu';
@@ -97,7 +98,7 @@ export function FolderTree({
           onMouseEnter={() => { setHoveredId(node.id); onFolderMouseEnter?.(node.id); }}
           onMouseLeave={() => { setHoveredId((current) => current === node.id ? null : current); onFolderMouseLeave?.(node.id); }}
           style={{ paddingLeft: 6 + depth * 16 }}
-          className={`flex items-center gap-1.5 h-7 pr-2 rounded-[7px] cursor-pointer select-none text-[12.5px] border ${
+          className={`flex items-center gap-1.5 h-7 pr-2 rounded-[7px] cursor-pointer select-none text-small border ${
             node.id === activeFolderId
               ? 'bg-[var(--accent-soft)] text-[var(--accent)] font-semibold hover:text-[var(--ink)]'
               : 'text-[var(--ink-2)] hover:bg-[var(--panel-2)] hover:text-[var(--ink)]'
@@ -115,11 +116,11 @@ export function FolderTree({
             }}
             className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] w-3.5 text-compact-label text-[var(--ink-3)] ${node.children.length === 0 ? 'invisible' : ''}`}
           >
-            {isOpen ? '▾' : '▸'}
+            <Icon name="chevron" size={14} className={isOpen  ? '' : '-rotate-90'} />
           </span>
           <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{node.name}</span>
-          <span className="font-mono-ui text-[10.5px] text-[var(--ink-3)]">{node.count}</span>
-          {isDraggedOver && <span className="font-mono-ui text-compact-meta text-[var(--accent)]">{t('dropHereLabel')}</span>}
+          <span className="font-medium tabular-nums text-caption text-[var(--ink-3)]">{node.count}</span>
+          {isDraggedOver && <span className="font-medium tabular-nums text-compact-meta text-[var(--accent)]">{t('dropHereLabel')}</span>}
         </div>
         {isOpen && node.children.map((c) => renderNode(c, depth + 1))}
       </div>
@@ -134,14 +135,14 @@ export function FolderTree({
         role="button"
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onSelect('all'); } }}
         onClick={() => onSelect('all')}
-        className={`flex items-center gap-2 h-7 px-1.5 rounded-[7px] cursor-pointer text-[12.5px] ${
+        className={`flex items-center gap-2 h-7 px-1.5 rounded-[7px] cursor-pointer text-small ${
           activeFolderId === 'all'
             ? 'bg-[var(--accent-soft)] text-[var(--accent)] font-semibold hover:text-[var(--ink)]'
             : 'text-[var(--ink-2)] hover:bg-[var(--panel-2)] hover:text-[var(--ink)]'
         }`}
       >
         <span className="flex-1">{t('allModelsLabel')}</span>
-        <span className="font-mono-ui text-[10.5px] text-[var(--ink-3)]">{totalModelCount}</span>
+        <span className="font-medium tabular-nums text-caption text-[var(--ink-3)]">{totalModelCount}</span>
       </div>
       {tree.map((n) => renderNode(n, 0))}
       {menu && <FolderCatalogMenu folderId={menu.id} name={menu.name} x={menu.x} y={menu.y}

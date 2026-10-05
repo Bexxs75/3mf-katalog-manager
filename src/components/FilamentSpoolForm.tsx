@@ -1,3 +1,4 @@
+import { Icon } from './Icon';
 import { useModalDialog } from '../hooks/useModalDialog';
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -54,7 +55,7 @@ const EMPTY_FORM: FormState = {
 };
 
 const fieldClass =
-  'w-full h-9 px-2.5 rounded-md border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] outline-0 text-[13px] focus:border-[var(--accent)]';
+  'w-full h-9 px-2.5 rounded-md border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] outline-0 text-body focus:border-[var(--accent)]';
 
 function toForm(spool: FilamentSpool): FormState {
   return {
@@ -199,7 +200,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
         }`}
       >
         <div className="flex-none flex items-center justify-between px-4 py-3.5 border-b border-[var(--line)]">
-          <h3 className="text-[15px] font-bold m-0">
+          <h3 className="text-title font-bold m-0">
             {editing
               ? resin
                 ? t('resinEditAria')
@@ -213,19 +214,19 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
             aria-label={t('cancel')}
             className="w-7 h-7 rounded-md grid place-items-center text-[var(--ink-3)] hover:bg-[var(--panel-2)] hover:text-[var(--ink)] cursor-pointer"
           >
-            ✕
+            <Icon name="close" size={14} />
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-5">
           {error && (
-            <div className="text-[12.5px] text-[var(--accent)] break-words">
+            <div className="text-small text-[var(--accent)] break-words">
               {t('filamentError')} <ErrorText error={error} />
             </div>
           )}
 
           <div>
-            <p className="text-compact-meta uppercase tracking-wider font-bold text-[var(--ink-3)] mb-2">
+            <p className="text-compact-meta ui-label text-[var(--ink-3)] mb-2">
               {t('filamentSectionImage')}
             </p>
             <button
@@ -233,7 +234,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
               ref={imageDrop.zoneRef}
               onClick={handlePickImage}
               data-drop-over={imageDrop.over ? 'true' : undefined}
-              className={`w-full flex flex-col items-center gap-1.5 px-4 py-4 rounded-lg border-[1.5px] border-dashed text-[12px] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] ${
+              className={`w-full flex flex-col items-center gap-1.5 px-4 py-4 rounded-lg border-[1.5px] border-dashed text-small cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] ${
                 imageDrop.over
                   ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent-soft)]'
                   : 'border-[var(--line-strong)] text-[var(--ink-3)]'
@@ -257,11 +258,11 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
               <div
                 ref={imageErrorRef}
                 role="alert"
-                className="mt-2 flex items-start gap-2 px-3 py-2 rounded-md border border-[var(--accent)] bg-[var(--accent-soft)] text-[12px] text-[var(--ink)]"
+                className="mt-2 flex items-start gap-2 px-3 py-2 rounded-md border border-[var(--accent)] bg-[var(--accent-soft)] text-small text-[var(--ink)]"
               >
                 <div className="flex-1 min-w-0 break-words">
                   <p className="font-semibold"><ErrorText error={imageError} /></p>
-                  <p className="text-[11px] text-[var(--ink-2)] mt-0.5">{t('filamentImageErrorHint')}</p>
+                  <p className="text-caption text-[var(--ink-2)] mt-0.5">{t('filamentImageErrorHint')}</p>
                 </div>
                 <button
                   type="button"
@@ -270,19 +271,19 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
                   title={t('filamentImageErrorDismiss')}
                   className="w-6 h-6 flex-none rounded grid place-items-center text-[var(--ink-2)] hover:text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
                 >
-                  ✕
+                  <Icon name="close" size={14} />
                 </button>
               </div>
             )}
           </div>
 
           <div>
-            <p className="text-compact-meta uppercase tracking-wider font-bold text-[var(--ink-3)] mb-2">
+            <p className="text-compact-meta ui-label text-[var(--ink-3)] mb-2">
               {t('filamentSectionIdentification')}
             </p>
             <div className="flex flex-col gap-2.5">
               <div>
-                <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t('filamentMaterialLabel')}</label>
+                <label className="block text-caption font-semibold text-[var(--ink-2)] mb-1">{t('filamentMaterialLabel')}</label>
                 <AutocompleteInput
                   maxSuggestions={Infinity}
                   value={form.material}
@@ -293,7 +294,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
                 />
               </div>
               <div>
-                <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t('filamentManufacturerLabel')}</label>
+                <label className="block text-caption font-semibold text-[var(--ink-2)] mb-1">{t('filamentManufacturerLabel')}</label>
                 <AutocompleteInput
                   maxSuggestions={Infinity}
                   value={form.manufacturer}
@@ -304,7 +305,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
                 />
               </div>
               <div>
-                <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t('filamentColorNameLabel')}</label>
+                <label className="block text-caption font-semibold text-[var(--ink-2)] mb-1">{t('filamentColorNameLabel')}</label>
                 <input
                   value={form.color}
                   onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))}
@@ -313,20 +314,20 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
                 />
               </div>
               <div>
-                <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t('filamentColorValueLabel')}</label>
+                <label className="block text-caption font-semibold text-[var(--ink-2)] mb-1">{t('filamentColorValueLabel')}</label>
                 <ColorPicker value={form.colorHex} onChange={(colorHex) => setForm((f) => ({ ...f, colorHex }))} />
               </div>
 
               {!editing && (
                 <div>
-                  <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t(resin ? 'resinQuantityLabel' : 'filamentQuantityLabel')}</label>
+                  <label className="block text-caption font-semibold text-[var(--ink-2)] mb-1">{t(resin ? 'resinQuantityLabel' : 'filamentQuantityLabel')}</label>
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => setForm((f) => ({ ...f, quantity: String(Math.max(1, (parseInt(f.quantity, 10) || 1) - 1)) }))}
-                      className="w-9 h-9 flex-none rounded-md border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[15px] font-bold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                      className="w-9 h-9 flex-none rounded-md border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-title font-bold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
                     >
-                      −
+                      <Icon name="minus" size={14} />
                     </button>
                     <input
                       type="number"
@@ -338,22 +339,22 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
                     <button
                       type="button"
                       onClick={() => setForm((f) => ({ ...f, quantity: String((parseInt(f.quantity, 10) || 1) + 1) }))}
-                      className="w-9 h-9 flex-none rounded-md border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[15px] font-bold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                      className="w-9 h-9 flex-none rounded-md border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-title font-bold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
                     >
-                      +
+                      <Icon name="plus" size={14} />
                     </button>
                   </div>
-                  <p className="text-[10.5px] text-[var(--ink-3)] mt-1 leading-snug">{t(resin ? 'resinQuantityHint' : 'filamentQuantityHint')}</p>
+                  <p className="text-caption text-[var(--ink-3)] mt-1 leading-snug">{t(resin ? 'resinQuantityHint' : 'filamentQuantityHint')}</p>
                 </div>
               )}
             </div>
           </div>
 
           <div>
-            <p className="text-compact-meta uppercase tracking-wider font-bold text-[var(--ink-3)] mb-2">
+            <p className="text-compact-meta ui-label text-[var(--ink-3)] mb-2">
               {t('filamentSectionStorage')}
             </p>
-            <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">
+            <label className="block text-caption font-semibold text-[var(--ink-2)] mb-1">
               {editing?.unitId ? t('filamentHomeLocationLabel') : t('filamentLocationLabel')}
             </label>
             <AutocompleteInput
@@ -367,13 +368,13 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
           </div>
 
           <div>
-            <p className="text-compact-meta uppercase tracking-wider font-bold text-[var(--ink-3)] mb-2">
+            <p className="text-compact-meta ui-label text-[var(--ink-3)] mb-2">
               {t('filamentSectionStock')}
             </p>
             <div className="grid grid-cols-2 gap-2.5">
               {!resin && (
                 <div>
-                  <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t('filamentDiameterLabel')}</label>
+                  <label className="block text-caption font-semibold text-[var(--ink-2)] mb-1">{t('filamentDiameterLabel')}</label>
                   <input
                     type="number"
                     step="0.01"
@@ -384,7 +385,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
                 </div>
               )}
               <div>
-                <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">{t('filamentPriceLabel')}</label>
+                <label className="block text-caption font-semibold text-[var(--ink-2)] mb-1">{t('filamentPriceLabel')}</label>
                 <input
                   type="number"
                   step="0.01"
@@ -395,7 +396,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
                 />
               </div>
               <div>
-                <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">
+                <label className="block text-caption font-semibold text-[var(--ink-2)] mb-1">
                   {resin ? t('resinAmountLabel') : t('filamentOriginalWeightLabel')}
                 </label>
                 <input
@@ -408,7 +409,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
                 />
               </div>
               <div>
-                <label className="block text-[11.5px] font-semibold text-[var(--ink-2)] mb-1">
+                <label className="block text-caption font-semibold text-[var(--ink-2)] mb-1">
                   {resin ? t('resinRemainingLabel') : t('filamentRemainingWeightLabel')}
                 </label>
                 <input
@@ -428,7 +429,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
                   style={{ width: `${previewPct}%`, background: barColor }}
                 />
               </div>
-              <div className="font-mono-ui text-[13px] font-bold" style={{ color: barColor }}>
+              <div className="tabular-nums text-body font-bold" style={{ color: barColor }}>
                 {previewPct}&nbsp;%
               </div>
             </div>
@@ -439,7 +440,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
           <button
             onClick={submit}
             disabled={!form.material.trim()}
-            className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] w-full h-10 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[13.5px] font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] w-full h-10 rounded-md border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-body font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {editing
               ? t('filamentSaveButton')

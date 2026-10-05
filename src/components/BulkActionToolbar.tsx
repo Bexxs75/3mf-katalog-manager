@@ -123,11 +123,11 @@ export function BulkActionToolbar({
     <div className="flex-none flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--line)] bg-[var(--panel-2)] [&_button]:whitespace-nowrap">
       {confirmRemove ? (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[12.5px] font-medium text-[var(--ink)]">{t('removeModelsQuestion').replace('{count}', String(selectedCount))}</span>
-          <span className="text-[12px] text-[var(--ink-2)]">{t('removeModelHint')}</span>
-          {error && <span role="alert" className="font-mono-ui text-[length:var(--font-size-meta)] text-[var(--accent)]">{error}</span>}
-          <button ref={cancelRef} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50" disabled={busy} onClick={() => setConfirmRemove(false)}>{t('cancel')}</button>
-          <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer disabled:opacity-50" disabled={busy} {...lockProps} onClick={async () => {
+          <span className="text-small font-medium text-[var(--ink)]">{t('removeModelsQuestion').replace('{count}', String(selectedCount))}</span>
+          <span className="text-small text-[var(--ink-2)]">{t('removeModelHint')}</span>
+          {error && <span role="alert" className="font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--accent)]">{error}</span>}
+          <button ref={cancelRef} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50" disabled={busy} onClick={() => setConfirmRemove(false)}>{t('cancel')}</button>
+          <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer disabled:opacity-50" disabled={busy} {...lockProps} onClick={async () => {
             if (!onBulkRemove) return;
             setBusy(true); setError(null);
             try { await onBulkRemove(); setConfirmRemove(false); }
@@ -137,42 +137,42 @@ export function BulkActionToolbar({
         </div>
       ) : confirmBulkDelete ? (
         <>
-          <span className="text-[12.5px] font-medium text-[var(--ink)]">
+          <span className="text-small font-medium text-[var(--ink)]">
             {t('bulkDeleteConfirmQuestion').replace('{count}', String(selectedCount))}
           </span>
           <button
             ref={cancelRef}
             onClick={() => onConfirmBulkDeleteChange(false)}
-            className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-[12.5px] font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
             {t('cancel')}
           </button>
           <button {...lockProps}
             onClick={onBulkDelete}
-            className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[12.5px] font-semibold cursor-pointer"
+            className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer"
           >
             {t('delete')}
           </button>
         </>
       ) : (
         <>
-          <span className="text-[12.5px] font-medium text-[var(--ink)]">
+          <span className="text-small font-medium text-[var(--ink)]">
             {t('bulkSelectedCount').replace('{count}', String(selectedCount))}
           </span>
-          <button onClick={onSelectAllVisible} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]">
+          <button onClick={onSelectAllVisible} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)]">
             {t('selectAllLabel')}
           </button>
-          <button onClick={onClearSelection} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]">
+          <button onClick={onClearSelection} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)]">
             {t('clearSelectionLabel')}
           </button>
           <span className="flex-1" />
-          <button onClick={onBulkAddToQueue} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]">
+          <button onClick={onBulkAddToQueue} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)]">
             {t('addToQueue')}
           </button>
           <div className="relative">
             <button
               ref={collectionRef} onClick={() => onAddToCollectionMenuOpenChange(!addToCollectionMenuOpen)}
-              className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]"
+              className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)]"
             >
               {t('addToCollectionLabel')}
             </button>
@@ -186,13 +186,13 @@ export function BulkActionToolbar({
                       onBulkAddToCollection(c.id);
                       onAddToCollectionMenuOpenChange(false);
                     }}
-                    className="w-full text-left px-3 py-1.5 text-[13px] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis"
+                    className="w-full text-left px-3 py-1.5 text-body text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis"
                   >
                     {c.name}
                   </button>
                 ))}
                 {collections.length === 0 && (
-                  <div className="px-3 py-1.5 font-mono-ui text-[11px] text-[var(--ink-3)]">
+                  <div className="px-3 py-1.5 font-medium tabular-nums text-caption text-[var(--ink-3)]">
                     {t('noCollectionsEmptyState')}
                   </div>
                 )}
@@ -202,7 +202,7 @@ export function BulkActionToolbar({
           {activeCollection && (
             <button
               onClick={onBulkRemoveFromCollection}
-              className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]"
+              className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)]"
             >
               {t('removeFromCollectionLabel')}
             </button>
@@ -210,7 +210,7 @@ export function BulkActionToolbar({
           <div className="relative">
             <button
               ref={addTagRef} onClick={() => onAddTagMenuOpenChange(!addTagMenuOpen)}
-              className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]"
+              className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)]"
             >
               {t('bulkAddTagLabel')}
             </button>
@@ -222,11 +222,11 @@ export function BulkActionToolbar({
                   onKeyDown={(e) => e.key === 'Enter' && onSubmitBulkAddTag()}
                   autoFocus
                   placeholder={t('addTagPlaceholder')}
-                  className="h-7 w-[140px] px-2 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-[12.5px]"
+                  className="h-7 w-[140px] px-2 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-small"
                 />
                 <button
                   onClick={onSubmitBulkAddTag}
-                  className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-7 px-2.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-[11.5px] font-semibold cursor-pointer whitespace-nowrap"
+                  className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-7 px-2.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-caption font-semibold cursor-pointer whitespace-nowrap"
                 >
                   {t('confirmSlicerName')}
                 </button>
@@ -236,7 +236,7 @@ export function BulkActionToolbar({
           <div className="relative">
             <button
               ref={removeTagRef} onClick={() => onRemoveTagMenuOpenChange(!removeTagMenuOpen)}
-              className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]"
+              className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)]"
             >
               {t('bulkRemoveTagLabel')}
             </button>
@@ -246,27 +246,27 @@ export function BulkActionToolbar({
                   <button
                     key={tag}
                     onClick={() => onBulkRemoveTag(tag)}
-                    className="w-full text-left px-3 py-1.5 text-[13px] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis"
+                    className="w-full text-left px-3 py-1.5 text-body text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis"
                   >
                     #{tagLabel(tag, language)}
                   </button>
                 ))}
                 {tagsInSelection.length === 0 && (
-                  <div className="px-3 py-1.5 font-mono-ui text-[11px] text-[var(--ink-3)]">
+                  <div className="px-3 py-1.5 font-medium tabular-nums text-caption text-[var(--ink-3)]">
                     {t('noTagsInSelectionEmptyState')}
                   </div>
                 )}
               </div>
             )}
           </div>
-          <button onClick={() => onBulkSetPrintStatus('printed')} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]">
+          <button onClick={() => onBulkSetPrintStatus('printed')} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)]">
             {t('printedBadge')}
           </button>
-          <button onClick={() => onBulkSetPrintStatus('not_printed')} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]">
+          <button onClick={() => onBulkSetPrintStatus('not_printed')} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)]">
             {t('notPrintedLabel')}
           </button>
-          {onBulkRemove && <button {...lockProps} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-[12.5px] font-semibold cursor-pointer hover:text-[var(--ink)]" ref={removeRef} onClick={() => { setError(null); setConfirmRemove(true); }}>{t('removeCatalogShort')}</button>}
-          <button {...lockProps} ref={deleteRef} onClick={() => onConfirmBulkDeleteChange(true)} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-red-400 text-[12.5px] font-semibold cursor-pointer hover:border-red-400">
+          {onBulkRemove && <button {...lockProps} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)]" ref={removeRef} onClick={() => { setError(null); setConfirmRemove(true); }}>{t('removeCatalogShort')}</button>}
+          <button {...lockProps} ref={deleteRef} onClick={() => onConfirmBulkDeleteChange(true)} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-red-400 text-small font-semibold cursor-pointer hover:border-red-400">
             {t('delete')}
           </button>
         </>

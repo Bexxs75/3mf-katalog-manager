@@ -1,3 +1,4 @@
+import { Icon } from './Icon';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
@@ -91,18 +92,18 @@ export function SpoolPicker({ spools: allSpools, value, onChange, label, placeho
         aria-expanded={open}
         aria-label={`${label}: ${selected ? text(selected, language) : placeholder ?? ''}`}
         onClick={() => setOpen((o) => !o)}
-        className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] w-full h-8 px-2 flex items-center gap-2 rounded-md border border-[var(--line-strong)] bg-[var(--panel-2)] text-[12.5px] text-left cursor-pointer"
+        className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] w-full h-8 px-2 flex items-center gap-2 rounded-md border border-[var(--line-strong)] bg-[var(--panel-2)] text-small text-left cursor-pointer"
       >
         {selected ? (
           <>
             <span className="w-3 h-3 rounded-[3px] flex-none border border-white/15" style={{ background: selected.colorHex ?? 'transparent' }} />
             <span className="truncate min-w-0 flex-1">{triggerLabel(selected)}</span>
-            <span className="flex-none font-mono-ui text-[11px] text-[var(--ink-3)]">{formatStockG(selected.remainingWeightG, language)}</span>
+            <span className="flex-none font-medium tabular-nums text-caption text-[var(--ink-3)]">{formatStockG(selected.remainingWeightG, language)}</span>
           </>
         ) : (
           <span className="text-[var(--ink-3)] truncate flex-1">{placeholder}</span>
         )}
-        <span className="flex-none text-compact-meta text-[var(--ink-3)]">▾</span>
+        <span className="flex-none text-compact-meta text-[var(--ink-3)]"><Icon name="chevron" size={14} /></span>
       </button>
       {open &&
         popup &&
@@ -145,12 +146,12 @@ export function SpoolPicker({ spools: allSpools, value, onChange, label, placeho
                 aria-selected={s.id === value}
                 aria-label={text(s, language)}
                 onMouseDown={(e) => { e.preventDefault(); choose(s.id); }}
-                className={`px-2 py-1.5 flex items-center gap-2 text-[12.5px] cursor-pointer ${s.id === activeId ? 'bg-[var(--panel-2)]' : ''}`}
+                className={`px-2 py-1.5 flex items-center gap-2 text-small cursor-pointer ${s.id === activeId ? 'bg-[var(--panel-2)]' : ''}`}
               >
                 <span className="w-3 h-3 mt-0.5 rounded-[3px] flex-none self-start border border-white/15" style={{ background: s.colorHex ?? 'transparent' }} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate">{[s.material, s.color].filter(Boolean).join(' · ')}</span>
-                  <span className="block truncate text-[11px] text-[var(--ink-3)]">{optionMeta(s, language)}</span>
+                  <span className="block truncate text-caption text-[var(--ink-3)]">{optionMeta(s, language)}</span>
                 </span>
               </li>
             ))}

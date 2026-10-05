@@ -1,8 +1,9 @@
+import { FilamentStatusSymbol } from './FilamentStatusSymbol';
 import { Fragment } from 'react';
 import type { FilamentCheck, FilamentCheckStatus, FilamentNeedCheck, FilamentSpoolUse } from '../types';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { formatWeightG } from '../i18n/format';
-import { STATUS_SYMBOL, roundG, slotText, spoolFillRatio, statusLabel } from '../lib/filamentCheck';
+import { roundG, slotText, spoolFillRatio, statusLabel } from '../lib/filamentCheck';
 
 type NeedStatus = Exclude<FilamentCheckStatus, 'no_data'>;
 
@@ -19,9 +20,9 @@ function StatusChip({ status }: { status: NeedStatus }) {
   const t = useT();
   return (
     <span
-      className={`inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full border font-mono-ui text-[11.5px] whitespace-nowrap ${TONE[status]}`}
+      className={`inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full border font-medium tabular-nums text-caption whitespace-nowrap ${TONE[status]}`}
     >
-      <span aria-hidden="true">{STATUS_SYMBOL[status]}</span> {statusLabel(status, t)}
+      <span aria-hidden="true"><FilamentStatusSymbol status={status} /></span> {statusLabel(status, t)}
     </span>
   );
 }
@@ -30,7 +31,7 @@ function PlaceChip({ spool }: { spool: FilamentSpoolUse }) {
   const t = useT();
   if (spool.slot) {
     return (
-      <span className="inline-flex items-center gap-1 font-mono-ui text-[11px] px-1.5 rounded-[6px] border text-[var(--good)] border-[color-mix(in_oklch,var(--good)_35%,transparent)] bg-[var(--panel-2)]">
+      <span className="inline-flex items-center gap-1 font-medium tabular-nums text-caption px-1.5 rounded-[6px] border text-[var(--good)] border-[color-mix(in_oklch,var(--good)_35%,transparent)] bg-[var(--panel-2)]">
         <span aria-hidden="true">●</span>
         <span>{slotText(spool.slot, t)}</span>
       </span>
@@ -38,7 +39,7 @@ function PlaceChip({ spool }: { spool: FilamentSpoolUse }) {
   }
   if (!spool.location) return null;
   return (
-    <span className="inline-flex items-center font-mono-ui text-[11px] px-1.5 rounded-[6px] border border-[var(--line)] text-[var(--ink-2)] bg-[var(--panel-2)]">
+    <span className="inline-flex items-center font-medium tabular-nums text-caption px-1.5 rounded-[6px] border border-[var(--line)] text-[var(--ink-2)] bg-[var(--panel-2)]">
       {spool.location}
     </span>
   );
@@ -75,7 +76,7 @@ function SpoolLine({ spool, showRemaining }: { spool: FilamentSpoolUse; showRema
     <span className="inline-flex flex-wrap items-center gap-1.5">
       <b className="font-semibold text-[var(--ink)]">{spool.label}</b>
       {showRemaining && (
-        <span className="font-mono-ui tabular-nums">
+        <span className="font-medium tabular-nums tabular-nums">
           {t('filamentCheckRemaining').replace('{g}', () => formatWeightG(roundG(spool.remainingG), language))}
         </span>
       )}
@@ -96,12 +97,12 @@ function NeedRow({ need }: { need: FilamentNeedCheck }) {
         className="w-3 h-3 rounded-full border border-[var(--line)] flex-none"
         style={need.color ? { backgroundColor: need.color } : undefined}
       />
-      <span className="flex flex-wrap items-baseline gap-2 text-[13.5px]">
+      <span className="flex flex-wrap items-baseline gap-2 text-body">
         <span>{title}</span>
-        <span className="font-mono-ui tabular-nums text-[var(--ink-3)]">{formatWeightG(roundG(need.neededG), language)}</span>
+        <span className="font-medium tabular-nums tabular-nums text-[var(--ink-3)]">{formatWeightG(roundG(need.neededG), language)}</span>
       </span>
       <StatusChip status={need.status} />
-      <div className="col-start-2 col-span-2 text-[12.5px] text-[var(--ink-2)] flex flex-col gap-1">
+      <div className="col-start-2 col-span-2 text-small text-[var(--ink-2)] flex flex-col gap-1">
         {need.status === 'ok' && need.spools[0] && (
           <>
             <SpoolLine spool={need.spools[0]} showRemaining />
@@ -149,7 +150,7 @@ export function FilamentCheckSection({ check, error }: { check: FilamentCheck | 
   const t = useT();
   if (error) {
     return (
-      <div className="mt-3 pt-3 border-t border-[var(--line)] text-[12.5px] text-[var(--ink-3)]">
+      <div className="mt-3 pt-3 border-t border-[var(--line)] text-small text-[var(--ink-3)]">
         {t('filamentCheckError')}
       </div>
     );
@@ -158,10 +159,10 @@ export function FilamentCheckSection({ check, error }: { check: FilamentCheck | 
   return (
     <div className="mt-3 pt-3 border-t border-[var(--line)]">
       <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
-        <h3 className="m-0 text-[14px] font-semibold">{t('filamentCheckHeading')}</h3>
+        <h3 className="m-0 text-body font-semibold">{t('filamentCheckHeading')}</h3>
         <StatusChip status={check.status} />
       </div>
-      <p className="m-0 mb-1 text-[12px] text-[var(--ink-3)]">{t('filamentCheckIntro')}</p>
+      <p className="m-0 mb-1 text-small text-[var(--ink-3)]">{t('filamentCheckIntro')}</p>
       {check.needs.map((need, i) => (
         <NeedRow key={`${need.filamentType}-${need.color ?? ''}-${i}`} need={need} />
       ))}

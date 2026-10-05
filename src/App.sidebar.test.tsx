@@ -127,10 +127,10 @@ it('clears folder, tag, search and tool filters through App setters while retain
   const sidebar = within(screen.getByRole('separator').closest('aside')!);
   const header = within(screen.getByRole('banner'));
   fireEvent.click(header.getByRole('button', {name: de.viewList}));
-  fireEvent.click(header.getByRole('button', {name: /↑/}));
+  fireEvent.click(header.getByRole('button', {name: de.sortName}));
   fireEvent.click(header.getByRole('menuitemradio', {name: de.sortSize}));
   fireEvent.keyDown(document, {key: 'Escape'});
-  const sortBefore = header.getByRole('button', {name: /↓/}).textContent;
+  const sortBefore = header.getByRole('button', {name: de.sortSize}).textContent;
   fireEvent.click(sidebar.getByRole('button', {name: /Folder A/}));
   fireEvent.click(sidebar.getByText(de.tagsHeading));
   fireEvent.click(sidebar.getByRole('button', {name: /#test/}));
@@ -144,7 +144,7 @@ it('clears folder, tag, search and tool filters through App setters while retain
   expect(sidebar.getByRole('button', {name: /Favoriten/})).toHaveAttribute('aria-pressed', 'false');
   expect(sidebar.getByRole('button', {name: /#test/})).not.toHaveClass('text-[var(--accent)]');
   expect(header.getByRole('button', {name: de.viewList})).toHaveClass('bg-[var(--accent)]');
-  expect(header.getByRole('button', {name: /↓/})).toHaveTextContent(sortBefore!);
+  expect(header.getByRole('button', {name: de.sortSize})).toHaveTextContent(sortBefore!);
   expect(screen.getByRole('main')).toHaveTextContent('Sphere');
   expect(invoke).not.toHaveBeenCalledWith('reset_catalog');
 });
