@@ -198,6 +198,6 @@ it('clears backup feedback when opening the import confirmation', () => {
 it('reserves scrollbar space in the settings scroller before messages grow', () => {
   renderRail('catalog', 0, true);
   fireEvent.click(screen.getByRole('button', {name: 'Einstellungen'}));
-  const panel = screen.getByRole('button', {name: 'Allgemein'}).closest('.overflow-y-auto');
-  expect(panel).toHaveClass('scrollbar-stable');
+  const panel = screen.getByRole('button', {name: 'Allgemein'}).closest('.scrollbar-stable');
+  expect(panel).toHaveClass('scrollbar-stable', 'overflow-y-scroll');
 });

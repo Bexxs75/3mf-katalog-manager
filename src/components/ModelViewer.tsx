@@ -380,7 +380,7 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
   return (
     <div className={`w-full flex flex-col ${surfaceClassName === 'h-full' ? 'h-full' : ''}`}>
     <div data-viewer-surface data-compact={compact} className={`relative w-full shrink-0 ${surfaceClassName}`}>
-      <div ref={containerRef} className="absolute inset-0" />
+      <div ref={containerRef} className="absolute inset-0" style={{ visibility: status === 'error' ? 'hidden' : undefined }} />
       {status === 'loading' && (
         <div className="absolute inset-0 grid place-items-center pointer-events-none">
           <div role="status" className="flex flex-col items-center gap-2 text-body text-[var(--ink-2)]">

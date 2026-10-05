@@ -138,7 +138,7 @@ export function FilamentTable({
                 <td className="px-3 py-2.5 border-b border-[var(--line)] font-semibold">
                   <div className="flex items-center gap-2">
                     {spool.imagePng ? (
-                      <img src={`data:image/png;base64,${spool.imagePng}`} className="w-6 h-6 rounded object-cover border border-[var(--line)]" />
+                      <img draggable={false} src={`data:image/png;base64,${spool.imagePng}`} className="w-6 h-6 rounded object-cover border border-[var(--line)]" />
                     ) : spool.kind === 'resin' ? (
                       <ResinBottleIcon colorHex={spool.colorHex} size={20} />
                     ) : (

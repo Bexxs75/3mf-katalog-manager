@@ -20,11 +20,15 @@ html, body { margin: 0; padding: 0; overscroll-behavior: none; }
 body { font-family: 'Barlow', Helvetica, sans-serif; }
 * { box-sizing: border-box; }
 
+/* A declared gutter can still be ineffective in webviews with custom scrollbars. */
 .scrollbar-stable { scrollbar-gutter: stable; }
 /* Older webviews keep the same reserved width by always allocating a track. */
 @supports not (scrollbar-gutter: stable) {
   .scrollbar-stable { overflow-y: scroll; }
 }
+
+/* Native WebKit image drags would bypass the application's pointer drag. */
+img[draggable="false"] { -webkit-user-drag: none; user-select: none; }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 8px; }
@@ -189,7 +193,7 @@ html { font-family: 'Barlow', Helvetica, sans-serif; }
 .viewer-error-compact { padding: 8px; gap: 6px; }
 .viewer-error-compact h3, .viewer-error-compact p { font-size: var(--fs-small); }
 .viewer-error-compact .viewer-error-icon { width: 24px; height: 24px; flex-shrink: 0; }
-.viewer-error-compact button, .viewer-error-compact a { font-size: var(--fs-caption); padding-inline: 6px; height: 28px; }
+.viewer-error-compact button, .viewer-error-compact a { --fs-caption: 11.5px; font-size: var(--fs-caption); padding-inline: 6px; height: 28px; }
 .viewer-error-icon { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; }
 .viewer-spinner { width: 26px; height: 26px; border-radius: 50%; border: 3px solid var(--line-strong); border-top-color: var(--accent); animation: viewer-spin 1s linear infinite; }
 @keyframes viewer-spin { to { transform: rotate(360deg); } }

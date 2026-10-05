@@ -45,6 +45,10 @@ function renderForm(editing: FilamentSpool | null, defaultKind?: SpoolKind) {
 }
 
 describe('FilamentSpoolForm', () => {
+  it('reserves scrollbar width before validation adds content', () => {
+    renderForm(null);
+    expect(document.querySelector('.scrollbar-stable')).toHaveClass('overflow-y-scroll');
+  });
   it('edits the home location of a spool that sits in a slot', () => {
     renderForm(LOADED);
     expect(screen.getByText('Stammplatz')).toBeInTheDocument();

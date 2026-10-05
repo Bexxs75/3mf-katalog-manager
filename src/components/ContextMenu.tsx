@@ -117,7 +117,7 @@ function ModelContextMenu({
           </div>
         </div>
       ) : view === 'rename' ? (
-        <div className="px-3 py-2.5">
+        <div className="px-3 py-2.5 w-[260px] max-w-[calc(100vw-24px)] [overflow-wrap:anywhere]">
           <div className="flex items-center gap-1 mb-1.5">
             <input
               value={baseNameDraft}

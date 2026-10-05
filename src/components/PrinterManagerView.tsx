@@ -101,7 +101,7 @@ export function PrinterManagerView({ printers: state, printerLink, printerId, on
       </ul>
       <footer className="border-t border-[var(--line)] p-3 max-[1023px]:group-data-[collapsed=true]:px-0"><PrinterLinkControl link={printerLink} /></footer>
     </aside>
-    <main className="col-start-2 row-start-1 min-w-0 min-h-0 scrollbar-stable overflow-auto p-4 min-[1400px]:px-6">
+    <main className="col-start-2 row-start-1 min-w-0 min-h-0 scrollbar-stable overflow-x-auto overflow-y-scroll p-4 min-[1400px]:px-6">
       {state.error && <div role="alert" className="p-3 text-[var(--crit)]"><ErrorText error={state.error} /></div>}
       {!printer ? <section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] flex flex-col items-center gap-4 px-3.5 py-10 text-center">
         <Icon name="printer" size={24} /><h1 className="font-bold">{t('pmEmptyTitle')}</h1>

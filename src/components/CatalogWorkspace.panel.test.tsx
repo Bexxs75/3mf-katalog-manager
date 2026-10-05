@@ -10,7 +10,11 @@ vi.mock('./Sidebar', () => ({ Sidebar: () => null }));
 vi.mock('./ModelPreview', () => ({ ModelPreview: () => null }));
 vi.mock('../lib/api/filamentCheck', () => ({ checkFilament: vi.fn().mockResolvedValue([]) }));
 vi.mock('../lib/api/lastPrinter', () => ({ getLastPrinterForFile: vi.fn().mockResolvedValue(null) }));
-beforeEach(() => { localStorage.clear(); localStorage.setItem('3mf-katalog-language', 'de'); });
+beforeEach(() => {
+  // jsdom has no layout; visible catalog interactions need a measured grid.
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+    width: 800, height: 400, top: 0, left: 0, right: 800, bottom: 400, x: 0, y: 0, toJSON: () => ({}),
+  }); localStorage.clear(); localStorage.setItem('3mf-katalog-language', 'de'); });
 function setup(extra: Partial<ComponentProps<typeof CatalogWorkspace>> = {}) {
   const file = makeModelFile({ id: 'one', name: 'Cube', materials: [{ name: 'PLA', displayColor: null }] });
   function Fixture() {

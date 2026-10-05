@@ -24,6 +24,7 @@ pub struct ThreeMfMaterial {
 pub struct ThreeMfDocument {
     pub object_count: usize,
     pub dimensions_mm: Option<[f64; 3]>,
+    pub tagging_extent_mm: Option<f64>,
     pub volume_cm3: Option<f64>,
     pub materials: Vec<ThreeMfMaterial>,
     pub metadata: BTreeMap<String, String>,
@@ -236,7 +237,7 @@ fn parse_3mf_reader<R: std::io::Read + std::io::Seek>(
 ) -> Result<ThreeMfDocument, ThreeMfError> {
     let package = container::read_package(reader)?;
 
-    let (bbox, volume_mm3) = resolve_geometry(&package)?;
+    let (bbox, volume_mm3, tagging_extent_mm) = resolve_geometry(&package)?;
 
     let dimensions_mm = bbox.is_valid().then(|| bbox.size());
     let volume_cm3 = bbox.is_valid().then_some(volume_mm3 / 1000.0);
@@ -244,6 +245,7 @@ fn parse_3mf_reader<R: std::io::Read + std::io::Seek>(
     Ok(ThreeMfDocument {
         object_count: package.root_model.build_items.len(),
         dimensions_mm,
+        tagging_extent_mm,
         volume_cm3,
         materials: package
             .root_model
@@ -261,27 +263,45 @@ fn parse_3mf_reader<R: std::io::Read + std::io::Seek>(
     })
 }
 
-fn resolve_geometry(package: &PackageParts) -> Result<(BoundingBox, f64), ThreeMfError> {
+fn resolve_geometry(package: &PackageParts) -> Result<(BoundingBox, f64, Option<f64>), ThreeMfError> {
     let mut bbox = BoundingBox::empty();
     let mut volume_mm3 = 0.0;
+    let mut plate_boxes = BTreeMap::new();
+    let mut complete_assignments = true;
 
     let mut budget = WorkBudget::new();
     for item in &package.root_model.build_items {
         let transform = item.transform.unwrap_or_else(Matrix3x4::identity);
         let mut path = Vec::new();
+        let mut item_box = BoundingBox::empty();
         accumulate_object(
             package,
             item.path.as_deref(),
             &item.object_id,
             &transform,
-            &mut bbox,
+            &mut item_box,
             &mut volume_mm3,
             &mut path,
             &mut budget,
         )?;
+        if item_box.is_valid() {
+            bbox.extend(item_box.min);
+            bbox.extend(item_box.max);
+            if let Some(plate) = package.plate_assignments.objects.get(&item.object_id) {
+                let plate_box = plate_boxes.entry(*plate).or_insert_with(BoundingBox::empty);
+                plate_box.extend(item_box.min);
+                plate_box.extend(item_box.max);
+            } else {
+                complete_assignments = false;
+            }
+        }
     }
 
-    Ok((bbox, volume_mm3))
+    // Incomplete optional metadata must not silently exclude unassigned geometry.
+    let tagging_extent_mm = complete_assignments.then(|| plate_boxes.values()
+        .flat_map(|bbox: &BoundingBox| bbox.size()).fold(0.0_f64, f64::max))
+        .filter(|_| !plate_boxes.is_empty());
+    Ok((bbox, volume_mm3, tagging_extent_mm))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -356,6 +376,91 @@ mod tests {
     use std::io::Write;
     use zip::write::SimpleFileOptions;
     use zip::ZipWriter;
+
+    fn size_tags(doc: &ThreeMfDocument) -> Vec<String> {
+        crate::tagging::suggest_tags(&crate::tagging::TaggingContext {
+            file_name: "test.3mf",
+            dimensions_mm: doc.tagging_extent_mm.map(|extent| [extent; 3]).or(doc.dimensions_mm),
+            object_count: Some(doc.object_count as i64),
+            materials: &[],
+        })
+    }
+
+    fn plate_size_fixture(length: f64, second: bool, assignments: bool) -> Vec<u8> {
+        let object = |id| format!(r#"<object id="{id}"><mesh><vertices>
+            <vertex x="0" y="0" z="0"/><vertex x="{length}" y="0" z="0"/>
+            <vertex x="0" y="10" z="10"/></vertices><triangles>
+            <triangle v1="0" v2="1" v3="2"/></triangles></mesh></object>"#);
+        let model = format!(r#"<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+            <resources>{}{}</resources><build><item objectid="1"/>{}</build></model>"#,
+            object(1), object(2), if second { r#"<item objectid="2" transform="1 0 0 0 1 0 0 0 1 1000 500 0"/>"# } else { "" });
+        let mut bytes = build_zip_with_model_xml(&model);
+        if assignments {
+            let mut zip = ZipWriter::new_append(std::io::Cursor::new(&mut bytes)).unwrap();
+            zip.start_file("Metadata/model_settings.config", SimpleFileOptions::default()).unwrap();
+            zip.write_all(br#"<config><plate><metadata key="plater_id" value="1"/>
+                <model_instance object_id="1"/></plate><plate><metadata key="plater_id" value="2"/>
+                <model_instance object_id="2"/></plate></config>"#).unwrap();
+            zip.finish().unwrap();
+        }
+        bytes
+    }
+
+    #[test]
+    fn tagging_extent_separates_small_plates_and_preserves_overall_box() {
+        let doc = parse_3mf_bytes(&plate_size_fixture(80.0, true, true)).unwrap();
+        assert_eq!(doc.tagging_extent_mm, Some(80.0));
+        assert_eq!(doc.dimensions_mm, Some([1080.0, 510.0, 10.0]));
+        assert!(!size_tags(&doc).iter().any(|tag| tag == "grossformat"));
+    }
+
+    #[test]
+    fn tagging_extent_keeps_large_single_plate() {
+        let doc = parse_3mf_bytes(&plate_size_fixture(250.0, false, true)).unwrap();
+        assert_eq!(doc.tagging_extent_mm, Some(250.0));
+        assert!(size_tags(&doc).iter().any(|tag| tag == "grossformat"));
+    }
+
+    #[test]
+    fn tagging_extent_without_assignments_uses_overall_box() {
+        let doc = parse_3mf_bytes(&plate_size_fixture(20.0, true, false)).unwrap();
+        assert_eq!(doc.tagging_extent_mm, None);
+        assert!(size_tags(&doc).iter().any(|tag| tag == "grossformat"));
+    }
+
+    #[test]
+    fn tagging_extent_miniature_on_distant_plates() {
+        let doc = parse_3mf_bytes(&plate_size_fixture(20.0, true, true)).unwrap();
+        assert_eq!(doc.tagging_extent_mm, Some(20.0));
+        assert!(size_tags(&doc).iter().any(|tag| tag == "miniatur"));
+    }
+
+    #[test]
+    fn tagging_extent_combines_all_objects_assigned_to_one_plate() {
+        let mut package = container::read_package(std::io::Cursor::new(
+            plate_size_fixture(20.0, true, true))).unwrap();
+        package.plate_assignments.objects.insert("2".into(), 1);
+        let (_, _, extent) = resolve_geometry(&package).unwrap();
+        assert_eq!(extent, Some(1020.0));
+    }
+
+    #[test]
+    fn tagging_extent_incomplete_assignments_falls_back_to_overall_box() {
+        let mut package = container::read_package(std::io::Cursor::new(
+            plate_size_fixture(20.0, true, true))).unwrap();
+        package.plate_assignments.objects.remove("2");
+        let (bbox, _, extent) = resolve_geometry(&package).unwrap();
+        assert_eq!(extent, None);
+        assert_eq!(bbox.size(), [1020.0, 510.0, 10.0]);
+    }
+
+    #[test]
+    fn tagging_extent_creality_fixture() {
+        let doc = parse_3mf_bytes(include_bytes!("../../tests/fixtures/creality-3plates.3mf")).unwrap();
+        assert!((doc.dimensions_mm.unwrap()[0] - 334.0).abs() < 0.01);
+        assert_eq!(doc.tagging_extent_mm, Some(120.0));
+        assert!(!size_tags(&doc).iter().any(|tag| tag == "grossformat"));
+    }
 
     fn build_test_3mf() -> Vec<u8> {
         let model_xml = r##"<?xml version="1.0" encoding="UTF-8"?>

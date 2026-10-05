@@ -16,6 +16,10 @@ vi.mock('./components/BackgroundSnapshotRenderer', () => ({ BackgroundSnapshotRe
 vi.mock('./components/ModelViewer', () => ({ ModelViewer: () => null }));
 
 beforeEach(() => {
+  // jsdom has no layout; visible catalog interactions need a measured grid.
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+    width: 800, height: 400, top: 0, left: 0, right: 800, bottom: 400, x: 0, y: 0, toJSON: () => ({}),
+  });
   localStorage.clear();
   localStorage.setItem('3mf-katalog-base-dir', '/old');
   localStorage.setItem('3mf-katalog-setup-seen', '1');

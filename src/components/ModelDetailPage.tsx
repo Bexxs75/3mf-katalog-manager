@@ -234,7 +234,7 @@ export function ModelDetailPage({
           <ImageUploadError error={imageUpload.error} onDismiss={imageUpload.dismiss} />
         </div>
 
-        <div className="w-[540px] flex-none min-w-[300px] flex flex-col gap-4">
+        <div className="w-[540px] max-w-full flex-none min-w-0 flex flex-col gap-4">
           <div className="rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-5 py-4">
             {rows.map((row) => (
               <div

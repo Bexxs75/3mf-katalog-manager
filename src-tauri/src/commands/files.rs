@@ -790,6 +790,7 @@ fn read_model_file_inner(path: &Path, display_name: Option<&str>) -> Result<NewF
         .and_then(|e| e.to_str())
         .map(|e| e.to_lowercase());
 
+    let mut tagging_extent_mm = None;
     let (
         file_type,
         dimensions_mm,
@@ -803,6 +804,7 @@ fn read_model_file_inner(path: &Path, display_name: Option<&str>) -> Result<NewF
     ) = match extension.as_deref() {
         Some("3mf") => {
             let doc = threemf::parse_3mf_file(path).map_err(|e| e.to_string())?;
+            tagging_extent_mm = doc.tagging_extent_mm;
             (
                 FileType::ThreeMf,
                 doc.dimensions_mm,
@@ -868,7 +870,7 @@ fn read_model_file_inner(path: &Path, display_name: Option<&str>) -> Result<NewF
 
     let tags = tagging::suggest_tags(&TaggingContext {
         file_name: &file_name,
-        dimensions_mm,
+        dimensions_mm: tagging_extent_mm.map(|extent| [extent; 3]).or(dimensions_mm),
         object_count,
         materials: &materials,
     });
@@ -1718,6 +1720,15 @@ pub async fn get_model_geometry(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn creality_import_tags_use_plate_extent_but_store_overall_dimensions() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/creality-3plates.3mf");
+        let model = super::read_import_model_file(&path, None).unwrap();
+        assert_eq!(model.dimensions_mm, Some([334.0, 326.586525, 83.0]));
+        assert!(!model.tags.iter().any(|tag| tag == "grossformat" || tag == "miniatur"));
+    }
+
     use super::*;
 
     #[test]

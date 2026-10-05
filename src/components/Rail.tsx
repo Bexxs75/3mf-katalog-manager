@@ -203,7 +203,7 @@ export function Rail({
               settingsButtonRef.current?.focus();
             }
           }} style={{ left: `calc(${panelOffset.left}px + var(--sidebar-width, 0px) + 10px)`, bottom: panelOffset.bottom }}
-          className="absolute w-[300px] h-[540px] scrollbar-stable p-[14px] bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40 max-h-[calc(100vh-80px)] overflow-y-auto">
+          className="absolute w-[300px] h-[540px] scrollbar-stable p-[14px] bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40 max-h-[calc(100vh-80px)] overflow-y-scroll">
             <div className="ui-label text-[var(--ink-3)] mb-2.5">
               {t('settingsTitle')}
             </div>

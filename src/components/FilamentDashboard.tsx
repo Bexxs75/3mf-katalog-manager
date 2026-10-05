@@ -73,7 +73,7 @@ export function FilamentDashboard({
           >
             <div className="flex items-center gap-2.5 px-3 py-2.5">
               {spool.imagePng ? (
-                <img
+                <img draggable={false}
                   src={`data:image/png;base64,${spool.imagePng}`}
                   className="w-9 h-9 rounded-md object-cover border border-[var(--line)] flex-none"
                 />

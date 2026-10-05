@@ -179,7 +179,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
             />
           )}
           {imageFor(m) ? (
-            <img
+            <img draggable={false}
               src={imageFor(m) ?? undefined}
               alt=""
               className="absolute inset-0 w-full h-full object-cover"
@@ -242,7 +242,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
   }
 
   return (
-    <div ref={window.rootRef}>
+    <div ref={window.rootRef} style={{ visibility: window.measured ? 'visible' : 'hidden' }}>
       {window.emptyHeight !== null ? <div data-window-spacer="empty" style={{ height: window.emptyHeight }} /> : <>
       <div data-window-spacer="top" aria-hidden="true" style={{ height: window.topSpacer }} />
     <div
@@ -279,7 +279,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
                 />
               )}
               {imageFor(m) ? (
-                <img src={imageFor(m) ?? undefined} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                <img draggable={false} src={imageFor(m) ?? undefined} alt="" className="absolute inset-0 w-full h-full object-cover" />
               ) : (
                 <>
                   <div

@@ -18,7 +18,7 @@ export function PrinterManagerDialog({ title, children, onClose, onSubmit, submi
   const ref = useModalDialog({ open: true, onClose, busy });
   return <div data-modal-backdrop className="fixed inset-0 z-50 bg-black/45 grid place-items-center p-4">
     <div ref={ref} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}
-      className="w-full max-w-xl max-h-[90vh] scrollbar-stable overflow-y-auto p-5 rounded-lg bg-[var(--panel)] border border-[var(--line)] shadow-[var(--shadow)]">
+      className="w-full max-w-xl max-h-[90vh] scrollbar-stable overflow-y-scroll p-5 rounded-lg bg-[var(--panel)] border border-[var(--line)] shadow-[var(--shadow)]">
       <form onSubmit={async e => {
         e.preventDefault();
         if (busy) return;

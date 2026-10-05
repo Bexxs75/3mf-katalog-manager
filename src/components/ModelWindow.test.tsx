@@ -103,3 +103,31 @@ it.each(['compact', 'comfort'])('accounts exactly for all measured rows and gaps
   expect(spacer('bottom')).toBe((totalRows - visibleRows) * 114);
   expect(spacer('top') + visibleRows * 114 + spacer('bottom')).toBe(totalRows * 114);
 });
+
+it.each([false, true])('hides unmeasured grids until synchronous layout provides columns (grouped=%s)', grouped => {
+  width = 0;
+  const { container } = render(<Harness grouped={grouped} count={2} />);
+  const grid = container.querySelector<HTMLElement>('.grid.gap-3\\.5')!;
+  expect(grid.parentElement).toHaveStyle({ visibility: 'hidden' });
+  act(() => { width = 800; resizeCallbacks.forEach(callback => callback()); });
+  expect(grid.parentElement).toHaveStyle({ visibility: 'visible' });
+  expect(grid.style.gridTemplateColumns).toBe('repeat(4, minmax(0, 1fr))');
+});
+it('measures the first layout without waiting for ResizeObserver', () => {
+  // Layout width is valid even when clientWidth has not supplied an initial value.
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(0);
+  const { container } = render(<Harness />);
+  const grid = container.querySelector<HTMLElement>('.grid.gap-3\\.5')!;
+  expect(grid.style.gridTemplateColumns).toBe('repeat(4, minmax(0, 1fr))');
+  expect(grid.parentElement).toHaveStyle({ visibility: 'visible' });
+});
+
+it.each([false, true])('disables native image dragging on model cards (grouped=%s)', grouped => {
+  models[0].thumbnailImage = 'data:image/png;base64,eA==';
+  try {
+    const { container } = render(<Harness grouped={grouped} count={2} />);
+    const images = container.querySelectorAll('[data-model-id] img');
+    expect(images.length).toBeGreaterThan(0);
+    images.forEach(image => expect(image).toHaveAttribute('draggable', 'false'));
+  } finally { models[0].thumbnailImage = null; }
+});

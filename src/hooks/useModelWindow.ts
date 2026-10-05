@@ -16,6 +16,7 @@ export function useModelWindow({ ids, containerRef, minWidth, gap, fallbackHeigh
   const discoveredContainer = useRef<HTMLDivElement | null>(null);
   const scroller = containerRef ?? discoveredContainer;
   const [geometry, setGeometry] = useState({ columns: minWidth ? 3 : 1, rowHeight: fallbackHeight + gap, offsetTop: 0 });
+  const [measured, setMeasured] = useState(false);
   const registry = useContext(ModelLayoutContext);
   const token = useRef({});
   useLayoutEffect(() => {
@@ -31,11 +32,12 @@ export function useModelWindow({ ids, containerRef, minWidth, gap, fallbackHeigh
     const container = scroller.current;
     const card = root.querySelector<HTMLElement>('[data-model-id]');
     const measure = () => {
-      const width = root.clientWidth;
+      const rect = root.getBoundingClientRect();
+      const width = rect.width;
       // A hidden or not-yet-laid-out section must not collapse to one giant card.
       if (!width) return;
       const columns = minWidth ? Math.max(1, Math.floor((width + gap) / (minWidth + gap))) : 1;
-      const rect = root.getBoundingClientRect();
+      setMeasured(true);
       const offsetTop = container ? rect.top - container.getBoundingClientRect().top - container.clientTop + container.scrollTop : 0;
       const measuredHeight = card?.getBoundingClientRect().height ?? 0;
       setGeometry(previous => {
@@ -68,7 +70,7 @@ export function useModelWindow({ ids, containerRef, minWidth, gap, fallbackHeigh
     registry.layouts.set(key, layout);
     return () => { registry.layouts.delete(key); };
   }, [registry, layout]);
-  return { rootRef, imageStartIndex: containerRef ? windowed.startIndex : startIndex,
+  return { rootRef, measured, imageStartIndex: containerRef ? windowed.startIndex : startIndex,
     imageEndIndex: containerRef ? windowed.endIndex : endIndex, columns: geometry.columns, startIndex, endIndex,
     topSpacer: virtual ? windowed.topSpacer : 0,
     bottomSpacer: virtual ? windowed.bottomSpacer : 0,

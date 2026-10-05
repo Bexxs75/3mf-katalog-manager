@@ -218,7 +218,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
           </button>
         </div>
 
-        <div className="flex-1 scrollbar-stable overflow-y-auto px-4 py-4 flex flex-col gap-5">
+        <div className="flex-1 scrollbar-stable overflow-y-scroll px-4 py-4 flex flex-col gap-5">
           {error && (
             <div className="text-small text-[var(--accent)] break-words">
               {t('filamentError')} <ErrorText error={error} />
