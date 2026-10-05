@@ -11,6 +11,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Added
 
+- Creality Print is automatically detected (Windows, macOS, Linux).
+
 - Show a model file in the system file manager from its details or card context menu.
 - Preview individual print plates in multi-plate 3MF files, with a camera fit and color legend for the selected plate.
 
@@ -533,6 +535,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ## [0.15.0] - 2026-10-03
 
 ### Added
+
+- Creality Print wird automatisch erkannt (Windows, macOS, Linux).
 
 - **Aus dem Katalog entfernen / Katalog zurücksetzen:** Einzelne Modelle, eine Auswahl oder Ordner aus dem Katalog entfernen, ohne Dateien auf der Festplatte zu verändern. Zurücksetzen leert Modelle, Ordner, Tags und Sammlungen; Papierkorb-Einträge, Filament-Lager, Drucker, Druckerjobs, Slicer und übrige Einstellungen bleiben. Echtes Löschen von Ordnern auf der Festplatte folgt später.
 

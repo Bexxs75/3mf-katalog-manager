@@ -143,6 +143,21 @@ mod tests {
     }
 
     #[test]
+    fn foreign_appimage_paths_survive_own_appdir_cleanup() {
+        let input = vars(&[
+            ("LD_LIBRARY_PATH", "/tmp/own/usr/lib:/tmp/creality/usr/lib"),
+            ("QT_PLUGIN_PATH", "/tmp/creality/plugins"),
+        ]);
+        assert_eq!(
+            sanitized_env(&input, Some("/tmp/own")),
+            vec![(
+                "LD_LIBRARY_PATH".into(),
+                Some("/tmp/creality/usr/lib".into())
+            )]
+        );
+    }
+
+    #[test]
     fn unrelated_and_host_settings_remain_untouched() {
         let input = vars(&[
             ("PYTHONHOME", "/opt/python"),
