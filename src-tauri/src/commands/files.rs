@@ -715,9 +715,8 @@ fn step_geometry(path: &Path) -> CmdResult<Vec<RenderMesh>> {
 
 #[cfg(not(feature = "step-preview"))]
 fn step_geometry(_path: &Path) -> CmdResult<Vec<RenderMesh>> {
-    // Not a bug: this build was made without STEP support. The frontend
-    // already avoids this call for STEP files and shows an explanation
-    // instead - this stays only as a safety net.
+    // Not a bug: this build was made without STEP support (only possible for
+    // source builds). The viewer shows the typed "unsupported" error as an explanation.
     Err(CmdError::expected("STEP-Vorschau ist in diesem Build nicht enthalten").with_code(super::error::GeometryErrorCode::Unsupported))
 }
 

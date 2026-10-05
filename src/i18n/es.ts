@@ -377,11 +377,6 @@ export const es: Translations = {
   loadingPreview: 'Cargando vista previa …',
   previewUnavailable: 'Vista previa no disponible',
 
-  stepHintTitle: 'Sin vista previa 3D para archivos STEP',
-  stepHintTextBefore: 'Esta variante muestra los archivos STEP sin vista previa 3D. La variante ',
-  stepHintVariantBold: 'con vista previa STEP',
-  stepHintTextAfter: ' sí la muestra – tu catálogo se conserva al cambiar.',
-  stepHintButton: 'Descargar la variante con vista previa STEP',
 
   filamentDialogTitle: 'Material Manager',
   filamentMaterialLabel: 'Material',

@@ -377,11 +377,6 @@ export const fr: Translations = {
   loadingPreview: "Chargement de l'aperçu …",
   previewUnavailable: 'Aperçu indisponible',
 
-  stepHintTitle: 'Pas d’aperçu 3D pour les fichiers STEP',
-  stepHintTextBefore: 'Cette variante affiche les fichiers STEP sans aperçu 3D. La variante ',
-  stepHintVariantBold: 'avec aperçu STEP',
-  stepHintTextAfter: ' les affiche – ton catalogue est conservé lors du changement.',
-  stepHintButton: 'Télécharger la variante avec aperçu STEP',
 
   filamentDialogTitle: 'Material Manager',
   filamentMaterialLabel: 'Matériau',

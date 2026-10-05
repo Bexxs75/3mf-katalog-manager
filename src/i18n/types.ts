@@ -386,11 +386,6 @@ export interface Translations {
 
   // Shown instead of `previewUnavailable` for STEP files in a build without
   // STEP support - this isn't a broken preview, just a build the user can switch.
-  stepHintTitle: string;
-  stepHintTextBefore: string;
-  stepHintVariantBold: string;
-  stepHintTextAfter: string;
-  stepHintButton: string;
 
   sortLastViewed: string;
   cardMoreTags: string;

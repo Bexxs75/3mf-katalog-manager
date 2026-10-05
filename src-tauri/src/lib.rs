@@ -308,7 +308,6 @@ pub fn run() {
             commands::get_app_version,
             commands::is_preview_build,
             commands::has_step_preview,
-            commands::open_step_download,
             commands::check_app_update,
             commands::download_app_update,
             commands::discard_app_update,

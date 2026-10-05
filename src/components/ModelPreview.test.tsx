@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { ModelPreview } from './ModelPreview';
@@ -21,7 +21,6 @@ beforeEach(() => {
 function renderPreview(hasStepPreview: boolean, path = '/catalog/teil.step') {
   vi.mocked(invoke).mockImplementation((cmd: string) => {
     if (cmd === 'has_step_preview') return Promise.resolve(hasStepPreview);
-    if (cmd === 'open_step_download') return Promise.resolve(undefined);
     return Promise.reject(new Error(`unexpected invoke in this test: ${cmd}`));
   });
   const model = makeModelFile({ id: 'm1', path });
@@ -34,46 +33,18 @@ function renderPreview(hasStepPreview: boolean, path = '/catalog/teil.step') {
 }
 
 describe('ModelPreview', () => {
-  it('shows the STEP hint instead of the viewer for a STEP file without STEP support', async () => {
+  it('mounts the viewer for a STEP file even when this build has no STEP support', async () => {
     renderPreview(false);
-    await waitFor(() => expect(screen.getByText('Keine 3D-Vorschau für STEP-Dateien')).toBeInTheDocument());
-    expect(screen.queryByTestId('model-viewer')).not.toBeInTheDocument();
-    // Only ModelViewer ever asks the backend for geometry; it never mounted here.
-    expect(invoke).not.toHaveBeenCalledWith('get_model_geometry', expect.anything());
-  });
-
-  it('mounts nothing for a STEP file while the build capabilities are still unknown', async () => {
-    let resolve: (v: boolean) => void = () => {};
-    vi.mocked(invoke).mockImplementation((cmd: string) =>
-      cmd === 'has_step_preview' ? new Promise<boolean>((r) => { resolve = r; }) : Promise.reject(new Error(cmd)),
-    );
-    render(
-      <LanguageProvider>
-        <ModelPreview model={makeModelFile({ id: 'm1', path: '/catalog/teil.STEP' })} needsSnapshot={false} onSnapshotCaptured={() => {}} />
-      </LanguageProvider>,
-    );
-    expect(screen.queryByTestId('model-viewer')).not.toBeInTheDocument();
-    expect(screen.queryByText('Keine 3D-Vorschau für STEP-Dateien')).not.toBeInTheDocument();
-    resolve(false);
-    await waitFor(() => expect(screen.getByText('Keine 3D-Vorschau für STEP-Dateien')).toBeInTheDocument());
-    expect(screen.queryByTestId('model-viewer')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('model-viewer')).toBeInTheDocument());
   });
 
   it('renders the real viewer for a STEP file when this build has STEP support', async () => {
     renderPreview(true);
     await waitFor(() => expect(screen.getByTestId('model-viewer')).toBeInTheDocument());
-    expect(screen.queryByText('Keine 3D-Vorschau für STEP-Dateien')).not.toBeInTheDocument();
   });
 
   it('renders the real viewer for a non-STEP file even without STEP support', async () => {
     renderPreview(false, '/catalog/teil.3mf');
     await waitFor(() => expect(screen.getByTestId('model-viewer')).toBeInTheDocument());
-  });
-
-  it('the button opens the download page for the current UI language', async () => {
-    renderPreview(false);
-    await waitFor(() => screen.getByText('Variante mit STEP-Vorschau laden'));
-    fireEvent.click(screen.getByText('Variante mit STEP-Vorschau laden'));
-    await waitFor(() => expect(invoke).toHaveBeenCalledWith('open_step_download', { lang: 'de' }));
   });
 });
