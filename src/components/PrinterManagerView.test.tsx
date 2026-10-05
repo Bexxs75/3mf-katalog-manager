@@ -90,6 +90,15 @@ it('selects the navigation context and opens Material Manager with the same ID',
   expect(onMaterial).toHaveBeenCalledWith({ printerId: '2' });
 });
 
+it('replaces the Edit button by a new Save button element so the opening click cannot submit the form', async () => {
+  setup(); await screen.findByTitle('1 · PLA · Rot');
+  const edit = within(screen.getByTestId('printer-detail-header')).getByRole('button', { name: 'Bearbeiten' });
+  fireEvent.click(edit);
+  const save = screen.getByRole('button', { name: 'Speichern' });
+  expect(save).not.toBe(edit);
+  expect(edit.isConnected).toBe(false);
+});
+
 it('validates nozzle and bed limits, saves all fields and renames, then allows clearing', async () => {
   setup(); await screen.findByTitle('1 · PLA · Rot');
   fireEvent.click(within(screen.getByTestId('printer-detail-header')).getByRole('button', { name: 'Bearbeiten' }));

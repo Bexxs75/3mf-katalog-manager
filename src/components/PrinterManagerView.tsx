@@ -210,9 +210,9 @@ function General({ printer, state, header, deleteAction }: { printer: Printer; s
     <header data-testid="printer-detail-header" className="flex flex-wrap items-center gap-4 min-[1320px]:col-span-2">
       {header}
       <div className="ml-auto flex flex-wrap gap-2 max-[639px]:w-full">{editing ? <>
-        <button form={formId} type="submit" className={`${pmButton} max-[639px]:w-full`} disabled={busy}>{t('printersSave')}</button>
-        <button type="button" className={`${pmButton} max-[639px]:w-full`} disabled={busy} onClick={() => { reset(); setEditing(false); }}>{t('printersCancel')}</button>
-      </> : <><button type="button" className={`${pmButton} max-[639px]:w-full`} onClick={() => { reset(); setEditing(true); }}>{t('pmEdit')}</button>{deleteAction}</>}</div>
+        <button key="save" form={formId} type="submit" className={`${pmButton} max-[639px]:w-full`} disabled={busy}>{t('printersSave')}</button>
+        <button key="cancel" type="button" className={`${pmButton} max-[639px]:w-full`} disabled={busy} onClick={() => { reset(); setEditing(false); }}>{t('printersCancel')}</button>
+      </> : <>{/* Own key: without it React reuses the same <button> for "Edit" and the submit "Save" at the same position, and the browser then runs the new submit behaviour for the very click that opened the form, which saves and closes it at once. */}<button key="edit" type="button" className={`${pmButton} max-[639px]:w-full`} onClick={() => { reset(); setEditing(true); }}>{t('pmEdit')}</button>{deleteAction}</>}</div>
     </header>
     <Card title={t('pmHardware')}>
     <form id={formId} onSubmit={async e => {
