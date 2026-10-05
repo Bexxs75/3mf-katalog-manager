@@ -16,8 +16,40 @@ pub const SCHEMA_SQL: &str = include_str!("schema.sql");
 
 pub fn connect(path: &Path) -> Result<Connection, DbError> {
     let mut conn = Connection::open(path)?;
+    backup_before_migration(&conn, path);
     init(&mut conn)?;
     Ok(conn)
+}
+
+/// Directory next to the catalog database where copies taken before a schema
+/// migration (and before in-app updates) are kept.
+pub const BACKUP_DIR_NAME: &str = "update-backups";
+
+/// A new app version migrates the catalog forward only; an older version cannot
+/// read the result. Whoever installs a version by hand (no in-app update, which
+/// has its own backup) would lose the way back, so an existing catalog is copied
+/// right before the first migration. A failed copy must never block the start.
+fn backup_before_migration(conn: &Connection, db_path: &Path) {
+    let Some(label) = migration_backup_label(conn) else { return };
+    let Some(dir) = db_path.parent().map(|p| p.join(BACKUP_DIR_NAME)) else { return };
+    match crate::updater::backup::create(conn, &dir, &label) {
+        Ok(path) => log::info!(target: "backup", "Sicherung vor der Schema-Migration: {}", path.display()),
+        Err(e) => log::warn!(target: "backup", "Sicherung vor der Schema-Migration fehlgeschlagen: {e}"),
+    }
+}
+
+/// `Some("schema-<old>-auf-<new>")` when the database already holds a catalog
+/// (any table) and its schema version is older than this build's, else `None`.
+fn migration_backup_label(conn: &Connection) -> Option<String> {
+    let tables: i64 = conn
+        .query_row("SELECT count(*) FROM sqlite_master WHERE type = 'table'", [], |r| r.get(0))
+        .ok()?;
+    if tables == 0 {
+        return None;
+    }
+    let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).ok()?;
+    let target = super::migrations::CURRENT_SCHEMA_VERSION;
+    (version < target).then(|| format!("schema-{version}-auf-{target}"))
 }
 
 #[allow(dead_code)]
@@ -1544,4 +1576,42 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 1);
     }
+    fn backup_test_dir(name: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("mfk-{name}-{}-{nanos}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn an_older_catalog_is_copied_before_it_is_migrated() {
+        let dir = backup_test_dir("migbackup-old");
+        let db = dir.join("catalog.db");
+        {
+            let conn = Connection::open(&db).unwrap();
+            conn.execute_batch("CREATE TABLE marker (x INTEGER); INSERT INTO marker VALUES (7);").unwrap();
+            conn.pragma_update(None, "user_version", 3).unwrap();
+        }
+        let target = crate::db::migrations_current_version();
+        let _ = connect(&db); // migration of this stub may fail; the copy comes first
+        let copy = dir.join(BACKUP_DIR_NAME).join(format!("catalog-vor-schema-3-auf-{target}.db"));
+        assert!(copy.exists(), "expected a copy at {}", copy.display());
+        let saved = Connection::open(&copy).unwrap();
+        let x: i64 = saved.query_row("SELECT x FROM marker", [], |r| r.get(0)).unwrap();
+        assert_eq!(x, 7, "the copy must hold the catalog as it was before the migration");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_new_or_current_catalog_is_not_copied() {
+        let dir = backup_test_dir("migbackup-new");
+        let fresh = dir.join("fresh.db");
+        let _ = connect(&fresh).unwrap();
+        assert!(!dir.join(BACKUP_DIR_NAME).exists(), "a brand-new catalog has nothing to protect");
+        // Opened again at the current version: still no copy.
+        let _ = connect(&fresh).unwrap();
+        assert!(!dir.join(BACKUP_DIR_NAME).exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
 }

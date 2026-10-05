@@ -26,6 +26,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - **3D preview:** colors from the file ("File colors" or "Single color") with a legend, a floor under the model, understandable cards instead of an empty area (file not found, cannot be read, too large, no WebGL), and a plate selector for 3MF files with several print plates (Bambu Studio, Orca, Creality Print) with camera fit and a legend for the selected plate.
 - **Show in file manager** from the detail page, the details panel and the card context menu (Explorer, Finder, and Linux file managers that support it).
 - **Creality Print** is detected automatically (Windows, macOS, Linux).
+- **Safety copy before a catalog migration:** when a new version has to migrate an existing catalog, the app first copies the catalog database to `update-backups` (the last three copies are kept), also when you install the version by hand. Going back to an older version is then possible by restoring the copy.
 
 ### Changed
 
@@ -537,6 +538,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **3D-Vorschau:** Farben aus der Datei („Dateifarben“ oder „Einfarbig“) mit Legende, ein Boden unter dem Modell, verständliche Karten statt einer leeren Fläche (Datei nicht gefunden, nicht lesbar, zu groß, kein WebGL) und eine Plattenauswahl für 3MF-Dateien mit mehreren Druckplatten (Bambu Studio, Orca, Creality Print) mit Kameraanpassung und Legende der gewählten Platte.
 - **Im Dateimanager anzeigen** von der Detailseite, dem Detailbereich und dem Karten-Kontextmenü (Explorer, Finder und Linux-Dateimanager, die es unterstützen).
 - **Creality Print** wird automatisch erkannt (Windows, macOS, Linux).
+- **Sicherung vor einer Katalog-Migration:** Muss eine neue Version einen vorhandenen Katalog umbauen, kopiert die App die Katalog-Datenbank vorher nach `update-backups` (die letzten drei Kopien bleiben erhalten), auch wenn du die Version von Hand installierst. Zurück zu einer älteren Version geht dann mit der Kopie.
 
 ### Geändert
 
