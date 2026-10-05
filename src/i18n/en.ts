@@ -24,6 +24,10 @@ export const en: Translations = {
   viewerTooLargeCompact: "Use the preview image or open the model in your slicer.",
   viewerNoWebGLCompact: "Use the preview image or open the file in your slicer.",
 
+  showInFileManager: "Show in file manager",
+  viewerAllPlates: "All",
+  viewerPlate: "Plate {n}",
+  viewerPrintPlate: "Print plate",
   viewerFileColors: "File colors",
   viewerSingleColor: "Single color",
   viewerColorsLegend: "Colors in the file",

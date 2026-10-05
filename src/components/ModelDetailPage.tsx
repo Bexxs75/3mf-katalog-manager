@@ -1,3 +1,4 @@
+import { RevealFileButton } from './RevealFileButton';
 import { useImageUpload } from '../hooks/useImageUpload';
 import { ImageUploadError } from './ImageUploadError';
 import { useModelImages } from '../hooks/useModelImages';
@@ -529,6 +530,7 @@ export function ModelDetailPage({
               </div>
             )}
           </div>
+          <RevealFileButton fileId={model.id} />
           <button
             onClick={() => onOpenInSlicer()}
             disabled={slicers.length === 0}

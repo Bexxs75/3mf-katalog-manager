@@ -27,3 +27,9 @@ Die im ursprünglichen Plan verwendeten Formen `compound d a c` und
 - `zwei-koerper.step`: 2 Körper; Gesamtausdehnung ungefähr
   `[40, 10, 10]` mm. Das prüft insbesondere die Lageinformation des zweiten
   Körpers — ohne korrekte Transformation lägen beide Würfel im Ursprung.
+
+## Creality Print: multiple plates / mehrere Druckplatten
+
+`creality-3plates.3mf` is a read-only sample authorized in the work order. It contains five meshes across three plates (1, 2, 2, 2, 3), with external Production Extension components. Root object IDs are 2 on plate 1, 4/6/8 on plate 2 and 10 on plate 3. Synthetic in-memory packages additionally cover inline geometry and missing assignments.
+
+`creality-3plates.3mf` ist die im Arbeitsauftrag freigegebene, nur gelesene Beispieldatei. Sie enthält fünf Meshes auf drei Platten (1, 2, 2, 2, 3), mit externen Komponenten der Produktions-Erweiterung. Die obersten Objekt-IDs sind 2 auf Platte 1, 4/6/8 auf Platte 2 und 10 auf Platte 3. Synthetische Pakete im Speicher prüfen zusätzlich eingebettete Geometrie und fehlende Zuordnungen.

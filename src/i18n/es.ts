@@ -24,6 +24,10 @@ export const es: Translations = {
   viewerTooLargeCompact: "Usa la imagen de vista previa o abre el modelo en el laminador.",
   viewerNoWebGLCompact: "Usa la imagen de vista previa o abre el archivo en el laminador.",
 
+  showInFileManager: "Mostrar en el gestor de archivos",
+  viewerAllPlates: "Todas",
+  viewerPlate: "Placa {n}",
+  viewerPrintPlate: "Placa de impresión",
   viewerFileColors: "Colores del archivo",
   viewerSingleColor: "Un solo color",
   viewerColorsLegend: "Colores del archivo",

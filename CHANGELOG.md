@@ -9,6 +9,11 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ## [Unreleased]
 
+### Added
+
+- Show a model file in the system file manager from its details or card context menu.
+- Preview individual print plates in multi-plate 3MF files, with a camera fit and color legend for the selected plate.
+
 ### Fixed
 
 - Models can also be dragged into a collection.
@@ -488,6 +493,11 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/), Ve
 Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unter der Scaffold-Versionsnummer `0.1.0`, ohne dass Meilensteine markiert wurden. Die folgenden Versionsgrenzen wurden nachträglich anhand von Entwicklungs-Tagen und natürlichen Feature-Abschlüssen (jeweils an einem Dokumentations-Commit) gezogen, keine davon wurde zum jeweiligen Zeitpunkt live getaggt oder veröffentlicht.
 
 ## [Unreleased]
+
+### Hinzugefügt
+
+- Modelldateien aus der Detailansicht oder dem Karten-Kontextmenü im Dateimanager anzeigen.
+- Druckplatten in 3MF-Dateien mit mehreren Platten einzeln in der 3D-Vorschau anzeigen; Kamera und Farblegende folgen der gewählten Platte.
 
 ### Behoben
 

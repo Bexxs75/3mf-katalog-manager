@@ -1,3 +1,4 @@
+import { RevealFileButton } from './RevealFileButton';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useT } from '../i18n/LanguageContext';
@@ -15,6 +16,7 @@ interface Props {
   onToggleQueue: () => void;
   printed: boolean;
   onTogglePrintStatus: () => void;
+  fileId: string;
   currentName: string;
   onRename: (newName: string) => Promise<void>;
 }
@@ -32,6 +34,7 @@ function ModelContextMenu({
   onToggleQueue,
   printed,
   onTogglePrintStatus,
+  fileId,
   currentName,
   onRename,
 }: Props) {
@@ -176,6 +179,8 @@ function ModelContextMenu({
           >
             {t('openInSlicer')}
           </button>
+          <RevealFileButton fileId={fileId} onSuccess={onClose}
+            className="w-full text-left px-3 py-2 text-title text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)] disabled:opacity-50" />
           <button
             onClick={() => {
               onToggleQueue();

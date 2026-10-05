@@ -65,6 +65,7 @@ pub struct PackageParts {
     pub referenced_models: HashMap<String, ParsedModel>,
     pub thumbnail: Option<Vec<u8>>,
     pub plate_count: Option<u32>,
+    pub plate_assignments: super::plates::PlateAssignments,
     pub slice_info: Option<super::slice_info::SliceInfo>,
 }
 
@@ -95,7 +96,7 @@ fn read_package_inner<R: Read + Seek>(reader: R, geometry: bool) -> Result<Packa
     // Counts EVERY resource read from the ZIP, including _rels/.rels and the slicer configs.
     let mut total_unpacked: u64 = 0;
 
-    let (plate_count, plates_bytes) = super::plates::count_plates(&mut archive);
+    let (plate_count, plates_bytes, plate_assignments) = super::plates::read_plate_metadata(&mut archive);
     total_unpacked += plates_bytes;
     check_total_budget(total_unpacked)?;
 
@@ -182,6 +183,7 @@ fn read_package_inner<R: Read + Seek>(reader: R, geometry: bool) -> Result<Packa
         root_model,
         referenced_models,
         plate_count,
+        plate_assignments,
         slice_info,
         thumbnail,
     })

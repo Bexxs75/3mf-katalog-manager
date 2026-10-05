@@ -29,6 +29,10 @@ export interface Translations {
   viewerTooLargeCompact: string;
   viewerNoWebGLCompact: string;
 
+  showInFileManager: string;
+  viewerAllPlates: string;
+  viewerPlate: string;
+  viewerPrintPlate: string;
   viewerFileColors: string;
   viewerSingleColor: string;
   viewerColorsLegend: string;

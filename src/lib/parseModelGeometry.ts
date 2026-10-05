@@ -7,14 +7,17 @@ export interface ParsedMesh {
   position: Float32Array;
   normal: Float32Array | null;
   index: Uint32Array;
+  plate?: number | null;
   objectName?: string;
   groups?: GeometryGroup[];
 }
-export interface ModelGeometry { meshes: ParsedMesh[]; palette: GeometryColor[] }
+export interface GeometryPlate { number: number; name: string | null }
+export interface ModelGeometry { meshes: ParsedMesh[]; palette: GeometryColor[]; plates: GeometryPlate[] }
 interface MeshHeaderEntry {
   vertexCount: number;
   hasNormal: boolean;
   indexCount: number;
+  plate?: number | null;
   objectName?: string;
   groups?: GeometryGroup[];
 }
@@ -36,7 +39,7 @@ export function decodeModelGeometry(buffer: ArrayBuffer): ModelGeometry {
     }
     const index = new Uint32Array(buffer, offset, header.indexCount);
     offset += index.byteLength;
-    meshes.push({ position, normal, index, objectName: header.objectName, groups: header.groups });
+    meshes.push({ position, normal, index, objectName: header.objectName, groups: header.groups, plate: header.plate });
   }
-  return { meshes, palette };
+  return { meshes, palette, plates: Array.isArray(raw) ? [] : raw.plates ?? [] };
 }

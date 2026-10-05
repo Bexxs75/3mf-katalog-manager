@@ -168,7 +168,7 @@ html { font-family: 'Barlow', Helvetica, sans-serif; }
 /* Viewer controls stay readable regardless of catalog density. */
 .viewer-toggle { display: inline-flex; padding: 3px; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 999px; box-shadow: var(--shadow); }
 .viewer-toggle button { height: 30px; padding-inline: 15px; border-radius: 999px; font-size:var(--fs-body); font-weight: 700; color: var(--ink); cursor: pointer; }
-.viewer-toggle button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.viewer-toggle button[aria-pressed="true"], .viewer-toggle button[aria-checked="true"] { background: var(--accent); color: var(--accent-ink); }
 .viewer-pill { height: 32px; padding-inline: 13px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--panel); color: var(--ink); font-size:var(--fs-body); font-weight: 700; cursor: pointer; }
 .viewer-legend { max-width: min(230px, calc(100% - 24px)); max-height: 35%; overflow: auto; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow); font-size:var(--fs-small); display: flex; flex-direction: column; gap: 5px; }
 .viewer-error-card { width: 100%; max-width: 46ch; padding: 18px 20px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 10px; }

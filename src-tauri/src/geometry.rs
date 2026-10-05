@@ -57,6 +57,8 @@ pub struct RenderMesh {
     pub indices: Vec<[u32; 3]>,
     pub normals: Option<Vec<[f32; 3]>>,
     pub object_name: Option<String>,
+    pub plate: Option<u32>,
+    pub plate_name: Option<String>,
     pub groups: Vec<RenderGroup>,
     pub palette: Vec<RenderColor>,
 }

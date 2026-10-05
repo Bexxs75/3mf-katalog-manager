@@ -96,6 +96,7 @@ pub fn extract_render_meshes(package: &PackageParts) -> Result<Vec<RenderMesh>, 
     for item in &package.root_model.build_items {
         let transform = item.transform.unwrap_or_else(Matrix3x4::identity);
         let mut path = Vec::new();
+        let start = meshes.len();
         collect_render_meshes(
             package,
             item.path.as_deref(),
@@ -105,6 +106,12 @@ pub fn extract_render_meshes(package: &PackageParts) -> Result<Vec<RenderMesh>, 
             &mut path,
             &mut budget,
         )?;
+        if let Some(number) = package.plate_assignments.objects.get(&item.object_id) {
+            for mesh in &mut meshes[start..] {
+                mesh.plate = Some(*number);
+                mesh.plate_name = package.plate_assignments.plates.get(number).cloned().flatten();
+            }
+        }
     }
     Ok(meshes)
 }
@@ -155,6 +162,7 @@ fn collect_render_meshes(
                 let (indices, groups, palette) = material_indices(model, object, mesh);
                 out.push(RenderMesh {
                     positions, indices, groups, palette,
+                    plate: None, plate_name: None,
                     normals: None,
                     object_name: object.name.clone(),
                 });
@@ -922,7 +930,7 @@ mod render_material_tests {
         </vertices><triangles>{triangles}</triangles></mesh></object></resources>
         <build><item objectid="3"/></build></model>"##);
         let package = PackageParts { root_model: model_xml::parse_model_xml(&xml).unwrap(),
-            referenced_models: Default::default(), thumbnail: None, plate_count: None, slice_info: None };
+            referenced_models: Default::default(), thumbnail: None, plate_count: None, plate_assignments: Default::default(), slice_info: None };
         extract_render_meshes(&package).unwrap()
     }
 

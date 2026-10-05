@@ -1,10 +1,11 @@
+import { PlateSelector } from './PlateSelector';
 import { useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import { invoke } from '@tauri-apps/api/core';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { decodeModelGeometry } from '../lib/parseModelGeometry';
-import type { ParsedMesh, GeometryColor } from '../lib/parseModelGeometry';
+import type { ParsedMesh, GeometryColor, GeometryPlate } from '../lib/parseModelGeometry';
 import { toAppError, type AppError } from '../lib/errors';
 import { ViewerErrorCard, type ViewerActions } from './ViewerErrorCard';
 import { createViewerFloor, gridColor } from '../lib/viewerFloor';
@@ -17,8 +18,18 @@ interface Props extends ViewerActions {
   showRotationControls?: boolean;
 }
 
+function visibleBounds(object: THREE.Object3D) {
+  object.updateWorldMatrix(true, true);
+  const box = new THREE.Box3();
+  object.traverseVisible(child => {
+    if (child instanceof THREE.Mesh) box.union(new THREE.Box3().setFromObject(child));
+  });
+  return box;
+}
+
 function frameObject(object: THREE.Object3D, camera: THREE.PerspectiveCamera, controls: OrbitControls) {
-  const box = new THREE.Box3().setFromObject(object);
+  const box = visibleBounds(object);
+  if (box.isEmpty()) return;
   const size = box.getSize(new THREE.Vector3());
   const center = box.getCenter(new THREE.Vector3());
 
@@ -62,6 +73,7 @@ function buildGroup(meshes: ParsedMesh[], material: THREE.MeshStandardMaterial, 
     const fileMaterials = mesh.groups?.length ? [material, ...colors] : material;
     const child = new THREE.Mesh(geometry, fileMaterials);
     child.userData.fileMaterials = fileMaterials;
+    child.userData.plate = mesh.plate;
     group.add(child);
   }
   return group;
@@ -84,6 +96,19 @@ interface ViewerContext {
   floor: ReturnType<typeof createViewerFloor>;
 }
 
+function fitViewer(ctx: ViewerContext) {
+  const object = ctx.currentObject;
+  if (!object) return;
+  frameObject(object, ctx.camera, ctx.controls);
+  const box = visibleBounds(object);
+  if (box.isEmpty()) { ctx.floor.visible = false; return; }
+  const size = box.getSize(new THREE.Vector3());
+  const floorSize = Math.max(size.x, size.y, size.z, 1) * 1.6;
+  ctx.floor.scale.set(floorSize, floorSize, 1);
+  ctx.floor.position.set(0, box.min.y - floorSize * 0.0001, 0);
+  ctx.floor.visible = true;
+}
+
 export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError, showRotationControls, model, onOpenInSlicer, onRemoveFromCatalog }: Props) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -92,7 +117,9 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
   const [autoRotating, setAutoRotating] = useState(false);
   const [fileColors, setFileColors] = useState(true);
   const [palette, setPalette] = useState<GeometryColor[]>([]);
-  const [legend, setLegend] = useState<{ colorIndex: number; objectName?: string }[]>([]);
+  const [plates, setPlates] = useState<GeometryPlate[]>([]);
+  const [selectedPlate, setSelectedPlate] = useState<number | null>(null);
+  const [legend, setLegend] = useState<{ colorIndex: number; objectName?: string; plate?: number | null }[]>([]);
   const [error, setError] = useState<AppError | null>(null);
   const [noWebGL, setNoWebGL] = useState(false);
 
@@ -202,6 +229,8 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
     setFileColors(true);
     setPalette([]);
     setLegend([]);
+    setPlates([]);
+    setSelectedPlate(null);
     ctx.floor.visible = false;
     if (ctx.currentObject) {
       ctx.scene.remove(ctx.currentObject);
@@ -214,16 +243,17 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
     invoke<ArrayBuffer>('get_model_geometry', { fileId })
       .then((buffer) => {
         if (cancelled) return;
-        const { meshes, palette } = decodeModelGeometry(buffer);
+        const { meshes, palette, plates } = decodeModelGeometry(buffer);
+        setPlates(plates);
         ctx.colorMaterials = palette.map(color => new THREE.MeshStandardMaterial({
           color: color.color, roughness: 0.55, metalness: 0.05, flatShading: true,
         }));
         const object = buildGroup(meshes, ctx.material, ctx.colorMaterials);
         setPalette(palette);
-        const entries: { colorIndex: number; objectName?: string }[] = [];
+        const entries: { colorIndex: number; objectName?: string; plate?: number | null }[] = [];
         for (const mesh of meshes) for (const range of mesh.groups ?? []) {
-          if (range.colorIndex !== null && !entries.some(e => e.colorIndex === range.colorIndex && e.objectName === mesh.objectName)) {
-            entries.push({ colorIndex: range.colorIndex, objectName: mesh.objectName });
+          if (range.colorIndex !== null && !entries.some(e => e.colorIndex === range.colorIndex && e.objectName === mesh.objectName && e.plate === mesh.plate)) {
+            entries.push({ colorIndex: range.colorIndex, objectName: mesh.objectName, plate: mesh.plate });
           }
         }
         setLegend(entries);
@@ -245,13 +275,7 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
           ctx.camera.updateProjectionMatrix();
           ctx.renderer.setSize(container.clientWidth, container.clientHeight);
         }
-        frameObject(object, ctx.camera, ctx.controls);
-        const box = new THREE.Box3().setFromObject(object);
-        const size = box.getSize(new THREE.Vector3());
-        const floorSize = Math.max(size.x, size.y, size.z, 1) * 1.6;
-        ctx.floor.scale.set(floorSize, floorSize, 1);
-        ctx.floor.position.set(0, box.min.y - floorSize * 0.0001, 0);
-        ctx.floor.visible = true;
+        fitViewer(ctx);
         setStatus('ready');
 
         if (needsSnapshot) {
@@ -293,8 +317,20 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
 
   const fit = () => {
     const ctx = ctxRef.current;
-    if (ctx?.currentObject) frameObject(ctx.currentObject, ctx.camera, ctx.controls);
+    if (ctx?.currentObject) fitViewer(ctx);
   };
+
+  useEffect(() => {
+    const ctx = ctxRef.current;
+    if (!ctx?.currentObject || status !== 'ready') return;
+    ctx.currentObject.traverse(child => {
+      if (child instanceof THREE.Mesh) child.visible = selectedPlate === null || child.userData.plate === selectedPlate;
+    });
+    fitViewer(ctx);
+  }, [selectedPlate, status]);
+
+  const visibleLegend = legend.filter(entry => selectedPlate === null || entry.plate === selectedPlate)
+    .filter((entry, index, entries) => entries.findIndex(e => e.colorIndex === entry.colorIndex && e.objectName === entry.objectName) === index);
 
   // OrbitControls pauses autoRotate itself while dragging and resumes afterwards.
   useEffect(() => {
@@ -331,6 +367,7 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
         model={model} onOpenInSlicer={onOpenInSlicer} onRemoveFromCatalog={onRemoveFromCatalog} />}
       {showRotationControls && status === 'ready' && <>
         <button className="viewer-pill absolute top-3 left-3" onClick={() => { setAutoRotating(false); fit(); }}>{t('viewerReset')}</button>
+        <PlateSelector plates={plates} selected={selectedPlate} onSelect={setSelectedPlate} />
         {palette.length > 0 && <>
           <div role="group" aria-label={t('viewerColorsLegend')} className="viewer-toggle absolute top-14 right-3">
             <button aria-pressed={fileColors} onClick={() => setFileColors(true)}>{t('viewerFileColors')}</button>
@@ -338,7 +375,7 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
           </div>
           {fileColors && <div className="viewer-legend absolute bottom-14 left-3">
             <div className="ui-label text-[var(--ink-3)]">{t('viewerColorsLegend')}</div>
-            {legend.map(entry => <div className="flex items-center gap-2" key={`${entry.colorIndex}:${entry.objectName}`}>
+            {visibleLegend.map(entry => <div className="flex items-center gap-2" key={`${entry.colorIndex}:${entry.objectName}`}>
               <span className="w-3.5 h-3.5 rounded-full border border-[var(--line-strong)] shrink-0" style={{ background: palette[entry.colorIndex].color }} />
               <span>{palette[entry.colorIndex].name}</span><small className="text-caption text-[var(--ink-3)]">{entry.objectName}</small>
             </div>)}

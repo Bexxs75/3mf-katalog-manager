@@ -1,3 +1,4 @@
+import { invoke } from '@tauri-apps/api/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { DetailPanel } from './DetailPanel';
@@ -23,4 +24,17 @@ it.each(['compact', 'comfort'])('shows dismissible unexpected upload errors in t
   expect(screen.getByRole('button', {name: 'Problem melden'})).toBeVisible();
   fireEvent.click(screen.getByRole('button', {name: 'Hinweis schließen'}));
   expect(screen.queryByRole('alert')).toBeNull();
+});
+
+it.each(['compact', 'comfort'])('reveals the selected model in the %s detail panel', density => {
+  localStorage.setItem('3mf-katalog-language', 'de');
+  localStorage.setItem('3mf-katalog-density', density);
+  const noop = vi.fn(); const model = makeModelFile();
+  render(<LanguageProvider><UiDensityProvider><DetailPanel model={model} allTags={[]}
+    onAddTag={noop} onRemoveTag={noop} onDelete={noop} onTogglePrintStatus={noop}
+    onToggleFavorite={noop} onToggleQueue={noop} onUploadImage={noop}
+    onSnapshotCaptured={noop} onSetSourceUrl={noop} onOpenInSlicer={noop} slicerError={null}
+  /></UiDensityProvider></LanguageProvider>);
+  fireEvent.click(screen.getByRole('button', {name: 'Im Dateimanager anzeigen'}));
+  expect(invoke).toHaveBeenCalledWith('reveal_in_file_manager', {fileId: model.id});
 });

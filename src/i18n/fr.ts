@@ -24,6 +24,10 @@ export const fr: Translations = {
   viewerTooLargeCompact: "Utilise l’image d’aperçu ou ouvre le modèle dans le trancheur.",
   viewerNoWebGLCompact: "Utilise l’image d’aperçu ou ouvre le fichier dans le trancheur.",
 
+  showInFileManager: "Afficher dans le gestionnaire de fichiers",
+  viewerAllPlates: "Toutes",
+  viewerPlate: "Plateau {n}",
+  viewerPrintPlate: "Plateau d’impression",
   viewerFileColors: "Couleurs du fichier",
   viewerSingleColor: "Couleur unique",
   viewerColorsLegend: "Couleurs du fichier",

@@ -223,6 +223,7 @@ pub fn run() {
             commands::create_catalog_dir,
             commands::open_data_folder,
             commands::open_in_file_manager,
+            commands::reveal_in_file_manager,
             commands::list_tag_counts,
             commands::list_filament_spools,
             commands::check_filament,

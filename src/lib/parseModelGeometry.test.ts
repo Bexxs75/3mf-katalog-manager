@@ -30,3 +30,12 @@ describe('geometry wire format', () => {
     expect([...result.meshes[0].position]).toEqual([0, 0, 0, 1, 0, 0, 0, 1, 0]);
   });
 });
+it('accepts optional plate metadata and missing fields from older backends', () => {
+  const plates = [{ number: 1, name: null }, { number: 2, name: 'Regalplatte' }];
+  const result = decodeModelGeometry(geometryBuffer({ meshes: [{ ...mesh, plate: 2 }], palette: [], plates }));
+  expect(result.plates).toEqual(plates);
+  expect(result.meshes[0].plate).toBe(2);
+  const old = decodeModelGeometry(geometryBuffer({ meshes: [mesh], palette: [] }));
+  expect(old.plates).toEqual([]);
+  expect(old.meshes[0].plate).toBeUndefined();
+});

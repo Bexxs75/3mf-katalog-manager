@@ -1437,6 +1437,78 @@ fn import_dropped_paths(
 pub async fn import_dropped(app: tauri::AppHandle, paths: Vec<String>) -> CmdResult<ImportResultDto> {
     super::import_jobs::legacy_models(app, ImportSource::Dropped, Some(paths.into_iter().map(PathBuf::from).collect()), None).await
 }
+/// Pure command construction keeps platform quoting independent of the host OS.
+fn reveal_command(os: &str, path: &str) -> (String, Vec<String>) {
+    match os {
+        "windows" => {
+            let normalized = path.replace('/', "\\");
+            let normalized = if let Some(unc) = normalized.strip_prefix(r"\\?\UNC\") {
+                format!(r"\\{unc}")
+            } else { normalized.strip_prefix(r"\\?\").unwrap_or(&normalized).to_string() };
+            ("explorer".into(), vec![format!("/select,{normalized}")])
+        },
+        "macos" => ("open".into(), vec!["-R".into(), "--".into(), path.into()]),
+        _ => {
+            let mut uri = String::from("file://");
+            for byte in path.bytes() {
+                if byte.is_ascii_alphanumeric() || b"/-._~".contains(&byte) {
+                    uri.push(byte as char);
+                } else { uri.push_str(&format!("%{byte:02X}")); }
+            }
+            ("gdbus".into(), vec!["call".into(), "--session".into(), "--timeout".into(), "3".into(),
+                "--dest".into(), "org.freedesktop.FileManager1".into(), "--object-path".into(),
+                "/org/freedesktop/FileManager1".into(), "--method".into(),
+                "org.freedesktop.FileManager1.ShowItems".into(), format!("['{uri}']"), String::new()])
+        }
+    }
+}
+
+fn reveal_target(path: &Path) -> CmdResult<(PathBuf, bool)> {
+    // Preserve the catalog's directory entry (including symlinks), while
+    // ensuring even a relative dash-prefixed filename cannot become an option.
+    let absolute = std::path::absolute(path).map_err(geometry_io_error)?;
+    if absolute.is_file() { return Ok((absolute, true)); }
+    let parent = absolute.parent().filter(|p| p.is_dir()).ok_or_else(||
+        CmdError::expected("Datei nicht gefunden").with_code(super::error::GeometryErrorCode::NotFound))?;
+    Ok((parent.to_path_buf(), false))
+}
+
+fn reveal_catalog_path(path: &Path) -> CmdResult<()> {
+    let (absolute, is_file) = reveal_target(path)?;
+    if !is_file { return open_in_file_manager(absolute.to_string_lossy().into_owned()); }
+    let (program, args) = reveal_command(std::env::consts::OS, &absolute.to_string_lossy());
+    let mut command = std::process::Command::new(program);
+    super::external_env::sanitize_external_command(&mut command);
+    command.args(args);
+    #[cfg(target_os = "linux")]
+    {
+        // Only the DBus response is awaited on this blocking worker. A failed
+        // service must trigger the folder fallback; the file manager is not waited on.
+        let success = command.stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
+            .status().is_ok_and(|s| s.success());
+        if !success {
+            let parent = absolute.parent().filter(|p| p.is_dir()).ok_or_else(||
+                CmdError::expected("Datei nicht gefunden").with_code(super::error::GeometryErrorCode::NotFound))?;
+            return open_in_file_manager(parent.to_string_lossy().into_owned());
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    command.spawn().map_err(|e| CmdError::expected(e.to_string()))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn reveal_in_file_manager(state: State<'_, AppState>, file_id: String) -> CmdResult<()> {
+    let id: i64 = file_id.parse().map_err(|_| CmdError::expected("invalid file id"))?;
+    let path = {
+        let conn = lock_db(&state)?;
+        let file = db::get_file(&conn, id).map_err(|e| e.to_string())?
+            .ok_or_else(|| CmdError::expected("Datei nicht gefunden").with_code(super::error::GeometryErrorCode::NotFound))?;
+        PathBuf::from(file.trash_path.as_deref().unwrap_or(&file.path))
+    };
+    tauri::async_runtime::spawn_blocking(move || reveal_catalog_path(&path)).await.map_err(|e| e.to_string())?
+}
+
 /// Opens a path in the system file manager.
 #[tauri::command]
 pub fn open_in_file_manager(path: String) -> CmdResult<()> {
@@ -1454,7 +1526,10 @@ pub fn open_in_file_manager(path: String) -> CmdResult<()> {
     let mut cmd = std::process::Command::new("explorer");
 
     super::external_env::sanitize_external_command(&mut cmd);
-    cmd.arg(&path).spawn().map_err(|e| e.to_string())?;
+    let absolute = std::path::absolute(&path).map_err(|e| CmdError::expected(e.to_string()))?;
+    #[cfg(target_os = "macos")]
+    cmd.arg("--");
+    cmd.arg(&absolute).spawn().map_err(|e| CmdError::expected(e.to_string()))?;
     Ok(())
 }
 // Encodes the extracted geometry as a single binary stream for
@@ -1477,7 +1552,7 @@ fn encode_render_meshes(meshes: &[RenderMesh]) -> Vec<u8> {
         }).collect();
         let mut header = serde_json::json!({
             "vertexCount": m.positions.len(), "hasNormal": m.normals.is_some(),
-            "indexCount": m.indices.len() * 3,
+            "indexCount": m.indices.len() * 3, "plate": m.plate,
         });
         if let Some(name) = &m.object_name { header["objectName"] = name.clone().into(); }
         if !m.groups.is_empty() {
@@ -1488,7 +1563,12 @@ fn encode_render_meshes(meshes: &[RenderMesh]) -> Vec<u8> {
         }
         header
     }).collect();
-    let mut header_json = serde_json::to_vec(&serde_json::json!({ "meshes": headers, "palette": palette }))
+    let plates: std::collections::BTreeMap<_, _> = meshes.iter().filter_map(|m| m.plate.map(|n| (n, m.plate_name.clone()))).collect();
+    let mut header = serde_json::json!({ "meshes": headers, "palette": palette });
+    if plates.len() >= 2 {
+        header["plates"] = serde_json::json!(plates.into_iter().map(|(number, name)| serde_json::json!({"number": number, "name": name})).collect::<Vec<_>>());
+    }
+    let mut header_json = serde_json::to_vec(&header)
         .expect("mesh header serialization cannot fail");
     while !(4 + header_json.len()).is_multiple_of(4) {
         header_json.push(b' ');
@@ -1605,6 +1685,106 @@ pub async fn get_model_geometry(
 mod tests {
     use super::*;
 
+    #[test]
+    fn creality_project_fixture_has_three_plates_and_five_meshes() {
+        let bytes = include_bytes!("../../tests/fixtures/creality-3plates.3mf");
+        let package = threemf::container::read_geometry_package(std::io::Cursor::new(bytes)).unwrap();
+        assert_eq!(package.plate_assignments.objects.get("2"), Some(&1));
+        for id in ["4", "6", "8"] { assert_eq!(package.plate_assignments.objects.get(id), Some(&2)); }
+        assert_eq!(package.plate_assignments.objects.get("10"), Some(&3));
+        let meshes = threemf::extract_render_meshes(&package).unwrap();
+        assert_eq!(meshes.iter().map(|m| m.plate).collect::<Vec<_>>(), vec![Some(1), Some(2), Some(2), Some(2), Some(3)]);
+        let bytes = encode_render_meshes(&meshes);
+        let header: serde_json::Value = serde_json::from_slice(&bytes[4..4 + u32::from_le_bytes(bytes[..4].try_into().unwrap()) as usize]).unwrap();
+        assert_eq!(header["plates"].as_array().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn synthetic_multiplate_package_propagates_root_ids_to_external_and_inline_meshes() {
+        use std::io::{Cursor, Write};
+        let mesh = "<mesh><vertices><vertex x=\"0\" y=\"0\" z=\"0\"/><vertex x=\"1\" y=\"0\" z=\"0\"/><vertex x=\"0\" y=\"1\" z=\"0\"/></vertices><triangles><triangle v1=\"0\" v2=\"1\" v3=\"2\"/></triangles></mesh>";
+        let root = format!(r#"<model xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06"><resources>
+            <object id="1" name="Same"><components><component objectid="10" p:path="/3D/Objects/part.model"/><component objectid="11" p:path="/3D/Objects/part.model"/></components></object>
+            <object id="2" name="Same">{mesh}</object><object id="3" name="Same">{mesh}</object><object id="4" name="Same">{mesh}</object><object id="5">{mesh}</object>
+            </resources><build><item objectid="1"/><item objectid="2"/><item objectid="3"/><item objectid="4"/><item objectid="5"/></build></model>"#);
+        let external = format!("<model><resources><object id=\"10\">{mesh}</object><object id=\"11\">{mesh}</object></resources></model>");
+        let config = r#"<config><plate><metadata key="plater_id" value="1"/><model_instance object_id="1"/><model_instance object_id="2"/></plate>
+            <plate><metadata key="plater_id" value="2"/><metadata key="plater_name" value="Regalplatte"/><model_instance><metadata key="object_id" value="3"/></model_instance><model_instance object_id="4"/></plate>
+            <plate><metadata key="plater_id" value="3"/></plate></config>"#;
+        let generic_root = root.replace(
+            r#"<components><component objectid="10" p:path="/3D/Objects/part.model"/><component objectid="11" p:path="/3D/Objects/part.model"/></components>"#, mesh)
+            .replace(r#" xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06""#, "");
+        let empty_root = format!("{}<build/></model>", root.split("<build>").next().unwrap());
+        for (settings, model, expected) in [
+            (config, root.as_str(), vec![Some(1), Some(1), Some(1), Some(2), Some(2), None]),
+            (config, generic_root.as_str(), vec![Some(1), Some(1), Some(2), Some(2), None]),
+            ("<config/>", root.as_str(), vec![None; 6]),
+            (config, empty_root.as_str(), vec![]),
+        ] {
+            let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+            for (name, contents) in [("3D/3dmodel.model", model), ("3D/Objects/part.model", external.as_str()), ("Metadata/model_settings.config", settings)] {
+                zip.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
+                zip.write_all(contents.as_bytes()).unwrap();
+            }
+            let package = threemf::container::read_geometry_package(zip.finish().unwrap()).unwrap();
+            let meshes = threemf::extract_render_meshes(&package).unwrap();
+            assert_eq!(meshes.iter().map(|m| m.plate).collect::<Vec<_>>(), expected);
+            let bytes = encode_render_meshes(&meshes);
+            let header: serde_json::Value = serde_json::from_slice(&bytes[4..4 + u32::from_le_bytes(bytes[..4].try_into().unwrap()) as usize]).unwrap();
+            if settings == config && !meshes.is_empty() {
+                assert_eq!(header["plates"], serde_json::json!([{"number":1,"name":null},{"number":2,"name":"Regalplatte"}]));
+                assert_eq!(header["meshes"][meshes.len() - 2]["plate"], 2);
+            } else { assert!(header.get("plates").is_none()); }
+        }
+    }
+
+    #[test]
+    fn reveal_arguments_do_not_interpret_filenames_as_options() {
+        assert_eq!(reveal_command("windows", "C:/Druck/Grüße hier.3mf"),
+            ("explorer".into(), vec!["/select,C:\\Druck\\Grüße hier.3mf".into()]));
+        assert_eq!(reveal_command("windows", "-name.3mf").1, vec!["/select,-name.3mf"]);
+        assert_eq!(reveal_command("windows", r"\\?\C:\Druck\file.3mf").1, vec![r"/select,C:\Druck\file.3mf"]);
+        assert_eq!(reveal_command("windows", r"\\?\UNC\server\share\file.3mf").1, vec![r"/select,\\server\share\file.3mf"]);
+        assert_eq!(reveal_command("macos", "-Grüße hier.3mf").1, vec!["-R", "--", "-Grüße hier.3mf"]);
+        let args = reveal_command("linux", "/Druck/-Grüße #'% hier.3mf").1;
+        assert_eq!(args[args.len() - 2], "['file:///Druck/-Gr%C3%BC%C3%9Fe%20%23%27%25%20hier.3mf']");
+        assert_eq!(args.last().unwrap(), "");
+    }
+
+    #[test]
+    fn vanished_catalog_file_uses_its_existing_parent() {
+        let parent = std::env::temp_dir();
+        let missing = parent.join(format!("p22-missing-{}.3mf", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        assert_eq!(reveal_target(&missing).unwrap(), (parent, false));
+        let (target, _) = reveal_target(Path::new("-missing.3mf")).unwrap();
+        assert!(target.is_absolute());
+    }
+
+    #[test]
+    fn reveal_missing_parent_is_an_expected_not_found() {
+        let missing = std::env::temp_dir().join(format!("p22-nonexistent-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let error = reveal_catalog_path(&missing.join("missing/file.3mf")).unwrap_err();
+        let value = serde_json::to_value(error).unwrap();
+        assert_eq!(value["expected"], true);
+        assert_eq!(value["code"], "notFound");
+    }
+
+    #[test]
+    fn geometry_header_contains_only_plates_with_geometry() {
+        let mesh = |number, name: Option<&str>| RenderMesh {
+            positions: vec![[0., 0., 0.]], indices: vec![[0, 0, 0]],
+            plate: number, plate_name: name.map(str::to_string), ..Default::default()
+        };
+        let meshes = [mesh(Some(1), None), mesh(Some(2), Some("Regalplatte")), mesh(None, None)];
+        let bytes = encode_render_meshes(&meshes);
+        let header: serde_json::Value = serde_json::from_slice(&bytes[4..4 + u32::from_le_bytes(bytes[..4].try_into().unwrap()) as usize]).unwrap();
+        assert_eq!(header["plates"], serde_json::json!([{"number":1,"name":null},{"number":2,"name":"Regalplatte"}]));
+        assert_eq!(header["meshes"][0]["plate"], 1);
+        assert_eq!(header["meshes"][2]["plate"], serde_json::Value::Null);
+        let bytes = encode_render_meshes(&meshes[..1]);
+        let header: serde_json::Value = serde_json::from_slice(&bytes[4..4 + u32::from_le_bytes(bytes[..4].try_into().unwrap()) as usize]).unwrap();
+        assert!(header.get("plates").is_none());
+    }
     #[test]
     fn summary_serialization_has_presence_flags_and_no_image_fields() {
         let summary = FileSummaryDto {

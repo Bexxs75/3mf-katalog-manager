@@ -478,6 +478,7 @@ export default function App() {
               }
               printed={contextModel.printStatus === 'printed'}
               onTogglePrintStatus={() => store.togglePrintStatus(contextModel.id)}
+              fileId={contextModel.id}
               currentName={contextModel.name}
               onRename={(name) => store.renameFile(contextModel.id, name)}
             />

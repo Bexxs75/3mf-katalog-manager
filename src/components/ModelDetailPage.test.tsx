@@ -1,3 +1,4 @@
+import { invoke } from '@tauri-apps/api/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { ModelDetailPage } from './ModelDetailPage';
@@ -99,4 +100,10 @@ it('shows and dismisses an upload failure beside the upload button', async () =>
   expect(screen.queryByText('Problem melden')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Hinweis schließen' }));
   expect(screen.queryByRole('alert')).toBeNull();
+});
+
+it('reveals the selected model from the lower action bar', () => {
+  render(<LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} /></LanguageProvider>);
+  fireEvent.click(screen.getByRole('button', {name: 'Im Dateimanager anzeigen'}));
+  expect(invoke).toHaveBeenCalledWith('reveal_in_file_manager', {fileId: props.model.id});
 });
