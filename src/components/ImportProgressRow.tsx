@@ -4,6 +4,7 @@ import type { ImportJobResult, ImportProgress } from '../types';
 import type { ImportJobMeta } from '../hooks/useFileImport';
 import { ReportProblemLink } from '../diagnostics/ReportProblemLink';
 import { ImportResultDialog } from './ImportResultDialog';
+import { countsWithArchiveModels } from '../lib/importCounts';
 import './import.css';
 interface Props {
   progress: ImportProgress;
@@ -23,7 +24,7 @@ export function ImportProgressRow({ progress: p, meta, result, queued, onCancel,
   const state = result?.state ?? p.state;
   const ended = ['finished', 'cancelled', 'failed'].includes(state);
   const cancelling = !ended && (cancelRequested || state === 'cancelling');
-  const counts = result?.counts ?? p.counts;
+  const counts = result ? countsWithArchiveModels(result.counts, result.groups) : p.counts;
   const source = t(meta.source === 'files' ? 'impFiles' : meta.source === 'dropped' ? 'impDropped' : meta.source === 'archive' ? 'impArchive' : 'impFolder');
   const target = meta.targetName ? t('impTarget').replace('{name}', meta.targetName) : t('impStay');
   const status = t(({ queued: 'impQueued', scanning: 'impScanning', importing: 'impImporting', placing: 'impPlacing', cancelling: 'impCancelling', finished: 'impFinished', cancelled: 'impCancelled', failed: 'impFailed' } as const)[state]);

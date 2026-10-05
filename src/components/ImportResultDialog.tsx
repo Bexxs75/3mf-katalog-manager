@@ -3,6 +3,7 @@ import { useModalDialog } from '../hooks/useModalDialog';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import type { ImportJobResult } from '../types';
 import type { Translations } from '../i18n/types';
+import { countsWithArchiveModels } from '../lib/importCounts';
 import './import.css';
 const reasons: Record<string, keyof Translations> = { empty: 'impEmpty', invalid: 'impInvalid', failed: 'impReadFailed', unsupported: 'impUnsupported', notStarted: 'impNotStarted', cancelled: 'impReasonCancelled', targetMissing: 'impTargetMissing', moveFailed: 'impMoveFailed', protected: 'impProtected', jobFailed: 'impJobFailed', unsafe: 'impUnsafe', blocked: 'impBlocked', existing: 'impExisting', path: 'impPath', hash: 'impHash' };
 const tabs = ['impTabSkipped', 'impTabDuplicate', 'impTabNotPlaced', 'impTabArchive'] as const;
@@ -10,6 +11,7 @@ interface Row { path: string; reason: string; nested?: boolean; existingFileId?:
 interface Props { result: ImportJobResult; onClose: () => void; returnFocus?: RefObject<HTMLElement | null>; onSelectModel?: (id: string) => void }
 export function ImportResultDialog({result, onClose, returnFocus, onSelectModel}: Props) {
   const t = useT(); const {language} = useLanguage(); const id = useId();
+  const counts = countsWithArchiveModels(result.counts, result.groups);
   const [tab, setTab] = useState(0); const [copied, setCopied] = useState(false); const [fallback, setFallback] = useState(false);
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
   const dialog = useModalDialog({open: true, onClose, returnFocus, initialFocus: '[data-close]'});
@@ -34,7 +36,7 @@ export function ImportResultDialog({result, onClose, returnFocus, onSelectModel}
   const n = (value: number) => new Intl.NumberFormat(language).format(value);
   return <div className="import-backdrop"><div ref={dialog} className="import-result" role="dialog" aria-modal="true" aria-labelledby={`${id}-title`} tabIndex={-1}>
     <h2 id={`${id}-title`}>{t('impResultTitle')}</h2>
-    <div className="import-counts">{([[result.counts.imported,'impImported'],[result.counts.duplicate,'impDuplicate'],[result.counts.skipped,'impSkipped'],[result.counts.importedNotPlaced,'impNotPlaced'],[result.counts.archive,'impTabArchive']] as const).map(([value,key]) => <span key={key}><b>{n(value)}</b> {t(key)}</span>)}</div>
+    <div className="import-counts">{([[counts.imported,'impImported'],[counts.duplicate,'impDuplicate'],[counts.skipped,'impSkipped'],[counts.importedNotPlaced,'impNotPlaced'],[counts.archive,'impTabArchive']] as const).map(([value,key]) => <span key={key}><b>{n(value)}</b> {t(key)}</span>)}</div>
     <div role="tablist" aria-label={t('impResultTitle')} className="import-tabs">{tabs.map((key,i) => <button key={key} ref={el => {buttons.current[i] = el;}} id={`${id}-tab-${i}`} role="tab" aria-selected={tab === i} aria-controls={`${id}-panel`} tabIndex={tab === i ? 0 : -1} onClick={() => setTab(i)} onKeyDown={event => {
       const next = event.key === 'ArrowRight' ? (i+1)%4 : event.key === 'ArrowLeft' ? (i+3)%4 : event.key === 'Home' ? 0 : event.key === 'End' ? 3 : null;
       if (next !== null) { event.preventDefault(); setTab(next); buttons.current[next]?.focus(); }
