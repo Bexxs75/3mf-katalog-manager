@@ -756,7 +756,7 @@ export const fr: Translations = {
   printerErrorBadResponse: "Réponse inattendue. S'agit-il bien d'une imprimante Klipper avec Moonraker ?",
   printerErrorHistoryMissing: "L'historique n'est pas activé sur l'imprimante ([history] dans moonraker.conf).",
   printerErrorAddressNotAllowed: 'Seules les adresses de ton réseau local sont autorisées.',
-  printerErrorDisabled: "La connexion à l'imprimante est désactivée. Active-la d'abord dans Paramètres → Imprimantes.",
+  printerErrorDisabled: "La connexion à l'imprimante est désactivée. Active-la d'abord en bas de la liste des imprimantes (« Connexion »).",
   printerSyncedAgo: 'synchronisée {time}',
   printerNotSyncedYet: 'pas encore synchronisée',
   printerUnreachableSince: 'injoignable depuis {time}',

@@ -756,7 +756,7 @@ export const de: Translations = {
   printerErrorBadResponse: 'Unerwartete Antwort. Ist das wirklich ein Klipper-Drucker mit Moonraker?',
   printerErrorHistoryMissing: 'Die Druckhistorie ist am Drucker nicht eingeschaltet ([history] in moonraker.conf).',
   printerErrorAddressNotAllowed: 'Nur Adressen im Heimnetz sind erlaubt.',
-  printerErrorDisabled: 'Die Druckeranbindung ist ausgeschaltet. Schalte sie zuerst unter Einstellungen → Drucker ein.',
+  printerErrorDisabled: 'Die Druckeranbindung ist ausgeschaltet. Schalte sie zuerst unten in der Druckerliste („Anbindung“) ein.',
   printerSyncedAgo: 'abgeglichen {time}',
   printerNotSyncedYet: 'noch nicht abgeglichen',
   printerUnreachableSince: 'nicht erreichbar seit {time}',

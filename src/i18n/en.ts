@@ -756,7 +756,7 @@ export const en: Translations = {
   printerErrorBadResponse: 'Unexpected answer. Is this really a Klipper printer with Moonraker?',
   printerErrorHistoryMissing: 'Print history is not enabled on the printer ([history] in moonraker.conf).',
   printerErrorAddressNotAllowed: 'Only addresses on your home network are allowed.',
-  printerErrorDisabled: 'The printer connection is switched off. Switch it on first under Settings → Printers.',
+  printerErrorDisabled: 'The printer connection is switched off. Switch it on first at the bottom of the printer list (“Connection”).',
   printerSyncedAgo: 'synced {time}',
   printerNotSyncedYet: 'not synced yet',
   printerUnreachableSince: 'unreachable since {time}',
