@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { ModelViewer } from './ModelViewer';
@@ -50,4 +50,22 @@ describe('ModelViewer without WebGL', () => {
     await waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
     expect(rendererCtor.mock.calls.length).toBe(calls);
   });
+});
+
+it('measures and remeasures the surface even when WebGL is unavailable', () => {
+  let resize!: () => void;
+  let surface!: HTMLElement;
+  vi.stubGlobal('ResizeObserver', class {
+    constructor(callback: () => void) { resize = callback; }
+    observe(element: HTMLElement) { surface = element; }
+    disconnect() {}
+  });
+  const { container } = renderViewer('resize-error', vi.fn());
+  expect(surface).toBeDefined();
+  for (const [width, height, compact] of [[350, 265, true], [800, 600, false], [500, 500, true]] as const) {
+    Object.defineProperties(surface, {clientWidth: {value: width, configurable: true}, clientHeight: {value: height, configurable: true}});
+    act(() => resize());
+    expect(container.querySelector('[data-viewer-surface]')).toHaveAttribute('data-compact', String(compact));
+    expect(screen.getByRole('alert').classList.contains('viewer-error-compact')).toBe(compact);
+  }
 });

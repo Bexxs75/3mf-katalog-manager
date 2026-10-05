@@ -49,7 +49,7 @@ describe('viewer recovery actions', () => {
     render(card({ compact: true, model: makeModelFile({ name: 'Topf', thumbnailImage: 'data:image/png;base64,eA==' }), onRemoveFromCatalog: vi.fn() }));
     expect(screen.getByRole('img', { name: 'Topf' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Im Dateimanager öffnen' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Aus dem Katalog entfernen' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Aus dem Katalog entfernen' })).toBeInTheDocument();
   });
   it('offers a configured slicer and reporting only for unexpected errors', () => {
     const slicer = vi.fn();
@@ -67,4 +67,11 @@ describe('viewer recovery actions', () => {
     expect(screen.queryByRole('button', { name: 'Problem melden' })).not.toBeInTheDocument();
     expect(screen.queryByText(/Wiki/)).not.toBeInTheDocument();
   });
+});
+
+it('keeps reporting available for compact unreadable files even with a slicer', () => {
+  render(card({ compact: true, error: { message: 'locked', code: 'unreadable', unexpected: true }, onOpenInSlicer: vi.fn() }));
+  expect(screen.getByRole('button', { name: 'Problem melden' })).toBeInTheDocument();
+  expect(screen.getByRole('alert')).toHaveTextContent('gesperrt');
+  expect(screen.getByRole('alert').querySelector('svg')).toHaveAttribute('width', '24');
 });

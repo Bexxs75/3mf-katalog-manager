@@ -45,20 +45,22 @@ export function ViewerErrorCard({ error, noWebGL, compact, model, onOpenInSlicer
   };
   return <>
     {image && <img src={image} alt={model?.name ?? ''} className="absolute inset-0 w-full h-full object-contain" />}
-    <div className={`absolute inset-0 flex ${compact && image ? 'items-end' : 'items-center'} justify-center p-3 overflow-auto`}>
-      <div role="alert" className={`viewer-error-card ${compact ? 'viewer-error-compact' : ''}`}>
-        {!compact && <span aria-hidden="true" className="viewer-error-icon" style={{ color: `var(--${tone})`, background: `var(--${tone}-soft)` }}><Icon name={tone === 'crit' ? 'close' : tone === 'warn' ? 'warning' : 'info'} size={18} /></span>}
-        <h3>{noWebGL ? t('viewerNoWebGLTitle') : code ? t(titles[code]) : t('previewUnavailable')}</h3>
+    <div className="absolute inset-0 flex flex-col justify-start items-center p-3 pt-12 overflow-auto">
+      <div role="alert" className={`viewer-error-card shrink-0 my-auto ${compact ? 'viewer-error-compact' : ''}`}>
+        <div className={compact ? 'flex items-center gap-2' : 'contents'}>
+          <span aria-hidden="true" className="viewer-error-icon" style={{ color: `var(--${tone})`, background: `var(--${tone}-soft)` }}><Icon name={tone === 'crit' ? 'close' : tone === 'warn' ? 'warning' : 'info'} size={compact ? 24 : 18} /></span>
+          <h3>{noWebGL ? t('viewerNoWebGLTitle') : code ? t(titles[code]) : t('previewUnavailable')}</h3>
+        </div>
         <p>{noWebGL ? t(compact ? 'viewerNoWebGLCompact' : 'viewerNoWebGLText')
           : compact && code === 'unreadable' ? t('viewerUnreadableCompact')
           : compact && code === 'tooLarge' ? t('viewerTooLargeCompact')
           : code ? t(texts[code]) : t('viewerUnknownText')}</p>
-        {!compact && code === 'notFound' && model && <code className="break-all font-code text-[var(--ink-2)]">{model.path}</code>}
+        {code === 'notFound' && model && <code title={model.path} className={`${compact ? 'truncate' : 'break-all'} font-code text-[var(--ink-2)]`}>{model.path}</code>}
         <div className="flex flex-wrap gap-2">
           {code === 'notFound' && model && <button className={catalogActionButton} onClick={() => void runAction(openFolder)}>{t('viewerOpenFolder')}</button>}
-          {code === 'notFound' && onRemoveFromCatalog && (!compact || !model) && <button ref={removeButton} {...lockProps} className={catalogActionButton} onClick={() => setConfirm(true)}>{t('removeCatalog')}</button>}
+          {code === 'notFound' && onRemoveFromCatalog && <button ref={removeButton} {...lockProps} className={catalogActionButton} onClick={() => setConfirm(true)}>{t('removeCatalog')}</button>}
           {code !== 'notFound' && onOpenInSlicer && <button className={catalogActionButton} onClick={() => void runAction(onOpenInSlicer)}>{t('viewerOpenSlicer')}</button>}
-          {error?.unexpected && !noWebGL && (!compact || !onOpenInSlicer) && <ReportProblemLink />}
+          {error?.unexpected && !noWebGL && <ReportProblemLink />}
         </div>
         {actionError && <ErrorText error={actionError} />}
       </div>

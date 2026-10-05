@@ -149,3 +149,10 @@ it('shows loading instead of empty tips until the initial catalog load completes
   expect(screen.getByRole('status')).toHaveTextContent('Katalog wird geladen …');
   expect(screen.queryByText('Dein Katalog ist noch leer')).not.toBeInTheDocument();
 });
+
+it('does not announce an empty collection while its first members are loading', () => {
+  filterWorkspace({activeCollection: 'c', collectionLoading: true});
+  expect(screen.queryByText('Kein Modell passt zu diesen Filtern')).not.toBeInTheDocument();
+  expect(screen.queryByText('0 von 2')).not.toBeInTheDocument();
+  expect(screen.getByRole('status')).toHaveTextContent('Katalog wird geladen');
+});

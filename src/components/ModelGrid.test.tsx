@@ -62,3 +62,20 @@ it.each(['compact', 'comfort'])('counts overflow including space for the counter
     widthSpy.mockRestore(); leftSpy.mockRestore(); chipSpy.mockRestore(); vi.unstubAllGlobals();
   }
 });
+
+it('uses a reasonable grid until a positive local width has been measured', () => {
+  let resize!: () => void;
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(0);
+  vi.stubGlobal('ResizeObserver', class {
+    constructor(callback: () => void) { resize = callback; }
+    observe() {} disconnect() {}
+  });
+  const props = { models: [makeModelFile({tags: []})], selectedId: null, onSelect: vi.fn(), onOpenDetail: vi.fn(),
+    onContextMenu: vi.fn(), onToggleFavorite: vi.fn(), selectedForBulk: new Set<string>(), onToggleBulkSelect: vi.fn(),
+    displayPreference: 'thumbnail' as const };
+  const { container } = render(<LanguageProvider><UiDensityProvider><ModelGrid {...props} /></UiDensityProvider></LanguageProvider>);
+  expect(container.querySelector('.grid.gap-3\\.5')).toHaveStyle({gridTemplateColumns: 'repeat(3, minmax(0, 1fr))'});
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800);
+  act(() => resize());
+  expect(container.querySelector('.grid.gap-3\\.5')).toHaveStyle({gridTemplateColumns: 'repeat(4, minmax(0, 1fr))'});
+});

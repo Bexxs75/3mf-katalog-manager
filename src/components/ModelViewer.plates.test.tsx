@@ -18,7 +18,10 @@ vi.mock('three', async importOriginal => {
 vi.mock('three/examples/jsm/controls/OrbitControls.js', async () => {
   const { Vector3 } = await import('three');
   return { OrbitControls: class {
-    target = new Vector3(); update() {} dispose() {}
+    target = new Vector3();
+    constructor(private camera: import('three').PerspectiveCamera) {}
+    update() { this.camera.lookAt(this.target); this.camera.updateMatrixWorld(); }
+    dispose() {}
   } };
 });
 
@@ -132,4 +135,76 @@ it('adapts controls and legend to measured container size', async () => {
   expect(screen.getByText('Red')).toBeVisible();
   expect(screen.queryByRole('button', {name: 'Legende'})).not.toBeInTheDocument();
   expect(screen.getByRole('button', {name: 'Dateifarben'}).parentElement).not.toHaveClass('viewer-toggle-compact');
+  Object.defineProperties(surface, {clientWidth: {value: 350, configurable: true}, clientHeight: {value: 265, configurable: true}});
+  act(() => resize());
+  expect(reset).toHaveTextContent('');
+  expect(screen.getByRole('button', {name: 'Dateifarben'}).parentElement).toHaveClass('viewer-toggle-compact');
+});
+
+function boxesBuffer(boxes: { plate: number; min: number[]; max: number[] }[]) {
+  const header = JSON.stringify({palette: [], meshes: boxes.map(box => ({vertexCount: 3, indexCount: 3, hasNormal: false, plate: box.plate})),
+    plates: [{number: 1}, {number: 2}]});
+  const bytes = new TextEncoder().encode(header + ' '.repeat((4 - new TextEncoder().encode(header).length % 4) % 4));
+  const buffer = new ArrayBuffer(4 + bytes.length + boxes.length * 48);
+  new DataView(buffer).setUint32(0, bytes.length, true);
+  new Uint8Array(buffer, 4, bytes.length).set(bytes);
+  boxes.forEach((box, index) => {
+    const offset = 4 + bytes.length + index * 48;
+    new Float32Array(buffer, offset, 9).set([...box.min, ...box.max, box.min[0], box.max[1], box.min[2]]);
+    new Uint32Array(buffer, offset + 36, 3).set([0, 1, 2]);
+  });
+  return buffer;
+}
+
+it.each([350 / 265, 0.5, 2])('frames all transformed meshes of a plate at aspect %s, including distant objects', async aspect => {
+  const boxes = [
+    {plate: 1, min: [-2000, -1000, 0], max: [-1980, -980, 20]},
+    {plate: 2, min: [364, 100, 0], max: [384, 120, 20]},
+    {plate: 2, min: [100, 210, 0], max: [114, 215, 10]},
+    {plate: 2, min: [580, -250, 0], max: [594, -245, 10]},
+  ];
+  vi.mocked(invoke).mockResolvedValue(boxesBuffer(boxes));
+  render(viewer('distant'));
+  await screen.findByRole('radio', {name: 'Platte 2'});
+  runtime.camera!.aspect = aspect;
+  fireEvent.click(screen.getByRole('radio', {name: 'Platte 2'}));
+  const { group } = objects();
+  const bounds = new THREE.Box3();
+  group.updateWorldMatrix(true, true);
+  group.traverseVisible(child => {
+    if (child instanceof THREE.Mesh) bounds.union(new THREE.Box3().setFromObject(child));
+  });
+  expect(group.children.filter(child => child.visible)).toHaveLength(3);
+  expect(bounds.getCenter(new THREE.Vector3()).length()).toBeCloseTo(0);
+  bounds.getSize(new THREE.Vector3()).toArray().forEach((value, index) => expect(value).toBeCloseTo([494, 20, 465][index]));
+  const camera = runtime.camera!;
+  expect(camera.getWorldDirection(new THREE.Vector3()).dot(camera.position.clone().negate().normalize())).toBeCloseTo(1);
+  for (const x of [bounds.min.x, bounds.max.x]) for (const y of [bounds.min.y, bounds.max.y]) for (const z of [bounds.min.z, bounds.max.z]) {
+    const projected = new THREE.Vector3(x, y, z).project(camera);
+    expect(Math.abs(projected.x)).toBeLessThan(0.92);
+    expect(Math.abs(projected.y)).toBeLessThan(0.92);
+    expect(Math.abs(projected.z)).toBeLessThan(1);
+  }
+});
+
+it('includes both overlapping clips from the Creality fixture in the world-space frame', async () => {
+  // Extents from the fixture's component vertices plus its build translations.
+  vi.mocked(invoke).mockResolvedValue(boxesBuffer([
+    {plate: 1, min: [100, 100, 0], max: [120, 120, 20]},
+    {plate: 2, min: [364, 100, 0], max: [384, 120, 20]},
+    {plate: 2, min: [365, 102.625, 0], max: [383, 120.625, 10]},
+    {plate: 2, min: [367, 99.375, 0], max: [381, 102.875, 10]},
+  ]));
+  render(viewer('overlap'));
+  await screen.findByRole('radio', {name: 'Platte 2'});
+  fireEvent.click(screen.getByRole('radio', {name: 'Platte 2'}));
+  const { group } = objects();
+  const cube = new THREE.Box3().setFromObject(group.children[1]);
+  const firstClip = new THREE.Box3().setFromObject(group.children[2]);
+  const outerClip = new THREE.Box3().setFromObject(group.children[3]);
+  expect(cube.intersectsBox(firstClip)).toBe(true);
+  expect(firstClip.min.z).toBeCloseTo(cube.min.z - 0.625);
+  expect(cube.intersectsBox(outerClip)).toBe(true);
+  expect(outerClip.max.z).toBeCloseTo(cube.max.z + 0.625);
+  expect(group.children.map(mesh => mesh.visible)).toEqual([false, true, true, true]);
 });

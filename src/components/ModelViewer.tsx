@@ -1,6 +1,6 @@
 import { Icon } from './Icon';
 import { PlateSelector } from './PlateSelector';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import { invoke } from '@tauri-apps/api/core';
 import * as THREE from 'three';
@@ -127,6 +127,28 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
   const [error, setError] = useState<AppError | null>(null);
   const [noWebGL, setNoWebGL] = useState(false);
 
+  // Measuring must also work without a renderer, so recovery cards follow the
+  // same breakpoints as the controls when the surface or its layout changes.
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const measure = () => {
+      const { clientWidth, clientHeight } = container;
+      if (!clientWidth || !clientHeight) return;
+      setCompact(clientHeight < 420 || clientWidth < 520);
+      const ctx = ctxRef.current;
+      if (ctx) {
+        ctx.camera.aspect = clientWidth / clientHeight;
+        ctx.camera.updateProjectionMatrix();
+        ctx.renderer.setSize(clientWidth, clientHeight);
+      }
+    };
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(container);
+    measure();
+    return () => observer?.disconnect();
+  }, [surfaceClassName]);
+
   // Set up renderer, scene, camera and light only once: a new
   // WebGL context per model change slowed the app down noticeably.
   useEffect(() => {
@@ -183,14 +205,11 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
     const resize = () => {
       const { clientWidth, clientHeight } = container;
       if (!clientWidth || !clientHeight) return;
-      setCompact(clientHeight < 420 || clientWidth < 520);
       camera.aspect = clientWidth / clientHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(clientWidth, clientHeight);
     };
 
-    const resizeObserver = new ResizeObserver(resize);
-    resizeObserver.observe(container);
     resize();
 
     let frameHandle = 0;
@@ -205,7 +224,6 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
 
     return () => {
       cancelAnimationFrame(frameHandle);
-      resizeObserver.disconnect();
       themeObserver.disconnect();
       floor.geometry.dispose();
       floor.material.dispose();
@@ -370,7 +388,7 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
           </div>
         </div>
       )}
-      {status === 'error' && <ViewerErrorCard key={fileId} error={error} noWebGL={noWebGL} compact={!showRotationControls}
+      {status === 'error' && <ViewerErrorCard key={fileId} error={error} noWebGL={noWebGL} compact={compact}
         model={model} onOpenInSlicer={onOpenInSlicer} onRemoveFromCatalog={onRemoveFromCatalog} />}
       {showRotationControls && status === 'ready' && <>
         <button className={`viewer-pill absolute top-3 left-3 ${compact ? 'viewer-icon' : ''}`} aria-label={t('viewerReset')} title={t('viewerReset')}

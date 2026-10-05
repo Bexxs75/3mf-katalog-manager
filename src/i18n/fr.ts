@@ -24,7 +24,7 @@ export const fr: Translations = {
   catalogLoadFailed: "Le catalogue n’a pas pu être chargé.",
   keyboardSearchEscape: "Quitter le champ de recherche (Échap dans la recherche)",
   viewerLegend: "Légende",
-  viewerUnreadableCompact: "Vérifie si un autre programme a ouvert le fichier ou ouvre-le dans le trancheur.",
+  viewerUnreadableCompact: "Le fichier est endommagé ou verrouillé. Vérifie les programmes ouverts ou ouvre-le dans le trancheur.",
   viewerTooLargeCompact: "Utilise l’image d’aperçu ou ouvre le modèle dans le trancheur.",
   viewerNoWebGLCompact: "Utilise l’image d’aperçu ou ouvre le fichier dans le trancheur.",
 
