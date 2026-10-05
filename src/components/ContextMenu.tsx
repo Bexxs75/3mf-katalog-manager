@@ -179,8 +179,9 @@ function ModelContextMenu({
           >
             {t('openInSlicer')}
           </button>
-          <RevealFileButton fileId={fileId} onSuccess={onClose}
-            className="w-full text-left px-3 py-2 text-title text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)] disabled:opacity-50" />
+          {/* Like every other menu in the app, entries here carry no icons; the entry also uses the same size as its neighbours. */}
+          <RevealFileButton fileId={fileId} onSuccess={onClose} showIcon={false}
+            className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)] disabled:opacity-50" />
           <button
             onClick={() => {
               onToggleQueue();

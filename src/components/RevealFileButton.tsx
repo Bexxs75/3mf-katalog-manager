@@ -6,8 +6,8 @@ import { toAppError, type AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 import { Icon } from './Icon';
 
-export function RevealFileButton({ fileId, compact = false, className, onSuccess }: {
-  fileId: string; compact?: boolean; className?: string; onSuccess?: () => void;
+export function RevealFileButton({ fileId, compact = false, showIcon = true, className, onSuccess }: {
+  fileId: string; compact?: boolean; showIcon?: boolean; className?: string; onSuccess?: () => void;
 }) {
   const t = useT();
   const { lockProps } = useImportLock();
@@ -35,7 +35,7 @@ export function RevealFileButton({ fileId, compact = false, className, onSuccess
           if (request.current === current) setBusy(false);
         }
       }}>
-      <Icon name="folder" size={16} />{!compact && <span className="ml-2">{t('showInFileManager')}</span>}
+      {showIcon && <Icon name="folder" size={16} />}{!compact && <span className={showIcon ? 'ml-2' : undefined}>{t('showInFileManager')}</span>}
     </button>
     {error && <p role="alert" className="text-small text-[var(--accent)]"><ErrorText error={error} /></p>}
   </div>;
