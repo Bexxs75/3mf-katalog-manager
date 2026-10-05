@@ -11,30 +11,42 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Added
 
-- Creality Print is automatically detected (Windows, macOS, Linux).
+- **Printer Manager:** printers get their own area in the left rail. Keep several printers in one place: name, manufacturer and model, nozzle, build volume, material units (Bambu AMS, AMS lite, AMS HT, Creality CFS, Prusa MMU3, Anycubic ACE Pro, spool holder or custom), recent prints and the printer link switch for Klipper/Moonraker.
+- **Material Manager:** the filament storage is now called Material Manager (filament and resin); the header names the current area.
+- **Filters at a glance:** a bar above the models shows every active filter (folder, tag, collection, search); each can be removed on its own, "Clear all" resets everything.
+- **Sorting:** sort by modified date (the app remembers each file's date, also for existing entries), import date, name, file size, volume and last viewed, each in both directions.
+- **Tags:** search the tag list, show tags with only one model, and get suggestions from existing tags while typing (top bar and details).
+- **Folders and sidebar:** "Collapse all folders", a sidebar that can be dragged wider or narrower, and icons from the icon set for folders, collections and tags.
+- **Collections:** right-click a collection in the sidebar to rename or delete it, a back button leaves the collections gallery, and models can be dragged into a collection.
+- **Detail page:** step to the previous or next model (arrow keys too) with the position shown; unsaved input is protected when switching.
+- **Details panel only when needed:** it opens on click (or stays open, your choice in Settings) and shows badges for printed or not, material, filament check, favorite, queue and last printer.
+- **Import:** a progress row with "Cancel", a hint in the Import menu telling where files end up, a full list of files that were not imported with reason and a copy button, and more robust error handling. "Set up later" is a proper button in the first-start dialog.
+- **Moving files by dragging:** grip handle on cards, a preview while dragging, highlighted targets, folders open when you hover over them, and a tip on first use.
+- **Keyboard:** visible focus, dialogs keep and return the focus, Escape closes menus and dialogs, "/" jumps to search, Ctrl/Cmd+A selects all visible models, a shortcuts and tips dialog ("?" or the help icon), and single-key shortcuts can be turned off in Settings.
+- **3D preview:** colors from the file ("File colors" or "Single color") with a legend, a floor under the model, understandable cards instead of an empty area (file not found, cannot be read, too large, no WebGL), and a plate selector for 3MF files with several print plates (Bambu Studio, Orca, Creality Print) with camera fit and a legend for the selected plate.
+- **Show in file manager** from the detail page, the details panel and the card context menu (Explorer, Finder, and Linux file managers that support it).
+- **Creality Print** is detected automatically (Windows, macOS, Linux).
 
-- Show a model file in the system file manager from its details or card context menu.
-- Preview individual print plates in multi-plate 3MF files, with a camera fit and color legend for the selected plate.
+### Changed
+
+- **One download per system.** The app can only be started once; a second launch brings its window to the front.
+- From v0.16.0, there is only one download per system, always including STEP preview. The file is larger than the former standard package and its name has no `-STEP` suffix. Users of the former standard variant receive it automatically with their next in-app update.
+- **One typeface:** Barlow for everything you read, IBM Plex Mono only for paths, addresses and keys; fixed type sizes from 11.5 px and SVG icons instead of text characters, so the interface looks the same on Windows, macOS and Linux. Contrast and hover behavior were improved in the light and dark theme.
+- No white flash while the app starts (Windows); settings no longer cover the navigation; the interface stays smooth with large catalogs.
+- Archives that already contain a folder no longer create a nested duplicate folder when extracted.
 
 ### Fixed
 
 - Model, file, folder and tag counts use the correct singular and plural forms in all four languages.
 - Import details open on the first tab containing entries.
-- Skipped import files and reasons are logged individually only with verbose logging; normal logs show anonymous totals.
-- Every file, folder, drop, catalog adoption and archive import writes one final summary with its source and duration.
-- Damaged import files are logged as warnings rather than command errors.
+- Skipped import files and reasons are logged individually only with verbose logging; normal logs show anonymous totals. Every file, folder, drop, catalog adoption and archive import writes one final summary with its source and duration. Damaged import files are logged as warnings rather than command errors.
 - Unavailable update releases no longer produce a duplicate plugin error; download and installation errors remain visible.
 - Starting another catalog import clears the previous error before confirmation and file selection.
 - Model cards retain material and weight after loading, moving, restoring, renaming and opening details.
-
-- Models can also be dragged into a collection.
-- Linux (AppImage): “Open folder” and “Open in file manager” work again.
+- Linux (AppImage): "Open folder" and "Open in file manager" work again.
 - Oversized or unsupported images: a visible message instead of silence.
-
-### Changed
-
-- The app can only be started once; a second launch brings its window to the front.
-- From v0.16.0, there is only one download per system, always including STEP preview. The file is larger than the former standard package and its name has no `-STEP` suffix. Users of the former standard variant receive it automatically with their next in-app update.
+- Printer Manager: "Edit" no longer saves and closes the form with the same click.
+- Favorites use the heart symbol everywhere.
 
 ## [0.15.3] - 2026-10-04
 
@@ -507,28 +519,42 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Hinzugefügt
 
-- Modelldateien aus der Detailansicht oder dem Karten-Kontextmenü im Dateimanager anzeigen.
-- Druckplatten in 3MF-Dateien mit mehreren Platten einzeln in der 3D-Vorschau anzeigen; Kamera und Farblegende folgen der gewählten Platte.
+- **Printer Manager:** Drucker bekommen einen eigenen Bereich in der linken Leiste. Mehrere Drucker an einem Ort pflegen: Name, Hersteller und Modell, Düse, Bauraum, Materialeinheiten (Bambu AMS, AMS lite, AMS HT, Creality CFS, Prusa MMU3, Anycubic ACE Pro, Spulenhalter oder eigene), letzte Drucke und der Schalter für die Druckeranbindung (Klipper/Moonraker).
+- **Material Manager:** Das Filament-Lager heißt jetzt Material Manager (Filament und Resin); die Kopfzeile nennt den aktuellen Bereich.
+- **Filter im Blick:** Eine Leiste über den Modellen zeigt alle aktiven Filter (Ordner, Tag, Sammlung, Suche); jeder lässt sich einzeln entfernen, „Alle löschen“ setzt alles zurück.
+- **Sortieren:** nach Änderungsdatum (die App merkt sich das Datum jeder Datei, auch nachträglich für vorhandene Einträge), Importdatum, Name, Dateigröße, Volumen und zuletzt angesehen, jeweils in beide Richtungen.
+- **Tags:** Tag-Liste durchsuchen, Tags mit nur einem Modell einblenden und beim Tippen Vorschläge aus vorhandenen Tags erhalten (obere Leiste und Details).
+- **Ordner und Seitenleiste:** „Alle Ordner zuklappen“, eine in der Breite ziehbare Seitenleiste und Icons aus dem Iconset für Ordner, Sammlungen und Tags.
+- **Sammlungen:** Rechtsklick auf eine Sammlung in der Seitenleiste zum Umbenennen und Löschen, ein Zurück-Knopf aus der Sammlungsgalerie, und Modelle lassen sich per Ziehen in eine Sammlung legen.
+- **Detailansicht:** zum vorherigen oder nächsten Modell wechseln (auch mit den Pfeiltasten), die Position wird angezeigt; ungespeicherte Eingaben sind beim Wechsel geschützt.
+- **Detailbereich nur bei Bedarf:** Er öffnet sich beim Anklicken (oder bleibt offen, einstellbar) und zeigt Badges für gedruckt oder nicht, Material, Filament-Prüfung, Favorit, Warteschlange und letzten Drucker.
+- **Import:** eine Fortschrittszeile mit „Abbrechen“, ein Hinweis im Importmenü, wohin die Dateien kommen, eine vollständige Liste der nicht importierten Dateien mit Grund und Kopieren-Knopf und robustere Fehlerbehandlung. „Später einrichten“ ist im Einrichtungsdialog ein richtiger Knopf.
+- **Dateien per Ziehen verschieben:** Griff auf den Karten, Vorschau beim Ziehen, hervorgehobene Ziele, Ordner klappen beim Darüberhalten auf und ein Tipp beim ersten Mal.
+- **Tastatur:** sichtbarer Fokus, Dialoge halten und geben den Fokus zurück, Escape schließt Menüs und Dialoge, „/“ springt zur Suche, Strg/Cmd+A wählt alle sichtbaren Modelle aus, ein Dialog für Tastenkürzel und Tipps („?“ oder das Hilfe-Symbol) und Einzeltasten-Kürzel lassen sich in den Einstellungen abschalten.
+- **3D-Vorschau:** Farben aus der Datei („Dateifarben“ oder „Einfarbig“) mit Legende, ein Boden unter dem Modell, verständliche Karten statt einer leeren Fläche (Datei nicht gefunden, nicht lesbar, zu groß, kein WebGL) und eine Plattenauswahl für 3MF-Dateien mit mehreren Druckplatten (Bambu Studio, Orca, Creality Print) mit Kameraanpassung und Legende der gewählten Platte.
+- **Im Dateimanager anzeigen** von der Detailseite, dem Detailbereich und dem Karten-Kontextmenü (Explorer, Finder und Linux-Dateimanager, die es unterstützen).
+- **Creality Print** wird automatisch erkannt (Windows, macOS, Linux).
+
+### Geändert
+
+- **Ein Download pro System.** Die App lässt sich nur einmal starten; ein zweiter Start holt das Fenster nach vorn.
+- Ab v0.16.0 gibt es nur noch eine Download-Variante pro System, immer mit STEP-Vorschau. Die Datei ist größer als das bisherige Standardpaket und ihr Name hat keinen `-STEP`-Zusatz. Nutzer der bisherigen Standardvariante erhalten sie automatisch beim nächsten Update in der App.
+- **Eine Schrift:** Barlow für alles Gelesene, IBM Plex Mono nur noch für Pfade, Adressen und Schlüssel; feste Schriftgrößen ab 11,5 px und SVG-Symbole statt Textzeichen, damit die Oberfläche auf Windows, macOS und Linux gleich aussieht. Kontrast und Hover-Verhalten wurden im hellen und dunklen Design verbessert.
+- Kein weißes Aufblitzen beim Start (Windows); die Einstellungen verdecken keine Navigation mehr; die Oberfläche bleibt auch mit großen Katalogen flüssig.
+- Archive, die schon einen Ordner enthalten, erzeugen beim Entpacken keinen doppelten Ordner mehr.
 
 ### Behoben
 
 - Modell-, Datei-, Ordner- und Tag-Anzahlen verwenden in allen vier Sprachen die richtige Einzahl und Mehrzahl.
 - Importdetails öffnen auf dem ersten Reiter mit Einträgen.
-- Übersprungene Importdateien und Gründe stehen nur im ausführlichen Protokoll einzeln mit Namen; das normale Protokoll zeigt anonyme Summen.
-- Jeder Datei-, Ordner-, Drop-, Übernahme- und Archivimport schreibt eine abschließende Zusammenfassung mit Quelle und Dauer.
-- Beschädigte Importdateien werden als Warnung statt als Befehlsfehler protokolliert.
+- Übersprungene Importdateien und Gründe stehen nur im ausführlichen Protokoll einzeln mit Namen; das normale Protokoll zeigt anonyme Summen. Jeder Datei-, Ordner-, Drop-, Übernahme- und Archivimport schreibt eine abschließende Zusammenfassung mit Quelle und Dauer. Beschädigte Importdateien werden als Warnung statt als Befehlsfehler protokolliert.
 - Nicht erreichbare Update-Releases erzeugen keinen zusätzlichen Plugin-Fehler; Download- und Installationsfehler bleiben sichtbar.
 - Ein erneuter Katalogimport entfernt die vorige Fehlermeldung vor Rückfrage und Dateiauswahl.
 - Modellkarten behalten Material und Gewicht nach Laden, Verschieben, Wiederherstellen, Umbenennen und Öffnen der Details.
-
-- Modelle lassen sich auch per Ziehen in eine Sammlung legen.
 - Linux (AppImage): „Ordner öffnen“ und „Im Dateimanager öffnen“ funktionieren wieder.
 - Zu große oder falsche Bilder: sichtbare Meldung statt Stille.
-
-### Geändert
-
-- Die App lässt sich nur einmal starten; ein zweiter Start holt das Fenster nach vorn.
-- Ab v0.16.0 gibt es nur noch eine Download-Variante pro System, immer mit STEP-Vorschau. Die Datei ist größer als das bisherige Standardpaket und ihr Name hat keinen `-STEP`-Zusatz. Nutzer der bisherigen Standardvariante erhalten sie automatisch beim nächsten Update in der App.
+- Printer Manager: „Bearbeiten“ speichert und schließt das Formular nicht mehr mit demselben Klick.
+- Favoriten haben überall das Herz-Symbol.
 
 ## [0.15.3] - 2026-10-04
 
