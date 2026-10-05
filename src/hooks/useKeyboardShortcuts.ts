@@ -37,10 +37,12 @@ export function scrollTileIntoView(id: string, layout?: ModelLayout): void {
     layout.scrollToIndex(layout.order.indexOf(id));
     requestAnimationFrame(() => requestAnimationFrame(() => {
       document.querySelector<HTMLElement>(`[${MODEL_TILE_ATTR}="${CSS.escape(id)}"]`)?.scrollIntoView?.({ block: 'nearest' });
+      document.querySelector<HTMLElement>(`[${MODEL_TILE_ATTR}="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
     }));
     return;
   }
   document.querySelector<HTMLElement>(`[${MODEL_TILE_ATTR}="${CSS.escape(id)}"]`)?.scrollIntoView?.({ block: 'nearest' });
+  document.querySelector<HTMLElement>(`[${MODEL_TILE_ATTR}="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
 }
 
 // Tolerance in pixels within which two tile centers still count as the

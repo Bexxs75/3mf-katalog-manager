@@ -1,6 +1,21 @@
 import type { Translations } from './types';
 
 export const fr: Translations = {
+  statusBadgesLabel: "Statut",
+  statusFavorite: "Favori",
+  statusInQueue: "Dans la file",
+  statusFilamentOk: "Filament suffisant",
+  statusFilamentSwap: "Suffisant avec changement de bobine",
+  statusFilamentShort: "Filament insuffisant · il manque {g}",
+  statusFilamentUnknown: "Filament incertain",
+  statusLastPrinter: "{printer} · {time}",
+  detailPanelLabel: "Panneau de détails",
+  detailPanelAuto: "Automatique (apparaît au clic)",
+  detailPanelPinned: "Toujours visible",
+  detailPanelClose: "Fermer les détails",
+  detailPanelPin: "Épingler le panneau de détails",
+  detailPanelTitle: "Détails",
+
   viewerOpenSlicer: "Ouvrir dans le trancheur",
   viewerUnknownText: "Ouvre le fichier dans le trancheur ou signale le problème.",
   viewerUnreadableCompact: "Essaie d’ouvrir le fichier dans le trancheur.",

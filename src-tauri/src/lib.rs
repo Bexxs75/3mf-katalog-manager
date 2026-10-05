@@ -219,6 +219,7 @@ pub fn run() {
             commands::restock_filament_spool,
             commands::consume_resin,
             commands::list_printers,
+            commands::get_last_printer_for_file,
             commands::add_printer,
             commands::rename_printer,
             commands::update_printer_details,

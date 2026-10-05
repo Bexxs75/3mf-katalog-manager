@@ -70,3 +70,20 @@ it.each([undefined, 'Küche'])('explains the target for file and folder actions:
   fireEvent.focus(folder); expect(screen.getByText('Dateien bleiben an ihrem Ort, Unterordner werden als Katalogordner übernommen.')).toBeVisible();
   fireEvent.mouseEnter(screen.getByRole('menuitem', {name: 'Dateien...'})); expect(screen.getByText(/Ziel wird beim Start festgehalten/)).toBeVisible();
 });
+
+it('pins details with an accessible toggle and pressed state', () => {
+  const change = vi.fn();
+  const props = { mainView: 'catalog' as const, view: 'grid' as const, sort: 'name' as const, sortDirection: 'asc' as const,
+    onSortDirectionChange: vi.fn(), count: 0, onViewChange: vi.fn(), onSortChange: vi.fn(), onImportFiles: vi.fn(),
+    onImportFolder: vi.fn(), allFoldersCollapsed: false, onToggleAllFolders: vi.fn(), onDetailPanelChange: change };
+  const { rerender } = render(<LanguageProvider><Header {...props} detailPanel="auto" /></LanguageProvider>);
+  const toggle = screen.getByRole('button', { name: 'Detailbereich festhalten' });
+  expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  expect(toggle).toHaveAttribute('title', 'Detailbereich festhalten');
+  fireEvent.click(toggle);
+  expect(change).toHaveBeenCalledWith('pinned');
+  rerender(<LanguageProvider><Header {...props} detailPanel="pinned" /></LanguageProvider>);
+  expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(toggle);
+  expect(change).toHaveBeenLastCalledWith('auto');
+});

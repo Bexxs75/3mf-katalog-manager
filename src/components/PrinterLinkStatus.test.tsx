@@ -15,7 +15,7 @@ const base: PrinterConnection = {
 
 function link(c: PrinterConnection | null, jobs = 0): PrinterLinkState {
   return {
-    enabled: true, connections: c ? [c] : [], error: null, refresh: vi.fn(), setEnabled: vi.fn(), testConnection: vi.fn(),
+    refreshKey: 0, enabled: true, connections: c ? [c] : [], error: null, refresh: vi.fn(), setEnabled: vi.fn(), testConnection: vi.fn(),
     removeConnection: vi.fn(), syncNow: vi.fn(), ignoreJob: vi.fn(), confirmJobs: vi.fn(), previewJob: vi.fn(),
     jobs: Array.from({ length: jobs }, (_, i) => ({ id: String(i), printerId: '1' })) as PrinterLinkState['jobs'],
   } as PrinterLinkState;

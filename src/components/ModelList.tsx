@@ -34,7 +34,7 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
   return (
     <div className="border border-[var(--line)] rounded overflow-x-auto bg-[var(--panel)]">
       <div
-        className="min-w-[680px] grid gap-2.5 items-center px-3 py-2 bg-[var(--panel-2)] border-b border-[var(--line)] font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.1em] uppercase text-[var(--ink-3)]"
+        data-model-list-header className="min-w-[680px] grid gap-2.5 items-center px-3 py-2 bg-[var(--panel-2)] border-b border-[var(--line)] font-mono-ui text-[length:var(--font-size-meta)] tracking-[0.1em] uppercase text-[var(--ink-3)]"
         style={{ gridTemplateColumns: '24px minmax(150px,2.2fr) minmax(110px,1.6fr) 92px 82px' }}
       >
         <span />
@@ -49,6 +49,7 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
         <div
           key={m.id}
           data-model-id={m.id}
+          tabIndex={-1}
           onClick={() => onSelect(m.id)}
           onDoubleClick={readOnly ? undefined : () => onOpenDetail(m.id)}
           onContextMenu={(e) => {

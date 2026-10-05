@@ -23,7 +23,7 @@ beforeEach(() => {
   vi.mocked(invoke).mockImplementation(async (cmd) => {
     if (cmd === 'get_app_version') return '0.15.0';
     if (cmd === 'has_step_preview' || cmd === 'is_preview_build' || cmd === 'get_printer_link_enabled') return false;
-    if (cmd === 'register_existing_catalog_base_dir' || cmd === 'check_app_update') return null;
+    if (cmd === 'register_existing_catalog_base_dir' || cmd === 'check_app_update' || cmd === 'get_last_printer_for_file') return null;
     if (cmd === 'reset_catalog') return { modelCount: 0, folderCount: 0 };
     return [];
   });
@@ -67,4 +67,19 @@ it.each(['grid', 'groupedGrid', 'groupedList'])('Ctrl+A selects the visible mode
   await act(async () => { document.body.dispatchEvent(event); });
   expect(event.defaultPrevented).toBe(true); expect(screen.getByRole('button', { name: de.clearSelectionLabel })).toBeVisible();
   expect(screen.getByText(de.bulkSelectedCount.replace('{count}', '2'))).toBeVisible();
+});
+
+it('shares and persists detail mode between settings and the header', async () => {
+  await setup();
+  const toggle = screen.getByRole('button', { name: de.detailPanelPin });
+  expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  fireEvent.click(screen.getByRole('button', { name: de.settingsTitle }));
+  const pinned = screen.getByRole('radio', { name: de.detailPanelPinned });
+  expect(screen.getByRole('radio', { name: de.detailPanelAuto })).toBeChecked();
+  fireEvent.click(pinned);
+  expect(localStorage.getItem('3mf-katalog-detail-panel')).toBe('pinned');
+  expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(toggle);
+  expect(localStorage.getItem('3mf-katalog-detail-panel')).toBe('auto');
+  expect(screen.getByRole('radio', { name: de.detailPanelAuto })).toBeChecked();
 });

@@ -22,6 +22,7 @@ export const icons: Record<IconName, string> = {
   "model": "<path d=\"m12 2 9 5v10l-9 5-9-5V7l9-5ZM3 7l9 5 9-5m-9 5v10\"/>",
   "next": "<path d=\"m9 5 7 7-7 7\"/>",
   "nozzle": "<path d=\"M8 2h8v5H8zM5 7h14v5l-5 5h-4l-5-5V7Zm7 10v4\"/>",
+  "panel": "<rect x=\"3\" y=\"4\" width=\"18\" height=\"16\" rx=\"2\"/><path d=\"M15 4v16\"/>",
   "plate": "<path d=\"m3 9 9-5 9 5-9 5-9-5Zm0 0v5l9 5 9-5V9M7 18v3m10-3v3\"/>",
   "previous": "<path d=\"m15 5-7 7 7 7\"/>",
   "printer": "<rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"2\"/><path d=\"M3 8h18m-12 0v3l3 3 3-3V8M7 17h10M8 21v-4m8 0v4\"/>",

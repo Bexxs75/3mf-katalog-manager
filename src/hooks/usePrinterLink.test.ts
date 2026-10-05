@@ -38,17 +38,21 @@ describe('usePrinterLink', () => {
     const { result } = renderHook(() => usePrinterLink());
     await waitFor(() => expect(result.current.enabled).toBe(true));
     expect(api.listOpenPrinterJobs).toHaveBeenCalled();
+    expect(result.current.refreshKey).toBeGreaterThan(0);
   });
 
   it('reloads when the backend reports a sync', async () => {
-    renderHook(() => usePrinterLink());
+    const { result } = renderHook(() => usePrinterLink());
+    await waitFor(() => expect(result.current.refreshKey).toBeGreaterThan(0));
     await waitFor(() => expect(listeners['printer-jobs-changed']).toBeDefined());
+    const refreshKey = result.current.refreshKey;
     api.listOpenPrinterJobs.mockClear();
     await act(async () => {
       listeners['printer-jobs-changed']();
       await Promise.resolve();
     });
     expect(api.listOpenPrinterJobs).toHaveBeenCalled();
+    expect(result.current.refreshKey).toBeGreaterThan(refreshKey);
   });
 
   it('switching on refreshes the state', async () => {
@@ -63,20 +67,24 @@ describe('usePrinterLink', () => {
     api.confirmPrinterJobs.mockResolvedValue({ confirmed: 1, failed: 0 });
     const { result } = renderHook(() => usePrinterLink());
     await waitFor(() => expect(result.current.enabled).toBe(true));
+    const refreshKey = result.current.refreshKey;
     api.listOpenPrinterJobs.mockClear();
     await act(() => result.current.confirmJobs([{ jobId: '5', spoolId: '100', fileId: null }]));
     expect(api.confirmPrinterJobs).toHaveBeenCalledWith([{ jobId: '5', spoolId: '100', fileId: null }]);
     expect(api.listOpenPrinterJobs).toHaveBeenCalled();
+    expect(result.current.refreshKey).toBeGreaterThan(refreshKey);
   });
 
   it('previews a job without refreshing', async () => {
     api.previewPrinterJob.mockResolvedValue({ grams: 4, materialMismatch: false });
     const { result } = renderHook(() => usePrinterLink());
     await waitFor(() => expect(result.current.enabled).toBe(true));
+    const refreshKey = result.current.refreshKey;
     api.listOpenPrinterJobs.mockClear();
     const preview = await act(() => result.current.previewJob('5', '100'));
     expect(preview).toEqual({ grams: 4, materialMismatch: false });
     expect(api.listOpenPrinterJobs).not.toHaveBeenCalled();
+    expect(result.current.refreshKey).toBe(refreshKey);
   });
 
   it('reports an error when loading fails', async () => {

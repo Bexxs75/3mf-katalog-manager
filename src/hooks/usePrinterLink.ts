@@ -9,6 +9,7 @@ import type { JobDecision, PrinterConnection, PrinterJob } from '../types';
  * (event from the backend).
  */
 export function usePrinterLink() {
+  const [refreshKey, setRefreshKey] = useState(0);
   const [enabled, setEnabledState] = useState(false);
   const [connections, setConnections] = useState<PrinterConnection[]>([]);
   const [jobs, setJobs] = useState<PrinterJob[]>([]);
@@ -33,6 +34,7 @@ export function usePrinterLink() {
       setEnabledState(on);
       setConnections(conns);
       setJobs(open);
+      setRefreshKey(key => key + 1);
       setError(null);
     } catch (e) {
       if (mounted.current) setError(toAppError(e));
@@ -65,6 +67,7 @@ export function usePrinterLink() {
   );
 
   return {
+    refreshKey,
     enabled,
     connections,
     jobs,

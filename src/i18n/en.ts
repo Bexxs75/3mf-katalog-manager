@@ -1,6 +1,21 @@
 import type { Translations } from './types';
 
 export const en: Translations = {
+  statusBadgesLabel: "Status",
+  statusFavorite: "Favorite",
+  statusInQueue: "In queue",
+  statusFilamentOk: "Enough filament",
+  statusFilamentSwap: "Enough with spool changes",
+  statusFilamentShort: "Not enough filament · missing {g}",
+  statusFilamentUnknown: "Filament unclear",
+  statusLastPrinter: "{printer} · {time}",
+  detailPanelLabel: "Detail panel",
+  detailPanelAuto: "Automatic (appears when clicked)",
+  detailPanelPinned: "Always visible",
+  detailPanelClose: "Close details",
+  detailPanelPin: "Pin detail panel",
+  detailPanelTitle: "Details",
+
   viewerOpenSlicer: "Open in slicer",
   viewerUnknownText: "Open the file in your slicer or report the problem.",
   viewerUnreadableCompact: "Try opening the file in your slicer.",

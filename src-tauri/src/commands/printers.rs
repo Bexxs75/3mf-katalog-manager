@@ -306,6 +306,37 @@ mod tests {
     use super::*;
 
     #[test]
+    fn last_printer_only_uses_confirmed_jobs_for_the_requested_file() {
+        let mut conn = db::connect_in_memory().unwrap();
+        let a: i64 = add_printer_with_conn(&mut conn, "A", "Holder", "filament").unwrap().id.parse().unwrap();
+        let b: i64 = add_printer_with_conn(&mut conn, "B", "Holder", "filament").unwrap().id.parse().unwrap();
+        conn.execute("INSERT INTO files (id, name, path, file_type, file_size_bytes, imported_at) VALUES (1, 'one', '/one.3mf', '3mf', 1, ''), (2, 'two', '/two.3mf', '3mf', 1, '')", []).unwrap();
+        assert!(get_last_printer_for_file_with_conn(&conn, 1).unwrap().is_none());
+        let insert = |printer, remote, state, time| {
+            conn.execute("INSERT INTO printer_jobs (printer_id, remote_id, file_name, outcome, raw_status, ended_at, print_duration_s, used_mm, state, booked_file_id) VALUES (?1, ?2, 'one', 'completed', 'completed', ?4, 100, 100, ?3, 1)", rusqlite::params![printer, remote, state, time]).unwrap();
+        };
+        insert(a, "open", "open", 900.0);
+        assert!(get_last_printer_for_file_with_conn(&conn, 1).unwrap().is_none());
+        insert(a, "first", "confirmed", 100.0);
+        let first = get_last_printer_for_file_with_conn(&conn, 1).unwrap().unwrap();
+        assert_eq!(first.printer_name, "A");
+        assert_eq!(first.ended_at, 100.0);
+        insert(a, "newest", "confirmed", 300.0);
+        insert(b, "older", "confirmed", 200.0);
+        assert_eq!(get_last_printer_for_file_with_conn(&conn, 1).unwrap().unwrap().ended_at, 300.0);
+        insert(b, "other-printer", "confirmed", 400.0);
+        let newest = get_last_printer_for_file_with_conn(&conn, 1).unwrap().unwrap();
+        assert_eq!(newest.printer_name, "B");
+        assert_eq!(newest.ended_at, 400.0);
+        assert!(get_last_printer_for_file_with_conn(&conn, 2).unwrap().is_none());
+        assert!(get_last_printer_for_file_with_conn(&conn, 999).unwrap().is_none());
+        let json = serde_json::to_value(newest).unwrap();
+        assert_eq!(json["printerName"], "B");
+        assert_eq!(json["endedAt"], 400.0);
+    }
+
+
+    #[test]
     fn history_contains_all_states_but_only_the_requested_printer() {
         let mut conn = db::connect_in_memory().unwrap();
         let a: i64 = add_printer_with_conn(&mut conn, "A", "Holder", "filament").unwrap().id.parse().unwrap();
@@ -536,4 +567,26 @@ mod tests {
         load_spool_with_conn(&mut conn, &bottle, &vat, 0).unwrap();
         assert_eq!(unload_spool_with_conn(&mut conn, &bottle, None).unwrap(), Some("Resin-Schrank".into()));
     }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LastPrinterDto {
+    pub printer_name: String,
+    pub ended_at: f64,
+}
+
+pub(crate) fn get_last_printer_for_file_with_conn(conn: &Connection, file_id: i64) -> CmdResult<Option<LastPrinterDto>> {
+    use rusqlite::OptionalExtension;
+    conn.query_row(
+        "SELECT p.name, j.ended_at FROM printer_jobs j JOIN printers p ON p.id = j.printer_id WHERE j.state = 'confirmed' AND j.booked_file_id = ?1 ORDER BY j.ended_at DESC, j.id DESC LIMIT 1",
+        [file_id],
+        |row| Ok(LastPrinterDto { printer_name: row.get(0)?, ended_at: row.get(1)? }),
+    ).optional().map_err(|e| e.to_string().into())
+}
+
+#[tauri::command]
+pub fn get_last_printer_for_file(state: State<AppState>, file_id: String) -> CmdResult<Option<LastPrinterDto>> {
+    let conn = lock_db(&state)?;
+    get_last_printer_for_file_with_conn(&conn, parse_id(&file_id, "Datei")?)
 }

@@ -30,6 +30,7 @@ import { TrashView } from './components/TrashView';
 import { CatalogWorkspace } from './components/CatalogWorkspace';
 import { UpdateToast } from './components/UpdateToast';
 import { useTheme } from './hooks/useTheme';
+import { useDetailPanel } from './hooks/useDetailPanel';
 import { useUiDensity } from './hooks/UiDensityContext';
 import { useSlicers } from './hooks/useSlicers';
 import { useDisplayPreference } from './hooks/useDisplayPreference';
@@ -55,13 +56,14 @@ export default function App() {
   const layouts = useContext(ModelLayoutContext);
   const { setting, setTheme } = useTheme();
   const { density, setDensity } = useUiDensity();
+  const { detailPanel, setDetailPanel } = useDetailPanel();
   const { slicers, primaryId, addSlicer, addSlicerError, removeSlicer, setPrimary } = useSlicers();
   const { preference: displayPreference, setPreference: setDisplayPreference } = useDisplayPreference();
   const { catalogBaseDir, setCatalogBaseDir, setupSeen, markSetupSeen, resetCatalogSetup } = useCatalogBaseDir();
   const printerLink = usePrinterLink();
   const printers = usePrinters();
 
-  const store = useCatalogStore();
+  const store = useCatalogStore({ preselectFirst: detailPanel === 'pinned' });
   useRegisterCatalogBaseDirOnStartup(catalogBaseDir, store.refreshFolders);
   const { language } = useLanguage();
   const filters = useCatalogFilters(store.models, store.folders, language);
@@ -266,7 +268,7 @@ export default function App() {
         />
       )}
       {tipsOpen && <KeyboardTipsDialog onClose={() => setTipsOpen(false)} />}
-      <Header
+      <Header detailPanel={detailPanel} onDetailPanelChange={setDetailPanel}
         onOpenTips={() => setTipsOpen(true)}
         allFoldersCollapsed={allFoldersCollapsed}
         onToggleAllFolders={toggleAllFolders}
@@ -298,6 +300,8 @@ export default function App() {
           onSettingsOpenChange={setSettingsOpen}
           themeSetting={setting}
           onThemeChange={setTheme}
+          detailPanel={detailPanel}
+          onDetailPanelChange={setDetailPanel}
           uiDensity={density}
           onUiDensityChange={setDensity}
           displayPreference={displayPreference}
@@ -338,7 +342,7 @@ export default function App() {
               displayPreference={displayPreference}
             />
           ) : mainView === 'catalog' ? (
-            <CatalogWorkspace
+            <CatalogWorkspace detailPanel={detailPanel} onCloseDetails={() => store.setSelectedId(null)} printerRefreshKey={String(printerLink.refreshKey)}
               onOpenTips={() => setTipsOpen(true)}
               catalogKey={catalogBaseDir}
               onNavigateDetail={navigateDetail}

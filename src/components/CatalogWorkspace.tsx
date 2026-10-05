@@ -1,9 +1,14 @@
+import { ModelLayoutContext } from '../hooks/ModelLayoutContext';
+import { scrollTileIntoView } from '../hooks/useKeyboardShortcuts';
+import { shouldIgnoreCatalogShortcut } from '../lib/keyboardGuard';
+import { Icon } from './Icon';
+import { useLastPrinter } from '../hooks/useLastPrinter';
 import { EmptyCatalogTips } from './KeyboardTipsDialog';
 import { detailNeighbor, type DetailDirection } from '../hooks/useDetailNavigation';
 import { useImportLock } from '../hooks/ImportLockContext';
 import type { useFolderExpansion } from '../hooks/useFolderExpansion';
 import type { useSidebarWidth } from '../hooks/useSidebarWidth';
-import { useMemo, useRef, useLayoutEffect, type ReactNode } from 'react';
+import { useMemo, useRef, useLayoutEffect, useEffect, useState, useCallback, useContext, type ReactNode } from 'react';
 import { useCatalogScroll } from '../hooks/useCatalogScroll';
 import { Sidebar } from './Sidebar';
 import { ModelGrid } from './ModelGrid';
@@ -24,6 +29,9 @@ import { toolCounts as computeToolCounts, TOOL_VIEW_LABEL_KEY, type ToolView } f
 import type { AppError } from '../lib/errors';
 
 interface CatalogWorkspaceProps {
+  detailPanel?: 'auto' | 'pinned';
+  onCloseDetails?: () => void;
+  printerRefreshKey?: string;
   onOpenTips?: () => void;
   importRow?: ReactNode;
   expansion: ReturnType<typeof useFolderExpansion>;
@@ -122,6 +130,7 @@ interface CatalogWorkspaceProps {
 }
 
 export function CatalogWorkspace({
+  detailPanel = 'auto', onCloseDetails, printerRefreshKey = '',
   onOpenTips,
   importRow,
   expansion,
@@ -218,6 +227,49 @@ export function CatalogWorkspace({
   cleanupScanning,
   cleanupError,
 }: CatalogWorkspaceProps) {
+  const [narrow, setNarrow] = useState(() => window.matchMedia?.('(max-width: 999px)').matches ?? false);
+  useEffect(() => {
+    const media = window.matchMedia?.('(max-width: 999px)');
+    if (!media) return;
+    const update = () => setNarrow(media.matches);
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+  const layouts = useContext(ModelLayoutContext);
+  const panelVisible = !detailModel && (detailPanel === 'pinned' || selectedId !== null);
+  useLayoutEffect(() => {
+    if (!selectedId || detailModel) return;
+    // Let the grid measure its new width before locating the selected row.
+    let secondFrame = 0;
+    const frame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => {
+        const layout = [...(layouts?.layouts.values() ?? [])].find(section => section.order.includes(selectedId));
+        layout?.scrollToIndex(layout.order.indexOf(selectedId));
+        document.querySelector<HTMLElement>(`[data-model-id="${CSS.escape(selectedId)}"]`)?.scrollIntoView?.({ block: 'nearest' });
+      });
+    });
+    return () => { cancelAnimationFrame(frame); cancelAnimationFrame(secondFrame); };
+  }, [panelVisible, narrow, selectedId, detailModel, layouts]);
+  const closeDetails = useCallback(() => {
+    const tile = selectedId ? document.querySelector<HTMLElement>(`[data-model-id="${CSS.escape(selectedId)}"]`) : null;
+    onCloseDetails?.();
+    tile?.focus({ preventScroll: true });
+    if (selectedId) requestAnimationFrame(() => {
+      const layout = [...(layouts?.layouts.values() ?? [])].find(section => section.order.includes(selectedId));
+      scrollTileIntoView(selectedId, layout);
+    });
+  }, [onCloseDetails, selectedId, layouts]);
+  useEffect(() => {
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || detailPanel !== 'auto' || !selectedId || detailModel || selectedForBulk.size > 0 ||
+        shouldIgnoreCatalogShortcut(event, { preserveEscapeSelection: true })) return;
+      event.preventDefault();
+      closeDetails();
+    };
+    window.addEventListener('keydown', escape);
+    return () => window.removeEventListener('keydown', escape);
+  }, [detailPanel, selectedId, detailModel, selectedForBulk.size, closeDetails]);
   const containerRef = useRef<HTMLDivElement>(null);
   const savedScroll = useRef(0);
   const wasDetail = useRef(false);
@@ -241,13 +293,10 @@ export function CatalogWorkspace({
   const scrollRef = useCatalogScroll(detailModel !== null, JSON.stringify([
     view, sort, language, query, activeFolderId, activeTag, activeCollection, collectionsGalleryOpen, toolView,
   ]), selectedId);
-  const queueFilament = useFilamentCheck(
-    queue.map((m) => m.id),
-    // Forces a reload when the slicer data of a queue entry changes
-    // (e.g. after "Re-read metadata"), even if the IDs and their
-    // order stay the same.
-    queue.map((m) => `${m.id}:${m.sliceInfo?.totalWeightG ?? ''}`).join('|'),
-  );
+  const refreshKey = `${printerRefreshKey}:${models.map(m => `${m.id}:${m.sliceInfo?.totalWeightG ?? ''}`).join('|')}`;
+  const queueFilament = useFilamentCheck(queue.map(m => m.id), refreshKey);
+  const selectedFilament = useFilamentCheck(selected ? [selected.id] : [], refreshKey);
+  const lastPrinter = useLastPrinter(selected?.id ?? null, printerRefreshKey);
   // Counts over the whole catalog (without folder/tag/search) so they stay stable.
   const counts = useMemo(() => computeToolCounts(models, new Date()), [models]);
   const tagHues = useMemo(() => Object.fromEntries(tags.map(tag => [tag.label, tag.colorHue])), [tags]);
@@ -269,7 +318,7 @@ export function CatalogWorkspace({
   const clearButtonClass = 'px-2.5 py-1 rounded-[5px] border border-[var(--accent)] text-[var(--accent)] text-[length:var(--font-size-control)] font-semibold hover:bg-[var(--accent-soft)] cursor-pointer';
   const toolOnly = toolView && !activeCollection && activeFolderId === 'all' && !activeTag && !query;
   return (
-    <div className="flex-1 flex min-h-0">
+    <div className="relative flex-1 flex min-h-0">
       <Sidebar
         catalogKey={catalogKey}
         expansion={expansion}
@@ -457,7 +506,11 @@ export function CatalogWorkspace({
             displayPreference={displayPreference}
           />
         ) : (
-          <div ref={node => { containerRef.current = node; scrollRef(node); }} data-catalog-scroller onScroll={event => { savedScroll.current = event.currentTarget.scrollTop; }} className="flex-1 overflow-y-auto overscroll-contain p-4">
+          <div ref={node => { containerRef.current = node; scrollRef(node); }} data-catalog-scroller onClick={event => {
+            const target = event.target;
+            if (detailPanel === 'auto' && selectedId && target instanceof Element &&
+              !target.closest('[data-model-id], button, input, a, [role="button"], [role="row"], [data-folder-header], [data-model-list-header], [data-navigation-menu]')) closeDetails();
+          }} onScroll={event => { savedScroll.current = event.currentTarget.scrollTop; }} className="flex-1 overflow-y-auto overscroll-contain p-4">
             {models.length === 0 && onOpenTips ? <EmptyCatalogTips onOpenTips={onOpenTips} /> : toolOnly && displayedModels.length === 0 ? (
               <div className="font-mono-ui text-[length:var(--font-size-item)] text-[var(--ink-3)] px-1.5 py-8 text-center">
                 {t('toolViewEmpty')}
@@ -533,8 +586,12 @@ export function CatalogWorkspace({
         )}
       </main>
 
-      {!detailModel && (
+      {!detailModel && (detailPanel === 'pinned' || selectedId !== null) && (
+        <div role="complementary" aria-label={t('detailPanelTitle')} className={`detail-panel-shell ${narrow ? 'detail-panel-overlay' : ''}`}>
+        {detailPanel === 'auto' && <button type="button" className="detail-panel-close" aria-label={t('detailPanelClose')} title={`${t('detailPanelClose')} (Esc)`} onClick={closeDetails}><Icon name="close" size={16} /></button>}
         <DetailPanel
+          filament={selectedFilament.error ? null : selectedFilament.checks?.get(selected?.id ?? '')}
+          lastPrinter={lastPrinter}
           allTags={tags.map(tag => tag.label)}
           tagHues={tagHues}
           model={selected}
@@ -554,6 +611,7 @@ export function CatalogWorkspace({
           onRemoveFromCatalog={selected && onRemoveModelFromCatalog ? () => onRemoveModelFromCatalog(selected.id) : undefined}
           slicerError={slicerError}
         />
+        </div>
       )}
     </div>
   );

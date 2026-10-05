@@ -61,7 +61,13 @@ const MUTATION_TRACKED_FIELDS: { prefix: string; field: keyof ModelFile }[] = [
   { prefix: 'sourceUrl', field: 'sourceUrl' },
 ];
 
-export function useCatalogStore() {
+interface CatalogStoreOptions {
+  /** Select the first model after loading. Off when the details panel opens only on demand,
+   *  otherwise it would appear at every start without anyone having clicked a model. */
+  preselectFirst?: boolean;
+}
+
+export function useCatalogStore({ preselectFirst = true }: CatalogStoreOptions = {}) {
   const [models, setModels] = useState<ModelFile[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [tags, setTags] = useState<TagCount[]>([]);
@@ -200,7 +206,7 @@ export function useCatalogStore() {
   useEffect(() => {
     loadSummariesWithTags().then((mapped) => {
       setModels(mapped);
-      setSelectedId((prev) => prev ?? mapped[0]?.id ?? null);
+      if (preselectFirst) setSelectedId((prev) => prev ?? mapped[0]?.id ?? null);
     });
     refreshFolders();
     refreshTags();

@@ -17,6 +17,8 @@ import type { UpdaterView } from '../hooks/useUpdater';
 import { UpdatePanel } from './UpdatePanel';
 
 interface Props {
+  detailPanel?: 'auto' | 'pinned';
+  onDetailPanelChange?: (mode: 'auto' | 'pinned') => void;
   singleKeyShortcuts?: boolean;
   onSingleKeyShortcutsChange?: (enabled: boolean) => void;
   onOpenTips?: () => void;
@@ -69,6 +71,7 @@ const LANGUAGE_LABELS: Record<Language, string> = {
 };
 
 export function Rail({
+  detailPanel = 'auto', onDetailPanelChange,
   singleKeyShortcuts = true, onSingleKeyShortcutsChange, onOpenTips,
   mainView,
   onMainViewChange,
@@ -273,6 +276,12 @@ export function Rail({
                   {uiDensity === 'compact' ? t('densityDescriptionCompact') : t('densityDescriptionComfort')}
                 </div>
 
+                {onDetailPanelChange && <fieldset className="mt-3"><legend>{t('detailPanelLabel')}</legend>
+                  {(['auto', 'pinned'] as const).map(mode => <label key={mode} className="flex items-center gap-2 mt-1">
+                    <input type="radio" name="detailPanel" checked={detailPanel === mode} onChange={() => onDetailPanelChange(mode)} />
+                    {t(mode === 'auto' ? 'detailPanelAuto' : 'detailPanelPinned')}
+                  </label>)}
+                </fieldset>}
                 <div className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-2">{t('displayPreferenceTitle')}</div>
                 <div className="flex p-0.5 gap-0.5 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)]">
                   {(['thumbnail', 'render'] as DisplayPreference[]).map((opt) => (

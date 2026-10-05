@@ -4,7 +4,7 @@ export type IconName =
   | 'ams' | 'archive' | 'calibrate' | 'catalog' | 'check' | 'close'
   | 'collapse-all' | 'expand-all' | 'export' | 'favorite' | 'filter' | 'folder' | 'fullscreen' | 'help' | 'import'
   | 'info' | 'layers' | 'model' | 'next' | 'nozzle' | 'plate' | 'previous'
-  | 'printer' | 'reset-view' | 'resin' | 'restore' | 'search' | 'settings'
+  | 'panel' | 'printer' | 'reset-view' | 'resin' | 'restore' | 'search' | 'settings'
   | 'slicer' | 'sort' | 'spool' | 'supports' | 'tag' | 'temperature' | 'trash' | 'zoom';
 
 export function Icon({ name, size = 24, className }: { name: IconName; size?: number; className?: string }) {

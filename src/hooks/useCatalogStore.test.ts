@@ -66,6 +66,13 @@ describe('useCatalogStore', () => {
     expect(result.current.selectedId).toBe('m1');
   });
 
+  it('loads models on mount without selecting one when preselection is off', async () => {
+    mockInitialLoad();
+    const { result } = renderHook(() => useCatalogStore({ preselectFirst: false }));
+    await waitFor(() => expect(result.current.models).toHaveLength(1));
+    expect(result.current.selectedId).toBeNull();
+  });
+
   it('preserves disk timestamps and nulls when embedding summaries', async () => {
     const fileModifiedAt = '2023-11-14T22:13:20+00:00';
     mockInitialLoad([

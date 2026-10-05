@@ -6,6 +6,21 @@ export interface PluralForms {
 }
 
 export interface Translations {
+  statusBadgesLabel: string;
+  statusFavorite: string;
+  statusInQueue: string;
+  statusFilamentOk: string;
+  statusFilamentSwap: string;
+  statusFilamentShort: string;
+  statusFilamentUnknown: string;
+  statusLastPrinter: string;
+  detailPanelLabel: string;
+  detailPanelAuto: string;
+  detailPanelPinned: string;
+  detailPanelClose: string;
+  detailPanelPin: string;
+  detailPanelTitle: string;
+
   viewerOpenSlicer: string;
   viewerUnknownText: string;
   viewerUnreadableCompact: string;

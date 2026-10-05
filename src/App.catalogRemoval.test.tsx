@@ -23,7 +23,7 @@ beforeEach(() => {
   vi.mocked(invoke).mockImplementation(async (cmd) => {
     if (cmd === 'get_app_version') return '0.15.0';
     if (cmd === 'has_step_preview' || cmd === 'is_preview_build' || cmd === 'get_printer_link_enabled') return false;
-    if (cmd === 'register_existing_catalog_base_dir' || cmd === 'check_app_update') return null;
+    if (cmd === 'register_existing_catalog_base_dir' || cmd === 'check_app_update' || cmd === 'get_last_printer_for_file') return null;
     if (cmd === 'reset_catalog') return { modelCount: 0, folderCount: 0 };
     return [];
   });

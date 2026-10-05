@@ -8,6 +8,8 @@ import { formatCount } from '../i18n/types';
 import { useT } from '../i18n/LanguageContext';
 
 interface Props {
+  detailPanel?: 'auto' | 'pinned';
+  onDetailPanelChange?: (mode: 'auto' | 'pinned') => void;
   importTargetName?: string;
   importTargetIsRoot?: boolean;
   allFoldersCollapsed: boolean;
@@ -33,6 +35,7 @@ const segActive = 'bg-[var(--accent)] text-[var(--accent-ink)]';
 const segInactive = 'text-[var(--ink-2)] hover:text-[var(--ink)]';
 
 export function Header({
+  detailPanel = 'auto', onDetailPanelChange,
   importTargetName,
   importTargetIsRoot = false,
   allFoldersCollapsed,
@@ -238,6 +241,9 @@ export function Header({
         </span>
       )}
 
+      {mainView === 'catalog' && onDetailPanelChange && <button type="button" aria-pressed={detailPanel === 'pinned'} aria-label={t('detailPanelPin')} title={t('detailPanelPin')}
+        onClick={() => onDetailPanelChange(detailPanel === 'pinned' ? 'auto' : 'pinned')}
+        className={`flex items-center gap-1.5 px-2 h-8 rounded border cursor-pointer ${detailPanel === 'pinned' ? 'bg-[var(--accent-soft)] border-[var(--accent)] text-[var(--accent)]' : 'border-[var(--line)] text-[var(--ink-2)]'}`}><Icon name="panel" size={18} />{t('detailPanelTitle')}</button>}
       <button onClick={onOpenTips} aria-label={t('keyboardTipsTitle')} title={t('keyboardTipsTitle')}
         className="shrink-0 w-8 h-8 grid place-items-center rounded-[6px] text-[var(--ink-2)] hover:text-[var(--accent)] hover:bg-[var(--panel-2)] cursor-pointer"><Icon name="help" size={22} /></button>
     </header>

@@ -24,7 +24,7 @@ function contrast(a, b) {
   const x = luminance(a), y = luminance(b);
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 }
-const pairs = [['ink-3', 'bg'], ['ink-3', 'panel'], ['ink-3', 'panel-2'],
+const pairs = [['ink-2', 'panel-2'], ['ink-3', 'bg'], ['ink-3', 'panel'], ['ink-3', 'panel-2'],
   ['accent', 'accent-soft'], ['accent', 'bg'], ['good', 'good-soft'], ['good', 'panel'],
   ['crit', 'crit-soft'], ['crit', 'panel'], ['warn', 'warn-soft'], ['warn', 'panel']];
 for (const [theme, selector] of [['light', '[data-app]'], ['dark', '[data-app="dark"]']]) {

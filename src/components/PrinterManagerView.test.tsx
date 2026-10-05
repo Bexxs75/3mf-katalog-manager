@@ -23,7 +23,7 @@ const spool: FilamentSpool = { id: 's1', material: 'PLA', manufacturer: null, co
   colorHex: '#ff0000', homeLocation: 'Regal', unitId: 'u1', slotIndex: 0, kind: 'filament' };
 let list: Printer[];
 let history: PrinterHistoryJob[];
-const link = (): PrinterLinkState => ({ enabled: false, connections: [], jobs: [], error: null,
+const link = (): PrinterLinkState => ({ refreshKey: 0, enabled: false, connections: [], jobs: [], error: null,
   refresh: vi.fn().mockResolvedValue(undefined), setEnabled: vi.fn().mockResolvedValue(undefined),
   testConnection: vi.fn(), removeConnection: vi.fn(), syncNow: vi.fn(), ignoreJob: vi.fn(), confirmJobs: vi.fn(), previewJob: vi.fn() });
 

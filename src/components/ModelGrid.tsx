@@ -153,6 +153,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
       <div
         key={m.id}
         data-model-id={m.id}
+        tabIndex={-1}
         onClick={() => onSelect(m.id)}
         onDoubleClick={readOnly ? undefined : () => onOpenDetail(m.id)}
         onContextMenu={(e) => {
@@ -251,6 +252,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
           <div
             key={m.id}
             data-model-id={m.id}
+        tabIndex={-1}
             onClick={() => onSelect(m.id)}
             onDoubleClick={readOnly ? undefined : () => onOpenDetail(m.id)}
             onContextMenu={(e) => {

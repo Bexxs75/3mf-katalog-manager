@@ -1,6 +1,21 @@
 import type { Translations } from './types';
 
 export const es: Translations = {
+  statusBadgesLabel: "Estado",
+  statusFavorite: "Favorito",
+  statusInQueue: "En cola",
+  statusFilamentOk: "Filamento suficiente",
+  statusFilamentSwap: "Suficiente con cambio de bobina",
+  statusFilamentShort: "Filamento insuficiente · faltan {g}",
+  statusFilamentUnknown: "Filamento incierto",
+  statusLastPrinter: "{printer} · {time}",
+  detailPanelLabel: "Panel de detalles",
+  detailPanelAuto: "Automático (aparece al hacer clic)",
+  detailPanelPinned: "Siempre visible",
+  detailPanelClose: "Cerrar detalles",
+  detailPanelPin: "Fijar panel de detalles",
+  detailPanelTitle: "Detalles",
+
   viewerOpenSlicer: "Abrir en el laminador",
   viewerUnknownText: "Abre el archivo en el laminador o informa del problema.",
   viewerUnreadableCompact: "Prueba a abrir el archivo en el laminador.",

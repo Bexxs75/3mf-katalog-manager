@@ -23,7 +23,7 @@ const job = (over: Partial<PrinterJob>): PrinterJob => ({
 
 function link(jobs: PrinterJob[]): PrinterLinkState {
   return {
-    enabled: true, connections: [], jobs, error: null, refresh: vi.fn(), setEnabled: vi.fn(), testConnection: vi.fn(),
+    refreshKey: 0, enabled: true, connections: [], jobs, error: null, refresh: vi.fn(), setEnabled: vi.fn(), testConnection: vi.fn(),
     removeConnection: vi.fn(), syncNow: vi.fn(), ignoreJob: vi.fn().mockResolvedValue(undefined),
     confirmJobs: vi.fn().mockResolvedValue({ confirmed: 1, failed: 0 }),
     previewJob: vi.fn().mockResolvedValue({ grams: 0.9, materialMismatch: true }),

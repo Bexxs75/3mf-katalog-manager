@@ -1,5 +1,8 @@
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useState } from 'react';
+import { StatusBadges } from './StatusBadges';
+import type { FilamentCheck } from '../types';
+import type { LastPrinter } from '../lib/api/lastPrinter';
 import { TagDot } from './TagDot';
 import { TagInput } from './TagInput';
 import type { ModelFile } from '../types';
@@ -15,6 +18,8 @@ import type { AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 
 interface Props {
+  filament?: FilamentCheck | null;
+  lastPrinter?: LastPrinter | null;
   allTags: string[];
   /** Color hue per tag label, so tag chips show the same dot as in the sidebar. */
   tagHues?: Record<string, number>;
@@ -38,6 +43,7 @@ interface Props {
 }
 
 export function DetailPanel({
+  filament, lastPrinter,
   model,
   allTags,
   tagHues,
@@ -78,7 +84,7 @@ export function DetailPanel({
 
   if (!model) {
     return (
-      <aside className="flex-none w-[336px] flex items-center justify-center bg-[var(--panel)] border-l border-[var(--line)] text-[var(--ink-3)] text-[13px] px-6 text-center">
+      <aside role={trashMode ? undefined : "presentation"} className="flex-none w-[336px] flex items-center justify-center bg-[var(--panel)] border-l border-[var(--line)] text-[var(--ink-3)] text-[13px] px-6 text-center">
         {t('emptyStateText')}
       </aside>
     );
@@ -139,9 +145,10 @@ export function DetailPanel({
 
   if (density === 'compact') {
     return (
-    <aside className="flex-none w-[336px] flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]">
+    <aside role={trashMode ? undefined : "presentation"} className="flex-none w-[336px] flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]">
       <div className="flex-none px-4 pt-3.5 pb-3 border-b border-[var(--line)]">
         <div className="text-[14.5px] font-semibold leading-tight break-words">{model.name}</div>
+        <StatusBadges model={model} filament={filament} lastPrinter={lastPrinter} />
         <div className="font-mono-ui text-[10.5px] text-[var(--ink-3)] pt-1.5">{model.path}</div>
       </div>
 
@@ -213,7 +220,7 @@ export function DetailPanel({
           <div className="font-mono-ui text-compact-meta tracking-[0.12em] uppercase text-[var(--ink-3)] pb-2">
             {t('metadataHeading')}
           </div>
-          {buildMetaRows(model, t, language).map((row) => (
+          {buildMetaRows(model, t, language).filter(row => !model.materials.length || row.label !== t('metaMaterial')).map((row) => (
             <div
               key={row.label}
               className="flex items-baseline gap-3 py-1.5 border-b border-[var(--line)]"
@@ -350,7 +357,7 @@ export function DetailPanel({
   }
 
   return (
-    <aside
+    <aside role={trashMode ? undefined : "presentation"}
       className="flex-none flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]"
       style={{ width: '380px' }}
     >
@@ -391,6 +398,7 @@ export function DetailPanel({
             {model.favorite ? '♥' : '♡'}
           </button>
         </div>
+        <div className="px-[18px]"><StatusBadges model={model} filament={filament} lastPrinter={lastPrinter} /></div>
         <div className="px-[18px] pb-3.5 flex flex-wrap gap-1.5">
           {model.tags.map((tag) => (
             <span
@@ -427,7 +435,7 @@ export function DetailPanel({
           >
             {t('metadataHeading')}
           </div>
-          {buildMetaRows(model, t, language).map((row) => (
+          {buildMetaRows(model, t, language).filter(row => !model.materials.length || row.label !== t('metaMaterial')).map((row) => (
             <div
               key={row.label}
               className="flex justify-between py-2 border-b border-[var(--line)]"
