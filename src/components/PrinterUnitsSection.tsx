@@ -30,13 +30,26 @@ const KIND_LABEL: Record<UnitKind, KindLabelKey> = {
   resin_vat: 'printersKindResinVat',
 };
 
-const LETTERS = 'ABCDEFGHIJKLMNOP';
-
-/** "AMS A", "AMS B" … or "Spulenhalter", "Spulenhalter 2" … for new units. */
+/** Follow the existing unit naming scheme and skip occupied names. */
 export function suggestUnitName(printer: Printer, kind: UnitKind, defaultName: string): string {
-  const sameKind = printer.units.filter((u) => u.kind === kind).length;
-  if (kind === 'bambu_ams' || kind === 'bambu_ams_lite') return `${defaultName} ${LETTERS[sameKind] ?? sameKind + 1}`;
-  return sameKind === 0 ? defaultName : `${defaultName} ${sameKind + 1}`;
+  const units = printer.units.filter(u => u.kind === kind);
+  const names = new Set(printer.units.map(u => u.name));
+  if (kind !== 'bambu_ams' && kind !== 'bambu_ams_lite') {
+    if (!units.length && !names.has(defaultName)) return defaultName;
+    let suffix = units.length + 1;
+    while (names.has(`${defaultName} ${suffix}`)) suffix++;
+    return `${defaultName} ${suffix}`;
+  }
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const usesLetters = units.some(u => letters.split('').some(letter => u.name === `${defaultName} ${letter}`));
+  const usesNumbers = units.some(u => u.name.startsWith(`${defaultName} `) && /^\d+$/.test(u.name.slice(defaultName.length + 1)));
+  if (usesLetters && !usesNumbers) {
+    const free = letters.split('').find(letter => !names.has(`${defaultName} ${letter}`));
+    if (free) return `${defaultName} ${free}`;
+  }
+  let number = 1;
+  while (names.has(`${defaultName} ${number}`)) number++;
+  return `${defaultName} ${number}`;
 }
 
 

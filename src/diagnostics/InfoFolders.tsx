@@ -37,10 +37,10 @@ export function InfoFolders() {
             key={label}
             type="button"
             onClick={() => open(action)}
-            className="h-8 px-3 flex items-center justify-between gap-2 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            className="min-h-8 py-1.5 px-3 flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
-            <span className="truncate">{label}</span>
-            <span className="truncate font-normal text-caption text-[var(--ink-3)]">{hint}</span>
+            <span className="shrink-0 whitespace-nowrap">{label}</span>
+            <span className="min-w-0 break-words font-normal text-caption text-[var(--ink-3)]">{hint}</span>
           </button>
         ))}
       </div>

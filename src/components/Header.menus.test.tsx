@@ -100,3 +100,23 @@ it.each(['sort', 'import'])('supports keyboard opening, cyclic arrows, boundarie
   fireEvent.keyDown(items[items.length - 1]!, { key: 'Home' }); expect(items[0]).toHaveFocus();
   fireEvent.keyDown(items[0], { key: 'Tab' }); expect(screen.queryByRole('menu')).toBeNull();
 });
+
+it.each(['de', 'en', 'es', 'fr'])('reserves both import hints in one grid cell in %s', language => {
+  localStorage.setItem('3mf-katalog-language', language);
+  const result = setup();
+  fireEvent.click(result.container.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!);
+  const hints = result.container.querySelector('[data-import-hints]')!;
+  expect(hints).toHaveClass('grid');
+  expect(hints.children).toHaveLength(2);
+  for (const child of hints.children) expect(child).toHaveClass('col-start-1', 'row-start-1');
+  expect(hints.children[1]).toHaveClass('invisible');
+  fireEvent.mouseEnter(screen.getAllByRole('menuitem')[1]);
+  expect(hints.children[0]).toHaveClass('invisible');
+  expect(hints.children[1]).not.toHaveClass('invisible');
+  expect(hints.children).toHaveLength(2);
+});
+it('does not announce zero files during initial loading', () => {
+  render(<LanguageProvider><Header {...props} count={0} initialLoading /></LanguageProvider>);
+  expect(screen.getByText('Katalog wird geladen …')).toBeVisible();
+  expect(screen.queryByText('0 Dateien')).not.toBeInTheDocument();
+});

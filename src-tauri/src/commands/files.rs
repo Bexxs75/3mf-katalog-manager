@@ -1461,16 +1461,20 @@ pub async fn import_dropped(app: tauri::AppHandle, paths: Vec<String>) -> CmdRes
     super::import_jobs::legacy_models(app, ImportSource::Dropped, Some(paths.into_iter().map(PathBuf::from).collect()), None).await
 }
 /// Pure command construction keeps platform quoting independent of the host OS.
-fn reveal_command(os: &str, path: &str) -> (String, Vec<String>) {
-    match os {
+#[derive(Debug, PartialEq)]
+enum RevealArgs { Standard(Vec<String>), WindowsRaw(String) }
+
+fn reveal_command(os: &str, path: &str) -> CmdResult<(String, RevealArgs)> {
+    Ok(match os {
         "windows" => {
+            if path.contains('"') { return Err(CmdError::expected("Ungültiger Windows-Pfad")); }
             let normalized = path.replace('/', "\\");
             let normalized = if let Some(unc) = normalized.strip_prefix(r"\\?\UNC\") {
                 format!(r"\\{unc}")
             } else { normalized.strip_prefix(r"\\?\").unwrap_or(&normalized).to_string() };
-            ("explorer".into(), vec![format!("/select,{normalized}")])
+            ("explorer".into(), RevealArgs::WindowsRaw(format!("/select,\"{normalized}\"")))
         },
-        "macos" => ("open".into(), vec!["-R".into(), "--".into(), path.into()]),
+        "macos" => ("open".into(), RevealArgs::Standard(vec!["-R".into(), "--".into(), path.into()])),
         _ => {
             let mut uri = String::from("file://");
             for byte in path.bytes() {
@@ -1478,12 +1482,12 @@ fn reveal_command(os: &str, path: &str) -> (String, Vec<String>) {
                     uri.push(byte as char);
                 } else { uri.push_str(&format!("%{byte:02X}")); }
             }
-            ("gdbus".into(), vec!["call".into(), "--session".into(), "--timeout".into(), "3".into(),
+            ("gdbus".into(), RevealArgs::Standard(vec!["call".into(), "--session".into(), "--timeout".into(), "3".into(),
                 "--dest".into(), "org.freedesktop.FileManager1".into(), "--object-path".into(),
                 "/org/freedesktop/FileManager1".into(), "--method".into(),
-                "org.freedesktop.FileManager1.ShowItems".into(), format!("['{uri}']"), String::new()])
+                "org.freedesktop.FileManager1.ShowItems".into(), format!("['{uri}']"), String::new()]))
         }
-    }
+    })
 }
 
 fn reveal_target(path: &Path) -> CmdResult<(PathBuf, bool)> {
@@ -1499,10 +1503,18 @@ fn reveal_target(path: &Path) -> CmdResult<(PathBuf, bool)> {
 fn reveal_catalog_path(path: &Path) -> CmdResult<()> {
     let (absolute, is_file) = reveal_target(path)?;
     if !is_file { return open_in_file_manager(absolute.to_string_lossy().into_owned()); }
-    let (program, args) = reveal_command(std::env::consts::OS, &absolute.to_string_lossy());
+    let (program, args) = reveal_command(std::env::consts::OS, &absolute.to_string_lossy())?;
     let mut command = std::process::Command::new(program);
     super::external_env::sanitize_external_command(&mut command);
-    command.args(args);
+    match args {
+        RevealArgs::Standard(args) => { command.args(args); }
+        RevealArgs::WindowsRaw(raw) => {
+            #[cfg(target_os = "windows")]
+            { use std::os::windows::process::CommandExt; command.raw_arg(raw); }
+            #[cfg(not(target_os = "windows"))]
+            { let _ = raw; unreachable!("Windows arguments on another platform"); }
+        }
+    }
     #[cfg(target_os = "linux")]
     {
         // Only the DBus response is awaited on this blocking worker. A failed
@@ -1763,13 +1775,20 @@ mod tests {
 
     #[test]
     fn reveal_arguments_do_not_interpret_filenames_as_options() {
-        assert_eq!(reveal_command("windows", "C:/Druck/Grüße hier.3mf"),
-            ("explorer".into(), vec!["/select,C:\\Druck\\Grüße hier.3mf".into()]));
-        assert_eq!(reveal_command("windows", "-name.3mf").1, vec!["/select,-name.3mf"]);
-        assert_eq!(reveal_command("windows", r"\\?\C:\Druck\file.3mf").1, vec![r"/select,C:\Druck\file.3mf"]);
-        assert_eq!(reveal_command("windows", r"\\?\UNC\server\share\file.3mf").1, vec![r"/select,\\server\share\file.3mf"]);
-        assert_eq!(reveal_command("macos", "-Grüße hier.3mf").1, vec!["-R", "--", "-Grüße hier.3mf"]);
-        let args = reveal_command("linux", "/Druck/-Grüße #'% hier.3mf").1;
+        for (path, normalized) in [
+            ("C:/Druck/Grüße hier (2).3mf", r"C:\Druck\Grüße hier (2).3mf"),
+            ("-name.3mf", "-name.3mf"),
+            (r"\\?\C:\Druck\file.3mf", r"C:\Druck\file.3mf"),
+            (r"\\?\UNC\server\share\file.3mf", r"\\server\share\file.3mf"),
+            (r"\\server\share\Grüße hier (2).3mf", r"\\server\share\Grüße hier (2).3mf"),
+        ] {
+            assert_eq!(reveal_command("windows", path).unwrap(),
+                ("explorer".into(), RevealArgs::WindowsRaw(format!("/select,\"{normalized}\""))));
+        }
+        assert!(reveal_command("windows", "C:/bad\"name.3mf").is_err());
+        assert_eq!(reveal_command("macos", "-Grüße hier.3mf").unwrap().1,
+            RevealArgs::Standard(vec!["-R".into(), "--".into(), "-Grüße hier.3mf".into()]));
+        let RevealArgs::Standard(args) = reveal_command("linux", "/Druck/-Grüße #'% hier.3mf").unwrap().1 else { panic!() };
         assert_eq!(args[args.len() - 2], "['file:///Druck/-Gr%C3%BC%C3%9Fe%20%23%27%25%20hier.3mf']");
         assert_eq!(args.last().unwrap(), "");
     }

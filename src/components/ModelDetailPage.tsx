@@ -195,11 +195,11 @@ export function ModelDetailPage({
             onPointerDown={event => {
               if (event.target === event.currentTarget || event.target instanceof HTMLCanvasElement) event.currentTarget.focus();
             }}
-            className="relative aspect-[4/3] rounded-[10px] border border-[var(--line)] bg-[var(--plate)] overflow-hidden">
+            className="relative rounded-[10px] border border-[var(--line)] bg-[var(--plate)] overflow-hidden">
             {showCustomImage && resolvedImage ? (
-              <img src={resolvedImage} alt={model.name} className="absolute inset-0 w-full h-full object-contain" />
+              <img src={resolvedImage} alt={model.name} className="aspect-[4/3] w-full object-contain" />
             ) : (
-              <ModelPreview
+              <ModelPreview surfaceClassName="aspect-[4/3]"
                 model={model}
                 needsSnapshot={!(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
                 onSnapshotCaptured={onSnapshotCaptured}

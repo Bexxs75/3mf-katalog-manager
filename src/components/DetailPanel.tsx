@@ -158,7 +158,7 @@ export function DetailPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="relative h-[248px] bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
+        <div className="relative bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
           <div
             className="absolute inset-0"
             style={{
@@ -166,19 +166,19 @@ export function DetailPanel({
                 'repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 11px)',
             }}
           />
-          <ModelPreview
+          <ModelPreview surfaceClassName="h-[248px]"
             model={model}
             needsSnapshot={!(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
             onOpenInSlicer={hasSlicer ? onOpenInSlicer : undefined}
             onRemoveFromCatalog={onRemoveFromCatalog}
             onSnapshotCaptured={onSnapshotCaptured}
           />
-          <div className="absolute left-2.5 bottom-2 ui-label text-[var(--ink-3)] pointer-events-none">
+          <div className="absolute left-2.5 top-56 ui-label text-[var(--ink-3)] pointer-events-none">
             {t('dragToRotate')}
           </div>
           <button
             onClick={imageUpload.uploadImage}
-            className="absolute right-2.5 top-2.5 h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            className="relative m-2 h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
             {t('uploadModelImageLabel')}
           </button>
@@ -369,7 +369,7 @@ export function DetailPanel({
       style={{ width: '380px' }}
     >
       <div className="flex-1 overflow-y-auto">
-        <div className="relative h-[284px] bg-[var(--plate)] overflow-hidden">
+        <div className="relative bg-[var(--plate)] overflow-hidden">
           <div
             className="absolute inset-0"
             style={{
@@ -377,7 +377,7 @@ export function DetailPanel({
                 'repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 12px)',
             }}
           />
-          <ModelPreview
+          <ModelPreview surfaceClassName="h-[284px]"
             model={model}
             needsSnapshot={!(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
             onOpenInSlicer={hasSlicer ? onOpenInSlicer : undefined}
@@ -386,7 +386,7 @@ export function DetailPanel({
           />
           <button
             onClick={imageUpload.uploadImage}
-            className="absolute right-3 top-3 h-9 px-3.5 rounded-lg bg-[var(--panel)] shadow-[var(--shadow)] text-[var(--ink-2)] font-semibold cursor-pointer hover:text-[var(--accent)]"
+            className="relative m-3 h-9 px-3.5 rounded-lg bg-[var(--panel)] shadow-[var(--shadow)] text-[var(--ink-2)] font-semibold cursor-pointer hover:text-[var(--accent)]"
             style={{ fontSize: 'var(--font-size-meta)' }}
           >
             {t('uploadModelImageLabel')}

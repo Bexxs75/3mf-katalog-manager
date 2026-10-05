@@ -83,3 +83,20 @@ it('shares and persists detail mode between settings and the header', async () =
   expect(localStorage.getItem('3mf-katalog-detail-panel')).toBe('auto');
   expect(screen.getByRole('radio', { name: de.detailPanelAuto })).toBeChecked();
 });
+
+it('Escape leaves search without clearing the query; the next Escape clears selection', async () => {
+  const fallback = vi.mocked(invoke).getMockImplementation()!;
+  vi.mocked(invoke).mockImplementation(async (cmd, args) => cmd === 'list_file_summaries' ? [makeModelFileSummary({id: 'one', name: 'cube.3mf'})] : fallback(cmd, args));
+  await setup();
+  const search = screen.getByPlaceholderText(de.searchPlaceholder);
+  fireEvent.change(search, {target: {value: 'cube'}});
+  screen.getByRole('main').focus();
+  await act(async () => { document.body.dispatchEvent(new KeyboardEvent('keydown', {key: 'a', ctrlKey: true, bubbles: true, cancelable: true})); });
+  search.focus();
+  fireEvent.keyDown(search, {key: 'Escape'});
+  expect(search).toHaveValue('cube');
+  expect(screen.getByRole('main')).toHaveFocus();
+  expect(screen.getByText(de.bulkSelectedCount.replace('{count}', '1'))).toBeVisible();
+  fireEvent.keyDown(screen.getByRole('main'), {key: 'Escape'});
+  expect(screen.queryByText(de.bulkSelectedCount.replace('{count}', '1'))).not.toBeInTheDocument();
+});

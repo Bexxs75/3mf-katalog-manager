@@ -143,3 +143,9 @@ it('shows a search chip for a nonempty whitespace query that still filters the c
   filterWorkspace({query: ' '});
   expect(screen.getByRole('region', {name: de.filterBarAria}).querySelector('[data-filter-kind]')).toHaveTextContent('Suche');
 });
+
+it('shows loading instead of empty tips until the initial catalog load completes', () => {
+  filterWorkspace({models: [], filtered: [], initialLoading: true, onOpenTips: vi.fn()});
+  expect(screen.getByRole('status')).toHaveTextContent('Katalog wird geladen …');
+  expect(screen.queryByText('Dein Katalog ist noch leer')).not.toBeInTheDocument();
+});

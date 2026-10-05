@@ -32,11 +32,14 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - **One download per system.** The app can only be started once; a second launch brings its window to the front.
 - From v0.16.0, there is only one download per system, always including STEP preview. The file is larger than the former standard package and its name has no `-STEP` suffix. Users of the former standard variant receive it automatically with their next in-app update.
 - **One typeface:** Barlow for everything you read, IBM Plex Mono only for paths, addresses and keys; fixed type sizes from 11.5 px and SVG icons instead of text characters, so the interface looks the same on Windows, macOS and Linux. Contrast and hover behavior were improved in the light and dark theme.
-- No white flash while the app starts (Windows); settings no longer cover the navigation; the interface stays smooth with large catalogs.
+- The startup window waits for the themed surface on all systems, with a timed fallback; large catalogs show a loading state before their first results. Settings no longer cover the navigation.
 - Archives that already contain a folder no longer create a nested duplicate folder when extracted.
 
 ### Fixed
 
+- Windows file selection in Explorer handles spaces and special characters. Print plates sit below the 3D preview; small viewers use compact controls and a collapsible legend.
+- Import hints and settings keep controls steady; narrow headers, data-folder buttons and printer statuses stay readable. Escape leaves search without erasing it; printer decimals follow the UI language and material-unit suggestions follow existing names.
+- Setup no longer describes STEP previews as unavailable; unreadable-file guidance includes locked files, and invalid backup databases show a plain message.
 - Model, file, folder and tag counts use the correct singular and plural forms in all four languages.
 - Import details open on the first tab containing entries.
 - Skipped import files and reasons are logged individually only with verbose logging; normal logs show anonymous totals. Every file, folder, drop, catalog adoption and archive import writes one final summary with its source and duration. Damaged import files are logged as warnings rather than command errors.
@@ -540,11 +543,14 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Ein Download pro System.** Die App lässt sich nur einmal starten; ein zweiter Start holt das Fenster nach vorn.
 - Ab v0.16.0 gibt es nur noch eine Download-Variante pro System, immer mit STEP-Vorschau. Die Datei ist größer als das bisherige Standardpaket und ihr Name hat keinen `-STEP`-Zusatz. Nutzer der bisherigen Standardvariante erhalten sie automatisch beim nächsten Update in der App.
 - **Eine Schrift:** Barlow für alles Gelesene, IBM Plex Mono nur noch für Pfade, Adressen und Schlüssel; feste Schriftgrößen ab 11,5 px und SVG-Symbole statt Textzeichen, damit die Oberfläche auf Windows, macOS und Linux gleich aussieht. Kontrast und Hover-Verhalten wurden im hellen und dunklen Design verbessert.
-- Kein weißes Aufblitzen beim Start (Windows); die Einstellungen verdecken keine Navigation mehr; die Oberfläche bleibt auch mit großen Katalogen flüssig.
+- Das Startfenster wartet auf allen Systemen auf die Oberfläche im gewählten Design, mit zeitlicher Reserve; große Kataloge zeigen vor den ersten Ergebnissen einen Ladezustand. Die Einstellungen verdecken keine Navigation mehr.
 - Archive, die schon einen Ordner enthalten, erzeugen beim Entpacken keinen doppelten Ordner mehr.
 
 ### Behoben
 
+- Die Dateiauswahl im Windows-Explorer berücksichtigt Leerzeichen und Sonderzeichen. Druckplatten stehen unter der 3D-Vorschau; kleine Vorschauen haben kompakte Bedienelemente und eine aufklappbare Legende.
+- Importhinweise und Einstellungen halten Knöpfe an ihrem Platz; schmale Kopfzeilen, Datenordner-Knöpfe und Druckerstatus bleiben lesbar. Escape verlässt die Suche ohne Löschen; Druckerzahlen folgen der Sprache und Materialeinheiten dem vorhandenen Namensschema.
+- Die Einrichtung bezeichnet STEP-Vorschauen nicht mehr als fehlend; Hinweise zu unlesbaren Dateien berücksichtigen Sperren, ungültige Backup-Datenbanken erhalten eine verständliche Meldung.
 - Modell-, Datei-, Ordner- und Tag-Anzahlen verwenden in allen vier Sprachen die richtige Einzahl und Mehrzahl.
 - Importdetails öffnen auf dem ersten Reiter mit Einträgen.
 - Übersprungene Importdateien und Gründe stehen nur im ausführlichen Protokoll einzeln mit Namen; das normale Protokoll zeigt anonyme Summen. Jeder Datei-, Ordner-, Drop-, Übernahme- und Archivimport schreibt eine abschließende Zusammenfassung mit Quelle und Dauer. Beschädigte Importdateien werden als Warnung statt als Befehlsfehler protokolliert.

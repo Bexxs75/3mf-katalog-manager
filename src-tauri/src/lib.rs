@@ -16,6 +16,7 @@ mod stl;
 mod tagging;
 mod threemf;
 mod updater;
+mod startup;
 
 use std::sync::Mutex;
 
@@ -124,6 +125,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            startup::create_window(app)?;
             // Product name from the active config (differs for the preview variant) plus
             // the version, taken straight from Cargo.toml.
             if let Some(window) = app.get_webview_window("main") {
@@ -200,6 +202,8 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            startup::frontend_ready,
+            startup::save_window_theme,
             commands::discard_archive_imports,
             commands::start_import,
             commands::start_dropped_import,

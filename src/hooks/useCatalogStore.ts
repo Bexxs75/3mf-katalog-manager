@@ -68,6 +68,8 @@ interface CatalogStoreOptions {
 }
 
 export function useCatalogStore({ preselectFirst = true }: CatalogStoreOptions = {}) {
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [initialLoadFailed, setInitialLoadFailed] = useState(false);
   const [models, setModels] = useState<ModelFile[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [tags, setTags] = useState<TagCount[]>([]);
@@ -160,7 +162,7 @@ export function useCatalogStore({ preselectFirst = true }: CatalogStoreOptions =
   // loaded again on the next ensureFullModel().
   const refreshFiles = useCallback(() => {
     setFullyLoadedIds(new Set());
-    return loadSummariesWithTags().then(setModels);
+    return loadSummariesWithTags().then(mapped => { setModels(mapped); setInitialLoadFailed(false); });
   }, [loadSummariesWithTags]);
   const refreshTags = useCallback(() => catalogMetaApi.listTagCounts().then(setTags), []);
   const refreshTrash = useCallback(() => filesApi.listTrash().then(setTrashModels), []);
@@ -204,13 +206,20 @@ export function useCatalogStore({ preselectFirst = true }: CatalogStoreOptions =
   );
 
   useEffect(() => {
+    let active = true;
     loadSummariesWithTags().then((mapped) => {
+      if (!active) return;
       setModels(mapped);
       if (preselectFirst) setSelectedId((prev) => prev ?? mapped[0]?.id ?? null);
-    });
+    }).catch(e => {
+      if (!active) return;
+      console.error('[catalog] initial load failed:', e);
+      setInitialLoadFailed(true);
+    }).finally(() => { if (active) setInitialLoading(false); });
     refreshFolders();
     refreshTags();
     refreshTrash();
+    return () => { active = false; };
     // Mount only - the refreshers themselves are stable (useCallback without deps).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -524,7 +533,7 @@ export function useCatalogStore({ preselectFirst = true }: CatalogStoreOptions =
   }, []);
 
   return {
-    models, setModels,
+    initialLoading, initialLoadFailed, models, setModels,
     folders, tags, trashModels,
     selectedId, setSelectedId,
     skippedSnapshotIds, skipSnapshot, pendingSnapshotIds,

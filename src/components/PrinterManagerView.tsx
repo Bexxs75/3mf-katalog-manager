@@ -89,8 +89,8 @@ export function PrinterManagerView({ printers: state, printerLink, printerId, on
                 <Icon name={p.kind === 'resin' ? 'resin' : 'printer'} size={24} className="shrink-0 text-[var(--ink-2)]" />
                 <span className="min-w-0 flex-1 max-[1023px]:group-data-[collapsed=true]:hidden">
                   <b className="block truncate">{p.name}</b>
-                  <span className="flex items-center gap-2 mt-1 min-w-0"><PrinterStatusBadge status={status} />
-                    <span className="truncate text-caption text-[var(--ink-3)]">{p.kind === 'resin' ? t('spoolKindResin') : conn?.address ? <span className="font-code">{conn.address}</span> : t('pmNoConnection')}</span>
+                  <span className="flex flex-col items-start gap-1 mt-1 min-w-0"><PrinterStatusBadge status={status} />
+                    <span className="break-words text-caption text-[var(--ink-3)]">{p.kind === 'resin' ? t('spoolKindResin') : conn?.address ? <span className="font-code">{conn.address}</span> : t('pmNoConnection')}</span>
                   </span>
                 </span>
                 <span aria-hidden="true" className={`hidden max-[1023px]:group-data-[collapsed=true]:block absolute right-1 top-1 rounded-full w-2 h-2 ${printerStatusColors[status]}`}><span className="block w-full h-full rounded-full bg-current" /></span>
@@ -199,7 +199,9 @@ function General({ printer, state, header, deleteAction }: { printer: Printer; s
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState(printer.name);
-  const initial = () => ({ manufacturer: printer.manufacturer ?? '', model: printer.model ?? '', nozzleMm: String(printer.nozzleMm ?? ''), bedXMm: String(printer.bedXMm ?? ''), bedYMm: String(printer.bedYMm ?? ''), bedZMm: String(printer.bedZMm ?? '') });
+  const { language } = useLanguage();
+  const numberText = (value: number | null) => value === null ? '' : new Intl.NumberFormat(language, { useGrouping: false, maximumFractionDigits: 10 }).format(value);
+  const initial = () => ({ manufacturer: printer.manufacturer ?? '', model: printer.model ?? '', nozzleMm: numberText(printer.nozzleMm), bedXMm: numberText(printer.bedXMm), bedYMm: numberText(printer.bedYMm), bedZMm: numberText(printer.bedZMm) });
   const [draft, setDraft] = useState(initial);
   const [validation, setValidation] = useState('');
   const [error, setError] = useState<AppError | null>(null);

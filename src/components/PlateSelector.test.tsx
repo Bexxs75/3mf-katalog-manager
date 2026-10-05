@@ -12,6 +12,8 @@ it('has one tab stop, named plates and wrapping arrow navigation', () => {
   localStorage.setItem('3mf-katalog-language', 'de');
   render(<LanguageProvider><Selector /></LanguageProvider>);
   expect(screen.getByRole('radiogroup', {name: 'Druckplatte'})).toBeVisible();
+  expect(screen.getByRole('radiogroup')).toHaveClass('w-full', 'justify-start', 'overflow-x-auto');
+  expect(screen.getByRole('radiogroup')).not.toHaveClass('absolute');
   const all = screen.getByRole('radio', {name: 'Alle'});
   const first = screen.getByRole('radio', {name: 'Platte 1'});
   const last = screen.getByRole('radio', {name: 'Platte 2'});

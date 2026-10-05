@@ -159,6 +159,16 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
           <input disabled className={`${fieldClass} disabled:bg-[var(--panel-2)]`} placeholder={t('pmApiPlaceholder')} />
         </label>
       </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" className={smallButton} disabled={!link.enabled || testing || address.trim() === ''} onClick={runTest}>
+          {testing ? t('printerConnectionTesting') : t(current ? 'printerConnectionTest' : 'pmSetupConnection')}
+        </button>
+        {current && (
+          <button type="button" className={smallButton} disabled={removing} onClick={runRemove}>
+            {t('printerConnectionRemove')}
+          </button>
+        )}
+      </div>
       {!link.enabled ? <div className="rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-3"><b>{t('pmSwitchedOff')}</b><p>{t('pmLinkOff')}</p></div> :
         !current && !error && <div className="rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-3"><b>{t('pmNotLinked')}</b></div>}
       {actionError && (
@@ -194,16 +204,7 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
           <span className="text-caption text-[var(--ink-2)]">{t('printerClockOffBody').replace('{amount}', () => clockAmount)}</span>
         </div>
       )}
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className={smallButton} disabled={!link.enabled || testing || address.trim() === ''} onClick={runTest}>
-          {testing ? t('printerConnectionTesting') : t(current ? 'printerConnectionTest' : 'pmSetupConnection')}
-        </button>
-        {current && (
-          <button type="button" className={smallButton} disabled={removing} onClick={runRemove}>
-            {t('printerConnectionRemove')}
-          </button>
-        )}
-      </div>
+
     </div>
   );
 }

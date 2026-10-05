@@ -223,6 +223,11 @@ export function Sidebar({
           <span className="font-medium tabular-nums text-small text-[var(--ink-3)]"><Icon name="search" size={14} /></span>
           <input
             id={SEARCH_INPUT_ID}
+            onKeyDown={event => {
+              if (event.key !== 'Escape') return;
+              event.preventDefault(); event.stopPropagation();
+              document.querySelector<HTMLElement>('[data-catalog-main]')?.focus();
+            }}
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
             placeholder={t('searchPlaceholder')}

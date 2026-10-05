@@ -25,6 +25,10 @@ export interface Translations {
 
   viewerOpenSlicer: string;
   viewerUnknownText: string;
+  catalogLoading: string;
+  catalogLoadFailed: string;
+  keyboardSearchEscape: string;
+  viewerLegend: string;
   viewerUnreadableCompact: string;
   viewerTooLargeCompact: string;
   viewerNoWebGLCompact: string;

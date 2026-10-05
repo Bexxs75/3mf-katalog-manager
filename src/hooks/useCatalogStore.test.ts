@@ -678,3 +678,28 @@ it('supplies card material and weight on initial load, detail selection, refresh
   await act(() => result.current.restoreModel('m1'));
   await waitFor(check);
 });
+
+it('distinguishes the initial load from an actually empty catalog', async () => {
+  mockInitialLoad([]);
+  const pending = createDeferred<ReturnType<typeof makeModelFileSummary>[]>();
+  vi.mocked(filesApi.listFileSummaries).mockReturnValueOnce(pending.promise);
+  const {result} = renderHook(() => useCatalogStore());
+  expect(result.current.initialLoading).toBe(true);
+  expect(result.current.models).toEqual([]);
+  await act(async () => pending.resolve([]));
+  expect(result.current.initialLoading).toBe(false);
+  expect(result.current.initialLoadFailed).toBe(false);
+  expect(result.current.models).toEqual([]);
+});
+
+it('recovers from a failed initial load after a successful refresh', async () => {
+  mockInitialLoad();
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+  vi.mocked(filesApi.listFileSummaries).mockRejectedValueOnce(new Error('unavailable'));
+  const {result} = renderHook(() => useCatalogStore());
+  await waitFor(() => expect(result.current.initialLoading).toBe(false));
+  expect(result.current.initialLoadFailed).toBe(true);
+  await act(async () => { await result.current.refreshFiles(); });
+  expect(result.current.initialLoadFailed).toBe(false);
+  expect(result.current.models).toHaveLength(1);
+});

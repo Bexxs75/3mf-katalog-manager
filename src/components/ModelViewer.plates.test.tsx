@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import { invoke } from '@tauri-apps/api/core';
@@ -92,4 +92,44 @@ it.each([0, 1])('hides plate selection for %s plate files', async count => {
   render(viewer('single'));
   await screen.findByRole('button', {name: 'Einpassen'});
   expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+});
+
+it('moves plates outside the measured surface and keeps them in the compact panel', async () => {
+  vi.mocked(invoke).mockResolvedValue(buffer());
+  render(<LanguageProvider><ModelViewer fileId="panel" needsSnapshot={false} onSnapshotCaptured={() => {}} /></LanguageProvider>);
+  const plates = await screen.findByRole('radiogroup');
+  expect(plates.closest('[data-viewer-surface]')).toBeNull();
+  expect(plates).toHaveClass('w-full', 'overflow-x-auto');
+});
+it('adapts controls and legend to measured container size', async () => {
+  let resize!: () => void;
+  let surface!: HTMLElement;
+  vi.stubGlobal('ResizeObserver', class {
+    constructor(callback: () => void) { resize = callback; }
+    observe(element: HTMLElement) { surface = element; }
+    disconnect() {}
+  });
+  vi.mocked(invoke).mockResolvedValue(buffer());
+  render(viewer('resize'));
+  await screen.findByRole('button', {name: 'Einpassen'});
+  Object.defineProperties(surface, {clientWidth: {value: 350, configurable: true}, clientHeight: {value: 260, configurable: true}});
+  act(() => resize());
+  const reset = screen.getByRole('button', {name: 'Ansicht zurücksetzen'});
+  expect(reset).toHaveAttribute('title', 'Ansicht zurücksetzen');
+  expect(reset).toHaveTextContent('');
+  expect(reset.querySelector('svg')).not.toBeNull();
+  expect(screen.queryByText('Red')).not.toBeInTheDocument();
+  const legend = screen.getByRole('button', {name: 'Legende'});
+  expect(legend).toHaveAttribute('aria-expanded', 'false');
+  fireEvent.click(legend);
+  expect(screen.getByText('Red')).toBeVisible();
+  fireEvent.click(legend);
+  expect(screen.queryByText('Red')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', {name: 'Dateifarben'}).parentElement).toHaveClass('viewer-toggle-compact', 'top-14');
+  Object.defineProperties(surface, {clientWidth: {value: 800, configurable: true}, clientHeight: {value: 600, configurable: true}});
+  act(() => resize());
+  expect(reset).toHaveTextContent('Ansicht zurücksetzen');
+  expect(screen.getByText('Red')).toBeVisible();
+  expect(screen.queryByRole('button', {name: 'Legende'})).not.toBeInTheDocument();
+  expect(screen.getByRole('button', {name: 'Dateifarben'}).parentElement).not.toHaveClass('viewer-toggle-compact');
 });

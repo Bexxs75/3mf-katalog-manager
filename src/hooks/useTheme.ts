@@ -1,3 +1,4 @@
+import { invoke } from '@tauri-apps/api/core';
 import { useEffect, useState, useCallback } from 'react';
 
 export type ThemeSetting = 'system' | 'light' | 'dark';
@@ -44,7 +45,10 @@ export function useTheme() {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-app', resolved);
-  }, [resolved]);
+    if ('__TAURI_INTERNALS__' in window) {
+      void invoke('save_window_theme', { setting, resolved }).catch(error => console.warn('[theme] saving window background failed:', error));
+    }
+  }, [setting, resolved]);
 
   const setTheme = useCallback((next: ThemeSetting) => {
     setSetting(next);

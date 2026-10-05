@@ -280,6 +280,7 @@ export default function App() {
         sortDirection={filters.sortDirection}
         onSortDirectionChange={filters.setSortDirection}
         hideSortControl={collections.activeCollection !== null || filters.toolView !== null}
+        initialLoading={store.initialLoading}
         count={filters.filtered.length}
         importTargetName={catalogBaseDir ? store.folders.find(f => f.id === filters.activeFolderId)?.name ?? catalogBaseDir : undefined}
         importTargetIsRoot={filters.activeFolderId === 'all'}
@@ -374,6 +375,8 @@ export default function App() {
               removeFromQueue={store.removeFromQueue}
               selectModel={store.selectModel}
               folders={store.folders}
+              initialLoading={store.initialLoading}
+              initialLoadFailed={store.initialLoadFailed}
               models={store.models}
               activeFolderId={filters.activeFolderId}
               setActiveFolderId={filters.setActiveFolderId}

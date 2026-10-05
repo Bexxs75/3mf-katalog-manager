@@ -741,7 +741,10 @@ fn validate_catalog_db_bytes(
         });
 
     let _ = std::fs::remove_file(&tmp_path);
-    result.map_err(|e| format!("Archiv enthält keine gültige Katalog-Datenbank: {e}"))
+    result.map_err(|e| {
+        log::warn!(target: "backup", "invalid catalog database: {e}");
+        "Archiv enthält keine gültige Katalog-Datenbank.".to_string()
+    })
 }
 /// Boundary used by `import_catalog`: a rejected backup file (bad schema,
 /// corrupted DB, a path escaping the trash/sensitive-dir checks, ...) is always
@@ -1353,13 +1356,11 @@ mod tests {
         {
             let conn = crate::db::connect(&tmp_path).unwrap(); // complete, current schema
             conn.execute_batch("DROP TABLE tags;").unwrap();
+            assert!(validate_expected_schema(&conn).unwrap_err().contains("tags"));
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
         let err = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash")).unwrap_err();
-        assert!(
-            err.contains("tags"),
-            "validate_expected_schema muss die fehlende Tabelle 'tags' erkennen, got: {err}"
-        );
+        assert_eq!(err, "Archiv enthält keine gültige Katalog-Datenbank.");
     }
     #[test]
     fn validate_catalog_db_bytes_rejects_a_database_missing_a_required_column() {

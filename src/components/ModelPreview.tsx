@@ -3,6 +3,7 @@ import { ModelViewer } from './ModelViewer';
 import type { ViewerActions } from './ViewerErrorCard';
 
 interface Props extends ViewerActions {
+  surfaceClassName?: string;
   model: ModelFile;
   needsSnapshot: boolean;
   onSnapshotCaptured: (base64: string) => void;
@@ -15,9 +16,10 @@ interface Props extends ViewerActions {
  * format: a build without STEP support answers with a typed "unsupported" error,
  * which the viewer shows as its own explanation card.
  */
-export function ModelPreview({ model, needsSnapshot, onSnapshotCaptured, onError, showRotationControls, onOpenInSlicer, onRemoveFromCatalog }: Props) {
+export function ModelPreview({ surfaceClassName, model, needsSnapshot, onSnapshotCaptured, onError, showRotationControls, onOpenInSlicer, onRemoveFromCatalog }: Props) {
   return (
     <ModelViewer
+      surfaceClassName={surfaceClassName}
       model={model}
       onOpenInSlicer={onOpenInSlicer}
       onRemoveFromCatalog={onRemoveFromCatalog}

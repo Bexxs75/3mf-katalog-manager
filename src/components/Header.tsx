@@ -22,6 +22,7 @@ interface Props {
   onSortDirectionChange: (direction: SortDirection) => void;
   hideSortControl?: boolean;
   count: number;
+  initialLoading?: boolean;
   onImportFiles: () => void;
   onImportFolder: () => void;
   detailOpen?: boolean;
@@ -30,7 +31,7 @@ interface Props {
 }
 
 const segBase =
-  'h-[26px] px-3 rounded-[2px] text-[length:var(--font-size-control)] font-medium cursor-pointer transition-colors';
+  'h-[26px] px-1.5 min-[1100px]:px-3 whitespace-nowrap rounded-[2px] text-[length:var(--font-size-control)] font-medium cursor-pointer transition-colors';
 const segActive = 'bg-[var(--accent)] text-[var(--accent-ink)]';
 const segInactive = 'text-[var(--ink-2)] hover:text-[var(--ink)]';
 
@@ -47,7 +48,7 @@ export function Header({
   sortDirection,
   onSortDirectionChange,
   hideSortControl,
-  count,
+  count, initialLoading = false,
   onImportFiles,
   onImportFolder,
   mainView, onOpenTips,
@@ -87,8 +88,8 @@ export function Header({
     : [t('sortDateAsc'), t('sortDateDesc')];
 
   return (
-    <header className="flex-none h-[54px] flex items-center gap-[18px] px-[14px] bg-[var(--panel)] border-b border-[var(--line)]">
-      <div className="flex items-baseline gap-2 pr-1.5">
+    <header className="flex-none h-[54px] flex items-center gap-2 min-[1100px]:gap-[18px] px-[14px] bg-[var(--panel)] border-b border-[var(--line)]">
+      <div className="flex shrink-0 items-baseline gap-2 pr-1.5 whitespace-nowrap">
         <span className="text-title font-semibold uppercase">
           3MF Katalog
         </span>
@@ -101,7 +102,7 @@ export function Header({
 
       {mainView === 'catalog' && (
       <>
-      <div ref={importRef} className="relative flex">
+      <div ref={importRef} className="relative flex shrink-0">
         <button
           ref={importTriggerRef}
           aria-haspopup="menu"
@@ -117,10 +118,13 @@ export function Header({
 
         {importMenuOpen && (
           <div data-navigation-menu role="menu" onKeyDown={importKeyboard.onMenuKeyDown} className="absolute top-10 left-0 w-[300px] py-1 bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)] z-40">
-            <div className="m-2 p-2 border border-dashed border-[var(--line-strong)] rounded bg-[var(--panel-2)] text-small text-[var(--ink-2)] leading-relaxed" aria-live="polite">
-              <b>{t(importSource === 'files' ? 'impMenuFiles' : 'impMenuFolder')}</b>{' '}
-              {importSource === 'folder' ? t('impMenuFolderHint') : importTargetName ? <>{t('impMenuMove')} <b>{importTargetName}</b> {t(importTargetIsRoot ? 'impMenuRoot' : 'impMenuActive')}</> : t('impMenuStay')}
-              <div className="font-medium tabular-nums text-caption text-[var(--ink-3)]">{t(importSource === 'files' ? 'impMenuFixed' : 'impMenuNoMove')}</div>
+            <div data-import-hints className="grid m-2 p-2 border border-dashed border-[var(--line-strong)] rounded bg-[var(--panel-2)] text-small text-[var(--ink-2)] leading-relaxed" aria-live="polite">
+              {(['files', 'folder'] as const).map(source => <div key={source} aria-hidden={importSource !== source}
+                className={`col-start-1 row-start-1 ${importSource !== source ? 'invisible' : ''}`}>
+                <b>{t(source === 'files' ? 'impMenuFiles' : 'impMenuFolder')}</b>{' '}
+                {source === 'folder' ? t('impMenuFolderHint') : importTargetName ? <>{t('impMenuMove')} <b>{importTargetName}</b> {t(importTargetIsRoot ? 'impMenuRoot' : 'impMenuActive')}</> : t('impMenuStay')}
+                <div className="font-medium tabular-nums text-caption text-[var(--ink-3)]">{t(source === 'files' ? 'impMenuFixed' : 'impMenuNoMove')}</div>
+              </div>)}
             </div>
             <button
               role="menuitem" tabIndex={-1}
@@ -148,20 +152,20 @@ export function Header({
         )}
       </div>
 
-      <div className="flex items-center gap-1.5" style={hideSortControl ? { display: 'none' } : undefined}>
-        <span className="ui-label text-[var(--ink-3)]">
+      <div className="flex min-w-0 items-center gap-1.5" style={hideSortControl ? { display: 'none' } : undefined}>
+        <span className="hidden min-[1100px]:inline ui-label text-[var(--ink-3)]">
           {t('sortLabel')}
         </span>
-        <div ref={sortRef} className="relative">
+        <div ref={sortRef} className="relative min-w-0">
           <button
             ref={sortTriggerRef}
             onKeyDown={event => { if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) setImportMenuOpen(false); sortKeyboard.onTriggerKeyDown(event); }}
             aria-haspopup="menu"
             aria-expanded={sortMenuOpen}
             onClick={() => { setImportMenuOpen(false); setSortMenuOpen((o) => !o); }}
-            className="h-[30px] px-2 rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink)] text-[length:var(--font-size-body)] cursor-pointer flex items-center gap-1.5"
+            className="h-[30px] max-w-full px-2 rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink)] text-[length:var(--font-size-body)] cursor-pointer flex items-center gap-1.5"
           >
-            {sortOptions.find((o) => o.value === sort)?.label}
+            <span className="truncate">{sortOptions.find((o) => o.value === sort)?.label}</span>
             <span className="font-medium tabular-nums text-[var(--accent)]"><Icon name={sortDirection === 'asc'  ? 'arrow-up' : 'arrow-down'} size={14} /></span>
             <span className="text-compact-label leading-none text-[var(--ink-3)]"><Icon name="chevron" size={14} /></span>
           </button>
@@ -203,7 +207,7 @@ export function Header({
         </div>
       </div>
 
-      <div className="flex p-0.5 gap-0.5 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)]">
+      <div className="flex shrink-0 p-0.5 gap-0.5 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)]">
         <button
           onClick={() => onViewChange('grid')}
           className={`${segBase} ${view === 'grid' ? segActive : segInactive}`}
@@ -225,10 +229,10 @@ export function Header({
       </div>
 
       {(view === 'groupedGrid' || view === 'groupedList') && (
-        <button type="button" onClick={onToggleAllFolders}
-          className="h-[30px] px-2 rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink)] text-[length:var(--font-size-body)] cursor-pointer flex items-center gap-1.5">
+        <button type="button" aria-label={t(allFoldersCollapsed ? 'expandAllFolders' : 'collapseAllFolders')} title={t(allFoldersCollapsed ? 'expandAllFolders' : 'collapseAllFolders')} onClick={onToggleAllFolders}
+          className="h-[30px] max-w-full px-2 rounded-[3px] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink)] text-[length:var(--font-size-body)] cursor-pointer flex items-center gap-1.5">
           <Icon name={allFoldersCollapsed ? 'expand-all' : 'collapse-all'} size={16} />
-          {t(allFoldersCollapsed ? 'expandAllFolders' : 'collapseAllFolders')}
+          <span className="hidden min-[1100px]:inline">{t(allFoldersCollapsed ? 'expandAllFolders' : 'collapseAllFolders')}</span>
         </button>
       )}
       </>
@@ -238,13 +242,13 @@ export function Header({
 
       {mainView === 'catalog' && (
         <span className="shrink-0 font-medium tabular-nums text-caption text-[var(--ink-3)]">
-          {formatCount(t('filesCount'), count)}
+          {initialLoading ? t('catalogLoading') : formatCount(t('filesCount'), count)}
         </span>
       )}
 
       {mainView === 'catalog' && onDetailPanelChange && <button type="button" aria-pressed={detailPanel === 'pinned'} aria-label={t('detailPanelPin')} title={t('detailPanelPin')}
         onClick={() => onDetailPanelChange(detailPanel === 'pinned' ? 'auto' : 'pinned')}
-        className={`flex items-center gap-1.5 px-2 h-8 rounded border cursor-pointer ${detailPanel === 'pinned' ? 'bg-[var(--accent-soft)] border-[var(--accent)] text-[var(--accent)]' : 'border-[var(--line)] text-[var(--ink-2)]'}`}><Icon name="panel" size={18} />{t('detailPanelTitle')}</button>}
+        className={`shrink-0 flex items-center gap-1.5 px-2 h-8 rounded border cursor-pointer ${detailPanel === 'pinned' ? 'bg-[var(--accent-soft)] border-[var(--accent)] text-[var(--accent)]' : 'border-[var(--line)] text-[var(--ink-2)]'}`}><Icon name="panel" size={18} /><span className="hidden min-[1100px]:inline">{t('detailPanelTitle')}</span></button>}
       <button onClick={onOpenTips} aria-label={t('keyboardTipsTitle')} title={t('keyboardTipsTitle')}
         className="shrink-0 w-8 h-8 grid place-items-center rounded-[6px] text-[var(--ink-2)] hover:text-[var(--accent)] hover:bg-[var(--panel-2)] cursor-pointer"><Icon name="help" size={22} /></button>
     </header>

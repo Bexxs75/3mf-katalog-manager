@@ -1,3 +1,4 @@
+import { Icon } from './Icon';
 import { PlateSelector } from './PlateSelector';
 import { useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
@@ -11,6 +12,7 @@ import { ViewerErrorCard, type ViewerActions } from './ViewerErrorCard';
 import { createViewerFloor, gridColor } from '../lib/viewerFloor';
 
 interface Props extends ViewerActions {
+  surfaceClassName?: string;
   fileId: string;
   needsSnapshot: boolean;
   onSnapshotCaptured: (base64: string) => void;
@@ -109,11 +111,13 @@ function fitViewer(ctx: ViewerContext) {
   ctx.floor.visible = true;
 }
 
-export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError, showRotationControls, model, onOpenInSlicer, onRemoveFromCatalog }: Props) {
+export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot, onSnapshotCaptured, onError, showRotationControls, model, onOpenInSlicer, onRemoveFromCatalog }: Props) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const ctxRef = useRef<ViewerContext | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [compact, setCompact] = useState(false);
+  const [legendOpen, setLegendOpen] = useState(false);
   const [autoRotating, setAutoRotating] = useState(false);
   const [fileColors, setFileColors] = useState(true);
   const [palette, setPalette] = useState<GeometryColor[]>([]);
@@ -179,6 +183,7 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
     const resize = () => {
       const { clientWidth, clientHeight } = container;
       if (!clientWidth || !clientHeight) return;
+      setCompact(clientHeight < 420 || clientWidth < 520);
       camera.aspect = clientWidth / clientHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(clientWidth, clientHeight);
@@ -231,6 +236,7 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
     setLegend([]);
     setPlates([]);
     setSelectedPlate(null);
+    setLegendOpen(false);
     ctx.floor.visible = false;
     if (ctx.currentObject) {
       ctx.scene.remove(ctx.currentObject);
@@ -354,7 +360,8 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
   };
 
   return (
-    <div className="relative w-full h-full">
+    <div className={`w-full flex flex-col ${surfaceClassName === 'h-full' ? 'h-full' : ''}`}>
+    <div data-viewer-surface data-compact={compact} className={`relative w-full shrink-0 ${surfaceClassName}`}>
       <div ref={containerRef} className="absolute inset-0" />
       {status === 'loading' && (
         <div className="absolute inset-0 grid place-items-center pointer-events-none">
@@ -366,14 +373,16 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
       {status === 'error' && <ViewerErrorCard key={fileId} error={error} noWebGL={noWebGL} compact={!showRotationControls}
         model={model} onOpenInSlicer={onOpenInSlicer} onRemoveFromCatalog={onRemoveFromCatalog} />}
       {showRotationControls && status === 'ready' && <>
-        <button className="viewer-pill absolute top-3 left-3" onClick={() => { setAutoRotating(false); fit(); }}>{t('viewerReset')}</button>
-        <PlateSelector plates={plates} selected={selectedPlate} onSelect={setSelectedPlate} />
+        <button className={`viewer-pill absolute top-3 left-3 ${compact ? 'viewer-icon' : ''}`} aria-label={t('viewerReset')} title={t('viewerReset')}
+          onClick={() => { setAutoRotating(false); fit(); }}>{compact ? <Icon name="reset-view" size={16} /> : t('viewerReset')}</button>
         {palette.length > 0 && <>
-          <div role="group" aria-label={t('viewerColorsLegend')} className={`viewer-toggle absolute right-3 ${plates.length > 1 ? 'top-[6.25rem]' : 'top-14'}`}>
+          <div role="group" aria-label={t('viewerColorsLegend')} className={`viewer-toggle absolute right-3 top-14 ${compact ? 'viewer-toggle-compact' : ''}`}>
             <button aria-pressed={fileColors} onClick={() => setFileColors(true)}>{t('viewerFileColors')}</button>
             <button aria-pressed={!fileColors} onClick={() => setFileColors(false)}>{t('viewerSingleColor')}</button>
           </div>
-          {fileColors && <div className="viewer-legend absolute bottom-14 left-3">
+          {fileColors && compact && <button className="viewer-pill viewer-icon absolute bottom-12 left-3" aria-label={t('viewerLegend')} title={t('viewerLegend')}
+            aria-expanded={legendOpen} onClick={() => setLegendOpen(open => !open)}><Icon name="info" size={14} /></button>}
+          {fileColors && (!compact || legendOpen) && <div className={`viewer-legend absolute left-3 ${compact ? 'bottom-20' : 'bottom-14'}`}>
             <div className="ui-label text-[var(--ink-3)]">{t('viewerColorsLegend')}</div>
             {visibleLegend.map(entry => <div className="flex items-center gap-2" key={`${entry.colorIndex}:${entry.objectName}`}>
               <span className="w-3.5 h-3.5 rounded-full border border-[var(--line-strong)] shrink-0" style={{ background: palette[entry.colorIndex].color }} />
@@ -383,7 +392,7 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
         </>}
       </>}
       {showRotationControls && status === 'ready' && (
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[var(--panel-2)] border border-[var(--line)] rounded-full p-1 shadow-[var(--shadow)]">
+        <div className={`absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[var(--panel-2)] border border-[var(--line)] rounded-full p-1 shadow-[var(--shadow)] ${compact ? 'viewer-controls-compact' : ''}`}>
           <button className="viewer-pill" onClick={fit}>{t('viewerFit')}</button>
           <button
             onClick={() => rotateStep(-1)}
@@ -427,6 +436,8 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
           </button>
         </div>
       )}
+    </div>
+    {status === 'ready' && <PlateSelector plates={plates} selected={selectedPlate} onSelect={setSelectedPlate} />}
     </div>
   );
 }

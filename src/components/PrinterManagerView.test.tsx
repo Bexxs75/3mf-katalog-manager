@@ -360,3 +360,18 @@ it('reorders units using the keyboard handle', async () => {
   fireEvent.keyDown(screen.getByRole('button', { name: /Zum Sortieren.*AMS A/ }), { key: 'ArrowDown' });
   await waitFor(() => expect(invoke).toHaveBeenCalledWith('reorder_units', { printerId: '1', unitIds: ['u2', 'u1'] }));
 });
+
+it('follows numeric and alphabetic unit naming and skips collisions', () => {
+  const numeric = {...a, units: [{...a.units[0], name: 'AMS 1'}]};
+  expect(suggestUnitName(numeric, 'bambu_ams', 'AMS')).toBe('AMS 2');
+  expect(suggestUnitName({...numeric, units: [...numeric.units, {...a.units[0], name: 'AMS 2'}]}, 'bambu_ams', 'AMS')).toBe('AMS 3');
+  expect(suggestUnitName(a, 'bambu_ams', 'AMS')).toBe('AMS B');
+  expect(suggestUnitName({...a, units: []}, 'bambu_ams', 'AMS')).toBe('AMS 1');
+});
+it.each([['de', '0,4', '305,5'], ['fr', '0,4', '305,5'], ['es', '0,4', '305,5'], ['en', '0.4', '305.5']])('formats printer decimals in %s', async (language, nozzle, bed) => {
+  localStorage.setItem('3mf-katalog-language', language);
+  list[0].nozzleMm = 0.4; list[0].bedXMm = 305.5;
+  setup();
+  await waitFor(() => expect(document.querySelector('input[value="'+nozzle+'"]')).not.toBeNull());
+  expect(document.querySelector('input[value="'+bed+'"]')).not.toBeNull();
+});

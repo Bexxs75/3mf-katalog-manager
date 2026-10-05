@@ -29,6 +29,8 @@ import { toolCounts as computeToolCounts, TOOL_VIEW_LABEL_KEY, type ToolView } f
 import type { AppError } from '../lib/errors';
 
 interface CatalogWorkspaceProps {
+  initialLoading?: boolean;
+  initialLoadFailed?: boolean;
   detailPanel?: 'auto' | 'pinned';
   onCloseDetails?: () => void;
   printerRefreshKey?: string;
@@ -133,6 +135,7 @@ interface CatalogWorkspaceProps {
 }
 
 export function CatalogWorkspace({
+  initialLoading = false, initialLoadFailed = false,
   detailPanel = 'auto', onCloseDetails, printerRefreshKey = '',
   onOpenTips,
   importRow,
@@ -410,7 +413,7 @@ export function CatalogWorkspace({
         cleanupError={cleanupError}
       />
 
-      <main className="flex-1 min-w-0 flex flex-col min-h-0">
+      <main tabIndex={-1} data-catalog-main className="flex-1 min-w-0 flex flex-col min-h-0">
         {importRow}
         {chips.length > 0 && (
           <section aria-label={t('filterBarAria')} className="flex-none flex flex-wrap items-center gap-x-2 gap-y-1.5 px-4 py-2 border-b border-[var(--line)] bg-[var(--bg)]">
@@ -521,7 +524,12 @@ export function CatalogWorkspace({
             if (detailPanel === 'auto' && selectedId && target instanceof Element &&
               !target.closest('[data-model-id], button, input, a, [role="button"], [role="row"], [data-folder-header], [data-model-list-header], [data-navigation-menu]')) closeDetails();
           }} onScroll={event => { savedScroll.current = event.currentTarget.scrollTop; }} className="flex-1 overflow-y-auto overscroll-contain p-4">
-            {models.length === 0 && onOpenTips ? <EmptyCatalogTips onOpenTips={onOpenTips} /> : toolOnly && displayedModels.length === 0 ? (
+            {initialLoading ? <div role="status" className="p-6 text-body text-[var(--ink-2)]">
+              {t('catalogLoading')}
+              <div aria-hidden="true" className="mt-4 grid grid-cols-3 gap-4">
+                {[0, 1, 2].map(key => <div key={key} className="h-40 rounded-lg bg-[var(--panel-2)]" />)}
+              </div>
+            </div> : initialLoadFailed ? <div role="alert" className="p-6 text-body text-[var(--crit)]">{t('catalogLoadFailed')}</div> : models.length === 0 && onOpenTips ? <EmptyCatalogTips onOpenTips={onOpenTips} /> : toolOnly && displayedModels.length === 0 ? (
               <div className="font-medium tabular-nums text-[length:var(--font-size-item)] text-[var(--ink-3)] px-1.5 py-8 text-center">
                 {t('toolViewEmpty')}
               </div>

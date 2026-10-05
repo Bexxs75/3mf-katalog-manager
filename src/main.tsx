@@ -1,5 +1,6 @@
 import { ModelLayoutProvider } from "./hooks/ModelLayoutContext";
-import React from "react";
+import React, { useEffect } from "react";
+import { showAfterPaint } from "./lib/startup";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { LanguageProvider } from "./i18n/LanguageContext";
@@ -11,8 +12,14 @@ import "./styles/theme.css";
 
 installContextMenuGuard(document, import.meta.env.DEV);
 
+function StartupReady() {
+  useEffect(showAfterPaint, []);
+  return null;
+}
+
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
+    <StartupReady />
     <LanguageProvider>
       <UiDensityProvider>
         <DiagnosticsProvider>
