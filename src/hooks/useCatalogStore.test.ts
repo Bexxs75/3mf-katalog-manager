@@ -289,6 +289,14 @@ describe('useCatalogStore', () => {
     });
   });
 
+  it('mergeImported does not add a model that is already in the list', async () => {
+    mockInitialLoad([makeModelFile({ id: 'm1' }), makeModelFile({ id: 'm2' })]);
+    const { result } = renderHook(() => useCatalogStore());
+    await waitFor(() => expect(result.current.models).toHaveLength(2));
+    act(() => result.current.mergeImported({ imported: [makeModelFile({ id: 'm1' }), makeModelFile({ id: 'm2' })], duplicateCount: 0 }));
+    expect(result.current.models.map((m) => m.id)).toEqual(['m1', 'm2']);
+  });
+
   it('pendingSnapshotIds lists models without a render snapshot and skipSnapshot removes them', async () => {
     // The summary already carries the snapshot, m2 doesn't need a new one.
     mockInitialLoad([

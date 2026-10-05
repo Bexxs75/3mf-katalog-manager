@@ -242,7 +242,13 @@ export function useCatalogStore({ preselectFirst = true }: CatalogStoreOptions =
   const mergeImported = useCallback(
     (result: ImportResultDto) => {
       if (result.imported.length) {
-        setModels((prev) => [...prev, ...result.imported]);
+        // A finished import job also reloads the file list. A merge that arrives afterwards
+        // (setup adopts a folder through both paths) must not list the same models twice.
+        setModels((prev) => {
+          const known = new Set(prev.map((m) => m.id));
+          const fresh = result.imported.filter((m) => !known.has(m.id));
+          return fresh.length ? [...prev, ...fresh] : prev;
+        });
         // Freshly imported files already come with full data.
         setFullyLoadedIds((prev) => {
           const next = new Set(prev);
