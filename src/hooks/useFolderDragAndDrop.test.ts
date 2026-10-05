@@ -96,3 +96,70 @@ it('keeps the tip enabled after a failed move', async () => {
     expect(localStorage.getItem('3mf-katalog-dnd-tip-dismissed')).toBeNull();
   } finally { errorLog.mockRestore(); }
 });
+
+it.each([false, true])('drops into a collection without moving the file (already present=%s)', async (present) => {
+  const model = makeModelFile({ id: 'm1', name: 'Model' });
+  vi.mocked(invoke).mockResolvedValue(present ? [model] : []);
+  const addModelToCollection = vi.fn().mockResolvedValue(undefined);
+  const { result } = renderHook(() => useFolderDragAndDrop([model], [],
+    { refreshFolders: vi.fn(), refreshFiles: vi.fn() },
+    { collections: [{ id: 'c1', name: 'Kitchen', modelCount: 0 }], addModelToCollection }));
+  act(() => result.current.onDragFileStart('m1'));
+  act(() => result.current.handleCollectionMouseEnter('c1'));
+  expect(result.current.dragOverCollectionId).toBe('c1');
+  await act(async () => fireEvent.mouseUp(document));
+  expect(addModelToCollection).toHaveBeenCalledTimes(present ? 0 : 1);
+  if (!present) expect(addModelToCollection).toHaveBeenCalledWith('m1', 'c1');
+  expect(invoke).not.toHaveBeenCalledWith('move_file_to_folder', expect.anything());
+  expect(result.current.moveToast).toMatchObject({ from: 'Model', to: 'Kitchen', collection: present ? 'already' : 'added' });
+  expect(localStorage.getItem('3mf-katalog-dnd-tip-dismissed')).toBe('true');
+});
+
+it('aborts a collection drop outside and ignores stale leave events', async () => {
+  const addModelToCollection = vi.fn();
+  const { result } = renderHook(() => useFolderDragAndDrop([makeModelFile({ id: 'm1' })], [],
+    { refreshFolders: vi.fn(), refreshFiles: vi.fn() },
+    { collections: [], addModelToCollection }));
+  act(() => result.current.onDragFileStart('m1'));
+  act(() => result.current.handleCollectionMouseEnter('c1'));
+  act(() => result.current.handleCollectionMouseEnter('c2'));
+  act(() => result.current.handleCollectionMouseLeave('c1'));
+  expect(result.current.dragOverCollectionId).toBe('c2');
+  act(() => result.current.handleCollectionMouseLeave('c2'));
+  await act(async () => fireEvent.mouseUp(document));
+  expect(invoke).not.toHaveBeenCalled();
+  expect(addModelToCollection).not.toHaveBeenCalled();
+  expect(result.current.dragOverCollectionId).toBeNull();
+  expect(localStorage.getItem('3mf-katalog-dnd-tip-dismissed')).toBeNull();
+});
+
+it('switches exclusively between folder and collection targets and ignores folder drags on collections', () => {
+  const { result } = renderHook(() => useFolderDragAndDrop([makeModelFile({ id: 'm1' })], [makeFolder({ id: 'f1' })],
+    { refreshFolders: vi.fn(), refreshFiles: vi.fn() }));
+  act(() => result.current.onDragFileStart('m1'));
+  act(() => result.current.handleFolderMouseEnter('f1'));
+  act(() => result.current.handleCollectionMouseEnter('c1'));
+  expect(result.current.dragOverFolderId).toBeNull();
+  act(() => result.current.handleFolderMouseEnter('f1'));
+  expect(result.current.dragOverCollectionId).toBeNull();
+  act(() => result.current.handleFolderMouseLeave('f1'));
+  act(() => fireEvent.mouseUp(document));
+  act(() => result.current.onDragFolderStart('f1'));
+  act(() => result.current.handleCollectionMouseEnter('c1'));
+  expect(result.current.dragOverCollectionId).toBeNull();
+  act(() => fireEvent.mouseUp(document));
+  expect(invoke).not.toHaveBeenCalled();
+});
+
+it('keeps the drag tip after a failed collection add and uses the error toast', async () => {
+  vi.mocked(invoke).mockResolvedValue([]);
+  const addModelToCollection = vi.fn().mockRejectedValue(new Error('add failed'));
+  const { result } = renderHook(() => useFolderDragAndDrop([makeModelFile({ id: 'm1' })], [],
+    { refreshFolders: vi.fn(), refreshFiles: vi.fn() },
+    { collections: [{ id: 'c1', name: 'Kitchen', modelCount: 0 }], addModelToCollection }));
+  act(() => result.current.onDragFileStart('m1'));
+  act(() => result.current.handleCollectionMouseEnter('c1'));
+  await act(async () => fireEvent.mouseUp(document));
+  expect(result.current.moveToast).toMatchObject({ error: true, unexpected: true });
+  expect(localStorage.getItem('3mf-katalog-dnd-tip-dismissed')).toBeNull();
+});

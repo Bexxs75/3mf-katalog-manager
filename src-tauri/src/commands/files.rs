@@ -249,20 +249,29 @@ pub fn delete_print_log_entry(state: State<AppState>, entry_id: String) -> CmdRe
     let conn = lock_db(&state)?;
     db::delete_print_log_entry(&conn, id).map_err(|e| e.to_string().into())
 }
+/// Dialog filters can be bypassed by typing a path; trust the bytes instead.
+pub(crate) fn validate_image_format(bytes: &[u8]) -> CmdResult<()> {
+    let supported = bytes.starts_with(b"\x89PNG\r\n\x1a\n")
+        || bytes.starts_with(b"\xff\xd8\xff")
+        || (bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(&b"WEBP"[..]));
+    if supported { Ok(()) } else { Err(CmdError::expected("imageUploadUnsupported")) }
+}
+
 /// Reads a user-picked image file with a size limit, directly through a reader
 /// capped at `max_bytes + 1` instead of checking metadata() first: so the limit
 /// holds even if the file grows meanwhile.
 pub(crate) fn read_image_bounded(path: &std::path::Path, max_bytes: u64) -> CmdResult<Vec<u8>> {
     use std::io::Read;
-    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let file = std::fs::File::open(path).map_err(|_| CmdError::expected("imageUploadUnreadable"))?;
     let mut limited = file.take(max_bytes + 1);
     let mut buffer = Vec::new();
     limited
         .read_to_end(&mut buffer)
-        .map_err(|e| e.to_string())?;
+        .map_err(|_| CmdError::expected("imageUploadUnreadable"))?;
     if buffer.len() as u64 > max_bytes {
-        return Err(CmdError::expected(format!("Bilddatei ist zu gross (> {max_bytes} Bytes)")));
+        return Err(CmdError::expected("imageUploadTooLarge"));
     }
+    validate_image_format(&buffer)?;
     Ok(buffer)
 }
 #[tauri::command]
@@ -1444,6 +1453,7 @@ pub fn open_in_file_manager(path: String) -> CmdResult<()> {
     #[cfg(target_os = "windows")]
     let mut cmd = std::process::Command::new("explorer");
 
+    super::external_env::sanitize_external_command(&mut cmd);
     cmd.arg(&path).spawn().map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -2687,6 +2697,17 @@ mod tests {
         );
     }
     #[test]
+    fn image_format_is_checked_by_content_not_extension() {
+        for bytes in [&b"\x89PNG\r\n\x1a\n"[..], &b"\xff\xd8\xff"[..], &b"RIFF\x04\0\0\0WEBP"[..]] {
+            assert!(validate_image_format(bytes).is_ok());
+        }
+        for bytes in [&b"GIF89a"[..], &b"not an image"[..], &b""[..]] {
+            let error = validate_image_format(bytes).unwrap_err();
+            assert!(error.expected);
+            assert_eq!(error.message, "imageUploadUnsupported");
+        }
+    }
+    #[test]
     fn read_image_bounded_rejects_a_file_over_the_limit() {
         let path = unique_test_dir("image_over_limit").join("big.png");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -2698,7 +2719,7 @@ mod tests {
     fn read_image_bounded_accepts_a_file_under_the_limit() {
         let path = unique_test_dir("image_under_limit").join("small.png");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, vec![0u8; 1024]).unwrap();
+        std::fs::write(&path, b"\x89PNG\r\n\x1a\n").unwrap();
         assert!(read_image_bounded(&path, 5 * 1024 * 1024).is_ok());
     }
     #[test]

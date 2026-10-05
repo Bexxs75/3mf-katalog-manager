@@ -6,9 +6,12 @@ import { ReportProblemLink } from './ReportProblemLink';
 export function ErrorText({ error }: { error: AppError | null }) {
   const t = useT();
   if (!error) return null;
+  const message = error.message === 'imageUploadTooLarge' || error.message === 'imageUploadUnsupported' || error.message === 'imageUploadUnreadable'
+    ? t(error.message)
+    : error.message === 'importActive' ? t('importActiveError') : error.message;
   return (
     <>
-      <span>{error.message === 'importActive' ? t('importActiveError') : error.message}</span>
+      <span>{message}</span>
       {error.unexpected && <ReportProblemLink />}
     </>
   );

@@ -168,3 +168,38 @@ it('clears an active collection without resetting the catalog', async () => {
   expect(screen.getByRole('main')).toHaveTextContent('Cube');
   expect(invoke).not.toHaveBeenCalledWith('reset_catalog');
 });
+
+it('marks collections as drop targets and updates counts without moving the model', async () => {
+  const model = makeModelFileSummary({ id: 'drag-model', name: 'Drag.stl' });
+  let count = 0;
+  const fallback = vi.mocked(invoke).getMockImplementation()!;
+  vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+    if (cmd === 'list_collections') return [{ id: 'c1', name: 'Kitchen', modelCount: count }];
+    if (cmd === 'list_file_summaries') return [model];
+    if (cmd === 'list_collection_files') return [];
+    if (cmd === 'list_all_file_tags') return {};
+    if (cmd === 'add_files_to_collection') { count = 1; return; }
+    return fallback(cmd, args);
+  });
+  await act(async () => render(<LanguageProviderWithDiagnostics><UiDensityProvider><App /></UiDensityProvider></LanguageProviderWithDiagnostics>));
+  const sidebar = within(screen.getByRole('separator').closest('aside')!);
+  const target = sidebar.getByRole('button', { name: 'Kitchen' });
+  expect(target).not.toHaveClass('border-dashed');
+  const card = screen.getByRole('main').querySelector('[data-model-id="drag-model"]')!;
+  fireEvent.mouseDown(card, { clientX: 10, clientY: 10 });
+  fireEvent.mouseMove(document, { clientX: 20, clientY: 20 });
+  expect(target).toHaveClass('border-dashed');
+  fireEvent.mouseEnter(target);
+  expect(target).toHaveClass('border-[var(--accent)]', 'bg-[var(--accent-soft)]');
+  fireEvent.mouseLeave(target);
+  expect(target).toHaveClass('border-dashed');
+  fireEvent.mouseEnter(target);
+  await act(async () => fireEvent.mouseUp(document));
+  expect(invoke).toHaveBeenCalledWith('add_files_to_collection', { collectionId: 'c1', fileIds: ['drag-model'] });
+  expect(invoke).not.toHaveBeenCalledWith('move_file_to_folder', expect.anything());
+  expect(target).toHaveTextContent('1');
+  expect(target).not.toHaveClass('border-dashed');
+  expect(screen.getByRole('status')).toHaveTextContent('„Drag.stl“ zur Sammlung „Kitchen“ hinzugefügt');
+  fireEvent.click(sidebar.getByText(de.viewAllCollectionsLabel));
+  expect(screen.getByRole('main')).toHaveTextContent('1 Modell');
+});

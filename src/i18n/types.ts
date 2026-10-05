@@ -6,6 +6,8 @@ export interface PluralForms {
 }
 
 export interface Translations {
+  collectionDropAdded: string;
+  collectionDropAlready: string;
   statusBadgesLabel: string;
   statusFavorite: string;
   statusInQueue: string;
@@ -602,6 +604,9 @@ export interface Translations {
   archiveSummaryFailed: string;
   archiveSummaryNotDeleted: string;
 
+  imageUploadTooLarge: string;
+  imageUploadUnsupported: string;
+  imageUploadUnreadable: string;
   uploadModelImageLabel: string;
 
   metaSourceUrl: string;

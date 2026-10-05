@@ -39,6 +39,9 @@ interface Props {
   onCreateFolder: (parentId: string | null, name: string) => void;
   draggedFileId?: string | null;
   draggedFileFolderId?: string | null;
+  dragOverCollectionId?: string | null;
+  onCollectionMouseEnter?: (id: string) => void;
+  onCollectionMouseLeave?: (id: string) => void;
   dragOverFolderId?: string | null;
   draggedFolderId?: string | null;
   onFolderMouseEnter?: (id: string) => void;
@@ -86,6 +89,9 @@ export function Sidebar({
   onCreateFolder,
   draggedFileId = null,
   draggedFileFolderId = null,
+  dragOverCollectionId = null,
+  onCollectionMouseEnter,
+  onCollectionMouseLeave,
   dragOverFolderId = null,
   draggedFolderId = null,
   onFolderMouseEnter,
@@ -305,6 +311,8 @@ export function Sidebar({
             role="button"
             tabIndex={0}
             aria-label={c.name}
+            onMouseEnter={() => onCollectionMouseEnter?.(c.id)}
+            onMouseLeave={() => onCollectionMouseLeave?.(c.id)}
             onClick={() => { if (renamingCollection?.id !== c.id) onSelectCollection(c.id); }}
             onContextMenu={(event) => {
               event.preventDefault();
@@ -320,8 +328,12 @@ export function Sidebar({
                 setCollectionMenu({ collection: c, x: bounds.left, y: bounds.bottom });
               } else if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectCollection(c.id); }
             }}
-            className={`flex items-center gap-2 h-7 px-1.5 rounded-[3px] cursor-pointer text-[length:var(--font-size-item)] ${
-              !collectionsGalleryOpen && activeCollection === c.id
+            className={`flex items-center gap-2 h-7 px-1.5 rounded-[3px] cursor-pointer text-[length:var(--font-size-item)] border ${
+              draggedFileId && dragOverCollectionId === c.id
+                ? 'border-[var(--accent)] bg-[var(--accent-soft)] shadow-[0_0_0_2px_var(--accent-soft)]'
+                : draggedFileId ? 'border-dashed border-[var(--line-strong)]' : 'border-transparent'
+            } ${
+              (draggedFileId && dragOverCollectionId === c.id) || (!collectionsGalleryOpen && activeCollection === c.id)
                 ? 'bg-[var(--accent-soft)] text-[var(--accent)] font-semibold hover:text-[var(--ink)]'
                 : 'text-[var(--ink-2)] hover:text-[var(--ink)]'
             }`}

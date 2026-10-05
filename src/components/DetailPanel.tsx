@@ -1,3 +1,5 @@
+import { useImageUpload } from '../hooks/useImageUpload';
+import { ImageUploadError } from './ImageUploadError';
 import { Icon } from './Icon';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useState } from 'react';
@@ -34,7 +36,7 @@ interface Props {
   onTogglePrintStatus: () => void;
   onToggleFavorite: () => void;
   onToggleQueue: () => void;
-  onUploadImage: () => void;
+  onUploadImage: () => void | Promise<void>;
   onSnapshotCaptured: (base64: string) => void;
   onSetSourceUrl: (fileId: string, url: string | null) => void;
   onOpenInSlicer: () => void;
@@ -68,6 +70,7 @@ export function DetailPanel({
   const { language } = useLanguage();
   const { lockProps } = useImportLock();
   const t = useT();
+  const imageUpload = useImageUpload(model?.id, onUploadImage);
   const { density } = useUiDensity();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const {
@@ -173,12 +176,13 @@ export function DetailPanel({
             {t('dragToRotate')}
           </div>
           <button
-            onClick={onUploadImage}
+            onClick={imageUpload.uploadImage}
             className="absolute right-2.5 top-2.5 h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
             {t('uploadModelImageLabel')}
           </button>
         </div>
+        <ImageUploadError error={imageUpload.error} onDismiss={imageUpload.dismiss} />
 
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--line)]">
           <span className="flex-1 text-small font-medium">
@@ -201,7 +205,7 @@ export function DetailPanel({
             aria-label={model.favorite ? t('favoriteRemove') : t('favoriteAdd')}
             className="h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
-            <Icon name="favorite" size={14} fill={model.favorite  ? 'currentColor' : 'none'} />
+            <Icon name="heart" size={14} fill={model.favorite  ? 'currentColor' : 'none'} />
           </button>
         </div>
 
@@ -379,13 +383,14 @@ export function DetailPanel({
             onSnapshotCaptured={onSnapshotCaptured}
           />
           <button
-            onClick={onUploadImage}
+            onClick={imageUpload.uploadImage}
             className="absolute right-3 top-3 h-9 px-3.5 rounded-lg bg-[var(--panel)] shadow-[var(--shadow)] text-[var(--ink-2)] font-semibold cursor-pointer hover:text-[var(--accent)]"
             style={{ fontSize: 'var(--font-size-meta)' }}
           >
             {t('uploadModelImageLabel')}
           </button>
         </div>
+        <ImageUploadError error={imageUpload.error} onDismiss={imageUpload.dismiss} />
 
         <div className="px-[18px] pt-4 pb-1 flex items-start justify-between gap-3">
           <div className="font-semibold leading-tight break-words" style={{ fontSize: 'var(--font-size-title)' }}>
@@ -396,7 +401,7 @@ export function DetailPanel({
             aria-label={model.favorite ? t('favoriteRemove') : t('favoriteAdd')}
             className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-none text-heading ${model.favorite ? 'text-[var(--accent)]' : 'text-[var(--ink-3)]'}`}
           >
-            <Icon name="favorite" size={14} fill={model.favorite  ? 'currentColor' : 'none'} />
+            <Icon name="heart" size={14} fill={model.favorite  ? 'currentColor' : 'none'} />
           </button>
         </div>
         <div className="px-[18px]"><StatusBadges model={model} filament={filament} lastPrinter={lastPrinter} /></div>

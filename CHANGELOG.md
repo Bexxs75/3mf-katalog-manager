@@ -9,6 +9,12 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ## [Unreleased]
 
+### Fixed
+
+- Models can also be dragged into a collection.
+- Linux (AppImage): “Open folder” and “Open in file manager” work again.
+- Oversized or unsupported images: a visible message instead of silence.
+
 ### Changed
 
 - The app can only be started once; a second launch brings its window to the front.
@@ -482,6 +488,12 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/), Ve
 Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unter der Scaffold-Versionsnummer `0.1.0`, ohne dass Meilensteine markiert wurden. Die folgenden Versionsgrenzen wurden nachträglich anhand von Entwicklungs-Tagen und natürlichen Feature-Abschlüssen (jeweils an einem Dokumentations-Commit) gezogen, keine davon wurde zum jeweiligen Zeitpunkt live getaggt oder veröffentlicht.
 
 ## [Unreleased]
+
+### Behoben
+
+- Modelle lassen sich auch per Ziehen in eine Sammlung legen.
+- Linux (AppImage): „Ordner öffnen“ und „Im Dateimanager öffnen“ funktionieren wieder.
+- Zu große oder falsche Bilder: sichtbare Meldung statt Stille.
 
 ### Geändert
 

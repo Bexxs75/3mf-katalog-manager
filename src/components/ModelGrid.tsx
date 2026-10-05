@@ -225,7 +225,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
                   : 'border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)]'
               }`}
             >
-              <Icon name="favorite" size={14} fill={m.favorite  ? 'currentColor' : 'none'} />
+              <Icon name="heart" size={14} fill={m.favorite  ? 'currentColor' : 'none'} />
             </button>
           )}
         </div>
@@ -315,7 +315,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
                     m.favorite ? 'text-[var(--accent)]' : 'text-[var(--ink-3)]'
                   }`}
                 >
-                  <Icon name="favorite" size={14} fill={m.favorite  ? 'currentColor' : 'none'} />
+                  <Icon name="heart" size={14} fill={m.favorite  ? 'currentColor' : 'none'} />
                 </button>
               )}
             </div>

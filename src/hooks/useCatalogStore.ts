@@ -466,15 +466,12 @@ export function useCatalogStore({ preselectFirst = true }: CatalogStoreOptions =
   );
 
   const uploadCustomImage = useCallback((id: string) => {
-    filesApi
+    return filesApi
       .uploadCustomImage(id)
       .then((customImage) => {
         if (customImage === null) return;
         invalidateModelImages(id);
         setModels((prev) => prev.map((m) => (m.id === id ? { ...m, customImage } : m)));
-      })
-      .catch((e) => {
-        console.error('[custom-image] upload failed:', e);
       });
   }, []);
 

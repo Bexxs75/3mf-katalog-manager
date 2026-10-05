@@ -56,7 +56,6 @@ const ICONS = {
       <path d="M21 21l-4.3-4.3M11 8v6M8 11h6" />
     </>
   ),
-  favorites: <path d="M12 20s-7-4.4-9-8.8A4.6 4.6 0 0 1 12 7a4.6 4.6 0 0 1 9 4.2C19 15.6 12 20 12 20z" />,
   duplicates: (
     <>
       <rect x="8" y="8" width="12" height="12" rx="2" />
@@ -104,7 +103,7 @@ export function ToolsSection(props: ToolsSectionProps) {
         onClick={() => props.onToolViewChange(active ? null : view)}
         className={`${rowBase} ${active ? rowActive : rowIdle}`}
       >
-        <Icon>{icon}</Icon>
+        {view === 'favorites' ? <SharedIcon name="heart" size={16} className="flex-none" /> : <Icon>{icon}</Icon>}
         <span>{label}</span>
         <Count value={count} active={active} />
       </button>
@@ -151,7 +150,7 @@ export function ToolsSection(props: ToolsSectionProps) {
           )}
           {viewRow('recent', ICONS.recent, t('toolRecent'), props.counts.recent)}
           {viewRow('new', ICONS.new, t('toolNew'), props.counts.new)}
-          {viewRow('favorites', ICONS.favorites, t('toolFavorites'), props.counts.favorites)}
+          {viewRow('favorites', null, t('toolFavorites'), props.counts.favorites)}
           {viewRow('duplicates', ICONS.duplicates, t('toolDuplicates'), props.counts.duplicateGroups)}
           <button
             type="button"

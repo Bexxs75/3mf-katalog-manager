@@ -89,3 +89,14 @@ it('protects source editing and an open print-log form even after focus leaves t
   fireEvent.click(screen.getByRole('button', {name: 'Weiter bearbeiten'}));
   expect(onNavigate).not.toHaveBeenCalled();
 });
+
+
+it('shows and dismisses an upload failure beside the upload button', async () => {
+  const onUploadImage = vi.fn().mockRejectedValue({ message: 'imageUploadUnsupported', expected: true });
+  render(<LanguageProvider><ModelDetailPage {...props} onUploadImage={onUploadImage} hasPrevious={false} hasNext={false} /></LanguageProvider>);
+  fireEvent.click(screen.getByRole('button', { name: 'Bild hochladen' }));
+  expect(await screen.findByText('Nur PNG-, JPG- oder WebP-Bilder werden unterstützt.')).toBeVisible();
+  expect(screen.queryByText('Problem melden')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Hinweis schließen' }));
+  expect(screen.queryByRole('alert')).toBeNull();
+});

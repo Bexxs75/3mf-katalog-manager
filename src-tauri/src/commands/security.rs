@@ -23,6 +23,7 @@ pub(crate) fn open_external(target: &str) -> CmdResult<()> {
     let mut cmd = std::process::Command::new("open");
     #[cfg(target_os = "windows")]
     let mut cmd = std::process::Command::new("explorer");
+    super::external_env::sanitize_external_command(&mut cmd);
     cmd.arg(target).spawn().map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -46,7 +47,9 @@ pub(crate) fn open_url(url: &str) -> CmdResult<()> {
         return Err(CmdError::expected("Nur Web-Adressen können im Browser geöffnet werden"));
     }
     let (program, args) = url_opener(crate::diagnostics::form_url::current_os(), url);
-    std::process::Command::new(program).args(args).spawn().map_err(|e| e.to_string())?;
+    let mut cmd = std::process::Command::new(program);
+    super::external_env::sanitize_external_command(&mut cmd);
+    cmd.args(args).spawn().map_err(|e| e.to_string())?;
     Ok(())
 }
 /// Own version immediately and without network, so the UI doesn't wait on `check_app_update`.

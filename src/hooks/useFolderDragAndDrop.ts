@@ -1,22 +1,29 @@
 import { dismissDragDropTip } from '../lib/dragDropTip';
 import { useCallback, useEffect, useState } from 'react';
+import * as collectionsApi from '../lib/api/collections';
 import * as foldersApi from '../lib/api/folders';
 import { isFolderSelfOrDescendant } from '../lib/folderTree';
 import { toAppError } from '../lib/errors';
-import type { ModelFile, Folder } from '../types';
+import type { ModelFile, Folder, Collection } from '../types';
 
 interface Refreshers {
   refreshFolders: () => void;
   refreshFiles: () => void;
 }
 
-export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { refreshFolders, refreshFiles }: Refreshers) {
+interface CollectionTargets {
+  collections: Collection[];
+  addModelToCollection: (fileId: string, collectionId: string) => Promise<unknown>;
+}
+
+export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { refreshFolders, refreshFiles }: Refreshers, collectionTargets?: CollectionTargets) {
   // Mouse-based dragging instead of HTML5 DnD: under Tauri/WebKitGTK
   // dragDropEnabled intercepts native drag sessions at window level.
   const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
   const [draggedFolderId, setDraggedFolderId] = useState<string | null>(null);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
-  const [moveToast, setMoveToast] = useState<{ from: string; to: string; error?: boolean; unexpected?: boolean } | null>(null);
+  const [dragOverCollectionId, setDragOverCollectionId] = useState<string | null>(null);
+  const [moveToast, setMoveToast] = useState<{ from: string; to: string; error?: boolean; unexpected?: boolean; collection?: 'added' | 'already' } | null>(null);
 
   const onDragFileStart = useCallback((id: string) => setDraggedFileId(id), []);
   // A click without hovering over another row moves nothing
@@ -29,6 +36,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
   const handleFolderMouseEnter = useCallback(
     (id: string) => {
       if (!draggedFileId && !draggedFolderId) return;
+      setDragOverCollectionId(null);
       if (draggedFileId && models.find((model) => model.id === draggedFileId)?.folderId === id) {
         setDragOverFolderId(null);
         return;
@@ -47,6 +55,15 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
   // lands in the folder hovered last.
   const handleFolderMouseLeave = useCallback((id: string) => {
     setDragOverFolderId((current) => (current === id ? null : current));
+  }, []);
+
+  const handleCollectionMouseEnter = useCallback((id: string) => {
+    if (!draggedFileId) return;
+    setDragOverFolderId(null);
+    setDragOverCollectionId(id);
+  }, [draggedFileId]);
+  const handleCollectionMouseLeave = useCallback((id: string) => {
+    setDragOverCollectionId(current => current === id ? null : current);
   }, []);
 
   const onCreateFolder = useCallback(
@@ -68,10 +85,26 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
     const handleMouseUp = () => {
       const fileId = draggedFileId;
       const folderId = dragOverFolderId;
+      const collectionId = dragOverCollectionId;
+      setDragOverCollectionId(null);
       setDraggedFileId(null);
       setDragOverFolderId(null);
-      if (!folderId) return;
       const file = models.find((m) => m.id === fileId);
+      if (collectionId && file && collectionTargets) {
+        const target = collectionTargets.collections.find(c => c.id === collectionId);
+        if (!target) return;
+        collectionsApi.listCollectionFiles(collectionId).then(async members => {
+          const already = members.some(member => member.id === fileId);
+          if (!already) await collectionTargets.addModelToCollection(fileId, collectionId);
+          dismissDragDropTip();
+          setMoveToast({ from: file.name, to: target.name, collection: already ? 'already' : 'added' });
+        }).catch(e => {
+          const err = toAppError(e);
+          setMoveToast({ from: file.name, to: err.message, error: true, unexpected: err.unexpected });
+        });
+        return;
+      }
+      if (!folderId) return;
       const targetFolder = folders.find((f) => f.id === folderId);
       if (!file || !targetFolder) return;
       foldersApi
@@ -90,7 +123,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
     };
     document.addEventListener('mouseup', handleMouseUp);
     return () => document.removeEventListener('mouseup', handleMouseUp);
-  }, [draggedFileId, dragOverFolderId, models, folders, refreshFolders, refreshFiles]);
+  }, [draggedFileId, dragOverFolderId, dragOverCollectionId, collectionTargets, models, folders, refreshFolders, refreshFiles]);
 
   // Dragging a folder onto a folder. The cycle check is repeated here so an
   // invalid target never triggers an invoke.
@@ -127,6 +160,9 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
     draggedFileId,
     draggedFolderId,
     dragOverFolderId,
+    dragOverCollectionId,
+    handleCollectionMouseEnter,
+    handleCollectionMouseLeave,
     moveToast,
     dismissMoveToast,
     onDragFileStart,

@@ -55,6 +55,9 @@ interface CatalogWorkspaceProps {
   setActiveFolderId: (id: string) => void;
   onCreateFolder: (parentId: string | null, name: string) => void;
   draggedFileId?: string | null;
+  dragOverCollectionId?: string | null;
+  handleCollectionMouseEnter?: (id: string) => void;
+  handleCollectionMouseLeave?: (id: string) => void;
   dragOverFolderId: string | null;
   draggedFolderId: string | null;
   handleFolderMouseEnter: (id: string) => void;
@@ -101,7 +104,7 @@ interface CatalogWorkspaceProps {
   togglePrintStatus: (id: string) => void;
   toggleFavorite: (id: string) => void;
   addToQueue: (id: string) => void;
-  uploadCustomImage: (id: string) => void;
+  uploadCustomImage: (id: string) => void | Promise<void>;
   captureRenderSnapshot: (id: string, base64: string) => void;
   setModelSourceUrl: (id: string, url: string | null) => void;
   openInSlicer: (id: string) => void;
@@ -154,6 +157,9 @@ export function CatalogWorkspace({
   setActiveFolderId,
   onCreateFolder,
   draggedFileId = null,
+  dragOverCollectionId,
+  handleCollectionMouseEnter,
+  handleCollectionMouseLeave,
   dragOverFolderId,
   draggedFolderId,
   handleFolderMouseEnter,
@@ -350,6 +356,9 @@ export function CatalogWorkspace({
           setCollectionsGalleryOpen(false);
         }}
         onCreateFolder={onCreateFolder}
+        dragOverCollectionId={dragOverCollectionId}
+        onCollectionMouseEnter={handleCollectionMouseEnter}
+        onCollectionMouseLeave={handleCollectionMouseLeave}
         dragOverFolderId={dragOverFolderId}
         draggedFolderId={draggedFolderId}
         draggedFileId={draggedFileId}
@@ -603,7 +612,7 @@ export function CatalogWorkspace({
           onToggleQueue={() =>
             selected && (selected.queuePosition !== null ? removeFromQueue(selected.id) : addToQueue(selected.id))
           }
-          onUploadImage={() => selected && uploadCustomImage(selected.id)}
+          onUploadImage={() => selected ? uploadCustomImage(selected.id) : undefined}
           onSnapshotCaptured={(base64) => selected && captureRenderSnapshot(selected.id, base64)}
           onSetSourceUrl={(fileId, url) => setModelSourceUrl(fileId, url)}
           onOpenInSlicer={() => selected && openInSlicer(selected.id)}

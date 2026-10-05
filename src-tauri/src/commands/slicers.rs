@@ -1,30 +1,5 @@
 use super::*;
 
-// On startup the AppImage exports various environment variables meant only for
-// its own runtime; they must not be passed on to independently started external
-// programs (slicers).
-const APPIMAGE_ENV_VARS_TO_STRIP: &[&str] = &[
-    "APPDIR",
-    "APPIMAGE",
-    "OWD",
-    "ARGV0",
-    "LD_LIBRARY_PATH",
-    "GTK_EXE_PREFIX",
-    "GTK_DATA_PREFIX",
-    "GTK_THEME",
-    "GTK_PATH",
-    "GTK_IM_MODULE_FILE",
-    "GDK_PIXBUF_MODULE_FILE",
-    "GDK_BACKEND",
-    "GIO_EXTRA_MODULES",
-    "GSETTINGS_SCHEMA_DIR",
-    "XDG_DATA_DIRS",
-    "PYTHONPATH",
-    "QT_PLUGIN_PATH",
-    "GST_PLUGIN_SYSTEM_PATH",
-    "WEBKIT_DISABLE_DMABUF_RENDERER",
-];
-
 /// The frontend's view of a `registered_slicers` entry.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -149,9 +124,7 @@ fn resolve_registered_slicer_and_model(
 fn launch_slicer(resolved: &ResolvedSlicerLaunch) -> CmdResult<()> {
     let mut cmd = std::process::Command::new(&resolved.executable_path);
     cmd.arg(&resolved.model_path);
-    for var in APPIMAGE_ENV_VARS_TO_STRIP {
-        cmd.env_remove(var);
-    }
+    super::external_env::sanitize_external_command(&mut cmd);
     if let Some(parent) = std::path::Path::new(&resolved.executable_path).parent() {
         cmd.current_dir(parent);
     }

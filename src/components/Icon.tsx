@@ -4,7 +4,7 @@ export type IconName =
   | 'chevron' | 'edit' | 'plus' | 'minus' | 'arrow-up' | 'arrow-down' | 'external' | 'swap' | 'warning' | 'box' | 'weight'
   | 'ams' | 'archive' | 'calibrate' | 'catalog' | 'check' | 'close'
   | 'collapse-all' | 'expand-all' | 'export' | 'favorite' | 'filter' | 'folder' | 'fullscreen' | 'help' | 'import'
-  | 'info' | 'layers' | 'model' | 'next' | 'nozzle' | 'plate' | 'previous'
+  | 'heart' | 'info' | 'layers' | 'model' | 'next' | 'nozzle' | 'plate' | 'previous'
   | 'panel' | 'printer' | 'reset-view' | 'resin' | 'restore' | 'search' | 'settings'
   | 'slicer' | 'sort' | 'spool' | 'supports' | 'tag' | 'temperature' | 'trash' | 'zoom';
 

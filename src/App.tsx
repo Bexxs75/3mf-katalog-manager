@@ -71,7 +71,7 @@ export default function App() {
   const dragDrop = useFolderDragAndDrop(store.models, store.folders, {
     refreshFolders: store.refreshFolders,
     refreshFiles: store.refreshFiles,
-  });
+  }, collections);
   const collapsedFolders = useCollapsedFolders();
   const expansion = useFolderExpansion();
   const sidebarWidth = useSidebarWidth();
@@ -378,6 +378,9 @@ export default function App() {
               setActiveFolderId={filters.setActiveFolderId}
               onCreateFolder={dragDrop.onCreateFolder}
               draggedFileId={dragDrop.draggedFileId}
+              dragOverCollectionId={dragDrop.dragOverCollectionId}
+              handleCollectionMouseEnter={dragDrop.handleCollectionMouseEnter}
+              handleCollectionMouseLeave={dragDrop.handleCollectionMouseLeave}
               dragOverFolderId={dragDrop.dragOverFolderId}
               draggedFolderId={dragDrop.draggedFolderId}
               handleFolderMouseEnter={dragDrop.handleFolderMouseEnter}
@@ -512,6 +515,7 @@ export default function App() {
           {draggedModel && <DragGhost initialPosition={dragPointer.current} key={draggedModel.id} name={draggedModel.name} image={resolveDisplayImage(draggedModel, displayPreference, draggedImages.get(draggedModel.id))} />}
           {dragDrop.moveToast && (
             <MoveToast
+              collection={dragDrop.moveToast.collection}
               from={dragDrop.moveToast.from}
               to={dragDrop.moveToast.to}
               error={dragDrop.moveToast.error}

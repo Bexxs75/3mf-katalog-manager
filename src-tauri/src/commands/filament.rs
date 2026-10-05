@@ -67,9 +67,21 @@ fn spool_record_to_dto(s: db::models::FilamentSpoolRecord) -> FilamentSpoolDto {
         kind: s.kind,
     }
 }
-fn filament_dto_to_record(spool: &FilamentSpoolDto) -> db::models::NewFilamentSpool {
+fn filament_dto_to_record(spool: &FilamentSpoolDto) -> CmdResult<db::models::NewFilamentSpool> {
     use base64::Engine;
-    db::models::NewFilamentSpool {
+    let image_png = spool.image_png.as_ref().map(|b64| {
+        if b64.len() > (super::files::MAX_CUSTOM_IMAGE_BYTES + 2) / 3 * 4 {
+            return Err(CmdError::expected("imageUploadTooLarge"));
+        }
+        let bytes = base64::engine::general_purpose::STANDARD.decode(b64)
+            .map_err(|_| CmdError::expected("imageUploadUnreadable"))?;
+        if bytes.len() > super::files::MAX_CUSTOM_IMAGE_BYTES {
+            return Err(CmdError::expected("imageUploadTooLarge"));
+        }
+        super::files::validate_image_format(&bytes)?;
+        Ok(bytes)
+    }).transpose()?;
+    Ok(db::models::NewFilamentSpool {
         material: spool.material.clone(),
         manufacturer: spool.manufacturer.clone(),
         color: spool.color.clone(),
@@ -78,13 +90,10 @@ fn filament_dto_to_record(spool: &FilamentSpoolDto) -> db::models::NewFilamentSp
         original_weight_g: spool.original_weight_g,
         remaining_weight_g: spool.remaining_weight_g,
         price: spool.price,
-        image_png: spool
-            .image_png
-            .as_ref()
-            .and_then(|b64| base64::engine::general_purpose::STANDARD.decode(b64).ok()),
+        image_png,
         color_hex: spool.color_hex.as_ref().map(|c| c.to_lowercase()),
         kind: spool.kind.clone(),
-    }
+    })
 }
 #[tauri::command]
 pub fn list_filament_spools(state: State<AppState>) -> CmdResult<Vec<FilamentSpoolDto>> {
@@ -97,7 +106,7 @@ pub fn add_filament_spool(state: State<AppState>, spool: FilamentSpoolDto) -> Cm
     validate_spool_kind(&spool.kind)?;
     validate_color_hex(&spool.color_hex)?;
     let conn = lock_db(&state)?;
-    let new_spool = filament_dto_to_record(&spool);
+    let new_spool = filament_dto_to_record(&spool)?;
     let id = db::insert_filament_spool(&conn, &new_spool).map_err(|e| e.to_string())?;
     // New spools always go to storage, even if the caller sends a slot.
     Ok(FilamentSpoolDto {
@@ -117,7 +126,7 @@ pub fn update_filament_spool(state: State<AppState>, spool: FilamentSpoolDto) ->
     validate_color_hex(&spool.color_hex)?;
     let id: i64 = spool.id.parse().map_err(|_| "invalid spool id".to_string())?;
     let conn = lock_db(&state)?;
-    let new_spool = filament_dto_to_record(&spool);
+    let new_spool = filament_dto_to_record(&spool)?;
     db::update_filament_spool(&conn, id, &new_spool).map_err(|e| e.to_string())?;
     let updated = db::get_filament_spool(&conn, id).map_err(|e| e.to_string())?;
     Ok(spool_record_to_dto(updated))
@@ -433,6 +442,23 @@ mod tests {
             color_hex: None,
             kind: kind.into(),
         }
+    }
+
+    #[test]
+    fn spool_image_is_validated_before_it_can_be_saved() {
+        let mut spool = FilamentSpoolDto {
+            id: "1".into(), material: "PLA".into(), manufacturer: None, color: None,
+            location: None, diameter_mm: 1.75, original_weight_g: 1000.0,
+            remaining_weight_g: 1000.0, price: None, image_png: None,
+            color_hex: None, home_location: None, unit_id: None, slot_index: None,
+            kind: "filament".into(),
+        };
+        spool.image_png = Some("R0lGODlh".into());
+        assert_eq!(filament_dto_to_record(&spool).unwrap_err().message, "imageUploadUnsupported");
+        spool.image_png = Some("iVBORw0KGgo=".into());
+        assert!(filament_dto_to_record(&spool).is_ok());
+        spool.image_png = Some("invalid base64!".into());
+        assert_eq!(filament_dto_to_record(&spool).unwrap_err().message, "imageUploadUnreadable");
     }
 
     #[test]

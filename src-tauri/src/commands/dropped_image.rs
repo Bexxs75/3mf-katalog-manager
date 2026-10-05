@@ -46,7 +46,7 @@ pub(crate) fn read_dropped_image_with(images: &DroppedImages, path: &str) -> Cmd
     use base64::Engine;
     let path = PathBuf::from(path);
     if !is_droppable_image_path(&path) {
-        return Err(CmdError::expected("Nur PNG-, JPG- oder WebP-Bilder werden unterstuetzt"));
+        return Err(CmdError::expected("imageUploadUnsupported"));
     }
     if !images.claim(&path) {
         return Err("Bild wurde nicht per Drag & Drop uebergeben".into());
@@ -90,11 +90,12 @@ mod tests {
     fn an_observed_image_can_be_read_exactly_once() {
         let images = DroppedImages::default();
         let png = write_file("spule.PNG", 3);
+        std::fs::write(&png, b"\x89PNG\r\n\x1a\n").unwrap();
         images.observe_drop(std::slice::from_ref(&png));
 
         let first = read_dropped_image_with(&images, png.to_str().unwrap()).expect("read");
 
-        assert_eq!(first, "BwcH", "base64 von [7, 7, 7]");
+        assert_eq!(first, "iVBORw0KGgo=");
         assert!(read_dropped_image_with(&images, png.to_str().unwrap()).is_err(), "Freigabe gilt nur einmal");
     }
 
@@ -110,6 +111,7 @@ mod tests {
         let images = DroppedImages::default();
         let first = write_file("eins.png", 3);
         let second = write_file("zwei.png", 3);
+        std::fs::write(&second, b"\x89PNG\r\n\x1a\n").unwrap();
         images.observe_drop(std::slice::from_ref(&first));
         images.observe_drop(std::slice::from_ref(&second));
 

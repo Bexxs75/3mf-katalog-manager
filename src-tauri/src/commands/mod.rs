@@ -8,6 +8,7 @@ mod collections;
 mod diagnostics;
 mod dropped_image;
 mod error;
+mod external_env;
 mod files;
 mod file_modified_backfill;
 pub(crate) use file_modified_backfill::backfill_file_modified_at;

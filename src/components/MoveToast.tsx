@@ -1,3 +1,4 @@
+import { useT } from '../i18n/LanguageContext';
 import { Icon } from './Icon';
 import { useEffect } from 'react';
 import { ReportProblemLink } from '../diagnostics/ReportProblemLink';
@@ -5,6 +6,7 @@ import { ReportProblemLink } from '../diagnostics/ReportProblemLink';
 interface Props {
   from: string;
   to: string;
+  collection?: 'added' | 'already';
   error?: boolean;
   /** Only meaningful together with `error`: offers "Report problem" for an unexpected error. */
   unexpected?: boolean;
@@ -16,11 +18,12 @@ interface Props {
  * folder; disappears after 3 s (`onDone`). A new move restarts the
  * timer. With `error`, `to` carries the error message (no arrow, red accent).
  */
-export function MoveToast({ from, to, error = false, unexpected = false, onDone }: Props) {
+export function MoveToast({ from, to, error = false, unexpected = false, collection, onDone }: Props) {
+  const t = useT();
   useEffect(() => {
     const timer = setTimeout(onDone, 3000);
     return () => clearTimeout(timer);
-  }, [from, to, error, onDone]);
+  }, [from, to, error, collection, onDone]);
 
   return (
     <div
@@ -38,6 +41,8 @@ export function MoveToast({ from, to, error = false, unexpected = false, onDone 
           <span className="opacity-90 overflow-hidden text-ellipsis whitespace-nowrap">{to}</span>
           {unexpected && <ReportProblemLink />}
         </>
+      ) : collection ? (
+        <span>{t(collection === 'added' ? 'collectionDropAdded' : 'collectionDropAlready').replace('{name}', () => from).replace('{collection}', () => to)}</span>
       ) : (
         <>
           <span className="font-semibold overflow-hidden text-ellipsis whitespace-nowrap">{from}</span>

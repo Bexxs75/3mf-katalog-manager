@@ -144,6 +144,19 @@ describe('FilamentSpoolForm', () => {
     return button;
   }
 
+  it('shows unsupported dialog images without replacing the spool image', async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => cmd === 'pick_and_read_image'
+      ? Promise.reject({ message: 'imageUploadUnsupported', expected: true }) : Promise.resolve(undefined));
+    renderForm(null);
+    const button = imageZone();
+    fireEvent.click(button);
+    expect(await screen.findByText('Nur PNG-, JPG- oder WebP-Bilder werden unterstützt.')).toBeVisible();
+    expect(button.querySelector('img')).toBeNull();
+    expect(screen.queryByText('Problem melden')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Hinweis schließen' }));
+    expect(screen.queryByText('Nur PNG-, JPG- oder WebP-Bilder werden unterstützt.')).toBeNull();
+  });
+
   it('takes an image dropped onto the image field', async () => {
     vi.mocked(invoke).mockImplementation((cmd: string) =>
       Promise.resolve(cmd === 'read_dropped_image' ? 'QUJD' : undefined),

@@ -1,6 +1,8 @@
 import type { Translations } from './types';
 
 export const fr: Translations = {
+  collectionDropAdded: "« {name} » ajouté à la collection « {collection} »",
+  collectionDropAlready: "« {name} » est déjà dans la collection « {collection} »",
   statusBadgesLabel: "Statut",
   statusFavorite: "Favori",
   statusInQueue: "Dans la file",
@@ -578,6 +580,9 @@ export const fr: Translations = {
   archiveSummaryFailed: '{name} a échoué : {error}',
   archiveSummaryNotDeleted: "{name} n'a pas été supprimée : {error}",
 
+  imageUploadTooLarge: "L’image est trop grande. La taille maximale est de 5 Mo.",
+  imageUploadUnsupported: "Seules les images PNG, JPG ou WebP sont prises en charge.",
+  imageUploadUnreadable: "Impossible de lire l’image.",
   uploadModelImageLabel: 'Envoyer une image',
 
   metaSourceUrl: 'Source',

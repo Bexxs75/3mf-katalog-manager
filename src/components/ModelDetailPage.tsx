@@ -1,3 +1,5 @@
+import { useImageUpload } from '../hooks/useImageUpload';
+import { ImageUploadError } from './ImageUploadError';
 import { useModelImages } from '../hooks/useModelImages';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useRef, useState } from 'react';
@@ -39,7 +41,7 @@ interface Props {
   onTogglePrintStatus: () => void;
   onToggleFavorite: () => void;
   onToggleQueue: () => void;
-  onUploadImage: () => void;
+  onUploadImage: () => void | Promise<void>;
   onSnapshotCaptured: (base64: string) => void;
   onSetSourceUrl: (fileId: string, url: string | null) => void;
   onOpenInSlicer: () => void;
@@ -88,6 +90,7 @@ export function ModelDetailPage({
   const pageRef = useRef<HTMLDivElement>(null);
   const { lockProps } = useImportLock();
   const t = useT();
+  const imageUpload = useImageUpload(model?.id, onUploadImage);
   const { language } = useLanguage();
   const [addToCollectionMenuOpen, setAddToCollectionMenuOpen] = useState(false);
   const {
@@ -222,11 +225,12 @@ export function ModelDetailPage({
             )}
           </div>
           <button
-            onClick={onUploadImage}
+            onClick={imageUpload.uploadImage}
             className="mt-2 h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
             {t('uploadModelImageLabel')}
           </button>
+          <ImageUploadError error={imageUpload.error} onDismiss={imageUpload.dismiss} />
         </div>
 
         <div className="w-[540px] flex-none min-w-[300px] flex flex-col gap-4">
@@ -318,7 +322,7 @@ export function ModelDetailPage({
                 model.favorite ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent-soft)]' : 'border-[var(--line)] text-[var(--ink-2)]'
               }`}
             >
-              <Icon name="favorite" size={14} fill="currentColor" />
+              <Icon name="heart" size={14} fill={model.favorite ? 'currentColor' : 'none'} />
             </button>
             <button onClick={onToggleQueue} className="text-body font-semibold text-[var(--ink-2)] hover:text-[var(--ink)]">
               {model.queuePosition === null && <Icon name="plus" size={14} />}{t(model.queuePosition !== null ? 'removeFromQueue' : 'addToQueue')}

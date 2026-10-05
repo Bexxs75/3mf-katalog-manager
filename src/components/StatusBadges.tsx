@@ -24,7 +24,7 @@ export function StatusBadges({ model, filament, lastPrinter }: {
       {model.materials.map(material => material.name).join(', ')}
     </span>}
     {status && status !== 'no_data' && <span role="listitem" className={`status-badge ${status === 'ok' ? 'status-good' : status === 'swap' ? 'status-warn' : status === 'short' ? 'status-crit' : ''}`}><span aria-hidden="true"><FilamentStatusSymbol status={status} /></span>{filamentText}</span>}
-    {model.favorite && <span role="listitem" className="status-badge status-accent"><Icon name="favorite" size={14} />{t('statusFavorite')}</span>}
+    {model.favorite && <span role="listitem" className="status-badge status-accent"><Icon name="heart" size={14} fill="currentColor" />{t('statusFavorite')}</span>}
     {model.queuePosition !== null && <span role="listitem" className="status-badge status-warn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true" focusable="false"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg>{t('statusInQueue')}</span>}
     {lastPrinter && <span role="listitem" className="status-badge"><Icon name="printer" size={14} />{t('statusLastPrinter').replace('{printer}', () => lastPrinter.printerName).replace('{time}', () => formatRelativeTime(new Date(lastPrinter.endedAt * 1000).toISOString(), language))}</span>}
   </div>;

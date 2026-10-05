@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { ToolsSection, type ToolsSectionProps } from './ToolsSection';
+import { icons } from './icons.generated';
 import { makeModelFile } from '../test/factories';
 
 beforeEach(() => {
@@ -45,6 +46,16 @@ describe('ToolsSection', () => {
     setup();
     expect(screen.queryByRole('button', { name: /Material Manager/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Papierkorb/ })).not.toBeInTheDocument();
+  });
+
+  it('uses the shared outline heart for favorites with its existing accessible name', () => {
+    setup();
+    const svg = row('Favoriten').querySelector('svg')!;
+    const approved = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${icons.heart}</svg>`, 'image/svg+xml');
+    expect(svg.firstElementChild!.isEqualNode(approved.documentElement.firstElementChild)).toBe(true);
+    expect(svg).toHaveAttribute('stroke-width', '1.8');
+    expect(svg).toHaveAttribute('fill', 'none');
+    expect(svg).toHaveAttribute('aria-hidden', 'true');
   });
 
   it('toggles the favorites view', () => {

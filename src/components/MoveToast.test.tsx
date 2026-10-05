@@ -43,3 +43,12 @@ describe('MoveToast', () => {
     vi.useRealTimers();
   });
 });
+
+it.each([
+  ['added', '„Modell“ zur Sammlung „Zielordner“ hinzugefügt'],
+  ['already', '„Modell“ ist schon in der Sammlung „Zielordner“'],
+] as const)('shows collection confirmation %s without a report link', (collection, text) => {
+  renderToast({ collection });
+  expect(screen.getByRole('status')).toHaveTextContent(text);
+  expect(screen.queryByText('Problem melden')).not.toBeInTheDocument();
+});
