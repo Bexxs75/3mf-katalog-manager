@@ -1,0 +1,4528 @@
+{
+ "images": [
+  {
+   "id": "tk-allg-ansicht",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/allg-ansicht.webp",
+    "en": "docs/tests/bilder/en/allg-ansicht.webp"
+   },
+   "recipe": "tk-allg-ansicht",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     589,
+     1019
+    ],
+    "en": [
+     588,
+     1033
+    ]
+   }
+  },
+  {
+   "id": "tk-ansichten",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/ansichten.webp",
+    "en": "docs/tests/bilder/en/ansichten.webp"
+   },
+   "recipe": "tk-ansichten",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     498,
+     148
+    ],
+    "en": [
+     464,
+     148
+    ]
+   }
+  },
+  {
+   "id": "tk-detail-bereich",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/detail-bereich.webp",
+    "en": "docs/tests/bilder/en/detail-bereich.webp"
+   },
+   "recipe": "tk-detail-bereich",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     608,
+     315
+    ],
+    "en": [
+     608,
+     265
+    ]
+   }
+  },
+  {
+   "id": "tk-detail-pfeile",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/detail-pfeile.webp",
+    "en": "docs/tests/bilder/en/detail-pfeile.webp"
+   },
+   "recipe": "tk-detail-pfeile",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     624,
+     345
+    ],
+    "en": [
+     612,
+     345
+    ]
+   }
+  },
+  {
+   "id": "tk-einzeltasten",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/einzeltasten.webp",
+    "en": "docs/tests/bilder/en/einzeltasten.webp"
+   },
+   "recipe": "tk-einzeltasten",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     569,
+     281
+    ],
+    "en": [
+     569,
+     281
+    ]
+   }
+  },
+  {
+   "id": "tk-entpacken",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/entpacken.webp",
+    "en": "docs/tests/bilder/en/entpacken.webp"
+   },
+   "recipe": "tk-entpacken",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     852,
+     430
+    ],
+    "en": [
+     852,
+     430
+    ]
+   }
+  },
+  {
+   "id": "tk-ersetzen.linux",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/ersetzen.linux.webp",
+    "en": "docs/tests/bilder/en/ersetzen.linux.webp"
+   },
+   "recipe": "tk-ersetzen",
+   "args": {
+    "platform": "linux"
+   },
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     606,
+     872
+    ],
+    "en": [
+     606,
+     872
+    ]
+   }
+  },
+  {
+   "id": "tk-ersetzen.macos",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/ersetzen.macos.webp",
+    "en": "docs/tests/bilder/en/ersetzen.macos.webp"
+   },
+   "recipe": "tk-ersetzen",
+   "args": {
+    "platform": "macos"
+   },
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     606,
+     872
+    ],
+    "en": [
+     606,
+     872
+    ]
+   }
+  },
+  {
+   "id": "tk-ersetzen.windows",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/ersetzen.windows.webp",
+    "en": "docs/tests/bilder/en/ersetzen.windows.webp"
+   },
+   "recipe": "tk-ersetzen",
+   "args": {
+    "platform": "windows"
+   },
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     606,
+     872
+    ],
+    "en": [
+     606,
+     872
+    ]
+   }
+  },
+  {
+   "id": "tk-farben-faelle",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/farben-faelle.webp",
+    "en": "docs/tests/bilder/en/farben-faelle.webp"
+   },
+   "recipe": "tk-farben-faelle",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1012,
+     1191
+    ],
+    "en": [
+     1007,
+     1127
+    ]
+   }
+  },
+  {
+   "id": "tk-farben",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/farben.webp",
+    "en": "docs/tests/bilder/en/farben.webp"
+   },
+   "recipe": "tk-farben",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1400,
+     1056
+    ],
+    "en": [
+     1400,
+     1073
+    ]
+   }
+  },
+  {
+   "id": "tk-fehler-dateinamen",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/fehler-dateinamen.webp",
+    "en": "docs/tests/bilder/en/fehler-dateinamen.webp"
+   },
+   "recipe": "tk-fehler-dateinamen",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1086,
+     997
+    ],
+    "en": [
+     1086,
+     941
+    ]
+   }
+  },
+  {
+   "id": "tk-fehler-dialog",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/fehler-dialog.webp",
+    "en": "docs/tests/bilder/en/fehler-dialog.webp"
+   },
+   "recipe": "tk-fehler-dialog",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1002,
+     560
+    ],
+    "en": [
+     1002,
+     502
+    ]
+   }
+  },
+  {
+   "id": "tk-fehler-ja",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/fehler-ja.webp",
+    "en": "docs/tests/bilder/en/fehler-ja.webp"
+   },
+   "recipe": "tk-fehler-ja",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1002,
+     560
+    ],
+    "en": [
+     1002,
+     502
+    ]
+   }
+  },
+  {
+   "id": "tk-fehler-nein",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/fehler-nein.webp",
+    "en": "docs/tests/bilder/en/fehler-nein.webp"
+   },
+   "recipe": "tk-fehler-nein",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1002,
+     560
+    ],
+    "en": [
+     1002,
+     502
+    ]
+   }
+  },
+  {
+   "id": "tk-fehler-vorschau",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/fehler-vorschau.webp",
+    "en": "docs/tests/bilder/en/fehler-vorschau.webp"
+   },
+   "recipe": "tk-fehler-vorschau",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1086,
+     997
+    ],
+    "en": [
+     1086,
+     941
+    ]
+   }
+  },
+  {
+   "id": "tk-fehlerkarte",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/fehlerkarte.webp",
+    "en": "docs/tests/bilder/en/fehlerkarte.webp"
+   },
+   "recipe": "tk-fehlerkarte",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     670,
+     543
+    ],
+    "en": [
+     670,
+     483
+    ]
+   }
+  },
+  {
+   "id": "tk-filterleiste",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/filterleiste.webp",
+    "en": "docs/tests/bilder/en/filterleiste.webp"
+   },
+   "recipe": "tk-filterleiste",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1014,
+     181
+    ],
+    "en": [
+     1014,
+     181
+    ]
+   }
+  },
+  {
+   "id": "tk-import-ablage",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/import-ablage.webp",
+    "en": "docs/tests/bilder/en/import-ablage.webp"
+   },
+   "recipe": "tk-import-ablage",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     658,
+     568
+    ],
+    "en": [
+     658,
+     568
+    ]
+   }
+  },
+  {
+   "id": "tk-import-dateien",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/import-dateien.webp",
+    "en": "docs/tests/bilder/en/import-dateien.webp"
+   },
+   "recipe": "tk-import-dateien",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     653,
+     445
+    ],
+    "en": [
+     653,
+     423
+    ]
+   }
+  },
+  {
+   "id": "tk-import-menue",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/import-menue.webp",
+    "en": "docs/tests/bilder/en/import-menue.webp"
+   },
+   "recipe": "tk-import-menue",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     653,
+     445
+    ],
+    "en": [
+     653,
+     423
+    ]
+   }
+  },
+  {
+   "id": "tk-import-ordner",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/import-ordner.webp",
+    "en": "docs/tests/bilder/en/import-ordner.webp"
+   },
+   "recipe": "tk-import-ordner",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     653,
+     445
+    ],
+    "en": [
+     653,
+     423
+    ]
+   }
+  },
+  {
+   "id": "tk-import-zeile",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/import-zeile.webp",
+    "en": "docs/tests/bilder/en/import-zeile.webp"
+   },
+   "recipe": "tk-import-zeile",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1400,
+     285
+    ],
+    "en": [
+     1400,
+     285
+    ]
+   }
+  },
+  {
+   "id": "tk-info-ausfuehrlich",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/info-ausfuehrlich.webp",
+    "en": "docs/tests/bilder/en/info-ausfuehrlich.webp"
+   },
+   "recipe": "tk-info-ausfuehrlich",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     585,
+     680
+    ],
+    "en": [
+     585,
+     680
+    ]
+   }
+  },
+  {
+   "id": "tk-info-datenordner",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/info-datenordner.webp",
+    "en": "docs/tests/bilder/en/info-datenordner.webp"
+   },
+   "recipe": "tk-info-datenordner",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     580,
+     911
+    ],
+    "en": [
+     580,
+     887
+    ]
+   }
+  },
+  {
+   "id": "tk-info-fehler",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/info-fehler.webp",
+    "en": "docs/tests/bilder/en/info-fehler.webp"
+   },
+   "recipe": "tk-info-fehler",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     589,
+     580
+    ],
+    "en": [
+     589,
+     580
+    ]
+   }
+  },
+  {
+   "id": "tk-info-logordner",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/info-logordner.webp",
+    "en": "docs/tests/bilder/en/info-logordner.webp"
+   },
+   "recipe": "tk-info-logordner",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     580,
+     998
+    ],
+    "en": [
+     580,
+     974
+    ]
+   }
+  },
+  {
+   "id": "tk-info-nach-update",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/info-nach-update.webp",
+    "en": "docs/tests/bilder/en/info-nach-update.webp"
+   },
+   "recipe": "tk-info-nach-update",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     522,
+     1248
+    ],
+    "en": [
+     522,
+     1224
+    ]
+   }
+  },
+  {
+   "id": "tk-info-update",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/info-update.webp",
+    "en": "docs/tests/bilder/en/info-update.webp"
+   },
+   "recipe": "tk-info-update",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     522,
+     1285
+    ],
+    "en": [
+     522,
+     1260
+    ]
+   }
+  },
+  {
+   "id": "tk-kat-aendern.linux",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/kat-aendern.linux.webp",
+    "en": "docs/tests/bilder/en/kat-aendern.linux.webp"
+   },
+   "recipe": "tk-kat-aendern",
+   "args": {
+    "platform": "linux"
+   },
+   "theme": "light",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     585,
+     763
+    ],
+    "en": [
+     585,
+     763
+    ]
+   }
+  },
+  {
+   "id": "tk-kat-aendern.macos",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/kat-aendern.macos.webp",
+    "en": "docs/tests/bilder/en/kat-aendern.macos.webp"
+   },
+   "recipe": "tk-kat-aendern",
+   "args": {
+    "platform": "macos"
+   },
+   "theme": "light",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     585,
+     763
+    ],
+    "en": [
+     585,
+     763
+    ]
+   }
+  },
+  {
+   "id": "tk-kat-aendern.windows",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/kat-aendern.windows.webp",
+    "en": "docs/tests/bilder/en/kat-aendern.windows.webp"
+   },
+   "recipe": "tk-kat-aendern",
+   "args": {
+    "platform": "windows"
+   },
+   "theme": "light",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     585,
+     763
+    ],
+    "en": [
+     585,
+     763
+    ]
+   }
+  },
+  {
+   "id": "tk-kat-einrichten",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/kat-einrichten.webp",
+    "en": "docs/tests/bilder/en/kat-einrichten.webp"
+   },
+   "recipe": "tk-kat-einrichten",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     589,
+     739
+    ],
+    "en": [
+     589,
+     739
+    ]
+   }
+  },
+  {
+   "id": "tk-kat-exportieren.linux",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/kat-exportieren.linux.webp",
+    "en": "docs/tests/bilder/en/kat-exportieren.linux.webp"
+   },
+   "recipe": "tk-kat-exportieren",
+   "args": {
+    "platform": "linux"
+   },
+   "theme": "light",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     589,
+     433
+    ],
+    "en": [
+     589,
+     433
+    ]
+   }
+  },
+  {
+   "id": "tk-kat-exportieren.macos",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/kat-exportieren.macos.webp",
+    "en": "docs/tests/bilder/en/kat-exportieren.macos.webp"
+   },
+   "recipe": "tk-kat-exportieren",
+   "args": {
+    "platform": "macos"
+   },
+   "theme": "light",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     589,
+     433
+    ],
+    "en": [
+     589,
+     433
+    ]
+   }
+  },
+  {
+   "id": "tk-kat-exportieren.windows",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/kat-exportieren.windows.webp",
+    "en": "docs/tests/bilder/en/kat-exportieren.windows.webp"
+   },
+   "recipe": "tk-kat-exportieren",
+   "args": {
+    "platform": "windows"
+   },
+   "theme": "light",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     589,
+     433
+    ],
+    "en": [
+     589,
+     433
+    ]
+   }
+  },
+  {
+   "id": "tk-kat-importieren.linux",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/kat-importieren.linux.webp",
+    "en": "docs/tests/bilder/en/kat-importieren.linux.webp"
+   },
+   "recipe": "tk-kat-importieren",
+   "args": {
+    "platform": "linux"
+   },
+   "theme": "light",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     589,
+     484
+    ],
+    "en": [
+     589,
+     484
+    ]
+   }
+  },
+  {
+   "id": "tk-kat-importieren.macos",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/kat-importieren.macos.webp",
+    "en": "docs/tests/bilder/en/kat-importieren.macos.webp"
+   },
+   "recipe": "tk-kat-importieren",
+   "args": {
+    "platform": "macos"
+   },
+   "theme": "light",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     589,
+     484
+    ],
+    "en": [
+     589,
+     484
+    ]
+   }
+  },
+  {
+   "id": "tk-kat-importieren.windows",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/kat-importieren.windows.webp",
+    "en": "docs/tests/bilder/en/kat-importieren.windows.webp"
+   },
+   "recipe": "tk-kat-importieren",
+   "args": {
+    "platform": "windows"
+   },
+   "theme": "light",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     589,
+     484
+    ],
+    "en": [
+     589,
+     484
+    ]
+   }
+  },
+  {
+   "id": "tk-kat-speicherort.linux",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/kat-speicherort.linux.webp",
+    "en": "docs/tests/bilder/en/kat-speicherort.linux.webp"
+   },
+   "recipe": "tk-kat-speicherort",
+   "args": {
+    "platform": "linux"
+   },
+   "theme": "light",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     589,
+     703
+    ],
+    "en": [
+     589,
+     703
+    ]
+   }
+  },
+  {
+   "id": "tk-kat-speicherort.macos",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/kat-speicherort.macos.webp",
+    "en": "docs/tests/bilder/en/kat-speicherort.macos.webp"
+   },
+   "recipe": "tk-kat-speicherort",
+   "args": {
+    "platform": "macos"
+   },
+   "theme": "light",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     589,
+     703
+    ],
+    "en": [
+     589,
+     703
+    ]
+   }
+  },
+  {
+   "id": "tk-kat-speicherort.windows",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/kat-speicherort.windows.webp",
+    "en": "docs/tests/bilder/en/kat-speicherort.windows.webp"
+   },
+   "recipe": "tk-kat-speicherort",
+   "args": {
+    "platform": "windows"
+   },
+   "theme": "light",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     589,
+     703
+    ],
+    "en": [
+     589,
+     703
+    ]
+   }
+  },
+  {
+   "id": "tk-lager",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/lager.webp",
+    "en": "docs/tests/bilder/en/lager.webp"
+   },
+   "recipe": "tk-lager",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     452,
+     272
+    ],
+    "en": [
+     407,
+     272
+    ]
+   }
+  },
+  {
+   "id": "tk-papierkorb",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/papierkorb.webp",
+    "en": "docs/tests/bilder/en/papierkorb.webp"
+   },
+   "recipe": "tk-papierkorb",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     452,
+     416
+    ],
+    "en": [
+     407,
+     416
+    ]
+   }
+  },
+  {
+   "id": "tk-platten",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/platten.webp",
+    "en": "docs/tests/bilder/en/platten.webp"
+   },
+   "recipe": "tk-platten",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1400,
+     248
+    ],
+    "en": [
+     1400,
+     248
+    ]
+   }
+  },
+  {
+   "id": "tk-pm-anbindung",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/pm-anbindung.webp",
+    "en": "docs/tests/bilder/en/pm-anbindung.webp"
+   },
+   "recipe": "tk-pm-anbindung",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     595,
+     259
+    ],
+    "en": [
+     595,
+     259
+    ]
+   }
+  },
+  {
+   "id": "tk-pm-einheiten",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/pm-einheiten.webp",
+    "en": "docs/tests/bilder/en/pm-einheiten.webp"
+   },
+   "recipe": "tk-pm-einheiten",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1314,
+     438
+    ],
+    "en": [
+     1314,
+     438
+    ]
+   }
+  },
+  {
+   "id": "tk-pm-liste",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/pm-liste.webp",
+    "en": "docs/tests/bilder/en/pm-liste.webp"
+   },
+   "recipe": "tk-pm-liste",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     595,
+     655
+    ],
+    "en": [
+     595,
+     655
+    ]
+   }
+  },
+  {
+   "id": "tk-sammlung-menue",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/sammlung-menue.webp",
+    "en": "docs/tests/bilder/en/sammlung-menue.webp"
+   },
+   "recipe": "tk-sammlung-menue",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     764,
+     283
+    ],
+    "en": [
+     764,
+     283
+    ]
+   }
+  },
+  {
+   "id": "tk-setup-neu-form.linux",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/setup-neu-form.linux.webp",
+    "en": "docs/tests/bilder/en/setup-neu-form.linux.webp"
+   },
+   "recipe": "tk-setup-neu-form",
+   "args": {
+    "platform": "linux"
+   },
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1001,
+     563
+    ],
+    "en": [
+     1001,
+     562
+    ]
+   }
+  },
+  {
+   "id": "tk-setup-neu-form.macos",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/setup-neu-form.macos.webp",
+    "en": "docs/tests/bilder/en/setup-neu-form.macos.webp"
+   },
+   "recipe": "tk-setup-neu-form",
+   "args": {
+    "platform": "macos"
+   },
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1001,
+     563
+    ],
+    "en": [
+     1001,
+     562
+    ]
+   }
+  },
+  {
+   "id": "tk-setup-neu-form.windows",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/setup-neu-form.windows.webp",
+    "en": "docs/tests/bilder/en/setup-neu-form.windows.webp"
+   },
+   "recipe": "tk-setup-neu-form",
+   "args": {
+    "platform": "windows"
+   },
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1001,
+     563
+    ],
+    "en": [
+     1001,
+     562
+    ]
+   }
+  },
+  {
+   "id": "tk-setup-neu",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/setup-neu.webp",
+    "en": "docs/tests/bilder/en/setup-neu.webp"
+   },
+   "recipe": "tk-setup-neu",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     993,
+     999
+    ],
+    "en": [
+     993,
+     909
+    ]
+   }
+  },
+  {
+   "id": "tk-setup-spaeter",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/setup-spaeter.webp",
+    "en": "docs/tests/bilder/en/setup-spaeter.webp"
+   },
+   "recipe": "tk-setup-spaeter",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     993,
+     999
+    ],
+    "en": [
+     993,
+     909
+    ]
+   }
+  },
+  {
+   "id": "tk-setup-uebernehmen",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/setup-uebernehmen.webp",
+    "en": "docs/tests/bilder/en/setup-uebernehmen.webp"
+   },
+   "recipe": "tk-setup-uebernehmen",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     993,
+     999
+    ],
+    "en": [
+     993,
+     909
+    ]
+   }
+  },
+  {
+   "id": "tk-sortieren",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/sortieren.webp",
+    "en": "docs/tests/bilder/en/sortieren.webp"
+   },
+   "recipe": "tk-sortieren",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     582,
+     484
+    ],
+    "en": [
+     583,
+     484
+    ]
+   }
+  },
+  {
+   "id": "tk-tipps",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/tipps.webp",
+    "en": "docs/tests/bilder/en/tipps.webp"
+   },
+   "recipe": "tk-tipps",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     934,
+     1200
+    ],
+    "en": [
+     934,
+     1170
+    ]
+   }
+  },
+  {
+   "id": "tk-umbenennen",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/umbenennen.webp",
+    "en": "docs/tests/bilder/en/umbenennen.webp"
+   },
+   "recipe": "tk-umbenennen",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     881,
+     600
+    ],
+    "en": [
+     654,
+     600
+    ]
+   }
+  },
+  {
+   "id": "tk-update-meldung",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/update-meldung.webp",
+    "en": "docs/tests/bilder/en/update-meldung.webp"
+   },
+   "recipe": "tk-update-meldung",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     660,
+     235
+    ],
+    "en": [
+     637,
+     209
+    ]
+   }
+  },
+  {
+   "id": "tk-zahnrad",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/zahnrad.webp",
+    "en": "docs/tests/bilder/en/zahnrad.webp"
+   },
+   "recipe": "tk-zahnrad",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     349,
+     171
+    ],
+    "en": [
+     350,
+     171
+    ]
+   }
+  },
+  {
+   "id": "tk-ziehen",
+   "root": "app",
+   "paths": {
+    "de": "docs/tests/bilder/ziehen.webp",
+    "en": "docs/tests/bilder/en/ziehen.webp"
+   },
+   "recipe": "tk-ziehen",
+   "args": {},
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1400,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     738,
+     462
+    ],
+    "en": [
+     738,
+     462
+    ]
+   }
+  },
+  {
+   "id": "hb-01-ersteinrichtung",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/01-ersteinrichtung.png",
+    "en": "docs/benutzerhandbuch/bilder/en/01-ersteinrichtung.png"
+   },
+   "recipe": "hb-first-start",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "png",
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "hb-02-katalog-grid",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/02-katalog-grid.png",
+    "en": "docs/benutzerhandbuch/bilder/en/02-katalog-grid.png"
+   },
+   "recipe": "hb-catalog",
+   "args": {
+    "tags": "closed"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "png",
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "hb-03-katalog-liste",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/03-katalog-liste.png",
+    "en": "docs/benutzerhandbuch/bilder/en/03-katalog-liste.png"
+   },
+   "recipe": "hb-catalog",
+   "args": {
+    "tags": "closed",
+    "folder": "haushalt",
+    "view": "list"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "png",
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "hb-04-modell-detailseite",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/04-modell-detailseite.png",
+    "en": "docs/benutzerhandbuch/bilder/en/04-modell-detailseite.png"
+   },
+   "recipe": "hb-detail",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "png",
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "hb-05-kontextmenu",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/05-kontextmenu.png",
+    "en": "docs/benutzerhandbuch/bilder/en/05-kontextmenu.png"
+   },
+   "recipe": "hb-context-menu",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "png",
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "hb-06-mehrfachauswahl",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/06-mehrfachauswahl.png",
+    "en": "docs/benutzerhandbuch/bilder/en/06-mehrfachauswahl.png"
+   },
+   "recipe": "hb-multiselect",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "png",
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "hb-07-sammlungen",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/07-sammlungen.png",
+    "en": "docs/benutzerhandbuch/bilder/en/07-sammlungen.png"
+   },
+   "recipe": "hb-collection",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "png",
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "hb-08-filament-dashboard",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/08-filament-dashboard.png",
+    "en": "docs/benutzerhandbuch/bilder/en/08-filament-dashboard.png"
+   },
+   "recipe": "hb-material",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "png",
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "hb-09-filament-tabelle",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/09-filament-tabelle.png",
+    "en": "docs/benutzerhandbuch/bilder/en/09-filament-tabelle.png"
+   },
+   "recipe": "hb-material",
+   "args": {
+    "view": "list"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "png",
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "hb-10-filament-spule-formular",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/10-filament-spule-formular.png",
+    "en": "docs/benutzerhandbuch/bilder/en/10-filament-spule-formular.png"
+   },
+   "recipe": "hb-material",
+   "args": {
+    "view": "form"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "png",
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "hb-11-einstellungen-slicer",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/11-einstellungen-slicer.png",
+    "en": "docs/benutzerhandbuch/bilder/en/11-einstellungen-slicer.png"
+   },
+   "recipe": "hb-settings",
+   "args": {
+    "tab": "slicer"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "panel",
+    "pad": 16
+   },
+   "format": "png",
+   "sizes": {
+    "de": [
+     498,
+     471
+    ],
+    "en": [
+     498,
+     471
+    ]
+   }
+  },
+  {
+   "id": "hb-12-resin-flaschen",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/12-resin-flaschen.png",
+    "en": "docs/benutzerhandbuch/bilder/en/12-resin-bottles.png"
+   },
+   "recipe": "hb-material",
+   "args": {
+    "kind": "resin"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "png",
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "hb-13-papierkorb",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/13-papierkorb.png",
+    "en": "docs/benutzerhandbuch/bilder/en/13-papierkorb.png"
+   },
+   "recipe": "hb-trash",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "png",
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "hb-14-dark-mode",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/14-dark-mode.png",
+    "en": "docs/benutzerhandbuch/bilder/en/14-dark-mode.png"
+   },
+   "recipe": "hb-catalog",
+   "args": {
+    "tags": "closed",
+    "select": 1
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "png",
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "hb-15-hell-mode-bonus",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/15-hell-mode-bonus.png",
+    "en": "docs/benutzerhandbuch/bilder/en/15-hell-mode-bonus.png"
+   },
+   "recipe": "hb-catalog",
+   "args": {
+    "tags": "closed"
+   },
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "png",
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "hb-16-ordner-ansicht",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/16-ordner-ansicht.png",
+    "en": "docs/benutzerhandbuch/bilder/en/16-ordner-ansicht.png"
+   },
+   "recipe": "hb-catalog",
+   "args": {
+    "tags": "closed",
+    "view": "folder"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "png",
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "hb-17-liste-gruppiert",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/17-liste-gruppiert.png",
+    "en": "docs/benutzerhandbuch/bilder/en/17-liste-gruppiert.png"
+   },
+   "recipe": "hb-catalog",
+   "args": {
+    "tags": "closed",
+    "view": "list"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "png",
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "hb-18-einstellungen-allgemein",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/18-einstellungen-allgemein.png",
+    "en": "docs/benutzerhandbuch/bilder/en/18-einstellungen-allgemein.png"
+   },
+   "recipe": "hb-settings",
+   "args": {
+    "tab": "general"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "panel",
+    "pad": 16
+   },
+   "format": "png",
+   "sizes": {
+    "de": [
+     498,
+     1291
+    ],
+    "en": [
+     498,
+     1291
+    ]
+   }
+  },
+  {
+   "id": "hb-19-einstellungen-katalog",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/19-einstellungen-katalog.png",
+    "en": "docs/benutzerhandbuch/bilder/en/19-einstellungen-katalog.png"
+   },
+   "recipe": "hb-settings",
+   "args": {
+    "tab": "catalog"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "panel",
+    "pad": 16
+   },
+   "format": "png",
+   "sizes": {
+    "de": [
+     498,
+     744
+    ],
+    "en": [
+     498,
+     744
+    ]
+   }
+  },
+  {
+   "id": "hb-20-einstellungen-info-update",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/20-einstellungen-info-update.png",
+    "en": "docs/benutzerhandbuch/bilder/en/20-einstellungen-info-update.png"
+   },
+   "recipe": "hb-settings",
+   "args": {
+    "tab": "info",
+    "v15": true
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "panel",
+    "pad": 16
+   },
+   "format": "png",
+   "sizes": {
+    "de": [
+     498,
+     1114
+    ],
+    "en": [
+     498,
+     1090
+    ]
+   }
+  },
+  {
+   "id": "hb-21-archiv-entpacken",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/21-archiv-entpacken.png",
+    "en": "docs/benutzerhandbuch/bilder/en/21-archiv-entpacken.png"
+   },
+   "recipe": "hb-archive",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "dialog",
+    "pad": 40
+   },
+   "format": "png",
+   "sizes": {
+    "de": [
+     900,
+     473
+    ],
+    "en": [
+     900,
+     473
+    ]
+   }
+  },
+  {
+   "id": "hb-22-drucker-ams",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/22-drucker-ams.png",
+    "en": "docs/benutzerhandbuch/bilder/en/22-drucker-ams.png"
+   },
+   "recipe": "hb-material",
+   "args": {
+    "view": "list"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "printers",
+    "pad": 16
+   },
+   "format": "png",
+   "sizes": {
+    "de": [
+     438,
+     918
+    ],
+    "en": [
+     438,
+     918
+    ]
+   }
+  },
+  {
+   "id": "hb-23-werkzeuge",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/23-werkzeuge.png",
+    "en": "docs/benutzerhandbuch/bilder/en/23-werkzeuge.png"
+   },
+   "recipe": "hb-tools",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "png",
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "hb-24-resin-drucker",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/24-resin-drucker.png",
+    "en": "docs/benutzerhandbuch/bilder/en/24-resin-drucker.png"
+   },
+   "recipe": "hb-material",
+   "args": {
+    "kind": "resin"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "printers",
+    "pad": 16
+   },
+   "format": "png",
+   "sizes": {
+    "de": [
+     438,
+     304
+    ],
+    "en": [
+     438,
+     304
+    ]
+   }
+  },
+  {
+   "id": "hb-26-druckeranbindung-lager",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/26-druckeranbindung-lager.png",
+    "en": "docs/benutzerhandbuch/bilder/en/26-druckeranbindung-lager.png"
+   },
+   "recipe": "hb-link-material",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "png",
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "hb-27-neue-drucke",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/27-neue-drucke.png",
+    "en": "docs/benutzerhandbuch/bilder/en/27-neue-drucke.png"
+   },
+   "recipe": "hb-link-material",
+   "args": {
+    "dialog": true
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "dialog",
+    "pad": 24
+   },
+   "format": "png",
+   "sizes": {
+    "de": [
+     1632,
+     563
+    ],
+    "en": [
+     1632,
+     563
+    ]
+   }
+  },
+  {
+   "id": "hb-29-update-verfuegbar",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/29-update-verfuegbar.png",
+    "en": "docs/benutzerhandbuch/bilder/en/29-update-verfuegbar.png"
+   },
+   "recipe": "hb-update-notice",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "notice",
+    "pad": 16
+   },
+   "format": "png",
+   "sizes": {
+    "de": [
+     618,
+     195
+    ],
+    "en": [
+     592,
+     195
+    ]
+   }
+  },
+  {
+   "id": "hb-30-fehler-melden",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/30-fehler-melden.png",
+    "en": "docs/benutzerhandbuch/bilder/en/30-fehler-melden.png"
+   },
+   "recipe": "hb-bug-report",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "dialog",
+    "pad": 16
+   },
+   "format": "png",
+   "sizes": {
+    "de": [
+     978,
+     889
+    ],
+    "en": [
+     978,
+     833
+    ]
+   }
+  },
+  {
+   "id": "hb-31-aus-katalog-entfernen",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/31-aus-katalog-entfernen.png",
+    "en": "docs/benutzerhandbuch/bilder/en/31-aus-katalog-entfernen.png"
+   },
+   "recipe": "hb-remove-folder",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "dialog",
+    "pad": 24
+   },
+   "format": "png",
+   "sizes": {
+    "de": [
+     882,
+     438
+    ],
+    "en": [
+     882,
+     438
+    ]
+   }
+  },
+  {
+   "id": "hb-32-katalog-zuruecksetzen",
+   "root": "app",
+   "paths": {
+    "de": "docs/benutzerhandbuch/bilder/32-katalog-zuruecksetzen.png",
+    "en": "docs/benutzerhandbuch/bilder/en/32-katalog-zuruecksetzen.png"
+   },
+   "recipe": "hb-reset-catalog",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "dialog",
+    "pad": 24
+   },
+   "format": "png",
+   "sizes": {
+    "de": [
+     882,
+     503
+    ],
+    "en": [
+     882,
+     503
+    ]
+   }
+  },
+  {
+   "id": "wiki-archiv-entpacken",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/archiv-entpacken.webp",
+    "en": "src/assets/en/archiv-entpacken.webp"
+   },
+   "recipe": "hb-archive",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "dialog",
+    "pad": 40
+   },
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     900,
+     473
+    ],
+    "en": [
+     900,
+     473
+    ]
+   }
+  },
+  {
+   "id": "wiki-aus-katalog-entfernen",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/aus-katalog-entfernen.webp",
+    "en": "src/assets/en/aus-katalog-entfernen.webp"
+   },
+   "recipe": "hb-remove-folder",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "dialog",
+    "pad": 24
+   },
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     882,
+     438
+    ],
+    "en": [
+     882,
+     438
+    ]
+   }
+  },
+  {
+   "id": "wiki-drucker-ams",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/drucker-ams.webp",
+    "en": "src/assets/en/drucker-ams.webp"
+   },
+   "recipe": "hb-material",
+   "args": {
+    "view": "list"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "printers",
+    "pad": 16
+   },
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     438,
+     918
+    ],
+    "en": [
+     438,
+     918
+    ]
+   }
+  },
+  {
+   "id": "wiki-einstellungen-allgemein",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/einstellungen-allgemein.webp",
+    "en": "src/assets/en/einstellungen-allgemein.webp"
+   },
+   "recipe": "hb-settings",
+   "args": {
+    "tab": "general"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "panel",
+    "pad": 16
+   },
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     498,
+     1291
+    ],
+    "en": [
+     498,
+     1291
+    ]
+   }
+  },
+  {
+   "id": "wiki-einstellungen-info-update",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/einstellungen-info-update.webp",
+    "en": "src/assets/en/einstellungen-info-update.webp"
+   },
+   "recipe": "hb-settings",
+   "args": {
+    "tab": "info",
+    "v15": true
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "panel",
+    "pad": 16
+   },
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     498,
+     1114
+    ],
+    "en": [
+     498,
+     1090
+    ]
+   }
+  },
+  {
+   "id": "wiki-einstellungen-slicer",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/einstellungen-slicer.webp",
+    "en": "src/assets/en/einstellungen-slicer.webp"
+   },
+   "recipe": "hb-settings",
+   "args": {
+    "tab": "slicer"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "panel",
+    "pad": 16
+   },
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     498,
+     471
+    ],
+    "en": [
+     498,
+     471
+    ]
+   }
+  },
+  {
+   "id": "wiki-ersteinrichtung",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/ersteinrichtung.webp",
+    "en": "src/assets/en/ersteinrichtung.webp"
+   },
+   "recipe": "hb-first-start",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "wiki-fehler-melden",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/fehler-melden.webp",
+    "en": "src/assets/en/fehler-melden.webp"
+   },
+   "recipe": "hb-bug-report",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "dialog",
+    "pad": 16
+   },
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     978,
+     889
+    ],
+    "en": [
+     978,
+     833
+    ]
+   }
+  },
+  {
+   "id": "wiki-filament-dashboard",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/filament-dashboard.webp",
+    "en": "src/assets/en/filament-dashboard.webp"
+   },
+   "recipe": "hb-material",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "wiki-filament-spule-formular",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/filament-spule-formular.webp",
+    "en": "src/assets/en/filament-spule-formular.webp"
+   },
+   "recipe": "hb-material",
+   "args": {
+    "view": "form"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "wiki-katalog-grid",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/katalog-grid.webp",
+    "en": "src/assets/en/katalog-grid.webp"
+   },
+   "recipe": "hb-catalog",
+   "args": {
+    "tags": "closed"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "wiki-katalog-liste",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/katalog-liste.webp",
+    "en": "src/assets/en/katalog-liste.webp"
+   },
+   "recipe": "hb-catalog",
+   "args": {
+    "tags": "closed",
+    "folder": "haushalt",
+    "view": "list"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "wiki-katalog-zuruecksetzen",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/katalog-zuruecksetzen.webp",
+    "en": "src/assets/en/katalog-zuruecksetzen.webp"
+   },
+   "recipe": "hb-reset-catalog",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "dialog",
+    "pad": 24
+   },
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     882,
+     503
+    ],
+    "en": [
+     882,
+     503
+    ]
+   }
+  },
+  {
+   "id": "wiki-modell-detailseite",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/modell-detailseite.webp",
+    "en": "src/assets/en/modell-detailseite.webp"
+   },
+   "recipe": "hb-detail",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "wiki-neue-drucke",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/neue-drucke.webp",
+    "en": "src/assets/en/neue-drucke.webp"
+   },
+   "recipe": "hb-link-material",
+   "args": {
+    "dialog": true
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "dialog",
+    "pad": 24
+   },
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1632,
+     563
+    ],
+    "en": [
+     1632,
+     563
+    ]
+   }
+  },
+  {
+   "id": "wiki-ordner",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/ordner.webp",
+    "en": "src/assets/en/ordner.webp"
+   },
+   "recipe": "hb-catalog",
+   "args": {
+    "tags": "closed",
+    "view": "folder"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "wiki-papierkorb",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/papierkorb.webp",
+    "en": "src/assets/en/papierkorb.webp"
+   },
+   "recipe": "hb-trash",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "wiki-resin-drucker",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/resin-drucker.webp",
+    "en": "src/assets/en/resin-drucker.webp"
+   },
+   "recipe": "hb-material",
+   "args": {
+    "kind": "resin"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "printers",
+    "pad": 16
+   },
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     438,
+     304
+    ],
+    "en": [
+     438,
+     304
+    ]
+   }
+  },
+  {
+   "id": "wiki-sammlung",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/sammlung.webp",
+    "en": "src/assets/en/sammlung.webp"
+   },
+   "recipe": "hb-collection",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "wiki-update-verfuegbar",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/update-verfuegbar.webp",
+    "en": "src/assets/en/update-verfuegbar.webp"
+   },
+   "recipe": "hb-update-notice",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "notice",
+    "pad": 16
+   },
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     618,
+     195
+    ],
+    "en": [
+     592,
+     195
+    ]
+   }
+  },
+  {
+   "id": "wiki-werkzeuge",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/werkzeuge.webp",
+    "en": "src/assets/en/werkzeuge.webp"
+   },
+   "recipe": "hb-tools",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "wiki-resin-flaschen",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/resin-flaschen.webp",
+    "en": "src/assets/en/resin-bottles.webp"
+   },
+   "recipe": "hb-material",
+   "args": {
+    "kind": "resin"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "web-ams",
+   "root": "website",
+   "paths": {
+    "de": "bilder/ams.webp",
+    "en": "bilder/en/ams.webp"
+   },
+   "recipe": "hb-material",
+   "args": {
+    "view": "list"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "printers",
+    "pad": 16
+   },
+   "fit": "exact",
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     438,
+     826
+    ],
+    "en": [
+     438,
+     826
+    ]
+   }
+  },
+  {
+   "id": "web-archiv",
+   "root": "website",
+   "paths": {
+    "de": "bilder/archiv.webp",
+    "en": "bilder/en/archiv.webp"
+   },
+   "recipe": "hb-archive",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "dialog",
+    "pad": 40
+   },
+   "fit": "exact",
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     900,
+     473
+    ],
+    "en": [
+     900,
+     473
+    ]
+   }
+  },
+  {
+   "id": "web-detailseite",
+   "root": "website",
+   "paths": {
+    "de": "bilder/detailseite.webp",
+    "en": "bilder/en/detailseite.webp"
+   },
+   "recipe": "hb-detail",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "web-druckeranbindung",
+   "root": "website",
+   "paths": {
+    "de": "bilder/druckeranbindung.webp",
+    "en": "bilder/en/druckeranbindung.webp"
+   },
+   "recipe": "hb-link-material",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "web-fehler-melden",
+   "root": "website",
+   "paths": {
+    "de": "bilder/fehler-melden.webp",
+    "en": "bilder/en/fehler-melden.webp"
+   },
+   "recipe": "hb-bug-report",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "dialog",
+    "pad": 16
+   },
+   "fit": "exact",
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     978,
+     889
+    ],
+    "en": [
+     978,
+     833
+    ]
+   }
+  },
+  {
+   "id": "web-filament-dashboard",
+   "root": "website",
+   "paths": {
+    "de": "bilder/filament-dashboard.webp",
+    "en": "bilder/en/filament-dashboard.webp"
+   },
+   "recipe": "hb-material",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "web-filament-liste",
+   "root": "website",
+   "paths": {
+    "de": "bilder/filament-liste.webp",
+    "en": "bilder/en/filament-liste.webp"
+   },
+   "recipe": "hb-material",
+   "args": {
+    "view": "list"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "web-filament-resin",
+   "root": "website",
+   "paths": {
+    "de": "bilder/filament-resin.webp",
+    "en": "bilder/en/filament-resin.webp"
+   },
+   "recipe": "hb-material",
+   "args": {
+    "kind": "resin"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "web-hero-katalog",
+   "root": "website",
+   "paths": {
+    "de": "bilder/hero-katalog.webp",
+    "en": "bilder/en/hero-katalog.webp"
+   },
+   "recipe": "hb-catalog",
+   "args": {
+    "tags": "open"
+   },
+   "theme": "dark",
+   "viewport": [
+    1600,
+    1091
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     1091
+    ],
+    "en": [
+     1600,
+     1091
+    ]
+   }
+  },
+  {
+   "id": "web-katalog-dunkel",
+   "root": "website",
+   "paths": {
+    "de": "bilder/katalog-dunkel.webp",
+    "en": "bilder/en/katalog-dunkel.webp"
+   },
+   "recipe": "hb-catalog",
+   "args": {
+    "tags": "open"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "web-katalog-hell",
+   "root": "website",
+   "paths": {
+    "de": "bilder/katalog-hell.webp",
+    "en": "bilder/en/katalog-hell.webp"
+   },
+   "recipe": "hb-catalog",
+   "args": {
+    "tags": "open"
+   },
+   "theme": "light",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "web-komfort",
+   "root": "website",
+   "paths": {
+    "de": "bilder/komfort.webp",
+    "en": "bilder/en/komfort.webp"
+   },
+   "recipe": "hb-catalog",
+   "args": {
+    "tags": "open",
+    "density": "comfort"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "web-neue-drucke",
+   "root": "website",
+   "paths": {
+    "de": "bilder/neue-drucke.webp",
+    "en": "bilder/en/neue-drucke.webp"
+   },
+   "recipe": "hb-link-material",
+   "args": {
+    "dialog": true
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "dialog",
+    "pad": 24
+   },
+   "fit": "exact",
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1632,
+     563
+    ],
+    "en": [
+     1632,
+     563
+    ]
+   }
+  },
+  {
+   "id": "web-ordner",
+   "root": "website",
+   "paths": {
+    "de": "bilder/ordner.webp",
+    "en": "bilder/en/ordner.webp"
+   },
+   "recipe": "hb-catalog",
+   "args": {
+    "tags": "open",
+    "view": "folder"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "web-ordner-liste",
+   "root": "website",
+   "paths": {
+    "de": "bilder/ordner-liste.webp",
+    "en": "bilder/en/ordner-liste.webp"
+   },
+   "recipe": "hb-catalog",
+   "args": {
+    "tags": "open",
+    "view": "list"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "web-sammlung",
+   "root": "website",
+   "paths": {
+    "de": "bilder/sammlung.webp",
+    "en": "bilder/en/sammlung.webp"
+   },
+   "recipe": "hb-collection",
+   "args": {
+    "tags": "open"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
+  },
+  {
+   "id": "web-slicer",
+   "root": "website",
+   "paths": {
+    "de": "bilder/slicer.webp",
+    "en": "bilder/en/slicer.webp"
+   },
+   "recipe": "hb-settings",
+   "args": {
+    "tab": "slicer"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1500
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "panel",
+    "pad": 0
+   },
+   "fit": "exact",
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     450,
+     450
+    ],
+    "en": [
+     450,
+     450
+    ]
+   }
+  },
+  {
+   "id": "web-update",
+   "root": "website",
+   "paths": {
+    "de": "bilder/update.webp",
+    "en": "bilder/en/update.webp"
+   },
+   "recipe": "hb-update-notice",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "notice",
+    "pad": 16
+   },
+   "fit": "exact",
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     618,
+     195
+    ],
+    "en": [
+     592,
+     195
+    ]
+   }
+  },
+  {
+   "id": "web-warteschlange",
+   "root": "website",
+   "paths": {
+    "de": "bilder/warteschlange.webp",
+    "en": "bilder/en/warteschlange.webp"
+   },
+   "recipe": "hb-catalog",
+   "args": {
+    "tags": "open"
+   },
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "queue",
+    "pad": 0
+   },
+   "fit": "exact",
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     375,
+     274
+    ],
+    "en": [
+     375,
+     274
+    ]
+   }
+  }
+ ],
+ "excluded": [
+  {
+   "root": "app",
+   "path": "docs/benutzerhandbuch/bilder/25-drucker-verwalten.png",
+   "reason": "panel \"Drucker verwalten\" no longer exists in 0.16 (Printer Manager)"
+  },
+  {
+   "root": "app",
+   "path": "docs/benutzerhandbuch/bilder/en/25-drucker-verwalten.png",
+   "reason": "see de"
+  },
+  {
+   "root": "app",
+   "path": "docs/benutzerhandbuch/bilder/28-einstellungen-drucker.png",
+   "reason": "settings tab \"Drucker\" no longer exists in 0.16 (Printer Manager)"
+  },
+  {
+   "root": "app",
+   "path": "docs/benutzerhandbuch/bilder/en/28-einstellungen-drucker.png",
+   "reason": "see de"
+  },
+  {
+   "root": "wiki",
+   "path": "src/assets/de/drucker-verwalten.webp",
+   "reason": "UI element no longer exists in 0.16 (Printer Manager)"
+  },
+  {
+   "root": "wiki",
+   "path": "src/assets/en/drucker-verwalten.webp",
+   "reason": "UI element no longer exists in 0.16 (Printer Manager)"
+  },
+  {
+   "root": "wiki",
+   "path": "src/assets/de/einstellungen-drucker.webp",
+   "reason": "UI element no longer exists in 0.16 (Printer Manager)"
+  },
+  {
+   "root": "wiki",
+   "path": "src/assets/en/einstellungen-drucker.webp",
+   "reason": "UI element no longer exists in 0.16 (Printer Manager)"
+  },
+  {
+   "root": "website",
+   "path": "bilder/icon.png",
+   "reason": "no app screenshot (logo, social preview or composite)"
+  },
+  {
+   "root": "website",
+   "path": "bilder/og-de.jpg",
+   "reason": "no app screenshot (logo, social preview or composite)"
+  },
+  {
+   "root": "website",
+   "path": "bilder/og-en.jpg",
+   "reason": "no app screenshot (logo, social preview or composite)"
+  },
+  {
+   "root": "website",
+   "path": "bilder/testassistent-preview-en.webp",
+   "reason": "no app screenshot (logo, social preview or composite)"
+  },
+  {
+   "root": "website",
+   "path": "bilder/testassistent-vorschau.webp",
+   "reason": "no app screenshot (logo, social preview or composite)"
+  },
+  {
+   "root": "website",
+   "path": "bilder/bambu/bambu-1-verbindung.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/bambu/bambu-2-topics.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/bambu/bambu-3-publish.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/bambu/install-linux-1.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/bambu/install-linux-2.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/bambu/install-mac-1.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/bambu/install-mac-2.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/bambu/install-mac-3.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/bambu/install-windows-1.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/bambu/install-windows-2.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/en/m01.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/en/m02.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/en/m03.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/en/m04.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/en/m05.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/en/m06.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/en/m07.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/en/m08.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/en/m09.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/en/m10.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/en/m11.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/en/m12.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/en/m13.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/en/m14.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/en/m15.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/m01.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/m02.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/m03.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/m04.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/m05.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/m06.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/m07.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/m08.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/m09.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/m10.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/m11.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/m12.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/m13.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/m14.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "website",
+   "path": "bilder/modelle/m15.webp",
+   "reason": "Bambu installation guide / model thumbnail, not app UI"
+  },
+  {
+   "root": "wiki",
+   "path": "src/assets/icon.png",
+   "reason": "logo"
+  },
+  {
+   "root": "app",
+   "path": "docs/assets/demo.gif",
+   "reason": "animated demo; no recipe yet (needs a frame-by-frame recording pipeline)"
+  },
+  {
+   "root": "app",
+   "path": "docs/tests/bilder/drucker-anbindung.webp",
+   "reason": "0.15 UI element (settings tab Drucker / panel Drucker verwalten) no longer exists in 0.16"
+  },
+  {
+   "root": "app",
+   "path": "docs/tests/bilder/en/drucker-anbindung.webp",
+   "reason": "0.15 UI element (settings tab Drucker / panel Drucker verwalten) no longer exists in 0.16"
+  },
+  {
+   "root": "app",
+   "path": "docs/tests/bilder/drucker-verwalten.webp",
+   "reason": "0.15 UI element (settings tab Drucker / panel Drucker verwalten) no longer exists in 0.16"
+  },
+  {
+   "root": "app",
+   "path": "docs/tests/bilder/en/drucker-verwalten.webp",
+   "reason": "0.15 UI element (settings tab Drucker / panel Drucker verwalten) no longer exists in 0.16"
+  }
+ ]
+}

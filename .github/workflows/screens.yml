@@ -1,0 +1,88 @@
+name: Screenshots (check documentation pictures)
+
+# Renders every documentation picture from the manifest in tools/screens and compares it with the
+# checked-in one. Nothing is committed: the HTML report (and optionally the new pictures) are artifacts.
+on:
+  workflow_dispatch:
+    inputs:
+      update:
+        description: "Also provide the new pictures as an artifact (at their repo paths, no commit)"
+        type: boolean
+        default: false
+      only:
+        description: "Only entries matching this pattern (e.g. 'hb-*'), empty = all"
+        type: string
+        default: ""
+      lang:
+        description: "Languages"
+        type: string
+        default: "de,en"
+      threshold:
+        description: "SSIM below this counts as outdated"
+        type: string
+        default: "0.97"
+
+permissions:
+  contents: read
+
+jobs:
+  screens:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: tools/screens/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          pip install -r tools/screens/requirements.txt
+          # Ubuntu's own chromium package is a snap shim; Playwright brings a real build
+          npx playwright install --with-deps chromium
+
+      - name: Manifest tests
+        run: python -m pytest -q tools/screens/tests
+
+      - name: Check the pictures
+        env:
+          ONLY: ${{ inputs.only }}
+          LANGS: ${{ inputs.lang }}
+          THRESHOLD: ${{ inputs.threshold }}
+          UPDATE: ${{ inputs.update }}
+        shell: bash
+        run: |
+          mkdir -p screens-out
+          args=(--check --lang "${LANGS:-de,en}" --threshold "${THRESHOLD:-0.97}" --out screens-out)
+          if [ -n "$ONLY" ]; then args+=(--only "$ONLY"); fi
+          if [ "$UPDATE" = "true" ]; then args+=(--export screens-new); fi
+          python tools/screens/make.py "${args[@]}" | tee screens-out/summary.txt || exit_code=$?
+          cat screens-out/summary.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+          exit "${exit_code:-0}"
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screens-report
+          path: screens-out
+          if-no-files-found: ignore
+
+      - name: Upload new pictures
+        if: always() && inputs.update
+        uses: actions/upload-artifact@v4
+        with:
+          name: screens-new
+          path: screens-new
+          if-no-files-found: ignore
