@@ -1,0 +1,157 @@
+name: E2E (real input, tauri-driver)
+
+# Drives the real app with W3C WebDriver actions (pointer and keyboard events,
+# not element.click() from a script). Slow compared to the unit checks, so it
+# runs on demand and for pull requests that touch the app or the tests, not on
+# every push.
+on:
+  workflow_dispatch: {}
+  pull_request:
+    paths:
+      - "src/**"
+      - "src-tauri/**"
+      - "e2e/**"
+      - ".github/workflows/e2e.yml"
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache (app)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # >= 22.13: node:sqlite (used to seed the catalog) needs no flag.
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            e2e/package-lock.json
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev cmake \
+            webkit2gtk-driver xvfb xauth dbus dbus-x11 openbox x11-utils fonts-noto
+
+      # tauri-driver is a separate binary; cache it so the install runs once.
+      - name: Cache tauri-driver
+        id: tauri-driver-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/tauri-driver
+          key: tauri-driver-${{ runner.os }}-v2
+
+      - name: Install tauri-driver
+        if: steps.tauri-driver-cache.outputs.cache-hit != 'true'
+        run: cargo install tauri-driver --locked
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm ci --prefix e2e
+
+      # --no-default-features: no STEP/OCCT build, the E2E tests do not need it.
+      # --debug is much faster to build than a release and keeps the same UI.
+      - name: Build the app (debug, no bundle)
+        run: npm run tauri build -- --debug --no-bundle -- --no-default-features
+
+      - name: Run E2E tests (Xvfb + private D-Bus session)
+        env:
+          MFK_E2E_APP: ${{ github.workspace }}/src-tauri/target/debug/mf-katalog-manager
+        run: e2e/docker/entrypoint.sh npm run test --prefix e2e
+
+      - name: Upload screenshots and app logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-linux-failures
+          path: |
+            e2e/out/screenshots
+            e2e/out/app-logs
+          if-no-files-found: ignore
+
+  e2e-windows:
+    # Not proven yet: this job has never run on a real runner. It may fail for
+    # reasons unrelated to the app (driver version, WebView2 on the runner), so it
+    # must not block pull requests until it has been green once. Remove
+    # continue-on-error afterwards.
+    continue-on-error: true
+    runs-on: windows-2022
+    timeout-minutes: 75
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache (app)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            e2e/package-lock.json
+
+      - name: Cache tauri-driver
+        id: tauri-driver-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/tauri-driver.exe
+          key: tauri-driver-${{ runner.os }}-v2
+
+      - name: Install tauri-driver
+        if: steps.tauri-driver-cache.outputs.cache-hit != 'true'
+        run: cargo install tauri-driver --locked
+
+      - name: Install msedgedriver matching WebView2
+        shell: pwsh
+        run: ./e2e/scripts/install-msedgedriver.ps1
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm ci --prefix e2e
+
+      - name: Build the app (debug, no bundle)
+        run: npm run tauri build -- --debug --no-bundle -- --no-default-features
+
+      # Only the specs that need nothing Linux-specific (see e2e/README.md).
+      - name: Run E2E tests (Windows subset)
+        env:
+          MFK_E2E_APP: ${{ github.workspace }}\src-tauri\target\debug\mf-katalog-manager.exe
+        run: npm run test:windows --prefix e2e
+
+      - name: Upload screenshots and app logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-windows-failures
+          path: |
+            e2e/out/screenshots
+            e2e/out/app-logs
+          if-no-files-found: ignore

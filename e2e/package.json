@@ -1,0 +1,25 @@
+{
+  "name": "mf-katalog-manager-e2e",
+  "private": true,
+  "version": "0.0.0",
+  "description": "End-to-end tests driving the real app with W3C WebDriver actions (tauri-driver + WebdriverIO).",
+  "type": "module",
+  "scripts": {
+    "test": "wdio run wdio.conf.ts",
+    "typecheck": "tsc --noEmit",
+    "fixtures": "node fixtures/make-fixtures.mjs out/fixtures-preview",
+    "test:windows": "wdio run wdio.conf.ts --spec specs/01-start.e2e.ts --spec specs/04-printer-manager.e2e.ts --spec specs/07-layout-audit.e2e.ts"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.10.0",
+    "@wdio/cli": "^9.0.0",
+    "@wdio/globals": "^9.0.0",
+    "@wdio/local-runner": "^9.0.0",
+    "@wdio/mocha-framework": "^9.0.0",
+    "@wdio/spec-reporter": "^9.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "~5.7.0",
+    "webdriverio": "^9.0.0"
+  }
+}

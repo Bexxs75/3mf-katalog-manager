@@ -10,7 +10,9 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "npm --prefix e2e test",
+    "e2e:docker": "e2e/run-docker.sh"
   },
   "dependencies": {
     "@fontsource/barlow": "^5.3.0",

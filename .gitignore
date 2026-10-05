@@ -43,3 +43,6 @@ graphify-out/
 
 # Ruflo/Agent-Skills auf Projektebene (lokal, nicht versionieren)
 .agents/
+
+# E2E test output (screenshots, app logs, seeded template DB)
+e2e/out/
