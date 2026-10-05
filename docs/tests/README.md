@@ -28,6 +28,8 @@ version, from:
   `3MF-Testdaten.zip` (sample catalog, archives and broken files). The ZIP is
   uploaded by hand to the `preview` release (`{{testdaten}}` links to it);
   preview.yml keeps it and its checksum across runs,
+  For 0.16.0 it also holds the folder `5 Extras` (two STEP files); the optional
+  `Viele-Modelle.zip` (500 small models, test GK1) is uploaded next to it,
 - the `[Unreleased]` part of `CHANGELOG.md` in that language ("what's new"),
 - a scenario file per language: `docs/tests/<version>.md` (German) and
   `docs/tests/<version>.en.md` (English). Both must list the same scenario IDs
