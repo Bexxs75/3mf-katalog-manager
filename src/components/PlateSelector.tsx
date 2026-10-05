@@ -8,7 +8,7 @@ export function PlateSelector({ plates, selected, onSelect }: {
   if (plates.length < 2) return null;
   const options = [{ number: null, name: null }, ...plates];
   return <div role="radiogroup" aria-label={t('viewerPrintPlate')}
-    className="viewer-toggle absolute top-3 right-3 max-w-[calc(100%-9rem)] overflow-x-auto">
+    className="viewer-toggle absolute top-14 right-3 max-w-[calc(100%-1.5rem)] overflow-x-auto">
     {options.map((plate, index) => <button key={plate.number ?? 'all'} role="radio"
       aria-checked={selected === plate.number} tabIndex={selected === plate.number ? 0 : -1}
       title={plate.name ?? undefined} onClick={() => onSelect(plate.number)}

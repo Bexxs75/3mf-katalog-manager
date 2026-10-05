@@ -369,7 +369,7 @@ export function ModelViewer({ fileId, needsSnapshot, onSnapshotCaptured, onError
         <button className="viewer-pill absolute top-3 left-3" onClick={() => { setAutoRotating(false); fit(); }}>{t('viewerReset')}</button>
         <PlateSelector plates={plates} selected={selectedPlate} onSelect={setSelectedPlate} />
         {palette.length > 0 && <>
-          <div role="group" aria-label={t('viewerColorsLegend')} className="viewer-toggle absolute top-14 right-3">
+          <div role="group" aria-label={t('viewerColorsLegend')} className={`viewer-toggle absolute right-3 ${plates.length > 1 ? 'top-[6.25rem]' : 'top-14'}`}>
             <button aria-pressed={fileColors} onClick={() => setFileColors(true)}>{t('viewerFileColors')}</button>
             <button aria-pressed={!fileColors} onClick={() => setFileColors(false)}>{t('viewerSingleColor')}</button>
           </div>
