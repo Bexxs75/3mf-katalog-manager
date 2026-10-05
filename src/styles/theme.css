@@ -20,6 +20,12 @@ html, body { margin: 0; padding: 0; overscroll-behavior: none; }
 body { font-family: 'Barlow', Helvetica, sans-serif; }
 * { box-sizing: border-box; }
 
+.scrollbar-stable { scrollbar-gutter: stable; }
+/* Older webviews keep the same reserved width by always allocating a track. */
+@supports not (scrollbar-gutter: stable) {
+  .scrollbar-stable { overflow-y: scroll; }
+}
+
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -180,7 +186,10 @@ html { font-family: 'Barlow', Helvetica, sans-serif; }
 .viewer-error-card { width: 100%; max-width: 46ch; padding: 18px 20px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 10px; }
 .viewer-error-card h3 { font-size:var(--fs-title); font-weight: 700; }
 .viewer-error-card p { font-size:var(--fs-body); color: var(--ink-2); margin: 0; }
-.viewer-error-compact { padding: 10px 12px; gap: 6px; }
+.viewer-error-compact { padding: 8px; gap: 6px; }
+.viewer-error-compact h3, .viewer-error-compact p { font-size: var(--fs-small); }
+.viewer-error-compact .viewer-error-icon { width: 24px; height: 24px; flex-shrink: 0; }
+.viewer-error-compact button, .viewer-error-compact a { font-size: var(--fs-caption); padding-inline: 6px; height: 28px; }
 .viewer-error-icon { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; }
 .viewer-spinner { width: 26px; height: 26px; border-radius: 50%; border: 3px solid var(--line-strong); border-top-color: var(--accent); animation: viewer-spin 1s linear infinite; }
 @keyframes viewer-spin { to { transform: rotate(360deg); } }

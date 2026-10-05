@@ -1,17 +1,37 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import * as collectionsApi from '../lib/api/collections';
 import type { Collection, ModelFile } from '../types';
 
 export function useCollections() {
   const [collections, setCollections] = useState<Collection[]>([]);
-  const [activeCollection, setActiveCollection] = useState<string | null>(null);
+  const [activeCollection, setActiveCollectionState] = useState<string | null>(null);
+  const activeRef = useRef<string | null>(null);
+  const request = useRef(0);
+  const setActiveCollection = useCallback((id: string | null) => {
+    activeRef.current = id;
+    setActiveCollectionState(id);
+  }, []);
   const [collectionsGalleryOpen, setCollectionsGalleryOpen] = useState(false);
-  const [collectionModels, setCollectionModels] = useState<ModelFile[]>([]);
+  const [members, setMembers] = useState<{ id: string | null; models: ModelFile[] }>({ id: null, models: [] });
+  const collectionModels = members.id === activeCollection ? members.models : [];
+  const collectionLoading = activeCollection !== null && members.id !== activeCollection;
 
   const refreshCollections = useCallback(() => collectionsApi.listCollections().then(setCollections), []);
 
   const refreshCollectionModels = useCallback(
-    (collectionId: string) => collectionsApi.listCollectionFiles(collectionId).then(setCollectionModels),
+    async (collectionId: string) => {
+      const ticket = ++request.current;
+      try {
+        const models = await collectionsApi.listCollectionFiles(collectionId);
+        // Late responses must not replace the current view or a newer refresh.
+        if (activeRef.current === collectionId && ticket === request.current) setMembers({ id: collectionId, models });
+      } catch (error) {
+        if (activeRef.current === collectionId && ticket === request.current) {
+          setMembers(previous => previous.id === collectionId ? previous : { id: collectionId, models: [] });
+        }
+        throw error;
+      }
+    },
     [],
   );
 
@@ -21,9 +41,10 @@ export function useCollections() {
 
   useEffect(() => {
     if (activeCollection) {
-      refreshCollectionModels(activeCollection);
+      void refreshCollectionModels(activeCollection).catch(error => console.error('[collections] loading failed:', error));
     } else {
-      setCollectionModels([]);
+      ++request.current;
+      setMembers({ id: null, models: [] });
     }
   }, [activeCollection, refreshCollectionModels]);
 
@@ -31,9 +52,9 @@ export function useCollections() {
     (orderedIds: string[]) => {
       if (!activeCollection) return;
       const updates = orderedIds.map((fileId, position) => ({ fileId, position }));
-      setCollectionModels((prev) => {
-        const byId = new Map(prev.map((m) => [m.id, m]));
-        return orderedIds.map((id) => byId.get(id)).filter((m): m is ModelFile => m !== undefined);
+      setMembers((prev) => {
+        const byId = new Map(prev.models.map((m) => [m.id, m]));
+        return { ...prev, models: orderedIds.map((id) => byId.get(id)).filter((m): m is ModelFile => m !== undefined) };
       });
       collectionsApi.reorderCollection(activeCollection, updates).catch((e) => {
         console.error('[collections] reordering failed:', e);
@@ -63,20 +84,24 @@ export function useCollections() {
 
   const addModelToCollection = useCallback(
     (fileId: string, collectionId: string) =>
-      collectionsApi.addFilesToCollection(collectionId, [fileId]).then(() => {
-        refreshCollections();
-        if (activeCollection === collectionId) refreshCollectionModels(collectionId);
+      collectionsApi.addFilesToCollection(collectionId, [fileId]).then(async () => {
+        await Promise.all([
+          refreshCollections(),
+          ...(activeRef.current === collectionId ? [refreshCollectionModels(collectionId)] : []),
+        ]);
       }),
-    [refreshCollections, refreshCollectionModels, activeCollection],
+    [refreshCollections, refreshCollectionModels],
   );
 
   const bulkAddToCollection = useCallback(
     (fileIds: string[], collectionId: string) =>
-      collectionsApi.addFilesToCollection(collectionId, fileIds).then(() => {
-        refreshCollections();
-        if (activeCollection === collectionId) refreshCollectionModels(collectionId);
+      collectionsApi.addFilesToCollection(collectionId, fileIds).then(async () => {
+        await Promise.all([
+          refreshCollections(),
+          ...(activeRef.current === collectionId ? [refreshCollectionModels(collectionId)] : []),
+        ]);
       }),
-    [refreshCollections, refreshCollectionModels, activeCollection],
+    [refreshCollections, refreshCollectionModels],
   );
 
   const bulkRemoveFromCollection = useCallback(
@@ -99,6 +124,7 @@ export function useCollections() {
     collectionsGalleryOpen,
     setCollectionsGalleryOpen,
     collectionModels,
+    collectionLoading,
     refreshCollections,
     refreshCollectionModels,
     reorderCollection,

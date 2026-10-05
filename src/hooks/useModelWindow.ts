@@ -15,7 +15,7 @@ export function useModelWindow({ ids, containerRef, minWidth, gap, fallbackHeigh
   const rootRef = useRef<HTMLDivElement>(null);
   const discoveredContainer = useRef<HTMLDivElement | null>(null);
   const scroller = containerRef ?? discoveredContainer;
-  const [geometry, setGeometry] = useState({ columns: 1, rowHeight: fallbackHeight + gap, offsetTop: 0 });
+  const [geometry, setGeometry] = useState({ columns: minWidth ? 3 : 1, rowHeight: fallbackHeight + gap, offsetTop: 0 });
   const registry = useContext(ModelLayoutContext);
   const token = useRef({});
   useLayoutEffect(() => {
@@ -32,6 +32,8 @@ export function useModelWindow({ ids, containerRef, minWidth, gap, fallbackHeigh
     const card = root.querySelector<HTMLElement>('[data-model-id]');
     const measure = () => {
       const width = root.clientWidth;
+      // A hidden or not-yet-laid-out section must not collapse to one giant card.
+      if (!width) return;
       const columns = minWidth ? Math.max(1, Math.floor((width + gap) / (minWidth + gap))) : 1;
       const rect = root.getBoundingClientRect();
       const offsetTop = container ? rect.top - container.getBoundingClientRect().top - container.clientTop + container.scrollTop : 0;

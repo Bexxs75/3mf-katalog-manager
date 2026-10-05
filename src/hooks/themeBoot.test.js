@@ -50,3 +50,11 @@ it('keeps boot background and text colors in sync with theme.css', () => {
     }
   }
 });
+
+it('defines the themed card surface before the app stylesheet loads', () => {
+  const blocks = ['[data-app]', '[data-app="dark"]'].map(selector => themeCss.slice(themeCss.indexOf(`${selector} {`)).split('}')[0]);
+  for (const block of blocks) {
+    const color = block.match(/--plate: (oklch\([^;]+\));/)[1];
+    expect(bootCss).toContain(`--plate: ${color}`);
+  }
+});

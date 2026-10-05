@@ -24,7 +24,7 @@ export const es: Translations = {
   catalogLoadFailed: "No se pudo cargar el catálogo.",
   keyboardSearchEscape: "Salir del campo de búsqueda (Esc en búsqueda)",
   viewerLegend: "Leyenda",
-  viewerUnreadableCompact: "Comprueba si otro programa tiene abierto el archivo o ábrelo en el laminador.",
+  viewerUnreadableCompact: "El archivo está dañado o bloqueado. Revisa los programas abiertos o ábrelo en el laminador.",
   viewerTooLargeCompact: "Usa la imagen de vista previa o abre el modelo en el laminador.",
   viewerNoWebGLCompact: "Usa la imagen de vista previa o abre el archivo en el laminador.",
 

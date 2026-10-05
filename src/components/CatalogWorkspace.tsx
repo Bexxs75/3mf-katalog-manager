@@ -120,6 +120,7 @@ interface CatalogWorkspaceProps {
   sort: SortKey;
   filtered: ModelFile[];
   collectionModels: ModelFile[];
+  collectionLoading?: boolean;
   selectedId: string | null;
   setContextMenu: (value: { modelId: string; x: number; y: number } | null) => void;
   toggleBulkSelect: (id: string) => void;
@@ -223,6 +224,7 @@ export function CatalogWorkspace({
   sort,
   filtered,
   collectionModels,
+  collectionLoading = false,
   selectedId,
   setContextMenu,
   toggleBulkSelect,
@@ -428,7 +430,7 @@ export function CatalogWorkspace({
             ))}
             <div className="ml-auto flex flex-wrap items-center gap-2">
               <span aria-live="polite" className="font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--ink-2)] tabular-nums">
-                {t('filterBarCount').replace('{count}', String(displayedModels.length)).replace('{total}', String(models.length))}
+                {collectionLoading ? t('catalogLoading') : t('filterBarCount').replace('{count}', String(displayedModels.length)).replace('{total}', String(models.length))}
               </span>
               <button type="button" onClick={onClearFilters} className={clearButtonClass}>{t('filterBarClearAll')}</button>
             </div>
@@ -524,7 +526,7 @@ export function CatalogWorkspace({
             if (detailPanel === 'auto' && selectedId && target instanceof Element &&
               !target.closest('[data-model-id], button, input, a, [role="button"], [role="row"], [data-folder-header], [data-model-list-header], [data-navigation-menu]')) closeDetails();
           }} onScroll={event => { savedScroll.current = event.currentTarget.scrollTop; }} className="flex-1 overflow-y-auto overscroll-contain p-4">
-            {initialLoading ? <div role="status" className="p-6 text-body text-[var(--ink-2)]">
+            {initialLoading || collectionLoading ? <div role="status" className="p-6 text-body text-[var(--ink-2)]">
               {t('catalogLoading')}
               <div aria-hidden="true" className="mt-4 grid grid-cols-3 gap-4">
                 {[0, 1, 2].map(key => <div key={key} className="h-40 rounded-lg bg-[var(--panel-2)]" />)}

@@ -24,7 +24,7 @@ export const en: Translations = {
   catalogLoadFailed: "The catalog could not be loaded.",
   keyboardSearchEscape: "Leave the search field (Esc in search)",
   viewerLegend: "Legend",
-  viewerUnreadableCompact: "Check whether another program has the file open, or open it in your slicer.",
+  viewerUnreadableCompact: "The file is damaged or locked. Check open programs or open it in your slicer.",
   viewerTooLargeCompact: "Use the preview image or open the model in your slicer.",
   viewerNoWebGLCompact: "Use the preview image or open the file in your slicer.",
 

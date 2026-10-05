@@ -194,3 +194,10 @@ it('clears backup feedback when opening the import confirmation', () => {
   expect(screen.getByText('Ersetzt den kompletten aktuellen Katalog. Fortfahren?')).toBeVisible();
   expect(props.onImportCatalog).not.toHaveBeenCalled();
 });
+
+it('reserves scrollbar space in the settings scroller before messages grow', () => {
+  renderRail('catalog', 0, true);
+  fireEvent.click(screen.getByRole('button', {name: 'Einstellungen'}));
+  const panel = screen.getByRole('button', {name: 'Allgemein'}).closest('.overflow-y-auto');
+  expect(panel).toHaveClass('scrollbar-stable');
+});

@@ -446,6 +446,7 @@ export default function App() {
               sort={filters.sort}
               filtered={filters.filtered}
               collectionModels={collections.collectionModels}
+              collectionLoading={collections.collectionLoading}
               selectedId={store.selectedId}
               setContextMenu={setContextMenu}
               toggleBulkSelect={bulk.toggleBulkSelect}

@@ -247,7 +247,7 @@ export function FilamentView({ printerLink, printers, onCatalogChanged, printerC
   const segInactive = 'text-[var(--ink-3)] hover:text-[var(--ink)]';
 
   return (
-    <div className={`flex-1 min-w-0 flex flex-col min-h-0 overflow-y-auto ${drag.draggingSpoolId ? 'select-none' : ''}`}>
+    <div className={`flex-1 min-w-0 flex flex-col min-h-0 scrollbar-stable overflow-y-auto ${drag.draggingSpoolId ? 'select-none' : ''}`}>
       <div className="flex-none px-4 py-3 border-b border-[var(--line)] text-[length:var(--font-size-body)] font-semibold">
         {t('filamentDialogTitle')}
       </div>

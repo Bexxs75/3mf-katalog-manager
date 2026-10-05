@@ -38,6 +38,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- Error cards adapt to small 3D fields without covering the image switch; compact unreadable-file cards also offer problem reporting. Collection views wait for their members and ignore outdated responses. Manager panels reserve scrollbar space, and the initial model grid uses several columns with the correct themed surface.
 - Windows file selection in Explorer handles spaces and special characters. Print plates sit below the 3D preview; small viewers use compact controls and a collapsible legend.
 - Import hints and settings keep controls steady; narrow headers, data-folder buttons and printer statuses stay readable. Escape leaves search without erasing it; printer decimals follow the UI language and material-unit suggestions follow existing names.
 - Setup no longer describes STEP previews as unavailable; unreadable-file guidance includes locked files, and invalid backup databases show a plain message.
@@ -550,6 +551,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Behoben
 
+- Fehlerkarten passen sich kleinen 3D-Feldern an und lassen den Bildschalter frei; kompakte Karten für unlesbare Dateien bieten ebenfalls „Problem melden“. Sammlungsansichten warten auf ihre Mitglieder und ignorieren veraltete Antworten. Manager-Panels reservieren Platz für Bildlaufleisten; das erste Modellraster nutzt mehrere Spalten und die passende Designfarbe.
 - Die Dateiauswahl im Windows-Explorer berücksichtigt Leerzeichen und Sonderzeichen. Druckplatten stehen unter der 3D-Vorschau; kleine Vorschauen haben kompakte Bedienelemente und eine aufklappbare Legende.
 - Importhinweise und Einstellungen halten Knöpfe an ihrem Platz; schmale Kopfzeilen, Datenordner-Knöpfe und Druckerstatus bleiben lesbar. Escape verlässt die Suche ohne Löschen; Druckerzahlen folgen der Sprache und Materialeinheiten dem vorhandenen Namensschema.
 - Die Einrichtung bezeichnet STEP-Vorschauen nicht mehr als fehlend; Hinweise zu unlesbaren Dateien berücksichtigen Sperren, ungültige Backup-Datenbanken erhalten eine verständliche Meldung.

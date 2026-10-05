@@ -24,7 +24,7 @@ export const de: Translations = {
   catalogLoadFailed: "Der Katalog konnte nicht geladen werden.",
   keyboardSearchEscape: "Suchfeld verlassen (Esc im Suchfeld)",
   viewerLegend: "Legende",
-  viewerUnreadableCompact: "Prüfe, ob ein anderes Programm die Datei geöffnet hat, oder öffne sie im Slicer.",
+  viewerUnreadableCompact: "Die Datei ist beschädigt oder gesperrt. Prüfe offene Programme oder öffne sie im Slicer.",
   viewerTooLargeCompact: "Nutze das Vorschaubild oder öffne das Modell im Slicer.",
   viewerNoWebGLCompact: "Nutze das Vorschaubild oder öffne die Datei im Slicer.",
 

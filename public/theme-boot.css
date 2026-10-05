@@ -1,3 +1,5 @@
+html[data-app] { --plate: oklch(0.915 0.006 60); }
+html[data-app="dark"] { --plate: oklch(0.195 0.006 60); }
 /* First-frame colors: keep these values in sync with src/styles/theme.css. */
 html, body {
   background: oklch(0.965 0.004 60);
