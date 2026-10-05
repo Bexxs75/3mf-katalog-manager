@@ -342,6 +342,55 @@ Erwartet: Meldung.
                 ("U1", "new", "13 · Update testen"),
             ])
 
+    MULTI = """# 3 · Einrichten
+
+## E2 · Erster Start
+Schritte:
+1. Starten.
+Erwartet: Leer.
+
+# 8 · Neu in 0.15.9-1: Eins
+
+## S1 · Altes
+Schritte:
+1. Klicken.
+Erwartet: Geht.
+
+# 9 · Neu in 0.16.0: Eins
+
+## S2 · Neues
+Schritte:
+1. Klicken.
+Erwartet: Geht.
+
+# 10 · Neu in 0.16.0: Zwei
+
+## PB1 · Nur mit eigenem Drucker
+Schritte:
+1. Klicken.
+Erwartet: Geht.
+
+## GK1 · Großer Bestand
+Schritte:
+1. Klicken.
+Erwartet: Geht.
+
+## D1 · Mehr Neues
+Schritte:
+1. Klicken.
+Erwartet: Geht.
+"""
+
+    def test_all_chapters_of_the_newest_version_count_as_new_and_optional_tests_are_full_only(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = make_root(t, english=None)
+            (root / "docs/tests/0.16.0-1.md").write_text(self.MULTI)
+            ta.build("0.16.0-1", "windows", root / "out", root=root)
+            _, data = assistant_data(root / "out" / "Testassistent-0.16.0-1-Windows.html")
+            self.assertEqual([(s["id"], s["level"]) for s in data["tests"]], [
+                ("E2", "short"), ("S1", "full"), ("S2", "new"), ("PB1", "full"), ("GK1", "full"), ("D1", "new"),
+            ])
+
     def test_assistant_lists_only_the_platforms_scenarios(self):
         with tempfile.TemporaryDirectory() as t:
             root = make_root(t)

@@ -16,7 +16,9 @@ PRODUCT = "3MF Katalog Manager Preview"
 IDENTIFIER = "com.thebexxs.mfkatalogmanager.preview"
 # Tests that need more than clicking around (broken files, PowerShell, log details).
 EXPERT_TESTS = {"E5", "K1", "K2", "K3", "K4", "K5", "K6", "P1", "F3", "F4", "F5", "F6", "F7", "N3", "N5"}
-NEW_CHAPTER_RE = re.compile(r"(Neu in|New in) \d")
+# Tests that only apply to some testers (own hardware, extra test data) belong to the full test only.
+FULL_ONLY_PREFIXES = ("PB", "GK")
+NEW_CHAPTER_RE = re.compile(r"(?:Neu in|New in) (\d+(?:\.\d+)*(?:-\d+)?)")
 REPO = "Bexxs75/3mf-katalog-manager"
 # Test results go to this alias, where they are triaged automatically.
 TEST_EMAIL = "testing@3mfkatalog.de"
@@ -627,10 +629,13 @@ def build_assistant(out_dir, chapters, version, platform, lang, prep, packages):
     # Scope of each test: the newest "new in" chapter is what returning testers
     # need; setup, basics, the bug report form and the update make the short test;
     # broken files, the lock test and log details go to an optional expert chapter.
-    newest = next((c.title for c in reversed(chapters) if NEW_CHAPTER_RE.search(c.title)), None)
+    newest = next((m.group(1) for c in reversed(chapters) if (m := NEW_CHAPTER_RE.search(c.title))), None)
 
     def level(c, s):
-        if c.title == newest or s.id.startswith("U"):
+        if s.id.startswith(FULL_ONLY_PREFIXES):
+            return "full"
+        found = NEW_CHAPTER_RE.search(c.title)
+        if (found and found.group(1) == newest) or s.id.startswith("U"):
             return "new"
         if s.id in EXPERT_TESTS:
             return "expert"
