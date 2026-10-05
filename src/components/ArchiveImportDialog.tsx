@@ -1,7 +1,7 @@
 import { useModalDialog } from '../hooks/useModalDialog';
 import { useEffect, useMemo, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { useLanguage, useT } from '../i18n/LanguageContext';
+import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { formatBytes } from '../i18n/format';
 import * as importExportApi from '../lib/api/importExport';
 import { toAppError, type AppError } from '../lib/errors';
@@ -69,6 +69,7 @@ function RadioOption({ checked, label, onSelect, disabled }: { checked: boolean;
 
 export function ArchiveImportDialog({ archives, defaultTargetDir, onCancel, onDone, onStart }: Props) {
   const t = useT();
+  const formatCount = useFormatCount();
   const { language } = useLanguage();
   const [targetDir, setTargetDir] = useState<string | null>(defaultTargetDir);
   const [conflicts, setConflicts] = useState<Record<string, boolean>>({});
@@ -188,8 +189,7 @@ export function ArchiveImportDialog({ archives, defaultTargetDir, onCancel, onDo
                   <span className="flex-1 truncate">{fileName(archive.path)}</span>
                   <span className="text-[length:var(--font-size-meta)] text-[var(--ink-3)]">
                     {ok
-                      ? t('archiveModelsCount')
-                          .replace('{count}', String(archive.modelCount))
+                      ? formatCount(t('archiveModelsCount'), archive.modelCount)
                           .replace('{size}', formatBytes(archive.unpackedSize, language))
                       : t(STATUS_KEY[archive.status as Exclude<ArchiveStatus, 'ok'>])}
                   </span>

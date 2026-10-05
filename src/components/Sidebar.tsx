@@ -8,7 +8,7 @@ import { Icon } from './Icon';
 import { TagDot } from './TagDot';
 import { useEffect, useRef, useState } from 'react';
 import type { Folder, TagCount, ModelFile, Collection, FilamentCheck } from '../types';
-import { useLanguage, useT } from '../i18n/LanguageContext';
+import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { SEARCH_INPUT_ID } from '../hooks/useKeyboardShortcuts';
 import { FolderTree } from './FolderTree';
 import { sortTagsForDisplay, tagLabel, tagMatches } from '../lib/autoTags';
@@ -140,6 +140,7 @@ export function Sidebar({
   };
 
   const t = useT();
+  const formatCount = useFormatCount();
   const [dragging, setDragging] = useState(false);
   const stopDrag = useRef<(() => void) | null>(null);
   useEffect(() => () => stopDrag.current?.(), []);
@@ -425,7 +426,7 @@ export function Sidebar({
             {hiddenSingleCount > 0 && !tagQuery.trim() && (
               <button type="button" aria-expanded={showSingleTags} onClick={() => setShowSingleTags(show => !show)}
                 className="mt-2 text-left font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--ink-2)] hover:text-[var(--ink)] cursor-pointer">
-                {showSingleTags ? t('tagsHideSingles') : t('tagsShowSingles').replace('{count}', String(hiddenSingleCount))}
+                {showSingleTags ? t('tagsHideSingles') : formatCount(t('tagsShowSingles'), hiddenSingleCount)}
               </button>
             )}
           </div>

@@ -84,5 +84,6 @@ export function useCatalogBackup() {
       });
   }, []);
 
-  return { catalogBackupError, exportCatalog, importCatalog };
+  const clearCatalogBackupError = useCallback(() => setCatalogBackupError(null), []);
+  return { catalogBackupError, clearCatalogBackupError, exportCatalog, importCatalog };
 }

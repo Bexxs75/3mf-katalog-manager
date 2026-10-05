@@ -361,6 +361,10 @@ impl ImportJob {
             d.share.take();
             result
         };
+        for line in skipped_log_lines(&result.groups, log::max_level() >= log::LevelFilter::Debug) {
+            log::warn!(target: "import", "{line}");
+        }
+        log::info!(target: "import", "{}", job_summary(&result, self.clock.now_ms().saturating_sub(self.started) as f64 / 1000.0));
         self.event();
         self.events
             .emit("import://finished", serde_json::to_value(result).unwrap());
@@ -606,7 +610,7 @@ pub trait ImportReader: Send + Sync {
 struct FileReader;
 impl ImportReader for FileReader {
     fn read(&self, path: &Path) -> CmdResult<NewFile> {
-        let mut file = files::read_model_file(path, None)?;
+        let mut file = files::read_import_model_file(path, None)?;
         file.content_hash = Some(files::compute_content_hash(path)?);
         Ok(file)
     }
@@ -856,4 +860,94 @@ impl ImportJobs {
         }
         groups
     }
+}
+
+fn skip_reason(key: &str) -> &str {
+    match key {
+        "empty" => "Leere Datei (0 Byte)",
+        "invalid" => "Datei ungültig – konnte nicht gelesen werden",
+        "failed" => "Datei konnte nicht importiert werden",
+        "unsupported" => "Dateityp wird nicht unterstützt",
+        "path" => "Gleicher Pfad im Katalog",
+        "hash" => "Gleicher Inhalt im Katalog oder Import",
+        "unsafe" => "Unsicherer Pfad, übersprungen",
+        "blocked" => "Blockierter Dateityp, übersprungen",
+        "existing" => "Zieldatei vorhanden, übersprungen",
+        "notStarted" => "Nicht begonnen",
+        "cancelled" => "Importiert, aber nicht abgelegt: Import abgebrochen",
+        "targetMissing" => "Importiert, aber nicht abgelegt: Zielordner wurde entfernt",
+        "moveFailed" => "Importiert, aber nicht abgelegt: Verschieben fehlgeschlagen",
+        "jobFailed" => "Importiert, aber nicht abgelegt: Auftrag fehlgeschlagen",
+        "protected" => "Importiert, aber nicht abgelegt: geschützter Pfad",
+        other => other,
+    }
+}
+
+fn skipped_log_lines(groups: &ImportGroups, verbose: bool) -> Vec<String> {
+    let mut entries: Vec<(&str, &str)> = groups.skipped.iter().map(|e| (e.path.as_str(), e.reason.as_str()))
+        .chain(groups.duplicate.iter().map(|e| (e.path.as_str(), e.kind.as_str()))).collect();
+    for archive in &groups.archive {
+        for (group, reason) in [("skipped", "reason"), ("duplicates", "kind")] {
+            if let Some(rows) = archive["models"][group].as_array() {
+                for row in rows {
+                    entries.push((row["entryPath"].as_str().unwrap_or(""), row[reason].as_str().unwrap_or("invalid")));
+                }
+            }
+        }
+    }
+    if entries.is_empty() { return Vec::new(); }
+    if !verbose { return vec![format!("übersprungen: {} {} (einschließlich Duplikate)", entries.len(), if entries.len() == 1 { "Datei" } else { "Dateien" })]; }
+    entries.into_iter().map(|(path, reason)| format!("übersprungen: {} ({})", path.replace(['\n', '\r'], " "), skip_reason(reason))).collect()
+}
+
+fn job_summary(result: &ImportJobResult, secs: f64) -> String {
+    let (mut imported, mut duplicate, mut skipped) = (result.counts.imported + result.counts.imported_not_placed, result.counts.duplicate, result.counts.skipped);
+    for archive in &result.groups.archive {
+        let count = |key: &str| archive["models"][key].as_array().map_or(0, Vec::len);
+        imported += count("imported"); duplicate += count("duplicates"); skipped += count("skipped");
+    }
+    let pending = result.groups.archive.iter().filter(|a| a["state"] == "pending").count();
+    let source = match result.source { ImportSource::Files => "Dateien", ImportSource::Folder => "Ordner", ImportSource::Dropped => "Ablegen", ImportSource::SetupAdopt => "Übernahme", ImportSource::Archive => "Archiv" };
+    format!("{source}: {imported} importiert, {duplicate} Duplikate, {skipped} übersprungen, {pending} Archive offen, {secs:.1} s")
+}
+
+#[cfg(test)]
+mod logging_tests {
+    use super::*;
+    #[test]
+    fn skipped_logs_hide_names_until_verbose_mode_and_include_nested_duplicates() {
+        let mut groups = ImportGroups::default();
+        groups.skipped.push(SkippedEntry {path: "/private/broken.obj".into(), reason: "invalid".into()});
+        groups.duplicate.push(DuplicateEntry {path: "/private/same.stl".into(), kind: "hash".into(), existing_file_id: None});
+        groups.archive.push(serde_json::json!({"models":{"skipped":[{"entryPath":"../unsafe.stl","reason":"unsafe"}],"duplicates":[]}}));
+        assert_eq!(skipped_log_lines(&groups, false), ["übersprungen: 3 Dateien (einschließlich Duplikate)"]);
+        assert_eq!(skipped_log_lines(&groups, true), [
+            "übersprungen: /private/broken.obj (Datei ungültig – konnte nicht gelesen werden)",
+            "übersprungen: /private/same.stl (Gleicher Inhalt im Katalog oder Import)",
+            "übersprungen: ../unsafe.stl (Unsicherer Pfad, übersprungen)",
+        ]);
+    }
+    #[test]
+    fn final_summary_includes_source_archive_models_and_pending_archives() {
+        let service = ImportJobs::default();
+        let job = service.enqueue(ImportSource::Archive, None, false, None).unwrap();
+        job.data.lock().unwrap().groups.archive.push(serde_json::json!({"state":"finished","models":{"imported":[{},{}],"duplicates":[{}],"skipped":[{}]}}));
+        job.data.lock().unwrap().groups.archive.push(serde_json::json!({"state":"pending"}));
+        job.finish(None);
+        let result = job.result().unwrap();
+        assert_eq!(job_summary(&result, 1.34), "Archiv: 2 importiert, 1 Duplikate, 1 übersprungen, 1 Archive offen, 1.3 s");
+        assert!(skipped_log_lines(&ImportGroups::default(), false).is_empty());
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn skipped_log_filename_replacement_uses_the_existing_preview_rules() {
+    use crate::diagnostics::anonymize::{anonymize, to_text, Context};
+    let line = "WARN [import] übersprungen: /private/broken.obj (Datei ungültig – konnte nicht gelesen werden)";
+    let ctx = Context { replace_file_names: true, ..Context::default() };
+    let preview = to_text(&anonymize(line, &ctx));
+    assert!(!preview.contains("broken.obj"));
+    assert!(preview.contains("<datei-1>"));
+    assert!(preview.contains("WARN [import] übersprungen:"));
 }

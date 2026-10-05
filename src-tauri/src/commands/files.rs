@@ -4,12 +4,15 @@ pub(crate) const MAX_CUSTOM_IMAGE_BYTES: usize = 5 * 1024 * 1024;
 // Base64 inflates by 4/3: limit for the still encoded string in `set_render_snapshot`.
 const MAX_RENDER_SNAPSHOT_BASE64_BYTES: usize = MAX_CUSTOM_IMAGE_BYTES / 3 * 4 + 4;
 
-/// Slim projection of `ModelFileDto` for grid and list: without `customImage`,
-/// `materials` and `tags`, which only the detail page loads via
+/// Slim projection of `ModelFileDto` for grid and list: without image blobs
+/// and `tags`, which only the detail page loads via
 /// `list_files_by_ids([id])`.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileSummaryDto {
+    pub materials: Vec<MaterialDto>,
+    pub estimated_weight_g: Option<f64>,
+    pub weight_source: String,
     pub id: String,
     pub name: String,
     pub path: String,
@@ -75,29 +78,41 @@ pub fn list_file_summaries(state: State<AppState>) -> CmdResult<Vec<FileSummaryD
     let summaries = db::list_file_summaries(&conn).map_err(|e| e.to_string())?;
     Ok(summaries
         .into_iter()
-        .map(|s| FileSummaryDto {
-            id: s.id.to_string(),
-            name: s.name,
-            path: s.path,
-            file_type: s.file_type.as_str().to_string(),
-            folder_id: s.folder_id.map(|id| id.to_string()).unwrap_or_default(),
-            file_size_bytes: s.file_size_bytes,
-            dimensions_mm: s.dimensions_mm,
-            volume_cm3: s.volume_cm3,
-            object_count: s.object_count,
-            imported_at: s.imported_at,
-            file_modified_at: s.file_modified_at,
-            print_status: s.print_status,
-            favorite: s.favorite,
-            queue_position: s.queue_position,
-            has_thumbnail: s.has_thumbnail,
-            has_render_snapshot: s.has_render_snapshot,
-            creator: s.creator,
-            last_viewed_at: s.last_viewed_at,
-            content_hash: s.content_hash,
-        })
+        .map(summary_to_dto)
         .collect())
 }
+fn summary_to_dto(s: db::FileSummary) -> FileSummaryDto {
+    let slice_info = s.slice_info_json.as_deref().and_then(|json| serde_json::from_str::<threemf::SliceInfo>(json).ok());
+    let (estimated_weight_g, weight_source) = match slice_info {
+        Some(info) => (Some(info.total_weight_g), "slicer"),
+        None => (estimate_weight_g(s.volume_cm3, s.materials.first().map(|m| m.name.as_str())), "estimated"),
+    };
+    FileSummaryDto {
+        estimated_weight_g,
+        weight_source: weight_source.into(),
+        materials: s.materials.into_iter().map(|m| MaterialDto { name: m.name, display_color: m.display_color }).collect(),
+        id: s.id.to_string(),
+        name: s.name,
+        path: s.path,
+        file_type: s.file_type.as_str().to_string(),
+        folder_id: s.folder_id.map(|id| id.to_string()).unwrap_or_default(),
+        file_size_bytes: s.file_size_bytes,
+        dimensions_mm: s.dimensions_mm,
+        volume_cm3: s.volume_cm3,
+        object_count: s.object_count,
+        imported_at: s.imported_at,
+        file_modified_at: s.file_modified_at,
+        print_status: s.print_status,
+        favorite: s.favorite,
+        queue_position: s.queue_position,
+        has_thumbnail: s.has_thumbnail,
+        has_render_snapshot: s.has_render_snapshot,
+        creator: s.creator,
+        last_viewed_at: s.last_viewed_at,
+        content_hash: s.content_hash,
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileImagesDto {
@@ -753,7 +768,16 @@ pub(crate) fn import_one(
 /// Reads and parses a model file into the row to insert, without touching the
 /// database. This is the slow part of an import (whole file read, geometry
 /// parsed), so batch imports run it without holding the database lock.
+#[cfg(test)]
 pub(super) fn read_model_file(path: &Path, display_name: Option<&str>) -> CmdResult<NewFile> {
+    read_model_file_inner(path, display_name).map_err(|message| if message == "nicht unterstütztes Dateiformat" { CmdError::expected(message) } else { CmdError::from(message) })
+}
+
+pub(super) fn read_import_model_file(path: &Path, display_name: Option<&str>) -> CmdResult<NewFile> {
+    read_model_file_inner(path, display_name).map_err(CmdError::import_input)
+}
+
+fn read_model_file_inner(path: &Path, display_name: Option<&str>) -> Result<NewFile, String> {
     let file_name = display_name.map(|n| n.to_string()).unwrap_or_else(|| {
         path.file_name()
             .and_then(|n| n.to_str())
@@ -839,7 +863,7 @@ pub(super) fn read_model_file(path: &Path, display_name: Option<&str>) -> CmdRes
                 None,
             )
         }
-        _ => return Err(CmdError::expected("nicht unterstütztes Dateiformat")),
+        _ => return Err("nicht unterstütztes Dateiformat".into()),
     };
 
     let tags = tagging::suggest_tags(&TaggingContext {
@@ -1050,7 +1074,7 @@ const IMPORT_BATCH_SIZE: usize = 25;
 /// freezes the window).
 pub(crate) trait ImportDb {
     fn read_file(&mut self, path: &Path) -> CmdResult<NewFile> {
-        read_model_file(path, None)
+        read_import_model_file(path, None)
     }
     fn report_in_flight(&self, _count: usize) {}
     fn savepoint_control(&self) -> fn(&Connection, &str) -> rusqlite::Result<()> {
@@ -1150,14 +1174,14 @@ pub(super) fn import_many_selected(
                     }
                     Ok(false) => {}
                     Err(e) => {
-                        log::error!(target: "import", "duplicate check failed for {path_str}: {e}");
+                        log::error!(target: "import", "duplicate check failed: {e}");
                         result.skip(path_str, SkipReason::Failed);
                         continue;
                     }
                 }
             }
             if std::fs::metadata(&path).is_ok_and(|m| m.len() == 0) {
-                log::warn!(target: "import", "übersprungen (leere Datei): {path_str}");
+                log::debug!(target: "import", "übersprungen (leere Datei): {path_str}");
                 result.skip(path_str, SkipReason::Empty);
                 continue;
             }
@@ -1167,7 +1191,7 @@ pub(super) fn import_many_selected(
                 // compute_content_hash already logged the fault itself; this is just the
                 // (expected) consequence for the batch.
                 Err(e) => {
-                    log::warn!(target: "import", "übersprungen (Hashing fehlgeschlagen): {path_str}: {e}");
+                    log::debug!(target: "import", "übersprungen (Hashing fehlgeschlagen): {path_str}: {e}");
                     result.skip(path_str, SkipReason::Invalid);
                     continue;
                 }
@@ -1189,7 +1213,7 @@ pub(super) fn import_many_selected(
                     }
                     Ok(false) => {}
                     Err(e) => {
-                        log::error!(target: "import", "duplicate check (hash) failed for {path_str}: {e}");
+                        log::error!(target: "import", "duplicate check (hash) failed: {e}");
                         result.skip(path_str, SkipReason::Failed);
                         continue;
                     }
@@ -1198,7 +1222,7 @@ pub(super) fn import_many_selected(
             let mut new_file = match db.read_file(&path) {
                 Ok(f) => f,
                 Err(e) => {
-                    log::warn!(target: "import", "übersprungen: {path_str}: {e}");
+                    log::debug!(target: "import", "übersprungen: {path_str}: {e}");
                     result.skip(path_str, SkipReason::Invalid);
                     continue;
                 }
@@ -1385,9 +1409,8 @@ fn store_transaction_controlled(
     (result, commit_failed)
 }
 
-/// One-line summary logged exactly once per user-triggered import, by the
-/// callers (`import_files`/`import_folder`/`import_dropped`) after they've
-/// attached the real pending-archive count to `result`.
+/// Formats the legacy result shape to test its pending-archive accounting.
+#[cfg(test)]
 pub(super) fn import_summary(result: &ImportResultDto, secs: f64) -> String {
     format!(
         "{} importiert, {} Duplikate, {} übersprungen, {} Archive offen, {:.1} s",
@@ -1788,6 +1811,7 @@ mod tests {
     #[test]
     fn summary_serialization_has_presence_flags_and_no_image_fields() {
         let summary = FileSummaryDto {
+            materials: Vec::new(), estimated_weight_g: None, weight_source: "estimated".into(),
             id: "1".into(), name: "test".into(), path: "/tmp/test.stl".into(), file_type: "stl".into(),
             folder_id: String::new(), file_size_bytes: 10, dimensions_mm: None, volume_cm3: None,
             object_count: None, imported_at: String::new(), file_modified_at: Some("2023-11-14T22:13:20+00:00".into()), print_status: "not_printed".into(),
@@ -3363,3 +3387,26 @@ mod tests {
 #[cfg(test)]
 #[path = "import_batch_tests.rs"]
 mod import_batch_tests;
+
+#[cfg(test)]
+#[test]
+fn summary_keeps_card_values_after_rename_move_restore_and_metadata_reload() {
+    let conn = db::connect_in_memory().unwrap();
+    let id = db::test_insert_minimal_file(&conn, "/tmp/card.3mf", None).unwrap();
+    conn.execute("INSERT INTO file_materials (file_id, name, display_color) VALUES (?1, 'Kirschrot', '#ff0000')", [id]).unwrap();
+    conn.execute("UPDATE files SET volume_cm3 = 10, slice_info_json = ?1 WHERE id = ?2", rusqlite::params![r#"{"total_weight_g":30.46,"plates":[]}"#, id]).unwrap();
+    // Persisted metadata is authoritative after every refresh, even for an unseen model.
+    for update in ["UPDATE files SET name = 'renamed.3mf'", "UPDATE files SET path = '/tmp/moved/card.3mf'", "UPDATE files SET deleted_at = '2026-01-01'", "UPDATE files SET deleted_at = NULL"] {
+        conn.execute(update, []).unwrap();
+        let summaries = db::list_file_summaries(&conn).unwrap();
+        if update.contains("deleted_at = '") { assert!(summaries.is_empty()); continue; }
+        let dto = summary_to_dto(summaries.into_iter().next().unwrap());
+        assert_eq!(dto.materials[0].name, "Kirschrot");
+        assert_eq!(dto.estimated_weight_g, Some(30.46));
+        assert_eq!(dto.weight_source, "slicer");
+    }
+    conn.execute("UPDATE files SET slice_info_json = NULL", []).unwrap();
+    let dto = summary_to_dto(db::list_file_summaries(&conn).unwrap().remove(0));
+    assert_eq!(dto.weight_source, "estimated");
+    assert_eq!(dto.estimated_weight_g, estimate_weight_g(Some(10.0), Some("Kirschrot")));
+}

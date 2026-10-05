@@ -48,3 +48,13 @@ mod tests {
         assert_eq!(level(false), log::LevelFilter::Info);
     }
 }
+
+/// WARN would still pass the plugin's ERROR on an unreachable release endpoint.
+pub fn updater_level() -> log::LevelFilter { log::LevelFilter::Off }
+
+#[cfg(test)]
+#[test]
+fn updater_plugin_errors_are_filtered() {
+    assert_eq!(updater_level(), log::LevelFilter::Off);
+    assert!(log::Level::Error > updater_level());
+}

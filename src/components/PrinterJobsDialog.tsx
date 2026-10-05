@@ -1,8 +1,7 @@
 import { Icon } from './Icon';
 import { useModalDialog } from '../hooks/useModalDialog';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { useLanguage, useT } from '../i18n/LanguageContext';
-import { formatCount } from '../i18n/types';
+import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { formatDateTime, formatDurationMinutes, formatLengthMm, formatStockG } from '../i18n/format';
 import { toAppError, type AppError } from '../lib/errors';
 import { getPrinterJobThumbnail } from '../lib/api/printerLink';
@@ -51,6 +50,7 @@ const stripExt = (name: string) => name.replace(/\.(b?gcode)$/i, '');
 
 export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link, onClose, onBooked }: Props) {
   const t = useT();
+  const formatCount = useFormatCount();
   // Only filament can be deducted: resin bottles are neither suggestion
   // nor choice (the backend rejects them on confirm anyway).
   const spools = useMemo(() => allSpools.filter((s) => s.kind !== 'resin'), [allSpools]);

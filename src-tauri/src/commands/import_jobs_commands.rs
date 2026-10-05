@@ -121,7 +121,6 @@ pub(super) async fn wait_legacy(job: Arc<ImportJob>) -> CmdResult<ImportResultDt
         let result = job.result().unwrap();
         if let Some(error) = result.job_error { return Err(if matches!(error.kind.as_str(), "database" | "internal") { error.message.into() } else { CmdError::expected(error.message) }); }
         let legacy = job.legacy.lock().unwrap().take().unwrap_or_else(files::empty_import_result);
-        log::info!(target: "import", "{}", files::import_summary(&legacy, job.clock.now_ms().saturating_sub(job.started) as f64 / 1000.0));
         Ok(legacy)
     }).await.map_err(|e| e.to_string())?
 }

@@ -1,7 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { useLanguage, useT } from '../i18n/LanguageContext';
-import { formatCount } from '../i18n/types';
+import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { toAppError, type AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 import { listPrinterHistory } from '../lib/api/printers';
@@ -134,6 +133,7 @@ function PrinterDetail({ printer, state, link, onMaterial }: {
   printer: Printer; state: PrintersState; link: PrinterLinkState; onMaterial: Props['onMaterial'];
 }) {
   const t = useT();
+  const formatCount = useFormatCount();
   const { language } = useLanguage();
   const [spools, setSpools] = useState<FilamentSpool[]>([]);
   const [jobs, setJobs] = useState<PrinterHistoryJob[]>([]);

@@ -18,7 +18,7 @@ function renderRail(mainView: 'catalog' | 'filament' | 'printers' | 'trash' = 'c
     onRemoveSlicer: vi.fn(), onSetPrimarySlicer: vi.fn(),
     onScanCatalogIssues: vi.fn(), cleanupScanning: false, cleanupError: null,
     onExportCatalog: vi.fn(async () => true), catalogModelCount: 0, catalogFolderCount: 0,
-    onCatalogReset: vi.fn(), onImportCatalog: vi.fn(), catalogBackupError: null,
+    onCatalogReset: vi.fn(), onImportCatalog: vi.fn(), onClearCatalogBackupError: vi.fn(), catalogBackupError: null,
     catalogBaseDir: null, onOpenCatalogSetup: vi.fn(),
     update: {
       currentVersion: '0.15.0', info: null, phase: 'idle', progress: null,
@@ -182,4 +182,15 @@ it('moves printer settings to General and opens Printer Manager', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Printer Manager öffnen' }));
   expect(props.onMainViewChange).toHaveBeenCalledWith('printers');
   expect(props.onSettingsOpenChange).toHaveBeenLastCalledWith(false);
+});
+
+it('clears backup feedback when opening the import confirmation', () => {
+  const props = renderRail('catalog', 0, true);
+  fireEvent.click(screen.getByRole('button', { name: 'Einstellungen' }));
+  const catalogButtons = screen.getAllByRole('button', { name: 'Katalog' });
+  fireEvent.click(catalogButtons[catalogButtons.length - 1]);
+  fireEvent.click(screen.getByRole('button', { name: 'Katalog importieren' }));
+  expect(props.onClearCatalogBackupError).toHaveBeenCalledTimes(1);
+  expect(screen.getByText('Ersetzt den kompletten aktuellen Katalog. Fortfahren?')).toBeVisible();
+  expect(props.onImportCatalog).not.toHaveBeenCalled();
 });

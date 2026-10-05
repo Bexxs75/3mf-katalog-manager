@@ -134,7 +134,7 @@ pub async fn check_app_update(app: tauri::AppHandle, state: State<'_, AppState>)
         }
         // No toast for the check itself: offline users should not be bothered.
         Err(e) if is_transport_error(&e) => {
-            log::info!(target: "update", "Update-Check nicht möglich: {}", error_chain(&e));
+            log::warn!(target: "update", "Update-Check nicht möglich: {}", error_chain(&e));
             (None, true)
         }
         Err(e) => {

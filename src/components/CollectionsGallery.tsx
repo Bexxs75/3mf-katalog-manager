@@ -2,8 +2,8 @@ import { Icon } from './Icon';
 import { useRef, useState } from 'react';
 import { CatalogActionDialog, catalogActionButton } from './CatalogActionDialog';
 import type { Collection } from '../types';
-import { useT } from '../i18n/LanguageContext';
-import { formatCount } from '../i18n/types';
+import { useT, useFormatCount } from '../i18n/LanguageContext';
+
 
 interface Props {
   collections: Collection[];
@@ -16,6 +16,7 @@ interface Props {
 
 export function CollectionsGallery({ collections, onSelect, onCreate, onRename, onDelete, onBack }: Props) {
   const t = useT();
+  const formatCount = useFormatCount();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const deleteTrigger = useRef<HTMLButtonElement | null>(null);
   const [creating, setCreating] = useState(false);

@@ -320,6 +320,7 @@ export default function App() {
           // with stale IDs would hit the wrong records.
           onImportCatalog={() => backup.importCatalog(() => window.location.reload())}
           catalogBackupError={backup.catalogBackupError}
+          onClearCatalogBackupError={backup.clearCatalogBackupError}
           catalogBaseDir={catalogBaseDir}
           catalogModelCount={store.models.length}
           catalogFolderCount={store.folders.length}

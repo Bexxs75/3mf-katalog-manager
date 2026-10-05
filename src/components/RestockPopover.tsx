@@ -1,7 +1,6 @@
 import { Icon } from './Icon';
 import { useId, useMemo, useState } from 'react';
-import { useLanguage, useT } from '../i18n/LanguageContext';
-import { formatCount } from '../i18n/types';
+import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { formatDecimalInput } from '../i18n/format';
 import type { FilamentSpool } from '../types';
 import {
@@ -37,6 +36,7 @@ const stepButtonClass =
  */
 export function RestockPopover({ spool, anchor, knownLocations, onClose, onCreated }: Props) {
   const t = useT();
+  const formatCount = useFormatCount();
   const { language } = useLanguage();
   const id = useId();
   const resin = spool.kind === 'resin';

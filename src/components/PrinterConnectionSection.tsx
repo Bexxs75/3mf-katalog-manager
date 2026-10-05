@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { useLanguage, useT } from '../i18n/LanguageContext';
+import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { formatDateTime } from '../i18n/format';
 import { toAppError, type AppError } from '../lib/errors';
 import type { PrinterConnection, PrinterConnectionError } from '../types';
-import { formatCount, type PluralForms } from '../i18n/types';
+import type { PluralForms } from '../i18n/types';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
 import { ErrorText } from '../diagnostics/ErrorText';
 
@@ -68,6 +68,7 @@ const smallButton =
 /** Connection of a printer (type, address, test). The global switch controls testing and sync. */
 export function PrinterConnectionSection({ printerId, connection, link }: Props) {
   const t = useT();
+  const formatCount = useFormatCount();
   const { language } = useLanguage();
   const [address, setAddress] = useState(connection?.address ?? '');
   const [testing, setTesting] = useState(false);

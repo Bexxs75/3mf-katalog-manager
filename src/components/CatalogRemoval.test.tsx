@@ -63,7 +63,7 @@ describe('reset catalog', () => {
     render(<Provider><CatalogResetSection modelCount={4} folderCount={2} onExport={onExport} onReset={onReset} /></Provider>);
     fireEvent.click(screen.getByText('Katalog zurücksetzen …'));
     expect(document.activeElement).toBe(screen.getByText('Abbrechen'));
-    expect(screen.getByText(/alle 4 Modelle, 2 Ordner/)).toBeTruthy();
+    expect(screen.getByText(/4 Modelle, 2 Ordner/)).toBeTruthy();
     expect(invoke).not.toHaveBeenCalled();
     fireEvent.click(screen.getByText('Erst sichern …'));
     expect(await screen.findByText('Gesichert')).toBeDisabled();

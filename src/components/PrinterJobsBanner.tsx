@@ -1,4 +1,4 @@
-import { useLanguage, useT } from '../i18n/LanguageContext';
+import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { formatStockG } from '../i18n/format';
 import type { PrinterJob } from '../types';
 
@@ -10,11 +10,12 @@ interface Props {
 /** Hint above the inventory table, only when there are prints to confirm. */
 export function PrinterJobsBanner({ jobs, onReview }: Props) {
   const t = useT();
+  const formatCount = useFormatCount();
   const { language } = useLanguage();
   if (jobs.length === 0) return null;
   const printers = [...new Set(jobs.map((j) => j.printerName))].join(', ');
   const total = jobs.reduce((sum, j) => sum + (j.grams ?? 0), 0);
-  const title = jobs.length === 1 ? t('printerJobsBannerOne') : t('printerJobsBanner').replace('{count}', () => String(jobs.length));
+  const title = formatCount(t('printerJobsBanner'), jobs.length);
   return (
     <div role="status" className="flex items-center gap-3 rounded-lg border border-[var(--accent)] bg-[var(--accent-soft)] px-3.5 py-2.5">
       <span className="grid place-items-center w-[26px] h-[26px] flex-none rounded-md bg-[var(--accent)] text-[var(--accent-ink)] font-bold text-body">

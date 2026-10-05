@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import type { Language, Translations } from './types';
+import { formatCount, type PluralForms, type Language, type Translations } from './types';
 import { de } from './de';
 import { en } from './en';
 import { es } from './es';
@@ -52,4 +52,9 @@ export function useT() {
   const { language } = useLanguageContext();
   const dict = DICTIONARIES[language];
   return useCallback(<K extends keyof Translations>(key: K): Translations[K] => dict[key], [dict]);
+}
+
+export function useFormatCount() {
+  const { language } = useLanguageContext();
+  return useCallback((forms: PluralForms, count: number) => formatCount(forms, count, language), [language]);
 }

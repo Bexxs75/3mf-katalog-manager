@@ -4,7 +4,7 @@ import { useModelWindow } from '../hooks/useModelWindow';
 import { DragGrip } from './DragGrip';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { ModelFile } from '../types';
-import { useT, useLanguage } from '../i18n/LanguageContext';
+import { useT, useLanguage, useFormatCount } from '../i18n/LanguageContext';
 import { useUiDensity } from '../hooks/UiDensityContext';
 import { formatWeightG } from '../i18n/format';
 import { tagLabel } from '../lib/autoTags';
@@ -34,6 +34,7 @@ interface Props {
 function CardTags({ tags, comfort }: { tags: string[]; comfort: boolean }) {
   const { language } = useLanguage();
   const t = useT();
+  const formatCount = useFormatCount();
   const rowRef = useRef<HTMLDivElement>(null);
   const probeRef = useRef<HTMLSpanElement>(null);
   const [hiddenCount, setHiddenCount] = useState(0);
@@ -64,7 +65,7 @@ function CardTags({ tags, comfort }: { tags: string[]; comfort: boolean }) {
     chips.forEach(chip => observer?.observe(chip));
     return () => observer?.disconnect();
   }, [tags, language, comfort]);
-  const title = `${t('cardMoreTags').replace('{n}', String(hiddenCount))}: ${tags.map(tag => tagLabel(tag, language)).join(', ')}`;
+  const title = `${formatCount(t('cardMoreTags'), hiddenCount)}: ${tags.map(tag => tagLabel(tag, language)).join(', ')}`;
   return <div ref={rowRef} data-card-tags className={`relative flex flex-nowrap overflow-hidden shrink-0 ${comfort ? 'gap-1.5' : 'gap-1'}`}
     style={{ height: comfort ? 28 : 21, fontSize: comfort ? 'var(--font-size-meta)' : undefined, lineHeight: comfort ? '20px' : '15px' }}>
     {tags.map((tag, index) => <span key={tag} data-tag-index={index} className={chipClass}

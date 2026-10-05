@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Icon } from './Icon';
-import { useT } from '../i18n/LanguageContext';
-import { formatCount } from '../i18n/types';
+import { useT, useFormatCount } from '../i18n/LanguageContext';
 import { UNIT_TEMPLATES, isValidColorHex } from '../lib/filamentColors';
 import type { FilamentSpool, MaterialUnit, Printer, UnitKind } from '../types';
 import type { PrintersState } from '../hooks/usePrinters';
@@ -46,6 +45,7 @@ export function PrinterUnitsSection({ printer, spools, actions, onChanged, onMat
   onChanged: () => void; onMaterial: () => void;
 }) {
   const t = useT();
+  const formatCount = useFormatCount();
   const [editing, setEditing] = useState<MaterialUnit | 'new' | null>(null);
   const [deleting, setDeleting] = useState<MaterialUnit | null>(null);
   const order = usePrinterReorder(printer.units.map(u => u.id), ids => actions.reorderUnits(printer.id, ids));

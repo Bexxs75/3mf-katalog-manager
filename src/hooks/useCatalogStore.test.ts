@@ -661,3 +661,20 @@ it('restores snapshot presence after a failed save is reconciled with the databa
   expect(result.current.models[0].renderSnapshotImage).toBeNull();
   log.mockRestore();
 });
+
+it('supplies card material and weight on initial load, detail selection, refresh and restore', async () => {
+  const model = makeModelFile({ id: 'm1', materials: [{name: 'Kirschrot', displayColor: '#ff0000'}], estimatedWeightG: 30.46, weightSource: 'slicer' });
+  mockInitialLoad([model]);
+  vi.mocked(filesApi.listFilesByIds).mockResolvedValue([model]);
+  const { result } = renderHook(() => useCatalogStore({preselectFirst: false}));
+  await waitFor(() => expect(result.current.models).toHaveLength(1));
+  const check = () => expect(result.current.models[0]).toMatchObject({materials: model.materials, estimatedWeightG: 30.46, weightSource: 'slicer'});
+  check();
+  act(() => result.current.selectModel('m1'));
+  await waitFor(() => expect(filesApi.listFilesByIds).toHaveBeenCalledWith(['m1']));
+  check();
+  await act(() => result.current.refreshFiles());
+  check();
+  await act(() => result.current.restoreModel('m1'));
+  await waitFor(check);
+});

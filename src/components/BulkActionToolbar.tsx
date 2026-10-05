@@ -3,7 +3,7 @@ import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useRef, useState } from 'react';
 import { messageOf } from '../lib/errors';
 import type { Collection } from '../types';
-import { useLanguage, useT } from '../i18n/LanguageContext';
+import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { tagLabel } from '../lib/autoTags';
 
 interface BulkActionToolbarProps {
@@ -61,6 +61,7 @@ export function BulkActionToolbar({
 }: BulkActionToolbarProps) {
   const { lockProps } = useImportLock();
   const t = useT();
+  const formatCount = useFormatCount();
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -123,7 +124,7 @@ export function BulkActionToolbar({
     <div className="flex-none flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--line)] bg-[var(--panel-2)] [&_button]:whitespace-nowrap">
       {confirmRemove ? (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-small font-medium text-[var(--ink)]">{t('removeModelsQuestion').replace('{count}', String(selectedCount))}</span>
+          <span className="text-small font-medium text-[var(--ink)]">{formatCount(t('removeModelsQuestion'), selectedCount)}</span>
           <span className="text-small text-[var(--ink-2)]">{t('removeModelHint')}</span>
           {error && <span role="alert" className="font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--accent)]">{error}</span>}
           <button ref={cancelRef} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50" disabled={busy} onClick={() => setConfirmRemove(false)}>{t('cancel')}</button>
@@ -138,7 +139,7 @@ export function BulkActionToolbar({
       ) : confirmBulkDelete ? (
         <>
           <span className="text-small font-medium text-[var(--ink)]">
-            {t('bulkDeleteConfirmQuestion').replace('{count}', String(selectedCount))}
+            {formatCount(t('bulkDeleteConfirmQuestion'), selectedCount)}
           </span>
           <button
             ref={cancelRef}

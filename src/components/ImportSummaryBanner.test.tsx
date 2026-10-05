@@ -44,7 +44,7 @@ describe('ImportSummaryBanner', () => {
       outcome({ path: '/dl/c.rar', deleteError: 'veraendert' }),
     ]);
     expect(screen.getByText('3 vorhandene Dateien übersprungen')).toBeInTheDocument();
-    expect(screen.getByText('1 unsichere Einträge übersprungen')).toBeInTheDocument();
+    expect(screen.getByText('1 unsicherer Eintrag übersprungen')).toBeInTheDocument();
     expect(screen.getByText('2 Programme/Verknüpfungen aus Sicherheitsgründen nicht entpackt')).toBeInTheDocument();
     expect(screen.getByText('2 Archive gelöscht')).toBeInTheDocument();
     expect(screen.getByText('kaputt.zip fehlgeschlagen: beschaedigt')).toBeInTheDocument();
@@ -101,7 +101,7 @@ describe('ImportSummaryBanner', () => {
         <ImportSummaryBanner imported={0} duplicates={0} skipped={skipped} onClose={onClose} />
       </LanguageProvider>,
     );
-    expect(screen.getByText('1 leere Dateien nicht importiert: leer.stl')).toBeInTheDocument();
+    expect(screen.getByText('1 leere Datei nicht importiert: leer.stl')).toBeInTheDocument();
     expect(
       screen.getByText('5 Dateien beschädigt oder ohne lesbares Modell: a.3mf, b.3mf, c.3mf +2 weitere'),
     ).toBeInTheDocument();
@@ -117,7 +117,7 @@ describe('ImportSummaryBanner', () => {
         <ImportSummaryBanner imported={0} duplicates={0} skipped={[{ path: '/k/x.stl', reason: 'failed' }]} onClose={vi.fn()} />
       </LanguageProvider>,
     );
-    expect(screen.getByText('1 Dateien konnten nicht gespeichert werden: x.stl')).toBeInTheDocument();
+    expect(screen.getByText('1 Datei konnte nicht gespeichert werden: x.stl')).toBeInTheDocument();
     expect(screen.getByText('Problem melden')).toBeInTheDocument();
   });
 });

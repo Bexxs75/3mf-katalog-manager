@@ -92,6 +92,9 @@ pub fn run() {
                 // log::set_max_level (verbose mode), see diagnostics::verbose.
                 .level(log::LevelFilter::Debug)
                 .level_for("tauri", log::LevelFilter::Info)
+                // The plugin logs an unavailable release as ERROR; our check/download/install
+                // commands keep their own feedback on the update/cmd targets.
+                .level_for("tauri_plugin_updater", crate::diagnostics::verbose::updater_level())
                 .level_for("tao", log::LevelFilter::Warn)
                 .level_for("wry", log::LevelFilter::Warn)
                 .level_for("reqwest", log::LevelFilter::Warn)

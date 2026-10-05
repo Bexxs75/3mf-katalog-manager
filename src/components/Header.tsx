@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useDismissableMenu } from '../hooks/useDismissableMenu';
 import type { MainView, ViewMode, SortKey, SortDirection } from '../types';
 import { defaultSortDirection } from '../lib/catalogFilters';
-import { formatCount } from '../i18n/types';
-import { useT } from '../i18n/LanguageContext';
+
+import { useT, useFormatCount } from '../i18n/LanguageContext';
 
 interface Props {
   detailPanel?: 'auto' | 'pinned';
@@ -54,6 +54,7 @@ export function Header({
   detailOpen = false,
 }: Props) {
   const t = useT();
+  const formatCount = useFormatCount();
   const [importSource, setImportSource] = useState<'files' | 'folder'>('files');
   const [importMenuOpen, setImportMenuOpen] = useState(false);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);

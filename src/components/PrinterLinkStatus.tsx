@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { useLanguage, useT } from '../i18n/LanguageContext';
-import { formatCount } from '../i18n/types';
+import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { formatDateTime, formatRelativeTime } from '../i18n/format';
 import { toAppError, type AppError } from '../lib/errors';
 import { errorKeyFor } from './PrinterConnectionSection';
@@ -17,6 +16,7 @@ const iso = (unixSeconds: number) => new Date(unixSeconds * 1000).toISOString();
 /** Status row of a connected printer in the printer column. */
 export function PrinterLinkStatus({ printerId, link }: Props) {
   const t = useT();
+  const formatCount = useFormatCount();
   const { language } = useLanguage();
   const [syncError, setSyncError] = useState<AppError | null>(null);
   if (!link.enabled) return null;

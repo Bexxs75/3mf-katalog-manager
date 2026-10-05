@@ -106,11 +106,11 @@ export interface Translations {
   filterBarClearAll: string;
   filterBarCount: string;
   filterBarEmptyTitle: string;
-  filterBarEmptyText: string;
+  filterBarEmptyText: PluralForms;
   filterBarRemoveFolder: string;
   filterBarRemoveCollection: string;
   filterBarRemoveSearch: string;
-  tagsShowSingles: string;
+  tagsShowSingles: PluralForms;
   tagsHideSingles: string;
 
   detailPrevious: string;
@@ -138,15 +138,15 @@ export interface Translations {
   impStay: string;
   impTarget: string;
   impMoving: string;
-  impModelsImported: string;
-  impStopped: string;
-  impSearchStopped: string;
-  impFound: string;
+  impModelsImported: PluralForms;
+  impStopped: PluralForms;
+  impSearchStopped: PluralForms;
+  impFound: PluralForms;
   impOf: string;
   impPlaced: string;
   impDuration: string;
   impSaved: string;
-  impFailureHelp: string;
+  impFailureHelp: PluralForms;
   impCancel: string;
   impCancelling: string;
   impDetails: string;
@@ -157,11 +157,12 @@ export interface Translations {
   impNotPlaced: string;
   impInFlight: string;
   impWaitOne: string;
-  impWaitMany: string;
+  impWaitMany: PluralForms;
   impResultTitle: string;
   impTabSkipped: string;
   impTabDuplicate: string;
   impTabNotPlaced: string;
+  archiveCountNoun: PluralForms;
   impTabArchive: string;
   impFile: string;
   impReason: string;
@@ -271,11 +272,11 @@ export interface Translations {
   removeCatalogShort: string;
   removeEntry: string;
   removeModelQuestion: string;
-  removeModelsQuestion: string;
+  removeModelsQuestion: PluralForms;
   removeModelHint: string;
   removeFolderQuestion: string;
-  removeFolderList: string;
-  removeFolderModels: string;
+  removeFolderList: PluralForms;
+  removeFolderModels: PluralForms;
   removeFolderSafe: string;
   removeFolderReimport: string;
   catalogBaseProtected: string;
@@ -317,6 +318,8 @@ export interface Translations {
   viewFolder: string;
   noFolderLabel: string;
 
+  folderCountLabel: PluralForms;
+  setupFolderCount: PluralForms;
   filesCount: PluralForms;
 
   settingsTitle: string;
@@ -394,7 +397,7 @@ export interface Translations {
   // STEP support - this isn't a broken preview, just a build the user can switch.
 
   sortLastViewed: string;
-  cardMoreTags: string;
+  cardMoreTags: PluralForms;
   newBadge: string;
 
   filamentDialogTitle: string;
@@ -577,15 +580,15 @@ export interface Translations {
 
 
   importSummaryText: string;
-  importSkippedEmpty: string;
-  importSkippedInvalid: string;
-  importSkippedFailed: string;
+  importSkippedEmpty: PluralForms;
+  importSkippedInvalid: PluralForms;
+  importSkippedFailed: PluralForms;
   importSkippedMore: string;
   archiveDialogTitle: string;
   archiveTargetLabel: string;
   archiveTargetChange: string;
   archiveTargetMissing: string;
-  archiveModelsCount: string;
+  archiveModelsCount: PluralForms;
   archiveStatusNoModels: string;
   archiveStatusTooLarge: string;
   archiveStatusEncrypted: string;
@@ -601,10 +604,10 @@ export interface Translations {
   archiveProgressImporting: string;
   archiveProgressDone: string;
   archiveProgressFailed: string;
-  archiveSummaryExistingSkipped: string;
-  archiveSummaryUnsafeSkipped: string;
-  archiveSummaryBlockedSkipped: string;
-  archiveSummaryDeleted: string;
+  archiveSummaryExistingSkipped: PluralForms;
+  archiveSummaryUnsafeSkipped: PluralForms;
+  archiveSummaryBlockedSkipped: PluralForms;
+  archiveSummaryDeleted: PluralForms;
   archiveSummaryFailed: string;
   archiveSummaryNotDeleted: string;
 
@@ -653,7 +656,7 @@ export interface Translations {
   bulkSelectedCount: string;
   selectAllLabel: string;
   clearSelectionLabel: string;
-  bulkDeleteConfirmQuestion: string;
+  bulkDeleteConfirmQuestion: PluralForms;
   trashEmptyState: string;
   emptyTrashButton: string;
   emptyTrashConfirmQuestion: string;
@@ -808,7 +811,7 @@ export interface Translations {
   printerPausedRetest: string;
   printerSyncNow: string;
   printerJobsPending: PluralForms;
-  printerJobsBanner: string;
+  printerJobsBanner: PluralForms;
   printerJobsBannerOne: string;
   printerJobsBannerDetail: string;
   printerJobsReview: string;
@@ -873,7 +876,7 @@ export interface Translations {
   errorBoundaryReload: string;
 }
 
-export function formatCount(forms: PluralForms, n: number): string {
-  const form = n === 1 ? forms.one : forms.other;
-  return form.replace('{count}', String(n));
+export function formatCount(forms: PluralForms, n: number, language: Language = 'de'): string {
+  const form = new Intl.PluralRules(language).select(n) === 'one' ? forms.one : forms.other;
+  return form.replace('{count}', new Intl.NumberFormat(language).format(n));
 }

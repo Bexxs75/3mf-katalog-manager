@@ -1,9 +1,9 @@
 import type { PrinterNavigation } from '../types';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { useLanguage, useT } from '../i18n/LanguageContext';
+import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { formatVolumeMl, formatWeightG } from '../i18n/format';
-import { formatCount } from '../i18n/types';
+
 import type { FilamentSpool, SpoolKind } from '../types';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
 import { filamentStockStatus } from '../lib/filamentStatus';
@@ -52,6 +52,7 @@ interface Props {
 
 export function FilamentView({ printerLink, printers, onCatalogChanged, printerContext, onPrinterManager }: Props) {
   const t = useT();
+  const formatCount = useFormatCount();
   const { language } = useLanguage();
   const [spools, setSpools] = useState<FilamentSpool[]>([]);
   const [error, setError] = useState<AppError | null>(null);

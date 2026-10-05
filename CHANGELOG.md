@@ -18,6 +18,15 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- Model, file, folder and tag counts use the correct singular and plural forms in all four languages.
+- Import details open on the first tab containing entries.
+- Skipped import files and reasons are logged individually only with verbose logging; normal logs show anonymous totals.
+- Every file, folder, drop, catalog adoption and archive import writes one final summary with its source and duration.
+- Damaged import files are logged as warnings rather than command errors.
+- Unavailable update releases no longer produce a duplicate plugin error; download and installation errors remain visible.
+- Starting another catalog import clears the previous error before confirmation and file selection.
+- Model cards retain material and weight after loading, moving, restoring, renaming and opening details.
+
 - Models can also be dragged into a collection.
 - Linux (AppImage): “Open folder” and “Open in file manager” work again.
 - Oversized or unsupported images: a visible message instead of silence.
@@ -502,6 +511,15 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Druckplatten in 3MF-Dateien mit mehreren Platten einzeln in der 3D-Vorschau anzeigen; Kamera und Farblegende folgen der gewählten Platte.
 
 ### Behoben
+
+- Modell-, Datei-, Ordner- und Tag-Anzahlen verwenden in allen vier Sprachen die richtige Einzahl und Mehrzahl.
+- Importdetails öffnen auf dem ersten Reiter mit Einträgen.
+- Übersprungene Importdateien und Gründe stehen nur im ausführlichen Protokoll einzeln mit Namen; das normale Protokoll zeigt anonyme Summen.
+- Jeder Datei-, Ordner-, Drop-, Übernahme- und Archivimport schreibt eine abschließende Zusammenfassung mit Quelle und Dauer.
+- Beschädigte Importdateien werden als Warnung statt als Befehlsfehler protokolliert.
+- Nicht erreichbare Update-Releases erzeugen keinen zusätzlichen Plugin-Fehler; Download- und Installationsfehler bleiben sichtbar.
+- Ein erneuter Katalogimport entfernt die vorige Fehlermeldung vor Rückfrage und Dateiauswahl.
+- Modellkarten behalten Material und Gewicht nach Laden, Verschieben, Wiederherstellen, Umbenennen und Öffnen der Details.
 
 - Modelle lassen sich auch per Ziehen in eine Sammlung legen.
 - Linux (AppImage): „Ordner öffnen“ und „Im Dateimanager öffnen“ funktionieren wieder.

@@ -2,7 +2,7 @@ import { Icon } from './Icon';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { useT } from '../i18n/LanguageContext';
+import { useT, useFormatCount } from '../i18n/LanguageContext';
 import { toAppError, type AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 import { CatalogActionDialog, catalogActionBase, catalogActionButton } from './CatalogActionDialog';
@@ -13,6 +13,7 @@ export function CatalogResetSection({ modelCount, folderCount, onExport, onReset
 }) {
   const { lockProps } = useImportLock();
   const t = useT();
+  const formatCount = useFormatCount();
   const [open, setOpen] = useState(false);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -22,7 +23,7 @@ export function CatalogResetSection({ modelCount, folderCount, onExport, onReset
     <button {...lockProps} className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-7 w-full rounded-[3px] border border-dashed border-[var(--crit)] bg-transparent text-[var(--crit)] text-small cursor-pointer`} onClick={() => { setSaved(false); setError(null); setOpen(true); }}>{t('resetCatalog')} …</button>
     <p className="text-[length:var(--font-size-meta)] text-[var(--ink-3)] mt-1.5">{t('resetCatalogHint')}</p>
     {open && <CatalogActionDialog title={t('resetCatalogQuestion')} onClose={() => { if (!busy) setOpen(false); }}>
-      <p>{t('resetCatalogDetails').replace('{models}', String(modelCount)).replace('{folders}', String(folderCount))}</p>
+      <p>{t('resetCatalogDetails').replace('{models}', formatCount(t('modelCountLabel'), modelCount)).replace('{folders}', formatCount(t('folderCountLabel'), folderCount))}</p>
       <ul className="text-[var(--good)] space-y-1">
         <li><Icon name="check" size={14} /> {t('resetSafeFiles')}</li><li><Icon name="check" size={14} /> {t('resetSafeInventory')}</li><li><Icon name="check" size={14} /> {t('resetSafeTrash')}</li>
       </ul>

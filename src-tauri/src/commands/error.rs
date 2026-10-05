@@ -21,6 +21,25 @@ pub struct CmdError {
 pub enum GeometryErrorCode { NotFound, Unreadable, TooLarge, Unsupported }
 
 impl CmdError {
+    fn input_log_level(import: bool) -> log::Level {
+        if import { log::Level::Warn } else { log::Level::Error }
+    }
+
+    fn import_log_message(message: &str, verbose: bool) -> String {
+        if verbose { return message.into(); }
+        use crate::diagnostics::anonymize::{anonymize, to_text, Context};
+        to_text(&anonymize(message, &Context { replace_file_names: true, ..Context::default() }))
+    }
+
+    pub fn import_input(message: impl Into<String>) -> Self {
+        let message = message.into();
+        // Parser errors can include archive entry names; normal logs follow the
+        // same filename replacement rules as the diagnostics preview.
+        let logged = Self::import_log_message(&message, log::max_level() >= log::LevelFilter::Debug);
+        log::log!(target: "cmd", Self::input_log_level(true), "{logged}");
+        Self { message, expected: false, code: None }
+    }
+
     pub fn with_code(mut self, code: GeometryErrorCode) -> Self {
         self.code = Some(code);
         self
@@ -39,7 +58,7 @@ impl From<String> for CmdError {
     #[track_caller]
     fn from(message: String) -> Self {
         let at = std::panic::Location::caller();
-        log::error!(target: "cmd", "{message} ({}:{})", at.file(), at.line());
+        log::log!(target: "cmd", Self::input_log_level(false), "{message} ({}:{})", at.file(), at.line());
         Self { message, expected: false, code: None }
     }
 }
@@ -134,4 +153,23 @@ mod tests {
         assert!(e.contains("fehlt"));
         assert_eq!(format!("{e}"), "Datei fehlt");
     }
+}
+
+#[cfg(test)]
+#[test]
+fn import_parse_errors_only_change_the_log_level() {
+    assert_eq!(CmdError::input_log_level(true), log::Level::Warn);
+    assert_eq!(CmdError::input_log_level(false), log::Level::Error);
+    let message = "OBJ parse error: invalid face";
+    let error = CmdError::import_input(message);
+    assert_eq!(error.message, message);
+    assert!(!error.expected);
+}
+
+#[cfg(test)]
+#[test]
+fn import_parser_details_replace_filenames_only_in_normal_logs() {
+    let message = "3MF parse error: missing secret.model.3mf";
+    assert_eq!(CmdError::import_log_message(message, true), message);
+    assert!(!CmdError::import_log_message(message, false).contains("secret.model.3mf"));
 }

@@ -47,6 +47,7 @@ interface Props {
   catalogFolderCount: number;
   onCatalogReset: () => void;
   onImportCatalog: () => void;
+  onClearCatalogBackupError?: () => void;
   catalogBackupError: AppError | null;
   catalogBaseDir: string | null;
   onOpenCatalogSetup: () => void;
@@ -98,6 +99,7 @@ export function Rail({
   catalogFolderCount,
   onCatalogReset,
   onImportCatalog,
+  onClearCatalogBackupError,
   catalogBackupError,
   catalogBaseDir,
   onOpenCatalogSetup,
@@ -425,7 +427,7 @@ export function Rail({
                   </div>
                 ) : (
                   <button {...lockProps}
-                    onClick={() => setConfirmImportCatalog(true)}
+                    onClick={() => { onClearCatalogBackupError?.(); setConfirmImportCatalog(true); }}
                     className="mt-1.5 h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-small cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
                   >
                     {t('importCatalogButton')}

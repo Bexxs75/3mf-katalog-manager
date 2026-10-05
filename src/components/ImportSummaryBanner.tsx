@@ -1,6 +1,6 @@
 import { Icon } from './Icon';
 import { useEffect } from 'react';
-import { useT } from '../i18n/LanguageContext';
+import { useT, useFormatCount } from '../i18n/LanguageContext';
 import type { ArchiveOutcome, SkipReason, SkippedFile } from '../types';
 import { ReportProblemLink } from '../diagnostics/ReportProblemLink';
 
@@ -27,6 +27,7 @@ function fileName(path: string) {
 
 export function ImportSummaryBanner({ imported, duplicates, archives, skipped, onClose }: Props) {
   const t = useT();
+  const formatCount = useFormatCount();
 
   const lines: { key: string; text: string; unexpected?: boolean }[] = [];
   let hasProblems = false;
@@ -40,7 +41,7 @@ export function ImportSummaryBanner({ imported, duplicates, archives, skipped, o
     }
     lines.push({
       key: `skipped:${reason}`,
-      text: t(SKIP_TEXT[reason]).replace('{count}', String(names.length)).replace('{names}', list),
+      text: formatCount(t(SKIP_TEXT[reason]), names.length).replace('{names}', list),
       unexpected: reason === 'failed',
     });
   }
@@ -49,10 +50,10 @@ export function ImportSummaryBanner({ imported, duplicates, archives, skipped, o
     const unsafe = archives.reduce((sum, a) => sum + a.unsafeSkipped, 0);
     const blocked = archives.reduce((sum, a) => sum + a.blockedSkipped, 0);
     const deleted = archives.filter((a) => a.archiveDeleted).length;
-    if (existing > 0) lines.push({ key: 'existing', text: t('archiveSummaryExistingSkipped').replace('{count}', String(existing)) });
-    if (unsafe > 0) lines.push({ key: 'unsafe', text: t('archiveSummaryUnsafeSkipped').replace('{count}', String(unsafe)) });
-    if (blocked > 0) lines.push({ key: 'blocked', text: t('archiveSummaryBlockedSkipped').replace('{count}', String(blocked)) });
-    if (deleted > 0) lines.push({ key: 'deleted', text: t('archiveSummaryDeleted').replace('{count}', String(deleted)) });
+    if (existing > 0) lines.push({ key: 'existing', text: formatCount(t('archiveSummaryExistingSkipped'), existing) });
+    if (unsafe > 0) lines.push({ key: 'unsafe', text: formatCount(t('archiveSummaryUnsafeSkipped'), unsafe) });
+    if (blocked > 0) lines.push({ key: 'blocked', text: formatCount(t('archiveSummaryBlockedSkipped'), blocked) });
+    if (deleted > 0) lines.push({ key: 'deleted', text: formatCount(t('archiveSummaryDeleted'), deleted) });
     for (const a of archives) {
       if (a.strippedRoot) {
         lines.push({ key: `stripped:${a.path}`, text: t('archiveInnerFolderSkipped').replace('{name}', a.strippedRoot) });

@@ -745,6 +745,8 @@ pub fn list_files(conn: &Connection) -> Result<Vec<FileRecord>, DbError> {
 
 /// Catalog metadata without image blobs or per-file child queries.
 pub struct FileSummary {
+    pub materials: Vec<MaterialRecord>,
+    pub slice_info_json: Option<String>,
     pub id: i64,
     pub name: String,
     pub path: String,
@@ -775,16 +777,18 @@ pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbErro
                 object_count, imported_at, print_status, favorite,
                 queue_position, thumbnail_png IS NOT NULL AS has_thumbnail,
                 render_snapshot_png IS NOT NULL AS has_render_snapshot, creator,
-                last_viewed_at, content_hash, file_modified_at
+                last_viewed_at, content_hash, file_modified_at, slice_info_json
          FROM files WHERE deleted_at IS NULL ORDER BY name",
     )?;
-    let rows = stmt
+    let mut rows = stmt
         .query_map([], |row| {
             let dx: Option<f64> = row.get(6)?;
             let dy: Option<f64> = row.get(7)?;
             let dz: Option<f64> = row.get(8)?;
             let file_type_str: String = row.get(3)?;
             Ok(FileSummary {
+                materials: Vec::new(),
+                slice_info_json: row.get(21)?,
                 id: row.get(0)?,
                 name: row.get(1)?,
                 path: row.get(2)?,
@@ -811,6 +815,13 @@ pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbErro
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
+    let mut materials = conn.prepare("SELECT m.file_id, m.name, m.display_color FROM file_materials m JOIN files f ON f.id = m.file_id WHERE f.deleted_at IS NULL ORDER BY m.rowid")?;
+    let mut by_id: std::collections::HashMap<i64, Vec<MaterialRecord>> = std::collections::HashMap::new();
+    for material in materials.query_map([], |row| Ok((row.get::<_, i64>(0)?, MaterialRecord { name: row.get(1)?, display_color: row.get(2)? })))? {
+        let (id, material) = material?;
+        by_id.entry(id).or_default().push(material);
+    }
+    for row in &mut rows { row.materials = by_id.remove(&row.id).unwrap_or_default(); }
     Ok(rows)
 }
 

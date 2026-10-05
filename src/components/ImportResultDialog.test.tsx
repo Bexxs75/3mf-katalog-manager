@@ -28,3 +28,18 @@ it.each([undefined, {writeText: () => Promise.reject(new Error('denied'))}])('of
 it.each([['en','Empty file (0 bytes)'],['es','Archivo vacío (0 bytes)'],['fr','Fichier vide (0 octet)']])('translates reasons in %s', (language, reason) => {
   localStorage.setItem('3mf-katalog-language',language); setup(); expect(screen.getByText(reason)).toBeVisible();
 });
+
+it.each([0, 1, 2, 3, -1])('opens the first populated tab (%s)', first => {
+  const groups = { ...importResult.groups, skipped: [], duplicate: [], importedNotPlaced: [], archive: [] };
+  const keys = ['skipped', 'duplicate', 'importedNotPlaced', 'archive'] as const;
+  if (first >= 0) Object.assign(groups, { [keys[first]]: importResult.groups[keys[first]] });
+  render(<LanguageProvider><ImportResultDialog result={{...importResult, groups}} onClose={vi.fn()} /></LanguageProvider>);
+  expect(screen.getAllByRole('tab')[Math.max(0, first)]).toHaveAttribute('aria-selected', 'true');
+});
+
+it.each([['de', 'Archiv 1'], ['en', 'archive 1'], ['es', 'archivo comprimido 1'], ['fr', 'archive 1']])('uses the archive singular in %s', (language, name) => {
+  localStorage.setItem('3mf-katalog-language', language);
+  const result = {...importResult, groups: {...importResult.groups, archive: importResult.groups.archive.slice(0, 1)}};
+  render(<LanguageProvider><ImportResultDialog result={result} onClose={vi.fn()} /></LanguageProvider>);
+  expect(screen.getByRole('tab', {name})).toBeVisible();
+});

@@ -78,7 +78,7 @@ it('removes a bulk selection through the new command and clears the toolbar', as
   await act(async () => { render(<LanguageProviderWithDiagnostics><UiDensityProvider><App /></UiDensityProvider></LanguageProviderWithDiagnostics>); });
   fireEvent.click(screen.getAllByRole('checkbox')[0]);
   fireEvent.click(screen.getByText('Aus Katalog entfernen'));
-  expect(screen.getByText('1 Modelle aus dem Katalog entfernen?')).toBeTruthy();
+  expect(screen.getByText('1 Modell aus dem Katalog entfernen?')).toBeTruthy();
   fireEvent.click(screen.getByText('Entfernen'));
   await waitFor(() => expect(screen.queryAllByText('Cube.stl')).toHaveLength(0));
   expect(screen.queryByText('Aus Katalog entfernen')).toBeNull();

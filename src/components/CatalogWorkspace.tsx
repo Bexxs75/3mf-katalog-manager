@@ -21,7 +21,7 @@ import { BulkActionToolbar } from './BulkActionToolbar';
 import type { ModelFile, Folder, TagCount, ViewMode, SortKey, Collection, SlicerConfig } from '../types';
 import type { DisplayPreference } from '../hooks/useDisplayPreference';
 import type { useCollapsedFolders } from '../hooks/useCollapsedFolders';
-import { useLanguage, useT } from '../i18n/LanguageContext';
+import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { tagLabel } from '../lib/autoTags';
 import { useFilamentCheck } from '../hooks/useFilamentCheck';
 import { selectFromQueue } from '../lib/queueSelect';
@@ -296,6 +296,7 @@ export function CatalogWorkspace({
   const { language } = useLanguage();
   const { jobActive } = useImportLock();
   const t = useT();
+  const formatCount = useFormatCount();
   const scrollRef = useCatalogScroll(detailModel !== null, JSON.stringify([
     view, sort, language, query, activeFolderId, activeTag, activeCollection, collectionsGalleryOpen, toolView,
   ]), selectedId);
@@ -527,7 +528,7 @@ export function CatalogWorkspace({
             ) : chips.length > 0 && displayedModels.length === 0 ? (
               <div className="flex flex-col items-center gap-2.5 border border-dashed border-[var(--line-strong)] rounded-[10px] px-5 py-8 text-center">
                 <h3 className="font-semibold text-[length:var(--font-size-body)]">{t('filterBarEmptyTitle')}</h3>
-                <p className="max-w-[48ch] text-[length:var(--font-size-body)] text-[var(--ink-2)]">{t('filterBarEmptyText').replace('{total}', String(models.length))}</p>
+                <p className="max-w-[48ch] text-[length:var(--font-size-body)] text-[var(--ink-2)]">{formatCount(t('filterBarEmptyText'), models.length)}</p>
                 <button type="button" onClick={onClearFilters} className={clearButtonClass}>{t('filterBarClearAll')}</button>
               </div>
             ) : view === 'grid' ? (

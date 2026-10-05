@@ -2,7 +2,7 @@ import { Icon } from './Icon';
 import { useModalDialog } from '../hooks/useModalDialog';
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { useT } from '../i18n/LanguageContext';
+import { useT, useFormatCount } from '../i18n/LanguageContext';
 import type { ImportResultDto, Folder } from '../types';
 import { toAppError, type AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
@@ -50,6 +50,7 @@ type Done =
 
 export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet }: Props) {
   const t = useT();
+  const formatCount = useFormatCount();
   const [busy, setBusy] = useState<'adopt' | 'new' | null>(null);
   const [error, setError] = useState<AppError | null>(null);
   const [done, setDone] = useState<Done | null>(null);
@@ -214,7 +215,7 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
               <div className="text-body font-semibold text-[var(--good)] mb-3">
                 <Icon name="check" size={14} />{' '}
                 {done.kind === 'adopt'
-                  ? t('catalogSetupAdoptSummary').replace('{files}', String(done.files)).replace('{folders}', String(done.folders))
+                  ? t('catalogSetupAdoptSummary').replace('{files}', formatCount(t('filesCount'), done.files)).replace('{folders}', formatCount(t('setupFolderCount'), done.folders))
                   : t('catalogSetupNewSummary').replace('{path}', done.path)}
               </div>
               <div className="flex gap-2">

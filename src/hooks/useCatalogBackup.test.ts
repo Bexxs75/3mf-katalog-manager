@@ -131,3 +131,17 @@ it('reports whether export actually saved a backup', async () => {
   vi.mocked(invoke).mockRejectedValueOnce('disk full');
   await act(async () => expect(await result.current.exportCatalog()).toBe(false));
 });
+
+it('clears the previous import error before confirmation and before choosing another file', async () => {
+  const { result } = renderHook(() => useCatalogBackup());
+  vi.mocked(invoke).mockRejectedValueOnce('bad zip');
+  await act(() => result.current.importCatalog(vi.fn()));
+  expect(result.current.catalogBackupError?.message).toBe('bad zip');
+  act(() => result.current.clearCatalogBackupError());
+  expect(result.current.catalogBackupError).toBeNull();
+  vi.mocked(invoke).mockRejectedValueOnce('bad again');
+  await act(() => result.current.importCatalog(vi.fn()));
+  vi.mocked(invoke).mockResolvedValueOnce({ imported: false, settingsJson: null });
+  await act(() => result.current.importCatalog(vi.fn()));
+  expect(result.current.catalogBackupError).toBeNull();
+});

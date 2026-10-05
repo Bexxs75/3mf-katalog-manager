@@ -70,7 +70,7 @@ export interface ModelFile {
 /**
  * Slim projection of `ModelFile` for grid and list
  * (`list_file_summaries`), without the fields only the detail page needs
- * (e.g. `materials`, `customImage`, `sliceInfo`). `listFilesByIds([id])`
+ * (e.g. `customImage`, `sliceInfo`). `listFilesByIds([id])`
  * loads the full data on selection.
  */
 export interface ModelFileSummary {
@@ -79,6 +79,9 @@ export interface ModelFileSummary {
   path: string;
   folderId: string;
   fileType: string;
+  materials: ModelFile['materials'];
+  estimatedWeightG: number | null;
+  weightSource: ModelFile['weightSource'];
   fileSizeBytes: number;
   dimensionsMm: [number, number, number] | null;
   volumeCm3: number | null;

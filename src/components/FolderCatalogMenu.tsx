@@ -2,7 +2,7 @@ import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { invoke } from '@tauri-apps/api/core';
-import { useT } from '../i18n/LanguageContext';
+import { useT, useFormatCount } from '../i18n/LanguageContext';
 import { toAppError, type AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 import { CatalogActionDialog, catalogActionBase, catalogActionButton } from './CatalogActionDialog';
@@ -14,6 +14,7 @@ export function FolderCatalogMenu({ folderId, name, x, y, onClose, onRemoved, re
 }) {
   const { lockProps } = useImportLock();
   const t = useT();
+  const formatCount = useFormatCount();
   const [dialog, setDialog] = useState(false);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState<AppError | null>(null);
@@ -47,8 +48,8 @@ export function FolderCatalogMenu({ folderId, name, x, y, onClose, onRemoved, re
   );
   return <CatalogActionDialog title={t('removeFolderQuestion').replace('{name}', summary?.name ?? name)} onClose={() => { if (!busy) onClose(); }} returnFocus={returnFocus}>
     {summary && <ul className="list-disc pl-5 space-y-1">
-      <li>{t('removeFolderList').replace('{name}', summary.name).replace('{count}', String(summary.subfolderCount))}</li>
-      <li>{t('removeFolderModels').replace('{count}', String(summary.modelCount))}</li>
+      <li>{formatCount(t('removeFolderList'), summary.subfolderCount).replace('{name}', summary.name)}</li>
+      <li>{formatCount(t('removeFolderModels'), summary.modelCount)}</li>
     </ul>}
     <p className="text-[var(--good)] font-semibold">{t('removeFolderSafe')}</p>
     <p>{t('removeFolderReimport')}</p>

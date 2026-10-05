@@ -1,6 +1,6 @@
 import { useId, useMemo, useRef, useState, type RefObject } from 'react';
 import { useModalDialog } from '../hooks/useModalDialog';
-import { useLanguage, useT } from '../i18n/LanguageContext';
+import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import type { ImportJobResult } from '../types';
 import type { Translations } from '../i18n/types';
 import { countsWithArchiveModels } from '../lib/importCounts';
@@ -11,8 +11,9 @@ interface Row { path: string; reason: string; nested?: boolean; existingFileId?:
 interface Props { result: ImportJobResult; onClose: () => void; returnFocus?: RefObject<HTMLElement | null>; onSelectModel?: (id: string) => void }
 export function ImportResultDialog({result, onClose, returnFocus, onSelectModel}: Props) {
   const t = useT(); const {language} = useLanguage(); const id = useId();
+  const formatCount = useFormatCount();
   const counts = countsWithArchiveModels(result.counts, result.groups);
-  const [tab, setTab] = useState(0); const [copied, setCopied] = useState(false); const [fallback, setFallback] = useState(false);
+  const [tab, setTab] = useState(() => Math.max(0, [result.groups.skipped, result.groups.duplicate, result.groups.importedNotPlaced, result.groups.archive].findIndex(group => group.length > 0))); const [copied, setCopied] = useState(false); const [fallback, setFallback] = useState(false);
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
   const dialog = useModalDialog({open: true, onClose, returnFocus, initialFocus: '[data-close]'});
   const rows = useMemo(() => {
@@ -36,11 +37,11 @@ export function ImportResultDialog({result, onClose, returnFocus, onSelectModel}
   const n = (value: number) => new Intl.NumberFormat(language).format(value);
   return <div className="import-backdrop"><div ref={dialog} className="import-result" role="dialog" aria-modal="true" aria-labelledby={`${id}-title`} tabIndex={-1}>
     <h2 id={`${id}-title`}>{t('impResultTitle')}</h2>
-    <div className="import-counts">{([[counts.imported,'impImported'],[counts.duplicate,'impDuplicate'],[counts.skipped,'impSkipped'],[counts.importedNotPlaced,'impNotPlaced'],[counts.archive,'impTabArchive']] as const).map(([value,key]) => <span key={key}><b>{n(value)}</b> {t(key)}</span>)}</div>
+    <div className="import-counts">{([[counts.imported,'impImported'],[counts.duplicate,'impDuplicate'],[counts.skipped,'impSkipped'],[counts.importedNotPlaced,'impNotPlaced'],[counts.archive,'impTabArchive']] as const).map(([value,key]) => <span key={key}><b>{n(value)}</b> {key === 'impTabArchive' ? formatCount(t('archiveCountNoun'), value) : t(key)}</span>)}</div>
     <div role="tablist" aria-label={t('impResultTitle')} className="import-tabs">{tabs.map((key,i) => <button key={key} ref={el => {buttons.current[i] = el;}} id={`${id}-tab-${i}`} role="tab" aria-selected={tab === i} aria-controls={`${id}-panel`} tabIndex={tab === i ? 0 : -1} onClick={() => setTab(i)} onKeyDown={event => {
       const next = event.key === 'ArrowRight' ? (i+1)%4 : event.key === 'ArrowLeft' ? (i+3)%4 : event.key === 'Home' ? 0 : event.key === 'End' ? 3 : null;
       if (next !== null) { event.preventDefault(); setTab(next); buttons.current[next]?.focus(); }
-    }}>{t(key)} <span>{n(i === 3 ? result.groups.archive.length : rows[i].length)}</span></button>)}</div>
+    }}>{i === 3 ? formatCount(t('archiveCountNoun'), result.groups.archive.length) : t(key)} <span>{n(i === 3 ? result.groups.archive.length : rows[i].length)}</span></button>)}</div>
     <div className="import-table-scroll" role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-tab-${tab}`} tabIndex={0}><table><thead><tr><th>{t('impFile')}</th><th>{t('impReason')}</th></tr></thead><tbody>{rows[tab].map((row,i) => <tr key={i} className={row.nested ? 'import-nested' : undefined}><td className="font-code">{row.nested && '↳ '}{row.path}</td><td>{row.reason}{row.existingFileId && onSelectModel && <button onClick={() => {onClose(); onSelectModel(row.existingFileId!);}}>{t('impExistingModel').replace('{id}', row.existingFileId)}</button>}</td></tr>)}</tbody></table></div>
     {fallback && <label>{t('impCopyFallback')}<textarea className="font-code" readOnly value={text} onFocus={e => e.currentTarget.select()} aria-label={t('impCopyFallback')} /></label>}
     <footer><button onClick={() => void copy()}>{t('impCopy')}</button><span role="status">{copied ? t('impCopied') : ''}</span><button data-close onClick={onClose}>{t('impClose')}</button></footer>
