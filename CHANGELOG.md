@@ -11,6 +11,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Changed
 
+- The app can only be started once; a second launch brings its window to the front.
 - From v0.16.0, there is only one download per system, always including STEP preview. The file is larger than the former standard package and its name has no `-STEP` suffix. Users of the former standard variant receive it automatically with their next in-app update.
 
 ## [0.15.3] - 2026-10-04
@@ -484,6 +485,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Geändert
 
+- Die App lässt sich nur einmal starten; ein zweiter Start holt das Fenster nach vorn.
 - Ab v0.16.0 gibt es nur noch eine Download-Variante pro System, immer mit STEP-Vorschau. Die Datei ist größer als das bisherige Standardpaket und ihr Name hat keinen `-STEP`-Zusatz. Nutzer der bisherigen Standardvariante erhalten sie automatisch beim nächsten Update in der App.
 
 ## [0.15.3] - 2026-10-04

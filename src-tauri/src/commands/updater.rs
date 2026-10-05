@@ -230,6 +230,15 @@ pub fn install_app_update(app: tauri::AppHandle, state: State<AppState>, pending
     // Windows exits inside install() and the installer restarts the app; on macOS
     // and Linux the new bundle is in place and we restart into it. Off the main
     // thread (see the `async` attribute above), this still restarts reliably.
+    // The restart fallback can skip Exit; release the Unix lock before spawning
+    // the replacement process even when the event loop cannot accept the exit.
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    if crate::single_instance::single_instance_enabled(
+        cfg!(debug_assertions),
+        std::env::var(crate::single_instance::ALLOW_MULTIPLE_ENV).ok().as_deref(),
+    ) {
+        tauri_plugin_single_instance::destroy(&app);
+    }
     app.restart();
 }
 

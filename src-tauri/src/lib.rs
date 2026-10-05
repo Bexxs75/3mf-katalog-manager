@@ -9,6 +9,7 @@ mod obj;
 mod printer_link;
 mod safe_file;
 mod slicers;
+mod single_instance;
 #[cfg(feature = "step-preview")]
 pub mod step;
 mod stl;
@@ -69,7 +70,19 @@ fn sensitive_dirs(app: &tauri::AppHandle) -> Vec<std::path::PathBuf> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+    let allow_multiple = std::env::var(single_instance::ALLOW_MULTIPLE_ENV).ok();
+    if single_instance::single_instance_enabled(cfg!(debug_assertions), allow_multiple.as_deref()) {
+        // The singleton must claim its lock before any other plugin initializes.
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                single_instance::bring_to_front(&window);
+            } else {
+                log::warn!(target: "single_instance", "main window is unavailable");
+            }
+        }));
+    }
+    builder
         .plugin(
             tauri_plugin_log::Builder::new()
                 .clear_targets()
