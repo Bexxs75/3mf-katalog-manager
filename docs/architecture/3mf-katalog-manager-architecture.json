@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "3MF Katalog Manager — Architektur v0.15.0",
+    "title": "3MF Katalog Manager — Architektur v0.16.0-1 (Release Candidate)",
     "output": "docs/architecture/3mf-katalog-manager-architecture.html",
     "quality_profile": "showcase",
     "locale": "de",
@@ -435,7 +435,7 @@
       "url": "https://github.com/Bexxs75/3mf-katalog-manager.git",
       "provider": "github",
       "link_mode": "local-only",
-      "revision": "a9d3807b6c6e680ccee8c15429920be3fac95249"
+      "revision": "103d40c379be183a367cc41da5cc6683375c5ca3"
     }
   },
   "components": [
@@ -457,7 +457,7 @@
       "id": "frontend",
       "type": "frontend",
       "label": "React-Frontend",
-      "sublabel": "React 19 · TypeScript · Tailwind",
+      "sublabel": "React 19 · Printer- & Material-Manager",
       "pos": [
         270,
         330
@@ -469,8 +469,16 @@
       "sources": [
         {
           "path": "package.json",
-          "line": 15,
-          "end_line": 20
+          "line": 18,
+          "end_line": 23
+        },
+        {
+          "path": "src/components/PrinterManagerView.tsx",
+          "line": 38
+        },
+        {
+          "path": "src/components/FilamentView.tsx",
+          "line": 53
         }
       ]
     },
@@ -478,7 +486,7 @@
       "id": "preview3d",
       "type": "frontend",
       "label": "3D-Live-Vorschau",
-      "sublabel": "three.js · OrbitControls",
+      "sublabel": "three.js · Plattenwahl · WebGL-Fallback",
       "pos": [
         270,
         110
@@ -490,12 +498,16 @@
       "sources": [
         {
           "path": "src/components/ModelViewer.tsx",
-          "line": 3,
-          "end_line": 5
+          "line": 6
         },
         {
           "path": "src/components/ModelViewer.tsx",
-          "line": 153
+          "line": 84,
+          "end_line": 88
+        },
+        {
+          "path": "src/components/PlateSelector.tsx",
+          "line": 4
         }
       ]
     },
@@ -503,7 +515,7 @@
       "id": "commands",
       "type": "backend",
       "label": "Tauri-Commands",
-      "sublabel": "IPC-Bridge · 15 Rust-Module",
+      "sublabel": "IPC-Bridge · 19 Rust-Module",
       "pos": [
         700,
         330
@@ -515,8 +527,17 @@
       "sources": [
         {
           "path": "src-tauri/src/commands/mod.rs",
-          "line": 3,
-          "end_line": 17
+          "line": 1
+        },
+        {
+          "path": "src-tauri/src/commands/mod.rs",
+          "line": 5,
+          "end_line": 24
+        },
+        {
+          "path": "src-tauri/src/commands/catalog_removal.rs",
+          "line": 135,
+          "end_line": 147
         }
       ]
     },
@@ -524,7 +545,7 @@
       "id": "sqlite",
       "type": "database",
       "label": "SQLite-Katalog",
-      "sublabel": "rusqlite (bundled)",
+      "sublabel": "rusqlite · Sicherung vor Migration",
       "pos": [
         1130,
         330
@@ -536,8 +557,8 @@
       "sources": [
         {
           "path": "src-tauri/src/db/repository.rs",
-          "line": 15,
-          "end_line": 16
+          "line": 17,
+          "end_line": 22
         }
       ]
     },
@@ -582,13 +603,19 @@
       ],
       "sources": [
         {
-          "path": "src-tauri/src/commands/updater.rs",
-          "line": 68
+          "path": "src-tauri/src/updater/mod.rs",
+          "line": 7,
+          "end_line": 14
         },
         {
-          "path": "src-tauri/src/updater/mod.rs",
-          "line": 11,
-          "end_line": 23
+          "path": "src-tauri/src/commands/updater.rs",
+          "line": 42,
+          "end_line": 48
+        },
+        {
+          "path": "src-tauri/src/commands/updater.rs",
+          "line": 126,
+          "end_line": 129
         }
       ]
     },
@@ -596,7 +623,7 @@
       "id": "slicer",
       "type": "external",
       "label": "Installierter Slicer",
-      "sublabel": "Bambu Studio · OrcaSlicer · u. a.",
+      "sublabel": "Bambu Studio · Orca · Creality Print u. a.",
       "pos": [
         1000,
         110
@@ -607,9 +634,14 @@
       ],
       "sources": [
         {
+          "path": "src-tauri/src/slicers.rs",
+          "line": 26,
+          "end_line": 27
+        },
+        {
           "path": "src-tauri/src/commands/slicers.rs",
-          "line": 149,
-          "end_line": 166
+          "line": 124,
+          "end_line": 132
         }
       ]
     },
@@ -641,7 +673,7 @@
       "id": "parser",
       "type": "backend",
       "label": "Datei-Parser",
-      "sublabel": "3MF · STL · OBJ · STEP · Archive",
+      "sublabel": "3MF · STL · OBJ · STEP",
       "pos": [
         710,
         550
@@ -662,8 +694,9 @@
           "end_line": 5
         },
         {
-          "path": "src-tauri/src/archive/extract.rs",
-          "line": 231
+          "path": "src-tauri/src/commands/files.rs",
+          "line": 806,
+          "end_line": 806
         }
       ]
     },
@@ -683,17 +716,47 @@
       "sources": [
         {
           "path": "src-tauri/src/commands/files.rs",
-          "line": 1174
+          "line": 1442
         },
         {
           "path": "src-tauri/src/updater/backup.rs",
           "line": 14,
-          "end_line": 26
+          "end_line": 28
         },
         {
           "path": "src-tauri/src/lib.rs",
-          "line": 74,
-          "end_line": 77
+          "line": 88,
+          "end_line": 92
+        }
+      ]
+    },
+    {
+      "id": "importer",
+      "type": "backend",
+      "label": "Importdienst",
+      "sublabel": "Warteschlange · Abbruch · Savepoints",
+      "pos": [
+        710,
+        440
+      ],
+      "size": [
+        200,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src-tauri/src/commands/import_jobs.rs",
+          "line": 89,
+          "end_line": 98
+        },
+        {
+          "path": "src-tauri/src/commands/import_jobs.rs",
+          "line": 544,
+          "end_line": 553
+        },
+        {
+          "path": "src-tauri/src/commands/files.rs",
+          "line": 1374
         }
       ]
     }
@@ -754,16 +817,26 @@
       "variant": "dashed"
     },
     {
-      "id": "commands-parser",
-      "from": "commands",
-      "to": "parser",
-      "label": "parst & entpackt"
-    },
-    {
       "id": "commands-filesystem",
       "from": "commands",
       "to": "filesystem",
       "label": "Import · Backup · Logs"
+    },
+    {
+      "id": "commands-importer",
+      "from": "commands",
+      "to": "importer",
+      "label": "startet Import-Auftrag",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "importer-parser",
+      "from": "importer",
+      "to": "parser",
+      "label": "parst & entpackt",
+      "fromSide": "bottom",
+      "toSide": "top"
     }
   ],
   "cards": [
@@ -771,26 +844,26 @@
       "dot": "cyan",
       "title": "Frontend",
       "items": [
-        "React 19 + TypeScript + Tailwind im Tauri-WebView",
-        "Fachliche Hooks + typisierte API-Schicht (src/lib/api/*)",
-        "Update-Hinweis, „Fehler melden“ mit Logvorschau, Einrichtungsdialog"
+        "React 19 + TypeScript + Tailwind im Tauri-WebView; Schriften lokal gebündelt",
+        "Neu: Printer Manager (Drucker, Materialeinheiten, Verbindung) und Material Manager als eigene Ansichten; Import mit Fortschritt und Abbrechen",
+        "3D-Vorschau mit Plattenwahl für 3MF-Dateien; ohne WebGL eine Fehlermeldung statt Absturz"
       ]
     },
     {
       "dot": "emerald",
       "title": "Backend & Persistenz",
       "items": [
-        "15 fachliche Rust-Module, u. a. updater, diagnostics, printer_link, archives",
-        "Native Parser für 3MF/STL/OBJ, STEP optional via OCCT, Archive entpacken",
-        "Ein SQLite-Katalog; vor jedem Update eine Sicherungskopie"
+        "19 fachliche Rust-Module; neu: Importdienst mit Warteschlange, Abbruch und Savepoints je Datei",
+        "Native Parser für 3MF/STL/OBJ, STEP über OCCT (ein Paket pro System); sie laufen im Import und direkt für die 3D-Vorschau; Archive werden entpackt",
+        "Ein SQLite-Katalog; vor jeder Schema-Migration und jedem Update eine Sicherungskopie"
       ]
     },
     {
       "dot": "amber",
       "title": "Lokal-first, drei Wege nach außen",
       "items": [
-        "Updates von GitHub, mit Signatur geprüft; Test-Versionen nur aus dem Preview-Kanal",
-        "Druckeranbindung nur im Heimnetz und nur lesend",
+        "Updates von GitHub, mit Signatur geprüft; latest.json und latest-step.json zeigen auf dieselben Pakete",
+        "Druckeranbindung nur im Heimnetz und nur lesend (Klipper/Moonraker); Bambu und OctoPrint folgen später",
         "„Fehler melden“ öffnet 3mfkatalog.de; die Logdatei wird vorher anonymisiert"
       ]
     }
