@@ -541,6 +541,29 @@ mod parse_tests {
     }
 
     #[test]
+    fn qidi_q1_pro_report_is_readable() {
+        // Real anonymous test report (Qidi Q1 Pro, same MKS-Pi image and Moonraker
+        // v0.7.1 as the Smart 3). Prints sit in `.cache/`, QIDISlicer delivers
+        // material and weight; the running print is skipped, the cancelled one counts.
+        assert_eq!(parse_server_info(&fixture("server_info_qidi_q1_pro.json")).unwrap(), "v0.7.1-609-gbdd0222-dirty");
+        let page = parse_history_page(&fixture("history_qidi_q1_pro.json")).unwrap();
+        assert_eq!(page.count, 31);
+        assert_eq!(page.raw_len, 5);
+        assert_eq!(page.jobs.len(), 4);
+        assert!(page.jobs.iter().all(|j| j.remote_id != "000160"), "in_progress is not taken over");
+        let done = page.jobs.iter().find(|j| j.remote_id == "000163").unwrap();
+        assert_eq!(done.outcome, JobOutcome::Completed);
+        assert_eq!(done.file_name, "Datei 1.gcode");
+        assert_eq!(done.material.as_deref(), Some("PETG"));
+        assert_eq!(done.slicer_weight_g, Some(129.87));
+        assert!((done.used_mm - 42591.82).abs() < 0.01);
+        assert_eq!(done.thumbnail_path.as_deref(), Some(".cache/.thumbs/Datei 1-160x160.png"));
+        let cancelled = page.jobs.iter().find(|j| j.remote_id == "00015F").unwrap();
+        assert_eq!(cancelled.outcome, JobOutcome::Partial);
+        assert!((cancelled.used_mm - 80.0).abs() < 0.01);
+    }
+
+    #[test]
     fn missing_result_is_a_bad_response() {
         assert!(matches!(parse_history_page(&serde_json::json!({"error": "x"})), Err(LinkError::BadResponse(_))));
     }

@@ -1,0 +1,227 @@
+{
+  "result": {
+    "count": 31,
+    "jobs": [
+      {
+        "end_time": 1745859742.167706,
+        "filament_used": 42591.82332999405,
+        "filename": ".cache/Datei 1.gcode",
+        "metadata": {
+          "size": 3678396,
+          "modified": 1745847293.8040006,
+          "uuid": "abe5a7e7-9a15-4408-8b7d-4c5ce6c59a8f",
+          "slicer": "QIDISlicer",
+          "slicer_version": "1.2.5",
+          "gcode_start_byte": 7749,
+          "gcode_end_byte": 3662354,
+          "object_height": 26.8,
+          "estimated_time": 11646,
+          "nozzle_diameter": 0.4,
+          "layer_height": 0.2,
+          "first_layer_height": 0.2,
+          "first_layer_extr_temp": 245.0,
+          "first_layer_bed_temp": 80.0,
+          "chamber_temp": 0.0,
+          "filament_name": "Generic PETG @Q1 Pro 0.4 nozzle",
+          "filament_type": "PETG",
+          "filament_total": 42515.63,
+          "filament_weight_total": 129.87,
+          "thumbnails": [
+            {
+              "width": 160,
+              "height": 160,
+              "size": 2275,
+              "relative_path": ".thumbs/Datei 1-160x160.png"
+            },
+            {
+              "width": 112,
+              "height": 112,
+              "size": 1439,
+              "relative_path": ".thumbs/Datei 1-112x112.png"
+            },
+            {
+              "width": 112,
+              "height": 112,
+              "size": 1857,
+              "relative_path": ".thumbs/Datei 1-112x112_QD.jpg"
+            }
+          ]
+        },
+        "print_duration": 12323.17953996,
+        "status": "completed",
+        "start_time": 1745847294.0302873,
+        "total_duration": 12448.205102685999,
+        "job_id": "000163",
+        "exists": true
+      },
+      {
+        "end_time": 1745846866.4284418,
+        "filament_used": 3459.5371400249533,
+        "filename": ".cache/Datei 2.gcode",
+        "metadata": {
+          "size": 4511048,
+          "modified": 1745842891.916007,
+          "uuid": "c006daa1-7fb1-40c9-906d-bf133c07bfb1",
+          "slicer": "QIDISlicer",
+          "slicer_version": "1.2.5",
+          "gcode_start_byte": 8377,
+          "gcode_end_byte": 4495746,
+          "object_height": 70.04,
+          "estimated_time": 3603,
+          "nozzle_diameter": 0.4,
+          "layer_height": 0.24,
+          "first_layer_height": 0.2,
+          "first_layer_extr_temp": 245.0,
+          "first_layer_bed_temp": 80.0,
+          "chamber_temp": 0.0,
+          "filament_name": "Generic PETG @Q1 Pro 0.4 nozzle",
+          "filament_type": "PETG",
+          "filament_total": 3383.34,
+          "filament_weight_total": 10.34,
+          "thumbnails": [
+            {
+              "width": 160,
+              "height": 160,
+              "size": 2883,
+              "relative_path": ".thumbs/Datei 2-160x160.png"
+            },
+            {
+              "width": 112,
+              "height": 112,
+              "size": 1979,
+              "relative_path": ".thumbs/Datei 2-112x112.png"
+            },
+            {
+              "width": 112,
+              "height": 112,
+              "size": 2431,
+              "relative_path": ".thumbs/Datei 2-112x112_QD.jpg"
+            }
+          ]
+        },
+        "print_duration": 3887.3767856450013,
+        "status": "completed",
+        "start_time": 1745842892.2747717,
+        "total_duration": 3974.3756311859997,
+        "job_id": "000162",
+        "exists": false
+      },
+      {
+        "end_time": 1745842785.007474,
+        "filament_used": 31550.21323996394,
+        "filename": ".cache/Datei 3.gcode",
+        "metadata": {
+          "size": 18595921,
+          "modified": 1745828291.932,
+          "uuid": "9e763b85-921f-4ed1-85fc-2641be86e968",
+          "slicer": "QIDISlicer",
+          "slicer_version": "1.2.5",
+          "gcode_start_byte": 40082,
+          "gcode_end_byte": 18568066,
+          "object_height": 100.04,
+          "estimated_time": 13445,
+          "nozzle_diameter": 0.4,
+          "layer_height": 0.24,
+          "first_layer_height": 0.2,
+          "first_layer_extr_temp": 245.0,
+          "first_layer_bed_temp": 80.0,
+          "chamber_temp": 0.0,
+          "filament_name": "Generic PETG @Q1 Pro 0.4 nozzle",
+          "filament_type": "PETG",
+          "filament_total": 31474.02,
+          "filament_weight_total": 96.14,
+          "thumbnails": [
+            {
+              "width": 160,
+              "height": 160,
+              "size": 10435,
+              "relative_path": ".thumbs/Datei 3-160x160.png"
+            },
+            {
+              "width": 112,
+              "height": 112,
+              "size": 6729,
+              "relative_path": ".thumbs/Datei 3-112x112.png"
+            },
+            {
+              "width": 112,
+              "height": 112,
+              "size": 8582,
+              "relative_path": ".thumbs/Datei 3-112x112_QD.jpg"
+            }
+          ]
+        },
+        "print_duration": 14412.256280622001,
+        "status": "completed",
+        "start_time": 1745828292.0160725,
+        "total_duration": 14493.028642494,
+        "job_id": "000161",
+        "exists": false
+      },
+      {
+        "end_time": null,
+        "filament_used": 0.0,
+        "filename": ".cache/Datei 3.gcode",
+        "metadata": {},
+        "print_duration": 0.0,
+        "status": "in_progress",
+        "start_time": 1745828727.8461437,
+        "total_duration": 0.01951862500027346,
+        "job_id": "000160",
+        "exists": false
+      },
+      {
+        "end_time": 1745828134.446777,
+        "filament_used": 80.00000000000182,
+        "filename": ".cache/Datei 4.gcode",
+        "metadata": {
+          "size": 21073272,
+          "modified": 1745827577.316003,
+          "uuid": "4c3d5cbe-b503-41c2-9cd1-a6d8751e946e",
+          "slicer": "QIDISlicer",
+          "slicer_version": "1.2.5",
+          "gcode_start_byte": 28805,
+          "gcode_end_byte": 21050908,
+          "object_height": 100.04,
+          "estimated_time": 13496,
+          "nozzle_diameter": 0.4,
+          "layer_height": 0.24,
+          "first_layer_height": 0.2,
+          "first_layer_extr_temp": 245.0,
+          "first_layer_bed_temp": 80.0,
+          "chamber_temp": 0.0,
+          "filament_name": "Generic PETG @Q1 Pro 0.4 nozzle",
+          "filament_type": "PETG",
+          "filament_total": 32814.96,
+          "filament_weight_total": 100.24,
+          "thumbnails": [
+            {
+              "width": 160,
+              "height": 160,
+              "size": 7729,
+              "relative_path": ".thumbs/Datei 4-160x160.png"
+            },
+            {
+              "width": 112,
+              "height": 112,
+              "size": 5187,
+              "relative_path": ".thumbs/Datei 4-112x112.png"
+            },
+            {
+              "width": 112,
+              "height": 112,
+              "size": 6458,
+              "relative_path": ".thumbs/Datei 4-112x112_QD.jpg"
+            }
+          ]
+        },
+        "print_duration": 459.8793156359998,
+        "status": "cancelled",
+        "start_time": 1745827577.5491676,
+        "total_duration": 556.8547450569995,
+        "job_id": "00015F",
+        "exists": false
+      }
+    ]
+  }
+}
