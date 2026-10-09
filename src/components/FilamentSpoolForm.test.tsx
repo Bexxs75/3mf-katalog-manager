@@ -234,3 +234,133 @@ describe('FilamentSpoolForm', () => {
     expect(screen.getByText('x')).toBeInTheDocument();
   });
 });
+
+describe('numeric field validation', () => {
+  const input = (label: string) => screen.getByText(label).parentElement!.querySelector('input')!;
+  it.each([
+    ['Durchmesser (mm)', '0'], ['Durchmesser (mm)', '-1'], ['Durchmesser (mm)', 'abc'],
+    ['Durchmesser (mm)', '5.1'], ['Durchmesser (mm)', '1.75abc'],
+    ['Preis', '-5'], ['Preis', 'abc'], ['Ursprungsgewicht (g)', '0'],
+    ['Ursprungsgewicht (g)', '-1'], ['Restgewicht (g)', '-1'], ['Restgewicht (g)', '1001'],
+  ])('rejects %s = %s at its field', async (label, value) => {
+    const onSaved = renderForm(LOADED);
+    const field = input(label);
+    fireEvent.change(field, { target: { value } });
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    expect(field).toHaveAttribute('aria-invalid', 'true');
+    expect(field).toHaveClass('!border-[var(--crit)]');
+    const message = document.getElementById(field.getAttribute('aria-describedby')!);
+    expect(message).toHaveAttribute('role', 'alert');
+    expect(field.parentElement).toContainElement(message);
+    expect(field).toHaveFocus();
+    await act(async () => {});
+    expect(invoke).not.toHaveBeenCalledWith('update_filament_spool', expect.anything());
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it.each(['.', ','])('saves valid decimals using %s', async separator => {
+    const onSaved = renderForm(LOADED);
+    for (const [label, value] of [['Durchmesser (mm)', '1.75'], ['Preis', '24.90'], ['Ursprungsgewicht (g)', '1000.5'], ['Restgewicht (g)', '600.5']]) {
+      fireEvent.change(input(label), { target: { value: value.replace('.', separator) } });
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(invoke).toHaveBeenCalledWith('update_filament_spool', expect.objectContaining({ spool: expect.objectContaining({ diameterMm: 1.75, price: 24.9, originalWeightG: 1000.5, remainingWeightG: 600.5 }) }));
+  });
+
+  it('focuses the first invalid field and permits saving after correction', async () => {
+    const onSaved = renderForm(LOADED);
+    fireEvent.change(input('Durchmesser (mm)'), { target: { value: '0' } });
+    fireEvent.change(input('Preis'), { target: { value: '-5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    expect(input('Durchmesser (mm)')).toHaveFocus();
+    fireEvent.change(input('Durchmesser (mm)'), { target: { value: '5' } });
+    fireEvent.change(input('Preis'), { target: { value: '' } });
+    fireEvent.change(input('Restgewicht (g)'), { target: { value: '0' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
+it('keeps the stock preview numeric while a weight is cleared or invalid', () => {
+  renderForm(LOADED);
+  const remaining = screen.getByLabelText('Restgewicht (g)');
+  for (const value of ['', 'abc']) {
+    fireEvent.change(remaining, { target: { value } });
+    expect(screen.getByRole('dialog')).not.toHaveTextContent('NaN');
+  }
+});
+
+it('blocks creating a spool until invalid values are corrected', async () => {
+  const onSaved = renderForm(null);
+  fireEvent.change(screen.getByPlaceholderText('Material'), { target: { value: 'PLA' } });
+  fireEvent.change(screen.getByLabelText('Durchmesser (mm)'), { target: { value: '0' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Hinzufügen' }));
+  expect(screen.getByLabelText('Durchmesser (mm)')).toHaveFocus();
+  expect(invoke).not.toHaveBeenCalledWith('add_filament_spool', expect.anything());
+  expect(onSaved).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText('Durchmesser (mm)'), { target: { value: '1,75' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Hinzufügen' }));
+  await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  expect(invoke).toHaveBeenCalledWith('add_filament_spool', expect.objectContaining({ spool: expect.objectContaining({ diameterMm: 1.75, price: null }) }));
+});
+
+it.each([NaN, Infinity])('sends a finite hidden diameter for a resin record with diameter %s', async diameterMm => {
+  const onSaved = renderForm({ ...LOADED, kind: 'resin', diameterMm });
+  expect(screen.queryByLabelText('Durchmesser (mm)')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+  await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  const call = vi.mocked(invoke).mock.calls.find(([command]) => command === 'update_filament_spool')!;
+  const saved = (call[1] as { spool: FilamentSpool }).spool;
+  expect(Number.isFinite(saved.diameterMm)).toBe(true);
+  expect(saved.diameterMm).toBe(0);
+});
+
+it.each(['1e3', '1e0', '0x1', '12abc', '1,2.3', '+1'])('rejects non-decimal spool input %s in every numeric field', value => {
+  renderForm(LOADED);
+  const labels = ['Durchmesser (mm)', 'Preis', 'Ursprungsgewicht (g)', 'Restgewicht (g)'];
+  for (const label of labels) fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+  for (const label of labels) expect(screen.getByLabelText(label)).toHaveAttribute('aria-invalid', 'true');
+  expect(invoke).not.toHaveBeenCalledWith('update_filament_spool', expect.anything());
+});
+
+it.each(['1,5', '1.5', '.5', ',5', ' 1.75 '])('accepts plain spool decimals %s with optional surrounding whitespace', async value => {
+  const onSaved = renderForm(LOADED);
+  for (const label of ['Durchmesser (mm)', 'Preis', 'Ursprungsgewicht (g)', 'Restgewicht (g)']) {
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  }
+  fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+  await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  const numeric = Number(value.trim().replace(',', '.'));
+  expect(invoke).toHaveBeenCalledWith('update_filament_spool', expect.objectContaining({ spool: expect.objectContaining({
+    diameterMm: numeric, price: numeric, originalWeightG: Math.round(numeric * 10) / 10, remainingWeightG: Math.round(numeric * 10) / 10,
+  }) }));
+});
+
+it.each(['0.01', '0,01', '0.049', '0.0001'])('rejects original weight %s that would round to zero', async value => {
+  const onSaved = renderForm(LOADED);
+  const original = screen.getByLabelText('Ursprungsgewicht (g)');
+  fireEvent.change(original, { target: { value } });
+  fireEvent.change(screen.getByLabelText('Restgewicht (g)'), { target: { value: '0' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+  expect(original).toHaveAttribute('aria-invalid', 'true');
+  expect(original).toHaveFocus();
+  const message = document.getElementById(original.getAttribute('aria-describedby')!);
+  expect(message).toHaveAttribute('role', 'alert');
+  expect(message).toHaveTextContent('Nach Rundung');
+  expect(message).toHaveTextContent('0,1');
+  await act(async () => {});
+  expect(invoke).not.toHaveBeenCalledWith('update_filament_spool', expect.anything());
+  expect(onSaved).not.toHaveBeenCalled();
+});
+
+it.each(['0.05', '0,05', '0.1'])('preserves positive weight rounding at the boundary %s', async value => {
+  const onSaved = renderForm(LOADED);
+  fireEvent.change(screen.getByLabelText('Ursprungsgewicht (g)'), { target: { value } });
+  fireEvent.change(screen.getByLabelText('Restgewicht (g)'), { target: { value } });
+  fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+  await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  expect(invoke).toHaveBeenCalledWith('update_filament_spool', expect.objectContaining({ spool: expect.objectContaining({ originalWeightG: 0.1, remainingWeightG: 0.1 }) }));
+});

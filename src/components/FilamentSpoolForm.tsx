@@ -1,8 +1,9 @@
 import { Icon } from './Icon';
 import { useModalDialog } from '../hooks/useModalDialog';
-import { useCallback, useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef, useId } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useT } from '../i18n/LanguageContext';
+import { parseDecimalInput } from '../lib/decimalInput';
 import type { FilamentSpool, SpoolKind } from '../types';
 import { FILAMENT_MATERIALS, FILAMENT_MANUFACTURERS, RESIN_MATERIALS, RESIN_MANUFACTURERS } from '../lib/filamentCatalog';
 import { filamentStockPercent, filamentStockStatus } from '../lib/filamentStatus';
@@ -54,6 +55,8 @@ const EMPTY_FORM: FormState = {
   quantity: '1',
 };
 
+type NumericField = 'diameterMm' | 'price' | 'originalWeightG' | 'remainingWeightG';
+
 const fieldClass =
   'w-full h-9 px-2.5 rounded-md border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] outline-0 text-body focus:border-[var(--accent)]';
 
@@ -79,6 +82,35 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
   const t = useT();
   const dialogRef = useModalDialog<HTMLElement>({ open, onClose });
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const fieldId = useId();
+  const numericRefs = useRef<Partial<Record<NumericField, HTMLInputElement | null>>>({});
+  const [attempted, setAttempted] = useState(false);
+  const diameter = parseDecimalInput(form.diameterMm);
+  const price = form.price.trim() === '' ? null : parseDecimalInput(form.price);
+  const original = parseDecimalInput(form.originalWeightG);
+  const remaining = parseDecimalInput(form.remainingWeightG);
+  // Validate the stored precision too, so a positive entry cannot become a zero amount.
+  const roundedOriginal = Math.round(original * 10) / 10;
+  const invalid: Record<NumericField, boolean> = {
+    diameterMm: form.kind !== 'resin' && (!Number.isFinite(diameter) || diameter <= 0 || diameter > 5),
+    price: price !== null && (!Number.isFinite(price) || price < 0),
+    originalWeightG: !Number.isFinite(original) || original <= 0 || !Number.isFinite(roundedOriginal) || roundedOriginal <= 0,
+    remainingWeightG: !Number.isFinite(remaining) || remaining < 0 || remaining > original,
+  };
+  const messages = {
+    diameterMm: t('filamentInvalidDiameter'), price: t('filamentInvalidPrice'),
+    originalWeightG: t('filamentInvalidOriginal'), remainingWeightG: t('filamentInvalidRemaining'),
+  };
+  const numericProps = (key: NumericField) => ({
+    id: `${fieldId}-${key}`,
+    ref: (node: HTMLInputElement | null) => { numericRefs.current[key] = node; },
+    'aria-invalid': attempted && invalid[key] ? true : undefined,
+    'aria-describedby': attempted && invalid[key] ? `${fieldId}-${key}-error` : undefined,
+    className: `${fieldClass}${attempted && invalid[key] ? ' !border-[var(--crit)]' : ''}`,
+  });
+  const fieldError = (key: NumericField) => attempted && invalid[key]
+    ? <p id={`${fieldId}-${key}-error`} role="alert" className="mt-1 text-caption text-[var(--crit)]">{messages[key]}</p>
+    : null;
   const [error, setError] = useState<AppError | null>(null);
   // Rejected image (too large, not an image, several files): shown right at
   // the image field and keeps the form open until another image arrives or
@@ -90,6 +122,7 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
     if (open) {
       setForm(editing ? toForm(editing) : { ...EMPTY_FORM, kind: defaultKind });
       setError(null);
+      setAttempted(false);
       setImageError(null);
     }
   }, [open, editing, defaultKind]);
@@ -127,6 +160,12 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
 
   const submit = async () => {
     if (!form.material.trim()) return;
+    setAttempted(true);
+    const firstInvalid = (Object.keys(invalid) as NumericField[]).find(key => invalid[key]);
+    if (firstInvalid) {
+      numericRefs.current[firstInvalid]?.focus();
+      return;
+    }
     if (imageError) {
       imageErrorRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
       return;
@@ -137,10 +176,10 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
       manufacturer: form.manufacturer.trim() || null,
       color: form.color.trim() || null,
       location: form.location.trim() || null,
-      diameterMm: parseFloat(form.diameterMm) || 0,
-      originalWeightG: Math.round((parseFloat(form.originalWeightG.replace(',', '.')) || 0) * 10) / 10,
-      remainingWeightG: Math.round((parseFloat(form.remainingWeightG.replace(',', '.')) || 0) * 10) / 10,
-      price: form.price.trim() === '' ? null : parseFloat(form.price),
+      diameterMm: form.kind === 'resin' && !Number.isFinite(diameter) ? 0 : diameter,
+      originalWeightG: roundedOriginal,
+      remainingWeightG: Math.round(remaining * 10) / 10,
+      price,
       imagePng: form.imagePng,
       colorHex: form.colorHex,
       // Only passed through - the slot is changed exclusively by load/unload_spool.
@@ -169,10 +208,12 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
 
   const resin = form.kind === 'resin';
 
-  const original = parseFloat(form.originalWeightG) || 0;
-  const remaining = parseFloat(form.remainingWeightG) || 0;
-  const previewStatus = filamentStockStatus({ originalWeightG: original, remainingWeightG: remaining });
-  const previewPct = filamentStockPercent({ originalWeightG: original, remainingWeightG: remaining });
+  const previewStock = {
+    originalWeightG: Number.isFinite(original) ? original : 0,
+    remainingWeightG: Number.isFinite(remaining) ? remaining : 0,
+  };
+  const previewStatus = filamentStockStatus(previewStock);
+  const previewPct = filamentStockPercent(previewStock);
   const barColor =
     previewStatus === 'empty' ? 'var(--crit)' : previewStatus === 'low' ? 'var(--warn)' : 'var(--good)';
 
@@ -374,52 +415,54 @@ export function FilamentSpoolForm({ open, editing, knownLocations, onClose, onSa
             <div className="grid grid-cols-2 gap-2.5">
               {!resin && (
                 <div>
-                  <label className="block text-caption font-semibold text-[var(--ink-2)] mb-1">{t('filamentDiameterLabel')}</label>
+                  <label htmlFor={`${fieldId}-diameterMm`} className="block text-caption font-semibold text-[var(--ink-2)] mb-1">{t('filamentDiameterLabel')}</label>
                   <input
-                    type="number"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
                     value={form.diameterMm}
                     onChange={(e) => setForm((f) => ({ ...f, diameterMm: e.target.value }))}
-                    className={fieldClass}
+                    {...numericProps('diameterMm')}
                   />
+                  {fieldError('diameterMm')}
                 </div>
               )}
               <div>
-                <label className="block text-caption font-semibold text-[var(--ink-2)] mb-1">{t('filamentPriceLabel')}</label>
+                <label htmlFor={`${fieldId}-price`} className="block text-caption font-semibold text-[var(--ink-2)] mb-1">{t('filamentPriceLabel')}</label>
                 <input
-                  type="number"
-                  step="0.01"
+                  type="text"
+                  inputMode="decimal"
                   value={form.price}
                   onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
                   placeholder="24.90"
-                  className={fieldClass}
+                  {...numericProps('price')}
                 />
+                {fieldError('price')}
               </div>
               <div>
-                <label className="block text-caption font-semibold text-[var(--ink-2)] mb-1">
+                <label htmlFor={`${fieldId}-originalWeightG`} className="block text-caption font-semibold text-[var(--ink-2)] mb-1">
                   {resin ? t('resinAmountLabel') : t('filamentOriginalWeightLabel')}
                 </label>
                 <input
-                  type="number"
-                  step="0.1"
+                  type="text"
                   inputMode="decimal"
                   value={form.originalWeightG}
                   onChange={(e) => setForm((f) => ({ ...f, originalWeightG: e.target.value }))}
-                  className={fieldClass}
+                  {...numericProps('originalWeightG')}
                 />
+                {fieldError('originalWeightG')}
               </div>
               <div>
-                <label className="block text-caption font-semibold text-[var(--ink-2)] mb-1">
+                <label htmlFor={`${fieldId}-remainingWeightG`} className="block text-caption font-semibold text-[var(--ink-2)] mb-1">
                   {resin ? t('resinRemainingLabel') : t('filamentRemainingWeightLabel')}
                 </label>
                 <input
-                  type="number"
-                  step="0.1"
+                  type="text"
                   inputMode="decimal"
                   value={form.remainingWeightG}
                   onChange={(e) => setForm((f) => ({ ...f, remainingWeightG: e.target.value }))}
-                  className={fieldClass}
+                  {...numericProps('remainingWeightG')}
                 />
+                {fieldError('remainingWeightG')}
               </div>
             </div>
             <div className="flex flex-col gap-1.5 mt-3">
