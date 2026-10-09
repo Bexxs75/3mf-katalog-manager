@@ -36,7 +36,7 @@ export function KeyboardTipsDialog({ onClose }: { onClose: () => void }) {
     </div>
     <div id={`${id}-panel-0`} role="tabpanel" aria-labelledby={`${id}-tab-0`} hidden={tab !== 0} tabIndex={0}>
       <h3 className="ui-label text-[var(--ink-3)]">{t('keyboardCatalog')}</h3>
-      {rows.map(([key, label]) => <div key={label} className="grid grid-cols-1 sm:grid-cols-[150px_1fr] gap-2 py-2 border-b border-[var(--line)]">
+      {rows.map(([key, label]) => <div key={`${key}-${label}`} className="grid grid-cols-1 sm:grid-cols-[150px_1fr] gap-2 py-2 border-b border-[var(--line)]">
         <span><kbd className="font-medium tabular-nums text-caption rounded border border-[var(--line-strong)] bg-[var(--panel-2)] px-1.5 py-0.5">{key}</kbd></span>
         <span className="text-[var(--ink-2)]">{t(label)}</span>
       </div>)}
