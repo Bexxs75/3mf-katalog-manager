@@ -37,17 +37,20 @@ pub struct DownloadProgress {
     pub total: Option<u64>,
 }
 
-// Kept as the plugin's own error type (not stringified) so callers can tell a
-// transport hiccup apart from a broken manifest - see `is_transport_error` below.
-async fn fetch_update(app: &tauri::AppHandle, channel: UpdateChannel) -> Result<Option<tauri_plugin_updater::Update>, tauri_plugin_updater::Error> {
+fn effective_update_endpoint(channel: UpdateChannel) -> String {
     let override_value = std::env::var(updater::ENDPOINT_ENV).ok();
-    let url = updater::endpoint(
+    updater::endpoint(
         cfg!(feature = "step-preview"),
         cfg!(feature = "preview"),
         channel,
         cfg!(debug_assertions),
         override_value.as_deref(),
-    );
+    )
+}
+
+// Kept as the plugin's own error type (not stringified) so callers can tell a
+// transport hiccup apart from a broken manifest - see `is_transport_error` below.
+async fn fetch_update(app: &tauri::AppHandle, url: &str) -> Result<Option<tauri_plugin_updater::Update>, tauri_plugin_updater::Error> {
     let url = url.parse()?;
     let mut builder = app.updater_builder();
     if cfg!(debug_assertions) {
@@ -143,10 +146,30 @@ pub fn set_update_channel(state: State<AppState>, channel: UpdateChannel) -> Cmd
     Ok(())
 }
 
+// The plugin discards unsuccessful HTTP status codes. Only a confirmed 404
+// establishes that the RC pointer is unpublished; all other outcomes fail closed.
+fn probe_outcome(result: &Result<u16, String>) -> bool {
+    matches!(result, Ok(404))
+}
+
+fn probe_rc_endpoint(url: &str, timeout: Duration) -> Result<u16, String> {
+    let request = || -> Result<u16, reqwest::Error> {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(timeout)
+            .user_agent(concat!("3MF-Katalog-Manager/", env!("CARGO_PKG_VERSION")))
+            .build()?;
+        // Keep default redirects for GitHub's asset URLs. Drop the response at
+        // headers: the plugin already tried the manifest, so no body is needed.
+        Ok(client.get(url).send()?.status().as_u16())
+    };
+    request().map_err(|e| error_chain(&e))
+}
+
 fn update_check_result(
     current: &str,
     channel: UpdateChannel,
     result: Result<Option<tauri_plugin_updater::Update>, tauri_plugin_updater::Error>,
+    probe: Option<Result<u16, String>>,
 ) -> (Option<String>, bool) {
     match result {
         Ok(Some(u)) => {
@@ -157,12 +180,25 @@ fn update_check_result(
             log::info!(target: "update", "Update-Check: {current} ist aktuell");
             (None, false)
         }
-        // The RC pointer may not exist before its first publication. The plugin
-        // reports unsuccessful HTTP responses as ReleaseNotFound, but preserves
-        // transport and JSON errors; only this typed RC case means "up to date".
         Err(tauri_plugin_updater::Error::ReleaseNotFound) if channel == UpdateChannel::Rc => {
-            log::info!(target: "update", "RC-Verweis noch nicht veröffentlicht");
-            (None, false)
+            match probe {
+                Some(ref outcome) if probe_outcome(outcome) => {
+                    log::info!(target: "update", "RC-Verweis noch nicht veröffentlicht");
+                    (None, false)
+                }
+                Some(Ok(status)) => {
+                    log::warn!(target: "update", "Update-Check nicht möglich: RC-Verweis HTTP {status}");
+                    (None, true)
+                }
+                Some(Err(error)) => {
+                    log::warn!(target: "update", "Update-Check nicht möglich: RC-Verweis: {error}");
+                    (None, true)
+                }
+                None => {
+                    log::warn!(target: "update", "Update-Check nicht möglich: RC-Verweis nicht geprüft");
+                    (None, true)
+                }
+            }
         }
         // No toast for the check itself: offline users should not be bothered.
         Err(e) if is_transport_error(&e) => {
@@ -187,7 +223,20 @@ pub async fn check_app_update(app: tauri::AppHandle, state: State<'_, AppState>)
             .flatten()
             .and_then(|raw| serde_json::from_str::<LastUpdateInfo>(&raw).ok())
     };
-    let (available, check_failed) = update_check_result(current, channel, fetch_update(&app, channel).await);
+    // Resolve once so a debug override cannot change between the plugin check
+    // and the fallback probe. Successful checks and other errors add no request.
+    let url = effective_update_endpoint(channel);
+    let result = fetch_update(&app, &url).await;
+    let probe = if channel == UpdateChannel::Rc
+        && matches!(&result, Err(tauri_plugin_updater::Error::ReleaseNotFound))
+    {
+        Some(tauri::async_runtime::spawn_blocking(move || {
+            probe_rc_endpoint(&url, Duration::from_secs(5))
+        }).await.unwrap_or_else(|e| Err(error_chain(&e))))
+    } else {
+        None
+    };
+    let (available, check_failed) = update_check_result(current, channel, result, probe);
     Ok(UpdateInfoDto {
         current_version: current.to_string(),
         release_url: available.as_deref().map(|v| updater::release_page(v, cfg!(feature = "preview"), channel)),
@@ -205,7 +254,8 @@ pub async fn download_app_update(
     on_progress: Channel<DownloadProgress>,
     state: State<'_, AppState>,
 ) -> CmdResult<String> {
-    let update = fetch_update(&app, read_channel(&state)?)
+    let url = effective_update_endpoint(read_channel(&state)?);
+    let update = fetch_update(&app, &url)
         .await
         .map_err(|e| format!("Update-Prüfung fehlgeschlagen: {}", error_chain(&e)))?
         .ok_or_else(|| CmdError::expected("Es ist kein Update mehr verfügbar"))?;
@@ -296,7 +346,7 @@ mod tests {
     #[test]
     fn rc_release_not_found_is_up_to_date() {
         assert_eq!(
-            update_check_result("0.16.0-2", UpdateChannel::Rc, Err(tauri_plugin_updater::Error::ReleaseNotFound)),
+            update_check_result("0.16.0-2", UpdateChannel::Rc, Err(tauri_plugin_updater::Error::ReleaseNotFound), Some(Ok(404))),
             (None, false),
         );
     }
@@ -304,7 +354,7 @@ mod tests {
     #[test]
     fn rc_transport_error_still_fails() {
         assert_eq!(
-            update_check_result("0.16.0-2", UpdateChannel::Rc, Err(tauri_plugin_updater::Error::Network("offline".into()))),
+            update_check_result("0.16.0-2", UpdateChannel::Rc, Err(tauri_plugin_updater::Error::Network("offline".into())), None),
             (None, true),
         );
     }
@@ -312,7 +362,7 @@ mod tests {
     #[test]
     fn stable_release_not_found_still_fails() {
         assert_eq!(
-            update_check_result("0.16.0", UpdateChannel::Stable, Err(tauri_plugin_updater::Error::ReleaseNotFound)),
+            update_check_result("0.16.0", UpdateChannel::Stable, Err(tauri_plugin_updater::Error::ReleaseNotFound), Some(Ok(404))),
             (None, true),
         );
     }
@@ -321,9 +371,76 @@ mod tests {
     fn rc_invalid_manifest_still_fails() {
         let error = serde_json::from_str::<serde_json::Value>("invalid JSON").unwrap_err();
         assert_eq!(
-            update_check_result("0.16.0-2", UpdateChannel::Rc, Err(error.into())),
+            update_check_result("0.16.0-2", UpdateChannel::Rc, Err(error.into()), Some(Ok(404))),
             (None, true),
         );
+    }
+
+    #[test]
+    fn only_a_confirmed_404_means_unpublished() {
+        assert!(probe_outcome(&Ok(404)));
+        for status in [403, 429, 500, 503, 200, 302] {
+            assert!(!probe_outcome(&Ok(status)), "status {status}");
+            assert_eq!(update_check_result("0.16.0-2", UpdateChannel::Rc,
+                Err(tauri_plugin_updater::Error::ReleaseNotFound), Some(Ok(status))), (None, true));
+        }
+        assert!(!probe_outcome(&Err("TLS/transport failure".into())));
+        for probe in [None, Some(Err("timeout".into()))] {
+            assert_eq!(update_check_result("0.16.0-2", UpdateChannel::Rc,
+                Err(tauri_plugin_updater::Error::ReleaseNotFound), probe), (None, true));
+        }
+    }
+
+    fn probe_server(status: u16, delay: Duration, timeout: Duration) -> Result<u16, String> {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/custom-rc.json", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+            let mut request = Vec::new();
+            let mut byte = [0];
+            while !request.ends_with(b"\r\n\r\n") {
+                assert_eq!(stream.read(&mut byte).unwrap(), 1);
+                request.push(byte[0]);
+            }
+            let request = String::from_utf8(request).unwrap();
+            assert!(request.starts_with("GET /custom-rc.json HTTP/1.1\r\n"));
+            assert!(request.to_lowercase().contains(concat!("user-agent: 3mf-katalog-manager/", env!("CARGO_PKG_VERSION"))));
+            assert!(!request.to_lowercase().contains("authorization:"));
+            std::thread::sleep(delay);
+            // Deliberately omit the advertised body: probing must finish at headers.
+            let _ = write!(stream, "HTTP/1.1 {status} Test\r\nContent-Length: 100\r\nConnection: close\r\n\r\n");
+        });
+        let result = probe_rc_endpoint(&url, timeout);
+        server.join().unwrap();
+        result
+    }
+
+    #[test]
+    fn rc_probe_http_statuses() {
+        for status in [404, 500, 429] {
+            let result = probe_server(status, Duration::ZERO, Duration::from_secs(2));
+            assert_eq!(result, Ok(status));
+            assert_eq!(probe_outcome(&result), status == 404);
+        }
+    }
+
+    #[test]
+    fn rc_probe_connection_refused() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        drop(listener);
+        let result = probe_rc_endpoint(&url, Duration::from_millis(100));
+        assert!(result.is_err());
+        assert!(!probe_outcome(&result));
+    }
+
+    #[test]
+    fn rc_probe_timeout() {
+        let result = probe_server(404, Duration::from_millis(300), Duration::from_millis(100));
+        assert!(result.is_err());
+        assert!(!probe_outcome(&result));
     }
 
     fn run_retry(
