@@ -4,6 +4,7 @@ import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { toAppError, type AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
 import { listPrinterHistory } from '../lib/api/printers';
+import { parseDecimalInput } from '../lib/decimalInput';
 import type { FilamentSpool, Printer, PrinterDetails, PrinterHistoryJob, PrinterKind, PrinterNavigation } from '../types';
 import type { PrintersState } from '../hooks/usePrinters';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
@@ -203,9 +204,20 @@ function General({ printer, state, header, deleteAction }: { printer: Printer; s
   const numberText = (value: number | null) => value === null ? '' : new Intl.NumberFormat(language, { useGrouping: false, maximumFractionDigits: 10 }).format(value);
   const initial = () => ({ manufacturer: printer.manufacturer ?? '', model: printer.model ?? '', nozzleMm: numberText(printer.nozzleMm), bedXMm: numberText(printer.bedXMm), bedYMm: numberText(printer.bedYMm), bedZMm: numberText(printer.bedZMm) });
   const [draft, setDraft] = useState(initial);
-  const [validation, setValidation] = useState('');
+  type NumericField = 'nozzleMm' | 'bedXMm' | 'bedYMm' | 'bedZMm';
+  const [validation, setValidation] = useState<Partial<Record<NumericField, string>>>({});
+  const numericRefs = useRef<Partial<Record<NumericField, HTMLInputElement | null>>>({});
+  const numericProps = (key: NumericField) => ({
+    ref: (node: HTMLInputElement | null) => { numericRefs.current[key] = node; },
+    inputMode: 'decimal' as const,
+    'aria-invalid': validation[key] ? true : undefined,
+    'aria-describedby': validation[key] ? `${formId}-${key}-error` : undefined,
+  });
+  const fieldError = (key: NumericField) => validation[key]
+    ? <span id={`${formId}-${key}-error`} role="alert" className="block max-w-[28ch] mt-1 text-caption text-[var(--crit)]">{validation[key]}</span>
+    : null;
   const [error, setError] = useState<AppError | null>(null);
-  const reset = () => { setName(printer.name); setDraft(initial()); setValidation(''); setError(null); };
+  const reset = () => { setName(printer.name); setDraft(initial()); setValidation({}); setError(null); };
   const displayed = editing ? draft : initial();
   const field = (key: keyof typeof draft, label: string) => <label className="min-w-0">{label}<input className={pmField} value={displayed[key]} readOnly={!editing} onChange={e => setDraft({ ...draft, [key]: e.target.value })} /></label>;
   return <>
@@ -220,13 +232,19 @@ function General({ printer, state, header, deleteAction }: { printer: Printer; s
     <form id={formId} onSubmit={async e => {
     e.preventDefault();
     if (!editing || busy) return;
-    const numeric = (s: string) => s.trim() === '' ? null : Number(s.replace(',', '.'));
+    const numeric = (s: string) => s.trim() === '' ? null : parseDecimalInput(s);
     const details: PrinterDetails = { manufacturer: draft.manufacturer.trim() || null, model: draft.model.trim() || null,
       nozzleMm: numeric(draft.nozzleMm), bedXMm: numeric(draft.bedXMm), bedYMm: numeric(draft.bedYMm), bedZMm: numeric(draft.bedZMm) };
     const invalid = (n: number | null, min: number, max: number) => n !== null && (!Number.isFinite(n) || n < min || n > max);
-    if (invalid(details.nozzleMm, 0.1, 2)) { setValidation(t('pmInvalidNozzle')); return; }
-    if ([details.bedXMm, details.bedYMm, details.bedZMm].some(n => invalid(n, 1, 2000))) { setValidation(t('pmInvalidBed')); return; }
-    setBusy(true); setValidation(''); setError(null);
+    const errors: Partial<Record<NumericField, string>> = {};
+    if (printer.kind === 'filament' && invalid(details.nozzleMm, 0.1, 2)) errors.nozzleMm = t('pmInvalidNozzle');
+    for (const key of ['bedXMm', 'bedYMm', 'bedZMm'] as const) {
+      if (invalid(details[key], 1, 2000)) errors[key] = t('pmInvalidBed');
+    }
+    setValidation(errors);
+    const firstInvalid = (Object.keys(errors) as NumericField[])[0];
+    if (firstInvalid) { numericRefs.current[firstInvalid]?.focus(); return; }
+    setBusy(true); setValidation({}); setError(null);
     try { await state.updateDetails(printer.id, details); if (name.trim() !== printer.name) await state.renamePrinter(printer.id, name.trim()); setEditing(false); }
     catch (e) { setError(toAppError(e)); } finally { setBusy(false); }
   }}>
@@ -235,12 +253,11 @@ function General({ printer, state, header, deleteAction }: { printer: Printer; s
       <div>{t('pmKind')}<div className="mt-1 px-2 py-1.5 rounded border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink-2)]">{t(printer.kind === 'resin' ? 'spoolKindResin' : 'spoolKindFilament')} {t('pmFixed')}</div></div>
       {field('manufacturer', t('pmManufacturer'))}{field('model', t('pmModel'))}
       <div className="sm:col-span-2 flex flex-wrap items-end gap-5 max-[639px]:flex-col max-[639px]:items-stretch">
-        {printer.kind === 'filament' && <label className="min-w-0">{t('pmNozzle')}<div className="flex items-center gap-1.5"><input aria-label={t('pmNozzle')} className={`${pmField} !w-[9ch] max-[639px]:!w-full text-right font-medium tabular-nums`} value={displayed.nozzleMm} readOnly={!editing} onChange={e => setDraft({ ...draft, nozzleMm: e.target.value })} /><span className="text-[var(--ink-3)] font-medium tabular-nums text-caption">mm</span></div></label>}
-        <fieldset className="min-w-0"><legend>{t('pmBed')}</legend><div className="flex items-center gap-1.5 max-[639px]:flex-col max-[639px]:items-stretch">{(['bedXMm', 'bedYMm', 'bedZMm'] as const).map((key, i) => <span className="flex items-center gap-1.5 min-w-0" key={key}><input aria-label={`${t('pmBed')} ${'XYZ'[i]}`} className={`${pmField} !w-[9ch] max-[639px]:!w-full text-right font-medium tabular-nums`} value={displayed[key]} readOnly={!editing} onChange={e => setDraft({ ...draft, [key]: e.target.value })} />{i < 2 && <span className="text-[var(--ink-3)] max-[639px]:hidden">×</span>}</span>)}<span className="font-medium tabular-nums text-caption text-[var(--ink-3)]">mm</span></div></fieldset>
+        {printer.kind === 'filament' && <label className="min-w-0">{t('pmNozzle')}<div className="flex items-center gap-1.5"><span className="min-w-0 max-[639px]:flex-1"><input {...numericProps('nozzleMm')} aria-label={t('pmNozzle')} className={`${pmField} ${validation.nozzleMm ? '!border-[var(--crit)]' : ''} !w-[9ch] max-[639px]:!w-full text-right font-medium tabular-nums`} value={displayed.nozzleMm} readOnly={!editing} onChange={e => setDraft({ ...draft, nozzleMm: e.target.value })} />{fieldError('nozzleMm')}</span><span className="text-[var(--ink-3)] font-medium tabular-nums text-caption">mm</span></div></label>}
+        <fieldset className="min-w-0"><legend>{t('pmBed')}</legend><div className="flex items-center gap-1.5 max-[639px]:flex-col max-[639px]:items-stretch">{(['bedXMm', 'bedYMm', 'bedZMm'] as const).map((key, i) => <span className="flex items-center gap-1.5 min-w-0" key={key}><span className="min-w-0 max-[639px]:flex-1"><input {...numericProps(key)} aria-label={`${t('pmBed')} ${'XYZ'[i]}`} className={`${pmField} ${validation[key] ? '!border-[var(--crit)]' : ''} !w-[9ch] max-[639px]:!w-full text-right font-medium tabular-nums`} value={displayed[key]} readOnly={!editing} onChange={e => setDraft({ ...draft, [key]: e.target.value })} />{fieldError(key)}</span>{i < 2 && <span className="text-[var(--ink-3)] max-[639px]:hidden">×</span>}</span>)}<span className="font-medium tabular-nums text-caption text-[var(--ink-3)]">mm</span></div></fieldset>
       </div>
     </fieldset>
     <p className="text-[var(--ink-3)] mt-3">{t('pmBedHint')}</p>
-    {validation && <p role="alert" className="text-[var(--crit)] mt-2">{validation}</p>}
     {error && <div role="alert"><ErrorText error={error} /></div>}
   </form>
   </Card>

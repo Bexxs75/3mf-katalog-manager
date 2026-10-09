@@ -408,6 +408,10 @@ export interface Translations {
   filamentMaterialLabel: string;
   filamentManufacturerLabel: string;
   filamentColorLabel: string;
+  filamentInvalidDiameter: string;
+  filamentInvalidPrice: string;
+  filamentInvalidOriginal: string;
+  filamentInvalidRemaining: string;
   filamentDiameterLabel: string;
   filamentOriginalWeightLabel: string;
   filamentRemainingWeightLabel: string;

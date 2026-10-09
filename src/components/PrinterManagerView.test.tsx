@@ -375,3 +375,66 @@ it.each([['de', '0,4', '305,5'], ['fr', '0,4', '305,5'], ['es', '0,4', '305,5'],
   await waitFor(() => expect(document.querySelector('input[value="'+nozzle+'"]')).not.toBeNull());
   expect(document.querySelector('input[value="'+bed+'"]')).not.toBeNull();
 });
+
+it.each(['Düse', 'Bauraum X × Y × Z X', 'Bauraum X × Y × Z Y', 'Bauraum X × Y × Z Z'])('marks and focuses invalid %s beside its message', async label => {
+  setup(); await screen.findByTitle('1 · PLA · Rot');
+  fireEvent.click(within(screen.getByTestId('printer-detail-header')).getByRole('button', { name: 'Bearbeiten' }));
+  const field = screen.getByLabelText(label);
+  fireEvent.change(field, { target: { value: 'abc' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+  expect(field).toHaveAttribute('aria-invalid', 'true');
+  expect(field).toHaveClass('!border-[var(--crit)]');
+  const message = document.getElementById(field.getAttribute('aria-describedby')!);
+  expect(message).toHaveAttribute('role', 'alert');
+  expect(field.parentElement).toContainElement(message);
+  expect(field).toHaveFocus();
+  expect(invoke).not.toHaveBeenCalledWith('update_printer_details', expect.anything());
+});
+
+it.each(['0.4', '0,4'])('saves nozzle %s without a printer connection', async value => {
+  setup(); await screen.findByTitle('1 · PLA · Rot');
+  fireEvent.click(within(screen.getByTestId('printer-detail-header')).getByRole('button', { name: 'Bearbeiten' }));
+  fireEvent.change(screen.getByLabelText('Düse'), { target: { value } });
+  fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith('update_printer_details', { id: '1', details: { ...details, nozzleMm: 0.4 } }));
+});
+
+it('focuses the nozzle before invalid bed axes', async () => {
+  setup(); await screen.findByTitle('1 · PLA · Rot');
+  fireEvent.click(within(screen.getByTestId('printer-detail-header')).getByRole('button', { name: 'Bearbeiten' }));
+  for (const label of ['Düse', 'Bauraum X × Y × Z X', 'Bauraum X × Y × Z Y']) fireEvent.change(screen.getByLabelText(label), { target: { value: '0' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+  expect(screen.getByLabelText('Düse')).toHaveFocus();
+  expect(screen.getAllByRole('alert')).toHaveLength(3);
+});
+
+it.each(['1e3', '1e0', '0x1', '12abc', '1,2.3', '+1'])('rejects non-decimal printer input %s in every numeric field', async value => {
+  setup(); await screen.findByTitle('1 · PLA · Rot');
+  fireEvent.click(within(screen.getByTestId('printer-detail-header')).getByRole('button', { name: 'Bearbeiten' }));
+  const labels = ['Düse', 'Bauraum X × Y × Z X', 'Bauraum X × Y × Z Y', 'Bauraum X × Y × Z Z'];
+  for (const label of labels) fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+  for (const label of labels) expect(screen.getByLabelText(label)).toHaveAttribute('aria-invalid', 'true');
+  expect(invoke).not.toHaveBeenCalledWith('update_printer_details', expect.anything());
+});
+
+it.each(['1,5', '1.5', ' 1.75 '])('accepts plain printer decimals %s with optional surrounding whitespace', async value => {
+  setup(); await screen.findByTitle('1 · PLA · Rot');
+  fireEvent.click(within(screen.getByTestId('printer-detail-header')).getByRole('button', { name: 'Bearbeiten' }));
+  for (const label of ['Düse', 'Bauraum X × Y × Z X', 'Bauraum X × Y × Z Y', 'Bauraum X × Y × Z Z']) {
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  }
+  fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+  const numeric = Number(value.trim().replace(',', '.'));
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith('update_printer_details', { id: '1', details: {
+    ...details, nozzleMm: numeric, bedXMm: numeric, bedYMm: numeric, bedZMm: numeric,
+  } }));
+});
+
+it.each(['.5', ',5'])('accepts a leading decimal separator for nozzle %s', async value => {
+  setup(); await screen.findByTitle('1 · PLA · Rot');
+  fireEvent.click(within(screen.getByTestId('printer-detail-header')).getByRole('button', { name: 'Bearbeiten' }));
+  fireEvent.change(screen.getByLabelText('Düse'), { target: { value } });
+  fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith('update_printer_details', { id: '1', details: { ...details, nozzleMm: 0.5 } }));
+});
