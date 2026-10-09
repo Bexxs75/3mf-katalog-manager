@@ -1,3 +1,4 @@
+import { isWebGLUnavailable, markWebGLUnavailable } from '../lib/webglAvailability';
 import { Icon } from './Icon';
 import { PlateSelector } from './PlateSelector';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -81,12 +82,6 @@ function buildGroup(meshes: ParsedMesh[], material: THREE.MeshStandardMaterial, 
   return group;
 }
 
-// Without WebGL (VMs without GPU passthrough, some remote desktops, blocked
-// GPU drivers) creating the renderer throws. Remembered per session so the
-// background snapshot queue fails each file immediately instead of trying a
-// new context for every model.
-let webglUnavailable = false;
-
 interface ViewerContext {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
@@ -157,15 +152,17 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
 
     let renderer: THREE.WebGLRenderer;
     try {
-      if (webglUnavailable) throw new Error('WebGL unavailable');
+      if (isWebGLUnavailable()) throw new Error('WebGL unavailable');
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
     } catch (err) {
-      if (!webglUnavailable) console.error('[ModelViewer] WebGL not available:', err);
-      webglUnavailable = true;
+      if (!isWebGLUnavailable()) console.error('[ModelViewer] WebGL not available:', err);
+      markWebGLUnavailable();
       setStatus('error');
       setNoWebGL(true);
-      onError?.();
-      return;
+      // A failed background viewer advances the queue. Yield before notifying
+      // its parent so a remount cannot extend the current effect/commit chain.
+      const timer = setTimeout(() => onError?.(), 0);
+      return () => clearTimeout(timer);
     }
 
     const scene = new THREE.Scene();
@@ -247,6 +244,10 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
     if (!ctx) return;
 
     let cancelled = false;
+    let errorTimer: ReturnType<typeof setTimeout> | undefined;
+    const reportError = () => {
+      errorTimer = setTimeout(() => { if (!cancelled) onError?.(); }, 0);
+    };
     setStatus('loading');
     setError(null);
     setFileColors(true);
@@ -312,7 +313,7 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
                 if (base64) onSnapshotCaptured(base64);
               } catch (err) {
                 console.error('[ModelViewer] snapshot failed:', err);
-                onError?.();
+                reportError();
               }
             });
           });
@@ -323,12 +324,13 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
         if (!cancelled) {
           setStatus('error');
           setError(toAppError(err));
-          onError?.();
+          reportError();
         }
       });
 
     return () => {
       cancelled = true;
+      clearTimeout(errorTimer);
     };
   }, [fileId]);
 

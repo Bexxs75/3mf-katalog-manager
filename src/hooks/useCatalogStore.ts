@@ -228,6 +228,13 @@ export function useCatalogStore({ preselectFirst = true }: CatalogStoreOptions =
     setSkippedSnapshotIds((prev) => new Set(prev).add(id));
   }, []);
 
+  const skipSnapshots = useCallback((ids: readonly string[]) => {
+    setSkippedSnapshotIds((prev) => {
+      const missing = ids.filter(id => !prev.has(id));
+      return missing.length ? new Set([...prev, ...missing]) : prev;
+    });
+  }, []);
+
   const selectModel = useCallback(
     (id: string) => {
       setSelectedId(id);
@@ -536,7 +543,7 @@ export function useCatalogStore({ preselectFirst = true }: CatalogStoreOptions =
     initialLoading, initialLoadFailed, models, setModels,
     folders, tags, trashModels,
     selectedId, setSelectedId,
-    skippedSnapshotIds, skipSnapshot, pendingSnapshotIds,
+    skippedSnapshotIds, skipSnapshot, skipSnapshots, pendingSnapshotIds,
     rescanFeedback,
     pendingScrollToId, setPendingScrollToId,
     refreshFolders, refreshFiles, refreshTags, refreshTrash,

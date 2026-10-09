@@ -14,6 +14,7 @@ import { useSidebarWidth } from './hooks/useSidebarWidth';
 import { invoke } from '@tauri-apps/api/core';
 import { useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Header } from './components/Header';
+import { isWebGLUnavailable } from './lib/webglAvailability';
 import { snapshotQueue } from './lib/snapshotQueue';
 import { Rail } from './components/Rail';
 import { ContextMenu } from './components/ContextMenu';
@@ -252,6 +253,12 @@ export default function App() {
     [store.models, store.pendingSnapshotIds, displayPreference, hasStepPreview],
   );
 
+  const noWebGL = isWebGLUnavailable();
+  useEffect(() => {
+    // Also skip files imported after WebGL failed, without mounting a viewer.
+    if (noWebGL && store.pendingSnapshotIds.length) store.skipSnapshots(store.pendingSnapshotIds);
+  }, [noWebGL, store.pendingSnapshotIds, store.skipSnapshots]);
+
   return (
     <ImportLockContext.Provider value={fileImport.jobActive}>
     <div
@@ -259,12 +266,15 @@ export default function App() {
       onMouseMoveCapture={(event) => { dragPointer.current = { x: event.clientX, y: event.clientY }; }}
       style={{ fontSize: 'var(--fs-body)', '--sidebar-width': mainView === 'printers' ? 'var(--pm-master-width)' : `${mainView === 'catalog' ? sidebarWidth.width : 0}px` } as CSSProperties}
     >
-      {snapshotIds.length > 0 && (
+      {!noWebGL && snapshotIds.length > 0 && (
         <BackgroundSnapshotRenderer
           key={snapshotIds[0]}
           fileId={snapshotIds[0]}
           onSnapshotCaptured={(base64) => store.captureRenderSnapshot(snapshotIds[0], base64)}
-          onError={() => store.skipSnapshot(snapshotIds[0])}
+          onError={() => {
+            if (isWebGLUnavailable()) store.skipSnapshots(store.pendingSnapshotIds);
+            else store.skipSnapshot(snapshotIds[0]);
+          }}
         />
       )}
       {tipsOpen && <KeyboardTipsDialog onClose={() => setTipsOpen(false)} />}

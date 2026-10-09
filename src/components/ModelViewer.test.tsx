@@ -38,6 +38,7 @@ describe('ModelViewer without WebGL', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const onError = vi.fn();
     renderViewer('a', onError);
+    expect(onError).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getByText('Die 3D-Ansicht wird auf diesem Rechner nicht unterstützt')).toBeInTheDocument());
     expect(onError).toHaveBeenCalledTimes(1);
     expect(invoke).not.toHaveBeenCalledWith('get_model_geometry', expect.anything());
@@ -68,4 +69,13 @@ it('measures and remeasures the surface even when WebGL is unavailable', () => {
     expect(container.querySelector('[data-viewer-surface]')).toHaveAttribute('data-compact', String(compact));
     expect(screen.getByRole('alert').classList.contains('viewer-error-compact')).toBe(compact);
   }
+});
+
+
+it('cancels a deferred WebGL error when the viewer unmounts', async () => {
+  const onError = vi.fn();
+  const view = renderViewer('unmounted', onError);
+  view.unmount();
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+  expect(onError).not.toHaveBeenCalled();
 });
