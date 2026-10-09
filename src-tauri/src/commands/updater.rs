@@ -143,24 +143,25 @@ pub fn set_update_channel(state: State<AppState>, channel: UpdateChannel) -> Cmd
     Ok(())
 }
 
-#[tauri::command]
-pub async fn check_app_update(app: tauri::AppHandle, state: State<'_, AppState>) -> CmdResult<UpdateInfoDto> {
-    let channel = read_channel(&state)?;
-    let current = env!("CARGO_PKG_VERSION");
-    let stored = {
-        let conn = lock_db(&state)?;
-        get_setting(&conn, updater::LAST_UPDATE_KEY)
-            .ok()
-            .flatten()
-            .and_then(|raw| serde_json::from_str::<LastUpdateInfo>(&raw).ok())
-    };
-    let (available, check_failed) = match fetch_update(&app, channel).await {
+fn update_check_result(
+    current: &str,
+    channel: UpdateChannel,
+    result: Result<Option<tauri_plugin_updater::Update>, tauri_plugin_updater::Error>,
+) -> (Option<String>, bool) {
+    match result {
         Ok(Some(u)) => {
             log::info!(target: "update", "Update-Check: installiert {current}, verfügbar {}", u.version);
             (Some(u.version), false)
         }
         Ok(None) => {
             log::info!(target: "update", "Update-Check: {current} ist aktuell");
+            (None, false)
+        }
+        // The RC pointer may not exist before its first publication. The plugin
+        // reports unsuccessful HTTP responses as ReleaseNotFound, but preserves
+        // transport and JSON errors; only this typed RC case means "up to date".
+        Err(tauri_plugin_updater::Error::ReleaseNotFound) if channel == UpdateChannel::Rc => {
+            log::info!(target: "update", "RC-Verweis noch nicht veröffentlicht");
             (None, false)
         }
         // No toast for the check itself: offline users should not be bothered.
@@ -172,7 +173,21 @@ pub async fn check_app_update(app: tauri::AppHandle, state: State<'_, AppState>)
             log::warn!(target: "update", "Update-Check nicht möglich: {}", error_chain(&e));
             (None, true)
         }
+    }
+}
+
+#[tauri::command]
+pub async fn check_app_update(app: tauri::AppHandle, state: State<'_, AppState>) -> CmdResult<UpdateInfoDto> {
+    let channel = read_channel(&state)?;
+    let current = env!("CARGO_PKG_VERSION");
+    let stored = {
+        let conn = lock_db(&state)?;
+        get_setting(&conn, updater::LAST_UPDATE_KEY)
+            .ok()
+            .flatten()
+            .and_then(|raw| serde_json::from_str::<LastUpdateInfo>(&raw).ok())
     };
+    let (available, check_failed) = update_check_result(current, channel, fetch_update(&app, channel).await);
     Ok(UpdateInfoDto {
         current_version: current.to_string(),
         release_url: available.as_deref().map(|v| updater::release_page(v, cfg!(feature = "preview"), channel)),
@@ -277,6 +292,39 @@ pub fn install_app_update(app: tauri::AppHandle, state: State<AppState>, pending
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rc_release_not_found_is_up_to_date() {
+        assert_eq!(
+            update_check_result("0.16.0-2", UpdateChannel::Rc, Err(tauri_plugin_updater::Error::ReleaseNotFound)),
+            (None, false),
+        );
+    }
+
+    #[test]
+    fn rc_transport_error_still_fails() {
+        assert_eq!(
+            update_check_result("0.16.0-2", UpdateChannel::Rc, Err(tauri_plugin_updater::Error::Network("offline".into()))),
+            (None, true),
+        );
+    }
+
+    #[test]
+    fn stable_release_not_found_still_fails() {
+        assert_eq!(
+            update_check_result("0.16.0", UpdateChannel::Stable, Err(tauri_plugin_updater::Error::ReleaseNotFound)),
+            (None, true),
+        );
+    }
+
+    #[test]
+    fn rc_invalid_manifest_still_fails() {
+        let error = serde_json::from_str::<serde_json::Value>("invalid JSON").unwrap_err();
+        assert_eq!(
+            update_check_result("0.16.0-2", UpdateChannel::Rc, Err(error.into())),
+            (None, true),
+        );
+    }
 
     fn run_retry(
         outcomes: Vec<Result<u8, tauri_plugin_updater::Error>>,
