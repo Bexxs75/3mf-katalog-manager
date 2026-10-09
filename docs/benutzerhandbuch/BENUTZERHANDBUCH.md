@@ -9,8 +9,8 @@ for printing, and managing your filament stock.
 > **About the screenshots in this guide:** screenshots show the app with its
 > interface set to English
 > and a made-up demo catalog (models like "Rocket" or "Spiral Vase", made-up filament spools, resin
-> bottles and brands) — no real user data. The layout is exactly what you'll see in the app; only
-> the content is for demonstration purposes.
+> bottles and brands) — no real user data. Existing screenshots will be updated; some layouts still show the earlier interface.
+> The additional screenshot motifs are listed in [NEUE-BILDER.md](NEUE-BILDER.md).
 
 ## Contents
 
@@ -111,7 +111,7 @@ re-sorted within the catalog. You have two options:
   click "pick an existing folder directly".
 
 You can change this choice at any time in Settings under "Catalog location". The dialog can also
-be skipped via "Set up later".
+be skipped with the "Set up later" button.
 
 Already-packed archives (e.g. `.zip`) are not picked up by the automatic scan and are left
 untouched — unpack them first if needed, or open the folder directly from the catalog via your
@@ -121,14 +121,17 @@ file manager afterwards.
 
 ![Catalog in grid view](bilder/en/02-katalog-grid.png)
 
-- **Far left, the narrow navigation rail:** switches between the catalog, the Material Manager, and
+- **Far left, the narrow navigation rail:** switches between the catalog, Printer Manager, Material Manager, and
   the trash (with an item-count badge). The gear icon for Settings sits at the very bottom.
 - **Sidebar:** a search field, followed by your folder tree with a model count per folder, your
   collections, your tags, and your print queue.
 - **Main area:** your catalog as a grid (tiles with a preview image) or a list, switchable, plus
   sorting and the "Import" button top left.
-- **Detail panel on the right:** shows the preview and metadata of the currently selected model,
-  including quick actions like "Printed"/"Add to queue".
+- **Header:** identifies the current manager area.
+- **Detail panel on the right:** opens when you click a model. Under Settings → General →
+  "Detail panel", choose "Automatic (appears when clicked)" or "Always visible".
+  It shows the preview, metadata and print status. Depending on the model's data, badges also
+  show material, filament availability, favorite, queue membership and the last printer used.
 
 ## Importing files
 
@@ -142,6 +145,20 @@ both names.
 
 If the app imports a file that's already present in the catalog content-wise (an exact duplicate
 check via content hash), it's recognized instead of being added a second time.
+
+The Import menu explains where files will go: files selected in the file dialog go to the active
+catalog folder or catalog location when one is configured. Without one, they stay in place.
+Folder imports and files dropped from outside the app keep their existing locations.
+The progress row shows the current stage and offers "Cancel". Files already imported remain in
+the catalog. Additional imports wait in a queue; while scanning, the row shows how many files
+have been found. After completion, open "Details" to see files that were not imported, their
+reasons and files that were imported but could not be placed. "Copy list" copies the result list.
+
+![Import result with file names and reasons](bilder/en/36-import-ergebnisliste.png)
+
+To move catalog models, drag the grip on a card onto a folder. A preview follows the pointer,
+valid targets are highlighted, and collapsed folders with subfolders open when you hover over
+them. Dropping onto a collection adds the model to that collection.
 
 ### Extracting archives
 
@@ -185,6 +202,21 @@ screenshot above), **folder**, and **list**:
 The list shows additional columns (tags, volume, file size) and can be sorted by clicking a
 column header.
 
+The filter bar above the models shows the active folder, tag, collection, search and tool view.
+Remove individual filters with their close buttons; "Clear all" resets them together.
+
+![Active filters above the models](bilder/en/34-filterleiste.png)
+
+Under "Sort", choose "Modified date", "Import date", "Name", "File size", "Volume" or
+"Last viewed". Each supports both directions: for example "Oldest first" or "Newest first"
+for dates, and "A → Z" or "Z → A" for names.
+
+In the sidebar, "Filter tags …" searches the tag list. The button below the list also reveals
+tags used by only one model. When adding tags in the model details, typing
+offers existing tags as suggestions. Colored dots identify tags in the sidebar, detail panel
+and detail page. Drag the sidebar edge to change its width. "Collapse all folders" folds up the
+tree; icons distinguish folders, collections and tags.
+
 ### Folder view
 
 The **Folder** view groups your models by their real folder structure on disk — like a file
@@ -212,8 +244,7 @@ combine them freely:
   [Collections](#collections) below).
 
 The search field at the top of the sidebar filters by name, tag, creator, or file path — a match
-in any of these is enough. Press `/` from anywhere to jump straight into the search field without
-first clicking it.
+in any of these is enough. Press `/` outside text fields to jump into search when single-key shortcuts are enabled.
 
 **Keyboard shortcuts:** `/` focuses search, the arrow keys navigate the grid spatially (Up/Down
 jumps to the next row based on actual rendered tile position, Left/Right to the next/previous
@@ -221,6 +252,14 @@ model), Space toggles the multi-select checkbox of the currently selected model,
 Backspace opens the delete confirmation when a multi-selection is active (see
 [Multi-select](#quick-actions-context-menu-and-multi-select)). None of these fire while you're
 typing in a text field.
+
+Tab navigation has a visible focus indicator. Ctrl+A (Cmd+A on macOS) selects all visible
+models. Escape clears the selection or closes a menu or dialog; in search it leaves the field
+without clearing the query. Open "Keyboard shortcuts and tips" with `?`, the help icon in the
+header or Settings → Info. Settings → General → "Single-key shortcuts" disables shortcuts
+such as `/` and `?`; Ctrl/Cmd shortcuts remain available.
+
+![Keyboard shortcuts and tips](bilder/en/37-tastenkuerzel-dialog.png)
 
 ## Viewing a model in detail
 
@@ -242,6 +281,22 @@ cataloged file after the fact.
 
 At the bottom left you can mark the model as **printed** and add it to the **queue**. The **heart**
 marks it as a favorite; you find all favorites under "Tools → Favorites".
+
+Use "Previous model" and "Next model", or the Left/Right arrow keys outside input fields,
+to move through the current model order. The position is shown beside the buttons. If edits
+are pending, choose "Keep editing" or "Discard and switch" before changing models.
+
+The 3D preview offers "File colors" when color data is available, or "Single color".
+The legend explains the file colors. For multi-plate 3MF files from Bambu Studio, OrcaSlicer or
+Creality Print, the plate bar below the preview offers "All", individual plates and previous/next
+buttons. Selecting a plate fits it into view and limits the legend to that plate.
+
+![3D preview with plate bar](bilder/en/35-platten-leiste.png)
+
+"Show in file manager" reveals the file from the detail page, detail panel or card context menu.
+On macOS it reads "Show in Finder", on Windows "Show in Explorer". If the preview cannot be
+shown, an error card explains whether the file is missing, unreadable, too large or WebGL is
+unavailable, and offers suitable next steps such as opening the file in a slicer.
 
 ## Quick actions: context menu and multi-select
 
@@ -289,6 +344,9 @@ collection in the sidebar filters the catalog down to its models:
 
 ![Collection "Christmas Market Project"](bilder/en/07-sammlungen.png)
 
+Right-click a collection in the sidebar to choose "Rename" or "Delete". Drag models onto a
+collection to add them. The back button leaves the collections gallery.
+
 ## Tools in the sidebar
 
 At the bottom of the sidebar, the **Tools** section bundles several helpers, each with a count.
@@ -307,7 +365,7 @@ Click its heading to collapse it.
 - **Cleanup suggestions** — checks the catalog for missing files and duplicates.
 
 A selected view appears as a filter chip at the top and can be combined with folders, tags and
-search. Clicking the view again or the ✕ on the chip removes it. Material Manager and trash are
+search. Clicking the view again or the ✕ on the chip removes it. Printer Manager, Material Manager and trash are
 still reached via the icons in the left rail.
 
 ## Opening models directly in your slicer
@@ -391,21 +449,26 @@ icon and calculates top to bottom with the combined need. Nothing is deducted.
 
 ### Printers & AMS
 
-Besides the stock itself, you can also model your printers and their multi-material units —
-loaded spools then appear in their own column to the right of the stock.
+Open "Printer Manager" in the left rail to manage printers. Select a printer and use "Edit"
+to change "Name", "Manufacturer", "Model", "Nozzle" (filament printers) and
+"Build volume X × Y × Z". "Material assignment" manages the units, "Connection & network"
+sets up the printer link, and "Recent prints" shows its print history.
+Loading spools or resin bottles and confirming new prints remain in Material Manager.
+
+![Printer Manager with hardware, units and connection](bilder/en/33-printer-manager.png)
 
 ![Printers & AMS slots](bilder/en/22-drucker-ams.png)
 
-1. Use "Manage printers" to add a printer — next to the name you choose "Filament" (default)
+1. In Printer Manager, use "+ Add printer" to add a printer — next to the name you choose "Filament" (default)
    or "Resin"; the kind can't be changed afterwards. A filament printer automatically gets a
    "Spool holder" unit (1 slot); for a printer without an AMS this is initially its only slot, but you can delete it
    at any time. Then add more multi-material units to it via "+ Add unit" — either from
    templates (Bambu AMS/AMS lite/AMS HT, Creality CFS, Prusa MMU3, Anycubic ACE Pro, Spool
    holder) or as "Custom…" with any slot count you like. Reorder units by their drag handle. If
    a printer ends up with no slots at all (e.g. after deleting its spool holder), its column
-   shows the hint "No slots – add them via “Manage printers”"; clicking it opens printer
+   shows the hint "No slots – add them in Printer Manager"; clicking it opens printer
    management directly.
-2. Loading a spool: drag a card or row from the stock onto a slot — or click the slot and pick
+2. In Material Manager, load a spool by dragging a card or row from the stock onto a slot — or click the slot and pick
    a spool from the list. If the slot is already occupied, the spool already in it returns to
    its home location.
 3. Unloading: drag the spool from the slot back into the stock area, or choose "Unload" from
@@ -451,14 +514,13 @@ With a Klipper printer running Moonraker (e.g. controlled via Mainsail or Fluidd
 read the filament used by finished and aborted prints itself, instead of you entering it by
 hand. This is **off by default** and read-only: the app only sends queries, never a command, and
 only talks to addresses you enter yourself on your home network.
-Resin printers can't be connected: they have no "Connection" section.
+Resin printers cannot be connected; "Connection & network" shows a notice instead of connection controls.
 The connection has been tested with a Sovol SV08, an Anycubic Kobra S1 running Rinkhals and a Qidi Smart 3. Other
 Klipper printers should work the same way; if you want to test yours, the
 [test page](https://3mfkatalog.de/en/printer-test.html) helps.
 
-1. **Settings → Printers** → switch on "Printer connection".
-2. **Material Manager → Manage printers** → for the printer you want, enter the address under
-   "Connection" (the same IP or name you'd use to open Mainsail in a browser) → "Test
+1. **Printer Manager** → switch on "Connection" at the bottom of the printer list.
+2. Select the printer → "Connection & network" → enter the address (the same IP or name you'd use to open Mainsail in a browser) → "Test
    connection". If it works, the app shows the version and port, plus the point in time from
    which prints will be deducted — older prints are left alone. If the printer reports "Login
    required", it has a login set up that this version doesn't support yet. If the printer's
@@ -496,8 +558,8 @@ during that time:
 
 ## Settings
 
-The gear icon at the bottom of the navigation rail opens Settings. They're split into five tabs:
-**General**, **Slicer**, **Catalog**, **Printers**, and **Info**.
+The gear icon at the bottom of the navigation rail opens Settings. They're split into four tabs:
+**General**, **Slicer**, **Catalog**, and **Info**.
 
 ### General
 
@@ -517,7 +579,7 @@ The gear icon at the bottom of the navigation rail opens Settings. They're split
 ![Settings: slicer management](bilder/en/11-einstellungen-slicer.png)
 
 The app scans known install locations on startup (Bambu Studio, OrcaSlicer, PrusaSlicer,
-SuperSlicer, UltiMaker Cura) and adds any it finds automatically; use "+ Add" to add others,
+SuperSlicer, UltiMaker Cura, Creality Print) and adds any it finds automatically; use "+ Add" to add others,
 including self-built or modified versions. The radio button sets which slicer is used as the
 **default** when opening a model.
 
@@ -551,13 +613,12 @@ the catalog location anew.
 
 ### Printers
 
-![Settings: Printers](bilder/en/28-einstellungen-drucker.png)
+Under General, "Open Printer Manager" takes you to the printer area in the left rail.
+There is no separate Printers tab. The connection switch is at the bottom of the printer list;
+addresses and connection tests are in the selected printer's "Connection & network" section
+(see [Printer connection](#printer-connection)).
 
-This is where you switch the printer connection on or off (off by default) and see the status
-of every connected printer at a glance ("Klipper · connected", "Klipper · error", or "not
-connected"). Address and connection test are entered per printer in the Material Manager under
-"Manage printers" — see the [Printer connection](#printer-connection) section above for
-details. Resin printers don't appear here.
+![Earlier settings view; printer controls are now in Printer Manager](bilder/en/28-einstellungen-drucker.png)
 
 ### Info
 
@@ -580,6 +641,17 @@ The following screenshots compare the **light** and **dark** themes:
 
 ![Catalog in dark theme](bilder/en/14-dark-mode.png)
 ![Catalog in light theme](bilder/en/15-hell-mode-bonus.png)
+
+Under Settings → Info, "Receive prerelease versions (Release Candidates)" enables release
+candidates and the later final version for your existing catalog. Enabling it opens a warning:
+a catalog migration may prevent returning to an older version without a backup. Choose
+"Export catalog now", then "Enable now" after the export succeeds; "Enable anyway" proceeds
+without that export, and "Cancel" leaves the switch off. Turning it off does not uninstall an
+existing prerelease; it stays installed until a newer stable version is available.
+
+![Warning when enabling prerelease updates](bilder/en/38-update-kanal-warnung.png)
+
+The app runs only once. Launching it again brings the existing window to the front.
 
 ### Reporting a bug
 
@@ -631,23 +703,47 @@ downloads a small file with the current version number. You can also download a 
 
 ### Restoring a backup after an update
 
-Before installing an update this way, the app copies your catalog database to
-`update-backups/catalog-vor-<version>.db` inside the app's data folder:
+Before an in-app update is installed, the app copies the catalog database to `update-backups`
+inside its data folder. Settings → Info → "Open data folder" opens the data folder; the copies are in its subfolder `update-backups`:
 
 - Windows: `%APPDATA%\com.thebexxs.mfkatalogmanager\update-backups`
 - macOS: `~/Library/Application Support/com.thebexxs.mfkatalogmanager/update-backups`
 - Linux: `~/.local/share/com.thebexxs.mfkatalogmanager/update-backups`
 
-The last 3 backups are kept; older ones are removed automatically. `<version>` in the file name
-is the version you updated *to*, not the one before it - the file itself holds your catalog from
-before that update. To go back to the version you had before:
+Update copies are named `Katalog-Sicherung_<YYYY-MM-DD_HHMM>_vor-Update_<from>_auf_<to>.db`.
+The file contains the catalog from before the update; `<from>` is the version you came from,
+`<to>` the target version. Before migrating an existing catalog on startup, the app also
+attempts a copy named `Katalog-Sicherung_<YYYY-MM-DD_HHMM>_vor-Schema-Migration_<a>_auf_<b>.db`,
+where `a` and `b` are schema numbers. This also applies to manual installations. A failed
+schema copy is logged and does not prevent startup, so keep a separate export before updating.
+If a name already exists, a numbered suffix preserves the earlier copy.
 
-1. Close the app.
-2. Install the previous version from the [releases
-   page](https://github.com/Bexxs75/3mf-katalog-manager/releases).
-3. In the folder above, copy `catalog-vor-<version>.db` over `catalog.db`, which sits in the
-   same app data folder (one level up from `update-backups`), while the app is closed.
-4. Start the app again.
+Retention is separate for each kind:
+
+- Normal update copies: the newest three, including legacy update copies.
+- Copies made when leaving a stable version: the oldest and newest are always retained by
+  automatic cleanup. Intermediate copies in this group can be removed. They do not count
+  toward the three normal update copies.
+- Schema-migration copies: the newest two, independently of update copies.
+- Unrelated files are never deleted by this cleanup. The copy just created is protected.
+
+These automatic `.db` files are database copies, not ZIP catalog exports. "Import catalog"
+accepts only ZIP exports and cannot open them. To return using an automatic database copy:
+
+1. In Settings → Info, use "Open data folder" and open `update-backups`. Find the copy made
+   before the update you want to undo. Copy it somewhere safe.
+2. Export the current catalog under Settings → Catalog → "Export catalog" if the app still
+   opens, then close the app completely.
+3. Install the previous version from the
+   [Releases page](https://github.com/Bexxs75/3mf-katalog-manager/releases), without starting it yet.
+4. Keep the current `catalog.db` as a separate safety copy. Copy the selected pre-update
+   database into the app data folder (one level above `update-backups`) as `catalog.db`.
+5. Start the previous version. The catalog is at the time of that copy; later catalog changes
+   are not included.
+
+For a ZIP export, use the import steps below in a version compatible with that backup.
+Importing into the newer app does not undo a schema migration. If the older app cannot start
+with the current catalog, its import dialog is unavailable; use the database-copy route above.
 
 ## Backing up and restoring your catalog
 
@@ -655,6 +751,15 @@ before that update. To go back to the version you had before:
 file — handy before switching systems or simply as a safety copy. When restoring such a backup,
 the app automatically backs up your existing database first, so an accidental import never
 overwrites anything irreversibly.
+
+To restore a ZIP export:
+
+1. Open Settings → Catalog → "Catalog Backup". Use "Export catalog" first if you want to
+   retain the current state separately.
+2. Choose "Import catalog" and confirm "Yes, replace". This replaces the entire current catalog.
+3. Select the ZIP file created with "Export catalog". The app validates it before replacement.
+   If it is rejected, the current catalog remains unchanged and an error is shown.
+4. After a successful import, the interface reloads with the restored catalog.
 
 ## Known limitations
 
@@ -694,18 +799,16 @@ Not automatically/synced — there's currently no cloud connection for that (see
 the catalog to another computer manually.
 
 **Can I go back to the old version after an update?**
-Only with a backup: new versions can change the catalog database on first start (v0.15.0
-removes the obsolete saved-filters table), and older versions can't open it
-afterwards. Updating from within the app (see [Updating](#updating)) backs up your catalog
-automatically first — see [Restoring a backup after an
-update](#restoring-a-backup-after-an-update) to go back. Updating by hand (for example from 0.14
-or older to 0.15.0) has no automatic backup, so create one yourself first under **Settings →
-Catalog** (see [Backing up and restoring your catalog](#backing-up-and-restoring-your-catalog)).
+Only with a compatible backup. New versions can migrate the catalog database, which an older
+version may not be able to open. In-app updates create a database copy before installation;
+startup also attempts a copy before a schema migration, including after a manual installation.
+Create a ZIP export under Settings → Catalog before updating as well. See
+[Restoring a backup after an update](#restoring-a-backup-after-an-update) for the difference
+between automatic database copies and ZIP imports, and the steps back.
 
 **Why does the "Source" field look a bit odd on some systems when no URL is set?**
 That's just placeholder text ("https://…") with a small pencil icon next to it for editing —
-depending on the fonts installed on your system, that icon may render slightly differently. It's
-not a bug.
+the interface uses Barlow and SVG icons. Paths and addresses use IBM Plex Mono.
 
 ---
 
@@ -718,8 +821,9 @@ importierst, organisierst, druckfertig machst und deine Spulen im Material Manag
 > **Hinweis zu den Bildern in diesem Handbuch:** Die Screenshots zeigen die App
 > mit einem erfundenen
 > Demo-Katalog (Modelle wie "Rakete" oder "Spiralvase", erfundene Filamentspulen, Resin-Flaschen
-> und Hersteller) — keine echten Nutzerdaten. Die Optik entspricht exakt dem, was du in der App
-> siehst; nur der Inhalt ist zu Demonstrationszwecken erfunden.
+> und Hersteller) — keine echten Nutzerdaten. Vorhandene Bilder werden noch aktualisiert;
+> einige Ansichten zeigen die bisherige Oberfläche. Zusätzliche Bildmotive stehen in
+> [NEUE-BILDER.md](NEUE-BILDER.md).
 
 ## Inhalt
 
@@ -821,7 +925,7 @@ tatsächlich abgelegt, nicht nur im Katalog umsortiert. Du hast zwei Möglichkei
   Ordner direkt wählen“.
 
 Du kannst diese Wahl jederzeit in den Einstellungen unter "Katalog-Speicherort" ändern. Über
-"Später einrichten" lässt sich der Dialog auch überspringen.
+dem Knopf "Später einrichten" lässt sich der Dialog auch überspringen.
 
 Bereits gepackte Archive (z. B. `.zip`) werden beim automatischen Einlesen nicht berücksichtigt
 und bleiben unverändert liegen — entpacke sie bei Bedarf vorher, oder öffne den Ordner nach der
@@ -831,15 +935,18 @@ Einrichtung direkt über den Katalog im Dateimanager.
 
 ![Katalog in der Raster-Ansicht](bilder/02-katalog-grid.png)
 
-- **Ganz links, die schmale Navigationsleiste:** wechselt zwischen Katalog, Material Manager und
+- **Ganz links, die schmale Navigationsleiste:** wechselt zwischen Katalog, Printer Manager, Material Manager und
   Papierkorb (mit Mengen-Badge). Ganz unten befindet sich das Zahnrad-Symbol für die
   Einstellungen.
 - **Seitenleiste (Sidebar):** Suchfeld, darunter dein Ordnerbaum mit Anzahl der Modelle pro
   Ordner, deine Sammlungen, deine Tags und deine Druck-Warteschlange.
 - **Hauptbereich:** dein Katalog als Raster (Kacheln mit Vorschaubild) oder als Liste
   umschaltbar, dazu Sortierung und der "Importieren"-Button oben links.
-- **Detailpanel rechts:** zeigt Vorschau und Metadaten des gerade ausgewählten Modells, inklusive
-  Schnellaktionen wie "Gedruckt"/"Zur Warteschlange hinzufügen".
+- **Kopfzeile:** nennt den aktuellen Manager-Bereich.
+- **Detailbereich rechts:** öffnet sich beim Anklicken eines Modells. Unter Einstellungen →
+  Allgemein → "Detailbereich" wählst du "Automatisch (erscheint beim Anklicken)" oder "Immer sichtbar".
+  Er zeigt Vorschau, Metadaten und Druckstatus. Je nach vorhandenen Daten zeigen Status-Badges
+  außerdem Material, Filament-Prüfung, Favorit, Warteschlange und den zuletzt verwendeten Drucker.
 
 ## Dateien importieren
 
@@ -853,6 +960,21 @@ eingestellten Sprache der Oberfläche; die Suche findet sie unter beiden Namen.
 
 Importiert die App eine Datei, die inhaltlich bereits im Katalog vorhanden ist (exakter
 Duplikat-Abgleich per Inhalts-Hash), wird das erkannt, statt sie ein zweites Mal anzulegen.
+
+Das Import-Menü erklärt, wo die Dateien landen: Im Dateidialog ausgewählte Dateien kommen in den
+aktiven Katalogordner oder den eingerichteten Katalog-Speicherort. Ohne Speicherort bleiben sie
+an ihrem Ort. Beim Ordner-Import und beim Ziehen von Dateien von außen bleiben sie ebenfalls am bisherigen Ort.
+Die Fortschrittszeile zeigt den aktuellen Schritt und bietet "Abbrechen". Bereits importierte
+Dateien bleiben im Katalog. Weitere Importe warten in einer Warteschlange. Während der Suche
+siehst du die Anzahl der bisher gefundenen Dateien. Öffne nach Abschluss "Details": Dort stehen
+nicht importierte Dateien mit Gründen sowie importierte Dateien, die nicht abgelegt werden konnten.
+"Liste kopieren" kopiert die Ergebnisliste.
+
+![Import-Ergebnis mit Dateinamen und Gründen](bilder/36-import-ergebnisliste.png)
+
+Zum Verschieben ziehst du ein Katalogmodell am Griff seiner Karte auf einen Ordner. Eine Vorschau
+folgt dem Mauszeiger, passende Ziele werden hervorgehoben. Zugeklappte Ordner mit Unterordnern
+öffnen sich beim Drüberhalten. Ziehst du ein Modell auf eine Sammlung, wird es ihr hinzugefügt.
 
 ### Archive entpacken
 
@@ -901,6 +1023,22 @@ siehe Screenshot oben), **Ordner** und **Liste**:
 Die Liste zeigt zusätzliche Spalten (Tags, Volumen, Dateigröße) und lässt sich per Klick auf die
 Spaltenüberschrift sortieren.
 
+Die Filterleiste über den Modellen zeigt aktive Ordner-, Tag-, Sammlungs- und Suchfilter sowie
+die gewählte Werkzeugansicht. Über die Schließen-Knöpfe entfernst du Filter einzeln.
+"Alle löschen" setzt sie gemeinsam zurück.
+
+![Aktive Filter über den Modellen](bilder/34-filterleiste.png)
+
+Unter "Sortieren" wählst du "Änderungsdatum", "Importdatum", "Name", "Dateigröße", "Volumen"
+oder "Zuletzt angesehen". Alle lassen sich in beide Richtungen sortieren: etwa "Älteste zuerst"
+oder "Neueste zuerst" für Datumswerte und "A → Z" oder "Z → A" für Namen.
+
+"Tags filtern …" durchsucht die Tag-Liste der Seitenleiste. Der Knopf unter der Liste blendet
+auch Tags mit nur einem Modell ein. Beim Hinzufügen von Tags in den
+Modelldetails erscheinen vorhandene Tags als Vorschläge. Farbpunkte kennzeichnen die Tags in
+Seitenleiste, Detailbereich und Detailseite. Zieh den Rand der Seitenleiste, um ihre Breite zu
+ändern. "Alle Ordner zuklappen" klappt den Baum ein. Symbole unterscheiden Ordner, Sammlungen und Tags.
+
 ### Ordner-Ansicht
 
 Die Ansicht **Ordner** gruppiert deine Modelle nach der echten Ordnerstruktur auf der Festplatte —
@@ -929,8 +1067,7 @@ kombinieren kannst:
   [Sammlungen](#sammlungen)).
 
 Über das Suchfeld oben in der Sidebar filterst du nach Name, Tag, Ersteller oder Dateipfad — ein
-Treffer in irgendeinem dieser Felder reicht. Mit der Taste `/` springst du von überall aus direkt
-ins Suchfeld, ohne erst mit der Maus dorthin zu klicken.
+Treffer in irgendeinem dieser Felder reicht. Mit `/` springst du außerhalb von Textfeldern in die Suche, wenn Einzeltasten-Kürzel eingeschaltet sind.
 
 **Tastaturkürzel:** `/` fokussiert die Suche, die Pfeiltasten navigieren räumlich im Raster (Hoch/
 Runter springt anhand der tatsächlich sichtbaren Kachel-Position zur nächsten Zeile, Links/Rechts
@@ -938,6 +1075,15 @@ zum nächsten/vorherigen Modell), die Leertaste schaltet die Mehrfachauswahl-Che
 ausgewählten Modells um, und Entf/Rücktaste öffnet bei aktiver Mehrfachauswahl die
 Löschen-Bestätigung (siehe [Mehrfachauswahl](#schnelle-aktionen-kontextmenü-und-mehrfachauswahl)).
 Keines davon greift, solange du gerade in einem Textfeld tippst.
+
+Beim Navigieren mit Tab ist der Tastaturfokus sichtbar. Strg+A (Cmd+A unter macOS) wählt alle
+sichtbaren Modelle aus. Escape hebt die Auswahl auf oder schließt ein Menü oder einen Dialog.
+Im Suchfeld verlässt Escape das Feld, ohne den Suchtext zu löschen. "Tastenkürzel und Tipps"
+öffnest du mit `?`, dem Hilfesymbol in der Kopfzeile oder unter Einstellungen → Info.
+Einstellungen → Allgemein → "Einzeltasten-Kürzel" schaltet Kürzel wie `/` und `?` ab.
+Strg/Cmd-Kürzel bleiben verfügbar.
+
+![Tastenkürzel und Tipps](bilder/37-tastenkuerzel-dialog.png)
 
 ## Ein Modell im Detail ansehen
 
@@ -961,6 +1107,25 @@ nachgesliced hast.
 Unten links kannst du das Modell als **gedruckt** markieren und es zur **Warteschlange**
 hinzufügen. Mit dem **Herz** markierst du es als Favorit; alle Favoriten findest du unter
 „Werkzeuge → Favoriten“.
+
+Mit "Vorheriges Modell" und "Nächstes Modell" oder den Pfeiltasten Links/Rechts außerhalb von
+Eingabefeldern wechselst du durch die aktuelle Modellreihenfolge. Neben den Knöpfen steht die
+Position. Bei laufenden Eingaben wählst du vor dem Wechsel "Weiter bearbeiten" oder
+"Verwerfen und wechseln".
+
+Die 3D-Vorschau bietet bei vorhandenen Farbdaten "Dateifarben" oder "Einfarbig".
+Die Legende erklärt die Dateifarben. Bei 3MF-Dateien mit mehreren Druckplatten aus Bambu Studio,
+OrcaSlicer oder Creality Print bietet die Plattenleiste unter der Vorschau "Alle", einzelne
+Platten und Knöpfe zum Vor- und Zurückblättern. Die gewählte Platte wird eingepasst; die Legende
+zeigt nur ihre Farben.
+
+![3D-Vorschau mit Plattenleiste](bilder/35-platten-leiste.png)
+
+"Im Dateimanager anzeigen" zeigt die Datei von der Detailseite, dem Detailbereich oder dem
+Karten-Kontextmenü aus an. Unter macOS heißt die Aktion "Im Finder anzeigen", unter Windows
+"Im Explorer anzeigen". Kann die Vorschau nicht angezeigt werden, erklärt eine Fehlerkarte,
+ob die Datei fehlt, nicht lesbar oder zu groß ist oder WebGL nicht verfügbar ist. Dazu bietet
+sie passende nächste Schritte an, etwa das Öffnen im Slicer.
 
 ## Schnelle Aktionen: Kontextmenü und Mehrfachauswahl
 
@@ -1013,6 +1178,9 @@ Modelle:
 
 ![Sammlung "Weihnachtsmarkt-Projekt"](bilder/07-sammlungen.png)
 
+Per Rechtsklick auf eine Sammlung in der Seitenleiste erreichst du "Umbenennen" und "Löschen".
+Zieh Modelle auf eine Sammlung, um sie hinzuzufügen. Der Zurück-Knopf verlässt die Sammlungsgalerie.
+
 ## Werkzeuge in der Seitenleiste
 
 Unten in der Seitenleiste bündelt der Bereich **Werkzeuge** mehrere Hilfen, jeweils mit Anzahl.
@@ -1032,7 +1200,7 @@ Unten in der Seitenleiste bündelt der Bereich **Werkzeuge** mehrere Hilfen, jew
 
 Eine gewählte Ansicht erscheint oben als Filter-Chip und lässt sich mit Ordnern, Tags und Suche
 kombinieren. Ein zweiter Klick auf die Ansicht oder das ✕ am Chip hebt sie wieder auf.
-Material Manager und Papierkorb erreichst du wie gewohnt über die Symbole in der linken Leiste.
+Printer Manager, Material Manager und Papierkorb erreichst du über die Symbole in der linken Leiste.
 
 ## Modelle direkt im Slicer öffnen
 
@@ -1117,12 +1285,17 @@ und rechnet von oben nach unten mit dem gemeinsamen Bedarf. Es wird dabei nichts
 
 ### Drucker & AMS
 
-Neben dem Lager selbst lassen sich auch deine Drucker mit ihren Mehrfarbeinheiten abbilden —
-eingelegte Spulen erscheinen dann in einer eigenen Spalte rechts neben dem Lager.
+Öffne "Printer Manager" in der linken Leiste, um Drucker zu verwalten. Wähle einen Drucker
+und ändere über "Bearbeiten" die Felder "Name", "Hersteller", "Modell", "Düse" (bei
+Filament-Druckern) und "Bauraum X × Y × Z". Unter "Materialzuordnung" verwaltest du Einheiten,
+unter "Anbindung & Netzwerk" richtest du die Verbindung ein. "Letzte Drucke" zeigt den Druckverlauf.
+Spulen oder Resin-Flaschen einlegen und neue Drucke bestätigen kannst du weiterhin im Material Manager.
+
+![Printer Manager mit Hardware, Einheiten und Anbindung](bilder/33-printer-manager.png)
 
 ![Drucker & AMS-Fächer](bilder/22-drucker-ams.png)
 
-1. Über "Drucker verwalten" legst du einen Drucker an — neben dem Namen wählst du dabei
+1. Im Printer Manager legst du über "+ Drucker hinzufügen" einen Drucker an — neben dem Namen wählst du dabei
    "Filament" (Standard) oder "Resin"; die Art ist danach fest. Ein Filament-Drucker bekommt
    automatisch einen "Spulenhalter" (1 Fach); bei einem Drucker ohne AMS ist das zunächst sein einziges Fach, du
    kannst ihn aber jederzeit löschen. Über "+ Einheit hinzufügen" fügst du weitere
@@ -1130,9 +1303,9 @@ eingelegte Spulen erscheinen dann in einer eigenen Spalte rechts neben dem Lager
    Prusa MMU3, Anycubic ACE Pro, Spulenhalter) oder als "Eigene…" mit frei wählbarer
    Fachanzahl. Die Reihenfolge der Einheiten änderst du per Griff. Hat ein Drucker gar keine
    Fächer mehr (z. B. nach dem Löschen des Spulenhalters), zeigt seine Spalte den Hinweis
-   "Keine Fächer – über „Drucker verwalten“ hinzufügen"; ein Klick darauf öffnet direkt die
+   "Keine Fächer – im Printer Manager hinzufügen"; ein Klick darauf öffnet direkt die
    Drucker-Verwaltung.
-2. Eine Spule einlegen: Karte oder Zeile aus dem Lager auf ein Fach ziehen — oder das Fach
+2. Im Material Manager eine Spule einlegen: Karte oder Zeile aus dem Lager auf ein Fach ziehen — oder das Fach
    anklicken und eine Spule aus der Liste auswählen. Ist das Fach bereits belegt, kehrt die
    Spule, die schon im Fach steckt, an ihren Stammplatz zurück.
 3. Herausnehmen: die Spule aus dem Fach zurück in den Lagerbereich ziehen, oder über das
@@ -1179,14 +1352,13 @@ Bei einem Klipper-Drucker mit Moonraker (z. B. über Mainsail oder Fluidd bedien
 den Filamentverbrauch fertiger und abgebrochener Drucke selbst ablesen, statt dass du ihn von
 Hand einträgst. Das ist standardmäßig **ausgeschaltet** und rein lesend: Die App sendet nur
 Abfragen, nie einen Befehl, und spricht nur mit Adressen, die du selbst im Heimnetz einträgst.
-Für Resin-Drucker gibt es keine Anbindung: Bei ihnen fehlt der Abschnitt "Verbindung".
+Für Resin-Drucker gibt es keine Anbindung. Unter "Anbindung & Netzwerk" steht dazu ein Hinweis statt der Verbindungsfelder.
 Getestet ist die Anbindung mit einem Sovol SV08, einem Anycubic Kobra S1 mit Rinkhals und einem Qidi Smart 3. Andere
 Klipper-Drucker sollten genauso funktionieren; wenn du deinen testen möchtest, hilft die
 [Testseite](https://3mfkatalog.de/druckertest.html).
 
-1. **Einstellungen → Drucker** → Schalter "Druckeranbindung" einschalten.
-2. **Material Manager → Drucker verwalten** → beim gewünschten Drucker unter "Verbindung" die
-   Adresse eintragen (dieselbe IP oder denselben Namen, mit dem du z. B. Mainsail im Browser
+1. **Printer Manager** → unten in der Druckerliste "Anbindung" einschalten.
+2. Drucker auswählen → "Anbindung & Netzwerk" → Adresse eintragen (dieselbe IP oder denselben Namen, mit dem du z. B. Mainsail im Browser
    öffnest) → "Verbindung testen". Klappt es, zeigt die App Version und Port sowie ab welchem
    Zeitpunkt Drucke abgebucht werden — ältere Drucke bleiben unberührt. Meldet der Drucker
    "Anmeldung nötig", ist am Drucker eine Anmeldung eingerichtet, die diese Version noch nicht
@@ -1226,7 +1398,7 @@ lassen sich in dieser Zeit wiederherstellen:
 ## Einstellungen
 
 Über das Zahnrad-Symbol unten in der Navigationsleiste öffnest du die Einstellungen. Sie sind in
-fünf Reiter aufgeteilt: **Allgemein**, **Slicer**, **Katalog**, **Drucker** und **Info**.
+vier Reiter aufgeteilt: **Allgemein**, **Slicer**, **Katalog** und **Info**.
 
 ### Allgemein
 
@@ -1246,7 +1418,7 @@ fünf Reiter aufgeteilt: **Allgemein**, **Slicer**, **Katalog**, **Drucker** und
 ![Einstellungen: Slicer-Verwaltung](bilder/11-einstellungen-slicer.png)
 
 Die App durchsucht beim Start bekannte Installationsorte (Bambu Studio, OrcaSlicer, PrusaSlicer,
-SuperSlicer, UltiMaker Cura) und trägt gefundene Slicer automatisch ein; über "+ Hinzufügen"
+SuperSlicer, UltiMaker Cura, Creality Print) und trägt gefundene Slicer automatisch ein; über "+ Hinzufügen"
 ergänzt du weitere, auch selbst kompilierte oder abgewandelte Versionen. Der Radiobutton legt
 fest, welcher Slicer beim Öffnen eines Modells als **Standard** verwendet wird.
 
@@ -1281,13 +1453,12 @@ Einrichtungsdialog erneut, damit du den Katalog-Speicherort neu einrichten kanns
 
 ### Drucker
 
-![Einstellungen: Drucker](bilder/28-einstellungen-drucker.png)
+Unter Allgemein führt "Printer Manager öffnen" zum Druckerbereich in der linken Leiste.
+Einen eigenen Reiter Drucker gibt es nicht. Der Schalter für die Anbindung steht unten in der
+Druckerliste. Adresse und Verbindungstest findest du beim gewählten Drucker unter
+"Anbindung & Netzwerk" (siehe [Druckeranbindung](#druckeranbindung)).
 
-Hier schaltest du die Druckeranbindung ein oder aus (standardmäßig aus) und siehst auf einen
-Blick den Status jedes angebundenen Druckers ("Klipper · verbunden", "Klipper · Fehler" oder
-"nicht angebunden"). Adresse und Verbindungstest trägst du pro Drucker im Material Manager unter
-"Drucker verwalten" ein — Details dazu im Abschnitt
-[Druckeranbindung](#druckeranbindung) weiter oben. Resin-Drucker erscheinen hier nicht.
+![Bisherige Einstellungsansicht; Druckerfunktionen liegen jetzt im Printer Manager](bilder/28-einstellungen-drucker.png)
 
 ### Info
 
@@ -1312,6 +1483,18 @@ Die folgenden Screenshots zeigen das **Hell**- und **Dunkel**-Theme im Vergleich
 
 ![Katalog im Dunkel-Theme](bilder/14-dark-mode.png)
 ![Katalog im Hell-Theme](bilder/15-hell-mode-bonus.png)
+
+Unter Einstellungen → Info aktiviert "Vorab-Versionen (Release Candidates) erhalten" den
+Empfang von Release Candidates und der späteren finalen Version für deinen vorhandenen Katalog.
+Beim Einschalten erscheint eine Warnung: Eine Katalog-Migration kann den Rückweg ohne Sicherung
+verhindern. Wähle "Katalog jetzt exportieren" und nach erfolgreichem Export "Jetzt aktivieren".
+"Trotzdem aktivieren" fährt ohne diesen Export fort. "Abbrechen" lässt den Schalter ausgeschaltet.
+Ausschalten entfernt eine installierte Vorab-Version nicht. Sie bleibt installiert, bis eine
+neuere stabile Version verfügbar ist.
+
+![Warnung beim Aktivieren von Vorab-Versionen](bilder/38-update-kanal-warnung.png)
+
+Die App läuft nur einmal. Ein zweiter Start holt das vorhandene Fenster nach vorn.
 
 ### Fehler melden
 
@@ -1365,24 +1548,52 @@ installieren; dein Katalog bleibt erhalten.
 
 ### Wiederherstellen einer Sicherung nach einem Update
 
-Vor der Installation eines Updates auf diesem Weg kopiert die App deine Katalog-Datenbank nach
-`update-backups/catalog-vor-<Version>.db` im Datenordner der App:
+Vor der Installation eines Updates aus der App kopiert sie die Katalog-Datenbank nach
+`update-backups` im Datenordner. Einstellungen → Info → "Datenordner öffnen" öffnet den Datenordner; die Kopien liegen im Unterordner `update-backups`:
 
 - Windows: `%APPDATA%\com.thebexxs.mfkatalogmanager\update-backups`
 - macOS: `~/Library/Application Support/com.thebexxs.mfkatalogmanager/update-backups`
 - Linux: `~/.local/share/com.thebexxs.mfkatalogmanager/update-backups`
 
-Die letzten 3 Sicherungen bleiben erhalten, ältere werden automatisch entfernt. `<Version>` im
-Dateinamen ist die Version, auf die du aktualisiert hast, nicht die davor - die Datei selbst
-enthält deinen Katalog von vor diesem Update. So kommst du zurück zur vorherigen Version:
+Update-Sicherungen heißen `Katalog-Sicherung_<JJJJ-MM-TT_HHMM>_vor-Update_<von>_auf_<nach>.db`.
+Die Datei enthält den Katalog vor dem Update. `<von>` ist die Ausgangsversion, `<nach>` die
+Zielversion. Vor einer Migration des vorhandenen Katalogs beim Start versucht die App außerdem,
+eine Kopie namens `Katalog-Sicherung_<JJJJ-MM-TT_HHMM>_vor-Schema-Migration_<a>_auf_<b>.db`
+anzulegen. `a` und `b` sind Schema-Nummern. Das gilt auch bei einer Installation von Hand.
+Scheitert diese Schema-Sicherung, wird das protokolliert; der Start läuft trotzdem weiter.
+Lege deshalb vor einem Update zusätzlich einen eigenen Export an. Existiert ein Dateiname
+schon, erhält die weitere Kopie einen nummerierten Zusatz. Die frühere Kopie bleibt erhalten.
 
-1. Schließe die App.
-2. Installiere die vorherige Version von der
-   [Releases-Seite](https://github.com/Bexxs75/3mf-katalog-manager/releases).
-3. Kopiere im Ordner oben `catalog-vor-<Version>.db` über `catalog.db`, die im selben
-   Datenordner der App liegt (eine Ebene über `update-backups`) – während die App geschlossen
-   ist.
-4. Starte die App wieder.
+Die Aufbewahrung erfolgt getrennt nach Art der Sicherung:
+
+- Normale Update-Sicherungen: die neuesten drei, einschließlich älterer Update-Sicherungsformate.
+- Sicherungen beim Verlassen einer stabilen Version: Die älteste und die neueste bleiben bei
+  der automatischen Bereinigung immer erhalten. Dazwischenliegende Kopien dieser Gruppe können
+  entfernt werden. Sie zählen nicht zu den drei normalen Update-Sicherungen.
+- Schema-Sicherungen: die neuesten zwei, unabhängig von den Update-Sicherungen.
+- Fremde Dateien löscht diese Bereinigung nie. Die gerade erstellte Kopie ist geschützt.
+
+Diese automatischen `.db`-Dateien sind Datenbankkopien, keine ZIP-Katalogexporte.
+"Katalog importieren" akzeptiert nur ZIP-Exporte und kann sie nicht öffnen.
+So gehst du mit einer automatischen Datenbankkopie zurück:
+
+1. Öffne unter Einstellungen → Info über "Datenordner öffnen" den Ordner `update-backups`.
+   Suche die Kopie vor dem Update, das du rückgängig machen möchtest. Kopiere sie an einen
+   sicheren Ort.
+2. Exportiere den aktuellen Katalog unter Einstellungen → Katalog → "Katalog exportieren",
+   falls die App noch startet. Schließe die App anschließend vollständig.
+3. Installiere die vorherige Version von der
+   [Releases-Seite](https://github.com/Bexxs75/3mf-katalog-manager/releases), ohne sie schon zu starten.
+4. Bewahre die aktuelle `catalog.db` als separate Sicherheitskopie auf. Kopiere die gewählte
+   Datenbank von vor dem Update als `catalog.db` in den Datenordner der App, eine Ebene über
+   `update-backups`.
+5. Starte die vorherige Version. Der Katalog hat den Stand der Kopie. Spätere Katalogänderungen
+   sind darin nicht enthalten.
+
+Für einen ZIP-Export nutze die folgenden Import-Schritte in einer Version, die mit der Sicherung
+kompatibel ist. Ein Import in die neuere App macht eine Schema-Migration nicht rückgängig.
+Startet die ältere App mit dem aktuellen Katalog nicht, ist auch ihr Import-Dialog nicht erreichbar.
+Nutze dann den Weg mit der Datenbankkopie oben.
 
 ## Katalog sichern und wiederherstellen (Backup)
 
@@ -1391,6 +1602,16 @@ und Einstellungen) als ZIP-Datei — praktisch vor einem Systemwechsel oder einf
 Sicherheitskopie. Beim Wiedereinspielen einer solchen Sicherung legt die App automatisch vorher
 eine Sicherung deiner bestehenden Datenbank an, sodass ein versehentlicher Import nichts
 unwiderruflich überschreibt.
+
+So spielst du einen ZIP-Export ein:
+
+1. Öffne Einstellungen → Katalog → "Katalog-Backup". Nutze zuerst "Katalog exportieren", wenn
+   du den aktuellen Stand separat behalten möchtest.
+2. Wähle "Katalog importieren" und bestätige mit "Ja, ersetzen". Das ersetzt den gesamten
+   aktuellen Katalog.
+3. Wähle die mit "Katalog exportieren" erstellte ZIP-Datei. Die App prüft sie vor dem Ersetzen.
+   Wird sie abgelehnt, bleibt der aktuelle Katalog unverändert und eine Fehlermeldung erscheint.
+4. Nach erfolgreichem Import lädt die Oberfläche mit dem wiederhergestellten Katalog neu.
 
 ## Bekannte Einschränkungen
 
@@ -1431,16 +1652,15 @@ Nicht automatisch/synchronisiert — dafür gibt es aktuell keine Cloud-Anbindun
 lässt sich der Katalog aber manuell auf einen anderen Rechner übertragen.
 
 **Kann ich nach einem Update wieder zur alten Version zurück?**
-Nur mit einer Sicherung: Neue Versionen können beim ersten Start die Katalog-Datenbank ändern
-(v0.15.0 entfernt die veraltete Tabelle für gespeicherte Filter), und ältere Versionen können sie danach
-nicht mehr öffnen. Ein Update aus der App heraus (siehe [Aktualisieren](#aktualisieren)) sichert
-deinen Katalog automatisch vorher — siehe [Wiederherstellen einer Sicherung nach einem
-Update](#wiederherstellen-einer-sicherung-nach-einem-update) für den Weg zurück. Ein Update von
-Hand (zum Beispiel von 0.14 oder älter auf 0.15.0) sichert nichts automatisch, leg dafür selbst
-vorher eine Sicherung unter **Einstellungen → Katalog** an (siehe [Katalog sichern und
-wiederherstellen](#katalog-sichern-und-wiederherstellen-backup)).
+Nur mit einer kompatiblen Sicherung. Neue Versionen können die Katalog-Datenbank migrieren,
+sodass eine ältere Version sie nicht mehr öffnen kann. Updates aus der App erstellen vor der
+Installation eine Datenbankkopie. Beim Start versucht die App außerdem vor einer Schema-Migration
+eine Kopie anzulegen, auch nach einer Installation von Hand. Exportiere vor dem Update zusätzlich
+eine ZIP-Sicherung unter Einstellungen → Katalog. Unter
+[Wiederherstellen einer Sicherung nach einem Update](#wiederherstellen-einer-sicherung-nach-einem-update)
+findest du den Unterschied zwischen automatischen Datenbankkopien und ZIP-Importen sowie den Rückweg.
 
 **Warum wirkt das Feld "Quelle" auf manchen Systemen etwas seltsam, wenn keine URL hinterlegt
 ist?** Das ist lediglich ein Platzhaltertext ("https://…") mit einem kleinen Stift-Symbol zum
-Bearbeiten daneben — je nach installierten Schriftarten auf deinem System kann dieses Symbol
-etwas anders aussehen, das ist kein Fehler.
+Bearbeiten daneben. Die Oberfläche nutzt Barlow und SVG-Symbole. Für Pfade und Adressen wird
+IBM Plex Mono verwendet.
