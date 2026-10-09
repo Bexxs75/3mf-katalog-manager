@@ -27,6 +27,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - **Show in file manager** from the detail page, the details panel and the card context menu (Explorer, Finder, and Linux file managers that support it).
 - **Creality Print** is detected automatically (Windows, macOS, Linux).
 - **Safety copy before a catalog migration:** when a new version has to migrate an existing catalog, the app first copies the catalog database to `update-backups` (the last three copies are kept), also when you install the version by hand. Going back to an older version is then possible by restoring the copy.
+- Update channel "Release Candidate": a switch in Settings → Info (shown for pre-release installs by default) lets you receive further pre-releases and later the final version automatically. Switching on shows a warning with a one-click catalog export.
 
 ### Changed
 
@@ -38,6 +39,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - **One typeface:** Barlow for everything you read, IBM Plex Mono only for paths, addresses and keys; fixed type sizes from 11.5 px and SVG icons instead of text characters, so the interface looks the same on Windows, macOS and Linux. Contrast and hover behavior were improved in the light and dark theme.
 - The startup window waits for the themed surface on all systems, with a timed fallback; large catalogs show a loading state before their first results. Settings no longer cover the navigation.
 - Archives that already contain a folder no longer create a nested duplicate folder when extracted.
+- Catalog backups made before an update or a schema change have clear names (`Katalog-Sicherung_<date>_vor-Update_<from>_auf_<to>.db`). The backup of the stable version you came from is never deleted automatically, so the way back stays open.
 
 ### Fixed
 
@@ -558,6 +560,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Im Dateimanager anzeigen** von der Detailseite, dem Detailbereich und dem Karten-Kontextmenü (Explorer, Finder und Linux-Dateimanager, die es unterstützen).
 - **Creality Print** wird automatisch erkannt (Windows, macOS, Linux).
 - **Sicherung vor einer Katalog-Migration:** Muss eine neue Version einen vorhandenen Katalog umbauen, kopiert die App die Katalog-Datenbank vorher nach `update-backups` (die letzten drei Kopien bleiben erhalten), auch wenn du die Version von Hand installierst. Zurück zu einer älteren Version geht dann mit der Kopie.
+- Update-Kanal „Release Candidate“: Ein Schalter unter Einstellungen → Info (bei Vorab-Installationen standardmäßig an) liefert weitere Vorab-Versionen und später die finale Version automatisch. Beim Einschalten erscheint eine Warnung mit Katalog-Export per Klick.
 
 ### Geändert
 
@@ -569,6 +572,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Eine Schrift:** Barlow für alles Gelesene, IBM Plex Mono nur noch für Pfade, Adressen und Schlüssel; feste Schriftgrößen ab 11,5 px und SVG-Symbole statt Textzeichen, damit die Oberfläche auf Windows, macOS und Linux gleich aussieht. Kontrast und Hover-Verhalten wurden im hellen und dunklen Design verbessert.
 - Das Startfenster wartet auf allen Systemen auf die Oberfläche im gewählten Design, mit zeitlicher Reserve; große Kataloge zeigen vor den ersten Ergebnissen einen Ladezustand. Die Einstellungen verdecken keine Navigation mehr.
 - Archive, die schon einen Ordner enthalten, erzeugen beim Entpacken keinen doppelten Ordner mehr.
+- Sicherungen des Katalogs vor einem Update oder einer Schema-Änderung haben klare Namen (`Katalog-Sicherung_<Datum>_vor-Update_<von>_auf_<nach>.db`). Die Sicherung der stabilen Ausgangsversion wird nie automatisch gelöscht, der Rückweg bleibt offen.
 
 ### Behoben
 
