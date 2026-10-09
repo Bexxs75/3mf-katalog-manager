@@ -134,5 +134,114 @@ class Preview(unittest.TestCase):
             self.assertIn("3MF Katalog Manager – Prüfung", conf_text)
             self.assertNotIn("\\u", conf_text)
 
+class RcManifest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = pathlib.Path(self.temp.name)
+        self.source = self.root / 'latest.json'
+        self.release = self.root / 'release.json'
+        self.output = self.root / 'latest-rc.json'
+        self.current = self.root / 'current.json'
+        self.manifest, self.metadata = self.fixture('0.16.0-2')
+
+    def fixture(self, version):
+        platforms = {}
+        for key, (platform, ext) in ra.UPDATE_TARGETS.items():
+            url = f'https://github.com/{ra.REPO}/releases/download/v{version}/{ra.asset_name(version, platform, True, ext)}'
+            platforms[key] = {'url': url, 'signature': 'signed'}
+        manifest = {'version': version, 'platforms': platforms, 'notes': 'unchanged'}
+        metadata = {'tag_name': 'v' + version, 'draft': False,
+                    'assets': [{'browser_download_url': p['url'], 'state': 'uploaded'} for p in platforms.values()]}
+        return manifest, metadata
+
+    def run_copy(self, current=None, tag='v0.16.0-2'):
+        self.source.write_text(json.dumps(self.manifest))
+        self.release.write_text(json.dumps(self.metadata))
+        args = ['rc-manifest', tag, str(self.source), str(self.release), str(self.output)]
+        if current is not None:
+            self.current.write_text(json.dumps({'version': current}))
+            args.append(str(self.current))
+        ra.main(args)
+
+    def test_first_run_copies_bytes(self):
+        self.run_copy()
+        self.assertEqual(self.source.read_bytes(), self.output.read_bytes())
+
+    def test_numeric_order_and_stable(self):
+        versions = ['0.15.4', '0.16.0-2', '0.16.0-10', '0.16.0', '0.16.1-1']
+        self.assertEqual(sorted(reversed(versions), key=ra.rc_version_key), versions)
+
+    def test_equal_and_newer_rc_allowed(self):
+        for current in ['0.16.0-1', '0.16.0-2', '0.15.4']:
+            self.run_copy(current)
+
+    def test_downgrade_preserves_output(self):
+        for current in ['0.16.0-10', '0.16.0', '0.17.0-1']:
+            self.output.write_text('keep')
+            with self.assertRaises(SystemExit):
+                self.run_copy(current)
+            self.assertEqual(self.output.read_text(), 'keep')
+
+    def test_stable_after_rc(self):
+        self.manifest, self.metadata = self.fixture('0.16.0')
+        self.run_copy('0.16.0-10', 'v0.16.0')
+
+    def test_lower_stable_hotfix_rejected(self):
+        self.manifest, self.metadata = self.fixture('0.15.4')
+        with self.assertRaises(SystemExit):
+            self.run_copy('0.16.0-2', 'v0.15.4')
+        self.assertFalse(self.output.exists())
+
+    def test_invalid_signature(self):
+        for sig in [None, '', '  ', 42]:
+            self.manifest['platforms']['linux-x86_64']['signature'] = sig
+            with self.assertRaises(SystemExit):
+                self.run_copy()
+        del self.manifest['platforms']['linux-x86_64']['signature']
+        with self.assertRaises(SystemExit):
+            self.run_copy()
+
+    def test_wrong_url_or_nonexistent_asset(self):
+        for url in ['https://example.org/pkg',
+                    f'https://github.com/{ra.REPO}/releases/download/v0.16.0-1/pkg',
+                    f'https://github.com/{ra.REPO}/releases/download/v0.16.0-2/missing']:
+            self.manifest['platforms']['linux-x86_64']['url'] = url
+            with self.assertRaises(SystemExit):
+                self.run_copy()
+
+    def test_missing_platform(self):
+        del self.manifest['platforms']['linux-x86_64']
+        with self.assertRaises(SystemExit):
+            self.run_copy()
+
+    def test_invalid_release(self):
+        for field, value in [('draft', True), ('tag_name', 'preview'), ('assets', [])]:
+            self.manifest, self.metadata = self.fixture('0.16.0-2')
+            self.metadata[field] = value
+            with self.assertRaises(SystemExit):
+                self.run_copy()
+
+    def test_version_must_match_tag(self):
+        self.manifest['version'] = '0.16.0-3'
+        with self.assertRaises(SystemExit):
+            self.run_copy()
+
+    def test_invalid_tags_and_versions(self):
+        for tag in ['preview', 'rc', 'v0.16.0-2\n', 'v0.16.0;echo x', 'v0.16.0-rc.1', 'v00.16.0', 'v0.16.0-02']:
+            with self.assertRaises(SystemExit):
+                self.run_copy(tag=tag)
+
+    def test_unreadable_current_is_not_first_run(self):
+        self.run_copy()
+        for content in ['', '{}', 'null', '{"version": "invalid"}']:
+            self.current.write_text(content)
+            with self.assertRaises(SystemExit):
+                ra.rc_manifest('v0.16.0-2', self.source, self.release, self.output, self.current)
+        self.current.unlink()
+        with self.assertRaises(SystemExit):
+            ra.rc_manifest('v0.16.0-2', self.source, self.release, self.output, self.current)
+
+
 if __name__ == "__main__":
     unittest.main()

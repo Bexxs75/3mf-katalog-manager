@@ -1,0 +1,79 @@
+name: Release Candidate channel
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Published release tag, e.g. v0.16.0-2"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+# Compare and upload under the same lock, so concurrent releases cannot race
+# the rollback check. Never interrupt an upload with a newer run.
+concurrency:
+  group: rc-channel
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (!github.event.release.draft && startsWith(github.event.release.tag_name, 'v'))
+    runs-on: ubuntu-24.04
+    steps:
+      # Old release tags may predate the channel helper; use the maintained code.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Validate and update channel
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          TAG="$RELEASE_TAG"
+          if [[ "$EVENT_NAME" == workflow_dispatch ]]; then TAG="$INPUT_TAG"; fi
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?$ ]] || { echo 'Invalid release tag'; exit 1; }
+          R="$GITHUB_REPOSITORY"
+          WORK=$(mktemp -d)
+          trap 'rm -rf "$WORK"' EXIT
+          gh api "repos/$R/releases/tags/$TAG" > "$WORK/source-release.json"
+          jq -e --arg tag "$TAG" '.tag_name == $tag and .draft == false' "$WORK/source-release.json" >/dev/null
+          gh release download "$TAG" -R "$R" -p latest.json -O "$WORK/latest.json"
+
+          # Only HTTP 404 establishes first run; authentication, network and
+          # server failures must not bypass the existing version check.
+          STATUS=$(curl --silent --show-error --output "$WORK/rc-release.json" --write-out '%{http_code}' \
+            -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' \
+            "$GITHUB_API_URL/repos/$R/releases/tags/rc")
+          CURRENT=()
+          case "$STATUS" in
+            200)
+              jq -e '.draft == false and .prerelease == true and .tag_name == "rc"' "$WORK/rc-release.json" >/dev/null
+              if jq -e '.assets | any(.name == "latest-rc.json")' "$WORK/rc-release.json" >/dev/null; then
+                gh release download rc -R "$R" -p latest-rc.json -O "$WORK/current.json"
+                CURRENT=("$WORK/current.json")
+              fi
+              ;;
+            404) ;;
+            *) echo "Cannot inspect RC release (HTTP $STATUS)"; exit 1 ;;
+          esac
+          python3 tools/release_assets.py rc-manifest "$TAG" "$WORK/latest.json" \
+            "$WORK/source-release.json" "$WORK/latest-rc.json" "${CURRENT[@]}"
+
+          # No remote write takes place until all validation has passed.
+          if [[ "$STATUS" == 404 ]]; then
+            gh release create rc -R "$R" --prerelease --latest=false --target "$(git rev-parse HEAD)" \
+              --title 'Release Candidate channel' \
+              --notes 'Nur ein Verweis für In-App-Updates, kein Download. Pakete stehen beim jeweiligen versionierten Release. / Reference for in-app updates only, not a download. Packages are on the corresponding versioned release.'
+          fi
+          gh release upload rc -R "$R" --clobber "$WORK/latest-rc.json"
