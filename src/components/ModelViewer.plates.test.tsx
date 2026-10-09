@@ -256,7 +256,8 @@ it('keeps a small background viewer without controls unpadded', async () => {
   vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(300);
   vi.mocked(invoke).mockResolvedValue(buffer());
   render(<LanguageProvider><ModelViewer fileId="background" needsSnapshot={false} onSnapshotCaptured={() => {}} /></LanguageProvider>);
-  await screen.findByRole('radiogroup');
+  // Plate selection remains visible without playback controls and uses a named group.
+  expect(await screen.findByRole('group', {name: 'Druckplatte'})).toBeVisible();
   expect(runtime.camera!.view?.enabled).not.toBe(true);
   expect(runtime.camera!.aspect).toBeCloseTo(4 / 3);
 });
