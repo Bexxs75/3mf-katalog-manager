@@ -5,7 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { ModelViewer } from './ModelViewer';
 
-const runtime = vi.hoisted(() => ({ scene: null as import('three').Scene | null, camera: null as import('three').PerspectiveCamera | null }));
+const runtime = vi.hoisted(() => ({ scene: null as import('three').Scene | null, camera: null as import('three').PerspectiveCamera | null, target: null as import('three').Vector3 | null }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 vi.mock('three', async importOriginal => {
   const actual = await importOriginal<typeof import('three')>();
@@ -19,7 +19,7 @@ vi.mock('three/examples/jsm/controls/OrbitControls.js', async () => {
   const { Vector3 } = await import('three');
   return { OrbitControls: class {
     target = new Vector3();
-    constructor(private camera: import('three').PerspectiveCamera) {}
+    constructor(private camera: import('three').PerspectiveCamera) { runtime.target = this.target; }
     update() { this.camera.lookAt(this.target); this.camera.updateMatrixWorld(); }
     dispose() {}
   } };
@@ -207,4 +207,104 @@ it('includes both overlapping clips from the Creality fixture in the world-space
   expect(cube.intersectsBox(outerClip)).toBe(true);
   expect(outerClip.max.z).toBeCloseTo(cube.max.z + 0.625);
   expect(group.children.map(mesh => mesh.visible)).toEqual([false, true, true, true]);
+});
+
+it('reserves the measured playback bar on small surfaces, on resize and on fit', async () => {
+  let resize!: () => void;
+  let surface!: HTMLElement;
+  vi.stubGlobal('ResizeObserver', class {
+    constructor(callback: () => void) { resize = callback; }
+    observe(element: HTMLElement) { surface = element; }
+    disconnect() {}
+  });
+  vi.mocked(invoke).mockResolvedValue(buffer());
+  render(viewer('padding'));
+  const fit = await screen.findByRole('button', {name: 'Einpassen'});
+  Object.defineProperty(fit.parentElement, 'offsetHeight', {value: 40});
+  for (const [width, height] of [[350, 265], [400, 300]]) {
+    Object.defineProperties(surface, {clientWidth: {value: width, configurable: true}, clientHeight: {value: height, configurable: true}});
+    act(() => resize());
+    for (const refit of [false, true]) {
+      if (refit) fireEvent.click(fit);
+      const camera = runtime.camera!;
+      // The virtual full frame ends above the 40px bar, its 12px bottom offset and 8px gap.
+      expect(camera.view?.enabled).toBe(true);
+      expect(camera.view?.fullHeight).toBe(height - 60);
+      expect(camera.view?.height).toBe(height);
+      // Equal camera-space lengths must occupy equal pixel lengths on both axes.
+      expect(camera.projectionMatrix.elements[0] * width).toBeCloseTo(camera.projectionMatrix.elements[5] * height);
+      const bounds = new THREE.Box3().setFromObject(objects().group);
+      for (const x of [bounds.min.x, bounds.max.x]) for (const y of [bounds.min.y, bounds.max.y]) for (const z of [bounds.min.z, bounds.max.z]) {
+        const point = new THREE.Vector3(x, y, z).project(camera);
+        expect(Math.abs(point.x)).toBeLessThan(1);
+        expect(point.y).toBeLessThan(1);
+        expect((1 - point.y) * height / 2).toBeLessThan(height - 60);
+      }
+    }
+  }
+  Object.defineProperties(surface, {clientWidth: {value: 800, configurable: true}, clientHeight: {value: 600, configurable: true}});
+  act(() => resize());
+  expect(runtime.camera!.view?.enabled).toBe(false);
+});
+
+
+it('keeps a small background viewer without controls unpadded', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(400);
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(300);
+  vi.mocked(invoke).mockResolvedValue(buffer());
+  render(<LanguageProvider><ModelViewer fileId="background" needsSnapshot={false} onSnapshotCaptured={() => {}} /></LanguageProvider>);
+  await screen.findByRole('radiogroup');
+  expect(runtime.camera!.view?.enabled).not.toBe(true);
+  expect(runtime.camera!.aspect).toBeCloseTo(4 / 3);
+});
+
+
+it('preserves orbit position and target on same-mode resizes but refits for a changed inset or explicit fit', async () => {
+  let resize!: () => void;
+  let surface!: HTMLElement;
+  vi.stubGlobal('ResizeObserver', class {
+    constructor(callback: () => void) { resize = callback; }
+    observe(element: HTMLElement) { surface = element; }
+    disconnect() {}
+  });
+  vi.mocked(invoke).mockResolvedValue(buffer());
+  render(viewer('preserve-orbit'));
+  const fit = await screen.findByRole('button', {name: 'Einpassen'});
+  let barHeight = 40;
+  Object.defineProperty(fit.parentElement, 'offsetHeight', {get: () => barHeight});
+  const measure = (width: number, height: number) => {
+    Object.defineProperties(surface, {clientWidth: {value: width, configurable: true}, clientHeight: {value: height, configurable: true}});
+    act(() => resize());
+  };
+  measure(350, 265);
+  const camera = runtime.camera!;
+  const target = runtime.target!;
+  const orbit = () => { camera.position.set(120, 80, -140); target.set(10, 20, 30); };
+  orbit();
+  for (const [width, height] of [[350, 265], [400, 300], [450, 320]]) {
+    measure(width, height);
+    expect(camera.position.toArray()).toEqual([120, 80, -140]);
+    expect(target.toArray()).toEqual([10, 20, 30]);
+    expect(camera.view?.fullHeight).toBe(height - 60);
+    expect(camera.view?.height).toBe(height);
+    expect(camera.projectionMatrix.elements[0] * width).toBeCloseTo(camera.projectionMatrix.elements[5] * height);
+  }
+  barHeight = 50;
+  measure(450, 320);
+  expect(camera.view?.fullHeight).toBe(250);
+  expect(target.toArray()).toEqual([0, 0, 0]);
+  expect(camera.position.toArray()).not.toEqual([120, 80, -140]);
+  orbit();
+  fireEvent.click(fit);
+  expect(target.toArray()).toEqual([0, 0, 0]);
+  expect(camera.position.toArray()).not.toEqual([120, 80, -140]);
+  orbit();
+  measure(800, 600);
+  expect(camera.view?.enabled).toBe(false);
+  expect(target.toArray()).toEqual([0, 0, 0]);
+  orbit();
+  measure(900, 650);
+  expect(camera.position.toArray()).toEqual([120, 80, -140]);
+  expect(target.toArray()).toEqual([10, 20, 30]);
+  expect(camera.projectionMatrix.elements[0] * 900).toBeCloseTo(camera.projectionMatrix.elements[5] * 650);
 });

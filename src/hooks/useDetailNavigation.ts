@@ -15,7 +15,7 @@ export function useDetailNavigation(
 ) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!navigate || shouldIgnoreCatalogShortcut(event) || isEditing()) return;
+      if (!navigate || shouldIgnoreCatalogShortcut(event, { allowDetailViewToggleArrows: true }) || isEditing()) return;
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
       event.preventDefault();
       navigate(event.key === 'ArrowLeft' ? 'previous' : 'next');

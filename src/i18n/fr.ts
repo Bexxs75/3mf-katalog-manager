@@ -28,6 +28,10 @@ export const fr: Translations = {
   viewerTooLargeCompact: "Utilise l’image d’aperçu ou ouvre le modèle dans le trancheur.",
   viewerNoWebGLCompact: "Utilise l’image d’aperçu ou ouvre le fichier dans le trancheur.",
 
+  showInFinder: "Afficher dans le Finder",
+  showInExplorer: "Afficher dans l’Explorateur",
+  viewerOpenFinder: "Ouvrir dans le Finder",
+  viewerOpenExplorer: "Ouvrir dans l’Explorateur",
   showInFileManager: "Afficher dans le gestionnaire de fichiers",
   viewerAllPlates: "Toutes",
   viewerPlate: "Plateau {n}",

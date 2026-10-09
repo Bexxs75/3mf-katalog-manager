@@ -77,7 +77,7 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
           )}
           <span className="flex items-center gap-1.5 min-w-0">
             {onDragFileStart && !readOnly && <DragGrip />}
-            <span className="text-[length:var(--font-size-body)] font-medium truncate">{m.name}</span>
+            <span className="select-none text-[length:var(--font-size-body)] font-medium truncate">{m.name}</span>
           </span>
           <span className="flex gap-1 overflow-hidden">
             {m.tags.map((tag) => (

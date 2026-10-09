@@ -86,3 +86,10 @@ it.each(['compact', 'comfort'])('disables native thumbnail dragging in both card
     models={[makeModelFile({ thumbnailImage: 'data:image/png;base64,eA==' })]} /></UiDensityProvider></LanguageProvider>);
   expect(container.querySelector('[data-model-id] img')).toHaveAttribute('draggable', 'false');
 });
+
+it.each(['compact', 'comfort', 'list'])('prevents selecting card titles while dragging (%s)', view => {
+  localStorage.setItem('3mf-katalog-density', view);
+  const Component = view === 'list' ? ModelList : ModelGrid;
+  const { getByText } = render(<LanguageProvider><UiDensityProvider><Component {...props} /></UiDensityProvider></LanguageProvider>);
+  expect(getByText(props.models[0].name)).toHaveClass('select-none');
+});

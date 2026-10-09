@@ -1,3 +1,4 @@
+import { catalogPlatform } from '../lib/keyboardGuard';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { formatCount, type PluralForms, type Language, type Translations } from './types';
 import { de } from './de';
@@ -51,7 +52,16 @@ export function useLanguage(): LanguageContextValue {
 export function useT() {
   const { language } = useLanguageContext();
   const dict = DICTIONARIES[language];
-  return useCallback(<K extends keyof Translations>(key: K): Translations[K] => dict[key], [dict]);
+  return useCallback(<K extends keyof Translations>(key: K): Translations[K] => {
+    const platform = catalogPlatform();
+    if (key === 'showInFileManager' || key === 'viewerOpenFolder') {
+      const labels = key === 'showInFileManager'
+        ? { mac: dict.showInFinder, windows: dict.showInExplorer, other: dict.showInFileManager }
+        : { mac: dict.viewerOpenFinder, windows: dict.viewerOpenExplorer, other: dict.viewerOpenFolder };
+      return labels[platform] as Translations[K];
+    }
+    return dict[key];
+  }, [dict]);
 }
 
 export function useFormatCount() {

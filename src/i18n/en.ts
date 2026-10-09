@@ -28,6 +28,10 @@ export const en: Translations = {
   viewerTooLargeCompact: "Use the preview image or open the model in your slicer.",
   viewerNoWebGLCompact: "Use the preview image or open the file in your slicer.",
 
+  showInFinder: "Show in Finder",
+  showInExplorer: "Show in Explorer",
+  viewerOpenFinder: "Open in Finder",
+  viewerOpenExplorer: "Open in Explorer",
   showInFileManager: "Show in file manager",
   viewerAllPlates: "All",
   viewerPlate: "Plate {n}",
