@@ -40,6 +40,9 @@ export interface Translations {
   showInFileManager: string;
   viewerAllPlates: string;
   viewerPlate: string;
+  viewerChoosePlate: string;
+  viewerPreviousPlate: string;
+  viewerNextPlate: string;
   viewerPrintPlate: string;
   viewerFileColors: string;
   viewerSingleColor: string;
