@@ -60,6 +60,16 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - Favorites use the heart symbol everywhere.
 - Archive imports count the models inside the extracted archives, and the setup import no longer lists adopted models twice.
 - Printer Manager: an unknown connection error gets a readable message, and the hint for a switched-off printer link points to the switch in the printer list (the settings tab is gone).
+- Spool form: invalid diameter, negative price and a remaining weight above the initial weight are rejected, with the message at the field. Input accepts a decimal comma or point.
+- Printer Manager: the error for nozzle and build volume appears at the field with a concrete text and moves the focus there.
+- Plate bar: one fixed row below the 3D view (All, previous, plate list with names, next) instead of a long pill row that was cut off in the narrow sidebar.
+- Small 3D view: the playback bar no longer covers the model; resizing keeps your rotation.
+- Card titles no longer turn blue while dragging.
+- "Show in file manager" reads "Show in Finder" on macOS and "Show in Explorer" on Windows.
+- Arrow keys page through the detail view again right after switching between image and 3D view.
+- Creating a folder via "All models" puts it below the matching catalog folder in the tree; an existing folder gives a clear message instead of a raw system error.
+- Automatic tags from file names skip filler words such as "für", "mit", "und" (new imports only).
+- Importing many files without a preview image no longer crashes the interface when the 3D preview is unavailable.
 
 ## [0.15.3] - 2026-10-04
 
@@ -581,6 +591,16 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Favoriten haben überall das Herz-Symbol.
 - Archivimporte zählen die Modelle in den entpackten Archiven mit, und der Import bei der Einrichtung führt übernommene Modelle nicht mehr doppelt auf.
 - Printer Manager: Ein unbekannter Verbindungsfehler bekommt einen lesbaren Text, und der Hinweis bei ausgeschalteter Druckeranbindung zeigt auf den Schalter in der Druckerliste (den Einstellungs-Reiter gibt es nicht mehr).
+- Spulenformular: ungültiger Durchmesser, negativer Preis und ein Restgewicht über dem Ursprungsgewicht werden abgelehnt, mit der Meldung am Feld. Eingaben akzeptieren Dezimalkomma und -punkt.
+- Printer Manager: Die Fehlermeldung bei Düse und Bauraum steht am Feld, nennt einen konkreten Text und setzt den Fokus dorthin.
+- Plattenleiste: eine feste Zeile unter der 3D-Ansicht (Alle, zurück, Plattenliste mit Namen, vor) statt einer langen Pillenreihe, die in der schmalen Seitenleiste abgeschnitten wurde.
+- Kleines 3D-Feld: Die Wiedergabeleiste verdeckt das Modell nicht mehr; beim Größenändern bleibt deine Drehung erhalten.
+- Kartentitel färben sich beim Ziehen nicht mehr blau.
+- „Im Dateimanager anzeigen“ heißt am Mac „Im Finder anzeigen“, unter Windows „Im Explorer anzeigen“.
+- Die Pfeiltasten blättern in der Detailansicht direkt nach dem Wechsel zwischen Bild und 3D-Ansicht wieder weiter.
+- Ordner anlegen über „Alle Modelle“ legt ihn im Baum unter dem passenden Katalogordner ab; ein vorhandener Ordner führt zu einer klaren Meldung statt eines rohen Systemfehlers.
+- Automatische Tags aus Dateinamen lassen Füllwörter wie „für“, „mit“, „und“ weg (nur neue Importe).
+- Der Import vieler Dateien ohne Vorschaubild stürzt die Oberfläche nicht mehr ab, wenn die 3D-Vorschau nicht verfügbar ist.
 
 ## [0.15.3] - 2026-10-04
 
