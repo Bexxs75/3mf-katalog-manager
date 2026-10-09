@@ -67,6 +67,28 @@ for lib in "${LIBS_TO_REMOVE[@]}"; do
     fi
 done
 
+# Sandbox checks (e.g. firejail) run as a different user than the mount owner.
+# Normalize access before packing; never chmod symlinks or follow their targets.
+find squashfs-root -type d -exec chmod =755 {} +
+find squashfs-root -type f -exec chmod a+r,go-w {} +
+find squashfs-root/AppRun squashfs-root/AppRun.wrapped squashfs-root/usr/bin \
+    -type f -exec chmod 755 {} +
+
+# Check the stored modes, not the current user's effective access (possibly root).
+INVALID_MODES="$(find squashfs-root \
+    \( -type d ! -perm 755 \) -o \
+    \( -type f \( ! -perm -444 -o -perm /022 \) \))"
+INVALID_EXECUTABLES="$(find squashfs-root/AppRun squashfs-root/AppRun.wrapped squashfs-root/usr/bin \
+    -type f ! -perm 755)"
+# Follow entry-point links only for validation, so missing or unusable targets fail.
+INVALID_ENTRYPOINTS="$(find -L squashfs-root/AppRun squashfs-root/AppRun.wrapped \
+    -maxdepth 0 \( ! -type f -o ! -perm 755 \))"
+if [ -n "$INVALID_MODES$INVALID_EXECUTABLES$INVALID_ENTRYPOINTS" ]; then
+    echo "Fehler: Ungültige Dateirechte im AppDir nach der Normalisierung." >&2
+    printf '%s\n' "$INVALID_MODES" "$INVALID_EXECUTABLES" "$INVALID_ENTRYPOINTS" >&2
+    exit 1
+fi
+
 # Download appimagetool itself as an AppImage and run it without FUSE (GitHub
 # Actions runners have no FUSE for AppImages; --appimage-extract-and-run works
 # around that reliably).
