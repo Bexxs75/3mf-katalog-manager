@@ -12,10 +12,19 @@ const MAX_FILENAME_TAGS: usize = 4;
 const MINIATURE_MAX_DIM_MM: f64 = 30.0;
 const LARGE_MIN_DIM_MM: f64 = 200.0;
 
-const FILENAME_STOPWORDS: &[&str] = &[
+const LEGACY_FILENAME_STOPWORDS: &[&str] = &[
     "kopie", "copy", "neu", "new", "final", "fertig", "export", "test", "scan", "model", "modell",
     "copia", "nuevo", "nueva", "modelo", "prueba", "copie", "nouveau", "nouvelle", "modèle", "essai",
     "untitled", "sans", "titre",
+];
+
+// Function words do not describe a model; keep technical terms such as top/base/lid.
+const FILENAME_STOPWORDS: &[&str] = &[
+    "für", "mit", "und", "ohne", "der", "die", "das", "von", "zu", "im", "am", "ein", "eine",
+    "auf", "aus", "bei", "nach", "vor",
+    "for", "and", "with", "the", "of", "to", "in", "on", "a", "an", "or", "by",
+    "para", "con", "sin", "el", "la", "los", "las", "de", "del", "un", "una", "y", "o", "en",
+    "pour", "avec", "sans", "le", "les", "des", "du", "une", "et", "ou", "sur",
 ];
 
 // Name table of the automatic tags, shared with the frontend
@@ -113,13 +122,13 @@ fn filename_tags(file_name: &str) -> Vec<String> {
 
     // Compose decomposed accents so they do not become token separators.
     let stem: String = stem.nfc().collect();
-    tokenize_filename_stem(&stem)
+    tokenize_filename_stem(&stem, FILENAME_STOPWORDS)
 }
 
-fn tokenize_filename_stem(stem: &str) -> Vec<String> {
+fn tokenize_filename_stem(stem: &str, stopwords: &[&str]) -> Vec<String> {
     stem.split(|c: char| !c.is_alphanumeric())
         .map(|token| token.to_lowercase())
-        .filter(|token| is_meaningful_token(token))
+        .filter(|token| is_meaningful_token(token, stopwords))
         .map(|token| canonical_tag_unambiguous(&token))
         .take(MAX_FILENAME_TAGS)
         .collect()
@@ -128,13 +137,14 @@ fn tokenize_filename_stem(stem: &str) -> Vec<String> {
 /// Reconstruct the old decomposed-name output using the same token limits and aliases.
 pub(crate) fn filename_tag_fragments(file_name: &str) -> (Vec<String>, Vec<String>) {
     let stem = Path::new(file_name).file_stem().and_then(|s| s.to_str()).unwrap_or(file_name);
-    let old = tokenize_filename_stem(&stem.nfd().collect::<String>());
-    let correct = filename_tags(file_name);
+    let old = tokenize_filename_stem(&stem.nfd().collect::<String>(), &[]);
+    // The existing-catalog repair must retain its original token selection.
+    let correct = tokenize_filename_stem(&stem.nfc().collect::<String>(), &[]);
     let fragments = old.into_iter().filter(|tag| !correct.contains(tag)).collect();
     (fragments, correct)
 }
 
-fn is_meaningful_token(token: &str) -> bool {
+fn is_meaningful_token(token: &str, stopwords: &[&str]) -> bool {
     if token.chars().count() < MIN_TOKEN_LEN {
         return false;
     }
@@ -144,7 +154,7 @@ fn is_meaningful_token(token: &str) -> bool {
     if is_version_token(token) {
         return false;
     }
-    !FILENAME_STOPWORDS.contains(&token)
+    !LEGACY_FILENAME_STOPWORDS.contains(&token) && !stopwords.contains(&token)
 }
 
 /// Matches tokens like "v1", "v12" — sequential version suffixes that
@@ -215,6 +225,27 @@ mod tests {
             object_count,
             materials,
         }
+    }
+
+    #[test]
+    fn filename_filler_words_are_filtered_in_all_four_languages() {
+        for (name, expected) in [
+            ("Halter FÜR Kamera mit Fuß und Deckel.3mf", vec!["halter", "kamera", "fuß", "deckel"]),
+            ("Holder FOR camera WITH foot AND lid.3mf", vec!["holder", "camera", "foot", "lid"]),
+            ("Soporte PARA cámara CON pie SIN tapa.3mf", vec!["soporte", "cámara", "pie", "tapa"]),
+            ("Support POUR caméra AVEC pied SUR socle.3mf", vec!["support", "caméra", "pied", "socle"]),
+            ("top base lid.3mf", vec!["top", "base", "lid"]),
+            ("Halter fu\u{308}r Kamera.3mf", vec!["halter", "kamera"]),
+        ] {
+            assert_eq!(filename_tags(name), expected, "{name}");
+        }
+    }
+
+    #[test]
+    fn fragment_repair_keeps_its_existing_stopword_policy() {
+        let (fragments, correct) = filename_tag_fragments("für Halter Gehäuse mit Deckel.3mf");
+        assert_eq!(fragments, vec!["geha", "use"]);
+        assert_eq!(correct, vec!["für", "halter", "gehäuse", "mit"]);
     }
 
     #[test]
