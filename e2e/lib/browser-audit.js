@@ -81,7 +81,7 @@ function __mfkAudit(kind, opts) {
     if (root.scrollWidth > innerWidth) problems.push({ check: 'document-scroll-x', element: 'html', text: '', scrollWidth: root.scrollWidth, innerWidth: innerWidth });
     if (document.body.scrollWidth > innerWidth) problems.push({ check: 'body-scroll-x', element: 'body', text: '', scrollWidth: document.body.scrollWidth, innerWidth: innerWidth });
     // (d) plate bar must sit below the 3D surface and not collide with the surface's overlay controls
-    var groups = document.querySelectorAll('[role="radiogroup"]');
+    var groups = document.querySelectorAll('[data-plate-selector]');
     for (var g = 0; g < groups.length; g++) {
       var grp = groups[g];
       if (!isVisible(grp)) continue;

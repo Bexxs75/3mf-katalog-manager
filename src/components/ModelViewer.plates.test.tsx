@@ -61,14 +61,14 @@ function objects() {
 it('filters existing meshes and legend, refits floor and resets only on model change', async () => {
   vi.mocked(invoke).mockResolvedValue(buffer());
   const result = render(viewer('first'));
-  await screen.findByRole('radio', {name: 'Platte 1'});
+  await screen.findByRole('button', {name: 'Nächste Platte'});
   const {group, floor} = objects();
   const originalMeshes = [...group.children];
   const allSize = floor.scale.x;
   const allDistance = runtime.camera!.position.length();
   expect(group.children.map(mesh => mesh.visible)).toEqual([true, true, true]);
   expect(screen.getByText('Red')).toBeVisible(); expect(screen.getByText('Blue')).toBeVisible();
-  fireEvent.click(screen.getByRole('radio', {name: 'Platte 1'}));
+  fireEvent.click(screen.getByRole('button', {name: 'Nächste Platte'}));
   expect(group.children).toEqual(originalMeshes);
   expect(group.children.map(mesh => mesh.visible)).toEqual([true, false, false]);
   expect(floor.scale.x).toBeLessThan(allSize / 10);
@@ -81,12 +81,13 @@ it('filters existing meshes and legend, refits floor and resets only on model ch
   expect(screen.getByText('Red')).toBeVisible();
   fireEvent.click(screen.getByRole('button', {name: 'Ansicht zurücksetzen'}));
   expect(group.children.map(mesh => mesh.visible)).toEqual([true, false, false]);
-  fireEvent.click(screen.getByRole('radio', {name: 'Alle'}));
+  fireEvent.click(screen.getByRole('button', {name: 'Alle'}));
   expect(group.children.map(mesh => mesh.visible)).toEqual([true, true, true]);
   expect(floor.scale.x).toBeCloseTo(allSize);
-  fireEvent.click(screen.getByRole('radio', {name: 'Platte 2'}));
+  fireEvent.click(screen.getByRole('button', {name: 'Platte wählen'}));
+  fireEvent.click(screen.getByRole('option', {name: /^Platte 2/}));
   result.rerender(viewer('second'));
-  await waitFor(() => expect(screen.getByRole('radio', {name: 'Alle'})).toHaveAttribute('aria-checked', 'true'));
+  await waitFor(() => expect(screen.getByRole('button', {name: 'Alle'})).toHaveAttribute('aria-pressed', 'true'));
   expect(objects().group.children.map(mesh => mesh.visible)).toEqual([true, true, true]);
   expect(invoke).toHaveBeenCalledTimes(2);
 });
@@ -94,15 +95,15 @@ it.each([0, 1])('hides plate selection for %s plate files', async count => {
   vi.mocked(invoke).mockResolvedValue(buffer(count));
   render(viewer('single'));
   await screen.findByRole('button', {name: 'Einpassen'});
-  expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+  expect(screen.queryByRole('group', {name: 'Druckplatte'})).not.toBeInTheDocument();
 });
 
 it('moves plates outside the measured surface and keeps them in the compact panel', async () => {
   vi.mocked(invoke).mockResolvedValue(buffer());
   render(<LanguageProvider><ModelViewer fileId="panel" needsSnapshot={false} onSnapshotCaptured={() => {}} /></LanguageProvider>);
-  const plates = await screen.findByRole('radiogroup');
+  const plates = await screen.findByRole('group', {name: 'Druckplatte'});
   expect(plates.closest('[data-viewer-surface]')).toBeNull();
-  expect(plates).toHaveClass('w-full', 'overflow-x-auto');
+  expect(plates).toHaveClass('w-full', 'flex-nowrap');
 });
 it('adapts controls and legend to measured container size', async () => {
   let resize!: () => void;
@@ -165,9 +166,10 @@ it.each([350 / 265, 0.5, 2])('frames all transformed meshes of a plate at aspect
   ];
   vi.mocked(invoke).mockResolvedValue(boxesBuffer(boxes));
   render(viewer('distant'));
-  await screen.findByRole('radio', {name: 'Platte 2'});
+  await screen.findByRole('button', {name: 'Nächste Platte'});
   runtime.camera!.aspect = aspect;
-  fireEvent.click(screen.getByRole('radio', {name: 'Platte 2'}));
+  fireEvent.click(screen.getByRole('button', {name: 'Platte wählen'}));
+  fireEvent.click(screen.getByRole('option', {name: /^Platte 2/}));
   const { group } = objects();
   const bounds = new THREE.Box3();
   group.updateWorldMatrix(true, true);
@@ -196,8 +198,9 @@ it('includes both overlapping clips from the Creality fixture in the world-space
     {plate: 2, min: [367, 99.375, 0], max: [381, 102.875, 10]},
   ]));
   render(viewer('overlap'));
-  await screen.findByRole('radio', {name: 'Platte 2'});
-  fireEvent.click(screen.getByRole('radio', {name: 'Platte 2'}));
+  await screen.findByRole('button', {name: 'Nächste Platte'});
+  fireEvent.click(screen.getByRole('button', {name: 'Platte wählen'}));
+  fireEvent.click(screen.getByRole('option', {name: /^Platte 2/}));
   const { group } = objects();
   const cube = new THREE.Box3().setFromObject(group.children[1]);
   const firstClip = new THREE.Box3().setFromObject(group.children[2]);

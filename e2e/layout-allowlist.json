@@ -1,6 +1,7 @@
 {
   "_comment": "Exceptions for the runtime audits in specs/07-layout-audit.e2e.ts and 08-typography.e2e.ts. Every entry needs a reason; an entry without one is rejected by the audit.",
   "ellipsis": [
+    { "selector": ".plate-selector-label, .plate-selector-option small", "reason": "Plate names are user data shortened to fit the viewer; title attributes provide the full text." },
     { "selector": "[data-card-metadata] > div:first-child", "reason": "Card titles show file names, which are user data of arbitrary length and are shortened on purpose (the full name is in the title attribute and the detail view)." },
     { "selector": "[data-model-id] .truncate", "reason": "Same: names and tags on cards." },
     { "selector": "[data-model-id] [data-card-tags] *", "reason": "Tag chips on cards collapse into a +N counter by design." },
@@ -9,8 +10,7 @@
   ],
   "clipped": [
     { "selector": "[data-window-spacer]", "reason": "Virtual-list spacers carry no text." },
-    { "selector": "[data-viewer-surface]", "reason": "The 3D surface clips its canvas, there is no text in it." },
-    { "selector": ".viewer-toggle", "reason": "Plate radio group scrolls horizontally on purpose (overflow-x-auto) when a file has many plates." }
+    { "selector": "[data-viewer-surface]", "reason": "The 3D surface clips its canvas, there is no text in it." }
   ],
   "fonts": [
     { "selector": "canvas", "reason": "The 3D view draws no DOM text." },

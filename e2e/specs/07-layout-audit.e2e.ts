@@ -25,7 +25,7 @@ const views: View[] = [
       await browser.action('pointer', { parameters: { pointerType: 'mouse' } }).move({ origin: card }).down().up().pause(60).down().up().perform();
       await $('h1=Dreiplatten.3mf').waitForDisplayed({ timeout: 15000 });
       await click((await byText('button', mode))!);
-      if (mode === '3D-Ansicht') await $('[role="radiogroup"][aria-label="Druckplatte"]').waitForDisplayed({ timeout: 60000 });
+      if (mode === '3D-Ansicht') await $('[data-plate-selector]').waitForDisplayed({ timeout: 60000 });
     },
     close: async () => { await click($('button[title="Zurück zum Katalog"]')); },
   })),
@@ -70,10 +70,10 @@ describe('7 Layout-Audit', () => {
     await browser.execute(() => document.getElementById('mfk-selftest-spacer')?.remove());
     await setViewport(1280);
     expect(narrow.map((p) => p.check)).toContain('help-outside');
-    // Plate bar: pull the real radio group over the 3D surface.
+    // Plate bar: pull the real plate bar over the 3D surface.
     await views.find((v) => v.name === 'Detailseite (3D-Ansicht)')!.open();
     await browser.execute(() => {
-      const bar = document.querySelector<HTMLElement>('[role="radiogroup"][aria-label="Druckplatte"]')!;
+      const bar = document.querySelector<HTMLElement>('[data-plate-selector]')!;
       const surface = document.querySelector<HTMLElement>('[data-detail-viewer] [data-viewer-surface]')!;
       const r = surface.getBoundingClientRect();
       bar.style.cssText = `position:fixed;left:${r.left + 10}px;top:${r.top + 10}px;z-index:99999`;
