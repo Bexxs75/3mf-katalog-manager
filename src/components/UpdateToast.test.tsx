@@ -141,14 +141,34 @@ describe('UpdateToast', () => {
     expect(view.later).toHaveBeenCalled();
   });
 
-  it('installing state: shows the backup file path', () => {
+  it.each(['de', 'en', 'es', 'fr'])('uses actual versions in each backup notice (%s)', (language) => {
+    localStorage.setItem('3mf-katalog-language', language);
+    try {
+      for (const phase of ['idle', 'ready', 'installing'] as const) {
+        const view = makeView({
+          phase,
+          currentVersion: '0.15.3',
+          info: { currentVersion: '0.15.3', availableVersion: '0.16.0-2', releaseUrl: null, canInstall: true, lastUpdate: null, checkFailed: false },
+        });
+        const { unmount } = renderToast(view);
+        expect(screen.getByText(/Katalog-Sicherung_/)).toHaveTextContent(
+          /Katalog-Sicherung_<[^>]+>_vor-Update_0\.15\.3_auf_0\.16\.0-2\.db/,
+        );
+        unmount();
+      }
+    } finally { localStorage.removeItem('3mf-katalog-language'); }
+  });
+
+  it('installing state: shows the backup name pattern as prose', () => {
     const view = makeView({
       phase: 'installing',
       info: { currentVersion: '0.15.0', availableVersion: '0.15.1', releaseUrl: null, canInstall: true, lastUpdate: null, checkFailed: false },
     });
     renderToast(view);
     expect(screen.getByText('Katalog wird gesichert …')).toBeInTheDocument();
-    expect(screen.getByText('update-backups/catalog-vor-0.15.1.db')).toBeInTheDocument();
+    const notice = screen.getByText(/automatisch im Ordner update-backups/);
+    expect(notice).toHaveTextContent('Katalog-Sicherung_<Datum>_vor-Update_0.15.0_auf_0.15.1.db');
+    expect(notice).not.toHaveClass('font-code');
   });
 
   it('error state: shows the error message, "Problem melden" for an unexpected error, and retry calls view.retry (not startUpdate)', () => {

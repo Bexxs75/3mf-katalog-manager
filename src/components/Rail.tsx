@@ -468,7 +468,7 @@ export function Rail({
             {activeSettingsTab === 'info' && (
               <>
                 <button onClick={onOpenTips} className="w-full h-8 border border-[var(--line-strong)] rounded cursor-pointer mb-3">{t('keyboardTipsTitle')}</button>
-                <UpdatePanel view={update} />
+                <UpdatePanel view={update} onExport={onExportCatalog} exportError={catalogBackupError} />
                 <DiagnosticsSettings />
                 <InfoFolders />
                 <div className="flex justify-between text-caption py-2 border-t border-[var(--line)] mt-3 text-[var(--ink-2)]">

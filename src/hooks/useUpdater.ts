@@ -44,8 +44,8 @@ export interface UpdaterView {
   later: () => void;
   dismiss: () => void;
   openNotes: () => void;
-  /** Whether this binary is a preview build, loaded once via `isPreviewBuild`. */
-  preview: boolean;
+  /** Null until the build kind is known, so channel controls cannot flash on preview builds. */
+  preview: boolean | null;
 }
 
 export function isUpdateCheckDisabled(phase: UpdatePhase): boolean {
@@ -61,7 +61,7 @@ export function useUpdater(): UpdaterView {
   const [notesError, setNotesError] = useState<AppError | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const [failedStep, setFailedStep] = useState<FailedStep | null>(null);
-  const [preview, setPreview] = useState(false);
+  const [preview, setPreview] = useState<boolean | null>(null);
 
   // Read without adding `phase` to checkNow's dependencies, which would recreate
   // it (and re-fire the mount effect below) on every phase change.
@@ -70,8 +70,8 @@ export function useUpdater(): UpdaterView {
 
   // Same reasoning as phaseRef: startUpdate below has no deps, so it reads this
   // instead of closing over a stale `preview` from the render it was created in.
-  const previewRef = useRef(preview);
-  previewRef.current = preview;
+  const previewRef = useRef(preview ?? false);
+  previewRef.current = preview ?? false;
 
   // Plain (non-state) in-flight guards: a state-based check would still let a
   // second call through when both happen before React re-renders (e.g. two

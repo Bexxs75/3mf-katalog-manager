@@ -32,3 +32,7 @@ export function downloadAppUpdate(onProgress: (p: DownloadProgress) => void) {
 export const discardAppUpdate = () => invoke<void>('discard_app_update');
 
 export const installAppUpdate = () => invoke<void>('install_app_update');
+
+export type UpdateChannel = 'stable' | 'rc';
+export const getUpdateChannel = () => invoke<UpdateChannel>('get_update_channel');
+export const setUpdateChannel = (channel: UpdateChannel) => invoke<void>('set_update_channel', { channel });

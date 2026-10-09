@@ -30,17 +30,17 @@ pub const BACKUP_DIR_NAME: &str = "update-backups";
 /// has its own backup) would lose the way back, so an existing catalog is copied
 /// right before the first migration. A failed copy must never block the start.
 fn backup_before_migration(conn: &Connection, db_path: &Path) {
-    let Some(label) = migration_backup_label(conn) else { return };
+    let Some((from, to)) = migration_backup_label(conn) else { return };
     let Some(dir) = db_path.parent().map(|p| p.join(BACKUP_DIR_NAME)) else { return };
-    match crate::updater::backup::create(conn, &dir, &label) {
+    match crate::updater::backup::create_schema(conn, &dir, from, to) {
         Ok(path) => log::info!(target: "backup", "Sicherung vor der Schema-Migration: {}", path.display()),
         Err(e) => log::warn!(target: "backup", "Sicherung vor der Schema-Migration fehlgeschlagen: {e}"),
     }
 }
 
-/// `Some("schema-<old>-auf-<new>")` when the database already holds a catalog
+/// `Some((old, new))` when the database already holds a catalog
 /// (any table) and its schema version is older than this build's, else `None`.
-fn migration_backup_label(conn: &Connection) -> Option<String> {
+fn migration_backup_label(conn: &Connection) -> Option<(i64, i64)> {
     let tables: i64 = conn
         .query_row("SELECT count(*) FROM sqlite_master WHERE type = 'table'", [], |r| r.get(0))
         .ok()?;
@@ -49,7 +49,7 @@ fn migration_backup_label(conn: &Connection) -> Option<String> {
     }
     let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).ok()?;
     let target = super::migrations::CURRENT_SCHEMA_VERSION;
-    (version < target).then(|| format!("schema-{version}-auf-{target}"))
+    (version < target).then_some((version, target))
 }
 
 #[allow(dead_code)]
@@ -1594,8 +1594,13 @@ mod tests {
         }
         let target = crate::db::migrations_current_version();
         let _ = connect(&db); // migration of this stub may fail; the copy comes first
-        let copy = dir.join(BACKUP_DIR_NAME).join(format!("catalog-vor-schema-3-auf-{target}.db"));
-        assert!(copy.exists(), "expected a copy at {}", copy.display());
+        let copies: Vec<_> = std::fs::read_dir(dir.join(BACKUP_DIR_NAME)).unwrap()
+            .map(|entry| entry.unwrap().path()).collect();
+        assert_eq!(copies.len(), 1);
+        let copy = &copies[0];
+        let name = copy.file_name().unwrap().to_str().unwrap();
+        assert!(name.starts_with("Katalog-Sicherung_"));
+        assert!(name.ends_with(&format!("_vor-Schema-Migration_3_auf_{target}.db")));
         let saved = Connection::open(&copy).unwrap();
         let x: i64 = saved.query_row("SELECT x FROM marker", [], |r| r.get(0)).unwrap();
         assert_eq!(x, 7, "the copy must hold the catalog as it was before the migration");

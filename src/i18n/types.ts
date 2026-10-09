@@ -709,6 +709,17 @@ export interface Translations {
   infoLicenseLabel: string;
   infoThirdPartyLicensesLabel: string;
   /** `{version}` */
+  updateChannelLabel: string;
+  updateChannelHelp: string;
+  updateChannelWarning: string;
+  updateChannelExported: string;
+  updateChannelActivateNow: string;
+  updateChannelExportIncomplete: string;
+  updateChannelExport: string;
+  updateChannelActivate: string;
+  updateChannelDisabled: string;
+  updatePrereleaseTitle: string;
+  updateBackupLocation: string;
   updateAvailableTitle: string;
   /** `{current}` */
   updateAvailableBody: string;

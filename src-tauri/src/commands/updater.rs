@@ -9,7 +9,7 @@ use tauri::Manager;
 use tauri_plugin_updater::UpdaterExt;
 
 use crate::db::printer_link::{get_setting, set_setting};
-use crate::updater::{self, backup, LastUpdateInfo};
+use crate::updater::{self, backup, LastUpdateInfo, UpdateChannel};
 
 #[derive(Default)]
 pub struct UpdaterState {
@@ -39,11 +39,12 @@ pub struct DownloadProgress {
 
 // Kept as the plugin's own error type (not stringified) so callers can tell a
 // transport hiccup apart from a broken manifest - see `is_transport_error` below.
-async fn fetch_update(app: &tauri::AppHandle) -> Result<Option<tauri_plugin_updater::Update>, tauri_plugin_updater::Error> {
+async fn fetch_update(app: &tauri::AppHandle, channel: UpdateChannel) -> Result<Option<tauri_plugin_updater::Update>, tauri_plugin_updater::Error> {
     let override_value = std::env::var(updater::ENDPOINT_ENV).ok();
     let url = updater::endpoint(
         cfg!(feature = "step-preview"),
         cfg!(feature = "preview"),
+        channel,
         cfg!(debug_assertions),
         override_value.as_deref(),
     );
@@ -54,6 +55,11 @@ async fn fetch_update(app: &tauri::AppHandle) -> Result<Option<tauri_plugin_upda
             builder = builder.pubkey(key);
         }
     }
+    // Use the same SemVer ordering for checks and downloads; a channel switch
+    // must never turn a stable manifest into a downgrade.
+    builder = builder.version_comparator(|current, release| {
+        updater::is_newer(&current.to_string(), &release.version.to_string())
+    });
     let updater = builder.endpoints(vec![url])?.build()?;
     retry_once(
         || updater.check(),
@@ -113,8 +119,33 @@ fn current_os() -> &'static str {
     crate::diagnostics::form_url::current_os()
 }
 
+fn read_channel(state: &State<'_, AppState>) -> CmdResult<UpdateChannel> {
+    if cfg!(feature = "preview") {
+        return Ok(UpdateChannel::Stable);
+    }
+    let conn = lock_db(state)?;
+    let stored = get_setting(&conn, updater::UPDATE_CHANNEL_KEY).map_err(|e| e.to_string())?;
+    Ok(UpdateChannel::resolve(
+        stored.as_deref(),
+        env!("CARGO_PKG_VERSION"),
+    ))
+}
+
+#[tauri::command]
+pub fn get_update_channel(state: State<AppState>) -> CmdResult<UpdateChannel> {
+    read_channel(&state)
+}
+
+#[tauri::command]
+pub fn set_update_channel(state: State<AppState>, channel: UpdateChannel) -> CmdResult<()> {
+    let conn = lock_db(&state)?;
+    set_setting(&conn, updater::UPDATE_CHANNEL_KEY, channel.as_str()).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn check_app_update(app: tauri::AppHandle, state: State<'_, AppState>) -> CmdResult<UpdateInfoDto> {
+    let channel = read_channel(&state)?;
     let current = env!("CARGO_PKG_VERSION");
     let stored = {
         let conn = lock_db(&state)?;
@@ -123,7 +154,7 @@ pub async fn check_app_update(app: tauri::AppHandle, state: State<'_, AppState>)
             .flatten()
             .and_then(|raw| serde_json::from_str::<LastUpdateInfo>(&raw).ok())
     };
-    let (available, check_failed) = match fetch_update(&app).await {
+    let (available, check_failed) = match fetch_update(&app, channel).await {
         Ok(Some(u)) => {
             log::info!(target: "update", "Update-Check: installiert {current}, verfügbar {}", u.version);
             (Some(u.version), false)
@@ -144,7 +175,7 @@ pub async fn check_app_update(app: tauri::AppHandle, state: State<'_, AppState>)
     };
     Ok(UpdateInfoDto {
         current_version: current.to_string(),
-        release_url: available.as_deref().map(|v| updater::release_page(v, cfg!(feature = "preview"))),
+        release_url: available.as_deref().map(|v| updater::release_page(v, cfg!(feature = "preview"), channel)),
         available_version: available,
         can_install: updater::can_self_install(current_os(), std::env::var("APPIMAGE").ok().as_deref()),
         last_update: updater::visible_last_update(stored, current),
@@ -157,8 +188,9 @@ pub async fn download_app_update(
     app: tauri::AppHandle,
     pending: State<'_, UpdaterState>,
     on_progress: Channel<DownloadProgress>,
+    state: State<'_, AppState>,
 ) -> CmdResult<String> {
-    let update = fetch_update(&app)
+    let update = fetch_update(&app, read_channel(&state)?)
         .await
         .map_err(|e| format!("Update-Prüfung fehlgeschlagen: {}", error_chain(&e)))?
         .ok_or_else(|| CmdError::expected("Es ist kein Update mehr verfügbar"))?;
@@ -208,11 +240,11 @@ pub fn install_app_update(app: tauri::AppHandle, state: State<AppState>, pending
 
     let backup_result: Result<PathBuf, String> = {
         let conn = lock_db(&state)?;
-        backup::create(&conn, &dir, &version).and_then(|path| {
+        backup::create(&conn, &dir, env!("CARGO_PKG_VERSION"), &version).and_then(|path| {
             let info = LastUpdateInfo {
                 version: version.clone(),
                 date: chrono::Local::now().format("%Y-%m-%d").to_string(),
-                backup_file: backup::file_name(&version),
+                backup_file: path.file_name().unwrap().to_string_lossy().into_owned(),
             };
             let json = serde_json::to_string(&info).map_err(|e| e.to_string())?;
             set_setting(&conn, updater::LAST_UPDATE_KEY, &json).map_err(|e| e.to_string())?;

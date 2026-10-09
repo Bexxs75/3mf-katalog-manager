@@ -1,3 +1,5 @@
+import type { AppError } from '../lib/errors';
+import { UpdateChannelControl } from './UpdateChannelControl';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import type { Language } from '../i18n/types';
 import type { UpdaterView } from '../hooks/useUpdater';
@@ -20,7 +22,7 @@ function formatLastUpdateDate(iso: string, language: Language): string {
 }
 
 /** Settings > Info tab: version, update box (same content as the toast, inline) and recheck. */
-export function UpdatePanel({ view }: { view: UpdaterView }) {
+export function UpdatePanel({ view, onExport, exportError }: { view: UpdaterView; onExport?: () => Promise<boolean>; exportError?: AppError | null }) {
   const t = useT();
   const { language } = useLanguage();
   const state = updateDisplayState(view);
@@ -63,6 +65,7 @@ export function UpdatePanel({ view }: { view: UpdaterView }) {
           )
         )}
       </div>
+      {view.preview === false && onExport && <UpdateChannelControl disabled={isUpdateCheckDisabled(view.phase)} onExport={onExport} exportError={exportError} onChanged={view.checkNow} />}
       <button
         onClick={view.checkNow}
         disabled={isUpdateCheckDisabled(view.phase)}

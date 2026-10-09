@@ -241,10 +241,10 @@ describe('useUpdater', () => {
     expect(updateApi.openReleaseUrl).toHaveBeenCalledWith('https://example.com/v0.15.1');
   });
 
-  it('preview is false by default and true once isPreviewBuild resolves true', async () => {
+  it('build kind is unknown until isPreviewBuild resolves', async () => {
     vi.mocked(updateApi.isPreviewBuild).mockResolvedValue(true);
     const { result } = renderHook(() => useUpdater());
-    expect(result.current.preview).toBe(false);
+    expect(result.current.preview).toBe(null);
     await waitFor(() => expect(result.current.preview).toBe(true));
   });
 

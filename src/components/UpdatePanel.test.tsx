@@ -36,6 +36,17 @@ function renderPanel(view: UpdaterView) {
 }
 
 describe('UpdatePanel', () => {
+  it('labels prereleases and keeps their release notes accessible', () => {
+    const view = makeView({ info: { currentVersion: '0.15.3', availableVersion: '0.16.0-2', releaseUrl: 'https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v0.16.0-2', canInstall: true, lastUpdate: null, checkFailed: false } });
+    renderPanel(view);
+    expect(screen.getByText('Vorab-Version 0.16.0-2 ist verfügbar')).toBeInTheDocument();
+    screen.getByText('Was ist neu?').click();
+    expect(view.openNotes).toHaveBeenCalledOnce();
+  });
+  it.each([true, null])('hides channel controls when preview is %s', (preview) => {
+    render(<LanguageProvider><UpdatePanel view={makeView({ preview })} onExport={vi.fn()} /></LanguageProvider>);
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  });
   it('shows the running version immediately, before the check has answered', () => {
     renderPanel(makeView({ info: null }));
     expect(screen.getByText('0.15.0')).toBeInTheDocument();
@@ -129,13 +140,13 @@ describe('UpdatePanel', () => {
           availableVersion: null,
           releaseUrl: null,
           canInstall: true,
-          lastUpdate: { version: '0.15.1', date: '2026-10-03', backupFile: 'catalog-vor-0.15.1.db' },
+          lastUpdate: { version: '0.15.1', date: '2026-10-03', backupFile: 'Katalog-Sicherung_2026-10-03_0930_vor-Update_0.15.0_auf_0.15.1.db' },
           checkFailed: false,
         },
       }),
     );
     const upToDate = screen.getByText('Du hast die aktuelle Version.');
-    const lastInfo = screen.getByText('Aktualisiert am 03.10.2026 · Sicherung: catalog-vor-0.15.1.db');
+    const lastInfo = screen.getByText('Aktualisiert am 03.10.2026 · Sicherung: Katalog-Sicherung_2026-10-03_0930_vor-Update_0.15.0_auf_0.15.1.db');
     expect(upToDate.compareDocumentPosition(lastInfo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 

@@ -41,6 +41,9 @@ export function UpdateStateBody({
 }) {
   const t = useT();
   const version = view.info?.availableVersion ?? '';
+  const backupNotice = t('updateBackupLocation')
+    .replace('{from}', view.currentVersion || view.info?.currentVersion || '')
+    .replace('{to}', version);
 
   if (state === 'available') {
     const canInstall = view.info?.canInstall ?? false;
@@ -50,13 +53,14 @@ export function UpdateStateBody({
           className="text-body font-semibold"
           style={variant === 'panel' ? { color: 'var(--good, var(--accent))' } : undefined}
         >
-          {t('updateAvailableTitle').replace('{version}', version)}
+          {t(version.includes('-') ? 'updatePrereleaseTitle' : 'updateAvailableTitle').replace('{version}', version)}
         </div>
         {variant === 'toast' && (
           <div className="mt-1 text-small text-[var(--ink-2)] leading-snug">
             {t('updateAvailableBody').replace('{current}', view.currentVersion)}
           </div>
         )}
+        {canInstall && <p className="mt-1 text-small text-[var(--ink-2)]">{backupNotice}</p>}
         <div className="mt-2 flex items-center gap-3 flex-wrap">
           {canInstall ? (
             <button onClick={view.startUpdate} className={primaryBtn}>
@@ -120,6 +124,7 @@ export function UpdateStateBody({
       <>
         <div className="text-body font-semibold">{t('updateReadyTitle').replace('{version}', version)}</div>
         <div className="mt-1 text-small text-[var(--ink-2)] leading-snug">{t('updateReadyBody')}</div>
+        <p className="mt-1 text-small text-[var(--ink-2)]">{backupNotice}</p>
         <div className="mt-2 flex gap-2">
           <button onClick={view.install} className={primaryBtn}>
             {t('updateRestartButton')}
@@ -136,7 +141,7 @@ export function UpdateStateBody({
     return (
       <>
         <div className="text-body font-semibold">{t('updateInstallingTitle')}</div>
-        <div className="mt-1 font-code text-caption text-[var(--ink-3)]">{`update-backups/catalog-vor-${version}.db`}</div>
+        <p className="mt-1 text-small text-[var(--ink-2)]">{backupNotice}</p>
         <div className="mt-1 text-small text-[var(--ink-2)]">{t('updateInstallingBody')}</div>
       </>
     );

@@ -317,6 +317,8 @@ pub fn run() {
             commands::is_preview_build,
             commands::has_step_preview,
             commands::check_app_update,
+            commands::get_update_channel,
+            commands::set_update_channel,
             commands::download_app_update,
             commands::discard_app_update,
             commands::install_app_update,
