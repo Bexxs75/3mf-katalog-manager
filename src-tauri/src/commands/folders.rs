@@ -100,11 +100,41 @@ pub async fn create_folder(
         }
     };
 
-    reject_if_sensitive_path(&new_dir, &state.sensitive_dirs)?;
-    std::fs::create_dir(&new_dir).map_err(|e| e.to_string())?;
-
     let conn = lock_db(&state)?;
-    let new_id = db::insert_folder_with_parent(&conn, &name, parent, &new_dir.to_string_lossy())
+    create_folder_with_conn(&conn, parent, name, &new_dir, &state.sensitive_dirs)
+}
+
+/// Creation after path selection, without UI state so disk/DB outcomes are testable.
+fn create_folder_with_conn(
+    conn: &Connection,
+    parent: Option<i64>,
+    name: String,
+    new_dir: &Path,
+    sensitive_dirs: &[PathBuf],
+) -> CmdResult<FolderDto> {
+    reject_if_sensitive_path(new_dir, sensitive_dirs)?;
+    let parent = match parent {
+        Some(id) => Some(id),
+        None => {
+            let mut folders = db::list_folders(conn).map_err(|e| e.to_string())?;
+            // Canonical spelling respects the actual filesystem's case rules,
+            // including case-insensitive macOS volumes and symlinked selections.
+            for folder in &mut folders {
+                if let Ok(path) = Path::new(&folder.path).canonicalize() {
+                    folder.path = path.to_string_lossy().into_owned();
+                }
+            }
+            let base = new_dir.parent().ok_or_else(|| "folder has no parent path".to_string())?;
+            let base = base.canonicalize().unwrap_or_else(|_| base.to_path_buf());
+            find_catalog_parent(&base, &folders)
+        }
+    };
+    if new_dir.exists() {
+        return Err(map_create_folder_error(std::io::ErrorKind::AlreadyExists.into(), new_dir));
+    }
+    std::fs::create_dir(new_dir).map_err(|e| map_create_folder_error(e, new_dir))?;
+
+    let new_id = db::insert_folder_with_parent(conn, &name, parent, &new_dir.to_string_lossy())
         .map_err(|e| e.to_string())?;
     Ok(FolderDto {
         id: new_id.to_string(),
@@ -114,6 +144,35 @@ pub async fn create_folder(
         count: 0,
     })
 }
+fn map_create_folder_error(error: std::io::Error, path: &Path) -> CmdError {
+    if error.kind() == std::io::ErrorKind::AlreadyExists {
+        CmdError::expected(format!("Ordner existiert bereits: {}", path.display()))
+    } else {
+        error.to_string().into()
+    }
+}
+
+// Pure component comparison; callers resolve existing filesystem paths first.
+fn find_catalog_parent(path: &Path, folders: &[db::models::FolderRecord]) -> Option<i64> {
+    fn comparison_path(path: &Path) -> PathBuf {
+        // Windows Path components already recognize both separator spellings.
+        #[cfg(windows)]
+        { PathBuf::from(path.to_string_lossy().to_lowercase()) }
+        #[cfg(not(windows))]
+        { path.to_path_buf() }
+    }
+
+    let path = comparison_path(path);
+    folders.iter()
+        .filter_map(|folder| {
+            let parent = comparison_path(Path::new(&folder.path));
+            (!parent.as_os_str().is_empty() && path.starts_with(&parent))
+                .then_some((parent.components().count(), folder.id))
+        })
+        .max_by_key(|(depth, _)| *depth)
+        .map(|(_, id)| id)
+}
+
 /// Core logic of `rename_folder`, without `State`, so it's testable.
 fn rename_folder_with_conn(
     conn: &Connection,
@@ -588,6 +647,84 @@ pub fn create_catalog_dir(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn create_folder_race_is_expected_but_other_io_errors_are_not() {
+        let path = Path::new("/catalog/child");
+        let err = map_create_folder_error(std::io::ErrorKind::AlreadyExists.into(), path);
+        assert!(err.expected);
+        assert_eq!(err.to_string(), format!("Ordner existiert bereits: {}", path.display()));
+        assert!(!map_create_folder_error(std::io::ErrorKind::PermissionDenied.into(), path).expected);
+    }
+
+    #[test]
+    fn create_folder_without_explicit_parent_infers_catalog_parent() {
+        let conn = db::connect_in_memory().unwrap();
+        let base = unique_test_dir("create_inferred");
+        let parent = db::insert_folder_with_parent(&conn, "base", None, &base.to_string_lossy()).unwrap();
+        let picked = base.join("uncatalogued");
+        std::fs::create_dir(&picked).unwrap();
+        let dir = picked.join("child");
+        let dto = create_folder_with_conn(&conn, None, "child".into(), &dir, &[]).unwrap();
+        assert_eq!(dto.parent_id, Some(parent.to_string()));
+        let folders = db::list_folders(&conn).unwrap();
+        assert_eq!(folders.iter().find(|f| f.id.to_string() == dto.id).unwrap().parent_id, Some(parent));
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn catalog_parent_uses_deepest_component_prefix() {
+        let folders = vec![
+            db::models::FolderRecord { id: 1, name: "foo".into(), parent_id: None, path: "/a/foo".into() },
+            db::models::FolderRecord { id: 2, name: "deep".into(), parent_id: Some(1), path: "/a/foo/deep".into() },
+        ];
+        for (path, expected) in [
+            ("/a/foo/child", Some(1)),
+            ("/a/foo/deep/child", Some(2)),
+            ("/a/foobar", None),
+            ("/elsewhere", None),
+            ("/a/foo", Some(1)),
+        ] {
+            assert_eq!(find_catalog_parent(Path::new(path), &folders), expected, "{path}");
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn catalog_parent_handles_windows_case_and_separators() {
+        let folders = vec![db::models::FolderRecord {
+            id: 1, name: "Models".into(), parent_id: None, path: r"C:\Users\Models".into(),
+        }];
+        assert_eq!(find_catalog_parent(Path::new("c:/users/MODELS/child"), &folders), Some(1));
+        assert_eq!(find_catalog_parent(Path::new("c:/users/MODELS-other"), &folders), None);
+    }
+
+    #[test]
+    fn create_folder_existing_target_is_expected_and_not_registered() {
+        let conn = db::connect_in_memory().unwrap();
+        let dir = unique_test_dir("create_existing");
+        let err = create_folder_with_conn(&conn, None, "existing".into(), &dir, &[]).unwrap_err();
+        assert!(err.expected, "{err}");
+        assert_eq!(err.to_string(), format!("Ordner existiert bereits: {}", dir.display()));
+        assert!(db::list_folders(&conn).unwrap().is_empty());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn create_folder_new_target_returns_and_stores_parent() {
+        let conn = db::connect_in_memory().unwrap();
+        let base = unique_test_dir("create_new");
+        let parent = db::insert_folder_with_parent(&conn, "base", None, &base.to_string_lossy()).unwrap();
+        let dir = base.join("child");
+        let dto = create_folder_with_conn(&conn, Some(parent), "child".into(), &dir, &[]).unwrap();
+        assert!(dir.is_dir());
+        assert_eq!(dto.parent_id, Some(parent.to_string()));
+        let folders = db::list_folders(&conn).unwrap();
+        let stored = folders.iter().find(|f| f.id.to_string() == dto.id).unwrap();
+        assert_eq!(stored.parent_id, Some(parent));
+        assert_eq!(stored.path, dto.path);
+        std::fs::remove_dir_all(base).unwrap();
+    }
 
     #[test]
     fn startup_registration_remembers_first_path_and_accepts_saved_path() {
