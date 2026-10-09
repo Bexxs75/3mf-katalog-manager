@@ -118,6 +118,71 @@ def check_preview(version, manifest_path=None):
     if version_key(version) < published_key:
         fail(f"version {version} is older than the published preview {published}")
 
+def rc_version_key(version):
+    # The release channel accepts the project's numeric SemVer subset only.
+    # Reject leading zeros and trailing whitespace instead of normalizing them.
+    numeric = r"(0|[1-9][0-9]*)"
+    if not isinstance(version, str) or not re.fullmatch(
+            rf"{numeric}\.{numeric}\.{numeric}(?:-{numeric})?", version):
+        fail(f"invalid RC version {version!r}")
+    return version_key(version)
+
+
+def read_rc_json(path):
+    try:
+        data = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("expected a JSON object")
+        return data
+    except (OSError, ValueError) as e:
+        fail(f"cannot read RC input {path}: {e}")
+
+
+def check_rc(version, manifest_path=None):
+    candidate = rc_version_key(version)
+    # Only an explicitly absent argument means first run. A failed download or
+    # broken existing manifest must never disable rollback protection.
+    if manifest_path is not None:
+        published = read_rc_json(manifest_path).get("version")
+        if candidate < rc_version_key(published):
+            fail(f"version {version} is older than the published RC {published}")
+
+
+def rc_manifest(tag, source_path, release_path, output_path, current_path=None):
+    if not isinstance(tag, str) or not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9]+)?", tag):
+        fail(f"invalid release tag {tag!r}")
+    version = tag[1:]
+    check_rc(version, current_path)
+    manifest = read_rc_json(source_path)
+    release = read_rc_json(release_path)
+    if release.get("tag_name") != tag or release.get("draft") is not False:
+        fail("source must be the requested published release")
+    if manifest.get("version") != version:
+        fail("manifest version does not match release tag")
+    assets = release.get("assets")
+    if not isinstance(assets, list):
+        fail("release asset inventory is missing")
+    urls = {a.get("browser_download_url") for a in assets
+            if isinstance(a, dict) and a.get("state") == "uploaded"
+            and isinstance(a.get("browser_download_url"), str)}
+    platforms = manifest.get("platforms")
+    if not isinstance(platforms, dict) or not set(UPDATE_TARGETS).issubset(platforms):
+        fail("manifest is missing updater platforms")
+    prefix = f"https://github.com/{REPO}/releases/download/{tag}/"
+    for platform, package in platforms.items():
+        if not isinstance(package, dict):
+            fail(f"invalid platform {platform}")
+        signature = package.get("signature")
+        url = package.get("url")
+        if not isinstance(signature, str) or not signature.strip():
+            fail(f"missing signature for {platform}")
+        if not isinstance(url, str) or not url.startswith(prefix) or url not in urls:
+            fail(f"URL for {platform} is not an asset of {tag}")
+    # Preserve signatures, URLs, notes and timestamps byte for byte; only the
+    # manifest's filename changes, while packages stay on the versioned release.
+    shutil.copyfile(source_path, output_path)
+
+
 def set_version(version, root="."):
     root = pathlib.Path(root)
 
@@ -165,6 +230,7 @@ def main(argv):
         "latest-json": lambda *a: latest_json(*a, preview=preview),
         "check-version": check_version,
         "check-preview": check_preview,
+        "rc-manifest": rc_manifest,
         "set-version": set_version,
     }
     if cmd not in commands:

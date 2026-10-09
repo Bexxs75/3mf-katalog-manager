@@ -7,6 +7,16 @@ Test versions for testers go through preview.yml (release `preview`), not throug
 Test releases use a numeric pre-release like 0.15.0-1: the Windows MSI rejects "rc.1". The workflow can only be
 started by hand once release.yml is on the default branch.
 Both manifests only reach users once the draft is published — that's what makes the update visible to the in-app updater.
+EN: Once rc-channel.yml and its helper are on the default branch, publishing a vX.Y.Z[-N] release
+also updates rc/latest-rc.json if its version is not older than the channel. The first successful run
+creates the prerelease `rc`; packages remain on their versioned release. To catch up, dispatch
+"Release Candidate channel" with the published tag. Local, publication-free proof:
+`python3 -m unittest discover -s tools -p 'test_release_assets.py'` (simulated manifests).
+DE: Sobald rc-channel.yml und sein Hilfsprogramm auf dem Standardbranch liegen, aktualisiert die
+Veröffentlichung eines vX.Y.Z[-N]-Releases auch rc/latest-rc.json, sofern dessen Version nicht älter
+als der Kanal ist. Der erste erfolgreiche Lauf erstellt den Vorab-Release `rc`; Pakete bleiben beim
+versionierten Release. Zum Nachziehen "Release Candidate channel" mit veröffentlichtem Tag starten.
+Lokaler Nachweis ohne Veröffentlichung: obiger Python-Testbefehl (simulierte Manifeste).
 -->
 ![3MF Katalog Manager demo](https://github.com/Bexxs75/3mf-katalog-manager/raw/master/docs/assets/demo.gif)
 
