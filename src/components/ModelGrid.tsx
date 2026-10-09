@@ -231,7 +231,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
           )}
         </div>
         <div data-card-metadata className="flex flex-col gap-1.5 px-2.5 py-2.5 bg-[var(--panel)]" style={{ height: 88 }}>
-          <div className="text-small font-semibold overflow-hidden text-ellipsis whitespace-nowrap shrink-0" style={{ height: 19, lineHeight: '19px' }}>
+          <div className="select-none text-small font-semibold overflow-hidden text-ellipsis whitespace-nowrap shrink-0" style={{ height: 19, lineHeight: '19px' }}>
             {m.name}
           </div>
           <CardMeta model={m} comfort={false} />
@@ -322,7 +322,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
             </div>
             <div data-card-metadata className="flex flex-col gap-2" style={{ padding: 'var(--space-card-pad)', height: 124 }}>
               <div
-                className="font-bold overflow-hidden text-ellipsis whitespace-nowrap shrink-0"
+                className="select-none font-bold overflow-hidden text-ellipsis whitespace-nowrap shrink-0"
                 style={{ fontSize: 'var(--font-size-title)', height: 26, lineHeight: '26px' }}
               >
                 {m.name}

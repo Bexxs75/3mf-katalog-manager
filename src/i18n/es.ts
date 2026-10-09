@@ -28,6 +28,10 @@ export const es: Translations = {
   viewerTooLargeCompact: "Usa la imagen de vista previa o abre el modelo en el laminador.",
   viewerNoWebGLCompact: "Usa la imagen de vista previa o abre el archivo en el laminador.",
 
+  showInFinder: "Mostrar en el Finder",
+  showInExplorer: "Mostrar en el Explorador",
+  viewerOpenFinder: "Abrir en el Finder",
+  viewerOpenExplorer: "Abrir en el Explorador",
   showInFileManager: "Mostrar en el gestor de archivos",
   viewerAllPlates: "Todas",
   viewerPlate: "Placa {n}",

@@ -33,6 +33,10 @@ export interface Translations {
   viewerTooLargeCompact: string;
   viewerNoWebGLCompact: string;
 
+  showInFinder: string;
+  showInExplorer: string;
+  viewerOpenFinder: string;
+  viewerOpenExplorer: string;
   showInFileManager: string;
   viewerAllPlates: string;
   viewerPlate: string;

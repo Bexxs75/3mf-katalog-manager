@@ -19,6 +19,7 @@ it.each(['grid', 'list'])('marks valid targets including empty groups in %s view
   }
   const ui = (dragging = false, over: string | null = null) => <LanguageProvider><UiDensityProvider><Harness dragging={dragging} over={over} /></UiDensityProvider></LanguageProvider>;
   const { rerender } = render(ui());
+  expect(screen.getByText(makeModelFile().name)).toHaveClass('select-none');
   expect(screen.queryByText('Empty')).toBeNull();
   rerender(ui(true));
   expect(screen.getByText('Empty').parentElement).toHaveClass('border-dashed');

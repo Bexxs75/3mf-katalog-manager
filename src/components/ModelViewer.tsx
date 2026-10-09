@@ -83,6 +83,8 @@ function buildGroup(meshes: ParsedMesh[], material: THREE.MeshStandardMaterial, 
 }
 
 interface ViewerContext {
+  container: HTMLDivElement;
+  controlsBar: () => HTMLDivElement | null;
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   renderer: THREE.WebGLRenderer;
@@ -93,9 +95,29 @@ interface ViewerContext {
   floor: ReturnType<typeof createViewerFloor>;
 }
 
+function updateViewerProjection(ctx: ViewerContext): boolean {
+  const { clientWidth: width, clientHeight: height } = ctx.container;
+  if (!width || !height) return false;
+  const bar = ctx.controlsBar();
+  const inset = bar && (height < 420 || width < 520) ? bar.offsetHeight + 12 + 8 : 0;
+  const availableHeight = Math.max(1, height - inset);
+  const previousInset = ctx.camera.view?.enabled ? ctx.camera.view.height - ctx.camera.view.fullHeight : 0;
+  ctx.camera.clearViewOffset();
+  ctx.camera.aspect = width / availableHeight;
+  if (inset) {
+    // Match the aspect to the virtual frame so pixel scales stay equal, then
+    // extend the projection downward into the area reserved for the controls.
+    ctx.camera.setViewOffset(width, availableHeight, 0, 0, width, height);
+  } else {
+    ctx.camera.updateProjectionMatrix();
+  }
+  return previousInset !== height - availableHeight;
+}
+
 function fitViewer(ctx: ViewerContext) {
   const object = ctx.currentObject;
   if (!object) return;
+  updateViewerProjection(ctx);
   frameObject(object, ctx.camera, ctx.controls);
   const box = visibleBounds(object);
   if (box.isEmpty()) { ctx.floor.visible = false; return; }
@@ -110,6 +132,7 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const ctxRef = useRef<ViewerContext | null>(null);
+  const controlsBarRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [compact, setCompact] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
@@ -133,9 +156,10 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
       setCompact(clientHeight < 420 || clientWidth < 520);
       const ctx = ctxRef.current;
       if (ctx) {
-        ctx.camera.aspect = clientWidth / clientHeight;
-        ctx.camera.updateProjectionMatrix();
         ctx.renderer.setSize(clientWidth, clientHeight);
+        // A normal resize preserves the user's orbit and zoom. Only a changed
+        // reserved area requires a new fit to keep the model above the bar.
+        if (updateViewerProjection(ctx)) fitViewer(ctx);
       }
     };
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
@@ -217,7 +241,7 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
     };
     animate();
 
-    ctxRef.current = { scene, camera, renderer, controls, material, currentObject: null, colorMaterials: [], floor };
+    ctxRef.current = { container, controlsBar: () => controlsBarRef.current, scene, camera, renderer, controls, material, currentObject: null, colorMaterials: [], floor };
 
     return () => {
       cancelAnimationFrame(frameHandle);
@@ -341,6 +365,11 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
     });
   }, [fileColors]);
 
+  useLayoutEffect(() => {
+    const ctx = ctxRef.current;
+    if (status === 'ready' && ctx && updateViewerProjection(ctx)) fitViewer(ctx);
+  }, [compact, status, showRotationControls, t]);
+
   const fit = () => {
     const ctx = ctxRef.current;
     if (ctx?.currentObject) fitViewer(ctx);
@@ -412,7 +441,7 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
         </>}
       </>}
       {showRotationControls && status === 'ready' && (
-        <div className={`absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[var(--panel-2)] border border-[var(--line)] rounded-full p-1 shadow-[var(--shadow)] ${compact ? 'viewer-controls-compact' : ''}`}>
+        <div ref={controlsBarRef} className={`absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-[var(--panel-2)] border border-[var(--line)] rounded-full p-1 shadow-[var(--shadow)] ${compact ? 'viewer-controls-compact' : ''}`}>
           <button className="viewer-pill" onClick={fit}>{t('viewerFit')}</button>
           <button
             onClick={() => rotateStep(-1)}

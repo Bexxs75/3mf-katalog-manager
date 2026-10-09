@@ -107,3 +107,25 @@ it('reveals the selected model from the lower action bar', () => {
   fireEvent.click(screen.getByRole('button', {name: 'Im Dateimanager anzeigen'}));
   expect(invoke).toHaveBeenCalledWith('reveal_in_file_manager', {fileId: props.model.id});
 });
+
+it('allows arrows after clicking either view toggle, retaining focus and overlay guards', () => {
+  const onNavigate = vi.fn();
+  render(<LanguageProvider><ModelDetailPage {...props} model={makeModelFile({customImage: 'data:image/png;base64,AA=='})}
+    onNavigate={onNavigate} hasPrevious hasNext /></LanguageProvider>);
+  for (const name of ['Bild', '3D-Ansicht']) {
+    const button = screen.getByRole('button', {name});
+    button.focus();
+    fireEvent.click(button);
+    fireEvent.keyDown(button, {key: 'ArrowRight'});
+    expect(onNavigate).toHaveBeenCalledWith('next');
+    expect(button).toHaveFocus();
+    onNavigate.mockClear();
+    for (const markup of ['<div role="menu"></div>', '<div role="dialog"></div>']) {
+      document.body.insertAdjacentHTML('beforeend', markup);
+      const overlay = document.body.lastElementChild!;
+      fireEvent.keyDown(button, {key: 'ArrowRight'});
+      expect(onNavigate).not.toHaveBeenCalled();
+      overlay.remove();
+    }
+  }
+});
