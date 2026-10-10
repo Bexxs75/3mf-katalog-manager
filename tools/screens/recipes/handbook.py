@@ -196,6 +196,8 @@ async def archive(s):
             "counts": counts, "current": None, "elapsedMs": 500}
     await p.js(f"window.__demoImportResult = {json.dumps(res)}; window.__demoImportProgress = {json.dumps(prog)}; window.__demoEmit('import://progress', {json.dumps(prog)}); window.__demoEmit('import://finished', {json.dumps(res)});")
     await asyncio.sleep(2.0)
+    await p.js("document.activeElement && document.activeElement.blur()")
+    await asyncio.sleep(0.3)
     return await s.capture(p, {"dialog": "__panel(__starts(" + C(t["extract"]) + ", 'button'), 500)"})
 
 
