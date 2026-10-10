@@ -9,7 +9,7 @@ pub struct RuntimeEnvironment {
 }
 
 #[derive(Clone, Copy)]
-pub(super) enum DesktopFeature { Slicer, FileManager, Updater }
+pub(super) enum DesktopFeature { Slicer, FileManager, Updater, ExternalAction }
 
 impl DesktopFeature {
     fn message(self) -> &'static str {
@@ -17,6 +17,7 @@ impl DesktopFeature {
             Self::Slicer => "containerSlicerUnavailable",
             Self::FileManager => "containerFileManagerUnavailable",
             Self::Updater => "container",
+            Self::ExternalAction => "containerExternalUnavailable",
         }
     }
 }
@@ -68,7 +69,7 @@ mod tests {
 
     #[test]
     fn desktop_guards_have_expected_translatable_errors() {
-        for feature in [DesktopFeature::Slicer, DesktopFeature::FileManager, DesktopFeature::Updater] {
+        for feature in [DesktopFeature::Slicer, DesktopFeature::FileManager, DesktopFeature::Updater, DesktopFeature::ExternalAction] {
             let error = RuntimeEnvironment::from_value(Some("true")).require_desktop(feature).unwrap_err();
             assert!(error.expected);
             assert_eq!(error.message, feature.message());
@@ -117,6 +118,13 @@ mod command_tests {
             assert!(error.expected);
             assert_eq!(error.message, message);
         };
+        expected(open_release_url("invalid".into(), app.state()).unwrap_err(), "containerExternalUnavailable");
+        expected(open_discord_invite(app.state()).unwrap_err(), "containerExternalUnavailable");
+        expected(open_data_folder(app.handle().clone(), app.state()).unwrap_err(), "containerExternalUnavailable");
+        expected(open_log_folder(app.handle().clone(), app.state()).unwrap_err(), "containerExternalUnavailable");
+        expected(open_bug_report_form("de".into(), true, app.state()).unwrap_err(), "containerExternalUnavailable");
+        expected(super::super::security::open_url("invalid", *app.state::<RuntimeEnvironment>()).unwrap_err(), "containerExternalUnavailable");
+        expected(super::super::security::open_external("/does/not/exist", *app.state::<RuntimeEnvironment>()).unwrap_err(), "containerExternalUnavailable");
         expected(list_registered_slicers(app.state(), app.state()).unwrap_err(), "containerSlicerUnavailable");
         expected(scan_installed_slicers(app.state(), app.state()).unwrap_err(), "containerSlicerUnavailable");
         expected(open_in_slicer(app.state(), "1".into(), "1".into(), app.state()).unwrap_err(), "containerSlicerUnavailable");

@@ -1,4 +1,5 @@
 use super::*;
+use super::runtime_environment::DesktopFeature;
 
 const GITHUB_REPO_URL_PREFIX: &str = "https://github.com/Bexxs75/3mf-katalog-manager/";
 const DISCORD_INVITE_URL: &str = "https://discord.gg/abfVNfFqu3";
@@ -16,7 +17,8 @@ fn validate_release_url(url: &str) -> Result<(), String> {
 }
 
 /// Opens a folder in the system file manager.
-pub(crate) fn open_external(target: &str) -> CmdResult<()> {
+pub(crate) fn open_external(target: &str, environment: RuntimeEnvironment) -> CmdResult<()> {
+    environment.require_desktop(DesktopFeature::ExternalAction)?;
     #[cfg(target_os = "linux")]
     let mut cmd = std::process::Command::new("xdg-open");
     #[cfg(target_os = "macos")]
@@ -42,7 +44,8 @@ fn url_opener(os: &str, url: &str) -> (&'static str, Vec<String>) {
 }
 
 /// Opens an http(s) URL in the default browser.
-pub(crate) fn open_url(url: &str) -> CmdResult<()> {
+pub(crate) fn open_url(url: &str, environment: RuntimeEnvironment) -> CmdResult<()> {
+    environment.require_desktop(DesktopFeature::ExternalAction)?;
     if !(url.starts_with("https://") || url.starts_with("http://")) {
         return Err(CmdError::expected("Nur Web-Adressen können im Browser geöffnet werden"));
     }
@@ -72,15 +75,17 @@ pub fn has_step_preview() -> bool {
 }
 
 #[tauri::command]
-pub fn open_release_url(url: String) -> CmdResult<()> {
+pub fn open_release_url(url: String, environment: State<'_, RuntimeEnvironment>) -> CmdResult<()> {
+    environment.require_desktop(DesktopFeature::ExternalAction)?;
     validate_release_url(&url)?;
-    open_url(&url)
+    open_url(&url, *environment)
 }
 
 // No URL from the frontend: the Discord link is static.
 #[tauri::command]
-pub fn open_discord_invite() -> CmdResult<()> {
-    open_url(DISCORD_INVITE_URL)
+pub fn open_discord_invite(environment: State<'_, RuntimeEnvironment>) -> CmdResult<()> {
+    environment.require_desktop(DesktopFeature::ExternalAction)?;
+    open_url(DISCORD_INVITE_URL, *environment)
 }
 
 #[cfg(test)]
@@ -141,8 +146,8 @@ mod url_opener_tests {
 
     #[test]
     fn only_web_addresses_are_opened_as_urls() {
-        assert!(open_url("file:///C:/Windows").is_err());
-        assert!(open_url("C:\\Users").is_err());
+        assert!(open_url("file:///C:/Windows", RuntimeEnvironment { container: false }).is_err());
+        assert!(open_url("C:\\Users", RuntimeEnvironment { container: false }).is_err());
     }
 }
 

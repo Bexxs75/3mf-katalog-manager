@@ -43,3 +43,8 @@ export const getVerboseLogging = () => invoke<VerboseLogging>('get_verbose_loggi
 
 export const setVerboseLogging = (enabled: boolean) =>
   invoke<VerboseLogging>('set_verbose_logging', { enabled });
+
+export interface DataPaths { data: string; logs: string }
+export const getDataPaths = () => invoke<DataPaths>('get_data_paths');
+export const getBugReportUrl = (lang: string, withLog: boolean) =>
+  invoke<string>('get_bug_report_url', { lang, withLog });

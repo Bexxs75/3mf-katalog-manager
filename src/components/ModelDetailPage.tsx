@@ -1,3 +1,4 @@
+import { ExternalLink } from './ExternalLink';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { RevealFileButton } from './RevealFileButton';
 import { useImageUpload } from '../hooks/useImageUpload';
@@ -268,9 +269,9 @@ export function ModelDetailPage({
               ) : model.sourceUrl ? (
                 <span className="text-right">
                   {isSafeHttpUrl(model.sourceUrl) ? (
-                    <a href={model.sourceUrl} target="_blank" rel="noreferrer" className="underline decoration-[var(--line-strong)] underline-offset-2">
+                    <ExternalLink url={model.sourceUrl} label={model.sourceUrl} className="underline decoration-[var(--line-strong)] underline-offset-2">
                       {model.sourceUrl}
-                    </a>
+                    </ExternalLink>
                   ) : (
                     // Not an http(s) value: plain text, never a clickable link.
                     <span className="text-[var(--ink-2)]">{model.sourceUrl}</span>

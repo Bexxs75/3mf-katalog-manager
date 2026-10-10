@@ -2,6 +2,7 @@
 //! and for exporting a log excerpt for a bug report.
 
 use super::*;
+use super::runtime_environment::DesktopFeature;
 use crate::db::printer_link::{get_setting, set_setting};
 use crate::diagnostics::{anonymize, export, form_url, verbose};
 
@@ -201,27 +202,50 @@ pub fn save_log_export(app: tauri::AppHandle, diag: State<DiagnosticsState>, id:
 }
 
 #[tauri::command]
-pub fn open_log_folder(app: tauri::AppHandle) -> CmdResult<()> {
+pub fn open_log_folder<R: tauri::Runtime>(app: tauri::AppHandle<R>, environment: State<'_, RuntimeEnvironment>) -> CmdResult<()> {
+    environment.require_desktop(DesktopFeature::ExternalAction)?;
     use tauri::Manager;
     let dir = app.path().app_log_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    super::security::open_external(&dir.to_string_lossy())
+    super::security::open_external(&dir.to_string_lossy(), *environment)
 }
 
 // Separate from the log folder: on Windows and macOS logs live in a different
 // system folder than the catalog and the backups taken before updates.
 #[tauri::command]
-pub fn open_data_folder(app: tauri::AppHandle) -> CmdResult<()> {
+pub fn open_data_folder<R: tauri::Runtime>(app: tauri::AppHandle<R>, environment: State<'_, RuntimeEnvironment>) -> CmdResult<()> {
+    environment.require_desktop(DesktopFeature::ExternalAction)?;
     use tauri::Manager;
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    super::security::open_external(&dir.to_string_lossy())
+    super::security::open_external(&dir.to_string_lossy(), *environment)
 }
 
 #[tauri::command]
-pub fn open_bug_report_form(lang: String, with_log: bool) -> CmdResult<()> {
+pub fn open_bug_report_form(lang: String, with_log: bool, environment: State<'_, RuntimeEnvironment>) -> CmdResult<()> {
+    environment.require_desktop(DesktopFeature::ExternalAction)?;
     let url = form_url::bug_report_url(&lang, env!("CARGO_PKG_VERSION"), form_url::current_os(), with_log);
-    super::security::open_url(&url)
+    super::security::open_url(&url, *environment)
+}
+
+#[derive(Debug, Serialize)]
+pub struct DataPaths {
+    data: String,
+    logs: String,
+}
+
+#[tauri::command]
+pub fn get_data_paths<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> CmdResult<DataPaths> {
+    use tauri::Manager;
+    Ok(DataPaths {
+        data: app.path().app_data_dir().map_err(|e| e.to_string())?.to_string_lossy().into_owned(),
+        logs: app.path().app_log_dir().map_err(|e| e.to_string())?.to_string_lossy().into_owned(),
+    })
+}
+
+#[tauri::command]
+pub fn get_bug_report_url(lang: String, with_log: bool) -> String {
+    form_url::bug_report_url(&lang, env!("CARGO_PKG_VERSION"), form_url::current_os(), with_log)
 }
 
 #[cfg(test)]
@@ -235,6 +259,26 @@ mod tests {
         let context = anonymize::Context { catalog_roots: vec!["a".repeat(2_000_000)], ..Default::default() };
         assert!(diag.store_preview(id, anonymize::anonymize("private data", &context)).is_err());
         assert!(diag.preview_for_save(id).is_none());
+    }
+
+    #[test]
+    fn data_paths_match_the_folders_used_by_the_open_commands() {
+        use tauri::Manager;
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets())).unwrap();
+        let paths = get_data_paths(app.handle().clone()).unwrap();
+        assert_eq!(paths.data, app.path().app_data_dir().unwrap().to_string_lossy());
+        assert_eq!(paths.logs, app.path().app_log_dir().unwrap().to_string_lossy());
+    }
+
+    #[test]
+    fn report_link_uses_the_same_form_address_without_opening_it() {
+        for lang in ["de", "en", "es", "fr"] {
+            for with_log in [false, true] {
+                assert_eq!(get_bug_report_url(lang.into(), with_log),
+                    form_url::bug_report_url(lang, env!("CARGO_PKG_VERSION"), form_url::current_os(), with_log));
+            }
+        }
     }
 
     #[test]

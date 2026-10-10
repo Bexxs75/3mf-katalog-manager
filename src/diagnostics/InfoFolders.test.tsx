@@ -1,3 +1,4 @@
+import { RuntimeEnvironmentProvider } from "../hooks/useRuntimeEnvironment";
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
@@ -65,4 +66,14 @@ describe('InfoFolders', () => {
     await waitFor(() => expect(screen.getByText('Ordner nicht gefunden')).toBeInTheDocument());
     expect(screen.queryByText('Problem melden')).not.toBeInTheDocument();
   });
+});
+
+it('shows container paths and volume guidance instead of folder buttons', async () => {
+  vi.mocked(diagnosticsApi.getDataPaths).mockResolvedValue({ data: '/config/data/catalog', logs: '/config/data/catalog/logs' });
+  render(<LanguageProvider><RuntimeEnvironmentProvider value={{ container: true }}><InfoFolders /></RuntimeEnvironmentProvider></LanguageProvider>);
+  expect(await screen.findByText(/Daten unter \/config\/data\/catalog\./)).toHaveTextContent('Volume /config');
+  expect(screen.getByText(/Logs unter \/config\/data\/catalog\/logs\./)).toBeInTheDocument();
+  expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  expect(diagnosticsApi.openDataFolder).not.toHaveBeenCalled();
+  expect(diagnosticsApi.openLogFolder).not.toHaveBeenCalled();
 });

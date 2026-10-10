@@ -2,6 +2,15 @@ import type { Translations } from './types';
 
 export const de: Translations = {
   migrationBackupWarning: "Die Sicherung vor der Datenbank-Migration ist fehlgeschlagen. Der Katalog wurde trotzdem geöffnet. Eine Sicherung des vorherigen Standes ist nicht gewährleistet. Bitte prüfe freien Speicher und Schreibrechte im Sicherungsordner.",
+  externalLinkCopy: "Link kopieren",
+  externalLinkCopyLabel: "Link kopieren: {target}",
+  externalLinkCopied: "Link kopiert",
+  externalLinkCopyFailed: "Kopieren fehlgeschlagen. Bitte den Link markieren und kopieren.",
+  containerExternalUnavailable: "Diese Aktion ist im Container nicht verfügbar.",
+  containerDataPath: "Im Container: Daten unter {path}. Dieser Ordner liegt im Volume /config auf deinem Docker-Host.",
+  containerLogPath: "Im Container: Logs unter {path}. Dieser Ordner liegt im Volume /config auf deinem Docker-Host.",
+  bugReportSaveLog: "Log speichern",
+
   collectionDropAdded: "„{name}“ zur Sammlung „{collection}“ hinzugefügt",
   collectionDropAlready: "„{name}“ ist schon in der Sammlung „{collection}“",
   statusBadgesLabel: "Status",

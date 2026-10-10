@@ -1,3 +1,4 @@
+import { ExternalLink } from './ExternalLink';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { Icon } from './Icon';
 import { useT } from '../i18n/LanguageContext';
@@ -68,13 +69,13 @@ export function UpdateStateBody({
               {t('updateNowButton')}
             </button>
           ) : (
-            <button onClick={view.openNotes} className={primaryBtn}>
+            <ExternalLink url={view.info?.releaseUrl ?? ''} label={t('updateWhatsNew')} onOpen={view.openNotes} className={primaryBtn}>
               {t('updateDownloadPageButton')}
-            </button>
+            </ExternalLink>
           )}
-          <button onClick={view.openNotes} className={linkBtn}>
+          <ExternalLink url={view.info?.releaseUrl ?? ''} label={t('updateWhatsNew')} onOpen={view.openNotes} className={linkBtn}>
             {t('updateWhatsNew')}
-          </button>
+          </ExternalLink>
         </div>
         {/* Opening the download page is the only action offered when self-install
             isn't possible, so a failure to open it must be visible right here. */}

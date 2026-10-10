@@ -1,3 +1,4 @@
+import { RuntimeEnvironmentProvider } from '../hooks/useRuntimeEnvironment';
 import { invoke } from '@tauri-apps/api/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
@@ -37,4 +38,19 @@ it.each(['compact', 'comfort'])('reveals the selected model in the %s detail pan
   /></UiDensityProvider></LanguageProvider>);
   fireEvent.click(screen.getByRole('button', {name: 'Im Dateimanager anzeigen'}));
   expect(invoke).toHaveBeenCalledWith('reveal_in_file_manager', {fileId: model.id});
+});
+
+it.each(['compact', 'comfort'])('offers a copyable source URL in the %s container panel', density => {
+  localStorage.setItem('3mf-katalog-language', 'de');
+  localStorage.setItem('3mf-katalog-density', density);
+  const noop = vi.fn(); const sourceUrl = 'https://example.com/model';
+  render(<LanguageProvider><RuntimeEnvironmentProvider value={{ container: true }}><UiDensityProvider>
+    <DetailPanel model={makeModelFile({ sourceUrl })} allTags={[]}
+      onAddTag={noop} onRemoveTag={noop} onDelete={noop} onTogglePrintStatus={noop}
+      onToggleFavorite={noop} onToggleQueue={noop} onSnapshotCaptured={noop} onUploadImage={noop}
+      onSetSourceUrl={noop} onOpenInSlicer={noop} slicerError={null} />
+  </UiDensityProvider></RuntimeEnvironmentProvider></LanguageProvider>);
+  expect(screen.queryByRole('link', { name: sourceUrl })).not.toBeInTheDocument();
+  expect(screen.getByText(sourceUrl)).toBeVisible();
+  expect(screen.getByRole('button', { name: `Link kopieren: ${sourceUrl}` })).toBeVisible();
 });

@@ -1,6 +1,7 @@
+import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
-import { openDataFolder, openLogFolder } from '../lib/api/diagnostics';
+import { getDataPaths, type DataPaths, openDataFolder, openLogFolder } from '../lib/api/diagnostics';
 import { toAppError, type AppError } from '../lib/errors';
 import { ErrorText } from './ErrorText';
 
@@ -8,6 +9,8 @@ import { ErrorText } from './ErrorText';
 // folder than the catalog and the backups taken before updates.
 export function InfoFolders() {
   const t = useT();
+  const { container } = useRuntimeEnvironment();
+  const [paths, setPaths] = useState<DataPaths | null>(null);
   const [error, setError] = useState<AppError | null>(null);
   const mountedRef = useRef(true);
 
@@ -17,6 +20,14 @@ export function InfoFolders() {
     },
     [],
   );
+
+  useEffect(() => {
+    if (!container) return;
+    let active = true;
+    getDataPaths().then(value => { if (active) setPaths(value); })
+      .catch(e => { if (active) setError(toAppError(e)); });
+    return () => { active = false; };
+  }, [container]);
 
   const open = (action: () => Promise<void>) => {
     setError(null);
@@ -32,7 +43,10 @@ export function InfoFolders() {
     <div className="mt-3 pt-3 border-t border-[var(--line)]">
       <div className="ui-label text-[var(--ink-3)]">{t('infoFoldersHeading')}</div>
       <div className="mt-2 flex flex-col gap-1.5">
-        {buttons.map(({ label, hint, action }) => (
+        {container ? paths && <>
+          <p className="text-small break-all select-text">{t('containerDataPath').replace('{path}', paths.data)}</p>
+          <p className="text-small break-all select-text">{t('containerLogPath').replace('{path}', paths.logs)}</p>
+        </> : buttons.map(({ label, hint, action }) => (
           <button
             key={label}
             type="button"

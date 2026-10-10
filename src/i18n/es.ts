@@ -2,6 +2,15 @@ import type { Translations } from './types';
 
 export const es: Translations = {
   migrationBackupWarning: "La copia de seguridad anterior a la migración de la base de datos ha fallado. El catálogo se ha abierto de todos modos. No se garantiza una copia del estado anterior. Comprueba el espacio libre y los permisos de escritura de la carpeta de copias de seguridad.",
+  externalLinkCopy: "Copiar enlace",
+  externalLinkCopyLabel: "Copiar enlace: {target}",
+  externalLinkCopied: "Enlace copiado",
+  externalLinkCopyFailed: "No se pudo copiar. Selecciona y copia el enlace.",
+  containerExternalUnavailable: "Esta acción no está disponible en el contenedor.",
+  containerDataPath: "En el contenedor: datos en {path}. Esta carpeta está en el volumen /config de tu host Docker.",
+  containerLogPath: "En el contenedor: registros en {path}. Esta carpeta está en el volumen /config de tu host Docker.",
+  bugReportSaveLog: "Guardar registro",
+
   collectionDropAdded: "“{name}” añadido a la colección “{collection}”",
   collectionDropAlready: "“{name}” ya está en la colección “{collection}”",
   statusBadgesLabel: "Estado",

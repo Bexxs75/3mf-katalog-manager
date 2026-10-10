@@ -1,3 +1,4 @@
+import { ExternalLink } from './ExternalLink';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import type { AppError } from '../lib/errors';
 import { UpdateChannelControl } from './UpdateChannelControl';
@@ -42,10 +43,14 @@ export function UpdatePanel({ view, onExport, exportError }: { view: UpdaterView
           {t('infoAppVersionLabel').split('{version}').map((part, index) => <span key={index}>{index > 0 && <span className="font-code">{view.currentVersion}</span>}{part}</span>)}
         </div>
         {container ? (
-          <p className="mt-3 text-small text-[var(--ink-3)]">
+          <><p className="mt-3 text-small text-[var(--ink-3)]">
             {t('containerUpdates').split(/(docker compose pull|docker compose up -d)/).map((part, index) =>
               part.startsWith('docker compose ') ? <code key={index}>{part}</code> : part)}
           </p>
+          {view.currentVersion && view.preview !== null && <ExternalLink
+            url={view.info?.releaseUrl ?? `https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/${view.preview ? 'preview' : `v${view.currentVersion}`}`}
+            label={t('updateWhatsNew')} onOpen={view.openNotes} />}
+          </>
         ) : state ? (
           <div
             className="mt-2.5 p-2.5 rounded-[5px] text-left"

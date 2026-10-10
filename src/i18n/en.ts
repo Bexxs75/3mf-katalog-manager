@@ -2,6 +2,15 @@ import type { Translations } from './types';
 
 export const en: Translations = {
   migrationBackupWarning: "The backup before the database migration failed. The catalog was opened anyway. A backup of the previous state is not guaranteed. Please check free space and write permissions in the backup folder.",
+  externalLinkCopy: "Copy link",
+  externalLinkCopyLabel: "Copy link: {target}",
+  externalLinkCopied: "Link copied",
+  externalLinkCopyFailed: "Copy failed. Please select and copy the link.",
+  containerExternalUnavailable: "This action is unavailable in the container.",
+  containerDataPath: "In the container: data at {path}. This folder is in the /config volume on your Docker host.",
+  containerLogPath: "In the container: logs at {path}. This folder is in the /config volume on your Docker host.",
+  bugReportSaveLog: "Save log",
+
   collectionDropAdded: "Added “{name}” to the collection “{collection}”",
   collectionDropAlready: "“{name}” is already in the collection “{collection}”",
   statusBadgesLabel: "Status",

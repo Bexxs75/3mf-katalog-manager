@@ -44,7 +44,10 @@ it('keeps the version but never checks, downloads or installs updates', async ()
   expect(screen.getByText('docker compose pull').tagName).toBe('CODE');
   expect(screen.getByText('docker compose up -d').tagName).toBe('CODE');
   expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
-  expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  expect(screen.getAllByRole('button')).toEqual([
+    screen.getByRole('button', { name: 'Link kopieren: Was ist neu?' }),
+  ]);
+  expect(screen.getByText('https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v0.16.0')).toBeVisible();
 });
 
 it.each([false, true])('shows a dismissible network warning only when the marker exists (%s)', async exists => {

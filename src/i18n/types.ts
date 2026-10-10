@@ -7,6 +7,15 @@ export interface PluralForms {
 
 export interface Translations {
   migrationBackupWarning: string;
+  externalLinkCopy: string;
+  externalLinkCopyLabel: string;
+  externalLinkCopied: string;
+  externalLinkCopyFailed: string;
+  containerExternalUnavailable: string;
+  containerDataPath: string;
+  containerLogPath: string;
+  bugReportSaveLog: string;
+
   collectionDropAdded: string;
   collectionDropAlready: string;
   statusBadgesLabel: string;
