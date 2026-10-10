@@ -28,6 +28,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - **Creality Print** is detected automatically (Windows, macOS, Linux).
 - **Safety copy before a catalog migration:** when a new version has to migrate an existing catalog, the app first copies the catalog database to `update-backups` (the last two of these copies are kept), also when you install the version by hand. Going back to an older version is then possible by restoring the copy.
 - Update channel "Release Candidate": a switch in Settings → Info (shown for pre-release installs by default) lets you receive further pre-releases and later the final version automatically. Switching on shows a warning with a one-click catalog export.
+- **Plate selector:** multi-plate models are paged through with previous/next arrows and a number bar below the 3D view instead of a dropdown; at the first or last plate the arrow turns grey.
 
 ### Changed
 
@@ -72,6 +73,9 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - Creating a folder via "All models" puts it below the matching catalog folder in the tree; an existing folder gives a clear message instead of a raw system error.
 - Automatic tags from file names skip filler words such as "für", "mit", "und" (new imports only).
 - Importing many files without a preview image no longer crashes the interface when the 3D preview is unavailable.
+- Invalid folder names (for example with `:` or `/`, reserved names, trailing dots) are explained in a dialog in the middle of the screen, and a hint appears while you type.
+- Klipper/Moonraker: finished prints are no longer mistaken for one another when the printer reuses a job number; entries from earlier versions are still recognised.
+- Sturdier import, restore and anonymization of log files: unusual file and folder names are handled safely.
 
 ## [0.15.3] - 2026-10-04
 
@@ -561,6 +565,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - **Creality Print** wird automatisch erkannt (Windows, macOS, Linux).
 - **Sicherung vor einer Katalog-Migration:** Muss eine neue Version einen vorhandenen Katalog umbauen, kopiert die App die Katalog-Datenbank vorher nach `update-backups` (von diesen Kopien bleiben die letzten zwei erhalten), auch wenn du die Version von Hand installierst. Zurück zu einer älteren Version geht dann mit der Kopie.
 - Update-Kanal „Release Candidate“: Ein Schalter unter Einstellungen → Info (bei Vorab-Installationen standardmäßig an) liefert weitere Vorab-Versionen und später die finale Version automatisch. Beim Einschalten erscheint eine Warnung mit Katalog-Export per Klick.
+- **Plattenauswahl:** Mehrplatten-Modelle blättert man mit Vor-/Zurück-Pfeilen und einer Nummernleiste unter der 3D-Ansicht durch statt per Dropdown; bei der ersten oder letzten Platte wird der Pfeil grau.
 
 ### Geändert
 
@@ -605,6 +610,9 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Ordner anlegen über „Alle Modelle“ legt ihn im Baum unter dem passenden Katalogordner ab; ein vorhandener Ordner führt zu einer klaren Meldung statt eines rohen Systemfehlers.
 - Automatische Tags aus Dateinamen lassen Füllwörter wie „für“, „mit“, „und“ weg (nur neue Importe).
 - Der Import vieler Dateien ohne Vorschaubild stürzt die Oberfläche nicht mehr ab, wenn die 3D-Vorschau nicht verfügbar ist.
+- Ungültige Ordnernamen (z. B. mit `:` oder `/`, reservierte Namen, Punkt am Ende) werden in einem Dialog mitten im Bild erklärt, und beim Tippen erscheint ein Hinweis.
+- Klipper/Moonraker: Fertige Drucke werden nicht mehr verwechselt, wenn der Drucker eine Auftragsnummer wiederverwendet; Einträge aus früheren Versionen werden weiter erkannt.
+- Robusterer Import, Wiederherstellen und Anonymisieren von Logdateien: ungewöhnliche Datei- und Ordnernamen werden sicher behandelt.
 
 ## [0.15.3] - 2026-10-04
 
