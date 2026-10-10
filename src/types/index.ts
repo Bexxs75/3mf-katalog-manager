@@ -311,6 +311,9 @@ export interface FilamentCheck {
  * "Printer connection" switch is off (then no request goes out).
  */
 export type PrinterConnectionError =
+  | 'name_resolution_failed'
+  | 'container_local_name'
+  | 'container_loopback'
   | 'unreachable'
   | 'auth_required'
   | 'bad_response'

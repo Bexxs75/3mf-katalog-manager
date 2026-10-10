@@ -14,6 +14,9 @@ interface Props {
 }
 
 export type PrinterErrorKey =
+  | 'printerErrorNameResolutionFailed'
+  | 'printerErrorContainerLocalName'
+  | 'printerErrorContainerLoopback'
   | 'printerErrorUnreachable'
   | 'printerErrorAuthRequired'
   | 'printerErrorBadResponse'
@@ -23,6 +26,9 @@ export type PrinterErrorKey =
 
 /** Also used by `PrinterLinkStatus` so error texts aren't maintained twice. */
 export const errorKey: Record<PrinterConnectionError, PrinterErrorKey> = {
+  name_resolution_failed: 'printerErrorNameResolutionFailed',
+  container_local_name: 'printerErrorContainerLocalName',
+  container_loopback: 'printerErrorContainerLoopback',
   unreachable: 'printerErrorUnreachable',
   auth_required: 'printerErrorAuthRequired',
   bad_response: 'printerErrorBadResponse',
@@ -34,6 +40,10 @@ export const errorKey: Record<PrinterConnectionError, PrinterErrorKey> = {
 /** Never returns an empty text, even for a code this version does not know. */
 export function errorKeyFor(code: string): PrinterErrorKey {
   return (errorKey as Record<string, PrinterErrorKey>)[code] ?? 'printerErrorUnknown';
+}
+
+export function printerErrorHost(address: string): string {
+  return address.trim().replace(/:\d+$/, '');
 }
 
 function portOf(baseUrl: string | null): string {
@@ -71,6 +81,7 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
   const formatCount = useFormatCount();
   const { language } = useLanguage();
   const [address, setAddress] = useState(connection?.address ?? '');
+  const [testedAddress, setTestedAddress] = useState('');
   const [testing, setTesting] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<PrinterConnectionError | null>(null);
@@ -90,6 +101,7 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
   }, [connection]);
 
   const runTest = async () => {
+    setTestedAddress(address.trim());
     setTesting(true);
     setError(null);
     setActionError(null);
@@ -179,7 +191,7 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
       )}
       {link.enabled && (error || current?.lastError || current?.paused) && (
         <div role="alert" className="rounded-lg bg-[var(--crit-soft)] p-3 text-small text-[var(--crit)]">
-          <b>{t('pmConnectionError')}</b><p>{effectiveError ? t(errorKeyFor(effectiveError)) : t('printerPausedRetest')}</p>
+          <b>{t('pmConnectionError')}</b><p>{effectiveError ? t(errorKeyFor(effectiveError)).replace('{host}', () => printerErrorHost(error ? testedAddress : current?.address ?? '')) : t('printerPausedRetest')}</p>
         </div>
       )}
       {link.enabled && !error && current && !current.paused && !current.lastError && (

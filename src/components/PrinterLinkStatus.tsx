@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { formatDateTime, formatRelativeTime } from '../i18n/format';
 import { toAppError, type AppError } from '../lib/errors';
-import { errorKeyFor } from './PrinterConnectionSection';
+import { errorKeyFor, printerErrorHost } from './PrinterConnectionSection';
 import type { PrinterLinkState } from '../hooks/usePrinterLink';
 import { ErrorText } from '../diagnostics/ErrorText';
 
@@ -41,7 +41,7 @@ export function PrinterLinkStatus({ printerId, link }: Props) {
     text = t('printerUnreachableSince').replace('{time}', () => formatDateTime(c.errorSince ?? 0, language));
   } else if (c.lastError) {
     dot = 'bg-[var(--crit)]';
-    text = t(errorKeyFor(c.lastError));
+    text = t(errorKeyFor(c.lastError)).replace('{host}', () => printerErrorHost(c.address));
   }
 
   return (
