@@ -35,7 +35,7 @@ export const en: Translations = {
   showInFileManager: "Show in file manager",
   viewerAllPlates: "All",
   viewerPlate: "Plate {n}",
-  viewerChoosePlate: "Choose plate",
+  viewerAllPlatesAnnouncement: "All plates",
   viewerPreviousPlate: "Previous plate",
   viewerNextPlate: "Next plate",
   viewerPrintPlate: "Print plate",

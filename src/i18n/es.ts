@@ -35,7 +35,7 @@ export const es: Translations = {
   showInFileManager: "Mostrar en el gestor de archivos",
   viewerAllPlates: "Todas",
   viewerPlate: "Placa {n}",
-  viewerChoosePlate: "Elegir placa",
+  viewerAllPlatesAnnouncement: "Todas las placas",
   viewerPreviousPlate: "Placa anterior",
   viewerNextPlate: "Placa siguiente",
   viewerPrintPlate: "Placa de impresión",
