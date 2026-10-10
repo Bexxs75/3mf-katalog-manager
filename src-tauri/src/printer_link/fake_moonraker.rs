@@ -1,4 +1,4 @@
-//! Tests only: tiny HTTP/1.1 server on 127.0.0.1 that calls a handler function per request (path incl. query -> status, body).
+//! Tests only: tiny HTTP/1.1 server (loopback by default).
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
@@ -23,7 +23,15 @@ impl FakeServer {
         offset_s: Option<f64>,
         handler: impl Fn(&str) -> Option<(u16, Vec<u8>)> + Send + Sync + 'static,
     ) -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        Self::start_on("127.0.0.1:0", offset_s, handler)
+    }
+
+    fn start_on(
+        address: &str,
+        offset_s: Option<f64>,
+        handler: impl Fn(&str) -> Option<(u16, Vec<u8>)> + Send + Sync + 'static,
+    ) -> Self {
+        let listener = TcpListener::bind(address).unwrap();
         let port = listener.local_addr().unwrap().port();
         let requests = Arc::new(Mutex::new(Vec::new()));
         let handler: Handler = Arc::new(handler);
@@ -110,4 +118,47 @@ pub fn qidi_smart3(offset_s: f64) -> FakeServer {
             _ => Some((404, b"{}".to_vec())),
         }
     })
+}
+
+/// Explicit opt-in: exposes only fixture data inside the Compose test network.
+#[test]
+#[ignore = "long-running server for docker/tests/printer/compose.yaml"]
+fn serve_container_fixture() {
+    assert_eq!(std::env::var("PRINTER_FIXTURE_SERVER").as_deref(), Ok("1"));
+    let _server = FakeServer::start_on("0.0.0.0:7125", Some(3600.0), |target| {
+        match target.split('?').next().unwrap_or("") {
+            "/server/info" => Some((200, fixture_bytes("server_info_qidi_smart3.json"))),
+            "/server/history/list" => Some((200, fixture_bytes("history_qidi_smart3.json"))),
+            _ => Some((404, b"{}".to_vec())),
+        }
+    });
+    println!("Fake Moonraker listening on port 7125; clock offset +3600 seconds");
+    loop {
+        std::thread::park();
+    }
+}
+
+#[test]
+#[ignore = "requires the Compose fixture server; never contacts a real printer"]
+fn container_network_smoke() {
+    use super::{address::AddressPolicy, moonraker::MoonrakerLink, PrinterLink};
+    assert_eq!(std::env::var("PRINTER_FIXTURE_CLIENT").as_deref(), Ok("1"));
+    // Exercise Docker DNS and the production policy, never the loopback test policy.
+    let link = MoonrakerLink::new("moonraker:7125", AddressPolicy::HOME_NETWORK);
+    let mut result = link.test();
+    for _ in 0..30 {
+        if result.is_ok() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        result = link.test();
+    }
+    let info = result.expect("fixture must be reachable through the Compose network");
+    assert!(info.base_url.starts_with("http://"));
+    assert!((info.clock_offset_s - 3600.0).abs() < 3.0);
+    let jobs = link.jobs_ended_since(&info, 0.0).unwrap();
+    assert!(!jobs.is_empty());
+    assert!(jobs.iter().any(|job| (job.ended_at - (1_702_311_947.72 - info.clock_offset_s)).abs() < 0.01));
+    assert_eq!(super::address::resolve("127.0.0.1", AddressPolicy::HOME_NETWORK), Err(super::LinkError::AddressNotAllowed));
+    println!("Docker DNS, private IP policy, Moonraker history and clock correction passed");
 }

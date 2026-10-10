@@ -85,3 +85,8 @@ describe('PrinterLinkStatus', () => {
     expect(screen.getByText('1 Druck zu bestätigen')).toBeInTheDocument();
   });
 });
+
+it('names the unresolved saved host in the status row', () => {
+  render(<LanguageProvider><PrinterLinkStatus printerId="1" link={link({ ...base, address: 'printer.invalid:7125', lastError: 'name_resolution_failed' })} /></LanguageProvider>);
+  expect(screen.getByText(/Der Name „printer.invalid“ konnte nicht aufgelöst werden/)).toBeInTheDocument();
+});

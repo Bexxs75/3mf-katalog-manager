@@ -58,6 +58,9 @@ pub struct RemoteJob {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LinkError {
     Unreachable,
+    NameResolutionFailed,
+    ContainerLocalName,
+    ContainerLoopback,
     AuthRequired,
     BadResponse(String),
     HistoryMissing,
@@ -69,6 +72,9 @@ impl LinkError {
     pub fn code(&self) -> &'static str {
         match self {
             LinkError::Unreachable => "unreachable",
+            LinkError::NameResolutionFailed => "name_resolution_failed",
+            LinkError::ContainerLocalName => "container_local_name",
+            LinkError::ContainerLoopback => "container_loopback",
             LinkError::AuthRequired => "auth_required",
             LinkError::BadResponse(_) => "bad_response",
             LinkError::HistoryMissing => "history_missing",
