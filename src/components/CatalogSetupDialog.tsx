@@ -1,3 +1,4 @@
+import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { Icon } from './Icon';
 import { useModalDialog } from '../hooks/useModalDialog';
 import { useEffect, useState } from 'react';
@@ -39,6 +40,7 @@ type Done =
   | { kind: 'new'; path: string };
 
 export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet }: Props) {
+  const { container } = useRuntimeEnvironment();
   const t = useT();
   const formatCount = useFormatCount();
   const [busy, setBusy] = useState<'adopt' | 'new' | null>(null);
@@ -205,12 +207,12 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
                   : t('catalogSetupNewSummary').replace('{path}', done.path)}
               </div>
               <div className="flex gap-2">
-                <button
+                {!container && (<button
                   onClick={() => openFolder(done.path)}
                   className="h-8 px-3 rounded-[6px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
                 >
                   {t('catalogSetupOpenFolderButton')}
-                </button>
+                </button>)}
                 <button
                   onClick={onClose}
                   className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-[6px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer"

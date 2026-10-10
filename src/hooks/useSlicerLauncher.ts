@@ -1,3 +1,4 @@
+import { useRuntimeEnvironment } from './useRuntimeEnvironment';
 import { useCallback, useState } from 'react';
 import * as slicerApi from '../lib/api/slicer';
 import { toAppError, type AppError } from '../lib/errors';
@@ -9,10 +10,12 @@ export function useSlicerLauncher(
   primaryId: string | null,
   onNeedsSetup: () => void,
 ) {
+  const { container } = useRuntimeEnvironment();
   const [slicerError, setSlicerError] = useState<AppError | null>(null);
 
   const openInSlicer = useCallback(
     (modelId: string) => {
+      if (container) return;
       if (slicers.length === 0) {
         onNeedsSetup();
         return;
@@ -28,7 +31,7 @@ export function useSlicerLauncher(
         setSlicerError(toAppError(e));
       });
     },
-    [slicers, primaryId, onNeedsSetup],
+    [slicers, primaryId, onNeedsSetup, container],
   );
 
   return { slicerError, openInSlicer };

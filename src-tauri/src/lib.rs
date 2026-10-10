@@ -84,6 +84,7 @@ pub fn run() {
         }));
     }
     builder
+        .manage(commands::RuntimeEnvironment::current())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .clear_targets()
@@ -296,6 +297,8 @@ pub fn run() {
             commands::pick_and_register_slicer,
             commands::list_registered_slicers,
             commands::open_in_slicer,
+            commands::get_runtime_environment,
+            commands::has_network_filesystem_warning,
             commands::scan_installed_slicers,
             commands::scan_catalog_issues,
             commands::delete_files,

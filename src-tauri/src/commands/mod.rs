@@ -1,3 +1,5 @@
+mod runtime_environment;
+pub use runtime_environment::*;
 mod catalog_removal;
 pub use catalog_removal::*;
 // Shared types and helpers of the Tauri commands; the commands themselves live

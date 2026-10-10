@@ -80,6 +80,8 @@ xattr = "1"
 libc = "0.2"
 
 [dev-dependencies]
+# Exercise command boundaries without a native window or global environment changes.
+tauri = { version = "2", features = ["test"] }
 # Tests only: create xz archives.
 lzma-rust2 = { version = "0.21", default-features = false, features = ["std", "xz", "optimization", "encoder"] }
 # Tests only: create 7z archives (including encrypted ones).

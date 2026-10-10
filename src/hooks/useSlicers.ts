@@ -1,3 +1,4 @@
+import { useRuntimeEnvironment } from './useRuntimeEnvironment';
 import { useCallback, useEffect, useState } from 'react';
 import * as catalogMetaApi from '../lib/api/catalogMeta';
 import * as slicerApi from '../lib/api/slicer';
@@ -28,6 +29,7 @@ function loadHiddenIds(): Set<string> {
  * registry, "Remove" only hides.
  */
 export function useSlicers() {
+  const { container } = useRuntimeEnvironment();
   const [slicers, setSlicers] = useState<SlicerConfig[]>([]);
   const [primaryId, setPrimaryIdState] = useState<string | null>(
     () => localStorage.getItem(PRIMARY_ID_STORAGE_KEY),
@@ -40,6 +42,7 @@ export function useSlicers() {
   }, []);
 
   useEffect(() => {
+    if (container) return;
     catalogMetaApi.scanInstalledSlicers()
       .then(applyRegistry)
       .catch((e) => {
@@ -47,9 +50,10 @@ export function useSlicers() {
         console.warn('[slicer-scan] automatic slicer detection failed:', e);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [container]);
 
   const addSlicer = useCallback(async () => {
+    if (container) return null;
     // The file dialog runs in the backend, the frontend passes no path through.
     // Failure is realistic (already registered = UNIQUE, or
     // validate_slicer_path rejects), hence the display via addSlicerError.
@@ -70,7 +74,7 @@ export function useSlicers() {
       setAddSlicerError(toAppError(e));
       return null;
     }
-  }, [applyRegistry]);
+  }, [applyRegistry, container]);
 
   const removeSlicer = useCallback((id: string) => {
     setHiddenIds((prev) => {
@@ -94,7 +98,7 @@ export function useSlicers() {
   const visibleSlicers = slicers.filter((s) => !hiddenIds.has(s.id));
 
   return {
-    slicers: visibleSlicers,
+    slicers: container ? [] : visibleSlicers,
     primaryId,
     addSlicer,
     addSlicerError,

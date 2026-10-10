@@ -1,3 +1,4 @@
+import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { RevealFileButton } from './RevealFileButton';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
@@ -39,6 +40,7 @@ function ModelContextMenu({
   onRename,
 }: Props) {
   const { lockProps } = useImportLock();
+  const { container } = useRuntimeEnvironment();
   const t = useT();
   const [view, setView] = useState<View>('menu');
   const [baseNameDraft, setBaseNameDraft] = useState('');
@@ -170,7 +172,7 @@ function ModelContextMenu({
         </div>
       ) : (
         <>
-          <button
+          {!container && (<button
             onClick={() => {
               onOpenInSlicer();
               onClose();
@@ -178,7 +180,7 @@ function ModelContextMenu({
             className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]"
           >
             {t('openInSlicer')}
-          </button>
+          </button>)}
           {/* Like every other menu in the app, entries here carry no icons; the entry also uses the same size as its neighbours. */}
           <RevealFileButton fileId={fileId} onSuccess={onClose} showIcon={false}
             className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)] disabled:opacity-50" />

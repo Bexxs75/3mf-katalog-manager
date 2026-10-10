@@ -1,3 +1,4 @@
+import { RuntimeEnvironmentProvider } from '../hooks/useRuntimeEnvironment';
 import { invoke } from '@tauri-apps/api/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
@@ -128,4 +129,13 @@ it('allows arrows after clicking either view toggle, retaining focus and overlay
       overlay.remove();
     }
   }
+});
+
+
+it('hides host actions on the container detail page even with a configured slicer', () => {
+  render(<LanguageProvider><RuntimeEnvironmentProvider value={{ container: true }}>
+    <ModelDetailPage {...props} hasPrevious={false} hasNext={false} slicers={[{ id: 's1', name: 'Slicer', path: '/slicer' }]} />
+  </RuntimeEnvironmentProvider></LanguageProvider>);
+  expect(screen.queryByRole('button', { name: /In Slicer öffnen/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Im Dateimanager anzeigen/ })).not.toBeInTheDocument();
 });

@@ -1,3 +1,4 @@
+import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import type { AppError } from '../lib/errors';
 import { UpdateChannelControl } from './UpdateChannelControl';
 import { useLanguage, useT } from '../i18n/LanguageContext';
@@ -23,6 +24,7 @@ function formatLastUpdateDate(iso: string, language: Language): string {
 
 /** Settings > Info tab: version, update box (same content as the toast, inline) and recheck. */
 export function UpdatePanel({ view, onExport, exportError }: { view: UpdaterView; onExport?: () => Promise<boolean>; exportError?: AppError | null }) {
+  const { container } = useRuntimeEnvironment();
   const t = useT();
   const { language } = useLanguage();
   const state = updateDisplayState(view);
@@ -39,7 +41,12 @@ export function UpdatePanel({ view, onExport, exportError }: { view: UpdaterView
         <div className="mt-0.5 text-caption text-[var(--ink-3)]">
           {t('infoAppVersionLabel').split('{version}').map((part, index) => <span key={index}>{index > 0 && <span className="font-code">{view.currentVersion}</span>}{part}</span>)}
         </div>
-        {state ? (
+        {container ? (
+          <p className="mt-3 text-small text-[var(--ink-3)]">
+            {t('containerUpdates').split(/(docker compose pull|docker compose up -d)/).map((part, index) =>
+              part.startsWith('docker compose ') ? <code key={index}>{part}</code> : part)}
+          </p>
+        ) : state ? (
           <div
             className="mt-2.5 p-2.5 rounded-[5px] text-left"
             style={{ background: 'var(--panel-2)', border: '1px solid var(--line)' }}
@@ -65,8 +72,8 @@ export function UpdatePanel({ view, onExport, exportError }: { view: UpdaterView
           )
         )}
       </div>
-      {view.preview === false && onExport && <UpdateChannelControl disabled={isUpdateCheckDisabled(view.phase)} onExport={onExport} exportError={exportError} onChanged={view.checkNow} />}
-      <button
+      {!container && view.preview === false && onExport && <UpdateChannelControl disabled={isUpdateCheckDisabled(view.phase)} onExport={onExport} exportError={exportError} onChanged={view.checkNow} />}
+      {!container && <button
         onClick={view.checkNow}
         disabled={isUpdateCheckDisabled(view.phase)}
         className={`h-7 w-full rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-small ${
@@ -74,7 +81,7 @@ export function UpdatePanel({ view, onExport, exportError }: { view: UpdaterView
         }`}
       >
         {view.phase === 'checking' ? t('infoCheckingForUpdate') : t('infoCheckForUpdateButton')}
-      </button>
+      </button>}
     </>
   );
 }
