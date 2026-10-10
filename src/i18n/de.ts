@@ -35,7 +35,7 @@ export const de: Translations = {
   showInFileManager: "Im Dateimanager anzeigen",
   viewerAllPlates: "Alle",
   viewerPlate: "Platte {n}",
-  viewerChoosePlate: "Platte wählen",
+  viewerAllPlatesAnnouncement: "Alle Platten",
   viewerPreviousPlate: "Vorherige Platte",
   viewerNextPlate: "Nächste Platte",
   viewerPrintPlate: "Druckplatte",

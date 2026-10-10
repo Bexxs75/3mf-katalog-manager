@@ -35,7 +35,7 @@ export const fr: Translations = {
   showInFileManager: "Afficher dans le gestionnaire de fichiers",
   viewerAllPlates: "Toutes",
   viewerPlate: "Plateau {n}",
-  viewerChoosePlate: "Choisir un plateau",
+  viewerAllPlatesAnnouncement: "Tous les plateaux",
   viewerPreviousPlate: "Plateau précédent",
   viewerNextPlate: "Plateau suivant",
   viewerPrintPlate: "Plateau d’impression",
