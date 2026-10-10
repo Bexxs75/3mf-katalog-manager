@@ -150,6 +150,14 @@ keine Dateien an). So kommen Modelle stattdessen in die App:
 Hinweis: Nach einem Neustart des Containers die Browserseite neu laden (F5), sonst
 kann KasmVNC mit einem Skriptfehler stehen bleiben.
 
+**Modelle im Slicer öffnen.** „In Slicer öffnen“ gibt es im Container nicht: Der Slicer
+läuft auf deinem Rechner, die App im Container. Die Dateien deines Katalogs liegen aber
+im eingebundenen Ordner auf dem Docker-Host (bei „Bestehende Ordnerstruktur übernehmen“ im
+Ordner `/models`, also dort, wo du `MODELS_DIR` hingelegt hast). Öffne sie dort mit dem
+Dateimanager deines Rechners direkt im Slicer. Über ein Netzwerk-Laufwerk geht das nur,
+wenn du den Ordner auf deinem Rechner einbindest.
+
+
 ### Netzwerk und Grenzen
 
 Beide Ports sind nur an `127.0.0.1` gebunden. Für das Heimnetz die beiden
@@ -321,6 +329,14 @@ does not accept files there). Use this instead:
 
 Note: after a container restart reload the browser page (F5); otherwise KasmVNC may
 stop with a script error.
+
+**Opening models in your slicer.** “Open in slicer” is not available in the container:
+the slicer runs on your computer, the app in the container. The files of your catalog sit in
+the mounted folder on the Docker host (with “Adopt existing folder structure” in the folder
+mounted as `/models`, i.e. where you pointed `MODELS_DIR`). Open them there with your
+computer's file manager directly in the slicer. Over the network that works only if you
+mount that folder on your computer.
+
 
 ### Networking and limitations
 
