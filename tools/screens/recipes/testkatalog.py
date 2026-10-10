@@ -640,5 +640,5 @@ async def fehlerkarte(x, a):
 async def platten(x, a):
     p = await cat_page(x)
     await view3d(x, p, x.L["pflanz"])
-    grp = "document.querySelector('[role=radiogroup]')"
+    grp = "document.querySelector('[data-plate-selector]')"
     return await x.shot(p, [grp], pad=80, marks=f"[() => {grp}, 1]", name="platten")
