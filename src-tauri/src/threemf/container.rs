@@ -28,7 +28,9 @@ pub(super) const MAX_CONFIG_XML_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_TOTAL_UNPACKED_BYTES: u64 = 512 * 1024 * 1024;
 /// Maximum number of referenced `.model` files (Production Extension), so many
 /// small files neither bypass the budget nor make resolving take forever.
-const MAX_REFERENCED_MODELS: usize = 32;
+/// Slicer projects with many parts keep one file per object: a real catalog
+/// holds projects with up to 49 of them, so the limit leaves room above that.
+const MAX_REFERENCED_MODELS: usize = 128;
 
 #[cfg(test)]
 thread_local! {
@@ -364,6 +366,39 @@ mod tests {
             zip.finish().unwrap();
         }
         buf
+    }
+
+    fn build_zip_with_referenced_models(count: usize) -> Vec<u8> {
+        let items: String = (1..=count)
+            .map(|i| format!(r#"<item p:path="/3D/Objects/object_{i}.model" objectid="{i}"/>"#))
+            .collect();
+        let root = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06"><build>{items}</build></model>"#
+        );
+        let mut buf = Vec::new();
+        {
+            let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buf));
+            let options = SimpleFileOptions::default();
+            zip.start_file("3D/3dmodel.model", options).unwrap();
+            zip.write_all(root.as_bytes()).unwrap();
+            for i in 1..=count {
+                zip.start_file(format!("3D/Objects/object_{i}.model"), options).unwrap();
+                zip.write_all(CHILD_MODEL_XML.as_bytes()).unwrap();
+            }
+            zip.finish().unwrap();
+        }
+        buf
+    }
+
+    #[test]
+    fn projects_with_many_part_files_load_up_to_the_limit() {
+        let package = read_package(std::io::Cursor::new(build_zip_with_referenced_models(60))).unwrap();
+        assert_eq!(package.referenced_models.len(), 60);
+        let too_many = build_zip_with_referenced_models(MAX_REFERENCED_MODELS + 1);
+        assert!(matches!(
+            read_package(std::io::Cursor::new(too_many)),
+            Err(ThreeMfError::ResourceLimitExceeded(_))
+        ));
     }
 
     /// ZIP with one highly compressible entry (mini zip bomb).

@@ -9,6 +9,11 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ## [Unreleased]
 
+## [0.15.4] - 2026-10-10
+
+### Fixed
+- 3MF projects from Bambu Studio and Orca Slicer with more than 32 part files could not be imported ("Too many referenced model files") and showed no 3D preview. The app now reads up to 128 part files per project.
+
 ## [0.15.3] - 2026-10-04
 
 ### Fixed
@@ -477,6 +482,11 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/), Ve
 Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unter der Scaffold-Versionsnummer `0.1.0`, ohne dass Meilensteine markiert wurden. Die folgenden Versionsgrenzen wurden nachträglich anhand von Entwicklungs-Tagen und natürlichen Feature-Abschlüssen (jeweils an einem Dokumentations-Commit) gezogen, keine davon wurde zum jeweiligen Zeitpunkt live getaggt oder veröffentlicht.
 
 ## [Unreleased]
+
+## [0.15.4] - 2026-10-10
+
+### Behoben
+- 3MF-Projekte aus Bambu Studio und Orca Slicer mit mehr als 32 Teiledateien ließen sich nicht importieren („Zu viele referenzierte Modelldateien“) und zeigten keine 3D-Vorschau. Die App liest jetzt bis zu 128 Teiledateien je Projekt.
 
 ## [0.15.3] - 2026-10-04
 
