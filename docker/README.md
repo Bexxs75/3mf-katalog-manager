@@ -73,7 +73,7 @@ docker/
 warnt der Start und legt `/config/.network-filesystem-warning` an; bei lokalem
 Dateisystem wird ein alter Marker entfernt. Die Erkennung mit `stat -f` ist eine
 Warnhilfe, keine Garantie über darunterliegende Speicher- und Sperrmechanismen.
-Die spätere App-Anzeige des Markers gehört zum separaten App-Paket.
+Die App zeigt bei einem Treffer einen schließbaren Hinweis.
 
 `/models` darf eine NAS-Freigabe sein; im Dateidialog heißt das Lesezeichen
 „Modelle“. Für zusätzliche Bibliotheken den auskommentierten `/models2`-Mount
@@ -86,7 +86,7 @@ Web-Login, kein Ersatz für `PUID`/`PGID`. `UMASK=022` ist Standard, bei gemeins
 Gruppe ggf. `002`; die Passwortdatei bleibt `600`. Der App-Dienst läuft als `abc`.
 Keine zusätzlichen Linux-Capabilities, kein privilegierter Container, kein
 Docker-Socket. `no-new-privileges:true` ist im Beispiel gesetzt; seine
-Verträglichkeit mit dem Basisimage und WebKit ist **noch nicht am Image geprüft**.
+Verträglichkeit mit dem Basisimage und WebKit ist geprüft: Der Container startet, die Anmeldung und die App laufen.
 
 ### Aktualisieren und prüfen
 
@@ -129,6 +129,27 @@ Container stoppen; alternativ die App-Sicherungsfunktion für die Datenbank nutz
 Beim Wiederherstellen Mount-Ziele beibehalten und **Druckerverbindungen danach
 wieder aktivieren**: Der Import pausiert sie bewusst.
 
+### Modelle in die App bringen
+
+Drag & Drop vom Desktop in das Browserfenster geht nicht (der Browser nimmt dort
+keine Dateien an). So kommen Modelle stattdessen in die App:
+
+1. **Ordner einbinden.** Lege die Modelle in den Ordner, der in Compose als
+   `/models` eingebunden ist (Standard `./models` oder `MODELS_DIR`). Der Ordner
+   muss schreibbar sein, wenn die App Dateien ablegen oder Archive entpacken soll.
+2. **Erster Start:** „Bestehende Ordnerstruktur übernehmen“, im Dateidialog links
+   „Modelle“ wählen und bestätigen. Alle Modelle kommen mit ihrer Ordnerstruktur
+   in den Katalog.
+3. **Später neue Dateien:** auf dem Rechner in den eingebundenen Ordner kopieren,
+   dann oben links „Importieren“, „Dateien…“ oder „Ordner…“, im Dialog „Modelle“.
+   Liegen die Dateien in einem anderen eingebundenen Ordner, im Dialog **Strg+L**
+   drücken und den Pfad tippen, z. B. `/import/Datei.stl`.
+4. **ZIP-Archive:** wie Dateien importieren. Im Fenster „Archive entpacken“ bei
+   „Ändern…“ einen **schreibbaren** Zielordner wählen, z. B. unterhalb von „Modelle“.
+
+Hinweis: Nach einem Neustart des Containers die Browserseite neu laden (F5), sonst
+kann KasmVNC mit einem Skriptfehler stehen bleiben.
+
 ### Netzwerk und Grenzen
 
 Beide Ports sind nur an `127.0.0.1` gebunden. Für das Heimnetz die beiden
@@ -142,31 +163,19 @@ Ausführliche Netzwerk-/Reverse-Proxy-Anleitungen folgen im D6-Paket im
 - Kein Drag & Drop vom Host-Desktop in die App.
 - 3D-Vorschau per Software-Rendering, daher langsamer.
 - Ein Benutzer gleichzeitig; nur x86_64, kein arm64.
-- Updates über Images; den App-Updater nicht verwenden. Das Ausblenden von
-  Host-Aktionen und Updater gehört zum separaten App-Paket (`THREEMF_CONTAINER=1`).
+- Updates über Images (`docker compose pull`, dann `docker compose up -d`). Die App
+  blendet im Container Slicer, „Im Dateimanager anzeigen“, Ordner-/Link-Öffnen und
+  ihren eigenen Updater aus (`THREEMF_CONTAINER=1`); Links erscheinen als Text mit „Link kopieren“.
 - Browser-Clipboard, Tastatur, Dateidialoge und WebKit können von der Desktop-App abweichen.
 
-### Prüfumfang und offene Image-Prüfung
+### Was geprüft ist
 
-`bash scripts/check.sh` nutzt keinen Docker-Aufruf und kein Netzwerk. Es prüft
-Shell-Syntax, ausführbare Dateien, einfache Compose-/Dockerfile-/s6-Strukturen,
-Passwort-/Dateisystemlogik und den Supervisor mit Testprozessen. Shellcheck und
-Hadolint laufen nur, wenn installiert. Das ersetzt keine Compose-Validierung,
-keinen Image-Bau und keinen Ende-zu-Ende-Test.
+- `bash scripts/check.sh` prüft ohne Docker die Skripte, Compose- und Dockerfile-Struktur sowie Passwort-, Dateisystem- und Supervisor-Logik.
+- `bash scripts/ci-smoke.sh IMAGE` startet das fertige Image und prüft Anmeldung, erzeugtes und eigenes Passwort, Neustart der App nach einem Absturz, sauberes Beenden und `ALLOW_NO_AUTH`. Der Release-Workflow führt ihn vor dem Veröffentlichen aus.
+- `bash tests/upgrade.sh ALT NEU` prüft ein Update auf demselben Volume (Schema-Migration mit Sicherung vorher), `bash tests/permissions.sh IMAGE` fremde `PUID`/`PGID` und einen schreibgeschützten Modellordner.
+- Von Hand im Container geprüft: Import aus dem Dateidialog, Ordnerübernahme, Archiv-Dialog, Katalog-Export und -Import, Druckeranbindung an einen Moonraker-Testserver, `no-new-privileges:true`.
+- Noch nicht geprüft: 3D-Vorschau mit vielen Modellen, Wiederherstellung mit Papierkorbdateien, arm64.
 
-**Nicht gegen das echte Image geprüft:** s6-overlay unter
-`/etc/s6-overlay/s6-rc.d`, `init-adduser` (UID/GID), `init-kasmvnc`, `init-nginx`,
-`svc-kasmvnc`, Import von `CUSTOM_USER`/`PASSWORD` aus
-`/run/s6/container_environment`, X-Zugang als `abc` mit `DISPLAY=:1`,
-`/defaults/autostart`, Log-Weiterleitung über PID 1 und Shutdown-Zeitlimits.
-Der zusätzliche `init-3mf`-Dienst läuft nach `init-adduser`; beide
-Web-Konfigurationsdienste erhalten ihn als Abhängigkeit. Der Bau bricht bei
-fehlenden erwarteten Dienstverzeichnissen ab. Die App wartet vor dem Start mit
-`xdpyinfo` auf den X-Server. Der einmalige App-Autostart wird durch `svc-3mf` ersetzt.
-
-Claude muss Build, ersten/zweiten Start, eigene/abgeschaltete Anmeldung, geänderte
-UID/GID, `no-new-privileges`, App-Absturz, Healthcheck, Logs und `docker stop`
-am echten Image prüfen; bei anderem Upstream-Aufbau ist die Integration anzupassen.
 [Lizenzhinweise](LICENSES.md).
 
 ### Hinweis zu alten Prototyp-Daten / Note on old prototype data
@@ -251,7 +260,7 @@ replacement for UID/GID. Default `UMASK=022`; use e.g. `002` for group sharing.
 The password stays mode `600`. The app service runs as `abc`. No added Linux
 capabilities, privileged mode or Docker socket. The example sets
 `no-new-privileges:true`; compatibility with the base image and WebKit is
-**not yet checked against the image**.
+checked: the container starts, and login and app work.
 
 ### Update and verify
 
@@ -292,6 +301,27 @@ container before copying `/config`; alternatively use the app's backup feature
 for the database. Preserve mount targets when restoring and **reactivate printer
 connections afterwards**: import deliberately pauses them.
 
+### Getting models into the app
+
+Drag and drop from the desktop into the browser window does not work (the browser
+does not accept files there). Use this instead:
+
+1. **Mount a folder.** Put the models in the folder mounted as `/models` in Compose
+   (default `./models` or `MODELS_DIR`). The folder must be writable if the app is
+   to store files or unpack archives.
+2. **First start:** “Adopt existing folder structure”, pick “Modelle” (models) on
+   the left of the file dialog and confirm. All models enter the catalog with their
+   folder structure.
+3. **New files later:** copy them into the mounted folder on your computer, then
+   “Import” at the top left, “Files…” or “Folder…”, and “Modelle” in the dialog. If
+   the files sit in another mounted folder, press **Ctrl+L** in the dialog and type
+   the path, e.g. `/import/file.stl`.
+4. **ZIP archives:** import them like files. In the “Unpack archives” window use
+   “Change…” to choose a **writable** target folder, e.g. below “Modelle”.
+
+Note: after a container restart reload the browser page (F5); otherwise KasmVNC may
+stop with a script error.
+
 ### Networking and limitations
 
 Both ports bind only to `127.0.0.1`. For LAN access, replace both host addresses
@@ -305,29 +335,17 @@ instructions will follow in package D6 in the
 - No drag and drop from the host desktop into the app.
 - Slower, software-rendered 3D preview.
 - One concurrent user; x86_64 only, no arm64.
-- Update via images; do not use the app updater. Hiding host actions and the
-  updater belongs to the separate app package (`THREEMF_CONTAINER=1`).
+- Update via images (`docker compose pull`, then `docker compose up -d`). In the
+  container the app hides slicer, “Show in file manager”, folder/link opening and its
+  own updater (`THREEMF_CONTAINER=1`); links appear as text with “Copy link”.
 - Browser clipboard, keyboard, file dialogs and WebKit may differ from the desktop app.
 
-### Verification scope and pending image tests
+### What has been tested
 
-`bash scripts/check.sh` uses neither Docker nor networking. It checks shell
-syntax, executable files, basic Compose/Dockerfile/s6 structure, authentication,
-filesystem handling, and supervision with test processes. Shellcheck and Hadolint
-run if installed. This does not replace Compose validation, building the image
-or end-to-end tests.
+- `bash scripts/check.sh` checks the scripts, Compose and Dockerfile structure and the password, file-system and supervisor logic without Docker.
+- `bash scripts/ci-smoke.sh IMAGE` starts the built image and checks login, generated and supplied passwords, app restart after a crash, clean stop and `ALLOW_NO_AUTH`. The release workflow runs it before publishing.
+- `bash tests/upgrade.sh OLD NEW` checks an update on the same volume (schema migration with a copy beforehand); `bash tests/permissions.sh IMAGE` checks foreign `PUID`/`PGID` and a read-only models folder.
+- Checked by hand in the container: import from the file dialog, folder adoption, the archive dialog, catalog export and import, the printer link to a Moonraker test server, `no-new-privileges:true`.
+- Not yet tested: 3D preview with many models, restore with trash files, arm64.
 
-**Not checked against the real image:** s6-overlay at
-`/etc/s6-overlay/s6-rc.d`, `init-adduser` (UID/GID), `init-kasmvnc`, `init-nginx`,
-`svc-kasmvnc`, importing `CUSTOM_USER`/`PASSWORD` from
-`/run/s6/container_environment`, X access as `abc` with `DISPLAY=:1`,
-`/defaults/autostart`, logging through PID 1 and shutdown timeouts.
-The added `init-3mf` service follows `init-adduser`; both web configuration
-services depend on it. Building fails if expected upstream service directories
-are absent. The app waits for X using `xdpyinfo`. `svc-3mf` replaces the one-shot
-app autostart.
-
-Claude must check build, first/second startup, supplied/disabled authentication,
-custom UID/GID, `no-new-privileges`, app crashes, health, logs and `docker stop`
-against the real image; a different upstream layout requires adapting the integration.
 [License notices](LICENSES.md).
