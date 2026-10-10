@@ -28,7 +28,7 @@ Loopback remains forbidden. Compose stops the long-running server after the
 client finishes. This is an adapter/network smoke test; translated UI messages
 and the D4 command guard are covered by the regular Rust/Vitest tests.
 
-Not executed as part of this work order. The application rejects `.local` names
+Checked on 2026-10-10 with plain `docker build`/`docker run` on a private network (client exit 0). The application rejects `.local` names
 while `THREEMF_CONTAINER=1`, so the message tells users to enter the printer IP;
 it rejects them before any name lookup, whatever the network mode.
 
@@ -53,6 +53,6 @@ Zeitzonen (UTC und Pacific/Honolulu) dürfen das nicht verändern. Loopback blei
 gesperrt. Compose beendet anschließend den dauerhaft laufenden Server.
 Übersetzte Meldungen und D4-Anbindung prüfen die regulären Rust-/Vitest-Tests.
 
-Dieser Aufbau wurde im Auftrag nicht ausgeführt. Die Anwendung weist `.local`-Namen
+Am 10.10.2026 mit `docker build`/`docker run` im privaten Netz geprüft (Client Exit 0). Die Anwendung weist `.local`-Namen
 bei `THREEMF_CONTAINER=1` ab; die Meldung verweist deshalb auf die Drucker-IP.
 Die Abweisung erfolgt vor jeder Namensauflösung, unabhängig vom Netzwerkmodus.
