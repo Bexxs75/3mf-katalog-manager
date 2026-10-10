@@ -438,3 +438,9 @@ it.each(['.5', ',5'])('accepts a leading decimal separator for nozzle %s', async
   fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
   await waitFor(() => expect(invoke).toHaveBeenCalledWith('update_printer_details', { id: '1', details: { ...details, nozzleMm: 0.5 } }));
 });
+
+it('limits manufacturer and model input lengths', async () => {
+  setup('1');
+  expect(await screen.findByLabelText('Hersteller')).toHaveAttribute('maxlength', '120');
+  expect(screen.getByLabelText('Modell')).toHaveAttribute('maxlength', '120');
+});

@@ -1,6 +1,7 @@
 import type { Translations } from './types';
 
 export const fr: Translations = {
+  migrationBackupWarning: "La sauvegarde avant la migration de la base de données a échoué. Le catalogue a tout de même été ouvert. Une sauvegarde de l’état précédent n’est pas garantie. Vérifiez l’espace libre et les droits d’écriture dans le dossier de sauvegarde.",
   collectionDropAdded: "« {name} » ajouté à la collection « {collection} »",
   collectionDropAlready: "« {name} » est déjà dans la collection « {collection} »",
   statusBadgesLabel: "Statut",

@@ -15,10 +15,20 @@ use super::models::{
 pub const SCHEMA_SQL: &str = include_str!("schema.sql");
 
 pub fn connect(path: &Path) -> Result<Connection, DbError> {
+    connect_with_warning(path).map(|(conn, _)| conn)
+}
+
+pub fn connect_with_warning(path: &Path) -> Result<(Connection, bool), DbError> {
     let mut conn = Connection::open(path)?;
-    backup_before_migration(&conn, path);
+    let backup_failed = match backup_before_migration(&conn, path) {
+        Ok(()) => false,
+        Err(e) => {
+            log::warn!(target: "backup", "Sicherung vor der Schema-Migration fehlgeschlagen: {e}");
+            true
+        }
+    };
     init(&mut conn)?;
-    Ok(conn)
+    Ok((conn, backup_failed))
 }
 
 /// Directory next to the catalog database where copies taken before a schema
@@ -29,27 +39,25 @@ pub const BACKUP_DIR_NAME: &str = "update-backups";
 /// read the result. Whoever installs a version by hand (no in-app update, which
 /// has its own backup) would lose the way back, so an existing catalog is copied
 /// right before the first migration. A failed copy must never block the start.
-fn backup_before_migration(conn: &Connection, db_path: &Path) {
-    let Some((from, to)) = migration_backup_label(conn) else { return };
-    let Some(dir) = db_path.parent().map(|p| p.join(BACKUP_DIR_NAME)) else { return };
-    match crate::updater::backup::create_schema(conn, &dir, from, to) {
-        Ok(path) => log::info!(target: "backup", "Sicherung vor der Schema-Migration: {}", path.display()),
-        Err(e) => log::warn!(target: "backup", "Sicherung vor der Schema-Migration fehlgeschlagen: {e}"),
-    }
+fn backup_before_migration(conn: &Connection, db_path: &Path) -> Result<(), DbError> {
+    let Some((from, to)) = migration_backup_label(conn)? else { return Ok(()) };
+    let dir = db_path.parent().ok_or_else(|| DbError::Other("Sicherungsordner nicht gefunden".into()))?.join(BACKUP_DIR_NAME);
+    let path = crate::updater::backup::create_schema(conn, &dir, from, to).map_err(DbError::Other)?;
+    log::info!(target: "backup", "Sicherung vor der Schema-Migration: {}", path.display());
+    Ok(())
 }
 
 /// `Some((old, new))` when the database already holds a catalog
 /// (any table) and its schema version is older than this build's, else `None`.
-fn migration_backup_label(conn: &Connection) -> Option<(i64, i64)> {
+fn migration_backup_label(conn: &Connection) -> Result<Option<(i64, i64)>, DbError> {
     let tables: i64 = conn
-        .query_row("SELECT count(*) FROM sqlite_master WHERE type = 'table'", [], |r| r.get(0))
-        .ok()?;
+        .query_row("SELECT count(*) FROM sqlite_master WHERE type = 'table'", [], |r| r.get(0))?;
     if tables == 0 {
-        return None;
+        return Ok(None);
     }
-    let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).ok()?;
+    let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
     let target = super::migrations::CURRENT_SCHEMA_VERSION;
-    (version < target).then_some((version, target))
+    Ok((version < target).then_some((version, target)))
 }
 
 #[allow(dead_code)]
@@ -357,6 +365,7 @@ fn hue_for_tag(name: &str) -> i64 {
 }
 
 fn get_or_create_tag(conn: &Connection, name: &str) -> Result<i64, DbError> {
+    super::error::validate_text_length(name, 100, "Tag")?;
     let existing: Option<i64> = conn
         .query_row("SELECT id FROM tags WHERE name = ?1", params![name], |row| {
             row.get(0)
@@ -1231,6 +1240,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn failed_migration_backup_is_reported_but_startup_continues() {
+        let dir = backup_test_dir("migration-warning");
+        let path = dir.join("catalog.db");
+        let conn = connect(&path).unwrap();
+        conn.pragma_update(None, "user_version", super::super::migrations::CURRENT_SCHEMA_VERSION - 1).unwrap();
+        drop(conn);
+        std::fs::write(dir.join(BACKUP_DIR_NAME), b"blocks backup directory").unwrap();
+        let (conn, warning) = connect_with_warning(&path).unwrap();
+        assert!(warning);
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(version, super::super::migrations::CURRENT_SCHEMA_VERSION);
+        drop(conn);
+        assert!(!connect_with_warning(&path).unwrap().1);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn tags_enforce_length_before_inserting() {
+        let conn = connect_in_memory().unwrap();
+        assert!(get_or_create_tag(&conn, &"a".repeat(100)).is_ok());
+        assert!(matches!(get_or_create_tag(&conn, &"a".repeat(101)), Err(DbError::Invalid(_))));
+        assert!(matches!(get_or_create_tag(&conn, &"😀".repeat(51)), Err(DbError::Invalid(_))));
+    }
+
+    #[test]
     fn list_file_images_limits_batches_and_ignores_unknown_ids() {
         let conn = connect_in_memory().unwrap();
         let id = test_insert_minimal_file(&conn, "/tmp/images.3mf", None).unwrap();
@@ -1601,7 +1635,7 @@ mod tests {
         let name = copy.file_name().unwrap().to_str().unwrap();
         assert!(name.starts_with("Katalog-Sicherung_"));
         assert!(name.ends_with(&format!("_vor-Schema-Migration_3_auf_{target}.db")));
-        let saved = Connection::open(&copy).unwrap();
+        let saved = Connection::open(copy).unwrap();
         let x: i64 = saved.query_row("SELECT x FROM marker", [], |r| r.get(0)).unwrap();
         assert_eq!(x, 7, "the copy must hold the catalog as it was before the migration");
         let _ = std::fs::remove_dir_all(&dir);

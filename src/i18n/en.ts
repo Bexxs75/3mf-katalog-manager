@@ -1,6 +1,7 @@
 import type { Translations } from './types';
 
 export const en: Translations = {
+  migrationBackupWarning: "The backup before the database migration failed. The catalog was opened anyway. A backup of the previous state is not guaranteed. Please check free space and write permissions in the backup folder.",
   collectionDropAdded: "Added “{name}” to the collection “{collection}”",
   collectionDropAlready: "“{name}” is already in the collection “{collection}”",
   statusBadgesLabel: "Status",

@@ -136,7 +136,8 @@ pub fn run() {
             std::fs::create_dir_all(&app_data_dir)?;
             harden_permissions(&app_data_dir);
             let db_path = app_data_dir.join("catalog.db");
-            let mut conn = db::connect(&db_path)?;
+            let (mut conn, backup_failed) = db::connect_with_warning(&db_path)?;
+            app.manage(startup::MigrationBackupWarning(backup_failed));
             commands::apply_verbose_state(&conn);
             diagnostics::log_startup(&conn);
             harden_permissions(&db_path);
@@ -203,6 +204,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             startup::frontend_ready,
+            startup::get_migration_backup_warning,
             startup::save_window_theme,
             commands::discard_archive_imports,
             commands::start_import,

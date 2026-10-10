@@ -915,6 +915,23 @@ fn job_summary(result: &ImportJobResult, secs: f64) -> String {
 mod logging_tests {
     use super::*;
     #[test]
+    fn multiword_archive_names_are_removed_from_generated_verbose_lines() {
+        use crate::diagnostics::anonymize::{anonymize, to_text, Context};
+        let mut groups = ImportGroups::default();
+        groups.archive.push(serde_json::json!({"models":{"skipped":[
+            {"entryPath":"Anna Weber.stl","reason":"invalid"},
+            {"entryPath":"Anna Weber (privat).stl","reason":"invalid"}
+        ]}}));
+        for line in skipped_log_lines(&groups, true) {
+            let ctx = Context { replace_file_names: true, ..Default::default() };
+            let text = to_text(&anonymize(&line, &ctx).unwrap());
+            assert!(!text.contains("Anna"));
+            assert!(!text.contains("Weber"));
+            assert!(!text.contains("privat"));
+            assert!(text.contains("übersprungen:"));
+        }
+    }
+    #[test]
     fn skipped_logs_hide_names_until_verbose_mode_and_include_nested_duplicates() {
         let mut groups = ImportGroups::default();
         groups.skipped.push(SkippedEntry {path: "/private/broken.obj".into(), reason: "invalid".into()});
@@ -946,8 +963,8 @@ fn skipped_log_filename_replacement_uses_the_existing_preview_rules() {
     use crate::diagnostics::anonymize::{anonymize, to_text, Context};
     let line = "WARN [import] übersprungen: /private/broken.obj (Datei ungültig – konnte nicht gelesen werden)";
     let ctx = Context { replace_file_names: true, ..Context::default() };
-    let preview = to_text(&anonymize(line, &ctx));
+    let preview = to_text(&anonymize(line, &ctx).unwrap());
     assert!(!preview.contains("broken.obj"));
-    assert!(preview.contains("<datei-1>"));
+    assert!(preview.contains("<datei>"));
     assert!(preview.contains("WARN [import] übersprungen:"));
 }

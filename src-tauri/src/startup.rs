@@ -15,6 +15,14 @@ fn show_once(window: &WebviewWindow) -> tauri::Result<()> {
     Ok(())
 }
 
+// Retained until the frontend queries it; an early event could be missed.
+pub struct MigrationBackupWarning(pub bool);
+
+#[tauri::command]
+pub fn get_migration_backup_warning(state: tauri::State<MigrationBackupWarning>) -> bool {
+    state.0
+}
+
 const MARKER: &str = "window-theme";
 
 /// Explicit choices override the OS; system keeps following the platform theme.

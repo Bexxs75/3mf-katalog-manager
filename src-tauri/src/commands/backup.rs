@@ -15,6 +15,13 @@ fn validate_file_name(name: &str) -> CmdResult<()> {
     }
     Ok(())
 }
+fn validate_imported_path_length(path: &str) -> Result<(), String> {
+    if path.chars().take(4097).count() > 4096 {
+        return Err("Importierter Pfad darf höchstens 4096 Zeichen enthalten".into());
+    }
+    Ok(())
+}
+
 /// Exports the complete catalog state (DB + frontend settings) as a ZIP file.
 /// Uses SQLite's online backup API instead of copying the raw file: the live
 /// connection may be in WAL mode, and fs::copy could catch an inconsistent state.
@@ -649,6 +656,18 @@ fn validate_catalog_db_bytes(
             // spools could end up in the same slot.
             validate_printer_invariants(&conn)?;
             validate_printer_link_rows(&conn)?;
+            for (query, max, label) in [
+                ("SELECT manufacturer FROM printers WHERE manufacturer IS NOT NULL", 120, "Hersteller"),
+                ("SELECT model FROM printers WHERE model IS NOT NULL", 120, "Modellname"),
+                ("SELECT name FROM tags", 100, "Tag"),
+            ] {
+                let mut stmt = conn.prepare(query).map_err(|e| e.to_string())?;
+                let values = stmt.query_map([], |row| row.get::<_, String>(0)).map_err(|e| e.to_string())?;
+                for value in values {
+                    db::error::validate_text_length(&value.map_err(|e| e.to_string())?, max, label)
+                        .map_err(|e| e.to_string())?;
+                }
+            }
 
             // quick_check doesn't catch FK violations; check them after the migration.
             conn.pragma_update(None, "foreign_keys", true).map_err(|e| e.to_string())?;
@@ -668,6 +687,7 @@ fn validate_catalog_db_bytes(
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| e.to_string())?;
             for path in paths {
+                validate_imported_path_length(&path)?;
                 // `.message`, not `{e}`/Display: `e` is already a `CmdError` (logged once
                 // at its creation site inside `reject_if_sensitive_path_expanded`); this
                 // just carries its text onward as part of this function's `String` error,
@@ -719,6 +739,8 @@ fn validate_catalog_db_bytes(
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| e.to_string())?;
             for (name, path, trash_path) in rows {
+                validate_imported_path_length(&path)?;
+                if let Some(path) = &trash_path { validate_imported_path_length(path)?; }
                 // `.message` everywhere below, not `{e}`/Display: each `e` is already a
                 // `CmdError` (logged once at its creation site inside the nested helper);
                 // this only carries its text onward as part of this function's `String`
@@ -1027,6 +1049,34 @@ mod tests {
             favorite: false,
             plate_count: None,
             slice_info_json: None,
+        }
+    }
+    #[test]
+    fn imported_text_fields_have_length_limits() {
+        for (column, limit) in [("manufacturer", 120), ("model", 120), ("tag", 100)] {
+            for length in [limit, limit + 1] {
+                let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+                    let value = "a".repeat(length);
+                    if column == "tag" {
+                        conn.execute("INSERT INTO tags (name, color_hue) VALUES (?1, 0)", [&value]).unwrap();
+                    } else {
+                        conn.execute(&format!("INSERT INTO printers (name, {column}) VALUES ('Printer', ?1)"), [&value]).unwrap();
+                    }
+                });
+                let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash);
+                assert_eq!(result.is_ok(), length == limit, "{column}: {result:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn imported_paths_have_a_length_limit() {
+        for length in [4096, 4097] {
+            let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+                conn.execute("INSERT INTO folders (name, path) VALUES ('root', ?1)", [format!("/{}", "a".repeat(length - 1))]).unwrap();
+            });
+            let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash);
+            assert_eq!(result.is_ok(), length == 4096, "{result:?}");
         }
     }
     #[test]

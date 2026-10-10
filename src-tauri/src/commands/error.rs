@@ -28,7 +28,9 @@ impl CmdError {
     fn import_log_message(message: &str, verbose: bool) -> String {
         if verbose { return message.into(); }
         use crate::diagnostics::anonymize::{anonymize, to_text, Context};
-        to_text(&anonymize(message, &Context { replace_file_names: true, ..Context::default() }))
+        anonymize(message, &Context { replace_file_names: true, ..Context::default() })
+            .map(|segments| to_text(&segments))
+            .unwrap_or_else(|_| "Importfehler (Anonymisierung fehlgeschlagen)".into())
     }
 
     pub fn import_input(message: impl Into<String>) -> Self {

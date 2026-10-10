@@ -317,10 +317,8 @@ pub(crate) fn lock_db<'a>(state: &'a State<AppState>) -> CmdResult<std::sync::Mu
 /// as three platform-specific syscalls. Not atomic as a whole: after a crash,
 /// source and target can briefly both exist.
 pub(crate) fn move_file(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
-    let mut dst = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(to)?;
+    // Keep moved models private even when the source allowed broader access.
+    let mut dst = crate::safe_file::create_new_private(to)?;
 
     let copy_result = (|| -> std::io::Result<()> {
         let mut src = std::fs::File::open(from)?;
@@ -542,6 +540,23 @@ mod tests {
             }],
         }
     }
+    #[cfg(unix)]
+    #[test]
+    fn moved_files_are_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = unique_test_dir("move_private");
+        std::fs::create_dir_all(&dir).unwrap();
+        let from = dir.join("source");
+        let to = dir.join("target");
+        std::fs::write(&from, b"private model").unwrap();
+        std::fs::set_permissions(&from, std::fs::Permissions::from_mode(0o644)).unwrap();
+        move_file(&from, &to).unwrap();
+        assert_eq!(std::fs::metadata(&to).unwrap().permissions().mode() & 0o777, 0o600);
+        assert_eq!(std::fs::read(&to).unwrap(), b"private model");
+        assert!(!from.exists());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn estimate_material_cost_uses_single_matching_spool() {
         let slice_info = sample_slice_info_single_filament("PLA", 20.0);

@@ -151,6 +151,12 @@ pub struct PrinterDetails {
 }
 
 fn update_printer_details_with_conn(conn: &mut Connection, id: i64, details: PrinterDetails) -> CmdResult<()> {
+    for (value, label) in [(&details.manufacturer, "Hersteller"), (&details.model, "Modellname")] {
+        if let Some(value) = value {
+            db::error::validate_text_length(value, 120, label)
+                .map_err(|e| CmdError::expected(e.to_string()))?;
+        }
+    }
     for (value, min, max, label) in [
         (details.nozzle_mm, 0.1, 2.0, "Düse"),
         (details.bed_x_mm, 1.0, 2000.0, "Bauraum X"),
@@ -304,6 +310,27 @@ pub fn list_printer_history(state: State<AppState>, printer_id: String) -> CmdRe
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn printer_details_reject_long_text_before_writing() {
+        let mut conn = db::connect_in_memory().unwrap();
+        let printer = add_printer_with_conn(&mut conn, "Test", "Holder", "filament").unwrap();
+        let id = printer.id.parse().unwrap();
+        update_printer_details_with_conn(&mut conn, id, PrinterDetails {
+            manufacturer: Some("a".repeat(120)), model: Some("😀".repeat(60)), ..Default::default()
+        }).unwrap();
+        for details in [
+            PrinterDetails { manufacturer: Some("a".repeat(121)), ..Default::default() },
+            PrinterDetails { model: Some("😀".repeat(61)), ..Default::default() },
+        ] {
+            let error = update_printer_details_with_conn(&mut conn, id, details).unwrap_err();
+            assert!(error.expected);
+            assert!(error.message.contains("120"));
+        }
+        let saved = list_printers_with_conn(&conn).unwrap().remove(0);
+        assert_eq!(saved.manufacturer, Some("a".repeat(120)));
+        assert_eq!(saved.model, Some("😀".repeat(60)));
+    }
 
     #[test]
     fn last_printer_only_uses_confirmed_jobs_for_the_requested_file() {

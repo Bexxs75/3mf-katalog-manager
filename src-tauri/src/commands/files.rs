@@ -311,7 +311,10 @@ pub async fn pick_and_read_image(app: tauri::AppHandle) -> CmdResult<Option<Stri
 /// normalized to their key, so e.g. "Multipart" doesn't create a second tag next
 /// to "mehrteilig".
 fn add_tag_with_conn(conn: &Connection, file_id: i64, tag: &str) -> CmdResult<()> {
-    db::add_tag_to_file(conn, file_id, &tagging::canonical_tag(tag)).map_err(|e| e.to_string().into())
+    db::add_tag_to_file(conn, file_id, &tagging::canonical_tag(tag)).map_err(|e| match e {
+        db::error::DbError::Invalid(message) => CmdError::expected(message),
+        other => other.to_string().into(),
+    })
 }
 
 #[tauri::command]
@@ -1872,11 +1875,11 @@ mod tests {
         let second = first + std::time::Duration::from_secs(3600);
         std::fs::File::options().write(true).open(&path).unwrap().set_modified(second).unwrap();
         rescan_file(&mut conn, id).unwrap();
-        let expected = Some(chrono::DateTime::<chrono::Utc>::from(second).to_rfc3339());
-        assert_eq!(db::get_file(&conn, id).unwrap().unwrap().file_modified_at, expected);
-        assert_eq!(db::list_file_summaries(&conn).unwrap()[0].file_modified_at, expected);
+        let expected = chrono::DateTime::<chrono::Utc>::from(second).to_rfc3339();
+        assert_eq!(db::get_file(&conn, id).unwrap().unwrap().file_modified_at.as_deref(), Some(expected.as_str()));
+        assert_eq!(db::list_file_summaries(&conn).unwrap()[0].file_modified_at.as_deref(), Some(expected.as_str()));
         let full = to_dto(db::get_file(&conn, id).unwrap().unwrap(), &[]);
-        assert_eq!(serde_json::to_value(full).unwrap()["fileModifiedAt"], expected.unwrap());
+        assert_eq!(serde_json::to_value(full).unwrap()["fileModifiedAt"], expected);
         std::fs::remove_dir_all(dir).unwrap();
     }
 

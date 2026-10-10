@@ -1,6 +1,7 @@
 import type { Translations } from './types';
 
 export const de: Translations = {
+  migrationBackupWarning: "Die Sicherung vor der Datenbank-Migration ist fehlgeschlagen. Der Katalog wurde trotzdem geöffnet. Eine Sicherung des vorherigen Standes ist nicht gewährleistet. Bitte prüfe freien Speicher und Schreibrechte im Sicherungsordner.",
   collectionDropAdded: "„{name}“ zur Sammlung „{collection}“ hinzugefügt",
   collectionDropAlready: "„{name}“ ist schon in der Sammlung „{collection}“",
   statusBadgesLabel: "Status",

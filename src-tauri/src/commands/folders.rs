@@ -61,7 +61,17 @@ fn validate_folder_name(name: &str) -> CmdResult<()> {
     if name.contains('/') || name.contains('\\') {
         return Err(CmdError::expected("Ordnername darf keine Pfad-Trennzeichen enthalten"));
     }
-    if name == "." || name == ".." {
+    let mut components = Path::new(name).components();
+    let stem = name.split('.').next().unwrap_or("").trim_end().to_uppercase();
+    let reserved = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$")
+        || ["COM", "LPT"].iter().any(|prefix| stem.strip_prefix(prefix)
+            .is_some_and(|n| matches!(n, "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³")));
+    if !matches!(components.next(), Some(std::path::Component::Normal(_)))
+        || components.next().is_some()
+        || name.chars().any(|c| c.is_control() || "<>:\"|?*".contains(c))
+        || name.ends_with(['.', ' '])
+        || reserved
+    {
         return Err(CmdError::expected("Ungueltiger Ordnername"));
     }
     Ok(())
@@ -647,6 +657,16 @@ pub fn create_catalog_dir(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn folder_names_reject_windows_special_components_on_every_platform() {
+        for name in ["D:Neu", "C:", "CON", "nul.txt", "COM1", "lpt9.log", "COM¹", "a.", "a ", "a?", "a*", "a|", "a\0"] {
+            assert!(validate_folder_name(name).is_err(), "accepted {name:?}");
+        }
+        for name in ["Neue Modelle", "COM10", "console", "Modell.stl"] {
+            assert!(validate_folder_name(name).is_ok());
+        }
+    }
 
     #[test]
     fn create_folder_race_is_expected_but_other_io_errors_are_not() {
