@@ -159,6 +159,8 @@ export function Sidebar({
   const [folderNameDraft, setFolderNameDraft] = useState('');
   const folderProblemId = useId();
   const folderInput = useRef<HTMLInputElement>(null);
+  // The dialog opens when Enter is released: opened on key down, the same key press would reach its focused button and close it again.
+  const enterOnProblem = useRef(false);
   // A problem shown only as a small line is easy to miss, so Enter also opens a dialog in the middle of the screen.
   const [folderErrorDialog, setFolderErrorDialog] = useState<string | null>(null);
   // Check what is actually sent: a trailing space is trimmed on submit, so it is not an error while typing.
@@ -289,9 +291,15 @@ export function Sidebar({
               {...lockProps}
               onChange={(e) => setFolderNameDraft(e.target.value)}
               ref={folderInput}
+              onKeyUp={(e) => {
+                if (e.key === 'Enter' && enterOnProblem.current) { enterOnProblem.current = false; submitCreateFolder(true); }
+              }}
               onBlur={() => submitCreateFolder()}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') submitCreateFolder(true);
+                if (e.key === 'Enter') {
+                  if (folderProblem && !jobActive) { e.preventDefault(); enterOnProblem.current = true; }
+                  else submitCreateFolder(true);
+                }
                 if (e.key === 'Escape') {
                   setCreatingFolder(false);
                   setFolderNameDraft('');

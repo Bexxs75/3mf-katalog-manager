@@ -325,6 +325,8 @@ it.each([
   fireEvent.blur(input);
   expect(screen.queryByRole('dialog')).toBeNull();
   fireEvent.keyDown(input, { key: 'Enter' });
+  expect(screen.queryByRole('dialog')).toBeNull();
+  fireEvent.keyUp(input, { key: 'Enter' });
   expect(baseProps.onCreateFolder).not.toHaveBeenCalled();
   expect(input).toHaveValue(name);
   expect(alert).toBeVisible();
@@ -373,6 +375,8 @@ it('opens the folder-name dialog only on Enter, not when the field loses focus',
   fireEvent.blur(input);
   expect(screen.queryByRole('dialog')).toBeNull();
   fireEvent.keyDown(input, { key: 'Enter' });
+  expect(screen.queryByRole('dialog')).toBeNull();
+  fireEvent.keyUp(input, { key: 'Enter' });
   const dialog = screen.getByRole('dialog', { name: 'Dieser Ordnername geht nicht' });
   expect(within(dialog).getByRole('button', { name: 'Verstanden' })).toHaveFocus();
   fireEvent.keyDown(dialog, { key: 'Escape' });
