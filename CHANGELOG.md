@@ -79,6 +79,11 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - 3D preview of large slicer projects: projects with up to 128 part files (before: 32) now open in the 3D view; the catalog showed a size warning for them.
 - Catalogs from early development builds could keep slicer data (filament use per plate) in the wrong database column, which made the 3D view report an unsupported file type. The app repairs this at the first start (a safety copy of the catalog is made first), and the preview only follows the trash location for files that are really in the trash.
 
+## [0.15.4] - 2026-10-10
+
+### Fixed
+- 3MF projects from Bambu Studio and Orca Slicer with more than 32 part files could not be imported ("Too many referenced model files") and showed no 3D preview. The app now reads up to 128 part files per project.
+
 ## [0.15.3] - 2026-10-04
 
 ### Fixed
@@ -617,6 +622,11 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Robusterer Import, Wiederherstellen und Anonymisieren von Logdateien: ungewöhnliche Datei- und Ordnernamen werden sicher behandelt.
 - 3D-Vorschau großer Slicer-Projekte: Projekte mit bis zu 128 Teiledateien (vorher 32) öffnen jetzt in der 3D-Ansicht; für sie zeigte der Katalog einen Größenhinweis.
 - Kataloge aus frühen Entwicklungsständen konnten Slicer-Daten (Filamentverbrauch je Platte) in der falschen Datenbankspalte halten, wodurch die 3D-Ansicht „Dateityp nicht unterstützt“ meldete. Die App repariert das beim ersten Start (vorher entsteht eine Sicherungskopie des Katalogs), und die Vorschau folgt dem Papierkorb-Ort nur noch bei Dateien, die wirklich im Papierkorb liegen.
+
+## [0.15.4] - 2026-10-10
+
+### Behoben
+- 3MF-Projekte aus Bambu Studio und Orca Slicer mit mehr als 32 Teiledateien ließen sich nicht importieren („Zu viele referenzierte Modelldateien“) und zeigten keine 3D-Vorschau. Die App liest jetzt bis zu 128 Teiledateien je Projekt.
 
 ## [0.15.3] - 2026-10-04
 
