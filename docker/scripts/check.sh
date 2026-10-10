@@ -10,7 +10,7 @@ while IFS= read -r -d '' script; do
         *) sh -n "$script" ;;
     esac
     scripts+=("$script")
-done < <(find scripts root/usr/local root/etc/s6-overlay -type f \( -name '*.sh' -o -name '3mf-*' -o -name run \) -print0)
+done < <(find scripts tests root/usr/local root/etc/s6-overlay -type f \( -name '*.sh' -o -name '3mf-*' -o -name run \) -print0)
 for script in root/usr/local/bin/3mf-katalog root/usr/local/libexec/3mf-{auth,filesystem,init,session,supervise,healthcheck} root/etc/s6-overlay/s6-rc.d/svc-3mf/run root/etc/s6-overlay/s6-rc.d/init-3mf/up; do
     [[ -x $script ]] || { printf 'FAIL: missing executable: %s\n' "$script" >&2; exit 1; }
 done
