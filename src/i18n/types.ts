@@ -6,6 +6,7 @@ export interface PluralForms {
 }
 
 export interface Translations {
+  migrationBackupWarning: string;
   collectionDropAdded: string;
   collectionDropAlready: string;
   statusBadgesLabel: string;

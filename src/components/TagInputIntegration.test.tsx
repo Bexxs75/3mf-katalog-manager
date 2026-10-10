@@ -30,6 +30,7 @@ describe('tag inputs in both detail views', () => {
         rescanSuccess={false} displayPreference="thumbnail" /> : <DetailPanel {...props} />}
     </UiDensityProvider></LanguageProvider>);
     const input = screen.getByRole('combobox');
+    expect(input).toHaveAttribute('maxlength', '100');
     fireEvent.change(input, { target: { value: 'geh' } });
     expect(screen.getByRole('listbox', { name: 'Tag-Vorschläge' })).toBeInTheDocument();
     fireEvent.keyDown(input, { key: 'ArrowDown' });

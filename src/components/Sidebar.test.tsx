@@ -303,3 +303,57 @@ it('has no single-model tag toggle when there are no single-model tags', () => {
   fireEvent.click(screen.getByText('Tags'));
   expect(screen.queryByRole('button', {name: /weitere Tags/})).toBeNull();
 });
+
+it.each([
+  ['Projekt: Test', 'Dieses Zeichen ist in Ordnernamen nicht erlaubt: :'],
+  ['a?', 'Dieses Zeichen ist in Ordnernamen nicht erlaubt: ?'],
+  ['Neu.', 'Ordnernamen dürfen nicht mit einem Punkt oder Leerzeichen enden.'],
+  ['CON', 'Dieser Name ist als Ordnername nicht erlaubt.'],
+  ['a'.repeat(256), 'Der Name ist zu lang.'],
+  ['a\u0001', 'Dieses Zeichen ist in Ordnernamen nicht erlaubt: U+0001'],
+])('keeps invalid folder draft %j and describes the problem accessibly', (name, hint) => {
+  baseProps.onCreateFolder.mockClear();
+  render(<LanguageProvider><Harness /></LanguageProvider>);
+  fireEvent.click(screen.getByRole('button', { name: '+ Neuer Ordner' }));
+  const input = screen.getByPlaceholderText('Ordnername');
+  fireEvent.change(input, { target: { value: name } });
+  const alert = screen.getByRole('alert');
+  expect(alert).toHaveTextContent(hint);
+  expect(input).toHaveAttribute('aria-invalid', 'true');
+  expect(input).toHaveAttribute('aria-describedby', alert.id);
+  expect(input).toHaveAccessibleDescription(hint);
+  fireEvent.keyDown(input, { key: 'Enter' });
+  fireEvent.blur(input);
+  expect(baseProps.onCreateFolder).not.toHaveBeenCalled();
+  expect(input).toHaveValue(name);
+  expect(alert).toBeVisible();
+  fireEvent.change(input, { target: { value: 'Projekt 2026' } });
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(input).not.toHaveAttribute('aria-describedby');
+  expect(input).not.toHaveAttribute('aria-invalid', 'true');
+  fireEvent.keyDown(input, { key: 'Enter' });
+  expect(baseProps.onCreateFolder).toHaveBeenCalledExactlyOnceWith('a', 'Projekt 2026');
+});
+
+it('trims a trailing space instead of treating it as an invalid folder name', () => {
+  baseProps.onCreateFolder.mockClear();
+  render(<LanguageProvider><Harness /></LanguageProvider>);
+  fireEvent.click(screen.getByRole('button', { name: '+ Neuer Ordner' }));
+  const input = screen.getByPlaceholderText('Ordnername');
+  fireEvent.change(input, { target: { value: 'Neu ' } });
+  expect(screen.queryByRole('alert')).toBeNull();
+  fireEvent.keyDown(input, { key: 'Enter' });
+  expect(baseProps.onCreateFolder).toHaveBeenCalledExactlyOnceWith('a', 'Neu');
+});
+
+it.each(['', '   '])('cancels an empty folder draft %j without a hint', (name) => {
+  baseProps.onCreateFolder.mockClear();
+  render(<LanguageProvider><Harness /></LanguageProvider>);
+  fireEvent.click(screen.getByRole('button', { name: '+ Neuer Ordner' }));
+  const input = screen.getByPlaceholderText('Ordnername');
+  fireEvent.change(input, { target: { value: name } });
+  expect(screen.queryByRole('alert')).toBeNull();
+  fireEvent.keyDown(input, { key: 'Enter' });
+  expect(screen.queryByPlaceholderText('Ordnername')).toBeNull();
+  expect(baseProps.onCreateFolder).not.toHaveBeenCalled();
+});

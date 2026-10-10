@@ -219,7 +219,7 @@ function General({ printer, state, header, deleteAction }: { printer: Printer; s
   const [error, setError] = useState<AppError | null>(null);
   const reset = () => { setName(printer.name); setDraft(initial()); setValidation({}); setError(null); };
   const displayed = editing ? draft : initial();
-  const field = (key: keyof typeof draft, label: string) => <label className="min-w-0">{label}<input className={pmField} value={displayed[key]} readOnly={!editing} onChange={e => setDraft({ ...draft, [key]: e.target.value })} /></label>;
+  const field = (key: keyof typeof draft, label: string) => <label className="min-w-0">{label}<input maxLength={120} className={pmField} value={displayed[key]} readOnly={!editing} onChange={e => setDraft({ ...draft, [key]: e.target.value })} /></label>;
   return <>
     <header data-testid="printer-detail-header" className="flex flex-wrap items-center gap-4 min-[1320px]:col-span-2">
       {header}

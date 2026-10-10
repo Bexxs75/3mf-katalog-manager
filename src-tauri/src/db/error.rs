@@ -25,3 +25,11 @@ impl From<rusqlite::Error> for DbError {
         DbError::Sqlite(e)
     }
 }
+
+/// Count UTF-16 units to match HTML input maxLength, including non-BMP text.
+pub fn validate_text_length(value: &str, max: usize, label: &str) -> Result<(), DbError> {
+    if value.encode_utf16().take(max + 1).count() > max {
+        return Err(DbError::Invalid(format!("{label} darf höchstens {max} Zeichen enthalten")));
+    }
+    Ok(())
+}

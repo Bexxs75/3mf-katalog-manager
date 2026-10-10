@@ -147,6 +147,7 @@ describe('BulkActionToolbar', () => {
 
   it('closes the tag input menu without clearing the selection', () => {
     const { props } = renderToolbar({ addTagMenuOpen: true });
+    expect(screen.getByRole('textbox')).toHaveAttribute('maxlength', '100');
     fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
     expect(props.onAddTagMenuOpenChange).toHaveBeenCalledWith(false);
     expect(props.onClearSelection).not.toHaveBeenCalled();

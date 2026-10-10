@@ -15,6 +15,13 @@ fn validate_file_name(name: &str) -> CmdResult<()> {
     }
     Ok(())
 }
+fn validate_imported_path_length(path: &str) -> Result<(), String> {
+    if path.chars().take(4097).count() > 4096 {
+        return Err("Importierter Pfad darf höchstens 4096 Zeichen enthalten".into());
+    }
+    Ok(())
+}
+
 /// Exports the complete catalog state (DB + frontend settings) as a ZIP file.
 /// Uses SQLite's online backup API instead of copying the raw file: the live
 /// connection may be in WAL mode, and fs::copy could catch an inconsistent state.
@@ -649,7 +656,6 @@ fn validate_catalog_db_bytes(
             // spools could end up in the same slot.
             validate_printer_invariants(&conn)?;
             validate_printer_link_rows(&conn)?;
-
             // quick_check doesn't catch FK violations; check them after the migration.
             conn.pragma_update(None, "foreign_keys", true).map_err(|e| e.to_string())?;
             let mut fk_stmt = conn.prepare("PRAGMA foreign_key_check").map_err(|e| e.to_string())?;
@@ -668,6 +674,7 @@ fn validate_catalog_db_bytes(
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| e.to_string())?;
             for path in paths {
+                validate_imported_path_length(&path)?;
                 // `.message`, not `{e}`/Display: `e` is already a `CmdError` (logged once
                 // at its creation site inside `reject_if_sensitive_path_expanded`); this
                 // just carries its text onward as part of this function's `String` error,
@@ -719,6 +726,8 @@ fn validate_catalog_db_bytes(
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| e.to_string())?;
             for (name, path, trash_path) in rows {
+                validate_imported_path_length(&path)?;
+                if let Some(path) = &trash_path { validate_imported_path_length(path)?; }
                 // `.message` everywhere below, not `{e}`/Display: each `e` is already a
                 // `CmdError` (logged once at its creation site inside the nested helper);
                 // this only carries its text onward as part of this function's `String`
@@ -1027,6 +1036,34 @@ mod tests {
             favorite: false,
             plate_count: None,
             slice_info_json: None,
+        }
+    }
+    #[test]
+    fn imported_legacy_text_fields_remain_valid() {
+        for (column, limit) in [("manufacturer", 150), ("model", 150), ("tag", 120)] {
+            for length in [limit, limit + 1] {
+                let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+                    let value = "a".repeat(length);
+                    if column == "tag" {
+                        conn.execute("INSERT INTO tags (name, color_hue) VALUES (?1, 0)", [&value]).unwrap();
+                    } else {
+                        conn.execute(&format!("INSERT INTO printers (name, {column}) VALUES ('Printer', ?1)"), [&value]).unwrap();
+                    }
+                });
+                let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash);
+                assert!(result.is_ok(), "{column}: {result:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn imported_paths_have_a_length_limit() {
+        for length in [4096, 4097] {
+            let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+                conn.execute("INSERT INTO folders (name, path) VALUES ('root', ?1)", [format!("/{}", "a".repeat(length - 1))]).unwrap();
+            });
+            let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash);
+            assert_eq!(result.is_ok(), length == 4096, "{result:?}");
         }
     }
     #[test]

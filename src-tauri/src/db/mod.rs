@@ -19,7 +19,7 @@ pub fn migrations_current_version() -> i64 {
 
 pub use repository::{
     FileSummary,
-    add_tag_to_file, attach_folder_to_parent_by_path, connect, delete_file, delete_filament_spool, delete_print_log_entry,
+    add_tag_to_file, attach_folder_to_parent_by_path, connect, connect_with_warning, delete_file, delete_filament_spool, delete_print_log_entry,
     delete_unused_tags, ensure_folder_path,
     file_exists_by_hash, file_exists_by_path, get_file, get_filament_spool,
     get_registered_slicer,
@@ -63,6 +63,9 @@ pub use repository::connect_in_memory;
 
 #[cfg(test)]
 pub use repository::SCHEMA_SQL;
+
+#[cfg(test)]
+pub use repository::{max_folder_id, remove_new_folder_rows};
 
 #[cfg(test)]
 mod tests {
@@ -920,6 +923,3 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 }
-
-#[cfg(test)]
-pub use repository::{max_folder_id, remove_new_folder_rows};

@@ -70,7 +70,7 @@ fn spool_record_to_dto(s: db::models::FilamentSpoolRecord) -> FilamentSpoolDto {
 fn filament_dto_to_record(spool: &FilamentSpoolDto) -> CmdResult<db::models::NewFilamentSpool> {
     use base64::Engine;
     let image_png = spool.image_png.as_ref().map(|b64| {
-        if b64.len() > (super::files::MAX_CUSTOM_IMAGE_BYTES + 2) / 3 * 4 {
+        if b64.len() > super::files::MAX_CUSTOM_IMAGE_BYTES.div_ceil(3) * 4 {
             return Err(CmdError::expected("imageUploadTooLarge"));
         }
         let bytes = base64::engine::general_purpose::STANDARD.decode(b64)

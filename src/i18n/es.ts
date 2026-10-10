@@ -1,6 +1,7 @@
 import type { Translations } from './types';
 
 export const es: Translations = {
+  migrationBackupWarning: "La copia de seguridad anterior a la migración de la base de datos ha fallado. El catálogo se ha abierto de todos modos. No se garantiza una copia del estado anterior. Comprueba el espacio libre y los permisos de escritura de la carpeta de copias de seguridad.",
   collectionDropAdded: "“{name}” añadido a la colección “{collection}”",
   collectionDropAlready: "“{name}” ya está en la colección “{collection}”",
   statusBadgesLabel: "Estado",
