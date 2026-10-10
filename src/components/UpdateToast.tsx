@@ -1,3 +1,4 @@
+import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { Icon } from './Icon';
 import { useT } from '../i18n/LanguageContext';
 import { ErrorText } from '../diagnostics/ErrorText';
@@ -164,9 +165,10 @@ export function UpdateStateBody({
 }
 
 export function UpdateToast({ view }: { view: UpdaterView }) {
+  const { container } = useRuntimeEnvironment();
   const t = useT();
   const state = updateDisplayState(view);
-  if (!state) return null;
+  if (container || !state) return null;
   // "available" and "error" are the only states with a close button; once
   // dismissed the toast disappears even though the failed update (still
   // actionable from the Info panel) stays in `phase === 'error'` otherwise.

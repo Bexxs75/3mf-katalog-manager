@@ -1,3 +1,4 @@
+use super::runtime_environment::{DesktopFeature, RuntimeEnvironment};
 use super::*;
 
 pub(crate) const MAX_CUSTOM_IMAGE_BYTES: usize = 5 * 1024 * 1024;
@@ -1504,7 +1505,7 @@ fn reveal_target(path: &Path) -> CmdResult<(PathBuf, bool)> {
 
 fn reveal_catalog_path(path: &Path) -> CmdResult<()> {
     let (absolute, is_file) = reveal_target(path)?;
-    if !is_file { return open_in_file_manager(absolute.to_string_lossy().into_owned()); }
+    if !is_file { return open_directory_in_file_manager(absolute.to_string_lossy().into_owned()); }
     let (program, args) = reveal_command(std::env::consts::OS, &absolute.to_string_lossy())?;
     let mut command = std::process::Command::new(program);
     super::external_env::sanitize_external_command(&mut command);
@@ -1526,7 +1527,7 @@ fn reveal_catalog_path(path: &Path) -> CmdResult<()> {
         if !success {
             let parent = absolute.parent().filter(|p| p.is_dir()).ok_or_else(||
                 CmdError::expected("Datei nicht gefunden").with_code(super::error::GeometryErrorCode::NotFound))?;
-            return open_in_file_manager(parent.to_string_lossy().into_owned());
+            return open_directory_in_file_manager(parent.to_string_lossy().into_owned());
         }
     }
     #[cfg(not(target_os = "linux"))]
@@ -1535,7 +1536,8 @@ fn reveal_catalog_path(path: &Path) -> CmdResult<()> {
 }
 
 #[tauri::command]
-pub async fn reveal_in_file_manager(state: State<'_, AppState>, file_id: String) -> CmdResult<()> {
+pub async fn reveal_in_file_manager(state: State<'_, AppState>, file_id: String, environment: State<'_, RuntimeEnvironment>) -> CmdResult<()> {
+    environment.require_desktop(DesktopFeature::FileManager)?;
     let id: i64 = file_id.parse().map_err(|_| CmdError::expected("invalid file id"))?;
     let path = {
         let conn = lock_db(&state)?;
@@ -1548,7 +1550,12 @@ pub async fn reveal_in_file_manager(state: State<'_, AppState>, file_id: String)
 
 /// Opens a path in the system file manager.
 #[tauri::command]
-pub fn open_in_file_manager(path: String) -> CmdResult<()> {
+pub fn open_in_file_manager(path: String, environment: State<'_, RuntimeEnvironment>) -> CmdResult<()> {
+    environment.require_desktop(DesktopFeature::FileManager)?;
+    open_directory_in_file_manager(path)
+}
+
+fn open_directory_in_file_manager(path: String) -> CmdResult<()> {
     // Only existing directories: a path starting with "-" could otherwise be read
     // as an option by xdg-open/open/explorer.
     if !std::path::Path::new(&path).is_dir() {

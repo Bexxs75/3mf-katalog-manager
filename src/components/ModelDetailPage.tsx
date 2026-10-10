@@ -1,3 +1,4 @@
+import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { RevealFileButton } from './RevealFileButton';
 import { useImageUpload } from '../hooks/useImageUpload';
 import { ImageUploadError } from './ImageUploadError';
@@ -90,6 +91,7 @@ export function ModelDetailPage({
   const navigationTrigger = useRef<HTMLButtonElement | null>(null);
   const pageRef = useRef<HTMLDivElement>(null);
   const { lockProps } = useImportLock();
+  const { container } = useRuntimeEnvironment();
   const t = useT();
   const imageUpload = useImageUpload(model?.id, onUploadImage);
   const { language } = useLanguage();
@@ -533,13 +535,13 @@ export function ModelDetailPage({
             )}
           </div>
           <RevealFileButton fileId={model.id} />
-          <button
+          {!container && (<button
             onClick={() => onOpenInSlicer()}
             disabled={slicers.length === 0}
             className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] px-4 py-2 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-body font-semibold disabled:opacity-50"
           >
             {t('openInSlicer')} <Icon name="external" size={14} />
-          </button>
+          </button>)}
         </div>
       </footer>
       {slicerError && <p className="text-small text-red-400"><ErrorText error={slicerError} /></p>}

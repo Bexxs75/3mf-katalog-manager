@@ -1,3 +1,4 @@
+use super::runtime_environment::{DesktopFeature, RuntimeEnvironment};
 use super::*;
 
 /// The frontend's view of a `registered_slicers` entry.
@@ -18,7 +19,8 @@ pub(crate) fn register_slicer_with_conn(conn: &Connection, name: String, executa
 /// pick, never as a string from the frontend. async, because a synchronous
 /// command runs on the thread GTK needs for the dialog (deadlock).
 #[tauri::command]
-pub async fn pick_and_register_slicer(app: tauri::AppHandle, state: State<'_, AppState>) -> CmdResult<Option<SlicerDto>> {
+pub async fn pick_and_register_slicer<R: tauri::Runtime>(app: tauri::AppHandle<R>, state: State<'_, AppState>, environment: State<'_, RuntimeEnvironment>) -> CmdResult<Option<SlicerDto>> {
+    environment.require_desktop(DesktopFeature::Slicer)?;
     let dialog = app.dialog().file();
     #[cfg(target_os = "windows")]
     let dialog = dialog.add_filter("Programme", &["exe"]);
@@ -36,7 +38,8 @@ pub async fn pick_and_register_slicer(app: tauri::AppHandle, state: State<'_, Ap
     register_slicer_with_conn(&conn, name, executable_path).map(Some)
 }
 #[tauri::command]
-pub fn list_registered_slicers(state: State<AppState>) -> CmdResult<Vec<SlicerDto>> {
+pub fn list_registered_slicers(state: State<AppState>, environment: State<'_, RuntimeEnvironment>) -> CmdResult<Vec<SlicerDto>> {
+    environment.require_desktop(DesktopFeature::Slicer)?;
     let conn = lock_db(&state)?;
     db::list_registered_slicers(&conn)
         .map_err(|e| e.to_string().into())
@@ -136,14 +139,16 @@ fn open_in_slicer_with_conn(conn: &Connection, file_id: &str, slicer_id: &str) -
     launch_slicer(&resolved)
 }
 #[tauri::command]
-pub fn open_in_slicer(state: State<AppState>, file_id: String, slicer_id: String) -> CmdResult<()> {
+pub fn open_in_slicer(state: State<AppState>, file_id: String, slicer_id: String, environment: State<'_, RuntimeEnvironment>) -> CmdResult<()> {
+    environment.require_desktop(DesktopFeature::Slicer)?;
     let conn = lock_db(&state)?;
     open_in_slicer_with_conn(&conn, &file_id, &slicer_id)
 }
 /// Runs the auto-detection and adds new slicers (`is_auto_detected`) to the
 /// registry; known paths are skipped (UNIQUE). Returns the complete registry.
 #[tauri::command]
-pub fn scan_installed_slicers(state: State<AppState>) -> CmdResult<Vec<SlicerDto>> {
+pub fn scan_installed_slicers(state: State<AppState>, environment: State<'_, RuntimeEnvironment>) -> CmdResult<Vec<SlicerDto>> {
+    environment.require_desktop(DesktopFeature::Slicer)?;
     let conn = lock_db(&state)?;
     let existing = db::list_registered_slicers(&conn).map_err(|e| e.to_string())?;
     let known_paths: HashSet<String> = existing.iter().map(|s| s.executable_path.clone()).collect();

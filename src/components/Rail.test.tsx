@@ -1,3 +1,4 @@
+import { RuntimeEnvironmentProvider } from '../hooks/useRuntimeEnvironment';
 import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
@@ -7,7 +8,7 @@ import { icons } from './icons.generated';
 
 beforeEach(() => localStorage.setItem('3mf-katalog-language', 'de'));
 
-function renderRail(mainView: 'catalog' | 'filament' | 'printers' | 'trash' = 'catalog', trashCount = 3, controlledSettings = false) {
+function renderRail(mainView: 'catalog' | 'filament' | 'printers' | 'trash' = 'catalog', trashCount = 3, controlledSettings = false, container = false) {
   const props: Parameters<typeof Rail>[0] = {
     mainView, trashCount, onMainViewChange: vi.fn(),
     settingsOpen: false, onSettingsOpenChange: vi.fn(),
@@ -34,7 +35,7 @@ function renderRail(mainView: 'catalog' | 'filament' | 'printers' | 'trash' = 'c
       setSettingsOpen(open);
     }} />;
   }
-  render(<LanguageProvider>{controlledSettings ? <ControlledRail /> : <Rail {...props} />}</LanguageProvider>);
+  render(<LanguageProvider><RuntimeEnvironmentProvider value={{ container }}>{controlledSettings ? <ControlledRail /> : <Rail {...props} />}</RuntimeEnvironmentProvider></LanguageProvider>);
   return props;
 }
 
@@ -200,4 +201,13 @@ it('reserves scrollbar space in the settings scroller before messages grow', () 
   fireEvent.click(screen.getByRole('button', {name: 'Einstellungen'}));
   const panel = screen.getByRole('button', {name: 'Allgemein'}).closest('.scrollbar-stable');
   expect(panel).toHaveClass('scrollbar-stable', 'overflow-y-scroll');
+});
+
+
+it('replaces container slicer settings with a translated explanation', () => {
+  renderRail('catalog', 0, true, true);
+  fireEvent.click(screen.getByRole('button', { name: 'Einstellungen' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Slicer' }));
+  expect(screen.getByText(/Der Slicer läuft auf deinem Rechner/)).toBeVisible();
+  expect(screen.queryByText('Slicer hinzufügen')).not.toBeInTheDocument();
 });

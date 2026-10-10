@@ -37,6 +37,10 @@ export interface Translations {
   showInExplorer: string;
   viewerOpenFinder: string;
   viewerOpenExplorer: string;
+  containerSlicerUnavailable: string;
+  containerUpdates: string;
+  containerNetworkFilesystemWarning: string;
+  containerFileManagerUnavailable: string;
   showInFileManager: string;
   viewerAllPlates: string;
   viewerPlate: string;

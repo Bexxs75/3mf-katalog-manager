@@ -1,3 +1,4 @@
+import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { Icon } from './Icon';
 import { CatalogResetSection } from './CatalogResetSection';
@@ -106,6 +107,7 @@ export function Rail({
   update,
 }: Props) {
   const { lockProps } = useImportLock();
+  const { container } = useRuntimeEnvironment();
   const t = useT();
   const { language, setLanguage } = useLanguage();
   const [confirmImportCatalog, setConfirmImportCatalog] = useState(false);
@@ -317,7 +319,8 @@ export function Rail({
               </>
             )}
 
-            {activeSettingsTab === 'slicer' && (
+            {activeSettingsTab === 'slicer' && container && <p className="text-small text-[var(--ink-3)]">{t('containerSlicerUnavailable')}</p>}
+            {activeSettingsTab === 'slicer' && !container && (
               <>
                 <div className="text-[length:var(--font-size-body)] font-semibold mb-2">{t('slicerSectionTitle')}</div>
                 {slicers.length === 0 ? (
@@ -452,7 +455,7 @@ export function Rail({
                   >
                     {catalogBaseDir ? t('catalogBaseDirChangeButton') : t('catalogBaseDirSetupButton')}
                   </button>
-                  {catalogBaseDir && (
+                  {catalogBaseDir && !container && (
                     <button
                       onClick={() => invoke('open_in_file_manager', { path: catalogBaseDir })}
                       className="flex-1 h-7 rounded-[3px] border border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-2)] text-small cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
