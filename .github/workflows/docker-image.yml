@@ -4,10 +4,6 @@ name: Docker image
 # Stable tags (v1.2.3) publish 1.2.3, 1.2 and latest. Release candidates
 # (v1.2.3-4) publish 1.2.3-4 and the moving tag rc; they never touch latest.
 on:
-  # TEST-ONLY trigger: remove before merging to the default branch.
-  push:
-    branches: [docker/integration]
-    paths: ['.github/workflows/docker-image.yml']
   release:
     types: [published]
   workflow_dispatch:
@@ -38,7 +34,6 @@ jobs:
   image:
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
       (!github.event.release.draft && startsWith(github.event.release.tag_name, 'v'))
     runs-on: ubuntu-24.04
     permissions:
@@ -49,7 +44,7 @@ jobs:
       # tags without a docker/ folder can still get an image.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          ref: ${{ github.event_name == 'push' && github.sha || github.event.repository.default_branch }}
+          ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
       - name: Resolve the release
@@ -66,7 +61,6 @@ jobs:
           set -euo pipefail
           TAG="$RELEASE_TAG"
           PUBLISH=true
-          if [[ "$EVENT_NAME" == push ]]; then TAG=v0.16.0-2; PUBLISH=false; fi
           if [[ "$EVENT_NAME" == workflow_dispatch ]]; then TAG="$INPUT_TAG"; PUBLISH="$INPUT_PUBLISH"; fi
           [[ "$TAG" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)(-([0-9]+))?$ ]] || { echo "Invalid release tag: $TAG"; exit 1; }
           MAJOR_MINOR="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
