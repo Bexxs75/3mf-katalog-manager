@@ -656,19 +656,6 @@ fn validate_catalog_db_bytes(
             // spools could end up in the same slot.
             validate_printer_invariants(&conn)?;
             validate_printer_link_rows(&conn)?;
-            for (query, max, label) in [
-                ("SELECT manufacturer FROM printers WHERE manufacturer IS NOT NULL", 120, "Hersteller"),
-                ("SELECT model FROM printers WHERE model IS NOT NULL", 120, "Modellname"),
-                ("SELECT name FROM tags", 100, "Tag"),
-            ] {
-                let mut stmt = conn.prepare(query).map_err(|e| e.to_string())?;
-                let values = stmt.query_map([], |row| row.get::<_, String>(0)).map_err(|e| e.to_string())?;
-                for value in values {
-                    db::error::validate_text_length(&value.map_err(|e| e.to_string())?, max, label)
-                        .map_err(|e| e.to_string())?;
-                }
-            }
-
             // quick_check doesn't catch FK violations; check them after the migration.
             conn.pragma_update(None, "foreign_keys", true).map_err(|e| e.to_string())?;
             let mut fk_stmt = conn.prepare("PRAGMA foreign_key_check").map_err(|e| e.to_string())?;
@@ -1052,8 +1039,8 @@ mod tests {
         }
     }
     #[test]
-    fn imported_text_fields_have_length_limits() {
-        for (column, limit) in [("manufacturer", 120), ("model", 120), ("tag", 100)] {
+    fn imported_legacy_text_fields_remain_valid() {
+        for (column, limit) in [("manufacturer", 150), ("model", 150), ("tag", 120)] {
             for length in [limit, limit + 1] {
                 let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
                     let value = "a".repeat(length);
@@ -1064,7 +1051,7 @@ mod tests {
                     }
                 });
                 let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash);
-                assert_eq!(result.is_ok(), length == limit, "{column}: {result:?}");
+                assert!(result.is_ok(), "{column}: {result:?}");
             }
         }
     }

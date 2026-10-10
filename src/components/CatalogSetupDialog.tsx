@@ -6,7 +6,7 @@ import { useT, useFormatCount } from '../i18n/LanguageContext';
 import type { ImportResultDto, Folder } from '../types';
 import { toAppError, type AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';
-import { folderNameProblem, type FolderNameProblem } from '../lib/folderName';
+import { folderNameProblem, folderNameProblemText } from '../lib/folderName';
 
 interface Props {
   onClose: () => void;
@@ -27,16 +27,6 @@ interface PreviewFor extends CatalogDirPreview {
   parent: string;
   name: string;
 }
-
-const PROBLEM_TEXT: Record<
-  Exclude<FolderNameProblem['kind'], 'char'>,
-  'catalogSetupNameEmpty' | 'catalogSetupNameReserved' | 'catalogSetupNameTrailing' | 'catalogSetupNameTooLong'
-> = {
-  empty: 'catalogSetupNameEmpty',
-  reserved: 'catalogSetupNameReserved',
-  trailing: 'catalogSetupNameTrailing',
-  tooLong: 'catalogSetupNameTooLong',
-};
 
 // States in which the name can't be used; the UI explains them in its own words.
 const BLOCKING_TEXT: Partial<Record<CatalogDirState, 'catalogSetupNewExistingFile' | 'catalogSetupNewLink'>> = {
@@ -185,11 +175,7 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
     }
   };
 
-  const problemText = problem
-    ? problem.kind === 'char'
-      ? t('catalogSetupNameInvalidChar').replace('{char}', problem.char)
-      : t(PROBLEM_TEXT[problem.kind])
-    : null;
+  const problemText = problem ? folderNameProblemText(problem, t) : null;
 
   const openFolder = (path: string) => {
     invoke('open_in_file_manager', { path }).catch((e) => console.error('[catalog-setup] opening folder failed:', e));

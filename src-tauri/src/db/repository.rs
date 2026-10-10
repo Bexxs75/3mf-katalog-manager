@@ -365,7 +365,6 @@ fn hue_for_tag(name: &str) -> i64 {
 }
 
 fn get_or_create_tag(conn: &Connection, name: &str) -> Result<i64, DbError> {
-    super::error::validate_text_length(name, 100, "Tag")?;
     let existing: Option<i64> = conn
         .query_row("SELECT id FROM tags WHERE name = ?1", params![name], |row| {
             row.get(0)
@@ -554,6 +553,10 @@ pub fn insert_file_within_tx(conn: &Connection, file: &NewFile) -> Result<i64, D
     }
 
     for tag_name in &file.tags {
+        // Derived tags must never prevent importing the file itself.
+        if tag_name.encode_utf16().take(101).count() > 100 {
+            continue;
+        }
         let tag_id = get_or_create_tag(conn, tag_name)?;
         conn.execute(
             "INSERT OR IGNORE INTO file_tags (file_id, tag_id) VALUES (?1, ?2)",
@@ -1254,14 +1257,6 @@ mod tests {
         drop(conn);
         assert!(!connect_with_warning(&path).unwrap().1);
         std::fs::remove_dir_all(dir).unwrap();
-    }
-
-    #[test]
-    fn tags_enforce_length_before_inserting() {
-        let conn = connect_in_memory().unwrap();
-        assert!(get_or_create_tag(&conn, &"a".repeat(100)).is_ok());
-        assert!(matches!(get_or_create_tag(&conn, &"a".repeat(101)), Err(DbError::Invalid(_))));
-        assert!(matches!(get_or_create_tag(&conn, &"😀".repeat(51)), Err(DbError::Invalid(_))));
     }
 
     #[test]

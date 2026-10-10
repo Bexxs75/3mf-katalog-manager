@@ -4,9 +4,10 @@ import { SIDEBAR_MIN, SIDEBAR_MAX, SIDEBAR_STEP } from '../hooks/useSidebarWidth
 import { ContextMenu } from './ContextMenu';
 import { CatalogActionDialog, catalogActionButton } from './CatalogActionDialog';
 import { messageOf } from '../lib/errors';
+import { folderNameProblem, folderNameProblemText } from '../lib/folderName';
 import { Icon } from './Icon';
 import { TagDot } from './TagDot';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { Folder, TagCount, ModelFile, Collection, FilamentCheck } from '../types';
 import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { SEARCH_INPUT_ID } from '../hooks/useKeyboardShortcuts';
@@ -156,6 +157,10 @@ export function Sidebar({
   const [tagsCollapsed, setTagsCollapsed] = useState(true);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [folderNameDraft, setFolderNameDraft] = useState('');
+  const folderProblemId = useId();
+  // Check what is actually sent: a trailing space is trimmed on submit, so it is not an error while typing.
+  const folderDraftTrimmed = folderNameDraft.trim();
+  const folderProblem = folderDraftTrimmed ? folderNameProblem(folderDraftTrimmed) : null;
   const [creatingCollection, setCreatingCollection] = useState(false);
   const [collectionNameDraft, setCollectionNameDraft] = useState('');
 
@@ -170,6 +175,7 @@ export function Sidebar({
   // active folder, at the root for "All models".
   const submitCreateFolder = () => {
     if (jobActive) return;
+    if (folderProblem) return;
     const value = folderNameDraft.trim();
     if (value) onCreateFolder(activeFolderId === 'all' ? null : activeFolderId, value);
     setFolderNameDraft('');
@@ -269,8 +275,10 @@ export function Sidebar({
           onDragFolderStart={jobActive ? undefined : onDragFolderStart}
         />
         {creatingFolder ? (
-          <div className="flex items-center gap-1.5 px-1.5 pt-1 pb-1">
+          <div className="flex flex-col gap-1.5 px-1.5 pt-1 pb-1">
             <input
+              aria-invalid={folderProblem ? true : undefined}
+              aria-describedby={folderProblem ? folderProblemId : undefined}
               value={folderNameDraft}
               {...lockProps}
               onChange={(e) => setFolderNameDraft(e.target.value)}
@@ -284,8 +292,13 @@ export function Sidebar({
               }}
               autoFocus
               placeholder={t('newFolderPlaceholder')}
-              className="flex-1 min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-caption"
+              className="min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-caption"
             />
+            {folderProblem && (
+              <p id={folderProblemId} role="alert" className="text-caption text-[var(--ink-3)]">
+                {folderNameProblemText(folderProblem, t)}
+              </p>
+            )}
           </div>
         ) : (
           <button type="button" {...lockProps}

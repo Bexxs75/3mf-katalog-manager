@@ -311,6 +311,7 @@ pub async fn pick_and_read_image(app: tauri::AppHandle) -> CmdResult<Option<Stri
 /// normalized to their key, so e.g. "Multipart" doesn't create a second tag next
 /// to "mehrteilig".
 fn add_tag_with_conn(conn: &Connection, file_id: i64, tag: &str) -> CmdResult<()> {
+    db::error::validate_text_length(tag, 100, "Tag").map_err(|e| CmdError::expected(e.to_string()))?;
     db::add_tag_to_file(conn, file_id, &tagging::canonical_tag(tag)).map_err(|e| match e {
         db::error::DbError::Invalid(message) => CmdError::expected(message),
         other => other.to_string().into(),
@@ -3106,6 +3107,32 @@ mod tests {
         let rescanned = rescan_file(&mut conn, id).expect("rescan of an obj file should succeed");
         assert_eq!(rescanned.id, dto.id);
     }
+    #[test]
+    fn tags_enforce_length_before_inserting() {
+        let conn = db::connect_in_memory().unwrap();
+        let id = db::test_insert_minimal_file(&conn, "/tmp/tag-limit.obj", None).unwrap();
+        assert!(add_tag_with_conn(&conn, id, &"a".repeat(100)).is_ok());
+        for tag in ["a".repeat(101), "😀".repeat(51)] {
+            assert!(add_tag_with_conn(&conn, id, &tag).is_err());
+        }
+        assert_eq!(db::list_all_file_tags(&conn).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn import_succeeds_with_an_overlong_filename_tag() {
+        let dir = unique_test_dir("long_filename_tag");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(format!("{}.obj", "a".repeat(120)));
+        std::fs::write(&path, "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n").unwrap();
+        let conn = db::connect_in_memory().unwrap();
+        let imported = import_one(&conn, &path, None, None, None).unwrap();
+        let id: i64 = imported.id.parse().unwrap();
+        assert!(db::get_file(&conn, id).is_ok());
+        assert!(db::list_all_file_tags(&conn).unwrap().iter()
+            .all(|(_, tag)| tag.encode_utf16().count() <= 100));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn add_tag_maps_a_translated_auto_tag_name_to_its_canonical_tag() {
         let conn = crate::db::connect_in_memory().expect("connect");
