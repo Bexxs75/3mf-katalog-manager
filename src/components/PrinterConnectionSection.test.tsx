@@ -38,6 +38,9 @@ describe('PrinterConnectionSection', () => {
 
   it.each([
     ['unreachable', /Nicht erreichbar/],
+    ['name_resolution_failed', /Der Name „10.0.0.9“ konnte nicht aufgelöst werden/],
+    ['container_local_name', /\*\.local.*IP/],
+    ['container_loopback', /Nur Adressen im Heimnetz.*host.docker.internal:host-gateway/],
     ['auth_required', /Anmeldung nötig/],
     ['address_not_allowed', /Nur Adressen im Heimnetz/],
     ['history_missing', /Druckhistorie ist am Drucker nicht eingeschaltet/],
@@ -179,4 +182,47 @@ it('keeps the saved connection removable while global sync is off', async () => 
   await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Verbindung entfernen' })));
   expect(l.removeConnection).toHaveBeenCalledWith('1');
   expect(l.testConnection).not.toHaveBeenCalled();
+});
+
+it.each([
+  ['de', /konnte nicht aufgelöst/, /Namen funktionieren im Container nicht/, /Container selbst/],
+  ['en', /could not be resolved/, /names do not work in the container/, /container itself/],
+  ['es', /No se pudo resolver/, /no funcionan en el contenedor/, /propio contenedor/],
+  ['fr', /n’a pas pu être résolu/, /ne fonctionnent pas dans le conteneur/, /conteneur lui-même/],
+])('renders translated printer guidance in %s', async (language, dns, local, loopback) => {
+  localStorage.setItem('3mf-katalog-language', language as string);
+  for (const [code, pattern] of [
+    ['name_resolution_failed', dns], ['container_local_name', local], ['container_loopback', loopback],
+  ] as const) {
+    const view = renderIt(link({ ok: false, error: code, connection: null }));
+    fireEvent.change(screen.getByPlaceholderText('192.168.1.60'), { target: { value: 'printer.invalid:7125' } });
+    await act(async () => fireEvent.click(screen.getByRole('button')));
+    expect(screen.getByRole('alert')).toHaveTextContent(pattern as RegExp);
+    if (code === 'name_resolution_failed') {
+      expect(screen.getByRole('alert')).toHaveTextContent('printer.invalid');
+      expect(screen.getByRole('alert')).not.toHaveTextContent(':7125');
+      expect(screen.getByRole('alert')).not.toHaveTextContent('{host}');
+    }
+    view.unmount();
+  }
+});
+
+it('keeps DNS errors tied to the tested host when the input changes', async () => {
+  const l = link(null);
+  let finish!: (value: unknown) => void;
+  l.testConnection = vi.fn().mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  renderIt(l);
+  const input = screen.getByPlaceholderText('192.168.1.60');
+  fireEvent.change(input, { target: { value: 'old.invalid:7125' } });
+  fireEvent.click(screen.getByRole('button'));
+  fireEvent.change(input, { target: { value: 'new.invalid' } });
+  await act(async () => finish({ ok: false, error: 'name_resolution_failed', connection: null }));
+  expect(screen.getByRole('alert')).toHaveTextContent('„old.invalid“');
+  expect(screen.getByRole('alert')).not.toHaveTextContent('new.invalid');
+});
+
+it('uses the saved host for background DNS errors even while editing', () => {
+  renderIt(link(null), { ...okConnection, address: 'saved.invalid:7125', lastError: 'name_resolution_failed' });
+  fireEvent.change(screen.getByPlaceholderText('192.168.1.60'), { target: { value: 'edited.invalid' } });
+  expect(screen.getByRole('alert')).toHaveTextContent('„saved.invalid“');
 });

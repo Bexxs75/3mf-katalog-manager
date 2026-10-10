@@ -63,6 +63,31 @@ pub fn split_host_port(input: &str) -> Result<(String, Option<u16>), LinkError> 
     Ok((host, port))
 }
 
+/// Container-specific guidance without a DNS lookup or a change to IP policy.
+pub fn check_container_address(input: &str, container: bool) -> Result<(), LinkError> {
+    let (host, _) = split_host_port(input)?;
+    if container && host.trim_end_matches('.').to_ascii_lowercase().ends_with(".local") {
+        return Err(LinkError::ContainerLocalName);
+    }
+    Ok(())
+}
+
+pub fn explain_address_error(input: &str, container: bool, error: LinkError) -> LinkError {
+    if container && error == LinkError::AddressNotAllowed {
+        if let Ok((host, _)) = split_host_port(input) {
+            let loopback = host.trim_end_matches('.').eq_ignore_ascii_case("localhost")
+                || host.parse::<IpAddr>().is_ok_and(|ip| match ip {
+                    IpAddr::V4(ip) => ip.is_loopback(),
+                    IpAddr::V6(ip) => ip.is_loopback() || ip.to_ipv4_mapped().is_some_and(|ip| ip.is_loopback()),
+                });
+            if loopback {
+                return LinkError::ContainerLoopback;
+            }
+        }
+    }
+    error
+}
+
 pub fn is_allowed_ip(ip: IpAddr, policy: AddressPolicy) -> bool {
     match ip {
         IpAddr::V4(v4) => {
@@ -92,11 +117,11 @@ pub fn resolve(input: &str, policy: AddressPolicy) -> Result<Target, LinkError> 
     }
     let ips: Vec<IpAddr> = (host.as_str(), 0)
         .to_socket_addrs()
-        .map_err(|_| LinkError::Unreachable)?
+        .map_err(|_| LinkError::NameResolutionFailed)?
         .map(|sa| sa.ip())
         .collect();
     if ips.is_empty() {
-        return Err(LinkError::Unreachable);
+        return Err(LinkError::NameResolutionFailed);
     }
     if !ips.iter().all(|ip| is_allowed_ip(*ip, policy)) {
         return Err(LinkError::AddressNotAllowed);
@@ -133,6 +158,22 @@ mod tests {
 
     fn ip(s: &str) -> IpAddr {
         s.parse().unwrap()
+    }
+
+    #[test]
+    fn dns_failure_has_its_own_code_without_weakening_address_errors() {
+        // A resolver that hijacks unknown names answers with a public address, which the policy refuses.
+        assert!(matches!(
+            resolve("printer.invalid", AddressPolicy::HOME_NETWORK),
+            Err(LinkError::NameResolutionFailed | LinkError::AddressNotAllowed)
+        ));
+        assert_eq!(LinkError::NameResolutionFailed.code(), "name_resolution_failed");
+        assert_eq!(resolve("8.8.8.8", AddressPolicy::HOME_NETWORK), Err(LinkError::AddressNotAllowed));
+        assert_eq!(resolve("http://printer.invalid", AddressPolicy::HOME_NETWORK), Err(LinkError::AddressNotAllowed));
+        assert_eq!(LinkError::Unreachable.code(), "unreachable");
+        assert_eq!(LinkError::AuthRequired.code(), "auth_required");
+        assert_eq!(LinkError::BadResponse("x".into()).code(), "bad_response");
+        assert_eq!(LinkError::HistoryMissing.code(), "history_missing");
     }
 
     #[test]

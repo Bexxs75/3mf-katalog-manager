@@ -834,6 +834,9 @@ export interface Translations {
   printerClockMonths: PluralForms;
   printerClockYears: PluralForms;
   printerConnectionActionFailed: string;
+  printerErrorNameResolutionFailed: string;
+  printerErrorContainerLocalName: string;
+  printerErrorContainerLoopback: string;
   printerErrorUnreachable: string;
   printerErrorAuthRequired: string;
   printerErrorBadResponse: string;

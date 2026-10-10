@@ -241,6 +241,14 @@ pub fn list_printer_connections(state: State<AppState>) -> CmdResult<Vec<Printer
     list_printer_connections_with_conn(&conn)
 }
 
+fn test_link(kind: &str, address: &str, container: bool) -> Result<crate::printer_link::ConnectionInfo, LinkError> {
+    use crate::printer_link::address::{check_container_address, explain_address_error};
+    check_container_address(address, container)?;
+    make_link(kind, address, AddressPolicy::HOME_NETWORK)
+        .and_then(|link| link.test())
+        .map_err(|error| explain_address_error(address, container, error))
+}
+
 #[tauri::command]
 pub async fn test_printer_connection(
     app: tauri::AppHandle,
@@ -248,6 +256,7 @@ pub async fn test_printer_connection(
     printer_id: String,
     kind: String,
     address: String,
+    environment: State<'_, RuntimeEnvironment>,
 ) -> CmdResult<TestResultDto> {
     let pid = id(&printer_id, "Drucker")?;
     {
@@ -256,9 +265,10 @@ pub async fn test_printer_connection(
             return Ok(disabled);
         }
     }
+    let container = environment.container;
     let (k, a) = (kind.clone(), address.trim().to_string());
     let tested = tauri::async_runtime::spawn_blocking(move || {
-        make_link(&k, &a, AddressPolicy::HOME_NETWORK).and_then(|l| l.test())
+        test_link(&k, &a, container)
     })
     .await
     .map_err(|e| e.to_string())?;
@@ -375,6 +385,24 @@ mod tests {
     use super::*;
     use crate::db::printer_link::{insert_job_if_new, save_connection_after_test};
     use crate::printer_link::{JobOutcome, RemoteJob};
+
+    #[test]
+    fn container_local_names_are_rejected_before_connecting() {
+        for address in ["printer.local", "PRINTER.LOCAL.:7125", " printer.local:80 "] {
+            assert_eq!(test_link("moonraker", address, true), Err(LinkError::ContainerLocalName));
+            assert!(crate::printer_link::address::check_container_address(address, false).is_ok());
+        }
+    }
+
+    #[test]
+    fn loopback_hint_only_decorates_container_address_rejections() {
+        for address in ["127.0.0.1", "localhost", "[::1]:7125", "::ffff:127.0.0.1"] {
+            assert_eq!(test_link("moonraker", address, true), Err(LinkError::ContainerLoopback));
+            assert_eq!(test_link("moonraker", address, false), Err(LinkError::AddressNotAllowed));
+        }
+        assert_eq!(test_link("moonraker", "8.8.8.8", true), Err(LinkError::AddressNotAllowed));
+        assert_eq!(test_link("moonraker", "http://localhost", true), Err(LinkError::AddressNotAllowed));
+    }
 
     fn setup() -> Connection {
         let conn = crate::db::connect_in_memory().unwrap();
