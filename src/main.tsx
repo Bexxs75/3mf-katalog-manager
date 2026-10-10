@@ -1,3 +1,4 @@
+import { RuntimeEnvironmentProvider } from './hooks/useRuntimeEnvironment';
 import { ModelLayoutProvider } from "./hooks/ModelLayoutContext";
 import React, { useEffect } from "react";
 import { showAfterPaint } from "./lib/startup";
@@ -19,15 +20,17 @@ function StartupReady() {
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <StartupReady />
-    <LanguageProvider>
-      <UiDensityProvider>
-        <DiagnosticsProvider>
-          <ErrorBoundary fallback={(reload) => <CrashFallback onReload={reload} />}>
-            <ModelLayoutProvider><App /></ModelLayoutProvider>
-          </ErrorBoundary>
-        </DiagnosticsProvider>
-      </UiDensityProvider>
-    </LanguageProvider>
+    <RuntimeEnvironmentProvider>
+      <StartupReady />
+      <LanguageProvider>
+        <UiDensityProvider>
+          <DiagnosticsProvider>
+            <ErrorBoundary fallback={(reload) => <CrashFallback onReload={reload} />}>
+              <ModelLayoutProvider><App /></ModelLayoutProvider>
+            </ErrorBoundary>
+          </DiagnosticsProvider>
+        </UiDensityProvider>
+      </LanguageProvider>
+    </RuntimeEnvironmentProvider>
   </React.StrictMode>,
 );

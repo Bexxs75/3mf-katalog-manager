@@ -84,6 +84,7 @@ pub fn run() {
         }));
     }
     builder
+        .manage(commands::RuntimeEnvironment::current())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .clear_targets()
@@ -228,6 +229,8 @@ pub fn run() {
             commands::default_catalog_parent,
             commands::preview_catalog_dir,
             commands::create_catalog_dir,
+            commands::get_data_paths,
+            commands::get_bug_report_url,
             commands::open_data_folder,
             commands::open_in_file_manager,
             commands::reveal_in_file_manager,
@@ -294,6 +297,8 @@ pub fn run() {
             commands::pick_and_register_slicer,
             commands::list_registered_slicers,
             commands::open_in_slicer,
+            commands::get_runtime_environment,
+            commands::has_network_filesystem_warning,
             commands::scan_installed_slicers,
             commands::scan_catalog_issues,
             commands::delete_files,

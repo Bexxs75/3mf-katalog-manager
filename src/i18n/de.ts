@@ -1,6 +1,15 @@
 import type { Translations } from './types';
 
 export const de: Translations = {
+  externalLinkCopy: "Link kopieren",
+  externalLinkCopyLabel: "Link kopieren: {target}",
+  externalLinkCopied: "Link kopiert",
+  externalLinkCopyFailed: "Kopieren fehlgeschlagen. Bitte den Link markieren und kopieren.",
+  containerExternalUnavailable: "Diese Aktion ist im Container nicht verfügbar.",
+  containerDataPath: "Im Container: Daten unter {path}. Dieser Ordner liegt im Volume /config auf deinem Docker-Host.",
+  containerLogPath: "Im Container: Logs unter {path}. Dieser Ordner liegt im Volume /config auf deinem Docker-Host.",
+  bugReportSaveLog: "Log speichern",
+
   collectionDropAdded: "„{name}“ zur Sammlung „{collection}“ hinzugefügt",
   collectionDropAlready: "„{name}“ ist schon in der Sammlung „{collection}“",
   statusBadgesLabel: "Status",
@@ -32,6 +41,10 @@ export const de: Translations = {
   showInExplorer: "Im Explorer anzeigen",
   viewerOpenFinder: "Im Finder öffnen",
   viewerOpenExplorer: "Im Explorer öffnen",
+  containerSlicerUnavailable: "Im Container nicht verfügbar: Der Slicer läuft auf deinem Rechner, nicht im Container.",
+  containerUpdates: "Updates kommen als neues Image: docker compose pull und danach docker compose up -d.",
+  containerNetworkFilesystemWarning: "Der Katalogordner liegt auf einem Netzlaufwerk. SQLite braucht ein lokales Volume; sonst kann die Datenbank beschädigt werden.",
+  containerFileManagerUnavailable: "Im Container nicht verfügbar: Der Dateimanager läuft auf deinem Rechner, nicht im Container.",
   showInFileManager: "Im Dateimanager anzeigen",
   viewerAllPlates: "Alle",
   viewerPlate: "Platte {n}",

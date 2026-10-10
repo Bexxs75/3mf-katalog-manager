@@ -69,3 +69,16 @@ describe('diagnostics api', () => {
     expect(actual).toEqual(result);
   });
 });
+
+it('reads container paths without invoking folder openers', async () => {
+  const paths = { data: '/config/data', logs: '/config/logs' };
+  vi.mocked(invoke).mockResolvedValue(paths);
+  expect(await diagnosticsApi.getDataPaths()).toEqual(paths);
+  expect(invoke).toHaveBeenCalledExactlyOnceWith('get_data_paths');
+});
+it('requests the report URL with the selected language and log flag', async () => {
+  const url = 'https://3mfkatalog.de/en/report-a-bug.html?version=0.16.0&os=linux&log=1';
+  vi.mocked(invoke).mockResolvedValue(url);
+  expect(await diagnosticsApi.getBugReportUrl('fr', true)).toBe(url);
+  expect(invoke).toHaveBeenCalledExactlyOnceWith('get_bug_report_url', { lang: 'fr', withLog: true });
+});

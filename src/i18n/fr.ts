@@ -1,6 +1,15 @@
 import type { Translations } from './types';
 
 export const fr: Translations = {
+  externalLinkCopy: "Copier le lien",
+  externalLinkCopyLabel: "Copier le lien : {target}",
+  externalLinkCopied: "Lien copié",
+  externalLinkCopyFailed: "Échec de la copie. Sélectionne et copie le lien.",
+  containerExternalUnavailable: "Cette action est indisponible dans le conteneur.",
+  containerDataPath: "Dans le conteneur : données dans {path}. Ce dossier se trouve dans le volume /config de ton hôte Docker.",
+  containerLogPath: "Dans le conteneur : journaux dans {path}. Ce dossier se trouve dans le volume /config de ton hôte Docker.",
+  bugReportSaveLog: "Enregistrer le journal",
+
   collectionDropAdded: "« {name} » ajouté à la collection « {collection} »",
   collectionDropAlready: "« {name} » est déjà dans la collection « {collection} »",
   statusBadgesLabel: "Statut",
@@ -32,6 +41,10 @@ export const fr: Translations = {
   showInExplorer: "Afficher dans l’Explorateur",
   viewerOpenFinder: "Ouvrir dans le Finder",
   viewerOpenExplorer: "Ouvrir dans l’Explorateur",
+  containerSlicerUnavailable: "Indisponible dans le conteneur : Le logiciel de tranchage s’exécute sur ton ordinateur, pas dans le conteneur.",
+  containerUpdates: "Les mises à jour arrivent sous forme d’une nouvelle image : docker compose pull puis docker compose up -d.",
+  containerNetworkFilesystemWarning: "Le dossier du catalogue se trouve sur un lecteur réseau. SQLite nécessite un volume local ; sinon, la base de données risque d’être endommagée.",
+  containerFileManagerUnavailable: "Indisponible dans le conteneur : Le gestionnaire de fichiers s’exécute sur ton ordinateur, pas dans le conteneur.",
   showInFileManager: "Afficher dans le gestionnaire de fichiers",
   viewerAllPlates: "Toutes",
   viewerPlate: "Plateau {n}",

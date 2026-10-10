@@ -6,7 +6,9 @@ import { ReportProblemLink } from './ReportProblemLink';
 export function ErrorText({ error }: { error: AppError | null }) {
   const t = useT();
   if (!error) return null;
-  const message = error.message === 'imageUploadTooLarge' || error.message === 'imageUploadUnsupported' || error.message === 'imageUploadUnreadable'
+  const message = error.message === 'container' ? t('containerUpdates')
+    : error.message === 'containerExternalUnavailable' || error.message === 'containerSlicerUnavailable' || error.message === 'containerFileManagerUnavailable' ? t(error.message)
+    : error.message === 'imageUploadTooLarge' || error.message === 'imageUploadUnsupported' || error.message === 'imageUploadUnreadable'
     ? t(error.message)
     : error.message === 'importActive' ? t('importActiveError') : error.message;
   return (

@@ -2,6 +2,7 @@
 //! download the signed package with progress, discard it, or back up the
 //! catalog and install it.
 use super::*;
+use super::runtime_environment::{DesktopFeature, RuntimeEnvironment};
 use std::future::Future;
 use std::time::Duration;
 use tauri::ipc::Channel;
@@ -50,7 +51,7 @@ fn effective_update_endpoint(channel: UpdateChannel) -> String {
 
 // Kept as the plugin's own error type (not stringified) so callers can tell a
 // transport hiccup apart from a broken manifest - see `is_transport_error` below.
-async fn fetch_update(app: &tauri::AppHandle, url: &str) -> Result<Option<tauri_plugin_updater::Update>, tauri_plugin_updater::Error> {
+async fn fetch_update<R: tauri::Runtime>(app: &tauri::AppHandle<R>, url: &str) -> Result<Option<tauri_plugin_updater::Update>, tauri_plugin_updater::Error> {
     let url = url.parse()?;
     let mut builder = app.updater_builder();
     if cfg!(debug_assertions) {
@@ -213,7 +214,8 @@ fn update_check_result(
 }
 
 #[tauri::command]
-pub async fn check_app_update(app: tauri::AppHandle, state: State<'_, AppState>) -> CmdResult<UpdateInfoDto> {
+pub async fn check_app_update<R: tauri::Runtime>(app: tauri::AppHandle<R>, state: State<'_, AppState>, environment: State<'_, RuntimeEnvironment>) -> CmdResult<UpdateInfoDto> {
+    environment.require_desktop(DesktopFeature::Updater)?;
     let channel = read_channel(&state)?;
     let current = env!("CARGO_PKG_VERSION");
     let stored = {
@@ -248,12 +250,14 @@ pub async fn check_app_update(app: tauri::AppHandle, state: State<'_, AppState>)
 }
 
 #[tauri::command]
-pub async fn download_app_update(
-    app: tauri::AppHandle,
+pub async fn download_app_update<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     pending: State<'_, UpdaterState>,
     on_progress: Channel<DownloadProgress>,
     state: State<'_, AppState>,
+    environment: State<'_, RuntimeEnvironment>,
 ) -> CmdResult<String> {
+    environment.require_desktop(DesktopFeature::Updater)?;
     let url = effective_update_endpoint(read_channel(&state)?);
     let update = fetch_update(&app, &url)
         .await
@@ -295,7 +299,8 @@ fn take_pending_if_backup_ok<T>(pending: &mut Option<T>, backup_succeeded: bool)
 // SQLite work that must not run on the main/UI thread, which is where a plain
 // `#[tauri::command]` executes.
 #[tauri::command(async)]
-pub fn install_app_update(app: tauri::AppHandle, state: State<AppState>, pending: State<UpdaterState>) -> CmdResult<()> {
+pub fn install_app_update<R: tauri::Runtime>(app: tauri::AppHandle<R>, state: State<AppState>, pending: State<UpdaterState>, environment: State<'_, RuntimeEnvironment>) -> CmdResult<()> {
+    environment.require_desktop(DesktopFeature::Updater)?;
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("update-backups");
     let mut guard = pending.pending.lock().map_err(|_| "update lock poisoned".to_string())?;
     let version = guard

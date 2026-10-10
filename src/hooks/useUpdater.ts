@@ -1,3 +1,4 @@
+import { useRuntimeEnvironment } from './useRuntimeEnvironment';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as api from '../lib/api/updater';
 import { getAppVersion, isPreviewBuild, openReleaseUrl } from '../lib/api/update';
@@ -53,6 +54,7 @@ export function isUpdateCheckDisabled(phase: UpdatePhase): boolean {
 }
 
 export function useUpdater(): UpdaterView {
+  const { container } = useRuntimeEnvironment();
   const [currentVersion, setCurrentVersion] = useState('');
   const [info, setInfo] = useState<api.UpdateInfo | null>(null);
   const [phase, setPhase] = useState<UpdatePhase>('idle');
@@ -80,6 +82,7 @@ export function useUpdater(): UpdaterView {
   const installBusyRef = useRef(false);
 
   const checkNow = useCallback(() => {
+    if (container) return;
     if (BUSY_PHASES.includes(phaseRef.current)) return;
     setDismissed(false);
     setPhase('checking');
@@ -91,7 +94,7 @@ export function useUpdater(): UpdaterView {
       // IPC call broke down some other way, worth a log line.
       .catch((e) => console.warn('[updater] check failed:', e))
       .finally(() => setPhase((p) => (p === 'checking' ? 'idle' : p)));
-  }, []);
+  }, [container]);
 
   useEffect(() => {
     // Independent of the update check (which may be slow or offline), so the
@@ -106,6 +109,7 @@ export function useUpdater(): UpdaterView {
   }, [checkNow]);
 
   const startUpdate = useCallback(() => {
+    if (container) return;
     if (downloadBusyRef.current) return;
     downloadBusyRef.current = true;
     setError(null);
@@ -132,9 +136,10 @@ export function useUpdater(): UpdaterView {
         setFailedStep('download');
         setPhase('error');
       });
-  }, []);
+  }, [container]);
 
   const install = useCallback(() => {
+    if (container) return;
     if (installBusyRef.current) return;
     installBusyRef.current = true;
     setError(null);
@@ -156,7 +161,7 @@ export function useUpdater(): UpdaterView {
       setFailedStep('install');
       setPhase('error');
     });
-  }, [startUpdate]);
+  }, [startUpdate, container]);
 
   const retry = useCallback(() => {
     if (failedStep === 'install') install();
@@ -164,10 +169,11 @@ export function useUpdater(): UpdaterView {
   }, [failedStep, install, startUpdate]);
 
   const later = useCallback(() => {
+    if (container) return;
     api.discardAppUpdate().catch((e) => console.warn('[updater] could not discard the pending update:', e));
     setPhase('idle');
     setDismissed(true);
-  }, []);
+  }, [container]);
 
   const openNotes = useCallback(() => {
     if (!info?.releaseUrl) return;

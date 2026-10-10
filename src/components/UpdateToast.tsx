@@ -1,3 +1,5 @@
+import { ExternalLink } from './ExternalLink';
+import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { Icon } from './Icon';
 import { useT } from '../i18n/LanguageContext';
 import { ErrorText } from '../diagnostics/ErrorText';
@@ -67,13 +69,13 @@ export function UpdateStateBody({
               {t('updateNowButton')}
             </button>
           ) : (
-            <button onClick={view.openNotes} className={primaryBtn}>
+            <ExternalLink url={view.info?.releaseUrl ?? ''} label={t('updateWhatsNew')} onOpen={view.openNotes} className={primaryBtn}>
               {t('updateDownloadPageButton')}
-            </button>
+            </ExternalLink>
           )}
-          <button onClick={view.openNotes} className={linkBtn}>
+          <ExternalLink url={view.info?.releaseUrl ?? ''} label={t('updateWhatsNew')} onOpen={view.openNotes} className={linkBtn}>
             {t('updateWhatsNew')}
-          </button>
+          </ExternalLink>
         </div>
         {/* Opening the download page is the only action offered when self-install
             isn't possible, so a failure to open it must be visible right here. */}
@@ -164,9 +166,10 @@ export function UpdateStateBody({
 }
 
 export function UpdateToast({ view }: { view: UpdaterView }) {
+  const { container } = useRuntimeEnvironment();
   const t = useT();
   const state = updateDisplayState(view);
-  if (!state) return null;
+  if (container || !state) return null;
   // "available" and "error" are the only states with a close button; once
   // dismissed the toast disappears even though the failed update (still
   // actionable from the Info panel) stays in `phase === 'error'` otherwise.

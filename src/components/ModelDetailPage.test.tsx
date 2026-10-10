@@ -1,3 +1,4 @@
+import { RuntimeEnvironmentProvider } from '../hooks/useRuntimeEnvironment';
 import { invoke } from '@tauri-apps/api/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
@@ -128,4 +129,25 @@ it('allows arrows after clicking either view toggle, retaining focus and overlay
       overlay.remove();
     }
   }
+});
+
+
+it('hides host actions on the container detail page even with a configured slicer', () => {
+  render(<LanguageProvider><RuntimeEnvironmentProvider value={{ container: true }}>
+    <ModelDetailPage {...props} hasPrevious={false} hasNext={false} slicers={[{ id: 's1', name: 'Slicer', path: '/slicer' }]} />
+  </RuntimeEnvironmentProvider></LanguageProvider>);
+  expect(screen.queryByRole('button', { name: /In Slicer öffnen/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Im Dateimanager anzeigen/ })).not.toBeInTheDocument();
+});
+
+it.each([false, true])('renders the source URL for container=%s', container => {
+  const sourceUrl = 'https://example.com/model';
+  render(<LanguageProvider><RuntimeEnvironmentProvider value={{ container }}>
+    <ModelDetailPage {...props} model={makeModelFile({ sourceUrl })} hasPrevious={false} hasNext={false} />
+  </RuntimeEnvironmentProvider></LanguageProvider>);
+  if (container) {
+    expect(screen.queryByRole('link', { name: sourceUrl })).not.toBeInTheDocument();
+    expect(screen.getByText(sourceUrl)).toBeVisible();
+    expect(screen.getByRole('button', { name: `Link kopieren: ${sourceUrl}` })).toBeVisible();
+  } else expect(screen.getByRole('link', { name: sourceUrl })).toHaveAttribute('href', sourceUrl);
 });

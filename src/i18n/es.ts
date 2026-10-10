@@ -1,6 +1,15 @@
 import type { Translations } from './types';
 
 export const es: Translations = {
+  externalLinkCopy: "Copiar enlace",
+  externalLinkCopyLabel: "Copiar enlace: {target}",
+  externalLinkCopied: "Enlace copiado",
+  externalLinkCopyFailed: "No se pudo copiar. Selecciona y copia el enlace.",
+  containerExternalUnavailable: "Esta acción no está disponible en el contenedor.",
+  containerDataPath: "En el contenedor: datos en {path}. Esta carpeta está en el volumen /config de tu host Docker.",
+  containerLogPath: "En el contenedor: registros en {path}. Esta carpeta está en el volumen /config de tu host Docker.",
+  bugReportSaveLog: "Guardar registro",
+
   collectionDropAdded: "“{name}” añadido a la colección “{collection}”",
   collectionDropAlready: "“{name}” ya está en la colección “{collection}”",
   statusBadgesLabel: "Estado",
@@ -32,6 +41,10 @@ export const es: Translations = {
   showInExplorer: "Mostrar en el Explorador",
   viewerOpenFinder: "Abrir en el Finder",
   viewerOpenExplorer: "Abrir en el Explorador",
+  containerSlicerUnavailable: "No disponible en el contenedor: El laminador se ejecuta en tu ordenador, no en el contenedor.",
+  containerUpdates: "Las actualizaciones llegan como una nueva imagen: docker compose pull y después docker compose up -d.",
+  containerNetworkFilesystemWarning: "La carpeta del catálogo está en una unidad de red. SQLite necesita un volumen local; de lo contrario, la base de datos puede dañarse.",
+  containerFileManagerUnavailable: "No disponible en el contenedor: El gestor de archivos se ejecuta en tu ordenador, no en el contenedor.",
   showInFileManager: "Mostrar en el gestor de archivos",
   viewerAllPlates: "Todas",
   viewerPlate: "Placa {n}",

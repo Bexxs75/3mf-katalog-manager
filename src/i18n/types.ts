@@ -6,6 +6,15 @@ export interface PluralForms {
 }
 
 export interface Translations {
+  externalLinkCopy: string;
+  externalLinkCopyLabel: string;
+  externalLinkCopied: string;
+  externalLinkCopyFailed: string;
+  containerExternalUnavailable: string;
+  containerDataPath: string;
+  containerLogPath: string;
+  bugReportSaveLog: string;
+
   collectionDropAdded: string;
   collectionDropAlready: string;
   statusBadgesLabel: string;
@@ -37,6 +46,10 @@ export interface Translations {
   showInExplorer: string;
   viewerOpenFinder: string;
   viewerOpenExplorer: string;
+  containerSlicerUnavailable: string;
+  containerUpdates: string;
+  containerNetworkFilesystemWarning: string;
+  containerFileManagerUnavailable: string;
   showInFileManager: string;
   viewerAllPlates: string;
   viewerPlate: string;

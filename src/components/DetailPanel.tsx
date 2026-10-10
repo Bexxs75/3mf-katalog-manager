@@ -1,3 +1,5 @@
+import { ExternalLink } from './ExternalLink';
+import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { RevealFileButton } from './RevealFileButton';
 import { useImageUpload } from '../hooks/useImageUpload';
 import { ImageUploadError } from './ImageUploadError';
@@ -70,6 +72,7 @@ export function DetailPanel({
 }: Props) {
   const { language } = useLanguage();
   const { lockProps } = useImportLock();
+  const { container } = useRuntimeEnvironment();
   const t = useT();
   const imageUpload = useImageUpload(model?.id, onUploadImage);
   const { density } = useUiDensity();
@@ -253,14 +256,11 @@ export function DetailPanel({
                   className="flex-1 min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 font-medium tabular-nums text-small"
                 />
               ) : isSafeHttpUrl(model.sourceUrl) ? (
-                <a
-                  href={model.sourceUrl}
-                  target="_blank"
-                  rel="noreferrer"
+                <ExternalLink url={model.sourceUrl} label={model.sourceUrl}
                   className="flex-1 min-w-0 truncate text-right text-[var(--accent)] hover:underline"
                 >
                   {model.sourceUrl}
-                </a>
+                </ExternalLink>
               ) : model.sourceUrl ? (
                 // Not an http(s) value: plain text, never a clickable link.
                 <span className="flex-1 min-w-0 truncate text-right text-[var(--ink-2)]">
@@ -342,12 +342,12 @@ export function DetailPanel({
           ) : (
             <>
               <RevealFileButton fileId={model.id} compact />
-              <button
+              {!container && (<button
                 onClick={() => onOpenInSlicer()}
                 className="flex-1 min-w-0 h-8 px-2 truncate rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
               >
                 {t('openInSlicer')}
-              </button>
+              </button>)}
               <button {...lockProps}
                 onClick={() => setConfirmDelete(true)}
                 aria-label={t('deleteAriaLabel')}
@@ -468,14 +468,11 @@ export function DetailPanel({
             ) : (
               <span className="flex-1 flex items-center justify-end gap-1.5 min-w-0">
                 {isSafeHttpUrl(model.sourceUrl) ? (
-                  <a
-                    href={model.sourceUrl}
-                    target="_blank"
-                    rel="noreferrer"
+                  <ExternalLink url={model.sourceUrl} label={model.sourceUrl}
                     className="flex-1 min-w-0 truncate text-right text-[var(--accent)] hover:underline"
                   >
                     {model.sourceUrl}
-                  </a>
+                  </ExternalLink>
                 ) : model.sourceUrl ? (
                   // Not an http(s) value: plain text, never a clickable link.
                   <span className="flex-1 min-w-0 truncate text-right text-[var(--ink-2)]">
@@ -529,13 +526,13 @@ export function DetailPanel({
         ) : (
           <>
             <RevealFileButton fileId={model.id} compact />
-            <button
+            {!container && (<button
               onClick={() => onOpenInSlicer()}
               className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 h-11 px-4 flex items-center gap-2.5 justify-center font-bold cursor-pointer bg-[var(--accent)] text-[var(--accent-ink)] rounded-lg"
               style={{ fontSize: 'var(--font-size-body)' }}
             >
               🖨 {t('openInSlicer')}
-            </button>
+            </button>)}
             <button
               onClick={onToggleQueue}
               className="h-11 px-4 flex items-center justify-center gap-2.5 rounded-lg bg-[var(--panel-2)] font-semibold cursor-pointer hover:text-[var(--accent)]"

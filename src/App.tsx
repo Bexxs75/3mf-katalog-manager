@@ -1,3 +1,4 @@
+import { NetworkFilesystemWarning } from './components/NetworkFilesystemWarning';
 import { KeyboardTipsDialog } from './components/KeyboardTipsDialog';
 import { useSingleKeyShortcuts } from './hooks/useSingleKeyShortcuts';
 import { ModelLayoutContext } from './hooks/ModelLayoutContext';
@@ -299,6 +300,7 @@ export default function App() {
         mainView={mainView}
       />
 
+      <NetworkFilesystemWarning />
       <div className="flex-1 flex flex-row min-h-0">
         <Rail
           singleKeyShortcuts={singleKeyShortcuts}

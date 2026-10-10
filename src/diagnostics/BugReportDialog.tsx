@@ -1,8 +1,11 @@
+import { ExternalLink } from '../components/ExternalLink';
+import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { useModalDialog } from '../hooks/useModalDialog';
 import { useEffect, useRef, useState } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import {
   getBugReportInfo,
+  getBugReportUrl,
   openBugReportForm,
   previewLogExport,
   saveLogExport,
@@ -16,6 +19,8 @@ const OS_LABEL: Record<BugReportInfo['os'], string> = { linux: 'Linux', windows:
 
 export function BugReportDialog({ onClose }: { onClose: () => void }) {
   const t = useT();
+  const { container } = useRuntimeEnvironment();
+  const [formLink, setFormLink] = useState<{ url: string; lang: string; withLog: boolean } | null>(null);
   const { language } = useLanguage();
   const [info, setInfo] = useState<BugReportInfo | null>(null);
   const [choice, setChoice] = useState<'yes' | 'no' | null>(null);
@@ -43,6 +48,17 @@ export function BugReportDialog({ onClose }: { onClose: () => void }) {
       .then((i) => mountedRef.current && setInfo(i))
       .catch(() => {});
   }, []);
+
+  const formReady = choice === 'no' || (choice === 'yes' && !!preview && !loading && (preview.empty || !!savedPath));
+  const withLog = choice === 'yes' && !!savedPath;
+  useEffect(() => {
+    if (!container || !formReady) return;
+    let active = true;
+    getBugReportUrl(language, withLog).then(url => {
+      if (active) { setFormLink({ url, lang: language, withLog }); setFailure(null); }
+    }).catch(e => { if (active) setFailure(messageOf(e)); });
+    return () => { active = false; };
+  }, [container, formReady, language, withLog]);
 
   const loadPreview = (replace?: boolean) => {
     const requestId = ++requestIdRef.current;
@@ -93,10 +109,12 @@ export function BugReportDialog({ onClose }: { onClose: () => void }) {
         // form: once the log is saved, the browser tab has to open even if
         // Escape unmounted the dialog while the save was in flight.
         if (mountedRef.current) setSavedPath(path);
-        await openBugReportForm(language, true);
+        if (!container) await openBugReportForm(language, true);
       } else {
-        await openBugReportForm(language, false);
-        if (mountedRef.current) onClose();
+        if (!container) {
+          await openBugReportForm(language, false);
+          if (mountedRef.current) onClose();
+        }
       }
     } catch (e) {
       if (mountedRef.current) setFailure(messageOf(e));
@@ -181,6 +199,9 @@ export function BugReportDialog({ onClose }: { onClose: () => void }) {
         )}
         {failure && <div className="mt-3 text-small text-[var(--crit)]">{failure}</div>}
 
+        {container && formReady && formLink?.lang === language && formLink.withLog === withLog && (
+          <ExternalLink url={formLink.url} label={t('bugReportOpenForm')} />
+        )}
         <div className="mt-4 flex items-center justify-between gap-3">
           <span className="text-caption text-[var(--ink-3)]">{choice === 'yes' ? t('bugReportOriginalsUnchanged') : ''}</span>
           <div className="flex gap-2">
@@ -192,17 +213,17 @@ export function BugReportDialog({ onClose }: { onClose: () => void }) {
             >
               {savedPath ? t('bugReportClose') : t('bugReportCancel')}
             </button>
-            {!savedPath && (
+            {!savedPath && (!container || (choice === 'yes' && preview && !preview.empty)) && (
               <button
                 type="button"
                 disabled={submitting || choice === null || (choice === 'yes' && (loading || !preview))}
                 onClick={submit}
                 className="h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {choice === 'yes' && preview && !preview.empty ? t('bugReportSaveAndOpen') : t('bugReportOpenForm')}
+                {choice === 'yes' && preview && !preview.empty ? t(container ? 'bugReportSaveLog' : 'bugReportSaveAndOpen') : t('bugReportOpenForm')}
               </button>
             )}
-            {savedPath && failure && (
+            {!container && savedPath && failure && (
               <button
                 type="button"
                 disabled={submitting}

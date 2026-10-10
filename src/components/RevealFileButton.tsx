@@ -1,3 +1,4 @@
+import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useT } from '../i18n/LanguageContext';
@@ -9,6 +10,7 @@ import { Icon } from './Icon';
 export function RevealFileButton({ fileId, compact = false, showIcon = true, className, onSuccess }: {
   fileId: string; compact?: boolean; showIcon?: boolean; className?: string; onSuccess?: () => void;
 }) {
+  const { container } = useRuntimeEnvironment();
   const t = useT();
   const { lockProps } = useImportLock();
   const [error, setError] = useState<AppError | null>(null);
@@ -19,6 +21,7 @@ export function RevealFileButton({ fileId, compact = false, showIcon = true, cla
     setError(null); setBusy(false);
     return () => { request.current++; };
   }, [fileId]);
+  if (container) return null;
   return <div className={compact ? 'flex-none' : undefined}>
     <button {...lockProps} disabled={lockProps.disabled || busy}
       title={t('showInFileManager')} aria-label={t('showInFileManager')}

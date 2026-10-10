@@ -1,3 +1,4 @@
+import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { Icon } from './Icon';
 import { useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -19,6 +20,7 @@ export interface ViewerActions {
 export function ViewerErrorCard({ error, noWebGL, compact, model, onOpenInSlicer, onRemoveFromCatalog }: ViewerActions & {
   error: AppError | null; noWebGL: boolean; compact: boolean;
 }) {
+  const { container } = useRuntimeEnvironment();
   const t = useT();
   const { lockProps } = useImportLock();
   const [confirm, setConfirm] = useState(false);
@@ -57,9 +59,9 @@ export function ViewerErrorCard({ error, noWebGL, compact, model, onOpenInSlicer
           : code ? t(texts[code]) : t('viewerUnknownText')}</p>
         {code === 'notFound' && model && <code title={model.path} className={`${compact ? 'truncate' : 'break-all'} font-code text-[var(--ink-2)]`}>{model.path}</code>}
         <div className="flex flex-wrap gap-2">
-          {code === 'notFound' && model && <button className={catalogActionButton} onClick={() => void runAction(openFolder)}>{t('viewerOpenFolder')}</button>}
+          {!container && code === 'notFound' && model && <button className={catalogActionButton} onClick={() => void runAction(openFolder)}>{t('viewerOpenFolder')}</button>}
           {code === 'notFound' && onRemoveFromCatalog && <button ref={removeButton} {...lockProps} className={catalogActionButton} onClick={() => setConfirm(true)}>{t('removeCatalog')}</button>}
-          {code !== 'notFound' && onOpenInSlicer && <button className={catalogActionButton} onClick={() => void runAction(onOpenInSlicer)}>{t('viewerOpenSlicer')}</button>}
+          {!container && code !== 'notFound' && onOpenInSlicer && <button className={catalogActionButton} onClick={() => void runAction(onOpenInSlicer)}>{t('viewerOpenSlicer')}</button>}
           {error?.unexpected && !noWebGL && <ReportProblemLink />}
         </div>
         {actionError && <ErrorText error={actionError} />}

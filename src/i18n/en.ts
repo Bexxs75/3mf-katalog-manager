@@ -1,6 +1,15 @@
 import type { Translations } from './types';
 
 export const en: Translations = {
+  externalLinkCopy: "Copy link",
+  externalLinkCopyLabel: "Copy link: {target}",
+  externalLinkCopied: "Link copied",
+  externalLinkCopyFailed: "Copy failed. Please select and copy the link.",
+  containerExternalUnavailable: "This action is unavailable in the container.",
+  containerDataPath: "In the container: data at {path}. This folder is in the /config volume on your Docker host.",
+  containerLogPath: "In the container: logs at {path}. This folder is in the /config volume on your Docker host.",
+  bugReportSaveLog: "Save log",
+
   collectionDropAdded: "Added “{name}” to the collection “{collection}”",
   collectionDropAlready: "“{name}” is already in the collection “{collection}”",
   statusBadgesLabel: "Status",
@@ -32,6 +41,10 @@ export const en: Translations = {
   showInExplorer: "Show in Explorer",
   viewerOpenFinder: "Open in Finder",
   viewerOpenExplorer: "Open in Explorer",
+  containerSlicerUnavailable: "Not available in the container: The slicer runs on your computer, not in the container.",
+  containerUpdates: "Updates come as a new image: docker compose pull, then docker compose up -d.",
+  containerNetworkFilesystemWarning: "The catalog folder is on a network drive. SQLite needs a local volume; otherwise the database may become corrupted.",
+  containerFileManagerUnavailable: "Not available in the container: The file manager runs on your computer, not in the container.",
   showInFileManager: "Show in file manager",
   viewerAllPlates: "All",
   viewerPlate: "Plate {n}",
