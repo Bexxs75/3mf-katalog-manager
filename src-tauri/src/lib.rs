@@ -229,6 +229,8 @@ pub fn run() {
             commands::default_catalog_parent,
             commands::preview_catalog_dir,
             commands::create_catalog_dir,
+            commands::get_data_paths,
+            commands::get_bug_report_url,
             commands::open_data_folder,
             commands::open_in_file_manager,
             commands::reveal_in_file_manager,

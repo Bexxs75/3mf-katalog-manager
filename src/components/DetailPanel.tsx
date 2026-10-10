@@ -1,3 +1,4 @@
+import { ExternalLink } from './ExternalLink';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { RevealFileButton } from './RevealFileButton';
 import { useImageUpload } from '../hooks/useImageUpload';
@@ -255,14 +256,11 @@ export function DetailPanel({
                   className="flex-1 min-w-0 h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 font-medium tabular-nums text-small"
                 />
               ) : isSafeHttpUrl(model.sourceUrl) ? (
-                <a
-                  href={model.sourceUrl}
-                  target="_blank"
-                  rel="noreferrer"
+                <ExternalLink url={model.sourceUrl} label={model.sourceUrl}
                   className="flex-1 min-w-0 truncate text-right text-[var(--accent)] hover:underline"
                 >
                   {model.sourceUrl}
-                </a>
+                </ExternalLink>
               ) : model.sourceUrl ? (
                 // Not an http(s) value: plain text, never a clickable link.
                 <span className="flex-1 min-w-0 truncate text-right text-[var(--ink-2)]">
@@ -470,14 +468,11 @@ export function DetailPanel({
             ) : (
               <span className="flex-1 flex items-center justify-end gap-1.5 min-w-0">
                 {isSafeHttpUrl(model.sourceUrl) ? (
-                  <a
-                    href={model.sourceUrl}
-                    target="_blank"
-                    rel="noreferrer"
+                  <ExternalLink url={model.sourceUrl} label={model.sourceUrl}
                     className="flex-1 min-w-0 truncate text-right text-[var(--accent)] hover:underline"
                   >
                     {model.sourceUrl}
-                  </a>
+                  </ExternalLink>
                 ) : model.sourceUrl ? (
                   // Not an http(s) value: plain text, never a clickable link.
                   <span className="flex-1 min-w-0 truncate text-right text-[var(--ink-2)]">

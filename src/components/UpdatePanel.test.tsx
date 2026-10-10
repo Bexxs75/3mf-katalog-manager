@@ -1,3 +1,4 @@
+import { RuntimeEnvironmentProvider } from "../hooks/useRuntimeEnvironment";
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { LanguageProviderWithDiagnostics as LanguageProvider } from '../test/renderWithDiagnostics';
@@ -183,4 +184,14 @@ describe('UpdatePanel', () => {
       screen.queryByText('Test-Version – eigener Katalog, getrennt von deiner normalen App.'),
     ).not.toBeInTheDocument();
   });
+});
+
+it('offers release notes as a copyable link in a container without enabling updates', () => {
+  const view = makeView();
+  render(<LanguageProvider><RuntimeEnvironmentProvider value={{ container: true }}><UpdatePanel view={view} /></RuntimeEnvironmentProvider></LanguageProvider>);
+  expect(screen.getByText('https://github.com/Bexxs75/3mf-katalog-manager/releases/tag/v0.15.0')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Link kopieren:/ })).toBeInTheDocument();
+  expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  expect(view.checkNow).not.toHaveBeenCalled();
+  expect(view.openNotes).not.toHaveBeenCalled();
 });

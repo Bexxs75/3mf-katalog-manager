@@ -1,6 +1,15 @@
 import type { Translations } from './types';
 
 export const es: Translations = {
+  externalLinkCopy: "Copiar enlace",
+  externalLinkCopyLabel: "Copiar enlace: {target}",
+  externalLinkCopied: "Enlace copiado",
+  externalLinkCopyFailed: "No se pudo copiar. Selecciona y copia el enlace.",
+  containerExternalUnavailable: "Esta acción no está disponible en el contenedor.",
+  containerDataPath: "En el contenedor: datos en {path}. Esta carpeta está en el volumen /config de tu host Docker.",
+  containerLogPath: "En el contenedor: registros en {path}. Esta carpeta está en el volumen /config de tu host Docker.",
+  bugReportSaveLog: "Guardar registro",
+
   collectionDropAdded: "“{name}” añadido a la colección “{collection}”",
   collectionDropAlready: "“{name}” ya está en la colección “{collection}”",
   statusBadgesLabel: "Estado",

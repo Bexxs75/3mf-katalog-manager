@@ -1,3 +1,4 @@
+import { RuntimeEnvironmentProvider } from "../hooks/useRuntimeEnvironment";
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
@@ -242,4 +243,36 @@ describe('BugReportDialog', () => {
 
     expect(diagnosticsApi.openBugReportForm).toHaveBeenCalledWith('de', true);
   });
+});
+
+it('offers a copyable form URL without opening a browser in a container', async () => {
+  vi.mocked(diagnosticsApi.getBugReportUrl).mockResolvedValue('https://3mfkatalog.de/fehler-melden.html?version=0.15.0&os=linux');
+  render(<LanguageProvider><RuntimeEnvironmentProvider value={{ container: true }}><BugReportDialog onClose={vi.fn()} /></RuntimeEnvironmentProvider></LanguageProvider>);
+  fireEvent.click(screen.getAllByRole('radio')[1]);
+  expect(await screen.findByText('https://3mfkatalog.de/fehler-melden.html?version=0.15.0&os=linux')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Link kopieren: Formular öffnen' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Formular öffnen' })).not.toBeInTheDocument();
+  expect(diagnosticsApi.getBugReportUrl).toHaveBeenCalledWith('de', false);
+  expect(diagnosticsApi.openBugReportForm).not.toHaveBeenCalled();
+});
+it('saves the log before offering the form URL with the log flag in a container', async () => {
+  vi.mocked(diagnosticsApi.getBugReportUrl).mockResolvedValue('https://3mfkatalog.de/fehler-melden.html?version=0.15.0&os=linux&log=1');
+  render(<LanguageProvider><RuntimeEnvironmentProvider value={{ container: true }}><BugReportDialog onClose={vi.fn()} /></RuntimeEnvironmentProvider></LanguageProvider>);
+  fireEvent.click(screen.getAllByRole('radio')[0]);
+  fireEvent.click(await screen.findByRole('button', { name: 'Log speichern' }));
+  expect(await screen.findByText('https://3mfkatalog.de/fehler-melden.html?version=0.15.0&os=linux&log=1')).toBeInTheDocument();
+  expect(diagnosticsApi.saveLogExport).toHaveBeenCalledWith(1);
+  expect(diagnosticsApi.getBugReportUrl).toHaveBeenCalledWith('de', true);
+  expect(diagnosticsApi.openBugReportForm).not.toHaveBeenCalled();
+});
+it('drops the log flag from the form URL when "No" is chosen after saving a log in a container', async () => {
+  vi.mocked(diagnosticsApi.getBugReportUrl).mockImplementation(async (_lang, withLog) =>
+    `https://3mfkatalog.de/fehler-melden.html?version=0.15.0&os=linux${withLog ? '&log=1' : ''}`);
+  render(<LanguageProvider><RuntimeEnvironmentProvider value={{ container: true }}><BugReportDialog onClose={vi.fn()} /></RuntimeEnvironmentProvider></LanguageProvider>);
+  fireEvent.click(screen.getAllByRole('radio')[0]);
+  fireEvent.click(await screen.findByRole('button', { name: 'Log speichern' }));
+  expect(await screen.findByText(/log=1$/)).toBeInTheDocument();
+  fireEvent.click(screen.getAllByRole('radio')[1]);
+  expect(await screen.findByText('https://3mfkatalog.de/fehler-melden.html?version=0.15.0&os=linux')).toBeInTheDocument();
+  expect(screen.queryByText(/log=1$/)).not.toBeInTheDocument();
 });

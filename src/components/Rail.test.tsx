@@ -4,7 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { Rail } from './Rail';
+import { invoke } from '@tauri-apps/api/core';
 import { icons } from './icons.generated';
+
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(async (command: string) => command === 'get_data_paths' ? { data: '/config/data', logs: '/config/logs' } : { enabled: false, untilMs: null }) }));
+vi.mock('../diagnostics/DiagnosticsContext', () => ({ useDiagnostics: () => ({ openBugReport: vi.fn() }) }));
 
 beforeEach(() => localStorage.setItem('3mf-katalog-language', 'de'));
 
@@ -210,4 +214,26 @@ it('replaces container slicer settings with a translated explanation', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Slicer' }));
   expect(screen.getByText(/Der Slicer läuft auf deinem Rechner/)).toBeVisible();
   expect(screen.queryByText('Slicer hinzufügen')).not.toBeInTheDocument();
+});
+
+ it.each([false, true])('keeps Info links usable with container=%s', async container => {
+  renderRail('catalog', 0, true, container);
+  fireEvent.click(screen.getByRole('button', { name: 'Einstellungen' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Info' }));
+  for (const [label, url] of [
+    ['GitHub', 'https://github.com/Bexxs75/3mf-katalog-manager/'],
+    ['Discord', 'https://discord.gg/abfVNfFqu3'],
+    ['UnRAR', 'https://github.com/Bexxs75/3mf-katalog-manager/blob/master/THIRD-PARTY-LICENSES.md#unrar'],
+  ]) {
+    if (container) {
+      expect(screen.getByText(url)).toBeVisible();
+      expect(screen.getByRole('button', { name: `Link kopieren: ${label}` })).toBeVisible();
+      expect(screen.queryByRole('button', { name: label })).not.toBeInTheDocument();
+    } else {
+      fireEvent.click(screen.getByRole('button', { name: label }));
+      if (label === 'Discord') expect(invoke).toHaveBeenCalledWith('open_discord_invite');
+      else expect(invoke).toHaveBeenCalledWith('open_release_url', { url });
+    }
+  }
+  if (container) expect(await screen.findByText(/Daten unter \/config\/data/)).toBeVisible();
 });
