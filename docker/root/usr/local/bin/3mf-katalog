@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+export WEBKIT_DISABLE_DMABUF_RENDERER=1
+export WEBKIT_DISABLE_COMPOSITING_MODE=1
+export LIBGL_ALWAYS_SOFTWARE=1
+mkdir -p "$HOME/.config/gtk-3.0"
+touch "$HOME/.config/gtk-3.0/bookmarks"
+grep -Fxq 'file:///models Modelle' "$HOME/.config/gtk-3.0/bookmarks" || printf '%s\n' 'file:///models Modelle' >> "$HOME/.config/gtk-3.0/bookmarks"
+exec /opt/3mf-katalog/AppRun "$@"

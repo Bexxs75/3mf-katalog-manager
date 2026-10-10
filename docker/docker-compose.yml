@@ -1,0 +1,30 @@
+services:
+  3mf-katalog:
+    build:
+      context: .
+      args:
+        BASE_IMAGE: ${BASE_IMAGE:-ghcr.io/linuxserver/baseimage-kasmvnc:ubuntunoble}
+        APP_URL: ${APP_URL:-}
+        APP_VERSION: ${APP_VERSION:-}
+    image: ghcr.io/bexxs75/3mf-katalog-manager:${IMAGE_TAG:-latest}
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Europe/Berlin}
+      UMASK: ${UMASK:-022}
+      CUSTOM_USER: ${CUSTOM_USER:-abc}
+      PASSWORD: ${PASSWORD:-}
+      ALLOW_NO_AUTH: ${ALLOW_NO_AUTH:-false}
+    ports:
+      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:3001:3001"
+    volumes:
+      - ./config:/config
+      - ${MODELS_DIR:-./models}:/models
+      # - /path/to/more-models:/models2
+    shm_size: "1gb"
+    restart: unless-stopped
+    # SQLite/WAL needs time to close after SIGTERM.
+    stop_grace_period: 30s
+    security_opt: [no-new-privileges:true]
+    # Healthcheck inherited from the image; do not disable it here.

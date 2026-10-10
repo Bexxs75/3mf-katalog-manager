@@ -1,0 +1,55 @@
+#!/bin/sh
+set -eu
+config=${1:-/config}
+envdir=${2:-/run/s6/container_environment}
+owner=${3:-abc:abc}
+password_file=$config/.kasmvnc-password
+umask 077
+mkdir -p "$config" "$envdir"
+
+# Network file systems may refuse chown/chmod (root squash, CIFS): warn, never stop the start.
+secure_file() {
+    chmod 600 "$1" 2>/dev/null || printf 'WARNUNG / WARNING: Rechte von %s nicht änderbar / cannot change permissions.\n' "$1" >&2
+    chown "$owner" "$1" 2>/dev/null || printf 'WARNUNG / WARNING: Besitzer von %s nicht änderbar / cannot change owner.\n' "$1" >&2
+}
+# An empty s6 environment file means "unset": that is how ALLOW_NO_AUTH turns the login off.
+
+if [ "${ALLOW_NO_AUTH:-false}" = true ]; then
+    printf '\n*** WARNUNG / WARNING: Anmeldung abgeschaltet / Authentication disabled (ALLOW_NO_AUTH=true) ***\n\n'
+    password=
+    user=
+elif [ -n "${PASSWORD:-}" ]; then
+    password=$PASSWORD
+    user=${CUSTOM_USER:-abc}
+    printf 'Anmeldung mit eigenem Passwort / Authentication uses supplied password.\n'
+else
+    user=${CUSTOM_USER:-abc}
+    if [ -L "$password_file" ] || { [ -e "$password_file" ] && [ ! -f "$password_file" ]; }; then
+        printf 'FEHLER / ERROR: Ungültige Passwortdatei / Invalid password file.\n' >&2
+        exit 1
+    fi
+    if [ -e "$password_file" ]; then
+        password=$(cat "$password_file")
+        if [ "${#password}" -lt 16 ]; then
+            printf 'FEHLER / ERROR: Gespeichertes Passwort zu kurz / Saved password too short.\n' >&2
+            exit 1
+        fi
+        secure_file "$password_file"
+        printf 'Passwort unverändert in / Password retained in %s\n' "$password_file"
+    else
+        password=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')
+        [ "${#password}" -eq 48 ] || exit 1
+        # Noclobber avoids overwriting a file created concurrently.
+        (set -C; printf '%s\n' "$password" > "$password_file")
+        secure_file "$password_file"
+        printf '\n============================================================\n'
+        printf 'ERSTER START / FIRST START: KasmVNC\n'
+        printf 'Benutzer / User: %s\nPasswort / Password: %s\n' "$user" "$password"
+        printf 'Sicher verwahren / Keep safe: %s\n' "$password_file"
+        printf '============================================================\n\n'
+    fi
+fi
+# s6 imports runtime files; these do not modify Docker's Config.Env.
+printf '%s' "$password" > "$envdir/PASSWORD"
+printf '%s' "$user" > "$envdir/CUSTOM_USER"
+chmod 600 "$envdir/PASSWORD" "$envdir/CUSTOM_USER"
