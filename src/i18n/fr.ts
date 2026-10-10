@@ -672,6 +672,8 @@ export const fr: Translations = {
 
   createFolderLabel: '+ Nouveau dossier',
   newFolderPlaceholder: 'Nom du dossier',
+  newFolderErrorTitle: "Ce nom de dossier n’est pas possible",
+  newFolderErrorClose: "Compris",
   settingsTabGeneral: 'Général',
   settingsTabSlicer: 'Slicer',
   settingsTabCatalog: 'Catalogue',

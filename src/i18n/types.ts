@@ -696,6 +696,8 @@ export interface Translations {
 
   createFolderLabel: string;
   newFolderPlaceholder: string;
+  newFolderErrorTitle: string;
+  newFolderErrorClose: string;
   settingsTabGeneral: string;
   settingsTabSlicer: string;
   settingsTabCatalog: string;

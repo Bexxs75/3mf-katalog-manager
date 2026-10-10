@@ -672,6 +672,8 @@ export const de: Translations = {
 
   createFolderLabel: '+ Neuer Ordner',
   newFolderPlaceholder: 'Ordnername',
+  newFolderErrorTitle: 'Dieser Ordnername geht nicht',
+  newFolderErrorClose: 'Verstanden',
   settingsTabGeneral: 'Allgemein',
   settingsTabSlicer: 'Slicer',
   settingsTabCatalog: 'Katalog',

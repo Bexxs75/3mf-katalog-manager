@@ -1,6 +1,6 @@
 import { ImportLockContext } from '../hooks/ImportLockContext';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { Sidebar } from './Sidebar';
 import { useFolderExpansion } from '../hooks/useFolderExpansion';
@@ -322,11 +322,17 @@ it.each([
   expect(input).toHaveAttribute('aria-invalid', 'true');
   expect(input).toHaveAttribute('aria-describedby', alert.id);
   expect(input).toHaveAccessibleDescription(hint);
-  fireEvent.keyDown(input, { key: 'Enter' });
   fireEvent.blur(input);
+  expect(screen.queryByRole('dialog')).toBeNull();
+  fireEvent.keyDown(input, { key: 'Enter' });
   expect(baseProps.onCreateFolder).not.toHaveBeenCalled();
   expect(input).toHaveValue(name);
   expect(alert).toBeVisible();
+  const dialog = screen.getByRole('dialog', { name: 'Dieser Ordnername geht nicht' });
+  expect(within(dialog).getByRole('alert')).toHaveTextContent(hint);
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Verstanden' }));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(input).toHaveValue(name);
   fireEvent.change(input, { target: { value: 'Projekt 2026' } });
   expect(screen.queryByRole('alert')).toBeNull();
   expect(input).not.toHaveAttribute('aria-describedby');
@@ -355,5 +361,21 @@ it.each(['', '   '])('cancels an empty folder draft %j without a hint', (name) =
   expect(screen.queryByRole('alert')).toBeNull();
   fireEvent.keyDown(input, { key: 'Enter' });
   expect(screen.queryByPlaceholderText('Ordnername')).toBeNull();
+  expect(baseProps.onCreateFolder).not.toHaveBeenCalled();
+});
+
+it('opens the folder-name dialog only on Enter, not when the field loses focus', () => {
+  baseProps.onCreateFolder.mockClear();
+  render(<LanguageProvider><Harness /></LanguageProvider>);
+  fireEvent.click(screen.getByRole('button', { name: '+ Neuer Ordner' }));
+  const input = screen.getByPlaceholderText('Ordnername');
+  fireEvent.change(input, { target: { value: 'Projekt: Test' } });
+  fireEvent.blur(input);
+  expect(screen.queryByRole('dialog')).toBeNull();
+  fireEvent.keyDown(input, { key: 'Enter' });
+  const dialog = screen.getByRole('dialog', { name: 'Dieser Ordnername geht nicht' });
+  expect(within(dialog).getByRole('button', { name: 'Verstanden' })).toHaveFocus();
+  fireEvent.keyDown(dialog, { key: 'Escape' });
+  expect(screen.queryByRole('dialog')).toBeNull();
   expect(baseProps.onCreateFolder).not.toHaveBeenCalled();
 });

@@ -672,6 +672,8 @@ export const en: Translations = {
 
   createFolderLabel: '+ New folder',
   newFolderPlaceholder: 'Folder name',
+  newFolderErrorTitle: 'This folder name is not possible',
+  newFolderErrorClose: 'Got it',
   settingsTabGeneral: 'General',
   settingsTabSlicer: 'Slicer',
   settingsTabCatalog: 'Catalog',

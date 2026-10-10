@@ -158,6 +158,9 @@ export function Sidebar({
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [folderNameDraft, setFolderNameDraft] = useState('');
   const folderProblemId = useId();
+  const folderInput = useRef<HTMLInputElement>(null);
+  // A problem shown only as a small line is easy to miss, so Enter also opens a dialog in the middle of the screen.
+  const [folderErrorDialog, setFolderErrorDialog] = useState<string | null>(null);
   // Check what is actually sent: a trailing space is trimmed on submit, so it is not an error while typing.
   const folderDraftTrimmed = folderNameDraft.trim();
   const folderProblem = folderDraftTrimmed ? folderNameProblem(folderDraftTrimmed) : null;
@@ -173,9 +176,12 @@ export function Sidebar({
 
   // Inline input instead of window.prompt. The folder is created below the
   // active folder, at the root for "All models".
-  const submitCreateFolder = () => {
+  const submitCreateFolder = (explicit = false) => {
     if (jobActive) return;
-    if (folderProblem) return;
+    if (folderProblem) {
+      if (explicit) setFolderErrorDialog(folderNameProblemText(folderProblem, t));
+      return;
+    }
     const value = folderNameDraft.trim();
     if (value) onCreateFolder(activeFolderId === 'all' ? null : activeFolderId, value);
     setFolderNameDraft('');
@@ -282,9 +288,10 @@ export function Sidebar({
               value={folderNameDraft}
               {...lockProps}
               onChange={(e) => setFolderNameDraft(e.target.value)}
-              onBlur={submitCreateFolder}
+              ref={folderInput}
+              onBlur={() => submitCreateFolder()}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') submitCreateFolder();
+                if (e.key === 'Enter') submitCreateFolder(true);
                 if (e.key === 'Escape') {
                   setCreatingFolder(false);
                   setFolderNameDraft('');
@@ -470,6 +477,12 @@ export function Sidebar({
           onRename: () => { if (jobActive) return; setCollectionError(null); setRenameDraft(collectionMenu.collection.name); setRenamingCollection(collectionMenu.collection); setCollectionMenu(null); },
           onDelete: () => { if (jobActive) return; setCollectionError(null); setDeletingCollection(collectionMenu.collection); setCollectionMenu(null); },
         }} />}
+      {folderErrorDialog && <CatalogActionDialog title={t('newFolderErrorTitle')} returnFocus={folderInput} onClose={() => setFolderErrorDialog(null)}>
+        <p role="alert" className="text-body">{folderErrorDialog}</p>
+        <div className="flex justify-end">
+          <button data-initial-focus className={catalogActionButton} onClick={() => setFolderErrorDialog(null)}>{t('newFolderErrorClose')}</button>
+        </div>
+      </CatalogActionDialog>}
       {deletingCollection && <CatalogActionDialog title={t('deleteCollectionConfirmQuestion')} returnFocus={collectionTrigger} onClose={closeCollectionDialog}>
         {collectionError && <p role="alert">{collectionError}</p>}
         <div className="flex justify-end gap-2">

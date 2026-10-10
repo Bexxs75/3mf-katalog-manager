@@ -672,6 +672,8 @@ export const es: Translations = {
 
   createFolderLabel: '+ Nueva carpeta',
   newFolderPlaceholder: 'Nombre de la carpeta',
+  newFolderErrorTitle: 'Este nombre de carpeta no es posible',
+  newFolderErrorClose: 'Entendido',
   settingsTabGeneral: 'General',
   settingsTabSlicer: 'Slicer',
   settingsTabCatalog: 'Catálogo',
