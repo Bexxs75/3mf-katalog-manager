@@ -213,7 +213,7 @@ html { font-family: 'Barlow', Helvetica, sans-serif; }
 .detail-panel-close { position: absolute; top: 4px; right: 4px; z-index: 21; width: 30px; height: 30px; display: grid; place-items: center; background: var(--panel); color: var(--ink-2); border-radius: 6px; cursor: pointer; }
 
 /* The arrows stay at both ends while only the numbers wrap in narrow viewer panels. */
-.plate-selector { display: flex; align-items: center; justify-content: center; align-self: center; width: fit-content; max-width: 100%; gap: 4px; padding: 4px; }
+.plate-selector { position: relative; display: flex; align-items: center; justify-content: center; align-self: center; width: fit-content; max-width: 100%; gap: 4px; padding: 4px; }
 .plate-numbers { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px; min-width: 0; }
 .plate-numbers > .plate-number { flex-shrink: 0; }
 .plate-selector > .viewer-pill { flex-shrink: 0; }
