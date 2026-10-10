@@ -642,3 +642,11 @@ async def platten(x, a):
     await view3d(x, p, x.L["pflanz"])
     grp = "document.querySelector('[data-plate-selector]')"
     return await x.shot(p, [grp], pad=80, marks=f"[() => {grp}, 1]", name="platten")
+
+
+@tk("platten-wiki")
+async def platten_wiki(x, a):
+    p = await cat_page(x)
+    await view3d(x, p, x.L["pflanz"])
+    viewer = "document.querySelector('[data-plate-selector]').parentElement"
+    return await x.shot(p, ["document.querySelector('h1')", viewer], pad=-15, name="platten-wiki")

@@ -4226,6 +4226,57 @@
      274
     ]
    }
+  },
+  {
+   "id": "wiki-druckplatten",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/druckplatten.webp",
+    "en": "src/assets/en/druckplatten.webp"
+   },
+   "recipe": "tk-platten-wiki",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "crop": {
+    "rect": "crop",
+    "pad": 0
+   },
+   "max_edge": 1000,
+   "format": "webp",
+   "quality": 80
+  },
+  {
+   "id": "wiki-ordnername",
+   "root": "wiki",
+   "paths": {
+    "de": "src/assets/de/ordnername.webp",
+    "en": "src/assets/en/ordnername.webp"
+   },
+   "recipe": "hb-ordnername",
+   "args": {},
+   "theme": "dark",
+   "viewport": [
+    1920,
+    1080
+   ],
+   "dpr": 1.5,
+   "format": "webp",
+   "quality": 80,
+   "sizes": {
+    "de": [
+     1600,
+     900
+    ],
+    "en": [
+     1600,
+     900
+    ]
+   }
   }
  ],
  "excluded": [

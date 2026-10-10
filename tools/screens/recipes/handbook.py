@@ -8,14 +8,14 @@ from engine import Session, recipe
 from recipes.common import C, js, union_expr
 
 TX = {
-    "de": dict(haushalt="Haushalt", collection="Weihnachtsmarkt-Projekt", rocket="Rakete.3mf", select=["Rakete.3mf", "Kreisel.3mf", "Spiralvase.3mf"],
+    "de": dict(new_folder="Neuer Ordner", haushalt="Haushalt", collection="Weihnachtsmarkt-Projekt", rocket="Rakete.3mf", select=["Rakete.3mf", "Kreisel.3mf", "Spiralvase.3mf"],
                view3d="3D-Ansicht", cost="Geschätzte Materialkosten", printers="DRUCKER", add_spool="Spule anlegen", resin="Resin",
                nav_filament="Material Manager", nav_settings="Einstellungen", nav_trash="Papierkorb", general="Allgemein", slicer="Slicer",
                catalog="Katalog", info="Info", settings="EINSTELLUNGEN", import_="Importieren", files="Dateien...", archive="Archive entpacken", extract="Entpacken",
                list_btn="Liste", favorites="Favoriten", queue="Warteschlange", queue_last="Wabenregal.stl", review="Prüfen", new_prints="Neue Drucke", report="Fehler melden",
                log_yes="Ja, Logdatei anhängen", update_now="Jetzt aktualisieren", reset="Katalog zurücksetzen …", tags="TAGS",
                remove_folder_item="entfernen"),
-    "en": dict(haushalt="Household", collection="Christmas Market Project", rocket="Rocket.3mf", select=["Rocket.3mf", "Spinning Top.3mf", "Spiral Vase.3mf"],
+    "en": dict(new_folder="New folder", haushalt="Household", collection="Christmas Market Project", rocket="Rocket.3mf", select=["Rocket.3mf", "Spinning Top.3mf", "Spiral Vase.3mf"],
                view3d="3D view", cost="Estimated material cost", printers="PRINTERS", add_spool="Add spool", resin="Resin",
                nav_filament="Material Manager", nav_settings="Settings", nav_trash="Trash", general="General", slicer="Slicer",
                catalog="Catalog", info="Info", settings="SETTINGS", import_="Import", files="Files...", archive="Extract archives", extract="Extract", new_prints="New prints",
@@ -301,3 +301,18 @@ async def reset_catalog(s):
     assert ok
     await asyncio.sleep(1.5)
     return await s.capture(p, {"dialog": "document.querySelector('[role=dialog]')"})
+
+
+@recipe("hb-ordnername")
+async def ordnername(s):
+    t = tx(s)
+    p = await s.open()
+    await to_catalog(s, p)
+    assert await p.click_text(t["new_folder"])
+    await asyncio.sleep(1)
+    await p.send("Input.insertText", text="Test:1")
+    await asyncio.sleep(0.5)
+    for kind in ("rawKeyDown", "keyUp"):
+        await p.send("Input.dispatchKeyEvent", type=kind, key="Enter", code="Enter", windowsVirtualKeyCode=13)
+    await asyncio.sleep(1.5)
+    return await s.capture(p)
