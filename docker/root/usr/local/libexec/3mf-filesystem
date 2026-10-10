@@ -1,0 +1,30 @@
+#!/bin/sh
+set -eu
+config=${1:-/config}
+owner=${2:-abc:abc}
+
+check_filesystem() {
+    case "$1" in
+        nfs*|cifs|smb*|fuse*|9p|afs|ceph|glusterfs|virtiofs|grpcfuse|gfs2|ocfs2|lustre)
+            printf '\n*** WARNUNG / WARNING: SQLite braucht ein lokales Volume; Datenbank kann beschädigt werden. / SQLite needs a local volume; database corruption is possible. (%s) ***\n\n' "$1"
+            # Replace a stale marker without following a possible symlink.
+            rm -f "$config/.network-filesystem-warning"
+            (umask 022; : > "$config/.network-filesystem-warning") 2>/dev/null \
+                || printf 'WARNUNG / WARNING: Hinweisdatei nicht schreibbar / marker file not writable.\n' >&2
+            chown "$owner" "$config/.network-filesystem-warning" 2>/dev/null || :
+            ;;
+        UNKNOWN*)
+            printf 'HINWEIS / NOTE: Dateisystem unbekannt / unknown file system (%s); lokales Volume empfohlen / local volume recommended.\n' "$1"
+            rm -f "$config/.network-filesystem-warning"
+            ;;
+        *) rm -f "$config/.network-filesystem-warning" ;;
+    esac
+}
+
+if [ "$#" -ge 3 ]; then
+    filesystem=$3
+elif ! filesystem=$(stat -f -c %T "$config"); then
+    printf 'WARNUNG / WARNING: Dateisystem nicht ermittelbar / Cannot detect filesystem.\n' >&2
+    exit 0
+fi
+check_filesystem "$filesystem"
