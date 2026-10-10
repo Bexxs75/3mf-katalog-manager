@@ -1,6 +1,6 @@
 [package]
 name = "mf-katalog-manager"
-version = "0.16.0-3"
+version = "0.16.0-4"
 description = "A Tauri App"
 authors = ["Bexxs75"]
 license = "MIT"

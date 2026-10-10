@@ -1547,7 +1547,7 @@ pub async fn reveal_in_file_manager(state: State<'_, AppState>, file_id: String,
         let conn = lock_db(&state)?;
         let file = db::get_file(&conn, id).map_err(|e| e.to_string())?
             .ok_or_else(|| CmdError::expected("Datei nicht gefunden").with_code(super::error::GeometryErrorCode::NotFound))?;
-        PathBuf::from(file.trash_path.as_deref().unwrap_or(&file.path))
+        PathBuf::from(file.current_path())
     };
     tauri::async_runtime::spawn_blocking(move || reveal_catalog_path(&path)).await.map_err(|e| e.to_string())?
 }
@@ -1723,7 +1723,7 @@ pub async fn get_model_geometry(
         db::get_file(&conn, id).map_err(|e| e.to_string())?
             .ok_or_else(|| CmdError::expected("file not found").with_code(super::error::GeometryErrorCode::NotFound))?
     };
-    let path = PathBuf::from(file.trash_path.as_deref().unwrap_or(&file.path));
+    let path = PathBuf::from(file.current_path());
     let meshes = tauri::async_runtime::spawn_blocking(move || load_geometry(&path))
         .await.map_err(|e| e.to_string())??;
     Ok(tauri::ipc::Response::new(encode_render_meshes(&meshes)))

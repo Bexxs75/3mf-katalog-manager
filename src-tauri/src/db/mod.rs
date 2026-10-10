@@ -675,6 +675,28 @@ mod tests {
     }
 
     #[test]
+    fn current_path_uses_the_trash_copy_only_for_a_trashed_file() {
+        let mut conn = connect_in_memory().expect("connect");
+        let file = sample_file();
+        let id = repository::insert_file(&mut conn, &file).unwrap();
+        let live = repository::get_file(&conn, id).unwrap().unwrap();
+        assert_eq!(live.current_path(), live.path);
+
+        // A stray value in trash_path must never be used while the file is not trashed.
+        conn.execute("UPDATE files SET trash_path = '{\"total_weight_g\":1}' WHERE id = ?1", [id]).unwrap();
+        let stray = repository::get_file(&conn, id).unwrap().unwrap();
+        assert_eq!(stray.current_path(), stray.path);
+
+        repository::soft_delete_file(&conn, id, Some("/trash/1-test.3mf"), "2026-01-01T00:00:00Z").unwrap();
+        let trashed = repository::get_file(&conn, id).unwrap().unwrap();
+        assert_eq!(trashed.current_path(), "/trash/1-test.3mf");
+
+        repository::soft_delete_file(&conn, id, None, "2026-01-01T00:00:00Z").unwrap();
+        let unreachable = repository::get_file(&conn, id).unwrap().unwrap();
+        assert_eq!(unreachable.current_path(), unreachable.path);
+    }
+
+    #[test]
     fn soft_delete_without_trash_path_roundtrips_for_unreachable_source_files() {
         // Covers the case where the original path was unreachable when deleting (e.g.
         // a renamed cloud mount) - nothing to move, trash_path stays NULL, and the

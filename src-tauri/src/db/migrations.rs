@@ -125,6 +125,10 @@ const MIGRATIONS: &[MigrationStep] = &[
     MigrationStep::Simple(|c| exec(c, "ALTER TABLE printers ADD COLUMN bed_x_mm REAL")),
     MigrationStep::Simple(|c| exec(c, "ALTER TABLE printers ADD COLUMN bed_y_mm REAL")),
     MigrationStep::Simple(|c| exec(c, "ALTER TABLE printers ADD COLUMN bed_z_mm REAL")),
+    // Catalogs created by development builds between the trash columns and
+    // `slice_info_json` hold those three columns in a different order; the
+    // positional table rebuilds above then moved their values.
+    MigrationStep::Simple(repair_shifted_file_columns),
 ];
 
 /// Derived from [`MIGRATIONS`] so the two can never drift apart.
@@ -153,6 +157,44 @@ const CLOCK_OFFSET_MIGRATION_VERSION: i64 = 39;
 
 /// Runs a single statement. The only tolerated error is "duplicate column name"
 /// (column already exists); everything else propagates.
+/// Puts `slice_info_json`, `deleted_at` and `trash_path` back where they belong.
+///
+/// Catalogs that went through an older column order (`deleted_at`, `trash_path`,
+/// `slice_info_json`) lost the order when a table rebuild copied the rows by
+/// position: the slicer data ended up in `trash_path`, and a trashed file's
+/// timestamp and path moved one column to the right. Both patterns are
+/// unmistakable (JSON object in a path column, a path where a timestamp
+/// belongs), so rows that match neither are left alone.
+fn repair_shifted_file_columns(conn: &Connection) -> Result<(), DbError> {
+    // Trashed files: timestamp in `slice_info_json`, path in `deleted_at`,
+    // slicer data (or nothing) in `trash_path`.
+    conn.execute(
+        "UPDATE files SET
+            deleted_at = slice_info_json,
+            trash_path = deleted_at,
+            slice_info_json = CASE
+                WHEN trash_path IS NOT NULL AND substr(ltrim(trash_path), 1, 1) = '{' AND json_valid(trash_path)
+                THEN trash_path END
+         WHERE deleted_at IS NOT NULL
+           AND deleted_at NOT GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T*'
+           AND slice_info_json GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T*'",
+        [],
+    )?;
+    // Other files: slicer data in `trash_path`. A value written later by a
+    // metadata rescan in `slice_info_json` wins.
+    conn.execute(
+        "UPDATE files SET
+            slice_info_json = COALESCE(slice_info_json, trash_path),
+            trash_path = NULL
+         WHERE deleted_at IS NULL
+           AND trash_path IS NOT NULL
+           AND substr(ltrim(trash_path), 1, 1) = '{'
+           AND json_valid(trash_path)",
+        [],
+    )?;
+    Ok(())
+}
+
 fn exec(conn: &Connection, sql: &str) -> Result<(), DbError> {
     match conn.execute(sql, []) {
         Ok(_) => Ok(()),
@@ -405,6 +447,54 @@ mod tests {
             let value: Option<String> = conn.query_row(&format!("SELECT {column} FROM printers WHERE id=7"), [], |r| r.get(0)).unwrap();
             assert!(value.is_none());
         }
+    }
+
+    #[test]
+    fn upgrade_from_45_repairs_columns_moved_by_an_old_table_order() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        run_migrations_with(&mut conn, &MIGRATIONS[..45], 45).unwrap();
+        let rows = [
+            // 1 live file, slicer data in trash_path
+            ("p1", None, None, Some(r#"{"total_weight_g":1.0,"plates":[]}"#)),
+            // 2 live file rescanned after the move: the newer slicer data wins
+            ("p2", Some(r#"{"total_weight_g":2.0}"#), None, Some(r#"{"total_weight_g":9.0}"#)),
+            // 3 trashed file, everything one column to the right
+            ("p3", Some("2026-02-02T10:00:00+00:00"), Some("/trash/3-c.3mf"), Some(r#"{"total_weight_g":3.0}"#)),
+            // 4 trashed file without slicer data
+            ("p4", Some("2026-02-03T10:00:00+00:00"), Some("/trash/4-d.stl"), None),
+            // 5 correct trashed file stays as it is
+            ("p5", None, Some("2026-02-04T10:00:00+00:00"), Some("/trash/5-e.3mf")),
+            // 6 correct live file with slicer data stays as it is
+            ("p6", Some(r#"{"total_weight_g":6.0}"#), None, None),
+            // 7 a path-like value in trash_path of a live file is not slicer data
+            ("p7", None, None, Some("/not/json")),
+            // 8 broken JSON is left alone
+            ("p8", None, None, Some(r#"{"total_weight_g":"#)),
+        ];
+        for (name, slice, deleted, trash) in rows {
+            conn.execute(
+                "INSERT INTO files (name, path, file_type, file_size_bytes, imported_at, slice_info_json, deleted_at, trash_path)
+                 VALUES (?1, '/x/' || ?1 || '.3mf', '3mf', 1, '2026-01-01T00:00:00Z', ?2, ?3, ?4)",
+                rusqlite::params![name, slice, deleted, trash],
+            ).unwrap();
+        }
+        run_migrations(&mut conn).unwrap();
+        let read = |name: &str| -> (Option<String>, Option<String>, Option<String>) {
+            conn.query_row(
+                "SELECT slice_info_json, deleted_at, trash_path FROM files WHERE name = ?1", [name],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            ).unwrap()
+        };
+        let s = |v: &str| Some(v.to_string());
+        assert_eq!(read("p1"), (s(r#"{"total_weight_g":1.0,"plates":[]}"#), None, None));
+        assert_eq!(read("p2"), (s(r#"{"total_weight_g":2.0}"#), None, None));
+        assert_eq!(read("p3"), (s(r#"{"total_weight_g":3.0}"#), s("2026-02-02T10:00:00+00:00"), s("/trash/3-c.3mf")));
+        assert_eq!(read("p4"), (None, s("2026-02-03T10:00:00+00:00"), s("/trash/4-d.stl")));
+        assert_eq!(read("p5"), (None, s("2026-02-04T10:00:00+00:00"), s("/trash/5-e.3mf")));
+        assert_eq!(read("p6"), (s(r#"{"total_weight_g":6.0}"#), None, None));
+        assert_eq!(read("p7"), (None, None, s("/not/json")));
+        assert_eq!(read("p8"), (None, None, s(r#"{"total_weight_g":"#)));
     }
 
     #[test]
@@ -720,7 +810,7 @@ mod tests {
     #[test]
     fn the_kind_step_stays_at_the_shipped_position_32() {
         assert_eq!(KIND_MIGRATION_VERSION, 32);
-        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 6);
+        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 7);
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         // Only run the steps up to and including 32.

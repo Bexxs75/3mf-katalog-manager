@@ -76,6 +76,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 - Invalid folder names (for example with `:` or `/`, reserved names, trailing dots) are explained in a dialog in the middle of the screen, and a hint appears while you type.
 - Klipper/Moonraker: finished prints are no longer mistaken for one another when the printer reuses a job number; entries from earlier versions are still recognised.
 - Sturdier import, restore and anonymization of log files: unusual file and folder names are handled safely.
+- 3D preview of large slicer projects: projects with up to 128 part files (before: 32) now open in the 3D view; the catalog showed a size warning for them.
+- Catalogs from early development builds could keep slicer data (filament use per plate) in the wrong database column, which made the 3D view report an unsupported file type. The app repairs this at the first start (a safety copy of the catalog is made first), and the preview only follows the trash location for files that are really in the trash.
 
 ## [0.15.3] - 2026-10-04
 
@@ -613,6 +615,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Ungültige Ordnernamen (z. B. mit `:` oder `/`, reservierte Namen, Punkt am Ende) werden in einem Dialog mitten im Bild erklärt, und beim Tippen erscheint ein Hinweis.
 - Klipper/Moonraker: Fertige Drucke werden nicht mehr verwechselt, wenn der Drucker eine Auftragsnummer wiederverwendet; Einträge aus früheren Versionen werden weiter erkannt.
 - Robusterer Import, Wiederherstellen und Anonymisieren von Logdateien: ungewöhnliche Datei- und Ordnernamen werden sicher behandelt.
+- 3D-Vorschau großer Slicer-Projekte: Projekte mit bis zu 128 Teiledateien (vorher 32) öffnen jetzt in der 3D-Ansicht; für sie zeigte der Katalog einen Größenhinweis.
+- Kataloge aus frühen Entwicklungsständen konnten Slicer-Daten (Filamentverbrauch je Platte) in der falschen Datenbankspalte halten, wodurch die 3D-Ansicht „Dateityp nicht unterstützt“ meldete. Die App repariert das beim ersten Start (vorher entsteht eine Sicherungskopie des Katalogs), und die Vorschau folgt dem Papierkorb-Ort nur noch bei Dateien, die wirklich im Papierkorb liegen.
 
 ## [0.15.3] - 2026-10-04
 
