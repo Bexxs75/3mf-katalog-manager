@@ -6,6 +6,27 @@ export interface PluralForms {
 }
 
 export interface Translations {
+  railDownloads: string;
+  downloadIntro: string;
+  downloadSteps: string;
+  downloadStepOpen: string;
+  downloadStepFind: string;
+  downloadStepAction: string;
+  downloadRequirements: string;
+  downloadRequirementInstalled: string;
+  downloadRequirementReachable: string;
+  downloadRequirementCertificate: string;
+  downloadRequirementBambu: string;
+  downloadRequirementPrusa: string;
+  catalogWebOpen: string;
+  catalogWebTitle: string;
+  catalogWebExplanation: string;
+  catalogWebUnknown: string;
+  catalogWebConfigure: string;
+  catalogWebPasteHint: string;
+  catalogWebLoading: string;
+  catalogWebFailed: string;
+  catalogWebContainerOnly: string;
   migrationBackupWarning: string;
   externalLinkCopy: string;
   externalLinkCopyLabel: string;

@@ -1,3 +1,4 @@
+import { CatalogWebButton } from './CatalogWebButton';
 import { ExternalLink } from './ExternalLink';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { RevealFileButton } from './RevealFileButton';
@@ -342,7 +343,8 @@ export function DetailPanel({
           ) : (
             <>
               <RevealFileButton fileId={model.id} compact />
-              {!container && (<button
+              {container && <CatalogWebButton key={model.id} fileId={model.id} />}
+            {!container && (<button
                 onClick={() => onOpenInSlicer()}
                 className="flex-1 min-w-0 h-8 px-2 truncate rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
               >
@@ -526,6 +528,7 @@ export function DetailPanel({
         ) : (
           <>
             <RevealFileButton fileId={model.id} compact />
+            {container && <CatalogWebButton key={model.id} fileId={model.id} />}
             {!container && (<button
               onClick={() => onOpenInSlicer()}
               className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 h-11 px-4 flex items-center gap-2.5 justify-center font-bold cursor-pointer bg-[var(--accent)] text-[var(--accent-ink)] rounded-lg"

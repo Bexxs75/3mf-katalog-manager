@@ -237,3 +237,13 @@ it('replaces container slicer settings with a translated explanation', () => {
   }
   if (container) expect(await screen.findByText(/Daten unter \/config\/data/)).toBeVisible();
 });
+
+it('offers Download & Slicer only in the container and dispatches navigation', () => {
+  const props = renderRail('catalog', 0, false, true);
+  fireEvent.click(screen.getByRole('button', { name: 'Download & Slicer' }));
+  expect(props.onMainViewChange).toHaveBeenCalledWith('downloads');
+});
+it('does not offer Download & Slicer on desktop', () => {
+  renderRail();
+  expect(screen.queryByRole('button', { name: 'Download & Slicer' })).toBeNull();
+});

@@ -104,7 +104,7 @@ it('shows and dismisses an upload failure beside the upload button', async () =>
 });
 
 it('reveals the selected model from the lower action bar', () => {
-  render(<LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} /></LanguageProvider>);
+  render(<LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} slicers={[{ id: 's1', name: 'Slicer', path: '/slicer' }]} /></LanguageProvider>);
   fireEvent.click(screen.getByRole('button', {name: 'Im Dateimanager anzeigen'}));
   expect(invoke).toHaveBeenCalledWith('reveal_in_file_manager', {fileId: props.model.id});
 });
@@ -137,6 +137,7 @@ it('hides host actions on the container detail page even with a configured slice
     <ModelDetailPage {...props} hasPrevious={false} hasNext={false} slicers={[{ id: 's1', name: 'Slicer', path: '/slicer' }]} />
   </RuntimeEnvironmentProvider></LanguageProvider>);
   expect(screen.queryByRole('button', { name: /In Slicer öffnen/ })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Im Browser öffnen' })).toBeVisible();
   expect(screen.queryByRole('button', { name: /Im Dateimanager anzeigen/ })).not.toBeInTheDocument();
 });
 
@@ -150,4 +151,13 @@ it.each([false, true])('renders the source URL for container=%s', container => {
     expect(screen.getByText(sourceUrl)).toBeVisible();
     expect(screen.getByRole('button', { name: `Link kopieren: ${sourceUrl}` })).toBeVisible();
   } else expect(screen.getByRole('link', { name: sourceUrl })).toHaveAttribute('href', sourceUrl);
+});
+
+it('keeps the desktop slicer action', () => {
+  render(<LanguageProvider><RuntimeEnvironmentProvider value={{ container: false }}>
+    <ModelDetailPage {...props} hasPrevious={false} hasNext={false} slicers={[{ id: 's1', name: 'Slicer', path: '/slicer' }]} />
+  </RuntimeEnvironmentProvider></LanguageProvider>);
+  expect(screen.queryByRole('button', { name: 'Im Browser öffnen' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /In Slicer öffnen/ }));
+  expect(props.onOpenInSlicer).toHaveBeenCalled();
 });
