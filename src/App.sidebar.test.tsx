@@ -1,3 +1,4 @@
+import { RuntimeEnvironmentProvider } from './hooks/useRuntimeEnvironment';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
@@ -206,4 +207,28 @@ it('marks collections as drop targets and updates counts without moving the mode
   expect(screen.getByRole('status')).toHaveTextContent('„Drag.stl“ zur Sammlung „Kitchen“ hinzugefügt');
   fireEvent.click(sidebar.getByText(de.viewAllCollectionsLabel));
   expect(screen.getByRole('main')).toHaveTextContent('1 Modell');
+});
+
+
+it('navigates to downloads and back, preserves catalog settings and rejects stale desktop state', async () => {
+  const fallback = vi.mocked(invoke).getMockImplementation()!;
+  vi.mocked(invoke).mockImplementation(async (cmd, args) => cmd === 'get_catalog_web_link'
+    ? { url: 'http://nas:3000/katalog/', path: '/katalog/' } : fallback(cmd, args));
+  const tree = (container: boolean) => <LanguageProviderWithDiagnostics><UiDensityProvider>
+    <RuntimeEnvironmentProvider value={{ container }}><App /></RuntimeEnvironmentProvider>
+  </UiDensityProvider></LanguageProviderWithDiagnostics>;
+  const result = await act(async () => render(tree(true)));
+  fireEvent.keyDown(screen.getByRole('separator'), { key: 'End' });
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Download & Slicer' })));
+  expect(screen.getByRole('main')).toHaveTextContent('http://nas:3000/katalog/');
+  expect(screen.getByRole('button', { name: 'Download & Slicer' })).toHaveClass('text-[var(--accent)]');
+  fireEvent.keyDown(document, { key: 'ArrowDown' });
+  expect(screen.getByRole('heading', { name: 'Download & Slicer' })).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: de.railCatalog }));
+  expect((result.container.firstElementChild as HTMLElement).style.getPropertyValue('--sidebar-width')).toBe('420px');
+  await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Download & Slicer' })));
+  await act(async () => result.rerender(tree(false)));
+  expect(screen.queryByRole('heading', { name: 'Download & Slicer' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Download & Slicer' })).toBeNull();
+  expect(screen.getByRole('separator')).toBeVisible();
 });

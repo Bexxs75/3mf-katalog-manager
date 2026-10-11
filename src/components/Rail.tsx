@@ -165,6 +165,11 @@ export function Rail({
           className={`${railBtnBase} ${mainView === 'printers' ? railBtnActive : ''}`}>
           <Icon name="printer" />
         </button>
+        {container && <button type="button" onClick={() => onMainViewChange('downloads')}
+          title={t('railDownloads')} aria-label={t('railDownloads')}
+          className={`${railBtnBase} ${mainView === 'downloads' ? railBtnActive : ''}`}>
+          <Icon name="import" />
+        </button>}
         <button
           onClick={() => onMainViewChange('trash')}
           title={t('trashHeading')}

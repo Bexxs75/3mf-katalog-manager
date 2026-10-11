@@ -152,6 +152,8 @@ kann KasmVNC mit einem Skriptfehler stehen bleiben.
 
 ### Download und Slicer
 
+Der Seitenleisten-Bereich **„Download & Slicer“** bietet den Link zur Katalogliste, eine kurze Anleitung und die Voraussetzungen für lokale Slicer.
+
 In der Detailansicht der Container-App zeigt **„Im Browser öffnen“** einen Link
 zur ausgewählten Datei mit aufgeklapptem Slicer-Menü. Kopiere ihn in den Browser,
 in dem du die App bedienst; dort kannst du die Datei herunterladen oder in deinem
@@ -394,6 +396,8 @@ Note: after a container restart reload the browser page (F5); otherwise KasmVNC 
 stop with a script error.
 
 ### Download and slicer
+
+The **“Download & slicer”** sidebar section provides the catalog list link, a short guide, and the requirements for local slicers.
 
 In the container app's detail view, **“Open in browser”** shows a link to the
 selected file with its slicer menu expanded. Copy it into the browser where you

@@ -1,6 +1,18 @@
 import type { Translations } from './types';
 
 export const es: Translations = {
+  railDownloads: "Descargas y slicer",
+  downloadIntro: "La aplicación se ejecuta en tu servidor. Las descargas y «Abrir en el slicer» funcionan a través de la página del catálogo en tu navegador. Abre esta página en tu propio PC. Allí puedes descargar archivos o enviarlos a tu slicer local.",
+  downloadSteps: "Cómo funciona",
+  downloadStepOpen: "Abre el enlace en una pestaña del navegador de tu PC.",
+  downloadStepFind: "Busca el archivo en la lista del catálogo.",
+  downloadStepAction: "Elige «Descargar» o «Abrir en el slicer».",
+  downloadRequirements: "Requisitos",
+  downloadRequirementInstalled: "El slicer debe estar instalado en tu propio PC.",
+  downloadRequirementReachable: "La dirección del servidor debe ser accesible desde tu PC.",
+  downloadRequirementCertificate: "Los slicers suelen rechazar enlaces HTTPS con certificados autofirmados. Usa HTTP en tu red doméstica o un proxy inverso con un certificado válido.",
+  downloadRequirementBambu: "Bambu Studio solo admite archivos 3MF aquí.",
+  downloadRequirementPrusa: "PrusaSlicer no acepta estos enlaces. Descarga el archivo y ábrelo en el slicer.",
   catalogWebOpen: "Abrir en el navegador",
   catalogWebTitle: "Descarga y laminador en el navegador",
   catalogWebExplanation: "Abre este enlace en el navegador donde utilizas esta aplicación. Allí puedes descargar el archivo o abrirlo en tu laminador.",

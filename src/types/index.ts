@@ -241,7 +241,7 @@ export interface PrinterDetails {
   bedZMm: number | null;
 }
 
-export type MainView = 'catalog' | 'filament' | 'printers' | 'trash';
+export type MainView = 'catalog' | 'filament' | 'printers' | 'trash' | 'downloads';
 export interface PrinterNavigation { printerId?: string; reviewJobs?: boolean }
 
 export interface PrinterHistoryJob {

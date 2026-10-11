@@ -1,3 +1,5 @@
+import { DownloadSlicerView } from './components/DownloadSlicerView';
+import { useRuntimeEnvironment } from './hooks/useRuntimeEnvironment';
 import { NetworkFilesystemWarning } from './components/NetworkFilesystemWarning';
 import { KeyboardTipsDialog } from './components/KeyboardTipsDialog';
 import { useSingleKeyShortcuts } from './hooks/useSingleKeyShortcuts';
@@ -95,7 +97,9 @@ export default function App() {
     }
   };
 
-  const [mainView, setMainView] = useState<MainView>('catalog');
+  const { container } = useRuntimeEnvironment();
+  const [requestedMainView, setMainView] = useState<MainView>('catalog');
+  const mainView = requestedMainView === 'downloads' && !container ? 'catalog' : requestedMainView;
   const archiveTargetDefault =
     store.folders.find((f) => f.id === filters.activeFolderId)?.path ?? catalogBaseDir;
   const fileImport = useFileImport({
@@ -166,6 +170,7 @@ export default function App() {
 
   const [printerContext, setPrinterContext] = useState<PrinterNavigation>({});
   const changeMainView = (v: MainView, context: PrinterNavigation = {}) => {
+    if (v === 'downloads' && !container) return;
     setPrinterContext(context);
     setMainView(v);
     store.setSelectedId(null);
@@ -342,7 +347,9 @@ export default function App() {
           update={update}
         />
         <div className="relative flex-1 min-w-0 flex flex-col min-h-0">
-          {mainView === 'trash' ? (
+          {mainView === 'downloads' && container ? (
+            <DownloadSlicerView />
+          ) : mainView === 'trash' ? (
             <TrashView
               trashModels={store.trashModels}
               selectedId={store.selectedId}

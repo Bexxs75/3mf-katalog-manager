@@ -79,18 +79,18 @@ fn valid_public_origin(value: &str) -> bool {
     port.is_none_or(|port| port.parse::<u16>().is_ok_and(|port| port > 0))
 }
 
-fn catalog_web_link(file_id: i64, configured: Option<&str>, remembered: Option<&[u8]>) -> CatalogWebLink {
+fn catalog_web_link(file_id: Option<i64>, configured: Option<&str>, remembered: Option<&[u8]>) -> CatalogWebLink {
     let origin = configured.filter(|value| valid_public_origin(value)).or_else(|| {
         remembered.filter(|bytes| bytes.len() <= MAX_ORIGIN_BYTES)
             .and_then(|bytes| std::str::from_utf8(bytes).ok())
             .filter(|value| valid_public_origin(value))
     });
-    let path = format!("/katalog/?file={file_id}");
+    let path = file_id.map_or_else(|| "/katalog/".into(), |id| format!("/katalog/?file={id}"));
     CatalogWebLink { url: origin.map(|origin| format!("{origin}{path}")), path }
 }
 
 #[tauri::command]
-pub fn get_catalog_web_link(file_id: i64, environment: State<'_, RuntimeEnvironment>) -> CmdResult<CatalogWebLink> {
+pub fn get_catalog_web_link(file_id: Option<i64>, environment: State<'_, RuntimeEnvironment>) -> CmdResult<CatalogWebLink> {
     use std::io::Read;
     if !environment.container { return Err(CmdError::expected("catalogWebContainerOnly")); }
     let configured = std::env::var("KATALOG_PUBLIC_URL").ok();
@@ -199,21 +199,36 @@ mod catalog_link_tests {
     use super::*;
 
     #[test]
+    fn catalog_list_link_has_no_file_query() {
+        let link = catalog_web_link(None, None, None);
+        assert_eq!(link.path, "/katalog/");
+        assert_eq!(link.url, None);
+        assert_eq!(catalog_web_link(None, Some("https://nas.lan"), None).url,
+            Some("https://nas.lan/katalog/".into()));
+        assert_eq!(catalog_web_link(None, None, Some(b"http://nas:3000")).url,
+            Some("http://nas:3000/katalog/".into()));
+        let app = tauri::test::mock_builder()
+            .manage(RuntimeEnvironment { container: true })
+            .build(tauri::test::mock_context(tauri::test::noop_assets())).unwrap();
+        assert_eq!(get_catalog_web_link(None, app.state()).unwrap().path, "/katalog/");
+    }
+
+    #[test]
     fn origins_are_strict_and_environment_has_priority() {
         let fallback = b"https://nas.lan:3001";
         for valid in ["http://nas.lan:3000", "https://example.org", "http://127.0.0.1", "http://[::1]:3000"] {
-            let link = catalog_web_link(42, Some(valid), Some(fallback));
+            let link = catalog_web_link(Some(42), Some(valid), Some(fallback));
             assert_eq!(link.path, "/katalog/?file=42");
             assert_eq!(link.url, Some(format!("{valid}/katalog/?file=42")));
         }
         for invalid in ["", " http://nas", "http://nas ", "http://nas/", "http://nas/path", "http://nas?q=1", "http://nas#x", "http://user@nas", "ftp://nas", "http://nas\n", "http://nas\t", "http://nas:0", "http://nas:65536", "http://[bad]", "http://a_b", "http://nas\\evil"] {
-            assert_eq!(catalog_web_link(1, Some(invalid), None).url, None, "{invalid:?}");
-            assert_eq!(catalog_web_link(1, Some(invalid), Some(fallback)).url, Some("https://nas.lan:3001/katalog/?file=1".into()));
-            assert_eq!(catalog_web_link(1, None, Some(invalid.as_bytes())).url, None);
+            assert_eq!(catalog_web_link(Some(1), Some(invalid), None).url, None, "{invalid:?}");
+            assert_eq!(catalog_web_link(Some(1), Some(invalid), Some(fallback)).url, Some("https://nas.lan:3001/katalog/?file=1".into()));
+            assert_eq!(catalog_web_link(Some(1), None, Some(invalid.as_bytes())).url, None);
         }
-        assert_eq!(catalog_web_link(1, None, None).url, None);
-        assert_eq!(catalog_web_link(1, None, Some(&vec![b'a'; 1025])).url, None);
-        assert_eq!(catalog_web_link(1, None, Some(&[255])).url, None);
+        assert_eq!(catalog_web_link(Some(1), None, None).url, None);
+        assert_eq!(catalog_web_link(Some(1), None, Some(&vec![b'a'; 1025])).url, None);
+        assert_eq!(catalog_web_link(Some(1), None, Some(&[255])).url, None);
     }
 
     #[test]
@@ -221,7 +236,7 @@ mod catalog_link_tests {
         let app = tauri::test::mock_builder()
             .manage(RuntimeEnvironment { container: false })
             .build(tauri::test::mock_context(tauri::test::noop_assets())).unwrap();
-        let error = get_catalog_web_link(42, app.state()).unwrap_err();
+        let error = get_catalog_web_link(Some(42), app.state()).unwrap_err();
         assert!(error.expected);
         assert_eq!(error.message, "catalogWebContainerOnly");
     }

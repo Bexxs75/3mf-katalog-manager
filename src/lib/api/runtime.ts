@@ -14,5 +14,5 @@ export const hasNetworkFilesystemWarning = () => invoke<boolean>('has_network_fi
 
 export interface CatalogWebLink { url: string | null; path: string }
 
-export const getCatalogWebLink = (fileId: string) =>
-  invoke<CatalogWebLink>('get_catalog_web_link', { fileId: Number(fileId) });
+export const getCatalogWebLink = (fileId?: string) =>
+  invoke<CatalogWebLink>('get_catalog_web_link', { fileId: fileId === undefined ? null : Number(fileId) });
