@@ -82,7 +82,7 @@ export function FolderTree({
     const isDraggedOver = dragOverFolderId === node.id && (!draggedFileId || validFileTarget);
     return (
       <div key={node.id}>
-        <div
+        <div data-sync-folder-id={node.id}
           tabIndex={0}
           role="button"
           onContextMenu={(e) => { e.preventDefault(); returnFocus.current = e.currentTarget; setMenu({ id: node.id, name: node.name, x: e.clientX, y: e.clientY }); }}

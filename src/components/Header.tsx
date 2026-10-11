@@ -1,3 +1,4 @@
+import { CatalogDiskSync } from './CatalogDiskSync';
 import { useMenuKeyboard } from '../hooks/useMenuKeyboard';
 import { Icon } from './Icon';
 import { useEffect, useRef, useState } from 'react';
@@ -8,6 +9,7 @@ import { defaultSortDirection } from '../lib/catalogFilters';
 import { useT, useFormatCount } from '../i18n/LanguageContext';
 
 interface Props {
+  onDiskSyncApplied?: () => Promise<unknown>;
   detailPanel?: 'auto' | 'pinned';
   onDetailPanelChange?: (mode: 'auto' | 'pinned') => void;
   importTargetName?: string;
@@ -36,6 +38,7 @@ const segActive = 'bg-[var(--accent)] text-[var(--accent-ink)]';
 const segInactive = 'text-[var(--ink-2)] hover:text-[var(--ink)]';
 
 export function Header({
+  onDiskSyncApplied,
   detailPanel = 'auto', onDetailPanelChange,
   importTargetName,
   importTargetIsRoot = false,
@@ -100,6 +103,7 @@ export function Header({
         )}
       </div>
 
+      <CatalogDiskSync active={mainView === 'catalog'} onApplied={onDiskSyncApplied} />
       {mainView === 'catalog' && (
       <>
       <div ref={importRef} className="relative flex shrink-0">

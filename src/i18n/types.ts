@@ -6,6 +6,33 @@ export interface PluralForms {
 }
 
 export interface Translations {
+  diskSyncStale: string;
+  diskSyncPathChanged: string;
+  diskSyncRootUnreachable: string;
+  diskSyncImportFailed: string;
+  diskSyncFailed: string;
+  diskSyncRefresh: string;
+  diskSyncRunning: string;
+  diskSyncTitle: string;
+  diskSyncCurrent: string;
+  diskSyncLast: string;
+  diskSyncNever: string;
+  diskSyncNewHeading: string;
+  diskSyncMissingHeading: string;
+  diskSyncRemove: string;
+  diskSyncRemoveHint: string;
+  diskSyncLater: string;
+  diskSyncApply: string;
+  diskSyncError: string;
+  diskSyncClose: string;
+  diskSyncRetry: string;
+  diskSyncNewFiles: PluralForms;
+  diskSyncNewFolders: PluralForms;
+  diskSyncMissing: PluralForms;
+  diskSyncRemoved: PluralForms;
+  diskSyncSkipped: PluralForms;
+  diskSyncUnreadable: PluralForms;
+
   railDownloads: string;
   downloadIntro: string;
   downloadSteps: string;

@@ -285,7 +285,13 @@ export default function App() {
         />
       )}
       {tipsOpen && <KeyboardTipsDialog onClose={() => setTipsOpen(false)} />}
-      <Header detailPanel={detailPanel} onDetailPanelChange={setDetailPanel}
+      <Header
+        onDiskSyncApplied={() => Promise.all([
+          store.refreshFiles(), store.refreshFolders(), store.refreshTags(), store.refreshTrash(),
+          collections.refreshCollections(),
+          ...(collections.activeCollection ? [collections.refreshCollectionModels(collections.activeCollection)] : []),
+        ])}
+        detailPanel={detailPanel} onDetailPanelChange={setDetailPanel}
         onOpenTips={() => setTipsOpen(true)}
         allFoldersCollapsed={allFoldersCollapsed}
         onToggleAllFolders={toggleAllFolders}

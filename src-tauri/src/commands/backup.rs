@@ -974,6 +974,14 @@ fn group_duplicates(files: Vec<FileRecord>, orphaned_ids: &HashSet<i64>) -> Vec<
     groups.sort_by(|a, b| a[0].imported_at.cmp(&b[0].imported_at));
     groups
 }
+pub(super) fn is_missing(path: &Path) -> std::io::Result<bool> {
+    match std::fs::metadata(path) {
+        Ok(_) => Ok(false),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(true),
+        Err(e) => Err(e),
+    }
+}
+
 #[tauri::command]
 pub fn scan_catalog_issues(state: State<AppState>) -> CmdResult<CatalogIssuesDto> {
     let conn = lock_db(&state)?;
@@ -985,11 +993,9 @@ pub fn scan_catalog_issues(state: State<AppState>) -> CmdResult<CatalogIssuesDto
     let mut orphaned_ids: HashSet<i64> = HashSet::new();
     let mut orphaned: Vec<ModelFileDto> = Vec::new();
     for file in &files {
-        if let Err(e) = std::fs::metadata(&file.path) {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                orphaned_ids.insert(file.id);
-                orphaned.push(to_dto(file.clone(), &spools));
-            }
+        if is_missing(Path::new(&file.path)).unwrap_or(false) {
+            orphaned_ids.insert(file.id);
+            orphaned.push(to_dto(file.clone(), &spools));
         }
     }
 

@@ -64,7 +64,7 @@ export function GroupedModelGrid({
           onMouseDown={(e) => folderDrag.begin(e, node.folder.id)}
           onMouseEnter={() => onFolderMouseEnter(node.folder.id)}
           onMouseLeave={() => onFolderMouseLeave(node.folder.id)}
-          data-folder-header onClick={() => collapsedFolders.toggle(node.folder.id)}
+          data-folder-header data-sync-folder-id={node.folder.id} onClick={() => collapsedFolders.toggle(node.folder.id)}
           className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex items-center gap-2 py-1.5 cursor-pointer select-none rounded-[4px] ${
             isDraggedOver ? 'bg-[var(--accent-soft)] border border-[var(--accent)] shadow-[0_0_0_2px_var(--accent-soft)]' : validFileTarget ? 'border border-dashed border-[var(--line-strong)]' : 'border border-transparent'
           } ${isBeingDragged ? 'opacity-40' : ''}`}

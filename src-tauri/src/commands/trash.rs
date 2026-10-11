@@ -1,5 +1,10 @@
 use super::*;
 
+pub(super) fn delete_missing_file_with_conn(conn: &Connection, id: i64) -> CmdResult<()> {
+    let deleted_at = chrono::Utc::now().to_rfc3339();
+    db::soft_delete_file(conn, id, None, &deleted_at).map_err(|e| e.to_string().into())
+}
+
 /// Core logic of `delete_file` with an already loaded `FileRecord`, without `State`, so it's testable.
 fn delete_file_with_conn(
     conn: &Connection,
@@ -12,8 +17,7 @@ fn delete_file_with_conn(
             // Path unreachable (renamed folder, unmounted drive): nothing to move, but
             // still only soft-delete, because the file is usually not really gone. Other
             // errors like PermissionDenied go through the error path below.
-            let deleted_at = chrono::Utc::now().to_rfc3339();
-            return db::soft_delete_file(conn, id, None, &deleted_at).map_err(|e| e.to_string().into());
+            return delete_missing_file_with_conn(conn, id);
         }
         Err(e) => return Err(e.to_string().into()),
         Ok(_) => {}

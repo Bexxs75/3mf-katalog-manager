@@ -304,6 +304,8 @@ pub fn run() {
             commands::has_network_filesystem_warning,
             commands::scan_installed_slicers,
             commands::scan_catalog_issues,
+            commands::scan_catalog_disk,
+            commands::apply_catalog_disk_sync,
             commands::delete_files,
             commands::remove_files_from_catalog,
             commands::folder_removal_summary,

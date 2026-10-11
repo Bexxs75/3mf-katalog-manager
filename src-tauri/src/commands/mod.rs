@@ -1,3 +1,5 @@
+mod disk_sync;
+pub use disk_sync::*;
 mod runtime_environment;
 pub use runtime_environment::*;
 mod catalog_removal;

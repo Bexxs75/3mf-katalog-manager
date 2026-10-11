@@ -11,6 +11,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Added
 
+- **Sync with disk:** “Refresh” (F5) previews new files, folders and missing files before applying changes. Missing entries are kept by default; optional removal uses the existing trash behavior. Unreachable catalog folders abort the sync without changing the catalog. Empty folders are intentionally excluded; only folders containing new supported files are added. Unreadable files are skipped and reported with their paths while readable files are still imported. With no applicable changes, the dialog only offers “Close”.
+
 - **Printer Manager:** printers get their own area in the left rail. Keep several printers in one place: name, manufacturer and model, nozzle, build volume, material units (Bambu AMS, AMS lite, AMS HT, Creality CFS, Prusa MMU3, Anycubic ACE Pro, spool holder or custom), recent prints and the printer link switch for Klipper/Moonraker.
 - **Material Manager:** the filament storage is now called Material Manager (filament and resin); the header names the current area.
 - **Filters at a glance:** a bar above the models shows every active filter (folder, tag, collection, search); each can be removed on its own, "Clear all" resets everything.
@@ -556,6 +558,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ## [Unreleased]
 
 ### Hinzugefügt
+
+- **Festplatten-Abgleich:** „Aktualisieren“ (F5) zeigt neue Dateien, Ordner und fehlende Dateien vor dem Übernehmen. Fehlende Einträge bleiben standardmäßig erhalten; die optionale Entfernung nutzt den bestehenden Papierkorb. Nicht erreichbare Katalog-Ordner brechen den Abgleich ohne Katalogänderung ab. Leere Ordner bleiben bewusst ausgeschlossen; nur Ordner mit neuen unterstützten Dateien werden ergänzt. Einzelne unlesbare Dateien werden übersprungen und mit Pfad gemeldet; lesbare Dateien werden trotzdem importiert. Ohne anwendbare Änderungen bietet der Dialog nur „Schließen“.
 
 - **Printer Manager:** Drucker bekommen einen eigenen Bereich in der linken Leiste. Mehrere Drucker an einem Ort pflegen: Name, Hersteller und Modell, Düse, Bauraum, Materialeinheiten (Bambu AMS, AMS lite, AMS HT, Creality CFS, Prusa MMU3, Anycubic ACE Pro, Spulenhalter oder eigene), letzte Drucke und der Schalter für die Druckeranbindung (Klipper/Moonraker).
 - **Material Manager:** Das Filament-Lager heißt jetzt Material Manager (Filament und Resin); die Kopfzeile nennt den aktuellen Bereich.
