@@ -39,7 +39,7 @@ pub use repository::{
 };
 
 #[cfg(test)]
-pub use repository::{insert_folder, max_folder_id, remove_new_folder_rows};
+pub use repository::insert_folder;
 
 // Only used in tests outside the DB layer.
 #[cfg(test)]
