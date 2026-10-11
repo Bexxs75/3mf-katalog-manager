@@ -222,7 +222,7 @@ export const es: Translations = {
   impImported: "importados",
   impDuplicate: "duplicados",
   impSkipped: "omitidos",
-  impNotPlaced: "sin trasladar",
+  impOfWhichNotPlaced: "de ellos sin trasladar",
   impInFlight: "en curso",
   impWaitOne: "· 1 tarea en espera",
   impWaitMany: { one: "· {count} tarea en espera", other: "· {count} tareas en espera" },
