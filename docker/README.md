@@ -165,8 +165,12 @@ lokalen Slicer öffnen. Die App im gestreamten Desktop öffnet selbst keinen Bro
 Nach dem ersten Besuch von `/katalog/` kennt die App die Adresse automatisch
 (aus `Host` und `X-Forwarded-Proto`); weitere Besuche aktualisieren sie.
 Bis dahin zeigt der Dialog den Pfad zum Anhängen an die Browser-Adresse.
-Mit `KATALOG_PUBLIC_URL=http://nas.lan:3000` lässt sich die Adresse fest setzen;
-dazu die auskommentierten Zeilen in `.env` und `docker-compose.yml` aktivieren.
+Mit `KATALOG_PUBLIC_URL` lässt sich die Adresse fest setzen, z. B.
+`KATALOG_PUBLIC_URL=https://katalog.example.de` hinter einem Reverse Proxy oder
+`http://192.168.1.10:3000` im Heimnetz. Eingetragen wird die Adresse, die du im
+Browser benutzt, nicht ein Platzhalter. Dazu die auskommentierten Zeilen in `.env`
+**und** `docker-compose.yml` aktivieren; ist der Wert in `.env` leer, gilt die
+Variable als nicht gesetzt.
 Die Variable hat Vorrang. Erlaubt sind nur `http://` oder `https://` mit Host und
 optionalem Port, ohne Pfad, Query, Fragment oder abschließenden Slash. Ungültige
 Werte werden mit einem Log-Hinweis ignoriert.
@@ -432,8 +436,11 @@ streamed desktop does not open a browser tab itself.
 After the first visit to `/katalog/`, the app automatically knows the address
 (from `Host` and `X-Forwarded-Proto`); further visits update it.
 Until then, the dialog shows the path to append to your browser address.
-To fix the address, set `KATALOG_PUBLIC_URL=http://nas.lan:3000` by uncommenting
-the lines in both `.env` and `docker-compose.yml`. This variable takes priority.
+To fix the address, set `KATALOG_PUBLIC_URL`, e.g.
+`KATALOG_PUBLIC_URL=https://katalog.example.de` behind a reverse proxy or
+`http://192.168.1.10:3000` on a home network. Use the address you actually open in
+your browser, not a placeholder. Uncomment the lines in **both** `.env` and
+`docker-compose.yml`; an empty value in `.env` counts as not set. This variable takes priority.
 Only `http://` or `https://` with a host and optional port are accepted, without
 a path, query, fragment or trailing slash. Invalid values are ignored with a log message.
 
