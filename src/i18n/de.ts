@@ -1,6 +1,14 @@
 import type { Translations } from './types';
 
 export const de: Translations = {
+  catalogWebOpen: "Im Browser öffnen",
+  catalogWebTitle: "Download und Slicer im Browser",
+  catalogWebExplanation: "Öffne diesen Link in dem Browser, in dem du diese App bedienst. Dort kannst du die Datei herunterladen oder in deinem Slicer öffnen.",
+  catalogWebUnknown: "Hänge diesen Pfad an die Adresse an, unter der du diese App im Browser geöffnet hast (z. B. http://dein-server:3000).",
+  catalogWebConfigure: "Setze KATALOG_PUBLIC_URL, damit der volle Link erscheint.",
+  catalogWebLoading: "Link wird geladen …",
+  catalogWebFailed: "Der Link konnte nicht geladen werden. Bitte versuche es erneut.",
+  catalogWebContainerOnly: "Diese Funktion ist nur im Container verfügbar.",
   externalLinkCopy: "Link kopieren",
   externalLinkCopyLabel: "Link kopieren: {target}",
   externalLinkCopied: "Link kopiert",

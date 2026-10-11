@@ -53,6 +53,9 @@ class WebTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.base = Path(self.temp.name)
+        origin_patch = patch.object(self.web, 'PUBLIC_ORIGIN', self.base / 'public-origin')
+        origin_patch.start()
+        self.addCleanup(origin_patch.stop)
         self.root = self.base / 'models'
         self.root.mkdir()
         self.db = self.base / 'catalog.db'
@@ -101,6 +104,45 @@ class WebTests(unittest.TestCase):
 
     def signed(self, fid='1', token=None, name='different.stl'):
         return f'/katalog/signed/{fid}/{token or self.app.token(fid)}/{name}'
+
+    def test_single_file_page(self):
+        self.add_file(2, 'other.stl')
+        status, _, body, _, _ = self.request('/katalog/?file=1')
+        self.assertEqual(status, 200)
+        self.assertIn(b'<details open>', body)
+        self.assertIn(b'/katalog/download/1', body)
+        self.assertNotIn(b'other.stl', body)
+        self.assertIn(b'Alle Dateien anzeigen', body)
+        self.add_file(3, 'deleted', deleted='yesterday')
+        self.add_file(4, 'outside', path=self.base / 'outside')
+        (self.root / '2').unlink()
+        for fid in ['2', '3', '4', '999', 'abc', '', '-1', '1%20', '%D9%A1', '1&file=2']:
+            with self.subTest(fid=fid):
+                status, _, body, _, _ = self.request('/katalog/?file=' + fid)
+                self.assertEqual(status, 404)
+                self.assertIn(b'Alle Dateien anzeigen', body)
+                self.assertNotIn(b'/katalog/download/', body)
+
+    def test_public_origin_is_atomic_and_only_written_on_change(self):
+        target = self.base / 'public-origin'
+        with patch.object(self.web, 'PUBLIC_ORIGIN', target):
+            with patch.object(self.web.os, 'replace', wraps=os.replace) as replace:
+                self.assertEqual(self.request()[0], 200)
+                self.assertEqual(target.read_text(), 'http://catalog.example:3000')
+                self.request()
+                self.assertEqual(replace.call_count, 1)
+                self.request(self.signed(), headers={'Host': 'other.example'})
+                self.request('/katalog/download/1', headers={'Host': 'other.example'})
+                self.assertEqual(replace.call_count, 1)
+                self.request(headers={'Host': 'bad/host'})
+                self.assertEqual(replace.call_count, 1)
+                self.request(headers={'X-Forwarded-Proto': 'https'})
+                self.assertEqual(target.read_text(), 'https://catalog.example:3000')
+                self.assertEqual(replace.call_count, 2)
+                self.assertEqual(Path(replace.call_args.args[0]).parent, target.parent)
+            with patch.object(self.web.os, 'replace', side_effect=OSError('read only')):
+                self.assertEqual(self.request()[0], 200)
+            self.assertEqual(list(self.base.glob('.public-origin-*')), [])
 
     def test_signature_and_filename_ignored(self):
         token = self.app.token('1')

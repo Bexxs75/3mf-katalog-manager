@@ -14,6 +14,8 @@ services:
       UMASK: ${UMASK:-022}
       CUSTOM_USER: ${CUSTOM_USER:-abc}
       PASSWORD: ${PASSWORD:-}
+      # Optional browser origin / Optionale Browser-Adresse (no trailing slash / ohne End-Slash).
+      # KATALOG_PUBLIC_URL: ${KATALOG_PUBLIC_URL:-http://nas.lan:3000}
       ALLOW_NO_AUTH: ${ALLOW_NO_AUTH:-false}
     ports:
       - "127.0.0.1:3000:3000"

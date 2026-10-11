@@ -298,6 +298,7 @@ pub fn run() {
             commands::list_registered_slicers,
             commands::open_in_slicer,
             commands::get_runtime_environment,
+            commands::get_catalog_web_link,
             commands::has_network_filesystem_warning,
             commands::scan_installed_slicers,
             commands::scan_catalog_issues,

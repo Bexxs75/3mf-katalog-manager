@@ -1,6 +1,14 @@
 import type { Translations } from './types';
 
 export const en: Translations = {
+  catalogWebOpen: "Open in browser",
+  catalogWebTitle: "Download and slicer in your browser",
+  catalogWebExplanation: "Open this link in the browser where you use this app. There you can download the file or open it in your slicer.",
+  catalogWebUnknown: "Append this path to the address where you opened this app in your browser (e.g. http://your-server:3000).",
+  catalogWebConfigure: "Set KATALOG_PUBLIC_URL to show the full link.",
+  catalogWebLoading: "Loading link …",
+  catalogWebFailed: "The link could not be loaded. Please try again.",
+  catalogWebContainerOnly: "This feature is only available in the container.",
   externalLinkCopy: "Copy link",
   externalLinkCopyLabel: "Copy link: {target}",
   externalLinkCopied: "Link copied",

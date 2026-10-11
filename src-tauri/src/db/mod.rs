@@ -39,7 +39,7 @@ pub use repository::{
 };
 
 #[cfg(test)]
-pub use repository::insert_folder;
+pub use repository::{insert_folder, max_folder_id, remove_new_folder_rows};
 
 // Only used in tests outside the DB layer.
 #[cfg(test)]
@@ -920,6 +920,3 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 }
-
-#[cfg(test)]
-pub use repository::{max_folder_id, remove_new_folder_rows};

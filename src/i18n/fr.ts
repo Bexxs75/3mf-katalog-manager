@@ -1,6 +1,14 @@
 import type { Translations } from './types';
 
 export const fr: Translations = {
+  catalogWebOpen: "Ouvrir dans le navigateur",
+  catalogWebTitle: "Téléchargement et trancheur dans le navigateur",
+  catalogWebExplanation: "Ouvre ce lien dans le navigateur où tu utilises cette application. Tu pourras y télécharger le fichier ou l’ouvrir dans ton trancheur.",
+  catalogWebUnknown: "Ajoute ce chemin à l’adresse où tu as ouvert cette application dans le navigateur (p. ex. http://ton-serveur:3000).",
+  catalogWebConfigure: "Définis KATALOG_PUBLIC_URL pour afficher le lien complet.",
+  catalogWebLoading: "Chargement du lien …",
+  catalogWebFailed: "Impossible de charger le lien. Réessaie.",
+  catalogWebContainerOnly: "Cette fonction est disponible uniquement dans le conteneur.",
   externalLinkCopy: "Copier le lien",
   externalLinkCopyLabel: "Copier le lien : {target}",
   externalLinkCopied: "Lien copié",

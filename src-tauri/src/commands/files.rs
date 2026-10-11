@@ -1879,11 +1879,11 @@ mod tests {
         let second = first + std::time::Duration::from_secs(3600);
         std::fs::File::options().write(true).open(&path).unwrap().set_modified(second).unwrap();
         rescan_file(&mut conn, id).unwrap();
-        let expected = Some(chrono::DateTime::<chrono::Utc>::from(second).to_rfc3339());
-        assert_eq!(db::get_file(&conn, id).unwrap().unwrap().file_modified_at, expected);
-        assert_eq!(db::list_file_summaries(&conn).unwrap()[0].file_modified_at, expected);
+        let expected = chrono::DateTime::<chrono::Utc>::from(second).to_rfc3339();
+        assert_eq!(db::get_file(&conn, id).unwrap().unwrap().file_modified_at.as_ref(), Some(&expected));
+        assert_eq!(db::list_file_summaries(&conn).unwrap()[0].file_modified_at.as_ref(), Some(&expected));
         let full = to_dto(db::get_file(&conn, id).unwrap().unwrap(), &[]);
-        assert_eq!(serde_json::to_value(full).unwrap()["fileModifiedAt"], expected.unwrap());
+        assert_eq!(serde_json::to_value(full).unwrap()["fileModifiedAt"], expected);
         std::fs::remove_dir_all(dir).unwrap();
     }
 

@@ -6,6 +6,14 @@ export interface PluralForms {
 }
 
 export interface Translations {
+  catalogWebOpen: string;
+  catalogWebTitle: string;
+  catalogWebExplanation: string;
+  catalogWebUnknown: string;
+  catalogWebConfigure: string;
+  catalogWebLoading: string;
+  catalogWebFailed: string;
+  catalogWebContainerOnly: string;
   externalLinkCopy: string;
   externalLinkCopyLabel: string;
   externalLinkCopied: string;

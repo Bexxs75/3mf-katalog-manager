@@ -1601,7 +1601,7 @@ mod tests {
         let name = copy.file_name().unwrap().to_str().unwrap();
         assert!(name.starts_with("Katalog-Sicherung_"));
         assert!(name.ends_with(&format!("_vor-Schema-Migration_3_auf_{target}.db")));
-        let saved = Connection::open(&copy).unwrap();
+        let saved = Connection::open(copy).unwrap();
         let x: i64 = saved.query_row("SELECT x FROM marker", [], |r| r.get(0)).unwrap();
         assert_eq!(x, 7, "the copy must hold the catalog as it was before the migration");
         let _ = std::fs::remove_dir_all(&dir);

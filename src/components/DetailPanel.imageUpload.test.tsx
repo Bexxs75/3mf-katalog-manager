@@ -54,3 +54,22 @@ it.each(['compact', 'comfort'])('offers a copyable source URL in the %s containe
   expect(screen.getByText(sourceUrl)).toBeVisible();
   expect(screen.getByRole('button', { name: `Link kopieren: ${sourceUrl}` })).toBeVisible();
 });
+
+it.each(['compact', 'comfort'])('switches only the container slicer action in the %s panel', density => {
+  localStorage.setItem('3mf-katalog-language', 'de');
+  localStorage.setItem('3mf-katalog-density', density);
+  const noop = vi.fn();
+  const panel = (container: boolean) => <LanguageProvider><RuntimeEnvironmentProvider value={{ container }}><UiDensityProvider>
+    <DetailPanel model={makeModelFile()} allTags={[]} hasSlicer
+      onAddTag={noop} onRemoveTag={noop} onDelete={noop} onTogglePrintStatus={noop}
+      onToggleFavorite={noop} onToggleQueue={noop} onSnapshotCaptured={noop} onUploadImage={noop}
+      onSetSourceUrl={noop} onOpenInSlicer={noop} slicerError={null} />
+  </UiDensityProvider></RuntimeEnvironmentProvider></LanguageProvider>;
+  const { rerender } = render(panel(true));
+  expect(screen.getByRole('button', { name: 'Im Browser öffnen' })).toBeVisible();
+  expect(screen.queryByRole('button', { name: /In Slicer öffnen/ })).not.toBeInTheDocument();
+  rerender(panel(false));
+  expect(screen.queryByRole('button', { name: 'Im Browser öffnen' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /In Slicer öffnen/ }));
+  expect(noop).toHaveBeenCalledTimes(1);
+});

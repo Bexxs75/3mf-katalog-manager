@@ -1,3 +1,4 @@
+import { CatalogWebButton } from './CatalogWebButton';
 import { ExternalLink } from './ExternalLink';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { RevealFileButton } from './RevealFileButton';
@@ -536,6 +537,7 @@ export function ModelDetailPage({
             )}
           </div>
           <RevealFileButton fileId={model.id} />
+          {container && <CatalogWebButton key={model.id} fileId={model.id} />}
           {!container && (<button
             onClick={() => onOpenInSlicer()}
             disabled={slicers.length === 0}

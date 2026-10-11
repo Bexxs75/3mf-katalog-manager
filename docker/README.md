@@ -152,6 +152,19 @@ kann KasmVNC mit einem Skriptfehler stehen bleiben.
 
 ### Download und Slicer
 
+In der Detailansicht der Container-App zeigt **„Im Browser öffnen“** einen Link
+zur ausgewählten Datei mit aufgeklapptem Slicer-Menü. Kopiere ihn in den Browser,
+in dem du die App bedienst; dort kannst du die Datei herunterladen oder in deinem
+lokalen Slicer öffnen. Die App im gestreamten Desktop öffnet selbst keinen Browser-Tab.
+Nach dem ersten Besuch von `/katalog/` kennt die App die Adresse automatisch
+(aus `Host` und `X-Forwarded-Proto`); weitere Besuche aktualisieren sie.
+Bis dahin zeigt der Dialog den Pfad zum Anhängen an die Browser-Adresse.
+Mit `KATALOG_PUBLIC_URL=http://nas.lan:3000` lässt sich die Adresse fest setzen;
+dazu die auskommentierten Zeilen in `.env` und `docker-compose.yml` aktivieren.
+Die Variable hat Vorrang. Erlaubt sind nur `http://` oder `https://` mit Host und
+optionalem Port, ohne Pfad, Query, Fragment oder abschließenden Slash. Ungültige
+Werte werden mit einem Log-Hinweis ignoriert.
+
 Öffne **http://<Host>:3000/katalog/** in einem normalen Browser-Tab neben dem
 Browser-Desktop. Die Begleitseite nutzt dieselbe Anmeldung und zeigt den Katalog
 mit Vorschaubildern, Namenssuche, Typ-/Ordner-/Tag-Filtern, Sortierung und Seiten.
@@ -381,6 +394,18 @@ Note: after a container restart reload the browser page (F5); otherwise KasmVNC 
 stop with a script error.
 
 ### Download and slicer
+
+In the container app's detail view, **“Open in browser”** shows a link to the
+selected file with its slicer menu expanded. Copy it into the browser where you
+use the app to download the file or open it in your local slicer. The app in the
+streamed desktop does not open a browser tab itself.
+After the first visit to `/katalog/`, the app automatically knows the address
+(from `Host` and `X-Forwarded-Proto`); further visits update it.
+Until then, the dialog shows the path to append to your browser address.
+To fix the address, set `KATALOG_PUBLIC_URL=http://nas.lan:3000` by uncommenting
+the lines in both `.env` and `docker-compose.yml`. This variable takes priority.
+Only `http://` or `https://` with a host and optional port are accepted, without
+a path, query, fragment or trailing slash. Invalid values are ignored with a log message.
 
 Open **http://<Host>:3000/katalog/** in a normal browser tab alongside the
 browser desktop. The companion uses the same login and displays thumbnails,

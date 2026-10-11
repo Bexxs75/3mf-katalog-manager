@@ -13,6 +13,8 @@ import secrets
 import sqlite3
 import stat
 import time
+import tempfile
+import threading
 import unicodedata
 from urllib.parse import parse_qs, quote, urlencode, urlsplit
 
@@ -49,6 +51,8 @@ TEXT = {
     'prusa': ('PrusaSlicer: Datei herunterladen und im Slicer öffnen.', 'PrusaSlicer: download the file and open it in the slicer.'),
     'advice': ('Der Slicer muss auf deinem PC installiert und die Adresse vom PC erreichbar sein. Selbstsignierte Zertifikate bei https://…:3001 werden oft abgelehnt: im Heimnetz http://…:3000 oder einen Reverse Proxy mit gültigem Zertifikat verwenden. Unter Linux muss das URL-Schema registriert sein.',
                'The slicer must be installed on your PC and the address must be reachable from that PC. Slicers often reject self-signed certificates at https://…:3001: use http://…:3000 on your home network or a reverse proxy with a valid certificate. On Linux the URL scheme must be registered.'),
+    'all_files': ('Alle Dateien anzeigen', 'Show all files'),
+    'file_missing': ('Diese Datei ist nicht mehr verfügbar.', 'This file is no longer available.'),
     'error': ('Anfrage nicht verfügbar.', 'Request unavailable.'),
 }
 STYLE = '''
@@ -144,6 +148,37 @@ def origin(headers):
     return proto + '://' + host
 
 
+PUBLIC_ORIGIN = Path('/run/3mf/public-origin')
+_origin_lock = threading.Lock()
+
+
+def remember_origin(base):
+    # Serialize comparison and replacement because requests run in parallel.
+    temporary = None
+    try:
+        with _origin_lock:
+            try:
+                with PUBLIC_ORIGIN.open('r') as stream:
+                    if stream.read(300) == base:
+                        return
+            except OSError:
+                pass
+            with tempfile.NamedTemporaryFile(mode='w', dir=PUBLIC_ORIGIN.parent,
+                                             prefix='.public-origin-', delete=False) as stream:
+                temporary = stream.name
+                stream.write(base)
+                stream.flush()
+                os.fchmod(stream.fileno(), 0o644)
+                os.fsync(stream.fileno())
+            os.replace(temporary, PUBLIC_ORIGIN)
+    except (OSError, UnicodeError):
+        pass
+    finally:
+        if temporary is not None:
+            with contextlib.suppress(OSError):
+                os.unlink(temporary)
+
+
 def filename(row):
     name = ''.join(c for c in str(row['name']) if unicodedata.category(c) != 'Cc')
     name = name.replace('/', '_').replace('\\', '_') or 'model'
@@ -217,8 +252,15 @@ class Catalog:
         return stream
 
     def listing(self, query):
+        if 'file' in query:
+            row = self.file(query['file'])
+            with self.open_file(row):
+                pass
         where = ['f.deleted_at IS NULL']
         args = []
+        if 'file' in query:
+            where.append('f.id=?')
+            args.append(int(query['file']))
         if query.get('q'):
             where.append('instr(lower(f.name), lower(?)) > 0')
             args.append(query['q'])
@@ -327,10 +369,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if path == '/katalog/':
             try:
                 base = origin(self.headers)
-                query = {k: v[0] for k, v in parse_qs(url.query, max_num_fields=30).items() if k in ('q', 'type', 'folder', 'tag', 'sort', 'page')}
+                query = {k: v[0] for k, v in parse_qs(url.query, max_num_fields=30, keep_blank_values=True).items() if k in ('q', 'type', 'folder', 'tag', 'sort', 'page', 'file')}
             except ValueError:
                 self.send_error(400)
                 return
+            remember_origin(base)
+            if 'file' in query:
+                values = parse_qs(url.query, keep_blank_values=True)['file']
+                query = {'file': values[0] if len(values) == 1 else ''}
             self.page(base, query)
             return
         signed = path.startswith('/katalog/signed/')
@@ -386,22 +432,29 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return TEXT[key][lang == 'en']
         parts = [f'<!doctype html><html lang="{lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">',
                  f'<title>{t("title")}</title><style>{STYLE}</style></head><body><main><h1>{t("title")}</h1>']
+        status = 200
+        single = 'file' in query
+        if single:
+            parts.append(f'<a href="/katalog/">{t("all_files")}</a>')
         try:
             rows, more, page, folders, tags, tagged = self.server.catalog.listing(query)
         except (sqlite3.Error, OSError, ValueError):
-            parts.append(f'<p role="status">{t("missing")}</p>')
+            status = 404 if single else 200
+            parts.append(f'<p role="status">{t("file_missing" if single else "missing")}</p>')
         else:
-            parts.append(f'<form method="get" action="/katalog/"><label>{t("search")}<input name="q" value="{escape(query.get("q", ""))}" maxlength="200"></label>')
-            choices = [('type', [(v, v.upper()) for v in ('3mf', 'stl', 'stp', 'obj')]), ('folder', folders), ('tag', tags), ('sort', [(v, t(v)) for v in ('name', 'newest', 'size')])]
-            for key, options in choices:
-                parts.append(f'<label>{t(key)}<select name="{key}">')
-                if key != 'sort':
-                    parts.append(f'<option value="">{t("all")}</option>')
-                for value, label in options:
-                    selected = ' selected' if str(value) == query.get(key, '') else ''
-                    parts.append(f'<option value="{escape(value)}"{selected}>{escape(label)}</option>')
-                parts.append('</select></label>')
-            parts.append(f'<button type="submit">{t("apply")}</button></form><ul class="files">')
+            if not single:
+                parts.append(f'<form method="get" action="/katalog/"><label>{t("search")}<input name="q" value="{escape(query.get("q", ""))}" maxlength="200"></label>')
+                choices = [('type', [(v, v.upper()) for v in ('3mf', 'stl', 'stp', 'obj')]), ('folder', folders), ('tag', tags), ('sort', [(v, t(v)) for v in ('name', 'newest', 'size')])]
+                for key, options in choices:
+                    parts.append(f'<label>{t(key)}<select name="{key}">')
+                    if key != 'sort':
+                        parts.append(f'<option value="">{t("all")}</option>')
+                    for value, label in options:
+                        selected = ' selected' if str(value) == query.get(key, '') else ''
+                        parts.append(f'<option value="{escape(value)}"{selected}>{escape(label)}</option>')
+                    parts.append('</select></label>')
+                parts.append(f'<button type="submit">{t("apply")}</button></form>')
+            parts.append('<ul class="files">')
             for row in rows:
                 try:
                     with self.server.catalog.open_file(row):
@@ -427,7 +480,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             mac = f' data-mac="{escape("bambustudioopen://" + encoded)}"' if label == 'Bambu Studio' else ''
                             links.append(f'<li><a href="{escape(prefix + encoded)}"{mac}>{label}</a></li>')
                     if links:
-                        parts.append(f'<details><summary>{t("slicer")}</summary><ul>{"".join(links)}</ul></details>')
+                        parts.append(f'<details{" open" if single else ""}><summary>{t("slicer")}</summary><ul>{"".join(links)}</ul></details>')
                     parts.append('</div>')
                 else:
                     parts.append(f'<p>{t("unavailable")}</p>')
@@ -435,14 +488,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
             parts.append('</ul>')
             if not rows:
                 parts.append(f'<p>{t("empty")}</p>')
-            parts.append(f'<nav aria-label="{t("page")}"><span>{t("page")} {page}</span>')
-            for number, label, show in [(page - 1, 'previous', page > 1), (page + 1, 'next', more)]:
-                if show:
-                    target = '/katalog/?' + urlencode({**query, 'page': number})
-                    parts.append(f'<a href="{escape(target)}">{t(label)}</a>')
-            parts.append('</nav>')
+            if not single:
+                parts.append(f'<nav aria-label="{t("page")}"><span>{t("page")} {page}</span>')
+                for number, label, show in [(page - 1, 'previous', page > 1), (page + 1, 'next', more)]:
+                    if show:
+                        target = '/katalog/?' + urlencode({**query, 'page': number})
+                        parts.append(f'<a href="{escape(target)}">{t(label)}</a>')
+                parts.append('</nav>')
         parts.append(f'<p>{t("expiry")}</p><p>{t("prusa")}</p><details><summary>{t("help")}</summary><p>{t("advice")}</p></details></main><script>{SCRIPT}</script></body></html>')
-        self.respond(200, ''.join(parts).encode(), 'text/html; charset=utf-8')
+        self.respond(status, ''.join(parts).encode(), 'text/html; charset=utf-8')
 
 
 def main():

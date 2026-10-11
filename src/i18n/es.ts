@@ -1,6 +1,14 @@
 import type { Translations } from './types';
 
 export const es: Translations = {
+  catalogWebOpen: "Abrir en el navegador",
+  catalogWebTitle: "Descarga y laminador en el navegador",
+  catalogWebExplanation: "Abre este enlace en el navegador donde utilizas esta aplicación. Allí puedes descargar el archivo o abrirlo en tu laminador.",
+  catalogWebUnknown: "Añade esta ruta a la dirección donde abriste esta aplicación en el navegador (p. ej., http://tu-servidor:3000).",
+  catalogWebConfigure: "Configura KATALOG_PUBLIC_URL para mostrar el enlace completo.",
+  catalogWebLoading: "Cargando enlace …",
+  catalogWebFailed: "No se pudo cargar el enlace. Inténtalo de nuevo.",
+  catalogWebContainerOnly: "Esta función solo está disponible en el contenedor.",
   externalLinkCopy: "Copiar enlace",
   externalLinkCopyLabel: "Copiar enlace: {target}",
   externalLinkCopied: "Enlace copiado",
