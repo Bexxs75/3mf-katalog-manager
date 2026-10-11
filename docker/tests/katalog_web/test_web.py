@@ -313,7 +313,8 @@ class WebTests(unittest.TestCase):
         self.assertIn('Folder &lt;one&gt;', html)
         self.assertIn('Tag &quot;one&quot;', html)
         self.assertIn('https%3A%2F%2Fcatalog.example%3A3000%2Fkatalog%2Fsigned%2F', html)
-        self.assertEqual(html.count('>Bambu Studio</a>'), 1)
+        # One 3MF and one STL file: Bambu Studio is offered for both, but never for STEP.
+        self.assertEqual(html.count('>Bambu Studio</a>'), 2)
         self.assertEqual(html.count('>SuperSlicer</a>'), 2)
         self.assertNotIn('>PrusaSlicer</a>', html)
         self.assertIn('bambustudioopen://', html)

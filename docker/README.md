@@ -197,7 +197,7 @@ nach dem Entfernen gibt es außerdem „Rückgängig“.
 | Slicer | Dateitypen |
 |---|---|
 | OrcaSlicer | 3MF, STL, OBJ, STP/STEP |
-| Bambu Studio | nur 3MF (eigener Link unter macOS) |
+| Bambu Studio | 3MF und STL (eigener Link unter macOS); mit 3MF bestätigt, STL über den Link noch nicht von uns bestätigt |
 | Creality Print | 3MF, STL, OBJ, STP/STEP |
 | ElegooSlicer | 3MF, STL, OBJ, STP/STEP |
 | Cura | 3MF, STL, OBJ |
@@ -466,7 +466,7 @@ also “Undo”.
 | Slicer | File types |
 |---|---|
 | OrcaSlicer | 3MF, STL, OBJ, STP/STEP |
-| Bambu Studio | 3MF only (special link on macOS) |
+| Bambu Studio | 3MF and STL (special link on macOS); confirmed with 3MF, STL through the link not yet confirmed by us |
 | Creality Print | 3MF, STL, OBJ, STP/STEP |
 | ElegooSlicer | 3MF, STL, OBJ, STP/STEP |
 | Cura | 3MF, STL, OBJ |

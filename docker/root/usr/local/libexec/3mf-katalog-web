@@ -43,7 +43,8 @@ MIME = {'3mf': 'model/3mf', 'stl': 'model/stl', 'obj': 'model/obj', 'stp': 'mode
 ALL_TYPES = {'3mf', 'stl', 'obj', 'stp', 'step'}
 SLICERS = (
     ('OrcaSlicer', 'orcaslicer://open?file=', ALL_TYPES),
-    ('Bambu Studio', 'bambustudio://open?file=', {'3mf'}),
+    # STL is offered on request of a tester; only 3MF is confirmed to open through this link.
+    ('Bambu Studio', 'bambustudio://open?file=', {'3mf', 'stl'}),
     ('Creality Print', 'crealityprintlink://open?file=', ALL_TYPES),
     ('ElegooSlicer', 'elegooslicer://open?file=', ALL_TYPES),
     ('Cura', 'cura://open?file=', {'3mf', 'stl', 'obj'}),
