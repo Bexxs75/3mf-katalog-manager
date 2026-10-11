@@ -29,7 +29,10 @@ function DownloadSlicerContent() {
       <p>{t('downloadIntro')}</p>
       <div className="space-y-2 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4">
         {failed ? <p role="alert">{t('catalogWebFailed')}</p> : link ? <>
-          {link.url ? <ExternalLink url={link.url} label={t('railDownloads')} /> : <>
+          {link.url ? <>
+            <ExternalLink url={link.url} label={t('railDownloads')} />
+            <p className="mt-2">{t('catalogWebPasteHint')}</p>
+          </> : <>
             <p className="break-all" style={{ userSelect: 'text' }}>{link.path}</p>
             <p>{t('catalogWebUnknown')}</p>
             <p>{t('catalogWebConfigure')}</p>

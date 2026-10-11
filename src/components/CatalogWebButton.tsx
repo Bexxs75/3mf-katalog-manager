@@ -21,7 +21,7 @@ function CatalogWebDialog({ fileId, onClose, returnFocus }: {
   return <CatalogActionDialog title={t('catalogWebTitle')} onClose={onClose} returnFocus={returnFocus}>
     <p>{t('catalogWebExplanation')}</p>
     {failed ? <p role="alert">{t('catalogWebFailed')}</p> : link ? <>
-      {link.url ? <div><ExternalLink url={link.url} label={t('catalogWebTitle')} /></div> : <>
+      {link.url ? <><div><ExternalLink url={link.url} label={t('catalogWebTitle')} /></div><p>{t('catalogWebPasteHint')}</p></> : <>
         <p className="break-all" style={{ userSelect: 'text' }}>{link.path}</p>
         <p>{t('catalogWebUnknown')}</p>
         <p>{t('catalogWebConfigure')}</p>

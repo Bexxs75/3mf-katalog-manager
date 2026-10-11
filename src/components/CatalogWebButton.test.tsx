@@ -45,6 +45,7 @@ it('shows only a path and configuration instructions when origin is unknown', as
   expect(screen.getByText(/http:\/\/dein-server:3000/)).toBeVisible();
   expect(screen.getByText(/KATALOG_PUBLIC_URL/)).toBeVisible();
   expect(screen.queryByRole('button', { name: /Link kopieren/ })).not.toBeInTheDocument();
+  expect(screen.queryByText(/Strg\+V/)).not.toBeInTheDocument();
 });
 it('handles backend failure', async () => {
   vi.mocked(invoke).mockRejectedValue(new Error('unavailable'));
@@ -59,4 +60,8 @@ it.each(['de', 'en', 'es', 'fr'])('has localized dialog text in %s', async langu
   show(); fireEvent.click(screen.getByRole('button'));
   expect(await screen.findByText(url)).toBeVisible();
   expect(screen.getByRole('dialog')).not.toHaveTextContent('catalogWeb');
+});
+it('tells the user to paste the copied link into a browser tab only when a full link exists', async () => {
+  show(); fireEvent.click(screen.getByRole('button', { name: /Im Browser öffnen/ }));
+  expect(await screen.findByText(/Strg\+V/)).toBeVisible();
 });

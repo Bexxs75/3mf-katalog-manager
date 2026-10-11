@@ -18,6 +18,7 @@ export const de: Translations = {
   catalogWebExplanation: "Öffne diesen Link in dem Browser, in dem du diese App bedienst. Dort kannst du die Datei herunterladen oder in deinem Slicer öffnen.",
   catalogWebUnknown: "Hänge diesen Pfad an die Adresse an, unter der du diese App im Browser geöffnet hast (z. B. http://dein-server:3000).",
   catalogWebConfigure: "Setze KATALOG_PUBLIC_URL, damit der volle Link erscheint.",
+  catalogWebPasteHint: "Nach dem Kopieren: In einem neuen Browser-Tab auf deinem PC mit Strg+V einfügen und Enter drücken.",
   catalogWebLoading: "Link wird geladen …",
   catalogWebFailed: "Der Link konnte nicht geladen werden. Bitte versuche es erneut.",
   catalogWebContainerOnly: "Diese Funktion ist nur im Container verfügbar.",
