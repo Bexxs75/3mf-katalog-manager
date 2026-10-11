@@ -201,7 +201,7 @@ export interface Translations {
   impImported: string;
   impDuplicate: string;
   impSkipped: string;
-  impNotPlaced: string;
+  impOfWhichNotPlaced: string;
   impInFlight: string;
   impWaitOne: string;
   impWaitMany: PluralForms;

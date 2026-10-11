@@ -26,3 +26,9 @@ describe('count texts', () => {
     }
   });
 });
+
+describe('impOfWhichNotPlaced', () => {
+  it.each(Object.keys(dictionaries) as Language[])('is defined in %s', language => {
+    expect(dictionaries[language].impOfWhichNotPlaced.trim().length).toBeGreaterThan(0);
+  });
+});

@@ -44,6 +44,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- The import banner counted only models that had also been moved to the target folder, so it could say “0 models imported” although they were in the catalog. Models imported but not moved are now counted as imported and shown as “of which not placed”.
 - Large 3MF projects (model files up to 2 GiB unpacked, such as high-resolution Bambu Studio projects) can now be imported: model XML is read without loading the whole text into memory. Models above 3 million triangles show the translated size-limit explanation instead of opening the 3D preview.
 
 - Size tags for new multi-plate imports use the largest individual plate; displayed dimensions stay unchanged.
@@ -590,6 +591,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Behoben
 
+- Das Import-Banner zählte nur Modelle, die auch in den Zielordner verschoben wurden, und konnte „0 Modelle importiert“ melden, obwohl sie im Katalog waren. Importierte, aber nicht verschobene Modelle zählen jetzt als importiert und erscheinen als „davon nicht abgelegt“.
 - Größen-Tags neuer Mehrplatten-Importe richten sich nach der größten einzelnen Platte; angezeigte Maße bleiben unverändert.
 - Stabile Einstellungs-Bildlaufleisten und anfängliche Rastergröße; zuverlässiges Ziehen von Vorschaubildern, kein Durchscheinen des vorigen Modells hinter Fehlerkarten und begrenzte Umbenennen-/Detailbreiten.
 
