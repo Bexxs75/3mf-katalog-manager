@@ -740,7 +740,11 @@ class WebTests(unittest.TestCase):
             self.assertIn(f'lang="{code}" hreflang="{code}" title="{name}" aria-label="{name}"', menu)
         self.assertEqual(menu.count('aria-current="true"'), 1)
         self.assertIn('href="/katalog/?q=a&amp;page=2&amp;lang=es" lang="es"', menu)
-        self.assertIn('aria-current="true">FR<', menu)
+        # The current language is marked on the French link, and every link shows a decorative flag.
+        self.assertRegex(menu, r'lang="fr" hreflang="fr" title="Français" aria-label="Français" aria-current="true"><svg class="flag"')
+        self.assertEqual(menu.count('<svg class="flag"'), 4)
+        self.assertEqual(menu.count('aria-hidden="true"'), 4)
+        self.assertNotRegex(menu, r'>(DE|EN|ES|FR)<')
         for lang, label in [('de', 'Sprache'), ('en', 'Language'), ('es', 'Idioma')]:
             self.assertIn(f'<nav class="langs" aria-label="{label}">', self.request(headers={'Accept-Language': lang})[2].decode())
         # Without an explicit choice the menu links still set one; the single view keeps its file.

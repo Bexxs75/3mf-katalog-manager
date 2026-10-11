@@ -53,6 +53,16 @@ SLICERS = (
 LANGS = ('de', 'en', 'es', 'fr')
 # Languages with their own page; the name is shown untranslated so every visitor can find theirs.
 LANG_NAMES = {'de': 'Deutsch', 'en': 'English', 'es': 'Español', 'fr': 'Français'}
+# Drawn here instead of flag emoji: Windows renders those as plain letter pairs.
+_FLAG = '<svg class="flag" viewBox="0 0 24 16" width="24" height="16" aria-hidden="true" focusable="false">%s</svg>'
+FLAGS = {
+    'de': _FLAG % '<rect width="24" height="5.34" fill="#000"/><rect y="5.33" width="24" height="5.34" fill="#d00"/><rect y="10.66" width="24" height="5.34" fill="#ffce00"/>',
+    'fr': _FLAG % '<rect width="8" height="16" fill="#0055a4"/><rect x="8" width="8" height="16" fill="#fff"/><rect x="16" width="8" height="16" fill="#ef4135"/>',
+    'es': _FLAG % '<rect width="24" height="16" fill="#aa151b"/><rect y="4" width="24" height="8" fill="#f1bf00"/>',
+    'en': _FLAG % ('<rect width="24" height="16" fill="#012169"/><path d="M0 0 24 16M24 0 0 16" stroke="#fff" stroke-width="3.2"/>'
+                   '<path d="M0 0 24 16M24 0 0 16" stroke="#c8102e" stroke-width="1.1"/><path d="M12 0V16M0 8H24" stroke="#fff" stroke-width="5.4"/>'
+                   '<path d="M12 0V16M0 8H24" stroke="#c8102e" stroke-width="3.2"/>'),
+}
 # One tuple per key, in LANGS order (de, en, es, fr).
 TEXT = {
     'title': ('Download und Slicer', 'Download and slicer', 'Descargas y slicer', 'Téléchargement et slicer'),
@@ -184,7 +194,11 @@ a {color:var(--accent);text-underline-offset:2px}
 .bar-end {display:flex;align-items:center;flex-wrap:wrap;gap:.25rem .9rem;min-width:0}
 .ext,.langs {display:flex;flex-wrap:wrap;gap:.1rem .9rem;margin:0}
 .langs {gap:.1rem .6rem}
-.bar .langs a[aria-current] {color:var(--ink);font-weight:700;text-decoration:none}
+.langs a {display:inline-flex;align-items:center;padding:3px;border-radius:5px;text-decoration:none;line-height:0}
+.langs .flag {display:block;width:24px;height:16px;border-radius:2px;box-shadow:0 0 0 1px var(--line-strong);opacity:.75}
+.langs a:hover .flag {opacity:1}
+.bar .langs a[aria-current] {box-shadow:0 0 0 2px var(--accent)}
+.langs a[aria-current] .flag {opacity:1}
 .theme {display:inline-flex;align-items:center;justify-content:center;width:32px;padding:0;background:var(--panel);color:var(--ink);border-color:var(--line-strong)}
 .theme:hover {border-color:var(--accent);filter:none}
 .theme svg {width:18px;height:18px;display:none}
@@ -869,7 +883,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                   + ''.join(ICON_THEMES.values()) + '</button>')
         current = ' aria-current="true"'
         menu = ''.join(f'<a href="{escape(switch(code))}" lang="{code}" hreflang="{code}" title="{LANG_NAMES[code]}" '
-                       f'aria-label="{LANG_NAMES[code]}"{current if code == lang else ""}>{code.upper()}</a>' for code in LANGS)
+                       f'aria-label="{LANG_NAMES[code]}"{current if code == lang else ""}>{FLAGS[code]}</a>' for code in LANGS)
         parts.append(f'<div class="bar-end">{toggle}<nav class="langs" aria-label="{escape(t("language"))}">{menu}</nav>'
                      f'<nav class="ext" aria-label="{escape(t("ext_links"))}">{links}</nav></div></header><main>')
         return ''.join(parts)
