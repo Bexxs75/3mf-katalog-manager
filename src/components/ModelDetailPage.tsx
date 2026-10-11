@@ -1,3 +1,4 @@
+import { LicenseEditor } from './LicenseEditor';
 import { CatalogWebButton } from './CatalogWebButton';
 import { ExternalLink } from './ExternalLink';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
@@ -47,6 +48,7 @@ interface Props {
   onToggleQueue: () => void;
   onUploadImage: () => void | Promise<void>;
   onSnapshotCaptured: (base64: string) => void;
+  onSetLicense?: (ids: string[], license: string | null) => Promise<void>;
   onSetSourceUrl: (fileId: string, url: string | null) => void;
   onOpenInSlicer: () => void;
   onRemoveFromCatalog?: () => Promise<void>;
@@ -78,6 +80,7 @@ export function ModelDetailPage({
   onUploadImage,
   onSnapshotCaptured,
   onSetSourceUrl,
+  onSetLicense,
   onOpenInSlicer,
   onRemoveFromCatalog,
   onRescanMetadata,
@@ -242,6 +245,7 @@ export function ModelDetailPage({
 
         <div className="w-[540px] max-w-full flex-none min-w-0 flex flex-col gap-4">
           <div className="rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-5 py-4">
+            <LicenseEditor key={model.id} value={model.license} onSave={onSetLicense ? value => onSetLicense([model.id], value) : undefined} />
             {rows.map((row) => (
               <div
                 key={row.label}

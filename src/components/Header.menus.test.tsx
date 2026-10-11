@@ -5,7 +5,7 @@ import { Header } from './Header';
 
 beforeEach(() => localStorage.setItem('3mf-katalog-language', 'de'));
 const props = { view: 'grid' as const, sort: 'name' as const, sortDirection: 'asc' as const, onSortDirectionChange: vi.fn(), mainView: 'catalog' as const,
-  count: 2, onViewChange: vi.fn(), onSortChange: vi.fn(), onImportFiles: vi.fn(), onImportFolder: vi.fn(), allFoldersCollapsed: false, onToggleAllFolders: vi.fn() };
+  count: 2, onViewChange: vi.fn(), onSortChange: vi.fn(), onImportFiles: vi.fn(), onImportFolder: vi.fn(), onImportFolderContents: vi.fn(), allFoldersCollapsed: false, onToggleAllFolders: vi.fn() };
 function setup() {
   return render(<LanguageProvider><Header {...props} /></LanguageProvider>);
 }
@@ -101,22 +101,37 @@ it.each(['sort', 'import'])('supports keyboard opening, cyclic arrows, boundarie
   fireEvent.keyDown(items[0], { key: 'Tab' }); expect(screen.queryByRole('menu')).toBeNull();
 });
 
-it.each(['de', 'en', 'es', 'fr'])('reserves both import hints in one grid cell in %s', language => {
+it.each(['de', 'en', 'es', 'fr'])('reserves all import hints in one grid cell in %s', language => {
   localStorage.setItem('3mf-katalog-language', language);
   const result = setup();
   fireEvent.click(result.container.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!);
   const hints = result.container.querySelector('[data-import-hints]')!;
   expect(hints).toHaveClass('grid');
-  expect(hints.children).toHaveLength(2);
+  expect(hints.children).toHaveLength(3);
   for (const child of hints.children) expect(child).toHaveClass('col-start-1', 'row-start-1');
   expect(hints.children[1]).toHaveClass('invisible');
   fireEvent.mouseEnter(screen.getAllByRole('menuitem')[1]);
   expect(hints.children[0]).toHaveClass('invisible');
   expect(hints.children[1]).not.toHaveClass('invisible');
-  expect(hints.children).toHaveLength(2);
+  fireEvent.mouseEnter(screen.getAllByRole('menuitem')[2]);
+  expect(hints.children[1]).toHaveClass('invisible');
+  expect(hints.children[2]).not.toHaveClass('invisible');
+  expect(hints.children).toHaveLength(3);
 });
 it('does not announce zero files during initial loading', () => {
   render(<LanguageProvider><Header {...props} count={0} initialLoading /></LanguageProvider>);
   expect(screen.getByText('Katalog wird geladen …')).toBeVisible();
   expect(screen.queryByText('0 Dateien')).not.toBeInTheDocument();
+});
+
+it('offers folder contents with explanation and keyboard activation', () => {
+  setup();
+  fireEvent.keyDown(importButton(), { key: 'ArrowDown' });
+  const item = screen.getByRole('menuitem', { name: 'Ordnerinhalt…' });
+  fireEvent.keyDown(screen.getByRole('menu'), { key: 'End' });
+  expect(item).toHaveFocus();
+  expect(item).toHaveAttribute('title', expect.stringContaining('auch aus Unterordnern'));
+  fireEvent.click(item);
+  expect(props.onImportFolderContents).toHaveBeenCalledOnce();
+  expect(screen.queryByRole('menu')).not.toBeInTheDocument();
 });

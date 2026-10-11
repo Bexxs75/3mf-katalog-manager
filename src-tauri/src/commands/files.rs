@@ -11,6 +11,7 @@ const MAX_RENDER_SNAPSHOT_BASE64_BYTES: usize = MAX_CUSTOM_IMAGE_BYTES / 3 * 4 +
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileSummaryDto {
+    pub license: Option<String>,
     pub materials: Vec<MaterialDto>,
     pub estimated_weight_g: Option<f64>,
     pub weight_source: String,
@@ -89,6 +90,7 @@ fn summary_to_dto(s: db::FileSummary) -> FileSummaryDto {
         None => (estimate_weight_g(s.volume_cm3, s.materials.first().map(|m| m.name.as_str())), "estimated"),
     };
     FileSummaryDto {
+        license: s.license,
         estimated_weight_g,
         weight_source: weight_source.into(),
         materials: s.materials.into_iter().map(|m| MaterialDto { name: m.name, display_color: m.display_color }).collect(),
@@ -617,6 +619,11 @@ pub fn set_source_url(
     let conn = lock_db(&state)?;
     db::set_source_url(&conn, id, url.as_deref()).map_err(|e| e.to_string().into())
 }
+pub(super) fn is_ignored_import_path(path: &Path) -> bool {
+    path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
+        n.starts_with('.') || n.starts_with("~$") || n.to_ascii_lowercase().ends_with(".part")
+    })
+}
 pub(crate) fn is_supported_extension(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
@@ -905,6 +912,7 @@ fn read_model_file_inner(path: &Path, display_name: Option<&str>) -> Result<NewF
         render_snapshot_png: None,
         custom_image_png: None,
         source_url: None,
+        license: None,
         queue_position: None,
         favorite: false,
         plate_count,
@@ -1852,6 +1860,7 @@ mod tests {
     #[test]
     fn summary_serialization_has_presence_flags_and_no_image_fields() {
         let summary = FileSummaryDto {
+            license: None,
             materials: Vec::new(), estimated_weight_g: None, weight_source: "estimated".into(),
             id: "1".into(), name: "test".into(), path: "/tmp/test.stl".into(), file_type: "stl".into(),
             folder_id: String::new(), file_size_bytes: 10, dimensions_mm: None, volume_cm3: None,
@@ -2636,6 +2645,7 @@ mod tests {
             render_snapshot_png: None,
             custom_image_png: None,
             source_url: None,
+            license: None,
             queue_position: None,
             favorite: false,
             plate_count: None,
@@ -2673,6 +2683,7 @@ mod tests {
             render_snapshot_png: None,
             custom_image_png: None,
             source_url: None,
+            license: None,
             queue_position: None,
             favorite: false,
             plate_count: None,
@@ -3476,4 +3487,11 @@ fn summary_keeps_card_values_after_rename_move_restore_and_metadata_reload() {
     let dto = summary_to_dto(db::list_file_summaries(&conn).unwrap().remove(0));
     assert_eq!(dto.weight_source, "estimated");
     assert_eq!(dto.estimated_weight_g, estimate_weight_g(Some(10.0), Some("Kirschrot")));
+}
+
+#[tauri::command]
+pub fn set_license(state: State<AppState>, file_ids: Vec<String>, license: Option<String>) -> CmdResult<()> {
+    let ids = file_ids.iter().map(|id| id.parse::<i64>().map_err(|_| "invalid file id".to_string())).collect::<Result<Vec<_>, _>>()?;
+    let mut conn = lock_db(&state)?;
+    db::licenses::set_license(&mut conn, &ids, license.as_deref()).map_err(|e| e.to_string().into())
 }

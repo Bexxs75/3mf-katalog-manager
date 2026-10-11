@@ -28,7 +28,7 @@ export function ImportProgressRow({ progress: p, meta, result, queued, onCancel,
   const counts = result ? countsWithArchiveModels(result.counts, result.groups) : p.counts;
   // Models imported but not moved to the target folder are still in the catalog.
   const importedTotal = counts.imported + counts.importedNotPlaced;
-  const source = t(meta.source === 'files' ? 'impFiles' : meta.source === 'dropped' ? 'impDropped' : meta.source === 'archive' ? 'impArchive' : 'impFolder');
+  const source = t(meta.source === 'folderContents' ? 'impFolderContents' : meta.source === 'files' ? 'impFiles' : meta.source === 'dropped' ? 'impDropped' : meta.source === 'archive' ? 'impArchive' : 'impFolder');
   const target = meta.targetName ? t('impTarget').replace('{name}', meta.targetName) : t('impStay');
   const status = t(({ queued: 'impQueued', scanning: 'impScanning', importing: 'impImporting', placing: 'impPlacing', cancelling: 'impCancelling', finished: 'impFinished', cancelled: 'impCancelled', failed: 'impFailed' } as const)[state]);
   const title = state === 'scanning' ? t('impSearching') : state === 'placing' ? t('impMoving').replace('{name}', meta.targetName ?? '') : state === 'finished' ? formatCount(t('impModelsImported'), importedTotal) : state === 'cancelled' ? formatCount(t(result?.scanComplete === false ? 'impSearchStopped' : 'impStopped'), result?.scanComplete === false ? counts.known : counts.known - (result?.groups.skipped.filter(s => s.reason === 'notStarted').length ?? 0)) : state === 'failed' ? result?.jobError?.message : target;

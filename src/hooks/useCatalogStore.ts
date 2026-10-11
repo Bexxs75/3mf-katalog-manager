@@ -42,6 +42,7 @@ function summaryToModelFile(s: ModelFileSummary): ModelFile {
     hasThumbnail: s.hasThumbnail,
     hasRenderSnapshot: s.hasRenderSnapshot,
     sourceUrl: null,
+    license: s.license,
     queuePosition: s.queuePosition,
     favorite: s.favorite,
     deletedAt: null,
@@ -59,6 +60,7 @@ const MUTATION_TRACKED_FIELDS: { prefix: string; field: keyof ModelFile }[] = [
   { prefix: 'queue', field: 'queuePosition' },
   { prefix: 'renderSnapshot', field: 'renderSnapshotImage' },
   { prefix: 'sourceUrl', field: 'sourceUrl' },
+  { prefix: 'license', field: 'license' },
 ];
 
 interface CatalogStoreOptions {
@@ -507,6 +509,47 @@ export function useCatalogStore({ preselectFirst = true }: CatalogStoreOptions =
       });
   }, []);
 
+  const setModelLicenses = useCallback(async (ids: string[], license: string | null) => {
+    const selected = new Set(ids);
+    const startedEpochs = new Map<string, number>();
+    let overlapped = false;
+    selected.forEach(id => {
+      const key = `license:${id}`;
+      beginMutation(key);
+      startedEpochs.set(id, mutationEpochs[key]);
+      if (pendingMutationCounts[key] > 1) overlapped = true;
+    });
+    try {
+      await filesApi.setLicense([...selected], license);
+      setModels(prev => prev.map(model => selected.has(model.id) ? { ...model, license } : model));
+    } finally {
+      const settled = new Map<string, number>();
+      selected.forEach(id => {
+        if (mutationEpochs[`license:${id}`] !== startedEpochs.get(id)) overlapped = true;
+      });
+      selected.forEach(id => {
+        const key = `license:${id}`;
+        if (--pendingMutationCounts[key] === 0) {
+          delete pendingMutationCounts[key];
+          settled.set(id, mutationEpochs[key]);
+        }
+      });
+      // One slim read reconciles overlapping writes without fetching every selected model's images.
+      if (overlapped && settled.size) {
+        try {
+          const summaries = await filesApi.listFileSummaries();
+          const licenses = new Map(summaries.filter(model => settled.has(model.id)
+            && pendingMutationCounts[`license:${model.id}`] === undefined
+            && mutationEpochs[`license:${model.id}`] === settled.get(model.id))
+            .map(model => [model.id, model.license]));
+          setModels(prev => prev.map(model => licenses.has(model.id) ? { ...model, license: licenses.get(model.id)! } : model));
+        } catch (error) {
+          console.error('[license] reloading failed:', error);
+        }
+      }
+    }
+  }, []);
+
   const setModelSourceUrl = useCallback((id: string, url: string | null) => {
     setModels((prev) => prev.map((m) => (m.id === id ? { ...m, sourceUrl: url } : m)));
     const key = `sourceUrl:${id}`;
@@ -552,7 +595,7 @@ export function useCatalogStore({ preselectFirst = true }: CatalogStoreOptions =
     addTag, removeTag, renameFile, deleteModel,
     togglePrintStatus, toggleFavorite,
     addToQueue, removeFromQueue, reorderQueue,
-    uploadCustomImage, captureRenderSnapshot, setModelSourceUrl,
+    uploadCustomImage, captureRenderSnapshot, setModelSourceUrl, setModelLicenses,
     rescanMetadata,
     applyLocalDeletion, refetchAfterPartialDelete,
   };

@@ -3,8 +3,11 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import { useCollections } from './useCollections';
 
+const language = vi.hoisted(() => ({ current: 'de' }));
+vi.mock('../i18n/LanguageContext', () => ({ useLanguage: () => ({ language: language.current }) }));
+
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
-beforeEach(() => { vi.mocked(invoke).mockReset(); });
+beforeEach(() => { vi.mocked(invoke).mockReset(); language.current = 'de'; });
 
 describe('useCollections', () => {
   it('loads collections on mount', async () => {
@@ -12,6 +15,45 @@ describe('useCollections', () => {
     const { result } = renderHook(() => useCollections());
     await waitFor(() => expect(result.current.collections).toHaveLength(1));
     expect(invoke).toHaveBeenCalledWith('list_collections');
+  });
+
+  it('sorts names naturally with accents and case ignored without changing the API result', async () => {
+    const names = ['Zebra', 'Kiste 10', 'Öfen', 'banana', 'Kiste 2', 'äpfel', 'Apfel'];
+    const records = names.map((name, index) => ({ id: String(index), name, modelCount: 0 }));
+    vi.mocked(invoke).mockResolvedValue(records);
+    const { result } = renderHook(() => useCollections());
+    await waitFor(() => expect(result.current.collections.map(collection => collection.name)).toEqual([
+      'äpfel', 'Apfel', 'banana', 'Kiste 2', 'Kiste 10', 'Öfen', 'Zebra',
+    ]));
+    expect(records.map(collection => collection.name)).toEqual(names);
+  });
+
+  it('reorders the existing names when the language changes without refetching', async () => {
+    vi.mocked(invoke).mockResolvedValue([
+      { id: '1', name: 'nube', modelCount: 0 },
+      { id: '2', name: 'ñandú', modelCount: 0 },
+    ]);
+    const { result, rerender } = renderHook(() => useCollections());
+    await waitFor(() => expect(result.current.collections.map(collection => collection.name)).toEqual(['ñandú', 'nube']));
+    language.current = 'es';
+    rerender();
+    expect(result.current.collections.map(collection => collection.name)).toEqual(['nube', 'ñandú']);
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it('inserts a newly created collection at its alphabetical position', async () => {
+    const records = [{ id: '1', name: 'Zebra', modelCount: 0 }];
+    vi.mocked(invoke).mockImplementation(command => {
+      if (command === 'create_collection') {
+        records.push({ id: '2', name: 'Äpfel', modelCount: 0 });
+        return Promise.resolve(undefined);
+      }
+      return Promise.resolve([...records]);
+    });
+    const { result } = renderHook(() => useCollections());
+    await waitFor(() => expect(result.current.collections).toHaveLength(1));
+    await act(async () => result.current.createCollection('Äpfel'));
+    expect(result.current.collections.map(collection => collection.name)).toEqual(['Äpfel', 'Zebra']);
   });
 
   it('setActiveCollection loads that collection\'s files', async () => {

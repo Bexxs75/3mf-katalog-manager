@@ -32,7 +32,7 @@ export function pickFolderPath() {
   return invoke<string | null>('pick_folder_path');
 }
 
-export function startImport(source: 'files' | 'folder', targetFolderId?: string) {
+export function startImport(source: 'files' | 'folder' | 'folderContents', targetFolderId?: string) {
   return invoke<StartedImport>('start_import', { source, targetFolderId });
 }
 export function startDroppedImport(paths: string[]) {

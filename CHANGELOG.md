@@ -11,6 +11,12 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Added
 
+- **Model licenses:** save a Creative Commons preset, personal/commercial license, own design or custom text per model or for a selection. Usage badges and a combined usage filter distinguish commercial permission, private use and unspecified usage. Existing tags stay unchanged.
+
+- **Collections:** all collection lists sort alphabetically in the selected language, including umlauts and natural number ordering; new collections appear in the right place immediately.
+- **Bulk tags:** “Add tag” suggests existing tags, excluding those already assigned to every selected model, with the same keyboard controls as the model details.
+- **Folder contents import:** “Import → Folder contents…” recursively imports supported files into the current target folder without recreating the source folders. Files are moved as with “Files…”, and empty source folders are kept.
+
 - **Sync with disk:** “Refresh” (F5) previews new files, folders and missing files before applying changes. Missing entries are kept by default; optional removal uses the existing trash behavior. Unreachable catalog folders abort the sync without changing the catalog. Empty folders are intentionally excluded; only folders containing new supported files are added. Unreadable files are skipped and reported with their paths while readable files are still imported. With no applicable changes, the dialog only offers “Close”.
 
 - **Printer Manager:** printers get their own area in the left rail. Keep several printers in one place: name, manufacturer and model, nozzle, build volume, material units (Bambu AMS, AMS lite, AMS HT, Creality CFS, Prusa MMU3, Anycubic ACE Pro, spool holder or custom), recent prints and the printer link switch for Klipper/Moonraker.
@@ -561,6 +567,12 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ## [Unreleased]
 
 ### Hinzugefügt
+
+- **Modell-Lizenzen:** Creative-Commons-Preset, private/kommerzielle Lizenz, eigene Konstruktion oder Freitext pro Modell und für eine Mehrfachauswahl speichern. Nutzungs-Badges und ein kombinierbarer Nutzungsfilter unterscheiden kommerziell erlaubte, private und nicht angegebene Nutzung. Bestehende Tags bleiben unverändert.
+
+- **Sammlungen:** Alle Sammlungslisten werden in der gewählten Sprache alphabetisch sortiert, einschließlich Umlauten und natürlicher Zahlenreihenfolge; neue Sammlungen erscheinen sofort an der richtigen Stelle.
+- **Tags bei Mehrfachauswahl:** „Tag hinzufügen“ schlägt vorhandene Tags vor, außer denen, die bereits allen ausgewählten Modellen zugeordnet sind; die Tastatursteuerung entspricht den Modelldetails.
+- **Ordnerinhalt importieren:** „Importieren → Ordnerinhalt…“ übernimmt unterstützte Dateien auch aus Unterordnern in den aktuellen Zielordner, ohne die Quellordner nachzubilden. Dateien werden wie bei „Dateien…“ verschoben; leere Quellordner bleiben erhalten.
 
 - **Festplatten-Abgleich:** „Aktualisieren“ (F5) zeigt neue Dateien, Ordner und fehlende Dateien vor dem Übernehmen. Fehlende Einträge bleiben standardmäßig erhalten; die optionale Entfernung nutzt den bestehenden Papierkorb. Nicht erreichbare Katalog-Ordner brechen den Abgleich ohne Katalogänderung ab. Leere Ordner bleiben bewusst ausgeschlossen; nur Ordner mit neuen unterstützten Dateien werden ergänzt. Einzelne unlesbare Dateien werden übersprungen und mit Pfad gemeldet; lesbare Dateien werden trotzdem importiert. Ohne anwendbare Änderungen bietet der Dialog nur „Schließen“.
 

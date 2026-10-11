@@ -1,3 +1,4 @@
+import { licenseUsage, usageLabels, type LicenseUsage } from '../lib/licenses';
 import { ModelLayoutContext } from '../hooks/ModelLayoutContext';
 import { scrollTileIntoView } from '../hooks/useKeyboardShortcuts';
 import { shouldIgnoreCatalogShortcut } from '../lib/keyboardGuard';
@@ -94,10 +95,11 @@ interface CatalogWorkspaceProps {
   setAddTagMenuOpen: (value: boolean) => void;
   tagDraft: string;
   setTagDraft: (value: string) => void;
-  bulkAddTag: () => void;
+  bulkAddTag: (tag?: string) => void;
   removeTagMenuOpen: boolean;
   setRemoveTagMenuOpen: (value: boolean) => void;
   tagsInSelection: string[];
+  tagsInAllSelection: string[];
   bulkRemoveTag: (tag: string) => void;
   setDetailModelId: (id: string | null) => void;
   addTag: (id: string, tag: string) => void;
@@ -108,6 +110,9 @@ interface CatalogWorkspaceProps {
   addToQueue: (id: string) => void;
   uploadCustomImage: (id: string) => void | Promise<void>;
   captureRenderSnapshot: (id: string, base64: string) => void;
+  setModelLicenses?: (ids: string[], license: string | null) => Promise<void>;
+  usage?: LicenseUsage | null;
+  setUsage?: (usage: LicenseUsage | null) => void;
   setModelSourceUrl: (id: string, url: string | null) => void;
   openInSlicer: (id: string) => void;
   rescanMetadata: (id: string) => void;
@@ -202,6 +207,7 @@ export function CatalogWorkspace({
   removeTagMenuOpen,
   setRemoveTagMenuOpen,
   tagsInSelection,
+  tagsInAllSelection,
   bulkRemoveTag,
   setDetailModelId,
   addTag,
@@ -213,6 +219,9 @@ export function CatalogWorkspace({
   uploadCustomImage,
   captureRenderSnapshot,
   setModelSourceUrl,
+  setModelLicenses,
+  usage = null,
+  setUsage,
   openInSlicer,
   rescanMetadata,
   addModelToCollection,
@@ -303,7 +312,7 @@ export function CatalogWorkspace({
   const t = useT();
   const formatCount = useFormatCount();
   const scrollRef = useCatalogScroll(detailModel !== null, JSON.stringify([
-    view, sort, language, query, activeFolderId, activeTag, activeCollection, collectionsGalleryOpen, toolView,
+    view, sort, language, query, usage, activeFolderId, activeTag, activeCollection, collectionsGalleryOpen, toolView,
   ]), selectedId);
   const refreshKey = `${printerRefreshKey}:${models.map(m => `${m.id}:${m.sliceInfo?.totalWeightG ?? ''}`).join('|')}`;
   const queueFilament = useFilamentCheck(queue.map(m => m.id), refreshKey);
@@ -312,10 +321,17 @@ export function CatalogWorkspace({
   // Counts over the whole catalog (without folder/tag/search) so they stay stable.
   const counts = useMemo(() => computeToolCounts(models, new Date()), [models]);
   const tagHues = useMemo(() => Object.fromEntries(tags.map(tag => [tag.label, tag.colorHue])), [tags]);
-  const displayedModels = activeCollection ? collectionModels : filtered;
+  const displayedModels = useMemo(() => {
+    if (!activeCollection) return filtered;
+    const licenses = new Map(models.map(model => [model.id, model.license]));
+    return collectionModels.map(model => licenses.has(model.id) ? { ...model, license: licenses.get(model.id)! } : model)
+      .filter(model => !usage || licenseUsage(model.license) === usage);
+  }, [activeCollection, collectionModels, filtered, models, usage]);
   const collectionName = collections.find(c => c.id === activeCollection)?.name ?? activeCollection ?? '';
   const folderName = folders.find(f => f.id === activeFolderId)?.name ?? activeFolderId;
   const chips = [
+    ...(usage ? [{kind: 'licenseUsage' as const, value: t(usageLabels[usage]),
+      removeLabel: t('chipRemove').replace('{label}', t(usageLabels[usage])), remove: () => setUsage?.(null)}] : []),
     ...(toolView ? [{kind: 'filterBarView' as const, value: t(TOOL_VIEW_LABEL_KEY[toolView]),
       removeLabel: t('chipRemove').replace('{label}', t(TOOL_VIEW_LABEL_KEY[toolView])), remove: () => setToolView(null)}] : []),
     ...(activeCollection ? [{kind: 'filterBarCollection' as const, value: collectionName,
@@ -328,7 +344,7 @@ export function CatalogWorkspace({
       removeLabel: t('filterBarRemoveSearch').replace('{label}', query), remove: () => setQuery('')}] : []),
   ];
   const clearButtonClass = 'px-2.5 py-1 rounded-[5px] border border-[var(--accent)] text-[var(--accent)] text-[length:var(--font-size-control)] font-semibold hover:bg-[var(--accent-soft)] cursor-pointer';
-  const toolOnly = toolView && !activeCollection && activeFolderId === 'all' && !activeTag && !query;
+  const toolOnly = toolView && !activeCollection && activeFolderId === 'all' && !activeTag && !query && !usage;
   return (
     <div className="relative flex-1 flex min-h-0">
       <Sidebar
@@ -417,9 +433,17 @@ export function CatalogWorkspace({
 
       <main tabIndex={-1} data-catalog-main className="flex-1 min-w-0 flex flex-col min-h-0">
         {importRow}
-        {chips.length > 0 && (
+        {(setUsage || chips.length > 0) && (
           <section aria-label={t('filterBarAria')} className="flex-none flex flex-wrap items-center gap-x-2 gap-y-1.5 px-4 py-2 border-b border-[var(--line)] bg-[var(--bg)]">
             <span className="ui-label text-[var(--ink-3)]">{t('filterBarHeading')}</span>
+            {setUsage && <label className="flex items-center gap-2 text-small text-[var(--ink-2)]">
+              {t('licenseUsage')}
+              <select aria-label={t('licenseUsage')} value={usage ?? ''} onChange={event => setUsage((event.target.value || null) as LicenseUsage | null)}
+                className="max-w-full rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] px-2 py-1">
+                <option value="">{t('licenseUsageAll')}</option>
+                {(['commercial', 'private', 'unknown'] as const).map(value => <option key={value} value={value}>{t(usageLabels[value])}</option>)}
+              </select>
+            </label>}
             {chips.map(chip => (
               <span key={chip.kind} className="inline-flex max-w-full items-center gap-1.5 pl-2 pr-1 py-0.5 rounded-full border border-[var(--line-strong)] bg-[var(--panel)] text-[length:var(--font-size-control)]">
                 <span data-filter-kind className="ui-label text-[var(--ink-3)]">{t(chip.kind)}</span>
@@ -451,11 +475,14 @@ export function CatalogWorkspace({
             onBulkAddToCollection={bulkAddToCollection}
             activeCollection={activeCollection}
             onBulkRemoveFromCollection={bulkRemoveFromCollection}
+            onBulkSetLicense={setModelLicenses ? value => setModelLicenses([...selectedForBulk], value) : undefined}
             onBulkSetPrintStatus={bulkSetPrintStatus}
             onBulkDelete={bulkDelete}
             onBulkRemove={bulkRemove}
             addTagMenuOpen={addTagMenuOpen}
             onAddTagMenuOpenChange={setAddTagMenuOpen}
+            allTags={tags.map(tag => tag.label)}
+            tagsInAllSelection={tagsInAllSelection}
             tagDraft={tagDraft}
             onTagDraftChange={setTagDraft}
             onSubmitBulkAddTag={bulkAddTag}
@@ -504,6 +531,7 @@ export function CatalogWorkspace({
             }
             onUploadImage={() => uploadCustomImage(detailModel.id)}
             onSnapshotCaptured={(base64) => captureRenderSnapshot(detailModel.id, base64)}
+            onSetLicense={setModelLicenses}
             onSetSourceUrl={(fileId, url) => setModelSourceUrl(fileId, url)}
             onOpenInSlicer={() => openInSlicer(detailModel.id)}
             onRemoveFromCatalog={onRemoveModelFromCatalog ? () => onRemoveModelFromCatalog(detailModel.id) : undefined}
@@ -544,7 +572,7 @@ export function CatalogWorkspace({
             ) : view === 'grid' ? (
               <ModelGrid
                 containerRef={containerRef}
-                models={activeCollection ? collectionModels : filtered}
+                models={displayedModels}
                 selectedId={selectedId}
                 onSelect={selectModel}
                 onOpenDetail={setDetailModelId}
@@ -560,7 +588,7 @@ export function CatalogWorkspace({
             ) : view === 'groupedGrid' ? (
               <GroupedModelGrid
                 containerRef={containerRef}
-                models={activeCollection ? collectionModels : filtered}
+                models={displayedModels}
                 folders={folders}
                 selectedId={selectedId}
                 onSelect={selectModel}
@@ -583,7 +611,7 @@ export function CatalogWorkspace({
             ) : (
               <GroupedModelList
                 containerRef={containerRef}
-                models={activeCollection ? collectionModels : filtered}
+                models={displayedModels}
                 folders={folders}
                 selectedId={selectedId}
                 onSelect={selectModel}
@@ -625,6 +653,7 @@ export function CatalogWorkspace({
           }
           onUploadImage={() => selected ? uploadCustomImage(selected.id) : undefined}
           onSnapshotCaptured={(base64) => selected && captureRenderSnapshot(selected.id, base64)}
+          onSetLicense={setModelLicenses}
           onSetSourceUrl={(fileId, url) => setModelSourceUrl(fileId, url)}
           onOpenInSlicer={() => selected && openInSlicer(selected.id)}
           hasSlicer={slicers.length > 0}

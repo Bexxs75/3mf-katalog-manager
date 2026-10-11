@@ -1,3 +1,4 @@
+import { LicenseEditor } from './LicenseEditor';
 import { CatalogWebButton } from './CatalogWebButton';
 import { ExternalLink } from './ExternalLink';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
@@ -42,6 +43,7 @@ interface Props {
   onToggleQueue: () => void;
   onUploadImage: () => void | Promise<void>;
   onSnapshotCaptured: (base64: string) => void;
+  onSetLicense?: (ids: string[], license: string | null) => Promise<void>;
   onSetSourceUrl: (fileId: string, url: string | null) => void;
   onOpenInSlicer: () => void;
   onRemoveFromCatalog?: () => Promise<void>;
@@ -66,6 +68,7 @@ export function DetailPanel({
   onUploadImage,
   onSnapshotCaptured,
   onSetSourceUrl,
+  onSetLicense,
   onOpenInSlicer,
   onRemoveFromCatalog,
   hasSlicer,
@@ -230,6 +233,7 @@ export function DetailPanel({
           <div className="text-compact-meta ui-label text-[var(--ink-3)] pb-2">
             {t('metadataHeading')}
           </div>
+          <LicenseEditor key={model.id} value={model.license} onSave={onSetLicense ? value => onSetLicense([model.id], value) : undefined} />
           {buildMetaRows(model, t, language).filter(row => !model.materials.length || row.label !== t('metaMaterial')).map((row) => (
             <div
               key={row.label}
@@ -445,6 +449,7 @@ export function DetailPanel({
           >
             {t('metadataHeading')}
           </div>
+          <LicenseEditor key={model.id} value={model.license} onSave={onSetLicense ? value => onSetLicense([model.id], value) : undefined} />
           {buildMetaRows(model, t, language).filter(row => !model.materials.length || row.label !== t('metaMaterial')).map((row) => (
             <div
               key={row.label}

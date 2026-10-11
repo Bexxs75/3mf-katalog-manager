@@ -73,3 +73,7 @@ export function setSourceUrl(fileId: string, url: string | null) {
 export function rescanFileMetadata(fileId: string) {
   return invoke<ModelFile>('rescan_file_metadata', { fileId });
 }
+
+export function setLicense(fileIds: string[], license: string | null): Promise<void> {
+  return invoke('set_license', { fileIds, license });
+}

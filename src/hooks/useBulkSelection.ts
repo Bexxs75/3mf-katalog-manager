@@ -99,9 +99,9 @@ export function useBulkSelection({
 
   // Add a tag to all selected models that don't have it: one addTag()
   // per file (selections are small), then one local patch.
-  const bulkAddTagAction = useCallback(() => {
-    const tag = canonicalTag(tagDraft.trim());
-    if (!tag) return Promise.resolve();
+  const bulkAddTagAction = useCallback((value = tagDraft) => {
+    const tag = canonicalTag(value.trim().replace(/^#/, ''));
+    if (!tag || tag.length > 100) return Promise.resolve();
     const ids = selectedForBulk;
     return Promise.all(Array.from(ids).map((id) => filesApi.addTag(id, tag))).then(() => {
       setModels((prev) =>
@@ -138,6 +138,13 @@ export function useBulkSelection({
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [models, selectedForBulk]);
 
+  const tagsInAllSelection = useMemo(() => {
+    const selectedModels = models.filter(model => selectedForBulk.has(model.id));
+    if (selectedModels.length === 0) return [];
+    const assigned = selectedModels.map(model => new Set(model.tags.map(canonicalTag)));
+    return [...assigned[0]].filter(tag => assigned.every(tags => tags.has(tag)));
+  }, [models, selectedForBulk]);
+
   const bulkAddToCollectionAction = useCallback(
     (collectionId: string) =>
       bulkAddToCollection(Array.from(selectedForBulk), collectionId).then(() => clearBulkSelection()),
@@ -157,6 +164,7 @@ export function useBulkSelection({
     tagDraft, setTagDraft,
     removeTagMenuOpen, setRemoveTagMenuOpen,
     tagsInSelection,
+    tagsInAllSelection,
     toggleBulkSelect,
     selectAllVisible,
     clearBulkSelection,

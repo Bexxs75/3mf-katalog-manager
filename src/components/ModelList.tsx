@@ -1,3 +1,5 @@
+import { LicenseBadge } from './LicenseBadge';
+import { modelLicenseAriaLabel } from '../lib/licenses';
 import { useMemo, type RefObject } from 'react';
 import { useModelWindow } from '../hooks/useModelWindow';
 import { DragGrip } from './DragGrip';
@@ -49,6 +51,8 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
         <div
           key={m.id}
           data-model-id={m.id}
+          role="group"
+          aria-label={modelLicenseAriaLabel(m.name, m.license, t)}
           tabIndex={-1}
           onClick={() => onSelect(m.id)}
           onDoubleClick={readOnly ? undefined : () => onOpenDetail(m.id)}
@@ -78,6 +82,7 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
           <span className="flex items-center gap-1.5 min-w-0">
             {onDragFileStart && !readOnly && <DragGrip />}
             <span className="select-none text-[length:var(--font-size-body)] font-medium truncate">{m.name}</span>
+            <LicenseBadge license={m.license} />
           </span>
           <span className="flex gap-1 overflow-hidden">
             {m.tags.map((tag) => (

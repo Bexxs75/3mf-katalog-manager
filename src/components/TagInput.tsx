@@ -5,6 +5,9 @@ import { AutocompleteInput } from './AutocompleteInput';
 
 interface Props {
   allTags: string[];
+  value?: string;
+  onChange?: (value: string) => void;
+  autoFocus?: boolean;
   tags: string[];
   onAddTag: (tag: string) => void;
   inputClassName?: string;
@@ -14,8 +17,10 @@ interface Props {
 }
 
 // Shared tag rules for the compact panel, comfortable panel and detail page.
-export function TagInput({ allTags, tags, onAddTag, inputClassName, inputStyle, onEscape, stripHash = false }: Props) {
-  const [draft, setDraft] = useState('');
+export function TagInput({ allTags, tags, onAddTag, inputClassName, inputStyle, onEscape, stripHash = false, value, onChange, autoFocus }: Props) {
+  const [localDraft, setLocalDraft] = useState('');
+  const draft = value ?? localDraft;
+  const setDraft = onChange ?? setLocalDraft;
   const { language } = useLanguage();
   const t = useT();
   const assigned = new Set(tags.map(canonicalTag));
@@ -25,6 +30,7 @@ export function TagInput({ allTags, tags, onAddTag, inputClassName, inputStyle, 
   ).map(tag => tag.label);
 
   return <AutocompleteInput
+    autoFocus={autoFocus}
     maxLength={100}
     value={draft}
     onChange={setDraft}

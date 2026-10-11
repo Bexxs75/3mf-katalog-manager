@@ -283,6 +283,7 @@ pub fn run() {
             commands::upload_custom_image,
             commands::set_render_snapshot,
             commands::set_source_url,
+            commands::set_license,
             commands::rescan_file_metadata,
             commands::export_catalog,
             commands::import_catalog,

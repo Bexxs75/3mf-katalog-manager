@@ -185,7 +185,7 @@ fn read_catalog_archive<R: std::io::Read + std::io::Seek>(reader: R) -> CmdResul
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
     ("files", &[
         "id", "name", "path", "file_type", "folder_id", "file_size_bytes",
-        "imported_at", "deleted_at", "trash_path",
+        "imported_at", "deleted_at", "trash_path", "license",
     ]),
     ("folders", &["id", "name", "parent_id", "path"]),
     ("tags", &["id", "name", "color_hue"]),
@@ -284,6 +284,7 @@ const COLUMN_TYPES: &[(&str, &str, ColType, bool)] = &[
     ("files", "render_snapshot_png", ColType::Blob, true),
     ("files", "custom_image_png", ColType::Blob, true),
     ("files", "source_url", ColType::Text, true),
+    ("files", "license", ColType::Text, true),
     ("files", "queue_position", ColType::Integer, true),
     ("files", "favorite", ColType::Integer, false),
     ("files", "plate_count", ColType::Integer, true),
@@ -649,6 +650,13 @@ fn validate_catalog_db_bytes(
 
             // Existence isn't enough, the storage classes must match too (see `validate_column_types`).
             validate_column_types(&conn)?;
+            let mut licenses = conn.prepare("SELECT license FROM files WHERE license IS NOT NULL")
+                .map_err(|e| e.to_string())?;
+            for value in licenses.query_map([], |row| row.get::<_, String>(0)).map_err(|e| e.to_string())? {
+                crate::db::licenses::validate_license(Some(&value.map_err(|e| e.to_string())?))
+                    .map_err(|e| e.to_string())?;
+            }
+            drop(licenses);
 
             // A DB with a current user_version skips every migration and can bring tables
             // without CHECK, FK and unique index. Without this check e.g.
@@ -1038,12 +1046,38 @@ mod tests {
             render_snapshot_png: None,
             custom_image_png: None,
             source_url: None,
+            license: None,
             queue_position: None,
             favorite: false,
             plate_count: None,
             slice_info_json: None,
         }
     }
+    #[test]
+    fn catalog_license_validation_accepts_old_exports_and_validates_new_values() {
+        let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+            crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
+            conn.execute_batch("ALTER TABLE files DROP COLUMN license").unwrap();
+            conn.pragma_update(None, "user_version", crate::db::migrations_current_version() - 1).unwrap();
+        });
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_ok());
+        for (value, valid) in [(None, true), (Some("cc-by".to_string()), true),
+            (Some(" Free license ".to_string()), true), (Some("é".repeat(200)), true),
+            (Some("a".repeat(201)), false), (Some("bad\0text".to_string()), false)] {
+            let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+                let id = crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
+                conn.execute("UPDATE files SET license = ?1 WHERE id = ?2", rusqlite::params![value, id]).unwrap();
+            });
+            let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash);
+            assert_eq!(result.is_ok(), valid, "{result:?}");
+        }
+        let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
+            let id = crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
+            conn.execute("UPDATE files SET license = X'1234' WHERE id = ?1", [id]).unwrap();
+        });
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_err());
+    }
+
     #[test]
     fn imported_legacy_text_fields_remain_valid() {
         for (column, limit) in [("manufacturer", 150), ("model", 150), ("tag", 120)] {
@@ -1867,6 +1901,7 @@ mod tests {
             let mut metadata = BTreeMap::new();
             metadata.insert("Slicer".to_string(), "Bambu Studio".to_string());
             let new_file = NewFile {
+                license: None,
                 name: "Gehaeuse.3mf".to_string(),
                 path: "/tmp/Projekte/Gehaeuse.3mf".to_string(),
                 file_type: FileType::ThreeMf,

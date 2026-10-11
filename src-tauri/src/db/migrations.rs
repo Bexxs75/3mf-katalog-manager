@@ -129,6 +129,7 @@ const MIGRATIONS: &[MigrationStep] = &[
     // `slice_info_json` hold those three columns in a different order; the
     // positional table rebuilds above then moved their values.
     MigrationStep::Simple(repair_shifted_file_columns),
+    MigrationStep::Simple(|c| exec(c, "ALTER TABLE files ADD COLUMN license TEXT")),
 ];
 
 /// Derived from [`MIGRATIONS`] so the two can never drift apart.
@@ -433,6 +434,21 @@ fn run_migrations_with(conn: &mut Connection, migrations: &[MigrationStep], targ
 mod tests {
     use super::*;
     use rusqlite::Connection;
+
+    #[test]
+    fn license_migrates_existing_rows_and_exists_in_fresh_schema() {
+        let mut conn = crate::db::connect_in_memory().unwrap();
+        let id = crate::db::test_insert_minimal_file(&conn, "/model.3mf", None).unwrap();
+        conn.execute_batch("ALTER TABLE files DROP COLUMN license").unwrap();
+        conn.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION - 1).unwrap();
+        run_migrations(&mut conn).unwrap();
+        assert_eq!(crate::db::get_file(&conn, id).unwrap().unwrap().license, None);
+        let version: i64 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+        let fresh = Connection::open_in_memory().unwrap();
+        fresh.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
+        fresh.prepare("SELECT license FROM files").unwrap();
+    }
 
     #[test]
     fn printer_details_upgrade_from_44_preserves_data() {
@@ -810,7 +826,7 @@ mod tests {
     #[test]
     fn the_kind_step_stays_at_the_shipped_position_32() {
         assert_eq!(KIND_MIGRATION_VERSION, 32);
-        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 7);
+        assert_eq!(CURRENT_SCHEMA_VERSION, CLOCK_OFFSET_MIGRATION_VERSION + 8);
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(crate::db::repository::SCHEMA_SQL).unwrap();
         // Only run the steps up to and including 32.

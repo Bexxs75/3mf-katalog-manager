@@ -187,3 +187,20 @@ it.each(['asc', 'desc'] as const)('ignores the selected sort and %s direction in
   ];
   expect(filterAndSortModels(models, [], { activeFolderId: 'all', activeTag: null, query: '', sort: 'vol', sortDirection, toolView: 'recent' }).map(m => m.id)).toEqual(['new', 'old']);
 });
+
+it('combines usage with folder, tag and search without searching license text', () => {
+  const models = [
+    makeModelFile({ id: '1', name: 'Vase', folderId: 'a', tags: ['red'], license: 'cc-by' }),
+    makeModelFile({ id: '2', name: 'Vase', folderId: 'a', tags: ['red'], license: 'personal' }),
+    makeModelFile({ id: '3', name: 'Vase', folderId: 'a', tags: ['red'], license: 'custom agreement' }),
+    makeModelFile({ id: '4', name: 'Vase', folderId: 'b', tags: ['red'], license: 'cc-by' }),
+    makeModelFile({ id: '5', name: 'Vase', folderId: 'a', tags: [], license: 'cc-by' }),
+    makeModelFile({ id: '6', name: 'Other', folderId: 'a', tags: ['red'], license: 'cc-by' }),
+  ];
+  const criteria = { activeFolderId: 'a', activeTag: 'red', query: 'Vase', sort: 'name' as const };
+  for (const [usage, expected] of [['commercial', '1'], ['private', '2'], ['unknown', '3']] as const) {
+    expect(filterAndSortModels(models, [], { ...criteria, usage }).map(m => m.id)).toEqual([expected]);
+  }
+  expect(filterAndSortModels(models, [], { ...criteria, query: 'custom agreement' })).toEqual([]);
+  expect(filterAndSortModels(models, [], { ...criteria, usage: null }).map(m => m.id)).toEqual(['1', '2', '3']);
+});

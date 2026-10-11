@@ -79,6 +79,7 @@ impl Drop for CatalogShare {
 pub enum ImportSource {
     Files,
     Folder,
+    FolderContents,
     Dropped,
     SetupAdopt,
     Archive,
@@ -712,7 +713,7 @@ impl ImportJobs {
                 ImportSource::SetupAdopt
             }
             ImportSource::SetupAdopt if self.pickers.claim(paths, self.clock.now_ms()) => source,
-            ImportSource::Files | ImportSource::Folder => source,
+            ImportSource::Files | ImportSource::Folder | ImportSource::FolderContents => source,
             _ => return Err(CmdError::expected("unauthorized")),
         };
         for path in paths {
@@ -907,7 +908,7 @@ fn job_summary(result: &ImportJobResult, secs: f64) -> String {
         imported += count("imported"); duplicate += count("duplicates"); skipped += count("skipped");
     }
     let pending = result.groups.archive.iter().filter(|a| a["state"] == "pending").count();
-    let source = match result.source { ImportSource::Files => "Dateien", ImportSource::Folder => "Ordner", ImportSource::Dropped => "Ablegen", ImportSource::SetupAdopt => "Übernahme", ImportSource::Archive => "Archiv" };
+    let source = match result.source { ImportSource::Files => "Dateien", ImportSource::Folder => "Ordner", ImportSource::FolderContents => "Ordnerinhalt", ImportSource::Dropped => "Ablegen", ImportSource::SetupAdopt => "Übernahme", ImportSource::Archive => "Archiv" };
     format!("{source}: {imported} importiert, {duplicate} Duplikate, {skipped} übersprungen, {pending} Archive offen, {secs:.1} s")
 }
 

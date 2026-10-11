@@ -703,3 +703,123 @@ it('recovers from a failed initial load after a successful refresh', async () =>
   expect(result.current.initialLoadFailed).toBe(false);
   expect(result.current.models).toHaveLength(1);
 });
+
+it('saves a selection in one command and keeps licenses unchanged on failure', async () => {
+  const models = [makeModelFile({ id: 'm1', license: 'personal' }), makeModelFile({ id: 'm2', license: null })];
+  mockInitialLoad(models);
+  const fallback = vi.mocked(invoke).getMockImplementation()!;
+  let fail = false;
+  vi.mocked(invoke).mockImplementation(async (command, args) => {
+    if (command === 'set_license') {
+      if (fail) throw new Error('Disk full');
+      const { fileIds, license } = args as { fileIds: string[]; license: string | null };
+      models.forEach(model => { if (fileIds.includes(model.id)) model.license = license; });
+      return;
+    }
+    return fallback(command, args);
+  });
+  const { result } = renderHook(() => useCatalogStore());
+  await waitFor(() => expect(result.current.models).toHaveLength(2));
+  expect(result.current.models[0].license).toBe('personal');
+  await act(async () => result.current.setModelLicenses(['m1', 'm2'], 'cc0'));
+  expect(invoke).toHaveBeenCalledWith('set_license', { fileIds: ['m1', 'm2'], license: 'cc0' });
+  expect(result.current.models.map(model => model.license)).toEqual(['cc0', 'cc0']);
+  expect(callCount('list_file_summaries')).toBe(1);
+  fail = true;
+  await act(async () => {
+    await expect(result.current.setModelLicenses(['m1', 'm2'], 'personal')).rejects.toThrow('Disk full');
+  });
+  expect(result.current.models.map(model => model.license)).toEqual(['cc0', 'cc0']);
+  expect(callCount('list_file_summaries')).toBe(1);
+});
+
+it.each([false, true])('reconciles overlapping license writes (newer finishes first: %s)', async newerFirst => {
+  const backend = makeModelFile({ id: 'm1', license: 'personal' });
+  mockInitialLoad([backend]);
+  const fallback = vi.mocked(invoke).getMockImplementation()!;
+  const older = createDeferred<void>();
+  const newer = createDeferred<void>();
+  vi.mocked(invoke).mockImplementation((command, args) => {
+    if (command === 'set_license') {
+      const license = (args as { license: string }).license;
+      backend.license = license;
+      return license === 'cc0' ? older.promise : newer.promise;
+    }
+    return fallback(command, args);
+  });
+  const { result } = renderHook(() => useCatalogStore({ preselectFirst: false }));
+  await waitFor(() => expect(result.current.initialLoading).toBe(false));
+  let first!: Promise<void>;
+  let second!: Promise<void>;
+  act(() => {
+    first = result.current.setModelLicenses(['m1'], 'cc0');
+    second = result.current.setModelLicenses(['m1'], 'own');
+  });
+  await act(async () => {
+    (newerFirst ? newer : older).resolve();
+    await (newerFirst ? second : first);
+  });
+  expect(callCount('list_file_summaries')).toBe(1);
+  await act(async () => {
+    (newerFirst ? older : newer).resolve();
+    await (newerFirst ? first : second);
+  });
+  expect(result.current.models[0].license).toBe('own');
+  expect(callCount('list_file_summaries')).toBe(2);
+});
+
+it('keeps disjoint concurrent license saves local', async () => {
+  mockInitialLoad([makeModelFile({ id: 'm1' }), makeModelFile({ id: 'm2' })]);
+  const fallback = vi.mocked(invoke).getMockImplementation()!;
+  const saved = createDeferred<void>();
+  vi.mocked(invoke).mockImplementation((command, args) =>
+    command === 'set_license' ? saved.promise : fallback(command, args));
+  const { result } = renderHook(() => useCatalogStore({ preselectFirst: false }));
+  await waitFor(() => expect(result.current.initialLoading).toBe(false));
+  let first!: Promise<void>;
+  let second!: Promise<void>;
+  act(() => {
+    first = result.current.setModelLicenses(['m1'], 'cc0');
+    second = result.current.setModelLicenses(['m2'], 'personal');
+  });
+  await act(async () => {
+    saved.resolve();
+    await Promise.all([first, second]);
+  });
+  expect(result.current.models.map(model => model.license)).toEqual(['cc0', 'personal']);
+  expect(callCount('list_file_summaries')).toBe(1);
+});
+
+it('ignores an old license reconciliation when another save starts during its read', async () => {
+  mockInitialLoad([makeModelFile({ id: 'm1', license: 'personal' })]);
+  const fallback = vi.mocked(invoke).getMockImplementation()!;
+  const older = createDeferred<void>();
+  const newer = createDeferred<void>();
+  const staleRead = createDeferred<ReturnType<typeof makeModelFileSummary>[]>();
+  vi.mocked(invoke).mockImplementation((command, args) => {
+    if (command === 'set_license') {
+      const license = (args as { license: string }).license;
+      return license === 'cc0' ? older.promise : license === 'own' ? newer.promise : Promise.resolve();
+    }
+    return fallback(command, args);
+  });
+  const { result } = renderHook(() => useCatalogStore({ preselectFirst: false }));
+  await waitFor(() => expect(result.current.initialLoading).toBe(false));
+  let first!: Promise<void>;
+  let second!: Promise<void>;
+  act(() => {
+    first = result.current.setModelLicenses(['m1'], 'cc0');
+    second = result.current.setModelLicenses(['m1'], 'own');
+  });
+  await act(async () => { older.resolve(); await first; });
+  vi.mocked(invoke).mockImplementation((command, args) =>
+    command === 'list_file_summaries' ? staleRead.promise : command === 'set_license' ? Promise.resolve() : fallback(command, args));
+  await act(async () => { newer.resolve(); });
+  await act(async () => { await result.current.setModelLicenses(['m1'], 'commercial'); });
+  await act(async () => {
+    staleRead.resolve([makeModelFileSummary({ id: 'm1', license: 'own' })]);
+    await second;
+  });
+  expect(result.current.models[0].license).toBe('commercial');
+  expect(callCount('list_file_summaries')).toBe(2);
+});

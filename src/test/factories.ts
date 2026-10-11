@@ -29,6 +29,7 @@ export function makeModelFile(overrides: Partial<ModelFile> = {}): ModelFile {
     thumbnailImage: null,
     renderSnapshotImage: null,
     sourceUrl: null,
+    license: null,
     queuePosition: null,
     favorite: false,
     deletedAt: null,
@@ -66,6 +67,7 @@ export function makeModelFileSummary(
     creator: m.creator,
     lastViewedAt: m.lastViewedAt,
     contentHash: m.contentHash,
+    license: m.license,
   };
 }
 

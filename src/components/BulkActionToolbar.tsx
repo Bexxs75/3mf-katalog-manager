@@ -1,9 +1,11 @@
+import { LicenseEditor } from './LicenseEditor';
 import { shouldIgnoreCatalogShortcut } from '../lib/keyboardGuard';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useRef, useState } from 'react';
 import { messageOf } from '../lib/errors';
 import type { Collection } from '../types';
 import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
+import { TagInput } from './TagInput';
 import { tagLabel } from '../lib/autoTags';
 
 interface BulkActionToolbarProps {
@@ -19,14 +21,17 @@ interface BulkActionToolbarProps {
   onBulkAddToCollection: (collectionId: string) => void;
   activeCollection: string | null;
   onBulkRemoveFromCollection: () => void;
+  onBulkSetLicense?: (license: string | null) => Promise<void>;
   onBulkSetPrintStatus: (status: 'printed' | 'not_printed') => void;
   onBulkDelete: () => void;
   onBulkRemove?: () => Promise<void>;
   addTagMenuOpen: boolean;
   onAddTagMenuOpenChange: (value: boolean) => void;
+  allTags: string[];
+  tagsInAllSelection: string[];
   tagDraft: string;
   onTagDraftChange: (value: string) => void;
-  onSubmitBulkAddTag: () => void;
+  onSubmitBulkAddTag: (tag?: string) => void;
   removeTagMenuOpen: boolean;
   onRemoveTagMenuOpenChange: (value: boolean) => void;
   tagsInSelection: string[];
@@ -47,10 +52,13 @@ export function BulkActionToolbar({
   activeCollection,
   onBulkRemoveFromCollection,
   onBulkSetPrintStatus,
+  onBulkSetLicense,
   onBulkDelete,
   onBulkRemove,
   addTagMenuOpen,
   onAddTagMenuOpenChange,
+  allTags,
+  tagsInAllSelection,
   tagDraft,
   onTagDraftChange,
   onSubmitBulkAddTag,
@@ -62,6 +70,8 @@ export function BulkActionToolbar({
   const { lockProps } = useImportLock();
   const t = useT();
   const formatCount = useFormatCount();
+  const [licenseOpen, setLicenseOpen] = useState(false);
+  const licenseRef = useRef<HTMLButtonElement>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,13 +94,14 @@ export function BulkActionToolbar({
 
   // The menus stay open until they are closed explicitly; without Escape a
   // stray click after trying to dismiss one lands on a menu entry, e.g. removes a tag.
-  const anyMenuOpen = addToCollectionMenuOpen || addTagMenuOpen || removeTagMenuOpen;
+  const anyMenuOpen = licenseOpen || addToCollectionMenuOpen || addTagMenuOpen || removeTagMenuOpen;
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (shouldIgnoreCatalogShortcut(e, { allowInteractive: anyMenuOpen || confirmRemove || confirmBulkDelete, allowMenus: anyMenuOpen, preserveEscapeSelection: !anyMenuOpen && !confirmRemove && !confirmBulkDelete })) return;
       if (e.key !== 'Escape') return;
       if (anyMenuOpen) {
-        (addToCollectionMenuOpen ? collectionRef : addTagMenuOpen ? addTagRef : removeTagRef).current?.focus();
+        (licenseOpen ? licenseRef : addToCollectionMenuOpen ? collectionRef : addTagMenuOpen ? addTagRef : removeTagRef).current?.focus();
+        setLicenseOpen(false);
         onAddToCollectionMenuOpenChange(false);
         onAddTagMenuOpenChange(false);
         onRemoveTagMenuOpenChange(false);
@@ -115,6 +126,7 @@ export function BulkActionToolbar({
   const confirmationOpen = confirmRemove || confirmBulkDelete;
   useEffect(() => {
     if (!confirmationOpen) return;
+    setLicenseOpen(false);
     onAddToCollectionMenuOpenChange(false);
     onAddTagMenuOpenChange(false);
     onRemoveTagMenuOpenChange(false);
@@ -167,6 +179,14 @@ export function BulkActionToolbar({
             {t('clearSelectionLabel')}
           </button>
           <span className="flex-1" />
+          {onBulkSetLicense && <div className="relative">
+            <button ref={licenseRef} type="button" aria-expanded={licenseOpen} {...lockProps}
+              className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold hover:text-[var(--ink)]"
+              onClick={() => setLicenseOpen(open => !open)}>{t('licenseSet')}</button>
+            {licenseOpen && <div data-navigation-menu className="absolute top-9 right-0 w-80 max-w-[85vw] px-3 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
+              <LicenseEditor value={null} bulk onSave={async value => { await onBulkSetLicense(value); setLicenseOpen(false); licenseRef.current?.focus(); }} />
+            </div>}
+          </div>}
           <button onClick={onBulkAddToQueue} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)]">
             {t('addToQueue')}
           </button>
@@ -217,17 +237,18 @@ export function BulkActionToolbar({
             </button>
             {addTagMenuOpen && (
               <div data-navigation-menu className="absolute top-9 left-0 flex items-center gap-1.5 p-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
-                <input
-                  maxLength={100}
+                <TagInput
+                  allTags={allTags}
+                  tags={tagsInAllSelection}
                   value={tagDraft}
-                  onChange={(e) => onTagDraftChange(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && onSubmitBulkAddTag()}
+                  onChange={onTagDraftChange}
+                  onAddTag={onSubmitBulkAddTag}
+                  stripHash
                   autoFocus
-                  placeholder={t('addTagPlaceholder')}
-                  className="h-7 w-[140px] px-2 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-small"
+                  inputClassName="h-7 w-[140px] px-2 rounded-[3px] border border-[var(--line-strong)] bg-transparent text-[var(--ink)] outline-0 text-small"
                 />
                 <button
-                  onClick={onSubmitBulkAddTag}
+                  onClick={() => onSubmitBulkAddTag()}
                   className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-7 px-2.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-caption font-semibold cursor-pointer whitespace-nowrap"
                 >
                   {t('confirmSlicerName')}

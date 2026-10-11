@@ -93,3 +93,21 @@ it.each(['compact', 'comfort', 'list'])('prevents selecting card titles while dr
   const { getByText } = render(<LanguageProvider><UiDensityProvider><Component {...props} /></UiDensityProvider></LanguageProvider>);
   expect(getByText(props.models[0].name)).toHaveClass('select-none');
 });
+
+it.each(['compact', 'comfort', 'list'])('shows license usage and tooltip in %s', view => {
+  localStorage.setItem('3mf-katalog-density', view);
+  const Component = view === 'list' ? ModelList : ModelGrid;
+  for (const [license, label] of [['cc-by', 'Kommerziell erlaubt'], ['personal', 'Nur privat'], ['custom', null], [null, null]] as const) {
+    const { container, unmount } = render(<LanguageProvider><UiDensityProvider><Component {...props} models={[makeModelFile({ license })]} /></UiDensityProvider></LanguageProvider>);
+    const model = container.querySelector('[data-model-id]')!;
+    if (label) {
+      expect(model).toHaveAttribute('aria-label', `Test Model, ${label}`);
+      expect(model.querySelector('[title]')).not.toBeNull();
+      expect(model).toHaveTextContent(label);
+    } else {
+      expect(model).not.toHaveTextContent('Kommerziell erlaubt');
+      expect(model).not.toHaveTextContent('Nur privat');
+    }
+    unmount();
+  }
+});

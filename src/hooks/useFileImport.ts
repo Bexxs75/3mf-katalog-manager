@@ -104,7 +104,7 @@ export function useFileImport(args: UseFileImportArgs) {
     let saved: ImportJobMeta[] = [];
     try {
       const parsed: unknown = JSON.parse(sessionStorage.getItem(storageKey) ?? '[]');
-      if (Array.isArray(parsed)) saved = parsed.filter(m => m && typeof m.jobId === 'string' && ['files','folder','dropped','archive','setupAdopt'].includes(m.source));
+      if (Array.isArray(parsed)) saved = parsed.filter(m => m && typeof m.jobId === 'string' && ['files','folder','folderContents','dropped','archive','setupAdopt'].includes(m.source));
     } catch { /* Ignore stale session data. */ }
     for (const meta of saved) {
       if (!jobs.current.has(meta.jobId) && !completed.current.has(meta.jobId)) jobs.current.set(meta.jobId, {meta, progress: initialProgress(meta.jobId)});
@@ -155,6 +155,7 @@ export function useFileImport(args: UseFileImportArgs) {
     jobActive: active.length > 0, error, cancel,
     dismiss: () => { lastMeta.current = null; setResult(null); setLastJob(null); setError(null); persist(); },
     importFiles: () => track(api.startImport('files', args.activeFolderId === 'all' ? args.rootFolderId : args.activeFolderId), {source: 'files', targetName: args.catalogBaseDir ? args.targetName ?? args.catalogBaseDir : undefined}),
+    importFolderContents: () => track(api.startImport('folderContents', args.activeFolderId === 'all' ? args.rootFolderId : args.activeFolderId), {source: 'folderContents', targetName: args.catalogBaseDir ? args.targetName ?? args.catalogBaseDir : undefined}),
     importFolder: () => track(api.startImport('folder'), {source: 'folder'}),
     startArchives, pendingArchives,
     cancelArchives: async () => {

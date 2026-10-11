@@ -128,3 +128,18 @@ it('remembers an undismissed terminal job, and dismiss removes the stored ID', a
   expect(JSON.parse(sessionStorage.getItem('catalog-import-jobs')!)).toEqual([{jobId:'j1',source:'files'}]);
   act(() => result.current.dismiss()); expect(JSON.parse(sessionStorage.getItem('catalog-import-jobs')!)).toEqual([]);
 });
+
+it('imports folder contents into the captured active folder', async () => {
+  vi.mocked(invoke).mockImplementation(async cmd => cmd === 'start_import' ? { jobId: 'j1' } : cmd === 'get_import_state' ? progress() : null);
+  const { result, rerender } = setup();
+  await act(async () => result.current.importFolderContents());
+  rerender({ folder: 'second' });
+  expect(invoke).toHaveBeenCalledWith('start_import', { source: 'folderContents', targetFolderId: 'first' });
+  expect(result.current.meta?.source).toBe('folderContents');
+});
+
+it('imports folder contents into the catalog root from all models', async () => {
+  const { result } = renderHook(() => useFileImport({ enabled: true, catalogBaseDir: '/base', activeFolderId: 'all', rootFolderId: 'root', onImported: vi.fn(), refreshFiles: vi.fn(), refreshFolders: vi.fn() }));
+  await act(async () => result.current.importFolderContents());
+  expect(invoke).toHaveBeenCalledWith('start_import', { source: 'folderContents', targetFolderId: 'root' });
+});

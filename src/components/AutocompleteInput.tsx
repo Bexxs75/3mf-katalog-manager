@@ -12,6 +12,7 @@ interface Props {
   onEscape?: () => void;
   maxSuggestions?: number;
   maxLength?: number;
+  autoFocus?: boolean;
   'aria-label'?: string;
   listAriaLabel?: string;
   formatOption?: (value: string) => string;
@@ -21,7 +22,7 @@ interface Props {
 // by the system and ignores the dark theme.
 export function AutocompleteInput({
   value, onChange, options, placeholder, className, inputClassName, inputStyle,
-  onSubmit, onEscape, maxLength, maxSuggestions = 8, 'aria-label': ariaLabel, listAriaLabel, formatOption,
+  onSubmit, onEscape, maxLength, autoFocus, maxSuggestions = 8, 'aria-label': ariaLabel, listAriaLabel, formatOption,
 }: Props) {
   const initialHighlight = onSubmit ? -1 : 0;
   const [open, setOpen] = useState(false);
@@ -98,6 +99,7 @@ export function AutocompleteInput({
   return (
     <div ref={containerRef} className="relative">
       <input
+        autoFocus={autoFocus}
         maxLength={maxLength}
         role={onSubmit ? 'combobox' : undefined}
         aria-label={ariaLabel}

@@ -1,3 +1,5 @@
+import { LicenseBadge } from './LicenseBadge';
+import { licenseUsage, modelLicenseAriaLabel } from '../lib/licenses';
 import { Icon } from './Icon';
 import { useModelImages } from '../hooks/useModelImages';
 import { useModelWindow } from '../hooks/useModelWindow';
@@ -155,6 +157,8 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
       <div
         key={m.id}
         data-model-id={m.id}
+        role="group"
+        aria-label={modelLicenseAriaLabel(m.name, m.license, t)}
         tabIndex={-1}
         onClick={() => onSelect(m.id)}
         onDoubleClick={readOnly ? undefined : () => onOpenDetail(m.id)}
@@ -208,6 +212,9 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
               {t('newBadge')}
             </div>
           )}
+          {licenseUsage(m.license) !== 'unknown' && <div className="absolute left-2 right-2 bottom-10 pointer-events-none [&_span]:pointer-events-auto">
+            <LicenseBadge license={m.license} />
+          </div>}
           {m.printStatus === 'printed' && (
             <div className="absolute right-[7px] bottom-[7px] font-semibold text-caption px-1 py-0.5 rounded border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]">
               <Icon name="check" size={14} /> {t('printedBadge')}
@@ -254,7 +261,9 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
           <div
             key={m.id}
             data-model-id={m.id}
-        tabIndex={-1}
+            role="group"
+            aria-label={modelLicenseAriaLabel(m.name, m.license, t)}
+            tabIndex={-1}
             onClick={() => onSelect(m.id)}
             onDoubleClick={readOnly ? undefined : () => onOpenDetail(m.id)}
             onContextMenu={(e) => {
@@ -299,6 +308,9 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
                   {t('newBadge')}
                 </div>
               )}
+              {licenseUsage(m.license) !== 'unknown' && <div className="absolute left-2 right-2 bottom-10 pointer-events-none [&_span]:pointer-events-auto">
+                <LicenseBadge license={m.license} />
+              </div>}
               {m.printStatus === 'printed' && (
                 <div className="absolute left-2.5 bottom-2.5 font-semibold text-caption px-2.5 py-1 rounded-lg bg-[var(--panel)] text-[var(--accent)] shadow-[var(--shadow)]">
                   <Icon name="check" size={14} /> {t('printedBadge')}

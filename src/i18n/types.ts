@@ -6,6 +6,28 @@ export interface PluralForms {
 }
 
 export interface Translations {
+  licenseHeading: string;
+  licenseUnset: string;
+  licenseOther: string;
+  licenseCustom: string;
+  licenseSet: string;
+  licenseSave: string;
+  licenseUsage: string;
+  licenseUsageAll: string;
+  licenseUsageCommercial: string;
+  licenseUsagePrivate: string;
+  licenseUsageUnknown: string;
+  licenseCcBy: string;
+  licenseCcBySa: string;
+  licenseCcByNc: string;
+  licenseCcByNcSa: string;
+  licenseCcByNd: string;
+  licenseCcByNcNd: string;
+  licenseCc0: string;
+  licensePersonal: string;
+  licenseCommercial: string;
+  licenseOwn: string;
+
   diskSyncStale: string;
   diskSyncPathChanged: string;
   diskSyncRootUnreachable: string;
@@ -268,6 +290,9 @@ export interface Translations {
   impMenuRoot: string;
   impMenuFixed: string;
   impMenuStay: string;
+  importFolderContentsOption: string;
+  impFolderContents: string;
+  importFolderContentsHint: string;
   impMenuFolder: string;
   impMenuFolderHint: string;
   impMenuNoMove: string;

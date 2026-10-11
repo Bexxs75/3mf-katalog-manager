@@ -156,3 +156,21 @@ it('does not announce an empty collection while its first members are loading', 
   expect(screen.queryByText('0 von 2')).not.toBeInTheDocument();
   expect(screen.getByRole('status')).toHaveTextContent('Katalog wird geladen');
 });
+
+it('offers usage filtering and an individually removable usage chip', () => {
+  const setUsage = vi.fn();
+  filterWorkspace({ usage: 'private', setUsage });
+  fireEvent.change(screen.getByRole('combobox', { name: de.licenseUsage }), { target: { value: 'commercial' } });
+  expect(setUsage).toHaveBeenCalledWith('commercial');
+  const chip = screen.getByRole('region', { name: de.filterBarAria }).querySelector('[data-filter-kind]')!.parentElement!;
+  expect(chip).toHaveTextContent(de.licenseUsagePrivate);
+  fireEvent.click(within(chip as HTMLElement).getByRole('button'));
+  expect(setUsage).toHaveBeenLastCalledWith(null);
+});
+
+it('uses current licenses in a collection and includes usage in its count and empty state', () => {
+  const model = makeModelFile({ id: 'one', license: null });
+  filterWorkspace({ models: [model], collectionModels: [{ ...model, license: 'personal' }], activeCollection: 'c', usage: 'private', setUsage: vi.fn() });
+  expect(screen.getByText(de.filterBarEmptyTitle)).toBeVisible();
+  expect(screen.getByText(de.filterBarCount.replace('{count}', '0').replace('{total}', '1'))).toBeVisible();
+});

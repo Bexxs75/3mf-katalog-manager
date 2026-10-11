@@ -67,7 +67,7 @@ fn submit_models(
             ),
         };
     let resolved: CmdResult<(Option<String>, bool)> = (|| {
-        Ok(if source == ImportSource::Files {
+        Ok(if matches!(source, ImportSource::Files | ImportSource::FolderContents) {
             let conn = lock_db(&state)?;
             let base = db::printer_link::get_setting(&conn, folders::SETTING_CATALOG_BASE_DIR)
                 .map_err(|e| e.to_string())?;
@@ -128,7 +128,7 @@ pub(super) fn pick_models(
     app: &tauri::AppHandle,
     source: ImportSource,
 ) -> CmdResult<Option<Vec<PathBuf>>> {
-    if source == ImportSource::Folder {
+    if matches!(source, ImportSource::Folder | ImportSource::FolderContents) {
         return Ok(app
             .dialog()
             .file()
@@ -155,7 +155,7 @@ pub async fn start_import(
     target_folder_id: Option<String>,
 ) -> CmdResult<StartedImport> {
     tauri::async_runtime::spawn_blocking(move || {
-        if !matches!(source, ImportSource::Files | ImportSource::Folder) {
+        if !matches!(source, ImportSource::Files | ImportSource::Folder | ImportSource::FolderContents) {
             use tauri::Manager;
             let state = app.state::<AppState>();
             let job = state.import_jobs.enqueue_checked(

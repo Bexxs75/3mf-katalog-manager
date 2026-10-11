@@ -27,6 +27,7 @@ interface Props {
   initialLoading?: boolean;
   onImportFiles: () => void;
   onImportFolder: () => void;
+  onImportFolderContents: () => void;
   detailOpen?: boolean;
   onOpenTips?: () => void;
   mainView: MainView;
@@ -54,12 +55,13 @@ export function Header({
   count, initialLoading = false,
   onImportFiles,
   onImportFolder,
+  onImportFolderContents,
   mainView, onOpenTips,
   detailOpen = false,
 }: Props) {
   const t = useT();
   const formatCount = useFormatCount();
-  const [importSource, setImportSource] = useState<'files' | 'folder'>('files');
+  const [importSource, setImportSource] = useState<'files' | 'folder' | 'folderContents'>('files');
   const [importMenuOpen, setImportMenuOpen] = useState(false);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
 
@@ -123,11 +125,11 @@ export function Header({
         {importMenuOpen && (
           <div data-navigation-menu role="menu" onKeyDown={importKeyboard.onMenuKeyDown} className="absolute top-10 left-0 w-[300px] py-1 bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)] z-40">
             <div data-import-hints className="grid m-2 p-2 border border-dashed border-[var(--line-strong)] rounded bg-[var(--panel-2)] text-small text-[var(--ink-2)] leading-relaxed" aria-live="polite">
-              {(['files', 'folder'] as const).map(source => <div key={source} aria-hidden={importSource !== source}
+              {(['files', 'folder', 'folderContents'] as const).map(source => <div key={source} aria-hidden={importSource !== source}
                 className={`col-start-1 row-start-1 ${importSource !== source ? 'invisible' : ''}`}>
-                <b>{t(source === 'files' ? 'impMenuFiles' : 'impMenuFolder')}</b>{' '}
-                {source === 'folder' ? t('impMenuFolderHint') : importTargetName ? <>{t('impMenuMove')} <b>{importTargetName}</b> {t(importTargetIsRoot ? 'impMenuRoot' : 'impMenuActive')}</> : t('impMenuStay')}
-                <div className="font-medium tabular-nums text-caption text-[var(--ink-3)]">{t(source === 'files' ? 'impMenuFixed' : 'impMenuNoMove')}</div>
+                <b>{t(source === 'folderContents' ? 'impFolderContents' : source === 'files' ? 'impMenuFiles' : 'impMenuFolder')}</b>{' '}
+                {source === 'folderContents' ? t('importFolderContentsHint') : source === 'folder' ? t('impMenuFolderHint') : importTargetName ? <>{t('impMenuMove')} <b>{importTargetName}</b> {t(importTargetIsRoot ? 'impMenuRoot' : 'impMenuActive')}</> : t('impMenuStay')}
+                <div className="font-medium tabular-nums text-caption text-[var(--ink-3)]">{t(source !== 'folder' ? 'impMenuFixed' : 'impMenuNoMove')}</div>
               </div>)}
             </div>
             <button
@@ -151,6 +153,18 @@ export function Header({
               className="w-full text-left px-3 py-1.5 text-[length:var(--font-size-body)] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
             >
               {t('importFolderOption')}
+            </button>
+            <button
+              role="menuitem" tabIndex={-1}
+              title={t('importFolderContentsHint')}
+              onMouseEnter={() => setImportSource('folderContents')} onFocus={() => setImportSource('folderContents')}
+              onClick={() => {
+                setImportMenuOpen(false);
+                onImportFolderContents();
+              }}
+              className="w-full text-left px-3 py-1.5 text-[length:var(--font-size-body)] text-[var(--ink)] hover:bg-[var(--panel-2)] cursor-pointer"
+            >
+              {t('importFolderContentsOption')}
             </button>
           </div>
         )}

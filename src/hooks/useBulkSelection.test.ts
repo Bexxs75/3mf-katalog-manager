@@ -190,3 +190,29 @@ describe('useBulkSelection', () => {
     expect(result.current.tagsInSelection).toEqual(['bambu', 'decor', 'mount']);
   });
 });
+
+it('computes tags shared by all selected models using canonical names', () => {
+  const { result } = setup([
+    makeModelFile({ id: 'm1', tags: ['multipart', 'partial'] }),
+    makeModelFile({ id: 'm2', tags: ['mehrteilig'] }),
+    makeModelFile({ id: 'm3', tags: [] }),
+  ]);
+  act(() => result.current.selectAllVisible(['m1', 'm2']));
+  expect(result.current.tagsInAllSelection).toEqual(['mehrteilig']);
+  act(() => result.current.selectAllVisible(['m1', 'm2', 'm3']));
+  expect(result.current.tagsInAllSelection).toEqual([]);
+});
+
+it('accepts a suggestion directly without relying on a stale draft', async () => {
+  const { result } = setup();
+  act(() => { result.current.selectAllVisible(['m1']); result.current.setTagDraft('old'); });
+  await act(async () => result.current.bulkAddTagAction(' #Multipart '));
+  expect(invoke).toHaveBeenCalledWith('add_tag', { fileId: 'm1', tag: 'mehrteilig' });
+});
+
+it.each(['#', 'x'.repeat(101)])('does not submit empty or overlong tags (%s)', async (tag) => {
+  const { result } = setup();
+  act(() => result.current.selectAllVisible(['m1']));
+  await act(async () => result.current.bulkAddTagAction(tag));
+  expect(invoke).not.toHaveBeenCalled();
+});

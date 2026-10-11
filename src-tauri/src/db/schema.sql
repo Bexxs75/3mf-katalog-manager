@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS files (
     render_snapshot_png BLOB,
     custom_image_png BLOB,
     source_url TEXT,
+    license TEXT,
     queue_position INTEGER,
     favorite INTEGER NOT NULL DEFAULT 0,
     plate_count INTEGER,

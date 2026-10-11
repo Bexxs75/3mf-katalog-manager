@@ -1,0 +1,52 @@
+[
+  {
+    "code": "cc-by",
+    "usage": "commercial",
+    "label": "licenseCcBy"
+  },
+  {
+    "code": "cc-by-sa",
+    "usage": "commercial",
+    "label": "licenseCcBySa"
+  },
+  {
+    "code": "cc-by-nc",
+    "usage": "private",
+    "label": "licenseCcByNc"
+  },
+  {
+    "code": "cc-by-nc-sa",
+    "usage": "private",
+    "label": "licenseCcByNcSa"
+  },
+  {
+    "code": "cc-by-nd",
+    "usage": "commercial",
+    "label": "licenseCcByNd"
+  },
+  {
+    "code": "cc-by-nc-nd",
+    "usage": "private",
+    "label": "licenseCcByNcNd"
+  },
+  {
+    "code": "cc0",
+    "usage": "commercial",
+    "label": "licenseCc0"
+  },
+  {
+    "code": "personal",
+    "usage": "private",
+    "label": "licensePersonal"
+  },
+  {
+    "code": "commercial",
+    "usage": "commercial",
+    "label": "licenseCommercial"
+  },
+  {
+    "code": "own",
+    "usage": "commercial",
+    "label": "licenseOwn"
+  }
+]

@@ -161,3 +161,11 @@ it('keeps the desktop slicer action', () => {
   fireEvent.click(screen.getByRole('button', { name: /In Slicer öffnen/ }));
   expect(props.onOpenInSlicer).toHaveBeenCalled();
 });
+
+it('edits the license on the detail page', async () => {
+  const onSetLicense = vi.fn().mockResolvedValue(undefined);
+  render(<LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} onSetLicense={onSetLicense} /></LanguageProvider>);
+  fireEvent.change(screen.getByRole('combobox', { name: 'Lizenz' }), { target: { value: 'own' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Lizenz speichern' }));
+  expect(onSetLicense).toHaveBeenCalledWith([props.model.id], 'own');
+});

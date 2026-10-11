@@ -33,6 +33,7 @@ export interface ModelImages {
 }
 
 export interface ModelFile {
+  license: string | null;
   hasThumbnail?: boolean;
   hasRenderSnapshot?: boolean;
   id: string;
@@ -74,6 +75,7 @@ export interface ModelFile {
  * loads the full data on selection.
  */
 export interface ModelFileSummary {
+  license: string | null;
   id: string;
   name: string;
   path: string;
@@ -378,7 +380,7 @@ export interface ConfirmResult {
   failed: number;
 }
 
-export type ImportSource = 'files' | 'folder' | 'dropped' | 'setupAdopt' | 'archive';
+export type ImportSource = 'files' | 'folder' | 'folderContents' | 'dropped' | 'setupAdopt' | 'archive';
 export type ImportState = 'queued' | 'scanning' | 'importing' | 'placing' | 'cancelling' | 'cancelled' | 'finished' | 'failed';
 export interface ImportCounts {
   imported: number;

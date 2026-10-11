@@ -1,9 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLanguage } from '../i18n/LanguageContext';
 import * as collectionsApi from '../lib/api/collections';
 import type { Collection, ModelFile } from '../types';
 
 export function useCollections() {
-  const [collections, setCollections] = useState<Collection[]>([]);
+  const { language } = useLanguage();
+  const [collectionRecords, setCollections] = useState<Collection[]>([]);
+  const collections = useMemo(() => {
+    const collator = new Intl.Collator(language, { numeric: true, sensitivity: 'base' });
+    return [...collectionRecords].sort((a, b) => collator.compare(a.name, b.name));
+  }, [collectionRecords, language]);
   const [activeCollection, setActiveCollectionState] = useState<string | null>(null);
   const activeRef = useRef<string | null>(null);
   const request = useRef(0);

@@ -1,3 +1,4 @@
+import type { LicenseUsage } from '../lib/licenses';
 import { useMemo, useState } from 'react';
 import type { Language } from '../i18n/types';
 import type { ModelFile, Folder, ViewMode, SortKey, SortDirection } from '../types';
@@ -14,6 +15,7 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
   const setSortDirection = (direction: SortDirection) => {
     setSorting(current => ({ ...current, sortDirection: direction }));
   };
+  const [usage, setUsage] = useState<LicenseUsage | null>(null);
   const [query, setQuery] = useState('');
   const [activeFolderId, setActiveFolderId] = useState('all');
   const [activeTag, setActiveTag] = useState<string | null>(null);
@@ -30,6 +32,7 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
   const filtered = useMemo(
     () =>
       filterAndSortModels(models, folders, {
+        usage,
         activeFolderId,
         activeTag,
         query,
@@ -39,12 +42,13 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
         toolView,
         recentSnapshot: recentSnapshot ?? undefined,
       }),
-    [models, folders, activeFolderId, activeTag, query, sort, sortDirection, language, toolView, recentSnapshot],
+    [models, folders, usage, activeFolderId, activeTag, query, sort, sortDirection, language, toolView, recentSnapshot],
   );
 
   const queue = useMemo(() => selectQueuedModels(models), [models]);
 
   return {
+    usage, setUsage,
     view, setView,
     sort, setSort, sortDirection, setSortDirection,
     query, setQuery,

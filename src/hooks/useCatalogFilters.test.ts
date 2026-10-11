@@ -126,3 +126,14 @@ it('resets direction only when the sort key changes', () => {
     expect(result.current.sort).toBe(key);
   }
 });
+
+it('updates and clears usage filtering', () => {
+  const models = [makeModelFile({ id: '1', license: 'personal' }), makeModelFile({ id: '2', license: null }), makeModelFile({ id: '3', license: 'free text' })];
+  const { result } = renderHook(() => useCatalogFilters(models, []));
+  act(() => result.current.setUsage('private'));
+  expect(result.current.filtered.map(m => m.id)).toEqual(['1']);
+  act(() => result.current.setUsage('unknown'));
+  expect(result.current.filtered.map(m => m.id)).toEqual(['2', '3']);
+  act(() => result.current.setUsage(null));
+  expect(result.current.filtered).toHaveLength(3);
+});

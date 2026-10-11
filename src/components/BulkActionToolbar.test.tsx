@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { BulkActionToolbar } from './BulkActionToolbar';
 
@@ -26,6 +26,8 @@ function renderToolbar(overrides: Partial<Parameters<typeof BulkActionToolbar>[0
     onBulkRemove: vi.fn(async () => {}),
     addTagMenuOpen: false,
     onAddTagMenuOpenChange: vi.fn(),
+    allTags: [],
+    tagsInAllSelection: [],
     tagDraft: '',
     onTagDraftChange: vi.fn(),
     onSubmitBulkAddTag: vi.fn(),
@@ -147,8 +149,8 @@ describe('BulkActionToolbar', () => {
 
   it('closes the tag input menu without clearing the selection', () => {
     const { props } = renderToolbar({ addTagMenuOpen: true });
-    expect(screen.getByRole('textbox')).toHaveAttribute('maxlength', '100');
-    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
+    expect(screen.getByRole('combobox')).toHaveAttribute('maxlength', '100');
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Escape' });
     expect(props.onAddTagMenuOpenChange).toHaveBeenCalledWith(false);
     expect(props.onClearSelection).not.toHaveBeenCalled();
   });
@@ -197,4 +199,85 @@ it('focuses Cancel in the inline remove confirmation and restores the remove but
   fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
   expect(screen.getByRole('button', { name: 'Aus Katalog entfernen' })).toHaveFocus();
   expect(props.onBulkRemove).not.toHaveBeenCalled();
+});
+
+it('suggests tags absent from at least one selected model and submits the highlighted tag', () => {
+  const { props } = renderToolbar({ addTagMenuOpen: true, allTags: ['common', 'partial', 'unused'], tagsInAllSelection: ['common'] });
+  const input = screen.getByRole('combobox');
+  expect(input).toHaveFocus();
+  expect(screen.queryByRole('option', { name: 'common' })).not.toBeInTheDocument();
+  expect(screen.getByRole('option', { name: 'partial' })).toBeInTheDocument();
+  expect(screen.getByRole('option', { name: 'unused' })).toBeInTheDocument();
+  fireEvent.keyDown(input, { key: 'ArrowDown' });
+  expect(input).toHaveAttribute('aria-activedescendant', screen.getByRole('option', { name: 'partial' }).id);
+  fireEvent.keyDown(input, { key: 'Enter' });
+  expect(props.onSubmitBulkAddTag).toHaveBeenCalledWith('partial');
+});
+
+it('closes suggestions before the tag menu and restores trigger focus', () => {
+  const { props } = renderToolbar({ addTagMenuOpen: true, allTags: ['partial'] });
+  const input = screen.getByRole('combobox');
+  fireEvent.keyDown(input, { key: 'Escape' });
+  expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  expect(input).toHaveFocus();
+  expect(props.onAddTagMenuOpenChange).not.toHaveBeenCalled();
+  fireEvent.keyDown(input, { key: 'Escape' });
+  expect(props.onAddTagMenuOpenChange).toHaveBeenCalledWith(false);
+  expect(screen.getByRole('button', { name: 'Tag hinzufügen' })).toHaveFocus();
+  expect(props.onClearSelection).not.toHaveBeenCalled();
+});
+
+it('submits typed canonical tags with an optional hash instead of an unselected suggestion', () => {
+  const { props } = renderToolbar({ addTagMenuOpen: true, tagDraft: ' #Multipart ', allTags: ['something'] });
+  fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
+  expect(props.onSubmitBulkAddTag).toHaveBeenCalledWith('mehrteilig');
+});
+
+it('selects the last suggestion with ArrowUp and accepts a clicked suggestion', () => {
+  const { props } = renderToolbar({ addTagMenuOpen: true, allTags: ['alpha', 'beta'] });
+  const input = screen.getByRole('combobox');
+  fireEvent.keyDown(input, { key: 'ArrowUp' });
+  expect(screen.getByRole('option', { name: 'beta' })).toHaveAttribute('aria-selected', 'true');
+  fireEvent.mouseDown(screen.getByRole('option', { name: 'alpha' }));
+  expect(props.onSubmitBulkAddTag).toHaveBeenCalledWith('alpha');
+  expect(input).toHaveFocus();
+});
+
+it('uses the controlled draft when the apply button is clicked', () => {
+  const { props } = renderToolbar({ addTagMenuOpen: true, tagDraft: 'typed' });
+  fireEvent.click(screen.getByRole('button', { name: 'Übernehmen' }));
+  expect(props.onSubmitBulkAddTag).toHaveBeenCalledWith();
+});
+
+it('sets a bulk license, clears it, and closes its menu on Escape', async () => {
+  const onBulkSetLicense = vi.fn().mockResolvedValue(undefined);
+  const { props } = renderToolbar({ onBulkSetLicense });
+  fireEvent.click(screen.getByRole('button', { name: 'Lizenz setzen' }));
+  fireEvent.change(screen.getByRole('combobox', { name: 'Lizenz' }), { target: { value: 'personal' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Lizenz speichern' }));
+  await waitFor(() => expect(onBulkSetLicense).toHaveBeenCalledWith('personal'));
+  await waitFor(() => expect(screen.queryByRole('combobox')).toBeNull());
+  fireEvent.click(screen.getByRole('button', { name: 'Lizenz setzen' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Lizenz speichern' }));
+  await waitFor(() => expect(onBulkSetLicense).toHaveBeenLastCalledWith(null));
+  await waitFor(() => expect(screen.queryByRole('combobox')).toBeNull());
+  fireEvent.click(screen.getByRole('button', { name: 'Lizenz setzen' }));
+  fireEvent.keyDown(window, { key: 'Escape' });
+  expect(screen.queryByRole('combobox')).toBeNull();
+  expect(props.onClearSelection).not.toHaveBeenCalled();
+  expect(screen.getByRole('button', { name: 'Lizenz setzen' })).toHaveFocus();
+});
+
+it('applies a custom license to the selection and reports errors without closing', async () => {
+  const onBulkSetLicense = vi.fn().mockRejectedValueOnce(new Error('Disk full')).mockResolvedValue(undefined);
+  renderToolbar({ onBulkSetLicense });
+  fireEvent.click(screen.getByRole('button', { name: 'Lizenz setzen' }));
+  fireEvent.change(screen.getByRole('combobox'), { target: { value: '__other' } });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Lizenztext' }), { target: { value: ' Agreement ' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Lizenz speichern' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Disk full');
+  expect(screen.getByRole('textbox')).toHaveValue(' Agreement ');
+  fireEvent.click(screen.getByRole('button', { name: 'Lizenz speichern' }));
+  await waitFor(() => expect(screen.queryByRole('combobox')).toBeNull());
+  expect(onBulkSetLicense).toHaveBeenLastCalledWith(' Agreement ');
 });

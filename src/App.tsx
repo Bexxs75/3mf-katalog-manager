@@ -155,6 +155,7 @@ export default function App() {
     collections.setCollectionsGalleryOpen(false);
     filters.setActiveFolderId('all');
     filters.setActiveTag(null);
+    filters.setUsage(null);
     filters.setQuery('');
     filters.setToolView(null);
   };
@@ -309,6 +310,7 @@ export default function App() {
         importTargetIsRoot={filters.activeFolderId === 'all'}
         onImportFiles={fileImport.importFiles}
         onImportFolder={fileImport.importFolder}
+        onImportFolderContents={fileImport.importFolderContents}
         mainView={mainView}
       />
 
@@ -449,6 +451,7 @@ export default function App() {
               bulkAddTag={bulk.bulkAddTagAction}
               removeTagMenuOpen={bulk.removeTagMenuOpen}
               setRemoveTagMenuOpen={bulk.setRemoveTagMenuOpen}
+              tagsInAllSelection={bulk.tagsInAllSelection}
               tagsInSelection={bulk.tagsInSelection}
               bulkRemoveTag={bulk.bulkRemoveTagAction}
               setDetailModelId={setDetailModelId}
@@ -461,6 +464,9 @@ export default function App() {
               uploadCustomImage={store.uploadCustomImage}
               captureRenderSnapshot={store.captureRenderSnapshot}
               setModelSourceUrl={store.setModelSourceUrl}
+              setModelLicenses={store.setModelLicenses}
+              usage={filters.usage}
+              setUsage={filters.setUsage}
               openInSlicer={slicerLauncher.openInSlicer}
               rescanMetadata={store.rescanMetadata}
               addModelToCollection={collections.addModelToCollection}

@@ -22,7 +22,7 @@ pub fn list_collections(conn: &Connection) -> Result<Vec<CollectionRecord>, DbEr
                  JOIN files f ON f.id = cf.file_id
                  WHERE cf.collection_id = c.id AND f.deleted_at IS NULL)
          FROM collections c
-         ORDER BY c.created_at",
+         ORDER BY c.name COLLATE NOCASE, c.created_at",
     )?;
     let rows = stmt
         .query_map([], |row| {
@@ -137,11 +137,27 @@ mod tests {
             render_snapshot_png: None,
             custom_image_png: None,
             source_url: None,
+            license: None,
             queue_position: None,
             favorite: false,
             plate_count: None,
             slice_info_json: None,
         }
+    }
+
+    #[test]
+    fn list_collections_sorts_names_case_insensitively_then_creation_date() {
+        let conn = connect_in_memory().unwrap();
+        create_collection(&conn, "Zebra", "2026-09-10T10:00:00Z").unwrap();
+        let later = create_collection(&conn, "apple", "2026-09-12T10:00:00Z").unwrap();
+        let earlier = create_collection(&conn, "Apple", "2026-09-11T10:00:00Z").unwrap();
+        create_collection(&conn, "banana", "2026-09-09T10:00:00Z").unwrap();
+
+        let collections = list_collections(&conn).unwrap();
+        let names: Vec<_> = collections.iter().map(|collection| collection.name.as_str()).collect();
+        assert_eq!(names, vec!["Apple", "apple", "banana", "Zebra"]);
+        assert_eq!(collections[0].id, earlier);
+        assert_eq!(collections[1].id, later);
     }
 
     #[test]

@@ -1,5 +1,6 @@
 pub mod error;
 pub mod models;
+pub mod licenses;
 mod repository;
 mod collections;
 mod tag_fragments;
@@ -105,6 +106,7 @@ mod tests {
             render_snapshot_png: None,
             custom_image_png: None,
             source_url: None,
+            license: None,
             queue_position: None,
             favorite: false,
             plate_count: None,

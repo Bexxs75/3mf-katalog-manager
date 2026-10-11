@@ -116,7 +116,7 @@ it.each([false, true])('deletes through the sidebar hook, preserves models and r
   expect(invoke).not.toHaveBeenCalledWith('delete_file', expect.anything());
 });
 
-it('clears folder, tag, search and tool filters through App setters while retaining view and sorting', async () => {
+it('clears usage, folder, tag, search and tool filters through App setters while retaining view and sorting', async () => {
   const folders = [makeFolder({id: 'a', name: 'Folder A'})];
   const files = [makeModelFileSummary({id: 'one', name: 'Cube', folderId: 'a', favorite: true}),
     makeModelFileSummary({id: 'two', name: 'Sphere', folderId: 'a'})];
@@ -142,8 +142,10 @@ it('clears folder, tag, search and tool filters through App setters while retain
   fireEvent.change(sidebar.getByPlaceholderText(de.searchPlaceholder), {target: {value: 'Cube'}});
   fireEvent.click(sidebar.getByRole('button', {name: /Favoriten/}));
   expect(screen.getByRole('region', {name: de.filterBarAria}).querySelectorAll('[data-filter-kind]')).toHaveLength(4);
+  fireEvent.change(screen.getByRole('combobox', {name: de.licenseUsage}), {target: {value: 'unknown'}});
   fireEvent.click(screen.getByRole('button', {name: de.filterBarClearAll}));
-  expect(screen.queryByRole('region', {name: de.filterBarAria})).toBeNull();
+  expect(screen.getByRole('region', {name: de.filterBarAria}).querySelectorAll('[data-filter-kind]')).toHaveLength(0);
+  expect(screen.getByRole('combobox', {name: de.licenseUsage})).toHaveValue('');
   expect(sidebar.getByPlaceholderText(de.searchPlaceholder)).toHaveValue('');
   expect(sidebar.getByRole('button', {name: /Alle Modelle/})).toHaveClass('font-semibold');
   expect(sidebar.getByRole('button', {name: /Favoriten/})).toHaveAttribute('aria-pressed', 'false');
@@ -168,7 +170,8 @@ it('clears an active collection without resetting the catalog', async () => {
   const sidebar = within(screen.getByRole('separator').closest('aside')!);
   await act(async () => fireEvent.click(sidebar.getByRole('button', {name: 'Kitchen'})));
   fireEvent.click(screen.getByRole('button', {name: de.filterBarClearAll}));
-  expect(screen.queryByRole('region', {name: de.filterBarAria})).toBeNull();
+  expect(screen.getByRole('region', {name: de.filterBarAria}).querySelectorAll('[data-filter-kind]')).toHaveLength(0);
+  expect(screen.getByRole('combobox', {name: de.licenseUsage})).toHaveValue('');
   expect(sidebar.getByRole('button', {name: 'Kitchen'})).not.toHaveClass('font-semibold');
   expect(screen.getByRole('main')).toHaveTextContent('Cube');
   expect(invoke).not.toHaveBeenCalledWith('reset_catalog');

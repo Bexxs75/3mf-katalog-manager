@@ -504,8 +504,8 @@ pub fn insert_file_within_tx(conn: &Connection, file: &NewFile) -> Result<i64, D
             volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
             print_status, last_viewed_at, creator, content_hash,
             render_snapshot_png, custom_image_png, source_url, queue_position, favorite,
-            plate_count, slice_info_json
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27)",
+            plate_count, slice_info_json, license
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28)",
         params![
             file.name,
             file.path,
@@ -534,6 +534,7 @@ pub fn insert_file_within_tx(conn: &Connection, file: &NewFile) -> Result<i64, D
             file.favorite,
             file.plate_count,
             file.slice_info_json,
+            file.license,
         ],
     )?;
     let file_id = conn.last_insert_rowid();
@@ -667,7 +668,7 @@ const TRASH_SELECT_COLUMNS: &str = "id, name, path, file_type, folder_id, origin
      volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
      print_status, last_viewed_at, creator, content_hash,
      render_snapshot_png, custom_image_png, source_url, queue_position, favorite,
-     plate_count, slice_info_json, deleted_at, trash_path";
+     plate_count, slice_info_json, deleted_at, trash_path, license";
 
 pub fn list_trash(conn: &Connection) -> Result<Vec<FileRecord>, DbError> {
     let sql = format!("SELECT {TRASH_SELECT_COLUMNS} FROM files WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC");
@@ -716,7 +717,7 @@ pub fn get_file(conn: &Connection, id: i64) -> Result<Option<FileRecord>, DbErro
                     volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
                     print_status, last_viewed_at, creator, content_hash,
                     render_snapshot_png, custom_image_png, source_url, queue_position, favorite,
-                    plate_count, slice_info_json, deleted_at, trash_path
+                    plate_count, slice_info_json, deleted_at, trash_path, license
              FROM files WHERE id = ?1",
             params![id],
             row_to_file,
@@ -744,7 +745,7 @@ pub fn list_files_by_ids(conn: &Connection, ids: &[i64]) -> Result<Vec<FileRecor
                 volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
                 print_status, last_viewed_at, creator, content_hash,
                 render_snapshot_png, custom_image_png, source_url, queue_position, favorite,
-                plate_count, slice_info_json, deleted_at, trash_path
+                plate_count, slice_info_json, deleted_at, trash_path, license
          FROM files WHERE id IN ({placeholders})"
     );
     let mut stmt = conn.prepare(&sql)?;
@@ -772,7 +773,7 @@ pub fn list_files(conn: &Connection) -> Result<Vec<FileRecord>, DbError> {
                 volume_cm3, object_count, thumbnail_png, imported_at, file_modified_at,
                 print_status, last_viewed_at, creator, content_hash,
                 render_snapshot_png, custom_image_png, source_url, queue_position, favorite,
-                plate_count, slice_info_json, deleted_at, trash_path
+                plate_count, slice_info_json, deleted_at, trash_path, license
          FROM files WHERE deleted_at IS NULL ORDER BY name",
     )?;
     let mut files = stmt
@@ -789,6 +790,7 @@ pub fn list_files(conn: &Connection) -> Result<Vec<FileRecord>, DbError> {
 
 /// Catalog metadata without image blobs or per-file child queries.
 pub struct FileSummary {
+    pub license: Option<String>,
     pub materials: Vec<MaterialRecord>,
     pub slice_info_json: Option<String>,
     pub id: i64,
@@ -821,7 +823,7 @@ pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbErro
                 object_count, imported_at, print_status, favorite,
                 queue_position, thumbnail_png IS NOT NULL AS has_thumbnail,
                 render_snapshot_png IS NOT NULL AS has_render_snapshot, creator,
-                last_viewed_at, content_hash, file_modified_at, slice_info_json
+                last_viewed_at, content_hash, file_modified_at, slice_info_json, license
          FROM files WHERE deleted_at IS NULL ORDER BY name",
     )?;
     let mut rows = stmt
@@ -831,6 +833,7 @@ pub fn list_file_summaries(conn: &Connection) -> Result<Vec<FileSummary>, DbErro
             let dz: Option<f64> = row.get(8)?;
             let file_type_str: String = row.get(3)?;
             Ok(FileSummary {
+                license: row.get(22)?,
                 materials: Vec::new(),
                 slice_info_json: row.get(21)?,
                 id: row.get(0)?,
@@ -948,6 +951,7 @@ fn row_to_file(row: &rusqlite::Row) -> rusqlite::Result<FileRecord> {
         slice_info_json: row.get(27)?,
         deleted_at: row.get(28)?,
         trash_path: row.get(29)?,
+        license: row.get(30)?,
     })
 }
 

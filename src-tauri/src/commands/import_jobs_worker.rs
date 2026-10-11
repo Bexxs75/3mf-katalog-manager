@@ -26,7 +26,11 @@ fn scan_candidates_observed(
         if job.cancel.load(Ordering::Acquire) || out.len() >= limit {
             return false;
         }
-        if path.is_symlink() {
+        if path.is_symlink()
+            || (job.source == ImportSource::FolderContents
+                && root != Some(path)
+                && files::is_ignored_import_path(path))
+        {
             return true;
         }
         if path.is_dir() {
@@ -40,7 +44,12 @@ fn scan_candidates_observed(
                 }
             }
         } else if root.is_none() || files::is_supported_extension(path) {
-            out.push((path.to_path_buf(), root.map(Path::to_path_buf)));
+            let folder_root = if job.source == ImportSource::FolderContents {
+                None
+            } else {
+                root.map(Path::to_path_buf)
+            };
+            out.push((path.to_path_buf(), folder_root));
             let mut data = job.data.lock().unwrap();
             data.known = out.len();
             data.current = path.parent().map(|p| p.to_string_lossy().into_owned());
@@ -165,6 +174,12 @@ pub(super) fn run_models(
         }
         if !files::is_supported_extension(path) {
             skip(job, path, "unsupported");
+            continue;
+        }
+        if job.source == ImportSource::FolderContents
+            && reject_if_sensitive_path(path, sensitive).is_err()
+        {
+            skip(job, path, "protected");
             continue;
         }
         let path_string = path.to_string_lossy().into_owned();
@@ -599,5 +614,39 @@ mod scan_tests {
             assert_eq!(job.progress().scan_complete, limit == usize::MAX);
             std::fs::remove_dir_all(dir).unwrap();
         }
+    }
+}
+
+#[cfg(test)]
+mod folder_contents_tests {
+    use super::*;
+
+    #[test]
+    fn folder_contents_scan_filters_files_without_mirrored_roots() {
+        let dir = std::env::temp_dir().join(format!("folder_contents_scan_{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("nested")).unwrap();
+        std::fs::create_dir_all(dir.join(".hidden")).unwrap();
+        for name in ["model.3mf", "nested/model.STL", "model.stp", "model.step", "model.obj", ".hidden/model.stl", ".hidden.stl", "~$temp.stl", "archive.zip", "partial.stl.part", "readme.txt"] {
+            std::fs::write(dir.join(name), b"test").unwrap();
+        }
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(dir.join("nested"), dir.join("linked")).unwrap();
+            std::os::unix::fs::symlink(dir.join("model.obj"), dir.join("linked.obj")).unwrap();
+        }
+        let service = ImportJobs::default();
+        let job = service.enqueue(ImportSource::FolderContents, None, false, None).unwrap();
+        let candidates = scan_candidates(&job, &[dir.clone()], usize::MAX);
+        assert_eq!(candidates.len(), 5);
+        assert!(candidates.iter().all(|(_, root)| root.is_none()));
+        assert!(job.data.lock().unwrap().scan_complete);
+        let limited = service.enqueue(ImportSource::FolderContents, None, false, None).unwrap();
+        assert_eq!(scan_candidates(&limited, &[dir.clone()], 2).len(), 2);
+        assert!(!limited.data.lock().unwrap().scan_complete);
+        assert!(limited.cancel.load(Ordering::Acquire));
+        let cancelled = service.enqueue(ImportSource::FolderContents, None, false, None).unwrap();
+        cancelled.cancel.store(true, Ordering::Release);
+        assert!(scan_candidates(&cancelled, &[dir.clone()], usize::MAX).is_empty());
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

@@ -87,7 +87,7 @@ it('bulk toolbar confirms removal and calls its removal action', async () => {
     onSelectAllVisible={noop} onClearSelection={noop} onBulkAddToQueue={noop} addToCollectionMenuOpen={false}
     onAddToCollectionMenuOpenChange={noop} collections={[]} onBulkAddToCollection={noop} activeCollection={null}
     onBulkRemoveFromCollection={noop} onBulkSetPrintStatus={noop} onBulkDelete={noop} onBulkRemove={onRemove}
-    addTagMenuOpen={false} onAddTagMenuOpenChange={noop} tagDraft="" onTagDraftChange={noop} onSubmitBulkAddTag={noop}
+    allTags={[]} tagsInAllSelection={[]} addTagMenuOpen={false} onAddTagMenuOpenChange={noop} tagDraft="" onTagDraftChange={noop} onSubmitBulkAddTag={noop}
     removeTagMenuOpen={false} onRemoveTagMenuOpenChange={noop} tagsInSelection={[]} onBulkRemoveTag={noop} /></Provider>);
   fireEvent.click(screen.getByText('Aus Katalog entfernen'));
   expect(screen.getByText('3 Modelle aus dem Katalog entfernen?')).toBeTruthy();

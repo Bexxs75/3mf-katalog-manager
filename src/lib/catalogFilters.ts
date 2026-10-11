@@ -1,3 +1,4 @@
+import { licenseUsage, type LicenseUsage } from './licenses';
 import { isFileInFolderOrDescendant } from './folderTree';
 import { tagMatches } from './autoTags';
 import { applyToolView, type RecentSnapshot, type ToolView } from './toolViews';
@@ -5,6 +6,7 @@ import type { Language } from '../i18n/types';
 import type { ModelFile, Folder, SortKey, SortDirection } from '../types';
 
 export interface CatalogFilterCriteria {
+  usage?: LicenseUsage | null;
   activeFolderId: string;
   activeTag: string | null;
   query: string;
@@ -51,6 +53,7 @@ export function filterAndSortModels(
   const { activeFolderId, activeTag, query, sort, language = 'de', toolView = null, now, recentSnapshot } = criteria;
   const base = toolView ? applyToolView(models, toolView, now ?? new Date(), recentSnapshot) : models;
   const matched = base
+    .filter(m => !criteria.usage || licenseUsage(m.license) === criteria.usage)
     .filter((m) => activeFolderId === 'all' || isFileInFolderOrDescendant(m.folderId, activeFolderId, folders))
     .filter((m) => !activeTag || m.tags.includes(activeTag))
     .filter((m) => {

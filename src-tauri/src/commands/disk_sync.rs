@@ -65,11 +65,6 @@ fn path_key(path: &Path, case_insensitive: bool) -> PathBuf {
     }
 }
 
-fn ignored(path: &Path) -> bool {
-    path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
-        n.starts_with('.') || n.starts_with("~$") || n.to_ascii_lowercase().ends_with(".part")
-    })
-}
 #[derive(Debug)]
 struct DiskRoot {
     stored: PathBuf,
@@ -160,7 +155,7 @@ fn read_directory(dir: &Path) -> std::io::Result<DirectoryEntries> {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
             Err(e) => return Err(e),
         };
-        if ignored(&item.path()) {
+        if files::is_ignored_import_path(&item.path()) {
             continue;
         }
         match item.file_type() {

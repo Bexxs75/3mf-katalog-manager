@@ -73,3 +73,16 @@ it.each(['compact', 'comfort'])('switches only the container slicer action in th
   fireEvent.click(screen.getByRole('button', { name: /In Slicer öffnen/ }));
   expect(noop).toHaveBeenCalledTimes(1);
 });
+
+it.each(['compact', 'comfort'])('edits licenses in the %s panel', async density => {
+  localStorage.setItem('3mf-katalog-density', density);
+  const noop = vi.fn();
+  const onSetLicense = vi.fn().mockResolvedValue(undefined);
+  render(<LanguageProvider><UiDensityProvider><DetailPanel model={makeModelFile()} allTags={[]}
+    onAddTag={noop} onRemoveTag={noop} onDelete={noop} onTogglePrintStatus={noop} onToggleFavorite={noop}
+    onToggleQueue={noop} onUploadImage={noop} onSnapshotCaptured={noop} onSetSourceUrl={noop}
+    onOpenInSlicer={noop} slicerError={null} onSetLicense={onSetLicense} /></UiDensityProvider></LanguageProvider>);
+  fireEvent.change(screen.getByRole('combobox', { name: 'Lizenz' }), { target: { value: 'personal' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Lizenz speichern' }));
+  expect(onSetLicense).toHaveBeenCalledWith(['model-1'], 'personal');
+});

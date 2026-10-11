@@ -520,3 +520,121 @@ fn contract_11_rejected_job_never_enters_the_worker_queue() {
     assert!(service.archives.lock().unwrap().is_empty());
     assert!(service.gate.exclusive().is_ok());
 }
+
+#[test]
+fn folder_contents_moves_nested_files_flat_and_keeps_source_directory() {
+    let fixture = Fixture::new();
+    let target = fixture.0.join("catalog");
+    let source = target.join("Eingang");
+    let nested = source.join("nested");
+    std::fs::create_dir_all(&nested).unwrap();
+    let first = source.join("first.stl");
+    let second = nested.join("second.stl");
+    std::fs::rename(fixture.stl(1), &first).unwrap();
+    std::fs::rename(fixture.stl(2), &second).unwrap();
+    let mut conn = db::connect_in_memory().unwrap();
+    let target_id = db::insert_folder_with_parent(&conn, "catalog", None, &target.to_string_lossy()).unwrap();
+    let service = ImportJobs::default();
+    let job = service.enqueue(ImportSource::FolderContents, Some(target_id.to_string()), true, None).unwrap();
+    service.next().unwrap();
+    finish_models(&service, &job, &mut conn, &[source.clone()]);
+    let result = job.result().unwrap();
+    assert_eq!(result.counts.imported, 2);
+    assert_eq!(db::list_folders(&conn).unwrap().len(), 1);
+    for file in db::list_files(&conn).unwrap() {
+        assert_eq!(file.folder_id, Some(target_id));
+        assert_eq!(Path::new(&file.path).parent(), Some(target.as_path()));
+        assert!(Path::new(&file.path).exists());
+    }
+    assert!(source.is_dir());
+    assert!(nested.is_dir());
+    assert!(!first.exists());
+    assert!(!second.exists());
+}
+
+#[test]
+fn folder_contents_without_placement_does_not_mirror_or_duplicate_existing_paths() {
+    let fixture = Fixture::new();
+    fixture.stl(1);
+    let mut conn = db::connect_in_memory().unwrap();
+    let service = ImportJobs::default();
+    for expected_duplicates in [0, 1] {
+        let job = service.enqueue(ImportSource::FolderContents, None, false, None).unwrap();
+        service.next().unwrap();
+        finish_models(&service, &job, &mut conn, &[fixture.0.clone()]);
+        assert_eq!(job.result().unwrap().counts.duplicate, expected_duplicates);
+        assert_eq!(db::list_files(&conn).unwrap().len(), 1);
+        assert!(db::list_folders(&conn).unwrap().is_empty());
+    }
+}
+
+#[test]
+fn folder_contents_rejects_sensitive_roots() {
+    let fixture = Fixture::new();
+    let service = ImportJobs::default();
+    assert!(service.authorize_models(ImportSource::FolderContents, &[fixture.0.clone()], false, &[fixture.0.clone()]).is_err());
+}
+
+#[test]
+fn folder_contents_accepts_ignored_names_for_selected_roots_only() {
+    let fixture = Fixture::new();
+    for name in [".Eingang", "x.part"] {
+        let source = fixture.0.join(name);
+        std::fs::create_dir_all(source.join(".hidden")).unwrap();
+        std::fs::create_dir_all(source.join("nested.part")).unwrap();
+        std::fs::rename(fixture.stl(1), source.join("visible.stl")).unwrap();
+        std::fs::rename(fixture.stl(2), source.join(".hidden/model.stl")).unwrap();
+        std::fs::rename(fixture.stl(3), source.join("nested.part/model.stl")).unwrap();
+        let mut conn = db::connect_in_memory().unwrap();
+        let service = ImportJobs::default();
+        let job = service.enqueue(ImportSource::FolderContents, None, false, None).unwrap();
+        service.next().unwrap();
+        finish_models(&service, &job, &mut conn, &[source.clone()]);
+        assert_eq!(job.result().unwrap().counts.imported, 1, "{name}");
+        let files = db::list_files(&conn).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(Path::new(&files[0].path), source.join("visible.stl"));
+    }
+}
+
+#[test]
+fn folder_contents_name_collision_preserves_both_files_and_catalog_paths() {
+    let fixture = Fixture::new();
+    let source = fixture.0.join("source");
+    let target = fixture.0.join("catalog");
+    std::fs::create_dir_all(&target).unwrap();
+    let mut originals = Vec::new();
+    for seed in [1, 2] {
+        let folder = source.join(format!("sub{seed}"));
+        std::fs::create_dir_all(&folder).unwrap();
+        let path = folder.join("model.stl");
+        std::fs::rename(fixture.stl(seed), &path).unwrap();
+        originals.push((path.clone(), std::fs::read(path).unwrap()));
+    }
+    let mut conn = db::connect_in_memory().unwrap();
+    let target_id = db::insert_folder_with_parent(&conn, "catalog", None, &target.to_string_lossy()).unwrap();
+    let service = ImportJobs::default();
+    let job = service.enqueue(ImportSource::FolderContents, Some(target_id.to_string()), true, None).unwrap();
+    service.next().unwrap();
+    finish_models(&service, &job, &mut conn, &[source]);
+    let result = job.result().unwrap();
+    assert_partition(&result, 2);
+    assert_eq!(result.counts.imported, 1);
+    assert_eq!(result.counts.imported_not_placed, 1);
+    let failed = &result.groups.imported_not_placed[0];
+    assert_eq!(failed.reason, "moveFailed");
+    let files = db::list_files(&conn).unwrap();
+    assert_eq!(files.len(), 2);
+    let retained = files.iter().find(|file| file.id.to_string() == failed.file_id).unwrap();
+    assert_eq!(retained.path, failed.path);
+    let destination = target.join("model.stl");
+    for (path, bytes) in originals {
+        if path == Path::new(&failed.path) {
+            assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        } else {
+            assert!(!path.exists());
+            assert_eq!(std::fs::read(&destination).unwrap(), bytes);
+            assert!(files.iter().any(|file| Path::new(&file.path) == destination));
+        }
+    }
+}
