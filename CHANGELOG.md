@@ -46,6 +46,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- Disk sync on Windows and macOS no longer creates duplicate files or folders after case-only renames; existing catalog paths are preserved.
+
 - The import banner counted only models that had also been moved to the target folder, so it could say “0 models imported” although they were in the catalog. Models imported but not moved are now counted as imported and shown as “of which not placed”.
 - Large 3MF projects (model files up to 2 GiB unpacked, such as high-resolution Bambu Studio projects) can now be imported: model XML is read without loading the whole text into memory. Models above 3 million triangles show the translated size-limit explanation instead of opening the 3D preview.
 
@@ -594,6 +596,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Sicherungen des Katalogs vor einem Update oder einer Schema-Änderung haben klare Namen (`Katalog-Sicherung_<Datum>_vor-Update_<von>_auf_<nach>.db`). Die Sicherung der stabilen Ausgangsversion wird nie automatisch gelöscht, der Rückweg bleibt offen.
 
 ### Behoben
+
+- Der Festplatten-Abgleich unter Windows und macOS erzeugt bei reinen Änderungen der Groß-/Kleinschreibung keine doppelten Dateien oder Ordner mehr; gespeicherte Katalogpfade bleiben erhalten.
 
 - Das Import-Banner zählte nur Modelle, die auch in den Zielordner verschoben wurden, und konnte „0 Modelle importiert“ melden, obwohl sie im Katalog waren. Importierte, aber nicht verschobene Modelle zählen jetzt als importiert und erscheinen als „davon nicht abgelegt“.
 - Größen-Tags neuer Mehrplatten-Importe richten sich nach der größten einzelnen Platte; angezeigte Maße bleiben unverändert.

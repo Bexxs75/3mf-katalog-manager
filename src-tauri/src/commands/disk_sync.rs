@@ -55,6 +55,16 @@ fn entry(root: &Path, path: &Path, id: Option<String>) -> DiskEntry {
         id,
     }
 }
+const CASE_INSENSITIVE_PATHS: bool = cfg!(any(windows, target_os = "macos"));
+
+fn path_key(path: &Path, case_insensitive: bool) -> PathBuf {
+    if case_insensitive {
+        PathBuf::from(path.to_string_lossy().to_lowercase())
+    } else {
+        path.to_path_buf()
+    }
+}
+
 fn ignored(path: &Path) -> bool {
     path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
         n.starts_with('.') || n.starts_with("~$") || n.to_ascii_lowercase().ends_with(".part")
@@ -173,6 +183,8 @@ fn walk(
     known_folders: &HashSet<PathBuf>,
     known_files: &HashSet<PathBuf>,
     scan: &mut DiskScan,
+    case_insensitive: bool,
+    seen_files: &mut HashSet<PathBuf>,
     read: &mut impl FnMut(&Path) -> std::io::Result<DirectoryEntries>,
 ) -> std::io::Result<()> {
     let mut pending = vec![root.canonical.clone()];
@@ -200,10 +212,12 @@ fn walk(
             }
             if kind.is_dir() {
                 pending.push(path);
-            } else if kind.is_file()
-                && files::is_supported_extension(&path)
-                && !known_files.contains(&path)
-            {
+            } else if kind.is_file() && files::is_supported_extension(&path) {
+                let key = path_key(&path, case_insensitive);
+                seen_files.insert(key.clone());
+                if known_files.contains(&key) {
+                    continue;
+                }
                 let stored = root
                     .stored
                     .join(path.strip_prefix(&root.canonical).unwrap());
@@ -213,7 +227,7 @@ fn walk(
                     .skip(1)
                     .take_while(|p| *p != root.canonical)
                 {
-                    if !known_folders.contains(parent) {
+                    if !known_folders.contains(&path_key(parent, case_insensitive)) {
                         new_folders.insert(parent.to_path_buf());
                     }
                 }
@@ -236,15 +250,31 @@ fn scan_with_reader(
     conn: &Connection,
     read: &mut impl FnMut(&Path) -> std::io::Result<DirectoryEntries>,
 ) -> SyncResult<DiskScan> {
+    scan_with_path_mode(conn, read, CASE_INSENSITIVE_PATHS)
+}
+
+fn scan_with_path_mode(
+    conn: &Connection,
+    read: &mut impl FnMut(&Path) -> std::io::Result<DirectoryEntries>,
+    case_insensitive: bool,
+) -> SyncResult<DiskScan> {
     let folders = db::list_folders(conn).map_err(|e| e.to_string())?;
     let known_folders: HashSet<PathBuf> = folders
         .iter()
         .filter(|f| !f.path.is_empty())
         .map(|f| PathBuf::from(&f.path))
         .collect();
+    let folder_keys: HashSet<_> = known_folders
+        .iter()
+        .map(|p| path_key(p, case_insensitive))
+        .collect();
     let mut configured: Vec<_> = known_folders
         .iter()
-        .filter(|p| !p.ancestors().skip(1).any(|a| known_folders.contains(a)))
+        .filter(|p| {
+            !p.ancestors()
+                .skip(1)
+                .any(|a| folder_keys.contains(&path_key(a, case_insensitive)))
+        })
         .cloned()
         .collect();
     configured.sort();
@@ -271,7 +301,10 @@ fn scan_with_reader(
             .find_map(|r| r.resolve(p))
             .unwrap_or_else(|| p.to_path_buf())
     };
-    let known_folders = known_folders.iter().map(|p| normalize(p)).collect();
+    let known_folders = known_folders
+        .iter()
+        .map(|p| path_key(&normalize(p), case_insensitive))
+        .collect();
     let mut stmt = conn
         .prepare("SELECT id, path, deleted_at IS NULL, folder_id IS NULL FROM files")
         .map_err(|e| e.to_string())?;
@@ -289,15 +322,24 @@ fn scan_with_reader(
         .map_err(|e| e.to_string())?;
     let known_files = rows
         .iter()
-        .map(|(_, p, _, _)| normalize(Path::new(p)))
+        .map(|(_, p, _, _)| path_key(&normalize(Path::new(p)), case_insensitive))
         .collect();
+    let mut seen_files = HashSet::new();
     for (index, root) in roots.iter().enumerate() {
         let checked = (|| -> std::io::Result<()> {
             if !roots[..index]
                 .iter()
                 .any(|r| root.canonical.starts_with(&r.canonical))
             {
-                walk(root, &known_folders, &known_files, &mut result, read)?;
+                walk(
+                    root,
+                    &known_folders,
+                    &known_files,
+                    &mut result,
+                    case_insensitive,
+                    &mut seen_files,
+                    read,
+                )?;
             }
             for (id, path, active, _) in &rows {
                 let Some(resolved) = root.resolve(Path::new(path)) else {
@@ -364,8 +406,13 @@ fn scan_with_reader(
             .iter()
             .any(|p| normalize(Path::new(&e.path)).starts_with(normalize(Path::new(p))))
     });
-    #[cfg(any(windows, target_os = "macos"))]
-    suppress_case_only_new_files(&mut result);
+    if case_insensitive {
+        // A directory entry proves presence even when the stored spelling cannot be opened.
+        result.missing_files.retain(|e| {
+            !seen_files.contains(&path_key(&normalize(Path::new(&e.path)), case_insensitive))
+        });
+        suppress_case_only_new_files(&mut result, case_insensitive);
+    }
     result.roots = roots;
     if !result.unreachable_roots.is_empty() {
         result.new_folders.clear();
@@ -382,19 +429,19 @@ fn scan_with_reader(
     Ok(result)
 }
 
-#[cfg(any(test, windows, target_os = "macos"))]
-fn suppress_case_only_new_files(scan: &mut DiskScan) {
+fn suppress_case_only_new_files(scan: &mut DiskScan, case_insensitive: bool) {
     let missing: HashSet<_> = scan
         .missing_files
         .iter()
-        .map(|e| e.path.to_lowercase())
+        .map(|e| path_key(Path::new(&e.path), case_insensitive))
         .collect();
     scan.new_files
-        .retain(|e| !missing.contains(&e.path.to_lowercase()));
+        .retain(|e| !missing.contains(&path_key(Path::new(&e.path), case_insensitive)));
     scan.new_folders.retain(|folder| {
-        scan.new_files
-            .iter()
-            .any(|file| Path::new(&file.path).starts_with(&folder.path))
+        scan.new_files.iter().any(|file| {
+            path_key(Path::new(&file.path), case_insensitive)
+                .starts_with(path_key(Path::new(&folder.path), case_insensitive))
+        })
     });
 }
 
@@ -436,16 +483,19 @@ fn ensure_sync_folder(
     scan: &DiskScan,
     root: &Path,
     dir: &Path,
+    case_insensitive: bool,
 ) -> SyncResult<i64> {
     let resolve = |p: &Path| scan.roots.iter().find_map(|r| r.resolve(p));
     let canonical = resolve(dir).ok_or_else(|| DiskSyncError::path("diskSyncPathChanged", dir))?;
     let folders: HashMap<_, _> = db::list_folders(conn)
         .map_err(|e| e.to_string())?
         .into_iter()
-        .filter_map(|folder| resolve(Path::new(&folder.path)).map(|path| (path, folder)))
+        .filter_map(|folder| {
+            resolve(Path::new(&folder.path)).map(|path| (path_key(&path, case_insensitive), folder))
+        })
         .collect();
     for ancestor in canonical.ancestors() {
-        if let Some(folder) = folders.get(ancestor) {
+        if let Some(folder) = folders.get(&path_key(ancestor, case_insensitive)) {
             let relative = canonical.strip_prefix(ancestor).unwrap();
             if relative.as_os_str().is_empty() {
                 return Ok(folder.id);
@@ -467,10 +517,19 @@ fn apply(conn: &mut Connection, selection: DiskSelection) -> SyncResult<DiskAppl
 fn apply_with_reader(
     conn: &mut Connection,
     selection: DiskSelection,
+    read: impl FnMut(&Path) -> CmdResult<db::models::NewFile>,
+) -> SyncResult<DiskApplied> {
+    apply_with_path_mode(conn, selection, read, CASE_INSENSITIVE_PATHS)
+}
+
+fn apply_with_path_mode(
+    conn: &mut Connection,
+    selection: DiskSelection,
     mut read: impl FnMut(&Path) -> CmdResult<db::models::NewFile>,
+    case_insensitive: bool,
 ) -> SyncResult<DiskApplied> {
     // Re-scan under the exclusive catalog gate; the webview is not authoritative.
-    let current = scan(conn)?;
+    let current = scan_with_path_mode(conn, &mut read_directory, case_insensitive)?;
     if !current.unreachable_roots.is_empty() {
         return Err(DiskSyncError::new(
             "diskSyncRootUnreachable",
@@ -555,6 +614,25 @@ fn apply_with_reader(
         .map(|f| f.id)
         .collect();
     let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let key = |p: &Path| {
+        let resolved = current
+            .roots
+            .iter()
+            .find_map(|root| root.resolve(p))
+            .unwrap_or_else(|| p.to_path_buf());
+        path_key(&resolved, case_insensitive)
+    };
+    let mut known_files: HashSet<_> = {
+        let mut stmt = tx
+            .prepare("SELECT path FROM files")
+            .map_err(|e| e.to_string())?;
+        let paths = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        paths.iter().map(|p| key(Path::new(p))).collect()
+    };
     for e in current
         .new_folders
         .iter()
@@ -563,17 +641,30 @@ fn apply_with_reader(
         // Do not leave empty catalog folders when every contained import failed.
         if current.new_files.iter().any(|file| {
             Path::new(&file.path).starts_with(&e.path)
-                && !result.failed_paths.iter().any(|failed| failed.path == file.path)
+                && !result
+                    .failed_paths
+                    .iter()
+                    .any(|failed| failed.path == file.path)
         }) {
-            ensure_sync_folder(&tx, &current, Path::new(&e.root), Path::new(&e.path))?;
+            ensure_sync_folder(
+                &tx,
+                &current,
+                Path::new(&e.root),
+                Path::new(&e.path),
+                case_insensitive,
+            )?;
         }
     }
     for (e, mut file) in prepared {
+        if !known_files.insert(key(Path::new(&file.path))) {
+            continue;
+        }
         file.folder_id = Some(ensure_sync_folder(
             &tx,
             &current,
             Path::new(&e.root),
             Path::new(&e.path).parent().unwrap(),
+            case_insensitive,
         )?);
         // Each real disk path belongs in the catalog, even when its content hash already exists.
         result.file_ids.push(
@@ -701,6 +792,125 @@ mod tests {
             }
         }
     }
+    #[test]
+    fn path_keys_fold_only_when_requested() {
+        let lower = Path::new("Spielzeug/Grün.3mf");
+        let upper = Path::new("SPIELZEUG/GRÜN.3MF");
+        assert_eq!(path_key(lower, true), path_key(upper, true));
+        assert_ne!(path_key(lower, false), path_key(upper, false));
+        assert_eq!(path_key(lower, false), lower);
+        assert_eq!(
+            CASE_INSENSITIVE_PATHS,
+            cfg!(any(windows, target_os = "macos"))
+        );
+    }
+
+    #[test]
+    fn renamed_folder_is_reused_for_new_files_without_rewriting_paths() {
+        let mut f = Fixture::new();
+        let stored = f.root.join("Haushalt");
+        let actual = f.root.join("HAUSHALT");
+        std::fs::create_dir(&actual).unwrap();
+        let folder_id = db::ensure_folder_path(&f.conn, &f.root, &stored).unwrap();
+        let old_file = stored.join("Kreisel.obj");
+        db::test_insert_minimal_file(&f.conn, old_file.to_str().unwrap(), Some(folder_id)).unwrap();
+        std::fs::write(actual.join("KREISEL.OBJ"), "mesh").unwrap();
+        let new_file = actual.join("new.obj");
+        std::fs::write(&new_file, "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n").unwrap();
+        let preview = scan_with_path_mode(&f.conn, &mut read_directory, true).unwrap();
+        assert!(preview.new_folders.is_empty());
+        assert!(preview.missing_files.is_empty());
+        assert_eq!(preview.new_files.len(), 1);
+        assert_eq!(preview.new_files[0].path, new_file.to_string_lossy());
+        let selection = DiskSelection {
+            new_paths: vec![new_file.to_string_lossy().into_owned()],
+            missing_ids: vec![],
+            remove_missing: false,
+        };
+        let applied = apply_with_path_mode(
+            &mut f.conn,
+            selection,
+            |path| files::read_import_model_file(path, None),
+            true,
+        )
+        .unwrap();
+        assert_eq!(applied.file_ids.len(), 1);
+        assert!(applied.folder_ids.is_empty());
+        let files = db::list_files(&f.conn).unwrap();
+        assert_eq!(files.len(), 2);
+        assert!(files
+            .iter()
+            .any(|file| file.path == old_file.to_string_lossy()));
+        assert_eq!(
+            files
+                .iter()
+                .find(|file| file.path == new_file.to_string_lossy())
+                .unwrap()
+                .folder_id,
+            Some(folder_id)
+        );
+        assert!(db::list_folders(&f.conn)
+            .unwrap()
+            .iter()
+            .any(|folder| folder.path == stored.to_string_lossy()));
+    }
+
+    #[test]
+    fn apply_rechecks_case_folded_duplicates_after_parsing() {
+        let mut f = Fixture::new();
+        let database = f.dir.path().join("catalog.db");
+        f.conn = db::connect(&database).unwrap();
+        db::ensure_folder_path(&f.conn, &f.root, &f.root).unwrap();
+        let path = f.root.join("KREISEL.OBJ");
+        let stored = f.root.join("Kreisel.obj");
+        std::fs::write(&path, "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n").unwrap();
+        let other = Connection::open(&database).unwrap();
+        let selection = f.select(false);
+        let applied = apply_with_path_mode(
+            &mut f.conn,
+            selection,
+            |path| {
+                db::test_insert_minimal_file(&other, stored.to_str().unwrap(), None).unwrap();
+                files::read_import_model_file(path, None)
+            },
+            true,
+        )
+        .unwrap();
+        assert!(applied.file_ids.is_empty());
+        let files = db::list_files(&f.conn).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, stored.to_string_lossy());
+    }
+
+    #[test]
+    fn scan_case_only_rename_is_neither_new_nor_missing() {
+        let f = Fixture::new();
+        let folder = f.root.join("Spielzeug");
+        std::fs::create_dir(&folder).unwrap();
+        db::ensure_folder_path(&f.conn, &f.root, &folder).unwrap();
+        let stored = folder.join("Kreisel.3mf");
+        std::fs::write(&stored, "mesh").unwrap();
+        db::test_insert_minimal_file(&f.conn, stored.to_str().unwrap(), None).unwrap();
+        // Simulate read_dir returning a new spelling while metadata still finds the old one.
+        let preview = scan_with_path_mode(
+            &f.conn,
+            &mut |dir| {
+                let mut entries = read_directory(dir)?;
+                for (path, kind) in &mut entries {
+                    if kind.is_file() {
+                        *path = dir.join("KREISEL.3MF");
+                    }
+                }
+                Ok(entries)
+            },
+            true,
+        )
+        .unwrap();
+        assert!(preview.new_files.is_empty());
+        assert!(preview.new_folders.is_empty());
+        assert!(preview.missing_files.is_empty());
+    }
+
     #[test]
     fn scan_is_read_only_and_apply_preserves_missing_until_selected() {
         let mut f = Fixture::new();
@@ -906,9 +1116,15 @@ mod tests {
         assert_eq!(result.failed_paths.len(), 1);
         assert_eq!(result.failed_paths[0].path, broken.to_string_lossy());
         assert!(!result.failed_paths[0].reason.is_empty());
-        assert_eq!(db::list_files(&f.conn).unwrap()[0].path, valid.to_string_lossy());
+        assert_eq!(
+            db::list_files(&f.conn).unwrap()[0].path,
+            valid.to_string_lossy()
+        );
         let serialized = serde_json::to_value(&result).unwrap();
-        assert_eq!(serialized["failedPaths"][0]["path"], broken.to_string_lossy().as_ref());
+        assert_eq!(
+            serialized["failedPaths"][0]["path"],
+            broken.to_string_lossy().as_ref()
+        );
     }
 
     #[cfg(unix)]
@@ -1165,7 +1381,7 @@ mod tests {
             )],
             ..DiskScan::default()
         };
-        suppress_case_only_new_files(&mut preview);
+        suppress_case_only_new_files(&mut preview, true);
         assert_eq!(preview.new_files.len(), 1);
         assert_eq!(preview.new_files[0].path, "models/other/b.obj");
         assert_eq!(preview.new_folders.len(), 1);
