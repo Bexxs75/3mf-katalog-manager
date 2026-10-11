@@ -168,6 +168,15 @@ class WebTests(unittest.TestCase):
             depth += (char == '{') - (char == '}')
             self.assertGreaterEqual(depth, 0)
 
+    def test_notice_box_sits_above_the_list_and_keeps_the_hints(self):
+        _, _, body, _, _ = self.request(headers={'Accept-Language': 'en'})
+        html = body.decode()
+        box = html[html.index('<aside class="notice"'):html.index('</aside>')]
+        for text in ('Notice', 'Links expire after 1 hour', 'PrusaSlicer: download the file', 'Slicer help'):
+            self.assertIn(text, box)
+        self.assertLess(html.index('<aside class="notice"'), html.index('<ul class="files">'))
+        self.assertEqual(html.count('Links expire after 1 hour'), 1)
+
     def test_theme_toggle_script_and_sticky_bar(self):
         _, _, body, _, _ = self.request(headers={'Accept-Language': 'en'})
         html = body.decode()

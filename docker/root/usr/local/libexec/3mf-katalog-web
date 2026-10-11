@@ -56,6 +56,7 @@ TEXT = {
     'empty': ('Keine Dateien gefunden.', 'No files found.'),
     'previous': ('Zurück', 'Previous'), 'next': ('Weiter', 'Next'), 'page': ('Seite', 'Page'),
     'help': ('Hilfe zu Slicern', 'Slicer help'),
+    'notice': ('Hinweis', 'Notice'),
     'expiry': ('Links gelten 1 Stunde. Bei einem Fehler die Seite neu laden.', 'Links expire after 1 hour. Reload this page if a link fails.'),
     'prusa': ('PrusaSlicer: Datei herunterladen und im Slicer öffnen.', 'PrusaSlicer: download the file and open it in the slicer.'),
     'advice': ('Der Slicer muss auf deinem PC installiert und die Adresse vom PC erreichbar sein. Selbstsignierte Zertifikate bei https://…:3001 werden oft abgelehnt: im Heimnetz http://…:3000 oder einen Reverse Proxy mit gültigem Zertifikat verwenden. Unter Linux muss das URL-Schema registriert sein.',
@@ -137,6 +138,14 @@ a {color:var(--accent);text-underline-offset:2px}
 .theme svg {width:18px;height:18px;display:none}
 .theme[data-state=auto] .i-auto,.theme[data-state=light] .i-light,.theme[data-state=dark] .i-dark {display:block}
 .back {margin:.25rem 0 0}
+.notice {margin:1rem 0;padding:.8rem 1rem .8rem .9rem;background:var(--accent-soft);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:6px;display:flex;gap:.7rem;align-items:flex-start}
+.notice>svg {flex:none;width:22px;height:22px;margin-top:1px;color:var(--accent)}
+.notice h2 {margin:0 0 .25rem;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.notice p {margin:.2rem 0;font-size:14.5px;font-weight:500}
+.notice details {margin-top:.4rem}
+.notice details>summary {display:inline;height:auto;padding:0;border:0;background:none;color:var(--accent);font-size:13.5px;font-weight:600;text-decoration:underline;cursor:pointer}
+.notice details>summary:hover {border:0}
+.notice details>p {font-weight:400}
 .brand {display:inline-flex;align-items:center;gap:.6rem;color:var(--ink);text-decoration:none;font-weight:700;font-size:15px;text-transform:uppercase;letter-spacing:.07em}
 .brand img {width:30px;height:30px;display:block}
 .bar a:not(.brand) {font-size:13px;font-weight:500}
@@ -597,6 +606,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if single:
             parts.append(f'<p class="back"><a href="/katalog/">{t("all_files")}</a></p>')
         parts.append(f'<h1>{t("title")}</h1>')
+        parts.append(f'<aside class="notice" role="note" aria-labelledby="notice-title"><svg {ICON_ATTRS}><circle cx="12" cy="12" r="9.5"/><path d="M12 11v6M12 7.5h.01"/></svg><div><h2 id="notice-title">{t("notice")}</h2><p>{t("expiry")}</p><p>{t("prusa")}</p><details><summary>{t("help")}</summary><p>{t("advice")}</p></details></div></aside>')
         try:
             rows, more, page, folders, tags, tagged = self.server.catalog.listing(query)
         except (sqlite3.Error, OSError, ValueError):
@@ -661,7 +671,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         target = '/katalog/?' + urlencode({**query, 'page': number})
                         parts.append(f'<a href="{escape(target)}">{t(label)}</a>')
                 parts.append('</nav>')
-        parts.append(f'<p>{t("expiry")}</p><p>{t("prusa")}</p><details><summary>{t("help")}</summary><p>{t("advice")}</p></details></main><script>{SCRIPT}</script></body></html>')
+        parts.append(f'</main><script>{SCRIPT}</script></body></html>')
         self.respond(status, ''.join(parts).encode(), 'text/html; charset=utf-8')
 
 
