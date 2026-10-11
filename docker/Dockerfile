@@ -7,6 +7,8 @@ ARG APP_VERSION
 ARG APP_SHA256=
 # Keep download tools and the temporary AppImage out of the final stage.
 RUN test -n "${APP_URL}" && test -n "${APP_VERSION}" \
+    && case "${APP_URL}" in https://*) ;; *) \
+        printf 'FEHLER / ERROR: APP_URL muss mit https:// beginnen, ist aber "%s". Nur die Adresse hinter dem Gleichheitszeichen eintragen, ohne APP_URL= zu wiederholen. / APP_URL must start with https:// but is "%s". Put only the address after the equals sign, do not repeat APP_URL=.\n' "${APP_URL}" "${APP_URL}" >&2; exit 1 ;; esac \
     && apt-get update \
     && apt-get install -y --no-install-recommends curl ca-certificates \
     && mkdir -p /opt/3mf-katalog \

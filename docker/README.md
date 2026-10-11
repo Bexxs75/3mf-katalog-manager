@@ -44,7 +44,11 @@ Passwort, und erzeugt eine Warnung. `.env` privat halten (z. B. `chmod 600 .env`
 ### Lokaler Bau
 
 `APP_URL` (HTTPS, Linux x86_64 AppImage) und die dazugehörige `APP_VERSION` in
-`.env` setzen, dann:
+`.env` setzen. Beide Zeilen stehen nach dem Kopieren von `.env.example` schon leer
+in der Datei: Trage den Wert **direkt hinter dem Gleichheitszeichen** ein und
+wiederhole `APP_URL=` nicht noch einmal im Wert (richtig:
+`APP_URL=https://github.com/…`, falsch: `APP_URL=APP_URL=https://github.com/…`).
+Der Bau bricht sonst mit einer Fehlermeldung ab. Dann:
 
 ```bash
 docker compose build
@@ -306,7 +310,11 @@ with a supplied password and logs a warning. Keep `.env` private, e.g. `chmod 60
 
 ### Local build
 
-Set `APP_URL` (HTTPS, Linux x86_64 AppImage) and matching `APP_VERSION` in `.env`:
+Set `APP_URL` (HTTPS, Linux x86_64 AppImage) and matching `APP_VERSION` in `.env`.
+Both lines are already in the file, empty, after you copy `.env.example`: put the
+value **right after the equals sign** and do not repeat `APP_URL=` inside the value
+(right: `APP_URL=https://github.com/…`, wrong: `APP_URL=APP_URL=https://github.com/…`).
+Otherwise the build stops with an error message:
 
 ```bash
 docker compose build
