@@ -47,8 +47,17 @@ RUN test -d /etc/s6-overlay/s6-rc.d/init-adduser \
     && touch /etc/s6-overlay/s6-rc.d/init-nginx/dependencies.d/init-3mf \
     && chmod +x /usr/local/bin/3mf-katalog /usr/local/libexec/3mf-* \
        /etc/s6-overlay/s6-rc.d/svc-3mf/run \
+       /etc/s6-overlay/s6-rc.d/svc-katalog-web/run \
     && printf '%s\n' '#!/bin/sh' > /defaults/autostart \
     && chmod +x /defaults/autostart
+
+# Insert the companion routes only into the expected two-server template.
+RUN test -x /usr/bin/python3 \
+    && test "$(grep -Ec '^[[:space:]]*server[[:space:]]*\{' /defaults/default.conf)" -eq 2 \
+    && grep -Eq '^[[:space:]]*listen[[:space:]]+3000([[:space:];])' /defaults/default.conf \
+    && grep -Eq '^[[:space:]]*listen[[:space:]]+3001([[:space:];])' /defaults/default.conf \
+    && sed -i '/^[[:space:]]*server[[:space:]]*{/a\    include /etc/nginx/3mf-katalog.conf;' /defaults/default.conf \
+    && test "$(grep -Fc 'include /etc/nginx/3mf-katalog.conf;' /defaults/default.conf)" -eq 2
 
 # Give the app time to close SQLite/WAL before Docker sends SIGKILL.
 STOPSIGNAL SIGTERM

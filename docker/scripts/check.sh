@@ -6,11 +6,12 @@ scripts=()
 while IFS= read -r -d '' script; do
     [[ -x $script ]] || { printf 'FAIL: not executable: %s\n' "$script" >&2; exit 1; }
     case "$(head -n 1 "$script")" in
+        *python3*) python3 -m py_compile "$script"; continue ;;
         *bash*) bash -n "$script" ;;
         *) sh -n "$script" ;;
     esac
     scripts+=("$script")
-done < <(find scripts tests root/usr/local root/etc/s6-overlay -type f \( -name '*.sh' -o -name '3mf-*' -o -name run \) -print0)
+done < <(find scripts tests root/usr/local root/etc/s6-overlay -type f ! -path '*/__pycache__/*' \( -name '*.sh' -o -name '3mf-*' -o -name run \) -print0)
 for script in root/usr/local/bin/3mf-katalog root/usr/local/libexec/3mf-{auth,filesystem,init,session,supervise,healthcheck} root/etc/s6-overlay/s6-rc.d/svc-3mf/run root/etc/s6-overlay/s6-rc.d/init-3mf/up; do
     [[ -x $script ]] || { printf 'FAIL: missing executable: %s\n' "$script" >&2; exit 1; }
 done
@@ -67,4 +68,15 @@ fi
 printf 'OK: Compose, Dockerfile and s6 structural checks (no Docker invocation)\n'
 bash scripts/test-init.sh
 timeout --kill-after=5s 15s bash scripts/test-supervisor.sh
+[[ -x root/usr/local/libexec/3mf-katalog-web ]]
+[[ -x root/usr/local/libexec/3mf-katalog-proxy ]]
+[[ -x root/etc/s6-overlay/s6-rc.d/svc-katalog-web/run ]]
+[[ $(cat root/etc/s6-overlay/s6-rc.d/svc-katalog-web/type) == longrun ]]
+[[ -f root/etc/s6-overlay/s6-rc.d/svc-katalog-web/dependencies.d/init-3mf ]]
+[[ -f root/etc/s6-overlay/s6-rc.d/user/contents.d/svc-katalog-web ]]
+[[ -f root/etc/nginx/3mf-katalog.conf && -f root/etc/nginx/conf.d/3mf-katalog-proto.conf ]]
+grep -Fq 'include /etc/nginx/3mf-katalog.conf;' Dockerfile
+grep -Fq "grep -Fc 'include /etc/nginx/3mf-katalog.conf;'" Dockerfile
+python3 -m unittest discover -s tests/katalog_web -v
+printf 'OK: catalog web syntax, tests, nginx and s6 structure\n'
 printf 'All available static/local checks passed; image build and startup remain unverified.\n'

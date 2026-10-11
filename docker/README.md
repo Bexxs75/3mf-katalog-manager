@@ -150,13 +150,63 @@ keine Dateien an). So kommen Modelle stattdessen in die App:
 Hinweis: Nach einem Neustart des Containers die Browserseite neu laden (F5), sonst
 kann KasmVNC mit einem Skriptfehler stehen bleiben.
 
-**Modelle im Slicer öffnen.** „In Slicer öffnen“ gibt es im Container nicht: Der Slicer
-läuft auf deinem Rechner, die App im Container. Die Dateien deines Katalogs liegen aber
-im eingebundenen Ordner auf dem Docker-Host (bei „Bestehende Ordnerstruktur übernehmen“ im
-Ordner `/models`, also dort, wo du `MODELS_DIR` hingelegt hast). Öffne sie dort mit dem
-Dateimanager deines Rechners direkt im Slicer. Über ein Netzwerk-Laufwerk geht das nur,
-wenn du den Ordner auf deinem Rechner einbindest.
+### Download und Slicer
 
+Öffne **http://<Host>:3000/katalog/** in einem normalen Browser-Tab neben dem
+Browser-Desktop. Die Begleitseite nutzt dieselbe Anmeldung und zeigt den Katalog
+mit Vorschaubildern, Namenssuche, Typ-/Ordner-/Tag-Filtern, Sortierung und Seiten.
+„Herunterladen“ speichert eine Datei auf deinem PC; „In Slicer öffnen“ übergibt
+sie an einen dort installierten Slicer. Suche und Download funktionieren ohne
+JavaScript; auf macOS passt JavaScript den Bambu-Link an. Sprache: `Accept-Language`
+(DE/EN, sonst Deutsch); hell/dunkel nach Systemeinstellung.
+
+| Slicer | Dateitypen |
+|---|---|
+| OrcaSlicer | 3MF, STL, OBJ, STP/STEP |
+| Bambu Studio | nur 3MF (eigener Link unter macOS) |
+| Creality Print | 3MF, STL, OBJ, STP/STEP |
+| ElegooSlicer | 3MF, STL, OBJ, STP/STEP |
+| Cura | 3MF, STL, OBJ |
+| Lychee | 3MF, STL, OBJ |
+| SuperSlicer | 3MF, STL, OBJ, STP/STEP |
+
+PrusaSlicer: Datei herunterladen und im Slicer öffnen. Der Slicer muss auf deinem
+**PC** installiert sein und die Adresse des Containers vom PC erreichen können.
+Unter Linux muss das jeweilige URL-Schema registriert sein. Selbstsignierte
+Zertifikate bei `https://<Host>:3001` lehnen Slicer häufig ab: im Heimnetz
+`http://<Host>:3000` oder einen Reverse Proxy mit gültigem Zertifikat verwenden.
+Der Reverse Proxy muss `Host` (einschließlich öffentlichem Port) und
+`X-Forwarded-Proto` durchreichen; in Nginx Proxy Manager „Websockets“ aktivieren.
+
+Slicer-Links gelten **eine Stunde** und erlauben bis dahin den Download ohne
+Anmeldung. Behandle sie wie Zugangsdaten; bei Fehlern die Seite neu laden.
+Ausgeliefert werden ausschließlich nicht gelöschte Katalogdateien unter `/models`
+oder `/models<Zahl>`; Symlinks nach außen und Pfade mit `..` sind gesperrt.
+Nicht erreichbare oder nicht erlaubte Dateien bleiben ohne Knöpfe sichtbar.
+Der Dienst liest die Datenbank nur; er läuft als `abc` und lauscht auf Loopback.
+Sein Schlüssel liegt in `/config/.katalog-web-secret` (32 Zufallsbytes, Rechte 600).
+
+Optionale Container-Umgebungsvariablen (in Compose unter `environment` ergänzen):
+`CATALOG_DB` wählt einen festen Datenbankpfad, sonst die neueste
+`/config/.local/share/*/catalog.db` nach Änderungszeit. `KATALOG_ALLOWED_ROOTS`
+ersetzt die Modell-Wurzeln durch eine mit `:` getrennte Liste absoluter Pfade.
+`KATALOG_WEB_PORT` setzt den internen Port (Standard 8099); der Start passt den
+Nginx-Proxy mit an. Den internen Port nicht am Host veröffentlichen.
+
+`src-tauri/src/lib.rs` legt `catalog.db` unter `app.path().app_data_dir()` an;
+`src-tauri/tauri.conf.json` nennt `com.thebexxs.mfkatalogmanager`. Andere
+Build-Kennungen bekommen andere Datenordner. Der angenommene Linux-Pfad unter
+`/config/.local/share` ist **nicht gegen das echte Image geprüft**.
+
+Die neue Nginx-Einbindung (zwei Server-Blöcke für 3000/3001, `conf.d` im
+HTTP-Kontext), die Ausnahme `auth_basic off` und der s6-Dienstaufbau sind
+**nicht gegen das echte Image geprüft**. Der Bau bricht bei fehlenden
+Template-Ankern ab. `bash docker/tests/katalog-web.sh IMAGE` prüft diese
+Integration danach mit frischem Test-Volume, einschließlich Anmeldung auf
+beiden Ports, signiertem Download und Dienstneustart. Das Skript erzeugt
+Testdaten und ein zufälliges Passwort und räumt den Testcontainer wieder auf.
+Lokale Unit-Tests öffnen keine Netzwerkverbindungen. ZIP-Sammeldownload
+(Stufe B) ist noch nicht enthalten.
 
 ### Netzwerk und Grenzen
 
@@ -167,7 +217,7 @@ Internet freigeben; externen Zugriff mit TLS und geeignetem Reverse Proxy planen
 Ausführliche Netzwerk-/Reverse-Proxy-Anleitungen folgen im D6-Paket im
 [Projekt-Wiki](https://github.com/Bexxs75/3mf-katalog-manager/wiki).
 
-- Kein „In Slicer öffnen“ oder „Ordner öffnen“ auf dem Host.
+- In der Desktop-App kein „In Slicer öffnen“ oder „Ordner öffnen“ auf dem Host; Slicer-Links gibt es auf der Begleitseite.
 - Kein Drag & Drop vom Host-Desktop in die App.
 - 3D-Vorschau per Software-Rendering, daher langsamer.
 - Ein Benutzer gleichzeitig; nur x86_64, kein arm64.
@@ -330,13 +380,62 @@ does not accept files there). Use this instead:
 Note: after a container restart reload the browser page (F5); otherwise KasmVNC may
 stop with a script error.
 
-**Opening models in your slicer.** “Open in slicer” is not available in the container:
-the slicer runs on your computer, the app in the container. The files of your catalog sit in
-the mounted folder on the Docker host (with “Adopt existing folder structure” in the folder
-mounted as `/models`, i.e. where you pointed `MODELS_DIR`). Open them there with your
-computer's file manager directly in the slicer. Over the network that works only if you
-mount that folder on your computer.
+### Download and slicer
 
+Open **http://<Host>:3000/katalog/** in a normal browser tab alongside the
+browser desktop. The companion uses the same login and displays thumbnails,
+name search, type/folder/tag filters, sorting and pagination. “Download” saves
+a file to your PC; “Open in slicer” passes it to a slicer installed there.
+Search and downloads work without JavaScript; on macOS JavaScript adapts the
+Bambu link. Language follows `Accept-Language` (DE/EN, German by default);
+light/dark appearance follows the system preference.
+
+| Slicer | File types |
+|---|---|
+| OrcaSlicer | 3MF, STL, OBJ, STP/STEP |
+| Bambu Studio | 3MF only (special link on macOS) |
+| Creality Print | 3MF, STL, OBJ, STP/STEP |
+| ElegooSlicer | 3MF, STL, OBJ, STP/STEP |
+| Cura | 3MF, STL, OBJ |
+| Lychee | 3MF, STL, OBJ |
+| SuperSlicer | 3MF, STL, OBJ, STP/STEP |
+
+PrusaSlicer: download the file and open it in the slicer. The slicer must be
+installed on your **PC** and able to reach the container's address from that PC.
+On Linux its URL scheme must be registered. Slicers often reject self-signed
+certificates at `https://<Host>:3001`: use `http://<Host>:3000` on your home
+network or a reverse proxy with a valid certificate. The reverse proxy must
+forward `Host` (including the public port) and `X-Forwarded-Proto`; enable
+“Websockets” in Nginx Proxy Manager.
+
+Slicer links remain valid for **one hour** and allow downloads without login
+during that time. Treat them as credentials; reload the page if a link fails.
+Only catalog files outside the trash and inside `/models` or `/models<number>`
+are served; outward symlinks and paths containing `..` are blocked. Unavailable
+or disallowed files remain visible without buttons. The service only reads the
+database, runs as `abc` and listens on loopback. Its key is stored in
+`/config/.katalog-web-secret` (32 random bytes, mode 600).
+
+Optional container environment variables (add to Compose `environment`):
+`CATALOG_DB` selects a fixed database path; otherwise the newest
+`/config/.local/share/*/catalog.db` by modification time is used.
+`KATALOG_ALLOWED_ROOTS` replaces the model roots with a colon-separated list of
+absolute paths. `KATALOG_WEB_PORT` sets the internal port (default 8099); startup
+also adjusts the nginx proxy. Do not publish this internal port on the host.
+
+`src-tauri/src/lib.rs` creates `catalog.db` under `app.path().app_data_dir()`;
+`src-tauri/tauri.conf.json` specifies `com.thebexxs.mfkatalogmanager`. Different
+build identifiers use different data folders. The assumed Linux path below
+`/config/.local/share` has **not been checked against the real image**.
+
+The new nginx integration (two server blocks for 3000/3001, `conf.d` in the HTTP
+context), the `auth_basic off` exception and the s6 service layout have **not
+been checked against the real image**. Missing template anchors fail the build.
+Run `bash docker/tests/katalog-web.sh IMAGE` afterwards to check integration
+using a fresh test volume, including login on both ports, signed downloads and
+service restart. The script creates test data and a random password and removes
+the test container afterwards. Local unit tests make no network connections.
+ZIP batch download (stage B) is not included yet.
 
 ### Networking and limitations
 
@@ -347,7 +446,7 @@ appropriate reverse proxy for external access. Detailed network/reverse-proxy
 instructions will follow in package D6 in the
 [project wiki](https://github.com/Bexxs75/3mf-katalog-manager/wiki).
 
-- No “Open in slicer” or “Open folder” on the host.
+- The desktop app cannot open host slicers or folders; slicer links are available on the companion page.
 - No drag and drop from the host desktop into the app.
 - Slower, software-rendered 3D preview.
 - One concurrent user; x86_64 only, no arm64.

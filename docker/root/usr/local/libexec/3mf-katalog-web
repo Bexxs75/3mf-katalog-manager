@@ -1,0 +1,459 @@
+#!/usr/bin/python3
+"""Read-only catalog companion, served behind the authenticated nginx proxy."""
+import contextlib
+import hashlib
+import hmac
+import html
+import http.server
+import ipaddress
+import os
+from pathlib import Path
+import re
+import secrets
+import sqlite3
+import stat
+import time
+import unicodedata
+from urllib.parse import parse_qs, quote, urlencode, urlsplit
+
+BLOCK_SIZE = 64 * 1024
+PAGE_SIZE = 50
+ID = r'[0-9]{1,19}'
+CSP = ("default-src 'none'; img-src 'self'; style-src 'self' 'unsafe-inline'; "
+       "script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+MIME = {'3mf': 'model/3mf', 'stl': 'model/stl', 'obj': 'model/obj', 'stp': 'model/step', 'step': 'model/step'}
+ALL_TYPES = {'3mf', 'stl', 'obj', 'stp', 'step'}
+SLICERS = (
+    ('OrcaSlicer', 'orcaslicer://open?file=', ALL_TYPES),
+    ('Bambu Studio', 'bambustudio://open?file=', {'3mf'}),
+    ('Creality Print', 'crealityprintlink://open?file=', ALL_TYPES),
+    ('ElegooSlicer', 'elegooslicer://open?file=', ALL_TYPES),
+    ('Cura', 'cura://open?file=', {'3mf', 'stl', 'obj'}),
+    ('Lychee', 'lycheeslicer://open/', {'3mf', 'stl', 'obj'}),
+    ('SuperSlicer', 'prusaslicer://open?file=', ALL_TYPES),
+)
+TEXT = {
+    'title': ('Download und Slicer', 'Download and slicer'),
+    'missing': ('Katalog noch nicht angelegt – zuerst in der App einrichten. Falls bereits eingerichtet: Datenbankpfad, Leserechte und App-Version prüfen.',
+                'Catalog not created – set it up in the app first. If already configured, check the database path, read permissions and app version.'),
+    'search': ('Name suchen', 'Search name'), 'type': ('Dateityp', 'File type'),
+    'folder': ('Ordner', 'Folder'), 'tag': ('Tag', 'Tag'), 'sort': ('Sortierung', 'Sort'),
+    'name': ('Name', 'Name'), 'newest': ('Neueste', 'Newest'), 'size': ('Größe', 'Size'),
+    'apply': ('Anwenden', 'Apply'), 'all': ('Alle', 'All'),
+    'download': ('Herunterladen', 'Download'), 'slicer': ('In Slicer öffnen', 'Open in slicer'),
+    'unavailable': ('Datei nicht verfügbar oder außerhalb der Modell-Ordner', 'File unavailable or outside model folders'),
+    'empty': ('Keine Dateien gefunden.', 'No files found.'),
+    'previous': ('Zurück', 'Previous'), 'next': ('Weiter', 'Next'), 'page': ('Seite', 'Page'),
+    'help': ('Hilfe zu Slicern', 'Slicer help'),
+    'expiry': ('Links gelten 1 Stunde. Bei einem Fehler die Seite neu laden.', 'Links expire after 1 hour. Reload this page if a link fails.'),
+    'prusa': ('PrusaSlicer: Datei herunterladen und im Slicer öffnen.', 'PrusaSlicer: download the file and open it in the slicer.'),
+    'advice': ('Der Slicer muss auf deinem PC installiert und die Adresse vom PC erreichbar sein. Selbstsignierte Zertifikate bei https://…:3001 werden oft abgelehnt: im Heimnetz http://…:3000 oder einen Reverse Proxy mit gültigem Zertifikat verwenden. Unter Linux muss das URL-Schema registriert sein.',
+               'The slicer must be installed on your PC and the address must be reachable from that PC. Slicers often reject self-signed certificates at https://…:3001: use http://…:3000 on your home network or a reverse proxy with a valid certificate. On Linux the URL scheme must be registered.'),
+    'error': ('Anfrage nicht verfügbar.', 'Request unavailable.'),
+}
+STYLE = '''
+:root {color-scheme:light dark;font-family:system-ui,sans-serif;background:#f5f6f8;color:#202632}
+body {max-width:76rem;margin:auto;padding:1rem} a {color:#075cba} button,input,select {font:inherit;padding:.5rem;max-width:100%}
+form {display:flex;flex-wrap:wrap;gap:.8rem;align-items:end;margin:1.5rem 0} label {display:grid;gap:.3rem}
+.files {list-style:none;padding:0} .file {display:flex;gap:1rem;align-items:start;padding:1rem;margin:.8rem 0;background:white;border:1px solid #b7bdc7;border-radius:.5rem}
+.file img {width:5rem;height:5rem;object-fit:contain} .content {min-width:0;flex:1} h2 {font-size:1.1rem;margin:0;overflow-wrap:anywhere}
+p {line-height:1.5;overflow-wrap:anywhere} .unavailable {opacity:.65} .actions {display:flex;flex-wrap:wrap;gap:1rem;align-items:start}
+summary {cursor:pointer;padding:.3rem} details li {padding:.4rem} nav {display:flex;gap:1rem;margin:1rem 0}
+a:focus-visible,summary:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible {outline:3px solid #ca6500;outline-offset:3px}
+@media(prefers-color-scheme:dark) {:root {background:#171b22;color:#eee}.file {background:#252b35;border-color:#667181}a {color:#92c8ff}}
+@media(max-width:35rem) {.file {gap:.5rem}.file img {width:3rem;height:3rem}label {width:100%}}
+'''
+# Inline assets keep this single-file service independent of external resources.
+SCRIPT = '''if (/Mac/i.test(navigator.platform || navigator.userAgent)) {
+ document.querySelectorAll('a[data-mac]').forEach(a => { a.href = a.dataset.mac; });
+}'''
+
+
+def escape(value):
+    return html.escape(str(value), quote=True)
+
+
+def language(header):
+    choices = []
+    for index, entry in enumerate(header.split(',')):
+        parts = entry.strip().lower().split(';')
+        lang = parts[0].split('-')[0]
+        quality = 1.0
+        for part in parts[1:]:
+            if part.strip().startswith('q='):
+                try:
+                    quality = float(part.strip()[2:])
+                except ValueError:
+                    quality = 0
+        if lang in ('de', 'en') and 0 < quality <= 1:
+            choices.append((quality, -index, lang))
+    return max(choices)[2] if choices else 'de'
+
+
+def discover_db(share=Path('/config/.local/share')):
+    if 'CATALOG_DB' in os.environ:
+        return os.environ['CATALOG_DB']
+    try:
+        candidates = [(p.stat().st_mtime_ns, str(p)) for p in Path(share).glob('*/catalog.db') if p.is_file()]
+        return max(candidates)[1] if candidates else ''
+    except OSError:
+        return ''
+
+
+def allowed_roots():
+    if 'KATALOG_ALLOWED_ROOTS' in os.environ:
+        return [p for p in os.environ['KATALOG_ALLOWED_ROOTS'].split(':') if os.path.isabs(p)]
+    return [str(p) for p in Path('/').iterdir() if re.fullmatch(r'models[0-9]*', p.name)]
+
+
+def load_secret(path=Path('/config/.katalog-web-secret')):
+    path = Path(path)
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    except FileExistsError:
+        pass
+    else:
+        with os.fdopen(fd, 'wb') as stream:
+            stream.write(secrets.token_bytes(32))
+            stream.flush()
+            os.fsync(stream.fileno())
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, 'rb') as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid():
+            raise ValueError('Invalid secret owner or file type')
+        os.fchmod(stream.fileno(), 0o600)
+        secret = stream.read(33)
+    if len(secret) != 32:
+        raise ValueError('Invalid secret length')
+    return secret
+
+
+def origin(headers):
+    host = headers.get('Host', '')
+    if len(host) > 253 or not re.fullmatch(r'(?:[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?|\[[0-9A-Fa-f:]+\])(?::[0-9]{1,5})?', host):
+        raise ValueError('Invalid host')
+    parsed = urlsplit('http://' + host)
+    if parsed.port is not None and not 1 <= parsed.port <= 65535:
+        raise ValueError('Invalid port')
+    if host.startswith('['):
+        ipaddress.IPv6Address(parsed.hostname)
+    proto = headers.get('X-Forwarded-Proto', 'http')
+    if proto not in ('http', 'https'):
+        raise ValueError('Invalid protocol')
+    return proto + '://' + host
+
+
+def filename(row):
+    name = ''.join(c for c in str(row['name']) if unicodedata.category(c) != 'Cc')
+    name = name.replace('/', '_').replace('\\', '_') or 'model'
+    return name
+
+
+class Catalog:
+    def __init__(self, db_path=None, roots=None, secret=None):
+        self.db_path = db_path
+        self.roots = [os.path.abspath(p) for p in (allowed_roots() if roots is None else roots)]
+        self.secret = load_secret() if secret is None else secret
+
+    @contextlib.contextmanager
+    def connect(self):
+        path = discover_db() if self.db_path is None else self.db_path
+        if not path:
+            raise sqlite3.OperationalError('No catalog')
+        con = sqlite3.connect(Path(path).absolute().as_uri() + '?mode=ro', uri=True, timeout=2)
+        con.row_factory = sqlite3.Row
+        deadline = time.monotonic() + 2
+        con.set_progress_handler(lambda: time.monotonic() > deadline, 1000)
+        try:
+            yield con
+        finally:
+            con.close()
+
+    def token(self, fid, expiry=None):
+        expiry = int(time.time()) + 3600 if expiry is None else expiry
+        message = f'{fid}|{expiry}|download'.encode()
+        return f'{expiry}.' + hmac.new(self.secret, message, hashlib.sha256).hexdigest()
+
+    def valid_token(self, fid, token):
+        if not re.fullmatch(r'[0-9]{1,12}\.[0-9a-f]{64}', token):
+            return False
+        expiry = int(token.split('.')[0])
+        return expiry > int(time.time()) and hmac.compare_digest(self.token(fid, expiry), token)
+
+    def file(self, fid):
+        if not re.fullmatch(ID, fid) or int(fid) > 9223372036854775807:
+            return None
+        try:
+            with self.connect() as con:
+                return con.execute('SELECT id, name, path, file_type, thumbnail_png FROM files WHERE id=? AND deleted_at IS NULL', (int(fid),)).fetchone()
+        except (sqlite3.Error, OSError, ValueError):
+            return None
+
+    def open_file(self, row):
+        if row is None:
+            raise FileNotFoundError
+        path = row['path']
+        if not isinstance(path, str) or not os.path.isabs(path) or '..' in Path(path).parts or '\x00' in path:
+            raise FileNotFoundError
+        resolved = os.path.realpath(path)
+        if not any(os.path.commonpath([root, resolved]) == root and resolved != root for root in self.roots):
+            raise FileNotFoundError
+        # Walk the resolved path with directory descriptors to close symlink-swap races.
+        fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            components = Path(resolved).parts[1:]
+            for part in components[:-1]:
+                next_fd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+                os.close(fd)
+                fd = next_fd
+            result = os.open(components[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
+        finally:
+            os.close(fd)
+        stream = os.fdopen(result, 'rb')
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            stream.close()
+            raise FileNotFoundError
+        return stream
+
+    def listing(self, query):
+        where = ['f.deleted_at IS NULL']
+        args = []
+        if query.get('q'):
+            where.append('instr(lower(f.name), lower(?)) > 0')
+            args.append(query['q'])
+        for key, column in [('type', 'f.file_type'), ('folder', 'f.folder_id')]:
+            if query.get(key):
+                where.append(column + '=?')
+                args.append(query[key])
+        if query.get('tag'):
+            where.append('EXISTS (SELECT 1 FROM file_tags ft WHERE ft.file_id=f.id AND ft.tag_id=?)')
+            args.append(query['tag'])
+        sort = {'name': 'f.name COLLATE NOCASE ASC', 'newest': 'f.imported_at DESC', 'size': 'f.file_size_bytes DESC'}.get(query.get('sort'), 'f.name COLLATE NOCASE ASC')
+        try:
+            page = min(max(int(query.get('page', '1')), 1), 1000000)
+        except ValueError:
+            page = 1
+        with self.connect() as con:
+            rows = con.execute('SELECT f.id, f.name, f.path, f.file_type, f.file_size_bytes, '
+                               'f.thumbnail_png IS NOT NULL AS has_thumb, d.name AS folder '
+                               'FROM files f LEFT JOIN folders d ON f.folder_id=d.id WHERE ' +
+                               ' AND '.join(where) + ' ORDER BY ' + sort + ', f.id ASC LIMIT ? OFFSET ?',
+                               args + [PAGE_SIZE + 1, (page - 1) * PAGE_SIZE]).fetchall()
+            folders = con.execute('SELECT id, name FROM folders ORDER BY name').fetchall()
+            tags = con.execute('SELECT id, name FROM tags ORDER BY name').fetchall()
+            tagged = {}
+            for row in rows[:PAGE_SIZE]:
+                tagged[row['id']] = [r[0] for r in con.execute('SELECT t.name FROM tags t JOIN file_tags ft ON t.id=ft.tag_id WHERE ft.file_id=? ORDER BY t.name', (row['id'],))]
+        return rows[:PAGE_SIZE], len(rows) > PAGE_SIZE, page, folders, tags, tagged
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    server_version = 'KatalogWeb'
+    sys_version = ''
+
+    def setup(self):
+        self.request.settimeout(10)
+        super().setup()
+
+    def parse_request(self):
+        result = super().parse_request()
+        if result and len(self.raw_requestline) > 8192:
+            self.send_error(414)
+            return False
+        return result
+
+    def end_headers(self):
+        self.send_header('Content-Security-Policy', CSP)
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        self.send_header('Referrer-Policy', 'no-referrer')
+        super().end_headers()
+
+    def log_request(self, code='-', size='-'):
+        path = getattr(self, 'path', '').split('?', 1)[0]
+        route = next((p for p in ('signed', 'download', 'thumb', 'health') if path.startswith('/katalog/' + p + '/')), 'page')
+        method = self.command if self.command in ('GET', 'HEAD') else 'OTHER'
+        print(f'{method} /katalog/{route} {code}', flush=True)
+
+    def log_message(self, format, *args):
+        # Base errors can include the raw request and credentials in malformed URLs.
+        pass
+
+    def respond(self, status, body=b'', content_type='text/plain; charset=utf-8', cache='no-store', headers=None):
+        self.send_response(status)
+        self.send_header('Content-Type', content_type)
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Cache-Control', cache)
+        for key, value in (headers or {}).items():
+            self.send_header(key, value)
+        self.end_headers()
+        if getattr(self, 'command', '') != 'HEAD':
+            self.wfile.write(body)
+
+    def send_error(self, code, message=None, explain=None):
+        self.close_connection = True
+        lang = language(getattr(self, 'headers', {}).get('Accept-Language', ''))
+        self.respond(code, TEXT['error'][lang == 'en'].encode())
+
+    def method_not_allowed(self):
+        self.close_connection = True
+        self.respond(405, headers={'Allow': 'GET, HEAD'})
+
+    def __getattr__(self, name):
+        if name.startswith('do_'):
+            return self.method_not_allowed
+        raise AttributeError(name)
+
+    def do_HEAD(self):
+        self.do_GET()
+
+    def do_GET(self):
+        try:
+            self.route()
+        except (BrokenPipeError, ConnectionResetError, TimeoutError):
+            self.close_connection = True
+
+    def route(self):
+        app = self.server.catalog
+        try:
+            url = urlsplit(self.path)
+        except ValueError:
+            self.send_error(400)
+            return
+        path = url.path
+        if path == '/katalog/health':
+            self.respond(200, b'ok\n')
+            return
+        if path == '/katalog/':
+            try:
+                base = origin(self.headers)
+                query = {k: v[0] for k, v in parse_qs(url.query, max_num_fields=30).items() if k in ('q', 'type', 'folder', 'tag', 'sort', 'page')}
+            except ValueError:
+                self.send_error(400)
+                return
+            self.page(base, query)
+            return
+        signed = path.startswith('/katalog/signed/')
+        if signed:
+            match = re.fullmatch(r'/katalog/signed/(' + ID + r')/([^/]+)/[^/]+', path)
+            if not match:
+                self.send_error(403)
+                return
+            fid, token = match.groups()
+            if not app.valid_token(fid, token):
+                self.send_error(403)
+                return
+            action = 'signed'
+        else:
+            match = re.fullmatch(r'/katalog/(download|thumb)/(' + ID + ')', path)
+            if not match:
+                self.send_error(404)
+                return
+            action, fid = match.groups()
+        row = app.file(fid)
+        try:
+            stream = app.open_file(row)
+        except (OSError, ValueError):
+            self.send_error(404)
+            return
+        with stream:
+            if action == 'thumb':
+                png = row['thumbnail_png']
+                if not isinstance(png, bytes) or not png:
+                    self.send_error(404)
+                else:
+                    self.respond(200, png, 'image/png', 'private')
+                return
+            size = os.fstat(stream.fileno()).st_size
+            self.send_response(200)
+            self.send_header('Content-Type', MIME.get(row['file_type'], 'application/octet-stream'))
+            self.send_header('Content-Length', str(size))
+            self.send_header('Content-Disposition', ('inline' if signed else 'attachment') + "; filename*=UTF-8''" + quote(filename(row), safe=''))
+            self.send_header('Cache-Control', 'no-store')
+            self.end_headers()
+            if self.command != 'HEAD':
+                remaining = size
+                while remaining:
+                    block = stream.read(min(BLOCK_SIZE, remaining))
+                    if not block:
+                        break
+                    self.wfile.write(block)
+                    remaining -= len(block)
+
+    def page(self, base, query):
+        lang = language(self.headers.get('Accept-Language', ''))
+        def t(key):
+            return TEXT[key][lang == 'en']
+        parts = [f'<!doctype html><html lang="{lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">',
+                 f'<title>{t("title")}</title><style>{STYLE}</style></head><body><main><h1>{t("title")}</h1>']
+        try:
+            rows, more, page, folders, tags, tagged = self.server.catalog.listing(query)
+        except (sqlite3.Error, OSError, ValueError):
+            parts.append(f'<p role="status">{t("missing")}</p>')
+        else:
+            parts.append(f'<form method="get" action="/katalog/"><label>{t("search")}<input name="q" value="{escape(query.get("q", ""))}" maxlength="200"></label>')
+            choices = [('type', [(v, v.upper()) for v in ('3mf', 'stl', 'stp', 'obj')]), ('folder', folders), ('tag', tags), ('sort', [(v, t(v)) for v in ('name', 'newest', 'size')])]
+            for key, options in choices:
+                parts.append(f'<label>{t(key)}<select name="{key}">')
+                if key != 'sort':
+                    parts.append(f'<option value="">{t("all")}</option>')
+                for value, label in options:
+                    selected = ' selected' if str(value) == query.get(key, '') else ''
+                    parts.append(f'<option value="{escape(value)}"{selected}>{escape(label)}</option>')
+                parts.append('</select></label>')
+            parts.append(f'<button type="submit">{t("apply")}</button></form><ul class="files">')
+            for row in rows:
+                try:
+                    with self.server.catalog.open_file(row):
+                        pass
+                    available = True
+                except (OSError, ValueError):
+                    available = False
+                fid = str(row['id'])
+                parts.append('<li class="file' + ('' if available else ' unavailable') + '">')
+                if row['has_thumb'] and available:
+                    parts.append(f'<img src="/katalog/thumb/{fid}" alt="" loading="lazy">')
+                parts.append(f'<div class="content"><h2>{escape(row["name"])}</h2><p>{escape(row["file_type"])} · {escape(row["file_size_bytes"])} B · {escape(row["folder"] or "")} · {escape(", ".join(tagged[row["id"]]))}</p>')
+                if available:
+                    name = filename(row)
+                    if not name.lower().endswith(('.3mf', '.stl', '.stp', '.step', '.obj')) and row['file_type'] in ALL_TYPES:
+                        name += '.' + row['file_type']
+                    url = base + f'/katalog/signed/{fid}/{self.server.catalog.token(fid)}/' + quote(name, safe='')
+                    encoded = quote(url, safe='')
+                    parts.append(f'<div class="actions"><a href="/katalog/download/{fid}">{t("download")}</a>')
+                    links = []
+                    for label, prefix, types in SLICERS:
+                        if row['file_type'] in types:
+                            mac = f' data-mac="{escape("bambustudioopen://" + encoded)}"' if label == 'Bambu Studio' else ''
+                            links.append(f'<li><a href="{escape(prefix + encoded)}"{mac}>{label}</a></li>')
+                    if links:
+                        parts.append(f'<details><summary>{t("slicer")}</summary><ul>{"".join(links)}</ul></details>')
+                    parts.append('</div>')
+                else:
+                    parts.append(f'<p>{t("unavailable")}</p>')
+                parts.append('</div></li>')
+            parts.append('</ul>')
+            if not rows:
+                parts.append(f'<p>{t("empty")}</p>')
+            parts.append(f'<nav aria-label="{t("page")}"><span>{t("page")} {page}</span>')
+            for number, label, show in [(page - 1, 'previous', page > 1), (page + 1, 'next', more)]:
+                if show:
+                    target = '/katalog/?' + urlencode({**query, 'page': number})
+                    parts.append(f'<a href="{escape(target)}">{t(label)}</a>')
+            parts.append('</nav>')
+        parts.append(f'<p>{t("expiry")}</p><p>{t("prusa")}</p><details><summary>{t("help")}</summary><p>{t("advice")}</p></details></main><script>{SCRIPT}</script></body></html>')
+        self.respond(200, ''.join(parts).encode(), 'text/html; charset=utf-8')
+
+
+def main():
+    port = int(os.environ.get('KATALOG_WEB_PORT', '8099'))
+    if not 1 <= port <= 65535:
+        raise ValueError('Invalid port')
+    server = http.server.ThreadingHTTPServer(('127.0.0.1', port), Handler)
+    server.catalog = Catalog()
+    print(f'Katalog web listening on 127.0.0.1:{port}', flush=True)
+    server.serve_forever()
+
+
+if __name__ == '__main__':
+    main()
