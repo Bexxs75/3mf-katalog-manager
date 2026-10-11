@@ -6,6 +6,7 @@ import hmac
 import html
 import http.server
 import ipaddress
+import json
 import os
 from pathlib import Path
 import re
@@ -20,6 +21,11 @@ from urllib.parse import parse_qs, quote, urlencode, urlsplit
 
 BLOCK_SIZE = 64 * 1024
 PAGE_SIZE = 50
+HIDDEN_LIMIT = 100000
+HIDDEN_FILE = '/config/.katalog-web-hidden.json'
+# A form with three short fields never needs more; a small cap keeps parsing cheap.
+MAX_BODY = 2048
+LIST_KEYS = ('q', 'type', 'folder', 'tag', 'sort', 'page', 'hidden')
 ID = r'[0-9]{1,19}'
 CSP = ("default-src 'none'; img-src 'self'; font-src 'self'; style-src 'self' 'unsafe-inline'; "
        "script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
@@ -68,6 +74,18 @@ TEXT = {
     'theme_light': ('Hell', 'Light'), 'theme_dark': ('Dunkel', 'Dark'),
     'ext_links': ('Weiterführende Links', 'Related links'),
     'homepage': ('Homepage', 'Website'),
+    'remove': ('Aus Liste entfernen', 'Remove from list'),
+    'remove_title': ('Aus der Download-Liste entfernen?', 'Remove from the download list?'),
+    'remove_explain': ('Die Datei bleibt im Katalog und auf dem Speicher erhalten; sie wird nur nicht mehr in dieser Liste angeboten.',
+                       'The file stays in the catalog and in storage; it is only no longer offered in this list.'),
+    'remove_confirm': ('Entfernen', 'Remove'), 'cancel': ('Abbrechen', 'Cancel'),
+    'removed': ('„{name}“ wurde aus der Liste entfernt.', '‘{name}’ was removed from the list.'),
+    'undo': ('Rückgängig', 'Undo'),
+    'show_hidden': ('Ausgeblendete anzeigen ({n})', 'Show hidden files ({n})'),
+    'restore': ('Wieder anzeigen', 'Show again'),
+    'back_list': ('Zur Download-Liste', 'Back to the download list'),
+    'hidden_title': ('Ausgeblendete Dateien', 'Hidden files'),
+    'hidden_empty': ('Keine ausgeblendeten Dateien.', 'No hidden files.'),
 }
 # Key (label lookup), German URL, English URL; Discord is language-independent.
 EXTERNAL = (
@@ -78,6 +96,7 @@ EXTERNAL = (
 # Same 24x24 stroke style as the app icon set; 'model' is the placeholder for files without a preview.
 ICON_ATTRS = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"'
 ICON_MODEL = f'<svg {ICON_ATTRS}><path d="m12 2 9 5v10l-9 5-9-5V7l9-5ZM3 7l9 5 9-5m-9 5v10"/></svg>'
+ICON_TRASH = f'<svg {ICON_ATTRS}><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></svg>'
 ICON_THEMES = {
     'auto': f'<svg class="i-auto" {ICON_ATTRS}><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18Z" fill="currentColor"/></svg>',
     'light': f'<svg class="i-light" {ICON_ATTRS}><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
@@ -169,6 +188,23 @@ button:hover {filter:brightness(1.08)}
 .tags {display:flex;flex-wrap:wrap;gap:.3rem;margin:.35rem 0}
 .tag {display:inline-block;padding:0 .55rem;border:1px solid var(--line);border-radius:999px;font-size:12px;color:var(--ink-2)}
 .unavailable {opacity:.7}
+.actions>a.quiet,button.quiet {display:inline-flex;align-items:center;height:32px;padding:0 .8rem;background:var(--panel);color:var(--ink);border:1px solid var(--line-strong);border-radius:4px;font-size:13.5px;font-weight:600;text-decoration:none;cursor:pointer}
+.actions>a.quiet:hover,button.quiet:hover {border-color:var(--accent);filter:none}
+.quiet svg {width:16px;height:16px;margin-right:.4rem;flex:none}
+form.inline {display:inline;margin:0;padding:0;background:none;border:0;box-shadow:none}
+button.link {height:auto;padding:0;background:none;border:0;color:var(--accent);font-weight:600;text-decoration:underline;text-underline-offset:2px}
+button.link:hover {filter:none}
+button.secondary {background:var(--panel);color:var(--ink);border-color:var(--line-strong)}
+button.secondary:hover {border-color:var(--accent);filter:none}
+dialog {width:28rem;max-width:calc(100vw - 2rem);padding:0;border:1px solid var(--line-strong);border-radius:6px;background:var(--panel);color:var(--ink);box-shadow:var(--shadow)}
+dialog::backdrop {background:rgba(0, 0, 0, 0.5)}
+.dlg {padding:1rem 1.1rem}
+.dlg form {display:block;margin:0;padding:0;background:none;border:0;box-shadow:none}
+.dlg h2 {font-size:17px;font-weight:700;margin:0 0 .6rem}
+.dlg .dlg-name {font-weight:600}
+.dlg-actions {display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.6rem;margin-top:1rem}
+.confirm {max-width:34rem;padding:1rem;background:var(--panel);border:1px solid var(--line);border-radius:6px;box-shadow:var(--shadow)}
+.confirm form {display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin:1rem 0 0;padding:0;background:none;border:0;box-shadow:none}
 .actions {display:flex;flex-wrap:wrap;gap:.6rem;align-items:flex-start;margin-top:.5rem}
 .actions>a,summary {display:inline-flex;align-items:center;height:32px;padding:0 .8rem;border-radius:4px;font-size:13.5px;font-weight:600;text-decoration:none;cursor:pointer}
 .actions>a {background:var(--accent);color:var(--accent-ink);border:1px solid var(--accent)}
@@ -186,7 +222,7 @@ main>details {margin-top:.5rem}
 main>details>p {color:var(--ink-2);font-size:13px}
 nav {display:flex;gap:1rem;align-items:center;margin:1rem 0;color:var(--ink-2)}
 [role=status] {padding:.6rem .8rem;background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:4px}
-a:focus-visible,summary:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible {outline:2px solid var(--accent);outline-offset:2px}
+a:focus-visible,summary:focus-visible,button:focus-visible,dialog:focus-visible,input:focus-visible,select:focus-visible {outline:2px solid var(--accent);outline-offset:2px}
 @media(max-width:35rem) {main {padding:.75rem}.file {gap:.6rem}.file img,.ph {width:3.25rem;height:3.25rem}.ph svg {width:26px;height:26px}.ph {font-size:9px}label {width:100%}input,select {width:100%}.actions details {width:100%}}
 '''
 # Runs in <head> so the stored choice applies before first paint; without it the page follows the OS.
@@ -210,6 +246,25 @@ SCRIPT = '''(function () {
   });
   show(); b.hidden = false;
  }
+})();
+(function () {
+ var dlg = document.getElementById('rm-dialog');
+ if (!dlg || typeof dlg.showModal !== 'function') return;
+ var form = dlg.querySelector('form'), name = dlg.querySelector('[data-rm-name]'), cancel = dlg.querySelector('[data-rm-cancel]'), opener = null;
+ document.querySelectorAll('a[data-rm]').forEach(function (a) {
+  a.addEventListener('click', function (e) {
+   e.preventDefault(); opener = a;
+   form.elements.namedItem('id').value = a.dataset.id;
+   form.elements.namedItem('csrf').value = a.dataset.csrf;
+   form.elements.namedItem('next').value = a.dataset.next;
+   name.textContent = a.dataset.name;
+   dlg.showModal(); cancel.focus();
+  });
+ });
+ cancel.addEventListener('click', function () { dlg.close(); });
+ // The dialog box has no padding of its own, so a click on the dialog element itself hit the backdrop.
+ dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
+ dlg.addEventListener('close', function () { if (opener) opener.focus(); });
 })();
 if (/Mac/i.test(navigator.platform || navigator.userAgent)) {
  document.querySelectorAll('a[data-mac]').forEach(a => { a.href = a.dataset.mac; });
@@ -328,9 +383,76 @@ def filename(row):
     return name
 
 
+def list_url(query):
+    kept = {k: v for k, v in query.items() if k in LIST_KEYS and v}
+    return '/katalog/' + ('?' + urlencode(kept) if kept else '')
+
+
+def safe_next(value):
+    # Rebuilt from whitelisted keys, so the result is always a local list URL (no open redirect).
+    try:
+        url = urlsplit(value or '')
+        pairs = parse_qs(url.query, max_num_fields=30, keep_blank_values=True)
+    except ValueError:
+        return '/katalog/'
+    if url.scheme or url.netloc or url.path != '/katalog/' or any(c in value for c in '\\\r\n\t'):
+        return '/katalog/'
+    return list_url({k: v[0] for k, v in pairs.items()})
+
+
+class HiddenStore:
+    """IDs hidden from the download list; the catalog database itself is never written."""
+
+    def __init__(self, path=None):
+        self.path = Path(path or os.environ.get('KATALOG_WEB_HIDDEN') or HIDDEN_FILE)
+        self.lock = threading.Lock()
+
+    def _read(self):
+        try:
+            with open(self.path, 'rb') as stream:
+                data = json.loads(stream.read(4_000_000))
+        except (OSError, ValueError):
+            return set()
+        valid = (isinstance(data, list) and len(data) <= HIDDEN_LIMIT and
+                 all(type(i) is int and 0 <= i <= 9223372036854775807 for i in data))
+        return set(data) if valid else set()
+
+    def _write(self, ids):
+        # Same-directory temp file + replace: readers see the old or the new list, never a partial one.
+        fd, temporary = tempfile.mkstemp(dir=self.path.parent, prefix='.katalog-web-hidden-')
+        try:
+            with os.fdopen(fd, 'w') as stream:
+                os.fchmod(stream.fileno(), 0o600)
+                json.dump(sorted(ids), stream)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, self.path)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(temporary)
+            raise
+
+    def ids(self):
+        with self.lock:
+            return frozenset(self._read())
+
+    def change(self, fid, hide):
+        """Returns False when the list is full; raises OSError when it cannot be saved."""
+        with self.lock:
+            ids = self._read()
+            if (fid in ids) == hide:
+                return True
+            if hide and len(ids) >= HIDDEN_LIMIT:
+                return False
+            ids.add(fid) if hide else ids.discard(fid)
+            self._write(ids)
+            return True
+
+
 class Catalog:
-    def __init__(self, db_path=None, roots=None, secret=None):
+    def __init__(self, db_path=None, roots=None, secret=None, hidden=None):
         self.db_path = db_path
+        self.hidden = HiddenStore(hidden)
         self.roots = [os.path.abspath(p) for p in (allowed_roots() if roots is None else roots)]
         self.secret = load_secret() if secret is None else secret
 
@@ -359,8 +481,17 @@ class Catalog:
         expiry = int(token.split('.')[0])
         return expiry > int(time.time()) and hmac.compare_digest(self.token(fid, expiry), token)
 
-    def file(self, fid):
+    def csrf(self, fid):
+        # Distinct purpose text keeps these tokens and download tokens from being interchangeable.
+        return hmac.new(self.secret, f'csrf|{fid}'.encode(), hashlib.sha256).hexdigest()
+
+    def valid_csrf(self, fid, token):
+        return hmac.compare_digest(self.csrf(fid), token)
+
+    def file(self, fid, include_hidden=False):
         if not re.fullmatch(ID, fid) or int(fid) > 9223372036854775807:
+            return None
+        if not include_hidden and int(fid) in self.hidden.ids():
             return None
         try:
             with self.connect() as con:
@@ -399,8 +530,10 @@ class Catalog:
             row = self.file(query['file'])
             with self.open_file(row):
                 pass
-        where = ['f.deleted_at IS NULL']
-        args = []
+        view_hidden = query.get('hidden') == '1' and 'file' not in query
+        hidden_json = json.dumps(sorted(self.hidden.ids()))
+        where = ['f.deleted_at IS NULL', 'f.id ' + ('IN' if view_hidden else 'NOT IN') + ' (SELECT value FROM json_each(?))']
+        args = [hidden_json]
         if 'file' in query:
             where.append('f.id=?')
             args.append(int(query['file']))
@@ -427,10 +560,12 @@ class Catalog:
                                args + [PAGE_SIZE + 1, (page - 1) * PAGE_SIZE]).fetchall()
             folders = con.execute('SELECT id, name FROM folders ORDER BY name').fetchall()
             tags = con.execute('SELECT id, name FROM tags ORDER BY name').fetchall()
+            hidden_count = con.execute('SELECT count(*) FROM files f WHERE f.deleted_at IS NULL AND f.id IN (SELECT value FROM json_each(?))',
+                                       (hidden_json,)).fetchone()[0]
             tagged = {}
             for row in rows[:PAGE_SIZE]:
                 tagged[row['id']] = [r[0] for r in con.execute('SELECT t.name FROM tags t JOIN file_tags ft ON t.id=ft.tag_id WHERE ft.file_id=? ORDER BY t.name', (row['id'],))]
-        return rows[:PAGE_SIZE], len(rows) > PAGE_SIZE, page, folders, tags, tagged
+        return rows[:PAGE_SIZE], len(rows) > PAGE_SIZE, page, folders, tags, tagged, hidden_count
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -457,7 +592,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def log_request(self, code='-', size='-'):
         path = getattr(self, 'path', '').split('?', 1)[0]
         route = next((p for p in ('signed', 'download', 'thumb', 'health') if path.startswith('/katalog/' + p + '/')), 'page')
-        method = self.command if self.command in ('GET', 'HEAD') else 'OTHER'
+        if path in ('/katalog/remove', '/katalog/restore'):
+            route = path.rsplit('/', 1)[1]
+        method = self.command if self.command in ('GET', 'HEAD', 'POST') else 'OTHER'
         print(f'{method} /katalog/{route} {code}', flush=True)
 
     def log_message(self, format, *args):
@@ -492,6 +629,83 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_HEAD(self):
         self.do_GET()
 
+    def do_POST(self):
+        try:
+            self.post()
+        except (BrokenPipeError, ConnectionResetError, TimeoutError):
+            self.close_connection = True
+
+    def post(self):
+        app = self.server.catalog
+        try:
+            path = urlsplit(self.path).path
+        except ValueError:
+            self.send_error(400)
+            return
+        if path not in ('/katalog/remove', '/katalog/restore'):
+            self.method_not_allowed()
+            return
+        # The browser attaches the login automatically, so a foreign page could submit this form.
+        # Origin/Referer must name this host, and the token is checked either way.
+        host = self.headers.get('Host', '').lower()
+        # With Referrer-Policy: no-referrer browsers send "Origin: null" for same-site form posts;
+        # that carries no host to compare, so only the per-file token decides then.
+        origin = self.headers.get('Origin')
+        source = (None if origin == 'null' else origin) or self.headers.get('Referer')
+        if source is not None:
+            try:
+                same = bool(host) and urlsplit(source).netloc.lower() == host
+            except ValueError:
+                same = False
+            if not same:
+                self.send_error(403)
+                return
+        length = self.headers.get('Content-Length', '')
+        if 'Transfer-Encoding' in self.headers or not re.fullmatch(r'[0-9]{1,9}', length):
+            self.send_error(411 if 'Transfer-Encoding' not in self.headers else 400)
+            return
+        if int(length) > MAX_BODY:
+            self.send_error(413)
+            return
+        if self.headers.get('Content-Type', '').split(';')[0].strip().lower() != 'application/x-www-form-urlencoded':
+            self.send_error(415)
+            return
+        try:
+            body = self.rfile.read(int(length))
+            if len(body) != int(length):
+                raise ValueError
+            form = parse_qs(body.decode('ascii'), keep_blank_values=True, max_num_fields=10, strict_parsing=bool(body))
+            if any(len(form.get(k, [''])) != 1 for k in ('id', 'csrf', 'next')):
+                raise ValueError
+        except (ValueError, UnicodeError):
+            self.send_error(400)
+            return
+        fid = form.get('id', [''])[0]
+        if not re.fullmatch(ID, fid) or int(fid) > 9223372036854775807:
+            self.send_error(400)
+            return
+        if not app.valid_csrf(fid, form.get('csrf', [''])[0]):
+            self.send_error(403)
+            return
+        hide = path == '/katalog/remove'
+        if app.file(fid, include_hidden=True) is None and not (not hide and int(fid) in app.hidden.ids()):
+            self.send_error(404)
+            return
+        try:
+            saved = app.hidden.change(int(fid), hide)
+        except OSError:
+            self.send_error(503)
+            return
+        if not saved:
+            self.send_error(409)
+            return
+        target = safe_next(form.get('next', [''])[0])
+        if hide:
+            target += ('&' if '?' in target else '?') + urlencode({'removed': fid})
+        elif target.endswith('?hidden=1') and not app.hidden.ids():
+            target = '/katalog/'
+        self.respond(303, headers={'Location': target})
+
     def do_GET(self):
         try:
             self.route()
@@ -515,7 +729,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if path == '/katalog/':
             try:
                 base = origin(self.headers)
-                query = {k: v[0] for k, v in parse_qs(url.query, max_num_fields=30, keep_blank_values=True).items() if k in ('q', 'type', 'folder', 'tag', 'sort', 'page', 'file')}
+                query = {k: v[0] for k, v in parse_qs(url.query, max_num_fields=30, keep_blank_values=True).items() if k in LIST_KEYS + ('file', 'removed')}
             except ValueError:
                 self.send_error(400)
                 return
@@ -524,6 +738,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 values = parse_qs(url.query, keep_blank_values=True)['file']
                 query = {'file': values[0] if len(values) == 1 else ''}
             self.page(base, query)
+            return
+        if path == '/katalog/remove':
+            self.confirm_page(parse_qs(url.query, keep_blank_values=True))
             return
         signed = path.startswith('/katalog/signed/')
         if signed:
@@ -583,16 +800,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         self.respond(200, body, entry[1], entry[2])
 
-    def page(self, base, query):
-        lang = language(self.headers.get('Accept-Language', ''))
+    def chrome(self, lang):
         def t(key):
             return TEXT[key][lang == 'en']
         parts = [f'<!doctype html><html lang="{lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">',
                  '<link rel="icon" type="image/png" sizes="32x32" href="/katalog/static/icon-32.png">'
                  '<link rel="apple-touch-icon" href="/katalog/static/icon-128.png">',
                  f'<title>{t("title")}</title><script>{THEME_SCRIPT}</script><style>{STYLE}</style></head><body>']
-        status = 200
-        single = 'file' in query
         parts.append('<header class="bar"><a class="brand" href="/katalog/"><img src="/katalog/static/icon-128.png" width="30" height="30" alt=""><span>3MF Katalog</span></a>')
         en = lang == 'en'
         names = {'wiki': 'Wiki', 'homepage': t('homepage'), 'discord': 'Discord'}
@@ -603,18 +817,62 @@ class Handler(http.server.BaseHTTPRequestHandler):
                   f'data-auto="{escape(t("theme_auto"))}" data-light="{escape(t("theme_light"))}" data-dark="{escape(t("theme_dark"))}">'
                   + ''.join(ICON_THEMES.values()) + '</button>')
         parts.append(f'<div class="bar-end">{toggle}<nav class="ext" aria-label="{escape(t("ext_links"))}">{links}</nav></div></header><main>')
+        return ''.join(parts)
+
+    def hidden_fields(self, fid, nxt):
+        app = self.server.catalog
+        return (f'<input type="hidden" name="id" value="{fid}"><input type="hidden" name="csrf" value="{app.csrf(fid)}">'
+                f'<input type="hidden" name="next" value="{escape(nxt)}">')
+
+    def confirm_page(self, params):
+        lang = language(self.headers.get('Accept-Language', ''))
+        def t(key):
+            return TEXT[key][lang == 'en']
+        fid = params.get('id', [''])[0]
+        nxt = safe_next(params.get('next', [''])[0])
+        row = self.server.catalog.file(fid)
+        if row is None:
+            body = f'<p role="status">{t("file_missing")}</p>'
+            status = 404
+        else:
+            body = (f'<div class="confirm"><h2>{t("remove_title")}</h2><p class="dlg-name">{escape(row["name"])}</p><p>{t("remove_explain")}</p>'
+                    f'<form method="post" action="/katalog/remove">{self.hidden_fields(fid, nxt)}'
+                    f'<button type="submit">{t("remove_confirm")}</button><a href="{escape(nxt)}">{t("cancel")}</a></form></div>')
+            status = 200
+        html_text = (self.chrome(lang) + f'<p class="back"><a href="{escape(nxt)}">{t("back_list")}</a></p><h1>{t("title")}</h1>' + body +
+                     f'</main><script>{SCRIPT}</script></body></html>')
+        self.respond(status, html_text.encode(), 'text/html; charset=utf-8')
+
+    def page(self, base, query):
+        lang = language(self.headers.get('Accept-Language', ''))
+        def t(key):
+            return TEXT[key][lang == 'en']
+        app = self.server.catalog
+        parts = [self.chrome(lang)]
+        status = 200
+        single = 'file' in query
+        view_hidden = query.get('hidden') == '1' and not single
+        here = list_url(query) if not single else '/katalog/'
         if single:
             parts.append(f'<p class="back"><a href="/katalog/">{t("all_files")}</a></p>')
-        parts.append(f'<h1>{t("title")}</h1>')
+        parts.append(f'<h1>{t("hidden_title") if view_hidden else t("title")}</h1>')
+        removed = query.get('removed', '')
+        if re.fullmatch(ID, removed) and not single:
+            row = app.file(removed, include_hidden=True)
+            if row is not None and int(removed) in app.hidden.ids():
+                message = t('removed').format(name=escape(row['name']))
+                # A form cannot sit inside <p>, so the button points at the form that follows.
+                parts.append(f'<p role="status">{message} <button class="link" type="submit" form="undo-form">{t("undo")}</button></p>'
+                             f'<form id="undo-form" class="inline" method="post" action="/katalog/restore">{self.hidden_fields(removed, here)}</form>')
         parts.append(f'<aside class="notice" role="note" aria-labelledby="notice-title"><svg {ICON_ATTRS}><circle cx="12" cy="12" r="9.5"/><path d="M12 11v6M12 7.5h.01"/></svg><div><h2 id="notice-title">{t("notice")}</h2><p>{t("expiry")}</p><p>{t("prusa")}</p><details><summary>{t("help")}</summary><p>{t("advice")}</p></details></div></aside>')
         try:
-            rows, more, page, folders, tags, tagged = self.server.catalog.listing(query)
+            rows, more, page, folders, tags, tagged, hidden_count = app.listing(query)
         except (sqlite3.Error, OSError, ValueError):
             status = 404 if single else 200
             parts.append(f'<p role="status">{t("file_missing" if single else "missing")}</p>')
         else:
             if not single:
-                parts.append(f'<form method="get" action="/katalog/"><label>{t("search")}<input name="q" value="{escape(query.get("q", ""))}" maxlength="200"></label>')
+                parts.append(f'<form method="get" action="/katalog/">{"<input type=hidden name=hidden value=1>" if view_hidden else ""}<label>{t("search")}<input name="q" value="{escape(query.get("q", ""))}" maxlength="200"></label>')
                 choices = [('type', [(v, v.upper()) for v in ('3mf', 'stl', 'stp', 'obj')]), ('folder', folders), ('tag', tags), ('sort', [(v, t(v)) for v in ('name', 'newest', 'size')])]
                 for key, options in choices:
                     parts.append(f'<label>{t(key)}<select name="{key}">')
@@ -625,17 +883,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         parts.append(f'<option value="{escape(value)}"{selected}>{escape(label)}</option>')
                     parts.append('</select></label>')
                 parts.append(f'<button type="submit">{t("apply")}</button></form>')
+                if view_hidden:
+                    parts.append(f'<p><a href="/katalog/">{t("back_list")}</a></p>')
+                elif hidden_count:
+                    parts.append(f'<p><a href="/katalog/?hidden=1">{escape(t("show_hidden").format(n=hidden_count))}</a></p>')
             parts.append('<ul class="files">')
             for row in rows:
-                try:
-                    with self.server.catalog.open_file(row):
-                        pass
-                    available = True
-                except (OSError, ValueError):
-                    available = False
                 fid = str(row['id'])
+                if view_hidden:
+                    available = True
+                else:
+                    try:
+                        with app.open_file(row):
+                            pass
+                        available = True
+                    except (OSError, ValueError):
+                        available = False
                 parts.append('<li class="file' + ('' if available else ' unavailable') + '">')
-                if row['has_thumb'] and available:
+                if row['has_thumb'] and available and not view_hidden:
                     parts.append(f'<img src="/katalog/thumb/{fid}" alt="" loading="lazy">')
                 else:
                     # Same box as the thumbnail so cards stay uniform; the type is also in the text below.
@@ -643,11 +908,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 parts.append(f'<div class="content"><h2>{escape(row["name"])}</h2><p class="meta">{escape(row["file_type"])} · {escape(row["file_size_bytes"])} B · {escape(row["folder"] or "")}</p>')
                 if tagged[row['id']]:
                     parts.append('<p class="tags">' + ''.join(f'<span class="tag">{escape(tag)}</span>' for tag in tagged[row['id']]) + '</p>')
+                if view_hidden:
+                    parts.append(f'<div class="actions"><form class="inline" method="post" action="/katalog/restore">{self.hidden_fields(fid, here)}'
+                                 f'<button class="quiet" type="submit">{t("restore")}</button></form></div></div></li>')
+                    continue
+                remove = (f'<a class="quiet" href="/katalog/remove?{escape(urlencode({"id": fid, "next": here}))}" data-rm data-id="{fid}" '
+                          f'data-csrf="{app.csrf(fid)}" data-next="{escape(here)}" data-name="{escape(row["name"])}">{ICON_TRASH}{t("remove")}</a>')
                 if available:
                     name = filename(row)
                     if not name.lower().endswith(('.3mf', '.stl', '.stp', '.step', '.obj')) and row['file_type'] in ALL_TYPES:
                         name += '.' + row['file_type']
-                    url = base + f'/katalog/signed/{fid}/{self.server.catalog.token(fid)}/' + quote(name, safe='')
+                    url = base + f'/katalog/signed/{fid}/{app.token(fid)}/' + quote(name, safe='')
                     encoded = quote(url, safe='')
                     parts.append(f'<div class="actions"><a href="/katalog/download/{fid}">{t("download")}</a>')
                     links = []
@@ -657,20 +928,27 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             links.append(f'<li><a href="{escape(prefix + encoded)}"{mac}>{label}</a></li>')
                     if links:
                         parts.append(f'<details{" open" if single else ""}><summary>{t("slicer")}</summary><ul>{"".join(links)}</ul></details>')
-                    parts.append('</div>')
+                    parts.append(remove + '</div>')
                 else:
-                    parts.append(f'<p>{t("unavailable")}</p>')
+                    parts.append(f'<p>{t("unavailable")}</p><div class="actions">{remove}</div>')
                 parts.append('</div></li>')
             parts.append('</ul>')
             if not rows:
-                parts.append(f'<p>{t("empty")}</p>')
+                parts.append(f'<p>{t("hidden_empty") if view_hidden else t("empty")}</p>')
             if not single:
                 parts.append(f'<nav aria-label="{t("page")}"><span>{t("page")} {page}</span>')
                 for number, label, show in [(page - 1, 'previous', page > 1), (page + 1, 'next', more)]:
                     if show:
-                        target = '/katalog/?' + urlencode({**query, 'page': number})
+                        target = '/katalog/?' + urlencode({**{k: v for k, v in query.items() if k != 'removed'}, 'page': number})
                         parts.append(f'<a href="{escape(target)}">{t(label)}</a>')
                 parts.append('</nav>')
+            if not view_hidden:
+                # One shared dialog; the script fills it per file. Without script the links open the confirmation page.
+                parts.append(f'<dialog id="rm-dialog" aria-labelledby="rm-title"><div class="dlg"><h2 id="rm-title">{t("remove_title")}</h2>'
+                             f'<p class="dlg-name" data-rm-name></p><p>{t("remove_explain")}</p>'
+                             f'<form method="post" action="/katalog/remove"><input type="hidden" name="id" value=""><input type="hidden" name="csrf" value="">'
+                             f'<input type="hidden" name="next" value=""><div class="dlg-actions"><button type="button" class="secondary" data-rm-cancel autofocus>{t("cancel")}</button>'
+                             f'<button type="submit">{t("remove_confirm")}</button></div></form></div></dialog>')
         parts.append(f'</main><script>{SCRIPT}</script></body></html>')
         self.respond(status, ''.join(parts).encode(), 'text/html; charset=utf-8')
 

@@ -115,6 +115,62 @@ for scheme, port in [('http', sys.argv[1]), ('https', sys.argv[2])]:
     fetch(base + '/', 401)
     print(f'OK: {scheme}: desktop/list/download require login; signed files bypass login with exact bytes; bad/missing tokens return 403')
 PY
+python3 - "$http_port" "$https_port" <<'PY'
+import base64
+import os
+import re
+import ssl
+import sys
+import urllib.error
+import urllib.request
+from urllib.parse import urlencode
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+context = ssl._create_unverified_context()
+opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=context), NoRedirect)
+auth = 'Basic ' + base64.b64encode(('abc:' + os.environ['PASSWORD']).encode()).decode()
+
+def call(url, data=None, login=True, extra=None):
+    headers = dict(extra or {})
+    if login:
+        headers['Authorization'] = auth
+    if data is not None:
+        headers['Content-Type'] = 'application/x-www-form-urlencoded'
+        data = urlencode(data).encode()
+    try:
+        response = opener.open(urllib.request.Request(url, data=data, headers=headers), timeout=10)
+    except urllib.error.HTTPError as error:
+        response = error
+    with response:
+        return response.status, response.headers, response.read().decode()
+
+for scheme, port in [('http', sys.argv[1]), ('https', sys.argv[2])]:
+    base = f'{scheme}://127.0.0.1:{port}'
+    same = {'Origin': base}
+    status, _, page = call(base + '/katalog/')
+    assert status == 200 and 'href="/katalog/download/1"' in page
+    token = re.search(r'data-id="1" data-csrf="([0-9a-f]{64})"', page).group(1)
+    form = {'id': '1', 'csrf': token, 'next': '/katalog/'}
+    assert call(base + '/katalog/remove', form, login=False, extra=same)[0] == 401
+    assert call(base + '/katalog/restore', form, login=False, extra=same)[0] == 401
+    assert call(base + '/katalog/remove', {'id': '1'}, extra=same)[0] == 403
+    assert call(base + '/katalog/remove', {**form, 'csrf': '0' * 64}, extra=same)[0] == 403
+    assert call(base + '/katalog/remove', form, extra={'Origin': 'http://evil.example'})[0] == 403
+    status, headers, _ = call(base + '/katalog/remove', form, extra=same)
+    assert status == 303 and headers['Location'] == '/katalog/?removed=1', (status, headers['Location'])
+    status, _, page = call(base + '/katalog/?removed=1')
+    assert status == 200 and 'href="/katalog/download/1"' not in page and 'href="/katalog/download/2"' in page
+    assert call(base + '/katalog/download/1')[0] == 404
+    assert call(base + '/katalog/?hidden=1')[0] == 200
+    status, headers, _ = call(base + '/katalog/restore', form, extra=same)
+    assert status == 303 and headers['Location'] == '/katalog/'
+    assert call(base + '/katalog/download/1')[0] == 200
+    print(f'OK: {scheme}: remove/restore need login, CSRF token and same-origin; hidden files return 404 and come back')
+PY
+docker exec "$name" sh -c 'test "$(stat -c %a /config/.katalog-web-hidden.json)" = 600 && test "$(stat -c %U /config/.katalog-web-hidden.json)" = abc'
 docker exec "$name" sh -c 'test "$(stat -c %a /config/.katalog-web-secret)" = 600 && test "$(stat -c %U /config/.katalog-web-secret)" = abc'
 # s6 must restart the companion after an unexpected exit.
 docker exec "$name" /command/s6-svc -k /run/service/svc-katalog-web

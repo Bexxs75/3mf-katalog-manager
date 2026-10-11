@@ -175,6 +175,15 @@ sie an einen dort installierten Slicer. Suche und Download funktionieren ohne
 JavaScript; auf macOS passt JavaScript den Bambu-Link an. Sprache: `Accept-Language`
 (DE/EN, sonst Deutsch); hell/dunkel nach Systemeinstellung.
 
+**Dateien aus der Liste ausblenden:** „Aus Liste entfernen“ fragt nach und blendet die
+Datei nur in dieser Begleitseite aus (Download und Slicer-Links liefern dann 404, auch
+bereits ausgegebene). Katalog, Datenbank und Speicher bleiben unberührt; die
+Begleitseite schreibt nie in den Katalog und löscht nie Dateien. Die Liste der
+ausgeblendeten Dateien steht in `/config/.katalog-web-hidden.json` (Teil des
+`/config`-Ordners, bleibt bei Updates erhalten). Wieder einblenden: unter den Filtern
+„Ausgeblendete anzeigen (N)“ öffnen und bei der Datei „Wieder anzeigen“ wählen; direkt
+nach dem Entfernen gibt es außerdem „Rückgängig“.
+
 | Slicer | Dateitypen |
 |---|---|
 | OrcaSlicer | 3MF, STL, OBJ, STP/STEP |
@@ -418,6 +427,15 @@ a file to your PC; “Open in slicer” passes it to a slicer installed there.
 Search and downloads work without JavaScript; on macOS JavaScript adapts the
 Bambu link. Language follows `Accept-Language` (DE/EN, German by default);
 light/dark appearance follows the system preference.
+
+**Hiding files from the list:** “Remove from list” asks for confirmation and only
+hides the file on this companion page (downloads and slicer links then return 404,
+including links issued earlier). The catalog, its database and the storage stay
+untouched; the companion never writes to the catalog and never deletes files. The
+list of hidden files is kept in `/config/.katalog-web-hidden.json` (part of the
+`/config` folder, preserved across updates). To show a file again, open “Show hidden
+files (N)” below the filters and choose “Show again”; right after removing there is
+also “Undo”.
 
 | Slicer | File types |
 |---|---|

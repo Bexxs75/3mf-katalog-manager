@@ -4,6 +4,7 @@ import hmac
 import importlib.machinery
 import importlib.util
 import io
+import json
 import os
 from pathlib import Path
 import sqlite3
@@ -12,7 +13,7 @@ import time
 import types
 import unittest
 from unittest.mock import patch
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 SCRIPT = Path(__file__).resolve().parents[2] / 'root/usr/local/libexec/3mf-katalog-web'
 
@@ -71,7 +72,8 @@ class WebTests(unittest.TestCase):
                 INSERT INTO tags VALUES (1, 'Tag "one"'), (2, 'Second');
             ''')
         self.add_file(1, 'Ä " file.3mf', '3mf', b'first model')
-        self.app = self.web.Catalog(str(self.db), [str(self.root)], b's' * 32)
+        self.hidden = self.base / 'hidden.json'
+        self.app = self.web.Catalog(str(self.db), [str(self.root)], b's' * 32, str(self.hidden))
 
     def add_file(self, fid, name, kind='stl', data=b'stl', path=None, deleted=None):
         path = Path(path) if path else self.root / str(fid)
@@ -84,10 +86,10 @@ class WebTests(unittest.TestCase):
                          f'2026-10-{fid % 28 + 1:02}', deleted))
             con.execute('INSERT INTO file_tags VALUES (?, ?)', (fid, 1 if fid % 2 else 2))
 
-    def request(self, path='/katalog/', method='GET', headers=None):
+    def request(self, path='/katalog/', method='GET', headers=None, body=b''):
         values = {'Host': 'catalog.example:3000', **(headers or {})}
         raw = f'{method} {path} HTTP/1.1\r\n' + ''.join(f'{k}: {v}\r\n' for k, v in values.items()) + '\r\n'
-        sock = Socket(raw.encode())
+        sock = Socket(raw.encode() + body)
         log = io.StringIO()
         with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
             self.web.Handler(sock, ('127.0.0.1', 1234), types.SimpleNamespace(catalog=self.app))
@@ -101,6 +103,20 @@ class WebTests(unittest.TestCase):
         self.assertNotIn('Set-Cookie', response_headers)
         self.assertEqual(sock.timeout, 10)
         return status, response_headers, body, sock.writes, log.getvalue()
+
+    def post(self, route, fields=None, headers=None, body=None, csrf=True):
+        fields = dict(fields or {})
+        if csrf and 'csrf' not in fields and 'id' in fields and str(fields['id']).isdigit():
+            fields['csrf'] = self.app.csrf(str(fields['id']))
+        data = urlencode(fields).encode() if body is None else body
+        values = {'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': str(len(data)), **(headers or {})}
+        values = {k: v for k, v in values.items() if v is not None}
+        return self.request('/katalog/' + route, 'POST', values, data)
+
+    def hide(self, fid=1, **kwargs):
+        response = self.post('remove', {'id': fid}, **kwargs)
+        self.assertEqual(response[0], 303, response)
+        return response
 
     def signed(self, fid='1', token=None, name='different.stl'):
         return f'/katalog/signed/{fid}/{token or self.app.token(fid)}/{name}'
@@ -371,7 +387,7 @@ class WebTests(unittest.TestCase):
         alias = self.base / 'models2'
         alias.symlink_to(outside, target_is_directory=True)
         self.add_file(2, 'private.stl', path=alias / 'model.stl')
-        self.app = self.web.Catalog(str(self.db), [str(alias)], b's' * 32)
+        self.app = self.web.Catalog(str(self.db), [str(alias)], b's' * 32, str(self.hidden))
         self.assertEqual(self.request('/katalog/download/2')[0], 404)
 
     def test_download_filename_strips_controls(self):
@@ -407,6 +423,243 @@ class WebTests(unittest.TestCase):
             self.assertEqual(self.web.discover_db(share), str(share / 'preview/catalog.db'))
         with patch.dict(os.environ, {'CATALOG_DB': str(self.db)}):
             self.assertEqual(self.web.discover_db(share), str(self.db))
+
+    def test_hide_removes_from_every_route_and_keeps_data(self):
+        self.add_file(2, 'other.stl')
+        signed = self.signed()
+        self.assertEqual(self.request(signed)[0], 200)
+        before = self.db.read_bytes()
+        status, headers, _, _, log = self.hide(1, headers={'Origin': 'http://catalog.example:3000'})
+        self.assertEqual(headers['Location'], '/katalog/?removed=1')
+        self.assertEqual(headers['Cache-Control'], 'no-store')
+        self.assertEqual(log, 'POST /katalog/remove 303\n')
+        html = self.request()[2].decode()
+        self.assertNotIn('/katalog/download/1"', html)
+        self.assertIn('/katalog/download/2"', html)
+        for path in ['/katalog/download/1', '/katalog/thumb/1', '/katalog/?file=1', signed]:
+            with self.subTest(path=path):
+                self.assertEqual(self.request(path)[0], 404)
+        self.assertEqual(self.request('/katalog/?q=file.3mf')[2].decode().count('/katalog/download/'), 0)
+        self.assertEqual(self.request('/katalog/?type=3mf')[2].decode().count('/katalog/download/'), 0)
+        self.assertEqual((self.root / '1').read_bytes(), b'first model')
+        self.assertEqual(self.db.read_bytes(), before)
+        with contextlib.closing(sqlite3.connect(self.db)) as con:
+            self.assertEqual(con.execute('SELECT count(*) FROM files WHERE id=1 AND deleted_at IS NULL').fetchone()[0], 1)
+        status, headers, _, _, _ = self.post('restore', {'id': 1})
+        self.assertEqual((status, headers['Location']), (303, '/katalog/'))
+        self.assertEqual(self.request(signed)[0], 200)
+        self.assertEqual(self.request('/katalog/download/1')[0], 200)
+        self.assertIn('/katalog/download/1"', self.request()[2].decode())
+
+    def test_pagination_counts_ignore_hidden_files(self):
+        for fid in range(2, 54):
+            self.add_file(fid, f'item{fid:03}.stl')
+        self.assertIn('page=2', self.request()[2].decode())
+        for fid in range(2, 6):
+            self.hide(fid)
+        html = self.request('/katalog/?page=2')[2].decode()
+        self.assertEqual(html.count('/katalog/download/'), 0)
+        self.assertNotIn('page=2', self.request()[2].decode())
+
+    def test_hidden_view_count_and_restore_forms(self):
+        self.add_file(2, 'Two.stl')
+        html = self.request(headers={'Accept-Language': 'en'})[2].decode()
+        self.assertNotIn('Show hidden files', html)
+        self.hide(2)
+        html = self.request(headers={'Accept-Language': 'en'})[2].decode()
+        self.assertIn('Show hidden files (1)', html)
+        self.assertIn('Ausgeblendete anzeigen (1)', self.request()[2].decode())
+        view = self.request('/katalog/?hidden=1', headers={'Accept-Language': 'en'})[2].decode()
+        self.assertIn('Two.stl', view)
+        self.assertNotIn('file.3mf', view)
+        self.assertIn('Show again', view)
+        self.assertIn('action="/katalog/restore"', view)
+        self.assertIn('Back to the download list', view)
+        for text in ('/katalog/download/', 'Open in slicer', 'Remove from list', 'orcaslicer://'):
+            self.assertNotIn(text, view)
+        # A stale id and a catalog-deleted file do not count.
+        self.add_file(3, 'gone.stl', deleted='yesterday')
+        self.hidden.write_text('[2, 3, 999]')
+        self.assertIn('Show hidden files (1)', self.request(headers={'Accept-Language': 'en'})[2].decode())
+        self.post('restore', {'id': 2})
+        self.assertNotIn('Show hidden', self.request(headers={'Accept-Language': 'en'})[2].decode())
+        self.assertIn('No hidden files.', self.request('/katalog/?hidden=1', headers={'Accept-Language': 'en'})[2].decode())
+
+    def test_restore_from_hidden_view_returns_to_list_when_empty(self):
+        self.hide(1)
+        status, headers, *_ = self.post('restore', {'id': 1, 'next': '/katalog/?hidden=1'})
+        self.assertEqual(headers['Location'], '/katalog/')
+        self.hide(1)
+        self.add_file(2, 'b.stl')
+        self.hide(2)
+        status, headers, *_ = self.post('restore', {'id': 1, 'next': '/katalog/?hidden=1'})
+        self.assertEqual(headers['Location'], '/katalog/?hidden=1')
+
+    def test_csrf_and_origin_checks(self):
+        for fields in [{'id': 1, 'csrf': 'x' * 64}, {'id': 1, 'csrf': ''}, {'id': 1, 'csrf': self.app.csrf('2')}]:
+            self.assertEqual(self.post('remove', fields)[0], 403, fields)
+        self.assertEqual(self.post('remove', {'id': 1}, csrf=False)[0], 403)
+        # A download token must not work as CSRF token.
+        self.assertEqual(self.post('remove', {'id': 1, 'csrf': self.app.token('1')})[0], 403)
+        self.assertNotEqual(self.app.csrf('1'), hmac.new(b's' * 32, b'1', hashlib.sha256).hexdigest())
+        self.assertEqual(self.app.csrf('1'), hmac.new(b's' * 32, b'csrf|1', hashlib.sha256).hexdigest())
+        for headers in [{'Origin': 'http://evil.example'}, {'Origin': 'http://catalog.example'},
+                        {'Origin': 'http://catalog.example:3000@evil.example'},
+                        {'Referer': 'http://evil.example/katalog/'}, {'Origin': 'http://evil.example', 'Referer': 'http://catalog.example:3000/'}]:
+            with self.subTest(headers=headers):
+                self.assertEqual(self.post('remove', {'id': 1}, headers=headers)[0], 403)
+        self.assertEqual(self.post('remove', {'id': 1}, headers={'Referer': 'http://catalog.example:3000/katalog/'})[0], 303)
+        self.assertEqual(self.post('restore', {'id': 1}, headers={'Origin': 'http://CATALOG.example:3000'})[0], 303)
+        # Browsers send "Origin: null" under Referrer-Policy: no-referrer; the token still decides.
+        self.assertEqual(self.post('remove', {'id': 1}, headers={'Origin': 'null'})[0], 303)
+        self.assertEqual(self.post('restore', {'id': 1}, headers={'Origin': 'null'})[0], 303)
+        self.assertEqual(self.post('remove', {'id': 1, 'csrf': 'x' * 64}, headers={'Origin': 'null'})[0], 403)
+        self.assertEqual(self.post('remove', {'id': 1}, csrf=False, headers={'Origin': 'null'})[0], 403)
+        self.assertEqual(self.post('remove', {'id': 1}, headers={'Origin': 'null', 'Referer': 'http://evil.example/katalog/'})[0], 403)
+        self.assertEqual(self.hidden.read_text(), '[]')
+        self.hide(1)
+        self.assertEqual(json.loads(self.hidden.read_text()), [1])
+        self.assertEqual(self.post('remove', {'id': 1, 'csrf': 'bad'}, headers={'Origin': 'http://evil.example'})[0], 403)
+
+    def test_post_input_validation_never_500(self):
+        good = {'id': 1, 'csrf': self.app.csrf('1')}
+        encoded = urlencode(good).encode()
+        cases = [
+            ('missing length', dict(headers={'Content-Length': None}, body=encoded), 411),
+            ('bad length', dict(headers={'Content-Length': 'abc'}, body=encoded), 411),
+            ('negative length', dict(headers={'Content-Length': '-1'}, body=encoded), 411),
+            ('too large', dict(body=b'id=1&csrf=' + b'a' * 3000), 413),
+            ('chunked', dict(headers={'Transfer-Encoding': 'chunked'}, body=encoded), 400),
+            ('short body', dict(headers={'Content-Length': str(len(encoded) + 5)}, body=encoded), 400),
+            ('json type', dict(headers={'Content-Type': 'application/json'}, body=encoded), 415),
+            ('no type', dict(headers={'Content-Type': None}, body=encoded), 415),
+            ('multipart', dict(headers={'Content-Type': 'multipart/form-data; boundary=x'}, body=encoded), 415),
+            ('non ascii', dict(body='id=1&csrf=ä'.encode()), 400),
+            ('empty', dict(body=b''), 400),
+            ('garbage', dict(body=b'&&&=&'), 400),
+            ('duplicate id', dict(body=b'id=1&id=2&csrf=' + good['csrf'].encode()), 400),
+            ('non numeric id', dict(body=b'id=abc&csrf=x'), 400),
+            ('negative id', dict(body=b'id=-1&csrf=x'), 400),
+            ('huge id', dict(body=b'id=' + b'9' * 25 + b'&csrf=x'), 400),
+            ('overflow id', dict(body=b'id=9223372036854775808&csrf=x'), 400),
+        ]
+        for label, kwargs, expected in cases:
+            with self.subTest(label):
+                kwargs.setdefault('fields', None)
+                self.assertEqual(self.post('remove', csrf=False, **kwargs)[0], expected)
+        self.assertEqual(self.post('remove', {'id': 999})[0], 404)
+        self.assertEqual(self.post('restore', {'id': 999})[0], 404)
+        self.add_file(5, 'del', deleted='yesterday')
+        self.assertEqual(self.post('remove', {'id': 5})[0], 404)
+        self.assertFalse(self.hidden.exists())
+        # Other paths and methods stay read-only.
+        self.assertEqual(self.post('', {'id': 1})[0], 405)
+        self.assertEqual(self.post('download/1', {'id': 1})[0], 405)
+        self.assertEqual(self.request('/katalog/remove', 'PUT')[0], 405)
+        self.assertEqual(self.request('/katalog/restore')[0], 404)
+
+    def test_next_is_never_an_open_redirect(self):
+        for value in ['http://evil.example/', '//evil.example/katalog/', '/other', '/katalog/../x', 'javascript:alert(1)',
+                      '/katalog/\\evil', '/katalog/%0d%0aSet-Cookie:x', '/katalogx/', 'https://catalog.example:3000/katalog/']:
+            with self.subTest(value=value):
+                status, headers, *_ = self.post('remove', {'id': 1, 'next': value})
+                self.assertEqual(headers['Location'], '/katalog/?removed=1')
+        status, headers, *_ = self.post('remove', {'id': 1, 'next': '/katalog/?q=a+b&type=stl&removed=7&file=3&evil=1&page=2'})
+        self.assertEqual(headers['Location'], '/katalog/?q=a+b&type=stl&page=2&removed=1')
+
+    def test_removed_status_line_undo_and_escaping(self):
+        self.add_file(2, '<b>"x"</b>.stl')
+        self.hide(2)
+        html = self.request('/katalog/?removed=2', headers={'Accept-Language': 'en'})[2].decode()
+        self.assertIn('<p role="status">‘&lt;b&gt;&quot;x&quot;&lt;/b&gt;.stl’ was removed from the list.', html)
+        self.assertIn('>Undo</button>', html)
+        self.assertIn('action="/katalog/restore"', html)
+        self.assertNotIn('<b>"x"', html)
+        self.assertIn('wurde aus der Liste entfernt', self.request('/katalog/?removed=2')[2].decode())
+        # Only currently hidden files produce the line; junk values are ignored.
+        for value in ['1', '999', 'abc', '2%20']:
+            self.assertNotIn('role="status"', self.request('/katalog/?removed=' + value)[2].decode())
+
+    def test_dialog_markup_and_confirmation_page(self):
+        self.add_file(2, '<i>quote".stl')
+        html = self.request(headers={'Accept-Language': 'en'})[2].decode()
+        self.assertIn('<dialog id="rm-dialog"', html)
+        for text in ('Remove from the download list?', 'The file stays in the catalog and in storage; it is only no longer offered in this list.',
+                     'data-rm-cancel autofocus', '>Cancel<', '>Remove</button>', 'Remove from list', 'aria-hidden="true"'):
+            self.assertIn(text, html)
+        self.assertIn(f'data-csrf="{self.app.csrf("2")}"', html)
+        self.assertIn('data-name="&lt;i&gt;quote&quot;.stl"', html)
+        self.assertNotIn('<i>quote', html)
+        self.assertIn('href="/katalog/remove?id=2&amp;next=%2Fkatalog%2F"', html)
+        self.assertIn('showModal', html)
+        self.assertNotIn('<dialog', self.request('/katalog/?hidden=1')[2].decode())
+        status, headers, body, _, _ = self.request('/katalog/remove?id=2&next=http%3A%2F%2Fevil.example%2F', headers={'Accept-Language': 'en'})
+        page = body.decode()
+        self.assertEqual(status, 200)
+        self.assertIn('Remove from the download list?', page)
+        self.assertIn('&lt;i&gt;quote&quot;.stl', page)
+        self.assertIn('The file stays in the catalog and in storage', page)
+        self.assertIn('<form method="post" action="/katalog/remove">', page)
+        self.assertIn(f'name="csrf" value="{self.app.csrf("2")}"', page)
+        self.assertIn('<a href="/katalog/">Cancel</a>', page)
+        self.assertNotIn('evil.example', page)
+        for query in ['', '?id=999', '?id=abc', '?id=1%20']:
+            self.assertEqual(self.request('/katalog/remove' + query)[0], 404)
+        self.hide(2)
+        self.assertEqual(self.request('/katalog/remove?id=2')[0], 404)
+
+    def test_hidden_store_robustness_atomic_write_and_mode(self):
+        for content in [None, b'', b'not json', b'{"a": 1}', b'[1, "2"]', b'[true]', b'[-1]', b'[1.5]', b'\xff\xfe']:
+            with self.subTest(content=content):
+                if content is None:
+                    self.hidden.unlink(missing_ok=True)
+                else:
+                    self.hidden.write_bytes(content)
+                self.assertEqual(self.request()[0], 200)
+                self.assertIn('/katalog/download/1"', self.request()[2].decode())
+        self.hidden.write_bytes(b'garbage')
+        with patch.object(self.web.os, 'replace', wraps=os.replace) as replace:
+            self.hide(1)
+            self.assertEqual(Path(replace.call_args.args[0]).parent, self.base)
+            self.assertEqual(Path(replace.call_args.args[1]), self.hidden)
+        self.assertEqual(json.loads(self.hidden.read_text()), [1])
+        self.assertEqual(self.hidden.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(self.hidden.stat().st_uid, os.getuid())
+        self.assertEqual(list(self.base.glob('.katalog-web-hidden-*')), [])
+        with patch.object(self.web.os, 'replace', side_effect=OSError('read only')):
+            self.assertEqual(self.post('restore', {'id': 1})[0], 503)
+        self.assertEqual(list(self.base.glob('.katalog-web-hidden-*')), [])
+        self.assertEqual(json.loads(self.hidden.read_text()), [1])
+
+    def test_hidden_store_limit_and_concurrency(self):
+        store = self.web.HiddenStore(self.base / 'limit.json')
+        with patch.object(self.web, 'HIDDEN_LIMIT', 3):
+            self.assertTrue(all(store.change(i, True) for i in (1, 2, 3)))
+            self.assertFalse(store.change(4, True))
+            self.assertTrue(store.change(3, True))
+            self.assertEqual(store.ids(), {1, 2, 3})
+            self.assertEqual(self.post('remove', {'id': 1})[0], 303)
+        import threading
+        store = self.web.HiddenStore(self.base / 'parallel.json')
+        threads = [threading.Thread(target=store.change, args=(i, True)) for i in range(1, 41)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(store.ids(), set(range(1, 41)))
+        with patch.dict(os.environ, {'KATALOG_WEB_HIDDEN': str(self.base / 'env.json')}):
+            self.assertEqual(self.web.HiddenStore().path, self.base / 'env.json')
+
+    def test_large_hidden_list_does_not_hit_sql_limits(self):
+        self.hidden.write_text(json.dumps(list(range(1000, 101000 - 1))))
+        self.assertEqual(self.request()[0], 200)
+        self.assertIn('/katalog/download/1"', self.request()[2].decode())
+
+    def test_access_log_has_no_secrets(self):
+        _, _, _, _, log = self.hide(1)
+        self.assertEqual(log, 'POST /katalog/remove 303\n')
+        _, _, _, _, log = self.post('remove', {'id': 1, 'csrf': 'secret-token'})
+        self.assertNotIn('secret-token', log)
 
 
 if __name__ == '__main__':
