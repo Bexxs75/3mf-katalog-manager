@@ -105,6 +105,37 @@ class WebTests(unittest.TestCase):
     def signed(self, fid='1', token=None, name='different.stl'):
         return f'/katalog/signed/{fid}/{token or self.app.token(fid)}/{name}'
 
+    def test_static_assets_allowlist(self):
+        for name, kind, cache in [('fonts/barlow-400.woff2', 'font/woff2', 'public, max-age=31536000, immutable'),
+                                  ('fonts/barlow-700.woff2', 'font/woff2', 'public, max-age=31536000, immutable'),
+                                  ('icon-128.png', 'image/png', 'public, max-age=86400'),
+                                  ('icon-32.png', 'image/png', 'public, max-age=86400')]:
+            status, headers, body, _, _ = self.request('/katalog/static/' + name)
+            self.assertEqual(status, 200, name)
+            self.assertEqual(headers['Content-Type'], kind)
+            self.assertEqual(headers['Cache-Control'], cache)
+            self.assertTrue(body)
+        for name in ['fonts/barlow-300.woff2', 'fonts/', '../libexec/3mf-katalog-web', 'fonts/../icon-32.png',
+                     '%2e%2e/x', 'icon-32.png/x', 'barlow-400.woff2', 'fonts/OFL.txt', '']:
+            self.assertEqual(self.request('/katalog/static/' + name)[0], 404, name)
+
+    def test_csp_allows_only_own_fonts(self):
+        _, headers, _, _, _ = self.request()
+        self.assertEqual(headers['Content-Security-Policy'],
+                         "default-src 'none'; img-src 'self'; font-src 'self'; style-src 'self' 'unsafe-inline'; "
+                         "script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+
+    def test_theme_and_branding(self):
+        _, _, body, _, _ = self.request()
+        html = body.decode()
+        self.assertIn('--accent: oklch(0.545 0.165 30)', html)
+        self.assertIn('@media (prefers-color-scheme: dark)', html)
+        self.assertIn("font-family:'Barlow',Helvetica,sans-serif", html)
+        self.assertIn('font-display:swap', html)
+        self.assertIn('<link rel="icon" type="image/png" sizes="32x32" href="/katalog/static/icon-32.png">', html)
+        self.assertIn('<img src="/katalog/static/icon-128.png" width="30" height="30" alt="">', html)
+        self.assertIn('<a class="brand" href="/katalog/">', html)
+
     def test_single_file_page(self):
         self.add_file(2, 'other.stl')
         status, _, body, _, _ = self.request('/katalog/?file=1')
