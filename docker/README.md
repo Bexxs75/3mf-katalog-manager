@@ -168,9 +168,10 @@ Zusatzbytes werden abgelehnt, die Verbindung wird anschließend geschlossen.
 Der eingebaute nginx erlaubt **4 GiB**, die eigentliche Grenze setzt der Dienst;
 `KATALOG_UPLOAD_MAX_MB` daher höchstens **4096** setzen. Ein davorliegender
 **Reverse Proxy** braucht ebenfalls ein höheres Größenlimit und Streaming.
-Bei Nginx Proxy Manager im Reiter **Advanced**: `client_max_body_size 4g;` und
-`proxy_request_buffering off;`. **Nicht von uns mit echtem Nginx Proxy Manager
-getestet.** Proxy-Zeitlimits müssen zur Übertragungsdauer passen (intern 3600 s).
+Ein Tester hat über seinen Nginx Proxy Manager zwei große Dateien **ohne Änderung**
+hochgeladen. Lehnt dein Proxy große Uploads ab (Fehler „413“), im Reiter
+**Advanced** `client_max_body_size 4g;` und `proxy_request_buffering off;` setzen.
+Proxy-Zeitlimits müssen zur Übertragungsdauer passen (intern 3600 s).
 
 **Bisheriger Weg über Ordner, Netzlaufwerk oder `scp`:** Drag & Drop direkt in den
 gestreamten KasmVNC-Desktop funktioniert weiterhin nicht. So kommen Dateien über
@@ -235,7 +236,7 @@ nach dem Entfernen gibt es außerdem „Rückgängig“.
 | Slicer | Dateitypen |
 |---|---|
 | OrcaSlicer | 3MF, STL, OBJ, STP/STEP |
-| Bambu Studio | 3MF und STL (eigener Link unter macOS); mit 3MF bestätigt, STL über den Link noch nicht von uns bestätigt |
+| Bambu Studio | nur 3MF (eigener Link unter macOS); STL lässt sich über den Link nicht öffnen, von einem Tester bestätigt |
 | Creality Print | 3MF, STL, OBJ, STP/STEP |
 | ElegooSlicer | 3MF, STL, OBJ, STP/STEP |
 | Cura | 3MF, STL, OBJ |
@@ -475,10 +476,10 @@ immediately observable excess bytes are rejected and the connection is closed.
 
 The built-in nginx allows **4 GiB**; the service sets the actual limit, so keep
 `KATALOG_UPLOAD_MAX_MB` at **4096 or below**. An upstream **reverse proxy** also
-needs a higher size limit and streaming. In Nginx Proxy Manager's **Advanced** tab:
-`client_max_body_size 4g;` and `proxy_request_buffering off;`. **Not tested by us
-with a real Nginx Proxy Manager.** Proxy timeouts must accommodate the transfer
-(internal timeouts: 3600 s).
+needs a higher size limit and streaming. A tester uploaded two large files through his Nginx Proxy Manager **without any
+change**. If your proxy rejects large uploads (error "413"), set
+`client_max_body_size 4g;` and `proxy_request_buffering off;` in the **Advanced** tab.
+Proxy timeouts must accommodate the transfer (internal timeouts: 3600 s).
 
 **Existing folder, network drive or `scp` method:** Drag and drop directly into
 the streamed KasmVNC desktop still does not work. To transfer via the server:
@@ -540,7 +541,7 @@ also “Undo”.
 | Slicer | File types |
 |---|---|
 | OrcaSlicer | 3MF, STL, OBJ, STP/STEP |
-| Bambu Studio | 3MF and STL (special link on macOS); confirmed with 3MF, STL through the link not yet confirmed by us |
+| Bambu Studio | 3MF only (special link on macOS); STL does not open through the link, confirmed by a tester |
 | Creality Print | 3MF, STL, OBJ, STP/STEP |
 | ElegooSlicer | 3MF, STL, OBJ, STP/STEP |
 | Cura | 3MF, STL, OBJ |
