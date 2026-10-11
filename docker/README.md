@@ -256,13 +256,20 @@ Ausführliche Netzwerk-/Reverse-Proxy-Anleitungen folgen im D6-Paket im
   ihren eigenen Updater aus (`THREEMF_CONTAINER=1`); Links erscheinen als Text mit „Link kopieren“.
 - Browser-Clipboard, Tastatur, Dateidialoge und WebKit können von der Desktop-App abweichen.
 
+### Docker im Proxmox-LXC-Container
+
+Wer Docker in einem LXC-Container statt in einer VM betreibt, braucht laut einem Tester
+(Proxmox, aus eigener Erfahrung) für den Container die Optionen `nesting=1` und
+`keyctl=1`. Das ist ein Hinweis aus der Praxis eines Testers; wir haben den Betrieb im
+LXC-Container selbst nicht geprüft.
+
 ### Was geprüft ist
 
 - `bash scripts/check.sh` prüft ohne Docker die Skripte, Compose- und Dockerfile-Struktur sowie Passwort-, Dateisystem- und Supervisor-Logik.
 - `bash scripts/ci-smoke.sh IMAGE` startet das fertige Image und prüft Anmeldung, erzeugtes und eigenes Passwort, Neustart der App nach einem Absturz, sauberes Beenden und `ALLOW_NO_AUTH`. Der Release-Workflow führt ihn vor dem Veröffentlichen aus.
 - `bash tests/upgrade.sh ALT NEU` prüft ein Update auf demselben Volume (Schema-Migration mit Sicherung vorher), `bash tests/permissions.sh IMAGE` fremde `PUID`/`PGID` und einen schreibgeschützten Modellordner.
 - Von Hand im Container geprüft: Import aus dem Dateidialog, Ordnerübernahme, Archiv-Dialog, Katalog-Export und -Import, Druckeranbindung an einen Moonraker-Testserver, `no-new-privileges:true`.
-- Noch nicht geprüft: 3D-Vorschau mit vielen Modellen, Wiederherstellung mit Papierkorbdateien, arm64.
+- Noch nicht geprüft: 3D-Vorschau mit vielen Modellen, Wiederherstellung mit Papierkorbdateien, arm64, Betrieb im LXC-Container.
 
 [Lizenzhinweise](LICENSES.md).
 
@@ -514,12 +521,19 @@ instructions will follow in package D6 in the
   own updater (`THREEMF_CONTAINER=1`); links appear as text with “Copy link”.
 - Browser clipboard, keyboard, file dialogs and WebKit may differ from the desktop app.
 
+### Docker in a Proxmox LXC container
+
+If you run Docker in an LXC container instead of a VM, a tester (Proxmox, from their own
+experience) reports that the container needs the options `nesting=1` and `keyctl=1`. This
+is a hint from a tester's practice; we have not tested running it in an LXC container
+ourselves.
+
 ### What has been tested
 
 - `bash scripts/check.sh` checks the scripts, Compose and Dockerfile structure and the password, file-system and supervisor logic without Docker.
 - `bash scripts/ci-smoke.sh IMAGE` starts the built image and checks login, generated and supplied passwords, app restart after a crash, clean stop and `ALLOW_NO_AUTH`. The release workflow runs it before publishing.
 - `bash tests/upgrade.sh OLD NEW` checks an update on the same volume (schema migration with a copy beforehand); `bash tests/permissions.sh IMAGE` checks foreign `PUID`/`PGID` and a read-only models folder.
 - Checked by hand in the container: import from the file dialog, folder adoption, the archive dialog, catalog export and import, the printer link to a Moonraker test server, `no-new-privileges:true`.
-- Not yet tested: 3D preview with many models, restore with trash files, arm64.
+- Not yet tested: 3D preview with many models, restore with trash files, arm64, running in an LXC container.
 
 [License notices](LICENSES.md).
