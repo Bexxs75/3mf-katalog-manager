@@ -21,13 +21,15 @@ function CatalogWebDialog({ fileId, onClose, returnFocus }: {
   return <CatalogActionDialog title={t('catalogWebTitle')} onClose={onClose} returnFocus={returnFocus}>
     <p>{t('catalogWebExplanation')}</p>
     {failed ? <p role="alert">{t('catalogWebFailed')}</p> : link ? <>
-      {link.url ? <ExternalLink url={link.url} label={t('catalogWebTitle')} /> : <>
+      {link.url ? <div><ExternalLink url={link.url} label={t('catalogWebTitle')} /></div> : <>
         <p className="break-all" style={{ userSelect: 'text' }}>{link.path}</p>
         <p>{t('catalogWebUnknown')}</p>
         <p>{t('catalogWebConfigure')}</p>
       </>}
     </> : <p role="status">{t('catalogWebLoading')}</p>}
-    <button type="button" data-initial-focus className={catalogActionButton} onClick={onClose}>{t('impClose')}</button>
+    <div className="flex justify-end">
+      <button type="button" data-initial-focus className={catalogActionButton} onClick={onClose}>{t('impClose')}</button>
+    </div>
   </CatalogActionDialog>;
 }
 
