@@ -10,5 +10,5 @@ esac
     exit 1
 }
 # Keep the proxy aligned with the loopback listener on every container start.
-[ "$(grep -Ec '^[[:space:]]*proxy_pass http://127\.0\.0\.1:[0-9]+;' "$config")" -eq 2 ]
+[ "$(grep -Ec '^[[:space:]]*proxy_pass http://127\.0\.0\.1:[0-9]+;' "$config")" -eq 3 ]
 sed -i -E "s@(proxy_pass http://127\.0\.0\.1:)[0-9]+;@\1${port};@" "$config"

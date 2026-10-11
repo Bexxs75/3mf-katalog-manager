@@ -17,7 +17,7 @@ class ProxyTests(unittest.TestCase):
             config.write_text(original)
             for port in ['8100', '8099', '65535']:
                 subprocess.run([str(helper), str(config)], env={**os.environ, 'KATALOG_WEB_PORT': port}, check=True, capture_output=True)
-                self.assertEqual(config.read_text().count(f'proxy_pass http://127.0.0.1:{port};'), 2)
+                self.assertEqual(config.read_text().count(f'proxy_pass http://127.0.0.1:{port};'), 3)
             for port in ['0', '65536', '-1', '80;bad', '999999999999999999', 'abc']:
                 before = config.read_text()
                 result = subprocess.run([str(helper), str(config)], env={**os.environ, 'KATALOG_WEB_PORT': port}, capture_output=True)

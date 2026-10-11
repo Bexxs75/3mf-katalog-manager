@@ -77,6 +77,24 @@ timeout --kill-after=5s 15s bash scripts/test-supervisor.sh
 [[ -f root/etc/nginx/3mf-katalog.conf && -f root/etc/nginx/conf.d/3mf-katalog-proto.conf ]]
 grep -Fq 'include /etc/nginx/3mf-katalog.conf;' Dockerfile
 grep -Fq "grep -Fc 'include /etc/nginx/3mf-katalog.conf;'" Dockerfile
+python3 - <<'PYUPLOAD'
+from pathlib import Path
+import re
+config = Path('root/etc/nginx/3mf-katalog.conf').read_text()
+upload = re.search(r'location = /katalog/upload \{([^}]+)\}', config).group(1)
+for directive in ['client_max_body_size 4g;', 'proxy_request_buffering off;',
+                  'proxy_read_timeout 3600s;', 'proxy_send_timeout 3600s;',
+                  'proxy_pass http://127.0.0.1:8099;', 'proxy_set_header Host $http_host;',
+                  'proxy_set_header X-Forwarded-Proto $katalog_forwarded_proto;',
+                  'proxy_set_header Cookie "";', 'proxy_set_header Authorization "";',
+                  'proxy_buffering off;', 'access_log off;', 'error_log /dev/null crit;']:
+    assert directive in upload, directive
+assert 'auth_basic off' not in upload
+compose = Path('docker-compose.yml').read_text()
+for key in ('KATALOG_UPLOAD_DIR', 'KATALOG_UPLOAD_MAX_MB'):
+    assert '# ' + key + ': ${' + key + ':-}' in compose
+print('OK: upload nginx location, inherited login and empty Compose defaults')
+PYUPLOAD
 python3 -m unittest discover -s tests/katalog_web -v
 printf 'OK: catalog web syntax, tests, nginx and s6 structure\n'
 printf 'All available static/local checks passed; image build and startup remain unverified.\n'
