@@ -25,7 +25,8 @@ HIDDEN_LIMIT = 100000
 HIDDEN_FILE = '/config/.katalog-web-hidden.json'
 # A form with three short fields never needs more; a small cap keeps parsing cheap.
 MAX_BODY = 2048
-LIST_KEYS = ('q', 'type', 'folder', 'tag', 'sort', 'page', 'hidden')
+# 'lang' rides along in every internal URL so a manual language choice survives paging, forms and redirects.
+LIST_KEYS = ('q', 'type', 'folder', 'tag', 'sort', 'page', 'hidden', 'lang')
 ID = r'[0-9]{1,19}'
 CSP = ("default-src 'none'; img-src 'self'; font-src 'self'; style-src 'self' 'unsafe-inline'; "
        "script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
@@ -49,45 +50,75 @@ SLICERS = (
     ('Lychee', 'lycheeslicer://open/', {'3mf', 'stl', 'obj'}),
     ('SuperSlicer', 'prusaslicer://open?file=', ALL_TYPES),
 )
+LANGS = ('de', 'en', 'es', 'fr')
+# Languages with their own page; the name is shown untranslated so every visitor can find theirs.
+LANG_NAMES = {'de': 'Deutsch', 'en': 'English', 'es': 'Español', 'fr': 'Français'}
+# One tuple per key, in LANGS order (de, en, es, fr).
 TEXT = {
-    'title': ('Download und Slicer', 'Download and slicer'),
+    'title': ('Download und Slicer', 'Download and slicer', 'Descargas y slicer', 'Téléchargement et slicer'),
     'missing': ('Katalog noch nicht angelegt – zuerst in der App einrichten. Falls bereits eingerichtet: Datenbankpfad, Leserechte und App-Version prüfen.',
-                'Catalog not created – set it up in the app first. If already configured, check the database path, read permissions and app version.'),
-    'search': ('Name suchen', 'Search name'), 'type': ('Dateityp', 'File type'),
-    'folder': ('Ordner', 'Folder'), 'tag': ('Tag', 'Tag'), 'sort': ('Sortierung', 'Sort'),
-    'name': ('Name', 'Name'), 'newest': ('Neueste', 'Newest'), 'size': ('Größe', 'Size'),
-    'apply': ('Anwenden', 'Apply'), 'all': ('Alle', 'All'),
-    'download': ('Herunterladen', 'Download'), 'slicer': ('In Slicer öffnen', 'Open in slicer'),
-    'unavailable': ('Datei nicht verfügbar oder außerhalb der Modell-Ordner', 'File unavailable or outside model folders'),
-    'empty': ('Keine Dateien gefunden.', 'No files found.'),
-    'previous': ('Zurück', 'Previous'), 'next': ('Weiter', 'Next'), 'page': ('Seite', 'Page'),
-    'help': ('Hilfe zu Slicern', 'Slicer help'),
-    'notice': ('Hinweis', 'Notice'),
-    'expiry': ('Links gelten 1 Stunde. Bei einem Fehler die Seite neu laden.', 'Links expire after 1 hour. Reload this page if a link fails.'),
-    'prusa': ('PrusaSlicer: Datei herunterladen und im Slicer öffnen.', 'PrusaSlicer: download the file and open it in the slicer.'),
+                'Catalog not created – set it up in the app first. If already configured, check the database path, read permissions and app version.',
+                'Catálogo aún no creado: configúralo primero en la aplicación. Si ya está configurado, comprueba la ruta de la base de datos, los permisos de lectura y la versión de la aplicación.',
+                'Catalogue pas encore créé : configure-le d’abord dans l’application. S’il l’est déjà, vérifie le chemin de la base de données, les droits de lecture et la version de l’application.'),
+    'search': ('Name suchen', 'Search name', 'Buscar nombre', 'Rechercher un nom'),
+    'type': ('Dateityp', 'File type', 'Tipo de archivo', 'Type de fichier'),
+    'folder': ('Ordner', 'Folder', 'Carpeta', 'Dossier'),
+    'tag': ('Tag', 'Tag', 'Etiqueta', 'Étiquette'),
+    'sort': ('Sortierung', 'Sort', 'Orden', 'Tri'),
+    'name': ('Name', 'Name', 'Nombre', 'Nom'),
+    'newest': ('Neueste', 'Newest', 'Más recientes', 'Plus récents'),
+    'size': ('Größe', 'Size', 'Tamaño', 'Taille'),
+    'apply': ('Anwenden', 'Apply', 'Aplicar', 'Appliquer'),
+    'all': ('Alle', 'All', 'Todas', 'Tous'),
+    'download': ('Herunterladen', 'Download', 'Descargar', 'Télécharger'),
+    'slicer': ('In Slicer öffnen', 'Open in slicer', 'Abrir en el slicer', 'Ouvrir dans le slicer'),
+    'unavailable': ('Datei nicht verfügbar oder außerhalb der Modell-Ordner', 'File unavailable or outside model folders',
+                    'Archivo no disponible o fuera de las carpetas de modelos', 'Fichier indisponible ou en dehors des dossiers de modèles'),
+    'empty': ('Keine Dateien gefunden.', 'No files found.', 'No se encontraron archivos.', 'Aucun fichier trouvé.'),
+    'previous': ('Zurück', 'Previous', 'Anterior', 'Précédent'),
+    'next': ('Weiter', 'Next', 'Siguiente', 'Suivant'),
+    'page': ('Seite', 'Page', 'Página', 'Page'),
+    'help': ('Hilfe zu Slicern', 'Slicer help', 'Ayuda sobre slicers', 'Aide sur les slicers'),
+    'notice': ('Hinweis', 'Notice', 'Aviso', 'Remarque'),
+    'expiry': ('Links gelten 1 Stunde. Bei einem Fehler die Seite neu laden.', 'Links expire after 1 hour. Reload this page if a link fails.',
+               'Los enlaces caducan al cabo de 1 hora. Si un enlace falla, recarga la página.', 'Les liens expirent au bout d’1 heure. Si un lien échoue, recharge la page.'),
+    'prusa': ('PrusaSlicer: Datei herunterladen und im Slicer öffnen.', 'PrusaSlicer: download the file and open it in the slicer.',
+              'PrusaSlicer: descarga el archivo y ábrelo en el slicer.', 'PrusaSlicer : télécharge le fichier et ouvre-le dans le slicer.'),
     'advice': ('Der Slicer muss auf deinem PC installiert und die Adresse vom PC erreichbar sein. Selbstsignierte Zertifikate bei https://…:3001 werden oft abgelehnt: im Heimnetz http://…:3000 oder einen Reverse Proxy mit gültigem Zertifikat verwenden. Unter Linux muss das URL-Schema registriert sein.',
-               'The slicer must be installed on your PC and the address must be reachable from that PC. Slicers often reject self-signed certificates at https://…:3001: use http://…:3000 on your home network or a reverse proxy with a valid certificate. On Linux the URL scheme must be registered.'),
-    'all_files': ('Alle Dateien anzeigen', 'Show all files'),
-    'file_missing': ('Diese Datei ist nicht mehr verfügbar.', 'This file is no longer available.'),
-    'error': ('Anfrage nicht verfügbar.', 'Request unavailable.'),
-    'theme': ('Farbschema', 'Color scheme'), 'theme_auto': ('Automatisch', 'Automatic'),
-    'theme_light': ('Hell', 'Light'), 'theme_dark': ('Dunkel', 'Dark'),
-    'ext_links': ('Weiterführende Links', 'Related links'),
-    'homepage': ('Homepage', 'Website'),
-    'remove': ('Aus Liste entfernen', 'Remove from list'),
-    'remove_title': ('Aus der Download-Liste entfernen?', 'Remove from the download list?'),
+               'The slicer must be installed on your PC and the address must be reachable from that PC. Slicers often reject self-signed certificates at https://…:3001: use http://…:3000 on your home network or a reverse proxy with a valid certificate. On Linux the URL scheme must be registered.',
+               'El slicer debe estar instalado en tu PC y la dirección debe ser accesible desde ese PC. Los slicers suelen rechazar los certificados autofirmados de https://…:3001: usa http://…:3000 en tu red doméstica o un proxy inverso con un certificado válido. En Linux, el esquema de URL debe estar registrado.',
+               'Le slicer doit être installé sur ton PC et l’adresse doit être accessible depuis ce PC. Les slicers refusent souvent les certificats autosignés de https://…:3001 : utilise http://…:3000 sur ton réseau domestique ou un proxy inverse avec un certificat valide. Sous Linux, le schéma d’URL doit être enregistré.'),
+    'all_files': ('Alle Dateien anzeigen', 'Show all files', 'Mostrar todos los archivos', 'Afficher tous les fichiers'),
+    'file_missing': ('Diese Datei ist nicht mehr verfügbar.', 'This file is no longer available.',
+                     'Este archivo ya no está disponible.', 'Ce fichier n’est plus disponible.'),
+    'error': ('Anfrage nicht verfügbar.', 'Request unavailable.', 'Solicitud no disponible.', 'Requête indisponible.'),
+    'theme': ('Farbschema', 'Color scheme', 'Esquema de color', 'Thème de couleurs'),
+    'theme_auto': ('Automatisch', 'Automatic', 'Automático', 'Automatique'),
+    'theme_light': ('Hell', 'Light', 'Claro', 'Clair'),
+    'theme_dark': ('Dunkel', 'Dark', 'Oscuro', 'Sombre'),
+    'ext_links': ('Weiterführende Links', 'Related links', 'Enlaces relacionados', 'Liens utiles'),
+    'homepage': ('Homepage', 'Website', 'Sitio web', 'Site web'),
+    'language': ('Sprache', 'Language', 'Idioma', 'Langue'),
+    'remove': ('Aus Liste entfernen', 'Remove from list', 'Quitar de la lista', 'Retirer de la liste'),
+    'remove_title': ('Aus der Download-Liste entfernen?', 'Remove from the download list?',
+                     '¿Quitar de la lista de descargas?', 'Retirer de la liste de téléchargement ?'),
     'remove_explain': ('Die Datei bleibt im Katalog und auf dem Speicher erhalten; sie wird nur nicht mehr in dieser Liste angeboten.',
-                       'The file stays in the catalog and in storage; it is only no longer offered in this list.'),
-    'remove_confirm': ('Entfernen', 'Remove'), 'cancel': ('Abbrechen', 'Cancel'),
-    'removed': ('„{name}“ wurde aus der Liste entfernt.', '‘{name}’ was removed from the list.'),
-    'undo': ('Rückgängig', 'Undo'),
-    'show_hidden': ('Ausgeblendete anzeigen ({n})', 'Show hidden files ({n})'),
-    'restore': ('Wieder anzeigen', 'Show again'),
-    'back_list': ('Zur Download-Liste', 'Back to the download list'),
-    'hidden_title': ('Ausgeblendete Dateien', 'Hidden files'),
-    'hidden_empty': ('Keine ausgeblendeten Dateien.', 'No hidden files.'),
+                       'The file stays in the catalog and in storage; it is only no longer offered in this list.',
+                       'El archivo permanece en el catálogo y en el almacenamiento; solo deja de ofrecerse en esta lista.',
+                       'Le fichier reste dans le catalogue et sur le stockage ; il n’est simplement plus proposé dans cette liste.'),
+    'remove_confirm': ('Entfernen', 'Remove', 'Quitar', 'Retirer'),
+    'cancel': ('Abbrechen', 'Cancel', 'Cancelar', 'Annuler'),
+    'removed': ('„{name}“ wurde aus der Liste entfernt.', '‘{name}’ was removed from the list.',
+                '«{name}» se ha quitado de la lista.', '« {name} » a été retiré de la liste.'),
+    'undo': ('Rückgängig', 'Undo', 'Deshacer', 'Annuler'),
+    'show_hidden': ('Ausgeblendete anzeigen ({n})', 'Show hidden files ({n})', 'Mostrar archivos ocultos ({n})', 'Afficher les fichiers masqués ({n})'),
+    'restore': ('Wieder anzeigen', 'Show again', 'Mostrar de nuevo', 'Afficher à nouveau'),
+    'back_list': ('Zur Download-Liste', 'Back to the download list', 'Volver a la lista de descargas', 'Retour à la liste de téléchargement'),
+    'hidden_title': ('Ausgeblendete Dateien', 'Hidden files', 'Archivos ocultos', 'Fichiers masqués'),
+    'hidden_empty': ('Keine ausgeblendeten Dateien.', 'No hidden files.', 'No hay archivos ocultos.', 'Aucun fichier masqué.'),
 }
 # Key (label lookup), German URL, English URL; Discord is language-independent.
+# The website and wiki exist only in German and English (/es/ and /fr/ are 404), so es and fr link the English pages.
 EXTERNAL = (
     ('wiki', 'https://wiki.3mfkatalog.de/', 'https://wiki.3mfkatalog.de/en/'),
     ('homepage', 'https://3mfkatalog.de/', 'https://3mfkatalog.de/en/'),
@@ -151,7 +182,9 @@ button,input,select {font:inherit;font-size:13.5px;max-width:100%}
 a {color:var(--accent);text-underline-offset:2px}
 .bar {position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-content:space-between;gap:.25rem .75rem;flex-wrap:wrap;padding:.5rem 1rem;background:var(--panel);border-bottom:1px solid var(--line)}
 .bar-end {display:flex;align-items:center;flex-wrap:wrap;gap:.25rem .9rem;min-width:0}
-.ext {display:flex;flex-wrap:wrap;gap:.1rem .9rem;margin:0}
+.ext,.langs {display:flex;flex-wrap:wrap;gap:.1rem .9rem;margin:0}
+.langs {gap:.1rem .6rem}
+.bar .langs a[aria-current] {color:var(--ink);font-weight:700;text-decoration:none}
 .theme {display:inline-flex;align-items:center;justify-content:center;width:32px;padding:0;background:var(--panel);color:var(--ink);border-color:var(--line-strong)}
 .theme:hover {border-color:var(--accent);filter:none}
 .theme svg {width:18px;height:18px;display:none}
@@ -275,7 +308,10 @@ def escape(value):
     return html.escape(str(value), quote=True)
 
 
-def language(header):
+def language(header, chosen=None):
+    # An explicit ?lang= wins over the browser; anything outside LANGS is ignored, never echoed.
+    if chosen in LANGS:
+        return chosen
     choices = []
     for index, entry in enumerate(header.split(',')):
         parts = entry.strip().lower().split(';')
@@ -287,7 +323,7 @@ def language(header):
                     quality = float(part.strip()[2:])
                 except ValueError:
                     quality = 0
-        if lang in ('de', 'en') and 0 < quality <= 1:
+        if lang in LANGS and 0 < quality <= 1:
             choices.append((quality, -index, lang))
     return max(choices)[2] if choices else 'de'
 
@@ -384,8 +420,14 @@ def filename(row):
 
 
 def list_url(query):
-    kept = {k: v for k, v in query.items() if k in LIST_KEYS and v}
+    kept = {k: v for k, v in query.items() if k in LIST_KEYS and v and (k != 'lang' or v in LANGS)}
     return '/katalog/' + ('?' + urlencode(kept) if kept else '')
+
+
+def with_lang(url, code):
+    # Same local list URL, with the language replaced; used by the language menu.
+    pairs = parse_qs(urlsplit(safe_next(url)).query, max_num_fields=30, keep_blank_values=True)
+    return list_url({**{k: v[0] for k, v in pairs.items()}, 'lang': code})
 
 
 def safe_next(value):
@@ -614,8 +656,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def send_error(self, code, message=None, explain=None):
         self.close_connection = True
-        lang = language(getattr(self, 'headers', {}).get('Accept-Language', ''))
-        self.respond(code, TEXT['error'][lang == 'en'].encode())
+        try:
+            chosen = parse_qs(urlsplit(getattr(self, 'path', '')).query).get('lang', [''])[0]
+        except ValueError:
+            chosen = None
+        lang = language(getattr(self, 'headers', {}).get('Accept-Language', ''), chosen)
+        self.respond(code, TEXT['error'][LANGS.index(lang)].encode())
 
     def method_not_allowed(self):
         self.close_connection = True
@@ -702,8 +748,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         target = safe_next(form.get('next', [''])[0])
         if hide:
             target += ('&' if '?' in target else '?') + urlencode({'removed': fid})
-        elif target.endswith('?hidden=1') and not app.hidden.ids():
-            target = '/katalog/'
+        elif not app.hidden.ids():
+            # Leaving the hidden view empty would show a dead page; go back to the list, keeping the language.
+            pairs = parse_qs(urlsplit(target).query, keep_blank_values=True)
+            if pairs.get('hidden') == ['1'] and set(pairs) <= {'hidden', 'lang'}:
+                target = list_url({'lang': pairs.get('lang', [''])[0]})
         self.respond(303, headers={'Location': target})
 
     def do_GET(self):
@@ -730,13 +779,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
             try:
                 base = origin(self.headers)
                 query = {k: v[0] for k, v in parse_qs(url.query, max_num_fields=30, keep_blank_values=True).items() if k in LIST_KEYS + ('file', 'removed')}
+                if query.get('lang') not in LANGS:
+                    query.pop('lang', None)
             except ValueError:
                 self.send_error(400)
                 return
             remember_origin(base)
             if 'file' in query:
                 values = parse_qs(url.query, keep_blank_values=True)['file']
-                query = {'file': values[0] if len(values) == 1 else ''}
+                query = {'file': values[0] if len(values) == 1 else '', **({'lang': query['lang']} if 'lang' in query else {})}
             self.page(base, query)
             return
         if path == '/katalog/remove':
@@ -800,23 +851,27 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         self.respond(200, body, entry[1], entry[2])
 
-    def chrome(self, lang):
+    def chrome(self, lang, home, switch):
+        # home: local URL of the list in the current language; switch: language code -> URL of this page in that language.
         def t(key):
-            return TEXT[key][lang == 'en']
+            return TEXT[key][LANGS.index(lang)]
         parts = [f'<!doctype html><html lang="{lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">',
                  '<link rel="icon" type="image/png" sizes="32x32" href="/katalog/static/icon-32.png">'
                  '<link rel="apple-touch-icon" href="/katalog/static/icon-128.png">',
                  f'<title>{t("title")}</title><script>{THEME_SCRIPT}</script><style>{STYLE}</style></head><body>']
-        parts.append('<header class="bar"><a class="brand" href="/katalog/"><img src="/katalog/static/icon-128.png" width="30" height="30" alt=""><span>3MF Katalog</span></a>')
-        en = lang == 'en'
+        parts.append(f'<header class="bar"><a class="brand" href="{escape(home)}"><img src="/katalog/static/icon-128.png" width="30" height="30" alt=""><span>3MF Katalog</span></a>')
         names = {'wiki': 'Wiki', 'homepage': t('homepage'), 'discord': 'Discord'}
-        links = ''.join(f'<a href="{escape(en_url if en else de_url)}" target="_blank" rel="noopener noreferrer">{escape(names[key])}</a>'
+        links = ''.join(f'<a href="{escape(de_url if lang == 'de' else en_url)}" target="_blank" rel="noopener noreferrer">{escape(names[key])}</a>'
                         for key, de_url, en_url in EXTERNAL)
         # Hidden until the script runs, so a page without JavaScript shows no dead control.
         toggle = (f'<button type="button" class="theme" id="theme-toggle" hidden data-state="auto" data-label="{escape(t("theme"))}" '
                   f'data-auto="{escape(t("theme_auto"))}" data-light="{escape(t("theme_light"))}" data-dark="{escape(t("theme_dark"))}">'
                   + ''.join(ICON_THEMES.values()) + '</button>')
-        parts.append(f'<div class="bar-end">{toggle}<nav class="ext" aria-label="{escape(t("ext_links"))}">{links}</nav></div></header><main>')
+        current = ' aria-current="true"'
+        menu = ''.join(f'<a href="{escape(switch(code))}" lang="{code}" hreflang="{code}" title="{LANG_NAMES[code]}" '
+                       f'aria-label="{LANG_NAMES[code]}"{current if code == lang else ""}>{code.upper()}</a>' for code in LANGS)
+        parts.append(f'<div class="bar-end">{toggle}<nav class="langs" aria-label="{escape(t("language"))}">{menu}</nav>'
+                     f'<nav class="ext" aria-label="{escape(t("ext_links"))}">{links}</nav></div></header><main>')
         return ''.join(parts)
 
     def hidden_fields(self, fid, nxt):
@@ -825,11 +880,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 f'<input type="hidden" name="next" value="{escape(nxt)}">')
 
     def confirm_page(self, params):
-        lang = language(self.headers.get('Accept-Language', ''))
-        def t(key):
-            return TEXT[key][lang == 'en']
         fid = params.get('id', [''])[0]
         nxt = safe_next(params.get('next', [''])[0])
+        nxt_lang = parse_qs(urlsplit(nxt).query).get('lang', [''])[0]
+        chosen = params.get('lang', [''])[0]
+        lang = language(self.headers.get('Accept-Language', ''), chosen if chosen in LANGS else nxt_lang)
+        explicit = lang if (chosen in LANGS or nxt_lang in LANGS) else ''
+        home = list_url({'lang': explicit})
+        def t(key):
+            return TEXT[key][LANGS.index(lang)]
         row = self.server.catalog.file(fid)
         if row is None:
             body = f'<p role="status">{t("file_missing")}</p>'
@@ -839,22 +898,29 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     f'<form method="post" action="/katalog/remove">{self.hidden_fields(fid, nxt)}'
                     f'<button type="submit">{t("remove_confirm")}</button><a href="{escape(nxt)}">{t("cancel")}</a></form></div>')
             status = 200
-        html_text = (self.chrome(lang) + f'<p class="back"><a href="{escape(nxt)}">{t("back_list")}</a></p><h1>{t("title")}</h1>' + body +
+        def switch(code):
+            return '/katalog/remove?' + urlencode({'id': fid, 'next': with_lang(nxt, code), 'lang': code})
+        html_text = (self.chrome(lang, home, switch) + f'<p class="back"><a href="{escape(nxt)}">{t("back_list")}</a></p><h1>{t("title")}</h1>' + body +
                      f'</main><script>{SCRIPT}</script></body></html>')
         self.respond(status, html_text.encode(), 'text/html; charset=utf-8')
 
     def page(self, base, query):
-        lang = language(self.headers.get('Accept-Language', ''))
+        lang = language(self.headers.get('Accept-Language', ''), query.get('lang'))
+        explicit = query.get('lang', '')
         def t(key):
-            return TEXT[key][lang == 'en']
+            return TEXT[key][LANGS.index(lang)]
         app = self.server.catalog
-        parts = [self.chrome(lang)]
+        home = list_url({'lang': explicit})
+        def switch(code):
+            return '/katalog/?' + urlencode({**query, 'lang': code})
+        lang_field = '<input type=hidden name=lang value=%s>' % explicit if explicit else ''
+        parts = [self.chrome(lang, home, switch)]
         status = 200
         single = 'file' in query
         view_hidden = query.get('hidden') == '1' and not single
-        here = list_url(query) if not single else '/katalog/'
+        here = list_url(query) if not single else home
         if single:
-            parts.append(f'<p class="back"><a href="/katalog/">{t("all_files")}</a></p>')
+            parts.append(f'<p class="back"><a href="{escape(home)}">{t("all_files")}</a></p>')
         parts.append(f'<h1>{t("hidden_title") if view_hidden else t("title")}</h1>')
         removed = query.get('removed', '')
         if re.fullmatch(ID, removed) and not single:
@@ -872,7 +938,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             parts.append(f'<p role="status">{t("file_missing" if single else "missing")}</p>')
         else:
             if not single:
-                parts.append(f'<form method="get" action="/katalog/">{"<input type=hidden name=hidden value=1>" if view_hidden else ""}<label>{t("search")}<input name="q" value="{escape(query.get("q", ""))}" maxlength="200"></label>')
+                parts.append(f'<form method="get" action="/katalog/">{"<input type=hidden name=hidden value=1>" if view_hidden else ""}{lang_field}<label>{t("search")}<input name="q" value="{escape(query.get("q", ""))}" maxlength="200"></label>')
                 choices = [('type', [(v, v.upper()) for v in ('3mf', 'stl', 'stp', 'obj')]), ('folder', folders), ('tag', tags), ('sort', [(v, t(v)) for v in ('name', 'newest', 'size')])]
                 for key, options in choices:
                     parts.append(f'<label>{t(key)}<select name="{key}">')
@@ -884,9 +950,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     parts.append('</select></label>')
                 parts.append(f'<button type="submit">{t("apply")}</button></form>')
                 if view_hidden:
-                    parts.append(f'<p><a href="/katalog/">{t("back_list")}</a></p>')
+                    parts.append(f'<p><a href="{escape(home)}">{t("back_list")}</a></p>')
                 elif hidden_count:
-                    parts.append(f'<p><a href="/katalog/?hidden=1">{escape(t("show_hidden").format(n=hidden_count))}</a></p>')
+                    parts.append(f'<p><a href="{escape(list_url({"hidden": "1", "lang": explicit}))}">{escape(t("show_hidden").format(n=hidden_count))}</a></p>')
             parts.append('<ul class="files">')
             for row in rows:
                 fid = str(row['id'])
@@ -912,7 +978,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     parts.append(f'<div class="actions"><form class="inline" method="post" action="/katalog/restore">{self.hidden_fields(fid, here)}'
                                  f'<button class="quiet" type="submit">{t("restore")}</button></form></div></div></li>')
                     continue
-                remove = (f'<a class="quiet" href="/katalog/remove?{escape(urlencode({"id": fid, "next": here}))}" data-rm data-id="{fid}" '
+                remove = (f'<a class="quiet" href="/katalog/remove?{escape(urlencode({"id": fid, "next": here, **({"lang": explicit} if explicit else {})}))}" data-rm data-id="{fid}" '
                           f'data-csrf="{app.csrf(fid)}" data-next="{escape(here)}" data-name="{escape(row["name"])}">{ICON_TRASH}{t("remove")}</a>')
                 if available:
                     name = filename(row)

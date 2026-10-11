@@ -662,5 +662,169 @@ class WebTests(unittest.TestCase):
         self.assertNotIn('secret-token', log)
 
 
+    # Marker texts that occur only in one language, for the elements checked below.
+    MARKERS = {
+        'de': {'remove_title': 'Aus der Download-Liste entfernen?', 'removed': 'wurde aus der Liste entfernt', 'error': 'Anfrage nicht verfügbar.',
+               'missing': 'Katalog noch nicht angelegt', 'info': 'Links gelten 1 Stunde', 'slicer': 'In Slicer öffnen', 'homepage': '>Homepage<'},
+        'en': {'remove_title': 'Remove from the download list?', 'removed': 'was removed from the list', 'error': 'Request unavailable.',
+               'missing': 'Catalog not created', 'info': 'Links expire after 1 hour', 'slicer': 'Open in slicer', 'homepage': '>Website<'},
+        'es': {'remove_title': '¿Quitar de la lista de descargas?', 'removed': 'se ha quitado de la lista', 'error': 'Solicitud no disponible.',
+               'missing': 'Catálogo aún no creado', 'info': 'Los enlaces caducan al cabo de 1 hora', 'slicer': 'Abrir en el slicer', 'homepage': '>Sitio web<'},
+        'fr': {'remove_title': 'Retirer de la liste de téléchargement ?', 'removed': 'a été retiré de la liste', 'error': 'Requête indisponible.',
+               'missing': 'Catalogue pas encore créé', 'info': 'Les liens expirent au bout d’1 heure', 'slicer': 'Ouvrir dans le slicer', 'homepage': '>Site web<'},
+    }
+
+    def test_all_languages_define_every_text_key(self):
+        self.assertEqual(self.web.LANGS, ('de', 'en', 'es', 'fr'))
+        for key, values in self.web.TEXT.items():
+            self.assertEqual(len(values), 4, key)
+            self.assertTrue(all(v.strip() for v in values), key)
+        for key in ('removed', 'show_hidden'):
+            placeholder = '{name}' if key == 'removed' else '{n}'
+            for lang, value in zip(self.web.LANGS, self.web.TEXT[key]):
+                self.assertIn(placeholder, value, (key, lang))
+        # Translated labels must differ from German, except words identical by nature.
+        same_ok = {'tag', 'name', 'page', 'homepage'}
+        for key, values in self.web.TEXT.items():
+            if key not in same_ok:
+                for index in (1, 2, 3):
+                    self.assertNotEqual(values[index], values[0], (key, self.web.LANGS[index]))
+
+    def test_language_detection(self):
+        language = self.web.language
+        for header, expected in [('es', 'es'), ('fr', 'fr'), ('en-US', 'en'), ('de-AT', 'de'), ('es-MX,es;q=0.9', 'es'),
+                                 ('pt', 'de'), ('pt-BR,pt;q=0.9', 'de'), ('', 'de'), ('xx;q=abc', 'de'),
+                                 ('fr;q=0.4,es;q=0.8,en;q=0.2', 'es'), ('pt,fr;q=0.5', 'fr'), ('es;q=0,fr;q=0.1', 'fr'),
+                                 ('es,fr', 'es'), ('en;q=0.9,de;q=0.9', 'en')]:
+            self.assertEqual(language(header), expected, header)
+        # An explicit choice beats the header; invalid values fall back to detection.
+        self.assertEqual(language('de', 'fr'), 'fr')
+        for bad in ('xx', '', '<script>', None, 'ES', 'es ', 'pt'):
+            self.assertEqual(language('en', bad), 'en', bad)
+
+    def test_lang_parameter_beats_header_and_is_never_echoed_unchecked(self):
+        html = self.request('/katalog/?lang=es', headers={'Accept-Language': 'de'})[2].decode()
+        self.assertIn('<html lang="es">', html)
+        for value in ('xx', '', '%3Cscript%3E', '"onmouseover="x', 'ES', 'es%00'):
+            html = self.request('/katalog/?lang=' + value, headers={'Accept-Language': 'fr'})[2].decode()
+            self.assertIn('<html lang="fr">', html, value)
+            self.assertNotIn('<script>alert', html)
+            self.assertNotIn('onmouseover', html)
+            self.assertNotIn('name=lang', html)
+        for path in ('/katalog/?file=1&lang=%3Cscript%3E', '/katalog/remove?id=1&lang=%3Cscript%3E&next=%2Fkatalog%2F%3Flang%3Dzz'):
+            body = self.request(path)[2].decode()
+            self.assertIn('<html lang="de">', body)
+            self.assertNotIn('%3Cscript', body)
+            self.assertNotIn('zz', body.split('</style>', 1)[1])
+
+    def test_html_lang_and_header_links_per_language(self):
+        for lang in ('de', 'en', 'es', 'fr'):
+            for via in ({'Accept-Language': lang}, {}):
+                path = '/katalog/' if via else f'/katalog/?lang={lang}'
+                html = self.request(path, headers=via)[2].decode()
+                self.assertIn(f'<html lang="{lang}">', html)
+                header = html[html.index('<header'):html.index('</header>')]
+                english = lang != 'de'
+                self.assertIn('https://wiki.3mfkatalog.de/en/"' if english else 'https://wiki.3mfkatalog.de/"', header)
+                self.assertIn('https://3mfkatalog.de/en/"' if english else 'https://3mfkatalog.de/"', header)
+                self.assertNotIn('/es/', header)
+                self.assertNotIn('/fr/', header)
+                self.assertIn('https://discord.gg/abfVNfFqu3"', header)
+                self.assertIn(self.MARKERS[lang]['homepage'], header)
+
+    def test_language_menu(self):
+        html = self.request('/katalog/?q=a&page=2&lang=fr')[2].decode()
+        menu = html[html.index('<nav class="langs"'):html.index('</nav>', html.index('<nav class="langs"'))]
+        self.assertIn('aria-label="Langue"', menu)
+        for code, name in [('de', 'Deutsch'), ('en', 'English'), ('es', 'Español'), ('fr', 'Français')]:
+            self.assertIn(f'lang="{code}" hreflang="{code}" title="{name}" aria-label="{name}"', menu)
+        self.assertEqual(menu.count('aria-current="true"'), 1)
+        self.assertIn('href="/katalog/?q=a&amp;page=2&amp;lang=es" lang="es"', menu)
+        self.assertIn('aria-current="true">FR<', menu)
+        for lang, label in [('de', 'Sprache'), ('en', 'Language'), ('es', 'Idioma')]:
+            self.assertIn(f'<nav class="langs" aria-label="{label}">', self.request(headers={'Accept-Language': lang})[2].decode())
+        # Without an explicit choice the menu links still set one; the single view keeps its file.
+        self.assertIn('href="/katalog/?lang=en" lang="en"', self.request()[2].decode())
+        self.assertIn('href="/katalog/?file=1&amp;lang=es" lang="es"', self.request('/katalog/?file=1')[2].decode())
+
+    def test_every_language_renders_all_views(self):
+        self.add_file(2, 'Two.stl')
+        self.hide(2)
+        for lang in ('de', 'en', 'es', 'fr'):
+            mark = self.MARKERS[lang]
+            others = [m for other, ms in self.MARKERS.items() if other != lang for m in ms.values()]
+            q = f'lang={lang}'
+            pages = {
+                'list': self.request(f'/katalog/?{q}')[2].decode(),
+                'single': self.request(f'/katalog/?file=1&{q}')[2].decode(),
+                'status': self.request(f'/katalog/?removed=2&{q}')[2].decode(),
+                'hidden': self.request(f'/katalog/?hidden=1&{q}')[2].decode(),
+                'confirm': self.request(f'/katalog/remove?id=1&{q}')[2].decode(),
+                'error': self.request(f'/katalog/nothing?{q}')[2].decode(),
+            }
+            for name, page in pages.items():
+                if name != 'error':
+                    self.assertIn(f'<html lang="{lang}">', page, (lang, name))
+                for foreign in others:
+                    self.assertNotIn(foreign, page.split('</style>', 1)[-1], (lang, name, foreign))
+            self.assertIn(mark['info'], pages['list'])
+            self.assertIn(mark['slicer'], pages['list'])
+            self.assertIn(mark['slicer'], pages['single'])
+            self.assertIn(mark['remove_title'], pages['list'])
+            self.assertIn(mark['remove_title'], pages['confirm'])
+            self.assertIn(mark['removed'], pages['status'])
+            self.assertIn(self.web.TEXT['restore'][self.web.LANGS.index(lang)], pages['hidden'])
+            self.assertEqual(pages['error'], mark['error'])
+            self.assertIn(self.web.TEXT['show_hidden'][self.web.LANGS.index(lang)].format(n=1), pages['list'])
+        # Missing catalog page.
+        self.app.db_path = str(self.base / 'absent.db')
+        for lang in ('de', 'en', 'es', 'fr'):
+            self.assertIn(self.MARKERS[lang]['missing'], self.request(f'/katalog/?lang={lang}')[2].decode())
+
+    def test_spanish_and_french_samples(self):
+        es = self.request(headers={'Accept-Language': 'es-ES,es;q=0.9'})[2].decode()
+        for text in ('Descargas y slicer', 'Buscar nombre', 'Carpeta', 'Etiqueta', 'Descargar', 'Quitar de la lista', 'Aplicar'):
+            self.assertIn(text, es)
+        fr = self.request(headers={'Accept-Language': 'fr-FR,fr;q=0.9'})[2].decode()
+        for text in ('Téléchargement et slicer', 'Rechercher un nom', 'Dossier', 'Étiquette', 'Télécharger', 'Retirer de la liste', 'Appliquer'):
+            self.assertIn(text, fr)
+        self.assertIn('<html lang="de">', self.request(headers={'Accept-Language': 'pt-BR'})[2].decode())
+
+    def test_language_survives_forms_links_and_redirects(self):
+        self.add_file(2, 'Two.stl')
+        for fid in range(3, 56):
+            self.add_file(fid, f'item{fid:03}.stl')
+        html = self.request('/katalog/?q=item&lang=es')[2].decode()
+        self.assertIn('<input type=hidden name=lang value=es>', html)
+        self.assertRegex(html, r'href="/katalog/\?q=item&amp;lang=es&amp;page=2"')
+        self.assertIn('href="/katalog/?lang=es"', html)
+        self.assertIn('data-next="/katalog/?q=item&amp;lang=es"', html)
+        self.assertIn('lang=es', html[html.index('href="/katalog/remove?'):html.index('data-rm')])
+        # Confirmation page keeps the language in its menu, cancel link and hidden next field.
+        page = self.request('/katalog/remove?id=2&next=%2Fkatalog%2F%3Flang%3Dfr')[2].decode()
+        self.assertIn('<html lang="fr">', page)
+        self.assertIn('name="next" value="/katalog/?lang=fr"', page)
+        self.assertIn('<a href="/katalog/?lang=fr">Annuler</a>', page)
+        self.assertIn('href="/katalog/remove?id=2&amp;next=%2Fkatalog%2F%3Flang%3Des&amp;lang=es"', page)
+        # POST redirects keep the language through next; undo form and hidden view do too.
+        _, headers, *_ = self.post('remove', {'id': 2, 'next': '/katalog/?q=item&lang=es'})
+        self.assertEqual(headers['Location'], '/katalog/?q=item&lang=es&removed=2')
+        status = self.request(headers['Location'])[2].decode()
+        self.assertIn('<html lang="es">', status)
+        self.assertIn('se ha quitado de la lista', status)
+        self.assertIn('name="next" value="/katalog/?q=item&amp;lang=es"', status)
+        self.assertIn('href="/katalog/?hidden=1&amp;lang=es"', status)
+        _, headers, *_ = self.post('restore', {'id': 2, 'next': '/katalog/?hidden=1&lang=es'})
+        self.assertEqual(headers['Location'], '/katalog/?lang=es')
+        # Without a language the redirect target is unchanged.
+        _, headers, *_ = self.post('remove', {'id': 2, 'next': '/katalog/?lang=xx'})
+        self.assertEqual(headers['Location'], '/katalog/?removed=2')
+        # Single view: back link and forms keep the choice.
+        single = self.request('/katalog/?file=1&lang=fr')[2].decode()
+        self.assertIn('<a href="/katalog/?lang=fr">Afficher tous les fichiers</a>', single)
+        # Error pages honour ?lang= too.
+        self.assertEqual(self.request('/katalog/download/999?lang=es')[2], b'Solicitud no disponible.')
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -172,8 +172,10 @@ Browser-Desktop. Die Begleitseite nutzt dieselbe Anmeldung und zeigt den Katalog
 mit Vorschaubildern, Namenssuche, Typ-/Ordner-/Tag-Filtern, Sortierung und Seiten.
 „Herunterladen“ speichert eine Datei auf deinem PC; „In Slicer öffnen“ übergibt
 sie an einen dort installierten Slicer. Suche und Download funktionieren ohne
-JavaScript; auf macOS passt JavaScript den Bambu-Link an. Sprache: `Accept-Language`
-(DE/EN, sonst Deutsch); hell/dunkel nach Systemeinstellung.
+JavaScript; auf macOS passt JavaScript den Bambu-Link an. Die Seite spricht Deutsch,
+Englisch, Spanisch und Französisch: Die Sprache kommt aus `Accept-Language` (sonst
+Deutsch) und lässt sich in der Kopfleiste wählen (Parameter `?lang=`, funktioniert
+ohne JavaScript); hell/dunkel nach Systemeinstellung.
 
 **Dateien aus der Liste ausblenden:** „Aus Liste entfernen“ fragt nach und blendet die
 Datei nur in dieser Begleitseite aus (Download und Slicer-Links liefern dann 404, auch
@@ -425,8 +427,10 @@ browser desktop. The companion uses the same login and displays thumbnails,
 name search, type/folder/tag filters, sorting and pagination. “Download” saves
 a file to your PC; “Open in slicer” passes it to a slicer installed there.
 Search and downloads work without JavaScript; on macOS JavaScript adapts the
-Bambu link. Language follows `Accept-Language` (DE/EN, German by default);
-light/dark appearance follows the system preference.
+Bambu link. The page speaks German,
+English, Spanish and French: the language comes from `Accept-Language` (German by
+default) and can be chosen in the header bar (`?lang=` parameter, works without
+JavaScript); light/dark appearance follows the system preference.
 
 **Hiding files from the list:** “Remove from list” asks for confirmation and only
 hides the file on this companion page (downloads and slicer links then return 404,
