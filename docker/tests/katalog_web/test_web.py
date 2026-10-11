@@ -136,6 +136,56 @@ class WebTests(unittest.TestCase):
         self.assertIn('<img src="/katalog/static/icon-128.png" width="30" height="30" alt="">', html)
         self.assertIn('<a class="brand" href="/katalog/">', html)
 
+    def test_thumbnail_placeholder(self):
+        self.add_file(2, 'plain.stl')
+        _, _, body, _, _ = self.request()
+        html = body.decode()
+        self.assertEqual(html.count('class="ph" aria-hidden="true"'), 1)
+        self.assertIn('<span>STL</span>', html)
+        self.assertIn('<img src="/katalog/thumb/1"', html)
+        _, _, body, _, _ = self.request('/katalog/?file=1')
+        self.assertNotIn(b'class="ph"', body)
+        _, _, body, _, _ = self.request('/katalog/?file=2')
+        self.assertIn(b'class="ph" aria-hidden="true"', body)
+
+    def test_header_links_per_language(self):
+        for lang, expected in [('de', ['https://wiki.3mfkatalog.de/"', 'https://3mfkatalog.de/"', '>Homepage<']),
+                               ('en', ['https://wiki.3mfkatalog.de/en/"', 'https://3mfkatalog.de/en/"', '>Website<'])]:
+            _, _, body, _, _ = self.request(headers={'Accept-Language': lang})
+            html = body.decode()
+            header = html[html.index('<header'):html.index('</header>')]
+            for item in expected + ['https://discord.gg/abfVNfFqu3"', '>Wiki<', '>Discord<']:
+                self.assertIn(item, header, (lang, item))
+            self.assertEqual(header.count('target="_blank" rel="noopener noreferrer"'), 3)
+
+    def test_style_block_has_balanced_braces_so_the_dark_media_query_survives(self):
+        # A stray "}" makes browsers drop the following @media block (dark mode stays light).
+        _, _, body, _, _ = self.request()
+        css = body.decode().split('<style>', 1)[1].split('</style>', 1)[0]
+        self.assertEqual(css.count('{'), css.count('}'))
+        depth = 0
+        for char in css:
+            depth += (char == '{') - (char == '}')
+            self.assertGreaterEqual(depth, 0)
+
+    def test_theme_toggle_script_and_sticky_bar(self):
+        _, _, body, _, _ = self.request(headers={'Accept-Language': 'en'})
+        html = body.decode()
+        head = html[:html.index('</head>')]
+        self.assertIn("localStorage.getItem('3mf-theme')", head)
+        self.assertIn("setAttribute('data-theme'", head)
+        self.assertIn('id="theme-toggle"', html)
+        self.assertIn('data-label="Color scheme"', html)
+        self.assertIn('position:sticky;top:0', html)
+        self.assertIn(':root:not([data-theme="light"])', html)
+        self.assertIn(':root[data-theme="dark"]', html)
+        self.assertIn('scroll-padding-top', html)
+        # Single view keeps the back link in the content, not in the bar.
+        _, _, body, _, _ = self.request('/katalog/?file=1')
+        html = body.decode()
+        self.assertNotIn('Alle Dateien', html[html.index('<header'):html.index('</header>')])
+        self.assertIn('Alle Dateien anzeigen', html)
+
     def test_single_file_page(self):
         self.add_file(2, 'other.stl')
         status, _, body, _, _ = self.request('/katalog/?file=1')
