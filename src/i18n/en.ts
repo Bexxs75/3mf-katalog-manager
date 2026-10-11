@@ -11,7 +11,7 @@ export const en: Translations = {
   downloadRequirementInstalled: "The slicer must be installed on your own PC.",
   downloadRequirementReachable: "The server address must be reachable from your PC.",
   downloadRequirementCertificate: "Slicers often reject HTTPS links with a self-signed certificate. Use HTTP on your home network or a reverse proxy with a valid certificate.",
-  downloadRequirementBambu: "Bambu Studio is offered for 3MF and STL files. The link is not yet confirmed for STL.",
+  downloadRequirementBambu: "Bambu Studio only supports 3MF files here.",
   downloadRequirementPrusa: "PrusaSlicer does not accept these links. Download the file and open it in the slicer.",
   catalogWebOpen: "Open in browser",
   catalogWebTitle: "Download and slicer in your browser",
