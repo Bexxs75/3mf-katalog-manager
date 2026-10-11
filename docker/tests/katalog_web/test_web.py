@@ -129,6 +129,35 @@ class WebTests(unittest.TestCase):
                   **(headers or {})}
         return self.request('/katalog/upload', 'POST', {k: v for k, v in values.items() if v is not None}, data)
 
+    def test_upload_list_display_structure(self):
+        for key in ('upload_clear', 'upload_summary'):
+            self.assertEqual(len(self.web.TEXT[key]), 4)
+            self.assertEqual(len(set(self.web.TEXT[key])), 4)
+        for text in self.web.TEXT['upload_summary']:
+            self.assertIn('{ok}', text)
+            self.assertIn('{bad}', text)
+        self.assertEqual(self.web.TEXT['upload_clear'][1], 'Clear list')
+        # --good must exist in light, media-dark and forced-dark blocks.
+        self.assertEqual(self.web.STYLE.count('--good: oklch(0.515 0.13 150)'), 1)
+        self.assertEqual(self.web.STYLE.count('--good: oklch(0.72 0.14 150)'), 2)
+        for rule in ('li[data-state=done] [role=status] {border-left-color:var(--good)}',
+                     'li[data-state=error] [role=status] {border-left-color:var(--crit)}',
+                     'li[data-state=done] progress {accent-color:var(--good)}',
+                     'li[data-state=error] progress'):
+            self.assertIn(rule, self.web.STYLE)
+        script = self.web.UPLOAD_SCRIPT
+        # The cancel button is created visible, and hidden on every terminal state via finish().
+        self.assertIn("row.dataset.state = 'waiting'", script)
+        self.assertIn("item.row.dataset.state = 'loading'", script)
+        self.assertIn('item.cancel.hidden = true', script)
+        self.assertNotIn('cancel.disabled', script)
+        for state in ("'done'", "'error'", "'cancelled'"):
+            self.assertIn('finish(', script)
+            self.assertIn(state, script)
+        self.assertIn('t.upload_summary', script)
+        self.assertIn("clear.onclick", script)
+        self.assertIn('choose.focus()', script)
+
     def test_upload_atomic_collision_and_permissions(self):
         for expected in ('model.stl', 'model (2).stl'):
             status, headers, body, _, log = self.upload()

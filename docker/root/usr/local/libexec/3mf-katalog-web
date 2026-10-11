@@ -74,6 +74,8 @@ TEXT = {
     'upload_waiting': ('Wartet', 'Waiting', 'En espera', 'En attente'),
     'upload_loading': ('Lädt', 'Uploading', 'Subiendo', 'Envoi en cours'),
     'upload_done': ('Fertig', 'Done', 'Completado', 'Terminé'),
+    'upload_clear': ('Liste leeren', 'Clear list', 'Vaciar lista', 'Vider la liste'),
+    'upload_summary': ('{ok} Datei(en) übernommen, {bad} abgelehnt.', '{ok} file(s) accepted, {bad} rejected.', '{ok} archivo(s) aceptado(s), {bad} rechazado(s).', '{ok} fichier(s) accepté(s), {bad} rejeté(s).'),
     'upload_cancelled': ('Abgebrochen', 'Cancelled', 'Cancelado', 'Annulé'),
     'upload_error': ('Fehler', 'Error', 'Error', 'Erreur'),
     'upload_progress': ('Fortschritt', 'Progress', 'Progreso', 'Progression'),
@@ -191,6 +193,7 @@ STYLE = _font_faces() + '''
   --accent: oklch(0.545 0.165 30); --accent-ink: oklch(0.99 0.01 30); --accent-soft: oklch(0.945 0.03 30);
   --plate: oklch(0.915 0.006 60); --plate-2: oklch(0.955 0.004 60);
   --crit: oklch(0.539 0.18 18); --crit-soft: oklch(0.94 0.045 18);
+  --good: oklch(0.515 0.13 150); --good-soft: oklch(0.94 0.045 150);
   --shadow: 0 1px 2px rgba(40, 28, 24, 0.06), 0 8px 24px rgba(40, 28, 24, 0.05);
 }
 @media (prefers-color-scheme: dark) {
@@ -202,6 +205,7 @@ STYLE = _font_faces() + '''
     --accent: oklch(0.735 0.155 34); --accent-ink: oklch(0.17 0.03 30); --accent-soft: oklch(0.285 0.05 32);
     --plate: oklch(0.195 0.006 60); --plate-2: oklch(0.235 0.006 60);
     --crit: oklch(0.684 0.19 15); --crit-soft: oklch(0.3 0.06 15);
+    --good: oklch(0.72 0.14 150); --good-soft: oklch(0.28 0.05 150);
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
   }
 }
@@ -214,6 +218,7 @@ STYLE = _font_faces() + '''
   --accent: oklch(0.735 0.155 34); --accent-ink: oklch(0.17 0.03 30); --accent-soft: oklch(0.285 0.05 32);
   --plate: oklch(0.195 0.006 60); --plate-2: oklch(0.235 0.006 60);
   --crit: oklch(0.684 0.19 15); --crit-soft: oklch(0.3 0.06 15);
+  --good: oklch(0.72 0.14 150); --good-soft: oklch(0.28 0.05 150);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 .upload {padding:1rem;margin:1rem 0;background:var(--panel);border:1px solid var(--line);border-radius:6px}
@@ -222,6 +227,12 @@ STYLE = _font_faces() + '''
 .upload-list {padding:0;list-style:none}
 .upload-list li {padding:.75rem 0;border-top:1px solid var(--line);overflow-wrap:anywhere;min-width:0}
 .upload-list progress {display:block;width:100%;max-width:30rem;margin:.5rem 0;accent-color:var(--accent)}
+.upload-list [role=status] {margin:.5rem 0;border-left-width:4px;border-left-color:var(--line-strong)}
+.upload-list li[data-state=done] [role=status] {border-left-color:var(--good)}
+.upload-list li[data-state=error] [role=status] {border-left-color:var(--crit)}
+.upload-list li[data-state=done] progress {accent-color:var(--good)}
+.upload-list li[data-state=error] progress,.upload-list li[data-state=cancelled] progress {display:none}
+#upload-clear {margin-top:.5rem}
 * {box-sizing:border-box}
 html {font-family:'Barlow',Helvetica,sans-serif;scroll-padding-top:6rem}
 [hidden] {display:none !important}
@@ -363,7 +374,18 @@ UPLOAD_SCRIPT = """
  const t = JSON.parse(section.dataset.text), queue = [];
  const input = document.getElementById('upload-input'), zone = document.getElementById('upload-zone');
  const list = document.getElementById('upload-list'), success = document.getElementById('upload-success');
+ const items = [], clear = document.getElementById('upload-clear');
  let running = false;
+ // Runs once the queue is drained: the summary sits next to the list so a rejection is visible without scrolling.
+ function settle() {
+  const count = s => items.filter(i => i.row.dataset.state === s).length;
+  const ok = count('done'), bad = count('error');
+  const parts = [];
+  if (bad) parts.push(t.upload_summary.replace('{ok}', ok).replace('{bad}', bad));
+  if (ok) parts.push(section.dataset.success);
+  success.textContent = parts.join(' ');
+  clear.hidden = false;
+ }
  function pump() {
   if (running) return;
   const item = queue.shift();
@@ -372,14 +394,17 @@ UPLOAD_SCRIPT = """
   running = true;
   const xhr = new XMLHttpRequest(); item.xhr = xhr;
   item.status.textContent = t.upload_loading;
+  item.row.dataset.state = 'loading';
   let finished = false;
-  function finish(message, ok) {
+  function finish(message, state) {
    if (finished) return;
    finished = true;
    item.status.textContent = message;
-   item.cancel.disabled = true;
-   if (ok) { item.progress.value = 100; success.textContent = section.dataset.success; }
+   item.row.dataset.state = state;
+   item.cancel.hidden = true;
+   if (state === 'done') item.progress.value = 100;
    running = false; pump();
+   if (!running) settle();
   }
   xhr.open('POST', '/katalog/upload');
   xhr.setRequestHeader('Content-Type', 'application/octet-stream');
@@ -393,14 +418,14 @@ UPLOAD_SCRIPT = """
    try { response = JSON.parse(xhr.responseText); } catch (e) {}
    if (xhr.status === 200 && response.ok) {
     item.name.textContent = response.name;
-    finish(t.upload_done, true);
+    finish(t.upload_done, 'done');
    } else {
     const codes = {401:'forbidden',403:'forbidden',404:'upload_disabled',413:'too_large',429:'busy',503:'write_failed'};
-    finish(t.upload_error + ': ' + (t['upload_' + response.error] || t['upload_' + codes[xhr.status]] || t.upload_interrupted));
+    finish(t.upload_error + ': ' + (t['upload_' + response.error] || t['upload_' + codes[xhr.status]] || t.upload_interrupted), 'error');
    }
   };
-  xhr.onerror = function () { finish(t.upload_error + ': ' + t.upload_interrupted); };
-  xhr.onabort = function () { finish(t.upload_cancelled); };
+  xhr.onerror = function () { finish(t.upload_error + ': ' + t.upload_interrupted, 'error'); };
+  xhr.onabort = function () { finish(t.upload_cancelled, 'cancelled'); };
   xhr.send(item.file);
  }
  function add(files) {
@@ -415,17 +440,25 @@ UPLOAD_SCRIPT = """
    status.setAttribute('role', 'status'); status.textContent = t.upload_waiting;
    cancel.type = 'button'; cancel.textContent = t.cancel;
    cancel.setAttribute('aria-label', t.cancel + ': ' + file.name);
-   const item = {file, name, progress, status, cancel, cancelled:false};
+   row.dataset.state = 'waiting';
+   const item = {file, name, progress, status, cancel, row, cancelled:false};
    cancel.onclick = function () {
     item.cancelled = true;
     if (item.xhr) item.xhr.abort();
-    else { status.textContent = t.upload_cancelled; cancel.disabled = true; }
+    else { status.textContent = t.upload_cancelled; row.dataset.state = 'cancelled'; cancel.hidden = true; }
+    choose.focus();
    };
-   row.append(name, size, progress, status, cancel); list.append(row); queue.push(item);
+   row.append(name, size, progress, status, cancel); list.append(row); queue.push(item); items.push(item);
   }
+  clear.hidden = true; success.textContent = '';
   pump();
  }
- document.getElementById('upload-choose').onclick = function () { input.click(); };
+ const choose = document.getElementById('upload-choose');
+ choose.onclick = function () { input.click(); };
+ clear.onclick = function () {
+  items.length = 0; list.textContent = ''; success.textContent = ''; clear.hidden = true;
+  choose.focus();
+ };
  input.onchange = function () { add(input.files); input.value = ''; };
  zone.ondragover = function (e) { e.preventDefault(); zone.classList.add('drag'); };
  zone.ondragleave = function () { zone.classList.remove('drag'); };
@@ -1263,7 +1296,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 f'<div class="upload-zone" id="upload-zone"><p>{t("upload_drop")}</p>'
                 f'<input id="upload-input" type="file" multiple accept="{accept}" hidden>'
                 f'<button type="button" id="upload-choose">{t("upload_choose")}</button></div>'
-                '<ul class="upload-list" id="upload-list"></ul><p id="upload-success" role="status" tabindex="0"></p></section>'
+                '<ul class="upload-list" id="upload-list"></ul>'
+                f'<button type="button" class="secondary" id="upload-clear" hidden>{t("upload_clear")}</button>'
+                '<p id="upload-success" role="status" tabindex="0"></p></section>'
                 f'<noscript><p>{t("upload_nojs")}</p></noscript>')
 
     def page(self, base, query):
