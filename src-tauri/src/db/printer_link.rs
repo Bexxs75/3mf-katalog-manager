@@ -178,6 +178,19 @@ pub fn sync_from(conn: &Connection, printer_id: i64) -> Result<f64, DbError> {
 
 /// Inserts a print if it doesn't exist yet for this printer. Returns `true` if it was new.
 pub fn insert_job_if_new(conn: &Connection, printer_id: i64, job: &RemoteJob) -> Result<bool, DbError> {
+    if let Some((legacy_id, _)) = job.remote_id.split_once('@') {
+        // Match the print as well as the ID, since Moonraker can reuse IDs.
+        let exists: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM printer_jobs
+             WHERE printer_id = ?1 AND remote_id = ?2 AND file_name = ?3
+             AND ABS(ended_at - ?4) <= 5.0)",
+            params![printer_id, legacy_id, job.file_name, job.ended_at],
+            |row| row.get(0),
+        )?;
+        if exists {
+            return Ok(false);
+        }
+    }
     let changed = conn.execute(
         "INSERT OR IGNORE INTO printer_jobs (printer_id, remote_id, file_name, outcome, raw_status, ended_at,
              print_duration_s, used_mm, slicer_total_mm, slicer_weight_g, material, thumbnail_path)
@@ -284,6 +297,58 @@ mod tests {
             material: Some("PLA".into()),
             thumbnail_path: Some(".thumbs/a-300x300.png".into()),
         }
+    }
+
+    #[test]
+    fn job_id_reuse_after_history_reset_is_offered_as_new_job() {
+        let conn = setup();
+        assert!(insert_job_if_new(&conn, 1, &job("00003F@1000", 2000.0)).unwrap());
+        assert!(insert_job_if_new(&conn, 1, &job("00003F@9000", 10000.0)).unwrap());
+        assert_eq!(list_open_jobs(&conn).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn same_job_polled_twice_is_inserted_once() {
+        let conn = setup();
+        let j = job("00003F@1000", 2000.0);
+        assert!(insert_job_if_new(&conn, 1, &j).unwrap());
+        assert!(!insert_job_if_new(&conn, 1, &j).unwrap());
+        assert_eq!(list_open_jobs(&conn).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn legacy_row_blocks_same_job_in_new_format() {
+        for delta in [-5.0, 0.0, 5.0] {
+            let conn = setup();
+            assert!(insert_job_if_new(&conn, 1, &job("00003F", 2000.0)).unwrap());
+            assert!(!insert_job_if_new(&conn, 1, &job("00003F@1000", 2000.0 + delta)).unwrap());
+            let rows = list_open_jobs(&conn).unwrap();
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].remote_id, "00003F");
+        }
+    }
+
+    #[test]
+    fn legacy_id_with_different_file_or_time_is_new_job() {
+        for (different_file, delta) in [(true, 0.0), (false, -5.01), (false, 5.01)] {
+            let conn = setup();
+            assert!(insert_job_if_new(&conn, 1, &job("00003F", 2000.0)).unwrap());
+            let mut new = job("00003F@1000", 2000.0 + delta);
+            if different_file {
+                new.file_name = "another.gcode".into();
+            }
+            assert!(insert_job_if_new(&conn, 1, &new).unwrap());
+            assert_eq!(list_open_jobs(&conn).unwrap().len(), 2);
+        }
+    }
+
+    #[test]
+    fn legacy_row_for_another_printer_does_not_block_job() {
+        let conn = setup();
+        conn.execute("INSERT INTO printers (id, name, position) VALUES (2, 'Other printer', 1)", []).unwrap();
+        assert!(insert_job_if_new(&conn, 1, &job("00003F", 2000.0)).unwrap());
+        assert!(insert_job_if_new(&conn, 2, &job("00003F@1000", 2000.0)).unwrap());
+        assert_eq!(list_open_jobs(&conn).unwrap().len(), 2);
     }
 
     #[test]

@@ -97,6 +97,10 @@
       case 'mark_file_viewed':
       case 'register_existing_catalog_base_dir':
         return null;
+      case 'get_runtime_environment':
+        return { container: false };
+      case 'has_network_filesystem_warning':
+        return false;
     }
     if (Object.prototype.hasOwnProperty.call(FX, cmd)) return clone(FX[cmd]);
     window.__demoUnknown.push(cmd);

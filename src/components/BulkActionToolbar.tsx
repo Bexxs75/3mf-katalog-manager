@@ -218,6 +218,7 @@ export function BulkActionToolbar({
             {addTagMenuOpen && (
               <div data-navigation-menu className="absolute top-9 left-0 flex items-center gap-1.5 p-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
                 <input
+                  maxLength={100}
                   value={tagDraft}
                   onChange={(e) => onTagDraftChange(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && onSubmitBulkAddTag()}

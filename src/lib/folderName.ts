@@ -1,3 +1,5 @@
+import type { Translations } from "../i18n/types";
+
 // Mirrors `validate_new_catalog_dir_name` in the backend so the user sees the
 // problem while typing. The backend check is the one that counts.
 
@@ -41,4 +43,25 @@ export function folderNameProblem(name: string): FolderNameProblem | null {
   if (name.endsWith('.') || name.endsWith(' ')) return { kind: 'trailing' };
   if (WINDOWS_RESERVED.has(name.split('.')[0].trimEnd().toUpperCase())) return { kind: 'reserved' };
   return null;
+}
+
+const PROBLEM_TEXT: Record<
+  Exclude<FolderNameProblem['kind'], 'char'>,
+  'catalogSetupNameEmpty' | 'catalogSetupNameReserved' | 'catalogSetupNameTrailing' | 'catalogSetupNameTooLong'
+> = {
+  empty: 'catalogSetupNameEmpty',
+  reserved: 'catalogSetupNameReserved',
+  trailing: 'catalogSetupNameTrailing',
+  tooLong: 'catalogSetupNameTooLong',
+};
+
+export function folderNameProblemText(
+  problem: FolderNameProblem,
+  t: (key: keyof Pick<Translations,
+    'catalogSetupNameEmpty' | 'catalogSetupNameReserved' | 'catalogSetupNameTrailing' |
+    'catalogSetupNameTooLong' | 'catalogSetupNameInvalidChar'>) => string,
+): string {
+  return problem.kind === 'char'
+    ? t('catalogSetupNameInvalidChar').replace('{char}', problem.char)
+    : t(PROBLEM_TEXT[problem.kind]);
 }

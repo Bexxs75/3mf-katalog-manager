@@ -27,26 +27,38 @@ const FILE_EXTENSIONS: &str = "3mf|stl|obj|step|stp|gcode|bgcode|zip|7z|rar|tar|
 // Fixed patterns (independent of `Context`), compiled once instead of on every
 // preview/export call - this runs on the main thread and previously recompiled
 // all of these regexes per call.
-static EMAIL_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}").unwrap());
-static IP_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
+static EMAIL_RE: LazyLock<Result<Regex, String>> = LazyLock::new(|| compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"));
+static IP_RE: LazyLock<Result<Regex, String>> = LazyLock::new(|| {
+    compile(
         r"\b(?:\d{1,3}\.){3}\d{1,3}\b|\b(?:[0-9a-fA-F]{1,4}:){3,7}[0-9a-fA-F]{1,4}\b|\b[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4})*::(?:[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4})*)?",
     )
-    .unwrap()
 });
-static LOCAL_HOST_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)(?:^|[^.\w-])([0-9A-Za-z-]+\.local)(?:[^.\w-]|$)").unwrap());
-static IN_PATH_FILE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(&format!(r#"(?i)[/\\]([^/\\"<>|:\r\n]+?)\.(?:{FILE_EXTENSIONS})\b"#)).unwrap());
-static BARE_FILE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(&format!(r#"(?i)(?:^|[\s("'])([^\s/\\"'<>|:()]+)\.(?:{FILE_EXTENSIONS})\b"#)).unwrap());
+static LOCAL_HOST_RE: LazyLock<Result<Regex, String>> =
+    LazyLock::new(|| compile(r"(?i)(?:^|[^.\w-])([0-9A-Za-z-]+\.local)(?:[^.\w-]|$)"));
+static IN_PATH_FILE_RE: LazyLock<Result<Regex, String>> =
+    LazyLock::new(|| compile(&format!(r#"(?i)[/\\]([^/\\"<>|:\r\n]+?)\.(?:{FILE_EXTENSIONS})\b"#)));
+static BARE_FILE_RE: LazyLock<Result<Regex, String>> =
+    LazyLock::new(|| compile(&format!(r#"(?i)(?:^|[\s("'])([^\s/\\"'<>|:()]+)\.(?:{FILE_EXTENSIONS})\b"#)));
+
+static IMPORT_FILE_RE: LazyLock<Result<Regex, String>> = LazyLock::new(||
+    compile(r"(?m)übersprungen: ([^\r\n]+) \([^\r\n]*\)$"));
+
+fn compile(pattern: &str) -> Result<Regex, String> {
+    Regex::new(pattern).map_err(|_| "Anonymisierung nicht möglich: Muster konnte nicht erstellt werden".to_string())
+}
 
 pub fn to_text(segs: &[Segment]) -> String {
     segs.iter().map(|s| s.text.as_str()).collect()
 }
 
-pub fn anonymize(text: &str, ctx: &Context) -> Vec<Segment> {
+pub fn anonymize(text: &str, ctx: &Context) -> Result<Vec<Segment>, String> {
     let mut segs = vec![Segment { text: text.to_string(), replaced: false }];
+
+    // The verbose import field has explicit boundaries; process it before path
+    // replacements split it into segments, including relative names with spaces.
+    if ctx.replace_file_names {
+        segs = replace_group(segs, IMPORT_FILE_RE.as_ref().map_err(Clone::clone)?, 1, |_| Some("<datei>".into()));
+    }
 
     // Longest first, so a catalog inside the home folder becomes <katalog>, not
     // ~/.... Matched case-insensitively: Windows and macOS paths are
@@ -64,7 +76,7 @@ pub fn anonymize(text: &str, ctx: &Context) -> Vec<Segment> {
     }
     ci_literals.sort_by_key(|a| std::cmp::Reverse(a.0.len()));
     for (needle, repl) in &ci_literals {
-        segs = replace_path_prefix_ci(segs, needle, repl);
+        segs = replace_path_prefix_ci(segs, needle, repl)?;
     }
 
     let mut literals: Vec<(String, String)> = Vec::new();
@@ -85,15 +97,15 @@ pub fn anonymize(text: &str, ctx: &Context) -> Vec<Segment> {
     for (needle, repl) in &literals {
         // Configured hostnames (e.g. "printer.fritz.box") show up in logs in
         // varying case, just like home/catalog paths.
-        segs = replace_literal_ci(segs, needle, repl);
+        segs = replace_literal_ci(segs, needle, repl)?;
     }
 
-    segs = replace_group(segs, &EMAIL_RE, 0, |_| Some("<email>".into()));
+    segs = replace_group(segs, EMAIL_RE.as_ref().map_err(Clone::clone)?, 0, |_| Some("<email>".into()));
 
     // IPv4 and IPv6 (at least three colons or a "::", so clock times like
     // 14:02:11 never match).
     let mut ips: HashMap<String, usize> = HashMap::new();
-    segs = replace_group(segs, &IP_RE, 0, |m| {
+    segs = replace_group(segs, IP_RE.as_ref().map_err(Clone::clone)?, 0, |m| {
         // Real addresses always contain a digit; Rust paths like `db::list` don't.
         if !m.chars().any(|c| c.is_ascii_digit()) {
             return None;
@@ -109,7 +121,7 @@ pub fn anonymize(text: &str, ctx: &Context) -> Vec<Segment> {
     // so a file name that merely ends in `.local` (`.env.local`,
     // `vite.config.local.ts`) is not mistaken for a host: the name before
     // `.local` must not itself be preceded by a `.` or dotted extension.
-    segs = replace_group(segs, &LOCAL_HOST_RE, 1, |m| {
+    segs = replace_group(segs, LOCAL_HOST_RE.as_ref().map_err(Clone::clone)?, 1, |m| {
         let next = ips.len() + 1;
         let n = *ips.entry(m.to_string()).or_insert(next);
         Some(format!("<ip-{n}>"))
@@ -118,7 +130,7 @@ pub fn anonymize(text: &str, ctx: &Context) -> Vec<Segment> {
     for (value, label) in [(&ctx.host, "<host>"), (&ctx.user, "<user>")] {
         if let Some(v) = value {
             if v.chars().count() >= 3 {
-                let re = Regex::new(&format!(r"(?i)\b{}\b", regex::escape(v))).unwrap();
+                let re = compile(&format!(r"(?i)\b{}\b", regex::escape(v)))?;
                 segs = replace_group(segs, &re, 0, |_| Some(label.to_string()));
             }
         }
@@ -132,11 +144,11 @@ pub fn anonymize(text: &str, ctx: &Context) -> Vec<Segment> {
             Some(format!("<datei-{n}>"))
         };
         // After a path separator the name may contain spaces.
-        segs = replace_group(segs, &IN_PATH_FILE_RE, 1, &mut label);
-        segs = replace_group(segs, &BARE_FILE_RE, 1, &mut label);
+        segs = replace_group(segs, IN_PATH_FILE_RE.as_ref().map_err(Clone::clone)?, 1, &mut label);
+        segs = replace_group(segs, BARE_FILE_RE.as_ref().map_err(Clone::clone)?, 1, &mut label);
     }
 
-    merge_plain(segs)
+    Ok(merge_plain(segs))
 }
 
 fn path_variants(p: &str) -> Vec<String> {
@@ -158,27 +170,27 @@ fn push_plain(out: &mut Vec<Segment>, text: &str) {
 
 /// Replaces every occurrence of a literal needle, case-insensitively: used for
 /// configured printer hostnames (which show up in logs in varying case).
-fn replace_literal_ci(segs: Vec<Segment>, needle: &str, repl: &str) -> Vec<Segment> {
+fn replace_literal_ci(segs: Vec<Segment>, needle: &str, repl: &str) -> Result<Vec<Segment>, String> {
     if needle.is_empty() {
-        return segs;
+        return Ok(segs);
     }
-    let re = Regex::new(&format!("(?i){}", regex::escape(needle))).unwrap();
-    replace_group(segs, &re, 0, |_| Some(repl.to_string()))
+    let re = compile(&format!("(?i){}", regex::escape(needle)))?;
+    Ok(replace_group(segs, &re, 0, |_| Some(repl.to_string())))
 }
 
 /// Case-insensitive variant of `replace_literal_ci` for home/catalog paths,
 /// which additionally requires a path/word boundary right after the needle -
 /// without it, "/home/thebexxs" would also match inside an unrelated longer
 /// name like "/home/thebexxs2" or "/home/thebexxsBackup".
-fn replace_path_prefix_ci(segs: Vec<Segment>, needle: &str, repl: &str) -> Vec<Segment> {
+fn replace_path_prefix_ci(segs: Vec<Segment>, needle: &str, repl: &str) -> Result<Vec<Segment>, String> {
     if needle.is_empty() {
-        return segs;
+        return Ok(segs);
     }
-    let re = Regex::new(&format!(r"(?i)({})(?:[^.\w-]|$)", regex::escape(needle))).unwrap();
+    let re = compile(&format!(r"(?i)({})(?:[^.\w-]|$)", regex::escape(needle)))?;
     // Group 1 is only the needle itself; the boundary character checked by the
     // non-capturing part (a path separator, punctuation, or end of string)
     // stays untouched in the output.
-    replace_group(segs, &re, 1, |_| Some(repl.to_string()))
+    Ok(replace_group(segs, &re, 1, |_| Some(repl.to_string())))
 }
 
 /// `f` returns `None` to keep a match as it is (e.g. `db::list` is not an IPv6 address).
@@ -221,7 +233,7 @@ mod tests {
     use super::*;
 
     fn run(text: &str, ctx: &Context) -> String {
-        to_text(&anonymize(text, ctx))
+        to_text(&anonymize(text, ctx).unwrap())
     }
 
     fn linux() -> Context {
@@ -233,6 +245,22 @@ mod tests {
             printer_addresses: vec!["192.168.2.50:7125".into(), "sv08.local".into()],
             replace_file_names: false,
         }
+    }
+
+    #[test]
+    fn oversized_context_does_not_panic() {
+        let ctx = Context { catalog_roots: vec!["a".repeat(2_000_000)], ..Default::default() };
+        assert!(anonymize("private data", &ctx).is_err());
+    }
+
+    #[test]
+    fn verbose_import_names_with_spaces_are_fully_replaced() {
+        let ctx = Context { replace_file_names: true, ..Default::default() };
+        let text = "WARN [import] übersprungen: Anna Weber.stl (Datei ungültig)";
+        let result = run(text, &ctx);
+        assert!(!result.contains("Anna"));
+        assert!(!result.contains("Weber"));
+        assert!(result.contains("WARN [import] übersprungen:"));
     }
 
     #[test]
@@ -342,7 +370,7 @@ mod tests {
 
     #[test]
     fn replaced_parts_are_marked() {
-        let segs = anonymize("in /home/thebexxs/x", &linux());
+        let segs = anonymize("in /home/thebexxs/x", &linux()).unwrap();
         assert_eq!(
             segs,
             vec![

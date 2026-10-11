@@ -547,6 +547,8 @@ mod tests {
                        ('ASA', NULL, 'Trockenbox', 1.75, 1000, 900, '2026-01-01');",
         )
         .unwrap();
+        // Later steps touch these columns of `files`; every real catalog has them.
+        conn.execute_batch("CREATE TABLE files (id INTEGER PRIMARY KEY, slice_info_json TEXT, deleted_at TEXT, trash_path TEXT);").unwrap();
         conn.pragma_update(None, "user_version", super::super::migrations::FIRST_PRINTER_MIGRATION_VERSION).unwrap();
 
         crate::db::run_migrations(&mut conn).unwrap();

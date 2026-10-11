@@ -26,6 +26,7 @@ export interface Translations {
   catalogWebLoading: string;
   catalogWebFailed: string;
   catalogWebContainerOnly: string;
+  migrationBackupWarning: string;
   externalLinkCopy: string;
   externalLinkCopyLabel: string;
   externalLinkCopied: string;
@@ -73,7 +74,7 @@ export interface Translations {
   showInFileManager: string;
   viewerAllPlates: string;
   viewerPlate: string;
-  viewerChoosePlate: string;
+  viewerAllPlatesAnnouncement: string;
   viewerPreviousPlate: string;
   viewerNextPlate: string;
   viewerPrintPlate: string;
@@ -728,6 +729,8 @@ export interface Translations {
 
   createFolderLabel: string;
   newFolderPlaceholder: string;
+  newFolderErrorTitle: string;
+  newFolderErrorClose: string;
   settingsTabGeneral: string;
   settingsTabSlicer: string;
   settingsTabCatalog: string;

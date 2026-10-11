@@ -90,7 +90,12 @@ fn parse_job(j: &Value) -> Option<RemoteJob> {
         return None;
     }
     let ended_at = j.get("end_time")?.as_f64()?;
-    let remote_id = j.get("job_id")?.as_str()?.to_string();
+    let job_id = j.get("job_id")?.as_str()?;
+    // Printer time keeps the key stable when the measured clock offset changes.
+    let remote_id = match j.get("start_time").and_then(Value::as_f64) {
+        Some(start) => format!("{job_id}@{:.0}", start.floor()),
+        None => job_id.to_string(),
+    };
     let used_mm = j.get("filament_used")?.as_f64()?;
     if used_mm <= 0.0 {
         return None;
@@ -379,12 +384,32 @@ mod parse_tests {
     }
 
     #[test]
+    fn remote_id_uses_start_time_rounded_down_in_printer_time() {
+        for (start, expected) in [(1000.0, "00003F@1000"), (1000.9, "00003F@1000"), (-0.5, "00003F@-1")] {
+            let mut entry = fixture("history_completed.json")["result"]["jobs"][0].clone();
+            entry["start_time"] = serde_json::json!(start);
+            assert_eq!(parse_job(&entry).unwrap().remote_id, expected);
+        }
+    }
+
+    #[test]
+    fn missing_or_invalid_start_time_keeps_bare_job_id() {
+        let mut entry = fixture("history_completed.json")["result"]["jobs"][0].clone();
+        entry.as_object_mut().unwrap().remove("start_time");
+        assert_eq!(parse_job(&entry).unwrap().remote_id, "00003F");
+        for invalid in [serde_json::json!(null), serde_json::json!("1000"), serde_json::json!(true), serde_json::json!({})] {
+            entry["start_time"] = invalid;
+            assert_eq!(parse_job(&entry).unwrap().remote_id, "00003F");
+        }
+    }
+
+    #[test]
     fn completed_jobs_are_parsed() {
         let page = parse_history_page(&fixture("history_completed.json")).unwrap();
         assert_eq!(page.count, 64);
         assert_eq!(page.raw_len, 3);
         let j = &page.jobs[0];
-        assert_eq!(j.remote_id, "00003F");
+        assert_eq!(j.remote_id, "00003F@1789041482");
         assert_eq!(j.file_name, "Distanzhulse_13,40mm_PLA_0.2_6m29s.gcode");
         assert_eq!(j.outcome, JobOutcome::Completed);
         assert_eq!(j.used_mm, 303.265800000015);
@@ -425,7 +450,7 @@ mod parse_tests {
         assert_eq!(parse_server_info(&fixture("server_info_rinkhals_kobra_s1.json")).unwrap(), "?");
         let page = parse_history_page(&fixture("history_rinkhals_kobra_s1.json")).unwrap();
         assert_eq!(page.jobs.len(), 2);
-        let j = page.jobs.iter().find(|j| j.remote_id == "000158").unwrap();
+        let j = page.jobs.iter().find(|j| j.remote_id == "000158@1789300032").unwrap();
         assert_eq!(j.file_name, "S1_OrcaToleranceTest_PLA_12m28s.gcode");
         assert_eq!(j.outcome, JobOutcome::Completed);
         assert_eq!(j.material.as_deref(), Some("PLA"));
@@ -442,7 +467,7 @@ mod parse_tests {
         assert_eq!(page.count, 5);
         assert_eq!(page.jobs.len(), 5);
         let first = &page.jobs[0];
-        assert_eq!(first.remote_id, "0001D9");
+        assert_eq!(first.remote_id, "0001D9@1790523154");
         assert_eq!(first.file_name, "Datei 1.gcode");
         assert_eq!(first.outcome, JobOutcome::Completed);
         assert_eq!(first.material, None);
@@ -461,7 +486,7 @@ mod parse_tests {
         let page = parse_history_page(&fixture("history_rinkhals_kobra_s1_ace.json")).unwrap();
         assert_eq!(page.count, 5);
         let ids: Vec<&str> = page.jobs.iter().map(|j| j.remote_id.as_str()).collect();
-        assert_eq!(ids, ["00001B", "00001A", "000019", "000018"]);
+        assert_eq!(ids, ["00001B@1790428000", "00001A@1790311232", "000019@1790184112", "000018@1790095590"]);
         let slide = &page.jobs[0];
         assert_eq!(slide.file_name, "0926-1506-slide(01)_PETG_0.12_2h56m50s.gcode");
         assert_eq!(slide.outcome, JobOutcome::Completed);
@@ -481,7 +506,7 @@ mod parse_tests {
         let page = parse_history_page(&fixture("history_rinkhals_kobra_s1_ace2.json")).unwrap();
         assert_eq!(page.count, 5);
         let ids: Vec<&str> = page.jobs.iter().map(|j| j.remote_id.as_str()).collect();
-        assert_eq!(ids, ["00025B", "00025A", "000259", "000258"], "the running print is not offered");
+        assert_eq!(ids, ["00025B@1790513400", "00025A@1790494584", "000259@1790492413", "000258@1790458853"], "the running print is not offered");
 
         let blade = &page.jobs[0];
         assert_eq!(blade.file_name, "0927-1447-Crysknife Blade_120pc_plate(01)_PLA_0.12_3h25m13s.gcode");
@@ -532,7 +557,7 @@ mod parse_tests {
         let page = parse_history_page(&fixture("history_qidi_smart3.json")).unwrap();
         assert_eq!(page.count, 442);
         assert_eq!(page.jobs.len(), 5);
-        let j = page.jobs.iter().find(|j| j.remote_id == "0001B9").unwrap();
+        let j = page.jobs.iter().find(|j| j.remote_id == "0001B9@1702307676").unwrap();
         assert_eq!(j.outcome, JobOutcome::Completed);
         assert_eq!(j.material.as_deref(), Some("PLA"));
         assert_eq!(j.slicer_weight_g, Some(39.13));
@@ -550,15 +575,15 @@ mod parse_tests {
         assert_eq!(page.count, 31);
         assert_eq!(page.raw_len, 5);
         assert_eq!(page.jobs.len(), 4);
-        assert!(page.jobs.iter().all(|j| j.remote_id != "000160"), "in_progress is not taken over");
-        let done = page.jobs.iter().find(|j| j.remote_id == "000163").unwrap();
+        assert!(page.jobs.iter().all(|j| j.remote_id != "000160@1745828727"), "in_progress is not taken over");
+        let done = page.jobs.iter().find(|j| j.remote_id == "000163@1745847294").unwrap();
         assert_eq!(done.outcome, JobOutcome::Completed);
         assert_eq!(done.file_name, "Datei 1.gcode");
         assert_eq!(done.material.as_deref(), Some("PETG"));
         assert_eq!(done.slicer_weight_g, Some(129.87));
         assert!((done.used_mm - 42591.82).abs() < 0.01);
         assert_eq!(done.thumbnail_path.as_deref(), Some(".cache/.thumbs/Datei 1-160x160.png"));
-        let cancelled = page.jobs.iter().find(|j| j.remote_id == "00015F").unwrap();
+        let cancelled = page.jobs.iter().find(|j| j.remote_id == "00015F@1745827577").unwrap();
         assert_eq!(cancelled.outcome, JobOutcome::Partial);
         assert!((cancelled.used_mm - 80.0).abs() < 0.01);
     }
@@ -624,11 +649,27 @@ mod client_tests {
         let info = link.test().unwrap();
         assert_eq!(info.clock_offset_s, 0.0, "no Date header -> no correction");
         let jobs = link.jobs_ended_since(&info, 1_788_970_000.0).unwrap();
-        assert_eq!(jobs.iter().map(|j| j.remote_id.as_str()).collect::<Vec<_>>(), vec!["00003F", "00003E"]);
+        assert_eq!(jobs.iter().map(|j| j.remote_id.as_str()).collect::<Vec<_>>(), vec!["00003F@1789041482", "00003E@1788968798"]);
         let query = server.requests().into_iter().find(|r| r.starts_with("/server/history/list")).unwrap();
         let expected_since = 1_788_970_000.0 - LOOKBACK_S;
         assert!(query.contains(&format!("since={expected_since}")), "{query}");
         assert!(query.contains("order=asc") && query.contains("limit=50") && query.contains("start=0"));
+    }
+
+    #[test]
+    fn clock_offset_changes_do_not_change_remote_ids() {
+        let server = sv08();
+        let link = MoonrakerLink::new(&server.address(), AddressPolicy::TEST);
+        let mut info = link.test().unwrap();
+        let before = link.jobs_ended_since(&info, 0.0).unwrap();
+        info.clock_offset_s = 3600.0;
+        let after = link.jobs_ended_since(&info, 0.0).unwrap();
+        assert!(!before.is_empty());
+        assert_eq!(before.len(), after.len());
+        for (before, after) in before.iter().zip(&after) {
+            assert_eq!(before.remote_id, after.remote_id);
+            assert_eq!(before.ended_at - after.ended_at, 3600.0);
+        }
     }
 
     #[test]
@@ -678,8 +719,8 @@ mod client_tests {
         let jobs = link.jobs_ended_since(&info, since_local).unwrap();
         let mut ids: Vec<_> = jobs.iter().map(|j| j.remote_id.as_str()).collect();
         ids.sort();
-        assert_eq!(ids, vec!["0001B6", "0001B7", "0001B8", "0001B9"]);
-        let b9 = jobs.iter().find(|j| j.remote_id == "0001B9").unwrap();
+        assert_eq!(ids, vec!["0001B6@1702298552", "0001B7@1702301318", "0001B8@1702304612", "0001B9@1702307676"]);
+        let b9 = jobs.iter().find(|j| j.remote_id == "0001B9@1702307676").unwrap();
         assert!((b9.ended_at - (1_702_311_947.72 - info.clock_offset_s)).abs() < 0.01, "ended_at in local time");
         assert!(b9.ended_at > unix_now() - 3.0 * 3600.0, "local time is recent, not 2023");
 

@@ -25,6 +25,7 @@ export function TagInput({ allTags, tags, onAddTag, inputClassName, inputStyle, 
   ).map(tag => tag.label);
 
   return <AutocompleteInput
+    maxLength={100}
     value={draft}
     onChange={setDraft}
     options={options}

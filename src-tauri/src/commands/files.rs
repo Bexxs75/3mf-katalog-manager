@@ -312,7 +312,11 @@ pub async fn pick_and_read_image(app: tauri::AppHandle) -> CmdResult<Option<Stri
 /// normalized to their key, so e.g. "Multipart" doesn't create a second tag next
 /// to "mehrteilig".
 fn add_tag_with_conn(conn: &Connection, file_id: i64, tag: &str) -> CmdResult<()> {
-    db::add_tag_to_file(conn, file_id, &tagging::canonical_tag(tag)).map_err(|e| e.to_string().into())
+    db::error::validate_text_length(tag, 100, "Tag").map_err(|e| CmdError::expected(e.to_string()))?;
+    db::add_tag_to_file(conn, file_id, &tagging::canonical_tag(tag)).map_err(|e| match e {
+        db::error::DbError::Invalid(message) => CmdError::expected(message),
+        other => other.to_string().into(),
+    })
 }
 
 #[tauri::command]
@@ -1543,7 +1547,7 @@ pub async fn reveal_in_file_manager(state: State<'_, AppState>, file_id: String,
         let conn = lock_db(&state)?;
         let file = db::get_file(&conn, id).map_err(|e| e.to_string())?
             .ok_or_else(|| CmdError::expected("Datei nicht gefunden").with_code(super::error::GeometryErrorCode::NotFound))?;
-        PathBuf::from(file.trash_path.as_deref().unwrap_or(&file.path))
+        PathBuf::from(file.current_path())
     };
     tauri::async_runtime::spawn_blocking(move || reveal_catalog_path(&path)).await.map_err(|e| e.to_string())?
 }
@@ -1719,7 +1723,7 @@ pub async fn get_model_geometry(
         db::get_file(&conn, id).map_err(|e| e.to_string())?
             .ok_or_else(|| CmdError::expected("file not found").with_code(super::error::GeometryErrorCode::NotFound))?
     };
-    let path = PathBuf::from(file.trash_path.as_deref().unwrap_or(&file.path));
+    let path = PathBuf::from(file.current_path());
     let meshes = tauri::async_runtime::spawn_blocking(move || load_geometry(&path))
         .await.map_err(|e| e.to_string())??;
     Ok(tauri::ipc::Response::new(encode_render_meshes(&meshes)))
@@ -1880,8 +1884,8 @@ mod tests {
         std::fs::File::options().write(true).open(&path).unwrap().set_modified(second).unwrap();
         rescan_file(&mut conn, id).unwrap();
         let expected = chrono::DateTime::<chrono::Utc>::from(second).to_rfc3339();
-        assert_eq!(db::get_file(&conn, id).unwrap().unwrap().file_modified_at.as_ref(), Some(&expected));
-        assert_eq!(db::list_file_summaries(&conn).unwrap()[0].file_modified_at.as_ref(), Some(&expected));
+        assert_eq!(db::get_file(&conn, id).unwrap().unwrap().file_modified_at.as_deref(), Some(expected.as_str()));
+        assert_eq!(db::list_file_summaries(&conn).unwrap()[0].file_modified_at.as_deref(), Some(expected.as_str()));
         let full = to_dto(db::get_file(&conn, id).unwrap().unwrap(), &[]);
         assert_eq!(serde_json::to_value(full).unwrap()["fileModifiedAt"], expected);
         std::fs::remove_dir_all(dir).unwrap();
@@ -3110,6 +3114,32 @@ mod tests {
         let rescanned = rescan_file(&mut conn, id).expect("rescan of an obj file should succeed");
         assert_eq!(rescanned.id, dto.id);
     }
+    #[test]
+    fn tags_enforce_length_before_inserting() {
+        let conn = db::connect_in_memory().unwrap();
+        let id = db::test_insert_minimal_file(&conn, "/tmp/tag-limit.obj", None).unwrap();
+        assert!(add_tag_with_conn(&conn, id, &"a".repeat(100)).is_ok());
+        for tag in ["a".repeat(101), "😀".repeat(51)] {
+            assert!(add_tag_with_conn(&conn, id, &tag).is_err());
+        }
+        assert_eq!(db::list_all_file_tags(&conn).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn import_succeeds_with_an_overlong_filename_tag() {
+        let dir = unique_test_dir("long_filename_tag");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(format!("{}.obj", "a".repeat(120)));
+        std::fs::write(&path, "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n").unwrap();
+        let conn = db::connect_in_memory().unwrap();
+        let imported = import_one(&conn, &path, None, None, None).unwrap();
+        let id: i64 = imported.id.parse().unwrap();
+        assert!(db::get_file(&conn, id).is_ok());
+        assert!(db::list_all_file_tags(&conn).unwrap().iter()
+            .all(|(_, tag)| tag.encode_utf16().count() <= 100));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
     #[test]
     fn add_tag_maps_a_translated_auto_tag_name_to_its_canonical_tag() {
         let conn = crate::db::connect_in_memory().expect("connect");

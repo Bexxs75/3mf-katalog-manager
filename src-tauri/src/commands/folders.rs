@@ -55,16 +55,7 @@ pub fn list_folders(state: State<AppState>) -> CmdResult<Vec<FolderDto>> {
 /// component: "../../etc/x" or "/etc/x" would otherwise create outside the
 /// catalog, just by typing text (CWE-22).
 fn validate_folder_name(name: &str) -> CmdResult<()> {
-    if name.trim().is_empty() {
-        return Err(CmdError::expected("Ordnername darf nicht leer sein"));
-    }
-    if name.contains('/') || name.contains('\\') {
-        return Err(CmdError::expected("Ordnername darf keine Pfad-Trennzeichen enthalten"));
-    }
-    if name == "." || name == ".." {
-        return Err(CmdError::expected("Ungueltiger Ordnername"));
-    }
-    Ok(())
+    validate_dir_name(name, true)
 }
 /// Creates a real folder on disk (below an existing folder, or - with
 /// `parent_id: None` - below a base directory the user picked in a dialog) and a
@@ -435,6 +426,10 @@ const MAX_DIR_NAME_BYTES: usize = 255;
 /// outside the chosen place (CWE-22). The frontend shows the same rules as a hint,
 /// this check is the one that counts.
 fn validate_new_catalog_dir_name(name: &str) -> CmdResult<()> {
+    validate_dir_name(name, true)
+}
+
+fn validate_dir_name(name: &str, limit_length: bool) -> CmdResult<()> {
     if name.trim().is_empty() {
         return Err(CmdError::expected("Der Ordnername darf nicht leer sein"));
     }
@@ -442,7 +437,7 @@ fn validate_new_catalog_dir_name(name: &str) -> CmdResult<()> {
         let shown = if c.is_control() { format!("U+{:04X}", c as u32) } else { c.to_string() };
         return Err(CmdError::expected(format!("Dieses Zeichen ist in Ordnernamen nicht erlaubt: {shown}")));
     }
-    if name.len() > MAX_DIR_NAME_BYTES {
+    if limit_length && name.len() > MAX_DIR_NAME_BYTES {
         return Err(CmdError::expected("Der Ordnername ist zu lang"));
     }
     if name == "." || name == ".." {
@@ -647,6 +642,16 @@ pub fn create_catalog_dir(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn folder_names_reject_windows_special_components_on_every_platform() {
+        for name in ["D:Neu", "C:", "CON", "nul.txt", "COM1", "lpt9.log", "COM¹", "a.", "a ", "a?", "a*", "a|", "a\0"] {
+            assert!(validate_folder_name(name).is_err(), "accepted {name:?}");
+        }
+        for name in ["Neue Modelle", "COM10", "console", "Modell.stl"] {
+            assert!(validate_folder_name(name).is_ok());
+        }
+    }
 
     #[test]
     fn create_folder_race_is_expected_but_other_io_errors_are_not() {
@@ -855,6 +860,23 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
+    #[test]
+    fn folder_operations_explain_invalid_names() {
+        let conn = db::connect_in_memory().unwrap();
+        for (name, expected) in [
+            ("Projekt: Test", "Dieses Zeichen ist in Ordnernamen nicht erlaubt: :"),
+            ("Neu.", "Ordnernamen dürfen nicht mit einem Punkt oder Leerzeichen enden"),
+            ("a?", "Dieses Zeichen ist in Ordnernamen nicht erlaubt: ?"),
+            ("CON", "Dieser Ordnername ist unter Windows reserviert"),
+        ] {
+            assert_eq!(validate_folder_name(name).unwrap_err().to_string(), expected);
+            assert_eq!(rename_folder_with_conn(&conn, 0, name.into(), &[]).unwrap_err().to_string(), expected);
+        }
+        assert!(validate_folder_name("Projekt 2026").is_ok());
+        assert!(validate_folder_name(&"a".repeat(256)).is_err());
+        assert!(validate_new_catalog_dir_name(&"a".repeat(256)).is_err());
+    }
+
     #[test]
     fn validate_folder_name_rejects_path_traversal_and_separators() {
         // create_folder/rename_folder must never use `name` unchecked (CWE-22).

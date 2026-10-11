@@ -125,6 +125,17 @@ pub struct FileRecord {
     pub trash_path: Option<String>,
 }
 
+impl FileRecord {
+    /// Where the file is right now: the trash copy for a trashed file, otherwise
+    /// the catalog path. `trash_path` is only a path while `deleted_at` is set.
+    pub fn current_path(&self) -> &str {
+        match (&self.deleted_at, &self.trash_path) {
+            (Some(_), Some(trash_path)) => trash_path,
+            _ => &self.path,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct FolderRecord {
     pub id: i64,

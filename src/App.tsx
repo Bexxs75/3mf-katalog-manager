@@ -32,6 +32,7 @@ import { MoveToast } from './components/MoveToast';
 import { CatalogSetupDialog } from './components/CatalogSetupDialog';
 import { TrashView } from './components/TrashView';
 import { CatalogWorkspace } from './components/CatalogWorkspace';
+import { MigrationBackupWarning } from './components/MigrationBackupWarning';
 import { UpdateToast } from './components/UpdateToast';
 import { useTheme } from './hooks/useTheme';
 import { useDetailPanel } from './hooks/useDetailPanel';
@@ -526,6 +527,7 @@ export default function App() {
             />
           )}
 
+          <MigrationBackupWarning />
           <UpdateToast view={update} />
 
           {cleanup.cleanupDialogOpen && cleanup.cleanupIssues && (

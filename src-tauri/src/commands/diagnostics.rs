@@ -87,8 +87,10 @@ impl DiagnosticsState {
         self.cache.lock().unwrap().reserve_id()
     }
 
-    fn store_preview(&self, id: u64, text: String) {
-        self.cache.lock().unwrap().store_if_newer(id, text);
+    fn store_preview(&self, id: u64, result: Result<Vec<anonymize::Segment>, String>) -> CmdResult<Vec<anonymize::Segment>> {
+        let segments = result?;
+        self.cache.lock().unwrap().store_if_newer(id, anonymize::to_text(&segments));
+        Ok(segments)
     }
 
     fn preview_for_save(&self, id: u64) -> Option<String> {
@@ -173,7 +175,7 @@ pub async fn preview_log_export(
     let segments = tauri::async_runtime::spawn_blocking(move || anonymize::anonymize(&raw, &ctx))
         .await
         .map_err(|e| e.to_string())?;
-    diag.store_preview(id, anonymize::to_text(&segments));
+    let segments = diag.store_preview(id, segments)?;
     Ok(LogPreviewDto { id, empty, segments, contains_debug, replace_file_names: replace })
 }
 
@@ -249,6 +251,15 @@ pub fn get_bug_report_url(lang: String, with_log: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failed_anonymization_never_becomes_exportable() {
+        let diag = DiagnosticsState::default();
+        let id = diag.reserve_preview_id();
+        let context = anonymize::Context { catalog_roots: vec!["a".repeat(2_000_000)], ..Default::default() };
+        assert!(diag.store_preview(id, anonymize::anonymize("private data", &context)).is_err());
+        assert!(diag.preview_for_save(id).is_none());
+    }
 
     #[test]
     fn data_paths_match_the_folders_used_by_the_open_commands() {

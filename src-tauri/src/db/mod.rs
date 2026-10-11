@@ -19,7 +19,7 @@ pub fn migrations_current_version() -> i64 {
 
 pub use repository::{
     FileSummary,
-    add_tag_to_file, attach_folder_to_parent_by_path, connect, delete_file, delete_filament_spool, delete_print_log_entry,
+    add_tag_to_file, attach_folder_to_parent_by_path, connect, connect_with_warning, delete_file, delete_filament_spool, delete_print_log_entry,
     delete_unused_tags, ensure_folder_path,
     file_exists_by_hash, file_exists_by_path, get_file, get_filament_spool,
     get_registered_slicer,
@@ -63,6 +63,9 @@ pub use repository::connect_in_memory;
 
 #[cfg(test)]
 pub use repository::SCHEMA_SQL;
+
+#[cfg(test)]
+pub use repository::{max_folder_id, remove_new_folder_rows};
 
 #[cfg(test)]
 mod tests {
@@ -669,6 +672,28 @@ mod tests {
         let restored = repository::get_file(&conn, id).unwrap().unwrap();
         assert!(restored.deleted_at.is_none());
         assert!(restored.trash_path.is_none());
+    }
+
+    #[test]
+    fn current_path_uses_the_trash_copy_only_for_a_trashed_file() {
+        let mut conn = connect_in_memory().expect("connect");
+        let file = sample_file();
+        let id = repository::insert_file(&mut conn, &file).unwrap();
+        let live = repository::get_file(&conn, id).unwrap().unwrap();
+        assert_eq!(live.current_path(), live.path);
+
+        // A stray value in trash_path must never be used while the file is not trashed.
+        conn.execute("UPDATE files SET trash_path = '{\"total_weight_g\":1}' WHERE id = ?1", [id]).unwrap();
+        let stray = repository::get_file(&conn, id).unwrap().unwrap();
+        assert_eq!(stray.current_path(), stray.path);
+
+        repository::soft_delete_file(&conn, id, Some("/trash/1-test.3mf"), "2026-01-01T00:00:00Z").unwrap();
+        let trashed = repository::get_file(&conn, id).unwrap().unwrap();
+        assert_eq!(trashed.current_path(), "/trash/1-test.3mf");
+
+        repository::soft_delete_file(&conn, id, None, "2026-01-01T00:00:00Z").unwrap();
+        let unreachable = repository::get_file(&conn, id).unwrap().unwrap();
+        assert_eq!(unreachable.current_path(), unreachable.path);
     }
 
     #[test]
