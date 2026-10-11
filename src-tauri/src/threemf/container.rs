@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::io::{Read, Seek};
+use std::io::{BufReader, Read, Seek};
 
 use quick_xml::events::Event;
 use quick_xml::reader::Reader;
@@ -7,7 +7,7 @@ use quick_xml::XmlVersion;
 use zip::ZipArchive;
 
 use super::error::ThreeMfError;
-use super::model_xml::{parse_model_xml, Object, ParsedModel};
+use super::model_xml::{parse_model_xml_reader, parse_model_xml_reader_with_preview, Object, ParsedModel};
 
 const RELS_PATH: &str = "_rels/.rels";
 const MODEL_RELATIONSHIP_TYPE: &str =
@@ -18,14 +18,15 @@ const DEFAULT_MODEL_PATH: &str = "3D/3dmodel.model";
 const FALLBACK_THUMBNAIL_PATHS: [&str; 2] =
     ["Metadata/thumbnail.png", "3D/Thumbnails/thumbnail.png"];
 // Limits against zip bombs (unpacked size per entry).
-const MAX_MODEL_XML_BYTES: u64 = 256 * 1024 * 1024;
+// High-resolution slicer projects need more room; streaming enforces the cap without retaining XML.
+const MAX_MODEL_XML_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_THUMBNAIL_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_RELS_XML_BYTES: u64 = 16 * 1024 * 1024;
 /// For `Metadata/model_settings.config` and `Metadata/slice_info.config`.
 pub(super) const MAX_CONFIG_XML_BYTES: u64 = 16 * 1024 * 1024;
 /// Limit for the sum of ALL unpacked resources, so many entries just below their
 /// individual limit can't together use arbitrary memory.
-const MAX_TOTAL_UNPACKED_BYTES: u64 = 512 * 1024 * 1024;
+const MAX_TOTAL_UNPACKED_BYTES: u64 = 3 * 1024 * 1024 * 1024;
 /// Maximum number of referenced `.model` files (Production Extension), so many
 /// small files neither bypass the budget nor make resolving take forever.
 /// Slicer projects with many parts keep one file per object: a real catalog
@@ -34,7 +35,7 @@ const MAX_REFERENCED_MODELS: usize = 128;
 
 #[cfg(test)]
 thread_local! {
-    /// Lets tests use a small total budget without a 512 MB test file (thread-local).
+    /// Lets tests use a small total budget without a multi-gigabyte test file (thread-local).
     static TEST_MAX_TOTAL_UNPACKED_BYTES: std::cell::Cell<Option<u64>> =
         const { std::cell::Cell::new(None) };
 }
@@ -111,18 +112,17 @@ fn read_package_inner<R: Read + Seek>(reader: R, geometry: bool) -> Result<Packa
     check_total_budget(total_unpacked)?;
     let model_path = model_path.unwrap_or_else(|| DEFAULT_MODEL_PATH.to_string());
 
-    let root_xml = match read_entry_to_string(&mut archive, &model_path, MAX_MODEL_XML_BYTES) {
-        Ok(xml) => xml,
+    let root_model = match read_model_entry(&mut archive, &model_path, MAX_MODEL_XML_BYTES, &mut total_unpacked, geometry) {
+        Ok(model) => model,
+        Err(err @ (ThreeMfError::Xml(_) | ThreeMfError::InvalidGeometry(_) | ThreeMfError::InvalidTransform(_) | ThreeMfError::ResourceLimitExceeded(_))) => return Err(err),
         Err(err @ ThreeMfError::EntryTooLarge { .. }) if geometry => return Err(err),
-        Err(_) => match read_entry_to_string(&mut archive, DEFAULT_MODEL_PATH, MAX_MODEL_XML_BYTES) {
-            Ok(xml) => xml,
+        Err(_) => match read_model_entry(&mut archive, DEFAULT_MODEL_PATH, MAX_MODEL_XML_BYTES, &mut total_unpacked, geometry) {
+            Ok(model) => model,
+            Err(err @ (ThreeMfError::Xml(_) | ThreeMfError::InvalidGeometry(_) | ThreeMfError::InvalidTransform(_) | ThreeMfError::ResourceLimitExceeded(_))) => return Err(err),
             Err(err @ ThreeMfError::EntryTooLarge { .. }) if geometry => return Err(err),
             Err(_) => return Err(ThreeMfError::MissingRootModel),
         },
     };
-    total_unpacked += root_xml.len() as u64;
-    check_total_budget(total_unpacked)?;
-    let root_model = parse_model_xml(&root_xml)?;
 
     let mut referenced_models: HashMap<String, ParsedModel> = HashMap::new();
     let mut visited: HashSet<String> = HashSet::new();
@@ -145,19 +145,13 @@ fn read_package_inner<R: Read + Seek>(reader: R, geometry: bool) -> Result<Packa
         // Missing or broken references are tolerated, an oversized entry is not:
         // otherwise the limit could be bypassed with references just too large, which
         // would then silently be missing.
-        let xml = match read_entry_to_string(&mut archive, &path, MAX_MODEL_XML_BYTES) {
-            Ok(xml) => xml,
-            Err(err @ ThreeMfError::EntryTooLarge { .. }) => return Err(err),
+        let parsed = match read_model_entry(&mut archive, &path, MAX_MODEL_XML_BYTES, &mut total_unpacked, geometry) {
+            Ok(model) => model,
+            Err(err @ (ThreeMfError::EntryTooLarge { .. } | ThreeMfError::ResourceLimitExceeded(_))) => return Err(err),
             Err(_) => {
-                log::warn!(target: "3mf", "referenced model file not found, skipped: {path}");
+                log::warn!(target: "3mf", "referenced model file missing or not parseable, skipped: {path}");
                 continue;
             }
-        };
-        total_unpacked += xml.len() as u64;
-        check_total_budget(total_unpacked)?;
-        let Ok(parsed) = parse_model_xml(&xml) else {
-            log::warn!(target: "3mf", "referenced model file not parseable, skipped: {path}");
-            continue;
         };
         for referenced in referenced_paths(&parsed) {
             if !visited.contains(&referenced) {
@@ -249,6 +243,65 @@ fn resolve_relationships<R: Read + Seek>(
     }
 
     (model_path, thumbnail_path, rels_bytes)
+}
+
+// Count decompressed bytes before the XML parser can allocate for them. One
+// lookahead byte distinguishes a full entry from a silently truncated one.
+struct ModelReader<'a, R> {
+    inner: R,
+    read: u64,
+    max: u64,
+    total: &'a mut u64,
+    exceeded_entry: bool,
+    exceeded_total: bool,
+}
+
+impl<R: Read> Read for ModelReader<'_, R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let remaining = self.max.saturating_sub(self.read).min(max_total_unpacked_bytes().saturating_sub(*self.total));
+        let len = buf.len().min(remaining.saturating_add(1) as usize);
+        let n = self.inner.read(&mut buf[..len])?;
+        self.read += n as u64;
+        *self.total += n as u64;
+        self.exceeded_entry = self.read > self.max;
+        self.exceeded_total = *self.total > max_total_unpacked_bytes();
+        if self.exceeded_entry || self.exceeded_total {
+            return Err(std::io::Error::other("model resource limit exceeded"));
+        }
+        Ok(n)
+    }
+}
+
+fn read_model_entry<R: Read + Seek>(
+    archive: &mut ZipArchive<R>, path: &str, max: u64, total: &mut u64, preview: bool,
+) -> Result<ParsedModel, ThreeMfError> {
+    let file = archive.by_name(path)?;
+    reject_oversized_entry(path, file.size(), max)?;
+    let mut source = ModelReader { inner: file, read: 0, max, total, exceeded_entry: false, exceeded_total: false };
+    let result = if preview {
+        parse_model_xml_reader_with_preview(BufReader::new(&mut source), true)
+    } else {
+        parse_model_xml_reader(BufReader::new(&mut source))
+    };
+    let result = match result {
+        // Preserve ZIP read failures as I/O errors for the root fallback.
+        Err(ThreeMfError::Xml(quick_xml::Error::Io(error))) =>
+            Err(ThreeMfError::Io(std::io::Error::new(error.kind(), error.to_string()))),
+        Err(error @ (ThreeMfError::Xml(_) | ThreeMfError::InvalidGeometry(_) | ThreeMfError::InvalidTransform(_))) => {
+            // Broken references are tolerated, but their unread tail must not
+            // bypass byte limits or ZIP integrity checks.
+            match std::io::copy(&mut source, &mut std::io::sink()) {
+                Ok(_) => Err(error),
+                Err(error) => Err(ThreeMfError::Io(error)),
+            }
+        }
+        other => other,
+    };
+    if source.exceeded_entry {
+        return Err(ThreeMfError::EntryTooLarge { path: path.into(), size: source.read, max });
+    }
+    check_total_budget(*source.total)?;
+    result
 }
 
 pub(super) fn read_entry_to_string<R: Read + Seek>(
@@ -442,6 +495,52 @@ mod tests {
         bytes[local + 22..local + 26].copy_from_slice(&size);
         assert!(matches!(read_geometry_package(std::io::Cursor::new(&bytes)), Err(ThreeMfError::EntryTooLarge { .. })));
         assert!(matches!(read_package(std::io::Cursor::new(bytes)), Err(ThreeMfError::MissingRootModel)));
+    }
+
+    #[test]
+    fn streaming_checks_remainder_after_malformed_xml() {
+        let xml = format!("<model></broken>{}", " ".repeat(50_000));
+        let mut bytes = build_multi_file_zip(&[("3D/Objects/object_1.model", &xml)]);
+        let central = bytes.windows(4).rposition(|w| w == b"PK\x01\x02").unwrap();
+        bytes[central + 24..central + 28].copy_from_slice(&4_u32.to_le_bytes());
+        let mut archive = ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let mut total = 0;
+        assert!(matches!(read_model_entry(&mut archive, "3D/Objects/object_1.model", 16_000, &mut total, false),
+            Err(ThreeMfError::EntryTooLarge { .. })));
+    }
+
+    #[test]
+    fn streaming_preserves_root_fallback_for_zip_read_errors() {
+        let mut bytes = build_minimal_3mf_with_entries(SMALL_RELS_XML, &[]);
+        let central = bytes.windows(4).rposition(|w| w == b"PK\x01\x02").unwrap();
+        bytes[central + 16..central + 20].copy_from_slice(&0_u32.to_le_bytes());
+        assert!(matches!(read_package(std::io::Cursor::new(bytes)), Err(ThreeMfError::MissingRootModel)));
+    }
+
+    #[test]
+    fn streaming_total_budget_counts_actual_bytes_across_entries() {
+        let bytes = build_multi_file_zip(&[("3D/Objects/object_1.model", CHILD_MODEL_XML)]);
+        let mut archive = ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let mut total = 0;
+        TEST_MAX_TOTAL_UNPACKED_BYTES.with(|c| c.set(Some((ROOT_MODEL_XML.len() + CHILD_MODEL_XML.len() - 1) as u64)));
+        let root = read_model_entry(&mut archive, DEFAULT_MODEL_PATH, MAX_MODEL_XML_BYTES, &mut total, false);
+        let child = read_model_entry(&mut archive, "3D/Objects/object_1.model", MAX_MODEL_XML_BYTES, &mut total, false);
+        TEST_MAX_TOTAL_UNPACKED_BYTES.with(|c| c.set(None));
+        assert!(root.is_ok());
+        assert!(matches!(child, Err(ThreeMfError::ResourceLimitExceeded(_))));
+    }
+
+    #[test]
+    fn streaming_entry_rejects_a_dishonest_header() {
+        let mut bytes = build_zip_with_one_entry(DEFAULT_MODEL_PATH, 4096);
+        let central = bytes.windows(4).position(|w| w == b"PK\x01\x02").unwrap();
+        let local = bytes.windows(4).position(|w| w == b"PK\x03\x04").unwrap();
+        bytes[central + 24..central + 28].copy_from_slice(&4_u32.to_le_bytes());
+        bytes[local + 22..local + 26].copy_from_slice(&4_u32.to_le_bytes());
+        let mut archive = ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let mut total = 0;
+        assert!(matches!(read_model_entry(&mut archive, DEFAULT_MODEL_PATH, 1024, &mut total, false),
+            Err(ThreeMfError::EntryTooLarge { .. })));
     }
 
     #[test]
@@ -688,8 +787,7 @@ mod tests {
         assert!(result.is_ok(), "ein winziges Paket muss unter dem Testbudget akzeptiert werden");
     }
 
-    /// 3MF with an existing referenced model 1 byte over `MAX_MODEL_XML_BYTES`
-    /// (`Stored`, so writing it is fast).
+    /// Declare an oversized reference without allocating gigabytes in the test.
     fn build_3mf_with_oversized_referenced_model() -> Vec<u8> {
         let root_xml = r##"<?xml version="1.0" encoding="UTF-8"?>
 <model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06">
@@ -698,7 +796,7 @@ mod tests {
   </build>
 </model>"##;
 
-        let oversized_len = (MAX_MODEL_XML_BYTES + 1) as usize;
+        let oversized_len = 4;
 
         let mut buf = Vec::new();
         {
@@ -718,6 +816,8 @@ mod tests {
 
             zip.finish().unwrap();
         }
+        let central = buf.windows(4).rposition(|w| w == b"PK\x01\x02").unwrap();
+        buf[central + 24..central + 28].copy_from_slice(&((MAX_MODEL_XML_BYTES + 1) as u32).to_le_bytes());
         buf
     }
 

@@ -44,6 +44,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- Large 3MF projects (model files up to 2 GiB unpacked, such as high-resolution Bambu Studio projects) can now be imported: model XML is read without loading the whole text into memory. Models above 3 million triangles show the translated size-limit explanation instead of opening the 3D preview.
+
 - Size tags for new multi-plate imports use the largest individual plate; displayed dimensions stay unchanged.
 - Stable settings scrolling and initial grid sizing; reliable dragging from thumbnails, no ghost of the previous model behind error cards and bounded rename/detail layouts.
 
@@ -682,6 +684,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Gespeicherte Filter und die Ersteller-Liste, die seit dem Redesign keinen Platz mehr in der Oberfläche hatten. Die Datenbanktabelle der gespeicherten Filter wird beim nächsten Start entfernt; die Suche nach Erstellern funktioniert weiterhin.
 
 ### Fixed
+
+- Große 3MF-Projekte (Modell-Datei bis 2 GiB entpackt, z. B. hochaufgelöste Bambu-Studio-Projekte) lassen sich importieren; die Modell-XML wird gelesen, ohne den gesamten Text in den Speicher zu laden. Modelle mit mehr als 3 Millionen Dreiecken zeigen statt der 3D-Vorschau den übersetzten Hinweis auf die Größenbegrenzung.
 
 - Katalog-Backup: Eine Sicherung, die angelegt wurde, während Dateien im Papierkorb lagen, lässt sich jetzt wieder einspielen. Vorher lehnte der Import sie mit „Papierkorb-Eintrag im Archiv abgelehnt“ ab, auch die Sicherung, die „Katalog zurücksetzen“ anbietet. Der Fehler bestand seit v0.7.8.
 - Sicherungen vor Updates: Beim Aufräumen behält die App jetzt die zuletzt angelegten Sicherungen. Vorher konnte das Öffnen einer älteren Sicherung in einem anderen Programm dazu führen, dass stattdessen eine neuere gelöscht wurde. Gefunden im Windows-Test.

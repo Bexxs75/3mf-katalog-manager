@@ -18,6 +18,7 @@ export const fr: Translations = {
   catalogWebExplanation: "Ouvre ce lien dans le navigateur où tu utilises cette application. Tu pourras y télécharger le fichier ou l’ouvrir dans ton trancheur.",
   catalogWebUnknown: "Ajoute ce chemin à l’adresse où tu as ouvert cette application dans le navigateur (p. ex. http://ton-serveur:3000).",
   catalogWebConfigure: "Définis KATALOG_PUBLIC_URL pour afficher le lien complet.",
+  catalogWebSearchHint: "Si le collage ne fonctionne pas : ouvre {address} et recherche « {fileName} ».",
   catalogWebPasteHint: "Après la copie : colle le lien avec Ctrl+V dans un nouvel onglet du navigateur de ton PC, puis appuie sur Entrée.",
   catalogWebLoading: "Chargement du lien …",
   catalogWebFailed: "Impossible de charger le lien. Réessaie.",

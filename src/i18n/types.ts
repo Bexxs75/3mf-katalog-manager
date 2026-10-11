@@ -24,6 +24,7 @@ export interface Translations {
   catalogWebUnknown: string;
   catalogWebConfigure: string;
   catalogWebPasteHint: string;
+  catalogWebSearchHint: string;
   catalogWebLoading: string;
   catalogWebFailed: string;
   catalogWebContainerOnly: string;

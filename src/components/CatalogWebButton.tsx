@@ -5,8 +5,8 @@ import { getCatalogWebLink, type CatalogWebLink } from '../lib/api/runtime';
 import { CatalogActionDialog, catalogActionButton } from './CatalogActionDialog';
 import { ExternalLink } from './ExternalLink';
 
-function CatalogWebDialog({ fileId, onClose, returnFocus }: {
-  fileId: string; onClose: () => void; returnFocus: React.RefObject<HTMLButtonElement | null>;
+function CatalogWebDialog({ fileId, fileName, onClose, returnFocus }: {
+  fileId: string; fileName?: string; onClose: () => void; returnFocus: React.RefObject<HTMLButtonElement | null>;
 }) {
   const t = useT();
   const [link, setLink] = useState<CatalogWebLink | null>(null);
@@ -21,6 +21,9 @@ function CatalogWebDialog({ fileId, onClose, returnFocus }: {
   return <CatalogActionDialog title={t('catalogWebTitle')} onClose={onClose} returnFocus={returnFocus}>
     <p>{t('catalogWebExplanation')}</p>
     {failed ? <p role="alert">{t('catalogWebFailed')}</p> : link ? <>
+      {fileName && <p>{t('catalogWebSearchHint')
+        .replace('{address}', () => (link.url ?? link.path).split('?')[0])
+        .replace('{fileName}', () => fileName)}</p>}
       {link.url ? <><div><ExternalLink url={link.url} label={t('catalogWebTitle')} /></div><p>{t('catalogWebPasteHint')}</p></> : <>
         <p className="break-all" style={{ userSelect: 'text' }}>{link.path}</p>
         <p>{t('catalogWebUnknown')}</p>
@@ -33,7 +36,7 @@ function CatalogWebDialog({ fileId, onClose, returnFocus }: {
   </CatalogActionDialog>;
 }
 
-export function CatalogWebButton({ fileId }: { fileId: string }) {
+export function CatalogWebButton({ fileId, fileName }: { fileId: string; fileName?: string }) {
   const { container } = useRuntimeEnvironment();
   const t = useT();
   const [openedFile, setOpenedFile] = useState<string | null>(null);
@@ -42,6 +45,6 @@ export function CatalogWebButton({ fileId }: { fileId: string }) {
   return <>
     <button type="button" ref={button} className={catalogActionButton} title={t('catalogWebTitle')}
       aria-haspopup="dialog" onClick={() => setOpenedFile(fileId)}>{t('catalogWebOpen')}</button>
-    {openedFile === fileId && <CatalogWebDialog key={fileId} fileId={fileId} onClose={() => setOpenedFile(null)} returnFocus={button} />}
+    {openedFile === fileId && <CatalogWebDialog key={fileId} fileId={fileId} fileName={fileName} onClose={() => setOpenedFile(null)} returnFocus={button} />}
   </>;
 }

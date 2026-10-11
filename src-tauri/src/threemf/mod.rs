@@ -69,11 +69,12 @@ const MAX_INSTANCED_VERTICES: usize = 30_000_000;
 struct WorkBudget {
     visits_left: usize,
     vertices_left: usize,
+    preview_triangles: usize,
 }
 
 impl WorkBudget {
     fn new() -> Self {
-        Self { visits_left: MAX_OBJECT_VISITS, vertices_left: MAX_INSTANCED_VERTICES }
+        Self { visits_left: MAX_OBJECT_VISITS, vertices_left: MAX_INSTANCED_VERTICES, preview_triangles: 0 }
     }
 
     fn visit(&mut self) -> Result<(), ThreeMfError> {
@@ -147,6 +148,12 @@ fn collect_render_meshes(
     if is_model_geometry {
         if let Some(mesh) = &object.mesh {
             if !mesh.triangles.is_empty() {
+                budget.preview_triangles = budget.preview_triangles.saturating_add(mesh.triangles.len());
+                if budget.preview_triangles > model_xml::MAX_PREVIEW_TRIANGLES {
+                    return Err(ThreeMfError::ResourceLimitExceeded(format!(
+                        "model too large for 3D preview ({} triangles)", budget.preview_triangles
+                    )));
+                }
                 budget.vertices(mesh.vertices.len())?;
                 let positions: Vec<[f32; 3]> = mesh
                     .vertices
@@ -539,6 +546,59 @@ mod tests {
             zip.finish().unwrap();
         }
         buf
+    }
+
+    /// Run locally with `cargo test -- --ignored large_`.
+    /// Fixed-width XML records make a 300 MB grid without a large source String.
+    #[test]
+    #[ignore]
+    fn large_grid_imports_three_hundred_megabytes_of_xml() {
+        struct TempDir(std::path::PathBuf);
+        impl Drop for TempDir {
+            fn drop(&mut self) { let _ = std::fs::remove_dir_all(&self.0); }
+        }
+        let temp = TempDir(std::env::temp_dir().join(format!("large-3mf-{}-{}", std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos())));
+        std::fs::create_dir(&temp.0).unwrap();
+        let path = temp.0.join("large-grid.3mf");
+        let mut zip = ZipWriter::new(std::fs::File::create(&path).unwrap());
+        zip.start_file("3D/3dmodel.model", SimpleFileOptions::default()).unwrap();
+        zip.write_all(b"<model><resources><object id='1'><mesh><vertices>").unwrap();
+        let corners = [[0,0,0], [10,0,0], [10,10,0], [0,10,0], [0,0,10], [10,0,10], [10,10,10], [0,10,10]];
+        let faces = [[0,2,1], [0,3,2], [4,5,6], [4,6,7], [0,1,5], [0,5,4], [3,6,2], [3,7,6], [0,7,3], [0,4,7], [1,2,6], [1,6,5]];
+        let write_record = |zip: &mut ZipWriter<std::fs::File>, mut record: String| {
+            record.extend(std::iter::repeat_n(' ', 148 - record.len()));
+            record.push_str("/>");
+            zip.write_all(record.as_bytes()).unwrap();
+        };
+        for cube in 0..100_000 {
+            let offset = [(cube % 100) * 10, ((cube / 100) % 100) * 10, (cube / 10_000) * 10];
+            for [x,y,z] in corners {
+                write_record(&mut zip, format!("<vertex x='{}' y='{}' z='{}'", x + offset[0], y + offset[1], z + offset[2]));
+            }
+        }
+        zip.write_all(b"</vertices><triangles>").unwrap();
+        for cube in 0..100_000 {
+            for [a,b,c] in faces {
+                write_record(&mut zip, format!("<triangle v1='{}' v2='{}' v3='{}'", cube * 8 + a, cube * 8 + b, cube * 8 + c));
+            }
+        }
+        zip.write_all(b"</triangles></mesh></object></resources><build><item objectid='1'/></build></model>").unwrap();
+        zip.finish().unwrap();
+        let package = container::read_package(std::fs::File::open(&path).unwrap()).unwrap();
+        let (bbox, volume, _) = resolve_geometry(&package).unwrap();
+        assert_eq!(bbox.size(), [1000.0, 1000.0, 100.0]);
+        assert!((volume - 100_000_000.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn preview_triangle_budget_counts_repeated_instances_but_import_is_unchanged() {
+        let mut package = container::read_package(std::io::Cursor::new(build_test_3mf())).unwrap();
+        let mesh = package.root_model.objects.get_mut("1").unwrap().mesh.as_mut().unwrap();
+        mesh.triangles = vec![[0, 1, 2]; model_xml::MAX_PREVIEW_TRIANGLES / 2 + 1];
+        package.root_model.build_items.push(package.root_model.build_items[0].clone());
+        assert!(resolve_geometry(&package).is_ok());
+        assert!(matches!(extract_render_meshes(&package), Err(ThreeMfError::ResourceLimitExceeded(_))));
     }
 
     #[test]

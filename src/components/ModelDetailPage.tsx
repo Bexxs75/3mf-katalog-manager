@@ -537,7 +537,7 @@ export function ModelDetailPage({
             )}
           </div>
           <RevealFileButton fileId={model.id} />
-          {container && <CatalogWebButton key={model.id} fileId={model.id} />}
+          {container && <CatalogWebButton key={model.id} fileId={model.id} fileName={model.name} />}
           {!container && (<button
             onClick={() => onOpenInSlicer()}
             disabled={slicers.length === 0}

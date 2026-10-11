@@ -18,6 +18,7 @@ export const es: Translations = {
   catalogWebExplanation: "Abre este enlace en el navegador donde utilizas esta aplicación. Allí puedes descargar el archivo o abrirlo en tu laminador.",
   catalogWebUnknown: "Añade esta ruta a la dirección donde abriste esta aplicación en el navegador (p. ej., http://tu-servidor:3000).",
   catalogWebConfigure: "Configura KATALOG_PUBLIC_URL para mostrar el enlace completo.",
+  catalogWebSearchHint: "Si no puedes pegar el enlace: abre {address} y busca «{fileName}».",
   catalogWebPasteHint: "Tras copiarlo: pégalo con Ctrl+V en una pestaña nueva del navegador de tu PC y pulsa Intro.",
   catalogWebLoading: "Cargando enlace …",
   catalogWebFailed: "No se pudo cargar el enlace. Inténtalo de nuevo.",

@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, HashMap};
+use std::io::BufRead;
 
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::reader::Reader;
@@ -6,6 +7,23 @@ use quick_xml::XmlVersion;
 
 use super::error::ThreeMfError;
 use super::geometry::Matrix3x4;
+
+// Bound mesh allocations independently of XML size, including vertex-only objects.
+const MAX_VERTICES: usize = 40_000_000;
+const MAX_TRIANGLES: usize = 60_000_000;
+// Keep render buffers and browser normal generation within a practical budget.
+pub(super) const MAX_PREVIEW_TRIANGLES: usize = 3_000_000;
+
+#[cfg(test)]
+thread_local! {
+    static TEST_MESH_LIMITS: std::cell::Cell<Option<(usize, usize)>> = const { std::cell::Cell::new(None) };
+}
+
+fn mesh_limits() -> (usize, usize) {
+    #[cfg(test)]
+    if let Some(limits) = TEST_MESH_LIMITS.with(|c| c.get()) { return limits; }
+    (MAX_VERTICES, MAX_TRIANGLES)
+}
 
 #[derive(Debug, Default, Clone)]
 pub struct Mesh {
@@ -74,6 +92,9 @@ fn get_attr(e: &BytesStart, name: &str) -> Option<String> {
 #[derive(Default)]
 struct ParseCtx {
     model: ParsedModel,
+    vertices: usize,
+    triangles: usize,
+    limits: (usize, usize),
     current_object: Option<(String, Object)>,
     current_mesh: Option<Mesh>,
     in_vertices: bool,
@@ -108,6 +129,10 @@ fn handle_start(ctx: &mut ParseCtx, name: &str, e: &BytesStart) -> Result<(), Th
         "vertex" => {
             if ctx.in_vertices {
                 if let Some(mesh) = ctx.current_mesh.as_mut() {
+                    if ctx.vertices >= ctx.limits.0 {
+                        return Err(ThreeMfError::ResourceLimitExceeded(format!("more than {} vertices in model file", ctx.limits.0)));
+                    }
+                    ctx.vertices += 1;
                     let x = get_attr(e, "x").and_then(|v| v.parse().ok()).unwrap_or(0.0);
                     let y = get_attr(e, "y").and_then(|v| v.parse().ok()).unwrap_or(0.0);
                     let z = get_attr(e, "z").and_then(|v| v.parse().ok()).unwrap_or(0.0);
@@ -119,6 +144,10 @@ fn handle_start(ctx: &mut ParseCtx, name: &str, e: &BytesStart) -> Result<(), Th
         "triangle" => {
             if ctx.in_triangles {
                 if let Some(mesh) = ctx.current_mesh.as_mut() {
+                    if ctx.triangles >= ctx.limits.1 {
+                        return Err(ThreeMfError::ResourceLimitExceeded(format!("more than {} triangles in model file", ctx.limits.1)));
+                    }
+                    ctx.triangles += 1;
                     // A missing or unreadable index must not silently become vertex 0.
                     let index = |name: &str| {
                         get_attr(e, name).and_then(|v| v.trim().parse::<u32>().ok()).ok_or_else(|| {
@@ -210,12 +239,25 @@ fn handle_end(ctx: &mut ParseCtx, name: &str) {
     }
 }
 
+// Retain the small-source entry point while production packages use readers.
+#[allow(dead_code)]
 pub fn parse_model_xml(xml: &str) -> Result<ParsedModel, ThreeMfError> {
-    let mut reader = Reader::from_str(xml);
-    let mut ctx = ParseCtx::default();
+    parse_model_xml_reader(xml.as_bytes())
+}
+
+pub fn parse_model_xml_reader<R: BufRead>(source: R) -> Result<ParsedModel, ThreeMfError> {
+    parse_model_xml_reader_with_preview(source, false)
+}
+
+pub(super) fn parse_model_xml_reader_with_preview<R: BufRead>(source: R, preview: bool) -> Result<ParsedModel, ThreeMfError> {
+    let mut limits = mesh_limits();
+    if preview { limits.1 = limits.1.min(MAX_PREVIEW_TRIANGLES); }
+    let mut reader = Reader::from_reader(source);
+    let mut ctx = ParseCtx { limits, ..ParseCtx::default() };
+    let mut buf = Vec::new();
 
     loop {
-        match reader.read_event()? {
+        match reader.read_event_into(&mut buf)? {
             Event::Eof => break,
             Event::Start(e) => {
                 let name = local_name(e.name().as_ref()).to_string();
@@ -237,6 +279,7 @@ pub fn parse_model_xml(xml: &str) -> Result<ParsedModel, ThreeMfError> {
             }
             _ => {}
         }
+        buf.clear();
     }
 
     for (id, object) in &ctx.model.objects {
@@ -369,5 +412,67 @@ mod material_tests {
         assert_eq!(obj.pindex, Some(0));
         assert_eq!(obj.mesh.as_ref().unwrap().properties, vec![(Some("8".into()), Some(1))]);
         assert_eq!(model.material_groups["7"][0].display_color.as_deref(), Some("#FF000080"));
+    }
+}
+
+#[cfg(test)]
+mod streaming_tests {
+    use super::*;
+    use std::io::BufReader;
+
+    #[test]
+    fn streaming_matches_small_sources_and_rejects_broken_xml() {
+        for xml in [
+            "<model><resources><object id='1'><components><component objectid='2' p:path='/3D/child.model'/></components></object></resources><build><item objectid='1'/></build></model>",
+            "<model><resources><basematerials id='7'><base name='red' displaycolor='#FF0000'/></basematerials><object id='2' pid='7' pindex='0'><mesh><vertices><vertex x='1'/></vertices></mesh></object></resources></model>",
+        ] {
+            let a = parse_model_xml(xml).unwrap();
+            let b = parse_model_xml_reader(BufReader::with_capacity(7, xml.as_bytes())).unwrap();
+            assert_eq!(format!("{a:?}"), format!("{b:?}"));
+        }
+        assert!(parse_model_xml_reader(BufReader::with_capacity(3, &b"<model><resources></model>"[..])).is_err());
+    }
+
+    #[test]
+    fn twenty_megabyte_stream_is_read_in_blocks() {
+        use std::io::{Read, Result};
+        struct Blocks { remaining: usize, offset: usize, largest: usize, total: usize }
+        impl Read for Blocks {
+            fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+                self.largest = self.largest.max(buf.len());
+                let n = buf.len().min(self.remaining);
+                let block = b"<!-- bounded XML event -->";
+                for byte in &mut buf[..n] {
+                    *byte = block[self.offset % block.len()];
+                    self.offset += 1;
+                }
+                self.remaining -= n;
+                self.total += n;
+                Ok(n)
+            }
+        }
+        let size = b"<!-- bounded XML event -->".len() * 850_000;
+        let mut source = Blocks { remaining: size, offset: 0, largest: 0, total: 0 };
+        parse_model_xml_reader(BufReader::new(&mut source)).unwrap();
+        assert!(source.total >= 20 * 1024 * 1024);
+        assert!(source.largest <= 8192, "requested {} bytes at once", source.largest);
+    }
+
+    #[test]
+    fn counts_vertices_without_triangles_across_objects() {
+        let xml = "<model><resources><object id='1'><mesh><vertices><vertex/></vertices></mesh></object><object id='2'><mesh><vertices><vertex/></vertices></mesh></object></resources></model>";
+        TEST_MESH_LIMITS.with(|c| c.set(Some((1, 10))));
+        let result = parse_model_xml(xml);
+        TEST_MESH_LIMITS.with(|c| c.set(None));
+        assert!(matches!(result, Err(ThreeMfError::ResourceLimitExceeded(_))));
+    }
+
+    #[test]
+    fn counts_triangles_across_objects() {
+        let object = "<object id='1'><mesh><vertices><vertex/></vertices><triangles><triangle v1='0' v2='0' v3='0'/></triangles></mesh></object>";
+        TEST_MESH_LIMITS.with(|c| c.set(Some((10, 1))));
+        let result = parse_model_xml(&format!("<model>{object}{object}</model>"));
+        TEST_MESH_LIMITS.with(|c| c.set(None));
+        assert!(matches!(result, Err(ThreeMfError::ResourceLimitExceeded(_))));
     }
 }

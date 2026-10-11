@@ -65,3 +65,26 @@ it('tells the user to paste the copied link into a browser tab only when a full 
   show(); fireEvent.click(screen.getByRole('button', { name: /Im Browser öffnen/ }));
   expect(await screen.findByText(/Strg\+V/)).toBeVisible();
 });
+
+it.each([url, null])('shows a clipboard-independent search hint for %s', async address => {
+  vi.mocked(invoke).mockResolvedValue({ url: address, path: '/katalog/?file=42' });
+  render(<LanguageProvider><RuntimeEnvironmentProvider value={{ container: true }}>
+    <CatalogWebButton fileId="42" fileName={'<Würfel>.3mf'} />
+  </RuntimeEnvironmentProvider></LanguageProvider>);
+  fireEvent.click(screen.getByRole('button', { name: /Im Browser öffnen/ }));
+  const hint = await screen.findByText(/Klappt das Einfügen nicht/);
+  expect(hint).toHaveTextContent(address ? 'http://nas.lan:3000/katalog/' : '/katalog/');
+  expect(hint).toHaveTextContent('„<Würfel>.3mf“');
+  expect(hint).not.toHaveTextContent('?file=');
+});
+
+it.each(['de', 'en', 'es', 'fr'])('translates the search fallback in %s and preserves literal filenames', async language => {
+  localStorage.setItem('3mf-katalog-language', language);
+  render(<LanguageProvider><RuntimeEnvironmentProvider value={{ container: true }}>
+    <CatalogWebButton fileId="42" fileName={'cube $& <test>.3mf'} />
+  </RuntimeEnvironmentProvider></LanguageProvider>);
+  fireEvent.click(screen.getByRole('button'));
+  const hint = await screen.findByText(/cube \$& <test>.3mf/);
+  expect(hint).toHaveTextContent('http://nas.lan:3000/katalog/');
+  expect(hint).not.toHaveTextContent('catalogWebSearchHint');
+});
