@@ -18,6 +18,7 @@ docker run --pull=never -d --name "$name" \
     -e PASSWORD -e CUSTOM_USER=abc -e PUID="$(id -u)" -e PGID="$(id -g)" \
     -e CATALOG_DB=/config/companion-test/catalog.db \
     -e KATALOG_ALLOWED_ROOTS=/config/companion-test/models \
+    -e KATALOG_UPLOAD_DIR=/config/companion-test/models/Eingang -e KATALOG_UPLOAD_MAX_MB=6 \
     --shm-size=1g "$image" >/dev/null
 for _ in $(seq 1 90); do
     if [ "$(docker inspect -f '{{.State.Health.Status}}' "$name")" = healthy ]; then break; fi
@@ -172,6 +173,111 @@ for scheme, port in [('http', sys.argv[1]), ('https', sys.argv[2])]:
 PY
 docker exec "$name" sh -c 'test "$(stat -c %a /config/.katalog-web-hidden.json)" = 600 && test "$(stat -c %U /config/.katalog-web-hidden.json)" = abc'
 docker exec "$name" sh -c 'test "$(stat -c %a /config/.katalog-web-secret)" = 600 && test "$(stat -c %U /config/.katalog-web-secret)" = abc'
+python3 - "$http_port" "$https_port" "$name" <<'PYUPLOAD'
+import base64
+import hashlib
+import http.client
+import json
+import os
+import re
+import socket
+import ssl
+import subprocess
+import sys
+import time
+
+auth = 'Basic ' + base64.b64encode(('abc:' + os.environ['PASSWORD']).encode()).decode()
+container = sys.argv[3]
+data = b'PK\x03\x04' + b'x' * (5 * 1024 * 1024 - 4)
+expected_hash = hashlib.sha256(data).hexdigest()
+
+def inside(script, *args):
+    return subprocess.check_output(['docker', 'exec', container, '/usr/bin/python3', '-c', script, *args], text=True).strip()
+
+for secure, port in [(False, int(sys.argv[1])), (True, int(sys.argv[2]))]:
+    def connection():
+        if secure:
+            return http.client.HTTPSConnection('127.0.0.1', port, context=ssl._create_unverified_context(), timeout=15)
+        return http.client.HTTPConnection('127.0.0.1', port, timeout=15)
+    con = connection()
+    con.request('GET', '/katalog/', headers={'Authorization': auth})
+    page = con.getresponse().read().decode()
+    con.close()
+    token = re.search(r'id="upload"[^>]*data-csrf="([a-f0-9]{64})"', page).group(1)
+    name = ('https' if secure else 'http') + '.3mf'
+
+    def upload(body, expected, login=True, csrf=token, filename=name):
+        headers = {'Content-Type': 'application/octet-stream', 'X-Filename': filename}
+        if login:
+            headers['Authorization'] = auth
+        if csrf:
+            headers['X-CSRF-Token'] = csrf
+        con = connection()
+        try:
+            con.request('POST', '/katalog/upload', body=body, headers=headers)
+            response = con.getresponse()
+            result = response.read()
+            assert response.status == expected, (response.status, result)
+            return json.loads(result) if expected == 200 else None
+        finally:
+            con.close()
+
+    upload(b'PK\x03\x04', 401, login=False)
+    for suffix in ('', ' (2)'):
+        result = upload(data, 200)
+        expected_name = name[:-4] + suffix + '.3mf'
+        assert result == {'ok': True, 'name': expected_name, 'size': len(data)}, result
+        inside("""
+import hashlib, os, pwd, stat, sys
+from pathlib import Path
+p = Path('/config/companion-test/models/Eingang') / sys.argv[1]
+assert hashlib.sha256(p.read_bytes()).hexdigest() == sys.argv[2]
+assert stat.S_IMODE(p.stat().st_mode) == 0o644
+assert pwd.getpwuid(p.stat().st_uid).pw_name == 'abc'
+assert stat.S_IMODE(p.parent.stat().st_mode) == 0o755
+""", expected_name, expected_hash)
+    upload(b'not a zip', 415)
+    upload(b'PK\x03\x04', 403, csrf='')
+    # Wait for the rejection before sending a body the service has already refused.
+    con = connection()
+    con.putrequest('POST', '/katalog/upload')
+    for key, value in {'Authorization': auth, 'Content-Type': 'application/octet-stream',
+                       'Content-Length': str(7 * 1024 * 1024), 'X-Filename': name,
+                       'X-CSRF-Token': token}.items():
+        con.putheader(key, value)
+    con.endheaders()
+    response = con.getresponse()
+    assert response.status == 413, response.status
+    response.read()
+    con.close()
+    con = connection()
+    con.putrequest('POST', '/katalog/upload')
+    for key, value in {'Authorization': auth, 'Content-Type': 'application/octet-stream',
+                       'Content-Length': str(len(data)), 'X-Filename': 'aborted.3mf',
+                       'X-CSRF-Token': token}.items():
+        con.putheader(key, value)
+    con.endheaders()
+    con.send(data[:2 * 1024 * 1024])
+    def parts():
+        return inside("from pathlib import Path; print(len(list(Path('/config/companion-test/models/Eingang').glob('.upload-*.part'))))")
+    try:
+        for _ in range(50):
+            if parts() != '0':
+                break
+            time.sleep(.1)
+        else:
+            raise AssertionError('Interrupted upload never reached the service')
+    finally:
+        con.sock.shutdown(socket.SHUT_RDWR)
+        con.close()
+    for _ in range(100):
+        if parts() == '0':
+            break
+        time.sleep(.1)
+    assert parts() == '0', 'Partial upload was not removed'
+    inside("from pathlib import Path; assert not Path('/config/companion-test/models/Eingang/aborted.3mf').exists()")
+    print('OK: upload: 5 MiB exact bytes, login, token, limit, signature, collision, abc/0644 and abort cleanup', 'https' if secure else 'http')
+PYUPLOAD
 # s6 must restart the companion after an unexpected exit.
 docker exec "$name" /command/s6-svc -k /run/service/svc-katalog-web
 for _ in $(seq 1 20); do

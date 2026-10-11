@@ -17,8 +17,11 @@ import time
 import tempfile
 import threading
 import unicodedata
-from urllib.parse import parse_qs, quote, urlencode, urlsplit
+from urllib.parse import parse_qs, quote, unquote_to_bytes, urlencode, urlsplit
 
+UPLOAD_BLOCK = 1024 * 1024
+UPLOAD_RESERVE = 256 * 1024 * 1024
+UPLOAD_EXTENSIONS = {'.3mf', '.stl', '.obj', '.stp', '.step', '.zip', '.7z', '.rar'}
 BLOCK_SIZE = 64 * 1024
 PAGE_SIZE = 50
 HIDDEN_LIMIT = 100000
@@ -29,7 +32,7 @@ MAX_BODY = 2048
 LIST_KEYS = ('q', 'type', 'folder', 'tag', 'sort', 'page', 'hidden', 'lang')
 ID = r'[0-9]{1,19}'
 CSP = ("default-src 'none'; img-src 'self'; font-src 'self'; style-src 'self' 'unsafe-inline'; "
-       "script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+       "script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 # Assets resolve relative to this script (libexec -> share) so the repo layout and the image layout agree.
 SHARE = Path(__file__).resolve().parent.parent / 'share' / '3mf-katalog-web'
 # Fixed allowlist: the request path is only a dictionary key, never joined into a filesystem path.
@@ -65,6 +68,35 @@ FLAGS = {
 }
 # One tuple per key, in LANGS order (de, en, es, fr).
 TEXT = {
+    'upload_title': ('Dateien hochladen', 'Upload files', 'Subir archivos', 'Téléverser des fichiers'),
+    'upload_choose': ('Dateien auswählen', 'Choose files', 'Seleccionar archivos', 'Choisir des fichiers'),
+    'upload_drop': ('Dateien hier ablegen oder auswählen.', 'Drop files here or choose files.', 'Arrastra archivos aquí o selecciónalos.', 'Dépose des fichiers ici ou sélectionne-les.'),
+    'upload_waiting': ('Wartet', 'Waiting', 'En espera', 'En attente'),
+    'upload_loading': ('Lädt', 'Uploading', 'Subiendo', 'Envoi en cours'),
+    'upload_done': ('Fertig', 'Done', 'Completado', 'Terminé'),
+    'upload_cancelled': ('Abgebrochen', 'Cancelled', 'Cancelado', 'Annulé'),
+    'upload_error': ('Fehler', 'Error', 'Error', 'Erreur'),
+    'upload_progress': ('Fortschritt', 'Progress', 'Progreso', 'Progression'),
+    'upload_nojs': ('Upload braucht JavaScript.', 'Uploads require JavaScript.', 'Para subir archivos se necesita JavaScript.', 'JavaScript est nécessaire pour téléverser des fichiers.'),
+    'upload_success': ('Die Dateien liegen im Ordner „{folder}“ ({path}). In der App: Importieren → Ordner… → {folder} wählen.', 'The files are in “{folder}” ({path}). In the app: Import → Folder… → choose {folder}.', 'Los archivos están en «{folder}» ({path}). En la aplicación: Importar → Carpeta… → seleccionar {folder}.', 'Les fichiers sont dans « {folder} » ({path}). Dans l’application : Importer → Dossier… → choisir {folder}.'),
+    'upload_limits': ('Pro Datei höchstens {mb} MiB. Formate: 3MF, STL, OBJ, STP, STEP, ZIP, 7Z, RAR.', 'Up to {mb} MiB per file. Formats: 3MF, STL, OBJ, STP, STEP, ZIP, 7Z, RAR.', 'Máximo {mb} MiB por archivo. Formatos: 3MF, STL, OBJ, STP, STEP, ZIP, 7Z, RAR.', 'Maximum {mb} Mio par fichier. Formats : 3MF, STL, OBJ, STP, STEP, ZIP, 7Z, RAR.'),
+    'upload_root': ('Upload ausgeschaltet: Ziel außerhalb der erlaubten Modellordner. KATALOG_UPLOAD_DIR unter KATALOG_ALLOWED_ROOTS legen; Symlinks prüfen (Docker-README).', 'Uploads disabled: destination outside allowed model folders. Set KATALOG_UPLOAD_DIR below KATALOG_ALLOWED_ROOTS; check symlinks (Docker README).', 'Subidas desactivadas: destino fuera de las carpetas permitidas. Configura KATALOG_UPLOAD_DIR dentro de KATALOG_ALLOWED_ROOTS y revisa los enlaces simbólicos (README de Docker).', 'Téléversement désactivé : destination hors des dossiers autorisés. Placer KATALOG_UPLOAD_DIR sous KATALOG_ALLOWED_ROOTS et vérifier les liens symboliques (README Docker).'),
+    'upload_permissions': ('Upload ausgeschaltet: Ziel nicht beschreibbar oder nicht anlegbar. Mount schreibbar einbinden und Besitzer/Rechte für PUID/PGID prüfen (Docker-README).', 'Uploads disabled: destination cannot be written or created. Use a writable mount and check ownership/permissions for PUID/PGID (Docker README).', 'Subidas desactivadas: no se puede escribir o crear el destino. Usa un volumen con escritura y comprueba propietario/permisos para PUID/PGID (README de Docker).', 'Téléversement désactivé : destination non accessible en écriture ou impossible à créer. Utiliser un volume accessible en écriture et vérifier propriétaire/droits pour PUID/PGID (README Docker).'),
+    'upload_config': ('Upload ausgeschaltet: KATALOG_UPLOAD_MAX_MB muss eine positive ganze Zahl sein (Docker-README).', 'Uploads disabled: KATALOG_UPLOAD_MAX_MB must be a positive integer (Docker README).', 'Subidas desactivadas: KATALOG_UPLOAD_MAX_MB debe ser un entero positivo (README de Docker).', 'Téléversement désactivé : KATALOG_UPLOAD_MAX_MB doit être un entier positif (README Docker).'),
+    'upload_invalid_name': ('Ungültiger Dateiname.', 'Invalid filename.', 'Nombre de archivo no válido.', 'Nom de fichier non valide.'),
+    'upload_unsupported_type': ('Dateityp nicht erlaubt.', 'File type not allowed.', 'Tipo de archivo no permitido.', 'Type de fichier non autorisé.'),
+    'upload_invalid_signature': ('Inhalt passt nicht zum Dateityp.', 'Content does not match the file type.', 'El contenido no coincide con el tipo de archivo.', 'Le contenu ne correspond pas au type de fichier.'),
+    'upload_invalid_content': ('Datei ist leer oder ungültig.', 'File is empty or invalid.', 'El archivo está vacío o no es válido.', 'Le fichier est vide ou non valide.'),
+    'upload_too_large': ('Datei überschreitet das Größenlimit.', 'File exceeds the size limit.', 'El archivo supera el límite de tamaño.', 'Le fichier dépasse la taille maximale.'),
+    'upload_no_space': ('Zu wenig Speicherplatz auf dem Server.', 'Not enough space on the server.', 'No hay suficiente espacio en el servidor.', 'Espace insuffisant sur le serveur.'),
+    'upload_conflict': ('Zu viele Dateien mit gleichem Namen.', 'Too many files with the same name.', 'Demasiados archivos con el mismo nombre.', 'Trop de fichiers portent le même nom.'),
+    'upload_busy': ('Zwei Uploads laufen bereits. Später erneut versuchen.', 'Two uploads are already running. Try again later.', 'Ya hay dos subidas en curso. Inténtalo más tarde.', 'Deux téléversements sont déjà en cours. Réessayer plus tard.'),
+    'upload_forbidden': ('Zugriff abgelehnt. Seite neu laden und Login prüfen.', 'Access denied. Reload the page and check your login.', 'Acceso denegado. Recarga la página y comprueba la sesión.', 'Accès refusé. Recharger la page et vérifier la connexion.'),
+    'upload_upload_disabled': ('Upload nicht verfügbar. Seite neu laden und Zielordner prüfen.', 'Uploads unavailable. Reload the page and check the destination.', 'Subidas no disponibles. Recarga la página y comprueba el destino.', 'Téléversement indisponible. Recharger la page et vérifier la destination.'),
+    'upload_write_failed': ('Schreiben fehlgeschlagen. Speicherplatz, Mount und Rechte prüfen.', 'Write failed. Check free space, mount and permissions.', 'Error de escritura. Comprueba el espacio, volumen y permisos.', 'Échec d’écriture. Vérifier espace libre, volume et droits.'),
+    'upload_interrupted': ('Übertragung unterbrochen. Verbindung prüfen und erneut versuchen.', 'Transfer interrupted. Check the connection and try again.', 'Transferencia interrumpida. Comprueba la conexión e inténtalo de nuevo.', 'Transfert interrompu. Vérifier la connexion et réessayer.'),
+    'upload_length_required': ('Dateigröße fehlt oder ist ungültig.', 'File size missing or invalid.', 'Tamaño de archivo ausente o no válido.', 'Taille du fichier absente ou non valide.'),
+    'upload_length_mismatch': ('Übertragene Größe stimmt nicht. Erneut versuchen.', 'Transferred size does not match. Try again.', 'El tamaño transferido no coincide. Inténtalo de nuevo.', 'La taille transférée ne correspond pas. Réessayer.'),
     'title': ('Download und Slicer', 'Download and slicer', 'Descargas y slicer', 'Téléchargement et slicer'),
     'missing': ('Katalog noch nicht angelegt – zuerst in der App einrichten. Falls bereits eingerichtet: Datenbankpfad, Leserechte und App-Version prüfen.',
                 'Catalog not created – set it up in the app first. If already configured, check the database path, read permissions and app version.',
@@ -184,6 +216,12 @@ STYLE = _font_faces() + '''
   --crit: oklch(0.684 0.19 15); --crit-soft: oklch(0.3 0.06 15);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
 }
+.upload {padding:1rem;margin:1rem 0;background:var(--panel);border:1px solid var(--line);border-radius:6px}
+.upload-zone {padding:1rem;border:2px dashed var(--line-strong);border-radius:6px;margin:.75rem 0}
+.upload-zone.drag {border-color:var(--accent);background:var(--accent-soft)}
+.upload-list {padding:0;list-style:none}
+.upload-list li {padding:.75rem 0;border-top:1px solid var(--line);overflow-wrap:anywhere;min-width:0}
+.upload-list progress {display:block;width:100%;max-width:30rem;margin:.5rem 0;accent-color:var(--accent)}
 * {box-sizing:border-box}
 html {font-family:'Barlow',Helvetica,sans-serif;scroll-padding-top:6rem}
 [hidden] {display:none !important}
@@ -316,6 +354,85 @@ SCRIPT = '''(function () {
 if (/Mac/i.test(navigator.platform || navigator.userAgent)) {
  document.querySelectorAll('a[data-mac]').forEach(a => { a.href = a.dataset.mac; });
 }'''
+
+
+UPLOAD_SCRIPT = """
+(function () {
+ const section = document.getElementById('upload');
+ if (!section) return;
+ const t = JSON.parse(section.dataset.text), queue = [];
+ const input = document.getElementById('upload-input'), zone = document.getElementById('upload-zone');
+ const list = document.getElementById('upload-list'), success = document.getElementById('upload-success');
+ let running = false;
+ function pump() {
+  if (running) return;
+  const item = queue.shift();
+  if (!item) return;
+  if (item.cancelled) { pump(); return; }
+  running = true;
+  const xhr = new XMLHttpRequest(); item.xhr = xhr;
+  item.status.textContent = t.upload_loading;
+  let finished = false;
+  function finish(message, ok) {
+   if (finished) return;
+   finished = true;
+   item.status.textContent = message;
+   item.cancel.disabled = true;
+   if (ok) { item.progress.value = 100; success.textContent = section.dataset.success; }
+   running = false; pump();
+  }
+  xhr.open('POST', '/katalog/upload');
+  xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+  xhr.setRequestHeader('X-Filename', encodeURIComponent(item.file.name));
+  xhr.setRequestHeader('X-CSRF-Token', section.dataset.csrf);
+  xhr.upload.onprogress = function (e) {
+   if (e.lengthComputable) item.progress.value = e.loaded / e.total * 100;
+  };
+  xhr.onload = function () {
+   let response = {};
+   try { response = JSON.parse(xhr.responseText); } catch (e) {}
+   if (xhr.status === 200 && response.ok) {
+    item.name.textContent = response.name;
+    finish(t.upload_done, true);
+   } else {
+    const codes = {401:'forbidden',403:'forbidden',404:'upload_disabled',413:'too_large',429:'busy',503:'write_failed'};
+    finish(t.upload_error + ': ' + (t['upload_' + response.error] || t['upload_' + codes[xhr.status]] || t.upload_interrupted));
+   }
+  };
+  xhr.onerror = function () { finish(t.upload_error + ': ' + t.upload_interrupted); };
+  xhr.onabort = function () { finish(t.upload_cancelled); };
+  xhr.send(item.file);
+ }
+ function add(files) {
+  for (const file of files) {
+   const row = document.createElement('li'), name = document.createElement('strong');
+   const size = document.createElement('span'), progress = document.createElement('progress');
+   const status = document.createElement('p'), cancel = document.createElement('button');
+   name.textContent = file.name;
+   size.textContent = ' · ' + new Intl.NumberFormat(document.documentElement.lang).format(file.size) + ' B';
+   progress.max = 100; progress.value = 0;
+   progress.setAttribute('aria-label', t.upload_progress + ': ' + file.name);
+   status.setAttribute('role', 'status'); status.textContent = t.upload_waiting;
+   cancel.type = 'button'; cancel.textContent = t.cancel;
+   cancel.setAttribute('aria-label', t.cancel + ': ' + file.name);
+   const item = {file, name, progress, status, cancel, cancelled:false};
+   cancel.onclick = function () {
+    item.cancelled = true;
+    if (item.xhr) item.xhr.abort();
+    else { status.textContent = t.upload_cancelled; cancel.disabled = true; }
+   };
+   row.append(name, size, progress, status, cancel); list.append(row); queue.push(item);
+  }
+  pump();
+ }
+ document.getElementById('upload-choose').onclick = function () { input.click(); };
+ input.onchange = function () { add(input.files); input.value = ''; };
+ zone.ondragover = function (e) { e.preventDefault(); zone.classList.add('drag'); };
+ zone.ondragleave = function () { zone.classList.remove('drag'); };
+ zone.ondrop = function (e) { e.preventDefault(); zone.classList.remove('drag'); add(e.dataTransfer.files); };
+ section.hidden = false;
+})();
+"""
 
 
 def escape(value):
@@ -505,12 +622,161 @@ class HiddenStore:
             return True
 
 
+class UploadError(Exception):
+    def __init__(self, status, code):
+        self.status, self.code = status, code
+
+
+def upload_name(encoded):
+    try:
+        if re.search(r'%(?![0-9a-fA-F]{2})', encoded):
+            raise ValueError
+        name = unicodedata.normalize('NFC', unquote_to_bytes(encoded).decode('utf-8'))
+        if (not name or name.startswith('.') or (name != name.strip() or name.endswith('.')) or
+                any(c in '/\\' or unicodedata.category(c).startswith('C') for c in name) or
+                len(name) > 180 or len(name.encode('utf-8')) > 240):
+            raise ValueError
+    except (ValueError, UnicodeError):
+        raise UploadError(400, 'invalid_name') from None
+    if Path(name).suffix.lower() not in UPLOAD_EXTENSIONS:
+        raise UploadError(415, 'unsupported_type')
+    return name
+
+
+def upload_signature(name, block):
+    if not block:
+        raise UploadError(400, 'invalid_content')
+    ext = Path(name).suffix.lower()
+    signatures = {'.3mf': b'PK\x03\x04', '.zip': b'PK\x03\x04',
+                  '.7z': b"7z\xbc\xaf\x27\x1c", '.rar': b'Rar!\x1a\x07'}
+    if ext in signatures:
+        valid = block.startswith(signatures[ext])
+    elif ext in ('.stp', '.step'):
+        valid = block.lstrip().startswith(b'ISO-10303-21')
+    else:
+        valid = not block.startswith((b'MZ', b'\x7fELF', b'#!'))
+    if not valid:
+        raise UploadError(415, 'invalid_signature')
+
+
 class Catalog:
     def __init__(self, db_path=None, roots=None, secret=None, hidden=None):
         self.db_path = db_path
         self.hidden = HiddenStore(hidden)
         self.roots = [os.path.abspath(p) for p in (allowed_roots() if roots is None else roots)]
         self.secret = load_secret() if secret is None else secret
+        self.upload_dir = os.environ.get('KATALOG_UPLOAD_DIR') or '/models/Eingang'
+        try:
+            self.upload_max = int(os.environ.get('KATALOG_UPLOAD_MAX_MB') or '2048') * UPLOAD_BLOCK
+        except ValueError:
+            self.upload_max = 0
+        self.upload_slots = threading.BoundedSemaphore(2)
+        self.cleanup_uploads()
+
+    def upload_csrf(self):
+        return hmac.new(self.secret, b'upload|csrf', hashlib.sha256).hexdigest()
+
+    def upload_allowed(self, path):
+        return any(os.path.commonpath([root, path]) == root for root in self.roots)
+
+    def upload_problem(self):
+        if self.upload_max <= 0:
+            return 'upload_config'
+        if not os.path.isabs(self.upload_dir):
+            return 'upload_root'
+        target = os.path.realpath(self.upload_dir)
+        if not self.upload_allowed(target):
+            return 'upload_root'
+        parent = target
+        while not os.path.exists(parent):
+            parent = os.path.dirname(parent)
+        try:
+            if not os.path.isdir(parent) or not os.access(parent, os.W_OK | os.X_OK):
+                return 'upload_permissions'
+            if os.statvfs(parent).f_flag & os.ST_RDONLY:
+                return 'upload_permissions'
+        except OSError:
+            return 'upload_permissions'
+        return None
+
+    @contextlib.contextmanager
+    def upload_folder(self, create=False):
+        if self.upload_problem():
+            raise UploadError(404, 'upload_disabled')
+        target = os.path.realpath(self.upload_dir)
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        fd = os.open('/', flags)
+        try:
+            # Walk pinned parents so a swapped symlink cannot redirect directory creation.
+            for component in Path(target).parts[1:]:
+                try:
+                    child = os.open(component, flags, dir_fd=fd)
+                except FileNotFoundError:
+                    if not create:
+                        raise
+                    parent = os.path.realpath(f'/proc/self/fd/{fd}')
+                    if not self.upload_allowed(os.path.join(parent, component)):
+                        raise UploadError(404, 'upload_disabled') from None
+                    os.makedirs(f'/proc/self/fd/{fd}/{component}', mode=0o755, exist_ok=True)
+                    child = os.open(component, flags, dir_fd=fd)
+                os.close(fd)
+                fd = child
+            # Pin the directory and recheck the opened inode, not a replaceable path.
+            if not self.upload_allowed(os.path.realpath(f'/proc/self/fd/{fd}')):
+                raise UploadError(404, 'upload_disabled')
+            yield fd
+        finally:
+            os.close(fd)
+
+    def cleanup_uploads(self):
+        try:
+            with self.upload_folder() as directory:
+                for name in os.listdir(directory):
+                    if re.fullmatch(r'\.upload-[a-zA-Z0-9_-]+\.part', name):
+                        info = os.stat(name, dir_fd=directory, follow_symlinks=False)
+                        if stat.S_ISREG(info.st_mode) and info.st_mtime < time.time() - 3600:
+                            os.unlink(name, dir_fd=directory)
+        except (OSError, UploadError):
+            pass
+
+    def receive_upload(self, source, length, name, extra=lambda: False):
+        if length > self.upload_max:
+            raise UploadError(413, 'too_large')
+        if length <= 0:
+            raise UploadError(400, 'invalid_content')
+        with self.upload_folder(create=True) as directory:
+            space = os.statvfs(directory)
+            if space.f_bavail * space.f_frsize <= length + UPLOAD_RESERVE:
+                raise UploadError(409, 'no_space')
+            temporary = '.upload-' + secrets.token_hex(16) + '.part'
+            fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644, dir_fd=directory)
+            try:
+                with os.fdopen(fd, 'wb') as stream:
+                    os.fchmod(stream.fileno(), 0o644)
+                    total = 0
+                    while total < length:
+                        block = source.read(min(UPLOAD_BLOCK, length - total))
+                        if not block or len(block) > length - total:
+                            raise UploadError(400, 'length_mismatch')
+                        if total == 0:
+                            upload_signature(name, block)
+                        total += len(block)
+                        stream.write(block)
+                    if extra():
+                        raise UploadError(400, 'length_mismatch')
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                stem, ext = os.path.splitext(name)
+                for attempt in range(1, 101):
+                    final = name if attempt == 1 else f'{stem} ({attempt}){ext}'
+                    try:
+                        os.link(temporary, final, src_dir_fd=directory, dst_dir_fd=directory, follow_symlinks=False)
+                        return {'ok': True, 'name': final, 'size': total}
+                    except FileExistsError:
+                        continue
+                raise UploadError(409, 'conflict')
+            finally:
+                os.unlink(temporary, dir_fd=directory)
 
     @contextlib.contextmanager
     def connect(self):
@@ -648,7 +914,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def log_request(self, code='-', size='-'):
         path = getattr(self, 'path', '').split('?', 1)[0]
         route = next((p for p in ('signed', 'download', 'thumb', 'health') if path.startswith('/katalog/' + p + '/')), 'page')
-        if path in ('/katalog/remove', '/katalog/restore'):
+        if path in ('/katalog/remove', '/katalog/restore', '/katalog/upload'):
             route = path.rsplit('/', 1)[1]
         method = self.command if self.command in ('GET', 'HEAD', 'POST') else 'OTHER'
         print(f'{method} /katalog/{route} {code}', flush=True)
@@ -701,6 +967,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             path = urlsplit(self.path).path
         except ValueError:
             self.send_error(400)
+            return
+        if path == '/katalog/upload':
+            self.upload()
             return
         if path not in ('/katalog/remove', '/katalog/restore'):
             self.method_not_allowed()
@@ -768,6 +1037,64 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if pairs.get('hidden') == ['1'] and set(pairs) <= {'hidden', 'lang'}:
                 target = list_url({'lang': pairs.get('lang', [''])[0]})
         self.respond(303, headers={'Location': target})
+
+    def upload(self):
+        app = self.server.catalog
+        self.close_connection = True
+        acquired = False
+        try:
+            source = self.headers.get('Origin')
+            source = (None if source == 'null' else source) or self.headers.get('Referer')
+            try:
+                if source is not None and (not self.headers.get('Host') or
+                        urlsplit(source).netloc.lower() != self.headers['Host'].lower()):
+                    raise ValueError
+            except ValueError:
+                raise UploadError(403, 'forbidden') from None
+            token = self.headers.get('X-CSRF-Token', '')
+            if not re.fullmatch(r'[0-9a-f]{64}', token) or not hmac.compare_digest(token, app.upload_csrf()):
+                raise UploadError(403, 'forbidden')
+            lengths = self.headers.get_all('Content-Length', [])
+            if len(lengths) != 1 or not re.fullmatch(r'[0-9]{1,20}', lengths[0]):
+                raise UploadError(411, 'length_required')
+            if 'Transfer-Encoding' in self.headers:
+                raise UploadError(400, 'length_mismatch')
+            length = int(lengths[0])
+            if length > app.upload_max:
+                raise UploadError(413, 'too_large')
+            if self.headers.get('Content-Type', '').lower() != 'application/octet-stream':
+                raise UploadError(415, 'unsupported_type')
+            name = upload_name(self.headers.get('X-Filename', ''))
+            if app.upload_problem():
+                raise UploadError(404, 'upload_disabled')
+            acquired = app.upload_slots.acquire(blocking=False)
+            if not acquired:
+                raise UploadError(429, 'busy')
+            self.connection.settimeout(60)
+
+            def extra():
+                # HTTP frames the body by length; only already available surplus is observable.
+                self.connection.settimeout(0)
+                try:
+                    return bool(self.rfile.read(1))
+                except (BlockingIOError, TimeoutError):
+                    return False
+                finally:
+                    self.connection.settimeout(60)
+
+            result = app.receive_upload(self.rfile, length, name, extra)
+            status = 200
+        except UploadError as error:
+            status, result = error.status, {'ok': False, 'error': error.code}
+        except (TimeoutError, ConnectionError):
+            status, result = 400, {'ok': False, 'error': 'interrupted'}
+        except OSError:
+            status, result = 503, {'ok': False, 'error': 'write_failed'}
+        finally:
+            self.connection.settimeout(10)
+            if acquired:
+                app.upload_slots.release()
+        self.respond(status, json.dumps(result).encode(), 'application/json', headers={'Connection': 'close'})
 
     def do_GET(self):
         try:
@@ -918,6 +1245,27 @@ class Handler(http.server.BaseHTTPRequestHandler):
                      f'</main><script>{SCRIPT}</script></body></html>')
         self.respond(status, html_text.encode(), 'text/html; charset=utf-8')
 
+    def upload_section(self, lang):
+        app = self.server.catalog
+        def t(key):
+            return TEXT[key][LANGS.index(lang)]
+        problem = app.upload_problem()
+        if problem:
+            return f'<p role="status">{escape(t(problem))}</p>'
+        texts = {k: v[LANGS.index(lang)] for k, v in TEXT.items() if k.startswith('upload_') or k == 'cancel'}
+        target = os.path.realpath(app.upload_dir)
+        success = t('upload_success').format(folder=os.path.basename(target), path=target)
+        accept = ','.join(sorted(UPLOAD_EXTENSIONS))
+        return (f'<section class="upload" id="upload" hidden aria-labelledby="upload-title" '
+                f'data-csrf="{app.upload_csrf()}" data-text="{escape(json.dumps(texts))}" data-success="{escape(success)}">'
+                f'<h2 id="upload-title">{t("upload_title")}</h2>'
+                f'<p>{escape(t("upload_limits").format(mb=app.upload_max // UPLOAD_BLOCK))}</p>'
+                f'<div class="upload-zone" id="upload-zone"><p>{t("upload_drop")}</p>'
+                f'<input id="upload-input" type="file" multiple accept="{accept}" hidden>'
+                f'<button type="button" id="upload-choose">{t("upload_choose")}</button></div>'
+                '<ul class="upload-list" id="upload-list"></ul><p id="upload-success" role="status" tabindex="0"></p></section>'
+                f'<noscript><p>{t("upload_nojs")}</p></noscript>')
+
     def page(self, base, query):
         lang = language(self.headers.get('Accept-Language', ''), query.get('lang'))
         explicit = query.get('lang', '')
@@ -936,6 +1284,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if single:
             parts.append(f'<p class="back"><a href="{escape(home)}">{t("all_files")}</a></p>')
         parts.append(f'<h1>{t("hidden_title") if view_hidden else t("title")}</h1>')
+        if not single:
+            parts.append(self.upload_section(lang))
         removed = query.get('removed', '')
         if re.fullmatch(ID, removed) and not single:
             row = app.file(removed, include_hidden=True)
@@ -1029,11 +1379,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                              f'<form method="post" action="/katalog/remove"><input type="hidden" name="id" value=""><input type="hidden" name="csrf" value="">'
                              f'<input type="hidden" name="next" value=""><div class="dlg-actions"><button type="button" class="secondary" data-rm-cancel autofocus>{t("cancel")}</button>'
                              f'<button type="submit">{t("remove_confirm")}</button></div></form></div></dialog>')
-        parts.append(f'</main><script>{SCRIPT}</script></body></html>')
+        parts.append(f'</main><script>{SCRIPT}{UPLOAD_SCRIPT}</script></body></html>')
         self.respond(status, ''.join(parts).encode(), 'text/html; charset=utf-8')
 
 
 def main():
+    os.umask(0o022)
     port = int(os.environ.get('KATALOG_WEB_PORT', '8099'))
     if not 1 <= port <= 65535:
         raise ValueError('Invalid port')

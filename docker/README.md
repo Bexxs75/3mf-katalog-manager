@@ -135,8 +135,46 @@ wieder aktivieren**: Der Import pausiert sie bewusst.
 
 ### Modelle in die App bringen
 
-Drag & Drop vom Desktop in das Browserfenster geht nicht (der Browser nimmt dort
-keine Dateien an). So kommen Modelle stattdessen in die App:
+**Vom eigenen Rechner hochladen:** Öffne `/katalog/`, wähle unter „Dateien
+hochladen“ Dateien aus oder ziehe sie auf die Ablagefläche. Sie landen im Ordner
+**Eingang** (`/models/Eingang`). Danach in der App **Importieren → Ordner… → Eingang**
+wählen. Die Begleitseite schreibt nie in die Katalogdatenbank; die App überwacht
+den Ordner nicht automatisch. Upload braucht JavaScript und denselben Login wie
+die Begleitseite. Fortschritt und Abbrechen sind für jede Datei verfügbar; der
+Browser überträgt nacheinander, der Dienst erlaubt insgesamt zwei Uploads.
+
+Voraussetzung: `/models` ist für den Dienstbenutzer `abc` (PUID/PGID aus Compose)
+**schreibbar**. Eingang wird erst beim ersten Upload angelegt (0755, Dateien 0644).
+Bei fehlenden Rechten zeigt die Seite einen Hinweis statt der Upload-Fläche:
+Mount ohne `:ro` einbinden, Besitzer und Schreib-/Suchrechte des Zielordners bzw.
+seines vorhandenen Elternordners auf dem Host passend zu PUID/PGID setzen. Ein
+Dateipfad statt eines Ordners funktioniert ebenfalls nicht.
+
+Optional: `KATALOG_UPLOAD_DIR` (Standard `/models/Eingang`) und
+`KATALOG_UPLOAD_MAX_MB` (Standard **2048 MiB pro Datei**, positive ganze Zahl).
+Dazu die Zeilen in `.env` **und** Compose einkommentieren. Leere Werte gelten als
+nicht gesetzt. Das Ziel muss auch nach Auflösen von Symlinks unter einer erlaubten
+Wurzel liegen (`KATALOG_ALLOWED_ROOTS`, sonst vorhandene `/models`, `/models2` usw.).
+Erlaubt: `.3mf`, `.stl`, `.obj`, `.stp`, `.step`, `.zip`, `.7z`, `.rar`; Namen und
+Anfangssignatur werden geprüft, Archive werden beim Upload nicht entpackt. Dies
+ist keine vollständige Format- oder Virenprüfung. Bestehende Dateien bleiben
+erhalten; gleiche Namen bekommen ` (2)` bis ` (100)`, danach einen Konfliktfehler.
+Mindestens Dateigröße plus 256 MiB freier Platz muss verfügbar sein. Nach 60 Sekunden
+ohne Körperdaten bricht der Dienst ab. Abgebrochene temporäre Dateien werden
+entfernt; nach einem Dienstabsturz räumt der nächste Start Reste älter als eine
+Stunde auf. Die HTTP-Körperlänge begrenzt den Upload; unmittelbar erkennbare
+Zusatzbytes werden abgelehnt, die Verbindung wird anschließend geschlossen.
+
+Der eingebaute nginx erlaubt **4 GiB**, die eigentliche Grenze setzt der Dienst;
+`KATALOG_UPLOAD_MAX_MB` daher höchstens **4096** setzen. Ein davorliegender
+**Reverse Proxy** braucht ebenfalls ein höheres Größenlimit und Streaming.
+Bei Nginx Proxy Manager im Reiter **Advanced**: `client_max_body_size 4g;` und
+`proxy_request_buffering off;`. **Nicht von uns mit echtem Nginx Proxy Manager
+getestet.** Proxy-Zeitlimits müssen zur Übertragungsdauer passen (intern 3600 s).
+
+**Bisheriger Weg über Ordner, Netzlaufwerk oder `scp`:** Drag & Drop direkt in den
+gestreamten KasmVNC-Desktop funktioniert weiterhin nicht. So kommen Dateien über
+den Server in die App:
 
 1. **Ordner einbinden.** Lege die Modelle in den Ordner, der in Compose als
    `/models` eingebunden ist (Standard `./models` oder `MODELS_DIR`). Der Ordner
@@ -406,8 +444,44 @@ connections afterwards**: import deliberately pauses them.
 
 ### Getting models into the app
 
-Drag and drop from the desktop into the browser window does not work (the browser
-does not accept files there). Use this instead:
+**Upload from your computer:** Open `/katalog/`, choose files under “Upload files”
+or drag them onto the drop area. They arrive in **Eingang** (`/models/Eingang`).
+Then in the app choose **Import → Folder… → Eingang**. The companion never writes
+to the catalog database; the app does not automatically watch the folder. Uploads
+require JavaScript and the same login as the companion. Each file has progress
+and cancellation; the browser sends files sequentially, the service allows two
+uploads in total.
+
+Prerequisite: `/models` must be **writable** by service user `abc` (Compose
+PUID/PGID). Eingang is created on the first upload only (0755, files 0644).
+If permissions are missing, the page shows a hint instead of the upload area:
+mount without `:ro`, set host ownership and write/search permissions on the target
+or its existing parent to match PUID/PGID. A file path instead of a directory
+also cannot be used.
+
+Optional: `KATALOG_UPLOAD_DIR` (default `/models/Eingang`) and
+`KATALOG_UPLOAD_MAX_MB` (default **2048 MiB per file**, positive integer).
+Uncomment the lines in **both** `.env` and Compose. Empty values use service
+defaults. The destination must stay inside an allowed root after resolving
+symlinks (`KATALOG_ALLOWED_ROOTS`, otherwise existing `/models`, `/models2`, etc.).
+Allowed: `.3mf`, `.stl`, `.obj`, `.stp`, `.step`, `.zip`, `.7z`, `.rar`; filenames
+and initial signatures are checked. Uploads do not extract archives. This is not
+full format validation or a virus scan. Existing files remain intact; duplicate
+names get ` (2)` through ` (100)`, then a conflict error. Available space must
+exceed the file size plus 256 MiB. Uploads abort after 60 seconds without body
+data. Interrupted temporary files are removed; after a service crash the next
+startup removes leftovers older than an hour. HTTP body length bounds the upload;
+immediately observable excess bytes are rejected and the connection is closed.
+
+The built-in nginx allows **4 GiB**; the service sets the actual limit, so keep
+`KATALOG_UPLOAD_MAX_MB` at **4096 or below**. An upstream **reverse proxy** also
+needs a higher size limit and streaming. In Nginx Proxy Manager's **Advanced** tab:
+`client_max_body_size 4g;` and `proxy_request_buffering off;`. **Not tested by us
+with a real Nginx Proxy Manager.** Proxy timeouts must accommodate the transfer
+(internal timeouts: 3600 s).
+
+**Existing folder, network drive or `scp` method:** Drag and drop directly into
+the streamed KasmVNC desktop still does not work. To transfer via the server:
 
 1. **Mount a folder.** Put the models in the folder mounted as `/models` in Compose
    (default `./models` or `MODELS_DIR`). The folder must be writable if the app is

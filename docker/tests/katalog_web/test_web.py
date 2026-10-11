@@ -121,6 +121,221 @@ class WebTests(unittest.TestCase):
     def signed(self, fid='1', token=None, name='different.stl'):
         return f'/katalog/signed/{fid}/{token or self.app.token(fid)}/{name}'
 
+    def upload(self, name='model.stl', data=b'solid model', headers=None):
+        self.app.upload_dir = str(self.root / 'Eingang')
+        values = {'Content-Type': 'application/octet-stream', 'Content-Length': str(len(data)),
+                  'X-Filename': quote(name, safe=''),
+                  'X-CSRF-Token': hmac.new(self.app.secret, b'upload|csrf', hashlib.sha256).hexdigest(),
+                  **(headers or {})}
+        return self.request('/katalog/upload', 'POST', {k: v for k, v in values.items() if v is not None}, data)
+
+    def test_upload_atomic_collision_and_permissions(self):
+        for expected in ('model.stl', 'model (2).stl'):
+            status, headers, body, _, log = self.upload()
+            self.assertEqual(status, 200, body)
+            self.assertEqual(json.loads(body), {'ok': True, 'name': expected, 'size': 11})
+            target = self.root / 'Eingang' / expected
+            self.assertEqual(target.read_bytes(), b'solid model')
+            self.assertEqual(target.stat().st_mode & 0o777, 0o644)
+            self.assertEqual(headers['Content-Type'], 'application/json')
+            self.assertEqual(headers['Cache-Control'], 'no-store')
+            self.assertEqual(log.strip(), 'POST /katalog/upload 200')
+        self.assertFalse(list((self.root / 'Eingang').glob('.upload-*.part')))
+
+    def test_upload_names(self):
+        for name, expected in [('../x.stl', 400), ('a/b.stl', 400), ('a\\b.stl', 400),
+                               ('/x.stl', 400), ('..', 400), ('', 400), ('.x.stl', 400),
+                               ('a\x00.stl', 400), ('a\x1f.stl', 400), (' x.stl', 400),
+                               ('x.stl ', 400), ('x.stl.', 400), ('a' * 177 + '.stl', 400),
+                               ('界' * 80 + '.stl', 400), ('x.3mf.exe', 415), ('x.txt', 415)]:
+            with self.subTest(name=name):
+                self.assertEqual(self.upload(name)[0], expected)
+        self.assertEqual(json.loads(self.upload('e\u0301.stl')[2])['name'], 'é.stl')
+
+    def test_upload_signatures(self):
+        good = {'3mf': b'PK\x03\x04', 'zip': b'PK\x03\x04', '7z': b"7z\xbc\xaf\x27\x1c",
+                'rar': b'Rar!\x1a\x07', 'stp': b' \nISO-10303-21;', 'step': b'ISO-10303-21;',
+                'stl': b'solid x', 'obj': b'v 1 2 3'}
+        for ext, data in good.items():
+            with self.subTest(ext=ext):
+                self.assertEqual(self.upload('x.' + ext, data)[0], 200)
+                for invalid in (b'MZbad', b'\x7fELFbad', b'#!bad'):
+                    self.assertEqual(self.upload('bad.' + ext, invalid)[0], 415)
+        self.assertEqual(self.upload(data=b'')[0], 400)
+        self.assertFalse(list((self.root / 'Eingang').glob('.upload-*.part')))
+
+    def test_upload_length_auth_origin(self):
+        for headers, status in [({'Content-Length': None}, 411), ({'Content-Length': 'x'}, 411),
+                                 ({'Content-Length': '-1'}, 411), ({'Content-Length': '9999999999'}, 413),
+                                 ({'Content-Type': 'text/plain'}, 415), ({'X-CSRF-Token': None}, 403),
+                                 ({'X-CSRF-Token': 'wrong'}, 403), ({'X-CSRF-Token': self.app.csrf('1')}, 403),
+                                 ({'Origin': 'https://evil.test'}, 403), ({'Referer': 'https://evil.test/x'}, 403),
+                                 ({'Transfer-Encoding': 'chunked'}, 400), ({'Content-Length': '20'}, 400)]:
+            with self.subTest(headers=headers):
+                self.assertEqual(self.upload(headers=headers)[0], status)
+        self.assertEqual(self.upload(headers={'Origin': 'null'})[0], 200)
+        self.assertEqual(self.upload(headers={'Origin': 'http://catalog.example:3000'})[0], 200)
+
+    def test_upload_streaming_and_early_signature_rejection(self):
+        self.app.upload_dir = str(self.root / 'Eingang')
+        class Generated:
+            def __init__(self, invalid=False):
+                self.calls = []
+                self.invalid = invalid
+            def read(self, size):
+                self.calls.append(size)
+                return (b'MZ' if self.invalid else b'xx') + b'x' * (size - 2)
+        stream = Generated()
+        result = self.app.receive_upload(stream, 5 * 1024 * 1024, 'large.stl')
+        self.assertEqual(result['size'], 5 * 1024 * 1024)
+        self.assertEqual(stream.calls, [1024 * 1024] * 5)
+        bad = Generated(True)
+        with self.assertRaises(self.web.UploadError):
+            self.app.receive_upload(bad, 5 * 1024 * 1024, 'bad.stl')
+        self.assertEqual(len(bad.calls), 1)
+        self.assertFalse(list((self.root / 'Eingang').glob('.upload-*.part')))
+
+    def test_upload_surplus_and_short_body_cleanup(self):
+        self.assertEqual(self.upload(headers={'Content-Length': '3'})[0], 400)
+        self.assertEqual(self.upload(headers={'Content-Length': '100'})[0], 400)
+        self.assertFalse(list((self.root / 'Eingang').iterdir()))
+        class OversizedRead:
+            def read(self, size):
+                return b'x' * (size + 1)
+        with self.assertRaises(self.web.UploadError) as raised:
+            self.app.receive_upload(OversizedRead(), 10, 'bad.stl')
+        self.assertEqual(raised.exception.code, 'length_mismatch')
+
+    def test_upload_space_write_failure_and_conflict(self):
+        self.app.upload_dir = str(self.root / 'Eingang')
+        space = types.SimpleNamespace(f_bavail=0, f_frsize=4096, f_flag=0)
+        with patch.object(self.web.os, 'statvfs', return_value=space):
+            response = self.upload()
+            self.assertEqual(response[0], 409)
+            self.assertEqual(json.loads(response[2])['error'], 'no_space')
+        with patch.object(self.web.os, 'fsync', side_effect=OSError):
+            self.assertEqual(self.upload()[0], 503)
+        with patch.object(self.web.os, 'link', side_effect=FileExistsError):
+            self.assertEqual(self.upload()[0], 409)
+        (self.root / 'Eingang').rmdir()
+        with patch.object(self.web.os, 'makedirs', side_effect=PermissionError):
+            self.assertEqual(self.upload()[0], 503)
+        self.assertFalse((self.root / 'Eingang').exists())
+
+    def test_upload_slots_and_timeout_cleanup(self):
+        import threading
+        self.app.upload_dir = str(self.root / 'Eingang')
+        entered = threading.Barrier(3)
+        release = threading.Event()
+        original = self.app.receive_upload
+        def hold(*args, **kwargs):
+            entered.wait(timeout=5)
+            release.wait(timeout=5)
+            return original(*args, **kwargs)
+        # Separate handlers avoid redirecting process-wide stdout in worker threads.
+        def request():
+            data = b'solid x'
+            raw = ('POST /katalog/upload HTTP/1.1\r\nHost: catalog.example:3000\r\n'
+                   'Content-Type: application/octet-stream\r\nContent-Length: 7\r\n'
+                   'X-Filename: same.stl\r\nX-CSRF-Token: ' + self.app.upload_csrf() + '\r\n\r\n').encode() + data
+            sock = Socket(raw)
+            self.web.Handler(sock, ('127.0.0.1', 1234), types.SimpleNamespace(catalog=self.app))
+            return sock.output.getvalue()
+        results = []
+        with patch.object(self.app, 'receive_upload', side_effect=hold), patch.object(self.web.Handler, 'log_request'):
+            workers = [threading.Thread(target=lambda: results.append(request())) for _ in range(2)]
+            for worker in workers:
+                worker.start()
+            try:
+                entered.wait(timeout=5)
+                self.assertEqual(self.upload()[0], 429)
+            finally:
+                release.set()
+                for worker in workers:
+                    worker.join(timeout=5)
+        self.assertEqual(len(results), 2)
+        self.assertTrue(all(b'200 OK' in result for result in results))
+        self.assertTrue((self.root / 'Eingang/same (2).stl').exists())
+        class Interrupted:
+            def read(self, size):
+                raise TimeoutError
+        with self.assertRaises(TimeoutError):
+            self.app.receive_upload(Interrupted(), 10, 'timeout.stl')
+        self.assertFalse(list((self.root / 'Eingang').glob('.upload-*.part')))
+        self.assertEqual(self.upload()[0], 200)
+
+    def test_upload_lazy_directory_cleanup_and_configuration(self):
+        target = self.root / 'Eingang'
+        with patch.dict(os.environ, {'KATALOG_UPLOAD_DIR': str(target), 'KATALOG_UPLOAD_MAX_MB': ''}):
+            app = self.web.Catalog(str(self.db), [str(self.root)], b's' * 32, str(self.hidden))
+            self.assertEqual(app.upload_max, 2048 * 1024 * 1024)
+            self.assertFalse(target.exists())
+            target.mkdir()
+            old = target / '.upload-old.part'
+            old.write_bytes(b'old')
+            os.utime(old, (time.time() - 7200,) * 2)
+            fresh = target / '.upload-fresh.part'
+            fresh.write_bytes(b'new')
+            model = target / 'keep.stl'
+            model.write_bytes(b'old')
+            os.utime(model, (time.time() - 7200,) * 2)
+            self.web.Catalog(str(self.db), [str(self.root)], b's' * 32, str(self.hidden))
+            self.assertFalse(old.exists())
+            self.assertTrue(fresh.exists())
+            self.assertTrue(model.exists())
+        with patch.dict(os.environ, {'KATALOG_UPLOAD_DIR': '', 'KATALOG_UPLOAD_MAX_MB': ''}):
+            app = self.web.Catalog(str(self.db), [], b's' * 32, str(self.hidden))
+            self.assertEqual(app.upload_dir, '/models/Eingang')
+
+    def test_upload_disabled_symlink_permissions_readonly(self):
+        (self.root / 'Eingang').symlink_to(self.base, target_is_directory=True)
+        self.assertEqual(self.upload()[0], 404)
+        self.assertNotIn(b'id="upload-zone"', self.request()[2])
+        (self.root / 'Eingang').unlink()
+        with patch.object(self.web.os, 'access', return_value=False):
+            self.assertEqual(self.upload()[0], 404)
+            self.assertNotIn(b'id="upload-zone"', self.request()[2])
+        space = types.SimpleNamespace(f_flag=os.ST_RDONLY)
+        with patch.object(self.web.os, 'statvfs', return_value=space):
+            self.assertEqual(self.upload()[0], 404)
+
+    def test_upload_directory_creation_cannot_follow_swapped_parent(self):
+        parent = self.root / 'parent'
+        parent.mkdir()
+        outside = self.base / 'outside'
+        outside.mkdir()
+        self.app.upload_dir = str(parent / 'child')
+        original = self.web.os.makedirs
+        swapped = False
+        def swap_then_create(path, *args, **kwargs):
+            nonlocal swapped
+            if not swapped:
+                swapped = True
+                parent.rename(self.root / 'parked')
+                parent.symlink_to(outside, target_is_directory=True)
+            return original(path, *args, **kwargs)
+        with patch.object(self.web.os, 'makedirs', side_effect=swap_then_create):
+            try:
+                self.app.receive_upload(io.BytesIO(b'solid x'), 7, 'safe.stl')
+            except (self.web.UploadError, OSError):
+                pass
+        self.assertTrue(swapped)
+        self.assertFalse((outside / 'child').exists())
+
+    def test_upload_html_and_languages(self):
+        self.app.upload_dir = str(self.root / 'Eingang')
+        for index, lang in enumerate(self.web.LANGS):
+            body = self.request('/katalog/?lang=' + lang)[2].decode()
+            self.assertIn('id="upload-zone"', body)
+            self.assertIn(self.app.upload_csrf(), body)
+            self.assertIn(self.web.TEXT['upload_title'][index], body)
+            self.assertIn('type="file" multiple', body)
+            self.assertIn('<noscript>', body)
+        self.assertFalse((self.root / 'Eingang').exists())
+        for key, values in self.web.TEXT.items():
+            self.assertEqual(len(values), 4, key)
+            self.assertTrue(all(values), key)
+
     def test_static_assets_allowlist(self):
         for name, kind, cache in [('fonts/barlow-400.woff2', 'font/woff2', 'public, max-age=31536000, immutable'),
                                   ('fonts/barlow-700.woff2', 'font/woff2', 'public, max-age=31536000, immutable'),
@@ -139,7 +354,7 @@ class WebTests(unittest.TestCase):
         _, headers, _, _, _ = self.request()
         self.assertEqual(headers['Content-Security-Policy'],
                          "default-src 'none'; img-src 'self'; font-src 'self'; style-src 'self' 'unsafe-inline'; "
-                         "script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+                         "script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 
     def test_theme_and_branding(self):
         _, _, body, _, _ = self.request()
@@ -578,7 +793,7 @@ class WebTests(unittest.TestCase):
         self.assertIn('wurde aus der Liste entfernt', self.request('/katalog/?removed=2')[2].decode())
         # Only currently hidden files produce the line; junk values are ignored.
         for value in ['1', '999', 'abc', '2%20']:
-            self.assertNotIn('role="status"', self.request('/katalog/?removed=' + value)[2].decode())
+            self.assertNotIn('wurde aus der Liste entfernt', self.request('/katalog/?removed=' + value)[2].decode())
 
     def test_dialog_markup_and_confirmation_page(self):
         self.add_file(2, '<i>quote".stl')

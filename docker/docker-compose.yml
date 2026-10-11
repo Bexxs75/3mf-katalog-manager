@@ -16,6 +16,8 @@ services:
       PASSWORD: ${PASSWORD:-}
       # Optional browser origin / Optionale Browser-Adresse (no trailing slash / ohne End-Slash).
       # KATALOG_PUBLIC_URL: ${KATALOG_PUBLIC_URL:-}
+      # KATALOG_UPLOAD_DIR: ${KATALOG_UPLOAD_DIR:-}
+      # KATALOG_UPLOAD_MAX_MB: ${KATALOG_UPLOAD_MAX_MB:-}
       ALLOW_NO_AUTH: ${ALLOW_NO_AUTH:-false}
     ports:
       - "127.0.0.1:3000:3000"
