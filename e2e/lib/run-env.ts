@@ -34,7 +34,9 @@ export function assertDisposableWindowsProfile() {
 
 /** Environment that points every place the app writes to into `home` (Linux). On Windows only HOME-like variables, see above. */
 export function isolatedEnv(home: string): Record<string, string> {
-  if (IS_WINDOWS) return { USERPROFILE: home, HOME: home };
+  // Overriding USERPROFILE does not redirect the data folders on Windows (see above) and breaks the
+  // log plugin's path lookup ("unknown path"), so the app gets the unchanged environment there.
+  if (IS_WINDOWS) return {};
   return {
     HOME: home,
     XDG_DATA_HOME: join(home, 'data'),

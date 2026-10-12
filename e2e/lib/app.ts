@@ -1,6 +1,6 @@
 // Navigation and lookup helpers shared by the specs.
 import { spawnSync } from 'node:child_process';
-import { click, byText, reveal, sleep, xpathLiteral } from './ui.js';
+import { click, byText, reveal, sleep, waitForText, xpathLiteral } from './ui.js';
 
 export const T = {
   appHeader: '3MF KATALOG',
@@ -48,9 +48,8 @@ export async function openSettings(tab?: 'Allgemein' | 'Slicer' | 'Katalog' | 'I
   const open = await $('[aria-label="Einstellungen"]');
   await click(open);
   if (tab) {
-    const tabButton = await byText('button', tab);
-    if (!tabButton) throw new Error(`settings tab ${tab} not found`);
-    await click(tabButton);
+    // The settings view renders a moment after the click, slower on CI runners.
+    await click(await waitForText('button', tab));
   }
 }
 
