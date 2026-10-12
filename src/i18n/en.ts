@@ -44,6 +44,7 @@ export const en: Translations = {
   diskSyncNewHeading: "New on disk",
   diskSyncMissingHeading: "No longer on disk",
   diskSyncRemove: "Remove missing files from the catalog",
+  diskSyncRemoveAction: "Remove",
   diskSyncRemoveHint: "Notes, tags and usage are lost on permanent deletion. Without this option, entries remain and are detected as missing under “Check catalog for issues”.",
   diskSyncLater: "Later",
   diskSyncApply: "Apply changes",

@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { Icon } from './Icon';
 import { useRef, useState } from 'react';
@@ -46,7 +47,7 @@ export function ViewerErrorCard({ error, noWebGL, compact, model, onOpenInSlicer
     return invoke('open_in_file_manager', { path });
   };
   return <>
-    {image && <img src={image} alt={model?.name ?? ''} className="absolute inset-0 w-full h-full object-contain" />}
+    {image && <img src={image} alt={displayName(model?.name ?? '')} className="absolute inset-0 w-full h-full object-contain" />}
     <div className="absolute inset-0 flex flex-col justify-start items-center p-3 pt-12 overflow-auto">
       <div role="alert" className={`viewer-error-card shrink-0 my-auto ${compact ? 'viewer-error-compact' : ''}`}>
         <div className={compact ? 'flex items-center gap-2' : 'contents'}>
@@ -57,7 +58,7 @@ export function ViewerErrorCard({ error, noWebGL, compact, model, onOpenInSlicer
           : compact && code === 'unreadable' ? t('viewerUnreadableCompact')
           : compact && code === 'tooLarge' ? t('viewerTooLargeCompact')
           : code ? t(texts[code]) : t('viewerUnknownText')}</p>
-        {code === 'notFound' && model && <code title={model.path} className={`${compact ? 'truncate' : 'break-all'} font-code text-[var(--ink-2)]`}>{model.path}</code>}
+        {code === 'notFound' && model && <code title={displayName(model.path)} className={`${compact ? 'truncate' : 'break-all'} font-code text-[var(--ink-2)]`}>{displayName(model.path)}</code>}
         <div className="flex flex-wrap gap-2">
           {!container && code === 'notFound' && model && <button className={catalogActionButton} onClick={() => void runAction(openFolder)}>{t('viewerOpenFolder')}</button>}
           {code === 'notFound' && onRemoveFromCatalog && <button ref={removeButton} {...lockProps} className={catalogActionButton} onClick={() => setConfirm(true)}>{t('removeCatalog')}</button>}
@@ -67,7 +68,7 @@ export function ViewerErrorCard({ error, noWebGL, compact, model, onOpenInSlicer
         {actionError && <ErrorText error={actionError} />}
       </div>
     </div>
-    {confirm && <CatalogActionDialog title={t('removeModelQuestion').replace('{name}', model?.name ?? '')} onClose={() => { if (!busy) setConfirm(false); }} returnFocus={removeButton}>
+    {confirm && <CatalogActionDialog title={t('removeModelQuestion').replace('{name}', displayName(model?.name ?? ''))} onClose={() => { if (!busy) setConfirm(false); }} returnFocus={removeButton}>
       <p>{t('removeModelHint')}</p>
       {actionError && <ErrorText error={actionError} />}
       <div className="flex justify-end gap-2">

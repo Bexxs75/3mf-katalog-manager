@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { Icon } from './Icon';
 import { useImportLock } from '../hooks/ImportLockContext';
 import type { useFolderExpansion } from '../hooks/useFolderExpansion';
@@ -118,7 +119,7 @@ export function FolderTree({
           >
             <Icon name="chevron" size={14} className={isOpen  ? '' : '-rotate-90'} />
           </span>
-          <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{node.name}</span>
+          <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{displayName(node.name)}</span>
           <span className="font-medium tabular-nums text-caption text-[var(--ink-3)]">{node.count}</span>
           {isDraggedOver && <span className="font-medium tabular-nums text-compact-meta text-[var(--accent)]">{t('dropHereLabel')}</span>}
         </div>

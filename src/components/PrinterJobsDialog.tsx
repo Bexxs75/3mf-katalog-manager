@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { Icon } from './Icon';
 import { useModalDialog } from '../hooks/useModalDialog';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
@@ -221,7 +222,7 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
                 <div className="grid grid-cols-[56px_minmax(160px,1.3fr)_100px_minmax(160px,1fr)_minmax(180px,1.1fr)_120px] gap-3.5 px-[18px] py-3.5 border-b border-[var(--line)] items-start">
                   <Thumb job={job} />
                   <div className="min-w-0">
-                    <div className="font-semibold text-body break-words">{stripExt(job.fileName)}</div>
+                    <div className="font-semibold text-body break-words">{displayName(stripExt(job.fileName))}</div>
                     <div className="font-medium tabular-nums text-caption text-[var(--ink-3)] mt-0.5">
                       {formatDateTime(job.endedAt, language)} · {t('printerJobsMinutes').replace('{min}', () => formatDurationMinutes(job.printDurationS, language))}
                     </div>
@@ -253,7 +254,7 @@ export function PrinterJobsDialog({ open, jobs, spools: allSpools, models, link,
                           <span className={isSuggestedModel && job.modelMatch?.sure ? 'text-[var(--good)]' : 'text-[var(--ink-3)]'}>
                             {isSuggestedModel && job.modelMatch?.sure  ? <Icon name="check" size={14} /> : '?'}
                           </span>
-                          <span className="truncate">{model.name}</span>
+                          <span className="truncate">{displayName(model.name)}</span>
                           <span className="ml-auto font-medium tabular-nums text-caption text-[var(--ink-3)]">{t('printerJobModelChange')}</span>
                         </>
                       ) : (

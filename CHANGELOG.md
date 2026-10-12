@@ -56,6 +56,10 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- Arrow keys navigate between models after focusing the preview, a link or a plain button; widgets such as the plate selector keep their own arrow controls.
+- Disk sync shows a separate confirmation action for removing missing files even when no new files were found.
+- File and model names display bidirectional text controls as visible codes such as `[U+202E]`, so extensions cannot be disguised; stored names stay unchanged.
+- Renaming a file or folder only by upper/lower case no longer fails with “already exists” on Windows and macOS.
 - Folder imports now report skipped archives and point to “Import → Files...”, even when no models were imported.
 
 - Disk sync on Windows and macOS no longer creates duplicate files or folders after case-only renames; existing catalog paths are preserved.
@@ -619,6 +623,10 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Behoben
 
+- Pfeiltasten blättern auch nach Fokus auf Vorschau, Link oder einfachem Knopf zwischen Modellen; Widgets wie die Plattenleiste behalten ihre eigene Pfeilsteuerung.
+- Der Festplatten-Abgleich zeigt eine eigene Bestätigungsaktion zum Entfernen fehlender Dateien, auch wenn keine neuen Dateien gefunden wurden.
+- Datei- und Modellnamen zeigen Steuerzeichen für die Textrichtung als sichtbare Codes wie `[U+202E]`, damit Endungen nicht verschleiert werden; gespeicherte Namen bleiben unverändert.
+- Wird beim Umbenennen einer Datei oder eines Ordners nur die Groß-/Kleinschreibung geändert, erscheint unter Windows und macOS nicht mehr „existiert bereits“.
 - Ordnerimporte melden jetzt übersprungene Archive mit einem Hinweis auf „Importieren → Dateien...“, auch wenn keine Modelle importiert wurden.
 
 - Der Festplatten-Abgleich unter Windows und macOS erzeugt bei reinen Änderungen der Groß-/Kleinschreibung keine doppelten Dateien oder Ordner mehr; gespeicherte Katalogpfade bleiben erhalten.

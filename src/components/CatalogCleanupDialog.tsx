@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { Icon } from './Icon';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useModalDialog } from '../hooks/useModalDialog';
@@ -59,9 +60,9 @@ export function CatalogCleanupDialog({ issues, onClose, onDelete }: Props) {
               {issues.orphaned.map((model) => (
                 <label key={model.id} className="flex items-center gap-2 py-1 text-[length:var(--font-size-title)] cursor-pointer">
                   <input type="checkbox" checked={checked.has(model.id)} onChange={() => toggle(model.id)} />
-                  <span className="flex-1 truncate">{model.name}</span>
+                  <span className="flex-1 truncate">{displayName(model.name)}</span>
                   <span className="font-code text-[var(--ink-3)] truncate max-w-[160px]">
-                    {model.path}
+                    {displayName(model.path)}
                   </span>
                 </label>
               ))}
@@ -85,8 +86,8 @@ export function CatalogCleanupDialog({ issues, onClose, onDelete }: Props) {
                     onChange={() => toggle(model.id)}
                   />
                   <span className="flex-1 min-w-0">
-                    <span className="block truncate">{model.name}</span>
-                    <span className="block font-code text-[var(--ink-3)] break-all">{model.path}</span>
+                    <span className="block truncate">{displayName(model.name)}</span>
+                    <span className="block font-code text-[var(--ink-3)] break-all">{displayName(model.path)}</span>
                   </span>
                   {index === 0 && (
                     <span className="font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--ink-3)]">{t('cleanupKeepOldest')}</span>

@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-import { act, render } from '@testing-library/react';
+import { act, fireEvent, render } from '@testing-library/react';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { UiDensityProvider } from '../hooks/UiDensityContext';
 import { makeModelFile } from '../test/factories';
@@ -110,4 +110,20 @@ it.each(['compact', 'comfort', 'list'])('shows license usage and tooltip in %s',
     }
     unmount();
   }
+});
+
+
+it.each(['compact', 'comfort', 'list'])('exposes bidi names in text and accessible labels without changing model data (%s)', view => {
+  localStorage.setItem('3mf-katalog-density', view);
+  const model = Object.freeze(makeModelFile({ name: 'part\u202etxt.3mf', path: '/models/part\u202etxt.3mf' }));
+  const select = vi.fn();
+  const Component = view === 'list' ? ModelList : ModelGrid;
+  const { container, getByText } = render(<LanguageProvider><UiDensityProvider><Component {...props} models={[model]} onSelect={select} /></UiDensityProvider></LanguageProvider>);
+  const name = getByText('part[U+202E]txt.3mf');
+  expect(container.textContent).not.toContain('\u202e');
+  expect(name.closest('[aria-label]')?.getAttribute('aria-label')).toContain('part[U+202E]txt.3mf');
+  fireEvent.click(name);
+  expect(select).toHaveBeenCalledWith(model.id);
+  expect(model.name).toBe('part\u202etxt.3mf');
+  expect(model.path).toBe('/models/part\u202etxt.3mf');
 });

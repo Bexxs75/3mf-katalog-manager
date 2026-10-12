@@ -86,3 +86,12 @@ it('waits until the import finishes before showing the archive hint', () => {
   render(<LanguageProvider><ImportProgressRow progress={{...importProgress,archivesSkipped:1}} meta={{jobId:'j1',source:'folderContents'}} result={null} queued={0} onCancel={vi.fn()} onDismiss={vi.fn()} /></LanguageProvider>);
   expect(screen.queryByText(/Archiv.*im Ordner/)).toBeNull();
 });
+
+
+it('exposes bidi paths embedded in import failure messages without changing the result', () => {
+  const jobError = Object.freeze({kind: 'database' as const, message: 'Cannot import /models/part\u202etxt.3mf'});
+  render(<LanguageProvider><ImportProgressRow progress={{...importProgress, state: 'failed'}} meta={{jobId: 'j1', source: 'files'}}
+    result={{...importResult, state: 'failed', jobError}} queued={0} onCancel={vi.fn()} onDismiss={vi.fn()} /></LanguageProvider>);
+  expect(screen.getByText(/Cannot import \/models\/part\[U\+202E\]txt\.3mf/)).toBeVisible();
+  expect(jobError.message).toBe('Cannot import /models/part\u202etxt.3mf');
+});

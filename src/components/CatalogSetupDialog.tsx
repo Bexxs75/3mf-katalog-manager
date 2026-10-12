@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { Icon } from './Icon';
 import { useModalDialog } from '../hooks/useModalDialog';
@@ -204,7 +205,7 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
                 <Icon name="check" size={14} />{' '}
                 {done.kind === 'adopt'
                   ? t('catalogSetupAdoptSummary').replace('{files}', formatCount(t('filesCount'), done.files)).replace('{folders}', formatCount(t('setupFolderCount'), done.folders))
-                  : t('catalogSetupNewSummary').replace('{path}', done.path)}
+                  : t('catalogSetupNewSummary').replace('{path}', displayName(done.path))}
               </div>
               <div className="flex gap-2">
                 {!container && (<button
@@ -258,10 +259,10 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
               <div className="flex gap-2 items-center">
                 <div
                   data-testid="catalog-setup-parent"
-                  title={parent ?? undefined}
+                  title={parent ? displayName(parent) : undefined}
                   className={`flex-1 min-w-0 ${parent ? 'font-code' : ''} text-small px-2.5 py-[7px] border border-[var(--line)] rounded-[6px] bg-[var(--panel-2)] truncate ${parent ? 'text-[var(--ink)]' : 'text-[var(--ink-3)]'}`}
                 >
-                  {parent ?? t('catalogSetupNewParentNone')}
+                  {parent ? displayName(parent) : t('catalogSetupNewParentNone')}
                 </div>
                 <button
                   type="button"
@@ -288,7 +289,7 @@ export function CatalogSetupDialog({ onClose, onLater, onImported, onBaseDirSet 
               {!problem && !blockingText && preview && (
                 <div className="mt-3 px-3 py-2 rounded-[8px] bg-[var(--accent-soft)] text-small text-[var(--ink)] break-all">
                   {preview.state === 'existingDir' ? t('catalogSetupNewExists') : t('catalogSetupNewWillCreate')}{' '}
-                  <code className="font-code text-small">{preview.path}</code>
+                  <code className="font-code text-small">{displayName(preview.path)}</code>
                 </div>
               )}
               {!problem && previewError && (

@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { useEffect, useRef, useState } from 'react';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { useT } from '../i18n/LanguageContext';
@@ -22,10 +23,10 @@ function CatalogWebDialog({ fileId, fileName, onClose, returnFocus }: {
     <p>{t('catalogWebExplanation')}</p>
     {failed ? <p role="alert">{t('catalogWebFailed')}</p> : link ? <>
       {fileName && <p>{t('catalogWebSearchHint')
-        .replace('{address}', () => (link.url ?? link.path).split('?')[0])
-        .replace('{fileName}', () => fileName)}</p>}
+        .replace('{address}', () => displayName((link.url ?? link.path).split('?')[0]))
+        .replace('{fileName}', () => displayName(fileName))}</p>}
       {link.url ? <><div><ExternalLink url={link.url} label={t('catalogWebTitle')} /></div><p>{t('catalogWebPasteHint')}</p></> : <>
-        <p className="break-all" style={{ userSelect: 'text' }}>{link.path}</p>
+        <p className="break-all" style={{ userSelect: 'text' }}>{displayName(link.path)}</p>
         <p>{t('catalogWebUnknown')}</p>
         <p>{t('catalogWebConfigure')}</p>
       </>}

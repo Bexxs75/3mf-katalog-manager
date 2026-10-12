@@ -146,3 +146,15 @@ it('hands catalog archive requests to the job callback instead of the legacy wra
   expect(onStart).toHaveBeenCalledWith('/katalog', expect.arrayContaining([expect.objectContaining({path:'/dl/Benchy.zip',folderName:'Benchy'})]),false);
   expect(invoke).not.toHaveBeenCalledWith('extract_archives',expect.anything());
 });
+
+
+it('exposes bidi in target and embedded error paths while retaining the original command argument', async () => {
+  const target = '/catalog\u2066';
+  const error = Object.freeze({message: 'Cannot read /models/part\u202etxt.3mf', expected: true});
+  vi.mocked(invoke).mockRejectedValue(error);
+  renderDialog(target);
+  expect(screen.getByText('/catalog[U+2066]')).toBeVisible();
+  expect(await screen.findByText('Cannot read /models/part[U+202E]txt.3mf')).toBeVisible();
+  expect(invoke).toHaveBeenCalledWith('archive_target_conflicts', {targetDir: target, folderNames: ['Benchy', 'Drache']});
+  expect(error.message).toBe('Cannot read /models/part\u202etxt.3mf');
+});

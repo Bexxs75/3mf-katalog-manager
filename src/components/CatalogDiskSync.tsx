@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useT, useLanguage, useFormatCount } from '../i18n/LanguageContext';
@@ -15,19 +16,21 @@ function SyncDialog({ scan, error, failedPaths, busy, onClose, onRetry, onApply 
   const t = useT();
   const count = useFormatCount();
   const [remove, setRemove] = useState(false);
-  const canApply = !!scan && (scan.newFiles.length > 0 || scan.newFolders.length > 0 || (remove && scan.missingFiles.length > 0));
+  const hasNew = !!scan && (scan.newFiles.length > 0 || scan.newFolders.length > 0);
+  const hasMissing = !!scan && scan.missingFiles.length > 0;
+  const canApply = hasNew || (remove && hasMissing);
   const ref = useModalDialog({ open: true, onClose, busy });
-  const group = (entries: DiskEntry[]) => <ul className="space-y-1">{entries.map(e => <li key={e.path} title={e.path} className="rounded bg-[var(--panel-2)] p-2 break-all font-code text-small">{e.relativePath}<span className="block text-[var(--ink-3)]">{e.root}</span></li>)}</ul>;
+  const group = (entries: DiskEntry[]) => <ul className="space-y-1">{entries.map(e => <li key={e.path} title={displayName(e.path)} className="rounded bg-[var(--panel-2)] p-2 break-all font-code text-small">{displayName(e.relativePath)}<span className="block text-[var(--ink-3)]">{displayName(e.root)}</span></li>)}</ul>;
   return createPortal(<div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
     <div ref={ref} role="dialog" aria-modal="true" aria-label={t('diskSyncTitle')} tabIndex={-1} className="w-[560px] max-w-full max-h-[85vh] flex flex-col rounded-lg bg-[var(--panel)] border border-[var(--line)] shadow-[var(--shadow)]">
       <h2 className="text-title font-semibold px-4 py-3 border-b border-[var(--line)]">{t('diskSyncTitle')}</h2>
       <div className="overflow-auto p-4 space-y-4 text-body">
-        {failedPaths.length > 0 && <section><h3>{count(t('diskSyncUnreadable'), failedPaths.length)}</h3><ul>{failedPaths.map(({ path }) => <li key={path} className="font-code break-all">{path}</li>)}</ul></section>}
-        {error ? <div role="alert" className="text-[var(--crit)] whitespace-pre-wrap break-words">{error.paths.length > 0 && t('diskSyncError')}<div>{t(error.code)}</div><ul>{error.paths.map(path => <li key={path} className="font-code break-all">{path}</li>)}</ul></div> : scan && <>
+        {failedPaths.length > 0 && <section><h3>{count(t('diskSyncUnreadable'), failedPaths.length)}</h3><ul>{failedPaths.map(({ path }) => <li key={path} className="font-code break-all">{displayName(path)}</li>)}</ul></section>}
+        {error ? <div role="alert" className="text-[var(--crit)] whitespace-pre-wrap break-words">{error.paths.length > 0 && t('diskSyncError')}<div>{t(error.code)}</div><ul>{error.paths.map(path => <li key={path} className="font-code break-all">{displayName(path)}</li>)}</ul></div> : scan && <>
           <div className="flex flex-wrap gap-2">{([
             count(t('diskSyncNewFiles'), scan.newFiles.length), count(t('diskSyncNewFolders'), scan.newFolders.length), count(t('diskSyncMissing'), scan.missingFiles.length),
           ]).map(text => <span key={text} className="rounded-full px-3 py-1 bg-[var(--panel-2)] text-small">{text}</span>)}</div>
-          {scan.skippedPaths.length > 0 && <section><h3 className="ui-label mb-2">{count(t('diskSyncSkipped'), scan.skippedPaths.length)}</h3><ul>{scan.skippedPaths.map(path => <li key={path} className="font-code break-all">{path}</li>)}</ul></section>}
+          {scan.skippedPaths.length > 0 && <section><h3 className="ui-label mb-2">{count(t('diskSyncSkipped'), scan.skippedPaths.length)}</h3><ul>{scan.skippedPaths.map(path => <li key={path} className="font-code break-all">{displayName(path)}</li>)}</ul></section>}
           {(scan.newFiles.length > 0 || scan.newFolders.length > 0) && <section><h3 className="ui-label mb-2">{t('diskSyncNewHeading')}</h3>{group([...scan.newFolders, ...scan.newFiles])}</section>}
           {scan.missingFiles.length > 0 && <section><h3 className="ui-label mb-2">{t('diskSyncMissingHeading')}</h3>{group(scan.missingFiles)}
             <label className="flex gap-2 mt-4"><input type="checkbox" checked={remove} disabled={busy} onChange={e => setRemove(e.target.checked)} />{t('diskSyncRemove')}</label>
@@ -37,7 +40,7 @@ function SyncDialog({ scan, error, failedPaths, busy, onClose, onRetry, onApply 
       </div>
       <div className="flex justify-end gap-2 p-4 border-t border-[var(--line)]">
         <button className={button} disabled={busy} onClick={onClose}>{t(canApply ? 'diskSyncLater' : 'diskSyncClose')}</button>
-        {(error || canApply) && <button className={`${button} !bg-[var(--accent)] !text-[var(--accent-ink)]`} disabled={busy} onClick={() => error ? onRetry() : onApply(remove)}>{t(busy ? 'diskSyncRunning' : error ? 'diskSyncRetry' : 'diskSyncApply')}</button>}
+        {(error || canApply) && <button className={`${button} !bg-[var(--accent)] !text-[var(--accent-ink)]`} disabled={busy || (!error && !canApply)} onClick={() => error ? onRetry() : onApply(remove)}>{t(busy ? 'diskSyncRunning' : error ? 'diskSyncRetry' : hasNew ? 'diskSyncApply' : 'diskSyncRemoveAction')}</button>}
       </div>
     </div>
   </div>, document.body);
@@ -93,7 +96,7 @@ export function CatalogDiskSync({ onApplied, active = true }: { onApplied?: () =
         setFailedPaths(failures);
       } else {
         const summary = [count(t('diskSyncNewFiles'), result.fileIds.length), count(t('diskSyncNewFolders'), result.folderIds.length), count(t('diskSyncRemoved'), result.removedCount)].join(' · ');
-        setToast(failures.length ? `${summary}\n${count(t('diskSyncUnreadable'), failures.length)}\n${failures.map(f => f.path).join('\n')}` : summary);
+        setToast(failures.length ? `${summary}\n${count(t('diskSyncUnreadable'), failures.length)}\n${failures.map(f => displayName(f.path)).join('\n')}` : summary);
       }
     } catch (e) { setScan(null); setError(diskSyncError(e)); }
     finally { running.current = false; setBusy(false); }

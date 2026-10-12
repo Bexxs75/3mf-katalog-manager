@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { licenseUsage, usageLabels, type LicenseUsage } from '../lib/licenses';
 import { ModelLayoutContext } from '../hooks/ModelLayoutContext';
 import { scrollTileIntoView } from '../hooks/useKeyboardShortcuts';
@@ -347,8 +348,8 @@ export function CatalogWorkspace({
       removeLabel: t('chipRemove').replace('{label}', t(TOOL_VIEW_LABEL_KEY[toolView])), remove: () => setToolView(null)}] : []),
     ...(activeCollection ? [{kind: 'filterBarCollection' as const, value: collectionName,
       removeLabel: t('filterBarRemoveCollection').replace('{label}', collectionName), remove: () => setActiveCollection(null)}] : []),
-    ...(activeFolderId && activeFolderId !== 'all' ? [{kind: 'filterBarFolder' as const, value: folderName,
-      removeLabel: t('filterBarRemoveFolder').replace('{label}', folderName), remove: () => setActiveFolderId('all')}] : []),
+    ...(activeFolderId && activeFolderId !== 'all' ? [{kind: 'filterBarFolder' as const, value: displayName(folderName),
+      removeLabel: t('filterBarRemoveFolder').replace('{label}', displayName(folderName)), remove: () => setActiveFolderId('all')}] : []),
     ...(activeTag ? [{kind: 'filterBarTag' as const, value: `#${tagLabel(activeTag, language)}`,
       removeLabel: t('chipRemove').replace('{label}', `#${tagLabel(activeTag, language)}`), remove: () => setActiveTag(null)}] : []),
     ...(query ? [{kind: 'filterBarSearch' as const, value: query,

@@ -1,11 +1,11 @@
 const interactive = 'input, textarea, select, button, a[href], summary, [contenteditable]:not([contenteditable="false"]), ' +
-  ['button', 'menuitem', 'menuitemradio', 'menuitemcheckbox', 'option', 'tab', 'switch', 'checkbox', 'radio', 'combobox', 'slider', 'separator', 'tree', 'treeitem', 'listbox', 'spinbutton'].map(role => `[role="${role}"]`).join(', ');
+  ['button', 'menuitem', 'menuitemradio', 'menuitemcheckbox', 'option', 'tab', 'switch', 'checkbox', 'radio', 'combobox', 'slider', 'separator', 'tree', 'treeitem', 'listbox', 'spinbutton', 'grid', 'scrollbar', 'textbox', 'searchbox'].map(role => `[role="${role}"]`).join(', ');
 
 export function shouldIgnoreCatalogShortcut(event: KeyboardEvent, options: {
   allowModifiers?: boolean;
   allowInteractive?: boolean;
   allowMenus?: boolean;
-  allowDetailViewToggleArrows?: boolean;
+  allowDetailNavigationArrows?: boolean;
   preserveEscapeSelection?: boolean;
 } = {}): boolean {
   if (event.defaultPrevented || event.isComposing) return true;
@@ -19,12 +19,17 @@ export function shouldIgnoreCatalogShortcut(event: KeyboardEvent, options: {
   }
   const blocked = (target: EventTarget | null) => {
     if (!(target instanceof Element)) return false;
-    const toggle = target.closest('button[data-detail-view-toggle]:not([role])');
-    // These plain buttons have no arrow-key semantics; retain their focus for
-    // Space/Enter while allowing only detail navigation through the viewer guard.
-    if (options.allowDetailViewToggleArrows && /^Arrow(Left|Right)$/.test(event.key) && toggle) {
+    const detailArrow = /^Arrow(Left|Right)$/.test(event.key) &&
+      !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
+    if (detailArrow && options.allowDetailNavigationArrows) {
+      // Buttons and links use Space/Enter, while ancestor widgets can own arrows.
+      // Inspect every ancestor so a plain button cannot bypass its local widget.
+      const arrowOwners = '[data-plate-selector], [role="toolbar"], [role="tablist"], [role="menu"], [role="menubar"], [role="radiogroup"], [role="treegrid"]';
       for (let node: Element | null = target; node; node = node.parentElement) {
-        if (node !== toggle && node.matches(interactive)) return true;
+        if (node.matches(arrowOwners + ', [contenteditable]:not([contenteditable="false"])')) return true;
+        if (!node.matches(interactive)) continue;
+        if (node.matches('button:not([role]), a[href]:not([role])')) continue;
+        return true;
       }
       return false;
     }

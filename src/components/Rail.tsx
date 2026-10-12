@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { ExternalLink } from './ExternalLink';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { useImportLock } from '../hooks/ImportLockContext';
@@ -356,7 +357,7 @@ export function Rail({
                                 </span>
                               )}
                               <div className="flex-1 min-w-0 font-code text-[var(--ink-3)] truncate">
-                                {s.path}
+                                {displayName(s.path)}
                               </div>
                             </div>
                           </div>
@@ -452,7 +453,7 @@ export function Rail({
                   onExport={onExportCatalog} onReset={onCatalogReset} backupError={catalogBackupError} />
                 <div className="text-[length:var(--font-size-body)] font-semibold mt-4 mb-2">{t('catalogBaseDirSectionTitle')}</div>
                 <div className={`${catalogBaseDir ? 'font-code' : 'text-caption'} text-[var(--ink-3)] truncate mb-1.5`}>
-                  {catalogBaseDir ?? t('catalogBaseDirNotSet')}
+                  {catalogBaseDir ? displayName(catalogBaseDir) : t('catalogBaseDirNotSet')}
                 </div>
                 <div className="flex gap-1.5">
                   <button

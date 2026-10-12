@@ -127,3 +127,12 @@ it('shows the stripped folder only when the result supplies it', () => {
   expect(screen.getByText('Innerer Ordner „Garten-Paket“ wurde übersprungen')).toBeInTheDocument();
   expect(screen.getAllByRole('listitem')).toHaveLength(1);
 });
+
+
+it.each(['error', 'deleteError'] as const)('exposes bidi file paths embedded in archive %s without changing the outcome', field => {
+  const message = 'Cannot read /models/part\u202etxt.3mf';
+  const archive = Object.freeze(outcome({[field]: message}));
+  renderBanner([archive]);
+  expect(screen.getByText(/Cannot read \/models\/part\[U\+202E\]txt\.3mf/)).toBeVisible();
+  expect(archive[field]).toBe(message);
+});

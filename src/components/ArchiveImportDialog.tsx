@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { useModalDialog } from '../hooks/useModalDialog';
 import { useEffect, useMemo, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
@@ -165,7 +166,7 @@ export function ArchiveImportDialog({ archives, defaultTargetDir, onCancel, onDo
         <div className="flex-none px-4 py-3 border-b border-[var(--line)] flex items-center gap-2 text-[length:var(--font-size-title)]">
           <span className="text-[var(--ink-3)]">{t('archiveTargetLabel')}:</span>
           <span className={`flex-1 truncate ${targetDir ? 'font-code' : 'text-caption'}`}>
-            {targetDir ?? t('archiveTargetMissing')}
+            {targetDir ? displayName(targetDir) : t('archiveTargetMissing')}
           </span>
           <button
             type="button"
@@ -186,7 +187,7 @@ export function ArchiveImportDialog({ archives, defaultTargetDir, onCancel, onDo
             return (
               <div key={archive.path} className={ok ? '' : 'opacity-60'}>
                 <div className="flex items-center gap-2 text-[length:var(--font-size-title)]">
-                  <span className="flex-1 truncate">{fileName(archive.path)}</span>
+                  <span className="flex-1 truncate">{displayName(fileName(archive.path))}</span>
                   <span className="text-[length:var(--font-size-meta)] text-[var(--ink-3)]">
                     {ok
                       ? formatCount(t('archiveModelsCount'), archive.modelCount)
@@ -198,7 +199,7 @@ export function ArchiveImportDialog({ archives, defaultTargetDir, onCancel, onDo
                 {conflict && (
                   <div role="radiogroup" className="pl-3 pt-1 flex flex-col">
                     <span className="text-[length:var(--font-size-meta)] text-[var(--ink-3)]">
-                      {t('archiveConflictText').replace('{name}', archive.suggestedFolderName)}
+                      {t('archiveConflictText').replace('{name}', displayName(archive.suggestedFolderName))}
                     </span>
                     <RadioOption
                       checked={mode === 'new'}
@@ -219,7 +220,7 @@ export function ArchiveImportDialog({ archives, defaultTargetDir, onCancel, onDo
           })}
           {error && (
             <div className="text-[length:var(--font-size-meta)] text-[var(--danger,#d33)]">
-              <ErrorText error={error} />
+              <ErrorText error={{ ...error, message: displayName(error.message) }} />
             </div>
           )}
         </div>

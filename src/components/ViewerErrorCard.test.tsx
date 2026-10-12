@@ -75,3 +75,14 @@ it('keeps reporting available for compact unreadable files even with a slicer', 
   expect(screen.getByRole('alert')).toHaveTextContent('gesperrt');
   expect(screen.getByRole('alert').querySelector('svg')).toHaveAttribute('width', '24');
 });
+
+
+it('exposes bidi paths and titles while passing the original directory to the filesystem', async () => {
+  const model = Object.freeze(makeModelFile({ name: 'part\u202etxt.3mf', path: '/catalog\u2066/part\u202etxt.3mf' }));
+  render(card({ model }));
+  const path = screen.getByText('/catalog[U+2066]/part[U+202E]txt.3mf');
+  expect(path).toHaveAttribute('title', '/catalog[U+2066]/part[U+202E]txt.3mf');
+  fireEvent.click(screen.getByRole('button', { name: 'Im Dateimanager öffnen' }));
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith('open_in_file_manager', { path: '/catalog\u2066' }));
+  expect(model.path).toBe('/catalog\u2066/part\u202etxt.3mf');
+});

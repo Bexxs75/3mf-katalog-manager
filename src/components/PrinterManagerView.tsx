@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
@@ -180,7 +181,7 @@ function PrinterDetail({ printer, state, link, onMaterial }: {
         <tbody>{jobs.map(j => {
           const grams = j.grams ?? link.jobs.find(open => open.id === j.id)?.grams;
           return <tr key={j.id}>
-          <td className="p-2" title={t(j.outcome === 'completed' ? 'printerJobCompleted' : 'printerJobPartial')}>{j.fileName}</td>
+          <td className="p-2" title={t(j.outcome === 'completed' ? 'printerJobCompleted' : 'printerJobPartial')}>{displayName(j.fileName)}</td>
           <td className="p-2 whitespace-nowrap">{t('printerJobsMinutes').replace('{min}', number.format(j.printDurationS / 60))}</td>
           <td className="p-2 whitespace-nowrap">{grams != null ? `${number.format(grams)} g` : `${number.format(j.usedMm)} mm`}</td>
           <td className="p-2">{j.state === 'open' ? <button className={`${pmButton} h-6 !py-0`} onClick={() => onMaterial({ printerId: printer.id, reviewJobs: true })}>{t('pmConfirmJobs')}</button> : t(j.state === 'confirmed' ? 'pmBooked' : 'pmIgnored')}</td>

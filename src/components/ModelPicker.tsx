@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { useEffect, useId, useMemo, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { useAnchoredPopup } from '../hooks/useAnchoredPopup';
@@ -115,7 +116,7 @@ export function ModelPicker({ models, anchorRef, onChange, onClose }: Props) {
             onClick={() => choose(m.id)}
             className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] shrink-0 px-2 py-1 text-small rounded truncate cursor-pointer ${active === i + 1 ? 'bg-[var(--panel-2)]' : ''}`}
           >
-            {m.name}
+            {displayName(m.name)}
           </li>
         ))}
       </ul>

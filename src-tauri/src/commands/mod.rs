@@ -21,6 +21,7 @@ mod import_jobs;
 pub use import_jobs::*;
 mod filament;
 mod folders;
+mod rename;
 mod printer_link;
 mod printers;
 mod security;

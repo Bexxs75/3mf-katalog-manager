@@ -39,6 +39,21 @@ describe('catalog disk sync', () => {
     expect(screen.getByRole('button', { name: 'Aktualisieren' })).not.toBeDisabled();
     expect(screen.getByRole('button', { name: 'Aktualisieren' }).title).not.toContain('Noch nie');
   });
+  it('exposes bidi controls in disk names while submitting their original paths', async () => {
+    const path = '/models/foto\u202Egpj.stl';
+    vi.mocked(invoke).mockResolvedValueOnce({ ...empty,
+      newFiles: [{ path, relativePath: 'foto\u202Egpj.stl', root: '/models', id: null }],
+    }).mockResolvedValueOnce({ fileIds: ['7'], folderIds: [], failedPaths: [], removedCount: 0 });
+    renderSync();
+    fireEvent.click(screen.getByRole('button', { name: de.diskSyncRefresh }));
+    await screen.findByRole('dialog');
+    expect(screen.getByText('foto[U+202E]gpj.stl')).toHaveAttribute('title', '/models/foto[U+202E]gpj.stl');
+    fireEvent.click(screen.getByRole('button', { name: de.diskSyncApply }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('apply_catalog_disk_sync', {
+      selection: { newPaths: [path], missingIds: [], removeMissing: false },
+    }));
+    await screen.findByRole('status');
+  });
   it('defaults removal to OFF and Later never writes', async () => {
     vi.mocked(invoke).mockResolvedValue(changes);
     const reload = renderSync();
@@ -91,19 +106,39 @@ describe('catalog disk sync', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(invoke).toHaveBeenCalledTimes(1);
   });
-  it('offers apply for missing-only results only while removal is checked', async () => {
+  it('shows the missing-only action only while removal is checked', async () => {
     vi.mocked(invoke).mockResolvedValue({ ...empty, missingFiles: changes.missingFiles });
     renderSync();
     fireEvent.click(screen.getByRole('button', { name: de.diskSyncRefresh }));
     await screen.findByRole('dialog');
-    expect(screen.queryByRole('button', { name: de.diskSyncApply })).toBeNull();
+    expect(screen.queryByRole('button', { name: de.diskSyncRemoveAction })).toBeNull();
     expect(screen.getByRole('button', { name: de.diskSyncClose })).toBeVisible();
     fireEvent.click(screen.getByRole('checkbox'));
-    expect(screen.getByRole('button', { name: de.diskSyncApply })).toBeVisible();
+    expect(screen.getByRole('button', { name: de.diskSyncRemoveAction })).toBeEnabled();
     fireEvent.click(screen.getByRole('checkbox'));
-    expect(screen.queryByRole('button', { name: de.diskSyncApply })).toBeNull();
+    expect(screen.queryByRole('button', { name: de.diskSyncRemoveAction })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: de.diskSyncClose }));
     expect(invoke).toHaveBeenCalledTimes(1);
+  });
+  it.each(Object.entries({ de, en, es, fr }))('removes missing files without importing anything in %s', async (language, dictionary) => {
+    localStorage.setItem('3mf-katalog-language', language);
+    vi.mocked(invoke).mockResolvedValueOnce({ ...empty, missingFiles: changes.missingFiles })
+      .mockResolvedValueOnce({ fileIds: [], folderIds: [], failedPaths: [], removedCount: 1 });
+    const reload = renderSync();
+    fireEvent.click(screen.getByRole('button', { name: dictionary.diskSyncRefresh }));
+    await screen.findByRole('dialog');
+    expect(screen.queryByRole('button', { name: dictionary.diskSyncRemoveAction })).toBeNull();
+    expect(invoke).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('checkbox'));
+    const remove = screen.getByRole('button', { name: dictionary.diskSyncRemoveAction });
+    expect(remove).toBeEnabled();
+    fireEvent.click(remove);
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('apply_catalog_disk_sync', {
+      selection: { newPaths: [], missingIds: ['42'], removeMissing: true },
+    }));
+    await waitFor(() => expect(reload).toHaveBeenCalledOnce());
+    expect(await screen.findByRole('status')).toHaveTextContent(dictionary.diskSyncRemoved.one.replace('{count}', '1'));
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
   it.each(Object.entries({ de, en, es, fr }).flatMap(([language, dictionary]) =>
     [false, true].map(allFailed => ({ language, dictionary, allFailed }))))('reports unreadable files in $language (all failed: $allFailed)', async ({ language, dictionary, allFailed }) => {

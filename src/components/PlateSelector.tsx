@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { Icon } from './Icon';
 import { useT } from '../i18n/LanguageContext';
 import type { GeometryPlate } from '../lib/parseModelGeometry';
@@ -9,7 +10,7 @@ export function PlateSelector({ plates, selected, onSelect }: {
 }) {
   const t = useT();
   const selectedIndex = plates.findIndex(plate => plate.number === selected);
-  const label = (plate: GeometryPlate) => `${t('viewerPlate').replace('{n}', String(plate.number))}${plate.name ? ` · ${plate.name}` : ''}`;
+  const label = (plate: GeometryPlate) => `${t('viewerPlate').replace('{n}', String(plate.number))}${plate.name ? ` · ${displayName(plate.name)}` : ''}`;
   const plate = plates[selectedIndex];
   const previousDisabled = selectedIndex <= 0;
   const nextDisabled = selectedIndex === plates.length - 1;
@@ -38,7 +39,7 @@ export function PlateSelector({ plates, selected, onSelect }: {
       onClick={() => onSelect(item.number)}>{item.number}</button>)}</span> :
       <span className="plate-selector-summary">
         <span className="plate-selector-count">{plate ? `${selectedIndex + 1} / ${plates.length}` : t('viewerAllPlates')}</span>
-        {plate?.name && <span className="plate-selector-name" title={plate.name}>{plate.name}</span>}
+        {plate?.name && <span className="plate-selector-name" title={displayName(plate.name)}>{displayName(plate.name)}</span>}
       </span>}
     <button type="button" className={`viewer-pill plate-arrow ${focusClass}`} aria-label={t('viewerNextPlate')}
       aria-disabled={nextDisabled} onClick={next}><Icon name="next" size={24} /></button>

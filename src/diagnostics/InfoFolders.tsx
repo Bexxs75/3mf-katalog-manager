@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
@@ -44,8 +45,8 @@ export function InfoFolders() {
       <div className="ui-label text-[var(--ink-3)]">{t('infoFoldersHeading')}</div>
       <div className="mt-2 flex flex-col gap-1.5">
         {container ? paths && <>
-          <p className="text-small break-all select-text">{t('containerDataPath').replace('{path}', paths.data)}</p>
-          <p className="text-small break-all select-text">{t('containerLogPath').replace('{path}', paths.logs)}</p>
+          <p className="text-small break-all select-text">{t('containerDataPath').replace('{path}', displayName(paths.data))}</p>
+          <p className="text-small break-all select-text">{t('containerLogPath').replace('{path}', displayName(paths.logs))}</p>
         </> : buttons.map(({ label, hint, action }) => (
           <button
             key={label}

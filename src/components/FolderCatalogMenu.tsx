@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
@@ -46,9 +47,9 @@ export function FolderCatalogMenu({ folderId, name, x, y, onClose, onRemoved, re
       <button {...lockProps} role="menuitem" className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)] focus-visible:bg-[var(--panel-2)] outline-none" onClick={() => setDialog(true)}>{t('removeCatalog')}</button>
     </div>, document.body,
   );
-  return <CatalogActionDialog title={t('removeFolderQuestion').replace('{name}', summary?.name ?? name)} onClose={() => { if (!busy) onClose(); }} returnFocus={returnFocus}>
+  return <CatalogActionDialog title={t('removeFolderQuestion').replace('{name}', displayName(summary?.name ?? name))} onClose={() => { if (!busy) onClose(); }} returnFocus={returnFocus}>
     {summary && <ul className="list-disc pl-5 space-y-1">
-      <li>{formatCount(t('removeFolderList'), summary.subfolderCount).replace('{name}', summary.name)}</li>
+      <li>{formatCount(t('removeFolderList'), summary.subfolderCount).replace('{name}', displayName(summary.name))}</li>
       <li>{formatCount(t('removeFolderModels'), summary.modelCount)}</li>
     </ul>}
     <p className="text-[var(--good)] font-semibold">{t('removeFolderSafe')}</p>

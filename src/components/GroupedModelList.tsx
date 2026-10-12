@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { Icon } from './Icon';
 import { useMemo, type RefObject } from 'react';
 import { useDragThreshold } from '../hooks/useDragThreshold';
@@ -68,7 +69,7 @@ export function GroupedModelList({
         >
           <span className={`text-compact-label text-[var(--ink-3)] transition-transform ${isCollapsed ? '-rotate-90' : ''}`}><Icon name="chevron" size={14} /></span>
           <span className="text-body">📁</span>
-          <span className="text-body font-semibold">{node.folder.name}</span>
+          <span className="text-body font-semibold">{displayName(node.folder.name)}</span>
           <span className="font-medium tabular-nums text-compact-meta text-[var(--ink-3)]">{node.totalCount}</span>
           <span className="flex-1 h-px bg-[var(--line)]" />
           {isDraggedOver && <span className="font-medium tabular-nums text-compact-meta text-[var(--accent)]">{t('dropHereLabel')}</span>}

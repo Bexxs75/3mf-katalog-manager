@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { Icon } from './Icon';
 import { useEffect } from 'react';
 import { useT, useFormatCount } from '../i18n/LanguageContext';
@@ -32,7 +33,7 @@ export function ImportSummaryBanner({ imported, duplicates, archives, skipped, o
   const lines: { key: string; text: string; unexpected?: boolean }[] = [];
   let hasProblems = false;
   for (const reason of ['empty', 'invalid', 'failed'] as SkipReason[]) {
-    const names = (skipped ?? []).filter((s) => s.reason === reason).map((s) => fileName(s.path));
+    const names = (skipped ?? []).filter((s) => s.reason === reason).map((s) => displayName(fileName(s.path)));
     if (names.length === 0) continue;
     hasProblems = true;
     let list = names.slice(0, MAX_NAMES).join(', ');
@@ -56,20 +57,20 @@ export function ImportSummaryBanner({ imported, duplicates, archives, skipped, o
     if (deleted > 0) lines.push({ key: 'deleted', text: formatCount(t('archiveSummaryDeleted'), deleted) });
     for (const a of archives) {
       if (a.strippedRoot) {
-        lines.push({ key: `stripped:${a.path}`, text: t('archiveInnerFolderSkipped').replace('{name}', a.strippedRoot) });
+        lines.push({ key: `stripped:${a.path}`, text: t('archiveInnerFolderSkipped').replace('{name}', displayName(a.strippedRoot)) });
       }
       if (a.error) {
         hasProblems = true;
         lines.push({
           key: `failed:${a.path}`,
-          text: t('archiveSummaryFailed').replace('{name}', fileName(a.path)).replace('{error}', a.error),
+          text: t('archiveSummaryFailed').replace('{name}', displayName(fileName(a.path))).replace('{error}', displayName(a.error)),
           unexpected: a.unexpected === true,
         });
       } else if (a.deleteError) {
         hasProblems = true;
         lines.push({
           key: `notDeleted:${a.path}`,
-          text: t('archiveSummaryNotDeleted').replace('{name}', fileName(a.path)).replace('{error}', a.deleteError),
+          text: t('archiveSummaryNotDeleted').replace('{name}', displayName(fileName(a.path))).replace('{error}', displayName(a.deleteError)),
         });
       }
     }

@@ -944,6 +944,37 @@ mod tests {
         assert!(model.exists());
     }
     #[test]
+    fn missing_only_apply_requires_selection_and_moves_entries_to_trash() {
+        let mut f = Fixture::new();
+        let missing = f.root.join("missing.stl");
+        let id = db::test_insert_minimal_file(&f.conn, missing.to_str().unwrap(), None).unwrap();
+        let preview = scan(&f.conn).unwrap();
+        assert!(preview.new_files.is_empty());
+        assert!(preview.new_folders.is_empty());
+        assert_eq!(preview.missing_files.len(), 1);
+
+        let selection = f.select(false);
+        assert_eq!(apply(&mut f.conn, selection).unwrap().removed_count, 0);
+        assert_eq!(db::list_files(&f.conn).unwrap().len(), 1);
+        assert!(db::list_trash(&f.conn).unwrap().is_empty());
+
+        let selection = f.select(true);
+        assert!(selection.new_paths.is_empty());
+        let result = apply_with_reader(&mut f.conn, selection, |_| {
+            panic!("Removing missing entries must not attempt to import a file")
+        }).unwrap();
+        assert_eq!(result.removed_count, 1);
+        assert!(result.file_ids.is_empty());
+        assert!(result.folder_ids.is_empty());
+        assert!(db::list_files(&f.conn).unwrap().is_empty());
+        let trash = db::list_trash(&f.conn).unwrap();
+        assert_eq!(trash.len(), 1);
+        assert_eq!(trash[0].id, id);
+        assert_eq!(trash[0].path, missing.to_string_lossy());
+        assert!(!missing.exists());
+    }
+
+    #[test]
     fn unavailable_root_suppresses_all_changes_and_apply() {
         let mut f = Fixture::new();
         db::test_insert_minimal_file(&f.conn, f.root.join("missing.stl").to_str().unwrap(), None)

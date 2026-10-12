@@ -116,3 +116,18 @@ it('keeps a failed reveal visible in the context menu', async () => {
   expect(onClose).not.toHaveBeenCalled();
   expect(screen.queryByRole('button', {name: 'Problem melden'})).not.toBeInTheDocument();
 });
+
+
+it.each(['.stl', '.st\u202el'])('preserves bidi controls in the rename input and extension callback (%s)', async extension => {
+  const name = `part\u202etxt${extension}`;
+  const onRename = vi.fn().mockResolvedValue(undefined);
+  render(<LanguageProvider><ContextMenu x={0} y={0} onClose={() => {}} onOpenInSlicer={() => {}}
+    onDelete={() => {}} inQueue={false} onToggleQueue={() => {}} printed={false}
+    onTogglePrintStatus={() => {}} fileId="42" currentName={name} onRename={onRename} /></LanguageProvider>);
+  fireEvent.click(screen.getByText('Umbenennen'));
+  const input = screen.getByRole('textbox');
+  expect(input).toHaveValue('part\u202etxt');
+  fireEvent.change(input, {target: {value: 'renamed\u202etxt'}});
+  fireEvent.keyDown(input, {key: 'Enter'});
+  await waitFor(() => expect(onRename).toHaveBeenCalledWith(`renamed\u202etxt${extension}`));
+});

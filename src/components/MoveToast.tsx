@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { useT } from '../i18n/LanguageContext';
 import { Icon } from './Icon';
 import { useEffect } from 'react';
@@ -37,17 +38,17 @@ export function MoveToast({ from, to, error = false, unexpected = false, collect
       {error ? (
         <>
           <span className="font-semibold flex-none"><Icon name="close" size={14} /></span>
-          <span className="font-semibold overflow-hidden text-ellipsis whitespace-nowrap">{from}:</span>
+          <span className="font-semibold overflow-hidden text-ellipsis whitespace-nowrap">{displayName(from)}:</span>
           <span className="opacity-90 overflow-hidden text-ellipsis whitespace-nowrap">{to}</span>
           {unexpected && <ReportProblemLink />}
         </>
       ) : collection ? (
-        <span>{t(collection === 'added' ? 'collectionDropAdded' : 'collectionDropAlready').replace('{name}', () => from).replace('{collection}', () => to)}</span>
+        <span>{t(collection === 'added' ? 'collectionDropAdded' : 'collectionDropAlready').replace('{name}', () => displayName(from)).replace('{collection}', () => to)}</span>
       ) : (
         <>
-          <span className="font-semibold overflow-hidden text-ellipsis whitespace-nowrap">{from}</span>
+          <span className="font-semibold overflow-hidden text-ellipsis whitespace-nowrap">{displayName(from)}</span>
           <span className="opacity-70 flex-none">→</span>
-          <span className="opacity-90 overflow-hidden text-ellipsis whitespace-nowrap">{to}</span>
+          <span className="opacity-90 overflow-hidden text-ellipsis whitespace-nowrap">{displayName(to)}</span>
         </>
       )}
     </div>

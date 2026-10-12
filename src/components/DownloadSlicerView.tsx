@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { useEffect, useId, useState } from 'react';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { useT } from '../i18n/LanguageContext';
@@ -33,7 +34,7 @@ function DownloadSlicerContent() {
             <ExternalLink url={link.url} label={t('railDownloads')} />
             <p className="mt-2">{t('catalogWebPasteHint')}</p>
           </> : <>
-            <p className="break-all" style={{ userSelect: 'text' }}>{link.path}</p>
+            <p className="break-all" style={{ userSelect: 'text' }}>{displayName(link.path)}</p>
             <p>{t('catalogWebUnknown')}</p>
             <p>{t('catalogWebConfigure')}</p>
           </>}

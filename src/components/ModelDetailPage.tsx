@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { LicenseEditor } from './LicenseEditor';
 import { CatalogWebButton } from './CatalogWebButton';
 import { ExternalLink } from './ExternalLink';
@@ -192,7 +193,7 @@ export function ModelDetailPage({
           disabled={!hasNext || !onNavigate} onMouseDown={event => event.preventDefault()}
           onClick={event => navigateByButton('next', event.currentTarget)}><Icon name="next" /></button>
         <h1 className="flex-1 min-w-0 text-[1.5rem] font-semibold leading-tight break-words">
-          {model.name}
+          {displayName(model.name)}
         </h1>
       </header>
 
@@ -204,7 +205,7 @@ export function ModelDetailPage({
             }}
             className="relative rounded-[10px] border border-[var(--line)] bg-[var(--plate)] overflow-hidden">
             {showCustomImage && resolvedImage ? (
-              <img src={resolvedImage} alt={model.name} className="aspect-[4/3] w-full object-contain" />
+              <img src={resolvedImage} alt={displayName(model.name)} className="aspect-[4/3] w-full object-contain" />
             ) : (
               <ModelPreview surfaceClassName="aspect-[4/3]"
                 model={model}
@@ -499,7 +500,7 @@ export function ModelDetailPage({
       </div>
 
       <footer className="flex items-center justify-between gap-4 flex-wrap rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-4 py-3.5 mt-auto">
-        <span className="font-code text-small text-[var(--ink-3)] break-all">{model.path}</span>
+        <span className="font-code text-small text-[var(--ink-3)] break-all">{displayName(model.path)}</span>
         <div className="flex gap-2.5 items-center flex-wrap min-w-0">
           <button {...lockProps} onClick={onDelete} className="px-4 py-2 rounded-md border border-[var(--line)] text-body font-semibold text-red-400 hover:border-red-400">
             {t('delete')}

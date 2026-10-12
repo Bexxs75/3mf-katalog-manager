@@ -49,6 +49,7 @@ export interface Translations {
   diskSyncNewHeading: string;
   diskSyncMissingHeading: string;
   diskSyncRemove: string;
+  diskSyncRemoveAction: string;
   diskSyncRemoveHint: string;
   diskSyncLater: string;
   diskSyncApply: string;

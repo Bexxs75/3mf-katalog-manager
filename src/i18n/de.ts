@@ -44,6 +44,7 @@ export const de: Translations = {
   diskSyncNewHeading: "Neu auf der Festplatte",
   diskSyncMissingHeading: "Auf der Festplatte nicht mehr vorhanden",
   diskSyncRemove: "Fehlende Dateien aus dem Katalog entfernen",
+  diskSyncRemoveAction: "Entfernen",
   diskSyncRemoveHint: "Notizen, Tags und Verbrauch gehen beim endgültigen Löschen verloren. Ohne Auswahl bleiben die Einträge erhalten und werden unter „Katalog auf Probleme prüfen“ als fehlend erkannt.",
   diskSyncLater: "Später",
   diskSyncApply: "Änderungen übernehmen",

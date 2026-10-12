@@ -43,3 +43,16 @@ it.each([['de', 'Archiv 1'], ['en', 'archive 1'], ['es', 'archivo comprimido 1']
   render(<LanguageProvider><ImportResultDialog result={result} onClose={vi.fn()} /></LanguageProvider>);
   expect(screen.getByRole('tab', {name})).toBeVisible();
 });
+
+
+it('shows bidi controls in unimported paths while retaining original paths in copied data', async () => {
+  const path = '/models/part\u202etxt.3mf';
+  const result = {...importResult, groups: {...importResult.groups, skipped: [{path, reason: 'empty' as const}]}};
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', {configurable: true, value: {writeText}});
+  render(<LanguageProvider><ImportResultDialog result={result} onClose={vi.fn()} /></LanguageProvider>);
+  expect(screen.getByText('/models/part[U+202E]txt.3mf')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', {name: 'Liste kopieren'}));
+  await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining(path)));
+  expect(result.groups.skipped[0].path).toBe(path);
+});

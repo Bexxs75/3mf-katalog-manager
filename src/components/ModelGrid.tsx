@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { LicenseBadge } from './LicenseBadge';
 import { licenseUsage, modelLicenseAriaLabel } from '../lib/licenses';
 import { Icon } from './Icon';
@@ -158,7 +159,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
         key={m.id}
         data-model-id={m.id}
         role="group"
-        aria-label={modelLicenseAriaLabel(m.name, m.license, t)}
+        aria-label={modelLicenseAriaLabel(displayName(m.name), m.license, t)}
         tabIndex={-1}
         onClick={() => onSelect(m.id)}
         onDoubleClick={readOnly ? undefined : () => onOpenDetail(m.id)}
@@ -239,7 +240,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
         </div>
         <div data-card-metadata className="flex flex-col gap-1.5 px-2.5 py-2.5 bg-[var(--panel)]" style={{ height: 88 }}>
           <div className="select-none text-small font-semibold overflow-hidden text-ellipsis whitespace-nowrap shrink-0" style={{ height: 19, lineHeight: '19px' }}>
-            {m.name}
+            {displayName(m.name)}
           </div>
           <CardMeta model={m} comfort={false} />
           <CardTags tags={m.tags} comfort={false} />
@@ -262,7 +263,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
             key={m.id}
             data-model-id={m.id}
             role="group"
-            aria-label={modelLicenseAriaLabel(m.name, m.license, t)}
+            aria-label={modelLicenseAriaLabel(displayName(m.name), m.license, t)}
             tabIndex={-1}
             onClick={() => onSelect(m.id)}
             onDoubleClick={readOnly ? undefined : () => onOpenDetail(m.id)}
@@ -337,7 +338,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
                 className="select-none font-bold overflow-hidden text-ellipsis whitespace-nowrap shrink-0"
                 style={{ fontSize: 'var(--font-size-title)', height: 26, lineHeight: '26px' }}
               >
-                {m.name}
+                {displayName(m.name)}
               </div>
               <CardMeta model={m} comfort />
               <CardTags tags={m.tags} comfort />

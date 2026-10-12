@@ -44,6 +44,7 @@ export const fr: Translations = {
   diskSyncNewHeading: "Nouveau sur le disque",
   diskSyncMissingHeading: "Absent du disque",
   diskSyncRemove: "Retirer du catalogue les fichiers manquants",
+  diskSyncRemoveAction: "Retirer",
   diskSyncRemoveHint: "Les notes, étiquettes et consommations sont perdues lors de la suppression définitive. Sans cette option, les entrées sont conservées et détectées comme manquantes dans «Vérifier les problèmes du catalogue».",
   diskSyncLater: "Plus tard",
   diskSyncApply: "Appliquer les modifications",

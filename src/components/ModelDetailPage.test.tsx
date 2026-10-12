@@ -6,7 +6,10 @@ import { ModelDetailPage } from './ModelDetailPage';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { makeModelFile } from '../test/factories';
 
-vi.mock('./ModelPreview', () => ({ ModelPreview: () => <button>Viewer control</button> }));
+vi.mock('./ModelPreview', () => ({ ModelPreview: () => <>
+  <button>Viewer control</button>
+  <div role="toolbar" aria-label="Viewer tools"><button>Local viewer control</button></div>
+</> }));
 vi.mock('../hooks/usePrintLog', () => ({ usePrintLog: () => ({ entries: [], error: null }) }));
 vi.mock('../hooks/useFilamentCheck', () => ({ useFilamentCheck: () => ({}) }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(() => Promise.resolve([])), convertFileSrc: (s: string) => s }));
@@ -55,14 +58,24 @@ it('blocks draft navigation by keyboard and requires confirmation by button with
   expect(onNavigate).toHaveBeenCalledWith('next');
 });
 
-it('gives viewer controls priority and keeps close behavior', () => {
+it('navigates from plain viewer buttons, respects widget priority and keeps close behavior', () => {
   const onNavigate = vi.fn();
   const onClose = vi.fn();
   render(<LanguageProvider><ModelDetailPage {...props} onClose={onClose} onNavigate={onNavigate} hasPrevious hasNext /></LanguageProvider>);
-  fireEvent.keyDown(screen.getByText('Viewer control'), {key: 'ArrowRight'});
-  expect(onNavigate).not.toHaveBeenCalled();
+  const button = screen.getByText('Viewer control');
+  button.focus();
+  fireEvent.keyDown(button, {key: 'ArrowRight'});
+  fireEvent.keyDown(button, {key: 'ArrowLeft'});
+  expect(onNavigate.mock.calls).toEqual([['next'], ['previous']]);
+  expect(button).toHaveFocus();
+  onNavigate.mockClear();
+  const widgetButton = screen.getByText('Local viewer control');
+  widgetButton.focus();
+  fireEvent.keyDown(widgetButton, {key: 'ArrowRight'});
+  fireEvent.keyDown(widgetButton, {key: 'ArrowLeft'});
   fireEvent.keyDown(window, {key: 'ArrowRight'});
-  expect(onNavigate).toHaveBeenCalledWith('next');
+  expect(onNavigate).not.toHaveBeenCalled();
+  expect(widgetButton).toHaveFocus();
   fireEvent.click(screen.getByTitle('Zurück zum Katalog'));
   expect(onClose).toHaveBeenCalledOnce();
 });

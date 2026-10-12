@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { Icon } from './Icon';
 import { useEffect, useState } from 'react';
 import type { FilamentCheck, ModelFile } from '../types';
@@ -68,7 +69,7 @@ export function QueueList({ queue, onQueueReorder, onQueueRemove, onQueueSelect,
           <span className="font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--ink-3)] w-3.5">{index + 1}</span>
           <QueueFilamentSymbol check={queueFilament?.get(model.id)} />
           <span className="flex-1 text-[length:var(--font-size-item)] overflow-hidden text-ellipsis whitespace-nowrap">
-            {model.name}
+            {displayName(model.name)}
           </span>
           <button type="button" aria-label={t('removeFromQueue')}
             onMouseDown={(e) => e.stopPropagation()}

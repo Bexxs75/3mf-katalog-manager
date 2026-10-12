@@ -441,17 +441,17 @@ fn rename_file_with_conn(
     if new_path == old_path {
         return Ok(());
     }
-    if new_path.exists() {
+    if rename::target_collides(&old_path, &new_path).map_err(|e| e.to_string())? {
         return Err(CmdError::expected(format!(
             "Zieldatei existiert bereits: {}",
             new_path.display()
         )));
     }
-    std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())?;
+    rename::rename_on_disk(&old_path, &new_path).map_err(|e| e.to_string())?;
 
     if let Err(db_err) = db::rename_file(conn, id, &new_name, &new_path.to_string_lossy()) {
         // Undo the rename so file system and DB don't drift apart.
-        if let Err(rollback_err) = std::fs::rename(&new_path, &old_path) {
+        if let Err(rollback_err) = rename::rename_on_disk(&new_path, &old_path) {
             return Err(format!(
                 "DB-Update fehlgeschlagen ({db_err}) UND Rollback der Datei-Umbenennung fehlgeschlagen ({rollback_err}) - Datei heisst jetzt {}, DB verweist weiter auf {}",
                 new_path.display(),
@@ -2399,6 +2399,33 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
+    #[test]
+    fn case_only_file_rename_and_db_failure_restore_exact_spelling() {
+        for (old_name, new_name) in [("A.stl", "a.stl"), ("a.stl", "A.stl")] {
+            for fail_db in [false, true] {
+                let dir = unique_test_dir("case_only_file");
+                let old = dir.join(old_name);
+                let new = dir.join(new_name);
+                std::fs::write(&old, b"original").unwrap();
+                let conn = db::connect_in_memory().unwrap();
+                let id = db::test_insert_minimal_file(&conn, &old.to_string_lossy(), None).unwrap();
+                let before = db::get_file(&conn, id).unwrap().unwrap();
+                if fail_db {
+                    conn.execute_batch("CREATE TRIGGER block_case_rename BEFORE UPDATE ON files BEGIN SELECT RAISE(ABORT, 'blocked'); END;").unwrap();
+                }
+                assert_eq!(rename_file_with_conn(&conn, id, new_name.into(), &[]).is_err(), fail_db);
+                let expected = if fail_db { &old } else { &new };
+                let entries: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).collect();
+                assert_eq!(entries, vec![expected.file_name().unwrap()]);
+                assert_eq!(std::fs::read(expected).unwrap(), b"original");
+                let after = db::get_file(&conn, id).unwrap().unwrap();
+                assert_eq!(after.path, expected.to_string_lossy());
+                assert_eq!(after.name, if fail_db { before.name.as_str() } else { new_name });
+                std::fs::remove_dir_all(dir).unwrap();
+            }
+        }
+    }
+
     #[test]
     fn rename_file_renames_on_disk_and_updates_name_and_path() {
         let tmp = unique_test_dir("rename_file");

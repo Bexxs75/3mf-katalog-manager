@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { CatalogDiskSync } from './CatalogDiskSync';
 import { useMenuKeyboard } from '../hooks/useMenuKeyboard';
 import { Icon } from './Icon';
@@ -130,7 +131,7 @@ export function Header({
               {(['files', 'folder', 'folderContents'] as const).map(source => <div key={source} aria-hidden={importSource !== source}
                 className={`col-start-1 row-start-1 ${importSource !== source ? 'invisible' : ''}`}>
                 <b>{t(source === 'folderContents' ? 'impFolderContents' : source === 'files' ? 'impMenuFiles' : 'impMenuFolder')}</b>{' '}
-                {source === 'folderContents' ? t('importFolderContentsHint') : source === 'folder' ? t('impMenuFolderHint') : importTargetName ? <>{t('impMenuMove')} <b>{importTargetName}</b> {t(importTargetIsRoot ? 'impMenuRoot' : 'impMenuActive')}</> : t('impMenuStay')}
+                {source === 'folderContents' ? t('importFolderContentsHint') : source === 'folder' ? t('impMenuFolderHint') : importTargetName ? <>{t('impMenuMove')} <b>{displayName(importTargetName)}</b> {t(importTargetIsRoot ? 'impMenuRoot' : 'impMenuActive')}</> : t('impMenuStay')}
                 <div className="font-medium tabular-nums text-caption text-[var(--ink-3)]">{t(source !== 'folder' ? 'impMenuFixed' : 'impMenuNoMove')}</div>
               </div>)}
             </div>

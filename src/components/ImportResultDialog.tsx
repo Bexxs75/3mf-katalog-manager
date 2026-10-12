@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { useId, useMemo, useRef, useState, type RefObject } from 'react';
 import { useModalDialog } from '../hooks/useModalDialog';
 import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
@@ -42,7 +43,7 @@ export function ImportResultDialog({result, onClose, returnFocus, onSelectModel}
       const next = event.key === 'ArrowRight' ? (i+1)%4 : event.key === 'ArrowLeft' ? (i+3)%4 : event.key === 'Home' ? 0 : event.key === 'End' ? 3 : null;
       if (next !== null) { event.preventDefault(); setTab(next); buttons.current[next]?.focus(); }
     }}>{i === 3 ? formatCount(t('archiveCountNoun'), result.groups.archive.length) : t(key)} <span>{n(i === 3 ? result.groups.archive.length : rows[i].length)}</span></button>)}</div>
-    <div className="import-table-scroll" role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-tab-${tab}`} tabIndex={0}><table><thead><tr><th>{t('impFile')}</th><th>{t('impReason')}</th></tr></thead><tbody>{rows[tab].map((row,i) => <tr key={i} className={row.nested ? 'import-nested' : undefined}><td className="font-code">{row.nested && '↳ '}{row.path}</td><td>{row.reason}{row.existingFileId && onSelectModel && <button onClick={() => {onClose(); onSelectModel(row.existingFileId!);}}>{t('impExistingModel').replace('{id}', row.existingFileId)}</button>}</td></tr>)}</tbody></table></div>
+    <div className="import-table-scroll" role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-tab-${tab}`} tabIndex={0}><table><thead><tr><th>{t('impFile')}</th><th>{t('impReason')}</th></tr></thead><tbody>{rows[tab].map((row,i) => <tr key={i} className={row.nested ? 'import-nested' : undefined}><td className="font-code">{row.nested && '↳ '}{displayName(row.path)}</td><td>{displayName(row.reason)}{row.existingFileId && onSelectModel && <button onClick={() => {onClose(); onSelectModel(row.existingFileId!);}}>{t('impExistingModel').replace('{id}', row.existingFileId)}</button>}</td></tr>)}</tbody></table></div>
     {fallback && <label>{t('impCopyFallback')}<textarea className="font-code" readOnly value={text} onFocus={e => e.currentTarget.select()} aria-label={t('impCopyFallback')} /></label>}
     <footer><button onClick={() => void copy()}>{t('impCopy')}</button><span role="status">{copied ? t('impCopied') : ''}</span><button data-close onClick={onClose}>{t('impClose')}</button></footer>
   </div></div>;

@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { beginPreviewAttempt } from '../lib/snapshotQueue';
 import { isWebGLUnavailable, markWebGLUnavailable } from '../lib/webglAvailability';
 import { Icon } from './Icon';
@@ -443,7 +444,7 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
             <div className="ui-label text-[var(--ink-3)]">{t('viewerColorsLegend')}</div>
             {visibleLegend.map(entry => <div className="flex items-center gap-2" key={`${entry.colorIndex}:${entry.objectName}`}>
               <span className="w-3.5 h-3.5 rounded-full border border-[var(--line-strong)] shrink-0" style={{ background: palette[entry.colorIndex].color }} />
-              <span>{palette[entry.colorIndex].name}</span><small className="text-caption text-[var(--ink-3)]">{entry.objectName}</small>
+              <span>{palette[entry.colorIndex].name}</span><small className="text-caption text-[var(--ink-3)]">{entry.objectName && displayName(entry.objectName)}</small>
             </div>)}
           </div>}
         </>}

@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { RevealFileButton } from './RevealFileButton';
 import { useImportLock } from '../hooks/ImportLockContext';
@@ -84,7 +85,7 @@ function ModelContextMenu({
     <div ref={ref}>
       {view === 'confirmRemove' ? (
         <div className="px-3 py-2.5 max-w-[260px]" aria-busy={renaming}>
-          <div className="text-small font-medium text-[var(--ink)] pb-1">{t('removeModelQuestion').replace('{name}', currentName)}</div>
+          <div className="text-small font-medium text-[var(--ink)] pb-1">{t('removeModelQuestion').replace('{name}', displayName(currentName))}</div>
           <div className="text-caption leading-snug text-[var(--ink-2)] pb-2">{t('removeModelHint')}</div>
           {renameError && <div role="alert" className="pb-1.5 font-medium tabular-nums text-compact-meta text-[var(--accent)] break-words">{renameError}</div>}
           <div className="flex gap-1.5">
@@ -141,7 +142,7 @@ function ModelContextMenu({
                 title={t('renameExtensionLockedHint')}
                 className="flex-none font-medium tabular-nums text-small text-[var(--ink-3)]"
               >
-                {extension}
+                {displayName(extension)}
               </span>
             )}
           </div>

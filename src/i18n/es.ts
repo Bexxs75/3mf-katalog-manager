@@ -44,6 +44,7 @@ export const es: Translations = {
   diskSyncNewHeading: "Nuevo en el disco",
   diskSyncMissingHeading: "Ya no está en el disco",
   diskSyncRemove: "Eliminar del catálogo los archivos que faltan",
+  diskSyncRemoveAction: "Quitar",
   diskSyncRemoveHint: "Las notas, etiquetas y el consumo se pierden al eliminar definitivamente. Sin esta opción, las entradas se conservan y se detectan como ausentes en «Buscar problemas en el catálogo».",
   diskSyncLater: "Más tarde",
   diskSyncApply: "Aplicar cambios",

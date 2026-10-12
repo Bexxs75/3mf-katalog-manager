@@ -181,10 +181,13 @@ fn rename_folder_with_conn(
     archives::check_managed_location(&old_path, &expanded)?;
     archives::check_managed_location(&new_path, &expanded)?;
 
-    if new_path.exists() {
+    if new_path == old_path {
+        return Ok(());
+    }
+    if rename::target_collides(&old_path, &new_path).map_err(|e| e.to_string())? {
         return Err(CmdError::expected(format!("Zielordner existiert bereits: {}", new_path.display())));
     }
-    std::fs::rename(&old_path, &new_path).map_err(|e| e.to_string())?;
+    rename::rename_on_disk(&old_path, &new_path).map_err(|e| e.to_string())?;
 
     let db_result = (|| -> Result<(), DbError> {
         let tx = conn.unchecked_transaction()?;
@@ -194,7 +197,7 @@ fn rename_folder_with_conn(
     })();
 
     if let Err(db_err) = db_result {
-        if let Err(rollback_err) = std::fs::rename(&new_path, &old_path) {
+        if let Err(rollback_err) = rename::rename_on_disk(&new_path, &old_path) {
             return Err(format!(
                 "DB-Update fehlgeschlagen ({db_err}) UND Rollback der Ordner-Umbenennung fehlgeschlagen ({rollback_err}) - Ordner heisst jetzt {}, DB verweist teilweise noch auf {}",
                 new_path.display(),
@@ -1180,6 +1183,39 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
+    #[test]
+    fn case_only_folder_rename_and_db_failure_restore_exact_spelling() {
+        for (old_name, new_name) in [("Models", "models"), ("models", "Models")] {
+            for fail_db in [false, true] {
+                let dir = unique_test_dir("case_only_folder");
+                let old = dir.join(old_name);
+                let new = dir.join(new_name);
+                std::fs::create_dir(&old).unwrap();
+                let child = old.join("part.stl");
+                std::fs::write(&child, b"original").unwrap();
+                let conn = db::connect_in_memory().unwrap();
+                let id = db::insert_folder_with_parent(&conn, old_name, None, &old.to_string_lossy()).unwrap();
+                let file_id = db::test_insert_minimal_file(&conn, &child.to_string_lossy(), Some(id)).unwrap();
+                if fail_db {
+                    // Fail after the folder's name update, to verify transaction
+                    // rollback together with restoration of the disk spelling.
+                    conn.execute_batch("CREATE TRIGGER block_case_rename BEFORE UPDATE ON files BEGIN SELECT RAISE(ABORT, 'blocked'); END;").unwrap();
+                }
+                assert_eq!(rename_folder_with_conn(&conn, id, new_name.into(), &[]).is_err(), fail_db);
+                let expected = if fail_db { &old } else { &new };
+                let entries: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).collect();
+                assert_eq!(entries, vec![expected.file_name().unwrap()]);
+                assert_eq!(std::fs::read(expected.join("part.stl")).unwrap(), b"original");
+                let folders = db::list_folders(&conn).unwrap();
+                let folder = folders.iter().find(|f| f.id == id).unwrap();
+                assert_eq!(folder.path, expected.to_string_lossy());
+                assert_eq!(folder.name, if fail_db { old_name } else { new_name });
+                assert_eq!(db::get_file(&conn, file_id).unwrap().unwrap().path, expected.join("part.stl").to_string_lossy());
+                std::fs::remove_dir_all(dir).unwrap();
+            }
+        }
+    }
+
     #[test]
     fn rename_folder_compensates_when_db_update_fails() {
         let dir = unique_test_dir("rename_folder_compensation");

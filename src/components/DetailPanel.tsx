@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { LicenseEditor } from './LicenseEditor';
 import { CatalogWebButton } from './CatalogWebButton';
 import { ExternalLink } from './ExternalLink';
@@ -110,8 +111,8 @@ export function DetailPanel({
     return (
       <aside className="flex-none w-[336px] flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]">
         <div className="flex-none px-4 pt-3.5 pb-3 border-b border-[var(--line)]">
-          <div className="text-body font-semibold leading-tight break-words">{model.name}</div>
-          <div className="font-code text-caption text-[var(--ink-3)] pt-1.5">{model.path}</div>
+          <div className="text-body font-semibold leading-tight break-words">{displayName(model.name)}</div>
+          <div className="font-code text-caption text-[var(--ink-3)] pt-1.5">{displayName(model.path)}</div>
         </div>
 
         <div className="relative h-[248px] bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
@@ -159,9 +160,9 @@ export function DetailPanel({
     return (
     <aside role={trashMode ? undefined : "presentation"} className="flex-none w-[336px] flex flex-col min-h-0 bg-[var(--panel)] border-l border-[var(--line)]">
       <div className="flex-none px-4 pt-3.5 pb-3 border-b border-[var(--line)]">
-        <div className="text-body font-semibold leading-tight break-words">{model.name}</div>
+        <div className="text-body font-semibold leading-tight break-words">{displayName(model.name)}</div>
         <StatusBadges model={model} filament={filament} lastPrinter={lastPrinter} />
-        <div className="font-code text-caption text-[var(--ink-3)] pt-1.5">{model.path}</div>
+        <div className="font-code text-caption text-[var(--ink-3)] pt-1.5">{displayName(model.path)}</div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -402,7 +403,7 @@ export function DetailPanel({
 
         <div className="px-[18px] pt-4 pb-1 flex items-start justify-between gap-3">
           <div className="font-semibold leading-tight break-words" style={{ fontSize: 'var(--font-size-title)' }}>
-            {model.name}
+            {displayName(model.name)}
           </div>
           <button
             onClick={onToggleFavorite}

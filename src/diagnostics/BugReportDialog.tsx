@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { ExternalLink } from '../components/ExternalLink';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { useModalDialog } from '../hooks/useModalDialog';
@@ -194,7 +195,7 @@ export function BugReportDialog({ onClose }: { onClose: () => void }) {
 
         {savedPath && (
           <div className="mt-3 p-2.5 rounded-[5px] border border-[var(--good)] bg-[var(--good-soft)] text-small">
-            {t('bugReportSavedTo').replace('{path}', savedPath)}
+            {t('bugReportSavedTo').replace('{path}', displayName(savedPath))}
           </div>
         )}
         {failure && <div className="mt-3 text-small text-[var(--crit)]">{failure}</div>}

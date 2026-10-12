@@ -1,3 +1,4 @@
+import { displayName } from '../lib/displayName';
 import { useRef, useState } from 'react';
 import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import type { ImportJobResult, ImportProgress } from '../types';
@@ -30,12 +31,12 @@ export function ImportProgressRow({ progress: p, meta, result, queued, onCancel,
   // Models imported but not moved to the target folder are still in the catalog.
   const importedTotal = counts.imported + counts.importedNotPlaced;
   const source = t(meta.source === 'folderContents' ? 'impFolderContents' : meta.source === 'files' ? 'impFiles' : meta.source === 'dropped' ? 'impDropped' : meta.source === 'archive' ? 'impArchive' : 'impFolder');
-  const target = meta.targetName ? t('impTarget').replace('{name}', meta.targetName) : t('impStay');
+  const target = meta.targetName ? t('impTarget').replace('{name}', displayName(meta.targetName)) : t('impStay');
   const status = t(({ queued: 'impQueued', scanning: 'impScanning', importing: 'impImporting', placing: 'impPlacing', cancelling: 'impCancelling', finished: 'impFinished', cancelled: 'impCancelled', failed: 'impFailed' } as const)[state]);
-  const title = state === 'scanning' ? t('impSearching') : state === 'placing' ? t('impMoving').replace('{name}', meta.targetName ?? '') : state === 'finished' ? formatCount(t('impModelsImported'), importedTotal) : state === 'cancelled' ? formatCount(t(result?.scanComplete === false ? 'impSearchStopped' : 'impStopped'), result?.scanComplete === false ? counts.known : counts.known - (result?.groups.skipped.filter(s => s.reason === 'notStarted').length ?? 0)) : state === 'failed' ? result?.jobError?.message : target;
+  const title = state === 'scanning' ? t('impSearching') : state === 'placing' ? t('impMoving').replace('{name}', displayName(meta.targetName ?? '')) : state === 'finished' ? formatCount(t('impModelsImported'), importedTotal) : state === 'cancelled' ? formatCount(t(result?.scanComplete === false ? 'impSearchStopped' : 'impStopped'), result?.scanComplete === false ? counts.known : counts.known - (result?.groups.skipped.filter(s => s.reason === 'notStarted').length ?? 0)) : state === 'failed' ? displayName(result?.jobError?.message ?? '') : target;
   const fraction = t(state === 'placing' ? 'impPlaced' : 'impOf').replace('{done}', n(p.done)).replace('{total}', n(p.total ?? counts.known));
   const duration = `${Math.floor(p.elapsedMs / 60000)}:${String(Math.floor(p.elapsedMs / 1000) % 60).padStart(2, '0')}`;
-  const message = state === 'scanning' ? `${formatCount(t('impFound'), p.found)}${p.current ? ` · ${p.current}` : ''}` : state === 'finished' ? t('impDuration').replace('{time}', duration) : state === 'cancelled' ? t('impSaved') : state === 'failed' ? formatCount(t('impFailureHelp'), counts.imported + counts.importedNotPlaced) : `${fraction}${p.current ? ` · ${p.current}` : ''}`;
+  const message = state === 'scanning' ? `${formatCount(t('impFound'), p.found)}${p.current ? ` · ${displayName(p.current)}` : ''}` : state === 'finished' ? t('impDuration').replace('{time}', duration) : state === 'cancelled' ? t('impSaved') : state === 'failed' ? formatCount(t('impFailureHelp'), counts.imported + counts.importedNotPlaced) : `${fraction}${p.current ? ` · ${displayName(p.current)}` : ''}`;
   return <>
     <section className={`import-row ${state === 'finished' ? 'done' : state === 'cancelled' ? 'cancel' : state === 'failed' ? 'fail' : ''}`} role="status" aria-live="polite">
       <div className="import-title"><span className="import-chip">{status}</span><span>{source} · {title}</span>{queued > 0 && <span className="import-queue">{formatCount(t('impWaitMany'), queued)}</span>}</div>
