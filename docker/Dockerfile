@@ -33,9 +33,11 @@ ENV TITLE="3MF Katalog Manager" \
     THREEMF_CONTAINER=1 UMASK=022 \
     S6_BEHAVIOUR_IF_STAGE2_FAILS=2 S6_SERVICES_GRACETIME=26000 S6_KILL_GRACETIME=1000
 
+# The base image already ships locales-all (incl. de_DE.UTF-8). Do not list `locales`
+# here: that pulls a libc6 upgrade and re-unpacks every locale on each build.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends zenity locales x11-utils util-linux \
-    && locale-gen de_DE.UTF-8 \
+    && apt-get install -y --no-install-recommends zenity x11-utils util-linux \
+    && locale -a | grep -qi '^de_DE\.utf-\?8$' \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=app-extract /opt/3mf-katalog /opt/3mf-katalog
 COPY root/ /
