@@ -6,6 +6,13 @@ name: E2E (real input, tauri-driver)
 # every push.
 on:
   workflow_dispatch: {}
+  # The workflow file lives on the development branch only, where dispatch is
+  # not possible; a push that touches the tests runs it there.
+  push:
+    branches: ["dev/0.16.0"]
+    paths:
+      - "e2e/**"
+      - ".github/workflows/e2e.yml"
   pull_request:
     paths:
       - "src/**"
