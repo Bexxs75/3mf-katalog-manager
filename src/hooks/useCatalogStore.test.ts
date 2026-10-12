@@ -835,3 +835,74 @@ it('ignores an old license reconciliation when another save starts during its re
   expect(result.current.models[0].license).toBe('commercial');
   expect(callCount('list_file_summaries')).toBe(2);
 });
+
+it('keeps captured bytes out of state and completes without a full-model resync', async () => {
+  mockInitialLoad();
+  const { result } = renderHook(() => useCatalogStore());
+  await waitFor(() => expect(result.current.models).toHaveLength(1));
+  await act(async () => { result.current.captureRenderSnapshot('m1', 'snapshot'); });
+  expect(result.current.pendingSnapshotIds).toEqual([]);
+  expect(result.current.models[0].hasRenderSnapshot).toBe(true);
+  expect(result.current.models[0].renderSnapshotImage).toBeNull();
+  expect(filesApi.listFilesByIds).not.toHaveBeenCalled();
+});
+
+it.each(['before', 'during', 'after'])('preserves snapshot presence when a detail fetch starts %s saving', async timing => {
+  mockInitialLoad();
+  const details = createDeferred<ReturnType<typeof makeModelFile>[]>();
+  const save = createDeferred<void>();
+  vi.mocked(filesApi.listFilesByIds).mockReturnValueOnce(details.promise);
+  vi.mocked(filesApi.setRenderSnapshot).mockReturnValueOnce(save.promise);
+  const { result } = renderHook(() => useCatalogStore());
+  await waitFor(() => expect(result.current.models).toHaveLength(1));
+  if (timing === 'before') act(() => result.current.ensureFullModel('m1'));
+  act(() => result.current.captureRenderSnapshot('m1', 'snapshot'));
+  if (timing === 'during') act(() => result.current.ensureFullModel('m1'));
+  await act(async () => { save.resolve(); });
+  if (timing === 'after') act(() => result.current.ensureFullModel('m1'));
+  await act(async () => { details.resolve([makeModelFile({id: 'm1',
+    renderSnapshotImage: timing === 'after' ? 'data:image/png;base64,snapshot' : null })]); });
+  expect(result.current.models[0].hasRenderSnapshot).toBe(true);
+  expect(result.current.pendingSnapshotIds).toEqual([]);
+  if (timing === 'after') expect(result.current.models[0].renderSnapshotImage).toBe('data:image/png;base64,snapshot');
+});
+
+it.each([false, true])('keeps the latest successful snapshot save (newer finishes first: %s)', async newerFirst => {
+  mockInitialLoad();
+  const first = createDeferred<void>();
+  const second = createDeferred<void>();
+  vi.mocked(filesApi.setRenderSnapshot).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+  const { result } = renderHook(() => useCatalogStore());
+  await waitFor(() => expect(result.current.models).toHaveLength(1));
+  act(() => { result.current.captureRenderSnapshot('m1', 'one'); result.current.captureRenderSnapshot('m1', 'two'); });
+  const failFirst = () => act(async () => { first.reject(new Error('save failed')); });
+  const succeedSecond = () => act(async () => { second.resolve(); });
+  if (newerFirst) { await succeedSecond(); await failFirst(); }
+  else { await failFirst(); await succeedSecond(); }
+  expect(filesApi.listFilesByIds).not.toHaveBeenCalled();
+  expect(result.current.models[0].hasRenderSnapshot).toBe(true);
+  expect(result.current.skippedSnapshotIds.has('m1')).toBe(false);
+  expect(result.current.pendingSnapshotIds).toEqual([]);
+});
+
+it.each([false, true])('reconciles the latest failed snapshot save (newer finishes first: %s)', async newerFirst => {
+  mockInitialLoad();
+  const first = createDeferred<void>();
+  const second = createDeferred<void>();
+  vi.mocked(filesApi.setRenderSnapshot).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+  vi.mocked(filesApi.listFilesByIds).mockRejectedValueOnce(new Error('resync failed'));
+  const { result } = renderHook(() => useCatalogStore());
+  await waitFor(() => expect(result.current.models).toHaveLength(1));
+  act(() => { result.current.captureRenderSnapshot('m1', 'one'); result.current.captureRenderSnapshot('m1', 'two'); });
+  const succeedFirst = () => act(async () => { first.resolve(); });
+  const failSecond = () => act(async () => { second.reject(new Error('save failed')); });
+  if (newerFirst) await failSecond();
+  else await succeedFirst();
+  expect(filesApi.listFilesByIds).not.toHaveBeenCalled();
+  if (newerFirst) await succeedFirst();
+  else await failSecond();
+  expect(filesApi.listFilesByIds).toHaveBeenCalledTimes(1);
+  expect(result.current.models[0].hasRenderSnapshot).toBe(false);
+  expect(result.current.skippedSnapshotIds.has('m1')).toBe(true);
+  expect(result.current.pendingSnapshotIds).toEqual([]);
+});

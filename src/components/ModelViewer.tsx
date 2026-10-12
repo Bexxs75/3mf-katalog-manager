@@ -20,6 +20,7 @@ interface Props extends ViewerActions {
   needsSnapshot: boolean;
   onSnapshotCaptured: (base64: string) => void;
   onError?: () => void;
+  onContextLost?: () => void;
   showRotationControls?: boolean;
 }
 
@@ -94,7 +95,18 @@ interface ViewerContext {
   material: THREE.MeshStandardMaterial;
   currentObject: THREE.Object3D | null;
   colorMaterials: THREE.MeshStandardMaterial[];
+  disposing?: boolean;
+  luts: Set<THREE.Texture>;
   floor: ReturnType<typeof createViewerFloor>;
+}
+
+function rememberDFGLUTs(ctx: ViewerContext) {
+  for (const material of [ctx.material, ...ctx.colorMaterials]) {
+    const properties = ctx.renderer.properties?.get(material) as
+      { uniforms?: { dfgLUT?: { value?: THREE.Texture } } } | undefined;
+    const lut = properties?.uniforms?.dfgLUT?.value;
+    if (lut) ctx.luts.add(lut);
+  }
 }
 
 function updateViewerProjection(ctx: ViewerContext): boolean {
@@ -130,7 +142,7 @@ function fitViewer(ctx: ViewerContext) {
   ctx.floor.visible = true;
 }
 
-export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot, onSnapshotCaptured, onError, showRotationControls, model, onOpenInSlicer, onRemoveFromCatalog }: Props) {
+export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot, onSnapshotCaptured, onError, onContextLost, showRotationControls, model, onOpenInSlicer, onRemoveFromCatalog }: Props) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const ctxRef = useRef<ViewerContext | null>(null);
@@ -243,25 +255,34 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
     };
     animate();
 
-    ctxRef.current = { container, controlsBar: () => controlsBarRef.current, scene, camera, renderer, controls, material, currentObject: null, colorMaterials: [], floor };
+    ctxRef.current = { container, controlsBar: () => controlsBarRef.current, scene, camera, renderer, controls, material, currentObject: null, colorMaterials: [], floor, luts: new Set() };
 
     return () => {
+      if (ctxRef.current) ctxRef.current.disposing = true;
       cancelAnimationFrame(frameHandle);
       themeObserver.disconnect();
       floor.geometry.dispose();
       floor.material.dispose();
+      if (ctxRef.current) rememberDFGLUTs(ctxRef.current);
       ctxRef.current?.colorMaterials.forEach(m => m.dispose());
       controls.dispose();
       if (ctxRef.current?.currentObject) {
         disposeObject(ctxRef.current.currentObject);
       }
+      // three r185 shares this LUT across renderers but renderer.dispose() leaves
+      // their texture listeners attached. Disposing it releases those references.
       material.dispose();
       renderer.forceContextLoss();
       renderer.dispose();
+      ctxRef.current?.luts.forEach(lut => lut.dispose());
       container.removeChild(renderer.domElement);
       ctxRef.current = null;
     };
   }, []);
+
+  // OrbitControls removes its document listener through getRootNode(), so it
+  // must disconnect before React detaches the container in the mutation phase.
+  useLayoutEffect(() => () => { ctxRef.current?.controls.dispose(); }, []);
 
   // Model change: loads the new geometry and replaces only the object in
   // the existing scene instead of rebuilding the whole viewer.
@@ -270,9 +291,19 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
     if (!ctx) return;
 
     let cancelled = false;
+    let contextLost = false;
+    let captureDelivered = false;
+    const handleContextLost = (event: Event) => {
+      event.preventDefault();
+      if (cancelled || contextLost || captureDelivered || ctx.disposing) return;
+      contextLost = true;
+      finishAttempt();
+      onContextLost?.();
+    };
+    if (onContextLost) ctx.renderer.domElement.addEventListener('webglcontextlost', handleContextLost);
     let errorTimer: ReturnType<typeof setTimeout> | undefined;
     const reportError = () => {
-      errorTimer = setTimeout(() => { if (!cancelled) onError?.(); }, 0);
+      errorTimer = setTimeout(() => { if (!cancelled && !contextLost) onError?.(); }, 0);
     };
     setStatus('loading');
     setError(null);
@@ -288,13 +319,14 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
       disposeObject(ctx.currentObject);
       ctx.currentObject = null;
     }
+    rememberDFGLUTs(ctx);
     ctx.colorMaterials.forEach(m => m.dispose());
     ctx.colorMaterials = [];
 
     const finishAttempt = beginPreviewAttempt(fileId);
     invoke<ArrayBuffer>('get_model_geometry', { fileId })
       .then((buffer) => {
-        if (cancelled) { finishAttempt(); return; }
+        if (cancelled || contextLost) { finishAttempt(); return; }
         const { meshes, palette, plates } = decodeModelGeometry(buffer);
         setPlates(plates);
         ctx.colorMaterials = palette.map(color => new THREE.MeshStandardMaterial({
@@ -333,12 +365,14 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
         if (needsSnapshot) {
           requestAnimationFrame(() => {
             requestAnimationFrame(() => {
-              if (cancelled) { finishAttempt(); return; }
+              if (cancelled || contextLost) { finishAttempt(); return; }
               try {
                 const dataUrl = ctx.renderer.domElement.toDataURL('image/png');
                 const base64 = dataUrl.split(',')[1];
-                if (base64) onSnapshotCaptured(base64);
-                else reportError();
+                if (base64) {
+                  captureDelivered = true;
+                  onSnapshotCaptured(base64);
+                } else reportError();
               } catch (err) {
                 console.error('[ModelViewer] snapshot failed:', err);
                 reportError();
@@ -354,7 +388,7 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
       .catch((err) => {
         finishAttempt();
         console.error('[ModelViewer] loading failed:', err);
-        if (!cancelled) {
+        if (!cancelled && !contextLost) {
           setStatus('error');
           setError(toAppError(err));
           reportError();
@@ -363,6 +397,8 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
 
     return () => {
       cancelled = true;
+      finishAttempt();
+      ctx.renderer.domElement.removeEventListener('webglcontextlost', handleContextLost);
       clearTimeout(errorTimer);
     };
   }, [fileId]);

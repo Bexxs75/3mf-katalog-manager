@@ -60,7 +60,7 @@ const MUTATION_TRACKED_FIELDS: { prefix: string; field: keyof ModelFile }[] = [
   { prefix: 'printStatus', field: 'printStatus' },
   { prefix: 'favorite', field: 'favorite' },
   { prefix: 'queue', field: 'queuePosition' },
-  { prefix: 'renderSnapshot', field: 'renderSnapshotImage' },
+  { prefix: 'renderSnapshot', field: 'hasRenderSnapshot' },
   { prefix: 'sourceUrl', field: 'sourceUrl' },
   { prefix: 'license', field: 'license' },
 ];
@@ -142,7 +142,7 @@ export function useCatalogStore({ preselectFirst = true }: CatalogStoreOptions =
       models
         .filter(
           (m) =>
-            m.renderSnapshotImage === null &&
+            !(m.hasRenderSnapshot ?? m.renderSnapshotImage !== null) &&
             !(isStepFilePath(m.path) && hasInterruptedPreviewAttempt(m.id)) &&
             !skippedSnapshotIds.has(m.id) &&
             !summaryConfirmedSnapshotIds.has(m.id),
@@ -187,7 +187,7 @@ export function useCatalogStore({ preselectFirst = true }: CatalogStoreOptions =
           setModels((prev) =>
             prev.map((m) => {
               if (m.id !== id) return m;
-              const merged: ModelFile = { ...full[0] };
+              const merged: ModelFile = { ...full[0], hasRenderSnapshot: full[0].renderSnapshotImage !== null };
               MUTATION_TRACKED_FIELDS.forEach(({ prefix, field }, index) => {
                 const key = `${prefix}:${id}`;
                 const stillPending = pendingMutationCounts[key] !== undefined;
@@ -499,19 +499,42 @@ export function useCatalogStore({ preselectFirst = true }: CatalogStoreOptions =
       });
   }, []);
 
+  const latestSnapshotSaves = useRef(new Map<string, { failed: boolean }>()).current;
+
   const captureRenderSnapshot = useCallback((id: string, base64: string) => {
-    const renderSnapshotImage = `data:image/png;base64,${base64}`;
-    setModels((prev) => prev.map((m) => (m.id === id ? { ...m, renderSnapshotImage, hasRenderSnapshot: true } : m)));
+    setModels((prev) => prev.map((m) => (m.id === id ? { ...m, hasRenderSnapshot: true } : m)));
     const key = `renderSnapshot:${id}`;
+    const attempt = { failed: false };
+    latestSnapshotSaves.set(id, attempt);
     beginMutation(key);
     filesApi
       .setRenderSnapshot(id, base64)
-      .then(() => invalidateModelImages(id))
+      .then(() => {
+        // Detail reads started during the write may still contain the old flag.
+        mutationEpochs[key]++;
+        invalidateModelImages(id);
+      })
       .catch((e) => {
         console.error('[render-snapshot] saving failed:', e);
+        attempt.failed = true;
       })
       .finally(() => {
-        void endMutationAndResyncIfSettled(key, id);
+        if (pendingMutationCounts[key] > 1) {
+          pendingMutationCounts[key]--;
+          return;
+        }
+        const latestFailed = latestSnapshotSaves.get(id)?.failed;
+        latestSnapshotSaves.delete(id);
+        if (latestFailed) {
+          // Only the latest requested save determines whether reconciliation is needed.
+          // A failed write must not immediately enqueue the same failing save.
+          skipSnapshot(id);
+          // Leave the model retryable on the next session even if resync fails.
+          setModels(prev => prev.map(m => m.id === id ? { ...m, hasRenderSnapshot: false } : m));
+          void endMutationAndResyncIfSettled(key, id);
+        } else {
+          delete pendingMutationCounts[key];
+        }
       });
   }, []);
 

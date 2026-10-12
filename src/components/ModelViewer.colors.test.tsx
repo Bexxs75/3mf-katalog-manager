@@ -1,8 +1,9 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import * as THREE from 'three';
 import { invoke } from '@tauri-apps/api/core';
 import { LanguageProvider } from '../i18n/LanguageContext';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { ModelViewer } from './ModelViewer';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
@@ -10,10 +11,14 @@ vi.mock('../diagnostics/ReportProblemLink', () => ({ ReportProblemLink: () => <b
 vi.mock('../hooks/useModelImages', () => ({ useModelImages: () => new Map() }));
 let scene: THREE.Scene;
 const forceContextLoss = vi.fn();
+const lutDispose = vi.fn();
+const lut = { dispose: lutDispose };
+const materialProperties = vi.fn((_material: THREE.Material) => ({ uniforms: { dfgLUT: { value: lut } } }));
 vi.mock('three', async (importOriginal) => {
   const actual = await importOriginal<typeof import('three')>();
   return { ...actual, WebGLRenderer: function () {
     return { domElement: document.createElement('canvas'), setPixelRatio: vi.fn(), setSize: vi.fn(),
+      properties: { get: (material: THREE.Material) => materialProperties(material) },
       render: (s: THREE.Scene) => { scene = s; }, forceContextLoss, dispose: vi.fn() };
   } };
 });
@@ -40,6 +45,7 @@ function page(detail = true, id = 'a') {
     needsSnapshot={false} onSnapshotCaptured={vi.fn()} /></div></LanguageProvider>;
 }
 beforeEach(() => {
+  materialProperties.mockReset().mockReturnValue({ uniforms: { dfgLUT: { value: lut } } });
   vi.mocked(invoke).mockReset().mockResolvedValue(buffer());
   vi.spyOn(console, 'error').mockImplementation(() => {});
   localStorage.setItem('3mf-katalog-language', 'de');
@@ -137,4 +143,69 @@ describe('viewer backend errors', () => {
     render(page());
     expect(screen.getByRole('status')).toHaveTextContent('3D-Ansicht wird geladen');
   });
+});
+
+it('disconnects controls while attached and releases the shared DFG LUT once', async () => {
+  lutDispose.mockClear();
+  const roots: boolean[] = [];
+  const original = OrbitControls.prototype.dispose;
+  vi.spyOn(OrbitControls.prototype, 'dispose').mockImplementation(function (this: OrbitControls) {
+    roots.push(this.domElement!.isConnected);
+    original.call(this);
+  });
+  const add = vi.spyOn(document, 'addEventListener');
+  const remove = vi.spyOn(document, 'removeEventListener');
+  const view = render(page());
+  await screen.findByRole('button', { name: 'Einpassen' });
+  view.unmount();
+  expect(roots[0]).toBe(true);
+  const keyListeners = add.mock.calls.filter(([type, , options]) => type === 'keydown' && typeof options === 'object' && options.capture);
+  expect(keyListeners.length).toBeGreaterThan(0);
+  for (const [, listener] of keyListeners) {
+    expect(remove).toHaveBeenCalledWith('keydown', listener, { capture: true });
+  }
+  expect(lutDispose).toHaveBeenCalledTimes(1);
+});
+
+it('retains the LUT from color-only materials across file changes until renderer disposal', async () => {
+  lutDispose.mockClear();
+  materialProperties.mockImplementation(material => (material as THREE.MeshStandardMaterial).color.getHexString() === 'c8643c'
+    ? { uniforms: { dfgLUT: { value: lut } } } : {} as ReturnType<typeof materialProperties>);
+  const view = render(page());
+  await screen.findByRole('button', { name: 'Einpassen' });
+  vi.mocked(invoke).mockResolvedValue(buffer(false));
+  view.rerender(page(true, 'uncolored'));
+  await waitFor(() => expect(modelMesh().material).not.toBeInstanceOf(Array));
+  expect(lutDispose).not.toHaveBeenCalled();
+  view.unmount();
+  expect(lutDispose).toHaveBeenCalledTimes(1);
+});
+
+it('does not discard visible-viewer geometry on context loss without a recovery callback', async () => {
+  let resolve!: (value: ArrayBuffer) => void;
+  vi.mocked(invoke).mockReturnValue(new Promise<ArrayBuffer>(done => { resolve = done; }));
+  const add = vi.spyOn(HTMLCanvasElement.prototype, 'addEventListener');
+  const view = render(page());
+  expect(add.mock.calls.filter(([type]) => type === 'webglcontextlost')).toEqual([]);
+  fireEvent(view.container.querySelector('canvas')!, new Event('webglcontextlost'));
+  resolve(buffer());
+  await screen.findByRole('button', { name: 'Einpassen' });
+});
+
+it('does not request context recovery after delivering a capture', async () => {
+  const frames: FrameRequestCallback[] = [];
+  vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { frames.push(cb); return frames.length; });
+  vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/png;base64,c25hcHNob3Q=');
+  const onContextLost = vi.fn();
+  const onSnapshotCaptured = vi.fn(() => {
+    document.querySelector('canvas')!.dispatchEvent(new Event('webglcontextlost'));
+  });
+  render(<LanguageProvider><ModelViewer fileId="captured" needsSnapshot showRotationControls
+    onSnapshotCaptured={onSnapshotCaptured} onContextLost={onContextLost} /></LanguageProvider>);
+  await screen.findByRole('button', { name: 'Einpassen' });
+  for (let i = 0; i < 2; i++) {
+    await act(async () => { frames.splice(0).forEach(cb => cb(0)); });
+  }
+  expect(onSnapshotCaptured).toHaveBeenCalledTimes(1);
+  expect(onContextLost).not.toHaveBeenCalled();
 });

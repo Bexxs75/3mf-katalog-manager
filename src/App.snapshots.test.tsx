@@ -83,8 +83,8 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-async function mountQueue(count: number) {
-  models = Array.from({ length: count }, (_, i) => makeModelFile({ id: `m${i}`, path: `/test/${i}.stl` }));
+async function mountQueue(count: number, fileSizeBytes?: number) {
+  models = Array.from({ length: count }, (_, i) => makeModelFile({ id: `m${i}`, path: `/test/${i}.stl`, fileSizeBytes }));
   await act(async () => { render(<LanguageProviderWithDiagnostics><UiDensityProvider><App /></UiDensityProvider></LanguageProviderWithDiagnostics>); });
 }
 async function frame() {
@@ -95,19 +95,21 @@ async function frame() {
   });
 }
 
-it('stores a snapshot and mounts the next file with working WebGL', async () => {
+it('reuses the mounted renderer and captures consecutive files with their own IDs', async () => {
   await mountQueue(2);
   expect(store.pendingSnapshotIds).toHaveLength(2);
   await frame();
   await frame();
   expect(saved).toEqual(['m0']);
-  expect(store.models[0].renderSnapshotImage).toBe('data:image/png;base64,c25hcHNob3Q=');
+  expect(store.models[0].renderSnapshotImage).toBeNull();
+  expect(store.models[0].hasRenderSnapshot).toBe(true);
   expect(store.pendingSnapshotIds).toEqual(['m1']);
   await frame();
   await frame();
   expect(saved).toEqual(['m0', 'm1']);
   expect(store.pendingSnapshotIds).toEqual([]);
-  expect(viewerMounts).toBe(2);
+  expect(viewerMounts).toBe(1);
+  expect(rendererCtor).toHaveBeenCalledTimes(1);
 });
 
 it('drains 600 snapshots in 3D display mode without nested updates with working WebGL', async () => {
@@ -116,7 +118,8 @@ it('drains 600 snapshots in 3D display mode without nested updates with working 
   expect(saved).toEqual(models.map(m => m.id));
   expect(store.pendingSnapshotIds).toEqual([]);
   expect(store.skippedSnapshotIds.size).toBe(0);
-  expect(viewerMounts).toBe(600);
+  expect(viewerMounts).toBe(3);
+  expect(rendererCtor).toHaveBeenCalledTimes(3);
 }, 30000);
 
 it.each(['geometry', 'snapshot'])('skips only the failing file after a %s error', async (failure) => {
@@ -139,10 +142,79 @@ it.each(['geometry', 'snapshot'])('skips only the failing file after a %s error'
   if (failure === 'snapshot') { await frame(); await frame(); }
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
   expect([...store.skippedSnapshotIds]).toEqual(['m0']);
+  expect(rendererCtor).toHaveBeenCalledTimes(2);
+  expect(viewerMounts).toBe(2);
   await frame();
   await frame();
   expect(saved).toEqual(['m1']);
   expect(store.pendingSnapshotIds).toEqual([]);
+});
+
+it('rebuilds a lost context once, then advances after repeated loss without looping', async () => {
+  await mountQueue(2);
+  const first = document.querySelector('canvas')!;
+  await act(async () => { first.dispatchEvent(new Event('webglcontextlost')); });
+  expect(rendererCtor).toHaveBeenCalledTimes(2);
+  expect(store.skippedSnapshotIds.size).toBe(0);
+  expect(localStorage.getItem('3mf-katalog-preview-attempt:m0')).toBe('1');
+  await act(async () => { document.querySelector('canvas')!.dispatchEvent(new Event('webglcontextlost')); });
+  expect(rendererCtor).toHaveBeenCalledTimes(3);
+  expect([...store.skippedSnapshotIds]).toEqual(['m0']);
+  await frame();
+  await frame();
+  expect(saved).toEqual(['m1']);
+  expect(localStorage.getItem('3mf-katalog-preview-attempt:m0')).toBeNull();
+  expect(store.pendingSnapshotIds).toEqual([]);
+  await act(async () => { first.dispatchEvent(new Event('webglcontextlost')); });
+  expect(rendererCtor).toHaveBeenCalledTimes(3);
+});
+
+it('recovers the current file after context loss on a reused renderer', async () => {
+  await mountQueue(2);
+  await frame();
+  await frame();
+  expect(saved).toEqual(['m0']);
+  await act(async () => { document.querySelector('canvas')!.dispatchEvent(new Event('webglcontextlost')); });
+  expect(rendererCtor).toHaveBeenCalledTimes(2);
+  await frame();
+  await frame();
+  expect(saved).toEqual(['m0', 'm1']);
+  expect(store.skippedSnapshotIds.size).toBe(0);
+});
+
+it('does not loop after a snapshot save failure', async () => {
+  const fallback = vi.mocked(invoke).getMockImplementation()!;
+  vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+    if (cmd === 'set_render_snapshot' && (args as { fileId: string }).fileId === 'm0') throw new Error('disk full');
+    return fallback(cmd, args);
+  });
+  await mountQueue(2);
+  for (let i = 0; i < 8; i++) await frame();
+  expect(saved).toEqual(['m1']);
+  expect([...store.skippedSnapshotIds]).toEqual(['m0']);
+  expect(store.pendingSnapshotIds).toEqual([]);
+  expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === 'set_render_snapshot')).toHaveLength(2);
+});
+
+it('clears an interrupted render on unmount without capturing or skipping it', async () => {
+  await mountQueue(2);
+  cleanup();
+  await frame();
+  await frame();
+  expect(saved).toEqual([]);
+  expect(localStorage.getItem('3mf-katalog-preview-attempt:m0')).toBeNull();
+  expect(store.skippedSnapshotIds.size).toBe(0);
+});
+
+it('does not mount a background renderer for a large STL', async () => {
+  await mountQueue(1, 200 * 1024 * 1024 + 1);
+  await frame();
+  await frame();
+  expect(store.pendingSnapshotIds).toEqual(['m0']);
+  expect(viewerMounts).toBe(0);
+  expect(rendererCtor).not.toHaveBeenCalled();
+  expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === 'get_model_geometry')).toEqual([]);
+  expect(saved).toEqual([]);
 });
 
 it('skips 200 pending files in one update without remounting when WebGL creation throws', async () => {

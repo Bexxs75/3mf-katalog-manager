@@ -18,7 +18,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Header } from './components/Header';
 import { isWebGLUnavailable } from './lib/webglAvailability';
-import { snapshotQueue } from './lib/snapshotQueue';
+import { nextRendererGeneration, snapshotQueue } from './lib/snapshotQueue';
 import { Rail } from './components/Rail';
 import { ContextMenu } from './components/ContextMenu';
 import { FilamentView } from './components/FilamentView';
@@ -262,6 +262,21 @@ export default function App() {
     [store.models, store.pendingSnapshotIds, displayPreference, hasStepPreview],
   );
 
+  const [snapshotRenderer, setSnapshotRenderer] = useState({ done: 0, generation: 0 });
+  const contextRetries = useRef(new Set<string>());
+  useEffect(() => {
+    const pending = new Set(snapshotIds);
+    for (const id of contextRetries.current) {
+      if (!pending.has(id)) contextRetries.current.delete(id);
+    }
+  }, [snapshotIds]);
+  useEffect(() => {
+    const retries = contextRetries.current;
+    return () => retries.clear();
+  }, []);
+  const advanceRenderer = (event: 'captured' | 'error' | 'contextlost') => {
+    setSnapshotRenderer(state => nextRendererGeneration(state.done, state.generation, event));
+  };
   const noWebGL = isWebGLUnavailable();
   useEffect(() => {
     // Also skip files imported after WebGL failed, without mounting a viewer.
@@ -277,12 +292,23 @@ export default function App() {
     >
       {!noWebGL && snapshotIds.length > 0 && (
         <BackgroundSnapshotRenderer
-          key={snapshotIds[0]}
+          key={snapshotRenderer.generation}
           fileId={snapshotIds[0]}
-          onSnapshotCaptured={(base64) => store.captureRenderSnapshot(snapshotIds[0], base64)}
-          onError={() => {
+          onSnapshotCaptured={(fileId, base64) => {
+            contextRetries.current.delete(fileId);
+            store.captureRenderSnapshot(fileId, base64);
+            advanceRenderer('captured');
+          }}
+          onError={(fileId) => {
+            advanceRenderer('error');
             if (isWebGLUnavailable()) store.skipSnapshots(store.pendingSnapshotIds);
-            else store.skipSnapshot(snapshotIds[0]);
+            else store.skipSnapshot(fileId);
+          }}
+          onContextLost={(fileId) => {
+            // Retry a lost context once; repeated losses must not stall the queue.
+            if (contextRetries.current.has(fileId)) store.skipSnapshot(fileId);
+            else contextRetries.current.add(fileId);
+            advanceRenderer('contextlost');
           }}
         />
       )}

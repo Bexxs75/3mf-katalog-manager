@@ -56,6 +56,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- Preview images for very large catalogs no longer use up memory until the window freezes. STL/OBJ/PLY files over 200 MB no longer get an automatic background preview; their tiles show a placeholder, and the 3D view can still be opened manually.
 - Arrow keys navigate between models after focusing the preview, a link or a plain button; widgets such as the plate selector keep their own arrow controls.
 - Disk sync shows a separate confirmation action for removing missing files even when no new files were found.
 - File and model names display bidirectional text controls as visible codes such as `[U+202E]`, so extensions cannot be disguised; stored names stay unchanged.
@@ -623,6 +624,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Behoben
 
+- Vorschaubilder sehr großer Kataloge verbrauchen nicht mehr immer mehr Speicher, bis das Fenster einfriert. STL/OBJ/PLY-Dateien über 200 MB erhalten keine automatische Hintergrundvorschau mehr; ihre Kacheln zeigen einen Platzhalter, und die 3D-Ansicht lässt sich weiterhin manuell öffnen.
 - Pfeiltasten blättern auch nach Fokus auf Vorschau, Link oder einfachem Knopf zwischen Modellen; Widgets wie die Plattenleiste behalten ihre eigene Pfeilsteuerung.
 - Der Festplatten-Abgleich zeigt eine eigene Bestätigungsaktion zum Entfernen fehlender Dateien, auch wenn keine neuen Dateien gefunden wurden.
 - Datei- und Modellnamen zeigen Steuerzeichen für die Textrichtung als sichtbare Codes wie `[U+202E]`, damit Endungen nicht verschleiert werden; gespeicherte Namen bleiben unverändert.

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { beginPreviewAttempt, hasInterruptedPreviewAttempt, snapshotQueue } from './snapshotQueue';
+import { beginPreviewAttempt, hasInterruptedPreviewAttempt, snapshotQueue, MAX_BACKGROUND_MESH_BYTES, nextRendererGeneration } from './snapshotQueue';
 
 const models = [
   { id: 'stl', path: '/cat/model.stl', thumbnailImage: null },
@@ -47,7 +47,6 @@ describe('snapshotQueue', () => {
   });
 });
 
-
 describe('persistent preview attempts', () => {
   beforeEach(() => localStorage.clear());
 
@@ -82,5 +81,42 @@ describe('persistent preview attempts', () => {
     } finally {
       get.mockRestore(); set.mockRestore(); remove.mockRestore();
     }
+  });
+});
+
+describe('background mesh size limit', () => {
+  it.each([undefined, 0])('renders meshes with fileSizeBytes=%s', fileSizeBytes => {
+    const entries = ['stl', 'obj', 'ply'].map(extension => ({ id: extension,
+      path: `/cat/model.${extension}`, thumbnailImage: null, fileSizeBytes }));
+    for (const mode of ['render', 'thumbnail'] as const) {
+      expect(snapshotQueue(entries, ['stl', 'obj', 'ply'], mode, true)).toEqual(['stl', 'obj', 'ply']);
+    }
+  });
+  it('renders unresolved models in render mode', () => {
+    expect(snapshotQueue([], ['missing'], 'render', true)).toEqual(['missing']);
+  });
+  it.each(['stl', 'OBJ', 'ply'])('excludes %s only above the limit in both display modes', extension => {
+    const entries = [-1, 0, 1].map(delta => ({ id: String(delta), path: `/cat/model.${extension}`,
+      thumbnailImage: null, fileSizeBytes: MAX_BACKGROUND_MESH_BYTES + delta }));
+    for (const mode of ['render', 'thumbnail'] as const) {
+      expect(snapshotQueue(entries, ['-1', '0', '1'], mode, true)).toEqual(['-1', '0']);
+    }
+  });
+  it('does not restrict compressed 3MF files', () => {
+    expect(snapshotQueue([{ id: 'big', path: '/cat/BIG.3MF', thumbnailImage: null,
+      fileSizeBytes: 900 * 1024 * 1024 }], ['big'], 'render', true)).toEqual(['big']);
+  });
+});
+
+describe('renderer generations', () => {
+  it('rebuilds every 200 captures', () => {
+    let state = { done: 0, generation: 0 };
+    for (let i = 1; i <= 600; i++) {
+      state = nextRendererGeneration(state.done, state.generation, 'captured');
+      expect(state).toEqual({ done: i % 200, generation: Math.floor(i / 200) });
+    }
+  });
+  it.each(['error', 'contextlost'] as const)('resets the budget after %s', event => {
+    expect(nextRendererGeneration(199, 3, event)).toEqual({ done: 0, generation: 4 });
   });
 });

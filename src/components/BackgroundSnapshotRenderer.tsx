@@ -2,8 +2,9 @@ import { ModelViewer } from './ModelViewer';
 
 interface Props {
   fileId: string;
-  onSnapshotCaptured: (base64: string) => void;
-  onError: () => void;
+  onSnapshotCaptured: (fileId: string, base64: string) => void;
+  onError: (fileId: string) => void;
+  onContextLost?: (fileId: string) => void;
 }
 
 /**
@@ -13,13 +14,14 @@ interface Props {
  * display:none would mean it never renders, hence opacity+position
  * instead of display.
  */
-export function BackgroundSnapshotRenderer({ fileId, onSnapshotCaptured, onError }: Props) {
+export function BackgroundSnapshotRenderer({ fileId, onSnapshotCaptured, onError, onContextLost }: Props) {
   return (
     <div
       style={{ position: 'fixed', top: -9999, left: -9999, width: 400, height: 300, opacity: 0, pointerEvents: 'none' }}
       aria-hidden="true"
     >
-      <ModelViewer fileId={fileId} needsSnapshot onSnapshotCaptured={onSnapshotCaptured} onError={onError} />
+      <ModelViewer fileId={fileId} needsSnapshot onSnapshotCaptured={base64 => onSnapshotCaptured(fileId, base64)}
+        onError={() => onError(fileId)} onContextLost={() => onContextLost?.(fileId)} />
     </div>
   );
 }
