@@ -53,6 +53,16 @@ RUN test -d /etc/s6-overlay/s6-rc.d/init-adduser \
     && printf '%s\n' '#!/bin/sh' > /defaults/autostart \
     && chmod +x /defaults/autostart
 
+# Only nginx authenticates requests; internal backends must not accept bridge traffic.
+RUN grep -q '^http\.listen(6900);$' /kclient/index.js \
+    && sed -i "s/^http\.listen(6900);$/http.listen(6900, '127.0.0.1');/" /kclient/index.js \
+    && grep -q -- '-interface 0\.0\.0\.0 ' /etc/s6-overlay/s6-rc.d/svc-kasmvnc/run \
+    && sed -i 's/-interface 0\.0\.0\.0 /-interface 127.0.0.1 /' /etc/s6-overlay/s6-rc.d/svc-kasmvnc/run \
+    && grep -q '^  interface: 0\.0\.0\.0$' /usr/local/etc/kasmvnc/kasmvnc.yaml.lsio \
+    && sed -i 's/^  interface: 0\.0\.0\.0$/  interface: 127.0.0.1/' /usr/local/etc/kasmvnc/kasmvnc.yaml.lsio \
+    && { ! grep -q '^  interface: 0\.0\.0\.0$' /usr/local/etc/kasmvnc/kasmvnc.yaml \
+         || sed -i 's/^  interface: 0\.0\.0\.0$/  interface: 127.0.0.1/' /usr/local/etc/kasmvnc/kasmvnc.yaml; }
+
 # Insert the companion routes only into the expected two-server template.
 RUN test -x /usr/bin/python3 \
     && test "$(grep -Ec '^[[:space:]]*server[[:space:]]*\{' /defaults/default.conf)" -eq 2 \

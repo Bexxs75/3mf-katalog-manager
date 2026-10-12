@@ -8,6 +8,61 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class ProxyTests(unittest.TestCase):
+    def test_internal_listener_build_anchors_fail_closed(self):
+        dockerfile = (ROOT / 'Dockerfile').read_text()
+        command = dockerfile.split('# Only nginx authenticates requests;', 1)[1].split('\nRUN ', 1)[1].split('\n\n', 1)[0]
+        fixtures = {
+            '/kclient/index.js': 'http.listen(6900);\n',
+            '/etc/s6-overlay/s6-rc.d/svc-kasmvnc/run': '    -interface 0.0.0.0 \\\n',
+            '/usr/local/etc/kasmvnc/kasmvnc.yaml': 'network:\n  interface: 0.0.0.0\n',
+            '/usr/local/etc/kasmvnc/kasmvnc.yaml.lsio': 'network:\n  interface: 0.0.0.0\n',
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            for directory in ['/kclient/', '/etc/s6-overlay/', '/usr/local/etc/kasmvnc/']:
+                command = command.replace(directory, tmp + directory)
+            for changed in [None, *fixtures]:
+                with self.subTest(changed=changed):
+                    for path, content in fixtures.items():
+                        target = Path(tmp + path)
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        target.write_text('upstream changed\n' if path == changed else content)
+                    result = subprocess.run(['sh', '-c', command], capture_output=True)
+                    # kasmvnc.yaml carries no interface line in the base image, so it is patched only when present.
+                    optional = changed == '/usr/local/etc/kasmvnc/kasmvnc.yaml'
+                    self.assertEqual(result.returncode == 0, changed is None or optional, result.stderr)
+                    if changed is None:
+                        for path in fixtures:
+                            self.assertIn('127.0.0.1', Path(tmp + path).read_text())
+                            self.assertNotIn('0.0.0.0', Path(tmp + path).read_text())
+
+    def test_smoke_internal_listener_check(self):
+        smoke = (ROOT / 'scripts/ci-smoke.sh').read_text()
+        function = 'check_internal_listeners() {' + smoke.split('check_internal_listeners() {', 1)[1].split('\n}', 1)[0] + '\n}'
+        # Supply ss output without starting Docker or opening any sockets.
+        command = '''
+fail() { exit 1; }
+ok() { :; }
+docker() { printf '%s\\n' "$LISTENERS"; return "${SS_STATUS:-0}"; }
+''' + function + '\ncheck_internal_listeners test'
+        for addresses, good in [
+            (['127.0.0.1:6900', '127.0.0.1:6901'], True),
+            (['[::1]:6900', '[::1]:6901'], True),
+            (['::1:6900', '::1:6901'], True),
+            (['0.0.0.0:6900', '127.0.0.1:6901'], False),
+            (['127.0.0.1:6900', '[::]:6901'], False),
+            (['*:6900', '127.0.0.1:6901'], False),
+            (['127.0.0.1:6900', '172.18.0.2:6901'], False),
+            (['127.0.0.1:6900', '127.0.0.1:6901', '0.0.0.0:6901'], False),
+            (['127.0.0.1:6900'], False),
+            ([], False),
+        ]:
+            with self.subTest(addresses=addresses):
+                listeners = '\n'.join(f'LISTEN 0 128 {address} 0.0.0.0:*' for address in addresses)
+                for status in ['0', '1']:
+                    result = subprocess.run(['bash', '-c', command], capture_output=True,
+                                            env={**os.environ, 'LISTENERS': listeners, 'SS_STATUS': status})
+                    self.assertEqual(result.returncode == 0, good and status == '0', result.stderr)
+
     def test_proxy_port_configuration(self):
         helper = ROOT / 'root/usr/local/libexec/3mf-katalog-proxy'
         self.assertTrue(helper.exists(), 'Proxy port configuration helper must exist')

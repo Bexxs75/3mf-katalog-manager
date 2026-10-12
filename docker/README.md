@@ -41,6 +41,15 @@ Ein selbst gesetztes `PASSWORD` ist dagegen in `docker inspect` sichtbar.
 `ALLOW_NO_AUTH=true` schaltet die Anmeldung ausdrücklich ab, auch bei gesetztem
 Passwort, und erzeugt eine Warnung. `.env` privat halten (z. B. `chmod 600 .env`).
 
+Für eigene Zugangsdaten gilt: `PASSWORD` darf keine Leerzeichen, Tabs,
+Zeilenumbrüche oder die Zeichen `*`, `?`, `[`, `:`, `%`, `\` enthalten und nicht
+mit `-` beginnen. `CUSTOM_USER` erlaubt ausschließlich `A-Z`, `a-z`, `0-9`,
+`.`, `_`, `-`, ebenfalls ohne führendes `-`. Ungültige Werte brechen den
+Containerstart mit einer Fehlermeldung ab, auch bei `ALLOW_NO_AUTH=true`.
+Leere Werte verwenden weiterhin die Vorgaben; erzeugte Passwörter bleiben
+48 Hex-Zeichen lang. Die Einschränkungen verhindern, dass das Basisimage
+Zugangsdaten beim Einrichten der Anmeldung verändert.
+
 ### Lokaler Bau
 
 `APP_URL` (HTTPS, Linux x86_64 AppImage) und die dazugehörige `APP_VERSION` in
@@ -58,7 +67,8 @@ docker compose up -d --no-build
 Es gibt bewusst keinen Standarddownload der alten, veränderlichen Preview aus
 dem Prototyp. URL und Version müssen zusammenpassen. `BASE_IMAGE` lässt sich
 auf einen Tag oder Digest festlegen; Vorgabe ist
-`ghcr.io/linuxserver/baseimage-kasmvnc:ubuntunoble`. Digest-Pinning und
+`ghcr.io/linuxserver/baseimage-kasmvnc:ubuntunoble`. Dieser Tag ist beweglich und
+kann bei einem späteren Bau auf ein anderes Basisimage zeigen. Digest-Pinning und
 Artefakt-Herkunft/Prüfsummen werden im separaten CI-Paket festgelegt.
 Der Download und das Entpacken erfolgen in einer eigenen Build-Stufe. `curl`
 wird der finalen Stufe nicht hinzugefügt; eine vom Basisimage bereits mitgebrachte
@@ -285,7 +295,10 @@ Lokale Unit-Tests öffnen keine Netzwerkverbindungen. ZIP-Sammeldownload
 
 ### Netzwerk und Grenzen
 
-Beide Ports sind nur an `127.0.0.1` gebunden. Für das Heimnetz die beiden
+Die veröffentlichten Ports 3000/3001 sind nur an `127.0.0.1` auf dem Host gebunden.
+Die internen Dienste kclient (6900) und KasmVNC (6901) lauschen ausschließlich
+auf `127.0.0.1` im Container; der Zugriff erfolgt über nginx auf 3000/3001.
+Für das Heimnetz die beiden
 Host-Adressen in Compose auf die gewünschte LAN-IP ändern, z. B.
 `192.168.1.10:3000:3000`, und die Anmeldung beibehalten. Nicht ungeschützt ins
 Internet freigeben; externen Zugriff mit TLS und geeignetem Reverse Proxy planen.
@@ -311,7 +324,7 @@ LXC-Container selbst nicht geprüft.
 ### Was geprüft ist
 
 - `bash scripts/check.sh` prüft ohne Docker die Skripte, Compose- und Dockerfile-Struktur sowie Passwort-, Dateisystem- und Supervisor-Logik.
-- `bash scripts/ci-smoke.sh IMAGE` startet das fertige Image und prüft Anmeldung, erzeugtes und eigenes Passwort, Neustart der App nach einem Absturz, sauberes Beenden und `ALLOW_NO_AUTH`. Der Release-Workflow führt ihn vor dem Veröffentlichen aus.
+- `bash scripts/ci-smoke.sh IMAGE` startet das fertige Image und prüft Anmeldung, erzeugtes und eigenes Passwort, Loopback-Bindung von 6900/6901, Neustart der App nach einem Absturz, sauberes Beenden und `ALLOW_NO_AUTH`. Der Release-Workflow führt ihn vor dem Veröffentlichen aus.
 - `bash tests/upgrade.sh ALT NEU` prüft ein Update auf demselben Volume (Schema-Migration mit Sicherung vorher), `bash tests/permissions.sh IMAGE` fremde `PUID`/`PGID` und einen schreibgeschützten Modellordner.
 - Von Hand im Container geprüft: Import aus dem Dateidialog, Ordnerübernahme, Archiv-Dialog, Katalog-Export und -Import, Druckeranbindung an einen Moonraker-Testserver, `no-new-privileges:true`.
 - Noch nicht geprüft: 3D-Vorschau mit vielen Modellen, Wiederherstellung mit Papierkorbdateien, arm64, Betrieb im LXC-Container.
@@ -360,6 +373,14 @@ stored container environment. A user-supplied `PASSWORD` is visible in
 `docker inspect`. `ALLOW_NO_AUTH=true` explicitly disables authentication even
 with a supplied password and logs a warning. Keep `.env` private, e.g. `chmod 600 .env`.
 
+For supplied credentials, `PASSWORD` must not contain spaces, tabs, line breaks
+or any of `*`, `?`, `[`, `:`, `%`, `\`, and must not start with `-`.
+`CUSTOM_USER` allows only `A-Z`, `a-z`, `0-9`, `.`, `_`, `-`, also without a
+leading `-`. Invalid values abort container startup with an error, even with
+`ALLOW_NO_AUTH=true`. Empty values still use the defaults; generated passwords
+remain 48 hex characters long. These restrictions prevent the base image from
+altering credentials when setting up authentication.
+
 ### Local build
 
 Set `APP_URL` (HTTPS, Linux x86_64 AppImage) and matching `APP_VERSION` in `.env`.
@@ -375,7 +396,8 @@ docker compose up -d --no-build
 
 There is deliberately no default download of the prototype's old mutable preview.
 URL and version must match. `BASE_IMAGE` accepts a tag or digest; the default is
-`ghcr.io/linuxserver/baseimage-kasmvnc:ubuntunoble`. Digest pinning and artifact
+`ghcr.io/linuxserver/baseimage-kasmvnc:ubuntunoble`. This tag is mutable and can
+point to a different base image on a later build. Digest pinning and artifact
 provenance/checksums belong to the separate CI package. Download and extraction
 use a separate build stage. The final stage does not add `curl`; any copy already
 included upstream is retained.
@@ -591,7 +613,10 @@ ZIP batch download (stage B) is not included yet.
 
 ### Networking and limitations
 
-Both ports bind only to `127.0.0.1`. For LAN access, replace both host addresses
+Published ports 3000/3001 bind only to `127.0.0.1` on the host. The internal
+kclient (6900) and KasmVNC (6901) services listen exclusively on `127.0.0.1`
+inside the container; access goes through nginx on 3000/3001.
+For LAN access, replace both host addresses
 in Compose with the desired LAN IP, e.g. `192.168.1.10:3000:3000`, and retain
 authentication. Never expose it unprotected to the Internet; plan TLS and an
 appropriate reverse proxy for external access. Detailed network/reverse-proxy
@@ -617,7 +642,7 @@ ourselves.
 ### What has been tested
 
 - `bash scripts/check.sh` checks the scripts, Compose and Dockerfile structure and the password, file-system and supervisor logic without Docker.
-- `bash scripts/ci-smoke.sh IMAGE` starts the built image and checks login, generated and supplied passwords, app restart after a crash, clean stop and `ALLOW_NO_AUTH`. The release workflow runs it before publishing.
+- `bash scripts/ci-smoke.sh IMAGE` starts the built image and checks login, generated and supplied passwords, loopback binding of 6900/6901, app restart after a crash, clean stop and `ALLOW_NO_AUTH`. The release workflow runs it before publishing.
 - `bash tests/upgrade.sh OLD NEW` checks an update on the same volume (schema migration with a copy beforehand); `bash tests/permissions.sh IMAGE` checks foreign `PUID`/`PGID` and a read-only models folder.
 - Checked by hand in the container: import from the file dialog, folder adoption, the archive dialog, catalog export and import, the printer link to a Moonraker test server, `no-new-privileges:true`.
 - Not yet tested: 3D preview with many models, restore with trash files, arm64, running in an LXC container.

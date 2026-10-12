@@ -5,6 +5,21 @@ envdir=${2:-/run/s6/container_environment}
 owner=${3:-abc:abc}
 password_file=$config/.kasmvnc-password
 umask 077
+# Upstream expands credentials unquoted and uses them in printf/htpasswd records.
+# Reject unsafe input before writing s6 files, even when authentication is disabled.
+validate_credential() {
+    case "$2" in
+        -*|*[[:space:]]*|*'*'*|*'?'*|*'['*|*':'*|*'%'*|*'\'*)
+            printf 'FEHLER / ERROR: %s: Ungültige Zeichen: keine Leerzeichen, Tabs, Zeilenumbrüche, * ? [ : %% oder Backslashes; kein führendes Minus. / Invalid characters: no whitespace, tabs, line breaks, * ? [ : %% or backslashes; no leading hyphen.\n' "$1" >&2
+            exit 1 ;;
+    esac
+}
+validate_credential PASSWORD "${PASSWORD:-}"
+validate_credential CUSTOM_USER "${CUSTOM_USER:-}"
+if printf '%s' "${CUSTOM_USER:-}" | LC_ALL=C grep -q '[^A-Za-z0-9._-]'; then
+    printf 'FEHLER / ERROR: CUSTOM_USER: Ungültige Zeichen: nur A-Z, a-z, 0-9, Punkt, Unterstrich und Minus erlaubt. / Invalid characters: only A-Z, a-z, 0-9, dot, underscore and hyphen allowed.\n' >&2
+    exit 1
+fi
 mkdir -p "$config" "$envdir"
 
 # Network file systems may refuse chown/chmod (root squash, CIFS): warn, never stop the start.

@@ -14,7 +14,7 @@ run_auth() {
 }
 run_auth > "$tmp/first"
 password=$(cat "$tmp/config/.kasmvnc-password")
-[[ ${#password} -ge 16 ]] || fail 'Generated password too short'
+[[ $password =~ ^[0-9a-f]{48}$ ]] || fail 'Generated password must be 48 hex characters'
 [[ $(stat -c %a "$tmp/config/.kasmvnc-password") == 600 ]] || fail 'Password permissions'
 [[ $(stat -c %u:%g "$tmp/config/.kasmvnc-password") == "$owner" ]] || fail 'Password ownership'
 grep -Fq "$password" "$tmp/first" || fail 'First-start password missing from log'
@@ -29,6 +29,27 @@ run_auth "PASSWORD=$secret" CUSTOM_USER=example > "$tmp/explicit"
 [[ $(cat "$tmp/env/PASSWORD") == "$secret" ]] || fail 'Explicit password ignored'
 [[ $(cat "$tmp/env/CUSTOM_USER") == example ]] || fail 'Custom user ignored'
 [[ $(cat "$tmp/config/.kasmvnc-password") == "$password" ]] || fail 'Saved password overwritten'
+for variable in PASSWORD CUSTOM_USER; do
+    for invalid in 'a b' '*' '?' '[' 'a:b' 'a%b' 'a\b' '-abc' $'a\tb' $'a\nb' $'a\rb'; do
+        for no_auth in false true; do
+            if run_auth "$variable=$invalid" "ALLOW_NO_AUTH=$no_auth" > "$tmp/invalid" 2>&1; then
+                fail "$variable accepted unsafe characters (ALLOW_NO_AUTH=$no_auth)"
+            fi
+            grep -Fq "FEHLER / ERROR: $variable" "$tmp/invalid" || fail "Missing $variable error"
+            grep -q 'Ungültige Zeichen' "$tmp/invalid" || fail 'Missing German validation error'
+            grep -q 'Invalid characters' "$tmp/invalid" || fail 'Missing English validation error'
+            [[ $(cat "$tmp/env/PASSWORD") == "$secret" ]] || fail 'Rejected input changed s6 password'
+            [[ $(cat "$tmp/env/CUSTOM_USER") == example ]] || fail 'Rejected input changed s6 user'
+        done
+    done
+done
+for invalid in 'a@b' 'äbc' 'a/b'; do
+    if run_auth "CUSTOM_USER=$invalid" > "$tmp/invalid" 2>&1; then fail 'Invalid custom user accepted'; fi
+done
+run_auth 'PASSWORD=Safe_9.!@#&+=-]' CUSTOM_USER=User_9.test-name > "$tmp/allowed"
+[[ $(cat "$tmp/env/PASSWORD") == 'Safe_9.!@#&+=-]' ]] || fail 'Allowed password changed'
+[[ $(cat "$tmp/env/CUSTOM_USER") == User_9.test-name ]] || fail 'Allowed custom user changed'
+printf 'OK: unsafe credentials rejected, allowed credentials preserved\n'
 run_auth "PASSWORD=$secret" CUSTOM_USER=example ALLOW_NO_AUTH=true > "$tmp/no-auth"
 grep -q 'WARNUNG / WARNING' "$tmp/no-auth" || fail 'No-auth warning missing'
 [[ ! -s $tmp/env/PASSWORD && ! -s $tmp/env/CUSTOM_USER ]] || fail 'No-auth retains authentication'

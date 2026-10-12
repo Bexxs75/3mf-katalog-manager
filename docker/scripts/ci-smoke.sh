@@ -31,11 +31,26 @@ wait_healthy() {
     fail "$1 did not become healthy within 270 s"
 }
 status() { curl -sk -o /dev/null -w '%{http_code}' "$@"; }
+check_internal_listeners() {
+    local listeners
+    listeners=$(docker exec "$1" ss -ltn) || fail 'cannot inspect internal listeners'
+    # Require both services, and reject every non-loopback listener on either port.
+    awk '
+        $4 ~ /:690[01]$/ {
+            port = $4; sub(/^.*:/, "", port)
+            seen[port] = 1
+            if ($4 != "127.0.0.1:" port && $4 != "[::1]:" port && $4 != "::1:" port) bad = 1
+        }
+        END { exit (bad || !seen[6900] || !seen[6901]) }
+    ' <<<"$listeners" || fail '6900/6901 must both listen exclusively on 127.0.0.1/::1'
+    ok 'internal listeners restricted to loopback'
+}
 
 # 1. Generated password: shown once, kept in /config, reused after a restart.
 mkdir -p "$work/gen"
 start smoke-gen "$work/gen"
 wait_healthy smoke-gen
+check_internal_listeners smoke-gen
 p=$(port_of smoke-gen)
 [ "$(status "https://127.0.0.1:$p/")" = 401 ] || fail "login is not required"
 pw=$(cat "$work/gen/.kasmvnc-password")
@@ -65,6 +80,7 @@ docker stop smoke-gen >/dev/null
 [ "$(docker inspect -f '{{.State.ExitCode}}' smoke-gen)" = 0 ] || fail "stop did not exit with 0"
 docker start smoke-gen >/dev/null
 wait_healthy smoke-gen
+check_internal_listeners smoke-gen
 logs=$(docker logs smoke-gen 2>&1 | tail -n +$((lines_before + 1)))
 if grep -q -- "$pw" <<<"$logs"; then fail "password was printed again after a restart"; fi
 p=$(port_of smoke-gen)
