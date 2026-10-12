@@ -2,7 +2,7 @@
 // model files in a throw-away home. The database comes from the app itself
 // (a template created by launching it once), so the schema is never
 // duplicated here and cannot drift from the app's migrations.
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { basename, dirname, join } from 'node:path';
@@ -19,6 +19,17 @@ export interface Scratch {
 const TEMPLATE = join(OUT_DIR, 'template', 'catalog.db');
 // Folder name the app uses below the data root (its bundle identifier); differs between preview and debug builds.
 const TEMPLATE_ID = join(OUT_DIR, 'template', 'identifier.txt');
+
+/** Removes a folder; on Windows the web view processes of a just-closed app keep files locked for a moment. */
+function removeDir(path: string) {
+  rmSync(path, { recursive: true, force: true, maxRetries: 20, retryDelay: 500 });
+}
+
+/** Ends the app with all its child processes (the web view); child.kill() leaves those running on Windows. */
+function killTree(child: ChildProcess) {
+  if (IS_WINDOWS && child.pid) spawnSync('taskkill', ['/F', '/T', '/PID', String(child.pid)], { stdio: 'ignore' });
+  else child.kill('SIGTERM');
+}
 
 async function sleep(ms: number) { await new Promise((r) => setTimeout(r, ms)); }
 
@@ -80,8 +91,9 @@ export async function ensureTemplate(): Promise<void> {
     // Let the startup tasks (hash backfill etc.) finish before the copy.
     await sleep(1500);
   } finally {
-    child.kill('SIGTERM');
+    killTree(child);
     await waitForExit(child);
+    if (IS_WINDOWS) await sleep(3000);
   }
   const dir = findAppDataDir(home)!;
   const db = new DatabaseSync(join(dir, 'catalog.db'));
@@ -91,8 +103,8 @@ export async function ensureTemplate(): Promise<void> {
   copyFileSync(join(dir, 'catalog.db'), TEMPLATE);
   writeFileSync(TEMPLATE_ID, basename(dir));
   // Windows shares the real profile, so leave nothing of the template run behind.
-  for (const state of appStateDirs(home, basename(dir))) rmSync(state, { recursive: true, force: true });
-  rmSync(home, { recursive: true, force: true });
+  for (const state of appStateDirs(home, basename(dir))) removeDir(state);
+  removeDir(home);
 }
 
 /** Creates a fresh home with fixture files and a seeded database. */
@@ -105,7 +117,7 @@ export function seedScratch(label: string): Scratch {
 
   const identifier = readFileSync(TEMPLATE_ID, 'utf8').trim();
   // On Windows the state lives in the real profile: start every file from nothing.
-  for (const state of appStateDirs(home, identifier)) rmSync(state, { recursive: true, force: true });
+  for (const state of appStateDirs(home, identifier)) removeDir(state);
   const appDataDir = join(dataRoot(home), identifier);
   mkdirSync(appDataDir, { recursive: true });
   copyFileSync(TEMPLATE, join(appDataDir, 'catalog.db'));
