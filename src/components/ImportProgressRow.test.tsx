@@ -59,3 +59,30 @@ it('uses the singular for one model and keeps the plain count without unplaced m
   expect(screen.getByText(/1 Modell importiert/)).toBeVisible();
   expect(screen.queryByText(/davon nicht abgelegt/)).toBeNull();
 });
+
+it.each([0, 1])('shows skipped archives with %s imported models', (imported) => {
+  render(<LanguageProvider><ImportProgressRow progress={importProgress} meta={{jobId:'j1',source:'folderContents'}} result={{...importResult, archivesSkipped:1, counts:{...importResult.counts,imported,importedNotPlaced:0}, groups:{...importResult.groups,archive:[]}}} queued={0} onCancel={vi.fn()} onDismiss={vi.fn()} /></LanguageProvider>);
+  expect(screen.getByText('1 Archiv im Ordner wurde nicht importiert. Archive importierst du über „Importieren → Dateien...“.')).toBeVisible();
+});
+it('does not show the archive hint when no archives were skipped', () => {
+  renderFinished({imported: 0});
+  expect(screen.queryByText(/Archiv.*im Ordner/)).toBeNull();
+});
+
+it.each([
+  ['de', 2, '2 Archive im Ordner wurden nicht importiert. Archive importierst du über „Importieren → Dateien...“.'],
+  ['en', 1, '1 archive in the folder was not imported. Import archives via “Import → Files...”.'],
+  ['en', 2, '2 archives in the folder were not imported. Import archives via “Import → Files...”.'],
+  ['es', 1, 'No se ha importado 1 archivo comprimido de la carpeta. Importa archivos comprimidos mediante «Importar → Archivos...».'],
+  ['es', 2, 'No se han importado 2 archivos comprimidos de la carpeta. Importa archivos comprimidos mediante «Importar → Archivos...».'],
+  ['fr', 1, '1 archive du dossier n’a pas été importée. Importe les archives via «Importer → Fichiers...».'],
+  ['fr', 2, '2 archives du dossier n’ont pas été importées. Importe les archives via «Importer → Fichiers...».'],
+] as const)('renders the archive hint in %s for %s archives from terminal progress', (language, archivesSkipped, message) => {
+  localStorage.setItem('3mf-katalog-language', language);
+  render(<LanguageProvider><ImportProgressRow progress={{...importProgress,state:'finished',archivesSkipped}} meta={{jobId:'j1',source:'folder'}} result={null} queued={0} onCancel={vi.fn()} onDismiss={vi.fn()} /></LanguageProvider>);
+  expect(screen.getByText(message)).toBeVisible();
+});
+it('waits until the import finishes before showing the archive hint', () => {
+  render(<LanguageProvider><ImportProgressRow progress={{...importProgress,archivesSkipped:1}} meta={{jobId:'j1',source:'folderContents'}} result={null} queued={0} onCancel={vi.fn()} onDismiss={vi.fn()} /></LanguageProvider>);
+  expect(screen.queryByText(/Archiv.*im Ordner/)).toBeNull();
+});

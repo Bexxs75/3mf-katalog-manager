@@ -56,6 +56,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- Folder imports now report skipped archives and point to “Import → Files...”, even when no models were imported.
+
 - Disk sync on Windows and macOS no longer creates duplicate files or folders after case-only renames; existing catalog paths are preserved.
 
 - The import banner counted only models that had also been moved to the target folder, so it could say “0 models imported” although they were in the catalog. Models imported but not moved are now counted as imported and shown as “of which not placed”.
@@ -616,6 +618,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 - Sicherungen des Katalogs vor einem Update oder einer Schema-Änderung haben klare Namen (`Katalog-Sicherung_<Datum>_vor-Update_<von>_auf_<nach>.db`). Die Sicherung der stabilen Ausgangsversion wird nie automatisch gelöscht, der Rückweg bleibt offen.
 
 ### Behoben
+
+- Ordnerimporte melden jetzt übersprungene Archive mit einem Hinweis auf „Importieren → Dateien...“, auch wenn keine Modelle importiert wurden.
 
 - Der Festplatten-Abgleich unter Windows und macOS erzeugt bei reinen Änderungen der Groß-/Kleinschreibung keine doppelten Dateien oder Ordner mehr; gespeicherte Katalogpfade bleiben erhalten.
 

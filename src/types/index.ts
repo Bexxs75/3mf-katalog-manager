@@ -406,6 +406,7 @@ export interface ImportJobResult {
   parentJobId: string | null;
   jobError: { kind: 'database' | 'unauthorized' | 'targetMissing' | 'internal'; message: string } | null;
   scanComplete: boolean;
+  archivesSkipped: number;
   placementRequired: boolean;
   groups: {
     imported: { path: string; fileId: string; folderId: string | null }[];
@@ -420,6 +421,7 @@ export interface ImportProgress {
   jobId: string;
   state: ImportState;
   scanComplete: boolean;
+  archivesSkipped: number;
   total: number | null;
   found: number;
   done: number;

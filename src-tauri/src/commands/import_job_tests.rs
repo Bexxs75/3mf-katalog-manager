@@ -638,3 +638,54 @@ fn folder_contents_name_collision_preserves_both_files_and_catalog_paths() {
         }
     }
 }
+
+#[test]
+fn folder_scans_report_archives_without_importing_them() {
+    for source in [ImportSource::FolderContents, ImportSource::Folder, ImportSource::Dropped, ImportSource::SetupAdopt] {
+        for with_model in [false, true] {
+            let fixture = Fixture::new();
+            std::fs::write(fixture.0.join("models.zip"), b"archive").unwrap();
+            if with_model { fixture.stl(1); }
+            let service = ImportJobs::default();
+            let job = service.enqueue(source, None, false, None).unwrap();
+            let mut conn = db::connect_in_memory().unwrap();
+            finish_models(&service, &job, &mut conn, &[fixture.0.clone()]);
+            let result = job.result().unwrap();
+            assert_eq!(result.state, ImportState::Finished);
+            assert_eq!(result.counts.imported, usize::from(with_model));
+            assert_eq!(serde_json::to_value(&result).unwrap()["archivesSkipped"], 1);
+            assert_eq!(serde_json::to_value(job.progress()).unwrap()["archivesSkipped"], 1);
+            assert_partition(&result, usize::from(with_model));
+            assert!(fixture.0.join("models.zip").is_file());
+        }
+    }
+}
+
+#[test]
+fn archive_named_directory_is_scanned() {
+    let fixture = Fixture::new();
+    std::fs::create_dir(fixture.0.join("x.zip")).unwrap();
+    std::fs::rename(fixture.stl(1), fixture.0.join("x.zip/model.stl")).unwrap();
+    let service = ImportJobs::default();
+    let job = service.enqueue(ImportSource::FolderContents, None, false, None).unwrap();
+    let mut conn = db::connect_in_memory().unwrap();
+    finish_models(&service, &job, &mut conn, &[fixture.0.clone()]);
+    let result = job.result().unwrap();
+    assert_eq!(result.counts.imported, 1);
+    assert_eq!(serde_json::to_value(result).unwrap()["archivesSkipped"], 0);
+}
+
+#[cfg(unix)]
+#[test]
+fn archive_symlink_is_not_counted() {
+    let fixture = Fixture::new();
+    std::fs::write(fixture.0.join("target.txt"), b"archive").unwrap();
+    std::os::unix::fs::symlink(fixture.0.join("target.txt"), fixture.0.join("linked.zip")).unwrap();
+    let service = ImportJobs::default();
+    let job = service.enqueue(ImportSource::FolderContents, None, false, None).unwrap();
+    let mut conn = db::connect_in_memory().unwrap();
+    finish_models(&service, &job, &mut conn, &[fixture.0.clone()]);
+    let result = job.result().unwrap();
+    assert_eq!(result.counts.known, 0);
+    assert_eq!(serde_json::to_value(result).unwrap()["archivesSkipped"], 0);
+}

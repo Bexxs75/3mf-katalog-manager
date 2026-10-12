@@ -23,6 +23,7 @@ export function ImportProgressRow({ progress: p, meta, result, queued, onCancel,
   const [details, setDetails] = useState(false);
   const detailsRef = useRef<HTMLButtonElement>(null);
   const state = result?.state ?? p.state;
+  const archivesSkipped = result?.archivesSkipped ?? p.archivesSkipped;
   const ended = ['finished', 'cancelled', 'failed'].includes(state);
   const cancelling = !ended && (cancelRequested || state === 'cancelling');
   const counts = result ? countsWithArchiveModels(result.counts, result.groups) : p.counts;
@@ -41,6 +42,7 @@ export function ImportProgressRow({ progress: p, meta, result, queued, onCancel,
       <div className="import-actions">{ended ? <><button ref={detailsRef} onClick={() => setDetails(true)}>{t('impDetails')}</button>{state === 'failed' && <ReportProblemLink />}<button onClick={onDismiss}>{t('impClose')}</button></> : <button disabled={cancelling} onClick={() => { setCancelRequested(true); void onCancel(); }}>{cancelling ? t('impCancelling') : t('impCancel')}</button>}</div>
       <div className={`import-bar ${state === 'scanning' || state === 'queued' ? 'indeterminate' : ''}`} role="progressbar" aria-label={status} aria-valuemin={0} aria-valuemax={p.total ?? counts.known} aria-valuenow={state === 'scanning' || state === 'queued' ? undefined : p.done}><i style={state === 'scanning' || state === 'queued' ? undefined : {width: `${Math.min(100, (state === 'finished' ? 1 : p.done / Math.max(1, p.total ?? counts.known)) * 100)}%`}} /></div>
       <div className="import-meta">{state === 'failed' && result?.scanComplete === false && <>{formatCount(t('impSearchStopped'), counts.known)} · </>}{message}</div>
+      {state === 'finished' && archivesSkipped > 0 && <div className="import-meta">{formatCount(t('impArchivesSkipped'), archivesSkipped).replace('{import}', t('import')).replace('{files}', t('importFilesOption'))}</div>}
       <div className="import-counts">{([[importedTotal, 'impImported'], [counts.duplicate, 'impDuplicate'], [counts.skipped, 'impSkipped'], [counts.importedNotPlaced, 'impOfWhichNotPlaced'], [p.inFlight, 'impInFlight']] as const).map(([value, key]) => (value > 0 || key === 'impImported') && <span key={key} className={key === 'impSkipped' ? 'crit' : key === 'impDuplicate' || key === 'impOfWhichNotPlaced' ? 'warn' : undefined}><b>{n(value)}</b> {t(key)}</span>)}</div>
     </section>
     {details && result && <ImportResultDialog result={result} onClose={() => setDetails(false)} returnFocus={detailsRef} onSelectModel={onSelectModel} />}

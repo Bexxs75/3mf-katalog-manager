@@ -242,6 +242,7 @@ export interface Translations {
   impTarget: string;
   impMoving: string;
   impModelsImported: PluralForms;
+  impArchivesSkipped: PluralForms;
   impStopped: PluralForms;
   impSearchStopped: PluralForms;
   impFound: PluralForms;

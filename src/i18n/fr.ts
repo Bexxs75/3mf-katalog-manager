@@ -236,6 +236,7 @@ export const fr: Translations = {
   impTarget: "Déplacement dans {name}",
   impMoving: "Déplacement des fichiers vers {name}",
   impModelsImported: { one: "{count} modèle importé", other: "{count} modèles importés" },
+  impArchivesSkipped: { one: "{count} archive du dossier n’a pas été importée. Importe les archives via «{import} → {files}».", other: "{count} archives du dossier n’ont pas été importées. Importe les archives via «{import} → {files}»." },
   impStopped: { one: "annulé après {count} fichier", other: "annulé après {count} fichiers" },
   impSearchStopped: { one: "Recherche annulée après {count} fichier", other: "Recherche annulée après {count} fichiers" },
   impFound: { one: "{count} fichier trouvé …", other: "{count} fichiers trouvés …" },

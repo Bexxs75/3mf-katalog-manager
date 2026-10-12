@@ -236,6 +236,7 @@ export const es: Translations = {
   impTarget: "Traslado a {name}",
   impMoving: "Trasladando archivos a {name}",
   impModelsImported: { one: "{count} modelo importado", other: "{count} modelos importados" },
+  impArchivesSkipped: { one: "No se ha importado {count} archivo comprimido de la carpeta. Importa archivos comprimidos mediante «{import} → {files}».", other: "No se han importado {count} archivos comprimidos de la carpeta. Importa archivos comprimidos mediante «{import} → {files}»." },
   impStopped: { one: "cancelado después de {count} archivo", other: "cancelado tras {count} archivos" },
   impSearchStopped: { one: "Búsqueda cancelada después de {count} archivo", other: "Búsqueda cancelada tras {count} archivos" },
   impFound: { one: "{count} archivo encontrado …", other: "{count} archivos encontrados …" },

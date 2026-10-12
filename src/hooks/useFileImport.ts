@@ -18,7 +18,7 @@ export interface ImportJobMeta { jobId: string; source: ImportSource; targetName
 const storageKey = 'catalog-import-jobs';
 const terminal = (state: string) => ['finished', 'cancelled', 'failed'].includes(state);
 const emptyCounts = { imported: 0, importedNotPlaced: 0, duplicate: 0, skipped: 0, archive: 0, known: 0 };
-const initialProgress = (jobId: string): ImportProgress => ({ jobId, state: 'queued', scanComplete: false, total: null, found: 0, done: 0, inFlight: 0, counts: emptyCounts, current: null, elapsedMs: 0 });
+const initialProgress = (jobId: string): ImportProgress => ({ jobId, state: 'queued', scanComplete: false, archivesSkipped: 0, total: null, found: 0, done: 0, inFlight: 0, counts: emptyCounts, current: null, elapsedMs: 0 });
 
 export function useFileImport(args: UseFileImportArgs) {
   const latest = useRef(args); latest.current = args;
@@ -56,7 +56,7 @@ export function useFileImport(args: UseFileImportArgs) {
     completed.current.add(value.jobId);
     const job = jobs.current.get(value.jobId);
     lastMeta.current = { ...job?.meta, jobId: value.jobId, source: value.source };
-    setLastJob({ meta: lastMeta.current, progress: { ...(job?.progress ?? initialProgress(value.jobId)), state: value.state, counts: value.counts, scanComplete: value.scanComplete, inFlight: 0 } });
+    setLastJob({ meta: lastMeta.current, progress: { ...(job?.progress ?? initialProgress(value.jobId)), state: value.state, counts: value.counts, scanComplete: value.scanComplete, archivesSkipped: value.archivesSkipped, inFlight: 0 } });
     jobs.current.delete(value.jobId); setResult(value); persist();
     latest.current.refreshFiles(); latest.current.refreshFolders();
     const paths = value.groups.archive.filter(a => a.state === 'pending').map(a => a.path);

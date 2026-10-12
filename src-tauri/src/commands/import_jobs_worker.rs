@@ -55,6 +55,9 @@ fn scan_candidates_observed(
             data.current = path.parent().map(|p| p.to_string_lossy().into_owned());
             drop(data);
             observe();
+        } else if crate::archive::is_archive_path(path) && path.is_file() {
+            // Count only archives the existing folder scan actually visits and skips.
+            job.data.lock().unwrap().archives_skipped += 1;
         }
         true
     }
@@ -620,6 +623,28 @@ mod scan_tests {
 #[cfg(test)]
 mod folder_contents_tests {
     use super::*;
+
+    #[test]
+    fn archive_count_stops_at_scan_limit_and_cancellation() {
+        let dir = std::env::temp_dir().join(format!("archive_scan_limit_{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("before")).unwrap();
+        std::fs::create_dir_all(dir.join("after")).unwrap();
+        std::fs::write(dir.join("before/a.zip"), b"archive").unwrap();
+        std::fs::write(dir.join("model.stl"), b"model").unwrap();
+        std::fs::write(dir.join("after/b.7z"), b"archive").unwrap();
+        let roots = [dir.join("before"), dir.join("model.stl"), dir.join("after")];
+        let service = ImportJobs::default();
+        let job = service.enqueue(ImportSource::FolderContents, None, false, None).unwrap();
+        assert_eq!(scan_candidates(&job, &roots, 1).len(), 1);
+        assert_eq!(job.progress().archives_skipped, 1);
+        assert!(!job.progress().scan_complete);
+        assert!(job.cancel.load(Ordering::Acquire));
+        let cancelled = service.enqueue(ImportSource::FolderContents, None, false, None).unwrap();
+        cancelled.cancel.store(true, Ordering::Release);
+        assert!(scan_candidates(&cancelled, &roots, usize::MAX).is_empty());
+        assert_eq!(cancelled.progress().archives_skipped, 0);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn folder_contents_scan_filters_files_without_mirrored_roots() {

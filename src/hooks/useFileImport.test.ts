@@ -8,8 +8,8 @@ const events = vi.hoisted(() => ({ handlers: {} as Record<string, (event: {paylo
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn((name, cb) => { events.handlers[name] = cb; return Promise.resolve(events.unlisten); }) }));
 vi.mock('@tauri-apps/api/webview', () => ({ getCurrentWebview: () => ({ onDragDropEvent: (cb: (e: {payload: unknown}) => void) => { events.handlers.drop = cb; return Promise.resolve(events.unlisten); } }) }));
 export const counts = { imported: 1, importedNotPlaced: 0, duplicate: 0, skipped: 0, archive: 0, known: 1 };
-const progress = (jobId = 'j1', state: ImportProgress['state'] = 'importing'): ImportProgress => ({ jobId, state, counts, scanComplete: true, done: 1, total: 2, found: 2, inFlight: 1, current: 'a.stl', elapsedMs: 250 });
-const finished = (state: ImportJobResult['state'] = 'finished'): ImportJobResult => ({ jobId: 'j1', source: 'files', state, parentJobId: null, jobError: null, scanComplete: true, placementRequired: true, counts, groups: { imported: [], importedNotPlaced: [], duplicate: [], skipped: [], archive: [] } });
+const progress = (jobId = 'j1', state: ImportProgress['state'] = 'importing'): ImportProgress => ({ jobId, state, counts, scanComplete: true, archivesSkipped: 0, done: 1, total: 2, found: 2, inFlight: 1, current: 'a.stl', elapsedMs: 250 });
+const finished = (state: ImportJobResult['state'] = 'finished'): ImportJobResult => ({ jobId: 'j1', source: 'files', state, parentJobId: null, jobError: null, scanComplete: true, archivesSkipped: 0, placementRequired: true, counts, groups: { imported: [], importedNotPlaced: [], duplicate: [], skipped: [], archive: [] } });
 beforeEach(() => {
   sessionStorage.clear(); vi.clearAllMocks(); events.handlers = {};
   vi.mocked(invoke).mockImplementation(async cmd => cmd === 'start_import' ? { jobId: 'j1' } : null);
