@@ -18,22 +18,46 @@ Linux uses `WebKitWebDriver` (package `webkit2gtk-driver`), Windows uses
 
 ### What is tested
 
-| Spec | Checks | Linux | Windows (CI subset) |
+| Spec | Checks | Linux | Windows |
 | --- | --- | --- | --- |
 | `01-start` | window appears, header visible, no error dialog, native window title | yes | yes (title check skipped) |
 | `02-catalog` | seeded catalog shows 8 cards and "8 Dateien" | yes | no |
 | `03-context-menu` | real right click menu, rename with keyboard (card and file on disk) | yes | no |
 | `04-printer-manager` | "Bearbeiten" keeps the form open (regression), nozzle validation, valid save | yes | yes |
 | `05-drag` | mouse drag of a card to a folder (file moves on disk) and to a collection | yes | no |
-| `06-plates` | plate bar below the 3D view, click / arrow keys / Home / End, `aria-checked` | yes | no |
+| `06-plates` | plate bar below the 3D view, numbered buttons / Left / Right, `aria-current`, `aria-pressed` and arrow boundaries | yes; skips without WebGL | no |
 | `07-layout-audit` | at 900, 1000, 1280 px: no truncated key labels, one-line header with help icon inside the window, no horizontal document scroll, no overlap of plate bar and 3D controls; for catalog, Printer Manager, Material Manager, settings tabs and the detail page | yes | yes |
 | `08-typography` | every visible text uses Barlow (IBM Plex Mono only in `.font-code`), none of the glyphs that must be icons is rendered as text | yes | no |
+| `09-disk-sync` | Refresh/F5, preview/defer/apply, missing entries retained by default, opt-in removal to trash; case-only rename on Windows/macOS | included; run pending (case-only check skips) | not yet verified |
+| `10-license-usage` | private license, usage badges/filters, bulk CC BY and clearing licenses | included; run pending | not yet verified |
+| `11-print-status` | mark printed, both status filters, chip removal/reset, default print-status sort | included; run pending | not yet verified |
+| `12-collections-sort` | mixed-case and natural numeric order in sidebar and gallery | included; run pending | not yet verified |
+| `13-bulk-tags` | existing tag suggestions, Down/Enter, Escape without changes | included; run pending | not yet verified |
+| `14-trash` | delete, trash counter, restore entry and original file bytes | included; run pending | not yet verified |
+| `15-bug-report` | local log-choice dialog, Cancel/Escape; no external form opened or sent | included; run pending | not yet verified |
 
-Only Linux: `01` native title (X server query), and all specs that depend on
-WebGL rendering of the 3D view, on the drag/rename details or on being
-verified on Linux first (`02`, `03`, `05`, `06`, `08`). They use nothing
-Linux-specific in principle and can be added to the Windows subset
-(`test:windows` in `package.json`) once the Windows job has run green.
+
+The Windows subset remains `01`, `04`, `07`; `09`–`15` are **not yet verified
+on Windows** and are intentionally excluded from `test:windows`. The new specs
+and repaired assertions have only been type-checked in the implementation
+environment; Docker execution and the target of about 60 seconds per new spec
+still need verification. The existing harness gives every new file a fresh seed.
+
+`06` uses `this.skip()` with a logged reason only when the real viewer explicitly
+reports that WebGL is unavailable. An absent plate bar alone still fails. The
+current three-plate UI has six buttons (All, previous, 1/2/3, next), not a
+listbox. `07` audits the visible WebGL fallback normally; only its plate-overlap
+self-check skips without WebGL. Screenreader-only labels (`sr-only` or an
+absolutely positioned clipped 1×1 box, including descendants) are excluded from
+visual audits. Self-checks cover these exclusions and real visible clipping.
+
+Behavior read from the app: `13` creates the existing tag through the detail
+panel because the seed has no tags. `14` uses **Delete**: **Remove from catalog**
+keeps the physical file and is a different operation. `15` opens the app's
+log-choice dialog; report fields belong to an external browser form and cannot
+be inspected under this task's no-network/no-open constraint. Neither opening
+nor submitting that form is exercised. `09` checks case-only renames only on
+Windows/macOS, matching the backend's path comparison; Linux skips with a reason.
 
 ### How the tests get their data
 
@@ -123,11 +147,46 @@ installierten WebView2-Laufzeit.
 
 ### Was getestet wird
 
-Siehe die Tabelle oben (`01` bis `08`). Nur Linux sind: der native Fenstertitel
-in `01` (Abfrage beim X-Server) sowie `02`, `03`, `05`, `06` und `08`; sie
-brauchen im Prinzip nichts Linux-Spezifisches und können in die Windows-Auswahl
-(`test:windows` in `package.json`) wandern, sobald der Windows-Job einmal grün
-lief. Windows-Auswahl in CI: `01`, `04`, `07`.
+| Spec | Prüfungen | Linux | Windows |
+| --- | --- | --- | --- |
+| `01-start` | Start, Kopfzeile, nativer Fenstertitel | enthalten | enthalten (ohne Titelprüfung) |
+| `02-catalog` | acht Modelle und Dateizähler | enthalten | nicht enthalten |
+| `03-context-menu` | Rechtsklick und Umbenennen auf der Platte | enthalten | nicht enthalten |
+| `04-printer-manager` | Bearbeiten, Düsenvalidierung, Speichern | enthalten | enthalten |
+| `05-drag` | Verschieben in Ordner und Sammlung | enthalten | nicht enthalten |
+| `06-plates` | Nummernknöpfe, Links/Rechts, Auswahlzustand und Grenzen | enthalten; ohne WebGL übersprungen | nicht enthalten |
+| `07-layout-audit` | Layout bei 900/1000/1280 px, Selbsttests einschließlich Screenreader-Text | enthalten | enthalten |
+| `08-typography` | Schriftarten und unerlaubte Textsymbole | enthalten | nicht enthalten |
+| `09-disk-sync` | Aktualisieren/F5, Vorschau/Später/Übernehmen, fehlende Einträge und Papierkorb | enthalten; Lauf offen (Schreibweise-Test übersprungen) | noch nicht geprüft |
+| `10-license-usage` | private Lizenz, Badges/Filter, Mehrfachauswahl und Zurücksetzen | enthalten; Lauf offen | noch nicht geprüft |
+| `11-print-status` | Druckstatus, Filter/Chips zurücksetzen, Standardsortierung | enthalten; Lauf offen | noch nicht geprüft |
+| `12-collections-sort` | Groß-/Kleinschreibung und natürliche Zahlenfolge in Seitenleiste/Galerie | enthalten; Lauf offen | noch nicht geprüft |
+| `13-bulk-tags` | vorhandene Tag-Vorschläge, Pfeil runter/Enter, Escape ohne Änderung | enthalten; Lauf offen | noch nicht geprüft |
+| `14-trash` | Löschen, Papierkorb-Zähler, Wiederherstellen einschließlich Dateiinhalt | enthalten; Lauf offen | noch nicht geprüft |
+| `15-bug-report` | lokaler Log-Auswahldialog, Abbrechen/Escape; kein Öffnen oder Versand | enthalten; Lauf offen | noch nicht geprüft |
+
+Windows-Auswahl bleibt `01`, `04`, `07`; `09`–`15` bleiben aus `test:windows`
+ausgeschlossen. Die neuen Specs und reparierten Prüfungen wurden in der
+Implementierungsumgebung nur typgeprüft. Docker-Läufe und das Ziel von etwa
+60 Sekunden je neuer Spec sind noch zu prüfen. Jede Datei erhält einen frischen Seed.
+
+`06` überspringt sich per `this.skip()` mit protokollierter Begründung nur bei
+der ausdrücklichen WebGL-Fehlermeldung der App. Eine lediglich fehlende Leiste
+bleibt ein Fehler. Aktuell gibt es sechs Knöpfe (Alle, zurück, 1/2/3, weiter),
+keine Listbox. `07` prüft die sichtbare Ersatzansicht auch ohne WebGL; nur der
+Platten-Überlagerungs-Selbsttest wird dann übersprungen. Visuelle Audits
+ignorieren Screenreader-Text (`sr-only` bzw. absolut positionierte, geclippte
+1×1-Boxen einschließlich ihrer Nachfahren). Selbsttests prüfen diese Ausnahme
+und weiterhin echte sichtbare Textbeschneidung.
+
+Bedienung laut App: `13` legt den vorhandenen Tag zuerst über den Detailbereich
+an, da der Seed keine Tags hat. `14` nutzt **Löschen** für den physischen
+Papierkorb; **Aus dem Katalog entfernen** behält die Datei. `15` prüft den
+lokalen Log-Auswahldialog. Die eigentlichen Pflichtfelder gehören zum externen
+Browserformular und sind unter der Vorgabe ohne Netzwerk/Öffnen nicht prüfbar;
+dieses Formular wird weder geöffnet noch abgeschickt. Der Schreibweise-Test
+in `09` läuft entsprechend dem Backend nur auf Windows/macOS und überspringt
+sich unter Linux mit Begründung.
 
 ### Testdaten
 

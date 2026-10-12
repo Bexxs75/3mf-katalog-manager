@@ -21,6 +21,10 @@ function __mfkAudit(kind, opts) {
     if (r.right < 0 || r.bottom < 0 || r.left > innerWidth || r.top > innerHeight) return false;
     for (var n = el; n && n.nodeType === 1; n = n.parentElement) {
       var cs = getComputedStyle(n);
+      // Screenreader labels deliberately clip their text, including text in descendants.
+      var clippedPixel = cs.position === 'absolute' && parseFloat(cs.width) <= 1 && parseFloat(cs.height) <= 1
+        && ((cs.clip && cs.clip !== 'auto') || (cs.clipPath && cs.clipPath !== 'none'));
+      if (n.classList.contains('sr-only') || clippedPixel) return false;
       if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') return false;
     }
     return true;

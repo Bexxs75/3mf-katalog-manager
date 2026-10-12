@@ -88,3 +88,13 @@ export function nativeWindowTitles(): string[] {
 }
 
 export { sleep };
+
+/** A timeout remains a failure; only the app's explicit WebGL fallback allows a skip. */
+export async function waitForPlateViewer(): Promise<boolean> {
+  const bar = () => $('[data-plate-selector]');
+  const unsupported = () => $('//*[@data-detail-viewer]//h3[normalize-space()="Die 3D-Ansicht wird auf diesem Rechner nicht unterstützt"]');
+  await browser.waitUntil(async () => await bar().isDisplayed() || await unsupported().isDisplayed(), {
+    timeout: 20000, timeoutMsg: 'Neither plate controls nor an explicit WebGL-unavailable message appeared',
+  });
+  return await bar().isDisplayed();
+}

@@ -11,6 +11,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Added
 
+- **Automated UI tests:** expanded real mouse/keyboard coverage for disk sync, licenses and usage, print status, collection sorting, bulk tags, trash restoration and cancelling bug reports; updated printer/plate checks and excluded screenreader-only text from visual layout audits.
+
 - **Print status:** filter by printed or not yet printed, combine with usage and other filters, and sort by print status in either direction with names ordered within each group.
 
 - **Model licenses:** save a Creative Commons preset, personal/commercial license, own design or custom text per model or for a selection. Usage badges and a combined usage filter distinguish commercial permission, private use and unspecified usage. Existing tags stay unchanged.
@@ -569,6 +571,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ## [Unreleased]
 
 ### Hinzugefügt
+
+- **Automatische Oberflächentests:** Tests mit echter Maus und Tastatur für Festplatten-Abgleich, Lizenzen und Nutzung, Druckstatus, Sammlungssortierung, Mehrfach-Tags, Wiederherstellen aus dem Papierkorb und Abbrechen von Fehlermeldungen erweitert; Drucker-/Plattenprüfungen aktualisiert und reine Screenreader-Texte aus visuellen Layout-Audits ausgenommen.
 
 - **Druckstatus:** Nach gedruckten oder noch nicht gedruckten Modellen filtern, mit Nutzung und weiteren Filtern kombinieren und in beiden Richtungen nach Druckstatus sortieren; innerhalb jeder Gruppe nach Name.
 

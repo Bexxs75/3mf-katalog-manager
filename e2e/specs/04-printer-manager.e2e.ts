@@ -27,7 +27,13 @@ describe('4 Printer Manager', () => {
     await browser.keys(['Control', 'a']);
     await browser.keys(['5']);
     await click((await byText('button', 'Speichern'))!);
-    await waitForText('p', 'Düse muss zwischen 0,1 und 2,0 mm liegen.');
+    await browser.waitUntil(async () => await nozzle().getAttribute('aria-invalid') === 'true');
+    const errorId = await nozzle().getAttribute('aria-describedby');
+    expect(await nozzle().getAttribute('aria-invalid')).toBe('true');
+    expect(errorId).toBeTruthy();
+    const error = await $(`[id="${errorId}"][role="alert"]`);
+    await error.waitForDisplayed();
+    expect(await error.getText()).toBe('Düse muss zwischen 0,1 und 2,0 mm liegen. Bitte eine Zahl eingeben, z. B. 0,4 oder 0.4.');
     expect(await byText('button', 'Speichern')).not.toBeNull();
   });
 

@@ -3,11 +3,11 @@
 // (a template created by launching it once), so the schema is never
 // duplicated here and cannot drift from the app's migrations.
 import { spawn, type ChildProcess } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { basename, dirname, join } from 'node:path';
 import { buildFixtures, CATALOG, stripedPng } from '../fixtures/make-fixtures.mjs';
-import { appStateDirs, appUnderTest, assertDisposableWindowsProfile, dataRoot, findAppDataDir, isolatedEnv, makeScratchDir, OUT_DIR } from './run-env.js';
+import { appStateDirs, appUnderTest, assertDisposableWindowsProfile, dataRoot, findAppDataDir, IS_WINDOWS, isolatedEnv, makeScratchDir, OUT_DIR } from './run-env.js';
 
 export interface Scratch {
   home: string;
@@ -48,7 +48,12 @@ export async function ensureTemplate(): Promise<void> {
   assertDisposableWindowsProfile();
   if (existsSync(TEMPLATE)) rmSync(TEMPLATE);
   const home = makeScratchDir('template');
-  const child = spawn(appUnderTest(), [], { env: { ...process.env, ...isolatedEnv(home) }, stdio: 'ignore' });
+  const child = spawn(appUnderTest(), [], { env: { ...process.env, ...isolatedEnv(home) }, stdio: ['ignore', 'pipe', 'pipe'] });
+  // Without the app's own output a failed start (missing DLL, crash) is invisible on CI.
+  let output = '';
+  child.stdout?.on('data', (d) => { output += d; });
+  child.stderr?.on('data', (d) => { output += d; });
+  child.on('error', (e) => { output += `spawn error: ${e.message}\n`; });
   try {
     const deadline = Date.now() + 60000;
     let dir: string | null = null;
@@ -57,7 +62,14 @@ export async function ensureTemplate(): Promise<void> {
       if (dir && schemaReady(join(dir, 'catalog.db'))) break;
       await sleep(500);
     }
-    if (!dir || !schemaReady(join(dir, 'catalog.db'))) throw new Error('the app did not create its catalog database within 60 s');
+    if (!dir || !schemaReady(join(dir, 'catalog.db'))) {
+      const roots = [dataRoot(home), ...(IS_WINDOWS ? [process.env.LOCALAPPDATA ?? ''] : [])].filter(Boolean);
+      const listing = roots.map((r) => `${r}: ${existsSync(r) ? readdirSync(r).filter((e) => /mfk|katalog/i.test(e)).join(', ') || '(no entry of ours)' : '(missing)'}`).join('\n');
+      const log = join(OUT_DIR, 'app-logs', 'template-launch.log');
+      mkdirSync(dirname(log), { recursive: true });
+      writeFileSync(log, output);
+      throw new Error(`the app did not create its catalog database within 60 s (exit ${child.exitCode ?? 'still running'}, signal ${child.signalCode ?? 'none'})\n${listing}\napp output (last 2000 chars):\n${output.slice(-2000)}`);
+    }
     // Let the startup tasks (hash backfill etc.) finish before the copy.
     await sleep(1500);
   } finally {
