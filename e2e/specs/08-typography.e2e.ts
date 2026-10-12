@@ -1,12 +1,12 @@
-import { cardByName, closeSettings, openCatalog, openSettings, railTo } from '../lib/app.js';
+import { cardByName, closeSettings, openCatalog, openSettings, railTo, railToAndWait } from '../lib/app.js';
 import { expectNoProblems, runAudit } from '../lib/audit.js';
 
 // Runtime counterpart of src/styles/typography.test.js: that one reads the
 // source, this one asks the browser which font really got applied and which
 // characters really reached the screen.
 const views: { name: string; open: () => Promise<void>; close?: () => Promise<void> }[] = [
-  { name: 'Katalog', open: async () => { await railTo('Katalog'); await $('[data-model-id]').waitForExist(); } },
-  { name: 'Printer Manager', open: async () => { await railTo('Printer Manager'); await $('h1=Testdrucker Alpha').waitForDisplayed(); } },
+  { name: 'Katalog', open: async () => { await railToAndWait('Katalog', async () => await $('[data-model-id]').isExisting()); } },
+  { name: 'Printer Manager', open: async () => { await railToAndWait('Printer Manager', async () => await $('h1=Testdrucker Alpha').isDisplayed()); } },
   { name: 'Material Manager', open: async () => { await railTo('Material Manager'); await browser.pause(400); } },
   { name: 'Papierkorb', open: async () => { await railTo('Papierkorb'); await browser.pause(400); } },
   ...(['Allgemein', 'Slicer', 'Katalog', 'Info'] as const).map((tab) => ({

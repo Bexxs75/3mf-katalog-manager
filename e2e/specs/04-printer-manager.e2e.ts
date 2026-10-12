@@ -1,11 +1,10 @@
-import { openCatalog, railTo } from '../lib/app.js';
+import { openCatalog, railToAndWait } from '../lib/app.js';
 import { byText, click, sleep, waitForText } from '../lib/ui.js';
 
 describe('4 Printer Manager', () => {
   before(async () => {
     await openCatalog();
-    await railTo('Printer Manager');
-    await waitForText('h1', 'Testdrucker Alpha');
+    await railToAndWait('Printer Manager', async () => await $('h1=Testdrucker Alpha').isDisplayed());
   });
 
   const nozzle = () => $('input[aria-label="Düse"]');

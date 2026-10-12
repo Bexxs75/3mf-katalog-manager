@@ -1,4 +1,4 @@
-import { cardByName, closeSettings, openCatalog, openSettings, railTo, setViewport, T, waitForPlateViewer } from '../lib/app.js';
+import { cardByName, closeSettings, openCatalog, openSettings, railTo, setViewport, T, waitForPlateViewer, railToAndWait } from '../lib/app.js';
 import { expectNoProblems, runAudit } from '../lib/audit.js';
 import { byText, click, waitForText } from '../lib/ui.js';
 
@@ -9,9 +9,9 @@ const HEADER_MAX = 60; // header is h-[54px]; a wrapped second line would exceed
 type View = { name: string; open: () => Promise<void>; close?: () => Promise<void> };
 
 const views: View[] = [
-  { name: 'Katalog', open: async () => { await railTo('Katalog'); await $('[data-model-id]').waitForExist(); } },
-  { name: 'Printer Manager', open: async () => { await railTo('Printer Manager'); await $('h1=Testdrucker Alpha').waitForDisplayed(); } },
-  { name: 'Material Manager', open: async () => { await railTo('Material Manager'); await waitForText('div', 'Material Manager'); } },
+  { name: 'Katalog', open: async () => { await railToAndWait('Katalog', async () => await $('[data-model-id]').isExisting()); } },
+  { name: 'Printer Manager', open: async () => { await railToAndWait('Printer Manager', async () => await $('h1=Testdrucker Alpha').isDisplayed()); } },
+  { name: 'Material Manager', open: async () => { await railToAndWait('Material Manager', async () => (await byText('div', 'Material Manager')) !== null); } },
   ...(['Allgemein', 'Katalog', 'Info'] as const).map((tab): View => ({
     name: `Einstellungen ${tab}`,
     open: async () => { await openSettings(tab); await browser.pause(300); },

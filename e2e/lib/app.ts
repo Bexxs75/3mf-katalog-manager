@@ -53,6 +53,18 @@ export async function railTo(label: 'Katalog' | 'Material Manager' | 'Printer Ma
   await click($(`[aria-label="${label}"]`));
 }
 
+/** Clicks a rail entry and waits for its view; a click swallowed while the app settles is repeated (a repeat on the active entry is harmless). */
+export async function railToAndWait(label: Parameters<typeof railTo>[0], ready: () => Promise<boolean>) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await railTo(label);
+    try {
+      await browser.waitUntil(async () => { try { return await ready(); } catch { return false; } }, { timeout: 8000, interval: 250 });
+      return;
+    } catch { /* view did not appear, click again */ }
+  }
+  throw new Error(`the view "${label}" did not appear`);
+}
+
 export async function openSettings(tab?: 'Allgemein' | 'Slicer' | 'Katalog' | 'Info') {
   // A click right after startup is sometimes swallowed while the app still settles (slow CI runners):
   // open again when the view did not appear, never click while it is already open (that would close it).
