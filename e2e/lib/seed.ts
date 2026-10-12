@@ -55,7 +55,9 @@ export async function ensureTemplate(): Promise<void> {
   child.stderr?.on('data', (d) => { output += d; });
   child.on('error', (e) => { output += `spawn error: ${e.message}\n`; });
   try {
-    const deadline = Date.now() + 60000;
+    // The first start on a Windows runner (web view, antivirus scan) can take well over a minute.
+    const startupMs = IS_WINDOWS ? 180000 : 60000;
+    const deadline = Date.now() + startupMs;
     let dir: string | null = null;
     while (Date.now() < deadline) {
       dir = findAppDataDir(home);
@@ -64,11 +66,16 @@ export async function ensureTemplate(): Promise<void> {
     }
     if (!dir || !schemaReady(join(dir, 'catalog.db'))) {
       const roots = [dataRoot(home), ...(IS_WINDOWS ? [process.env.LOCALAPPDATA ?? ''] : [])].filter(Boolean);
-      const listing = roots.map((r) => `${r}: ${existsSync(r) ? readdirSync(r).filter((e) => /mfk|katalog/i.test(e)).join(', ') || '(no entry of ours)' : '(missing)'}`).join('\n');
+      const listing = roots.map((r) => {
+        if (!existsSync(r)) return `${r}: (missing)`;
+        const ours = readdirSync(r).filter((e) => /mfk|katalog/i.test(e));
+        const inside = ours.map((e) => `${e}[${readdirSync(join(r, e)).join(', ')}]`);
+        return `${r}: ${inside.join('; ') || '(no entry of ours)'}`;
+      }).join('\n');
       const log = join(OUT_DIR, 'app-logs', 'template-launch.log');
       mkdirSync(dirname(log), { recursive: true });
       writeFileSync(log, output);
-      throw new Error(`the app did not create its catalog database within 60 s (exit ${child.exitCode ?? 'still running'}, signal ${child.signalCode ?? 'none'})\n${listing}\napp output (last 2000 chars):\n${output.slice(-2000)}`);
+      throw new Error(`the app did not create its catalog database within ${startupMs / 1000} s (exit ${child.exitCode ?? 'still running'}, signal ${child.signalCode ?? 'none'})\n${listing}\napp output (last 2000 chars):\n${output.slice(-2000)}`);
     }
     // Let the startup tasks (hash backfill etc.) finish before the copy.
     await sleep(1500);
