@@ -11,6 +11,7 @@ interface Props {
   onSubmit?: (value: string) => void;
   onEscape?: () => void;
   maxSuggestions?: number;
+  maxSuggestionsWhenEmpty?: number;
   maxLength?: number;
   autoFocus?: boolean;
   'aria-label'?: string;
@@ -22,23 +23,31 @@ interface Props {
 // by the system and ignores the dark theme.
 export function AutocompleteInput({
   value, onChange, options, placeholder, className, inputClassName, inputStyle,
-  onSubmit, onEscape, maxLength, autoFocus, maxSuggestions = 8, 'aria-label': ariaLabel, listAriaLabel, formatOption,
+  onSubmit, onEscape, maxLength, autoFocus, maxSuggestions = 8, maxSuggestionsWhenEmpty = maxSuggestions,
+  'aria-label': ariaLabel, listAriaLabel, formatOption,
 }: Props) {
   const initialHighlight = onSubmit ? -1 : 0;
   const [open, setOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(initialHighlight);
   const containerRef = useRef<HTMLDivElement>(null);
+  const highlightedRef = useRef<HTMLDivElement>(null);
+  // Only keyboard moves scroll the list: a hover highlight that scrolled would move the item under the pointer and keep scrolling.
+  const keyboardMove = useRef(false);
 
   const listId = useId();
   const filtered = (
     value.trim() === ''
       ? options
       : options.filter((o) => o.toLowerCase().includes(value.trim().toLowerCase()))
-  ).slice(0, maxSuggestions);
+  ).slice(0, value.trim() === '' ? maxSuggestionsWhenEmpty : maxSuggestions);
 
   useEffect(() => {
     setHighlighted(initialHighlight);
   }, [value, open, initialHighlight]);
+
+  useEffect(() => {
+    if (open && keyboardMove.current) highlightedRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [highlighted, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -85,9 +94,11 @@ export function AutocompleteInput({
     }
     if (!open || filtered.length === 0) return;
     if (e.key === 'ArrowDown') {
+      keyboardMove.current = true;
       e.preventDefault();
       setHighlighted((h) => Math.min(h + 1, filtered.length - 1));
     } else if (e.key === 'ArrowUp') {
+      keyboardMove.current = true;
       e.preventDefault();
       setHighlighted((h) => h < 0 ? filtered.length - 1 : Math.max(h - 1, 0));
     } else if (e.key === 'Enter') {
@@ -124,6 +135,7 @@ export function AutocompleteInput({
           {filtered.map((option, i) => (
             <div
               key={option}
+              ref={i === highlighted ? highlightedRef : undefined}
               id={`${listId}-${i}`}
               role="option"
               aria-selected={i === highlighted}
@@ -131,7 +143,7 @@ export function AutocompleteInput({
                 e.preventDefault();
                 selectOption(option);
               }}
-              onMouseEnter={() => setHighlighted(i)}
+              onMouseEnter={() => { keyboardMove.current = false; setHighlighted(i); }}
               className={`px-2.5 py-1.5 text-body cursor-pointer ${
                 i === highlighted ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'text-[var(--ink)]'
               }`}

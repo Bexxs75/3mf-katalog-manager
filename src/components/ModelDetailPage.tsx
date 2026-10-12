@@ -219,14 +219,14 @@ export function ModelDetailPage({
               <div className="absolute top-3 right-3 flex bg-[var(--panel-2)] border border-[var(--line)] rounded-full overflow-hidden font-medium tabular-nums text-caption">
                 <button
                   data-detail-view-toggle
-                  onClick={() => setShowCustomImage(false)}
+                  onClick={event => { setShowCustomImage(false); event.currentTarget.focus(); }}
                   className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] px-3.5 py-1.5 ${!showCustomImage ? 'bg-[var(--accent)] text-[var(--accent-ink)] font-semibold' : 'text-[var(--ink-3)]'}`}
                 >
                   {t('detailViewer3d')}
                 </button>
                 <button
                   data-detail-view-toggle
-                  onClick={() => setShowCustomImage(true)}
+                  onClick={event => { setShowCustomImage(true); event.currentTarget.focus(); }}
                   className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] px-3.5 py-1.5 ${showCustomImage ? 'bg-[var(--accent)] text-[var(--accent-ink)] font-semibold' : 'text-[var(--ink-3)]'}`}
                 >
                   {t('detailViewerImage')}

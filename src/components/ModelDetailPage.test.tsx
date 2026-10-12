@@ -115,11 +115,14 @@ it('allows arrows after clicking either view toggle, retaining focus and overlay
     onNavigate={onNavigate} hasPrevious hasNext /></LanguageProvider>);
   for (const name of ['Bild', '3D-Ansicht']) {
     const button = screen.getByRole('button', {name});
-    button.focus();
+    const viewer = button.closest<HTMLElement>('[data-detail-viewer]')!;
+    viewer.focus();
+    expect(viewer).toHaveFocus();
     fireEvent.click(button);
-    fireEvent.keyDown(button, {key: 'ArrowRight'});
-    expect(onNavigate).toHaveBeenCalledWith('next');
     expect(button).toHaveFocus();
+    fireEvent.keyDown(window, {key: 'ArrowRight'});
+    fireEvent.keyDown(document.activeElement!, {key: 'ArrowLeft'});
+    expect(onNavigate.mock.calls).toEqual([['next'], ['previous']]);
     onNavigate.mockClear();
     for (const markup of ['<div role="menu"></div>', '<div role="dialog"></div>']) {
       document.body.insertAdjacentHTML('beforeend', markup);

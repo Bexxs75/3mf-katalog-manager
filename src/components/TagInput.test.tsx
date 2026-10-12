@@ -57,9 +57,13 @@ describe('TagInput', () => {
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
     expect(onAddTag).not.toHaveBeenCalled();
   });
-  it('limits suggestions to eight and excludes canonical aliases', () => {
-    const { input, onAddTag } = setup(['Multipart', ...Array.from({ length: 12 }, (_, i) => `Tag ${i}`)], ['mehrteilig']);
+  it('shows all available tags when empty, limits typed matches and excludes canonical aliases', () => {
+    const available = Array.from({ length: 20 }, (_, i) => `Tag ${String(i).padStart(2, '0')}`);
+    const { input, onAddTag } = setup(['Multipart', 'bereits', ...[...available].reverse()], ['mehrteilig', 'bereits']);
     fireEvent.focus(input);
+    expect(screen.getAllByRole('option').map(o => o.textContent)).toEqual(available);
+    expect(screen.queryByRole('option', { name: 'bereits' })).not.toBeInTheDocument();
+    fireEvent.change(input, { target: { value: 't' } });
     expect(screen.getAllByRole('option')).toHaveLength(8);
     expect(screen.queryByRole('option', { name: 'Multipart' })).not.toBeInTheDocument();
     fireEvent.change(input, { target: { value: 'Multipart' } });

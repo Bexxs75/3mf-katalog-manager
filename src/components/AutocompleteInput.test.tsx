@@ -56,3 +56,28 @@ it('retains initial selection and unlimited lists when requested by existing cal
   fireEvent.keyDown(input, { key: 'Enter' });
   expect(onChange).toHaveBeenCalledWith('Regal 0');
 });
+
+it('scrolls keyboard selections into view in a long suggestion list', () => {
+  const scrollIntoView = vi.fn();
+  render(<AutocompleteInput value="" onChange={vi.fn()} onSubmit={vi.fn()}
+    options={Array.from({ length: 20 }, (_, i) => `Tag ${i}`)} maxSuggestions={20} />);
+  const input = screen.getByRole('combobox');
+  fireEvent.focus(input);
+  const last = screen.getAllByRole('option')[19];
+  last.scrollIntoView = scrollIntoView;
+  fireEvent.keyDown(input, { key: 'ArrowUp' });
+  expect(last).toHaveAttribute('aria-selected', 'true');
+  expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+});
+
+it('does not scroll the list when the pointer only hovers an option', () => {
+  const scrollIntoView = vi.fn();
+  render(<AutocompleteInput value="" onChange={vi.fn()} onSubmit={vi.fn()}
+    options={Array.from({ length: 20 }, (_, i) => `Tag ${i}`)} maxSuggestions={20} />);
+  fireEvent.focus(screen.getByRole('combobox'));
+  const option = screen.getAllByRole('option')[15];
+  option.scrollIntoView = scrollIntoView;
+  fireEvent.mouseEnter(option);
+  expect(option).toHaveAttribute('aria-selected', 'true');
+  expect(scrollIntoView).not.toHaveBeenCalled();
+});
