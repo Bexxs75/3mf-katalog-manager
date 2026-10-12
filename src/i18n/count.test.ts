@@ -32,3 +32,13 @@ describe('impOfWhichNotPlaced', () => {
     expect(dictionaries[language].impOfWhichNotPlaced.trim().length).toBeGreaterThan(0);
   });
 });
+
+it('keeps dictionary keys equal in all four languages, including print status', () => {
+  const keys = Object.keys(de).sort();
+  for (const dictionary of Object.values(dictionaries)) {
+    expect(Object.keys(dictionary).sort()).toEqual(keys);
+    for (const key of ['printStatusFilter', 'printStatusAll', 'printStatusPrinted', 'printStatusNotPrinted', 'sortPrintStatus', 'sortPrintStatusAsc', 'sortPrintStatusDesc'] as const) {
+      expect(dictionary[key].trim().length).toBeGreaterThan(0);
+    }
+  }
+});

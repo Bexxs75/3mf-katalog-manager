@@ -204,3 +204,40 @@ it('combines usage with folder, tag and search without searching license text', 
   expect(filterAndSortModels(models, [], { ...criteria, query: 'custom agreement' })).toEqual([]);
   expect(filterAndSortModels(models, [], { ...criteria, usage: null }).map(m => m.id)).toEqual(['1', '2', '3']);
 });
+
+describe('print status filtering and sorting', () => {
+  const models = [
+    makeModelFile({ id: 'pz', name: 'Zebra', printStatus: 'printed', tags: ['red'], license: 'personal' }),
+    makeModelFile({ id: 'uz', name: 'Zebra', printStatus: 'not_printed', tags: ['red'], license: 'personal' }),
+    makeModelFile({ id: 'pa', name: 'Alpha', printStatus: 'printed', tags: [], license: null }),
+    makeModelFile({ id: 'ua', name: 'Alpha', printStatus: 'not_printed', tags: ['red'], license: null }),
+  ];
+  const criteria = { activeFolderId: 'all', activeTag: null, query: '', sort: 'name' as const };
+  it.each([null, 'printed', 'not_printed'] as const)('filters %s', printStatus => {
+    const result = filterAndSortModels(models, [], { ...criteria, printStatus });
+    expect(result.map(m => m.id).sort()).toEqual(models.filter(m => !printStatus || m.printStatus === printStatus).map(m => m.id).sort());
+  });
+  it('combines print status, tag and usage', () => {
+    expect(filterAndSortModels(models, [], { ...criteria, printStatus: 'not_printed', activeTag: 'red', usage: 'private' }).map(m => m.id)).toEqual(['uz']);
+  });
+  it.each(['asc', 'desc'] as const)('sorts %s with names ascending within both groups', sortDirection => {
+    expect(filterAndSortModels(models, [], { ...criteria, sort: 'printStatus', sortDirection }).map(m => m.id))
+      .toEqual(sortDirection === 'asc' ? ['ua', 'uz', 'pa', 'pz'] : ['pa', 'pz', 'ua', 'uz']);
+  });
+  it('defaults to not printed first', () => {
+    expect(filterAndSortModels(models, [], { ...criteria, sort: 'printStatus' }).map(m => m.id)).toEqual(['ua', 'uz', 'pa', 'pz']);
+  });
+});
+
+it('combines print status with folder, search and a tool view while retaining tool order', () => {
+  const models = [
+    makeModelFile({ id: 'a', name: 'Cube A', folderId: 'f', printStatus: 'not_printed', lastViewedAt: '2026-01-01' }),
+    makeModelFile({ id: 'b', name: 'Cube B', folderId: 'f', printStatus: 'not_printed', lastViewedAt: '2026-01-02' }),
+    makeModelFile({ id: 'p', name: 'Cube P', folderId: 'f', printStatus: 'printed', lastViewedAt: '2026-01-03' }),
+    makeModelFile({ id: 'folder', name: 'Cube', folderId: 'other', lastViewedAt: '2026-01-04' }),
+    makeModelFile({ id: 'search', name: 'Sphere', folderId: 'f', lastViewedAt: '2026-01-04' }),
+  ];
+  expect(filterAndSortModels(models, [makeFolder({ id: 'f' })], {
+    activeFolderId: 'f', activeTag: null, query: 'Cube', printStatus: 'not_printed', sort: 'printStatus', toolView: 'recent',
+  }).map(m => m.id)).toEqual(['b', 'a']);
+});

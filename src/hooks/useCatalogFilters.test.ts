@@ -117,12 +117,12 @@ describe('useCatalogFilters', () => {
 it('resets direction only when the sort key changes', () => {
   const { result } = renderHook(() => useCatalogFilters([], []));
   expect(result.current.sortDirection).toBe('asc');
-  for (const key of ['imported', 'modified', 'size', 'vol', 'viewed', 'name'] as const) {
+  for (const key of ['imported', 'modified', 'size', 'vol', 'viewed', 'printStatus', 'name'] as const) {
     act(() => result.current.setSort(key));
-    expect(result.current.sortDirection).toBe(key === 'name' ? 'asc' : 'desc');
-    act(() => result.current.setSortDirection(key === 'name' ? 'desc' : 'asc'));
+    expect(result.current.sortDirection).toBe((key === 'name' || key === 'printStatus') ? 'asc' : 'desc');
+    act(() => result.current.setSortDirection((key === 'name' || key === 'printStatus') ? 'desc' : 'asc'));
     act(() => result.current.setSort(key));
-    expect(result.current.sortDirection).toBe(key === 'name' ? 'desc' : 'asc');
+    expect(result.current.sortDirection).toBe((key === 'name' || key === 'printStatus') ? 'desc' : 'asc');
     expect(result.current.sort).toBe(key);
   }
 });
@@ -136,4 +136,16 @@ it('updates and clears usage filtering', () => {
   expect(result.current.filtered.map(m => m.id)).toEqual(['2', '3']);
   act(() => result.current.setUsage(null));
   expect(result.current.filtered).toHaveLength(3);
+});
+
+it('updates and clears print status without losing usage', () => {
+  const models = [makeModelFile({ id: 'p', printStatus: 'printed', license: 'personal' }), makeModelFile({ id: 'u', printStatus: 'not_printed', license: 'personal' }), makeModelFile({ id: 'other', license: null })];
+  const { result } = renderHook(() => useCatalogFilters(models, []));
+  act(() => result.current.setUsage('private'));
+  act(() => result.current.setPrintStatus('printed'));
+  expect(result.current.filtered.map(m => m.id)).toEqual(['p']);
+  act(() => result.current.setPrintStatus('not_printed'));
+  expect(result.current.filtered.map(m => m.id)).toEqual(['u']);
+  act(() => result.current.setPrintStatus(null));
+  expect(result.current.filtered.map(m => m.id)).toEqual(['p', 'u']);
 });

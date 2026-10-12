@@ -12,6 +12,13 @@ export interface Translations {
   licenseCustom: string;
   licenseSet: string;
   licenseSave: string;
+  printStatusFilter: string;
+  printStatusAll: string;
+  printStatusPrinted: string;
+  printStatusNotPrinted: string;
+  sortPrintStatus: string;
+  sortPrintStatusAsc: string;
+  sortPrintStatusDesc: string;
   licenseUsage: string;
   licenseUsageAll: string;
   licenseUsageCommercial: string;

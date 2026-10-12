@@ -174,3 +174,32 @@ it('uses current licenses in a collection and includes usage in its count and em
   expect(screen.getByText(de.filterBarEmptyTitle)).toBeVisible();
   expect(screen.getByText(de.filterBarCount.replace('{count}', '0').replace('{total}', '1'))).toBeVisible();
 });
+
+it('offers every print status option and an individually removable chip', () => {
+  const setPrintStatus = vi.fn();
+  filterWorkspace({ printStatus: 'not_printed', setPrintStatus });
+  const select = screen.getByRole('combobox', { name: de.printStatusFilter });
+  expect(within(select).getAllByRole('option').map(option => option.textContent)).toEqual([de.printStatusAll, de.printStatusPrinted, de.printStatusNotPrinted]);
+  for (const value of ['printed', 'not_printed', '']) {
+    fireEvent.change(select, { target: { value } });
+    expect(setPrintStatus).toHaveBeenLastCalledWith(value || null);
+  }
+  const region = screen.getByRole('region', { name: de.filterBarAria });
+  const chip = region.querySelector('[data-filter-kind]')!.parentElement!;
+  expect(chip).toHaveTextContent(de.printStatusNotPrinted);
+  fireEvent.click(within(chip).getByRole('button', { name: de.chipRemove.replace('{label}', de.printStatusNotPrinted) }));
+  expect(setPrintStatus).toHaveBeenLastCalledWith(null);
+});
+
+it('uses current print status and usage in a collection, including count and empty state', () => {
+  const model = makeModelFile({ id: 'one', printStatus: 'printed', license: 'personal' });
+  filterWorkspace({ models: [model], collectionModels: [{ ...model, printStatus: 'not_printed' }], activeCollection: 'c', usage: 'private', printStatus: 'not_printed', setPrintStatus: vi.fn() });
+  expect(screen.getByText(de.filterBarEmptyTitle)).toBeVisible();
+  expect(screen.getByText(de.filterBarCount.replace('{count}', '0').replace('{total}', '1'))).toBeVisible();
+});
+
+it('uses the filter empty state for a tool combined with print status', () => {
+  filterWorkspace({ toolView: 'favorites', printStatus: 'printed', filtered: [], setPrintStatus: vi.fn() });
+  expect(screen.getByText(de.filterBarEmptyTitle)).toBeVisible();
+  expect(screen.queryByText(de.toolViewEmpty)).toBeNull();
+});

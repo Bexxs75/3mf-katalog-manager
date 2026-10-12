@@ -84,10 +84,12 @@ export function Header({
     { value: 'modified', label: t('sortModified') },
     { value: 'size', label: t('sortSize') },
     { value: 'vol', label: t('sortVolume') },
+    { value: 'printStatus', label: t('sortPrintStatus') },
     { value: 'viewed', label: t('sortLastViewed') },
   ];
 
   const directionLabels = sort === 'name' ? [t('sortNameAsc'), t('sortNameDesc')]
+    : sort === 'printStatus' ? [t('sortPrintStatusAsc'), t('sortPrintStatusDesc')]
     : sort === 'size' ? [t('sortSizeAsc'), t('sortSizeDesc')]
     : sort === 'vol' ? [t('sortVolumeAsc'), t('sortVolumeDesc')]
     : [t('sortDateAsc'), t('sortDateDesc')];

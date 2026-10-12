@@ -87,3 +87,18 @@ it('pins details with an accessible toggle and pressed state', () => {
   fireEvent.click(toggle);
   expect(change).toHaveBeenLastCalledWith('auto');
 });
+
+it('selects print status with unprinted first and exposes both accessible directions', () => {
+  const onSortChange = vi.fn(), onSortDirectionChange = vi.fn();
+  const props = { mainView: 'catalog' as const, view: 'grid' as const, sortDirection: 'asc' as const,
+    onSortDirectionChange, count: 0, onViewChange: vi.fn(), onSortChange, onImportFiles: vi.fn(),
+    onImportFolder: vi.fn(), onImportFolderContents: vi.fn(), allFoldersCollapsed: false, onToggleAllFolders: vi.fn() };
+  const { rerender } = render(<LanguageProvider><Header {...props} sort="name" /></LanguageProvider>);
+  fireEvent.click(screen.getByRole('button', { name: 'Name' }));
+  fireEvent.click(screen.getByRole('menuitemradio', { name: 'Druckstatus' }));
+  expect(onSortChange).toHaveBeenCalledWith('printStatus', 'asc');
+  rerender(<LanguageProvider><Header {...props} sort="printStatus" /></LanguageProvider>);
+  expect(screen.getByRole('menuitemradio', { name: 'Noch nicht gedruckte zuerst' })).toHaveAttribute('aria-checked', 'true');
+  fireEvent.click(screen.getByRole('menuitemradio', { name: 'Gedruckte zuerst' }));
+  expect(onSortDirectionChange).toHaveBeenCalledWith('desc');
+});

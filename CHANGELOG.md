@@ -11,6 +11,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Added
 
+- **Print status:** filter by printed or not yet printed, combine with usage and other filters, and sort by print status in either direction with names ordered within each group.
+
 - **Model licenses:** save a Creative Commons preset, personal/commercial license, own design or custom text per model or for a selection. Usage badges and a combined usage filter distinguish commercial permission, private use and unspecified usage. Existing tags stay unchanged.
 
 - **Collections:** all collection lists sort alphabetically in the selected language, including umlauts and natural number ordering; new collections appear in the right place immediately.
@@ -567,6 +569,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 ## [Unreleased]
 
 ### Hinzugefügt
+
+- **Druckstatus:** Nach gedruckten oder noch nicht gedruckten Modellen filtern, mit Nutzung und weiteren Filtern kombinieren und in beiden Richtungen nach Druckstatus sortieren; innerhalb jeder Gruppe nach Name.
 
 - **Modell-Lizenzen:** Creative-Commons-Preset, private/kommerzielle Lizenz, eigene Konstruktion oder Freitext pro Modell und für eine Mehrfachauswahl speichern. Nutzungs-Badges und ein kombinierbarer Nutzungsfilter unterscheiden kommerziell erlaubte, private und nicht angegebene Nutzung. Bestehende Tags bleiben unverändert.
 

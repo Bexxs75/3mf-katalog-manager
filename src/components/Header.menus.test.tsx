@@ -62,12 +62,13 @@ it.each([
   ['modified', 'Änderungsdatum neu', 'desc', 'Älteste zuerst', 'Neueste zuerst'],
   ['size', 'Dateigröße', 'desc', 'Kleinste zuerst', 'Größte zuerst'],
   ['vol', 'Volumen', 'desc', 'Kleinstes zuerst', 'Größtes zuerst'],
+  ['printStatus', 'Druckstatus', 'asc', 'Noch nicht gedruckte zuerst', 'Gedruckte zuerst'],
   ['viewed', 'Zuletzt angesehen', 'desc', 'Älteste zuerst', 'Neueste zuerst'],
 ] as const)('selects %s with its default and exposes direction controls', (sort, label, direction, asc, desc) => {
   const onSortChange = vi.fn(); const onSortDirectionChange = vi.fn();
   const result = render(<LanguageProvider><Header {...props} onSortChange={onSortChange} onSortDirectionChange={onSortDirectionChange} /></LanguageProvider>);
   fireEvent.click(sortButton());
-  expect(screen.getAllByRole('menuitemradio')).toHaveLength(8);
+  expect(screen.getAllByRole('menuitemradio')).toHaveLength(9);
   expect(screen.getByRole('group', { name: 'Richtung' })).toBeVisible();
   fireEvent.click(screen.getByRole('menuitemradio', { name: sort === 'modified' ? /Änderungsdatum\s*neu/ : label }));
   expect(onSortChange).toHaveBeenCalledWith(sort, direction);

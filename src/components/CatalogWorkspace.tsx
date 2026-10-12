@@ -111,6 +111,8 @@ interface CatalogWorkspaceProps {
   uploadCustomImage: (id: string) => void | Promise<void>;
   captureRenderSnapshot: (id: string, base64: string) => void;
   setModelLicenses?: (ids: string[], license: string | null) => Promise<void>;
+  printStatus?: ModelFile['printStatus'] | null;
+  setPrintStatus?: (status: ModelFile['printStatus'] | null) => void;
   usage?: LicenseUsage | null;
   setUsage?: (usage: LicenseUsage | null) => void;
   setModelSourceUrl: (id: string, url: string | null) => void;
@@ -220,6 +222,8 @@ export function CatalogWorkspace({
   captureRenderSnapshot,
   setModelSourceUrl,
   setModelLicenses,
+  printStatus = null,
+  setPrintStatus,
   usage = null,
   setUsage,
   openInSlicer,
@@ -312,7 +316,7 @@ export function CatalogWorkspace({
   const t = useT();
   const formatCount = useFormatCount();
   const scrollRef = useCatalogScroll(detailModel !== null, JSON.stringify([
-    view, sort, language, query, usage, activeFolderId, activeTag, activeCollection, collectionsGalleryOpen, toolView,
+    view, sort, language, query, usage, printStatus, activeFolderId, activeTag, activeCollection, collectionsGalleryOpen, toolView,
   ]), selectedId);
   const refreshKey = `${printerRefreshKey}:${models.map(m => `${m.id}:${m.sliceInfo?.totalWeightG ?? ''}`).join('|')}`;
   const queueFilament = useFilamentCheck(queue.map(m => m.id), refreshKey);
@@ -323,13 +327,20 @@ export function CatalogWorkspace({
   const tagHues = useMemo(() => Object.fromEntries(tags.map(tag => [tag.label, tag.colorHue])), [tags]);
   const displayedModels = useMemo(() => {
     if (!activeCollection) return filtered;
-    const licenses = new Map(models.map(model => [model.id, model.license]));
-    return collectionModels.map(model => licenses.has(model.id) ? { ...model, license: licenses.get(model.id)! } : model)
+    const currentModels = new Map(models.map(model => [model.id, model]));
+    return collectionModels.map(model => {
+      const current = currentModels.get(model.id);
+      return current ? { ...model, license: current.license, printStatus: current.printStatus } : model;
+    })
+      .filter(model => !printStatus || (model.printStatus === 'printed') === (printStatus === 'printed'))
       .filter(model => !usage || licenseUsage(model.license) === usage);
-  }, [activeCollection, collectionModels, filtered, models, usage]);
+  }, [activeCollection, collectionModels, filtered, models, usage, printStatus]);
   const collectionName = collections.find(c => c.id === activeCollection)?.name ?? activeCollection ?? '';
   const folderName = folders.find(f => f.id === activeFolderId)?.name ?? activeFolderId;
+  const printStatusLabel = printStatus === 'printed' ? t('printStatusPrinted') : t('printStatusNotPrinted');
   const chips = [
+    ...(printStatus ? [{kind: 'printStatusFilter' as const, value: printStatusLabel,
+      removeLabel: t('chipRemove').replace('{label}', printStatusLabel), remove: () => setPrintStatus?.(null)}] : []),
     ...(usage ? [{kind: 'licenseUsage' as const, value: t(usageLabels[usage]),
       removeLabel: t('chipRemove').replace('{label}', t(usageLabels[usage])), remove: () => setUsage?.(null)}] : []),
     ...(toolView ? [{kind: 'filterBarView' as const, value: t(TOOL_VIEW_LABEL_KEY[toolView]),
@@ -344,7 +355,7 @@ export function CatalogWorkspace({
       removeLabel: t('filterBarRemoveSearch').replace('{label}', query), remove: () => setQuery('')}] : []),
   ];
   const clearButtonClass = 'px-2.5 py-1 rounded-[5px] border border-[var(--accent)] text-[var(--accent)] text-[length:var(--font-size-control)] font-semibold hover:bg-[var(--accent-soft)] cursor-pointer';
-  const toolOnly = toolView && !activeCollection && activeFolderId === 'all' && !activeTag && !query && !usage;
+  const toolOnly = toolView && !activeCollection && activeFolderId === 'all' && !activeTag && !query && !usage && !printStatus;
   return (
     <div className="relative flex-1 flex min-h-0">
       <Sidebar
@@ -433,7 +444,7 @@ export function CatalogWorkspace({
 
       <main tabIndex={-1} data-catalog-main className="flex-1 min-w-0 flex flex-col min-h-0">
         {importRow}
-        {(setUsage || chips.length > 0) && (
+        {(setUsage || setPrintStatus || chips.length > 0) && (
           <section aria-label={t('filterBarAria')} className="flex-none flex flex-wrap items-center gap-x-2 gap-y-1.5 px-4 py-2 border-b border-[var(--line)] bg-[var(--bg)]">
             <span className="ui-label text-[var(--ink-3)]">{t('filterBarHeading')}</span>
             {setUsage && <label className="flex items-center gap-2 text-small text-[var(--ink-2)]">
@@ -442,6 +453,15 @@ export function CatalogWorkspace({
                 className="max-w-full rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] px-2 py-1">
                 <option value="">{t('licenseUsageAll')}</option>
                 {(['commercial', 'private', 'unknown'] as const).map(value => <option key={value} value={value}>{t(usageLabels[value])}</option>)}
+              </select>
+            </label>}
+            {setPrintStatus && <label className="flex items-center gap-2 text-small text-[var(--ink-2)]">
+              {t('printStatusFilter')}
+              <select aria-label={t('printStatusFilter')} value={printStatus ?? ''} onChange={event => setPrintStatus((event.target.value || null) as ModelFile['printStatus'] | null)}
+                className="max-w-full rounded border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] px-2 py-1">
+                <option value="">{t('printStatusAll')}</option>
+                <option value="printed">{t('printStatusPrinted')}</option>
+                <option value="not_printed">{t('printStatusNotPrinted')}</option>
               </select>
             </label>}
             {chips.map(chip => (

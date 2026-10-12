@@ -6,6 +6,7 @@ import type { Language } from '../i18n/types';
 import type { ModelFile, Folder, SortKey, SortDirection } from '../types';
 
 export interface CatalogFilterCriteria {
+  printStatus?: ModelFile['printStatus'] | null;
   usage?: LicenseUsage | null;
   activeFolderId: string;
   activeTag: string | null;
@@ -24,10 +25,11 @@ export interface CatalogFilterCriteria {
 }
 
 export function defaultSortDirection(sort: SortKey): SortDirection {
-  return sort === 'name' ? 'asc' : 'desc';
+  return (sort === 'name' || sort === 'printStatus') ? 'asc' : 'desc';
 }
 
 const sortValues: Record<SortKey, (model: ModelFile) => string | number | null> = {
+  printStatus: m => Number(m.printStatus === 'printed'),
   name: m => m.name,
   imported: m => m.importedAt,
   modified: m => m.fileModifiedAt,
@@ -37,6 +39,7 @@ const sortValues: Record<SortKey, (model: ModelFile) => string | number | null> 
 };
 
 const sortComparators: Record<SortKey, (a: ModelFile, b: ModelFile) => number> = {
+  printStatus: (a, b) => Number(a.printStatus === 'printed') - Number(b.printStatus === 'printed'),
   name: (a, b) => a.name.localeCompare(b.name),
   imported: (a, b) => a.importedAt.localeCompare(b.importedAt),
   modified: (a, b) => (a.fileModifiedAt ?? '').localeCompare(b.fileModifiedAt ?? ''),
@@ -53,6 +56,7 @@ export function filterAndSortModels(
   const { activeFolderId, activeTag, query, sort, language = 'de', toolView = null, now, recentSnapshot } = criteria;
   const base = toolView ? applyToolView(models, toolView, now ?? new Date(), recentSnapshot) : models;
   const matched = base
+    .filter(m => !criteria.printStatus || (m.printStatus === 'printed') === (criteria.printStatus === 'printed'))
     .filter(m => !criteria.usage || licenseUsage(m.license) === criteria.usage)
     .filter((m) => activeFolderId === 'all' || isFileInFolderOrDescendant(m.folderId, activeFolderId, folders))
     .filter((m) => !activeTag || m.tags.includes(activeTag))

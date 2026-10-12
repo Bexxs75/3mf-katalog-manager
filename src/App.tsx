@@ -156,6 +156,7 @@ export default function App() {
     filters.setActiveFolderId('all');
     filters.setActiveTag(null);
     filters.setUsage(null);
+    filters.setPrintStatus(null);
     filters.setQuery('');
     filters.setToolView(null);
   };
@@ -465,6 +466,8 @@ export default function App() {
               captureRenderSnapshot={store.captureRenderSnapshot}
               setModelSourceUrl={store.setModelSourceUrl}
               setModelLicenses={store.setModelLicenses}
+              printStatus={filters.printStatus}
+              setPrintStatus={filters.setPrintStatus}
               usage={filters.usage}
               setUsage={filters.setUsage}
               openInSlicer={slicerLauncher.openInSlicer}

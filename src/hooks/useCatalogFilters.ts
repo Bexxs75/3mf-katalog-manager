@@ -15,6 +15,7 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
   const setSortDirection = (direction: SortDirection) => {
     setSorting(current => ({ ...current, sortDirection: direction }));
   };
+  const [printStatus, setPrintStatus] = useState<ModelFile['printStatus'] | null>(null);
   const [usage, setUsage] = useState<LicenseUsage | null>(null);
   const [query, setQuery] = useState('');
   const [activeFolderId, setActiveFolderId] = useState('all');
@@ -33,6 +34,7 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
     () =>
       filterAndSortModels(models, folders, {
         usage,
+        printStatus,
         activeFolderId,
         activeTag,
         query,
@@ -42,13 +44,14 @@ export function useCatalogFilters(models: ModelFile[], folders: Folder[], langua
         toolView,
         recentSnapshot: recentSnapshot ?? undefined,
       }),
-    [models, folders, usage, activeFolderId, activeTag, query, sort, sortDirection, language, toolView, recentSnapshot],
+    [models, folders, usage, printStatus, activeFolderId, activeTag, query, sort, sortDirection, language, toolView, recentSnapshot],
   );
 
   const queue = useMemo(() => selectQueuedModels(models), [models]);
 
   return {
     usage, setUsage,
+    printStatus, setPrintStatus,
     view, setView,
     sort, setSort, sortDirection, setSortDirection,
     query, setQuery,
