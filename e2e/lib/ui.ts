@@ -81,7 +81,10 @@ export function xpathLiteral(text: string): string {
   return `concat(${text.split("'").map((part) => `'${part}'`).join(`, "'", `)})`;
 }
 
-export async function waitForText(tag: string, text: string, timeout = 10000) {
+// Windows runners start the web view much more slowly than Linux ones.
+const DEFAULT_WAIT_MS = process.platform === 'win32' ? 30000 : 10000;
+
+export async function waitForText(tag: string, text: string, timeout = DEFAULT_WAIT_MS) {
   const el = await $(`//${tag}[normalize-space()=${xpathLiteral(text)}]`);
   await el.waitForExist({ timeout, timeoutMsg: `no <${tag}> with text "${text}"` });
   return el;

@@ -23,7 +23,7 @@ export const config: WebdriverIO.Config = {
   framework: 'mocha',
   reporters: ['spec'],
   mochaOpts: { ui: 'bdd', timeout: 120_000 },
-  waitforTimeout: 15_000,
+  waitforTimeout: process.platform === 'win32' ? 30_000 : 15_000,
 
   async onPrepare() {
     mkdirSync(OUT_DIR, { recursive: true });

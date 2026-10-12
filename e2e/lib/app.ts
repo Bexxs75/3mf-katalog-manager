@@ -45,12 +45,15 @@ export async function railTo(label: 'Katalog' | 'Material Manager' | 'Printer Ma
 }
 
 export async function openSettings(tab?: 'Allgemein' | 'Slicer' | 'Katalog' | 'Info') {
-  const open = await $('[aria-label="Einstellungen"]');
-  await click(open);
-  if (tab) {
-    // The settings view renders a moment after the click, slower on CI runners.
-    await click(await waitForText('button', tab));
+  // A click right after startup is sometimes swallowed while the app still settles (slow CI runners):
+  // open again when the view did not appear, never click while it is already open (that would close it).
+  const probe = tab ?? 'Allgemein';
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (await byText('button', probe)) break;
+    await click(await $('[aria-label="Einstellungen"]'));
+    try { await waitForText('button', probe, 6000); break; } catch { /* try the click again */ }
   }
+  if (tab) await click(await waitForText('button', tab));
 }
 
 export async function closeSettings() {
