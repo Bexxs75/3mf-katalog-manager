@@ -86,6 +86,10 @@ jobs:
     needs: params
     uses: ./.github/workflows/build-linux.yml
     with: { preview: true, version: "${{ needs.params.outputs.version }}" }
+  # See release.yml: tests run next to the builds, "publish" does not wait for them.
+  e2e:
+    needs: params
+    uses: ./.github/workflows/e2e.yml
 
   publish:
     needs: [params, windows-step, macos-step, linux-step]

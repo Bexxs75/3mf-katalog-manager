@@ -43,6 +43,11 @@ jobs:
   linux-step:
     needs: verify
     uses: ./.github/workflows/build-linux.yml
+  # The app is started and clicked through on Linux and Windows next to the package builds.
+  # "assemble" does not wait for it: the draft is created either way and a red test run is a warning.
+  e2e:
+    needs: verify
+    uses: ./.github/workflows/e2e.yml
 
   assemble:
     needs: [windows-step, macos-step, linux-step]

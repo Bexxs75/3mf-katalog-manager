@@ -6,6 +6,8 @@ name: E2E (real input, tauri-driver)
 # every push.
 on:
   workflow_dispatch: {}
+  # Called by the release and test version workflows, which run the tests next to the package builds.
+  workflow_call: {}
   # The workflow file lives on the development branch only, where dispatch is
   # not possible; a push that touches the tests runs it there.
   push:
@@ -21,7 +23,8 @@ on:
       - ".github/workflows/e2e.yml"
 
 concurrency:
-  group: e2e-${{ github.ref }}
+  # The event name keeps a push-triggered run and the run of a release build on the same ref apart.
+  group: e2e-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
