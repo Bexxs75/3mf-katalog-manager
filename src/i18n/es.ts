@@ -890,6 +890,7 @@ export const es: Translations = {
   printerErrorContainerLoopback: "Solo se permiten direcciones de tu red doméstica. En un contenedor, 127.0.0.1 es el propio contenedor. Introduce la dirección de la impresora en tu red doméstica; para servicios del host Docker, usa host.docker.internal (solo si extra_hosts: host.docker.internal:host-gateway está configurado en Compose).",
   printerErrorUnreachable: 'No accesible. ¿Está la impresora encendida y en la misma red? La dirección aparece p. ej. en Mainsail o en la pantalla.',
   printerErrorAuthRequired: 'Se requiere inicio de sesión. Esta impresora tiene uno configurado, algo que esta versión aún no admite.',
+  printerErrorTooManyOpenJobs: 'Demasiados trabajos de impresión abiertos. Confirma o descarta los trabajos abiertos para poder obtener más.',
   printerErrorBadResponse: 'Respuesta inesperada. ¿Es realmente una impresora Klipper con Moonraker?',
   printerErrorHistoryMissing: 'El historial no está activado en la impresora ([history] en moonraker.conf).',
   printerErrorAddressNotAllowed: 'Solo se permiten direcciones de tu red doméstica.',

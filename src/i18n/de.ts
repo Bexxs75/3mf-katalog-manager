@@ -890,6 +890,7 @@ export const de: Translations = {
   printerErrorContainerLoopback: "Nur Adressen im Heimnetz sind erlaubt. Im Container ist 127.0.0.1 der Container selbst. Trage die Adresse des Druckers im Heimnetz ein; für Dienste auf dem Docker-Host host.docker.internal (nur wenn im Compose extra_hosts: host.docker.internal:host-gateway gesetzt ist).",
   printerErrorUnreachable: 'Nicht erreichbar. Ist der Drucker eingeschaltet und im selben Netz? Die Adresse steht zum Beispiel in Mainsail oder auf dem Display.',
   printerErrorAuthRequired: 'Anmeldung nötig. An diesem Drucker ist eine Anmeldung eingerichtet, das unterstützt diese Version noch nicht.',
+  printerErrorTooManyOpenJobs: 'Zu viele offene Druckaufträge. Bitte bestätige oder verwirf offene Aufträge, damit weitere abgerufen werden können.',
   printerErrorBadResponse: 'Unerwartete Antwort. Ist das wirklich ein Klipper-Drucker mit Moonraker?',
   printerErrorHistoryMissing: 'Die Druckhistorie ist am Drucker nicht eingeschaltet ([history] in moonraker.conf).',
   printerErrorAddressNotAllowed: 'Nur Adressen im Heimnetz sind erlaubt.',

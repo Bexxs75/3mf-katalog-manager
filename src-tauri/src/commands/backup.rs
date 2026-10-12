@@ -1,25 +1,37 @@
 use super::*;
 
-/// Counterpart to `validate_folder_name` for `files.name`: the value ends up in
-/// `trash_dir.join(format!("{id}-{name}"))` and may come from a foreign backup.
-/// A name like "../../x" would otherwise write outside the trash directory.
+// Restoring existing names must preserve legal host-platform names; only path
+// components that could escape a joined directory are unsafe here.
 fn validate_file_name(name: &str) -> CmdResult<()> {
-    if name.trim().is_empty() {
-        return Err(CmdError::expected("Dateiname darf nicht leer sein"));
+    let mut components = Path::new(name).components();
+    if name.trim().is_empty() || name.contains(['/', '\\']) || name.chars().any(char::is_control)
+        || !matches!((components.next(), components.next()), (Some(std::path::Component::Normal(_)), None)) {
+        return Err(CmdError::expected("Ungültiger Name im Archiv"));
     }
-    if name.contains('/') || name.contains('\\') {
-        return Err(CmdError::expected("Dateiname darf keine Pfad-Trennzeichen enthalten"));
-    }
-    if name.contains("..") {
-        return Err(CmdError::expected("Dateiname darf keine \"..\"-Folge enthalten"));
+    #[cfg(windows)]
+    {
+        let stem = name.split('.').next().unwrap_or(name).trim_end().to_uppercase();
+        if name.contains(':') || folders::WINDOWS_RESERVED_NAMES.contains(&stem.as_str()) {
+            return Err(CmdError::expected("Unter Windows unsicherer Name im Archiv"));
+        }
     }
     Ok(())
 }
-fn validate_imported_path_length(path: &str) -> Result<(), String> {
+
+pub(super) use imported_paths::validate_path as validate_imported_local_path;
+
+fn sanitize_imported_file_identity(conn: &Connection) -> Result<(), String> {
+    // Duplicate decisions need local hashes; import dates retain the catalog history.
+    conn.execute("UPDATE files SET content_hash = NULL", [])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn validate_imported_path_length(path: &str, known_folders: &[String]) -> Result<(), String> {
     if path.chars().take(4097).count() > 4096 {
         return Err("Importierter Pfad darf höchstens 4096 Zeichen enthalten".into());
     }
-    Ok(())
+    validate_imported_local_path(path, known_folders)
 }
 
 /// Exports the complete catalog state (DB + frontend settings) as a ZIP file.
@@ -578,6 +590,7 @@ fn validate_catalog_db_bytes(
     bytes: &[u8],
     sensitive_dirs: &[PathBuf],
     trash_dir: &Path,
+    known_folders: &[String],
 ) -> Result<(), String> {
     let tmp_path = std::env::temp_dir().join(format!(
         "3mf-katalog-import-check-{}-{}.db",
@@ -673,16 +686,29 @@ fn validate_catalog_db_bytes(
             }
             drop(fk_stmt);
 
+            // Validate every stored path lexically before resolving any imported value.
+            let mut paths = conn.prepare("SELECT path, 0 FROM folders UNION ALL SELECT path, 0 FROM files UNION ALL SELECT trash_path, 1 FROM files WHERE trash_path IS NOT NULL")
+                .map_err(|e| e.to_string())?;
+            for row in paths.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, bool>(1)?))).map_err(|e| e.to_string())? {
+                let (path, is_trash) = row.map_err(|e| e.to_string())?;
+                if is_trash && path.trim().is_empty() {
+                    continue;
+                }
+                validate_imported_path_length(&path, known_folders)?;
+            }
+            drop(paths);
+
             let mut stmt = conn
-                .prepare("SELECT path FROM folders")
+                .prepare("SELECT name, path FROM folders")
                 .map_err(|e| e.to_string())?;
             let paths = stmt
-                .query_map([], |row| row.get::<_, String>(0))
+                .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
                 .map_err(|e| e.to_string())?
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| e.to_string())?;
-            for path in paths {
-                validate_imported_path_length(&path)?;
+            for (name, path) in paths {
+                validate_file_name(&name).map_err(|e| e.message)?;
+                validate_imported_path_length(&path, known_folders)?;
                 // `.message`, not `{e}`/Display: `e` is already a `CmdError` (logged once
                 // at its creation site inside `reject_if_sensitive_path_expanded`); this
                 // just carries its text onward as part of this function's `String` error,
@@ -734,8 +760,8 @@ fn validate_catalog_db_bytes(
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| e.to_string())?;
             for (name, path, trash_path) in rows {
-                validate_imported_path_length(&path)?;
-                if let Some(path) = &trash_path { validate_imported_path_length(path)?; }
+                validate_imported_path_length(&path, known_folders)?;
+                if let Some(path) = trash_path.as_ref().filter(|p| !p.trim().is_empty()) { validate_imported_path_length(path, known_folders)?; }
                 // `.message` everywhere below, not `{e}`/Display: each `e` is already a
                 // `CmdError` (logged once at its creation site inside the nested helper);
                 // this only carries its text onward as part of this function's `String`
@@ -769,8 +795,8 @@ fn validate_catalog_db_bytes(
 /// would mark it a fault and log it at ERROR via `From<String>`). Extracted so
 /// this conversion is exercised by a test instead of only living inline in the
 /// `#[tauri::command]`.
-fn validate_backup_for_import(bytes: &[u8], sensitive_dirs: &[PathBuf], trash_dir: &Path) -> CmdResult<()> {
-    validate_catalog_db_bytes(bytes, sensitive_dirs, trash_dir).map_err(CmdError::expected)
+fn validate_backup_for_import(bytes: &[u8], sensitive_dirs: &[PathBuf], trash_dir: &Path, known_folders: &[String]) -> CmdResult<()> {
+    validate_catalog_db_bytes(bytes, sensitive_dirs, trash_dir, known_folders).map_err(CmdError::expected)
 }
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -797,7 +823,11 @@ pub async fn import_catalog(
     let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
     let (db_bytes, settings_json) = read_catalog_archive(file)?;
 
-    validate_backup_for_import(&db_bytes, &state.sensitive_dirs, &state.trash_dir)?;
+    let known_folders = {
+        let conn = state.db.lock().map_err(|_| CmdError::from("database lock poisoned"))?;
+        imported_paths::folder_paths(&conn)?
+    };
+    validate_backup_for_import(&db_bytes, &state.sensitive_dirs, &state.trash_dir, &known_folders)?;
 
     let tmp_db_path =
         std::env::temp_dir().join(format!("3mf-katalog-import-{}.db", std::process::id()));
@@ -849,6 +879,7 @@ fn replace_catalog_db_with_copy_fn(
         crate::db::run_migrations(&mut incoming).map_err(|e| e.to_string())?;
         let tx = incoming.unchecked_transaction().map_err(|e| e.to_string())?;
         sanitize_printer_connections(&tx)?;
+        sanitize_imported_file_identity(&tx)?;
         // The frontend keeps its current localStorage location across restores.
         // Allow startup to adopt that location instead of one from the backup.
         tx.execute(
@@ -1018,6 +1049,78 @@ pub fn scan_catalog_issues(state: State<AppState>) -> CmdResult<CatalogIssuesDto
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(not(windows))]
+    #[test]
+    fn imported_names_preserve_native_characters_and_trailing_spaces() {
+        let dir = unique_test_dir("native_import_names");
+        for name in ["Benchy: v2.stl", "what?.stl", "a*b|c\"<d>", "model.", "model "] {
+            let bytes = catalog_db_bytes_with_file_row(name, dir.join(name).to_str().unwrap(), None);
+            assert!(validate_catalog_db_bytes(&bytes, &[], &dir, &[]).is_ok(), "{name}");
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn imported_names_reject_drive_syntax_and_devices_on_windows() {
+        for name in ["C:x.stl", "CON.stl", "LPT¹.stl"] {
+            assert!(validate_file_name(name).is_err());
+        }
+    }
+
+    #[test]
+    fn imported_empty_trash_paths_are_ignored() {
+        let dir = unique_test_dir("empty_import_trash");
+        for trash in ["", "   ", "\t\n", "\u{2003}"] {
+            let bytes = catalog_db_bytes_with_file_row("x.stl", dir.join("x.stl").to_str().unwrap(), Some(trash));
+            assert!(validate_catalog_db_bytes(&bytes, &[], &dir, &[]).is_ok(), "{trash:?}");
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn imported_identity_is_recomputed_locally() {
+        let conn = db::connect_in_memory().unwrap();
+        let id = db::test_insert_minimal_file(&conn, "/tmp/x.3mf", None).unwrap();
+        conn.execute("UPDATE files SET content_hash = 'forged', imported_at = '1900'", []).unwrap();
+        sanitize_imported_file_identity(&conn).unwrap();
+        let file = db::get_file(&conn, id).unwrap().unwrap();
+        assert!(file.content_hash.is_none());
+        assert_eq!(file.imported_at, "1900");
+    }
+
+    #[test]
+    fn imported_paths_reject_network_and_relative_strings_without_io() {
+        for path in [r"\\192.0.2.10\probe\x", r"\\?\UNC\host\share\x", r"\\host@SSL\share\x", r"\\.\device", "//host/share/x", "relative/x", r"C:x"] {
+            assert!(validate_imported_local_path(path, &[]).is_err(), "{path}");
+        }
+        assert!(validate_imported_local_path(std::env::temp_dir().to_str().unwrap(), &[]).is_ok());
+        let bytes = catalog_db_bytes_with_file_row("x.3mf", r"\\192.0.2.10\probe\x", None);
+        assert!(validate_catalog_db_bytes(&bytes, &[], &std::env::temp_dir(), &[]).is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn imported_windows_paths_require_an_absolute_local_drive() {
+        assert!(validate_imported_local_path(r"C:\models\x.3mf", &[]).is_ok());
+        for path in [r"\models\x", r"C:x", r"\\?\GLOBALROOT\Device\x"] {
+            assert!(validate_imported_local_path(path, &[]).is_err());
+        }
+    }
+
+    #[test]
+    fn imported_folder_names_use_portable_component_rules() {
+        let dir = unique_test_dir("import_folder_names");
+        let path = dir.join("catalog.db");
+        {
+            let conn = db::connect(&path).unwrap();
+            db::insert_folder_with_parent(&conn, "CON", None, dir.to_str().unwrap()).unwrap();
+        }
+        assert_eq!(validate_catalog_db_bytes(&std::fs::read(&path).unwrap(), &[], &dir, &[]).is_err(), cfg!(windows));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     use rusqlite::params;
 
     fn sample_new_file_for_rescan_test(path: &std::path::Path) -> NewFile {
@@ -1060,7 +1163,7 @@ mod tests {
             conn.execute_batch("ALTER TABLE files DROP COLUMN license").unwrap();
             conn.pragma_update(None, "user_version", crate::db::migrations_current_version() - 1).unwrap();
         });
-        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_ok());
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_ok());
         for (value, valid) in [(None, true), (Some("cc-by".to_string()), true),
             (Some(" Free license ".to_string()), true), (Some("é".repeat(200)), true),
             (Some("a".repeat(201)), false), (Some("bad\0text".to_string()), false)] {
@@ -1068,14 +1171,14 @@ mod tests {
                 let id = crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
                 conn.execute("UPDATE files SET license = ?1 WHERE id = ?2", rusqlite::params![value, id]).unwrap();
             });
-            let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash);
+            let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]);
             assert_eq!(result.is_ok(), valid, "{result:?}");
         }
         let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
             let id = crate::db::test_insert_minimal_file(conn, "/model.3mf", None).unwrap();
             conn.execute("UPDATE files SET license = X'1234' WHERE id = ?1", [id]).unwrap();
         });
-        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_err());
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_err());
     }
 
     #[test]
@@ -1090,7 +1193,7 @@ mod tests {
                         conn.execute(&format!("INSERT INTO printers (name, {column}) VALUES ('Printer', ?1)"), [&value]).unwrap();
                     }
                 });
-                let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash);
+                let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]);
                 assert!(result.is_ok(), "{column}: {result:?}");
             }
         }
@@ -1102,7 +1205,7 @@ mod tests {
             let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
                 conn.execute("INSERT INTO folders (name, path) VALUES ('root', ?1)", [format!("/{}", "a".repeat(length - 1))]).unwrap();
             });
-            let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash);
+            let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]);
             assert_eq!(result.is_ok(), length == 4096, "{result:?}");
         }
     }
@@ -1118,7 +1221,7 @@ mod tests {
         }
         let bytes = std::fs::read(&tmp_path).expect("read temp db");
 
-        let result = validate_catalog_db_bytes(&bytes, &[], &std::env::temp_dir());
+        let result = validate_catalog_db_bytes(&bytes, &[], &std::env::temp_dir(), &[]);
 
         let _ = std::fs::remove_file(&tmp_path);
         assert!(result.is_ok(), "expected valid catalog db to pass validation: {result:?}");
@@ -1149,7 +1252,7 @@ mod tests {
             )
             .unwrap();
         });
-        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_ok());
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_ok());
     }
     #[test]
     fn validate_catalog_db_bytes_rejects_printer_jobs_with_wrong_types() {
@@ -1161,7 +1264,7 @@ mod tests {
             )
             .unwrap();
         });
-        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_err());
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_err());
     }
     #[test]
     fn sanitize_drops_foreign_addresses_and_pauses_the_rest() {
@@ -1189,11 +1292,11 @@ mod tests {
             )
             .unwrap();
         });
-        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_ok());
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_ok());
     }
     #[test]
     fn validate_catalog_db_bytes_rejects_garbage_bytes() {
-        let result = validate_catalog_db_bytes(b"this is not a sqlite database", &[], &std::env::temp_dir());
+        let result = validate_catalog_db_bytes(b"this is not a sqlite database", &[], &std::env::temp_dir(), &[]);
         assert!(result.is_err());
     }
     #[test]
@@ -1202,7 +1305,7 @@ mod tests {
         // conversion: a bad backup file is the user's problem, not a fault, so it
         // must come out `expected`, not the default `expected: false` of a plain
         // String, and the message must still be the validation text.
-        let err = validate_backup_for_import(b"this is not a sqlite database", &[], &std::env::temp_dir())
+        let err = validate_backup_for_import(b"this is not a sqlite database", &[], &std::env::temp_dir(), &[])
             .unwrap_err();
         assert!(err.expected, "a rejected backup file must be reported as expected, not a fault");
         assert!(
@@ -1222,7 +1325,7 @@ mod tests {
         let bytes = b"SQLite format 3\x00this-is-not-actually-a-valid-database-body".to_vec();
         let sensitive_dirs = vec![];
         let trash_dir = unique_test_dir("validate_db_corrupt_trash");
-        let result = validate_catalog_db_bytes(&bytes, &sensitive_dirs, &trash_dir);
+        let result = validate_catalog_db_bytes(&bytes, &sensitive_dirs, &trash_dir, &[]);
         assert!(result.is_err());
     }
     #[test]
@@ -1238,7 +1341,7 @@ mod tests {
             ).unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(result.is_err());
     }
     #[test]
@@ -1254,7 +1357,7 @@ mod tests {
             conn.execute("UPDATE folders SET parent_id = ?1 WHERE id = ?2", params![a_id, b_id]).unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(result.is_err());
     }
     #[test]
@@ -1274,7 +1377,7 @@ mod tests {
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
 
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
 
         assert!(result.is_ok(), "a legitimate pre-migration backup must be accepted after internal migration, got: {result:?}");
     }
@@ -1291,7 +1394,7 @@ mod tests {
             ).unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(result.is_err(), "eine importierte Datenbank mit einem eingeschleusten Trigger muss abgelehnt werden");
     }
     #[test]
@@ -1302,7 +1405,7 @@ mod tests {
             conn.execute_batch("CREATE VIEW evil_view AS SELECT * FROM folders;").unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(result.is_err(), "eine importierte Datenbank mit einer eingeschleusten View muss abgelehnt werden");
     }
     /// Runs the validation on a thread; a query that never ends fails the test
@@ -1310,7 +1413,7 @@ mod tests {
     fn validate_with_timeout(bytes: Vec<u8>) -> Result<(), String> {
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            let _ = tx.send(validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash")));
+            let _ = tx.send(validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]));
         });
         rx.recv_timeout(std::time::Duration::from_secs(5))
             .expect("the validation must reject the database before running its SQL")
@@ -1436,7 +1539,7 @@ mod tests {
             assert!(validate_expected_schema(&conn).unwrap_err().contains("tags"));
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let err = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash")).unwrap_err();
+        let err = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]).unwrap_err();
         assert_eq!(err, "Archiv enthält keine gültige Katalog-Datenbank.");
     }
     #[test]
@@ -1449,7 +1552,7 @@ mod tests {
             conn.execute_batch("ALTER TABLE files DROP COLUMN imported_at;").unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(result.is_err(), "eine 'files'-Tabelle ohne die erforderliche Spalte 'imported_at' muss abgelehnt werden");
     }
     /// Migrated DB with one printer and one unit ("AMS A", 4 slots). Tests insert
@@ -1474,7 +1577,7 @@ mod tests {
             .unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(result.is_err(), "eine Einheit mit unbekanntem 'kind' muss abgelehnt werden");
     }
     #[test]
@@ -1492,7 +1595,7 @@ mod tests {
             .unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(
             result.is_err(),
             "eine Einheit mit riesiger 'slot_count' muss abgelehnt werden (sonst haengt PrinterColumn.tsx beim Rendern)"
@@ -1513,7 +1616,7 @@ mod tests {
             .unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(result.is_err(), "eine Einheit mit 'bambu_ams_index' ausserhalb 0..=3 muss abgelehnt werden");
     }
     #[test]
@@ -1530,7 +1633,7 @@ mod tests {
             .unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(result.is_err(), "eine Einheit mit nicht existierendem 'printer_id' muss abgelehnt werden");
     }
     /// Recreate `material_units` without NOT NULL and CHECK, as in a crafted DB;
@@ -1566,7 +1669,7 @@ mod tests {
             .unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(result.is_err(), "eine Einheit mit NULL 'kind' muss abgelehnt werden");
     }
     #[test]
@@ -1584,7 +1687,7 @@ mod tests {
             .unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(result.is_err(), "eine Einheit mit NULL 'slot_count' muss abgelehnt werden");
     }
     #[test]
@@ -1601,7 +1704,7 @@ mod tests {
             .unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(result.is_err(), "eine Einheit mit NULL 'printer_id' muss abgelehnt werden");
     }
     #[test]
@@ -1621,7 +1724,7 @@ mod tests {
             conn.execute("INSERT INTO printers (name, position) VALUES (NULL, 0)", []).unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(result.is_err(), "ein Drucker mit NULL 'name' muss abgelehnt werden");
     }
     #[test]
@@ -1647,7 +1750,7 @@ mod tests {
             .unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(result.is_err(), "eine Spule mit slot_index 999 in einer Einheit ohne gueltige Fachanzahl muss abgelehnt werden");
     }
     #[test]
@@ -1663,7 +1766,7 @@ mod tests {
             .unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(
             result.is_err(),
             "eine Spule mit gesetztem 'slot_index' aber ohne 'unit_id' muss abgelehnt werden"
@@ -1683,7 +1786,7 @@ mod tests {
             .unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(result.is_err(), "eine Spule mit nicht existierender 'unit_id' muss abgelehnt werden");
     }
     #[test]
@@ -1700,7 +1803,7 @@ mod tests {
             .unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(result.is_err(), "eine Spule mit 'slot_index' >= der Fachanzahl ihrer Einheit muss abgelehnt werden");
     }
     #[test]
@@ -1725,7 +1828,7 @@ mod tests {
             .unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(result.is_err(), "zwei Spulen im selben Fach muessen abgelehnt werden");
     }
     #[test]
@@ -1741,7 +1844,7 @@ mod tests {
             .unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(result.is_err(), "ein 'color_hex' ausserhalb des #rrggbb-Formats muss abgelehnt werden");
     }
     #[test]
@@ -1770,7 +1873,7 @@ mod tests {
             crate::db::printers::load_spool(&conn, spool_id, unit_id, 0).unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(result.is_ok(), "ein gueltiges Backup mit belegten Faechern muss akzeptiert werden: {result:?}");
     }
     // ---- Storage classes ----
@@ -1791,7 +1894,7 @@ mod tests {
             .unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(result.is_err(), "eine Einheit mit 'slot_count' als REAL-Speicherklasse muss abgelehnt werden");
     }
     /// Recreate `printers` with an untyped `name`: without affinity an INTEGER value
@@ -1817,7 +1920,7 @@ mod tests {
             conn.execute("INSERT INTO printers (name, position, kind) VALUES (12345, 0, 'filament')", []).unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(result.is_err(), "ein Drucker mit 'name' als INTEGER-Speicherklasse muss abgelehnt werden");
     }
     #[test]
@@ -1835,7 +1938,7 @@ mod tests {
             .unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(result.is_err(), "eine Spule mit 'remaining_weight_g' als TEXT-Speicherklasse muss abgelehnt werden");
     }
     /// Recreate `filament_spools` without NOT NULL (see `drop_material_units_constraints`).
@@ -1867,7 +1970,7 @@ mod tests {
             .unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(result.is_err(), "eine Spule mit NULL 'material' muss abgelehnt werden");
     }
     #[test]
@@ -1885,7 +1988,7 @@ mod tests {
             .unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(result.is_err(), "ein Ordner mit 'name' als BLOB-Speicherklasse muss abgelehnt werden");
     }
     #[test]
@@ -1961,7 +2064,7 @@ mod tests {
             crate::db::printers::load_spool(&conn, spool_id, unit_id, 0).unwrap();
         }
         let bytes = std::fs::read(&tmp_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &unique_test_dir("trash"), &[]);
         assert!(
             result.is_ok(),
             "ein regulaer befuellter Katalog mit Daten in jeder Tabelle muss weiterhin akzeptiert werden: {result:?}"
@@ -2050,6 +2153,7 @@ mod tests {
                 [],
             )
             .expect("seed new db with a marker row");
+        new_conn.execute("UPDATE files SET content_hash = 'forged'", []).unwrap();
         drop(new_conn);
         let new_bytes = std::fs::read(&new_db_path).expect("read new db bytes");
         assert_ne!(old_bytes, new_bytes, "old and new db content must differ for this test to be meaningful");
@@ -2066,6 +2170,13 @@ mod tests {
 
         let result = replace_catalog_db(&state, &new_db_path);
         assert!(result.is_ok(), "expected successful replacement: {result:?}");
+        {
+            let conn = state.db.lock().unwrap();
+            let file = db::list_files(&conn).unwrap().remove(0);
+            assert!(file.content_hash.is_none());
+            assert_eq!(file.imported_at, "2026-09-13T00:00:00Z");
+        }
+
 
         // The old DB was renamed to exactly one .bak-* file (not deleted) and its
         // content matches the old catalog.
@@ -2254,7 +2365,7 @@ mod tests {
             db_path: db_path.clone(),
             sensitive_dirs: vec![],
         };
-        validate_catalog_db_bytes(&backup_bytes, &state.sensitive_dirs, &state.trash_dir).unwrap();
+        validate_catalog_db_bytes(&backup_bytes, &state.sensitive_dirs, &state.trash_dir, &[]).unwrap();
         std::fs::write(&backup_db_path, &backup_bytes).unwrap();
         replace_catalog_db(&state, &backup_db_path).unwrap();
 
@@ -2321,6 +2432,18 @@ mod tests {
             "der fremde Slicer aus der eingehenden Datenbank darf ueber state.db niemals sichtbar werden"
         );
         assert!(db_path.exists(), "die urspruengliche catalog.db darf nicht durch die unsanierte eingehende Datenbank ersetzt worden sein");
+    }
+
+    #[test]
+    fn duplicate_dtos_preserve_each_full_path_for_cleanup() {
+        let mut a = sample_file_record(1, Some("hash"), "2026-01-01");
+        let mut b = sample_file_record(2, Some("hash"), "2026-01-02");
+        a.path = "/catalog/first/model.stl".into();
+        b.path = "/catalog/second/model.stl".into();
+        let dtos: Vec<_> = group_duplicates(vec![a, b], &HashSet::new()).remove(0)
+            .into_iter().map(|file| to_dto(file, &[])).collect();
+        assert_eq!(dtos[0].path, "/catalog/first/model.stl");
+        assert_eq!(dtos[1].path, "/catalog/second/model.stl");
     }
     #[test]
     fn group_duplicates_groups_two_matching_hashes_oldest_first() {
@@ -2392,7 +2515,7 @@ mod tests {
         }
         let bytes = std::fs::read(&tmp_path).expect("read temp db");
 
-        let result = validate_catalog_db_bytes(&bytes, std::slice::from_ref(&sensitive_root), &std::env::temp_dir());
+        let result = validate_catalog_db_bytes(&bytes, std::slice::from_ref(&sensitive_root), &std::env::temp_dir(), &[]);
 
         let _ = std::fs::remove_file(&tmp_path);
         let _ = std::fs::remove_dir_all(&sensitive_root);
@@ -2431,7 +2554,7 @@ mod tests {
             &dir.join("modell.3mf").to_string_lossy(),
             Some(&dir.join("1-modell.3mf").to_string_lossy()),
         );
-        let result = validate_catalog_db_bytes(&bytes, &[std::path::PathBuf::from("/etc")], &dir);
+        let result = validate_catalog_db_bytes(&bytes, &[std::path::PathBuf::from("/etc")], &dir, &[]);
         let _ = std::fs::remove_dir_all(&dir);
         assert!(result.is_ok(), "a legitimate backup must still import: {result:?}");
     }
@@ -2444,7 +2567,7 @@ mod tests {
             &dir.join("modell.3mf").to_string_lossy(),
             None,
         );
-        let result = validate_catalog_db_bytes(&bytes, &[], &dir);
+        let result = validate_catalog_db_bytes(&bytes, &[], &dir, &[]);
         let _ = std::fs::remove_dir_all(&dir);
         assert!(result.is_err(), "must reject an imported file row whose name escapes the trash dir");
     }
@@ -2458,7 +2581,7 @@ mod tests {
             &sensitive_root.join("modell.3mf").to_string_lossy(),
             None,
         );
-        let result = validate_catalog_db_bytes(&bytes, std::slice::from_ref(&sensitive_root), &std::env::temp_dir());
+        let result = validate_catalog_db_bytes(&bytes, std::slice::from_ref(&sensitive_root), &std::env::temp_dir(), &[]);
         let _ = std::fs::remove_dir_all(&sensitive_root);
         assert!(result.is_err(), "must reject an imported file row pointing into a sensitive directory");
     }
@@ -2477,7 +2600,7 @@ mod tests {
             &dir.join("modell.3mf").to_string_lossy(),
             Some(&victim.to_string_lossy()),
         );
-        let result = validate_catalog_db_bytes(&bytes, &[], &trash_dir);
+        let result = validate_catalog_db_bytes(&bytes, &[], &trash_dir, &[]);
         let _ = std::fs::remove_dir_all(&dir);
         assert!(
             result.is_err(),
@@ -2496,7 +2619,7 @@ mod tests {
             &dir.join("modell.3mf").to_string_lossy(),
             Some(&trash_dir.join("1-modell.3mf").to_string_lossy()),
         );
-        let result = validate_catalog_db_bytes(&bytes, &[], &trash_dir);
+        let result = validate_catalog_db_bytes(&bytes, &[], &trash_dir, &[]);
         let _ = std::fs::remove_dir_all(&dir);
         assert!(result.is_ok(), "a legitimate backup must still import: {result:?}");
     }
@@ -2512,7 +2635,7 @@ mod tests {
             &dir.join("modell.3mf").to_string_lossy(),
             Some(&trash_dir.join("1-modell.3mf").to_string_lossy()),
         );
-        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root], &trash_dir);
+        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root], &trash_dir, &[]);
         let _ = std::fs::remove_dir_all(&dir);
         assert!(result.is_ok(), "a legitimate backup must import with a sensitive trash ancestor: {result:?}");
     }
@@ -2528,7 +2651,7 @@ mod tests {
             &dir.join("modell.3mf").to_string_lossy(),
             Some(&sensitive_root.join("other/x.conf").to_string_lossy()),
         );
-        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root], &trash_dir);
+        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root], &trash_dir, &[]);
         let _ = std::fs::remove_dir_all(&dir);
         assert!(result.is_err(), "must reject a trash_path outside trash even under a sensitive ancestor: {result:?}");
     }
@@ -2544,7 +2667,7 @@ mod tests {
             &dir.join("modell.3mf").to_string_lossy(),
             Some(&trash_dir.join("../../x.conf").to_string_lossy()),
         );
-        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root], &trash_dir);
+        let result = validate_catalog_db_bytes(&bytes, &[sensitive_root], &trash_dir, &[]);
         let _ = std::fs::remove_dir_all(&dir);
         assert!(result.is_err(), "must reject a trash_path escaping to a sensitive ancestor via parent components: {result:?}");
     }
@@ -2562,7 +2685,7 @@ mod tests {
             &dir.join("modell.3mf").to_string_lossy(),
             Some(&escaping),
         );
-        let result = validate_catalog_db_bytes(&bytes, &[], &trash_dir);
+        let result = validate_catalog_db_bytes(&bytes, &[], &trash_dir, &[]);
         let _ = std::fs::remove_dir_all(&dir);
         assert!(
             result.is_err(),
@@ -2586,7 +2709,7 @@ mod tests {
         // trash_dir deliberately set to temp_dir: the crafted trash_path lies inside,
         // so the containment check does NOT apply - this test still covers exactly
         // the denylist.
-        let result = validate_catalog_db_bytes(&bytes, std::slice::from_ref(&sensitive_root), &std::env::temp_dir());
+        let result = validate_catalog_db_bytes(&bytes, std::slice::from_ref(&sensitive_root), &std::env::temp_dir(), &[]);
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::remove_dir_all(&sensitive_root);
         assert!(result.is_err(), "must reject an imported trash_path pointing into a sensitive directory");
@@ -2680,7 +2803,7 @@ mod tests {
             assert!(version >= 36);
             conn.pragma_update(None, "user_version", 35).unwrap();
         });
-        let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash);
+        let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]);
         assert!(result.is_ok(), "aeltere Sicherung ohne kind muss gehen: {result:?}");
     }
 
@@ -2717,7 +2840,7 @@ mod tests {
             assert!(!table_exists(&conn, "app_settings"), "Vorbedingung: v0.13.1-Form ohne app_settings");
         }
         let bytes = std::fs::read(&incoming_path).unwrap();
-        let result = validate_catalog_db_bytes(&bytes, &[], &dir.join("trash"));
+        let result = validate_catalog_db_bytes(&bytes, &[], &dir.join("trash"), &[]);
         assert!(result.is_ok(), "v0.13.1-Sicherung muss die Pruefung bestehen: {result:?}");
 
         let db_path = dir.join("catalog.db");
@@ -2763,7 +2886,7 @@ mod tests {
             )
             .unwrap();
         });
-        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_err());
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_err());
     }
 
     #[test]
@@ -2785,7 +2908,7 @@ mod tests {
             )
             .unwrap();
         });
-        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_err());
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_err());
     }
 
     // ---- Resin printers ----
@@ -2823,7 +2946,7 @@ mod tests {
             let bottle = resin_bottle(conn);
             crate::db::printers::load_spool(conn, bottle, vat, 0).unwrap();
         });
-        let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash);
+        let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]);
         assert!(result.is_ok(), "gueltiger Resin-Drucker muss durchgehen: {result:?}");
     }
 
@@ -2887,7 +3010,7 @@ mod tests {
             .unwrap();
             conn.pragma_update(None, "user_version", 36).unwrap();
         });
-        let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash);
+        let result = validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]);
         assert!(result.is_ok(), "alte Sicherung ohne printers.kind muss gehen: {result:?}");
 
         // And the restore (same path: run_migrations on the copy) keeps the spool in
@@ -2917,7 +3040,7 @@ mod tests {
             conn.execute("UPDATE filament_spools SET unit_id = ?1, slot_index = 0 WHERE id = ?2", params![unit_id, bottle])
                 .unwrap();
         });
-        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_err());
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_err());
     }
 
     #[test]
@@ -2932,7 +3055,7 @@ mod tests {
             conn.execute("UPDATE filament_spools SET unit_id = ?1, slot_index = 0 WHERE id = ?2", params![vat, spool])
                 .unwrap();
         });
-        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_err());
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_err());
     }
 
     fn resin_new() -> crate::db::models::NewFilamentSpool {
@@ -2961,7 +3084,7 @@ mod tests {
             )
             .unwrap();
         });
-        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_err());
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_err());
     }
 
     #[test]
@@ -2975,7 +3098,7 @@ mod tests {
                 )
                 .unwrap();
             });
-            assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_err(), "{extra}");
+            assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_err(), "{extra}");
         }
     }
 
@@ -2985,13 +3108,13 @@ mod tests {
             let (_, vat) = saturn_with_vat(conn);
             conn.execute("UPDATE material_units SET slot_count = 2 WHERE id = ?1", params![vat]).unwrap();
         });
-        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_err(), "Wanne mit 2 Plaetzen");
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_err(), "Wanne mit 2 Plaetzen");
 
         let (bytes, sensitive, trash) = backup_test_db_with(|conn| {
             conn.execute("PRAGMA ignore_check_constraints = ON", []).unwrap();
             conn.execute("INSERT INTO printers (name, kind, position) VALUES ('X', 'toast', 0)", []).unwrap();
         });
-        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_err(), "unbekannte Druckerart");
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_err(), "unbekannte Druckerart");
     }
 
     #[test]
@@ -3004,6 +3127,6 @@ mod tests {
             )
             .unwrap();
         });
-        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash).is_err());
+        assert!(validate_catalog_db_bytes(&bytes, &sensitive, &trash, &[]).is_err());
     }
 }

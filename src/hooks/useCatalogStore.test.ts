@@ -53,12 +53,24 @@ function callCount(cmd: string) {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   vi.mocked(invoke).mockReset();
   // Only clear, not reset: the passthrough to the real implementation stays.
   vi.clearAllMocks();
 });
 
 describe('useCatalogStore', () => {
+  it('does not automatically select or queue an interrupted STEP preview, but permits a click', async () => {
+    localStorage.setItem('3mf-katalog-preview-attempt:m1', '1');
+    mockInitialLoad([makeModelFile({ id: 'm1', path: '/cat/model.step' })]);
+    const { result } = renderHook(() => useCatalogStore());
+    await waitFor(() => expect(result.current.models).toHaveLength(1));
+    expect(result.current.selectedId).toBeNull();
+    expect(result.current.pendingSnapshotIds).toEqual([]);
+    act(() => result.current.selectModel('m1'));
+    expect(result.current.selectedId).toBe('m1');
+  });
+
   it('loads models on mount and selects the first one', async () => {
     mockInitialLoad();
     const { result } = renderHook(() => useCatalogStore());

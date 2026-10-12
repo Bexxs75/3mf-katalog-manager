@@ -319,6 +319,7 @@ export type PrinterConnectionError =
   | 'unreachable'
   | 'auth_required'
   | 'bad_response'
+  | 'too_many_open_jobs'
   | 'history_missing'
   | 'address_not_allowed'
   | 'disabled';

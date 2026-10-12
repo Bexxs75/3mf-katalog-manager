@@ -84,7 +84,10 @@ export function CatalogCleanupDialog({ issues, onClose, onDelete }: Props) {
                     disabled={index === 0}
                     onChange={() => toggle(model.id)}
                   />
-                  <span className="flex-1 truncate">{model.name}</span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block truncate">{model.name}</span>
+                    <span className="block font-code text-[var(--ink-3)] break-all">{model.path}</span>
+                  </span>
                   {index === 0 && (
                     <span className="font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--ink-3)]">{t('cleanupKeepOldest')}</span>
                   )}

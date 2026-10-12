@@ -28,6 +28,13 @@ describe('PrinterLinkStatus', () => {
     expect(screen.getByText(/Die Verbindung zum Drucker ist fehlgeschlagen/)).toBeInTheDocument();
   });
 
+  it('explains how to resume when the open job limit is reached', () => {
+    const l = link({ ...base, lastError: 'too_many_open_jobs', errorSince: 1 });
+    render(<LanguageProvider><PrinterLinkStatus printerId="1" link={l} /></LanguageProvider>);
+    expect(screen.getByText(/bestätige oder verwirf offene Aufträge/)).toBeInTheDocument();
+    expect(screen.queryByText(/Unerwartete Antwort/)).not.toBeInTheDocument();
+  });
+
   it('renders nothing for printers without connection', () => {
     const { container } = render(<LanguageProvider><PrinterLinkStatus printerId="1" link={link(null)} /></LanguageProvider>);
     expect(container).toBeEmptyDOMElement();

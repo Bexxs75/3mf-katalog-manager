@@ -65,21 +65,30 @@ const MAX_COMPONENT_DEPTH: usize = 256;
 /// budget and not a "visited" set.
 const MAX_OBJECT_VISITS: usize = 100_000;
 const MAX_INSTANCED_VERTICES: usize = 30_000_000;
+const MAX_INSTANCED_TRIANGLES: usize = 60_000_000;
 
 struct WorkBudget {
     visits_left: usize,
     vertices_left: usize,
+    triangles_left: usize,
     preview_triangles: usize,
 }
 
 impl WorkBudget {
     fn new() -> Self {
-        Self { visits_left: MAX_OBJECT_VISITS, vertices_left: MAX_INSTANCED_VERTICES, preview_triangles: 0 }
+        Self { visits_left: MAX_OBJECT_VISITS, vertices_left: MAX_INSTANCED_VERTICES, triangles_left: MAX_INSTANCED_TRIANGLES, preview_triangles: 0 }
     }
 
     fn visit(&mut self) -> Result<(), ThreeMfError> {
         self.visits_left = self.visits_left.checked_sub(1).ok_or_else(|| {
             ThreeMfError::ResourceLimitExceeded(format!("more than {MAX_OBJECT_VISITS} object instances"))
+        })?;
+        Ok(())
+    }
+
+    fn triangles(&mut self, count: usize) -> Result<(), ThreeMfError> {
+        self.triangles_left = self.triangles_left.checked_sub(count).ok_or_else(|| {
+            ThreeMfError::ResourceLimitExceeded(format!("more than {MAX_INSTANCED_TRIANGLES} instanced triangles"))
         })?;
         Ok(())
     }
@@ -344,6 +353,7 @@ fn accumulate_object(
 
     if is_model_geometry {
         if let Some(mesh) = &object.mesh {
+            budget.triangles(mesh.triangles.len())?;
             budget.vertices(mesh.vertices.len())?;
             let world_vertices: Vec<[f64; 3]> = mesh
                 .vertices
@@ -1131,5 +1141,38 @@ mod render_material_tests {
             assert!(meshes[0].palette.is_empty(), "{properties}");
             assert!(meshes[0].groups.is_empty());
         }
+    }
+}
+
+#[cfg(test)]
+mod instanced_triangle_tests {
+    use super::*;
+
+    #[test]
+    fn import_limits_triangles_across_component_instances() {
+        let triangles = "<triangle v1=\"0\" v2=\"0\" v3=\"0\"/>".repeat(10);
+        let components = "<component objectid=\"1\"/>".repeat(3);
+        let xml = format!(r#"<model><resources>
+            <object id="1"><mesh><vertices><vertex x="1" y="2" z="3"/>
+            </vertices><triangles>{triangles}</triangles></mesh></object>
+            <object id="2"><components>{components}</components></object>
+            </resources><build><item objectid="2"/></build></model>"#);
+        let package = PackageParts {
+            root_model: model_xml::parse_model_xml(&xml).unwrap(),
+            referenced_models: Default::default(), thumbnail: None, plate_count: None,
+            plate_assignments: Default::default(), slice_info: None,
+        };
+        let mut budget = WorkBudget::new();
+        // Two complete instances fit; the third must fail before volume work.
+        budget.triangles_left = 20;
+        let result = accumulate_object(&package, None, "2", &Matrix3x4::identity(),
+            &mut BoundingBox::empty(), &mut 0.0, &mut Vec::new(), &mut budget);
+        assert!(matches!(result, Err(ThreeMfError::ResourceLimitExceeded(_))));
+        assert_eq!(budget.triangles_left, 0);
+        let mut budget = WorkBudget::new();
+        budget.triangles_left = 30;
+        accumulate_object(&package, None, "2", &Matrix3x4::identity(),
+            &mut BoundingBox::empty(), &mut 0.0, &mut Vec::new(), &mut budget).unwrap();
+        assert_eq!(budget.triangles_left, 0);
     }
 }

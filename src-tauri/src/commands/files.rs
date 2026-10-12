@@ -346,6 +346,9 @@ pub(super) fn move_file_to_folder_with_conn(
     let file = db::get_file(conn, file_id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "file not found".to_string())?;
+    if file.deleted_at.is_some() {
+        return Err(CmdError::expected("file is in trash"));
+    }
 
     let target_dir: std::path::PathBuf = match folder_id {
         Some(fid) => {
@@ -363,8 +366,11 @@ pub(super) fn move_file_to_folder_with_conn(
     };
     reject_if_sensitive_path(&target_dir, sensitive_dirs)?;
 
-    let new_path = target_dir.join(&file.name);
     let old_path = std::path::PathBuf::from(&file.path);
+    let name = old_path.file_name().ok_or_else(|| "invalid file path".to_string())?;
+    let new_path = target_dir.join(name);
+    reject_if_sensitive_path(&old_path, sensitive_dirs)?;
+    reject_if_sensitive_path(&new_path, sensitive_dirs)?;
     move_file(&old_path, &new_path).map_err(|e| e.to_string())?;
 
     if let Err(db_err) =
@@ -409,16 +415,7 @@ pub fn move_file_to_folder(
 /// `name` ends up in `with_file_name` and must be a single harmless path
 /// component (CWE-22, like `validate_folder_name`).
 fn validate_file_name(name: &str) -> CmdResult<()> {
-    if name.trim().is_empty() {
-        return Err(CmdError::expected("Dateiname darf nicht leer sein"));
-    }
-    if name.contains('/') || name.contains('\\') {
-        return Err(CmdError::expected("Dateiname darf keine Pfad-Trennzeichen enthalten"));
-    }
-    if name == "." || name == ".." {
-        return Err(CmdError::expected("Ungueltiger Dateiname"));
-    }
-    Ok(())
+    folders::validate_name(name, true, "Dateiname")
 }
 /// Core logic of `rename_file`, without `State`, so it's testable. `fs::rename`
 /// instead of `move_file`, because source and target are in the same directory.
@@ -432,6 +429,9 @@ fn rename_file_with_conn(
     let file = db::get_file(conn, id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "file not found".to_string())?;
+    if file.deleted_at.is_some() {
+        return Err(CmdError::expected("file is in trash"));
+    }
 
     let old_path = PathBuf::from(&file.path);
     let new_path = old_path.with_file_name(&new_name);
@@ -663,29 +663,47 @@ pub(crate) fn compute_content_hash(path: &Path) -> CmdResult<String> {
     }
     Ok(format!("{:x}", hasher.finalize()))
 }
-/// One-time content_hash backfill at startup for files imported before the
-/// column existed. Needs file access, so it runs here instead of in db::init.
-/// Missing files are logged and skipped.
-pub(crate) fn backfill_content_hashes(conn: &Connection) {
-    let missing = match db::list_files_missing_content_hash(conn) {
-        Ok(rows) => rows,
-        Err(e) => {
-            log::error!(target: "startup", "content_hash backfill: query failed: {e}");
-            return;
-        }
-    };
+/// File I/O runs on a worker without a catalog or database lock, so slow disks
+/// cannot delay the window or other catalog operations.
+pub(crate) fn backfill_content_hashes(state: &AppState) {
+    if let Err(error) = backfill_hashes_with_reader(state, compute_content_hash) {
+        log::warn!(target: "startup", "content_hash backfill: {error}");
+    }
+}
 
-    for (id, path) in missing {
-        match compute_content_hash(Path::new(&path)) {
-            Ok(hash) => {
-                if let Err(e) = db::set_content_hash(conn, id, &hash) {
-                    log::warn!(target: "startup", "content_hash backfill übersprungen (Speichern fehlgeschlagen): {path}: {e}");
-                }
+fn backfill_hashes_with_reader(
+    state: &AppState,
+    mut hash_file: impl FnMut(&Path) -> CmdResult<String>,
+) -> Result<(), DbError> {
+    let mut cursor = 0_i64;
+    loop {
+        let (batch, known_folders) = file_modified_backfill::with_catalog(state, |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, path FROM files WHERE content_hash IS NULL AND id > ?1 ORDER BY id LIMIT 200",
+            )?;
+            let rows = stmt.query_map([cursor], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))?;
+            Ok((rows.collect::<Result<Vec<_>, _>>()?, imported_paths::folder_paths(conn)?))
+        })?;
+        if batch.is_empty() {
+            return Ok(());
+        }
+        cursor = batch.last().unwrap().0;
+        for (id, path) in batch {
+            if backup::validate_imported_local_path(&path, &known_folders).is_err() {
+                continue;
             }
-            // compute_content_hash already logged the fault itself; this runs on every
-            // startup until the file is reachable again, so it stays at Warn, not Error.
-            Err(e) => {
-                log::warn!(target: "startup", "content_hash backfill übersprungen: {path}: {e}");
+            match hash_file(Path::new(&path)) {
+                Ok(hash) => {
+                    file_modified_backfill::with_catalog(state, |conn| {
+                        // A rescan or rename during the read must keep its newer data.
+                        conn.execute(
+                            "UPDATE files SET content_hash = ?1 WHERE id = ?2 AND path = ?3 AND content_hash IS NULL",
+                            rusqlite::params![hash, id, path],
+                        )?;
+                        Ok(())
+                    })?;
+                }
+                Err(error) => log::warn!(target: "startup", "content_hash backfill übersprungen: {path}: {error}"),
             }
         }
     }
@@ -1750,6 +1768,89 @@ mod tests {
 
     use super::*;
 
+    fn hash_backfill_state(conn: Connection) -> AppState {
+        AppState {
+            import_jobs: ImportJobs::default(), db: Mutex::new(conn),
+            trash_dir: PathBuf::new(), db_path: PathBuf::new(), sensitive_dirs: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn hash_backfill_reads_without_locks_and_preserves_concurrent_changes() {
+        let conn = db::connect_in_memory().unwrap();
+        let dir = unique_test_dir("hash_backfill_locks");
+        for name in ["hash-a.stl", "hash-b.stl", "hash-c.stl"] {
+            db::test_insert_minimal_file(&conn, dir.join(name).to_str().unwrap(), None).unwrap();
+        }
+        let state = hash_backfill_state(conn);
+        let mut reads = 0;
+        backfill_hashes_with_reader(&state, |_| {
+            reads += 1;
+            let _gate = state.import_jobs.gate.exclusive().unwrap();
+            let conn = state.db.try_lock().unwrap();
+            conn.execute("UPDATE files SET content_hash = 'new' WHERE id = 2", []).unwrap();
+            conn.execute("UPDATE files SET path = '/tmp/renamed.stl' WHERE id = 3", []).unwrap();
+            Ok("computed".into())
+        }).unwrap();
+        assert_eq!(reads, 3);
+        let conn = state.db.lock().unwrap();
+        assert_eq!(db::get_file(&conn, 1).unwrap().unwrap().content_hash.as_deref(), Some("computed"));
+        assert_eq!(db::get_file(&conn, 2).unwrap().unwrap().content_hash.as_deref(), Some("new"));
+        assert!(db::get_file(&conn, 3).unwrap().unwrap().content_hash.is_none());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn hash_backfill_reads_known_unc_folder() {
+        let conn = db::connect_in_memory().unwrap();
+        db::insert_folder_with_parent(&conn, "NAS", None, r"\\nas\share").unwrap();
+        let id = db::test_insert_minimal_file(&conn, r"\\nas\share\x.stl", None).unwrap();
+        let state = hash_backfill_state(conn);
+        backfill_hashes_with_reader(&state, |_| Ok("hash".into())).unwrap();
+        assert_eq!(db::get_file(&state.db.lock().unwrap(), id).unwrap().unwrap().content_hash.as_deref(), Some("hash"));
+    }
+
+    #[test]
+    fn hash_backfill_leaves_nonlocal_rows_unhashed() {
+        let conn = db::connect_in_memory().unwrap();
+        let id = db::test_insert_minimal_file(&conn, r"\\192.0.2.10\probe\x", None).unwrap();
+        let state = hash_backfill_state(conn);
+        backfill_hashes_with_reader(&state, |_| panic!("unknown UNC reached reader")).unwrap();
+        assert!(db::get_file(&state.db.lock().unwrap(), id).unwrap().unwrap().content_hash.is_none());
+    }
+
+
+    #[test]
+    fn file_names_reject_windows_devices_and_non_components() {
+        for name in ["C:x", "CON.3mf", "LPT¹.stl", "x.", "x ", "x\n.stl", "sub/x", "sub\\x"] {
+            assert!(validate_file_name(name).is_err(), "{name:?}");
+        }
+        assert!(validate_file_name("normal..stl").is_ok());
+        assert_eq!(validate_file_name("a:b").unwrap_err().message,
+            "Dieses Zeichen ist in Dateinamen nicht erlaubt: :");
+    }
+
+    #[test]
+    fn move_uses_disk_basename_and_trashed_rows_cannot_move_or_rename() {
+        let dir = unique_test_dir("move_actual_name");
+        let target = dir.join("target");
+        std::fs::create_dir_all(&target).unwrap();
+        let source = dir.join("actual.stl");
+        std::fs::write(&source, b"model").unwrap();
+        let conn = db::connect_in_memory().unwrap();
+        let id = db::test_insert_minimal_file(&conn, source.to_str().unwrap(), None).unwrap();
+        conn.execute("UPDATE files SET name = 'C:fake.stl'", []).unwrap();
+        let folder = db::insert_folder_with_parent(&conn, "target", None, target.to_str().unwrap()).unwrap();
+        move_file_to_folder_with_conn(&conn, id, Some(folder), &[]).unwrap();
+        assert!(target.join("actual.stl").exists());
+        db::soft_delete_file(&conn, id, Some("existing-trash"), "now").unwrap();
+        assert!(move_file_to_folder_with_conn(&conn, id, Some(folder), &[]).is_err());
+        assert!(rename_file_with_conn(&conn, id, "other.stl".into(), &[]).is_err());
+        assert!(target.join("actual.stl").exists());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+
     #[test]
     fn creality_project_fixture_has_three_plates_and_five_meshes() {
         let bytes = include_bytes!("../../tests/fixtures/creality-3plates.3mf");
@@ -2609,8 +2710,9 @@ mod tests {
                 db::insert_file_within_tx(&tx, &sample_new_file_for_rescan_test(path)).unwrap();
                 tx.commit().unwrap();
             }
-            backfill_content_hashes(&conn);
-            let still_missing = db::list_files_missing_content_hash(&conn).unwrap().len();
+            let state = hash_backfill_state(conn);
+            backfill_content_hashes(&state);
+            let still_missing = db::list_files_missing_content_hash(&state.db.lock().unwrap()).unwrap().len();
             let _ = done_tx.send(still_missing);
         });
         let still_missing = done_rx

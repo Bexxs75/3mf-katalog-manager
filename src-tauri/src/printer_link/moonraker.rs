@@ -49,12 +49,20 @@ pub fn parse_history_page(v: &Value) -> Result<HistoryPage, LinkError> {
         .filter_map(|j| {
             let parsed = parse_job(j);
             if parsed.is_none() && j.get("status").and_then(Value::as_str) != Some("in_progress") {
-                log::warn!(target: "drucker", "skipped incomplete Moonraker job: {:?}", j.get("job_id"));
+                log::warn!(target: "drucker", "skipped incomplete Moonraker job");
             }
             parsed
         })
         .collect();
     Ok(HistoryPage { count, raw_len: raw.len(), jobs })
+}
+
+fn bounded_text(value: &str, max_bytes: usize) -> String {
+    let mut end = value.len().min(max_bytes);
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    value[..end].to_string()
 }
 
 fn positive(v: Option<&Value>) -> Option<f64> {
@@ -96,6 +104,10 @@ fn parse_job(j: &Value) -> Option<RemoteJob> {
         Some(start) => format!("{job_id}@{:.0}", start.floor()),
         None => job_id.to_string(),
     };
+    // Truncating identifiers could merge unrelated prints under the same key.
+    if remote_id.len() > 512 {
+        return None;
+    }
     let used_mm = j.get("filament_used")?.as_f64()?;
     if used_mm <= 0.0 {
         return None;
@@ -106,7 +118,7 @@ fn parse_job(j: &Value) -> Option<RemoteJob> {
         None => (None, filename),
     };
     let meta = j.get("metadata");
-    let material = meta.and_then(main_material);
+    let material = meta.and_then(main_material).map(|m| bounded_text(&m, 512));
     let thumbnail_path = meta
         .and_then(|m| m.get("thumbnails"))
         .and_then(Value::as_array)
@@ -117,7 +129,7 @@ fn parse_job(j: &Value) -> Option<RemoteJob> {
                     let w = t.get("width")?.as_u64()?;
                     let h = t.get("height")?.as_u64()?;
                     let p = t.get("relative_path")?.as_str()?;
-                    Some((w * h, p))
+                    Some((w.saturating_mul(h), p))
                 })
                 .max_by_key(|(area, _)| *area)
                 .map(|(_, p)| match dir {
@@ -127,16 +139,16 @@ fn parse_job(j: &Value) -> Option<RemoteJob> {
         });
     Some(RemoteJob {
         remote_id,
-        file_name: file_name.to_string(),
+        file_name: bounded_text(file_name, 512),
         outcome: if status == "completed" { JobOutcome::Completed } else { JobOutcome::Partial },
-        raw_status: status.to_string(),
+        raw_status: bounded_text(status, 512),
         ended_at,
         print_duration_s: j.get("print_duration").and_then(Value::as_f64).unwrap_or(0.0),
         used_mm,
         slicer_total_mm: positive(meta.and_then(|m| m.get("filament_total"))),
         slicer_weight_g: positive(meta.and_then(|m| m.get("filament_weight_total"))),
         material,
-        thumbnail_path,
+        thumbnail_path: thumbnail_path.filter(|p| p.len() <= 1024),
     })
 }
 
@@ -362,6 +374,27 @@ impl PrinterLink for MoonrakerLink {
 #[cfg(test)]
 mod parse_tests {
     use super::*;
+
+    #[test]
+    fn printer_text_is_bounded_at_utf8_boundaries() {
+        let mut value = serde_json::json!({
+            "job_id": "id", "end_time": 1.0, "filament_used": 1.0,
+            "filename": "界".repeat(300), "status": "界".repeat(300),
+            "metadata": {"filament_type": "界".repeat(300),
+                "thumbnails": [{"width": 1, "height": 1, "relative_path": "x".repeat(1024)}]}
+        });
+        let job = parse_job(&value).unwrap();
+        assert_eq!(job.file_name.len(), 510);
+        assert_eq!(job.raw_status.len(), 510);
+        assert_eq!(job.material.unwrap().len(), 510);
+        assert_eq!(job.thumbnail_path.unwrap().len(), 1024);
+        value["metadata"]["thumbnails"][0]["relative_path"] = serde_json::json!("x".repeat(1025));
+        assert!(parse_job(&value).unwrap().thumbnail_path.is_none());
+        value["job_id"] = serde_json::json!("x".repeat(512));
+        assert_eq!(parse_job(&value).unwrap().remote_id.len(), 512);
+        value["start_time"] = serde_json::json!(1.0);
+        assert!(parse_job(&value).is_none());
+    }
 
     fn fixture(name: &str) -> serde_json::Value {
         let path = format!("{}/tests/fixtures/moonraker/{name}", env!("CARGO_MANIFEST_DIR"));

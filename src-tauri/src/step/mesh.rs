@@ -12,12 +12,12 @@ use opencascade_sys::{
 
 use crate::geometry::{compute_flat_normals, RenderMesh};
 
-use super::{StepError, DEFLECTION_DIVISOR, DEFLECTION_MAX_MM, DEFLECTION_MIN_MM};
+use super::{StepError, DEFLECTION_DIVISOR, DEFLECTION_MIN_MM};
 
 /// Tolerance from the bounding box diagonal: fine enough for small parts,
 /// economical enough for large ones. Planar faces are unaffected.
 pub fn deflection_for(diagonal_mm: f64) -> f64 {
-    (diagonal_mm / DEFLECTION_DIVISOR).clamp(DEFLECTION_MIN_MM, DEFLECTION_MAX_MM)
+    (diagonal_mm / DEFLECTION_DIVISOR).max(DEFLECTION_MIN_MM)
 }
 
 /// Tessellates the shape and returns a flat triangle list: three corners per
@@ -27,14 +27,28 @@ pub fn raw_triangles(shape: &TopoDS_Shape, deflection: f64) -> Result<Vec<[f64; 
     raw_triangles_limited(shape, deflection, usize::MAX)
 }
 
-/// Like [`raw_triangles`], but aborts as soon as the first triangle over the limit
-/// is read. So a pathological STEP file doesn't have to be copied completely into
-/// a huge Rust vector before the limit kicks in.
+/// Like [`raw_triangles`], but limits the copy into Rust after native meshing.
+/// This triangle limit does not bound OCCT's allocations during meshing.
 pub(crate) fn raw_triangles_limited(
     shape: &TopoDS_Shape,
     deflection: f64,
     max_triangles: usize,
 ) -> Result<Vec<[f64; 3]>, StepError> {
+    // Each face requires at least one triangle; reject excessive topology before
+    // asking OCCT to allocate a triangulation for the whole assembly.
+    let mut faces = TopExp_Explorer_new(shape, TopAbs_ShapeEnum::TopAbs_FACE);
+    let mut face_count = 0usize;
+    while faces.More() {
+        face_count += 1;
+        if face_count > max_triangles {
+            return Err(StepError::TooManyFaces {
+                faces: face_count,
+                limit: max_triangles,
+            });
+        }
+        faces.pin_mut().Next();
+    }
+
     // Deliberately only ONE mesh for the whole file, even with several bodies.
     let mesh = IncrementalMesh_new(shape, deflection);
     if !mesh.IsDone() {
@@ -146,9 +160,11 @@ mod tests {
     }
 
     #[test]
-    fn deflection_is_clamped_for_tiny_and_huge_parts() {
+    fn deflection_has_only_a_lower_bound_and_scales_for_huge_parts() {
         assert_eq!(deflection_for(1.0), DEFLECTION_MIN_MM);
-        assert_eq!(deflection_for(100_000.0), DEFLECTION_MAX_MM);
+        assert_eq!(deflection_for(100_000.0), 200.0);
+        assert_eq!(deflection_for(1_000_000.0), 2_000.0);
+        assert_eq!(deflection_for(100.0) / 100.0, deflection_for(1e6) / 1e6);
     }
 
     #[test]
@@ -207,15 +223,22 @@ mod tests {
     }
 
     #[test]
+    fn face_limit_aborts_before_tessellation() {
+        let shape = super::super::reader::read_shape(&fixture("wuerfel-10mm.step")).expect("read");
+        assert!(matches!(raw_triangles_limited(&shape, 0.01, 5),
+            Err(StepError::TooManyFaces { faces: 6, limit: 5 })));
+    }
+
+    #[test]
     fn raw_triangles_stops_before_allocating_past_the_limit() {
         let shape = super::super::reader::read_shape(&fixture("wuerfel-10mm.step")).expect("read");
-        let err = raw_triangles_limited(&shape, 0.01, 5).expect_err("must stop at limit");
+        let err = raw_triangles_limited(&shape, 0.01, 8).expect_err("must stop at limit");
 
         assert!(matches!(
             err,
             StepError::TooComplex {
-                triangles: 6,
-                limit: 5
+                triangles: 9,
+                limit: 8
             }
         ));
     }

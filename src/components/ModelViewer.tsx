@@ -1,3 +1,4 @@
+import { beginPreviewAttempt } from '../lib/snapshotQueue';
 import { isWebGLUnavailable, markWebGLUnavailable } from '../lib/webglAvailability';
 import { Icon } from './Icon';
 import { PlateSelector } from './PlateSelector';
@@ -289,9 +290,10 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
     ctx.colorMaterials.forEach(m => m.dispose());
     ctx.colorMaterials = [];
 
+    const finishAttempt = beginPreviewAttempt(fileId);
     invoke<ArrayBuffer>('get_model_geometry', { fileId })
       .then((buffer) => {
-        if (cancelled) return;
+        if (cancelled) { finishAttempt(); return; }
         const { meshes, palette, plates } = decodeModelGeometry(buffer);
         setPlates(plates);
         ctx.colorMaterials = palette.map(color => new THREE.MeshStandardMaterial({
@@ -330,20 +332,26 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
         if (needsSnapshot) {
           requestAnimationFrame(() => {
             requestAnimationFrame(() => {
-              if (cancelled) return;
+              if (cancelled) { finishAttempt(); return; }
               try {
                 const dataUrl = ctx.renderer.domElement.toDataURL('image/png');
                 const base64 = dataUrl.split(',')[1];
                 if (base64) onSnapshotCaptured(base64);
+                else reportError();
               } catch (err) {
                 console.error('[ModelViewer] snapshot failed:', err);
                 reportError();
+              } finally {
+                finishAttempt();
               }
             });
           });
+        } else {
+          finishAttempt();
         }
       })
       .catch((err) => {
+        finishAttempt();
         console.error('[ModelViewer] loading failed:', err);
         if (!cancelled) {
           setStatus('error');

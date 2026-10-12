@@ -12,7 +12,7 @@
 
 use std::fs::File;
 use std::cell::Cell;
-use std::io::{BufReader, Read};
+use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::rc::Rc;
 use std::path::Path;
 
@@ -272,8 +272,180 @@ fn sevenz_meta(entry: &sevenz_rust2::ArchiveEntry, encrypted: bool) -> EntryMeta
     }
 }
 
+// Header decoding happens inside ArchiveReader::new, before entry limits can
+// apply. Keep both its input and the sum of declared coder outputs bounded.
+const MAX_7Z_HEADER_BYTES: u64 = 16 * 1024 * 1024;
+
+struct SevenZHeader<'a> {
+    bytes: &'a [u8],
+}
+
+impl SevenZHeader<'_> {
+    fn skip(&mut self, count: usize) -> Result<(), ArchiveError> {
+        self.bytes = self.bytes.get(count..).ok_or_else(|| unreadable("truncated 7z header"))?;
+        Ok(())
+    }
+
+    fn byte(&mut self) -> Result<u8, ArchiveError> {
+        let byte = *self.bytes.first().ok_or_else(|| unreadable("truncated 7z header"))?;
+        self.skip(1)?;
+        Ok(byte)
+    }
+
+    fn expect(&mut self, expected: u8) -> Result<(), ArchiveError> {
+        if self.byte()? != expected {
+            return Err(unreadable("unsupported 7z header structure"));
+        }
+        Ok(())
+    }
+
+    fn number(&mut self) -> Result<u64, ArchiveError> {
+        let first = self.byte()?;
+        let mut mask = 0x80;
+        let mut value = 0;
+        for i in 0..8 {
+            if first & mask == 0 {
+                return Ok(value | (u64::from(first & (mask - 1)) << (8 * i)));
+            }
+            value |= u64::from(self.byte()?) << (8 * i);
+            mask >>= 1;
+        }
+        Ok(value)
+    }
+
+    fn count(&mut self) -> Result<usize, ArchiveError> {
+        let count = self.number()?;
+        if count > self.bytes.len() as u64 {
+            return Err(unreadable("7z header count exceeds available bytes"));
+        }
+        Ok(count as usize)
+    }
+
+    fn digests(&mut self, count: usize) -> Result<(), ArchiveError> {
+        let defined = if self.byte()? != 0 {
+            count
+        } else {
+            let mut defined = 0;
+            for start in (0..count).step_by(8) {
+                let bits = self.byte()?;
+                for bit in 0..(count - start).min(8) {
+                    defined += usize::from(bits & (0x80 >> bit) != 0);
+                }
+            }
+            defined
+        };
+        self.skip(defined.checked_mul(4).ok_or(ArchiveError::LimitExceeded)?)
+    }
+
+    fn folder_outputs(&mut self) -> Result<usize, ArchiveError> {
+        let coders = self.count()?;
+        let mut inputs = 0usize;
+        let mut outputs = 0usize;
+        for _ in 0..coders {
+            let flags = self.byte()?;
+            if flags & 0xc0 != 0 || flags & 0x0f == 0 {
+                return Err(unreadable("unsupported 7z header coder"));
+            }
+            self.skip(usize::from(flags & 0x0f))?;
+            let (coder_inputs, coder_outputs) = if flags & 0x10 == 0 {
+                (1, 1)
+            } else {
+                (self.count()?, self.count()?)
+            };
+            inputs = inputs.checked_add(coder_inputs).ok_or(ArchiveError::LimitExceeded)?;
+            outputs = outputs.checked_add(coder_outputs).ok_or(ArchiveError::LimitExceeded)?;
+            if inputs > MAX_7Z_HEADER_BYTES as usize || outputs > MAX_7Z_HEADER_BYTES as usize {
+                return Err(ArchiveError::LimitExceeded);
+            }
+            if flags & 0x20 != 0 {
+                let properties = self.count()?;
+                self.skip(properties)?;
+            }
+        }
+        let pairs = outputs.checked_sub(1).ok_or_else(|| unreadable("7z coder has no output"))?;
+        let packed = inputs.checked_sub(pairs).ok_or_else(|| unreadable("invalid 7z stream counts"))?;
+        for _ in 0..pairs {
+            if self.number()? >= inputs as u64 || self.number()? >= outputs as u64 {
+                return Err(unreadable("invalid 7z bind pair"));
+            }
+        }
+        if packed != 1 {
+            for _ in 0..packed {
+                if self.number()? >= inputs as u64 {
+                    return Err(unreadable("invalid 7z packed stream"));
+                }
+            }
+        }
+        Ok(outputs)
+    }
+}
+
+fn check_7z_encoded_header(bytes: &[u8]) -> Result<(), ArchiveError> {
+    let mut header = SevenZHeader { bytes };
+    header.expect(0x17)?; // kEncodedHeader
+    let mut section = header.byte()?;
+    if section == 0x06 { // kPackInfo
+        header.number()?; // pack position
+        let streams = header.count()?;
+        section = header.byte()?;
+        if section == 0x09 { // kSize
+            for _ in 0..streams { header.number()?; }
+            section = header.byte()?;
+        }
+        if section == 0x0a { // kCRC
+            header.digests(streams)?;
+            section = header.byte()?;
+        }
+        if section != 0 { return Err(unreadable("invalid 7z PackInfo")); }
+        section = header.byte()?;
+    }
+    if section != 0x07 { return Err(unreadable("missing 7z UnpackInfo")); }
+    header.expect(0x0b)?; // kFolder
+    let folders = header.count()?;
+    header.expect(0)?; // external folder definitions cannot be checked here
+    let mut outputs = 0usize;
+    for _ in 0..folders {
+        outputs = outputs.checked_add(header.folder_outputs()?).ok_or(ArchiveError::LimitExceeded)?;
+    }
+    header.expect(0x0c)?; // kCodersUnpackSize
+    let mut unpacked = 0u64;
+    for _ in 0..outputs {
+        unpacked = unpacked.checked_add(header.number()?).ok_or(ArchiveError::LimitExceeded)?;
+        if unpacked > MAX_7Z_HEADER_BYTES { return Err(ArchiveError::LimitExceeded); }
+    }
+    // The remaining CRC/substream metadata cannot increase coder output sizes;
+    // let the library validate it, including ordinary solid-header layouts.
+    Ok(())
+}
+
+fn check_7z_header<R: Read + Seek>(reader: &mut R) -> Result<(), ArchiveError> {
+    let mut signature = [0u8; 32];
+    reader.read_exact(&mut signature)?;
+    if &signature[..6] != b"7z\xbc\xaf\x27\x1c" || signature[6] != 0 {
+        return Err(unreadable("invalid 7z signature"));
+    }
+    let offset = u64::from_le_bytes(signature[12..20].try_into().unwrap());
+    let size = u64::from_le_bytes(signature[20..28].try_into().unwrap());
+    if size > MAX_7Z_HEADER_BYTES { return Err(ArchiveError::LimitExceeded); }
+    // A missing start header enables the library's recovery scan, whose guessed
+    // header would not have passed this check.
+    if size == 0 { return Err(unreadable("missing 7z next header")); }
+    let start = 32u64.checked_add(offset).ok_or(ArchiveError::LimitExceeded)?;
+    let end = start.checked_add(size).ok_or(ArchiveError::LimitExceeded)?;
+    if end > reader.seek(SeekFrom::End(0))? {
+        return Err(unreadable("7z header outside archive"));
+    }
+    reader.seek(SeekFrom::Start(start))?;
+    let mut header = vec![0; size as usize];
+    reader.read_exact(&mut header)?;
+    if header[0] == 0x17 { check_7z_encoded_header(&header)?; }
+    reader.rewind()?;
+    Ok(())
+}
+
 fn open_7z(path: &Path) -> Result<(sevenz_rust2::ArchiveReader<BufReader<File>>, bool), ArchiveError> {
-    let file = BufReader::new(File::open(path)?);
+    let mut file = BufReader::new(File::open(path)?);
+    check_7z_header(&mut file)?;
     let reader =
         sevenz_rust2::ArchiveReader::new(file, sevenz_rust2::Password::empty()).map_err(sevenz_error)?;
     // LZMA/LZMA2 reserve memory up to the unpacked size of the block (at most the
@@ -438,6 +610,78 @@ fn extract_rar(path: &Path, ex: &mut Extractor<'_>) -> Result<(), ArchiveError> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn encoded_header_fixture(sizes: &[u64]) -> Vec<u8> {
+        fn number(out: &mut Vec<u8>, value: u64) {
+            out.push(0xff);
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+        let mut header = vec![0x17, 0x06];
+        number(&mut header, 0);
+        number(&mut header, sizes.len() as u64);
+        header.push(0x09);
+        for _ in sizes { number(&mut header, 0); }
+        header.extend_from_slice(&[0, 0x07, 0x0b]);
+        number(&mut header, sizes.len() as u64);
+        header.push(0);
+        for _ in sizes { header.extend_from_slice(&[1, 0x21, 0x21, 1, 16]); }
+        header.push(0x0c);
+        for size in sizes { number(&mut header, *size); }
+        header.extend_from_slice(&[0, 0]);
+        let mut signature = b"7z\xbc\xaf\x27\x1c\x00\x04".to_vec();
+        signature.extend_from_slice(&[0; 4]);
+        signature.extend_from_slice(&0u64.to_le_bytes());
+        signature.extend_from_slice(&(header.len() as u64).to_le_bytes());
+        signature.extend_from_slice(&[0; 4]);
+        signature.extend_from_slice(&header);
+        signature
+    }
+
+    #[test]
+    fn sevenz_rejects_large_encoded_header_before_decoder() {
+        let dir = std::env::temp_dir().join(format!("encoded-header-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        std::fs::create_dir(&dir).unwrap();
+        let path = dir.join("header.7z");
+        // No compressed payload or valid CRC: reaching the decoder would return
+        // Unreadable, so LimitExceeded proves rejection before decoding.
+        std::fs::write(&path, encoded_header_fixture(&[33_554_432])).unwrap();
+        let result = open_7z(&path);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(matches!(result, Err(ArchiveError::LimitExceeded)));
+    }
+
+    #[test]
+    fn sevenz_header_limits_total_output_and_accepts_boundary() {
+        for sizes in [&[MAX_7Z_HEADER_BYTES][..], &[MAX_7Z_HEADER_BYTES / 2; 2][..]] {
+            let bytes = encoded_header_fixture(sizes);
+            let mut reader = std::io::Cursor::new(bytes);
+            check_7z_header(&mut reader).unwrap();
+            assert_eq!(reader.position(), 0);
+        }
+        let bytes = encoded_header_fixture(&[MAX_7Z_HEADER_BYTES / 2, MAX_7Z_HEADER_BYTES / 2 + 1]);
+        assert!(matches!(check_7z_header(&mut std::io::Cursor::new(bytes)), Err(ArchiveError::LimitExceeded)));
+    }
+
+    #[test]
+    fn sevenz_header_rejects_truncated_external_and_overflowing_metadata() {
+        let bytes = encoded_header_fixture(&[32]);
+        let header = &bytes[32..];
+        for end in 0..header.len() - 2 {
+            assert!(check_7z_encoded_header(&header[..end]).is_err(), "prefix {end}");
+        }
+        let mut external = header.to_vec();
+        let folder_marker = external.windows(2).position(|w| w == [0x07, 0x0b]).unwrap();
+        external[folder_marker + 2 + 9] = 1;
+        assert!(check_7z_encoded_header(&external).is_err());
+        let mut overflow = bytes.clone();
+        overflow[12..20].copy_from_slice(&u64::MAX.to_le_bytes());
+        assert!(matches!(check_7z_header(&mut std::io::Cursor::new(overflow)), Err(ArchiveError::LimitExceeded)));
+        let mut missing = bytes;
+        missing[8..32].fill(0);
+        assert!(check_7z_header(&mut std::io::Cursor::new(missing)).is_err());
+        let mut huge_count = SevenZHeader { bytes: &[0xff; 9] };
+        assert!(huge_count.count().is_err());
+    }
 
     #[test]
     fn limited_reader_passes_data_up_to_the_limit_and_flags_more() {

@@ -177,8 +177,9 @@ fn rename_folder_with_conn(
 
     let old_path = std::path::PathBuf::from(&folder.path);
     let new_path = old_path.with_file_name(&name);
-    reject_if_sensitive_path(&old_path, sensitive_dirs)?;
-    reject_if_sensitive_path(&new_path, sensitive_dirs)?;
+    let expanded = expand_sensitive_dirs(sensitive_dirs);
+    archives::check_managed_location(&old_path, &expanded)?;
+    archives::check_managed_location(&new_path, &expanded)?;
 
     if new_path.exists() {
         return Err(CmdError::expected(format!("Zielordner existiert bereits: {}", new_path.display())));
@@ -255,9 +256,11 @@ fn move_folder_with_conn(
     let target = Some(target);
 
     let old_path = std::path::PathBuf::from(&folder.path);
-    let new_path = std::path::PathBuf::from(&new_parent_path).join(&folder.name);
-    reject_if_sensitive_path(&old_path, sensitive_dirs)?;
-    reject_if_sensitive_path(&new_path, sensitive_dirs)?;
+    let name = old_path.file_name().ok_or_else(|| "invalid folder path".to_string())?;
+    let new_path = std::path::PathBuf::from(&new_parent_path).join(name);
+    let expanded = expand_sensitive_dirs(sensitive_dirs);
+    archives::check_managed_location(&old_path, &expanded)?;
+    archives::check_managed_location(&new_path, &expanded)?;
 
     if new_path.exists() {
         return Err(CmdError::expected(format!("Zielordner existiert bereits: {}", new_path.display())));
@@ -372,7 +375,7 @@ pub fn register_catalog_base_dir(
 /// at startup a storage location deleted in the meantime must not silently
 /// reappear. `None` if the folder is missing.
 pub(super) fn register_existing_catalog_base_dir_with_conn(conn: &Connection, dir: &Path, sensitive_dirs: &[PathBuf]) -> CmdResult<Option<FolderDto>> {
-    reject_if_sensitive_path(dir, sensitive_dirs)?;
+    archives::check_managed_location(dir, &expand_sensitive_dirs(sensitive_dirs))?;
     let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
     let saved = db::printer_link::get_setting(&tx, SETTING_CATALOG_BASE_DIR).map_err(|e| e.to_string())?;
     if saved.as_deref().is_some_and(|saved| saved != dir.to_string_lossy()) {
@@ -411,7 +414,7 @@ const FORBIDDEN_DIR_NAME_CHARS: &[char] = &['/', '\\', ':', '*', '?', '"', '<', 
 
 // Device names Windows refuses as file or folder names, also with an extension.
 // Windows also treats the superscript digits ¹²³ like 1, 2, 3 here.
-const WINDOWS_RESERVED_NAMES: &[&str] = &[
+pub(super) const WINDOWS_RESERVED_NAMES: &[&str] = &[
     "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
     "COM9", "COM¹", "COM²", "COM³", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9", "LPT¹",
     "LPT²", "LPT³",
@@ -429,32 +432,36 @@ fn validate_new_catalog_dir_name(name: &str) -> CmdResult<()> {
     validate_dir_name(name, true)
 }
 
-fn validate_dir_name(name: &str, limit_length: bool) -> CmdResult<()> {
+pub(super) fn validate_dir_name(name: &str, limit_length: bool) -> CmdResult<()> {
+    validate_name(name, limit_length, "Ordnername")
+}
+
+pub(super) fn validate_name(name: &str, limit_length: bool, kind: &str) -> CmdResult<()> {
     if name.trim().is_empty() {
-        return Err(CmdError::expected("Der Ordnername darf nicht leer sein"));
+        return Err(CmdError::expected(format!("Der {kind} darf nicht leer sein")));
     }
     if let Some(c) = name.chars().find(|c| FORBIDDEN_DIR_NAME_CHARS.contains(c) || c.is_control()) {
         let shown = if c.is_control() { format!("U+{:04X}", c as u32) } else { c.to_string() };
-        return Err(CmdError::expected(format!("Dieses Zeichen ist in Ordnernamen nicht erlaubt: {shown}")));
+        return Err(CmdError::expected(format!("Dieses Zeichen ist in {kind}n nicht erlaubt: {shown}")));
     }
     if limit_length && name.len() > MAX_DIR_NAME_BYTES {
-        return Err(CmdError::expected("Der Ordnername ist zu lang"));
+        return Err(CmdError::expected(format!("Der {kind} ist zu lang")));
     }
     if name == "." || name == ".." {
-        return Err(CmdError::expected("Dieser Ordnername ist nicht erlaubt"));
+        return Err(CmdError::expected(format!("Dieser {kind} ist nicht erlaubt")));
     }
     if name.ends_with('.') || name.ends_with(' ') {
-        return Err(CmdError::expected("Ordnernamen dürfen nicht mit einem Punkt oder Leerzeichen enden"));
+        return Err(CmdError::expected(format!("{kind}n dürfen nicht mit einem Punkt oder Leerzeichen enden")));
     }
     let stem = name.split('.').next().unwrap_or(name).trim_end().to_uppercase();
     if WINDOWS_RESERVED_NAMES.contains(&stem.as_str()) {
-        return Err(CmdError::expected("Dieser Ordnername ist unter Windows reserviert"));
+        return Err(CmdError::expected(format!("Dieser {kind} ist unter Windows reserviert")));
     }
     // Defence in depth: whatever slipped through above must still be a single
     // plain component, never a root, prefix or parent reference.
     let mut components = Path::new(name).components();
     if !matches!((components.next(), components.next()), (Some(std::path::Component::Normal(_)), None)) {
-        return Err(CmdError::expected("Dieser Ordnername ist nicht erlaubt"));
+        return Err(CmdError::expected(format!("Dieser {kind} ist nicht erlaubt")));
     }
     Ok(())
 }
@@ -642,6 +649,41 @@ pub fn create_catalog_dir(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn move_folder_uses_disk_basename_instead_of_display_name() {
+        let dir = unique_test_dir("move_folder_basename");
+        let source = dir.join("actual");
+        let target = dir.join("target");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::create_dir_all(&target).unwrap();
+        let conn = db::connect_in_memory().unwrap();
+        let id = db::insert_folder_with_parent(&conn, "C:fake", None, source.to_str().unwrap()).unwrap();
+        let target_id = db::insert_folder_with_parent(&conn, "target", None, target.to_str().unwrap()).unwrap();
+        move_folder_with_conn(&conn, id, Some(target_id), &[]).unwrap();
+        assert!(target.join("actual").is_dir());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+
+    #[test]
+    fn managed_folders_reject_ancestors_before_adoption_or_rename() {
+        let dir = unique_test_dir("protected_ancestor");
+        let sensitive = dir.join("private");
+        std::fs::create_dir_all(&sensitive).unwrap();
+        let conn = db::connect_in_memory().unwrap();
+        assert!(register_existing_catalog_base_dir_with_conn(&conn, &dir, std::slice::from_ref(&sensitive)).is_err());
+        let id = db::insert_folder_with_parent(&conn, "root", None, dir.to_str().unwrap()).unwrap();
+        assert!(rename_folder_with_conn(&conn, id, "renamed".into(), std::slice::from_ref(&sensitive)).is_err());
+        let target = unique_test_dir("protected_ancestor_target");
+        std::fs::create_dir_all(&target).unwrap();
+        let target_id = db::insert_folder_with_parent(&conn, "target", None, target.to_str().unwrap()).unwrap();
+        assert!(move_folder_with_conn(&conn, id, Some(target_id), &[sensitive]).is_err());
+        assert!(dir.exists());
+        let _ = std::fs::remove_dir_all(target);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
 
     #[test]
     fn folder_names_reject_windows_special_components_on_every_platform() {

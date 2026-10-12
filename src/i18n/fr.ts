@@ -890,6 +890,7 @@ export const fr: Translations = {
   printerErrorContainerLoopback: "Seules les adresses de ton réseau local sont autorisées. Dans un conteneur, 127.0.0.1 désigne le conteneur lui-même. Saisis l’adresse de l’imprimante sur le réseau local ; pour les services de l’hôte Docker, utilise host.docker.internal (uniquement si extra_hosts: host.docker.internal:host-gateway est configuré dans Compose).",
   printerErrorUnreachable: "Injoignable. L'imprimante est-elle allumée et sur le même réseau ? L'adresse figure par ex. dans Mainsail ou sur l'écran.",
   printerErrorAuthRequired: 'Connexion requise. Cette imprimante a une authentification, que cette version ne prend pas encore en charge.',
+  printerErrorTooManyOpenJobs: 'Trop de tâches d’impression ouvertes. Confirmez ou ignorez les tâches ouvertes pour pouvoir en récupérer d’autres.',
   printerErrorBadResponse: "Réponse inattendue. S'agit-il bien d'une imprimante Klipper avec Moonraker ?",
   printerErrorHistoryMissing: "L'historique n'est pas activé sur l'imprimante ([history] dans moonraker.conf).",
   printerErrorAddressNotAllowed: 'Seules les adresses de ton réseau local sont autorisées.',

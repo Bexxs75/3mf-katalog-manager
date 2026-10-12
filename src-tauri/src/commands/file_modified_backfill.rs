@@ -14,7 +14,7 @@ pub(crate) fn backfill_file_modified_at(state: &AppState) {
     }
 }
 
-fn with_catalog<T>(
+pub(super) fn with_catalog<T>(
     state: &AppState,
     work: impl FnOnce(&mut Connection) -> Result<T, DbError>,
 ) -> Result<T, DbError> {
@@ -55,12 +55,12 @@ fn backfill_with_reader(
     }
     let (mut cursor, mut changed, mut unreadable) = (0_i64, 0, 0);
     loop {
-        let batch: Vec<(i64, String)> = with_catalog(state, |conn| {
+        let (batch, known_folders): (Vec<(i64, String)>, _) = with_catalog(state, |conn| {
             let mut stmt = conn.prepare(
                 "SELECT id, path FROM files WHERE file_modified_at IS NULL AND id > ?1 ORDER BY id LIMIT 200",
             )?;
             let rows = stmt.query_map([cursor], |row| Ok((row.get(0)?, row.get(1)?)))?;
-            Ok(rows.collect::<Result<_, _>>()?)
+            Ok((rows.collect::<Result<_, _>>()?, imported_paths::folder_paths(conn)?))
         })?;
         if batch.is_empty() {
             with_catalog(state, |conn| {
@@ -76,6 +76,7 @@ fn backfill_with_reader(
         // Keyset pagination visits unreadable rows once instead of retrying NULLs.
         let values: Vec<_> = batch
             .into_iter()
+            .filter(|(_, path)| backup::validate_imported_local_path(path, &known_folders).is_ok())
             .map(|(id, path)| {
                 let time = modified(Path::new(&path));
                 (id, path, time)
@@ -105,6 +106,28 @@ fn backfill_with_reader(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn backfill_never_calls_reader_for_network_paths() {
+        let state = state();
+        db::test_insert_minimal_file(&state.db.lock().unwrap(), r"\\192.0.2.10\probe\x", None).unwrap();
+        assert_eq!(backfill_with_reader(&state, |_| panic!("network path reached filesystem reader")).unwrap(), Some((0, 0)));
+    }
+
+
+    #[test]
+    fn backfill_reads_unc_rows_under_known_folder() {
+        let state = state();
+        {
+            let conn = state.db.lock().unwrap();
+            db::insert_folder_with_parent(&conn, "NAS", None, r"\\nas\share").unwrap();
+            db::test_insert_minimal_file(&conn, r"\\?\UNC\nas\share\x.stl", None).unwrap();
+        }
+        assert_eq!(backfill_with_reader(&state, |_| {
+            assert!(state.db.try_lock().is_ok());
+            Some("date".into())
+        }).unwrap(), Some((1, 0)));
+    }
 
     fn state() -> AppState {
         AppState {

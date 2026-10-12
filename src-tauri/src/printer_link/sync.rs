@@ -13,6 +13,7 @@ use crate::db::printer_link as store;
 
 pub const EVENT_JOBS_CHANGED: &str = "printer-jobs-changed";
 const FIRST_RUN_AFTER: Duration = Duration::from_secs(10);
+const MAX_NEW_JOBS: usize = 200;
 const INTERVAL: Duration = Duration::from_secs(300);
 
 pub type LinkMaker = dyn Fn(&str, &str) -> Result<Box<dyn PrinterLink>, LinkError> + Send + Sync;
@@ -34,7 +35,7 @@ pub fn sync_once(db: &Mutex<Connection>, make: &LinkMaker, now: f64) -> Result<u
         }
         let mut plan = Vec::new();
         for c in store::list_connections(&conn)?.into_iter().filter(|c| !c.paused) {
-            let since = store::sync_from(&conn, c.printer_id)?;
+            let since = store::sync_from(&conn, c.printer_id, now)?;
             plan.push((c.printer_id, c.kind, c.address, since));
         }
         plan
@@ -44,6 +45,9 @@ pub fn sync_once(db: &Mutex<Connection>, make: &LinkMaker, now: f64) -> Result<u
     let mut new_jobs = 0;
     let mut error_codes: Vec<&'static str> = Vec::new();
     for (printer_id, kind, address, since) in plan {
+        if new_jobs >= MAX_NEW_JOBS {
+            break;
+        }
         // The plan was made once at the start; a single network request (`test()`) can
         // take seconds. So check again briefly before contacting the next printer: if
         // the switch was turned off meanwhile, the whole pass ends immediately (no more
@@ -57,6 +61,11 @@ pub fn sync_once(db: &Mutex<Connection>, make: &LinkMaker, now: f64) -> Result<u
             match store::get_connection(&conn, printer_id)? {
                 Some(c) if !c.paused => {}
                 _ => continue,
+            }
+            if store::open_job_limit_reached(&conn, printer_id)? {
+                store::record_sync_error(&conn, printer_id, "too_many_open_jobs", now)?;
+                error_codes.push("too_many_open_jobs");
+                continue;
             }
         }
 
@@ -73,13 +82,23 @@ pub fn sync_once(db: &Mutex<Connection>, make: &LinkMaker, now: f64) -> Result<u
             continue;
         }
         match result {
-            Ok((info, jobs)) => {
+            Ok((info, mut jobs)) => {
+                // The cursor follows end time, whereas Moonraker pages by start time.
+                jobs.sort_by(|a, b| a.ended_at.total_cmp(&b.ended_at));
                 for job in &jobs {
+                    if new_jobs >= MAX_NEW_JOBS {
+                        break;
+                    }
                     if store::insert_job_if_new(&conn, printer_id, job)? {
                         new_jobs += 1;
                     }
                 }
-                store::record_sync_success(&conn, printer_id, now, &info.base_url, &info.version)?;
+                if store::open_job_limit_reached(&conn, printer_id)? {
+                    store::record_sync_error(&conn, printer_id, "too_many_open_jobs", now)?;
+                    error_codes.push("too_many_open_jobs");
+                } else {
+                    store::record_sync_success(&conn, printer_id, now, &info.base_url, &info.version)?;
+                }
                 store::set_clock_offset(&conn, printer_id, info.clock_offset_s)?;
                 // A printer with a wrong system clock (see `record_sync_success`'s use of
                 // `info.clock_offset_s` to translate its print end times) is otherwise
@@ -172,6 +191,105 @@ mod tests {
 
     fn test_maker() -> Box<LinkMaker> {
         Box::new(|kind: &str, address: &str| crate::printer_link::make_link(kind, address, AddressPolicy::TEST))
+    }
+
+    struct BoundedHistory;
+
+    impl PrinterLink for BoundedHistory {
+        fn test(&self) -> Result<ConnectionInfo, LinkError> {
+            Ok(ConnectionInfo { version: "v0".into(), base_url: "http://printer".into(), clock_offset_s: 0.0 })
+        }
+        fn jobs_ended_since(&self, _info: &ConnectionInfo, since: f64) -> Result<Vec<RemoteJob>, LinkError> {
+            let jobs: Vec<_> = (0..600).map(|i| serde_json::json!({
+                "job_id": i.to_string(), "end_time": if i == 0 { 1100.0 } else { 1000.0 },
+                "filament_used": 1.0, "filename": "界".repeat(600), "status": "completed"
+            })).collect();
+            Ok(crate::printer_link::moonraker::parse_history_page(&serde_json::json!({
+                "result": {"count": 1_000_000, "jobs": jobs}
+            }))?.jobs.into_iter().filter(|j| j.ended_at > since).collect())
+        }
+        fn thumbnail(&self, _base_url: &str, _path: &str) -> Result<Vec<u8>, LinkError> {
+            Err(LinkError::Unreachable)
+        }
+    }
+
+    #[test]
+    fn bounded_batches_keep_tied_end_times_without_sockets() {
+        let db = db_with_connection("printer", 0.0);
+        set_printer_link_enabled(&db.lock().unwrap(), true).unwrap();
+        let make: Box<LinkMaker> = Box::new(|_, _| Ok(Box::new(BoundedHistory)));
+        for expected in [200, 200, 100] {
+            assert_eq!(sync_once(&db, &*make, 2000.0).unwrap(), expected);
+        }
+        // Once full, the preflight must explain the limit without contacting the printer.
+        let never_contact: Box<LinkMaker> = Box::new(|_, _| panic!("full queue contacted printer"));
+        assert_eq!(sync_once(&db, &*never_contact, 2001.0).unwrap(), 0);
+        let conn = db.lock().unwrap();
+        let jobs = list_open_jobs(&conn).unwrap();
+        assert_eq!(jobs.len(), 500);
+        assert!(jobs.iter().all(|job| job.ended_at == 1000.0 && job.file_name.len() == 510));
+        assert_eq!(get_connection(&conn, 1).unwrap().unwrap().last_error.as_deref(), Some("too_many_open_jobs"));
+    }
+
+    #[test]
+    fn new_job_budget_is_shared_by_all_printers() {
+        let server = FakeServer::start(|target| {
+            if target.starts_with("/server/info") {
+                return Some((200, crate::printer_link::fake_moonraker::fixture_bytes("server_info_v0_8_0_209.json")));
+            }
+            let jobs: Vec<_> = (0..250).map(|i| serde_json::json!({
+                "job_id": i.to_string(), "end_time": if i == 0 { 1100.0 } else { 1000.0 },
+                "filament_used": 1.0, "filename": "a.gcode", "status": "completed"
+            })).collect();
+            Some((200, serde_json::to_vec(&serde_json::json!({"result": {"count": 250, "jobs": jobs}})).unwrap()))
+        });
+        let db = db_with_connection(&server.address(), 0.0);
+        {
+            let conn = db.lock().unwrap();
+            conn.execute("INSERT INTO printers (id, name, position) VALUES (2, 'B', 1)", []).unwrap();
+            save_connection_after_test(&conn, 2, "moonraker", &server.address(), "", "", 0.0).unwrap();
+            set_printer_link_enabled(&conn, true).unwrap();
+        }
+        assert_eq!(sync_once(&db, &*test_maker(), 2000.0).unwrap(), MAX_NEW_JOBS);
+        assert_eq!(list_open_jobs(&db.lock().unwrap()).unwrap().len(), MAX_NEW_JOBS);
+        assert_eq!(sync_once(&db, &*test_maker(), 2000.0).unwrap(), MAX_NEW_JOBS);
+        assert_eq!(sync_once(&db, &*test_maker(), 2000.0).unwrap(), 100);
+        assert_eq!(list_open_jobs(&db.lock().unwrap()).unwrap().len(), 500);
+    }
+
+    #[test]
+    fn hostile_history_stays_bounded_across_three_passes() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let page = AtomicUsize::new(0);
+        let server = FakeServer::start(move |target| {
+            if target.starts_with("/server/info") {
+                return Some((200, crate::printer_link::fake_moonraker::fixture_bytes("server_info_v0_8_0_209.json")));
+            }
+            let base = page.fetch_add(1, Ordering::SeqCst) * 50;
+            let jobs: Vec<_> = (0..50).map(|i| serde_json::json!({
+                "job_id": format!("{}", base + i), "end_time": 1e12 + (base + i) as f64,
+                "filament_used": 1.0, "filename": "界".repeat(600), "status": "界".repeat(600),
+                "metadata": {"filament_type": "界".repeat(600),
+                    "thumbnails": [{"width": 1, "height": 1, "relative_path": "x".repeat(2048)}]}
+            })).collect();
+            Some((200, serde_json::to_vec(&serde_json::json!({"result": {"count": 1_000_000, "jobs": jobs}})).unwrap()))
+        });
+        let db = db_with_connection(&server.address(), 0.0);
+        set_printer_link_enabled(&db.lock().unwrap(), true).unwrap();
+        for expected in [200, 200, 100] {
+            assert_eq!(sync_once(&db, &*test_maker(), 2000.0).unwrap(), expected);
+            let conn = db.lock().unwrap();
+            let jobs = list_open_jobs(&conn).unwrap();
+            assert!(jobs.len() <= store::MAX_OPEN_JOBS);
+            assert!(jobs.iter().all(|j| j.remote_id.len() <= 512 && j.file_name.len() <= 512
+                && j.raw_status.len() <= 512 && j.material.as_ref().is_none_or(|s| s.len() <= 512)
+                && j.thumbnail_path.as_ref().is_none_or(|s| s.len() <= 1024)));
+            assert_eq!(store::sync_from(&conn, 1, 2000.0).unwrap(), 0.0);
+        }
+        assert_eq!(get_connection(&db.lock().unwrap(), 1).unwrap().unwrap().last_error.as_deref(), Some("too_many_open_jobs"));
+        let requests = server.requests().len();
+        assert_eq!(sync_once(&db, &*test_maker(), 2000.0).unwrap(), 0);
+        assert_eq!(server.requests().len(), requests);
     }
 
     #[test]

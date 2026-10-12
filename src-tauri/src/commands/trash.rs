@@ -12,6 +12,9 @@ fn delete_file_with_conn(
     id: i64,
     trash_dir: &std::path::Path,
 ) -> CmdResult<()> {
+    if file.deleted_at.is_some() {
+        return Err(CmdError::expected("file is in trash"));
+    }
     match std::fs::metadata(&file.path) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             // Path unreachable (renamed folder, unmounted drive): nothing to move, but
@@ -223,6 +226,17 @@ pub fn purge_expired_trash_on_startup(conn: &Connection) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn repeated_delete_preserves_the_existing_trash_reference() {
+        let conn = db::connect_in_memory().unwrap();
+        let id = db::test_insert_minimal_file(&conn, "missing.stl", None).unwrap();
+        db::soft_delete_file(&conn, id, Some("existing-trash"), "now").unwrap();
+        let file = db::get_file(&conn, id).unwrap().unwrap();
+        assert!(delete_file_with_conn(&conn, &file, id, Path::new("unused")).is_err());
+        assert_eq!(db::get_file(&conn, id).unwrap().unwrap().trash_path.as_deref(), Some("existing-trash"));
+    }
+
 
     #[test]
     fn delete_file_compensates_when_soft_delete_fails() {

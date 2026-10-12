@@ -924,6 +924,7 @@ export interface Translations {
   printerErrorUnreachable: string;
   printerErrorAuthRequired: string;
   printerErrorBadResponse: string;
+  printerErrorTooManyOpenJobs: string;
   printerErrorHistoryMissing: string;
   printerErrorAddressNotAllowed: string;
   printerErrorDisabled: string;

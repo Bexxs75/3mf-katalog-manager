@@ -51,6 +51,17 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('viewer colors and lifecycle', () => {
+  it.each([false, true])('persists an attempt before native geometry and clears it on completion (reject=%s)', async (reject) => {
+    const id = `attempt-${reject}`;
+    const key = `3mf-katalog-preview-attempt:${id}`;
+    vi.mocked(invoke).mockImplementation(() => {
+      expect(localStorage.getItem(key)).toBe('1');
+      return reject ? Promise.reject(new Error('geometry failed')) : Promise.resolve(buffer());
+    });
+    render(page(true, id));
+    await waitFor(() => expect(localStorage.getItem(key)).toBeNull());
+  });
+
   it('switches actual mesh materials without fetching or recreating geometry', async () => {
     const view = render(page());
     await screen.findByRole('button', { name: 'Einfarbig' });

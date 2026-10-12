@@ -8,6 +8,7 @@ pub use catalog_removal::*;
 // in the submodules by topic and are re-exported here.
 mod archives;
 mod backup;
+mod imported_paths;
 mod collections;
 mod diagnostics;
 mod dropped_image;

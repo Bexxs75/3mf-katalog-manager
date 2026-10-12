@@ -166,14 +166,27 @@ pub fn record_sync_error(conn: &Connection, printer_id: i64, code: &str, now: f6
 
 /// From this point in time (Unix seconds) finished prints count as new: the
 /// later of "connected since" and the end of the newest fetched print.
-pub fn sync_from(conn: &Connection, printer_id: i64) -> Result<f64, DbError> {
+/// Jobs with the same end time remain eligible; INSERT OR IGNORE deduplicates them.
+/// End times beyond the allowed future window are excluded so a bad printer clock
+/// cannot move the cursor past jobs that have not been fetched yet.
+pub fn sync_from(conn: &Connection, printer_id: i64, now: f64) -> Result<f64, DbError> {
     let since: f64 = conn.query_row(
-        "SELECT MAX(c.connected_since, COALESCE((SELECT MAX(j.ended_at) FROM printer_jobs j WHERE j.printer_id = c.printer_id), 0))
+        "SELECT MAX(c.connected_since, COALESCE((SELECT MAX(j.ended_at) - 0.001 FROM printer_jobs j WHERE j.printer_id = c.printer_id AND j.ended_at <= ?2), 0))
          FROM printer_connections c WHERE c.printer_id = ?1",
-        params![printer_id],
+        params![printer_id, now + 86400.0],
         |r| r.get(0),
     )?;
     Ok(since)
+}
+
+pub const MAX_OPEN_JOBS: usize = 500;
+
+pub fn open_job_limit_reached(conn: &Connection, printer_id: i64) -> Result<bool, DbError> {
+    Ok(conn.query_row(
+        "SELECT COUNT(*) >= ?2 FROM printer_jobs WHERE printer_id = ?1 AND state = 'open'",
+        params![printer_id, MAX_OPEN_JOBS as i64],
+        |row| row.get(0),
+    )?)
 }
 
 /// Inserts a print if it doesn't exist yet for this printer. Returns `true` if it was new.
@@ -194,7 +207,8 @@ pub fn insert_job_if_new(conn: &Connection, printer_id: i64, job: &RemoteJob) ->
     let changed = conn.execute(
         "INSERT OR IGNORE INTO printer_jobs (printer_id, remote_id, file_name, outcome, raw_status, ended_at,
              print_duration_s, used_mm, slicer_total_mm, slicer_weight_g, material, thumbnail_path)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12
+         WHERE (SELECT COUNT(*) FROM printer_jobs WHERE printer_id = ?1 AND state = 'open') < ?13",
         params![
             printer_id,
             job.remote_id,
@@ -208,6 +222,7 @@ pub fn insert_job_if_new(conn: &Connection, printer_id: i64, job: &RemoteJob) ->
             job.slicer_weight_g,
             job.material,
             job.thumbnail_path,
+            MAX_OPEN_JOBS as i64,
         ],
     )?;
     Ok(changed == 1)
@@ -297,6 +312,23 @@ mod tests {
             material: Some("PLA".into()),
             thumbnail_path: Some(".thumbs/a-300x300.png".into()),
         }
+    }
+
+    #[test]
+    fn insertion_caps_open_jobs_and_future_sync_time() {
+        let conn = setup();
+        save_connection_after_test(&conn, 1, "moonraker", "printer", "", "", 1000.0).unwrap();
+        for i in 0..MAX_OPEN_JOBS {
+            assert!(insert_job_if_new(&conn, 1, &job(&i.to_string(), 1e12)).unwrap());
+        }
+        assert!(open_job_limit_reached(&conn, 1).unwrap());
+        assert!(!insert_job_if_new(&conn, 1, &job("extra", 1e12)).unwrap());
+        assert_eq!(list_open_jobs(&conn).unwrap().len(), MAX_OPEN_JOBS);
+        assert_eq!(sync_from(&conn, 1, 2000.0).unwrap(), 1000.0);
+        let id = list_open_jobs(&conn).unwrap()[0].id;
+        mark_job_ignored(&conn, id, "now").unwrap();
+        assert!(insert_job_if_new(&conn, 1, &job("extra", 2000.0)).unwrap());
+        assert_eq!(sync_from(&conn, 1, 2000.0).unwrap(), 1999.999);
     }
 
     #[test]
@@ -414,9 +446,9 @@ mod tests {
     fn sync_from_is_connected_since_or_latest_job_end() {
         let conn = setup();
         save_connection_after_test(&conn, 1, "moonraker", "192.168.1.60", "http://192.168.1.60", "v0.8.0", 1000.0).unwrap();
-        assert_eq!(sync_from(&conn, 1).unwrap(), 1000.0);
+        assert_eq!(sync_from(&conn, 1, 2000.0).unwrap(), 1000.0);
         insert_job_if_new(&conn, 1, &job("A", 4000.0)).unwrap();
-        assert_eq!(sync_from(&conn, 1).unwrap(), 4000.0);
+        assert_eq!(sync_from(&conn, 1, 2000.0).unwrap(), 3999.999);
     }
 
     #[test]

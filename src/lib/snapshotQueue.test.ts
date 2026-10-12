@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { snapshotQueue } from './snapshotQueue';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beginPreviewAttempt, hasInterruptedPreviewAttempt, snapshotQueue } from './snapshotQueue';
 
 const models = [
   { id: 'stl', path: '/cat/model.stl', thumbnailImage: null },
@@ -44,5 +44,43 @@ describe('snapshotQueue', () => {
 
   it('without STEP support, still queues an unresolved id (fails safe, not silently)', () => {
     expect(snapshotQueue(modelsWithStep, ['gone', 'stl'], 'render', false)).toEqual(['gone', 'stl']);
+  });
+});
+
+
+describe('persistent preview attempts', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('skips an interrupted STEP attempt after restart, but permits an explicit retry', () => {
+    localStorage.setItem('3mf-katalog-preview-attempt:step', '1');
+    expect(snapshotQueue(modelsWithStep, ['step', 'stl'], 'render', true)).toEqual(['stl']);
+    const finish = beginPreviewAttempt('step');
+    expect(hasInterruptedPreviewAttempt('step')).toBe(false);
+    finish();
+    expect(localStorage.getItem('3mf-katalog-preview-attempt:step')).toBeNull();
+    expect(snapshotQueue(modelsWithStep, ['step'], 'render', true)).toEqual(['step']);
+  });
+
+  it('persists before work and only clears after all concurrent attempts finish', () => {
+    const first = beginPreviewAttempt('step');
+    const second = beginPreviewAttempt('step');
+    expect(localStorage.getItem('3mf-katalog-preview-attempt:step')).toBe('1');
+    first();
+    first();
+    expect(localStorage.getItem('3mf-katalog-preview-attempt:step')).toBe('1');
+    second();
+    expect(localStorage.getItem('3mf-katalog-preview-attempt:step')).toBeNull();
+  });
+
+  it('tolerates unavailable browser storage', () => {
+    const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('disabled'); });
+    const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('disabled'); });
+    const remove = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => { throw new Error('disabled'); });
+    try {
+      expect(hasInterruptedPreviewAttempt('step')).toBe(false);
+      expect(() => beginPreviewAttempt('step')()).not.toThrow();
+    } finally {
+      get.mockRestore(); set.mockRestore(); remove.mockRestore();
+    }
   });
 });

@@ -152,7 +152,6 @@ pub fn run() {
             if let Err(e) = db::delete_unused_tags(&conn) {
                 log::error!(target: "startup", "cleaning up orphaned tags failed: {e}");
             }
-            commands::backfill_content_hashes(&conn);
             let trash_dir = app_data_dir.join("trash");
             std::fs::create_dir_all(&trash_dir)?;
             commands::purge_expired_trash_on_startup(&conn);
@@ -163,6 +162,12 @@ pub fn run() {
                 trash_dir,
                 db_path,
                 sensitive_dirs,
+            });
+            let hash_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                if let Some(state) = hash_handle.try_state::<commands::AppState>() {
+                    commands::backfill_content_hashes(&state);
+                }
             });
             let modified_handle = app.handle().clone();
             std::thread::spawn(move || {

@@ -156,6 +156,10 @@ pub(super) fn check_target_location(target_dir: &Path, expanded_sensitive: &[Pat
     if !target_dir.is_dir() {
         return Err(CmdError::expected(format!("Zielordner existiert nicht: {}", target_dir.display())));
     }
+    check_managed_location(target_dir, expanded_sensitive)
+}
+
+pub(super) fn check_managed_location(target_dir: &Path, expanded_sensitive: &[PathBuf]) -> CmdResult<()> {
     reject_if_sensitive_path_expanded(target_dir, expanded_sensitive)?;
     reject_if_ancestor_of_sensitive(target_dir, expanded_sensitive)
 }
@@ -398,6 +402,13 @@ pub(super) fn extract_archives_controlled(
 
 #[tauri::command]
 pub async fn inspect_archives(paths: Vec<String>) -> CmdResult<Vec<ArchiveInfoDto>> {
+    inspect_archive_paths(&paths)
+}
+
+fn inspect_archive_paths(paths: &[String]) -> CmdResult<Vec<ArchiveInfoDto>> {
+    if paths.iter().any(|path| !archive::is_archive_path(Path::new(path))) {
+        return Err(CmdError::expected("Unbekannter Archiv-Dateityp"));
+    }
     Ok(paths.iter().map(|p| inspect_one(Path::new(p))).collect())
 }
 
@@ -423,6 +434,17 @@ pub async fn extract_archives(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn inspection_rejects_unknown_types_before_reading_metadata() {
+        let dir = unique_test_dir("inspect_unknown_type");
+        let path = dir.join("private.txt");
+        std::fs::write(&path, b"private").unwrap();
+        assert!(inspect_archive_paths(&[path.to_string_lossy().into_owned()]).is_err());
+        assert!(inspect_archive_paths(&["does-not-exist.txt".into()]).is_err());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     use std::io::Write;
 
     /// Smallest valid ASCII STL (one triangle), so the real import accepts the file.

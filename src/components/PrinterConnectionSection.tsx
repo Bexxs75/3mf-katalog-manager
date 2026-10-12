@@ -20,6 +20,7 @@ export type PrinterErrorKey =
   | 'printerErrorUnreachable'
   | 'printerErrorAuthRequired'
   | 'printerErrorBadResponse'
+  | 'printerErrorTooManyOpenJobs'
   | 'printerErrorHistoryMissing'
   | 'printerErrorAddressNotAllowed'
   | 'printerErrorDisabled';
@@ -32,6 +33,7 @@ export const errorKey: Record<PrinterConnectionError, PrinterErrorKey> = {
   unreachable: 'printerErrorUnreachable',
   auth_required: 'printerErrorAuthRequired',
   bad_response: 'printerErrorBadResponse',
+  too_many_open_jobs: 'printerErrorTooManyOpenJobs',
   history_missing: 'printerErrorHistoryMissing',
   address_not_allowed: 'printerErrorAddressNotAllowed',
   disabled: 'printerErrorDisabled',

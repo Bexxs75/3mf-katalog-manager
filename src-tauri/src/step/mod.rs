@@ -19,7 +19,6 @@ pub const MAX_PARSE_BYTES: u64 = 64 * 1024 * 1024;
 /// Tessellation tolerance, derived from the bounding box diagonal.
 pub const DEFLECTION_DIVISOR: f64 = 500.0;
 pub const DEFLECTION_MIN_MM: f64 = 0.01;
-pub const DEFLECTION_MAX_MM: f64 = 1.0;
 
 /// Limit for the triangle count of a mesh.
 pub const MAX_TRIANGLES: usize = 1_500_000;
@@ -35,6 +34,7 @@ pub enum StepError {
     NoGeometry,
     TessellationFailed,
     TooComplex { triangles: usize, limit: usize },
+    TooManyFaces { faces: usize, limit: usize },
 }
 
 impl fmt::Display for StepError {
@@ -50,6 +50,9 @@ impl fmt::Display for StepError {
             StepError::TessellationFailed => {
                 write!(f, "STEP-Geometrie konnte nicht vernetzt werden")
             }
+            StepError::TooManyFaces { faces, limit } => write!(
+                f, "STEP-Geometrie zu komplex: {faces} Flächen (Grenze {limit})"
+            ),
             StepError::TooComplex { triangles, limit } => write!(
                 f,
                 "STEP-Geometrie zu komplex: {triangles} Dreiecke (Grenze {limit})"
@@ -173,6 +176,13 @@ mod tests {
         assert_eq!(mesh.positions.len(), 36, "12 Dreiecke, nicht indiziert");
         assert_eq!(mesh.indices.len(), 12);
         assert!(mesh.normals.is_some());
+    }
+
+    #[test]
+    fn huge_sphere_uses_a_bounded_relative_mesh() {
+        let meshes = parse_step_geometry(&fixture("sphere-1e6.step")).expect("geometry");
+        assert_eq!(meshes.len(), 1);
+        assert!(meshes[0].indices.len() < 10_000);
     }
 
     #[test]

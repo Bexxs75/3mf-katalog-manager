@@ -1,3 +1,5 @@
+import { hasInterruptedPreviewAttempt } from '../lib/snapshotQueue';
+import { isStepFilePath } from '../lib/stepFile';
 import { clearModelImages, invalidateModelImages } from './useModelImages';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as filesApi from '../lib/api/files';
@@ -141,6 +143,7 @@ export function useCatalogStore({ preselectFirst = true }: CatalogStoreOptions =
         .filter(
           (m) =>
             m.renderSnapshotImage === null &&
+            !(isStepFilePath(m.path) && hasInterruptedPreviewAttempt(m.id)) &&
             !skippedSnapshotIds.has(m.id) &&
             !summaryConfirmedSnapshotIds.has(m.id),
         )
@@ -212,7 +215,10 @@ export function useCatalogStore({ preselectFirst = true }: CatalogStoreOptions =
     loadSummariesWithTags().then((mapped) => {
       if (!active) return;
       setModels(mapped);
-      if (preselectFirst) setSelectedId((prev) => prev ?? mapped[0]?.id ?? null);
+      if (preselectFirst) {
+        const first = mapped.find(m => !(isStepFilePath(m.path) && hasInterruptedPreviewAttempt(m.id)));
+        setSelectedId((prev) => prev ?? first?.id ?? null);
+      }
     }).catch(e => {
       if (!active) return;
       console.error('[catalog] initial load failed:', e);
