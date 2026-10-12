@@ -1,18 +1,16 @@
 import { cardByName, openCatalog } from '../lib/app.js';
-import { button, chooseOption, closeDetails, detailPanel } from '../lib/catalog-ui.js';
+import { button, chooseOption, detailPanel, selectModel } from '../lib/catalog-ui.js';
 import { click, waitForText } from '../lib/ui.js';
 
 describe('11 Druckstatus', () => {
   const name = 'Würfel 20mm.stl';
   const filter = () => $('select[aria-label="Druckstatus"]');
-  before(async () => { await openCatalog(); });
+  before(async () => { await openCatalog(1280, 800, { pinnedDetails: true }); });
 
   it('marks one model printed, filters both states and clears chips individually and together', async () => {
-    await click(await cardByName(name));
-    await detailPanel().waitForDisplayed();
+    await selectModel(name);
     await button('Als gedruckt markieren');
     await waitForText('button', 'Als nicht gedruckt markieren');
-    await closeDetails();
     await chooseOption(filter(), 'Gedruckt');
     await waitForText('span', '1 von 8');
     await cardByName(name);

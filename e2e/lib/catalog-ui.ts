@@ -50,3 +50,15 @@ export async function typeCaseSensitive(text: string) {
     } else await typeKeys(char);
   }
 }
+
+/** Selects a model and waits until the detail panel shows it; a swallowed click is repeated. */
+export async function selectModel(name: string) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await click(await cardByName(name));
+    try {
+      await browser.waitUntil(async () => (await detailPanel().isDisplayed()) && (await detailPanel().getText()).includes(name), { timeout: 5000 });
+      return;
+    } catch { /* click did not select; the next click tries again */ }
+  }
+  throw new Error(`the detail panel did not show ${name}`);
+}

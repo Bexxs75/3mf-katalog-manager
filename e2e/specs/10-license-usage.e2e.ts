@@ -1,14 +1,14 @@
 import { cardByName, openCatalog } from '../lib/app.js';
-import { button, chooseOption, closeDetails, detailPanel, selectCards } from '../lib/catalog-ui.js';
+import { button, chooseOption, closeDetails, detailPanel, selectCards, selectModel } from '../lib/catalog-ui.js';
 import { click, waitForText } from '../lib/ui.js';
 
 describe('10 Lizenz und Nutzung', () => {
   const names = ['Würfel 20mm.stl', 'Zylinder.stl'];
   const usage = () => $('select[aria-label="Nutzung"]');
-  before(async () => { await openCatalog(); });
+  before(async () => { await openCatalog(1280, 800, { pinnedDetails: true }); });
 
   it('saves a private license and filters private, commercial and all models', async () => {
-    await click(await cardByName(names[0]));
+    await selectModel(names[0]);
     const license = detailPanel().$('section[aria-label="Lizenz"]');
     await license.waitForDisplayed();
     await chooseOption(license.$('select'), 'CC BY-NC – Namensnennung, nicht kommerziell');
