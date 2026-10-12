@@ -92,6 +92,8 @@ Keine zusätzlichen Linux-Capabilities, kein privilegierter Container, kein
 Docker-Socket. `no-new-privileges:true` ist im Beispiel gesetzt; seine
 Verträglichkeit mit dem Basisimage und WebKit ist geprüft: Der Container startet, die Anmeldung und die App laufen.
 
+**Umlaute in Dateinamen:** Zeigt `ls` auf dem Server einen Namen wie `K$'\303\266'rper.obj` statt `Körper.obj`, ist nur die Anzeige im Terminal betroffen, nicht der Dateiname (`\303\266` ist ein ö). Die Shell hat dann keine UTF-8-Einstellung. Ein Tester hat berichtet, dass `LANG=de_DE.UTF-8` in seiner Umgebung die Anzeige korrigiert hat (von mir nicht geprüft). Die Zeitzone stellst du wie oben mit `TZ` in der `.env` ein.
+
 ### Aktualisieren und prüfen
 
 `IMAGE_TAG` in `.env` wählt z. B. `latest`, eine feste veröffentlichte Version
@@ -403,6 +405,8 @@ The password stays mode `600`. The app service runs as `abc`. No added Linux
 capabilities, privileged mode or Docker socket. The example sets
 `no-new-privileges:true`; compatibility with the base image and WebKit is
 checked: the container starts, and login and app work.
+
+**Umlauts in file names:** If `ls` on the server shows a name like `K$'\303\266'rper.obj` instead of `Körper.obj`, only the terminal display is affected, not the file name (`\303\266` is an ö). The shell then has no UTF-8 setting. A tester reported that `LANG=de_DE.UTF-8` in their environment fixed the display (not verified by me). Set the time zone with `TZ` in `.env` as above.
 
 ### Update and verify
 
