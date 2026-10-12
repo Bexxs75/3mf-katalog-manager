@@ -144,6 +144,12 @@ jobs:
           npm ci
           npm ci --prefix e2e
 
+      # tauri.windows.conf.json lists vc-runtime/*.dll as resources, so the build
+      # fails without this step (the release build runs it too).
+      - name: Stage VC++ runtime DLLs
+        shell: pwsh
+        run: .\src-tauri\scripts\stage-vc-runtime.ps1
+
       - name: Build the app (debug, no bundle)
         run: npm run tauri build -- --debug --no-bundle -- --no-default-features
 
