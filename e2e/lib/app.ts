@@ -21,15 +21,22 @@ export async function setViewport(width: number, height = 800) {
 
 /** Finished first-run state, so tests do not have to go through the setup dialog. */
 export async function configureFrontend(catalogDir: string, pinnedDetails = false) {
-  await browser.execute((dir: string, pinned: boolean) => {
-    localStorage.setItem('3mf-katalog-base-dir', dir);
-    localStorage.setItem('3mf-katalog-setup-seen', '1');
-    localStorage.setItem('3mf-katalog-language', 'de');
-    localStorage.setItem('3mf-katalog-theme', 'light');
-    localStorage.setItem('3mf-katalog-dnd-tip-dismissed', 'true');
-    // The automatic detail panel appears only after a successful selection; a pinned one is always there.
-    if (pinned) localStorage.setItem('3mf-katalog-detail-panel', 'pinned');
-  }, catalogDir, pinnedDetails);
+  // Right after the window appears the document can still be a blank page whose localStorage is
+  // "access denied" (seen on Windows runners); repeat until the app's page answers.
+  await browser.waitUntil(async () => {
+    try {
+      await browser.execute((dir: string, pinned: boolean) => {
+        localStorage.setItem('3mf-katalog-base-dir', dir);
+        localStorage.setItem('3mf-katalog-setup-seen', '1');
+        localStorage.setItem('3mf-katalog-language', 'de');
+        localStorage.setItem('3mf-katalog-theme', 'light');
+        localStorage.setItem('3mf-katalog-dnd-tip-dismissed', 'true');
+        // The automatic detail panel appears only after a successful selection; a pinned one is always there.
+        if (pinned) localStorage.setItem('3mf-katalog-detail-panel', 'pinned');
+      }, catalogDir, pinnedDetails);
+      return true;
+    } catch { return false; }
+  }, { timeout: 60000, interval: 500, timeoutMsg: 'the frontend did not allow access to localStorage within 60 s' });
   await browser.refresh();
   await waitForWindow();
 }
