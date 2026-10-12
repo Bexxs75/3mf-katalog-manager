@@ -662,6 +662,84 @@ fn folder_scans_report_archives_without_importing_them() {
 }
 
 #[test]
+fn import_rename_setting_preserves_placement_and_only_changes_new_models() {
+    for rename in [false, true] {
+        for placement in [false, true] {
+            let fixture = Fixture::new();
+            let catalog = fixture.0.join("catalog");
+            std::fs::create_dir(&catalog).unwrap();
+            let paths = vec![fixture.stl(1), fixture.stl(2)];
+            let originals: Vec<_> = paths.iter().map(|p| std::fs::read(p).unwrap()).collect();
+            let mut conn = db::connect_in_memory().unwrap();
+            let folder =
+                db::insert_folder_with_parent(&conn, "catalog", None, catalog.to_str().unwrap())
+                    .unwrap();
+            db::printer_link::set_setting(
+                &conn,
+                folders::SETTING_CATALOG_BASE_DIR,
+                catalog.to_str().unwrap(),
+            )
+            .unwrap();
+            db::printer_link::set_setting(
+                &conn,
+                "rename_files_on_import",
+                if rename { "1" } else { "0" },
+            )
+            .unwrap();
+            let existing = catalog.join("existing.stl");
+            std::fs::rename(fixture.stl(3), &existing).unwrap();
+            files::import_many_with_conn(&mut conn, vec![existing.clone()]).unwrap();
+            let service = ImportJobs::default();
+            let job = service
+                .enqueue(
+                    ImportSource::Files,
+                    placement.then(|| folder.to_string()),
+                    placement,
+                    None,
+                )
+                .unwrap();
+            service.next().unwrap();
+            let before = chrono::Local::now().format("%Y-%m-%d_%H-%M_").to_string();
+            let mut candidates = paths.clone();
+            candidates.push(existing.clone());
+            finish_models(&service, &job, &mut conn, &candidates);
+            let after = chrono::Local::now().format("%Y-%m-%d_%H-%M_").to_string();
+            let result = job.result().unwrap();
+            assert_partition(&result, 3);
+            assert_eq!(result.counts.imported, 2);
+            assert_eq!(result.counts.duplicate, 1);
+            assert!(existing.exists());
+            let legacy = job.legacy.lock().unwrap();
+            let imported = &legacy.as_ref().unwrap().imported;
+            for (index, dto) in imported.iter().enumerate() {
+                if placement {
+                    assert!(!paths[index].exists());
+                } else {
+                    assert_eq!(std::fs::read(&paths[index]).unwrap(), originals[index]);
+                }
+                assert_eq!(std::fs::read(&dto.path).unwrap(), originals[index]);
+                assert_eq!(
+                    Path::new(&dto.path).file_name().unwrap().to_string_lossy(),
+                    dto.name
+                );
+                if rename && placement {
+                    assert!(dto.name.starts_with(&before) || dto.name.starts_with(&after));
+                    assert_eq!(&dto.name[..17], &imported[0].name[..17]);
+                } else {
+                    assert_eq!(
+                        dto.name,
+                        paths[index].file_name().unwrap().to_string_lossy()
+                    );
+                }
+                if placement {
+                    assert_eq!(dto.folder_id, folder.to_string());
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn archive_named_directory_is_scanned() {
     let fixture = Fixture::new();
     std::fs::create_dir(fixture.0.join("x.zip")).unwrap();
@@ -673,6 +751,93 @@ fn archive_named_directory_is_scanned() {
     let result = job.result().unwrap();
     assert_eq!(result.counts.imported, 1);
     assert_eq!(serde_json::to_value(result).unwrap()["archivesSkipped"], 0);
+}
+
+#[test]
+fn rename_external_folder_and_drop_imports_keep_layout_with_or_without_catalog_root() {
+    for source in [ImportSource::Folder, ImportSource::Dropped] {
+        for configured in [false, true] {
+            let fixture = Fixture::new();
+            let external = fixture.0.join("external");
+            let nested = external.join("nested");
+            let catalog = fixture.0.join("catalog");
+            std::fs::create_dir_all(&nested).unwrap();
+            std::fs::create_dir(&catalog).unwrap();
+            let path = nested.join("model.stl");
+            std::fs::rename(fixture.stl(1), &path).unwrap();
+            let original = std::fs::read(&path).unwrap();
+            let mut conn = db::connect_in_memory().unwrap();
+            db::printer_link::set_setting(&conn, "rename_files_on_import", "1").unwrap();
+            if configured {
+                db::printer_link::set_setting(
+                    &conn,
+                    folders::SETTING_CATALOG_BASE_DIR,
+                    catalog.to_str().unwrap(),
+                )
+                .unwrap();
+            }
+            let service = ImportJobs::default();
+            let job = service.enqueue(source, None, false, None).unwrap();
+            service.next().unwrap();
+            finish_models(&service, &job, &mut conn, &[external]);
+            let result = job.result().unwrap();
+            assert_partition(&result, 1);
+            assert!(result.job_error.is_none());
+            assert_eq!(result.counts.imported, 1);
+            let rows = db::list_files(&conn).unwrap();
+            assert_eq!(rows[0].path, path.to_str().unwrap());
+            assert_eq!(rows[0].name, "model.stl");
+            assert_eq!(std::fs::read(&path).unwrap(), original);
+            assert_eq!(std::fs::read_dir(&catalog).unwrap().count(), 0);
+            assert_eq!(std::fs::read_dir(&nested).unwrap().count(), 1);
+            // Every imported folder remains an ancestor of its model's folder.
+            let folders = db::list_folders(&conn).unwrap();
+            assert!(!folders.is_empty());
+            assert!(folders
+                .iter()
+                .all(|folder| Path::new(&rows[0].path).starts_with(&folder.path)));
+        }
+    }
+}
+
+#[test]
+fn rename_internal_in_place_preserves_folder_and_reports_protected_root() {
+    for protected in [false, true] {
+        let fixture = Fixture::new();
+        let path = fixture.stl(1);
+        let mut conn = db::connect_in_memory().unwrap();
+        db::printer_link::set_setting(&conn, "rename_files_on_import", "1").unwrap();
+        db::printer_link::set_setting(
+            &conn,
+            folders::SETTING_CATALOG_BASE_DIR,
+            fixture.0.to_str().unwrap(),
+        )
+        .unwrap();
+        let service = ImportJobs::default();
+        let job = service
+            .enqueue(ImportSource::Files, None, false, None)
+            .unwrap();
+        service.next().unwrap();
+        let sensitive = if protected {
+            vec![fixture.0.clone()]
+        } else {
+            vec![]
+        };
+        run_models(&service, &job, &mut &mut conn, &[path.clone()], &sensitive).unwrap();
+        job.finish(None);
+        let result = job.result().unwrap();
+        assert_partition(&result, 1);
+        if protected {
+            assert_eq!(result.groups.imported_not_placed[0].reason, "protected");
+            assert!(path.exists());
+        } else {
+            assert_eq!(result.counts.imported, 1);
+            assert!(!path.exists());
+            let rows = db::list_files(&conn).unwrap();
+            assert!(rows[0].name.ends_with("_model_1.stl"));
+            assert_eq!(Path::new(&rows[0].path).parent(), Some(fixture.0.as_path()));
+        }
+    }
 }
 
 #[cfg(unix)]
@@ -712,4 +877,79 @@ fn imports_files_already_in_placement_target_without_moving_them() {
         assert_eq!(Path::new(&files[0].path), path);
         assert_eq!(std::fs::read(&path).unwrap(), bytes);
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn non_utf8_import_names_are_never_renamed_lossily() {
+    use std::os::unix::ffi::OsStringExt;
+    for enabled in [false, true] {
+        let fixture = Fixture::new();
+        let path = fixture
+            .0
+            .join(std::ffi::OsString::from_vec(b"model_\xff.stl".to_vec()));
+        std::fs::rename(fixture.stl(1), &path).unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+        let mut conn = db::connect_in_memory().unwrap();
+        db::printer_link::set_setting(
+            &conn,
+            "rename_files_on_import",
+            if enabled { "1" } else { "0" },
+        )
+        .unwrap();
+        db::printer_link::set_setting(
+            &conn,
+            folders::SETTING_CATALOG_BASE_DIR,
+            fixture.0.to_str().unwrap(),
+        )
+        .unwrap();
+        let service = ImportJobs::default();
+        let job = service
+            .enqueue(ImportSource::Folder, None, false, None)
+            .unwrap();
+        service.next().unwrap();
+        finish_models(&service, &job, &mut conn, &[fixture.0.clone()]);
+        let result = job.result().unwrap();
+        assert_partition(&result, 1);
+        assert!(result.job_error.is_none());
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        assert_eq!(std::fs::read_dir(&fixture.0).unwrap().count(), 1);
+        assert!(!Path::new(&path.to_string_lossy().into_owned()).exists());
+    }
+}
+
+#[test]
+fn rename_database_failure_rolls_back_and_fails_job() {
+    let fixture = Fixture::new();
+    let path = fixture.stl(1);
+    let mut conn = db::connect_in_memory().unwrap();
+    db::printer_link::set_setting(&conn, "rename_files_on_import", "1").unwrap();
+    db::printer_link::set_setting(
+        &conn,
+        folders::SETTING_CATALOG_BASE_DIR,
+        fixture.0.to_str().unwrap(),
+    )
+    .unwrap();
+    conn.execute_batch("CREATE TRIGGER reject_import_name BEFORE UPDATE OF name ON files BEGIN SELECT RAISE(ABORT, 'injected'); END;").unwrap();
+    let service = ImportJobs::default();
+    let job = service
+        .enqueue(ImportSource::Files, None, false, None)
+        .unwrap();
+    service.next().unwrap();
+    finish_models(&service, &job, &mut conn, &[path.clone()]);
+    let result = job.result().unwrap();
+    assert_partition(&result, 1);
+    assert!(result
+        .job_error
+        .as_ref()
+        .unwrap()
+        .message
+        .starts_with("database:"));
+    assert_eq!(result.groups.imported_not_placed[0].reason, "jobFailed");
+    assert!(path.exists());
+    assert_eq!(std::fs::read_dir(&fixture.0).unwrap().count(), 1);
+    assert_eq!(
+        db::list_files(&conn).unwrap()[0].path,
+        path.to_str().unwrap()
+    );
 }

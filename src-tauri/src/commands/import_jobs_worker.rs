@@ -100,6 +100,7 @@ fn flush_models(
     database: &mut impl files::ImportDb,
     batch: &mut Vec<files::PendingImport>,
     imported: &mut Vec<ModelFileDto>,
+    rename_paths: &HashSet<String>,
 ) -> CmdResult<()> {
     let mut local = files::empty_import_result();
     let mut duplicates = Vec::new();
@@ -112,7 +113,7 @@ fn flush_models(
     );
     let mut data = job.data.lock().unwrap();
     for file in &local.imported {
-        if job.placement_required {
+        if job.placement_required || rename_paths.contains(&file.path) {
             data.groups.imported_not_placed.push(NotPlacedEntry {
                 path: file.path.clone(),
                 file_id: file.id.clone(),
@@ -144,7 +145,24 @@ pub(super) fn run_models(
     roots: &[PathBuf],
     sensitive: &[PathBuf],
 ) -> CmdResult<()> {
+    let rename = database.with_conn(|conn| import_rename::enabled(conn))?;
+    let prefix = rename.then(|| chrono::Local::now().format("%Y-%m-%d_%H-%M_").to_string());
     let candidates = scan_candidates(job, roots, service.scan_limit);
+    let rename_paths = if rename {
+        database.with_conn(|conn| {
+            let base = import_rename::catalog_base(conn)?;
+            Ok(candidates
+                .iter()
+                .filter_map(|(path, _)| {
+                    let path_string = path.to_str()?;
+                    (job.placement_required || import_rename::is_internal(path, base.as_deref()))
+                        .then(|| path_string.to_owned())
+                })
+                .collect::<HashSet<_>>())
+        })?
+    } else {
+        HashSet::new()
+    };
     job.transition(ImportState::Importing);
     let mut batch = Vec::new();
     let mut imported = Vec::new();
@@ -231,13 +249,13 @@ pub(super) fn run_models(
         }
         job.data.lock().unwrap().current = None;
         if batch.len() >= 25 {
-            if let Err(e) = flush_models(job, database, &mut batch, &mut imported) {
+            if let Err(e) = flush_models(job, database, &mut batch, &mut imported, &rename_paths) {
                 error = Some(e);
             }
         }
     }
     if error.is_none() {
-        if let Err(e) = flush_models(job, database, &mut batch, &mut imported) {
+        if let Err(e) = flush_models(job, database, &mut batch, &mut imported, &rename_paths) {
             error = Some(e);
         }
     }
@@ -261,39 +279,59 @@ pub(super) fn run_models(
             }
         }
     }
-    if job.placement_required && error.is_none() {
+    if (job.placement_required || !rename_paths.is_empty()) && error.is_none() {
         job.transition(ImportState::Placing);
         for file in &mut imported {
+            if !job.placement_required && !rename_paths.contains(&file.path) {
+                continue;
+            }
             let reason = if job.cancel.load(Ordering::Acquire) {
                 Some("cancelled")
             } else {
                 let placed = database.with_conn(|conn| {
-                    let target = job
-                        .target_folder_id
-                        .as_ref()
-                        .and_then(|s| s.parse::<i64>().ok())
-                        .ok_or_else(|| CmdError::expected("targetMissing"))?;
-                    let folders = db::list_folders(conn).map_err(|e| format!("database: {e}"))?;
-                    let folder = folders
-                        .iter()
-                        .find(|f| f.id == target)
-                        .ok_or_else(|| CmdError::expected("targetMissing"))?;
-                    if !service.target.exists(Path::new(&folder.path)) {
-                        return Err(CmdError::expected("targetMissing"));
+                    let target = if job.placement_required {
+                        let target = job
+                            .target_folder_id
+                            .as_ref()
+                            .and_then(|s| s.parse::<i64>().ok())
+                            .ok_or_else(|| CmdError::expected("targetMissing"))?;
+                        let folders =
+                            db::list_folders(conn).map_err(|e| format!("database: {e}"))?;
+                        let folder = folders
+                            .iter()
+                            .find(|f| f.id == target)
+                            .ok_or_else(|| CmdError::expected("targetMissing"))?;
+                        if !service.target.exists(Path::new(&folder.path)) {
+                            return Err(CmdError::expected("targetMissing"));
+                        }
+                        reject_if_sensitive_path(Path::new(&folder.path), sensitive)
+                            .map_err(|_| CmdError::expected("protected"))?;
+                        Some(target)
+                    } else {
+                        None
+                    };
+                    if prefix.is_none() {
+                        files::move_file_to_folder_with_conn(
+                            conn,
+                            file.id.parse().unwrap(),
+                            target,
+                            sensitive,
+                        )?;
+                    } else if rename_paths.contains(&file.path) {
+                        import_rename::place(
+                            conn,
+                            file.id.parse().unwrap(),
+                            target,
+                            prefix.as_deref(),
+                            sensitive,
+                        )?;
                     }
-                    reject_if_sensitive_path(Path::new(&folder.path), sensitive)
-                        .map_err(|_| CmdError::expected("protected"))?;
-                    files::move_file_to_folder_with_conn(
-                        conn,
-                        file.id.parse().unwrap(),
-                        Some(target),
-                        sensitive,
-                    )?;
                     let row = db::get_file(conn, file.id.parse().unwrap())
                         .map_err(|e| format!("database: {e}"))?
                         .ok_or_else(|| CmdError::from("file missing"))?;
+                    file.name = row.name;
                     file.path = row.path;
-                    file.folder_id = target.to_string();
+                    file.folder_id = row.folder_id.map(|id| id.to_string()).unwrap_or_default();
                     Ok(())
                 });
                 match placed {
@@ -331,7 +369,7 @@ pub(super) fn run_models(
                 data.groups.imported.push(ImportedEntry {
                     path: original,
                     file_id: file.id.clone(),
-                    folder_id: Some(file.folder_id.clone()),
+                    folder_id: (!file.folder_id.is_empty()).then(|| file.folder_id.clone()),
                 });
             }
         }

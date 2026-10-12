@@ -167,6 +167,8 @@ export const de: Translations = {
   keyboardDetailNavigate: "Vorheriges oder nächstes Modell in der aktuellen Reihenfolge",
   keyboardOpenTips: "Diesen Dialog öffnen",
   keyboardFooter: "Erreichbar mit ? oder über Einstellungen → Info. Einzeltasten lassen sich unter Allgemein abschalten.",
+  importRenameTitle: "Dateien beim Import umbenennen",
+  importRenameDescription: "Stellt neuen Modelldateien beim Import in den Katalog das lokale Datum und die Uhrzeit voran, z. B. 2026-10-12_14-41_Modell.3mf. Externe Dateien, die an ihrem Ort bleiben, werden nicht umbenannt.",
   singleKeyShortcutsTitle: "Einzeltasten-Kürzel",
   singleKeyShortcutsDescription: "Kürzel mit einer einzelnen Taste wie / oder ?. Abschalten, wenn sie bei der Bedienung per Sprachsteuerung oder Hilfsmittel stören. Kürzel mit Strg/Cmd bleiben.",
   keyboardSpace: "Leertaste",

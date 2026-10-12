@@ -167,6 +167,8 @@ export const en: Translations = {
   keyboardDetailNavigate: "Previous or next model in the current order",
   keyboardOpenTips: "Open this dialog",
   keyboardFooter: "Available with ? or Settings → Info. Single-key shortcuts can be disabled under General.",
+  importRenameTitle: "Rename files on import",
+  importRenameDescription: "Prefixes new model filenames imported into the catalog with the local date and time, e.g. 2026-10-12_14-41_Model.3mf. External files that stay in their current location are not renamed.",
   singleKeyShortcutsTitle: "Single-key shortcuts",
   singleKeyShortcutsDescription: "Shortcuts using a single key such as / or ?. Disable them if they interfere with voice control or assistive tools. Ctrl/Cmd shortcuts remain available.",
   keyboardSpace: "Space",

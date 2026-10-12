@@ -167,6 +167,8 @@ export const es: Translations = {
   keyboardDetailNavigate: "Modelo anterior o siguiente en el orden actual",
   keyboardOpenTips: "Abrir este diálogo",
   keyboardFooter: "Disponible con ? o Ajustes → Información. Los atajos de una tecla se desactivan en General.",
+  importRenameTitle: "Renombrar archivos al importar",
+  importRenameDescription: "Añade la fecha y hora local al principio del nombre de los nuevos modelos importados al catálogo, p. ej. 2026-10-12_14-41_Modelo.3mf. Los archivos externos que permanecen en su ubicación no se renombran.",
   singleKeyShortcutsTitle: "Atajos de una tecla",
   singleKeyShortcutsDescription: "Atajos con una sola tecla como / o ?. Desactívalos si interfieren con el control por voz o herramientas de asistencia. Los atajos Ctrl/Cmd siguen disponibles.",
   keyboardSpace: "Espacio",

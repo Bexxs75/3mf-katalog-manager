@@ -450,7 +450,7 @@ pub fn register_existing_catalog_base_dir(state: State<AppState>, path: String) 
 
 // Windows forbids these in file names. They are rejected on every OS so a
 // catalog set up on Linux or macOS keeps working after a move to Windows.
-const FORBIDDEN_DIR_NAME_CHARS: &[char] = &['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
+pub(super) const FORBIDDEN_DIR_NAME_CHARS: &[char] = &['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
 
 // Device names Windows refuses as file or folder names, also with an extension.
 // Windows also treats the superscript digits ¹²³ like 1, 2, 3 here.
@@ -462,7 +462,7 @@ pub(super) const WINDOWS_RESERVED_NAMES: &[&str] = &[
 
 // Most file systems allow at most 255 bytes per name component. Checked up front
 // so the user gets a clear message instead of an OS error.
-const MAX_DIR_NAME_BYTES: usize = 255;
+pub(super) const MAX_DIR_NAME_BYTES: usize = 255;
 
 /// Name of a new catalog folder, typed freely by the user. Must be exactly one
 /// harmless path component, otherwise "../x" or "/etc/x" would create the folder

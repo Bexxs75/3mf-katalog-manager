@@ -167,6 +167,8 @@ export const fr: Translations = {
   keyboardDetailNavigate: "Modèle précédent ou suivant dans l’ordre actuel",
   keyboardOpenTips: "Ouvrir ce dialogue",
   keyboardFooter: "Accessible avec ? ou Paramètres → Informations. Les raccourcis à une touche se désactivent dans Général.",
+  importRenameTitle: "Renommer les fichiers à l’importation",
+  importRenameDescription: "Ajoute la date et l’heure locales au début du nom des nouveaux modèles importés dans le catalogue, p. ex. 2026-10-12_14-41_Modèle.3mf. Les fichiers externes qui restent à leur emplacement ne sont pas renommés.",
   singleKeyShortcutsTitle: "Raccourcis à une touche",
   singleKeyShortcutsDescription: "Raccourcis utilisant une seule touche comme / ou ?. Désactivez-les s’ils gênent la commande vocale ou les outils d’assistance. Les raccourcis Ctrl/Cmd restent disponibles.",
   keyboardSpace: "Espace",

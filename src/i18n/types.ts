@@ -173,6 +173,8 @@ export interface Translations {
   keyboardDetailNavigate: string;
   keyboardOpenTips: string;
   keyboardFooter: string;
+  importRenameTitle: string;
+  importRenameDescription: string;
   singleKeyShortcutsTitle: string;
   singleKeyShortcutsDescription: string;
   keyboardSpace: string;

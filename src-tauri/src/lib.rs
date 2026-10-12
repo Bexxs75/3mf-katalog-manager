@@ -298,6 +298,8 @@ pub fn run() {
             commands::reorder_units,
             commands::load_spool,
             commands::unload_spool,
+            commands::get_import_rename_enabled,
+            commands::set_import_rename_enabled,
             commands::get_printer_link_enabled,
             commands::set_printer_link_enabled,
             commands::list_printer_connections,
