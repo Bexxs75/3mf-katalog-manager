@@ -269,7 +269,7 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
       if (ctxRef.current?.currentObject) {
         disposeObject(ctxRef.current.currentObject);
       }
-      // three r185 shares this LUT across renderers but renderer.dispose() leaves
+      // three.js shares this LUT across renderers but renderer.dispose() leaves
       // their texture listeners attached. Disposing it releases those references.
       material.dispose();
       renderer.forceContextLoss();

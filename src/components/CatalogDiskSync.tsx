@@ -40,7 +40,7 @@ function SyncDialog({ scan, error, failedPaths, busy, onClose, onRetry, onApply 
       </div>
       <div className="flex justify-end gap-2 p-4 border-t border-[var(--line)]">
         <button className={button} disabled={busy} onClick={onClose}>{t(canApply ? 'diskSyncLater' : 'diskSyncClose')}</button>
-        {(error || canApply) && <button className={`${button} !bg-[var(--accent)] !text-[var(--accent-ink)]`} disabled={busy || (!error && !canApply)} onClick={() => error ? onRetry() : onApply(remove)}>{t(busy ? 'diskSyncRunning' : error ? 'diskSyncRetry' : hasNew ? 'diskSyncApply' : 'diskSyncRemoveAction')}</button>}
+        {(error || canApply) && <button className={`${button} !bg-[var(--accent)] !text-[var(--accent-ink)]`} disabled={busy} onClick={() => error ? onRetry() : onApply(remove)}>{t(busy ? 'diskSyncRunning' : error ? 'diskSyncRetry' : hasNew ? 'diskSyncApply' : 'diskSyncRemoveAction')}</button>}
       </div>
     </div>
   </div>, document.body);
