@@ -4,6 +4,7 @@ mod db;
 pub mod diagnostics;
 mod filament_check;
 mod geometry;
+mod log_target;
 mod obj;
 // Printer connection: connection and sync logic.
 mod printer_link;
@@ -105,13 +106,15 @@ pub fn run() {
             }
         }));
     }
+    let context = tauri::generate_context!();
+    let mut log_builder = tauri_plugin_log::Builder::new().clear_targets();
+    for kind in log_target::resolve_log_targets(&context.config().identifier) {
+        log_builder = log_builder.target(tauri_plugin_log::Target::new(kind));
+    }
     builder
         .manage(commands::RuntimeEnvironment::current())
         .plugin(
-            tauri_plugin_log::Builder::new()
-                .clear_targets()
-                .target(tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir { file_name: None }))
-                .target(tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stderr))
+            log_builder
                 // Debug passes the plugin; the effective level is set at runtime with
                 // log::set_max_level (verbose mode), see diagnostics::verbose.
                 .level(log::LevelFilter::Debug)
@@ -370,7 +373,7 @@ pub fn run() {
             commands::open_log_folder,
             commands::open_bug_report_form,
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running tauri application");
 }
 

@@ -2652,6 +2652,7 @@ dependencies = [
  "bzip2 0.6.1",
  "chrono",
  "cxx",
+ "dirs 7.0.0",
  "flate2",
  "gethostname",
  "libc",

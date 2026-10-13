@@ -57,6 +57,8 @@ base64 = "0.22"
 sha2 = "0.10"
 log = "0.4"
 tauri-plugin-log = "2.9"
+# Same major as Tauri itself: resolves the log folder before the app exists.
+dirs = "7"
 tauri-plugin-updater = "2.13"
 regex = "1"
 unicode-normalization = "0.1.25"
