@@ -108,4 +108,26 @@ describe('AutocompleteInput list pointer handling', () => {
     fireEvent.mouseDown(screen.getByText('outside'));
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
   });
+
+  it('reopens the list on a click into the already focused field after Escape', () => {
+    render(<Wrapper onParentKeyDown={vi.fn()} />);
+    const input = screen.getByRole('textbox');
+    fireEvent.focus(input);
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(screen.queryByText('Regal 1')).not.toBeInTheDocument();
+
+    fireEvent.click(input);
+
+    expect(screen.getByText('Regal 1')).toBeInTheDocument();
+  });
+
+  it('shows the list right away when the field is autofocused', () => {
+    render(<AutocompleteInput value="" onChange={() => {}} options={['Regal 1']} autoFocus />);
+    expect(screen.getByText('Regal 1')).toBeInTheDocument();
+  });
+
+  it('keeps the list closed on mount without autoFocus', () => {
+    render(<AutocompleteInput value="" onChange={() => {}} options={['Regal 1']} />);
+    expect(screen.queryByText('Regal 1')).not.toBeInTheDocument();
+  });
 });

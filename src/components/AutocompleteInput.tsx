@@ -41,6 +41,12 @@ export function AutocompleteInput({
       : options.filter((o) => o.toLowerCase().includes(value.trim().toLowerCase()))
   ).slice(0, value.trim() === '' ? maxSuggestionsWhenEmpty : maxSuggestions);
 
+  // Focusing on mount fires no onFocus that React reports, so an autofocused
+  // field would otherwise show its suggestions only after a second click.
+  useEffect(() => {
+    if (autoFocus) setOpen(true);
+  }, [autoFocus]);
+
   useEffect(() => {
     setHighlighted(initialHighlight);
   }, [value, open, initialHighlight]);
@@ -124,6 +130,8 @@ export function AutocompleteInput({
           setOpen(true);
         }}
         onFocus={() => setOpen(true)}
+        // Escape closes the list while the field keeps focus; a click in it must reopen it, which onFocus cannot do.
+        onClick={() => setOpen(true)}
         onBlur={() => setOpen(false)}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}

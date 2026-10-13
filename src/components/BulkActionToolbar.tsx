@@ -6,6 +6,7 @@ import { messageOf } from '../lib/errors';
 import type { Collection } from '../types';
 import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { TagInput } from './TagInput';
+import { ViewportPopover } from './ViewportPopover';
 import { tagLabel } from '../lib/autoTags';
 
 interface BulkActionToolbarProps {
@@ -183,9 +184,9 @@ export function BulkActionToolbar({
             <button ref={licenseRef} type="button" aria-expanded={licenseOpen} {...lockProps}
               className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold hover:text-[var(--ink)]"
               onClick={() => setLicenseOpen(open => !open)}>{t('licenseSet')}</button>
-            {licenseOpen && <div data-navigation-menu className="absolute top-9 right-0 w-80 max-w-[85vw] px-3 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
+            {licenseOpen && <ViewportPopover data-navigation-menu className="absolute top-9 right-0 w-80 max-w-[85vw] px-3 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
               <LicenseEditor value={null} bulk onSave={async value => { await onBulkSetLicense(value); setLicenseOpen(false); licenseRef.current?.focus(); }} />
-            </div>}
+            </ViewportPopover>}
           </div>}
           <button onClick={onBulkAddToQueue} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)]">
             {t('addToQueue')}
@@ -198,7 +199,7 @@ export function BulkActionToolbar({
               {t('addToCollectionLabel')}
             </button>
             {addToCollectionMenuOpen && (
-              <div data-navigation-menu className="absolute top-9 left-0 min-w-[220px] max-w-[360px] py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
+              <ViewportPopover data-navigation-menu className="absolute top-9 left-0 min-w-[220px] max-w-[360px] py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
                 {collections.map((c) => (
                   <button
                     key={c.id}
@@ -217,7 +218,7 @@ export function BulkActionToolbar({
                     {t('noCollectionsEmptyState')}
                   </div>
                 )}
-              </div>
+              </ViewportPopover>
             )}
           </div>
           {activeCollection && (
@@ -236,7 +237,7 @@ export function BulkActionToolbar({
               {t('bulkAddTagLabel')}
             </button>
             {addTagMenuOpen && (
-              <div data-navigation-menu className="absolute top-9 left-0 flex items-center gap-1.5 p-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
+              <ViewportPopover data-navigation-menu className="absolute top-9 left-0 flex items-center gap-1.5 p-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
                 <TagInput
                   allTags={allTags}
                   tags={tagsInAllSelection}
@@ -253,7 +254,7 @@ export function BulkActionToolbar({
                 >
                   {t('confirmSlicerName')}
                 </button>
-              </div>
+              </ViewportPopover>
             )}
           </div>
           <div className="relative">
@@ -264,7 +265,7 @@ export function BulkActionToolbar({
               {t('bulkRemoveTagLabel')}
             </button>
             {removeTagMenuOpen && (
-              <div data-navigation-menu className="absolute top-9 left-0 min-w-[160px] max-w-[300px] py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
+              <ViewportPopover data-navigation-menu className="absolute top-9 left-0 min-w-[160px] max-w-[300px] py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
                 {tagsInSelection.map((tag) => (
                   <button
                     key={tag}
@@ -279,7 +280,7 @@ export function BulkActionToolbar({
                     {t('noTagsInSelectionEmptyState')}
                   </div>
                 )}
-              </div>
+              </ViewportPopover>
             )}
           </div>
           <button onClick={() => onBulkSetPrintStatus('printed')} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)]">
