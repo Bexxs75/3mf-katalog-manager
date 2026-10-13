@@ -11,6 +11,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Added
 
+- **Archive import:** when a ZIP or other archive contains files that are not models (for example TXT or PDF), the import notice now says how many were extracted but not added to the catalog (the catalog only shows models) and that they are in the target folder.
 - **Automated UI tests:** expanded real mouse/keyboard coverage for disk sync, licenses and usage, print status, collection sorting, bulk tags, trash restoration and cancelling bug reports; updated printer/plate checks and excluded screenreader-only text from visual layout audits.
 
 - **Print status:** filter by printed or not yet printed, combine with usage and other filters, and sort by print status in either direction with names ordered within each group.
@@ -56,7 +57,12 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
-- Preview images for very large catalogs no longer use up memory until the window freezes. STL/OBJ/PLY files over 200 MB no longer get an automatic background preview; their tiles show a placeholder, and the 3D view can still be opened manually.
+- The 3D view of very large STL and OBJ files no longer freezes the window: binary STL over 3 million triangles, ASCII STL over 256 MiB and OBJ over 128 MiB show the notice that the model is too large for the 3D view (use the preview image or open it in the slicer).
+- The tag suggestion list in "Add tag" (bulk selection and details) stays open when its scrollbar is pressed, so long lists can be scrolled.
+- The "New prints" dialog no longer closes the app when hundreds of prints are waiting: preview images load at most four at a time, and an HTTP client that cannot be created ends the request with an error instead of crashing the app.
+- If the app cannot start (data folder not writable or full, catalog from a newer app version, catalog damaged or migration failed), it now shows a message with the folder and the next step instead of closing silently. A log folder that cannot be created no longer prevents the start; logging then goes to the error output only. The catalog is left untouched.
+- An import that finished with skipped or unplaced files no longer shows the green "Finished" row: it turns to the warning color and reads "Finished, with notes".
+- Preview images for very large catalogs no longer use up memory until the window freezes. STL/OBJ/PLY files over 200 MB no longer get an automatic background preview; their tiles show a placeholder.
 - Arrow keys navigate between models after focusing the preview, a link or a plain button; widgets such as the plate selector keep their own arrow controls.
 - Disk sync shows a separate confirmation action for removing missing files even when no new files were found.
 - File and model names display bidirectional text controls as visible codes such as `[U+202E]`, so extensions cannot be disguised; stored names stay unchanged.
@@ -579,6 +585,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Hinzugefügt
 
+- **Archiv-Import:** Enthält ein ZIP oder anderes Archiv Dateien, die keine Modelle sind (zum Beispiel TXT oder PDF), nennt der Import-Hinweis jetzt, wie viele davon entpackt, aber nicht in den Katalog aufgenommen wurden (der Katalog zeigt nur Modelle), und dass sie im Zielordner liegen.
 - **Automatische Oberflächentests:** Tests mit echter Maus und Tastatur für Festplatten-Abgleich, Lizenzen und Nutzung, Druckstatus, Sammlungssortierung, Mehrfach-Tags, Wiederherstellen aus dem Papierkorb und Abbrechen von Fehlermeldungen erweitert; Drucker-/Plattenprüfungen aktualisiert und reine Screenreader-Texte aus visuellen Layout-Audits ausgenommen.
 
 - **Druckstatus:** Nach gedruckten oder noch nicht gedruckten Modellen filtern, mit Nutzung und weiteren Filtern kombinieren und in beiden Richtungen nach Druckstatus sortieren; innerhalb jeder Gruppe nach Name.
@@ -624,7 +631,12 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Behoben
 
-- Vorschaubilder sehr großer Kataloge verbrauchen nicht mehr immer mehr Speicher, bis das Fenster einfriert. STL/OBJ/PLY-Dateien über 200 MB erhalten keine automatische Hintergrundvorschau mehr; ihre Kacheln zeigen einen Platzhalter, und die 3D-Ansicht lässt sich weiterhin manuell öffnen.
+- Die 3D-Ansicht sehr großer STL- und OBJ-Dateien friert das Fenster nicht mehr ein: Binäre STL über 3 Millionen Dreiecke, ASCII-STL über 256 MiB und OBJ über 128 MiB zeigen den Hinweis, dass das Modell für die 3D-Ansicht zu groß ist (Vorschaubild nutzen oder im Slicer öffnen).
+- Die Vorschlagsliste bei „Tag hinzufügen“ (Mehrfachauswahl und Details) bleibt offen, wenn man auf ihren Scroll-Balken drückt, sodass sich lange Listen scrollen lassen.
+- Der Dialog „Neue Drucke“ beendet die App nicht mehr, wenn hunderte Drucke warten: Vorschaubilder laden höchstens vier gleichzeitig, und ein HTTP-Client, der sich nicht anlegen lässt, beendet die Anfrage mit einem Fehler statt die App abzustürzen.
+- Lässt sich die App nicht starten (Datenordner nicht beschreibbar oder voll, Katalog aus einer neueren App-Version, Katalog beschädigt oder Migration fehlgeschlagen), zeigt sie jetzt eine Meldung mit Ordner und nächstem Schritt statt sich still zu beenden. Ein Log-Ordner, der sich nicht anlegen lässt, verhindert den Start nicht mehr; protokolliert wird dann nur auf der Fehlerausgabe. Der Katalog bleibt dabei unverändert.
+- Ein Import, der mit übersprungenen oder nicht eingeordneten Dateien endet, zeigt nicht mehr die grüne Zeile „Fertig“: Sie wechselt in die Warnfarbe und lautet „Fertig, mit Hinweisen“.
+- Vorschaubilder sehr großer Kataloge verbrauchen nicht mehr immer mehr Speicher, bis das Fenster einfriert. STL/OBJ/PLY-Dateien über 200 MB erhalten keine automatische Hintergrundvorschau mehr; ihre Kacheln zeigen einen Platzhalter.
 - Pfeiltasten blättern auch nach Fokus auf Vorschau, Link oder einfachem Knopf zwischen Modellen; Widgets wie die Plattenleiste behalten ihre eigene Pfeilsteuerung.
 - Der Festplatten-Abgleich zeigt eine eigene Bestätigungsaktion zum Entfernen fehlender Dateien, auch wenn keine neuen Dateien gefunden wurden.
 - Datei- und Modellnamen zeigen Steuerzeichen für die Textrichtung als sichtbare Codes wie `[U+202E]`, damit Endungen nicht verschleiert werden; gespeicherte Namen bleiben unverändert.
