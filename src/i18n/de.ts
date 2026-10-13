@@ -693,6 +693,7 @@ export const de: Translations = {
   archiveProgressDone: 'fertig',
   archiveProgressFailed: 'fehlgeschlagen',
   archiveSummaryExistingSkipped: { one: "{count} vorhandene Datei übersprungen", other: "{count} vorhandene Dateien übersprungen" },
+  archiveSummaryOtherFiles: { one: "{count} weitere Datei wurde entpackt, aber nicht in den Katalog aufgenommen (der Katalog zeigt nur Modelle). Sie liegt im Zielordner.", other: "{count} weitere Dateien wurden entpackt, aber nicht in den Katalog aufgenommen (der Katalog zeigt nur Modelle). Sie liegen im Zielordner." },
   archiveSummaryUnsafeSkipped: { one: "{count} unsicherer Eintrag übersprungen", other: "{count} unsichere Einträge übersprungen" },
   archiveSummaryBlockedSkipped: { one: "{count} Programm/Verknüpfung aus Sicherheitsgründen nicht entpackt", other: "{count} Programme/Verknüpfungen aus Sicherheitsgründen nicht entpackt" },
   archiveSummaryDeleted: { one: "{count} Archiv gelöscht", other: "{count} Archive gelöscht" },

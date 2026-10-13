@@ -152,6 +152,8 @@ export interface ArchiveOutcome {
   existingSkipped: number;
   unsafeSkipped: number;
   blockedSkipped: number;
+  /** Non-model files (TXT, PDF, ...) that were extracted but not added to the catalog. */
+  otherFilesExtracted: number;
   archiveDeleted: boolean;
   deleteError: string | null;
   error: string | null;

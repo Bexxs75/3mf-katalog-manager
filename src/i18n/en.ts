@@ -693,6 +693,7 @@ export const en: Translations = {
   archiveProgressDone: 'done',
   archiveProgressFailed: 'failed',
   archiveSummaryExistingSkipped: { one: "{count} existing file skipped", other: "{count} existing files skipped" },
+  archiveSummaryOtherFiles: { one: "{count} other file was extracted but not added to the catalog (the catalog only shows models). It is in the target folder.", other: "{count} other files were extracted but not added to the catalog (the catalog only shows models). They are in the target folder." },
   archiveSummaryUnsafeSkipped: { one: "{count} unsafe entry skipped", other: "{count} unsafe entries skipped" },
   archiveSummaryBlockedSkipped: { one: "{count} program/shortcut not extracted for security reasons", other: "{count} programs/shortcuts not extracted for security reasons" },
   archiveSummaryDeleted: { one: "{count} archive deleted", other: "{count} archives deleted" },

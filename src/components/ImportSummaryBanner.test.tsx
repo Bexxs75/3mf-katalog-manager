@@ -14,6 +14,7 @@ function outcome(overrides: Partial<ArchiveOutcome>): ArchiveOutcome {
     existingSkipped: 0,
     unsafeSkipped: 0,
     blockedSkipped: 0,
+    otherFilesExtracted: 0,
     archiveDeleted: false,
     deleteError: null,
     error: null,
@@ -119,6 +120,39 @@ describe('ImportSummaryBanner', () => {
     );
     expect(screen.getByText('1 Datei konnte nicht gespeichert werden: x.stl')).toBeInTheDocument();
     expect(screen.getByText('Problem melden')).toBeInTheDocument();
+  });
+
+  it('shows the note about non-model files as a plural line and keeps the banner for 15s', () => {
+    vi.useFakeTimers();
+    const onClose = vi.fn();
+    renderBanner([outcome({ otherFilesExtracted: 2 }), outcome({ path: '/dl/b.zip', otherFilesExtracted: 1 })], onClose);
+    expect(screen.getByText(/3 weitere Dateien wurden entpackt, aber nicht in den Katalog aufgenommen/)).toBeInTheDocument();
+    vi.advanceTimersByTime(6000);
+    expect(onClose).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(10000);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it('uses the singular and omits the note when no other files were extracted', () => {
+    const { unmount } = render(
+      <LanguageProvider>
+        <ImportSummaryBanner imported={1} duplicates={0} archives={[outcome({ otherFilesExtracted: 1 })]} onClose={vi.fn()} />
+      </LanguageProvider>,
+    );
+    expect(screen.getByText(/^1 weitere Datei wurde entpackt/)).toBeInTheDocument();
+    unmount();
+    renderBanner([outcome({ otherFilesExtracted: 0 })]);
+    expect(screen.queryByText(/weitere Datei/)).not.toBeInTheDocument();
+  });
+
+  it('keeps the banner open with the note when there are also problems', () => {
+    vi.useFakeTimers();
+    const onClose = vi.fn();
+    renderBanner([outcome({ otherFilesExtracted: 1 }), outcome({ path: '/dl/kaputt.zip', extractedTo: null, error: 'beschaedigt' })], onClose);
+    vi.advanceTimersByTime(20000);
+    expect(onClose).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 });
 

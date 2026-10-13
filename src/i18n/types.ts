@@ -718,6 +718,7 @@ export interface Translations {
   archiveProgressDone: string;
   archiveProgressFailed: string;
   archiveSummaryExistingSkipped: PluralForms;
+  archiveSummaryOtherFiles: PluralForms;
   archiveSummaryUnsafeSkipped: PluralForms;
   archiveSummaryBlockedSkipped: PluralForms;
   archiveSummaryDeleted: PluralForms;

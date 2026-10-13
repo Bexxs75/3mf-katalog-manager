@@ -50,10 +50,12 @@ export function ImportSummaryBanner({ imported, duplicates, archives, skipped, o
     const existing = archives.reduce((sum, a) => sum + a.existingSkipped, 0);
     const unsafe = archives.reduce((sum, a) => sum + a.unsafeSkipped, 0);
     const blocked = archives.reduce((sum, a) => sum + a.blockedSkipped, 0);
+    const otherFiles = archives.reduce((sum, a) => sum + a.otherFilesExtracted, 0);
     const deleted = archives.filter((a) => a.archiveDeleted).length;
     if (existing > 0) lines.push({ key: 'existing', text: formatCount(t('archiveSummaryExistingSkipped'), existing) });
     if (unsafe > 0) lines.push({ key: 'unsafe', text: formatCount(t('archiveSummaryUnsafeSkipped'), unsafe) });
     if (blocked > 0) lines.push({ key: 'blocked', text: formatCount(t('archiveSummaryBlockedSkipped'), blocked) });
+    if (otherFiles > 0) lines.push({ key: 'otherFiles', text: formatCount(t('archiveSummaryOtherFiles'), otherFiles) });
     if (deleted > 0) lines.push({ key: 'deleted', text: formatCount(t('archiveSummaryDeleted'), deleted) });
     for (const a of archives) {
       if (a.strippedRoot) {
@@ -77,12 +79,14 @@ export function ImportSummaryBanner({ imported, duplicates, archives, skipped, o
   }
 
   // Error messages stay until they are dismissed - otherwise a failed
-  // archive would disappear unnoticed after 5 s.
+  // archive would disappear unnoticed after 5 s. The note about non-model files
+  // is a longer sentence the user has to be able to read first.
+  const hasOtherFilesNote = lines.some((line) => line.key === 'otherFiles');
   useEffect(() => {
     if (hasProblems) return;
-    const timer = setTimeout(onClose, 5000);
+    const timer = setTimeout(onClose, hasOtherFilesNote ? 15000 : 5000);
     return () => clearTimeout(timer);
-  }, [onClose, hasProblems]);
+  }, [onClose, hasProblems, hasOtherFilesNote]);
 
   return (
     <div className="fixed bottom-4 right-4 z-50 flex items-start gap-2.5 px-3.5 py-2.5 rounded-[4px] border border-[var(--line)] bg-[var(--panel)] shadow-[var(--shadow)] text-[length:var(--font-size-title)] text-[var(--ink)]">

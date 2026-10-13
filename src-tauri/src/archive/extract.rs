@@ -31,6 +31,19 @@ pub struct Extraction {
 
 impl Extraction {
     pub fn created_paths(&self) -> &[PathBuf] { &self.created }
+    /// Counts files written in this run that the caller does not treat as content
+    /// (`is_content` false), without platform metadata: that is noise the user never
+    /// asked for and would only be alarmed by. Folders are not counted.
+    pub fn count_written_files_not_matching(&self, dest: &Path, is_content: impl Fn(&Path) -> bool) -> u32 {
+        self.created
+            .iter()
+            .filter(|path| fs::symlink_metadata(path).is_ok_and(|meta| meta.is_file()))
+            .filter(|path| {
+                let rel = path.strip_prefix(dest).unwrap_or(path).to_string_lossy().replace('\\', "/");
+                !is_platform_metadata(&rel) && !is_content(path)
+            })
+            .count() as u32
+    }
     /// Removes everything this run created - in reverse order, so folders are removed
     /// after their content. Files/folders that existed before are never touched.
     pub fn rollback(self) {

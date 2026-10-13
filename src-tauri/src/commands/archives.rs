@@ -84,6 +84,9 @@ pub struct ArchiveOutcomeDto {
     pub existing_skipped: u32,
     pub unsafe_skipped: u32,
     pub blocked_skipped: u32,
+    /// Extracted files that are not models (TXT, PDF, ...): they stay in the target
+    /// folder but never enter the catalog.
+    pub other_files_extracted: u32,
     pub archive_deleted: bool,
     pub delete_error: Option<String>,
     pub error: Option<String>,
@@ -324,6 +327,7 @@ fn extract_one(
         }
         return outcome;
     }
+    outcome.other_files_extracted = extraction.count_written_files_not_matching(&dest, is_supported_extension);
     outcome.stripped_root = extraction.stripped_root.clone();
     outcome.extracted_to = Some(dest.to_string_lossy().to_string());
 
@@ -640,6 +644,50 @@ mod tests {
         assert_eq!(result.archives[0].existing_skipped, 1);
         assert_eq!(std::fs::read(target.join("Drache/liesmich.txt")).unwrap(), b"meins");
         assert_eq!(result.imported.len(), 1);
+    }
+
+    #[test]
+    fn counts_extracted_files_that_are_not_models_but_no_platform_metadata() {
+        let dir = unique_test_dir("archives_other_files");
+        let target = dir.join("Katalog");
+        std::fs::create_dir_all(&target).unwrap();
+        let archive = dir.join("Mix.zip");
+        make_zip(&archive, &[
+            ("a.stl", STL), ("b.3mf", b"3mf-ish"), ("hinweis.txt", b"x"), ("doku/anleitung.pdf", b"y"),
+            ("__MACOSX/._a.stl", b"m"), ("doku/.DS_Store", b"d"),
+        ]);
+        let mut conn = crate::db::connect_in_memory().unwrap();
+        let request = request_for(&inspect_one(&archive), ConflictMode::New);
+        let result = run(&mut conn, &target, vec![request], false);
+        assert_eq!(result.archives[0].other_files_extracted, 2);
+    }
+
+    #[test]
+    fn counts_no_other_files_for_an_archive_with_only_models() {
+        let dir = unique_test_dir("archives_only_models");
+        let target = dir.join("Katalog");
+        std::fs::create_dir_all(&target).unwrap();
+        let archive = dir.join("Modelle.zip");
+        make_zip(&archive, &[("a.stl", STL), ("sub/b.stl", STL_OTHER)]);
+        let mut conn = crate::db::connect_in_memory().unwrap();
+        let request = request_for(&inspect_one(&archive), ConflictMode::New);
+        let result = run(&mut conn, &target, vec![request], false);
+        assert_eq!(result.archives[0].other_files_extracted, 0);
+    }
+
+    #[test]
+    fn merge_does_not_count_an_existing_non_model_file() {
+        let dir = unique_test_dir("archives_merge_other");
+        let target = dir.join("Katalog");
+        std::fs::create_dir_all(target.join("Drache")).unwrap();
+        std::fs::write(target.join("Drache/liesmich.txt"), b"meins").unwrap();
+        let archive = dir.join("Drache.zip");
+        make_zip(&archive, &[("koerper.stl", STL), ("liesmich.txt", b"x"), ("neu.pdf", b"y")]);
+        let mut conn = crate::db::connect_in_memory().unwrap();
+        let request = request_for(&inspect_one(&archive), ConflictMode::Merge);
+        let result = run(&mut conn, &target, vec![request], false);
+        assert_eq!(result.archives[0].existing_skipped, 1);
+        assert_eq!(result.archives[0].other_files_extracted, 1);
     }
 
     #[test]
