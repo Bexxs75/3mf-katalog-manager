@@ -1,6 +1,6 @@
 import { useState, type KeyboardEvent } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { AutocompleteInput } from './AutocompleteInput';
 
 // Simulates the situation in RestockPopover/SpoolPopoverShell: a
@@ -109,16 +109,29 @@ describe('AutocompleteInput list pointer handling', () => {
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
   });
 
-  it('reopens the list on a click into the already focused field after Escape', () => {
+  it('reopens the controlled list while retaining real focus after repeated Escape and click', () => {
     render(<Wrapper onParentKeyDown={vi.fn()} />);
     const input = screen.getByRole('textbox');
-    fireEvent.focus(input);
-    fireEvent.keyDown(input, { key: 'Escape' });
-    expect(screen.queryByText('Regal 1')).not.toBeInTheDocument();
-
+    // userEvent is not installed; focus() performs the native focus transition.
+    act(() => input.focus());
     fireEvent.click(input);
-
-    expect(screen.getByText('Regal 1')).toBeInTheDocument();
+    expect(document.activeElement).toBe(input);
+    for (let i = 0; i < 2; i++) {
+      const list = screen.getByRole('listbox');
+      expect(list).toBeVisible();
+      expect(input).toHaveAttribute('aria-expanded', 'true');
+      expect(input).toHaveAttribute('aria-controls', list.id);
+      fireEvent.keyDown(input, { key: 'Escape' });
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+      expect(input).toHaveAttribute('aria-expanded', 'false');
+      expect(input).not.toHaveAttribute('aria-controls');
+      expect(document.activeElement).toBe(input);
+      fireEvent.click(input);
+      expect(document.activeElement).toBe(input);
+      expect(screen.getByRole('listbox')).toBeVisible();
+      expect(input).toHaveAttribute('aria-expanded', 'true');
+      expect(input).toHaveAttribute('aria-controls', screen.getByRole('listbox').id);
+    }
   });
 
   it('shows the list right away when the field is autofocused', () => {

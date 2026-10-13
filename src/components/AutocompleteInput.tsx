@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useId, useRef, useState, type CSSProperties } from 'react';
 
 interface Props {
   value: string;
@@ -29,6 +29,7 @@ export function AutocompleteInput({
   const initialHighlight = onSubmit ? -1 : 0;
   const [open, setOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(initialHighlight);
+  const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const highlightedRef = useRef<HTMLDivElement>(null);
   // Only keyboard moves scroll the list: a hover highlight that scrolled would move the item under the pointer and keep scrolling.
@@ -41,10 +42,13 @@ export function AutocompleteInput({
       : options.filter((o) => o.toLowerCase().includes(value.trim().toLowerCase()))
   ).slice(0, value.trim() === '' ? maxSuggestionsWhenEmpty : maxSuggestions);
 
-  // Focusing on mount fires no onFocus that React reports, so an autofocused
-  // field would otherwise show its suggestions only after a second click.
-  useEffect(() => {
-    if (autoFocus) setOpen(true);
+  // Native autofocus can scroll clipping ancestors before the surrounding
+  // popover is positioned. Keep focus without moving the page or app shell.
+  useLayoutEffect(() => {
+    if (autoFocus) {
+      inputRef.current?.focus({ preventScroll: true });
+      setOpen(true);
+    }
   }, [autoFocus]);
 
   useEffect(() => {
@@ -116,7 +120,7 @@ export function AutocompleteInput({
   return (
     <div ref={containerRef} className="relative">
       <input
-        autoFocus={autoFocus}
+        ref={inputRef}
         maxLength={maxLength}
         role={onSubmit ? 'combobox' : undefined}
         aria-label={ariaLabel}

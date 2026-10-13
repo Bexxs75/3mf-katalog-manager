@@ -2,6 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { popoverShift } from './popoverShift';
 
 describe('popoverShift', () => {
+  it('keeps the visible box inside the margins for a scrolled document viewport rectangle', () => {
+    const left = 20;
+    const width = 950;
+    const dx = popoverShift(left, width, 1000, 8);
+    expect(dx).toBe(0);
+    expect(left + dx).toBeGreaterThanOrEqual(8);
+    expect(left + dx + width).toBeLessThanOrEqual(992);
+  });
+
   it('leaves a popover that fits untouched', () => {
     expect(popoverShift(100, 250, 1280, 8)).toBe(0);
   });
