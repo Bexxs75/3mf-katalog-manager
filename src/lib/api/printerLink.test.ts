@@ -57,4 +57,38 @@ describe('printerLink api', () => {
   it('exposes the sync event name', () => {
     expect(api.PRINTER_JOBS_CHANGED_EVENT).toBe('printer-jobs-changed');
   });
+  describe('thumbnail queue', () => {
+    it('never runs more than 4 fetches at once and answers all of them', async () => {
+      let open = 0;
+      let peak = 0;
+      invoke.mockImplementation(async (...a: unknown[]) => {
+        const args = a[1] as { jobId: string };
+        if (!args) return null; // the mock also sees a call without arguments
+        open++;
+        peak = Math.max(peak, open);
+        await new Promise((r) => setTimeout(r, 5));
+        open--;
+        return `png-${args.jobId}`;
+      });
+      const ids = Array.from({ length: 20 }, (_, i) => String(i));
+      const results = await Promise.all(ids.map((id) => api.getPrinterJobThumbnail(id)));
+      expect(peak).toBeLessThanOrEqual(4);
+      expect(results).toEqual(ids.map((id) => `png-${id}`));
+    });
+    it('frees the slot when a fetch is rejected', async () => {
+      invoke.mockImplementation(async (...a: unknown[]) => {
+        const args = a[1] as { jobId: string };
+        if (!args) return null; // the mock also sees a call without arguments
+        if (Number(args.jobId) < 4) throw new Error('boom');
+        return 'ok';
+      });
+      const calls = Array.from({ length: 10 }, (_, i) => api.getPrinterJobThumbnail(String(i)).then(
+        (v) => v,
+        () => 'failed',
+      ));
+      const results = await Promise.all(calls);
+      expect(results.filter((r) => r === 'failed')).toHaveLength(4);
+      expect(results.filter((r) => r === 'ok')).toHaveLength(6);
+    });
+  });
 });

@@ -196,17 +196,24 @@ pub struct MoonrakerLink {
 }
 
 impl MoonrakerLink {
-    pub fn new(address: &str, policy: AddressPolicy) -> Self {
+    /// Fails instead of panicking when the client cannot be built (e.g. no free file handles).
+    pub fn try_new(address: &str, policy: AddressPolicy) -> Result<Self, LinkError> {
         Self::with_timeout(address, policy, TIMEOUT)
+    }
+
+    /// Tests only: the production path uses `try_new`.
+    #[cfg(test)]
+    pub fn new(address: &str, policy: AddressPolicy) -> Self {
+        Self::try_new(address, policy).expect("HTTP-Client")
     }
 
     /// Tests only: own time limit instead of production's fixed 5 s.
     #[cfg(test)]
     pub(crate) fn new_with_timeout(address: &str, policy: AddressPolicy, timeout: Duration) -> Self {
-        Self::with_timeout(address, policy, timeout)
+        Self::with_timeout(address, policy, timeout).expect("HTTP-Client")
     }
 
-    fn with_timeout(address: &str, policy: AddressPolicy, timeout: Duration) -> Self {
+    fn with_timeout(address: &str, policy: AddressPolicy, timeout: Duration) -> Result<Self, LinkError> {
         let client = reqwest::blocking::Client::builder()
             .timeout(timeout)
             .connect_timeout(timeout)
@@ -215,8 +222,8 @@ impl MoonrakerLink {
             .no_proxy()
             .redirect(reqwest::redirect::Policy::none())
             .build()
-            .expect("HTTP-Client");
-        MoonrakerLink { address: address.to_string(), policy, client, timeout }
+            .map_err(|_| LinkError::Unreachable)?;
+        Ok(MoonrakerLink { address: address.to_string(), policy, client, timeout })
     }
 
     /// First port 80 (Mainsail/nginx), then 7125 (Moonraker directly), unless the address names a port itself.

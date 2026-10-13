@@ -98,7 +98,7 @@ pub trait PrinterLink: Send {
 
 pub fn make_link(kind: &str, address: &str, policy: address::AddressPolicy) -> Result<Box<dyn PrinterLink>, LinkError> {
     match kind {
-        KIND_MOONRAKER => Ok(Box::new(moonraker::MoonrakerLink::new(address, policy))),
+        KIND_MOONRAKER => Ok(Box::new(moonraker::MoonrakerLink::try_new(address, policy)?)),
         other => Err(LinkError::BadResponse(format!("unbekannter Druckertyp {other}"))),
     }
 }

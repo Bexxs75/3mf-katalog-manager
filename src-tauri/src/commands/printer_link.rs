@@ -342,6 +342,48 @@ pub(crate) fn thumbnail_fetch_plan_with_conn(
     Ok(Some((c, path)))
 }
 
+/// Upper limit of thumbnail fetches running at once. Each one opens its own
+/// HTTP client (threads, sockets); hundreds in parallel exhaust the process's
+/// file handles.
+const MAX_CONCURRENT_THUMBNAIL_FETCHES: usize = 4;
+
+/// Counting semaphore on std primitives; the slot is returned on drop, so also
+/// when the fetch fails or panics.
+struct FetchLimiter {
+    running: std::sync::Mutex<usize>,
+    freed: std::sync::Condvar,
+    max: usize,
+}
+
+struct FetchSlot<'a>(&'a FetchLimiter);
+
+impl FetchLimiter {
+    const fn new(max: usize) -> Self {
+        FetchLimiter { running: std::sync::Mutex::new(0), freed: std::sync::Condvar::new(), max }
+    }
+
+    /// Blocks until a slot is free. Only call from a blocking thread.
+    fn acquire(&self) -> FetchSlot<'_> {
+        // A poisoned lock only means another holder panicked; the counter stays valid.
+        let mut running = self.running.lock().unwrap_or_else(|e| e.into_inner());
+        while *running >= self.max {
+            running = self.freed.wait(running).unwrap_or_else(|e| e.into_inner());
+        }
+        *running += 1;
+        FetchSlot(self)
+    }
+}
+
+impl Drop for FetchSlot<'_> {
+    fn drop(&mut self) {
+        let mut running = self.0.running.lock().unwrap_or_else(|e| e.into_inner());
+        *running -= 1;
+        self.0.freed.notify_one();
+    }
+}
+
+static THUMBNAIL_FETCHES: FetchLimiter = FetchLimiter::new(MAX_CONCURRENT_THUMBNAIL_FETCHES);
+
 #[tauri::command]
 pub async fn get_printer_job_thumbnail(state: State<'_, AppState>, job_id: String) -> CmdResult<Option<String>> {
     let (connection, path) = {
@@ -352,6 +394,7 @@ pub async fn get_printer_job_thumbnail(state: State<'_, AppState>, job_id: Strin
         }
     };
     let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, LinkError> {
+        let _slot = THUMBNAIL_FETCHES.acquire();
         let link = make_link(&connection.kind, &connection.address, AddressPolicy::HOME_NETWORK)?;
         let info = link.test()?;
         link.thumbnail(&info.base_url, &path)
@@ -385,6 +428,35 @@ mod tests {
     use super::*;
     use crate::db::printer_link::{insert_job_if_new, save_connection_after_test};
     use crate::printer_link::{JobOutcome, RemoteJob};
+
+    #[test]
+    fn fetch_limiter_never_exceeds_its_maximum_and_frees_slots_on_panic() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        let limiter = Arc::new(FetchLimiter::new(3));
+        let current = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let handles: Vec<_> = (0..12)
+            .map(|i| {
+                let (limiter, current, peak) = (limiter.clone(), current.clone(), peak.clone());
+                std::thread::spawn(move || {
+                    let _slot = limiter.acquire();
+                    let now = current.fetch_add(1, Ordering::SeqCst) + 1;
+                    peak.fetch_max(now, Ordering::SeqCst);
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                    current.fetch_sub(1, Ordering::SeqCst);
+                    if i % 4 == 0 {
+                        panic!("fetch failed");
+                    }
+                })
+            })
+            .collect();
+        for h in handles {
+            let _ = h.join();
+        }
+        assert!(peak.load(Ordering::SeqCst) <= 3, "peak {}", peak.load(Ordering::SeqCst));
+        assert_eq!(*limiter.running.lock().unwrap_or_else(|e| e.into_inner()), 0);
+    }
 
     #[test]
     fn container_local_names_are_rejected_before_connecting() {

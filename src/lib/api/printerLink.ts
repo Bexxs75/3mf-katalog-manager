@@ -36,9 +36,34 @@ export function listOpenPrinterJobs() {
 export function previewPrinterJob(jobId: string, spoolId: string) {
   return invoke<JobPreview>('preview_printer_job', { jobId, spoolId });
 }
-/** Base64 PNG or null. */
-export function getPrinterJobThumbnail(jobId: string) {
-  return invoke<string | null>('get_printer_job_thumbnail', { jobId });
+/** Each fetch opens its own connection in the backend; hundreds at once exhaust file handles. */
+const MAX_CONCURRENT_THUMBNAILS = 4;
+let runningThumbnails = 0;
+const waitingThumbnails: Array<() => void> = [];
+
+async function acquireThumbnailSlot() {
+  if (runningThumbnails >= MAX_CONCURRENT_THUMBNAILS) {
+    // The slot is handed over directly, so the counter stays unchanged.
+    await new Promise<void>((resolve) => waitingThumbnails.push(resolve));
+  } else {
+    runningThumbnails++;
+  }
+}
+
+function releaseThumbnailSlot() {
+  const next = waitingThumbnails.shift();
+  if (next) next();
+  else runningThumbnails--;
+}
+
+/** Base64 PNG or null. Runs at most 4 at a time, in request order. */
+export async function getPrinterJobThumbnail(jobId: string) {
+  await acquireThumbnailSlot();
+  try {
+    return await invoke<string | null>('get_printer_job_thumbnail', { jobId });
+  } finally {
+    releaseThumbnailSlot();
+  }
 }
 export function ignorePrinterJob(jobId: string) {
   return invoke<void>('ignore_printer_job', { jobId });
