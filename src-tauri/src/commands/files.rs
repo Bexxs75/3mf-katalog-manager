@@ -1709,9 +1709,10 @@ fn geometry_3mf_error(e: threemf::ThreeMfError) -> CmdError {
 
 // Retains the existing safe-file budget and open-handle type check, while
 // distinguishing its size failures without inspecting error text.
-fn read_geometry_bytes(path: &Path) -> CmdResult<Vec<u8>> {
+fn read_geometry_bytes(path: &Path, extension: &str) -> CmdResult<Vec<u8>> {
     use std::io::Read;
-    let file = crate::safe_file::open_regular(path).map_err(geometry_io_error)?;
+    let mut file = crate::safe_file::open_regular(path).map_err(geometry_io_error)?;
+    check_preview_size(&mut file, extension, MAX_PREVIEW_TRIANGLES, MAX_ASCII_STL_PREVIEW_BYTES, MAX_OBJ_PREVIEW_BYTES)?;
     let max = crate::safe_file::MAX_MODEL_FILE_BYTES;
     let too_large = || CmdError::expected(format!("Datei überschreitet {max} Bytes"))
         .with_code(super::error::GeometryErrorCode::TooLarge);
@@ -1722,13 +1723,70 @@ fn read_geometry_bytes(path: &Path) -> CmdResult<Vec<u8>> {
     Ok(bytes)
 }
 
+// Same ceiling as the 3MF preview: beyond it the webview freezes or dies while
+// the mesh is serialized and rendered, so the viewer shows its "too large" card.
+const MAX_PREVIEW_TRIANGLES: u64 = 3_000_000;
+// ASCII STL and OBJ do not announce a triangle count. Roughly 250 bytes per ASCII
+// facet and 55 bytes per OBJ triangle (vertex + face lines) make these limits
+// about 1 million and 2.3 million triangles, below the triangle ceiling because
+// the whole text is held in memory next to the parsed mesh.
+const MAX_ASCII_STL_PREVIEW_BYTES: u64 = 256 * 1024 * 1024;
+const MAX_OBJ_PREVIEW_BYTES: u64 = 128 * 1024 * 1024;
+
+fn preview_too_large(detail: String) -> CmdError {
+    CmdError::expected(detail).with_code(super::error::GeometryErrorCode::TooLarge)
+}
+
+/// Decides from the file head and length alone whether a mesh is too big for the
+/// 3D view, so nothing large is read before the answer is known.
+fn check_preview_size(
+    file: &mut std::fs::File,
+    extension: &str,
+    max_triangles: u64,
+    max_ascii_stl_bytes: u64,
+    max_obj_bytes: u64,
+) -> CmdResult<()> {
+    use std::io::{Read, Seek, SeekFrom};
+    let len = file.metadata().map_err(geometry_io_error)?.len();
+    match extension {
+        "stl" => {
+            let mut head = [0u8; 84];
+            let mut filled = 0;
+            while filled < head.len() {
+                match file.read(&mut head[filled..]).map_err(geometry_io_error)? {
+                    0 => break,
+                    n => filled += n,
+                }
+            }
+            file.seek(SeekFrom::Start(0)).map_err(geometry_io_error)?;
+            if filled == head.len() {
+                let count = u64::from(u32::from_le_bytes([head[80], head[81], head[82], head[83]]));
+                if len == 84 + 50 * count {
+                    if count > max_triangles {
+                        return Err(preview_too_large(format!("model too large for 3D preview ({count} triangles)")));
+                    }
+                    return Ok(());
+                }
+            }
+            if len > max_ascii_stl_bytes {
+                return Err(preview_too_large(format!("model too large for 3D preview ({len} bytes)")));
+            }
+        }
+        "obj" if len > max_obj_bytes => {
+            return Err(preview_too_large(format!("model too large for 3D preview ({len} bytes)")));
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 fn load_geometry(path: &Path) -> CmdResult<Vec<RenderMesh>> {
     use super::error::GeometryErrorCode as Code;
     let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
     let unreadable = |e: String| CmdError::from(e).with_code(Code::Unreadable);
     let meshes = match extension.as_str() {
-        "stl" => vec![stl::parse_stl_geometry(&read_geometry_bytes(path)?).map_err(|e| unreadable(e.to_string()))?],
-        "obj" => vec![obj::parse_obj_geometry(&read_geometry_bytes(path)?).map_err(|e| unreadable(e.to_string()))?],
+        "stl" => vec![stl::parse_stl_geometry(&read_geometry_bytes(path, &extension)?).map_err(|e| unreadable(e.to_string()))?],
+        "obj" => vec![obj::parse_obj_geometry(&read_geometry_bytes(path, &extension)?).map_err(|e| unreadable(e.to_string()))?],
         "3mf" => threemf::extract_render_meshes_from_path(path).map_err(geometry_3mf_error)?,
         "stp" | "step" => step_geometry(path)?,
         _ => return Err(CmdError::expected(format!("nicht unterstütztes Dateiformat: {extension}")).with_code(Code::Unsupported)),
@@ -2167,6 +2225,64 @@ mod tests {
         file.set_len(crate::safe_file::MAX_MODEL_FILE_BYTES + 1).unwrap();
         assert_eq!(load_geometry(&path).unwrap_err().code, Some(Code::TooLarge));
         std::fs::remove_file(path).unwrap();
+    }
+
+    fn preview_check(path: &Path, ext: &str, tri: u64, ascii: u64, obj: u64) -> CmdResult<()> {
+        let mut file = std::fs::File::open(path).unwrap();
+        check_preview_size(&mut file, ext, tri, ascii, obj)
+    }
+
+    #[test]
+    fn preview_size_check_uses_binary_stl_header_before_reading_the_rest() {
+        use super::super::error::GeometryErrorCode as Code;
+        let dir = super::super::unique_test_dir("preview_size_stl");
+        // Only a header count that matches the file length counts as binary STL.
+        let over = dir.join("over.stl");
+        let mut head = vec![0u8; 80];
+        head.extend_from_slice(&4u32.to_le_bytes());
+        head.extend(std::iter::repeat(0u8).take(4 * 50));
+        std::fs::write(&over, &head).unwrap();
+        assert_eq!(preview_check(&over, "stl", 3, 1 << 20, 1 << 20).unwrap_err().code, Some(Code::TooLarge));
+        assert!(preview_check(&over, "stl", 4, 1 << 20, 1 << 20).is_ok());
+
+        // A count that does not match the length is treated as text and judged by bytes.
+        let liar = dir.join("liar.stl");
+        let mut head = vec![0u8; 80];
+        head.extend_from_slice(&u32::MAX.to_le_bytes());
+        std::fs::write(&liar, &head).unwrap();
+        assert!(preview_check(&liar, "stl", 3, 1 << 20, 1 << 20).is_ok());
+        assert_eq!(preview_check(&liar, "stl", 3, 10, 1 << 20).unwrap_err().code, Some(Code::TooLarge));
+    }
+
+    #[test]
+    fn preview_size_check_limits_ascii_stl_and_obj_by_bytes() {
+        use super::super::error::GeometryErrorCode as Code;
+        let dir = super::super::unique_test_dir("preview_size_text");
+        let stl = dir.join("a.stl");
+        std::fs::write(&stl, b"solid x
+endsolid x
+").unwrap();
+        assert!(preview_check(&stl, "stl", 3, 100, 5).is_ok());
+        assert_eq!(preview_check(&stl, "stl", 3, 10, 100).unwrap_err().code, Some(Code::TooLarge));
+        let obj = dir.join("a.obj");
+        std::fs::write(&obj, b"v 0 0 0\n").unwrap();
+        assert!(preview_check(&obj, "obj", 3, 5, 100).is_ok());
+        assert_eq!(preview_check(&obj, "obj", 3, 100, 5).unwrap_err().code, Some(Code::TooLarge));
+    }
+
+    #[test]
+    fn small_binary_stl_still_loads_through_the_size_check() {
+        let dir = super::super::unique_test_dir("preview_size_small");
+        let path = dir.join("one.stl");
+        let mut bytes = vec![0u8; 80];
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        bytes.extend_from_slice(&[0u8; 12]);
+        for v in [[0f32, 0., 0.], [1., 0., 0.], [0., 1., 0.]] {
+            for c in v { bytes.extend_from_slice(&c.to_le_bytes()); }
+        }
+        bytes.extend_from_slice(&[0u8; 2]);
+        std::fs::write(&path, bytes).unwrap();
+        assert_eq!(load_geometry(&path).unwrap().len(), 1);
     }
 
     #[test]
