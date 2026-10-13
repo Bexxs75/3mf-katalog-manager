@@ -225,6 +225,7 @@ export const fr: Translations = {
   impImporting: "Importation",
   impPlacing: "Déplacement",
   impFinished: "Terminé",
+  impFinishedWithIssues: "Terminé, avec remarques",
   impCancelled: "Annulé",
   impFailed: "Erreur",
   impQueued: "En attente",

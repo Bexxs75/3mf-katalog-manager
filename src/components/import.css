@@ -1,11 +1,12 @@
 .import-row{flex:none;margin:10px 14px 0;border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:10px 12px;display:grid;grid-template-columns:1fr auto;gap:6px 14px;align-items:center}
 .import-row.done{border-color:var(--good)}
+.import-row.warn-done{border-color:var(--warn)}
 .import-row.fail{border-color:var(--crit)}
 .import-row.cancel{border-color:var(--warn)}
 .import-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:var(--fs-body);font-weight:600;min-width:0}
 .import-chip{font-size:var(--fs-caption);font-weight:600;padding:2px 7px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}
 .import-row.done .import-chip{background:var(--good-soft);color:var(--good)}
-.import-row.cancel .import-chip{background:var(--warn-soft);color:var(--warn)}
+.import-row.warn-done .import-chip,.import-row.cancel .import-chip{background:var(--warn-soft);color:var(--warn)}
 .import-row.fail .import-chip{color:var(--crit,var(--accent))}
 .import-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .import-actions button,.import-result button{font:inherit;font-size:var(--fs-small);font-weight:600;border:1px solid var(--line-strong);background:transparent;color:var(--ink-2);min-height:28px;padding:3px 10px;border-radius:4px;cursor:pointer}

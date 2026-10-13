@@ -231,6 +231,7 @@ export interface Translations {
   impImporting: string;
   impPlacing: string;
   impFinished: string;
+  impFinishedWithIssues: string;
   impCancelled: string;
   impFailed: string;
   impQueued: string;

@@ -7,7 +7,7 @@ import { importProgress, importResult } from '../test/importFixtures';
 import type { ImportCounts, ImportState } from '../types';
 vi.mock('../diagnostics/DiagnosticsContext', () => ({useDiagnostics: () => ({openBugReport: vi.fn()})}));
 beforeEach(() => localStorage.setItem('3mf-katalog-language', 'de'));
-it.each([['scanning','Suche'],['importing','Importiert'],['placing','Ablage'],['finished','Fertig'],['cancelled','Abgebrochen'],['failed','Fehler']] as const)('renders %s with no percent text', (state, chip) => {
+it.each([['scanning','Suche'],['importing','Importiert'],['placing','Ablage'],['finished','Fertig, mit Hinweisen'],['cancelled','Abgebrochen'],['failed','Fehler']] as const)('renders %s with no percent text', (state, chip) => {
   const end = ['finished','cancelled','failed'].includes(state);
   render(<LanguageProvider><ImportProgressRow progress={{...importProgress, state}} meta={{jobId:'j1',source:'files',targetName:'Küche'}} result={end ? {...importResult, state: state as 'finished'} : null} queued={1} onCancel={vi.fn()} onDismiss={vi.fn()} /></LanguageProvider>);
   expect(screen.getByText(chip)).toBeVisible(); expect(screen.getByText('· 1 Auftrag wartet')).toBeVisible();
@@ -94,4 +94,20 @@ it('exposes bidi paths embedded in import failure messages without changing the 
     result={{...importResult, state: 'failed', jobError}} queued={0} onCancel={vi.fn()} onDismiss={vi.fn()} /></LanguageProvider>);
   expect(screen.getByText(/Cannot import \/models\/part\[U\+202E\]txt\.3mf/)).toBeVisible();
   expect(jobError.message).toBe('Cannot import /models/part\u202etxt.3mf');
+});
+
+it('keeps the green done state and plain label when nothing was skipped or left unplaced', () => {
+  renderFinished({skipped: 0, importedNotPlaced: 0, imported: 4});
+  expect(screen.getByText('Fertig')).toBeVisible();
+  expect(screen.getByRole('status')).toHaveClass('done'); expect(screen.getByRole('status')).not.toHaveClass('warn-done');
+});
+it('shows a warning state with its own label when files were skipped', () => {
+  renderFinished({skipped: 3, importedNotPlaced: 0, imported: 4});
+  expect(screen.getByText('Fertig, mit Hinweisen')).toBeVisible();
+  expect(screen.getByRole('status')).toHaveClass('warn-done'); expect(screen.getByRole('status')).not.toHaveClass('done');
+});
+it('shows a warning state when models were imported but not placed', () => {
+  renderFinished({skipped: 0, importedNotPlaced: 2, imported: 4});
+  expect(screen.getByText('Fertig, mit Hinweisen')).toBeVisible();
+  expect(screen.getByRole('status')).toHaveClass('warn-done'); expect(screen.getByRole('status')).not.toHaveClass('done');
 });
