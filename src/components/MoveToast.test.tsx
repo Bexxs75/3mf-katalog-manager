@@ -52,3 +52,14 @@ it.each([
   expect(screen.getByRole('status')).toHaveTextContent(text);
   expect(screen.queryByText('Problem melden')).not.toBeInTheDocument();
 });
+
+it.each([
+  {error: true},
+  {collection: 'added' as const},
+  {collection: 'already' as const},
+])('displays bidi controls visibly in the destination for %j', props => {
+  renderToast({...props, to: 'Ziel\u202E.stl'});
+  const toast = screen.getByRole('status');
+  expect(toast).toHaveTextContent('Ziel[U+202E].stl');
+  expect(toast.textContent).not.toContain('\u202E');
+});

@@ -15,7 +15,7 @@ export function ViewportPopover({ style, ...props }: HTMLAttributes<HTMLDivEleme
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    let placed: { left: number; top: number; width: number; height: number };
+    let placed: { left: number; width: number };
     const place = () => {
       // Measure at the natural position, then apply the offset before paint.
       el.style.transform = '';
@@ -37,12 +37,11 @@ export function ViewportPopover({ style, ...props }: HTMLAttributes<HTMLDivEleme
     }
 
     // ResizeObserver cannot see movement without a size change (e.g. wrapping
-    // siblings). Read the visible box while open, but only write on a change.
+    // siblings). Read the visible box while open, but only write when horizontal placement changes.
     let frame: number;
     const trackPosition = () => {
       const rect = el.getBoundingClientRect();
-      if (rect.left !== placed.left || rect.top !== placed.top ||
-          rect.width !== placed.width || rect.height !== placed.height) place();
+      if (rect.left !== placed.left || rect.width !== placed.width) place();
       frame = requestAnimationFrame(trackPosition);
     };
     frame = requestAnimationFrame(trackPosition);

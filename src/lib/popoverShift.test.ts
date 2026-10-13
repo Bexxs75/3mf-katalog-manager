@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { popoverShift } from './popoverShift';
 
 describe('popoverShift', () => {
-  it('keeps the visible box inside the margins for a scrolled document viewport rectangle', () => {
+  it('leaves a wide box inside both viewport margins unshifted', () => {
     const left = 20;
     const width = 950;
     const dx = popoverShift(left, width, 1000, 8);

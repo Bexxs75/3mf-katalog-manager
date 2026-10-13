@@ -199,3 +199,18 @@ it('recovers an archive hint through the result query after start_archive_import
   render(createElement(LanguageProvider, null, createElement(ImportSummaryBanner, {...result.current.importBanner!, onClose: result.current.dismissImportBanner})));
   expect(screen.getByText(/2 weitere Dateien wurden entpackt/)).toBeVisible();
 });
+
+it('keeps the skipped-files banner when an archive job extracts no other files', async () => {
+  localStorage.setItem('3mf-katalog-language', 'de');
+  const { result } = setup();
+  act(() => result.current.mergeImported({ imported: [], duplicateCount: 0, skipped: [{path: '/empty.stl', reason: 'empty'}] }));
+  const banner = () => createElement(LanguageProvider, null, result.current.importBanner && createElement(ImportSummaryBanner, {...result.current.importBanner, onClose: result.current.dismissImportBanner}));
+  const view = render(banner());
+  expect(screen.getByText(/empty.stl/)).toBeVisible();
+  const archive = importResult.groups.archive[1];
+  if (archive.state === 'pending') throw new Error('expected completed fixture');
+  const value: ImportJobResult = {...finished(), source: 'archive', groups: {...finished().groups, archive: [{...archive, otherFilesExtracted: 0}]}};
+  await act(async () => events.handlers['import://finished']({payload: value}));
+  view.rerender(banner());
+  expect(screen.getByText(/empty.stl/)).toBeVisible();
+});

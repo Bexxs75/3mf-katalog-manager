@@ -117,6 +117,20 @@ fn rename_with(
     if !is_case_only(old, new) {
         return rename(old, new);
     }
+    // A free destination permits one atomic rename, even for case-only changes.
+    match std::fs::symlink_metadata(new) {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return rename(old, new),
+        Err(error) => return Err(error),
+        Ok(_) => {}
+    }
+    rename_via_intermediate_with(old, new, rename)
+}
+
+fn rename_via_intermediate_with(
+    old: &Path,
+    new: &Path,
+    mut rename: impl FnMut(&Path, &Path) -> io::Result<()>,
+) -> io::Result<()> {
     let parent = old
         .parent()
         .ok_or_else(|| io::Error::other("missing parent"))?;
@@ -168,6 +182,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn case_only_missing_target_uses_one_rename() {
+        let dir = crate::commands::unique_test_dir("rename_single_step");
+        let old = dir.join("A.stl");
+        let new = dir.join("a.stl");
+        std::fs::write(&old, b"original").unwrap();
+        if new.exists() {
+            println!("skipped: missing case variant requires a case-sensitive volume");
+            std::fs::remove_dir_all(dir).unwrap();
+            return;
+        }
+        let mut calls = 0;
+        rename_with(&old, &new, |from, to| {
+            calls += 1;
+            std::fs::rename(from, to)
+        })
+        .unwrap();
+        assert_eq!(calls, 1);
+        assert_eq!(std::fs::read(&new).unwrap(), b"original");
+        assert!(!old.exists());
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn unicode_case_and_normalization_decision() {
         for (old, new) in [
             ("Übersicht.stl", "übersicht.stl"),
@@ -204,7 +242,7 @@ mod tests {
                 std::fs::write(&old, b"original").unwrap();
             }
             let mut calls = 0;
-            rename_with(&old, &dir.join(name.to_lowercase()), |from, to| {
+            rename_via_intermediate_with(&old, &dir.join(name.to_lowercase()), |from, to| {
                 calls += 1;
                 if calls == 1 {
                     let temporary = to.file_name().unwrap().to_str().unwrap();
@@ -239,7 +277,7 @@ mod tests {
             return;
         }
         let mut calls = 0;
-        let error = rename_with(&old, &new, |from, to| {
+        let error = rename_via_intermediate_with(&old, &new, |from, to| {
             calls += 1;
             std::fs::rename(from, to)?;
             if calls == 1 {
@@ -257,7 +295,7 @@ mod tests {
     }
 
     #[test]
-    fn unicode_rename_uses_two_steps_and_preserves_data() {
+    fn unicode_rename_uses_only_required_steps_and_preserves_data() {
         for (old_name, new_name) in [
             ("Übersicht.stl", "übersicht.stl"),
             ("STRAẞE.stl", "straße.stl"),
@@ -267,13 +305,14 @@ mod tests {
             let old = dir.join(old_name);
             let new = dir.join(new_name);
             std::fs::write(&old, b"original").unwrap();
+            let expected_calls = if new.exists() { 2 } else { 1 };
             let mut calls = 0;
             rename_with(&old, &new, |from, to| {
                 calls += 1;
                 std::fs::rename(from, to)
             })
             .unwrap();
-            assert_eq!(calls, 2);
+            assert_eq!(calls, expected_calls);
             assert_eq!(std::fs::read(&new).unwrap(), b"original");
             assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
             std::fs::remove_dir_all(dir).unwrap();
@@ -306,7 +345,7 @@ mod tests {
         let new = dir.join("a.stl");
         std::fs::write(&old, b"original").unwrap();
         let mut calls = 0;
-        let error = rename_with(&old, &new, |from, to| {
+        let error = rename_via_intermediate_with(&old, &new, |from, to| {
             calls += 1;
             if calls == 2 {
                 // Exercise an OS error after the original has moved aside,
@@ -330,7 +369,7 @@ mod tests {
         let new = dir.join("a.stl");
         std::fs::write(&old, b"original").unwrap();
         let mut calls = 0;
-        let error = rename_with(&old, &new, |from, to| {
+        let error = rename_via_intermediate_with(&old, &new, |from, to| {
             calls += 1;
             if calls >= 2 {
                 return Err(io::Error::new(io::ErrorKind::PermissionDenied, "blocked"));
@@ -425,7 +464,13 @@ mod tests {
             let new = dir.join(requested);
             std::fs::write(dir.join(actual), b"original").unwrap();
             assert!(!target_collides(&old, &new).unwrap());
-            rename_on_disk(&old, &new).unwrap();
+            let mut calls = 0;
+            rename_with(&old, &new, |from, to| {
+                calls += 1;
+                std::fs::rename(from, to)
+            })
+            .unwrap();
+            assert_eq!(calls, 2);
             let entries: Vec<_> = std::fs::read_dir(&dir)
                 .unwrap()
                 .map(|e| e.unwrap().file_name())

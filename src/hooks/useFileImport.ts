@@ -67,7 +67,7 @@ export function useFileImport(args: UseFileImportArgs) {
       // Detailed archive outcomes stay in the result dialog; the banner adds only
       // the location hint, but must remain visible when the job has problems.
       const jobHasProblems = value.state !== 'finished' || !!value.jobError || counts.skipped > 0 || counts.importedNotPlaced > 0 || archives.some(a => a.state === 'failed' || !!a.error || !!a.deleteError || a.existingSkipped > 0 || a.unsafeSkipped > 0 || a.blockedSkipped > 0);
-      setImportBanner(otherFilesExtracted > 0 ? {imported: counts.imported + counts.importedNotPlaced, duplicates: counts.duplicate, skipped: [], otherFilesExtracted, jobHasProblems} : null);
+      if (otherFilesExtracted > 0) setImportBanner({imported: counts.imported + counts.importedNotPlaced, duplicates: counts.duplicate, skipped: [], otherFilesExtracted, jobHasProblems});
     }
     const paths = value.groups.archive.filter(a => a.state === 'pending').map(a => a.path);
     if (!paths.length) return;

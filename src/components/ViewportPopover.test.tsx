@@ -6,6 +6,8 @@ import { popoverShift } from '../lib/popoverShift';
 
 let left: number;
 let width: number;
+let top: number;
+let height: number;
 let anchorLeft: number;
 let frames: Map<number, FrameRequestCallback>;
 let nextFrame: number;
@@ -43,6 +45,8 @@ function mount(children = <span>Content</span>) {
 beforeEach(() => {
   left = 850;
   width = 250;
+  top = 40;
+  height = 40;
   anchorLeft = 850;
   frames = new Map();
   nextFrame = 0;
@@ -58,7 +62,7 @@ beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
     const popover = this.dataset.testid === 'popover';
     const dx = Number(this.style.transform.match(/translateX\(([-\d.]+)px\)/)?.[1] ?? 0);
-    return new DOMRect(popover ? left + dx : anchorLeft, 40, popover ? width : 100, 40);
+    return new DOMRect(popover ? left + dx : anchorLeft, top, popover ? width : 100, height);
   });
 });
 
@@ -79,16 +83,26 @@ describe('ViewportPopover', () => {
     expect(popover.getBoundingClientRect().right).toBe(992);
   });
 
-  it('does not write styles on animation frames when geometry remains unchanged', () => {
+  it('writes styles on animation frames only when left or width changes', () => {
     mount();
     const popover = screen.getByTestId('popover');
     const transform = vi.spyOn(popover.style, 'transform', 'set');
     frame();
     frame();
     expect(transform).not.toHaveBeenCalled();
+    top = 80;
+    height = 90;
+    frame();
+    expect(transform).not.toHaveBeenCalled();
     left = anchorLeft = 940;
     frame();
+    expect(transform).toHaveBeenCalled();
     expect(popover.style.transform).toBe('translateX(-198px)');
+    transform.mockClear();
+    width = 300;
+    frame();
+    expect(transform).toHaveBeenCalled();
+    expect(popover.style.transform).toBe('translateX(-248px)');
     transform.mockClear();
     frame();
     expect(transform).not.toHaveBeenCalled();
