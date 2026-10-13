@@ -17,10 +17,32 @@ mod tagging;
 mod threemf;
 mod updater;
 mod startup;
+mod startup_error;
 
 use std::sync::Mutex;
 
 use tauri::Manager;
+
+/// Opens everything startup needs from disk. Failures are returned with the offending
+/// path so the user can be told what to fix; existing data is never touched on the way out.
+fn open_storage(
+    app: &tauri::App,
+) -> Result<(rusqlite::Connection, bool, std::path::PathBuf, std::path::PathBuf), startup_error::StartupFailure> {
+    use startup_error::{StartupFailure, StartupStage};
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| StartupFailure::new(StartupStage::DataFolder, std::path::Path::new(""), e))?;
+    std::fs::create_dir_all(&app_data_dir)
+        .map_err(|e| StartupFailure::new(StartupStage::DataFolder, &app_data_dir, e))?;
+    harden_permissions(&app_data_dir);
+    let db_path = app_data_dir.join("catalog.db");
+    let (conn, backup_failed) = db::connect_with_warning(&db_path)
+        .map_err(|e| StartupFailure::new(StartupStage::Catalog, &db_path, e))?;
+    harden_permissions(&db_path);
+    let trash_dir = app_data_dir.join("trash");
+    std::fs::create_dir_all(&trash_dir)
+        .map_err(|e| StartupFailure::new(StartupStage::TrashFolder, &trash_dir, e))?;
+    Ok((conn, backup_failed, db_path, trash_dir))
+}
 
 // Data directory for the own user only (relevant on multi-user systems).
 #[cfg(unix)]
@@ -126,22 +148,18 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            startup::create_window(app)?;
-            // Product name from the active config (differs for the preview variant) plus
-            // the version, taken straight from Cargo.toml.
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.set_title(&format!("{} {}", app.package_info().name, env!("CARGO_PKG_VERSION")));
-            }
-
-            let app_data_dir = app.path().app_data_dir()?;
-            std::fs::create_dir_all(&app_data_dir)?;
-            harden_permissions(&app_data_dir);
-            let db_path = app_data_dir.join("catalog.db");
-            let (mut conn, backup_failed) = db::connect_with_warning(&db_path)?;
+            // The window is created last: if the data folder or catalog cannot be opened,
+            // no webview exists whose commands would hit state that was never managed.
+            let (mut conn, backup_failed, db_path, trash_dir) = match open_storage(app) {
+                Ok(storage) => storage,
+                Err(failure) => {
+                    startup_error::report_and_exit(app.handle(), &failure);
+                    return Ok(());
+                }
+            };
             app.manage(startup::MigrationBackupWarning(backup_failed));
             commands::apply_verbose_state(&conn);
             diagnostics::log_startup(&conn);
-            harden_permissions(&db_path);
             match db::cleanup_tag_fragments(&mut conn) {
                 Ok(Some((files, removed, added))) => {
                     log::info!(target: "startup", "Umlaut-Bruchstück-Tags bereinigt: {files} Dateien, {removed} Tags entfernt, {added} ergänzt");
@@ -152,8 +170,6 @@ pub fn run() {
             if let Err(e) = db::delete_unused_tags(&conn) {
                 log::error!(target: "startup", "cleaning up orphaned tags failed: {e}");
             }
-            let trash_dir = app_data_dir.join("trash");
-            std::fs::create_dir_all(&trash_dir)?;
             commands::purge_expired_trash_on_startup(&conn);
             let sensitive_dirs = sensitive_dirs(app.handle());
             app.manage(commands::AppState {
@@ -193,6 +209,12 @@ pub fn run() {
             app.manage(commands::DroppedImages::default());
             app.manage(commands::DiagnosticsState::default());
             app.manage(commands::UpdaterState::default());
+            startup::create_window(app)?;
+            // Product name from the active config (differs for the preview variant) plus
+            // the version, taken straight from Cargo.toml.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_title(&format!("{} {}", app.package_info().name, env!("CARGO_PKG_VERSION")));
+            }
             Ok(())
         })
         // Observe every dropped path in the backend: import authorization is based

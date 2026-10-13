@@ -405,9 +405,7 @@ fn run_migrations_with(conn: &mut Connection, migrations: &[MigrationStep], targ
     // A DB from a newer app version would otherwise skip every step and silently
     // count as compatible.
     if current > target_version {
-        return Err(DbError::Other(format!(
-            "Datenbank-Schemaversion {current} ist neuer als die von dieser App-Version unterstuetzte Version {target_version}"
-        )));
+        return Err(DbError::NewerSchema { found: current, supported: target_version });
     }
     for (index, migration) in migrations.iter().enumerate() {
         let step_version = (index + 1) as i64;

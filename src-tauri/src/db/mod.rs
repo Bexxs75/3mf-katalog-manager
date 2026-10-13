@@ -18,6 +18,7 @@ pub fn migrations_current_version() -> i64 {
     migrations::CURRENT_SCHEMA_VERSION
 }
 
+pub use repository::BACKUP_DIR_NAME;
 pub use repository::{
     FileSummary,
     add_tag_to_file, attach_folder_to_parent_by_path, connect, connect_with_warning, delete_file, delete_filament_spool, delete_print_log_entry,
