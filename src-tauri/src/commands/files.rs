@@ -1726,10 +1726,9 @@ fn read_geometry_bytes(path: &Path, extension: &str) -> CmdResult<Vec<u8>> {
 // Same ceiling as the 3MF preview: beyond it the webview freezes or dies while
 // the mesh is serialized and rendered, so the viewer shows its "too large" card.
 const MAX_PREVIEW_TRIANGLES: u64 = 3_000_000;
-// ASCII STL and OBJ do not announce a triangle count. Roughly 250 bytes per ASCII
-// facet and 55 bytes per OBJ triangle (vertex + face lines) make these limits
-// about 1 million and 2.3 million triangles, below the triangle ceiling because
-// the whole text is held in memory next to the parsed mesh.
+// Text meshes need a cheap byte-size precheck because the whole text is held
+// alongside the parsed mesh. OBJ additionally enforces the triangle budget
+// while parsing; file size alone cannot bound repeated faces.
 const MAX_ASCII_STL_PREVIEW_BYTES: u64 = 256 * 1024 * 1024;
 const MAX_OBJ_PREVIEW_BYTES: u64 = 128 * 1024 * 1024;
 
@@ -1737,8 +1736,8 @@ fn preview_too_large(detail: String) -> CmdError {
     CmdError::expected(detail).with_code(super::error::GeometryErrorCode::TooLarge)
 }
 
-/// Decides from the file head and length alone whether a mesh is too big for the
-/// 3D view, so nothing large is read before the answer is known.
+/// Rejects oversized files before reading them in full. OBJ triangle counts are
+/// checked separately while parsing, since repeated faces can be very compact.
 fn check_preview_size(
     file: &mut std::fs::File,
     extension: &str,
@@ -1781,12 +1780,21 @@ fn check_preview_size(
 }
 
 fn load_geometry(path: &Path) -> CmdResult<Vec<RenderMesh>> {
+    load_geometry_with_obj_limit(path, MAX_PREVIEW_TRIANGLES)
+}
+
+fn load_geometry_with_obj_limit(path: &Path, max_obj_triangles: u64) -> CmdResult<Vec<RenderMesh>> {
     use super::error::GeometryErrorCode as Code;
     let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
     let unreadable = |e: String| CmdError::from(e).with_code(Code::Unreadable);
     let meshes = match extension.as_str() {
         "stl" => vec![stl::parse_stl_geometry(&read_geometry_bytes(path, &extension)?).map_err(|e| unreadable(e.to_string()))?],
-        "obj" => vec![obj::parse_obj_geometry(&read_geometry_bytes(path, &extension)?).map_err(|e| unreadable(e.to_string()))?],
+        "obj" => vec![obj::parse_obj_geometry(&read_geometry_bytes(path, &extension)?, max_obj_triangles).map_err(|e| {
+            match e {
+                obj::ObjError::TooLarge => preview_too_large(e.to_string()),
+                _ => unreadable(e.to_string()),
+            }
+        })?],
         "3mf" => threemf::extract_render_meshes_from_path(path).map_err(geometry_3mf_error)?,
         "stp" | "step" => step_geometry(path)?,
         _ => return Err(CmdError::expected(format!("nicht unterstütztes Dateiformat: {extension}")).with_code(Code::Unsupported)),
@@ -2225,6 +2233,26 @@ mod tests {
         file.set_len(crate::safe_file::MAX_MODEL_FILE_BYTES + 1).unwrap();
         assert_eq!(load_geometry(&path).unwrap_err().code, Some(Code::TooLarge));
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn obj_preview_enforces_triangle_budget_without_limiting_import() {
+        use super::super::error::GeometryErrorCode as Code;
+        let dir = super::super::unique_test_dir("obj_preview_budget");
+        let path = dir.join("repeated.obj");
+        let vertices = "v 0 0 0\nv 1 0 0\nv 0 1 0\nv 1 1 0\n";
+        std::fs::write(&path, format!("{vertices}{}", "f 1 2 3\n".repeat(2))).unwrap();
+        assert_eq!(load_geometry_with_obj_limit(&path, 3).unwrap()[0].indices.len(), 2);
+        std::fs::write(&path, format!("{vertices}{}", "f 1 2 3\n".repeat(4))).unwrap();
+        assert_eq!(load_geometry_with_obj_limit(&path, 3).unwrap_err().code, Some(Code::TooLarge));
+        assert!(obj::parse_obj_file(&path).is_ok());
+        // Once over budget, later malformed lines must not be parsed.
+        std::fs::write(&path, format!("{vertices}{}v broken\n", "f 1 2 3\n".repeat(4))).unwrap();
+        assert_eq!(load_geometry_with_obj_limit(&path, 3).unwrap_err().code, Some(Code::TooLarge));
+        std::fs::write(&path, format!("{vertices}f 1 2 4 3\n")).unwrap();
+        assert_eq!(load_geometry_with_obj_limit(&path, 2).unwrap()[0].indices.len(), 2);
+        assert_eq!(load_geometry_with_obj_limit(&path, 1).unwrap_err().code, Some(Code::TooLarge));
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     fn preview_check(path: &Path, ext: &str, tri: u64, ascii: u64, obj: u64) -> CmdResult<()> {

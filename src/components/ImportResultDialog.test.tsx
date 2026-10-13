@@ -56,3 +56,13 @@ it('shows bidi controls in unimported paths while retaining original paths in co
   await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining(path)));
   expect(result.groups.skipped[0].path).toBe(path);
 });
+
+it.each([0, 2])('shows %s extracted non-model files in the archive group', otherFilesExtracted => {
+  const archive = importResult.groups.archive[1];
+  if (archive.state === 'pending') throw new Error('expected completed fixture');
+  const result = {...importResult, groups: {...importResult.groups, archive: [{...archive, otherFilesExtracted}]}};
+  render(<LanguageProvider><ImportResultDialog result={result} onClose={vi.fn()} /></LanguageProvider>);
+  fireEvent.click(screen.getAllByRole('tab')[3]);
+  if (otherFilesExtracted) expect(screen.getByText(/2 weitere Dateien wurden entpackt/)).toBeVisible();
+  else expect(screen.queryByText(/weitere Dateien wurden entpackt/)).not.toBeInTheDocument();
+});

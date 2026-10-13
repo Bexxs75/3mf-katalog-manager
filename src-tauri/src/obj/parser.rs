@@ -10,6 +10,10 @@ type ObjGeometry = (Vec<[f64; 3]>, Vec<[u32; 3]>);
 /// rotates EVERY geometry via `rotateX(-PI/2)`). So every vertex `(x, y, z)`
 /// becomes `(x, -z, y)` here, the inverse of that rotation (no mirroring).
 pub fn parse(text: &str) -> Result<ObjGeometry, ObjError> {
+    parse_with_triangle_limit(text, None)
+}
+
+pub fn parse_with_triangle_limit(text: &str, max_triangles: Option<u64>) -> Result<ObjGeometry, ObjError> {
     let mut vertices: Vec<[f64; 3]> = Vec::new();
     let mut triangles: Vec<[u32; 3]> = Vec::new();
 
@@ -35,11 +39,17 @@ pub fn parse(text: &str) -> Result<ObjGeometry, ObjError> {
                 vertices.push([coords[0], -coords[2], coords[1]]);
             }
             "f" => {
-                let face_indices: Vec<u32> = line
-                    .split_whitespace()
-                    .skip(1)
-                    .map(|token| resolve_index(token, vertices.len(), line))
-                    .collect::<Result<_, _>>()?;
+                let mut face_indices = Vec::new();
+                for token in tokens {
+                    // Each vertex after the first two adds a fan triangle. Check
+                    // while reading so even one huge polygon stops at the budget.
+                    if face_indices.len() >= 2 && max_triangles.is_some_and(|limit| {
+                        triangles.len() as u64 + face_indices.len() as u64 - 1 > limit
+                    }) {
+                        return Err(ObjError::TooLarge);
+                    }
+                    face_indices.push(resolve_index(token, vertices.len(), line)?);
+                }
                 if face_indices.len() < 3 {
                     return Err(ObjError::Parse(format!("face needs at least 3 vertices: {line}")));
                 }

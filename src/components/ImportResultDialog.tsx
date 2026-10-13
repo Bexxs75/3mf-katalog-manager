@@ -24,12 +24,13 @@ export function ImportResultDialog({result, onClose, returnFocus, onSelectModel}
     for (const a of result.groups.archive) {
       archive.push({path: a.path, reason: a.state === 'pending' ? t('impPending') : a.error ? (a.error === 'cancelled' ? t('impArchiveCancelled') : reason(a.error)) : t('impExtracted').replace('{path}', a.extractedTo ?? '')});
       if (a.state !== 'pending') {
+        if (a.otherFilesExtracted > 0) archive.push({path: a.extractedTo ?? a.path, reason: formatCount(t('archiveSummaryOtherFiles'), a.otherFilesExtracted), nested: true});
         for (const r of a.models.skipped) archive.push({path: r.entryPath, reason: reason(r.reason), nested: true});
         for (const r of a.models.duplicates) archive.push({path: r.entryPath, reason: reason(r.kind), nested: true});
       }
     }
     return [result.groups.skipped.map(r => ({path: r.path, reason: reason(r.reason)})), result.groups.duplicate.map(duplicate), result.groups.importedNotPlaced.map(r => ({path: r.path, reason: reason(r.reason)})), archive] as Row[][];
-  }, [result, t]);
+  }, [result, t, formatCount]);
   const text = rows.map((group, i) => `${t(tabs[i])}\n${group.map(r => `${r.nested ? '  ' : ''}${r.path}\t${r.reason}`).join('\n')}`).join('\n\n');
   const copy = async () => {
     try { if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable'); await navigator.clipboard.writeText(text); setCopied(true); setFallback(false); }

@@ -118,8 +118,8 @@ pub fn startup_error_message(stage: StartupStage, path: &Path, error: &(dyn std:
             format!("Die Datei ist möglicherweise beschädigt. Lösche sie nicht. Stelle eine Sicherungskopie aus dem Ordner \"{backups}\" neben catalog.db wieder her, oder bitte um Hilfe."),
         ),
         Cause::Unknown => (
-            "Your data was not changed. Check the location and permissions, then start the app again.".to_string(),
-            "Deine Daten wurden nicht verändert. Prüfe den Ort und die Berechtigungen und starte die App dann erneut.".to_string(),
+            "Check the location and permissions, then start the app again.".to_string(),
+            "Prüfe den Ort und die Berechtigungen und starte die App dann erneut.".to_string(),
         ),
     };
 
@@ -208,6 +208,7 @@ mod tests {
         let text = startup_error_message(StartupStage::Catalog, &path, &error);
         assert_bilingual_with_path(&text, &path);
         assert!(text.contains("something odd second line"), "cause must be one line");
+        assert!(!text.contains("was not changed") && !text.contains("nicht verändert"));
         assert!(text.contains("Check the location") && text.contains("Prüfe den Ort"));
     }
 
@@ -224,6 +225,25 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn trash_failure_leaves_an_old_catalog_untouched() {
+        let dir = temp_dir("blocked-trash");
+        let path = dir.join("catalog.db");
+        {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            conn.execute_batch("CREATE TABLE sentinel (value TEXT); PRAGMA user_version = 0;").unwrap();
+        }
+        let before = std::fs::read(&path).unwrap();
+        std::fs::write(dir.join("trash"), b"blocker").unwrap();
+        let error = crate::open_storage_at(&dir).err().expect("trash must fail");
+        assert_eq!(error.stage, StartupStage::TrashFolder);
+        assert!(std::fs::read(&path).unwrap() == before, "catalog must stay byte-identical");
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        assert_eq!(conn.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0)).unwrap(), 0);
+        drop(conn);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

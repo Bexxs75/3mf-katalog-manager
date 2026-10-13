@@ -38,10 +38,10 @@ pub fn parse_obj_bytes(bytes: &[u8]) -> Result<ObjDocument, ObjError> {
     })
 }
 
-pub fn parse_obj_geometry(bytes: &[u8]) -> Result<crate::geometry::RenderMesh, ObjError> {
+pub fn parse_obj_geometry(bytes: &[u8], max_triangles: u64) -> Result<crate::geometry::RenderMesh, ObjError> {
     let text = std::str::from_utf8(bytes)
         .map_err(|_| ObjError::Parse("not valid ASCII/UTF-8 OBJ text".to_string()))?;
-    let (vertices, triangles) = parser::parse(text)?;
+    let (vertices, triangles) = parser::parse_with_triangle_limit(text, Some(max_triangles))?;
     let normals = crate::geometry::compute_flat_normals(&vertices, &triangles);
     let positions: Vec<[f32; 3]> = vertices
         .iter()
@@ -91,7 +91,7 @@ f 2 7 6
 
     #[test]
     fn parse_obj_geometry_returns_a_render_mesh_with_normals() {
-        let mesh = parse_obj_geometry(CUBE_OBJ.as_bytes()).unwrap();
+        let mesh = parse_obj_geometry(CUBE_OBJ.as_bytes(), 3_000_000).unwrap();
         assert_eq!(mesh.positions.len(), 8);
         assert_eq!(mesh.indices.len(), 12);
         assert!(mesh.normals.is_some());

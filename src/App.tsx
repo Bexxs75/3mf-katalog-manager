@@ -555,6 +555,8 @@ export default function App() {
               imported={fileImport.importBanner.imported}
               duplicates={fileImport.importBanner.duplicates}
               skipped={fileImport.importBanner.skipped}
+              otherFilesExtracted={fileImport.importBanner.otherFilesExtracted}
+              jobHasProblems={fileImport.importBanner.jobHasProblems}
               onClose={fileImport.dismissImportBanner}
             />
           )}

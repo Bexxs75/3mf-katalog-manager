@@ -9,6 +9,8 @@ interface Props {
   imported: number;
   duplicates: number;
   archives?: ArchiveOutcome[];
+  otherFilesExtracted?: number;
+  jobHasProblems?: boolean;
   skipped?: SkippedFile[];
   onClose: () => void;
 }
@@ -26,12 +28,12 @@ function fileName(path: string) {
   return path.split(/[\\/]/).pop() ?? path;
 }
 
-export function ImportSummaryBanner({ imported, duplicates, archives, skipped, onClose }: Props) {
+export function ImportSummaryBanner({ imported, duplicates, archives, skipped, otherFilesExtracted = 0, jobHasProblems = false, onClose }: Props) {
   const t = useT();
   const formatCount = useFormatCount();
 
   const lines: { key: string; text: string; unexpected?: boolean }[] = [];
-  let hasProblems = false;
+  let hasProblems = jobHasProblems;
   for (const reason of ['empty', 'invalid', 'failed'] as SkipReason[]) {
     const names = (skipped ?? []).filter((s) => s.reason === reason).map((s) => displayName(fileName(s.path)));
     if (names.length === 0) continue;
@@ -50,12 +52,10 @@ export function ImportSummaryBanner({ imported, duplicates, archives, skipped, o
     const existing = archives.reduce((sum, a) => sum + a.existingSkipped, 0);
     const unsafe = archives.reduce((sum, a) => sum + a.unsafeSkipped, 0);
     const blocked = archives.reduce((sum, a) => sum + a.blockedSkipped, 0);
-    const otherFiles = archives.reduce((sum, a) => sum + a.otherFilesExtracted, 0);
     const deleted = archives.filter((a) => a.archiveDeleted).length;
     if (existing > 0) lines.push({ key: 'existing', text: formatCount(t('archiveSummaryExistingSkipped'), existing) });
     if (unsafe > 0) lines.push({ key: 'unsafe', text: formatCount(t('archiveSummaryUnsafeSkipped'), unsafe) });
     if (blocked > 0) lines.push({ key: 'blocked', text: formatCount(t('archiveSummaryBlockedSkipped'), blocked) });
-    if (otherFiles > 0) lines.push({ key: 'otherFiles', text: formatCount(t('archiveSummaryOtherFiles'), otherFiles) });
     if (deleted > 0) lines.push({ key: 'deleted', text: formatCount(t('archiveSummaryDeleted'), deleted) });
     for (const a of archives) {
       if (a.strippedRoot) {
@@ -77,6 +77,9 @@ export function ImportSummaryBanner({ imported, duplicates, archives, skipped, o
       }
     }
   }
+
+  const otherFiles = otherFilesExtracted + (archives ?? []).reduce((sum, a) => sum + a.otherFilesExtracted, 0);
+  if (otherFiles > 0) lines.push({ key: 'otherFiles', text: formatCount(t('archiveSummaryOtherFiles'), otherFiles) });
 
   // Error messages stay until they are dismissed - otherwise a failed
   // archive would disappear unnoticed after 5 s. The note about non-model files

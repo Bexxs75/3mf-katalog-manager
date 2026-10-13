@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import * as api from '../lib/api/importExport';
+import { countsWithArchiveModels } from '../lib/importCounts';
 import { toAppError } from '../lib/errors';
 import type { ArchiveInfo, ArchiveRequest, ImportJobResult, ImportProgress, ImportResultDto, ImportSource, SkippedFile, StartedImport } from '../types';
 
@@ -33,7 +34,7 @@ export function useFileImport(args: UseFileImportArgs) {
   const [error, setError] = useState<ReturnType<typeof toAppError> | null>(null);
   const [pendingArchives, setPendingArchives] = useState<ArchiveInfo[] | null>(null);
   // Setup still uses the legacy DTO and its summary.
-  const [importBanner, setImportBanner] = useState<{ imported: number; duplicates: number; skipped: SkippedFile[] } | null>(null);
+  const [importBanner, setImportBanner] = useState<{ imported: number; duplicates: number; skipped: SkippedFile[]; otherFilesExtracted?: number; jobHasProblems?: boolean } | null>(null);
   const mergeImported = useCallback((value: ImportResultDto) => {
     latest.current.onImported(value);
     if (value.duplicateCount || value.skipped?.length) setImportBanner({ imported: value.imported.length, duplicates: value.duplicateCount, skipped: value.skipped ?? [] });
@@ -59,6 +60,15 @@ export function useFileImport(args: UseFileImportArgs) {
     setLastJob({ meta: lastMeta.current, progress: { ...(job?.progress ?? initialProgress(value.jobId)), state: value.state, counts: value.counts, scanComplete: value.scanComplete, archivesSkipped: value.archivesSkipped, inFlight: 0 } });
     jobs.current.delete(value.jobId); setResult(value); persist();
     latest.current.refreshFiles(); latest.current.refreshFolders();
+    const archives = value.groups.archive.filter(a => a.state !== 'pending');
+    if (archives.length || value.source === 'archive') {
+      const otherFilesExtracted = archives.reduce((sum, a) => sum + a.otherFilesExtracted, 0);
+      const counts = countsWithArchiveModels(value.counts, value.groups);
+      // Detailed archive outcomes stay in the result dialog; the banner adds only
+      // the location hint, but must remain visible when the job has problems.
+      const jobHasProblems = value.state !== 'finished' || !!value.jobError || counts.skipped > 0 || counts.importedNotPlaced > 0 || archives.some(a => a.state === 'failed' || !!a.error || !!a.deleteError || a.existingSkipped > 0 || a.unsafeSkipped > 0 || a.blockedSkipped > 0);
+      setImportBanner(otherFilesExtracted > 0 ? {imported: counts.imported + counts.importedNotPlaced, duplicates: counts.duplicate, skipped: [], otherFilesExtracted, jobHasProblems} : null);
+    }
     const paths = value.groups.archive.filter(a => a.state === 'pending').map(a => a.path);
     if (!paths.length) return;
     try {

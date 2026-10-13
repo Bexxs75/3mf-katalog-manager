@@ -1,5 +1,9 @@
+import { createElement } from 'react';
+import { ImportSummaryBanner } from '../components/ImportSummaryBanner';
+import { LanguageProvider } from '../i18n/LanguageContext';
+import { importResult } from '../test/importFixtures';
 import { beforeEach, expect, it, vi } from 'vitest';
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, render, screen, renderHook, waitFor } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import { useFileImport } from './useFileImport';
 import type { ImportJobResult, ImportProgress } from '../types';
@@ -142,4 +146,56 @@ it('imports folder contents into the catalog root from all models', async () => 
   const { result } = renderHook(() => useFileImport({ enabled: true, catalogBaseDir: '/base', activeFolderId: 'all', rootFolderId: 'root', onImported: vi.fn(), refreshFiles: vi.fn(), refreshFolders: vi.fn() }));
   await act(async () => result.current.importFolderContents());
   expect(invoke).toHaveBeenCalledWith('start_import', { source: 'folderContents', targetFolderId: 'root' });
+});
+
+function ImportBannerHarness() {
+  const fileImport = useFileImport({enabled: true, catalogBaseDir: '/base', activeFolderId: 'all', onImported: vi.fn(), refreshFiles: vi.fn(), refreshFolders: vi.fn()});
+  return fileImport.importBanner && createElement(ImportSummaryBanner, {...fileImport.importBanner, onClose: fileImport.dismissImportBanner});
+}
+
+it.each([0, 2])('renders the archive job result in the banner with %s other files', async otherFilesExtracted => {
+  localStorage.setItem('3mf-katalog-language', 'de');
+  render(createElement(LanguageProvider, null, createElement(ImportBannerHarness)));
+  const archive = importResult.groups.archive[1];
+  if (archive.state === 'pending') throw new Error('expected completed fixture');
+  const value: ImportJobResult = {...finished(), source: 'archive', groups: {...finished().groups, archive: [{...archive, otherFilesExtracted, unsafeSkipped: 0, models: {imported: [], skipped: [], duplicates: []}}]}};
+  await act(async () => events.handlers['import://finished']({payload: value}));
+  if (otherFilesExtracted) expect(screen.getByText(/2 weitere Dateien wurden entpackt/)).toBeVisible();
+  else expect(screen.queryByText(/weitere Dateien wurden entpackt/)).not.toBeInTheDocument();
+});
+
+it.each([false, true])('keeps an archive hint for 15 seconds, or until dismissed with problems (%s)', jobHasProblems => {
+  vi.useFakeTimers();
+  try {
+    localStorage.setItem('3mf-katalog-language', 'de');
+    render(createElement(LanguageProvider, null, createElement(ImportBannerHarness)));
+    const archive = importResult.groups.archive[1];
+    if (archive.state === 'pending') throw new Error('expected completed fixture');
+    const clean = {...archive, unsafeSkipped: 0, models: {imported: [], skipped: [], duplicates: []}};
+    const value: ImportJobResult = {...finished(), source: 'archive', groups: {...finished().groups, archive: [
+      {...clean, otherFilesExtracted: 1, archiveDeleted: true, deleteError: jobHasProblems ? 'delete denied' : null},
+      {...clean, path: '/second.zip', otherFilesExtracted: 2},
+    ]}};
+    act(() => events.handlers['import://finished']({payload: value}));
+    expect(screen.getByText(/3 weitere Dateien wurden entpackt/)).toBeVisible();
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+    act(() => vi.advanceTimersByTime(14999));
+    expect(screen.getByText(/3 weitere Dateien wurden entpackt/)).toBeVisible();
+    act(() => vi.advanceTimersByTime(1));
+    expect(!!screen.queryByText(/3 weitere Dateien wurden entpackt/)).toBe(jobHasProblems);
+  } finally { vi.useRealTimers(); }
+});
+
+it('recovers an archive hint through the result query after start_archive_import', async () => {
+  localStorage.setItem('3mf-katalog-language', 'de');
+  const archive = importResult.groups.archive[1];
+  if (archive.state === 'pending') throw new Error('expected completed fixture');
+  const value: ImportJobResult = {...finished(), jobId: 'archive-job', source: 'archive', parentJobId: 'j1', groups: {...finished().groups, archive: [{...archive, otherFilesExtracted: 2}]}};
+  vi.mocked(invoke).mockImplementation(async cmd => cmd === 'inspect_archives' ? [{path: '/gut.zip', status: 'ok'}] : cmd === 'start_archive_import' ? {jobId: 'archive-job'} : cmd === 'get_import_state' ? progress('archive-job', 'finished') : cmd === 'get_import_result' ? value : null);
+  const {result} = setup();
+  await act(async () => events.handlers['import://finished']({payload: {...finished(), groups: {...finished().groups, archive: [{path: '/gut.zip', state: 'pending', grantId: 'g'}]}}}));
+  await act(async () => result.current.startArchives('/target', [{path: '/gut.zip', folderName: 'gut', onConflict: 'new', expectedSize: 1, expectedModifiedUnixMs: 1}], false));
+  expect(result.current.importBanner).not.toBeNull();
+  render(createElement(LanguageProvider, null, createElement(ImportSummaryBanner, {...result.current.importBanner!, onClose: result.current.dismissImportBanner})));
+  expect(screen.getByText(/2 weitere Dateien wurden entpackt/)).toBeVisible();
 });

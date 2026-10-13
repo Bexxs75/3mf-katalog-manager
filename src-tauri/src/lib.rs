@@ -25,23 +25,31 @@ use std::sync::Mutex;
 use tauri::Manager;
 
 /// Opens everything startup needs from disk. Failures are returned with the offending
-/// path so the user can be told what to fix; existing data is never touched on the way out.
+/// path so the user can be told what to fix. Folder checks precede catalog writes;
+/// opening the catalog can migrate it before a later database operation fails.
 fn open_storage(
     app: &tauri::App,
 ) -> Result<(rusqlite::Connection, bool, std::path::PathBuf, std::path::PathBuf), startup_error::StartupFailure> {
     use startup_error::{StartupFailure, StartupStage};
     let app_data_dir = app.path().app_data_dir()
         .map_err(|e| StartupFailure::new(StartupStage::DataFolder, std::path::Path::new(""), e))?;
-    std::fs::create_dir_all(&app_data_dir)
-        .map_err(|e| StartupFailure::new(StartupStage::DataFolder, &app_data_dir, e))?;
-    harden_permissions(&app_data_dir);
+    open_storage_at(&app_data_dir)
+}
+
+fn open_storage_at(
+    app_data_dir: &std::path::Path,
+) -> Result<(rusqlite::Connection, bool, std::path::PathBuf, std::path::PathBuf), startup_error::StartupFailure> {
+    use startup_error::{StartupFailure, StartupStage};
+    std::fs::create_dir_all(app_data_dir)
+        .map_err(|e| StartupFailure::new(StartupStage::DataFolder, app_data_dir, e))?;
+    harden_permissions(app_data_dir);
+    let trash_dir = app_data_dir.join("trash");
+    std::fs::create_dir_all(&trash_dir)
+        .map_err(|e| StartupFailure::new(StartupStage::TrashFolder, &trash_dir, e))?;
     let db_path = app_data_dir.join("catalog.db");
     let (conn, backup_failed) = db::connect_with_warning(&db_path)
         .map_err(|e| StartupFailure::new(StartupStage::Catalog, &db_path, e))?;
     harden_permissions(&db_path);
-    let trash_dir = app_data_dir.join("trash");
-    std::fs::create_dir_all(&trash_dir)
-        .map_err(|e| StartupFailure::new(StartupStage::TrashFolder, &trash_dir, e))?;
     Ok((conn, backup_failed, db_path, trash_dir))
 }
 
@@ -108,7 +116,7 @@ pub fn run() {
     }
     let context = tauri::generate_context!();
     let mut log_builder = tauri_plugin_log::Builder::new().clear_targets();
-    for kind in log_target::resolve_log_targets(&context.config().identifier) {
+    for kind in log_target::resolve_log_targets(&context.config().identifier, &context.package_info().name) {
         log_builder = log_builder.target(tauri_plugin_log::Target::new(kind));
     }
     builder
