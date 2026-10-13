@@ -131,7 +131,9 @@ export function AutocompleteInput({
         style={inputStyle}
       />
       {open && filtered.length > 0 && (
-        <div id={listId} role="listbox" aria-label={listAriaLabel} className="absolute z-40 top-full left-0 right-0 mt-1 max-h-[220px] overflow-y-auto bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)]">
+        // A press on the list's scrollbar or padding must not move focus away from the input:
+        // the blur would close the list before it can be scrolled (engines that blur on scrollbar presses).
+        <div id={listId} role="listbox" aria-label={listAriaLabel} onMouseDown={(e) => e.preventDefault()} className="absolute z-40 top-full left-0 right-0 mt-1 max-h-[220px] overflow-y-auto bg-[var(--panel)] border border-[var(--line)] rounded-[3px] shadow-[var(--shadow)]">
           {filtered.map((option, i) => (
             <div
               key={option}
