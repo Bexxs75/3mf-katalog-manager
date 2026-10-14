@@ -1,0 +1,5 @@
+#!/command/with-contenv /bin/sh
+set -eu
+# Open the container log streams before dropping root privileges.
+exec > /proc/1/fd/1 2> /proc/1/fd/2
+exec env -u PASSWORD /command/s6-setuidgid abc /usr/local/libexec/3mf-session

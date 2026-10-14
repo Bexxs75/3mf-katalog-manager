@@ -1,0 +1,13 @@
+#!/bin/bash
+set -eu
+export HOME=/config
+export DISPLAY=${DISPLAY:-:1}
+umask "${UMASK:-022}"
+# Service startup does not imply that X is already accepting clients.
+until xdpyinfo >/dev/null 2>&1; do
+    sleep 2 &
+    child=$!
+    trap 'kill "$child" 2>/dev/null || :; wait "$child" 2>/dev/null || :; exit 0' TERM INT
+    wait "$child" || :
+done
+exec /usr/local/libexec/3mf-supervise /run/3mf /usr/local/bin/3mf-katalog

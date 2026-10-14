@@ -1,0 +1,142 @@
+name: Docker image
+
+# Builds the browser-desktop image from the AppImage of a published release.
+# Stable tags (v1.2.3) publish 1.2.3, 1.2 and latest. Release candidates
+# (v1.2.3-4) publish 1.2.3-4 and the moving tag rc; they never touch latest.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Published release tag, e.g. v0.16.0 or v0.16.0-2"
+        required: true
+        type: string
+      publish:
+        description: "Push the image to ghcr.io (off: build and test only)"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# One run per release tag; an image push is never interrupted half way.
+concurrency:
+  group: docker-image-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  # Pinned so a changed upstream tag cannot alter a release build unnoticed.
+  BASE_IMAGE: ghcr.io/linuxserver/baseimage-kasmvnc@sha256:c6d902c207d6e4a66ca41ce36dda549cd58a5bc8d353468b24b0cf780eb528c8
+
+jobs:
+  image:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (!github.event.release.draft && startsWith(github.event.release.tag_name, 'v'))
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      # The Dockerfile and the smoke test come from the default branch, so older
+      # tags without a docker/ folder can still get an image.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Resolve the release
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_PUBLISH: ${{ inputs.publish }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          TAG="$RELEASE_TAG"
+          PUBLISH=true
+          if [[ "$EVENT_NAME" == workflow_dispatch ]]; then TAG="$INPUT_TAG"; PUBLISH="$INPUT_PUBLISH"; fi
+          [[ "$TAG" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)(-([0-9]+))?$ ]] || { echo "Invalid release tag: $TAG"; exit 1; }
+          MAJOR_MINOR="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+          VERSION="${TAG#v}"
+          RC=false
+          [[ -n "${BASH_REMATCH[4]}" ]] && RC=true
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease,assets > release.json
+          [[ "$(jq -r .isDraft release.json)" == false ]] || { echo "Release $TAG is still a draft"; exit 1; }
+          # A prerelease must be an RC tag and a stable tag must not be a prerelease.
+          [[ "$(jq -r .isPrerelease release.json)" == "$RC" ]] || { echo "Tag $TAG and the prerelease flag disagree"; exit 1; }
+          # Prefer the variant with the STEP preview when a release ships both.
+          ASSET="$(jq -r '[.assets[].name | select(test("Linux-x86_64(-STEP)?\\.AppImage$"))] | sort | (map(select(test("-STEP\\.AppImage$"))) + .)[0] // empty' release.json)"
+          [[ -n "$ASSET" ]] || { echo "No Linux x86_64 AppImage in $TAG"; exit 1; }
+          mkdir -p dl
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$ASSET" --dir dl
+          SHA256="$(sha256sum "dl/$ASSET" | cut -d' ' -f1)"
+          rm -rf dl
+          IMAGE="ghcr.io/${OWNER,,}/3mf-katalog-manager"
+          if [[ "$RC" == true ]]; then
+            TAGS="$IMAGE:$VERSION"$'\n'"$IMAGE:rc"
+          else
+            TAGS="$IMAGE:$VERSION"$'\n'"$IMAGE:$MAJOR_MINOR"$'\n'"$IMAGE:latest"
+          fi
+          {
+            echo "version=$VERSION"
+            echo "publish=$PUBLISH"
+            echo "sha256=$SHA256"
+            echo "url=https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$ASSET"
+            echo "tags<<EOT"
+            echo "$TAGS"
+            echo "EOT"
+          } >> "$GITHUB_OUTPUT"
+          echo "Image for $TAG from $ASSET (publish: $PUBLISH)"
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Build the candidate image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: docker
+          load: true
+          tags: candidate:test
+          build-args: |
+            BASE_IMAGE=${{ env.BASE_IMAGE }}
+            APP_URL=${{ steps.release.outputs.url }}
+            APP_VERSION=${{ steps.release.outputs.version }}
+            APP_SHA256=${{ steps.release.outputs.sha256 }}
+          cache-to: type=gha,mode=max,scope=docker-image
+          cache-from: type=gha,scope=docker-image
+
+      - name: Smoke-test the candidate
+        run: bash docker/scripts/ci-smoke.sh candidate:test
+
+      - name: Log in to ghcr.io
+        if: steps.release.outputs.publish == 'true'
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Push the image
+        if: steps.release.outputs.publish == 'true'
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: docker
+          push: true
+          tags: ${{ steps.release.outputs.tags }}
+          build-args: |
+            BASE_IMAGE=${{ env.BASE_IMAGE }}
+            APP_URL=${{ steps.release.outputs.url }}
+            APP_VERSION=${{ steps.release.outputs.version }}
+            APP_SHA256=${{ steps.release.outputs.sha256 }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.release.outputs.version }}
+          provenance: true
+          sbom: true
+          cache-from: type=gha,scope=docker-image
