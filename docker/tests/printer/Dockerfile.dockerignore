@@ -1,0 +1,10 @@
+**
+!src-tauri/
+!src-tauri/**
+src-tauri/target/
+src-tauri/target/**
+!LICENSE
+!THIRD-PARTY-LICENSES.md
+!src/
+!src/lib/
+!src/lib/autoTags.json

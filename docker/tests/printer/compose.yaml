@@ -1,0 +1,27 @@
+services:
+  moonraker:
+    build:
+      context: ../../..
+      dockerfile: docker/tests/printer/Dockerfile
+    environment:
+      PRINTER_FIXTURE_SERVER: "1"
+      TZ: UTC
+    command: ["--ignored", "--exact", "printer_link::fake_moonraker::serve_container_fixture", "--nocapture"]
+    networks: [printer-test]
+  client:
+    build:
+      context: ../../..
+      dockerfile: docker/tests/printer/Dockerfile
+    environment:
+      PRINTER_FIXTURE_CLIENT: "1"
+      THREEMF_CONTAINER: "1"
+      TZ: Pacific/Honolulu
+    command: ["--ignored", "--exact", "printer_link::fake_moonraker::container_network_smoke", "--nocapture"]
+    depends_on: [moonraker]
+    networks: [printer-test]
+networks:
+  printer-test:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.29.251.0/24
