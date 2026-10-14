@@ -57,6 +57,20 @@ grep -q 'WARNUNG / WARNING' "$tmp/no-auth" || fail 'No-auth warning missing'
 run_auth CUSTOM_USER=other > "$tmp/custom"
 [[ $(cat "$tmp/env/CUSTOM_USER") == other ]] || fail 'Custom user with generated password'
 [[ $(cat "$tmp/env/PASSWORD") == "$password" ]] || fail 'Authentication not restored'
+for invalid in '0123456789abcdef unsafe' '0123456789abcdef%' '0123456789abcdef' "${password}0" "g${password:1}" $'0123456789abcdef\nunsafe'; do
+    printf '%s\n' "$invalid" > "$tmp/config/.kasmvnc-password"
+    cp "$tmp/config/.kasmvnc-password" "$tmp/before"
+    if run_auth > "$tmp/invalid-saved" 2>&1; then fail 'Invalid saved password accepted'; fi
+    cmp "$tmp/before" "$tmp/config/.kasmvnc-password" || fail 'Invalid saved password changed'
+    [[ $(cat "$tmp/env/PASSWORD") == "$password" ]] || fail 'Invalid saved password changed s6'
+    ! grep -Fq "$invalid" "$tmp/invalid-saved" || fail 'Invalid saved password leaked'
+done
+printf '%s\0' "$password" > "$tmp/config/.kasmvnc-password"
+cp "$tmp/config/.kasmvnc-password" "$tmp/before"
+if run_auth > "$tmp/invalid-saved" 2>&1; then fail 'NUL in saved password accepted'; fi
+cmp "$tmp/before" "$tmp/config/.kasmvnc-password" || fail 'Binary password file changed'
+printf '%s\n' "$password" > "$tmp/config/.kasmvnc-password"
+printf 'OK: invalid saved passwords rejected without modifying credentials\n'
 mv "$tmp/config/.kasmvnc-password" "$tmp/saved"
 ln -s "$tmp/saved" "$tmp/config/.kasmvnc-password"
 if run_auth > "$tmp/symlink" 2>&1; then fail 'Password symlink accepted'; fi

@@ -5,19 +5,26 @@
 > **Noch instabil:** Die Docker-Version läuft, kann aber noch Fehler enthalten und sich ändern. Rückmeldungen über [GitHub-Issues](https://github.com/bexxs75/3mf-katalog-manager/issues) sind willkommen.
 
 Ein Browser-Desktop für die Linux-AppImage, für x86_64/amd64. Benötigt Docker
-mit Docker Compose. Diese Dateien sind statisch und mit lokalen Skripttests
-geprüft; Image-Bau und Start sind noch nicht gegen das echte Basisimage geprüft.
-Das offizielle GHCR-Image wird erst mit dem separaten Veröffentlichungspaket
-bereitgestellt. Bis dahin ist ein lokaler Bau mit einem konkreten App-Artefakt nötig.
+mit Docker Compose. Der Workflow `.github/workflows/docker-image.yml` baut das
+GHCR-Image aus einer veröffentlichten Linux-x86_64-AppImage. Vor dem Push prüft
+er lokale Skripte, Python-Unit-Tests sowie Start und Anmeldung am gebauten Image.
+Veröffentlicht wird exakt dieser getestete Kandidat, ohne erneuten Build.
+Ein erfolgreicher Workflow-Lauf ist der Nachweis für das jeweilige Image.
 
 ### Start
+
+`.env.example` und der Compose-Fallback verwenden `latest`. **Bis zum ersten
+stabilen Image-Release muss `IMAGE_TAG=rc` oder eine konkrete veröffentlichte
+Version ohne `v` gesetzt werden.** `latest` folgt nur der höchsten veröffentlichten
+stabilen Version; `MAJOR.MINOR` folgt nur der höchsten stabilen Version seiner
+Reihe. RC-Versionen veröffentlichen ihre konkrete Version und `rc`.
 
 Im Verzeichnis `docker/`:
 
 ```bash
 cp .env.example .env
 mkdir -p config models
-# .env bearbeiten: PUID/PGID nach `id -u` und `id -g`, TZ und MODELS_DIR setzen.
+# .env bearbeiten: IMAGE_TAG, PUID/PGID nach `id -u` und `id -g`, TZ und MODELS_DIR setzen.
 docker compose up -d
 docker compose logs 3mf-katalog
 ```
@@ -49,7 +56,9 @@ mit `-` beginnen. `CUSTOM_USER` erlaubt ausschließlich `A-Z`, `a-z`, `0-9`,
 `.`, `_`, `-`, ebenfalls ohne führendes `-`. Ungültige Werte brechen den
 Containerstart mit einer Fehlermeldung ab, auch bei `ALLOW_NO_AUTH=true`.
 Leere Werte verwenden weiterhin die Vorgaben; erzeugte Passwörter bleiben
-48 Hex-Zeichen lang. Die Einschränkungen verhindern, dass das Basisimage
+48 Hex-Zeichen lang. Eine ungültige gespeicherte Passwortdatei bricht bei
+Wiederverwendung den Start ab und bleibt unverändert. Zum Beheben die Datei löschen (neues Passwort wird erzeugt) oder `PASSWORD` setzen.
+Die Einschränkungen verhindern, dass das Basisimage
 Zugangsdaten beim Einrichten der Anmeldung verändert.
 
 ### Lokaler Bau
@@ -70,8 +79,12 @@ Es gibt bewusst keinen Standarddownload der alten, veränderlichen Preview aus
 dem Prototyp. URL und Version müssen zusammenpassen. `BASE_IMAGE` lässt sich
 auf einen Tag oder Digest festlegen; Vorgabe ist
 `ghcr.io/linuxserver/baseimage-kasmvnc:ubuntunoble`. Dieser Tag ist beweglich und
-kann bei einem späteren Bau auf ein anderes Basisimage zeigen. Digest-Pinning und
-Artefakt-Herkunft/Prüfsummen werden im separaten CI-Paket festgelegt.
+kann bei einem späteren Bau auf ein anderes Basisimage zeigen. Der Release-Workflow
+pinnt dagegen das Basisimage per SHA256-Digest und berechnet die SHA256-Prüfsumme
+des Release-Downloads; der Dockerfile prüft sie beim erneuten Download über
+`APP_SHA256`. Das ist ein Konsistenzcheck, keine unabhängige Herkunftsbestätigung.
+Das Revision-Label nennt den ausgecheckten Quellcommit vom Standardbranch,
+das Versionslabel die App-Version. Der Push erzeugt keine SBOM-/Provenance-Attestierungen.
 Der Download und das Entpacken erfolgen in einer eigenen Build-Stufe. `curl`
 wird der finalen Stufe nicht hinzugefügt; eine vom Basisimage bereits mitgebrachte
 Installation wird nicht entfernt.
@@ -285,12 +298,11 @@ Nginx-Proxy mit an. Den internen Port nicht am Host veröffentlichen.
 Build-Kennungen bekommen andere Datenordner. Der angenommene Linux-Pfad unter
 `/config/.local/share` ist **nicht gegen das echte Image geprüft**.
 
-Die neue Nginx-Einbindung (zwei Server-Blöcke für 3000/3001, `conf.d` im
-HTTP-Kontext), die Ausnahme `auth_basic off` und der s6-Dienstaufbau sind
-**nicht gegen das echte Image geprüft**. Der Bau bricht bei fehlenden
-Template-Ankern ab. `bash docker/tests/katalog-web.sh IMAGE` prüft diese
-Integration danach mit frischem Test-Volume, einschließlich Anmeldung auf
-beiden Ports, signiertem Download und Dienstneustart. Das Skript erzeugt
+Der Bau prüft die Nginx-Template-Anker und den s6-Dienstaufbau und bricht bei
+fehlenden Ankern ab. Der Workflow führt `bash docker/tests/katalog-web.sh IMAGE`
+vor dem Push gegen den Kandidaten aus. Ein frisches Test-Volume prüft auf beiden
+Ports GET/POST ohne Login für `/katalog/`, `/katalog/upload` und `/katalog/remove`
+(401), signierte Downloads ohne Login sowie den Dienstneustart. Das Skript erzeugt
 Testdaten und ein zufälliges Passwort und räumt den Testcontainer wieder auf.
 Lokale Unit-Tests öffnen keine Netzwerkverbindungen. ZIP-Sammeldownload
 (Stufe B) ist noch nicht enthalten.
@@ -341,19 +353,26 @@ Nutzt du einen `/config`-Ordner des früheren Prototyps weiter, lösche vorher `
 > **Still unstable:** The Docker version works, but may still contain bugs and change. Feedback via [GitHub Issues](https://github.com/bexxs75/3mf-katalog-manager/issues) is welcome.
 
 A browser desktop for the Linux AppImage, targeting x86_64/amd64. Requires Docker
-and Docker Compose. These files have static and local script checks only;
-the image build and startup have **not been checked against the real base image**.
-The official GHCR image will be supplied by the separate publishing package.
-Until then, build locally using a specific app artifact.
+and Docker Compose. The workflow `.github/workflows/docker-image.yml` builds the
+GHCR image from a published Linux-x86_64 AppImage. Before pushing, it checks local
+scripts, Python unit tests, startup and authentication against the built image.
+It publishes exactly that tested candidate, without rebuilding.
+A successful workflow run provides the evidence for each image.
 
 ### Start
+
+`.env.example` and the Compose fallback use `latest`. **Until the first stable
+image release, set `IMAGE_TAG=rc` or a specific published version without `v`.**
+`latest` follows only the highest published stable version; `MAJOR.MINOR` follows
+only the highest stable version in its series. RC releases publish their specific
+version and `rc`.
 
 From `docker/`:
 
 ```bash
 cp .env.example .env
 mkdir -p config models
-# Edit .env: set PUID/PGID from `id -u` / `id -g`, TZ and MODELS_DIR.
+# Edit .env: set IMAGE_TAG, PUID/PGID from `id -u` / `id -g`, TZ and MODELS_DIR.
 docker compose up -d
 docker compose logs 3mf-katalog
 ```
@@ -382,7 +401,9 @@ or any of `*`, `?`, `[`, `:`, `%`, `\`, and must not start with `-`.
 `CUSTOM_USER` allows only `A-Z`, `a-z`, `0-9`, `.`, `_`, `-`, also without a
 leading `-`. Invalid values abort container startup with an error, even with
 `ALLOW_NO_AUTH=true`. Empty values still use the defaults; generated passwords
-remain 48 hex characters long. These restrictions prevent the base image from
+remain 48 hex characters long. An invalid saved password file aborts startup
+when reused and remains unchanged. To recover, delete the file (a new password is generated) or set `PASSWORD`.
+These restrictions prevent the base image from
 altering credentials when setting up authentication.
 
 ### Local build
@@ -401,8 +422,12 @@ docker compose up -d --no-build
 There is deliberately no default download of the prototype's old mutable preview.
 URL and version must match. `BASE_IMAGE` accepts a tag or digest; the default is
 `ghcr.io/linuxserver/baseimage-kasmvnc:ubuntunoble`. This tag is mutable and can
-point to a different base image on a later build. Digest pinning and artifact
-provenance/checksums belong to the separate CI package. Download and extraction
+point to a different base image on a later build. The release workflow instead
+pins the base image by SHA256 digest and computes the release download's SHA256;
+the Dockerfile checks it on the second download through `APP_SHA256`. This checks
+consistency, not independent provenance. The revision label records the checked-out
+source commit from the default branch; the version label records the app version.
+The push does not generate SBOM/provenance attestations. Download and extraction
 use a separate build stage. The final stage does not add `curl`; any copy already
 included upstream is retained.
 
@@ -606,11 +631,11 @@ also adjusts the nginx proxy. Do not publish this internal port on the host.
 build identifiers use different data folders. The assumed Linux path below
 `/config/.local/share` has **not been checked against the real image**.
 
-The new nginx integration (two server blocks for 3000/3001, `conf.d` in the HTTP
-context), the `auth_basic off` exception and the s6 service layout have **not
-been checked against the real image**. Missing template anchors fail the build.
-Run `bash docker/tests/katalog-web.sh IMAGE` afterwards to check integration
-using a fresh test volume, including login on both ports, signed downloads and
+The build checks nginx template anchors and the s6 service layout; missing
+anchors fail the build. Before pushing, the workflow runs
+`bash docker/tests/katalog-web.sh IMAGE` against the candidate. A fresh test volume
+checks unauthenticated GET/POST on `/katalog/`, `/katalog/upload` and
+`/katalog/remove` (401) on both ports, signed downloads without login and
 service restart. The script creates test data and a random password and removes
 the test container afterwards. Local unit tests make no network connections.
 ZIP batch download (stage B) is not included yet.

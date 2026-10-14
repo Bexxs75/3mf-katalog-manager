@@ -579,7 +579,7 @@ def remember_origin(base):
 
 
 def filename(row):
-    name = ''.join(c for c in str(row['name']) if unicodedata.category(c) != 'Cc')
+    name = ''.join(c for c in str(row['name']) if not unicodedata.category(c).startswith('C'))
     name = name.replace('/', '_').replace('\\', '_') or 'model'
     return name
 

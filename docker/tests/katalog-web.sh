@@ -74,12 +74,12 @@ class Links(HTMLParser):
 context = ssl._create_unverified_context()
 opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=context))
 auth = 'Basic ' + base64.b64encode(('abc:' + os.environ['PASSWORD']).encode()).decode()
-def fetch(url, expected, login=False, extra=None):
+def fetch(url, expected, login=False, extra=None, method="GET"):
     headers = dict(extra or {})
     if login:
         headers['Authorization'] = auth
     try:
-        response = opener.open(urllib.request.Request(url, headers=headers), timeout=10)
+        response = opener.open(urllib.request.Request(url, headers=headers, method=method), timeout=10)
     except urllib.error.HTTPError as error:
         response = error
     with response:
@@ -90,7 +90,9 @@ def fetch(url, expected, login=False, extra=None):
 for scheme, port in [('http', sys.argv[1]), ('https', sys.argv[2])]:
     base = f'{scheme}://127.0.0.1:{port}'
     fetch(base + '/', 401)
-    fetch(base + '/katalog/', 401)
+    for path in ('/katalog/', '/katalog/upload', '/katalog/remove'):
+        for method in ('GET', 'POST'):
+            fetch(base + path, 401, method=method)
     fetch(base + '/katalog/download/1', 401)
     page, _ = fetch(base + '/katalog/', 200, True)
     parser = Links()

@@ -1,3 +1,5 @@
 .env
 config/
 models/
+__pycache__/
+*.pyc

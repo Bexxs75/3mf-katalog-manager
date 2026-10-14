@@ -50,6 +50,12 @@ class WebTests(unittest.TestCase):
             raise AssertionError('The catalog companion service must exist')
         cls.web = load_web()
 
+    def test_filename_removes_all_unicode_control_categories(self):
+        for control in ('\u202e', '\x00', '\ud800', '\ue000', '\u0378'):
+            with self.subTest(control=repr(control)):
+                self.assertEqual(self.web.filename({'name': 'Körper' + control + '.3mf'}), 'Körper.3mf')
+        self.assertEqual(self.web.filename({'name': '\u202e'}), 'model')
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

@@ -45,8 +45,12 @@ else
     fi
     if [ -e "$password_file" ]; then
         password=$(cat "$password_file")
-        if [ "${#password}" -lt 16 ]; then
-            printf 'FEHLER / ERROR: Gespeichertes Passwort zu kurz / Saved password too short.\n' >&2
+        validate_credential 'Saved password' "$password"
+        # Keep damaged credentials intact so an operator can recover them explicitly.
+        bytes=$(wc -c < "$password_file")
+        if ! LC_ALL=C grep -IEq '^[0-9a-f]{48}$' "$password_file" ||
+            { [ "$bytes" -ne 48 ] && [ "$bytes" -ne 49 ]; }; then
+            printf 'FEHLER / ERROR: Ungültiges gespeichertes Passwort: 48 Hex-Zeichen erwartet; Datei löschen für ein neues Passwort oder PASSWORD setzen / Invalid saved password: expected 48 hex characters; delete the file for a new password or set PASSWORD.\n' >&2
             exit 1
         fi
         secure_file "$password_file"
