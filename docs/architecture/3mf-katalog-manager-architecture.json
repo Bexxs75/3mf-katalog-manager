@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "3MF Katalog Manager — Architektur v0.16.0-1 (Release Candidate)",
+    "title": "3MF Katalog Manager — Architektur v0.16.0-11 (Release Candidate)",
     "output": "docs/architecture/3mf-katalog-manager-architecture.html",
     "quality_profile": "showcase",
     "locale": "de",
@@ -435,141 +435,98 @@
       "url": "https://github.com/Bexxs75/3mf-katalog-manager.git",
       "provider": "github",
       "link_mode": "local-only",
-      "revision": "103d40c379be183a367cc41da5cc6683375c5ca3"
+      "revision": "6827a6a2cbf39a505257526235e3b856dc5a94f5"
     }
   },
   "components": [
     {
-      "id": "user",
-      "type": "external",
-      "label": "Nutzer",
-      "sublabel": "Desktop-Fenster",
-      "pos": [
-        40,
-        330
-      ],
-      "size": [
-        130,
-        64
-      ]
-    },
-    {
-      "id": "frontend",
-      "type": "frontend",
-      "label": "React-Frontend",
-      "sublabel": "React 19 · Printer- & Material-Manager",
-      "pos": [
-        270,
-        330
-      ],
-      "size": [
-        200,
-        64
-      ],
-      "sources": [
-        {
-          "path": "package.json",
-          "line": 18,
-          "end_line": 23
-        },
-        {
-          "path": "src/components/PrinterManagerView.tsx",
-          "line": 38
-        },
-        {
-          "path": "src/components/FilamentView.tsx",
-          "line": 53
-        }
-      ]
-    },
-    {
-      "id": "preview3d",
-      "type": "frontend",
-      "label": "3D-Live-Vorschau",
-      "sublabel": "three.js · Plattenwahl · WebGL-Fallback",
-      "pos": [
-        270,
-        110
-      ],
-      "size": [
-        200,
-        64
-      ],
-      "sources": [
-        {
-          "path": "src/components/ModelViewer.tsx",
-          "line": 6
-        },
-        {
-          "path": "src/components/ModelViewer.tsx",
-          "line": 84,
-          "end_line": 88
-        },
-        {
-          "path": "src/components/PlateSelector.tsx",
-          "line": 4
-        }
-      ]
-    },
-    {
-      "id": "commands",
+      "id": "release",
       "type": "backend",
-      "label": "Tauri-Commands",
-      "sublabel": "IPC-Bridge · 19 Rust-Module",
+      "label": "release.yml",
+      "sublabel": "Build · E2E · Signatur",
       "pos": [
-        700,
-        330
+        200,
+        60
       ],
       "size": [
-        220,
+        170,
         64
       ],
       "sources": [
         {
-          "path": "src-tauri/src/commands/mod.rs",
+          "path": ".github/workflows/release.yml",
+          "line": 48
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "line": 84
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "line": 93
+        }
+      ]
+    },
+    {
+      "id": "rc",
+      "type": "backend",
+      "label": "rc-channel.yml",
+      "sublabel": "latest-rc.json im Release rc",
+      "pos": [
+        470,
+        60
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": ".github/workflows/rc-channel.yml",
+          "line": 70
+        },
+        {
+          "path": ".github/workflows/rc-channel.yml",
+          "line": 75
+        }
+      ]
+    },
+    {
+      "id": "dockerci",
+      "type": "backend",
+      "label": "docker-image.yml",
+      "sublabel": "AppImage → Image → Push",
+      "pos": [
+        740,
+        60
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": ".github/workflows/docker-image.yml",
+          "line": 83
+        },
+        {
+          "path": "docker/scripts/ci-smoke.sh",
           "line": 1
         },
         {
-          "path": "src-tauri/src/commands/mod.rs",
-          "line": 5,
-          "end_line": 24
-        },
-        {
-          "path": "src-tauri/src/commands/catalog_removal.rs",
-          "line": 135,
-          "end_line": 147
+          "path": ".github/workflows/docker-image.yml",
+          "line": 134
         }
       ]
     },
     {
-      "id": "sqlite",
-      "type": "database",
-      "label": "SQLite-Katalog",
-      "sublabel": "rusqlite · Sicherung vor Migration",
-      "pos": [
-        1130,
-        330
-      ],
-      "size": [
-        170,
-        64
-      ],
-      "sources": [
-        {
-          "path": "src-tauri/src/db/repository.rs",
-          "line": 17,
-          "end_line": 22
-        }
-      ]
-    },
-    {
-      "id": "website",
+      "id": "ghcr",
       "type": "external",
-      "label": "3mfkatalog.de",
-      "sublabel": "Fehlerformular im Browser",
+      "label": "ghcr.io",
+      "sublabel": "rc-Tag getrennt von latest",
       "pos": [
-        510,
-        110
+        1010,
+        60
       ],
       "size": [
         170,
@@ -577,14 +534,8 @@
       ],
       "sources": [
         {
-          "path": "src-tauri/src/commands/diagnostics.rs",
-          "line": 220,
-          "end_line": 223
-        },
-        {
-          "path": "src-tauri/src/diagnostics/form_url.rs",
-          "line": 27,
-          "end_line": 39
+          "path": ".github/workflows/docker-image.yml",
+          "line": 134
         }
       ]
     },
@@ -592,13 +543,13 @@
       "id": "github",
       "type": "external",
       "label": "GitHub Releases",
-      "sublabel": "Updates signiert · Stable & Preview",
+      "sublabel": "signiert · Stable · RC",
       "pos": [
-        705,
-        110
+        470,
+        200
       ],
       "size": [
-        210,
+        170,
         64
       ],
       "sources": [
@@ -608,14 +559,188 @@
           "end_line": 14
         },
         {
-          "path": "src-tauri/src/commands/updater.rs",
-          "line": 42,
-          "end_line": 48
+          "path": "src-tauri/src/updater/mod.rs",
+          "line": 61,
+          "end_line": 69
+        }
+      ]
+    },
+    {
+      "id": "user",
+      "type": "external",
+      "label": "Nutzer",
+      "sublabel": "Desktop-Fenster",
+      "pos": [
+        20,
+        490
+      ],
+      "size": [
+        100,
+        64
+      ]
+    },
+    {
+      "id": "frontend",
+      "type": "frontend",
+      "label": "React-Frontend",
+      "sublabel": "React 19 · 4 Sprachen",
+      "pos": [
+        200,
+        490
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "package.json",
+          "line": 23
         },
         {
+          "path": "src/App.tsx",
+          "line": 71
+        },
+        {
+          "path": "src/i18n/LanguageContext.tsx",
+          "line": 11
+        }
+      ]
+    },
+    {
+      "id": "preview3d",
+      "type": "frontend",
+      "label": "3D-Vorschau",
+      "sublabel": "three.js · Plattenwahl",
+      "pos": [
+        200,
+        350
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/components/ModelViewer.tsx",
+          "line": 145
+        },
+        {
+          "path": "src/components/PlateSelector.tsx",
+          "line": 8
+        },
+        {
+          "path": "src/lib/webglAvailability.ts",
+          "line": 5
+        }
+      ]
+    },
+    {
+      "id": "commands",
+      "type": "backend",
+      "label": "Tauri-Commands",
+      "sublabel": "IPC · 23 Module",
+      "pos": [
+        470,
+        490
+      ],
+      "size": [
+        170,
+        80
+      ],
+      "sources": [
+        {
+          "path": "src-tauri/src/commands/mod.rs",
+          "line": 1,
+          "end_line": 46
+        },
+        {
+          "path": "src-tauri/src/commands/mod.rs",
+          "line": 65
+        },
+        {
+          "path": "src-tauri/src/lib.rs",
+          "line": 244
+        }
+      ]
+    },
+    {
+      "id": "updater",
+      "type": "backend",
+      "label": "Update-Dienst",
+      "sublabel": "Stable/RC · Sicherung",
+      "pos": [
+        470,
+        350
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
           "path": "src-tauri/src/commands/updater.rs",
-          "line": 126,
-          "end_line": 129
+          "line": 217
+        },
+        {
+          "path": "src-tauri/src/updater/backup.rs",
+          "line": 39
+        },
+        {
+          "path": "src-tauri/src/updater/mod.rs",
+          "line": 61
+        }
+      ]
+    },
+    {
+      "id": "diag",
+      "type": "backend",
+      "label": "Diagnose & Logdatei",
+      "sublabel": "anonymisiert · Export",
+      "pos": [
+        740,
+        350
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src-tauri/src/log_target.rs",
+          "line": 66
+        },
+        {
+          "path": "src-tauri/src/diagnostics/anonymize.rs",
+          "line": 54
+        },
+        {
+          "path": "src-tauri/src/diagnostics/verbose.rs",
+          "line": 20
+        }
+      ]
+    },
+    {
+      "id": "website",
+      "type": "external",
+      "label": "3mfkatalog.de",
+      "sublabel": "Fehlerformular im Browser",
+      "pos": [
+        1010,
+        350
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src-tauri/src/diagnostics/form_url.rs",
+          "line": 27
+        },
+        {
+          "path": "src-tauri/src/commands/diagnostics.rs",
+          "line": 225
         }
       ]
     },
@@ -623,49 +748,159 @@
       "id": "slicer",
       "type": "external",
       "label": "Installierter Slicer",
-      "sublabel": "Bambu Studio · Orca · Creality Print u. a.",
+      "sublabel": "Bambu · Orca · Creality u. a.",
       "pos": [
-        1000,
-        110
+        740,
+        490
       ],
       "size": [
-        200,
+        170,
         64
       ],
       "sources": [
         {
           "path": "src-tauri/src/slicers.rs",
-          "line": 26,
-          "end_line": 27
+          "line": 503
         },
         {
           "path": "src-tauri/src/commands/slicers.rs",
-          "line": 124,
-          "end_line": 132
+          "line": 127
         }
       ]
     },
     {
-      "id": "printer",
-      "type": "external",
-      "label": "3D-Drucker im Heimnetz",
-      "sublabel": "Klipper/Moonraker · nur lesend",
+      "id": "start",
+      "type": "backend",
+      "label": "Start & Fehlerdialog",
+      "sublabel": "Fenster erst nach Prüfung",
       "pos": [
-        270,
-        550
+        200,
+        630
       ],
       "size": [
-        200,
+        170,
         64
       ],
       "sources": [
         {
-          "path": "src-tauri/src/printer_link/moonraker.rs",
+          "path": "src-tauri/src/lib.rs",
+          "line": 39
+        },
+        {
+          "path": "src-tauri/src/startup_error.rs",
+          "line": 137
+        },
+        {
+          "path": "src-tauri/src/startup.rs",
+          "line": 41
+        }
+      ]
+    },
+    {
+      "id": "sqlite",
+      "type": "database",
+      "label": "SQLite-Katalog",
+      "sublabel": "Migration · Sicherung",
+      "pos": [
+        470,
+        630
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src-tauri/src/db/repository.rs",
+          "line": 21
+        },
+        {
+          "path": "src-tauri/src/db/migrations.rs",
+          "line": 136
+        },
+        {
+          "path": "src-tauri/src/db/schema.sql",
+          "line": 122
+        }
+      ]
+    },
+    {
+      "id": "importer",
+      "type": "backend",
+      "label": "Importdienst",
+      "sublabel": "Queue · Abbruch · Savepoint",
+      "pos": [
+        740,
+        630
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src-tauri/src/commands/import_jobs.rs",
+          "line": 385
+        },
+        {
+          "path": "src-tauri/src/commands/import_jobs_worker.rs",
           "line": 1
         },
         {
-          "path": "src-tauri/src/printer_link/address.rs",
-          "line": 72
+          "path": "src-tauri/src/commands/files.rs",
+          "line": 1405
+        }
+      ]
+    },
+    {
+      "id": "disksync",
+      "type": "backend",
+      "label": "Disk-Sync",
+      "sublabel": "neu/fehlend abgleichen",
+      "pos": [
+        1010,
+        630
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src-tauri/src/commands/disk_sync.rs",
+          "line": 709
+        },
+        {
+          "path": "src-tauri/src/commands/disk_sync.rs",
+          "line": 719
+        }
+      ]
+    },
+    {
+      "id": "psync",
+      "type": "backend",
+      "label": "Drucker-Sync",
+      "sublabel": "Hintergrund-Thread · Buchung",
+      "pos": [
+        200,
+        770
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src-tauri/src/printer_link/sync.rs",
+          "line": 142
+        },
+        {
+          "path": "src-tauri/src/printer_link/booking.rs",
+          "line": 1
+        },
+        {
+          "path": "src-tauri/src/commands/printer_link.rs",
+          "line": 416
         }
       ]
     },
@@ -675,28 +910,25 @@
       "label": "Datei-Parser",
       "sublabel": "3MF · STL · OBJ · STEP",
       "pos": [
-        710,
-        550
+        740,
+        770
       ],
       "size": [
-        200,
+        170,
         64
       ],
       "sources": [
         {
           "path": "src-tauri/src/threemf/mod.rs",
-          "line": 1,
-          "end_line": 6
+          "line": 36
+        },
+        {
+          "path": "src-tauri/src/stl/mod.rs",
+          "line": 17
         },
         {
           "path": "src-tauri/src/step/mod.rs",
-          "line": 1,
-          "end_line": 5
-        },
-        {
-          "path": "src-tauri/src/commands/files.rs",
-          "line": 806,
-          "end_line": 806
+          "line": 99
         }
       ]
     },
@@ -704,83 +936,279 @@
       "id": "filesystem",
       "type": "external",
       "label": "Lokales Dateisystem",
-      "sublabel": "Modelle · Backup · Logdateien",
+      "sublabel": "Modelle · Archive · Backups",
       "pos": [
-        1000,
-        550
+        1010,
+        770
       ],
       "size": [
-        200,
+        170,
         64
       ],
       "sources": [
         {
-          "path": "src-tauri/src/commands/files.rs",
-          "line": 1442
+          "path": "src-tauri/src/safe_file.rs",
+          "line": 18
         },
         {
-          "path": "src-tauri/src/updater/backup.rs",
-          "line": 14,
-          "end_line": 28
-        },
-        {
-          "path": "src-tauri/src/lib.rs",
-          "line": 88,
-          "end_line": 92
+          "path": "src-tauri/src/commands/disk_sync.rs",
+          "line": 1
         }
       ]
     },
     {
-      "id": "importer",
-      "type": "backend",
-      "label": "Importdienst",
-      "sublabel": "Warteschlange · Abbruch · Savepoints",
+      "id": "printer",
+      "type": "external",
+      "label": "3D-Drucker im Heimnetz",
+      "sublabel": "Moonraker · nur lesend",
       "pos": [
-        710,
-        440
+        200,
+        910
       ],
       "size": [
-        200,
+        170,
         64
       ],
       "sources": [
         {
-          "path": "src-tauri/src/commands/import_jobs.rs",
-          "line": 89,
-          "end_line": 98
+          "path": "src-tauri/src/printer_link/moonraker.rs",
+          "line": 1
         },
         {
-          "path": "src-tauri/src/commands/import_jobs.rs",
-          "line": 544,
-          "end_line": 553
+          "path": "src-tauri/src/printer_link/address.rs",
+          "line": 14
+        }
+      ]
+    },
+    {
+      "id": "browser",
+      "type": "external",
+      "label": "Browser",
+      "sublabel": "Zugriff",
+      "pos": [
+        20,
+        1130
+      ],
+      "size": [
+        100,
+        64
+      ]
+    },
+    {
+      "id": "nginx",
+      "type": "security",
+      "label": "nginx (Login)",
+      "sublabel": "Zugang · Routen /katalog/",
+      "pos": [
+        200,
+        1130
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "docker/root/etc/nginx/3mf-katalog.conf",
+          "line": 18
         },
         {
-          "path": "src-tauri/src/commands/files.rs",
-          "line": 1374
+          "path": "docker/root/etc/nginx/3mf-katalog.conf",
+          "line": 28
+        },
+        {
+          "path": "docker/root/usr/local/libexec/3mf-auth",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "kasm",
+      "type": "frontend",
+      "label": "KasmVNC",
+      "sublabel": "X-Display :1 · Port 3000/3001",
+      "pos": [
+        470,
+        1130
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "docker/Dockerfile",
+          "line": 64
+        },
+        {
+          "path": "docker/docker-compose.yml",
+          "line": 22
+        },
+        {
+          "path": "docker/root/usr/local/libexec/3mf-session",
+          "line": 13
+        }
+      ]
+    },
+    {
+      "id": "appc",
+      "type": "backend",
+      "label": "App im Container",
+      "sublabel": "THREEMF_CONTAINER=1",
+      "pos": [
+        740,
+        1130
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "docker/root/usr/local/bin/3mf-katalog",
+          "line": 9
+        },
+        {
+          "path": "src-tauri/src/commands/runtime_environment.rs",
+          "line": 30
+        },
+        {
+          "path": "src-tauri/src/commands/runtime_environment.rs",
+          "line": 34
+        }
+      ]
+    },
+    {
+      "id": "web",
+      "type": "backend",
+      "label": "3mf-katalog-web",
+      "sublabel": "lesend · signierte Links",
+      "pos": [
+        200,
+        1270
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "docker/root/usr/local/libexec/3mf-katalog-web",
+          "line": 820
+        },
+        {
+          "path": "docker/root/usr/local/libexec/3mf-katalog-web",
+          "line": 1427
+        },
+        {
+          "path": "docker/root/usr/local/libexec/3mf-katalog-web",
+          "line": 24
+        }
+      ]
+    },
+    {
+      "id": "vol",
+      "type": "database",
+      "label": "Volumes",
+      "sublabel": "/config · /models · catalog.db",
+      "pos": [
+        740,
+        1270
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "docker/docker-compose.yml",
+          "line": 25
+        },
+        {
+          "path": "docker/Dockerfile",
+          "line": 78
         }
       ]
     }
   ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Release-Kette (GitHub Actions)",
+      "wraps": [
+        "release",
+        "rc",
+        "dockerci",
+        "ghcr"
+      ],
+      "pad": 16
+    },
+    {
+      "kind": "region",
+      "label": "Docker-Container (3mf-katalog-manager)",
+      "wraps": [
+        "nginx",
+        "kasm",
+        "appc",
+        "web",
+        "vol"
+      ],
+      "pad": 16
+    }
+  ],
   "connections": [
+    {
+      "id": "release-github",
+      "from": "release",
+      "to": "github",
+      "label": "Entwurf",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "left"
+    },
+    {
+      "id": "rc-github",
+      "from": "rc",
+      "to": "github",
+      "label": "Verweis RC"
+    },
+    {
+      "id": "github-dockerci",
+      "from": "github",
+      "to": "dockerci",
+      "label": "AppImage laden",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "bottom"
+    },
+    {
+      "id": "dockerci-ghcr",
+      "from": "dockerci",
+      "to": "ghcr",
+      "label": "pusht"
+    },
+    {
+      "id": "updater-github",
+      "from": "updater",
+      "to": "github",
+      "label": "prüft & lädt",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
     {
       "id": "user-frontend",
       "from": "user",
       "to": "frontend",
-      "label": "öffnet App",
+      "label": "bedient",
       "variant": "emphasis"
     },
     {
       "id": "frontend-commands",
       "from": "frontend",
       "to": "commands",
-      "label": "invoke() · IPC",
+      "label": "invoke()",
       "variant": "emphasis"
-    },
-    {
-      "id": "commands-sqlite",
-      "from": "commands",
-      "to": "sqlite",
-      "label": "Katalog · Filament · Drucker"
     },
     {
       "id": "frontend-preview3d",
@@ -789,82 +1217,219 @@
       "label": "rendert Modell"
     },
     {
-      "id": "commands-website",
+      "id": "commands-updater",
       "from": "commands",
-      "to": "website",
-      "label": "öffnet Fehlerformular",
-      "variant": "dashed"
+      "to": "updater",
+      "label": "Update-Befehle",
+      "fromSide": "top",
+      "toSide": "bottom"
     },
     {
-      "id": "commands-github",
+      "id": "commands-diag",
       "from": "commands",
-      "to": "github",
-      "label": "prüft & lädt Update",
+      "to": "diag",
+      "label": "Log",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "diag-website",
+      "from": "diag",
+      "to": "website",
+      "label": "Formular",
       "variant": "dashed"
     },
     {
       "id": "commands-slicer",
       "from": "commands",
       "to": "slicer",
-      "label": "startet extern",
+      "label": "startet",
       "variant": "dashed"
     },
     {
-      "id": "commands-printer",
+      "id": "commands-sqlite",
       "from": "commands",
-      "to": "printer",
-      "label": "liest Druckhistorie",
-      "variant": "dashed"
-    },
-    {
-      "id": "commands-filesystem",
-      "from": "commands",
-      "to": "filesystem",
-      "label": "Import · Backup · Logs"
+      "to": "sqlite",
+      "label": "Katalog"
     },
     {
       "id": "commands-importer",
       "from": "commands",
       "to": "importer",
-      "label": "startet Import-Auftrag",
+      "label": "Import-Auftrag",
       "fromSide": "bottom",
-      "toSide": "top"
+      "toSide": "top",
+      "via": [
+        [
+          555,
+          612
+        ],
+        [
+          825,
+          612
+        ]
+      ]
+    },
+    {
+      "id": "commands-disksync",
+      "from": "commands",
+      "to": "disksync",
+      "label": "Abgleich",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          555,
+          596
+        ],
+        [
+          1095,
+          596
+        ]
+      ]
+    },
+    {
+      "id": "start-sqlite",
+      "from": "start",
+      "to": "sqlite",
+      "label": "öffnet"
+    },
+    {
+      "id": "importer-sqlite",
+      "from": "importer",
+      "to": "sqlite",
+      "label": "speichert",
+      "fromSide": "left",
+      "toSide": "right"
     },
     {
       "id": "importer-parser",
       "from": "importer",
       "to": "parser",
-      "label": "parst & entpackt",
+      "label": "parst · entpackt",
       "fromSide": "bottom",
       "toSide": "top"
+    },
+    {
+      "id": "parser-filesystem",
+      "from": "parser",
+      "to": "filesystem",
+      "label": "liest"
+    },
+    {
+      "id": "disksync-filesystem",
+      "from": "disksync",
+      "to": "filesystem",
+      "label": "scannt Ordner",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "start-psync",
+      "from": "start",
+      "to": "psync",
+      "label": "startet Thread",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "psync-sqlite",
+      "from": "psync",
+      "to": "sqlite",
+      "label": "Druckaufträge",
+      "fromSide": "right",
+      "toSide": "bottom"
+    },
+    {
+      "id": "psync-printer",
+      "from": "psync",
+      "to": "printer",
+      "label": "liest Verlauf",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "browser-nginx",
+      "from": "browser",
+      "to": "nginx",
+      "label": "HTTP(S)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "nginx-kasm",
+      "from": "nginx",
+      "to": "kasm",
+      "label": "Stream"
+    },
+    {
+      "id": "appc-kasm",
+      "from": "appc",
+      "to": "kasm",
+      "label": "zeichnet",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "nginx-web",
+      "from": "nginx",
+      "to": "web",
+      "label": "/katalog/ → :8099",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "web-vol",
+      "from": "web",
+      "to": "vol",
+      "label": "liest (ro)",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "appc-vol",
+      "from": "appc",
+      "to": "vol",
+      "label": "schreibt Katalog",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "web-browser",
+      "from": "web",
+      "to": "browser",
+      "label": "Slicer-Link · Download",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "bottom"
     }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "Frontend",
+      "title": "Desktop-App",
       "items": [
-        "React 19 + TypeScript + Tailwind im Tauri-WebView; Schriften lokal gebündelt",
-        "Neu: Printer Manager (Drucker, Materialeinheiten, Verbindung) und Material Manager als eigene Ansichten; Import mit Fortschritt und Abbrechen",
-        "3D-Vorschau mit Plattenwahl für 3MF-Dateien; ohne WebGL eine Fehlermeldung statt Absturz"
+        "Ein Tauri-2-Prozess: React-WebView ruft Rust-Commands per invoke(); Fortschritt kommt als Event import://progress zurück",
+        "Neu seit 0.15: Printer Manager, Material Manager, Sammlungen, Lizenzen, Druckstatus-Filter, Disk-Sync, Import mit Fortschritt und Abbruch",
+        "Der Start öffnet zuerst Datenordner und Katalog; scheitert das, zeigt ein nativer Dialog den Pfad und die App beendet sich, ohne ein Fenster zu erzeugen"
       ]
     },
     {
       "dot": "emerald",
-      "title": "Backend & Persistenz",
+      "title": "Persistenz & Dienste",
       "items": [
-        "19 fachliche Rust-Module; neu: Importdienst mit Warteschlange, Abbruch und Savepoints je Datei",
-        "Native Parser für 3MF/STL/OBJ, STEP über OCCT (ein Paket pro System); sie laufen im Import und direkt für die 3D-Vorschau; Archive werden entpackt",
-        "Ein SQLite-Katalog; vor jeder Schema-Migration und jedem Update eine Sicherungskopie"
+        "Ein SQLite-Katalog; vor Schema-Migration und vor jedem Update entsteht eine Sicherungskopie",
+        "Import: Auftragswarteschlange, Abbruch, ein Savepoint je Datei; Parser für 3MF, STL, OBJ und STEP (STEP nur mit dem Feature step-preview)",
+        "Logdatei über tauri-plugin-log (rotierend); Export und Fehlerformular anonymisieren Pfade vorher"
       ]
     },
     {
       "dot": "amber",
-      "title": "Lokal-first, drei Wege nach außen",
+      "title": "Docker & Release-Kette",
       "items": [
-        "Updates von GitHub, mit Signatur geprüft; latest.json und latest-step.json zeigen auf dieselben Pakete",
-        "Druckeranbindung nur im Heimnetz und nur lesend (Klipper/Moonraker); Bambu und OctoPrint folgen später",
-        "„Fehler melden“ öffnet 3mfkatalog.de; die Logdatei wird vorher anonymisiert"
+        "Container: nginx schützt den Zugang, KasmVNC zeigt die unveränderte App (THREEMF_CONTAINER=1: Slicer, Dateimanager und Updater abgeschaltet), 3mf-katalog-web liefert die lesende Begleitseite",
+        "release.yml baut Windows/macOS/Linux, führt E2E aus, signiert und legt einen Entwurf an; rc-channel.yml pflegt latest-rc.json; docker-image.yml baut das Image aus dem veröffentlichten AppImage",
+        "Nicht gezeigt: ci-checks.yml, preview.yml, Discord-/Bluesky-Hinweise, Roadmap-Sync"
       ]
     }
   ]
