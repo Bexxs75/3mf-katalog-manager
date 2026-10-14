@@ -143,16 +143,29 @@ fn map_create_folder_error(error: std::io::Error, path: &Path) -> CmdError {
     }
 }
 
+pub(super) fn comparison_path(path: &Path) -> PathBuf {
+    // Windows Path components already recognize both separator spellings.
+    #[cfg(windows)]
+    { PathBuf::from(path.to_string_lossy().to_lowercase()) }
+    #[cfg(not(windows))]
+    { path.to_path_buf() }
+}
+
+fn reject_catalog_root_relocation(conn: &Connection, path: &Path) -> CmdResult<()> {
+    let Some(base) = db::printer_link::get_setting(conn, SETTING_CATALOG_BASE_DIR)? else {
+        return Ok(());
+    };
+    let base = resolve_path_for_sensitivity_check(Path::new(&base))?;
+    let source = resolve_path_for_sensitivity_check(path)?;
+    // Relocating an ancestor also invalidates the persisted import destination.
+    if comparison_path(&base).starts_with(comparison_path(&source)) {
+        return Err(CmdError::expected("Der Katalog-Stammordner und seine übergeordneten Ordner können nicht verschoben oder umbenannt werden."));
+    }
+    Ok(())
+}
+
 // Pure component comparison; callers resolve existing filesystem paths first.
 fn find_catalog_parent(path: &Path, folders: &[db::models::FolderRecord]) -> Option<i64> {
-    fn comparison_path(path: &Path) -> PathBuf {
-        // Windows Path components already recognize both separator spellings.
-        #[cfg(windows)]
-        { PathBuf::from(path.to_string_lossy().to_lowercase()) }
-        #[cfg(not(windows))]
-        { path.to_path_buf() }
-    }
-
     let path = comparison_path(path);
     folders.iter()
         .filter_map(|folder| {
@@ -176,6 +189,7 @@ fn rename_folder_with_conn(
     let folder = folders.iter().find(|f| f.id == id).ok_or_else(|| "folder not found".to_string())?.clone();
 
     let old_path = std::path::PathBuf::from(&folder.path);
+    reject_catalog_root_relocation(conn, &old_path)?;
     let new_path = old_path.with_file_name(&name);
     let expanded = expand_sensitive_dirs(sensitive_dirs);
     archives::check_managed_location(&old_path, &expanded)?;
@@ -259,6 +273,7 @@ fn move_folder_with_conn(
     let target = Some(target);
 
     let old_path = std::path::PathBuf::from(&folder.path);
+    reject_catalog_root_relocation(conn, &old_path)?;
     let name = old_path.file_name().ok_or_else(|| "invalid folder path".to_string())?;
     let new_path = std::path::PathBuf::from(&new_parent_path).join(name);
     let expanded = expand_sensitive_dirs(sensitive_dirs);
@@ -652,6 +667,35 @@ pub fn create_catalog_dir(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn configured_root_and_ancestors_cannot_be_moved_or_renamed() {
+        for ancestor in [false, true] {
+            for rename in [false, true] {
+                let dir = unique_test_dir("catalog_root_protection");
+                let parent = dir.join("parent");
+                let root = parent.join("catalog");
+                let target = dir.join("target");
+                std::fs::create_dir_all(&root).unwrap();
+                std::fs::create_dir_all(&target).unwrap();
+                let conn = db::connect_in_memory().unwrap();
+                let source = if ancestor { &parent } else { &root };
+                let id = db::insert_folder_with_parent(&conn, "source", None, source.to_str().unwrap()).unwrap();
+                let target_id = db::insert_folder_with_parent(&conn, "target", None, target.to_str().unwrap()).unwrap();
+                db::printer_link::set_setting(&conn, SETTING_CATALOG_BASE_DIR, root.to_str().unwrap()).unwrap();
+                let result = if rename {
+                    rename_folder_with_conn(&conn, id, "renamed".into(), &[])
+                } else {
+                    move_folder_with_conn(&conn, id, Some(target_id), &[])
+                };
+                assert!(result.is_err(), "configured root must remain reachable");
+                assert!(root.is_dir());
+                assert_eq!(db::list_folders(&conn).unwrap().iter().find(|f| f.id == id).unwrap().path, source.to_str().unwrap());
+                assert_eq!(db::printer_link::get_setting(&conn, SETTING_CATALOG_BASE_DIR).unwrap().as_deref(), root.to_str());
+                std::fs::remove_dir_all(dir).unwrap();
+            }
+        }
+    }
 
     #[test]
     fn move_folder_uses_disk_basename_instead_of_display_name() {

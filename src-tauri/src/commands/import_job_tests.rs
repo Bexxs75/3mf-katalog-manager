@@ -689,3 +689,27 @@ fn archive_symlink_is_not_counted() {
     assert_eq!(result.counts.known, 0);
     assert_eq!(serde_json::to_value(result).unwrap()["archivesSkipped"], 0);
 }
+
+#[test]
+fn imports_files_already_in_placement_target_without_moving_them() {
+    for source in [ImportSource::Files, ImportSource::FolderContents] {
+        let fixture = Fixture::new();
+        let path = fixture.stl(1);
+        let bytes = std::fs::read(&path).unwrap();
+        let mut conn = db::connect_in_memory().unwrap();
+        let target = db::insert_folder_with_parent(&conn, "catalog", None, fixture.0.to_str().unwrap()).unwrap();
+        let service = ImportJobs::default();
+        let input = if matches!(source, ImportSource::Files) { path.clone() } else { fixture.0.clone() };
+        let job = service.enqueue(source, Some(target.to_string()), true, None).unwrap();
+        service.next().unwrap();
+        finish_models(&service, &job, &mut conn, &[input]);
+        let result = job.result().unwrap();
+        assert_eq!(result.counts.imported, 1);
+        assert_eq!(result.counts.imported_not_placed, 0);
+        let files = db::list_files(&conn).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].folder_id, Some(target));
+        assert_eq!(Path::new(&files[0].path), path);
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+}

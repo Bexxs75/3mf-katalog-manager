@@ -371,6 +371,11 @@ pub(super) fn move_file_to_folder_with_conn(
     let new_path = target_dir.join(name);
     reject_if_sensitive_path(&old_path, sensitive_dirs)?;
     reject_if_sensitive_path(&new_path, sensitive_dirs)?;
+    if folders::comparison_path(&old_path) == folders::comparison_path(&new_path) {
+        // Importing the target's own contents only needs a catalog assignment.
+        db::update_file_folder(conn, file_id, folder_id, &new_path.to_string_lossy())?;
+        return Ok(());
+    }
     move_file(&old_path, &new_path).map_err(|e| e.to_string())?;
 
     if let Err(db_err) =

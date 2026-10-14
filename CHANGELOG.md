@@ -59,6 +59,12 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- Select all (Ctrl/Cmd+A and "Select all") in an open collection now selects only the models shown there. Before, models outside the collection were selected too, so bulk actions such as delete or set license reached them.
+- After a bulk delete the list is reloaded from the catalog, so models whose deletion was skipped (for example for missing file permissions) stay visible instead of disappearing until the next refresh.
+- An open details page keeps source, slicer info, cost estimate and plate count when an import finishes; before they were missing until the model was opened again.
+- A changed default license on the details page now counts as an unsaved change and asks before "Next model" discards it.
+- A model that already sits in the import destination folder is now assigned to that folder instead of being reported as imported but not placed.
+- The catalog root folder and its parent folders can no longer be dragged elsewhere or renamed, which broke every later import ("target missing").
 - The tag list is up to date right after an import: suggestions in "Add tag" no longer stay empty until you switch the view.
 - The "Remove tag" and "Add to collection" menus no longer run off the bottom of the window with very many entries; they scroll (mouse wheel, scrollbar, arrow keys).
 - Security: the dependencies `ruzstd` and `rustls` are updated to the versions fixing RUSTSEC-2026-0344, -0347, -0348 and -0349.
@@ -638,6 +644,12 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Behoben
 
+- „Alles auswählen“ (Strg/Cmd+A und die Schaltfläche) in einer geöffneten Sammlung wählt nur noch die dort angezeigten Modelle aus. Vorher wurden auch Modelle außerhalb der Sammlung gewählt, sodass Sammelaktionen wie Löschen oder Lizenz setzen sie mit trafen.
+- Nach dem Sammellöschen wird die Liste aus dem Katalog neu geladen: Modelle, deren Löschen übersprungen wurde (zum Beispiel wegen fehlender Dateirechte), bleiben sichtbar, statt bis zur nächsten Aktualisierung zu verschwinden.
+- Eine geöffnete Detailseite behält beim Ende eines Imports Quelle, Slicer-Info, Kostenschätzung und Plattenzahl; vorher fehlten sie, bis das Modell neu geöffnet wurde.
+- Eine geänderte Standardlizenz auf der Detailseite zählt jetzt als ungespeicherte Änderung und fragt nach, bevor „Nächstes Modell“ sie verwirft.
+- Ein Modell, das schon im Import-Zielordner liegt, wird diesem Ordner zugeordnet, statt als „importiert, aber nicht abgelegt“ gemeldet zu werden.
+- Der Katalog-Stammordner und seine übergeordneten Ordner lassen sich nicht mehr verschieben oder umbenennen; das machte jeden späteren Import unmöglich („Ziel fehlt“).
 - Die Tag-Liste ist nach einem Import sofort aktuell: Vorschläge unter „Tag hinzufügen“ bleiben nicht mehr leer, bis man die Ansicht wechselt.
 - Die Menüs „Tag entfernen“ und „Zu Sammlung hinzufügen“ laufen bei sehr vielen Einträgen nicht mehr unten aus dem Fenster, sondern scrollen (Mausrad, Balken, Pfeiltasten).
 - Sicherheit: die Abhängigkeiten `ruzstd` und `rustls` sind auf die Versionen mit den Korrekturen für RUSTSEC-2026-0344, -0347, -0348 und -0349 aktualisiert.
