@@ -69,9 +69,13 @@ interface CatalogStoreOptions {
   /** Select the first model after loading. Off when the details panel opens only on demand,
    *  otherwise it would appear at every start without anyone having clicked a model. */
   preselectFirst?: boolean;
+  detailModelId?: string | null;
 }
 
-export function useCatalogStore({ preselectFirst = true }: CatalogStoreOptions = {}) {
+export function useCatalogStore({ preselectFirst = true, detailModelId = null }: CatalogStoreOptions = {}) {
+  const loadGeneration = useRef(0);
+  const pendingFullLoads = useRef(new Map<string, number>());
+  const [refreshGeneration, setRefreshGeneration] = useState(0);
   const [initialLoading, setInitialLoading] = useState(true);
   const [initialLoadFailed, setInitialLoadFailed] = useState(false);
   const [models, setModels] = useState<ModelFile[]>([]);
@@ -124,11 +128,12 @@ export function useCatalogStore({ preselectFirst = true }: CatalogStoreOptions =
     }
     delete pendingMutationCounts[key];
     const epochAtResyncStart = mutationEpochs[key];
+    const generation = loadGeneration.current;
     try {
       const [fresh] = await filesApi.listFilesByIds([id]);
       // Only take it if no new mutation started during the await and no
       // newer resync has already taken a more current state.
-      if (fresh && pendingMutationCounts[key] === undefined && mutationEpochs[key] === epochAtResyncStart) {
+      if (fresh && generation === loadGeneration.current && pendingMutationCounts[key] === undefined && mutationEpochs[key] === epochAtResyncStart) {
         setModels((prev) => prev.map((m) => (m.id === id ? { ...m, ...fresh, hasThumbnail: fresh.thumbnailImage !== null, hasRenderSnapshot: fresh.renderSnapshotImage !== null } : m)));
       }
     } catch (e) {
@@ -157,8 +162,6 @@ export function useCatalogStore({ preselectFirst = true }: CatalogStoreOptions =
   // merge the tags in on the client (for tag filtering).
   const loadSummariesWithTags = useCallback(() => {
     return Promise.all([filesApi.listFileSummaries(), filesApi.listAllFileTags()]).then(([summaries, tagsByFileId]) => {
-      clearModelImages();
-      setSummaryConfirmedSnapshotIds(new Set(summaries.filter((s) => s.hasRenderSnapshot).map((s) => s.id)));
       return summaries.map((s) => ({ ...summaryToModelFile(s), tags: tagsByFileId[s.id] ?? [] }));
     });
   }, []);
@@ -166,8 +169,17 @@ export function useCatalogStore({ preselectFirst = true }: CatalogStoreOptions =
   // Loads only the slim summaries. Entries already upgraded are simply
   // loaded again on the next ensureFullModel().
   const refreshFiles = useCallback(() => {
-    setFullyLoadedIds(new Set());
-    return loadSummariesWithTags().then(mapped => { setModels(mapped); setInitialLoadFailed(false); });
+    const generation = ++loadGeneration.current;
+    return loadSummariesWithTags().then(mapped => {
+      if (generation !== loadGeneration.current) return;
+      clearModelImages();
+      setSummaryConfirmedSnapshotIds(new Set(mapped.filter(model => model.hasRenderSnapshot).map(model => model.id)));
+      setFullyLoadedIds(new Set());
+      setModels(mapped);
+      setInitialLoadFailed(false);
+      // Reads begun while summaries were loading are stale too.
+      setRefreshGeneration(++loadGeneration.current);
+    });
   }, [loadSummariesWithTags]);
   const refreshTags = useCallback(() => catalogMetaApi.listTagCounts().then(setTags), []);
   const refreshTrash = useCallback(() => filesApi.listTrash().then(setTrashModels), []);
@@ -177,13 +189,16 @@ export function useCatalogStore({ preselectFirst = true }: CatalogStoreOptions =
   const ensureFullModel = useCallback(
     (id: string) => {
       if (fullyLoadedIds.has(id) || !models.some((m) => m.id === id)) return;
+      const generation = loadGeneration.current;
+      if (pendingFullLoads.current.get(id) === generation) return;
+      pendingFullLoads.current.set(id, generation);
       // Epoch snapshot before the fetch: if a mutation including resync runs in
       // parallel, the then stale fetch result must not overwrite its value.
       const epochSnapshot = MUTATION_TRACKED_FIELDS.map(({ prefix }) => mutationEpochs[`${prefix}:${id}`]);
       filesApi
         .listFilesByIds([id])
         .then((full) => {
-          if (full.length === 0) return;
+          if (full.length === 0 || generation !== loadGeneration.current) return;
           setModels((prev) =>
             prev.map((m) => {
               if (m.id !== id) return m;
@@ -205,15 +220,27 @@ export function useCatalogStore({ preselectFirst = true }: CatalogStoreOptions =
         })
         .catch((e) => {
           console.error('[full-model] loading failed:', e);
+        }).finally(() => {
+          if (pendingFullLoads.current.get(id) === generation) pendingFullLoads.current.delete(id);
         });
     },
     [models, fullyLoadedIds],
   );
 
   useEffect(() => {
+    if (detailModelId) ensureFullModel(detailModelId);
+    if (refreshGeneration > 0 && selectedId && selectedId !== detailModelId) ensureFullModel(selectedId);
+    // Reload visible details when summaries replace full records, even if selection did not change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailModelId, refreshGeneration, initialLoading]);
+
+  useEffect(() => {
     let active = true;
+    const generation = loadGeneration.current;
     loadSummariesWithTags().then((mapped) => {
-      if (!active) return;
+      if (!active || generation !== loadGeneration.current) return;
+      clearModelImages();
+      setSummaryConfirmedSnapshotIds(new Set(mapped.filter(model => model.hasRenderSnapshot).map(model => model.id)));
       setModels(mapped);
       if (preselectFirst) {
         const first = mapped.find(m => !(isStepFilePath(m.path) && hasInterruptedPreviewAttempt(m.id)));
@@ -302,11 +329,12 @@ export function useCatalogStore({ preselectFirst = true }: CatalogStoreOptions =
   // reloads authoritatively instead of filtering locally.
   const refetchAfterPartialDelete = useCallback(
     (affectedIds: string[]) => {
-      refreshFiles();
+      const refreshed = refreshFiles();
       setSelectedId((prev) => (prev && affectedIds.includes(prev) ? null : prev));
       refreshFolders();
       refreshTags();
       refreshTrash();
+      return refreshed;
     },
     [refreshFiles, refreshFolders, refreshTags, refreshTrash],
   );

@@ -1,9 +1,15 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
+import { useFileImport } from './useFileImport';
+import { importResult } from '../test/importFixtures';
 import { useCatalogStore } from './useCatalogStore';
 import { makeModelFile, makeModelFileSummary } from '../test/factories';
 import * as filesApi from '../lib/api/files';
+
+const events = vi.hoisted(() => ({ handlers: {} as Record<string, (event: {payload: unknown}) => void> }));
+vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn((name, cb) => { events.handlers[name] = cb; return Promise.resolve(() => {}); }) }));
+vi.mock('@tauri-apps/api/webview', () => ({ getCurrentWebview: () => ({ onDragDropEvent: vi.fn().mockResolvedValue(() => {}) }) }));
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
@@ -263,7 +269,7 @@ describe('useCatalogStore', () => {
     // delete_files may have silently skipped individual IDs - the backend
     // still reports both models here, local filtering would have wrongly
     // removed m1.
-    act(() => result.current.refetchAfterPartialDelete(['m1']));
+    await act(async () => { await result.current.refetchAfterPartialDelete(['m1']); });
     await waitFor(() => expect(callCount('list_file_summaries')).toBe(2));
     expect(result.current.models.map((m) => m.id)).toEqual(['m1', 'm2']);
     expect(result.current.selectedId).toBeNull();
@@ -274,7 +280,7 @@ describe('useCatalogStore', () => {
     const { result } = renderHook(() => useCatalogStore());
     await waitFor(() => expect(result.current.models).toHaveLength(2));
     act(() => result.current.setSelectedId('m2'));
-    act(() => result.current.refetchAfterPartialDelete(['m1']));
+    await act(async () => { await result.current.refetchAfterPartialDelete(['m1']); });
     await waitFor(() => expect(callCount('list_file_summaries')).toBe(2));
     expect(result.current.selectedId).toBe('m2');
   });
@@ -905,4 +911,52 @@ it.each([false, true])('reconciles the latest failed snapshot save (newer finish
   expect(result.current.models[0].hasRenderSnapshot).toBe(false);
   expect(result.current.skippedSnapshotIds.has('m1')).toBe(true);
   expect(result.current.pendingSnapshotIds).toEqual([]);
+});
+
+it('reloads full detail and a different selection after import completion', async () => {
+  vi.mocked(filesApi.listFileSummaries).mockImplementation(() => invoke('list_file_summaries'));
+  vi.mocked(filesApi.listFilesByIds).mockImplementation(ids => invoke('list_files_by_ids', {ids}));
+  const fields = {sourceUrl: 'https://example.com/model', sliceInfo: {totalWeightG: 12, plates: []}, costEstimate: {totalCost: 3, hasUnpricedFilaments: false}, plateCount: 2};
+  mockInitialLoad([makeModelFile({id: 'detail', ...fields}), makeModelFile({id: 'selected', ...fields})]);
+  const {result} = renderHook(() => {
+    const store = useCatalogStore({preselectFirst: false, detailModelId: 'detail'});
+    useFileImport({enabled: true, catalogBaseDir: '/catalog', activeFolderId: 'all', onImported: store.mergeImported,
+      refreshFiles: store.refreshFiles, refreshFolders: store.refreshFolders, refreshTags: store.refreshTags});
+    return store;
+  });
+  await waitFor(() => expect(result.current.models).toHaveLength(2));
+  await act(async () => { result.current.ensureFullModel('detail'); result.current.selectModel('selected'); });
+  await act(async () => events.handlers['import://finished']({payload: {...importResult, groups: {...importResult.groups, archive: []}}}));
+  await waitFor(() => {
+    for (const model of result.current.models) expect(model).toMatchObject(fields);
+  });
+});
+
+it('ignores a detail response from before a summary refresh', async () => {
+  mockInitialLoad();
+  const {result} = renderHook(() => useCatalogStore({preselectFirst: false}));
+  await waitFor(() => expect(result.current.models).toHaveLength(1));
+  const old = createDeferred<ReturnType<typeof makeModelFile>[]>();
+  vi.mocked(filesApi.listFilesByIds).mockImplementationOnce(() => old.promise);
+  act(() => result.current.ensureFullModel('m1'));
+  await act(async () => { await result.current.refreshFiles(); });
+  await act(async () => { result.current.ensureFullModel('m1'); });
+  await act(async () => old.resolve([makeModelFile({id: 'm1', sourceUrl: 'stale'})]));
+  expect(result.current.models[0].sourceUrl).toBeNull();
+});
+
+it('ignores detail reads started during a pending summary refresh', async () => {
+  mockInitialLoad();
+  const {result} = renderHook(() => useCatalogStore({preselectFirst: false}));
+  await waitFor(() => expect(result.current.models).toHaveLength(1));
+  const summaries = createDeferred<ReturnType<typeof makeModelFileSummary>[]>();
+  const old = createDeferred<ReturnType<typeof makeModelFile>[]>();
+  vi.mocked(filesApi.listFileSummaries).mockImplementationOnce(() => summaries.promise);
+  vi.mocked(filesApi.listFilesByIds).mockImplementationOnce(() => old.promise);
+  let refresh!: Promise<void>;
+  act(() => { refresh = result.current.refreshFiles(); result.current.ensureFullModel('m1'); });
+  await act(async () => { summaries.resolve([makeModelFileSummary({id: 'm1'})]); await refresh; });
+  await act(async () => { result.current.ensureFullModel('m1'); });
+  await act(async () => { old.resolve([makeModelFile({id: 'm1', sourceUrl: 'stale-during-refresh'})]); });
+  expect(result.current.models[0].sourceUrl).toBeNull();
 });

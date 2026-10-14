@@ -40,6 +40,7 @@ import { useUiDensity } from './hooks/UiDensityContext';
 import { useSlicers } from './hooks/useSlicers';
 import { useDisplayPreference } from './hooks/useDisplayPreference';
 import { useCatalogBaseDir, useRegisterCatalogBaseDirOnStartup } from './hooks/useCatalogBaseDir';
+import { licenseUsage } from './lib/licenses';
 import { useCatalogStore } from './hooks/useCatalogStore';
 import { useCatalogFilters } from './hooks/useCatalogFilters';
 import { useCollections } from './hooks/useCollections';
@@ -68,7 +69,8 @@ export default function App() {
   const printerLink = usePrinterLink();
   const printers = usePrinters();
 
-  const store = useCatalogStore({ preselectFirst: detailPanel === 'pinned' });
+  const [detailModelId, setDetailModelId] = useState<string | null>(null);
+  const store = useCatalogStore({ detailModelId, preselectFirst: detailPanel === 'pinned' });
   useRegisterCatalogBaseDirOnStartup(catalogBaseDir, store.refreshFolders);
   const { language } = useLanguage();
   const filters = useCatalogFilters(store.models, store.folders, language);
@@ -76,7 +78,7 @@ export default function App() {
   const dragDrop = useFolderDragAndDrop(store.models, store.folders, {
     refreshFolders: store.refreshFolders,
     refreshFiles: store.refreshFiles,
-  }, collections);
+  }, collections, catalogBaseDir);
   const collapsedFolders = useCollapsedFolders();
   const expansion = useFolderExpansion();
   const sidebarWidth = useSidebarWidth();
@@ -122,6 +124,7 @@ export default function App() {
     refreshFolders: store.refreshFolders,
     refreshTags: store.refreshTags,
     refreshTrash: store.refreshTrash,
+    refetchAfterPartialDelete: store.refetchAfterPartialDelete,
     bulkAddToCollection: collections.bulkAddToCollection,
     bulkRemoveFromCollection: collections.bulkRemoveFromCollection,
   });
@@ -133,7 +136,6 @@ export default function App() {
   const update = useUpdater();
 
   const [setupDialogOpen, setSetupDialogOpen] = useState(!setupSeen);
-  const [detailModelId, setDetailModelId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number } | null>(null);
   const [confirmEmptyTrash, setConfirmEmptyTrash] = useState(false);
 
@@ -189,14 +191,19 @@ export default function App() {
   const detailModel = detailModelId ? store.models.find((m) => m.id === detailModelId) ?? null : null;
   const contextModel = contextMenu ? store.models.find((m) => m.id === contextMenu.modelId) ?? null : null;
 
-  useEffect(() => {
-    // Safety net: selectModel normally loads the full data already;
-    // ensureFullModel is idempotent.
-    if (detailModelId) store.ensureFullModel(detailModelId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detailModelId]);
-
-  const filteredIds = filters.filtered.map(model => model.id);
+  const displayedModels = useMemo(() => {
+    if (!collections.activeCollection) return filters.filtered;
+    const currentModels = new Map(store.models.map(model => [model.id, model]));
+    // An open collection shows its members in collection order; only the usage and print status
+    // filters apply there. Selection, detail navigation and the grid all use this one list.
+    return collections.collectionModels.map(model => {
+      const current = currentModels.get(model.id);
+      return current ? { ...model, license: current.license, printStatus: current.printStatus } : model;
+    })
+      .filter(model => !filters.printStatus || (model.printStatus === 'printed') === (filters.printStatus === 'printed'))
+      .filter(model => !filters.usage || licenseUsage(model.license) === filters.usage);
+  }, [collections.activeCollection, collections.collectionModels, filters.filtered, filters.printStatus, filters.usage, store.models]);
+  const filteredIds = displayedModels.map(model => model.id);
   const navigateDetail = (direction: DetailDirection) => {
     const id = detailNeighbor(filteredIds, detailModelId, direction);
     if (!id) return;
@@ -464,7 +471,7 @@ export default function App() {
               bulkRemove={() => removeCatalogModels(Array.from(bulk.selectedForBulk))}
               onCatalogRemoved={refreshAfterRemoval}
               onRemoveModelFromCatalog={(id) => removeCatalogModels([id])}
-              selectAllVisible={() => bulk.selectAllVisible(filters.filtered.map((m) => m.id))}
+              selectAllVisible={() => bulk.selectAllVisible(filteredIds)}
               clearBulkSelection={bulk.clearBulkSelection}
               bulkAddToQueue={bulk.bulkAddToQueue}
               addToCollectionMenuOpen={bulk.addToCollectionMenuOpen}
@@ -506,8 +513,7 @@ export default function App() {
               displayPreference={displayPreference}
               view={filters.view}
               sort={filters.sort}
-              filtered={filters.filtered}
-              collectionModels={collections.collectionModels}
+              filtered={displayedModels}
               collectionLoading={collections.collectionLoading}
               selectedId={store.selectedId}
               setContextMenu={setContextMenu}

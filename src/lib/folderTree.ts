@@ -36,3 +36,16 @@ export function isFolderSelfOrDescendant(
   }
   return false;
 }
+
+/** Moving an ancestor invalidates the persisted import destination as well. */
+export function containsCatalogRoot(path: string, catalogBaseDir: string | null): boolean {
+  if (!catalogBaseDir || !path) return false;
+  const windows = /^[a-z]:[/\\]/i.test(catalogBaseDir) || catalogBaseDir.startsWith('\\\\');
+  const normalize = (value: string) => {
+    const separated = (windows ? value.replace(/\\/g, '/') : value).replace(/\/+$/, '');
+    return windows ? separated.toLowerCase() : separated;
+  };
+  const root = normalize(catalogBaseDir);
+  const folder = normalize(path);
+  return root === folder || root.startsWith(`${folder}/`);
+}

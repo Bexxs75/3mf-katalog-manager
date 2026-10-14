@@ -1,3 +1,4 @@
+import { containsCatalogRoot } from '../lib/folderTree';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor, fireEvent } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
@@ -162,4 +163,39 @@ it('keeps the drag tip after a failed collection add and uses the error toast', 
   await act(async () => fireEvent.mouseUp(document));
   expect(result.current.moveToast).toMatchObject({ error: true, unexpected: true });
   expect(localStorage.getItem('3mf-katalog-dnd-tip-dismissed')).toBeNull();
+});
+
+it.each(['root', 'parent'])('does not start dragging configured catalog %s', id => {
+  const folders = [makeFolder({id: 'parent', path: '/models'}), makeFolder({id: 'root', path: '/models/catalog', parentId: 'parent'}), makeFolder({id: 'target', path: '/other'})];
+  const {result} = renderHook(() => useFolderDragAndDrop([], folders, {refreshFolders: vi.fn(), refreshFiles: vi.fn()}, undefined, '/models/catalog'));
+  act(() => result.current.onDragFolderStart(id));
+  expect(result.current.draggedFolderId).toBeNull();
+  act(() => result.current.handleFolderMouseEnter('target'));
+  expect(result.current.dragOverFolderId).toBeNull();
+  fireEvent.mouseUp(document);
+  expect(invoke).not.toHaveBeenCalled();
+});
+
+it('still moves a child of the configured root', async () => {
+  vi.mocked(invoke).mockResolvedValue(undefined);
+  const folders = [makeFolder({id: 'root', path: '/models'}), makeFolder({id: 'child', path: '/models/child', parentId: 'root'}), makeFolder({id: 'target', path: '/models/target', parentId: 'root'})];
+  const {result} = renderHook(() => useFolderDragAndDrop([], folders, {refreshFolders: vi.fn(), refreshFiles: vi.fn()}, undefined, '/models'));
+  act(() => result.current.onDragFolderStart('child'));
+  act(() => result.current.handleFolderMouseEnter('target'));
+  await act(async () => { fireEvent.mouseUp(document); });
+  expect(invoke).toHaveBeenCalledWith('move_folder', {folderId: 'child', newParentId: 'target'});
+});
+
+it.each([
+  ['/models', '/models/catalog', true],
+  ['/models/catalog', '/models/catalog/', true],
+  ['/models/cat', '/models/catalog', false],
+  ['/models/catalog/child', '/models/catalog', false],
+  ['/', '/models/catalog', true],
+  ['C:\\Models', 'c:/models/catalog', true],
+  ['C:/MODELS/CATALOG', 'c:/models/catalog', true],
+  ['/Models', '/models/catalog', false],
+  ['/models', '/models\\catalog', false],
+])('checks catalog containment at path boundaries (%s, %s)', (path, root, expected) => {
+  expect(containsCatalogRoot(path, root)).toBe(expected);
 });

@@ -133,8 +133,9 @@ export function ModelDetailPage({
   const [printLogNote, setPrintLogNote] = useState('');
   const [printLogPhoto, setPrintLogPhoto] = useState<string | null>(null);
 
-  const isEditing = () => editingSource || showPrintLogForm ||
-    Array.from(pageRef.current?.querySelectorAll<HTMLInputElement>('input') ?? [])
+  const [licenseDirty, setLicenseDirty] = useState(false);
+  const isEditing = () => licenseDirty || editingSource || showPrintLogForm ||
+    Array.from(pageRef.current?.querySelectorAll<HTMLInputElement>('input:not([data-license-draft])') ?? [])
       .some(input => input.value.trim() !== '');
   const navigate = (direction: DetailDirection) => {
     if ((direction === 'previous' ? hasPrevious : hasNext)) onNavigate?.(direction);
@@ -246,7 +247,7 @@ export function ModelDetailPage({
 
         <div className="w-[540px] max-w-full flex-none min-w-0 flex flex-col gap-4">
           <div className="rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-5 py-4">
-            <LicenseEditor key={model.id} value={model.license} onSave={onSetLicense ? value => onSetLicense([model.id], value) : undefined} />
+            <LicenseEditor key={model.id} onDirtyChange={setLicenseDirty} value={model.license} onSave={onSetLicense ? value => onSetLicense([model.id], value) : undefined} />
             {rows.map((row) => (
               <div
                 key={row.label}

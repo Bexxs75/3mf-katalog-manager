@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
+import { useState } from 'react';
 import { useBulkSelection } from './useBulkSelection';
 import { makeModelFile } from '../test/factories';
 
@@ -16,7 +17,7 @@ function setup(models = [makeModelFile({ id: 'm1' }), makeModelFile({ id: 'm2' }
   const bulkRemoveFromCollection = vi.fn().mockResolvedValue(undefined);
   const hook = renderHook(() =>
     useBulkSelection({
-      models, setModels, refreshFolders, refreshTags, refreshTrash,
+      models, setModels, refreshFolders, refreshTags, refreshTrash, refetchAfterPartialDelete: vi.fn(),
       bulkAddToCollection, bulkRemoveFromCollection,
     }),
   );
@@ -78,16 +79,24 @@ describe('useBulkSelection', () => {
     expect(result.current.confirmBulkDelete).toBe(false);
   });
 
-  it('bulkDelete calls delete_files, filters models, and clears the selection', async () => {
+  it('reloads active models after a successful batch with a skipped deletion', async () => {
     vi.mocked(invoke).mockResolvedValue(undefined);
-    const { result, setModels, refreshFolders, refreshTrash } = setup();
-    act(() => result.current.selectAllVisible(['m1']));
+    const a = makeModelFile({ id: 'm1' });
+    const b = makeModelFile({ id: 'm2' });
+    const { result } = renderHook(() => {
+      const [models, setModels] = useState([a, b]);
+      const bulk = useBulkSelection({
+        models, setModels, refreshFolders: vi.fn(), refreshTags: vi.fn(), refreshTrash: vi.fn(),
+        refetchAfterPartialDelete: async () => { setModels([b]); },
+        bulkAddToCollection: vi.fn(), bulkRemoveFromCollection: vi.fn(),
+      });
+      return { models, ...bulk };
+    });
+    act(() => result.current.selectAllVisible(['m1', 'm2']));
     await act(async () => result.current.bulkDelete());
-    expect(invoke).toHaveBeenCalledWith('delete_files', { fileIds: ['m1'] });
-    expect(setModels).toHaveBeenCalled();
-    expect(refreshFolders).toHaveBeenCalled();
-    expect(refreshTrash).toHaveBeenCalled();
-    expect(result.current.selectedForBulk.size).toBe(0);
+    expect(invoke).toHaveBeenCalledWith('delete_files', { fileIds: ['m1', 'm2'] });
+    expect(result.current.models.map(model => model.id)).toEqual(['m2']);
+    expect(result.current.selectedForBulk).toEqual(new Set(['m2']));
   });
 
   it('bulkAddToQueue only queues models not already queued', async () => {

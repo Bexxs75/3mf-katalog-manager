@@ -2,7 +2,7 @@ import { dismissDragDropTip } from '../lib/dragDropTip';
 import { useCallback, useEffect, useState } from 'react';
 import * as collectionsApi from '../lib/api/collections';
 import * as foldersApi from '../lib/api/folders';
-import { isFolderSelfOrDescendant } from '../lib/folderTree';
+import { containsCatalogRoot, isFolderSelfOrDescendant } from '../lib/folderTree';
 import { toAppError } from '../lib/errors';
 import type { ModelFile, Folder, Collection } from '../types';
 
@@ -16,7 +16,7 @@ interface CollectionTargets {
   addModelToCollection: (fileId: string, collectionId: string) => Promise<unknown>;
 }
 
-export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { refreshFolders, refreshFiles }: Refreshers, collectionTargets?: CollectionTargets) {
+export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { refreshFolders, refreshFiles }: Refreshers, collectionTargets?: CollectionTargets, catalogBaseDir: string | null = null) {
   // Mouse-based dragging instead of HTML5 DnD: under Tauri/WebKitGTK
   // dragDropEnabled intercepts native drag sessions at window level.
   const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
@@ -28,7 +28,11 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
   const onDragFileStart = useCallback((id: string) => setDraggedFileId(id), []);
   // A click without hovering over another row moves nothing
   // (dragOverFolderId stays null).
-  const onDragFolderStart = useCallback((id: string) => setDraggedFolderId(id), []);
+  const onDragFolderStart = useCallback((id: string) => {
+    const folder = folders.find(folder => folder.id === id);
+    if (!folder || containsCatalogRoot(folder.path, catalogBaseDir)) return;
+    setDraggedFolderId(id);
+  }, [folders, catalogBaseDir]);
   const dismissMoveToast = useCallback(() => setMoveToast(null), []);
 
   // The cycle check is duplicated here only for the highlight; move_folder
@@ -138,7 +142,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
       if (isFolderSelfOrDescendant(targetId, folderId, folders)) return;
       const folder = folders.find((f) => f.id === folderId);
       const targetFolder = folders.find((f) => f.id === targetId);
-      if (!folder || !targetFolder) return;
+      if (!folder || !targetFolder || containsCatalogRoot(folder.path, catalogBaseDir)) return;
       foldersApi
         .moveFolder(folderId, targetId)
         .then(() => {
@@ -154,7 +158,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
     };
     document.addEventListener('mouseup', handleMouseUp);
     return () => document.removeEventListener('mouseup', handleMouseUp);
-  }, [draggedFolderId, dragOverFolderId, folders, refreshFolders, refreshFiles]);
+  }, [draggedFolderId, dragOverFolderId, folders, refreshFolders, refreshFiles, catalogBaseDir]);
 
   return {
     draggedFileId,

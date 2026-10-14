@@ -1,6 +1,6 @@
 import { RuntimeEnvironmentProvider } from '../hooks/useRuntimeEnvironment';
 import { invoke } from '@tauri-apps/api/core';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { ModelDetailPage } from './ModelDetailPage';
 import { LanguageProvider } from '../i18n/LanguageContext';
@@ -184,4 +184,32 @@ it('edits the license on the detail page', async () => {
   fireEvent.change(screen.getByRole('combobox', { name: 'Lizenz' }), { target: { value: 'own' } });
   fireEvent.click(screen.getByRole('button', { name: 'Lizenz speichern' }));
   expect(onSetLicense).toHaveBeenCalledWith([props.model.id], 'own');
+});
+
+it.each(['cc0', '', '__other'])('protects a changed license (%s) until discarded', next => {
+  const onNavigate = vi.fn();
+  render(<LanguageProvider><ModelDetailPage {...props} model={makeModelFile({license: 'cc-by'})}
+    onSetLicense={vi.fn()} onNavigate={onNavigate} hasPrevious={false} hasNext /></LanguageProvider>);
+  fireEvent.change(screen.getByRole('combobox', {name: 'Lizenz'}), {target: {value: next}});
+  if (next === '__other') fireEvent.change(screen.getByRole('textbox', {name: 'Lizenztext'}), {target: {value: 'My terms'}});
+  fireEvent.keyDown(window, {key: 'ArrowRight'});
+  expect(onNavigate).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByLabelText('Nächstes Modell'));
+  expect(screen.getByRole('dialog')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', {name: 'Verwerfen und wechseln'}));
+  expect(onNavigate).toHaveBeenCalledExactlyOnceWith('next');
+});
+
+it('does not block unchanged custom text or a saved license', async () => {
+  const onNavigate = vi.fn();
+  const onSetLicense = vi.fn().mockResolvedValue(undefined);
+  render(<LanguageProvider><ModelDetailPage {...props} model={makeModelFile({license: 'My terms'})}
+    onSetLicense={onSetLicense} onNavigate={onNavigate} hasPrevious={false} hasNext /></LanguageProvider>);
+  fireEvent.click(screen.getByLabelText('Nächstes Modell'));
+  expect(onNavigate).toHaveBeenCalledTimes(1);
+  fireEvent.change(screen.getByRole('combobox', {name: 'Lizenz'}), {target: {value: 'cc0'}});
+  await act(async () => { fireEvent.click(screen.getByRole('button', {name: 'Lizenz speichern'})); });
+  fireEvent.click(screen.getByLabelText('Nächstes Modell'));
+  expect(onNavigate).toHaveBeenCalledTimes(2);
+  expect(screen.queryByRole('dialog')).toBeNull();
 });

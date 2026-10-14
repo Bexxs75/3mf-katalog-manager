@@ -5,7 +5,7 @@ import App from './App';
 import { LanguageProviderWithDiagnostics } from './test/renderWithDiagnostics';
 import { UiDensityProvider } from './hooks/UiDensityContext';
 import { de } from './i18n/de';
-import { makeModelFileSummary } from './test/factories';
+import { makeModelFile, makeModelFileSummary } from './test/factories';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(), convertFileSrc: (path: string) => path }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
@@ -99,4 +99,47 @@ it('Escape leaves search without clearing the query; the next Escape clears sele
   expect(screen.getByText(de.bulkSelectedCount.replace('{count}', '1'))).toBeVisible();
   fireEvent.keyDown(screen.getByRole('main'), {key: 'Escape'});
   expect(screen.queryByText(de.bulkSelectedCount.replace('{count}', '1'))).not.toBeInTheDocument();
+});
+
+it.each(['keyboard', 'toolbar'])('collection selection via %s sends only its visible member to bulk writes', async mode => {
+  const a = makeModelFile({ id: 'a', name: 'A.stl' });
+  const fallback = vi.mocked(invoke).getMockImplementation()!;
+  vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+    if (cmd === 'list_file_summaries') return [makeModelFileSummary({ id: 'a', name: 'A.stl' }), makeModelFileSummary({ id: 'b', name: 'B.stl' })];
+    if (cmd === 'list_collections') return [{ id: 'c', name: 'Only A', modelCount: 1 }];
+    if (cmd === 'list_collection_files' || cmd === 'list_files_by_ids') return [a];
+    return fallback(cmd, args);
+  });
+  await setup();
+  await act(async () => { fireEvent.click(screen.getByText('Only A')); });
+  fireEvent.keyDown(document.body, { key: 'a', ctrlKey: true });
+  if (mode === 'toolbar') fireEvent.click(screen.getByRole('button', { name: de.selectAllLabel }));
+  expect(screen.getByText(de.bulkSelectedCount.replace('{count}', '1'))).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: de.licenseSet }));
+  fireEvent.change(screen.getByRole('combobox', { name: de.licenseHeading }), { target: { value: 'cc0' } });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: de.licenseSave })); });
+  expect(invoke).toHaveBeenCalledWith('set_license', { fileIds: ['a'], license: 'cc0' });
+  fireEvent.click(screen.getByRole('button', { name: de.delete }));
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: de.delete })); });
+  expect(invoke).toHaveBeenCalledWith('delete_files', { fileIds: ['a'] });
+});
+
+it('uses the displayed collection for detail boundaries, position and arrow navigation', async () => {
+  const a = makeModelFile({id: 'a', name: 'A.stl'});
+  const fallback = vi.mocked(invoke).getMockImplementation()!;
+  vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+    if (cmd === 'list_file_summaries') return [makeModelFileSummary(a), makeModelFileSummary({id: 'b', name: 'B.stl'})];
+    if (cmd === 'list_collections') return [{id: 'c', name: 'Only A', modelCount: 1}];
+    if (cmd === 'list_collection_files' || cmd === 'list_files_by_ids') return [a];
+    return fallback(cmd, args);
+  });
+  await setup();
+  await act(async () => { fireEvent.click(screen.getByText('Only A')); });
+  await act(async () => { fireEvent.doubleClick(document.querySelector('[data-model-id="a"]')!); });
+  expect(screen.getByText('1 von 1')).toBeVisible();
+  expect(screen.getByRole('button', {name: de.detailPrevious})).toBeDisabled();
+  expect(screen.getByRole('button', {name: de.detailNext})).toBeDisabled();
+  fireEvent.keyDown(window, {key: 'ArrowRight'});
+  expect(screen.getByText('1 von 1')).toBeVisible();
+  expect(invoke).not.toHaveBeenCalledWith('list_files_by_ids', {ids: ['b']});
 });

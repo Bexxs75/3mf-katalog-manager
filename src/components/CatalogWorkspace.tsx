@@ -1,5 +1,5 @@
 import { displayName } from '../lib/displayName';
-import { licenseUsage, usageLabels, type LicenseUsage } from '../lib/licenses';
+import { usageLabels, type LicenseUsage } from '../lib/licenses';
 import { ModelLayoutContext } from '../hooks/ModelLayoutContext';
 import { scrollTileIntoView } from '../hooks/useKeyboardShortcuts';
 import { shouldIgnoreCatalogShortcut } from '../lib/keyboardGuard';
@@ -127,7 +127,6 @@ interface CatalogWorkspaceProps {
   view: ViewMode;
   sort: SortKey;
   filtered: ModelFile[];
-  collectionModels: ModelFile[];
   collectionLoading?: boolean;
   selectedId: string | null;
   setContextMenu: (value: { modelId: string; x: number; y: number } | null) => void;
@@ -237,7 +236,6 @@ export function CatalogWorkspace({
   view,
   sort,
   filtered,
-  collectionModels,
   collectionLoading = false,
   selectedId,
   setContextMenu,
@@ -326,16 +324,7 @@ export function CatalogWorkspace({
   // Counts over the whole catalog (without folder/tag/search) so they stay stable.
   const counts = useMemo(() => computeToolCounts(models, new Date()), [models]);
   const tagHues = useMemo(() => Object.fromEntries(tags.map(tag => [tag.label, tag.colorHue])), [tags]);
-  const displayedModels = useMemo(() => {
-    if (!activeCollection) return filtered;
-    const currentModels = new Map(models.map(model => [model.id, model]));
-    return collectionModels.map(model => {
-      const current = currentModels.get(model.id);
-      return current ? { ...model, license: current.license, printStatus: current.printStatus } : model;
-    })
-      .filter(model => !printStatus || (model.printStatus === 'printed') === (printStatus === 'printed'))
-      .filter(model => !usage || licenseUsage(model.license) === usage);
-  }, [activeCollection, collectionModels, filtered, models, usage, printStatus]);
+  const displayedModels = filtered;
   const collectionName = collections.find(c => c.id === activeCollection)?.name ?? activeCollection ?? '';
   const folderName = folders.find(f => f.id === activeFolderId)?.name ?? activeFolderId;
   const printStatusLabel = printStatus === 'printed' ? t('printStatusPrinted') : t('printStatusNotPrinted');

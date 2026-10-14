@@ -102,7 +102,7 @@ it('orders folder, tag and search chips and removes only the chosen filter', () 
 });
 
 it('orders all five kinds and counts the displayed collection models', () => {
-  const props = filterWorkspace({toolView: 'favorites', activeCollection: 'c', activeFolderId: 'a', activeTag: 'test', query: 'cube'});
+  const props = filterWorkspace({filtered: [], toolView: 'favorites', activeCollection: 'c', activeFolderId: 'a', activeTag: 'test', query: 'cube'});
   const bar = screen.getByRole('region', {name: 'Aktive Filter'});
   expect(Array.from(bar.querySelectorAll('[data-filter-kind]')).map(node => node.textContent)).toEqual(['Ansicht', 'Sammlung', 'Ordner', 'Tag', 'Suche']);
   expect(within(bar).getByText('0 von 2')).toBeVisible();
@@ -168,9 +168,9 @@ it('offers usage filtering and an individually removable usage chip', () => {
   expect(setUsage).toHaveBeenLastCalledWith(null);
 });
 
-it('uses current licenses in a collection and includes usage in its count and empty state', () => {
+it('renders centrally filtered licenses in a collection and includes usage in its count and empty state', () => {
   const model = makeModelFile({ id: 'one', license: null });
-  filterWorkspace({ models: [model], collectionModels: [{ ...model, license: 'personal' }], activeCollection: 'c', usage: 'private', setUsage: vi.fn() });
+  filterWorkspace({ models: [model], filtered: [], activeCollection: 'c', usage: 'private', setUsage: vi.fn() });
   expect(screen.getByText(de.filterBarEmptyTitle)).toBeVisible();
   expect(screen.getByText(de.filterBarCount.replace('{count}', '0').replace('{total}', '1'))).toBeVisible();
 });
@@ -191,9 +191,9 @@ it('offers every print status option and an individually removable chip', () => 
   expect(setPrintStatus).toHaveBeenLastCalledWith(null);
 });
 
-it('uses current print status and usage in a collection, including count and empty state', () => {
+it('renders centrally filtered print status and usage in a collection, including count and empty state', () => {
   const model = makeModelFile({ id: 'one', printStatus: 'printed', license: 'personal' });
-  filterWorkspace({ models: [model], collectionModels: [{ ...model, printStatus: 'not_printed' }], activeCollection: 'c', usage: 'private', printStatus: 'not_printed', setPrintStatus: vi.fn() });
+  filterWorkspace({ models: [model], filtered: [], activeCollection: 'c', usage: 'private', printStatus: 'not_printed', setPrintStatus: vi.fn() });
   expect(screen.getByText(de.filterBarEmptyTitle)).toBeVisible();
   expect(screen.getByText(de.filterBarCount.replace('{count}', '0').replace('{total}', '1'))).toBeVisible();
 });

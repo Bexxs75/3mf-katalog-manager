@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as filesApi from '../lib/api/files';
 import { canonicalTag } from '../lib/autoTags';
 import type { ModelFile } from '../types';
@@ -6,6 +6,7 @@ import type { ModelFile } from '../types';
 interface UseBulkSelectionArgs {
   models: ModelFile[];
   setModels: React.Dispatch<React.SetStateAction<ModelFile[]>>;
+  refetchAfterPartialDelete: (ids: string[]) => void | Promise<void>;
   refreshFolders: () => void;
   refreshTags: () => void;
   refreshTrash: () => void;
@@ -16,9 +17,8 @@ interface UseBulkSelectionArgs {
 export function useBulkSelection({
   models,
   setModels,
-  refreshFolders,
+  refetchAfterPartialDelete,
   refreshTags,
-  refreshTrash,
   bulkAddToCollection,
   bulkRemoveFromCollection,
 }: UseBulkSelectionArgs) {
@@ -58,16 +58,24 @@ export function useBulkSelection({
     setTagDraft('');
   }, []);
 
-  const bulkDelete = useCallback(() => {
-    const ids = Array.from(selectedForBulk);
-    return filesApi.deleteFiles(ids).then(() => {
-      setModels((prev) => prev.filter((m) => !selectedForBulk.has(m.id)));
-      clearBulkSelection();
-      refreshFolders();
-      refreshTags();
-      refreshTrash();
+  useEffect(() => {
+    const activeIds = new Set(models.map(model => model.id));
+    setSelectedForBulk(previous => {
+      const remaining = new Set([...previous].filter(id => activeIds.has(id)));
+      return remaining.size === previous.size ? previous : remaining;
     });
-  }, [selectedForBulk, setModels, clearBulkSelection, refreshFolders, refreshTags, refreshTrash]);
+  }, [models]);
+
+  const bulkDelete = useCallback(async () => {
+    const ids = Array.from(selectedForBulk);
+    try {
+      await filesApi.deleteFiles(ids);
+    } finally {
+      // A successful batch can still contain skipped files; only the backend knows what remains.
+      await refetchAfterPartialDelete(ids);
+      setConfirmBulkDelete(false);
+    }
+  }, [selectedForBulk, refetchAfterPartialDelete]);
 
   const bulkAddToQueue = useCallback(() => {
     const notYetQueued = models.filter((m) => selectedForBulk.has(m.id) && m.queuePosition === null);

@@ -27,7 +27,7 @@ it('preserves free text, limits input and can clear a saved license', async () =
   expect(screen.getByText('Nicht angegeben')).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: 'Lizenz speichern' }));
   await waitFor(() => expect(save).toHaveBeenCalledWith('  Contract license  '));
-  await waitFor(() => expect(screen.getByRole('button')).not.toBeDisabled());
+  await waitFor(() => expect(screen.getByRole('textbox')).not.toBeDisabled());
   rerender(<LanguageProvider><LicenseEditor value="  Contract license  " onSave={save} /></LanguageProvider>);
   expect(screen.getByRole('textbox')).toHaveValue('  Contract license  ');
   fireEvent.change(screen.getByRole('combobox'), { target: { value: '' } });
