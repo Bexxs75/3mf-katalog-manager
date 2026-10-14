@@ -11,6 +11,8 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Added
 
+- **Docker (working, but possibly still unstable):** the Catalog Manager runs as a container with a browser desktop (KasmVNC), login protection, a companion page for the catalog in the browser and a published image. See `docker/README.md`.
+
 - **Archive import:** when a ZIP or other archive contains files that are not models (for example TXT or PDF), the import notice now says how many were extracted but not added to the catalog (the catalog only shows models) and that they are in the target folder.
 - **Automated UI tests:** expanded real mouse/keyboard coverage for disk sync, licenses and usage, print status, collection sorting, bulk tags, trash restoration and cancelling bug reports; updated printer/plate checks and excluded screenreader-only text from visual layout audits.
 
@@ -57,6 +59,9 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Fixed
 
+- The tag list is up to date right after an import: suggestions in "Add tag" no longer stay empty until you switch the view.
+- The "Remove tag" and "Add to collection" menus no longer run off the bottom of the window with very many entries; they scroll (mouse wheel, scrollbar, arrow keys).
+- Security: the dependencies `ruzstd` and `rustls` are updated to the versions fixing RUSTSEC-2026-0344, -0347, -0348 and -0349.
 - The 3D view of very large STL and OBJ files no longer freezes the window: binary STL over 3 million triangles, ASCII STL over 256 MiB and OBJ over 128 MiB show the notice that the model is too large for the 3D view (use the preview image or open it in the slicer).
 - The tag suggestion list in "Add tag" (bulk selection and details) stays open when its scrollbar is pressed, so long lists can be scrolled.
 - The "New prints" dialog no longer closes the app when hundreds of prints are waiting: preview images load at most four at a time, and an HTTP client that cannot be created ends the request with an error instead of crashing the app.
@@ -585,6 +590,8 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Hinzugefügt
 
+- **Docker (funktionsfähig, aber möglicherweise noch instabil):** der Katalog Manager läuft als Container mit Browser-Desktop (KasmVNC), Anmeldeschutz, Begleitseite für den Katalog im Browser und veröffentlichtem Image. Anleitung in `docker/README.md`.
+
 - **Archiv-Import:** Enthält ein ZIP oder anderes Archiv Dateien, die keine Modelle sind (zum Beispiel TXT oder PDF), nennt der Import-Hinweis jetzt, wie viele davon entpackt, aber nicht in den Katalog aufgenommen wurden (der Katalog zeigt nur Modelle), und dass sie im Zielordner liegen.
 - **Automatische Oberflächentests:** Tests mit echter Maus und Tastatur für Festplatten-Abgleich, Lizenzen und Nutzung, Druckstatus, Sammlungssortierung, Mehrfach-Tags, Wiederherstellen aus dem Papierkorb und Abbrechen von Fehlermeldungen erweitert; Drucker-/Plattenprüfungen aktualisiert und reine Screenreader-Texte aus visuellen Layout-Audits ausgenommen.
 
@@ -631,6 +638,9 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Behoben
 
+- Die Tag-Liste ist nach einem Import sofort aktuell: Vorschläge unter „Tag hinzufügen“ bleiben nicht mehr leer, bis man die Ansicht wechselt.
+- Die Menüs „Tag entfernen“ und „Zu Sammlung hinzufügen“ laufen bei sehr vielen Einträgen nicht mehr unten aus dem Fenster, sondern scrollen (Mausrad, Balken, Pfeiltasten).
+- Sicherheit: die Abhängigkeiten `ruzstd` und `rustls` sind auf die Versionen mit den Korrekturen für RUSTSEC-2026-0344, -0347, -0348 und -0349 aktualisiert.
 - Die 3D-Ansicht sehr großer STL- und OBJ-Dateien friert das Fenster nicht mehr ein: Binäre STL über 3 Millionen Dreiecke, ASCII-STL über 256 MiB und OBJ über 128 MiB zeigen den Hinweis, dass das Modell für die 3D-Ansicht zu groß ist (Vorschaubild nutzen oder im Slicer öffnen).
 - Die Vorschlagsliste bei „Tag hinzufügen“ (Mehrfachauswahl und Details) bleibt offen, wenn man auf ihren Scroll-Balken drückt, sodass sich lange Listen scrollen lassen.
 - Der Dialog „Neue Drucke“ beendet die App nicht mehr, wenn hunderte Drucke warten: Vorschaubilder laden höchstens vier gleichzeitig, und ein HTTP-Client, der sich nicht anlegen lässt, beendet die Anfrage mit einem Fehler statt die App abzustürzen.
