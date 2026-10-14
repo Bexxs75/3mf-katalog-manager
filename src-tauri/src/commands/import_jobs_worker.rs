@@ -661,17 +661,17 @@ mod folder_contents_tests {
         }
         let service = ImportJobs::default();
         let job = service.enqueue(ImportSource::FolderContents, None, false, None).unwrap();
-        let candidates = scan_candidates(&job, &[dir.clone()], usize::MAX);
+        let candidates = scan_candidates(&job, std::slice::from_ref(&dir), usize::MAX);
         assert_eq!(candidates.len(), 5);
         assert!(candidates.iter().all(|(_, root)| root.is_none()));
         assert!(job.data.lock().unwrap().scan_complete);
         let limited = service.enqueue(ImportSource::FolderContents, None, false, None).unwrap();
-        assert_eq!(scan_candidates(&limited, &[dir.clone()], 2).len(), 2);
+        assert_eq!(scan_candidates(&limited, std::slice::from_ref(&dir), 2).len(), 2);
         assert!(!limited.data.lock().unwrap().scan_complete);
         assert!(limited.cancel.load(Ordering::Acquire));
         let cancelled = service.enqueue(ImportSource::FolderContents, None, false, None).unwrap();
         cancelled.cancel.store(true, Ordering::Release);
-        assert!(scan_candidates(&cancelled, &[dir.clone()], usize::MAX).is_empty());
+        assert!(scan_candidates(&cancelled, std::slice::from_ref(&dir), usize::MAX).is_empty());
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

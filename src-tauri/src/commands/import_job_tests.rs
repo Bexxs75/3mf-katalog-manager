@@ -537,7 +537,7 @@ fn folder_contents_moves_nested_files_flat_and_keeps_source_directory() {
     let service = ImportJobs::default();
     let job = service.enqueue(ImportSource::FolderContents, Some(target_id.to_string()), true, None).unwrap();
     service.next().unwrap();
-    finish_models(&service, &job, &mut conn, &[source.clone()]);
+    finish_models(&service, &job, &mut conn, std::slice::from_ref(&source));
     let result = job.result().unwrap();
     assert_eq!(result.counts.imported, 2);
     assert_eq!(db::list_folders(&conn).unwrap().len(), 1);
@@ -561,7 +561,7 @@ fn folder_contents_without_placement_does_not_mirror_or_duplicate_existing_paths
     for expected_duplicates in [0, 1] {
         let job = service.enqueue(ImportSource::FolderContents, None, false, None).unwrap();
         service.next().unwrap();
-        finish_models(&service, &job, &mut conn, &[fixture.0.clone()]);
+        finish_models(&service, &job, &mut conn, std::slice::from_ref(&fixture.0));
         assert_eq!(job.result().unwrap().counts.duplicate, expected_duplicates);
         assert_eq!(db::list_files(&conn).unwrap().len(), 1);
         assert!(db::list_folders(&conn).unwrap().is_empty());
@@ -572,7 +572,7 @@ fn folder_contents_without_placement_does_not_mirror_or_duplicate_existing_paths
 fn folder_contents_rejects_sensitive_roots() {
     let fixture = Fixture::new();
     let service = ImportJobs::default();
-    assert!(service.authorize_models(ImportSource::FolderContents, &[fixture.0.clone()], false, &[fixture.0.clone()]).is_err());
+    assert!(service.authorize_models(ImportSource::FolderContents, std::slice::from_ref(&fixture.0), false, std::slice::from_ref(&fixture.0)).is_err());
 }
 
 #[test]
@@ -589,7 +589,7 @@ fn folder_contents_accepts_ignored_names_for_selected_roots_only() {
         let service = ImportJobs::default();
         let job = service.enqueue(ImportSource::FolderContents, None, false, None).unwrap();
         service.next().unwrap();
-        finish_models(&service, &job, &mut conn, &[source.clone()]);
+        finish_models(&service, &job, &mut conn, std::slice::from_ref(&source));
         assert_eq!(job.result().unwrap().counts.imported, 1, "{name}");
         let files = db::list_files(&conn).unwrap();
         assert_eq!(files.len(), 1);
@@ -649,7 +649,7 @@ fn folder_scans_report_archives_without_importing_them() {
             let service = ImportJobs::default();
             let job = service.enqueue(source, None, false, None).unwrap();
             let mut conn = db::connect_in_memory().unwrap();
-            finish_models(&service, &job, &mut conn, &[fixture.0.clone()]);
+            finish_models(&service, &job, &mut conn, std::slice::from_ref(&fixture.0));
             let result = job.result().unwrap();
             assert_eq!(result.state, ImportState::Finished);
             assert_eq!(result.counts.imported, usize::from(with_model));
@@ -669,7 +669,7 @@ fn archive_named_directory_is_scanned() {
     let service = ImportJobs::default();
     let job = service.enqueue(ImportSource::FolderContents, None, false, None).unwrap();
     let mut conn = db::connect_in_memory().unwrap();
-    finish_models(&service, &job, &mut conn, &[fixture.0.clone()]);
+    finish_models(&service, &job, &mut conn, std::slice::from_ref(&fixture.0));
     let result = job.result().unwrap();
     assert_eq!(result.counts.imported, 1);
     assert_eq!(serde_json::to_value(result).unwrap()["archivesSkipped"], 0);
@@ -684,7 +684,7 @@ fn archive_symlink_is_not_counted() {
     let service = ImportJobs::default();
     let job = service.enqueue(ImportSource::FolderContents, None, false, None).unwrap();
     let mut conn = db::connect_in_memory().unwrap();
-    finish_models(&service, &job, &mut conn, &[fixture.0.clone()]);
+    finish_models(&service, &job, &mut conn, std::slice::from_ref(&fixture.0));
     let result = job.result().unwrap();
     assert_eq!(result.counts.known, 0);
     assert_eq!(serde_json::to_value(result).unwrap()["archivesSkipped"], 0);

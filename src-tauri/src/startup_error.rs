@@ -237,7 +237,7 @@ mod tests {
         }
         let before = std::fs::read(&path).unwrap();
         std::fs::write(dir.join("trash"), b"blocker").unwrap();
-        let error = crate::open_storage_at(&dir).err().expect("trash must fail");
+        let error = crate::open_storage_at(&dir).expect_err("trash must fail");
         assert_eq!(error.stage, StartupStage::TrashFolder);
         assert!(std::fs::read(&path).unwrap() == before, "catalog must stay byte-identical");
         let conn = rusqlite::Connection::open(&path).unwrap();
@@ -257,7 +257,7 @@ mod tests {
         }
         let before = std::fs::read(&db_path).unwrap();
 
-        let error = crate::db::connect_with_warning(&db_path).err().expect("newer catalog must be rejected");
+        let error = crate::db::connect_with_warning(&db_path).expect_err("newer catalog must be rejected");
         let text = startup_error_message(StartupStage::Catalog, &db_path, &error);
 
         assert_bilingual_with_path(&text, &db_path);
@@ -271,7 +271,7 @@ mod tests {
         let dir = temp_dir("missing");
         let db_path = dir.join("does-not-exist").join("catalog.db");
 
-        let error = crate::db::connect_with_warning(&db_path).err().expect("open must fail");
+        let error = crate::db::connect_with_warning(&db_path).expect_err("open must fail");
         let text = startup_error_message(StartupStage::Catalog, &db_path, &error);
 
         assert_bilingual_with_path(&text, &db_path);

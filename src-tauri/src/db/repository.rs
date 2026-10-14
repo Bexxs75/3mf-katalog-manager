@@ -1022,7 +1022,8 @@ pub fn max_queue_position(conn: &Connection) -> Result<Option<i64>, DbError> {
     Ok(conn.query_row("SELECT MAX(queue_position) FROM files WHERE deleted_at IS NULL", [], |row| row.get(0))?)
 }
 
-/// (id, path) of all files without content_hash, for `backfill_content_hashes`.
+/// (id, path) of all files without content_hash. Only tests need it; production backfill queries the hashes itself.
+#[cfg(test)]
 pub fn list_files_missing_content_hash(conn: &Connection) -> Result<Vec<(i64, String)>, DbError> {
     let mut stmt = conn.prepare("SELECT id, path FROM files WHERE content_hash IS NULL AND deleted_at IS NULL")?;
     let rows = stmt
@@ -1031,6 +1032,7 @@ pub fn list_files_missing_content_hash(conn: &Connection) -> Result<Vec<(i64, St
     Ok(rows)
 }
 
+#[cfg(test)]
 pub fn set_content_hash(conn: &Connection, file_id: i64, hash: &str) -> Result<(), DbError> {
     conn.execute(
         "UPDATE files SET content_hash = ?1 WHERE id = ?2",

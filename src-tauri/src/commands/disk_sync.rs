@@ -275,7 +275,7 @@ fn scan_with_path_mode(
     configured.sort();
     let mut result = DiskScan::default();
     for stored in &configured {
-        match std::fs::canonicalize(&stored) {
+        match std::fs::canonicalize(stored) {
             Ok(canonical) if canonical.is_dir() => result.roots.push(DiskRoot {
                 stored: stored.clone(),
                 canonical,

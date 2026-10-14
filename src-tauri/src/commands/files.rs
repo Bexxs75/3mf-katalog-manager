@@ -2268,7 +2268,7 @@ mod tests {
         let over = dir.join("over.stl");
         let mut head = vec![0u8; 80];
         head.extend_from_slice(&4u32.to_le_bytes());
-        head.extend(std::iter::repeat(0u8).take(4 * 50));
+        head.extend(std::iter::repeat_n(0u8, 4 * 50));
         std::fs::write(&over, &head).unwrap();
         assert_eq!(preview_check(&over, "stl", 3, 1 << 20, 1 << 20).unwrap_err().code, Some(Code::TooLarge));
         assert!(preview_check(&over, "stl", 4, 1 << 20, 1 << 20).is_ok());

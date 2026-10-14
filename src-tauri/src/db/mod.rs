@@ -19,6 +19,8 @@ pub fn migrations_current_version() -> i64 {
 }
 
 pub use repository::BACKUP_DIR_NAME;
+#[cfg(test)]
+pub use repository::{list_files_missing_content_hash, set_content_hash};
 pub use repository::{
     FileSummary,
     add_tag_to_file, attach_folder_to_parent_by_path, connect, connect_with_warning, delete_file, delete_filament_spool, delete_print_log_entry,
@@ -29,12 +31,12 @@ pub use repository::{
     insert_filament_spool, insert_folder_with_parent, insert_print_log_entry,
     insert_registered_slicer,
     list_all_file_tags, list_filament_spools, list_file_summaries, list_file_images, list_files,
-    list_files_by_ids, list_files_missing_content_hash, list_folders, list_print_log_entries,
+    list_files_by_ids, list_folders, list_print_log_entries,
     list_registered_slicers,
     list_tag_counts,
     list_trash,
     mark_file_viewed, max_queue_position, purge_expired_trash, remove_tag_from_file, rename_file, restore_file,
-    rename_folder_name, set_content_hash, set_custom_image_png, set_favorite, set_folder_parent,
+    rename_folder_name, set_custom_image_png, set_favorite, set_folder_parent,
     set_print_status, set_queue_position, set_render_snapshot_png, set_source_url,
     soft_delete_file, update_file_folder, update_filament_spool, update_paths_under_folder,
     update_scanned_metadata,
