@@ -13,6 +13,23 @@ Ein erfolgreicher Workflow-Lauf ist der Nachweis für das jeweilige Image.
 
 ### Start
 
+Zu jedem Release (stabil und RC) stellt der Image-Workflow nach erfolgreicher
+Veröffentlichung eine fertige `docker-compose.yml` als Download bereit.
+Für stabile Releases: [neueste stabile Compose-Datei](https://github.com/Bexxs75/3mf-katalog-manager/releases/latest/download/docker-compose.yml).
+Für RCs die Datei **aus der Dateiliste des jeweiligen Releases** herunterladen.
+Sie verwendet das veröffentlichte Image mit genau dieser Release-Version als
+Vorgabe; `IMAGE_TAG` kann sie überschreiben. Start ohne Klonen:
+
+```bash
+mkdir -p 3mf-katalog/config 3mf-katalog/models
+cd 3mf-katalog
+# Die heruntergeladene docker-compose.yml hier speichern.
+# Optional: .env mit eigenen Parametern wie PUID, PGID, TZ oder MODELS_DIR anlegen.
+docker compose up -d
+```
+
+Bei Verwendung der Dateien aus dem Repository gilt dagegen:
+
 `.env.example` und der Compose-Fallback verwenden `latest`. **Bis zum ersten
 stabilen Image-Release muss `IMAGE_TAG=rc` oder eine konkrete veröffentlichte
 Version ohne `v` gesetzt werden.** `latest` folgt nur der höchsten veröffentlichten
@@ -360,6 +377,23 @@ It publishes exactly that tested candidate, without rebuilding.
 A successful workflow run provides the evidence for each image.
 
 ### Start
+
+For every release (stable and RC), the image workflow provides a ready-to-use
+`docker-compose.yml` download after successful publication.
+For stable releases: [latest stable Compose file](https://github.com/Bexxs75/3mf-katalog-manager/releases/latest/download/docker-compose.yml).
+For RCs, download the file **from the asset list of the respective release**.
+It uses the published image with that exact release version as its default;
+`IMAGE_TAG` can override it. Start without cloning:
+
+```bash
+mkdir -p 3mf-katalog/config 3mf-katalog/models
+cd 3mf-katalog
+# Save the downloaded docker-compose.yml here.
+# Optional: create .env with your parameters such as PUID, PGID, TZ or MODELS_DIR.
+docker compose up -d
+```
+
+When using the files from the repository instead:
 
 `.env.example` and the Compose fallback use `latest`. **Until the first stable
 image release, set `IMAGE_TAG=rc` or a specific published version without `v`.**

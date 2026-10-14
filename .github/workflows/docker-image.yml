@@ -40,6 +40,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      publish: ${{ steps.release.outputs.publish }}
+      version: ${{ steps.release.outputs.version }}
     steps:
       # The Dockerfile and the smoke test come from the default branch, so older
       # tags without a docker/ folder can still get an image.
@@ -160,3 +163,25 @@ jobs:
             docker tag candidate:test "$tag"
             docker push "$tag"
           done <<< "$TAGS"
+
+  compose:
+    needs: image
+    if: needs.image.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.image.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Generate release Compose file
+        run: bash docker/scripts/release-compose.sh "$VERSION" > docker-compose.yml
+
+      - name: Upload release Compose file
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "v$VERSION" docker-compose.yml --clobber --repo "$GITHUB_REPOSITORY"
