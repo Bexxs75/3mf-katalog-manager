@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+config=${1:-/etc/nginx/3mf-katalog.conf}
+port=${KATALOG_WEB_PORT:-8099}
+case "$port" in
+    ''|*[!0-9]*) printf 'Ungültiger Port / Invalid port\n' >&2; exit 1 ;;
+esac
+[ "${#port}" -le 5 ] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ] || {
+    printf 'Ungültiger Port / Invalid port\n' >&2
+    exit 1
+}
+# Keep the proxy aligned with the loopback listener on every container start.
+[ "$(grep -Ec '^[[:space:]]*proxy_pass http://127\.0\.0\.1:[0-9]+;' "$config")" -eq 3 ]
+sed -i -E "s@(proxy_pass http://127\.0\.0\.1:)[0-9]+;@\1${port};@" "$config"

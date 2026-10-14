@@ -1,0 +1,1434 @@
+#!/usr/bin/python3
+"""Read-only catalog companion, served behind the authenticated nginx proxy."""
+import contextlib
+import hashlib
+import hmac
+import html
+import http.server
+import ipaddress
+import json
+import os
+from pathlib import Path
+import re
+import secrets
+import sqlite3
+import stat
+import time
+import tempfile
+import threading
+import unicodedata
+from urllib.parse import parse_qs, quote, unquote_to_bytes, urlencode, urlsplit
+
+UPLOAD_BLOCK = 1024 * 1024
+UPLOAD_RESERVE = 256 * 1024 * 1024
+UPLOAD_EXTENSIONS = {'.3mf', '.stl', '.obj', '.stp', '.step', '.zip', '.7z', '.rar'}
+BLOCK_SIZE = 64 * 1024
+PAGE_SIZE = 50
+HIDDEN_LIMIT = 100000
+HIDDEN_FILE = '/config/.katalog-web-hidden.json'
+# A form with three short fields never needs more; a small cap keeps parsing cheap.
+MAX_BODY = 2048
+# 'lang' rides along in every internal URL so a manual language choice survives paging, forms and redirects.
+LIST_KEYS = ('q', 'type', 'folder', 'tag', 'sort', 'page', 'hidden', 'lang')
+ID = r'[0-9]{1,19}'
+CSP = ("default-src 'none'; img-src 'self'; font-src 'self'; style-src 'self' 'unsafe-inline'; "
+       "script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+# Assets resolve relative to this script (libexec -> share) so the repo layout and the image layout agree.
+SHARE = Path(__file__).resolve().parent.parent / 'share' / '3mf-katalog-web'
+# Fixed allowlist: the request path is only a dictionary key, never joined into a filesystem path.
+ASSETS = {
+    **{f'fonts/barlow-{w}.woff2': (f'fonts/barlow-{w}.woff2', 'font/woff2', 'public, max-age=31536000, immutable')
+       for w in (400, 500, 600, 700)},
+    'icon-128.png': ('static/icon-128.png', 'image/png', 'public, max-age=86400'),
+    'icon-32.png': ('static/icon-32.png', 'image/png', 'public, max-age=86400'),
+}
+MIME = {'3mf': 'model/3mf', 'stl': 'model/stl', 'obj': 'model/obj', 'stp': 'model/step', 'step': 'model/step'}
+ALL_TYPES = {'3mf', 'stl', 'obj', 'stp', 'step'}
+SLICERS = (
+    ('OrcaSlicer', 'orcaslicer://open?file=', ALL_TYPES),
+    # Bambu Studio imports only 3MF through this link: a tester confirmed that STL does not open.
+    ('Bambu Studio', 'bambustudio://open?file=', {'3mf'}),
+    ('Creality Print', 'crealityprintlink://open?file=', ALL_TYPES),
+    ('ElegooSlicer', 'elegooslicer://open?file=', ALL_TYPES),
+    ('Cura', 'cura://open?file=', {'3mf', 'stl', 'obj'}),
+    ('Lychee', 'lycheeslicer://open/', {'3mf', 'stl', 'obj'}),
+    ('SuperSlicer', 'prusaslicer://open?file=', ALL_TYPES),
+)
+LANGS = ('de', 'en', 'es', 'fr')
+# Languages with their own page; the name is shown untranslated so every visitor can find theirs.
+LANG_NAMES = {'de': 'Deutsch', 'en': 'English', 'es': 'Español', 'fr': 'Français'}
+# Drawn here instead of flag emoji: Windows renders those as plain letter pairs.
+_FLAG = '<svg class="flag" viewBox="0 0 24 16" width="24" height="16" aria-hidden="true" focusable="false">%s</svg>'
+FLAGS = {
+    'de': _FLAG % '<rect width="24" height="5.34" fill="#000"/><rect y="5.33" width="24" height="5.34" fill="#d00"/><rect y="10.66" width="24" height="5.34" fill="#ffce00"/>',
+    'fr': _FLAG % '<rect width="8" height="16" fill="#0055a4"/><rect x="8" width="8" height="16" fill="#fff"/><rect x="16" width="8" height="16" fill="#ef4135"/>',
+    'es': _FLAG % '<rect width="24" height="16" fill="#aa151b"/><rect y="4" width="24" height="8" fill="#f1bf00"/>',
+    'en': _FLAG % ('<rect width="24" height="16" fill="#012169"/><path d="M0 0 24 16M24 0 0 16" stroke="#fff" stroke-width="3.2"/>'
+                   '<path d="M0 0 24 16M24 0 0 16" stroke="#c8102e" stroke-width="1.1"/><path d="M12 0V16M0 8H24" stroke="#fff" stroke-width="5.4"/>'
+                   '<path d="M12 0V16M0 8H24" stroke="#c8102e" stroke-width="3.2"/>'),
+}
+# One tuple per key, in LANGS order (de, en, es, fr).
+TEXT = {
+    'upload_title': ('Dateien hochladen', 'Upload files', 'Subir archivos', 'Téléverser des fichiers'),
+    'upload_choose': ('Dateien auswählen', 'Choose files', 'Seleccionar archivos', 'Choisir des fichiers'),
+    'upload_drop': ('Dateien hier ablegen oder auswählen.', 'Drop files here or choose files.', 'Arrastra archivos aquí o selecciónalos.', 'Dépose des fichiers ici ou sélectionne-les.'),
+    'upload_waiting': ('Wartet', 'Waiting', 'En espera', 'En attente'),
+    'upload_loading': ('Lädt', 'Uploading', 'Subiendo', 'Envoi en cours'),
+    'upload_done': ('Fertig', 'Done', 'Completado', 'Terminé'),
+    'upload_clear': ('Liste leeren', 'Clear list', 'Vaciar lista', 'Vider la liste'),
+    'upload_summary': ('{ok} Datei(en) übernommen, {bad} abgelehnt.', '{ok} file(s) accepted, {bad} rejected.', '{ok} archivo(s) aceptado(s), {bad} rechazado(s).', '{ok} fichier(s) accepté(s), {bad} rejeté(s).'),
+    'upload_cancelled': ('Abgebrochen', 'Cancelled', 'Cancelado', 'Annulé'),
+    'upload_error': ('Fehler', 'Error', 'Error', 'Erreur'),
+    'upload_progress': ('Fortschritt', 'Progress', 'Progreso', 'Progression'),
+    'upload_nojs': ('Upload braucht JavaScript.', 'Uploads require JavaScript.', 'Para subir archivos se necesita JavaScript.', 'JavaScript est nécessaire pour téléverser des fichiers.'),
+    'upload_success': ('Die Dateien liegen im Ordner „{folder}“ ({path}). In der App: Importieren → Ordner… → {folder} wählen.', 'The files are in “{folder}” ({path}). In the app: Import → Folder… → choose {folder}.', 'Los archivos están en «{folder}» ({path}). En la aplicación: Importar → Carpeta… → seleccionar {folder}.', 'Les fichiers sont dans « {folder} » ({path}). Dans l’application : Importer → Dossier… → choisir {folder}.'),
+    'upload_limits': ('Pro Datei höchstens {mb} MiB. Formate: 3MF, STL, OBJ, STP, STEP, ZIP, 7Z, RAR.', 'Up to {mb} MiB per file. Formats: 3MF, STL, OBJ, STP, STEP, ZIP, 7Z, RAR.', 'Máximo {mb} MiB por archivo. Formatos: 3MF, STL, OBJ, STP, STEP, ZIP, 7Z, RAR.', 'Maximum {mb} Mio par fichier. Formats : 3MF, STL, OBJ, STP, STEP, ZIP, 7Z, RAR.'),
+    'upload_root': ('Upload ausgeschaltet: Ziel außerhalb der erlaubten Modellordner. KATALOG_UPLOAD_DIR unter KATALOG_ALLOWED_ROOTS legen; Symlinks prüfen (Docker-README).', 'Uploads disabled: destination outside allowed model folders. Set KATALOG_UPLOAD_DIR below KATALOG_ALLOWED_ROOTS; check symlinks (Docker README).', 'Subidas desactivadas: destino fuera de las carpetas permitidas. Configura KATALOG_UPLOAD_DIR dentro de KATALOG_ALLOWED_ROOTS y revisa los enlaces simbólicos (README de Docker).', 'Téléversement désactivé : destination hors des dossiers autorisés. Placer KATALOG_UPLOAD_DIR sous KATALOG_ALLOWED_ROOTS et vérifier les liens symboliques (README Docker).'),
+    'upload_permissions': ('Upload ausgeschaltet: Ziel nicht beschreibbar oder nicht anlegbar. Mount schreibbar einbinden und Besitzer/Rechte für PUID/PGID prüfen (Docker-README).', 'Uploads disabled: destination cannot be written or created. Use a writable mount and check ownership/permissions for PUID/PGID (Docker README).', 'Subidas desactivadas: no se puede escribir o crear el destino. Usa un volumen con escritura y comprueba propietario/permisos para PUID/PGID (README de Docker).', 'Téléversement désactivé : destination non accessible en écriture ou impossible à créer. Utiliser un volume accessible en écriture et vérifier propriétaire/droits pour PUID/PGID (README Docker).'),
+    'upload_config': ('Upload ausgeschaltet: KATALOG_UPLOAD_MAX_MB muss eine positive ganze Zahl sein (Docker-README).', 'Uploads disabled: KATALOG_UPLOAD_MAX_MB must be a positive integer (Docker README).', 'Subidas desactivadas: KATALOG_UPLOAD_MAX_MB debe ser un entero positivo (README de Docker).', 'Téléversement désactivé : KATALOG_UPLOAD_MAX_MB doit être un entier positif (README Docker).'),
+    'upload_invalid_name': ('Ungültiger Dateiname.', 'Invalid filename.', 'Nombre de archivo no válido.', 'Nom de fichier non valide.'),
+    'upload_unsupported_type': ('Dateityp nicht erlaubt.', 'File type not allowed.', 'Tipo de archivo no permitido.', 'Type de fichier non autorisé.'),
+    'upload_invalid_signature': ('Inhalt passt nicht zum Dateityp.', 'Content does not match the file type.', 'El contenido no coincide con el tipo de archivo.', 'Le contenu ne correspond pas au type de fichier.'),
+    'upload_invalid_content': ('Datei ist leer oder ungültig.', 'File is empty or invalid.', 'El archivo está vacío o no es válido.', 'Le fichier est vide ou non valide.'),
+    'upload_too_large': ('Datei überschreitet das Größenlimit.', 'File exceeds the size limit.', 'El archivo supera el límite de tamaño.', 'Le fichier dépasse la taille maximale.'),
+    'upload_no_space': ('Zu wenig Speicherplatz auf dem Server.', 'Not enough space on the server.', 'No hay suficiente espacio en el servidor.', 'Espace insuffisant sur le serveur.'),
+    'upload_conflict': ('Zu viele Dateien mit gleichem Namen.', 'Too many files with the same name.', 'Demasiados archivos con el mismo nombre.', 'Trop de fichiers portent le même nom.'),
+    'upload_busy': ('Zwei Uploads laufen bereits. Später erneut versuchen.', 'Two uploads are already running. Try again later.', 'Ya hay dos subidas en curso. Inténtalo más tarde.', 'Deux téléversements sont déjà en cours. Réessayer plus tard.'),
+    'upload_forbidden': ('Zugriff abgelehnt. Seite neu laden und Login prüfen.', 'Access denied. Reload the page and check your login.', 'Acceso denegado. Recarga la página y comprueba la sesión.', 'Accès refusé. Recharger la page et vérifier la connexion.'),
+    'upload_upload_disabled': ('Upload nicht verfügbar. Seite neu laden und Zielordner prüfen.', 'Uploads unavailable. Reload the page and check the destination.', 'Subidas no disponibles. Recarga la página y comprueba el destino.', 'Téléversement indisponible. Recharger la page et vérifier la destination.'),
+    'upload_write_failed': ('Schreiben fehlgeschlagen. Speicherplatz, Mount und Rechte prüfen.', 'Write failed. Check free space, mount and permissions.', 'Error de escritura. Comprueba el espacio, volumen y permisos.', 'Échec d’écriture. Vérifier espace libre, volume et droits.'),
+    'upload_interrupted': ('Übertragung unterbrochen. Verbindung prüfen und erneut versuchen.', 'Transfer interrupted. Check the connection and try again.', 'Transferencia interrumpida. Comprueba la conexión e inténtalo de nuevo.', 'Transfert interrompu. Vérifier la connexion et réessayer.'),
+    'upload_length_required': ('Dateigröße fehlt oder ist ungültig.', 'File size missing or invalid.', 'Tamaño de archivo ausente o no válido.', 'Taille du fichier absente ou non valide.'),
+    'upload_length_mismatch': ('Übertragene Größe stimmt nicht. Erneut versuchen.', 'Transferred size does not match. Try again.', 'El tamaño transferido no coincide. Inténtalo de nuevo.', 'La taille transférée ne correspond pas. Réessayer.'),
+    'title': ('Download und Slicer', 'Download and slicer', 'Descargas y slicer', 'Téléchargement et slicer'),
+    'missing': ('Katalog noch nicht angelegt – zuerst in der App einrichten. Falls bereits eingerichtet: Datenbankpfad, Leserechte und App-Version prüfen.',
+                'Catalog not created – set it up in the app first. If already configured, check the database path, read permissions and app version.',
+                'Catálogo aún no creado: configúralo primero en la aplicación. Si ya está configurado, comprueba la ruta de la base de datos, los permisos de lectura y la versión de la aplicación.',
+                'Catalogue pas encore créé : configure-le d’abord dans l’application. S’il l’est déjà, vérifie le chemin de la base de données, les droits de lecture et la version de l’application.'),
+    'search': ('Name suchen', 'Search name', 'Buscar nombre', 'Rechercher un nom'),
+    'type': ('Dateityp', 'File type', 'Tipo de archivo', 'Type de fichier'),
+    'folder': ('Ordner', 'Folder', 'Carpeta', 'Dossier'),
+    'tag': ('Tag', 'Tag', 'Etiqueta', 'Étiquette'),
+    'sort': ('Sortierung', 'Sort', 'Orden', 'Tri'),
+    'name': ('Name', 'Name', 'Nombre', 'Nom'),
+    'newest': ('Neueste', 'Newest', 'Más recientes', 'Plus récents'),
+    'size': ('Größe', 'Size', 'Tamaño', 'Taille'),
+    'apply': ('Anwenden', 'Apply', 'Aplicar', 'Appliquer'),
+    'all': ('Alle', 'All', 'Todas', 'Tous'),
+    'download': ('Herunterladen', 'Download', 'Descargar', 'Télécharger'),
+    'slicer': ('In Slicer öffnen', 'Open in slicer', 'Abrir en el slicer', 'Ouvrir dans le slicer'),
+    'unavailable': ('Datei nicht verfügbar oder außerhalb der Modell-Ordner', 'File unavailable or outside model folders',
+                    'Archivo no disponible o fuera de las carpetas de modelos', 'Fichier indisponible ou en dehors des dossiers de modèles'),
+    'empty': ('Keine Dateien gefunden.', 'No files found.', 'No se encontraron archivos.', 'Aucun fichier trouvé.'),
+    'previous': ('Zurück', 'Previous', 'Anterior', 'Précédent'),
+    'next': ('Weiter', 'Next', 'Siguiente', 'Suivant'),
+    'page': ('Seite', 'Page', 'Página', 'Page'),
+    'help': ('Hilfe zu Slicern', 'Slicer help', 'Ayuda sobre slicers', 'Aide sur les slicers'),
+    'notice': ('Hinweis', 'Notice', 'Aviso', 'Remarque'),
+    'expiry': ('Links gelten 1 Stunde. Bei einem Fehler die Seite neu laden.', 'Links expire after 1 hour. Reload this page if a link fails.',
+               'Los enlaces caducan al cabo de 1 hora. Si un enlace falla, recarga la página.', 'Les liens expirent au bout d’1 heure. Si un lien échoue, recharge la page.'),
+    'prusa': ('PrusaSlicer: Datei herunterladen und im Slicer öffnen.', 'PrusaSlicer: download the file and open it in the slicer.',
+              'PrusaSlicer: descarga el archivo y ábrelo en el slicer.', 'PrusaSlicer : télécharge le fichier et ouvre-le dans le slicer.'),
+    'advice': ('Der Slicer muss auf deinem PC installiert und die Adresse vom PC erreichbar sein. Selbstsignierte Zertifikate bei https://…:3001 werden oft abgelehnt: im Heimnetz http://…:3000 oder einen Reverse Proxy mit gültigem Zertifikat verwenden. Unter Linux muss das URL-Schema registriert sein.',
+               'The slicer must be installed on your PC and the address must be reachable from that PC. Slicers often reject self-signed certificates at https://…:3001: use http://…:3000 on your home network or a reverse proxy with a valid certificate. On Linux the URL scheme must be registered.',
+               'El slicer debe estar instalado en tu PC y la dirección debe ser accesible desde ese PC. Los slicers suelen rechazar los certificados autofirmados de https://…:3001: usa http://…:3000 en tu red doméstica o un proxy inverso con un certificado válido. En Linux, el esquema de URL debe estar registrado.',
+               'Le slicer doit être installé sur ton PC et l’adresse doit être accessible depuis ce PC. Les slicers refusent souvent les certificats autosignés de https://…:3001 : utilise http://…:3000 sur ton réseau domestique ou un proxy inverse avec un certificat valide. Sous Linux, le schéma d’URL doit être enregistré.'),
+    'all_files': ('Alle Dateien anzeigen', 'Show all files', 'Mostrar todos los archivos', 'Afficher tous les fichiers'),
+    'file_missing': ('Diese Datei ist nicht mehr verfügbar.', 'This file is no longer available.',
+                     'Este archivo ya no está disponible.', 'Ce fichier n’est plus disponible.'),
+    'error': ('Anfrage nicht verfügbar.', 'Request unavailable.', 'Solicitud no disponible.', 'Requête indisponible.'),
+    'theme': ('Farbschema', 'Color scheme', 'Esquema de color', 'Thème de couleurs'),
+    'theme_auto': ('Automatisch', 'Automatic', 'Automático', 'Automatique'),
+    'theme_light': ('Hell', 'Light', 'Claro', 'Clair'),
+    'theme_dark': ('Dunkel', 'Dark', 'Oscuro', 'Sombre'),
+    'ext_links': ('Weiterführende Links', 'Related links', 'Enlaces relacionados', 'Liens utiles'),
+    'homepage': ('Homepage', 'Website', 'Sitio web', 'Site web'),
+    'language': ('Sprache', 'Language', 'Idioma', 'Langue'),
+    'remove': ('Aus Liste entfernen', 'Remove from list', 'Quitar de la lista', 'Retirer de la liste'),
+    'remove_title': ('Aus der Download-Liste entfernen?', 'Remove from the download list?',
+                     '¿Quitar de la lista de descargas?', 'Retirer de la liste de téléchargement ?'),
+    'remove_explain': ('Die Datei bleibt im Katalog und auf dem Speicher erhalten; sie wird nur nicht mehr in dieser Liste angeboten.',
+                       'The file stays in the catalog and in storage; it is only no longer offered in this list.',
+                       'El archivo permanece en el catálogo y en el almacenamiento; solo deja de ofrecerse en esta lista.',
+                       'Le fichier reste dans le catalogue et sur le stockage ; il n’est simplement plus proposé dans cette liste.'),
+    'remove_confirm': ('Entfernen', 'Remove', 'Quitar', 'Retirer'),
+    'cancel': ('Abbrechen', 'Cancel', 'Cancelar', 'Annuler'),
+    'removed': ('„{name}“ wurde aus der Liste entfernt.', '‘{name}’ was removed from the list.',
+                '«{name}» se ha quitado de la lista.', '« {name} » a été retiré de la liste.'),
+    'undo': ('Rückgängig', 'Undo', 'Deshacer', 'Annuler'),
+    'show_hidden': ('Ausgeblendete anzeigen ({n})', 'Show hidden files ({n})', 'Mostrar archivos ocultos ({n})', 'Afficher les fichiers masqués ({n})'),
+    'restore': ('Wieder anzeigen', 'Show again', 'Mostrar de nuevo', 'Afficher à nouveau'),
+    'back_list': ('Zur Download-Liste', 'Back to the download list', 'Volver a la lista de descargas', 'Retour à la liste de téléchargement'),
+    'hidden_title': ('Ausgeblendete Dateien', 'Hidden files', 'Archivos ocultos', 'Fichiers masqués'),
+    'hidden_empty': ('Keine ausgeblendeten Dateien.', 'No hidden files.', 'No hay archivos ocultos.', 'Aucun fichier masqué.'),
+}
+# Key (label lookup), German URL, English URL; Discord is language-independent.
+# The website and wiki exist only in German and English (/es/ and /fr/ are 404), so es and fr link the English pages.
+EXTERNAL = (
+    ('wiki', 'https://wiki.3mfkatalog.de/', 'https://wiki.3mfkatalog.de/en/'),
+    ('homepage', 'https://3mfkatalog.de/', 'https://3mfkatalog.de/en/'),
+    ('discord', 'https://discord.gg/abfVNfFqu3', 'https://discord.gg/abfVNfFqu3'),
+)
+# Same 24x24 stroke style as the app icon set; 'model' is the placeholder for files without a preview.
+ICON_ATTRS = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"'
+ICON_MODEL = f'<svg {ICON_ATTRS}><path d="m12 2 9 5v10l-9 5-9-5V7l9-5ZM3 7l9 5 9-5m-9 5v10"/></svg>'
+ICON_TRASH = f'<svg {ICON_ATTRS}><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></svg>'
+ICON_THEMES = {
+    'auto': f'<svg class="i-auto" {ICON_ATTRS}><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18Z" fill="currentColor"/></svg>',
+    'light': f'<svg class="i-light" {ICON_ATTRS}><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+    'dark': f'<svg class="i-dark" {ICON_ATTRS}><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"/></svg>',
+}
+def _font_faces():
+    return ''.join("@font-face{font-family:'Barlow';font-style:normal;font-weight:%d;font-display:swap;"
+                   "src:url(/katalog/static/fonts/barlow-%d.woff2) format('woff2')}" % (w, w)
+                   for w in (400, 500, 600, 700))
+
+
+# Design tokens are copied from the app theme so the page matches it in light and dark.
+STYLE = _font_faces() + '''
+:root {
+  color-scheme: light dark;
+  --bg: oklch(0.965 0.004 60); --panel: oklch(1 0 0); --panel-2: oklch(0.985 0.003 60);
+  --line: oklch(0.895 0.006 60); --line-strong: oklch(0.82 0.008 60);
+  --ink: oklch(0.245 0.01 45); --ink-2: oklch(0.505 0.01 50); --ink-3: oklch(0.544 0.008 50);
+  --accent: oklch(0.545 0.165 30); --accent-ink: oklch(0.99 0.01 30); --accent-soft: oklch(0.945 0.03 30);
+  --plate: oklch(0.915 0.006 60); --plate-2: oklch(0.955 0.004 60);
+  --crit: oklch(0.539 0.18 18); --crit-soft: oklch(0.94 0.045 18);
+  --good: oklch(0.515 0.13 150); --good-soft: oklch(0.94 0.045 150);
+  --shadow: 0 1px 2px rgba(40, 28, 24, 0.06), 0 8px 24px rgba(40, 28, 24, 0.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: oklch(0.165 0.005 60); --panel: oklch(0.205 0.006 60); --panel-2: oklch(0.235 0.006 60);
+    --line: oklch(0.295 0.008 60); --line-strong: oklch(0.375 0.01 60);
+    --ink: oklch(0.945 0.005 60); --ink-2: oklch(0.715 0.008 60); --ink-3: oklch(0.617 0.01 60);
+    --accent: oklch(0.735 0.155 34); --accent-ink: oklch(0.17 0.03 30); --accent-soft: oklch(0.285 0.05 32);
+    --plate: oklch(0.195 0.006 60); --plate-2: oklch(0.235 0.006 60);
+    --crit: oklch(0.684 0.19 15); --crit-soft: oklch(0.3 0.06 15);
+    --good: oklch(0.72 0.14 150); --good-soft: oklch(0.28 0.05 150);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+}
+:root[data-theme="light"] {color-scheme: light}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: oklch(0.165 0.005 60); --panel: oklch(0.205 0.006 60); --panel-2: oklch(0.235 0.006 60);
+  --line: oklch(0.295 0.008 60); --line-strong: oklch(0.375 0.01 60);
+  --ink: oklch(0.945 0.005 60); --ink-2: oklch(0.715 0.008 60); --ink-3: oklch(0.617 0.01 60);
+  --accent: oklch(0.735 0.155 34); --accent-ink: oklch(0.17 0.03 30); --accent-soft: oklch(0.285 0.05 32);
+  --plate: oklch(0.195 0.006 60); --plate-2: oklch(0.235 0.006 60);
+  --crit: oklch(0.684 0.19 15); --crit-soft: oklch(0.3 0.06 15);
+  --good: oklch(0.72 0.14 150); --good-soft: oklch(0.28 0.05 150);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.upload {padding:1rem;margin:1rem 0;background:var(--panel);border:1px solid var(--line);border-radius:6px}
+.upload-zone {padding:1rem;border:2px dashed var(--line-strong);border-radius:6px;margin:.75rem 0}
+.upload-zone.drag {border-color:var(--accent);background:var(--accent-soft)}
+.upload-list {padding:0;list-style:none}
+.upload-list li {padding:.75rem 0;border-top:1px solid var(--line);overflow-wrap:anywhere;min-width:0}
+.upload-list progress {display:block;width:100%;max-width:30rem;margin:.5rem 0;accent-color:var(--accent)}
+.upload-list [role=status] {margin:.5rem 0;border-left-width:4px;border-left-color:var(--line-strong)}
+.upload-list li[data-state=done] [role=status] {border-left-color:var(--good)}
+.upload-list li[data-state=error] [role=status] {border-left-color:var(--crit)}
+.upload-list li[data-state=done] progress {accent-color:var(--good)}
+.upload-list li[data-state=error] progress,.upload-list li[data-state=cancelled] progress {display:none}
+#upload-clear {margin-top:.5rem}
+* {box-sizing:border-box}
+html {font-family:'Barlow',Helvetica,sans-serif;scroll-padding-top:6rem}
+[hidden] {display:none !important}
+body {margin:0;background:var(--bg);color:var(--ink);font-size:14.5px;line-height:1.5}
+button,input,select {font:inherit;font-size:13.5px;max-width:100%}
+a {color:var(--accent);text-underline-offset:2px}
+.bar {position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-content:space-between;gap:.25rem .75rem;flex-wrap:wrap;padding:.5rem 1rem;background:var(--panel);border-bottom:1px solid var(--line)}
+.bar-end {display:flex;align-items:center;flex-wrap:wrap;gap:.25rem .9rem;min-width:0}
+.ext,.langs {display:flex;flex-wrap:wrap;gap:.1rem .9rem;margin:0}
+.langs {gap:.1rem .6rem}
+.langs a {display:inline-flex;align-items:center;padding:3px;border-radius:5px;text-decoration:none;line-height:0}
+.langs .flag {display:block;width:24px;height:16px;border-radius:2px;box-shadow:0 0 0 1px var(--line-strong);opacity:.75}
+.langs a:hover .flag {opacity:1}
+.bar .langs a[aria-current] {box-shadow:0 0 0 2px var(--accent)}
+.langs a[aria-current] .flag {opacity:1}
+.theme {display:inline-flex;align-items:center;justify-content:center;width:32px;padding:0;background:var(--panel);color:var(--ink);border-color:var(--line-strong)}
+.theme:hover {border-color:var(--accent);filter:none}
+.theme svg {width:18px;height:18px;display:none}
+.theme[data-state=auto] .i-auto,.theme[data-state=light] .i-light,.theme[data-state=dark] .i-dark {display:block}
+.back {margin:.25rem 0 0}
+.notice {margin:1rem 0;padding:.8rem 1rem .8rem .9rem;background:var(--accent-soft);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:6px;display:flex;gap:.7rem;align-items:flex-start}
+.notice>svg {flex:none;width:22px;height:22px;margin-top:1px;color:var(--accent)}
+.notice h2 {margin:0 0 .25rem;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.notice p {margin:.2rem 0;font-size:14.5px;font-weight:500}
+.notice details {margin-top:.4rem}
+.notice details>summary {display:inline;height:auto;padding:0;border:0;background:none;color:var(--accent);font-size:13.5px;font-weight:600;text-decoration:underline;cursor:pointer}
+.notice details>summary:hover {border:0}
+.notice details>p {font-weight:400}
+.brand {display:inline-flex;align-items:center;gap:.6rem;color:var(--ink);text-decoration:none;font-weight:700;font-size:15px;text-transform:uppercase;letter-spacing:.07em}
+.brand img {width:30px;height:30px;display:block}
+.bar a:not(.brand) {font-size:13px;font-weight:500}
+main {max-width:76rem;margin:auto;padding:1rem}
+h1 {font-size:22px;font-weight:700;margin:.5rem 0 1rem;line-height:1.2}
+h2 {font-size:15px;font-weight:600;margin:0;overflow-wrap:anywhere}
+p {margin:.35rem 0;overflow-wrap:anywhere}
+form {display:flex;flex-wrap:wrap;gap:.75rem;align-items:end;margin:0 0 1.25rem;padding:.75rem;background:var(--panel);border:1px solid var(--line);border-radius:6px;box-shadow:var(--shadow)}
+label {display:grid;gap:.25rem;font-size:12px;font-weight:600;color:var(--ink-2);text-transform:uppercase;letter-spacing:.07em}
+input,select {height:32px;padding:0 .6rem;background:var(--panel);color:var(--ink);border:1px solid var(--line-strong);border-radius:4px;text-transform:none;letter-spacing:0;font-weight:400}
+input:hover,select:hover {border-color:var(--accent)}
+button {height:32px;padding:0 .9rem;border-radius:4px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);font-weight:600;cursor:pointer}
+button:hover {filter:brightness(1.08)}
+.files {list-style:none;padding:0;margin:0}
+.file {display:flex;gap:.9rem;align-items:flex-start;padding:.8rem;margin:.6rem 0;background:var(--panel);border:1px solid var(--line);border-radius:6px;box-shadow:var(--shadow)}
+.file img,.ph {width:5rem;height:5rem;flex:none;object-fit:contain;background:var(--plate);border-radius:4px}
+.ph {display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.2rem;color:var(--ink-3);font:600 11px/1 ui-monospace,monospace;letter-spacing:.06em}
+.ph svg {width:40px;height:40px}
+.content {min-width:0;flex:1}
+.meta {font-size:12.5px;color:var(--ink-2);font-family:ui-monospace,monospace}
+.tags {display:flex;flex-wrap:wrap;gap:.3rem;margin:.35rem 0}
+.tag {display:inline-block;padding:0 .55rem;border:1px solid var(--line);border-radius:999px;font-size:12px;color:var(--ink-2)}
+.unavailable {opacity:.7}
+.actions>a.quiet,button.quiet {display:inline-flex;align-items:center;height:32px;padding:0 .8rem;background:var(--panel);color:var(--ink);border:1px solid var(--line-strong);border-radius:4px;font-size:13.5px;font-weight:600;text-decoration:none;cursor:pointer}
+.actions>a.quiet:hover,button.quiet:hover {border-color:var(--accent);filter:none}
+.quiet svg {width:16px;height:16px;margin-right:.4rem;flex:none}
+form.inline {display:inline;margin:0;padding:0;background:none;border:0;box-shadow:none}
+button.link {height:auto;padding:0;background:none;border:0;color:var(--accent);font-weight:600;text-decoration:underline;text-underline-offset:2px}
+button.link:hover {filter:none}
+button.secondary {background:var(--panel);color:var(--ink);border-color:var(--line-strong)}
+button.secondary:hover {border-color:var(--accent);filter:none}
+dialog {width:28rem;max-width:calc(100vw - 2rem);padding:0;border:1px solid var(--line-strong);border-radius:6px;background:var(--panel);color:var(--ink);box-shadow:var(--shadow)}
+dialog::backdrop {background:rgba(0, 0, 0, 0.5)}
+.dlg {padding:1rem 1.1rem}
+.dlg form {display:block;margin:0;padding:0;background:none;border:0;box-shadow:none}
+.dlg h2 {font-size:17px;font-weight:700;margin:0 0 .6rem}
+.dlg .dlg-name {font-weight:600}
+.dlg-actions {display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.6rem;margin-top:1rem}
+.confirm {max-width:34rem;padding:1rem;background:var(--panel);border:1px solid var(--line);border-radius:6px;box-shadow:var(--shadow)}
+.confirm form {display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin:1rem 0 0;padding:0;background:none;border:0;box-shadow:none}
+.actions {display:flex;flex-wrap:wrap;gap:.6rem;align-items:flex-start;margin-top:.5rem}
+.actions>a,summary {display:inline-flex;align-items:center;height:32px;padding:0 .8rem;border-radius:4px;font-size:13.5px;font-weight:600;text-decoration:none;cursor:pointer}
+.actions>a {background:var(--accent);color:var(--accent-ink);border:1px solid var(--accent)}
+.actions>a:hover {filter:brightness(1.08)}
+details {position:relative}
+details>summary {background:var(--panel);color:var(--ink);border:1px solid var(--line-strong);list-style:none}
+details>summary::-webkit-details-marker {display:none}
+details>summary::after {content:"\\25BE";margin-left:.4rem}
+details>summary:hover {border-color:var(--accent)}
+details ul {list-style:none;margin:.3rem 0 0;padding:.25rem;background:var(--panel);border:1px solid var(--line);border-radius:6px;box-shadow:var(--shadow);min-width:11rem}
+details li {padding:0}
+details li a {display:block;padding:.35rem .6rem;border-radius:4px;text-decoration:none;color:var(--ink)}
+details li a:hover {background:var(--accent-soft);color:var(--accent)}
+main>details {margin-top:.5rem}
+main>details>p {color:var(--ink-2);font-size:13px}
+nav {display:flex;gap:1rem;align-items:center;margin:1rem 0;color:var(--ink-2)}
+[role=status] {padding:.6rem .8rem;background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:4px}
+a:focus-visible,summary:focus-visible,button:focus-visible,dialog:focus-visible,input:focus-visible,select:focus-visible {outline:2px solid var(--accent);outline-offset:2px}
+@media(max-width:35rem) {main {padding:.75rem}.file {gap:.6rem}.file img,.ph {width:3.25rem;height:3.25rem}.ph svg {width:26px;height:26px}.ph {font-size:9px}label {width:100%}input,select {width:100%}.actions details {width:100%}}
+'''
+# Runs in <head> so the stored choice applies before first paint; without it the page follows the OS.
+THEME_SCRIPT = '''try{var t=localStorage.getItem('3mf-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}'''
+# Inline assets keep this single-file service independent of external resources.
+SCRIPT = '''(function () {
+ var b = document.getElementById('theme-toggle'), root = document.documentElement;
+ if (b) {
+  var order = ['auto', 'light', 'dark'];
+  var show = function () {
+   var s = root.getAttribute('data-theme') || 'auto';
+   b.setAttribute('data-state', s);
+   var label = b.dataset.label + ': ' + b.dataset[s];
+   b.setAttribute('aria-label', label); b.title = label;
+  };
+  b.addEventListener('click', function () {
+   var next = order[(order.indexOf(root.getAttribute('data-theme') || 'auto') + 1) % 3];
+   if (next === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', next);
+   try { if (next === 'auto') localStorage.removeItem('3mf-theme'); else localStorage.setItem('3mf-theme', next); } catch (e) {}
+   show();
+  });
+  show(); b.hidden = false;
+ }
+})();
+(function () {
+ var dlg = document.getElementById('rm-dialog');
+ if (!dlg || typeof dlg.showModal !== 'function') return;
+ var form = dlg.querySelector('form'), name = dlg.querySelector('[data-rm-name]'), cancel = dlg.querySelector('[data-rm-cancel]'), opener = null;
+ document.querySelectorAll('a[data-rm]').forEach(function (a) {
+  a.addEventListener('click', function (e) {
+   e.preventDefault(); opener = a;
+   form.elements.namedItem('id').value = a.dataset.id;
+   form.elements.namedItem('csrf').value = a.dataset.csrf;
+   form.elements.namedItem('next').value = a.dataset.next;
+   name.textContent = a.dataset.name;
+   dlg.showModal(); cancel.focus();
+  });
+ });
+ cancel.addEventListener('click', function () { dlg.close(); });
+ // The dialog box has no padding of its own, so a click on the dialog element itself hit the backdrop.
+ dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
+ dlg.addEventListener('close', function () { if (opener) opener.focus(); });
+})();
+if (/Mac/i.test(navigator.platform || navigator.userAgent)) {
+ document.querySelectorAll('a[data-mac]').forEach(a => { a.href = a.dataset.mac; });
+}'''
+
+
+UPLOAD_SCRIPT = """
+(function () {
+ const section = document.getElementById('upload');
+ if (!section) return;
+ const t = JSON.parse(section.dataset.text), queue = [];
+ const input = document.getElementById('upload-input'), zone = document.getElementById('upload-zone');
+ const list = document.getElementById('upload-list'), success = document.getElementById('upload-success');
+ const items = [], clear = document.getElementById('upload-clear');
+ let running = false;
+ // Runs once the queue is drained: the summary sits next to the list so a rejection is visible without scrolling.
+ function settle() {
+  const count = s => items.filter(i => i.row.dataset.state === s).length;
+  const ok = count('done'), bad = count('error');
+  const parts = [];
+  if (bad) parts.push(t.upload_summary.replace('{ok}', ok).replace('{bad}', bad));
+  if (ok) parts.push(section.dataset.success);
+  success.textContent = parts.join(' ');
+  clear.hidden = false;
+ }
+ function pump() {
+  if (running) return;
+  const item = queue.shift();
+  if (!item) return;
+  if (item.cancelled) { pump(); return; }
+  running = true;
+  const xhr = new XMLHttpRequest(); item.xhr = xhr;
+  item.status.textContent = t.upload_loading;
+  item.row.dataset.state = 'loading';
+  let finished = false;
+  function finish(message, state) {
+   if (finished) return;
+   finished = true;
+   item.status.textContent = message;
+   item.row.dataset.state = state;
+   item.cancel.hidden = true;
+   if (state === 'done') item.progress.value = 100;
+   running = false; pump();
+   if (!running) settle();
+  }
+  xhr.open('POST', '/katalog/upload');
+  xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+  xhr.setRequestHeader('X-Filename', encodeURIComponent(item.file.name));
+  xhr.setRequestHeader('X-CSRF-Token', section.dataset.csrf);
+  xhr.upload.onprogress = function (e) {
+   if (e.lengthComputable) item.progress.value = e.loaded / e.total * 100;
+  };
+  xhr.onload = function () {
+   let response = {};
+   try { response = JSON.parse(xhr.responseText); } catch (e) {}
+   if (xhr.status === 200 && response.ok) {
+    item.name.textContent = response.name;
+    finish(t.upload_done, 'done');
+   } else {
+    const codes = {401:'forbidden',403:'forbidden',404:'upload_disabled',413:'too_large',429:'busy',503:'write_failed'};
+    finish(t.upload_error + ': ' + (t['upload_' + response.error] || t['upload_' + codes[xhr.status]] || t.upload_interrupted), 'error');
+   }
+  };
+  xhr.onerror = function () { finish(t.upload_error + ': ' + t.upload_interrupted, 'error'); };
+  xhr.onabort = function () { finish(t.upload_cancelled, 'cancelled'); };
+  xhr.send(item.file);
+ }
+ function add(files) {
+  for (const file of files) {
+   const row = document.createElement('li'), name = document.createElement('strong');
+   const size = document.createElement('span'), progress = document.createElement('progress');
+   const status = document.createElement('p'), cancel = document.createElement('button');
+   name.textContent = file.name;
+   size.textContent = ' · ' + new Intl.NumberFormat(document.documentElement.lang).format(file.size) + ' B';
+   progress.max = 100; progress.value = 0;
+   progress.setAttribute('aria-label', t.upload_progress + ': ' + file.name);
+   status.setAttribute('role', 'status'); status.textContent = t.upload_waiting;
+   cancel.type = 'button'; cancel.textContent = t.cancel;
+   cancel.setAttribute('aria-label', t.cancel + ': ' + file.name);
+   row.dataset.state = 'waiting';
+   const item = {file, name, progress, status, cancel, row, cancelled:false};
+   cancel.onclick = function () {
+    item.cancelled = true;
+    if (item.xhr) item.xhr.abort();
+    else { status.textContent = t.upload_cancelled; row.dataset.state = 'cancelled'; cancel.hidden = true; }
+    choose.focus();
+   };
+   row.append(name, size, progress, status, cancel); list.append(row); queue.push(item); items.push(item);
+  }
+  clear.hidden = true; success.textContent = '';
+  pump();
+ }
+ const choose = document.getElementById('upload-choose');
+ choose.onclick = function () { input.click(); };
+ clear.onclick = function () {
+  items.length = 0; list.textContent = ''; success.textContent = ''; clear.hidden = true;
+  choose.focus();
+ };
+ input.onchange = function () { add(input.files); input.value = ''; };
+ zone.ondragover = function (e) { e.preventDefault(); zone.classList.add('drag'); };
+ zone.ondragleave = function () { zone.classList.remove('drag'); };
+ zone.ondrop = function (e) { e.preventDefault(); zone.classList.remove('drag'); add(e.dataTransfer.files); };
+ section.hidden = false;
+})();
+"""
+
+
+def escape(value):
+    return html.escape(str(value), quote=True)
+
+
+def language(header, chosen=None):
+    # An explicit ?lang= wins over the browser; anything outside LANGS is ignored, never echoed.
+    if chosen in LANGS:
+        return chosen
+    choices = []
+    for index, entry in enumerate(header.split(',')):
+        parts = entry.strip().lower().split(';')
+        lang = parts[0].split('-')[0]
+        quality = 1.0
+        for part in parts[1:]:
+            if part.strip().startswith('q='):
+                try:
+                    quality = float(part.strip()[2:])
+                except ValueError:
+                    quality = 0
+        if lang in LANGS and 0 < quality <= 1:
+            choices.append((quality, -index, lang))
+    return max(choices)[2] if choices else 'de'
+
+
+def discover_db(share=Path('/config/.local/share')):
+    if 'CATALOG_DB' in os.environ:
+        return os.environ['CATALOG_DB']
+    try:
+        candidates = [(p.stat().st_mtime_ns, str(p)) for p in Path(share).glob('*/catalog.db') if p.is_file()]
+        return max(candidates)[1] if candidates else ''
+    except OSError:
+        return ''
+
+
+def allowed_roots():
+    if 'KATALOG_ALLOWED_ROOTS' in os.environ:
+        return [p for p in os.environ['KATALOG_ALLOWED_ROOTS'].split(':') if os.path.isabs(p)]
+    return [str(p) for p in Path('/').iterdir() if re.fullmatch(r'models[0-9]*', p.name)]
+
+
+def load_secret(path=Path('/config/.katalog-web-secret')):
+    path = Path(path)
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    except FileExistsError:
+        pass
+    else:
+        with os.fdopen(fd, 'wb') as stream:
+            stream.write(secrets.token_bytes(32))
+            stream.flush()
+            os.fsync(stream.fileno())
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, 'rb') as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid():
+            raise ValueError('Invalid secret owner or file type')
+        os.fchmod(stream.fileno(), 0o600)
+        secret = stream.read(33)
+    if len(secret) != 32:
+        raise ValueError('Invalid secret length')
+    return secret
+
+
+def origin(headers):
+    host = headers.get('Host', '')
+    if len(host) > 253 or not re.fullmatch(r'(?:[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?|\[[0-9A-Fa-f:]+\])(?::[0-9]{1,5})?', host):
+        raise ValueError('Invalid host')
+    parsed = urlsplit('http://' + host)
+    if parsed.port is not None and not 1 <= parsed.port <= 65535:
+        raise ValueError('Invalid port')
+    if host.startswith('['):
+        ipaddress.IPv6Address(parsed.hostname)
+    proto = headers.get('X-Forwarded-Proto', 'http')
+    if proto not in ('http', 'https'):
+        raise ValueError('Invalid protocol')
+    return proto + '://' + host
+
+
+PUBLIC_ORIGIN = Path('/run/3mf/public-origin')
+_origin_lock = threading.Lock()
+
+
+def remember_origin(base):
+    # Serialize comparison and replacement because requests run in parallel.
+    temporary = None
+    try:
+        with _origin_lock:
+            try:
+                with PUBLIC_ORIGIN.open('r') as stream:
+                    if stream.read(300) == base:
+                        return
+            except OSError:
+                pass
+            with tempfile.NamedTemporaryFile(mode='w', dir=PUBLIC_ORIGIN.parent,
+                                             prefix='.public-origin-', delete=False) as stream:
+                temporary = stream.name
+                stream.write(base)
+                stream.flush()
+                os.fchmod(stream.fileno(), 0o644)
+                os.fsync(stream.fileno())
+            os.replace(temporary, PUBLIC_ORIGIN)
+    except (OSError, UnicodeError):
+        pass
+    finally:
+        if temporary is not None:
+            with contextlib.suppress(OSError):
+                os.unlink(temporary)
+
+
+def filename(row):
+    name = ''.join(c for c in str(row['name']) if not unicodedata.category(c).startswith('C'))
+    name = name.replace('/', '_').replace('\\', '_') or 'model'
+    return name
+
+
+def list_url(query):
+    kept = {k: v for k, v in query.items() if k in LIST_KEYS and v and (k != 'lang' or v in LANGS)}
+    return '/katalog/' + ('?' + urlencode(kept) if kept else '')
+
+
+def with_lang(url, code):
+    # Same local list URL, with the language replaced; used by the language menu.
+    pairs = parse_qs(urlsplit(safe_next(url)).query, max_num_fields=30, keep_blank_values=True)
+    return list_url({**{k: v[0] for k, v in pairs.items()}, 'lang': code})
+
+
+def safe_next(value):
+    # Rebuilt from whitelisted keys, so the result is always a local list URL (no open redirect).
+    try:
+        url = urlsplit(value or '')
+        pairs = parse_qs(url.query, max_num_fields=30, keep_blank_values=True)
+    except ValueError:
+        return '/katalog/'
+    if url.scheme or url.netloc or url.path != '/katalog/' or any(c in value for c in '\\\r\n\t'):
+        return '/katalog/'
+    return list_url({k: v[0] for k, v in pairs.items()})
+
+
+class HiddenStore:
+    """IDs hidden from the download list; the catalog database itself is never written."""
+
+    def __init__(self, path=None):
+        self.path = Path(path or os.environ.get('KATALOG_WEB_HIDDEN') or HIDDEN_FILE)
+        self.lock = threading.Lock()
+
+    def _read(self):
+        try:
+            with open(self.path, 'rb') as stream:
+                data = json.loads(stream.read(4_000_000))
+        except (OSError, ValueError):
+            return set()
+        valid = (isinstance(data, list) and len(data) <= HIDDEN_LIMIT and
+                 all(type(i) is int and 0 <= i <= 9223372036854775807 for i in data))
+        return set(data) if valid else set()
+
+    def _write(self, ids):
+        # Same-directory temp file + replace: readers see the old or the new list, never a partial one.
+        fd, temporary = tempfile.mkstemp(dir=self.path.parent, prefix='.katalog-web-hidden-')
+        try:
+            with os.fdopen(fd, 'w') as stream:
+                os.fchmod(stream.fileno(), 0o600)
+                json.dump(sorted(ids), stream)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, self.path)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(temporary)
+            raise
+
+    def ids(self):
+        with self.lock:
+            return frozenset(self._read())
+
+    def change(self, fid, hide):
+        """Returns False when the list is full; raises OSError when it cannot be saved."""
+        with self.lock:
+            ids = self._read()
+            if (fid in ids) == hide:
+                return True
+            if hide and len(ids) >= HIDDEN_LIMIT:
+                return False
+            ids.add(fid) if hide else ids.discard(fid)
+            self._write(ids)
+            return True
+
+
+class UploadError(Exception):
+    def __init__(self, status, code):
+        self.status, self.code = status, code
+
+
+def upload_name(encoded):
+    try:
+        if re.search(r'%(?![0-9a-fA-F]{2})', encoded):
+            raise ValueError
+        name = unicodedata.normalize('NFC', unquote_to_bytes(encoded).decode('utf-8'))
+        if (not name or name.startswith('.') or (name != name.strip() or name.endswith('.')) or
+                any(c in '/\\' or unicodedata.category(c).startswith('C') for c in name) or
+                len(name) > 180 or len(name.encode('utf-8')) > 240):
+            raise ValueError
+    except (ValueError, UnicodeError):
+        raise UploadError(400, 'invalid_name') from None
+    if Path(name).suffix.lower() not in UPLOAD_EXTENSIONS:
+        raise UploadError(415, 'unsupported_type')
+    return name
+
+
+def upload_signature(name, block):
+    if not block:
+        raise UploadError(400, 'invalid_content')
+    ext = Path(name).suffix.lower()
+    signatures = {'.3mf': b'PK\x03\x04', '.zip': b'PK\x03\x04',
+                  '.7z': b"7z\xbc\xaf\x27\x1c", '.rar': b'Rar!\x1a\x07'}
+    if ext in signatures:
+        valid = block.startswith(signatures[ext])
+    elif ext in ('.stp', '.step'):
+        valid = block.lstrip().startswith(b'ISO-10303-21')
+    else:
+        valid = not block.startswith((b'MZ', b'\x7fELF', b'#!'))
+    if not valid:
+        raise UploadError(415, 'invalid_signature')
+
+
+class Catalog:
+    def __init__(self, db_path=None, roots=None, secret=None, hidden=None):
+        self.db_path = db_path
+        self.hidden = HiddenStore(hidden)
+        self.roots = [os.path.abspath(p) for p in (allowed_roots() if roots is None else roots)]
+        self.secret = load_secret() if secret is None else secret
+        self.upload_dir = os.environ.get('KATALOG_UPLOAD_DIR') or '/models/Eingang'
+        try:
+            self.upload_max = int(os.environ.get('KATALOG_UPLOAD_MAX_MB') or '2048') * UPLOAD_BLOCK
+        except ValueError:
+            self.upload_max = 0
+        self.upload_slots = threading.BoundedSemaphore(2)
+        self.cleanup_uploads()
+
+    def upload_csrf(self):
+        return hmac.new(self.secret, b'upload|csrf', hashlib.sha256).hexdigest()
+
+    def upload_allowed(self, path):
+        return any(os.path.commonpath([root, path]) == root for root in self.roots)
+
+    def upload_problem(self):
+        if self.upload_max <= 0:
+            return 'upload_config'
+        if not os.path.isabs(self.upload_dir):
+            return 'upload_root'
+        target = os.path.realpath(self.upload_dir)
+        if not self.upload_allowed(target):
+            return 'upload_root'
+        parent = target
+        while not os.path.exists(parent):
+            parent = os.path.dirname(parent)
+        try:
+            if not os.path.isdir(parent) or not os.access(parent, os.W_OK | os.X_OK):
+                return 'upload_permissions'
+            if os.statvfs(parent).f_flag & os.ST_RDONLY:
+                return 'upload_permissions'
+        except OSError:
+            return 'upload_permissions'
+        return None
+
+    @contextlib.contextmanager
+    def upload_folder(self, create=False):
+        if self.upload_problem():
+            raise UploadError(404, 'upload_disabled')
+        target = os.path.realpath(self.upload_dir)
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        fd = os.open('/', flags)
+        try:
+            # Walk pinned parents so a swapped symlink cannot redirect directory creation.
+            for component in Path(target).parts[1:]:
+                try:
+                    child = os.open(component, flags, dir_fd=fd)
+                except FileNotFoundError:
+                    if not create:
+                        raise
+                    parent = os.path.realpath(f'/proc/self/fd/{fd}')
+                    if not self.upload_allowed(os.path.join(parent, component)):
+                        raise UploadError(404, 'upload_disabled') from None
+                    os.makedirs(f'/proc/self/fd/{fd}/{component}', mode=0o755, exist_ok=True)
+                    child = os.open(component, flags, dir_fd=fd)
+                os.close(fd)
+                fd = child
+            # Pin the directory and recheck the opened inode, not a replaceable path.
+            if not self.upload_allowed(os.path.realpath(f'/proc/self/fd/{fd}')):
+                raise UploadError(404, 'upload_disabled')
+            yield fd
+        finally:
+            os.close(fd)
+
+    def cleanup_uploads(self):
+        try:
+            with self.upload_folder() as directory:
+                for name in os.listdir(directory):
+                    if re.fullmatch(r'\.upload-[a-zA-Z0-9_-]+\.part', name):
+                        info = os.stat(name, dir_fd=directory, follow_symlinks=False)
+                        if stat.S_ISREG(info.st_mode) and info.st_mtime < time.time() - 3600:
+                            os.unlink(name, dir_fd=directory)
+        except (OSError, UploadError):
+            pass
+
+    def receive_upload(self, source, length, name, extra=lambda: False):
+        if length > self.upload_max:
+            raise UploadError(413, 'too_large')
+        if length <= 0:
+            raise UploadError(400, 'invalid_content')
+        with self.upload_folder(create=True) as directory:
+            space = os.statvfs(directory)
+            if space.f_bavail * space.f_frsize <= length + UPLOAD_RESERVE:
+                raise UploadError(409, 'no_space')
+            temporary = '.upload-' + secrets.token_hex(16) + '.part'
+            fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644, dir_fd=directory)
+            try:
+                with os.fdopen(fd, 'wb') as stream:
+                    os.fchmod(stream.fileno(), 0o644)
+                    total = 0
+                    while total < length:
+                        block = source.read(min(UPLOAD_BLOCK, length - total))
+                        if not block or len(block) > length - total:
+                            raise UploadError(400, 'length_mismatch')
+                        if total == 0:
+                            upload_signature(name, block)
+                        total += len(block)
+                        stream.write(block)
+                    if extra():
+                        raise UploadError(400, 'length_mismatch')
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                stem, ext = os.path.splitext(name)
+                for attempt in range(1, 101):
+                    final = name if attempt == 1 else f'{stem} ({attempt}){ext}'
+                    try:
+                        os.link(temporary, final, src_dir_fd=directory, dst_dir_fd=directory, follow_symlinks=False)
+                        return {'ok': True, 'name': final, 'size': total}
+                    except FileExistsError:
+                        continue
+                raise UploadError(409, 'conflict')
+            finally:
+                os.unlink(temporary, dir_fd=directory)
+
+    @contextlib.contextmanager
+    def connect(self):
+        path = discover_db() if self.db_path is None else self.db_path
+        if not path:
+            raise sqlite3.OperationalError('No catalog')
+        con = sqlite3.connect(Path(path).absolute().as_uri() + '?mode=ro', uri=True, timeout=2)
+        con.row_factory = sqlite3.Row
+        deadline = time.monotonic() + 2
+        con.set_progress_handler(lambda: time.monotonic() > deadline, 1000)
+        try:
+            yield con
+        finally:
+            con.close()
+
+    def token(self, fid, expiry=None):
+        expiry = int(time.time()) + 3600 if expiry is None else expiry
+        message = f'{fid}|{expiry}|download'.encode()
+        return f'{expiry}.' + hmac.new(self.secret, message, hashlib.sha256).hexdigest()
+
+    def valid_token(self, fid, token):
+        if not re.fullmatch(r'[0-9]{1,12}\.[0-9a-f]{64}', token):
+            return False
+        expiry = int(token.split('.')[0])
+        return expiry > int(time.time()) and hmac.compare_digest(self.token(fid, expiry), token)
+
+    def csrf(self, fid):
+        # Distinct purpose text keeps these tokens and download tokens from being interchangeable.
+        return hmac.new(self.secret, f'csrf|{fid}'.encode(), hashlib.sha256).hexdigest()
+
+    def valid_csrf(self, fid, token):
+        return hmac.compare_digest(self.csrf(fid), token)
+
+    def file(self, fid, include_hidden=False):
+        if not re.fullmatch(ID, fid) or int(fid) > 9223372036854775807:
+            return None
+        if not include_hidden and int(fid) in self.hidden.ids():
+            return None
+        try:
+            with self.connect() as con:
+                return con.execute('SELECT id, name, path, file_type, thumbnail_png FROM files WHERE id=? AND deleted_at IS NULL', (int(fid),)).fetchone()
+        except (sqlite3.Error, OSError, ValueError):
+            return None
+
+    def open_file(self, row):
+        if row is None:
+            raise FileNotFoundError
+        path = row['path']
+        if not isinstance(path, str) or not os.path.isabs(path) or '..' in Path(path).parts or '\x00' in path:
+            raise FileNotFoundError
+        resolved = os.path.realpath(path)
+        if not any(os.path.commonpath([root, resolved]) == root and resolved != root for root in self.roots):
+            raise FileNotFoundError
+        # Walk the resolved path with directory descriptors to close symlink-swap races.
+        fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            components = Path(resolved).parts[1:]
+            for part in components[:-1]:
+                next_fd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+                os.close(fd)
+                fd = next_fd
+            result = os.open(components[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
+        finally:
+            os.close(fd)
+        stream = os.fdopen(result, 'rb')
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            stream.close()
+            raise FileNotFoundError
+        return stream
+
+    def listing(self, query):
+        if 'file' in query:
+            row = self.file(query['file'])
+            with self.open_file(row):
+                pass
+        view_hidden = query.get('hidden') == '1' and 'file' not in query
+        hidden_json = json.dumps(sorted(self.hidden.ids()))
+        where = ['f.deleted_at IS NULL', 'f.id ' + ('IN' if view_hidden else 'NOT IN') + ' (SELECT value FROM json_each(?))']
+        args = [hidden_json]
+        if 'file' in query:
+            where.append('f.id=?')
+            args.append(int(query['file']))
+        if query.get('q'):
+            where.append('instr(lower(f.name), lower(?)) > 0')
+            args.append(query['q'])
+        for key, column in [('type', 'f.file_type'), ('folder', 'f.folder_id')]:
+            if query.get(key):
+                where.append(column + '=?')
+                args.append(query[key])
+        if query.get('tag'):
+            where.append('EXISTS (SELECT 1 FROM file_tags ft WHERE ft.file_id=f.id AND ft.tag_id=?)')
+            args.append(query['tag'])
+        sort = {'name': 'f.name COLLATE NOCASE ASC', 'newest': 'f.imported_at DESC', 'size': 'f.file_size_bytes DESC'}.get(query.get('sort'), 'f.name COLLATE NOCASE ASC')
+        try:
+            page = min(max(int(query.get('page', '1')), 1), 1000000)
+        except ValueError:
+            page = 1
+        with self.connect() as con:
+            rows = con.execute('SELECT f.id, f.name, f.path, f.file_type, f.file_size_bytes, '
+                               'f.thumbnail_png IS NOT NULL AS has_thumb, d.name AS folder '
+                               'FROM files f LEFT JOIN folders d ON f.folder_id=d.id WHERE ' +
+                               ' AND '.join(where) + ' ORDER BY ' + sort + ', f.id ASC LIMIT ? OFFSET ?',
+                               args + [PAGE_SIZE + 1, (page - 1) * PAGE_SIZE]).fetchall()
+            folders = con.execute('SELECT id, name FROM folders ORDER BY name').fetchall()
+            tags = con.execute('SELECT id, name FROM tags ORDER BY name').fetchall()
+            hidden_count = con.execute('SELECT count(*) FROM files f WHERE f.deleted_at IS NULL AND f.id IN (SELECT value FROM json_each(?))',
+                                       (hidden_json,)).fetchone()[0]
+            tagged = {}
+            for row in rows[:PAGE_SIZE]:
+                tagged[row['id']] = [r[0] for r in con.execute('SELECT t.name FROM tags t JOIN file_tags ft ON t.id=ft.tag_id WHERE ft.file_id=? ORDER BY t.name', (row['id'],))]
+        return rows[:PAGE_SIZE], len(rows) > PAGE_SIZE, page, folders, tags, tagged, hidden_count
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    server_version = 'KatalogWeb'
+    sys_version = ''
+
+    def setup(self):
+        self.request.settimeout(10)
+        super().setup()
+
+    def parse_request(self):
+        result = super().parse_request()
+        if result and len(self.raw_requestline) > 8192:
+            self.send_error(414)
+            return False
+        return result
+
+    def end_headers(self):
+        self.send_header('Content-Security-Policy', CSP)
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        self.send_header('Referrer-Policy', 'no-referrer')
+        super().end_headers()
+
+    def log_request(self, code='-', size='-'):
+        path = getattr(self, 'path', '').split('?', 1)[0]
+        route = next((p for p in ('signed', 'download', 'thumb', 'health') if path.startswith('/katalog/' + p + '/')), 'page')
+        if path in ('/katalog/remove', '/katalog/restore', '/katalog/upload'):
+            route = path.rsplit('/', 1)[1]
+        method = self.command if self.command in ('GET', 'HEAD', 'POST') else 'OTHER'
+        print(f'{method} /katalog/{route} {code}', flush=True)
+
+    def log_message(self, format, *args):
+        # Base errors can include the raw request and credentials in malformed URLs.
+        pass
+
+    def respond(self, status, body=b'', content_type='text/plain; charset=utf-8', cache='no-store', headers=None):
+        self.send_response(status)
+        self.send_header('Content-Type', content_type)
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Cache-Control', cache)
+        for key, value in (headers or {}).items():
+            self.send_header(key, value)
+        self.end_headers()
+        if getattr(self, 'command', '') != 'HEAD':
+            self.wfile.write(body)
+
+    def send_error(self, code, message=None, explain=None):
+        self.close_connection = True
+        try:
+            chosen = parse_qs(urlsplit(getattr(self, 'path', '')).query).get('lang', [''])[0]
+        except ValueError:
+            chosen = None
+        lang = language(getattr(self, 'headers', {}).get('Accept-Language', ''), chosen)
+        self.respond(code, TEXT['error'][LANGS.index(lang)].encode())
+
+    def method_not_allowed(self):
+        self.close_connection = True
+        self.respond(405, headers={'Allow': 'GET, HEAD'})
+
+    def __getattr__(self, name):
+        if name.startswith('do_'):
+            return self.method_not_allowed
+        raise AttributeError(name)
+
+    def do_HEAD(self):
+        self.do_GET()
+
+    def do_POST(self):
+        try:
+            self.post()
+        except (BrokenPipeError, ConnectionResetError, TimeoutError):
+            self.close_connection = True
+
+    def post(self):
+        app = self.server.catalog
+        try:
+            path = urlsplit(self.path).path
+        except ValueError:
+            self.send_error(400)
+            return
+        if path == '/katalog/upload':
+            self.upload()
+            return
+        if path not in ('/katalog/remove', '/katalog/restore'):
+            self.method_not_allowed()
+            return
+        # The browser attaches the login automatically, so a foreign page could submit this form.
+        # Origin/Referer must name this host, and the token is checked either way.
+        host = self.headers.get('Host', '').lower()
+        # With Referrer-Policy: no-referrer browsers send "Origin: null" for same-site form posts;
+        # that carries no host to compare, so only the per-file token decides then.
+        origin = self.headers.get('Origin')
+        source = (None if origin == 'null' else origin) or self.headers.get('Referer')
+        if source is not None:
+            try:
+                same = bool(host) and urlsplit(source).netloc.lower() == host
+            except ValueError:
+                same = False
+            if not same:
+                self.send_error(403)
+                return
+        length = self.headers.get('Content-Length', '')
+        if 'Transfer-Encoding' in self.headers or not re.fullmatch(r'[0-9]{1,9}', length):
+            self.send_error(411 if 'Transfer-Encoding' not in self.headers else 400)
+            return
+        if int(length) > MAX_BODY:
+            self.send_error(413)
+            return
+        if self.headers.get('Content-Type', '').split(';')[0].strip().lower() != 'application/x-www-form-urlencoded':
+            self.send_error(415)
+            return
+        try:
+            body = self.rfile.read(int(length))
+            if len(body) != int(length):
+                raise ValueError
+            form = parse_qs(body.decode('ascii'), keep_blank_values=True, max_num_fields=10, strict_parsing=bool(body))
+            if any(len(form.get(k, [''])) != 1 for k in ('id', 'csrf', 'next')):
+                raise ValueError
+        except (ValueError, UnicodeError):
+            self.send_error(400)
+            return
+        fid = form.get('id', [''])[0]
+        if not re.fullmatch(ID, fid) or int(fid) > 9223372036854775807:
+            self.send_error(400)
+            return
+        if not app.valid_csrf(fid, form.get('csrf', [''])[0]):
+            self.send_error(403)
+            return
+        hide = path == '/katalog/remove'
+        if app.file(fid, include_hidden=True) is None and not (not hide and int(fid) in app.hidden.ids()):
+            self.send_error(404)
+            return
+        try:
+            saved = app.hidden.change(int(fid), hide)
+        except OSError:
+            self.send_error(503)
+            return
+        if not saved:
+            self.send_error(409)
+            return
+        target = safe_next(form.get('next', [''])[0])
+        if hide:
+            target += ('&' if '?' in target else '?') + urlencode({'removed': fid})
+        elif not app.hidden.ids():
+            # Leaving the hidden view empty would show a dead page; go back to the list, keeping the language.
+            pairs = parse_qs(urlsplit(target).query, keep_blank_values=True)
+            if pairs.get('hidden') == ['1'] and set(pairs) <= {'hidden', 'lang'}:
+                target = list_url({'lang': pairs.get('lang', [''])[0]})
+        self.respond(303, headers={'Location': target})
+
+    def upload(self):
+        app = self.server.catalog
+        self.close_connection = True
+        acquired = False
+        try:
+            source = self.headers.get('Origin')
+            source = (None if source == 'null' else source) or self.headers.get('Referer')
+            try:
+                if source is not None and (not self.headers.get('Host') or
+                        urlsplit(source).netloc.lower() != self.headers['Host'].lower()):
+                    raise ValueError
+            except ValueError:
+                raise UploadError(403, 'forbidden') from None
+            token = self.headers.get('X-CSRF-Token', '')
+            if not re.fullmatch(r'[0-9a-f]{64}', token) or not hmac.compare_digest(token, app.upload_csrf()):
+                raise UploadError(403, 'forbidden')
+            lengths = self.headers.get_all('Content-Length', [])
+            if len(lengths) != 1 or not re.fullmatch(r'[0-9]{1,20}', lengths[0]):
+                raise UploadError(411, 'length_required')
+            if 'Transfer-Encoding' in self.headers:
+                raise UploadError(400, 'length_mismatch')
+            length = int(lengths[0])
+            if length > app.upload_max:
+                raise UploadError(413, 'too_large')
+            if self.headers.get('Content-Type', '').lower() != 'application/octet-stream':
+                raise UploadError(415, 'unsupported_type')
+            name = upload_name(self.headers.get('X-Filename', ''))
+            if app.upload_problem():
+                raise UploadError(404, 'upload_disabled')
+            acquired = app.upload_slots.acquire(blocking=False)
+            if not acquired:
+                raise UploadError(429, 'busy')
+            self.connection.settimeout(60)
+
+            def extra():
+                # HTTP frames the body by length; only already available surplus is observable.
+                self.connection.settimeout(0)
+                try:
+                    return bool(self.rfile.read(1))
+                except (BlockingIOError, TimeoutError):
+                    return False
+                finally:
+                    self.connection.settimeout(60)
+
+            result = app.receive_upload(self.rfile, length, name, extra)
+            status = 200
+        except UploadError as error:
+            status, result = error.status, {'ok': False, 'error': error.code}
+        except (TimeoutError, ConnectionError):
+            status, result = 400, {'ok': False, 'error': 'interrupted'}
+        except OSError:
+            status, result = 503, {'ok': False, 'error': 'write_failed'}
+        finally:
+            self.connection.settimeout(10)
+            if acquired:
+                app.upload_slots.release()
+        self.respond(status, json.dumps(result).encode(), 'application/json', headers={'Connection': 'close'})
+
+    def do_GET(self):
+        try:
+            self.route()
+        except (BrokenPipeError, ConnectionResetError, TimeoutError):
+            self.close_connection = True
+
+    def route(self):
+        app = self.server.catalog
+        try:
+            url = urlsplit(self.path)
+        except ValueError:
+            self.send_error(400)
+            return
+        path = url.path
+        if path == '/katalog/health':
+            self.respond(200, b'ok\n')
+            return
+        if path.startswith('/katalog/static/'):
+            self.asset(path[len('/katalog/static/'):])
+            return
+        if path == '/katalog/':
+            try:
+                base = origin(self.headers)
+                query = {k: v[0] for k, v in parse_qs(url.query, max_num_fields=30, keep_blank_values=True).items() if k in LIST_KEYS + ('file', 'removed')}
+                if query.get('lang') not in LANGS:
+                    query.pop('lang', None)
+            except ValueError:
+                self.send_error(400)
+                return
+            remember_origin(base)
+            if 'file' in query:
+                values = parse_qs(url.query, keep_blank_values=True)['file']
+                query = {'file': values[0] if len(values) == 1 else '', **({'lang': query['lang']} if 'lang' in query else {})}
+            self.page(base, query)
+            return
+        if path == '/katalog/remove':
+            self.confirm_page(parse_qs(url.query, keep_blank_values=True))
+            return
+        signed = path.startswith('/katalog/signed/')
+        if signed:
+            match = re.fullmatch(r'/katalog/signed/(' + ID + r')/([^/]+)/[^/]+', path)
+            if not match:
+                self.send_error(403)
+                return
+            fid, token = match.groups()
+            if not app.valid_token(fid, token):
+                self.send_error(403)
+                return
+            action = 'signed'
+        else:
+            match = re.fullmatch(r'/katalog/(download|thumb)/(' + ID + ')', path)
+            if not match:
+                self.send_error(404)
+                return
+            action, fid = match.groups()
+        row = app.file(fid)
+        try:
+            stream = app.open_file(row)
+        except (OSError, ValueError):
+            self.send_error(404)
+            return
+        with stream:
+            if action == 'thumb':
+                png = row['thumbnail_png']
+                if not isinstance(png, bytes) or not png:
+                    self.send_error(404)
+                else:
+                    self.respond(200, png, 'image/png', 'private')
+                return
+            size = os.fstat(stream.fileno()).st_size
+            self.send_response(200)
+            self.send_header('Content-Type', MIME.get(row['file_type'], 'application/octet-stream'))
+            self.send_header('Content-Length', str(size))
+            self.send_header('Content-Disposition', ('inline' if signed else 'attachment') + "; filename*=UTF-8''" + quote(filename(row), safe=''))
+            self.send_header('Cache-Control', 'no-store')
+            self.end_headers()
+            if self.command != 'HEAD':
+                remaining = size
+                while remaining:
+                    block = stream.read(min(BLOCK_SIZE, remaining))
+                    if not block:
+                        break
+                    self.wfile.write(block)
+                    remaining -= len(block)
+
+    def asset(self, name):
+        entry = ASSETS.get(name)
+        try:
+            body = (SHARE / entry[0]).read_bytes() if entry else None
+        except OSError:
+            body = None
+        if body is None:
+            self.send_error(404)
+            return
+        self.respond(200, body, entry[1], entry[2])
+
+    def chrome(self, lang, home, switch):
+        # home: local URL of the list in the current language; switch: language code -> URL of this page in that language.
+        def t(key):
+            return TEXT[key][LANGS.index(lang)]
+        parts = [f'<!doctype html><html lang="{lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">',
+                 '<link rel="icon" type="image/png" sizes="32x32" href="/katalog/static/icon-32.png">'
+                 '<link rel="apple-touch-icon" href="/katalog/static/icon-128.png">',
+                 f'<title>{t("title")}</title><script>{THEME_SCRIPT}</script><style>{STYLE}</style></head><body>']
+        parts.append(f'<header class="bar"><a class="brand" href="{escape(home)}"><img src="/katalog/static/icon-128.png" width="30" height="30" alt=""><span>3MF Katalog</span></a>')
+        names = {'wiki': 'Wiki', 'homepage': t('homepage'), 'discord': 'Discord'}
+        links = ''.join(f'<a href="{escape(de_url if lang == 'de' else en_url)}" target="_blank" rel="noopener noreferrer">{escape(names[key])}</a>'
+                        for key, de_url, en_url in EXTERNAL)
+        # Hidden until the script runs, so a page without JavaScript shows no dead control.
+        toggle = (f'<button type="button" class="theme" id="theme-toggle" hidden data-state="auto" data-label="{escape(t("theme"))}" '
+                  f'data-auto="{escape(t("theme_auto"))}" data-light="{escape(t("theme_light"))}" data-dark="{escape(t("theme_dark"))}">'
+                  + ''.join(ICON_THEMES.values()) + '</button>')
+        current = ' aria-current="true"'
+        menu = ''.join(f'<a href="{escape(switch(code))}" lang="{code}" hreflang="{code}" title="{LANG_NAMES[code]}" '
+                       f'aria-label="{LANG_NAMES[code]}"{current if code == lang else ""}>{FLAGS[code]}</a>' for code in LANGS)
+        parts.append(f'<div class="bar-end">{toggle}<nav class="langs" aria-label="{escape(t("language"))}">{menu}</nav>'
+                     f'<nav class="ext" aria-label="{escape(t("ext_links"))}">{links}</nav></div></header><main>')
+        return ''.join(parts)
+
+    def hidden_fields(self, fid, nxt):
+        app = self.server.catalog
+        return (f'<input type="hidden" name="id" value="{fid}"><input type="hidden" name="csrf" value="{app.csrf(fid)}">'
+                f'<input type="hidden" name="next" value="{escape(nxt)}">')
+
+    def confirm_page(self, params):
+        fid = params.get('id', [''])[0]
+        nxt = safe_next(params.get('next', [''])[0])
+        nxt_lang = parse_qs(urlsplit(nxt).query).get('lang', [''])[0]
+        chosen = params.get('lang', [''])[0]
+        lang = language(self.headers.get('Accept-Language', ''), chosen if chosen in LANGS else nxt_lang)
+        explicit = lang if (chosen in LANGS or nxt_lang in LANGS) else ''
+        home = list_url({'lang': explicit})
+        def t(key):
+            return TEXT[key][LANGS.index(lang)]
+        row = self.server.catalog.file(fid)
+        if row is None:
+            body = f'<p role="status">{t("file_missing")}</p>'
+            status = 404
+        else:
+            body = (f'<div class="confirm"><h2>{t("remove_title")}</h2><p class="dlg-name">{escape(row["name"])}</p><p>{t("remove_explain")}</p>'
+                    f'<form method="post" action="/katalog/remove">{self.hidden_fields(fid, nxt)}'
+                    f'<button type="submit">{t("remove_confirm")}</button><a href="{escape(nxt)}">{t("cancel")}</a></form></div>')
+            status = 200
+        def switch(code):
+            return '/katalog/remove?' + urlencode({'id': fid, 'next': with_lang(nxt, code), 'lang': code})
+        html_text = (self.chrome(lang, home, switch) + f'<p class="back"><a href="{escape(nxt)}">{t("back_list")}</a></p><h1>{t("title")}</h1>' + body +
+                     f'</main><script>{SCRIPT}</script></body></html>')
+        self.respond(status, html_text.encode(), 'text/html; charset=utf-8')
+
+    def upload_section(self, lang):
+        app = self.server.catalog
+        def t(key):
+            return TEXT[key][LANGS.index(lang)]
+        problem = app.upload_problem()
+        if problem:
+            return f'<p role="status">{escape(t(problem))}</p>'
+        texts = {k: v[LANGS.index(lang)] for k, v in TEXT.items() if k.startswith('upload_') or k == 'cancel'}
+        target = os.path.realpath(app.upload_dir)
+        success = t('upload_success').format(folder=os.path.basename(target), path=target)
+        accept = ','.join(sorted(UPLOAD_EXTENSIONS))
+        return (f'<section class="upload" id="upload" hidden aria-labelledby="upload-title" '
+                f'data-csrf="{app.upload_csrf()}" data-text="{escape(json.dumps(texts))}" data-success="{escape(success)}">'
+                f'<h2 id="upload-title">{t("upload_title")}</h2>'
+                f'<p>{escape(t("upload_limits").format(mb=app.upload_max // UPLOAD_BLOCK))}</p>'
+                f'<div class="upload-zone" id="upload-zone"><p>{t("upload_drop")}</p>'
+                f'<input id="upload-input" type="file" multiple accept="{accept}" hidden>'
+                f'<button type="button" id="upload-choose">{t("upload_choose")}</button></div>'
+                '<ul class="upload-list" id="upload-list"></ul>'
+                f'<button type="button" class="secondary" id="upload-clear" hidden>{t("upload_clear")}</button>'
+                '<p id="upload-success" role="status" tabindex="0"></p></section>'
+                f'<noscript><p>{t("upload_nojs")}</p></noscript>')
+
+    def page(self, base, query):
+        lang = language(self.headers.get('Accept-Language', ''), query.get('lang'))
+        explicit = query.get('lang', '')
+        def t(key):
+            return TEXT[key][LANGS.index(lang)]
+        app = self.server.catalog
+        home = list_url({'lang': explicit})
+        def switch(code):
+            return '/katalog/?' + urlencode({**query, 'lang': code})
+        lang_field = '<input type=hidden name=lang value=%s>' % explicit if explicit else ''
+        parts = [self.chrome(lang, home, switch)]
+        status = 200
+        single = 'file' in query
+        view_hidden = query.get('hidden') == '1' and not single
+        here = list_url(query) if not single else home
+        if single:
+            parts.append(f'<p class="back"><a href="{escape(home)}">{t("all_files")}</a></p>')
+        parts.append(f'<h1>{t("hidden_title") if view_hidden else t("title")}</h1>')
+        if not single:
+            parts.append(self.upload_section(lang))
+        removed = query.get('removed', '')
+        if re.fullmatch(ID, removed) and not single:
+            row = app.file(removed, include_hidden=True)
+            if row is not None and int(removed) in app.hidden.ids():
+                message = t('removed').format(name=escape(row['name']))
+                # A form cannot sit inside <p>, so the button points at the form that follows.
+                parts.append(f'<p role="status">{message} <button class="link" type="submit" form="undo-form">{t("undo")}</button></p>'
+                             f'<form id="undo-form" class="inline" method="post" action="/katalog/restore">{self.hidden_fields(removed, here)}</form>')
+        parts.append(f'<aside class="notice" role="note" aria-labelledby="notice-title"><svg {ICON_ATTRS}><circle cx="12" cy="12" r="9.5"/><path d="M12 11v6M12 7.5h.01"/></svg><div><h2 id="notice-title">{t("notice")}</h2><p>{t("expiry")}</p><p>{t("prusa")}</p><details><summary>{t("help")}</summary><p>{t("advice")}</p></details></div></aside>')
+        try:
+            rows, more, page, folders, tags, tagged, hidden_count = app.listing(query)
+        except (sqlite3.Error, OSError, ValueError):
+            status = 404 if single else 200
+            parts.append(f'<p role="status">{t("file_missing" if single else "missing")}</p>')
+        else:
+            if not single:
+                parts.append(f'<form method="get" action="/katalog/">{"<input type=hidden name=hidden value=1>" if view_hidden else ""}{lang_field}<label>{t("search")}<input name="q" value="{escape(query.get("q", ""))}" maxlength="200"></label>')
+                choices = [('type', [(v, v.upper()) for v in ('3mf', 'stl', 'stp', 'obj')]), ('folder', folders), ('tag', tags), ('sort', [(v, t(v)) for v in ('name', 'newest', 'size')])]
+                for key, options in choices:
+                    parts.append(f'<label>{t(key)}<select name="{key}">')
+                    if key != 'sort':
+                        parts.append(f'<option value="">{t("all")}</option>')
+                    for value, label in options:
+                        selected = ' selected' if str(value) == query.get(key, '') else ''
+                        parts.append(f'<option value="{escape(value)}"{selected}>{escape(label)}</option>')
+                    parts.append('</select></label>')
+                parts.append(f'<button type="submit">{t("apply")}</button></form>')
+                if view_hidden:
+                    parts.append(f'<p><a href="{escape(home)}">{t("back_list")}</a></p>')
+                elif hidden_count:
+                    parts.append(f'<p><a href="{escape(list_url({"hidden": "1", "lang": explicit}))}">{escape(t("show_hidden").format(n=hidden_count))}</a></p>')
+            parts.append('<ul class="files">')
+            for row in rows:
+                fid = str(row['id'])
+                if view_hidden:
+                    available = True
+                else:
+                    try:
+                        with app.open_file(row):
+                            pass
+                        available = True
+                    except (OSError, ValueError):
+                        available = False
+                parts.append('<li class="file' + ('' if available else ' unavailable') + '">')
+                if row['has_thumb'] and available and not view_hidden:
+                    parts.append(f'<img src="/katalog/thumb/{fid}" alt="" loading="lazy">')
+                else:
+                    # Same box as the thumbnail so cards stay uniform; the type is also in the text below.
+                    parts.append(f'<div class="ph" aria-hidden="true">{ICON_MODEL}<span>{escape(str(row["file_type"]).upper())}</span></div>')
+                parts.append(f'<div class="content"><h2>{escape(row["name"])}</h2><p class="meta">{escape(row["file_type"])} · {escape(row["file_size_bytes"])} B · {escape(row["folder"] or "")}</p>')
+                if tagged[row['id']]:
+                    parts.append('<p class="tags">' + ''.join(f'<span class="tag">{escape(tag)}</span>' for tag in tagged[row['id']]) + '</p>')
+                if view_hidden:
+                    parts.append(f'<div class="actions"><form class="inline" method="post" action="/katalog/restore">{self.hidden_fields(fid, here)}'
+                                 f'<button class="quiet" type="submit">{t("restore")}</button></form></div></div></li>')
+                    continue
+                remove = (f'<a class="quiet" href="/katalog/remove?{escape(urlencode({"id": fid, "next": here, **({"lang": explicit} if explicit else {})}))}" data-rm data-id="{fid}" '
+                          f'data-csrf="{app.csrf(fid)}" data-next="{escape(here)}" data-name="{escape(row["name"])}">{ICON_TRASH}{t("remove")}</a>')
+                if available:
+                    name = filename(row)
+                    if not name.lower().endswith(('.3mf', '.stl', '.stp', '.step', '.obj')) and row['file_type'] in ALL_TYPES:
+                        name += '.' + row['file_type']
+                    url = base + f'/katalog/signed/{fid}/{app.token(fid)}/' + quote(name, safe='')
+                    encoded = quote(url, safe='')
+                    parts.append(f'<div class="actions"><a href="/katalog/download/{fid}">{t("download")}</a>')
+                    links = []
+                    for label, prefix, types in SLICERS:
+                        if row['file_type'] in types:
+                            mac = f' data-mac="{escape("bambustudioopen://" + encoded)}"' if label == 'Bambu Studio' else ''
+                            links.append(f'<li><a href="{escape(prefix + encoded)}"{mac}>{label}</a></li>')
+                    if links:
+                        parts.append(f'<details{" open" if single else ""}><summary>{t("slicer")}</summary><ul>{"".join(links)}</ul></details>')
+                    parts.append(remove + '</div>')
+                else:
+                    parts.append(f'<p>{t("unavailable")}</p><div class="actions">{remove}</div>')
+                parts.append('</div></li>')
+            parts.append('</ul>')
+            if not rows:
+                parts.append(f'<p>{t("hidden_empty") if view_hidden else t("empty")}</p>')
+            if not single:
+                parts.append(f'<nav aria-label="{t("page")}"><span>{t("page")} {page}</span>')
+                for number, label, show in [(page - 1, 'previous', page > 1), (page + 1, 'next', more)]:
+                    if show:
+                        target = '/katalog/?' + urlencode({**{k: v for k, v in query.items() if k != 'removed'}, 'page': number})
+                        parts.append(f'<a href="{escape(target)}">{t(label)}</a>')
+                parts.append('</nav>')
+            if not view_hidden:
+                # One shared dialog; the script fills it per file. Without script the links open the confirmation page.
+                parts.append(f'<dialog id="rm-dialog" aria-labelledby="rm-title"><div class="dlg"><h2 id="rm-title">{t("remove_title")}</h2>'
+                             f'<p class="dlg-name" data-rm-name></p><p>{t("remove_explain")}</p>'
+                             f'<form method="post" action="/katalog/remove"><input type="hidden" name="id" value=""><input type="hidden" name="csrf" value="">'
+                             f'<input type="hidden" name="next" value=""><div class="dlg-actions"><button type="button" class="secondary" data-rm-cancel autofocus>{t("cancel")}</button>'
+                             f'<button type="submit">{t("remove_confirm")}</button></div></form></div></dialog>')
+        parts.append(f'</main><script>{SCRIPT}{UPLOAD_SCRIPT}</script></body></html>')
+        self.respond(status, ''.join(parts).encode(), 'text/html; charset=utf-8')
+
+
+def main():
+    os.umask(0o022)
+    port = int(os.environ.get('KATALOG_WEB_PORT', '8099'))
+    if not 1 <= port <= 65535:
+        raise ValueError('Invalid port')
+    server = http.server.ThreadingHTTPServer(('127.0.0.1', port), Handler)
+    server.catalog = Catalog()
+    print(f'Katalog web listening on 127.0.0.1:{port}', flush=True)
+    server.serve_forever()
+
+
+if __name__ == '__main__':
+    main()
