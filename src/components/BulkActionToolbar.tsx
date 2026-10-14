@@ -211,7 +211,7 @@ export function BulkActionToolbar({
               {t('addToCollectionLabel')}
             </button>
             {addToCollectionMenuOpen && (
-              <ViewportPopover data-navigation-menu onKeyDown={navigateListMenu} className="absolute top-9 left-0 min-w-[220px] max-w-[360px] max-h-[max(11rem,60vh)] overflow-y-auto overscroll-contain py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
+              <ViewportPopover fitHeight data-navigation-menu onKeyDown={navigateListMenu} className="absolute top-9 left-0 min-w-[220px] max-w-[360px] max-h-[max(11rem,60vh)] overflow-y-auto overscroll-contain py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
                 {collections.map((c) => (
                   <button
                     key={c.id}
@@ -277,7 +277,7 @@ export function BulkActionToolbar({
               {t('bulkRemoveTagLabel')}
             </button>
             {removeTagMenuOpen && (
-              <ViewportPopover data-navigation-menu onKeyDown={navigateListMenu} className="absolute top-9 left-0 min-w-[160px] max-w-[300px] max-h-[max(11rem,60vh)] overflow-y-auto overscroll-contain py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
+              <ViewportPopover fitHeight data-navigation-menu onKeyDown={navigateListMenu} className="absolute top-9 left-0 min-w-[160px] max-w-[300px] max-h-[max(11rem,60vh)] overflow-y-auto overscroll-contain py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
                 {tagsInSelection.map((tag) => (
                   <button
                     key={tag}

@@ -9,6 +9,7 @@ let width: number;
 let top: number;
 let height: number;
 let anchorLeft: number;
+let anchorTop: number;
 let frames: Map<number, FrameRequestCallback>;
 let nextFrame: number;
 let observers: ResizeObserverMock[];
@@ -36,9 +37,9 @@ function frame() {
   });
 }
 
-function mount(children = <span>Content</span>) {
+function mount(children = <span>Content</span>, fitHeight = false) {
   return render(<div data-testid="toolbar"><div data-testid="anchor">
-    <button>Anchor</button><ViewportPopover data-testid="popover">{children}</ViewportPopover>
+    <button>Anchor</button><ViewportPopover fitHeight={fitHeight} data-testid="popover">{children}</ViewportPopover>
   </div></div>);
 }
 
@@ -48,6 +49,8 @@ beforeEach(() => {
   top = 40;
   height = 40;
   anchorLeft = 850;
+  anchorTop = 4;
+  vi.spyOn(document.documentElement, 'clientHeight', 'get').mockReturnValue(630);
   frames = new Map();
   nextFrame = 0;
   observers = [];
@@ -62,7 +65,10 @@ beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
     const popover = this.dataset.testid === 'popover';
     const dx = Number(this.style.transform.match(/translateX\(([-\d.]+)px\)/)?.[1] ?? 0);
-    return new DOMRect(popover ? left + dx : anchorLeft, top, popover ? width : 100, height);
+    const dy = Number(this.style.transform.match(/translateY\(([-\d.]+)px\)/)?.[1] ?? 0);
+    const renderedHeight = this.style.maxHeight ? Math.min(height, parseFloat(this.style.maxHeight)) : height;
+    return new DOMRect(popover ? left + dx : anchorLeft, popover ? top + dy : anchorTop,
+      popover ? width : 100, popover ? renderedHeight : 32);
   });
 });
 
@@ -73,6 +79,55 @@ afterEach(() => {
 });
 
 describe('ViewportPopover', () => {
+  it('fits a long list above a low anchor with the same gap and caps its height', () => {
+    top = 520; anchorTop = 484; height = 500;
+    mount(undefined, true);
+    const popover = screen.getByTestId('popover');
+    expect(popover.style.maxHeight).toBe('378px');
+    expect(popover.getBoundingClientRect().bottom).toBe(480);
+    expect(popover.getBoundingClientRect().top).toBeGreaterThanOrEqual(8);
+    const transform = vi.spyOn(popover.style, 'transform', 'set');
+    frame(); frame(); resize(popover);
+    expect(transform).not.toHaveBeenCalled();
+    top = 100; anchorTop = 64;
+    frame();
+    expect(popover.getBoundingClientRect().top).toBe(100);
+    height = 40;
+    resize(popover);
+    expect(popover.getBoundingClientRect().top).toBe(100);
+  });
+
+  it('keeps a short list below a low anchor when it fits', () => {
+    top = 520; anchorTop = 484; height = 40;
+    mount(undefined, true);
+    expect(screen.getByTestId('popover').style.maxHeight).toBe('102px');
+    expect(screen.getByTestId('popover').getBoundingClientRect().top).toBe(520);
+  });
+
+  it('refits on window resizing and respects the rem-based fallback cap', () => {
+    top = 520; anchorTop = 484; height = 500;
+    mount(undefined, true);
+    const popover = screen.getByTestId('popover');
+    vi.spyOn(document.documentElement, 'clientHeight', 'get').mockReturnValue(900);
+    fireEvent(window, new Event('resize'));
+    expect(popover.style.maxHeight).toBe('372px');
+    expect(popover.getBoundingClientRect().top).toBe(520);
+    document.documentElement.style.fontSize = '40px';
+    top = 100; anchorTop = 64;
+    vi.spyOn(document.documentElement, 'clientHeight', 'get').mockReturnValue(630);
+    fireEvent(window, new Event('resize'));
+    expect(popover.style.maxHeight).toBe('440px');
+    document.documentElement.style.fontSize = '';
+  });
+
+  it('does not apply vertical styles without opting in', () => {
+    top = 520; height = 500;
+    mount();
+    const popover = screen.getByTestId('popover');
+    expect(popover.style.maxHeight).toBe('');
+    expect(popover.getBoundingClientRect().top).toBe(520);
+  });
+
   it('sets the calculated transform and always measures the unshifted box', () => {
     mount();
     const popover = screen.getByTestId('popover');
