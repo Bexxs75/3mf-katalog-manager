@@ -436,10 +436,11 @@ mod tests {
         let limiter = Arc::new(FetchLimiter::new(3));
         let current = Arc::new(AtomicUsize::new(0));
         let peak = Arc::new(AtomicUsize::new(0));
-        let handles: Vec<_> = (0..12)
-            .map(|i| {
-                let (limiter, current, peak) = (limiter.clone(), current.clone(), peak.clone());
-                std::thread::spawn(move || {
+        let (tx, rx) = std::sync::mpsc::channel();
+        for i in 0..12 {
+            let (limiter, current, peak, tx) = (limiter.clone(), current.clone(), peak.clone(), tx.clone());
+            std::thread::spawn(move || {
+                let result = std::panic::catch_unwind(|| {
                     let _slot = limiter.acquire();
                     let now = current.fetch_add(1, Ordering::SeqCst) + 1;
                     peak.fetch_max(now, Ordering::SeqCst);
@@ -448,12 +449,20 @@ mod tests {
                     if i % 4 == 0 {
                         panic!("fetch failed");
                     }
-                })
-            })
-            .collect();
-        for h in handles {
-            let _ = h.join();
+                });
+                let _ = tx.send(result.is_err());
+            });
         }
+        drop(tx);
+        // Do not join blocked workers: a leaked slot must fail within a bounded time.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut panics = 0;
+        for _ in 0..12 {
+            let result = rx.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()));
+            assert!(result.is_ok(), "slots were not released: workers did not finish within 5 seconds");
+            panics += usize::from(result.unwrap());
+        }
+        assert_eq!(panics, 3);
         assert!(peak.load(Ordering::SeqCst) <= 3, "peak {}", peak.load(Ordering::SeqCst));
         assert_eq!(*limiter.running.lock().unwrap_or_else(|e| e.into_inner()), 0);
     }

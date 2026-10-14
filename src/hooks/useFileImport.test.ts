@@ -214,3 +214,28 @@ it('keeps the skipped-files banner when an archive job extracts no other files',
   view.rerender(banner());
   expect(screen.getByText(/empty.stl/)).toBeVisible();
 });
+
+it.each(['failed', 'existingSkipped', 'blockedSkipped'] as const)('keeps the archive hint after 20 seconds for %s alone', problem => {
+  vi.useFakeTimers();
+  try {
+    localStorage.setItem('3mf-katalog-language', 'de');
+    render(createElement(LanguageProvider, null, createElement(ImportBannerHarness)));
+    const archive = importResult.groups.archive[1];
+    if (archive.state === 'pending') throw new Error('expected completed fixture');
+    const value: ImportJobResult = {...finished(), source: 'archive', groups: {...finished().groups, archive: [{
+      ...archive,
+      state: problem === 'failed' ? 'failed' : 'finished',
+      error: null,
+      deleteError: null,
+      existingSkipped: problem === 'existingSkipped' ? 1 : 0,
+      blockedSkipped: problem === 'blockedSkipped' ? 1 : 0,
+      unsafeSkipped: 0,
+      otherFilesExtracted: 2,
+      models: {imported: [], skipped: [], duplicates: []},
+    }]}};
+    act(() => events.handlers['import://finished']({payload: value}));
+    expect(screen.getByText(/2 weitere Dateien wurden entpackt/)).toBeVisible();
+    act(() => vi.advanceTimersByTime(20000));
+    expect(screen.getByText(/2 weitere Dateien wurden entpackt/)).toBeVisible();
+  } finally { vi.useRealTimers(); }
+});

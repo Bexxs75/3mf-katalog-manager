@@ -72,7 +72,7 @@ describe('9 Festplatten-Abgleich', () => {
     expect(await removal().isSelected()).toBe(false);
     await click(removal());
     expect(await removal().isSelected()).toBe(true);
-    await button('Änderungen übernehmen');
+    await button('Entfernen');
     await dialog().waitForExist({ reverse: true });
     await catalogCount(8);
     expect(await $('[data-model-id][aria-label="Würfel 20mm.stl"]').isExisting()).toBe(false);

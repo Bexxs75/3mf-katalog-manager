@@ -214,15 +214,25 @@ impl MoonrakerLink {
     }
 
     fn with_timeout(address: &str, policy: AddressPolicy, timeout: Duration) -> Result<Self, LinkError> {
-        let client = reqwest::blocking::Client::builder()
-            .timeout(timeout)
-            .connect_timeout(timeout)
-            // Never use the system proxy (HTTP_PROXY/ALL_PROXY): the request must go to the
-            // already checked `Target.ip`, not to a proxy that talks to a different address.
-            .no_proxy()
-            .redirect(reqwest::redirect::Policy::none())
-            .build()
-            .map_err(|_| LinkError::Unreachable)?;
+        Self::with_client_factory(address, policy, timeout, || {
+            reqwest::blocking::Client::builder()
+                .timeout(timeout)
+                .connect_timeout(timeout)
+                // Never use the system proxy: requests must go to the checked Target.ip.
+                .no_proxy()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .map_err(|_| ())
+        })
+    }
+
+    fn with_client_factory(
+        address: &str,
+        policy: AddressPolicy,
+        timeout: Duration,
+        factory: impl FnOnce() -> Result<reqwest::blocking::Client, ()>,
+    ) -> Result<Self, LinkError> {
+        let client = factory().map_err(|_| LinkError::Unreachable)?;
         Ok(MoonrakerLink { address: address.to_string(), policy, client, timeout })
     }
 
@@ -641,6 +651,17 @@ mod client_tests {
     use crate::printer_link::fake_moonraker::qidi_smart3;
     use crate::printer_link::fake_moonraker::{fixture_bytes, sv08, FakeServer};
     use crate::printer_link::PrinterLink;
+
+    #[test]
+    fn client_factory_failure_is_unreachable() {
+        let result = MoonrakerLink::with_client_factory("printer.local", AddressPolicy::TEST, TIMEOUT, || Err(()));
+        assert!(matches!(result, Err(LinkError::Unreachable)));
+    }
+
+    #[test]
+    fn client_factory_builds_the_normal_client() {
+        assert!(MoonrakerLink::try_new("printer.local", AddressPolicy::TEST).is_ok());
+    }
 
     #[test]
     fn test_connects_to_the_fake_sv08() {
