@@ -54,6 +54,30 @@ PY
 else
     printf 'SKIP: PyYAML unavailable; Compose checked with text assertions\n'
 fi
+release_tmp=$(mktemp -d)
+trap 'rm -rf -- "$release_tmp"' EXIT
+bash scripts/release-compose.sh 0.16.0-11 > "$release_tmp/docker-compose.yml"
+if grep -Eq '^[[:space:]]*build:' "$release_tmp/docker-compose.yml"; then
+    printf 'FAIL: release Compose contains build:\n' >&2
+    exit 1
+fi
+for expected in 'image: ghcr.io/bexxs75/3mf-katalog-manager:${IMAGE_TAG:-0.16.0-11}' '127.0.0.1:3000:3000' '127.0.0.1:3001:3001' './config:/config' 'restart: unless-stopped'; do
+    grep -Fq "$expected" "$release_tmp/docker-compose.yml"
+done
+for invalid in abc 0.16; do
+    if bash scripts/release-compose.sh "$invalid" > "$release_tmp/invalid.yml" 2>/dev/null; then
+        printf 'FAIL: release Compose accepted invalid version: %s\n' "$invalid" >&2
+        exit 1
+    fi
+done
+printf 'OK: release Compose generation and invalid versions\n'
+if docker compose version >/dev/null 2>&1; then
+    # Isolate interpolation from developer variables and local .env files.
+    (cd "$release_tmp" && env -i PATH="$PATH" HOME="$release_tmp" docker compose --env-file /dev/null -f docker-compose.yml config --quiet)
+    printf 'OK: release Compose validated by Docker Compose\n'
+else
+    printf 'SKIP: Docker Compose unavailable; release Compose config validation skipped\n'
+fi
 for expected in 'ARG BASE_IMAGE=' 'FROM ${BASE_IMAGE}' 'ARG APP_URL' 'ARG APP_VERSION' '--appimage-extract' 'THREEMF_CONTAINER=1' 'de_DE.UTF-8' 'org.opencontainers.image.licenses=' 'STOPSIGNAL SIGTERM' 'HEALTHCHECK --interval=30s' 'init-nginx/dependencies.d/init-3mf' 'init-kasmvnc/dependencies.d/init-3mf'; do
     grep -Fq -- "$expected" Dockerfile
 done
