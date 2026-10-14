@@ -281,3 +281,52 @@ it('applies a custom license to the selection and reports errors without closing
   await waitFor(() => expect(screen.queryByRole('combobox')).toBeNull());
   expect(onBulkSetLicense).toHaveBeenLastCalledWith(' Agreement ');
 });
+
+
+describe.each(['tags', 'collections'] as const)('%s list menu', kind => {
+  function openList(count: number) {
+    const names = Array.from({ length: count }, (_, i) => `entry-${i}`);
+    const menu = kind === 'tags' ? 'removeTagMenuOpen' : 'addToCollectionMenuOpen';
+    const onChange = kind === 'tags' ? 'onRemoveTagMenuOpenChange' : 'onAddToCollectionMenuOpenChange';
+    const rendered = renderToolbar({
+      [menu]: true,
+      tagsInSelection: names,
+      collections: names.map(name => ({ id: name, name, modelCount: 0 })),
+    });
+    const entries = names.map(name => screen.getByRole('button', { name: kind === 'tags' ? `#${name}` : name }));
+    return { ...rendered, entries, menu, onChange } as const;
+  }
+
+  it.each([3, 40])('bounds and contains scrolling for %s entries', count => {
+    const { entries } = openList(count);
+    expect(entries[0].parentElement).toHaveClass('max-h-[max(11rem,60vh)]', 'overflow-y-auto', 'overscroll-contain');
+  });
+
+  it('moves focus with arrows, scrolls the entry into view and stops at the edges', () => {
+    const { entries } = openList(3);
+    const scrolls = entries.map(entry => {
+      const scroll = vi.fn();
+      Object.defineProperty(entry, 'scrollIntoView', { configurable: true, value: scroll });
+      return scroll;
+    });
+    entries[0].focus();
+    for (const [key, expected] of [['ArrowUp', 0], ['ArrowDown', 1], ['ArrowDown', 2], ['ArrowDown', 2], ['ArrowUp', 1], ['ArrowUp', 0]] as const) {
+      fireEvent.keyDown(document.activeElement!, { key });
+      expect(document.activeElement).toBe(entries[expected]);
+      expect(scrolls[expected]).toHaveBeenCalledWith({ block: 'nearest' });
+    }
+  });
+
+  it('retains Escape closing and focus restoration after arrow navigation', () => {
+    const { props, view, entries, menu, onChange } = openList(3);
+    entries[0].focus();
+    fireEvent.keyDown(entries[0], { key: 'ArrowDown' });
+    expect(entries[1]).toHaveFocus();
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    expect(props[onChange]).toHaveBeenCalledWith(false);
+    view.rerender(<LanguageProvider><BulkActionToolbar {...props} {...{ [menu]: false }} /></LanguageProvider>);
+    expect(screen.queryByRole('button', { name: kind === 'tags' ? '#entry-0' : 'entry-0' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: kind === 'tags' ? 'Tag entfernen' : 'Zu Sammlung hinzufügen' })).toHaveFocus();
+    expect(props.onClearSelection).not.toHaveBeenCalled();
+  });
+});

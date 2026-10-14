@@ -1,7 +1,7 @@
 import { LicenseEditor } from './LicenseEditor';
 import { shouldIgnoreCatalogShortcut } from '../lib/keyboardGuard';
 import { useImportLock } from '../hooks/ImportLockContext';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { messageOf } from '../lib/errors';
 import type { Collection } from '../types';
 import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
@@ -37,6 +37,18 @@ interface BulkActionToolbarProps {
   onRemoveTagMenuOpenChange: (value: boolean) => void;
   tagsInSelection: string[];
   onBulkRemoveTag: (tag: string) => void;
+}
+
+function navigateListMenu(event: ReactKeyboardEvent<HTMLDivElement>) {
+  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+  const entries = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+  const current = entries.indexOf(document.activeElement as HTMLButtonElement);
+  if (current < 0) return;
+  event.preventDefault();
+  // Stop at the edges so repeated key presses do not jump across a long list.
+  const next = entries[Math.max(0, Math.min(entries.length - 1, current + (event.key === 'ArrowDown' ? 1 : -1)))];
+  next.focus({ preventScroll: true });
+  next.scrollIntoView?.({ block: 'nearest' });
 }
 
 export function BulkActionToolbar({
@@ -199,7 +211,7 @@ export function BulkActionToolbar({
               {t('addToCollectionLabel')}
             </button>
             {addToCollectionMenuOpen && (
-              <ViewportPopover data-navigation-menu className="absolute top-9 left-0 min-w-[220px] max-w-[360px] py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
+              <ViewportPopover data-navigation-menu onKeyDown={navigateListMenu} className="absolute top-9 left-0 min-w-[220px] max-w-[360px] max-h-[max(11rem,60vh)] overflow-y-auto overscroll-contain py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
                 {collections.map((c) => (
                   <button
                     key={c.id}
@@ -265,7 +277,7 @@ export function BulkActionToolbar({
               {t('bulkRemoveTagLabel')}
             </button>
             {removeTagMenuOpen && (
-              <ViewportPopover data-navigation-menu className="absolute top-9 left-0 min-w-[160px] max-w-[300px] py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
+              <ViewportPopover data-navigation-menu onKeyDown={navigateListMenu} className="absolute top-9 left-0 min-w-[160px] max-w-[300px] max-h-[max(11rem,60vh)] overflow-y-auto overscroll-contain py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
                 {tagsInSelection.map((tag) => (
                   <button
                     key={tag}

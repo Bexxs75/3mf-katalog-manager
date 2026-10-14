@@ -110,6 +110,7 @@ export default function App() {
     rootFolderId: store.folders.find(f => f.path === catalogBaseDir)?.id,
     targetName: store.folders.find(f => f.id === filters.activeFolderId)?.name ?? catalogBaseDir ?? undefined,
     onImported: store.mergeImported,
+    refreshTags: store.refreshTags,
     refreshFolders: store.refreshFolders,
     refreshFiles: store.refreshFiles,
   });

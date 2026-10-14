@@ -14,6 +14,7 @@ interface UseFileImportArgs {
   onImported: (result: ImportResultDto) => void;
   refreshFolders: () => void;
   refreshFiles: () => void;
+  refreshTags: () => void;
 }
 export interface ImportJobMeta { jobId: string; source: ImportSource; targetName?: string }
 const storageKey = 'catalog-import-jobs';
@@ -59,7 +60,8 @@ export function useFileImport(args: UseFileImportArgs) {
     lastMeta.current = { ...job?.meta, jobId: value.jobId, source: value.source };
     setLastJob({ meta: lastMeta.current, progress: { ...(job?.progress ?? initialProgress(value.jobId)), state: value.state, counts: value.counts, scanComplete: value.scanComplete, archivesSkipped: value.archivesSkipped, inFlight: 0 } });
     jobs.current.delete(value.jobId); setResult(value); persist();
-    latest.current.refreshFiles(); latest.current.refreshFolders();
+    // Failed or cancelled jobs can still have imported models and their tags.
+    latest.current.refreshFiles(); latest.current.refreshFolders(); latest.current.refreshTags();
     const archives = value.groups.archive.filter(a => a.state !== 'pending');
     if (archives.length || value.source === 'archive') {
       const otherFilesExtracted = archives.reduce((sum, a) => sum + a.otherFilesExtracted, 0);

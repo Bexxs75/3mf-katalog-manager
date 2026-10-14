@@ -19,9 +19,9 @@ beforeEach(() => {
   vi.mocked(invoke).mockImplementation(async cmd => cmd === 'start_import' ? { jobId: 'j1' } : null);
 });
 function setup(folder = 'first') {
-  const refreshFiles = vi.fn(), refreshFolders = vi.fn(), onImported = vi.fn();
-  const hook = renderHook(({ folder }) => useFileImport({ enabled: true, catalogBaseDir: '/base', activeFolderId: folder, onImported, refreshFiles, refreshFolders }), { initialProps: { folder } });
-  return { ...hook, refreshFiles, refreshFolders };
+  const refreshTags = vi.fn(), refreshFiles = vi.fn(), refreshFolders = vi.fn(), onImported = vi.fn();
+  const hook = renderHook(({ folder }) => useFileImport({ enabled: true, catalogBaseDir: '/base', activeFolderId: folder, onImported, refreshTags, refreshFiles, refreshFolders }), { initialProps: { folder } });
+  return { ...hook, refreshTags, refreshFiles, refreshFolders };
 }
 it('starts a job with the captured target and updates from progress', async () => {
   const { result, rerender } = setup();
@@ -31,10 +31,12 @@ it('starts a job with the captured target and updates from progress', async () =
   act(() => events.handlers['import://progress']({ payload: progress() }));
   expect(result.current.progress?.current).toBe('a.stl'); expect(result.current.jobActive).toBe(true);
 });
-it.each(['finished', 'cancelled', 'failed'] as const)('%s refreshes both catalog lists', async state => {
-  const { result, refreshFiles, refreshFolders } = setup();
-  await act(async () => events.handlers['import://finished']({payload: finished(state)}));
-  expect(result.current.result?.state).toBe(state); expect(refreshFiles).toHaveBeenCalledOnce(); expect(refreshFolders).toHaveBeenCalledOnce();
+it.each((['files', 'folder', 'folderContents', 'dropped', 'setupAdopt', 'archive'] as const).flatMap(source =>
+  (['finished', 'cancelled', 'failed'] as const).map(state => ({ source, state })),
+))('$source / $state refreshes files, folders and tags once', async ({ source, state }) => {
+  const { result, refreshFiles, refreshFolders, refreshTags } = setup();
+  await act(async () => events.handlers['import://finished']({payload: {...finished(state), source}}));
+  expect(result.current.result?.state).toBe(state); expect(refreshFiles).toHaveBeenCalledOnce(); expect(refreshFolders).toHaveBeenCalledOnce(); expect(refreshTags).toHaveBeenCalledOnce();
 });
 it('counts queued jobs independently and cancels the running job', async () => {
   const { result } = setup();
@@ -64,14 +66,14 @@ it('unsubscribes listeners on unmount', async () => {
 });
 it('uses the root folder when all models is active', async () => {
   vi.mocked(invoke).mockResolvedValue({jobId:null});
-  const args = {enabled:true,catalogBaseDir:'/base',activeFolderId:'all',rootFolderId:'root',onImported:vi.fn(),refreshFiles:vi.fn(),refreshFolders:vi.fn()};
+  const args = {enabled:true,catalogBaseDir:'/base',activeFolderId:'all',rootFolderId:'root',onImported:vi.fn(),refreshFiles:vi.fn(),refreshFolders:vi.fn(),refreshTags:vi.fn()};
   const {result} = renderHook(() => useFileImport(args));
   await act(async () => result.current.importFiles());
   expect(invoke).toHaveBeenCalledWith('start_import',{source:'files',targetFolderId:'root'});
 });
 it('starts files without a root and folder imports without a placement target', async () => {
   vi.mocked(invoke).mockResolvedValue({jobId:null});
-  const {result} = renderHook(() => useFileImport({enabled:true,catalogBaseDir:null,activeFolderId:'all',onImported:vi.fn(),refreshFiles:vi.fn(),refreshFolders:vi.fn()}));
+  const {result} = renderHook(() => useFileImport({enabled:true,catalogBaseDir:null,activeFolderId:'all',onImported:vi.fn(),refreshFiles:vi.fn(),refreshFolders:vi.fn(),refreshTags:vi.fn()}));
   await act(async () => {await result.current.importFiles(); await result.current.importFolder();});
   expect(invoke).toHaveBeenCalledWith('start_import',{source:'files',targetFolderId:undefined}); expect(invoke).toHaveBeenCalledWith('start_import',{source:'folder',targetFolderId:undefined});
 });
@@ -108,9 +110,9 @@ it('retains the captured source and target when finish arrives before start retu
   expect(invoke).toHaveBeenCalledWith('start_import',{source:'files',targetFolderId:'first'});
 });
 it('deduplicates terminal events and removes the terminal row on dismissal', async () => {
-  const {result,refreshFiles}=setup();
+  const {result,refreshFiles,refreshTags}=setup();
   await act(async () => {events.handlers['import://finished']({payload:finished()});events.handlers['import://finished']({payload:finished()});});
-  expect(refreshFiles).toHaveBeenCalledOnce(); act(() => result.current.dismiss()); expect(result.current.progress).toBeNull(); expect(result.current.result).toBeNull();
+  expect(refreshFiles).toHaveBeenCalledOnce(); expect(refreshTags).toHaveBeenCalledOnce(); act(() => result.current.dismiss()); expect(result.current.progress).toBeNull(); expect(result.current.result).toBeNull();
 });
 it('accepts dropped paths during another import and ignores drops in other views', async () => {
   vi.mocked(invoke).mockImplementation(async cmd => cmd === 'start_dropped_import' ? {jobId:'j2'} : cmd === 'get_import_state' ? progress('j2','queued') : null);
@@ -118,7 +120,7 @@ it('accepts dropped paths during another import and ignores drops in other views
   await act(async () => events.handlers.drop({payload:{type:'drop',paths:['/a.stl']}}));
   expect(invoke).toHaveBeenCalledWith('start_dropped_import',{paths:['/a.stl']}); expect(result.current.queued).toBe(1);
   vi.mocked(invoke).mockClear();
-  renderHook(() => useFileImport({enabled:false,catalogBaseDir:null,activeFolderId:'all',onImported:vi.fn(),refreshFiles:vi.fn(),refreshFolders:vi.fn()}));
+  renderHook(() => useFileImport({enabled:false,catalogBaseDir:null,activeFolderId:'all',onImported:vi.fn(),refreshFiles:vi.fn(),refreshFolders:vi.fn(),refreshTags:vi.fn()}));
   await act(async () => events.handlers.drop({payload:{type:'drop',paths:['/b.stl']}}));
   expect(invoke).not.toHaveBeenCalledWith('start_dropped_import',expect.anything());
 });
@@ -143,13 +145,13 @@ it('imports folder contents into the captured active folder', async () => {
 });
 
 it('imports folder contents into the catalog root from all models', async () => {
-  const { result } = renderHook(() => useFileImport({ enabled: true, catalogBaseDir: '/base', activeFolderId: 'all', rootFolderId: 'root', onImported: vi.fn(), refreshFiles: vi.fn(), refreshFolders: vi.fn() }));
+  const { result } = renderHook(() => useFileImport({ enabled: true, catalogBaseDir: '/base', activeFolderId: 'all', rootFolderId: 'root', onImported: vi.fn(), refreshFiles: vi.fn(), refreshFolders: vi.fn(), refreshTags: vi.fn() }));
   await act(async () => result.current.importFolderContents());
   expect(invoke).toHaveBeenCalledWith('start_import', { source: 'folderContents', targetFolderId: 'root' });
 });
 
 function ImportBannerHarness() {
-  const fileImport = useFileImport({enabled: true, catalogBaseDir: '/base', activeFolderId: 'all', onImported: vi.fn(), refreshFiles: vi.fn(), refreshFolders: vi.fn()});
+  const fileImport = useFileImport({enabled: true, catalogBaseDir: '/base', activeFolderId: 'all', onImported: vi.fn(), refreshFiles: vi.fn(), refreshFolders: vi.fn(), refreshTags: vi.fn()});
   return fileImport.importBanner && createElement(ImportSummaryBanner, {...fileImport.importBanner, onClose: fileImport.dismissImportBanner});
 }
 
