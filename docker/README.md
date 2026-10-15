@@ -94,7 +94,9 @@ docker compose up -d --no-build
 
 Es gibt bewusst keinen Standarddownload der alten, veränderlichen Preview aus
 dem Prototyp. URL und Version müssen zusammenpassen. `BASE_IMAGE` lässt sich
-auf einen Tag oder Digest festlegen; Vorgabe ist
+auf einen Tag oder Digest festlegen; Eine ältere `.env` mit `BASE_IMAGE=…baseimage-kasmvnc…` überschreibt diese Vorgabe
+und lässt den Bau scheitern: Entferne die Zeile oder setze den neuen Wert aus `.env.example`.
+Vorgabe ist
 `ghcr.io/linuxserver/baseimage-selkies:ubuntunoble` (LinuxServer-Basis mit Selkies,
 X11/Openbox), im Dockerfile und in `docker-compose.yml` bereits per SHA256-Digest
 festgelegt, damit ein späterer Bau nicht auf ein anderes Basisimage zeigt. Der
@@ -452,7 +454,8 @@ docker compose up -d --no-build
 ```
 
 There is deliberately no default download of the prototype's old mutable preview.
-URL and version must match. `BASE_IMAGE` accepts a tag or digest; the default is
+URL and version must match. `BASE_IMAGE` accepts a tag or digest; an older `.env` containing `BASE_IMAGE=…baseimage-kasmvnc…` overrides this default and
+makes the build fail: remove the line or set the new value from `.env.example`. The default is
 `ghcr.io/linuxserver/baseimage-selkies:ubuntunoble` (LinuxServer base with Selkies,
 X11/Openbox), already fixed by SHA256 digest in the Dockerfile and in
 `docker-compose.yml`, so a later build does not point to a different base image.
