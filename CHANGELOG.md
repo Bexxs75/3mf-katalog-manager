@@ -11,7 +11,7 @@ Versioned retroactively on 2026-09-12: the project ran entirely under the scaffo
 
 ### Added
 
-- **Docker (working, but possibly still unstable):** the Catalog Manager runs as a container with a browser desktop (KasmVNC), login protection, a companion page for the catalog in the browser and a published image. See `docker/README.md`.
+- **Docker (working, but possibly still unstable):** the Catalog Manager runs as a container with a browser desktop (Selkies), login protection, a companion page for the catalog in the browser and a published image. See `docker/README.md`.
 
 - **Archive import:** when a ZIP or other archive contains files that are not models (for example TXT or PDF), the import notice now says how many were extracted but not added to the catalog (the catalog only shows models) and that they are in the target folder.
 - **Automated UI tests:** expanded real mouse/keyboard coverage for disk sync, licenses and usage, print status, collection sorting, bulk tags, trash restoration and cancelling bug reports; updated printer/plate checks and excluded screenreader-only text from visual layout audits.
@@ -597,7 +597,7 @@ Rückwirkend versioniert am 2026-09-12: das Projekt lief bis dahin komplett unte
 
 ### Hinzugefügt
 
-- **Docker (funktionsfähig, aber möglicherweise noch instabil):** der Katalog Manager läuft als Container mit Browser-Desktop (KasmVNC), Anmeldeschutz, Begleitseite für den Katalog im Browser und veröffentlichtem Image. Anleitung in `docker/README.md`.
+- **Docker (funktionsfähig, aber möglicherweise noch instabil):** der Katalog Manager läuft als Container mit Browser-Desktop (Selkies), Anmeldeschutz, Begleitseite für den Katalog im Browser und veröffentlichtem Image. Anleitung in `docker/README.md`.
 
 - **Archiv-Import:** Enthält ein ZIP oder anderes Archiv Dateien, die keine Modelle sind (zum Beispiel TXT oder PDF), nennt der Import-Hinweis jetzt, wie viele davon entpackt, aber nicht in den Katalog aufgenommen wurden (der Katalog zeigt nur Modelle), und dass sie im Zielordner liegen.
 - **Automatische Oberflächentests:** Tests mit echter Maus und Tastatur für Festplatten-Abgleich, Lizenzen und Nutzung, Druckstatus, Sammlungssortierung, Mehrfach-Tags, Wiederherstellen aus dem Papierkorb und Abbrechen von Fehlermeldungen erweitert; Drucker-/Plattenprüfungen aktualisiert und reine Screenreader-Texte aus visuellen Layout-Audits ausgenommen.

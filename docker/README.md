@@ -95,9 +95,10 @@ docker compose up -d --no-build
 Es gibt bewusst keinen Standarddownload der alten, veränderlichen Preview aus
 dem Prototyp. URL und Version müssen zusammenpassen. `BASE_IMAGE` lässt sich
 auf einen Tag oder Digest festlegen; Vorgabe ist
-`ghcr.io/linuxserver/baseimage-kasmvnc:ubuntunoble`. Dieser Tag ist beweglich und
-kann bei einem späteren Bau auf ein anderes Basisimage zeigen. Der Release-Workflow
-pinnt dagegen das Basisimage per SHA256-Digest und berechnet die SHA256-Prüfsumme
+`ghcr.io/linuxserver/baseimage-selkies:ubuntunoble` (LinuxServer-Basis mit Selkies,
+X11/Openbox), im Dockerfile und in `docker-compose.yml` bereits per SHA256-Digest
+festgelegt, damit ein späterer Bau nicht auf ein anderes Basisimage zeigt. Der
+Release-Workflow pinnt dasselbe Basisimage per Digest und berechnet die SHA256-Prüfsumme
 des Release-Downloads; der Dockerfile prüft sie beim erneuten Download über
 `APP_SHA256`. Das ist ein Konsistenzcheck, keine unabhängige Herkunftsbestätigung.
 Das Revision-Label nennt den ausgecheckten Quellcommit vom Standardbranch,
@@ -218,8 +219,8 @@ hochgeladen. Lehnt dein Proxy große Uploads ab (Fehler „413“), im Reiter
 Proxy-Zeitlimits müssen zur Übertragungsdauer passen (intern 3600 s).
 
 **Bisheriger Weg über Ordner, Netzlaufwerk oder `scp`:** Drag & Drop direkt in den
-gestreamten KasmVNC-Desktop funktioniert weiterhin nicht. So kommen Dateien über
-den Server in die App:
+gestreamten Desktop ist nicht vorgesehen: Die Dateiübertragung des Streams ist
+abgeschaltet (`HARDEN_DESKTOP=true`). So kommen Dateien über den Server in die App:
 
 1. **Ordner einbinden.** Lege die Modelle in den Ordner, der in Compose als
    `/models` eingebunden ist (Standard `./models` oder `MODELS_DIR`). Der Ordner
@@ -233,9 +234,6 @@ den Server in die App:
    drücken und den Pfad tippen, z. B. `/import/Datei.stl`.
 4. **ZIP-Archive:** wie Dateien importieren. Im Fenster „Archive entpacken“ bei
    „Ändern…“ einen **schreibbaren** Zielordner wählen, z. B. unterhalb von „Modelle“.
-
-Hinweis: Nach einem Neustart des Containers die Browserseite neu laden (F5), sonst
-kann KasmVNC mit einem Skriptfehler stehen bleiben.
 
 ### Download und Slicer
 
@@ -327,8 +325,8 @@ Lokale Unit-Tests öffnen keine Netzwerkverbindungen. ZIP-Sammeldownload
 ### Netzwerk und Grenzen
 
 Die veröffentlichten Ports 3000/3001 sind nur an `127.0.0.1` auf dem Host gebunden.
-Die internen Dienste kclient (6900) und KasmVNC (6901) lauschen ausschließlich
-auf `127.0.0.1` im Container; der Zugriff erfolgt über nginx auf 3000/3001.
+Die internen Dienste (Selkies-Datenverbindung 8082 und Begleitseite 8099) lauschen
+ausschließlich auf `127.0.0.1` im Container; der Zugriff erfolgt über nginx auf 3000/3001.
 Für das Heimnetz die beiden
 Host-Adressen in Compose auf die gewünschte LAN-IP ändern, z. B.
 `192.168.1.10:3000:3000`, und die Anmeldung beibehalten. Nicht ungeschützt ins
@@ -355,7 +353,7 @@ LXC-Container selbst nicht geprüft.
 ### Was geprüft ist
 
 - `bash scripts/check.sh` prüft ohne Docker die Skripte, Compose- und Dockerfile-Struktur sowie Passwort-, Dateisystem- und Supervisor-Logik.
-- `bash scripts/ci-smoke.sh IMAGE` startet das fertige Image und prüft Anmeldung, erzeugtes und eigenes Passwort, Loopback-Bindung von 6900/6901, Neustart der App nach einem Absturz, sauberes Beenden und `ALLOW_NO_AUTH`. Der Release-Workflow führt ihn vor dem Veröffentlichen aus.
+- `bash scripts/ci-smoke.sh IMAGE` startet das fertige Image und prüft Anmeldung, erzeugtes und eigenes Passwort, Loopback-Bindung von 8082/8099, Neustart der App nach einem Absturz, sauberes Beenden und `ALLOW_NO_AUTH`. Der Release-Workflow führt ihn vor dem Veröffentlichen aus.
 - `bash tests/upgrade.sh ALT NEU` prüft ein Update auf demselben Volume (Schema-Migration mit Sicherung vorher), `bash tests/permissions.sh IMAGE` fremde `PUID`/`PGID` und einen schreibgeschützten Modellordner.
 - Von Hand im Container geprüft: Import aus dem Dateidialog, Ordnerübernahme, Archiv-Dialog, Katalog-Export und -Import, Druckeranbindung an einen Moonraker-Testserver, `no-new-privileges:true`.
 - Noch nicht geprüft: 3D-Vorschau mit vielen Modellen, Wiederherstellung mit Papierkorbdateien, arm64, Betrieb im LXC-Container.
@@ -455,9 +453,10 @@ docker compose up -d --no-build
 
 There is deliberately no default download of the prototype's old mutable preview.
 URL and version must match. `BASE_IMAGE` accepts a tag or digest; the default is
-`ghcr.io/linuxserver/baseimage-kasmvnc:ubuntunoble`. This tag is mutable and can
-point to a different base image on a later build. The release workflow instead
-pins the base image by SHA256 digest and computes the release download's SHA256;
+`ghcr.io/linuxserver/baseimage-selkies:ubuntunoble` (LinuxServer base with Selkies,
+X11/Openbox), already fixed by SHA256 digest in the Dockerfile and in
+`docker-compose.yml`, so a later build does not point to a different base image.
+The release workflow pins the same base image by digest and computes the release download's SHA256;
 the Dockerfile checks it on the second download through `APP_SHA256`. This checks
 consistency, not independent provenance. The revision label records the checked-out
 source commit from the default branch; the version label records the app version.
@@ -571,7 +570,8 @@ change**. If your proxy rejects large uploads (error "413"), set
 Proxy timeouts must accommodate the transfer (internal timeouts: 3600 s).
 
 **Existing folder, network drive or `scp` method:** Drag and drop directly into
-the streamed KasmVNC desktop still does not work. To transfer via the server:
+the streamed desktop is not intended: stream file transfer is switched off
+(`HARDEN_DESKTOP=true`). To transfer via the server:
 
 1. **Mount a folder.** Put the models in the folder mounted as `/models` in Compose
    (default `./models` or `MODELS_DIR`). The folder must be writable if the app is
@@ -585,9 +585,6 @@ the streamed KasmVNC desktop still does not work. To transfer via the server:
    the path, e.g. `/import/file.stl`.
 4. **ZIP archives:** import them like files. In the “Unpack archives” window use
    “Change…” to choose a **writable** target folder, e.g. below “Modelle”.
-
-Note: after a container restart reload the browser page (F5); otherwise KasmVNC may
-stop with a script error.
 
 ### Download and slicer
 
@@ -677,8 +674,8 @@ ZIP batch download (stage B) is not included yet.
 ### Networking and limitations
 
 Published ports 3000/3001 bind only to `127.0.0.1` on the host. The internal
-kclient (6900) and KasmVNC (6901) services listen exclusively on `127.0.0.1`
-inside the container; access goes through nginx on 3000/3001.
+services (Selkies data connection 8082 and companion page 8099) listen exclusively
+on `127.0.0.1` inside the container; access goes through nginx on 3000/3001.
 For LAN access, replace both host addresses
 in Compose with the desired LAN IP, e.g. `192.168.1.10:3000:3000`, and retain
 authentication. Never expose it unprotected to the Internet; plan TLS and an
@@ -705,7 +702,7 @@ ourselves.
 ### What has been tested
 
 - `bash scripts/check.sh` checks the scripts, Compose and Dockerfile structure and the password, file-system and supervisor logic without Docker.
-- `bash scripts/ci-smoke.sh IMAGE` starts the built image and checks login, generated and supplied passwords, loopback binding of 6900/6901, app restart after a crash, clean stop and `ALLOW_NO_AUTH`. The release workflow runs it before publishing.
+- `bash scripts/ci-smoke.sh IMAGE` starts the built image and checks login, generated and supplied passwords, loopback binding of 8082/8099, app restart after a crash, clean stop and `ALLOW_NO_AUTH`. The release workflow runs it before publishing.
 - `bash tests/upgrade.sh OLD NEW` checks an update on the same volume (schema migration with a copy beforehand); `bash tests/permissions.sh IMAGE` checks foreign `PUID`/`PGID` and a read-only models folder.
 - Checked by hand in the container: import from the file dialog, folder adoption, the archive dialog, catalog export and import, the printer link to a Moonraker test server, `no-new-privileges:true`.
 - Not yet tested: 3D preview with many models, restore with trash files, arm64, running in an LXC container.
