@@ -36,13 +36,13 @@ check_internal_listeners() {
     listeners=$(docker exec "$1" ss -ltn) || fail 'cannot inspect internal listeners'
     # Require both services, and reject every non-loopback listener on either port.
     awk '
-        $4 ~ /:690[01]$/ {
+        $4 ~ /:(8082|8099)$/ {
             port = $4; sub(/^.*:/, "", port)
             seen[port] = 1
             if ($4 != "127.0.0.1:" port && $4 != "[::1]:" port && $4 != "::1:" port) bad = 1
         }
-        END { exit (bad || !seen[6900] || !seen[6901]) }
-    ' <<<"$listeners" || fail '6900/6901 must both listen exclusively on 127.0.0.1/::1'
+        END { exit (bad || !seen[8082] || !seen[8099]) }
+    ' <<<"$listeners" || fail '8082/8099 must both listen exclusively on 127.0.0.1/::1'
     ok 'internal listeners restricted to loopback'
 }
 

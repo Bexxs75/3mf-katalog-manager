@@ -78,7 +78,7 @@ if docker compose version >/dev/null 2>&1; then
 else
     printf 'SKIP: Docker Compose unavailable; release Compose config validation skipped\n'
 fi
-for expected in 'ARG BASE_IMAGE=' 'FROM ${BASE_IMAGE}' 'ARG APP_URL' 'ARG APP_VERSION' '--appimage-extract' 'THREEMF_CONTAINER=1' 'de_DE.UTF-8' 'org.opencontainers.image.licenses=' 'STOPSIGNAL SIGTERM' 'HEALTHCHECK --interval=30s' 'init-nginx/dependencies.d/init-3mf' 'init-kasmvnc/dependencies.d/init-3mf'; do
+for expected in 'ARG BASE_IMAGE=' 'FROM ${BASE_IMAGE}' 'ARG APP_URL' 'ARG APP_VERSION' '--appimage-extract' 'THREEMF_CONTAINER=1' 'de_DE.UTF-8' 'org.opencontainers.image.licenses=' 'STOPSIGNAL SIGTERM' 'HEALTHCHECK --interval=30s' 'init-nginx/dependencies.d/init-3mf'; do
     grep -Fq -- "$expected" Dockerfile
 done
 if grep -Fq '/usr/local/bin/3mf-katalog &' Dockerfile; then
@@ -89,7 +89,7 @@ fi
 [[ $(cat root/etc/s6-overlay/s6-rc.d/init-3mf/type) == oneshot ]]
 [[ -f root/etc/s6-overlay/s6-rc.d/user/contents.d/svc-3mf ]]
 [[ -f root/etc/s6-overlay/s6-rc.d/user/contents.d/init-3mf ]]
-[[ -f root/etc/s6-overlay/s6-rc.d/svc-3mf/dependencies.d/svc-kasmvnc ]]
+[[ -f root/etc/s6-overlay/s6-rc.d/svc-3mf/dependencies.d/svc-de ]]
 [[ -f root/etc/s6-overlay/s6-rc.d/init-3mf/dependencies.d/init-adduser ]]
 printf 'OK: Compose, Dockerfile and s6 structural checks (no Docker invocation)\n'
 bash scripts/test-init.sh
