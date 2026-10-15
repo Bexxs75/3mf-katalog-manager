@@ -57,6 +57,11 @@ pw=$(cat "$work/gen/.kasmvnc-password")
 [ "${#pw}" -ge 16 ] || fail "generated password is too short"
 [ "$(status -u "abc:$pw" "https://127.0.0.1:$p/")" = 200 ] || fail "generated password is rejected"
 [ "$(status -u "abc:wrong" "https://127.0.0.1:$p/")" = 401 ] || fail "a wrong password is accepted"
+# The hardened desktop must not expose the upstream web terminal or file browser, with or without login.
+for route in /files/ /terminal; do
+    [ "$(status "https://127.0.0.1:$p$route")" = 401 ] || fail "$route is reachable without login"
+    [ "$(status -u "abc:$pw" "https://127.0.0.1:$p$route")" = 404 ] || fail "$route is exposed to a logged-in user"
+done
 logs=$(docker logs smoke-gen 2>&1)
 grep -q -- "$pw" <<<"$logs" || fail "first start did not show the password"
 [ "$(stat -c %a "$work/gen/.kasmvnc-password")" = 600 ] || fail "password file is not 600"
