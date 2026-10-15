@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=ghcr.io/linuxserver/baseimage-selkies:ubuntunoble
+ARG BASE_IMAGE=ghcr.io/linuxserver/baseimage-selkies:ubuntunoble@sha256:7cab02f9222937ad1e704cd904534d69a2300b2406af466241817be0ce1d0493
 FROM ${BASE_IMAGE} AS app-extract
 
 ARG APP_URL
