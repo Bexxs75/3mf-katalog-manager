@@ -1,3 +1,4 @@
+import { createRenderLoop } from '../lib/renderLoop';
 import { displayName } from '../lib/displayName';
 import { beginPreviewAttempt } from '../lib/snapshotQueue';
 import { isWebGLUnavailable, markWebGLUnavailable } from '../lib/webglAvailability';
@@ -86,6 +87,7 @@ function buildGroup(meshes: ParsedMesh[], material: THREE.MeshStandardMaterial, 
 }
 
 interface ViewerContext {
+  invalidate: () => void;
   container: HTMLDivElement;
   controlsBar: () => HTMLDivElement | null;
   scene: THREE.Scene;
@@ -129,6 +131,7 @@ function updateViewerProjection(ctx: ViewerContext): boolean {
 }
 
 function fitViewer(ctx: ViewerContext) {
+  ctx.invalidate();
   const object = ctx.currentObject;
   if (!object) return;
   updateViewerProjection(ctx);
@@ -174,6 +177,7 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
         // A normal resize preserves the user's orbit and zoom. Only a changed
         // reserved area requires a new fit to keep the model above the bar.
         if (updateViewerProjection(ctx)) fitViewer(ctx);
+        ctx.invalidate();
       }
     };
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
@@ -231,8 +235,17 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
 
     const floor = createViewerFloor(container);
     scene.add(floor);
+
+    const { invalidate, stop } = createRenderLoop({
+      update: () => controls.update(),
+      render: () => renderer.render(scene, camera),
+    });
+    controls.addEventListener?.('change', invalidate);
+    renderer.domElement.addEventListener('webglcontextrestored', invalidate);
+
     const themeObserver = new MutationObserver(() => {
       floor.material.uniforms.gridColor.value.copy(gridColor(container));
+      invalidate();
     });
     const appRoot = container.closest('[data-app]');
     if (appRoot) themeObserver.observe(appRoot, { attributes: true, attributeFilter: ['data-app'] });
@@ -243,23 +256,18 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
       camera.aspect = clientWidth / clientHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(clientWidth, clientHeight);
+      invalidate();
     };
 
     resize();
 
-    let frameHandle = 0;
-    const animate = () => {
-      frameHandle = requestAnimationFrame(animate);
-      controls.update();
-      renderer.render(scene, camera);
-    };
-    animate();
-
-    ctxRef.current = { container, controlsBar: () => controlsBarRef.current, scene, camera, renderer, controls, material, currentObject: null, colorMaterials: [], floor, luts: new Set() };
+    ctxRef.current = { invalidate, container, controlsBar: () => controlsBarRef.current, scene, camera, renderer, controls, material, currentObject: null, colorMaterials: [], floor, luts: new Set() };
 
     return () => {
       if (ctxRef.current) ctxRef.current.disposing = true;
-      cancelAnimationFrame(frameHandle);
+      stop();
+      controls.removeEventListener?.('change', invalidate);
+      renderer.domElement.removeEventListener('webglcontextrestored', invalidate);
       themeObserver.disconnect();
       floor.geometry.dispose();
       floor.material.dispose();
@@ -314,6 +322,7 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
     setSelectedPlate(null);
     setLegendOpen(false);
     ctx.floor.visible = false;
+    ctx.invalidate();
     if (ctx.currentObject) {
       ctx.scene.remove(ctx.currentObject);
       disposeObject(ctx.currentObject);
@@ -358,6 +367,7 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
           ctx.camera.aspect = container.clientWidth / container.clientHeight;
           ctx.camera.updateProjectionMatrix();
           ctx.renderer.setSize(container.clientWidth, container.clientHeight);
+          ctx.invalidate();
         }
         fitViewer(ctx);
         setStatus('ready');
@@ -367,6 +377,7 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
             requestAnimationFrame(() => {
               if (cancelled || contextLost) { finishAttempt(); return; }
               try {
+                ctx.renderer.render(ctx.scene, ctx.camera);
                 const dataUrl = ctx.renderer.domElement.toDataURL('image/png');
                 const base64 = dataUrl.split(',')[1];
                 if (base64) {
@@ -408,11 +419,15 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
     ctx?.currentObject?.traverse(child => {
       if (child instanceof THREE.Mesh) child.material = fileColors ? child.userData.fileMaterials : ctx.material;
     });
+    ctx?.invalidate();
   }, [fileColors]);
 
   useLayoutEffect(() => {
     const ctx = ctxRef.current;
-    if (status === 'ready' && ctx && updateViewerProjection(ctx)) fitViewer(ctx);
+    if (status === 'ready' && ctx) {
+      if (updateViewerProjection(ctx)) fitViewer(ctx);
+      ctx.invalidate();
+    }
   }, [compact, status, showRotationControls, t]);
 
   const fit = () => {
@@ -436,6 +451,7 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
   useEffect(() => {
     if (ctxRef.current) {
       ctxRef.current.controls.autoRotate = autoRotating;
+      ctxRef.current.invalidate();
     }
   }, [autoRotating]);
 
@@ -451,6 +467,7 @@ export function ModelViewer({ surfaceClassName = 'h-full', fileId, needsSnapshot
     ctx.camera.position.copy(ctx.controls.target).add(newOffset);
     ctx.camera.lookAt(ctx.controls.target);
     ctx.controls.update();
+    ctx.invalidate();
   };
 
   return (
