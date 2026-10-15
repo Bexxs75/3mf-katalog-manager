@@ -62,7 +62,7 @@ else
         (set -C; printf '%s\n' "$password" > "$password_file")
         secure_file "$password_file"
         printf '\n============================================================\n'
-        printf 'ERSTER START / FIRST START: KasmVNC\n'
+        printf 'ERSTER START / FIRST START: Browser-Desktop\n'
         printf 'Benutzer / User: %s\nPasswort / Password: %s\n' "$user" "$password"
         printf 'Sicher verwahren / Keep safe: %s\n' "$password_file"
         printf '============================================================\n\n'

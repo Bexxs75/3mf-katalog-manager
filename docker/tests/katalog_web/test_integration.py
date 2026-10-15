@@ -11,29 +11,26 @@ class ProxyTests(unittest.TestCase):
     def test_internal_listener_build_anchors_fail_closed(self):
         dockerfile = (ROOT / 'Dockerfile').read_text()
         command = dockerfile.split('# Only nginx authenticates requests;', 1)[1].split('\nRUN ', 1)[1].split('\n\n', 1)[0]
-        fixtures = {
-            '/kclient/index.js': 'http.listen(6900);\n',
-            '/etc/s6-overlay/s6-rc.d/svc-kasmvnc/run': '    -interface 0.0.0.0 \\\n',
-            '/usr/local/etc/kasmvnc/kasmvnc.yaml': 'network:\n  interface: 0.0.0.0\n',
-            '/usr/local/etc/kasmvnc/kasmvnc.yaml.lsio': 'network:\n  interface: 0.0.0.0\n',
+        bind = '                    "0.0.0.0",\n'
+        good = 'async with ws_async.serve(\n                    self.ws_handler,\n' + bind + '                    self.port,\n'
+        cases = {
+            'patched once': (good, True),
+            'upstream line changed': (good.replace('0.0.0.0', 'localhost'), False),
+            'bind line appears twice': (good + good, False),
+            'file missing': (None, False),
         }
-        with tempfile.TemporaryDirectory() as tmp:
-            for directory in ['/kclient/', '/etc/s6-overlay/', '/usr/local/etc/kasmvnc/']:
-                command = command.replace(directory, tmp + directory)
-            for changed in [None, *fixtures]:
-                with self.subTest(changed=changed):
-                    for path, content in fixtures.items():
-                        target = Path(tmp + path)
-                        target.parent.mkdir(parents=True, exist_ok=True)
-                        target.write_text('upstream changed\n' if path == changed else content)
-                    result = subprocess.run(['sh', '-c', command], capture_output=True)
-                    # kasmvnc.yaml carries no interface line in the base image, so it is patched only when present.
-                    optional = changed == '/usr/local/etc/kasmvnc/kasmvnc.yaml'
-                    self.assertEqual(result.returncode == 0, changed is None or optional, result.stderr)
-                    if changed is None:
-                        for path in fixtures:
-                            self.assertIn('127.0.0.1', Path(tmp + path).read_text())
-                            self.assertNotIn('0.0.0.0', Path(tmp + path).read_text())
+        for name, (content, patched) in cases.items():
+            with self.subTest(case=name), tempfile.TemporaryDirectory() as tmp:
+                target = Path(tmp + '/lsiopy/lib/python3.12/site-packages/selkies/selkies.py')
+                if content is not None:
+                    target.parent.mkdir(parents=True)
+                    target.write_text(content)
+                result = subprocess.run(['sh', '-c', command.replace('/lsiopy/', tmp + '/lsiopy/')], capture_output=True)
+                self.assertEqual(result.returncode == 0, patched, result.stderr)
+                if patched:
+                    text = target.read_text()
+                    self.assertIn('"127.0.0.1",', text)
+                    self.assertNotIn('0.0.0.0', text)
 
     def test_smoke_internal_listener_check(self):
         smoke = (ROOT / 'scripts/ci-smoke.sh').read_text()
@@ -45,15 +42,15 @@ ok() { :; }
 docker() { printf '%s\\n' "$LISTENERS"; return "${SS_STATUS:-0}"; }
 ''' + function + '\ncheck_internal_listeners test'
         for addresses, good in [
-            (['127.0.0.1:6900', '127.0.0.1:6901'], True),
-            (['[::1]:6900', '[::1]:6901'], True),
-            (['::1:6900', '::1:6901'], True),
-            (['0.0.0.0:6900', '127.0.0.1:6901'], False),
-            (['127.0.0.1:6900', '[::]:6901'], False),
-            (['*:6900', '127.0.0.1:6901'], False),
-            (['127.0.0.1:6900', '172.18.0.2:6901'], False),
-            (['127.0.0.1:6900', '127.0.0.1:6901', '0.0.0.0:6901'], False),
-            (['127.0.0.1:6900'], False),
+            (['127.0.0.1:8082', '127.0.0.1:8099'], True),
+            (['[::1]:8082', '[::1]:8099'], True),
+            (['::1:8082', '::1:8099'], True),
+            (['0.0.0.0:8082', '127.0.0.1:8099'], False),
+            (['127.0.0.1:8082', '[::]:8099'], False),
+            (['*:8082', '127.0.0.1:8099'], False),
+            (['127.0.0.1:8082', '172.18.0.2:8099'], False),
+            (['127.0.0.1:8082', '127.0.0.1:8099', '0.0.0.0:8099'], False),
+            (['127.0.0.1:8082'], False),
             ([], False),
         ]:
             with self.subTest(addresses=addresses):
