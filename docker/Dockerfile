@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=ghcr.io/linuxserver/baseimage-kasmvnc:ubuntunoble
+ARG BASE_IMAGE=ghcr.io/linuxserver/baseimage-selkies:ubuntunoble@sha256:7cab02f9222937ad1e704cd904534d69a2300b2406af466241817be0ce1d0493
 FROM ${BASE_IMAGE} AS app-extract
 
 ARG APP_URL
@@ -30,7 +30,7 @@ LABEL org.opencontainers.image.version="${APP_VERSION}" \
       org.opencontainers.image.licenses="MIT"
 ENV TITLE="3MF Katalog Manager" \
     LANG=de_DE.UTF-8 LC_ALL=de_DE.UTF-8 \
-    THREEMF_CONTAINER=1 UMASK=022 \
+    THREEMF_CONTAINER=1 UMASK=022 HARDEN_DESKTOP=true \
     S6_BEHAVIOUR_IF_STAGE2_FAILS=2 S6_SERVICES_GRACETIME=26000 S6_KILL_GRACETIME=1000
 
 # The base image already ships locales-all (incl. de_DE.UTF-8). Do not list `locales`
@@ -44,10 +44,9 @@ COPY root/ /
 COPY LICENSES.md /usr/share/doc/3mf-katalog/LICENSES.md
 # Fail the build if upstream changes the authentication or desktop service layout.
 RUN test -d /etc/s6-overlay/s6-rc.d/init-adduser \
-    && test -d /etc/s6-overlay/s6-rc.d/init-kasmvnc/dependencies.d \
     && test -d /etc/s6-overlay/s6-rc.d/init-nginx/dependencies.d \
-    && test -d /etc/s6-overlay/s6-rc.d/svc-kasmvnc \
-    && touch /etc/s6-overlay/s6-rc.d/init-kasmvnc/dependencies.d/init-3mf \
+    && test -d /etc/s6-overlay/s6-rc.d/svc-de \
+    && test -d /etc/s6-overlay/s6-rc.d/svc-selkies \
     && touch /etc/s6-overlay/s6-rc.d/init-nginx/dependencies.d/init-3mf \
     && chmod +x /usr/local/bin/3mf-katalog /usr/local/libexec/3mf-* \
        /etc/s6-overlay/s6-rc.d/svc-3mf/run \
@@ -55,15 +54,13 @@ RUN test -d /etc/s6-overlay/s6-rc.d/init-adduser \
     && printf '%s\n' '#!/bin/sh' > /defaults/autostart \
     && chmod +x /defaults/autostart
 
-# Only nginx authenticates requests; internal backends must not accept bridge traffic.
-RUN grep -q '^http\.listen(6900);$' /kclient/index.js \
-    && sed -i "s/^http\.listen(6900);$/http.listen(6900, '127.0.0.1');/" /kclient/index.js \
-    && grep -q -- '-interface 0\.0\.0\.0 ' /etc/s6-overlay/s6-rc.d/svc-kasmvnc/run \
-    && sed -i 's/-interface 0\.0\.0\.0 /-interface 127.0.0.1 /' /etc/s6-overlay/s6-rc.d/svc-kasmvnc/run \
-    && grep -q '^  interface: 0\.0\.0\.0$' /usr/local/etc/kasmvnc/kasmvnc.yaml.lsio \
-    && sed -i 's/^  interface: 0\.0\.0\.0$/  interface: 127.0.0.1/' /usr/local/etc/kasmvnc/kasmvnc.yaml.lsio \
-    && { ! grep -q '^  interface: 0\.0\.0\.0$' /usr/local/etc/kasmvnc/kasmvnc.yaml \
-         || sed -i 's/^  interface: 0\.0\.0\.0$/  interface: 127.0.0.1/' /usr/local/etc/kasmvnc/kasmvnc.yaml; }
+# Only nginx authenticates requests; the Selkies data socket must not accept bridge traffic.
+# Upstream binds it to every interface regardless of SELKIES_PUBLIC, so patch the one call
+# and fail the build if its shape ever changes.
+RUN f=$(ls /lsiopy/lib/python3.*/site-packages/selkies/selkies.py) \
+    && test "$(grep -c '^                    "0\.0\.0\.0",$' "$f")" -eq 1 \
+    && sed -i 's/^                    "0\.0\.0\.0",$/                    "127.0.0.1",/' "$f" \
+    && grep -q '^                    "127\.0\.0\.1",$' "$f"
 
 # Insert the companion routes only into the expected two-server template.
 RUN test -x /usr/bin/python3 \

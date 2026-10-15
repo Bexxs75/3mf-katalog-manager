@@ -41,7 +41,7 @@ concurrency:
 
 env:
   # Pinned so a changed upstream tag cannot alter a release build unnoticed.
-  BASE_IMAGE: ghcr.io/linuxserver/baseimage-kasmvnc@sha256:c6d902c207d6e4a66ca41ce36dda549cd58a5bc8d353468b24b0cf780eb528c8
+  BASE_IMAGE: ghcr.io/linuxserver/baseimage-selkies@sha256:7cab02f9222937ad1e704cd904534d69a2300b2406af466241817be0ce1d0493
 
 jobs:
   image:

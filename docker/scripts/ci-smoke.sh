@@ -36,13 +36,13 @@ check_internal_listeners() {
     listeners=$(docker exec "$1" ss -ltn) || fail 'cannot inspect internal listeners'
     # Require both services, and reject every non-loopback listener on either port.
     awk '
-        $4 ~ /:690[01]$/ {
+        $4 ~ /:(8082|8099)$/ {
             port = $4; sub(/^.*:/, "", port)
             seen[port] = 1
             if ($4 != "127.0.0.1:" port && $4 != "[::1]:" port && $4 != "::1:" port) bad = 1
         }
-        END { exit (bad || !seen[6900] || !seen[6901]) }
-    ' <<<"$listeners" || fail '6900/6901 must both listen exclusively on 127.0.0.1/::1'
+        END { exit (bad || !seen[8082] || !seen[8099]) }
+    ' <<<"$listeners" || fail '8082/8099 must both listen exclusively on 127.0.0.1/::1'
     ok 'internal listeners restricted to loopback'
 }
 
@@ -57,6 +57,11 @@ pw=$(cat "$work/gen/.kasmvnc-password")
 [ "${#pw}" -ge 16 ] || fail "generated password is too short"
 [ "$(status -u "abc:$pw" "https://127.0.0.1:$p/")" = 200 ] || fail "generated password is rejected"
 [ "$(status -u "abc:wrong" "https://127.0.0.1:$p/")" = 401 ] || fail "a wrong password is accepted"
+# The hardened desktop must not expose the upstream web terminal or file browser, with or without login.
+for route in /files/ /terminal; do
+    [ "$(status "https://127.0.0.1:$p$route")" = 401 ] || fail "$route is reachable without login"
+    [ "$(status -u "abc:$pw" "https://127.0.0.1:$p$route")" = 404 ] || fail "$route is exposed to a logged-in user"
+done
 logs=$(docker logs smoke-gen 2>&1)
 grep -q -- "$pw" <<<"$logs" || fail "first start did not show the password"
 [ "$(stat -c %a "$work/gen/.kasmvnc-password")" = 600 ] || fail "password file is not 600"

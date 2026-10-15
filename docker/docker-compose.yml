@@ -3,7 +3,7 @@ services:
     build:
       context: .
       args:
-        BASE_IMAGE: ${BASE_IMAGE:-ghcr.io/linuxserver/baseimage-kasmvnc:ubuntunoble}
+        BASE_IMAGE: ${BASE_IMAGE:-ghcr.io/linuxserver/baseimage-selkies:ubuntunoble@sha256:7cab02f9222937ad1e704cd904534d69a2300b2406af466241817be0ce1d0493}
         APP_URL: ${APP_URL:-}
         APP_VERSION: ${APP_VERSION:-}
     image: ghcr.io/bexxs75/3mf-katalog-manager:${IMAGE_TAG:-latest}
