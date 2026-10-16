@@ -1,6 +1,15 @@
 import type { Translations } from './types';
 
 export const es: Translations = {
+  webManagerJobOpen: "Pendiente",
+  webManagerDeleteSpool: "Se eliminarán la bobina, su imagen y su asignación a la ranura. Se conservan los trabajos y los gramos contabilizados; se elimina la referencia a la bobina del trabajo.",
+  webManagerDeletePrinter: "Las bobinas vuelven a su ubicación habitual. Se eliminarán las unidades, la configuración de conexión y todos los trabajos pendientes, confirmados e ignorados, incluidas las asociaciones de archivos (última impresora). Se conservan los archivos del catálogo, el registro de impresión y los consumos contabilizados.",
+  webManagerDeleteUnit: "Se eliminará la unidad. Las bobinas se conservan y vuelven a sus ubicaciones de almacenamiento. Las cubetas de resina no se pueden eliminar.",
+  webManagerShrinkUnit: "Al reducir las ranuras, las bobinas de las ranuras eliminadas vuelven a su ubicación habitual.",
+  webManagerDisplaced: "{spool} ha vuelto de la ranura ocupada a su ubicación habitual.",
+  webManagerPartial: "{done} creadas. Faltan {remaining}; al pulsar Añadir de nuevo solo se crearán estas.",
+  webManagerRemoveImage: "Eliminar imagen",
+  webManagerChooseImage: "Seleccionar PNG, JPEG o WebP (máx. 5 MiB)",
   downloadModel: 'Descargar',
   webMetadataError: "Error al cambiar o recargar. Vuelve a cargar el catálogo.",
   webPhotoTooLarge: "La foto no debe superar los 5 MiB.",

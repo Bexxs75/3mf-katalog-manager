@@ -1,3 +1,4 @@
+import { canEditMetadata, useCanEditMetadata } from '../lib/webSession';
 import { Icon } from './Icon';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -65,6 +66,7 @@ export function PrinterColumn({
   printerLink,
 }: Props) {
   const t = useT();
+  const canEdit = useCanEditMetadata();
   const { language } = useLanguage();
   const [menu, setMenu] = useState<OpenMenu | null>(null);
   const printerCards = useRef(new Map<string, HTMLDivElement>());
@@ -119,13 +121,13 @@ export function PrinterColumn({
                     if (el) slotButtons.current.set(key, el);
                     else slotButtons.current.delete(key);
                   }}
-                  onMouseDown={(e) => spool && onSlotMouseDown(spool.id, unit.id, slotIndex, e)}
+                  onMouseDown={(e) => canEditMetadata() && spool && onSlotMouseDown(spool.id, unit.id, slotIndex, e)}
                   onMouseEnter={() => {
                     // An unsuitable unit (resin <-> filament) never becomes a target.
                     if (acceptsDragged(unit)) onEnterSlot(unit.id, slotIndex);
                   }}
                   onMouseLeave={() => onLeaveSlot(unit.id, slotIndex)}
-                  onClick={() => setMenu(menuOpen ? null : { unitId: unit.id, slotIndex })}
+                  disabled={!canEdit} onClick={() => setMenu(menuOpen ? null : { unitId: unit.id, slotIndex })}
                   className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-[5px] border text-left text-caption cursor-pointer ${
                     target
                       ? 'border-2 border-dashed border-[var(--accent)] bg-[var(--accent-soft)]'
@@ -171,7 +173,7 @@ export function PrinterColumn({
                     <span className="flex-1">{target ? t('printersDropHere') : t('printersSlotEmpty')}</span>
                   )}
                 </button>
-                {menuOpen && (
+                {canEdit && menuOpen && (
                   <SlotMenu
                     spool={spool}
                     storage={storage.filter((s) => spoolFitsUnit(s, unit))}
@@ -181,7 +183,7 @@ export function PrinterColumn({
                     onUnload={onUnload}
                     onEdit={onEditSpool}
                     onConsume={
-                      isVat && spool && onConsume
+                      import.meta.env.VITE_TARGET !== 'web' && isVat && spool && onConsume
                         ? () => {
                             const anchor = slotButtons.current.get(slotKey(unit.id, slotIndex));
                             if (anchor) onConsume(spool, anchor);
@@ -223,7 +225,7 @@ export function PrinterColumn({
             <div className="text-small font-bold">{printer.name}</div>
             <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-left text-caption text-[var(--accent)] focus-visible:outline-2" onClick={() => onManage(printer.id)}>{t('pmEditLink')}</button>
             {/* Resin printers have no printer connection. */}
-            {printerLink && printer.kind !== 'resin' && <PrinterLinkStatus printerId={printer.id} link={printerLink} />}
+            {import.meta.env.VITE_TARGET !== 'web' && printerLink && printer.kind !== 'resin' && <PrinterLinkStatus printerId={printer.id} link={printerLink} />}
             {printer.units.map(renderUnit)}
             {printer.units.length === 0 && (
               <button

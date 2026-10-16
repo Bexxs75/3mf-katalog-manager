@@ -6,6 +6,16 @@ export interface PluralForms {
 }
 
 export interface Translations {
+  webManagerJobOpen: string;
+  webManagerDeleteSpool: string;
+  webManagerDeletePrinter: string;
+  webManagerDeleteUnit: string;
+  webManagerShrinkUnit: string;
+  webManagerDisplaced: string;
+  webManagerPartial: string;
+  webManagerRemoveImage: string;
+  webManagerChooseImage: string;
+
   downloadModel: string;
   webMetadataError: string;
   webPhotoTooLarge: string;

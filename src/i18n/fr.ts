@@ -1,6 +1,15 @@
 import type { Translations } from './types';
 
 export const fr: Translations = {
+  webManagerJobOpen: "En attente",
+  webManagerDeleteSpool: "La bobine, son image et son affectation à un emplacement seront supprimées. Les travaux et les grammes comptabilisés sont conservés ; la référence à la bobine est retirée du travail.",
+  webManagerDeletePrinter: "Les bobines retournent à leur emplacement habituel. Les unités, la configuration de connexion et tous les travaux en attente, confirmés et ignorés seront supprimés, ainsi que leurs associations aux fichiers (dernière imprimante). Les fichiers du catalogue, le journal d’impression et les consommations comptabilisées sont conservés.",
+  webManagerDeleteUnit: "L’unité sera supprimée. Les bobines sont conservées et retrouvent leurs lieux de stockage. Les cuves de résine ne peuvent pas être supprimées.",
+  webManagerShrinkUnit: "Réduire le nombre d’emplacements renvoie les bobines des emplacements supprimés à leur lieu habituel.",
+  webManagerDisplaced: "{spool} a été renvoyée de l’emplacement occupé à son lieu habituel.",
+  webManagerPartial: "{done} créées. Il en manque {remaining} ; Ajouter ne créera que celles-ci.",
+  webManagerRemoveImage: "Supprimer l’image",
+  webManagerChooseImage: "Choisir un PNG, JPEG ou WebP (max. 5 Mio)",
   downloadModel: 'Télécharger',
   webMetadataError: "Échec de la modification ou du rechargement. Rechargez le catalogue.",
   webPhotoTooLarge: "La photo ne doit pas dépasser 5 Mio.",

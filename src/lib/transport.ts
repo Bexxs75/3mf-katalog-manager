@@ -19,14 +19,16 @@ async function webInvoke<T>(command: string, args?: Record<string, unknown>): Pr
   });
   let response = await send();
   // Only explicit rate/busy responses are safe to retry, never a lost response.
-  if ((WEB_WRITE_COMMANDS as readonly string[]).includes(command) && [429, 503].includes(response.status)) {
+  const writing = (WEB_WRITE_COMMANDS as readonly string[]).includes(command);
+  const managerRead = ['list_filament_spools', 'get_filament_spool_image', 'list_printers', 'list_printer_history', 'get_last_printer_for_file', 'check_filament'].includes(command);
+  if ((writing || managerRead) && [429, 503].includes(response.status)) {
     const retry = response.headers.get('Retry-After');
     if (retry !== null) {
       const seconds = Number(retry);
       const delay = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(retry) - Date.now();
       if (Number.isFinite(delay) && delay >= 0) {
         await new Promise(resolve => setTimeout(resolve, delay));
-        if (canEditMetadata()) response = await send();
+        if (!writing || canEditMetadata()) response = await send();
       }
     }
   }

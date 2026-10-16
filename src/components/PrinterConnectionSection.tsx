@@ -150,6 +150,7 @@ export function PrinterConnectionSection({ printerId, connection, link }: Props)
   const localNow = Date.now() / 1000;
   const effectiveError = error ?? current?.lastError;
 
+  if (import.meta.env.VITE_TARGET === 'web') return null;
   return (
     <div className="flex flex-col gap-3">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

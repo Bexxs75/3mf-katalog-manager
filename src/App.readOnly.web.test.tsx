@@ -157,8 +157,10 @@ it('shows trash contents without restore, permanent delete or empty-trash action
 });
 it('offers browser display preferences and read-only information without desktop tools or import', async () => {
   await start();
-  for (const label of [de.railFilament, de.railPrinters, de.queueHeading]) expect(screen.queryByRole('button', { name: label })).toBeNull();
+  for (const label of [de.queueHeading]) expect(screen.queryByRole('button', { name: label })).toBeNull();
+  for (const label of [de.railFilament, de.railPrinters]) expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
   await click(screen.getByRole('button', { name: de.settingsTitle }));
+  expect(screen.getByRole('button', { name: de.pmOpen })).toBeInTheDocument();
   for (const label of [de.settingsTabSlicer, de.settingsTabCatalog, de.singleKeyShortcutsTitle]) expect(screen.queryByText(label)).toBeNull();
   await click(screen.getByRole('button', { name: de.themeDark }));
   expect(document.documentElement.dataset.app).toBe('dark');

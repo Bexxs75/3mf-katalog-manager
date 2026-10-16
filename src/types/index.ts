@@ -203,6 +203,8 @@ export interface FilamentSpool {
   remainingWeightG: number;
   price: number | null;
   imagePng: string | null;
+  /** Web lists omit image bytes and expose only this flag. */
+  hasImage?: boolean;
   /** Color value `#rrggbb`; `color` stays the color name. */
   colorHex: string | null;
   /** Home location while the spool sits in a slot (then `location` is empty). */

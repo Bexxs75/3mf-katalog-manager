@@ -1,6 +1,15 @@
 import type { Translations } from './types';
 
 export const en: Translations = {
+  webManagerJobOpen: "Open",
+  webManagerDeleteSpool: "The spool, its image and slot assignment will be deleted. Printer jobs and booked grams remain; the spool reference in the job is removed.",
+  webManagerDeletePrinter: "Spools return to their home locations. Units, connection settings and all open, confirmed and ignored printer jobs, including file associations (last printer), will be deleted. Catalog files, print logs and booked consumption remain.",
+  webManagerDeleteUnit: "The unit will be deleted. Spools remain and return to their storage locations. Resin vats cannot be deleted.",
+  webManagerShrinkUnit: "Reducing the slot count returns spools in removed slots to their home locations.",
+  webManagerDisplaced: "{spool} was returned from the occupied slot to its home location.",
+  webManagerPartial: "{done} created. {remaining} still missing; Add again creates only these.",
+  webManagerRemoveImage: "Remove image",
+  webManagerChooseImage: "Choose PNG, JPEG or WebP (max. 5 MiB)",
   downloadModel: 'Download',
   webMetadataError: "Change or reload failed. Please reload the catalog.",
   webPhotoTooLarge: "The photo must not exceed 5 MiB.",

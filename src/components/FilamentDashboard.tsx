@@ -1,3 +1,5 @@
+import { useCanEditMetadata } from '../lib/webSession';
+import { SpoolImage } from './SpoolImage';
 import { Icon } from './Icon';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { useT, useLanguage } from '../i18n/LanguageContext';
@@ -45,6 +47,7 @@ export function FilamentDashboard({
   highlightIds,
 }: SpoolListProps) {
   const t = useT();
+  const canEdit = useCanEditMetadata();
   const { language } = useLanguage();
 
   if (spools.length === 0) {
@@ -63,21 +66,16 @@ export function FilamentDashboard({
           <div
             key={spool.id}
             data-testid={`spool-card-${spool.id}`}
-            onMouseDown={(e) => !startsOnButton(e) && onSpoolMouseDown?.(spool.id, e)}
+            onMouseDown={(e) => canEdit && !startsOnButton(e) && onSpoolMouseDown?.(spool.id, e)}
             onDoubleClick={(e) => {
-              if (confirmDeleteId !== spool.id && !isFromInteractiveElement(e)) onEdit(spool);
+              if (canEdit && confirmDeleteId !== spool.id && !isFromInteractiveElement(e)) onEdit(spool);
             }}
             className={`rounded-[10px] overflow-hidden border border-[var(--line)] bg-[var(--panel)] flex flex-col ${
               onSpoolMouseDown ? 'cursor-grab' : ''
             } ${highlightIds?.has(spool.id) ? 'spool-new' : ''}`}
           >
             <div className="flex items-center gap-2.5 px-3 py-2.5">
-              {spool.imagePng ? (
-                <img draggable={false}
-                  src={`data:image/png;base64,${spool.imagePng}`}
-                  className="w-9 h-9 rounded-md object-cover border border-[var(--line)] flex-none"
-                />
-              ) : spool.kind === 'resin' ? (
+              <SpoolImage spool={spool} className="w-9 h-9 rounded-md object-cover border border-[var(--line)] flex-none" fallback={spool.kind === 'resin' ? (
                 <span className="w-9 h-9 rounded-md flex-none grid place-items-center bg-[var(--plate)] border border-[var(--line)]">
                   <ResinBottleIcon colorHex={spool.colorHex} />
                 </span>
@@ -87,7 +85,7 @@ export function FilamentDashboard({
                 >
                   {spool.material.slice(0, 3).toUpperCase()}
                 </span>
-              )}
+              )} />
               <div className="min-w-0 flex-1">
                 <div className="text-body font-bold truncate flex items-center gap-1.5">
                   {spool.colorHex && isValidColorHex(spool.colorHex) && (
@@ -136,7 +134,7 @@ export function FilamentDashboard({
 
               {confirmDeleteId === spool.id ? (
                 <div className="flex items-center gap-1.5">
-                  <span className="flex-1 text-caption text-[var(--ink)]">{t('deleteConfirmQuestion')}</span>
+                  <span className="flex-1 text-caption text-[var(--ink)]">{t(import.meta.env.VITE_TARGET === 'web' ? 'webManagerDeleteSpool' : 'deleteConfirmQuestion')}</span>
                   <button
                     onClick={onCancelDelete}
                     className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-caption cursor-pointer"
@@ -144,7 +142,7 @@ export function FilamentDashboard({
                     {t('cancel')}
                   </button>
                   <button
-                    onClick={() => onConfirmDelete(spool.id)}
+                    disabled={!canEdit} onClick={() => onConfirmDelete(spool.id)}
                     className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-6 px-1.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-caption cursor-pointer"
                   >
                     {t('delete')}
@@ -153,7 +151,7 @@ export function FilamentDashboard({
               ) : (
                 <div className="flex items-center justify-end gap-1">
                   <span className="mr-auto inline-flex items-center gap-1">
-                    {onConsume && spool.kind === 'resin' && (
+                    {import.meta.env.VITE_TARGET !== 'web' && onConsume && spool.kind === 'resin' && (
                       <button
                         type="button"
                         onClick={(e) => onConsume(spool, e.currentTarget)}
@@ -165,7 +163,7 @@ export function FilamentDashboard({
                         {t('resinConsumeButton')}
                       </button>
                     )}
-                    {onRestock && (
+                    {import.meta.env.VITE_TARGET !== 'web' && onRestock && (
                       <button
                         type="button"
                         onClick={(e) => onRestock(spool, e.currentTarget)}
@@ -179,14 +177,14 @@ export function FilamentDashboard({
                     )}
                   </span>
                   <button
-                    onClick={() => onEdit(spool)}
+                    disabled={!canEdit} onClick={() => onEdit(spool)}
                     aria-label={t('filamentEditAria')}
                     className="w-6 h-6 grid place-items-center rounded-full text-caption text-[var(--ink-3)] hover:bg-[var(--panel-2)] cursor-pointer"
                   >
                     <Icon name="edit" size={14} />
                   </button>
                   <button
-                    onClick={() => onRequestDelete(spool.id)}
+                    disabled={!canEdit} onClick={() => onRequestDelete(spool.id)}
                     aria-label={t('deleteAriaLabel')}
                     className="w-6 h-6 grid place-items-center rounded-full text-caption text-[var(--ink-3)] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)] cursor-pointer"
                   >

@@ -1,3 +1,5 @@
+import { useCanEditMetadata } from '../lib/webSession';
+import { SpoolImage } from './SpoolImage';
 import { Icon } from './Icon';
 import { useState } from 'react';
 import { useT, useLanguage } from '../i18n/LanguageContext';
@@ -33,6 +35,7 @@ export function FilamentTable({
   kind = 'filament',
 }: Props) {
   const t = useT();
+  const canEdit = useCanEditMetadata();
   const { language } = useLanguage();
   const [sortKey, setSortKey] = useState<SortKey>('material');
   const [sortDir, setSortDir] = useState<1 | -1>(1);
@@ -127,9 +130,9 @@ export function FilamentTable({
               <tr
                 key={spool.id}
                 data-testid={`spool-row-${spool.id}`}
-                onMouseDown={(e) => !startsOnButton(e) && onSpoolMouseDown?.(spool.id, e)}
+                onMouseDown={(e) => canEdit && !startsOnButton(e) && onSpoolMouseDown?.(spool.id, e)}
                 onDoubleClick={(e) => {
-                  if (confirmDeleteId !== spool.id && !isFromInteractiveElement(e)) onEdit(spool);
+                  if (canEdit && confirmDeleteId !== spool.id && !isFromInteractiveElement(e)) onEdit(spool);
                 }}
                 className={`hover:bg-[var(--panel-2)] ${onSpoolMouseDown ? 'cursor-grab' : ''} ${
                   highlightIds?.has(spool.id) ? 'spool-new-row' : ''
@@ -137,13 +140,11 @@ export function FilamentTable({
               >
                 <td className="px-3 py-2.5 border-b border-[var(--line)] font-semibold">
                   <div className="flex items-center gap-2">
-                    {spool.imagePng ? (
-                      <img draggable={false} src={`data:image/png;base64,${spool.imagePng}`} className="w-6 h-6 rounded object-cover border border-[var(--line)]" />
-                    ) : spool.kind === 'resin' ? (
+                    <SpoolImage spool={spool} className="w-6 h-6 rounded object-cover border border-[var(--line)]" fallback={spool.kind === 'resin' ? (
                       <ResinBottleIcon colorHex={spool.colorHex} size={20} />
                     ) : (
                       <FilamentSpoolIcon colorHex={spool.colorHex} size={20} />
-                    )}
+                    )} />
                     {spool.material}
                   </div>
                 </td>
@@ -187,7 +188,8 @@ export function FilamentTable({
                 </td>
                 <td className="px-3 py-2.5 border-b border-[var(--line)] text-right whitespace-nowrap">
                   {confirmDeleteId === spool.id ? (
-                    <span className="inline-flex items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1.5 whitespace-normal">
+                      {import.meta.env.VITE_TARGET === 'web' && <span>{t('webManagerDeleteSpool')}</span>}
                       <button
                         onClick={onCancelDelete}
                         className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-6 px-1.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-caption cursor-pointer"
@@ -195,7 +197,7 @@ export function FilamentTable({
                         {t('cancel')}
                       </button>
                       <button
-                        onClick={() => onConfirmDelete(spool.id)}
+                        disabled={!canEdit} onClick={() => onConfirmDelete(spool.id)}
                         className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-6 px-1.5 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-caption cursor-pointer"
                       >
                         {t('delete')}
@@ -203,7 +205,7 @@ export function FilamentTable({
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1">
-                      {onConsume && spool.kind === 'resin' && (
+                      {import.meta.env.VITE_TARGET !== 'web' && onConsume && spool.kind === 'resin' && (
                         <button
                           type="button"
                           onClick={(e) => onConsume(spool, e.currentTarget)}
@@ -216,7 +218,7 @@ export function FilamentTable({
                           <Icon name="minus" size={14} />
                         </button>
                       )}
-                      {onRestock && (
+                      {import.meta.env.VITE_TARGET !== 'web' && onRestock && (
                         <button
                           type="button"
                           onClick={(e) => onRestock(spool, e.currentTarget)}
@@ -230,14 +232,14 @@ export function FilamentTable({
                         </button>
                       )}
                       <button
-                        onClick={() => onEdit(spool)}
+                        disabled={!canEdit} onClick={() => onEdit(spool)}
                         aria-label={t('filamentEditAria')}
                         className="w-6 h-6 grid place-items-center rounded-full text-caption text-[var(--ink-3)] hover:bg-[var(--panel)] cursor-pointer"
                       >
                         <Icon name="edit" size={14} />
                       </button>
                       <button
-                        onClick={() => onRequestDelete(spool.id)}
+                        disabled={!canEdit} onClick={() => onRequestDelete(spool.id)}
                         aria-label={t('deleteAriaLabel')}
                         className="w-6 h-6 grid place-items-center rounded-full text-caption text-[var(--ink-3)] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)] cursor-pointer"
                       >

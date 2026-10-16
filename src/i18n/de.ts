@@ -1,6 +1,15 @@
 import type { Translations } from './types';
 
 export const de: Translations = {
+  webManagerJobOpen: "Offen",
+  webManagerDeleteSpool: "Die Spule samt Bild und Slotbelegung wird gelöscht. Druckerjobs und gebuchte Gramm bleiben erhalten; die Spulenreferenz im Job wird entfernt.",
+  webManagerDeletePrinter: "Spulen werden an ihren Stammplatz zurückgelegt. Einheiten, Verbindungskonfiguration und alle offenen, bestätigten und ignorierten Druckerjobs samt Dateizuordnungen (letzter Drucker) werden gelöscht. Katalogdateien, Druckprotokoll und gebuchte Verbrauchsmengen bleiben erhalten.",
+  webManagerDeleteUnit: "Die Einheit wird gelöscht. Spulen bleiben erhalten und kehren an ihre Lagerorte zurück. Harzwannen können nicht gelöscht werden.",
+  webManagerShrinkUnit: "Beim Verkleinern werden Spulen aus den entfallenden Slots an ihren Stammplatz zurückgelegt.",
+  webManagerDisplaced: "{spool} wurde aus dem belegten Slot an den Stammplatz zurückgelegt.",
+  webManagerPartial: "{done} angelegt. Noch {remaining} fehlen; erneut Hinzufügen legt nur diese an.",
+  webManagerRemoveImage: "Bild entfernen",
+  webManagerChooseImage: "PNG, JPEG oder WebP auswählen (max. 5 MiB)",
   downloadModel: 'Herunterladen',
   webMetadataError: "Änderung oder Neuladen fehlgeschlagen. Bitte den Katalog neu laden.",
   webPhotoTooLarge: "Das Foto darf höchstens 5 MiB groß sein.",
