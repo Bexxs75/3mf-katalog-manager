@@ -1,5 +1,5 @@
 import { isReadOnly } from '../lib/readOnly';
-import { useCanEditMetadata } from '../lib/webSession';
+import { canManageFiles, useCanManageFiles, useCanEditMetadata } from '../lib/webSession';
 import { useImportLock } from '../hooks/ImportLockContext';
 import type { useFolderExpansion } from '../hooks/useFolderExpansion';
 import { SIDEBAR_MIN, SIDEBAR_MAX, SIDEBAR_STEP } from '../hooks/useSidebarWidth';
@@ -119,6 +119,8 @@ export function Sidebar({
   cleanupError,
 }: Props) {
   const canEdit = useCanEditMetadata();
+  const canManage = useCanManageFiles();
+  const canCreateFolder = canManage && (!isReadOnly() || folders.some(folder => folder.id === activeFolderId));
   const { jobActive, lockProps } = useImportLock();
   const [collectionMenu, setCollectionMenu] = useState<{ collection: Collection; x: number; y: number } | null>(null);
   const [deletingCollection, setDeletingCollection] = useState<Collection | null>(null);
@@ -182,7 +184,7 @@ export function Sidebar({
   // Inline input instead of window.prompt. The folder is created below the
   // active folder, at the root for "All models".
   const submitCreateFolder = (explicit = false) => {
-    if (jobActive) return;
+    if (jobActive || !canManageFiles() || !canCreateFolder) return;
     if (folderProblem) {
       if (explicit) setFolderErrorDialog(folderNameProblemText(folderProblem, t));
       return;
@@ -285,7 +287,7 @@ export function Sidebar({
           onFolderMouseLeave={onFolderMouseLeave}
           onDragFolderStart={jobActive ? undefined : onDragFolderStart}
         />
-        {creatingFolder ? (
+        {creatingFolder && canCreateFolder ? (
           <div className="flex flex-col gap-1.5 px-1.5 pt-1 pb-1">
             <input
               aria-invalid={folderProblem ? true : undefined}
@@ -319,7 +321,7 @@ export function Sidebar({
             )}
           </div>
         ) : (
-          <>{!isReadOnly() && <button type="button" {...lockProps}
+          <>{canCreateFolder && <button type="button" {...lockProps}
             onClick={() => {
               setCreatingFolder(true);
               setFolderNameDraft('');

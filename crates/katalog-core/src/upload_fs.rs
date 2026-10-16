@@ -68,6 +68,10 @@ impl Directory {
         Ok(unsafe { File::from_raw_fd(cvt(fd)?) })
     }
     pub fn read(&self, name: &str) -> io::Result<File> {
+        #[cfg(all(test, target_os = "linux"))]
+        if let Some(errno) = FSOPS_READ_ERROR.with(|h| h.take()) {
+            return Err(io::Error::from_raw_os_error(errno));
+        }
         let name = cstring(name)?;
         let fd = unsafe {
             libc::openat(
@@ -85,6 +89,10 @@ impl Directory {
     /// Inspect the directory entry itself, including a replacement symlink.
     #[allow(clippy::unnecessary_cast)] // Unix stat field widths vary.
     pub fn entry_identity(&self, name: &str) -> io::Result<(u64, u64)> {
+        #[cfg(all(test, target_os = "linux"))]
+        if let Some(errno) = FSOPS_ENTRY_ERROR.with(|h| h.take()) {
+            return Err(io::Error::from_raw_os_error(errno));
+        }
         let name = cstring(name)?;
         let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
         cvt(unsafe {
@@ -180,5 +188,179 @@ impl Directory {
             libc::closedir(dir);
         }
         Ok(names)
+    }
+}
+
+// Additive Linux primitives for web file operations. Existing upload semantics stay unchanged.
+#[cfg(target_os = "linux")]
+impl Directory {
+    pub fn metadata(&self) -> io::Result<std::fs::Metadata> {
+        self.0.metadata()
+    }
+    pub fn try_clone(&self) -> io::Result<Self> {
+        Ok(Self(self.0.try_clone()?))
+    }
+    pub fn open_dir(&self, name: &str) -> io::Result<Self> {
+        let name = cstring(name)?;
+        self.open_dir_cstr(&name)
+    }
+    fn open_dir_cstr(&self, name: &CStr) -> io::Result<Self> {
+        // SAFETY: borrowed live descriptor, valid C string, ownership transferred once.
+        let fd = cvt(unsafe {
+            libc::openat(
+                self.0.as_raw_fd(),
+                name.as_ptr(),
+                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            )
+        })?;
+        Ok(Self(unsafe { File::from_raw_fd(fd) }))
+    }
+    /// Only for building protected ancestor identities, never for resolving user paths.
+    pub fn parent_handle(&self) -> io::Result<Self> {
+        self.open_dir_cstr(c"..")
+    }
+    pub fn mkdir(&self, name: &str, mode: u32) -> io::Result<()> {
+        let name = cstring(name)?;
+        cvt(unsafe { libc::mkdirat(self.0.as_raw_fd(), name.as_ptr(), mode as libc::mode_t) })?;
+        Ok(())
+    }
+    /// Never recursive; the kernel rejects a nonempty directory.
+    pub fn rmdir(&self, name: &str) -> io::Result<()> {
+        let name = cstring(name)?;
+        cvt(unsafe { libc::unlinkat(self.0.as_raw_fd(), name.as_ptr(), libc::AT_REMOVEDIR) })?;
+        Ok(())
+    }
+    pub fn rename_noreplace(
+        &self,
+        source: &str,
+        target_dir: &Self,
+        target: &str,
+    ) -> io::Result<()> {
+        #[cfg(test)]
+        if let Some(errno) = FSOPS_RENAME_ERROR.with(|h| h.take()) {
+            return Err(io::Error::from_raw_os_error(errno));
+        }
+        #[cfg(test)]
+        if FSOPS_CASE_INSENSITIVE.with(|h| h.get())
+            && source != target
+            && source.to_lowercase() == target.to_lowercase()
+        {
+            return Err(io::Error::from_raw_os_error(libc::EEXIST));
+        }
+        let (source, target) = (cstring(source)?, cstring(target)?);
+        cvt(unsafe {
+            libc::renameat2(
+                self.0.as_raw_fd(),
+                source.as_ptr(),
+                target_dir.0.as_raw_fd(),
+                target.as_ptr(),
+                libc::RENAME_NOREPLACE,
+            )
+        })?;
+        #[cfg(test)]
+        FSOPS_AFTER_RENAME_ERROR.with(|h| {
+            if let Some(errno) = h.take() {
+                FSOPS_ENTRY_ERROR.with(|e| e.set(Some(errno)));
+            }
+        });
+        Ok(())
+    }
+    /// None on kernels/filesystems without mount IDs; callers must compare st_dev too.
+    pub fn mount_id(&self) -> io::Result<Option<u64>> {
+        self.statx_mount(c"")
+    }
+    pub fn entry_mount_id(&self, name: &str) -> io::Result<Option<u64>> {
+        #[cfg(test)]
+        if let Some(id) = FSOPS_ENTRY_MOUNT.with(|h| h.get()) {
+            return Ok(Some(id));
+        }
+        self.statx_mount(&cstring(name)?)
+    }
+    fn statx_mount(&self, name: &CStr) -> io::Result<Option<u64>> {
+        let mut stat = std::mem::MaybeUninit::<libc::statx>::zeroed();
+        let result = unsafe {
+            libc::statx(
+                self.0.as_raw_fd(),
+                name.as_ptr(),
+                libc::AT_EMPTY_PATH | libc::AT_SYMLINK_NOFOLLOW,
+                libc::STATX_MNT_ID,
+                stat.as_mut_ptr(),
+            )
+        };
+        if result < 0 {
+            let e = io::Error::last_os_error();
+            if matches!(
+                e.raw_os_error(),
+                Some(libc::ENOSYS | libc::EINVAL | libc::EOPNOTSUPP)
+            ) {
+                return Ok(None);
+            }
+            return Err(e);
+        }
+        let stat = unsafe { stat.assume_init() };
+        Ok((stat.stx_mask & libc::STATX_MNT_ID != 0).then_some(stat.stx_mnt_id))
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+thread_local! {
+    pub(crate) static FSOPS_READDIR_ERROR: std::cell::Cell<Option<i32>> = const { std::cell::Cell::new(None) };
+    pub(crate) static FSOPS_READ_ERROR: std::cell::Cell<Option<i32>> = const { std::cell::Cell::new(None) };
+    pub(crate) static FSOPS_CASE_INSENSITIVE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    pub(crate) static FSOPS_AFTER_RENAME_ERROR: std::cell::Cell<Option<i32>> = const { std::cell::Cell::new(None) };
+    static FSOPS_ENTRY_ERROR: std::cell::Cell<Option<i32>> = const { std::cell::Cell::new(None) };
+    pub(crate) static FSOPS_RENAME_ERROR: std::cell::Cell<Option<i32>> = const { std::cell::Cell::new(None) };
+    pub(crate) static FSOPS_ENTRY_MOUNT: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
+}
+
+#[cfg(target_os = "linux")]
+impl Directory {
+    /// Exact directory enumeration for recovery: an I/O error must never mean absence.
+    /// Kept separate from the existing upload API to preserve its behavior.
+    pub fn names_checked(&self) -> io::Result<Vec<String>> {
+        #[cfg(test)]
+        if let Some(errno) = FSOPS_READDIR_ERROR.with(|h| h.take()) {
+            return Err(io::Error::from_raw_os_error(errno));
+        }
+        let fd = cvt(unsafe {
+            libc::openat(
+                self.0.as_raw_fd(),
+                c".".as_ptr(),
+                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC,
+            )
+        })?;
+        let dir = unsafe { libc::fdopendir(fd) };
+        if dir.is_null() {
+            let error = io::Error::last_os_error();
+            unsafe {
+                libc::close(fd);
+            }
+            return Err(error);
+        }
+        let mut names = Vec::new();
+        let result = loop {
+            // Linux errno is thread-local. readdir returns NULL for both EOF and error.
+            unsafe {
+                *libc::__errno_location() = 0;
+            }
+            let entry = unsafe { libc::readdir(dir) };
+            if entry.is_null() {
+                let errno = unsafe { *libc::__errno_location() };
+                break if errno == 0 {
+                    Ok(names)
+                } else {
+                    Err(io::Error::from_raw_os_error(errno))
+                };
+            }
+            let name = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) };
+            if let Ok(name) = name.to_str() {
+                names.push(name.to_owned());
+            }
+        };
+        let close = unsafe { libc::closedir(dir) };
+        if result.is_ok() {
+            cvt(close)?;
+        }
+        result
     }
 }

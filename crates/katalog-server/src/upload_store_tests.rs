@@ -690,16 +690,165 @@ fn round3_discard_keeps_replacement_symlink_or_directory() {
 
 #[test]
 fn catalog_removal_startup_clears_stale_result_and_drops_missing_file() {
-    let f=Fixture::new();
-    let kept=f.upload();
-    let missing=f.upload();
-    f.store.complete_batch(vec![(kept.id.clone(),UploadState::Imported,serde_json::json!({"fileId":"1"})),(missing.id.clone(),UploadState::Imported,serde_json::json!({"fileId":"2"}))]).unwrap();
+    let f = Fixture::new();
+    let kept = f.upload();
+    let missing = f.upload();
+    f.store
+        .complete_batch(vec![
+            (
+                kept.id.clone(),
+                UploadState::Imported,
+                serde_json::json!({"fileId":"1"}),
+            ),
+            (
+                missing.id.clone(),
+                UploadState::Imported,
+                serde_json::json!({"fileId":"2"}),
+            ),
+        ])
+        .unwrap();
     std::fs::remove_file(f.store.path(&missing)).unwrap();
-    let reopened=Fixture::open(&f.root,&HashSet::new());
-    let entries=reopened.list().unwrap();
-    assert_eq!(entries.len(),1);
-    assert_eq!(entries[0].id,kept.id);
-    assert_eq!(entries[0].state,UploadState::Uploaded);
+    let reopened = Fixture::open(&f.root, &HashSet::new());
+    let entries = reopened.list().unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].id, kept.id);
+    assert_eq!(entries[0].state, UploadState::Uploaded);
     assert!(entries[0].result.is_none());
     assert!(entries[0].job_id.is_none());
+}
+
+#[test]
+fn loading_for_fsops_recovery_does_not_reconcile_or_persist() {
+    let f = Fixture::new();
+    let entry = f.upload();
+    std::fs::rename(
+        f.root.join("uploads").join(&entry.name),
+        f.root.join("uploads/moved.3mf"),
+    )
+    .unwrap();
+    let before = std::fs::read(f.root.join("auth/uploads.json")).unwrap();
+    let store = UploadStore::load(
+        f.root.join("uploads"),
+        f.root.join("auth/uploads.json"),
+        f.root.join("db"),
+        1024 * 1024,
+        2,
+        &HashMap::new(),
+    )
+    .unwrap();
+    assert_eq!(store.list().unwrap().len(), 1);
+    assert_eq!(
+        std::fs::read(f.root.join("auth/uploads.json")).unwrap(),
+        before
+    );
+}
+
+#[test]
+fn file_id_reconciliation_detaches_moved_row_without_rebinding_old_path() {
+    let f = Fixture::new();
+    let e = f.upload();
+    f.store
+        .complete_batch(vec![(
+            e.id.clone(),
+            UploadState::Imported,
+            serde_json::json!({"fileId":"42"}),
+        )])
+        .unwrap();
+    let ids = HashMap::from([
+        (f.root.join("moved.3mf"), "42".into()),
+        (f.store.path(&e), "99".into()),
+    ]);
+    let hash = katalog_core::import::files::compute_content_hash(&f.store.path(&e)).unwrap();
+    f.store
+        .reconcile_catalog(&ids, &HashMap::from([(f.store.path(&e), Some(hash))]))
+        .unwrap();
+    assert!(f.store.list().unwrap().is_empty());
+    assert!(f.store.path(&e).exists());
+}
+#[test]
+fn disabled_upload_ledger_durably_detaches_and_resets_without_touching_files() {
+    let f = Fixture::new();
+    let e = f.upload();
+    f.store
+        .complete_batch(vec![(
+            e.id.clone(),
+            UploadState::Imported,
+            serde_json::json!({"fileId":"42"}),
+        )])
+        .unwrap();
+    std::fs::copy(
+        f.root.join("auth/uploads.json"),
+        f.root.join("auth/web-uploads.json"),
+    )
+    .unwrap();
+    let mut offline = OfflineLedger::load(&f.root.join("auth")).unwrap();
+    offline.update(&[42], true).unwrap();
+    assert_eq!(
+        OfflineLedger::load(&f.root.join("auth")).unwrap().entries()[0].state,
+        UploadState::Uploaded
+    );
+    std::fs::copy(
+        f.root.join("auth/uploads.json"),
+        f.root.join("auth/web-uploads.json"),
+    )
+    .unwrap();
+    let mut offline = OfflineLedger::load(&f.root.join("auth")).unwrap();
+    offline.update(&[42], false).unwrap();
+    assert!(OfflineLedger::load(&f.root.join("auth"))
+        .unwrap()
+        .entries()
+        .is_empty());
+    assert!(f.store.path(&e).exists());
+}
+
+#[test]
+fn known_file_id_survives_null_or_stale_hash_and_cannot_be_discarded() {
+    for hash in [None, Some("stale-hash".to_owned())] {
+        let f = Fixture::new();
+        let e = f.upload();
+        f.store
+            .complete_batch(vec![(
+                e.id.clone(),
+                UploadState::Imported,
+                serde_json::json!({"fileId":"42"}),
+            )])
+            .unwrap();
+        f.store
+            .reconcile_catalog(
+                &HashMap::from([(f.store.path(&e), "42".into())]),
+                &HashMap::from([(f.store.path(&e), hash)]),
+            )
+            .unwrap();
+        let entries = f.store.list().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].state, UploadState::Imported);
+        assert_eq!(entries[0].result.as_ref().unwrap()["fileId"], "42");
+        assert_eq!(f.store.discard(&e.id).unwrap_err().kind, "upload_state");
+        assert!(f.store.path(&e).exists());
+    }
+}
+#[test]
+fn known_file_id_with_replacement_inode_is_detached_even_matching_hash() {
+    let f = Fixture::new();
+    let e = f.upload();
+    f.store
+        .complete_batch(vec![(
+            e.id.clone(),
+            UploadState::Imported,
+            serde_json::json!({"fileId":"42"}),
+        )])
+        .unwrap();
+    let original = std::fs::File::open(f.store.path(&e)).unwrap();
+    std::fs::remove_file(f.store.path(&e)).unwrap();
+    std::fs::write(f.store.path(&e), b"PK\x03\x04").unwrap();
+    let hash = katalog_core::import::files::compute_content_hash(&f.store.path(&e)).unwrap();
+    f.store
+        .reconcile_catalog(
+            &HashMap::from([(f.store.path(&e), "42".into())]),
+            &HashMap::from([(f.store.path(&e), Some(hash))]),
+        )
+        .unwrap();
+    assert!(f.store.list().unwrap().is_empty());
+    assert!(f.store.path(&e).exists());
+    drop(original);
 }

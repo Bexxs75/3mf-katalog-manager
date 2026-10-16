@@ -325,6 +325,13 @@ export function CatalogWorkspace({
   const counts = useMemo(() => computeToolCounts(models, new Date()), [models]);
   const tagHues = useMemo(() => Object.fromEntries(tags.map(tag => [tag.label, tag.colorHue])), [tags]);
   const displayedModels = filtered;
+  // The selection survives filter changes, so the confirmation must say how much of it is out of sight.
+  const visibleIds = useMemo(() => new Set(displayedModels.map(model => model.id)), [displayedModels]);
+  const selectedNames = useMemo(() => {
+    const byId = new Map(models.map(model => [model.id, model.name]));
+    return [...selectedForBulk].map(id => byId.get(id) ?? id);
+  }, [models, selectedForBulk]);
+  const hiddenSelectedCount = [...selectedForBulk].filter(id => !visibleIds.has(id)).length;
   const collectionName = collections.find(c => c.id === activeCollection)?.name ?? activeCollection ?? '';
   const folderName = folders.find(f => f.id === activeFolderId)?.name ?? activeFolderId;
   const printStatusLabel = printStatus === 'printed' ? t('printStatusPrinted') : t('printStatusNotPrinted');
@@ -474,6 +481,9 @@ export function CatalogWorkspace({
         {!detailModel && selectedForBulk.size > 0 && (
           <BulkActionToolbar
             selectedCount={selectedForBulk.size}
+            selectedIds={[...selectedForBulk]}
+            selectedNames={selectedNames}
+            hiddenSelectedCount={hiddenSelectedCount}
             confirmBulkDelete={confirmBulkDelete}
             onConfirmBulkDeleteChange={setConfirmBulkDelete}
             onSelectAllVisible={selectAllVisible}

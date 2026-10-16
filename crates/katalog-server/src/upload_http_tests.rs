@@ -60,6 +60,8 @@ impl Fixture {
         };
         let session = new_session(&mut data, "test", 100).unwrap();
         let app = Arc::new(App {
+            fileops: None,
+            fileops_safety: Mutex::new(crate::fileops_safety::FileOpsSafety::new(2000)),
             uploads: uploads::initialize(&config).unwrap(),
             writer: Some(WriteGate::new(db::open_read_write(&path).unwrap())),
             config,
@@ -1067,6 +1069,7 @@ async fn catalog_removal_committed_with_journal_failure_is_healed_on_restart() {
     std::fs::remove_dir(&journal).unwrap();
     std::fs::rename(backup,journal).unwrap();
     let recovered=uploads::initialize(&f.app.config).unwrap().unwrap();
+    uploads::reconcile(&f.app.config,Some(&recovered)).unwrap();
     let entries=recovered.store.pending_list().unwrap();
     assert_eq!(entries.len(),1);
     assert_eq!(entries[0].state,crate::upload_store::UploadState::Uploaded);

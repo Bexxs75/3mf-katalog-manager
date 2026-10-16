@@ -152,3 +152,24 @@ it.each(['compact', 'comfort', 'list'])('exposes bidi names in text and accessib
   expect(model.name).toBe('part\u202etxt.3mf');
   expect(model.path).toBe('/models/part\u202etxt.3mf');
 });
+
+it.each([false, true])('retains metadata selection and collection drag with web fileOps=%s', async fileOps => {
+  const { login, authenticationFailed } = await import('../lib/webSession');
+  vi.stubEnv('VITE_TARGET', 'web');
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ authenticated: true, writable: true, fileOps, csrfToken: 'csrf' })));
+  try {
+    await act(async () => { await login('test'); });
+    const select = vi.fn();
+    const { container, unmount } = render(<LanguageProvider><UiDensityProvider><ModelGrid {...props} onSelect={select} onDragFileStart={vi.fn()} /></UiDensityProvider></LanguageProvider>);
+    // Drag also supports DB-only collection assignment; folder drops check fileOps themselves.
+    expect(container.querySelector('[data-drag-grip]')).not.toBeNull();
+    const card = container.querySelector('[data-model-id]');
+    expect(card).not.toBeNull();
+    fireEvent.click(card!);
+    expect(select).toHaveBeenCalledWith(props.models[0].id);
+    unmount();
+  } finally {
+    act(() => authenticationFailed(401));
+    vi.unstubAllGlobals(); vi.unstubAllEnvs();
+  }
+});

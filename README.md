@@ -354,3 +354,64 @@ Nach einem Journalfehler verlangt `restart_required` eine Behebung des
 Speicherproblems und einen Serverneustart; es gibt kein `Retry-After`.
 3MF-Container sind im Web und auf dem Desktop auf 10.000 ZIP-Einträge begrenzt;
 die Prüfung erfolgt vor dem Aufbau des ZIP-Index.
+
+### Optional web file management (stage 7 server)
+
+**Warning:** `KATALOG_FILE_OPS=1` lets the web server rename, move and delete
+files. It defaults to off and requires `KATALOG_WRITE=1`, authentication and an
+explicit `KATALOG_ALLOWED_HOSTS`. Browser controls follow separately. Use a home
+network/VPN and maintain external backups. Never run desktop and web against the
+same database concurrently. Opening that DB in desktop later also matters:
+**Desktop startup purges trash entries after 7 days**
+(`purge_expired_trash_on_startup`); do not mix desktop and web trash.
+
+File roots and `/models` must be writable (volumes must **not use `:ro`**).
+Match Docker `PUID`/`PGID` and filesystem ownership/permissions. Uploaded files
+belong to the server user; rename preserves inode, permissions and timestamps.
+Each root has its private `<root>/.katalog-papierkorb/` directory (0700). The web
+server **never empties it automatically**. Startup rejects overlapping roots,
+protected database/auth/static locations, unwritable volumes and filesystems
+without `renameat2(RENAME_NOREPLACE)`; some NAS/SMB/NFS systems are unsuitable.
+Moves stay inside one root and filesystem, with no copy fallback. Moving folders
+also moves uncatalogued contents. Restore never overwrites or creates missing
+parents. Existing `list_trash`/`list_folders` absolute path fields remain an API
+privacy exception.
+
+Destructive commands share instance-wide budgets: 200 files per 10 minutes and
+`KATALOG_FILE_OPS_DAILY_LIMIT=2000` per rolling 24 hours, separately for trash and
+permanent removals (including DB-only removals). Reserved attempts conservatively
+count even if they subsequently fail. Empty-trash starts are limited to once per
+minute; snapshot blocks are at least 2 seconds apart. Calls stop starting files
+after 20 seconds. Permanent deletion and empty-trash start recheck the password.
+Logout/password changes stop before the next file; already started work finishes.
+Counting rules: removing a folder from the catalog counts at most one full
+window (200 per 10 minutes, the daily limit) however many models it holds, so
+large folders stay removable; a single batch above a window limit is rejected
+with 422 `limit_exceeded` (no `Retry-After`). Empty-trash blocks count only against
+the daily limit, not against the 10-minute pot of single permanent deletions.
+`remove_files_from_catalog` also works without `KATALOG_FILE_OPS`: it obeys the
+same limits (200 per 10 minutes, daily limit) and triggers backups, so it can fail
+with 429 or with 503 `backup_failed` (too little space: DB size + 64 MiB;
+`<database directory>/backups` not mode 0700 or not owned by the server user;
+foreign `web-fileops-*.db` files there). Backups are stored in
+`<database directory>/backups/`.
+
+SQLite backups in `<database directory>/backups/` precede destructive changes:
+one per **UTC calendar day**, kept for 7 days; separate event backups before
+empty-trash and catalog removal, keeping 5 with a 10-minute minimum interval.
+No affected catalog entries means no backup; removing an empty folder still
+creates a backup. Free space must cover the DB plus a 64 MiB
+reserve; backups have mode 0600. Backup failure rejects the change
+(`backup_failed`). These copies do not replace external backups.
+
+Ambiguous journal states block file management (`restart_required`) while reads
+and metadata editing remain available. An administrator must manually investigate
+the **opId** and local `web-fsops.json`, then restart once with
+`KATALOG_FILE_OPS_ACK=<opId[,<opId>…]>` and remove the variable afterward. ACK is
+not automatic repair. Without acknowledgement the block survives restarts.
+Read-only startup refuses an outstanding journal.
+
+Legacy upload journals may contain imported or importing entries without `fileId`.
+With uploads disabled, startup refuses these entries because their catalog identity
+cannot be reconstructed safely. Enable the original upload configuration, including
+`KATALOG_UPLOAD_DIR`, once to complete recovery.

@@ -1,4 +1,5 @@
-import { canEditMetadata } from '../lib/webSession';
+import { folderOpsMessages } from '../lib/folderOpsMessages';
+import { canManageFiles, useCanManageFiles, canEditMetadata } from '../lib/webSession';
 import { isReadOnly } from '../lib/readOnly';
 import { dismissDragDropTip } from '../lib/dragDropTip';
 import { useCallback, useEffect, useState } from 'react';
@@ -19,6 +20,10 @@ interface CollectionTargets {
 }
 
 export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { refreshFolders, refreshFiles }: Refreshers, collectionTargets?: CollectionTargets, catalogBaseDir: string | null = null) {
+  const canManage = useCanManageFiles();
+  useEffect(() => {
+    if (!canManage) { setDraggedFolderId(null); setDragOverFolderId(null); }
+  }, [canManage]);
   // Mouse-based dragging instead of HTML5 DnD: under Tauri/WebKitGTK
   // dragDropEnabled intercepts native drag sessions at window level.
   const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
@@ -31,7 +36,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
   // A click without hovering over another row moves nothing
   // (dragOverFolderId stays null).
   const onDragFolderStart = useCallback((id: string) => {
-    if (isReadOnly()) return Promise.resolve();
+    if (!canManageFiles()) return Promise.resolve();
     const folder = folders.find(folder => folder.id === id);
     if (!folder || containsCatalogRoot(folder.path, catalogBaseDir)) return;
     setDraggedFolderId(id);
@@ -44,7 +49,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
     (id: string) => {
       if (!draggedFileId && !draggedFolderId) return;
       setDragOverCollectionId(null);
-      if (isReadOnly()) return;
+      if (!canManageFiles()) return;
       if (draggedFileId && models.find((model) => model.id === draggedFileId)?.folderId === id) {
         setDragOverFolderId(null);
         return;
@@ -76,11 +81,11 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
 
   const onCreateFolder = useCallback(
     (parentId: string | null, name: string) =>
-      isReadOnly() ? Promise.resolve() : foldersApi
+      (!canManageFiles() || (isReadOnly() && (!parentId || !window.confirm(`${folderOpsMessages().create}: ${name}?`) || !canManageFiles()))) ? Promise.resolve() : foldersApi
         .createFolder(parentId, name)
-        .then(() => refreshFolders())
+        .then(() => { if (!isReadOnly()) refreshFolders(); })
         .catch((e) => {
-          console.error('[folders] creating failed:', e);
+          if (!isReadOnly()) console.error('[folders] creating failed:', e);
           // Show the error next to the folder tree; catalogBackupError would be invisible without an open panel.
           const err = toAppError(e);
           setMoveToast({ from: name, to: err.message, error: true, unexpected: err.unexpected });
@@ -107,24 +112,24 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
           dismissDragDropTip();
           setMoveToast({ from: file.name, to: target.name, collection: already ? 'already' : 'added' });
         }).catch(e => {
-          const err = toAppError(e);
+          const err = isReadOnly() ? { message: folderOpsMessages().failed, unexpected: false } : toAppError(e);
           setMoveToast({ from: file.name, to: err.message, error: true, unexpected: err.unexpected });
         });
         return;
       }
-      if (isReadOnly() || !folderId) return;
+      if (!canManageFiles() || !folderId) return;
       const targetFolder = folders.find((f) => f.id === folderId);
       if (!file || !targetFolder) return;
+      if (isReadOnly() && (!window.confirm(`${folderOpsMessages().moveFile}\n${file.name} → ${targetFolder.name}`) || !canManageFiles())) return;
       foldersApi
         .moveFileToFolder(fileId, folderId)
         .then(() => {
           dismissDragDropTip();
-          setMoveToast({ from: file.name, to: targetFolder.path });
-          refreshFolders();
-          refreshFiles();
+          setMoveToast({ from: file.name, to: isReadOnly() ? targetFolder.name : targetFolder.path });
+          if (!isReadOnly()) { refreshFolders(); refreshFiles(); }
         })
         .catch((e) => {
-          console.error('[folders] moving file failed:', e);
+          if (!isReadOnly()) console.error('[folders] moving file failed:', e);
           const err = toAppError(e);
           setMoveToast({ from: file.name, to: err.message, error: true, unexpected: err.unexpected });
         });
@@ -142,20 +147,20 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
       const targetId = dragOverFolderId;
       setDraggedFolderId(null);
       setDragOverFolderId(null);
-      if (!targetId || targetId === folderId) return;
+      if (!canManageFiles() || !targetId || targetId === folderId) return;
       if (isFolderSelfOrDescendant(targetId, folderId, folders)) return;
       const folder = folders.find((f) => f.id === folderId);
       const targetFolder = folders.find((f) => f.id === targetId);
       if (!folder || !targetFolder || containsCatalogRoot(folder.path, catalogBaseDir)) return;
+      if (isReadOnly() && (!window.confirm(`${folderOpsMessages().moveFolder}\n${folder.name} → ${targetFolder.name}\n${folderOpsMessages().contents}`) || !canManageFiles())) return;
       foldersApi
         .moveFolder(folderId, targetId)
         .then(() => {
-          setMoveToast({ from: folder.name, to: targetFolder.path });
-          refreshFolders();
-          refreshFiles();
+          setMoveToast({ from: folder.name, to: isReadOnly() ? targetFolder.name : targetFolder.path });
+          if (!isReadOnly()) { refreshFolders(); refreshFiles(); }
         })
         .catch((e) => {
-          console.error('[folders] moving folder failed:', e);
+          if (!isReadOnly()) console.error('[folders] moving folder failed:', e);
           const err = toAppError(e);
           setMoveToast({ from: folder.name, to: err.message, error: true, unexpected: err.unexpected });
         });

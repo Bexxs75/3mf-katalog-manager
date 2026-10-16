@@ -12,7 +12,32 @@ use std::sync::{
     Arc, Mutex,
 };
 use tokio::sync::Semaphore;
+pub const FILE_OPS_COMMANDS: &[&str] = &[
+    "rename_file",
+    "move_files_to_folder",
+    "delete_files",
+    "restore_file",
+    "delete_file_permanently",
+    "empty_trash_start",
+    "empty_trash_block",
+    "create_folder",
+    "rename_folder",
+    "move_folder",
+    "remove_folder_from_catalog",
+];
 pub const WRITE_COMMANDS: &[&str] = &[
+    "rename_file",
+    "move_files_to_folder",
+    "delete_files",
+    "restore_file",
+    "delete_file_permanently",
+    "empty_trash_start",
+    "empty_trash_block",
+    "create_folder",
+    "rename_folder",
+    "move_folder",
+    "remove_folder_from_catalog",
+
     "remove_files_from_catalog",
     "start_upload_import",
     "discard_upload",
@@ -68,14 +93,14 @@ pub(crate) fn body_limit(command: &str) -> usize {
     }
 }
 pub(crate) struct WriteGate {
-    pub conn: Mutex<Connection>,
+    pub conn: Arc<Mutex<Connection>>,
     pub admission: Arc<Semaphore>,
     pub worker: Arc<Semaphore>,
 }
 impl WriteGate {
     pub fn new(conn: Connection) -> Self {
         Self {
-            conn: Mutex::new(conn),
+            conn: Arc::new(Mutex::new(conn)),
             admission: Arc::new(Semaphore::new(33)),
             worker: Arc::new(Semaphore::new(1)),
         }
@@ -116,6 +141,8 @@ pub(crate) struct WriteAudit {
 #[derive(Default)]
 pub(crate) struct WriteProgress {
     pub changes: AtomicU64,
+    pub completed_items: AtomicU64,
+    pub file_ids: Mutex<Vec<i64>>,
     pub audit: std::sync::OnceLock<WriteAudit>,
 }
 /// Finalizes only once access checks have returned or the request was cancelled.
@@ -150,9 +177,6 @@ impl Drop for AuditCompletion {
 }
 impl WriteAudit {
     pub fn new(command: &str, headers: &HeaderMap, cookie_name: &str, now: u64) -> Self {
-        use std::hash::BuildHasher;
-        static HASH: std::sync::LazyLock<std::collections::hash_map::RandomState> =
-            std::sync::LazyLock::new(std::collections::hash_map::RandomState::new);
         let token = headers
             .get("cookie")
             .and_then(|h| h.to_str().ok())
@@ -165,7 +189,7 @@ impl WriteAudit {
             .unwrap_or("");
         Self {
             now,
-            session: HASH.hash_one(token) & 0xffff_ffff,
+            session: session_fingerprint(token),
             command: WRITE_COMMANDS
                 .iter()
                 .copied()
@@ -175,18 +199,53 @@ impl WriteAudit {
         }
     }
 }
+pub(crate) fn session_fingerprint(token:&str)->u64 {
+    use std::hash::BuildHasher;
+    static HASH:std::sync::LazyLock<std::collections::hash_map::RandomState>=std::sync::LazyLock::new(std::collections::hash_map::RandomState::new);
+    HASH.hash_one(token)&0xffff_ffff
+}
+impl WriteProgress {
+    pub fn set_file_ids(&self,ids:&[i64]) { *self.file_ids.lock().unwrap()=ids.to_vec(); }
+    fn line(&self,audit:&WriteAudit)->String {
+        let metric=if FILE_OPS_COMMANDS.contains(&audit.command) {
+            // Completed logical items include successful no-ops, not changed rows.
+            format!("completed_items={}",self.completed_items.load(Ordering::Relaxed))
+        }else{format!("changes={}",self.changes.load(Ordering::Relaxed))};
+        let ids = self.file_ids.lock().unwrap();
+        let detail = if audit.command == "empty_trash_start" {
+            format!("count={} ids={:?}", ids.len(), &ids[..ids.len().min(10)])
+        } else { format!("ids={:?}", *ids) };
+        format!("write time={} session={:08x} command={} status={} {} {}",audit.now,audit.session,audit.command,audit.status,metric,detail)
+    }
+}
 impl Drop for WriteProgress {
     fn drop(&mut self) {
-        if let Some(audit) = self.audit.get() {
-            eprintln!(
-                "write time={} session={:08x} command={} status={} changes={}",
-                audit.now,
-                audit.session,
-                audit.command,
-                audit.status,
-                self.changes.load(Ordering::Relaxed)
-            );
-        }
+        if let Some(audit)=self.audit.get(){eprintln!("{}",self.line(audit));}
+    }
+}
+#[cfg(test)]
+mod fileops_audit_tests {
+    use super::*;
+    #[test]
+    fn single_record_correlates_fingerprint_ids_and_completed_items_without_contents() {
+        let mut headers=HeaderMap::new();headers.insert("cookie","katalog_session=secret-session".parse().unwrap());
+        headers.insert("x-name","private-model.3mf".parse().unwrap());
+        let file=WriteAudit::new("rename_file",&headers,"katalog_session",100);
+        let metadata=WriteAudit::new("set_favorite",&headers,"katalog_session",100);
+        assert_eq!(file.session,metadata.session);assert_eq!(file.session,session_fingerprint("secret-session"));
+        let progress=WriteProgress::default();progress.set_file_ids(&[12,34]);progress.completed_items.store(2,Ordering::Relaxed);
+        let line=progress.line(&file);assert!(line.contains("ids=[12, 34]"));assert!(line.contains("completed_items=2"));assert!(!line.contains("changes="));
+        assert!(!line.contains("secret-session"));assert!(!line.contains("private-model"));
+    }
+    #[test]
+    fn empty_trash_start_logs_count_and_only_first_ten_ids() {
+        let start=WriteAudit{now:1,session:2,command:"empty_trash_start",status:200};
+        let progress=WriteProgress::default();
+        progress.set_file_ids(&(1..=500).collect::<Vec<i64>>());
+        let line=progress.line(&start);
+        assert!(line.contains("count=500"));
+        assert!(line.contains("ids=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]"));
+        assert!(!line.contains("11,"));
     }
 }
 pub(crate) fn retry(status: u16) -> Response {

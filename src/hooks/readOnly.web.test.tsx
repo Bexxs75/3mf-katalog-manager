@@ -91,3 +91,31 @@ it('ignores mutation shortcuts even with stale bulk state but retains detail nav
   fireEvent.keyDown(window, { key: 'Enter' });
   expect(mutate).not.toHaveBeenCalled(); expect(open).toHaveBeenCalledWith('1');
 });
+it('fileOps enables rename and the delete confirmation shortcut, then revokes both', async () => {
+  const { getSession, authenticationFailed } = await import('../lib/webSession');
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({authenticated:true,writable:true,fileOps:true,csrfToken:'token'})));
+  await getSession();
+  const { result } = renderHook(() => useCatalogStore());
+  await waitFor(() => expect(result.current.initialLoading).toBe(false));
+  const confirm = vi.fn();
+  renderHook(() => useKeyboardShortcuts({ filteredIds:['1'], selectedId:'1', selectModel:vi.fn(), hasBulkSelection:true, openBulkDeleteConfirm:confirm, navigationEnabled:true, toggleBulkSelect:vi.fn(), singleKeyShortcuts:true }));
+  await act(async () => result.current.renameFile('1','new'));
+  expect(invoke).toHaveBeenCalledWith('rename_file',{fileId:'1',name:'new'});
+  fireEvent.keyDown(window,{key:'Delete'}); expect(confirm).toHaveBeenCalledOnce();
+  authenticationFailed(401); vi.mocked(invoke).mockClear();
+  await act(async () => result.current.renameFile('1','again'));
+  fireEvent.keyDown(window,{key:'Delete'});
+  expect(invoke).not.toHaveBeenCalled(); expect(confirm).toHaveBeenCalledOnce(); vi.unstubAllGlobals();
+});
+it('sends only the base name when a full file name reaches the web rename', async () => {
+  const { getSession, authenticationFailed } = await import('../lib/webSession');
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({authenticated:true,writable:true,fileOps:true,csrfToken:'token'})));
+  await getSession();
+  const { result } = renderHook(() => useCatalogStore());
+  await waitFor(() => expect(result.current.initialLoading).toBe(false));
+  await act(async () => result.current.renameFile('1','x.stl'));
+  await act(async () => result.current.renameFile('1','y.gcode.3mf'));
+  expect(invoke).toHaveBeenCalledWith('rename_file',{fileId:'1',name:'x'});
+  expect(invoke).toHaveBeenCalledWith('rename_file',{fileId:'1',name:'y'});
+  authenticationFailed(401); vi.unstubAllGlobals();
+});

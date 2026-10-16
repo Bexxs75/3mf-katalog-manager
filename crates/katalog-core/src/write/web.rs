@@ -392,3 +392,12 @@ pub fn remove_files_from_catalog(c: &mut Connection, ids: &[i64]) -> WriteResult
         Ok(outcome(changes, changes as u64))
     })
 }
+
+// Web file operations use short DB callbacks, unlike the DB-only commands above.
+#[cfg(target_os = "linux")]
+pub use crate::fsops::{fs_rename_file, fs_move_files_to_folder, fs_delete_files,
+    fs_restore_file, fs_delete_file_permanently, fs_empty_trash};
+
+#[cfg(target_os = "linux")]
+pub use crate::fsops::{fs_create_folder, fs_rename_folder, fs_move_folder,
+    fs_remove_folder_from_catalog, fs_folder_removal_summary};

@@ -73,7 +73,7 @@ pub fn compute_reader_hash(mut reader: impl std::io::Read) -> CmdResult<String> 
     Ok(format!("{:x}", hasher.finalize()))
 }
 pub fn collect_supported_files(path: &Path, out: &mut Vec<PathBuf>) {
-    if path.is_symlink() {
+    if path.is_symlink() || (path.is_dir() && path.file_name().is_some_and(|n| n == ".katalog-papierkorb")) {
         return;
     }
     if path.is_dir() {
@@ -863,4 +863,25 @@ mod web_reader_tests {
         }
     }
 
+}
+
+#[cfg(test)]
+mod trash_scan_tests {
+    use super::*;
+    #[test]
+    fn collect_excludes_only_named_web_trash_subtree() {
+        let root = crate::unique_test_dir("trash_collect");
+        for name in [".katalog-papierkorb", ".other", "normal"] {
+            std::fs::create_dir(root.join(name)).unwrap();
+            std::fs::write(root.join(name).join("model.stl"), b"x").unwrap();
+        }
+        let mut out = Vec::new();
+        collect_supported_files(&root, &mut out);
+        assert_eq!(out.len(), 2);
+        assert!(out.contains(&root.join(".other/model.stl")));
+        out.clear();
+        collect_supported_files(&root.join(".katalog-papierkorb"), &mut out);
+        assert!(out.is_empty());
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

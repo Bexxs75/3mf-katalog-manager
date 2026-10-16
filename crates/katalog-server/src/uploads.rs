@@ -150,31 +150,6 @@ pub(super) fn initialize(config: &Config) -> Result<Option<Arc<Runtime>>, String
     let Some(c) = &config.upload else {
         return Ok(None);
     };
-    let conn = db::open_read_only(&config.db_path).map_err(|_| "upload_database".to_string())?;
-    let mut stmt = conn
-        .prepare("SELECT path,id,content_hash FROM files")
-        .map_err(|_| "upload_database".to_string())?;
-    let catalogued: HashMap<PathBuf, (String, Option<String>)> = stmt
-        .query_map([], |r| {
-            Ok((
-                PathBuf::from(r.get::<_, String>(0)?),
-                (
-                    r.get::<_, i64>(1)?.to_string(),
-                    r.get::<_, Option<String>>(2)?,
-                ),
-            ))
-        })
-        .map_err(|_| "upload_database".to_string())?
-        .collect::<Result<_, _>>()
-        .map_err(|_| "upload_database".to_string())?;
-    let paths = catalogued
-        .iter()
-        .map(|(path, (_, hash))| (path.clone(), hash.clone()))
-        .collect();
-    let file_ids = catalogued
-        .into_iter()
-        .map(|(path, (id, _))| (path, id))
-        .collect();
     let auth_parent = config
         .auth_file
         .parent()
@@ -186,24 +161,32 @@ pub(super) fn initialize(config: &Config) -> Result<Option<Arc<Runtime>>, String
         .db_path
         .canonicalize()
         .map_err(|_| "upload_database".to_string())?;
-    let store = UploadStore::open(
+    let store = UploadStore::load(
         c.dir.clone(),
         auth_parent.join("web-uploads.json"),
         database.parent().ok_or("upload_database")?.to_path_buf(),
         c.max_bytes,
         c.max_files,
-        &paths,
+        &HashMap::new(),
     )
     .map_err(|e| e.kind.to_string())?;
-    store
-        .reconcile_file_ids(&file_ids)
-        .map_err(|e| e.kind.to_string())?;
     Ok(Some(Arc::new(Runtime {
         store,
         active: Arc::new(Semaphore::new(1)),
         jobs: Mutex::new(HashMap::new()),
         hub: Mutex::new(Hub::default()),
     })))
+}
+/// Runs only after fsops recovery and upload detachment have completed.
+pub(super) fn reconcile(config: &Config, runtime: Option<&Arc<Runtime>>) -> Result<(), String> {
+    let Some(runtime) = runtime else { return Ok(()) };
+    let conn = db::open_read_only(&config.db_path).map_err(|_| "upload_database")?;
+    let mut stmt = conn.prepare("SELECT path,id,content_hash FROM files").map_err(|_| "upload_database")?;
+    let rows: Vec<(PathBuf, String, Option<String>)> = stmt.query_map([], |r| Ok((PathBuf::from(r.get::<_,String>(0)?), r.get::<_,i64>(1)?.to_string(), r.get(2)?)))
+        .map_err(|_| "upload_database")?.collect::<Result<_,_>>().map_err(|_| "upload_database")?;
+    let ids = rows.iter().map(|(p,id,_)| (p.clone(),id.clone())).collect();
+    let hashes = rows.into_iter().map(|(p,_,h)| (p,h)).collect();
+    runtime.store.reconcile_catalog(&ids, &hashes).map_err(|e| e.kind.to_owned())
 }
 pub(super) fn authenticated(app: &App, s: &Session) -> bool {
     let mut data = app.data.lock().unwrap();

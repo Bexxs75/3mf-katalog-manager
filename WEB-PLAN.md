@@ -317,3 +317,32 @@ and 32 overall. Web import batches contain one file to bound retained metadata.
 - **16.10.2026, Raster springt (Nutzertest):** Ursache war das Raster selbst: `repeat(n, minmax(0, 1fr))` verteilte den Rest der Zeilenbreite auf die Kacheln, deshalb wurden sie beim Öffnen und Schließen des Detailbereichs breiter oder schmaler (auch in der Desktop-App so). Meine ersten Versuche (Detailbereich standardmäßig oder immer festhalten, Umschalter ausblenden) behandelten das Symptom und sind zurückgenommen. Lösung: im Web feste Kachelbreite (190 Pixel kompakt, 232 komfortabel), nur die Spaltenzahl wechselt, Rest der Zeile bleibt rechts frei; bei zwei oder weniger Spalten (schmale Fenster, Handy) bleibt das Dehnen. Desktop unverändert, kann das später übernehmen.
 
 - **16.10.2026, Entscheidung zum Docker-Stream:** Bleibt in 0.16.0 als experimentell und im Wartungsmodus (nur Fehler- und Sicherheitskorrekturen); die Webversion wird dort nicht erwähnt. Ablösung erst, wenn die Webversion die Stream-Funktionen abdeckt (Stufen 5b und 7) und ein Umstieg erklärt ist.
+
+### Stufe 7 / Stage 7 — Teil B Server
+
+Der Server stellt die Datei-/Ordner- und Snapshot-Papierkorb-Commands mit separater
+Freigabe `KATALOG_FILE_OPS` bereit. Teil C (Oberfläche) bleibt ein eigener Auftrag.
+Fileops nutzen das Import-`rt.active`-Permit plus eigenen Mutex, niemals
+`app.changes`; Upload-Journal wird nach DB-Commit ohne verschachtelten DB-Lock
+abgetrennt. Start: Upload laden → Fileops-Recovery/ACK → DB neu lesen → Upload
+abgleichen. N6/N7-Limits und N8-Sicherungen gelten gemeinsam auch für DB-only-
+Katalogentfernung. Sicherungstage sind UTC-Kalendertage, Reserve 64 MiB.
+
+The server exposes gated file/folder operations and snapshot-driven trash blocks;
+stage C UI remains separate. Admission uses the import permit and fileops mutex,
+not the authentication changes lock. Destructive limits and backups include
+DB-only catalog removal. Backup days use UTC and require 64 MiB reserve.
+
+Counting rules (Bfix/Bfix2): folder removal charges at most one full window;
+a batch above a window limit gets 422 `limit_exceeded` without `Retry-After`;
+empty-trash blocks count only against the daily limit. `remove_files_from_catalog`
+(6d) changes behaviour even without `KATALOG_FILE_OPS` on purpose: it shares the
+limits (200 per 10 minutes, daily limit) and triggers backups, so it may answer
+429 or 503 `backup_failed` (space DB + 64 MiB, `<db>/backups` not 0700/owner,
+foreign `web-fileops-*.db`); backups live in `<db directory>/backups/`.
+
+Betrieb/Operations: Warnungen und ACK-Verfahren in README.de.md, README.md und
+`docker-web/README.md` beachten: kein paralleler Desktop, Desktop-Purge nach 7 Tagen,
+Root-Papierkorb ohne Web-Automatik, schreibbare Volumes und passende Rechte,
+NOREPLACE-fähiges Dateisystem, keine Cross-Filesystem-Moves, Heimnetz/VPN und
+externe Backups. / Read those warnings before enabling file management.

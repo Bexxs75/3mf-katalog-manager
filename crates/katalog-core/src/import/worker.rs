@@ -28,6 +28,7 @@ fn scan_candidates_observed<A: ArchiveTypes>(
             return false;
         }
         if path.is_symlink()
+            || (path.is_dir() && path.file_name().is_some_and(|n| n == ".katalog-papierkorb"))
             || (job.source == ImportSource::FolderContents
                 && root != Some(path)
                 && files::is_ignored_import_path(path))
@@ -552,5 +553,45 @@ mod folder_contents_tests {
         cancelled.cancel.store(true, Ordering::Release);
         assert!(scan_candidates(&cancelled, std::slice::from_ref(&dir), usize::MAX).is_empty());
         std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod trash_scan_tests {
+    use super::*;
+    #[test]
+    fn job_scan_excludes_web_trash_for_every_source_kind() {
+        let root = crate::unique_test_dir("trash_job_scan");
+        for name in [".katalog-papierkorb", ".other", "normal"] {
+            std::fs::create_dir(root.join(name)).unwrap();
+            std::fs::write(root.join(name).join("model.stl"), b"x").unwrap();
+        }
+        for source in [
+            ImportSource::Files,
+            ImportSource::Folder,
+            ImportSource::FolderContents,
+            ImportSource::Dropped,
+            ImportSource::SetupAdopt,
+            ImportSource::Archive,
+        ] {
+            let service = ImportJobs::default();
+            let job = service.enqueue(source, None, false, None).unwrap();
+            let out = scan_candidates(&job, std::slice::from_ref(&root), 100);
+            assert!(
+                !out.iter()
+                    .any(|(p, _)| p.starts_with(root.join(".katalog-papierkorb"))),
+                "{source:?}"
+            );
+            assert_eq!(
+                out.len(),
+                if source == ImportSource::FolderContents {
+                    1
+                } else {
+                    2
+                }
+            );
+            assert!(scan_candidates(&job, &[root.join(".katalog-papierkorb")], 100).is_empty());
+        }
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

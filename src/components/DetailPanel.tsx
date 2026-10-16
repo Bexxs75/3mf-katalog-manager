@@ -1,3 +1,4 @@
+import { WebFileActions } from './WebFileActions';
 import { WebRemoveFromCatalogButton } from './WebRemoveFromCatalogButton';
 import { useCanEditMetadata } from '../lib/webSession';
 import { isReadOnly } from '../lib/readOnly';
@@ -136,12 +137,13 @@ export function DetailPanel({
         </div>
 
         <div className="flex-none px-4 py-3 border-t border-[var(--line)] bg-[var(--panel-2)] flex flex-col gap-2">
-          {expiryDate && (
+          {expiryDate && import.meta.env.VITE_TARGET !== 'web' && (
             <p className="font-medium tabular-nums text-caption text-[var(--ink-3)]">
               {t('trashExpiryHint').replace('{date}', formatDate(expiryDate.toISOString(), language))}
             </p>
           )}
           <div className="flex gap-2">
+            <WebFileActions key={model.id} fileIds={[model.id]} name={model.name} trash />
             <>{!isReadOnly() && <button {...lockProps}
               onClick={onRestore}
               className="flex-1 h-8 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
@@ -352,6 +354,7 @@ export function DetailPanel({
           ) : (
             <>
               <RevealFileButton fileId={model.id} compact />
+              <WebFileActions key={`fileops-${model.id}`} fileIds={[model.id]} name={model.name} />
               <WebRemoveFromCatalogButton key={`remove-${model.id}`} name={model.name} onRemove={onRemoveFromCatalog} />
           {container && <CatalogWebButton key={model.id} fileId={model.id} fileName={model.name} />}
             {!container && (<>{!isReadOnly() && <button
@@ -539,7 +542,8 @@ export function DetailPanel({
         ) : (
           <>
             <RevealFileButton fileId={model.id} compact />
-            <WebRemoveFromCatalogButton key={`remove-${model.id}`} name={model.name} onRemove={onRemoveFromCatalog} />
+            <WebFileActions key={`fileops-${model.id}`} fileIds={[model.id]} name={model.name} />
+              <WebRemoveFromCatalogButton key={`remove-${model.id}`} name={model.name} onRemove={onRemoveFromCatalog} />
           {container && <CatalogWebButton key={model.id} fileId={model.id} fileName={model.name} />}
             {!container && (<>{!isReadOnly() && <button
               onClick={() => onOpenInSlicer()}

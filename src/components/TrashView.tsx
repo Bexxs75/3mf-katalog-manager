@@ -1,3 +1,4 @@
+import { WebFileActions } from './WebFileActions';
 import { isReadOnly } from '../lib/readOnly';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { ModelGrid } from './ModelGrid';
@@ -44,7 +45,7 @@ export function TrashView({
       <main className="flex-1 min-w-0 flex flex-col">
         <div className="flex-none flex items-center justify-between px-4 py-3 border-b border-[var(--line)]">
           <h1 className="text-title font-semibold">{t('trashHeading')}</h1>
-          {confirmEmptyTrash ? (
+          {import.meta.env.VITE_TARGET === 'web' ? <WebFileActions empty /> : confirmEmptyTrash ? (
             <div className="flex items-center gap-2">
               <span className="text-small font-medium text-[var(--ink)]">
                 {t('emptyTrashConfirmQuestion')}
