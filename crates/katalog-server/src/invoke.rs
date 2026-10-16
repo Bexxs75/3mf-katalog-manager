@@ -127,9 +127,10 @@ fn ids(args: &Value, images: bool) -> Result<Vec<String>, Box<Response>> {
 }
 
 pub const READ_COMMANDS: &[&str] = &[
+    "folder_removal_summary",
+    "empty_trash_summary",
     "get_import_state",
     "get_import_result",
-
     "list_file_summaries",
     "list_all_file_tags",
     "list_files_by_ids",
@@ -152,6 +153,54 @@ pub const READ_COMMANDS: &[&str] = &[
     "get_filament_spool_image",
 ];
 
+// New summaries intentionally expose no server paths or SQLite error text.
+fn trash_summary(conn: &katalog_core::write::Connection) -> Result<Value, ReadError> {
+    let internal = |_| ReadError::from("Zusammenfassung nicht verfügbar");
+    let mut stmt = conn
+        .prepare("SELECT deleted_at,file_size_bytes FROM files WHERE deleted_at IS NOT NULL")
+        .map_err(internal)?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })
+        .map_err(internal)?;
+    let mut count = 0usize;
+    let mut bytes = 0u64;
+    let mut latest = None;
+    for row in rows {
+        let (date, size) = row.map_err(internal)?;
+        let parsed = chrono::DateTime::parse_from_rfc3339(&date)
+            .map_err(|_| ReadError::from("Ungültiger Papierkorb-Zeitstempel"))?;
+        count += 1;
+        bytes = bytes.saturating_add(size.max(0) as u64);
+        if latest.as_ref().is_none_or(|(current, _)| parsed > *current) {
+            latest = Some((parsed, date));
+        }
+    }
+    Ok(json!({"count":count,"bytes":bytes,"maxDeletedAt":latest.map(|(_,date)|date)}))
+}
+fn folder_summary(
+    conn: &katalog_core::write::Connection,
+    id: i64,
+) -> Result<Option<Value>, ReadError> {
+    let internal = |_| ReadError::from("Zusammenfassung nicht verfügbar");
+    let mut stmt = conn
+        .prepare("SELECT name FROM folders WHERE id=?1")
+        .map_err(internal)?;
+    let mut rows = stmt
+        .query_map([id], |row| row.get::<_, String>(0))
+        .map_err(internal)?;
+    let Some(name) = rows.next().transpose().map_err(internal)? else {
+        return Ok(None);
+    };
+    let (folder_count,model_count):(i64,i64)=conn.query_row(
+        "WITH RECURSIVE tree(id) AS (SELECT id FROM folders WHERE id=?1 UNION SELECT f.id FROM folders f JOIN tree t ON f.parent_id=t.id) SELECT (SELECT COUNT(*) FROM tree)-1,(SELECT COUNT(*) FROM files WHERE folder_id IN (SELECT id FROM tree) AND deleted_at IS NULL)",
+        [id],|row|Ok((row.get(0)?,row.get(1)?))).map_err(internal)?;
+    Ok(Some(
+        json!({"name":name,"subfolderCount":folder_count,"modelCount":model_count}),
+    ))
+}
+
 pub async fn invoke(
     db_path: PathBuf,
     roots: Vec<PathBuf>,
@@ -169,7 +218,33 @@ pub async fn invoke(
             true,
         );
     }
+    if matches!(
+        command.as_str(),
+        "folder_removal_summary" | "empty_trash_summary"
+    ) {
+        let allowed: &[&str] = if command == "folder_removal_summary" {
+            &["folderId"]
+        } else {
+            &[]
+        };
+        if args
+            .as_object()
+            .unwrap()
+            .keys()
+            .any(|key| !allowed.contains(&key.as_str()))
+        {
+            return *error(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "Unbekannte Argumente",
+                true,
+            );
+        }
+    }
     let file_id = match command.as_str() {
+        "folder_removal_summary" => match id(&args, "folderId") {
+            Ok(value) => Some(value),
+            Err(error) => return *error,
+        },
         "list_print_log_entries" | "get_model_geometry" | "get_last_printer_for_file" => {
             match id(&args, "fileId") {
                 Ok(v) => Some(v),
@@ -303,6 +378,13 @@ pub async fn invoke(
                 encode(read::list_collection_files(&conn, file_id.unwrap())?)
             }
             "list_trash" => encode(read::list_trash(&conn)?),
+            "empty_trash_summary" => encode(trash_summary(&conn)?),
+            "folder_removal_summary" => {
+                match folder_summary(&conn, file_id.unwrap().parse().unwrap())? {
+                    Some(summary) => encode(summary),
+                    None => Ok(*error(StatusCode::NOT_FOUND, "Ordner nicht gefunden", true)),
+                }
+            }
             "list_file_images" => {
                 let numeric = file_ids
                     .iter()
@@ -682,5 +764,40 @@ mod manager_tests {
         }
         drop(permits);
         assert_eq!(gate.manager_reads.available_permits(), 4);
+    }
+}
+
+#[cfg(test)]
+mod fileops_summary_tests {
+    use super::*;
+    #[test]
+    fn trash_summary_compares_instants_and_rejects_invalid_dates() {
+        let conn = db::connect_in_memory().unwrap();
+        db::test_insert_minimal_file(&conn, "/one", None).unwrap();
+        db::test_insert_minimal_file(&conn, "/two", None).unwrap();
+        conn.execute("UPDATE files SET deleted_at=CASE id WHEN 1 THEN '2026-01-01T01:00:00+02:00' ELSE '2026-01-01T00:00:00+00:00' END",[]).unwrap();
+        let summary = trash_summary(&conn).unwrap();
+        assert_eq!(summary["count"], 2);
+        assert_eq!(summary["maxDeletedAt"], "2026-01-01T00:00:00+00:00");
+        conn.execute("UPDATE files SET deleted_at='invalid' WHERE id=1", [])
+            .unwrap();
+        assert!(trash_summary(&conn).is_err());
+    }
+    #[test]
+    fn folder_summary_counts_only_active_models_and_excludes_root() {
+        let conn = db::connect_in_memory().unwrap();
+        conn.execute_batch("INSERT INTO folders(id,name,path,parent_id) VALUES(1,'Parent','/parent',NULL),(2,'Child','/parent/child',1)").unwrap();
+        db::test_insert_minimal_file(&conn, "/one", Some(1)).unwrap();
+        db::test_insert_minimal_file(&conn, "/two", Some(2)).unwrap();
+        conn.execute(
+            "UPDATE files SET deleted_at='2026-01-01T00:00:00Z' WHERE id=2",
+            [],
+        )
+        .unwrap();
+        assert_eq!(
+            folder_summary(&conn, 1).unwrap(),
+            Some(json!({"name":"Parent","subfolderCount":1,"modelCount":1}))
+        );
+        assert_eq!(folder_summary(&conn, 999).unwrap(), None);
     }
 }

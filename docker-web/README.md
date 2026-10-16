@@ -144,3 +144,109 @@ Nach einem Journalfehler verlangt `restart_required` eine Behebung des
 Speicherproblems und einen Serverneustart; es gibt kein `Retry-After`.
 3MF-Container sind im Web und auf dem Desktop auf 10.000 ZIP-Einträge begrenzt;
 die Prüfung erfolgt vor dem Aufbau des ZIP-Index.
+
+### Optional web file management (stage 7 server)
+
+**Warning:** `KATALOG_FILE_OPS=1` lets the web server rename, move and delete
+files. It defaults to off and requires `KATALOG_WRITE=1`, authentication and an
+explicit `KATALOG_ALLOWED_HOSTS`. Browser controls follow separately. Use a home
+network/VPN and maintain external backups. Never run desktop and web against the
+same database concurrently. Opening that DB in desktop later also matters:
+**Desktop startup purges trash entries after 7 days**
+(`purge_expired_trash_on_startup`); do not mix desktop and web trash.
+
+File roots and `/models` must be writable (volumes must **not use `:ro`**).
+Match Docker `PUID`/`PGID` and filesystem ownership/permissions. Uploaded files
+belong to the server user; rename preserves inode, permissions and timestamps.
+Each root has its private `<root>/.katalog-papierkorb/` directory (0700). The web
+server **never empties it automatically**. Startup rejects overlapping roots,
+protected database/auth/static locations, unwritable volumes and filesystems
+without `renameat2(RENAME_NOREPLACE)`; some NAS/SMB/NFS systems are unsuitable.
+Moves stay inside one root and filesystem, with no copy fallback. Moving folders
+also moves uncatalogued contents. Restore never overwrites or creates missing
+parents. Existing `list_trash`/`list_folders` absolute path fields remain an API
+privacy exception.
+
+Destructive commands share instance-wide budgets: 200 files per 10 minutes and
+`KATALOG_FILE_OPS_DAILY_LIMIT=2000` per rolling 24 hours, separately for trash and
+permanent removals (including DB-only removals). Reserved attempts conservatively
+count even if they subsequently fail. Empty-trash starts are limited to once per
+minute; snapshot blocks are at least 2 seconds apart. Calls stop starting files
+after 20 seconds. Permanent deletion and empty-trash start recheck the password.
+Logout/password changes stop before the next file; already started work finishes.
+
+SQLite backups in `<database directory>/backups/` precede destructive changes:
+one per **UTC calendar day**, kept for 7 days; separate event backups before
+empty-trash and catalog removal, keeping 5 with a 10-minute minimum interval.
+No affected catalog entries means no backup; removing an empty folder still
+creates a backup. Free space must cover the DB plus a 64 MiB
+reserve; backups have mode 0600. Backup failure rejects the change
+(`backup_failed`). These copies do not replace external backups.
+
+Ambiguous journal states block file management (`restart_required`) while reads
+and metadata editing remain available. An administrator must manually investigate
+the **opId** and local `web-fsops.json`, then restart once with
+`KATALOG_FILE_OPS_ACK=<opId[,<opId>…]>` and remove the variable afterward. ACK is
+not automatic repair. Without acknowledgement the block survives restarts.
+Read-only startup refuses an outstanding journal.
+
+Legacy upload journals may contain imported or importing entries without `fileId`.
+With uploads disabled, startup refuses these entries because their catalog identity
+cannot be reconstructed safely. Enable the original upload configuration, including
+`KATALOG_UPLOAD_DIR`, once to complete recovery.
+
+### Optionale Dateiverwaltung im Web (Stufe 7, Server)
+
+**Warnung:** `KATALOG_FILE_OPS=1` erlaubt dem Webserver, Dateien umzubenennen,
+zu verschieben und zu löschen. Standard ist aus. Erforderlich sind
+`KATALOG_WRITE=1`, Anmeldung und explizite `KATALOG_ALLOWED_HOSTS`. Die
+Browseroberfläche folgt separat. Nur im Heimnetz/VPN betreiben; regelmäßige
+externe Sicherungen anlegen. Desktop und Webserver niemals parallel auf derselben
+Datenbank betreiben. Auch späteres Öffnen derselben DB im Desktop ist relevant:
+**Die Desktop-App entfernt Papierkorbeinträge beim Start nach 7 Tagen**
+(`purge_expired_trash_on_startup`); Web- und Desktop-Papierkorb nicht mischen.
+
+Dateiwurzeln und `/models` müssen schreibbar sein (Volumes **nicht `:ro`**).
+Der Serverbenutzer braucht passende Eigentümer-/Verzeichnisrechte; Docker
+`PUID`/`PGID` passend setzen. Hochgeladene Dateien gehören dem Serverbenutzer.
+Rename bewahrt Inode, Rechte und Zeitstempel. Jede Wurzel bekommt einen privaten
+Papierkorb `<Wurzel>/.katalog-papierkorb/` (0700), der im Web **nie automatisch
+geleert** wird. Startprüfungen verweigern überlappende Wurzeln, geschützte
+DB-/Auth-/Static-Verzeichnisse und unbeschreibbare oder inkompatible Dateisysteme.
+`renameat2(RENAME_NOREPLACE)` muss unterstützt sein; manche NAS/SMB/NFS-Systeme
+sind ungeeignet. Verschieben geht nur innerhalb derselben Wurzel und desselben
+Dateisystems, ohne Kopierausweg. Beim Ordnerverschieben wandern auch nicht
+katalogisierte Inhalte mit. Restore überschreibt nichts und legt fehlende
+Elternordner nicht an. `list_trash`/`list_folders` enthalten weiterhin absolute
+Pfadfelder als bestehende API-Ausnahme.
+
+Destruktive Befehle teilen instanzweite Grenzen: jeweils 200 Dateien je 10 Minuten
+und `KATALOG_FILE_OPS_DAILY_LIMIT=2000` je rollenden 24 Stunden, getrennt für
+Papierkorb und endgültige Entfernung (einschließlich DB-only-Entfernung).
+Reservierte Versuche zählen konservativ auch bei späterem Fehler.
+Papierkorbleerung startet höchstens einmal je Minute; Snapshot-Blöcke folgen
+frühestens alle 2 Sekunden. Nach 20 Sekunden werden keine weiteren Dateien eines
+Aufrufs begonnen. Endgültiges Löschen und Leerungsstart prüfen das Passwort erneut.
+Logout/Passwortwechsel stoppt vor der nächsten Datei; gestartete Arbeit wird beendet.
+
+Vor destruktiven Änderungen liegen SQLite-Sicherungen in `<db-Ordner>/backups/`:
+eine je **UTC-Kalendertag**, 7 Tage behalten; zusätzliche Ereignissicherungen vor
+Papierkorbleerung und Katalogentfernung, 5 behalten, mindestens 10 Minuten Abstand.
+Ohne betroffene Katalogeinträge wird keine Sicherung erzeugt; auch das Entfernen
+eines leeren Ordners wird gesichert. Freier Platz muss für die
+DB plus 64 MiB Reserve reichen; Dateien haben Modus 0600. Sicherungsfehler
+verhindern die Änderung (`backup_failed`). Dies ersetzt keine externen Backups.
+
+Nach einem unklaren Journalzustand bleiben Dateioperationen blockiert
+(`restart_required`), Lesen und Metadatenbearbeitung bleiben möglich.
+Admin prüft die betroffene Operation anhand der **opId** und des lokalen Journals
+`web-fsops.json` manuell. Erst danach einmalig mit
+`KATALOG_FILE_OPS_ACK=<opId[,<opId>…]>` neu starten und die Variable wieder entfernen.
+ACK ist keine automatische Reparatur; ohne bestätigte Klärung bleibt die Sperre
+über Neustarts erhalten. Reiner Lesemodus verweigert den Start bei offenem Journal.
+
+
+Alte Upload-Journale können importierte oder gerade importierende Einträge ohne
+`fileId` enthalten. Sind Uploads dabei deaktiviert, verweigert der Server den Start,
+weil die Zuordnung nicht sicher rekonstruiert werden kann. Für die Recovery einmalig
+die ursprüngliche Upload-Konfiguration einschließlich `KATALOG_UPLOAD_DIR` aktivieren.

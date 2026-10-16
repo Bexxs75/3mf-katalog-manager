@@ -37,6 +37,7 @@ async fn run() -> Result<(), String> {
                         .join("web-auth.json")
                 }
             };
+            katalog_server::config::validate_auth_journal_name(&path)?;
             if let Some(db) = std::env::var_os("KATALOG_DB") {
                 katalog_server::config::validate_auth_path(std::path::Path::new(&db), &path)?;
             }

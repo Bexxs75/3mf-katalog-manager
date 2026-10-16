@@ -27,6 +27,13 @@ services:
     # Authentication is mandatory; do not combine with KATALOG_ALLOW_NO_AUTH.
     # environment:
     #   - KATALOG_WRITE=1
+    # Dateiverwaltung: erlaubt Rename/Move/Delete; /models darf NICHT :ro sein.
+    # File management: permits rename/move/delete; /models must NOT be :ro.
+    # Requires write mode, authentication and allowed hosts; see README warnings.
+    #   - KATALOG_FILE_OPS=1
+    #   - KATALOG_FILE_OPS_DAILY_LIMIT=2000
+    # Only after manual journal inspection, one restart, then remove:
+    #   - KATALOG_FILE_OPS_ACK=<opId[,<opId>…]>
     #   # Optional upload/import backend (also requires authentication + allowed hosts):
     #   - KATALOG_UPLOAD_DIR=/models/uploads
     #   - KATALOG_UPLOAD_MAX_MB=1024

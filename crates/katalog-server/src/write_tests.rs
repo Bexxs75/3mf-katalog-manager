@@ -49,6 +49,8 @@ impl Fixture {
         };
         let session = new_session(&mut data, "test", 100).unwrap();
         let app = Arc::new(App {
+            fileops: None,
+            fileops_safety: Mutex::new(crate::fileops_safety::FileOpsSafety::new(2000)),
             uploads:None,
             writer: write.then(|| WriteGate::new(db::open_read_write(&path).unwrap())),
             config,
@@ -134,8 +136,8 @@ async fn all_disabled_commands_leave_catalog_hash_and_sidecar_names_unchanged() 
         n
     };
     let before = names();
-    assert_eq!(WRITE_COMMANDS.len(), 37);
-    assert_eq!(crate::READ_COMMANDS.len(), 22);
+    assert_eq!(WRITE_COMMANDS.len(), 48);
+    assert_eq!(crate::READ_COMMANDS.len(), 24);
     for cmd in WRITE_COMMANDS {
         assert_eq!(f.send(cmd, json!({})).await.status(), 404, "{cmd}");
     }

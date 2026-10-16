@@ -28,6 +28,10 @@ pub struct Config {
     pub trust_proxy: bool,
     pub allow_no_auth: bool,
     pub write: bool,
+    pub file_ops: bool,
+    pub file_ops_daily_limit: u64,
+    pub file_ops_ack: Vec<String>,
+    pub file_roots: Vec<PathBuf>,
     pub upload: Option<UploadConfig>,
     pub password: Option<String>,
     pub password_file: Option<PathBuf>,
@@ -64,6 +68,7 @@ impl Config {
         if roots.is_empty() || roots.iter().any(|p| p.as_os_str().is_empty()) {
             return Err("KATALOG_ROOTS enthält eine leere Wurzel".into());
         }
+        let file_roots = roots.clone();
         let parent = db_path
             .parent()
             .filter(|p| !p.as_os_str().is_empty())
@@ -157,7 +162,14 @@ impl Config {
                 max_triangles: triangles as usize,
             },
         });
+        let file_ops = lookup("KATALOG_FILE_OPS").as_deref() == Some("1");
+        let file_ops_daily_limit = positive_limit(&lookup, "KATALOG_FILE_OPS_DAILY_LIMIT", 2000, u64::MAX)?;
+        let file_ops_ack = lookup("KATALOG_FILE_OPS_ACK").map(|v| v.split(',').map(str::to_owned).collect()).unwrap_or_default();
+        if file_ops && (!write || allow_no_auth || lookup("KATALOG_ALLOWED_HOSTS").is_none_or(|v| v.trim().is_empty())) {
+            return Err("Dateiverwaltung erfordert Schreibmodus, Anmeldung und explizite Hostliste".into());
+        }
         let mut config = Self {
+            file_ops, file_ops_daily_limit, file_ops_ack, file_roots,
             static_dir,
             db_path,
             roots,
@@ -172,6 +184,7 @@ impl Config {
             password_file,
         };
         validate_upload_config(&mut config)?;
+        validate_fileops_config(&config)?;
         Ok(config)
     }
 }
@@ -324,6 +337,26 @@ pub fn validate_upload_config(config: &mut Config) -> Result<(), String> {
 }
 
 /// Reject the catalog and its SQLite sidecars before any password-file write.
+/// Auth mutations must never replace either durable operation journal, even
+/// in the standalone set-password command without a database configuration.
+pub fn validate_auth_journal_name(path: &std::path::Path) -> Result<(), String> {
+    if path.file_name().is_some_and(|n| n == "web-fsops.json" || n == "web-uploads.json") {
+        return Err("Auth-Datei kollidiert mit einem Serverjournal".into());
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_fileops_config(config: &Config) -> Result<(), String> {
+    validate_auth_journal_name(&config.auth_file)?;
+    if config.file_ops && (!config.write || config.allow_no_auth || config.file_ops_daily_limit == 0 || config.allowed_hosts.as_ref().is_none_or(|h|h.is_empty() || h.iter().any(|v|parse_host(v).is_err()))) {
+        return Err("Dateiverwaltung erfordert Schreibmodus, Anmeldung, Hostliste und positive Tagesgrenze".into());
+    }
+    if config.file_ops_ack.iter().any(|id|id.len()!=32 || !id.bytes().all(|b|b.is_ascii_hexdigit())) {
+        return Err("KATALOG_FILE_OPS_ACK erwartet kommagetrennte Operations-IDs".into());
+    }
+    Ok(())
+}
+
 pub fn validate_auth_path(db: &std::path::Path, auth: &std::path::Path) -> Result<(), String> {
     fn resolved(path: &std::path::Path) -> Result<PathBuf, String> {
         if let Ok(path) = path.canonicalize() {
@@ -429,6 +462,12 @@ mod tests {
                 })
         })
     }
+    #[test]
+    fn fileops_requires_explicit_write_and_auth_configuration() {
+        assert!(config(&[("KATALOG_FILE_OPS", "1")]).is_err());
+        assert!(config(&[("KATALOG_FILE_OPS_DAILY_LIMIT", "0")]).is_err());
+    }
+
     #[test]
     fn upload_limits_are_validated_even_when_disabled() {
         assert!(config(&[]).unwrap().upload.is_none());

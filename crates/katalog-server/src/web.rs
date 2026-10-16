@@ -1,3 +1,5 @@
+#[path = "fileops.rs"]
+mod fileops;
 #[path = "uploads.rs"]
 mod uploads;
 #[cfg(test)]
@@ -257,6 +259,8 @@ struct Data {
     revision: u64,
 }
 struct App {
+    fileops: Option<Arc<fileops::Runtime>>,
+    fileops_safety: Mutex<crate::fileops_safety::FileOpsSafety>,
     uploads: Option<Arc<uploads::Runtime>>,
     writer: Option<WriteGate>,
     config: Config,
@@ -310,6 +314,7 @@ pub fn build_app(config: AppConfig) -> Router {
     build_app_with_writer(config, None).expect("read-only startup")
 }
 fn validate_write_config(config: &Config) -> Result<(), String> {
+    crate::config::validate_fileops_config(config)?;
     if config.write && (config.allow_no_auth || config.allowed_hosts.as_ref().is_none_or(|h| h.is_empty())) {
         return Err("Schreibmodus erfordert Anmeldung und Hostliste".into());
     }
@@ -333,7 +338,13 @@ pub async fn try_build_app(mut config: AppConfig) -> Result<Router, String> {
 }
 fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>) -> Result<Router,String> {
     let uploads = uploads::initialize(&config.config)?;
+    let fileops = if let Some(writer) = &writer {
+        crate::fileops_startup::prepare(&config.config, writer.conn.clone(), uploads.as_ref().map(|r| r.store.clone()))?.map(|ops| Arc::new(fileops::Runtime::new(ops)))
+    } else { crate::fileops_startup::check_readonly(&config.config)?; None };
+    uploads::reconcile(&config.config, uploads.as_ref())?;
+    let fileops_safety = Mutex::new(crate::fileops_safety::FileOpsSafety::new(config.config.file_ops_daily_limit as usize));
     let app = Arc::new(App {
+        fileops, fileops_safety,
         uploads,
         writer,
         config: config.config,
@@ -458,6 +469,7 @@ async fn limited(req: Request, next: Next, limit: usize) -> Response {
 }
 async fn protect(State(app): State<Arc<App>>, mut req: Request, next: Next) -> Response {
     let command = req.uri().path().strip_prefix("/api/invoke/").unwrap_or("").to_owned();
+    if crate::write::FILE_OPS_COMMANDS.contains(&command.as_str()) && !app.config.file_ops { return fileops::failure(404,"fileops_disabled"); }
     let upload = req.uri().path() == "/api/upload" && app.uploads.is_some();
     let write_command = WRITE_COMMANDS.contains(&command.as_str());
     let write = (write_command || upload) && app.config.write;
@@ -650,6 +662,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
     let path = req.uri().path().to_owned();
     let method = req.method().clone();
     let command = path.strip_prefix("/api/invoke/").unwrap_or("");
+    if crate::write::FILE_OPS_COMMANDS.contains(&command) && !app.config.file_ops { return fileops::failure(404,"fileops_disabled"); }
     let is_write = WRITE_COMMANDS.contains(&command);
     let upload_route=matches!(path.as_str(),"/api/upload"|"/api/uploads"|"/api/events")||uploads::command(command);
     if upload_route && app.uploads.is_none(){return error(404,"upload_disabled");}
@@ -727,7 +740,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
         let must_change = current.is_some() && app.data.lock().unwrap().auth.as_ref().is_some_and(|a| a.must_change);
         return match path.as_str() {
             "/api/health"=>Json(json!({"ok":true})).into_response(),
-            "/api/session"=>Json(json!({"authenticated":app.config.allow_no_auth || current.is_some(),"mustChangePassword":must_change,"writable":app.config.write && current.is_some() && !must_change,"uploadable":app.uploads.is_some() && current.is_some() && !must_change,"csrfToken":current.as_ref().map(|s|&s.csrf)})).into_response(),
+            "/api/session"=>Json(json!({"authenticated":app.config.allow_no_auth || current.is_some(),"mustChangePassword":must_change,"writable":app.config.write && current.is_some() && !must_change,"fileOps":fileops::capability(&app) && current.is_some() && !must_change,"uploadable":app.uploads.is_some() && current.is_some() && !must_change,"csrfToken":current.as_ref().map(|s|&s.csrf)})).into_response(),
             "/"=>([(header::CONTENT_TYPE,"text/html; charset=utf-8")],include_str!("../static/index.html")).into_response(),
             "/static/app.js"=>([(header::CONTENT_TYPE,"application/javascript; charset=utf-8")],include_str!("../static/app.js")).into_response(),
             "/static/app.css"=>([(header::CONTENT_TYPE,"text/css; charset=utf-8")],include_str!("../static/app.css")).into_response(),
@@ -834,6 +847,9 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
         }
         p if p.starts_with("/api/invoke/") => {
             if uploads::command(command){let command=command.to_owned();return tokio::spawn(async move{uploads::invoke(app,current.unwrap(),&command,args).await}).await.unwrap_or_else(|_|error(500,"import_internal"));}
+            if crate::write::FILE_OPS_COMMANDS.contains(&command) {
+                return fileops::invoke(app, current.expect("authenticated fileops"), command.to_owned(), args, admission.unwrap(), audit.unwrap_or_default()).await;
+            }
             if is_write {
                 return write_invoke(app, current.expect("authenticated write"), command.to_owned(), args, audit, admission.unwrap()).await;
             }
@@ -911,7 +927,7 @@ async fn verify_client(
 }
 async fn login(app: Arc<App>, peer: String, now: u64, secure: bool, args: Value) -> Response {
     if app.config.allow_no_auth {
-        return Json(json!({"ok":true,"mustChangePassword":false,"writable":false,"csrfToken":null}))
+        return Json(json!({"ok":true,"mustChangePassword":false,"writable":false,"fileOps":false,"csrfToken":null}))
             .into_response();
     }
     let password = match string(&args, "password") {
@@ -937,7 +953,7 @@ async fn login(app: Arc<App>, peer: String, now: u64, secure: bool, args: Value)
         Ok(s) => s,
         Err(e) => return *e,
     };
-    with_cookie(Json(json!({"ok":true,"mustChangePassword":d.auth.as_ref().unwrap().must_change,"writable":app.config.write && !d.auth.as_ref().unwrap().must_change,"uploadable":app.uploads.is_some() && !d.auth.as_ref().unwrap().must_change,"csrfToken":s.csrf})).into_response(),&s.token,secure,false)
+    with_cookie(Json(json!({"ok":true,"mustChangePassword":d.auth.as_ref().unwrap().must_change,"writable":app.config.write && !d.auth.as_ref().unwrap().must_change,"fileOps":fileops::capability(&app) && !d.auth.as_ref().unwrap().must_change,"uploadable":app.uploads.is_some() && !d.auth.as_ref().unwrap().must_change,"csrfToken":s.csrf})).into_response(),&s.token,secure,false)
 }
 async fn change_password(
     app: Arc<App>,
@@ -1035,7 +1051,7 @@ async fn change_password(
         },
     );
     with_cookie(
-        Json(json!({"ok":true,"mustChangePassword":false,"writable":app.config.write,"uploadable":app.uploads.is_some(),"csrfToken":csrf})).into_response(),
+        Json(json!({"ok":true,"mustChangePassword":false,"writable":app.config.write,"fileOps":fileops::capability(&app),"uploadable":app.uploads.is_some(),"csrfToken":csrf})).into_response(),
         &token,
         secure,
         false,
@@ -1069,6 +1085,7 @@ async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Va
                 Err(response) => return *response,
             }
         } else { None };
+        if let (Some(ids),Some(progress))=(&removal_ids,&audit) {progress.set_file_ids(ids);}
         // Share the import admission permit through commit and journal persistence.
         // No import can begin in the gap between the idle check and the DELETE.
         let _import_permit = if removal_ids.is_some() {
@@ -1079,6 +1096,12 @@ async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Va
                     Ok(true) => return crate::write::retry(503),
                     Err(_) => return error(500, "Interner Journalfehler"),
                 }
+            } else { None }
+        } else { None };
+        // 6d participates in the same exclusive filesystem/DB-removal region.
+        let _fileops = if removal_ids.is_some() {
+            if let Some(rt) = &app.fileops {
+                match rt.state.try_lock() { Ok(g) => Some(g), Err(_) => return crate::write::retry(503) }
             } else { None }
         } else { None };
         let mutex = &app.writer.as_ref().unwrap().conn;
@@ -1114,7 +1137,35 @@ async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Va
             if !data.sessions.contains_key(&current.token) { return error(401, "Sitzung abgelaufen"); }
             if data.auth.as_ref().is_none_or(|a| a.must_change) { return error(403, "Bitte zuerst ein neues Passwort setzen"); }
         }
-        match crate::write::execute(&mut conn, &command, &args) {
+        if let Some(ids) = &removal_ids {
+            let mut active_count = 0;
+            for id in ids {
+                match conn.query_row("SELECT EXISTS(SELECT 1 FROM files WHERE id=?1 AND deleted_at IS NULL)", [id], |r| r.get::<_, bool>(0)) {
+                    Ok(true) => active_count += 1, Ok(false) => (), Err(_) => return fileops::failure(500, "internal"),
+                }
+            }
+            let mut safety = app.fileops_safety.lock().unwrap();
+            if let Err(seconds) = safety.reserve(crate::fileops_safety::DestructiveKind::Permanent, active_count, app.clock.now()) {
+                let mut response = fileops::failure(429, "rate_limited");
+                response.headers_mut().insert(header::RETRY_AFTER, seconds.to_string().parse().unwrap());
+                return response;
+            }
+            if safety.ensure_backups(&conn, &app.config.db_path, active_count, true, app.clock.now()).is_err() { return fileops::failure(503, "backup_failed"); }
+            drop(safety);
+            // Password change/logout remain responsive; check again after backup.
+            let mut data = app.data.lock().unwrap(); cleanup(&mut data, app.clock.now());
+            if !data.sessions.contains_key(&current.token) { return fileops::failure(401, "session_expired"); }
+            drop(data);
+            if let Some(progress)=&audit {progress.set_file_ids(ids);}
+        }
+        let execution = if removal_ids.is_some() {
+            let cancel_app=app.clone();let cancel_session=current.clone();
+            let cancel=crate::fileops_cancel::Cancellation::new(move||started.elapsed()<std::time::Duration::from_secs(20)&&fileops::valid_session(&cancel_app,&cancel_session));
+            let result=cancel.run(&mut conn,|c|crate::write::execute(c,&command,&args));
+            if cancel.interrupted(){return fileops::failure(409,"not_started")}
+            match result {Ok(result)=>result,Err(())=>return fileops::failure(500,"internal")}
+        } else {crate::write::execute(&mut conn,&command,&args)};
+        match execution {
             Ok((response, changes)) => {
                 drop(conn);
                 if let (Some(ids), Some(rt)) = (&removal_ids, &app.uploads) {
@@ -1141,3 +1192,7 @@ mod write_tests;
 #[cfg(test)]
 #[path = "upload_http_tests.rs"]
 mod upload_http_tests;
+
+#[cfg(test)]
+#[path = "fileops_http_tests.rs"]
+mod fileops_http_tests;

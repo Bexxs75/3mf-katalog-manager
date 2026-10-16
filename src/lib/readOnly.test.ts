@@ -35,9 +35,16 @@ it.each([
 });
 
 it('keeps manager scope explicit and printer networking unavailable', () => {
-  expect(WEB_WRITE_COMMANDS).toHaveLength(37);
+  expect(WEB_WRITE_COMMANDS).toHaveLength(48);
   expect(WEB_READ_COMMANDS).toContain('get_filament_spool_image');
   for (const command of ['restock_filament_spool', 'consume_resin', 'set_printer_link_enabled', 'test_printer_connection', 'remove_printer_connection', 'sync_printers_now', 'pick_and_read_image']) {
     expect([...WEB_READ_COMMANDS, ...WEB_WRITE_COMMANDS]).not.toContain(command);
   }
+});
+
+it('keeps file operations in the write audit allowlist and dispatches before write_invoke', async () => {
+  const fileops = writeSource.split('pub const FILE_OPS_COMMANDS: &[&str] = &[')[1].split('];')[0];
+  for (const match of fileops.matchAll(/"([a-z_]+)"/g)) expect(WEB_WRITE_COMMANDS).toContain(match[1]);
+  const web = (await import('../../crates/katalog-server/src/web.rs?raw')).default;
+  expect(web.indexOf('return fileops::invoke')).toBeLessThan(web.indexOf('return write_invoke'));
 });

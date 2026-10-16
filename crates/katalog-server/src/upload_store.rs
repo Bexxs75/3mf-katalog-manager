@@ -193,7 +193,7 @@ fn extension(name: &str) -> String {
     name.rsplit('.').next().unwrap_or("").to_ascii_lowercase()
 }
 impl UploadStore {
-    pub fn open(
+    pub fn load(
         path: PathBuf,
         journal: PathBuf,
         db_dir: PathBuf,
@@ -213,12 +213,61 @@ impl UploadStore {
             .and_then(|s| s.to_str())
             .ok_or(StoreError::new(500, "journal_path"))?
             .to_owned();
-        let mut journal = match journal_dir.read(&journal_name) {
+        let journal = match journal_dir.read(&journal_name) {
             Ok(f) => serde_json::from_reader::<_, Journal>(f)
                 .map_err(|_| StoreError::new(500, "journal_invalid"))?,
             Err(e) if e.kind() == io::ErrorKind::NotFound => Journal::default(),
             Err(e) => return Err(e.into()),
         };
+        let store = Arc::new(Self {
+            dir,
+            db_dir,
+            journal_dir,
+            journal_name,
+            path,
+            max_bytes,
+            max_active,
+            catalogued: catalogued.keys().cloned().collect(),
+            restart_required: AtomicBool::new(false),
+            #[cfg(test)]
+            sync_hook: Mutex::new(None),
+            #[cfg(test)]
+            persist_count: std::sync::atomic::AtomicUsize::new(0),
+            inner: Mutex::new(Inner {
+                journal,
+                ..Inner::default()
+            }),
+        });
+        Ok(store)
+    }
+    #[cfg(test)]
+    pub fn open(
+        path: PathBuf,
+        journal: PathBuf,
+        db_dir: PathBuf,
+        max_bytes: u64,
+        max_active: usize,
+        catalogued: &HashMap<PathBuf, Option<String>>,
+    ) -> Result<Arc<Self>, StoreError> {
+        let store = Self::load(path, journal, db_dir, max_bytes, max_active, catalogued)?;
+        store.reconcile(catalogued)?;
+        Ok(store)
+    }
+    #[cfg(test)]
+    pub fn reconcile(
+        &self,
+        catalogued: &HashMap<PathBuf, Option<String>>,
+    ) -> Result<(), StoreError> {
+        self.reconcile_known(catalogued, &HashSet::new())
+    }
+    fn reconcile_known(
+        &self,
+        catalogued: &HashMap<PathBuf, Option<String>>,
+        known: &HashSet<String>,
+    ) -> Result<(), StoreError> {
+        let mut inner = self.lock()?;
+        let mut journal = inner.journal.clone();
+        let (dir, journal_dir, path) = (&self.dir, &self.journal_dir, &self.path);
         journal.entries.retain(|_, e| {
             if !dir
                 .read(&e.name)
@@ -227,18 +276,19 @@ impl UploadStore {
             {
                 return false;
             }
-            if catalogued
-                .get(&path.join(&e.name))
-                .and_then(|hash| hash.as_ref())
-                .is_some_and(|hash| {
-                    dir.checked(&e.name, e.dev, e.ino)
-                        .ok()
-                        .and_then(|file| {
-                            katalog_core::import::files::compute_reader_hash(file).ok()
-                        })
-                        .as_ref()
-                        == Some(hash)
-                })
+            if known.contains(&e.id)
+                || catalogued
+                    .get(&path.join(&e.name))
+                    .and_then(|hash| hash.as_ref())
+                    .is_some_and(|hash| {
+                        dir.checked(&e.name, e.dev, e.ino)
+                            .ok()
+                            .and_then(|file| {
+                                katalog_core::import::files::compute_reader_hash(file).ok()
+                            })
+                            .as_ref()
+                            == Some(hash)
+                    })
             {
                 e.state = UploadState::Imported;
             } else if matches!(e.state, UploadState::Importing | UploadState::Imported) {
@@ -318,27 +368,69 @@ impl UploadStore {
             }
         }
         journal.prune();
-        let store = Arc::new(Self {
-            dir,
-            db_dir,
-            journal_dir,
-            journal_name,
-            path,
-            max_bytes,
-            max_active,
-            catalogued: catalogued.keys().cloned().collect(),
-            restart_required: AtomicBool::new(false),
-            #[cfg(test)]
-            sync_hook: Mutex::new(None),
-            #[cfg(test)]
-            persist_count: std::sync::atomic::AtomicUsize::new(0),
-            inner: Mutex::new(Inner {
-                journal,
-                ..Inner::default()
-            }),
+        self.persist(&journal)?;
+        inner.journal = journal;
+        Ok(())
+    }
+    /// Existing IDs are authoritative: a relocated/replaced model is detached, never
+    /// rebound to a different row at the old path. Legacy rows are repaired only by
+    /// the existing inode + content-hash reconciliation below.
+    pub fn reconcile_catalog(
+        &self,
+        ids: &HashMap<PathBuf, String>,
+        hashes: &HashMap<PathBuf, Option<String>>,
+    ) -> Result<(), StoreError> {
+        let mut known = HashSet::new();
+        {
+            let mut inner = self.lock()?;
+            let mut next = inner.journal.clone();
+            next.entries.retain(|_, e| {
+                let Some(id) = e
+                    .result
+                    .as_ref()
+                    .and_then(|r| r.get("fileId"))
+                    .and_then(Value::as_str)
+                else {
+                    return true;
+                };
+                if ids.get(&self.path.join(&e.name)).is_some_and(|v| v == id) {
+                    known.insert(e.id.clone());
+                    true
+                } else {
+                    !ids.values().any(|v| v == id) && !ids.contains_key(&self.path.join(&e.name))
+                }
+            });
+            self.persist(&next)?;
+            inner.journal = next;
+        }
+        self.reconcile_known(hashes, &known)?;
+        self.reconcile_file_ids(ids)
+    }
+    /// Attach missing legacy IDs in memory only; disk stays untouched until recovery
+    /// has decided which entry must be durably detached/reset.
+    pub(crate) fn bind_legacy(&self, upload_id: &str, file_id: i64) -> Result<(), StoreError> {
+        if let Some(entry) = self.lock()?.journal.entries.get_mut(upload_id) {
+            entry.result.get_or_insert_with(|| serde_json::json!({}))["fileId"] =
+                Value::String(file_id.to_string());
+        }
+        Ok(())
+    }
+    pub fn detach(&self, ids: &[i64]) -> Result<(), StoreError> {
+        let mut inner = self.lock()?;
+        let mut next = inner.journal.clone();
+        next.entries.retain(|_, e| {
+            !e.result
+                .as_ref()
+                .and_then(|r| r.get("fileId"))
+                .and_then(Value::as_str)
+                .and_then(|s| s.parse::<i64>().ok())
+                .is_some_and(|id| ids.contains(&id))
         });
-        store.persist(&store.lock()?.journal)?;
-        Ok(store)
+        if next.entries.len() != inner.journal.entries.len() {
+            self.persist(&next)?;
+            inner.journal = next;
+        }
+        Ok(())
     }
     #[cfg(test)]
     pub fn with_test_lock(&self, f: impl FnOnce()) {
@@ -500,7 +592,12 @@ impl UploadStore {
         Ok(())
     }
     pub fn has_importing(&self) -> Result<bool, StoreError> {
-        Ok(self.lock()?.journal.entries.values().any(|e| e.state == UploadState::Importing))
+        Ok(self
+            .lock()?
+            .journal
+            .entries
+            .values()
+            .any(|e| e.state == UploadState::Importing))
     }
     /// Called after the database commit while the runtime import permit is held.
     pub fn reset_removed(&self, ids: &[i64]) -> Result<(), StoreError> {
@@ -509,9 +606,14 @@ impl UploadStore {
         let mut next = inner.journal.clone();
         let mut changed = false;
         for entry in next.entries.values_mut() {
-            if entry.state == UploadState::Imported && entry.result.as_ref()
-                .and_then(|r| r.get("fileId")).and_then(Value::as_str)
-                .is_some_and(|id| ids.contains(id)) {
+            if entry.state == UploadState::Imported
+                && entry
+                    .result
+                    .as_ref()
+                    .and_then(|r| r.get("fileId"))
+                    .and_then(Value::as_str)
+                    .is_some_and(|id| ids.contains(id))
+            {
                 entry.state = UploadState::Uploaded;
                 entry.result = None;
                 entry.job_id = None;
@@ -909,3 +1011,62 @@ impl Drop for PendingUpload {
 #[cfg(test)]
 #[path = "upload_store_tests.rs"]
 mod tests;
+
+/// Journal-only access when uploads are disabled. No upload directory is opened
+/// or cleaned, but recovery's durable detach/reset steps must still be applied.
+pub(crate) struct OfflineLedger {
+    dir: Directory,
+    journal: Journal,
+}
+impl OfflineLedger {
+    pub(crate) fn load(parent: &std::path::Path) -> Result<Self, StoreError> {
+        let dir = Directory::open(parent)?;
+        let journal = match dir.read("web-uploads.json") {
+            Ok(file) => serde_json::from_reader(file)
+                .map_err(|_| StoreError::new(500, "journal_invalid"))?,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Journal::default(),
+            Err(e) => return Err(e.into()),
+        };
+        Ok(Self { dir, journal })
+    }
+    pub(crate) fn entries(&self) -> Vec<Entry> {
+        self.journal.entries.values().cloned().collect()
+    }
+    pub(crate) fn update(&mut self, ids: &[i64], reset: bool) -> Result<(), StoreError> {
+        let mut next = self.journal.clone();
+        next.entries.retain(|_, e| {
+            let matched = e
+                .result
+                .as_ref()
+                .and_then(|r| r.get("fileId"))
+                .and_then(Value::as_str)
+                .and_then(|s| s.parse::<i64>().ok())
+                .is_some_and(|id| ids.contains(&id));
+            if matched && reset {
+                e.state = UploadState::Uploaded;
+                e.result = None;
+            }
+            !matched || reset
+        });
+        if serde_json::to_value(&next).ok() == serde_json::to_value(&self.journal).ok() {
+            return Ok(());
+        }
+        let temp = format!(".journal-{}.part", random_id()?);
+        let result: Result<(), StoreError> = (|| {
+            let mut f = self.dir.create(&temp)?;
+            serde_json::to_writer(&mut f, &next)
+                .map_err(|_| StoreError::new(500, "journal_write"))?;
+            f.flush()?;
+            f.sync_all()?;
+            self.dir.rename(&temp, "web-uploads.json")?;
+            self.dir.sync()?;
+            Ok(())
+        })();
+        if result.is_err() {
+            let _ = self.dir.unlink(&temp);
+        }
+        result?;
+        self.journal = next;
+        Ok(())
+    }
+}

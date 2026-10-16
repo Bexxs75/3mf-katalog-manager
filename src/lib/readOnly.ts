@@ -3,6 +3,7 @@ export const isReadOnly = () => import.meta.env.VITE_TARGET === 'web';
 
 /** Keep in sync with katalog-server's is_allowed (verified against Rust source). */
 export const WEB_READ_COMMANDS = [
+  'folder_removal_summary', 'empty_trash_summary',
   'get_import_state', 'get_import_result',
   'list_file_summaries', 'list_all_file_tags', 'list_files_by_ids', 'list_tag_counts',
   'list_print_log_entries', 'list_folders', 'list_collections', 'list_collection_files',
@@ -19,6 +20,17 @@ export const WEB_READ_COMMANDS = [
 
 /** Web write commands: the server remains the authority for each request. */
 export const WEB_WRITE_COMMANDS = [
+  'rename_file',
+  'move_files_to_folder',
+  'delete_files',
+  'restore_file',
+  'delete_file_permanently',
+  'empty_trash_start',
+  'empty_trash_block',
+  'create_folder',
+  'rename_folder',
+  'move_folder',
+  'remove_folder_from_catalog',
   'remove_files_from_catalog',
   'start_upload_import', 'discard_upload', 'cancel_import',
   'set_favorite', 'set_print_status', 'add_tag', 'remove_tag', 'set_license',

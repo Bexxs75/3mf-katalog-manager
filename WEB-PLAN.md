@@ -314,3 +314,24 @@ and 32 overall. Web import batches contain one file to bound retained metadata.
 - **16.10.2026, Stufe 6d abgenommen („Aus dem Katalog entfernen“):** `020a4f12`. `remove_files_from_catalog` (nur Katalogzeilen, Datei bleibt), Sperre bei laufendem Import (503 mit `Retry-After`), Upload-Journal-Rücksetzung `imported → uploaded`, Knöpfe in Kontextmenü, Sammelleiste und beiden Detailansichten. Browsertest: hochgeladene Datei importiert, entfernt (DB-Zeile weg, Datei bleibt, erscheint unter „Offene Uploads“), verworfen (Datei vom Server gelöscht, Journal-Eintrag weg). Opus-Review: kein Blocker, vier niedrige Hinweise (fehlender 413-Test für den neuen Command, `job_id` beim Start-Abgleich nicht geleert, Duplikat-Einträge bleiben `duplicate`, kein Hinweis nach Journalfehler); Hinweistext nennt jetzt Druckprotokoll/Tags/Sammlungen.
 - **16.10.2026, Oberfläche (Nutzertest):** Konto-Menü in der Kopfzeile statt schwebender Leiste (`0dcb6481`), Anbindungsstatus („Inaktiv“, „Keine Anbindung“) in der Druckerliste im Web ausgeblendet (`7115603f`), Detailbereich standardmäßig festgehalten, damit das Raster nicht springt (`e13cbdf3`).
 - **Stufe 7 (Dateiverwaltung):** Spec `spec-web-fileops-7.md` v2 plus verbindliche v3-Nachträge (Papierkorb pro Wurzel im selben Dateisystem, nur `renameat2(NOREPLACE)`, Schutzmatrix je Ort, Intent-Journal mit Entscheidungstabelle, Passwort-Wiederholung und Tagesgrenzen für unwiderrufliche Operationen). Aufteilung A1 (Primitive, Journal, Dateien, Papierkorb), A2 (Ordner), B (Server), C (Oberfläche).
+
+### Stufe 7 / Stage 7 — Teil B Server
+
+Der Server stellt die Datei-/Ordner- und Snapshot-Papierkorb-Commands mit separater
+Freigabe `KATALOG_FILE_OPS` bereit. Teil C (Oberfläche) bleibt ein eigener Auftrag.
+Fileops nutzen das Import-`rt.active`-Permit plus eigenen Mutex, niemals
+`app.changes`; Upload-Journal wird nach DB-Commit ohne verschachtelten DB-Lock
+abgetrennt. Start: Upload laden → Fileops-Recovery/ACK → DB neu lesen → Upload
+abgleichen. N6/N7-Limits und N8-Sicherungen gelten gemeinsam auch für DB-only-
+Katalogentfernung. Sicherungstage sind UTC-Kalendertage, Reserve 64 MiB.
+
+The server exposes gated file/folder operations and snapshot-driven trash blocks;
+stage C UI remains separate. Admission uses the import permit and fileops mutex,
+not the authentication changes lock. Destructive limits and backups include
+DB-only catalog removal. Backup days use UTC and require 64 MiB reserve.
+
+Betrieb/Operations: Warnungen und ACK-Verfahren in README.de.md, README.md und
+`docker-web/README.md` beachten: kein paralleler Desktop, Desktop-Purge nach 7 Tagen,
+Root-Papierkorb ohne Web-Automatik, schreibbare Volumes und passende Rechte,
+NOREPLACE-fähiges Dateisystem, keine Cross-Filesystem-Moves, Heimnetz/VPN und
+externe Backups. / Read those warnings before enabling file management.
