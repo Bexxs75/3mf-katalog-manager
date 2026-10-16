@@ -3,6 +3,7 @@
 Interner Plan. Dieses Repository ist privat und wird bewusst still entwickelt: keine öffentlichen Releases, keine Roadmap-Einträge, keine Ankündigungen, GitHub Actions ist abgeschaltet.
 
 - Grundlage: Stand `dev/0.16.0` der Desktop-App (RC 12, Commit `ac1d434c`) mit voller Historie. Die Desktop-App bleibt in `upstream` (lokaler Pfad `/mnt/claude/projekte/3mf-katalog-manager`), Korrekturen lassen sich dort per Merge übernehmen.
+- Aufbau (Architekturdiagramm, im Browser öffnen): `docs/web/architecture.html` (Quelle: `docs/web/architecture.json`).
 - Mockup (klickbar, mit Katalog, Detail, Import, Material, Resin, Spule anlegen, Drucker, Anmeldung): `docs/web/mockup.html` (im Browser öffnen).
 - Prüfung: Plan von Codex gegen den Code geprüft (16.10.2026); Befunde sind unten eingearbeitet.
 
@@ -75,3 +76,15 @@ Reine Arbeitszeit von Claude und Codex (Stunden): Stufe 0 4 bis 8, Stufe 1 2 bis
 2. Zeitpunkt des Spikes (Stufe 0): nach der stabilen 0.16.0.
 3. Namen des Repositorys: `3mfKatalog-Web` (Alternative: `3mfWEBKatalog`).
 4. Wann (und ob) etwas davon öffentlich wird (Roadmap-Eintrag, Ankündigung).
+
+## 11. Betrieb: eigener Server oder Docker lokal (Empfehlung, zur Bestätigung)
+Empfehlung: **nur selbst betriebenes Docker-Image, kein von uns gehosteter Dienst.** Dasselbe Image läuft zu Hause (Heimnetz, NAS, Mini-PC) oder auf einem eigenen Server des Nutzers; der Unterschied ist nur die Erreichbarkeit.
+
+| Betriebsart | Erreichbar von | Sicherheit | Aufwand für den Nutzer |
+|---|---|---|---|
+| A. Heimnetz (Standard) | nur im eigenen Netz | am einfachsten, Anmeldung bleibt Pflicht | gering |
+| B. Heimnetz plus VPN (WireGuard, Tailscale) | von unterwegs, ohne offene Ports | sehr gut | mittel |
+| C. Eigener Server (VPS) mit Reverse Proxy und HTTPS | überall | nur mit Härtung (Proxy, HTTPS, Anmeldung, Updates) | hoch |
+
+Gründe gegen einen zentral von uns gehosteten Dienst: Die App verspricht „alles bleibt auf deinem Rechner“; fremde, oft urheberrechtlich geschützte 3D-Modelle auf unserem Server brächten Haftung, Moderation, Datenschutz und laufende Kosten; Mehrmandantenfähigkeit wäre ein anderes Produkt.
+Bis auf Weiteres gilt: Standard bindet nur an das lokale Netz, ohne Anmeldung startet der Server nicht, HTTPS übernimmt der Reverse Proxy.
