@@ -61,7 +61,7 @@ Heute sind die Konflikte klein, weil sich auf der Desktop-Seite kaum etwas beweg
 
 ## 5. Entscheidungen, die du treffen musst
 
-1. **Zielversion:** 0.17.0 (empfohlen) oder später.
+1. **Zielversion: 0.17 oder 0.18 (Entscheidung des Nutzers am 16.10.2026).** Festlegung nach einem Kriterium statt nach Gefühl: **0.17.0**, wenn zum Funktionsstopp von 0.17 alle Punkte der Bedingungen unten erfüllt sind, sonst **0.18.0** ohne Zeitdruck. Bedingungen für 0.17: Stufe 7 abgenommen, Gesamt-Sicherheitsreview und Abhängigkeits-Audit erledigt, die privaten Windows-/macOS-Builds grün, Merge mit `v0.16.0` gelöst und die VM-Tests auf allen drei Systemen bestanden. Hinweis zur Roadmap: v0.17.0 enthält schon viele Punkte (mehrfarbige Spulen, Varianten, Begleitdateien u. a.), v0.18.0 hat Linux-Pakete, Windows-Deinstallation und Bambu-Testhelfer. Die Webversion kommt als eigenes Image und konkurriert deshalb nicht mit dem Desktop-Umfang, braucht aber dieselbe Test- und Doku-Kapazität. **Es gibt noch keinen öffentlichen Roadmap-Eintrag** (die Webversion bleibt bis zur Freigabe still).
 2. **Beta-Kennzeichnung** der Webversion im Namen oder Tag (empfohlen: ja).
 3. **Image-Name** (Vorschlag oben).
 4. **Private CI-Probe** für Windows und macOS: ja oder nein (empfohlen: ja, einmalig).
