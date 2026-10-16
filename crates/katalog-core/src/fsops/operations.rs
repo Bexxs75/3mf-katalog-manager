@@ -22,6 +22,14 @@ impl FsDatabase for &Mutex<Connection> {
 /// B implements this using UploadStore. Both methods must release its lock before returning.
 pub trait UploadLedger {
     fn detach(&mut self, file_ids: &[i64]) -> Result<()>;
+    /// B resets imported entries to uploaded, idempotently, after DB-only removal.
+    fn reset_imported(&mut self, file_ids: &[i64]) -> Result<()> {
+        if file_ids.is_empty() {
+            Ok(())
+        } else {
+            Err(Error::Unsupported)
+        }
+    }
     /// Identity from a journal entry, if tracked (including legacy entries resolved by B).
     fn identity(&mut self, _file_id: i64) -> Result<Option<Identity>> {
         Ok(None)
@@ -44,11 +52,13 @@ pub struct ItemResult {
 pub struct RecoveryReport {
     pub detach_ids: Vec<i64>,
     pub manual: Vec<String>,
+    pub reset_ids: Vec<i64>,
 }
 /// Immutable ID snapshot; B stores this behind an opaque session-bound token.
 pub struct TrashSnapshot {
     ids: Vec<i64>,
     offset: usize,
+    cutoff: Option<chrono::DateTime<chrono::FixedOffset>>,
 }
 impl TrashSnapshot {
     pub fn remaining(&self) -> usize {
@@ -67,7 +77,7 @@ pub struct FileOps<D, L> {
     pub db: D,
     pub ledger: L,
 }
-fn read_state(c: &Connection, id: i64) -> Result<Option<FileState>> {
+pub(super) fn read_state(c: &Connection, id: i64) -> Result<Option<FileState>> {
     Ok(c.query_row(
         "SELECT id,path,name,folder_id,deleted_at,trash_path FROM files WHERE id=?1",
         [id],
@@ -128,7 +138,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             ledger,
         }
     }
-    fn ready(&self) -> Result<()> {
+    pub(super) fn ready(&self) -> Result<()> {
         if self.journal.is_blocked() {
             Err(Error::RestartRequired)
         } else {
@@ -255,6 +265,8 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             })
             .transpose()?;
         self.journal.add(intent.clone())?;
+        #[cfg(test)]
+        super::tests::before_mutation();
         if let Some(t) = &temp {
             if let Err(e) = rename_checked(&source, t, identity) {
                 return self.transfer_failed(&intent, e);
@@ -285,7 +297,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         self.finish(&intent)
     }
     fn transfer_failed(&mut self, i: &Intent, e: Error) -> Result<()> {
-        if matches!(e, Error::RestartRequired | Error::Changed) {
+        if matches!(e, Error::RestartRequired) {
             return Err(self.journal.block(&i.op_id));
         }
         self.journal.remove(&i.op_id)?;
@@ -357,13 +369,12 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             Err(e) => return Err(e),
             Ok(_) => (),
         }
-        let name = trash_name(id, &journal::op_id()?, &source.name)?;
+        // transfer derives the final trash name and intent from one operation ID.
         let target = self.context.resolve_relative(
             source.root,
-            &format!("{TRASH}/{name}"),
+            &format!("{TRASH}/pending"),
             Access::Trash,
         )?;
-        after.trash_path = Some(self.context.absolute(&target));
         self.transfer(before, after, source, target, Operation::Trash)
     }
     fn trash_source(&self, s: &FileState) -> Result<Resolved> {
@@ -412,7 +423,23 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         self.transfer(before, after, source, target, Operation::Restore)
     }
     pub fn delete_file_permanently(&mut self, id: i64) -> Result<DeleteOutcome> {
+        self.delete_permanently_before(id, None)
+    }
+    fn delete_permanently_before(
+        &mut self,
+        id: i64,
+        cutoff: Option<chrono::DateTime<chrono::FixedOffset>>,
+    ) -> Result<DeleteOutcome> {
         let before = self.trashed(id)?;
+        if let Some(cutoff) = cutoff {
+            let deleted = chrono::DateTime::parse_from_rfc3339(
+                before.deleted_at.as_deref().ok_or(Error::Changed)?,
+            )
+            .map_err(|_| Error::Changed)?;
+            if deleted > cutoff {
+                return Err(Error::Changed);
+            }
+        }
         if before.trash_path.is_none() {
             self.db_only(before, None)?;
             return Ok(DeleteOutcome {
@@ -445,8 +472,11 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             after: None,
         };
         self.journal.add(intent.clone())?;
+        #[cfg(test)]
+        super::tests::before_mutation();
         if FileIdentity::read(&source) != Ok(identity) {
-            return Err(self.journal.block(&intent.op_id));
+            self.journal.remove(&intent.op_id)?;
+            return Err(Error::Changed);
         }
         if let Err(e) = source.parent.unlink(&source.name) {
             self.journal.remove(&intent.op_id)?;
@@ -577,7 +607,11 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
             if ids.len() != expected_count {
                 return Err(Error::Conflict);
             }
-            Ok(TrashSnapshot { ids, offset: 0 })
+            Ok(TrashSnapshot {
+                ids,
+                offset: 0,
+                cutoff,
+            })
         })
     }
     pub fn empty_trash(
@@ -587,7 +621,15 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
     ) -> Result<Vec<ItemResult>> {
         let end = (snapshot.offset + 200).min(snapshot.ids.len());
         let result = self.batch(&snapshot.ids[snapshot.offset..end], allowed, |s, id| {
-            s.delete_file_permanently(id).map(|r| Some(r.kept_on_disk))
+            s.delete_permanently_before(id, snapshot.cutoff)
+                .map(|r| Some(r.kept_on_disk))
+                .map_err(|e| {
+                    if e == Error::Conflict {
+                        Error::Changed
+                    } else {
+                        e
+                    }
+                })
         })?;
         // Only untouched IDs may be retried in a subsequent client-driven block.
         // Attempted failures are terminal: never retry an operation with possible side effects.
@@ -598,6 +640,8 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         Ok(result)
     }
 }
+// File handles pin parents, but a local writer may concurrently relocate an ancestor.
+// File operations accept this residual risk; directory operations recheck parent chains.
 fn rename_checked(source: &Resolved, target: &Resolved, identity: FileIdentity) -> Result<()> {
     if FileIdentity::read(source)? != identity {
         return Err(Error::Changed);
@@ -641,10 +685,12 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
                 }
             }
         }
+        self.recover_folders(&mut report);
         self.journal.recovery_complete();
         Ok(report)
     }
     pub fn finish_recovery(&mut self) -> Result<()> {
+        self.finish_folder_recovery()?;
         for intent in self.journal.intents.clone() {
             if intent.phase == Phase::Committed {
                 if self.ledger.detach(&[intent.before.id]).is_err() {
@@ -692,6 +738,8 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
                 Access::Source
             },
         )?;
+        let identity = i.identity.ok_or(Error::Changed)?;
+        let s = observe(&source, identity)?;
         let target = i
             .target
             .as_ref()
@@ -707,13 +755,26 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
                     },
                 )
             })
-            .transpose()?;
+            .transpose();
         let temp = i
             .temporary
             .as_ref()
             .map(|r| self.context.resolve_relative(root, r, Access::RenameTarget))
-            .transpose()?;
-        let identity = i.identity.ok_or(Error::Changed)?;
+            .transpose();
+        if db_before && s == Observed::Matches {
+            let matches = |r: &Result<Option<Resolved>>| {
+                r.as_ref()
+                    .ok()
+                    .and_then(|r| r.as_ref())
+                    .is_some_and(|r| observe(r, identity) == Ok(Observed::Matches))
+            };
+            if !matches(&target) && !matches(&temp) {
+                self.journal.remove(&i.op_id)?;
+                return Ok(false);
+            }
+        }
+        let target = target?;
+        let temp = temp?;
         if identity.dev != i.root_identity.dev {
             return Err(Error::Changed);
         }
@@ -745,7 +806,6 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
                 return Err(Error::Changed);
             }
         }
-        let s = observe(&source, identity)?;
         let t = target
             .as_ref()
             .map(|r| observe(r, identity))

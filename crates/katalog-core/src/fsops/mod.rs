@@ -15,6 +15,8 @@ pub enum Error {
     NotFound,
     Conflict,
     Changed,
+    Cycle,
+    Inconsistent,
     CrossDevice,
     Busy,
     Unsupported,
@@ -109,3 +111,6 @@ pub fn fs_empty_trash<D: FsDatabase, L: UploadLedger>(
 ) -> Result<Vec<ItemResult>> {
     ops.empty_trash(snapshot, allowed)
 }
+
+mod folders;
+pub use folders::*;

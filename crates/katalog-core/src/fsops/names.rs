@@ -51,7 +51,7 @@ pub fn trash_name(id: i64, op: &str, disk: &str) -> Result<String> {
     let budget = 255usize
         .checked_sub(prefix.len() + ext.len())
         .filter(|b| *b > 0)
-        .ok_or(Error::InvalidName)?;
+        .ok_or(Error::TrashConflict)?;
     let stem = &clean[..clean.len() - ext.len()];
     let mut end = stem.len().min(budget);
     while !stem.is_char_boundary(end) {

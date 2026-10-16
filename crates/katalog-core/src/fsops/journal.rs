@@ -81,10 +81,13 @@ pub struct Intent {
 struct Document {
     version: u32,
     intents: Vec<Intent>,
+    #[serde(default)]
+    folders: Vec<FolderIntent>,
 }
 pub struct Journal {
     dir: Directory,
     pub(crate) intents: Vec<Intent>,
+    pub(crate) folders: Vec<FolderIntent>,
     blocked: bool,
     #[cfg(test)]
     pub(crate) crash_at: Option<Phase>,
@@ -99,7 +102,7 @@ pub(crate) fn op_id() -> Result<String> {
 impl Journal {
     pub fn open(path: &Path) -> Result<Self> {
         let dir = Directory::open(path)?;
-        let intents = match dir.read(NAME) {
+        let (intents, folders) = match dir.read(NAME) {
             Ok(file) => {
                 let m = file.metadata()?;
                 if m.nlink() != 1
@@ -122,15 +125,23 @@ impl Journal {
                 }) {
                     return Err(Error::RestartRequired);
                 }
-                doc.intents
+                if doc.folders.iter().any(|i| {
+                    i.op_id.len() != 32
+                        || !i.op_id.bytes().all(|b| b.is_ascii_hexdigit())
+                        || !ids.insert(i.op_id.clone())
+                }) {
+                    return Err(Error::RestartRequired);
+                }
+                (doc.intents, doc.folders)
             }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (Vec::new(), Vec::new()),
             Err(_) => return Err(Error::RestartRequired),
         };
-        let blocked = !intents.is_empty();
+        let blocked = !intents.is_empty() || !folders.is_empty();
         Ok(Self {
             dir,
             intents,
+            folders,
             blocked,
             #[cfg(test)]
             crash_at: None,
@@ -139,13 +150,17 @@ impl Journal {
         })
     }
     pub fn is_empty(&self) -> bool {
-        self.intents.is_empty()
+        self.intents.is_empty() && self.folders.is_empty()
     }
     pub fn is_blocked(&self) -> bool {
         self.blocked
     }
     pub fn pending_op_ids(&self) -> Vec<String> {
-        self.intents.iter().map(|i| i.op_id.clone()).collect()
+        self.intents
+            .iter()
+            .map(|i| i.op_id.clone())
+            .chain(self.folders.iter().map(|i| i.op_id.clone()))
+            .collect()
     }
     /// Read-only startup must reject any pending intent, even when fileops is disabled.
     pub fn check_startup(&self, write_mode: bool) -> Result<()> {
@@ -155,10 +170,37 @@ impl Journal {
             Ok(())
         }
     }
+    /// Call only after recover(): ACK is exclusively for manually inspected intents.
     pub fn acknowledge(&mut self, ids: &[String]) -> Result<()> {
+        if ids.iter().any(|id| {
+            !self
+                .intents
+                .iter()
+                .any(|i| i.op_id == *id && i.phase == Phase::Manual)
+                && !self
+                    .folders
+                    .iter()
+                    .any(|i| i.op_id == *id && i.phase == Phase::Manual)
+        }) {
+            return Err(Error::InvalidArguments);
+        }
         self.intents.retain(|i| !ids.contains(&i.op_id));
+        self.folders.retain(|i| !ids.contains(&i.op_id));
         self.persist()?;
-        self.blocked = !self.intents.is_empty();
+        self.blocked = !self.is_empty();
+        Ok(())
+    }
+    pub(super) fn check_capacity(&self) -> Result<()> {
+        let bytes = serde_json::to_vec(&Document {
+            version: 1,
+            intents: self.intents.clone(),
+            folders: self.folders.clone(),
+        })
+        .map_err(|_| Error::Internal)?;
+        // Leave room for phase changes and the inode recorded after mkdir.
+        if bytes.len() > 16 * 1024 * 1024 - 4096 {
+            return Err(Error::Unsupported);
+        }
         Ok(())
     }
     pub(crate) fn persist(&mut self) -> Result<()> {
@@ -170,6 +212,7 @@ impl Journal {
                 &Document {
                     version: 1,
                     intents: self.intents.clone(),
+                    folders: self.folders.clone(),
                 },
             )
             .map_err(|_| Error::Internal)?;
@@ -196,6 +239,10 @@ impl Journal {
         }
         let phase = intent.phase;
         self.intents.push(intent);
+        if let Err(e) = self.check_capacity() {
+            self.intents.pop();
+            return Err(e);
+        }
         self.persist()?;
         self.checkpoint(phase)
     }
@@ -208,7 +255,7 @@ impl Journal {
         self.persist()?;
         self.checkpoint(phase)
     }
-    fn checkpoint(&mut self, _phase: Phase) -> Result<()> {
+    pub(super) fn checkpoint(&mut self, _phase: Phase) -> Result<()> {
         #[cfg(test)]
         if self.crash_at == Some(_phase) {
             self.blocked = true;
@@ -218,6 +265,7 @@ impl Journal {
     }
     pub(crate) fn remove(&mut self, id: &str) -> Result<()> {
         self.intents.retain(|i| i.op_id != id);
+        self.folders.retain(|i| i.op_id != id);
         self.persist()
     }
     pub(crate) fn block(&mut self, id: &str) -> Error {
@@ -225,12 +273,15 @@ impl Journal {
         if let Some(i) = self.intents.iter_mut().find(|i| i.op_id == id) {
             i.phase = Phase::Manual;
         }
+        if let Some(i) = self.folders.iter_mut().find(|i| i.op_id == id) {
+            i.phase = Phase::Manual;
+        }
         let _ = self.persist();
         log::error!("fileops requires manual review: opId={id}");
         Error::RestartRequired
     }
     pub(crate) fn recovery_complete(&mut self) {
-        self.blocked = !self.intents.is_empty();
+        self.blocked = !self.is_empty();
     }
 }
 /// Observable facts, evaluated in priority order. Phase markers can lag the filesystem.

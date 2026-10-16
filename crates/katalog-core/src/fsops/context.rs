@@ -235,7 +235,12 @@ impl FsContext {
             return Err(Error::TrashForeign);
         }
         let name = parts.last().unwrap().to_string();
-        if let Ok((dev, ino)) = parent.entry_identity(&name) {
+        let entry = match parent.entry_identity(&name) {
+            Ok(id) => Some(id),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(e.into()),
+        };
+        if let Some((dev, ino)) = entry {
             let id = Identity { dev, ino };
             if self.roots.iter().any(|r| r.identity == id)
                 || id == Identity::of(&r.trash)?
@@ -507,4 +512,75 @@ fn mount_alias_overlap(
         dir = dir.open_dir(part.to_str().ok_or(Error::PathUnresolvable)?)?;
     }
     Ok(Identity::of(&dir)? == Identity::of(descendant)?)
+}
+
+impl FsContext {
+    /// Verify the current handle ancestry, including protection and mount boundaries.
+    pub(super) fn directory_chain(
+        &self,
+        root: usize,
+        dir: &Directory,
+        cycle: Option<Identity>,
+    ) -> Result<()> {
+        let r = &self.roots[root];
+        let mut current = dir.try_clone()?;
+        for _ in 0..1024 {
+            let id = Identity::of(&current)?;
+            if cycle == Some(id) {
+                return Err(Error::Cycle);
+            }
+            if id.dev != r.identity.dev || different_mount(r.mount, current.mount_id()?) {
+                return Err(Error::CrossDevice);
+            }
+            if id == Identity::of(&r.trash)?
+                || self
+                    .protected
+                    .iter()
+                    .any(|p| p.identity == id && p.kind != Protection::CatalogBase)
+            {
+                return Err(Error::Protected);
+            }
+            if id == r.identity {
+                return Ok(());
+            }
+            let next = current.parent_handle()?;
+            if Identity::of(&next)? == id {
+                return Err(Error::Changed);
+            }
+            current = next;
+        }
+        Err(Error::PathUnresolvable)
+    }
+    pub(super) fn directory_identity(&self, r: &Resolved) -> Result<Identity> {
+        let dir = r.parent.open_dir(&r.name)?;
+        let id = Identity::of(&dir)?;
+        self.directory_chain(r.root, &dir, None)?;
+        if r.parent.entry_identity(&r.name)? != (id.dev, id.ino) {
+            return Err(Error::Changed);
+        }
+        // Recompute protected ancestors: protected directories may have moved since startup.
+        for p in &self.protected {
+            if ancestor_ids(&p.handle)?.contains(&id) {
+                return Err(Error::Protected);
+            }
+        }
+        if self.roots.iter().any(|root| root.identity == id) {
+            return Err(Error::Protected);
+        }
+        Ok(id)
+    }
+    pub(super) fn protects_catalog(&self, source: Identity, base: &str) -> Result<()> {
+        let root_dir = self.roots.iter().find(|r| r.path.to_str() == Some(base));
+        let dir = if let Some(root) = root_dir {
+            root.handle.try_clone()?
+        } else {
+            // Catalog base itself is protected by the normal resolver; resolve its parent via a child.
+            let child = self.resolve(&format!("{base}/catalog-guard"), Access::Source)?;
+            child.parent
+        };
+        if ancestor_ids(&dir)?.contains(&source) {
+            return Err(Error::Protected);
+        }
+        Ok(())
+    }
 }

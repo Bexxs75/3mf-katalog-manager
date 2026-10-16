@@ -109,6 +109,10 @@ struct Fixture {
 #[derive(Default)]
 struct MemoryLedger(Vec<i64>);
 impl UploadLedger for MemoryLedger {
+    fn reset_imported(&mut self, ids: &[i64]) -> Result<()> {
+        self.0.extend_from_slice(ids);
+        Ok(())
+    }
     fn detach(&mut self, ids: &[i64]) -> Result<()> {
         self.0.extend_from_slice(ids);
         Ok(())
@@ -845,4 +849,775 @@ fn non_utf8_database_path_is_unresolvable() {
         .unwrap();
     assert_eq!(f.ops.rename_file(1, "b"), Err(Error::PathUnresolvable));
     assert!(f.dir.join("root/a.stl").exists());
+}
+
+#[test]
+fn ack_rejects_nonmanual_and_unknown_ids() {
+    let mut f = Fixture::new();
+    f.add(1, "a.stl");
+    f.ops.journal.crash_at = Some(Phase::Prepared);
+    assert!(f.ops.rename_file(1, "b").is_err());
+    let ids = f.ops.journal.pending_op_ids();
+    assert_eq!(
+        f.ops.journal.acknowledge(&ids),
+        Err(Error::InvalidArguments)
+    );
+    assert_eq!(
+        f.ops.journal.acknowledge(&["unknown".into()]),
+        Err(Error::InvalidArguments)
+    );
+    assert_eq!(f.ops.journal.pending_op_ids(), ids);
+}
+#[test]
+fn snapshot_rechecks_cutoff_after_restore_and_delete() {
+    let mut f = Fixture::new();
+    for id in 1..=200 {
+        f.ops.db.execute("INSERT INTO files(id,name,path,file_type,file_size_bytes,imported_at,deleted_at) VALUES (?1,'missing',?2,'stl',1,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')",rusqlite::params![id,format!("/missing/{id}")]).unwrap();
+    }
+    f.add(201, "a.stl");
+    f.ops.delete_file(201).unwrap();
+    let summary = f.ops.empty_trash_summary().unwrap();
+    let mut snapshot = f
+        .ops
+        .empty_trash_snapshot(201, summary.max_deleted_at.as_deref())
+        .unwrap();
+    assert_eq!(
+        f.ops.empty_trash(&mut snapshot, || true).unwrap().len(),
+        200
+    );
+    assert_eq!(snapshot.remaining(), 1);
+    f.ops.restore_file(201).unwrap();
+    f.ops.delete_file(201).unwrap();
+    f.ops
+        .db
+        .execute(
+            "UPDATE files SET deleted_at='2099-01-01T00:00:00Z' WHERE id=201",
+            [],
+        )
+        .unwrap();
+    let result = f.ops.empty_trash(&mut snapshot, || true).unwrap();
+    assert_eq!(result[0].kind, Some(Error::Changed));
+    assert!(f.ops.state(201).is_ok());
+}
+#[test]
+fn recovery_intact_source_ignores_unresolvable_destination() {
+    let mut f = Fixture::new();
+    f.add(1, "a.stl");
+    fs::create_dir(f.dir.join("root/dest")).unwrap();
+    let id = crate::db::insert_folder_with_parent(
+        &f.ops.db,
+        "dest",
+        None,
+        f.dir.join("root/dest").to_str().unwrap(),
+    )
+    .unwrap();
+    f.ops.journal.crash_at = Some(Phase::Prepared);
+    assert!(f.ops.move_file_to_folder(1, Some(id)).is_err());
+    fs::remove_dir(f.dir.join("root/dest")).unwrap();
+    symlink("/tmp", f.dir.join("root/dest")).unwrap();
+    f.ops.journal = Journal::open(&f.dir.join("journal")).unwrap();
+    assert!(f.ops.recover().unwrap().manual.is_empty());
+    assert!(f.ops.journal.is_empty());
+}
+#[test]
+fn final_component_errors_are_not_absence() {
+    let f = Fixture::new();
+    let path = f.dir.join("root").join("x".repeat(256));
+    assert!(matches!(
+        f.ops
+            .context
+            .resolve(path.to_str().unwrap(), Access::Directory),
+        Err(Error::Internal)
+    ));
+}
+#[test]
+fn excessive_trash_extension_is_conflict() {
+    assert_eq!(
+        trash_name(1, "abcdef0123456789", &format!("x.{}", "a".repeat(250))),
+        Err(Error::TrashConflict)
+    );
+}
+
+thread_local! {
+    pub(super) static BEFORE_MUTATION: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = const { std::cell::RefCell::new(None) };
+}
+pub(super) fn before_mutation() {
+    BEFORE_MUTATION.with(|h| {
+        if let Some(f) = h.borrow_mut().take() {
+            f();
+        }
+    });
+}
+#[test]
+fn pre_mutation_size_change_does_not_block() {
+    for mode in ["rename", "case", "unlink"] {
+        let mut f = Fixture::new();
+        f.add(1, "a.stl");
+        if mode == "unlink" {
+            f.ops.delete_file(1).unwrap();
+        }
+        let state = f.ops.state(1).unwrap();
+        let path = state.trash_path.unwrap_or(state.path);
+        BEFORE_MUTATION.with(|h| {
+            *h.borrow_mut() = Some(Box::new(move || fs::write(path, b"changed size").unwrap()))
+        });
+        let result = match mode {
+            "unlink" => f.ops.delete_file_permanently(1).map(|_| ()),
+            "case" => f.ops.rename_file(1, "A"),
+            _ => f.ops.rename_file(1, "b"),
+        };
+        assert_eq!(result, Err(Error::Changed), "{mode}");
+        assert!(f.ops.journal.is_empty());
+        assert!(!f.ops.journal.is_blocked());
+    }
+}
+
+impl Fixture {
+    fn folder(&mut self, name: &str, parent: Option<i64>) -> i64 {
+        let path = self.dir.join("root").join(name);
+        fs::create_dir_all(&path).unwrap();
+        crate::db::insert_folder_with_parent(
+            &self.ops.db,
+            path.file_name().unwrap().to_str().unwrap(),
+            parent,
+            path.to_str().unwrap(),
+        )
+        .unwrap()
+    }
+    fn assign(&mut self, file: i64, folder: i64) {
+        self.ops
+            .db
+            .execute(
+                "UPDATE files SET folder_id=?1 WHERE id=?2",
+                rusqlite::params![folder, file],
+            )
+            .unwrap();
+    }
+}
+#[test]
+fn folders_create_rename_move_unicode_prefix_and_restore_paths() {
+    let mut f = Fixture::new();
+    let parent = f.folder("parent", None);
+    let a = f.ops.create_folder(Some(parent), "Ä").unwrap();
+    let child = f.ops.create_folder(Some(a), "child").unwrap();
+    let sibling = f.folder("parent/ÄB", Some(parent));
+    f.add(1, "parent/Ä/child/a.stl");
+    f.assign(1, child);
+    f.add(2, "parent/ÄB/b.stl");
+    f.assign(2, sibling);
+    f.add(3, "parent/Ä/t.stl");
+    f.assign(3, a);
+    f.ops.delete_file(3).unwrap();
+    let trash = f.ops.state(3).unwrap().trash_path;
+    fs::write(f.dir.join("root/parent/Ä/untracked"), b"control").unwrap();
+    f.ops.rename_folder(a, "Ö").unwrap();
+    assert!(f.ops.state(1).unwrap().path.ends_with("/Ö/child/a.stl"));
+    assert!(f.ops.state(2).unwrap().path.ends_with("/ÄB/b.stl"));
+    assert_eq!(f.ops.state(3).unwrap().trash_path, trash);
+    let dest = f.folder("dest", None);
+    f.ops.move_folder(a, Some(dest)).unwrap();
+    f.ops.restore_file(3).unwrap();
+    assert!(f.dir.join("root/dest/Ö/t.stl").exists());
+    assert_eq!(
+        fs::read(f.dir.join("root/dest/Ö/untracked")).unwrap(),
+        b"control"
+    );
+    assert!(f.ops.ledger.0.contains(&1));
+}
+#[test]
+fn folder_failures_leave_source_and_database_untouched() {
+    let mut f = Fixture::new();
+    let a = f.folder("A", None);
+    let b = f.folder("A/B", Some(a));
+    assert_eq!(f.ops.move_folder(a, Some(b)), Err(Error::Cycle));
+    assert_eq!(f.ops.move_folder(a, Some(a)), Err(Error::Cycle));
+    assert_eq!(f.ops.move_folder(a, None), Err(Error::Conflict));
+    assert_eq!(f.ops.move_folder(b, Some(a)), Err(Error::Conflict));
+    assert_eq!(f.ops.create_folder(None, "x"), Err(Error::InvalidArguments));
+    assert_eq!(f.ops.create_folder(Some(a), "B"), Err(Error::Conflict));
+    assert_eq!(f.ops.rename_folder(a, ".hidden"), Err(Error::InvalidName));
+    assert_eq!(f.ops.rename_folder(999, "x"), Err(Error::NotFound));
+    f.add(1, "outside.stl");
+    f.assign(1, b);
+    assert_eq!(f.ops.rename_folder(a, "C"), Err(Error::Inconsistent));
+    assert!(f.dir.join("root/A/B").is_dir());
+    assert!(f.ops.journal.is_empty());
+}
+#[test]
+fn folder_recovery_each_phase_ignores_directory_size() {
+    for phase in [Phase::Prepared, Phase::Renamed, Phase::Committed] {
+        let mut f = Fixture::new();
+        let a = f.folder("A", None);
+        f.add(1, "A/a.stl");
+        f.assign(1, a);
+        f.ops.journal.crash_at = Some(phase);
+        assert_eq!(f.ops.rename_folder(a, "B"), Err(Error::RestartRequired));
+        let path = if phase == Phase::Prepared { "A" } else { "B" };
+        for n in 0..40 {
+            fs::write(
+                f.dir.join("root").join(path).join(format!("extra{n}")),
+                b"x",
+            )
+            .unwrap();
+        }
+        f.ops.journal = Journal::open(&f.dir.join("journal")).unwrap();
+        assert!(f.ops.recover().unwrap().manual.is_empty());
+        f.ops.finish_recovery().unwrap();
+        assert!(f.ops.state(1).unwrap().path.contains(&format!("/{path}/")));
+        assert!(f.ops.journal.is_empty());
+    }
+}
+#[test]
+fn folder_create_database_failure_rolls_back_empty_directory() {
+    let mut f = Fixture::new();
+    let p = f.folder("parent", None);
+    f.ops.db.execute_batch("CREATE TRIGGER fail_folder BEFORE INSERT ON folders BEGIN SELECT RAISE(ABORT,'test'); END;").unwrap();
+    assert_eq!(f.ops.create_folder(Some(p), "new"), Err(Error::Internal));
+    assert!(!f.dir.join("root/parent/new").exists());
+    assert!(f.ops.journal.is_empty());
+}
+#[test]
+fn folder_removal_preserves_disk_trash_and_unused_tags() {
+    let mut f = Fixture::new();
+    let a = f.folder("A", None);
+    let b = f.folder("A/B", Some(a));
+    f.add(1, "A/B/a.stl");
+    f.assign(1, b);
+    f.add(2, "A/t.stl");
+    f.assign(2, a);
+    f.ops.delete_file(2).unwrap();
+    f.ops
+        .db
+        .execute_batch("INSERT INTO tags VALUES(1,'unused',0); INSERT INTO file_tags VALUES(1,1);")
+        .unwrap();
+    let summary = f.ops.folder_removal_summary(a).unwrap();
+    assert_eq!((summary.model_count, summary.subfolder_count), (1, 1));
+    let result = f.ops.remove_folder_from_catalog(a).unwrap();
+    assert_eq!((result.model_count, result.folder_count), (1, 2));
+    assert_eq!(f.ops.state(1), Err(Error::NotFound));
+    assert_eq!(f.ops.state(2).unwrap().folder_id, None);
+    assert!(f.dir.join("root/A/B/a.stl").exists());
+    assert_eq!(
+        f.ops
+            .db
+            .query_row("SELECT count(*) FROM tags", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+}
+
+#[test]
+fn folder_protection_matrix_and_catalog_setting() {
+    let mut f = Fixture::new();
+    let parent = f.folder("parent", None);
+    let upload = f.folder("parent/upload", Some(parent));
+    let sub = f.folder("parent/upload/sub", Some(upload));
+    let catalog = f.folder("catalog", None);
+    let child = f.folder("catalog/child", Some(catalog));
+    let trash = crate::db::insert_folder_with_parent(
+        &f.ops.db,
+        "trash",
+        None,
+        f.dir.join("root").join(TRASH).to_str().unwrap(),
+    )
+    .unwrap();
+    f.ops.context = FsContext::new(
+        &[f.dir.join("root")],
+        &[
+            (f.dir.join("root/parent/upload"), Protection::Upload),
+            (f.dir.join("root/catalog"), Protection::CatalogBase),
+        ],
+    )
+    .unwrap();
+    for id in [parent, upload, sub, catalog, trash] {
+        assert_eq!(f.ops.rename_folder(id, "renamed"), Err(Error::Protected));
+        assert_eq!(
+            f.ops.remove_folder_from_catalog(id).unwrap_err(),
+            Error::Protected
+        );
+    }
+    assert_eq!(
+        f.ops.create_folder(Some(upload), "new"),
+        Err(Error::Protected)
+    );
+    f.ops.rename_folder(child, "free").unwrap();
+    f.ops.create_folder(Some(catalog), "new").unwrap();
+    // The persisted setting is checked even if a caller omitted its startup protection.
+    f.ops.context = FsContext::new(&[f.dir.join("root")], &[]).unwrap();
+    crate::db::printer_link::set_setting(
+        &f.ops.db,
+        "catalog_base_dir",
+        f.dir.join("root/parent/upload").to_str().unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        f.ops.rename_folder(parent, "renamed"),
+        Err(Error::Protected)
+    );
+    assert_eq!(
+        f.ops.remove_folder_from_catalog(parent).unwrap_err(),
+        Error::Protected
+    );
+}
+#[test]
+fn folder_syscall_errors_conflicts_and_symlinks_preserve_control() {
+    for (errno, expected) in [
+        (libc::EXDEV, Error::CrossDevice),
+        (libc::EBUSY, Error::Busy),
+        (libc::EINVAL, Error::Unsupported),
+        (libc::ENOSYS, Error::Unsupported),
+        (libc::EACCES, Error::Internal),
+    ] {
+        let mut f = Fixture::new();
+        let a = f.folder("A", None);
+        crate::upload_fs::FSOPS_RENAME_ERROR.with(|h| h.set(Some(errno)));
+        assert_eq!(f.ops.rename_folder(a, "B"), Err(expected));
+        assert!(f.dir.join("root/A").is_dir());
+        assert!(f.ops.journal.is_empty());
+    }
+    let mut f = Fixture::new();
+    let a = f.folder("A", None);
+    let b = f.folder("B", None);
+    fs::write(f.dir.join("root/B/control"), b"control").unwrap();
+    assert_eq!(f.ops.rename_folder(a, "B"), Err(Error::Conflict));
+    assert_eq!(fs::read(f.dir.join("root/B/control")).unwrap(), b"control");
+    fs::remove_dir(f.dir.join("root/A")).unwrap();
+    symlink(f.dir.join("root/B"), f.dir.join("root/A")).unwrap();
+    assert_eq!(f.ops.rename_folder(a, "C"), Err(Error::PathUnresolvable));
+    assert_eq!(
+        f.ops.create_folder(Some(a), "new"),
+        Err(Error::PathUnresolvable)
+    );
+    assert!(f.ops.folder_removal_summary(b).is_ok());
+}
+#[test]
+fn folder_physical_cycle_even_when_db_parent_links_differ() {
+    let mut f = Fixture::new();
+    let a = f.folder("A", None);
+    let b = f.folder("A/B", None);
+    assert_eq!(f.ops.move_folder(a, Some(b)), Err(Error::Cycle));
+    assert!(f.dir.join("root/A/B").exists());
+}
+#[test]
+fn folder_create_recovery_rolls_back_only_known_empty_inode() {
+    for phase in [Phase::Prepared, Phase::Renamed, Phase::Committed] {
+        let mut f = Fixture::new();
+        let p = f.folder("parent", None);
+        f.ops.journal.crash_at = Some(phase);
+        assert_eq!(
+            f.ops.create_folder(Some(p), "new"),
+            Err(Error::RestartRequired)
+        );
+        f.ops.journal = Journal::open(&f.dir.join("journal")).unwrap();
+        assert!(f.ops.recover().unwrap().manual.is_empty());
+        f.ops.finish_recovery().unwrap();
+        assert_eq!(
+            f.dir.join("root/parent/new").exists(),
+            phase == Phase::Committed
+        );
+    }
+    for nonempty in [false, true] {
+        let mut f = Fixture::new();
+        let p = f.folder("parent", None);
+        f.ops.journal.crash_at = Some(if nonempty {
+            Phase::Renamed
+        } else {
+            Phase::Prepared
+        });
+        assert!(f.ops.create_folder(Some(p), "new").is_err());
+        if !nonempty {
+            fs::create_dir(f.dir.join("root/parent/new")).unwrap();
+        }
+        fs::write(f.dir.join("root/parent/new/control"), b"control").unwrap();
+        f.ops.journal = Journal::open(&f.dir.join("journal")).unwrap();
+        assert_eq!(f.ops.recover().unwrap().manual.len(), 1);
+        assert_eq!(
+            fs::read(f.dir.join("root/parent/new/control")).unwrap(),
+            b"control"
+        );
+    }
+}
+#[test]
+fn folder_create_failed_insert_never_removes_nonempty_directory() {
+    let mut f = Fixture::new();
+    let p = f.folder("parent", None);
+    f.ops.db.execute_batch("CREATE TRIGGER fail_folder BEFORE INSERT ON folders BEGIN SELECT RAISE(ABORT,'test'); END;").unwrap();
+    let path = f.dir.join("root/parent/new/control");
+    BEFORE_MUTATION
+        .with(|h| *h.borrow_mut() = Some(Box::new(move || fs::write(path, b"control").unwrap())));
+    assert_eq!(
+        f.ops.create_folder(Some(p), "new"),
+        Err(Error::RestartRequired)
+    );
+    assert_eq!(
+        fs::read(f.dir.join("root/parent/new/control")).unwrap(),
+        b"control"
+    );
+}
+#[test]
+fn folder_database_failure_rolls_back_rename_and_removal() {
+    let mut f = Fixture::new();
+    let a = f.folder("A", None);
+    f.add(1, "A/a.stl");
+    f.assign(1, a);
+    f.ops.db.execute_batch("CREATE TRIGGER fail_folder BEFORE UPDATE ON folders BEGIN SELECT RAISE(ABORT,'test'); END;").unwrap();
+    assert_eq!(f.ops.rename_folder(a, "B"), Err(Error::Internal));
+    assert!(f.dir.join("root/A/a.stl").exists());
+    assert!(f.ops.journal.is_empty());
+    f.ops.db.execute_batch("CREATE TRIGGER fail_delete BEFORE DELETE ON folders BEGIN SELECT RAISE(ABORT,'test'); END;").unwrap();
+    assert_eq!(
+        f.ops.remove_folder_from_catalog(a).unwrap_err(),
+        Error::Internal
+    );
+    assert!(f.ops.state(1).is_ok());
+    assert!(f.ops.journal.is_empty());
+}
+#[test]
+fn folder_recovery_foreign_target_changed_db_and_root() {
+    for mode in ["foreign", "db", "root"] {
+        let mut f = Fixture::new();
+        let a = f.folder("A", None);
+        f.ops.journal.crash_at = Some(if mode == "foreign" {
+            Phase::Prepared
+        } else {
+            Phase::Renamed
+        });
+        assert!(f.ops.rename_folder(a, "B").is_err());
+        if mode == "foreign" {
+            fs::create_dir(f.dir.join("root/B")).unwrap();
+        }
+        if mode == "db" {
+            f.ops
+                .db
+                .execute("UPDATE folders SET name='external' WHERE id=?1", [a])
+                .unwrap();
+        }
+        if mode == "root" {
+            f.ops.context.roots[0].identity.ino += 1;
+        }
+        f.ops.journal = Journal::open(&f.dir.join("journal")).unwrap();
+        let report = f.ops.recover().unwrap();
+        assert_eq!(report.manual.is_empty(), mode == "foreign");
+        assert!(f.dir.join("root/B").exists());
+    }
+}
+#[test]
+fn folder_remove_recovery_resets_upload_ids_after_commit() {
+    for phase in [Phase::Prepared, Phase::Committed] {
+        let mut f = Fixture::new();
+        let a = f.folder("A", None);
+        f.add(1, "A/a.stl");
+        f.assign(1, a);
+        f.ops.journal.crash_at = Some(phase);
+        assert_eq!(
+            f.ops.remove_folder_from_catalog(a).unwrap_err(),
+            Error::RestartRequired
+        );
+        f.ops.journal = Journal::open(&f.dir.join("journal")).unwrap();
+        let report = f.ops.recover().unwrap();
+        assert!(report.manual.is_empty());
+        assert_eq!(
+            report.reset_ids,
+            if phase == Phase::Committed {
+                vec![1]
+            } else {
+                vec![]
+            }
+        );
+        assert!(report.detach_ids.is_empty());
+        f.ops.finish_recovery().unwrap();
+        assert!(f.dir.join("root/A/a.stl").exists());
+    }
+}
+
+#[test]
+fn folder_removal_fk_matrix_and_unassigned_physical_file() {
+    let mut f = Fixture::new();
+    let a = f.folder("A", None);
+    f.add(1, "A/a.stl");
+    f.assign(1, a);
+    f.add(2, "A/t.stl");
+    f.assign(2, a);
+    f.ops.delete_file(2).unwrap();
+    f.add(3, "A/unassigned.stl");
+    f.ops.db.execute_batch("INSERT INTO tags VALUES(1,'tag',0); INSERT INTO tags VALUES(2,'unused',0);
+    INSERT INTO collections VALUES(1,'collection','today'); INSERT INTO printers(id,name) VALUES(1,'printer');
+    INSERT INTO filament_spools(id,material,diameter_mm,original_weight_g,remaining_weight_g,created_at) VALUES(1,'PLA',1.75,1000,900,'today');
+    INSERT INTO printer_jobs(printer_id,remote_id,file_name,outcome,raw_status,ended_at,print_duration_s,used_mm,booked_file_id,booked_spool_id) VALUES(1,'remote','a.stl','completed','complete',1,2,3,1,1);").unwrap();
+    for id in [1, 2] {
+        for sql in [
+            "INSERT INTO file_tags VALUES(?1,1)",
+            "INSERT INTO collection_files VALUES(1,?1,0)",
+            "INSERT INTO file_metadata VALUES(?1,'key','value')",
+            "INSERT INTO file_materials(file_id,name) VALUES(?1,'PLA')",
+            "INSERT INTO print_log(file_id,printed_at,created_at) VALUES(?1,'today','today')",
+        ] {
+            f.ops.db.execute(sql, [id]).unwrap();
+        }
+    }
+    f.ops.remove_folder_from_catalog(a).unwrap();
+    for table in [
+        "file_tags",
+        "collection_files",
+        "file_metadata",
+        "file_materials",
+        "print_log",
+        "printer_jobs",
+        "filament_spools",
+        "printers",
+        "collections",
+    ] {
+        assert_eq!(
+            f.ops
+                .db
+                .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r
+                    .get::<_, i64>(0))
+                .unwrap(),
+            1,
+            "{table}"
+        );
+    }
+    assert_eq!(
+        f.ops
+            .db
+            .query_row("SELECT count(*) FROM tags", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        2
+    );
+    assert_eq!(
+        f.ops
+            .db
+            .query_row("SELECT booked_file_id FROM printer_jobs", [], |r| r
+                .get::<_, Option<i64>>(0))
+            .unwrap(),
+        None
+    );
+    assert!(f.ops.state(3).is_ok());
+    assert!(f.dir.join("root/A/unassigned.stl").exists());
+    assert_eq!(
+        f.ops
+            .db
+            .query_row("SELECT count(*) FROM pragma_foreign_key_check", [], |r| r
+                .get::<_, i64>(
+                0
+            ))
+            .unwrap(),
+        0
+    );
+}
+#[test]
+fn folder_recovery_validates_intent_paths_before_database_update() {
+    let mut f = Fixture::new();
+    let a = f.folder("A", None);
+    f.ops.journal.crash_at = Some(Phase::Renamed);
+    assert!(f.ops.rename_folder(a, "B").is_err());
+    let path = f.dir.join("journal/web-fsops.json");
+    let mut doc: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    doc["folders"][0]["after"]["folders"][0]["path"] =
+        serde_json::json!(f.dir.join("outside").to_str().unwrap());
+    fs::write(&path, serde_json::to_vec(&doc).unwrap()).unwrap();
+    f.ops.journal = Journal::open(&f.dir.join("journal")).unwrap();
+    assert_eq!(f.ops.recover().unwrap().manual.len(), 1);
+    assert_eq!(
+        f.ops
+            .db
+            .query_row("SELECT path FROM folders WHERE id=?1", [a], |r| r
+                .get::<_, String>(0))
+            .unwrap(),
+        f.dir.join("root/A").to_str().unwrap()
+    );
+}
+#[test]
+fn folder_parent_chain_changed_before_rename_is_rejected() {
+    let mut f = Fixture::new();
+    let a = f.folder("A", None);
+    let dest = f.folder("dest", None);
+    let upload = f.folder("upload", None);
+    let _ = upload;
+    f.ops.context = FsContext::new(
+        &[f.dir.join("root")],
+        &[(f.dir.join("root/upload"), Protection::Upload)],
+    )
+    .unwrap();
+    let from = f.dir.join("root/dest");
+    let to = f.dir.join("root/upload/dest");
+    BEFORE_MUTATION
+        .with(|h| *h.borrow_mut() = Some(Box::new(move || fs::rename(from, to).unwrap())));
+    assert_eq!(f.ops.move_folder(a, Some(dest)), Err(Error::Protected));
+    assert!(f.dir.join("root/A").is_dir());
+    assert!(f.ops.journal.is_empty());
+}
+#[test]
+fn folder_post_rename_identity_error_blocks_and_preserves_source() {
+    let mut f = Fixture::new();
+    let a = f.folder("A", None);
+    f.add(1, "A/a.stl");
+    f.assign(1, a);
+    crate::upload_fs::FSOPS_AFTER_RENAME_ERROR.with(|h| h.set(Some(libc::EIO)));
+    assert_eq!(f.ops.rename_folder(a, "B"), Err(Error::RestartRequired));
+    assert!(f.ops.journal.is_blocked());
+    assert!(f.dir.join("root/A/a.stl").exists());
+}
+#[test]
+fn folder_recovery_phase_marker_may_lag_rename() {
+    let mut f = Fixture::new();
+    let a = f.folder("A", None);
+    f.ops.journal.crash_at = Some(Phase::Prepared);
+    assert!(f.ops.rename_folder(a, "B").is_err());
+    fs::rename(f.dir.join("root/A"), f.dir.join("root/B")).unwrap();
+    f.ops.journal = Journal::open(&f.dir.join("journal")).unwrap();
+    assert!(f.ops.recover().unwrap().manual.is_empty());
+    f.ops.finish_recovery().unwrap();
+    assert!(f
+        .ops
+        .db
+        .query_row("SELECT path FROM folders WHERE id=?1", [a], |r| r
+            .get::<_, String>(0))
+        .unwrap()
+        .ends_with("/B"));
+}
+
+#[test]
+fn folder_removal_handles_missing_disk_and_inconsistent_links_like_desktop() {
+    let mut f = Fixture::new();
+    let a = f.folder("A", None);
+    let b = f.folder("elsewhere", Some(a));
+    f.add(1, "other.stl");
+    f.assign(1, b);
+    fs::remove_dir(f.dir.join("root/A")).unwrap();
+    assert_eq!(f.ops.folder_removal_summary(a).unwrap().model_count, 1);
+    let result = f.ops.remove_folder_from_catalog(a).unwrap();
+    assert_eq!((result.model_count, result.folder_count), (1, 2));
+    assert!(f.dir.join("root/other.stl").exists());
+    assert!(f.dir.join("root/elsewhere").exists());
+}
+#[test]
+fn oversized_folder_intent_is_rejected_before_filesystem_mutation() {
+    let mut f = Fixture::new();
+    let a = f.folder("A", None);
+    f.add(1, "A/a.stl");
+    f.assign(1, a);
+    f.ops
+        .db
+        .execute(
+            "UPDATE files SET name=?1 WHERE id=1",
+            ["x".repeat(8 * 1024 * 1024)],
+        )
+        .unwrap();
+    assert_eq!(f.ops.rename_folder(a, "B"), Err(Error::Unsupported));
+    assert!(f.dir.join("root/A/a.stl").exists());
+    assert!(f.ops.journal.is_empty());
+    assert!(Journal::open(&f.dir.join("journal")).unwrap().is_empty());
+}
+
+thread_local! {
+    pub(super) static AFTER_DIRECTORY_RENAME: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = const { std::cell::RefCell::new(None) };
+}
+pub(super) fn after_directory_rename() {
+    AFTER_DIRECTORY_RENAME.with(|h| {
+        if let Some(f) = h.borrow_mut().take() {
+            f();
+        }
+    });
+}
+#[test]
+fn folder_parent_chain_changed_after_rename_rolls_back_and_blocks() {
+    let mut f = Fixture::new();
+    let a = f.folder("A", None);
+    let dest = f.folder("dest", None);
+    f.folder("upload", None);
+    f.ops.context = FsContext::new(
+        &[f.dir.join("root")],
+        &[(f.dir.join("root/upload"), Protection::Upload)],
+    )
+    .unwrap();
+    let from = f.dir.join("root/dest");
+    let to = f.dir.join("root/upload/dest");
+    AFTER_DIRECTORY_RENAME
+        .with(|h| *h.borrow_mut() = Some(Box::new(move || fs::rename(from, to).unwrap())));
+    assert_eq!(
+        f.ops.move_folder(a, Some(dest)),
+        Err(Error::RestartRequired)
+    );
+    assert!(f.dir.join("root/A").is_dir());
+    assert!(f.ops.journal.is_blocked());
+    assert!(!f.dir.join("root/upload/dest/A").exists());
+}
+#[test]
+fn folder_removal_inconsistent_db_cannot_cascade_into_catalog_base() {
+    let mut f = Fixture::new();
+    let a = f.folder("A", None);
+    f.folder("catalog", Some(a));
+    f.ops.context = FsContext::new(
+        &[f.dir.join("root")],
+        &[(f.dir.join("root/catalog"), Protection::CatalogBase)],
+    )
+    .unwrap();
+    assert_eq!(
+        f.ops.remove_folder_from_catalog(a).unwrap_err(),
+        Error::Protected
+    );
+    assert_eq!(f.ops.folder_removal_summary(a).unwrap().subfolder_count, 1);
+}
+#[test]
+fn folder_commit_checks_changed_db_and_rolls_back_without_losing_external_update() {
+    struct Db {
+        conn: rusqlite::Connection,
+        target: std::path::PathBuf,
+        changed: bool,
+    }
+    impl FsDatabase for Db {
+        fn with_conn<T>(
+            &mut self,
+            f: impl FnOnce(&mut rusqlite::Connection) -> Result<T>,
+        ) -> Result<T> {
+            if !self.changed && self.target.exists() {
+                self.conn
+                    .execute("UPDATE files SET name='external' WHERE id=1", [])
+                    .unwrap();
+                self.changed = true;
+            }
+            f(&mut self.conn)
+        }
+    }
+    let mut f = Fixture::new();
+    let a = f.folder("A", None);
+    f.add(1, "A/a.stl");
+    f.assign(1, a);
+    let conn = std::mem::replace(&mut f.ops.db, crate::db::connect_in_memory().unwrap());
+    let mut ops = FileOps::new(
+        FsContext::new(&[f.dir.join("root")], &[]).unwrap(),
+        Journal::open(&f.dir.join("journal")).unwrap(),
+        Db {
+            conn,
+            target: f.dir.join("root/B"),
+            changed: false,
+        },
+        MemoryLedger::default(),
+    );
+    assert_eq!(ops.rename_folder(a, "B"), Err(Error::Changed));
+    assert!(f.dir.join("root/A/a.stl").exists());
+    assert!(!f.dir.join("root/B").exists());
+    assert_eq!(ops.state(1).unwrap().name, "external");
+    assert!(ops.journal.is_empty());
+}
+#[test]
+fn folder_recovery_rejects_replacement_inode_and_ack_only_manual() {
+    let mut f = Fixture::new();
+    let a = f.folder("A", None);
+    f.ops.journal.crash_at = Some(Phase::Renamed);
+    assert!(f.ops.rename_folder(a, "B").is_err());
+    let ids = f.ops.journal.pending_op_ids();
+    assert_eq!(
+        f.ops.journal.acknowledge(&ids),
+        Err(Error::InvalidArguments)
+    );
+    fs::rename(f.dir.join("root/B"), f.dir.join("root/original")).unwrap();
+    fs::create_dir(f.dir.join("root/B")).unwrap();
+    f.ops.journal = Journal::open(&f.dir.join("journal")).unwrap();
+    assert_eq!(f.ops.recover().unwrap().manual, ids);
+    f.ops.journal.acknowledge(&ids).unwrap();
+    assert!(!f.ops.journal.is_blocked());
+    assert!(f.dir.join("root/original").exists());
+    assert!(f.dir.join("root/B").exists());
 }
