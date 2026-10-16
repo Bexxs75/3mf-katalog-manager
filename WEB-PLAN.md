@@ -330,6 +330,14 @@ stage C UI remains separate. Admission uses the import permit and fileops mutex,
 not the authentication changes lock. Destructive limits and backups include
 DB-only catalog removal. Backup days use UTC and require 64 MiB reserve.
 
+Counting rules (Bfix/Bfix2): folder removal charges at most one full window;
+a batch above a window limit gets 422 `limit_exceeded` without `Retry-After`;
+empty-trash blocks count only against the daily limit. `remove_files_from_catalog`
+(6d) changes behaviour even without `KATALOG_FILE_OPS` on purpose: it shares the
+limits (200 per 10 minutes, daily limit) and triggers backups, so it may answer
+429 or 503 `backup_failed` (space DB + 64 MiB, `<db>/backups` not 0700/owner,
+foreign `web-fileops-*.db`); backups live in `<db directory>/backups/`.
+
 Betrieb/Operations: Warnungen und ACK-Verfahren in README.de.md, README.md und
 `docker-web/README.md` beachten: kein paralleler Desktop, Desktop-Purge nach 7 Tagen,
 Root-Papierkorb ohne Web-Automatik, schreibbare Volumes und passende Rechte,

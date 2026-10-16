@@ -29,7 +29,7 @@ impl FsDatabase for DbAdapter {
         &mut self,
         f: impl FnOnce(&mut Connection) -> fsops::Result<T>,
     ) -> fsops::Result<T> {
-        let mut conn = self.connection.lock().map_err(|_| fsops::Error::Internal)?;
+        let mut conn = self.connection.lock().map_err(|_| fsops::Error::RestartRequired)?;
         if let Some(cancel) = &self.cancellation {
             let result = cancel
                 .run(&mut conn, f)

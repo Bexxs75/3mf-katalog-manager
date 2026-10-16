@@ -246,7 +246,7 @@ async fn fileops_file_cycle_password_snapshot_and_strict_contract() {
         )
         .await
         .status(),
-        200
+        422
     );
     assert_eq!(
         f.invoke("delete_files", json!({"fileIds":[id]}))
@@ -419,7 +419,7 @@ async fn revoked_session_after_wait_stops_permanent_delete() {
     let app = f.app.clone();
     let task = tokio::spawn(async move { router(app).oneshot(request).await.unwrap() });
     tokio::time::sleep(std::time::Duration::from_millis(60)).await;
-    f.app.data.lock().unwrap().sessions.remove(&f.session.token);
+    revoke_session(&mut f.app.data.lock().unwrap(), &f.session.token);
     drop(conn);
     let response = task.await.unwrap();
     assert!(response.status() == 401 || value(response).await["kind"] == "not_started");
@@ -526,13 +526,7 @@ async fn db_only_removal_revoked_after_first_delete_rolls_back_all_rows() {
             .update_hook(Some(
                 move |action: rusqlite::hooks::Action, _db: &str, table: &str, _id: i64| {
                     if action == rusqlite::hooks::Action::SQLITE_DELETE && table == "files" {
-                        weak.upgrade()
-                            .unwrap()
-                            .data
-                            .lock()
-                            .unwrap()
-                            .sessions
-                            .remove(&token);
+                        revoke_session(&mut weak.upgrade().unwrap().data.lock().unwrap(), &token);
                     }
                 },
             ))
@@ -560,4 +554,107 @@ async fn db_only_removal_revoked_after_first_delete_rolls_back_all_rows() {
         );
         assert!(f.app.fileops.as_ref().unwrap().available());
     }
+}
+
+#[tokio::test]
+async fn disabled_fileops_have_security_headers() {
+    let f = Fixture::new(false).await;
+    let r = f.invoke("delete_files", json!({"fileIds":["1"]})).await;
+    assert_eq!(r.status(), 404);
+    assert_eq!(r.headers()["cache-control"], "no-store");
+    assert_eq!(r.headers()["x-content-type-options"], "nosniff");
+    assert!(r.headers().contains_key("content-security-policy"));
+}
+#[tokio::test]
+async fn large_folder_removal_is_possible_and_charges_one_window() {
+    let f = Fixture::new(true).await;
+    std::fs::create_dir(f.dir.join("models/large")).unwrap();
+    let folder = {
+        let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        c.execute("INSERT INTO folders(name,path) VALUES('large',?1)", [f.dir.join("models/large").to_str().unwrap()]).unwrap();
+        let folder = c.last_insert_rowid();
+        for n in 0..500 {
+            db::test_insert_minimal_file(&c, f.dir.join(format!("models/large/{n}.3mf")).to_str().unwrap(), Some(folder)).unwrap();
+        }
+        folder.to_string()
+    };
+    let r = f.invoke("remove_folder_from_catalog", json!({"folderId":folder})).await;
+    assert_eq!(r.status(), 200);
+    assert_eq!(value(r).await["modelCount"], 500);
+    let id = f.file("after.3mf");
+    let r = f.invoke("remove_files_from_catalog", json!({"fileIds":[id]})).await;
+    assert_eq!(r.status(), 429);
+    assert_eq!(r.headers()["retry-after"], "600");
+    f.time.0.store(700, Ordering::SeqCst);
+    assert_eq!(f.invoke("remove_files_from_catalog", json!({"fileIds":[id]})).await.status(), 200);
+}
+#[tokio::test]
+async fn poisoned_fileops_mutex_requires_restart_also_for_6d() {
+    let f = Fixture::new(true).await;
+    let rt = f.app.fileops.as_ref().unwrap().clone();
+    let _ = std::thread::spawn(move || { let _guard = rt.state.lock().unwrap(); panic!("poison fixture"); }).join();
+    for (cmd, args) in [("remove_files_from_catalog", json!({"fileIds":["1"]})), ("delete_files", json!({"fileIds":["1"]}))] {
+        let r = f.invoke(cmd, args).await;
+        assert_eq!(r.status(), 503);
+        assert!(!r.headers().contains_key("retry-after"));
+        assert_eq!(value(r).await["kind"], "restart_required");
+    }
+}
+#[tokio::test]
+async fn password_failures_are_charged_to_request_peer() {
+    let f = Fixture::new(true).await;
+    for _ in 0..5 {
+        let mut req = f.request("POST", "/api/invoke/delete_file_permanently", Body::from(json!({"fileId":"1","confirm":true,"password":"wrong"}).to_string()));
+        req.headers_mut().insert("content-type", "application/json".parse().unwrap());
+        req.extensions_mut().insert(axum::extract::ConnectInfo("192.0.2.42:1234".parse::<std::net::SocketAddr>().unwrap()));
+        let _ = router(f.app.clone()).oneshot(req).await.unwrap();
+    }
+    let data = f.app.data.lock().unwrap();
+    assert!(!data.limits.clients.contains_key("test"));
+    assert!(data.limits.clients.contains_key("192.0.2.42"));
+}
+#[test]
+fn fileops_commands_are_all_audited_writes() {
+    for command in crate::write::FILE_OPS_COMMANDS {
+        assert!(WRITE_COMMANDS.contains(command), "{command}");
+    }
+}
+
+#[tokio::test]
+async fn thousand_trash_entries_empty_in_blocks_without_ten_minute_limit() {
+    let f = Fixture::new(true).await;
+    {
+        let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        for n in 0..1000 {
+            let id = db::test_insert_minimal_file(&c, f.dir.join(format!("models/t{n}.3mf")).to_str().unwrap(), None).unwrap();
+            c.execute("UPDATE files SET deleted_at='2026-01-01T00:00:00+00:00' WHERE id=?1", [id]).unwrap();
+        }
+    }
+    let summary = value(f.invoke("empty_trash_summary", json!({})).await).await;
+    let started = f.invoke("empty_trash_start", json!({"expectedCount":1000,"maxDeletedAt":summary["maxDeletedAt"],"password":"test-password-long"})).await;
+    assert_eq!(started.status(), 200);
+    let token = value(started).await["token"].clone();
+    for block in 0..5u64 {
+        f.time.0.store(100 + block * 2, Ordering::SeqCst);
+        let r = f.invoke("empty_trash_block", json!({"token":token})).await;
+        assert_eq!(r.status(), 200, "block {block}");
+        assert_eq!(value(r).await["remaining"], 800 - block * 200);
+    }
+    // The 10-minute pot for single permanent deletions was not consumed by the blocks.
+    let kept = f.file("kept.3mf");
+    assert_eq!(f.invoke("delete_files", json!({"fileIds":[kept]})).await.status(), 200);
+    let r = f.invoke("delete_file_permanently", json!({"fileId":kept,"confirm":true,"password":"test-password-long"})).await;
+    assert_ne!(r.status(), 429);
+}
+#[tokio::test]
+async fn empty_trash_blocks_still_hit_the_daily_limit_with_real_retry_after() {
+    let f = Fixture::new(true).await;
+    f.app.fileops_safety.lock().unwrap().reserve_empty_block_items(2000, 100).unwrap();
+    let id = f.file("a.3mf");
+    assert_eq!(f.invoke("delete_files", json!({"fileIds":[id]})).await.status(), 200);
+    let summary = value(f.invoke("empty_trash_summary", json!({})).await).await;
+    let token = value(f.invoke("empty_trash_start", json!({"expectedCount":1,"maxDeletedAt":summary["maxDeletedAt"],"password":"test-password-long"})).await).await["token"].clone();
+    let r = f.invoke("empty_trash_block", json!({"token":token})).await;
+    assert_eq!(r.status(), 429);
+    assert_eq!(r.headers()["retry-after"], "86400");
 }

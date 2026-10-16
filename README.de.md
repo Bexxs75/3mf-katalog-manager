@@ -235,6 +235,17 @@ Papierkorbleerung startet höchstens einmal je Minute; Snapshot-Blöcke folgen
 frühestens alle 2 Sekunden. Nach 20 Sekunden werden keine weiteren Dateien eines
 Aufrufs begonnen. Endgültiges Löschen und Leerungsstart prüfen das Passwort erneut.
 Logout/Passwortwechsel stoppt vor der nächsten Datei; gestartete Arbeit wird beendet.
+Zählregeln: Das Entfernen eines Ordners aus dem Katalog zählt höchstens ein volles
+Fenster (200 je 10 Minuten bzw. die Tagesgrenze), egal wie viele Modelle er enthält;
+große Ordner bleiben entfernbar. Ein einzelner Stapel über der Fenstergrenze wird mit
+422 `limit_exceeded` (ohne `Retry-After`) abgelehnt. Blöcke der Papierkorbleerung
+zählen nur gegen die Tagesgrenze, nicht gegen den 10-Minuten-Topf des einzelnen
+endgültigen Löschens. `remove_files_from_catalog` wirkt auch ohne `KATALOG_FILE_OPS`:
+Es unterliegt denselben Grenzen (200 je 10 Minuten, Tagesgrenze) und löst Sicherungen
+aus, kann also mit 429 oder mit 503 `backup_failed` scheitern (zu wenig Platz:
+Datenbankgröße + 64 MiB; `<db-Ordner>/backups` nicht 0700 bzw. nicht im Besitz des
+Serverbenutzers; fremde `web-fileops-*.db` dort). Die Sicherungen liegen in
+`<db-Ordner>/backups/`.
 
 Vor destruktiven Änderungen liegen SQLite-Sicherungen in `<db-Ordner>/backups/`:
 eine je **UTC-Kalendertag**, 7 Tage behalten; zusätzliche Ereignissicherungen vor

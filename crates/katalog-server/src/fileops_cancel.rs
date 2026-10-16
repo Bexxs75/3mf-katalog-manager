@@ -17,6 +17,7 @@ impl Cancellation {
             interrupted: Arc::new(AtomicBool::new(false)),
         }
     }
+    pub(crate) fn allowed(&self) -> bool { (self.valid)() }
     pub(crate) fn interrupted(&self) -> bool {
         self.interrupted.load(Ordering::Acquire)
     }
@@ -27,14 +28,15 @@ impl Cancellation {
         conn: &mut Connection,
         f: impl FnOnce(&mut Connection) -> T,
     ) -> Result<T, ()> {
-        if self.interrupted() {
+        if self.interrupted() || !self.allowed() {
+            self.interrupted.store(true, Ordering::Release);
             return Err(());
         }
         let committed = Arc::new(AtomicBool::new(false));
         let progress = self.clone();
         let progress_commit = committed.clone();
         conn.progress_handler(
-            1,
+            1000,
             Some(move || {
                 if progress.interrupted() || progress_commit.load(Ordering::Acquire) {
                     return false;

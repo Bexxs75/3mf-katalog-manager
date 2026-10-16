@@ -20,7 +20,6 @@ struct Snapshot {
     session: String,
     created: u64,
     snapshot: TrashSnapshot,
-    ids: Vec<i64>,
     cutoff: Option<chrono::DateTime<chrono::FixedOffset>>,
 }
 impl Runtime {
@@ -73,11 +72,17 @@ fn core_error(e: fsops::Error) -> Box<Response> {
         &e.to_string(),
     )
 }
-fn retry(seconds: u64) -> Box<Response> {
+pub(super) fn retry(seconds: u64) -> Box<Response> {
     let mut r = failure(429, "rate_limited");
     r.headers_mut()
         .insert(header::RETRY_AFTER, seconds.to_string().parse().unwrap());
     Box::new(r)
+}
+pub(super) fn budget_error(error: crate::fileops_safety::BudgetError) -> Box<Response> {
+    match error {
+        crate::fileops_safety::BudgetError::LimitExceeded => err(422, "limit_exceeded"),
+        crate::fileops_safety::BudgetError::Retry(seconds) => retry(seconds),
+    }
 }
 #[derive(Debug)]
 enum Command {
@@ -141,7 +146,7 @@ fn parse(command: &str, v: &Value) -> Result<Command, Box<Response>> {
             .and_then(Value::as_array)
             .ok_or_else(|| err(400, "invalid_arguments"))?;
         if values.is_empty() || values.len() > 200 {
-            return Err(err(422, "batch_limit"));
+            return Err(err(422, "limit_exceeded"));
         }
         let mut out = Vec::new();
         for value in values {
@@ -161,7 +166,10 @@ fn parse(command: &str, v: &Value) -> Result<Command, Box<Response>> {
     };
     Ok(match command {
         "rename_file" => Command::Rename(id("fileId")?, text("name")?),
-        "move_files_to_folder" => Command::Move(ids()?, nullable("folderId")?),
+        "move_files_to_folder" => {
+            if v.get("folderId") == Some(&Value::Null) { return Err(err(422, "invalid_arguments")); }
+            Command::Move(ids()?, Some(id("folderId")?))
+        },
         "delete_files" => Command::Trash(ids()?),
         "restore_file" => Command::Restore(id("fileId")?),
         "delete_file_permanently" => {
@@ -195,6 +203,23 @@ pub(super) fn valid_session(app: &App, current: &Session) -> bool {
     cleanup(&mut data, app.clock.now());
     data.sessions.contains_key(&current.token) && data.auth.as_ref().is_some_and(|a| !a.must_change)
 }
+/// The deadline starts at the first operation check, i.e. after admission and
+/// backups, so a slow backup cannot make the operation itself "not started".
+/// SQLite hooks only read atomics and the clock, never the session mutex.
+pub(super) fn operation_cancellation(app: &App, current: &Session) -> crate::fileops_cancel::Cancellation {
+    let validity = current.validity.clone();
+    let clock = app.clock.clone();
+    deadline_cancellation(Duration::from_secs(20), move || validity.valid(clock.now()))
+}
+fn deadline_cancellation(
+    limit: Duration,
+    valid: impl Fn() -> bool + Send + Sync + 'static,
+) -> crate::fileops_cancel::Cancellation {
+    let started = std::sync::OnceLock::new();
+    crate::fileops_cancel::Cancellation::new(move || {
+        started.get_or_init(Instant::now).elapsed() < limit && valid()
+    })
+}
 fn backup(app: &App, count: usize, event: bool) -> Result<(), Box<Response>> {
     let conn = app
         .writer
@@ -202,23 +227,24 @@ fn backup(app: &App, count: usize, event: bool) -> Result<(), Box<Response>> {
         .unwrap()
         .conn
         .lock()
-        .map_err(|_| err(500, "internal"))?;
+        .map_err(|_| err(503, "restart_required"))?;
     app.fileops_safety
         .lock()
-        .unwrap()
+        .map_err(|_| err(503, "restart_required"))?
         .ensure_backups(&conn, &app.config.db_path, count, event, app.clock.now())
         .map_err(|_| err(503, "backup_failed"))
 }
 fn reserve(app: &App, kind: DestructiveKind, count: usize) -> Result<(), Box<Response>> {
     app.fileops_safety
         .lock()
-        .unwrap()
+        .map_err(|_| err(503, "restart_required"))?
         .reserve(kind, count, app.clock.now())
-        .map_err(retry)
+        .map_err(budget_error)
 }
 pub(super) async fn invoke(
     app: Arc<App>,
     current: Session,
+    peer: String,
     command: String,
     args: Value,
     admission: tokio::sync::OwnedSemaphorePermit,
@@ -254,13 +280,12 @@ pub(super) async fn invoke(
             .unwrap()
             .password_hash
             .clone();
-        match verify_client(app.clone(), &current.client, hash, pw.clone(), true).await {
+        match verify_client(app.clone(), &peer, hash, pw.clone(), true).await {
             Ok(true) => (),
             Ok(false) => return failure(403, "password_invalid"),
             Err(r) => return *r,
         }
     }
-    let started = Instant::now();
     let worker_rt = rt.clone();
     tokio::task::spawn_blocking(move || {
         let rt = worker_rt;
@@ -295,17 +320,9 @@ pub(super) async fn invoke(
         if !rt.available() || state.ops.journal.is_blocked() {
             return rt.blocked_response();
         }
-        let allowed =
-            || started.elapsed() < Duration::from_secs(20) && valid_session(&app, &current);
-        if !allowed() {
-            return failure(401, "session_expired");
-        }
-        let cancel_app = app.clone();
-        let cancel_session = current.clone();
-        let cancellation = crate::fileops_cancel::Cancellation::new(move || {
-            started.elapsed() < Duration::from_secs(20)
-                && valid_session(&cancel_app, &cancel_session)
-        });
+        let cancellation = operation_cancellation(&app, &current);
+        let check = cancellation.clone();
+        let allowed = move || check.allowed();
         let result = execute(
             &app,
             &current,
@@ -348,6 +365,9 @@ fn execute(
 ) -> Result<Value, Box<Response>> {
     let now = app.clock.now();
     let ops = &mut state.ops;
+    if matches!(&parsed, Command::Rename(..) | Command::Restore(..) | Command::Move(..) | Command::Create(..) | Command::RenameFolder(..) | Command::MoveFolder(..)) && !allowed() {
+        return Err(err(409, "not_started"));
+    }
     let unit = |r: fsops::Result<()>| r.map(|_| Value::Null).map_err(core_error);
     match parsed {
         Command::Rename(id, name) => unit(ops.rename_file(id, &name)),
@@ -390,7 +410,8 @@ fn execute(
             ops.folder_removal_summary(id).map_err(core_error)?;
             let ids = folder_ids(app, id)?;
             progress.set_file_ids(&ids);
-            reserve(app, DestructiveKind::Permanent, ids.len())?;
+            app.fileops_safety.lock().map_err(|_| err(503, "restart_required"))?
+                .reserve_folder(ids.len(), now).map_err(budget_error)?;
             backup(app, ids.len().max(1), true)?;
             if !allowed() {
                 return Err(err(409, "not_started"));
@@ -410,7 +431,7 @@ fn execute(
                 .map_err(core_error)?;
             app.fileops_safety
                 .lock()
-                .unwrap()
+                .map_err(|_| err(503, "restart_required"))?
                 .reserve_empty_start(now)
                 .map_err(retry)?;
             let cutoff_time = cutoff
@@ -418,8 +439,8 @@ fn execute(
                 .map(chrono::DateTime::parse_from_rfc3339)
                 .transpose()
                 .map_err(|_| err(400, "invalid_arguments"))?;
-            let ids = trash_ids(app, cutoff_time)?;
-            progress.set_file_ids(&ids);
+            let ids = snapshot.ids();
+            progress.set_file_ids(ids);
             backup(app, count, true)?;
             if !allowed() {
                 return Err(err(409, "not_started"));
@@ -437,11 +458,9 @@ fn execute(
                     session: current.token.clone(),
                     created: now,
                     snapshot,
-                    ids: ids.clone(),
                     cutoff: cutoff_time,
                 },
             );
-            progress.set_file_ids(&ids);
             Ok(json!({"token":token,"remaining":count}))
         }
         Command::Block(token) => {
@@ -450,21 +469,18 @@ fn execute(
                 .get_mut(&token)
                 .filter(|s| s.session == current.token && now.saturating_sub(s.created) < 3600)
                 .ok_or_else(|| err(404, "snapshot_not_found"))?;
-            let offset = snap.ids.len() - snap.snapshot.remaining();
-            progress.set_file_ids(&snap.ids[offset..(offset + 200).min(snap.ids.len())]);
+            progress.set_file_ids(snap.snapshot.next_block_ids());
             app.fileops_safety
                 .lock()
-                .unwrap()
+                .map_err(|_| err(503, "restart_required"))?
                 .reserve_empty_block(now)
                 .map_err(retry)?;
-            reserve(
-                app,
-                DestructiveKind::Permanent,
-                snap.snapshot.remaining().min(200),
-            )?;
-            let offset = snap.ids.len() - snap.snapshot.remaining();
-            let end = (offset + 200).min(snap.ids.len());
-            let count = eligible(ops, &snap.ids[offset..end], snap.cutoff, true)?;
+            app.fileops_safety
+                .lock()
+                .map_err(|_| err(503, "restart_required"))?
+                .reserve_empty_block_items(snap.snapshot.remaining().min(200), now)
+                .map_err(budget_error)?;
+            let count = eligible(ops, snap.snapshot.next_block_ids(), snap.cutoff, true)?;
             backup(app, count, false)?;
             let results = ops
                 .empty_trash(&mut snap.snapshot, allowed)
@@ -486,7 +502,7 @@ pub(super) fn folder_ids(app: &App, id: i64) -> Result<Vec<i64>, Box<Response>> 
         .unwrap()
         .conn
         .lock()
-        .map_err(|_| err(500, "internal"))?;
+        .map_err(|_| err(503, "restart_required"))?;
     let mut stmt=conn.prepare("WITH RECURSIVE subtree(id) AS (SELECT id FROM folders WHERE id=?1 UNION SELECT f.id FROM folders f JOIN subtree s ON f.parent_id=s.id) SELECT id FROM files WHERE folder_id IN (SELECT id FROM subtree) AND deleted_at IS NULL").map_err(|_|err(500,"internal"))?;
     let result = stmt
         .query_map([id], |r| r.get(0))
@@ -494,34 +510,6 @@ pub(super) fn folder_ids(app: &App, id: i64) -> Result<Vec<i64>, Box<Response>> 
         .collect::<Result<Vec<_>, _>>()
         .map_err(|_| err(500, "internal"));
     result
-}
-
-fn trash_ids(
-    app: &App,
-    cutoff: Option<chrono::DateTime<chrono::FixedOffset>>,
-) -> Result<Vec<i64>, Box<Response>> {
-    let conn = app
-        .writer
-        .as_ref()
-        .unwrap()
-        .conn
-        .lock()
-        .map_err(|_| err(500, "internal"))?;
-    let mut stmt = conn
-        .prepare("SELECT id,deleted_at FROM files WHERE deleted_at IS NOT NULL ORDER BY id")
-        .map_err(|_| err(500, "internal"))?;
-    let rows = stmt
-        .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
-        .map_err(|_| err(500, "internal"))?;
-    let mut ids = Vec::new();
-    for row in rows {
-        let (id, time) = row.map_err(|_| err(500, "internal"))?;
-        let t = chrono::DateTime::parse_from_rfc3339(&time).map_err(|_| err(409, "changed"))?;
-        if cutoff.is_some_and(|c| t <= c) {
-            ids.push(id)
-        }
-    }
-    Ok(ids)
 }
 
 fn eligible(
@@ -586,5 +574,28 @@ mod audit_count_tests {
         .unwrap();
         assert_eq!(dto, json!({"modelCount":3,"folderCount":2}));
         assert_eq!(completed_items("remove_folder_from_catalog", &dto), 5);
+    }
+}
+
+#[cfg(test)]
+mod deadline_tests {
+    use super::*;
+    #[test]
+    fn deadline_starts_at_first_check_not_at_creation() {
+        let c = deadline_cancellation(Duration::from_millis(150), || true);
+        // A slow backup between creation and the first check must not count.
+        std::thread::sleep(Duration::from_millis(250));
+        assert!(c.allowed());
+        std::thread::sleep(Duration::from_millis(250));
+        assert!(!c.allowed());
+    }
+    #[test]
+    fn revoked_validity_stops_even_inside_deadline() {
+        let valid = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let v = valid.clone();
+        let c = deadline_cancellation(Duration::from_secs(20), move || v.load(std::sync::atomic::Ordering::Acquire));
+        assert!(c.allowed());
+        valid.store(false, std::sync::atomic::Ordering::Release);
+        assert!(!c.allowed());
     }
 }

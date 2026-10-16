@@ -55,8 +55,14 @@ pub struct TrashSnapshot {
     cutoff: Option<chrono::DateTime<chrono::FixedOffset>>,
 }
 impl TrashSnapshot {
+    pub fn ids(&self) -> &[i64] { &self.ids }
+    pub fn next_block_ids(&self) -> &[i64] {
+        let end = self.offset.saturating_add(200).min(self.ids.len());
+        self.ids.get(self.offset..end).unwrap_or(&[])
+    }
+
     pub fn remaining(&self) -> usize {
-        self.ids.len() - self.offset
+        self.ids.len().saturating_sub(self.offset)
     }
 }
 #[derive(Debug, Serialize)]
@@ -615,8 +621,7 @@ impl<D: FsDatabase, L: UploadLedger> FileOps<D, L> {
         snapshot: &mut TrashSnapshot,
         allowed: impl FnMut() -> bool,
     ) -> Result<Vec<ItemResult>> {
-        let end = (snapshot.offset + 200).min(snapshot.ids.len());
-        let result = self.batch(&snapshot.ids[snapshot.offset..end], allowed, |s, id| {
+        let result = self.batch(snapshot.next_block_ids(), allowed, |s, id| {
             s.delete_permanently_before(id, snapshot.cutoff)
                 .map(|r| Some(r.kept_on_disk))
                 .map_err(|e| {
@@ -885,5 +890,22 @@ fn observe(r: &Resolved, identity: FileIdentity) -> Result<Observed> {
         Err(Error::NotFound) => Ok(Observed::Absent),
         Err(Error::PathUnresolvable) => Ok(Observed::Foreign),
         Err(e) => Err(e),
+    }
+}
+
+#[cfg(test)]
+mod snapshot_accessor_tests {
+    use super::*;
+    #[test]
+    fn snapshot_blocks_come_only_from_its_own_ids_and_never_underflow() {
+        let mut s = TrashSnapshot { ids: (0..450).collect(), offset: 0, cutoff: None };
+        assert_eq!(s.next_block_ids().len(), 200);
+        assert_eq!(s.remaining(), 450);
+        s.offset = 400;
+        assert_eq!(s.next_block_ids(), &s.ids()[400..450]);
+        // An inconsistent offset must degrade to "nothing left", not panic.
+        s.offset = 900;
+        assert!(s.next_block_ids().is_empty());
+        assert_eq!(s.remaining(), 0);
     }
 }

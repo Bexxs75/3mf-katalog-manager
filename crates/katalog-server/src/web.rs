@@ -122,9 +122,27 @@ pub struct AppConfig {
     pub auth: Option<AuthFile>,
     pub clock: Arc<dyn Clock>,
 }
+struct SessionValidity {
+    revision: std::sync::atomic::AtomicU64,
+    expires: std::sync::atomic::AtomicU64,
+}
+impl SessionValidity {
+    fn new(now: u64) -> Arc<Self> {
+        Arc::new(Self { revision: std::sync::atomic::AtomicU64::new(1), expires: std::sync::atomic::AtomicU64::new(now + 7200) })
+    }
+    fn revoke(&self) { self.revision.fetch_add(1, std::sync::atomic::Ordering::AcqRel); }
+    fn valid(&self, now: u64) -> bool {
+        use std::sync::atomic::Ordering::Acquire;
+        if now >= self.expires.load(Acquire) {
+            let _ = self.revision.compare_exchange(1, 2, std::sync::atomic::Ordering::AcqRel, Acquire);
+        }
+        self.revision.load(Acquire) == 1
+    }
+}
 #[derive(Clone)]
 struct Session {
     token: String,
+    validity: Arc<SessionValidity>,
     csrf: String,
     client: String,
     created: u64,
@@ -469,7 +487,7 @@ async fn limited(req: Request, next: Next, limit: usize) -> Response {
 }
 async fn protect(State(app): State<Arc<App>>, mut req: Request, next: Next) -> Response {
     let command = req.uri().path().strip_prefix("/api/invoke/").unwrap_or("").to_owned();
-    if crate::write::FILE_OPS_COMMANDS.contains(&command.as_str()) && !app.config.file_ops { return fileops::failure(404,"fileops_disabled"); }
+    let fileops_disabled = crate::write::FILE_OPS_COMMANDS.contains(&command.as_str()) && !app.config.file_ops;
     let upload = req.uri().path() == "/api/upload" && app.uploads.is_some();
     let write_command = WRITE_COMMANDS.contains(&command.as_str());
     let write = (write_command || upload) && app.config.write;
@@ -480,7 +498,7 @@ async fn protect(State(app): State<Arc<App>>, mut req: Request, next: Next) -> R
     let upload_audit_name=if uploads::command(&command){Some(command.as_str())}else{match req.uri().path(){"/api/upload"=>Some("upload"),"/api/uploads"=>Some("list_uploads"),"/api/events"=>Some("events"),_=>None}};
     let mut upload_audit=upload_audit_name.filter(|_|app.uploads.is_some()).map(|name|uploads::RequestAudit::new(name,req.headers().get(header::CONTENT_LENGTH).and_then(|v|v.to_str().ok()).and_then(|s|s.parse().ok()).unwrap_or(0),app.clock.now()));
     let api = req.uri().path().starts_with("/api/");
-    let mut response = match request_host(req.headers()) {
+    let mut response = if fileops_disabled { fileops::failure(404,"fileops_disabled") } else { match request_host(req.headers()) {
         Err(e) => if write { error(403, "Ungültiger Host-Header") } else { *e },
         Ok(host) => {
             let allowed = app.config.allowed_hosts.as_ref().is_none_or(|list| {
@@ -517,7 +535,7 @@ async fn protect(State(app): State<Arc<App>>, mut req: Request, next: Next) -> R
                     .unwrap_or_else(|_| error(408, "Zeitlimit für Anfrage überschritten"))
             }
         }
-    };
+    }};
     if let Some(audit) = &mut audit { audit.status = response.status().as_u16(); }
     if let Some(audit) = &mut upload_audit { audit.status = response.status().as_u16(); }
     for (name, value) in [
@@ -562,7 +580,11 @@ fn with_cookie(mut response: Response, token: &str, secure: bool, delete: bool) 
 }
 fn cleanup(data: &mut Data, now: u64) {
     data.sessions
-        .retain(|_, s| now.saturating_sub(s.created) < 43200 && now.saturating_sub(s.seen) < 7200);
+        .retain(|_, s| {
+            let valid = now.saturating_sub(s.created) < 43200 && now.saturating_sub(s.seen) < 7200;
+            if !valid { s.validity.revoke(); }
+            valid
+        });
 }
 fn session(app: &App, h: &HeaderMap, now: u64) -> Option<Session> {
     lookup_session(app,h,now,true)
@@ -582,12 +604,17 @@ fn lookup_session(app: &App, h: &HeaderMap, now:u64, touch:bool)->Option<Session
     let session = data.sessions.get_mut(token)?;
     if touch && now.saturating_sub(session.seen) >= 60 {
         session.seen = now;
+        session.validity.expires.store((now + 7200).min(session.created + 43200), std::sync::atomic::Ordering::Release);
     }
     Some(session.clone())
+}
+fn revoke_session(data: &mut Data, token: &str) {
+    if let Some(session) = data.sessions.remove(token) { session.validity.revoke(); }
 }
 fn new_session(data: &mut Data, client: &str, now: u64) -> Result<Session, Box<Response>> {
     let s = Session {
         token: random_token()?,
+        validity: SessionValidity::new(now),
         csrf: random_token()?,
         client: client.into(),
         created: now,
@@ -609,7 +636,7 @@ fn new_session(data: &mut Data, client: &str, now: u64) -> Result<Session, Box<R
             .min_by_key(|s| s.created)
             .map(|s| s.token.clone())
         {
-            data.sessions.remove(&key);
+            revoke_session(data, &key);
         }
     }
     if data.sessions.len() >= 100 {
@@ -619,7 +646,7 @@ fn new_session(data: &mut Data, client: &str, now: u64) -> Result<Session, Box<R
             .min_by_key(|s| s.created)
             .map(|s| s.token.clone())
         {
-            data.sessions.remove(&key);
+            revoke_session(data, &key);
         }
     }
     data.sessions.insert(s.token.clone(), s.clone());
@@ -773,7 +800,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
         }
         let _change = app.changes.lock().await;
         if let Some(s) = current {
-            app.data.lock().unwrap().sessions.remove(&s.token);
+            revoke_session(&mut app.data.lock().unwrap(), &s.token);
         }
         return with_cookie(
             Json(json!({"ok":true})).into_response(),
@@ -848,7 +875,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
         p if p.starts_with("/api/invoke/") => {
             if uploads::command(command){let command=command.to_owned();return tokio::spawn(async move{uploads::invoke(app,current.unwrap(),&command,args).await}).await.unwrap_or_else(|_|error(500,"import_internal"));}
             if crate::write::FILE_OPS_COMMANDS.contains(&command) {
-                return fileops::invoke(app, current.expect("authenticated fileops"), command.to_owned(), args, admission.unwrap(), audit.unwrap_or_default()).await;
+                return fileops::invoke(app, current.expect("authenticated fileops"), peer.clone(), command.to_owned(), args, admission.unwrap(), audit.expect("fileops audit")).await;
             }
             if is_write {
                 return write_invoke(app, current.expect("authenticated write"), command.to_owned(), args, audit, admission.unwrap()).await;
@@ -1033,6 +1060,7 @@ async fn change_password(
     let active = d.sessions.contains_key(&current.token);
     d.auth = Some(auth);
     d.revision += 1;
+    for session in d.sessions.values() { session.validity.revoke(); }
     d.sessions.clear();
     d.limits.success(&peer);
     event("Passwortänderung", &peer, now);
@@ -1043,6 +1071,7 @@ async fn change_password(
         token.clone(),
         Session {
             token: token.clone(),
+            validity: SessionValidity::new(now),
             csrf: csrf.clone(),
             client: peer,
             created: now,
@@ -1101,7 +1130,7 @@ async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Va
         // 6d participates in the same exclusive filesystem/DB-removal region.
         let _fileops = if removal_ids.is_some() {
             if let Some(rt) = &app.fileops {
-                match rt.state.try_lock() { Ok(g) => Some(g), Err(_) => return crate::write::retry(503) }
+                match rt.state.try_lock() { Ok(g) => Some(g), Err(std::sync::TryLockError::WouldBlock) => return crate::write::retry(503), Err(std::sync::TryLockError::Poisoned(_)) => return fileops::failure(503,"restart_required") }
             } else { None }
         } else { None };
         let mutex = &app.writer.as_ref().unwrap().conn;
@@ -1118,6 +1147,7 @@ async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Va
         let mut conn = match locked {
             Ok(conn) => conn,
             Err(poisoned) => {
+                if removal_ids.is_some() { return fileops::failure(503,"restart_required"); }
                 let conn = poisoned.into_inner();
                 if !conn.is_autocommit() && conn.execute_batch("ROLLBACK").is_err() {
                     eprintln!("write error_kind=poison_rollback");
@@ -1144,11 +1174,9 @@ async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Va
                     Ok(true) => active_count += 1, Ok(false) => (), Err(_) => return fileops::failure(500, "internal"),
                 }
             }
-            let mut safety = app.fileops_safety.lock().unwrap();
-            if let Err(seconds) = safety.reserve(crate::fileops_safety::DestructiveKind::Permanent, active_count, app.clock.now()) {
-                let mut response = fileops::failure(429, "rate_limited");
-                response.headers_mut().insert(header::RETRY_AFTER, seconds.to_string().parse().unwrap());
-                return response;
+            let mut safety = match app.fileops_safety.lock() { Ok(s) => s, Err(_) => return fileops::failure(503,"restart_required") };
+            if let Err(e) = safety.reserve(crate::fileops_safety::DestructiveKind::Permanent, active_count, app.clock.now()) {
+                return *fileops::budget_error(e);
             }
             if safety.ensure_backups(&conn, &app.config.db_path, active_count, true, app.clock.now()).is_err() { return fileops::failure(503, "backup_failed"); }
             drop(safety);
@@ -1159,8 +1187,7 @@ async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Va
             if let Some(progress)=&audit {progress.set_file_ids(ids);}
         }
         let execution = if removal_ids.is_some() {
-            let cancel_app=app.clone();let cancel_session=current.clone();
-            let cancel=crate::fileops_cancel::Cancellation::new(move||started.elapsed()<std::time::Duration::from_secs(20)&&fileops::valid_session(&cancel_app,&cancel_session));
+            let cancel = fileops::operation_cancellation(&app, &current);
             let result=cancel.run(&mut conn,|c|crate::write::execute(c,&command,&args));
             if cancel.interrupted(){return fileops::failure(409,"not_started")}
             match result {Ok(result)=>result,Err(())=>return fileops::failure(500,"internal")}

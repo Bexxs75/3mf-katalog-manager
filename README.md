@@ -384,6 +384,17 @@ count even if they subsequently fail. Empty-trash starts are limited to once per
 minute; snapshot blocks are at least 2 seconds apart. Calls stop starting files
 after 20 seconds. Permanent deletion and empty-trash start recheck the password.
 Logout/password changes stop before the next file; already started work finishes.
+Counting rules: removing a folder from the catalog counts at most one full
+window (200 per 10 minutes, the daily limit) however many models it holds, so
+large folders stay removable; a single batch above a window limit is rejected
+with 422 `limit_exceeded` (no `Retry-After`). Empty-trash blocks count only against
+the daily limit, not against the 10-minute pot of single permanent deletions.
+`remove_files_from_catalog` also works without `KATALOG_FILE_OPS`: it obeys the
+same limits (200 per 10 minutes, daily limit) and triggers backups, so it can fail
+with 429 or with 503 `backup_failed` (too little space: DB size + 64 MiB;
+`<database directory>/backups` not mode 0700 or not owned by the server user;
+foreign `web-fileops-*.db` files there). Backups are stored in
+`<database directory>/backups/`.
 
 SQLite backups in `<database directory>/backups/` precede destructive changes:
 one per **UTC calendar day**, kept for 7 days; separate event backups before

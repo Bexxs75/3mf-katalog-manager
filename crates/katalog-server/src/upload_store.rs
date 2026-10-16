@@ -269,10 +269,7 @@ impl UploadStore {
         let mut journal = inner.journal.clone();
         let (dir, journal_dir, path) = (&self.dir, &self.journal_dir, &self.path);
         journal.entries.retain(|_, e| {
-            if !dir
-                .read(&e.name)
-                .and_then(|f| f.metadata())
-                .is_ok_and(|m| m.dev() == e.dev && m.ino() == e.ino)
+            if dir.checked(&e.name, e.dev, e.ino).is_err()
             {
                 return false;
             }
@@ -393,6 +390,7 @@ impl UploadStore {
                 else {
                     return true;
                 };
+                if self.dir.checked(&e.name, e.dev, e.ino).is_err() { return false; }
                 if ids.get(&self.path.join(&e.name)).is_some_and(|v| v == id) {
                     known.insert(e.id.clone());
                     true

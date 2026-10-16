@@ -8,44 +8,65 @@ pub(crate) enum DestructiveKind {
     Permanent,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BudgetError {
+    LimitExceeded,
+    Retry(u64),
+}
+/// How a reservation is charged against the 10-minute and the daily window.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Charge {
+    /// Same amount in both windows; above a window limit it can never fit.
+    Strict,
+    /// Folder removal: at most one full window per window, so it is never impossible.
+    Folder,
+    /// Trash-emptying blocks: the client is already throttled by the 60 s start and
+    /// 2 s block intervals, so only the daily limit applies (a full 200-block would
+    /// otherwise exhaust the 10-minute pot of single permanent deletions).
+    DailyOnly,
+}
 #[derive(Default)]
 struct Budget {
-    entries: VecDeque<(u64, usize)>,
+    // Each window has its own charge so the modes above can differ per window.
+    entries: VecDeque<(u64, [usize; 2])>,
 }
 impl Budget {
-    fn reserve(&mut self, count: usize, now: u64, daily_limit: usize) -> Result<(), u64> {
-        self.entries
-            .retain(|(at, _)| now.saturating_sub(*at) < 86400);
+    fn reserve(&mut self, count: usize, now: u64, daily_limit: usize, mode: Charge) -> Result<(), BudgetError> {
+        let limits = [(600, 200), (86400, daily_limit)];
+        let impossible = match mode {
+            Charge::Strict => limits.iter().any(|(_, limit)| count > *limit),
+            Charge::Folder => false,
+            Charge::DailyOnly => count > daily_limit,
+        };
+        if impossible {
+            return Err(BudgetError::LimitExceeded);
+        }
+        let charges = match mode {
+            Charge::Strict => [count; 2],
+            Charge::Folder => [count.min(200), count.min(daily_limit)],
+            Charge::DailyOnly => [0, count],
+        };
         let mut retry = 0;
-        for (window, limit) in [(600, 200), (86400, daily_limit)] {
-            let used: usize = self
-                .entries
-                .iter()
+        for (index, (window, limit)) in limits.into_iter().enumerate() {
+            let count = charges[index];
+            let used: usize = self.entries.iter()
                 .filter(|(at, _)| now.saturating_sub(*at) < window)
-                .map(|(_, n)| n)
-                .sum();
+                .map(|(_, n)| n[index]).sum();
             if count.saturating_add(used) > limit {
                 let mut pending = used;
-                let mut wait = window;
                 for (at, n) in &self.entries {
-                    if now.saturating_sub(*at) >= window {
-                        continue;
-                    }
-                    pending = pending.saturating_sub(*n);
+                    if now.saturating_sub(*at) >= window { continue; }
+                    pending = pending.saturating_sub(n[index]);
                     if pending.saturating_add(count) <= limit {
-                        wait = at.saturating_add(window).saturating_sub(now).max(1);
+                        retry = retry.max(at.saturating_add(window).saturating_sub(now).max(1));
                         break;
                     }
                 }
-                retry = retry.max(wait);
             }
         }
-        if retry > 0 {
-            return Err(retry);
-        }
-        if count > 0 {
-            self.entries.push_back((now, count));
-        }
+        if retry > 0 { return Err(BudgetError::Retry(retry)); }
+        self.entries.retain(|(at, _)| now.saturating_sub(*at) < 86400);
+        if count > 0 { self.entries.push_back((now, charges)); }
         Ok(())
     }
 }
@@ -74,12 +95,18 @@ impl FileOpsSafety {
         kind: DestructiveKind,
         count: usize,
         now: u64,
-    ) -> Result<(), u64> {
+    ) -> Result<(), BudgetError> {
         let budget = match kind {
             DestructiveKind::Trash => &mut self.trash,
             DestructiveKind::Permanent => &mut self.permanent,
         };
-        budget.reserve(count, now, self.daily_limit)
+        budget.reserve(count, now, self.daily_limit, Charge::Strict)
+    }
+    pub(crate) fn reserve_folder(&mut self, count: usize, now: u64) -> Result<(), BudgetError> {
+        self.permanent.reserve(count, now, self.daily_limit, Charge::Folder)
+    }
+    pub(crate) fn reserve_empty_block_items(&mut self, count: usize, now: u64) -> Result<(), BudgetError> {
+        self.permanent.reserve(count, now, self.daily_limit, Charge::DailyOnly)
     }
     pub(crate) fn reserve_empty_start(&mut self, now: u64) -> Result<(), u64> {
         interval(&mut self.empty_start, now, 60)
@@ -246,13 +273,47 @@ fn ensure_backups(
 mod tests {
     use super::*;
     #[test]
+    fn batch_above_window_limit_is_rejected_without_retry_and_leaves_budget_unchanged() {
+        let mut safety = FileOpsSafety::new(1000);
+        assert_eq!(safety.reserve(DestructiveKind::Trash, 201, 10), Err(BudgetError::LimitExceeded));
+        assert_eq!(safety.reserve(DestructiveKind::Trash, 200, 10), Ok(()));
+        let mut small = FileOpsSafety::new(50);
+        assert_eq!(small.reserve(DestructiveKind::Permanent, 51, 10), Err(BudgetError::LimitExceeded));
+        assert_eq!(small.reserve(DestructiveKind::Permanent, 50, 10), Ok(()));
+    }
+    #[test]
+    fn folder_removal_is_capped_to_one_window_and_waits_with_real_retry_after() {
+        let mut safety = FileOpsSafety::new(100_000);
+        assert_eq!(safety.reserve_folder(5000, 100), Ok(()));
+        // The 10-minute window is full: a real, finite wait, not a permanent refusal.
+        assert_eq!(safety.reserve_folder(5000, 101), Err(BudgetError::Retry(599)));
+        assert_eq!(safety.reserve_folder(5000, 700), Ok(()));
+        let mut half = FileOpsSafety::new(100_000);
+        assert_eq!(half.reserve(DestructiveKind::Permanent, 100, 100), Ok(()));
+        assert_eq!(half.reserve_folder(500, 150), Err(BudgetError::Retry(550)));
+    }
+    #[test]
+    fn empty_trash_blocks_count_only_against_daily_limit() {
+        let mut safety = FileOpsSafety::new(1200);
+        for block in 0..5 {
+            assert_eq!(safety.reserve_empty_block_items(200, 100 + block * 2), Ok(()));
+        }
+        // The 10-minute pot of single permanent deletions is untouched.
+        assert_eq!(safety.reserve(DestructiveKind::Permanent, 200, 112), Ok(()));
+        // The daily limit still applies, with the real wait until the oldest entry expires.
+        assert_eq!(safety.reserve_empty_block_items(1, 113), Err(BudgetError::Retry(86387)));
+        assert_eq!(safety.reserve_empty_block_items(1, 100 + 86400), Ok(()));
+        let mut small = FileOpsSafety::new(100);
+        assert_eq!(small.reserve_empty_block_items(101, 1), Err(BudgetError::LimitExceeded));
+    }
+    #[test]
     fn budgets_are_atomic_separate_and_rolling() {
         let mut safety = FileOpsSafety::new(250);
         assert_eq!(safety.reserve(DestructiveKind::Trash, 200, 100), Ok(()));
-        assert_eq!(safety.reserve(DestructiveKind::Trash, 1, 101), Err(599));
+        assert_eq!(safety.reserve(DestructiveKind::Trash, 1, 101), Err(BudgetError::Retry(599)));
         assert_eq!(safety.reserve(DestructiveKind::Permanent, 200, 101), Ok(()));
         assert_eq!(safety.reserve(DestructiveKind::Trash, 50, 700), Ok(()));
-        assert_eq!(safety.reserve(DestructiveKind::Trash, 1, 1300), Err(85200));
+        assert_eq!(safety.reserve(DestructiveKind::Trash, 1, 1300), Err(BudgetError::Retry(85200)));
         assert_eq!(safety.reserve(DestructiveKind::Trash, 200, 86500), Ok(()));
     }
     #[test]

@@ -211,7 +211,11 @@ impl WriteProgress {
             // Completed logical items include successful no-ops, not changed rows.
             format!("completed_items={}",self.completed_items.load(Ordering::Relaxed))
         }else{format!("changes={}",self.changes.load(Ordering::Relaxed))};
-        format!("write time={} session={:08x} command={} status={} {} ids={:?}",audit.now,audit.session,audit.command,audit.status,metric,*self.file_ids.lock().unwrap())
+        let ids = self.file_ids.lock().unwrap();
+        let detail = if audit.command == "empty_trash_start" {
+            format!("count={} ids={:?}", ids.len(), &ids[..ids.len().min(10)])
+        } else { format!("ids={:?}", *ids) };
+        format!("write time={} session={:08x} command={} status={} {} {}",audit.now,audit.session,audit.command,audit.status,metric,detail)
     }
 }
 impl Drop for WriteProgress {
@@ -232,6 +236,16 @@ mod fileops_audit_tests {
         let progress=WriteProgress::default();progress.set_file_ids(&[12,34]);progress.completed_items.store(2,Ordering::Relaxed);
         let line=progress.line(&file);assert!(line.contains("ids=[12, 34]"));assert!(line.contains("completed_items=2"));assert!(!line.contains("changes="));
         assert!(!line.contains("secret-session"));assert!(!line.contains("private-model"));
+    }
+    #[test]
+    fn empty_trash_start_logs_count_and_only_first_ten_ids() {
+        let start=WriteAudit{now:1,session:2,command:"empty_trash_start",status:200};
+        let progress=WriteProgress::default();
+        progress.set_file_ids(&(1..=500).collect::<Vec<i64>>());
+        let line=progress.line(&start);
+        assert!(line.contains("count=500"));
+        assert!(line.contains("ids=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]"));
+        assert!(!line.contains("11,"));
     }
 }
 pub(crate) fn retry(status: u16) -> Response {
