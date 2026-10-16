@@ -85,16 +85,33 @@ impl PackageParts {
 }
 
 pub fn read_package<R: Read + Seek>(reader: R) -> Result<PackageParts, ThreeMfError> {
-    read_package_inner(reader, false)
+    read_package_inner(reader, false, None)
 }
 
 /// Geometry needs the original limit error; metadata import retains its fallback.
 pub fn read_geometry_package<R: Read + Seek>(reader: R) -> Result<PackageParts, ThreeMfError> {
-    read_package_inner(reader, true)
+    read_package_inner(reader, true, None)
 }
 
-fn read_package_inner<R: Read + Seek>(reader: R, geometry: bool) -> Result<PackageParts, ThreeMfError> {
+pub(crate) fn read_web_package<R: Read + Seek>(reader: R, limits: crate::import::files::WebImportLimits) -> Result<PackageParts, ThreeMfError> {
+    read_package_inner(reader, false, Some(limits))
+}
+
+fn read_package_inner<R: Read + Seek>(reader: R, geometry: bool, web: Option<crate::import::files::WebImportLimits>) -> Result<PackageParts, ThreeMfError> {
     let mut archive = ZipArchive::new(reader)?;
+
+    // Validate actual decompression, including unused entries and lying ZIP size fields,
+    // before parsing. This streams to a sink and never retains the unpacked archive.
+    if let Some(limits) = web {
+        let mut remaining = limits.max_unpacked_bytes;
+        for index in 0..archive.len() {
+            let mut entry = archive.by_index(index)?;
+            if entry.size() > remaining { return Err(ThreeMfError::ResourceLimitExceeded("unpacked limit".into())); }
+            let count = std::io::copy(&mut (&mut entry).take(remaining.saturating_add(1)), &mut std::io::sink())?;
+            remaining = remaining.checked_sub(count).ok_or_else(|| ThreeMfError::ResourceLimitExceeded("unpacked limit".into()))?;
+        }
+    }
+    let mut mesh_remaining = web.map(|limits| (limits.max_vertices, limits.max_triangles));
 
     // Counts EVERY resource read from the ZIP, including _rels/.rels and the slicer configs.
     let mut total_unpacked: u64 = 0;
@@ -112,11 +129,11 @@ fn read_package_inner<R: Read + Seek>(reader: R, geometry: bool) -> Result<Packa
     check_total_budget(total_unpacked)?;
     let model_path = model_path.unwrap_or_else(|| DEFAULT_MODEL_PATH.to_string());
 
-    let root_model = match read_model_entry(&mut archive, &model_path, MAX_MODEL_XML_BYTES, &mut total_unpacked, geometry) {
+    let root_model = match read_model_entry_limited(&mut archive, &model_path, MAX_MODEL_XML_BYTES, &mut total_unpacked, geometry, &mut mesh_remaining) {
         Ok(model) => model,
         Err(err @ (ThreeMfError::Xml(_) | ThreeMfError::InvalidGeometry(_) | ThreeMfError::InvalidTransform(_) | ThreeMfError::ResourceLimitExceeded(_))) => return Err(err),
         Err(err @ ThreeMfError::EntryTooLarge { .. }) if geometry => return Err(err),
-        Err(_) => match read_model_entry(&mut archive, DEFAULT_MODEL_PATH, MAX_MODEL_XML_BYTES, &mut total_unpacked, geometry) {
+        Err(_) => match read_model_entry_limited(&mut archive, DEFAULT_MODEL_PATH, MAX_MODEL_XML_BYTES, &mut total_unpacked, geometry, &mut mesh_remaining) {
             Ok(model) => model,
             Err(err @ (ThreeMfError::Xml(_) | ThreeMfError::InvalidGeometry(_) | ThreeMfError::InvalidTransform(_) | ThreeMfError::ResourceLimitExceeded(_))) => return Err(err),
             Err(err @ ThreeMfError::EntryTooLarge { .. }) if geometry => return Err(err),
@@ -145,11 +162,11 @@ fn read_package_inner<R: Read + Seek>(reader: R, geometry: bool) -> Result<Packa
         // Missing or broken references are tolerated, an oversized entry is not:
         // otherwise the limit could be bypassed with references just too large, which
         // would then silently be missing.
-        let parsed = match read_model_entry(&mut archive, &path, MAX_MODEL_XML_BYTES, &mut total_unpacked, geometry) {
+        let parsed = match read_model_entry_limited(&mut archive, &path, MAX_MODEL_XML_BYTES, &mut total_unpacked, geometry, &mut mesh_remaining) {
             Ok(model) => model,
             Err(err @ (ThreeMfError::EntryTooLarge { .. } | ThreeMfError::ResourceLimitExceeded(_))) => return Err(err),
             Err(_) => {
-                log::warn!(target: "3mf", "referenced model file missing or not parseable, skipped: {path}");
+                if web.is_none() { log::warn!(target: "3mf", "referenced model file missing or not parseable, skipped: {path}"); }
                 continue;
             }
         };
@@ -272,13 +289,20 @@ impl<R: Read> Read for ModelReader<'_, R> {
     }
 }
 
-fn read_model_entry<R: Read + Seek>(
-    archive: &mut ZipArchive<R>, path: &str, max: u64, total: &mut u64, preview: bool,
+#[cfg(test)]
+fn read_model_entry<R: Read + Seek>(archive: &mut ZipArchive<R>, path: &str, max: u64, total: &mut u64, preview: bool) -> Result<ParsedModel, ThreeMfError> {
+    read_model_entry_limited(archive, path, max, total, preview, &mut None)
+}
+
+fn read_model_entry_limited<R: Read + Seek>(
+    archive: &mut ZipArchive<R>, path: &str, max: u64, total: &mut u64, preview: bool, mesh_remaining: &mut Option<(usize, usize)>,
 ) -> Result<ParsedModel, ThreeMfError> {
     let file = archive.by_name(path)?;
     reject_oversized_entry(path, file.size(), max)?;
     let mut source = ModelReader { inner: file, read: 0, max, total, exceeded_entry: false, exceeded_total: false };
-    let result = if preview {
+    let result = if let Some(limits) = mesh_remaining {
+        super::model_xml::parse_model_xml_reader_with_limits(BufReader::new(&mut source), *limits)
+    } else if preview {
         parse_model_xml_reader_with_preview(BufReader::new(&mut source), true)
     } else {
         parse_model_xml_reader(BufReader::new(&mut source))
@@ -301,6 +325,14 @@ fn read_model_entry<R: Read + Seek>(
         return Err(ThreeMfError::EntryTooLarge { path: path.into(), size: source.read, max });
     }
     check_total_budget(*source.total)?;
+    if let (Ok(model), Some(remaining)) = (&result, mesh_remaining) {
+        for object in model.objects.values() {
+            if let Some(mesh) = &object.mesh {
+                remaining.0 = remaining.0.saturating_sub(mesh.vertices.len());
+                remaining.1 = remaining.1.saturating_sub(mesh.triangles.len());
+            }
+        }
+    }
     result
 }
 

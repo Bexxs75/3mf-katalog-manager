@@ -19,9 +19,13 @@ pub fn parse_obj_file(path: &Path) -> Result<ObjDocument, ObjError> {
 }
 
 pub fn parse_obj_bytes(bytes: &[u8]) -> Result<ObjDocument, ObjError> {
+    parse_obj_bytes_limited(bytes, usize::MAX, None)
+}
+
+pub(crate) fn parse_obj_bytes_limited(bytes: &[u8], vertices: usize, triangles: Option<u64>) -> Result<ObjDocument, ObjError> {
     let text = std::str::from_utf8(bytes)
         .map_err(|_| ObjError::Parse("not valid ASCII/UTF-8 OBJ text".to_string()))?;
-    let (vertices, triangles) = parser::parse(text)?;
+    let (vertices, triangles) = if vertices == usize::MAX && triangles.is_none() { parser::parse(text)? } else { parser::parse_with_limits(text, vertices, triangles)? };
 
     let mut bbox = BoundingBox::empty();
     for v in &vertices {

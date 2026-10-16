@@ -890,3 +890,7 @@ impl TargetChecker for DiskTarget { fn exists(&self, path: &Path) -> bool { path
 impl Default for ImportJobs {
     fn default() -> Self { Self::new(Arc::new(FileReader), Arc::new(DiskTarget), Arc::new(RealClock::default()), Arc::new(NoEvents)) }
 }
+
+impl BatchOptions {
+    pub fn in_place(folder: FixedFolder) -> Self { Self { fixed_folder: Some(folder), transaction: rusqlite::TransactionBehavior::Immediate } }
+}

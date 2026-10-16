@@ -49,6 +49,7 @@ impl Fixture {
         };
         let session = new_session(&mut data, "test", 100).unwrap();
         let app = Arc::new(App {
+            uploads:None,
             writer: write.then(|| WriteGate::new(db::open_read_write(&path).unwrap())),
             config,
             clock: time.clone(),
@@ -133,8 +134,8 @@ async fn all_disabled_commands_leave_catalog_hash_and_sidecar_names_unchanged() 
         n
     };
     let before = names();
-    assert_eq!(WRITE_COMMANDS.len(), 32);
-    assert_eq!(crate::READ_COMMANDS.len(), 20);
+    assert_eq!(WRITE_COMMANDS.len(), 35);
+    assert_eq!(crate::READ_COMMANDS.len(), 22);
     for cmd in WRITE_COMMANDS {
         assert_eq!(f.send(cmd, json!({})).await.status(), 404, "{cmd}");
     }
@@ -1344,4 +1345,15 @@ async fn manager_http_printer_details_reject_unknown_keys_without_changes() {
     let p = value(f.send("add_printer", json!({"name":"P","holderName":"H"})).await).await;
     assert_eq!(f.send("update_printer_details", json!({"id":p["id"],"details":{"manufacturer":"Changed","nozzleMM":0.4}})).await.status(), 422);
     assert_eq!(value(f.send("list_printers", json!({})).await).await[0], p);
+}
+
+#[tokio::test]
+async fn session_explicitly_reports_upload_disabled() {
+    let fixture = Fixture::new(true);
+    let request = Request::builder().uri("/api/session").header("host", "localhost:8080")
+        .header("cookie", format!("katalog_session={}", fixture.session.token))
+        .body(Body::empty()).unwrap();
+    let response = router(fixture.app.clone()).oneshot(request).await.unwrap();
+    let value: Value = serde_json::from_slice(&to_bytes(response.into_body(), 65536).await.unwrap()).unwrap();
+    assert_eq!(value["uploadable"], false);
 }

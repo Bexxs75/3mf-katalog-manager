@@ -1,3 +1,5 @@
+#[path = "uploads.rs"]
+mod uploads;
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,6 +257,7 @@ struct Data {
     revision: u64,
 }
 struct App {
+    uploads: Option<Arc<uploads::Runtime>>,
     writer: Option<WriteGate>,
     config: Config,
     clock: Arc<dyn Clock>,
@@ -283,6 +286,7 @@ fn event(kind: &str, client: &str, now: u64) {
 }
 
 pub async fn initialize(mut config: Config) -> Result<Router, String> {
+    crate::config::validate_upload_config(&mut config)?;
     validate_write_config(&config)?;
     let writer = open_catalog(&config).await?;
     let auth = if config.allow_no_auth {
@@ -298,12 +302,12 @@ pub async fn initialize(mut config: Config) -> Result<Router, String> {
             .await?,
         )
     };
-    Ok(build_app_with_writer(AppConfig { config, auth, clock: Arc::new(SystemClock) }, writer))
+    build_app_with_writer(AppConfig { config, auth, clock: Arc::new(SystemClock) }, writer)
 }
 /// Read-only convenience builder. Fallible write startup uses `try_build_app`.
 pub fn build_app(config: AppConfig) -> Router {
-    assert!(!config.config.write, "use try_build_app for write mode");
-    build_app_with_writer(config, None)
+    assert!(!config.config.write && config.config.upload.is_none(), "use try_build_app for write/upload mode");
+    build_app_with_writer(config, None).expect("read-only startup")
 }
 fn validate_write_config(config: &Config) -> Result<(), String> {
     if config.write && (config.allow_no_auth || config.allowed_hosts.as_ref().is_none_or(|h| h.is_empty())) {
@@ -320,14 +324,17 @@ async fn open_catalog(config: &Config) -> Result<Option<WriteGate>, String> {
     }).await.map_err(|_| "Katalogprüfung fehlgeschlagen".to_string())?
       .map_err(|e| if write { format!("Katalog kann nicht schreibend geöffnet werden: {e}") } else { format!("Katalog kann nicht nur lesend geöffnet werden: {e}") })
 }
-pub async fn try_build_app(config: AppConfig) -> Result<Router, String> {
+pub async fn try_build_app(mut config: AppConfig) -> Result<Router, String> {
+    crate::config::validate_upload_config(&mut config.config)?;
     validate_write_config(&config.config)?;
     if config.config.write && config.auth.is_none() { return Err("Anmeldung fehlt".into()); }
     let writer = open_catalog(&config.config).await?;
-    Ok(build_app_with_writer(config, writer))
+    build_app_with_writer(config, writer)
 }
-fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>) -> Router {
+fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>) -> Result<Router,String> {
+    let uploads = uploads::initialize(&config.config)?;
     let app = Arc::new(App {
+        uploads,
         writer,
         config: config.config,
         clock: config.clock,
@@ -341,7 +348,7 @@ fn build_app_with_writer(config: AppConfig, writer: Option<WriteGate>) -> Router
         geometry: Arc::new(GeometryGate::default()),
         downloads: Arc::new(tokio::sync::Semaphore::new(4)),
     });
-    router(app)
+    Ok(router(app))
 }
 fn router(app: Arc<App>) -> Router {
     Router::new()
@@ -451,12 +458,15 @@ async fn limited(req: Request, next: Next, limit: usize) -> Response {
 }
 async fn protect(State(app): State<Arc<App>>, mut req: Request, next: Next) -> Response {
     let command = req.uri().path().strip_prefix("/api/invoke/").unwrap_or("").to_owned();
+    let upload = req.uri().path() == "/api/upload" && app.uploads.is_some();
     let write_command = WRITE_COMMANDS.contains(&command.as_str());
-    let write = write_command && app.config.write;
-    let limit = if write { body_limit(&command) } else { 65536 };
-    let mut audit = write.then(|| AuditCompletion::new(&command, req.headers(), cookie_name(secure(&app, req.headers())), app.clock.now()));
+    let write = (write_command || upload) && app.config.write;
+    let limit = if upload { app.config.upload.as_ref().unwrap().max_bytes as usize } else if write { body_limit(&command) } else { 65536 };
+    let mut audit = (write && !upload).then(|| AuditCompletion::new(&command, req.headers(), cookie_name(secure(&app, req.headers())), app.clock.now()));
     if let Some(audit) = &audit { req.extensions_mut().insert(audit.progress.clone()); }
 
+    let upload_audit_name=if uploads::command(&command){Some(command.as_str())}else{match req.uri().path(){"/api/upload"=>Some("upload"),"/api/uploads"=>Some("list_uploads"),"/api/events"=>Some("events"),_=>None}};
+    let mut upload_audit=upload_audit_name.filter(|_|app.uploads.is_some()).map(|name|uploads::RequestAudit::new(name,req.headers().get(header::CONTENT_LENGTH).and_then(|v|v.to_str().ok()).and_then(|s|s.parse().ok()).unwrap_or(0),app.clock.now()));
     let api = req.uri().path().starts_with("/api/");
     let mut response = match request_host(req.headers()) {
         Err(e) => if write { error(403, "Ungültiger Host-Header") } else { *e },
@@ -483,6 +493,8 @@ async fn protect(State(app): State<Arc<App>>, mut req: Request, next: Next) -> R
                 && (!origin_ok(&app, req.headers()) || (write && app.config.write && !req.headers().contains_key(header::ORIGIN)))
             {
                 error(403, "Origin nicht zugelassen")
+            } else if upload {
+                tokio::time::timeout(std::time::Duration::from_secs(3600), next.run(req)).await.unwrap_or_else(|_| error(408,"upload_timeout"))
             } else if req.uri().path() == "/api/invoke/get_model_geometry" {
                 // Geometry processing has its own bounded admission; its body
                 // still has the same 15-second read deadline as other routes.
@@ -495,6 +507,7 @@ async fn protect(State(app): State<Arc<App>>, mut req: Request, next: Next) -> R
         }
     };
     if let Some(audit) = &mut audit { audit.status = response.status().as_u16(); }
+    if let Some(audit) = &mut upload_audit { audit.status = response.status().as_u16(); }
     for (name, value) in [
         (
             "content-security-policy",
@@ -540,6 +553,9 @@ fn cleanup(data: &mut Data, now: u64) {
         .retain(|_, s| now.saturating_sub(s.created) < 43200 && now.saturating_sub(s.seen) < 7200);
 }
 fn session(app: &App, h: &HeaderMap, now: u64) -> Option<Session> {
+    lookup_session(app,h,now,true)
+}
+fn lookup_session(app: &App, h: &HeaderMap, now:u64, touch:bool)->Option<Session>{
     let mut data = app.data.lock().unwrap();
     cleanup(&mut data, now);
     let name = cookie_name(secure(app, h));
@@ -552,7 +568,7 @@ fn session(app: &App, h: &HeaderMap, now: u64) -> Option<Session> {
         .find(|(n, _)| *n == name)?
         .1;
     let session = data.sessions.get_mut(token)?;
-    if now.saturating_sub(session.seen) >= 60 {
+    if touch && now.saturating_sub(session.seen) >= 60 {
         session.seen = now;
     }
     Some(session.clone())
@@ -635,6 +651,8 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
     let method = req.method().clone();
     let command = path.strip_prefix("/api/invoke/").unwrap_or("");
     let is_write = WRITE_COMMANDS.contains(&command);
+    let upload_route=matches!(path.as_str(),"/api/upload"|"/api/uploads"|"/api/events")||uploads::command(command);
+    if upload_route && app.uploads.is_none(){return error(404,"upload_disabled");}
     if is_write && !app.config.write { return error(404, "Befehl im Web nicht verfügbar"); }
     let audit = req.extensions().get::<Arc<WriteProgress>>().cloned();
     let download_id = path
@@ -645,7 +663,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
     if path == "/api" || path.starts_with("/api/") {
         if !matches!(
             path.as_str(),
-            "/api/health" | "/api/session" | "/api/login" | "/api/logout" | "/api/password"
+            "/api/health" | "/api/session" | "/api/login" | "/api/logout" | "/api/password" | "/api/upload" | "/api/uploads" | "/api/events"
         ) && !path.starts_with("/api/invoke/")
             && download_id.is_none()
         {
@@ -666,7 +684,17 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
     };
     let headers = req.headers().clone();
     let is_secure = secure(&app, &headers);
-    let current = session(&app, &headers, now);
+    let current = if path=="/api/events"{lookup_session(&app,&headers,now,false)}else{session(&app,&headers,now)};
+    if upload_route {
+        let Some(s)=&current else{return error(401,"session_required")};
+        if !uploads::authenticated(&app,s){return error(403,"password_change_required")}
+        if path=="/api/events" || path=="/api/uploads" {
+            if method!=Method::GET{return error(405,"method")}
+            if path=="/api/events"{return uploads::events(app,s.clone(),&headers)}
+            return uploads::list(app.uploads.as_ref().unwrap())
+        }
+        if method!=Method::POST{return error(405,"method")}
+    }
     if let Some(id) = download_id {
         if method != Method::GET {
             return error(405, "Methode nicht erlaubt");
@@ -699,7 +727,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
         let must_change = current.is_some() && app.data.lock().unwrap().auth.as_ref().is_some_and(|a| a.must_change);
         return match path.as_str() {
             "/api/health"=>Json(json!({"ok":true})).into_response(),
-            "/api/session"=>Json(json!({"authenticated":app.config.allow_no_auth || current.is_some(),"mustChangePassword":must_change,"writable":app.config.write && current.is_some() && !must_change,"csrfToken":current.as_ref().map(|s|&s.csrf)})).into_response(),
+            "/api/session"=>Json(json!({"authenticated":app.config.allow_no_auth || current.is_some(),"mustChangePassword":must_change,"writable":app.config.write && current.is_some() && !must_change,"uploadable":app.uploads.is_some() && current.is_some() && !must_change,"csrfToken":current.as_ref().map(|s|&s.csrf)})).into_response(),
             "/"=>([(header::CONTENT_TYPE,"text/html; charset=utf-8")],include_str!("../static/index.html")).into_response(),
             "/static/app.js"=>([(header::CONTENT_TYPE,"application/javascript; charset=utf-8")],include_str!("../static/app.js")).into_response(),
             "/static/app.css"=>([(header::CONTENT_TYPE,"text/css; charset=utf-8")],include_str!("../static/app.css")).into_response(),
@@ -725,6 +753,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
             return error(403, "Ungültiges CSRF-Token");
         }
     }
+    if path == "/api/upload" { return uploads::upload(app,current.unwrap(),req).await; }
     if path == "/api/logout" {
         if let Err(e) = read_body(req.into_body()).await {
             return *e;
@@ -765,7 +794,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
     }
     // Reserve before buffering, including for chunked uploads. RAII releases the
     // place on invalid input, timeout or cancellation, then hands it to the worker.
-    let admission = if is_write {
+    let admission = if is_write && !uploads::command(command) {
         match admit_write(&app, current.as_ref().expect("authenticated write")) {
             Ok(permit) => Some(permit),
             Err(response) => return *response,
@@ -804,6 +833,7 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
             }
         }
         p if p.starts_with("/api/invoke/") => {
+            if uploads::command(command){let command=command.to_owned();return tokio::spawn(async move{uploads::invoke(app,current.unwrap(),&command,args).await}).await.unwrap_or_else(|_|error(500,"import_internal"));}
             if is_write {
                 return write_invoke(app, current.expect("authenticated write"), command.to_owned(), args, audit, admission.unwrap()).await;
             }
@@ -907,7 +937,7 @@ async fn login(app: Arc<App>, peer: String, now: u64, secure: bool, args: Value)
         Ok(s) => s,
         Err(e) => return *e,
     };
-    with_cookie(Json(json!({"ok":true,"mustChangePassword":d.auth.as_ref().unwrap().must_change,"writable":app.config.write && !d.auth.as_ref().unwrap().must_change,"csrfToken":s.csrf})).into_response(),&s.token,secure,false)
+    with_cookie(Json(json!({"ok":true,"mustChangePassword":d.auth.as_ref().unwrap().must_change,"writable":app.config.write && !d.auth.as_ref().unwrap().must_change,"uploadable":app.uploads.is_some() && !d.auth.as_ref().unwrap().must_change,"csrfToken":s.csrf})).into_response(),&s.token,secure,false)
 }
 async fn change_password(
     app: Arc<App>,
@@ -1005,7 +1035,7 @@ async fn change_password(
         },
     );
     with_cookie(
-        Json(json!({"ok":true,"mustChangePassword":false,"writable":app.config.write,"csrfToken":csrf})).into_response(),
+        Json(json!({"ok":true,"mustChangePassword":false,"writable":app.config.write,"uploadable":app.uploads.is_some(),"csrfToken":csrf})).into_response(),
         &token,
         secure,
         false,
@@ -1028,12 +1058,23 @@ fn admit_write(app: &App, current: &Session) -> Result<tokio::sync::OwnedSemapho
 }
 async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Value, audit: Option<Arc<WriteProgress>>, admission: tokio::sync::OwnedSemaphorePermit) -> Response {
     let gate = app.writer.as_ref().expect("write connection initialized");
-    let Ok(worker) = gate.worker.clone().acquire_owned().await else { return crate::write::retry(503); };
+    let started=std::time::Instant::now();
+    let Ok(Ok(worker)) = tokio::time::timeout(std::time::Duration::from_secs(5),gate.worker.clone().acquire_owned()).await else { return crate::write::retry(503); };
     // Permits live with blocking work, including after HTTP timeout/disconnect.
-    tokio::task::spawn_blocking(move || {
+    let work=tokio::task::spawn_blocking(move || {
         let (_admission, _worker) = (admission, worker);
         let mutex = &app.writer.as_ref().unwrap().conn;
-        let mut conn = match mutex.lock() {
+        let deadline=started+std::time::Duration::from_secs(5);
+        let locked=loop {
+            if std::time::Instant::now()>=deadline{return crate::write::retry(503)}
+            match mutex.try_lock(){
+                Err(std::sync::TryLockError::WouldBlock) if std::time::Instant::now()<deadline=>std::thread::sleep(std::time::Duration::from_millis(5)),
+                Err(std::sync::TryLockError::WouldBlock)=>return crate::write::retry(503),
+                Err(std::sync::TryLockError::Poisoned(e))=>break Err(e),
+                Ok(c)=>break Ok(c),
+            }
+        };
+        let mut conn = match locked {
             Ok(conn) => conn,
             Err(poisoned) => {
                 let conn = poisoned.into_inner();
@@ -1062,9 +1103,14 @@ async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Va
             }
             Err(response) => *response,
         }
-    }).await.unwrap_or_else(|_| error(500, "Interner Schreibfehler"))
+    });
+    work.await.unwrap_or_else(|_|error(500,"Interner Schreibfehler"))
 }
 
 #[cfg(test)]
 #[path = "write_tests.rs"]
 mod write_tests;
+
+#[cfg(test)]
+#[path = "upload_http_tests.rs"]
+mod upload_http_tests;

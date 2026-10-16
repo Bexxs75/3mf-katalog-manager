@@ -14,6 +14,10 @@ pub fn parse(text: &str) -> Result<ObjGeometry, ObjError> {
 }
 
 pub fn parse_with_triangle_limit(text: &str, max_triangles: Option<u64>) -> Result<ObjGeometry, ObjError> {
+    parse_with_limits(text, usize::MAX, max_triangles)
+}
+
+pub(super) fn parse_with_limits(text: &str, max_vertices: usize, max_triangles: Option<u64>) -> Result<ObjGeometry, ObjError> {
     let mut vertices: Vec<[f64; 3]> = Vec::new();
     let mut triangles: Vec<[u32; 3]> = Vec::new();
 
@@ -27,6 +31,7 @@ pub fn parse_with_triangle_limit(text: &str, max_triangles: Option<u64>) -> Resu
 
         match keyword {
             "v" => {
+                if vertices.len() >= max_vertices { return Err(ObjError::TooLarge); }
                 let coords: Vec<f64> = tokens
                     .take(3)
                     .map(|t| t.parse::<f64>())

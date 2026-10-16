@@ -10,6 +10,14 @@ use std::{
 // Terminal; ein laufender Server übernimmt die Datei erst nach einem Neustart.
 // Ein vertrauenswürdiger Proxy muss X-Forwarded-For anhängen oder überschreiben.
 #[derive(Clone)]
+pub struct UploadConfig {
+    pub dir: PathBuf,
+    pub max_bytes: u64,
+    pub max_files: usize,
+    pub limits: katalog_core::import::files::WebImportLimits,
+}
+
+#[derive(Clone)]
 pub struct Config {
     pub db_path: PathBuf,
     pub static_dir: Option<PathBuf>,
@@ -20,6 +28,7 @@ pub struct Config {
     pub trust_proxy: bool,
     pub allow_no_auth: bool,
     pub write: bool,
+    pub upload: Option<UploadConfig>,
     pub password: Option<String>,
     pub password_file: Option<PathBuf>,
 }
@@ -75,9 +84,14 @@ impl Config {
             .parse()
             .map_err(|_| "KATALOG_BIND ist keine gültige IP-Adresse mit Port".to_string())?;
         let write = lookup("KATALOG_WRITE").as_deref() == Some("1");
-        if write && (lookup("KATALOG_ALLOW_NO_AUTH").as_deref() == Some("1")
-            || lookup("KATALOG_ALLOWED_HOSTS").is_none_or(|s| s.trim().is_empty())) {
-            return Err("KATALOG_WRITE erfordert Anmeldung und eine explizite KATALOG_ALLOWED_HOSTS-Liste".into());
+        if write
+            && (lookup("KATALOG_ALLOW_NO_AUTH").as_deref() == Some("1")
+                || lookup("KATALOG_ALLOWED_HOSTS").is_none_or(|s| s.trim().is_empty()))
+        {
+            return Err(
+                "KATALOG_WRITE erfordert Anmeldung und eine explizite KATALOG_ALLOWED_HOSTS-Liste"
+                    .into(),
+            );
         }
         let allow_no_auth = lookup("KATALOG_ALLOW_NO_AUTH").as_deref() == Some("1");
         if allow_no_auth && !bind.ip().is_loopback() {
@@ -119,7 +133,31 @@ impl Config {
                 None
             }
         };
-        Ok(Self {
+        let max_mb = positive_limit(&lookup, "KATALOG_UPLOAD_MAX_MB", 1024, 4096)?;
+        let max_files = positive_limit(&lookup, "KATALOG_UPLOAD_MAX_FILES", 2, 32)?;
+        let mesh_mb = positive_limit(&lookup, "KATALOG_IMPORT_MAX_MESH_MB", 512, 512)?;
+        let unpacked_mb = positive_limit(&lookup, "KATALOG_IMPORT_MAX_UNPACKED_MB", 1024, 1024)?;
+        let vertices =
+            positive_limit(&lookup, "KATALOG_IMPORT_MAX_VERTICES", 2_000_000, 2_000_000)?;
+        let triangles = positive_limit(
+            &lookup,
+            "KATALOG_IMPORT_MAX_TRIANGLES",
+            3_000_000,
+            3_000_000,
+        )?;
+        let upload = lookup("KATALOG_UPLOAD_DIR").map(|dir| UploadConfig {
+            dir: PathBuf::from(dir),
+            max_bytes: max_mb * 1024 * 1024,
+            max_files: max_files as usize,
+            limits: katalog_core::import::files::WebImportLimits {
+                max_file_bytes: max_mb * 1024 * 1024,
+                max_mesh_file_bytes: mesh_mb * 1024 * 1024,
+                max_unpacked_bytes: unpacked_mb * 1024 * 1024,
+                max_vertices: vertices as usize,
+                max_triangles: triangles as usize,
+            },
+        });
+        let mut config = Self {
             static_dir,
             db_path,
             roots,
@@ -129,10 +167,160 @@ impl Config {
             trust_proxy,
             allow_no_auth,
             write,
+            upload,
             password,
             password_file,
-        })
+        };
+        validate_upload_config(&mut config)?;
+        Ok(config)
     }
+}
+
+fn positive_limit(
+    lookup: &impl Fn(&str) -> Option<String>,
+    key: &str,
+    default: u64,
+    max: u64,
+) -> Result<u64, String> {
+    match lookup(key) {
+        None => Ok(default),
+        Some(value) => value
+            .parse::<u64>()
+            .ok()
+            .filter(|n| {
+                !value.is_empty()
+                    && value.bytes().all(|b| b.is_ascii_digit())
+                    && *n > 0
+                    && *n <= max
+            })
+            .ok_or_else(|| format!("{key} muss eine ganze Zahl zwischen 1 und {max} sein")),
+    }
+}
+
+/// Validate direct programmatic configuration as well as environment configuration.
+/// Upload directories must already exist; no directories are created on startup.
+pub fn validate_upload_config(config: &mut Config) -> Result<(), String> {
+    let Some(upload) = config.upload.as_mut() else {
+        return Ok(());
+    };
+    if !config.write
+        || config.allow_no_auth
+        || config
+            .allowed_hosts
+            .as_ref()
+            .is_none_or(|hosts| hosts.is_empty())
+    {
+        return Err(
+            "Uploads erfordern KATALOG_WRITE=1, Anmeldung und KATALOG_ALLOWED_HOSTS".into(),
+        );
+    }
+    let journal=config.auth_file.with_file_name("web-uploads.json");
+    if journal==config.auth_file || validate_auth_path(&config.db_path,&journal).is_err(){
+        return Err("Upload-Journal kollidiert mit Auth-Datei oder Katalog".into());
+    }
+    if upload.max_bytes == 0
+        || upload.max_bytes > 4096 * 1024 * 1024
+        || upload.max_files == 0
+        || upload.max_files > 32
+    {
+        return Err("Ungültige Upload-Grenzen".into());
+    }
+    let limits = &upload.limits;
+    if limits.max_file_bytes == 0
+        || limits.max_file_bytes > upload.max_bytes
+        || limits.max_mesh_file_bytes == 0
+        || limits.max_mesh_file_bytes > 512 * 1024 * 1024
+        || limits.max_unpacked_bytes == 0
+        || limits.max_unpacked_bytes > 1024 * 1024 * 1024
+        || limits.max_vertices == 0
+        || limits.max_vertices > 2_000_000
+        || limits.max_triangles == 0
+        || limits.max_triangles > 3_000_000
+    {
+        return Err("Ungültige Web-Parsergrenzen".into());
+    }
+    let metadata = std::fs::symlink_metadata(&upload.dir)
+        .map_err(|_| "KATALOG_UPLOAD_DIR ist nicht zugänglich".to_string())?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err("KATALOG_UPLOAD_DIR muss ein Verzeichnis ohne Symlink sein".into());
+    }
+    upload.dir = upload
+        .dir
+        .canonicalize()
+        .map_err(|_| "KATALOG_UPLOAD_DIR ist nicht zugänglich".to_string())?;
+    for root in &mut config.roots {
+        *root = root
+            .canonicalize()
+            .map_err(|_| "KATALOG_ROOTS ist nicht zugänglich".to_string())?;
+        if !root.is_dir() {
+            return Err("KATALOG_ROOTS muss Verzeichnisse enthalten".into());
+        }
+    }
+    if !config.roots.iter().any(|root| upload.dir.starts_with(root)) {
+        return Err("KATALOG_UPLOAD_DIR muss unter KATALOG_ROOTS liegen".into());
+    }
+    let parent = |path: &std::path::Path| {
+        path.parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .to_path_buf()
+    };
+    let db_location = config
+        .db_path
+        .canonicalize()
+        .unwrap_or_else(|_| config.db_path.clone());
+    let auth_location = config
+        .auth_file
+        .canonicalize()
+        .unwrap_or_else(|_| config.auth_file.clone());
+    let db_dir = parent(&db_location)
+        .canonicalize()
+        .map_err(|_| "DB-Verzeichnis ist nicht zugänglich".to_string())?;
+    let auth_dir = parent(&auth_location)
+        .canonicalize()
+        .map_err(|_| "Auth-Verzeichnis ist nicht zugänglich".to_string())?;
+    let configured_db_dir = parent(&config.db_path)
+        .canonicalize()
+        .map_err(|_| "DB-Verzeichnis ist nicht zugänglich".to_string())?;
+    let configured_auth_dir = parent(&config.auth_file)
+        .canonicalize()
+        .map_err(|_| "Auth-Verzeichnis ist nicht zugänglich".to_string())?;
+    let trash = configured_db_dir.join("trash");
+    let mut excluded = vec![
+        db_dir,
+        auth_dir,
+        configured_db_dir,
+        configured_auth_dir,
+        trash.canonicalize().unwrap_or(trash),
+    ];
+    if let Some(static_dir) = &config.static_dir {
+        excluded.push(
+            static_dir
+                .canonicalize()
+                .map_err(|_| "Static-Verzeichnis ist nicht zugänglich".to_string())?,
+        );
+    }
+    if excluded
+        .iter()
+        .any(|path| upload.dir.starts_with(path) || path.starts_with(&upload.dir))
+    {
+        return Err("KATALOG_UPLOAD_DIR überschneidet sich mit DB, Auth, Trash oder Static".into());
+    }
+    // A real create/write/fsync/remove probe catches read-only mounts and ACLs.
+    let mut nonce = [0u8; 16];
+    getrandom::fill(&mut nonce).map_err(|_| "Upload-Schreibprüfung fehlgeschlagen".to_string())?;
+    let probe = format!(".upload-probe-{:032x}.part",u128::from_ne_bytes(nonce));
+    let directory=katalog_core::upload_fs::Directory::open(&upload.dir)
+        .map_err(|_|"KATALOG_UPLOAD_DIR ist nicht schreibbar".to_string())?;
+    let mut file=directory.create(&probe)
+        .map_err(|_|"KATALOG_UPLOAD_DIR ist nicht schreibbar".to_string())?;
+    use std::io::Write;
+    let result=file.write_all(b"upload probe").and_then(|_|file.sync_all());
+    drop(file);
+    let removed=directory.unlink(&probe).and_then(|_|directory.sync());
+    result
+        .and(removed)
+        .map_err(|_| "KATALOG_UPLOAD_DIR ist nicht schreibbar".to_string())
 }
 
 /// Reject the catalog and its SQLite sidecars before any password-file write.
@@ -242,6 +430,88 @@ mod tests {
         })
     }
     #[test]
+    fn upload_limits_are_validated_even_when_disabled() {
+        assert!(config(&[]).unwrap().upload.is_none());
+        for key in [
+            "KATALOG_UPLOAD_MAX_MB",
+            "KATALOG_UPLOAD_MAX_FILES",
+            "KATALOG_IMPORT_MAX_MESH_MB",
+            "KATALOG_IMPORT_MAX_UNPACKED_MB",
+            "KATALOG_IMPORT_MAX_VERTICES",
+            "KATALOG_IMPORT_MAX_TRIANGLES",
+        ] {
+            for bad in ["", "0", "-1", "+1", " 1", "1.5", "999999999999999999999999"] {
+                assert!(config(&[(key, bad)]).is_err(), "{key}={bad}");
+            }
+        }
+        assert!(config(&[("KATALOG_UPLOAD_MAX_MB", "4097")]).is_err());
+        assert!(config(&[("KATALOG_UPLOAD_MAX_FILES", "33")]).is_err());
+        assert!(config(&[("KATALOG_IMPORT_MAX_MESH_MB", "513")]).is_err());
+        assert!(config(&[("KATALOG_UPLOAD_MAX_MB", "4096")]).is_ok());
+        assert!(config(&[("KATALOG_UPLOAD_DIR", "/models")]).is_err());
+    }
+
+    #[test]
+    fn upload_paths_are_canonical_disjoint_and_writeable() {
+        let mut nonce = [0u8; 16];
+        getrandom::fill(&mut nonce).unwrap();
+        let base = std::env::temp_dir().join(format!(
+            "katalog-upload-config-{:032x}",
+            u128::from_ne_bytes(nonce)
+        ));
+        for dir in ["models/upload", "db/trash", "auth", "static", "outside"] {
+            std::fs::create_dir_all(base.join(dir)).unwrap();
+        }
+        let db = base.join("db/catalog.db").to_string_lossy().into_owned();
+        let auth = base
+            .join("auth/web-auth.json")
+            .to_string_lossy()
+            .into_owned();
+        let models = base.join("models").to_string_lossy().into_owned();
+        let static_dir = base.join("static").to_string_lossy().into_owned();
+        let make = |upload: &std::path::Path, roots: &str| {
+            config(&[
+                ("KATALOG_DB", &db),
+                ("KATALOG_AUTH_FILE", &auth),
+                ("KATALOG_ROOTS", roots),
+                ("KATALOG_STATIC_DIR", &static_dir),
+                ("KATALOG_WRITE", "1"),
+                ("KATALOG_ALLOWED_HOSTS", "localhost:8080"),
+                ("KATALOG_UPLOAD_DIR", &upload.to_string_lossy()),
+            ])
+        };
+        let valid = make(&base.join("models/upload"), &models).unwrap();
+        let upload = valid.upload.unwrap();
+        assert_eq!(
+            upload.dir,
+            base.join("models/upload").canonicalize().unwrap()
+        );
+        assert_eq!(upload.max_bytes, 1024 * 1024 * 1024);
+        assert_eq!(upload.max_files, 2);
+        assert_eq!(std::fs::read_dir(&upload.dir).unwrap().count(), 0);
+        assert!(make(&base.join("outside"), &models).is_err());
+        let all = base.to_string_lossy();
+        for forbidden in ["db", "db/trash", "auth", "static", ""] {
+            assert!(make(&base.join(forbidden), &all).is_err(), "{forbidden}");
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::{symlink, PermissionsExt};
+            symlink(base.join("outside"), base.join("models/escape")).unwrap();
+            assert!(make(&base.join("models/escape"), &models).is_err());
+            std::fs::create_dir_all(base.join("outside/sub")).unwrap();
+            assert!(make(&base.join("models/escape/sub"), &models).is_err());
+            std::fs::set_permissions(&upload.dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+            // Root can bypass mode bits; assert denial when this user cannot.
+            if std::fs::File::create(upload.dir.join("permission-check")).is_err() {
+                assert!(make(&upload.dir, &models).is_err());
+            }
+            std::fs::set_permissions(&upload.dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
     fn no_auth_and_trusted_proxy_are_incompatible() {
         assert!(config(&[("KATALOG_ALLOW_NO_AUTH", "1"), ("KATALOG_TRUST_PROXY", "1")]).is_err());
     }
@@ -345,5 +615,25 @@ mod tests {
             std::path::Path::new("sub/../catalog.db")
         )
         .is_err());
+    }
+}
+
+#[cfg(test)]
+mod upload_journal_tests {
+    use super::*;
+    #[test]
+    fn journal_cannot_replace_auth_or_catalog() {
+        for key in ["KATALOG_AUTH_FILE", "KATALOG_DB"] {
+            let result=Config::from_lookup(|name|match name {
+                "KATALOG_DB"=>Some(if key==name{"/tmp/web-uploads.json"}else{"/tmp/catalog.db"}.into()),
+                "KATALOG_AUTH_FILE"=>Some(if key==name{"/tmp/web-uploads.json"}else{"/tmp/web-auth.json"}.into()),
+                "KATALOG_ROOTS"=>Some("/models".into()),
+                "KATALOG_UPLOAD_DIR"=>Some("/models/uploads".into()),
+                "KATALOG_WRITE"=>Some("1".into()),
+                "KATALOG_ALLOWED_HOSTS"=>Some("localhost:8080".into()),
+                _=>None,
+            });
+            assert!(matches!(result,Err(message) if message.contains("Upload-Journal kollidiert")));
+        }
     }
 }

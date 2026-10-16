@@ -252,6 +252,10 @@ pub fn parse_model_xml_reader<R: BufRead>(source: R) -> Result<ParsedModel, Thre
 pub(super) fn parse_model_xml_reader_with_preview<R: BufRead>(source: R, preview: bool) -> Result<ParsedModel, ThreeMfError> {
     let mut limits = mesh_limits();
     if preview { limits.1 = limits.1.min(MAX_PREVIEW_TRIANGLES); }
+    parse_model_xml_reader_with_limits(source, limits)
+}
+
+pub(super) fn parse_model_xml_reader_with_limits<R: BufRead>(source: R, limits: (usize, usize)) -> Result<ParsedModel, ThreeMfError> {
     let mut reader = Reader::from_reader(source);
     let mut ctx = ParseCtx { limits, ..ParseCtx::default() };
     let mut buf = Vec::new();

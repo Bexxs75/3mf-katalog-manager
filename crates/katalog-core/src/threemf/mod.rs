@@ -251,7 +251,14 @@ fn material_indices(
 fn parse_3mf_reader<R: std::io::Read + std::io::Seek>(
     reader: R,
 ) -> Result<ThreeMfDocument, ThreeMfError> {
-    let package = container::read_package(reader)?;
+    document_from_package(container::read_package(reader)?)
+}
+
+pub(crate) fn parse_web_reader<R: std::io::Read + std::io::Seek>(reader: R, limits: crate::import::files::WebImportLimits) -> Result<ThreeMfDocument, ThreeMfError> {
+    document_from_package(container::read_web_package(reader, limits)?)
+}
+
+fn document_from_package(package: PackageParts) -> Result<ThreeMfDocument, ThreeMfError> {
 
     let (bbox, volume_mm3, tagging_extent_mm) = resolve_geometry(&package)?;
 

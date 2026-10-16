@@ -23,6 +23,7 @@ async fn cancelled_login_counts_failure_change_admission_and_logout_recheck() {
         updated_at: 100,
     };
     let app = Arc::new(App {
+            uploads:None,
         writer: None,
         config: Config::from_lookup(|key| match key {
             "KATALOG_DB" => Some("/unused-security-test/catalog.db".into()),
@@ -126,6 +127,7 @@ fn global_limit_reserves_inflight_attempts_but_existing_sessions_remain_availabl
 
 async fn test_app() -> Arc<App> {
     Arc::new(App {
+            uploads:None,
         writer: None,
         config: Config::from_lookup(|key| match key {
             "KATALOG_DB" => Some("/unused-security-test/catalog.db".into()),

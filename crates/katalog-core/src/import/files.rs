@@ -245,6 +245,202 @@ pub fn read_model_file(path: &Path, display_name: Option<&str>) -> Result<NewFil
     })
 }
 
+/// Explicit web budgets; desktop parser defaults are unaffected.
+#[derive(Debug, Clone, Copy)]
+pub struct WebImportLimits {
+    pub max_file_bytes: u64,
+    /// Hard-clamped to 512 MiB by the reader; uploads should enforce the same cap.
+    pub max_mesh_file_bytes: u64,
+    /// Hard-clamped to 1 GiB; includes every ZIP entry, even unused resources.
+    pub max_unpacked_bytes: u64,
+    /// Aggregate retained mesh budget across all referenced 3MF model entries.
+    pub max_vertices: usize,
+    pub max_triangles: usize,
+}
+
+impl Default for WebImportLimits {
+    fn default() -> Self {
+        Self { max_file_bytes: 1024 * 1024 * 1024, max_mesh_file_bytes: 512 * 1024 * 1024,
+            max_unpacked_bytes: 1024 * 1024 * 1024, max_vertices: 2_000_000, max_triangles: 3_000_000 }
+    }
+}
+
+/// Parse only the supplied descriptor. `path` is a logical DB path, never opened.
+/// The caller verifies O_NOFOLLOW, journal identity and link count before calling.
+/// Errors are stable kinds and contain no filesystem paths or parser input.
+pub fn read_web_model(mut file: std::fs::File, path: &Path, name: &str, limits: WebImportLimits) -> Result<NewFile, String> {
+    use std::io::{Read, Seek, SeekFrom};
+    use sha2::{Digest, Sha256};
+    let stat = file.metadata().map_err(|_| "read_failed")?;
+    if !stat.is_file() || stat.len() == 0 { return Err("invalid".into()); }
+    let is_mesh = path.extension().and_then(|s| s.to_str()).is_some_and(|s| s.eq_ignore_ascii_case("obj") || s.eq_ignore_ascii_case("stl"));
+    let max_bytes = if is_mesh { limits.max_file_bytes.min(limits.max_mesh_file_bytes).min(512 * 1024 * 1024) } else { limits.max_file_bytes };
+    if stat.len() > max_bytes { return Err("resource_limit".into()); }
+    file.seek(SeekFrom::Start(0)).map_err(|_| "read_failed")?;
+    let mut hasher = Sha256::new();
+    let mut count = 0u64;
+    let mut buffer = [0u8; 65536];
+    loop {
+        let n = file.read(&mut buffer).map_err(|_| "read_failed")?;
+        if n == 0 { break; }
+        count += n as u64;
+        if count > max_bytes { return Err("resource_limit".into()); }
+        hasher.update(&buffer[..n]);
+    }
+    if count != stat.len() { return Err("changed".into()); }
+    let hash = format!("{:x}", hasher.finalize());
+    file.seek(SeekFrom::Start(0)).map_err(|_| "read_failed")?;
+    let mut bytes = Vec::new();
+    if is_mesh {
+        (&mut file).take(max_bytes.saturating_add(1)).read_to_end(&mut bytes).map_err(|_| "read_failed")?;
+        if bytes.len() as u64 != count || format!("{:x}", Sha256::digest(&bytes)) != hash { return Err("changed".into()); }
+    }
+    let display_name = Some(name);
+    let file_name = display_name.map(|n| n.to_string()).unwrap_or_else(|| {
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unbenannt")
+            .to_string()
+    });
+    let file_size_bytes = stat.len() as i64;
+    let extension = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase());
+
+    let mut tagging_extent_mm = None;
+    let (
+        file_type,
+        dimensions_mm,
+        volume_cm3,
+        object_count,
+        materials,
+        metadata,
+        thumbnail_png,
+        plate_count,
+        slice_info_json,
+    ) = match extension.as_deref() {
+        Some("3mf") => {
+            let doc = threemf::parse_web_reader(&mut file, WebImportLimits { max_unpacked_bytes: limits.max_unpacked_bytes.min(1024 * 1024 * 1024), ..limits }).map_err(|_| "invalid")?;
+            tagging_extent_mm = doc.tagging_extent_mm;
+            (
+                FileType::ThreeMf,
+                doc.dimensions_mm,
+                doc.volume_cm3,
+                Some(doc.object_count as i64),
+                doc.materials
+                    .into_iter()
+                    .map(|m| MaterialRecord {
+                        name: m.name,
+                        display_color: m.display_color,
+                    })
+                    .collect::<Vec<_>>(),
+                doc.metadata,
+                doc.thumbnail_png,
+                doc.plate_count.map(|c| c as i64),
+                doc.slice_info.and_then(|s| serde_json::to_string(&s).ok()),
+            )
+        }
+        Some("stl") => {
+            let doc = stl::parse_stl_bytes_limited(&bytes, limits.max_vertices, limits.max_triangles).map_err(|_| "invalid")?;
+            (
+                FileType::Stl,
+                doc.dimensions_mm,
+                doc.volume_cm3,
+                None,
+                Vec::new(),
+                BTreeMap::new(),
+                None,
+                None,
+                None,
+            )
+        }
+        Some("stp") | Some("step") => {
+            let (dimensions_mm, volume_cm3, object_count) = (None, None, None);
+            (
+                FileType::Stp,
+                dimensions_mm,
+                volume_cm3,
+                object_count,
+                Vec::new(),
+                BTreeMap::new(),
+                None,
+                None,
+                None,
+            )
+        }
+        Some("obj") => {
+            let doc = obj::parse_obj_bytes_limited(&bytes, limits.max_vertices, Some(limits.max_triangles as u64)).map_err(|_| "invalid")?;
+            (
+                FileType::Obj,
+                doc.dimensions_mm,
+                doc.volume_cm3,
+                None,
+                Vec::new(),
+                BTreeMap::new(),
+                None,
+                None,
+                None,
+            )
+        }
+        _ => return Err("unsupported".into()),
+    };
+
+    // Detect in-place replacement while seeking through a ZIP or STEP descriptor.
+    if !is_mesh {
+        file.seek(SeekFrom::Start(0)).map_err(|_| "read_failed")?;
+        let mut final_hasher = Sha256::new();
+        let mut final_count = 0u64;
+        loop {
+            let n = file.read(&mut buffer).map_err(|_| "read_failed")?;
+            if n == 0 { break; }
+            final_count += n as u64;
+            if final_count > max_bytes { return Err("resource_limit".into()); }
+            final_hasher.update(&buffer[..n]);
+        }
+        if final_count != count || format!("{:x}", final_hasher.finalize()) != hash { return Err("changed".into()); }
+    }
+
+    let tags = tagging::suggest_tags(&TaggingContext {
+        file_name: &file_name,
+        dimensions_mm: tagging_extent_mm.map(|extent| [extent; 3]).or(dimensions_mm),
+        object_count,
+        materials: &materials,
+    });
+
+    Ok(NewFile {
+        name: file_name,
+        path: path.to_string_lossy().to_string(),
+        file_type,
+        folder_id: None,
+        origin: "local".to_string(),
+        cloud_id: None,
+        sync_status: "local-only".to_string(),
+        file_size_bytes,
+        dimensions_mm,
+        volume_cm3,
+        object_count,
+        thumbnail_png,
+        imported_at: chrono::Utc::now().to_rfc3339(),
+        file_modified_at: stat.modified().ok().map(|time| chrono::DateTime::<chrono::Utc>::from(time).to_rfc3339()),
+        materials,
+        metadata: metadata.clone(),
+        tags,
+        print_status: "not_printed".to_string(),
+        last_viewed_at: None,
+        creator: metadata.get("Designer").cloned(),
+        content_hash: Some(hash),
+        render_snapshot_png: None,
+        custom_image_png: None,
+        source_url: None,
+        license: None,
+        queue_position: None,
+        favorite: false,
+        plate_count,
+        slice_info_json,
+    })
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ImportMode {
     Batched,
@@ -572,7 +768,7 @@ fn store_transaction_controlled(
                 }};
                 let id = db::insert_file_within_tx(&tx, &item.new_file)?;
                 let file = db::get_file(&tx, id)?.ok_or_else(|| DbError::Other("imported file missing".into()))?;
-                let spools = db::list_filament_spools(&tx)?;
+                let spools = db::list_filament_spools_with_images(&tx, options.fixed_folder.is_none())?;
                 Ok(to_dto(file, &spools))
             })();
             match stored {
@@ -616,3 +812,50 @@ impl<D: ImportDb> ImportDb for ConfiguredDb<'_, D> {
 #[cfg(test)]
 #[path = "import_batch_tests.rs"]
 mod import_batch_tests;
+
+#[cfg(test)]
+mod web_reader_tests {
+    use super::*;
+    use std::io::Write;
+
+    fn fixture(bytes: &[u8]) -> std::fs::File {
+        let path = std::env::temp_dir().join(format!("web-reader-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let mut file = std::fs::OpenOptions::new().create_new(true).read(true).write(true).open(&path).unwrap();
+        std::fs::remove_file(path).unwrap();
+        file.write_all(bytes).unwrap();
+        file
+    }
+
+    #[test]
+    fn web_reader_uses_handle_not_logical_path_and_hashes_same_bytes() {
+        use sha2::{Digest, Sha256};
+        let bytes = b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n";
+        let doc = read_web_model(fixture(bytes), Path::new("/does/not/exist.obj"), "triangle.obj", WebImportLimits::default()).unwrap();
+        assert_eq!(doc.content_hash, Some(format!("{:x}", Sha256::digest(bytes))));
+        assert_eq!(doc.name, "triangle.obj");
+        assert!(doc.dimensions_mm.is_some());
+    }
+
+    #[test]
+    fn web_reader_rejects_small_byte_and_vertex_budgets() {
+        let bytes = b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n";
+        for limits in [WebImportLimits { max_mesh_file_bytes: 8, ..WebImportLimits::default() }, WebImportLimits { max_vertices: 2, ..WebImportLimits::default() }, WebImportLimits { max_triangles: 0, ..WebImportLimits::default() }] {
+            assert!(read_web_model(fixture(bytes), Path::new("x.obj"), "x.obj", limits).is_err());
+        }
+    }
+    #[test]
+    fn web_reader_bounds_stl_and_zip_unpack_and_mesh() {
+        let stl = b"solid x\nvertex 0 0 0\nvertex 1 0 0\nvertex 0 1 0\nendsolid x\n";
+        assert!(read_web_model(fixture(stl), Path::new("x.stl"), "x.stl", WebImportLimits { max_vertices: 2, ..WebImportLimits::default() }).is_err());
+        let xml = br#"<model unit="millimeter"><resources><object id="1"><mesh><vertices><vertex x="0" y="0" z="0"/><vertex x="1" y="0" z="0"/><vertex x="0" y="1" z="0"/></vertices><triangles><triangle v1="0" v2="1" v3="2"/></triangles></mesh></object></resources><build><item objectid="1"/></build></model>"#;
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        zip.start_file("3D/3dmodel.model", zip::write::SimpleFileOptions::default()).unwrap();
+        zip.write_all(xml).unwrap();
+        let bytes = zip.finish().unwrap().into_inner();
+        assert!(read_web_model(fixture(&bytes), Path::new("x.3mf"), "x.3mf", WebImportLimits::default()).is_ok());
+        for limits in [WebImportLimits { max_unpacked_bytes: 10, ..WebImportLimits::default() }, WebImportLimits { max_vertices: 2, ..WebImportLimits::default() }, WebImportLimits { max_triangles: 0, ..WebImportLimits::default() }] {
+            assert!(read_web_model(fixture(&bytes), Path::new("x.3mf"), "x.3mf", limits).is_err());
+        }
+    }
+
+}

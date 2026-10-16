@@ -72,7 +72,7 @@ const MIN_WRITE_PROGRESS: usize = 64 * 1024;
 
 struct ActiveIo<I> {
     io: I,
-    activity: Arc<Mutex<(bool, Instant, usize)>>,
+    activity: Arc<Mutex<(bool, Instant, usize, usize)>>,
 }
 impl<I: AsyncRead + Unpin> AsyncRead for ActiveIo<I> {
     fn poll_read(
@@ -93,7 +93,7 @@ impl<I: AsyncWrite + Unpin> AsyncWrite for ActiveIo<I> {
         if let Poll::Ready(Ok(n)) = result {
             let mut activity = self.activity.lock().unwrap();
             activity.2 = activity.2.saturating_add(n);
-            if activity.2 >= MIN_WRITE_PROGRESS {
+            if activity.2 >= activity.3 {
                 activity.1 = Instant::now();
                 activity.2 = 0;
             }
@@ -109,7 +109,7 @@ impl<I: AsyncWrite + Unpin> AsyncWrite for ActiveIo<I> {
         if let Poll::Ready(Ok(n)) = result {
             let mut activity = self.activity.lock().unwrap();
             activity.2 = activity.2.saturating_add(n);
-            if activity.2 >= MIN_WRITE_PROGRESS {
+            if activity.2 >= activity.3 {
                 activity.1 = Instant::now();
                 activity.2 = 0;
             }
@@ -131,7 +131,7 @@ async fn connection<I>(io: I, app: Router, mut stop: watch::Receiver<bool>)
 where
     I: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-    let activity = Arc::new(Mutex::new((false, Instant::now(), 0)));
+    let activity = Arc::new(Mutex::new((false, Instant::now(), 0, MIN_WRITE_PROGRESS)));
     let state = activity.clone();
     let service = service_fn(move |request| {
         let app = app.clone();
@@ -139,7 +139,12 @@ where
         async move {
             state.lock().unwrap().0 = true;
             let response = app.oneshot(request).await;
-            *state.lock().unwrap() = (false, Instant::now(), 0);
+            // EventSource sends tiny pings. Renew only on actual socket writes,
+            // and reset the normal download threshold for every next response.
+            let event_stream = response.as_ref().ok().and_then(|response| response.headers()
+                .get(axum::http::header::CONTENT_TYPE)).and_then(|value| value.to_str().ok())
+                .is_some_and(|value| value.split(';').next().unwrap_or("").trim().eq_ignore_ascii_case("text/event-stream"));
+            *state.lock().unwrap() = (false, Instant::now(), 0, if event_stream { 1 } else { MIN_WRITE_PROGRESS });
             response
         }
     });
@@ -158,14 +163,14 @@ where
     tokio::pin!(conn);
     let idle = async {
         loop {
-            let (active, last, _) = *activity.lock().unwrap();
+            let (active, last, _, _) = *activity.lock().unwrap();
             let deadline = if active {
                 Instant::now() + Duration::from_secs(60)
             } else {
                 last + Duration::from_secs(60)
             };
             tokio::time::sleep_until(deadline).await;
-            let (active, last, _) = *activity.lock().unwrap();
+            let (active, last, _, _) = *activity.lock().unwrap();
             if !active && last.elapsed() >= Duration::from_secs(60) {
                 break;
             }
@@ -401,4 +406,101 @@ mod output_tests {
             .unwrap()
             .unwrap();
     }
+}
+
+#[cfg(test)]
+mod sse_output_tests {
+    use super::*;
+    use axum::{body::{Body, Bytes}, http::{header, Response}};
+    use tokio::{io::{AsyncReadExt, AsyncWriteExt}, sync::mpsc};
+
+    struct Events(mpsc::Receiver<Bytes>);
+    impl hyper::body::Body for Events {
+        type Data = Bytes;
+        type Error = std::convert::Infallible;
+        fn poll_frame(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<hyper::body::Frame<Bytes>, Self::Error>>> {
+            self.0.poll_recv(cx).map(|value| value.map(|bytes| Ok(hyper::body::Frame::data(bytes))))
+        }
+    }
+    fn app() -> (Router, mpsc::Sender<Bytes>) {
+        let (tx, rx) = mpsc::channel(4);
+        let rx = Arc::new(Mutex::new(Some(rx)));
+        let app = Router::new()
+            .route("/events", axum::routing::get(move || {
+                let rx = rx.clone();
+                async move {
+                    Response::builder().header(header::CONTENT_TYPE, "text/event-stream; charset=utf-8")
+                        .body(Body::new(Events(rx.lock().unwrap().take().unwrap()))).unwrap()
+                }
+            }))
+            .route("/download", axum::routing::get(|| async { vec![42u8; 1024 * 1024] }));
+        (app, tx)
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn periodic_sse_writes_survive_multiple_idle_windows() {
+        let (app, tx) = app();
+        let (mut client, server) = tokio::io::duplex(4096);
+        let (_stop, rx) = watch::channel(false);
+        let task = tokio::spawn(connection(server, app, rx));
+        client.write_all(b"GET /events HTTP/1.1\r\nHost: local\r\n\r\n").await.unwrap();
+        let mut bytes = [0u8; 4096];
+        assert!(client.read(&mut bytes).await.unwrap() > 0);
+        for _ in 0..8 {
+            tokio::time::advance(Duration::from_secs(15)).await;
+            tx.send(Bytes::from_static(b"event: ping\ndata: {}\n\n")).await.unwrap();
+            let n = client.read(&mut bytes).await.unwrap();
+            assert!(n > 0, "SSE was closed despite periodic ping writes");
+            tokio::task::yield_now().await;
+            assert!(!task.is_finished());
+        }
+        drop(client);
+        drop(tx);
+        task.await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn stalled_sse_writes_still_expire() {
+        let (app, tx) = app();
+        let (mut client, server) = tokio::io::duplex(64);
+        let (_stop, rx) = watch::channel(false);
+        let task = tokio::spawn(connection(server, app, rx));
+        client.write_all(b"GET /events HTTP/1.1\r\nHost: local\r\n\r\n").await.unwrap();
+        tokio::task::yield_now().await;
+        tx.send(Bytes::from_static(b"event: ping\ndata: {}\n\n")).await.unwrap();
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(59)).await;
+        tokio::task::yield_now().await;
+        assert!(!task.is_finished());
+        tokio::time::advance(Duration::from_secs(1)).await;
+        tokio::time::timeout(Duration::from_millis(1), task).await.unwrap().unwrap();
+    }
+    #[tokio::test(start_paused = true)]
+    async fn download_after_sse_restores_trickle_protection() {
+        let (app, tx) = app();
+        let (mut client, server) = tokio::io::duplex(4096);
+        let (_stop, rx) = watch::channel(false);
+        let task = tokio::spawn(connection(server, app, rx));
+        client.write_all(b"GET /events HTTP/1.1\r\nHost: local\r\n\r\n").await.unwrap();
+        let mut bytes = [0u8; 4096];
+        let first = client.read(&mut bytes).await.unwrap();
+        let mut response = bytes[..first].to_vec();
+        drop(tx);
+        while !response.ends_with(b"0\r\n\r\n") {
+            let n = client.read(&mut bytes).await.unwrap();
+            assert!(n > 0);
+            response.extend_from_slice(&bytes[..n]);
+        }
+        client.write_all(b"GET /download HTTP/1.1\r\nHost: local\r\n\r\n").await.unwrap();
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(55)).await;
+        client.read_exact(&mut [0u8; 8]).await.unwrap();
+        tokio::task::yield_now().await;
+        assert!(!task.is_finished());
+        tokio::time::advance(Duration::from_secs(5)).await;
+        tokio::task::yield_now().await;
+        assert!(task.is_finished(), "download retained the SSE write threshold");
+        task.await.unwrap();
+    }
+
 }
