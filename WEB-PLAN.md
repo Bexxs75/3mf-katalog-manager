@@ -91,3 +91,7 @@ Grundlage der Entscheidung: **nur selbst betriebenes Docker-Image, kein von uns 
 
 Gründe gegen einen zentral von uns gehosteten Dienst: Die App verspricht „alles bleibt auf deinem Rechner“; fremde, oft urheberrechtlich geschützte 3D-Modelle auf unserem Server brächten Haftung, Moderation, Datenschutz und laufende Kosten; Mehrmandantenfähigkeit wäre ein anderes Produkt.
 Bis auf Weiteres gilt: Standard bindet nur an das lokale Netz, ohne Anmeldung startet der Server nicht, HTTPS übernimmt der Reverse Proxy.
+
+## 12. Fortschritt
+- **16.10.2026, Stufe 0 Teil 1 erledigt (Commit `9fa65905`):** `crates/katalog-core` enthält Datenbank, Parser (3MF, STL, OBJ, STEP), Archive, Druckeranbindung (ohne Hintergrunddienst), Schema-Sicherung und Dateihilfen, ohne Tauri-Abhängigkeit. Die Desktop-App re-exportiert die Module unter den alten Pfaden. 1021 Tests bestanden (448 Core, 569 Desktop, 4 ignoriert), Clippy ohne Warnungen. Offen: STEP-Feature ist hier ohne `cmake` nicht prüfbar (erst in CI oder VM mit OCCT).
+- Als Nächstes (Stufe 0 Teil 2): `AppState`/Context und `ImportJobs` ohne Tauri-Event-Sender, Fachkörper der Commands nach Bedarf der Stufe 1 in den Core, eigener Read-only-Öffnungspfad für die Datenbank.
