@@ -1,3 +1,4 @@
+import { WebAuthGate } from './components/WebAuthGate';
 import { RuntimeEnvironmentProvider } from './hooks/useRuntimeEnvironment';
 import { ModelLayoutProvider } from "./hooks/ModelLayoutContext";
 import React, { useEffect } from "react";
@@ -26,7 +27,9 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
         <UiDensityProvider>
           <DiagnosticsProvider>
             <ErrorBoundary fallback={(reload) => <CrashFallback onReload={reload} />}>
-              <ModelLayoutProvider><App /></ModelLayoutProvider>
+              {import.meta.env.VITE_TARGET === 'web'
+                ? <WebAuthGate><ModelLayoutProvider><App /></ModelLayoutProvider></WebAuthGate>
+                : <ModelLayoutProvider><App /></ModelLayoutProvider>}
             </ErrorBoundary>
           </DiagnosticsProvider>
         </UiDensityProvider>

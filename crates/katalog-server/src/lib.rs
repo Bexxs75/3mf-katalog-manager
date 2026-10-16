@@ -5,3 +5,5 @@ mod web;
 pub use web::*;
 
 pub mod transport;
+
+mod static_files;

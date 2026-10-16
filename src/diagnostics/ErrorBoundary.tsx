@@ -1,5 +1,5 @@
 import { Component, type ReactNode } from 'react';
-import { error as logError } from '@tauri-apps/plugin-log';
+import { error as logError } from '../lib/logger';
 import { useT } from '../i18n/LanguageContext';
 import { resolveTheme } from '../hooks/useTheme';
 import { ReportProblemLink } from './ReportProblemLink';

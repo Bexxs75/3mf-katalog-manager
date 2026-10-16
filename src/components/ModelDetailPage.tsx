@@ -14,7 +14,7 @@ import { Icon } from './Icon';
 import { useDetailNavigation, type DetailDirection } from '../hooks/useDetailNavigation';
 import { TagDot } from './TagDot';
 import { TagInput } from './TagInput';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../lib/transport';
 import type { ModelFile, SlicerConfig, Collection } from '../types';
 import { useT, useLanguage } from '../i18n/LanguageContext';
 import { buildMetaRows } from '../lib/modelMetadata';
@@ -118,7 +118,7 @@ export function ModelDetailPage({
 
   const rows = buildMetaRows(model, t, language);
   const filamentCheck = useFilamentCheck(
-    model.sliceInfo ? [model.id] : [],
+    import.meta.env.VITE_TARGET !== 'web' && model.sliceInfo ? [model.id] : [],
     JSON.stringify(model.sliceInfo ?? null),
   );
 
@@ -210,7 +210,7 @@ export function ModelDetailPage({
             ) : (
               <ModelPreview surfaceClassName="aspect-[4/3]"
                 model={model}
-                needsSnapshot={!(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
+                needsSnapshot={import.meta.env.VITE_TARGET !== 'web' && !(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
                 onSnapshotCaptured={onSnapshotCaptured}
                 onOpenInSlicer={slicers.length ? onOpenInSlicer : undefined}
                 onRemoveFromCatalog={onRemoveFromCatalog}

@@ -458,7 +458,7 @@ async fn protect(State(app): State<Arc<App>>, req: Request, next: Next) -> Respo
     for (name, value) in [
         (
             "content-security-policy",
-            "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+            "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; img-src 'self' data: blob:; font-src 'self'",
         ),
         ("x-content-type-options", "nosniff"),
         ("referrer-policy", "no-referrer"),
@@ -586,6 +586,24 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
     let now = app.clock.now();
     let path = req.uri().path().to_owned();
     let method = req.method().clone();
+    // Reserve the complete API namespace, including unknown routes, before SPA fallback.
+    if path == "/api" || path.starts_with("/api/") {
+        if !matches!(
+            path.as_str(),
+            "/api/health" | "/api/session" | "/api/login" | "/api/logout" | "/api/password"
+        ) && !path.starts_with("/api/invoke/")
+        {
+            return error(404, "Nicht gefunden");
+        }
+    } else {
+        if method != Method::GET {
+            return error(405, "Methode nicht erlaubt");
+        }
+        if let Some(root) = &app.config.static_dir {
+            return crate::static_files::serve(root.clone(), path).await;
+        }
+    }
+
     let peer = match client(&app, &req) {
         Ok(peer) => peer,
         Err(e) => return *e,

@@ -6,7 +6,7 @@ import { Icon } from './Icon';
 import { PlateSelector } from './PlateSelector';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../lib/transport';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { decodeModelGeometry } from '../lib/parseModelGeometry';

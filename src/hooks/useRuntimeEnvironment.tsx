@@ -1,14 +1,16 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { getRuntimeEnvironment, type RuntimeEnvironment } from '../lib/api/runtime';
 
+const webEnvironment = import.meta.env.VITE_TARGET === 'web' ? { container: false, web: true, readOnly: true } : undefined;
+
 const RuntimeEnvironmentContext = createContext<RuntimeEnvironment>({ container: false });
 
 export function RuntimeEnvironmentProvider({ children, value }: {
   children: ReactNode; value?: RuntimeEnvironment;
 }) {
-  const [environment, setEnvironment] = useState<RuntimeEnvironment | null>(value ?? null);
+  const [environment, setEnvironment] = useState<RuntimeEnvironment | null>(value ?? webEnvironment ?? null);
   useEffect(() => {
-    if (value) return;
+    if (value || webEnvironment) return;
     let active = true;
     void getRuntimeEnvironment().then(result => { if (active) setEnvironment(result); });
     return () => { active = false; };

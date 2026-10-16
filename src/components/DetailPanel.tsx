@@ -176,7 +176,7 @@ export function DetailPanel({
           />
           <ModelPreview surfaceClassName="h-[248px]"
             model={model}
-            needsSnapshot={!(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
+            needsSnapshot={import.meta.env.VITE_TARGET !== 'web' && !(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
             onOpenInSlicer={hasSlicer ? onOpenInSlicer : undefined}
             onRemoveFromCatalog={onRemoveFromCatalog}
             onSnapshotCaptured={onSnapshotCaptured}
@@ -386,7 +386,7 @@ export function DetailPanel({
           />
           <ModelPreview surfaceClassName="h-[284px]"
             model={model}
-            needsSnapshot={!(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
+            needsSnapshot={import.meta.env.VITE_TARGET !== 'web' && !(model.hasRenderSnapshot ?? !!model.renderSnapshotImage)}
             onOpenInSlicer={hasSlicer ? onOpenInSlicer : undefined}
             onRemoveFromCatalog={onRemoveFromCatalog}
             onSnapshotCaptured={onSnapshotCaptured}

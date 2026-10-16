@@ -6,6 +6,17 @@ export interface PluralForms {
 }
 
 export interface Translations {
+  webSessionChecking: string;
+  webLogin: string;
+  webLogout: string;
+  webChangePassword: string;
+  webPasswordRequired: string;
+  webPassword: string;
+  webCurrentPassword: string;
+  webNewPassword: string;
+  webCancel: string;
+  webRetry: string;
+
   licenseHeading: string;
   licenseUnset: string;
   licenseOther: string;

@@ -12,6 +12,7 @@ use std::{
 #[derive(Clone)]
 pub struct Config {
     pub db_path: PathBuf,
+    pub static_dir: Option<PathBuf>,
     pub roots: Vec<PathBuf>,
     pub auth_file: PathBuf,
     pub bind: SocketAddr,
@@ -33,6 +34,20 @@ impl Config {
                 .filter(|v| !v.is_empty())
                 .ok_or_else(|| format!("{key} muss gesetzt sein"))
         };
+        let static_dir = lookup("KATALOG_STATIC_DIR")
+            .map(|value| {
+                if value.is_empty() {
+                    return Err("KATALOG_STATIC_DIR darf nicht leer sein".to_string());
+                }
+                let path = PathBuf::from(value)
+                    .canonicalize()
+                    .map_err(|_| "KATALOG_STATIC_DIR ist nicht lesbar".to_string())?;
+                if !path.is_dir() {
+                    return Err("KATALOG_STATIC_DIR ist kein Verzeichnis".to_string());
+                }
+                Ok(path)
+            })
+            .transpose()?;
         let db_path = PathBuf::from(required("KATALOG_DB")?);
         let root_text = required("KATALOG_ROOTS")?;
         let mut roots: Vec<PathBuf> = std::env::split_paths(&root_text).collect();
@@ -99,6 +114,7 @@ impl Config {
             }
         };
         Ok(Self {
+            static_dir,
             db_path,
             roots,
             auth_file,

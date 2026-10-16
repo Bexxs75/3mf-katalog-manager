@@ -14,7 +14,7 @@ import { resolveDisplayImage } from './lib/resolveDisplayImage';
 import { useFolderExpansion } from './hooks/useFolderExpansion';
 import { detailNeighbor, type DetailDirection } from './hooks/useDetailNavigation';
 import { useSidebarWidth } from './hooks/useSidebarWidth';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from './lib/transport';
 import { useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Header } from './components/Header';
 import { isWebGLUnavailable } from './lib/webglAvailability';
@@ -135,7 +135,7 @@ export default function App() {
   const slicerLauncher = useSlicerLauncher(slicers, primaryId, () => setSettingsOpen(true));
   const update = useUpdater();
 
-  const [setupDialogOpen, setSetupDialogOpen] = useState(!setupSeen);
+  const [setupDialogOpen, setSetupDialogOpen] = useState(import.meta.env.VITE_TARGET !== 'web' && !setupSeen);
   const [contextMenu, setContextMenu] = useState<{ modelId: string; x: number; y: number } | null>(null);
   const [confirmEmptyTrash, setConfirmEmptyTrash] = useState(false);
 
@@ -298,7 +298,7 @@ export default function App() {
       onMouseMoveCapture={(event) => { dragPointer.current = { x: event.clientX, y: event.clientY }; }}
       style={{ fontSize: 'var(--fs-body)', '--sidebar-width': mainView === 'printers' ? 'var(--pm-master-width)' : `${mainView === 'catalog' ? sidebarWidth.width : 0}px` } as CSSProperties}
     >
-      {!noWebGL && snapshotIds.length > 0 && (
+      {import.meta.env.VITE_TARGET !== 'web' && !noWebGL && snapshotIds.length > 0 && (
         <BackgroundSnapshotRenderer
           key={snapshotRenderer.generation}
           fileId={snapshotIds[0]}

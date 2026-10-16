@@ -1,7 +1,7 @@
 import { Icon } from './Icon';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../lib/transport';
 import { useT, useFormatCount } from '../i18n/LanguageContext';
 import { toAppError, type AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';

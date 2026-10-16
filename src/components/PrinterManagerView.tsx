@@ -1,6 +1,6 @@
 import { displayName } from '../lib/displayName';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../lib/transport';
 import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { toAppError, type AppError } from '../lib/errors';
 import { ErrorText } from '../diagnostics/ErrorText';

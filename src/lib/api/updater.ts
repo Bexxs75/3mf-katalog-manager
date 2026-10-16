@@ -1,4 +1,5 @@
-import { Channel, invoke } from '@tauri-apps/api/core';
+import { Channel } from '@tauri-apps/api/core';
+import { invoke } from '../transport';
 
 export interface LastUpdate {
   version: string;
@@ -24,6 +25,7 @@ export interface DownloadProgress {
 export const checkAppUpdate = () => invoke<UpdateInfo>('check_app_update');
 
 export function downloadAppUpdate(onProgress: (p: DownloadProgress) => void) {
+  if (import.meta.env.VITE_TARGET === 'web') return Promise.reject({ message: 'Updater unavailable in web', expected: true });
   const channel = new Channel<DownloadProgress>();
   channel.onmessage = onProgress;
   return invoke<string>('download_app_update', { onProgress: channel });

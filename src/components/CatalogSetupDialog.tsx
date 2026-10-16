@@ -3,7 +3,7 @@ import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { Icon } from './Icon';
 import { useModalDialog } from '../hooks/useModalDialog';
 import { useEffect, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../lib/transport';
 import { useT, useFormatCount } from '../i18n/LanguageContext';
 import type { ImportResultDto, Folder } from '../types';
 import { toAppError, type AppError } from '../lib/errors';

@@ -127,6 +127,7 @@ export function ToolsSection(props: ToolsSectionProps) {
       </button>
       {!collapsed && (
         <div className="flex flex-col gap-px">
+          {import.meta.env.VITE_TARGET !== 'web' && <>
           <button
             type="button"
             aria-expanded={queueOpen}
@@ -148,11 +149,12 @@ export function ToolsSection(props: ToolsSectionProps) {
               />
             </div>
           )}
+          </>}
           {viewRow('recent', ICONS.recent, t('toolRecent'), props.counts.recent)}
           {viewRow('new', ICONS.new, t('toolNew'), props.counts.new)}
           {viewRow('favorites', null, t('toolFavorites'), props.counts.favorites)}
           {viewRow('duplicates', ICONS.duplicates, t('toolDuplicates'), props.counts.duplicateGroups)}
-          <button
+          {import.meta.env.VITE_TARGET !== 'web' && <button
             type="button"
             disabled={props.cleanupScanning} {...lockProps}
             onClick={props.onOpenCleanup}
@@ -161,7 +163,7 @@ export function ToolsSection(props: ToolsSectionProps) {
             <Icon>{ICONS.cleanup}</Icon>
             <span>{t('cleanupDialogTitle')}</span>
             <Hint><SharedIcon name="external" size={14} /></Hint>
-          </button>
+          </button>}
           {props.cleanupError && (
             <div role="alert" className="px-1.5 pl-[32px] text-[length:var(--font-size-meta)] text-[var(--crit)]">
               <ErrorText error={props.cleanupError} />

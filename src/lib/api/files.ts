@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../transport';
 import type { ModelFile, ModelFileSummary, ModelImages } from '../../types';
 
 // Slim catalog overview, see ModelFileSummary.

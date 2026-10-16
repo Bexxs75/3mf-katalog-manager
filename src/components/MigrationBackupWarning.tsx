@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../lib/transport';
 import { useT } from '../i18n/LanguageContext';
 
 export function MigrationBackupWarning() {
   const t = useT();
   const [visible, setVisible] = useState(false);
   useEffect(() => {
+    if (import.meta.env.VITE_TARGET === 'web') return;
     let cancelled = false;
     void invoke<boolean>('get_migration_backup_warning').then(failed => {
       if (!cancelled) setVisible(failed);

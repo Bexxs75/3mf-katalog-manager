@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../transport';
 
 export interface DiskEntry { path: string; relativePath: string; root: string; id: string | null }
 export interface DiskScan {

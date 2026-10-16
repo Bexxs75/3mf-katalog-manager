@@ -1,6 +1,17 @@
 import type { Translations } from './types';
 
 export const de: Translations = {
+  webSessionChecking: "Sitzung wird geprüft…",
+  webLogin: "Anmelden",
+  webLogout: "Abmelden",
+  webChangePassword: "Passwort ändern",
+  webPasswordRequired: "Bitte ändere zuerst dein Passwort.",
+  webPassword: "Passwort",
+  webCurrentPassword: "Aktuelles Passwort",
+  webNewPassword: "Neues Passwort",
+  webCancel: "Abbrechen",
+  webRetry: "Erneut prüfen",
+
   licenseHeading: "Lizenz",
   licenseUnset: "Nicht gesetzt",
   licenseOther: "Andere…",

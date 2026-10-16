@@ -1,6 +1,6 @@
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { useEffect, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../lib/transport';
 import { useT } from '../i18n/LanguageContext';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { toAppError, type AppError } from '../lib/errors';

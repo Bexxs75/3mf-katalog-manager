@@ -274,6 +274,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
     (id: string) => {
       setSelectedId(id);
       ensureFullModel(id);
+      if (import.meta.env.VITE_TARGET === 'web') return;
       const now = new Date().toISOString();
       setModels((prev) => prev.map((m) => (m.id === id ? { ...m, lastViewedAt: now } : m)));
       const key = `lastViewedAt:${id}`;

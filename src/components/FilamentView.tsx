@@ -1,6 +1,6 @@
 import type { PrinterNavigation } from '../types';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../lib/transport';
 import { useLanguage, useT, useFormatCount } from '../i18n/LanguageContext';
 import { formatVolumeMl, formatWeightG } from '../i18n/format';
 

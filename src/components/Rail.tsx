@@ -5,7 +5,7 @@ import { useImportLock } from '../hooks/ImportLockContext';
 import { Icon } from './Icon';
 import { CatalogResetSection } from './CatalogResetSection';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../lib/transport';
 import type { MainView, SlicerConfig } from '../types';
 import type { ThemeSetting } from '../hooks/useTheme';
 import type { UiDensity } from '../hooks/UiDensityContext';
@@ -154,6 +154,7 @@ export function Rail({
         >
           <Icon name="catalog" />
         </button>
+        {import.meta.env.VITE_TARGET !== 'web' && <>
         <button
           onClick={() => onMainViewChange('filament')}
           title={t('railFilament')}
@@ -166,6 +167,7 @@ export function Rail({
           className={`${railBtnBase} ${mainView === 'printers' ? railBtnActive : ''}`}>
           <Icon name="printer" />
         </button>
+        </>}
         {container && <button type="button" onClick={() => onMainViewChange('downloads')}
           title={t('railDownloads')} aria-label={t('railDownloads')}
           className={`${railBtnBase} ${mainView === 'downloads' ? railBtnActive : ''}`}>
@@ -222,7 +224,7 @@ export function Rail({
                 ['slicer', t('settingsTabSlicer')],
                 ['catalog', t('settingsTabCatalog')],
                 ['info', t('settingsTabInfo')],
-              ] as const).map(([key, label]) => (
+              ] as const).filter(([key]) => import.meta.env.VITE_TARGET !== 'web' || key === 'general' || key === 'info').map(([key, label]) => (
                 <button
                   key={key}
                   onClick={() => setActiveSettingsTab(key)}
@@ -245,12 +247,12 @@ export function Rail({
                   <span aria-hidden="true">{singleKeyShortcuts ? <Icon name="check" size={14} /> : '○ '}</span>{t('singleKeyShortcutsTitle')}
                 </button>
                 <p className="text-small text-[var(--ink-2)] mb-4">{t('singleKeyShortcutsDescription')}</p>
-                <div className="mb-4 p-2 border border-[var(--line)] rounded text-small">
+                {import.meta.env.VITE_TARGET !== 'web' && <div className="mb-4 p-2 border border-[var(--line)] rounded text-small">
                   <p>{t('settingsPrintersMovedHint')}</p>
                   <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] mt-2 text-[var(--accent)] focus-visible:outline-2" onClick={() => {
                     onSettingsOpenChange(false); onMainViewChange('printers');
                   }}>{t('pmOpen')}</button>
-                </div>
+                </div>}
                 <div className="text-[length:var(--font-size-body)] font-semibold mb-2">{t('appearanceTitle')}</div>
                 <div className="flex p-0.5 gap-0.5 border border-[var(--line)] rounded-[3px] bg-[var(--panel-2)]">
                   {(['system', 'light', 'dark'] as ThemeSetting[]).map((opt) => (
@@ -326,8 +328,8 @@ export function Rail({
               </>
             )}
 
-            {activeSettingsTab === 'slicer' && container && <p className="text-small text-[var(--ink-3)]">{t('containerSlicerUnavailable')}</p>}
-            {activeSettingsTab === 'slicer' && !container && (
+            {import.meta.env.VITE_TARGET !== 'web' && activeSettingsTab === 'slicer' && container && <p className="text-small text-[var(--ink-3)]">{t('containerSlicerUnavailable')}</p>}
+            {import.meta.env.VITE_TARGET !== 'web' && activeSettingsTab === 'slicer' && !container && (
               <>
                 <div className="text-[length:var(--font-size-body)] font-semibold mb-2">{t('slicerSectionTitle')}</div>
                 {slicers.length === 0 ? (
@@ -387,7 +389,7 @@ export function Rail({
               </>
             )}
 
-            {activeSettingsTab === 'catalog' && (
+            {import.meta.env.VITE_TARGET !== 'web' && activeSettingsTab === 'catalog' && (
               <>
                 <div className="text-[length:var(--font-size-body)] font-semibold mb-2">{t('catalogCleanupTitle')}</div>
                 <button
@@ -478,9 +480,9 @@ export function Rail({
             {activeSettingsTab === 'info' && (
               <>
                 <button onClick={onOpenTips} className="w-full h-8 border border-[var(--line-strong)] rounded cursor-pointer mb-3">{t('keyboardTipsTitle')}</button>
-                <UpdatePanel view={update} onExport={onExportCatalog} exportError={catalogBackupError} />
-                <DiagnosticsSettings />
-                <InfoFolders />
+                {import.meta.env.VITE_TARGET !== 'web' && <UpdatePanel view={update} onExport={onExportCatalog} exportError={catalogBackupError} />}
+                {import.meta.env.VITE_TARGET !== 'web' && <DiagnosticsSettings />}
+                {import.meta.env.VITE_TARGET !== 'web' && <InfoFolders />}
                 <div className="flex justify-between text-caption py-2 border-t border-[var(--line)] mt-3 text-[var(--ink-2)]">
                   <span>{t('infoSourceCodeLabel')}</span>
                   <ExternalLink url="https://github.com/Bexxs75/3mf-katalog-manager/" label="GitHub"

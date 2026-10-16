@@ -14,7 +14,7 @@ export function usePrinters() {
 
   const refresh = useCallback(
     () =>
-      printersApi
+      import.meta.env.VITE_TARGET === 'web' ? Promise.resolve() : printersApi
         .listPrinters()
         .then((result) => {
           setPrinters(result);

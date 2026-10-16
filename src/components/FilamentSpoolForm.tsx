@@ -1,7 +1,7 @@
 import { Icon } from './Icon';
 import { useModalDialog } from '../hooks/useModalDialog';
 import { useCallback, useEffect, useState, useRef, useId } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../lib/transport';
 import { useT } from '../i18n/LanguageContext';
 import { parseDecimalInput } from '../lib/decimalInput';
 import type { FilamentSpool, SpoolKind } from '../types';

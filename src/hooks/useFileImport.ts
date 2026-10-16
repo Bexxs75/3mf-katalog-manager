@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getCurrentWebview } from '@tauri-apps/api/webview';
+import { getCurrentWebview } from '../lib/webview';
 import * as api from '../lib/api/importExport';
 import { countsWithArchiveModels } from '../lib/importCounts';
 import { toAppError } from '../lib/errors';
@@ -111,6 +111,7 @@ export function useFileImport(args: UseFileImportArgs) {
     } catch (e) { if (mounted.current) setError(toAppError(e)); }
   }, [persist, recover]);
   useEffect(() => {
+    if (import.meta.env.VITE_TARGET === 'web') return;
     mounted.current = true;
     let disposed = false;
     let saved: ImportJobMeta[] = [];
@@ -131,6 +132,7 @@ export function useFileImport(args: UseFileImportArgs) {
     return () => { disposed = true; mounted.current = false; for (const subscription of subscriptions) void subscription.then(off => off()).catch(console.error); };
   }, [persist, receiveProgress, receiveFinished, recover]);
   useEffect(() => {
+    if (import.meta.env.VITE_TARGET === 'web') return;
     const subscription = getCurrentWebview().onDragDropEvent(event => {
       if (event.payload.type === 'drop' && latest.current.enabled) void track(api.startDroppedImport(event.payload.paths), {source: 'dropped'});
     });

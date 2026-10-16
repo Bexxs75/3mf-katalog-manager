@@ -108,10 +108,10 @@ export function Header({
         )}
       </div>
 
-      <CatalogDiskSync active={mainView === 'catalog'} onApplied={onDiskSyncApplied} />
+      {import.meta.env.VITE_TARGET !== 'web' && <CatalogDiskSync active={mainView === 'catalog'} onApplied={onDiskSyncApplied} />}
       {mainView === 'catalog' && (
       <>
-      <div ref={importRef} className="relative flex shrink-0">
+      {import.meta.env.VITE_TARGET !== 'web' && <div ref={importRef} className="relative flex shrink-0">
         <button
           ref={importTriggerRef}
           aria-haspopup="menu"
@@ -171,7 +171,7 @@ export function Header({
             </button>
           </div>
         )}
-      </div>
+      </div>}
 
       <div className="flex min-w-0 items-center gap-1.5" style={hideSortControl ? { display: 'none' } : undefined}>
         <span className="hidden min-[1100px]:inline ui-label text-[var(--ink-3)]">

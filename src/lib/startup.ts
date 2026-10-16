@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from './transport';
 
 /** Two frames let the browser paint the mounted, themed surface before showing it. */
 export function showAfterPaint(): () => void {
@@ -10,7 +10,7 @@ export function showAfterPaint(): () => void {
     if (cancelled) return;
     frame = requestAnimationFrame(() => {
       frame = requestAnimationFrame(() => {
-        if (!cancelled && '__TAURI_INTERNALS__' in window) {
+        if (!cancelled && import.meta.env.VITE_TARGET !== 'web' && '__TAURI_INTERNALS__' in window) {
           void invoke('frontend_ready').catch(error => console.warn('[startup] showing window failed:', error));
         }
       });

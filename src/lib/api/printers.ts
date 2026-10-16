@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../transport';
 import type { MaterialUnit, PrinterDetails, PrinterHistoryJob, Printer, PrinterKind, UnitKind } from '../../types';
 
 export function listPrinters() {

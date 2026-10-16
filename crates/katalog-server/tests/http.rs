@@ -86,6 +86,7 @@ async fn fixture(forced: bool, proxy: bool) -> Fixture {
     let auth_path = dir.join("web-auth.json");
     password::write_auth(&auth_path, &auth).unwrap();
     let config = Config {
+        static_dir: None,
         db_path: dir.join("catalog.db"),
         roots: vec![dir.clone()],
         auth_file: auth_path,
@@ -132,7 +133,7 @@ async fn raw(
     let headers = response.headers().clone();
     assert_eq!(headers["x-content-type-options"], "nosniff");
     assert_eq!(headers["referrer-policy"], "no-referrer");
-    assert!(headers.contains_key("content-security-policy"));
+    assert_eq!(headers["content-security-policy"], "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; img-src 'self' data: blob:; font-src 'self'");
     if path.starts_with("/api/") {
         assert_eq!(headers["cache-control"], "no-store");
     }

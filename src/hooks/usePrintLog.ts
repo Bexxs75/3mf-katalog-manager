@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '../lib/transport';
 import { toAppError, type AppError } from '../lib/errors';
 
 export interface PrintLogEntry {
