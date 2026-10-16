@@ -82,6 +82,22 @@ impl Directory {
         }
         Ok(file)
     }
+    /// Inspect the directory entry itself, including a replacement symlink.
+    #[allow(clippy::unnecessary_cast)] // Unix stat field widths vary.
+    pub fn entry_identity(&self, name: &str) -> io::Result<(u64, u64)> {
+        let name = cstring(name)?;
+        let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+        cvt(unsafe {
+            libc::fstatat(
+                self.0.as_raw_fd(),
+                name.as_ptr(),
+                stat.as_mut_ptr(),
+                libc::AT_SYMLINK_NOFOLLOW,
+            )
+        })?;
+        let stat = unsafe { stat.assume_init() };
+        Ok((stat.st_dev as u64, stat.st_ino as u64))
+    }
     pub fn checked(&self, name: &str, dev: u64, ino: u64) -> io::Result<File> {
         let file = self.read(name)?;
         let m = file.metadata()?;

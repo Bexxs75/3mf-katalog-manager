@@ -690,8 +690,8 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
         if !uploads::authenticated(&app,s){return error(403,"password_change_required")}
         if path=="/api/events" || path=="/api/uploads" {
             if method!=Method::GET{return error(405,"method")}
-            if path=="/api/events"{return uploads::events(app,s.clone(),&headers)}
-            return uploads::list(app.uploads.as_ref().unwrap())
+            if path=="/api/events"{return uploads::events(app,s.clone(),&headers).await}
+            return uploads::list(app.uploads.as_ref().unwrap().clone()).await
         }
         if method!=Method::POST{return error(405,"method")}
     }

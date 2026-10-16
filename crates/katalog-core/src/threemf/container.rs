@@ -97,7 +97,74 @@ pub(crate) fn read_web_package<R: Read + Seek>(reader: R, limits: crate::import:
     read_package_inner(reader, false, Some(limits))
 }
 
-fn read_package_inner<R: Read + Seek>(reader: R, geometry: bool, web: Option<crate::import::files::WebImportLimits>) -> Result<PackageParts, ThreeMfError> {
+/// Bound central-directory allocation before zip constructs its in-memory index.
+/// Shared by desktop and web; ordinary slicer projects are far below this cap.
+const MAX_ZIP_ENTRIES: u64 = 10_000;
+fn check_zip_entry_count(reader: &mut (impl Read + Seek)) -> Result<(), ThreeMfError> {
+    use std::io::SeekFrom;
+    let malformed = || {
+        ThreeMfError::Zip(zip::result::ZipError::InvalidArchive(
+            "invalid end of central directory",
+        ))
+    };
+    let limit = || ThreeMfError::ResourceLimitExceeded("ZIP entry limit (10000) exceeded".into());
+    let length = reader.seek(SeekFrom::End(0))?;
+    let tail_len = length.min(65_535 + 22 + 20 + 56) as usize;
+    reader.seek(SeekFrom::End(-(tail_len as i64)))?;
+    let mut tail = vec![0; tail_len];
+    reader.read_exact(&mut tail)?;
+    let u16_at = |bytes: &[u8], at| u16::from_le_bytes(bytes[at..at + 2].try_into().unwrap());
+    let u64_at = |bytes: &[u8], at| u64::from_le_bytes(bytes[at..at + 8].try_into().unwrap());
+    let end = (0..tail.len().saturating_sub(21))
+        .rev()
+        .find(|&at| {
+            &tail[at..at + 4] == b"PK\x05\x06"
+                && at + 22 + u16_at(&tail, at + 20) as usize == tail.len()
+        })
+        .ok_or_else(malformed)?;
+    let disk_count = u16_at(&tail, end + 8);
+    let total = u16_at(&tail, end + 10);
+    // Even when ZIP64 is present, reject oversized non-sentinel classic counts.
+    if [disk_count, total]
+        .iter()
+        .any(|&n| n != u16::MAX && n as u64 > MAX_ZIP_ENTRIES)
+    {
+        return Err(limit());
+    }
+    if end >= 20 && &tail[end - 20..end - 16] == b"PK\x06\x07" {
+        let offset = u64_at(&tail, end - 12);
+        let locator = length - tail_len as u64 + end as u64 - 20;
+        if offset.checked_add(56).is_none_or(|n| n > locator) {
+            return Err(malformed());
+        }
+        reader.seek(SeekFrom::Start(offset))?;
+        let mut record = [0; 56];
+        reader.read_exact(&mut record)?;
+        if &record[..4] != b"PK\x06\x06"
+            || u64_at(&record, 4) < 44
+            || offset
+                .checked_add(12)
+                .and_then(|n| n.checked_add(u64_at(&record, 4)))
+                != Some(locator)
+        {
+            return Err(malformed());
+        }
+        if u64_at(&record, 24) > MAX_ZIP_ENTRIES || u64_at(&record, 32) > MAX_ZIP_ENTRIES {
+            return Err(limit());
+        }
+    } else if disk_count == u16::MAX || total == u16::MAX {
+        return Err(limit());
+    }
+    reader.seek(SeekFrom::Start(0))?;
+    Ok(())
+}
+
+fn read_package_inner<R: Read + Seek>(
+    mut reader: R,
+    geometry: bool,
+    web: Option<crate::import::files::WebImportLimits>,
+) -> Result<PackageParts, ThreeMfError> {
+    check_zip_entry_count(&mut reader)?;
     let mut archive = ZipArchive::new(reader)?;
 
     // Validate actual decompression, including unused entries and lying ZIP size fields,
@@ -501,6 +568,63 @@ mod tests {
             read_geometry_package(std::io::Cursor::new(too_many)),
             Err(ThreeMfError::ResourceLimitExceeded(_))
         ));
+    }
+
+    #[test]
+    fn round3_eocd_entry_limit_precedes_zip_allocation() {
+        let mut bytes = vec![0u8; 22];
+        bytes[..4].copy_from_slice(b"PK\x05\x06");
+        bytes[8..10].copy_from_slice(&10001u16.to_le_bytes());
+        bytes[10..12].copy_from_slice(&10001u16.to_le_bytes());
+        // No central directory at all: the resource rejection must precede ZIP parsing.
+        assert!(matches!(
+            read_package(std::io::Cursor::new(bytes)),
+            Err(ThreeMfError::ResourceLimitExceeded(_))
+        ));
+    }
+
+    #[test]
+    fn round3_zip64_entry_limit_and_classic_boundary() {
+        for count in [10_000u64, 10_001, u64::MAX] {
+            let mut bytes = vec![0u8; 56 + 20 + 22];
+            bytes[..4].copy_from_slice(b"PK\x06\x06");
+            bytes[4..12].copy_from_slice(&44u64.to_le_bytes());
+            bytes[24..32].copy_from_slice(&count.to_le_bytes());
+            bytes[32..40].copy_from_slice(&count.to_le_bytes());
+            bytes[56..60].copy_from_slice(b"PK\x06\x07");
+            bytes[72..76].copy_from_slice(&1u32.to_le_bytes());
+            bytes[76..80].copy_from_slice(b"PK\x05\x06");
+            bytes[84..88].fill(255);
+            let check = check_zip_entry_count(&mut std::io::Cursor::new(bytes));
+            if count == 10_000 {
+                assert!(check.is_ok());
+            } else {
+                assert!(matches!(check, Err(ThreeMfError::ResourceLimitExceeded(_))));
+            }
+        }
+        let mut bytes = vec![0u8; 22 + 65_535];
+        bytes[..4].copy_from_slice(b"PK\x05\x06");
+        bytes[8..10].copy_from_slice(&10_000u16.to_le_bytes());
+        bytes[10..12].copy_from_slice(&10_000u16.to_le_bytes());
+        bytes[20..22].copy_from_slice(&u16::MAX.to_le_bytes());
+        assert!(check_zip_entry_count(&mut std::io::Cursor::new(&bytes)).is_ok());
+        bytes[8..10].copy_from_slice(&10_001u16.to_le_bytes());
+        assert!(matches!(
+            check_zip_entry_count(&mut std::io::Cursor::new(bytes)),
+            Err(ThreeMfError::ResourceLimitExceeded(_))
+        ));
+    }
+
+    #[test]
+    fn round3_truncated_eocd_and_invalid_zip64_offsets_are_rejected() {
+        for length in 0..22 {
+            assert!(check_zip_entry_count(&mut std::io::Cursor::new(vec![0; length])).is_err());
+        }
+        let mut bytes = vec![0u8; 42];
+        bytes[..4].copy_from_slice(b"PK\x06\x07");
+        bytes[8..16].copy_from_slice(&u64::MAX.to_le_bytes());
+        bytes[20..24].copy_from_slice(b"PK\x05\x06");
+        assert!(check_zip_entry_count(&mut std::io::Cursor::new(bytes)).is_err());
     }
 
     /// ZIP with one highly compressible entry (mini zip bomb).

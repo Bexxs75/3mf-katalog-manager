@@ -770,6 +770,12 @@ async fn committed_import_with_failed_journal_remains_failed_and_cannot_be_disca
     let entries = f.app.uploads.as_ref().unwrap().store.list().unwrap();
     assert_eq!(entries.len(), 1);
     assert_eq!(serde_json::to_value(entries[0].state).unwrap(), "importing");
+    let retry = f
+        .invoke("start_upload_import", json!({"uploadIds":["other"]}))
+        .await;
+    assert_eq!(retry.status(), 503);
+    assert!(!retry.headers().contains_key("retry-after"));
+    assert_eq!(value(retry).await["kind"], "restart_required");
     std::fs::remove_dir(&journal).unwrap();
     std::fs::rename(backup, journal).unwrap();
 }
@@ -784,4 +790,217 @@ fn upload_startup_resolves_relative_database_and_auth_locations() {
     config.db_path=root.join(config.db_path.strip_prefix("/").unwrap());
     config.auth_file=root.join(config.auth_file.strip_prefix("/").unwrap());
     assert!(uploads::initialize(&config).unwrap().is_some());
+}
+
+#[tokio::test]
+async fn round3_status_and_cancel_do_not_consume_rate_tokens() {
+    let f = Fixture::new(true);
+    for _ in 0..100 {
+        for command in ["get_import_state", "get_import_result", "cancel_import"] {
+            assert_eq!(
+                f.invoke(command, json!({"jobId":"unknown"})).await.status(),
+                404
+            );
+        }
+    }
+    assert_eq!(
+        f.send(f.upload_request("after.obj", MODEL)).await.status(),
+        200
+    );
+}
+
+#[tokio::test]
+async fn round3_slow_file_sync_does_not_block_session_requests() {
+    let f = Fixture::new(true);
+    let store = &f.app.uploads.as_ref().unwrap().store;
+    let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let mut entered_tx = Some(entered_tx);
+    let hook = Mutex::new(move || {
+        entered_tx.take().unwrap().send(()).unwrap();
+        release_rx
+            .recv_timeout(std::time::Duration::from_secs(3))
+            .unwrap();
+    });
+    *store.sync_hook.lock().unwrap() = Some(Box::new(move || (hook.lock().unwrap())()));
+    let app = f.app.clone();
+    let req = f.upload_request("slow.obj", MODEL);
+    let upload = tokio::spawn(async move { router(app).oneshot(req).await.unwrap() });
+    entered_rx.await.unwrap();
+    let start = std::time::Instant::now();
+    let session = f
+        .send(f.request("GET", "/api/session", Body::empty()))
+        .await;
+    let elapsed = start.elapsed();
+    let _ = release_tx.send(());
+    assert_eq!(session.status(), 200);
+    assert!(
+        elapsed < std::time::Duration::from_millis(500),
+        "session waited {elapsed:?}"
+    );
+    assert_eq!(upload.await.unwrap().status(), 200);
+}
+
+#[tokio::test]
+async fn round3_list_hides_imported_and_import_journal_is_batched() {
+    let f = Fixture::new(true);
+    let mut ids = Vec::new();
+    for n in 0..200 {
+        f.time.0.fetch_add(1, Ordering::SeqCst);
+        let upload = f.upload(&format!("batch{n}.obj"), MODEL).await;
+        ids.push(upload["uploadId"].clone());
+    }
+    let store = &f.app.uploads.as_ref().unwrap().store;
+    let before = store.persist_count.load(Ordering::Relaxed);
+    let r = f
+        .invoke("start_upload_import", json!({"uploadIds":ids}))
+        .await;
+    assert_eq!(r.status(), 200);
+    let result = wait_result(&f, &value(r).await["jobId"]).await;
+    assert_eq!(result["files"].as_array().unwrap().len(), 200);
+    assert!(store.persist_count.load(Ordering::Relaxed) - before <= 13);
+    let list = value(
+        f.send(f.request("GET", "/api/uploads", Body::empty()))
+            .await,
+    )
+    .await;
+    assert_eq!(list.as_array().unwrap().len(), 199);
+    assert!(list
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|e| e["state"] != "imported"));
+}
+
+#[tokio::test]
+async fn round3_store_waits_do_not_block_tokio_or_existing_sse() {
+    let f = Fixture::new(true);
+    let existing = f.send(f.request("GET", "/api/events", Body::empty())).await;
+    assert_eq!(existing.status(), 200);
+    let store = f.app.uploads.as_ref().unwrap().store.clone();
+    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let held = tokio::task::spawn_blocking(move || {
+        store.with_test_lock(|| {
+            ready_tx.send(()).unwrap();
+            let _ = release_rx.recv_timeout(std::time::Duration::from_secs(3));
+        })
+    });
+    ready_rx.await.unwrap();
+    let app = f.app.clone();
+    let req = f.request("GET", "/api/events", Body::empty());
+    let event = tokio::spawn(async move { router(app).oneshot(req).await.unwrap() });
+    let start = std::time::Instant::now();
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    // Dropping an existing stream needs the hub lock; a new snapshot must not
+    // keep it locked while waiting for the store.
+    drop(existing);
+    let session = f
+        .send(f.request("GET", "/api/session", Body::empty()))
+        .await;
+    let elapsed = start.elapsed();
+    let _ = release_tx.send(());
+    held.await.unwrap();
+    assert_eq!(session.status(), 200);
+    assert!(
+        elapsed < std::time::Duration::from_millis(500),
+        "runtime stalled {elapsed:?}"
+    );
+    assert_eq!(event.await.unwrap().status(), 200);
+}
+
+#[tokio::test]
+async fn round3_live_catalog_path_conflicts_and_restart_hash_mismatch() {
+    let f = Fixture::new(true);
+    let upload = f.upload("occupied.obj", MODEL).await;
+    let started = f
+        .invoke(
+            "start_upload_import",
+            json!({"uploadIds":[upload["uploadId"]]}),
+        )
+        .await;
+    let result = wait_result(&f, &value(started).await["jobId"]).await;
+    assert_eq!(result["files"][0]["state"], "imported");
+    // A row created since startup must reserve its path even after the file disappears.
+    std::fs::remove_file(f.dir.join("models/uploads/occupied.obj")).unwrap();
+    let next = f.upload("occupied.obj", MODEL).await;
+    assert_eq!(next["name"], "occupied (2).obj");
+    // Restore the original inode's contents in place for a hash-only mismatch.
+    let path = f.dir.join("models/uploads/occupied (2).obj");
+    let next_started = f
+        .invoke(
+            "start_upload_import",
+            json!({"uploadIds":[next["uploadId"]]}),
+        )
+        .await;
+    let _ = wait_result(&f, &value(next_started).await["jobId"]).await;
+    let conn = db::open_read_write(&f.app.config.db_path).unwrap();
+    conn.execute(
+        "UPDATE files SET path=?1,content_hash='wrong'",
+        [path.to_string_lossy().as_ref()],
+    )
+    .unwrap();
+    let reopened = uploads::initialize(&f.app.config).unwrap().unwrap();
+    let entry = reopened
+        .store
+        .list()
+        .unwrap()
+        .into_iter()
+        .find(|e| e.id == next["uploadId"].as_str().unwrap())
+        .unwrap();
+    assert_ne!(entry.state, crate::upload_store::UploadState::Imported);
+}
+
+#[tokio::test]
+async fn round3_cancelled_http_keeps_final_registration_serialized_with_logout() {
+    let f = Fixture::new(true);
+    let store = f.app.uploads.as_ref().unwrap().store.clone();
+    let (sync_tx, sync_rx) = tokio::sync::oneshot::channel();
+    let (continue_tx, continue_rx) = std::sync::mpsc::channel();
+    let sync_tx = Mutex::new(Some(sync_tx));
+    let continue_rx = Mutex::new(continue_rx);
+    *store.sync_hook.lock().unwrap() = Some(Box::new(move || {
+        sync_tx.lock().unwrap().take().unwrap().send(()).unwrap();
+        let _ = continue_rx
+            .lock()
+            .unwrap()
+            .recv_timeout(std::time::Duration::from_secs(3));
+    }));
+    let app = f.app.clone();
+    let req = f.upload_request("cancel-final.obj", MODEL);
+    let request = tokio::spawn(async move { router(app).oneshot(req).await.unwrap() });
+    sync_rx.await.unwrap();
+    let (locked_tx, locked_rx) = tokio::sync::oneshot::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let locked = tokio::task::spawn_blocking(move || {
+        store.with_test_lock(|| {
+            locked_tx.send(()).unwrap();
+            let _ = release_rx.recv_timeout(std::time::Duration::from_secs(3));
+        })
+    });
+    locked_rx.await.unwrap();
+    continue_tx.send(()).unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        while f.app.changes.try_lock().is_ok() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    request.abort();
+    let _ = request.await;
+    let serialized = f.app.changes.try_lock().is_err();
+    release_tx.send(()).unwrap();
+    locked.await.unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        while f.app.changes.try_lock().is_err() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(
+        serialized,
+        "cancelling the HTTP future released the logout gate during registration"
+    );
 }

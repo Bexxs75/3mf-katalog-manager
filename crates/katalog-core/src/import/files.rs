@@ -52,14 +52,15 @@ pub fn is_supported_extension(path: &Path) -> bool {
         .unwrap_or(false)
 }
 pub fn compute_content_hash(path: &Path) -> CmdResult<String> {
-    use sha2::{Digest, Sha256};
-    use std::io::Read;
-
-    const CHUNK_SIZE: usize = 1024 * 1024;
     // Paths can come from an imported backup: `/dev/zero` would be read forever,
     // a FIFO would block the startup backfill.
     let file = crate::safe_file::open_regular(path).map_err(|e| e.to_string())?;
-    let mut reader = std::io::BufReader::new(file);
+    compute_reader_hash(file)
+}
+/// Hash an already checked file descriptor without reopening its path.
+pub fn compute_reader_hash(mut reader: impl std::io::Read) -> CmdResult<String> {
+    use sha2::{Digest, Sha256};
+    const CHUNK_SIZE: usize = 1024 * 1024;
     let mut hasher = Sha256::new();
     let mut buffer = vec![0u8; CHUNK_SIZE];
     loop {

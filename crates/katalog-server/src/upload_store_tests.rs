@@ -20,7 +20,15 @@ impl Fixture {
             root.join("db"),
             1024 * 1024,
             2,
-            catalogued,
+            &catalogued
+                .iter()
+                .map(|p| {
+                    (
+                        p.clone(),
+                        katalog_core::import::files::compute_content_hash(p).ok(),
+                    )
+                })
+                .collect(),
         )
         .unwrap()
     }
@@ -408,15 +416,7 @@ fn reserve_rejects_impossible_capacity_and_checks_inside_one_frame() {
     let mut pending = f.store.begin(8, "frame.stl").unwrap();
     // Move the next boundary close to avoid allocating a 64 MiB test frame.
     pending.next_check = 4;
-    let mut entry = f.upload();
-    entry.size = u64::MAX - RESERVE;
-    f.store
-        .inner
-        .lock()
-        .unwrap()
-        .journal
-        .entries
-        .insert(entry.id.clone(), entry);
+    f.store.lock().unwrap().reserved = u64::MAX - RESERVE;
     assert_eq!(pending.write(b"abcdefgh").unwrap_err().status, 507);
     assert_eq!(pending.written, 4);
     assert_eq!(pending.file.metadata().unwrap().len(), 4);
@@ -480,4 +480,210 @@ fn poisoned_store_still_releases_reservation_on_drop() {
         std::fs::read_dir(f.root.join("uploads")).unwrap().count(),
         0
     );
+}
+
+#[test]
+fn round3_written_bytes_release_space_reservation() {
+    let f = Fixture::new();
+    let mut p = f.store.begin(8, "space.obj").unwrap();
+    p.write(b"abcd").unwrap();
+    assert_eq!(f.store.lock().unwrap().reserved, 4);
+    drop(p);
+    assert_eq!(f.store.lock().unwrap().reserved, 0);
+}
+
+#[test]
+fn round3_terminal_jobs_are_bounded() {
+    let f = Fixture::new();
+    for n in 0..110 {
+        f.store
+            .save_job(
+                &format!("job-{n}"),
+                serde_json::json!({"state":"completed"}),
+            )
+            .unwrap();
+    }
+    assert_eq!(f.store.job_results().unwrap().len(), 100);
+    assert!(f.store.job_result("job-0").unwrap().is_none());
+    assert!(f.store.job_result("job-109").unwrap().is_some());
+}
+
+#[test]
+fn round3_missing_or_replaced_invalid_upload_can_be_discarded() {
+    for replaced in [false, true] {
+        let f = Fixture::new();
+        let e = f.upload();
+        f.store
+            .complete_batch(vec![(
+                e.id.clone(),
+                UploadState::Invalid,
+                serde_json::json!({}),
+            )])
+            .unwrap();
+        std::fs::rename(f.store.path(&e), f.root.join("original")).unwrap();
+        if replaced {
+            std::fs::write(f.store.path(&e), b"foreign").unwrap();
+        }
+        f.store.discard(&e.id).unwrap();
+        assert!(f.store.list().unwrap().is_empty());
+        if replaced {
+            assert_eq!(std::fs::read(f.store.path(&e)).unwrap(), b"foreign");
+        }
+    }
+}
+
+#[test]
+fn round3_old_journal_temporaries_cleaned_only() {
+    let f = Fixture::new();
+    let old = f
+        .root
+        .join(format!("auth/.journal-{}.part", random_id().unwrap()));
+    let fresh = f
+        .root
+        .join(format!("auth/.journal-{}.part", random_id().unwrap()));
+    for p in [&old, &fresh] {
+        std::fs::write(p, b"partial").unwrap();
+    }
+    File::open(&old)
+        .unwrap()
+        .set_times(std::fs::FileTimes::new().set_modified(UNIX_EPOCH))
+        .unwrap();
+    let _ = Fixture::open(&f.root, &HashSet::new());
+    assert!(!old.exists());
+    assert!(fresh.exists());
+}
+
+#[test]
+fn round3_catalogued_missing_paths_get_suffix_and_hash_mismatch_stays_open() {
+    let f = Fixture::new();
+    let e = f.upload();
+    let occupied = HashMap::from([(f.store.path(&e), Some("different hash".to_owned()))]);
+    let reopened = UploadStore::open(
+        f.root.join("uploads"),
+        f.root.join("auth/uploads.json"),
+        f.root.join("db"),
+        1024,
+        2,
+        &occupied,
+    )
+    .unwrap();
+    assert_eq!(reopened.list().unwrap()[0].state, UploadState::Uploaded);
+    std::fs::remove_file(f.store.path(&e)).unwrap();
+    let mut p = reopened.begin(4, &e.name).unwrap();
+    p.write(b"PK\x03\x04").unwrap();
+    assert_eq!(p.finish().unwrap().name, "test (2).3mf");
+}
+
+#[test]
+fn round3_imported_history_and_open_list_are_bounded_without_deleting_files() {
+    let f = Fixture::new();
+    let e = f.upload();
+    let before = f.store.persist_count.load(Ordering::Relaxed);
+    for batch in 0..60 {
+        let mut updates = Vec::new();
+        {
+            let mut inner = f.store.lock().unwrap();
+            for n in 0..20 {
+                let mut entry = e.clone();
+                entry.id = format!("entry-{:05}", batch * 20 + n);
+                entry.time = batch * 20 + n;
+                updates.push((
+                    entry.id.clone(),
+                    UploadState::Imported,
+                    serde_json::json!({}),
+                ));
+                inner.journal.entries.insert(entry.id.clone(), entry);
+            }
+        }
+        f.store.complete_batch(updates).unwrap();
+    }
+    assert_eq!(f.store.persist_count.load(Ordering::Relaxed) - before, 60);
+    assert_eq!(f.store.list().unwrap().len(), 1001);
+    assert_eq!(f.store.pending_list().unwrap().len(), 1);
+    assert!(f.store.path(&e).is_file());
+    let disk: Journal =
+        serde_json::from_slice(&std::fs::read(f.root.join("auth/uploads.json")).unwrap()).unwrap();
+    assert_eq!(disk.entries.len(), 1001);
+    assert!(!disk.entries.contains_key("entry-00000"));
+    assert!(disk.entries.contains_key("entry-01199"));
+    let mut inner = f.store.lock().unwrap();
+    for n in 0..550 {
+        let mut pending = e.clone();
+        pending.id = format!("open-{n}");
+        inner.journal.entries.insert(pending.id.clone(), pending);
+    }
+    drop(inner);
+    assert_eq!(f.store.pending_list().unwrap().len(), 500);
+}
+
+#[test]
+fn round3_disk_files_are_not_reserved_twice_and_active_quota_stays_full() {
+    let f = Fixture::new();
+    let mut e = f.upload();
+    e.size = f.store.dir.available().unwrap();
+    f.store
+        .lock()
+        .unwrap()
+        .journal
+        .entries
+        .insert(e.id.clone(), e);
+    assert!(f.store.space(&f.store.lock().unwrap(), 0).is_ok());
+    let f = Fixture::new();
+    let mut p = f.store.begin(8, "part.obj").unwrap();
+    p.write(b"four").unwrap();
+    assert_eq!(f.store.lock().unwrap().active_bytes, 8);
+    drop(p);
+    assert_eq!(f.store.lock().unwrap().active_bytes, 0);
+}
+
+#[test]
+fn round3_hardlinked_temporaries_and_unknown_files_survive_cleanup() {
+    let f = Fixture::new();
+    let temp = f
+        .root
+        .join(format!("uploads/.upload-{}.part", random_id().unwrap()));
+    std::fs::write(&temp, b"data").unwrap();
+    File::open(&temp)
+        .unwrap()
+        .set_times(std::fs::FileTimes::new().set_modified(UNIX_EPOCH))
+        .unwrap();
+    std::fs::hard_link(&temp, f.root.join("uploads/orphan.obj")).unwrap();
+    let directory = f
+        .root
+        .join(format!("auth/.journal-{}.part", random_id().unwrap()));
+    std::fs::create_dir(&directory).unwrap();
+    let link = f
+        .root
+        .join(format!("auth/.journal-{}.part", random_id().unwrap()));
+    std::os::unix::fs::symlink(&temp, &link).unwrap();
+    let _ = Fixture::open(&f.root, &HashSet::new());
+    assert!(temp.exists());
+    assert!(f.root.join("uploads/orphan.obj").exists());
+    assert!(directory.is_dir());
+    assert!(link.is_symlink());
+}
+
+#[test]
+fn round3_discard_keeps_replacement_symlink_or_directory() {
+    for symlink in [false, true] {
+        let f = Fixture::new();
+        let e = f.upload();
+        f.store
+            .complete_batch(vec![(
+                e.id.clone(),
+                UploadState::Duplicate,
+                serde_json::json!({}),
+            )])
+            .unwrap();
+        std::fs::rename(f.store.path(&e), f.root.join("owned")).unwrap();
+        if symlink {
+            std::os::unix::fs::symlink(f.root.join("owned"), f.store.path(&e)).unwrap();
+        } else {
+            std::fs::create_dir(f.store.path(&e)).unwrap();
+        }
+        f.store.discard(&e.id).unwrap();
+        assert!(f.store.list().unwrap().is_empty());
+        assert!(std::fs::symlink_metadata(f.store.path(&e)).is_ok());
+        assert_eq!(std::fs::read(f.root.join("owned")).unwrap(), b"PK\x03\x04");
+    }
 }

@@ -8,7 +8,10 @@ use std::{
     io::{self, Write},
     os::unix::fs::{MetadataExt, PermissionsExt},
     path::PathBuf,
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex, MutexGuard,
+    },
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -64,11 +67,48 @@ struct Journal {
     #[serde(default)]
     job_order: Vec<String>,
 }
+impl Journal {
+    fn prune(&mut self) {
+        if self.job_order.is_empty() {
+            self.job_order.extend(self.jobs.keys().cloned());
+        }
+        let terminal = |v: &Value| {
+            matches!(
+                v.get("state").and_then(Value::as_str),
+                Some("finished" | "completed" | "failed" | "cancelled")
+            )
+        };
+        let mut remaining = 100;
+        self.job_order.retain(|id| self.jobs.contains_key(id));
+        for id in self.job_order.iter().rev() {
+            if self.jobs.get(id).is_some_and(terminal) {
+                if remaining == 0 {
+                    self.jobs.remove(id);
+                } else {
+                    remaining -= 1;
+                }
+            }
+        }
+        self.job_order.retain(|id| self.jobs.contains_key(id));
+        let mut imported: Vec<_> = self
+            .entries
+            .values()
+            .filter(|e| e.state == UploadState::Imported)
+            .map(|e| (e.time, e.id.clone()))
+            .collect();
+        imported.sort();
+        let excess = imported.len().saturating_sub(1000);
+        for (_, id) in imported.into_iter().take(excess) {
+            self.entries.remove(&id);
+        }
+    }
+}
 #[derive(Default)]
 struct Inner {
     journal: Journal,
     active: usize,
     reserved: u64,
+    active_bytes: u64,
 }
 pub struct UploadStore {
     dir: Directory,
@@ -79,6 +119,12 @@ pub struct UploadStore {
     max_bytes: u64,
     max_active: usize,
     inner: Mutex<Inner>,
+    catalogued: HashSet<PathBuf>,
+    restart_required: AtomicBool,
+    #[cfg(test)]
+    pub sync_hook: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
+    #[cfg(test)]
+    pub persist_count: std::sync::atomic::AtomicUsize,
 }
 fn now() -> u64 {
     SystemTime::now()
@@ -153,7 +199,7 @@ impl UploadStore {
         db_dir: PathBuf,
         max_bytes: u64,
         max_active: usize,
-        catalogued: &HashSet<PathBuf>,
+        catalogued: &HashMap<PathBuf, Option<String>>,
     ) -> Result<Arc<Self>, StoreError> {
         let dir = Directory::open(&path)?;
         let db_dir = Directory::open(&db_dir)?;
@@ -181,9 +227,21 @@ impl UploadStore {
             {
                 return false;
             }
-            if catalogued.contains(&path.join(&e.name)) {
+            if catalogued
+                .get(&path.join(&e.name))
+                .and_then(|hash| hash.as_ref())
+                .is_some_and(|hash| {
+                    dir.checked(&e.name, e.dev, e.ino)
+                        .ok()
+                        .and_then(|file| {
+                            katalog_core::import::files::compute_reader_hash(file).ok()
+                        })
+                        .as_ref()
+                        == Some(hash)
+                })
+            {
                 e.state = UploadState::Imported;
-            } else if e.state == UploadState::Importing {
+            } else if matches!(e.state, UploadState::Importing | UploadState::Imported) {
                 e.state = UploadState::Uploaded;
             }
             true
@@ -216,7 +274,14 @@ impl UploadStore {
             *job = serde_json::json!({"jobId":job_id,"state":"failed","current":null,
                 "total":total,"done":done,"files":files,"kind":"interrupted"});
         }
+        let mut orphans = 0;
         for name in dir.names()? {
+            let untracked = dir.read(&name).is_ok()
+                && !journal.entries.values().any(|e| e.name == name)
+                && !catalogued.contains_key(&path.join(&name));
+            if untracked {
+                orphans += 1;
+            }
             if let Some(id) = name
                 .strip_prefix(".upload-")
                 .and_then(|s| s.strip_suffix(".part"))
@@ -226,11 +291,32 @@ impl UploadStore {
                         let m = f.metadata()?;
                         if m.nlink() == 1 && now().saturating_sub(m.mtime().max(0) as u64) > 3600 {
                             dir.unlink(&name)?;
+                            if untracked {
+                                orphans -= 1;
+                            }
                         }
                     }
                 }
             }
         }
+        if orphans > 0 {
+            eprintln!("upload recovery: {orphans} untracked files require manual review");
+        }
+        for name in journal_dir.names()? {
+            if name
+                .strip_prefix(".journal-")
+                .and_then(|s| s.strip_suffix(".part"))
+                .is_some_and(|id| id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit()))
+            {
+                if let Ok(file) = journal_dir.read(&name) {
+                    let m = file.metadata()?;
+                    if m.nlink() == 1 && now().saturating_sub(m.mtime().max(0) as u64) > 3600 {
+                        journal_dir.unlink(&name)?;
+                    }
+                }
+            }
+        }
+        journal.prune();
         let store = Arc::new(Self {
             dir,
             db_dir,
@@ -239,6 +325,12 @@ impl UploadStore {
             path,
             max_bytes,
             max_active,
+            catalogued: catalogued.keys().cloned().collect(),
+            restart_required: AtomicBool::new(false),
+            #[cfg(test)]
+            sync_hook: Mutex::new(None),
+            #[cfg(test)]
+            persist_count: std::sync::atomic::AtomicUsize::new(0),
             inner: Mutex::new(Inner {
                 journal,
                 ..Inner::default()
@@ -247,12 +339,19 @@ impl UploadStore {
         store.persist(&store.lock()?.journal)?;
         Ok(store)
     }
+    #[cfg(test)]
+    pub fn with_test_lock(&self, f: impl FnOnce()) {
+        let _guard = self.inner.lock().unwrap();
+        f();
+    }
     fn lock(&self) -> Result<MutexGuard<'_, Inner>, StoreError> {
         self.inner
             .lock()
             .map_err(|_| StoreError::new(500, "journal_lock"))
     }
     fn persist(&self, journal: &Journal) -> Result<(), StoreError> {
+        #[cfg(test)]
+        self.persist_count.fetch_add(1, Ordering::Relaxed);
         let temp = format!(".journal-{}.part", random_id()?);
         let result = (|| {
             let mut f = self.journal_dir.create(&temp)?;
@@ -265,22 +364,13 @@ impl UploadStore {
             Ok(())
         })();
         if result.is_err() {
+            self.restart_required.store(true, Ordering::Release);
             let _ = self.journal_dir.unlink(&temp);
         }
         result
     }
     fn space(&self, inner: &Inner, extra: u64) -> Result<(), StoreError> {
-        let pending = inner
-            .journal
-            .entries
-            .values()
-            .filter(|e| e.state != UploadState::Imported)
-            .map(|e| e.size)
-            .sum::<u64>();
-        let needed = RESERVE
-            .saturating_add(inner.reserved)
-            .saturating_add(pending)
-            .saturating_add(extra);
+        let needed = RESERVE.saturating_add(inner.reserved).saturating_add(extra);
         if self.dir.available()? <= needed
             || (self.dir.device()? == self.db_dir.device()? && self.db_dir.available()? <= RESERVE)
         {
@@ -329,7 +419,7 @@ impl UploadStore {
                 .iter()
                 .map(|e| e.size)
                 .sum::<u64>()
-                .saturating_add(inner.reserved)
+                .saturating_add(inner.active_bytes)
                 .saturating_add(length)
                 > PENDING_BYTES
         {
@@ -341,6 +431,7 @@ impl UploadStore {
         let file = self.dir.create(&temporary)?;
         inner.active += 1;
         inner.reserved += length;
+        inner.active_bytes += length;
         Ok(PendingUpload {
             store: Arc::clone(self),
             file,
@@ -364,7 +455,7 @@ impl UploadStore {
             .entries
             .values()
             .filter(|entry| entry.state != UploadState::Imported)
-            .take(200)
+            .take(500)
             .cloned()
             .collect())
     }
@@ -389,23 +480,35 @@ impl UploadStore {
         ) {
             return Err(StoreError::new(409, "upload_state"));
         }
-        let metadata = self
-            .dir
-            .read(&e.name)
-            .and_then(|file| file.metadata())
-            .map_err(|_| StoreError::new(409, "upload_changed"))?;
-        if metadata.dev() != e.dev || metadata.ino() != e.ino {
-            return Err(StoreError::new(409, "upload_changed"));
+        let metadata = self.dir.entry_identity(&e.name);
+        let removable = matches!(e.state, UploadState::Duplicate | UploadState::Invalid);
+        match metadata {
+            Ok((dev, ino)) if dev == e.dev && ino == e.ino => {
+                self.dir.unlink(&e.name)?;
+                self.dir.sync()?;
+            }
+            Ok(_) if removable => {}
+            Err(error) if removable && error.kind() == io::ErrorKind::NotFound => {}
+            _ => return Err(StoreError::new(409, "upload_changed")),
         }
-        self.dir.unlink(&e.name)?;
-        self.dir.sync()?;
         let mut next = inner.journal.clone();
         next.entries.remove(id);
+        next.prune();
         self.persist(&next)?;
         inner.journal = next;
         Ok(())
     }
+    pub fn ensure_importable(&self) -> Result<(), StoreError> {
+        if self.restart_required.load(Ordering::Acquire) {
+            return Err(StoreError::new(503, "restart_required"));
+        }
+        Ok(())
+    }
+    pub fn require_restart(&self) {
+        self.restart_required.store(true, Ordering::Release);
+    }
     pub fn begin_import(&self, ids: &[String], job_id: &str) -> Result<Vec<Entry>, StoreError> {
+        self.ensure_importable()?;
         let mut inner = self.lock()?;
         if ids.is_empty() || ids.len() > 200 {
             return Err(StoreError::new(400, "invalid_upload_ids"));
@@ -426,6 +529,7 @@ impl UploadStore {
             if self.checked_file(e).is_err() {
                 let mut next = inner.journal.clone();
                 next.entries.get_mut(id).unwrap().state = UploadState::Invalid;
+                next.prune();
                 self.persist(&next)?;
                 inner.journal = next;
                 return Err(StoreError::new(409, "upload_changed"));
@@ -459,6 +563,7 @@ impl UploadStore {
                 "done":0,"files":[],"kind":null
             }),
         );
+        next.prune();
         self.persist(&next)?;
         inner.journal = next;
         Ok(entries)
@@ -477,6 +582,7 @@ impl UploadStore {
             e.state = state;
             e.result = Some(result);
         }
+        next.prune();
         self.persist(&next)?;
         inner.journal = next;
         Ok(())
@@ -520,6 +626,7 @@ impl UploadStore {
                 }
             }
         }
+        next.prune();
         self.persist(&next)?;
         inner.journal = next;
         Ok(())
@@ -533,6 +640,7 @@ impl UploadStore {
         next.job_order.retain(|existing| existing != id);
         next.job_order.push(id.to_owned());
         next.jobs.insert(id.to_owned(), result);
+        next.prune();
         self.persist(&next)?;
         inner.journal = next;
         Ok(())
@@ -591,6 +699,7 @@ impl UploadStore {
                 e.state = UploadState::Uploaded;
             }
         }
+        next.prune();
         self.persist(&next)?;
         inner.journal = next;
         Ok(())
@@ -636,6 +745,7 @@ impl PendingUpload {
                 .min((self.next_check - self.written) as usize);
             self.file.write_all(&remaining[..count])?;
             self.written += count as u64;
+            self.store.lock()?.reserved -= count as u64;
             remaining = &remaining[count..];
             if self.written >= self.next_check {
                 self.store.space(&*self.store.lock()?, 0)?;
@@ -644,7 +754,7 @@ impl PendingUpload {
         }
         Ok(())
     }
-    pub fn finish(mut self) -> Result<Entry, StoreError> {
+    pub fn prepare(&self) -> Result<(), StoreError> {
         if self.written != self.length {
             return Err(StoreError::new(400, "length_mismatch"));
         }
@@ -664,9 +774,21 @@ impl PendingUpload {
         if !valid {
             return Err(StoreError::new(400, "invalid_signature"));
         }
+        #[cfg(test)]
+        if let Some(hook) = self.store.sync_hook.lock().unwrap().as_ref() {
+            hook();
+        }
         self.file
             .set_permissions(std::fs::Permissions::from_mode(0o644))?;
         self.file.sync_all()?;
+        Ok(())
+    }
+    #[cfg(test)]
+    pub fn finish(self) -> Result<Entry, StoreError> {
+        self.prepare()?;
+        self.register(&HashSet::new())
+    }
+    pub fn register(mut self, occupied: &HashSet<PathBuf>) -> Result<Entry, StoreError> {
         let mut inner = self.store.lock()?;
         self.store.space(&inner, 0)?;
         let owned = self.file.metadata()?;
@@ -690,6 +812,11 @@ impl PendingUpload {
                 }
                 format!("{}{suffix}", &stem[..cut])
             };
+            if self.store.catalogued.contains(&self.store.path.join(&name))
+                || occupied.contains(&self.store.path.join(&name))
+            {
+                continue;
+            }
             match self.store.dir.link(&self.temporary, &name) {
                 Ok(()) => {
                     final_name = Some(name);
@@ -731,7 +858,8 @@ impl PendingUpload {
             let _ = self.store.dir.sync();
         }
         inner.active -= 1;
-        inner.reserved -= self.length;
+        inner.reserved -= self.length - self.written;
+        inner.active_bytes -= self.length;
         self.released = true;
         result
     }
@@ -746,7 +874,8 @@ impl Drop for PendingUpload {
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             inner.active = inner.active.saturating_sub(1);
-            inner.reserved = inner.reserved.saturating_sub(self.length);
+            inner.active_bytes = inner.active_bytes.saturating_sub(self.length);
+            inner.reserved = inner.reserved.saturating_sub(self.length - self.written);
         }
     }
 }

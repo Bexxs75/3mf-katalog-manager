@@ -43,7 +43,7 @@ fn fail(e: StoreError) -> Response {
         Json(json!({"kind":e.kind,"message":message,"expected":e.status<500})),
     )
         .into_response();
-    if matches!(e.status, 429 | 503) {
+    if matches!(e.status, 429 | 503) && e.kind != "restart_required" {
         r.headers_mut().insert("retry-after", "1".parse().unwrap());
     }
     r
@@ -115,11 +115,21 @@ pub(super) struct Runtime {
     hub: Mutex<Hub>,
 }
 impl Runtime {
-    fn changed(&self) {
-        self.hub.lock().unwrap().publish(
-            "import-progress",
-            json!({"uploads":pending_entries(&self.store)}),
-        );
+    async fn changed(self: &Arc<Self>) {
+        let copy = self.clone();
+        let _ = tokio::task::spawn_blocking(move || copy.changed_blocking()).await;
+    }
+    fn changed_blocking(&self) {
+        loop {
+            let sequence = self.hub.lock().unwrap().sequence;
+            let uploads = pending_entries(&self.store);
+            let mut hub = self.hub.lock().unwrap();
+            if hub.sequence != sequence {
+                continue;
+            }
+            hub.publish("import-progress", json!({"uploads": uploads}));
+            break;
+        }
     }
     fn publish(&self, job: &Job, finished: bool) {
         let mut hub = self.hub.lock().unwrap();
@@ -134,7 +144,7 @@ impl Runtime {
     }
 }
 fn public_entries(store: &UploadStore) -> Vec<Value> {
-    store.list().unwrap_or_default().iter().map(|e|json!({"uploadId":e.id,"name":e.name,"size":e.size,"time":e.time,"state":e.state,"result":e.result})).collect()
+    store.pending_list().unwrap_or_default().iter().map(|e|json!({"uploadId":e.id,"name":e.name,"size":e.size,"time":e.time,"state":e.state,"result":e.result})).collect()
 }
 pub(super) fn initialize(config: &Config) -> Result<Option<Arc<Runtime>>, String> {
     let Some(c) = &config.upload else {
@@ -142,19 +152,29 @@ pub(super) fn initialize(config: &Config) -> Result<Option<Arc<Runtime>>, String
     };
     let conn = db::open_read_only(&config.db_path).map_err(|_| "upload_database".to_string())?;
     let mut stmt = conn
-        .prepare("SELECT path,id FROM files")
+        .prepare("SELECT path,id,content_hash FROM files")
         .map_err(|_| "upload_database".to_string())?;
-    let file_ids: HashMap<PathBuf, String> = stmt
+    let catalogued: HashMap<PathBuf, (String, Option<String>)> = stmt
         .query_map([], |r| {
             Ok((
                 PathBuf::from(r.get::<_, String>(0)?),
-                r.get::<_, i64>(1)?.to_string(),
+                (
+                    r.get::<_, i64>(1)?.to_string(),
+                    r.get::<_, Option<String>>(2)?,
+                ),
             ))
         })
         .map_err(|_| "upload_database".to_string())?
         .collect::<Result<_, _>>()
         .map_err(|_| "upload_database".to_string())?;
-    let paths = file_ids.keys().cloned().collect();
+    let paths = catalogued
+        .iter()
+        .map(|(path, (_, hash))| (path.clone(), hash.clone()))
+        .collect();
+    let file_ids = catalogued
+        .into_iter()
+        .map(|(path, (id, _))| (path, id))
+        .collect();
     let auth_parent = config
         .auth_file
         .parent()
@@ -298,11 +318,18 @@ pub(super) async fn upload(app: Arc<App>, session: Session, req: Request) -> Res
             Err(_) => return error(500, "upload_internal"),
         };
     }
+    pending = match tokio::task::spawn_blocking(move || pending.prepare().map(|()| pending)).await {
+        Ok(Ok(p)) => p,
+        Ok(Err(e)) => return fail(e),
+        Err(_) => return error(500, "upload_internal"),
+    };
     // Serialize final registration with logout/password changes. A dropped request
     // cannot leave a registered file unless this last authenticated commit began.
-    let _change = app.changes.lock().await;
+    let change = app.changes.clone().lock_owned().await;
     let finish_app = app.clone();
     let response = tokio::task::spawn_blocking(move || {
+        // Keep logout serialized even if the HTTP future is cancelled.
+        let _change = change;
         let mut data = finish_app.data.lock().unwrap();
         cleanup(&mut data, finish_app.clock.now());
         if !data.sessions.contains_key(&session.token) {
@@ -311,14 +338,28 @@ pub(super) async fn upload(app: Arc<App>, session: Session, req: Request) -> Res
         if data.auth.as_ref().is_none_or(|a| a.must_change) {
             return error(403, "password_change_required");
         }
-        match pending.finish() {
+        drop(data);
+        let occupied = (|| {
+            let conn = db::open_read_only(&finish_app.config.db_path).map_err(|_| ())?;
+            let mut stmt = conn.prepare("SELECT path FROM files").map_err(|_| ())?;
+            let paths = stmt
+                .query_map([], |row| row.get::<_, String>(0))
+                .map_err(|_| ())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|_| ())?;
+            Ok::<_, ()>(paths.into_iter().map(PathBuf::from).collect())
+        })();
+        let Ok(occupied) = occupied else {
+            return error(500, "upload_database");
+        };
+        match pending.register(&occupied) {
             Ok(e) => Json(json!({"uploadId":e.id,"name":e.name,"size":e.size})).into_response(),
             Err(e) => fail(e),
         }
     })
     .await
     .unwrap_or_else(|_| error(500, "upload_internal"));
-    runtime.changed();
+    runtime.changed().await;
     response
 }
 #[derive(Deserialize)]
@@ -349,8 +390,10 @@ pub(super) async fn invoke(
     args: Value,
 ) -> Response {
     let rt = app.uploads.as_ref().unwrap().clone();
-    if let Err(r) = rate(&app, &session) {
-        return r;
+    if matches!(command, "start_upload_import" | "discard_upload") {
+        if let Err(r) = rate(&app, &session) {
+            return r;
+        }
     }
     match command {
         "discard_upload" => {
@@ -364,7 +407,7 @@ pub(super) async fn invoke(
             let copy = rt.clone();
             let result =
                 tokio::task::spawn_blocking(move || copy.store.discard(&arg.upload_id)).await;
-            rt.changed();
+            rt.changed().await;
             match result {
                 Ok(Ok(())) => Json(json!({"ok":true})).into_response(),
                 Ok(Err(e)) => fail(e),
@@ -394,9 +437,14 @@ pub(super) async fn invoke(
             {
                 return error(409, "upload_conflict");
             }
-            let known = match rt.store.list() {
-                Ok(v) => v,
-                Err(e) => return fail(e),
+            if let Err(e) = rt.store.ensure_importable() {
+                return fail(e);
+            }
+            let copy = rt.clone();
+            let known = match tokio::task::spawn_blocking(move || copy.store.list()).await {
+                Ok(Ok(v)) => v,
+                Ok(Err(e)) => return fail(e),
+                Err(_) => return error(500, "journal"),
             };
             for id in &arg.upload_ids {
                 match known.iter().find(|e| &e.id == id) {
@@ -462,10 +510,11 @@ pub(super) async fn invoke(
                 return Json(serde_json::to_value(&*job.view.lock().unwrap()).unwrap())
                     .into_response();
             }
-            match rt.store.job_result(&arg.job_id) {
-                Ok(Some(v)) => Json(v).into_response(),
-                Ok(None) => error(404, "job_not_found"),
-                Err(e) => fail(e),
+            match tokio::task::spawn_blocking(move || rt.store.job_result(&arg.job_id)).await {
+                Ok(Ok(Some(v))) => Json(v).into_response(),
+                Ok(Ok(None)) => error(404, "job_not_found"),
+                Ok(Err(e)) => fail(e),
+                Err(_) => error(500, "journal"),
             }
         }
         _ => error(404, "command_not_found"),
@@ -535,7 +584,8 @@ fn run_job(
         true
     };
     if !reconciled || rt.store.reset_importing(&id).is_err() {
-        job.view.lock().unwrap().kind = Some("journal".into());
+        rt.store.require_restart();
+        job.view.lock().unwrap().kind = Some("restart_required".into());
     }
     if let Ok(current) = rt.store.list() {
         let mut view = job.view.lock().unwrap();
@@ -572,14 +622,15 @@ fn run_job(
         }
         .into();
         view.current = None;
-        if failed && !job.cancel.load(Ordering::Acquire) {
+        if failed && !job.cancel.load(Ordering::Acquire) && view.kind.is_none() {
             view.kind = Some("import_failed".into());
         }
     }
     let value = serde_json::to_value(&*job.view.lock().unwrap()).unwrap();
     let persisted = rt.store.save_job(&id, value).is_ok();
     if !persisted {
-        job.view.lock().unwrap().kind = Some("journal".into());
+        rt.store.require_restart();
+        job.view.lock().unwrap().kind = Some("restart_required".into());
         job.view.lock().unwrap().state = "failed".into();
     }
     rt.publish(&job, true);
@@ -594,18 +645,24 @@ fn reconcile_commits(app: &App, rt: &Runtime, job: &Job, entries: &[Entry]) -> R
     for entry in entries {
         let path = rt.store.path(entry).to_string_lossy().into_owned();
         let mut statement = conn
-            .prepare("SELECT id FROM files WHERE path=?1")
+            .prepare("SELECT id,content_hash FROM files WHERE path=?1")
             .map_err(|_| ())?;
         let ids = statement
-            .query_map([path], |r| r.get::<_, i64>(0))
+            .query_map([path], |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, Option<String>>(1)?))
+            })
             .map_err(|_| ())?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|_| ())?;
-        if let Some(id) = ids.first() {
-            updates.push((entry.clone(), id.to_string()));
+        if let Some((id, Some(hash))) = ids.first() {
+            let file = rt.store.checked_file(entry).map_err(|_| ())?;
+            if files::compute_reader_hash(file).map_err(|_| ())? == *hash {
+                updates.push((entry.clone(), id.to_string()));
+            }
         }
     }
     drop(conn);
+    let mut records = Vec::new();
     for (entry, id) in updates {
         if !job
             .view
@@ -615,10 +672,10 @@ fn reconcile_commits(app: &App, rt: &Runtime, job: &Job, entries: &[Entry]) -> R
             .iter()
             .any(|f| f.upload_id == entry.id)
         {
-            record(rt, job, &entry, "imported", Some(id), None, None)?;
+            record(&mut records, &entry, "imported", Some(id), None, None);
         }
     }
-    Ok(())
+    record_batch(rt, job, records)
 }
 fn run_inner(app: &App, rt: &Arc<Runtime>, job: &Job, entries: &[Entry]) -> Result<(), ()> {
     let root = app.config.upload.as_ref().unwrap().dir.clone();
@@ -645,8 +702,10 @@ fn run_inner(app: &App, rt: &Arc<Runtime>, job: &Job, entries: &[Entry]) -> Resu
         limits: app.config.upload.as_ref().unwrap().limits,
     };
     let mut batch = Vec::new();
+    let mut records = Vec::new();
+    let mut batch_bytes = 0;
     job.view.lock().unwrap().state = "importing".into();
-    for entry in entries {
+    for (index, entry) in entries.iter().enumerate() {
         if job.cancel.load(Ordering::Acquire) {
             break;
         }
@@ -654,28 +713,43 @@ fn run_inner(app: &App, rt: &Arc<Runtime>, job: &Job, entries: &[Entry]) -> Resu
         rt.publish(job, false);
         let path = rt.store.path(entry);
         match reader.read(&path) {
-            Ok(new_file) => batch.push(PendingImport {
-                path,
-                folder_root: None,
-                new_file,
-            }),
-            Err(_) => record(rt, job, entry, "invalid", None, None, Some("invalid"))?,
+            Ok(new_file) => {
+                batch_bytes += new_file.thumbnail_png.as_ref().map_or(0, Vec::len)
+                    + new_file.slice_info_json.as_ref().map_or(0, String::len)
+                    + new_file
+                        .metadata
+                        .iter()
+                        .map(|(k, v)| k.len() + v.len())
+                        .sum::<usize>()
+                    + new_file
+                        .materials
+                        .iter()
+                        .map(|m| m.name.len() + m.display_color.as_ref().map_or(0, String::len))
+                        .sum::<usize>()
+                    + new_file.tags.iter().map(String::len).sum::<usize>();
+                batch.push(PendingImport {
+                    path,
+                    folder_root: None,
+                    new_file,
+                });
+            }
+            Err(_) => record(&mut records, entry, "invalid", None, None, Some("invalid")),
         }
-        if !batch.is_empty() {
-            flush(&mut database, rt, job, entries, &mut batch)?;
+        if (index + 1) % 20 == 0 || batch_bytes >= 16 * 1024 * 1024 {
+            flush(&mut database, rt, job, entries, &mut batch, &mut records)?;
+            batch_bytes = 0;
         }
     }
-    flush(&mut database, rt, job, entries, &mut batch)
+    flush(&mut database, rt, job, entries, &mut batch, &mut records)
 }
 fn record(
-    rt: &Runtime,
-    job: &Job,
+    records: &mut Vec<FileResult>,
     e: &Entry,
     state: &str,
     file_id: Option<String>,
     existing_file_id: Option<String>,
     kind: Option<&str>,
-) -> Result<(), ()> {
+) {
     let value = FileResult {
         upload_id: e.id.clone(),
         name: e.name.clone(),
@@ -684,20 +758,30 @@ fn record(
         existing_file_id,
         kind: kind.map(str::to_string),
     };
-    let state = match state {
-        "imported" => UploadState::Imported,
-        "duplicate" => UploadState::Duplicate,
-        _ => UploadState::Invalid,
-    };
-    rt.store
-        .complete_batch(vec![(
-            e.id.clone(),
-            state,
-            serde_json::to_value(&value).unwrap(),
-        )])
-        .map_err(|_| ())?;
+    records.push(value);
+}
+fn record_batch(rt: &Runtime, job: &Job, records: Vec<FileResult>) -> Result<(), ()> {
+    if records.is_empty() {
+        return Ok(());
+    }
+    let updates = records
+        .iter()
+        .map(|value| {
+            let state = match value.state.as_str() {
+                "imported" => UploadState::Imported,
+                "duplicate" => UploadState::Duplicate,
+                _ => UploadState::Invalid,
+            };
+            (
+                value.upload_id.clone(),
+                state,
+                serde_json::to_value(value).unwrap(),
+            )
+        })
+        .collect();
+    rt.store.complete_batch(updates).map_err(|_| ())?;
     let mut view = job.view.lock().unwrap();
-    view.files.push(value);
+    view.files.extend(records);
     view.done = view.files.len();
     drop(view);
     rt.publish(job, false);
@@ -709,6 +793,7 @@ fn flush(
     job: &Job,
     entries: &[Entry],
     batch: &mut Vec<PendingImport>,
+    records: &mut Vec<FileResult>,
 ) -> Result<(), ()> {
     let mut result = files::empty_import_result();
     let mut duplicates = Vec::new();
@@ -724,7 +809,7 @@ fn flush(
             .iter()
             .find(|e| rt.store.path(e).to_string_lossy() == file.path)
             .ok_or(())?;
-        record(rt, job, e, "imported", Some(file.id), None, None)?;
+        record(records, e, "imported", Some(file.id), None, None);
     }
     for file in duplicates {
         let e = entries
@@ -732,22 +817,22 @@ fn flush(
             .find(|e| rt.store.path(e).to_string_lossy() == file.path)
             .ok_or(())?;
         record(
-            rt,
-            job,
+            records,
             e,
             "duplicate",
             None,
             file.existing_file_id,
             Some(&file.kind),
-        )?;
+        );
     }
     for file in result.skipped {
         let e = entries
             .iter()
             .find(|e| rt.store.path(e).to_string_lossy() == file.path)
             .ok_or(())?;
-        record(rt, job, e, "invalid", None, None, Some("database"))?;
+        record(records, e, "invalid", None, None, Some("database"));
     }
+    record_batch(rt, job, std::mem::take(records))?;
     outcome.map_err(|_| ())
 }
 struct StreamGuard {
@@ -781,7 +866,7 @@ impl HttpBody for EventBody {
         self.rx.poll_recv(cx).map(|v| v.map(|b| Ok(Frame::data(b))))
     }
 }
-pub(super) fn events(app: Arc<App>, session: Session, headers: &HeaderMap) -> Response {
+pub(super) async fn events(app: Arc<App>, session: Session, headers: &HeaderMap) -> Response {
     if !origin_ok(&app, headers)
         || !matches!(
             headers.get("sec-fetch-site").and_then(|h| h.to_str().ok()),
@@ -792,17 +877,31 @@ pub(super) fn events(app: Arc<App>, session: Session, headers: &HeaderMap) -> Re
     }
     let rt = app.uploads.as_ref().unwrap().clone();
     let (tx, rx) = mpsc::channel(32);
-    let id = {
-        let mut hub = rt.hub.lock().unwrap();
-        if hub.session_counts.get(&session.token).copied().unwrap_or(0) >= 4 {
-            return crate::write::retry(429);
+    let copy = rt.clone();
+    let token = session.token.clone();
+    let snapshot_tx = tx.clone();
+    let guard = match tokio::task::spawn_blocking(move || {
+        let rt = copy;
+        let tx = snapshot_tx;
+        // Never hold the hub while waiting on journal fsync. Retry if a
+        // publication raced the snapshot; subscribe under the same hub lock.
+        let (mut jobs, uploads, mut hub) = loop {
+            let sequence = rt.hub.lock().unwrap().sequence;
+            let jobs = rt.store.recent_job_results().unwrap_or_default();
+            let uploads = pending_entries(&rt.store);
+            let hub = rt.hub.lock().unwrap();
+            if hub.sequence == sequence {
+                break (jobs, uploads, hub);
+            }
+        };
+        if hub.session_counts.get(&token).copied().unwrap_or(0) >= 4 {
+            return Err(429);
         }
         if hub.session_counts.values().sum::<usize>() >= 32 {
-            return crate::write::retry(503);
+            return Err(503);
         }
         // Publish and snapshot use this lock: updates that race the snapshot are
         // repeated after it, never lost between observation and subscription.
-        let mut jobs = rt.store.recent_job_results().unwrap_or_default();
         let active_ids: std::collections::HashSet<_> =
             rt.jobs.lock().unwrap().keys().cloned().collect();
         jobs.retain(|v| {
@@ -819,19 +918,25 @@ pub(super) fn events(app: Arc<App>, session: Session, headers: &HeaderMap) -> Re
         );
         let snapshot = hub.event(
             "import-progress",
-            json!({"snapshot":true,"jobs":jobs,"uploads":pending_entries(&rt.store)}),
+            json!({"snapshot":true,"jobs":jobs,"uploads":uploads}),
         );
         tx.try_send(snapshot).unwrap();
         let id = hub.sequence;
         hub.clients.insert(id, tx.clone());
-        *hub.session_counts.entry(session.token.clone()).or_default() += 1;
-        id
+        *hub.session_counts.entry(token.clone()).or_default() += 1;
+        Ok(StreamGuard {
+            rt: rt.clone(),
+            id,
+            session: token,
+        })
+    })
+    .await
+    {
+        Ok(Ok(guard)) => guard,
+        Ok(Err(status)) => return crate::write::retry(status),
+        Err(_) => return error(500, "journal"),
     };
-    let guard = StreamGuard {
-        rt: rt.clone(),
-        id,
-        session: session.token.clone(),
-    };
+    let id = guard.id;
     tokio::spawn(async move {
         let mut interval = tokio::time::interval_at(
             tokio::time::Instant::now() + Duration::from_secs(15),
@@ -856,8 +961,10 @@ pub(super) fn events(app: Arc<App>, session: Session, headers: &HeaderMap) -> Re
         .insert("x-accel-buffering", "no".parse().unwrap());
     response
 }
-pub(super) fn list(rt: &Runtime) -> Response {
-    Json(public_entries(&rt.store)).into_response()
+pub(super) async fn list(rt: Arc<Runtime>) -> Response {
+    tokio::task::spawn_blocking(move || Json(public_entries(&rt.store)).into_response())
+        .await
+        .unwrap_or_else(|_| error(500, "journal"))
 }
 
 /// Deliberately stores no headers, file names, arguments, or filesystem errors.

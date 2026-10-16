@@ -110,12 +110,37 @@ without 64 KiB progress. SSE pings every 15 seconds do not refresh session activ
 Preserve CSRF, Origin and Content-Length headers at the proxy.
 
 SSE-Neuverbindungen erhalten einen Snapshot der aktiven Jobs, der letzten 32
-Job-Ergebnisse und der offenen Uploads (höchstens 200). Ältere Ergebnisse bleiben
-über `get_import_result { jobId }` dauerhaft abrufbar. Die Puffer enthalten höchstens
+Job-Ergebnisse und der offenen Uploads (höchstens 500). Insgesamt bleiben die letzten
+100 abgeschlossenen Jobs über `get_import_result { jobId }` abrufbar. Die Puffer enthalten höchstens
 32 Ereignisse je Verbindung; erlaubt sind vier Verbindungen je Sitzung und 32 insgesamt.
-Web-Import-Batches enthalten eine Datei, damit große Metadaten sich nicht aufsummieren.
+Web-Import-Batches enthalten höchstens 20 Dateien und werden auch ab 16 MiB
+gesammelten Metadaten abgeschlossen. Das Journal wird einmal je Batch geschrieben.
 
 SSE reconnections receive active jobs, the latest 32 job results, and pending uploads
-(up to 200). Older results remain available through `get_import_result { jobId }`.
+(up to 500). The latest 100 completed jobs remain available through
+`get_import_result { jobId }`.
 Each connection buffers at most 32 events; limits are four connections per session
-and 32 overall. Web import batches contain one file to bound retained metadata.
+and 32 overall. Web import batches contain at most 20 files and also flush once
+retained metadata reaches 16 MiB. The journal is written once per batch.
+
+The journal retains at most 1,000 imported entries; pruning never deletes model
+files or catalog records. `GET /api/uploads` lists only open entries (at most 500;
+normal admission remains 200). Startup removes only regular `.journal-*.part`
+files older than one hour from auth storage. Untracked upload files and hardlinked
+`.upload-*.part` files are kept; one startup warning reports their count without
+paths. Administrators should inspect these leftovers manually before removing
+anything. After a journal failure, `restart_required` requires repair of storage
+and a server restart; it has no `Retry-After`. 3MF containers are limited to 10,000
+ZIP entries in both web and desktop import, checked before the ZIP index is built.
+
+Das Journal behält höchstens 1.000 importierte Einträge; beim Kürzen werden weder
+Modelldateien noch Katalogeinträge gelöscht. `GET /api/uploads` zeigt nur offene
+Einträge (höchstens 500; normale Annahmegrenze weiterhin 200). Beim Start werden
+nur reguläre `.journal-*.part`-Dateien im Auth-Ordner entfernt, die älter als eine
+Stunde sind. Upload-Dateien ohne Journal-Eintrag und hartverlinkte
+`.upload-*.part` bleiben erhalten; ein einmaliger Starthinweis nennt ihre Anzahl
+ohne Pfade. Administratoren sollten solche Reste vor dem Löschen manuell prüfen.
+Nach einem Journalfehler verlangt `restart_required` eine Behebung des
+Speicherproblems und einen Serverneustart; es gibt kein `Retry-After`.
+3MF-Container sind im Web und auf dem Desktop auf 10.000 ZIP-Einträge begrenzt;
+die Prüfung erfolgt vor dem Aufbau des ZIP-Index.
