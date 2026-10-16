@@ -30,3 +30,6 @@ pub mod import;
 
 #[cfg(unix)]
 pub mod upload_fs;
+
+#[cfg(target_os = "linux")]
+pub mod fsops;
