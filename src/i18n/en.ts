@@ -440,7 +440,7 @@ export const en: Translations = {
   removeEntry: "Remove",
   removeModelQuestion: "Remove “{name}” from the catalog?",
   removeModelsQuestion: { one: "Remove {count} model from the catalog?", other: "Remove {count} models from the catalog?" },
-  webRemoveModelHint: "Only the catalog entry is removed. The file stays on the server. Uploaded files will then appear under “Pending uploads”. Choosing “Discard” there permanently deletes the file from the server.",
+  webRemoveModelHint: "Only the catalog entry is removed. The file stays on the server. Uploaded files will then appear under “Pending uploads”. Choosing “Discard” there permanently deletes the file from the server. Print log, tag assignments and collection memberships of this model are removed with the entry.",
   removeModelHint: "The entry disappears from the app. The file stays unchanged on disk.",
   removeFolderQuestion: "Remove folder “{name}” from the catalog?",
   removeFolderList: { one: "folder “{name}” with {count} subfolder", other: "folder “{name}” with {count} subfolders" },

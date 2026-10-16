@@ -440,7 +440,7 @@ export const es: Translations = {
   removeEntry: "Quitar",
   removeModelQuestion: "¿Quitar «{name}» del catálogo?",
   removeModelsQuestion: { one: "¿Quitar {count} modelo del catálogo?", other: "¿Quitar {count} modelos del catálogo?" },
-  webRemoveModelHint: "Solo se elimina la entrada del catálogo. El archivo permanece en el servidor. Los archivos subidos aparecerán en «Subidas pendientes». Allí, «Descartar» elimina el archivo definitivamente del servidor.",
+  webRemoveModelHint: "Solo se elimina la entrada del catálogo. El archivo permanece en el servidor. Los archivos subidos aparecerán en «Subidas pendientes». Allí, «Descartar» elimina el archivo definitivamente del servidor. Con la entrada se pierden el registro de impresión, las etiquetas y las colecciones de este modelo.",
   removeModelHint: "La entrada desaparece de la aplicación. El archivo permanece sin cambios en el disco.",
   removeFolderQuestion: "¿Quitar la carpeta «{name}» del catálogo?",
   removeFolderList: { one: "la carpeta «{name}» con {count} subcarpeta", other: "la carpeta «{name}» con {count} subcarpetas" },

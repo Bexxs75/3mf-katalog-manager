@@ -440,7 +440,7 @@ export const fr: Translations = {
   removeEntry: "Retirer",
   removeModelQuestion: "Retirer « {name} » du catalogue ?",
   removeModelsQuestion: { one: "Retirer {count} modèle du catalogue ?", other: "Retirer {count} modèles du catalogue ?" },
-  webRemoveModelHint: "Seule l’entrée du catalogue est supprimée. Le fichier reste sur le serveur. Les fichiers téléversés apparaîtront dans «Téléversements en attente». L’action «Supprimer» à cet endroit efface définitivement le fichier du serveur.",
+  webRemoveModelHint: "Seule l’entrée du catalogue est supprimée. Le fichier reste sur le serveur. Les fichiers téléversés apparaîtront dans «Téléversements en attente». L’action «Supprimer» à cet endroit efface définitivement le fichier du serveur. Le journal d'impression, les tags et les collections de ce modèle sont supprimés avec l'entrée.",
   removeModelHint: "L’entrée disparaît de l’application. Le fichier reste inchangé sur le disque.",
   removeFolderQuestion: "Retirer le dossier « {name} » du catalogue ?",
   removeFolderList: { one: "le dossier « {name} » avec {count} sous-dossier", other: "le dossier « {name} » avec {count} sous-dossiers" },
