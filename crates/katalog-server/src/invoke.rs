@@ -124,6 +124,23 @@ fn ids(args: &Value, images: bool) -> Result<Vec<String>, Box<Response>> {
         .collect()
 }
 
+pub const READ_COMMANDS: &[&str] = &[
+"list_file_summaries"
+            , "list_all_file_tags"
+            , "list_files_by_ids"
+            , "list_tag_counts"
+            , "list_print_log_entries"
+            , "list_folders"
+            , "list_collections"
+            , "list_collection_files"
+            , "list_trash"
+            , "list_file_images"
+            , "get_model_geometry"
+            , "get_app_version"
+            , "is_preview_build"
+            , "has_step_preview"
+];
+
 pub async fn invoke(
     db_path: PathBuf,
     roots: Vec<PathBuf>,
@@ -131,23 +148,7 @@ pub async fn invoke(
     args: Value,
     gate: Arc<GeometryGate>,
 ) -> Response {
-    if !matches!(
-        command.as_str(),
-        "list_file_summaries"
-            | "list_all_file_tags"
-            | "list_files_by_ids"
-            | "list_tag_counts"
-            | "list_print_log_entries"
-            | "list_folders"
-            | "list_collections"
-            | "list_collection_files"
-            | "list_trash"
-            | "list_file_images"
-            | "get_model_geometry"
-            | "get_app_version"
-            | "is_preview_build"
-            | "has_step_preview"
-    ) {
+    if !READ_COMMANDS.contains(&command.as_str()) {
         return *error(StatusCode::NOT_FOUND, "Befehl im Web nicht verfügbar", true);
     }
     if !args.is_object() {

@@ -8,47 +8,34 @@ pub fn list_collections(state: State<AppState>) -> CmdResult<Vec<CollectionDto>>
 #[tauri::command]
 pub fn create_collection(state: State<AppState>, name: String) -> CmdResult<CollectionDto> {
     let conn = lock_db(&state)?;
-    let created_at = chrono::Utc::now().to_rfc3339();
-    let id = db::create_collection(&conn, &name, &created_at)?;
-    Ok(CollectionDto { id: id.to_string(), name, model_count: 0 })
+    katalog_core::write::create_collection(&conn, name).map_err(Into::into)
 }
 #[tauri::command]
 pub fn rename_collection(state: State<AppState>, collection_id: String, name: String) -> CmdResult<()> {
-    let id: i64 = collection_id.parse().map_err(|_| "invalid collection id".to_string())?;
+    let _: i64 = collection_id.parse().map_err(|_| "invalid collection id".to_string())?;
     let conn = lock_db(&state)?;
-    db::rename_collection(&conn, id, &name)?;
-    Ok(())
+    katalog_core::write::rename_collection(&conn, collection_id, name).map_err(Into::into)
 }
 #[tauri::command]
 pub fn delete_collection(state: State<AppState>, collection_id: String) -> CmdResult<()> {
-    let id: i64 = collection_id.parse().map_err(|_| "invalid collection id".to_string())?;
+    let _: i64 = collection_id.parse().map_err(|_| "invalid collection id".to_string())?;
     let conn = lock_db(&state)?;
-    db::delete_collection(&conn, id).map_err(|e| e.to_string().into())
+    katalog_core::write::delete_collection(&conn, collection_id).map_err(Into::into)
 }
 #[tauri::command]
 pub fn add_files_to_collection(state: State<AppState>, collection_id: String, file_ids: Vec<String>) -> CmdResult<()> {
-    let cid: i64 = collection_id.parse().map_err(|_| "invalid collection id".to_string())?;
+    let _: i64 = collection_id.parse().map_err(|_| "invalid collection id".to_string())?;
     let conn = lock_db(&state)?;
-    let start = db::max_collection_position(&conn, cid).map_err(|e| e.to_string())?.unwrap_or(-1) + 1;
-    for (next, file_id) in (start..).zip(file_ids) {
-        let fid: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
-        db::add_file_to_collection(&conn, cid, fid, next).map_err(|e| e.to_string())?;
-    }
-    Ok(())
+    katalog_core::write::add_files_to_collection(&conn, collection_id, file_ids).map_err(Into::into)
 }
 #[tauri::command]
 pub fn remove_file_from_collection(state: State<AppState>, collection_id: String, file_id: String) -> CmdResult<()> {
-    let cid: i64 = collection_id.parse().map_err(|_| "invalid collection id".to_string())?;
-    let fid: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
+    let _: i64 = collection_id.parse().map_err(|_| "invalid collection id".to_string())?;
+    let _: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let conn = lock_db(&state)?;
-    db::remove_file_from_collection(&conn, cid, fid).map_err(|e| e.to_string().into())
+    katalog_core::write::remove_file_from_collection(&conn, collection_id, file_id).map_err(Into::into)
 }
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CollectionPositionUpdate {
-    pub file_id: String,
-    pub position: i64,
-}
+pub use katalog_core::write::CollectionPositionUpdate;
 #[tauri::command]
 pub fn reorder_collection(state: State<AppState>, collection_id: String, updates: Vec<CollectionPositionUpdate>) -> CmdResult<()> {
     let cid: i64 = collection_id.parse().map_err(|_| "invalid collection id".to_string())?;
@@ -63,26 +50,7 @@ fn reorder_collection_with_conn(
     collection_id: i64,
     updates: Vec<CollectionPositionUpdate>,
 ) -> CmdResult<()> {
-    let member_ids = db::list_collection_file_ids(conn, collection_id).map_err(|e| e.to_string())?;
-
-    let mut parsed = Vec::with_capacity(updates.len());
-    for update in updates {
-        let fid: i64 = update.file_id.parse().map_err(|_| "invalid file id".to_string())?;
-        if !member_ids.contains(&fid) {
-            return Err(format!(
-                "Datei mit id {fid} ist nicht Teil der Collection {collection_id} - Batch wird nicht angewendet"
-            )
-            .into());
-        }
-        parsed.push((fid, update.position));
-    }
-
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
-    for (fid, position) in parsed {
-        db::set_collection_position(&tx, collection_id, fid, position).map_err(|e| e.to_string())?;
-    }
-    tx.commit().map_err(|e| e.to_string())?;
-    Ok(())
+    katalog_core::write::reorder_collection_with_conn(conn, collection_id, updates).map_err(Into::into)
 }
 #[tauri::command]
 pub fn list_collection_files(state: State<AppState>, collection_id: String) -> CmdResult<Vec<ModelFileDto>> {

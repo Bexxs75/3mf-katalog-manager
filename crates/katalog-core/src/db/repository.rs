@@ -39,6 +39,20 @@ pub fn open_read_only(path: &Path) -> Result<Connection, DbError> {
     Ok(conn)
 }
 
+/// Opens only an existing, current-schema catalog without migration or cleanup.
+/// Hot-journal recovery can write while opening; enable only with KATALOG_WRITE=1.
+pub fn open_read_write(path: &Path) -> Result<Connection, DbError> {
+    let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))?;
+    let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
+    let supported = super::migrations::CURRENT_SCHEMA_VERSION;
+    if version != supported {
+        return Err(DbError::Other(format!("Katalogschema {version}, erwartet {supported}; Migration nur in der Desktop-App")));
+    }
+    conn.pragma_update(None, "foreign_keys", true)?;
+    Ok(conn)
+}
+
 pub fn connect(path: &Path) -> Result<Connection, DbError> {
     connect_with_warning(path).map(|(conn, _)| conn)
 }

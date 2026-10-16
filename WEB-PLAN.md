@@ -107,3 +107,43 @@ Bis auf Weiteres gilt: Standard bindet nur an das lokale Netz, ohne Anmeldung st
 - **16.10.2026, Stufe 2a committet (`45d9a775`):** Transportschicht (`src/lib/transport.ts`, Auswahl zur Bauzeit über `VITE_TARGET=web`), Web-Build (`npm run build:web`, `dist-web`), Anmeldung, erzwungene Passwortänderung und Abmelden in der React-Oberfläche (vier Sprachen), Web-Start ohne Desktop-Effekte, `KATALOG_STATIC_DIR` im Server. 2098 Frontend-Tests, 56 Server-Tests. Echter Browser-Test (Chromium) gegen den Server mit einer migrierten Testkopie: Raster mit Vorschaubildern, Ordner, Tags, Filter; beim Start nur freigegebene Commands, keine externen Anfragen, Katalogdatei byteidentisch. Offen aus 2a: Schreib-Bedienelemente noch sichtbar (zeigen eine Meldung statt zu sperren), das ist Teil 2b.
 - **16.10.2026, Stufe 2b committet (`947ef5ae`):** Oberfläche read-only (Schreibaktionen versteckt oder gesperrt, `useReadOnly`). Docker-Slim-Image `docker-web/` (`dfee64cc`): ca. 47 MB statt 4,2 GB (distroless, Nutzer 65532, gleiches /config- und /models-Layout).
 - **16.10.2026, Stufe 2c committet (`2cb98f99`):** Download-Endpunkt mit Range/If-Range (Handle-basiertes Last-Modified), Idle-Timeout mit 64-KiB-Fortschritt, Entfernen von Format-/Bidi-Zeichen im Dateinamen, unauflösbare Wurzeln werden übersprungen. Zwei Codex-Runden plus Prüfung: 1080 Rust-Tests grün (Sandbox-Socketfehler entfallen lokal), Clippy `-D warnings` sauber, 2137 Frontend-Tests, Server-Baum ohne Tauri. Nächster Schritt: Stufe 4 (Bearbeiten), dann Stufe 5 (Import per Upload).
+
+### Stufe 4a, Teil A: optionaler Metadaten-Schreibmodus
+
+`KATALOG_WRITE=1` aktiviert ausschließlich die 18 Metadaten-Commands aus
+`katalog_server::WRITE_COMMANDS`. Standard bleibt lesend; Lese-Routen behalten
+64 KiB Body-Limit. Schreib-Requests benötigen Anmeldung, CSRF, einen vorhandenen
+passenden Origin und eine explizite, nicht leere `KATALOG_ALLOWED_HOSTS`-Liste.
+`KATALOG_ALLOW_NO_AUTH=1` ist damit unvereinbar. `writable` in Session-, Login-
+und Passwortantworten ist erst nach dem erzwungenen Passwortwechsel wahr.
+Teil B muss diesen Status noch in der Oberfläche verwenden.
+
+Die einzige Schreibverbindung öffnet nur eine vorhandene DB mit exakt passender
+Schemaversion, ohne Migration, Sicherung oder Bereinigung. SQLite kann dabei ein
+heißes Journal wiederherstellen. `/config` muss schreibbar sein (DB, SQLite-
+Nebendateien und Auth-Datei); Modellfreigaben bleiben read-only. **Desktop-App und
+Web-Server dürfen nicht gleichzeitig dieselbe Datenbank verwenden, auch nicht
+im Lesemodus: entweder Web oder lokal.**
+
+Metadatenänderungen laufen unter `BEGIN IMMEDIATE`; die bestehende Lizenzfunktion
+behält als ausdrückliche Ausnahme ihre eigene Transaktion mit Zeilenprüfung und
+Rollback. Existenzprüfungen dafür erfolgen davor auf derselben Verbindung.
+Maximal ein Worker plus 32 wartende Requests; pro Sitzung Token-Bucket mit 60/s,
+Burst 120. Rate-Token und Warteschlangenplatz werden vor dem Body-Lesen reserviert;
+Abbruch und Fehler geben den Platz frei. 429 und 503 liefern `Retry-After`. Schreib-Bodies: 16 KiB, Druckprotokoll
+mit Foto: `MAX_CUSTOM_IMAGE_BYTES * 4 / 3 + 16 KiB`; decodiertes Foto höchstens 5 MiB.
+
+Das HTTP-Zeitlimit beträgt 30 Sekunden. Für Foto-Bodies gilt ebenfalls eine
+Lesefrist von 30 Sekunden; übrige Body-Lesefristen bleiben bei 15 Sekunden. Bereits gestartete Blocking-Arbeit läuft
+auch nach Timeout oder Verbindungsabbruch zu Ende; eine Antwort kann verloren gehen,
+obwohl die Änderung gespeichert wurde. Wiederholung ist unschädlich, außer bei
+`create_collection` und `add_print_log_entry`: dabei können Duplikate entstehen.
+Nach unklarer Antwort zuerst neu laden. Das Audit enthält nur Zeitpunkt,
+gekürzten Sitzungshash, Command, HTTP-Status und betroffene Zeilen: Summe der `changes()` der
+Hauptstatements, ohne Tag-Bereinigung, Kaskaden oder Trigger. Fehlgeschlagene,
+zurückgerollte und vorab abgewiesene Aufrufe zählen 0; unveränderte UPDATE-Zeilen
+zählt SQLite als betroffen. Nur im Schreibmodus wird nach den Zugriffsprüfungen
+ein Audit angelegt; läuft Blocking-Arbeit nach HTTP-Timeout weiter, enthält die
+Zeile den HTTP-Status 408 und die abschließende Änderungszahl. Bei Abbruch ohne
+HTTP-Antwort verwendet nur das Log den Status 499. Unerwartete Fehler
+werden zusätzlich nach Fehlerart ohne Inhalte protokolliert.

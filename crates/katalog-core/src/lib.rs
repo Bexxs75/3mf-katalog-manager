@@ -23,3 +23,5 @@ pub(crate) fn unique_test_dir(name: &str) -> std::path::PathBuf {
 }
 
 pub mod read;
+
+pub mod write;
