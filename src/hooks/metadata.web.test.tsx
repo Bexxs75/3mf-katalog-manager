@@ -97,12 +97,16 @@ it('still blocks filesystem handlers, deletion shortcuts and folder drag while w
   fireEvent.keyDown(window, { key: 'Backspace', metaKey: true });
   fireEvent.keyDown(window, { key: 'a', ctrlKey: true }); fireEvent.keyDown(window, { key: ' ' });
   expect(remove).not.toHaveBeenCalled(); expect(select).toHaveBeenCalled(); expect(writes()).toEqual([]);
-  for (const command of ['delete_file', 'rename_file', 'restore_file', 'empty_trash', 'create_folder', 'move_file_to_folder', 'move_folder', 'start_import', 'rescan_file_metadata', 'upload_custom_image', 'pick_and_read_image', 'remove_files_from_catalog']) {
+  for (const command of ['delete_file', 'rename_file', 'restore_file', 'empty_trash', 'create_folder', 'move_file_to_folder', 'move_folder', 'start_import', 'rescan_file_metadata', 'upload_custom_image', 'pick_and_read_image']) {
     await expect(invoke(command)).rejects.toMatchObject({ expected: true });
   }
   expect(writes()).toEqual([]);
+  await invoke('remove_files_from_catalog', { fileIds: ['1'] });
+  expect(writes()).toEqual([{ command: 'remove_files_from_catalog', args: { fileIds: ['1'] } }]);
+  commands = [];
   writable = false; await act(async () => getSession());
   await act(async () => store.result.current.captureRenderSnapshot('1', 'x'));
+  await expect(invoke('remove_files_from_catalog', { fileIds: ['1'] })).rejects.toMatchObject({ expected: true });
   await expect(invoke('set_render_snapshot', { fileId: '1', imageBase64: 'x' })).rejects.toMatchObject({ expected: true });
   expect(writes()).toEqual([]);
 });

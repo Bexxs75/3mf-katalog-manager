@@ -243,6 +243,7 @@ impl UploadStore {
                 e.state = UploadState::Imported;
             } else if matches!(e.state, UploadState::Importing | UploadState::Imported) {
                 e.state = UploadState::Uploaded;
+                e.result = None;
             }
             true
         });
@@ -496,6 +497,31 @@ impl UploadStore {
         next.prune();
         self.persist(&next)?;
         inner.journal = next;
+        Ok(())
+    }
+    pub fn has_importing(&self) -> Result<bool, StoreError> {
+        Ok(self.lock()?.journal.entries.values().any(|e| e.state == UploadState::Importing))
+    }
+    /// Called after the database commit while the runtime import permit is held.
+    pub fn reset_removed(&self, ids: &[i64]) -> Result<(), StoreError> {
+        let ids: HashSet<String> = ids.iter().map(ToString::to_string).collect();
+        let mut inner = self.lock()?;
+        let mut next = inner.journal.clone();
+        let mut changed = false;
+        for entry in next.entries.values_mut() {
+            if entry.state == UploadState::Imported && entry.result.as_ref()
+                .and_then(|r| r.get("fileId")).and_then(Value::as_str)
+                .is_some_and(|id| ids.contains(id)) {
+                entry.state = UploadState::Uploaded;
+                entry.result = None;
+                entry.job_id = None;
+                changed = true;
+            }
+        }
+        if changed {
+            self.persist(&next)?;
+            inner.journal = next;
+        }
         Ok(())
     }
     pub fn ensure_importable(&self) -> Result<(), StoreError> {

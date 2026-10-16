@@ -440,6 +440,7 @@ export const de: Translations = {
   removeEntry: "Entfernen",
   removeModelQuestion: "„{name}“ aus dem Katalog entfernen?",
   removeModelsQuestion: { one: "{count} Modell aus dem Katalog entfernen?", other: "{count} Modelle aus dem Katalog entfernen?" },
+  webRemoveModelHint: "Nur der Katalogeintrag wird entfernt. Die Datei bleibt auf dem Server. Hochgeladene Dateien werden danach unter „Offene Uploads“ angeboten. Dort bedeutet „Verwerfen“, die Datei endgültig vom Server zu löschen.",
   removeModelHint: "Der Eintrag verschwindet aus der App. Die Datei bleibt unverändert auf der Festplatte.",
   removeFolderQuestion: "Ordner „{name}“ aus dem Katalog entfernen?",
   removeFolderList: { one: "der Ordner „{name}“ mit {count} Unterordner", other: "der Ordner „{name}“ mit {count} Unterordnern" },

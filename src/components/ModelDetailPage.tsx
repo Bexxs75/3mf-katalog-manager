@@ -1,3 +1,4 @@
+import { WebRemoveFromCatalogButton } from './WebRemoveFromCatalogButton';
 import { readPrintLogPhoto } from '../lib/printLogPhoto';
 import { reportMetadataError } from '../lib/metadataErrors';
 import { useCanEditMetadata } from '../lib/webSession';
@@ -561,6 +562,7 @@ export function ModelDetailPage({
           </div>
           <DownloadFileButton fileId={model.id} />
           <RevealFileButton fileId={model.id} />
+          <WebRemoveFromCatalogButton key={`remove-${model.id}`} name={model.name} onRemove={onRemoveFromCatalog} />
           {container && <CatalogWebButton key={model.id} fileId={model.id} fileName={model.name} />}
           {!container && (<>{!isReadOnly() && <button
             onClick={() => onOpenInSlicer()}

@@ -1004,3 +1004,72 @@ async fn round3_cancelled_http_keeps_final_registration_serialized_with_logout()
         "cancelling the HTTP future released the logout gate during registration"
     );
 }
+
+#[tokio::test]
+async fn catalog_removal_reopens_upload_then_reimports_and_discards_only_owned_file() {
+    let f=Fixture::new(true);
+    let foreign=f.dir.join("models/foreign.obj");
+    std::fs::write(&foreign,MODEL).unwrap();
+    let upload=f.upload("remove.obj",MODEL).await;
+    for _ in 0..2 {
+        let start=f.invoke("start_upload_import",json!({"uploadIds":[upload["uploadId"]]})).await;
+        assert_eq!(start.status(),200);
+        let job=value(start).await;
+        let result=wait_result(&f,&job["jobId"]).await;
+        assert_eq!(result["files"][0]["state"],"imported");
+        let r=f.invoke("remove_files_from_catalog",json!({"fileIds":[result["files"][0]["fileId"]]})).await;
+        assert_eq!(r.status(),200);
+        let entries=f.app.uploads.as_ref().unwrap().store.pending_list().unwrap();
+        assert_eq!(entries.len(),1);
+        assert_eq!(entries[0].state,crate::upload_store::UploadState::Uploaded);
+        assert!(entries[0].result.is_none());
+        assert_eq!(std::fs::read(f.dir.join("models/uploads/remove.obj")).unwrap(),MODEL);
+    }
+    assert_eq!(f.invoke("discard_upload",json!({"uploadId":upload["uploadId"]})).await.status(),200);
+    assert!(!f.dir.join("models/uploads/remove.obj").exists());
+    assert_eq!(std::fs::read(foreign).unwrap(),MODEL);
+}
+
+#[tokio::test]
+async fn catalog_removal_rejects_importing_journal_entry() {
+    let f=Fixture::new(true);
+    let upload=f.upload("busy.obj",MODEL).await;
+    let store=&f.app.uploads.as_ref().unwrap().store;
+    store.begin_import(&[upload["uploadId"].as_str().unwrap().to_owned()],"busy").unwrap();
+    let r=f.invoke("remove_files_from_catalog",json!({"fileIds":[]})).await;
+    assert_eq!(r.status(),503);
+    assert_eq!(r.headers()["retry-after"],"1");
+}
+
+#[tokio::test]
+async fn catalog_removal_rejects_active_import_permit_even_without_importing_entries() {
+    let f=Fixture::new(true);
+    let rt=f.app.uploads.as_ref().unwrap();
+    let _permit=rt.active.clone().try_acquire_owned().unwrap();
+    let r=f.invoke("remove_files_from_catalog",json!({"fileIds":[]})).await;
+    assert_eq!(r.status(),503);
+    assert_eq!(r.headers()["retry-after"],"1");
+}
+
+#[tokio::test]
+async fn catalog_removal_committed_with_journal_failure_is_healed_on_restart() {
+    let f=Fixture::new(true);
+    let upload=f.upload("recovery.obj",MODEL).await;
+    let job=value(f.invoke("start_upload_import",json!({"uploadIds":[upload["uploadId"]]})).await).await;
+    let result=wait_result(&f,&job["jobId"]).await;
+    let journal=f.app.config.auth_file.parent().unwrap().join("web-uploads.json");
+    let backup=journal.with_extension("backup");
+    std::fs::rename(&journal,&backup).unwrap();
+    std::fs::create_dir(&journal).unwrap();
+    let r=f.invoke("remove_files_from_catalog",json!({"fileIds":[result["files"][0]["fileId"]]})).await;
+    assert_eq!(r.status(),200);
+    assert_eq!(f.app.uploads.as_ref().unwrap().store.ensure_importable().unwrap_err().kind,"restart_required");
+    std::fs::remove_dir(&journal).unwrap();
+    std::fs::rename(backup,journal).unwrap();
+    let recovered=uploads::initialize(&f.app.config).unwrap().unwrap();
+    let entries=recovered.store.pending_list().unwrap();
+    assert_eq!(entries.len(),1);
+    assert_eq!(entries[0].state,crate::upload_store::UploadState::Uploaded);
+    assert!(entries[0].result.is_none());
+    assert_eq!(std::fs::read(f.dir.join("models/uploads/recovery.obj")).unwrap(),MODEL);
+}

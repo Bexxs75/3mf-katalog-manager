@@ -365,3 +365,30 @@ pub fn set_render_snapshot(
         Ok(outcome((), c.changes()))
     })
 }
+
+/// Remove catalog records only; filesystem ownership remains with the upload journal.
+pub fn remove_files_from_catalog(c: &mut Connection, ids: &[i64]) -> WriteResult<Outcome<usize>> {
+    if ids.len() > 200 {
+        return Err(invalid("Höchstens 200 IDs erlaubt"));
+    }
+    if ids.iter().any(|id| *id <= 0) {
+        return Err(invalid("Ungültige Katalog-ID."));
+    }
+    let ids: std::collections::BTreeSet<_> = ids.iter().copied().collect();
+    transaction(c, |c| {
+        for id in &ids {
+            let active: bool = c.query_row(
+                "SELECT EXISTS(SELECT 1 FROM files WHERE id=?1 AND deleted_at IS NULL)",
+                [id], |r| r.get(0),
+            )?;
+            if !active {
+                return Err(WriteError::NotFound { message: "Modell nicht gefunden oder bereits im Papierkorb.".into() });
+            }
+        }
+        let mut changes = 0;
+        for id in &ids {
+            changes += c.execute("DELETE FROM files WHERE id=?1", [id])?;
+        }
+        Ok(outcome(changes, changes as u64))
+    })
+}
