@@ -1,3 +1,4 @@
+import { isReadOnly } from '../lib/readOnly';
 import { LicenseEditor } from './LicenseEditor';
 import { shouldIgnoreCatalogShortcut } from '../lib/keyboardGuard';
 import { useImportLock } from '../hooks/ImportLockContext';
@@ -145,6 +146,7 @@ export function BulkActionToolbar({
     onRemoveTagMenuOpenChange(false);
   }, [confirmationOpen, onAddToCollectionMenuOpenChange, onAddTagMenuOpenChange, onRemoveTagMenuOpenChange]);
   const { language } = useLanguage();
+  if (isReadOnly()) return null;
   return (
     <div className="flex-none flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--line)] bg-[var(--panel-2)] [&_button]:whitespace-nowrap">
       {confirmRemove ? (

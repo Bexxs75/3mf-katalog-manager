@@ -1,3 +1,4 @@
+import { isReadOnly } from '../lib/readOnly';
 import { displayName } from '../lib/displayName';
 import { LicenseBadge } from './LicenseBadge';
 import { modelLicenseAriaLabel } from '../lib/licenses';
@@ -60,10 +61,10 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
           onContextMenu={(e) => {
             e.preventDefault();
             onSelect(m.id);
-            onContextMenu(m.id, e.clientX, e.clientY);
+            if (!isReadOnly()) onContextMenu(m.id, e.clientX, e.clientY);
           }}
           onMouseDown={(e) => {
-            if (!onDragFileStart || readOnly) return;
+            if (isReadOnly() || !onDragFileStart || readOnly) return;
             fileDrag.begin(e, m.id);
           }}
           className={`group min-w-[680px] grid gap-2.5 items-center px-3 py-2 border-b border-[var(--line)] cursor-pointer ${
@@ -71,7 +72,7 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
           } ${fileDrag.draggingId === m.id ? 'opacity-50' : ''}`}
           style={{ gridTemplateColumns: '24px minmax(150px,2.2fr) minmax(110px,1.6fr) 92px 82px' }}
         >
-          {readOnly ? (
+          {readOnly || isReadOnly() ? (
             <span />
           ) : (
             <BulkCheckbox
@@ -81,7 +82,7 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
             />
           )}
           <span className="flex items-center gap-1.5 min-w-0">
-            {onDragFileStart && !readOnly && <DragGrip />}
+            {onDragFileStart && !readOnly && !isReadOnly() && <DragGrip />}
             <span className="select-none text-[length:var(--font-size-body)] font-medium truncate">{displayName(m.name)}</span>
             <LicenseBadge license={m.license} />
           </span>

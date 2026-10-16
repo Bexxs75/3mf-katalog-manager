@@ -1,3 +1,4 @@
+import { useReadOnly } from '../hooks/useReadOnly';
 import { useEffect, useId, useState } from 'react';
 import { useT } from '../i18n/LanguageContext';
 import { useImportLock } from '../hooks/ImportLockContext';
@@ -14,6 +15,7 @@ export function LicenseEditor({ value, onSave, onDirtyChange, bulk = false }: {
   onDirtyChange?: (dirty: boolean) => void;
 }) {
   const t = useT();
+  const readOnly = useReadOnly();
   const id = useId();
   const { lockProps } = useImportLock();
   const [savedValue, setSavedValue] = useState(value ?? '');
@@ -33,7 +35,7 @@ export function LicenseEditor({ value, onSave, onDirtyChange, bulk = false }: {
       <label htmlFor={id} className="text-small font-semibold text-[var(--ink-2)]">{t('licenseHeading')}</label>
       <LicenseBadge license={draft || null} showUnknown />
     </div>
-    {onSave ? <>
+    {onSave && !readOnly ? <>
       <select title={licenseLabel(draft, t)} id={id} className={controlClass} value={other ? '__other' : draft} disabled={busy} {...lockProps}
         onChange={event => {
           const next = event.target.value;

@@ -1,3 +1,4 @@
+import { isReadOnly } from '../lib/readOnly';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 
 interface EditableSourceUrlModel {
@@ -25,6 +26,7 @@ export function useEditableSourceUrl(
   }, [model?.id]);
 
   const startEditing = () => {
+    if (isReadOnly()) return Promise.resolve();
     if (!model) return;
     cancelingRef.current = false;
     setDraft(model.sourceUrl ?? '');
@@ -32,6 +34,7 @@ export function useEditableSourceUrl(
   };
 
   const submit = () => {
+    if (isReadOnly()) return Promise.resolve();
     if (!model) return;
     const value = draft.trim();
     onSave(model.id, value || null);

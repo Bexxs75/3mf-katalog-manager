@@ -1,3 +1,4 @@
+import { isReadOnly } from '../lib/readOnly';
 import { shouldIgnoreCatalogShortcut, hasPlatformModifier, isMacPlatform } from '../lib/keyboardGuard';
 import { useContext, useEffect } from 'react';
 import { ModelLayoutContext, type ModelLayout } from './ModelLayoutContext';
@@ -121,13 +122,13 @@ export function useKeyboardShortcuts({
       }
       if (singleKeyShortcuts && e.key === '?') { e.preventDefault(); onOpenTips?.(); return; }
       if (!navigationEnabled) return;
-      if (selectAll) { e.preventDefault(); selectAllVisible?.(); return; }
+      if (!isReadOnly() && selectAll) { e.preventDefault(); selectAllVisible?.(); return; }
       if (e.key === 'Enter' && selectedId) { e.preventDefault(); onOpenDetail?.(selectedId); return; }
-      if ((macDelete || (singleKeyShortcuts && (e.key === 'Delete' || e.key === 'Backspace'))) && hasBulkSelection && !e.repeat) {
+      if ((macDelete || (singleKeyShortcuts && (e.key === 'Delete' || e.key === 'Backspace'))) && !isReadOnly() && hasBulkSelection && !e.repeat) {
         e.preventDefault(); openBulkDeleteConfirm(); return;
       }
 
-      if (singleKeyShortcuts && e.key === ' ' && selectedId) {
+      if (!isReadOnly() && singleKeyShortcuts && e.key === ' ' && selectedId) {
         e.preventDefault();
         toggleBulkSelect(selectedId);
         return;

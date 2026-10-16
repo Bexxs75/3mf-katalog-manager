@@ -1,3 +1,4 @@
+import { isReadOnly } from '../lib/readOnly';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { ModelGrid } from './ModelGrid';
 import { ModelList } from './ModelList';
@@ -48,27 +49,27 @@ export function TrashView({
               <span className="text-small font-medium text-[var(--ink)]">
                 {t('emptyTrashConfirmQuestion')}
               </span>
-              <button
+              <>{!isReadOnly() && <button
                 onClick={() => onConfirmEmptyTrashChange(false)}
                 className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
               >
                 {t('cancel')}
-              </button>
-              <button {...lockProps}
+              </button>}</>
+              <>{!isReadOnly() && <button {...lockProps}
                 onClick={onEmptyTrash}
                 className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer"
               >
                 {t('emptyTrashButton')}
-              </button>
+              </button>}</>
             </div>
           ) : (
-            <button
+            <>{!isReadOnly() && <button
               onClick={() => onConfirmEmptyTrashChange(true)}
               disabled={trashModels.length === 0} {...lockProps}
               className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer disabled:opacity-50 hover:border-[var(--accent)] hover:text-[var(--accent)]"
             >
               {t('emptyTrashButton')}
-            </button>
+            </button>}</>
           )}
         </div>
         <div className="flex-1 overflow-y-auto overscroll-contain p-4">

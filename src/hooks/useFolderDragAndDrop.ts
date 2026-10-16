@@ -1,3 +1,4 @@
+import { isReadOnly } from '../lib/readOnly';
 import { dismissDragDropTip } from '../lib/dragDropTip';
 import { useCallback, useEffect, useState } from 'react';
 import * as collectionsApi from '../lib/api/collections';
@@ -25,10 +26,11 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
   const [dragOverCollectionId, setDragOverCollectionId] = useState<string | null>(null);
   const [moveToast, setMoveToast] = useState<{ from: string; to: string; error?: boolean; unexpected?: boolean; collection?: 'added' | 'already' } | null>(null);
 
-  const onDragFileStart = useCallback((id: string) => setDraggedFileId(id), []);
+  const onDragFileStart = useCallback((id: string) => isReadOnly() ? Promise.resolve() : setDraggedFileId(id), []);
   // A click without hovering over another row moves nothing
   // (dragOverFolderId stays null).
   const onDragFolderStart = useCallback((id: string) => {
+    if (isReadOnly()) return Promise.resolve();
     const folder = folders.find(folder => folder.id === id);
     if (!folder || containsCatalogRoot(folder.path, catalogBaseDir)) return;
     setDraggedFolderId(id);
@@ -72,7 +74,7 @@ export function useFolderDragAndDrop(models: ModelFile[], folders: Folder[], { r
 
   const onCreateFolder = useCallback(
     (parentId: string | null, name: string) =>
-      foldersApi
+      isReadOnly() ? Promise.resolve() : foldersApi
         .createFolder(parentId, name)
         .then(() => refreshFolders())
         .catch((e) => {

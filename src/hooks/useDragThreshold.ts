@@ -1,3 +1,4 @@
+import { isReadOnly } from '../lib/readOnly';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export const DRAG_THRESHOLD_PX = 6;
@@ -37,6 +38,7 @@ export function useDragThreshold(onStart: ((id: string) => void) | undefined) {
   }, [candidateId, armed, onStart]);
 
   const begin = useCallback((e: { clientX: number; clientY: number }, id: string) => {
+    if (isReadOnly()) return Promise.resolve();
     startPos.current = { x: e.clientX, y: e.clientY };
     setCandidateId(id);
   }, []);

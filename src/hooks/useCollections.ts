@@ -1,3 +1,4 @@
+import { isReadOnly } from '../lib/readOnly';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLanguage } from '../i18n/LanguageContext';
 import * as collectionsApi from '../lib/api/collections';
@@ -56,6 +57,7 @@ export function useCollections() {
 
   const reorderCollection = useCallback(
     (orderedIds: string[]) => {
+      if (isReadOnly()) return Promise.resolve();
       if (!activeCollection) return;
       const updates = orderedIds.map((fileId, position) => ({ fileId, position }));
       setMembers((prev) => {
@@ -70,18 +72,18 @@ export function useCollections() {
   );
 
   const createCollection = useCallback(
-    (name: string) => collectionsApi.createCollection(name).then(() => refreshCollections()),
+    (name: string) => isReadOnly() ? Promise.resolve() : collectionsApi.createCollection(name).then(() => refreshCollections()),
     [refreshCollections],
   );
 
   const renameCollection = useCallback(
-    (id: string, name: string) => collectionsApi.renameCollection(id, name).then(() => refreshCollections()),
+    (id: string, name: string) => isReadOnly() ? Promise.resolve() : collectionsApi.renameCollection(id, name).then(() => refreshCollections()),
     [refreshCollections],
   );
 
   const deleteCollection = useCallback(
     (id: string) =>
-      collectionsApi.deleteCollection(id).then(() => {
+      isReadOnly() ? Promise.resolve() : collectionsApi.deleteCollection(id).then(() => {
         refreshCollections();
         if (activeCollection === id) setActiveCollection(null);
       }),
@@ -90,7 +92,7 @@ export function useCollections() {
 
   const addModelToCollection = useCallback(
     (fileId: string, collectionId: string) =>
-      collectionsApi.addFilesToCollection(collectionId, [fileId]).then(async () => {
+      isReadOnly() ? Promise.resolve() : collectionsApi.addFilesToCollection(collectionId, [fileId]).then(async () => {
         await Promise.all([
           refreshCollections(),
           ...(activeRef.current === collectionId ? [refreshCollectionModels(collectionId)] : []),
@@ -101,7 +103,7 @@ export function useCollections() {
 
   const bulkAddToCollection = useCallback(
     (fileIds: string[], collectionId: string) =>
-      collectionsApi.addFilesToCollection(collectionId, fileIds).then(async () => {
+      isReadOnly() ? Promise.resolve() : collectionsApi.addFilesToCollection(collectionId, fileIds).then(async () => {
         await Promise.all([
           refreshCollections(),
           ...(activeRef.current === collectionId ? [refreshCollectionModels(collectionId)] : []),
@@ -112,6 +114,7 @@ export function useCollections() {
 
   const bulkRemoveFromCollection = useCallback(
     (fileIds: string[]) => {
+      if (isReadOnly()) return Promise.resolve();
       if (!activeCollection) return Promise.resolve();
       return Promise.all(
         fileIds.map((fileId) => collectionsApi.removeFileFromCollection(activeCollection, fileId)),

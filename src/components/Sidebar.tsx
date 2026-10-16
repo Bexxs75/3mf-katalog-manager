@@ -1,3 +1,4 @@
+import { isReadOnly } from '../lib/readOnly';
 import { useImportLock } from '../hooks/ImportLockContext';
 import type { useFolderExpansion } from '../hooks/useFolderExpansion';
 import { SIDEBAR_MIN, SIDEBAR_MAX, SIDEBAR_STEP } from '../hooks/useSidebarWidth';
@@ -316,7 +317,7 @@ export function Sidebar({
             )}
           </div>
         ) : (
-          <button type="button" {...lockProps}
+          <>{!isReadOnly() && <button type="button" {...lockProps}
             onClick={() => {
               setCreatingFolder(true);
               setFolderNameDraft('');
@@ -324,7 +325,7 @@ export function Sidebar({
             className="flex items-center h-7 px-1.5 rounded-[3px] border border-dashed border-[var(--line-strong)] cursor-pointer font-medium tabular-nums text-caption text-[var(--ink-3)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
            aria-label={t('createFolderLabel')}>
             <Icon name="plus" size={14} /> {t('createFolderLabel').replace(/^\+\s*/, '')}
-          </button>
+          </button>}</>
         )}
 
         <div className="flex items-center justify-between px-1.5 pt-[18px] pb-2">
@@ -350,13 +351,13 @@ export function Sidebar({
             onClick={() => { if (renamingCollection?.id !== c.id) onSelectCollection(c.id); }}
             onContextMenu={(event) => {
               event.preventDefault();
-              if (renamingCollection) return;
+              if (isReadOnly() || renamingCollection) return;
               event.currentTarget.focus(); collectionTrigger.current = event.currentTarget;
               setCollectionMenu({ collection: c, x: event.clientX, y: event.clientY });
             }}
             onKeyDown={(event) => {
               if (event.target !== event.currentTarget) return;
-              if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+              if (!isReadOnly() && (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))) {
                 event.preventDefault(); event.currentTarget.focus(); collectionTrigger.current = event.currentTarget;
                 const bounds = event.currentTarget.getBoundingClientRect();
                 setCollectionMenu({ collection: c, x: bounds.left, y: bounds.bottom });
@@ -402,7 +403,7 @@ export function Sidebar({
             />
           </div>
         ) : (
-          <div
+          <>{!isReadOnly() && <div
             onClick={() => {
               setCreatingCollection(true);
               setCollectionNameDraft('');
@@ -410,7 +411,7 @@ export function Sidebar({
             className="flex items-center h-7 px-1.5 rounded-[3px] border border-dashed border-[var(--line-strong)] cursor-pointer font-medium tabular-nums text-caption text-[var(--ink-3)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
             {t('createCollectionLabel')}
-          </div>
+          </div>}</>
         )}
 
         <div

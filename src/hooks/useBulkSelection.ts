@@ -1,3 +1,4 @@
+import { isReadOnly } from '../lib/readOnly';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as filesApi from '../lib/api/files';
 import { canonicalTag } from '../lib/autoTags';
@@ -41,6 +42,7 @@ export function useBulkSelection({
   const [tagDraft, setTagDraft] = useState('');
 
   const toggleBulkSelect = useCallback((id: string) => {
+    if (isReadOnly()) return Promise.resolve();
     setSelectedForBulk((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
@@ -49,7 +51,7 @@ export function useBulkSelection({
     });
   }, []);
 
-  const selectAllVisible = useCallback((visibleIds: string[]) => setSelectedForBulk(new Set(visibleIds)), []);
+  const selectAllVisible = useCallback((visibleIds: string[]) => isReadOnly() ? Promise.resolve() : setSelectedForBulk(new Set(visibleIds)), []);
 
   const clearBulkSelection = useCallback(() => {
     setSelectedForBulk(new Set());
@@ -67,6 +69,7 @@ export function useBulkSelection({
   }, [models]);
 
   const bulkDelete = useCallback(async () => {
+    if (isReadOnly()) return Promise.resolve();
     const ids = Array.from(selectedForBulk);
     try {
       await filesApi.deleteFiles(ids);
@@ -78,6 +81,7 @@ export function useBulkSelection({
   }, [selectedForBulk, refetchAfterPartialDelete]);
 
   const bulkAddToQueue = useCallback(() => {
+    if (isReadOnly()) return Promise.resolve();
     const notYetQueued = models.filter((m) => selectedForBulk.has(m.id) && m.queuePosition === null);
     // Patch only the affected models locally instead of reloading the whole
     // list; the backend is already up to date through addToQueue.
@@ -93,7 +97,7 @@ export function useBulkSelection({
 
   const bulkSetPrintStatus = useCallback(
     (status: 'printed' | 'not_printed') =>
-      Promise.all(Array.from(selectedForBulk).map((id) => filesApi.setPrintStatus(id, status))).then(() => {
+      isReadOnly() ? Promise.resolve() : Promise.all(Array.from(selectedForBulk).map((id) => filesApi.setPrintStatus(id, status))).then(() => {
         setModels((prev) =>
           prev.map((m) =>
             selectedForBulk.has(m.id)
@@ -108,6 +112,7 @@ export function useBulkSelection({
   // Add a tag to all selected models that don't have it: one addTag()
   // per file (selections are small), then one local patch.
   const bulkAddTagAction = useCallback((value = tagDraft) => {
+    if (isReadOnly()) return Promise.resolve();
     const tag = canonicalTag(value.trim().replace(/^#/, ''));
     if (!tag || tag.length > 100) return Promise.resolve();
     const ids = selectedForBulk;
@@ -124,6 +129,7 @@ export function useBulkSelection({
   // Counterpart to bulkAddTagAction; models without the tag are skipped.
   const bulkRemoveTagAction = useCallback(
     (tag: string) => {
+      if (isReadOnly()) return Promise.resolve();
       const ids = Array.from(selectedForBulk).filter((id) => models.find((m) => m.id === id)?.tags.includes(tag));
       return Promise.all(ids.map((id) => filesApi.removeTag(id, tag))).then(() => {
         setModels((prev) =>
@@ -155,12 +161,12 @@ export function useBulkSelection({
 
   const bulkAddToCollectionAction = useCallback(
     (collectionId: string) =>
-      bulkAddToCollection(Array.from(selectedForBulk), collectionId).then(() => clearBulkSelection()),
+      isReadOnly() ? Promise.resolve() : bulkAddToCollection(Array.from(selectedForBulk), collectionId).then(() => clearBulkSelection()),
     [bulkAddToCollection, selectedForBulk, clearBulkSelection],
   );
 
   const bulkRemoveFromCollectionAction = useCallback(
-    () => bulkRemoveFromCollection(Array.from(selectedForBulk)).then(() => clearBulkSelection()),
+    () => isReadOnly() ? Promise.resolve() : bulkRemoveFromCollection(Array.from(selectedForBulk)).then(() => clearBulkSelection()),
     [bulkRemoveFromCollection, selectedForBulk, clearBulkSelection],
   );
 

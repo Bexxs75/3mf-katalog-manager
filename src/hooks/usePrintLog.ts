@@ -1,3 +1,4 @@
+import { isReadOnly } from '../lib/readOnly';
 import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '../lib/transport';
 import { toAppError, type AppError } from '../lib/errors';
@@ -36,6 +37,7 @@ export function usePrintLog(fileId: string) {
 
   const addEntry = useCallback(
     (printedAt: string, note: string | null, photoBase64: string | null) => {
+      if (isReadOnly()) return Promise.resolve();
       return invoke<PrintLogEntry>('add_print_log_entry', {
         fileId,
         printedAt,
@@ -50,6 +52,7 @@ export function usePrintLog(fileId: string) {
   );
 
   const deleteEntry = useCallback((entryId: string) => {
+    if (isReadOnly()) return Promise.resolve();
     return invoke('delete_print_log_entry', { entryId }).then(() => {
       setEntries((prev) => prev.filter((e) => e.id !== entryId));
     });

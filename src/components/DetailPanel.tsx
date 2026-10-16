@@ -1,3 +1,4 @@
+import { isReadOnly } from '../lib/readOnly';
 import { displayName } from '../lib/displayName';
 import { LicenseEditor } from './LicenseEditor';
 import { CatalogWebButton } from './CatalogWebButton';
@@ -138,18 +139,18 @@ export function DetailPanel({
             </p>
           )}
           <div className="flex gap-2">
-            <button {...lockProps}
+            <>{!isReadOnly() && <button {...lockProps}
               onClick={onRestore}
               className="flex-1 h-8 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
             >
               {t('restoreLabel')}
-            </button>
-            <button {...lockProps}
+            </button>}</>
+            <>{!isReadOnly() && <button {...lockProps}
               onClick={onDeletePermanently}
               className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 h-8 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer"
             >
               {t('deletePermanentlyLabel')}
-            </button>
+            </button>}</>
           </div>
         </div>
       </aside>
@@ -184,12 +185,12 @@ export function DetailPanel({
           <div className="absolute left-2.5 top-56 ui-label text-[var(--ink-3)] pointer-events-none">
             {t('dragToRotate')}
           </div>
-          <button
+          <>{!isReadOnly() && <button
             onClick={imageUpload.uploadImage}
             className="relative m-2 h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
             {t('uploadModelImageLabel')}
-          </button>
+          </button>}</>
         </div>
         <ImageUploadError error={imageUpload.error} onDismiss={imageUpload.dismiss} />
 
@@ -200,7 +201,7 @@ export function DetailPanel({
           <button
             onClick={onTogglePrintStatus}
             className="h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
-          >
+           {...(isReadOnly() ? { disabled: true, title: t('webReadOnly') } : {})}>
             {model.printStatus === 'printed' ? t('markAsNotPrinted') : t('markAsPrinted')}
           </button>
         </div>
@@ -213,7 +214,7 @@ export function DetailPanel({
             onClick={onToggleFavorite}
             aria-label={model.favorite ? t('favoriteRemove') : t('favoriteAdd')}
             className="h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
-          >
+           {...(isReadOnly() ? { disabled: true, title: t('webReadOnly') } : {})}>
             <Icon name="heart" size={14} fill={model.favorite  ? 'currentColor' : 'none'} />
           </button>
         </div>
@@ -222,12 +223,12 @@ export function DetailPanel({
           <span className="flex-1 text-small font-medium">
             {model.queuePosition !== null ? t('inQueueLabel') : t('notInQueueLabel')}
           </span>
-          <button
+          <>{!isReadOnly() && <button
             onClick={onToggleQueue}
             className="h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
             {model.queuePosition !== null ? t('removeFromQueue') : t('addToQueue')}
-          </button>
+          </button>}</>
         </div>
 
         <div className="px-4 pt-3.5 pb-1">
@@ -275,12 +276,12 @@ export function DetailPanel({
               ) : (
                 <span className="flex-1 text-right text-[var(--ink-3)]">{t('noValue')}</span>
               )}
-              <span
+              <>{!isReadOnly() && <span
                 onClick={startEditingSourceUrl}
                 className="flex-none w-4 h-4 grid place-items-center rounded-full cursor-pointer text-compact-meta text-[var(--ink-3)] hover:bg-[var(--panel-2)]"
               >
                 <Icon name="edit" size={14} />
-              </span>
+              </span>}</>
             </span>
           </div>
         </div>
@@ -297,12 +298,12 @@ export function DetailPanel({
               >
                 <TagDot hue={tagHues?.[tag]} />
                 #{tagLabel(tag, language)}
-                <span
+                <>{!isReadOnly() && <span
                   onClick={() => onRemoveTag(tag)}
                   className="w-4 h-4 grid place-items-center rounded-full cursor-pointer text-compact-meta hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
                 >
                   <Icon name="close" size={14} />
-                </span>
+                </span>}</>
               </span>
             ))}
             <TagInput
@@ -329,13 +330,13 @@ export function DetailPanel({
               <span className="flex-1 flex items-center text-small font-medium text-[var(--ink)]">
                 {t('deleteConfirmQuestion')}
               </span>
-              <button
+              <>{!isReadOnly() && <button
                 onClick={() => setConfirmDelete(false)}
                 className="flex-none h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
               >
                 {t('cancel')}
-              </button>
-              <button {...lockProps}
+              </button>}</>
+              <>{!isReadOnly() && <button {...lockProps}
                 onClick={() => {
                   setConfirmDelete(false);
                   onDelete();
@@ -343,25 +344,25 @@ export function DetailPanel({
                 className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-none h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer"
               >
                 {t('delete')}
-              </button>
+              </button>}</>
             </>
           ) : (
             <>
               <RevealFileButton fileId={model.id} compact />
               {container && <CatalogWebButton key={model.id} fileId={model.id} fileName={model.name} />}
-            {!container && (<button
+            {!container && (<>{!isReadOnly() && <button
                 onClick={() => onOpenInSlicer()}
                 className="flex-1 min-w-0 h-8 px-2 truncate rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
               >
                 {t('openInSlicer')}
-              </button>)}
-              <button {...lockProps}
+              </button>}</>)}
+              <>{!isReadOnly() && <button {...lockProps}
                 onClick={() => setConfirmDelete(true)}
                 aria-label={t('deleteAriaLabel')}
                 className="flex-none w-[34px] h-8 grid place-items-center rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] font-medium tabular-nums cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
               >
                 <Icon name="close" size={14} />
-              </button>
+              </button>}</>
             </>
           )}
         </div>
@@ -391,13 +392,13 @@ export function DetailPanel({
             onRemoveFromCatalog={onRemoveFromCatalog}
             onSnapshotCaptured={onSnapshotCaptured}
           />
-          <button
+          <>{!isReadOnly() && <button
             onClick={imageUpload.uploadImage}
             className="relative m-3 h-9 px-3.5 rounded-lg bg-[var(--panel)] shadow-[var(--shadow)] text-[var(--ink-2)] font-semibold cursor-pointer hover:text-[var(--accent)]"
             style={{ fontSize: 'var(--font-size-meta)' }}
           >
             {t('uploadModelImageLabel')}
-          </button>
+          </button>}</>
         </div>
         <ImageUploadError error={imageUpload.error} onDismiss={imageUpload.dismiss} />
 
@@ -409,7 +410,7 @@ export function DetailPanel({
             onClick={onToggleFavorite}
             aria-label={model.favorite ? t('favoriteRemove') : t('favoriteAdd')}
             className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-none text-heading ${model.favorite ? 'text-[var(--accent)]' : 'text-[var(--ink-3)]'}`}
-          >
+           {...(isReadOnly() ? { disabled: true, title: t('webReadOnly') } : {})}>
             <Icon name="heart" size={14} fill={model.favorite  ? 'currentColor' : 'none'} />
           </button>
         </div>
@@ -423,13 +424,13 @@ export function DetailPanel({
             >
               <TagDot hue={tagHues?.[tag]} />
               #{tagLabel(tag, language)}
-              <span
+              <>{!isReadOnly() && <span
                 onClick={() => onRemoveTag(tag)}
                 className="w-4 h-4 grid place-items-center rounded-full cursor-pointer hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
                 style={{ fontSize: 'var(--font-size-label)' }}
               >
                 <Icon name="close" size={14} />
-              </span>
+              </span>}</>
             </span>
           ))}
           <TagInput
@@ -489,13 +490,13 @@ export function DetailPanel({
                 ) : (
                   <span className="flex-1 text-right text-[var(--ink-3)]">{t('noValue')}</span>
                 )}
-                <span
+                <>{!isReadOnly() && <span
                   onClick={startEditingSourceUrl}
                   className="flex-none w-5 h-5 grid place-items-center rounded-full cursor-pointer text-[var(--ink-3)] hover:bg-[var(--panel-2)]"
                   style={{ fontSize: 'var(--font-size-label)' }}
                 >
                   <Icon name="edit" size={14} />
-                </span>
+                </span>}</>
               </span>
             )}
           </div>
@@ -513,14 +514,14 @@ export function DetailPanel({
             <span className="flex-1 font-medium" style={{ fontSize: 'var(--font-size-body)' }}>
               {t('deleteConfirmQuestion')}
             </span>
-            <button
+            <>{!isReadOnly() && <button
               onClick={() => setConfirmDelete(false)}
               className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-10 px-4 rounded-lg border border-[var(--line-strong)] bg-[var(--panel)] font-semibold cursor-pointer"
               style={{ fontSize: 'var(--font-size-body)' }}
             >
               {t('cancel')}
-            </button>
-            <button {...lockProps}
+            </button>}</>
+            <>{!isReadOnly() && <button {...lockProps}
               onClick={() => {
                 setConfirmDelete(false);
                 onDelete();
@@ -529,41 +530,41 @@ export function DetailPanel({
               style={{ fontSize: 'var(--font-size-body)' }}
             >
               {t('delete')}
-            </button>
+            </button>}</>
           </div>
         ) : (
           <>
             <RevealFileButton fileId={model.id} compact />
             {container && <CatalogWebButton key={model.id} fileId={model.id} fileName={model.name} />}
-            {!container && (<button
+            {!container && (<>{!isReadOnly() && <button
               onClick={() => onOpenInSlicer()}
               className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-1 h-11 px-4 flex items-center gap-2.5 justify-center font-bold cursor-pointer bg-[var(--accent)] text-[var(--accent-ink)] rounded-lg"
               style={{ fontSize: 'var(--font-size-body)' }}
             >
               🖨 {t('openInSlicer')}
-            </button>)}
-            <button
+            </button>}</>)}
+            <>{!isReadOnly() && <button
               onClick={onToggleQueue}
               className="h-11 px-4 flex items-center justify-center gap-2.5 rounded-lg bg-[var(--panel-2)] font-semibold cursor-pointer hover:text-[var(--accent)]"
               style={{ fontSize: 'var(--font-size-body)' }}
             >
               🎞 {model.queuePosition !== null ? t('removeFromQueue') : t('addToQueue')}
-            </button>
+            </button>}</>
             <button
               onClick={onTogglePrintStatus}
               className="h-11 px-4 flex items-center justify-center gap-2.5 rounded-lg bg-[var(--panel-2)] font-semibold cursor-pointer hover:text-[var(--accent)]"
               style={{ fontSize: 'var(--font-size-body)' }}
-            >
+             {...(isReadOnly() ? { disabled: true, title: t('webReadOnly') } : {})}>
               {model.printStatus === 'printed' && <Icon name="check" size={14} />}{t(model.printStatus === 'printed' ? 'markAsNotPrinted' : 'markAsPrinted')}
             </button>
-            <button {...lockProps}
+            <>{!isReadOnly() && <button {...lockProps}
               onClick={() => setConfirmDelete(true)}
               aria-label={t('deleteAriaLabel')}
               className="h-9 rounded-lg text-[var(--ink-3)] hover:text-[var(--accent)] cursor-pointer"
               style={{ fontSize: 'var(--font-size-meta)' }}
             >
               {t('deleteAriaLabel')}
-            </button>
+            </button>}</>
           </>
         )}
       </div>

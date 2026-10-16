@@ -1,3 +1,4 @@
+import { isReadOnly } from '../lib/readOnly';
 import { hasInterruptedPreviewAttempt } from '../lib/snapshotQueue';
 import { isStepFilePath } from '../lib/stepFile';
 import { clearModelImages, invalidateModelImages } from './useModelImages';
@@ -274,7 +275,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
     (id: string) => {
       setSelectedId(id);
       ensureFullModel(id);
-      if (import.meta.env.VITE_TARGET === 'web') return;
+      if (isReadOnly()) return;
       const now = new Date().toISOString();
       setModels((prev) => prev.map((m) => (m.id === id ? { ...m, lastViewedAt: now } : m)));
       const key = `lastViewedAt:${id}`;
@@ -342,7 +343,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
 
   const restoreModel = useCallback(
     (id: string) =>
-      filesApi.restoreFile(id).then(() => {
+      isReadOnly() ? Promise.resolve() : filesApi.restoreFile(id).then(() => {
         setTrashModels((prev) => prev.filter((m) => m.id !== id));
         setSelectedId((prev) => (prev === id ? null : prev));
         refreshFiles();
@@ -354,17 +355,18 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
 
   const deleteModelPermanently = useCallback(
     (id: string) =>
-      filesApi.deleteFilePermanently(id).then(() => {
+      isReadOnly() ? Promise.resolve() : filesApi.deleteFilePermanently(id).then(() => {
         setTrashModels((prev) => prev.filter((m) => m.id !== id));
         setSelectedId((prev) => (prev === id ? null : prev));
       }),
     [],
   );
 
-  const emptyTrashAction = useCallback(() => filesApi.emptyTrash().then(() => setTrashModels([])), []);
+  const emptyTrashAction = useCallback(() => isReadOnly() ? Promise.resolve() : filesApi.emptyTrash().then(() => setTrashModels([])), []);
 
   const addTag = useCallback(
     (id: string, rawTag: string) => {
+      if (isReadOnly()) return Promise.resolve();
       // Map translated names of automatic tags (e.g. "Multipart") to the
       // identifier before updating optimistically - otherwise a second tag
       // flashes briefly until the backend has normalized it.
@@ -390,6 +392,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
   // Deliberately NOT optimistic: the UI should be able to show a name
   // collision directly. The error goes to the caller as a rejection.
   const renameFile = useCallback((id: string, name: string) => {
+    if (isReadOnly()) return Promise.resolve();
     return filesApi.renameFile(id, name).then(() => {
       setModels((prev) => prev.map((m) => (m.id === id ? { ...m, name } : m)));
       // The new name can change the sort position. Scrolling happens in a
@@ -401,6 +404,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
 
   const removeTag = useCallback(
     (id: string, tag: string) => {
+      if (isReadOnly()) return Promise.resolve();
       const current = models.find((m) => m.id === id);
       if (!current) return;
       setModels((prev) => prev.map((m) => (m.id === id ? { ...m, tags: m.tags.filter((t) => t !== tag) } : m)));
@@ -420,12 +424,13 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
   );
 
   const deleteModel = useCallback(
-    (id: string) => filesApi.deleteFile(id).then(() => applyLocalDeletion([id])),
+    (id: string) => isReadOnly() ? Promise.resolve() : filesApi.deleteFile(id).then(() => applyLocalDeletion([id])),
     [applyLocalDeletion],
   );
 
   const togglePrintStatus = useCallback(
     (id: string) => {
+      if (isReadOnly()) return Promise.resolve();
       const current = models.find((m) => m.id === id);
       if (!current) return;
       const next = current.printStatus === 'printed' ? 'not_printed' : 'printed';
@@ -450,6 +455,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
 
   const toggleFavorite = useCallback(
     (id: string) => {
+      if (isReadOnly()) return Promise.resolve();
       const current = models.find((m) => m.id === id);
       if (!current) return;
       const next = !current.favorite;
@@ -469,6 +475,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
   );
 
   const addToQueue = useCallback((id: string) => {
+    if (isReadOnly()) return Promise.resolve();
     filesApi
       .addToQueue(id)
       .then((position) => {
@@ -478,6 +485,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
   }, []);
 
   const removeFromQueue = useCallback((id: string) => {
+    if (isReadOnly()) return Promise.resolve();
     setModels((prev) => prev.map((m) => (m.id === id ? { ...m, queuePosition: null } : m)));
     const key = `queue:${id}`;
     beginMutation(key);
@@ -493,6 +501,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
 
   const reorderQueue = useCallback(
     (orderedIds: string[]) => {
+      if (isReadOnly()) return Promise.resolve();
       const updates: { fileId: string; position: number }[] = [];
       orderedIds.forEach((id, index) => {
         const position = index + 1;
@@ -519,6 +528,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
   );
 
   const uploadCustomImage = useCallback((id: string) => {
+    if (isReadOnly()) return Promise.resolve();
     return filesApi
       .uploadCustomImage(id)
       .then((customImage) => {
@@ -531,6 +541,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
   const latestSnapshotSaves = useRef(new Map<string, { failed: boolean }>()).current;
 
   const captureRenderSnapshot = useCallback((id: string, base64: string) => {
+    if (isReadOnly()) return Promise.resolve();
     setModels((prev) => prev.map((m) => (m.id === id ? { ...m, hasRenderSnapshot: true } : m)));
     const key = `renderSnapshot:${id}`;
     const attempt = { failed: false };
@@ -568,6 +579,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
   }, []);
 
   const setModelLicenses = useCallback(async (ids: string[], license: string | null) => {
+    if (isReadOnly()) return Promise.resolve();
     const selected = new Set(ids);
     const startedEpochs = new Map<string, number>();
     let overlapped = false;
@@ -609,6 +621,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
   }, []);
 
   const setModelSourceUrl = useCallback((id: string, url: string | null) => {
+    if (isReadOnly()) return Promise.resolve();
     setModels((prev) => prev.map((m) => (m.id === id ? { ...m, sourceUrl: url } : m)));
     const key = `sourceUrl:${id}`;
     beginMutation(key);
@@ -623,6 +636,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
   }, []);
 
   const rescanMetadata = useCallback((id: string) => {
+    if (isReadOnly()) return Promise.resolve();
     setRescanFeedback(null);
     filesApi
       .rescanFileMetadata(id)

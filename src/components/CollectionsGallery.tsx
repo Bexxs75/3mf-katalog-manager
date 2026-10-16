@@ -1,3 +1,4 @@
+import { isReadOnly } from '../lib/readOnly';
 import { Icon } from './Icon';
 import { useRef, useState } from 'react';
 import { CatalogActionDialog, catalogActionButton } from './CatalogActionDialog';
@@ -74,7 +75,7 @@ export function CollectionsGallery({ collections, onSelect, onCreate, onRename, 
               <div className="flex items-center justify-between gap-2">
                 <span className="text-body font-semibold text-[var(--ink)] truncate">{c.name}</span>
                 <div className="flex items-center gap-1 flex-none">
-                  <span
+                  <>{!isReadOnly() && <span
                     onClick={(e) => {
                       e.stopPropagation();
                       setRenamingId(c.id);
@@ -84,8 +85,8 @@ export function CollectionsGallery({ collections, onSelect, onCreate, onRename, 
                     className="w-5 h-5 grid place-items-center rounded-full cursor-pointer text-[var(--ink-3)] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
                   >
                     <Icon name="edit" size={14} />
-                  </span>
-                  <button
+                  </span>}</>
+                  <>{!isReadOnly() && <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
@@ -96,7 +97,7 @@ export function CollectionsGallery({ collections, onSelect, onCreate, onRename, 
                     className="w-5 h-5 grid place-items-center rounded-full cursor-pointer text-[var(--ink-3)] hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
                   >
                     <Icon name="close" size={14} />
-                  </button>
+                  </button>}</>
                 </div>
               </div>
             )}
@@ -125,18 +126,18 @@ export function CollectionsGallery({ collections, onSelect, onCreate, onRename, 
             />
           </div>
         ) : (
-          <button
+          <>{!isReadOnly() && <button
             onClick={() => setCreating(true)}
             className="rounded-[10px] border-2 border-dashed border-[var(--line-strong)] p-4 flex items-center justify-center text-body font-semibold text-[var(--ink-2)] cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] min-h-[76px]"
            aria-label={t('createCollectionLabel')}>
             <Icon name="plus" size={14} /> {t('createCollectionLabel').replace(/^\+\s*/, '')}
-          </button>
+          </button>}</>
         )}
       </div>
       {deletingId !== null && <CatalogActionDialog title={t('deleteCollectionConfirmQuestion')} returnFocus={deleteTrigger} onClose={() => setDeletingId(null)}>
         <div className="flex justify-end gap-2">
-          <button data-initial-focus className={catalogActionButton} onClick={() => setDeletingId(null)}>{t('cancel')}</button>
-          <button className={catalogActionButton} onClick={() => { onDelete(deletingId); setDeletingId(null); }}>{t('delete')}</button>
+          <>{!isReadOnly() && <button data-initial-focus className={catalogActionButton} onClick={() => setDeletingId(null)}>{t('cancel')}</button>}</>
+          <>{!isReadOnly() && <button className={catalogActionButton} onClick={() => { onDelete(deletingId); setDeletingId(null); }}>{t('delete')}</button>}</>
         </div>
       </CatalogActionDialog>}
     </div>

@@ -1,3 +1,4 @@
+import { isReadOnly } from '../lib/readOnly';
 import { displayName } from '../lib/displayName';
 import { Icon } from './Icon';
 import { useImportLock } from '../hooks/ImportLockContext';
@@ -86,9 +87,9 @@ export function FolderTree({
         <div data-sync-folder-id={node.id}
           tabIndex={0}
           role="button"
-          onContextMenu={(e) => { e.preventDefault(); returnFocus.current = e.currentTarget; setMenu({ id: node.id, name: node.name, x: e.clientX, y: e.clientY }); }}
+          onContextMenu={(e) => { e.preventDefault(); if (isReadOnly()) return; returnFocus.current = e.currentTarget; setMenu({ id: node.id, name: node.name, x: e.clientX, y: e.clientY }); }}
           onKeyDown={(e) => {
-            if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+            if (!isReadOnly() && (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10'))) {
               e.preventDefault(); e.stopPropagation(); returnFocus.current = e.currentTarget;
               const rect = e.currentTarget.getBoundingClientRect();
               setMenu({ id: node.id, name: node.name, x: rect.left, y: rect.bottom });

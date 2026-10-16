@@ -1,3 +1,4 @@
+import { isReadOnly } from '../lib/readOnly';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { useEffect, useRef, useState } from 'react';
 import { invoke } from '../lib/transport';
@@ -21,6 +22,7 @@ export function RevealFileButton({ fileId, compact = false, showIcon = true, cla
     setError(null); setBusy(false);
     return () => { request.current++; };
   }, [fileId]);
+  if (isReadOnly()) return null;
   if (container) return null;
   return <div className={compact ? 'flex-none' : undefined}>
     <button {...lockProps} disabled={lockProps.disabled || busy}

@@ -1,6 +1,8 @@
 import type { Translations } from './types';
 
 export const es: Translations = {
+  webReadOnly: 'Solo lectura en modo web',
+  webUnavailable: 'No disponible en modo web',
   webSessionChecking: "Comprobando sesión…",
   webLogin: "Iniciar sesión",
   webLogout: "Cerrar sesión",

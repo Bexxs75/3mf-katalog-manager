@@ -1,3 +1,4 @@
+import { isReadOnly } from '../lib/readOnly';
 import { displayName } from '../lib/displayName';
 import { LicenseEditor } from './LicenseEditor';
 import { CatalogWebButton } from './CatalogWebButton';
@@ -236,12 +237,12 @@ export function ModelDetailPage({
               </div>
             )}
           </div>
-          <button
+          <>{!isReadOnly() && <button
             onClick={imageUpload.uploadImage}
             className="mt-2 h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
             {t('uploadModelImageLabel')}
-          </button>
+          </button>}</>
           <ImageUploadError error={imageUpload.error} onDismiss={imageUpload.dismiss} />
         </div>
 
@@ -283,12 +284,12 @@ export function ModelDetailPage({
                     // Not an http(s) value: plain text, never a clickable link.
                     <span className="text-[var(--ink-2)]">{model.sourceUrl}</span>
                   )}{' '}
-                  <button aria-label={t('pmEdit')} onClick={startEditingSource} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)]"><Icon name="edit" size={14} /></button>
+                  <>{!isReadOnly() && <button aria-label={t('pmEdit')} onClick={startEditingSource} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)]"><Icon name="edit" size={14} /></button>}</>
                 </span>
               ) : (
-                <button onClick={startEditingSource} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)] underline decoration-dotted">
+                <>{!isReadOnly() && <button onClick={startEditingSource} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)] underline decoration-dotted">
                   {t('sourceUrlPlaceholder')} <Icon name="edit" size={14} />
-                </button>
+                </button>}</>
               )}
             </div>
 
@@ -301,7 +302,7 @@ export function ModelDetailPage({
                   <span key={tag} className="inline-flex items-center gap-1.5 font-medium tabular-nums text-small px-2.5 py-1 rounded-full bg-[var(--panel-2)] border border-[var(--line)] text-[var(--ink-2)]">
                     <TagDot hue={tagHues?.[tag]} />
                     #{tagLabel(tag, language)}{' '}
-                    <button aria-label={t('chipRemove').replace('{label}', tag)} onClick={() => onRemoveTag(tag)} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)]"><Icon name="close" size={14} /></button>
+                    <>{!isReadOnly() && <button aria-label={t('chipRemove').replace('{label}', tag)} onClick={() => onRemoveTag(tag)} className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] text-[var(--ink-3)]"><Icon name="close" size={14} /></button>}</>
                   </span>
                 ))}
                 <TagInput
@@ -324,7 +325,7 @@ export function ModelDetailPage({
                   ? 'bg-[var(--good-soft,var(--accent-soft))] text-[var(--good,var(--accent))]'
                   : 'bg-[var(--panel-2)] text-[var(--ink-2)] border border-[var(--line)]'
               }`}
-            >
+             {...(isReadOnly() ? { disabled: true, title: t('webReadOnly') } : {})}>
               {model.printStatus === 'printed' ? t('printedBadge') : t('notPrintedLabel')}
             </button>
             <button
@@ -334,12 +335,12 @@ export function ModelDetailPage({
               className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] w-9 h-9 rounded-md border grid place-items-center ${
                 model.favorite ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent-soft)]' : 'border-[var(--line)] text-[var(--ink-2)]'
               }`}
-            >
+             {...(isReadOnly() ? { disabled: true, title: t('webReadOnly') } : {})}>
               <Icon name="heart" size={14} fill={model.favorite ? 'currentColor' : 'none'} />
             </button>
-            <button onClick={onToggleQueue} className="text-body font-semibold text-[var(--ink-2)] hover:text-[var(--ink)]">
+            <>{!isReadOnly() && <button onClick={onToggleQueue} className="text-body font-semibold text-[var(--ink-2)] hover:text-[var(--ink)]">
               {model.queuePosition === null && <Icon name="plus" size={14} />}{t(model.queuePosition !== null ? 'removeFromQueue' : 'addToQueue')}
-            </button>
+            </button>}</>
           </div>
         </div>
       </div>
@@ -404,12 +405,12 @@ export function ModelDetailPage({
             {t('printLogHeading')}
           </p>
           {!showPrintLogForm && (
-            <button
+            <>{!isReadOnly() && <button
               onClick={() => setShowPrintLogForm(true)}
               className="text-small font-semibold text-[var(--accent)] hover:underline"
              aria-label={t('printLogAddButton')}>
               <Icon name="plus" size={14} /> {t('printLogAddButton').replace(/^\+\s*/, '')}
-            </button>
+            </button>}</>
           )}
         </div>
 
@@ -429,12 +430,12 @@ export function ModelDetailPage({
               className="bg-[var(--panel-2)] border border-[var(--line)] rounded px-2 py-1 text-body resize-none"
             />
             <div className="flex items-center gap-2">
-              <button
+              <>{!isReadOnly() && <button
                 onClick={pickPrintLogPhoto}
                 className="h-7 px-3 rounded-[3px] border border-[var(--line)] bg-transparent text-[var(--ink-2)] text-small hover:border-[var(--accent)]"
               >
                 {t('printLogPhotoButton')}
-              </button>
+              </button>}</>
               {printLogPhoto && (
                 <img
                   src={`data:image/png;base64,${printLogPhoto}`}
@@ -444,7 +445,7 @@ export function ModelDetailPage({
               )}
             </div>
             <div className="flex gap-2 justify-end">
-              <button
+              <>{!isReadOnly() && <button
                 onClick={() => {
                   setShowPrintLogForm(false);
                   setPrintLogNote('');
@@ -453,13 +454,13 @@ export function ModelDetailPage({
                 className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-7 px-3 rounded-[3px] border border-[var(--line)] bg-transparent text-[var(--ink-2)] text-small"
               >
                 {t('printLogCancelButton')}
-              </button>
-              <button
+              </button>}</>
+              <>{!isReadOnly() && <button
                 onClick={submitPrintLogEntry}
                 className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-7 px-3 rounded-[3px] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold"
               >
                 {t('printLogSaveButton')}
-              </button>
+              </button>}</>
             </div>
           </div>
         )}
@@ -483,7 +484,7 @@ export function ModelDetailPage({
                   </div>
                   {entry.note && <div className="text-[var(--ink-2)]">{entry.note}</div>}
                 </div>
-                <button
+                <>{!isReadOnly() && <button
                   onClick={() =>
                     deletePrintLogEntry(entry.id).catch((e) =>
                       console.error('[print-log] deleting failed:', e),
@@ -492,7 +493,7 @@ export function ModelDetailPage({
                   className="text-[var(--ink-3)] hover:text-red-400 flex-none"
                 >
                   <Icon name="close" size={14} />
-                </button>
+                </button>}</>
               </div>
             ))}
           </div>
@@ -503,23 +504,23 @@ export function ModelDetailPage({
       <footer className="flex items-center justify-between gap-4 flex-wrap rounded-[10px] border border-[var(--line)] bg-[var(--panel)] px-4 py-3.5 mt-auto">
         <span className="font-code text-small text-[var(--ink-3)] break-all">{displayName(model.path)}</span>
         <div className="flex gap-2.5 items-center flex-wrap min-w-0">
-          <button {...lockProps} onClick={onDelete} className="px-4 py-2 rounded-md border border-[var(--line)] text-body font-semibold text-red-400 hover:border-red-400">
+          <>{!isReadOnly() && <button {...lockProps} onClick={onDelete} className="px-4 py-2 rounded-md border border-[var(--line)] text-body font-semibold text-red-400 hover:border-red-400">
             {t('delete')}
-          </button>
-          <button
+          </button>}</>
+          <>{!isReadOnly() && <button
             onClick={onRescanMetadata}
             className="px-4 py-2 rounded-md border border-[var(--line)] text-body font-semibold text-[var(--ink-2)] hover:border-[var(--line-strong)]"
           >
             {t('rescanMetadataButton')}
-          </button>
+          </button>}</>
           <div className="relative">
-            <button
+            <>{!isReadOnly() && <button
               onClick={() => setAddToCollectionMenuOpen((prev) => !prev)}
               className="px-4 py-2 rounded-md border border-[var(--line)] text-body font-semibold text-[var(--ink-2)] hover:border-[var(--line-strong)]"
             >
               {t('addToCollectionLabel')}
-            </button>
-            {addToCollectionMenuOpen && (
+            </button>}</>
+            {!isReadOnly() && addToCollectionMenuOpen && (
               <div data-navigation-menu className="absolute bottom-11 right-0 min-w-[220px] max-w-[360px] py-1.5 bg-[var(--panel)] border border-[var(--line)] rounded shadow-[var(--shadow)] z-40">
                 {collections.map((c) => (
                   <button
@@ -544,13 +545,13 @@ export function ModelDetailPage({
           </div>
           <RevealFileButton fileId={model.id} />
           {container && <CatalogWebButton key={model.id} fileId={model.id} fileName={model.name} />}
-          {!container && (<button
+          {!container && (<>{!isReadOnly() && <button
             onClick={() => onOpenInSlicer()}
             disabled={slicers.length === 0}
             className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] px-4 py-2 rounded-md bg-[var(--accent)] text-[var(--accent-ink)] text-body font-semibold disabled:opacity-50"
           >
             {t('openInSlicer')} <Icon name="external" size={14} />
-          </button>)}
+          </button>}</>)}
         </div>
       </footer>
       {slicerError && <p className="text-small text-red-400"><ErrorText error={slicerError} /></p>}

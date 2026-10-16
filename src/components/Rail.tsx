@@ -243,10 +243,10 @@ export function Rail({
 
             {activeSettingsTab === 'general' && (
               <>
-                <button role="switch" aria-checked={singleKeyShortcuts} onClick={() => onSingleKeyShortcutsChange?.(!singleKeyShortcuts)} className="w-full text-left border border-[var(--line)] rounded p-2 mb-2 cursor-pointer">
+                {import.meta.env.VITE_TARGET !== 'web' && <><button role="switch" aria-checked={singleKeyShortcuts} onClick={() => onSingleKeyShortcutsChange?.(!singleKeyShortcuts)} className="w-full text-left border border-[var(--line)] rounded p-2 mb-2 cursor-pointer">
                   <span aria-hidden="true">{singleKeyShortcuts ? <Icon name="check" size={14} /> : '○ '}</span>{t('singleKeyShortcutsTitle')}
                 </button>
-                <p className="text-small text-[var(--ink-2)] mb-4">{t('singleKeyShortcutsDescription')}</p>
+                <p className="text-small text-[var(--ink-2)] mb-4">{t('singleKeyShortcutsDescription')}</p></>}
                 {import.meta.env.VITE_TARGET !== 'web' && <div className="mb-4 p-2 border border-[var(--line)] rounded text-small">
                   <p>{t('settingsPrintersMovedHint')}</p>
                   <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] mt-2 text-[var(--accent)] focus-visible:outline-2" onClick={() => {

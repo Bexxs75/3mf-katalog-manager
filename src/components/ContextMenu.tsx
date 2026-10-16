@@ -1,3 +1,4 @@
+import { isReadOnly } from '../lib/readOnly';
 import { displayName } from '../lib/displayName';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { RevealFileButton } from './RevealFileButton';
@@ -244,6 +245,7 @@ interface CollectionMenuProps {
 export function ContextMenu(props: Props | CollectionMenuProps) {
   const { lockProps } = useImportLock();
   const t = useT();
+  if (isReadOnly()) return null;
   if (!('collectionActions' in props)) return <ModelContextMenu {...props} />;
   return <ContextMenuFrame x={props.x} y={props.y} onClose={props.onClose}>
     <button {...lockProps} onClick={props.collectionActions.onRename}

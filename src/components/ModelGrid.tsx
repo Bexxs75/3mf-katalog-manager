@@ -1,3 +1,4 @@
+import { isReadOnly } from '../lib/readOnly';
 import { displayName } from '../lib/displayName';
 import { LicenseBadge } from './LicenseBadge';
 import { licenseUsage, modelLicenseAriaLabel } from '../lib/licenses';
@@ -110,7 +111,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
   // Only movement beyond DRAG_THRESHOLD_PX counts as dragging, otherwise a
   // slipped click on the checkbox or star would already reorder.
   useEffect(() => {
-    if (!reorderable || dragIndex === null) return;
+    if (isReadOnly() || !reorderable || dragIndex === null) return;
     const handleMouseMove = (e: MouseEvent) => {
       if (dragArmed || !dragStartPos.current) return;
       const dx = e.clientX - dragStartPos.current.x;
@@ -145,6 +146,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
   const fileDrag = useDragThreshold(onDragFileStart);
 
   const handleCardMouseDown = (e: { clientX: number; clientY: number }, id: string) => {
+    if (isReadOnly()) return;
     if (reorderable) {
       dragStartPos.current = { x: e.clientX, y: e.clientY };
       setDragIndex(models.findIndex((x) => x.id === id));
@@ -166,7 +168,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
         onContextMenu={(e) => {
           e.preventDefault();
           onSelect(m.id);
-          onContextMenu(m.id, e.clientX, e.clientY);
+          if (!isReadOnly()) onContextMenu(m.id, e.clientX, e.clientY);
         }}
         onMouseDown={(e) => handleCardMouseDown(e, m.id)}
         onMouseEnter={() => reorderable && dragIndex !== null && setOverIndex(models.findIndex((x) => x.id === m.id))}
@@ -175,8 +177,8 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
         } ${fileDrag.draggingId === m.id ? 'opacity-50' : ''}`}
       >
         <div className="relative aspect-square bg-[var(--plate)] border-b border-[var(--line)] overflow-hidden">
-          {onDragFileStart && !readOnly && !reorderable && <DragGrip className="absolute top-1.5 right-9 z-10" />}
-          {!readOnly && (
+          {onDragFileStart && !readOnly && !isReadOnly() && !reorderable && <DragGrip className="absolute top-1.5 right-9 z-10" />}
+          {!readOnly && !isReadOnly() && (
             <BulkCheckbox
               checked={selectedForBulk.has(m.id)}
               onToggle={() => onToggleBulkSelect(m.id)}
@@ -228,6 +230,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
                 onToggleFavorite(m.id);
               }}
               aria-label={m.favorite ? t('favoriteRemove') : t('favoriteAdd')}
+              {...(isReadOnly() ? { disabled: true, title: t('webReadOnly') } : {})}
               className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] absolute left-[7px] bottom-[7px] font-semibold text-caption px-1 py-0.5 rounded border cursor-pointer ${
                 m.favorite
                   ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
@@ -270,7 +273,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
             onContextMenu={(e) => {
               e.preventDefault();
               onSelect(m.id);
-              onContextMenu(m.id, e.clientX, e.clientY);
+              if (!isReadOnly()) onContextMenu(m.id, e.clientX, e.clientY);
             }}
             onMouseDown={(e) => handleCardMouseDown(e, m.id)}
             onMouseEnter={() => reorderable && dragIndex !== null && setOverIndex(models.findIndex((x) => x.id === m.id))}
@@ -280,8 +283,8 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
           >
             <div className="h-[5px]" style={{ background: 'linear-gradient(90deg, var(--accent), var(--accent-soft))' }} />
             <div className="relative aspect-square bg-[var(--plate)] overflow-hidden">
-              {onDragFileStart && !readOnly && !reorderable && <DragGrip className="absolute top-1.5 right-9 z-10" />}
-              {!readOnly && (
+              {onDragFileStart && !readOnly && !isReadOnly() && !reorderable && <DragGrip className="absolute top-1.5 right-9 z-10" />}
+              {!readOnly && !isReadOnly() && (
                 <BulkCheckbox
                   checked={selectedForBulk.has(m.id)}
                   onToggle={() => onToggleBulkSelect(m.id)}
@@ -324,6 +327,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
                     onToggleFavorite(m.id);
                   }}
                   aria-label={m.favorite ? t('favoriteRemove') : t('favoriteAdd')}
+                  {...(isReadOnly() ? { disabled: true, title: t('webReadOnly') } : {})}
                   style={{ width: 'var(--icon-badge-size)', height: 'var(--icon-badge-size)' }}
                   className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] absolute right-2.5 bottom-2.5 rounded-full grid place-items-center bg-[var(--panel)]/90 shadow-[var(--shadow)] cursor-pointer text-title ${
                     m.favorite ? 'text-[var(--accent)]' : 'text-[var(--ink-3)]'

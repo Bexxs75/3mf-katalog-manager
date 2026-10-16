@@ -1,9 +1,11 @@
+import { isReadOnly } from '../lib/readOnly';
 import { useT } from '../i18n/LanguageContext';
 import { useDiagnostics } from './DiagnosticsContext';
 
 export function ReportProblemLink() {
   const t = useT();
   const { openBugReport } = useDiagnostics();
+  if (isReadOnly()) return null;
   return (
     <button
       type="button"

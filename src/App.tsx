@@ -1,3 +1,4 @@
+import { isReadOnly } from './lib/readOnly';
 import { DownloadSlicerView } from './components/DownloadSlicerView';
 import { useRuntimeEnvironment } from './hooks/useRuntimeEnvironment';
 import { NetworkFilesystemWarning } from './components/NetworkFilesystemWarning';
@@ -149,6 +150,7 @@ export default function App() {
     ]).catch((e) => console.error('[catalog] refresh after removal failed:', e));
   };
   const removeCatalogModels = async (fileIds: string[]) => {
+      if (isReadOnly()) return Promise.resolve();
     await invoke('remove_files_from_catalog', { fileIds });
     store.setModels((models) => models.filter((model) => !fileIds.includes(model.id)));
     refreshAfterRemoval();

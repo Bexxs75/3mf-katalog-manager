@@ -1,3 +1,4 @@
+import { isReadOnly } from '../lib/readOnly';
 import { displayName } from '../lib/displayName';
 import { useImportLock } from '../hooks/ImportLockContext';
 import { useEffect, useRef, useState, type RefObject } from 'react';
@@ -41,6 +42,7 @@ export function FolderCatalogMenu({ folderId, name, x, y, onClose, onRemoved, re
     }).catch((e) => { if (!cancelled) setError(toAppError(e)); });
     return () => { cancelled = true; };
   }, [dialog, folderId]);
+  if (isReadOnly()) return null;
   if (!dialog) return createPortal(
     <div ref={menu} role="menu" className="fixed z-50 min-w-[200px] overflow-hidden rounded-[4px] border border-[var(--line-strong)] bg-[var(--panel)] shadow-lg"
       style={{ left: Math.max(0, Math.min(x, window.innerWidth - 260)), top: Math.max(0, Math.min(y, window.innerHeight - 50)) }}>

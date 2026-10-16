@@ -1,3 +1,4 @@
+import { isReadOnly } from '../lib/readOnly';
 import { useState, type CSSProperties } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { canonicalTag, sortTagsForDisplay, tagLabel } from '../lib/autoTags';
@@ -29,6 +30,7 @@ export function TagInput({ allTags, tags, onAddTag, inputClassName, inputStyle, 
     language,
   ).map(tag => tag.label);
 
+  if (isReadOnly()) return null;
   return <AutocompleteInput
     autoFocus={autoFocus}
     maxLength={100}
