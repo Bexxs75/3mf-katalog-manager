@@ -57,6 +57,7 @@ export const de: Translations = {
   webSessionChecking: "Sitzung wird geprüft…",
   webLogin: "Anmelden",
   webLogout: "Abmelden",
+  webAccount: "Konto",
   webChangePassword: "Passwort ändern",
   webPasswordRequired: "Bitte ändere zuerst dein Passwort.",
   webPassword: "Passwort",

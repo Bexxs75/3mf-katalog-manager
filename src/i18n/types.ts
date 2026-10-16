@@ -63,6 +63,7 @@ export interface Translations {
   webSessionChecking: string;
   webLogin: string;
   webLogout: string;
+  webAccount: string;
   webChangePassword: string;
   webPasswordRequired: string;
   webPassword: string;

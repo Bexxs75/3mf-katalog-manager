@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode, type
 import * as session from '../lib/webSession';
 import { messageOf } from '../lib/errors';
 import { useT } from '../i18n/LanguageContext';
+import { WEB_CHANGE_PASSWORD_EVENT } from './WebAccountMenu';
 
 export function WebAuthGate({ children }: { children: ReactNode }) {
   const t = useT();
@@ -19,6 +20,11 @@ export function WebAuthGate({ children }: { children: ReactNode }) {
   const changing = state.authenticated && (state.mustChangePassword || editing);
   const check = () => { setLoading(true); setChecked(false); setError(''); void session.getSession().then(() => setChecked(true)).catch(e => setError(messageOf(e))).finally(() => setLoading(false)); };
   useEffect(check, []);
+  useEffect(() => {
+    const open = () => { setError(''); setEditing(true); };
+    window.addEventListener(WEB_CHANGE_PASSWORD_EVENT, open);
+    return () => window.removeEventListener(WEB_CHANGE_PASSWORD_EVENT, open);
+  }, []);
   async function submit(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError('');
     try {
@@ -32,11 +38,7 @@ export function WebAuthGate({ children }: { children: ReactNode }) {
   if (!checked) return <main className="p-6"><p role="alert">{error}</p><button onClick={check}>{t('webRetry')}</button></main>;
   if (state.authenticated && !changing) return <>
     <MetadataError />
-    <div className="fixed bottom-2 right-3 z-50 flex gap-3 rounded bg-[var(--panel)] p-2 text-small">
-      <button onClick={() => { setError(''); setEditing(true); }}>{t('webChangePassword')}</button>
-      <button disabled={busy} onClick={async () => { setBusy(true); try { await session.logout(); } catch (e) { setError(messageOf(e)); } finally { setBusy(false); } }}>{t('webLogout')}</button>
-      {error && <span role="alert">{error}</span>}
-    </div>{children}</>;
+{children}</>;
   return <main className="min-h-screen grid place-items-center bg-[var(--bg)] text-[var(--ink)]">
     <form onSubmit={submit} className="w-full max-w-sm p-6 border border-[var(--line)] rounded bg-[var(--panel)] space-y-4">
       <h1 className="text-xl font-semibold">{t(changing ? 'webChangePassword' : 'webLogin')}</h1>
