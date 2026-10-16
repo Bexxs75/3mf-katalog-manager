@@ -687,3 +687,19 @@ fn round3_discard_keeps_replacement_symlink_or_directory() {
         assert_eq!(std::fs::read(f.root.join("owned")).unwrap(), b"PK\x03\x04");
     }
 }
+
+#[test]
+fn catalog_removal_startup_clears_stale_result_and_drops_missing_file() {
+    let f=Fixture::new();
+    let kept=f.upload();
+    let missing=f.upload();
+    f.store.complete_batch(vec![(kept.id.clone(),UploadState::Imported,serde_json::json!({"fileId":"1"})),(missing.id.clone(),UploadState::Imported,serde_json::json!({"fileId":"2"}))]).unwrap();
+    std::fs::remove_file(f.store.path(&missing)).unwrap();
+    let reopened=Fixture::open(&f.root,&HashSet::new());
+    let entries=reopened.list().unwrap();
+    assert_eq!(entries.len(),1);
+    assert_eq!(entries[0].id,kept.id);
+    assert_eq!(entries[0].state,UploadState::Uploaded);
+    assert!(entries[0].result.is_none());
+    assert!(entries[0].job_id.is_none());
+}

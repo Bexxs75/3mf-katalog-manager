@@ -449,6 +449,7 @@ export interface Translations {
   removeEntry: string;
   removeModelQuestion: string;
   removeModelsQuestion: PluralForms;
+  webRemoveModelHint: string;
   removeModelHint: string;
   removeFolderQuestion: string;
   removeFolderList: PluralForms;

@@ -13,6 +13,7 @@ use std::sync::{
 };
 use tokio::sync::Semaphore;
 pub const WRITE_COMMANDS: &[&str] = &[
+    "remove_files_from_catalog",
     "start_upload_import",
     "discard_upload",
     "cancel_import",
@@ -309,12 +310,24 @@ fn slots(a: &Value) -> Result<Option<i64>, Box<Response>> {
         Some(v) => v.as_i64().map(Some).ok_or_else(bad),
     }
 }
+pub(crate) fn removal_ids(args: &Value) -> Result<Vec<i64>, Box<Response>> {
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase", deny_unknown_fields)]
+    struct Args { file_ids: Vec<String> }
+    let invalid = || map_error(WriteError::expected("Ungültige Katalog-ID."));
+    let args: Args = serde_json::from_value(args.clone()).map_err(|_| invalid())?;
+    if args.file_ids.len() > 200 {
+        return Err(map_error(WriteError::expected("Höchstens 200 IDs erlaubt")));
+    }
+    args.file_ids.into_iter().map(|id| id_value(&Value::String(id)).map_err(|_| invalid())).collect()
+}
 pub(crate) fn execute(
     c: &mut Connection,
     cmd: &str,
     a: &Value,
 ) -> Result<(Response, u64), Box<Response>> {
     match cmd {
+        "remove_files_from_catalog" => encode(web::remove_files_from_catalog(c, &removal_ids(a)?)),
         "set_render_snapshot" => {
             #[derive(serde::Deserialize)]
             #[serde(rename_all = "camelCase", deny_unknown_fields)]

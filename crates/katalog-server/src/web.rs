@@ -1063,6 +1063,24 @@ async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Va
     // Permits live with blocking work, including after HTTP timeout/disconnect.
     let work=tokio::task::spawn_blocking(move || {
         let (_admission, _worker) = (admission, worker);
+        let removal_ids = if command == "remove_files_from_catalog" {
+            match crate::write::removal_ids(&args) {
+                Ok(ids) => Some(ids),
+                Err(response) => return *response,
+            }
+        } else { None };
+        // Share the import admission permit through commit and journal persistence.
+        // No import can begin in the gap between the idle check and the DELETE.
+        let _import_permit = if removal_ids.is_some() {
+            if let Some(rt) = &app.uploads {
+                let Ok(permit) = rt.active.clone().try_acquire_owned() else { return crate::write::retry(503); };
+                match rt.store.has_importing() {
+                    Ok(false) => Some(permit),
+                    Ok(true) => return crate::write::retry(503),
+                    Err(_) => return error(500, "Interner Journalfehler"),
+                }
+            } else { None }
+        } else { None };
         let mutex = &app.writer.as_ref().unwrap().conn;
         let deadline=started+std::time::Duration::from_secs(5);
         let locked=loop {
@@ -1098,6 +1116,15 @@ async fn write_invoke(app: Arc<App>, current: Session, command: String, args: Va
         }
         match crate::write::execute(&mut conn, &command, &args) {
             Ok((response, changes)) => {
+                drop(conn);
+                if let (Some(ids), Some(rt)) = (&removal_ids, &app.uploads) {
+                    if rt.store.reset_removed(ids).is_err() {
+                        // The catalog commit is final; startup reconciliation repairs the journal.
+                        rt.store.require_restart();
+                        eprintln!("write error_kind=journal_restart_required");
+                    }
+                    rt.changed_blocking();
+                }
                 if let Some(audit) = audit { audit.changes.store(changes, std::sync::atomic::Ordering::Relaxed); }
                 response
             }

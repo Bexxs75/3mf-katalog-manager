@@ -5,7 +5,7 @@ import { useCanUpload } from '../lib/webSession';
 import { importFinished, MODEL_UPLOAD_ACCEPT, WebImportController, type WebImportJob, type UploadTextKey } from '../lib/webImport';
 import './import.css';
 
-interface Props { open: boolean; onClose: () => void; onImported: () => void | Promise<unknown> }
+interface Props { refreshKey?: number; open: boolean; onClose: () => void; onImported: () => void | Promise<unknown> }
 const statusKeys: Record<string, UploadTextKey> = {
   queued: 'webUploadQueued', uploading: 'webUploadSending', retrying: 'webUploadRetrying', uploaded: 'webUploadUploaded',
   cancelled: 'webUploadCancelled', importing: 'webUploadImporting', cancelling: 'webUploadCancelling', completed: 'webUploadCompleted',
@@ -24,6 +24,9 @@ function WebImportOwner(props: Props) {
     setController(next); next.connect();
     return () => next.dispose();
   }, []);
+  useEffect(() => {
+    if (controller && props.refreshKey) void controller.reconcile();
+  }, [controller, props.refreshKey]);
   return controller ? <WebImportSurface {...props} controller={controller} /> : null;
 }
 function WebImportSurface({ controller, open, onClose }: Props & { controller: WebImportController }) {

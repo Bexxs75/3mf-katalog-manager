@@ -1,3 +1,5 @@
+import { canEditMetadata } from './lib/webSession';
+import { reportMetadataError } from './lib/metadataErrors';
 import { WebImport } from './components/WebImport';
 import { isReadOnly } from './lib/readOnly';
 import { DownloadSlicerView } from './components/DownloadSlicerView';
@@ -132,6 +134,7 @@ export default function App() {
     bulkRemoveFromCollection: collections.bulkRemoveFromCollection,
   });
 
+  const [uploadRefreshKey, setUploadRefreshKey] = useState(0);
   const [webImportOpen, setWebImportOpen] = useState(false);
   const [tipsOpen, setTipsOpen] = useState(false);
   const [singleKeyShortcuts, setSingleKeyShortcuts] = useSingleKeyShortcuts();
@@ -153,10 +156,24 @@ export default function App() {
     ]).catch((e) => console.error('[catalog] refresh after removal failed:', e));
   };
   const removeCatalogModels = async (fileIds: string[]) => {
-      if (isReadOnly()) return Promise.resolve();
-    await invoke('remove_files_from_catalog', { fileIds });
-    store.setModels((models) => models.filter((model) => !fileIds.includes(model.id)));
-    refreshAfterRemoval();
+    if (!canEditMetadata()) return;
+    try {
+      await invoke('remove_files_from_catalog', { fileIds });
+      store.setModels((models) => models.filter((model) => !fileIds.includes(model.id)));
+      if (isReadOnly()) {
+        store.setSelectedId(null);
+        setDetailModelId(null);
+        bulk.clearBulkSelection();
+        setUploadRefreshKey(key => key + 1);
+        await Promise.all([store.refreshFiles(), store.refreshFolders(), store.refreshTags(),
+          collections.refreshCollections(),
+          ...(collections.activeCollection ? [collections.refreshCollectionModels(collections.activeCollection)] : []),
+        ]);
+      } else refreshAfterRemoval();
+    } catch (error) {
+      reportMetadataError(error);
+      throw error;
+    }
   };
   const clearCatalogFilters = () => {
     collections.setActiveCollection(null);
@@ -355,7 +372,7 @@ export default function App() {
         mainView={mainView}
       />
 
-      {import.meta.env.VITE_TARGET === 'web' && <WebImport open={webImportOpen} onClose={() => setWebImportOpen(false)} onImported={() => Promise.all([store.refreshFiles(), store.refreshFolders(), store.refreshTags()])} />}
+      {import.meta.env.VITE_TARGET === 'web' && <WebImport refreshKey={uploadRefreshKey} open={webImportOpen} onClose={() => setWebImportOpen(false)} onImported={() => Promise.all([store.refreshFiles(), store.refreshFolders(), store.refreshTags()])} />}
       <NetworkFilesystemWarning />
       <div className="flex-1 flex flex-row min-h-0">
         <Rail

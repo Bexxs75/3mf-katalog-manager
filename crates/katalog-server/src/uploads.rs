@@ -110,7 +110,7 @@ impl Hub {
 }
 pub(super) struct Runtime {
     pub store: Arc<UploadStore>,
-    active: Arc<Semaphore>,
+    pub(super) active: Arc<Semaphore>,
     jobs: Mutex<HashMap<String, Arc<Job>>>,
     hub: Mutex<Hub>,
 }
@@ -119,7 +119,7 @@ impl Runtime {
         let copy = self.clone();
         let _ = tokio::task::spawn_blocking(move || copy.changed_blocking()).await;
     }
-    fn changed_blocking(&self) {
+    pub(super) fn changed_blocking(&self) {
         loop {
             let sequence = self.hub.lock().unwrap().sequence;
             let uploads = pending_entries(&self.store);

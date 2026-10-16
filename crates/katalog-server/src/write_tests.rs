@@ -134,7 +134,7 @@ async fn all_disabled_commands_leave_catalog_hash_and_sidecar_names_unchanged() 
         n
     };
     let before = names();
-    assert_eq!(WRITE_COMMANDS.len(), 36);
+    assert_eq!(WRITE_COMMANDS.len(), 37);
     assert_eq!(crate::READ_COMMANDS.len(), 22);
     for cmd in WRITE_COMMANDS {
         assert_eq!(f.send(cmd, json!({})).await.status(), 404, "{cmd}");
@@ -1439,4 +1439,70 @@ async fn snapshot_http_storage_validation_and_access() {
             .status(),
         404
     );
+}
+
+#[tokio::test]
+async fn catalog_removal_is_atomic_strict_and_preserves_disk() {
+    let f = Fixture::new(true);
+    let disk = f.dir.join("keep.stl");
+    std::fs::write(&disk, b"unchanged").unwrap();
+    {
+        let c = f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        c.execute("UPDATE files SET path=?1 WHERE id=?2", [disk.to_str().unwrap(), f.id.as_str()]).unwrap();
+        c.execute_batch("INSERT INTO tags VALUES(1,'keep',1); INSERT INTO file_tags VALUES(1,1); INSERT INTO collections VALUES(1,'keep','today'); INSERT INTO collection_files VALUES(1,1,0);").unwrap();
+    }
+    for args in [json!({"fileIds":[f.id,"9999"]}), json!({"fileIds":["9999",f.id]})] {
+        assert_eq!(f.send("remove_files_from_catalog",args).await.status(),404);
+        assert!(!f.favorite());
+    }
+    for args in [json!({"fileIds":vec![f.id.clone();201]}),json!({"fileIds":[f.id],"extra":true}),json!({"fileIds":["0"]}),json!({"fileIds":["-1"]}),json!({"fileIds":["1.5"]})] {
+        assert_eq!(f.send("remove_files_from_catalog",args).await.status(),422);
+        assert!(!f.favorite());
+    }
+    let r=f.send("remove_files_from_catalog",json!({"fileIds":[f.id,f.id]})).await;
+    assert_eq!(r.status(),200);
+    assert_eq!(value(r).await,json!(1));
+    let c=db::open_read_only(&f.app.config.db_path).unwrap();
+    for table in ["files","file_tags","collection_files"] {
+        assert_eq!(c.query_row(&format!("SELECT COUNT(*) FROM {table}"),[],|r|r.get::<_,i64>(0)).unwrap(),0);
+    }
+    for table in ["tags","collections"] {
+        assert_eq!(c.query_row(&format!("SELECT COUNT(*) FROM {table}"),[],|r|r.get::<_,i64>(0)).unwrap(),1);
+    }
+    assert_eq!(std::fs::read(disk).unwrap(),b"unchanged");
+}
+
+#[tokio::test]
+async fn catalog_removal_requires_write_session_csrf_and_active_model() {
+    let disabled=Fixture::new(false);
+    assert_eq!(disabled.send("remove_files_from_catalog",json!({"fileIds":[disabled.id]})).await.status(),404);
+    let f=Fixture::new(true);
+    for (session,csrf,status) in [(None,false,401),(Some(&f.session),false,403)] {
+        let r=router(f.app.clone()).oneshot(f.request("remove_files_from_catalog",Body::from(json!({"fileIds":[f.id]}).to_string()),session,Some("http://localhost:8080"),csrf)).await.unwrap();
+        assert_eq!(r.status(),status);
+    }
+    {
+        let c=f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        db::soft_delete_file(&c,f.id.parse().unwrap(),Some("/trash/keep.stl"),"today").unwrap();
+    }
+    assert_eq!(f.send("remove_files_from_catalog",json!({"fileIds":[f.id]})).await.status(),404);
+    assert!(db::get_file(&db::open_read_only(&f.app.config.db_path).unwrap(),f.id.parse().unwrap()).unwrap().is_some());
+}
+
+#[tokio::test]
+async fn catalog_removal_rolls_back_delete_failure_and_counts_only_main_rows() {
+    let f=Fixture::new(true);
+    {
+        let c=f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+        db::test_insert_minimal_file(&c,"/second.stl",None).unwrap();
+        c.execute_batch("CREATE TRIGGER reject_remove BEFORE DELETE ON files WHEN OLD.id=2 BEGIN SELECT RAISE(ABORT,'failure'); END;").unwrap();
+    }
+    assert_eq!(f.send("remove_files_from_catalog",json!({"fileIds":["1","2"]})).await.status(),500);
+    let mut c=f.app.writer.as_ref().unwrap().conn.lock().unwrap();
+    assert!(db::get_file(&c,1).unwrap().is_some());
+    assert!(db::get_file(&c,2).unwrap().is_some());
+    c.execute_batch("DROP TRIGGER reject_remove; INSERT INTO tags VALUES(1,'keep',1); INSERT INTO file_tags VALUES(1,1);").unwrap();
+    let result=katalog_core::write::web::remove_files_from_catalog(&mut c,&[1,1,2]).unwrap();
+    assert_eq!(result.value,2);
+    assert_eq!(result.changes,2);
 }

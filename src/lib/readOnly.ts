@@ -19,6 +19,7 @@ export const WEB_READ_COMMANDS = [
 
 /** Web write commands: the server remains the authority for each request. */
 export const WEB_WRITE_COMMANDS = [
+  'remove_files_from_catalog',
   'start_upload_import', 'discard_upload', 'cancel_import',
   'set_favorite', 'set_print_status', 'add_tag', 'remove_tag', 'set_license',
   'set_source_url', 'add_print_log_entry', 'delete_print_log_entry', 'mark_file_viewed',

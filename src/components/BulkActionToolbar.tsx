@@ -1,4 +1,4 @@
-import { useCanEditMetadata } from '../lib/webSession';
+import { canEditMetadata, useCanEditMetadata } from '../lib/webSession';
 import { isReadOnly } from '../lib/readOnly';
 import { LicenseEditor } from './LicenseEditor';
 import { shouldIgnoreCatalogShortcut } from '../lib/keyboardGuard';
@@ -151,14 +151,14 @@ export function BulkActionToolbar({
   if (!canEdit) return null;
   return (
     <div className="flex-none flex flex-wrap items-center gap-2 px-4 py-2 border-b border-[var(--line)] bg-[var(--panel-2)] [&_button]:whitespace-nowrap">
-      {!isReadOnly() && confirmRemove ? (
+      {canEdit && confirmRemove ? (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-small font-medium text-[var(--ink)]">{formatCount(t('removeModelsQuestion'), selectedCount)}</span>
-          <span className="text-small text-[var(--ink-2)]">{t('removeModelHint')}</span>
+          <span className="text-small text-[var(--ink-2)]">{t(isReadOnly() ? 'webRemoveModelHint' : 'removeModelHint')}</span>
           {error && <span role="alert" className="font-medium tabular-nums text-[length:var(--font-size-meta)] text-[var(--accent)]">{error}</span>}
           <button ref={cancelRef} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink)] text-small font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50" disabled={busy} onClick={() => setConfirmRemove(false)}>{t('cancel')}</button>
           <button className="hover:bg-[var(--panel-2)] hover:text-[var(--ink)] h-8 px-3 rounded-[3px] border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-ink)] text-small font-semibold cursor-pointer disabled:opacity-50" disabled={busy} {...lockProps} onClick={async () => {
-            if (!onBulkRemove) return;
+            if (!onBulkRemove || !canEditMetadata() || busy) return;
             setBusy(true); setError(null);
             try { await onBulkRemove(); setConfirmRemove(false); }
             catch (e) { setError(messageOf(e)); }
@@ -305,7 +305,7 @@ export function BulkActionToolbar({
           <button onClick={() => onBulkSetPrintStatus('not_printed')} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)]">
             {t('notPrintedLabel')}
           </button>
-          {!isReadOnly() && onBulkRemove && <button {...lockProps} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)]" ref={removeRef} onClick={() => { setError(null); setConfirmRemove(true); }}>{t('removeCatalogShort')}</button>}
+          {canEdit && onBulkRemove && <button {...lockProps} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)]" ref={removeRef} onClick={() => { setError(null); setConfirmRemove(true); }}>{t('removeCatalogShort')}</button>}
           {!isReadOnly() && <button {...lockProps} ref={deleteRef} onClick={() => onConfirmBulkDeleteChange(true)} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-red-400 text-small font-semibold cursor-pointer hover:border-red-400">
             {t('delete')}
           </button>}
