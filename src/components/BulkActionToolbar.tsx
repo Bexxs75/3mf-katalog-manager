@@ -1,3 +1,4 @@
+import { WebFileActions } from './WebFileActions';
 import { canEditMetadata, useCanEditMetadata } from '../lib/webSession';
 import { isReadOnly } from '../lib/readOnly';
 import { LicenseEditor } from './LicenseEditor';
@@ -13,6 +14,7 @@ import { tagLabel } from '../lib/autoTags';
 
 interface BulkActionToolbarProps {
   selectedCount: number;
+  selectedIds?: string[];
   confirmBulkDelete: boolean;
   onConfirmBulkDeleteChange: (value: boolean) => void;
   onSelectAllVisible: () => void;
@@ -55,6 +57,7 @@ function navigateListMenu(event: ReactKeyboardEvent<HTMLDivElement>) {
 
 export function BulkActionToolbar({
   selectedCount,
+  selectedIds = [],
   confirmBulkDelete,
   onConfirmBulkDeleteChange,
   onSelectAllVisible,
@@ -306,6 +309,7 @@ export function BulkActionToolbar({
             {t('notPrintedLabel')}
           </button>
           {canEdit && onBulkRemove && <button {...lockProps} className="h-8 px-3 rounded-[3px] border border-[var(--line)] bg-[var(--panel)] text-[var(--ink-2)] text-small font-semibold cursor-pointer hover:text-[var(--ink)]" ref={removeRef} onClick={() => { setError(null); setConfirmRemove(true); }}>{t('removeCatalogShort')}</button>}
+          <WebFileActions fileIds={selectedIds} onDone={onClearSelection} requestTrashConfirm={confirmBulkDelete} onConfirmationClosed={() => onConfirmBulkDeleteChange(false)} />
           {!isReadOnly() && <button {...lockProps} ref={deleteRef} onClick={() => onConfirmBulkDeleteChange(true)} className="h-8 px-3 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-red-400 text-small font-semibold cursor-pointer hover:border-red-400">
             {t('delete')}
           </button>}

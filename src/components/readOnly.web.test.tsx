@@ -9,8 +9,9 @@ import { LanguageProviderWithDiagnostics } from '../test/renderWithDiagnostics';
 import { makeModelFile } from '../test/factories';
 import { de } from '../i18n/de';
 import { invoke } from '../lib/transport';
+import { login, authenticationFailed } from '../lib/webSession';
 beforeEach(() => { vi.stubEnv('VITE_TARGET', 'web'); localStorage.clear(); });
-afterEach(() => { cleanup(); vi.clearAllMocks(); vi.unstubAllEnvs(); });
+afterEach(() => { cleanup(); authenticationFailed(401); vi.unstubAllGlobals(); vi.clearAllMocks(); vi.unstubAllEnvs(); });
 it.each(['model', 'collection'])('does not mount %s mutation context menus even if requested directly', kind => {
   const action = vi.fn();
   const common = { x: 0, y: 0, onClose: action };
@@ -40,4 +41,17 @@ it('omits write shortcuts and drag/bulk/context tips but retains navigation help
 it('does not suggest importing or editing in an empty web catalog', () => {
   render(<LanguageProviderWithDiagnostics><EmptyCatalogTips onOpenTips={vi.fn()} /></LanguageProviderWithDiagnostics>);
   expect(screen.getByText(de.webReadOnly)).toBeInTheDocument(); expect(screen.queryByText(de.emptyContextTitle)).toBeNull();
+});
+
+it('opens confirmed web file actions only with fileOps capability', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ authenticated: true, writable: true, fileOps: true, csrfToken: 'csrf' })));
+  await login('test');
+  const action = vi.fn();
+  render(<LanguageProviderWithDiagnostics><ContextMenu x={0} y={0} onClose={action} fileId="1" currentName="model.stl" inQueue={false} printed={false}
+    onOpenInSlicer={action} onDelete={action} onToggleQueue={action} onTogglePrintStatus={action} onRename={action} /></LanguageProviderWithDiagnostics>);
+  expect(screen.getByRole('button', { name: 'Umbenennen' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Verschieben' })).toBeEnabled();
+  fireEvent.click(screen.getByRole('button', { name: 'In den Papierkorb' }));
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  expect(invoke).not.toHaveBeenCalled(); expect(action).not.toHaveBeenCalled();
 });

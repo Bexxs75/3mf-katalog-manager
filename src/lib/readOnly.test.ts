@@ -48,3 +48,23 @@ it('keeps file operations in the write audit allowlist and dispatches before wri
   const web = (await import('../../crates/katalog-server/src/web.rs?raw')).default;
   expect(web.indexOf('return fileops::invoke')).toBeLessThan(web.indexOf('return write_invoke'));
 });
+it('allows file operations only with the separate session capability', async () => {
+  vi.stubEnv('VITE_TARGET', 'web'); vi.resetModules();
+  let fileOps = false;
+  const fetch = vi.fn(async (url: string) => Response.json(url.includes('/invoke/') ? null : { authenticated: true, writable: true, fileOps, csrfToken: 'token' }));
+  vi.stubGlobal('fetch', fetch);
+  const session = await import('./webSession'); const { invoke } = await import('./transport');
+  await session.getSession();
+  await expect(invoke('rename_file', { fileId: '1', name: 'new' })).rejects.toMatchObject({ expected: true });
+  fileOps = true; await session.getSession();
+  await invoke('rename_file', { fileId: '1', name: 'new' });
+  expect(fetch).toHaveBeenLastCalledWith('/api/invoke/rename_file', expect.objectContaining({body:'{"fileId":"1","name":"new"}'}));
+  expect(isReadOnly()).toBe(true);
+});
+it('matches the separate file operation capability list to Rust', async () => {
+  const { FILE_OPS_COMMANDS } = await import('./transport');
+  const constant = writeSource.split('pub const FILE_OPS_COMMANDS: &[&str] = &[')[1]?.split('];')[0];
+  expect(constant).toBeDefined();
+  expect([...FILE_OPS_COMMANDS].sort()).toEqual([...constant.matchAll(/"([a-z_]+)"/g)].map(match => match[1]).sort());
+  expect(FILE_OPS_COMMANDS.every(command => (WEB_WRITE_COMMANDS as readonly string[]).includes(command))).toBe(true);
+});

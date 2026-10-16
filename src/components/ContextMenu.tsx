@@ -1,3 +1,4 @@
+import { WebFileActions } from './WebFileActions';
 import { WebRemoveFromCatalogButton } from './WebRemoveFromCatalogButton';
 import { DownloadFileButton } from './DownloadFileButton';
 import { useCanEditMetadata } from '../lib/webSession';
@@ -252,6 +253,7 @@ export function ContextMenu(props: Props | CollectionMenuProps) {
   if (isWeb && !('collectionActions' in props)) return <ContextMenuFrame x={props.x} y={props.y} onClose={props.onClose}>
     <DownloadFileButton fileId={props.fileId} onSuccess={props.onClose}
       className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)] disabled:opacity-50" />
+    <WebFileActions fileIds={[props.fileId]} name={props.currentName} onDone={props.onClose} />
     {canEdit && <>
       <button className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]" onClick={() => { props.onToggleQueue(); props.onClose(); }}>{t(props.inQueue ? 'removeFromQueue' : 'addToQueue')}</button>
       <button className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]" onClick={() => { props.onTogglePrintStatus(); props.onClose(); }}>{t(props.printed ? 'notPrintedLabel' : 'printedBadge')}</button>

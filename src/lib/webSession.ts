@@ -1,13 +1,13 @@
 import { useSyncExternalStore } from 'react';
 import { isReadOnly } from './readOnly';
 /** Browser session and CSRF token live only in memory. */
-export interface WebSession { authenticated: boolean; mustChangePassword: boolean; csrfToken: string | null; writable?: boolean; uploadable?: boolean }
+export interface WebSession { authenticated: boolean; mustChangePassword: boolean; csrfToken: string | null; writable?: boolean; uploadable?: boolean; fileOps?: boolean }
 let session: WebSession = { authenticated: false, mustChangePassword: false, csrfToken: null };
 let sessionEpoch = 0;
 const subscribers = new Set<() => void>();
 export const getSnapshot = () => session;
 export const subscribe = (callback: () => void) => { subscribers.add(callback); return () => { subscribers.delete(callback); }; };
-function publish(next: WebSession) { session = { ...next, writable: next.authenticated && !next.mustChangePassword && next.writable === true }; subscribers.forEach(callback => callback()); }
+function publish(next: WebSession) { session = { ...next, ...(next.fileOps !== undefined ? { fileOps: next.authenticated && !next.mustChangePassword && next.writable === true && next.fileOps === true } : {}), writable: next.authenticated && !next.mustChangePassword && next.writable === true }; subscribers.forEach(callback => callback()); }
 export function authenticationFailed(status: number, code?: string) {
   if (status === 401 || (status === 403 && code === 'password_change_required')) sessionEpoch++;
   if (status === 401) publish({ authenticated: false, mustChangePassword: false, csrfToken: null });
@@ -18,6 +18,8 @@ export async function readResponse<T>(response: Response): Promise<T> {
     if (response.status === 401) authenticationFailed(401);
     const error = await response.json();
     authenticationFailed(response.status, error.code);
+    if (error.kind === 'restart_required') blockFileOperations();
+    if (error.kind === 'fileops_disabled') publish({ ...session, fileOps: false });
     const retryAfter = response.headers.get('Retry-After');
     throw retryAfter ? { ...error, retryAfter } : error;
   }
@@ -62,3 +64,9 @@ export const useCanUpload = () => useSyncExternalStore(subscribe, canUpload, can
 
 /** Snapshot persistence has a separate capability from filesystem writes. */
 export const canSaveSnapshots = () => import.meta.env.VITE_TARGET === 'web' ? canEditMetadata() : !isReadOnly();
+
+/** File operations are independently enabled by the server. */
+export const canManageFiles = () => !isReadOnly() || (session.authenticated && !session.mustChangePassword && session.writable === true && session.fileOps === true);
+export const useCanManageFiles = () => useSyncExternalStore(subscribe, canManageFiles, canManageFiles);
+
+export function blockFileOperations() { sessionEpoch++; publish({ ...session, fileOps: false }); }

@@ -474,6 +474,7 @@ export function CatalogWorkspace({
         {!detailModel && selectedForBulk.size > 0 && (
           <BulkActionToolbar
             selectedCount={selectedForBulk.size}
+            selectedIds={[...selectedForBulk]}
             confirmBulkDelete={confirmBulkDelete}
             onConfirmBulkDeleteChange={setConfirmBulkDelete}
             onSelectAllVisible={selectAllVisible}

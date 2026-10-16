@@ -1,5 +1,6 @@
+import { fileOpsBatch } from '../lib/fileOps';
 import { metadataBatch } from '../lib/metadataBatch';
-import { canEditMetadata } from '../lib/webSession';
+import { canEditMetadata, canManageFiles } from '../lib/webSession';
 import { isReadOnly } from '../lib/readOnly';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as filesApi from '../lib/api/files';
@@ -78,10 +79,11 @@ export function useBulkSelection({
   }, [models]);
 
   const bulkDelete = useCallback(async () => {
-    if (isReadOnly()) return Promise.resolve();
+    if (!canManageFiles()) return Promise.resolve();
     const ids = Array.from(selectedForBulk);
     try {
-      await filesApi.deleteFiles(ids);
+      if (isReadOnly()) await fileOpsBatch('delete_files', ids);
+      else await filesApi.deleteFiles(ids);
     } finally {
       // A successful batch can still contain skipped files; only the backend knows what remains.
       await refetchAfterPartialDelete(ids);

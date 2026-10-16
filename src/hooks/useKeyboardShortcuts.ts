@@ -1,5 +1,4 @@
-import { canEditMetadata } from '../lib/webSession';
-import { isReadOnly } from '../lib/readOnly';
+import { canEditMetadata, canManageFiles } from '../lib/webSession';
 import { shouldIgnoreCatalogShortcut, hasPlatformModifier, isMacPlatform } from '../lib/keyboardGuard';
 import { useContext, useEffect } from 'react';
 import { ModelLayoutContext, type ModelLayout } from './ModelLayoutContext';
@@ -125,7 +124,7 @@ export function useKeyboardShortcuts({
       if (!navigationEnabled) return;
       if (canEditMetadata() && selectAll) { e.preventDefault(); selectAllVisible?.(); return; }
       if (e.key === 'Enter' && selectedId) { e.preventDefault(); onOpenDetail?.(selectedId); return; }
-      if ((macDelete || (singleKeyShortcuts && (e.key === 'Delete' || e.key === 'Backspace'))) && !isReadOnly() && hasBulkSelection && !e.repeat) {
+      if ((macDelete || (singleKeyShortcuts && (e.key === 'Delete' || e.key === 'Backspace'))) && canManageFiles() && hasBulkSelection && !e.repeat) {
         e.preventDefault(); openBulkDeleteConfirm(); return;
       }
 

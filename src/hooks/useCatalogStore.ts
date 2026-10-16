@@ -1,6 +1,7 @@
+import { fileOp, fileOpsBatch, emptyWebTrash, type TrashSummary } from '../lib/fileOps';
 import { metadataBatch } from '../lib/metadataBatch';
 import { reportMetadataError } from '../lib/metadataErrors';
-import { canEditMetadata, canSaveSnapshots } from '../lib/webSession';
+import { canEditMetadata, canSaveSnapshots, canManageFiles } from '../lib/webSession';
 import { isReadOnly } from '../lib/readOnly';
 import { hasInterruptedPreviewAttempt } from '../lib/snapshotQueue';
 import { isStepFilePath } from '../lib/stepFile';
@@ -381,26 +382,30 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
 
   const restoreModel = useCallback(
     (id: string) =>
-      isReadOnly() ? Promise.resolve() : filesApi.restoreFile(id).then(() => {
+      !canManageFiles() ? Promise.resolve() : isReadOnly() ? fileOp('restore_file', { fileId: id }).then(() => refetchAfterPartialDelete([id])).then(() => {}) : filesApi.restoreFile(id).then(() => {
         setTrashModels((prev) => prev.filter((m) => m.id !== id));
         setSelectedId((prev) => (prev === id ? null : prev));
         refreshFiles();
         refreshFolders();
         refreshTags();
       }),
-    [refreshFiles, refreshFolders, refreshTags],
+    [refreshFiles, refreshFolders, refreshTags, refetchAfterPartialDelete],
   );
 
   const deleteModelPermanently = useCallback(
-    (id: string) =>
-      isReadOnly() ? Promise.resolve() : filesApi.deleteFilePermanently(id).then(() => {
+    (id: string, password?: string) =>
+      !canManageFiles() ? Promise.resolve() : isReadOnly() ? (password === undefined ? Promise.resolve() : fileOp('delete_file_permanently', { fileId: id, confirm: true, password }).then(() => refetchAfterPartialDelete([id])).then(() => {})) : filesApi.deleteFilePermanently(id).then(() => {
         setTrashModels((prev) => prev.filter((m) => m.id !== id));
         setSelectedId((prev) => (prev === id ? null : prev));
       }),
-    [],
+    [refetchAfterPartialDelete],
   );
 
-  const emptyTrashAction = useCallback(() => isReadOnly() ? Promise.resolve() : filesApi.emptyTrash().then(() => setTrashModels([])), []);
+  const emptyTrashAction = useCallback((summary?: TrashSummary, password?: string, onProgress = (_done: number, _total: number) => {}) => {
+    if (!canManageFiles()) return Promise.resolve();
+    if (isReadOnly()) return summary && password !== undefined ? emptyWebTrash(summary, password, onProgress) : Promise.resolve();
+    return filesApi.emptyTrash().then(() => setTrashModels([]));
+  }, []);
 
   const addTag = useCallback(
     (id: string, rawTag: string) => {
@@ -430,7 +435,8 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
   // Deliberately NOT optimistic: the UI should be able to show a name
   // collision directly. The error goes to the caller as a rejection.
   const renameFile = useCallback((id: string, name: string) => {
-    if (isReadOnly()) return Promise.resolve();
+    if (!canManageFiles()) return Promise.resolve();
+    if (isReadOnly()) return fileOp('rename_file', { fileId: id, name }).then(() => refreshFiles());
     return filesApi.renameFile(id, name).then(() => {
       setModels((prev) => prev.map((m) => (m.id === id ? { ...m, name } : m)));
       // The new name can change the sort position. Scrolling happens in a
@@ -438,7 +444,7 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
       // (requestAnimationFrame here wouldn't have that guarantee).
       setPendingScrollToId(id);
     });
-  }, []);
+  }, [refreshFiles]);
 
   const removeTag = useCallback(
     (id: string, tag: string) => {
@@ -462,8 +468,8 @@ export function useCatalogStore({ preselectFirst = true, detailModelId = null }:
   );
 
   const deleteModel = useCallback(
-    (id: string) => isReadOnly() ? Promise.resolve() : filesApi.deleteFile(id).then(() => applyLocalDeletion([id])),
-    [applyLocalDeletion],
+    (id: string) => !canManageFiles() ? Promise.resolve() : isReadOnly() ? fileOpsBatch('delete_files', [id]).then(() => refetchAfterPartialDelete([id])) : filesApi.deleteFile(id).then(() => applyLocalDeletion([id])),
+    [applyLocalDeletion, refetchAfterPartialDelete],
   );
 
   const togglePrintStatus = useCallback(

@@ -1,3 +1,4 @@
+import { subscribeFileOpsRefresh } from './lib/fileOps';
 import { canEditMetadata } from './lib/webSession';
 import { reportMetadataError } from './lib/metadataErrors';
 import { WebImport } from './components/WebImport';
@@ -155,6 +156,17 @@ export default function App() {
       ...(includeActiveCollection && collections.activeCollection ? [collections.refreshCollectionModels(collections.activeCollection)] : []),
     ]).catch((e) => console.error('[catalog] refresh after removal failed:', e));
   };
+  const fileOpsRefresh = useRef<() => Promise<unknown>>(async () => {});
+  fileOpsRefresh.current = async () => {
+    setUploadRefreshKey(key => key + 1);
+    await Promise.all([
+      store.refreshFiles(), store.refreshFolders(), store.refreshTags(), store.refreshTrash(),
+      collections.refreshCollections(), printerLink.refresh(), printers.refresh(),
+      ...(collections.activeCollection ? [collections.refreshCollectionModels(collections.activeCollection)] : []),
+    ]);
+  };
+  useEffect(() => subscribeFileOpsRefresh(() => fileOpsRefresh.current()), []);
+
   const removeCatalogModels = async (fileIds: string[]) => {
     if (!canEditMetadata()) return;
     try {
