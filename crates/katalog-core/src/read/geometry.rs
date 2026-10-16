@@ -10,7 +10,7 @@ pub struct GeometrySource {
 pub fn load_geometry_source(conn: &Connection, file_id: &str) -> ReadResult<GeometrySource> {
     let id: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
     let file = db::get_file(conn, id)
-        .map_err(|e| e.to_string())?
+        .map_err(ReadError::from)?
         .ok_or_else(|| {
             ReadError::expected("file not found").with_code(GeometryErrorCode::NotFound)
         })?;

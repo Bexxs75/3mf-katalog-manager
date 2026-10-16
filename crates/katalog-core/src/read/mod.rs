@@ -154,12 +154,12 @@ fn to_collection_dto(record: db::models::CollectionRecord) -> CollectionDto {
 }
 
 pub fn list_file_summaries(conn: &Connection) -> ReadResult<Vec<FileSummaryDto>> {
-    let summaries = db::list_file_summaries(conn).map_err(|e| e.to_string())?;
+    let summaries = db::list_file_summaries(conn).map_err(ReadError::from)?;
     Ok(summaries.into_iter().map(summary_to_dto).collect())
 }
 
 pub fn list_all_file_tags(conn: &Connection) -> ReadResult<HashMap<String, Vec<String>>> {
-    let pairs = db::list_all_file_tags(conn).map_err(|e| e.to_string())?;
+    let pairs = db::list_all_file_tags(conn).map_err(ReadError::from)?;
     let mut by_file: HashMap<String, Vec<String>> = HashMap::new();
     for (file_id, tag) in pairs {
         by_file.entry(file_id.to_string()).or_default().push(tag);
@@ -172,13 +172,13 @@ pub fn list_files_by_ids(conn: &Connection, ids: Vec<String>) -> ReadResult<Vec<
         .iter()
         .map(|id| id.parse().map_err(|_| format!("invalid file id: {id}")))
         .collect::<Result<_, String>>()?;
-    let files = db::list_files_by_ids(conn, &parsed_ids).map_err(|e| e.to_string())?;
-    let spools = db::list_filament_spools(conn).map_err(|e| e.to_string())?;
+    let files = db::list_files_by_ids(conn, &parsed_ids).map_err(ReadError::from)?;
+    let spools = db::list_filament_spools(conn).map_err(ReadError::from)?;
     Ok(files.into_iter().map(|f| to_dto(f, &spools)).collect())
 }
 
 pub fn list_tag_counts(conn: &Connection) -> ReadResult<Vec<TagCountDto>> {
-    let tags = db::list_tag_counts(conn).map_err(|e| e.to_string())?;
+    let tags = db::list_tag_counts(conn).map_err(ReadError::from)?;
     Ok(tags
         .into_iter()
         .map(|t| TagCountDto {
@@ -194,13 +194,13 @@ pub fn list_print_log_entries(
     file_id: String,
 ) -> ReadResult<Vec<PrintLogEntryDto>> {
     let fid: i64 = file_id.parse().map_err(|_| "invalid file id".to_string())?;
-    let entries = db::list_print_log_entries(conn, fid).map_err(|e| e.to_string())?;
+    let entries = db::list_print_log_entries(conn, fid).map_err(ReadError::from)?;
     Ok(entries.into_iter().map(print_log_entry_to_dto).collect())
 }
 
 pub fn list_folders(conn: &Connection) -> ReadResult<Vec<FolderDto>> {
-    let folders = db::list_folders(conn).map_err(|e| e.to_string())?;
-    let files = db::list_files(conn).map_err(|e| e.to_string())?;
+    let folders = db::list_folders(conn).map_err(ReadError::from)?;
+    let files = db::list_files(conn).map_err(ReadError::from)?;
 
     fn is_descendant_or_self(
         folders: &[db::models::FolderRecord],
@@ -245,7 +245,7 @@ pub fn list_folders(conn: &Connection) -> ReadResult<Vec<FolderDto>> {
 }
 
 pub fn list_collections(conn: &Connection) -> ReadResult<Vec<CollectionDto>> {
-    let collections = db::list_collections(conn).map_err(|e| e.to_string())?;
+    let collections = db::list_collections(conn).map_err(ReadError::from)?;
     Ok(collections.into_iter().map(to_collection_dto).collect())
 }
 
@@ -256,20 +256,20 @@ pub fn list_collection_files(
     let cid: i64 = collection_id
         .parse()
         .map_err(|_| "invalid collection id".to_string())?;
-    let ids = db::list_collection_file_ids(conn, cid).map_err(|e| e.to_string())?;
-    let files = db::list_files_by_ids(conn, &ids).map_err(|e| e.to_string())?;
-    let spools = db::list_filament_spools(conn).map_err(|e| e.to_string())?;
+    let ids = db::list_collection_file_ids(conn, cid).map_err(ReadError::from)?;
+    let files = db::list_files_by_ids(conn, &ids).map_err(ReadError::from)?;
+    let spools = db::list_filament_spools(conn).map_err(ReadError::from)?;
     Ok(files.into_iter().map(|f| to_dto(f, &spools)).collect())
 }
 
 pub fn list_trash(conn: &Connection) -> ReadResult<Vec<ModelFileDto>> {
-    let files = db::list_trash(conn).map_err(|e| e.to_string())?;
-    let spools = db::list_filament_spools(conn).map_err(|e| e.to_string())?;
+    let files = db::list_trash(conn).map_err(ReadError::from)?;
+    let spools = db::list_filament_spools(conn).map_err(ReadError::from)?;
     Ok(files.into_iter().map(|f| to_dto(f, &spools)).collect())
 }
 
 pub fn load_file_images(conn: &Connection, ids: &[i64]) -> ReadResult<Vec<db::FileImages>> {
-    db::list_file_images(conn, ids).map_err(|e| e.to_string().into())
+    db::list_file_images(conn, ids).map_err(ReadError::from)
 }
 
 pub fn encode_file_images(images: Vec<db::FileImages>) -> Vec<FileImagesDto> {

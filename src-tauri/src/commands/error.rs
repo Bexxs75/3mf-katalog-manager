@@ -190,7 +190,7 @@ fn read_error_adapter_preserves_all_wire_fields() {
     use katalog_core::read::ReadError;
     for expected in [false, true] {
         for code in [None, Some(GeometryErrorCode::NotFound), Some(GeometryErrorCode::Unreadable), Some(GeometryErrorCode::TooLarge), Some(GeometryErrorCode::Unsupported)] {
-            let error = ReadError { message: "unverändert".into(), expected, code };
+            let error = ReadError { message: "unverändert".into(), expected, code, busy: true };
             let original = serde_json::to_value(&error).unwrap();
             assert_eq!(serde_json::to_value(CmdError::from(error)).unwrap(), original);
         }

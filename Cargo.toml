@@ -1,5 +1,5 @@
 [workspace]
-members = ["src-tauri", "crates/katalog-core"]
+members = ["src-tauri", "crates/katalog-core", "crates/katalog-server"]
 resolver = "2"
 
 # The patch replaces the crates.io version with the forked copy in
