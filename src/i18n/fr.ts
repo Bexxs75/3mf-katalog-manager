@@ -323,6 +323,7 @@ export const fr: Translations = {
   impWaitOne: "· 1 tâche en attente",
   impWaitMany: { one: "· {count} tâche en attente", other: "· {count} tâches en attente" },
   impResultTitle: "Fichiers non importés",
+  webImportResultTitle: "Import terminé",
   impTabSkipped: "Ignorés",
   impTabDuplicate: "Doublons",
   impTabNotPlaced: "Non déplacés",

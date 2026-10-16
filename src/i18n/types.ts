@@ -330,6 +330,7 @@ export interface Translations {
   impWaitOne: string;
   impWaitMany: PluralForms;
   impResultTitle: string;
+  webImportResultTitle: string;
   impTabSkipped: string;
   impTabDuplicate: string;
   impTabNotPlaced: string;

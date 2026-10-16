@@ -89,7 +89,7 @@ function WebImportResult({ result, onClose }: { result: WebImportJob; onClose: (
   const t = useT(); const id = useId();
   const dialog = useModalDialog({ open: true, onClose });
   return <div className="import-backdrop"><div ref={dialog} role="dialog" aria-modal="true" aria-labelledby={`${id}-title`} className="import-result" tabIndex={-1}>
-    <h2 id={`${id}-title`}>{t('impResultTitle')}</h2>
+    <h2 id={`${id}-title`}>{t('webImportResultTitle')}</h2>
     <p>{t(statusKeys[result.state] ?? 'webUploadFailed')}</p>
     <div className="import-counts">{(['imported', 'duplicate', 'invalid'] as const).map(state => <span key={state}>
       <b>{result.files.filter(file => file.state === state || (state === 'imported' && file.state === 'imported_not_placed')).length}</b> {t(statusKeys[state])}

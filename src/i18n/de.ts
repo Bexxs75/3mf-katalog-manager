@@ -323,6 +323,7 @@ export const de: Translations = {
   impWaitOne: "· 1 Auftrag wartet",
   impWaitMany: { one: "· {count} Auftrag wartet", other: "· {count} Aufträge warten" },
   impResultTitle: "Nicht importierte Dateien",
+  webImportResultTitle: "Import abgeschlossen",
   impTabSkipped: "Übersprungen",
   impTabDuplicate: "Doppelt",
   impTabNotPlaced: "Nicht abgelegt",

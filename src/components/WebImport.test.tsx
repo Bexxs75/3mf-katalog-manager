@@ -50,14 +50,14 @@ it('shows partial results after cancellation and reloads the catalog once', asyn
     { uploadId: 'a', name: 'done.stl', state: 'imported', fileId: '1', existingFileId: null, kind: null },
     { uploadId: 'b', name: 'waiting.stl', state: 'uploaded', fileId: null, existingFileId: null, kind: 'not_started' },
   ] }));
-  await waitFor(() => expect(screen.getByRole('dialog', { name: de.impResultTitle })).toBeVisible());
+  await waitFor(() => expect(screen.getByRole('dialog', { name: de.webImportResultTitle })).toBeVisible());
   expect(screen.getByText('done.stl')).toBeVisible(); expect(screen.getByText('waiting.stl')).toBeVisible();
   expect(screen.getByText(de.webUploadPartial)).toBeVisible();
 });
 it('does not interrupt navigation with historical results from a reconnect snapshot', async () => {
   await start(true);
   await act(async () => Events.latest.emit({ snapshot: true, jobs: [{ jobId: 'old', state: 'completed', current: null, total: 1, done: 1, files: [], kind: null }], uploads: [] }));
-  expect(screen.queryByRole('dialog', { name: de.impResultTitle })).toBeNull();
+  expect(screen.queryByRole('dialog', { name: de.webImportResultTitle })).toBeNull();
   expect(screen.getByRole('button', { name: de.webUploadResults })).toBeVisible();
 });
 
