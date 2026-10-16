@@ -1,3 +1,4 @@
+use crate::commands::DesktopJobs;
 pub use katalog_core::archive;
 mod commands;
 mod printer_sync;

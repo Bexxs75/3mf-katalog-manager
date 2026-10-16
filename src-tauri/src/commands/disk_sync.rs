@@ -709,7 +709,7 @@ fn connection(state: &AppState) -> CmdResult<Connection> {
 pub async fn scan_catalog_disk(app: tauri::AppHandle) -> SyncResult<DiskScan> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let _guard = state.import_jobs.gate.exclusive()?;
+        let _guard = state.import_jobs.gate.exclusive().map_err(CmdError::from)?;
         scan(&connection(&state)?)
     })
     .await
@@ -722,7 +722,7 @@ pub async fn apply_catalog_disk_sync(
 ) -> SyncResult<DiskApplied> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let _guard = state.import_jobs.gate.exclusive()?;
+        let _guard = state.import_jobs.gate.exclusive().map_err(CmdError::from)?;
         apply(&mut connection(&state)?, selection)
     })
     .await

@@ -226,3 +226,14 @@ mod write_adapter_tests {
         assert_eq!(db::list_collection_file_ids(&c,collection.id.parse().unwrap()).unwrap(),vec![id]);
     }
 }
+
+impl From<katalog_core::import::ImportError> for CmdError {
+    fn from(error: katalog_core::import::ImportError) -> Self {
+        let mut mapped = if error.expected { Self::expected(error.message) } else { Self::from(error.message) };
+        mapped.code = error.code;
+        mapped
+    }
+}
+impl From<CmdError> for katalog_core::import::ImportError {
+    fn from(error: CmdError) -> Self { Self { message: error.message, expected: error.expected, code: error.code } }
+}
