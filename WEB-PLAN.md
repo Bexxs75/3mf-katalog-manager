@@ -76,9 +76,12 @@ Reine Arbeitszeit von Claude und Codex (Stunden): Stufe 0 4 bis 8, Stufe 1 2 bis
 2. Zeitpunkt des Spikes (Stufe 0): nach der stabilen 0.16.0.
 3. Namen des Repositorys: `3mfKatalog-Web` (Alternative: `3mfWEBKatalog`).
 4. Wann (und ob) etwas davon öffentlich wird (Roadmap-Eintrag, Ankündigung).
+(Entschieden am 16.10.2026: Betrieb zuerst A und B, siehe Abschnitt 11.)
 
-## 11. Betrieb: eigener Server oder Docker lokal (Empfehlung, zur Bestätigung)
-Empfehlung: **nur selbst betriebenes Docker-Image, kein von uns gehosteter Dienst.** Dasselbe Image läuft zu Hause (Heimnetz, NAS, Mini-PC) oder auf einem eigenen Server des Nutzers; der Unterschied ist nur die Erreichbarkeit.
+## 11. Betrieb: eigener Server oder Docker lokal (entschieden 16.10.2026)
+**Entscheidung des Users:** Zuerst Betriebsart A (Heimnetz) und B (Heimnetz plus VPN). Betriebsart C (eigener Server mit Reverse Proxy und HTTPS) nur bei Bedarf und später. Kein von uns gehosteter Dienst.
+
+Grundlage der Entscheidung: **nur selbst betriebenes Docker-Image, kein von uns gehosteter Dienst.** Dasselbe Image läuft zu Hause (Heimnetz, NAS, Mini-PC) oder auf einem eigenen Server des Nutzers; der Unterschied ist nur die Erreichbarkeit.
 
 | Betriebsart | Erreichbar von | Sicherheit | Aufwand für den Nutzer |
 |---|---|---|---|
