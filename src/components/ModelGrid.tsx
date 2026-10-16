@@ -95,7 +95,10 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
   const t = useT();
   const { density } = useUiDensity();
   const ids = useMemo(() => models.map(model => model.id), [models]);
-  const window = useModelWindow({ ids, containerRef, minWidth: density === 'comfort' ? 220 : 178, gap: 14,
+  // Tiles keep one fixed width. A stretching row (1fr) hands the leftover width to the tiles,
+  // so they grow and shrink every time the detail panel opens or the window changes.
+  const fixedTileWidth = density === 'comfort' ? 232 : 190;
+  const window = useModelWindow({ ids, containerRef, minWidth: fixedTileWidth, gap: 14,
     fallbackHeight: density === 'comfort' ? 350 : 265, disabled: reorderable || !windowed });
   const visible = models.slice(window.startIndex, window.endIndex);
   const images = useModelImages(ids.slice(window.imageStartIndex, window.imageEndIndex));
@@ -255,7 +258,9 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
       <div data-window-spacer="top" aria-hidden="true" style={{ height: window.topSpacer }} />
     <div
       className="grid gap-3.5"
-      style={{ gridTemplateColumns: `repeat(${window.columns}, minmax(0, 1fr))` }}
+      style={window.columns > 2
+        ? { gridTemplateColumns: `repeat(${window.columns}, minmax(0, ${fixedTileWidth}px))`, justifyContent: 'start' }
+        : { gridTemplateColumns: `repeat(${window.columns}, minmax(0, 1fr))` }}
     >
       {visible.map((m) =>
         density === 'comfort' ? (

@@ -77,7 +77,31 @@ it('keeps the grid hidden until a positive local width has been measured', () =>
   expect(container.querySelector('.grid.gap-3\\.5')?.parentElement).toHaveStyle({ visibility: 'hidden' });
   rect.mockReturnValue({ width: 800, height: 100, top: 0 } as DOMRect);
   act(() => resize());
-  expect(container.querySelector('.grid.gap-3\\.5')).toHaveStyle({gridTemplateColumns: 'repeat(4, minmax(0, 1fr))'});
+  expect(container.querySelector('.grid.gap-3\\.5')).toHaveStyle({gridTemplateColumns: 'repeat(3, minmax(0, 190px))'});
+});
+
+it('keeps tiles at a fixed width when the available width changes', () => {
+  let resize!: () => void;
+  const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width: 1200, height: 100, top: 0 } as DOMRect);
+  vi.stubGlobal('ResizeObserver', class {
+    constructor(callback: () => void) { resize = callback; }
+    observe() {} disconnect() {}
+  });
+  try {
+    const props = { models: [makeModelFile({tags: []})], selectedId: null, onSelect: vi.fn(), onOpenDetail: vi.fn(),
+      onContextMenu: vi.fn(), onToggleFavorite: vi.fn(), selectedForBulk: new Set<string>(), onToggleBulkSelect: vi.fn(),
+      displayPreference: 'thumbnail' as const };
+    const { container } = render(<LanguageProvider><UiDensityProvider><ModelGrid {...props} /></UiDensityProvider></LanguageProvider>);
+    act(() => resize());
+    const grid = () => container.querySelector('.grid.gap-3\\.5') as HTMLElement;
+    expect(grid()).toHaveStyle({ gridTemplateColumns: 'repeat(5, minmax(0, 190px))', justifyContent: 'start' });
+    rect.mockReturnValue({ width: 900, height: 100, top: 0 } as DOMRect);
+    act(() => resize());
+    expect(grid()).toHaveStyle({ gridTemplateColumns: 'repeat(4, minmax(0, 190px))' });
+    rect.mockReturnValue({ width: 400, height: 100, top: 0 } as DOMRect);
+    act(() => resize());
+    expect(grid()).toHaveStyle({ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' });
+  } finally { rect.mockRestore(); vi.unstubAllGlobals(); }
 });
 
 it.each(['compact', 'comfort'])('disables native thumbnail dragging in both card layouts (%s)', density => {
