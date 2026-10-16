@@ -78,6 +78,31 @@ Reine Arbeitszeit von Claude und Codex (Stunden): Stufe 0 4 bis 8, Stufe 1 2 bis
 4. Wann (und ob) etwas davon öffentlich wird (Roadmap-Eintrag, Ankündigung).
 (Entschieden am 16.10.2026: Betrieb zuerst A und B, siehe Abschnitt 11.)
 
+## 10a. Abstriche der Webversion und Folgestufen (Stand 16.10.2026, Vorschlag, User entscheidet)
+
+**Abstriche gegenüber Desktop-App und Docker-Stream** (der Stream zeigt die ganze Desktop-App):
+
+| Bereich | Webversion | Grund |
+|---|---|---|
+| Dateien umbenennen, löschen, Papierkorb | gesperrt | greift ins Dateisystem des Servers |
+| Ordner anlegen, umbenennen, verschieben, löschen | gesperrt | dasselbe; Uploads bleiben im Upload-Ordner |
+| Archive (zip, 7z, rar) | beim Upload abgelehnt (415) | Entpacklimits und Zip-Bomben-Schutz brauchen eigenes Review (Stufe 5b) |
+| Ordner-Import vom Server, Drag aus dem Dateimanager, Setup-Adopt, Katalog-Wurzel wechseln | entfällt | im Browser nur Upload einzelner Dateien |
+| Druckeranbindung (Bambu, Moonraker, OctoPrint) | nicht dabei | Netzzugriff auf Drucker (SSRF-Grenze); nur gespeicherter Verlauf |
+| Spule auffüllen, Harz verbrauchen | vorerst gesperrt | DB-only, aber noch nicht freigegeben |
+| Eigenes Titelbild, Render-Snapshot, Neuscan | gesperrt | schreiben Bilder/scannen Dateien |
+| Slicer starten, Update aus der App, native Dialoge, Fehlerbericht mit Logdatei | entfällt | Desktop-Funktionen; im Web Download statt Slicer-Start |
+| Katalog sichern/exportieren, Abgleich Katalog gegen Platte | ungeprüft, vermutlich nicht dabei | in der Webversion nicht untersucht |
+
+Technische Grenzen: ein Benutzer, ein Passwort, kein HTTPS im Server (Proxy oder VPN); kein Parallelbetrieb mit der Desktop-App auf derselben Datenbank; Upload standardmäßig 1 GiB je Datei, kein Wiederaufnehmen; `file_modified_at` ist der Upload-Zeitpunkt; Server ohne STEP-Bibliothek (OCCT), daher voraussichtlich keine STEP-Vorschau und leere STEP-Metadaten; Parsergrenzen im Web strenger als in der App (Speicher); geslicte `.gcode.3mf` enthalten kein 3D-Modell.
+
+**Bedingung, um den Docker-Stream abzulösen:** Stufe 5 (Upload) allein genügt nicht. Wer Dateien umbenennen, verschieben oder Archive entpacken will, braucht weiter die App. Vorgeschlagene Folgestufen (Reihenfolge und Umfang entscheidet der User; jede mit Spec, Codex-Planprüfung und Opus-Review wie Stufe 5):
+- **Stufe 5b: Archive** (zip zuerst; 7z/rar prüfen). Entpacken mit harten Limits (Gesamtgröße, Dateizahl, Verschachtelung, Pfadtraversal, Symlinks), Zip-Bomben-Schutz, Ergebnis wie Desktop (importiert/Duplikate/übersprungen).
+- **Stufe 7: Dateiverwaltung im Web.** Umbenennen, Ordner anlegen/verschieben, Löschen mit Papierkorb und Bestätigung, jeweils nur innerhalb der Roots und des Upload-Ordners, mit Journal und Folgenhinweis; das ist die größte Sicherheitsfrage nach dem Upload (Schreib- und Löschrechte auf Modelldateien).
+- **Stufe 8: Kleinigkeiten.** Spule auffüllen, Harz verbrauchen, eigenes Titelbild, Neuscan, optionale STEP-Vorschau (nur wenn ein eigenes OCCT-Image vertretbar ist).
+- **Stufe 9: Druckeranbindung** (optional, zuletzt): Netzzugriff auf Drucker mit SSRF-Grenze und Allowlist.
+- Offen zu klären: Katalog-Sicherung/Export und Abgleich gegen die Platte im Web; Ablösung des Docker-Streams erst, wenn Stufe 5b und Stufe 7 abgenommen sind.
+
 ## 11. Betrieb: eigener Server oder Docker lokal (entschieden 16.10.2026)
 **Entscheidung des Users:** Zuerst Betriebsart A (Heimnetz) und B (Heimnetz plus VPN). Betriebsart C (eigener Server mit Reverse Proxy und HTTPS) nur bei Bedarf und später. Kein von uns gehosteter Dienst.
 
