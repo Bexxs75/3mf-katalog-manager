@@ -2,7 +2,7 @@
 
 ## Deutsch
 
-> **Noch instabil:** Die Docker-Version läuft, kann aber noch Fehler enthalten und sich ändern. Rückmeldungen über [GitHub-Issues](https://github.com/bexxs75/3mf-katalog-manager/issues) sind willkommen.
+> **Noch instabil:** Die Docker-Version läuft, kann aber noch Fehler enthalten und sich ändern. Sie ist experimentell und befindet sich im Wartungsmodus: Es gibt nur noch Fehler- und Sicherheitskorrekturen, keine neuen Funktionen. Rückmeldungen über [GitHub-Issues](https://github.com/bexxs75/3mf-katalog-manager/issues) sind willkommen.
 
 Ein Browser-Desktop für die Linux-AppImage, für x86_64/amd64. Benötigt Docker
 mit Docker Compose. Der Workflow `.github/workflows/docker-image.yml` baut das
@@ -367,7 +367,7 @@ Nutzt du einen `/config`-Ordner des früheren Prototyps weiter, lösche vorher `
 
 ## English
 
-> **Still unstable:** The Docker version works, but may still contain bugs and change. Feedback via [GitHub Issues](https://github.com/bexxs75/3mf-katalog-manager/issues) is welcome.
+> **Still unstable:** The Docker version works, but may still contain bugs and change. It is experimental and in maintenance mode: only bug and security fixes, no new features. Feedback via [GitHub Issues](https://github.com/bexxs75/3mf-katalog-manager/issues) is welcome.
 
 A browser desktop for the Linux AppImage, targeting x86_64/amd64. Requires Docker
 and Docker Compose. The workflow `.github/workflows/docker-image.yml` builds the
