@@ -1,5 +1,5 @@
 import { MetadataError } from './MetadataError';
-import { useEffect, useState, useSyncExternalStore, type ReactNode, type FormEvent } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode, type FormEvent } from 'react';
 import * as session from '../lib/webSession';
 import { messageOf } from '../lib/errors';
 import { useT } from '../i18n/LanguageContext';
@@ -7,6 +7,8 @@ import { useT } from '../i18n/LanguageContext';
 export function WebAuthGate({ children }: { children: ReactNode }) {
   const t = useT();
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot);
+  const hadSession = useRef(false);
+  if (state.authenticated) hadSession.current = true;
   const [loading, setLoading] = useState(true);
   const [checked, setChecked] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -38,6 +40,7 @@ export function WebAuthGate({ children }: { children: ReactNode }) {
   return <main className="min-h-screen grid place-items-center bg-[var(--bg)] text-[var(--ink)]">
     <form onSubmit={submit} className="w-full max-w-sm p-6 border border-[var(--line)] rounded bg-[var(--panel)] space-y-4">
       <h1 className="text-xl font-semibold">{t(changing ? 'webChangePassword' : 'webLogin')}</h1>
+      {!state.authenticated && hadSession.current && <p role="alert">{t('webUploadSessionEnded')}</p>}
       {state.mustChangePassword && <p>{t('webPasswordRequired')}</p>}
       <label className="block">{t(changing ? 'webCurrentPassword' : 'webPassword')}
         <input className="block w-full p-2 border rounded bg-[var(--panel-2)]" type="password" autoComplete="current-password" required value={password} onChange={e => setPassword(e.target.value)} />
