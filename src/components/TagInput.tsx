@@ -1,4 +1,4 @@
-import { isReadOnly } from '../lib/readOnly';
+import { useCanEditMetadata } from '../lib/webSession';
 import { useState, type CSSProperties } from 'react';
 import { useLanguage, useT } from '../i18n/LanguageContext';
 import { canonicalTag, sortTagsForDisplay, tagLabel } from '../lib/autoTags';
@@ -19,6 +19,7 @@ interface Props {
 
 // Shared tag rules for the compact panel, comfortable panel and detail page.
 export function TagInput({ allTags, tags, onAddTag, inputClassName, inputStyle, onEscape, stripHash = false, value, onChange, autoFocus }: Props) {
+  const canEdit = useCanEditMetadata();
   const [localDraft, setLocalDraft] = useState('');
   const draft = value ?? localDraft;
   const setDraft = onChange ?? setLocalDraft;
@@ -30,7 +31,7 @@ export function TagInput({ allTags, tags, onAddTag, inputClassName, inputStyle, 
     language,
   ).map(tag => tag.label);
 
-  if (isReadOnly()) return null;
+  if (!canEdit) return null;
   return <AutocompleteInput
     autoFocus={autoFocus}
     maxLength={100}

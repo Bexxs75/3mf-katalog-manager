@@ -1,3 +1,4 @@
+import { MetadataError } from './MetadataError';
 import { useEffect, useState, useSyncExternalStore, type ReactNode, type FormEvent } from 'react';
 import * as session from '../lib/webSession';
 import { messageOf } from '../lib/errors';
@@ -28,6 +29,7 @@ export function WebAuthGate({ children }: { children: ReactNode }) {
   if (loading) return <main className="p-6" role="status">{t('webSessionChecking')}</main>;
   if (!checked) return <main className="p-6"><p role="alert">{error}</p><button onClick={check}>{t('webRetry')}</button></main>;
   if (state.authenticated && !changing) return <>
+    <MetadataError />
     <div className="fixed bottom-2 right-3 z-50 flex gap-3 rounded bg-[var(--panel)] p-2 text-small">
       <button onClick={() => { setError(''); setEditing(true); }}>{t('webChangePassword')}</button>
       <button disabled={busy} onClick={async () => { setBusy(true); try { await session.logout(); } catch (e) { setError(messageOf(e)); } finally { setBusy(false); } }}>{t('webLogout')}</button>

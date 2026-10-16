@@ -1,5 +1,5 @@
 import { DownloadFileButton } from './DownloadFileButton';
-import { isReadOnly } from '../lib/readOnly';
+import { useCanEditMetadata } from '../lib/webSession';
 import { displayName } from '../lib/displayName';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
 import { RevealFileButton } from './RevealFileButton';
@@ -244,14 +244,19 @@ interface CollectionMenuProps {
 }
 
 export function ContextMenu(props: Props | CollectionMenuProps) {
+  const canEdit = useCanEditMetadata();
   const { lockProps } = useImportLock();
   const t = useT();
   const isWeb = import.meta.env.VITE_TARGET === 'web';
   if (isWeb && !('collectionActions' in props)) return <ContextMenuFrame x={props.x} y={props.y} onClose={props.onClose}>
     <DownloadFileButton fileId={props.fileId} onSuccess={props.onClose}
       className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)] disabled:opacity-50" />
+    {canEdit && <>
+      <button className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]" onClick={() => { props.onToggleQueue(); props.onClose(); }}>{t(props.inQueue ? 'removeFromQueue' : 'addToQueue')}</button>
+      <button className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)]" onClick={() => { props.onTogglePrintStatus(); props.onClose(); }}>{t(props.printed ? 'notPrintedLabel' : 'printedBadge')}</button>
+    </>}
   </ContextMenuFrame>;
-  if (isReadOnly()) return null;
+  if (!canEdit) return null;
   if (!('collectionActions' in props)) return <ModelContextMenu {...props} />;
   return <ContextMenuFrame x={props.x} y={props.y} onClose={props.onClose}>
     <button {...lockProps} onClick={props.collectionActions.onRename}

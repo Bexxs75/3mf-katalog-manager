@@ -2,6 +2,9 @@ import type { Translations } from './types';
 
 export const de: Translations = {
   downloadModel: 'Herunterladen',
+  webMetadataError: "Änderung oder Neuladen fehlgeschlagen. Bitte den Katalog neu laden.",
+  webPhotoTooLarge: "Das Foto darf höchstens 5 MiB groß sein.",
+  webPhotoFormat: "Bitte ein Foto als PNG, JPEG oder WebP auswählen.",
   webReadOnly: 'Im Web-Modus nur lesend',
   webUnavailable: 'Im Web-Modus nicht verfügbar',
   webSessionChecking: "Sitzung wird geprüft…",

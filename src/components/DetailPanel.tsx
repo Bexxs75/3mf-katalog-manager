@@ -1,3 +1,4 @@
+import { useCanEditMetadata } from '../lib/webSession';
 import { isReadOnly } from '../lib/readOnly';
 import { displayName } from '../lib/displayName';
 import { LicenseEditor } from './LicenseEditor';
@@ -76,6 +77,7 @@ export function DetailPanel({
   hasSlicer,
   slicerError,
 }: Props) {
+  const canEdit = useCanEditMetadata();
   const { language } = useLanguage();
   const { lockProps } = useImportLock();
   const { container } = useRuntimeEnvironment();
@@ -201,7 +203,7 @@ export function DetailPanel({
           <button
             onClick={onTogglePrintStatus}
             className="h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
-           {...(isReadOnly() ? { disabled: true, title: t('webReadOnly') } : {})}>
+           {...(!canEdit ? { disabled: true, title: t('webReadOnly') } : {})}>
             {model.printStatus === 'printed' ? t('markAsNotPrinted') : t('markAsPrinted')}
           </button>
         </div>
@@ -214,7 +216,7 @@ export function DetailPanel({
             onClick={onToggleFavorite}
             aria-label={model.favorite ? t('favoriteRemove') : t('favoriteAdd')}
             className="h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
-           {...(isReadOnly() ? { disabled: true, title: t('webReadOnly') } : {})}>
+           {...(!canEdit ? { disabled: true, title: t('webReadOnly') } : {})}>
             <Icon name="heart" size={14} fill={model.favorite  ? 'currentColor' : 'none'} />
           </button>
         </div>
@@ -223,7 +225,7 @@ export function DetailPanel({
           <span className="flex-1 text-small font-medium">
             {model.queuePosition !== null ? t('inQueueLabel') : t('notInQueueLabel')}
           </span>
-          <>{!isReadOnly() && <button
+          <>{canEdit && <button
             onClick={onToggleQueue}
             className="h-7 px-2.5 rounded-[3px] border border-[var(--line-strong)] bg-[var(--panel)] text-[var(--ink-2)] text-caption font-semibold cursor-pointer hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
@@ -276,7 +278,7 @@ export function DetailPanel({
               ) : (
                 <span className="flex-1 text-right text-[var(--ink-3)]">{t('noValue')}</span>
               )}
-              <>{!isReadOnly() && <span
+              <>{canEdit && <span
                 onClick={startEditingSourceUrl}
                 className="flex-none w-4 h-4 grid place-items-center rounded-full cursor-pointer text-compact-meta text-[var(--ink-3)] hover:bg-[var(--panel-2)]"
               >
@@ -298,7 +300,7 @@ export function DetailPanel({
               >
                 <TagDot hue={tagHues?.[tag]} />
                 #{tagLabel(tag, language)}
-                <>{!isReadOnly() && <span
+                <>{canEdit && <span
                   onClick={() => onRemoveTag(tag)}
                   className="w-4 h-4 grid place-items-center rounded-full cursor-pointer text-compact-meta hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
                 >
@@ -410,7 +412,7 @@ export function DetailPanel({
             onClick={onToggleFavorite}
             aria-label={model.favorite ? t('favoriteRemove') : t('favoriteAdd')}
             className={`hover:bg-[var(--panel-2)] hover:text-[var(--ink)] flex-none text-heading ${model.favorite ? 'text-[var(--accent)]' : 'text-[var(--ink-3)]'}`}
-           {...(isReadOnly() ? { disabled: true, title: t('webReadOnly') } : {})}>
+           {...(!canEdit ? { disabled: true, title: t('webReadOnly') } : {})}>
             <Icon name="heart" size={14} fill={model.favorite  ? 'currentColor' : 'none'} />
           </button>
         </div>
@@ -424,7 +426,7 @@ export function DetailPanel({
             >
               <TagDot hue={tagHues?.[tag]} />
               #{tagLabel(tag, language)}
-              <>{!isReadOnly() && <span
+              <>{canEdit && <span
                 onClick={() => onRemoveTag(tag)}
                 className="w-4 h-4 grid place-items-center rounded-full cursor-pointer hover:bg-[var(--accent)] hover:text-[var(--accent-ink)]"
                 style={{ fontSize: 'var(--font-size-label)' }}
@@ -490,7 +492,7 @@ export function DetailPanel({
                 ) : (
                   <span className="flex-1 text-right text-[var(--ink-3)]">{t('noValue')}</span>
                 )}
-                <>{!isReadOnly() && <span
+                <>{canEdit && <span
                   onClick={startEditingSourceUrl}
                   className="flex-none w-5 h-5 grid place-items-center rounded-full cursor-pointer text-[var(--ink-3)] hover:bg-[var(--panel-2)]"
                   style={{ fontSize: 'var(--font-size-label)' }}
@@ -543,7 +545,7 @@ export function DetailPanel({
             >
               🖨 {t('openInSlicer')}
             </button>}</>)}
-            <>{!isReadOnly() && <button
+            <>{canEdit && <button
               onClick={onToggleQueue}
               className="h-11 px-4 flex items-center justify-center gap-2.5 rounded-lg bg-[var(--panel-2)] font-semibold cursor-pointer hover:text-[var(--accent)]"
               style={{ fontSize: 'var(--font-size-body)' }}
@@ -554,7 +556,7 @@ export function DetailPanel({
               onClick={onTogglePrintStatus}
               className="h-11 px-4 flex items-center justify-center gap-2.5 rounded-lg bg-[var(--panel-2)] font-semibold cursor-pointer hover:text-[var(--accent)]"
               style={{ fontSize: 'var(--font-size-body)' }}
-             {...(isReadOnly() ? { disabled: true, title: t('webReadOnly') } : {})}>
+             {...(!canEdit ? { disabled: true, title: t('webReadOnly') } : {})}>
               {model.printStatus === 'printed' && <Icon name="check" size={14} />}{t(model.printStatus === 'printed' ? 'markAsNotPrinted' : 'markAsPrinted')}
             </button>
             <>{!isReadOnly() && <button {...lockProps}

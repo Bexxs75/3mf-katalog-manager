@@ -2,6 +2,9 @@ import type { Translations } from './types';
 
 export const fr: Translations = {
   downloadModel: 'Télécharger',
+  webMetadataError: "Échec de la modification ou du rechargement. Rechargez le catalogue.",
+  webPhotoTooLarge: "La photo ne doit pas dépasser 5 Mio.",
+  webPhotoFormat: "Sélectionnez une photo PNG, JPEG ou WebP.",
   webReadOnly: 'Lecture seule en mode web',
   webUnavailable: 'Indisponible en mode web',
   webSessionChecking: "Vérification de la session…",
