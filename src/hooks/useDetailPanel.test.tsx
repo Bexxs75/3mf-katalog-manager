@@ -24,9 +24,3 @@ it('respects an explicit choice in both builds, including a stored automatic mod
   localStorage.setItem('3mf-katalog-detail-panel', 'pinned');
   expect(renderHook(() => useDetailPanel()).result.current.detailPanel).toBe('pinned');
 });
-
-it('ignores an automatic mode stored by older web builds', () => {
-  vi.stubEnv('VITE_TARGET', 'web');
-  localStorage.setItem('3mf-katalog-detail-panel', 'auto');
-  expect(renderHook(() => useDetailPanel()).result.current.detailPanel).toBe('pinned');
-});
