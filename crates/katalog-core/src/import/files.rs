@@ -457,6 +457,10 @@ pub const IMPORT_BATCH_SIZE: usize = 25;
 /// answering while files are read (a synchronous command waiting for the lock
 /// freezes the window).
 pub trait ImportDb {
+    /// Hash outside the connection lock; adapters may report I/O diagnostics.
+    fn hash(&mut self, path: &Path) -> CmdResult<String> {
+        compute_content_hash(path)
+    }
     fn batch_options(&self) -> BatchOptions { BatchOptions::default() }
     fn read_file(&mut self, path: &Path) -> CmdResult<NewFile> {
         read_model_file(path, None).map_err(Into::into)
@@ -571,10 +575,10 @@ pub fn import_many_selected(
                 continue;
             }
 
-            let content_hash = match compute_content_hash(&path) {
+            let content_hash = match db.hash(&path) {
                 Ok(h) => h,
-                // compute_content_hash already logged the fault itself; this is just the
-                // (expected) consequence for the batch.
+                // The host hash adapter owns fault diagnostics; retain the same
+                // per-file outcome regardless of its logging policy.
                 Err(e) => {
                     log::debug!(target: "import", "übersprungen (Hashing fehlgeschlagen): {path_str}: {e}");
                     result.skip(path_str, SkipReason::Invalid);

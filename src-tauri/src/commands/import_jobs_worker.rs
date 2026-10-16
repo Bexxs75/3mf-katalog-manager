@@ -122,9 +122,21 @@ struct ArchiveJobDb<'a> {
     reader: &'a dyn ImportReader,
 }
 impl files::ImportDb for ArchiveJobDb<'_> {
+    fn hash(&mut self, path: &Path) -> core::ImportResult<String> {
+        files::compute_content_hash(path).map_err(Into::into)
+    }
     fn with_conn<R>(&mut self, f: impl FnOnce(&mut Connection) -> core::ImportResult<R>) -> core::ImportResult<R> {
-        let mut conn = self.db.lock().map_err(|_| "database: lock poisoned")?;
-        f(&mut conn)
+        let result = self.db.lock()
+            .map_err(|_| core::ImportError::from("database: lock poisoned"))
+            .and_then(|mut conn| f(&mut conn));
+        if let Err(error) = &result {
+            // Failed commits may be classified as expected for recovery, but
+            // still need error-level diagnostics in the desktop archive path.
+            if !error.expected || error.message.starts_with("database:") {
+                log::error!(target: "import", "{error}");
+            }
+        }
+        result
     }
     fn read_file(&mut self, path: &Path) -> core::ImportResult<NewFile> {
         self.job.set_current(Some(path.to_string_lossy().into_owned()));
@@ -134,5 +146,80 @@ impl files::ImportDb for ArchiveJobDb<'_> {
     }
     fn report_in_flight(&self, count: usize) {
         self.job.set_in_flight(count);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use files::ImportDb;
+    use std::cell::RefCell;
+
+    thread_local! {
+        static ERRORS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    }
+    struct Logger;
+    impl log::Log for Logger {
+        fn enabled(&self, _: &log::Metadata<'_>) -> bool { true }
+        fn log(&self, record: &log::Record<'_>) {
+            if record.level() == log::Level::Error {
+                ERRORS.with(|errors| errors.borrow_mut().push(record.args().to_string()));
+            }
+        }
+        fn flush(&self) {}
+    }
+    fn capture(f: impl FnOnce()) -> Vec<String> {
+        static INIT: std::sync::Once = std::sync::Once::new();
+        INIT.call_once(|| {
+            log::set_logger(&Logger).unwrap();
+            log::set_max_level(log::LevelFilter::Trace);
+        });
+        ERRORS.with(|errors| errors.borrow_mut().clear());
+        f();
+        ERRORS.with(|errors| std::mem::take(&mut *errors.borrow_mut()))
+    }
+    fn with_database(f: impl FnOnce(&mut ArchiveJobDb<'_>)) {
+        let db = Mutex::new(db::connect_in_memory().unwrap());
+        let service = <ImportJobs as DesktopJobs>::default();
+        let job = service.enqueue(ImportSource::Files, None, false, None).unwrap();
+        f(&mut ArchiveJobDb { db: &db, job: &job, reader: service.reader() });
+    }
+    #[test]
+    fn archive_hash_failure_logs_error_and_remains_invalid() {
+        let missing = std::env::temp_dir().join(format!("archive_missing_{}.stl", std::process::id()));
+        assert!(!missing.exists());
+        let errors = capture(|| with_database(|database| {
+            let result = files::import_many_selected(database, vec![missing], files::ImportMode::Atomic, None, None).unwrap();
+            assert!(result.imported.is_empty());
+            assert_eq!(result.skipped.len(), 1);
+            assert_eq!(result.skipped[0].reason, files::SkipReason::Invalid);
+        }));
+        assert!(!errors.is_empty(), "hash failure must reach error-level diagnostics");
+    }
+    #[test]
+    fn archive_database_failure_logs_error_without_changing_result() {
+        let errors = capture(|| with_database(|database| {
+            let error = database.with_conn(|conn| {
+                conn.execute_batch("INSERT INTO missing_table VALUES (1)")
+                    .map_err(|e| core::ImportError::from(format!("database: {e}")))
+            }).unwrap_err();
+            assert!(!error.expected);
+            assert!(error.message.contains("missing_table"));
+        }));
+        assert!(errors.iter().any(|e| e.contains("missing_table")));
+    }
+    #[test]
+    fn archive_commit_failure_logs_error_even_when_expected() {
+        let errors = capture(|| with_database(|database| {
+            let error = database.with_conn(|conn| {
+                conn.execute_batch("CREATE TABLE parent_test(id INTEGER PRIMARY KEY); CREATE TABLE child_test(id INTEGER REFERENCES parent_test(id) DEFERRABLE INITIALLY DEFERRED)").unwrap();
+                let tx = conn.transaction().unwrap();
+                tx.execute("INSERT INTO child_test VALUES (1)", []).unwrap();
+                tx.commit().map_err(|e| core::ImportError::expected(format!("database: {e}")))
+            }).unwrap_err();
+            assert!(error.expected);
+            assert!(error.message.contains("FOREIGN KEY"));
+        }));
+        assert!(errors.iter().any(|e| e.contains("FOREIGN KEY")));
     }
 }

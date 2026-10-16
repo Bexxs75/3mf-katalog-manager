@@ -385,6 +385,12 @@ async fn import_duplicate_results_persist_files_stay_and_only_pending_can_be_dis
         .await;
     assert_eq!(start.status(), 200);
     let second_job = value(start).await["jobId"].clone();
+    assert_ne!(job, second_job);
+    for id in [&job, &second_job] {
+        let id = id.as_str().unwrap();
+        assert_eq!(id.len(), 32, "web job IDs encode 128 random bits");
+        assert!(id.bytes().all(|b| b.is_ascii_hexdigit()));
+    }
     let result = wait_result(&f, &second_job).await;
     assert_eq!(result["files"][0]["state"], "duplicate");
     assert_eq!(f.files(), 2);

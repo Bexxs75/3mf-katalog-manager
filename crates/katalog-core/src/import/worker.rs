@@ -164,7 +164,7 @@ pub fn run_models<A: ArchiveTypes>(
             continue;
         }
         if let Some(folder) = &job.options.fixed_folder {
-            if path.parent() != Some(folder.root.as_path()) {
+            if path.is_symlink() || path.parent() != Some(folder.root.as_path()) {
                 skip(job, path, "invalid");
                 continue;
             }
@@ -236,7 +236,8 @@ pub fn run_models<A: ArchiveTypes>(
         }
         job.data.lock().unwrap().current = Some(path_string);
         match service.reader.read(path) {
-            Ok(new_file) => {
+            Ok(mut new_file) => {
+                new_file.path = path.to_string_lossy().into_owned();
                 batch.push(files::PendingImport {
                     path: path.clone(),
                     folder_root: root.clone(),

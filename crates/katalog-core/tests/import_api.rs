@@ -123,3 +123,46 @@ fn public_core_lifecycle_cancel_releases_catalog_gate() {
     assert!(service.next().is_none()); assert!(service.gate.exclusive().is_ok());
     assert_eq!(job.result().unwrap().state,ImportState::Cancelled);
 }
+
+#[cfg(unix)]
+#[test]
+fn fixed_folder_rejects_symlinks_before_reading_target() {
+    let f = Fixture::new();
+    let outside = Fixture::new();
+    let (db, folder) = setup(&f);
+    let (service, reader) = service(db.clone());
+    let link = f.0.join("linked.stl");
+    std::os::unix::fs::symlink(outside.stl(1), &link).unwrap();
+    let dangling = f.0.join("dangling.stl");
+    std::os::unix::fs::symlink(outside.0.join("missing.stl"), &dangling).unwrap();
+    service.enqueue_in_place(vec![link, dangling], folder).unwrap();
+    let result = run(&service, &mut &*db);
+    assert_eq!(reader.calls.load(Ordering::Relaxed), 0);
+    assert_eq!(result.counts.skipped, 2);
+    assert!(result.groups.skipped.iter().all(|e| e.reason == "invalid"));
+    assert!(db::list_files(&db.lock().unwrap()).unwrap().is_empty());
+}
+
+#[test]
+fn reader_path_is_replaced_by_original_candidate_for_terminal_partition() {
+    struct AlternatePath;
+    impl ImportReader for AlternatePath {
+        fn read(&self, path: &Path) -> ImportResult<db::models::NewFile> {
+            let mut row = files::read_model_file(path, None)?;
+            row.content_hash = Some(files::compute_content_hash(path)?);
+            row.path = "/proc/self/fd/123".into();
+            Ok(row)
+        }
+    }
+    let f = Fixture::new();
+    let (db, folder) = setup(&f);
+    let path = f.stl(1);
+    let service: ImportJobs = ImportJobs::new(Arc::new(AlternatePath), Arc::new(NoPlacement), Arc::new(RealClock::default()), Arc::new(NoEvents));
+    service.enqueue_in_place(vec![path.clone()], folder).unwrap();
+    let result = run(&service, &mut &*db);
+    assert_eq!(result.counts.known, 1);
+    assert_eq!(result.counts.imported, 1);
+    assert_eq!(result.counts.skipped, 0);
+    assert_eq!(result.groups.imported[0].path, path.to_string_lossy());
+    assert_eq!(db::list_files(&db.lock().unwrap()).unwrap()[0].path, path.to_string_lossy());
+}

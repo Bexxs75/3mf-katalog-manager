@@ -670,6 +670,9 @@ mod tests {
 }
 
 /// The parser is injectable so a slow read cannot hide a blocked control path.
+/// The model worker overwrites `NewFile.path` with the original candidate
+/// (`path.to_string_lossy()`), preserving the string identity used by `finish()`.
+/// Readers may use canonical paths or descriptors internally.
 pub trait ImportReader: Send + Sync {
     fn read(&self, path: &Path) -> CmdResult<NewFile>;
 }
