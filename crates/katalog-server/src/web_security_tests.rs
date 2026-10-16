@@ -38,6 +38,7 @@ async fn cancelled_login_counts_failure_change_admission_and_logout_recheck() {
         }),
         changes: Arc::new(tokio::sync::Mutex::new(())),
         geometry: Arc::new(GeometryGate::default()),
+        downloads: Arc::new(tokio::sync::Semaphore::new(4)),
     });
     let request = Request::builder()
         .method("POST")
@@ -144,6 +145,7 @@ async fn test_app() -> Arc<App> {
         }),
         changes: Arc::new(tokio::sync::Mutex::new(())),
         geometry: Arc::new(GeometryGate::default()),
+        downloads: Arc::new(tokio::sync::Semaphore::new(4)),
     })
 }
 

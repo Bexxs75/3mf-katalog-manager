@@ -19,7 +19,7 @@ it.each(['model', 'collection'])('does not mount %s mutation context menus even 
     : <ContextMenu {...common} fileId="1" currentName="model.stl" inQueue={false} printed={false}
       onOpenInSlicer={action} onDelete={action} onToggleQueue={action} onTogglePrintStatus={action} onRename={action} />}
   </LanguageProviderWithDiagnostics>);
-  expect(screen.queryByRole('button')).toBeNull(); expect(invoke).not.toHaveBeenCalled(); expect(action).not.toHaveBeenCalled();
+  expect(screen.queryAllByRole('button').map(b => b.textContent)).toEqual(kind === 'model' ? ['Herunterladen'] : []); expect(invoke).not.toHaveBeenCalled(); expect(action).not.toHaveBeenCalled();
 });
 it.each(['notFound', 'unsupported'] as const)('hides native and removal actions from %s preview errors', code => {
   const action = vi.fn();

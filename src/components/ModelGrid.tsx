@@ -168,7 +168,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
         onContextMenu={(e) => {
           e.preventDefault();
           onSelect(m.id);
-          if (!isReadOnly()) onContextMenu(m.id, e.clientX, e.clientY);
+          onContextMenu(m.id, e.clientX, e.clientY);
         }}
         onMouseDown={(e) => handleCardMouseDown(e, m.id)}
         onMouseEnter={() => reorderable && dragIndex !== null && setOverIndex(models.findIndex((x) => x.id === m.id))}
@@ -273,7 +273,7 @@ export function ModelGrid({ containerRef, windowed = true, models, selectedId, o
             onContextMenu={(e) => {
               e.preventDefault();
               onSelect(m.id);
-              if (!isReadOnly()) onContextMenu(m.id, e.clientX, e.clientY);
+              onContextMenu(m.id, e.clientX, e.clientY);
             }}
             onMouseDown={(e) => handleCardMouseDown(e, m.id)}
             onMouseEnter={() => reorderable && dragIndex !== null && setOverIndex(models.findIndex((x) => x.id === m.id))}

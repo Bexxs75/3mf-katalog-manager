@@ -1,3 +1,4 @@
+import { DownloadFileButton } from './DownloadFileButton';
 import { isReadOnly } from '../lib/readOnly';
 import { displayName } from '../lib/displayName';
 import { useRuntimeEnvironment } from '../hooks/useRuntimeEnvironment';
@@ -245,6 +246,11 @@ interface CollectionMenuProps {
 export function ContextMenu(props: Props | CollectionMenuProps) {
   const { lockProps } = useImportLock();
   const t = useT();
+  const isWeb = import.meta.env.VITE_TARGET === 'web';
+  if (isWeb && !('collectionActions' in props)) return <ContextMenuFrame x={props.x} y={props.y} onClose={props.onClose}>
+    <DownloadFileButton fileId={props.fileId} onSuccess={props.onClose}
+      className="w-full text-left px-3 py-2 text-[length:var(--font-size-title)] text-[var(--ink)] cursor-pointer hover:bg-[var(--panel-2)] disabled:opacity-50" />
+  </ContextMenuFrame>;
   if (isReadOnly()) return null;
   if (!('collectionActions' in props)) return <ModelContextMenu {...props} />;
   return <ContextMenuFrame x={props.x} y={props.y} onClose={props.onClose}>

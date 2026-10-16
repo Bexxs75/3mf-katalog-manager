@@ -6,6 +6,7 @@ export interface PluralForms {
 }
 
 export interface Translations {
+  downloadModel: string;
   webReadOnly: string;
   webUnavailable: string;
   webSessionChecking: string;

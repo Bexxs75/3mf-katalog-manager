@@ -4,11 +4,13 @@ use hyper::{server::conn::http1, service::service_fn};
 use hyper_util::rt::{TokioIo, TokioTimer};
 use std::{
     future::Future,
+    pin::Pin,
     sync::{Arc, Mutex},
+    task::{Context, Poll},
     time::Duration,
 };
 use tokio::{
-    io::{AsyncRead, AsyncWrite},
+    io::{AsyncRead, AsyncWrite, ReadBuf},
     sync::{watch, Semaphore},
     task::JoinSet,
     time::Instant,
@@ -62,11 +64,74 @@ where
     true
 }
 
+// Response headers finish the service future before the body is sent. Keep
+// streaming writes visible to the idle timeout, including slow large downloads.
+// Require 64 KiB per idle window (~1 KiB/s) so trickle reads cannot
+// retain a connection/download slot indefinitely.
+const MIN_WRITE_PROGRESS: usize = 64 * 1024;
+
+struct ActiveIo<I> {
+    io: I,
+    activity: Arc<Mutex<(bool, Instant, usize)>>,
+}
+impl<I: AsyncRead + Unpin> AsyncRead for ActiveIo<I> {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.io).poll_read(cx, buf)
+    }
+}
+impl<I: AsyncWrite + Unpin> AsyncWrite for ActiveIo<I> {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
+        let result = Pin::new(&mut self.io).poll_write(cx, buf);
+        if let Poll::Ready(Ok(n)) = result {
+            let mut activity = self.activity.lock().unwrap();
+            activity.2 = activity.2.saturating_add(n);
+            if activity.2 >= MIN_WRITE_PROGRESS {
+                activity.1 = Instant::now();
+                activity.2 = 0;
+            }
+        }
+        result
+    }
+    fn poll_write_vectored(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        bufs: &[std::io::IoSlice<'_>],
+    ) -> Poll<std::io::Result<usize>> {
+        let result = Pin::new(&mut self.io).poll_write_vectored(cx, bufs);
+        if let Poll::Ready(Ok(n)) = result {
+            let mut activity = self.activity.lock().unwrap();
+            activity.2 = activity.2.saturating_add(n);
+            if activity.2 >= MIN_WRITE_PROGRESS {
+                activity.1 = Instant::now();
+                activity.2 = 0;
+            }
+        }
+        result
+    }
+    fn is_write_vectored(&self) -> bool {
+        self.io.is_write_vectored()
+    }
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.io).poll_flush(cx)
+    }
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.io).poll_shutdown(cx)
+    }
+}
+
 async fn connection<I>(io: I, app: Router, mut stop: watch::Receiver<bool>)
 where
     I: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-    let activity = Arc::new(Mutex::new((false, Instant::now())));
+    let activity = Arc::new(Mutex::new((false, Instant::now(), 0)));
     let state = activity.clone();
     let service = service_fn(move |request| {
         let app = app.clone();
@@ -74,7 +139,7 @@ where
         async move {
             state.lock().unwrap().0 = true;
             let response = app.oneshot(request).await;
-            *state.lock().unwrap() = (false, Instant::now());
+            *state.lock().unwrap() = (false, Instant::now(), 0);
             response
         }
     });
@@ -83,18 +148,24 @@ where
         .timer(TokioTimer::new())
         .keep_alive(true)
         .header_read_timeout(Duration::from_secs(10));
-    let conn = builder.serve_connection(TokioIo::new(io), service);
+    let conn = builder.serve_connection(
+        TokioIo::new(ActiveIo {
+            io,
+            activity: activity.clone(),
+        }),
+        service,
+    );
     tokio::pin!(conn);
     let idle = async {
         loop {
-            let (active, last) = *activity.lock().unwrap();
+            let (active, last, _) = *activity.lock().unwrap();
             let deadline = if active {
                 Instant::now() + Duration::from_secs(60)
             } else {
                 last + Duration::from_secs(60)
             };
             tokio::time::sleep_until(deadline).await;
-            let (active, last) = *activity.lock().unwrap();
+            let (active, last, _) = *activity.lock().unwrap();
             if !active && last.elapsed() >= Duration::from_secs(60) {
                 break;
             }
@@ -136,6 +207,61 @@ mod tests {
 
     fn app() -> Router {
         Router::new().route("/", axum::routing::get(|| async { "ok" }))
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn progressing_response_is_not_cut_off_after_sixty_seconds() {
+        let app = Router::new().route(
+            "/",
+            axum::routing::get(|| async { vec![42u8; 1024 * 1024] }),
+        );
+        let (mut client, server) = tokio::io::duplex(64 * 1024);
+        let (_stop, rx) = watch::channel(false);
+        let task = tokio::spawn(connection(server, app, rx));
+        client
+            .write_all(b"GET / HTTP/1.1\r\nHost: local\r\n\r\n")
+            .await
+            .unwrap();
+        let mut buf = [0; 64 * 1024];
+        client.read_exact(&mut buf).await.unwrap();
+        for _ in 0..10 {
+            tokio::time::advance(Duration::from_secs(50)).await;
+            client.read_exact(&mut buf).await.unwrap();
+            tokio::task::yield_now().await;
+            assert!(
+                !task.is_finished(),
+                "active streaming response was timed out"
+            );
+        }
+        drop(client);
+        task.await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn trickling_response_is_closed_at_idle_deadline() {
+        let app = Router::new().route(
+            "/",
+            axum::routing::get(|| async { vec![42u8; 1024 * 1024] }),
+        );
+        let (mut client, server) = tokio::io::duplex(64);
+        let (_stop, rx) = watch::channel(false);
+        let task = tokio::spawn(connection(server, app, rx));
+        client
+            .write_all(b"GET / HTTP/1.1\r\nHost: local\r\n\r\n")
+            .await
+            .unwrap();
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(55)).await;
+        client.read_exact(&mut [0; 8]).await.unwrap();
+        tokio::task::yield_now().await;
+        assert!(!task.is_finished());
+        tokio::time::advance(Duration::from_secs(5)).await;
+        tokio::task::yield_now().await;
+        assert!(
+            task.is_finished(),
+            "trickling writer renewed the idle window"
+        );
+        task.await.unwrap();
     }
 
     #[tokio::test(start_paused = true)]

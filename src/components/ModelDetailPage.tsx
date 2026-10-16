@@ -1,3 +1,4 @@
+import { DownloadFileButton } from './DownloadFileButton';
 import { isReadOnly } from '../lib/readOnly';
 import { displayName } from '../lib/displayName';
 import { LicenseEditor } from './LicenseEditor';
@@ -543,6 +544,7 @@ export function ModelDetailPage({
               </div>
             )}
           </div>
+          <DownloadFileButton fileId={model.id} />
           <RevealFileButton fileId={model.id} />
           {container && <CatalogWebButton key={model.id} fileId={model.id} fileName={model.name} />}
           {!container && (<>{!isReadOnly() && <button

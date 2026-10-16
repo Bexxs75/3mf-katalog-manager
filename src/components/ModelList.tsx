@@ -61,7 +61,7 @@ export function ModelList({ containerRef, windowed = true, models, selectedId, o
           onContextMenu={(e) => {
             e.preventDefault();
             onSelect(m.id);
-            if (!isReadOnly()) onContextMenu(m.id, e.clientX, e.clientY);
+            onContextMenu(m.id, e.clientX, e.clientY);
           }}
           onMouseDown={(e) => {
             if (isReadOnly() || !onDragFileStart || readOnly) return;

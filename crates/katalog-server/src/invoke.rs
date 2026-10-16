@@ -53,7 +53,7 @@ fn error(status: StatusCode, message: &str, expected: bool) -> Box<Response> {
             .into_response(),
     )
 }
-fn read_error(e: ReadError) -> Response {
+pub(crate) fn read_error(e: ReadError) -> Response {
     let status = if e.busy {
         StatusCode::SERVICE_UNAVAILABLE
     } else if e.code == Some(GeometryErrorCode::NotFound) {

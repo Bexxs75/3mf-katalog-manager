@@ -257,6 +257,7 @@ struct App {
     data: Mutex<Data>,
     changes: Arc<tokio::sync::Mutex<()>>,
     geometry: Arc<GeometryGate>,
+    downloads: Arc<tokio::sync::Semaphore>,
 }
 fn error(status: u16, message: &str) -> Response {
     (
@@ -317,6 +318,7 @@ pub fn build_app(config: AppConfig) -> Router {
         }),
         changes: Arc::new(tokio::sync::Mutex::new(())),
         geometry: Arc::new(GeometryGate::default()),
+        downloads: Arc::new(tokio::sync::Semaphore::new(4)),
     });
     Router::new()
         .fallback(dispatch)
@@ -586,12 +588,17 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
     let now = app.clock.now();
     let path = req.uri().path().to_owned();
     let method = req.method().clone();
+    let download_id = path
+        .strip_prefix("/api/files/")
+        .and_then(|p| p.strip_suffix("/download"))
+        .filter(|id| !id.contains('/'));
     // Reserve the complete API namespace, including unknown routes, before SPA fallback.
     if path == "/api" || path.starts_with("/api/") {
         if !matches!(
             path.as_str(),
             "/api/health" | "/api/session" | "/api/login" | "/api/logout" | "/api/password"
         ) && !path.starts_with("/api/invoke/")
+            && download_id.is_none()
         {
             return error(404, "Nicht gefunden");
         }
@@ -611,6 +618,34 @@ async fn dispatch(State(app): State<Arc<App>>, req: Request) -> Response {
     let headers = req.headers().clone();
     let is_secure = secure(&app, &headers);
     let current = session(&app, &headers, now);
+    if let Some(id) = download_id {
+        if method != Method::GET {
+            return error(405, "Methode nicht erlaubt");
+        }
+        if !app.config.allow_no_auth {
+            if current.is_none() {
+                return error(401, "Anmeldung erforderlich");
+            }
+            if app
+                .data
+                .lock()
+                .unwrap()
+                .auth
+                .as_ref()
+                .is_some_and(|a| a.must_change)
+            {
+                return (StatusCode::FORBIDDEN, Json(json!({"message":"Bitte zuerst ein neues Passwort setzen","expected":true,"code":"password_change_required"}))).into_response();
+            }
+        }
+        return crate::download::download(
+            app.config.db_path.clone(),
+            app.config.roots.clone(),
+            id,
+            &headers,
+            app.downloads.clone(),
+        )
+        .await;
+    }
     if method == Method::GET {
         return match path.as_str() {
             "/api/health"=>Json(json!({"ok":true})).into_response(),

@@ -1,6 +1,7 @@
 import type { Translations } from './types';
 
 export const en: Translations = {
+  downloadModel: 'Download',
   webReadOnly: 'Read-only in web mode',
   webUnavailable: 'Unavailable in web mode',
   webSessionChecking: "Checking session…",

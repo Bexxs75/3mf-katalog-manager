@@ -213,3 +213,13 @@ it('does not block unchanged custom text or a saved license', async () => {
   expect(onNavigate).toHaveBeenCalledTimes(2);
   expect(screen.queryByRole('dialog')).toBeNull();
 });
+
+it('offers original-file download only in the web build', () => {
+  const page = <LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} /></LanguageProvider>;
+  const { rerender } = render(page);
+  expect(screen.queryByRole('button', { name: 'Herunterladen' })).toBeNull();
+  vi.stubEnv('VITE_TARGET', 'web');
+  rerender(<LanguageProvider><ModelDetailPage {...props} hasPrevious={false} hasNext={false} /></LanguageProvider>);
+  expect(screen.getByRole('button', { name: 'Herunterladen' })).toBeVisible();
+  vi.unstubAllEnvs();
+});

@@ -126,7 +126,9 @@ it('makes model, folder and collection context menus, drag/drop, bulk shortcuts 
   const folder = screen.getByText('Other folder').closest<HTMLElement>('[role=button]')!;
   const collection = screen.getByRole('button', { name: 'Web collection' });
   for (const element of [tile, folder, collection]) {
-    fireEvent.contextMenu(element); fireEvent.keyDown(element, { key: 'F10', shiftKey: true });
+    fireEvent.contextMenu(element);
+    if (element === tile) expect(screen.getByRole('button', { name: 'Herunterladen' })).toBeVisible();
+    fireEvent.keyDown(element, { key: 'F10', shiftKey: true });
     fireEvent.mouseDown(element, { clientX: 0, clientY: 0 });
     fireEvent.mouseMove(document, { clientX: 100, clientY: 100 });
     fireEvent.mouseEnter(folder); fireEvent.mouseEnter(collection); fireEvent.mouseUp(document);
