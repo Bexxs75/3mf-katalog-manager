@@ -160,6 +160,12 @@ it('shows a slot shrink warning and unit deletion consequences before mutation',
   fireEvent.submit(screen.getByRole('dialog').querySelector('form')!);
   await waitFor(() => expect(writes().map(c=>c.command)).toEqual(['delete_unit']));
 });
+it('shows no connection status in the web printer list, because printers cannot be linked there', async () => {
+  mockManager(); managers('printers'); await screen.findByText('saved.gcode');
+  expect(screen.queryByText(de.pmInactive)).toBeNull();
+  expect(screen.queryByText(de.pmNoConnection)).toBeNull();
+  expect(screen.getAllByText(de.spoolKindFilament).length).toBeGreaterThan(0);
+});
 it('keeps successful copies after a partial create and retries only missing copies', async () => {
   let adds=0;
   mockManager(command=> command==='add_filament_spool' && ++adds === 2 ? Response.json({message:'quota',expected:true},{status:422}) : undefined);

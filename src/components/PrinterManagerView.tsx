@@ -93,11 +93,11 @@ export function PrinterManagerView({ printers: state, printerLink, printerId, on
                 <Icon name={p.kind === 'resin' ? 'resin' : 'printer'} size={24} className="shrink-0 text-[var(--ink-2)]" />
                 <span className="min-w-0 flex-1 max-[1023px]:group-data-[collapsed=true]:hidden">
                   <b className="block truncate">{p.name}</b>
-                  <span className="flex flex-col items-start gap-1 mt-1 min-w-0"><PrinterStatusBadge status={status} />
-                    <span className="break-words text-caption text-[var(--ink-3)]">{p.kind === 'resin' ? t('spoolKindResin') : conn?.address ? <span className="font-code">{conn.address}</span> : t('pmNoConnection')}</span>
+                  <span className="flex flex-col items-start gap-1 mt-1 min-w-0">{import.meta.env.VITE_TARGET !== 'web' && <PrinterStatusBadge status={status} />}
+                    <span className="break-words text-caption text-[var(--ink-3)]">{p.kind === 'resin' ? t('spoolKindResin') : import.meta.env.VITE_TARGET === 'web' ? t('spoolKindFilament') : conn?.address ? <span className="font-code">{conn.address}</span> : t('pmNoConnection')}</span>
                   </span>
                 </span>
-                <span aria-hidden="true" className={`hidden max-[1023px]:group-data-[collapsed=true]:block absolute right-1 top-1 rounded-full w-2 h-2 ${printerStatusColors[status]}`}><span className="block w-full h-full rounded-full bg-current" /></span>
+                {import.meta.env.VITE_TARGET !== 'web' && <span aria-hidden="true" className={`hidden max-[1023px]:group-data-[collapsed=true]:block absolute right-1 top-1 rounded-full w-2 h-2 ${printerStatusColors[status]}`}><span className="block w-full h-full rounded-full bg-current" /></span>}
               </button>
             </div>
           </li>;
@@ -165,7 +165,7 @@ function PrinterDetail({ printer, state, link, onMaterial }: {
         <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[var(--ink-2)]">
           <span>{t(printer.kind === 'resin' ? 'spoolKindResin' : 'spoolKindFilament')}</span>
           {connection && printer.kind !== 'resin' && <><span>{t('printerConnectionTypeMoonraker')}</span><span className="font-code text-small">{connection.address}</span></>}
-          <PrinterStatusBadge status={printerStatus(printer, link.enabled, connection)} />
+          {import.meta.env.VITE_TARGET !== 'web' && <PrinterStatusBadge status={printerStatus(printer, link.enabled, connection)} />}
         </div>
       </div>
     </>} deleteAction={<button type="button" className={`${pmButton} !border-transparent hover:bg-[var(--panel-2)] text-[var(--crit)] max-[639px]:w-full`} disabled={!canEdit || !spoolsReady} onClick={() => setDeleting(true)}>{t('pmDeletePrinter')}</button>} />
