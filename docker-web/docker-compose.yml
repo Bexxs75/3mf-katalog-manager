@@ -1,0 +1,28 @@
+# Web version of the 3MF Katalog Manager: read-only catalog server (no desktop stream).
+# Same folders as the desktop image: ./config (app data) and ./models.
+services:
+  katalog-web:
+    build:
+      context: ..
+      dockerfile: docker-web/Dockerfile
+    image: 3mfkatalog-web:local
+    container_name: 3mfkatalog-web
+    restart: unless-stopped
+    # Run as the owner of ./config so the password file can be written (id -u / id -g).
+    user: "${PUID:-1000}:${PGID:-1000}"
+    ports:
+      # Local only by default. For other devices in the home network set KATALOG_BIND_IP
+      # to the server's address; for access from outside use a VPN or a reverse proxy with HTTPS.
+      - "${KATALOG_BIND_IP:-127.0.0.1}:${KATALOG_PORT:-8080}:8080"
+    volumes:
+      - ./config:/config
+      - ${MODELS_DIR:-./models}:/models:ro
+    # Optional settings (uncomment):
+    # environment:
+    #   # First-time password only (otherwise a random one is printed once in the log):
+    #   - KATALOG_PASSWORD_FILE=/config/.kasmvnc-password   # reuse the desktop image's password
+    #   # Recommended when the port is reachable in the network (DNS rebinding protection):
+    #   - KATALOG_ALLOWED_HOSTS=katalog.home.example,192.168.1.50:8080
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
